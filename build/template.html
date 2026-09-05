@@ -45,7 +45,9 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-user-drag: none; user-drag: none;
   }
-  #game { position: fixed; image-rendering: auto; }
+  /* #chrome sits on top (gate.js emits it after #game) and is the single
+     pointer surface; #game is painted only and never takes a pointer. */
+  #game { position: fixed; image-rendering: auto; pointer-events: none; }
   #chrome { position: fixed; left: 0; top: 0; }
   #boot-error {
     position: fixed; inset: 0; z-index: 9999; box-sizing: border-box;

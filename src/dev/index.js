@@ -89,7 +89,9 @@ export const Dev = {
       e.preventDefault();
       if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     }, { capture: true });
-    const game = document.getElementById('game');
+    // #chrome is the one pointer surface (#game is pointer-events:none under
+    // it); the fallback is for a shell that never made one.
+    const game = document.getElementById('chrome') || document.getElementById('game');
     game && game.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch' && e.pointerType !== 'mouse') return;
       const p = clientToLogical(e.clientX, e.clientY);

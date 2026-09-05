@@ -330,7 +330,7 @@ Heroes are **procedural vector toons** composited at device resolution with bili
 - **Logical resolution:** 480×270 (all game code draws in this space)
 - **Back buffer:** variable device-pixel density (adaptive; see below)
 - **Overlay layer:** same density as back buffer, for heroes and banners
-- **Chrome canvas:** separate full-viewport canvas behind #game, for margin touch controls
+- **Chrome canvas:** separate full-viewport canvas ON TOP of #game — the single pointer surface, and where the touch controls are drawn (over the picture, at fixed logical spots) as a dirty-flag layer
 - **WebGL post-pipeline:** optional bloom + vignette on the final composite (when Glow Effects is on)
 
 ### 7.3 Adaptive Render Density
@@ -537,25 +537,28 @@ Rules the design turns on:
 
 | Action | Input | Notes |
 |---|---|---|
-| Jump | Left click, left 70% of canvas | Tap or hold for height |
-| Hero power | Right click, right 30% of canvas | Same split as touch |
+| Jump | Left click, anywhere on canvas | Tap or hold for height |
+| Slide / kick | Right click | Held, same as Down |
+| Hero power | Middle click | Also in the Trophy Workshop |
 | Pause menus | Left click plates | CONTINUE / EXIT TO FOOD COURT |
 
-The canvas is split horizontally: the left 70% is jump territory and the right 30% fires the hero's special. This is the same split touch uses, so a player moving between devices never needs to re-learn where the buttons are. Menus and the hub ignore this split — clicks there use their own tap targets.
+A mouse gets one verb per button — left jumps, right slides, middle fires the special — so what a click does never depends on where the cursor happens to be resting. The left/right halves are a touch affordance only: a thumb has no second button, a mouse does. Menus and the hub ignore the gameplay mapping — clicks there use their own tap targets.
 
 ### 9.3 Touch
 
+The whole screen is two buttons: the left half is JUMP, the right half is SLIDE (both press-and-hold). Four translucent discs sit on the picture at fixed logical spots, the same on every device — JUMP ▲ alone on the left, level with SLIDE ▼; USE and ⏸ above SLIDE in a column centred on the picture's midline (`src/engine/touch-layout.js`).
+
 | Action | Gesture / Button |
 |---|---|
-| Jump | Tap left 70% of canvas (or JUMP button) |
-| Duck | Swipe down (hold) |
-| Hero power | Tap right 30% of canvas (or USE button) |
-| Pause | ⏸ button (top-right or margin) |
-| Walk in hub | Left/Right canvas zones |
+| Jump | Tap-and-hold anywhere on the left half, or the ▲ disc |
+| Slide / duck | Tap-and-hold anywhere on the right half, the ▼ disc, or swipe down |
+| Hero power | The USE disc (shows the recharge), or swipe right |
+| Pause | The ⏸ disc |
+| Walk in hub | ◀ ▶ discs (on the picture's edges, or in a margin wide enough to hold them) plus tap-to-walk |
 
-### 9.4 Touch Chrome (iPad / Wide Screens)
+### 9.4 Touch Chrome (margins)
 
-When the viewport has enough margin outside the 480×270 game rectangle, controls move into the black margin as circular buttons on a separate canvas. This keeps the play field clear. The ability-name plate (e.g. "STOMP / SMASH") sits above the USE button in landscape mode.
+Whatever black margin a device has around the 480×270 picture extends the control beside it, as tap zones: a landscape phone's left pillar is JUMP and its right pillar is ⏸ / USE / SLIDE from the top down; an iPad's bands split JUMP | ⏸ above and JUMP | SLIDE below. Zones never reach into the picture. The discs and zones are drawn and hit-tested on `#chrome` in viewport px (`src/game/touchchrome.js`); nothing depends on which margin a device has, and nothing sits under a notch, the Dynamic Island or the home indicator.
 
 ### 9.5 Gamepad
 
@@ -581,11 +584,11 @@ From `src/data/jokes.js` — these govern all in-game text:
 
 ### 11.1 Desktop
 
-Full WebGL + bloom. Keyboard primary; mouse uses the same 70/30 canvas split as touch — left 70% is jump, right 30% is the hero's special, right-click is always special. Fullscreen available.
+Full WebGL + bloom. Keyboard primary; the mouse gets one verb per button — left click jumps, right click slides, middle click fires the hero's special. Fullscreen available.
 
 ### 11.2 iPad
 
-Playable in Safari and fullscreen. Touch chrome controls in the margin. Adaptive render density starts at 3×. WebGL with tier-gated bloom (suppressed below 1.5×).
+Playable in Safari and fullscreen. The same touch discs as a phone, on the picture; the bands above and below extend them. Adaptive render density starts at 3×. WebGL with tier-gated bloom (suppressed below 1.5×).
 
 ### 11.3 iPhone
 
@@ -624,7 +627,7 @@ All platforms pause audio, input, rendering, and the game loop when the page/app
 
 ### 12.3 Testing
 
-`npm test` runs: migration, difficulty-identity, bot-plays-a-stage, minigames, bosses, full-flow smoke, fairness + economy sims, renderer contracts, adaptive density controller, touch smoke, build shell validation.
+`npm test` runs: migration, difficulty-identity, bot-plays-a-stage, minigames, bosses, full-flow smoke, fairness + economy sims, renderer contracts, adaptive density controller, touch smoke, touch layout (device geometries), build shell validation.
 
 `npm run sim` runs the fairness simulator (validates obstacle spacing is survivable).
 

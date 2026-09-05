@@ -237,7 +237,7 @@ const TEXT_STYLES = {
   subtitle: { font: BODY_FONT, weight: 600, tracking: 3 },
   marker: { font: MARKER_FONT, weight: 400 },
 };
-const GLYPH_PX = 8.2;   // em size, unchanged — only the spacing moved
+export const GLYPH_PX = 8.2;   // em size, unchanged — only the spacing moved
 const TRACKING = 0.5;   // a hair of letter-spacing; pure metric fit reads tight here
 
 function fontString(style, scale) {
@@ -557,161 +557,106 @@ export function drawKeyLegend(ctx, pairs, x, y, { scale = 1, keyInk = KEY_INK, a
 // rather than as a button.
 const BUTTON_LABEL_S = 0.85;
 
-// The on-screen touch controls — jump, power, pause — are one instrument in
-// three places, so they are one painter rather than three call sites that
-// happen to agree today. Discs, not plates: the round ones are the controls you
+// The on-screen touch controls — jump, slide, power, pause, and the food court's
+// walk arrows — are one instrument in three places, so they are one painter
+// rather than three call sites that happen to agree today (game/touchchrome.js
+// is the only caller). Discs, not plates: the round ones are the controls you
 // hold, and keeping them shaped differently from every rectangular readout in
 // the HUD means a thumb never has to read anything to find them.
 //
-// A soft shadow of a disc and nothing else — no outline, and barely there. The
-// rest of the HUD is bordered panels because it is information you read; these
-// are furniture you press without looking, and they sit ON the play field
-// rather than beside it. A teal ring made three hard targets the eye kept
-// catching on while the level scrolled past underneath them. What survives is
-// the ink: the label carries the button, and the disc only has to lift it off
-// whatever colour happens to be behind it that second.
+// SLICK AND SUBTLE. A barely-there glass disc, no rim, and a slim glyph
+// floating on a soft shadow. The glyph is the control; the disc only says
+// "here". These sit ON the picture, so anything heavier — a ring, a fat rim, a
+// 22% fill — became one more thing to track while the level scrolled under it.
+// The shadow is what keeps a pale glyph legible over a white-sky pack without
+// borrowing weight from a line.
+//
+// The glyphs share one footprint and one rim so they read as a set: the beat
+// ribbon's 2.5:2 triangle for up / down / left / right (the dark edge stroked
+// BEFORE the fill, so the colour sits inside a rim rather than under a line
+// eating half the shape), and a music player's pause beside its play — two
+// bars with the triangle's height and width, NOT two thin lines, which read as
+// the number 11. The inks arrive as opts and are never literals here: the
+// arrows' live in game/beatground.js, which the engine must not import.
 //
 // `opts.frac` (0..1) floods the disc from the bottom for the power button's
-// recharge: a level, not a ticking number. It has to read against any pack's
-// background, so the waterline carries a bright meniscus rather than leaning on
-// the flood colour alone — and with no outline to mark the disc's extent, that
-// line is also the only thing drawing its edge.
+// recharge: a level, not a ticking number. Full reads as ready, and the
+// waterline carries a bright meniscus only while there is headroom above it —
+// pinned to the rim of a full disc it read as a stray ring.
 export function drawRoundButton(ctx, b, opts = {}) {
   const cx = b.x + b.w / 2, cy = b.y + b.h / 2, r = Math.min(b.w, b.h) / 2;
   const ink = opts.ink || '#48e0c8';
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.22)';
+  ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.14)';
   ctx.fill();
   if (opts.frac != null) {
     ctx.clip();
     const fh = Math.round(r * 2 * Math.max(0, Math.min(1, opts.frac)));
-    ctx.fillStyle = opts.levelFill || 'rgba(72,224,200,0.28)';
+    ctx.globalAlpha = opts.levelAlpha != null ? opts.levelAlpha : 1;
+    ctx.fillStyle = opts.levelFill || 'rgba(72,224,200,0.18)';
     ctx.fillRect(cx - r, cy + r - fh, r * 2, fh);
-    // The meniscus line marks the waterline while it's rising; at a full disc
-    // it would sit pinned to the rim, reading as a stray ring rather than a
-    // "still filling" cue — so it only draws while there's headroom above it.
+    ctx.globalAlpha = 1;
     if (opts.frac < 1) {
-      ctx.fillStyle = opts.waterline || 'rgba(184,248,232,0.8)';
-      ctx.fillRect(cx - r, cy + r - fh, r * 2, 1.5);
+      ctx.fillStyle = opts.waterline || 'rgba(184,248,232,0.6)';
+      ctx.fillRect(cx - r, cy + r - fh, r * 2, 1);
     }
   }
   ctx.restore();
-  // A defining ring — the in-canvas buttons deliberately go without one (see
-  // above: over scrolling gameplay it read as a third thing to track), but
-  // that concern doesn't exist against the chrome canvas's static margin, and
-  // there a ring is what keeps the disc from disappearing into a background
-  // that's nearly its own fill color.
+  // A ring only where a caller asks for one: against a black margin a disc
+  // with no edge can vanish; on the picture the glyph's shadow does that job.
   if (opts.ring) {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.strokeStyle = opts.ring;
-    ctx.lineWidth = opts.ringWidth || 1.5;
+    ctx.lineWidth = opts.ringWidth || 1;
     ctx.stroke();
   }
-  if (b.icon === 'up' || b.icon === 'down') {
-    // The ribbon's arrow at disc scale: the same 2.5:2 proportion and the same
-    // stroke-then-fill rim drawActionPill uses, so the control out in the
-    // margin and the in-canvas pill read as one object seen in two places
-    // rather than two families that happen to both point somewhere.
-    const dir = b.icon === 'up' ? 1 : -1;
-    const aw = r * 0.5, ah = r * 0.4;
-    ctx.save();
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(1, r * 0.1);
-    ctx.strokeStyle = opts.outline || 'rgba(18,24,46,0.9)';
-    ctx.fillStyle = ink;
+  ctx.save();
+  if (opts.shadow !== false) {
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = r * 0.35;
+    ctx.shadowOffsetY = r * 0.08;
+  }
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1, r * 0.06);
+  ctx.strokeStyle = opts.outline || 'rgba(18,24,46,0.7)';
+  ctx.fillStyle = ink;
+  const icon = b.icon;
+  if (icon === 'up' || icon === 'down' || icon === 'left' || icon === 'right') {
+    // Apex toward the direction, base across it. One path for all four so the
+    // pairs are exact reflections and the strip cannot say DOWN twice — the
+    // same mistake hud.js's ribbon comment records.
+    const aw = r * 0.42, ah = r * 0.34;
+    const dx = icon === 'right' ? 1 : icon === 'left' ? -1 : 0;
+    const dy = icon === 'down' ? 1 : icon === 'up' ? -1 : 0;
     ctx.beginPath();
-    ctx.moveTo(cx, cy - dir * ah);
-    ctx.lineTo(cx - aw, cy + dir * ah);
-    ctx.lineTo(cx + aw, cy + dir * ah);
+    if (dy) {
+      ctx.moveTo(cx, cy + dy * ah);
+      ctx.lineTo(cx - aw, cy - dy * ah);
+      ctx.lineTo(cx + aw, cy - dy * ah);
+    } else {
+      ctx.moveTo(cx + dx * ah, cy);
+      ctx.lineTo(cx - dx * ah, cy - aw);
+      ctx.lineTo(cx - dx * ah, cy + aw);
+    }
     ctx.closePath();
     ctx.stroke();
     ctx.fill();
-    ctx.restore();
-  } else if (b.icon === 'pause') {
-    // The one control with a symbol every player already knows. A glyph also
-    // survives a translation and a smaller button; the word PAUSE does neither.
-    const bw = Math.max(2, r * 0.19), bh = r * 0.82, gap = r * 0.22;
-    ctx.fillStyle = ink;
-    ctx.fillRect(cx - gap - bw, cy - bh / 2, bw, bh);
-    ctx.fillRect(cx + gap, cy - bh / 2, bw, bh);
+  } else if (icon === 'pause') {
+    const bh = r * 0.68, bw = r * 0.3, gap = r * 0.24, rad = r * 0.05;
+    for (const bx of [cx - gap / 2 - bw, cx + gap / 2]) {
+      platePath(ctx, bx, cy - bh / 2, bw, bh, rad);
+      ctx.stroke();
+      ctx.fill();
+    }
   } else if (b.label) {
     // Same ink-centred midline every HUD panel uses, so a label in a disc sits
-    // at the same height as a label in a plate. labelScale/labelStyle default
-    // to the in-canvas look; the chrome canvas passes a bigger, bolder pair —
-    // a disc with room to spare should carry text you can read at a glance,
-    // not the same small ui-weight label that fits a 44px corner button.
+    // at the same height as a label in a plate.
     const s = opts.labelScale || BUTTON_LABEL_S;
     drawTextCentered(ctx, b.label, cx, textYForMid(cy, s), ink, s, opts.labelStyle || 'ui');
   }
-}
-
-// The play pair as ONE control: an up triangle over a down triangle in a single
-// pill. Over-or-under is one decision on one axis, so it gets one target. Two
-// separated discs would leave a gap between the halves, and a gap in a control
-// this size is a miss — which on the down half means asking to go under and
-// going over instead, into the thing you were ducking.
-//
-// SHAPE IS THE INPUT, and here the POSITION agrees with it: up is the top half,
-// down is the bottom half. That is why the pill is stacked and never
-// side-by-side. A left/right pair asks the player to translate a vertical
-// choice into a horizontal one, which is a translation to learn for no gain.
-//
-// The glyphs are the RIBBON'S glyphs. The beat strip already teaches an up
-// arrow for jump and a down arrow for duck, so the button that answers it wears
-// the same shape in the same ink, built the same way — round joins, the dark
-// edge stroked BEFORE the fill so it reads as a rim the colour sits inside
-// rather than a line eating half the shape. The inks arrive as opts and are
-// never literals here: they live in game/beatground.js (which the engine must
-// not import), and a second copy of those hexes is the precise drift that
-// file's own comment warns about.
-//
-// `box` is the union of the LIVE halves, so a pill with one half taught (the
-// tutorial before it has shown the slide) is one half tall and centres its
-// single glyph, rather than a double-height plate with a hole in it.
-export function drawActionPill(ctx, box, opts = {}) {
-  const { x, y, w, h } = box;
-  const up = opts.up !== false, down = opts.down !== false;
-  ctx.save();
-  platePath(ctx, x, y, w, h, Math.min(w / 2, 10));
-  ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.1)';
-  ctx.fill();
-  ctx.restore();
-  // The seam only draws when both halves are live: it is the line that says
-  // "two presses here", and under a single-half pill it would be an edge
-  // between something and nothing.
-  //
-  // Heavier than the plate it sits on, because at one pixel over scrolling
-  // scenery anything lighter is not a quiet line, it is an absent one — the
-  // first pass at 0.22 vanished completely against grass.
-  if (up && down) {
-    ctx.fillStyle = opts.seam || 'rgba(11,11,20,0.4)';
-    ctx.fillRect(x + 5, Math.round(y + h / 2) - 0.5, w - 10, 1);
-  }
-  // The ribbon's own 2.5:2 arrow, at this button's scale.
-  const aw = opts.arrowW || w * 0.25, ah = opts.arrowH || w * 0.2;
-  ctx.save();
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = opts.edge || Math.max(1, w * 0.05);
-  ctx.strokeStyle = opts.outline || 'rgba(18,24,46,0.9)';
-  const cx = x + w / 2;
-  // dir +1 puts the apex up, -1 puts it down. One path for both so the pair are
-  // exact reflections about their own midlines and the strip cannot say DOWN
-  // twice, the same mistake hud.js's ribbon comment records.
-  const tri = (my, dir, ink) => {
-    ctx.fillStyle = ink;
-    ctx.beginPath();
-    ctx.moveTo(cx, my - dir * ah);
-    ctx.lineTo(cx - aw, my + dir * ah);
-    ctx.lineTo(cx + aw, my + dir * ah);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fill();
-  };
-  if (up) tri(down ? y + h / 4 : y + h / 2, 1, opts.upInk || '#3fbf5a');
-  if (down) tri(up ? y + h * 0.75 : y + h / 2, -1, opts.downInk || '#72d8f0');
   ctx.restore();
 }
 

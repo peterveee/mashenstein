@@ -76,6 +76,11 @@ Useful handles the bundle exposes on `window`:
   assign `speech = {text, t, who}`, and stretch `t` so nothing fades mid-shot.
 
 Screenshot `page.locator('#game')`, not the viewport, to get just the canvas.
+The touch controls are NOT on it: they live on `#chrome`, the full-viewport
+canvas on top of `#game` (touchchrome.js). To verify touch chrome, screenshot
+the page (viewport), emulate a coarse pointer, tap once so `Input.usingTouch`
+flips, and fake a phone's insets with `?safe=top,right,bottom,left` (dev
+builds only; a 15 Pro in landscape is `?safe=0,59,21,59`).
 
 ## Skip the slow parts by seeding a save
 

@@ -39,6 +39,9 @@ const suites = [
   'tests/reliability.js',
   'tests/flyer-motion.js',
   'tests/mouse-controls.js',
+  // The touch chrome's geometry against real phones and tablets: discs on the
+  // picture, margins tiled by zones, nothing under a notch or an island.
+  'tests/touch-layout.js',
   'tests/settings-menu.js',
   'tests/calibrate.js',
   'tests/sound-test-menu.js',

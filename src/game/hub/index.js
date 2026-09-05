@@ -1,9 +1,10 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
-import { W, H, chrome as chromeGeo, chromeCtx, paintChrome } from '../../engine/renderer.js';
+import { W, H, chrome as chromeGeo } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawRoundButton, drawPanel, drawKeyLegend, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
@@ -1530,46 +1531,20 @@ export class HubState {
   }
 
   setChromeWalkButtons() {
-    this.chromeMode = chromeGeo.mode;
+    this.chromeGen = chromeGeo.gen;
     this.chromeTouch = Input.usingTouch;
-    // These exposed-margin controls are the food court's touch navigation.
-    // Mouse and keyboard already have click-to-walk and left/right, so showing
-    // the discs there only turns otherwise quiet canvas into duplicate chrome.
-    if (!Input.usingTouch || chromeGeo.mode === 'none') { Input.setChromeButtons([]); return; }
-    Input.setChromeButtons([
-      // walkLeft, not jump: the play pair stacks in the margin now and the
-      // jump slot rides half a pair above the bottom, which would leave these
-      // two walk arrows at different heights facing each other.
-      { id: 'hubLeft', ...chromeGeo.walkLeft, action: 'left' },
-      { id: 'hubRight', ...chromeGeo.ability, action: 'right' },
-    ]);
+    // The walk arrows are the food court's touch navigation (touchchrome.js:
+    // on the picture's edges, or in a margin wide enough to hold them, plus
+    // the margin itself as a zone). Mouse and keyboard already have
+    // click-to-walk and left/right, so showing the discs there only turns
+    // otherwise quiet canvas into duplicate chrome.
+    Input.setChromeButtons(Input.usingTouch ? hubChromeButtons() : []);
   }
 
   drawChromeWalkButtons() {
-    if (!chromeCtx || !Input.usingTouch || chromeGeo.mode === 'none' || this.poster) return;
-    const buttons = Input.chromeButtons.filter((b) => b.id === 'hubLeft' || b.id === 'hubRight');
-    if (!buttons.length) return;
-    // The walk arrows are static once placed, so the signature is just their
-    // placement — commitChromeFrame (states.js) skips the repaint every frame
-    // they are unchanged. See renderer.js paintChrome/commitChromeFrame.
-    const sig = `hub|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}|${buttons.map((b) => b.id).join(',')}`;
-    paintChrome(sig, (ctx) => {
-      for (const button of buttons) {
-        const box = {
-          x: button.x - button.r, y: button.y - button.r,
-          w: button.r * 2, h: button.r * 2,
-          label: button.id === 'hubLeft' ? '<' : '>', round: true,
-        };
-        drawRoundButton(ctx, box, {
-          fill: 'rgba(255,255,255,0.22)',
-          ink: '#ffffff',
-          ring: 'rgba(255,255,255,0.75)',
-          ringWidth: 1.5,
-          labelScale: 2.4,
-          labelStyle: 'bold',
-        });
-      }
-    });
+    // A poster up is a modal: nothing behind it is a control.
+    if (!Input.usingTouch || this.poster) return;
+    declareHubChrome();
   }
 
   // Camera follows the player, clamped to the concourse — shared by update()
@@ -1595,7 +1570,7 @@ export class HubState {
       return;
     }
     this.t += dt;
-    if (chromeGeo.mode !== this.chromeMode || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
+    if (chromeGeo.gen !== this.chromeGen || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
     this.updateNpcs(dt);
     const st = this.stations();
     const directionHeld = Input.held('left') || Input.held('right');
@@ -1630,7 +1605,13 @@ export class HubState {
     // that a tap meant to walk a few steps within that same zone would read as
     // "confirm exit" purely because the door happened to be nearby. A plain
     // tap on open floor, anywhere, always just walks to that exact spot.
-    if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)) {
+    //
+    // A tap that landed on a walk arrow or in the margin's walk zone pressed
+    // 'left'/'right' this same frame — every tap on the one pointer surface
+    // also presses 'pointer' — and must not ALSO be read as a walk-to-here,
+    // which would send him to the arrow's own x and fight the direction.
+    if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)
+      && !Input.pressed('left') && !Input.pressed('right')) {
       // Posters answer first. They hang high on the back wall — screen y 16 to
       // 86, a band that holds nothing else tappable and no floor to walk to —
       // so a tap that lands on one cannot have meant anything else. At 40x54
@@ -3250,7 +3231,7 @@ export class TrophyRoomState {
     const hint = this.near(TROPHY_EXIT_X, 54) ? 'WALK LEFT: FOOD COURT'
       : this.near(TROPHY_PODIUM_X, 58) ? (Input.isTouchDevice() ? 'TAP PODIUM SIDES: PREV / NEXT' : `${Input.confirmVerb()}: NEXT HERO`)
         : this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)
-          ? (Input.isTouchDevice() ? 'TAP THE TARGET TO ATTACK' : 'X / SHIFT / RIGHT CLICK: ATTACK')
+          ? (Input.isTouchDevice() ? 'TAP THE TARGET TO ATTACK' : 'X / SHIFT / MIDDLE CLICK: ATTACK')
           : (Input.isTouchDevice() ? 'TAP TO WALK' : 'LEFT / RIGHT: WALK   SPACE: JUMP');
     ctx.restore();
 

@@ -6,17 +6,17 @@
 // (a coin on a soft text plate, a row of pickup sprites, a tray of framed plug
 // squares) stacked down the left, and the corner read as clutter rather than as
 // one instrument. One chrome, and the eye can learn it once.
-import { W, H, chrome as chromeGeo } from '../engine/renderer.js';
+import { W, H } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
-  textWidth, wrapText, drawPanel, drawRoundButton, drawActionPill, textYForMid, UI_PANEL_BORDER,
+  textWidth, wrapText, drawPanel, textYForMid, UI_PANEL_BORDER,
   keyLegendWidth, drawKeyLegend, platePath, UI_PANEL, UI_PLATE,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp, drawHudBattery, hudBatteryW } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
-import { specialMoveColor, HERO_CENTER_OFF } from './draw.js';
+import { HERO_CENTER_OFF } from './draw.js';
 import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
 import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
 import { PLAYER_X } from './player.js';
@@ -704,9 +704,6 @@ function playheadPath(ctx, x, y, w, h, r) {
 }
 
 
-// The touch power-up shelf's midline (see drawHud below) — exported so run.js
-// can line the chrome ability-name label up against it exactly, not just land
-// close by.
 // THE BOTTOM ROW'S MIDLINE. The tallest panel down there is 14 (the ability
 // nameplate), so its midline sits EDGE + half of that up from the bottom edge,
 // and every other bottom-edge readout centres on it — which is what keeps the
@@ -714,7 +711,6 @@ function playheadPath(ctx, x, y, w, h, r) {
 // hanging at its own height.
 const BOTTOM_ROW_H = 14;
 const BOTTOM_CY = H - EDGE_BOTTOM - BOTTOM_ROW_H / 2;
-export const TOUCH_SHELF_CY = BOTTOM_CY - 4;
 
 // ---------------------------------------------------------------- bake-off
 // WHERE THE SECONDARY OBJECTIVE LIVES. The BONUS readout is the one row of the
@@ -742,20 +738,6 @@ export const TOUCH_SHELF_CY = BOTTOM_CY - 4;
 export const BONUS_SLOTS = ['row', 'foldup', 'chip', 'shelf'];
 const BONUS_SLOT = pickCut('bonus', BONUS_SLOTS, 'row');
 
-// WHICH END OF THE BOTTOM ROW THE ABILITY NAMEPLATE SITS AT — touch only; the
-// keyboard's has always been bottom-left with the gauges.
-//
-// 'right' is shipped, and its reason is that on touch the nameplate is a LABEL
-// FOR THE USE BUTTON: it sits beside the disc out in the right margin, and
-// run.js registers the words themselves as a second hit box for the same
-// action. 'left' gives that corner up — the plate becomes a readout like the
-// keyboard's, stacked under the power-up shelf, which is the arrangement the
-// keyboard has always had — and hands the bottom-right slot back to the play
-// field. Kept as a cut because it is a standing question about the touch
-// layout, not because anything currently needs the corner.
-export const ABILITY_SIDES = ['right', 'left'];
-export const ABILITY_SIDE = pickCut('ability', ABILITY_SIDES, 'right');
-
 // A bake-off's live selector. The shipped answer is the constant's default; a
 // dev build can ask for one of the other cuts with ?<name>=<cut> so the
 // variants can be shot against each other without a rebuild between each.
@@ -765,78 +747,10 @@ function pickCut(param, options, fallback) {
   return options.includes(q) ? q : fallback;
 }
 
-/**
- * Where the ability nameplate is drawn this frame, which decides whether the
- * bottom-left shelf has a plate under it to clear.
- *
- * Both painters ask, because there are two of them: hud.js draws the left-hand
- * plate on the game canvas and run.js draws the right-hand one beside USE, and
- * a slot two files disagree about is a slot that gets drawn twice.
- */
-export function abilityNameSlot(run) {
-  if (!Input.usingTouch) return 'left';
-  // In-canvas fallback: the USE disc is on the glass with its own word on it,
-  // and there is no margin to hang a plate in either way.
-  if (chromeGeo.mode !== 'side') return 'none';
-  return ABILITY_SIDE;
-}
-
-// Touch control geometry. 44 logical px across: the screen fits its 480-wide
-// backbuffer to a phone by height, so a landscape iPhone renders roughly 1.4
-// CSS px per logical px and this lands near 60 CSS px — comfortably past the
-// ~44 CSS px minimum a thumb needs, without three dinner plates on a 270-tall
-// play field.
-const TOUCH_D = 44;
-// The play pair sits above the bottom edge instead of occupying it. That gives
-// the action room to breathe above the phone's home-indicator territory and
-// leaves the lower scenery readable behind translucent controls.
-const TOUCH_PLAY_Y = H - 84;
-// PAUSE hangs below the objective panels rather than beside them: GOAL sits at
-// y 7 and BONUS below it ends at y 37, so this clears the pair with air to
-// spare. Fixed, not measured off whichever panels happen to be showing — a
-// control that moves when the mission changes is a control you have to look
-// for, and OVERTIME (no BONUS line) would shift it every run.
-const PAUSE_BTN_Y = 43;
-
-// The in-canvas play controls: three discs, one style, one painter
-// (drawRoundButton). JUMP and USE sit above the lower corners so they remain
-// present but visually recess into the play field; PAUSE stays anchored beneath
-// the objective panels.
-//
-// A function rather than a frozen list because Input.setButtons takes ownership
-// of what it is handed, and two screens now ask for these — a run and the
-// tutorial. Both are playable surfaces with the same three controls, so they
-// share the geometry rather than each keeping a copy that drifts.
-// The stacked play pill's box: the same left inset and the same BOTTOM edge the
-// lone JUMP disc had, twice as tall, so the home-indicator clearance
-// TOUCH_PLAY_Y bought is untouched and all the growth goes upward into sky.
-//
-// Jump's own centre does move up by half a disc, and that is the real price
-// here: a thumb with muscle memory for the old corner now lands on the slide
-// half. It is paid on purpose, because the only other way to fit a down arrow
-// under an up arrow is to put the down arrow on top — a control that lies about
-// which way it sends you. The pill is a visible change, not a silent one, and
-// the tap-to-jump glass absorbs the rest.
-export const PLAY_PILL = { x: 12, y: TOUCH_PLAY_Y - TOUCH_D, w: TOUCH_D, h: TOUCH_D * 2 };
-
-export function playButtons() {
-  return [
-    // The pill's halves hit-test as RECTANGLES, not discs. They have to abut:
-    // two circles inscribed in these boxes would leave the corners between them
-    // dead, and dead pixels in the middle of this control are the one thing it
-    // exists to remove.
-    //
-    // `guard` is the halo input.js refuses to fire its tap-to-jump fallback
-    // inside. Only the down half carries one, and the asymmetry is the whole
-    // fix: a tap that misses high and jumps is what the player wanted anyway,
-    // while a tap that misses low and jumps is the failure the swipe
-    // arbitration was already written to prevent.
-    { id: 'jump', x: PLAY_PILL.x, y: PLAY_PILL.y, w: TOUCH_D, h: TOUCH_D, action: 'jump', pill: 'up' },
-    { id: 'duck', x: PLAY_PILL.x, y: PLAY_PILL.y + TOUCH_D, w: TOUCH_D, h: TOUCH_D, action: 'duck', pill: 'down', guard: 14 },
-    { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
-    { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
-  ];
-}
+// The touch controls themselves live in game/touchchrome.js (geometry in
+// engine/touch-layout.js): translucent discs on #chrome, over the picture, the
+// same on every device. Nothing in this file draws or places a control any
+// more — the HUD's only touch-specific job is the zone card at the bottom.
 
 // How long the keyboard legend stays up at the start of a teaching stage, and
 // how much of that is the fade out. Five seconds is about two obstacles' worth
@@ -2001,12 +1915,11 @@ export function drawHud(ctx, run) {
     return lx + lw;
   };
 
-  // The nameplate. Touch play normally names the special on its USE button out
-  // in the margin (run.js drawAbilityName) and this slot stays empty; the
-  // keyboard, and the 'left' ability cut, keep a quiet plate here instead. Its
-  // cooldown lives beside the hero in world space either way.
-  const nameplateHere = abilityNameSlot(run) === 'left';
-  if (nameplateHere) {
+  // The nameplate: which power is equipped, for every input alike. Its
+  // cooldown lives beside the hero in world space and on the USE disc's
+  // waterline (touchchrome.js); this plate is the only place its NAME appears
+  // on touch, where the disc says USE.
+  {
     const hero = HERO_BY_ID[run.relay.current];
     const label = hero.ability.label;
     const LP = LABEL_PAD, LH = 14;
@@ -2039,14 +1952,10 @@ export function drawHud(ctx, run) {
   // and grabbing a duplicate refreshes its timer rather than adding one. A
   // brief third is possible off a breaker bonus or a !-crate; past that the row
   // would reach the hints, which the sim says does not happen.
-  // With no nameplate under it (touch, ability named on its USE button) the
-  // shelf only needs clearance from a plate that is not there, and sits closer
-  // to the bottom edge instead of leaving that band empty.
-  const SHELF_CY = nameplateHere ? GAUGE_CY - 15 : TOUCH_SHELF_CY;
-  // Only the in-canvas fallback JUMP button (run.js setButtons, chrome.mode
-  // 'none') actually reaches into this corner at x 56 — chrome mode moves
-  // JUMP out into the margin, so the row no longer needs to duck it there.
-  let px = GAUGE_X + (Input.usingTouch && !run.useChrome ? 52 : 0);
+  // A row up from the nameplate, which is always under it now. The JUMP disc
+  // (touch-layout.js) ends at y 205, well clear of this band.
+  const SHELF_CY = GAUGE_CY - 15;
+  let px = GAUGE_X;
   for (const [id, a] of Object.entries(run.powerups.active)) {
     // Beat-locked stages never expose timing-changing pickups.  Keep the HUD
     // defensive as well: a stale developer/test state must not advertise a
@@ -2276,75 +2185,10 @@ export function drawHud(ctx, run) {
     ctx.restore();
   }
 
-  // The touch controls: JUMP, USE, PAUSE. One painter for all three
-  // (drawRoundButton) — the whole point of the set is that they are the same
-  // object in three places, and three call sites drawing "the same" disc is how
-  // that stops being true. Only USE carries state, and only it deviates: a
-  // recharge level.
-  //
-  // Non-round buttons here are the paused screen's menu plates, which the pause
-  // overlay draws itself (run.js drawPaused) — over the dim, not under it.
-  drawPlayPill(ctx);
-  for (const b of Input.buttons) {
-    if (!b.round) continue;
-    drawRoundButton(ctx, b, roundButtonOpts(run, b));
-  }
-}
-
-/**
- * The in-canvas play pill, painted from whichever halves are registered.
- *
- * Exported and called by every playable surface rather than inlined into one,
- * for the same reason drawRoundButton is: a run and the tutorial both put this
- * control on screen, and two call sites drawing "the same" pill is how they
- * stop being the same pill. The tutorial's own button loop shipped without it
- * for exactly one build, and the result was a slide control the training level
- * did not have.
- *
- * Once, not per button — it is ONE control, and a painter called twice is how a
- * seam becomes a gap. The box is the union of the live halves, so a caller that
- * offers only one gets a single-height plate with one centred glyph rather than
- * a double-height plate with a hole in it.
- */
-export function drawPlayPill(ctx) {
-  const up = Input.buttons.find((b) => b.pill === 'up');
-  const down = Input.buttons.find((b) => b.pill === 'down');
-  if (!up && !down) return;
-  const box = up && down ? PLAY_PILL : (up || down);
-  drawActionPill(ctx, { x: box.x, y: box.y, w: box.w, h: box.h }, {
-    up: !!up,
-    down: !!down,
-    // Straight off the ribbon's table. The strip teaches the glyph and the
-    // button wears it, which only stays true while there is one table.
-    upInk: ACTION_INK.jump,
-    downInk: ACTION_INK.duck,
-    outline: GLYPH_OUTLINE,
-  });
-}
-
-// Shared between the in-canvas button loop above and run.js's chrome-canvas
-// buttons (same discs, drawn to a different context when there's room to put
-// them outside the game rect instead).
-export function roundButtonOpts(run, b) {
-  if (b.id !== 'ability') return { frac: null, fill: 'rgba(11,11,20,0.1)', ink: 'rgba(72,224,200,0.48)' };
-  const cd = run.player.abilityCd;
-  const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
-  const frac = cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : 1;
-  const energy = specialMoveColor(frac, cd <= 0);
-  return {
-    // Full reads as "ready" — not empty. It drains to 0 the instant you fire
-    // it, then rises back to full as the cooldown counts down, and STAYS full
-    // once ready (drawRoundButton no longer treats frac===1 as "nothing to
-    // draw"). The old empty-when-ready/full-right-before-ready-again cycle
-    // had the meter and the mental model running backwards from each other.
-    frac,
-    // The USE control shares the hero-side orb's exact readiness palette, so
-    // both reads agree at a glance as the cooldown rises.
-    fill: 'rgba(11,11,20,0.1)',
-    ink: energy,
-    levelFill: energy,
-    waterline: '#d7fff6',
-  };
+  // The touch controls are not drawn here: they live on #chrome, over the
+  // picture (game/touchchrome.js), and the paused screen's menu plates are
+  // drawn by the pause overlay itself (run.js drawPaused) — over the dim, not
+  // under it.
 }
 
 // Cast who talk but are not playable, so are absent from HERO_BY_ID. They still
@@ -2440,9 +2284,8 @@ function placeSpeechCard(baseY, cardX, cardW, cardH, avoid) {
   const top = baseY - 4;                       // the PLATE's top; baseY is its first row
   if (cardX + cardW <= avoid.x0 || cardX >= avoid.x1) return baseY;
   if (top + cardH <= avoid.y0 || top >= avoid.y1) return baseY;
-  // The lowest the plate's top may sit. On touch the power-up shelf owns the
-  // bottom of the frame and the card may not reach into it.
-  const topLimit = (Input.usingTouch ? TOUCH_SHELF_CY - 6 : H - EDGE_BOTTOM - 5) - cardH;
+  // The lowest the plate's top may sit: the bottom edge's own margin.
+  const topLimit = H - EDGE_BOTTOM - 5 - cardH;
   const ducked = avoid.y1 + SPEECH_DUCK_GAP;
   return ducked <= topLimit ? ducked + 4 : baseY;
 }
@@ -2624,16 +2467,15 @@ export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip
   ctx.restore();
 }
 
-// The two-button surface, drawn on itself. The left TOUCH_JUMP_FRAC of the
-// canvas is JUMP and the rest is the power, and nothing else on a touch screen
-// says so — the discs in the corners look like the only controls there are, so
-// a thumb that stayed on the left plays whole stages without knowing the
-// right-hand strip exists.
+// THE TWO HALVES, drawn on themselves. The left TOUCH_JUMP_FRAC of the screen
+// is JUMP and the right is SLIDE (input.js), and nothing else on a touch screen
+// says so — the discs look like the only controls there are, so a thumb that
+// only ever taps a disc plays whole stages without knowing the glass under it
+// is the bigger button.
 //
-// Both zones are washed rather than just the jump side: shading one half reads
-// as "this half is disabled", which is the opposite of the point. The jump side
-// carries the heavier wash because it is the bigger claim on the screen and
-// that is the fact being taught.
+// Both halves are washed rather than just one: shading one half reads as "this
+// half is disabled", which is the opposite of the point. Each half wears its
+// own disc's ink, so the card and the control it describes agree.
 //
 // It lives here rather than in the tutorial that first drew it because the
 // campaign's opening stage now shows the same card to players who skipped
@@ -2653,62 +2495,45 @@ export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {
     ctx.fillStyle = `rgba(0,0,0,${scrim})`;
     ctx.fillRect(0, 0, W, H);
   }
-  ctx.fillStyle = 'rgba(72,224,200,0.22)';
+  // The JUMP disc's green and the SLIDE disc's blue (beatground.js ACTION_INK),
+  // washed to a fifth.
+  ctx.fillStyle = 'rgba(63,191,90,0.20)';
   ctx.fillRect(0, 0, split, H);
-  ctx.fillStyle = 'rgba(246,211,60,0.22)';
+  ctx.fillStyle = 'rgba(114,216,240,0.20)';
   ctx.fillRect(split, 0, W - split, H);
   // The seam, dashed, so it reads as a boundary you could put a thumb either
   // side of rather than as a wall.
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   for (let y = 4; y < H; y += 12) ctx.fillRect(split - 0.5, y, 1, 6);
-  // Three rows a side, each centred on its own zone, then two full-width lines
-  // under them — the gesture that works in either zone, and the way out.
+  // Two rows a side, each centred on its own half, then two full-width lines
+  // under them — the power, which has a disc and a gesture, and the way out.
   //
   // Every line is far bigger than a HUD line, because this is not a HUD: it is
   // the one screen in the game whose entire job is to be read once, by someone
-  // who does not yet know how to play, at arm's length, on a phone. It used to
-  // run five rows a side at 0.75–0.9 scale — the size the HUD uses for numbers
-  // you glance at. Fewer facts, and the type doubled to suit.
+  // who does not yet know how to play, at arm's length, on a phone.
   //
-  // Nothing in the right column may extend below y 184: the USE disc occupies
-  // x 424–468 from there down, and the tutorial draws this card over live
-  // controls with no scrim to quiet them.
-  const pct = Math.round(TOUCH_JUMP_FRAC * 100);
+  // The tutorial draws this card over LIVE controls with no scrim to quiet
+  // them, so every row keeps off the disc footprints (touch-layout.js): JUMP at
+  // x 18-62 / y 161-205, the right column at x 428-472 / y 65-205. SLIDE runs a
+  // size smaller than JUMP for the room it has beside USE, not for its
+  // importance.
   const lx = split / 2, rx = split + (W - split) / 2;
-  const TEAL = '#d7fff6', GOLD = '#ffe9a0';
+  const GREEN = '#d8ffe0', BLUE = '#dcf6ff';
   // The header clears a THREE-line speech panel, not a two-line one: this card
   // only ever appears on touch, where the wrap is narrowest and the tutorial's
   // brief for this section runs to three rows. That panel bottoms out at 74.
-  // Every line on this card is centred on a ZONE, never on the canvas. The
-  // canvas midline falls at 240 and the seam at 336, so a screen-centred
-  // headline lands three-quarters of the way across the teal half and reads as
-  // crooked — it is centred on a middle the card does not have. The two
-  // full-width lines take the jump column's axis instead, which is the one the
-  // eye is already using.
-  rawDrawTextCentered(ctx, 'THE WHOLE SCREEN IS TWO BUTTONS', lx, 76, 'rgba(255,255,255,0.92)', 1.35, 'bold');
-  // POWER runs smaller than JUMP for the room it has, not for its importance:
-  // the right zone is 30% of the canvas and a word a letter longer at the left
-  // column's scale would touch both its edges.
-  rawDrawTextCentered(ctx, 'JUMP', lx, 100, TEAL, 3.6, 'title');
-  rawDrawTextCentered(ctx, 'POWER', rx, 106, GOLD, 2.7, 'title');
-  rawDrawTextCentered(ctx, 'TAP & HOLD ANYWHERE', lx, 150, TEAL, 1.4, 'bold');
-  rawDrawTextCentered(ctx, 'TAP ANYWHERE', rx, 150, GOLD, 1.4, 'bold');
-  // The footnote of the card, not its point — and the last row that fits above
-  // the USE disc.
-  rawDrawTextCentered(ctx, `LEFT ${pct}%`, lx, 172, 'rgba(215,255,246,0.72)', 1.2, 'bold');
-  rawDrawTextCentered(ctx, `RIGHT ${100 - pct}%`, rx, 172, 'rgba(255,233,160,0.72)', 1.2, 'bold');
-  // One line rather than one per column, because the swipe is still read from
-  // whichever zone the thumb is already in. The BUTTON is named first now that
-  // there is one: the down arrow is the reliable path and the swipe is the
-  // one-handed fallback, and this row sits close enough to the pill to be read
-  // as pointing at it. Kept short on purpose — the pill's right edge is at 56
-  // and this line is centred on the jump column's axis at 168, so a string much
-  // past this length runs into the control it is describing.
-  rawDrawTextCentered(ctx, 'SLIDE: DOWN ARROW OR SWIPE', lx, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
-  // Below the discs' midline, where nothing else on this card sits — a call to
-  // action wants its own air, and at this size it no longer fits on the ACT
-  // card's skip line.
-  if (hint) rawDrawTextCentered(ctx, hint, lx, 220, '#fff', 1.5, 'bold');
+  rawDrawTextCentered(ctx, 'THE WHOLE SCREEN IS TWO BUTTONS', W / 2, 76, 'rgba(255,255,255,0.92)', 1.35, 'bold');
+  rawDrawTextCentered(ctx, 'JUMP', lx, 100, GREEN, 3.6, 'title');
+  rawDrawTextCentered(ctx, 'SLIDE', rx, 104, BLUE, 3.1, 'title');
+  rawDrawTextCentered(ctx, 'TAP & HOLD ANYWHERE', lx, 140, GREEN, 1.4, 'bold');
+  rawDrawTextCentered(ctx, 'TAP & HOLD ANYWHERE', rx, 140, BLUE, 1.4, 'bold');
+  // One line rather than one per column: the swipe is read from whichever half
+  // the thumb is already in, and the disc is named first because it is the
+  // reliable path — the swipe is the one-handed fallback.
+  rawDrawTextCentered(ctx, 'POWER: THE USE DISC, OR SWIPE RIGHT', W / 2, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
+  // Below the discs, where nothing else on this card sits — a call to action
+  // wants its own air.
+  if (hint) rawDrawTextCentered(ctx, hint, W / 2, 220, '#fff', 1.5, 'bold');
   ctx.restore();
 }
 

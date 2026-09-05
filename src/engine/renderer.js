@@ -7,24 +7,40 @@ export const H = 270;
 
 let canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
 
-// Second canvas, full viewport, sitting BEHIND #game in the DOM (so #game
-// paints on top wherever the two overlap and still owns every gameplay tap;
-// #chrome only shows — and only receives pointer events — out in the black
-// letterbox/pillarbox margin, where #game doesn't cover). Lets touch controls
-// live outside the 480x270 play field as real canvas-drawn buttons instead of
-// crowding the corners of the art.
+// Second canvas, full viewport, sitting ON TOP of #game in the DOM (gate.js
+// emits it second; #game is pointer-events:none in template.html). It is the
+// ONE pointer surface — input.js binds every listener to it and converts with
+// clientToLogical — and it draws the touch controls: translucent discs over
+// the picture at fixed logical spots, plus whatever the black margin around
+// the picture extends (touch-layout.js). It is transparent everywhere else,
+// and a dirty-flag layer (paintChrome/commitChromeFrame below), so between
+// presses and cooldown ticks the compositor caches it as one static quad.
 const chromeCanvas = typeof document !== 'undefined' ? document.getElementById('chrome') : null;
 export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d') : null;
+import { layoutTouchChrome } from './touch-layout.js';
 
 // env(safe-area-inset-*) isn't readable from JS directly — only a computed
 // style reports it — so #safe-area (template.html) exists purely to have its
 // padding measured. Real per-device notch/Dynamic Island/home-indicator
-// clearance, not a guessed constant: on an iPhone in landscape those cutouts
-// rotate to the LEFT/RIGHT edges (whichever side the island/indicator lands
-// on), not top/bottom, so it's `left`/`right` that matter for 'side' mode's
-// buttons, and `bottom` for 'topbottom' mode's (portrait's home indicator).
+// clearance, not a guessed constant. On an iPhone in landscape iOS reports the
+// island's DEPTH on both the left and right edges (59pt on a Pro) whichever
+// side it actually sits on, and the home indicator as `bottom`.
+//
+// `?safe=top,right,bottom,left` (CSS order) fakes the insets in a dev build:
+// headless Playwright cannot set env(), so it is the only way a screenshot can
+// show what a Pro iPhone does to the margin. Gated on the same build flag the
+// dev menu is (main.js: __MASH_BUILD__ is absent from a published bundle).
 const safeAreaEl = typeof document !== 'undefined' ? document.getElementById('safe-area') : null;
+function safeOverride() {
+  if (typeof window === 'undefined' || !window.__MASH_BUILD__ || !window.location) return null;
+  const q = new URLSearchParams(window.location.search).get('safe');
+  if (q == null) return null;
+  const [top, right, bottom, left] = q.split(',').map((v) => Math.max(0, parseFloat(v) || 0));
+  return { top: top || 0, right: right || 0, bottom: bottom || 0, left: left || 0 };
+}
 function safeInsets() {
+  const forced = safeOverride();
+  if (forced) return forced;
   if (!safeAreaEl || typeof getComputedStyle === 'undefined') return { top: 0, right: 0, bottom: 0, left: 0 };
   const cs = getComputedStyle(safeAreaEl);
   return {
@@ -35,41 +51,17 @@ function safeInsets() {
   };
 }
 
-// Chrome button geometry, recomputed every resize(). 'side': margin left+right
-// (phones in landscape — the fit is height-limited, same math run.js's touch
-// comment already spells out). 'topbottom': margin above+below (iPad in
-// landscape, whose 4:3-ish screen makes the fit WIDTH-limited instead — and
-// portrait phones, which hit that same width-limited case with a much bigger
-// margin). 'none': neither margin clears the minimum — an exact-16:9 device,
-// where callers fall back to the old in-canvas buttons.
-export const chrome = { mode: 'none', vw: 0, vh: 0 };
-// Radius scales with however much margin a device actually has — bigger on a
-// generous margin (iPad, portrait phones), never smaller than what a thumb
-// needs even on the tightest notch iPhone.
-const CHROME_R_MIN = 32;
-const CHROME_R_MAX = 46;
-const CHROME_PAD = 8;
-const CHROME_MIN_MARGIN = CHROME_R_MIN * 2 + CHROME_PAD;
-const chromeR = (margin) => Math.max(CHROME_R_MIN, Math.min(CHROME_R_MAX, margin / 2 - CHROME_PAD));
-// A phone's screen is a squircle, not a rectangle — a disc parked hard against
-// TWO edges at once (a true corner) gets its own corner clipped by that curve.
-// 'side' mode's buttons sit at a screen corner (bottom-left/right, top-right),
-// so their edge-facing axis needs real clearance, not just CHROME_PAD's sliver.
-const CHROME_EDGE_PAD = 26;
-// Side-margin controls can lift without clipping into the game rectangle. The
-// higher placement keeps them in easy thumb reach while lowering their claim
-// on the bottom of the screen.
-const CHROME_PLAY_LIFT = 28;
-// 'topbottom' mode anchors to the GAME's edge instead (see below) — a small
-// gap is enough there, since the corner risk mostly isn't in play.
-const CHROME_GAME_GAP = 10;
-// A zone's game-facing edge sits exactly where #game begins — but a tap
-// aiming for PWR near that boundary, not precisely past it, still lands ON
-// #game (it's on top there), which has no in-canvas ability button to catch
-// it in chrome mode and falls through to tap-to-jump. Extending the zone this
-// far INTO the game side means input.js's #game fallback (which consults
-// these same zones) catches it too, not just #chrome's own listener.
-const CHROME_GAME_EDGE_BUF = 44;
+// The touch chrome, recomputed every resize() by touch-layout.js: `run`,
+// `runNoPower` and `hub` are the button lists a screen hands to
+// Input.setChromeButtons (discs in viewport CSS px, plus the margin's zones),
+// `gen` ticks on every relayout so a screen knows to re-register, and `scale`
+// is CSS px per logical px for the painter. `mode` survives only for
+// main.js's FPS box, which lays its rows out by which margin exists: 'side'
+// (pillars, landscape phones), 'topbottom' (bands, iPads and portrait), or
+// 'none' (an exact-16:9 device). Nothing else may branch on it — the controls
+// are the same on every device now, which is the point of the layout.
+export const chrome = { mode: 'none', vw: 0, vh: 0, gen: 0, run: [], runNoPower: [], hub: [], split: 0, scale: 1 };
+const CHROME_MIN_MARGIN = 72;
 
 const uploadBack = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -879,102 +871,13 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
   chrome.vw = winW;
   chrome.vh = winH;
   chrome.mode = ox >= CHROME_MIN_MARGIN ? 'side' : oy >= CHROME_MIN_MARGIN ? 'topbottom' : 'none';
-  // Every button carries a `zone` — the whole reachable chunk of margin around
-  // it, not just its drawn disc — so a tap anywhere in that stretch of the
-  // (otherwise dead) margin counts, the same generosity a thumb gets from a
-  // button that fills its own corner of a phone. Zones tile the full margin
-  // between the controls with no gaps, since #chrome never shows anywhere
-  // else — four of them now that the play pair is a stacked JUMP over DUCK.
-  // PAUSE shares a column/bar with ABILITY (JUMP still gets an entire one to
-  // itself) — this used to be the whole margin layout, got pulled back to
-  // in-canvas when a tap aimed at PWR near the shared boundary was landing on
-  // #game's tap-to-jump fallback instead, and comes back out here now that
-  // the actual cause is fixed: CHROME_GAME_EDGE_BUF below extends every
-  // zone's game-facing edge INTO #game itself, so a near-boundary tap on
-  // #game resolves through the same zone rather than falling through.
-  const safe = safeInsets();
-  const SAFE_BUF = 6; // a little air past the reported inset, not right on its edge
-  if (chrome.mode === 'side') {
-    const r = chromeR(ox);
-    // Move up/in as far as either the rounded-corner default (CHROME_EDGE_PAD)
-    // or the device's REAL reported inset demands, whichever is bigger — never
-    // less safe than measured, but no more cramped than necessary on a device
-    // that doesn't need it (older notch iPhones, most non-Apple touch devices,
-    // where the probe reports 0 and this reduces to the plain default).
-    const yBottomPad = Math.max(CHROME_EDGE_PAD, safe.bottom + SAFE_BUF);
-    const yTopPad = Math.max(CHROME_EDGE_PAD, safe.top + SAFE_BUF);
-    const yBottom = Math.max(yTopPad + r * 3, winH - r - yBottomPad - CHROME_PLAY_LIFT);
-    const yTop = r + yTopPad;
-    // Pushed toward the game far enough to clear the inset, but never so far
-    // it starts sliding UNDER #game (behind it, which #chrome can't draw over —
-    // see the module comment) — capped a couple px short of that boundary.
-    const jumpX = Math.min(ox - r - 2, Math.max(ox / 2, safe.left + r + SAFE_BUF));
-    const rightX = Math.max(winW - ox + r + 2, Math.min(winW - ox / 2, winW - safe.right - r - SAFE_BUF));
-    // PAUSE only needs a quarter of the shared column — it's the control you
-    // reach for least — so ABILITY keeps the remaining three quarters rather
-    // than splitting it down the middle.
-    const pauseZoneH = winH / 4;
-    // THE PLAY PAIR STACKS, and it is the in-canvas pill's law out here: up
-    // above down, touching, with DUCK inheriting the bottom slot the lone JUMP
-    // disc used to hold. The bottom edge is the one that must not move, since
-    // it is the one yBottomPad and CHROME_PLAY_LIFT clear the home indicator
-    // with, so the pair grows upward — which is what yBottom's `yTopPad + r*3`
-    // floor is now buying: jump's top edge lands exactly on yTopPad.
-    //
-    // The seam splits the left column's zone rather than leaving the discs to
-    // be hit precisely. Chrome zones tile their whole margin with no gaps, so
-    // in this mode the halo input.js needs in-canvas is unnecessary: every tap
-    // in the left column is already one of the two, and the boundary between
-    // them is the line between the drawn discs.
-    const pillSeam = yBottom - r;
-    chrome.duck    = { x: jumpX, y: yBottom,         r, zone: { x: 0,                              y: pillSeam,   w: ox + CHROME_GAME_EDGE_BUF, h: winH - pillSeam } };
-    chrome.jump    = { x: jumpX, y: yBottom - r * 2, r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pillSeam } };
-    // The bottom-left slot under its own name, owning the WHOLE left column.
-    // Screens that want one control there rather than the play pair take this:
-    // the food court's walk-left, which has to sit level with the walk-right
-    // facing it from the opposite margin. It used to spread chrome.jump for
-    // exactly that, and stacking the pair moved that slot half a pair upward.
-    // A name of its own is what stops the next such screen inheriting the play
-    // pill's layout by accident.
-    chrome.walkLeft = { x: jumpX, y: yBottom,        r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: winH } };
-    chrome.ability = { x: rightX, y: yBottom, r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: pauseZoneH, w: ox + CHROME_GAME_EDGE_BUF, h: winH - pauseZoneH } };
-    chrome.pause   = { x: rightX, y: yTop,    r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pauseZoneH } };
-  } else if (chrome.mode === 'topbottom') {
-    const r = chromeR(oy);
-    // Anchored to the GAME's own top/bottom edge (CHROME_GAME_GAP away from
-    // it), not the physical screen edge — on a portrait phone that margin can
-    // be hundreds of px tall, and a button sitting at the far physical edge
-    // reads as lost out in empty space instead of a control for the game
-    // right above/below it.
-    //
-    // On a thin margin (iPad, whose oy runs 53-128 vs a portrait phone's
-    // 300+), "hug the game edge" and "stay fully on screen" (now: fully clear
-    // of the notch/home indicator, whichever needs more room) can conflict
-    // once r is big enough — clamp toward the screen's own edge instead of
-    // letting the disc run past it.
-    const bottomPad = Math.max(CHROME_PAD, safe.bottom + SAFE_BUF);
-    const topPad = Math.max(CHROME_PAD, safe.top + SAFE_BUF);
-    const bottomY = Math.min((winH - oy) + r + CHROME_GAME_GAP, winH - r - bottomPad);
-    const topY = Math.max(oy - r - CHROME_GAME_GAP, r + topPad);
-    const xPad = Math.max(CHROME_EDGE_PAD, 0);
-    // THE ONE PLACE THE PAIR CANNOT STACK. This margin is a horizontal bar and
-    // oy runs as low as CHROME_MIN_MARGIN (72), which does not hold two discs
-    // of CHROME_R_MIN end to end — and a disc may only be DRAWN in the margin,
-    // since #chrome cannot paint over #game. So here the pair sits side by
-    // side and the triangles carry the whole reading on their own. Shape is
-    // still the input; position simply has nothing to add in a bar.
-    //
-    // jumpX is clamped for FOUR radii now, not two, so the pair stays inside
-    // the bar's left half and never slides under ABILITY.
-    const jumpX = Math.min(winW / 2 - r * 3 - 4, Math.max(r + xPad, safe.left + r + SAFE_BUF));
-    const duckX = jumpX + r * 2;
-    const rightX = Math.max(winW / 2 + r + 2, Math.min(winW - r - xPad, winW - safe.right - r - SAFE_BUF));
-    chrome.jump    = { x: jumpX,  y: bottomY, r, zone: { x: 0,           y: winH - oy - CHROME_GAME_EDGE_BUF, w: duckX - r, h: oy + CHROME_GAME_EDGE_BUF } };
-    chrome.duck    = { x: duckX,  y: bottomY, r, zone: { x: duckX - r,   y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2 - (duckX - r), h: oy + CHROME_GAME_EDGE_BUF } };
-    chrome.walkLeft = { x: jumpX, y: bottomY, r, zone: { x: 0,           y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
-    chrome.ability = { x: rightX, y: bottomY, r, zone: { x: winW / 2, y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
-    chrome.pause   = { x: rightX, y: topY,    r, zone: { x: 0,        y: 0,                                w: winW,     h: oy + CHROME_GAME_EDGE_BUF } };
-  }
+  // One layout for every device (touch-layout.js): the discs on the picture,
+  // the margin tiled into zones. `screen` was published just above, so the fit
+  // it carries is this resize's.
+  Object.assign(chrome, layoutTouchChrome({
+    vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe: safeInsets(),
+  }));
+  chrome.gen++;
   // The backing store was just reassigned (blank): force the next commit to
   // repaint even if the button signature is unchanged.
   chromePaintedSig = null;

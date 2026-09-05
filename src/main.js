@@ -868,11 +868,11 @@ function boot() {
             + `${fh.stallTotal ? '+' + fh.stallTotal + 's' : ''}`
           : '';
         if (showChromeFps) {
-          // #chrome is its own canvas in WINDOW CSS PIXELS, and it sits BEHIND
-          // #game — so this painter has to place itself against the margin
-          // geometry. The 480x270 game-space painter below cannot be reused
-          // here: its coordinates land inside the area #game covers, where the
-          // readout is faithfully painted every frame and never once seen.
+          // #chrome is its own canvas in WINDOW CSS PIXELS, on top of #game —
+          // so this painter places itself against the margin geometry, in the
+          // black beside the picture where it covers nothing. The 480x270
+          // game-space painter below cannot be reused here: its coordinates
+          // are the picture's, not the window's.
           setChromeOverlay(`fps|${fps}|${hitchNow}|${hitchSum}|${dens}|${bpmTxt}|${audioTxt}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
             // A landscape phone's side pillar is narrow but tall. Short,
             // single-stat rows let the lettering grow instead of shrinking one

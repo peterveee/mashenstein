@@ -165,12 +165,17 @@ function buildTimeLabelLines(value = window.__MASH_BUILT_AT__) {
   return formatBuildTimeLines(value);
 }
 
+// #chrome comes AFTER #game so it paints on top: it is the full-viewport
+// canvas the touch controls are drawn on (over the picture as well as in the
+// margin) and the one surface every pointer event lands on — #game is
+// pointer-events:none in template.html. Order is the whole z-order; neither
+// canvas carries a z-index.
 function createGameDom() {
   const shell = document.createElement('div');
   shell.id = 'game-shell';
   shell.innerHTML = `
-    <canvas id="chrome"></canvas>
     <canvas id="game"></canvas>
+    <canvas id="chrome"></canvas>
     <div id="safe-area" aria-hidden="true"></div>
     <div id="font-loading" role="status" aria-live="polite">REPLACING BURNT-OUT LETTERS…</div>
     <div id="boot-error" role="alert">

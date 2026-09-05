@@ -19,8 +19,7 @@
 // a miss is an unclosed section rather than a player failure — which is also
 // what keeps the forgiving retry policy from reading as the game going soft.
 import {
-  W, H, shake, updateShake, setSceneGlow, pushOverlayDraw,
-  chrome as chromeGeo, chromeCtx, paintChrome,
+  W, H, shake, updateShake, setSceneGlow, pushOverlayDraw, chrome as chromeGeo,
 } from '../engine/renderer.js';
 import {
   GROUND_Y, ZOOM, VIEW_W, applyWorld, framingFor, easeZoom, easePan,
@@ -39,7 +38,7 @@ import {
 } from '../engine/particles.js';
 import {
   drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, drawKeyLegend,
-  keyLegendWidth, drawRoundButton, UI_PANEL_BORDER,
+  keyLegendWidth, UI_PANEL_BORDER,
 } from '../engine/sprites.js';
 import { Player, PLAYER_X, SLIDE_KICK_T, jumpHeightFor } from './player.js';
 import { puntPower, puntTuneFor, startPunt, stepPunt } from './punt.js';
@@ -51,12 +50,8 @@ import { drawHeroSprite, drawWorldEntity, drawPortal, TAG_FLASH_TIME } from './d
 import { drawToon } from '../sprites/toons.js';
 import { makeObstacle, makePickup, entityBox, overlaps, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
-// The play pill's inks, from the one table the beat ribbon also reads.
-import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
-import {
-  drawSpeech, drawFloatie, drawStatusPill, roundButtonOpts, playButtons,
-  drawTouchZoneCard, drawPlayPill,
-} from './hud.js';
+import { drawSpeech, drawFloatie, drawStatusPill, drawTouchZoneCard } from './hud.js';
+import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 
 // ------------------------------------------------------------------ constants
 
@@ -574,13 +569,12 @@ const STEPS = [
     label: 'HERO POWER',
     legend: (touch) => (touch ? [['USE', 'LEMON CANNON']] : [['RT/D', 'LEMON CANNON']]),
     brief: (touch) => (touch
-      ? 'EVERY HERO HAS A POWER. B-33P SHOOTS. TAP THE RIGHT STRIP, OR THE USE DISC. THE CANNON IS COMPANY PROPERTY.'
+      ? 'EVERY HERO HAS A POWER. B-33P SHOOTS. TAP THE USE DISC, OR SWIPE RIGHT. THE CANNON IS COMPANY PROPERTY.'
       : 'EVERY HERO HAS A POWER. B-33P SHOOTS. PRESS RIGHT OR D. THE CANNON IS COMPANY PROPERTY.'),
-    // The whole canvas has been a two-button surface since section one, and
-    // nothing has said so: a thumb that never strayed right of 70% has been
-    // playing a one-button game without knowing there was another. The power
-    // is the first control that lives in the right-hand strip. The split is
-    // shown in level 1-1, where it belongs — the tutorial no longer duplicates it.
+    // The whole screen has been a two-button surface since section one — left
+    // half JUMP, right half SLIDE — and the split is shown in level 1-1, where
+    // it belongs; the tutorial no longer duplicates it. The power is the one
+    // control with its own disc, so it is the disc this brief names.
     // zones: true,
     again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS SIGNED OUT TO YOU.',
     // THE CANNON IS THE ONLY ANSWER HERE, and the prop is what guarantees it.
@@ -809,10 +803,6 @@ export class TutorialState {
     this.doneT = 0;
     this.paused = false;
     this.pauseIdx = 0;
-    // Touch controls in the black margin rather than on the art, where the
-    // device has margin to spare. Set by setButtons(); read by the chrome
-    // painter and by the pause path.
-    this.useChrome = false;
     this.rng = new Rng(0x7a5c0de);
     this.sawPunt = false;
     this.sawDoubleJump = false;
@@ -862,104 +852,42 @@ export class TutorialState {
 
   // The USE disc only appears once there is a power behind it. Registering it
   // from section one would put a dead control on screen for most of the module,
-  // and its arrival with B-33P is itself part of the lesson.
-  // Touch controls, laid out the way a run lays them out — which, on any device
-  // with enough black margin around the 480x270 rect, means OUTSIDE the canvas
-  // entirely (renderer's chrome geometry). Training was the one touch screen
-  // still parking all three discs on the art: a PAUSE disc in the top-right
-  // corner competing with Gary's card for the same pixels, and JUMP/USE sitting
-  // on the lane the module is asking you to look at. Falls back to the
-  // in-canvas corners only where a run would too — screens too close to 16:9 to
-  // have room out there.
-  // The one power this module hands over. B-33P's cannon is the only ability
-  // taught here — every other hero's moves the hero around in ways this lane
-  // has nothing to say about yet — so it is also the only time the USE control
-  // and the readiness orb have any business being on screen.
+  // and its arrival with B-33P is itself part of the lesson. The cannon is the
+  // only ability taught here — every other hero's moves the hero around in ways
+  // this lane has nothing to say about yet — so it is also the only time the
+  // USE control and the readiness orb have any business being on screen.
   hasPower() { return !!this.player && this.player.heroId === 'b33p'; }
 
+  // Touch controls, laid out exactly the way a run lays them out
+  // (touchchrome.js): the discs on the picture, the margin extending them.
   setButtons() {
     // Both of these can change under a live screen — usingTouch flips on the
-    // first tap of a session, and the chrome mode changes when a phone is
+    // first tap of a session, and the chrome relays out when a phone is
     // rotated — so they are recorded here and rechecked every frame in
     // update(). Without that the module was capable of running its whole
     // length with no touch controls at all: they were registered on entry,
     // before the player had touched anything, and never asked again.
     this.touchButtons = Input.usingTouch;
-    this.chromeMode = chromeGeo.mode;
-    if (!Input.usingTouch) {
-      this.useChrome = false;
-      Input.setButtons([]);
-      Input.setChromeButtons([]);
-      return;
-    }
-    const hasPower = this.hasPower();
-    this.useChrome = chromeGeo.mode !== 'none';
-    if (this.useChrome) {
-      Input.setButtons([]);
-      Input.setChromeButtons([
-        // Both halves of the play pill, from the first section. The tutorial
-        // gates exactly one control — the cannon, which only one hero has —
-        // and jump/slide have never been gated behind the sections that teach
-        // them: a control that appears partway through is one the player has
-        // already looked for and failed to find.
-        { id: 'jump', ...chromeGeo.jump, action: 'jump' },
-        { id: 'duck', ...chromeGeo.duck, action: 'duck' },
-        ...(hasPower ? [{ id: 'ability', ...chromeGeo.ability, action: 'ability' }] : []),
-        { id: 'pause', ...chromeGeo.pause, action: 'escape' },
-      ]);
-      return;
-    }
-    Input.setChromeButtons([]);
-    Input.setButtons(playButtons().filter((b) => b.id !== 'ability' || hasPower));
+    this.chromeGen = chromeGeo.gen;
+    Input.setButtons([]);
+    // JUMP and SLIDE from the first section: the tutorial gates exactly one
+    // control — the cannon, which only one hero has — and a control that
+    // appears partway through is one the player has already looked for and
+    // failed to find.
+    Input.setChromeButtons(Input.usingTouch ? runChromeButtons({ hasPower: this.hasPower() }) : []);
   }
 
-  // Pausing takes the play controls out of the margin as well as off the
-  // canvas. The pause plates are in-canvas, they are the only thing a pointer
-  // can reach on that screen, and leaving a live JUMP disc sitting outside a
-  // paused game is a control that looks pressable and is not.
+  // Pausing takes the play controls off the screen. The pause plates are
+  // in-canvas, they are the only thing a pointer can reach on that screen, and
+  // leaving a live JUMP disc under a paused game is a control that looks
+  // pressable and is not.
   enterPauseButtons() {
-    this.useChrome = false;
     Input.setChromeButtons([]);
     Input.setButtons(PAUSE_PLATES);
   }
 
-  // The discs out in the margin, through the same painter and the same
-  // dirty-flag signature a run uses — the margin only repaints when something
-  // in it actually changes, and the USE meter reads the real cooldown because
-  // roundButtonOpts only ever asks for the player and who they are.
-  drawChromeButtons() {
-    if (!chromeCtx || !this.useChrome) return;
-    const shim = { player: this.player, relay: { current: this.player.heroId } };
-    const buttons = Input.chromeButtons;
-    let sig = `tut|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}`;
-    for (const b of buttons) {
-      sig += `|${b.id}`;
-      if (b.id === 'ability') {
-        const frac = roundButtonOpts(shim, { id: 'ability' }).frac;
-        sig += `:${frac == null ? -1 : Math.round(frac * b.r * 2)}`;
-      }
-    }
-    paintChrome(sig, (ctx) => {
-      for (const b of buttons) {
-        const art = b.id === 'jump' ? { icon: 'up' }
-          : b.id === 'duck' ? { icon: 'down' }
-          : b.id === 'ability' ? { label: 'USE' } : { icon: 'pause' };
-        const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...art };
-        const base = roundButtonOpts(shim, box);
-        const pillInk = b.id === 'jump' ? ACTION_INK.jump : b.id === 'duck' ? ACTION_INK.duck : null;
-        drawRoundButton(ctx, box, {
-          ...base,
-          fill: b.id === 'ability' ? base.fill : 'rgba(255,255,255,0.06)',
-          ink: b.id === 'ability' ? base.ink : (pillInk || 'rgba(255,255,255,0.42)'),
-          ring: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.22)',
-          outline: GLYPH_OUTLINE,
-          ringWidth: 1,
-          labelScale: 1.45,
-          labelStyle: 'ui',
-        });
-      }
-    });
-  }
+  // What touchchrome.js reads USE's recharge off: the same two fields a run has.
+  chromeShim() { return { player: this.player, relay: { current: this.player.heroId } }; }
 
   // ---- sections ------------------------------------------------------------
 
@@ -1684,7 +1612,7 @@ export class TutorialState {
     }
     // The first tap of a session, or a rotation, changes where the controls
     // belong — see setButtons().
-    if (Input.usingTouch !== this.touchButtons || chromeGeo.mode !== this.chromeMode) this.setButtons();
+    if (Input.usingTouch !== this.touchButtons || chromeGeo.gen !== this.chromeGen) this.setButtons();
 
     if (this.speech) {
       this.speech.t -= dt;
@@ -2356,9 +2284,9 @@ export class TutorialState {
     // allowed to be the thing that gets covered: everything else on this screen
     // is a readout, and a readout can wait behind the person jumping.
     // Declared during draw, committed centrally by states.js — an empty frame
-    // clears the margin once and then no-ops, so this is safe to call on every
-    // frame including the ones where there is nothing out there.
-    this.drawChromeButtons();
+    // clears the layer once and then no-ops, so this is safe to call on every
+    // frame including the ones where there is nothing registered.
+    if (this.player) declareRunChrome(this.chromeShim());
     if (!this.paused) pushOverlayDraw((d) => this.drawSpeechCard(d));
     // Once the treadmill has stopped the controller still reports a RUN — it
     // only knows run/jump/duck — so the hero held whatever stride frame the
@@ -2460,14 +2388,6 @@ export class TutorialState {
     // the controls once Gary has walked on.
     this.drawRoomTitle(ctx);
     if (!this.finished) this.drawLegend(ctx);
-    // The touch controls, through the shared painter — same discs as a run,
-    // and the USE meter reads the real cooldown because roundButtonOpts only
-    // ever asks for the player and who they are.
-    const shim = { player: this.player, relay: { current: this.player.heroId } };
-    drawPlayPill(ctx);
-    for (const b of Input.buttons) {
-      if (b.round) drawRoundButton(ctx, b, roundButtonOpts(shim, b));
-    }
   }
 
   // Arrow between the two plates, the same way the run's pause screen works.

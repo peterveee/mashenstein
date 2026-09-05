@@ -61,7 +61,9 @@
       "Bash(curl -s -o /dev/null -w \"8001: %{http_code}\\\\n\" --max-time 3 http://localhost:8001/)",
       "Bash(node verify-clouds.mjs)",
       "Bash(git fsck *)",
-      "Bash(node tests/beat-chart.js)"
+      "Bash(node tests/beat-chart.js)",
+      "Bash(awk 'NR>=2590 && NR<=2622' src/game/hud.js)",
+      "Edit(/.claude/skills/verify/**)"
     ],
     "additionalDirectories": [
       "/Users/Peter/mashenstein/src/game"

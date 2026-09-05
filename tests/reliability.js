@@ -17,6 +17,7 @@ const { PLAYER_X } = await import('../src/game/player.js');
 const { VIEW_W } = await import('../src/engine/camera.js');
 const { wrapText, textWidth } = await import('../src/engine/sprites.js');
 const { chrome } = await import('../src/engine/renderer.js');
+const { layoutTouchChrome, fitFor } = await import('../src/engine/touch-layout.js');
 const { glfx } = await import('../src/engine/glfx.js');
 const { poseFromPlayer } = await import('../src/sprites/toons.js');
 const { save } = await import('../src/engine/save.js');
@@ -519,17 +520,20 @@ assert(returnedHub.jumpY > 0 && returnedHub.jumpVy > 0,
 for (let i = 0; i < 60; i++) returnedHub.update(1 / 60);
 assert(returnedHub.jumpY === 0 && returnedHub.jumpVy === 0,
   'the food-court jump lands cleanly');
-chrome.mode = 'side';
-chrome.walkLeft = { x: 35, y: 220, r: 32, zone: { x: 0, y: 0, w: 70, h: 270 } };
-chrome.ability = { x: 925, y: 220, r: 32, zone: { x: 890, y: 60, w: 70, h: 210 } };
+// A landscape phone's fit, so the layout has pillars to tile as walk zones
+// beside the two arrow discs.
+Object.assign(chrome, layoutTouchChrome(fitFor(852, 393, { left: 59, right: 59, bottom: 21 })));
+chrome.gen++;
 Input.usingTouch = false;
 returnedHub.setChromeWalkButtons();
 assert(Input.chromeButtons.length === 0,
   'food court keeps second-canvas walking controls hidden outside touch mode');
 Input.usingTouch = true;
 returnedHub.setChromeWalkButtons();
-assert(Input.chromeButtons.map((b) => b.action).join(',') === 'left,right',
-  'food court registers left/right walking controls on the second canvas in touch mode');
+assert(Input.chromeButtons.filter((b) => b.r != null).map((b) => b.action).join(',') === 'left,right',
+  'food court registers left/right walk arrows on the second canvas in touch mode');
+assert(Input.chromeButtons.filter((b) => b.zone).map((b) => b.action).join(',') === 'left,right',
+  'and the pillars beside the picture walk the same way');
 const hubWalkStart = returnedHub.px;
 const npcStarts = returnedHub.npcs().map((n) => n.x);
 Input.press('right');
@@ -540,8 +544,8 @@ const secondHubStep = returnedHub.px - hubWalkStart - firstHubStep;
 Input.release('right'); Input.endFrame();
 assert(firstHubStep === 60, 'food-court walking starts at the precise 120-unit pace');
 assert(secondHubStep > firstHubStep, 'holding a food-court direction smoothly accelerates walking');
-chrome.mode = 'none'; returnedHub.setChromeWalkButtons();
 Input.usingTouch = false;
+returnedHub.setChromeWalkButtons();
 for (let i = 0; i < 10; i++) returnedHub.update(0.1);
 assert(returnedHub.npcs().some((n, i) => n.x !== npcStarts[i]),
   'food-court heroes stroll during their loiter cycle');

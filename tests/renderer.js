@@ -175,7 +175,7 @@ try {
 const { Input } = await import('../src/engine/input.js');
 Input.init();
 assert((dom.listeners['canvas:pointerdown'] || []).length > 0,
-  'input binds after fallback to the replacement #game canvas');
+  'input binds to the pointer surface (#chrome) after the 2D fallback has replaced #game');
 
 // If neither backend exists, initialization must stop immediately instead of
 // arming a frame that will dereference a null drawing context.

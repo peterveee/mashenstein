@@ -17,12 +17,14 @@ const DEFAULT_KEYS = {
 
 const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'duck', 14: 'left', 15: 'right' };
 
-// Where the playable canvas splits into its two broad thumb zones during a run:
-// everything left of this fraction is JUMP, everything right of it is the
-// special. Exported because a screen that TEACHES the split has to draw the
-// same line the handler tests against — training's touch zone card measured its
-// own 70% for one build, which is the version of this that goes wrong quietly.
-export const TOUCH_JUMP_FRAC = 0.7;
+// Where the picture splits into its two broad thumb halves during a run:
+// everything left of this fraction is JUMP, everything right of it is SLIDE —
+// the two frequent actions, both press-and-hold, one per thumb. The special
+// has its own disc (touch-layout.js) and the swipe-right below. Exported
+// because a screen that TEACHES the split has to draw the same line the
+// handler tests against — training's touch zone card measured its own split
+// for one build, which is the version of this that goes wrong quietly.
+export const TOUCH_JUMP_FRAC = 0.5;
 
 // Telling a tap apart from the start of a swipe. Both are one finger landing on
 // the glass, so the playable canvas holds the tap's action for a moment instead
@@ -107,7 +109,11 @@ class InputSys {
       const act = this.actionForKey(e.code);
       if (act) this.release(act);
     });
-    const el = document.getElementById('game');
+    // #chrome is the ONE pointer surface: full-viewport, on top of #game (which
+    // is pointer-events:none), so every tap — on the picture, on a disc, out in
+    // the margin — arrives here and is converted with clientToLogical. The
+    // fallback is for a shell that never made a second canvas.
+    const el = document.getElementById('chrome') || document.getElementById('game');
     el.addEventListener('pointerdown', (e) => {
       if (this.suspended) { e.preventDefault(); return; }
       this.activity++;
@@ -117,26 +123,33 @@ class InputSys {
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer = { x: p.x, y: p.y, down: true };
       this.press('pointer', e.timeStamp);
-      // Middle mouse is the run's Down control: duck on the ground and the
-      // same downward kick/stomp the keyboard gets in the air. Give it
-      // priority over canvas/chrome button hit-testing so it remains a stable
-      // mouse shortcut wherever the cursor happens to be. Like every other
-      // gameplay mouse mapping it stays disabled in menus and while paused.
-      if (this.context === 'run' && !this.menuKeys
-        && e.pointerType === 'mouse' && e.button === 1) {
-        this.touches.set(e.pointerId, {
-          x0: p.x, y0: p.y, t0: performance.now(), action: 'duck', isButton: true,
-        });
-        this.press('duck');
-        e.preventDefault();
-        return;
+      // A three-button mouse gets the three gameplay verbs directly, one to a
+      // button: left jumps (below, with the canvas hit-testing), RIGHT is the
+      // Down control — duck on the ground and the same downward kick/stomp the
+      // keyboard gets in the air — and MIDDLE is the special. The two
+      // non-primary buttons are resolved here, ahead of canvas/chrome button
+      // hit-testing, so they stay stable shortcuts wherever the cursor happens
+      // to be. Like every other gameplay mouse mapping they are off in menus
+      // and while paused; the workshop is a firing range, so it keeps the
+      // attack button and nothing else.
+      if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) {
+        const liveRunHere = this.context === 'run' && !this.menuKeys;
+        let action = null;
+        if (e.button === 1 && (liveRunHere || this.context === 'workshop')) action = 'ability';
+        else if (e.button === 2 && liveRunHere) action = 'duck';
+        if (action) {
+          this.touches.set(e.pointerId, {
+            x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true,
+          });
+          this.press(action, e.timeStamp);
+          e.preventDefault();
+          return;
+        }
       }
       const btn = this.buttonAt(p.x, p.y);
-      // A chrome button is allowed to sit close enough to the game rect that
-      // its outer sliver overlaps it (run.js) — a tap landing on that sliver
-      // is dispatched to #game (it's on top there), not #chrome, so without
-      // this check it would fall through to the tap-to-jump convenience
-      // below and fire a stray jump instead of PWR/JUMP/PAUSE.
+      // In-canvas buttons (menu plates, in logical px) first, then the touch
+      // chrome (discs on the picture and the margin's zones, in viewport px).
+      // Either fires on contact: a button is not a gesture.
       const chromeBtn = !btn && this.chromeButtonAt(e.clientX, e.clientY);
       if (btn || chromeBtn) {
         const action = btn ? btn.action : chromeBtn.action;
@@ -152,29 +165,30 @@ class InputSys {
         // you're standing at"), and since this fired from ANY tap anywhere on
         // screen, merely being near a station — not tapping it — was enough
         // to confirm it.
-        // The playable canvas is a broad two-button surface: its left 70% is
-        // jump and its right 30% is the special. That works the same for a
-        // thumb and a primary mouse click, so neither device needs a second
-        // gesture merely to fire a special. Right mouse remains an explicit
-        // attack shortcut. All mappings stay off menus and paused runs.
+        // For a THUMB the picture is a broad two-button surface: its left half
+        // is JUMP and its right half is SLIDE — the two frequent actions, both
+        // press-and-hold, one per thumb — because a phone has no second button
+        // to press. The special has its own disc (and the swipe-right below).
+        // A mouse has buttons: left is jump over the whole canvas, and duck and
+        // the special each have one (above), so where the cursor happens to be
+        // sitting never changes what a click does. All mappings stay off menus
+        // and paused runs.
         const liveRun = this.context === 'run' && !this.menuKeys;
-        const liveWorkshop = this.context === 'workshop';
         const primaryCanvas = this.usingTouch || (e.pointerType === 'mouse' && e.button === 0);
         // Inside a guard halo the zone's default is suppressed (see guardAt).
         // The touch still becomes a gesture, so a finger that lands beside the
         // slide half and then pulls down slides anyway — the halo removes a
         // wrong press, it does not remove the swipe.
         const guarded = liveRun && primaryCanvas && this.guardAt(p.x, p.y);
-        if (liveRun && primaryCanvas) action = guarded ? null : (p.x < W * TOUCH_JUMP_FRAC ? 'jump' : 'ability');
-        else if ((liveRun || liveWorkshop) && e.pointerType === 'mouse' && e.button === 2) action = 'ability';
-        // A tap started anywhere on the playable canvas can become the
-        // established down/right swipe — both zones, not just the jump side.
-        // The right zone used to be excluded on the grounds that its special is
-        // "already decisive", but that made DUCK a thing you could only do with
-        // the left 70% of the glass: a thumb resting over the power side, which
-        // is exactly where a one-handed player's thumb lives, could not duck at
-        // all. Ducking is a defensive move and has to be available under
-        // whichever thumb is already down.
+        if (liveRun && primaryCanvas) {
+          action = guarded ? null
+            : (this.usingTouch && p.x >= W * TOUCH_JUMP_FRAC ? 'duck' : 'jump');
+        }
+        // A tap started anywhere on the picture can become the established
+        // down/right swipe — both halves, not just the jump side. Ducking is a
+        // defensive move and has to be available under whichever thumb is
+        // already down, and the swipe-right is what lets a one-handed player
+        // reach the special without the disc.
         const gesture = liveRun && this.usingTouch && (!!action || guarded);
         this.touches.set(e.pointerId, {
           x0: p.x, y0: p.y, t0: performance.now(), action,
@@ -319,27 +333,6 @@ class InputSys {
       target.addEventListener('dragstart', (e) => e.preventDefault());
     };
     noNativeCanvasGestures(el);
-    // #chrome sits behind #game and only shows through in the letterbox/
-    // pillarbox margin (run.js), so a tap only ever reaches it there. No
-    // swipe gestures or tap-to-jump fallback here — just hit a button or not.
-    const chromeEl = document.getElementById('chrome');
-    if (chromeEl) {
-      chromeEl.addEventListener('pointerdown', (e) => {
-        if (this.suspended) { e.preventDefault(); return; }
-        this.activity++;
-        this.usingTouch = e.pointerType === 'touch';
-        this.onAnyGesture && this.onAnyGesture();
-        const btn = this.chromeButtonAt(e.clientX, e.clientY);
-        if (btn) {
-          this.touches.set(e.pointerId, { x0: e.clientX, y0: e.clientY, t0: performance.now(), action: btn.action, isButton: true });
-          this.press(btn.action);
-        }
-        e.preventDefault();
-      });
-      chromeEl.addEventListener('pointerup', endPointer);
-      chromeEl.addEventListener('pointercancel', endPointer);
-      noNativeCanvasGestures(chromeEl);
-    }
     // Scroll wheel navigates lists in menu / hub / paused contexts.
     window.addEventListener('wheel', (e) => {
       if (this.suspended) return;
@@ -376,8 +369,8 @@ class InputSys {
   }
 
   // Whether this player can reach rewind at all. Rewind is a HELD 'left', which
-  // the touch layout has no room for and never binds — see RunState.setButtons,
-  // which offers jump/ability/pause and nothing else. Recording snapshots for a
+  // the touch layout never binds — see touch-layout.js, which offers
+  // jump/duck/ability/pause and nothing else. Recording snapshots for a
   // control the player cannot press is pure cost, so both halves of the feature
   // ask this first: the audio capture node (main.js) and the simulation
   // snapshot ring (run.js).
@@ -428,13 +421,12 @@ class InputSys {
   // answers "did it land close enough that the zone's default would be the
   // wrong guess". A guarded tap fires nothing at all.
   //
-  // Only the play pill's DOWN half sets `guard` (hud.js playButtons), and that
-  // asymmetry is deliberate. Jump is the safe default everywhere else on the
-  // glass: a near-miss that jumps did roughly what the thumb was asking for.
-  // A near-miss that jumps INSTEAD OF SLIDING puts the player over the top of
-  // the obstacle they were ducking under, which is the same failure the swipe
-  // arbitration in pointermove was written to remove — do not reintroduce it
-  // through a button.
+  // Dormant since the play pill left the picture: no registered button sets
+  // `guard` today. Kept because the failure it answers is real — a near-miss
+  // that jumps INSTEAD OF SLIDING puts the player over the top of the obstacle
+  // they were ducking under, which is the same failure the swipe arbitration in
+  // pointermove was written to remove — and an in-canvas control that ever
+  // needs it again should set `guard` rather than reinvent this.
   guardAt(x, y) {
     for (const b of this.buttons) {
       if (!b.guard) continue;
@@ -446,14 +438,21 @@ class InputSys {
 
   setButtons(list) { this.buttons = list || []; }
 
-  // Chrome buttons live in raw viewport CSS px (renderer.js's `chrome`
-  // geometry), not the logical 480x270 space `buttonAt` tests — hence the
-  // separate list. Hit-tests the button's `zone` (the whole stretch of margin
-  // around its disc), not the disc itself: #chrome only ever shows in the
-  // margin and only ever holds the run's handful of controls, so the visible
-  // canvas can safely count as "near enough" rather than requiring a precise
-  // tap on the drawn circle.
+  // Chrome buttons live in raw viewport CSS px (touch-layout.js, via
+  // renderer.js's `chrome`), not the logical 480x270 space `buttonAt` tests —
+  // hence the separate list. Two kinds: DISCS on the picture ({x, y, r}),
+  // hit-tested as circles with a thumb's worth of slop, and ZONES ({zone}),
+  // the stretches of margin that extend the control beside them, hit-tested as
+  // the whole rectangle. Discs first: a zone never reaches the picture, but a
+  // disc's slop may reach a zone's edge, and the disc is the more deliberate
+  // target.
   chromeButtonAt(cx, cy) {
+    const SLOP = 6;
+    for (const b of this.chromeButtons) {
+      if (b.r == null) continue;
+      const rr = b.r + SLOP;
+      if ((cx - b.x) * (cx - b.x) + (cy - b.y) * (cy - b.y) <= rr * rr) return b;
+    }
     for (const b of this.chromeButtons) {
       const z = b.zone;
       if (z && cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return b;

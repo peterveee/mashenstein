@@ -1,7 +1,7 @@
 import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
@@ -15,14 +15,14 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { OPENING_COIN_BEAT, BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, unwrapBeat } from './beatchart.js';
-import { drawBeatGround, ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
+import { drawBeatGround, ACTION_INK } from './beatground.js';
 import { Powerups, POWER_DEFS, randomPowerPickup, weightedPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
 // so the level editor forecasts a stage with the same arithmetic the run
@@ -42,7 +42,8 @@ import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS }
   from '../engine/stylePacks/index.js';
-import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, TOUCH_SHELF_CY, speechChannel, FLOAT_BASE_CEILING, abilityNameSlot } from './hud.js';
+import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, FLOAT_BASE_CEILING } from './hud.js';
+import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawToon, toonFaceSprite } from '../sprites/toons.js';
@@ -2813,7 +2814,7 @@ export class RunState {
 
   setButtons() {
     this.touchButtons = Input.usingTouch;
-    this.chromeMode = chromeGeo.mode;
+    this.chromeGen = chromeGeo.gen;
     // The paused screen is a menu, so it takes the screen's buttons over
     // wholesale: the three play controls have nothing to do while the world is
     // stopped, and leaving JUMP live under a dimmed screen invites a tap that
@@ -2825,43 +2826,18 @@ export class RunState {
       // 0 and 1: pauseIdx addresses Input.buttons directly, in updatePauseMenu
       // and in drawPaused alike.
       Input.setButtons(this.beatLock ? [...PAUSE_BUTTONS, ...PAUSE_SYNC_BUTTONS] : PAUSE_BUTTONS);
-      Input.setChromeButtons([]); this.useChrome = false; return;
+      Input.setChromeButtons([]); return;
     }
-    // Play controls are touch only: keyboard players have SPACE/RIGHT/P/ESC,
+    // Play controls are touch only: keyboard players have SPACE/DOWN/RIGHT/P/ESC,
     // and the corners hold HUD instead.
-    if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); this.useChrome = false; return; }
-    // Enough black margin outside the 480x270 rect (renderer.js's chrome
-    // geometry) to put JUMP/ABILITY out there instead of over the art. Falls
-    // back to the old in-canvas corners on anything too close to 16:9 to have
-    // room (chrome.mode === 'none').
-    this.useChrome = chromeGeo.mode !== 'none';
-    // Mirrors the Escape key exactly: pauses if running, quits if already
-    // paused. The 'escape' action already carries that logic — but the second
-    // half of it is now unreachable from here, since pausing swaps this
-    // button out for the menu above.
-    if (this.useChrome) {
-      // The ability-name banner (drawAbilityName) reads as a label FOR USE,
-      // sitting right next to it — so treating it as a second, generously
-      // oversized hit target for the same action (rather than inert text)
-      // means a tap that lands on the words still does the right thing.
-      // Fixed box, not measured off the label each frame: the widest ability
-      // name across every hero (~13 chars) still fits inside it with room to
-      // spare, so it never needs to track a value that changes on hero swap.
-      Input.setButtons(abilityNameSlot(this) === 'right'
-        ? [{ id: 'abilityName', x: W - 4 - 90, y: TOUCH_SHELF_CY - 9, w: 90, h: 18, action: 'ability' }]
-        : []);
-      Input.setChromeButtons([
-        // JUMP and DUCK are the margin's half of the play pill (renderer.js
-        // places them: stacked in a side column, side by side in a bar).
-        { id: 'jump', ...chromeGeo.jump, action: 'jump' },
-        { id: 'duck', ...chromeGeo.duck, action: 'duck' },
-        { id: 'ability', ...chromeGeo.ability, action: 'ability' },
-        { id: 'pause', ...chromeGeo.pause, action: 'escape' },
-      ]);
-      return;
-    }
-    Input.setChromeButtons([]);
-    Input.setButtons(playButtons());
+    if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); return; }
+    // The four discs on the picture plus whatever margin this device has
+    // around it (touchchrome.js, touch-layout.js) — one set, every device.
+    // PAUSE fires 'escape', which mirrors the Escape key exactly: pauses if
+    // running, quits if already paused. The second half is unreachable from
+    // here, since pausing swaps this set out for the plates above.
+    Input.setButtons([]);
+    Input.setChromeButtons(runChromeButtons());
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
@@ -2919,83 +2895,6 @@ export class RunState {
     Audio.setSyncOffset(next);
     this.save.persist();
     Audio.sfx('ui');
-  }
-
-  // One lookup supplies the JUMP/USE label text and the PAUSE glyph for
-  // whichever chrome button is being drawn.
-  chromeButtonArt(id) {
-    // The play pair carries the ribbon's arrows instead of the word JUMP. A
-    // glyph survives a smaller disc and a translation, and more to the point it
-    // is the SAME glyph the beat strip uses to ask for the press — the word
-    // never was.
-    if (id === 'jump') return { icon: 'up' };
-    if (id === 'duck') return { icon: 'down' };
-    if (id === 'ability') return { label: 'USE' };
-    return { icon: 'pause' };
-  }
-
-  // Declares the touch buttons to the chrome dirty-flag layer. The signature
-  // captures everything that changes the painted pixels — mode/viewport, the
-  // buttons present, and the ability cooldown quantized to its painted
-  // waterline — so the ready state repaints zero times while the recharge
-  // sweep still animates. commitChromeFrame (states.js) runs the painter only
-  // when this signature changes.
-  drawChromeButtons() {
-    if (!chromeCtx || !this.useChrome) return;
-    const buttons = Input.chromeButtons;
-    let sig = `run|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}`;
-    for (const b of buttons) {
-      sig += `|${b.id}`;
-      if (b.id === 'ability') {
-        const frac = roundButtonOpts(this, { id: 'ability' }).frac;
-        sig += `:${frac == null ? -1 : Math.round(frac * b.r * 2)}`;
-      }
-    }
-    paintChrome(sig, (ctx) => {
-      for (const b of buttons) {
-        const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
-        const base = roundButtonOpts(this, box);
-        // External controls should be findable without becoming chrome the
-        // player stares at. They retain a faint rim and label against the black
-        // margin.
-        // The pair's glyphs take the ribbon's ink; their RING stays the same
-        // quiet white rim every other margin control wears. The colour belongs
-        // on the shape that means something, not on a second ring competing
-        // with it — the rim is here to stop a disc vanishing into black, which
-        // is a legibility job and not a place to spend a hue.
-        const pillInk = b.id === 'jump' ? ACTION_INK.jump : b.id === 'duck' ? ACTION_INK.duck : null;
-        drawRoundButton(ctx, box, {
-          ...base,
-          fill: b.id === 'ability' ? base.fill : 'rgba(255,255,255,0.06)',
-          ink: b.id === 'ability' ? base.ink : (pillInk || 'rgba(255,255,255,0.42)'),
-          ring: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.22)',
-          outline: GLYPH_OUTLINE,
-          ringWidth: 1,
-          labelScale: 1.45,
-          labelStyle: 'ui',
-        });
-      }
-    });
-  }
-
-  // The in-canvas ability "donut" (drawHud) never draws for touch at all — the
-  // USE disc shows its own recharge instead — so without this, a touch player
-  // has no way to see which power is even equipped. Drawn on the game canvas
-  // itself (not #chrome), bottom-right where USE sits just outside that
-  // corner — same plate-and-text look every other HUD readout uses (see
-  // hud.js's gauge() labels), not bare floating text. Landscape ('side') only:
-  // 'topbottom' mode's bottom-center spot is too narrow at a readable size to
-  // be worth the clutter.
-  drawAbilityName(d) {
-    // Only the RIGHT-hand plate is this file's: the 'left' cut hands the slot
-    // back to hud.js, which draws it with the rest of the bottom-left gauges.
-    if (abilityNameSlot(this) !== 'right') return;
-    const label = HERO_BY_ID[this.relay.current].ability.label;
-    const scale = 0.8, PADX = 5, LH = 13;
-    const w = textWidth(label, scale, 'bold') + PADX * 2;
-    const x = W - 4 - w, midY = TOUCH_SHELF_CY;
-    drawPanel(d, x, midY - LH / 2, w, LH, 4, undefined, { border: UI_PANEL_BORDER, shadow: true });
-    drawText(d, label, x + PADX, textYForMid(midY, scale), '#c8e0ff', scale, 'bold');
   }
 
   maxBattery() {
@@ -3398,9 +3297,9 @@ export class RunState {
       this.devRunTime += dt;
       if (this.devRunTime >= this.devMaxTime) { this.endRun(true, 'TIME CAP'); Input.endFrame(); return; }
     }
-    // First touch mid-run, or a rotation that flips which margin (if any) has
-    // room for chrome buttons — either needs the button set rebuilt.
-    if (Input.usingTouch !== this.touchButtons || chromeGeo.mode !== this.chromeMode) this.setButtons();
+    // First touch mid-run, or a resize/rotation that relaid the chrome —
+    // either needs the button set rebuilt.
+    if (Input.usingTouch !== this.touchButtons || chromeGeo.gen !== this.chromeGen) this.setButtons();
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
     if (Input.pressed('debug')) this.debug = !this.debug;
     const wasPaused = this.paused;
@@ -11527,7 +11426,6 @@ export class RunState {
     };
     const drawFrame = (d) => {
       drawHud(d, this);
-      this.drawAbilityName(d);
       if (this.introFreeze > 0 && this.introText) {
         drawActBanner(d, this.introText, {
           t: this.introT,
@@ -11568,7 +11466,9 @@ export class RunState {
     if (!pushOverlayDraw(drawFrame)) drawFrame(ctx);
     // The departing villain, now that the panels he climbs through are down.
     if (copterLift && copterOverHud && !pushOverlayDraw(copterLift)) copterLift(ctx);
-    this.drawChromeButtons();
+    // The touch discs, on #chrome over everything: declared here, committed
+    // centrally by states.js once the frame is drawn.
+    declareRunChrome(this);
 
     // Rewind VHS overlay: wave distortion, tracking bands, chromatic aberration,
     // noise grain, colour shift, and OSD counter. Renders on the overlay layer
@@ -11664,11 +11564,11 @@ export class RunState {
       let cx = W / 2 - total / 2;
       for (const [t, ink] of chips) { drawText(ctx, t, cx, 142, ink); cx += textWidth(t) + CHIP_GAP; }
     }
-    // The touch line names the gestures, not the buttons: JUMP and USE label
-    // themselves on screen, and the swipes are the half of the scheme nothing
-    // else advertises.
+    // The touch line names the halves, which nothing else on screen advertises
+    // — the discs look like the only controls there are — and both ways to the
+    // power.
     legend(Input.usingTouch
-      ? [['TAP', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['SWIPE RIGHT', 'POWER']]
+      ? [['TAP LEFT', 'JUMP'], ['TAP RIGHT', 'SLIDE'], ['USE / SWIPE RIGHT', 'POWER']]
       : [['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT/D', 'POWER']], 158,
     { actionInk: '#c8c8d8' });
     // Only keyboard needs telling: the plates below say it for everyone else,

@@ -4227,9 +4227,9 @@ export class HowToPlayState {
     // which meant half of every row named hardware the reader does not have.
     // A phone gets the gestures, a keyboard gets the keys, nobody gets both.
     const touch = Input.isTouchDevice();
-    line('JUMP', touch ? 'TAP. HOLD FOR HIGHER.' : 'SPACE / W / UP. HOLD FOR HIGHER.');
-    line('POWER SLIDE', touch ? 'SWIPE DOWN AND HOLD. KICKS CONES AND BARRELS.' : 'S / DOWN. HOLD IT. KICKS CONES AND BARRELS.');
-    line('HERO POWER', touch ? 'THE PWR BUTTON, OR SWIPE RIGHT.' : 'RIGHT / D. X / SHIFT TOO.');
+    line('JUMP', touch ? 'TAP THE LEFT HALF. HOLD FOR HIGHER.' : 'SPACE / W / UP. HOLD FOR HIGHER.');
+    line('POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN. HOLD IT. KICKS CONES AND BARRELS.');
+    line('HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'RIGHT / D. X / SHIFT TOO.');
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
     // No control row of its own, deliberately: there is nothing to press.
     line('REWIND', touch ? 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.'
