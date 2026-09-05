@@ -1444,8 +1444,10 @@ assert(/MusicDirector\.enterStage\(/.test(runSrc)
   'stage entry pre-warms its voice pools and prefills the queue, and so does the hero swap');
 // And the frame feeds the sequencer itself. The 25ms timer stays, but a timer is
 // exactly what a busy main thread delays, and the frame that just ran eight catch-up
-// steps is the one most likely to have eaten the slot the queue needed.
-assert(/draw: \(renderAlpha\) => \{[\s\S]{0,900}?Audio\.schedule\(\);[\s\S]{0,40}?beginRenderFrame\(\);/
+// steps is the one most likely to have eaten the slot the queue needed. The only thing
+// allowed between the top-up and the first draw is the efficiency profile's audio-health
+// sample, which reads the margin the top-up just produced.
+assert(/draw: \(renderAlpha\) => \{[\s\S]{0,900}?Audio\.schedule\(\);\s*(?:if \(efficiencyProfile\.enabled\) sampleAudioHealth\(\);\s*)?beginRenderFrame\(\);/
   .test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
   'the game tops the sequencer queue up from its own frame, before it draws anything');
 // A silenced LAYER comes off the layer list, not merely out of the bank. The canonical
