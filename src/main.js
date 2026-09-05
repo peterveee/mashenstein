@@ -47,6 +47,8 @@ import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy, portraitNow, portraitAllowedFor } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
 import { applyPhoneAudioProfile } from './engine/phone-audio.js';
+import { efficiencyProfile } from './engine/render-efficiency.js';
+import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer, readDiag } from './engine/diag.js';
@@ -540,6 +542,10 @@ function sampleAudioHealth() {
   const h = Audio.takeSchedulerHealth();
   audioProbe.margin = Number.isFinite(h.marginMin) ? Math.round(h.marginMin * 1000) : null;
   audioProbe.late = h.late;
+  if (efficiencyProfile.enabled) {
+    efficiencyProfile.audioMarginMin = Math.min(efficiencyProfile.audioMarginMin, h.marginMin);
+    efficiencyProfile.audioLate += h.late;
+  }
   const lat = Math.round((ctx.outputLatency || ctx.baseLatency || 0) * 1000);
   const rate = Math.round(ctx.sampleRate / 100) / 10;
   const marginTxt = audioProbe.margin == null ? 'M-' : `M${audioProbe.margin}/${audioProbe.late}`;
@@ -591,6 +597,7 @@ function boot() {
   let sessionMute = false;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
+    if (p.has('lcdPanelCache')) setLCDPanelCacheEnabled(p.get('lcdPanelCache') !== '0');
     const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     // Silence for THIS BOOT, never the player's setting. This used to write
@@ -647,6 +654,8 @@ function boot() {
   // whether the feature exists. Read once here because the capture node is a
   // boot-time fixture; no pad has been polled yet, so this is exactly the
   // coarse-pointer test it has always been.
+  // The game uses songAnalyser, not the desk display meters.
+  Audio.setMixerMeteringEnabled(false);
   Audio.setCaptureEnabled(Input.rewindAvailable());
   // A phone gets a bigger output buffer and a wider scheduler window; everything
   // else keeps the browser's default. Here rather than anywhere later because
@@ -771,6 +780,7 @@ function boot() {
       // All platforms: there is no phone-only reason for it and one path is easier to
       // keep correct than two.
       Audio.schedule();
+      if (efficiencyProfile.enabled) sampleAudioHealth();
       beginRenderFrame();
       let drawFpsReadout = null;
       const menuState = currentState();

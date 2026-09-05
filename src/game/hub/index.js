@@ -3461,16 +3461,29 @@ export class StageSelectState {
       arrangementOverride: musicSong?.arrangement,
       variants: musicSong?.variants,
     });
-    // Start expanding this cabinet's TNGR-2 wavetables NOW, spread over idle slices.
-    // A family is ~240ms of main thread and the stage's enter() used to pay for all of
-    // them in one task behind the shutter; by the time anyone has read this list and
-    // pressed START they are built, and enter()'s loop becomes a cache hit. See
-    // warmTngr2Families — a stage reached without passing through here still works.
+    // Expand this cabinet's TNGR-2 wavetables HERE, inline, and wait for them.
+    //
+    // A family is ~240ms of main thread (rhythm is the only cabinet with any, and it
+    // has two), and the stage's enter() used to pay for all of them in one task. This
+    // used to be spread over idle slices instead — but a slice is a LATER task, and by
+    // then the shutter is already opening, so the expansion landed on visible frames:
+    // the hiccup on first opening the rhythm cabinet. An expansion cannot be
+    // interrupted once it starts, so spreading it only chooses which frame wears it.
+    //
+    // enter() runs at the covered midpoint of the transition (engine/states.js), with
+    // the shutter fully closed and the incoming screen not yet drawn. Blocking here
+    // costs the reveal a beat the first time and nothing ever after — the tables are
+    // memoised — and enter()'s own loop in run.js becomes a cache hit. A stage reached
+    // without passing through here still works; it just pays the old price.
+    //
+    // Prefill first: the block is longer than the sequencer's lookahead, so the queue
+    // is filled past it before the main thread goes away. Same move as run.js enter().
     const tngr2Ids = [];
     for (const v of Object.values(this.cab.songMix?.voiceParams || {})) {
       for (const osc of [v.tngr2?.oscA, v.tngr2?.oscB]) if (osc?.table) tngr2Ids.push(osc.table);
     }
-    warmTngr2Families(tngr2Ids);
+    if (tngr2Ids.length) Audio.prefill?.(1.2);
+    warmTngr2Families(tngr2Ids, { idle: false });
     this.corrupt = null;
     const opts = this.options();
     this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));

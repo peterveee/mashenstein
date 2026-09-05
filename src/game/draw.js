@@ -402,14 +402,14 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 // lane closing over it.
 const BED_SINK = 4;
 
-export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
+export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOptions = {}) {
   const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
   const x = smoothMotion ? e.x - camX : Math.round(e.x - camX);
   // The loop pad's ring stands a radius clear of its box on both sides, so it is
   // still putting ink on screen long after the pad itself has left. Everything
   // else draws inside a few px of its own box.
   const reach = e.def && e.def.isLoop ? LOOP.r + 8 : 40;
-  if (x < -reach || x > 480 + reach) return;
+  if (!renderOptions.preculled && (x < -reach || x > 480 + reach)) return;
   const bottom = GROUND_Y - e.alt;
   // `artLift` raises the DRAWING without touching the box, for the case where a
   // hazard's legal altitude and its readable altitude are not the same number.

@@ -1,3 +1,4 @@
+import { efficiencyProfile } from '../render-efficiency.js';
 // Style packs: renderer-only modules. One draw interface, zero game logic.
 // Every pack draws: bg(ctx,t,camX,cab,totalDist,scene),
 // ground(ctx,camX,cab,obstacles), post(ctx,t). `scene` is optional renderer
@@ -2897,7 +2898,7 @@ function lcdSkylineEq(ctx, frame) {
   const barW = Math.floor(W / LCD_EQ_BARS);
   const spans = lcdSkyFloor(frame.stageIndex);
   for (let b = 0; b < LCD_EQ_BARS; b++) {
-    const live = lcdBandLevel(frame.spectrum, b, LCD_EQ_BARS, rows);
+    const live = frame.skyLevels[b];
     const n = live == null
       ? Math.round(LCD_EQ_LEVELS[lcdMod(frame.step + b * 3, LCD_EQ_LEVELS.length)] * rows / 8)
       : live;
@@ -3054,8 +3055,7 @@ function lcdWindowGridLit(ctx, building, index, frame, bay) {
   // played, which is the one thing this panel's variety cannot afford. And
   // `phase` raises the floor with or without an analyser, so the city wakes up
   // in the hub and under reduced motion too.
-  const heard = lcdBandLevel(frame.spectrum, index, 8, activeRows) ?? 0;
-  const floor = Math.min(activeRows, frame.phase + heard);
+  const floor = frame.windowLevels[index];
   if (frame.stageIndex === 1) {
     const row = lcdMod(frame.step + index, activeRows);
     const col = lcdMod(Math.floor(frame.step / 4) + index, cols);
@@ -3790,7 +3790,7 @@ const LCD_SIGN_DUTY = 0.75;
 // quarters on, same reason as the sign, and the same fallback: under reduced
 // flashing it stands lit for the whole journey.
 function lcdRimOn(frame, reducedFlashing) {
-  return reducedFlashing || frame.beatPhase < LCD_SIGN_DUTY;
+  return reducedFlashing || frame.signOn;
 }
 function lcdVerbSign(ctx, building, cue, frame, reducedFlashing) {
   const word = LCD_SIGN_WORD[cue.action];
@@ -3798,7 +3798,7 @@ function lcdVerbSign(ctx, building, cue, frame, reducedFlashing) {
   const inks = Array.isArray(cue.ink) ? cue.ink : [cue.ink];
   if (!inks.length) return;
   const { cx, left, top } = lcdBoardFrame(ctx, building, LCD_BOARD_W, LCD_BOARD_H);
-  if (!reducedFlashing && frame.beatPhase >= LCD_SIGN_DUTY) return;
+  if (!reducedFlashing && !frame.signOn) return;
 
   // The block of marks and the word under them, centred in the board.
   const markW = LCD_SIGN_MARK_W * 2;
@@ -3842,7 +3842,7 @@ function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
   // and decays from there, so the board's dark panel washes pale on the snare
   // and settles between hits — the one place the city answers a single sound
   // rather than the beat grid. Reduced flashing keeps the sign printed.
-  const strike = !reducedFlashing && (frame.audio?.hit || 0) > 0.55;
+  const strike = !reducedFlashing && frame.strike;
   const [x, w, h] = building;
   const cx = Math.round(x + w / 2);
   const roof = GROUND_Y - h;
@@ -4031,9 +4031,7 @@ function lcdSmokestack(ctx, building, dx, frame) {
   // THREE IS THE FLOOR, not two: two cells on a stack this size is a plant
   // that has just been lit, and the roof spent most of a quiet bar looking
   // switched off.
-  const heard = frame.audio ? frame.audio.level : null;
-  const puffs = heard == null ? cells.length
-    : Math.max(3, Math.min(cells.length, 3 + Math.round(heard * (cells.length - 3))));
+  const puffs = frame.puffs;
   for (let i = 0; i < puffs; i++) {
     // SPORADIC, AND MORE SO WITH HEIGHT. The lowest puff is always there —
     // smoke leaving a stack does not stutter at the mouth — and above it the
@@ -5092,7 +5090,7 @@ function lcdTransmitter(ctx, building, frame, reducedFlashing) {
     // The live ring still steps on the beat; how far the broadcast CARRIES is
     // the treble's business, so a bright bar pushes a second ring out behind
     // the first and a dull one keeps it close to the mast.
-    const reach = frame.audio ? Math.round((frame.audio.treble || 0) * 2.2) : 0;
+    const reach = frame.antennaReach;
     const carried = i > frame.beat4 && i <= frame.beat4 + reach;
     ctx.fillStyle = i === frame.beat4
       ? (reducedFlashing ? LCD_PRINT_SOFT : LCD_WINDOW_ON)
@@ -5193,7 +5191,7 @@ function lcdEqualizer(ctx, building, index, frame) {
     // This painter was always a meter; it just had no source. The authored
     // table stands in whenever the analyser is absent.
     const band = index * cols + col;
-    const heard = lcdBandLevel(frame.spectrum, band, 24, max);
+    const heard = frame.roofLevels[band];
     const level = heard != null ? heard
       : LCD_EQ_LEVELS[lcdMod(frame.step + index * 2 + col * 5, LCD_EQ_LEVELS.length)];
     ctx.fillStyle = LCD_WINDOW_OFF;
@@ -7567,6 +7565,14 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
  * `scene` is the same optional context bg() takes — { stageIndex, beat,
  * progress, audio } — and every field is optional.
  */
+// Direct oracle for visual tooling and cache parity tests; no global-mode mutation.
+export function drawLCDPanelUncached(ctx, scene, settings = {}) {
+  const motion = !!settings.reducedMotion, flashing = !!settings.reducedFlashing;
+  const sky = settings.skyMeter !== false;
+  const { frame } = prepareLCDPanel(scene, motion, flashing, sky);
+  paintLCDCity(ctx, frame, motion, flashing, sky);
+}
+
 export function drawLCDPanel(ctx, scene, settings = {}) {
   // `skyMeter` on: the jukebox wants the analyser in the sky.
   drawLCDCity(ctx, scene, !!settings.reducedMotion, !!settings.reducedFlashing,
@@ -7728,8 +7734,128 @@ function lcdArrival(art, frame) {
   return at;
 }
 
-function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false) {
+// One composed surface, never a collection of historical beats. Pixel parity
+// and a full-engine rhythm spectrum replay are covered by lcd-cache-browser.js.
+let lcdPanelCacheEnabled = true;
+let lcdPanelBake = null;
+const panelKey = [];
+const windowLevels = [], roofLevels = [], skyLevels = [];
+const FRAME_SCALARS = new Set(`stageIndex live step beat4 beatAbs bar phrase phase finish
+  streak cheer barrelBeat barrelGrid gorillaExpr gorillaNostrils gorillaBrow gorillaInk
+  gorillaBuild gorillaPit gorillaTuft gorillaShock gorillaEar gorillaSpikes gorillaShoulder
+  gorillaShoulderShape barrelCell barrelShape runnerOutline intro introBeat omenStep
+  maxRoadRise`.split(/\s+/));
+const FRAME_RESOLVED = new Set(['beatPhase', 'spectrum', 'audio', 'verbCue',
+  'windowLevels', 'roofLevels', 'skyLevels', 'signOn', 'strike', 'puffs', 'antennaReach']);
+
+export function clearLCDPanelCache() {
+  lcdPanelBake = null;
+  efficiencyProfile.lcdBytes = 0;
+}
+export function setLCDPanelCacheEnabled(enabled) {
+  lcdPanelCacheEnabled = !!enabled;
+  clearLCDPanelCache();
+}
+
+// Resolve the exact existing cell/flash decisions once, shared by key and painter.
+// No new quantization and no retained references to mutable analyser/ink buffers.
+function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNeeded = false) {
   const frame = lcdSceneFrame(scene, reducedMotion);
+  const art = LCD_CITY_SCENES[frame.stageIndex];
+  const bay = lcdClockBay(art);
+  windowLevels.length = art.buildings.length;
+  roofLevels.length = 0;
+  skyLevels.length = skyMeter ? LCD_EQ_BARS : 0;
+  for (let i = 0; i < art.buildings.length; i++) {
+    const building = art.buildings[i];
+    const { activeRows } = lcdWindowCells(building, bay?.index === i ? bay : null);
+    windowLevels[i] = Math.min(activeRows, frame.phase + (lcdBandLevel(frame.spectrum, i, 8, activeRows) ?? 0));
+    if (frame.stageIndex === 2 && !lcdCrowned(art, i)) {
+      const cols = building[1] >= 44 ? 3 : 2;
+      for (let col = 0; col < cols; col++) {
+        const band = i * cols + col;
+        roofLevels[band] = lcdBandLevel(frame.spectrum, band, 24, 6);
+      }
+    }
+  }
+  for (let b = 0; b < skyLevels.length; b++) {
+    skyLevels[b] = lcdBandLevel(frame.spectrum, b, LCD_EQ_BARS,
+      Math.floor((GROUND_Y - LCD_EQ_TOP) / LCD_EQ_CELL));
+  }
+  frame.windowLevels = windowLevels; frame.roofLevels = roofLevels; frame.skyLevels = skyLevels;
+  frame.signOn = reducedFlashing || frame.beatPhase < LCD_SIGN_DUTY;
+  frame.strike = !!art.billboards?.some(([, name]) => name !== 'chart')
+    && !reducedFlashing && (frame.audio?.hit || 0) > 0.55;
+  const heard = frame.audio ? frame.audio.level : null;
+  frame.puffs = !art.smokestacks?.length || heard == null ? 4 : Math.max(3, Math.min(4, 3 + Math.round(heard)));
+  frame.antennaReach = Number.isInteger(art.transmitter) && frame.audio
+    ? Math.round((frame.audio.treble || 0) * 2.2) : 0;
+  if (!keyNeeded) return { frame, supported: true };
+  panelKey.length = 0;
+  panelKey.push(reducedMotion, reducedFlashing, skyMeter, !!frame.audio);
+  let supported = true;
+  for (const key in frame) {
+    if (FRAME_SCALARS.has(key)) panelKey.push(frame[key]);
+    else if (!FRAME_RESOLVED.has(key)) supported = false;
+  }
+  panelKey.push(frame.signOn, frame.strike, frame.puffs, frame.antennaReach,
+    frame.verbCue?.action, frame.verbCue?.ink.length ?? 0);
+  if (frame.verbCue) for (const ink of frame.verbCue.ink) panelKey.push(ink);
+  for (const levels of [windowLevels, roofLevels, skyLevels]) {
+    panelKey.push(levels.length);
+    for (const level of levels) panelKey.push(level);
+  }
+  return { frame, supported };
+}
+
+function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false) {
+  const { frame, supported } = prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, lcdPanelCacheEnabled);
+  const cv = ctx.canvas;
+  panelKey.push(ctx.imageSmoothingEnabled);
+  // Grouping semi-transparent operations changes nonstandard compositing. Keep
+  // those callers direct, and keep the operation recorder's real-surface fallback.
+  if (!lcdPanelCacheEnabled || !supported || ctx.globalAlpha !== 1
+    || ctx.globalCompositeOperation !== 'source-over' || !cv?.width || !cv?.height) {
+    paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter);
+    return;
+  }
+  let bake = lcdPanelBake;
+  const sized = bake && bake.c.width === cv.width && bake.c.height === cv.height;
+  const hit = sized && bake.owner === ctx && bake.key.length === panelKey.length
+    && panelKey.every((value, i) => Object.is(value, bake.key[i]));
+  if (hit) {
+    if (efficiencyProfile.enabled) efficiencyProfile.lcdHits++;
+  } else {
+    // Reuse storage without resizing it on every changed audio cell. Resizing
+    // a canvas can flush outstanding GPU work and reallocates its backing store.
+    const made = sized ? { canvas: bake.c, ctx: bake.ctx } : lcdBakeSurface(cv.width, cv.height);
+    if (!made) {
+      clearLCDPanelCache();
+      paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter);
+      return;
+    }
+    const started = efficiencyProfile.enabled ? performance.now() : 0;
+    const c = made.ctx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, cv.width, cv.height);
+    c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+    c.lineWidth = 1; c.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+    paintLCDCity(c, frame, reducedMotion, reducedFlashing, skyMeter);
+    bake = { c: made.canvas, ctx: made.ctx, owner: ctx, key: panelKey.slice() };
+    lcdPanelBake = bake;
+    efficiencyProfile.lcdBytes = cv.width * cv.height * 4;
+    if (efficiencyProfile.enabled) {
+      efficiencyProfile.lcdMisses++;
+      efficiencyProfile.lcdRepaintMs += performance.now() - started;
+    }
+  }
+  ctx.save();
+  ctx.drawImage(bake.c, 0, 0, W, H);
+  ctx.restore();
+}
+
+function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = false) {
   const art = LCD_CITY_SCENES[frame.stageIndex];
   const palette = LCD_GBC_PALETTES[frame.stageIndex];
   // The sky is painted HERE rather than by each caller, so the scene frame is

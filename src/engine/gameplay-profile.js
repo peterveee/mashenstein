@@ -1,3 +1,5 @@
+import { setEfficiencyProfile, efficiencyProfileStats } from './render-efficiency.js';
+import { Audio } from './audio.js';
 // Backend-neutral gameplay profiler. It waits at the title until a playable
 // state begins, then records three consecutive windows without changing the
 // scene. This catches the characteristic "starts at 60, drops as actors enter"
@@ -29,15 +31,18 @@ let savedPin = null;
 let restorePinOverride;
 let profileDensity = 0;
 const results = [];
+const drawTimes = [];
 
 function resetWindow(now) {
   phaseStartedAt = now;
   frames = 0;
+  drawTimes.length = 0;
   sumDrawMs = 0;
   sumBlitMs = 0;
   resetRenderProfileStats();
   resetUpdateProfileStats();
   setPropCacheProfile(true);
+  setEfficiencyProfile(true);
 }
 
 function finish() {
@@ -48,6 +53,7 @@ function finish() {
   setRenderProfile(false);
   setUpdateProfile(false);
   setPropCacheProfile(false);
+  setEfficiencyProfile(false);
 }
 
 export function startGameplayProfile({ restorePin } = {}) {
@@ -87,13 +93,19 @@ function completeWindow(now) {
   // that never did the work.
   const upd = updateProfileStats();
   const art = propCacheStats();
+  drawTimes.sort((a, b) => a - b);
   results.push({
+    ...efficiencyProfileStats(),
+    mixerMetering: Audio.mixer?.metered ?? null,
     artCreated: art.windowCreations,
     artVisibleMisses: art.visibleMisses,
     artResidentMB: art.residentBytes / 1048576,
     artEntries: art.entries,
     label: `WINDOW ${windowIndex + 1}`,
     fps: Math.round(frames * 1000 / elapsed),
+    drawMedian: drawTimes[Math.floor(drawTimes.length / 2)] || 0,
+    drawP95: drawTimes[Math.floor(drawTimes.length * 0.95)] || 0,
+    drawWorst: drawTimes[drawTimes.length - 1] || 0,
     draw: frames ? sumDrawMs / frames : 0,
     blit: frames ? sumBlitMs / frames : 0,
     paint: frames ? stats.paintMs / frames : 0,
@@ -107,6 +119,7 @@ function completeWindow(now) {
     rewind: upd.frames ? upd.rewindMs / upd.frames : 0,
     spawn: upd.frames ? upd.spawnMs / upd.frames : 0,
   });
+  console.info('[gameplay-profile]', results[results.length - 1]);
   windowIndex++;
   if (windowIndex >= WINDOW_COUNT) finish();
   else resetWindow(now);
@@ -131,6 +144,7 @@ export function gameplayProfileFrame(now, { drawMs = 0, blitMs = 0 } = {}, inGam
   if (phase !== 'measure') return;
   frames++;
   sumDrawMs += drawMs;
+  drawTimes.push(drawMs);
   sumBlitMs += blitMs;
   if (now - phaseStartedAt >= WINDOW_MS) completeWindow(now);
 }
@@ -147,7 +161,7 @@ function drawBox(ctx, title, rows, note) {
   const rowH = 22;
   // Two note lines: the upload column needs a legend, and the update split
   // needs somewhere to live that does not cost the table another column.
-  const boxH = 72 + rows.length * rowH;
+  const boxH = 84 + rows.length * rowH;
   const x = (W - boxW) / 2;
   const y = Math.max(4, (H - boxH) / 2);
   ctx.fillStyle = 'rgba(5,6,14,0.97)';
@@ -186,22 +200,25 @@ function drawBox(ctx, title, rows, note) {
     cell(r.submit.toFixed(1), 'submit');
     cell(upload, 'upload', '#b9c9e3');
   });
-  drawText(ctx, note, x + 10, y + boxH - 31, '#7e879d', 0.5, 'ui');
+  drawText(ctx, note, x + 10, y + boxH - 43, '#7e879d', 0.5, 'ui');
   const last = rows[rows.length - 1];
   const split = last
     ? `UPD = simulation half, avg/95th. WORST ${last.updateWorst.toFixed(1)}ms`
       + `  REWIND ${last.rewind.toFixed(2)}ms  SPAWN ${last.spawn.toFixed(2)}ms`
     : 'UPD = simulation half of the frame, average and 95th percentile';
-  drawText(ctx, split, x + 10, y + boxH - 20, '#7e879d', 0.5, 'ui');
+  drawText(ctx, split, x + 10, y + boxH - 32, '#7e879d', 0.5, 'ui');
   // Art built DURING a visible frame is the hitch this phase exists to remove,
   // so it gets its own colour: green once a stage can be played without
   // rasterizing anything, red for however many are left.
   if (last) {
     const miss = last.artVisibleMisses;
     drawText(ctx, `ART built-in-frame ${miss}  (of ${last.artCreated} built)`,
-      x + 10, y + boxH - 9, miss ? '#f08e9e' : '#8ef0c0', 0.5, 'ui');
+      x + 10, y + boxH - 21, miss ? '#f08e9e' : '#8ef0c0', 0.5, 'ui');
     drawText(ctx, `CACHE ${last.artEntries} canvases, ${last.artResidentMB.toFixed(0)}MB resident`,
-      x + 250, y + boxH - 9, last.artResidentMB > 250 ? '#f08e9e' : '#b9c9e3', 0.5, 'ui');
+      x + 250, y + boxH - 21, last.artResidentMB > 250 ? '#f08e9e' : '#b9c9e3', 0.5, 'ui');
+    drawText(ctx, `CULL ${last.entitiesCulled}/${last.entitiesConsidered}  LCD ${last.lcdHits}H/${last.lcdMisses}M`
+      + ` ${(last.lcdBytes / 1048576).toFixed(1)}MB  METERS ${last.mixerMetering ? 'ON' : 'OFF'}`,
+      x + 10, y + boxH - 9, '#b9c9e3', 0.5, 'ui');
   }
 }
 

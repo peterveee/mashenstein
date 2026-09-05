@@ -15,9 +15,10 @@
 //
 // MediaRecorder writes whatever container the browser prefers — Chrome and
 // Safari on this Mac can both mux H.264 into MP4 directly; anything else falls
-// back to WebM. Either way the clip is POSTed to the dev server, which remuxes
-// (or transcodes) it with ffmpeg into work/video/<name>.mp4 and answers with
-// the path. If the server cannot be reached the raw file is offered as a
+// back to WebM. Either way the clip is POSTed to the dev server, which re-encodes
+// it with x264 into work/video/<name>.mp4 and answers with the path. That second
+// pass is where the size comes off: what the browser hands over is a hardware
+// encoder's first draft at tens of megabits, and it leaves as a fifth of that. If the server cannot be reached the raw file is offered as a
 // browser download instead, so a recording is never lost to plumbing.
 import { presentCanvas, W, H } from '../engine/renderer.js';
 import { Audio } from '../engine/audio.js';
@@ -41,9 +42,11 @@ const MIME_CANDIDATES = [
 // The frame rate captureStream is asked for. The game presents at the display
 // rate; asking for 60 means a 120Hz panel is thinned rather than doubled.
 const CAPTURE_FPS = 60;
-// Generous: the encoder is hardware on this Mac and the clip is remuxed, not
-// re-encoded, so the bits in the file are the bits chosen here. Pixel art with
-// hard edges shows every byte of quantisation, so err high.
+// Generous on purpose: this is the INTERMEDIATE, not the deliverable — the dev
+// server re-encodes it at a sane size — so the only job here is to hand ffmpeg
+// a clean picture. Hard-edged pixel art shows every byte of quantisation, and a
+// hardware encoder in a hurry is bad at it, so err high and let x264 sort it
+// out. (Chrome treats this as a suggestion and routinely overshoots it.)
 const VIDEO_BPS = 24e6;
 const AUDIO_BPS = 256e3;
 

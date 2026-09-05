@@ -7,6 +7,7 @@
   "scripts": {
     "build": "node build/build.js",
     "dev": "node build/dev.js",
+  "devs": "MASH_DEV_TLS=1 node build/dev.js",
     "dev:once": "node build/build.js --watch",
     "test": "node tests/run-all.js",
     "test:all": "node tests/run-all.js --all",

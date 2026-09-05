@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statS
 import { createHash } from 'node:crypto';
 import { execFileSync, execFile } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
+import { createServer as createTlsServer } from 'node:https';
 import { dirname, join } from 'node:path';
 import { hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -333,22 +334,35 @@ function hostAllowed(header) {
 // ---------------------------------------------------------------- recordings
 // The dev menu's recorder (src/dev/recorder.js) POSTs a MediaRecorder clip here
 // and gets back the path of an MP4 under work/video/. The browser has no way to
-// write into the tree and no ffmpeg, so this is where the container gets
-// finished: an H.264 MP4 from Chrome or Safari is remuxed losslessly (fragmented
-// mp4 with no duration in the header → a plain seekable one), and a WebM is
-// transcoded to x264 with the same settings tools/lib/mp4-pipe.js uses. Dev
-// server only — the published site never has this route.
+// write into the tree and no ffmpeg, so this is where the clip is finished —
+// and finishing it means RE-ENCODING, not remuxing.
+//
+// The browser's hardware encoder is fast and dumb: asked for 24 Mbps it wrote
+// 2560×1440 at 43, so a ninety-second take landed as half a gigabyte. Handing
+// that to x264 at crf 18 gives the same picture back at a fifth of the size
+// (measured on a real bot-play take: 113MB → 23MB over twenty seconds, SSIM
+// 0.987) and encodes at ~3.7× realtime, so the wait is a fraction of the run.
+// -preset veryfast rather than the slow preset the offline tools use, because
+// this one is in front of somebody who just finished a take; slower presets buy
+// under 1% here — the source is already H.264, and its own artefacts are what
+// costs the bits. VideoToolbox was tried and lost on both size and speed.
+//
+// MASH_RECORD_CRF overrides the quality (lower = bigger and better), and
+// MASH_RECORD_COPY=1 keeps the old lossless remux for a take that has to stay
+// bit-exact. Dev server only — the published site never has this route.
 const RECORD_ROUTE = '/__dev/record';
 const RECORD_DIR = join(root, 'work', 'video');
 
-function ffmpegArgs(inPath, outPath, ext) {
-  const remux = ext === 'mp4';
+const RECORD_CRF = process.env.MASH_RECORD_CRF || '18';
+
+function ffmpegArgs(inPath, outPath) {
+  const copy = process.env.MASH_RECORD_COPY === '1';
   return [
     '-y', '-hide_banner', '-loglevel', 'error',
     '-i', inPath,
-    ...(remux
+    ...(copy
       ? ['-c', 'copy']
-      : ['-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation', '-crf', '14',
+      : ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'animation', '-crf', RECORD_CRF,
         '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k']),
     '-movflags', '+faststart',
     outPath,
@@ -382,7 +396,7 @@ function handleRecordUpload(req, res, url) {
       reply(400, { error: 'empty recording' });
       return;
     }
-    execFile('ffmpeg', ffmpegArgs(rawPath, outPath, ext), { timeout: 10 * 60 * 1000 }, (err, _out, stderr) => {
+    execFile('ffmpeg', ffmpegArgs(rawPath, outPath), { timeout: 30 * 60 * 1000 }, (err, _out, stderr) => {
       if (err) {
         // No ffmpeg, or a container it could not read: keep the raw file so the
         // take is not lost, and say what happened. The menu shows the note.
@@ -392,16 +406,67 @@ function handleRecordUpload(req, res, url) {
         return;
       }
       try { unlinkSync(rawPath); } catch { /* the mp4 is what matters */ }
-      console.log(`[record] ${rel(outPath)}  (${(bytes / 1e6).toFixed(1)}MB ${ext} in)`);
+      let out = 0;
+      try { out = statSync(outPath).size; } catch { /* just the log line */ }
+      console.log(`[record] ${rel(outPath)}  (${(bytes / 1e6).toFixed(1)}MB ${ext} in`
+        + (out ? ` → ${(out / 1e6).toFixed(1)}MB, ${(100 - (out / bytes) * 100).toFixed(0)}% smaller` : '') + ')');
       reply(200, { path: rel(outPath) });
     });
   });
   req.pipe(file);
 }
 
-function startProxy(host, port, upstreamPort) {
+// TLS FOR THE DEVICE URL, and the one thing it is actually for.
+//
+// AudioWorklet requires a SECURE CONTEXT. `localhost` counts as one by fiat, but
+// `http://MBP14.local:8001` does not — so on a phone `ctx.audioWorklet` is simply
+// undefined, and TNGR-2 (43 shipped presets) plays nothing at all, silently. That is a
+// property of the URL, not of the phone, and it makes the LAN dev server unable to test
+// the one part of the engine most likely to behave differently on a device.
+//
+// OPT-IN, and deliberately so: turning this on unasked would break every saved
+// `http://` bookmark and every other session already talking to this port. So there are
+// two scripts rather than a flag anyone has to remember:
+//
+//     npm run dev    plain http, exactly as it always was
+//     npm run devs   the same server over TLS  ("dev secure")
+//
+// `devs` is only MASH_DEV_TLS=1 in front of the same command; the variable still works
+// on its own, and MASH_DEV_KEY / MASH_DEV_CERT point at a pair kept somewhere else.
+// Without a readable pair the server stays plain http and says why rather than failing
+// to start — a dev server that will not boot is a worse answer than one without TLS.
+//
+// The cert has to be TRUSTED BY THE PHONE, which is the part a self-signed pair does not
+// give you — iOS refuses an untrusted cert outright rather than offering a warning to
+// click through. `mkcert` exists for exactly this: it makes a local CA, and installing
+// that CA on the phone once makes every cert it signs valid there. See the banner.
+//
+// work/dev-cert/ because CLAUDE.md's rule is that everything generated and untracked
+// lives under work/ — which also means a private key cannot be committed by accident.
+const DEV_CERT_DIR = join(root, 'work', 'dev-cert');
+function devTlsOptions() {
+  if (process.env.MASH_DEV_TLS !== '1') return null;
+  const keyPath = process.env.MASH_DEV_KEY || join(DEV_CERT_DIR, 'key.pem');
+  const certPath = process.env.MASH_DEV_CERT || join(DEV_CERT_DIR, 'cert.pem');
+  if (!existsSync(keyPath) || !existsSync(certPath)) {
+    console.error('\nMASH_DEV_TLS=1 but no certificate pair was found:');
+    console.error(`    key:  ${keyPath}`);
+    console.error(`    cert: ${certPath}`);
+    console.error('  Make a locally-trusted pair once (Homebrew):');
+    console.error('    brew install mkcert && mkcert -install');
+    console.error(`    mkdir -p ${DEV_CERT_DIR}`);
+    console.error(`    mkcert -key-file ${join(DEV_CERT_DIR, 'key.pem')} \\`);
+    console.error(`           -cert-file ${join(DEV_CERT_DIR, 'cert.pem')} \\`);
+    console.error(`           ${mdnsName() || 'this-mac.local'} localhost 127.0.0.1`);
+    console.error('  Continuing on plain http.\n');
+    return null;
+  }
+  return { key: readFileSync(keyPath), cert: readFileSync(certPath) };
+}
+
+function startProxy(host, port, upstreamPort, tls = null) {
   return new Promise((resolve, reject) => {
-    const server = createServer((req, res) => {
+    const handler = (req, res) => {
       if (!hostAllowed(req.headers.host)) {
         res.writeHead(403, { 'content-type': 'text/plain' });
         res.end(`403 - the dev server does not answer to the name "${req.headers.host}".\n`
@@ -430,7 +495,10 @@ function startProxy(host, port, upstreamPort) {
         res.end('502 - the build server behind this port is not answering.\n');
       });
       req.pipe(upstream);
-    });
+    };
+    // Only the OUTER hop is encrypted. esbuild stays on plain http over loopback, which
+    // never leaves the machine and is the same hop it always was.
+    const server = tls ? createTlsServer(tls, handler) : createServer(handler);
     server.on('error', reject);
     server.listen(port, host, () => resolve(server));
   });
@@ -515,8 +583,12 @@ if (watch) {
   });
 
   let boundHost = HOST;
+  // Resolved before the listen so a missing pair prints its instructions ahead of the
+  // banner, rather than under a URL that says https and is not.
+  const tls = devTlsOptions();
+  const scheme = tls ? 'https' : 'http';
   try {
-    await startProxy(HOST, PORT, upstream.port);
+    await startProxy(HOST, PORT, upstream.port, tls);
   } catch (err) {
     // A fixed PORT fails loudly when one is already running, where the old
     // ephemeral-port behaviour would silently start a SECOND server somewhere
@@ -558,12 +630,28 @@ if (watch) {
     const mdns = mdnsName();
     const lan = Object.values(networkInterfaces()).flat()
       .find((n) => n && n.family === 'IPv4' && !n.internal);
-    console.log(`dev server: http://localhost:${PORT}/`);
+    console.log(`dev server: ${scheme}://localhost:${PORT}/`);
     // Bonjour first, and labelled, because it is the one worth saving: the IP
     // below is only today's lease. Some guest networks block mDNS between
     // clients, which is the one case the IP is still needed for.
-    if (mdns) console.log(`    device: http://${mdns}:${PORT}/   <- save this one`);
-    if (lan) console.log(`            http://${lan.address}:${PORT}/   (today's lease; it moves)`);
+    if (mdns) console.log(`    device: ${scheme}://${mdns}:${PORT}/   <- save this one`);
+    if (lan) console.log(`            ${scheme}://${lan.address}:${PORT}/   (today's lease; it moves)`);
+    // The device URL is the only one this matters for: localhost is a secure context
+    // whatever the scheme, and a .local name never is without it. Said here rather than
+    // left to be discovered as a synth that makes no sound.
+    if (!tls) {
+      console.log('');
+      console.log('  Plain http, so the device URL is NOT a secure context: AudioWorklet');
+      console.log('  is unavailable there and TNGR-2 lanes are silent on a phone.');
+      console.log('  (localhost is fine either way.) To serve the device URL over TLS:');
+      console.log('    brew install mkcert && mkcert -install');
+      console.log(`    mkdir -p ${DEV_CERT_DIR} && cd ${DEV_CERT_DIR}`);
+      console.log(`    mkcert -key-file key.pem -cert-file cert.pem ${mdns || 'this-mac.local'} localhost 127.0.0.1`);
+      console.log('    MASH_DEV_TLS=1 npm run dev');
+      console.log('  Then install mkcert\'s root CA on the phone ONCE — `mkcert -CAROOT`,');
+      console.log('  AirDrop rootCA.pem to it, Settings > Profile Downloaded > Install,');
+      console.log('  then Settings > General > About > Certificate Trust Settings.');
+    }
     if (firewallBlocksDevices()) {
       console.log('');
       console.log('  Devices cannot reach this yet: the macOS firewall has not been told');
@@ -575,7 +663,7 @@ if (watch) {
   } else {
     // Someone named a single interface via MASH_DEV_HOST, so localhost is NOT
     // listening. Print only the URL that actually answers.
-    console.log(`dev server: http://${boundHost}:${PORT}/  (localhost is not bound)`);
+    console.log(`dev server: ${scheme}://${boundHost}:${PORT}/  (localhost is not bound)`);
   }
 } else {
   const result = await esbuild.build(options);

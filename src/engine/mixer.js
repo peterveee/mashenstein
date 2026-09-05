@@ -481,12 +481,12 @@ function makeDelay(ctx) {
 export const DELAY_DIVISIONS = TEMPO_DIVISIONS;
 
 export function createMixer(ctx, {
-  musicBus, echoBus, master, destination = ctx.destination, songTrim, delayLp,
+  musicBus, echoBus, master, destination = ctx.destination, songTrim, delayLp, metered = true,
 }) {
   Tone.setContext(ctx);
 
   /*
-   * Meters are for eyes, and an offline render has none.
+   * Display meters serve the desk. Gameplay opts out; offline always opts out.
    *
    * Every strip, every aux and the master carry a Tone.Meter — a Gain, a
    * ChannelSplitter and an AnalyserNode each — plus a zero-gain sink wired to
@@ -499,9 +499,9 @@ export function createMixer(ctx, {
    * engine consults them, and a gain-0 contribution sums to the same float either way,
    * so the render is unchanged — which tests/null-test.js is the proof of.
    */
-  const metered = typeof ctx.startRendering !== 'function';
+  const metersEnabled = metered && typeof ctx.startRendering !== 'function';
   const makeMeter = (source, opts) => {
-    if (!metered) return null;
+    if (!metersEnabled) return null;
     const m = new Tone.Meter({ normalRange: true, smoothing: 0.6, ...opts });
     Tone.connect(source, m);
     const sink = ctx.createGain();
@@ -1130,7 +1130,7 @@ export function createMixer(ctx, {
   // The displayed master meter is the actual output meter: post master inserts, post
   // master pan, and post limiter when the limiter is enabled. It is a monitoring branch,
   // not an inline node, so it cannot alter the rendered signal or the bypass path.
-  if (metered) {
+  if (metersEnabled) {
     masterMeter = new Tone.Meter({ normalRange: true, smoothing: 0.6, channelCount: 2 });
     const sink = ctx.createGain();
     sink.gain.value = 0;
@@ -1192,6 +1192,8 @@ export function createMixer(ctx, {
       const v = readMeterLevels(masterMeter);
       return Math.max(v[0], v[1]);
     },
+    /** Whether this graph owns display-meter branches. */
+    metered: metersEnabled,
     /** [left, right], 0..1, from the final master output. */
     masterLevels: () => readMeterLevels(masterMeter),
     /** [left, right], 0..1, before the master insert chain, for diagnostics only. */

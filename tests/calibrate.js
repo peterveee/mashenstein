@@ -222,6 +222,7 @@ cal3.exit();
 // ---- the briefing offer ----------------------------------------------------
 
 const { BriefingState } = await import('../src/game/menus.js');
+const { H: H_UNITS } = await import('../src/engine/renderer.js');
 const stage = { id: 'rhythm-1', index: 1, mission: { desc: 'MEET THE QUOTA' } };
 const makeBriefing = () => {
   let played = 0;
@@ -271,6 +272,28 @@ picky.b.update(1 / 60);
 Input.release('confirm');
 Input.endFrame();
 assert(picky.calibrates() === 1 && picky.plays() === 0, 'and moving up to the offer takes it');
+
+// A thumb on the offer screen has one small target and one enormous one. Only
+// the AUDIO SYNC row itself takes the player off the stage; everything else on
+// the briefing — the memo, the header, the empty black — means PLAY, because a
+// tap that landed nowhere used to do nothing at all and read as a dead screen.
+const tapAt = (y) => {
+  const t = makeBriefing();
+  Input.pointer = { x: 240, y, down: true };
+  Input.press('pointer');
+  t.b.update(1 / 60);
+  Input.release('pointer');
+  Input.endFrame();
+  Input.pointer = { x: 0, y: 0, down: false };
+  return t;
+};
+const onRow = tapAt(H_UNITS - 35);
+assert(onRow.calibrates() === 1 && onRow.plays() === 0, 'a tap on the AUDIO SYNC row takes the offer');
+for (const y of [10, 100, H_UNITS - 60, H_UNITS - 45, H_UNITS - 16, H_UNITS - 2]) {
+  const off = tapAt(y);
+  assert(off.plays() === 1 && off.calibrates() === 0,
+    `a tap at y=${y}, off the offer row, gets on with the stage`);
+}
 
 const escaped = makeBriefing();
 Input.press('back');

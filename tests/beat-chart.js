@@ -17,6 +17,7 @@ const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner
 const { randomPowerPickup } = await import('../src/game/powerups.js');
 const { beatRibbonOffset, beatRibbonMarkerOffset, RIBBON_BEAT_PX } = await import('../src/game/hud.js');
 const { RunState } = await import('../src/game/run.js');
+const { W } = await import('../src/engine/renderer.js');
 const { STAGES } = await import('../src/data/stages.js');
 const { save } = await import('../src/engine/save.js');
 const { HEROES, heroShoots } = await import('../src/data/heroes.js');
@@ -698,6 +699,47 @@ Audio.songBeat = oldSongBeat;
       homing ? 'a round fired from the top of a jump dives onto the card box'
         : 'and the control: a round that keeps its height sails over it');
   }
+  Audio.songBeat = oldSongBeat;
+  Audio.sourceBank = oldSourceBank;
+}
+
+// ---- A MISSED ROUND DIES IN FRAME ------------------------------------------
+// A shot that connects with nothing has to end where the player can see it end.
+// The cull used to be camX + W + 60 — a literal from when the frame WAS W wide
+// — which at the shipped zoom let a missed round carry four beats of road past
+// the right edge and break something out there, so a shot at empty lane paid
+// off as a bang from off screen. The frame is W / camZoom now, and the box the
+// shot is aimed at stands BOX_LEAD_BEATS out, well inside it.
+{
+  const oldSourceBank = Audio.sourceBank;
+  const oldSongBeat = Audio.songBeat;
+  const stage = STAGES.find((s) => s.id === 'rhythm-1');
+  save.load(); save.newSlot(0, 0);
+  const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+  run.enter();
+  run.rhythmOpeningUntil = null;
+  Audio.sourceBank = run.cabinet.music;
+  const advance = installBeatClock(run, run.spawner.chart.loopBeats);
+  run.relay.current = 'clara';
+  let impacts = 0, worst = -Infinity;
+  const impact = run.projectileImpact.bind(run);
+  run.projectileImpact = (pr, x, y) => {
+    if (pr.type === 'pellet') {
+      impacts++;
+      worst = Math.max(worst, x - (run.camX + W / run.camZoom));
+    }
+    return impact(pr, x, y);
+  };
+  // Fired on every recharge, on the beat and off it alike: what is asserted is
+  // where a round may go off, not whether the press was any good.
+  for (let i = 0; i < 60 * 25; i++) {
+    advance(1 / 60);
+    run.update(1 / 60);
+    if (run.player.abilityCd <= 0) run.useAbility();
+  }
+  assert(impacts > 4, `spamming the trigger down a rhythm lane lands rounds on things (${impacts})`);
+  // The pellet's own body, and nothing more: 8px wide, drawn from pr.x.
+  assert(worst <= 16, `and every one of them goes off inside the frame (worst ${worst.toFixed(1)}px past the right edge)`);
   Audio.songBeat = oldSongBeat;
   Audio.sourceBank = oldSourceBank;
 }
@@ -1415,6 +1457,35 @@ const rewindBand = randomPowerPickup({ float: () => { rewindBandReads++; return 
   { allowRewind: true, banned: new Set(['capRewind']) });
 assert(rewindBand === 'capShield' || rewindBand === 'capMagnet', 'the banned rewind band maps to a safe power');
 assert(rewindBandReads === 1, 'rewind-band mapping does not add an RNG read');
+
+// ---- THE RAMP OUTLIVES THE RUN, NOT THE SONG ------------------------------
+//
+// The bpm ramp is a TRANSPORT WARP, and run.js deliberately leaves it in force on
+// the way out so the celebration does not slow down. Nothing then took it off,
+// so a rhythm 3-3 finished at 129 left the hub, the cabinet screen and every song
+// after it running about 4% fast. A cabinet plays its song at the song's tempo:
+// the reset belongs to the song change, which is the one event that means
+// "whatever was performing the last one is over".
+{
+  const rampCab = { music: { bpm: 124 } };
+  const leaving = Object.create(RunState.prototype);
+  leaving.beatLock = true;
+  leaving.cabinet = rampCab;
+  leaving.stage = { bpmRamp: 1 };
+  leaving.beatBpmSteps = 5;          // every checkpoint banked: 124 -> 129
+  leaving.keepSongTempo();
+  assert(Math.abs(Audio.tempo - 129 / 124) < 1e-9,
+    'leaving a ramped stage keeps the tempo it was played at, for the celebration');
+  // Back at the cabinet screen. Re-selecting the song already up is exactly the
+  // case that was wrong, so it is the case asserted: the reset has to happen
+  // before setBank's same-bank early return, not after it.
+  const wasSource = Audio.sourceBank;
+  Audio.sourceBank = rampCab.music;
+  Audio.setBank(rampCab.music);
+  assert(Audio.tempo === 1 && Audio.detune === 1,
+    'and the next song change puts the transport back to the base tempo');
+  Audio.sourceBank = wasSource;
+}
 
 console.log(failed ? 'BEAT-CHART: FAILED' : 'BEAT-CHART: PASSED');
 process.exit(failed ? 1 : 0);

@@ -1897,6 +1897,19 @@ assert(/setStepAtBoundary\([\s\S]*?const nextBar[\s\S]*?this\.pendingStep/.test(
   && /applyPendingStep\([\s\S]*?this\.markVisualSeek\(this\.step, this\.nextTime\)/.test(audio)
   && /function jumpTo\([\s\S]*?Audio\.setStepAtBoundary\(within\)/.test(entry),
   'a normal playing seek is applied by the audio scheduler at the next bar boundary and its visual start time is retained');
+// ONE GESTURE, ONE SEEK. A double-click on a bar dispatches two clicks and a `dblclick`,
+// and the timeline's own click handler seeks on each of them. The scheduler runs ahead of
+// the ear, so it can cross the bar line between the first and the last of those: the seek
+// lands, the clicked bar starts, and the next request rewinds it to the top of the bar it
+// is already playing. The bar is then heard twice. `jumpTo` drops a request for the bar it
+// has just been sent to — and only once that has LANDED, so a double-click on bar 1 still
+// reaches its transport restart while its first click is merely queued. Pointed seeks
+// only: `immediate` is a transport button, and Stop's return to the start position must
+// always move the playhead.
+assert(/const SEEK_GESTURE_MS = \d+;/.test(entry)
+  && /function jumpTo\([\s\S]*?if \(!immediate\) \{[\s\S]{0,600}?Date\.now\(\) - \(lastPlayingSeek\?\.at \?\? 0\) < SEEK_GESTURE_MS[\s\S]{0,200}?lastPlayingSeek\.step === within[\s\S]{0,200}?Audio\.step >= within && Audio\.step < within \+ 16\) return;[\s\S]{0,200}?lastPlayingSeek = \{ step: within, at: Date\.now\(\) \}/.test(entry)
+  && /if \(start && within === 0\) \{/.test(entry),
+  'the later clicks of one double-click do not seek again to the bar the transport is already playing');
 assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   && /const isUserPreset = \(voice\) =>/.test(editor)
   && /const libraryOwner =/.test(editor)

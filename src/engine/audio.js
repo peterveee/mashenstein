@@ -664,6 +664,7 @@ function newSchedulerWork() {
 class AudioSys {
   constructor() {
     this.ctx = null;
+    this.mixerMeteringEnabled = true;
     this.offline = false;  // true when driven by an OfflineAudioContext (render tools)
     this.noiseSeed = null; // set for offline renders; null = Math.random()
     // Shared delay, as it has always been tuned: dotted eighth, 0.35 feedback,
@@ -1118,6 +1119,7 @@ class AudioSys {
     // directly on the global master; a song's -19dB title trim must not attenuate UI
     // cues or tutorial feedback.
     this.mixer = createMixer(this.ctx, {
+      metered: this.mixerMeteringEnabled,
       musicBus: this.musicBus, echoBus: this.echoBus,
       master: this.musicGain, destination: this.master,
       // The original echo's return leg: the mixer splices its EQ and level in
@@ -1598,10 +1600,18 @@ class AudioSys {
     const target = Math.max(0, Math.floor(step));
     const nextBar = this.step % 16 === 0 ? this.step : (Math.floor(this.step / 16) + 1) * 16;
     const boundary = this.loopEnd == null ? nextBar : Math.min(this.loopEnd, nextBar);
-    const inLoop = this.loopStart != null && this.loopEnd != null
-      && (target < this.loopStart || target >= this.loopEnd);
+    // A SELECTED loop is a fence, and pointing outside it is a request to hear the
+    // region: the seek lands on its start. A SONG'S OWN markers are not a fence — the
+    // bars before the region are its intro, they are part of the song, and they play
+    // once on the way in. That is the same rule `setLoop`'s `jump: false` follows when
+    // those markers are armed, and without it aiming at an intro bar on the desk with
+    // the game loop on landed on the loop start instead of the bar that was clicked.
+    // Past the END there is nothing either way: the wrap would pull the transport
+    // straight back, so that side clamps whichever loop is armed.
+    const outside = this.loopStart != null && this.loopEnd != null
+      && (target >= this.loopEnd || (target < this.loopStart && !this.formLoopArmed));
     this.pendingStep = {
-      step: inLoop ? this.loopStart : target,
+      step: outside ? this.loopStart : target,
       boundary,
     };
   }
@@ -1957,6 +1967,14 @@ class AudioSys {
       if (this._rewindOut) this._rewindOut.connect(this._recGain);
     }
     return this._recDest.stream;
+  }
+
+  /** Configure display-meter branches before construction; never rebuild a live graph. */
+  setMixerMeteringEnabled(enabled) {
+    const next = !!enabled;
+    if (this.mixer && next !== this.mixerMeteringEnabled) return false;
+    this.mixerMeteringEnabled = next;
+    return true;
   }
 
   /**
@@ -4403,6 +4421,16 @@ class AudioSys {
   // a listener hear every bar before that region on the first pass.
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined,
     { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false } = {}) {
+    // A SONG ARRIVES AT ITS OWN TEMPO. The transport warp belongs to whatever was
+    // performing the last one — the star powerup's whole tone, slow-mo's drag, and
+    // above all the bpm ramp a beat stage banks at every checkpoint. That last one
+    // deliberately OUTLIVES the run (see run.js keepSongTempo: the celebration must
+    // not slow down), and with nothing to take it off again it rode all the way back
+    // out: finish rhythm 3-3 at 129bpm and the hub, the cabinet screen and every song
+    // after it played about 4% fast, forever. A cabinet screen plays its song at the
+    // song's tempo. Reset before the early return below, because arriving back at the
+    // song already up is exactly the case that was wrong.
+    this.setWarp(1, 1);
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with

@@ -309,18 +309,22 @@ const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
 // lane at the top of the swell; it is also about the least that still reads as
 // a pulse rather than as a jitter at the size these are drawn.
 const RIBBON_PULSE = 0.25;
-// How far the playhead stands proud of the plate at each end. FLAT PIXELS, not
-// units: this one number is not a glyph and does not scale with them. At three
-// units it was 6px of overhang at each end plus its casing — a red post as tall
-// again as the strip, and the biggest thing on the panel by a distance.
+// WHERE THE PLAYHEAD STARTS AND STOPS — and it is the TOP ROW's band, not a
+// number of its own. The strip shares this row with the status pill on its left
+// and the GOAL panel on its right, both of which span PILL_Y..PILL_Y + PILL_H;
+// a column that overhung that band by its own tab plus its casing was the one
+// object up there breaking the row's line, top and bottom, and it read as a
+// post driven THROUGH the HUD rather than as a mark on it.
 //
-// One, not two. With its casing that is still 2px clear of a 12px plate at each
-// end — the tab reads as a tab, and the eye finds the line by its colour rather
-// than by its height. At two the column ran half as tall again as the band it
-// marks, which on a pale LCD sky was the first thing you saw and the last thing
-// you needed to see.
-const RIBBON_TAB = 1;
-export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + RIBBON_TAB;
+// Held to the row, the overhang is whatever the plate leaves — the plate is
+// thinner than the pill on purpose (RIBBON_H against PILL_H), so the tabs are
+// still there and still say HERE, NOW; they are simply inside the furniture
+// now. It also puts the column on integer edges, which the old
+// RIBBON_Y - 1 never was.
+const PLAYHEAD_TOP = PILL_Y, PLAYHEAD_BOTTOM = PILL_Y + PILL_H;
+// The bottom of everything the strip draws, which the world keeps out from
+// under. The playhead is the lowest of it, so it is the playhead that sets it.
+export const BEAT_RIBBON_BOTTOM = PLAYHEAD_BOTTOM;
 // The row a speech card's first line sits on when nothing is pushing it down.
 //
 // IT IS THE BEAT STAGE'S ROW NOW, on every stage. This used to be a flat 46 —
@@ -643,25 +647,60 @@ export function drawBeatRibbon(ctx, run) {
 // the band the column drops to a wash, so the marker under the line stays
 // readable through it, and only the two tabs are solid.
 const PLAYHEAD_INK = '255,82,48';
-// Flat pixels again, for the same reason as RIBBON_TAB: 3 units of core inside
-// 2 units of casing drew a 10px slab over the hero. A 3px core in a 1px casing
-// is a line — still the boldest single mark on the strip, because nothing else
-// runs the full height of it.
-const PLAYHEAD_W = 3, PLAYHEAD_EDGE = 1;
+// Flat pixels again, for the same reason as PLAYHEAD_TOP: 3 units of core
+// inside 2 units of casing drew a 10px slab over the hero. A 3px core in a
+// half-pixel casing is a line — still the boldest single mark on the strip,
+// because nothing else runs the full height of it.
+//
+// THE CASING IS HALF A PIXEL, not one. At a full pixel the ring was a third of
+// the object's width and the column read as a dark post with a red filament in
+// it rather than as a red line that survives a pale sky; it was also drawn on
+// half-pixel edges (RIBBON_Y is 7.5), so what you actually saw was two rows of
+// grey mush top and bottom. Half a pixel of casing on integer edges is a hair,
+// which is all it was ever meant to be.
+const PLAYHEAD_W = 3, PLAYHEAD_EDGE = 0.5;
+// AND IT IS A CAPSULE, not a slab. Every other object on this row — the status
+// pill, the GOAL panel, the portrait disc — is a rounded plate, and the one
+// square-cornered post among them read as a different piece of furniture that
+// had been dropped on the strip. Fully rounded (r = half the width) rather than
+// softened: at four pixels across there is no radius between "square" and
+// "capsule" that is legible as a choice.
+const PLAYHEAD_R = (PLAYHEAD_W + PLAYHEAD_EDGE * 2) / 2;
 function drawRibbonPlayhead(ctx, anchor, y, h, pulse) {
   const w = PLAYHEAD_W, x = Math.round(anchor - w / 2);
-  const top = y - RIBBON_TAB, bot = y + h + RIBBON_TAB;
+  const top = PLAYHEAD_TOP, bot = PLAYHEAD_BOTTOM;
   ctx.globalAlpha = 1;
+  const e = PLAYHEAD_EDGE;
   // The casing is what makes it legible on a light stage; on the plate it is
   // the plate's own colour and simply disappears.
   ctx.fillStyle = 'rgba(16,20,28,0.6)';
-  ctx.fillRect(x - PLAYHEAD_EDGE, top - PLAYHEAD_EDGE,
-    w + PLAYHEAD_EDGE * 2, (bot - top) + PLAYHEAD_EDGE * 2);
+  playheadPath(ctx, x - e, top - e, w + e * 2, (bot - top) + e * 2, PLAYHEAD_R);
+  ctx.fill();
+  // The three bands — solid above the plate, wash across it, solid below —
+  // painted as rects and cut to the capsule, so the rounding is stated once
+  // and the tabs cannot square off the ends of their own column.
+  ctx.save();
+  playheadPath(ctx, x, top, w, bot - top, w / 2);
+  ctx.clip();
   ctx.fillStyle = `rgba(${PLAYHEAD_INK},${0.72 + pulse * 0.28})`;
-  ctx.fillRect(x, top, w, RIBBON_TAB);
-  ctx.fillRect(x, y + h, w, RIBBON_TAB);
+  ctx.fillRect(x, top, w, y - top);
+  ctx.fillRect(x, y + h, w, bot - (y + h));
   ctx.fillStyle = `rgba(${PLAYHEAD_INK},${0.3 + pulse * 0.2})`;
   ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+// Built by hand rather than via ctx.roundRect, which the headless test stub
+// does not implement — the same reason plugs.js draws its own.
+function playheadPath(ctx, x, y, w, h, r) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
 }
 
 

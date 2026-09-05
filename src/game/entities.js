@@ -299,6 +299,25 @@ export const OBSTACLES = {
 // What a thing is made of, for when it stops being a thing. Colours are pulled
 // from each prop painter so the chunks read as pieces of the sprite that just
 // left; `mat` picks the timbre of the scatter they make when they land.
+/**
+ * THE THREE FLOOR PADS ARE NOT PROPS, AND A ROUND GOES OVER THEM.
+ *
+ * Boost, spring and loop share one contract — run over it and it pays out,
+ * jump it and it never sees you — and the projectile loop only knew about the
+ * boost. So a pellet, which may hit anything `ground`, met the other two: they
+ * carry no `breakable` key, so the shot fell through to breakObstacle and took
+ * the pad away. A spring you could shoot off the floor is a road removed by an
+ * input that has nothing to do with roads, and the loop took its ring with it.
+ *
+ * They are floor furniture four to six pixels tall, so the fix is the boost's:
+ * the round flies over. Stopping it dead above a pad would spend the shot on
+ * scenery instead — which is what `breakable: false` means and what these are
+ * not.
+ */
+export function isFloorPad(def) {
+  return !!def && !!(def.isBoost || def.isSpring || def.isLoop);
+}
+
 export const DEBRIS = {
   cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6, mat: 'soft' },
   cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14, mat: 'soft' },

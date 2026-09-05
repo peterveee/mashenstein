@@ -8169,6 +8169,10 @@ let pianoRollLoopRange = null;
 let loopAnchor = 0;
 let pendingLoopAnchor = null;
 let pendingSeekStep = null;
+// The last bar a playing seek was ASKED for, and when. A double-click is two clicks and
+// a `dblclick` on the same bar, spread over a quarter of a second, and every one of them
+// arrives here — see the guard in `jumpTo`, which is the only reader.
+let lastPlayingSeek = null;
 let pendingPlaybackFlash = null;
 // A seek changes the scheduler's integer step before its first destination note reaches
 // the speakers. Keep the visual cursor on the last heard position during that gap; the
@@ -8630,6 +8634,11 @@ $('locatorB').onclick = (e) => {
   if (locB != null) { locB = null; applyLoop(); pianoRoll.redraw(); toast('Locator B cleared'); }
 };
 
+// How long the clicks of one pointing gesture can be spread over. Longer than the
+// platform's double-click threshold (500ms on macOS at its slowest setting), because the
+// gesture is only over once the last of its clicks has been dispatched.
+const SEEK_GESTURE_MS = 600;
+
 /**
  * Move the playhead. While playing, an ordinary seek is queued for the next bar
  * boundary so the current bar is allowed to finish. With a bar loop armed, the
@@ -8665,6 +8674,25 @@ function jumpTo(step, { start = false, immediate = false } = {}) {
     pianoRoll.follow(within);
     kitRoll.follow(within);
     return;
+  }
+  // ONE GESTURE IS ONE SEEK. A double-click is a click, a second click and a `dblclick`
+  // on the same bar, up to half a second apart, and every one of them arrives here. A
+  // seek waits for the bar line, so while it is still queued the later ones are harmless
+  // — they ask for the same destination. What is not harmless is the gap being long
+  // enough for the queue to run out: the scheduler crosses the bar line ahead of the ear,
+  // the first request LANDS, the transport starts the bar that was clicked, and the rest
+  // of the gesture then sends it back to the top of the bar it is already playing. The
+  // bar is heard twice before the song carries on. Being taken again to where you have
+  // just been taken is not a request for anything, so it is dropped — bounded in time,
+  // because coming back to the same bar later IS a request to hear it again.
+  //
+  // Pointed seeks only. An `immediate` seek is a transport button, and Stop returning the
+  // playhead to where Play started must never be read as a stray click.
+  if (!immediate) {
+    if (Date.now() - (lastPlayingSeek?.at ?? 0) < SEEK_GESTURE_MS
+      && lastPlayingSeek.step === within
+      && Audio.step >= within && Audio.step < within + 16) return;
+    lastPlayingSeek = { step: within, at: Date.now() };
   }
   if (start && within === 0) {
     // A running loop has audio already queued ahead of the transport. Rewinding only

@@ -9,7 +9,9 @@ const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY = `
 import { Audio } from ${JSON.stringify(join(ROOT, 'src/engine/audio.js'))};
+import { resolveTrack } from ${JSON.stringify(join(ROOT, 'src/data/tracks.js'))};
 window.__Audio = Audio;
+window.__resolveTrack = resolveTrack;
 `;
 
 let failed = false;
@@ -138,6 +140,40 @@ async function main() {
       panBeforeSparseWrap, panAfterSparseWrap,
     };
   });
+
+  // A SONG'S OWN markers against a SELECTED range, as the desk's double-click meets
+  // them. THE FOOD COURT comes in on bar 1 and repeats bars 9-28, so bars 1-8 are an
+  // intro the game plays once — and pointing at one of them while the music runs has
+  // to land there, not on the loop start. The same seek against a range the mixer
+  // selected must still be pulled into that range, which is what a chosen loop is for.
+  const seeks = await page.evaluate(async () => {
+    const Audio = window.__Audio;
+    const bank = window.__resolveTrack('hub').bank;
+    Audio.setBank(bank, null);
+    const song = {
+      armed: Audio.formLoopArmed, start: Audio.loopStart, end: Audio.loopEnd,
+    };
+    // Inside the repeat, the way the transport is when you reach for an intro bar.
+    Audio.step = 200;
+    Audio.loopHasWrapped = true;
+    Audio.setStepAtBoundary(16);                    // bar 2 — the intro
+    const introQueued = { ...Audio.pendingStep };
+    Audio.step = introQueued.boundary;
+    Audio.applyPendingStep();
+    const intro = { step: Audio.step, wrapped: Audio.loopHasWrapped,
+      start: Audio.loopStart, end: Audio.loopEnd, armed: Audio.formLoopArmed };
+    // Past the end there is nothing to hear: the wrap would pull it straight back.
+    Audio.step = 200;
+    Audio.setStepAtBoundary(Audio.loopEnd + 32);
+    const pastEnd = Audio.pendingStep.step;
+    // The desk's own selected range is a fence, whichever side you point at.
+    Audio.setLoop(song.start, song.end);
+    Audio.step = 200;
+    Audio.setStepAtBoundary(16);
+    const fenced = Audio.pendingStep.step;
+    Audio.setBank(null);
+    return { song, introQueued, intro, pastEnd, fenced };
+  });
   await browser.close();
 
   for (const error of errors) assert(false, `page error — ${error}`);
@@ -176,6 +212,19 @@ async function main() {
     'the sparse loop test reaches the second bar\'s -60 pan offset');
   assert(out.panAfterSparseWrap === 0,
     'a loop boundary resets per-bar pan before a silent first bar');
+
+  assert(seeks.song.armed && seeks.song.start === 128 && seeks.song.end === 448,
+    'THE FOOD COURT arms its own markers — bars 9-28, with bars 1-8 as the intro');
+  assert(seeks.introQueued.step === 16 && seeks.introQueued.boundary === 208,
+    'a seek to an intro bar under the song loop keeps the bar that was clicked');
+  assert(seeks.intro.step === 16 && !seeks.intro.wrapped,
+    'the intro seek lands on that bar rather than on the loop start');
+  assert(seeks.intro.armed && seeks.intro.start === 128 && seeks.intro.end === 448,
+    'the song loop survives the seek, so the intro plays once and then repeats');
+  assert(seeks.pastEnd === 128,
+    'a seek past the loop end still lands on the loop start — the wrap owns that side');
+  assert(seeks.fenced === 128,
+    'a seek outside a SELECTED range is still pulled into it');
 
   console.log(failed ? 'MIXER LOOP: FAILED' : 'MIXER LOOP: PASSED');
   process.exit(failed ? 1 : 0);

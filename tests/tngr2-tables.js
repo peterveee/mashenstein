@@ -220,10 +220,10 @@ assert(quietest > 0.02, `no family has a silent frame at the base level (quietes
 //
 // A family is ~240ms of main thread, and it used to be paid at the first NOTE of the
 // voice that wanted it — mid-bar, with the sequencer's queue draining underneath. The
-// warm-up moves that to the moment a cabinet is selected and spreads it one family per
-// idle slice; what it must NOT do is become a second expansion path, because two
-// expansions of the same family are two different Float32Arrays in every node that
-// reads one. Identity through `built` is the whole claim.
+// warm-up moves that to the moment a cabinet is selected, where the shutter is closed
+// and the caller can simply wait; what it must NOT do is become a second expansion
+// path, because two expansions of the same family are two different Float32Arrays in
+// every node that reads one. Identity through `built` is the whole claim.
 {
   clearTngr2Families();
   const warmed = await warmTngr2Families(['alloy', 'alloy', 'basic'], { idle: false });
@@ -239,19 +239,37 @@ assert(quietest > 0.02, `no family has a silent frame at the base level (quietes
     'a song with no TNGR-2 voices asks for nothing');
 }
 
-// And the two places that ask. The hub asks when a CABINET IS SELECTED, which is
-// minutes of reading a stage list before the shutter closes; run.js keeps its own
-// synchronous loop as the fallback for a dev ?stage= URL that never passed through
-// the hub at all, where it is now a cache hit rather than the expansion.
+// And the two places that ask. The hub asks when a CABINET IS SELECTED, inline and
+// behind the fully closed shutter — `idle: false` is the point of the call, not a
+// detail: a deferred slice runs in a later task, once the shutter is opening, which is
+// the hitch this moved to avoid. run.js keeps its own synchronous loop as the fallback
+// for a dev ?stage= URL that never passed through the hub at all, where it is now a
+// cache hit rather than the expansion.
 {
   const hub = readFileSync(new URL('../src/game/hub/index.js', import.meta.url), 'utf8');
   const run = readFileSync(new URL('../src/game/run.js', import.meta.url), 'utf8');
-  assert(/warmTngr2Families\(tngr2Ids\)/.test(hub)
+  assert(/warmTngr2Families\(tngr2Ids, \{ idle: false \}\)/.test(hub)
     && /import \{ warmTngr2Families \} from '\.\.\/\.\.\/engine\/tngr2\/tables\.js'/.test(hub)
     && /this\.cab\.songMix\?\.voiceParams/.test(hub),
-    'the stage-select screen starts the expansion from the cabinet it just opened');
+    'the stage-select screen expands the cabinet it just opened, and waits for it');
+  assert(/Audio\.prefill\?\.\(1\.2\)/.test(hub),
+    'and queues the sequencer past the block first, so the wait costs no notes');
   assert(/tngr2Family\(osc\.table\)/.test(run),
     'and the stage entry still expands anything that arrived without one');
+}
+
+// The waiting form must actually be synchronous: the whole claim is that the expansion
+// happens inside the caller's task, before the shutter can open. A promise that
+// resolves later is the old behaviour wearing the new option.
+{
+  clearTngr2Families();
+  const pending = warmTngr2Families(['alloy'], { idle: false });
+  // Asked again in the SAME task, before anything is awaited: an id already in the
+  // memo is filtered out, so an empty second ask proves the first one finished inline.
+  const second = warmTngr2Families(['alloy'], { idle: false });
+  assert((await second).length === 0,
+    'idle:false expands before it returns, not in a later task');
+  await pending;
 }
 
 console.log(failed ? `\nTNGR-2 TABLES: ${failed} FAILED` : '\nTNGR-2 TABLES: PASSED');

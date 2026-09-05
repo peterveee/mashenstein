@@ -2606,6 +2606,10 @@ const BRIEF_BOTTOM = H - 36;      // above the confirm line
 const BRIEF_HEAD_GAP = 1;         // letterhead to its own body
 const BRIEF_PIECE_GAP = 8;        // memo to memo
 const BRIEF_MARGIN = 56;          // total horizontal margin
+// The AUDIO SYNC row's tap band, around its drawn middle at H - 35. Everything
+// outside it — every other pixel of the briefing — is the PLAY target.
+const CALIBRATE_ROW_TOP = H - 44;
+const CALIBRATE_ROW_BOTTOM = H - 26;
 
 // One memo laid out at one scale. Lines carry their own y (relative to the top
 // of the block) and the character offset they start at, so the typewriter can
@@ -2693,12 +2697,13 @@ export class BriefingState {
         Audio.sfx('ui');
       }
       if (Input.pressed('pointer')) {
-        // Two tap zones over the two rows; a tap anywhere else selects nothing
-        // rather than committing, because one of these choices leaves the stage.
+        // Only the AUDIO SYNC row is a tap target of its own; the whole rest of
+        // the screen means PLAY. The offer is a row of text at the bottom of a
+        // briefing a thumb is already tapping through, and asking that thumb to
+        // find an 18-unit band to get on with the stage made the common answer
+        // the hard one. Missing the row now proceeds instead of doing nothing.
         const y = Input.pointer.y;
-        if (y >= H - 44 && y < H - 26) this.idx = 0;
-        else if (y >= H - 26) this.idx = 1;
-        else { Input.endFrame(); return; }
+        this.idx = (y >= CALIBRATE_ROW_TOP && y < CALIBRATE_ROW_BOTTOM) ? 0 : 1;
       }
       if (acting) { Audio.sfx('uiConfirm'); this.pick(); Input.endFrame(); return; }
       // BACK is the way past a question, and the way past this one is to play.

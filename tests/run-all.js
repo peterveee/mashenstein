@@ -33,6 +33,9 @@ const suites = [
   'tests/lane-calls.js',
   'tests/pixel-background.js',
   'tests/lcd-background.js',
+  'tests/render-culling.js',
+  'tests/render-culling-browser.js',
+  'tests/lcd-cache-browser.js',
   'tests/reliability.js',
   'tests/flyer-motion.js',
   'tests/mouse-controls.js',
@@ -312,6 +315,11 @@ const suites = [
   // sign's is `action: 'none'`, single registry lines holding up a jump-only
   // hazard and a hint that must never be jumped.
   'tests/finish-dog.js',
+  // The three floor pads. Fourth in the same group and for the same reason once
+  // more: a pad is a road rather than a hazard, and that fact lived in flags no
+  // projectile call site had been taught to read — so a pellet took a spring
+  // and a loop off the floor.
+  'tests/floor-pads.js',
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
@@ -339,6 +347,9 @@ const suites = [
   // is set. It was quoted off the ribbon and off VIEW_W, which made the same
   // perfect kick land 6% of the time at NORMAL and 55% at ZOOM IN.
   'tests/copter-fairness.js',
+  // And on level 3-3 a connecting barrel lands on the beat line, without the
+  // lining-up changing how often one connects.
+  'tests/copter-onbeat.js',
   // How a run ENDS, as a picture. Beside the crossing suite because the pit is
   // the death with the most to show and the one whose journey these poses have
   // to leave intact: everything else settles the figure the instant it dies.
@@ -375,6 +386,7 @@ const suites = [
   // buffer and a wider scheduler window, and that the game asks for them before it
   // builds the context — after ensure() the request is a no-op that looks like a fix.
   'tests/phone-audio.js',
+  'tests/mixer-metering.js',
   'tests/gate.js',
   'tests/gate-dev.js',
   'tests/gate-allowed.js',
@@ -436,6 +448,9 @@ const suites = [
 // `npx playwright install chromium` fails all of them at the launch rather than at an
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
+  'tests/render-culling-browser.js',
+  'tests/lcd-cache-browser.js',
+  'tests/mixer-metering.js',
   'tests/held-keys.js',
   'tests/tngr2-audio.js',
   'tests/tngr2-jit-bounce.js',

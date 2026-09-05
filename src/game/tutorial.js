@@ -121,7 +121,7 @@ export const INTRO_ZOOM_START = 5.5; // Tight on Gary — he fills the frame
 const CONCEDE_AFTER = 3;
 // How close the challenge has to be before a spent cannon is handed back — see
 // grantChargeGrace. A screen-and-a-bit of warning, so the refund lands while the
-// drone is visible and reachable rather than as a surprise off-frame.
+// target is visible and reachable rather than as a surprise off-frame.
 const CHARGE_GRACE_RANGE = 150;
 // How far above the muzzle the cannon still connects — see updatePellets. The
 // lemon climbs to meet anything inside that band once it is LOCK_RANGE away,
@@ -210,7 +210,7 @@ const SPEECH_MAX_W_TOUCH = 312;
 const ROW_MID = H - 11;
 
 // How long the touch zone diagram stays up. It has to survive the gap between
-// being read and the drone it is about actually arriving — about 3s after the
+// being read and the target it is about actually arriving — about 3s after the
 // brief starts.
 const ZONE_T = 7;
 
@@ -583,15 +583,32 @@ const STEPS = [
     // shown in level 1-1, where it belongs — the tutorial no longer duplicates it.
     // zones: true,
     again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS SIGNED OUT TO YOU.',
-    // Ducking the drone would clear it, but this section is about the cannon.
+    // THE CANNON IS THE ONLY ANSWER HERE, and the prop is what guarantees it.
+    //
+    // This section used to stand a DRONE in the road, which taught the wrong
+    // lesson twice over. A drone is `armored`, so the shot it is teaching pings
+    // off it everywhere in the real game — the module was the only place in
+    // MASHENSTEIN where a lemon killed one. And a drone has a duck, so the
+    // section about the cannon had a second answer that was not the cannon.
+    //
+    // A `target` has neither problem: it is `isTarget`, which is half of what
+    // the run's own pellet gate asks for, and it stands at alt 40 — well clear
+    // of a 14px hero, so it cannot be walked into, ducked under or jumped over
+    // into a pass. `sawShotDown` is unfakeable now rather than merely unlikely.
+    //
+    // It is the RED BULLSEYE, not the yellow star: `target` carries a stale
+    // `sprite: 'capStar'` that never draws, because drawWorldEntity resolves art
+    // off the type and props.js has a `target` painter. The field guide keeps the
+    // two apart in the player's words too — "IT IS A STAR. THE TARGET IS THE RED
+    // ONE" — so nothing in here should call this one a star.
     requires: (t) => t.sawShotDown,
-    // One free recharge when the drone draws near — see grantChargeGrace. This
+    // One free recharge when the target draws near — see grantChargeGrace. This
     // is the only section that asks for a timed button, so it is the only one
     // that can be failed by the timer instead of by the player.
     chargeGrace: true,
-    wrongWay: () => 'YOU AVOIDED IT. COMMENDABLE. NOT THE SECTION. SHOOT THE NEXT ONE.',
+    wrongWay: () => 'YOU RAN UNDER IT. COMMENDABLE. NOT THE SECTION. SHOOT THE NEXT ONE.',
     setup(t) {
-      t.obstacles = [makeObstacle('drone', t.spawnX())];
+      t.obstacles = [makeObstacle('target', t.spawnX())];
       t.player.abilityCd = 0;
     },
     onPass(t) { t.spawnShootGallery(); },
@@ -1010,7 +1027,7 @@ export class TutorialState {
     // Outlives the brief on purpose. It is a diagram of the whole input
     // surface, arriving at the one moment the player has a reason to care about
     // the half they have never touched — and it is read, looked away from, and
-    // then read again once the drone is actually on screen. Expiring with the
+    // then read again once the target is actually on screen. Expiring with the
     // speech panel gave it about a second of attention after the sentence
     // explaining it had gone.
     this.zoneT = step.zones && Input.isTouchDevice() ? ZONE_T : 0;
@@ -1062,7 +1079,7 @@ export class TutorialState {
   // The recharge is 1.35s and the challenge arrives 2.18s after the section
   // opens, so a player who tries the new button the moment they read about it —
   // which is what a tutorial has just asked them to do — can be mid-cooldown
-  // when the only drone in the lane draws level, and lose the section to the
+  // when the only target in the lane draws level, and lose the section to the
   // timer rather than to aim. That is the confusing version of a cooldown: not
   // "I missed", but "I pressed it and nothing happened."
   //
@@ -1366,40 +1383,40 @@ export class TutorialState {
   // can unload the cannon a few more times before the module ends.
   spawnShootGallery() {
     this.freePlay = true;
-    // A range of live hazards, not a reward lane. Shoot them or duck them; the
-    // one thing that must not work is walking through them.
+    // Not a reward lane: nothing here pops for walking into it. The flag is
+    // what stops a stray prop being quietly broken by the hero's face — the
+    // gallery has nothing to run into today, and it must stay that way.
     this.freePlayHazards = true;
     const x0 = this.worldX + VIEW_W;
     this.obstacles = [];
-    // Two things to shoot, and then the way out. Both at the altitude the
-    // cannon actually reaches from a standing hero.
+    // Two more of the thing the section just taught, and then the way out.
     //
-    // Two separate things were wrong here. The cannon is on a 1.35s cooldown
-    // (1.8 x B-33P's 0.75 mult), which at training speed is 151px of lane per
-    // shot — and this held ten shootable props inside 660px, an average of 66px
-    // apart. Two thirds of them arrived while the orb was still refilling and
-    // sailed past untouched. Ten props and three possible shots does not read as
-    // a gallery; it reads as a cannon that is broken.
+    // SPACING came first. The cannon is on a 1.35s cooldown (1.8 x B-33P's 0.75
+    // mult), which at training speed is 151px of lane per shot — and this once
+    // held ten shootable props inside 660px, an average of 66px apart. Two
+    // thirds of them arrived while the orb was still refilling and sailed past
+    // untouched. Ten props and three possible shots does not read as a gallery;
+    // it reads as a cannon that is broken. 170px is 1.52s against a 1.35s
+    // recharge, and a kill does NOT refund the cooldown, so that margin is the
+    // whole of it: one clear window each, with the orb visibly filling between.
     //
-    // Worse, most of them were out of reach even with a full charge. A pellet
-    // leaves at the hero's own height and reaches PELLET_REACH above that, which
-    // covers the duck band a drone sits in (13) — but a buzzbird defaults to 34
-    // and a target to 40, so both wanted a jump-and-shoot the module never
-    // teaches. The row of things you could not hit was doing the confusing.
+    // WHAT THEY ARE came second, and it is the part that had been wrong since
+    // the module was written. The pair used to be a drone and a buzzbird pinned
+    // down to the drone's band, and a lemon cannot touch either of them in the
+    // game: the run gates a pellet on `(ground || isTarget) && !armored`, so the
+    // drone pings and the bird — armoured or not — fails the gate for being a
+    // flier. The range that teaches the cannon was the one place in MASHENSTEIN
+    // where it worked on the sky, and 1-1 then took it away.
     //
-    // So: one drone, one buzzbird pinned down to the same band, 170px apart —
-    // 1.52s, against a 1.35s recharge. A kill does NOT refund the cooldown, so
-    // that margin is the whole of it: one clear window each, with the orb
-    // visibly filling in between. The target prop is gone with them — at a
-    // height the cannon can reach it is a thing you run into rather than shoot,
-    // which teaches the opposite of the section.
+    // So both are `target` bullseyes, at their own alt 40. They are out of a 14px
+    // hero's reach, which is the point twice: the cannon is the only way to have
+    // them, and the dive onto them (see pelletAim) is the arc the real cannon
+    // makes. Two of one prop rather than two different ones — the variety was
+    // never the lesson, and one of the two was teaching a lie.
     const GAP = 170;
-    // The drone's own altitude, so the two targets share one band and one aim.
-    const SHOOTABLE_ALT = 13;
-    const drone = makeObstacle('drone', x0 + 60);           // what the section just taught
-    const bird = makeObstacle('buzzbird', x0 + 60 + GAP);   // unarmoured, different pop
-    bird.alt = SHOOTABLE_ALT;
-    this.obstacles.push(drone, bird);
+    const first = makeObstacle('target', x0 + 60);
+    const second = makeObstacle('target', x0 + 60 + GAP);
+    this.obstacles.push(first, second);
     // And the way home, at the end of it. The last portal used to be a section
     // of its own — a spawn lead and a settle for a doorway with nothing to get
     // wrong. It goes where it was always going to be run through anyway: past
@@ -1974,24 +1991,31 @@ export class TutorialState {
     }
   }
 
-  // What the pellet is climbing toward, if anything: the nearest prop ahead of
-  // it whose middle sits inside the cannon's reach. Null the rest of the time,
-  // which is most of the time — the lane is empty between targets.
+  // What the pellet is steering toward, if anything: the nearest thing ahead of
+  // it that the REAL cannon could hit. Null the rest of the time, which is most
+  // of the time — the lane is empty between targets.
   //
-  // Upward only, and only inside PELLET_REACH. That is what keeps this an aim
-  // assist rather than a homing missile: a drone or a sheet of paperwork in the
-  // duck band gets met, a buzzbird at its default 34 does not, and nothing on
-  // the ground pulls the shot down into it.
+  // THIS IS THE GAME'S OWN RULE, AND IT HAS TO BE. The module used to aim by a
+  // rule of its own — upward only, and only inside a 12px reach — which let it
+  // teach the cannon on a drone and a buzzbird, neither of which a pellet can
+  // touch in the game (RunState.updateProjectiles gates on
+  // `(ground || isTarget) && !armored`, and every flier fails it). A player left
+  // here believing the lemon kills what is in the sky, and the first stage said
+  // otherwise. So the targets are `target` props now, and the aim is
+  // RunState.homePellet: steer to the middle of the first thing ahead that can
+  // actually be shot, up or down, and fly straight when there is nothing.
+  //
+  // `isTarget` is what makes an alt-40 target reachable from the floor in both
+  // places — it is not a reach the tutorial is granting itself.
   pelletAim(pr) {
     let best = null;
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
+      if (!(ob.def.ground || ob.def.isTarget) || ob.def.armored) continue;
       if (ob.x + ob.w <= pr.x) continue;                       // already behind the shot
       const dx = ob.x - pr.x;
       if (dx > PELLET_LOCK_RANGE) continue;
-      const mid = ob.alt + ob.h / 2;
-      if (mid <= pr.alt || mid - pr.alt > PELLET_REACH) continue;
-      if (!best || dx < best.dx) best = { dx, mid };
+      if (!best || dx < best.dx) best = { dx, mid: ob.alt + ob.h / 2 };
     }
     return best && best.mid;
   }
@@ -2002,32 +2026,31 @@ export class TutorialState {
       pr.x += (this.speed + 260) * dt;
       if (pr.x > this.worldX + VIEW_W + 40) { pr.live = false; continue; }
       // The pellet leaves at the hero's own height (player.y + 8) with an 8px
-      // box, so left flat it only ever meets a prop below alt 12. Every flier
-      // that asks to be ducked now sits at 13 — the drone and the paperwork both
-      // moved up when the flier art grew — which put the whole duck band one
-      // pixel out of the cannon's reach: a shot that visibly passed under its
-      // target and did nothing.
-      //
-      // Two things fix it, and they do different jobs. This is the one you SEE:
-      // once a target is inside PELLET_LOCK_RANGE the lemon eases up to meet its
-      // middle, so the shot arrives THROUGH the drone rather than under it. It
-      // is a small climb — 8px onto a drone — and it is only ever a climb, so a
-      // ground prop can never drag a shot down into itself.
+      // box, so left flat it never meets a prop above alt 12 — and a `target`
+      // stands at 40. THE DIVE IS THE SHOT: once something shootable is inside
+      // PELLET_LOCK_RANGE the lemon eases onto its middle, exactly as
+      // RunState.homePellet does, so the round arrives THROUGH the bullseye rather
+      // than under it. It is the same climb the real cannon makes, which is the
+      // point — a player who learns this arc here sees it again in 1-1.
       const aim = this.pelletAim(pr);
       if (aim != null) pr.alt += (aim - pr.alt) * Math.min(1, dt * PELLET_HOME_RATE);
-      // And the one you do not see: the box still grows upward by PELLET_REACH,
-      // which covers the shot fired so late that there is no lane left to climb
-      // in. Upward only, so it can only add hits with things already above the
-      // shot, never with ground props the pellet is flying over. 12 tops out at
-      // alt 24 — a drone (13-20) and the paperwork (13-19) are in, a buzzbird at
-      // its default 34 stays a thing you jump to reach.
+      // The reach on the box is the one you do NOT see: it covers the round
+      // fired so late there is no lane left to climb in. Upward only, so it can
+      // only ever add hits with things already above the shot and never drags
+      // one down into a prop it is flying over.
+      //
+      // AND IT IS GATED THE SAME WAY THE AIM IS. It used to be a bare overlap,
+      // which is how a drone and a buzzbird died to a lemon in here and nowhere
+      // else. A flier the game will not let you shoot must not be shootable on
+      // the range that teaches shooting.
       //
       // The burst is drawn at the PROP, not at the pellet (see iy below), so a
       // late shot that connects at the top of the reach still reads as a hit on
-      // the drone rather than a puff of nothing under it.
+      // the target rather than a puff of nothing under it.
       const pbox = { x: pr.x, y: GROUND_Y - pr.alt - 4 - PELLET_REACH, w: 8, h: 8 + PELLET_REACH };
       for (const ob of this.obstacles) {
         if (!ob.live) continue;
+        if (!(ob.def.ground || ob.def.isTarget) || ob.def.armored) continue;
         if (!overlaps(entityBox(ob, GROUND_Y), pbox)) continue;
         const ix = pr.x + 4;
         const iy = GROUND_Y - ob.alt - ob.h / 2;
@@ -2187,9 +2210,9 @@ export class TutorialState {
   }
 
   // Free play: the lane is full and none of it can fail you. Boxes pop, crates
-  // and drones come apart on contact, and a hit costs nothing — a section that
-  // has already been logged is not allowed to reopen because of something that
-  // happened during its own victory lap.
+  // come apart on contact, and a hit costs nothing — a section that has already
+  // been logged is not allowed to reopen because of something that happened
+  // during its own victory lap.
   judgeFreePlay() {
     const hit = this.hitObstacle();
     if (!hit) return;
@@ -2198,10 +2221,12 @@ export class TutorialState {
     //
     // The coin payout is a declared no-fail lane: nothing in it can hurt you,
     // boxes pop on contact, and that is the whole promise the section makes. The
-    // shoot gallery is the opposite — it is a range of live hazards, and running
-    // a drone down with your face was quietly breaking it instead of hitting
-    // you, which taught that the cannon is optional and that drones are
-    // harmless. Both then carry into the real game as wrong.
+    // shoot gallery is the opposite, and the flag is what keeps it so: running a
+    // prop down with your face was quietly breaking it instead of hitting you,
+    // which taught that the cannon is optional. The gallery's own targets sit at
+    // alt 40 and cannot be reached on foot at all, so nothing exercises this
+    // today — it is the guard that stops a ground prop being dropped into the
+    // range later and turning the lesson back into a walk-through.
     if (this.freePlayHazards) { this.knock(hit, 'CONTACT'); return; }
     // Not a knock: it just breaks. The brief iframes keep a stack of crates
     // from being resolved one per frame as the hero ploughs through it.

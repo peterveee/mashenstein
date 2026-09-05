@@ -137,26 +137,45 @@ drawWorldEntity(motionCtx, makeObstacle('crate', 200), 100.25, 0,
 assert(motionCalls.some((args) => Number.isFinite(args[1]) && args[1] % 1 !== 0),
   'tutorial world props retain fractional horizontal positions');
 
-// The cannon reaches the duck band. Every flier that asks to be ducked sits at
-// alt 13 now, and the pellet leaves at the hero's own height — without the
-// upward reach in updatePellets the shot passes a pixel under the drone the
-// shoot section exists to teach, and the section can never be completed.
+// THE MODULE MAY ONLY TEACH THE CANNON ON SOMETHING THE CANNON CAN SHOOT.
+//
+// This block used to pin the opposite. The shoot section stood a DRONE in the
+// road and the tests below asserted the lemon killed it — which it does here and
+// nowhere else in MASHENSTEIN, because RunState.updateProjectiles gates a pellet
+// on `(ground || isTarget) && !armored` and a drone is armoured. The gallery
+// after it added a buzzbird, which fails the same gate for being a flier. A
+// player finished training believing the cannon clears the sky, and stage 1-1
+// took it away without explaining why.
+//
+// So the prop is a `target` and the tutorial's own pellet carries the run's
+// gate. What is pinned here is that the two agree — the section is only worth
+// having if the thing it teaches survives contact with the game.
+const RUN_CAN_SHOOT = (def) => (def.ground || def.isTarget) && !def.armored;
+
 const cannon = new TutorialState({ onDone: () => {} });
 cannon.enter();
 cannon.startStep(8);
-const droneTarget = cannon.obstacles[0];
-assert(droneTarget && droneTarget.type === 'drone' && droneTarget.alt === 13,
-  'the shoot section still puts a drone in the duck band');
+const shootTarget = cannon.obstacles[0];
+assert(shootTarget && shootTarget.type === 'target',
+  'the shoot section stands a target in the road');
+assert(RUN_CAN_SHOOT(shootTarget.def),
+  'and it is a prop the REAL cannon can hit — the whole point of the swap');
+// Out of reach on foot, which is what makes the cannon the only answer: a 14px
+// hero cannot walk into a target at alt 40, so `sawShotDown` cannot be faked by
+// running through the challenge.
+assert(shootTarget.alt > 14,
+  `the target stands clear of a standing hero, so it cannot be walked into (alt ${shootTarget.alt})`);
+
 cannon.player.abilityCd = 0;
 cannon.useAbility();
 for (let i = 0; i < 600 && !cannon.sawShotDown && cannon.pellets.length; i++) {
-  cannon.pellets[0].x += 4;
   cannon.updatePellets(1 / 60);
 }
-assert(cannon.sawShotDown && !droneTarget.live, 'a standing shot connects with a drone at alt 13');
+assert(cannon.sawShotDown && !shootTarget.live,
+  'a standing shot connects with the target the section spawns');
 
-// The climb is the part you see: by the time the shot arrives it is at the
-// drone's middle, not skimming its belly on an invisibly tall hitbox.
+// The dive is the part you see: by the time the round arrives it is at the
+// target's middle rather than skimming it on an invisibly tall hitbox.
 const climb = new TutorialState({ onDone: () => {} });
 climb.enter();
 climb.startStep(8);
@@ -165,48 +184,73 @@ climb.player.abilityCd = 0;
 climb.useAbility();
 const shot = climb.pellets[0];
 const launchAlt = shot.alt;
-const climbTarget = makeObstacle('drone', shot.x + 180);
+const climbTarget = makeObstacle('target', shot.x + 180);
 climb.obstacles = [climbTarget];
 let altAtImpact = launchAlt;
 for (let i = 0; i < 600 && shot.live; i++) {
   climb.updatePellets(1 / 60);
   if (shot.live) altAtImpact = shot.alt;
 }
-assert(!climbTarget.live, 'the climbing shot still connects');
+assert(!climbTarget.live, 'the climbing shot connects with a target at its own alt 40');
 assert(altAtImpact > launchAlt + 6,
-  'the pellet climbs to meet a drone instead of passing under it');
+  'the pellet climbs to meet the target instead of passing under it');
 assert(Math.abs(altAtImpact - (climbTarget.alt + climbTarget.h / 2)) < 1.5,
-  'the climb finishes at the drone\'s middle before the shot arrives');
-
-// Nothing pulls a shot DOWN: a crate on the floor is not an aim target, so the
-// lemon flies level into it rather than dipping toward the ground first.
-const level = new TutorialState({ onDone: () => {} });
-level.enter();
-level.startStep(8);
-level.player.abilityCd = 0;
-level.useAbility();
-const levelShot = level.pellets[0];
-const levelAlt = levelShot.alt;
-level.obstacles = [makeObstacle('crate', levelShot.x + 200)];
-for (let i = 0; i < 20; i++) level.updatePellets(1 / 60);
-assert(levelShot.alt === levelAlt, 'a ground prop never drags the shot down toward it');
-level.exit();
+  "the climb finishes at the target's middle before the shot arrives");
 climb.exit();
 
-// The reach is a band, not a ceiling lift: a buzzbird at its own default is
-// still a jump-and-shoot, which is what keeps the gallery pinning it down.
-cannon.sawShotDown = false;
-const highBird = makeObstacle('buzzbird', cannon.playerWorldX() + 200);
-cannon.obstacles = [highBird];
-cannon.player.abilityCd = 0;
-cannon.useAbility();
-for (let i = 0; i < 600 && cannon.pellets.length; i++) {
-  cannon.pellets[0].x += 4;
-  cannon.updatePellets(1 / 60);
+// AND IT STEERS DOWN TOO, which is the half the old rule did not have. A round
+// fired off the top of a jump comes down onto what it was fired at — the run
+// does this (RunState.homePellet) and the module has to, or the arc a player
+// learns here is not the arc they see in a stage.
+const dive = new TutorialState({ onDone: () => {} });
+dive.enter();
+dive.startStep(8);
+dive.obstacles = [];
+dive.player.abilityCd = 0;
+dive.useAbility();
+const diveShot = dive.pellets[0];
+diveShot.alt = 46;                       // fired from the top of a jump
+const crate = makeObstacle('crate', diveShot.x + 200);
+dive.obstacles = [crate];
+for (let i = 0; i < 600 && diveShot.live; i++) dive.updatePellets(1 / 60);
+assert(!crate.live, 'a shot fired from the air comes down onto the crate it was aimed at');
+dive.exit();
+
+// THE FLIERS THE GAME REFUSES ARE REFUSED HERE. Both of them, and for the two
+// different reasons the run has: the drone is armoured, the buzzbird is a flier
+// that is neither `ground` nor `isTarget`. Either one shootable in here is the
+// original bug back again.
+for (const type of ['drone', 'buzzbird']) {
+  const def = makeObstacle(type, 0).def;
+  assert(!RUN_CAN_SHOOT(def), `the run's own gate refuses a ${type} (the fact being mirrored)`);
+  const range = new TutorialState({ onDone: () => {} });
+  range.enter();
+  range.startStep(8);
+  const flier = makeObstacle(type, range.playerWorldX() + 200);
+  flier.alt = 13;                        // the duck band, where the lemon used to reach
+  range.obstacles = [flier];
+  range.sawShotDown = false;
+  range.player.abilityCd = 0;
+  range.useAbility();
+  for (let i = 0; i < 600 && range.pellets.length; i++) range.updatePellets(1 / 60);
+  assert(!range.sawShotDown && flier.live,
+    `a lemon does not kill a ${type} in the tutorial either`);
+  range.exit();
 }
-assert(!cannon.sawShotDown && highBird.live,
-  'a standing shot still misses a buzzbird at its default height');
 cannon.exit();
+
+// THE GALLERY IS THE SAME PROMISE, three sections later. It used to close the
+// module on a drone and a buzzbird — the last two things a player shot before
+// being turned loose, and neither of them shootable once they were.
+const gallery = new TutorialState({ onDone: () => {} });
+gallery.enter();
+gallery.spawnShootGallery();
+assert(gallery.obstacles.length > 0, 'the gallery lays something to shoot');
+for (const ob of gallery.obstacles) {
+  assert(RUN_CAN_SHOOT(ob.def),
+    `the gallery's ${ob.type} is a prop the real cannon can hit`);
+}
+gallery.exit();
 
 tutorial.exit();
 console.log(failed ? 'TUTORIAL: FAILED' : 'TUTORIAL: PASSED');

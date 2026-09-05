@@ -167,7 +167,7 @@ export function tngr2Family(id) {
 }
 
 /**
- * Expand families AHEAD of the moment they are needed, one per idle slice.
+ * Expand families AHEAD of the moment they are needed.
  *
  * A family costs about 240ms of main thread to expand — thirty frames — and it used
  * to be paid at the first NOTE of the voice that wanted it, which is mid-bar with the
@@ -175,10 +175,20 @@ export function tngr2Family(id) {
  * behind the shutter, but enter() is already the heaviest task of a stage and a song
  * with two families put half a second of expansion inside it.
  *
- * So it moves earlier again, to the moment a cabinet is SELECTED, and spreads: one
- * family per idle callback, so each expansion lands in a gap the browser has told us
- * about rather than in the middle of a frame. By the time START is pressed and the
- * shutter closes, the tables are built and enter()'s own loop is a cache hit.
+ * So it moves earlier again, to the moment a cabinet is SELECTED — the one point in
+ * the game where a long task is genuinely free, because the shutter is fully closed
+ * and the screen behind it has not been drawn yet.
+ *
+ * `idle: false` is that case: expand INLINE, in the caller's own task, and let the
+ * caller wait. Deferring instead — an idle callback, or a setTimeout on the browsers
+ * that have no idle callback, which includes the phone this work exists for — hands
+ * the expansion to a LATER task, and by then the shutter is opening. A 240ms job
+ * cannot be interrupted once it starts, so a slice that lands anywhere near a visible
+ * frame is a visible hitch; the only question is which frame wears it. Behind the
+ * cover, waiting is invisible.
+ *
+ * `idle: true` keeps the spread-over-idle behaviour for any caller that is not
+ * already covered. Nothing in the game is, today.
  *
  * `tngr2Family` stays synchronous and memoised, and remains the fallback for a dev
  * ?stage= URL that never passed through a cabinet at all: a late arrival still works,
@@ -191,15 +201,15 @@ export function tngr2Family(id) {
 export function warmTngr2Families(ids = [], { idle = true } = {}) {
   const wanted = [...new Set(ids)].filter((id) => id && !built.has(id));
   if (!wanted.length) return Promise.resolve([]);
-  const slice = idle && typeof requestIdleCallback === 'function'
+  // Through tngr2Family, not buildFamily: another caller may have expanded this one
+  // between the ask and the slice, and the memo is the whole point.
+  const one = (id) => { try { return tngr2Family(id); } catch { return null; } };
+  if (!idle) return Promise.resolve(wanted.map(one));
+  const slice = typeof requestIdleCallback === 'function'
     ? (fn) => requestIdleCallback(fn)
     : (fn) => setTimeout(fn, 0);
   return Promise.all(wanted.map((id) => new Promise((resolve) => {
-    slice(() => {
-      // Through tngr2Family, not buildFamily: another caller may have expanded this
-      // one between the schedule and the slice, and the memo is the whole point.
-      try { resolve(tngr2Family(id)); } catch { resolve(null); }
-    });
+    slice(() => resolve(one(id)));
   })));
 }
 

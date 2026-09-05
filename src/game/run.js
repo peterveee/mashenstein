@@ -1,3 +1,4 @@
+import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
@@ -15,7 +16,7 @@ import { setState } from '../engine/states.js';
 import { clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
-import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor } from './player.js';
+import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
@@ -31,7 +32,7 @@ import {
   BASE_SPEED, SPEED_RAMP_K, SPEED_RAMP_CAP, FINISH_CLEAR, resolveLayout,
 } from './layout.js';
 export { FINISH_CLEAR };
-import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
+import { entityBox, overlaps, makePickup, makeObstacle, isFloorPad, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { PIT_FLOOR, fillSurface } from './pitFill.js';
 import { HERO_BY_ID, heroShoots } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
@@ -694,18 +695,26 @@ const PAUSE_SYNC_BUTTONS = [
 // is the payment; a barrel pays either way, because getting a heavy prop up to
 // a flying man is a shot you went and made.
 const COPTER_BONK_CAUSES = {
+  // No tally in the words — the HUD's mission line already counts the bonks
+  // (Peter: "we show that in the hud don't we?"), so the floatie is only ever
+  // the joke and the money.
   head: {
     coins: 0,
-    progress: (n, of) => `BONKED ${n}/${of}. IT FILED A COMPLAINT.`,
+    progress: () => 'BONKED. IT FILED A COMPLAINT.',
     over: (coins) => `BONK BONUS +${coins} COINS.`,
   },
   barrel: {
     coins: 50,
-    progress: (n, of, coins) => `SPECIAL DELIVERY ${n}/${of}. +${coins} COINS.`,
+    progress: (n, of, coins) => `SPECIAL DELIVERY. +${coins} COINS.`,
     over: (coins) => `SPECIAL DELIVERY. +${coins} COINS. HE IS UNDERINSURED.`,
   },
 };
-// Past the goal an extra bonk pays instead of counting.
+// Past the goal a bonk pays instead of counting — and it is a FLOOR on the
+// payout, not a bonus stacked on top of it. A barrel is already the expensive
+// way to hit him and it is worth the same shot whether the tally still has room
+// for it or not; adding ten on the far side of the goal made the identical
+// delivery pay 60 for no extra skill. So this only ever tops up a cause that
+// pays nothing while it is progress, which is the head.
 const COPTER_OVER_COINS = 10;
 // Where his height starts, and what each thing the player does is worth. A
 // clean beat is small and a missed one is three times bigger, so the dial
@@ -794,6 +803,35 @@ const GORILLA_DUCK_ALT = 55;
 // read as being switched on. Low enough to pass under the gorilla's feet at
 // this cabinet's framing, high enough to clear the skyline he is flying over.
 const COPTER_ARRIVE_ALT = 34;
+// THE SHOT LANDS ON THE LINE. A punted barrel's flight is fixed world physics,
+// and the boot meets a beat barrel a fixed lead after the beat it is scored on
+// (beatchart's puntLeadSec) whatever the press did — so the only free variable
+// in WHEN a barrel reaches the tub is where the tub is. He lines up for it:
+// a bar before the kick he decides, from the roam he would have flown anyway,
+// whether that kick was going to connect, and if it was he parks his hull
+// where the barrel's nose arrives on the next beat line. If it was not, he
+// keeps wandering and it misses exactly as it would have. Peter: "happy to
+// steer as long as it doesn't make it easier or harder to hit him" — so the
+// decision is the unsteered geometry's own, and the steer only moves a hit
+// that was already happening onto the beat. The mission line is "IT IS
+// SOMEHOW ON BEAT", and this is the somehow.
+const COPTER_SHOT_LEAD_BARS = 1;
+// Flights that can honour a line, in seconds after the boot. Shorter than the
+// low end and the hull would have to sit on the boot itself; longer than the
+// high end and the barrel is on its way down past the tub floor at the top of
+// his band. Outside it he does not steer, and the unsteered outcome stands.
+// At 124bpm the boot is 0.105s after the line and the next line is 0.379s
+// later, which is the barrel's apex almost to the frame.
+const COPTER_SHOT_FLIGHT_MIN = 0.25, COPTER_SHOT_FLIGHT_MAX = 0.55;
+// Where the barrel's leading edge is at the kick, relative to the camera: the
+// front of the hero's standing hitbox, less half a frame of closing, which is
+// where the collision loop actually finds it. Refined from the real barrel
+// once it is in the air.
+const COPTER_SHOT_X0 = PLAYER_X + (PLAYER_SPRITE_W - PLAYER_W) / 2 + PLAYER_W - 2;
+// And how far past the barrel's nose his centre sits at the hit: the barrel's
+// own width, half the hull, and one unit inside so the frame the hull is
+// first overlapped is the frame of the line rather than the one after.
+const COPTER_SHOT_LEAD_IN = OBSTACLES.barrel.w + COPTER_HULL.w / 2 - 1;
 
 const JUGGLE_ARPEGGIO = [0, 4, 7, 9, 12, 16, 19];
 // How many rungs the loop-de-loop's climb has. Twelve, for a lap of about a
@@ -1158,23 +1196,26 @@ const FINISH_DOG_VMAX = 0.85;
 // The visibility test already compares against the entity's own box, so what
 // this has to cover is only how far the ART reaches BEYOND that box, not the
 // whole of it.
-const CULL_MARGIN = (() => {
+export const BASE_CULL_MARGIN = (() => {
   let widest = 0;
   for (const table of [OBSTACLES, PICKUPS]) {
     for (const def of Object.values(table)) if (def && def.w > widest) widest = def.w;
   }
   // Art is centred on the box, so the overhang is half the growth.
   let overhang = widest * ((4 / 3) * maxPropVisualScale() - 1) / 2;
-  // The loop pad is the one prop whose art is not a scaled-up version of its
-  // box: the ring is drawn FROM the pad and stands a radius out either side of
-  // it, which is several times anything the scaling above can produce. Culled on
-  // the pad's own box like everything else, so the margin has to cover the ring
-  // or it blinks out with most of itself still on screen.
-  overhang = Math.max(overhang, LOOP.r - OBSTACLES.loopPad.w / 2);
   const RIM = 1;              // rim rings sit one pixel outside the art
   const SHAKE_HEADROOM = 8;
   return Math.ceil(overhang + RIM + SMEAR_MAX_PX + SHAKE_HEADROOM);
 })();
+// Only the loop owns the ring's reach. Projectiles keep the previous conservative band.
+export const LOOP_CULL_MARGIN = Math.max(BASE_CULL_MARGIN,
+  Math.ceil(LOOP.r - OBSTACLES.loopPad.w / 2 + 1 + SMEAR_MAX_PX + 8));
+const PRECULLED_ENTITY = Object.freeze({ preculled: true });
+export function entityInRenderBand(e, cam, viewWidth) {
+  const margin = e.def?.isLoop ? LOOP_CULL_MARGIN : BASE_CULL_MARGIN;
+  return e.x + e.w >= cam - margin && e.x <= cam + viewWidth + margin;
+}
+
 
 // The blackout mission's brown-out ramp. Built in local space so the same
 // object serves every frame wherever the hero has walked to; keyed on the
@@ -2248,6 +2289,10 @@ export class RunState {
     this.copter = null;         // chase mission / taunt flyby
     this.copterBonks = 0;       // bonks landed this run; the copter itself is transient
     this.copterPressure = COPTER_PRESSURE_START; // how low he is flying; see nudgeCopter
+    // Whether he lines up so a connecting barrel lands on the beat line (see
+    // COPTER_SHOT_LEAD_BARS). A switch so the fairness test can play the same
+    // road both ways and show the two connect at the same rate.
+    this.copterOnBeat = true;
     this.tauntT = 30;
 
     const duration = this.overtime ? Infinity : (this.layout ? this.layout.durationSec : 330);
@@ -3695,6 +3740,7 @@ export class RunState {
       if (ok && this.ringGirder(springboard, this.player.vy)) Audio.sfx('girderBoing');
       if (ok && this.player.jumps > 1) burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 6, 40, 0.4, '#ffa8b6', 1, 60, () => this.fxRng.float());
       if (ok && this.beatLock) this.checkOnBeat('jump');
+      if (ok) this.cueHeadBonk();
     }
     if (Input.pressed('duck')) {
       // The edge starts the universal mid-air slide-kick. Ground ducking still
@@ -5367,6 +5413,282 @@ export class RunState {
   // Both ends saturate, so a long clean stretch parks him in reach and a bad
   // one parks him out of it, and neither is a surprise. The slow drift back
   // toward neutral is what stops a run coasting on work done a minute ago.
+  /**
+   * LINE HIM UP SO A CONNECTING BARREL LANDS ON THE BEAT. See
+   * COPTER_SHOT_LEAD_BARS for the bargain; this is the mechanism.
+   *
+   * Called from the roam with the dx it was about to use. Returns the dx to
+   * use instead — the same one, unless a barrel is a bar out and the roam he
+   * would have flown was going to be hit by it, in which case it is blended
+   * onto the spot where the barrel's nose arrives on the next line. `roam` is
+   * the frame's own roam and clamp arithmetic as functions of run time, so
+   * the prediction is the frame's, not a copy of it.
+   *
+   * Decided as LATE as the flight over allows, and then kept. The prediction
+   * is a snapshot of a wander that is a pure function of time plus a height
+   * that drifts with the pressure dial, so the later it is taken the closer
+   * it is to what would actually have happened; it is re-taken every frame
+   * until he has just enough road left to reach the mark at his side rate.
+   * Once he is steering it is not re-taken, because by then the steer itself
+   * would be moving the answer.
+   */
+  steerCopterShot(c, dx, sp, chartBeat, roam) {
+    if (!this.copterOnBeat || !this.beatLock || !Number.isFinite(chartBeat)) return dx;
+    const spb = 60 / this.laneBpm();
+    const rel = (HEAVY_PUNT.launchBoost - 1) * sp;
+    const shot = c.shot;
+    if (shot) {
+      const ob = shot.ob;
+      const gone = !ob.live || ob.hurtPlayer
+        || (ob.punted && (ob.copterHit || (ob.alt <= 0 && ob.vy <= 0)
+          || ob.x - this.camX > c.dx + COPTER_BOX));
+      if (gone) { this.dropCopterShot(c, dx); return dx; }
+      if (!shot.steer) {
+        // Not committed: keep asking while the barrel is still on the road.
+        // Once it is in the air the answer is whatever it is — a plan made
+        // against a flying barrel would be aiming at a kick that has happened.
+        if (!ob.punted) this.planCopterShot(c, dx, sp, chartBeat, roam, ob);
+        return dx;
+      }
+      // Seconds to the line he is aiming at, off the live clock, so a tempo
+      // step or a drift correction under him moves the target with it.
+      const hitIn = (shot.hitBeat - chartBeat) * spb;
+      let target;
+      if (!ob.punted) {
+        const kickIn = Math.max(0, (ob.x - (this.camX + COPTER_SHOT_X0)) / (sp - (ob.def.vx || 0)));
+        target = COPTER_SHOT_X0 + rel * Math.max(0, hitIn - kickIn) + COPTER_SHOT_LEAD_IN;
+      } else {
+        // In the air: its own position and the launch it actually got, so the
+        // half-frame the boot found it early or late is taken out here.
+        target = (ob.x - this.camX) + (ob.vx - sp) * Math.max(0, hitIn) + COPTER_SHOT_LEAD_IN;
+        // THE BONK IS PLACED ON THE SONG AT THE KICK, not fired at the contact.
+        // By now the outcome is settled — he is parked, the barrel is flying a
+        // fixed arc — so this is the same event announced at its start, the
+        // way cueBarrelKick announces the boot. Fired at contact it lands a
+        // frame plus the output latency late, by a different amount on every
+        // device. Only if he is actually there: a shot he could not hold has
+        // its cue back at the contact.
+        if (!shot.cued) {
+          shot.cued = true;
+          if (hitIn > 0.05 && Math.abs(c.dx - target) < 6) {
+            Audio.sfx('copterBonk', { inBeats: shot.hitBeat - chartBeat, cause: 'barrel' });
+            c.bonkCued = true; c.bonkCuedAt = this.tRun;
+          }
+        }
+      }
+      // Onto the mark over the bar, settled a quarter second before the boot
+      // so the side rate limiter has finished with him by then.
+      const u = Math.max(0, Math.min(1, (this.tRun - shot.t0) / Math.max(0.1, shot.settleAt - shot.t0)));
+      const e = u * u * (3 - 2 * u);
+      return dx + (target - dx) * e;
+    }
+    // No shot on: is a beat barrel a bar out?
+    let ob = null, kickIn = Infinity;
+    for (const o of this.obstacles) {
+      if (!o.live || o.punted || o.hurtPlayer || !o.def?.beatPunt || o.def.punt !== 'heavy') continue;
+      const k = (o.x - (this.camX + COPTER_SHOT_X0)) / (sp - (o.def.vx || 0));
+      if (k < 0.05 || k > COPTER_SHOT_LEAD_BARS * c.bar) continue;
+      if (k < kickIn) { ob = o; kickIn = k; }
+    }
+    if (ob) this.planCopterShot(c, dx, sp, chartBeat, roam, ob);
+    return dx;
+  }
+
+  /**
+   * The decision behind steerCopterShot, for one barrel: would the roam he is
+   * going to fly have been hit by it, and if so can he be on the mark in
+   * time? Writes `c.shot`. Steer is committed only once the road left is
+   * about what the flight to the mark needs, so the prediction is as late —
+   * as close to the truth — as it can be while still being flyable.
+   */
+  planCopterShot(c, dx, sp, chartBeat, roam, ob) {
+    const spb = 60 / this.laneBpm();
+    const rel = (HEAVY_PUNT.launchBoost - 1) * sp;
+    const kickIn = (ob.x - (this.camX + COPTER_SHOT_X0)) / (sp - (ob.def.vx || 0));
+    const plan = { ob, steer: false, hitBeat: null, t0: this.tRun, settleAt: this.tRun + kickIn - 0.25, cued: false };
+    const was = c.shot && c.shot.ob === ob ? c.shot : null;
+    if (was) { plan.free = was.free; plan.freeDx = was.freeDx; plan.freeAlt = was.freeAlt; }
+    c.shot = plan;
+    if (ob.punted || kickIn < 0.05) return;
+    // Would the roam he was going to fly have been hit? That answer is the
+    // whole of whether he steers. Unless a window was deferred for this
+    // barrel, in which case the pass he would have flown answered already.
+    const free = ob.copterOwed != null ? (ob.copterOwed ? 0 : null)
+      : this.copterShotContact(kickIn, rel, roam.freeDxAt, roam.freeAltAt);
+    // Kept on the plan for the record: why he did or did not steer.
+    plan.free = free;
+    plan.freeDx = roam.freeDxAt(this.tRun + kickIn + 0.5);
+    plan.freeAlt = roam.freeAltAt(this.tRun + kickIn + 0.5);
+    if (free == null) return;
+    const beatKick = chartBeat + kickIn / spb;
+    let hitBeat = Math.ceil(beatKick + 0.02);
+    let flight = (hitBeat - beatKick) * spb;
+    if (flight < COPTER_SHOT_FLIGHT_MIN) { hitBeat += 1; flight += spb; }
+    if (flight > COPTER_SHOT_FLIGHT_MAX) return;
+    const target = COPTER_SHOT_X0 + rel * flight + COPTER_SHOT_LEAD_IN;
+    // Not yet: he has more road than the flight to the mark needs, so the
+    // answer can wait for a truer one. The floor keeps the move a glide over
+    // most of a bar rather than a dart in the last half second.
+    const needed = Math.abs(target - dx) / roam.sideRate + 0.3;
+    if (kickIn > Math.max(needed, 0.6 * c.bar)) return;
+    // And can he hold that spot under this cabinet's clamps and still be hit
+    // there? If not the roam stands, and so does its outcome.
+    const altPre = (t) => Math.min(roam.roamAltAt(t), roam.ceiling);
+    // As he can actually fly it: from where he is, no faster than the limiter
+    // lets the drawing move, so a short lead is judged on what he can reach
+    // rather than on where he is asked to be.
+    const heldDxAt = (t) => {
+      const reach = roam.sideRate * Math.max(0, t - this.tRun);
+      const at = dx + Math.max(-reach, Math.min(reach, target - dx));
+      return Math.min(at, roam.clampRightFor(altPre(t)));
+    };
+    const heldAltAt = (t) => roam.dippedFor(altPre(t), heldDxAt(t));
+    const held = this.copterShotContact(kickIn, rel, heldDxAt, heldAltAt);
+    if (held != null && Math.abs(held - flight) < 0.05) { plan.steer = true; plan.hitBeat = hitBeat; }
+  }
+
+  /**
+   * The pass he would fly if a window opened THIS frame, as functions of run
+   * time: the swing in, the hover (`k.hoverT`, however much of it the road
+   * allows), the recoil out and the ease back onto the roam, put through the
+   * same clamps and rate limits the frame applies. The numbers are the mode
+   * machine's own (ENTER_T, the leave's 150 and 70, the 1.5s home blend),
+   * handed in rather than copied.
+   */
+  copterPassOnPaper(c, sp, horizon, k) {
+    const STEP = 1 / 120, N = Math.ceil(horizon / STEP) + 1;
+    const dxs = new Float64Array(N), alts = new Float64Array(N);
+    let pdx = c.dx, palt = c.alt;
+    const fromDx = pdx, fromAlt = palt;
+    let homeDx = null, homeAlt = null;
+    const leaveAt = k.ENTER_T + k.hoverT, awayAt = leaveAt + k.LEAVE_T;
+    const capX = k.sideRate * STEP, DOWN = 22 * STEP, UP = 18 * STEP;
+    for (let i = 0; i < N; i++) {
+      const tt = i * STEP, t = this.tRun + tt;
+      const overDx = PLAYER_X + HERO_CENTER_OFF + Math.sin(t * 1.5) * 16;
+      const overAlt = 52 + Math.sin(t * 1.3) * 5;
+      let want, wantAlt;
+      if (tt < k.ENTER_T) {
+        const u = tt / k.ENTER_T, e = 1 - (1 - u) * (1 - u);
+        want = fromDx + (overDx - fromDx) * e; wantAlt = fromAlt + (overAlt - fromAlt) * e;
+      } else if (tt < leaveAt) {
+        want = overDx; wantAlt = overAlt;
+      } else if (tt < awayAt) {
+        want = Math.min(k.roamDxAt(t) + 22, pdx + 150 * STEP);
+        wantAlt = Math.min(COPTER_LIFT_TOP, palt + 70 * STEP);
+      } else {
+        if (homeDx == null) { homeDx = pdx; homeAlt = palt; }
+        const h = Math.min(1, (tt - awayAt) / 1.5), e = h * h * (3 - 2 * h);
+        want = homeDx + (k.roamDxAt(t) - homeDx) * e; wantAlt = homeAlt + (k.roamAltAt(t) - homeAlt) * e;
+      }
+      wantAlt = Math.min(wantAlt, k.ceiling);
+      want = Math.min(want, k.clampRightFor(wantAlt));
+      wantAlt = k.dippedFor(wantAlt, want);
+      pdx += Math.max(-capX, Math.min(capX, want - pdx));
+      const stepAlt = wantAlt - palt;
+      palt += Math.max(-DOWN, Math.min(UP, stepAlt));
+      dxs[i] = pdx; alts[i] = palt;
+    }
+    const at = (t) => Math.max(0, Math.min(N - 1, Math.round((t - this.tRun) / STEP)));
+    return { dxAt: (t) => dxs[at(t)], altAt: (t) => alts[at(t)] };
+  }
+
+  /**
+   * THE HEAD BONK IS HEARD ON THE PRESS, and on the line if the press was.
+   *
+   * A head reaches the underside about a tenth of a second after the jump
+   * button goes down — the tub hovers at 52 and the crown starts at 24 — and
+   * nothing about where he is can move that by more than a frame or two, so
+   * the contact lands wherever the press put it. What CAN be placed is the
+   * sound. Same reasoning as cueBarrelKick: at the press the outcome is
+   * settled (he is over the hero, the head will get there before his dodge
+   * has moved him), so the cue is the event announced at its start. On a beat
+   * cabinet a press inside the judge's window is put on the line it was
+   * played against, which is what makes a bonk you played on the one land on
+   * the one; a press outside it is heard on the press, which is where it was.
+   */
+  cueHeadBonk() {
+    const c = this.copter;
+    if (!c || c.flyOff || c.hitT > 0 || c.bonkCued || c.mode === 'away') return;
+    if (this.player.jumps > 1) return;
+    const hull = this.copterUnderside();
+    if (!hull) return;
+    const head = this.playerHeadBox();
+    const g = gravityFor(this.player.hero);
+    const v = this.player.vy;
+    // HE HAS TO BE OVER THE HERO ALREADY, by a couple of units. The head
+    // crosses the ten-unit underside in about thirty milliseconds, so a bonk
+    // that depends on him still sliding across into its path is decided by
+    // a frame either way — and a sound placed for a bonk that then grazes
+    // past is worse than one heard at the contact. Those keep their cue
+    // there; this is for the clean one, where you are under him and jump.
+    if (head.x + head.w - 2 <= hull.x || head.x + 2 >= hull.x + hull.w) return;
+    const va = c.velAlt || 0;
+    // The rise, against the tub carried on at the height rate it is moving.
+    // Only the first fifth of a second: that is the head going up into him.
+    // Later than that is him coming down onto a hero already in the air, and
+    // a sound placed at the press would run half a second ahead of it.
+    for (let tau = 0; tau <= 0.2; tau += 1 / 120) {
+      const rise = v * tau - 0.5 * g * tau * tau;
+      const box = { x: head.x, y: head.y - rise, w: head.w, h: head.h };
+      const tub = { x: hull.x, y: hull.y - va * tau, w: hull.w, h: hull.h };
+      if (overlaps(box, tub)) {
+        const opt = { cause: 'head' };
+        const beat = this.beatLock ? this.rhythmBeatForJudging() : null;
+        if (Number.isFinite(beat)) {
+          const line = Math.round(beat);
+          if (Math.abs(beat - line) <= ON_BEAT_WINDOW) opt.inBeats = line - beat;
+        }
+        Audio.sfx('copterBonk', opt);
+        c.bonkCued = true; c.bonkCuedAt = this.tRun;
+        return;
+      }
+    }
+  }
+
+  /**
+   * When a barrel booted `kickIn` seconds from now first touches the hull,
+   * in seconds after the boot, or null if the arc misses. `dxAt`/`altAt`
+   * give the copter's position at a run time; `rel` is the barrel's speed
+   * over the camera's. The same boxes the contact test uses (copterBox,
+   * entityBox), stepped finer than a frame.
+   */
+  copterShotContact(kickIn, rel, dxAt, altAt) {
+    const { gravity, launchVy } = HEAVY_PUNT;
+    const bw = OBSTACLES.barrel.w, bh = OBSTACLES.barrel.h;
+    for (let tau = 0; tau < 1.2; tau += 1 / 120) {
+      const balt = launchVy * tau - 0.5 * gravity * tau * tau;
+      if (tau > 0 && balt <= 0) return null;
+      const bx = COPTER_SHOT_X0 + rel * tau;
+      const t = this.tRun + kickIn + tau;
+      const cdx = dxAt(t);
+      const floor = altAt(t) + COPTER_HULL.floor;
+      if (bx < cdx + COPTER_HULL.w / 2 && bx + bw > cdx - COPTER_HULL.w / 2
+        && balt + bh > floor && balt < floor + COPTER_HULL.h) return tau;
+    }
+    return null;
+  }
+
+  /** Is a live beat barrel going to reach the boot inside `secs`? */
+  beatBarrelDue(secs, sp) {
+    const front = this.camX + COPTER_SHOT_X0;
+    for (const o of this.obstacles) {
+      if (!o.live || o.punted || o.hurtPlayer || !o.def?.beatPunt || o.def.punt !== 'heavy') continue;
+      const k = (o.x - front) / (sp - (o.def.vx || 0));
+      if (k > -0.2 && k < secs) return true;
+    }
+    return false;
+  }
+
+  /** Forget the barrel he was lining up for, and ease back onto the meander. */
+  dropCopterShot(c, dx = c.dx) {
+    const shot = c.shot;
+    c.shot = null;
+    if (!shot) return;
+    if (!shot.ob.copterHit) c.bonkCued = false;
+    if (shot.steer && c.mode === 'away') { c.homeT = 0; c.homeDx = dx; c.homeAlt = c.alt; }
+  }
+
   nudgeCopter(delta) {
     if (!this.copter) return;
     this.copterPressure = Math.max(0, Math.min(1, (this.copterPressure ?? COPTER_PRESSURE_START) + delta));
@@ -5386,11 +5708,15 @@ export class RunState {
     c.hitT = COPTER_HIT_T;
     c.nearMissT = 0; c.rollT = 0;   // he is neither smug nor bored about one he took
     c.mode = 'leave'; c.modeT = 0; c.fromDx = null; c.homeT = null;
-    Audio.sfx('copterBonk');
+    // Already on the clock if this was a lined-up barrel (steerCopterShot put
+    // it there at the kick); fired here it would be a frame plus the output
+    // latency after the line it was steered onto.
+    if (c.bonkCued) c.bonkCued = false;
+    else Audio.sfx('copterBonk');
     shake(3, 0.2);
     const goal = this.mission.n || 0;
     const past = this.copterBonks > goal;
-    const coins = spec.coins + (past ? COPTER_OVER_COINS : 0);
+    const coins = past ? Math.max(spec.coins, COPTER_OVER_COINS) : spec.coins;
     if (coins) this.coins += coins;
     this.floatText(past ? spec.over(coins) : spec.progress(this.copterBonks, goal, coins), '#f6d33c');
     return true;
@@ -5769,9 +6095,13 @@ export class RunState {
       // Three components of unrelated periods, normalised to -1..1 so the two
       // ends below are the two ends: the path never visibly repeats, and the
       // far end is only reached when they line up.
-      const wander = (Math.sin(this.tRun * 0.33) * 0.14
-        + Math.sin(this.tRun * 0.71 + 1.3) * 0.08
-        + Math.sin(this.tRun * 1.27 + 0.4) * 0.04) / 0.26;
+      // AS A FUNCTION OF RUN TIME, not evaluated inline: the shot planner
+      // (steerCopterShot) has to know where this roam would have put him a
+      // bar from now, and asking the same function is what makes its answer
+      // the truth rather than an estimate.
+      const wanderAt = (t) => (Math.sin(t * 0.33) * 0.14
+        + Math.sin(t * 0.71 + 1.3) * 0.08
+        + Math.sin(t * 1.27 + 0.4) * 0.04) / 0.26;
       // AND IT IS A WORLD DISTANCE, not a share of the frame. The roam used to
       // be quoted as VIEW_W * 0.58 ± fractions, and VIEW_W is a zoom away: at
       // NORMAL he cruised 115 world units ahead of the hero and at ZOOM IN only
@@ -5791,8 +6121,12 @@ export class RunState {
       const roamFar = hasGorilla
         ? Math.max(COPTER_ROAM_FAR, kongMid + 8) : COPTER_ROAM_FAR;
       const roamMid = (COPTER_ROAM_NEAR + COPTER_ROAM_FAR) / 2;
-      const aheadDx = roamMid + wander * (wander >= 0
-        ? roamFar - roamMid : roamMid - COPTER_ROAM_NEAR);
+      const roamDxAt = (t) => {
+        const wander = wanderAt(t);
+        return roamMid + wander * (wander >= 0
+          ? roamFar - roamMid : roamMid - COPTER_ROAM_NEAR);
+      };
+      const aheadDx = roamDxAt(this.tRun);
       // HE RIDES HIGH, AND DIPS. HIS HEIGHT IS THE SCOREBOARD: see nudgeCopter,
       // where clean beats and coin streaks press him down and a missed mark or
       // a hit sends him back up. The eased follow is what makes that readable —
@@ -5810,8 +6144,42 @@ export class RunState {
       const want = highAlt - (highAlt - lowAlt) * (this.copterPressure ?? COPTER_PRESSURE_START);
       c.rideAlt = Number.isFinite(c.rideAlt) ? c.rideAlt + (want - c.rideAlt) * Math.min(1, dt * 1.6) : want;
       // A shallow ride on top of it, so a held height is never a parked sprite.
-      const idle = Math.sin(this.tRun * 0.61) * 2 + Math.sin(this.tRun * 1.27 + 0.6) * 1;
-      const aheadAlt = c.rideAlt + idle;
+      const roamAltAt = (t) => c.rideAlt + Math.sin(t * 0.61) * 2 + Math.sin(t * 1.27 + 0.6) * 1;
+      const aheadAlt = roamAltAt(this.tRun);
+      // The two clamps the roam is put through below (the gorilla's column and
+      // his dip under its chin), as functions, so the planner can put its
+      // predicted roam through the same ones.
+      const clampRightFor = (alt) => !hasGorilla ? Infinity
+        : (alt <= GORILLA_DUCK_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4) / zoom - COPTER_BOX / 2;
+      const dippedFor = (alt, atDx) => {
+        if (!hasGorilla) return alt;
+        const artL = (atDx - COPTER_BOX / 2) * zoom;
+        const artR = (atDx + COPTER_BOX / 2) * zoom;
+        const RAMP = 64;
+        const nearness = Math.max(0, Math.min(1,
+          Math.min(artR - (GORILLA_COLUMN[0] - RAMP), (GORILLA_COLUMN[1] + RAMP) - artL) / RAMP));
+        if (nearness <= 0) return alt;
+        const DIP_SHARE = 0.7;
+        const underAlt = (GROUND_Y - GORILLA_CHIN_Y) / zoom - 40 - 2;
+        const eased = nearness * nearness * (3 - 2 * nearness) * DIP_SHARE; // smoothstep
+        return alt > underAlt ? alt + (underAlt - alt) * eased : alt;
+      };
+      // How fast the drawing may cross the frame (the limiter at the end of
+      // this block), declared up here so the shot planner can ask whether a
+      // mark is reachable in the time it has.
+      const SIDE_RATE = 130, SIDE_SNAP = 900;
+      // The unsteered roam, as the frame will fly it: still finishing the
+      // ease home from a recoil if he is (the `homeT` blend in the away case,
+      // run forward), then clamped as the frame will clamp it.
+      const homeBlend = (t) => {
+        if (!Number.isFinite(c.homeT) || c.homeT >= 1 || !c.arrived) return 1;
+        const h = Math.min(1, c.homeT + (t - this.tRun) / 1.5);
+        return h * h * (3 - 2 * h);
+      };
+      const freeRawDxAt = (t) => c.homeDx + (roamDxAt(t) - c.homeDx) * homeBlend(t);
+      const freeRawAltAt = (t) => Math.min(c.homeAlt + (roamAltAt(t) - c.homeAlt) * homeBlend(t), ceiling);
+      const freeDxAt = (t) => Math.min(freeRawDxAt(t), clampRightFor(freeRawAltAt(t)));
+      const freeAltAt = (t) => dippedFor(freeRawAltAt(t), freeDxAt(t));
       const overAlt = 52 + Math.sin(this.tRun * 1.3) * 5;
       c.modeT = (c.modeT || 0) + dt;
       if (c.hitT > 0) c.hitT = Math.max(0, c.hitT - dt);
@@ -5834,6 +6202,13 @@ export class RunState {
       // slam the first frame of the arrival to the near side of that building,
       // which is why he SNAPPED into the frame at Kong instead of flying in.
       let parked = false;
+      // A shot only exists on the roam. Leaving it for a window or a recoil
+      // drops the plan; a barrel that arrives while he is elsewhere meets him
+      // or does not on its own account, as it always did.
+      if (c.shot && c.mode !== 'away') this.dropCopterShot(c);
+      // A cue that never met its bonk — a jump cut short, a barrel that
+      // slipped past — must not swallow the sound of the next one.
+      if (c.bonkCued && Number.isFinite(c.bonkCuedAt) && this.tRun - c.bonkCuedAt > 0.8) c.bonkCued = false;
       switch (c.mode) {
         case 'away': {
           // The mood decays to neutral once he has settled into the roam, so a
@@ -5888,6 +6263,10 @@ export class RunState {
             // clamp would take over mid-climb and snap the last of it.
             if (c.homeT >= 1 && Math.abs(c.alt - aheadAlt) < 2) c.arrived = true;
           }
+          if (c.arrived) {
+            dx = this.steerCopterShot(c, dx, sp, chartBeat,
+              { freeDxAt, freeAltAt, clampRightFor, dippedFor, roamAltAt, ceiling, sideRate: SIDE_RATE / zoom });
+          }
           // Wait out the gap, then take the first stretch of clear road that
           // covers the window. PATIENCE is the escape hatch: a dense stage
           // (rhythm cuts holes every other beat) can go a long time without
@@ -5905,6 +6284,16 @@ export class RunState {
           // A full second past the window, not a fraction: the player may still
           // be in the air when it closes, and the landing has to be road too.
           const noPit = this.laneClearFor(ENTER_T, ENTER_T + HOVER_T + 1, sp, true);
+          // AND NOT OVER A BARREL BAR, on a cabinet with a beat. A barrel booted
+          // while he is swinging in, hovering or pulling out meets him from
+          // below wherever he happens to be, and nothing can put that on the
+          // line (see COPTER_SHOT_LEAD_BARS): the only place the shot can be
+          // timed is the roam. So the window waits for the barrel to be dealt
+          // with — the whole pass plus the recoil, plus the bar the planner
+          // needs — and opens after it. No appeal to patience: like a hole,
+          // this is about what the window would do to the level, not to him.
+          const noBarrel = !this.copterOnBeat || !this.beatLock
+            || !this.beatBarrelDue(ENTER_T + HOVER_T + LEAVE_T + 0.75 * c.bar, sp);
           // HE ENJOYS THE APPROACH AND RESENTS THE WORK. The mood rides the
           // pass: pleased with himself on the way in, frowning once he is over
           // the hero and has to concentrate, sour for a while after a bonk.
@@ -5912,9 +6301,53 @@ export class RunState {
           // mid-flight — he was still crossing the frame on his slow entrance
           // when the window pulled him to the hero, which threw the entrance
           // away entirely.
-          if (c.arrived && c.modeT >= AHEAD_T && noPit && (clear || patience)) {
+          const windowDue = c.arrived && c.modeT >= AHEAD_T && noPit && (clear || patience);
+          if (windowDue && noBarrel) {
             c.mode = 'enter'; c.modeT = 0; c.homeT = null; c.mood = 'smile';
             c.passes = (c.passes || 0) + 1;
+          }
+          if (windowDue && this.beatLock) {
+            // THE PASS HE IS NOT MAKING STILL DECIDES THE BARREL. Deferring the
+            // window moves this barrel onto the roam, and the roam's odds are
+            // not the pass's — measured over the demo bot, a barrel booted
+            // while he was pulling out of a pass connected 83% of the time
+            // against 64% on the roam. So the pass he would have flown from
+            // this frame is flown here on paper, with the barrel's arc thrown
+            // at it, and its verdict is the one the planner steers by (see
+            // planCopterShot): the barrel connects if it would have, on the
+            // line, and misses if it would have. The player's own jump into
+            // that window is not modelled — it is theirs, not the level's.
+            const rel = (HEAVY_PUNT.launchBoost - 1) * sp;
+            const horizon = ENTER_T + HOVER_T + LEAVE_T + 0.75 * c.bar;
+            // The pass as the LEVEL runs it. The hover is cut short by a hole
+            // in the next stride (the abort in the hover case), and on a
+            // cabinet that cuts a hole every other beat that is nearly always
+            // and nearly at once — so the road ahead decides how long he
+            // hangs there, exactly as it will. What the player would have
+            // done in that window is not modelled: a head into the hull is
+            // their trade, a bonk for the lockout the barrel then meets.
+            const abortAhead = 0.45;
+            let hoverT = HOVER_T;
+            for (let tt = 0; tt < HOVER_T; tt += 1 / 60) {
+              if (!this.laneClearFor(ENTER_T + tt, ENTER_T + tt + abortAhead, sp, true)) { hoverT = tt; break; }
+            }
+            const path = this.copterPassOnPaper(c, sp, horizon + 1.2, {
+              ENTER_T, hoverT, LEAVE_T, zoom, ceiling, roamDxAt, roamAltAt, clampRightFor, dippedFor,
+              sideRate: SIDE_RATE / zoom,
+            });
+            for (const ob of this.obstacles) {
+              if (!ob.live || ob.punted || ob.hurtPlayer || !ob.def?.beatPunt
+                || ob.def.punt !== 'heavy' || ob.copterPaper != null) continue;
+              const kickIn = (ob.x - (this.camX + COPTER_SHOT_X0)) / (sp - (ob.def.vx || 0));
+              if (kickIn < 0 || kickIn > horizon) continue;
+              // The verdict is recorded whether or not the window was
+              // deferred, so a pass that actually flies can be checked
+              // against what was written for it (tests/copter-onbeat.js).
+              const tau = this.copterShotContact(kickIn, rel, path.dxAt, path.altAt);
+              ob.copterPaper = tau != null;
+              ob.copterPaperTau = tau;
+              if (!noBarrel) ob.copterOwed = ob.copterPaper;
+            }
           }
           break;
         }
@@ -6021,6 +6454,10 @@ export class RunState {
           // window. modeT starts negative, which is simply time owed.
           if (c.modeT >= LEAVE_T) {
             c.mode = 'away'; c.fromDx = null; c.homeT = null;
+            // The dodge is over. This used to persist until the next window,
+            // and the side limiter reads it as "dodging" — so after any pass
+            // he had dodged out of, the whole roam moved at the snap rate.
+            c.evadeT = 0;
             // Sour after a hit, otherwise back to his pleased cruise.
             c.mood = c.hitT > 0 ? 'frown' : 'smile';
             c.modeT = c.hitT > 0 ? -1.5 * c.bar : 0;
@@ -6077,30 +6514,21 @@ export class RunState {
       // moves — a recoil, a mode change, a camera zoom easing under him — the
       // drawing can only travel so fast. Descending is allowed to be brisker
       // than climbing: a dive reads as intent, a fast climb reads as a glitch.
-      const artL = (c.dx - COPTER_BOX / 2) * zoom;
-      const artR = (c.dx + COPTER_BOX / 2) * zoom;
       // A SHORT LEAD-IN, not a wide approach. 46 started the dip most of a body
       // width before he arrived, which is what put him low beside the gorilla
       // rather than over him. 14 is enough that the sink still reads as flown.
       // A LONG APPROACH. The dip is now gentle enough that it needs most of a
       // second to happen in, so it starts a good body-width out and is still
       // easing as he leaves.
-      const RAMP = 64;
-      const nearness = !hasGorilla ? 0 : Math.max(0, Math.min(1,
-        Math.min(artR - (GORILLA_COLUMN[0] - RAMP), (GORILLA_COLUMN[1] + RAMP) - artL) / RAMP));
-      if (nearness > 0) {
-        // A LEAN, NOT A CLAMP. Taking him all the way under the chin is a big
-        // move to make in the time he takes to cross a facade, and the size of
-        // it is what read as a drop. He goes most of the way — enough that the
-        // gorilla's face is clear on any pass that is not a hurry — and the
-        // rest is allowed to fail: a moment of overlap costs nothing, and the
-        // sudden movement that would have prevented it costs the whole read.
-        const DIP_SHARE = 0.7;
-        const underAlt = (GROUND_Y - GORILLA_CHIN_Y) / zoom - 40 - 2;
-        const eased = nearness * nearness * (3 - 2 * nearness) * DIP_SHARE; // smoothstep
-        if (c.alt > underAlt) c.alt += (underAlt - c.alt) * eased;
-        if (Number.isFinite(c.rideAlt) && c.rideAlt > underAlt) c.rideAlt += (underAlt - c.rideAlt) * eased;
-      }
+      // A LEAN, NOT A CLAMP. Taking him all the way under the chin is a big
+      // move to make in the time he takes to cross a facade, and the size of
+      // it is what read as a drop. He goes most of the way — enough that the
+      // gorilla's face is clear on any pass that is not a hurry — and the
+      // rest is allowed to fail: a moment of overlap costs nothing, and the
+      // sudden movement that would have prevented it costs the whole read.
+      // The arithmetic is dippedFor above, shared with the shot planner.
+      c.alt = dippedFor(c.alt, c.dx);
+      if (Number.isFinite(c.rideAlt)) c.rideAlt = dippedFor(c.rideAlt, c.dx);
       // SLOW ENOUGH THAT NOTHING SNAPS. 62 and 40 units a second still let a
       // mode change or an easing zoom throw him across the sky in half a
       // second. Peter: "his movement should never be that jerky unless hit."
@@ -6122,8 +6550,8 @@ export class RunState {
       // window, and the largest movement in the whole level. They keep their
       // snap by being allowed a much faster rate instead, so the drawing is
       // always continuous however sharply the target moves.
-      const SIDE_RATE = 130, SIDE_SNAP = 900;
       const sharp = !!c.evadeT || c.hitT > 0;
+      const wasDx = c.drawnDx, wasAlt = c.drawnAlt;
       if (Number.isFinite(c.drawnDx)) {
         const stepX = c.dx - c.drawnDx;
         const capX = (sharp ? SIDE_SNAP : SIDE_RATE) / zoom * dt;
@@ -6132,6 +6560,9 @@ export class RunState {
         c.drawnDx = c.dx;
       }
       c.dx = c.drawnDx;
+      // How he is moving, for anything that has to guess where he will be a
+      // few frames on (cueHeadBonk).
+      c.velDx = Number.isFinite(wasDx) && dt > 0 ? (c.drawnDx - wasDx) / dt : 0;
       c.x = this.camX + c.dx;
       const DOWN_RATE = 22, UP_RATE = 18;
       if (Number.isFinite(c.drawnAlt)) {
@@ -6146,6 +6577,7 @@ export class RunState {
         // he clips the top of the gorilla for a moment.
         const cap = (sharp ? 400 : step < 0 ? DOWN_RATE : UP_RATE) * dt;
         c.drawnAlt += Math.max(-cap, Math.min(cap, step));
+        c.velAlt = Number.isFinite(wasAlt) && dt > 0 ? (c.drawnAlt - wasAlt) / dt : 0;
       } else {
         c.drawnAlt = c.alt;
       }
@@ -6227,7 +6659,7 @@ export class RunState {
   homePellet(pr, dt) {
     let target = null;
     for (const ob of this.obstacles) {
-      if (!ob.live || ob.def.isGap || ob.def.isBoost || ob.def.armored) continue;
+      if (!ob.live || ob.def.isGap || isFloorPad(ob.def) || ob.def.armored) continue;
       if (!(ob.def.ground || ob.def.isTarget)) continue;
       if (pr.hitIds?.has(ob.id)) continue;
       if (ob.x + ob.w < pr.x || ob.x > pr.x + PELLET_HOME_RANGE) continue;
@@ -6277,12 +6709,22 @@ export class RunState {
         if (pr.type === 'pellet' && !pr.pierce) this.homePellet(pr, dt);
         pr.x += pr.vx * dt;
         if (pr.telegraph > 0) pr.telegraph -= dt;
-        if (pr.x > this.camX + W + 60 || pr.x < this.camX - 60) pr.live = false;
+        // A ROUND DIES WHERE IT LEAVES THE FRAME, and the frame is W / camZoom
+        // wide, not W. The old literal was written when the view was the
+        // logical frame: at the shipped zoom it let a missed pellet carry 300px
+        // past the right edge — three beats of road — where it would find the
+        // NEXT card box, light it, and hand the player a boom off screen a beat
+        // after a shot that visibly connected with nothing. A card box stands
+        // BOX_LEAD_BEATS ahead, comfortably inside the frame, so nothing the
+        // shot is aimed at is lost by ending the flight at the edge; the margin
+        // is only enough for the pellet to clear its own body first.
+        const viewRight = this.camX + W / this.camZoom;
+        if (pr.x > viewRight + 16 || pr.x < this.camX - 60) pr.live = false;
       }
       // Projectile vs obstacles.
       if (pr.type === 'pellet' || pr.type === 'axe' || pr.type === 'fist') {
         for (const ob of this.obstacles) {
-          if (!ob.live || ob.def.isGap || ob.def.isBoost) continue;
+          if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
           pr.hitIds ||= new Set();
           if (pr.hitIds.has(ob.id)) continue;
           const canHit = pr.type === 'axe' || pr.type === 'fist' || pr.pierce
@@ -6293,6 +6735,7 @@ export class RunState {
             if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && pr.type === 'pellet') {
               this.projectileImpact(pr, pr.x + 4, this.groundYAt(pr.x) - pr.alt - 4);
               pr.live = false;
+              break;
             }
             continue;
           }
@@ -10571,12 +11014,20 @@ export class RunState {
     // precomputed goes stale silently. (The parallax constant in the style packs
     // captured ZOOM at module load and never saw the change from 2 to 1.6; this
     // is the same trap, one loop further in.)
-    const cullLeft = cam - CULL_MARGIN;
-    const cullRight = cam + W / z + CULL_MARGIN;
+    const cullLeft = cam - LOOP_CULL_MARGIN;
+    const cullRight = cam + W / z + LOOP_CULL_MARGIN;
     // Culled here rather than inside drawWorldEntity because by the time that
     // runs the frame has already paid drawAtGround's terrain samples, a
     // transform and a closure for an entity it is about to reject.
-    const onScreen = (e) => e.x + e.w >= cullLeft && e.x <= cullRight;
+    const onScreen = (e) => {
+      const visible = entityInRenderBand(e, cam, W / z);
+      if (efficiencyProfile.enabled && !e.def?.isLoop) {
+        efficiencyProfile.entitiesConsidered++;
+        if (visible) efficiencyProfile.entitiesPainted++;
+        else efficiencyProfile.entitiesCulled++;
+      }
+      return visible;
+    };
     // THE LOOP GOES DOWN FIRST, before the coins hanging on it.
     //
     // Everywhere else obstacles paint over pickups, which is right: a coin
@@ -10591,12 +11042,12 @@ export class RunState {
     for (const ob of this.obstacles) {
       if (!ob.live || !ob.def.isLoop || ob.x >= finishX || !onScreen(ob)) continue;
       this.drawAtGround(ctx, ob.x,
-        () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings),
+        () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY),
         ob.w, 2.5, null, ob.route);
     }
     for (const p of this.pickups) {
       if (!p.live || p.x >= finishX || !onScreen(p)) continue;
-      this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings), p.w);
+      this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY), p.w);
     }
     // How far the world slid since the previous simulation step, which for a
     // thing standing still in world space IS its screen motion — obstacles do
@@ -10634,7 +11085,7 @@ export class RunState {
       // standing square on a road that rolls.
       const boost = ob.def.isBoost;
       const paint = () => this.drawAtGround(ctx, ob.x,
-        () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings),
+        () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY),
         ob.w, ob.def.ground && ob.alt === 0 ? (boost ? 2.5 : 1.5) : 0, boost ? cam : null,
         ob.route);
       if (smearing) {
@@ -10760,9 +11211,34 @@ export class RunState {
     // palette along with the buildings behind it — Peter: "he seems like part
     // of the background rather than foreground like the hero". Same rule as
     // the hero, the hazards, the portal and the finish pole.
-    const drawCopterActor = () => {
-      if (!this.copter) return;
+    //
+    // AND IN FRONT OF THE CHATTER, for the same reason. A floatie is a caption
+    // on the run and the speech card is banter about it; the thing the run is
+    // ABOUT cannot be printed behind either of them. So he leaves the world
+    // band entirely and goes to the overlay like the hero — enqueued below,
+    // after the cards and immediately before the airborne hero's held-back
+    // pass, so the old order between the two survives (he is under the hero on
+    // the frame the head bonk lands) and everything the FRAME owns — the HUD,
+    // the banners, the pause and fail screens — still covers him.
+    //
+    // The queue runs at device resolution, so this also takes him off the
+    // chunky backbuffer and onto the same clean raster the hero has always
+    // had. That is the point of calling him cast rather than scenery.
+    let copterLift = null;
+    // ...AND HIS EXIT GOES OVER THE FRAME ITSELF. Everywhere else he is held
+    // under the HUD, and copterCeilingAlt() is what makes that safe: the roam
+    // is capped below the HUD band, so the question never arises. The exit
+    // deliberately breaks that cap — stepCopterExit climbs him out of the top
+    // of the frame — and behind the goal and bonus panels he simply vanished
+    // mid-departure. Peter: "when he flys out ... he disappears behind the top
+    // right hud elements". `flyOff` is the exit's own flag and nothing else he
+    // does reaches that height, so this raises exactly the one pass that needs
+    // it and leaves the readouts covering him for the rest of the chase. The
+    // pause dimmer, the rewind and the fail card are enqueued after even this.
+    let copterOverHud = false;
+    if (this.copter) {
       const c = this.copter;
+      copterOverHud = !!c.flyOff;
       const copterView = {
         ...c,
         x: mix(Number.isFinite(c.prevX) ? c.prevX : c.x, c.x),
@@ -10772,9 +11248,17 @@ export class RunState {
       // therefore at whatever tempo this cabinet is playing at. Reduced
       // flashing turns the blink off and leaves the lamps steadily lit.
       const songBeat = Audio.songBeat();
-      this.drawAtGround(ctx, copterView.x, () => drawCopter(ctx, copterView, cam, renderT, true, this.save.settings.reducedMotion, songBeat, this.save.settings.reducedFlashing));
-    };
-    if (!this.style.actorsAbovePost) drawCopterActor();
+      // The overlay is a SEPARATE canvas that never saw the camera this band
+      // set up, so the pass carries it across itself — exactly what
+      // drawHeroSprite's overlay callback does, mirror included.
+      copterLift = (g) => {
+        g.save();
+        if (this.mirror) { g.translate(W, 0); g.scale(-1, 1); }
+        applyWorld(g, z, pan, floorY);
+        this.drawAtGround(g, copterView.x, () => drawCopter(g, copterView, cam, renderT, true, this.save.settings.reducedMotion, songBeat, this.save.settings.reducedFlashing));
+        g.restore();
+      };
+    }
     if (this.escapeWall != null) {
       const x = this.escapeWall - cam;
       ctx.fillStyle = 'rgba(20,10,30,0.85)';
@@ -10924,7 +11408,6 @@ export class RunState {
       // side of the conversion they land on. The hero goes last on both: he
       // climbs the finish pole and slides down it, and he steps through the
       // portal rather than behind it.
-      drawCopterActor();
       drawPortalRing();
       drawFinish();
       drawHero();
@@ -11069,11 +11552,18 @@ export class RunState {
       }
     };
     if (!pushOverlayDraw(drawChatter)) drawChatter(ctx);
+    // The villain, over the cards he is being chased through. He builds his own
+    // camera transform, so the headless fallback is the same callback handed
+    // the screen-space context — the actors-above-post branch above does
+    // exactly this. On the way out he waits for the frame instead (below).
+    if (copterLift && !copterOverHud && !pushOverlayDraw(copterLift)) copterLift(ctx);
     // The held-back hero, now that the cards he is jumping through are down.
     // Dropped rather than drawn if there is no overlay at all (headless): that
     // is the same nothing drawHeroSprite itself does on that path.
     if (heroLift) pushOverlayDraw(heroLift);
     if (!pushOverlayDraw(drawFrame)) drawFrame(ctx);
+    // The departing villain, now that the panels he climbs through are down.
+    if (copterLift && copterOverHud && !pushOverlayDraw(copterLift)) copterLift(ctx);
     this.drawChromeButtons();
 
     // Rewind VHS overlay: wave distortion, tracking bands, chromatic aberration,
