@@ -190,6 +190,18 @@ export const CUES = [
     osc(b, SR, { duration: 0.24, f0: 310, f1: 78, gain: 0.48, type: 'sine' });
     osc(b, SR, { start: 0.018, duration: 0.23, f0: 1120, f1: 760, gain: 0.2, type: 'sine', tremolo: 27 });
   }],
+  // FERNWICK'S LONGBOW (6 Sep 2026). A plucked string: a click as the
+  // fingers leave it, a bright triangle that drops a fifth as the tension
+  // goes, an octave overtone that dies first, the limbs' low thump, and a
+  // short hiss of the string cutting air. Everything is over by a third of a
+  // second — the arrow is the long part of this move, not the sound.
+  ['39-fernwick-bow-twang.wav', 0.32, (b, SR) => {
+    impulse(b, SR, 0.0, 0.45, 0.003);
+    osc(b, SR, { duration: 0.27, f0: 660, f1: 440, gain: 0.42, type: 'triangle', tremolo: 58, release: 0.55 });
+    osc(b, SR, { duration: 0.13, f0: 1320, f1: 980, gain: 0.15, type: 'sine', release: 0.5 });
+    osc(b, SR, { duration: 0.2, f0: 118, f1: 72, gain: 0.32, type: 'sine' });
+    noise(b, SR, { seed: 39, duration: 0.08, gain: 0.13, cutoff: 3400, mode: 'highpass' });
+  }],
   ['18-grumpos-axe-throw-ring.wav', 0.36, (b, SR) => {
     noise(b, SR, { seed: 18, duration: 0.23, gain: 0.25, cutoff: 2400, mode: 'highpass', attack: 0.05 });
     osc(b, SR, { start: 0.08, duration: 0.26, f0: 980, f1: 720, gain: 0.34, type: 'sine', tremolo: 38 });
@@ -391,6 +403,7 @@ export const LAUNCH_CUE = {
   // were only ever a proxy for "louder, with noise" — the pick is Peter's.
   kiko: '31-kiko-warning-shot-crack.wav',
   clara: '37-clara-pistol-pew.wav',
+  fernwick: '39-fernwick-bow-twang.wav',
 };
 
 const BY_NAME = new Map(CUES.map((cue) => [cue[0], cue]));

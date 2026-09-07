@@ -239,7 +239,9 @@ export const ANIMAL_HERO_CANDIDATES = [
 // being judged against nothing, and whichever wins would come out looking like
 // it wandered in from a different game the moment it stood next to Lorenzo.
 
-const PANDA_PAL = ANIMAL_HERO_CANDIDATES[0].pal;
+// Exported: the gallery's alternation section and the motion sheets draw the
+// settled hero directly and need his palette by name.
+export const PANDA_PAL = ANIMAL_HERO_CANDIDATES[0].pal;
 
 export const PANDA_BUILD_CANDIDATES = [
   {
@@ -739,70 +741,6 @@ export const PANDA_SETTLED = {
 
 
 // ---------------------------------------------------------------------------
-// ROUND 10 — THE RANGED MOVE (2 Sep 2026). The look is settled and the name is
-// RUSTY, FOCUS-TESTED. What is open is his ability, and the direction is that
-// ranged attacks become standard.
-//
-// The projectile names itself: red pandas eat bamboo, and his ability TYPE in
-// data/heroes.js is literally 'shoot' — BAMBOO SHOOT is the joke and the
-// implementation at once. The three cuts differ in what the shot DOES, and
-// they differ in cost as much as in feel, which is part of what is being
-// judged:
-//
-//   M1  data only. A row in HEROES; run.js already reads shotSpeed/shotSize/
-//       shotBurst off the hero and needs no branch. The beat cabinet starts
-//       dealing him a card box for free (RANGED_ABILITY_TYPES has 'shoot').
-//   M2  a small run.js change: shot speed scales with how fast he is actually
-//       running, so the ranged move IS the speedster fantasy rather than
-//       sitting beside it. Needs a test and a tuning pass.
-//   M3  a fan of three. Overlaps Clara's shotBurst, and — the honest cost —
-//       needs a POSE THAT DOES NOT EXIST: a tail-spin launch. M1 and M2 both
-//       ride the shipped 'aim' pose. The tiles draw M3 on that same aim pose,
-//       so what they show is its SHOT, not its gesture.
-//
-// One consequence worth stating before it is chosen: ranged is 4 of 8 today,
-// and the beat cabinet lays its shootable card box for exactly those four
-// because a prop only half the cast can answer is a hero check rather than a
-// rhythm figure. Rusty makes five. That is fine — but if ranged becomes
-// standard for everybody, that gate stops meaning anything and the card box
-// becomes ordinary furniture. A decision for the roster, not for this hero.
-
-export const RUSTY_SHOT_CANDIDATES = [
-  {
-    id: 'mshot-plain',
-    key: 'plain',
-    name: 'M1 — BAMBOO SHOOT',
-    note: 'One shoot, thrown flat and fast. Tuned to the quickest, smallest projectile on the roster '
-      + '(380 against Clara\'s 340, size 0.8) on a short cooldown — the fast hero\'s quick plink, '
-      + 'and a different silhouette from every round shot already in the lane. Costs nothing but a '
-      + 'row: run.js reads shotSpeed and shotSize off the hero already.',
-    shot: { speed: 380, size: 0.8, burst: 1, cooldown: 2.6 },
-  },
-  {
-    id: 'mshot-momentum',
-    key: 'momentum',
-    name: 'M2 — MOMENTUM-COUPLED',
-    note: 'The same shoot, but its speed rides his own. Standing still it is slower than M1; at full '
-      + 'tilt it outruns everything in the game. It is the only cut where the ranged move and the '
-      + 'speed passive are one idea instead of two, and it pairs with the MOMENTUM GUY sidegrade he '
-      + 'already inherits. The filmstrip shows both ends — the faint track is walking pace, the solid '
-      + 'one is flat out.',
-    shot: { speed: 300, size: 0.8, burst: 1, cooldown: 2.6, momentum: true },
-  },
-  {
-    id: 'mshot-fan',
-    key: 'fan',
-    name: 'M3 — TAIL FAN',
-    note: 'Three shoots flung in a spread off a tail spin. The widest answer and the most tied to his '
-      + 'best feature — but it overlaps Clara\'s twin-pistol burst, and it is the one cut that needs '
-      + 'a pose the painter does not have. These tiles draw it on the shipped AIM pose, so judge the '
-      + 'SHOT here and treat the gesture as unbuilt.',
-    shot: { speed: 320, size: 0.72, burst: 3, cooldown: 3.2, fan: 0.34 },
-  },
-];
-
-
-// ---------------------------------------------------------------------------
 // ROUND 11 — THE BROWS (2 Sep 2026). From reference art again. The complaint:
 // his brow marks are not distinct, they are part of one white patch AROUND the
 // eyes.
@@ -924,60 +862,6 @@ export const RUSTY_BROWSHAPE_CANDIDATES = [
     pal: PANDA_PAL,
   },
 ];
-
-// ---------------------------------------------------------------------------
-// ROUND 13 — THE LAUNCH. The shot round showed the projectile leaving and the
-// hero standing still, and that was not a rendering slip: `menuAction: 'aim'`
-// only ever produced a gesture for a hero carrying a PROP — Clara's pistol,
-// B-33P's gun-arm, Kiko's orb. Rusty has none of those flags, so he had no
-// throw at all. He does now (`spec.toss` in the arm chain, on the same 0.3s
-// budget every other ability pose uses), and this round is which one.
-//
-// A throw is three beats and none can be dropped: the WIND-UP makes the arm's
-// travel legible (a hand that starts forward has nowhere to accelerate from),
-// the WHIP is two frames and is the only part anyone consciously sees, and the
-// FOLLOW-THROUGH stops the arm looking like it hit a wall. The release is at
-// the end of the whip — that is where run.js should spawn the projectile, and
-// it is the same instant in all three.
-
-const RUSTY_FINAL_FACE = {
-  ...PANDA_SETTLED.spec, browMark: 'spot', cheekPatch: 'low', eyePatch: true, browSquash: 0.52,
-};
-
-export const RUSTY_TOSS_CANDIDATES = [
-  {
-    id: 'ptoss-over',
-    name: 'P1 — OVERARM',
-    note: 'The pitch: hand back past the ear, whip forward over the shoulder, follow through down and '
-      + 'across. The most legible throw there is and the one that reads at 24px, because the hand '
-      + 'travels the furthest. The cost is time — a real wind-up is a third of the budget spent before '
-      + 'anything leaves, which is a lot for the hero whose whole bit is being early.',
-    spec: { ...RUSTY_FINAL_FACE, toss: 'overarm' },
-    pal: PANDA_PAL,
-  },
-  {
-    id: 'ptoss-flick',
-    name: 'P2 — UNDERARM FLICK',
-    note: 'Almost no wind-up: the hand starts low and behind and comes through on a flat fast arc at '
-      + 'hip height. The throw of a character who is already there — it fits the speedster better '
-      + 'than the pitch does, and it costs the least of the 0.3s. What it gives up is reach: the hand '
-      + 'moves less, so the gesture is quieter at hero size.',
-    spec: { ...RUSTY_FINAL_FACE, toss: 'flick' },
-    pal: PANDA_PAL,
-  },
-  {
-    id: 'ptoss-tail',
-    name: 'P3 — TAIL FLING',
-    note: 'The tail is the throwing limb: it cocks back and up, then whips over the body past the hip '
-      + 'while the arms brace low and clear. The tail runs the SAME wind/whip/settle clock as the '
-      + 'arms, or the two halves of one gesture drift apart, and its control point travels further '
-      + 'than its tip so the sweep cracks like a whip instead of rotating like a rod. This is the cut '
-      + 'M3 wanted and did not have — and the only one that uses his best feature to do anything.',
-    spec: { ...RUSTY_FINAL_FACE, toss: 'tail' },
-    pal: PANDA_PAL,
-  },
-];
-
 
 // ---------------------------------------------------------------------------
 // ROUND 14 — BROW ANGLE (2 Sep 2026). O2 won round 12: squash 0.70, about
@@ -1246,3 +1130,184 @@ export const RUSTY_OPENBROW_CANDIDATES = OPEN_RISES.flatMap((rise, ri) =>
     spec: { ...RUSTY_T1, faceSeed: 0.6 + ri * 2.1 + ti * 0.7, browOpenRise: rise, browOpenTilt: tilt },
     pal: PANDA_PAL,
   })));
+
+
+// ---------------------------------------------------------------------------
+// ROUND 20 — WHERE THE BAMBOO LIVES (5 Sep 2026). The carried cane answered
+// "where does an endless supply come from" by making the supply one stick he
+// owns. Peter's better answer: he wears a BUNDLE and pulls one out, which is
+// exactly what Fernwick does with the quiver — `back: 'quiver'` plus the
+// arrows standing in it, so the ammunition visibly has a source.
+//
+// It also buys a beat the carried version never had. Reaching back for a cane
+// IS the wind-up, so the throw stops needing an abstract cock-and-whip and
+// starts explaining itself: hand to the hip, cane out, throw.
+//
+// Two questions, so two things vary and the row is read as a grid of one:
+//   WHERE  `bundle` — 'back' (high behind the shoulder, Fernwick's placement),
+//          'hip' (on the back of the belt), 'sling' (low, on a cross-strap).
+//   WHETHER he also keeps one in hand at rest (`stick`), or goes empty-handed
+//          until he draws — which is the real difference in feel, and the
+//          reason the row is not just three positions.
+
+const RUSTY_BUNDLE_BASE = { ...RUSTY_T1, stick: false };
+
+export const RUSTY_BUNDLE_CANDIDATES = [
+  {
+    id: 'vbun-quiver',
+    name: 'W1 — QUIVER',
+    note: 'Fernwick\'s construction, borrowed straight: a tube worn high behind the shoulder with the '
+      + 'canes STANDING UP out of it. Upright is the whole trick — a quiver reads as stowed because '
+      + 'every arrow crosses the mouth on the same line; canes at a lean read as spilling.',
+    spec: { ...RUSTY_BUNDLE_BASE, bundle: 'quiver' },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'vbun-belt',
+    name: 'W2 — TOOL BELT + POUCH',
+    note: 'A band across the hips with the tube hung on it. The belt is doing real work: a pouch with '
+      + 'nothing holding it up reads as stuck to his side, and one strap is the difference between kit '
+      + 'and a sticker. Shortest draw of the three — the hand falls straight onto it.',
+    spec: { ...RUSTY_BUNDLE_BASE, bundle: 'belt' },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'vbun-dispenser',
+    name: 'W3 — BELT DISPENSER',
+    note: 'The same belt, tube canted back off the hip like a holster, so the canes present their ends '
+      + 'toward the drawing hand rather than straight up. Most tool-like of the three and the most '
+      + 'compact against the body; the cant is the one thing here that is not upright, and it is the '
+      + 'tube, never the canes.',
+    spec: { ...RUSTY_BUNDLE_BASE, bundle: 'dispenser' },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'vbun-tilt',
+    name: 'W3b — BELT, SLIGHT ANGLE',
+    note: 'Between W2 upright and W3 fully canted: the tube tilted about half as far. Upright is the '
+      + 'tidiest and the cant is the most tool-like, so this is the reading that keeps the canes '
+      + 'presenting toward the hand without the pouch looking like it is sliding off the belt.',
+    spec: { ...RUSTY_BUNDLE_BASE, bundle: 'tilt' },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'vbun-pack',
+    name: 'W4 — BACKPACK',
+    note: 'A pack square on his back with the canes standing out of the top, and — the part that '
+      + 'makes it read — SHOULDER STRAPS crossing the chest with a sternum band. The pack is a '
+      + 'back-pass piece and the straps a front-pass one, because a pack whose straps are hidden '
+      + 'behind the torso is just a box floating behind a hero. Biggest silhouette change of the four.',
+    spec: { ...RUSTY_BUNDLE_BASE, bundle: 'backpack' },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'vbun-none',
+    name: 'W5 — NO BAG (carried cane)',
+    note: 'The control: no bag at all, one cane carried, as it stands today. Worth keeping in the row '
+      + 'so the bag has to EARN its place in the silhouette rather than just answering a question '
+      + 'nobody sees while playing.',
+    spec: { ...RUSTY_T1 },
+    pal: PANDA_PAL,
+  },
+];
+
+
+// ---------------------------------------------------------------------------
+// ROUND 20 SETTLED (6 Sep 2026): W3b — the tool belt on the waist with the
+// canister slung on the left hip, tube canted a little, canes along its axis,
+// drawn body / leg / pouch / arm / hand. The quiver, the upright pouch, the
+// full cant, the backpack and the no-bag control all lost to it.
+// ROUNDS 10 AND 13 ARE GONE (6 Sep 2026): the three-way ranged-move and the
+// three launch gestures (overarm / flick / tail fling) were superseded by the
+// pouch. There is ONE throw now — reach, pull, whip, through, drawn from the
+// canister with the alternating cane — and it lives in toons.js under
+// `throwQ`, not in a candidate list.
+export const RUSTY_W3B = {
+  ...RUSTY_T1, stick: false, bundle: 'tilt',
+  // ROUND 21 SETTLED (6 Sep 2026): X3 — two canes, gapped and STAGGERED. The
+  // stagger is what sells two separate sticks; the pair stays parallel to the
+  // bag. And it turned into a mechanic: the long and short canes ALTERNATE
+  // slots every throw, the thrown piece is the one he pulled (right-hand slot,
+  // always), and the projectile is sized to match via caneScale(parity). The
+  // pouch is stateful — it visibly changes after every throw.
+  canes: { n: 2, gap: 0.045, stagger: 0.03 },
+  // ROUNDS 22-24 SETTLED (7 Sep 2026): Z2c — a triangular head with the cheek
+  // patch back up past its pre-taper size. Three dials, one face:
+  //   faceTrim 0.2   the lower face narrowed a little — flare, jaw and tufts
+  //   faceTaper 0.35 the WIDTH moved up to the temples, so the mass reads at
+  //                  the cheekbones instead of hanging at the jaw. This is the
+  //                  one that answered "his head looks bigger than everyone's",
+  //                  which measurement had already shown was false: at one
+  //                  figure height his head is 149x132 against Lorenzo's
+  //                  153x140 and Gnash's 152x148, and he carries no headScale.
+  //                  It was never size, it was where the width sat.
+  //   cheekScale 1.05 the white patch a touch FULLER than it started, because
+  //                  a tapered jaw under the original patch read as bony.
+  // Stronger tapers (0.6+) were real options and lost: past halfway the ears
+  // take over the silhouette and he starts reading fox. Fuller cheeks (1.15+)
+  // lost to the jaw tufts, which they crowd.
+  faceTrim: 0.2, faceTaper: 0.35, cheekScale: 1.05,
+};
+
+// ROUND 21 — THE CANES IN THE MOUTH. On W3b the two canes read as ONE THICK
+// CANE: 0.032u apart and each about 0.03u wide, they touch along their whole
+// length and fuse. Every cut here is W3b with only `canes` changed — what
+// separates two sticks into two is the question, and there are four honest
+// answers plus a control.
+export const RUSTY_CANE_CANDIDATES = [
+  {
+    id: 'xcane-ascut',
+    name: 'X1 — AS CUT',
+    note: 'Two canes at 0.032u, touching. The control, and the thing being fixed.',
+    spec: { ...RUSTY_W3B, faceSeed: 0.7, canes: { n: 2, gap: 0.032 } },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'xcane-gap',
+    name: 'X2 — GAPPED',
+    note: 'Spacing opened to 0.05u so a sliver of tube shows between the shafts. The smallest change '
+      + 'that works: two things with a visible seam between them are two things.',
+    spec: { ...RUSTY_W3B, faceSeed: 1.4, canes: { n: 2, gap: 0.05 } },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'xcane-stagger',
+    name: 'X3 — STAGGERED',
+    note: 'Same spacing as X2, one cane standing 0.03u taller. The tops no longer line up, which is '
+      + 'what a bunch of anything actually looks like — nobody cuts two canes to the same length.',
+    spec: { ...RUSTY_W3B, faceSeed: 2.1, canes: { n: 2, gap: 0.045, stagger: 0.03 } },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'xcane-splay',
+    name: 'X4 — SPLAYED',
+    note: 'Bases bunched in the tube, tips fanned by a few degrees each. Still along the bag\'s axis '
+      + 'on average, but the pair diverges toward the top — the way canes lean apart in a holder '
+      + 'that is wider at the mouth than they are.',
+    spec: { ...RUSTY_W3B, faceSeed: 2.8, canes: { n: 2, gap: 0.03, splay: 0.11 } },
+    pal: PANDA_PAL,
+  },
+  {
+    id: 'xcane-thin3',
+    name: 'X5 — THREE, THINNER',
+    note: 'Three canes at a smaller scale with gaps between. More sticks, less bulk: the bundle reads '
+      + 'as a bundle because you can count it. The risk is that the thinner canes stop matching the '
+      + 'one he throws.',
+    spec: { ...RUSTY_W3B, faceSeed: 3.5, canes: { n: 3, gap: 0.036, size: 66, stagger: 0.02 } },
+    pal: PANDA_PAL,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// ROUNDS 22, 23 AND 24 ARE GONE (7 Sep 2026): the face trim (Y), the triangular
+// head (Z) and the cheek size (Z2a-e) all settled into RUSTY_W3B above as
+// faceTrim / faceTaper / cheekScale. The dials stay in toons.js — they are how
+// the shape is expressed, and every other animal head still reads 0 for all
+// three. The candidate rows do not: once a question is decided the section
+// comes out and the painter keeps the answer.
+//
+// One fix rode in with them and is NOT a dial: the chin now leans onto the
+// FACE axis. The rig centres the face on hx + 0.01u while the skull, ears and
+// ruff stay on hx; a round jaw hid that, and a tapered one pointed straight at
+// it. toons.js ramps the lean by depth — nothing at the temples, full at the
+// chin apex.

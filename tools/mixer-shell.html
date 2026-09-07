@@ -3672,6 +3672,18 @@
                           line-height: 1.15; white-space: nowrap; overflow: hidden;
                           text-overflow: ellipsis; }
   :is(#voiceedit, #synthfull) .segrow .seg { flex: none; min-width: 0; }
+  /* a grid of pills — JMJR-4's twelve syllables and twelve vowels, four to a row, every
+     cell the same width so two rows line up */
+  :is(#voiceedit, #synthfull) .seg.seggrid { display: grid; gap: 2px 0; width: 100%; }
+  :is(#voiceedit, #synthfull) .seg.seggrid .segbtn { text-align: center; }
+  /* the one text control: JMJR-4's syllable line, in the desk's input voice */
+  :is(#voiceedit, #synthfull) .row.textrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; }
+  :is(#voiceedit, #synthfull) .row.textrow .k { flex: none; }
+  :is(#voiceedit, #synthfull) .vetext { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 11px; padding: 4px 7px;
+                                          color: var(--ink); background: var(--input); border: 1px solid var(--line);
+                                          border-radius: 4px; box-sizing: border-box; }
+  :is(#voiceedit, #synthfull) .vetext:focus { outline: none; border-color: var(--accent); }
+  :is(#voiceedit, #synthfull) .vetext.bad { border-color: var(--warn, #c66); }
   /* WAVE TABLE is a ROW, not a name over a control: the label at the card's left edge and
      the menu filling the width to its right. It is the one control on an oscillator card
      that is a NAME rather than a number, so it takes the full width and reads on one line
@@ -4575,6 +4587,16 @@
                       font: inherit; font-size: 10.5px; letter-spacing: .04em;
                       color: var(--dim); opacity: .65; white-space: nowrap; }
   #synthfull .sfopt::after { content: none; }
+  /* A grid of words (JMJR-4's syllables and morph targets): the label sits at the top
+     left of its block, the words N to a row, centred in equal cells so the rows line up. */
+  #synthfull .sfchoice.sfgridrow { align-items: flex-start; }
+  #synthfull .sfopts.sfoptgrid { display: grid; gap: 5px 8px; justify-items: center; }
+  #synthfull .sfoptgrid .sfopt { font-size: 11px; letter-spacing: .06em; }
+  /* The text row (JMJR-4's syllable line and phrase) reads like a choice row: the name at
+     the left, the field taking the rest of the line, a rule under it. */
+  #synthfull .row.textrow { flex-direction: row; align-items: center; gap: 10px;
+                            padding: 3px 1px 5px; border-bottom: 1px solid var(--line); }
+  #synthfull .row.textrow > .k { flex: none; font-size: 9px; letter-spacing: .09em; color: var(--dim); }
   /* Hover is a step toward the chosen look, not past it: brighter, not yet the accent. */
   #synthfull .sfopt:hover { color: var(--ctl-hi); opacity: 1; }
   #synthfull .sfopt.on { color: var(--accent); opacity: 1; }
@@ -4611,6 +4633,18 @@
      `fullLayout`. `auto` would push the picker to the foot of the card and leave the air
      above it, and there is nothing on the band for it to line up with anyway. */
   #synthfull .vegroup.sftop > .devgrid { margin-top: 0; }
+  /* A CARD THAT BREATHES. The Vocal card is four questions in a column — the mode, what
+     to sing, where the vowel goes, how the note enters, how many voices — and on a card
+     with room to spare they were drawn on one even pitch, which reads as one long list.
+     The grid takes the whole card and hands its slack to the spaces BETWEEN its lines, so
+     the groups separate and the last of them comes to rest on the floor. The two rules
+     under it open a wider line where a group actually ends, so the spacing says which rows
+     belong together rather than merely holding everything apart.
+     Only where a card asks for it (see "airy" in fullLayout): a card whose content fills
+     it has no slack to give, and space-between on a full card does nothing. */
+  #synthfull .vegroup.sfairy > .devgrid { flex: 1 1 auto; align-content: space-between; }
+  #synthfull .sfgapafter { margin-bottom: 12px; }
+  #synthfull .sfgapbefore { margin-top: 12px; }
   /* A modulator section is PINNED TO THE FOOT of its card, on a top-read card too: the
      rows above it change with the wave (PWM's five, FM's five, one more on noise), and a
      rule that slides up and down as you audition waveforms is a rule you have to find

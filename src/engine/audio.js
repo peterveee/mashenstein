@@ -20,6 +20,8 @@ import {
   resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION, RESOLUTIONS,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
+import { warmTngr2Families } from './tngr2/tables.js';
+import { tngr2FamiliesOfVoice } from './tngr2/controller.js';
 import {
   rearrangementPosition as resolveRearrangementPosition,
   rearrangementOutputSteps,
@@ -611,7 +613,7 @@ const WEAPON_AUDIO_GAIN = {
   // she starts between him and Kiko on launch, a touch under Kiko on the
   // ricochet zing.
   contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9, kiko: 0.82, clara: 0.78 },
-  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78, clara: 0.62 },
+  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78, clara: 0.62, fernwick: 0.8 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
@@ -1189,6 +1191,7 @@ class AudioSys {
     if (jump && (this.step < this.loopStart || this.step >= this.loopEnd)) {
       this.step = this.loopStart;
       this.noteFx.reset();
+    this.voices?.resetJmjr4Lines?.();
     }
   }
 
@@ -4513,6 +4516,7 @@ class AudioSys {
     this.setLoop();
     this.step = 0; // songs start from the top (section order matters now)
     this.noteFx.reset();
+    this.voices?.resetJmjr4Lines?.();
     // …unless the song says otherwise. `arrangement.loop` names the bar it starts on
     // and the bars it repeats, and this is the one call every playback path in the
     // game goes through — the title screen, the hub, a level, the jukebox and
@@ -4574,6 +4578,7 @@ class AudioSys {
     const id = trackIdOf(bank);
     this.mixEntry = entry || null;
     this.noteFx.reset();
+    this.voices?.resetJmjr4Lines?.();
     const arrangementId = id || '__explicit__';
     const arranged = this.arrangement !== undefined
       ? applyArrangement(bank, arrangementId, { [arrangementId]: this.arrangement })
@@ -5674,6 +5679,51 @@ class AudioSys {
     return warmed;
   }
 
+  /**
+   * Build every WORKLET lane the current bank plays, NOW, and resolve when they exist.
+   *
+   * TNGR-2 lanes, and MRDR-3's when the desk is on the worklet backend, are
+   * AudioWorklet nodes, and they used to be built at the first NOTE of their voice:
+   * register the module, expand any wavetable the pre-expansion missed (`basic` always
+   * rides along as TNGR-2's fallback table, and nothing else ever asked for it), then
+   * structured-clone the tables into a processor — all mid-song, with the sequencer's
+   * queue draining underneath. Measured in the rhythm stage: ~100 ms off the main
+   * thread and ~40 ms of audio clock lost, at the bar the pad enters on, which is the
+   * hiccup "when TNGR-2 first comes in". A pad that only arrives for one embellishment
+   * late in a track is the worst case, because the stall lands the moment it enters.
+   *
+   * So it happens here, at the moments a song is silent anyway: a cabinet select, a
+   * stage enter, and every desk re-bank, all of which sit inside `setBank`'s
+   * half-second gap or behind the shutter. Wavetables are expanded inline (memoised, so
+   * a warm cabinet costs nothing), lanes resolve a few tens of milliseconds later, and
+   * the first note finds its node instead of queueing behind a build.
+   *
+   * Live only: an offline render collects its notes and builds one node at the end of
+   * the scheduling pass — see `flushTngr2Offline`. Nothing to fall back to if a lane
+   * cannot be built; the rack has already said why, so a failure counts as zero here
+   * rather than throwing.
+   */
+  warmWorkletLanes() {
+    if (this.offline || !this.ctx || !this.bank) return Promise.resolve(0);
+    const lanes = [];
+    const ids = [];
+    for (const lane of laneList(this.bank)) {
+      const key = lane.key;
+      const v = voiceOf(this.bank, key);
+      if (!v) continue;
+      lanes.push([key, v]);
+      // TNGR-2's tables are expanded HERE rather than inside the lane build, which is
+      // async: an expansion that lands in a later task lands on a visible frame.
+      if (v.synth === 'TNGR-2') ids.push(...tngr2FamiliesOfVoice(v));
+    }
+    if (!lanes.length) return Promise.resolve(0);
+    if (ids.length) warmTngr2Families(ids, { idle: false });
+    const rack = this._ensureVoiceRack();
+    return Promise.all(lanes.map(([key, v]) => rack.warmWorkletLane(v, key)
+      .then((ok) => (ok ? 1 : 0), () => 0)))
+      .then((built) => built.reduce((a, b) => a + b, 0));
+  }
+
   playVoice(key, b, value, { spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1, len = null }) {
     const seam = seamFor(key);
     const v = seam && voiceOf(b, key);
@@ -5734,6 +5784,9 @@ class AudioSys {
         dry,
         wet,
         echo,
+        // The transport's step, for the one engine whose sound advances per step: JMJR-4's
+        // syllable line. Every other path ignores it.
+        step: this.step,
         // Its own synths while the song keeps its own — see previewNote.
         preview: !!this._previewing,
         // ...and whether that note waits for a note-off. Two questions, because the

@@ -1930,7 +1930,7 @@ export class TutorialState {
   // `(ground || isTarget) && !armored`, and every flier fails it). A player left
   // here believing the lemon kills what is in the sky, and the first stage said
   // otherwise. So the targets are `target` props now, and the aim is
-  // RunState.homePellet: steer to the middle of the first thing ahead that can
+  // RunState.homeRound: steer to the middle of the first thing ahead that can
   // actually be shot, up or down, and fly straight when there is nothing.
   //
   // `isTarget` is what makes an alt-40 target reachable from the floor in both
@@ -1957,7 +1957,7 @@ export class TutorialState {
       // box, so left flat it never meets a prop above alt 12 — and a `target`
       // stands at 40. THE DIVE IS THE SHOT: once something shootable is inside
       // PELLET_LOCK_RANGE the lemon eases onto its middle, exactly as
-      // RunState.homePellet does, so the round arrives THROUGH the bullseye rather
+      // RunState.homeRound does, so the round arrives THROUGH the bullseye rather
       // than under it. It is the same climb the real cannon makes, which is the
       // point — a player who learns this arc here sees it again in 1-1.
       const aim = this.pelletAim(pr);

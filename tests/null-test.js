@@ -44,6 +44,42 @@ export const BASELINE_DIR = join(ROOT, 'work/baselines/engine');
 // anything audible, and still tight enough to catch a gain that moved by 0.01dB.
 export const TOLERANCE = 5e-6;
 
+/*
+ * ...EXCEPT WHERE A COMPRESSED MASTER MULTIPLIES THE LAST BIT.
+ *
+ * Measured 7 September 2026 (`work/local/megamix-null-test-finding.md`, probe
+ * `work/local/megamix-nondeterminism-probe.mjs`). Two facts, and the second is the one
+ * this constant exists for:
+ *
+ *   1. NO render here is bit-reproducible. The same song rendered twice in the same
+ *      browser differs by about one float32 last bit — 1.19e-7 for plumber, 1.79e-7 for
+ *      megamix, mixed or not. That is the float32 epsilon, so it is rounding.
+ *   2. The megamix's master bus multiplies that by about 260. It is the only track that
+ *      puts a MULTIBAND COMPRESSOR over a boosted EQ and then runs the master hot enough
+ *      to sit on the knee (its pre-limiter peak is 1.032). A compressor is a feedback
+ *      follower: near the knee a last-bit difference in the input puts the gain-reduction
+ *      envelope on a different trajectory, and that gain difference then multiplies the
+ *      whole band for the length of its release.
+ *
+ * Rendered twice against itself: the full megamix mix differs by 7.094e-5; with the master
+ * effects removed, 2.682e-7; with only the EQ, 1.222e-6; with only the compressor, 1.089e-5.
+ *
+ * So 5e-6 is unreachable for this one render and re-baselining will never clear it — a
+ * permanent warning is a warning nobody reads, and it would hide the next real change. 5e-4
+ * is a factor of seven above what was measured and is about -66dBFS: still far below
+ * anything audible under a full mix, and still tight enough that any change to the megamix's
+ * notes, levels or effects lands well above it. It is a tolerance for ONE render's
+ * arithmetic, not a general loosening — everything else, this song included when it is
+ * rendered without its mix, is held to 5e-6.
+ *
+ * `hub` and `rhythm` also carry multiband compressors and are quiet enough not to engage
+ * them; `title` carries a compressor and a limiter at -19.4dB and reproduces fine. If one of
+ * those comes up in level and starts warning, this is the reason and this is the place.
+ */
+export const LOOSE_TOLERANCE = 5e-4;
+export const looseIds = new Set(['megamix.mix']);
+export const toleranceFor = (id, suffix) => (looseIds.has(`${id}${suffix}`) ? LOOSE_TOLERANCE : TOLERANCE);
+
 // plumber covers the melodic lanes and the echo; megamix walks every song's voices
 // in one render. Between them they touch nearly every branch of scheduleStep.
 // MASH_NULL_ALL=1 does the full set, which is what to run before believing a big
@@ -93,11 +129,13 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
           const d = Math.abs(out.outL[i] - ref[i]);
           if (d > max) { max = d; at = i; }
         }
-        if (max < TOLERANCE) {
-          console.log(`ok: ${what} is identical to the baseline (max diff ${max.toExponential(2)})`);
+        const tol = toleranceFor(id, suffix);
+        if (max < tol) {
+          console.log(`ok: ${what} is identical to the baseline (max diff ${max.toExponential(2)}`
+            + `${tol !== TOLERANCE ? `, tolerance ${tol.toExponential(0)} — a compressed master, see the note in this file` : ''})`);
         } else {
           const msg = `${what} differs by ${max.toExponential(3)} at sample ${at}`
-            + ` (${(at / 44100).toFixed(2)}s) — tolerance is ${TOLERANCE.toExponential(0)}`;
+            + ` (${(at / 44100).toFixed(2)}s) — tolerance is ${tol.toExponential(0)}`;
           if (soft) { console.warn(`WARN: ${msg}`); warnings.push(msg); }
           else { console.error(`FAIL: ${msg}`); failed = true; }
         }

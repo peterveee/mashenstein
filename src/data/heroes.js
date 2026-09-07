@@ -60,14 +60,23 @@ export const HEROES = [
     tagline: 'THE RECEIPT FORETOLD THIS.',
     speedMult: 1.0, scoreMult: 0.95, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 1, magnetRadius: 0, variableJump: true,
-    ability: { type: 'roll', cooldown: 3, label: 'SHIELD ROLL', callout: 'SHIELD ROLL' }, stomp: false,
-    joke: 'HIS SACRED PROPHECY IS PRINTED ON A FADED SUPERMARKET RECEIPT.',
+    // THE LONGBOW (6 Sep 2026, replacing the shield roll). Nothing leaves on
+    // the press: she snatches the bow off her back and draws, and the arrow
+    // goes 0.18s in (BOW_REACH_T + the style's release). That is the skill of
+    // her — the shot has to be called early — and 0.18 is where the calling
+    // stays fair: it puts a target 160px out at 0.46s from the press, between
+    // Ray M'n's fist and Kiko's warning shot, where 0.30 had him a tenth of a
+    // second slower than anything else in the cast. The cooldown runs from the
+    // press: 2.4s, of which the handling is the first ~0.93s (she cannot fire
+    // mid-sling), leaving ~1.5s with the bow on her back.
+    ability: { type: 'bow', cooldown: 2.4, label: 'LONGBOW', callout: 'DRAW' }, stomp: false,
+    joke: 'HER SACRED PROPHECY IS PRINTED ON A FADED SUPERMARKET RECEIPT.',
     skillLabel: 'STARTING SHIELD',
     skillDesc: 'STARTS NEW LEVELS WITH A SHIELD',
-    powerDesc: 'SHIELDED ROLL BREAKS GROUND HAZARDS',
-    abilityDesc: 'SHORT, FINITE ROLL THAT BREAKS GROUND HAZARDS.',
+    powerDesc: 'ARCING ARROW BREAKS GROUND HAZARDS',
+    abilityDesc: 'DRAWS AND LOOSES AN ARROW THAT ARCS INTO GROUND HAZARDS.',
     sidegrades: [
-      { id: 'bash', name: 'SHIELD BASH', desc: 'ROLL BREAKS CRATES BUT BRIEFLY RINGS HIS EARS.' },
+      { id: 'bash', name: 'BROADHEAD', desc: 'THE ARROW PUNCHES THROUGH AND KEEPS GOING.' },
     ],
   },
   {
@@ -218,7 +227,7 @@ export const HERO_BY_ID = Object.fromEntries(HEROES.map((h) => [h.id, h]));
 // visibly hang in mid-air in front of a box it had just opened. The box now
 // stands 1.05 beats out (BOX_LEAD_BEATS, ~94px) and the fist's 176px covers it
 // with room, so Ray M'N is dealt the box like the other four.
-export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist']);
+export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist', 'bow']);
 
 /** Can this hero destroy something in front of them without touching it? */
 export function heroShoots(id) {

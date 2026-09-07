@@ -2054,6 +2054,15 @@ function loadTrack(id) {
   // A voice change has to come back through setBank; level edits do not, so the song
   // keeps playing without a gap while you mix.
   if (playing) Audio.setBank(track.bank, mixFor(id), arrFor(id));
+  // The worklet lanes with it, inside the gap setBank just opened.
+  //
+  // TNGR-2 and MRDR-3 AW are AudioWorklet nodes, and a rack dispose releases every
+  // TNGR-2 lane (`releaseTngr2Context`) — which a re-bank does. Left alone the next
+  // note on that lane rebuilds the node and structured-clones 1.5 MB of wavetable into
+  // it, mid-song, and the desk re-banks on every voice change: that stall was one
+  // preset edit away at all times, and it lands on whichever bar the pad happens to
+  // re-enter on. Here it is half a second of silence that was already silent.
+  Audio.warmWorkletLanes?.();
   applyToEngine(mixFor(id));
   restoreFrozenToEngine(id);
   syncRollFollowButton();
@@ -2941,6 +2950,7 @@ const SYNTH_ABBR = {
   'KLNG-8': 'KL8',
   'MRDR-3': 'MR3',
   'TNGR-2': 'TN2',
+  'JMJR-4': 'JM4',
   'Game Engine': 'ENG',
   // The three names of one engine: CRLS-1 and the two it merged. A song written before
   // the merge still says Synth or MonoSynth, and it is the same instrument, so it gets
@@ -18373,6 +18383,9 @@ function setPlaying(on, fromStep = null, { countIn = 0, preservePendingPlayback 
     const at = fromStep != null ? fromStep : parkedAt;
     startedAt = at;
     Audio.setBank(track.bank, mixFor(trackId), arrFor(trackId), { countIn });
+    // Before the first note rather than on it — see the note at the song switch above.
+    // Pressing play is the other moment the song is reliably silent.
+    Audio.warmWorkletLanes?.();
     applyToEngine(mixFor(trackId));
     Audio.step = at;
     // "Play from start" with loop on: arm the selected loop region but don't jump

@@ -48,22 +48,121 @@ export const COIN_DIV = 4;
 // cabinet's tempo and speed, which lands on COIN_GAP, the pitch every other
 // coin run in the game is laid at; the shared number is what keeps a fill
 // reading as coins rather than as a bar of pink.
+//
+// AND EVERY FIGURE COMES BOTH WAYS ROUND.  A plain fill starts ON the line and
+// spends the beat after it; a `...In` fill is the same figure laid backwards,
+// so its LAST coin is on the line and everything else leads up to it.  That is
+// the count-in — the oldest thing a rhythm game does — and it is also the only
+// direction with any road in it on the beat before a hole: a forward pair puts
+// its second coin half a beat nearer the lip, while a count-in's last coin
+// stands exactly where the lone coin already stood and the rest of the figure
+// runs AWAY from the hazard.  Which is why the charts here can play a figure
+// into a hole at all (see THE ROOM A HOLE LEAVES, below).
 export const COIN_FILLS = Object.freeze({
   eighth: { run: 2, div: 2 },
   sixteenth: { run: 4, div: 4 },
   thirtysecond: { run: 8, div: 8 },
+  eighthIn: { run: 2, div: 2, lead: true },
+  sixteenthIn: { run: 4, div: 4, lead: true },
+  // THE ISLAND FIGURES, named by the sixteenths they play. A `steps` fill names
+  // the subdivisions it lands on instead of filling them evenly, which is the
+  // only way to write a rhythm with a hole in it — and every one of these has a
+  // hole in it, because the beat before a takeoff is not four sixteenths of
+  // road. The hero is still in the air on the first of them (THE ROOM A HOLE
+  // LEAVES), so the ones that matter are the back half, and how many of them
+  // there are is the whole of the variation between one island and the next.
+  //
+  // AND THE COIN ON THE 1 IS THE ONE THAT GETS AWAY. Measured across the bot
+  // playing all three stages with all eight heroes: the coin on the 1 is
+  // collected 75% of the time and the one on the 2 78%, because at those two
+  // the hero is near the APEX of the jump out of the previous hole — sixty
+  // pixels up, sailing over a pickup that sits at ten. The 3 lands 99% and the
+  // 4 every single time, the hero's feet being back under him by then.
+  //
+  // So the 1 is decoration, and it is decoration by geometry rather than by
+  // choice: it says the island has started and it is not really a coin. Which
+  // is why `on34` exists — an island that skips it pays two coins out of two
+  // instead of three out of four, and the difference between the two readings
+  // is the variation.
+  on134: { div: 4, steps: [0, 2, 3] },
+  on123: { div: 4, steps: [0, 1, 2] },
+  on13: { div: 4, steps: [0, 2] },
+  on34: { div: 4, steps: [2, 3] },
 });
-// HOW MUCH ROAD A COIN RUN LEAVES IN FRONT OF A HOLE, in seconds of travel.
+/**
+ * Where a coin slot's coins stand, in beats either side of its own line.
+ *
+ * One number per coin, ascending, and the ONLY place the run's direction is
+ * decided — the validator measures with it, the lane lays with it, and the beat
+ * ribbon reads the stamps the lane made from it.
+ */
+export function coinRunOffsets(event) {
+  const div = event.div ?? COIN_DIV;
+  // A NAMED FIGURE FIRST: `steps` is the subdivisions this slot actually plays,
+  // so a rhythm with a rest in it can be written down. `run` is the shorthand
+  // for the case where they are all of them.
+  if (event.steps) return event.steps.map((k) => k / div);
+  const n = event.run ?? 1;
+  const head = event.lead ? -(n - 1) / div : 0;
+  return Array.from({ length: n }, (_, i) => head + i / div);
+}
+// THIS CABINET DOES NOT PLAY TRIPLETS, and the validator refuses one outright.
 //
-// It is `pitClearance`'s own window (spawner.js: the default 0.25s reaction
-// times 2.4), converted to seconds so it can be checked on a chart that has a
-// tempo but no speed. The rule it enforces is the one spawnScriptedPits argues
-// at length and that a single coin on the beat grid could never break: the lips
-// of a hole are the two places the player does not choose anything, so a row of
-// pickups running up to one is a lure toward a fatal hazard. A coin ON the beat
-// is always more than a beat clear of the nearest lip; a run of four is three
-// quarters of a beat longer, which is enough to reach.
-export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
+// Every part of RHYTHM BANKRUPTCY lives on even sixteenths — the song's own note
+// says so, and it is why a tresillo was tried in the bass and thrown out. Three
+// to the beat against that is a figure most players read as a mistake rather
+// than as a flourish, and a coin lane is the worst place to ask for the benefit
+// of the doubt: the pickups ARE the rhythm being taught. So a subdivision here
+// is a power of two and nothing else, which is a rule rather than a habit
+// because the alternative was tried and did not survive being looked at.
+//
+// THE TIGHTEST TWO COINS MAY EVER BE, in beats.  It is the 32nd fill's own
+// spacing: the fastest figure the cabinet plays is the floor for everything
+// else, because two coins closer than that are not two notes, they are one
+// smear.  Adjacent slots each laying a figure is the case it exists for — a
+// count-in reaching back into the beat a forward fill is already spending.
+export const MIN_COIN_BEATS = 1 / 8;
+// THE ROAD A JUMP OWNS, in beats past the line it is asked on.
+//
+// A coin standing on or just past a jump — a bar, or the takeoff of a hole — is
+// read as a thing to go and get at the exact moment the player is being told to
+// leave the ground, and the two readings are not compatible: one says press,
+// the other says keep running. It is confusing on the bar, where the prop and
+// the pickup end up side by side on the same patch of road, and it is worse on
+// a hole, where the pickup is the last thing between the player and the gap.
+//
+// A whole beat, which is what every chart already did before anything here was
+// touched: measured across the three of them, the nearest coin past any bar or
+// any hole was on the next line, without exception. Coins LEADING UP to a jump
+// are not this — a run closing a quarter-beat before the line is a count-in and
+// always has been (the cabinet has shipped one into every bar for as long as
+// the charts have existed). It is the FAR side of the line that has to be empty.
+export const COIN_CLEAR_AFTER_JUMP = 1;
+// THE ROOM A HOLE LEAVES, and it is the TAKEOFF LINE rather than a reaction
+// window — because on this cabinet the player is not reacting to anything.
+//
+// The rule here used to be `pitClearance`'s own budget (spawner.js: the default
+// 0.25s reaction times 2.4), which reserved 1.24 beats of road in front of
+// every lip. That is the right number for the procedural lane, where a hole
+// arrives unannounced and the only thing between the player and it is how fast
+// they can see it. It was the wrong number here, and MEASURING the lane is what
+// showed it: the bot playing the three rhythm stages leaves the ground 0.05
+// beats past the line it is asked on and comes down at 1.41 to 1.57. So on an
+// island between two holes two beats apart the hero is IN THE AIR for three
+// quarters of it, the coin on the middle beat is taken mid-flight, and the road
+// the reaction window was protecting is road nobody is standing on. The player
+// is not reacting to the hole; the song told them where it was two beats back.
+//
+// So the line the coins may reach is the TAKEOFF. A coin on the beat the jump
+// is asked on is a coin taken at the moment of jumping, and everything behind
+// it is behind the decision. What is still refused — and is the whole of what
+// the old rule was really for — is a coin PAST that line: between the takeoff
+// and the near lip is the only stretch where a pickup stops being a reward and
+// becomes an argument for one more stride.
+//
+// The landing side keeps its own floor: nothing nearer the far lip than the
+// beat line after the hole, which is where the cabinet has always paid for a
+// landing.
 // THE CARD BOX, in beats — the two numbers that make a shot and its explosion
 // both land on the grid, for every weapon in the cast and at any tempo.
 //
@@ -390,14 +489,44 @@ export function validateBeatChart(chart, physics = {}) {
       }
     } else if (raw.action === 'coin') {
       // A coin slot may be a RUN: `run: 4` lays four coins across the beat at
-      // `div` to the beat instead of one on the line. It has to stay inside its
-      // own beat — the grid is what keeps every coin clear of the lips either
-      // side of it, and a run that reached into the next slot would be laying
-      // pickups through whatever that slot is.
+      // `div` to the beat instead of one on the line, and `lead` turns the same
+      // figure round so it CLOSES on the line instead of opening on it. Either
+      // way it has to stay inside one beat of its own line — the grid is what
+      // keeps every coin clear of the lips either side of it, and a run that
+      // reached past the neighbouring slot would be laying pickups through
+      // whatever that slot is. Reaching INTO the neighbouring beat is allowed
+      // and is the point; landing on top of what that slot lays is not, and
+      // MIN_COIN_BEATS below is what refuses it.
       const n = raw.run ?? 1;
       const div = raw.div ?? COIN_DIV;
       if (!Number.isInteger(n) || n < 1) throw new Error(`coin run must be a positive integer: ${raw.run}`);
       if (!Number.isInteger(div) || div < 1) throw new Error(`coin subdivision must be a positive integer: ${raw.div}`);
+      if (raw.lead != null && typeof raw.lead !== 'boolean') {
+        throw new Error(`a coin fill's direction is a boolean: ${raw.lead}`);
+      }
+      if (raw.steps != null) {
+        if (!Array.isArray(raw.steps) || raw.steps.length < 1) {
+          throw new Error(`a coin figure's steps are a list of subdivisions (slot ${raw.slot})`);
+        }
+        if (raw.lead) throw new Error(`a named figure is written from its own line, `
+          + `so it has no direction to lead from (slot ${raw.slot})`);
+        if (raw.run != null) throw new Error(`a slot names its steps or counts a run, not both `
+          + `(slot ${raw.slot})`);
+        for (let i = 0; i < raw.steps.length; i++) {
+          const k = raw.steps[i];
+          if (!Number.isInteger(k) || k < 0 || k >= div) {
+            throw new Error(`step ${k} is not a subdivision of 1/${div} (slot ${raw.slot})`);
+          }
+          if (i && k <= raw.steps[i - 1]) {
+            throw new Error(`a figure's steps run forwards and never repeat (slot ${raw.slot})`);
+          }
+        }
+      }
+      if (raw.lead && n === 1) throw new Error(`a single coin has no direction to lead from (slot ${raw.slot})`);
+      if (div & (div - 1)) {
+        throw new Error(`this cabinet subdivides the beat by two and nothing else `
+          + `(slot ${raw.slot} asks for 1/${div})`);
+      }
       if ((n - 1) / div >= 1) throw new Error(`coin run at slot ${raw.slot} overruns its own beat (${n} at 1/${div})`);
       // HOW OFTEN THE FIGURE PLAYS, in loop passes. The chart is fixed and
       // repeats, so without this every fill fires every time round — which is
@@ -536,18 +665,84 @@ export function validateBeatChart(chart, physics = {}) {
           + `(far edge ${far.toFixed(2)} beats past the line, lip at ${lip.toFixed(2)})`);
       }
     }
-    const clearBeats = COIN_RUN_PIT_CLEAR_SEC / beatSec;
-    const runs = bySlot.filter((e) => e.action === 'coin' && (e.run ?? 1) > 1);
+    // WHERE EVERY COIN IN THE LOOP STANDS, and EVERY WAY ROUND THE LOOP CAN
+    // FALL. A slot with a cadence lays its figure on the passes it fires and
+    // the coin on its line on the ones it skips, so the geometry below is
+    // checked against both rather than against the busiest one.
+    const cadenced = bySlot.filter((c) => c.action === 'coin' && (c.every ?? 1) > 1);
+    const passes = [];
+    for (let mask = 0; mask < (1 << cadenced.length); mask++) {
+      const quiet = new Set(cadenced.filter((_, i) => mask & (1 << i)));
+      const coins = [];
+      for (const e of bySlot.filter((c) => c.action === 'coin')) {
+        const full = coinRunOffsets(e);
+        for (const off of (quiet.has(e) ? [full.includes(0) ? 0 : full[0]] : full)) {
+          coins.push({ e, at: e.slot + off });
+        }
+      }
+      passes.push(coins);
+    }
+    const wrap = (d) => ((d % chart.loopBeats) + chart.loopBeats) % chart.loopBeats;
+    const signed = (d) => {                       // nearest way round the loop
+      const f = wrap(d);
+      return f > chart.loopBeats / 2 ? f - chart.loopBeats : f;
+    };
     const pits = bySlot.filter((e) => e.action === 'pit');
-    for (const r of runs) {
-      const tail = r.slot + ((r.run ?? 1) - 1) / (r.div ?? COIN_DIV);
-      for (const p of pits) {
-        // Where the near lip stands, in beats past the pit's own slot.
-        const lip = p.slot + pitWindowBeats(p.beats ?? PIT_BEATS, physics.bpm);
-        const gap = ((lip - tail) % chart.loopBeats + chart.loopBeats) % chart.loopBeats;
-        if (gap < clearBeats) {
-          throw new Error(`coin run at slot ${r.slot} runs up to the hole at slot ${p.slot} `
-            + `(${gap.toFixed(2)} beats of road, needs ${clearBeats.toFixed(2)})`);
+    for (const coins of passes) {
+      for (const c of coins) {
+        for (const p of pits) {
+          const window = pitWindowBeats(p.beats ?? PIT_BEATS, physics.bpm);
+          const far = window + (p.beats ?? PIT_BEATS);
+          const d = signed(c.at - p.slot);
+          // BEFORE THE HOLE: anywhere up to and including the TAKEOFF LINE, and
+          // not one subdivision past it. See THE ROOM A HOLE LEAVES — the strip
+          // between the line and the near lip is the only stretch where a coin
+          // can talk a player out of a jump the song already called.
+          if (d <= 1e-9) {
+            // On the line or behind it, which is behind the decision.
+          } else if (d < window) {
+            throw new Error(`coin at slot ${c.e.slot} (${c.at.toFixed(2)}) stands between the takeoff `
+              + `and the lip of the hole at slot ${p.slot} (${d.toFixed(2)} beats past the line, `
+              + `lip at ${window.toFixed(2)})`);
+          } else {
+            // AFTER IT: the landing pays you, and the line after a hole is where
+            // that has always been. Nothing may stand nearer the far lip than it.
+            const road = d - far;
+            const needs = 1 - far;
+            if (road < needs - 1e-9) {
+              throw new Error(`coin at slot ${c.e.slot} (${c.at.toFixed(2)}) stands on the landing of `
+                + `the hole at slot ${p.slot} (${road.toFixed(2)} beats past the lip, needs ${needs.toFixed(2)})`);
+            }
+          }
+        }
+      }
+        // AND NOTHING STANDS IN THE STRIDE A JUMP IS TAKEN FROM. Holes and bars
+      // alike: both ask for the same press, and a coin on the far side of
+      // either line is a pickup competing with it (COIN_CLEAR_AFTER_JUMP).
+      const takeoffs = bySlot.filter((e) => e.action === 'pit' || e.action === 'jump');
+      for (const j of takeoffs) {
+        for (const c of coins) {
+          const d = wrap(c.at - j.slot);
+          if (d < COIN_CLEAR_AFTER_JUMP - 1e-9) {
+            throw new Error(`coin at slot ${c.e.slot} (${c.at.toFixed(2)}) stands in the stride the `
+              + `${j.action === 'pit' ? 'hole' : 'bar'} at slot ${j.slot} is jumped from `
+              + `(${d.toFixed(2)} beats past the line, needs ${COIN_CLEAR_AFTER_JUMP})`);
+          }
+        }
+      }
+    // AND NO TWO COINS MAY LAND ON EACH OTHER. Two slots each laying a figure
+      // is the case: a count-in reaches back into the beat the slot behind it is
+      // already spending, and where their subdivisions disagree the two runs
+      // interleave into a smear rather than a rhythm.
+      const order = coins.slice().sort((a, b) => a.at - b.at);
+      for (let i = 0; i < order.length; i++) {
+        const a = order[i];
+        const b = order[(i + 1) % order.length];
+        if (a === b) continue;
+        const gap = i + 1 < order.length ? b.at - a.at : wrap(b.at - a.at);
+        if (gap < MIN_COIN_BEATS - 1e-9) {
+          throw new Error(`coins from slots ${a.e.slot} and ${b.e.slot} land ${gap.toFixed(3)} beats `
+            + `apart, inside the ${MIN_COIN_BEATS} the fastest fill itself plays`);
         }
       }
     }
@@ -979,8 +1174,10 @@ export class BeatSpawner {
       // Widest the slot can ever be, cadence ignored: the finish wall is an
       // all-or-nothing boundary and must not admit a figure on the strength of
       // this pass being a quiet one.
+      // A count-in spends the road BEHIND its line, so its far edge is the line
+      // itself: only the forward figures reach toward the wall.
       const coinRunW = event.action === 'coin'
-        ? ((event.run ?? 1) - 1) * (pxPerBeat / (event.div ?? COIN_DIV)) + 8 : 0;
+        ? (event.lead ? 0 : ((event.run ?? 1) - 1) * (pxPerBeat / (event.div ?? COIN_DIV))) + 8 : 0;
       const width = pit ? pit.w : (event.action === 'coin' ? coinRunW : (OBSTACLES[type]?.w || 8));
       // Against the SPAWN position, not the contact one: the finish wall is a
       // rule about where the lane may put a thing, and a barrel is put down the
@@ -996,8 +1193,14 @@ export class BeatSpawner {
       // of the stones still rolled onto them: the set piece owns that whole
       // phrase, the judge scores nothing inside it, and a hazard the player
       // meets mid-stone is one the chart never meant to ask for.
+      // A count-in reaches back toward the hero, so its head is a second place
+      // the set pieces have to be asked about — same as a barrel's contact
+      // point, for the same reason.
+      const coinHead = event.action === 'coin' && event.lead
+        ? actionX - (((event.run ?? 1) - 1) / (event.div ?? COIN_DIV)) * pxPerBeat : actionX;
       const suppressed = this._isSuppressed(actionX, event)
-        || (event.punt && this._isSuppressed(x, event));
+        || (event.punt && this._isSuppressed(x, event))
+        || (coinHead !== actionX && this._isSuppressed(coinHead, event));
       if (!suppressed) {
         if (pit) {
           // A HOLE THE LOOP CUTS, once every time round, on the grid.
@@ -1037,10 +1240,28 @@ export class BeatSpawner {
           // which is the right trade: the alternative is carrying a counter
           // across a lane rebuild that has just thrown away everything else.
           const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
-          const n = (event.every ?? 1) > 1 && pass % event.every !== 0 ? 1 : (event.run ?? 1);
-          const step = pxPerBeat / (event.div ?? COIN_DIV);
+          const quiet = (event.every ?? 1) > 1 && pass % event.every !== 0;
+          // A QUIET PASS IS THE COIN ON THE LINE, whichever way the figure
+          // runs — a count-in's line is its LAST coin, so dropping it to one
+          // leaves that one exactly where the full figure would have ended.
+          // A QUIET PASS IS ONE COIN: the figure's own line if it plays one
+          // there, and otherwise the first coin it plays — a figure that starts
+          // on the 3 has no coin on the line to fall back to.
+          const full = coinRunOffsets(event);
+          const offsets = quiet ? [full.includes(0) ? 0 : full[0]] : full;
+          const n = offsets.length;
+          // NO COIN NEARER THAN A BEAT, and a count-in is the only figure that
+          // can break it: it reaches back toward the hero from a cursor that
+          // may be standing exactly one beat out. The coins that fall inside
+          // the promise are dropped rather than the figure being moved — the
+          // rest of it is still on the grid, and this only ever bites on the
+          // first slot after an anchor (resetFromBeat, OPENING_COIN_BEAT).
+          const floorBeat = Math.max(beat + 1, OPENING_COIN_BEAT);
           for (let i = 0; i < n; i++) {
-            const coin = makePickup('coin', actionX + i * step, COIN_ALT);
+            const off = offsets[i];
+            const coinBeat = this.cursorBeat + off;
+            if (coinBeat < floorBeat - 1e-9) continue;
+            const coin = makePickup('coin', actionX + off * pxPerBeat, COIN_ALT);
             coin.chartEventId = n > 1 ? `${id}:${i}` : id;
             coin.chartAction = 'coin';
             coin.chartSlot = event.slot;
@@ -1049,8 +1270,8 @@ export class BeatSpawner {
             // every coin with the run's first beat made a regular fill look
             // bunched and uneven even though the pickups themselves were laid
             // at the right spacing.
-            coin.actionBeat = this.cursorBeat + i / (event.div ?? COIN_DIV);
-            coin.actionX = actionX + i * step;
+            coin.actionBeat = coinBeat;
+            coin.actionX = actionX + off * pxPerBeat;
             // ONE formation for the whole run, so a hole's sweep takes it whole
             // — half a run left hanging beside a lip is the fragment problem
             // sweepCoinsAroundHole exists to prevent.

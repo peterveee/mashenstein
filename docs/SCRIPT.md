@@ -15,7 +15,7 @@
 |---|---|---|---|
 | LORENZO | LORENZO "WRENCHES" BRACCIANO | "STANDARD PLUMBING PROCEDURE." | Produces increasingly inappropriate plumbing tools. |
 | GNASH | GNASH THE NEEDLEMOUSE | "ALREADY THERE. WAITING." | Arrives too early and waits for reality to catch up. |
-| FERNWICK | FERNWICK, HERO OF THYME | "THE RECEIPT FORETOLD THIS." | His sacred prophecy is printed on a faded supermarket receipt. |
+| FERNWICK | FERNWICK, HERO OF THYME | "THE RECEIPT FORETOLD THIS." | Her sacred prophecy is printed on a faded supermarket receipt. |
 | B-33P | UNIT B-33P "BLASTBOT" | "LOW ON CYAN." | Constantly reports low on cyan. Regardless of context. |
 | CLARA | CLARA VAULT, MALL RAIDER | "CHAPTER ONE: SHE ARRIVED." | Narrates her own lunch. In the past tense. |
 | KIKO | KIKO, JURISDICTION PENDING | "NOBODY REPORTED IT. I NOTICED." | Maintains a case file on every object in this building. |

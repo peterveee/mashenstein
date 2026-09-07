@@ -763,7 +763,7 @@ assert(stable(startBack) === stable(startOnly),
   // that needs a live AudioContext, so the predicate is mirrored rather than called.
   const pooled = (id) => {
     const v = VOICES[id];
-    if (!v || v.kind === 'drum' || v.synth === 'TNGR-2' || v.synth === 'MRDR-3') return false;
+    if (!v || v.kind === 'drum' || v.synth === 'TNGR-2' || v.synth === 'MRDR-3' || v.synth === 'JMJR-4') return false;
     return synthFamily(v.synth) !== KNDO5 && synthFamily(v.synth) !== WNDR9;
   };
   const lanes = Object.entries(rhythmMix.voice || {});
@@ -773,8 +773,8 @@ assert(stable(startBack) === stable(startOnly),
   assert(new Set(warm.map(([, id]) => id)).size >= 6,
     'and at least six distinct pooled presets, so the walk is building pools not one pool');
   // The excluded families are excluded for a reason, and naming them here is what makes
-  // a future "why is lead7 still late" answerable: TNGR-2's cost is its wavetables (see
-  // warmTngr2Families) and MRDR-3/KNDO-5/WNDR-9 build per note by design.
+  // a future "why is lead7 still late" answerable: TNGR-2's lanes are worklet nodes built by
+  // Audio.warmWorkletLanes) and MRDR-3/KNDO-5/WNDR-9 build per note by design.
   assert(!pooled('tngrBlueCathedral') && !pooled('bestPwmStrings') && !pooled('toneSquare')
     && !pooled('kickMegamix'),
     'TNGR-2, MRDR-3, KNDO-5 and the drums are not pre-warmed here — they have no pool');

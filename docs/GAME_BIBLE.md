@@ -24,7 +24,7 @@ All eight are available in every normal stage. Portals switch between them autom
 |---|---|---|---|---|---|
 | 1 | **LORENZO** | Lorenzo "Wrenches" Bracciano | "STANDARD PLUMBING PROCEDURE." | High Jump (15% higher) | STOMP / SMASH — air stomp or grounded wrench smash |
 | 2 | **GNASH** | Gnash the Needlemouse | "ALREADY THERE. WAITING." | Speed Boost (15% faster) | SPIN DASH — invincible burst that smashes breakables |
-| 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | SHIELD ROLL — short, finite roll that breaks ground hazards |
+| 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | LONGBOW — reaches back for her bow, draws, and looses an arcing arrow that breaks ground hazards |
 | 4 | **B-33P** | Unit B-33P "Blastbot" | "LOW ON CYAN." | Battery Efficient (25% faster recharge) | LEMON CANNON — fires a shot that destroys ground obstacles |
 | 5 | **CLARA** | Clara Vault, Mall Raider | "CHAPTER ONE: SHE ARRIVED." | Cliffhanger (jumps 15% higher) | PLOT HOLE — fires both pistols, a quick pair of slugs that destroy ground obstacles |
 | 6 | **KIKO** | Kiko, Jurisdiction Pending | "NOBODY REPORTED IT. I NOTICED." | Foot Pursuit (jumps twice) | WARNING SHOT — fires a slow ball of energy that destroys ground obstacles |
@@ -179,7 +179,7 @@ Each hero has a unique ability on a cooldown (1.8–3.5 seconds). An in-world ci
 
 - **Spin Dash** (Gnash, 3.5s, passive +15% speed): Invincible horizontal burst forward; smashes every breakable in his path. A charged Relay Blast version runs much longer.
 
-- **Shield Roll** (Fernwick, 3s, starts stages with one shield): Short rolling dash that breaks ground hazards in contact and deflects one enemy shot. A charged Relay Blast version plows through without ringing his ears.
+- **Longbow** (Fernwick, 2.4s, starts stages with one shield): She reaches back for the bow, draws, and the arrow leaves 0.18s after the press on a short arc into ground hazards, then she lowers and slings the bow. Broadhead (mastery) and a charged Relay Blast make the arrow pierce.
 
 - **Plot Hole** (Clara, 3.0s, jumps 15% higher): Fires both pistols — a double-tap pair of fast small slugs (shotBurst 2) that destroy ground obstacles. A charged Relay Blast version fires a piercing three-way spread, doubled. *(Cosmic Squish retired from the roster with Mochi, held for a cameo.)*
 

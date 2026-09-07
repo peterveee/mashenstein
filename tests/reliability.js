@@ -1080,19 +1080,28 @@ const spannerTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
 run.obstacles = [spannerTarget];
 run.useAbility();
 assert(!spannerTarget.live, 'Lorenzo spanner still breaks its direct target');
-// Fernwick's roll contact is its own cue family. The base roll only bumps
-// what it meets, so the BASH mastery is what makes the contact a break here.
+// Fernwick's arrow is its own cue family. It is HELD for the reach and the
+// draw before it leaves, so the flight is stepped through in small dts (one
+// big step would carry it past the hazard and into the ground). BROADHEAD
+// (mastery id 'bash') is what lets it carry on through what it breaks.
 run.relay.current = 'fernwick';
 run.player.setHero('fernwick');
 run.player.grounded = true;
+run.player.y = 0;
 run.player.abilityCd = 0;
 run.modIds.push('bash');
-const shieldTarget = makeObstacle('cactus', run.camX + PLAYER_X);
-run.obstacles = [shieldTarget];
+const arrowTarget = makeObstacle('cactus', run.camX + PLAYER_X + 34);
+run.obstacles = [arrowTarget];
+run.projectiles = [];
 run.useAbility();
-run.collide();
+{
+  const arrow = run.projectiles.find((p) => p.type === 'arrow');
+  assert(arrow && arrow.holdT > 0 && arrow.pierce, 'Fernwick queues a held, piercing arrow under BROADHEAD');
+  for (let i = 0; i < 60 && arrowTarget.live; i++) run.updateProjectiles(0.01, 160);
+  assert(!arrowTarget.live, 'Fernwick arrow breaks the hazard it reaches');
+  assert(arrow.live, 'and under BROADHEAD it keeps going');
+}
 run.modIds.splice(run.modIds.indexOf('bash'), 1);
-assert(!shieldTarget.live, 'Fernwick bash roll still breaks the hazard it meets');
 // Miss Chomp's contact bite, and only while she is SELECTABLE. She has left
 // the playable roster — she is still a toon, the way Gary and Dolores are, but
 // HERO_BY_ID no longer has a row for her, so useAbility() reads `ability` off
@@ -1124,7 +1133,9 @@ for (const id of ['b33p', 'raymn', 'grumpos', 'kiko']) {
 Audio.sfx = originalSfx;
 assert(projectileContacts === 5, 'every reachable weapon contact family plays its specific WAV cue');
 assert(projectileImpacts === 0, 'weapon contacts no longer use the generic impact crash');
-assert(weaponLaunches === 4, 'B-33P, Ray M\'N, Grumpos and Kiko play distinct launch cues');
+// ...plus Fernwick's twang, which plays on RELEASE (the stepped flight above),
+// not on the press.
+assert(weaponLaunches === 5, 'B-33P, Ray M\'N, Grumpos, Kiko and Fernwick play distinct launch cues');
 
 // Both shooters fire a `pellet`, so the thing that has to keep them apart is
 // contactHero — without it Kiko's warning shot would land with B-33P's orb pop.
@@ -1138,11 +1149,8 @@ assert(contactHeroSeen === 'kiko', "the warning shot's impact plays Kiko's cue, 
 run.projectileImpact({ type: 'pellet' }, run.camX + PLAYER_X, 0);
 assert(contactHeroSeen === 'b33p', 'a pellet with no owner still falls back to B-33P');
 
-// Fernwick consumes one enemy shot per roll, without becoming invincible.
-run.relay.current = 'fernwick'; run.player.setHero('fernwick'); run.player.grounded = true; run.player.y = 0; run.player.vy = 0; run.player.abilityCd = 0; run.useAbility();
-run.projectiles = [{ type: 'enemyShot', x: run.camX + PLAYER_X + 2, alt: 4, vx: 0, live: true, telegraph: 0 }];
-run.updateProjectiles(0, 160);
-assert(!run.projectiles.length && run.player.rollDeflectUsed, 'Fernwick roll deflects one enemy shot');
+// (Fernwick's shield-roll deflection went with the roll, 6 Sep 2026: the
+// longbow is a ranged move and does not eat enemy shots.)
 
 // OSHA improves checkpoint restoration by exactly one cell.
 run.checkpoints = [0]; run.battery = 1; run.modIds = [];

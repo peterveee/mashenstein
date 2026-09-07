@@ -28,7 +28,6 @@ import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, 
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
 import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
 import { MusicDirector } from '../../engine/music-director.js';
-import { warmTngr2Families } from '../../engine/tngr2/tables.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
@@ -3442,29 +3441,30 @@ export class StageSelectState {
       arrangementOverride: musicSong?.arrangement,
       variants: musicSong?.variants,
     });
-    // Expand this cabinet's TNGR-2 wavetables HERE, inline, and wait for them.
+    // Build this cabinet's worklet lanes HERE — tables expanded inline, worklet nodes
+    // a few tens of milliseconds behind — and inside setBank's half-second gap.
     //
-    // A family is ~240ms of main thread (rhythm is the only cabinet with any, and it
-    // has two), and the stage's enter() used to pay for all of them in one task. This
-    // used to be spread over idle slices instead — but a slice is a LATER task, and by
-    // then the shutter is already opening, so the expansion landed on visible frames:
-    // the hiccup on first opening the rhythm cabinet. An expansion cannot be
-    // interrupted once it starts, so spreading it only chooses which frame wears it.
+    // A family is tens of milliseconds of main thread (rhythm is the only cabinet
+    // with any, and it has two plus the `basic` fallback every lane carries), and the
+    // lane build on top of it clones 1.5 MB into the processor. Paid at the pad's
+    // first NOTE that was a hole in the bar it entered on; spread over idle slices it
+    // landed on visible frames instead, because a slice is a LATER task and by then
+    // the shutter is opening. An expansion cannot be interrupted once it starts, so
+    // spreading it only chooses which frame wears it.
     //
     // enter() runs at the covered midpoint of the transition (engine/states.js), with
-    // the shutter fully closed and the incoming screen not yet drawn. Blocking here
-    // costs the reveal a beat the first time and nothing ever after — the tables are
-    // memoised — and enter()'s own loop in run.js becomes a cache hit. A stage reached
-    // without passing through here still works; it just pays the old price.
+    // the shutter fully closed, the incoming screen not yet drawn, and the song just
+    // re-banked into its deliberate gap. Blocking here costs the reveal a beat the
+    // first time and nothing ever after — the tables are memoised, and the stage's
+    // own warm in run.js finds the lanes already built. A stage reached without
+    // passing through here still works; it just pays there instead.
     //
     // Prefill first: the block is longer than the sequencer's lookahead, so the queue
     // is filled past it before the main thread goes away. Same move as run.js enter().
-    const tngr2Ids = [];
-    for (const v of Object.values(this.cab.songMix?.voiceParams || {})) {
-      for (const osc of [v.tngr2?.oscA, v.tngr2?.oscB]) if (osc?.table) tngr2Ids.push(osc.table);
-    }
-    if (tngr2Ids.length) Audio.prefill?.(1.2);
-    warmTngr2Families(tngr2Ids, { idle: false });
+    const hasTngr2 = Object.values(this.cab.songMix?.voiceParams || {})
+      .some((v) => v?.synth === 'TNGR-2');
+    if (hasTngr2) Audio.prefill?.(1.2);
+    Audio.warmWorkletLanes?.();
     this.corrupt = null;
     const opts = this.options();
     this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));

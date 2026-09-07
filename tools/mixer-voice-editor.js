@@ -29,6 +29,13 @@ import * as Tone from 'tone';
 import { VOICES, VOICE_CATEGORIES } from '../src/data/voices.js';
 import { isMrdrVoice } from '../src/engine/mrdr3/identity.js';
 import { tngr2Defaults, TNGR2_LFO_SHAPES } from '../src/engine/tngr2/schema.js';
+import { JMJR4_SYLLABLES, JMJR4_MORPH_TARGETS, syllablesFromText } from '../src/engine/jmjr4/syll.js';
+import {
+  JMJR4_DEFAULTS, JMJR4_AMP_DEFAULTS, JMJR4_MODES, JMJR4_PER_KEY, JMJR4_PITCH_FOLLOWS,
+  compileJmjr4, jmjr4SpeakSource,
+} from '../src/engine/jmjr4/compile.js';
+import { JMJR4_SPEAK_ENDINGS, compilePhrase, compactDict, compactIr } from '../src/engine/jmjr4/text.js';
+import { JMJR4_DATA } from '../src/engine/jmjr4/data.js';
 // The same K-weighted mean the server measures a save with. Pure arithmetic, no node
 // imports, so it bundles into the desk like anything else in tools/lib.
 import { noteLevel } from './lib/loudness.js';
@@ -73,7 +80,7 @@ const isUserPreset = (voice) => !!voice?.user && !voice?.songLocal;
  * make that unreachable.
  */
 export const EDITABLE_SYNTHS = [
-  KNDO5, WNDR9, 'MRDR-3', 'TNGR-2',
+  KNDO5, WNDR9, 'MRDR-3', 'TNGR-2', 'JMJR-4',
   CRLS1, RMND2,
 ];
 
@@ -81,7 +88,7 @@ export const EDITABLE_SYNTHS = [
 // they have in common that the panel cares about: their modulators are built per note-on,
 // so a key measured from the start of a note — `vibrato.delay` — means something on these
 // and nothing on the others, whose LFO free-runs in the pool.
-const NATIVE_SYNTHS = [KNDO5, WNDR9, 'MRDR-3', 'TNGR-2'];
+const NATIVE_SYNTHS = [KNDO5, WNDR9, 'MRDR-3', 'TNGR-2', 'JMJR-4'];
 
 // ---- measuring, in the page -------------------------------------------------
 
@@ -626,6 +633,9 @@ const ENV_CURVES = ['linear', 'exponential'];
  * every synth panel has used for forty years; the full word is on the tooltip.
  */
 const SHORT = {
+  // JMJR-4's morph targets are phoneme names; the pill spells them the way its syllable
+  // row does, so OO reads OOH beside the OOH that sings it.
+  OO: 'OOH', AH: 'AAH', IY: 'EEH', M: 'MMM', AX: 'UHH',
   lowpass: 'LP', highpass: 'HP', bandpass: 'BP', notch: 'NTCH',
   sine: 'SIN', square: 'SQR', sawtooth: 'SAW', triangle: 'TRI',
   pwm: 'PWM', pulse: 'PLS', noise: 'NOISE',
@@ -664,6 +674,9 @@ const writeKeyMode = (voice, mode) => {
   return mode;
 };
 const vibratoOn = (voice) => (voice?.vibrato?.depth ?? 0) > 0;
+/** JMJR-4 in SPEAK: the phrase carries its own pitch and gate, so the sung controls rest. */
+const jmjr4Speaking = (voice) => voice?.synth === 'JMJR-4' && (voice?.jmjr4?.mode ?? 'sing') === 'speak';
+const jmjr4Singing = (voice) => !jmjr4Speaking(voice);
 const hasUnison = (voice) => isMrdrVoice(voice)
   && ['osc1', 'osc2', 'osc3'].some((key) => (voice.layer?.[key]?.unison ?? 1) > 1);
 
@@ -681,6 +694,8 @@ const n = (path, label, min, max, step, fmt = fixed(2), def = min, unit = '', wh
 // controls rewrite several envelope leaves at once. Returning this sentinel keeps the
 // shared widget path intact without writing a stale leaf back afterward.
 const SKIP_WRITE = Symbol('skip-row-write');
+/** The white space a row asks for at the edge of its group — see `endsGroup`. */
+const groupGaps = (row) => (row.gapBefore ? ' sfgapbefore' : '') + (row.gapAfter ? ' sfgapafter' : '');
 /** A row of pills on a dotted path — see `pickRow`. `opts.trio` groups it with its
  * siblings of the same name into one third-width row — see `trioRow`. */
 const pick = (path, label, options, def, when = null, opts = {}) =>
@@ -1525,6 +1540,22 @@ const rmnd2ModeRow = () => pick('modulationIndex', 'MODE', ['fm', 'am'], 'fm', n
     + ' its pitch (FM) or its level (AM)',
 });
 
+/** The rows of one half of JMJR-4's Vocal card: shown only while `shown(voice)` holds. */
+const jmjr4Rows = (shown, rows) => rows.map((row) => ({ ...row, hideWhen: shown }));
+
+/**
+ * A rule of white space where a group of controls ends.
+ *
+ * The Vocal card is four questions in a column — what mode, what to sing, where the vowel
+ * goes, how the note enters, how many voices — and drawn on one pitch they read as one long
+ * list. `gapAfter` opens a line under the last row of a group; `gapBefore` under a group
+ * that starts mid-grid, where the row above it is a pot and there is no full-width row to
+ * hang the space from. Both go on EVERY cell of a grid row, or the cells of that row sit at
+ * different heights and the knobs lose their shared baseline.
+ */
+const endsGroup = (row) => ({ ...row, gapAfter: true });
+const startsGroup = (row) => ({ ...row, gapBefore: true });
+
 const SYNTH_GROUPS = {
   /**
    * Layered: up to three oscillator sections, each a complete voice — the shape every
@@ -1881,6 +1912,195 @@ const SYNTH_GROUPS = {
       pick('$drivePlace', 'PLACE', DRIVE_PLACES, 'post', drivenTone, { startRow: true }),
       n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
       toneRow('$tone.freq', 'TONE'),
+      n('$chorus.mix', 'CHORUS', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
+      n('$chorus.rate', 'RATE', 0.05, 8, 0.01, fixed(2), CHORUS_DEFAULTS.rate, 'Hz', chorused,
+        { scale: SLOW_LFO_RATE_SCALE }),
+      n('$chorus.depth', 'DEPTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.depth, '', chorused),
+      n('$chorus.width', 'WIDTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.width, '', chorused),
+    ] },
+  ],
+  // ---- JMJR-4 -------------------------------------------------------------------------
+  //
+  // A formant voice. Four cards: what it SINGS (the line, the morph, the scoop, how many
+  // singers), what the VOICE is (which throat, and its tract), the ENVELOPE, and the
+  // shared Effects card. Every key under `jmjr4` is a control here and nothing else is —
+  // see JMJR4_DEFAULTS beside the compiler — and the engine reads them through
+  // compileJmjr4, so tests/pot-coverage.js can hold the two to each other.
+  'JMJR-4': [
+    { key: 'vocal', title: 'Vocal', rows: [
+      // SING: every key sings the syllable line at its pitch, held while the key is down.
+      // SPEAK: every key says the phrase (or its next word) at that pitch, like triggering
+      // a sample. The two halves of the card take turns, the mock's rule.
+      endsGroup(pick('$jmjr4.mode', 'MODE', JMJR4_MODES, JMJR4_DEFAULTS.mode, null, {
+        tip: 'SING: the keys sing the syllable line, held while a key is down. SPEAK: a key '
+          + 'says the phrase at that pitch, the whole of it, with its own sentence melody.' })),
+      ...jmjr4Rows(jmjr4Singing, [
+      // The line: one word per step, restarting when the transport does. The only text
+      // control on the desk, because a syllable is a WORD, not a number or a choice.
+      { kind: 'text', path: '$jmjr4.line', label: 'SYLLABLES', def: JMJR4_DEFAULTS.line,
+        validate: (text) => syllablesFromText(text).length > 0 && syllablesFromText(text).length === text.trim().split(/\s+/).filter(Boolean).length,
+        tip: 'What the keys sing. One syllable such as ooh, doo or laa, or several separated by '
+          + 'spaces, which then take turns one per step and start again with the song. A '
+          + 'trailing dash ties the vowel over the next step: doo laa- laa.' },
+      // The twelve common ones, one click. The SAME key as the line: choosing a pill writes
+      // the whole line, the way WAVE and VOICING are two rows over one oscillator type.
+      endsGroup(pick('$jmjr4.line', 'SYLLABLE', JMJR4_SYLLABLES, JMJR4_DEFAULTS.line, null, {
+        derived: true, grid: 4,
+        read: (v) => String(v?.jmjr4?.line ?? JMJR4_DEFAULTS.line).trim().split(/\s+/)[0]?.toLowerCase(),
+        write: (v, word) => { (v.jmjr4 ||= {}).line = word; return SKIP_WRITE; },
+        tip: 'Common syllables, one click. The box above takes anything else.',
+      })),
+      // HOW MUCH first, then WHERE TO. A grid of twelve vowels above the pot that decides
+      // whether any of them does anything read as the main event; it is the switch under the
+      // amount, so it follows it and rests with it — greyed at MORPH 0, where the note sings
+      // its own vowel and the target is not consulted.
+      n('$jmjr4.morph', 'MORPH', 0, 100, 1, fixed(0), JMJR4_DEFAULTS.morph, '%', null, {
+        startRow: true,
+        tip: 'Slides the vowel towards MORPH TO: ooh becoming aah on a held chord. At 0 the '
+          + 'note sings the syllable\'s own vowel and MORPH TO rests.' }),
+      envTime('$jmjr4.morphTime', 'MORPH TIME', 0, secs, JMJR4_DEFAULTS.morphTime, 's',
+        (v) => (v?.jmjr4?.morph ?? 0) > 0, {
+          tip: 'How long each note takes to reach the MORPH position. 0 sits there from the '
+            + 'start; above 0 the note begins on its own vowel and glides there.' }),
+      endsGroup(pick('$jmjr4.morphTo', 'MORPH TO', JMJR4_MORPH_TARGETS, JMJR4_DEFAULTS.morphTo,
+        (v) => (v?.jmjr4?.morph ?? 0) > 0, {
+          grid: 4,
+          tip: 'The vowel MORPH moves towards, and it works on a note you are holding. MMM is '
+            + 'the hum: the nose comes in with it. Rests until MORPH is above zero.',
+        })),
+      n('$jmjr4.bend', 'BEND', -12, 12, 0.1, (x) => (x > 0 ? '+' : '') + x.toFixed(1), JMJR4_DEFAULTS.bend, 'st', null, {
+        origin: 0, scale: 2.5,
+        write: (x) => { const a = Math.abs(x); const st = a < 1 ? 0.1 : 0.5; return Math.sign(x) * Math.round(a / st) * st; },
+        tip: 'How far below or above the note each key starts, in semitones: the scoop a '
+          + 'singer takes into a pitch. The first semitone has most of the travel, in tenths; '
+          + 'half steps beyond it. GLIDE from the key before wins over it.' }),
+      envTime('$jmjr4.bendTime', 'BEND TIME', 0.001, secs, JMJR4_DEFAULTS.bendTime, 's',
+        (v) => Math.abs(v?.jmjr4?.bend ?? 0) > 0, { tip: 'How long the note takes to arrive at its pitch from BEND.' }),
+      startsGroup(n('$jmjr4.unison', 'UNISON', 1, 4, 1, fixed(0), JMJR4_DEFAULTS.unison, '', null, {
+        startRow: true,
+        tip: 'How many voices sound on each key: detuned glottal sources, each with its own '
+          + 'pulse shape, singing through the key\'s one tract. 1 is off.' })),
+      startsGroup(n('$jmjr4.spread', 'SPREAD', 0, 100, 1, fixed(0), JMJR4_DEFAULTS.spread, 'ct',
+        (v) => (v?.jmjr4?.unison ?? 1) > 1, { tip: 'How far the unison singers sit from the key, in cents.' })),
+      ]),
+      ...jmjr4Rows(jmjr4Speaking, [
+      // The phrase, compiled on the desk into the preset the moment it or a pot changes
+      // (see ensureJmjr4Phrase), so a saved preset carries what it says and a song plays
+      // it with no dictionary and no server.
+      { kind: 'text', path: '$jmjr4.phrase', label: 'PHRASE', def: JMJR4_DEFAULTS.phrase,
+        gapAfter: true,
+        validate: (text) => text.trim().length > 0,
+        tip: 'What the keys say. Plain English; a comma is a short pause, a full stop or '
+          + 'question mark ends a sentence and shapes its melody, *stars* stress a word, and '
+          + 'a run of three letters or more holds it: nooooo.' },
+      endsGroup(n('$jmjr4.speed', 'SPEED', 0.5, 2, 0.05, fixed(2), JMJR4_DEFAULTS.speed, '×', null, {
+        startRow: true, tip: 'How fast the phrase is spoken. Timing scales; the voice does not change pitch.' })),
+      endsGroup(n('$jmjr4.pitchHz', 'PITCH', 60, 260, 1, fixed(0), JMJR4_DEFAULTS.pitchHz, 'Hz',
+        (v) => (v?.jmjr4?.pitchFollows ?? JMJR4_DEFAULTS.pitchFollows) === 'fixed', {
+          tip: 'The speaking pitch when FOLLOWS is FIXED. With KEY the key sets it, so this pot rests.' })),
+      endsGroup(n('$jmjr4.range', 'RANGE', 0, 2, 0.05, fixed(2), JMJR4_DEFAULTS.range, '',
+        (v) => (v?.jmjr4?.ending ?? JMJR4_DEFAULTS.ending) !== 'flat', {
+          tip: 'How far the spoken pitch moves: accents, the fall at the end, the rise of a '
+            + 'question. 0 is monotone, 1 is natural, 2 is theatrical.' })),
+      pick('$jmjr4.pitchFollows', 'FOLLOWS', JMJR4_PITCH_FOLLOWS, JMJR4_DEFAULTS.pitchFollows, null, {
+        tip: 'KEY: the phrase is shifted so its own base pitch lands on the key, so a melody '
+          + 'can be played on it. FIXED: the phrase keeps the voice\'s own pitch whatever key '
+          + 'is pressed, and only TRANSPOSE and FINE move it.' }),
+      pick('$jmjr4.perKey', 'PER KEY', JMJR4_PER_KEY, JMJR4_DEFAULTS.perKey, null, {
+        tip: 'PHRASE: every key says the whole phrase. WORD: each key says the next word, one '
+          + 'per step, so a chord progression can carry a line one word at a time; after the '
+          + 'last word it starts again, and so does the transport.' }),
+      pick('$jmjr4.ending', 'ENDING', JMJR4_SPEAK_ENDINGS, JMJR4_DEFAULTS.ending, null, {
+        tip: 'How the phrase ends: falling like a statement, rising like a question, or flat '
+          + 'with no contour at all — which is what RANGE rests for.' }),
+      pick('$jmjr4.step', 'STEP', ['off', '1 st', '2 st', '3 st'], 'off', null, {
+        read: (raw) => (raw ? `${raw} st` : 'off'),
+        write: (v, option) => (option === 'off' ? 0 : Number(option[0])),
+        tip: 'Quantises the spoken pitch contour to whole semitones. OFF is a smooth human '
+          + 'contour; 1 or 2 st is the robot\'s stepped delivery, and 3 is a machine reading a '
+          + 'chart.' }),
+      ]),
+    ] },
+    { key: 'voice', title: 'Voice', rows: [
+      pick('$jmjr4.voice', 'VOICE', Object.keys(JMJR4_DATA.voices), JMJR4_DEFAULTS.voice, null, {
+        dropdown: true, optionLabel: (id) => id.charAt(0).toUpperCase() + id.slice(1), startRow: true,
+        tip: 'A voice to start from. Every pot below loads from it — tract, pressure, tilt, '
+          + 'flutter, nasality, resonance — and any pot you move is yours. JITTER is the one it '
+          + 'does not touch.' }),
+      n('$jmjr4.tract', 'TRACT', 0.75, 1.3, 0.01, fixed(2), JMJR4_DEFAULTS.tract, '', null, {
+        startRow: true,
+        read: (raw, v) => raw ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.fscale ?? JMJR4_DEFAULTS.tract,
+        tip: 'The size of the mouth and throat. Below 1 is a bigger tract, deeper and '
+          + 'ape-sized; above 1 is smaller, a child or a cartoon. Every vowel keeps its '
+          + 'identity: the whole set of formants moves together.' }),
+      n('$jmjr4.press', 'PRESS', 0.3, 0.75, 0.01, fixed(2), JMJR4_DEFAULTS.press, '', null, {
+        read: (raw, v) => raw ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.oq ?? JMJR4_DEFAULTS.press,
+        tip: 'How hard the glottis works: the open quotient of each pulse. Low is pressed and '
+          + 'tight, high is relaxed with a breathy edge. It changes the pulse SHAPE, not its '
+          + 'brightness — TILT is the brightness.' }),
+      n('$jmjr4.tilt', 'TILT', 0, 12, 0.5, fixed(1), JMJR4_DEFAULTS.tilt, 'dB', null, {
+        read: (raw, v) => raw ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.tilt ?? JMJR4_DEFAULTS.tilt,
+        tip: 'Klatt\'s spectral tilt: dB of roll-off at 3 kHz on the glottal pulse BEFORE the '
+          + 'tract, so it changes what drives the formants rather than filtering the finished '
+          + 'voice. 0 is the raw pulse.' }),
+      n('$jmjr4.breath', 'BREATH', 0, 0.8, 0.02, fixed(2), JMJR4_DEFAULTS.breath, '', null, {
+        tip: 'Aspiration noise mixed into the voice, shaped by the same tract. Heard on H '
+          + 'sounds and after P, T, K.' }),
+      n('$jmjr4.jitter', 'JITTER', 0, 2, 0.05, fixed(2), JMJR4_DEFAULTS.jitter, '%', null, {
+        startRow: true,
+        tip: 'A wander of the pitch that does not repeat, as a percent of the note: zero is '
+          + 'locked, which is the robot, and a little makes a held note feel alive. Unlike '
+          + 'FLUTTER it never comes round again, so it reads as a voice that is unwell rather '
+          + 'than one that cannot hold still. At 2 % the worst moment is about a semitone.' }),
+      n('$jmjr4.flutter', 'FLUTTER', 0, 2, 0.05, fixed(2), JMJR4_DEFAULTS.flutter, '%', null, {
+        read: (raw, v) => raw ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.flutter ?? JMJR4_DEFAULTS.flutter,
+        tip: 'Klatt\'s flutter: three slow sines under the pitch, at 12.7, 7.1 and 4.7 Hz. '
+          + 'Unlike JITTER it repeats, so it reads as a voice that cannot hold still rather '
+          + 'than as noise.' }),
+      n('$jmjr4.nasal', 'NASAL', 0, 100, 1, fixed(0), JMJR4_DEFAULTS.nasal, '%', null, {
+        read: (raw, v) => raw ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.nasal ?? JMJR4_DEFAULTS.nasal,
+        tip: 'How much of every vowel goes through the nose: the nasal pole and its '
+          + 'anti-resonance, crossfaded against the open tract. A little is a head cold; all the '
+          + 'way is the hum MMM sings.' }),
+      n('$jmjr4.sibilance', 'SIBILANCE', 0, 200, 1, fixed(0), JMJR4_DEFAULTS.sibilance, '%', null, {
+        tip: 'How loud every noise event is: the hiss of an S or SH and the burst of a T, D, P '
+          + 'or B. Aspiration has its own pot, BREATH.' }),
+      n('$jmjr4.buzz', 'BUZZ', 0, 100, 1, fixed(0), JMJR4_DEFAULTS.buzz, '%', null, {
+        startRow: true,
+        tip: 'How much the nose buzzes. A hum is made with a tight, pressed voice; this gives '
+          + 'the murmur that brightness on its own path, so a vowel is untouched.' }),
+      n('$jmjr4.resonance', 'RESONANCE', 0, 100, 1, fixed(0), JMJR4_DEFAULTS.resonance, '', null, {
+        read: (raw, v) => raw ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.res ?? JMJR4_DEFAULTS.resonance,
+        tip: 'How narrow the formants are: the same idea as a filter\'s resonance, applied to '
+          + 'all four of the tract\'s '
+          + 'bandwidths at once. Low is soft and human, high is ringing and robotic.' }),
+    ] },
+    // The four stages by name, so the window draws the envelope over them (`ENV_ROWS` in
+    // mixer-synth-full.js binds by label). Not `adsr()`: its curve pills would be pots the
+    // engine does not read.
+    { key: 'amp', title: 'Envelope', rows: [
+      // Greyed in SPEAK: a phrase carries its own gate and ends when it ends.
+      envTime('$jmjr4.amp.attack', 'ATTACK', 0.001, secs, JMJR4_AMP_DEFAULTS.attack, 's', jmjr4Singing, { startRow: true }),
+      envTime('$jmjr4.amp.decay', 'DECAY', 0.001, secs, JMJR4_AMP_DEFAULTS.decay, 's', jmjr4Singing),
+      sustainPct('$jmjr4.amp.sustain', JMJR4_AMP_DEFAULTS.sustain * 100, jmjr4Singing),
+      envTime('$jmjr4.amp.release', 'RELEASE', 0.001, secs, JMJR4_AMP_DEFAULTS.release, 's', jmjr4Singing),
+    ] },
+    // The shared card, on the shared keys, minus PLACE: the play path drives after the
+    // voice and reads no `drivePlace`, so a pill for it would be a dead pot. Plus BITS and
+    // RATE, the reference's arcade stage, which some presets are made of (Arcade Chorus,
+    // Cabinet Voice): one stage per lane, after the drive, before the chorus.
+    { key: 'effects', title: 'Effects', rows: [
+      pick('$shape', 'SHAPE', DRIVE_SHAPES, 'soft'),
+      n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
+      toneRow('$tone.freq', 'TONE'),
+      n('$jmjr4.bits', 'BITS', 4, 16, 1, (x) => (x >= 16 ? 'OFF' : String(Math.round(x))), JMJR4_DEFAULTS.bits, '', null, {
+        startRow: true,
+        tip: 'Requantises the voice to this many bits, the arcade stage. 16 is off; 8 is the '
+          + 'cabinet speaker; 5 and below is grain and hiss under everything.' }),
+      n('$jmjr4.rate', 'RATE', 2, 44.1, 0.1, (x) => (x >= 44.1 ? 'OFF' : x.toFixed(1)), JMJR4_DEFAULTS.rate, 'kHz', null, {
+        taper: 'log', floor: 2,
+        tip: 'Holds each sample for this rate, with a lowpass at 0.45 of it in front so the '
+          + 'fold-down is a colour rather than a scream. 44.1 is off; 8 is a speech chip.' }),
       n('$chorus.mix', 'CHORUS', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
       n('$chorus.rate', 'RATE', 0.05, 8, 0.01, fixed(2), CHORUS_DEFAULTS.rate, 'Hz', chorused,
         { scale: SLOW_LFO_RATE_SCALE }),
@@ -2733,10 +2953,10 @@ const commonRows = (voice = {}) => noteOrder(withParts([
       ...(isPooled(voice)
         ? [n('$vibrato.depth', 'VIB DEPTH', 0, 1, 0.01, fixed(2), 0, '', null,
           { scale: VIB_DEPTH_SCALE, startRow: true })]
-        : [n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi', null,
+        : [n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi', jmjr4Singing,
           { scale: VIB_DEPTH_SCALE, startRow: true })]),
       n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
-        vibratoOn, { scale: SLOW_END_SCALE }),
+        (v) => vibratoOn(v) && jmjr4Singing(v), { scale: SLOW_END_SCALE }),
       // The third of the three, beside the two it belongs with rather than stranded on one
       // synth's own card — and ONLY on the paths that have one.
       //
@@ -2749,7 +2969,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
       // ever will. So it is not built at all: the row is absent from the panel rather than
       // present and permanently dead.
       ...(NATIVE_SYNTHS.includes(voice?.synth)
-        ? [envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's', vibratoOn)]
+        ? [envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's', (v) => vibratoOn(v) && jmjr4Singing(v))]
         : []),
       // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
       // which is one singer through a chorus however many oscillators are running; wound up,
@@ -2786,10 +3006,10 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // the one NATIVE path where they work: `_playLayer` keeps a glide origin per
   // (lane, voice) and chokes the note still ringing, which is exactly what the pills
   // promise. See `isPooled`.
-  ...(isPooled(voice) || isMrdrVoice(voice) || voice?.synth === 'TNGR-2' ? [
+  ...(isPooled(voice) || isMrdrVoice(voice) || voice?.synth === 'TNGR-2' || voice?.synth === 'JMJR-4' ? [
     // KEY MODE, not VOICING: the Tone oscillator cards already spend VOICING on
     // single/fat/am/fm, which is a different question from how many notes sound at once.
-    pick('$mode', 'KEY MODE', KEY_MODES, 'poly', null, {
+    pick('$mode', 'KEY MODE', KEY_MODES, 'poly', jmjr4Singing, {
       read: keyMode,
       write: writeKeyMode,
     }),
@@ -2798,7 +3018,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // full line of knobs and the choice rows below it are choices and nothing else.
     // It sat under KEY MODE before, on a fresh row of its own: a single pot on a line
     // that a greyed-out POLY patch left looking like a gap in the card.
-    n('$portamento', 'GLIDE', 0, 0.5, ENV_TIME_STEP, secs, 0, '', (v) => keyMode(v) !== 'poly',
+    n('$portamento', 'GLIDE', 0, 0.5, ENV_TIME_STEP, secs, 0, '', (v) => keyMode(v) !== 'poly' && jmjr4Singing(v),
       {
         scale: SHORT_TIME_SCALE,
         tip: 'How long the pitch takes to slide from the note before. FINGERED, like the '
@@ -2936,7 +3156,7 @@ export function panelSpec(voice = {}) {
 // not acquire a second editor during that migration. The pooled Tone classes and the
 // noise kind are being retired and likewise keep their existing detailed strip only.
 const QUICK_SYNTHS = new Set([
-  'TNGR-2', 'drum', KNDO5, WNDR9, RMND2, CRLS1,
+  'TNGR-2', 'JMJR-4', 'drum', KNDO5, WNDR9, RMND2, CRLS1,
 ]);
 /**
  * The presets built for a Quick surface — which are exactly the presets that have a
@@ -3535,6 +3755,24 @@ export const quickRows = (voice) => {
 
   if (synthFamily(voice.synth) === CRLS1) return crls1SimpleRows(voice);
 
+  if (voice.synth === 'JMJR-4') {
+    // The approved eight: the spine, a TONE that is TILT read the way a player thinks of it
+    // (up is brighter), how many singers, the syllable, and the vibrato.
+    return [
+      simplePanelRow(voice, '$trim', 'LEVEL'),
+      simplePanelRow(voice, '$transpose'),
+      simplePanelRow(voice, '$jmjr4.amp.attack', 'ATTACK'),
+      simplePanelRow(voice, '$jmjr4.amp.release', 'RELEASE'),
+      n('$jmjr4.quick.tone', 'TONE', 0, 1, 0.01, fixed(2), 1, '', null, {
+        read: (_raw, v) => 1 - Number(v?.jmjr4?.tilt ?? JMJR4_DATA.voices[v?.jmjr4?.voice ?? JMJR4_DEFAULTS.voice]?.tilt ?? 0) / 12,
+        write: (x, v) => { (v.jmjr4 ||= {}).tilt = Math.round(12 * (1 - Number(x)) * 2) / 2; return SKIP_WRITE; },
+        tip: 'Brighter or darker: the voice\'s TILT, read upwards.',
+      }),
+      simplePanelRow(voice, '$jmjr4.unison'),
+      jmjr4Speaking(voice) ? simplePanelRow(voice, '$jmjr4.phrase', 'PHRASE') : simplePanelRow(voice, '$jmjr4.line', 'SYLLABLE'),
+      simpleVibratoRow(voice),
+    ];
+  }
   if (voice.synth === 'TNGR-2') {
     return [
       n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
@@ -4315,9 +4553,61 @@ function buildScopedFullLayout(voice, problems) {
   };
 }
 
+/**
+ * JMJR-4's window: VOCAL | VOICE over ENVELOPE | SETTINGS over EFFECTS, three columns four
+ * pots wide, the arrangement the standalone panel settled on. The TNGR-2 template with the
+ * envelope card the only one that draws a shape.
+ */
+function buildJmjr4FullLayout(voice, problems) {
+  const { common, groups } = panelSpec(voice);
+  // Placed by ROW, not by path: SYLLABLES and SYLLABLE are two rows over one key, the way
+  // WAVE and VOICING are on the scoped boards, and both belong on the card once.
+  const placed = new Map();
+  const seen = new Set([...common.rows, ...groups.flatMap((g) => g.rows || [])]);
+  const take = (group, key) => {
+    const rows = group.rows || [];
+    for (const row of rows) placed.set(row, [...(placed.get(row) || []), key]);
+    return { key, title: group.title || key, group, rows };
+  };
+  const byKey = new Map(groups.map((group) => [group.key || group.title, group]));
+  const GRAPHS = { amp: 'env' };
+  const SPLIT = { ...CARD_SEAM };
+  const potsFor = () => 4;
+  // VOCAL hangs from the top (`top`, as the wave cards do): its first row is the MODE
+  // picker and what follows changes with it, so there is nothing to bottom-align with.
+  const TOP = new Set(['vocal']);
+  // and the same card spreads its groups down its height — see `.sfairy`
+  const AIRY = new Set(['vocal']);
+  const cell = (key, group) => ({
+    kind: 'card', span: potsFor(), graph: GRAPHS[key] || null, fader: null, curves: false,
+    card: SPLIT[key]
+      ? splitCard({ ...take(group, key), pots: potsFor() }, SPLIT[key])
+      : {
+        ...take(group, key),
+        pots: potsFor(),
+        ...(TOP.has(key) ? { top: true } : {}),
+        ...(AIRY.has(key) ? { airy: true } : {}),
+      },
+  });
+  const settings = {
+    kind: 'card', span: 4,
+    card: splitCard({ ...take(common, 'note'), title: common.title, pots: 4 }, SPLIT.note),
+  };
+  const stack = (...keys) => ({
+    kind: 'stack', span: potsFor(),
+    cards: keys.map((key) => (key === 'note' ? settings : cell(key, byKey.get(key)))),
+  });
+  const cells = [stack('vocal'), stack('voice', 'amp'), stack('note', 'effects')];
+  const bands = [{ name: 'jmjr4', track: 70, cols: cells.reduce((n, c) => n + c.span, 0), cells }];
+  for (const row of seen) if (!placed.has(row)) problems.push(`UNPLACED ${row.path} (${row.label})`);
+  for (const [row, where] of placed) if (where.length > 1) problems.push(`PLACED ${where.length}× ${row.path} (${row.label})`);
+  return { synth: 'JMJR-4', total: seen.size, bands };
+}
+
 function buildFullLayout(voice, layer, problems) {
   if (voice.kind === 'drum') return buildDrumFullLayout(voice, problems);
   if (voice.synth === 'TNGR-2') return buildTngr2FullLayout(voice, problems);
+  if (voice.synth === 'JMJR-4') return buildJmjr4FullLayout(voice, problems);
   if (SCOPED_FULL_SYNTHS.has(synthFamily(voice.synth))) {
     return buildScopedFullLayout(voice, problems);
   }
@@ -4841,6 +5131,55 @@ export function createVoiceEditor({
    * per pointer-move: a slider drag is a hundred events, and ninety-nine of them are
    * answers nobody waited to hear.
    */
+  // ---- JMJR-4 SPEAK: the phrase, compiled into the preset --------------------
+  //
+  // A spoken preset carries its phrase COMPILED (`jmjr4.phraseIr`): the IR the rack plays,
+  // stamped with the text and pots it came from, so a song plays it with no dictionary
+  // and no server. The dictionary (CMUdict, 3.8 MB as JSON) is fetched once per session from the
+  // desk's own server, or from upstream on a static desk. Whenever the stamp no longer
+  // matches — the text changed, a pot moved, a preset opened stale — it is recompiled here
+  // and the rack told; until it lands the compiler refuses the preset and the keys are
+  // quiet rather than wrong.
+  let jmjr4Lex = null;
+  let jmjr4LexPromise = null;
+  const jmjr4Lexicon = () => {
+    if (jmjr4Lex) return Promise.resolve(jmjr4Lex);
+    jmjr4LexPromise ||= (async () => {
+      try {
+        const r = await fetch('/cmudict.json');
+        if (r.ok) return (jmjr4Lex = await r.json());
+      } catch { /* no server: upstream */ }
+      const r = await fetch(JMJR4_DATA.text.dict_url);
+      if (!r.ok) throw new Error(`dictionary: ${r.status}`);
+      return (jmjr4Lex = compactDict(await r.text()));
+    })().catch((e) => { jmjr4LexPromise = null; throw e; });
+    return jmjr4LexPromise;
+  };
+  let jmjr4CompileSeq = 0;
+  const ensureJmjr4Phrase = () => {
+    const voice = state?.voice;
+    if (!jmjr4Speaking(voice)) return;
+    const source = jmjr4SpeakSource(voice, JMJR4_DATA);
+    const block = voice.jmjr4.phraseIr;
+    if (block?.ir?.schema && JSON.stringify(block.source) === JSON.stringify(source)) return;
+    const { patch, problems } = compileJmjr4(voice, JMJR4_DATA, { forCompile: true });
+    if (!patch) { console.warn(`[jmjr4] cannot compile the phrase: ${problems.join('; ')}`); return; }
+    const seq = ++jmjr4CompileSeq;
+    const id = state.id;
+    jmjr4Lexicon().then((lex) => {
+      if (seq !== jmjr4CompileSeq || state?.id !== id || state.voice !== voice) return;
+      const sp = patch.speak;
+      const args = (text) => ({ text, voice: patch.throat, speed: sp.speed, pitchHz: sp.pitchHz, range: sp.range, ending: sp.ending, step: sp.step, ctl: patch.ctl });
+      const whole = compilePhrase(JMJR4_DATA, lex, args(sp.phrase));
+      // each word on its own so it carries its own melody; PER KEY = WORD plays these
+      const words = sp.phrase.split(/\s+/).filter(Boolean).map((w) => compactIr(compilePhrase(JMJR4_DATA, lex, args(w)).ir));
+      voice.jmjr4.phraseIr = { source, ir: compactIr(whole.ir), words, transcript: whole.transcript, unknown: whole.unknown };
+      if (whole.unknown.length) console.warn(`[jmjr4] guessed: ${whole.unknown.join(', ')}`);
+      touched();
+      syncRows();
+    }).catch((e) => console.warn(`[jmjr4] phrase not compiled: ${e.message}`));
+  };
+
   const touched = () => {
     state.dirty = true;
     state.measured = false;      // the level on file no longer describes this sound
@@ -4861,6 +5200,7 @@ export function createVoiceEditor({
     onDirty(state.id, true);
     scheduleEstimate();
     paintFoot();
+    ensureJmjr4Phrase();
   };
 
   // ---- the live level ------------------------------------------------------
@@ -5060,6 +5400,45 @@ export function createVoiceEditor({
   // interval the user set on a different pot.
   // `guards` is which surface is asking — the strip's set by default, the full window's
   // when it builds. See `guardSet`.
+  /**
+   * A row whose value is a WORD: JMJR-4's syllable line. Written on Enter or on leaving
+   * the field, through the same `write`/`touched`/`syncRows` path a pot takes, and only
+   * when `row.validate` accepts it — a line with a word that is not a syllable is left in
+   * the box, marked, and not stored, because the engine would refuse the preset whole.
+   */
+  const textRow = (row, guards = rowGuards, onChange = null) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'row textrow' + (row.startRow ? ' rowstart' : '') + groupGaps(row);
+    if (row.tip) wrap.title = row.tip;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
+    const input = document.createElement('input');
+    input.className = 'vetext';
+    input.type = 'text';
+    input.spellcheck = false;
+    input.value = String(getAt(state.voice, row.path) ?? row.def ?? '');
+    const commit = () => {
+      const text = input.value.trim();
+      if (!text || (row.validate && !row.validate(text))) { input.classList.add('bad'); return; }
+      input.classList.remove('bad');
+      if (text === String(getAt(state.voice, row.path) ?? '')) return;
+      undoHistory.begin();
+      const next = row.write ? row.write(text, state.voice) : text;
+      if (next !== SKIP_WRITE) setAt(state.voice, row.path, next);
+      touched();
+      syncRows();
+      onChange?.();
+      undoHistory.end();
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); } e.stopPropagation(); });
+    input.addEventListener('keyup', (e) => e.stopPropagation());
+    input.addEventListener('change', commit);
+    input.addEventListener('blur', commit);
+    wrap.append(k, input);
+    if (row.when) guards.push(wrap, row.when);
+    if (row.hideWhen) guards.push(wrap, row.hideWhen, true);
+    return { wrap, row, set: (v) => { input.value = String(v ?? ''); } };
+  };
+
   const numRow = (row, guards = rowGuards, onChange = null) => {
     const raw = getAt(state.voice, row.path);
     const cur = row.read ? row.read(raw, state.voice) : raw;
@@ -5104,7 +5483,16 @@ export function createVoiceEditor({
       u.textContent = row.unit;
       r.label.append(' ', u);
     }
-    if (row.tip) r.wrap.title = row.tip;
+    if (row.gapBefore) r.wrap.classList.add('sfgapbefore');
+    if (row.gapAfter) r.wrap.classList.add('sfgapafter');
+    if (row.tip) {
+      r.wrap.title = row.tip;
+      // AND on the name, which is the part of a pot anybody hovers. `knob` puts "Reset to
+      // …" there because the name is the reset button, and a child's own title wins over
+      // the row's — so a pot with an explanation was showing the reset hint instead of it.
+      // Both, the explanation first: the hint is about the click, not about the control.
+      r.label.title = r.label.title ? `${row.tip}\n\n${r.label.title}` : row.tip;
+    }
     // The stored value can sit outside the pot's range — a hand-written preset is not
     // bound by what this editor thinks is a sensible maximum — and clamping it into
     // view without saying so would silently change a sound by opening its editor. Set
@@ -5117,6 +5505,7 @@ export function createVoiceEditor({
         + ' moving the pot will change it';
     }
     if (row.when) guards.push(r.wrap, row.when);
+    if (row.hideWhen) guards.push(r.wrap, row.hideWhen, true);
     // `set` comes back with the element so a second grip on the same control — an
     // envelope handle dragging DECAY — can move this pot's needle as it goes. It is
     // display-only (`knob`'s `set` does not fire `onInput`), so there is no loop.
@@ -5135,6 +5524,9 @@ export function createVoiceEditor({
   // the two only ever differ in what wraps them.
   const buildSeg = (row, cur, onChange = null) => {
     const seg = document.createElement('div'); seg.className = 'seg';
+    // A dozen options is not a strip of pills, it is a grid of them: `grid: N` lays the
+    // options N to a row, every cell the same width, so two such rows line up.
+    if (row.grid) { seg.classList.add('seggrid'); seg.style.gridTemplateColumns = `repeat(${row.grid}, minmax(0, 1fr))`; }
     // The current value leads the list if it is one this editor does not offer. Tone
     // takes `fmsquare5`, `pwm` and `amsine2`, and the imported presets use them; a
     // control that dropped the current value would rewrite the sound on open.
@@ -5332,6 +5724,7 @@ export function createVoiceEditor({
     });
     wrap.append(k, drop);
     if (row.when) guards.push(wrap, row.when);
+    if (row.hideWhen) guards.push(wrap, row.hideWhen, true);
     return { wrap, row };
   };
 
@@ -5366,13 +5759,14 @@ export function createVoiceEditor({
     // one question in two halves — TYPE and SLOPE — have to be the pair that lands
     // together rather than whichever two the flow happened to leave adjacent.
     const graphicalWave = row.graphical === 'wave';
-    wrap.className = 'row segrow' + (row.wide ? ' segwide' : '') + (wave ? ' segwave' : '')
+    wrap.className = 'row segrow' + (row.wide || row.grid ? ' segwide' : '') + (wave ? ' segwave' : '')
       + (graphicalWave ? ' vewavegraph' : '')
-      + (row.startRow ? ' rowstart' : '');
+      + (row.startRow ? ' rowstart' : '') + groupGaps(row);
     if (row.tip) wrap.title = row.tip;
     const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
     wrap.append(k, graphicalWave ? buildWaveSeg(row, cur, onChange) : buildSeg(row, cur, onChange));
     if (row.when) guards.push(wrap, row.when);
+    if (row.hideWhen) guards.push(wrap, row.hideWhen, true);
     return { wrap, row };
   };
 
@@ -6022,7 +6416,8 @@ export function createVoiceEditor({
         ? (renderPick
           ? { wrap: renderPick(row), row }
           : pickRow({ ...row, wide: picks < 2 }, guards, onChange))
-        : numRow(row, guards, onChange);
+        : row.kind === 'text' ? textRow(row, guards, onChange)
+          : numRow(row, guards, onChange);
       const { wrap } = handle;
       if (group.bodyWhen && row.label === 'AMP') wrap.dataset.vePanelKeep = '1';
       // Hand the row back to whoever asked for the card. The full window wants the pot's
@@ -7129,6 +7524,8 @@ export function createVoiceEditor({
     // A different preset opens at its top, not where the last one happened to be left.
     build({ keepScroll: false });
     el.classList.add('show');
+    // A spoken preset that opens stale (or never compiled) is compiled now.
+    ensureJmjr4Phrase();
     // If the full window is up, re-aim it at whatever this is now — a lane follow or a
     // library click lands here, and it may be a different preset or a different synth
     // class entirely. It re-renders on a preset that still has a full layout, and closes
@@ -7354,7 +7751,7 @@ export function createVoiceEditor({
     // was pressed describes a different number of hits. It takes the repaint that suits
     // the surface asking — the strip rebuilds its panel, the window's door redraws only
     // the popover body, so pressing + does not shut the panel it was pressed in.
-    knob, numRow, pickRow, dropRow, trioRow, groupCard, tapsGroup, short: SHORT,
+    knob, numRow, textRow, pickRow, dropRow, trioRow, groupCard, tapsGroup, short: SHORT,
     tapCount: () => tapCount(state?.voice || {}),
     tapsDoorLabel: () => tapsDoorLabel(state?.voice || {}),
     guards: guardSet,

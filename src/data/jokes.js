@@ -274,7 +274,7 @@ export const HUB_LINES = {
   // the NARRATOR is always sincere. The gap between the prose and the premises
   // is the joke, and the moment she winks at it the whole register collapses
   // into sarcasm, which Gnash already owns. She is not a fourth-wall break:
-  // the serial is real to her, the way Fernwick's receipt is real to him.
+  // the serial is real to her, the way Fernwick's receipt is real to her.
   //
   // Register check: her vocabulary is EXPEDITION prose — chapter, temple,
   // artifact, cursed, ancient, our heroine, to be continued. Swap her nouns

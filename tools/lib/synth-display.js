@@ -19,6 +19,7 @@ const SYNTH_STYLE = Object.freeze({
   'MRDR-3': 'Layered analogue',
   'CRLS-1': 'Subtractive',
   'TNGR-2': 'Wavetable',
+  'JMJR-4': 'Formant vocal',
   'WNDR-9': 'Additive',
   'KNDO-5': 'Chiptune',
   'KLNG-8': 'Drums',

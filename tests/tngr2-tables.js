@@ -239,23 +239,34 @@ assert(quietest > 0.02, `no family has a silent frame at the base level (quietes
     'a song with no TNGR-2 voices asks for nothing');
 }
 
-// And the two places that ask. The hub asks when a CABINET IS SELECTED, inline and
-// behind the fully closed shutter — `idle: false` is the point of the call, not a
-// detail: a deferred slice runs in a later task, once the shutter is opening, which is
-// the hitch this moved to avoid. run.js keeps its own synchronous loop as the fallback
-// for a dev ?stage= URL that never passed through the hub at all, where it is now a
-// cache hit rather than the expansion.
+// And the two places that ask, both through `Audio.warmWorkletLanes`, which expands the
+// families INLINE (`idle: false` is the point of the call, not a detail: a deferred
+// slice runs in a later task, once the shutter is opening, which is the hitch this
+// moved to avoid) and then builds the worklet lanes behind them. The hub asks when a
+// CABINET IS SELECTED, inside setBank's gap and behind the fully closed shutter, after
+// queueing the sequencer past the block. run.js asks again at stage entry, AFTER the
+// music handover — whose setBank fallback releases every lane — so a dev ?stage= URL
+// that never passed through the hub still arrives with its lanes built; through the
+// hub it is a cache hit.
 {
   const hub = readFileSync(new URL('../src/game/hub/index.js', import.meta.url), 'utf8');
   const run = readFileSync(new URL('../src/game/run.js', import.meta.url), 'utf8');
-  assert(/warmTngr2Families\(tngr2Ids, \{ idle: false \}\)/.test(hub)
-    && /import \{ warmTngr2Families \} from '\.\.\/\.\.\/engine\/tngr2\/tables\.js'/.test(hub)
-    && /this\.cab\.songMix\?\.voiceParams/.test(hub),
-    'the stage-select screen expands the cabinet it just opened, and waits for it');
+  const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
+  assert(/warmTngr2Families\(ids, \{ idle: false \}\)/.test(audio)
+    && /warmWorkletLanes\(\) \{/.test(audio),
+    'the engine expands a bank\'s TNGR-2 families inline, then builds its worklet lanes');
+  const desk = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+  assert((desk.match(/Audio\.warmWorkletLanes\?\.\(\)/g) || []).length >= 2,
+    'and the desk warms them too — on a song switch and on play, where setBank has '
+    + 'just released every lane and the next note would rebuild one mid-song');
+  assert(/Audio\.warmWorkletLanes\?\.\(\)/.test(hub),
+    'the stage-select screen builds the cabinet it just opened, and waits for the tables');
   assert(/Audio\.prefill\?\.\(1\.2\)/.test(hub),
     'and queues the sequencer past the block first, so the wait costs no notes');
-  assert(/tngr2Family\(osc\.table\)/.test(run),
-    'and the stage entry still expands anything that arrived without one');
+  const enterAt = run.indexOf('MusicDirector.enterStage(');
+  const warmAt = run.indexOf('Audio.warmWorkletLanes?.()');
+  assert(enterAt > 0 && warmAt > enterAt,
+    'and the stage entry builds anything that arrived without one, after the handover');
 }
 
 // The waiting form must actually be synchronous: the whole claim is that the expansion

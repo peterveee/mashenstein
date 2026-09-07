@@ -80,3 +80,6 @@ const capeJs = capeResult.outputFiles[0].text.replace(/<\/script/gi, '<\\/script
 if (!capeShell.includes('/*__BUNDLE__*/')) throw new Error('cape gallery shell is missing the bundle placeholder');
 writeFileSync(join(root, 'dist', 'eggshell-cape-bakeoff.html'), capeShell.replace('/*__BUNDLE__*/', capeJs));
 console.log('dist/eggshell-cape-bakeoff.html written');
+
+// Focused Fernwick attachment study, kept alongside the main galleries.
+await import('./build-fernwick-quiver-bakeoff.js');

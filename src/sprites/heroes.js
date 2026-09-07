@@ -122,7 +122,11 @@ fernwick.duck = [
   '..ff...ff...',
   '............',
 ];
-fernwick.pal = { h: '#65b83f', a: '#e8bc46', s: '#f2c9a0', e: '#1a1028', b: '#65b83f', p: '#7d6032', f: '#51351f', w: '#b0793a' };
+// The princess palette. `b` is the arms — her sleeves run full length, so the
+// limb IS the garment — and `p` is green tights where it used to be brown
+// trousers. `hair` is the blond the tufts take, `gem` the ruby that appears on
+// the headband, the belt buckle and the pendant, and `crown` the gold on them.
+fernwick.pal = { h: '#65b83f', a: '#e8bc46', s: '#f2c9a0', e: '#1a1028', b: '#65b83f', p: '#2c6a1c', f: '#51351f', w: '#b0793a', hair: '#e8bc46', crown: '#ffc52e', gem: '#e3657c', bodice: '#65b83f', skirt: '#65b83f' };
 
 // --- B-33P: silver dome, arm cannon, LED eyes — the only cyan left on him is
 // the LEDs, which is exactly what "LOW ON CYAN" should look like -------------

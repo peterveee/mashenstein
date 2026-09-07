@@ -150,6 +150,19 @@ const suites = [
   'tests/formants.js',
   'tests/tngr2.js',
   'tests/tngr2-audio.js',
+  // JMJR-4, the formant voice: its generated tables, its compiler's refusals, its syllable
+  // text and line rule, one offline render per shipped preset through the real rack, and the
+  // seams the sound-preserving performance pass moved (docs/JMJR-4_HANDOVER.md).
+  'tests/jmjr4-data.js',
+  'tests/jmjr4-compile.js',
+  'tests/jmjr4-syllables.js',
+  'tests/jmjr4-render.js',
+  'tests/jmjr4-text.js',
+  'tests/jmjr4-performance.js',
+  // ...and what a note SCHEDULES rather than what it sounds like: the automation points a
+  // curve is entitled to leave out, and how long each source is allowed to live. Round two's
+  // two sound-preserving optimisations are both invisible to a peak or an RMS.
+  'tests/jmjr4-lifetimes.js',
   // The gate the whole TNGR-2 completion plan hangs off: whether this project can host
   // an AudioWorkletProcessor live AND in the OfflineAudioContext its stems come out of.
   // Kept as a permanent regression now that it passes — see docs/TNGR-2-completion-spec.md §3.

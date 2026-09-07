@@ -2123,7 +2123,7 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
   return node;
 }
 
-function makeBitCrusher(ctx, params = {}) {
+export function makeBitCrusher(ctx, params = {}) {
   const input = ctx.createGain();
   const output = ctx.createGain();
   const dry = ctx.createGain();

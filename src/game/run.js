@@ -46,8 +46,7 @@ import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatie
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
-import { drawRocketFist, drawThrownAxe, drawToon, toonFaceSprite } from '../sprites/toons.js';
-import { tngr2Family } from '../engine/tngr2/tables.js';
+import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, ARROW_ARC, ARROW_BOX_SPEED } from '../sprites/toons.js';
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
@@ -366,12 +365,13 @@ function warmHeroArt(heroId) {
 // Four is the beat that facade lands on (structure 1 of the assembly, three
 // beats to settle), so the sign goes up the moment it has something to stand on
 // and the rest of the skyline finishes behind it.
-// How fast a pellet fired from the air comes down onto its target, px/s, and
+// How fast a round fired from the air comes down onto its target, px/s, and
 // how far ahead it looks for one. Clara's round closes on a box at ~550px/s and
 // a jump apex is ~45px up, so it has a fifth of a second to lose that height —
-// 360 does it with a visible dive rather than a snap. See homePellet.
-const PELLET_HOME_RATE = 360;
-const PELLET_HOME_RANGE = 240;
+// 360 does it with a visible dive rather than a snap. Grumpos' axe is the slow
+// end of the cast (~370px/s from the ground) and has longer. See homeRound.
+const ROUND_HOME_RATE = 360;
+const ROUND_HOME_RANGE = 240;
 const RHYTHM_SIGN_FROM = 4;
 // ONE BAR EACH. Four beats is long enough to read a mark and a word off a sign
 // that is flashing at you, and short enough that three of them are three bars
@@ -2322,18 +2322,6 @@ export class RunState {
       }
     }
 
-    // Pre-expand every TNGR-2 wavetable family this stage's song touches.
-    // Measured (CDP profile): a family expands in ~240ms ON THE MAIN THREAD,
-    // and it used to happen lazily at the first NOTE of the voice — mid-run,
-    // where it presented as "the game hitches on hero swaps" because the pad
-    // that uses it happens to enter near a portal. Behind the stage
-    // transition, nobody sees it; the expansion is cached per process.
-    for (const v of Object.values(this.cabinet.songMix?.voiceParams || {})) {
-      for (const osc of [v.tngr2?.oscA, v.tngr2?.oscB]) {
-        if (osc?.table) { try { tngr2Family(osc.table); } catch { /* unknown id: the synth will complain, not the lane */ } }
-      }
-    }
-
     // A stage-scoped rolling window (terrain.js STAGE_WAVES), resolved from
     // fractions to world px now that the stage's length is known. Set on
     // EVERY enter, null included — the same rule setGroundRises keeps.
@@ -2674,6 +2662,21 @@ export class RunState {
     // the window narrows by itself as the clock catches up. No-op offline and with no
     // context, so the headless suites do not see it at all.
     Audio.prefill?.(1.2);
+    // AFTER the prefill, never before it. The worklet lanes — TNGR-2 here, MRDR-3 too
+    // on the desk's backend — are nodes rather than pooled voices: the module, the
+    // wavetables (expanded here if the cabinet screen did not already, which is the one
+    // case that BLOCKS, for about 230 ms), and the 1.5 MB clone into the processor.
+    // Built at the pad's first note instead, that was ~100 ms of main thread and ~40 ms
+    // of lost audio clock at the bar it enters on.
+    //
+    // The order is the whole of the care here, and it is the same order the stage-select
+    // screen keeps: the block is longer than the sequencer's lookahead, so the queue has
+    // to be filled PAST it before the main thread goes away. Warming first drains the
+    // queue during the block and schedules the notes behind it into the past — a hole in
+    // the opening bar of a beat stage, which is the one stage that cannot afford one.
+    //
+    // After enterStage too, because its setBank fallback releases every lane.
+    Audio.warmWorkletLanes?.();
     // SKIP SYNTHESIS FOR LANES THE MIX HAS SILENCED — but not yet if a handover is
     // still pending. rhythm ships `lead4` muted: an MRDR-3 string pad layered off the
     // lead, so it carries the lead's notes and every pass builds a three-oscillator
@@ -4337,7 +4340,7 @@ export class RunState {
     this.player.powerType = type;
     // Eating needs the full gape/hold/snap bite cycle (~0.4s) to read as a
     // bite rather than a twitch — see poseFromPlayer's EAT_POWER_POSE_T.
-    this.player.powerPoseT = type === 'eat' ? 0.5 : 0.3;
+    this.player.powerPoseT = type === 'eat' ? 0.5 : type === 'bow' ? BOW_AIM_T : 0.3;
     if (type === 'stomp') {
       if (this.player.grounded) {
         // Flurry: Lorenzo swings the spanner repeatedly until he connects,
@@ -4439,6 +4442,18 @@ export class RunState {
         this.player.hazardEaten = true;
         this.player.abilityCd = 0;
       }
+    } else if (type === 'bow') {
+      // NOTHING LEAVES ON THE PRESS. He reaches back for the bow and draws,
+      // and the arrow goes at BOW_REACH_T + 0.15 — the round is queued with a
+      // hold and spawns at the hand on release (updateProjectiles), so the
+      // flight and the drawing agree to the frame. BROADHEAD (his mastery
+      // sidegrade, id 'bash') and a charged blast both make it pierce.
+      const rel = this.beatLock ? Math.max(ARROW_ARC.v, ARROW_BOX_SPEED) : ARROW_ARC.v;
+      this.projectiles.push({
+        type: 'arrow', x: this.playerWorldX(), alt: this.player.y + 11, alt0: this.player.y + 11,
+        vx: this.speed + rel, rel, t: 0, holdT: BOW_REACH_T + 0.3 * BOW_RELEASE_AT('high'), live: true,
+        pierce: this.modIds.includes('bash') || this.modIds.includes('charge'), hitIds: new Set(),
+      });
     } else if (type === 'fist') {
       Audio.sfx('launch', { hero: 'raymn', pitch: 1 });
       this.player.fistThrown = true;
@@ -4595,7 +4610,7 @@ export class RunState {
   projectileImpact(pr, cx, cy) {
     const hero = pr.contactHero || ({
       pellet: 'b33p', axe: 'grumpos', fist: 'raymn', spanner: 'lorenzo',
-      shield: 'fernwick', chomp: 'chompo',
+      shield: 'fernwick', arrow: 'fernwick', chomp: 'chompo',
     }[pr.type]);
     const pitch = pr.type === 'axe' ? 0.82 : pr.type === 'fist' ? 0.96
       : pr.type === 'shield' ? 0.9 : pr.type === 'chomp' ? 0.88 : 1.12;
@@ -6549,29 +6564,49 @@ export class RunState {
   /**
    * A ROUND FIRED FROM THE AIR COMES DOWN ONTO WHAT IT WAS FIRED AT.
    *
-   * A pellet leaves at the hero's own height and used to keep it: fired off
-   * the top of a jump it sailed over the card box it was aimed at, and on a
-   * beat cabinet the beat that asks for the shot can land anywhere in a jump
-   * arc. So it steers — the first thing ahead of it that it can hit becomes
-   * the target, and it closes on that thing's centre at PELLET_HOME_RATE,
-   * which is a dive it can be seen making rather than a snap. A round with
-   * nothing ahead of it flies straight, and one fired from the ground is
-   * already at the height of the things it hits, so the ordinary shot does
-   * not change.
+   * Every round leaves at the hero's own height and used to keep it: fired
+   * off the top of a jump it sailed over the card box it was aimed at, and on
+   * a beat cabinet the beat that asks for the shot can land anywhere in a jump
+   * arc. Nothing in an auto-runner is aimed — the press is the aim (see
+   * lightChartBoxOnBeat) — so a round that visibly misses the thing the press
+   * was for is the game lying about the press. It steers instead: the first
+   * thing ahead of it that it can hit, and that a hit DOES something to,
+   * becomes the target, and it closes on that thing's centre at
+   * ROUND_HOME_RATE, which is a dive it can be seen making rather than a
+   * snap. A round with nothing ahead of it flies straight, and one fired from
+   * the ground is already at the height of the things it hits, so the
+   * ordinary shot does not change.
+   *
+   * ALL FOUR FLYING ROUNDS — Clara's and B33P's pellet, Grumpos' axe, Ray
+   * M'N's fist and Fernwick's arrow. It was the pellet alone, and Grumpos'
+   * axe thrown off a jump flew over the box while the box, armed by the
+   * press, went anyway: a bang with no cause. The instant abilities (spanner,
+   * shield, chomp) pick their target directly and never miss.
+   *
+   * WHAT IT WILL NOT DIVE ONTO: scenery. A thrown weapon parks on anything
+   * unbreakable it touches, and a bar, a pipe or a saw plate between the
+   * hero and the thing they threw at is not the thing they threw at. The
+   * round flies past at its own height, the same as it always did, and
+   * finds the target behind. The card box is breakable, so it is always a
+   * target; so is anything a pellet can break and anything it can ring.
    */
-  homePellet(pr, dt) {
+  homeRound(pr, dt) {
+    const thrown = pr.type === 'axe' || pr.type === 'fist';
     let target = null;
     for (const ob of this.obstacles) {
-      if (!ob.live || ob.def.isGap || isFloorPad(ob.def) || ob.def.armored) continue;
-      if (!(ob.def.ground || ob.def.isTarget)) continue;
+      if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
+      if (ob.def.breakable === false || ob.def.armored) continue;
+      if (!thrown && !pr.pierce && !(ob.def.ground || ob.def.isTarget)) continue;
       if (pr.hitIds?.has(ob.id)) continue;
-      if (ob.x + ob.w < pr.x || ob.x > pr.x + PELLET_HOME_RANGE) continue;
+      if (ob.x + ob.w < pr.x || ob.x > pr.x + ROUND_HOME_RANGE) continue;
       if (!target || ob.x < target.x) target = ob;
     }
-    if (!target) return;
+    if (!target) return 0;
     const want = target.alt + target.h / 2;
     const d = want - pr.alt;
-    pr.alt += Math.sign(d) * Math.min(Math.abs(d), PELLET_HOME_RATE * dt);
+    const step = Math.sign(d) * Math.min(Math.abs(d), ROUND_HOME_RATE * dt);
+    pr.alt += step;
+    return step;
   }
 
   updateProjectiles(dt, sp) {
@@ -6594,6 +6629,7 @@ export class RunState {
           if (this.player.abilityCd <= 0) pr.returning = true;
           continue; // don't move under its own velocity this frame
         }
+        if (!pr.returning) this.homeRound(pr, dt);
         pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 240 : 300)) : pr.vx) * dt;
         if (pr.returning) {
           // Lower back toward the catch height as it flies home.
@@ -6608,8 +6644,33 @@ export class RunState {
             if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
           }
         }
+      } else if (pr.type === 'arrow') {
+        if (pr.holdT > 0) {
+          // Still on the string. It dies with the aim if the hero is swapped
+          // or the pose is cut short; otherwise it leaves from the hand.
+          pr.holdT -= dt;
+          if (this.relay.current !== 'fernwick' || this.player.powerPoseT <= 0) { pr.live = false; continue; }
+          if (pr.holdT > 0) continue;
+          pr.x = this.playerWorldX() + 14;
+          pr.alt0 = this.player.y + 11; pr.alt = pr.alt0; pr.t = 0;
+          Audio.sfx('launch', { hero: 'fernwick', pitch: 1 });
+        }
+        pr.t += dt;
+        pr.x += pr.vx * dt;
+        // The arc, and on top of it whatever the dive has taken off so far:
+        // the steer is an offset the arrow keeps, so a round with nothing
+        // ahead of it flies the plain arc and one that has dived stays down.
+        // `dive` is the vertical rate the steer added this frame, for the
+        // tangent it is drawn along.
+        const arc = pr.alt0 + ARROW_ARC.a * pr.t - ARROW_ARC.b * pr.t * pr.t;
+        pr.alt = arc + (pr.homeOff || 0);
+        pr.dive = dt > 0 ? this.homeRound(pr, dt) / dt : 0;
+        pr.homeOff = pr.alt - arc;
+        // Into the ground, or out of the frame: spent.
+        const viewRight = this.camX + W / this.camZoom;
+        if (pr.alt <= 0 || pr.x > viewRight + 16 || pr.x < this.camX - 60) { pr.live = false; continue; }
       } else {
-        if (pr.type === 'pellet' && !pr.pierce) this.homePellet(pr, dt);
+        if (pr.type === 'pellet') this.homeRound(pr, dt);
         pr.x += pr.vx * dt;
         if (pr.telegraph > 0) pr.telegraph -= dt;
         // A ROUND DIES WHERE IT LEAVES THE FRAME, and the frame is W / camZoom
@@ -6625,7 +6686,7 @@ export class RunState {
         if (pr.x > viewRight + 16 || pr.x < this.camX - 60) pr.live = false;
       }
       // Projectile vs obstacles.
-      if (pr.type === 'pellet' || pr.type === 'axe' || pr.type === 'fist') {
+      if (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist') {
         for (const ob of this.obstacles) {
           if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
           pr.hitIds ||= new Set();
@@ -6635,7 +6696,7 @@ export class RunState {
             : (ob.def.ground || ob.def.isTarget) && !ob.def.armored;
           if (!canHit) {
             // pellet pings off armored flyers
-            if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && pr.type === 'pellet') {
+            if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && (pr.type === 'pellet' || pr.type === 'arrow')) {
               this.projectileImpact(pr, pr.x + 4, this.groundYAt(pr.x) - pr.alt - 4);
               pr.live = false;
               break;
@@ -6683,7 +6744,7 @@ export class RunState {
       // a copter that could be shot down would be a different, easier level for
       // the heroes who carry a gun than for the ones who do not.
       if (pr.live && this.copter && !this.copter.flyOff
-        && (pr.type === 'pellet' || pr.type === 'axe' || pr.type === 'fist')) {
+        && (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist')) {
         const c = this.copter;
         pr.hitIds ||= new Set();
         const box = this.copterBox();
@@ -10485,6 +10546,7 @@ export class RunState {
       this.player.y += this.player.vy * dt;
     }
     this.updateCamera(dt);   // the death pop launches high; keep it in frame
+    updateShake(dt, () => this.fxRng.float());
     if (this.deadT > this.deadHold()) {
       if (this.demo) {
         this.endRun(false); // demos die once and end — no checkpoint recovery
@@ -11054,6 +11116,12 @@ export class RunState {
         ctx.fillStyle = '#fff';
         ctx.fillRect(x + 1, y + 1, 2, 2);
         if (pr.telegraph > 0) { ctx.strokeStyle = '#f6d33c'; ctx.strokeRect(x - 3, y - 3, 10, 10); }
+      } else if (pr.type === 'arrow') {
+        // On the string it is the drawn hero's to paint; in flight it flies
+        // along its own arc's tangent, nock at pr.x.
+        if (pr.holdT > 0) continue;
+        const slope = ARROW_ARC.a - 2 * ARROW_ARC.b * pr.t + (pr.dive || 0);
+        drawRangedProjectile(ctx, 'arrow', x, y + 4, { rot: -Math.atan2(slope, pr.rel || ARROW_ARC.v), hero: 'fernwick', flying: true });
       } else if (pr.type === 'axe') {
         ctx.save();
         if (pr.hover) {

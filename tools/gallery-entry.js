@@ -36,14 +36,16 @@ import {
   WALL_BASE, drawPoster, POSTER_W, POSTER_H, CABINET_STAR,
 } from '../src/sprites/backwall.js';
 import {
-  TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
+  TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim, caneScale,
   setContour, setInkScale, setInkDensity,
   ACTIVE_CELEBRATION_STYLE,
   DEATH_FACE_TIMING, DEATH_EYE_STYLES,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   b33pTitleShotPose,
   poseFromPlayer,
+  drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC,
 } from '../src/sprites/toons.js';
+import { LORENZO_RANGED_CANDIDATES, WRENCH_CANDIDATES } from '../src/dev/ranged-candidates.js';
 import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
   LCD_GORILLA_NOSTRIL_STYLES,
@@ -99,10 +101,11 @@ import {
   ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
   PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES,
   PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES,
-  PANDA_SETTLED, RUSTY_BROW_CANDIDATES, RUSTY_SHOT_CANDIDATES,
-  RUSTY_BROWSHAPE_CANDIDATES, RUSTY_TOSS_CANDIDATES, RUSTY_OPENBROW_CANDIDATES,
+  PANDA_SETTLED, RUSTY_BROW_CANDIDATES,
+  RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES,
   RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES,
-  RUSTY_EXPRESSIVE_CANDIDATES,
+  RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_T1, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES,
+  RUSTY_W3B, PANDA_PAL,
 } from '../src/dev/hero-candidates.js';
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
@@ -111,6 +114,62 @@ import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
 import { proFaceWith, PRO_STACHE_SIZE, proMouthPartWith } from '../src/sprites/props.js';
 import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
+
+// ------------------------------------------------------- the guest hero
+// RUSTY IS STILL A CANDIDATE. He has no row in HEROES and no entry in
+// TOON_SPECS, and he must not get one until his look is signed off — that
+// separation is the whole point of src/dev/hero-candidates.js.
+//
+// But a candidate can only be judged against the cast it wants to join, so the
+// GALLERY — and only the gallery — appends him to the cast-wide line-ups and
+// hands his spec and palette through drawToon's opts seam, exactly as the
+// bake-off sections do. Nothing here reaches production: TOON_SPECS is
+// untouched, so the hub wall, the design handoff and the roster the tests count
+// are all unchanged.
+//
+// GNASH STAYS. The point is the comparison, not the swap — they stand side by
+// side until the slot is actually decided.
+const GUEST_ID = 'rusty';
+const GUEST_OPTS = { spec: RUSTY_W3B, pal: PANDA_PAL };
+// A synthetic HEROES row for him. Several cast sections are keyed on
+// HERO_BY_ID rather than on TOON_SPECS — the special-move rows and the whole
+// jump-height chart — so a candidate with no row is silently absent from them.
+// That is why his jump was missing from the measured chart while appearing in
+// every pose strip. Nothing here reaches production: it is a gallery-local
+// object, and the real row only exists once he is cast.
+//
+// The kit is the speedster slot he is auditioning for, taken from Gnash so the
+// comparison is like for like. PROVISIONAL — the numbers are his only in the
+// sense that they are the slot's. The ability TYPE is deliberately 'shoot',
+// because that is what drives the aim pose his throw is built on; the
+// projectile is a thrown-and-returned cane (the axe's cycle), and which type
+// carries that — reuse 'axe', or add a 'boomerang' — is still open.
+const GUEST_HERO = {
+  id: GUEST_ID,
+  name: 'RUSTY, FOCUS-TESTED',
+  short: 'RUSTY',
+  speedMult: 1.15,
+  jumpMult: 1.05,
+  scoreMult: 1,
+  maxJumps: 1,
+  variableJump: true,
+  ability: { type: 'shoot', cooldown: 3.2, label: 'BAMBOO SHOOT', callout: 'BAMBOO SHOOT' },
+};
+// HERO_BY_ID, plus the guest — for sections that enumerate the playable roster
+// rather than the drawable specs.
+const heroRow = (id) => (id === GUEST_ID ? GUEST_HERO : HERO_BY_ID[id]);
+// Append the guest to an enumeration of shipped ids.
+// Seated immediately after GNASH rather than tacked on the end: he is being
+// judged against the hero whose slot he wants, and two heroes eight columns
+// apart cannot be compared at a glance. Falls back to appending if gnash ever
+// leaves the roster.
+const withGuest = (ids) => {
+  const at = ids.indexOf('gnash');
+  return at < 0 ? [...ids, GUEST_ID] : [...ids.slice(0, at + 1), GUEST_ID, ...ids.slice(at + 1)];
+};
+// The opts any cast-wide draw call needs: the guest's spec/pal, or nothing at
+// all for a hero who has his own entry in TOON_SPECS.
+const heroOpts = (id) => (id === GUEST_ID ? GUEST_OPTS : {});
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -222,6 +281,13 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   // 17, which makes the tilt an expression rather than a fixed pose.
   'rusty-mouth-bakeoff',
   'rusty-browangle-bakeoff',
+  // Round 20, SETTLED 6 Sep 2026: W3b — tool belt on the waist, canister slung
+  // on the left hip, tube canted a little, drawn body / leg / pouch / arm /
+  // hand. Round 21 ('rusty-cane-bakeoff') is what sits in its mouth.
+  'rusty-bundle-bakeoff',
+  // Round 21, SETTLED 6 Sep 2026: X3 — gapped and staggered. Became the
+  // alternation mechanic shown in 'rusty-alternate'.
+  'rusty-cane-bakeoff',
 ]);
 // SCREEN SCALE: screen px per logical frame px. The game is never presented at
 // 1:1 — renderer.js fits the 480x270 frame to the viewport at
@@ -422,8 +488,15 @@ function pose(kind, t, extra = {}) {
 // to duck in. Every production duck tile draws through this so the gallery
 // cannot drift from the game.
 function duckExtra(id) {
-  const rig = TOON_SPECS[id]?.rig;
-  return HERO_BY_ID[id] && (rig === 'humanoid' || rig === 'ray')
+  // THE GUEST IS A PLAYABLE HUMANOID, and this gate could not see that. It
+  // asks TOON_SPECS for the rig and HERO_BY_ID whether the hero is playable —
+  // a candidate is deliberately in neither, so it returned {} and Rusty fell
+  // through to the generic crouch while every shipped humanoid got the POWER
+  // SLIDE. The bake-off sheets passed duckStyle by hand, which is exactly why
+  // it never showed up there.
+  const rig = id === GUEST_ID ? GUEST_OPTS.spec.rig : TOON_SPECS[id]?.rig;
+  const playable = id === GUEST_ID || !!HERO_BY_ID[id];
+  return playable && (rig === 'humanoid' || rig === 'ray')
     ? { duckStyle: 'slide' } : {};
 }
 
@@ -448,6 +521,7 @@ function powerupExtra(type, local) {
   if (type === 'fist') return { headless: true };
   if (type === 'axe') return { axeThrown: true };
   if (type === 'shoot') return local <= 0.3 ? { menuAction: 'aim', actionTime: local } : {};
+  if (type === 'bow') return local <= BOW_AIM_T ? { menuAction: 'aim', actionTime: local } : {};
   if (type === 'eat') return { menuAction: 'chomp', time: local };
   return {};
 }
@@ -455,7 +529,7 @@ function powerupExtra(type, local) {
 // `poseScale` maps drawPowerPose's in-run 24px offsets onto a taller gallery toon.
 function drawPowerupTile(ctx, id, hero, t, cx, feetY, hh) {
   const type = hero.ability.type;
-  const budget = type === 'eat' ? 0.5 : 0.3; // matches useAbility()'s powerPoseT
+  const budget = type === 'eat' ? 0.5 : type === 'bow' ? BOW_AIM_T : 0.3; // matches useAbility()'s powerPoseT
   const local = t % POWERPOSE_PERIOD;
   if (id === 'chompo' && local <= 0.42) {
     // The run removes collision immediately but keeps the eaten sprite for this
@@ -473,7 +547,20 @@ function drawPowerupTile(ctx, id, hero, t, cx, feetY, hh) {
     drawProp(ctx, 'crate', -0.25 * hh, -0.23 * hh, 0.5 * hh, 0.46 * hh);
     ctx.restore();
   }
-  drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, hh);
+  drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, hh, heroOpts(id));
+  // The guest's special is a THROWN CANE, not a shot. He borrows ability type
+  // 'shoot' only because that is what drives the aim pose his throw is built
+  // on — so he takes the pose and skips drawPowerPose, whose 'shoot' flourish
+  // is a muzzle flash. The cane is drawn instead, spawned at the release beat
+  // (0.66 of the window) exactly as the throw section does it.
+  if (id === GUEST_ID) {
+    const q = Math.max(0, Math.min(1, local / 0.3));
+    if (q >= 0.66) {
+      drawBambooShoot(ctx, cx + 0.14 * hh + (q - 0.66) * 0.9 * hh, feetY - hh * 0.5,
+        { size: (hh / 36) * caneScale(0), spin: q * 8 });
+    }
+    return;
+  }
   drawPowerPose(ctx, cx, feetY, type, powerPoseAlpha(t, budget), hh / HERO_DRAW_H);
 }
 
@@ -512,7 +599,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 // tile they had in the sections below — this is the line-up, not the cast list.
 {
   const LINEUP_OMIT = new Set(['chompo', 'mochi']);
-  const ids = Object.keys(TOON_SPECS).filter((id) => !LINEUP_OMIT.has(id));
+  const ids = withGuest(Object.keys(TOON_SPECS).filter((id) => !LINEUP_OMIT.has(id)));
   const grid = section('cast-lineup', 'The cast — one line-up per pose',
     `${ids.length} heroes shoulder to shoulder on a shared feet line, drawn by the game's own `
     + `drawToon() on a single clock (chompo and mochi are held out of the line-up). The per-hero `
@@ -533,7 +620,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     const TH = HEIGHTS[kind], FEET = TH - GAP;
     tile(grid, label, note, COL * ids.length, TH, (ctx, t) => {
       ids.forEach((hid, i) => {
-        drawToon(ctx, hid, pose(kind, t, extraFor(kind, hid)), COL * (i + 0.5), FEET, HH);
+        drawToon(ctx, hid, pose(kind, t, extraFor(kind, hid)), COL * (i + 0.5), FEET, HH, heroOpts(hid));
         ctx.fillStyle = '#8a8a9e';
         ctx.font = '7px ui-monospace, monospace';
         ctx.textAlign = 'center';
@@ -646,7 +733,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 
 // ---------------------------------------------------------------- 2. heroes
 {
-  const ids = Object.keys(TOON_SPECS);
+  const ids = withGuest(Object.keys(TOON_SPECS));
   const grid = section('heroes', 'Heroes — poses',
     `${ids.length} heroes across the five shared poses plus each playable hero's special, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
     + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move. '
@@ -665,12 +752,12 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       // rides ~1.25 above his feet) isn't cropped at the tile's top edge.
       const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
       tile(grid, id, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
+        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(id));
       }, { animated: true });
     }
     // Gary and Dolores are cast-roll flavour, not roster members — neither has
     // a gameplay ability to show.
-    const hero = HERO_BY_ID[id];
+    const hero = heroRow(id);
     if (!hero) continue;
     const th = HH * 1.3;
     tile(grid, id, `powerup · ${hero.ability.label}`, HH * 0.9, th, (ctx, t) => {
@@ -685,7 +772,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 // judging one character, bad for spotting the one hero whose run cycle reads
 // wrong next to everyone else's. This is that comparison, the other way round.
 {
-  const ids = Object.keys(TOON_SPECS);
+  const ids = withGuest(Object.keys(TOON_SPECS));
   const secId = 'pose-compare';
   const title = 'Heroes — pose comparison';
   const s = sectionEl(secId, title,
@@ -728,7 +815,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       tile(grid, 'all duck — in a row', 'one clock, whole cast · humanoids slide, the other rigs keep their crouch',
         COL * ids.length, 62, (ctx, t) => {
           ids.forEach((hid, i) => {
-            drawToon(ctx, hid, pose('duck', t, duckExtra(hid)), COL * (i + 0.5), FEET, HH);
+            drawToon(ctx, hid, pose('duck', t, duckExtra(hid)), COL * (i + 0.5), FEET, HH, heroOpts(hid));
             ctx.fillStyle = '#8a8a9e';
             ctx.font = '7px ui-monospace, monospace';
             ctx.textAlign = 'center';
@@ -738,7 +825,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     }
     for (const hid of ids) {
       tile(grid, hid, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
+        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(hid));
       }, { animated: true });
     }
   }
@@ -750,13 +837,13 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // comparison, and lined up together it is the fastest way to see which
   // specials do not read as specials.
   {
-    const roster = ids.filter((hid) => HERO_BY_ID[hid]);
+    const roster = ids.filter((hid) => heroRow(hid));
     const grid = subhead(LABELS.powerup,
       `${roster.length} of ${ids.length} heroes — the ability pose plus drawPowerPose()'s flourish, `
       + 'pulsing on the same countdown a real run gives it.');
     const th = HH * 1.3;
     for (const hid of roster) {
-      const hero = HERO_BY_ID[hid];
+      const hero = heroRow(hid);
       const tw = hid === 'chompo' ? HH * 1.55 : HH * 0.9;
       tile(grid, hid, `${hero.ability.label} · ${hero.ability.type}`, tw, th, (ctx, t) => {
         drawPowerupTile(ctx, hid, hero, t, hid === 'chompo' ? HH * 0.48 : tw / 2, th - HH * 0.05, HH);
@@ -843,7 +930,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 }
 
 {
-  const ids = Object.keys(TOON_SPECS);
+  const ids = withGuest(Object.keys(TOON_SPECS));
   const grid = section('faces', 'Heroes — faces', 'drawToonFace(), as used for HUD cells and portal crops.');
   for (const id of ids) {
     tile(grid, id, 'face', 32, 32, (ctx) => drawToonFace(ctx, id, 0, 0, 32, 32));
@@ -1019,7 +1106,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const PAD = 6;
   const tw = HERO_DRAW_W + PAD * 2;
   const th = HERO_DRAW_H + PAD * 2;
-  for (const id of Object.keys(TOON_SPECS)) {
+  for (const id of withGuest(Object.keys(TOON_SPECS))) {
     const player = {
       hero: {}, anim: 0, vy: 0, grounded: true, ducking: false, rolling: false,
       compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
@@ -1097,8 +1184,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // A human tap, not a one-frame theoretical minimum.
   const TAP = 0.1;
 
-  const ROWS = Object.keys(HERO_BY_ID)
-    .map((id) => ({ id, hero: HERO_BY_ID[id], apex: apexOf(HERO_BY_ID[id]) }))
+  const ROWS = withGuest(Object.keys(HERO_BY_ID))
+    .map((id) => ({ id, hero: heroRow(id), apex: apexOf(heroRow(id)) }))
     .sort((a, b) => b.apex - a.apex);
 
   // LEFT is the gutter the outboard height labels hang in; without it the
@@ -1911,7 +1998,6 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
-
 // Keep the open cape question at the front of the lab page. The larger Eggshell
 // redesign section below contains the face/outfit history, but this is the row
 // Peter came here to judge and it should not be buried after every other lab.
@@ -2438,57 +2524,6 @@ beginLab();
     laneTile(grid, RUSTY_BROW_CANDIDATES, 'rusty brows — in the lane, at size');
   }
 
-  // ROUND 10 — the ranged move. An ANIMATION question, so the tiles run the
-  // shot live rather than posing it.
-  {
-    const grid = section('rusty-shot-bakeoff', 'RUSTY — the ranged move, three cuts',
-      'GALLERY ONLY, round 10. The projectile names itself — red pandas eat bamboo, and his ability '
-      + 'type in data/heroes.js is literally <code>\'shoot\'</code>, so BAMBOO SHOOT is the joke and '
-      + 'the implementation at once. The painter is real (<code>drawBambooShoot</code>, beside '
-      + 'drawPellet): a CAPSULE rather than a disc, so the one long shape reads as his against the two '
-      + 'round shots already in the lane; one dark NODE band, floored at a pixel because it is the last '
-      + 'mark to survive shrinking and the only one that says bamboo; and TUMBLE, because a shot '
-      + 'holding one angle reads as fired from a barrel, which is B-33P\'s story not his. '
-      + '<br><br>The cuts differ in COST as much as in feel. <b>M1</b> is a row in HEROES and nothing '
-      + 'else — run.js already reads shotSpeed/shotSize/shotBurst off the hero. <b>M2</b> couples shot '
-      + 'speed to his running speed, so the ranged move IS the speedster fantasy instead of sitting '
-      + 'beside it; a small run.js change plus a test. <b>M3</b> overlaps Clara\'s twin-pistol burst '
-      + 'and needs a pose that does not exist — a tail-spin launch. These tiles draw M3 on the shipped '
-      + 'AIM pose, so judge its SHOT and treat the gesture as unbuilt. '
-      + '<br><br>Marked in every lane: the beat cabinet\'s card box at +230, the prop this ability '
-      + 'exists to answer. One consequence to weigh — ranged is 4 of 8 today and the box is dealt only '
-      + 'to those four, because a prop half the cast cannot answer is a hero check rather than a '
-      + 'rhythm figure. Rusty makes five; if ranged becomes standard for everyone, that gate stops '
-      + 'meaning anything.');
-
-    const SHOT_PERIOD = 1.6;
-    const shotOpts = { spec: PANDA_SETTLED.spec, pal: PANDA_SETTLED.pal };
-    for (const c of RUSTY_SHOT_CANDIDATES) {
-      const LW = 300, LH = 62, LGY = 46;
-      tile(grid, `rusty — ${c.name}`, c.note, LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        laneStrip(ctx, LW, LH, LGY);
-        // The card box, at the distance the cabinet actually stands one.
-        ctx.fillStyle = 'rgba(246,211,60,0.5)';
-        ctx.fillRect(24 + 230, LGY - 18, 1, 18);
-        const local = t % SHOT_PERIOD;
-        drawToon(ctx, c.id, pose('run', t, powerupExtra('shoot', Math.min(0.3, local))),
-          24, LGY, HERO_DRAW_H, shotOpts);
-        // Live flight on the same clock, so what is judged is the animation.
-        const tracks = c.key === 'fan' ? [-1, 0, 1] : c.key === 'momentum' ? [0, 0] : [0];
-        tracks.forEach((k, i) => {
-          const scale = c.key === 'momentum' ? (i === 0 ? 0.62 : 1.5) : 1;
-          const x = 24 + 8 + local * c.shot.speed * scale * 0.35;
-          if (x > LW - 6) return;
-          const y = LGY - 16 + (c.key === 'fan' ? k * local * 9 : 0);
-          ctx.globalAlpha = c.key === 'momentum' && i === 0 ? 0.45 : 1;
-          drawBambooShoot(ctx, x, y, { size: c.shot.size, spin: local * 14 });
-          ctx.globalAlpha = 1;
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
-    }
-  }
-
   // ROUND 12 — the brow SHAPE. N3's construction won; its spots read as dots.
   {
     const grid = section('rusty-browshape-bakeoff', 'RUSTY — flattening the brow spots',
@@ -2522,66 +2557,6 @@ beginLab();
       }, { animated: false, wide: true, hires: 6 });
 
     laneTile(grid, RUSTY_BROWSHAPE_CANDIDATES, 'rusty brow shapes — in the lane, at size');
-  }
-
-  // ROUND 13 — the LAUNCH. Rusty had no throw; he does now.
-  {
-    const grid = section('rusty-toss-bakeoff', 'RUSTY — the launch gesture, three cuts',
-      'GALLERY ONLY, round 13. The shot round showed the projectile leaving and the hero standing '
-      + 'still, and that was not a rendering slip: <code>menuAction: \'aim\'</code> only ever '
-      + 'produced a gesture for a hero carrying a PROP — Clara\'s pistol, B-33P\'s gun-arm, Kiko\'s '
-      + 'orb. Rusty has none of those flags, so <b>he had no throw at all</b>. He does now '
-      + '(<code>spec.toss</code>, on the same 0.3s budget every other ability pose uses). '
-      + '<br><br>A throw is three beats and none can be dropped: the WIND-UP makes the arm\'s travel '
-      + 'legible (a hand that starts forward has nowhere to accelerate from), the WHIP is two frames '
-      + 'and is the only part anyone consciously sees, and the FOLLOW-THROUGH stops the arm looking '
-      + 'like it hit a wall. Release is at the end of the whip — the same instant in all three, and '
-      + 'where run.js should spawn the projectile. '
-      + '<br><br>Two amplitude lessons are baked into these, both learned the hard way here: a '
-      + 'gesture has to CLEAR THE SILHOUETTE to exist (the first cut moved the hand about a torso '
-      + 'half-width and read as a twitch), and a pitch must cock HIGH rather than back — behind the '
-      + 'shoulder is where a real pitcher\'s hand goes and it is invisible at hero size, because the '
-      + 'torso occludes it. <b>P3 is the one that reads best</b>, and for a structural reason: the '
-      + 'tail is outside the body outline at every instant of the gesture, so nothing it does is ever '
-      + 'hidden.');
-
-    // The CLOCK is the one thing that differs from a real run, and for the
-    // reason the raider section documents: a tile whose entire question is
-    // whether a gesture reads must not spend most of its time NOT playing it.
-    // At 1.5s the 0.3s throw ran and then froze on the follow-through for 1.2s
-    // — four fifths of every cycle static, which is indistinguishable from a
-    // hero who does not animate at all. 0.7s gives the throw, a short beat to
-    // register it landed, and then it goes again.
-    const TOSS_PERIOD = 0.7;
-    for (const c of RUSTY_TOSS_CANDIDATES) {
-      tile(grid, `rusty — ${c.name}`, c.note, RCOL * 2.4, RH * 1.62, (ctx, t) => {
-        const local = Math.min(0.3, t % TOSS_PERIOD);
-        drawToon(ctx, c.id, pose('run', t, { menuAction: 'aim', actionTime: local }),
-          RCOL * 1.1, RFEET, RH, opts(c));
-      }, { animated: true, wide: true, hires: 4 });
-    }
-
-    // The gesture at the size it is played, which is where a throw either
-    // reads or does not.
-    {
-      const LW = 24 + RUSTY_TOSS_CANDIDATES.length * 62 + 40, LH = 62, LGY = 46;
-      tile(grid, 'rusty throws — in the lane, at size',
-        `Real ${HERO_DRAW_H}px hero on the ability's own clock. Everything above is a study.`,
-        LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-          ctx.scale(WORLD_Z, WORLD_Z);
-          laneStrip(ctx, LW, LH, LGY);
-          const local = Math.min(0.3, t % TOSS_PERIOD);
-          RUSTY_TOSS_CANDIDATES.forEach((c, i) => {
-            const x = 30 + i * 62;
-            drawToon(ctx, c.id, pose('run', t, { menuAction: 'aim', actionTime: local }),
-              x, LGY, HERO_DRAW_H, opts(c));
-            if (local >= 0.168) {
-              drawBambooShoot(ctx, x + 9 + (local - 0.168) * 110, LGY - 11,
-                { size: 0.8, spin: local * 20 });
-            }
-          });
-        }, { animated: true, wide: true, world: true, hires: 5 });
-    }
   }
 
   // ROUND 14 — brow ANGLE, on O2 (squash 0.70).
@@ -2806,8 +2781,189 @@ beginLab();
             const c = at(r, t);
             drawToonFace(ctx, c.id, 56 * col + 4, 60 * row + 4, 48, 48,
               { spec: c.spec, pal: c.pal, pose: { kind: 'idle', time: 1.4, facing: 1, ...mood[1] } });
+            // Every cell carries its own code. A grid with the key only in the
+            // blurb cannot be pointed at — "the bottom row" is as close as
+            // anyone can get, and that is not a name.
+            ctx.fillStyle = '#f0c07a';
+            ctx.font = 'bold 7px ui-monospace, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(c.name.split(' — ')[0], 56 * col + 5, 60 * row + 58);
           }));
         }, { animated: false, wide: true, hires: 6 });
+    }
+  }
+
+  // ROUND 20 — WHERE THE BAMBOO LIVES, and the draw it buys.
+  {
+    const grid = section('rusty-bundle-bakeoff', 'RUSTY — the bamboo bundle, and drawing from it',
+      'GALLERY ONLY, round 20. Carrying one cane answered the supply question by making the supply '
+      + 'ONE stick he owns. Wearing a BUNDLE answers it better, and it is the answer this game already '
+      + 'uses: Fernwick has <code>back: \'quiver\'</code> with arrows standing in it, so the '
+      + 'ammunition visibly has a source. The bundle is built to the same rule — a strapped sleeve in '
+      + 'boot leather, canes proud of the mouth drawn by the PROJECTILE\'S OWN painter so the thing he '
+      + 'pulls out is visibly the thing he throws, and one strap, because that is what turns a tube '
+      + 'into something worn. It loses a cane while one is in the air: the supply is finite on screen. '
+      + '<br><br><b>It also buys a beat the carried cane never had.</b> Reaching back for one IS the '
+      + 'wind-up, so the throw stops needing an abstract cock-and-whip and starts explaining itself — '
+      + 'the columns are that sequence: reach, pull, whip, release. '
+      + '<br><br><b>W1 QUIVER</b> is Fernwick\'s placement, high behind the shoulder, canes standing '
+      + 'upright out of it — upright being the whole trick, since a quiver reads as stowed because '
+      + 'every shaft crosses the mouth on one line. <b>W2 TOOL BELT + POUCH</b> and <b>W3 BELT '
+      + 'DISPENSER</b> hang on a band across the waist and ride the FRONT hip: anything on a belt has '
+      + 'to sit on the leading hip and draw over the torso, or it is on his backside where the body '
+      + 'hides it. W3 cants the tube back like a holster so the canes present their ends to the '
+      + 'drawing hand — and the cant is the TUBE, never the canes. <b>W4 BACKPACK</b> is a pack on his '
+      + 'back with shoulder straps crossing the chest and a sternum band; the pack is a back-pass '
+      + 'piece and the straps a front-pass one, because a pack whose straps hide behind the torso is '
+      + 'just a box floating behind a hero. <b>W5</b> is the no-bag control, so the kit has to earn '
+      + 'its place in the silhouette.');
+
+    const STAGES = [['idle', null], ['reach', 0.06], ['pull', 0.14], ['whip', 0.22], ['release', 0.3]];
+    for (const c of RUSTY_BUNDLE_CANDIDATES) {
+      // FULL name on the tile — letter AND what it is. The letter alone meant
+      // the row could not be referred to without cross-checking the notes.
+      tile(grid, c.name, c.note, RCOL * STAGES.length, RH * 1.62, (ctx) => {
+        STAGES.forEach(([label, at], i) => {
+          drawToon(ctx, c.id, pose(at == null ? 'idle' : 'run', 1.4,
+            at == null ? {} : { menuAction: 'aim', actionTime: at }),
+          RCOL * (i + 0.5), RFEET, RH, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, RCOL * (i + 0.5), RH * 1.55);
+        });
+        // The letter, stamped into the canvas: a tile saved as a PNG leaves its
+        // heading behind, and these get sent around as images.
+        ctx.fillStyle = '#f0c07a';
+        ctx.font = 'bold 8px ui-monospace, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(c.name.split(' — ')[0], 3, 9);
+      }, { animated: false, wide: true, hires: 5 });
+    }
+    laneTile(grid, RUSTY_BUNDLE_CANDIDATES, 'bamboo bundle — in the lane, at size');
+  }
+
+  // ROUND 21 — the canes in the canister's mouth.
+  {
+    const grid = section('rusty-cane-bakeoff', 'RUSTY — the canes in the canister',
+      'GALLERY ONLY, round 21, on W3b. The two canes standing out of the pouch read as ONE THICK '
+      + 'CANE: at 0.032u apart and about 0.03u wide each, they touch along their whole length and '
+      + 'fuse. Every cut is W3b with only the cane layout changed. '
+      + '<br><br><b>X2</b> opens a gap so tube shows between them — two things with a seam between '
+      + 'are two things. <b>X3</b> adds a stagger so the tops stop lining up, which is what a bunch '
+      + 'of anything actually looks like. <b>X4</b> splays the tips while the bases stay bunched, '
+      + 'the way canes lean apart in a holder wider than they are. <b>X5</b> goes to three thinner '
+      + 'canes with gaps: a bundle you can count, at the risk of the sticks no longer matching the '
+      + 'one he throws. '
+      + '<br><br>Judge on the ZOOM half of each tile — this is a question about a few pixels at the '
+      + 'top of a pouch, and the whole figure cannot show it.');
+
+    for (const c of RUSTY_CANE_CANDIDATES) {
+      // Whole figure and a 3x zoom on the pouch, side by side in one tile.
+      tile(grid, c.name, c.note, RCOL * 2.6, RH * 1.62, (ctx, t) => {
+        drawToon(ctx, c.id, pose('idle', t), RCOL * 0.6, RFEET, RH, opts(c));
+        const zx = RCOL * 1.3, zw = RCOL * 1.25, zh = RH * 1.5;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(zx, 4, zw, zh); ctx.clip();
+        ctx.fillStyle = '#262238'; ctx.fillRect(zx, 4, zw, zh);
+        const S = 3;
+        drawToon(ctx, c.id, pose('idle', t), zx + zw * 0.5 + 0.13 * RH * S, 4 + zh * 0.5 + 0.33 * RH * S, RH * S, opts(c));
+        ctx.restore();
+        ctx.fillStyle = '#f0c07a';
+        ctx.font = 'bold 8px ui-monospace, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(c.name.split(' — ')[0], 3, 9);
+      }, { animated: true, wide: true, hires: 5 });
+    }
+  }
+
+
+
+
+  // THE THROW — complete, every beat, the settled gesture rather than a choice.
+  {
+    const grid = section('rusty-throw', 'RUSTY — the throw, every beat',
+      'GALLERY ONLY but SETTLED: the one and only throw, drawn from the canister. The three launch '
+      + 'gestures from round 13 (overarm / flick / tail fling) and the three-way ranged round are '
+      + 'gone; this replaces all of them. Four beats over the 0.3s ability window — '
+      + '<b>REACH</b> (0-0.30) near hand from wherever the gait had it to the pouch; <b>PULL</b> '
+      + '(0.30-0.50) cane out and up to the cock beside the head; <b>WHIP</b> (0.50-0.66) forward '
+      + 'across the face, release at 0.66; <b>THROUGH</b> (0.66-1) the arm settles and eases back '
+      + 'onto the gait, so the last frame of the window and the first after it are the same arm. '
+      + '<br><br>Built on the gait, not instead of it: every beat is a blend FROM the hand the walk '
+      + 'already placed. The far arm is never touched. The arm is in front of the body for the '
+      + 'whole window and painted over the head from the cock through the whip. The cane is in '
+      + 'hand from the pull to the release and nowhere else; after that <code>axeThrown</code> owns '
+      + 'the empty hand and the empty slot, and the projectile is sized by '
+      + '<code>caneScale(parity)</code> to be the piece he pulled. '
+      + '<br><br>For run.js when the ability is wired: spawn the projectile at the RELEASE, 0.2s '
+      + 'into the pose, not on the frame the ability fires; flip <code>stickParity</code> on the '
+      + 'catch.');
+    const opts = { spec: RUSTY_W3B, pal: PANDA_PAL };
+    const T_RELEASE = 0.66;
+    // Live: the gesture on a short loop, with the cane leaving at the release.
+    const PERIOD = 0.9;
+    for (const parity of [0, 1]) {
+      tile(grid, `throw, live — parity ${parity} (${parity ? 'short' : 'long'} cane)`,
+        'The 0.3s gesture looped, cane spawned at the release frame.',
+        RCOL * 2.2, RH * 1.62, (ctx, t) => {
+          const local = Math.min(0.3, t % PERIOD);
+          const q = local / 0.3;
+          const thrown = q >= T_RELEASE;
+          drawToon(ctx, 'rusty', { ...pose('run', t, { menuAction: 'aim', actionTime: local }),
+            axeThrown: thrown, stickParity: parity }, RCOL * 0.9, RFEET, RH, opts);
+          if (thrown) drawBambooShoot(ctx, RCOL * 0.9 + 20 + (q - T_RELEASE) * 120, RFEET - RH * 0.5,
+            { size: (RH / 36) * caneScale(parity), spin: q * 8 });
+        }, { animated: true, wide: true, hires: 4 });
+    }
+    // Every beat, frozen: 12 frames across the window.
+    const N = 12;
+    tile(grid, 'throw — twelve frames across the window', 'q from 0 to 1, left to right. Parity 0.',
+      RCOL * 0.62 * N, RH * 1.62, (ctx) => {
+        for (let i = 0; i < N; i++) {
+          const q = i / (N - 1), thrown = q >= T_RELEASE;
+          const x = RCOL * 0.62 * (i + 0.5);
+          drawToon(ctx, 'rusty', { ...pose('run', 1.4, { menuAction: 'aim', actionTime: q * 0.3 }),
+            axeThrown: thrown, stickParity: 0 }, x, RFEET, RH, opts);
+          if (thrown) drawBambooShoot(ctx, x + 18 + (q - T_RELEASE) * 40, RFEET - RH * 0.5,
+            { size: RH / 36, spin: q * 8 });
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(q.toFixed(2), x, RH * 1.55);
+        }
+      }, { animated: false, wide: true, hires: 4 });
+  }
+
+  // THE ALTERNATION — the settled pouch as a mechanic, not a bake-off.
+  {
+    const grid = section('rusty-alternate', 'RUSTY — the canes alternate',
+      'GALLERY ONLY, but the settled state rather than a choice. X3\'s two canes — one long, one '
+      + 'short, gapped and staggered — SWAP SLOTS every throw. He always pulls the right-hand cane, '
+      + 'the one nearest his hand; on even throws that is the long one, on odd the short, and the '
+      + 'projectile is sized to match (<code>caneScale(parity)</code>), so the piece in the air is '
+      + 'visibly the piece that left the pouch. While it is out, that slot is empty. '
+      + '<br><br>The point is that the pouch is STATEFUL: it visibly changes after every throw, so '
+      + 'the supply reads as a real thing being used rather than a decoration. <code>pose.stickParity</code> '
+      + 'is the throw count\'s low bit, to be kept by the run when the ability is wired.');
+    const opts = { spec: RUSTY_W3B, pal: PANDA_PAL };
+    for (const parity of [0, 1]) {
+      const STAGES = [['pouch', null, false], ['pull', 0.14, false], ['release', 0.3, true], ['out', null, true]];
+      tile(grid, `throw ${parity} — ${parity ? '[long, short], pulls the SHORT' : '[short, long], pulls the LONG'}`,
+        'Left to right: the pouch at rest, the pull, the release, and the cane in flight with that slot empty.',
+        RCOL * STAGES.length, RH * 1.62, (ctx) => {
+          STAGES.forEach(([label, at, inAir], i) => {
+            const kind = at == null && !inAir ? 'idle' : 'run';
+            drawToon(ctx, 'rusty', { ...pose(kind, 1.4, at == null ? {} : { menuAction: 'aim', actionTime: at }),
+              axeThrown: inAir, stickParity: parity }, RCOL * (i + 0.5), RFEET, RH, opts);
+            if (inAir) drawBambooShoot(ctx, RCOL * (i + 0.5) + 22, RFEET - RH * 0.55,
+              { size: (RH / 36) * caneScale(parity), spin: 0.6 });
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '6px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, RCOL * (i + 0.5), RH * 1.55);
+          });
+        }, { animated: false, wide: true, hires: 5 });
     }
   }
 }
@@ -6815,6 +6971,218 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
+// ------------------------------------------- ranged-move bake-offs (lab)
+// Two heroes, one question each: what does he fire, and what does it look
+// like leaving him. Every candidate is the shipped hero with the lab flags in
+// src/dev/ranged-candidates.js handed through drawToon's opts.spec seam, so
+// nothing here touches the cast. Per candidate: a STUDY of the gesture in
+// three beats at study size, and a LANE at the real 24u on the ability's own
+// clock, with a crate at the distance a hazard is actually answered so the
+// flight has something to hit.
+{
+  const rangedBakeoff = (id, title, note, heroId, cands) => {
+    const grid = section(id, title, note);
+    const PERIOD = 2.0;
+    const RH = 62, RCOL = 82, RFEET = 92;
+    const LW = 300, LH = 62, LGY = 46, X0 = 30, CRATE = 96, ALT = 9;
+    // One flight model per candidate: where the projectile is `ft` seconds
+    // after release, as a list of marks, plus when it reaches the crate.
+    const flights = {
+      straight: { hit: CRATE / 240, marks: (ft) => [{ x: ft * 240, alt: ALT, rot: 0 }] },
+      // THE ARROW'S ARC: a short rise off the bow, over the top, then down
+      // into the crate — and it STAYS in the crate for the flash. Flat from a
+      // chest-high release it sailed over a 10px box without touching it,
+      // which is a miss drawn as a hit. Tangent follows the path.
+      arc: {
+        hit: 0.4,
+        marks: (ft) => {
+          if (ft > 0.48) return [];
+          const t = Math.min(ft, 0.4);
+          const slope = ARROW_ARC.a - 2 * ARROW_ARC.b * t;
+          return [{ x: t * ARROW_ARC.v, alt: ALT + ARROW_ARC.a * t - ARROW_ARC.b * t * t, rot: -Math.atan2(slope, ARROW_ARC.v), tangent: true }];
+        },
+      },
+      flutter: {
+        hit: CRATE / 170,
+        marks: (ft) => [{ x: ft * 170, alt: ALT + 3 + Math.sin(ft * 9) * 3.5 - ft * 3, rot: Math.sin(ft * 9) * 0.25 }],
+      },
+      lob: {
+        hit: 0.66,
+        marks: (ft) => (ft > 0.7 ? [] : [{ x: ft * 150, alt: ALT + 80 * ft - 170 * ft * ft, rot: ft * 6 }]),
+      },
+      return: {
+        hit: CRATE / 200,
+        marks: (ft) => {
+          const OUT = 0.525, HOVER = 0.2, BACK = 105 / 260;
+          if (ft > OUT + HOVER + BACK) return [];
+          const rot = ft * 16;
+          if (ft < OUT) return [{ x: ft * 200, alt: ALT + Math.sin(ft / OUT * Math.PI) * 5, rot }];
+          if (ft < OUT + HOVER) return [{ x: 105, alt: ALT + 4 + (ft - OUT) / HOVER * 10, rot }];
+          const b = (ft - OUT - HOVER) / BACK;
+          return [{ x: 105 * (1 - b), alt: ALT + 14 - b * 14, rot, back: true }];
+        },
+      },
+      stick: {
+        hit: CRATE / 230,
+        marks: (ft) => (ft < CRATE / 230
+          ? [{ x: ft * 230, alt: ALT, rot: 0 }]
+          : [{ x: CRATE - 12, alt: ALT + 2 - Math.min(1, (ft - CRATE / 230) / 0.15) * 1.5, rot: Math.min(1, (ft - CRATE / 230) / 0.15) * 0.5, stuck: true }]),
+      },
+      tumble: {
+        hit: 0.48,
+        marks: (ft) => (ft > 0.62 ? [] : [{ x: ft * 200, alt: ALT + 4 - 30 * ft * ft, rot: ft * 14 }]),
+      },
+      bounce: {
+        hit: 0.56,
+        marks: (ft) => (ft > 0.9 ? [] : [{ x: ft * 170, alt: 5 + Math.abs(Math.sin(ft * 7.5)) * 12, rot: 0 }]),
+      },
+      stream: {
+        hit: 0.3,
+        marks: (ft) => (ft > 0.7 ? [] : [{ x: 6, alt: 13, rot: 0, len: Math.min(1, ft / 0.3) * (ft < 0.55 ? 1 : 1 - (ft - 0.55) / 0.15) * 3.6 }]),
+      },
+      burst: {
+        hit: CRATE / 260,
+        marks: (ft) => [-1, 0, 1].map((k) => ({ x: ft * 260 - Math.abs(k) * 6, alt: ALT + k * ft * 18, rot: ft * 20 + k })),
+      },
+    };
+    const releaseAt = (c) => (c.spec.bowStyle ? BOW_REACH_T : 0) + 0.3 * (c.spec.bowStyle ? BOW_RELEASE_AT(c.spec.bowStyle)
+      : RANGED_RELEASE_AT[c.gesture === 'throw' ? 'toss' : (c.gesture || 'toss')]);
+    const aimT = (c) => (c.gesture === 'draw' ? BOW_AIM_T : 0.3);
+    const heroPose = (c, t, local) => {
+      const aiming = local <= aimT(c);
+      const rel = releaseAt(c);
+      const inFlight = c.id === 'shield' && local > rel && local < rel + 0.93;
+      return pose('run', t, {
+        ...(aiming ? { menuAction: 'aim', actionTime: local } : {}),
+        ...(inFlight ? { shieldThrown: true } : {}),
+      });
+    };
+    const drawCrate = (ctx, x, gy, flash) => {
+      const cw = 10;
+      ctx.fillStyle = flash ? '#fff' : '#8a5a32';
+      ctx.fillRect(x, gy - cw, cw, cw);
+      ctx.strokeStyle = '#3a2416'; ctx.lineWidth = 0.8;
+      ctx.strokeRect(x + 0.4, gy - cw + 0.4, cw - 0.8, cw - 0.8);
+    };
+    for (const c of cands) {
+      const opts = { spec: c.spec };
+      const fl = flights[c.flight];
+      // THE STUDY: wind-up, release, follow-through, at study size. The
+      // projectile is drawn on the release beat only, just off the hand.
+      if (c.strip) {
+        // ROUND 2 STUDY: eight frames across the 0.3s, evenly, so what is
+        // judged is the MOTION — a gesture that is smooth reads as one line
+        // through the eight hands, and a hitch shows as a kink. Projectile on
+        // every frame after release.
+        const N = c.gesture === 'draw' ? 14 : 8, SPAN = c.gesture === 'draw' ? aimT(c) + 0.08 : aimT(c), SH = 56, SCOL = 92, SFEET = 82;
+        tile(grid, c.name, c.note, SCOL * N + 20, SH * 1.7, (ctx, t) => {
+          const rel = releaseAt(c);
+          // Projectiles paint in a SECOND pass: a frame's arrow reaches into
+          // the next frame's column, and drawn inline the next hero covered
+          // it — which read as the arrow leaving from behind his back.
+          const late = [];
+          for (let i = 0; i < N; i++) {
+            const q = 0.012 + (SPAN - 0.024) * i / (N - 1);
+            const x = 34 + i * SCOL;
+            drawToon(ctx, heroId, pose('run', 0.2, q <= aimT(c) ? { menuAction: 'aim', actionTime: q } : {}), x, SFEET, SH, opts);
+            if (q >= rel) {
+              const s = SH / 24;
+              // COPIED, not aliased: these arrows are drawn in a late pass
+              // (below), and RANGED_RELEASE_POINT is one shared object the next
+              // frame overwrites — so held by reference every arrow in the
+              // strip came out at the last frame's release point.
+              const rp = c.gesture === 'draw' && RANGED_RELEASE_POINT.set
+                ? { x: RANGED_RELEASE_POINT.x, y: RANGED_RELEASE_POINT.y, ang: RANGED_RELEASE_POINT.ang } : null;
+              for (const m of fl.marks((q - rel) * 0.9)) {
+                const hx = c.gesture === 'draw' ? 0.66 : 0.46, hy = c.gesture === 'draw' ? 0.44 : 0.62;
+                if (m.x * s > SCOL * 0.9) continue;
+                const px = rp ? x + rp.x + m.x * s * 0.5 : x + hx * SH + m.x * s * 0.5;
+                const py = rp ? SFEET + rp.y - (m.alt - ALT) * s : SFEET - hy * SH - (m.alt - ALT) * s;
+                late.push({ x, d: () => drawRangedProjectile(ctx, c.prop, px, py, { rot: (rp && !m.tangent ? rp.ang : 0) + m.rot, scale: s, hero: heroId, flying: true, t }) });
+              }
+            }
+            ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
+            ctx.fillText((q * 1000).toFixed(0) + 'ms', x, SFEET + 12);
+          }
+          // Clipped to its own column: the flight carries on for a couple
+          // of frames, and unclipped an arrow from one frame crossed the next
+          // hero's face.
+          for (const { d, x } of late) {
+            ctx.save();
+            ctx.beginPath(); ctx.rect(x - SCOL * 0.42, 0, SCOL * 1.27, SH * 1.7); ctx.clip();
+            d(); ctx.restore();
+          }
+        }, { wide: true, hires: 4 });
+      }
+      const beats = c.gesture === 'hose' ? [0.05, 0.16, 0.28] : c.gesture === 'draw' ? [0.08, 0.16, 0.26] : [0.08, 0.18, 0.27];
+      if (!c.strip) tile(grid, c.name, c.note, RCOL * 3.1, RH * 1.62, (ctx, t) => {
+        beats.forEach((q, i) => {
+          const x = RCOL * (0.55 + i);
+          drawToon(ctx, heroId, pose('run', 0.2, { menuAction: 'aim', actionTime: q }), x, RFEET, RH, opts);
+          if (c.gesture === 'hose' ? i >= 1 : i === 1) {
+            const s = RH / 24;
+            if (c.gesture === 'hose') {
+              drawRangedProjectile(ctx, 'jet', x + 0.6 * RH, RFEET - 0.56 * RH, { scale: s, hero: heroId, len: i === 1 ? 0.4 : 1.0, t });
+            } else {
+              for (const m of fl.marks(0.04)) {
+                const hx = c.gesture === 'draw' ? 0.62 : 0.5;
+                const hy = c.gesture === 'draw' ? 0.6 : 0.72;
+                drawRangedProjectile(ctx, c.prop, x + hx * RH + m.x * s * 0.6, RFEET - hy * RH - (m.alt - ALT) * s, { rot: m.rot, scale: s, hero: heroId, flying: true, t });
+              }
+            }
+          }
+        });
+        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
+        ['WIND', c.gesture === 'hose' ? 'JET' : 'RELEASE', 'THROUGH'].forEach((l, i) => ctx.fillText(l, RCOL * (0.55 + i), RFEET + 12));
+      }, { wide: true, hires: 4 });
+      // THE LANE: the real 24u hero on the ability's clock, with the crate.
+      let laneRel = null;
+      tile(grid, `${c.name} — in the lane, at size`,
+        `Real ${HERO_DRAW_H}px hero on a ${PERIOD}s loop; the crate is ${CRATE}px out, where a hazard is met. Everything above is a study.`,
+        LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+          ctx.scale(WORLD_Z, WORLD_Z);
+          laneStrip(ctx, LW, LH, LGY);
+          const local = t % PERIOD;
+          const rel = releaseAt(c);
+          const ft = local - rel;
+          const broken = ft >= fl.hit;
+          const flash = broken && ft < fl.hit + 0.08;
+          const stuck = c.flight === 'stick';
+          if (!broken || flash || stuck) drawCrate(ctx, X0 + CRATE, LGY, flash);
+          RANGED_RELEASE_POINT.set = false;
+          drawToon(ctx, heroId, heroPose(c, t, local), X0, LGY, HERO_DRAW_H, opts);
+          if (c.gesture === 'draw' && RANGED_RELEASE_POINT.set) laneRel = { x: RANGED_RELEASE_POINT.x, y: RANGED_RELEASE_POINT.y, ang: RANGED_RELEASE_POINT.ang };
+          if (ft >= 0) {
+            for (const m of fl.marks(ft)) {
+              if (m.x > LW - X0 - 6) continue;
+              ctx.save();
+              if (m.back) ctx.globalAlpha = 0.9;
+              const px = laneRel ? X0 + laneRel.x + m.x : X0 + 8 + m.x;
+              const py = laneRel ? LGY + laneRel.y - (m.alt - ALT) : LGY - m.alt;
+              drawRangedProjectile(ctx, c.prop, px, py, { rot: (laneRel && !m.tangent ? laneRel.ang : 0) + m.rot, hero: heroId, len: m.len, t, back: m.back, flying: true });
+              ctx.restore();
+            }
+          }
+        }, { animated: true, wide: true, world: true, hires: 5 });
+    }
+  };
+  // FERNWICK'S BOW SHIPPED 6 Sep 2026 (B2 high draw, quiver, worn behind,
+  // reach/draw/lower/sling, arcing arrow). Its three sections — the six-cut
+  // round one, the B2 strip and the size sweep — came out here; the painter
+  // stays, the tombstone is in ranged-move-bakeoff. The Fernwick power-up
+  // tile in the production heroes section now shows the whole handling.
+  rangedBakeoff('wrench-round2-bakeoff', 'RANGED, ROUND 2 — the wrench throw, four styles',
+    'OPEN, 6 Sep 2026. See the longbow section above for the brief. All four release at the same '
+    + 'instant (0.168s), so the flight code will not care which wins.',
+    'lorenzo', WRENCH_CANDIDATES.map((c) => ({ ...c, strip: true })));
+  rangedBakeoff('lorenzo-ranged-bakeoff', 'LORENZO — a ranged move, six cuts',
+    'OPEN, 6 Sep 2026. Lorenzo keeps his wrench and gets something to throw with it. L1 is the ask; '
+    + 'the rest are the toolbag. Same construction as Fernwick\'s section above: prop at the hand, same '
+    + 'prop in flight, study then lane. Two flights here are new to the game — the bouncing slug (L4) '
+    + 'and the held jet (L5); the other four are flights run.js already has.',
+    'lorenzo', LORENZO_RANGED_CANDIDATES);
+}
+
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
 //
@@ -6866,7 +7234,7 @@ if (location.hash) requestAnimationFrame(() => {
 // drawToon/TOON_SPECS ride along for silhouette measuring: every tile crops at
 // its own height, so "how tall is this hero really?" needs a scratch canvas.
 window.__gallery = {
-  tiles, paint, drawToon, TOON_SPECS, HERO_DRAW_H,
+  tiles, paint, drawToon, TOON_SPECS, HERO_DRAW_H, RANGED_RELEASE_POINT, drawRangedProjectile,
   get errors() { return tiles.filter((t) => t.stack); },
 };
 

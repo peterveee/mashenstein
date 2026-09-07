@@ -43,9 +43,15 @@ import {
 } from './mrdr3/identity.js';
 import {
   mrdr3Lane, mrdr3LaneNow, mrdr3NoteOn, mrdr3NoteOff, syncMrdr3Patch, canHostMrdr3,
-  mrdr3PanicAll, releaseIdleMrdr3Lanes,
+  mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
 import { mrdr3GateAdsrEvents } from './mrdr3/env.js';
+import { compileJmjr4 } from './jmjr4/compile.js';
+import { renderIr } from './jmjr4/dsp.js';
+import { makeBitCrusher } from './effects.js';
+import { buildJmjr4Note, singerVariants } from './jmjr4/note.js';
+import { JMJR4_DATA } from './jmjr4/data.js';
+import { advanceLine, newLineState } from './jmjr4/line.js';
 import {
   tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, releaseTngr2Context,
   tngr2ControllerHealth, canHostTngr2, renderTngr2Lane, tngr2PatchForVoice, tngr2VibratoOf,
@@ -2377,7 +2383,7 @@ export class VoiceRack {
    */
   play(laneKey, voiceId, freq, {
     time, dur, gain, detune = 1, dry, wet, echo = true, preview = false,
-    hold = preview, spb = null, laneEffects = true, choke = null,
+    hold = preview, spb = null, laneEffects = true, choke = null, step = null,
   }) {
     // The comparison override, in front of dispatch and nowhere else (§9.2). With nothing
     // forced this returns the voice unchanged, which is the shipping path.
@@ -2456,6 +2462,13 @@ export class VoiceRack {
     // RENDERER DISPATCH — the one deliberate exact-identity branch (§9.1). Which
     // backend plays is written in the lane; there is no `auto` whose answer could
     // change under a library update.
+    // JMJR-4: a native voice built per note, like the layer path, with the step handed
+    // over because its syllable line advances per STEP (see `_jmjr4Line`).
+    if (v && v.synth === FAMILY.JMJR4) {
+      return this._playJmjr4(v, {
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, laneEffects, step,
+      });
+    }
     if (v && v.synth === MRDR3_NATIVE) {
       // Rendered once, replayed after that — when this preset is the kind that can be.
       // The gate and the replay both refuse everything they are unsure of, and then
@@ -3231,6 +3244,41 @@ export class VoiceRack {
       this._heldNative.set(noteKey, { mrdr3: { lane, eventId }, at: time });
     }
     return true;
+  }
+
+  /**
+   * Build whichever WORKLET lane this voice plays on, if it plays on one at all.
+   *
+   * The two synths that are AudioWorklet nodes rather than pooled graphs — TNGR-2, and
+   * MRDR-3 under the desk's worklet backend — build their lane at the voice's FIRST
+   * NOTE otherwise, which is mid-bar with the sequencer's queue draining underneath.
+   * Measured on this machine, the once-per-context costs a first note was paying:
+   *
+   *   TNGR-2      wavetable families 230 ms + lane (node, 1.5 MB table clone) 170 ms
+   *   MRDR-3 AW   pyramid 350 ms + noise 10 ms, then 15 ms for the first lane
+   *
+   * Both are memoised per process, so this is only ever paid once — the question is
+   * only which moment wears it, and every caller of `Audio.warmWorkletLanes` has picked
+   * a moment where the song is silent anyway.
+   *
+   * Through `mrdrComparisonVoice`, because that is what `play` dispatches on: which
+   * MRDR-3 backend a note reaches is the desk's toggle, not the preset's business, and
+   * warming the lane the note will NOT arrive at would leave the stall exactly where it
+   * was. A voice on neither worklet answers false rather than throwing — the caller
+   * walks every lane in the bank and most of them are pooled or one-shot.
+   */
+  warmWorkletLane(voice, laneKey) {
+    const v = mrdrComparisonVoice(voice);
+    if (v?.synth === 'TNGR-2') return this.warmTngr2Lane(v, laneKey);
+    if (v?.synth === MRDR3_AW) {
+      // INLINE, before the await. The pyramid is rate-independent and `mrdr3Lane` would
+      // otherwise build it inside `assetsFor`, which runs in a microtask AFTER
+      // `ensureMrdr3Dsp` resolves — a later task, and a 350 ms job in a later task is a
+      // frame somebody sees. The whole point of warming is that it happens here.
+      try { warmMrdr3Tables(VOICES); } catch { /* no worklet on this origin */ }
+      return this.warmMrdr3Lane(v, laneKey);
+    }
+    return Promise.resolve(false);
   }
 
   /** Build a lane for a voice, and say plainly when the context cannot host one. */
@@ -5089,6 +5137,286 @@ export class VoiceRack {
    * Like `_playDrum`: native nodes, one-shot, never pooled. More deterministic than it,
    * in fact, because there is no noise in it at all.
    */
+  // ---- JMJR-4 -------------------------------------------------------------------
+  //
+  // A formant voice, built per note from native nodes the way `_playAdditive` builds a
+  // drawbar stack: one summing point through the shared drive, one vibrato LFO per
+  // note-on into every oscillator's detune, the lane's chorus stage after it, and a
+  // held-note record in the generic shape so the desk's release, panic and stopAll need
+  // no branch of their own. What is this engine's alone: a syllable per STEP taken from
+  // the preset's line, up to four singers to a key, and the morph, scoop and hum a
+  // singer has that an oscillator does not. See src/engine/jmjr4/.
+
+  /** The preset compiled once, kept until the preset changes (`_refresh` drops it). */
+  _jmjr4Patch(v) {
+    this._jmjr4Patches ||= new Map();
+    // keyed by id, or by the object for a preset that has none yet (a test's, a bench's)
+    const key = v.id ?? v;
+    let entry = this._jmjr4Patches.get(key);
+    if (!entry) {
+      entry = compileJmjr4(v, JMJR4_DATA);
+      this._jmjr4Patches.set(key, entry);
+      if (entry.problems.length) console.warn(`[jmjr4] ${v.id ?? v.label ?? 'preset'} refused: ${entry.problems.join('; ')}`);
+    }
+    return entry;
+  }
+
+  /** Which syllable of the line this step sings — see src/engine/jmjr4/line.js. */
+  _jmjr4Line(key, line, step) {
+    this._jmjr4Lines ||= new Map();
+    let st = this._jmjr4Lines.get(key);
+    if (!st) { st = newLineState(); this._jmjr4Lines.set(key, st); }
+    return advanceLine(st, line, step);
+  }
+
+  /** The transport went back to the top: every line starts again from its first word. */
+  resetJmjr4Lines() {
+    this._jmjr4Lines?.clear();
+  }
+
+  _playJmjr4(v, {
+    freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '',
+    preview = false, hold = preview, laneEffects = true, step = null,
+  }) {
+    const ctx = this.ctx;
+    const { patch } = this._jmjr4Patch(v);
+    if (!patch) return false;
+    const all = (Array.isArray(freq) ? freq : [freq]).filter((f) => f > 0);
+    if (!all.length) return false;
+    // KEY MODE and GLIDE: the shared keys every pitched preset carries, read here and
+    // resolved by the same helpers every other path uses.
+    const mode = v.mode === 'legato' || v.mode === 'mono' ? v.mode : keyMode(v);
+    const mono = mode !== 'poly';
+    // a mono synth plays the LAST tone of a chord, the layer path's rule
+    const notes = mono ? all.slice(-1) : all;
+    const shift = VoiceRack.pitchShift(v) * detune;
+    const glide = v.portamento > 0 ? glideTime(v) : 0;
+    const scope = preview ? 'preview' : 'song';
+    const lineKey = `${scope}|${laneKey || `voice:${v.id}`}`;
+    if (patch.mode === 'speak') {
+      return this._speakJmjr4(v, patch, { notes: all, shift, time, gain, dry, wet, echo, laneKey, preview, hold, laneEffects, step, scope, lineKey });
+    }
+    const { syl, onsetSilent: tied } = this._jmjr4Line(lineKey, patch.line, step);
+    const data = JMJR4_DATA;
+    const rel = Math.max(0.003, patch.amp.release);
+
+    // ---- mono and legato: the note before this one ------------------------------
+    // Every note is a complete graph with its stops booked at build, because a booked
+    // stop cannot be taken back and a sequenced note knows nothing of the note after it.
+    // So legato is not a retarget of the old note but a new one that CONTINUES it: the old
+    // gate closes in a short crossfade, the new note skips its onset consonant and its
+    // attack and starts at its sustain level, and the pitch glides in from where the old
+    // one was. Mono cuts the old note in a cycle and a half, as the layer path does.
+    this._jmjr4Last ||= new Map();
+    const prev = mono ? this._jmjr4Last.get(lineKey) : null;
+    const sounding = !!prev && prev.gateUntil > time;
+    const legato = mode === 'legato' && sounding;
+    if (sounding) {
+      const fade = legato
+        ? 0.015
+        : Math.min(0.03, Math.max(0.005, prev.freq > 0 ? 1.5 / prev.freq : 0), Math.max(0.001, prev.gateUntil - time));
+      for (const part of prev.parts) part.release(time, fade);
+      prev.gateUntil = time;
+    }
+
+    // ---- the lane's chorus stage and the summing point ----------------------------
+    // UNISON is N sources into one tract, power-summed inside the note (renderIr), so a
+    // bigger choir is not a louder one and the level here is the key's.
+    const unison = Math.max(1, Math.min(4, patch.unison));
+    const { stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
+
+    // ---- the modulators shared by every singer of this note-on -------------------
+    // Vibrato exactly as `_playAdditive` builds it: the shared key, semitones × 100 cents
+    // into every oscillator's detune, the onset delay as a fade. Flutter likewise once per
+    // note-on: three slow sines every singer reads, rather than three per singer.
+    const sharedMods = { oscs: [], holds: 0 };
+    const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
+    let vibCents = null;
+    if (vib) {
+      const lfo = ctx.createOscillator();
+      lfo.type = nativeWave(vib.type, 'sine');
+      lfo.frequency.setValueAtTime(Math.max(0.01, vib.rate ?? 5), time);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0, time);
+      env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, vib.delay || 0.001));
+      vibCents = ctx.createGain();
+      vibCents.gain.setValueAtTime(vib.depth * 100, time);
+      lfo.connect(env); env.connect(vibCents);
+      sharedMods.oscs.push(lfo);
+    }
+    const flutterSource = this._jmjr4FlutterSource(patch, sharedMods);
+
+    // ---- the keys: one note each, its UNISON sources inside ------------------------
+    const variants = singerVariants(unison).map((s) => ({ ...s, cents: s.cents * (patch.spread / 20) }));
+    const parts = [];
+    const sources = [];
+    let lastOff = time;
+    let lastFreq = 0;
+    const velocity = Math.min(1, gain);
+    notes.forEach((f, n) => {
+      const noteDur = Array.isArray(dur) ? (dur[n] ?? dur[0]) : dur;
+      const base = f * shift;
+      lastFreq = base;
+      const part = buildJmjr4Note(ctx, {
+        data, at: time, hz: base, dur: hold ? null : noteDur, velocity, syl, patch, variants, dest: stackIn,
+        flutterSource,
+        glideFrom: legato && glide > 0 ? prev.freq : null,
+        glideTime: glide,
+        onsetSilent: tied || legato,
+        noAttack: legato,
+      });
+      if (vibCents) for (const o of part.oscs) vibCents.connect(o.detune);
+      if (!hold && noteDur != null) part.release(time + Math.max(0.05, noteDur));
+      parts.push(part);
+      sources.push(...part.sources);
+      lastOff = Math.max(lastOff, part.end);
+      if (hold) {
+        const noteKey = `${laneKey}|${f.toFixed(2)}`;
+        this._releasePreview(noteKey);
+        sharedMods.holds += 1;
+        this._heldNative.set(noteKey, {
+          at: time,
+          voiceId: v.id,
+          params: [{ param: part.env.gain, e: { release: rel, releaseCurve: 'lin' } }],
+          sources: part.sources,
+          // A JMJR-4 note's sources are NOT all booked to the same end — the breath noise
+          // stops when the breath does — and the last stop() wins, so the generic paths must
+          // not walk this list themselves. See `stopSources` in jmjr4/note.js.
+          stopSources: (t) => part.stopSources(t),
+          shared: sharedMods,
+          live: [],
+        });
+      }
+    });
+    const modOff = hold ? time + HOLD_SECONDS : lastOff + 0.05;
+    for (const m of sharedMods.oscs) { m.start(time); m.stop(modOff); }
+
+    const gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
+    this._jmjr4Last.set(lineKey, { parts, freq: lastFreq, gateUntil });
+    if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
+    return true;
+  }
+
+  /**
+   * The summing point every JMJR-4 note-on plays into: the lane's chorus stage (the same
+   * insert MRDR-3 and TNGR-2 run, off `_ensureMrdrLaneStage`) and the SHAPE / DRIVE / TONE
+   * pair `driveInto` builds on the other native paths, so the Effects card is one control
+   * on every panel that draws it. `stackIn` is where the singers connect.
+   */
+  _jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush = null }) {
+    const ctx = this.ctx;
+    const laneStage = laneEffects
+      ? this._ensureMrdrLaneStage(laneKey, v.id,
+        sectionBypassed(v, 'chorus', v.chorus) ? { ...v, chorus: null } : v, {
+          dry, wet, echo, time, preview, scope,
+        })
+      : null;
+    const out = ctx.createGain();
+    out.gain.value = gain;
+    // BITS / RATE: the reference's arcade stage — a lowpass at 0.45× the hold rate into a
+    // sample-and-hold that requantises — as ONE stage per lane and preset rather than one
+    // per key, the same processor the lane's Bit Crusher effect is. Rebuilt when the
+    // preset's two keys change; the previous stage keeps carrying the notes already on it.
+    let target = laneStage ? laneStage.input : null;
+    if (crush) {
+      this._jmjr4Crushers ||= new Map();
+      const key = `${scope}|${laneKey || `voice:${v.id}`}|${v.id}`;
+      let st = this._jmjr4Crushers.get(key);
+      if (!st || st.bits !== crush.bits || st.rate !== crush.rate || st.laneStage !== laneStage || st.dry !== dry) {
+        const holdHz = Math.min(ctx.sampleRate, crush.rate * 1000);
+        const node = makeBitCrusher(ctx, { bits: crush.bits, downsample: Math.max(1, Math.round(ctx.sampleRate / holdHz)), wet: 1 });
+        node.applyState();
+        let head = node.input;
+        if (holdHz < ctx.sampleRate) {
+          const lp = ctx.createBiquadFilter();
+          lp.type = 'lowpass'; lp.frequency.value = Math.max(200, 0.45 * holdHz); lp.Q.value = 0.7;
+          lp.connect(node.input); head = lp;
+        }
+        if (laneStage) node.connect(laneStage.input);
+        else { node.connect(dry); if (echo && wet) node.connect(wet); }
+        st = { bits: crush.bits, rate: crush.rate, laneStage, dry, head };
+        this._jmjr4Crushers.set(key, st);
+      }
+      target = st.head;
+    }
+    if (target) out.connect(target);
+    else {
+      out.connect(dry);
+      if (echo && wet) out.connect(wet);
+    }
+    let into = out;
+    if (v.drive > 0) {
+      if (v.tone) {
+        const tf = ctx.createBiquadFilter();
+        tf.type = v.tone.type || 'lowpass';
+        tf.frequency.value = Math.max(20, v.tone.freq ?? 8000);
+        tf.Q.value = v.tone.Q ?? 0.7;
+        tf.connect(into); into = tf;
+      }
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = this._driveCurve(v.drive, v.shape);
+      shaper.connect(into); into = shaper;
+    }
+    return { out, stackIn: into };
+  }
+
+  /** Klatt's flutter once per note-on: three slow sines every singer reads. Null when off. */
+  _jmjr4FlutterSource(patch, sharedMods) {
+    if (!(patch.ctl.flutter > 0)) return null;
+    const src = this.ctx.createGain();
+    for (const hz of [12.7, 7.1, 4.7]) {
+      const l = this.ctx.createOscillator();
+      l.frequency.value = hz;
+      l.connect(src);
+      sharedMods.oscs.push(l);
+    }
+    return src;
+  }
+
+  /**
+   * SPEAK: a key says the compiled phrase — or, PER KEY = WORD, its next word — at that
+   * key's pitch, the whole of it, like triggering a sample. The phrase carries its own
+   * sentence melody, so there is no envelope, no vibrato, no legato and no note-off: it
+   * ends when it ends. The block is `jmjr4.phraseIr`, compiled on the desk from the text
+   * (src/engine/jmjr4/text.js) and refused by the compiler whenever it no longer matches
+   * the text and pots it was compiled from, so a preset never says something other than
+   * what it shows.
+   */
+  _speakJmjr4(v, patch, { notes, shift, time, gain, dry, wet, echo, laneKey, preview, hold, laneEffects, step, scope, lineKey }) {
+    const ctx = this.ctx;
+    const sp = patch.speak;
+    const byWord = sp.perKey === 'word' && sp.words.length > 0;
+    // WORD: the same rule the syllable line follows — one word per step, the transport
+    // restart taking it back to the first.
+    const ir = byWord ? this._jmjr4Line(lineKey, sp.words, step).syl : sp.ir;
+    if (!ir) return false;
+    const { stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
+    const sharedMods = { oscs: [], holds: 0 };
+    const flutterSource = this._jmjr4FlutterSource(patch, sharedMods);
+    // Phrases that have ended leave the stop-all list, or it grows with every key.
+    for (const [k, h] of this._heldNative) if (h.jmjr4Speak && h.jmjr4Speak.end < time) this._heldNative.delete(k);
+    let lastOff = time;
+    for (const f of notes) {
+      const hz = f * shift;
+      // KEY: the contour was compiled at PITCH and the key moves it; FIXED: only TRANSPOSE
+      // and FINE move it, the key is a trigger.
+      const pitchShiftSt = sp.pitchFollows === 'key' ? 12 * Math.log2(hz / sp.pitchHz) : 12 * Math.log2(shift);
+      const h = renderIr(ctx, ir, { start: time, destination: stackIn, pitchShiftSt, nasalPlaces: [], flutterSource });
+      lastOff = Math.max(lastOff, h.end);
+      // Under its own key rather than the finger's: letting a key go does not cut a phrase
+      // off, but stop-all must reach it, and the generic native record is what stop-all
+      // reads.
+      this._heldNative.set(`${laneKey}|speak|${f.toFixed(2)}|${time.toFixed(4)}`, {
+        at: time, voiceId: v.id, params: [{ param: h.gate, e: { release: 0.05, releaseCurve: 'lin' } }],
+        sources: h.sources, stopSources: (t) => h.stop(t), shared: null, live: [],
+        jmjr4Speak: { end: h.end + 0.1 },
+      });
+    }
+    for (const m of sharedMods.oscs) { m.start(time); m.stop(lastOff + 0.05); }
+    if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
+    return true;
+  }
+
   _playAdditive(v, {
     freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '',
     preview = false, hold = preview, laneEffects = true,
@@ -6896,6 +7224,9 @@ export class VoiceRack {
   _refresh(voiceId) {
     const v = VOICES[voiceId];
     this._specRev ||= new Map();
+    // A JMJR-4 patch is compiled from the preset once and kept; an edit is a new preset.
+    this._jmjr4Patches?.delete(voiceId);
+    if (this._jmjr4Crushers) for (const k of [...this._jmjr4Crushers.keys()]) if (k.endsWith(`|${voiceId}`)) this._jmjr4Crushers.delete(k);
     // MRDR cache buffers stop before the lane chorus. Chorus-only edits update standing
     // stages but retain useful dry buffers; all other MRDR edits retain the conservative
     // revision/purge behaviour used by the rest of the rack.
@@ -7111,6 +7442,7 @@ export class VoiceRack {
       mrdrChorusLegs: chorusLegs,
       liveNotes: this._liveNotes.length,
       heldNative: this._heldNative.size,
+      jmjr4Lines: this._jmjr4Lines?.size ?? 0,
       // The two numbers that decide whether "it falls apart when I tweak something" is
       // the EDIT or the desk. Peaks, and reset with the lap window, so a row reports the
       // worst of that window rather than the worst ever.
@@ -7219,7 +7551,11 @@ export class VoiceRack {
           h.param.linearRampToValueAtTime(0, off);
         } catch { /* gone with the note */ }
       }
-      for (const src of held.sources) { try { src.stop(off); } catch { /* ignore */ } }
+      // A record that owns its own stops says so, and it is asked rather than walked: a
+      // JMJR-4 note has sources whose bookings are already earlier than this, and stopping
+      // them here by hand would push them back out to `off`.
+      if (held.stopSources) { try { held.stopSources(off); } catch { /* gone with the note */ } }
+      else for (const src of held.sources) { try { src.stop(off); } catch { /* ignore */ } }
       // Everything stops here, so the shared modulators go without counting.
       if (held.shared) {
         for (const m of held.shared.oscs) { try { m.stop(off); } catch { /* ignore */ } }
@@ -7467,8 +7803,11 @@ export class VoiceRack {
       try { stopAt = Math.max(stopAt, releaseNow(h.param, at, h.e)); } catch { /* ignore */ }
     }
     // Re-scheduled, not stopped twice: the last `stop()` before a source has ended is
-    // the one that takes effect, so this pulls the far-future stop back to the tail.
-    for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
+    // the one that takes effect, so this pulls the far-future stop back to the tail — and
+    // for a record that owns its own stops, only ever forward through its own callback,
+    // which is what keeps a source booked to end early from being handed the tail instead.
+    if (held.stopSources) { try { held.stopSources(stopAt + 0.01); } catch { /* gone */ } }
+    else for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
     if (held.polyRecord) held.polyRecord.stopAt = stopAt + 0.01;
     // The note-on's shared modulators go when its LAST tone does — a chord releases
     // one key at a time and the rest are still wobbling.
@@ -7552,5 +7891,10 @@ export class VoiceRack {
     // The glide origins. The nodes they point at belong to the dying context; keeping
     // the map would glide the next song's first note from the last song's last one.
     if (this._last) this._last.clear();
+    // JMJR-4's own records: the syllable line positions, the compiled patches, and the
+    // last note per lane the mono and legato modes cut or continue.
+    this._jmjr4Lines?.clear();
+    this._jmjr4Last?.clear();
+    this._jmjr4Patches?.clear();
   }
 }

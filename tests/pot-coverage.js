@@ -112,7 +112,7 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
 const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'KNDO-5' && s !== 'WNDR-9'
-  && s !== 'MRDR-3' && s !== 'TNGR-2');
+  && s !== 'MRDR-3' && s !== 'TNGR-2' && s !== 'JMJR-4');
 
 /**
  * One case per play path. `methods` is what `play` dispatches to for that voice — plus,
@@ -140,6 +140,10 @@ const CASES = [
     methods: ['_playTngr2Node', 'warmTngr2Lane', '_collectTngr2', 'flushTngr2Offline',
       '_tngr2Output'],
     also: ['src/engine/tngr2/controller.js'] },
+  // JMJR-4 reads its own block through its compiler and the shared keys in the play path.
+  { name: 'JMJR-4', voice: { synth: 'JMJR-4', jmjr4: { amp: {} } },
+    methods: ['_playJmjr4', '_speakJmjr4', '_jmjr4Bus', '_jmjr4FlutterSource', '_jmjr4Line', '_jmjr4Patch'],
+    also: ['src/engine/jmjr4/compile.js'] },
   ...POOLED.map((synth) => ({
     name: synth,
     voice: { synth },
@@ -257,7 +261,7 @@ expectLeaf({ synth: 'WNDR-9' }, '$humanize.filter', false,
   'must be absent because the additive path never reads filter variation');
 
 const POOLED_GENERIC_VIBRATO = EDITABLE_SYNTHS.filter((synth) =>
-  !['KNDO-5', 'WNDR-9', 'MRDR-3', 'TNGR-2'].includes(synth));
+  !['KNDO-5', 'WNDR-9', 'MRDR-3', 'TNGR-2', 'JMJR-4'].includes(synth));
 for (const synth of POOLED_GENERIC_VIBRATO) {
   const row = leafMap({ synth }).get('$vibrato.depth');
   if (!row || row.min !== 0 || row.max !== 1 || row.unit !== '') {

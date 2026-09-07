@@ -35,7 +35,7 @@ import { synthDisplayName } from './lib/synth-display.js';
  * MonoSynth, GameSynth, FMSynth, AMSynth — resolve onto their current family in the
  * layout selector while this list names the family itself. */
 export const FULL_EDITORS = [
-  'MRDR-3', 'TNGR-2', 'drum', 'CRLS-1',
+  'MRDR-3', 'TNGR-2', 'JMJR-4', 'drum', 'CRLS-1',
   'KNDO-5', 'WNDR-9', 'RMND-2',
 ];
 
@@ -368,6 +368,7 @@ export function createSynthFull({
     // and bottom-aligning it just parks the wave you are choosing at the foot of a card
     // full of air. See `top` in `fullLayout`.
     if (spec.top) c.classList.add('sftop');
+    if (spec.airy) c.classList.add('sfairy');
     fitLabels(c);
     pairChoices(c);
     if (faderRow) c.querySelector('.devgrid')?.before(fader(faderRow));
@@ -783,10 +784,18 @@ export function createSynthFull({
     // so this row can only ever be the LEFT half of a pair. TYPE wears it on the noise
     // card, where COLOUR now sits above it and would otherwise take TYPE as its partner
     // and leave SLOPE, TYPE's own other half, stranded on a line by itself.
-    const wrap = div(`row sfchoice${drawn ? ' sfglyphrow' : ''}${row.startRow ? ' sfownline' : ''}`);
+    // A GRID of words — JMJR-4's twelve syllables and twelve morph targets, `grid: N` on
+    // the row — is its own line, N to a row, the label at the top left, and never pairs.
+    const grid = row.grid > 0 ? row.grid : 0;
+    const wrap = div(`row sfchoice${drawn ? ' sfglyphrow' : ''}${row.startRow || grid ? ' sfownline' : ''}${grid ? ' sfgridrow' : ''}`
+      + `${row.gapBefore ? ' sfgapbefore' : ''}${row.gapAfter ? ' sfgapafter' : ''}`);
+    // The row's own tooltip, as the strip's pills carry it: a choice on this surface is the
+    // same control, and it was the only row kind here that dropped its explanation.
+    if (row.tip) wrap.title = row.tip;
     const cur = row.read ? row.read(kit.voice()) : (kit.get(row.path) ?? row.def);
     wrap.append(span('k', row.label));
-    const opts = div('sfopts');
+    const opts = div(grid ? 'sfopts sfoptgrid' : 'sfopts');
+    if (grid) opts.style.gridTemplateColumns = `repeat(${grid}, minmax(0, 1fr))`;
     for (const o of row.options) {
       const b = document.createElement('button');
       const on = String(o) === String(cur);
@@ -809,10 +818,14 @@ export function createSynthFull({
     // comes and goes: it is directly under the picker that summons it.
     const hides = !!row.when && row.label === 'COLOUR';
     if (row.when) guards.push(wrap, row.when, hides);
+    // `hideWhen` is the strip's second guard — JMJR-4's Vocal card shows its SING half or
+    // its SPEAK half, the other hidden outright, because a card of greyed controls for the
+    // mode you are not in is what confused the mock's first pass.
+    if (row.hideWhen) guards.push(wrap, row.hideWhen, true);
     // A row that can VANISH may not take a partner: half a line with nothing beside it is
     // worse than the full line it came from. Greyed rows still pair — they hold their
     // place, which is the whole reason they are greyed rather than removed.
-    if (hides) wrap.classList.add('sfhides');
+    if (hides || row.hideWhen) wrap.classList.add('sfhides');
     return wrap;
   };
 
@@ -858,6 +871,12 @@ export function createSynthFull({
       if (node.classList.contains('sfownline')) { left = node; continue; }
       if (!left) { left = node; continue; }
       const pair = div('row sfpair');
+      // The gap belongs to the LINE, not to one half of it: a pair whose halves disagree
+      // would sit at two heights, and the space a group boundary asks for is the line's.
+      for (const c of ['sfgapbefore', 'sfgapafter']) {
+        if (left.classList.contains(c) || node.classList.contains(c)) pair.classList.add(c);
+        left.classList.remove(c); node.classList.remove(c);
+      }
       left.before(pair);
       pair.append(left, node);
       left = null;
@@ -909,7 +928,9 @@ export function createSynthFull({
   /** One control. Pots are the strip's own; choices wear this window's clothes. */
   const rowEl = (row) => (row.kind === 'pick'
     ? choiceRow(row)
-    : kit.numRow(row, guards, redrawGraphs).wrap);
+    : row.kind === 'text'
+      ? kit.textRow(row, guards, redrawGraphs).wrap
+      : kit.numRow(row, guards, redrawGraphs).wrap);
 
   /**
    * A pot name shortened, but only where the column cannot hold the full one.
@@ -1006,10 +1027,26 @@ export function createSynthFull({
       if (!k.clientWidth) continue;
       if (wantUnit && overflows(k)) drawLabel(k, flag + name, '');
       if (overflows(k) && SHORT_LABEL[name]) drawLabel(k, flag + SHORT_LABEL[name], '');
-      // Only where the drawn label is not the whole story. A pot marked RES needs the
-      // tooltip as much as one still ellipsising does, and CUTOFF needs neither.
+      // Only where the drawn label is not the whole story. A pot marked RES needs its full
+      // name as much as one still ellipsising does, and CUTOFF needs neither.
+      //
+      // REMOVED, not emptied. A child carrying `title=""` does not fall back to its
+      // parent's tooltip — it declares that this region HAS no advisory text — so setting
+      // it here was suppressing the row's own explanation over the one part of the row
+      // anybody hovers: its name. When the name is short, the label says nothing of its own
+      // and the row's tip comes through; when it is abbreviated, the full name leads and the
+      // tip follows it, so nothing is lost either way.
       const shown = k.textContent.trim() === (flag + name + (unit ? ` ${unit}` : '')).trim();
-      k.title = shown && !overflows(k) ? '' : (unit ? `${name} (${unit})` : name);
+      const full = unit ? `${name} (${unit})` : name;
+      const tip = k.closest('.row')?.title || '';
+      // `numRow` has already put the row's tip on this label (with the reset hint under it).
+      // Abbreviating the name adds the full name to that; leaving it whole takes nothing
+      // away. Emptying the attribute, which this did, told the browser the name has NO
+      // advisory text and suppressed the row's tooltip over the one part of it anybody
+      // hovers.
+      const under = k.title && k.title !== full && !k.title.startsWith(`${full} — `) ? k.title : tip;
+      if (shown && !overflows(k)) { if (!under) k.removeAttribute('title'); else k.title = under; }
+      else k.title = under ? `${full} — ${under}` : full;
     }
   };
 

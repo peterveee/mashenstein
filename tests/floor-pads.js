@@ -135,7 +135,7 @@ for (const type of PADS) {
   run.obstacles.push(pad, crate);
   const pr = { type: 'pellet', x: px + 12, alt: 30, vx: 260, live: true, hitIds: new Set() };
   const before = pr.alt;
-  run.homePellet(pr, 1 / 60);
+  run.homeRound(pr, 1 / 60);
   const wantCrate = crate.alt + crate.h / 2;
   assert(pr.alt < before, 'the round steers down toward the crate behind the pad');
   assert(pr.alt >= wantCrate - 0.001,

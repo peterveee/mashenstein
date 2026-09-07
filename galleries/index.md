@@ -21,9 +21,7 @@ history thins to one a week. Do not edit by hand.
 | 2026-08-02 | `136ef1c` | [2026-08-02-136ef1c.html](2026-08-02-136ef1c.html) | -- | Archive published build 48bef85 |
 | 2026-08-05 | `fd28b2e` | [2026-08-05-fd28b2e.html](2026-08-05-fd28b2e.html) | -- | Add mixer voice editor enhancements and tutorial script |
 | 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | -- | Archive published build 414ae37 |
-| 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | (commit not in history) |
-| 2026-08-30 | `8189ee2` | [2026-08-30-8189ee2.html](2026-08-30-8189ee2.html) | -- | test: verify that all jukebox songs start at step zero |
-| 2026-08-31 | `887131e` | [2026-08-31-887131e.html](2026-08-31-887131e.html) | -- | test: add death pose tests to verify upright figure on death hold |
+| 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
 | 2026-09-01 | `05f64d4` | [2026-09-01-05f64d4.html](2026-09-01-05f64d4.html) | -- | Revise boss level design: update boss names and mechanics, adjust stage layouts, and modify trophy tracking for rhythm and neon cabinets |
 | 2026-09-01 | `7e5ce78` | [2026-09-01-7e5ce78.html](2026-09-01-7e5ce78.html) | -- | Refactor tests and arrangement editing logic |
@@ -42,4 +40,5 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-04 | `f49f539` | [2026-09-04-f49f539.html](2026-09-04-f49f539.html) | [bake-offs](2026-09-04-f49f539-lab.html) | Refactor face contour handling and improve face crop rendering |
 | 2026-09-04 | `28b127f` | [2026-09-04-28b127f.html](2026-09-04-28b127f.html) | [bake-offs](2026-09-04-28b127f-lab.html) | feat: Add cape redesigns gallery and related assets |
 | 2026-09-05 | `a00af6f` | [2026-09-05-a00af6f.html](2026-09-05-a00af6f.html) | [bake-offs](2026-09-05-a00af6f-lab.html) | feat: Implement eggshell reaction animations and update render-loop functionality |
+| 2026-09-05 | `7924b36` | [2026-09-05-7924b36.html](2026-09-05-7924b36.html) | [bake-offs](2026-09-05-7924b36-lab.html) | Refactor touch controls layout and input handling |
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |

@@ -53,12 +53,12 @@ run.relay.current = 'fernwick';
 run.player.setHero('fernwick');
 run.powerups.shieldStack = 0;
 run.useAbility();
-assert(run.player.rolling && run.player.abilityCd === HERO_BY_ID.fernwick.ability.cooldown,
-  'Fernwick power starts a finite roll and cooldown');
-run.player.grounded = false;
-run.player.abilityCd = 0;
-run.useAbility();
-assert(run.player.abilityCd === 0, 'shield roll cannot start or consume cooldown in the air');
+{
+  const arrow = run.projectiles.find((p) => p.type === 'arrow');
+  assert(arrow && arrow.holdT > 0 && !run.player.rolling && run.player.abilityCd === HERO_BY_ID.fernwick.ability.cooldown,
+    'Fernwick power queues a held arrow (no roll) and starts the cooldown');
+  assert(run.player.powerPoseT >= arrow.holdT, 'the aim pose outlasts the hold, so the arrow leaves while she is still drawing');
+}
 
 // Cooldowns are stored per hero instead of being reset by swaps.
 run.player.grounded = true;

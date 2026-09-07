@@ -200,7 +200,7 @@ climb.exit();
 
 // AND IT STEERS DOWN TOO, which is the half the old rule did not have. A round
 // fired off the top of a jump comes down onto what it was fired at — the run
-// does this (RunState.homePellet) and the module has to, or the arc a player
+// does this (RunState.homeRound) and the module has to, or the arc a player
 // learns here is not the arc they see in a stage.
 const dive = new TutorialState({ onDone: () => {} });
 dive.enter();

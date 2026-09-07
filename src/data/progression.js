@@ -32,7 +32,7 @@ export const MODS = [
   { id: 'thirdslot', name: 'A THIRD POCKET', desc: 'EQUIP A THIRD MOD. THE POCKET WAS THERE ALL ALONG.', source: 'shop', price: 2500 },
   { id: 'shockwave', name: 'SHOCK STOMP', hero: 'lorenzo', source: 'mastery', desc: 'STOMP SHOCKWAVE BREAKS NEARBY OBSTACLES BUT SCATTERS NEARBY COINS.' },
   { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'gnash', source: 'mastery', desc: 'GNASH GAINS STACKING SPEED AFTER EVERY TAG.' },
-  { id: 'bash', name: 'SHIELD BASH', hero: 'fernwick', source: 'mastery', desc: 'ROLL BREAKS ONE GROUND HAZARD BUT ENDS IN A BRIEF STUMBLE.' },
+  { id: 'bash', name: 'BROADHEAD', hero: 'fernwick', source: 'mastery', desc: 'THE ARROW PUNCHES THROUGH ONE HAZARD AND KEEPS GOING.' },
   { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery', desc: 'PELLETS PIERCE GROUND AND FLYING OBSTACLES.' },
   // Mochi is out of the roster (held for a cameo), so 'wide' is unreachable —
   // mastery XP only accrues to playable heroes. The row stays so an old save

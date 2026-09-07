@@ -93,6 +93,14 @@ export const familiesOf = (patch) => {
  * Done once per patch rather than per note. `spb` is seconds per beat, which is how a
  * tempo-synced LFO learns the tempo without the core knowing what a beat is.
  */
+/**
+ * The families a VOICE needs, for a caller expanding tables ahead of the lane build —
+ * `Audio.warmWorkletLanes`. Through the migrated patch, so it agrees with what the lane
+ * will pack; the engine's own reads of the `tngr2` block stay in this file.
+ */
+export const tngr2FamiliesOfVoice = (voice) =>
+  familiesOf(prepareTngr2Patch(tngr2PatchForVoice(voice)).patch);
+
 export function prepareTngr2Patch(stored, { seed = 0, problems = [], vibrato = null, effects = null } = {}) {
   const patch = migrateTngr2(stored, { problems });
   return { patch, params: tngr2CoreParams(patch, { seed, vibrato, effects }) };

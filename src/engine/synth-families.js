@@ -24,6 +24,8 @@ export const KNDO5 = 'KNDO-5';
 export const RMND2 = 'RMND-2';
 /** WNDR-9 — Klaus Wunderlich. Nine drawbars, and `stretch` to take them off the series. */
 export const WNDR9 = 'WNDR-9';
+/** JMJR-4 — Jean-Michel Jarre. A formant voice; up to four singers to a key. */
+export const JMJR4 = 'JMJR-4';
 
 /**
  * The retired names. Old spellings stay readable forever — song files carry them inside

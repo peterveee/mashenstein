@@ -11,7 +11,8 @@ const {
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
   LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV, OPENING_COIN_BEAT,
   BOX_LEAD_BEATS, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, puntLeadSec, puntLeadRange,
-  unwrapBeat,
+  unwrapBeat, coinRunOffsets, COIN_FILLS, MIN_COIN_BEATS,
+  COIN_CLEAR_AFTER_JUMP,
 } = await import('../src/game/beatchart.js');
 const { worstAirtime, sweepCoinsAroundHole, DripSpawner } = await import('../src/game/spawner.js');
 const { randomPowerPickup, weightedPowerPickup } = await import('../src/game/powerups.js');
@@ -129,10 +130,23 @@ for (const [id, chart] of Object.entries(beatCharts)) {
   const leadIns = coins.filter((e) => ['jump', 'duck'].includes(nextOf(e).action));
   assert(leadIns.some((e) => (e.div ?? 1) >= 4),
     `rhythm-${id} counts you into an action with a sixteenth (${leadIns.length} lead-ins)`);
-  const eighths = coins.filter((e) => e.div === 2).length;
-  const sixteenths = coins.filter((e) => e.div === 4).length;
+  // THE FULL SIXTEENTH RUN IS THE FLOURISH, and it is the only thing this
+  // claim was ever about. A count-in is not one — it is what the beat before a
+  // hole plays instead of a lone coin — and neither is an island figure, which
+  // is written in sixteenths because that is where the road is, not because it
+  // is showing off. Counting either would score the charts for doing the thing
+  // they were changed to do.
+  const plain = (e) => !e.lead && !e.steps;
+  const eighths = coins.filter((e) => plain(e) && (e.div === 2 || e.div === 3)).length;
+  const sixteenths = coins.filter((e) => plain(e) && e.div === 4 && (e.run ?? 1) === 4).length;
   assert(sixteenths <= eighths,
-    `rhythm-${id} keeps pairs the ground and sixteenths the flourish (${eighths} to ${sixteenths})`);
+    `rhythm-${id} keeps pairs the ground and full sixteenth runs the flourish `
+    + `(${eighths} to ${sixteenths})`);
+  // AND NOTHING ODD. Every part of this song runs on even sixteenths, and three
+  // to the beat against that reads as a mistake rather than as a flourish —
+  // which is a call that was made, tried on the road, and reversed.
+  assert(coins.every((e) => { const d = e.div ?? COIN_DIV; return !(d & (d - 1)); }),
+    `rhythm-${id} subdivides the beat by two and nothing else`);
 }
 // THE SHORTER THE NOTE, THE RARER IT IS — the whole shape of the set. Checked
 // as an ordering rather than as a table of numbers so the charts can be
@@ -152,6 +166,52 @@ assert(allFills.some((e) => e.div === 2) && allFills.some((e) => e.div === 4)
   && allFills.some((e) => e.div === 8), 'the cabinet plays eighths, sixteenths and 32nds');
 assert(allFills.filter((e) => e.div === 8).every((e) => (e.every ?? 1) >= 2),
   'and a 32nd stays the rarest figure — never two loops running');
+
+
+// A SMALL ISLAND PLAYS A FIGURE, and nowhere else needs one.
+//
+// The island is the road between two holes two beats apart — the one stretch on
+// the cabinet with nowhere to put a second coin. Every other hole has a whole
+// beat of clear road in front of it already: extra coins in front of EVERY jump
+// is the road's wallpaper again.
+//
+// Measured, not assumed: the bot leaves the ground 0.05 beats past the line it
+// is asked on and lands at 1.41-1.57, so the coin on the island's own beat is
+// taken in flight and the only coins the hero's feet are under him for are the
+// ones in the back half of that beat.
+//
+// AND THE THREE SHAPES ARE THE VARIATION. Written in sixteenths of the island's
+// own beat, they open on the 1 and stop short of the 5, which is the takeoff.
+for (const [id, chart] of Object.entries(beatCharts)) {
+  const holes = chart.events.filter((e) => e.action === 'pit').map((e) => e.slot);
+  const island = (slot) => holes.includes((slot + 1) % chart.loopBeats)
+    && holes.includes((slot - 1 + chart.loopBeats) % chart.loopBeats);
+  for (const e of chart.events.filter((c) => c.action === 'coin' && island(c.slot))) {
+    const offs = coinRunOffsets(e);
+    // It need not open on the line — the coin on the 1 is collected 75% of the
+    // time and two of the six islands drop it — but it may never reach the 5,
+    // which is the takeoff, and it is always a figure rather than a tick.
+    assert(offs.length >= 2 && offs[0] >= 0 && offs[offs.length - 1] < 1,
+      `rhythm-${id} island on slot ${e.slot} plays a figure inside its own beat, `
+      + `short of the takeoff (${offs.join(' ')})`);
+    assert(offs.every((o) => Math.abs(o * 4 - Math.round(o * 4)) < 1e-9),
+      `rhythm-${id} island on slot ${e.slot} is written in sixteenths (${offs.join(' ')})`);
+  }
+}
+// AND THE CABINET PLAYS ALL THREE OF THEM. One shape on every island is one
+// island repeated, which is the complaint the figures were added for.
+{
+  const shapes = new Set();
+  for (const chart of Object.values(beatCharts)) {
+    const holes = chart.events.filter((e) => e.action === 'pit').map((e) => e.slot);
+    for (const e of chart.events.filter((c) => c.action === 'coin'
+      && holes.includes((c.slot + 1) % chart.loopBeats)
+      && holes.includes((c.slot - 1 + chart.loopBeats) % chart.loopBeats))) {
+      shapes.add(coinRunOffsets(e).join(' '));
+    }
+  }
+  assert(shapes.size >= 3, `the cabinet plays ${shapes.size} island figures (${[...shapes].join(' | ')})`);
+}
 
 // ---- A PORTAL MAY NOT STAND ON A BEAT THE CHART HAS SPOKEN FOR ---------------
 //
@@ -259,12 +319,13 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
         + `(${flight.toFixed(2)} + ${ON_BEAT_WINDOW} < ${BOX_BURST_BEATS})`);
     }
   }
-  // WHO IS DEALT ONE AT ALL. Four heroes, and the boundary is a range decision:
-  // a thrown weapon parks after a fixed FLIGHT TIME, and the rocket fist's
-  // 0.42s does not cover the box's lead at this cabinet's speed. See
-  // RANGED_ABILITY_TYPES.
+  // WHO IS DEALT ONE AT ALL, and the boundary is a range decision: a thrown
+  // weapon parks after a fixed FLIGHT TIME, and the rocket fist's 0.42s does
+  // not cover the box's lead at this cabinet's speed. Fernwick's LONGBOW is a
+  // ranged type like the rest of them, so she is dealt one; Lorenzo's stomp and
+  // Gnash's dash reach nothing off their own body. See RANGED_ABILITY_TYPES.
   for (const [id, can] of [['b33p', true], ['clara', true], ['kiko', true], ['grumpos', true],
-    ['raymn', true], ['lorenzo', false], ['gnash', false], ['fernwick', false]]) {
+    ['raymn', true], ['lorenzo', false], ['gnash', false], ['fernwick', true]]) {
     assert(heroShoots(id) === can,
       `${id} is ${can ? '' : 'not '}dealt a card box`);
   }
@@ -323,14 +384,184 @@ try {
 assert(!boxThenPitThrew, 'a hole a beat after the burst line is allowed');
 let lureThrew = false;
 try {
-  // A four-coin fill on the beat before a hole: the tail stands well inside the
-  // approach the hole owns, which is the lure the rule exists to refuse.
+  // A fill whose tail lands PAST the takeoff line, in the strip between the
+  // line and the lip. That is the stretch where a coin stops being a reward and
+  // becomes an argument for one more stride, and it is the whole of what the
+  // rule refuses now the lane has been measured (see THE ROOM A HOLE LEAVES).
   validateBeatChart({ loopBeats: 4, events: [
-    { slot: 0, action: 'coin', run: 4 }, { slot: 1, action: 'pit' },
-    { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+    { slot: 0, action: 'coin' }, { slot: 1, action: 'pit' },
+    { slot: 2, action: 'coin', run: 8, div: 8, lead: true }, { slot: 3, action: 'coin' },
   ] }, { bpm });
 } catch { lureThrew = true; }
-assert(lureThrew, 'the validator refuses a coin fill running up to a hole');
+assert(lureThrew, 'the validator refuses a coin past a hole\'s takeoff line');
+// ...AND ALLOWS EVERYTHING BEHIND IT, right up to the sixteenth before the line.
+{
+  let ok = true;
+  try {
+    validateBeatChart({ loopBeats: 4, events: [
+      { slot: 0, action: 'coin' }, { slot: 1, action: 'pit' },
+      { slot: 2, action: 'coin', ...COIN_FILLS.on134 }, { slot: 3, action: 'pit' },
+    ] }, { bpm });
+  } catch { ok = false; }
+  assert(ok, 'an island may play a figure up to the sixteenth before its takeoff');
+  assert(coinRunOffsets(COIN_FILLS.on134).join() === '0,0.5,0.75'
+    && coinRunOffsets(COIN_FILLS.on123).join() === '0,0.25,0.5'
+    && coinRunOffsets(COIN_FILLS.on13).join() === '0,0.5'
+    && coinRunOffsets(COIN_FILLS.on34).join() === '0.5,0.75',
+  'and the island figures are the sixteenths they are named for');
+  // AND SOME ISLANDS SKIP THE 1. It is collected 75% of the time — the hero is
+  // near the apex of the jump out of the last hole — so a figure that opens on
+  // the 3 pays everything it lays, and the difference is the variation.
+  {
+    const opens = new Set();
+    for (const chart of Object.values(beatCharts)) {
+      const holes = chart.events.filter((e) => e.action === 'pit').map((e) => e.slot);
+      for (const e of chart.events.filter((c) => c.action === 'coin'
+        && holes.includes((c.slot + 1) % chart.loopBeats)
+        && holes.includes((c.slot - 1 + chart.loopBeats) % chart.loopBeats))) {
+        opens.add(coinRunOffsets(e)[0]);
+      }
+    }
+    assert(opens.has(0) && opens.size > 1,
+      `islands open both on their line and off it (${[...opens].join(' ')})`);
+  }
+  // A NAMED FIGURE IS WRITTEN FROM ITS OWN LINE. A rest at the front is a figure
+  // whose first coin lands somewhere the player has nothing to count from.
+  for (const [why, fill] of [['runs backwards', { div: 4, steps: [2, 0] }],
+    ['names a step it has no room for', { div: 4, steps: [0, 4] }],
+    ['counts a run as well', { div: 4, steps: [0, 2], run: 2 }]]) {
+    let threw = false;
+    try {
+      validateBeatChart({ loopBeats: 4, events: [
+        { slot: 0, action: 'coin', ...fill }, { slot: 1, action: 'coin' },
+        { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+      ] }, { bpm });
+    } catch { threw = true; }
+    assert(threw, `a figure that ${why} is refused`);
+  }
+}
+
+// ---- ...AND THE SAME FIGURE THE OTHER WAY ROUND IS ALLOWED ------------------
+//
+// A `lead` fill CLOSES on its line instead of opening on it, so its last coin
+// stands exactly where the lone coin on that line stood and every other coin in
+// it runs AWAY from the lip. That is the count-in, and it is the only figure
+// with any road in it on the beat before a hole.
+assert(coinRunOffsets({ ...COIN_FILLS.sixteenthIn }).join() === '-0.75,-0.5,-0.25,0'
+  && coinRunOffsets({ ...COIN_FILLS.sixteenth }).join() === '0,0.25,0.5,0.75',
+  'a count-in closes on its line and a fill opens on it');
+{
+  let ok = true;
+  try {
+    validateBeatChart({ loopBeats: 4, events: [
+      { slot: 0, action: 'coin', ...COIN_FILLS.sixteenthIn }, { slot: 1, action: 'pit' },
+      { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+    ] }, { bpm });
+  } catch { ok = false; }
+  assert(ok, 'a count-in may be played into a hole the forward fill above cannot reach');
+  // ...but never backwards across the LANDING of the hole behind it. Two holes
+  // two beats apart leave one beat line between them and nothing else, which is
+  // why the coin on an island between a pair of holes is still a single one.
+  let landingThrew = false;
+  try {
+    validateBeatChart({ loopBeats: 4, events: [
+      { slot: 0, action: 'pit' }, { slot: 1, action: 'coin' },
+      { slot: 2, action: 'coin', ...COIN_FILLS.sixteenthIn }, { slot: 3, action: 'pit' },
+    ] }, { bpm });
+  } catch { landingThrew = true; }
+  assert(landingThrew, 'and never back across the landing of the hole behind it');
+  // AND TWO FIGURES MAY NOT INTERLEAVE. A count-in reaching into the beat the
+  // slot behind it is already spending is a smear, not a rhythm — this is the
+  // rule that keeps the charts' abutting fills reading as one run.
+  let smearThrew = false;
+  try {
+    validateBeatChart({ loopBeats: 4, events: [
+      { slot: 0, action: 'coin', ...COIN_FILLS.eighth },
+      { slot: 1, action: 'coin', ...COIN_FILLS.eighthIn },
+      { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+    ] }, { bpm });
+  } catch { smearThrew = true; }
+  assert(smearThrew, 'two fills may not lay coins on top of each other');
+  // AND NOTHING STANDS IN THE STRIDE A JUMP IS TAKEN FROM. A coin on or just
+  // past a bar or a hole's takeoff is a thing to go and get at the exact moment
+  // the player is being told to leave the ground; the two readings compete, and
+  // on the bar the prop and the pickup end up side by side on the same road.
+  for (const [what, chart] of [
+    ['bar', { loopBeats: 4, events: [
+      { slot: 0, action: 'jump', type: 'beatBar' },
+      { slot: 1, action: 'coin', ...COIN_FILLS.eighthIn },
+      { slot: 2, action: 'jump', type: 'beatBar' }, { slot: 3, action: 'coin' },
+    ] }],
+    ['hole', { loopBeats: 4, events: [
+      { slot: 0, action: 'pit' }, { slot: 1, action: 'coin', ...COIN_FILLS.eighthIn },
+      { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+    ] }],
+  ]) {
+    let threw = false;
+    try { validateBeatChart(chart, { bpm }); } catch { threw = true; }
+    assert(threw, `no coin may stand in the stride a ${what} is jumped from`);
+  }
+  assert(COIN_CLEAR_AFTER_JUMP === 1,
+    'and the road a jump owns is the beat past its own line');
+  // A TRIPLET IS REFUSED OUTRIGHT, whole or not: the song is on even sixteenths
+  // and three to the beat reads as a slip to most players.
+  let tripletThrew = false;
+  try {
+    validateBeatChart({ loopBeats: 2, events: [
+      { slot: 0, action: 'coin', run: 3, div: 3 }, { slot: 1, action: 'coin' },
+    ] }, { bpm });
+  } catch { tripletThrew = true; }
+  assert(tripletThrew, 'the cabinet subdivides the beat by two and nothing else');
+  assert(MIN_COIN_BEATS === 1 / 8, 'and the floor on two coins is the fastest fill\'s own spacing');
+}
+// EVERY LONE COIN LEFT IS ON AN ISLAND BETWEEN A PAIR OF HOLES.
+//
+// Checked on the ROAD, not on the slots: a slot is not a figure. Two
+// neighbouring slots whose coins abut are one run of five to the ear and to the
+// coin sting, and a slot laying four on its own is one run of four — so the
+// coins of a pass are laid out in beats and grouped by what a player actually
+// hears (anything within an eighth of the coin before it belongs to the same
+// figure). Every group has to have two coins in it or stand on an island, which
+// is the whole of the count-in's job.
+//
+// The busy pass is the one checked. A cadenced fill drops to the coin on its
+// line on the loops it skips, and stage 3's opening 32nd has no neighbour to
+// keep it company on those — a separate argument about how rare a flourish
+// should be, which is not this rule's to make.
+for (const [id, chart] of Object.entries(beatCharts)) {
+  // THE ONE EXCUSE IS A SLOT FLANKED BY TWO TAKEOFFS. A jump owns the beat past
+  // its own line (COIN_CLEAR_AFTER_JUMP) and no figure may cross into it, so a
+  // coin slot with a bar or a hole on both sides has exactly one legal beat and
+  // can be nothing but a single coin.
+  const takeoffs = chart.events.filter((e) => e.action === 'pit' || e.action === 'jump')
+    .map((e) => e.slot);
+  const island = (slot) => takeoffs.includes((slot + 1) % chart.loopBeats)
+    && takeoffs.includes((slot - 1 + chart.loopBeats) % chart.loopBeats);
+  const at = [];
+  for (const e of chart.events.filter((c) => c.action === 'coin')) {
+    for (const off of coinRunOffsets(e)) at.push({ slot: e.slot, at: e.slot + off });
+  }
+  // A hole's own count-in is coins on the road like any other, and is the half
+  // of a short island the player is actually standing on when they take it.
+  for (const e of chart.events.filter((c) => c.action === 'pit' && c.into)) {
+    for (const off of pitIntoOffsets(e)) at.push({ slot: e.slot, at: e.slot + off });
+  }
+  at.sort((a, b) => a.at - b.at);
+  const figures = [];
+  for (const c of at) {
+    const last = figures[figures.length - 1];
+    if (last && c.at - last[last.length - 1].at <= 0.5 + 1e-9) last.push(c); else figures.push([c]);
+  }
+  if (figures.length > 1) {                        // and across the loop's seam
+    const tail = figures[figures.length - 1];
+    if (chart.loopBeats - tail[tail.length - 1].at + figures[0][0].at <= 0.5 + 1e-9) {
+      figures[0].unshift(...figures.pop());
+    }
+  }
+  const stranded = figures.filter((f) => f.length === 1 && !island(f[0].slot));
+  assert(stranded.length === 0, `rhythm-${id} leaves a coin standing on its own`
+    + `${stranded.length ? ` (beat ${stranded.map((f) => f[0].at).join(', ')})` : ''}`);
+}
 let overrunThrew = false;
 try {
   validateBeatChart({ loopBeats: 2, events: [
@@ -445,7 +676,7 @@ assert(Math.abs(firstHole.w - pitLayout(speed, bpm).w) < 1e-9
   // No coin may stand on a lip. The spacing table is what guarantees it, so
   // check the lane rather than the table.
   const holes = obstacles.filter((o) => o.def.isGap);
-  const lipped = pickups.filter((pk) => holes.some((h) =>
+  const lipped = pickups.filter((pk) => !pk.overHole && holes.some((h) =>
     pk.x + 8 > h.x - 4 && pk.x < h.x + h.w + 4));
   assert(lipped.length === 0, 'no coin is laid over a chart pit or on either lip');
   // A fill reaches the lane as four coins a sixteenth apart, sharing one
@@ -664,7 +895,8 @@ Audio.songBeat = oldSongBeat;
 // ---- A SHOT FROM THE AIR COMES DOWN ON THE BOX ---------------------------------
 // The beat that asks for the shot can land anywhere in a jump, and a round that
 // kept the hero's height sailed over the box. It dives onto the first thing it
-// can hit instead (RunState.homePellet); a straight round is the control.
+// can hit instead (RunState.homeRound, which the arrow shares); a straight
+// round is the control.
 {
   const oldSourceBank = Audio.sourceBank;
   const oldSongBeat = Audio.songBeat;
@@ -674,7 +906,7 @@ Audio.songBeat = oldSongBeat;
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
     run.enter();
     run.rhythmOpeningUntil = null;
-    if (!homing) run.homePellet = () => {};
+    if (!homing) run.homeRound = () => {};
     Audio.sourceBank = run.cabinet.music;
     const advance = installBeatClock(run, run.spawner.chart.loopBeats);
     run.relay.current = 'clara';

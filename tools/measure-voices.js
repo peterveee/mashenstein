@@ -182,7 +182,9 @@ function writeCopies() {
       mix.voiceParams[c.voiceKey].level = round(c.level);
       mix.voiceParams[c.voiceKey].peak = Number(c.peak.toFixed(4));
     }
-    writeSongFile(ROOT, id, { mix, arrangement: song.arrangement || null });
+    // Everything below the desk marker is rewritten whole, so every export the file
+    // carries goes back with it — a level refresh must not take the cabinet variants.
+    writeSongFile(ROOT, id, { mix, arrangement: song.arrangement || null, variants: song.variants ?? null, m8trx: song.m8trx ?? null });
     console.log(`  wrote src/data/songs/${id}.js — ${list.map((c) => c.voiceKey).join(', ')}`);
   }
   return bySong.size;

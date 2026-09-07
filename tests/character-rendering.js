@@ -244,7 +244,10 @@ const GALLERY_BODY_DIALS = [
 // a bake-off candidate nobody chose. An approved one is listed here by hero and
 // dial, so shipping a shape stays a deliberate edit to this line rather than
 // something a gallery experiment can do quietly.
-const APPROVED_BODY_DIALS = { kiko: ['legLength'] };
+// Fernwick's `torsoWidth` is approved: her princess redesign shipped a
+// deliberately slimmer chest than the `slim` build gives (2026-09-07), and it
+// is a promotion out of the bake-off, not a candidate left switched on.
+const APPROVED_BODY_DIALS = { kiko: ['legLength'], fernwick: ['torsoWidth'] };
 assert(Object.entries(TOON_SPECS).every(([id, spec]) =>
   GALLERY_BODY_DIALS.every((key) =>
     !Object.hasOwn(spec, key) || (APPROVED_BODY_DIALS[id] || []).includes(key))),

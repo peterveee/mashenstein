@@ -60,6 +60,30 @@ import {
   readMeasured, tableOf, TABLES, USER_TABLES,
 } from './lib/voices-source.js';
 import { measureVoiceAt, homeLane } from './lib/measure-voice.js';
+import { compactDict } from '../src/engine/jmjr4/text.js';
+import { JMJR4_DATA } from '../src/engine/jmjr4/data.js';
+
+/** CMUdict as JSON text, from the cache, else from the .dict on disk, else from upstream. */
+let cmudictPromise = null;
+function cmudictJson() {
+  cmudictPromise ||= (async () => {
+    const dir = join(ROOT, 'work/local');
+    const json = join(dir, 'cmudict.json');
+    const dict = join(dir, 'cmudict.dict');
+    if (existsSync(json)) return readFileSync(json, 'utf8');
+    mkdirSync(dir, { recursive: true });
+    if (!existsSync(dict)) {
+      const r = await fetch(JMJR4_DATA.text.dict_url);
+      if (!r.ok) throw new Error(`${r.status} from ${JMJR4_DATA.text.dict_url}`);
+      writeFileSync(dict, await r.text());
+      console.log(`fetched the dictionary into work/local/cmudict.dict`);
+    }
+    const body = JSON.stringify(compactDict(readFileSync(dict, 'utf8')));
+    writeFileSync(json, body);
+    return body;
+  })().catch((e) => { cmudictPromise = null; throw e; });
+  return cmudictPromise;
+}
 import { VOICES } from '../src/data/voices.js';
 // Read once, at start-up: the starter set is written by tools/freeze-starter-voices.js,
 // which is a script somebody types, not something this server can cause to happen.
@@ -1199,6 +1223,23 @@ const server = createServer(async (req, res) => {
     // headless Chromium is how a process with no Web Audio gets samples. The desk's
     // own Render WAV no longer comes through here; it renders in the browser it is
     // open in, which is why the deployed build can do it too.
+    // JMJR-4 SPEAK's dictionary: CMUdict, fetched from upstream on first use into
+    // work/local (the gitignored drawer, the same file the Python reference keeps), then
+    // compacted to { word: pron } with the alternate readings dropped and cached as JSON
+    // beside it. 3.8 MB of JSON; the desk fetches it once per session, the first time a
+    // preset enters SPEAK, and a static desk goes to the upstream file itself.
+    if (req.method === 'GET' && req.url === '/cmudict.json') {
+      try {
+        const body = await cmudictJson();
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'max-age=86400' });
+        res.end(body);
+      } catch (e) {
+        res.writeHead(502, { 'content-type': 'text/plain' });
+        res.end(`the dictionary could not be fetched: ${e.message}`);
+      }
+      return;
+    }
+
     if (req.method === 'POST' && req.url === '/render') {
       const { trackId, mix, repeat, arrangement } = await readJson(req);
       const info = await renderTrack(trackId, mix, { repeat: repeat || 1, arrangement });
