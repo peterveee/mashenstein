@@ -1,5 +1,6 @@
 // Test runner: smoke + integration + invariants + sims.
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -501,6 +502,12 @@ const browserSuites = new Set([
   // package, not its browsers. A suite that launches one belongs in this set.
   'tests/note-fx-render.js',
   'tests/tngr2-controller.js',
+  // The JMJR-4 suites: each asserts a stretch browserlessly and then launches chromium
+  // to compare the engine's own output against the reference, which is the same shape
+  // that took the deploy down before.
+  'tests/jmjr4-render.js',
+  'tests/jmjr4-performance.js',
+  'tests/jmjr4-lifetimes.js',
 ]);
 
 // A browser suite renamed out of the list above would quietly rejoin the fast gate and
@@ -508,6 +515,18 @@ const browserSuites = new Set([
 // Cheaper to notice here than in CI.
 for (const s of browserSuites) {
   if (!suites.includes(s)) throw new Error(`browserSuites lists ${s}, which is not in suites`);
+}
+
+// And the other direction, which is the half that actually broke a deploy: a suite that
+// requires playwright but was never added to the set above stays in the fast gate and
+// fails at the launch on a runner with no chromium. The source is the authority, so ask
+// it rather than remembering to keep two lists in step.
+for (const s of suites) {
+  if (browserSuites.has(s)) continue;
+  const src = readFileSync(join(root, s), 'utf8');
+  if (/require\(['"]playwright['"]\)/.test(src)) {
+    throw new Error(`${s} requires playwright but is not in browserSuites`);
+  }
 }
 
 // ---- the SOUND group -------------------------------------------------------
