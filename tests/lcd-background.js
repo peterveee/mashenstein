@@ -166,10 +166,16 @@ const testGap = { live: true, x: 100, w: 56, def: { isGap: true } };
 const pitOps = ground([testGap]);
 const rectOverlapsPit = (op) => op[0] === 'fillRect' && op[2] < 156 && op[2] + op[4] > 100;
 const apronCols = pitOps.filter((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT
-  && op[3] === GROUND_Y && op[4] === 2 && op[5] === H - GROUND_Y);
+  && op[3] === GROUND_Y && op[5] === H - GROUND_Y);
 assert(apronCols.some((op) => op[2] < 100) && apronCols.some((op) => op[2] >= 156)
   && !apronCols.some(rectOverlapsPit),
 'the road is walked in surface-following columns that stop at the pit lips');
+// ...and the columns are MERGED where the surface does not move. A flat lane
+// used to cost one fill per 2px of screen; the run either side of this pit is
+// one rect each. If a change puts the per-column fills back, this is the test
+// that says so.
+assert(apronCols.length <= 4 && apronCols.some((op) => op[4] >= 90),
+  'flat stretches of road are coalesced into long fills, not 2px columns');
 assert(!pitOps.some((op) => op[1] === PANEL_LIT && op[3] === GROUND_Y
   && op[5] === H - GROUND_Y && rectOverlapsPit(op)),
 'the pit mouth is never repainted with a flat panel colour');

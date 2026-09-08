@@ -17,6 +17,19 @@ What the plan did not predict, and the pass found:
   `FLOAT_DUCK_GAP` / `SPEECH_DUCK_GAP` became `floatClear` / `easeFloatClear` /
   `FLOAT_CLEAR_GAP` / `SPEECH_CLEAR_GAP` — not `*Slide*`, which would have put
   a hero move's name on a HUD card's dodge.
+- **The rename BROKE GAMEPLAY and no suite noticed.** The style table's key for
+  the power slide had to move from `'slide'` to `'kick'` — `'slide'` had become
+  the pose kind. The table moved; the one place that ASKS for it,
+  `poseFromPlayer` in `toons.js`, did not, because there the literal sits on a
+  different line from `slideStyle:` inside a ternary and the style regex only
+  matched them adjacent. The lookup returned undefined, every humanoid fell
+  through to the generic crouch, and the old ducking animation was back in the
+  running game while `tests/run-all.js` stayed green. Peter found it by playing.
+  It was invisible to the whole art rig because the gallery, the probes and the
+  tests all NAME the style themselves; only gameplay goes through the lookup.
+  `tests/slide-kit.js` now drives `poseFromPlayer` per hero and asserts the
+  style it asks for is a key the painter has — verified failing on the broken
+  code before the fix.
 - **One comment went ambiguous** where a speech card "ducks" under the hero
   (`hud.js`, the crossing paragraph). Reworded to "dodge", with a line saying
   why, since the sentence only made sense while both things shared a word.

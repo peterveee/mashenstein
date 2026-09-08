@@ -107,6 +107,7 @@ import {
   RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_T1, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES,
   RUSTY_W3B, PANDA_PAL,
 } from '../src/dev/hero-candidates.js';
+import { GRUMPOS_AXES } from '../src/dev/grumpos-axe-candidates.js';
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
@@ -127,8 +128,7 @@ import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
 // untouched, so the hub wall, the design handoff and the roster the tests count
 // are all unchanged.
 //
-// GNASH STAYS. The point is the comparison, not the swap — they stand side by
-// side until the slot is actually decided.
+// GNASH STAYS. The point is the comparison, not the swap.
 const GUEST_ID = 'rusty';
 const GUEST_OPTS = { spec: RUSTY_W3B, pal: PANDA_PAL };
 // A synthetic HEROES row for him. Several cast sections are keyed on
@@ -158,14 +158,11 @@ const GUEST_HERO = {
 // HERO_BY_ID, plus the guest — for sections that enumerate the playable roster
 // rather than the drawable specs.
 const heroRow = (id) => (id === GUEST_ID ? GUEST_HERO : HERO_BY_ID[id]);
-// Append the guest to an enumeration of shipped ids.
-// Seated immediately after GNASH rather than tacked on the end: he is being
-// judged against the hero whose slot he wants, and two heroes eight columns
-// apart cannot be compared at a glance. Falls back to appending if gnash ever
-// leaves the roster.
+// Keep the gallery's final three seats for Gnash, Gary and Dolores, with the
+// guest immediately before them. Preserve the other heroes' relative order.
 const withGuest = (ids) => {
-  const at = ids.indexOf('gnash');
-  return at < 0 ? [...ids, GUEST_ID] : [...ids.slice(0, at + 1), GUEST_ID, ...ids.slice(at + 1)];
+  const end = ['gnash', 'gary', 'dolores'];
+  return [...ids.filter(id => !end.includes(id)), GUEST_ID, ...end.filter(id => ids.includes(id))];
 };
 // The opts any cast-wide draw call needs: the guest's spec/pal, or nothing at
 // all for a hero who has his own entry in TOON_SPECS.
@@ -191,6 +188,23 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // Lab sections that have been retired from the chooser remain in source for
 // reference, but are intentionally omitted from the rendered gallery.
 const HIDDEN_GALLERY_SECTIONS = new Set([
+  // Retired 8 Sep 2026 at Peter's call — all settled, the winners are in the
+  // painter and the specs, and a decided question in the lab is just a page to
+  // scroll past. `section()` returns a detached grid for a hidden id, so the
+  // tiles below cost nothing; the code stays until someone needs the record.
+  'eggshell-cape-bakeoff',
+  'rusty-expressive-bakeoff',
+  'rusty-openbrow-bakeoff',
+  'rusty-tailroot-bakeoff',
+  'rusty-throw',
+  'rusty-alternate',
+  'limb-styles',
+  'hero-chip-bakeoff',
+  'bonus-foldup',
+  'eggshell-faces',
+  'gorilla-tone-bakeoff',
+  'gorilla-mood-loop',
+  'banana-bakeoff',
   'dolores-girth',
   'brow-bakeoff',
   'barrel-punt',
@@ -311,6 +325,13 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
 let zoom = 3;
 let renderScale = 3;
 let animate = true;
+// Frame numbers on the animated tiles, so a problem can be pointed AT rather
+// than described. The number is the gallery clock quantised to 24fps — the
+// rate the game runs its own cycles at — and it is deliberately the SAME
+// number on every tile at any instant, so "frame 41" means one moment across
+// the whole page rather than a per-tile count nobody can line up.
+let frameNos = true;
+const FRAME_FPS = 24;
 const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
 // Halved from 6/10 because world-scale tiles now bake WORLD_Z in: samples per
 // world unit are WORLD_Z * hires, so 3 and 5 land where 6 and 10 used to.
@@ -446,6 +467,22 @@ function paint(entry, t) {
     entry.draw = () => {}; // don't spam the same throw every frame
   } finally {
     setInkDensity();
+  }
+  // Painted OUTSIDE the tile's own transform and after its draw, so it can
+  // never be mistaken for part of the art and no tile can clip it away.
+  if (frameNos && entry.animated) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const n = Math.floor(t * FRAME_FPS);
+    const label = `${n % 1000}`;
+    const px = Math.max(9, Math.round(canvas.height * 0.055));
+    ctx.font = `${px}px ui-monospace, monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const w = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(10,10,18,0.62)';
+    ctx.fillRect(2, 2, w + px * 0.55, px * 1.25);
+    ctx.fillStyle = '#e8e04a';
+    ctx.fillText(label, 2 + px * 0.28, 2 + px * 0.14);
   }
 }
 
@@ -1998,6 +2035,58 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
+{
+  // OPEN: Grumpos's back axe. Each cut is his production spec with one key
+  // changed, and the painter's default reproduces the shipped art exactly, so
+  // X1 in this row IS what ships rather than a re-drawing of it.
+  const A = GRUMPOS_AXES;
+  const RH = 62, RCOL = 82, RFEET = 92;
+  const opts = (c) => ({ spec: c.spec });
+  const grid = section('grumpos-axe', 'Grumpos — back axe',
+    'OPEN. Three things are wrong with the axe he carries and they can only be judged apart. '
+    + 'Its haft runs at 41.3&deg;, shallow enough to sit the blade beside his jaw at ear height where it '
+    + 'competes with his face. Its head is 0.30 x 0.33u against a 0.44u skull — about three quarters the '
+    + 'size of his head — standing a head\'s radius clear of his shoulder. And its ice blue is lighter than '
+    + 'his skin, so the eye reaches the axe before the face. '
+    + '<br><br>X2, X3 and X4 each move ONE of those. X5 is all three together and is my recommendation; '
+    + 'X6 is deliberately too steep, so the row has a ceiling rather than an open end. Judge the idle first '
+    + '(it is the hub and the menus), then the run, where the axe travels with the shoulder.');
+  for (const c of A) {
+    tile(grid, c.name, c.note, 128, 184, (ctx, t) => {
+      drawToon(ctx, 'grumpos', pose('idle', t), 64, 176, 150, opts(c));
+    }, { animated: true, hires: 4 });
+  }
+  for (const [kind, note] of [
+    ['idle', 'Standing, all six. The blade against the beard is the thing to look at.'],
+    ['run', 'Running — the axe shifts forward with the body, so this is where a steep haft either reads or crowds his back.'],
+    ['jump', 'Airborne.'],
+  ]) {
+    tile(grid, `axe — ${kind}`, note, RCOL * A.length, RH * 1.62, (ctx, t) => {
+      A.forEach((c, i) => {
+        drawToon(ctx, 'grumpos', pose(kind, t), RCOL * (i + 0.5), RFEET, RH, opts(c));
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '6px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.name, RCOL * (i + 0.5), RH * 1.55);
+      });
+    }, { animated: true, wide: true, hires: 4 });
+  }
+  {
+    const LW = 24 + A.length * 62 + 40, LH = 62, LGY = 46;
+    tile(grid, 'axe — in the lane, at size',
+      `Real ${HERO_DRAW_H}px hero. Idle and running. A blade this pale is a bright shape at any size; this is where that either helps him read or steals the face.`,
+      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
+        laneStrip(ctx, LW, LH, LGY);
+        A.forEach((c, i) => {
+          const x = 24 + i * 62;
+          drawToon(ctx, 'grumpos', pose('idle', t), x, LGY, HERO_DRAW_H, opts(c));
+          drawToon(ctx, 'grumpos', pose('run', t), x + 26, LGY, HERO_DRAW_H, opts(c));
+        });
+      }, { animated: true, wide: true, world: true, hires: 5 });
+  }
+}
+
 // Keep the open cape question at the front of the lab page. The larger Eggshell
 // redesign section below contains the face/outfit history, but this is the row
 // Peter came here to judge and it should not be buried after every other lab.
@@ -7183,6 +7272,14 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     'lorenzo', LORENZO_RANGED_CANDIDATES);
 }
 
+// The slide near-arm extension bake-off used to sit here — the whole sliding
+// cast at five target extensions, plus kiko/lorenzo/grumpos close-ups. SETTLED
+// 8 Sep 2026 at A2: drawSlideKick now solves the near hand for 0.96 of the arm
+// at the shared deck height, so every build trails the same near-straight arm
+// instead of inheriting one from where its shoulder socket happens to sit. The
+// pose seam it read is gone with it; the production slide rows above draw the
+// shipped result.
+
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
 //
@@ -7339,6 +7436,18 @@ animEl.addEventListener('change', () => {
 // which is the one thing those tiles exist to show.
 const slowEl = document.getElementById('slowmo');
 slowEl.addEventListener('change', () => { rate = slowEl.checked ? 0.25 : 1; });
+
+const frameEl = document.getElementById('framenos');
+if (frameEl) {
+  frameNos = frameEl.checked;
+  frameEl.addEventListener('change', () => {
+    frameNos = frameEl.checked;
+    // Repaint the still tiles too: they only draw when something asks them to,
+    // so a toggle that only affects the animated ones leaves stale numbers on
+    // everything else.
+    for (const e of tiles) if (e.visible) paint(e, clock);
+  });
+}
 
 const filterEl = document.getElementById('filter');
 filterEl.addEventListener('input', () => {

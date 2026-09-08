@@ -126,7 +126,11 @@ fernwick.slide = [
 // limb IS the garment — and `p` is green tights where it used to be brown
 // trousers. `hair` is the blond the tufts take, `gem` the ruby that appears on
 // the headband, the belt buckle and the pendant, and `crown` the gold on them.
-fernwick.pal = { h: '#65b83f', a: '#e8bc46', s: '#f2c9a0', e: '#1a1028', b: '#65b83f', p: '#2c6a1c', f: '#51351f', w: '#b0793a', hair: '#e8bc46', crown: '#ffc52e', gem: '#e3657c', bodice: '#65b83f', skirt: '#65b83f' };
+// `s` is PALER than the cast's common #f2c9a0 — the Zelda princess she is
+// parodying is fair, and it also separates her from Lorenzo and Kiko, who both
+// wear that shared tone. Two steps up, not five: she still has to read as skin
+// beside them rather than as porcelain.
+fernwick.pal = { h: '#65b83f', a: '#e8bc46', s: '#f7dcbe', e: '#1a1028', b: '#65b83f', p: '#2c6a1c', f: '#51351f', w: '#b0793a', hair: '#e8bc46', crown: '#ffc52e', gem: '#e3657c', bodice: '#65b83f', skirt: '#65b83f' };
 
 // --- B-33P: silver dome, arm cannon, LED eyes — the only cyan left on him is
 // the LEDs, which is exactly what "LOW ON CYAN" should look like -------------
@@ -384,7 +388,11 @@ const kiko = {
 const clara = {
   ...gary,
   pal: {
-    s: '#f0c49a', e: '#1a1028', m: '#a8465c',
+    // A shade TANNER than the cast's common tone, subtly: she is the raider who
+    // lives outdoors, and beside Fernwick's new pallor the two of them now sit
+    // at opposite ends of the roster's skin range instead of both near its
+    // middle. Small on purpose — this is weathering, not a different person.
+    s: '#e8b489', e: '#1a1028', m: '#a8465c',
     hair: '#8f4a22', hairDark: '#5a2c12', hand: '#f0c49a',
     a: '#e0b24a',        // brass: buckle, plait tie, hardware
     w: '#7a4f2c',        // leather: belt, holster, glove cuffs

@@ -4286,6 +4286,11 @@ export class SettingsState {
   /**
    * AUDIO SYNC, in milliseconds, signed.
    *
+   * The row names the system figure it sits ON TOP OF, because the number by
+   * itself reads as the whole correction and is not: zero here means "the
+   * ~168 ms this device admits to, and nothing more". Naming both is what
+   * stops RESET looking like it is about to set 168.
+   *
    * Left and right nudge it by ten; CONFIRM opens the tap test, which is the only
    * way in on a touchscreen — a phone has no left and right, and a phone is
    * exactly the device that needs this row.
@@ -4297,8 +4302,9 @@ export class SettingsState {
       Audio.setSyncOffset(s.audioSyncMs);
     };
     const ms = clampAudioSyncMs(s.audioSyncMs);
+    const reported = Math.round(Audio.reportedLatencySec() * 1000);
     return {
-      label: `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS`,
+      label: `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS ON TOP OF SYSTEM ~${reported}`,
       act: () => { if (this.onCalibrate) this.onCalibrate(); else adjust(1); },
       adjust,
     };
@@ -4318,7 +4324,7 @@ export class SettingsState {
     const reported = Math.round(Audio.reportedLatencySec() * 1000);
     const ms = clampAudioSyncMs(s.audioSyncMs);
     return {
-      label: `RESET AUDIO SYNC (USE SYSTEM ~${reported} MS)`,
+      label: `RESET AUDIO SYNC (SYSTEM ~${reported} MS ALONE)`,
       act: () => {
         if (ms === 0) { Audio.sfx('uiBad'); return; }
         s.audioSyncMs = 0;

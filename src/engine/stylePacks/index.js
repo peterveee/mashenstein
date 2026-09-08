@@ -8182,17 +8182,29 @@ function lcdPack(settings) {
       // cabinet's stage wave; this pack owns its whole road.) Because it is
       // drawn in columns clipped at the cuts rather than painted and then
       // erased, a pit keeps the true city pixels behind it.
+      //
+      // The columns are COALESCED before they are drawn: consecutive ones at
+      // the same surface height become one rect. The walk still asks
+      // terrainGroundY per column, so a rolling lane is stepped exactly as
+      // before — but a rhythm stage is flat almost everywhere (only rhythm-1
+      // has a wave, windowed to the middle of it), so a screen of road that
+      // used to be ~240 columns x 2 fills is now a handful of long rects
+      // between the pits. Same picture, and no seams down a flat road.
       const inCut = (a, b) => cuts.some((cut) => b > cut.from && a < cut.to);
       const STEP = 2;
+      const spans = [];
+      let span = null;
       for (let wx = Math.floor(camX / STEP) * STEP; wx < camX + right + STEP; wx += STEP) {
         const sx = wx - camX;
-        if (inCut(sx, sx + STEP)) continue;
+        if (inCut(sx, sx + STEP)) { span = null; continue; }
         const y = terrainGroundY(cab, wx);
-        ctx.fillStyle = LCD_PANEL_LIT;
-        ctx.fillRect(sx, y, STEP, H - y);
-        ctx.fillStyle = LCD_INK;
-        ctx.fillRect(sx, y, STEP, LCD_ROAD_INK);
+        if (span && span.y === y && span.x + span.w === sx) span.w += STEP;
+        else spans.push((span = { x: sx, y, w: STEP }));
       }
+      ctx.fillStyle = LCD_PANEL_LIT;
+      for (const sp of spans) ctx.fillRect(sp.x, sp.y, sp.w, H - sp.y);
+      ctx.fillStyle = LCD_INK;
+      for (const sp of spans) ctx.fillRect(sp.x, sp.y, sp.w, LCD_ROAD_INK);
       // The dashes scroll smoothly but at HALF the lane speed — full speed
       // strobed at this pitch. They are read as texture, not as a distance
       // reference, so the softer drift wins. Each dash sits DASH_DROP under the

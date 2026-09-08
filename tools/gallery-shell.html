@@ -74,7 +74,16 @@
   /* The pixelate toggle forces the old blocky inspection mode across the whole
      page: still useful for counting samples at 16x, just no longer the truth. */
   body.pixelate .card canvas { image-rendering:pixelated; }
-  .card .name { color:var(--dim); font-size:11px; text-align:center; max-width:100%; word-break:break-word; }
+  /* The caption WRAPS TO THE PICTURE instead of setting the card's width.
+     A card is a flex column sized to its widest child, and a one-line note is
+     as wide as the sentence — so a 132px tile with a long note came out a
+     600px card and three of them filled a row. `width:0` takes the text out of
+     the intrinsic-width calculation entirely; `min-width` puts it back at the
+     card's own width, with a 150px floor so a small tile's caption does not
+     end up one word per line. */
+  .card .name { color:var(--dim); font-size:11px; text-align:center;
+                width:0; min-width:max(100%, 150px); max-width:100%;
+                word-break:break-word; }
   .card .name b { color:var(--ink); font-weight:normal; }
   .card.wide { width:100%; }
   .card.err { border-color:#e04848; }
@@ -155,6 +164,7 @@
     </label>
     <label><input id="animate" type="checkbox" checked> animate</label>
     <label><input id="slowmo" type="checkbox"> slow</label>
+    <label><input id="framenos" type="checkbox" checked> frame #</label>
     <label><input id="pixelate" type="checkbox"> pixelate</label>
     <label>filter <input id="filter" type="search" placeholder="name…" size="14"></label>
     <button id="collapseAll" type="button">collapse all</button>

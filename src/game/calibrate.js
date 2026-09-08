@@ -331,7 +331,7 @@ export class CalibrateState {
     const reported = Math.round(Audio.reportedLatencySec() * 1000);
     drawTextCentered(ctx, `THIS DEVICE REPORTS ~${reported} MS`, W / 2, y + 8, '#5a5a68');
     const ms = clampAudioSyncMs(this.save.settings.audioSyncMs);
-    drawTextCentered(ctx, `CURRENT AUDIO SYNC: ${signed(ms)} MS`, W / 2, y + 23, ms ? '#48e0c8' : '#5a5a68');
+    drawTextCentered(ctx, `CURRENT AUDIO SYNC: ${signed(ms)} MS ON TOP OF THAT`, W / 2, y + 23, ms ? '#48e0c8' : '#5a5a68');
     if (this.notice) drawTextCentered(ctx, this.notice, W / 2, H - 34, '#d84828');
     drawTextCentered(ctx, `${Input.confirmVerb()}: START   BACK: CANCEL`, W / 2, textYForMid(H - 16), '#8a8a98');
   }

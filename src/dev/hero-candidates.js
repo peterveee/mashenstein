@@ -241,7 +241,12 @@ export const ANIMAL_HERO_CANDIDATES = [
 
 // Exported: the gallery's alternation section and the motion sheets draw the
 // settled hero directly and need his palette by name.
-export const PANDA_PAL = ANIMAL_HERO_CANDIDATES[0].pal;
+// The palette, plus the one slot the bandolier round added: the canister's own
+// band, in the gold his buckle and his eyes already use, so the mark belongs to
+// the costume rather than being a colour introduced for one prop. It falls back
+// to the trouser rust everywhere else, which is what it was and why the tube
+// read as a solid lump.
+export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, pouchLine: '#f0c07a' };
 
 export const PANDA_BUILD_CANDIDATES = [
   {
@@ -1247,6 +1252,51 @@ export const RUSTY_W3B = {
   // take over the silhouette and he starts reading fox. Fuller cheeks (1.15+)
   // lost to the jaw tufts, which they crowd.
   faceTrim: 0.2, faceTaper: 0.35, cheekScale: 1.05,
+  // ROUNDS 25-27 SETTLED (8 Sep 2026): the TOOL BELT stays, and the canister's
+  // own band is widened and put in the costume gold.
+  //
+  // The bandolier was tried properly and rejected. It answered the note that
+  // started all this — the dispenser reading as stuck to his legs, which a
+  // waistband cannot fix because it sits exactly where the thighs are — but it
+  // never stopped costing more than it bought. Three separate faults, each fixed
+  // and each replaced by another: the strap changed shoulders halfway through
+  // the run cycle (its top end hung off a GAIT function); pinned at 0.95 of the
+  // torso half-width it collapsed onto the outline and ran down his side; and
+  // the hip end could not be made to leave the body cleanly at all — level it
+  // crossed the tail rooting at that same hip, lifted it traced his edge, steep
+  // it was a nub behind his hand. Three passes, three different failures, in a
+  // corner of the silhouette about six pixels across at lane size.
+  //
+  // What survives is the part that was always doing the work: the canister's
+  // band, 0.018u -> 0.03u and in the gold his buckle and his eyes already use.
+  // The original complaint was a VALUE problem, not a mounting problem — the
+  // canister, the belt and his boots all painted in `f` — and one legible stripe
+  // is what separates the bag from the leg.
+  pouchLineW: 0.03,
+  // ROUND 28 SETTLED (8 Sep 2026): T3 — the tail's root narrowed to 0.8 and the
+  // belt back at the painter's own default height.
+  //
+  // The belt only ever lifted to clear the plume, so narrowing the root where
+  // it meets the body was room the belt could spend coming back down. It is
+  // also the animal: a red panda's tail is narrow at the join and heavy further
+  // out, and the plume keeps all of its volume because that lives in `w1`,
+  // further along, which does not move.
+  //
+  // T3 over T2 (a half-lifted belt) on the LANE READ: at 26px the difference
+  // between the two heights is under half a pixel of tilt, so T2 was paying for
+  // a compromise nobody can see. T4's 0.62 root lost — at real size the tail
+  // reads as attached by a stalk, and heaviness is the whole thing it is for.
+  tailRoot: 0.8,
+  // The belt's far end RISES when he runs, by 0.03u. Standing he is drawn
+  // front-on and the band is level; running, the rig fakes a three-quarter
+  // turn — the arm depth, the head's lead, `turnDepth` — and a band going round
+  // a turned body shows its far side higher. Level in motion was the belt
+  // disagreeing with everything else about which way the body faces.
+  //
+  // 0.03 over 0.015 (invisible against the bob) and 0.05 (reads as a tilted
+  // belt rather than a turned body). The slide takes none of it: a reclined
+  // body is tipped, not turned.
+  beltSlantRun: 0.03,
 };
 
 // ROUND 21 — THE CANES IN THE MOUTH. On W3b the two canes read as ONE THICK
@@ -1311,3 +1361,44 @@ export const RUSTY_CANE_CANDIDATES = [
 // ruff stay on hx; a round jaw hid that, and a tapered one pointed straight at
 // it. toons.js ramps the lean by depth — nothing at the temples, full at the
 // chin apex.
+
+
+// ---------------------------------------------------------------------------
+// ROUNDS 25 AND 26 ARE GONE (8 Sep 2026): the canister's stripe and the
+// bandolier both settled into RUSTY_W3B and PANDA_PAL above. The dials stay in
+// toons.js — `bundleMount: 'sash'`, `sashSide`, `sashH`, `pouchLineW`, and the
+// `pouch`/`pouchLine` palette slots — because they are how the kit is
+// expressed, and every other hero reads the belt defaults for all of them.
+//
+// What lost: the wider belt on its own (still the same navy as his boots, so it
+// read as more of the same mass rather than as a strap — the value step was
+// doing all the work), recolouring the canister BODY (which was a misreading of
+// the note), and the near-shoulder routing.
+//
+// What it cost to get right, worth knowing before the next strap: the top end
+// was first hung off `hipAt`, a GAIT function, so the strap changed shoulders
+// halfway through the run cycle; and the SLIDE needed the sash drawn after the
+// near arm, because in that pose the arm lies across the chest and a strap
+// under it is a stub above the canister.
+
+
+// ---------------------------------------------------------------------------
+// ROUND 27 IS GONE (8 Sep 2026) along with the bandolier it was shaping. The
+// arch was a real question — a strap loaded at one end does not hang straight —
+// but it was a question about a mount that lost, so it goes with it. The sash
+// construction is out of toons.js entirely; `pouchLineW` and the `pouch` /
+// `pouchLine` palette slots are what remain, and they are the part that worked.
+
+
+// ---------------------------------------------------------------------------
+// ROUND 28 IS GONE (8 Sep 2026): the tail root and the belt's height settled
+// into RUSTY_W3B above as `tailRoot: 0.8` with the belt back at the painter's
+// own default. T4's harder 0.62 root lost on the lane read — the tail came to
+// look attached by a stalk, and heaviness is the whole thing that plume is for.
+//
+// The belt dials stay in toons.js and every one of them defaults to the shipped
+// look, so no other hero moves: `beltLift` (how high the tail-side end
+// finishes), `beltSlant` (how much lower the right end sits — NOT `beltDrop`,
+// which is Clara's, for wearing her belt on the hips), `beltSlantRun` (the far
+// end rising once the rig fakes a turn), `beltH`, and `pouchLineW` with the
+// `pouch` / `pouchLine` palette slots.

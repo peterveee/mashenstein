@@ -15,7 +15,10 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { TOON_SPECS, drawToon } = await import('../src/sprites/toons.js');
+const { TOON_SPECS, drawToon, SLIDE_STYLE_CANDIDATES } = await import('../src/sprites/toons.js');
+// The style table is module-private; its candidate list is the exported mirror
+// of the same keys, and the gallery bake-off already depends on them matching.
+const SLIDE_STYLE_DRAWS_KEYS = Object.fromEntries(SLIDE_STYLE_CANDIDATES.map((c) => [c.id, true]));
 const { HERO_SPRITES } = await import('../src/sprites/heroes.js');
 const { HEROES } = await import('../src/data/heroes.js');
 
@@ -85,6 +88,35 @@ const EXEMPT = {
   // Nothing yet. When something lands here it needs a sentence saying why the
   // slide is right to omit it, or it is this bug wearing a note.
 };
+
+// THE DISPATCH ITSELF. Everything below asks "is the kit drawn"; this asks the
+// prior question, "is the slide painter reached at all".
+//
+// It exists because the duck->slide rename broke exactly this and nothing
+// caught it: `poseFromPlayer` names the style, `SLIDE_STYLE_DRAWS` is keyed by
+// it, and the two are in different files. The rename moved the table's key from
+// 'slide' to 'kick' — 'slide' having become the pose KIND, so it could not go on
+// meaning a style too — and left poseFromPlayer asking for 'slide'. The lookup
+// missed, the humanoid fell through to the generic crouch, and the old ducking
+// animation came back in gameplay while every suite stayed green.
+{
+  const { poseFromPlayer } = await import('../src/sprites/toons.js');
+  const styles = Object.keys(SLIDE_STYLE_DRAWS_KEYS);
+  for (const hero of HEROES) {
+    const spec = TOON_SPECS[hero.id];
+    if (!spec || !['humanoid', 'ray'].includes(spec.rig)) continue;
+    // poseFromPlayer(player, t) derives `kind` itself; `hero` rides on the
+    // player. A grounded hero mid-slide is the state under test.
+    const pose = poseFromPlayer({
+      hero, rolling: false, grounded: true, sliding: true, slideAmount: 1,
+      x: 0, y: 0, vy: 0, vx: 0, facing: 1, jumps: 0, slideKickT: 0, slideHoldT: 0,
+    }, 1.0);
+    const named = pose && pose.slideStyle;
+    assert(named && styles.includes(named),
+      `${hero.id}: poseFromPlayer asks for a slide style the painter has `
+      + `(got ${JSON.stringify(named)}, table has ${styles.join('/')})`);
+  }
+}
 
 for (const hero of HEROES) {
   const id = hero.id;

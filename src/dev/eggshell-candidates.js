@@ -25,6 +25,13 @@ const TAU = Math.PI * 2;
 // The game's own inks: cream and peach from the original egg, red from the
 // mustache, fur and gold and green from world.js's pixel Eggshell.
 const INK = '#1a1028';
+// The two imports this file has, and both are for the RIDER: the shipped ape
+// painter, and the settled professor's parts. Everything else here is a local
+// rebuild on purpose (see the header). No cycle — eggshell-redesigns imports
+// props and nothing else.
+import { eggshellApe } from '../sprites/props.js';
+import { EGGSHELL_WORKING } from './eggshell-redesigns.js';
+
 const OUTLINE = 'rgba(26,16,40,0.34)';
 const CREAM = '#e8e0c8', CREAM_DK = '#c9bd9c';
 const PEACH = '#f2c9a0';
@@ -432,12 +439,27 @@ function bucketBust(c, X, Y, lw) { bustTop(c, X, Y, lw); bucketTub(c, X, Y, lw);
 // ride, a rival's entrance, a cabinet's own boss.
 const SPIN = 3;
 const APE = { w: 24, h: 20 };
+// THE RIDER IS THE SETTLED VILLAIN, not the ape these vehicles were drawn
+// around. The travel round predates the redesign: every one of these was
+// sketched with the bucket ape in it, and he is not the character any more —
+// the silver professor is. A row of alternate rides carrying a villain who was
+// replaced is a row nobody can read a decision off.
+//
+// `apeAt` is the one seam they all go through (`ape.bust`), so the swap is
+// here rather than in ten painters. The professor draws through the shipped
+// `eggshellApe` with the winner's parts, at the same origin and the same
+// authoring size, so every vehicle's framing still holds.
+const proParts = () => EGGSHELL_WORKING.parts;
 const apeAt = (ox, oy) => {
   const SX = (f) => APE.w * f, SY = (f) => APE.h * f, lw = 0.045 * APE.w;
   const at = (fn) => (c) => { c.save(); c.translate(ox, oy); fn(c, SX, SY, lw); c.restore(); };
   return {
     X: (f) => ox + APE.w * f, Y: (f) => oy + APE.h * f, lw,
-    bust: at(bucketBust), top: at(bustTop), tub: at(bucketTub), hands: at(hands),
+    // `bust` is the whole rider and takes the professor. `top` / `tub` /
+    // `hands` stay the old parts: they are used by the options that build a
+    // body out of pieces (the egg vehicles), where the tub IS the vehicle.
+    bust: (c) => { c.save(); c.translate(ox, oy); eggshellApe(c, 0, 0, 0, proParts()); c.restore(); },
+    top: at(bustTop), tub: at(bucketTub), hands: at(hands),
   };
 };
 const byId = (id) => EGGSHELL_CANDIDATES.find((c) => c.id === id);

@@ -365,6 +365,9 @@ export const TOON_SPECS = {
     // shared slide geometry is untouched by all of them.
     slideBootCover: true, slideNearOut: 0.04, slideNearLegLen: 0.86,
     slideRearBack: 0.03, slideNeckFollow: 0.2,
+    // The lead knee sits lower in the air than the cast's, so it tucks under
+    // the gown's waistband instead of coming up through it.
+    jumpKneeDrop: 0.16, celebTuck: 0.3,
   },
   // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
   // died right on his own silhouette edge with no gun sticking out of him. The
@@ -395,7 +398,7 @@ export const TOON_SPECS = {
   // jaw, a W cut into the hairline with hair piled on the crown, two ribbon ends
   // per bun beside the long tails, a gold band on the bun/hair join, and ears.
   // docs/notes/kiko-persona.md records what each of those beat and why.
-  kiko: { rig: 'humanoid', tall: 1.02, legLength: 1.06, headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true, taper: 0.8, armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true,
+  kiko: { rig: 'humanoid', tall: 1.02, legLength: 1.06, headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true, taper: 0.8, armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true, jumpKneeDrop: 0.14, celebTuck: 0.48,
     hairCut: 'jaw', fringe: 'twin-pile', bunStubs: 'pair', bunJoin: 'band', ears: true, earStud: true },
   // Clara Vault, straight off raider candidate A3 with the two-wisp hairline —
   // the whole bake-off record is in docs/notes/clara-persona.md. Olive tank
@@ -450,7 +453,7 @@ export const TOON_SPECS = {
   // is full height and reads as an ear mostly behind a head rather than as a
   // smaller ear. His beard roots at 0.94R and paints after, landing flush with
   // the jaw line rather than over the ear, so it takes nothing back.
-  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', ears: true, earOut: 0.88 },
+  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', ears: true, earOut: 0.88, jumpKneeDrop: 0.12, celebTuck: 0.52 },
 };
 
 // ---------------------------------------------------------------- helpers
@@ -1046,7 +1049,7 @@ function joint(x1, y1, x2, y2, seg, dir, seg2 = seg) {
 // segments before the color changes, or the second segment's fat outline
 // pass paints over the first one's fill. Round caps (set once in drawToon)
 // blend the two widths at the joint.
-function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = false, seg2 = seg) {
+function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = false, seg2 = seg, ramps = null, lightOffset = null) {
   const [jx, jy] = joint(x1, y1, x2, y2, seg, dir, seg2);
   // Round caps bulge HALF A STROKE WIDTH past the point they are drawn from.
   // At the wrist and the elbow that is the point — it rounds the hand and
@@ -1077,7 +1080,7 @@ function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = f
     ctx.lineTo(x2, y2);
     ctx.stroke();
   }
-  const g = fieldRamps(ctx);
+  const g = ramps || fieldRamps(ctx);
   if (g) {
     // Both bones as ONE path. Stroked segment-by-segment like the passes
     // above, the ramps are translucent and stack where the round caps overlap
@@ -1088,8 +1091,13 @@ function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = f
     ctx.lineTo(jx, jy);
     ctx.lineTo(x2, y2);
     ctx.lineWidth = (w + w2) / 2;
+    // The path already contains the arm's seat transform. Undo that offset
+    // only while applying the torso-space light, not while building geometry.
+    if (lightOffset) { ctx.save(); ctx.translate(-lightOffset[0], -lightOffset[1]); }
     ctx.strokeStyle = g.core; ctx.stroke();
     ctx.strokeStyle = g.lit; ctx.stroke();
+    if (g.spec) { ctx.strokeStyle = g.spec; ctx.stroke(); }
+    if (lightOffset) ctx.restore();
   }
 }
 // Anatomy-styled two-bone arm for the heavy rig. The bones are two-radius
@@ -1669,6 +1677,10 @@ export const CLING_POLE_X = 7 / 24;
 // "how far apart are his feet on the pole" is answered in the units of the pose
 // everyone already knows the hero by.
 const STAND_FOOT_X = 0.105;
+// How far the airborne lead foot sits below the shipped tuck, in leg-lengths,
+// for a hero whose spec does not set `jumpKneeDrop` itself. See the jump branch
+// of the leg solve for why zero read as a thigh from the groin.
+const JUMP_KNEE_DROP = 0.14;
 
 // `moveOverride` lets a SPEC name its move. Until now the move came only from
 // the id tables, which is fine for the cast and useless for a candidate — an
@@ -2028,6 +2040,17 @@ function expressionFor(id, pose = {}, spec = null) {
       else if (slotN === 5) { hmph = true; browEase = ease; } // a brow-raise at nothing
       // slots 1 & 6: a plain rest face, so the beats never crowd each other.
     }
+  }
+  // AIRBORNE THE EYES LOOK WHERE THE BODY IS GOING. The jump already rolls a
+  // face — the startled one among them — but whichever it rolls is then held
+  // rigid from launch to landing, so the one pose with real acceleration in it
+  // is the one pose with a frozen expression. The pupils now ride the vertical
+  // speed: up on the climb, down as she drops toward the ground she is about
+  // to land on. It is signed off `vy`, so it reverses at the apex by itself,
+  // and it is small — this is a glance, not a cartoon take.
+  if (pose.kind === 'jump' && !gazeAmt) {
+    const airLook = Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160));
+    glanceY += airLook * 0.02;
   }
   if (gazeAmt > 0) {
     glanceX = glanceX * (1 - gazeAmt) + (+pose.gazeX || 0) * gazeAmt;
@@ -3163,8 +3186,20 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // that sits ON the shoulders rather than standing off them. It moves the
       // lock, not its shape, so the silhouette is the same one moved inboard.
       const X = (x) => hx + side * R * (0.97 + (x - 0.97) * (spec.lockWidth ?? 1) - (spec.lockIn || 0));
-      const bounce = spec.tuftBounce && pose.kind === 'run'
-        ? Math.sin((pose.phase || 0) * Math.PI * 4 + side * 0.25) * 0.055 : 0;
+      // The tufts bounce on the STRIDE while she runs and on her VERTICAL
+      // SPEED while she is in the air — gated to the run alone they were dead
+      // still in the jump, on the most visible head in the cast, while her
+      // skirt and her quiver both moved. Rising lifts them, falling drops
+      // them, which is the lag hair has on a body that has just left the
+      // ground.
+      const airT = pose.kind === 'jump'
+        ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160)) : 0;
+      const bounce = !spec.tuftBounce ? 0
+        : pose.kind === 'run'
+          ? Math.sin((pose.phase || 0) * Math.PI * 4 + side * 0.25) * 0.055
+          : pose.kind === 'jump'
+            ? -airT * 0.075 + Math.sin((pose.time || 0) * 5 + side * 0.4) * 0.018
+            : 0;
       const Y = (y) => hy + R * (0.76 + (y - 0.76) * (spec.lockLength ?? 1)
         - (spec.lockLift || 0) + bounce * Math.max(0, (y - 0.87) / 0.73));
       const rootY = spec.joinedLocks ? 0.71 : 0.67;
@@ -3453,7 +3488,13 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // down just outside her own outline — near enough to read as lying
       // against her, far enough that it never disappears into the arm. Out at
       // 1.34R it was a separate object hanging in the air next to the hero.
-      const bound = motion ? wave * 2.1 : wave;
+      // The bound used to be worth 2.1x the shared wave, and the running tip
+      // was also placed further from the root than the standing one — 2.7R
+      // against 2.32R, plus up to another 0.38R of bound. The plait was
+      // physically LONGER in the run than at rest, by as much as a third. A
+      // rope does not do that: it swings and it lags, but its length is the
+      // one thing about it that cannot change.
+      const bound = motion ? wave * 1.15 : wave;
       // SLIDING IT KEEPS ITS LENGTH AND SPENDS IT BACKWARD. The head is
       // canted -0.28 rad and rides at 0.50u, so 2.24R below its centre IS
       // the deck: the tip is placed to land just short of it and the rest of
@@ -3462,10 +3503,46 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // she has not lost half her hair on the way down, which is exactly
       // what the crouch tuck read as. Numbers are pre-rotation, because the
       // whole head turns under them.
-      const tipX = hx - R * (portrait ? 1.32 : motion ? 1.3 : sliding ? 2.46 : tucked ? 1.42 : 1.05);
-      const tipY = hy + R * (portrait ? 1.34 : motion ? 3.0 : sliding ? 1.53 : tucked ? 1.08 : 2.62) + bound;
-      const ctlX = hx - R * (portrait ? 1.22 : motion ? 1.3 : sliding ? 1.5 : tucked ? 1.16 : 1.02);
-      const ctlY = hy + R * (portrait ? 0.62 : motion ? 1.5 : sliding ? 1.55 : tucked ? 0.5 : 1.4) + bound * 0.4;
+      // THE RUN SWINGS THE TIP ON A FIXED RADIUS. Every other pose places the
+      // tip at an x and a y, which is fine while those are constants — but in
+      // motion the bound was ADDED to y, so the faster she ran the longer her
+      // hair got. Here the tip is polar instead: one length off the root, and
+      // the stride moves the ANGLE. The plait swings and lags exactly as it did
+      // and its length cannot change, because length is no longer a sum of
+      // terms that the animation contributes to.
+      //
+      // `PLAIT_L` is the standing rope: root (-0.92R, +0.3R) to tip
+      // (-1.05R, +2.62R) is 2.32R, and that is now the length in every moving
+      // pose too.
+      const rootPX = hx - R * 0.92, rootPY = hy + R * 0.3;
+      const PLAIT_L = R * 2.32;
+      let tipX, tipY, ctlX, ctlY;
+      if (motion) {
+        // Radians off straight-down, positive swinging the tip BACKWARD. The
+        // constant is the lean a rope takes on a body that is travelling; the
+        // wave term is the stride, and 0.5 of it lands the same visible throw
+        // the old vertical bound gave without touching the length.
+        // In the AIR the stride clock is the wrong driver — there are no
+        // strides — so the jump adds its own term off the pose's vertical
+        // speed: the rope trails further back as she rises and swings forward
+        // as she falls, which is the lag a heavy plait actually has. Without
+        // it the jump ran on the same 7rad/s wave as the run and read as
+        // hanging dead straight down.
+        const air = pose.kind === 'jump' ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160)) : 0;
+        const a = 0.16 + (wave / R) * 0.5 - air * 0.3;
+        tipX = rootPX - Math.sin(a) * PLAIT_L;
+        tipY = rootPY + Math.cos(a) * PLAIT_L;
+        // The control point rides the same swing at half the length and less
+        // of the angle, which is what curves the rope instead of hinging it.
+        const ca = a * 0.55;
+        ctlX = rootPX - Math.sin(ca) * PLAIT_L * 0.52;
+        ctlY = rootPY + Math.cos(ca) * PLAIT_L * 0.52;
+      } else {
+        tipX = hx - R * (portrait ? 1.32 : sliding ? 2.46 : tucked ? 1.42 : 1.05);
+        tipY = hy + R * (portrait ? 1.34 : sliding ? 1.53 : tucked ? 1.08 : 2.62) + bound;
+        ctlX = hx - R * (portrait ? 1.22 : sliding ? 1.5 : tucked ? 1.16 : 1.02);
+        ctlY = hy + R * (portrait ? 0.62 : sliding ? 1.55 : tucked ? 0.5 : 1.4) + bound * 0.4;
+      }
       const at = sampler(hx - R * 0.92, hy + R * 0.3, ctlX, ctlY, tipX, tipY);
       // Half-width down the plait. Thin — a plait is a rope of three thin
       // strands, and the first cut's girth was most of why the shape read the
@@ -3626,11 +3703,21 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         // bow closes up and the backward lean is small. A ribbon streaming out
         // on a long arc is the thing that kept turning into a wing, and the
         // cure is the same at every length — keep it near her.
-        const trail = motion ? -R * 0.46 * len : 0;
+        // AIRBORNE the lean is not a constant. Running, `trail` is one fixed
+        // pull backward and the flutter runs on a plain clock, so the jump —
+        // which shares `motion` with the run — held the ribbons at the same
+        // angle from launch to landing. They now take a term off vertical
+        // speed: pulled further back and lifted as she rises, falling forward
+        // and hanging as she drops. A ribbon is the lightest thing she owns
+        // and should be the first thing the air moves.
+        const airT = pose.kind === 'jump'
+          ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160)) : 0;
+        const trail = motion ? -R * (0.46 + airT * 0.34) * len : 0;
+        const lift = -airT * R * 0.3 * len;
         const tipX = bx + sx * R * 0.4 * len + trail + wave * 0.45;
-        const tipY = hy + R * (motion ? 1.62 : 1.85) * len + wave * (near ? 0.45 : 0.28);
+        const tipY = hy + R * (motion ? 1.62 : 1.85) * len + wave * (near ? 0.45 : 0.28) + lift;
         const ctlX = bx + sx * R * (motion ? 0.62 : 0.9) * len + trail * 0.3 - wave * 0.38;
-        const ctlY = hy + R * (motion ? 0.76 : 0.82) * len;
+        const ctlY = hy + R * (motion ? 0.76 : 0.82) * len + lift * 0.45;
         // Ribbon width, as a fraction of the head. One number for the whole
         // shape so the root, the waist and the fork stay in proportion when it
         // moves — a ribbon that tapers at a different rate than it narrows
@@ -3805,9 +3892,18 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     for (const side of [-1, 1]) {
       const reach = spec.elfEars;
       const X = (x) => hx + side * R * x;
+      // The tip is ROUNDED, not a spike. The two curves used to meet at a
+      // single point, which at this ink weight comes out as a needle — sharper
+      // than anything else on a cast drawn entirely in soft shapes, and the
+      // first thing the eye finds on her face. A short arc across the end
+      // keeps the ear unmistakably pointed while giving it the same rounded
+      // finish every other tip in the sprite has.
+      const tipR = 0.09;
       outlined(ctx, p.s, ow, (c) => {
         c.moveTo(X(0.85), hy - R * 0.12);
-        c.quadraticCurveTo(X(1.13), hy - R * 0.2, X(reach), hy - R * 0.39);
+        c.quadraticCurveTo(X(1.13), hy - R * 0.2, X(reach - tipR * 0.62), hy - R * (0.39 - tipR * 0.34));
+        c.quadraticCurveTo(X(reach + tipR * 0.16), hy - R * (0.39 + tipR * 0.22),
+          X(reach - tipR * 0.1), hy - R * (0.39 - tipR * 0.86));
         c.quadraticCurveTo(X(reach - 0.1), hy + R * 0.18, X(0.94), hy + R * 0.43);
         c.closePath();
       });
@@ -5501,7 +5597,13 @@ function drawTail(ctx, spec, p, pose, u, ow, lod, torsoHalf, hipY, run) {
       // walked out from it, which is what lets the rings sit square across the
       // tail instead of square to the screen.
       const bushy = tailKind === 'bushy';
-      const w0 = (bushy ? 0.085 : 0.062) * u;      // girth at the root
+      // `tailRoot` narrows the plume WHERE IT MEETS THE BODY, without touching
+      // the belly girth below — which is the shape a real red panda has, and
+      // which buys room at the hip for the belt to sit lower. The two numbers
+      // are separate for exactly this reason: the volume that makes the tail
+      // read is `w1`, further out, so the root can come in without the plume
+      // getting thinner.
+      const w0 = (bushy ? 0.085 : 0.062) * u * (spec.tailRoot ?? 1);  // girth at the root
       const w1 = (bushy ? 0.115 : 0.078) * u;      // girth at the belly
       // CARRIED BACK, not up. The first cut ran the tip to hipY - 0.44u, a 47
       // degree climb, and at that angle a thick plume rooted near the waist
@@ -5580,7 +5682,7 @@ const PRINCESS_COSTUMES = {
   // gold pauldrons. The most Zelda; the least Fernwick below the neck.
   // Waist LOW and hem LONG, settled off the waist x length matrix: the high
   // waist cropped her torso and the short hems made the legs the subject.
-  gown: { rise: 0.01, skirt: { len: 0.36, flare: 1.18, slideFlare: 1.85, split: 1, splitHigh: 0.12, panels: 5, loose: true }, belt: 'gold', beltH: 0.036, bodice: true, neck: 'round', clasp: true },
+  gown: { rise: 0.01, skirt: { len: 0.36, flare: 1.18, slideFlare: 1.85, split: 1, splitHigh: 0.12, panels: 5, loose: true, fineSeams: true }, belt: 'gold', beltH: 0.036, bodice: true, neck: 'round', clasp: true },
   // The adventurer's dress: a sleeveless green bodice laced down the front
   // over a cream blouse (the candidate adds `puffs`), a knee skirt with the
   // cream underskirt showing at the hem.
@@ -6070,12 +6172,25 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
   const hemY = hemAt(spec.skirtLen ?? s.len);
   const beltHalf = halfAt(beltY);
   const wTop = beltHalf * 0.98;
-  const wHem = torsoHalf * s.flare * (frontLegs && s.flare > 1.3 ? 1.06 : 1);
+  // A skirt SPREADS when its wearer leaves the floor — the hem is the free
+  // edge and the air gets under it. Without this the knees came up inside a
+  // hem that stayed exactly as wide as it is standing, so they broke out of
+  // the sides; the other half of that fix is the shallower `celebTuck`.
+  const celebUp = Math.min(1, (g.celebLift || 0) / 0.09);
+  const airUp = jump ? Math.max(0, -Math.min(1, (Number(g.vy) || 0) / 160)) : celebUp;
+  const wHem = torsoHalf * s.flare * (frontLegs && s.flare > 1.3 ? 1.06 : 1)
+    * (1 + airUp * 0.16);
   const long = s.len > 0.6;
   const sway = (jump ? 0.02 : 0) * u
     + (run ? drag((footB[0] - hipAt(-1)) * (long ? 0.3 : 0.15), 0.045 * u) : 0)
     + (run && long ? Math.sin(t * 12) * 0.008 * u : 0);
   const dip = 0.045 * u * (s.flare / 1.3);
+  // THE SLIT CLOSES FOR THE CELEBRATION. It is cut over the stepping thigh,
+  // which is exactly right while she is walking or running — the leg it shows
+  // is a leg in motion. Standing on both feet with them apart, the same
+  // opening just shows a bare leg on one side and nothing on the other, which
+  // is what read as her knee escaping the skirt on the left only.
+  const skirtSplit = g.celebrating ? 0 : (s.split || 0);
   const skirtPath = (hy, wh, split) => (c) => {
     // An inverted V cut into one side, the leg showing through it. On the
     // trailing side (-1) it is a battle skirt; on the leading side (+1) it is
@@ -6118,7 +6233,17 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     // A shorter base sheet goes underneath first. The gores swing apart, and
     // without something behind them the gaps would show her legs through the
     // middle of the dress rather than at the split where it is intended.
-    outlined(ctx, skirtFill, ow, skirtPath(hemY - 0.05 * u, wHem * 0.9, 0));
+    // The base sheet now carries the SILHOUETTE at full ink weight, at the
+    // panels' own length and very nearly their width — so the skirt's outer
+    // contour is the same weight as the rest of her, and the panel seams on
+    // top of it can be hairlines. Cut short and narrow, as it was, the full
+    // weight landed on every panel edge instead and the skirt came out drawn
+    // in heavier line than the body wearing it.
+    outlined(ctx, skirtFill, ow, skirtPath(hemY, wHem * 0.97, 0));
+    // `fineSeams` is what makes the difference: interior folds are creases in
+    // cloth, not edges of it, and at this scale a crease drawn at contour
+    // weight reads as the skirt being cut into separate straps.
+    const seamOw = s.fineSeams ? ow * 0.4 : ow;
     const n = s.panels;
     for (let i = 0; i < n; i++) {
       const f0 = -1 + (2 * i) / n, f1 = -1 + (2 * (i + 1)) / n;
@@ -6130,8 +6255,20 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
       // Calmer than it was. At 0.05u the hems threw far enough that the skirt
       // read as caught in a wind rather than as cloth moving with her stride.
       const amp = (run ? 0.022 : 0.012) * u * (0.55 + Math.abs(fc) * 0.75);
-      const dx = Math.sin(ph) * amp + sway;
-      const dy = Math.cos(ph * 1.3) * amp * 0.32;
+      // AIRBORNE, and in the celebration hop, the hem needs a driver the pose
+      // actually has: the panels' own drift is an idle stir, while a jump wants
+      // them to trail and lift. Signed, so it reverses at the apex by itself,
+      // and the outer panels take more of it than the middle ones.
+      //
+      // Both terms are HANDED IN — `vy` and `celebLift` — rather than read off
+      // a local. This is the costume painter; the pose and the hop's motion
+      // belong to the body painter. An earlier version of this reached for
+      // `pose` and `cm` directly and threw on every hero wearing the gown.
+      const airG = jump
+        ? Math.max(-1, Math.min(1, (Number(g.vy) || 0) / 160))
+        : -Math.min(1, (g.celebLift || 0) / 0.09);
+      const dx = Math.sin(ph) * amp + sway - airG * 0.05 * u * (0.45 + Math.abs(fc));
+      const dy = Math.cos(ph * 1.3) * amp * 0.32 - airG * 0.035 * u * (0.4 + Math.abs(fc));
       // Overlapped a few percent so no gap can open between neighbours at the
       // waist, where they are pinned and must read as one garment.
       const o = 0.04;
@@ -6143,7 +6280,7 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
           px + (f0 - o) * wHem + dx, hemY + dy);
         c.closePath();
       };
-      outlined(ctx, skirtFill, ow, panelPath);
+      outlined(ctx, skirtFill, seamOw, panelPath);
       ctx.save();
       ctx.beginPath(); panelPath(ctx); ctx.clip();
       ctx.fillStyle = wash(WASH[i % WASH.length]);
@@ -6151,7 +6288,7 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
       ctx.restore();
     }
   } else {
-  outlined(ctx, skirtFill, ow, skirtPath(hemY, wHem, s.split || 0));
+  outlined(ctx, skirtFill, ow, skirtPath(hemY, wHem, skirtSplit));
   if (s.panels && !lod) {
     // GORES. A skirt cut from several panels catches the light differently on
     // each one, and that is the whole effect here: the fill is untouched and
@@ -6163,7 +6300,7 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     // as a beach ball; an irregular walk reads as folded cloth, which is what
     // this is imitating.
     ctx.save();
-    ctx.beginPath(); skirtPath(hemY, wHem, s.split || 0)(ctx); ctx.clip();
+    ctx.beginPath(); skirtPath(hemY, wHem, skirtSplit)(ctx); ctx.clip();
     const n = s.panels;
     for (let i = 0; i < n; i++) {
       const a = WASH[i % WASH.length];
@@ -6330,6 +6467,14 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
   }
 }
 
+// Preview-only fade layers, reused per destination context. The full-strength
+// join and all production callers draw directly without allocating a layer.
+const shoulderPreviewLayers = new WeakMap();
+export function supportsShoulderJoinPreview(spec) {
+  const fernwickGown = spec?.princessCostume === 'gown' && spec.back === 'quiver';
+  return spec?.rig === 'humanoid' && (!spec.taper || fernwickGown) && !spec.puffs
+    && !spec.bareArms && !spec.cannon && !spec.heavy;
+}
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'slide' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   if (pose.kind === 'slide' && SLIDE_STYLE_DRAWS[pose.slideStyle]) {
@@ -6741,9 +6886,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // same velocity) while the lead knee stays up. The apex still tucks both,
       // harder on the trailing leg than before, so the gather at the top of the
       // arc survives — it is only the rest of the arc that stops crouching.
+      // `jumpKneeDrop` lowers the lead foot in the air, in leg-lengths, which
+      // lowers the KNEE with it. It is a per-hero dial because it only matters
+      // to a hero in a skirt: the lead knee tucks to just under the waist, and
+      // on a bare-legged rig that is the pose, while under a skirt it comes up
+      // THROUGH the waistband where no cloth can cover it — the garment is
+      // drawn after the legs, but nothing is drawn above its own top edge.
+      // ...and it turned out to matter to everyone. At zero the lead foot sits
+      // 0.42 of the leg below the hip on the rise, which folds the knee up to
+      // WAIST height: the thigh leaves the pelvis horizontally, from a root
+      // at the belt line, and reads as growing out of the groin — the run's
+      // thigh never shows this because it angles down and the trousers bury
+      // its root. 0.14 (Lorenzo, judged against his own run at the same size;
+      // 0.08 still floated, 0.2 lost the knee-up) drops the knee to just under
+      // the belt where the run's thigh leaves, and the leap survives — the
+      // fall still reaches, the trailing leg still extends. Skirted heroes
+      // keep their own tuned values.
+      const kneeDrop = legL * (spec.jumpKneeDrop ?? JUMP_KNEE_DROP);
       footF = [
         (0.1 + 0.05 * airApex + 0.05 * airFall) * u,
-        hipY + legL * (0.32 + 0.1 * airRise - 0.06 * airApex + 0.46 * airFall),
+        hipY + legL * (0.32 + 0.1 * airRise - 0.06 * airApex + 0.46 * airFall) + kneeDrop,
       ];
       footB = [
         (-0.2 - 0.04 * airApex + 0.04 * airFall) * u,
@@ -6797,12 +6959,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const ride = Math.max(0, Math.min(1, pose.clingRide || 0));
     const air = cm ? Math.min(1, cm.lift / 0.1)
       : (CLING_TUCK_TOP + (CLING_TUCK - CLING_TUCK_TOP) * ride) * cling;
-    footF = [(0.1 + 0.07 * air) * u, -air * 0.4 * legL];
-    footB = [-(0.1 + 0.07 * air) * u, -air * 0.4 * legL];
+    // `celebTuck` scales how far the hop draws the knees up, per hero. A full
+    // tuck folds the leg hard, and a hard fold pushes the KNEE outward — the
+    // IK's bend has to go somewhere — which on a hero in a skirt puts both
+    // knees out through the sides of the leather. Skirted heroes take a
+    // shallower tuck: still clearly airborne, without the leg leaving the
+    // garment. Bare-legged heroes keep the full hop, where the deep fold is
+    // the whole shape of it.
+    const tuck = air * (spec.celebTuck ?? 1);
+    footF = [(0.1 + 0.07 * tuck) * u, -tuck * 0.4 * legL];
+    footB = [-(0.1 + 0.07 * tuck) * u, -tuck * 0.4 * legL];
     kneeB = -1;
     // Grounded beats keep the stand's near-straight hang; the segment eases
     // back to full length as the feet tuck so the knees get room to bend.
-    legSeg = legSeg * air + (Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u) * (1 - air);
+    // Blended on the SCALED tuck, not the raw hop. `celebTuck` shortens how far
+    // the knees draw up, but this line kept handing the leg its full slack —
+    // and a two-bone leg with slack it does not need spends it SIDEWAYS: the
+    // IK's lateral bulge grows as the square root of the slack, which is what
+    // put the knees out through the sides of the skirt however small the tuck
+    // got. Scaled together, a shallow tuck also means a taut leg.
+    legSeg = legSeg * tuck + (Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u) * (1 - tuck);
   } else {
     // Stand: each foot directly under its own hip, legs hanging near-straight.
     // The segment is measured against the REAL hip-to-target distance — the
@@ -6851,19 +7027,34 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // sweep them without cloning the style table five times over.
   const hipSplitAmt = pose.hipSplit == null ? L && L.hipSplit : Number(pose.hipSplit) || 0;
   const hipDepthAmt = pose.hipDepth == null ? L && L.hipDepth : Number(pose.hipDepth) || 0;
-  const hipSplit = styledGait ? hipSplitAmt * u : 0;
+  // THE JUMP SHARES THE RUN'S PELVIS. Every term below used to be gated on
+  // `run` alone, so the moment a hero left the ground both thighs snapped back
+  // to one root on the centre line at waist height — and with the lead knee
+  // drawn up, that thigh read as leaving from the groin rather than a hip.
+  // The same pelvis the run was tuned with (split, depth, the lowered root)
+  // now carries through the whole arc; only the symmetric air stomp keeps the
+  // centre root, since its feet are a front-on pair like the stand's.
+  const styledJump = !!L && jump && !pose.stomp;
+  const styledPelvis = styledGait || styledJump;
+  const hipSplit = styledPelvis ? hipSplitAmt * u : 0;
   const hipNearX = hipRun + nearSign * hipSeparation + sideF * hipSplit;
   const hipFarX = hipRun - nearSign * hipSeparation + sideB * hipSplit;
   // Running thighs leave from the underside of the pelvis. Starting them at
   // hipY put their round caps over the belly, creating the giant crotch ball
   // exposed by the no-skirt anatomy view.
-  const legRootY = turned && run ? hipY + 0.052 * u : hipY;
+  const legRootY = turned && (run || styledJump) ? hipY + 0.052 * u : hipY;
   // ...and the pelvis has DEPTH as well as width: the near hip sits a little
   // low and forward of the far one, which is the same receding-side cue the
   // arms and torso already carry, finally reaching the legs.
-  const legRootYF = legRootY + (styledGait ? 0.006 * u * hipDepthAmt : 0);
-  const legRootYB = legRootY + (styledGait ? -0.014 * u * hipDepthAmt : 0);
-  if (turned && run) {
+  const legRootYF = legRootY + (styledPelvis ? 0.006 * u * hipDepthAmt : 0);
+  const legRootYB = legRootY + (styledPelvis ? -0.014 * u * hipDepthAmt : 0);
+  if (turned && styledJump) {
+    // The jump's feet are fixed offsets rather than a stride, so they move
+    // with their hip roots unscaled: the pose keeps its shape and simply
+    // hangs off the turned pelvis instead of the front-on centre line.
+    footF = [hipNearX + footF[0], footF[1]];
+    footB = [hipFarX + footB[0], footB[1]];
+  } else if (turned && run) {
     const footSpread = nearSign * turnDepth * (walk ? 0.006 : 0.04) * u;
     footF = [hipNearX + footF[0] * (walk ? 0.92 : 0.84) + footSpread, footF[1]];
     footB = [hipFarX + footB[0] * (walk ? 0.82 : 0.62) - footSpread, footB[1]];
@@ -6977,7 +7168,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the two are a mirrored pair, and moving one of them alone makes a standing
   // hero lopsided.
   const armOut = (spec.armOut || 0) * u;
-  const shF = (turned
+  let shF = (turned
     ? shoulderCx + nearSign * (torsoHalf * shSpread * (1 + 0.14 * turnDepth) + turnDepth * 0.025 * u)
     : depthRun && !heavy
       ? nearFlush
@@ -8171,7 +8362,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // on. It is also the only thing left drawing her armhole now that the top
   // covers the shoulder — see `spec.tank` below — so it is doing double duty:
   // the skin lobe it lays over the shirt IS where the sleeveless top stops.
-  const shoulderCap = (x, y, fill = spec.tank ? p.s : id === 'grumpos' ? p.s : p.b) => {
+  const shoulderCap = (x, y, fill = spec.tank ? p.s : id === 'grumpos' ? p.s : p.b, ramps = null, lightOffset = null) => {
     // A SLEEVELESS SHOULDER has no cap front-on: the shirt covers the shoulder
     // and the ARM'S OWN ROOT is the armhole (see `spec.tank` below), so there
     // is no seam left for a cap to bury — only one for it to break. Whatever
@@ -8252,7 +8443,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // where the torso's specular sits. Given the torso's ramp the cap paints
     // the torso's exact shading into itself and the upper arm connects
     // invisibly, which is the whole job the cap was written for.
-    const g = formRamps(ctx, torsoPath);
+    const g = ramps || formRamps(ctx, torsoPath);
     // Solid fill masks the arm's round root cap and the torso edge beneath it,
     // merging both shapes. Stroke only the OUTER half; a complete oval creates
     // an internal seam and reads as a separate shoulder object.
@@ -8264,7 +8455,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // has to re-take the light or it stops burying anything and becomes the
     // very ball joint it exists to hide. Same field as its neighbours, so it
     // lands on the values they already carry and stays invisible.
+    if (lightOffset) { ctx.save(); ctx.translate(-lightOffset[0], -lightOffset[1]); }
     if (g) { ctx.fillStyle = g.core; ctx.fill(); ctx.fillStyle = g.lit; ctx.fill(); }
+    if (ramps?.spec) { ctx.fillStyle = ramps.spec; ctx.fill(); }
+    if (lightOffset) ctx.restore();
     // Turned, that outer half coincides with the shoulder's silhouette edge and
     // draws the contour. Front-on the arm roots INSIDE the torso, so the same
     // arc lands in open chest and reads as a ring painted on him. Here the fill
@@ -8533,6 +8727,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // `by` so the belt stays exactly where it was while the pouch drops.
       sling: 0.055,
       lean: spec.bundle === 'dispenser' ? 0.4 : spec.bundle === 'tilt' ? 0.2 : 0,
+      // THE FAR SIDE RISES IN MOTION. The rig fakes a three-quarter turn when
+      // he runs — `turnDepth`, the arm depth and the head's lead all say the
+      // body has come round — and a band going ROUND a turned body shows its
+      // far side higher, because that side sits further along the ellipse.
+      // Standing front-on there is no turn to read and the belt is level;
+      // `beltSlantRun` is the lift the far end takes once there is one.
+      //
+      // Subtracted because `beltSlant` measures how much LOWER the right end
+      // finishes than the left. The SLIDE deliberately has none of this: a
+      // reclined body is not turned, it is tipped, and the band there is
+      // already square to its own axis.
+      slant: (spec.beltSlant ?? 0) - (run ? (spec.beltSlantRun ?? 0) : 0),
       belt: true,
       canes: { ...(spec.canes || {}), parity: pose.stickParity | 0 },
       thrown: !!pose.axeThrown,
@@ -8549,14 +8755,22 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const ARM_SEAT_IN = spec.armSeatIn ?? (pose.kind === 'run' ? spec.runArmSeatIn : undefined) ?? 0.022;
   const ARM_SEAT_DOWN = spec.armSeatDown ?? (pose.kind === 'run' ? spec.runArmSeatDown : undefined) ?? 0.02;
   const nearArmSeated = pose.kind !== 'celebrate' && !(frontLegs && !turned);
+  // Fernwick's old outward socket made room for her sling. Fit only the
+  // preview's near socket back into the gown, after solving the hand targets:
+  // the bow grip and reach stay put, and the sling follows the fitted socket.
+  if (id === 'fernwick' && spec.shoulderJoinPreview === 'smooth'
+      && nearArmSeated && !turned && !slide) shF -= sideF * 0.02 * u;
   // Gallery opt-in only. Keep the shipped capsule/cap treatment until the
-  // Gary/Dolores comparison is approved. Only the near arm in locomotion or
+  // cast comparison is approved. Only the near arm in locomotion or
   // an action receives it; resting pairs and celebrations retain their joins.
   const smoothShoulderPreview = spec.shoulderJoinPreview === 'smooth'
-    && (id === 'gary' || id === 'dolores')
+    && supportsShoulderJoinPreview(spec)
     && pose.kind !== 'celebrate' && (nearArmSeated || armsReachFront)
-    && !turned && !spec.taper && !spec.puffs && !spec.bareArms && !spec.cannon && !heavy;
-  const drawShoulderJoin = () => {
+    && !turned;
+  let shoulderJoinRamps = null;
+  const shoulderLightOffset = smoothShoulderPreview && nearArmSeated
+    ? [-sideF * ARM_SEAT_IN * u, ARM_SEAT_DOWN * u] : null;
+  const shoulderJoin = (() => {
     if (!smoothShoulderPreview) return;
     const side = sideF;
     const seatX = nearArmSeated ? side * ARM_SEAT_IN * u : 0;
@@ -8568,42 +8782,332 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const length = Math.hypot(ex - sx, ey - sy);
     if (length < 1e-6) return;
     const dx = (ex - sx) / length, dy = (ey - sy) / length;
+    // The join used to fade out by bone angle as the arm folded forward,
+    // because the curve of the day — leaving the top of the shoulder corner —
+    // traced a second ridge behind the upper arm there. That fade handed the
+    // forward-swing frames back to the old ball-joint notch, which is the very
+    // dip this is for. The crown is now a fillet that starts on the corner arc
+    // just before the notch (below), so it blends that case too and no longer
+    // fades; `joinAmount` stays as the machinery for a future fade, at 1.
+    const joinAmount = 1;
     const radius = armWF / 2;
     const nx = side * dy, ny = -side * dx;
-    const bx = sx + dx * length * 0.65 + nx * radius;
-    const by = sy + dy * length * 0.65 + ny * radius;
+    // limb2's outline extends a full ow beyond its fill, whereas the crown
+    // stroke extends half ow. Match their OUTER edges at the tangent point;
+    // joining at the fill radius leaves a half-outline-width step here.
+    const joinRadius = radius + ow * 0.5;
+    // The plain torso is roundRectPath, which clamps its corner to half the
+    // body's height; on a short torso that is less than 0.7 of the half-width,
+    // and a crown built on the unclamped circle started INSIDE the drawn edge
+    // — a half-outline step at T, read as a blurry nub on the contour.
+    const shoulderRadius = spec.taper
+      ? taperCtl(torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft).rT
+      : Math.min(torsoHalf * 0.7, torsoHalf, (torsoBot - torsoTop) / 2);
+    const R = shoulderRadius;
+    const cxC = torsoCx + side * (torsoHalf - R), cyC = torsoTop + R;
+    // WHERE THE CROWN MEETS THE ARM. 0.65 of the upper arm when the arm swings
+    // back; when it hangs, no lower than the height where the torso's corner
+    // arc ends. A hanging arm's edge runs just outside the flank, and a curve
+    // from the top of the corner down to a point far below the corner has to
+    // be nearly two straight tangents to clear the arc between — the shoulder
+    // came out boxy. Ending level with the corner's end makes the tangents'
+    // triangle the corner's own box pushed out to the arm, and a round curve
+    // (the quarter-circle's own lam ≈ 0.55) fits it. Continuous in the arm
+    // angle: the height cap only bites once the arm is steep enough.
+    let tB = length * 0.65;
+    if (dy > 1e-3) tB = Math.max(length * 0.3, Math.min(tB, (cyC - sy - ny * joinRadius) / dy));
+    const bx = sx + dx * tB + nx * joinRadius;
+    const by = sy + dy * tB + ny * joinRadius;
     // A limb crossing the chest has no exposed shoulder notch to bridge.
-    const half = roundHalfAt(by, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7);
+    const half = spec.taper
+      ? (by < torsoTop + shoulderRadius
+        ? torsoHalf - shoulderRadius * (1 - Math.sqrt(Math.max(0, (by - torsoTop) / shoulderRadius))) ** 2
+        : taperHalfAt(by, torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft))
+      : roundHalfAt(by, torsoTop, torsoBot, torsoHalf, shoulderRadius);
     if (by >= torsoTop && side * (bx - torsoCx) <= half) return;
-    const ax = torsoCx + side * torsoHalf * 0.3, ay = torsoTop;
-    const reach = Math.max(radius, side * (bx - ax));
-    const tangent = Math.min(length * 0.25, reach * 0.35);
-    const curve = (c) => {
-      c.moveTo(ax, ay);
-      c.bezierCurveTo(ax + side * reach * 0.45, ay,
-        bx - dx * tangent, by - dy * tangent, bx, by);
-    };
-    ctx.save();
-    ctx.beginPath();
-    curve(ctx);
-    // Return inside the upper arm and chest. Only the crown is outlined;
-    // outlining this closure would draw the socket seam back in again.
-    ctx.lineTo(bx - nx * radius * 1.8, by - ny * radius * 1.8);
-    ctx.lineTo(sx - side * radius, sy + radius);
-    ctx.lineTo(ax, Math.max(sy + radius, ay + radius));
-    ctx.closePath();
-    ctx.fillStyle = p.b; ctx.fill();
-    const g = formRamps(ctx, torsoPath);
-    if (g) {
-      ctx.fillStyle = g.core; ctx.fill();
-      ctx.fillStyle = g.lit; ctx.fill();
-      if (g.spec) { ctx.fillStyle = g.spec; ctx.fill(); }
+    // THE CROWN IS A FILLET, not a free curve. The torso and the arm are both
+    // trimmed to it, so wherever it passes INSIDE either of them the silhouette
+    // is cut down and the shoulder reads with a dip — and a curve that leaves
+    // the top of the shoulder corner cannot avoid that whenever the arm hangs
+    // close: its outer edge line enters the rounded corner, and no curve
+    // tangent to both can pass outside the corner it starts on top of. So:
+    // the corner is a circle of radius shoulderRadius centred at C; the arm's
+    // outer edge is the line L through b along the bone. Where L enters the
+    // circle (I), the crown starts part-way round the arc BEFORE I, at T, and
+    // ends on L at b. Between them it is a cubic inside the triangle made by
+    // the tangent at T and L (meeting at Q); a curve inside that triangle is
+    // convex and tangent-continuous at both ends. How far it bulges toward Q
+    // (`lam`) is the smallest that clears both shapes, checked by sampling —
+    // straight tangents (lam = 1) always clear, a rounder curve can cut the
+    // arc between T and I. When L misses the corner the arc's top is T.
+    // WHERE THE FILLET LEAVES THE CORNER. Not always at its top: a curve from
+    // up there that is tangent to the arm's edge at b has to clear the whole
+    // corner arc between, and when b sits beside the corner (the arm hanging)
+    // only a near-straight pair of tangents does — the shoulder went boxy.
+    // The tangent from b to the corner circle touches the arc at Tb; the
+    // fillet starts halfway between the top and Tb. When the arm swings back,
+    // b is far out at shoulder height, Tb is near the top and so is T; when
+    // the arm hangs, Tb is down the flank and T sits mid-corner, leaving the
+    // torso's own arc to draw the upper shoulder and the fillet a compact,
+    // round blend. Where the arm's edge cuts INTO the circle its tangent point
+    // always precedes the entry point, so this covers that case too. T moves
+    // continuously with the arm: no pops.
+    let phiT = 0;
+    {
+      const mX = bx - cxC, mY = by - cyC, dist = Math.hypot(mX, mY);
+      if (dist > R + 1e-6) {
+        const beta = Math.acos(R / dist), base = Math.atan2(mY, mX);
+        let best = Infinity;
+        for (const ang of [base - beta, base + beta]) {
+          const phi = Math.atan2(side * Math.cos(ang), -Math.sin(ang));
+          if (phi >= -1e-6 && phi < best) best = phi;
+        }
+        if (best !== Infinity) phiT = 0.5 * Math.min(Math.PI / 2, best);
+      }
     }
-    ctx.beginPath(); curve(ctx);
-    ctx.lineWidth = ow; ctx.strokeStyle = OUTLINE; ctx.stroke();
-    ctx.restore();
+    phiT = Math.max(0, Math.min(Math.PI / 2, phiT));
+    const ax = cxC + side * R * Math.sin(phiT), ay = cyC - R * Math.cos(phiT);
+    const tTx = side * Math.cos(phiT), tTy = Math.sin(phiT);
+    const tnx = side * Math.sin(phiT), tny = -Math.cos(phiT);
+    // Q: where the tangent at T meets L. Must lie ahead of T and behind b.
+    const cr = tTx * dy - tTy * dx;
+    let qx, qy, lam = 1;
+    const sQ = ((bx - ax) * dy - (by - ay) * dx) / (cr || 1e-9);
+    const tQ = ((bx - ax) * tTy - (by - ay) * tTx) / (cr || 1e-9);
+    const tangentsMeet = Math.abs(cr) > 1e-3 && sQ > 0 && tQ < 0;
+    if (tangentsMeet) {
+      qx = ax + tTx * sQ; qy = ay + tTy * sQ;
+      const inside = (px, py) => {
+        // Penetration into the SILHOUETTE: the torso's rounded top and flank,
+        // and the arm's straight part where it is outside the torso. Not the
+        // arm's root cap (t < radius) — cutting that is the point — and not
+        // the arm where it lies inside the torso, which is not an edge at
+        // all: counting it there kept every rounder curve from passing and
+        // left the shoulder boxy.
+        let pen = 0;
+        if (py > torsoTop && py < torsoBot) {
+          if (py >= cyC || side * (px - cxC) <= 0) pen = torsoHalf - side * (px - torsoCx);
+          else pen = R - Math.hypot(px - cxC, py - cyC);
+        }
+        if (pen > 0) return pen;
+        const t = (px - sx) * dx + (py - sy) * dy;
+        if (t > radius && t < length) return Math.max(0, radius - Math.abs((px - sx) * dy - (py - sy) * dx));
+        return 0;
+      };
+      for (const l of [0.55, 0.65, 0.75, 0.85, 0.95, 1]) {
+        const p1x = ax + l * (qx - ax), p1y = ay + l * (qy - ay);
+        const p2x = bx + l * (qx - bx), p2y = by + l * (qy - by);
+        let worst = 0;
+        for (let k = 1; k < 24; k++) {
+          const w = k / 24, v = 1 - w;
+          const px = v * v * v * ax + 3 * v * v * w * p1x + 3 * v * w * w * p2x + w * w * w * bx;
+          const py = v * v * v * ay + 3 * v * v * w * p1y + 3 * v * w * w * p2y + w * w * w * by;
+          worst = Math.max(worst, inside(px, py));
+        }
+        lam = l;
+        // Near zero, not a tenth of an outline: the torso and arm are trimmed
+        // to this curve, so any tolerated dip is silhouette cut away, and at T
+        // a dip of a tenth already showed as a step against the torso's line.
+        if (worst <= ow * 0.02) break;
+      }
+    }
+    const curve = (c, offset = 0, offsetB = offset) => {
+      // Parallel offset of the fillet: move each end along its own normal and
+      // Q along the bisector, so the offset curve keeps both tangencies. The
+      // two ends may take different offsets (see bridgePath).
+      const ax2 = ax + tnx * offset, ay2 = ay + tny * offset;
+      const bx2 = bx + nx * offsetB, by2 = by + ny * offsetB;
+      c.moveTo(ax2, ay2);
+      if (tangentsMeet) {
+        const dotN = 1 + (tnx * nx + tny * ny), offQ = (offset + offsetB) / 2;
+        const qx2 = qx + (dotN > 0.05 ? offQ * (tnx + nx) / dotN : offQ * nx);
+        const qy2 = qy + (dotN > 0.05 ? offQ * (tny + ny) / dotN : offQ * ny);
+        c.bezierCurveTo(ax2 + lam * (qx2 - ax2), ay2 + lam * (qy2 - ay2),
+          bx2 + lam * (qx2 - bx2), by2 + lam * (qy2 - by2), bx2, by2);
+      } else {
+        // Tangents do not meet usefully (arm near-parallel to the corner's
+        // tangent): a plain blend, ends still on their normals.
+        const reach = Math.hypot(bx - ax, by - ay);
+        c.bezierCurveTo(ax2 + tTx * reach * 0.45, ay2 + tTy * reach * 0.45,
+          bx2 - dx * reach * 0.35, by2 - dy * reach * 0.35, bx2, by2);
+      }
+    };
+    // THE BRIDGE: the region the crown spans. Under the crown's inner edge,
+    // down into the arm (deep, for the fill — the arm paints over it) or to
+    // the arm's fill edge (shallow, for the arm's clip), across the notch to
+    // the torso's flank and back up the corner arc, both inset half an
+    // outline: that is where the torso's own outline band under the crown
+    // ends, so filling to it hides that band and nothing deeper. It is FILLED
+    // before the torso's decorations and the arm, so a strap drawn over the
+    // shoulder still reaches the contour, and the arm is CLIPPED to it
+    // instead of painted over, so its outline never stacks under the crown.
+    const thetaAt = (phi) => Math.atan2(-Math.cos(phi), side * Math.sin(phi));
+    const bridgePath = (c, deep) => {
+      // TWO OUTLINE CONVENTIONS meet on this crown. The torso's outline is
+      // centred on its edge with body fill under the inner half of the line;
+      // limb2's outline sits wholly OUTSIDE the arm's fill. The crown is one
+      // stroke, so what lies under it has to change along its length: body
+      // colour up to the stroke's centreline at T, where it continues the
+      // torso's line, tapering to the stroke's inner edge at b, where it
+      // continues the arm's. Filled to the inner edge throughout, the crown's
+      // inner half sat over nothing at the torso end and read as a lighter,
+      // blurred nub on the contour.
+      curve(c, 0, -ow * 0.5);
+      if (!deep) {
+        // The arm's clip: the band between the arm's fill edge and the crown.
+        c.lineTo(sx + nx * radius, sy + ny * radius);
+      } else {
+        // The fill: everything under the crown out to well INSIDE the arm and
+        // the torso. Its inner boundary hugs the arm (0.8 radius past the
+        // bone, root-ward) and then sits deep in the torso, so it never crosses
+        // either silhouette — an earlier version ran out to the flank and
+        // crossed the corner arc when the root sat inside the torso, and the
+        // self-intersection left the torso's outline band showing under the
+        // crown as a dark wedge. Covering interior is harmless: it is drawn
+        // before anything worn, in the same colour and the same light.
+        const inX = torsoCx + side * torsoHalf * 0.4;
+        c.lineTo(bx - nx * radius * 1.8, by - ny * radius * 1.8);
+        const prY = sy - ny * radius * 0.8;
+        c.lineTo(sx - nx * radius * 0.8, prY);
+        c.lineTo(inX, Math.max(prY, ay));
+        c.lineTo(inX, ay);
+      }
+      c.closePath();
+    };
+    return { curve, bridgePath, ax, ay, bx, by, sx, sy, ex, ey, dx, dy, nx, ny, tnx, tny, radius, side, joinAmount,
+      corner: { cx: cxC, cy: cyC, r: R, phiT, thetaAt },
+      lam, phiT, tangentsMeet, trim: dy > 0 };
+  })();
+  const clipShoulderCrown = (seated = true, inverse = false, withBridge = false) => {
+    if (!shoulderJoin?.trim) return;
+    const { curve, ax, ay, bx, by, nx, ny, tnx, tny, bridgePath, corner, side } = shoulderJoin;
+    // The old round cap can project ABOVE the connecting curve. Clip the
+    // painted arm to that same crown, instead of leaving a second little bump
+    // behind it. The cut sits on the crown stroke's INNER edge: OUTLINE is
+    // translucent, so any of the arm's own outline left under the crown
+    // stroke stacks with it into a darker band — and at the tangent point the
+    // two coincide, so the stack ran the whole tangent and read as a dark
+    // crescent at the junction. Cut here, the arm's band is gone wherever the
+    // crown paints and the crown alone is the contour up to the handover.
+    //
+    // Built as EXCLUDED regions against a covering rect, even-odd: the cap
+    // (everything outside the crown between its two end normals, so nothing
+    // before T or past b is touched), and with `withBridge` the bridge region
+    // too, so the arm's band cannot show under the crown. `inverse` keeps
+    // only the excluded regions — see withCrownTrim.
+    const pad = -ow * 0.5;
+    const extent = 8 * u;
+    const [ox, oy] = (seated && shoulderLightOffset) || [0, 0];
+    ctx.translate(-ox, -oy);
+    ctx.beginPath();
+    if (!inverse) ctx.rect(torsoCx - extent * 2, -extent * 2, extent * 4, extent * 4);
+    curve(ctx, pad);
+    ctx.lineTo(bx + nx * (extent + pad), by + ny * (extent + pad));
+    // Back over the top: the fillet starts part-way round the corner, and the
+    // arm's round root cap can poke above the torso's OWN contour on the
+    // stretch of corner before T. So the cut does not return along T's normal
+    // but runs up to the corner's top and back down its outer outline edge
+    // (the arc, half an outline out) to T, then in across the crown's butt end.
+    const { cx: ccx, cy: ccy, r: cr, phiT: cphi, thetaAt } = corner;
+    ctx.lineTo(ccx + side * extent, -extent);
+    ctx.lineTo(ccx, -extent);
+    ctx.lineTo(ccx, ccy - cr - ow * 0.5);
+    ctx.arc(ccx, ccy, cr + ow * 0.5, thetaAt(0), thetaAt(cphi), side < 0);
+    ctx.closePath();
+    if (withBridge) bridgePath(ctx, false);
+    ctx.clip('evenodd');
+    ctx.translate(ox, oy);
+  };
+  // Draw something the crown trims. At full join strength the part above the
+  // crown is simply cut away. While the join is FADING (joinAmount < 1, the
+  // arm folding inward) the crown is drawn at partial alpha, and a cut made at
+  // full strength under a half-drawn crown left a notch in the contour for the
+  // whole fade window: the old cap gone, the new crown not yet there. So the
+  // trimmed-off part is drawn back at the complementary alpha — the old
+  // contour crossfades out exactly as the new one fades in.
+  const withCrownTrim = (seated, draw, withBridge = false) => {
+    if (!shoulderJoin?.trim) { draw(); return; }
+    ctx.save(); clipShoulderCrown(seated, false, withBridge); draw(); ctx.restore();
+    if (shoulderJoin.joinAmount < 1) {
+      ctx.save(); clipShoulderCrown(seated, true, withBridge);
+      ctx.globalAlpha *= 1 - shoulderJoin.joinAmount;
+      draw(); ctx.restore();
+    }
+  };
+  // Paint part of the join, faded as ONE layer when joinAmount < 1. Fading
+  // fill and lighting separately shades the existing shoulder twice and
+  // leaves a dark patch.
+  const withJoinLayer = (paint) => {
+    const { joinAmount } = shoulderJoin;
+    let c = ctx;
+    if (joinAmount < 1) {
+      let layer = shoulderPreviewLayers.get(ctx);
+      if (!layer) {
+        const canvas = document.createElement('canvas');
+        layer = canvas.getContext('2d');
+        shoulderPreviewLayers.set(ctx, layer);
+      }
+      if (layer.canvas.width !== ctx.canvas.width) layer.canvas.width = ctx.canvas.width;
+      if (layer.canvas.height !== ctx.canvas.height) layer.canvas.height = ctx.canvas.height;
+      layer.setTransform(1, 0, 0, 1, 0, 0);
+      layer.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+      layer.setTransform(ctx.getTransform());
+      layer.lineCap = ctx.lineCap; layer.lineJoin = ctx.lineJoin;
+      c = layer;
+    }
+    paint(c);
+    if (c !== ctx) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha *= joinAmount;
+      ctx.drawImage(c.canvas, 0, 0);
+      ctx.restore();
+    }
+  };
+  // THE BRIDGE FILL. Drawn straight after the torso and BEFORE anything worn
+  // on it: body colour in the torso's own light across the notch and the
+  // torso's outline band under the crown, and deep into where the arm will
+  // paint over it. Nothing drawn later is covered by it — a strap over the
+  // shoulder reaches the contour, the arm's fill meets it seamlessly because
+  // it is the same colour in the same light underneath.
+  const drawShoulderBridge = () => {
+    if (!shoulderJoin) return;
+    withJoinLayer((c) => {
+      c.save();
+      c.beginPath(); shoulderJoin.bridgePath(c, true);
+      c.fillStyle = p.b; c.fill();
+      const g = formRamps(ctx, torsoPath);
+      if (g) {
+        c.fillStyle = g.core; c.fill();
+        c.fillStyle = g.lit; c.fill();
+        if (g.spec) { c.fillStyle = g.spec; c.fill(); }
+      }
+      c.restore();
+    });
+  };
+  // THE CROWN STROKE, last of all: the contour from T to the handover at b.
+  const drawShoulderJoin = () => {
+    if (!shoulderJoin) return;
+    const { curve } = shoulderJoin;
+    withJoinLayer((c) => {
+      c.save();
+      // BUTT cap. The arm's own outline resumes exactly at the handover point
+      // (clipShoulderCrown cuts it at this stroke's inner edge before that point
+      // and leaves it whole after), so the crown must stop dead there too: a
+      // round cap would reach ow/2 past it, onto the arm's band, and OUTLINE
+      // being translucent that overlap prints as a dark half-disc. The same
+      // holds at T against the torso's own outline.
+      c.beginPath(); curve(c);
+      c.lineCap = 'butt';
+      c.lineWidth = ow; c.strokeStyle = OUTLINE; c.stroke();
+      c.restore();
+    });
   };
   const drawFrontArm = () => {
+    // Build the shared light in torso space BEFORE seating the arm. The arm,
+    // cap and connecting curve must carry the same chest highlight; otherwise
+    // the round arm root erases that highlight and reads as a darker disc.
+    shoulderJoinRamps = smoothShoulderPreview ? formRamps(ctx, torsoPath) : null;
     // The victory routine is choreographed as a mirrored PAIR — fernwick's
     // hands clasp overhead, grumpos claps — so seating one arm of it breaks
     // the join. Left alone there.
@@ -8844,7 +9348,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // exactly the right gauge, which on a robot reads as the shoulder joint.
     } else {
       if (armDimsF) muscleLimb(ctx, shF, armYF, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDimsF);
-      else limb2(ctx, shF, armYF, handF[0], handF[1], armSeg, elbF, armWF, armFill, ow, armWF, true);
+      else {
+        withCrownTrim(true, () => limb2(ctx, shF, armYF, handF[0], handF[1], armSeg, elbF, armWF, armFill, ow, armWF, true, armSeg, shoulderJoinRamps, shoulderLightOffset), true);
+      }
       // For a SLEEVED hero the cap goes first and the sleeve covers it. In the
       // shipped order — cap last, after everything — it painted on top of the
       // puff, and a disc lit on the torso's ramp sitting on a sleeve lit on its
@@ -8918,7 +9424,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         // mote landed. Three separate geometry fixes had been aimed at it
         // first, none of which could have worked.
       }
-      if (!spec.puffs) shoulderCap(shF, armYF);
+      if (!spec.puffs) {
+        withCrownTrim(true, () => shoulderCap(shF, armYF, undefined, shoulderJoinRamps, shoulderLightOffset), true);
+      }
     }
     ctx.restore();
     drawShoulderJoin();
@@ -8943,8 +9451,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Lifted clear of the near arm: on the depth rig that arm swings up the
     // same screen-left side the axe is slung on, and at the top of the upswing
     // the elbow was grazing the haft.
-    const axy = shoulderY - 0.05 * u;
-    paintBackAxe(ctx, p, u, ow, lod, axx, axy);
+    // `axeArt.lift` raises where the axe is pinned, in u — it rides UP the
+    // shoulder toward the head rather than changing its angle. Angle and
+    // height are different judgements: a steeper haft turns the axe, a lift
+    // moves the whole thing, and the row that chose the angle could not have
+    // told them apart while both were baked into one anchor.
+    const axy = shoulderY - (0.05 + ((spec.axeArt && spec.axeArt.lift) || 0)) * u;
+    paintBackAxe(ctx, p, u, ow, lod, axx, axy, spec.axeArt);
   }
 
   // The pack is slung on his back, so like the axe it belongs UNDER every
@@ -9172,7 +9685,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // The heavy torso is bare skin: thinner and fainter still than the arms'
   // SKIN_OUTLINE — it is the biggest uninterrupted shape on him, and at full
   // weight its rim dominates the sprite the way no limb's can.
-  outlined(ctx, p.b, heavy ? ow * 0.65 : ow, torsoPath, heavy ? 'rgba(26,16,40,0.15)' : OUTLINE);
+  // Both overlapping forms must stop at the shared crown. Trimming only the
+  // arm leaves the rounded torso corner poking above it on inward frames.
+  withCrownTrim(false, () => outlined(ctx, p.b, heavy ? ow * 0.65 : ow, torsoPath, heavy ? 'rgba(26,16,40,0.15)' : OUTLINE));
+  drawShoulderBridge();
   // A princess costume whose bodice is not the sleeve colour repaints the
   // torso HERE, with the torso and before either arm, so a puffed sleeve
   // drawn later sits on top of it instead of underneath.
@@ -9430,11 +9946,20 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const beat = Math.sin((pose.time || 0) * 5) > 0;
     dot(ctx, px - torsoHalf * 0.24, torsoTop + 0.095 * u, 0.018 * u, beat ? p.a : p.w);
     dot(ctx, px + torsoHalf * 0.24, torsoTop + 0.095 * u, 0.018 * u, beat ? p.w : p.a);
+    // The waist seam spans the UNSQUASHED torso, not `torsoHalf`. A hull seam
+    // is a join in metal: the plating can flex around it — his celebration
+    // squashes the whole torso, and that is fine — but the seam itself is a
+    // fixed piece of hardware and cannot get shorter. Tied to torsoHalf it
+    // shrank on every turn and squash, and a short line centred under a face
+    // stops reading as a seam and starts reading as a MOUTH.
+    //
+    // Run wider too, for the same reason: a seam that reaches the hull's edges
+    // is structure, one that stops short of them is a feature drawn on him.
     ctx.strokeStyle = p.p;
     ctx.lineWidth = hair(0.6, ow * 0.5);
     ctx.beginPath();
-    ctx.moveTo(px - torsoHalf * 0.85, hipY - 0.055 * u);
-    ctx.lineTo(px + torsoHalf * 0.85, hipY - 0.055 * u);
+    ctx.moveTo(px - torsoBaseHalf * 0.95, hipY - 0.055 * u);
+    ctx.lineTo(px + torsoBaseHalf * 0.95, hipY - 0.055 * u);
     ctx.stroke();
     // No hull sheen. A soft diagonal streak used to run down the plating beside
     // the chest panel to sell it as curved metal; at the size he is actually
@@ -9529,18 +10054,28 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const strapTopX = (s) => px + s * torsoHalf * (bib ? 0.62 : 0.5);
     const strapBotX = (s) => px + s * (bib ? bibHalf : torsoHalf * 0.34);
     const strapStroke = (s, endY) => {
-      ctx.save();
-      ctx.beginPath(); torsoPath(ctx); ctx.clip();
-      ctx.strokeStyle = p.p;
-      ctx.lineWidth = (bib ? 0.055 : 0.045) * u;
-      ctx.beginPath();
-      for (const sg of s) {
-        const t = (endY - strapTopY) / (strapEndY - strapTopY);
-        ctx.moveTo(strapTopX(sg), strapTopY);
-        ctx.lineTo(strapTopX(sg) + (strapBotX(sg) - strapTopX(sg)) * t, endY);
-      }
-      ctx.stroke();
-      ctx.restore();
+      const paint = (clipPath) => {
+        ctx.save();
+        ctx.beginPath(); clipPath(ctx); ctx.clip();
+        ctx.strokeStyle = p.p;
+        ctx.lineWidth = (bib ? 0.055 : 0.045) * u;
+        ctx.beginPath();
+        for (const sg of s) {
+          const t = (endY - strapTopY) / (strapEndY - strapTopY);
+          ctx.moveTo(strapTopX(sg), strapTopY);
+          ctx.lineTo(strapTopX(sg) + (strapBotX(sg) - strapTopX(sg)) * t, endY);
+        }
+        ctx.stroke();
+        ctx.restore();
+      };
+      paint(torsoPath);
+      // Under the smooth shoulder crown the near shoulder is the BRIDGE, not
+      // the torso's rounded corner: clipped to the corner alone the strap
+      // stopped at the arc and hung a hair short of the new contour. A second
+      // pass clipped to the bridge runs it on to the crown's inner edge. Two
+      // passes rather than one union clip: the two regions overlap and their
+      // windings are not guaranteed to agree, and the stroke is opaque anyway.
+      if (shoulderJoin) paint((c) => shoulderJoin.bridgePath(c, false));
     };
     strapStroke([-1, 1], strapEndY);
     // One pocket with a tool head in it, and nothing else on the bib. The bib
@@ -9771,24 +10306,57 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // shorten again, or the tucked legs and feet vanish under them.
     const tipY = hipY + legL * (slide ? 0.35 : 0.47) + bob * 0.5;
     // Body half-width where the belt sits and where the skirt hangs from.
-    const halfAt = (y) => (spec.taper
-      ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft)
+    //
+    // The sample is CLAMPED INSIDE the torso's own span. Airborne the body
+    // bobs and the belt line can fall below `torsoBot`, where taperHalfAt has
+    // nothing left to interpolate and returns the narrowest width it knows —
+    // so the belt and the skirt top pinched in on the jump and only on the
+    // jump. Clamped, they measure the bottom of the torso instead, which is
+    // the widest the leather is ever asked to span.
+    const halfAt = (y0) => (spec.taper
+      ? taperHalfAt(Math.min(y0, torsoBot - 0.005 * u),
+        torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft)
       : torsoHalf);
-    const beltHalf = halfAt(beltY);
+    // A HAIR WIDER THAN THE TAPER SAYS. `halfAt` returns the torso's half-width
+    // at the belt's own height, which is the right measurement for a band that
+    // has to sit ON the body — but the belt is drawn as a rounded rect and its
+    // corners pull in from that width, while the body beside it is a straight
+    // edge at this height. Sized exactly, the band came up short of his sides
+    // and left a sliver of skin either side of it: the belt read as floating in
+    // front of him rather than fastened round him. The same 1.06 goes on the
+    // skirt top below, so the leather still hangs off the belt's own line.
+    const beltHalf = halfAt(beltY) * 1.06;
     // Panels span the body's edge at the belt, then splay outward — sized off
     // the shoulder line they'd hang past the hips and re-read as belly.
-    const wTop = halfAt(top) * 0.98;
+    const wTop = halfAt(top) * 1.04;
     // The splay has to clear the thighs, and front-on they root wide (±0.095u,
     // half a legW each side) instead of stacking on one center hip — so the
     // standing and celebrating poses need a real A-line or his legs show past
     // the leather. In profile the legs are behind it and a tighter hang reads
     // better. Fanned wider than this the straps stop overlapping.
     const flare = frontLegs || cm ? 1.5 : 1.18;
-    const wHem = wTop * flare;
+    // Spreads with the hop and the jump, like every hem on the roster: the
+    // straps are free at the bottom and the air opens them.
+    // Spreads as she leaves the floor — the straps are free at the bottom and
+    // the air opens them. Written out here rather than reusing `airHem` below:
+    // that is declared further down the block, and hoisting it to reach this
+    // line is the kind of move that has already cost this file once today.
+    const upNow = Math.max(0, jump
+      ? -Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160))
+      : Math.min(1, ((cm && cm.lift) || 0) / 0.09));
+    const wHem = wTop * flare * (1 + upNow * 0.14);
     // How far each leg has swung from its OWN hip — not from the body center,
     // which reads as a permanent outward pull when the legs stand apart and
     // parts the straps down the middle even at rest.
     const swingF = footF[0] - hipAt(1), swingB = footB[0] - hipAt(-1);
+    // The CELEBRATION is airborne too — it is a hop — and its lift is the same
+    // kind of signal as a jump's vertical speed, so the hems take it the same
+    // way: they trail and lift as she leaves the floor and settle as she comes
+    // back down. Without it the skirt is the one dead thing in a pose whose
+    // whole job is looking pleased.
+    const airHem = jump
+      ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160))
+      : cm ? -Math.min(1, (cm.lift || 0) / 0.09) : 0;
     // Four separate straps of leather hung off the belt, NOT one skirt: each
     // is its own quad, pinned at the belt and free at the bottom, so it swings
     // on the leg beneath it while its neighbours hang. `gain` is how much of
@@ -9840,8 +10408,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const lead = followsFront ? swingF : swingB;
       const rise = followsFront ? footF[1] : footB[1];
       const topX = px + f * wTop * depthScale;
-      const bx = px + f * wHem * depthScale + sway + drag(drivenGain * 0.45 * lead, 0.055 * u);
-      const by = tipYAt(f) + drag(drivenGain * 0.45 * rise, 0.045 * u);
+      // Airborne, `lead` and `rise` are frozen, so the strap's own share of
+      // the air is added here: pulled back and lifted while she climbs,
+      // hanging as she falls. The outer straps take more of it than the
+      // inner ones, which is what keeps the fan from moving as one board.
+      const airX = -airHem * 0.05 * u * (0.5 + Math.abs(f));
+      const airY = -airHem * 0.045 * u * (0.5 + Math.abs(f));
+      const bx = px + f * wHem * depthScale + sway
+        + drag(drivenGain * 0.45 * lead, 0.055 * u) + airX;
+      const by = tipYAt(f) + drag(drivenGain * 0.45 * rise, 0.045 * u) + airY;
       outlined(ctx, p.w, hair(0.6, ow * 0.7), (c) => {
         c.moveTo(topX - panelHalf, topYAt(f));
         c.lineTo(topX + panelHalf, topYAt(f));
@@ -9893,6 +10468,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     paintPrincessCostume(ctx, spec, p, u, ow, lod, { px: torsoCx, torsoTop, torsoBot, torsoHalf, torsoPath, hipY, legL, bob, run, jump, frontLegs, hipAt, footB, waistHalf, shoulderSoft, t: pose.time || 0, slingSocketX: shF - (nearArmSeated ? sideF * ARM_SEAT_IN * u : 0),
       slingSocketY: armY + (nearArmSeated ? ARM_SEAT_DOWN * u : 0),
       slingSocketR: armWF * 0.52,
+      // The celebration hop's lift, handed over rather than reached for: the
+      // hop belongs to this painter and the skirt is drawn by another one.
+      celebLift: cm ? cm.lift || 0 : 0, vy: pose.vy || 0, celebrating: pose.kind === 'celebrate',
       setSlingOverArm: (paint) => { slingOverArm = paint; } });
   } else if (spec.tunic && !slide) {
     // Green tunic: the torso's flat hem flares into a short skirt over the
@@ -10007,11 +10585,20 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // length left to say it with, and the panels have to clear thighs that
       // root wide front-on.
       const flare = frontLegs ? 1.72 : 1.44;
-      const wHemS = wTopS * flare;
+      // Same spread as the pteruges: the panels open as she leaves the floor.
+      // Same spread as the pteruges: the panels open as she leaves the floor.
+      const upNowK = Math.max(0, jump
+        ? -Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160))
+        : Math.min(1, ((cm && cm.lift) || 0) / 0.09));
+      const wHemS = wTopS * flare * (1 + upNowK * 0.14);
       // How far each leg has swung from its OWN hip, not from the body centre:
       // measured from centre, legs that merely stand apart read as a permanent
       // outward pull and part the panels down the middle at rest.
       const swingF = footF[0] - hipAt(1), swingB = footB[0] - hipAt(-1);
+      // Same in the celebration hop as in the jump — see the pteruges above.
+      const airHem = jump
+        ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160))
+        : cm ? -Math.min(1, (cm.lift || 0) / 0.09) : 0;
       const drag = (v, max) => Math.max(-max, Math.min(max, v));
       // `f` is the panel's centre as a fraction of wTop; `gain` how much of its
       // leg it inherits. The panel over the split side is pulled in and barely
@@ -10025,12 +10612,30 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         { f: 0, half: 0.46, gain: 0.85 },
         { f: -splitSide * 0.66, half: 0.42, gain: 1 },
       ];
+      // A base across the CLOSED side — centre panel to the far edge, stopping
+      // short of the split so the opening stays open. It carries the skirt's
+      // outer contour at full ink weight, which lets the panel seams on top of
+      // it be hairlines: at contour weight every fold read as the edge of a
+      // separate strap, and this is one skirt with one cut in it.
+      outlined(ctx, p.b, ow, (c) => {
+        c.moveTo(px - splitSide * wTopS * 0.06, top);
+        c.lineTo(px - splitSide * wTopS, top);
+        c.lineTo(px - splitSide * wHemS + sway, hemLow);
+        c.quadraticCurveTo(px - splitSide * wHemS * 0.5 + sway, hemLow + 0.026 * u,
+          px - splitSide * wHemS * 0.06 + sway, hemLow);
+        c.closePath();
+      });
       for (const { f, half, gain } of PANELS) {
         const followsFront = f * splitSide < 0;
         const lead = followsFront ? swingF : swingB;
         const rise = followsFront ? footF[1] : footB[1];
         const topX = px + f * wTopS;
-        const bx = px + f * wHemS + sway + drag(gain * 0.4 * lead, 0.05 * u);
+        // The same airborne share as Grumpos's straps: the legs hold still in
+        // the jump, so without this the panels are rigid exactly when the
+        // dress should be moving most.
+        const airX = -airHem * 0.045 * u * (0.5 + Math.abs(f));
+        const airY = -airHem * 0.04 * u * (0.5 + Math.abs(f));
+        const bx = px + f * wHemS + sway + drag(gain * 0.4 * lead, 0.05 * u) + airX;
         // The hem follows a foot DOWN much further than it follows one UP.
         // `rise` is the foot's own height, so a lifted knee was pulling the
         // panel over it up with it — the fabric behaving like it was pinned to
@@ -10042,7 +10647,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         const riseTerm = gain * 0.4 * rise;
         const by = hemLow + (riseTerm < 0
           ? Math.max(riseTerm, -0.012 * u)
-          : drag(riseTerm, 0.04 * u));
+          : drag(riseTerm, 0.04 * u)) + airY;
         const topHalf = wTopS * half;
         const botHalf = topHalf * (1 + (flare - 1) * 0.9);
         const panel = (c) => {
@@ -10052,7 +10657,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
           c.quadraticCurveTo(bx, by + 0.026 * u, bx - botHalf, by);
           c.closePath();
         };
-        outlined(ctx, p.b, ow, panel);
+        // Hairline seams; the base above owns the silhouette.
+        outlined(ctx, p.b, ow * 0.4, panel);
         // Piping round each panel's own hem: on a cut skirt the hem edge is the
         // detail, and three panels sharing one traced line would weld them back
         // into the board this is here to avoid.
@@ -10160,7 +10766,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, (bibTop + ow * 1.6) - clipTop);
         ctx.clip();
         for (const s of [-1, 1]) {
-          outlined(ctx, p.a, ow, (c) => {
+          // Hairline: the straps lie ON the bib, and at contour weight the two
+          // read as separate pieces of cloth stitched together rather than as
+          // one pinafore. The bib itself keeps the full weight — that edge is
+          // the garment against her body.
+          outlined(ctx, p.a, ow * 0.45, (c) => {
             c.moveTo(sTopX(s) - s * strapHalf, torsoTop - 0.05 * u);
             c.lineTo(sTopX(s) + s * strapHalf, torsoTop - 0.05 * u);
             c.lineTo(sBotX(s) + s * strapHalf, bibTop + 0.06 * u);
@@ -10386,6 +10996,11 @@ function drawRoll(ctx, spec, p, pose, u, ow) {
 // All three draw feet-at-origin facing +x (travel), inside the slide's own
 // height envelope: the shipped crouch crowns at ~0.66u, and the gallery draws
 // its clearance bar there.
+// The near-arm extension bake-off used to sit here — five candidates for how
+// straight the trailing arm comes out in the held slide, and the pose seam they
+// read. SETTLED 8 Sep 2026 at A2: the hand is solved for 0.96 of the whole arm,
+// cast-wide, at the shared deck height. See the rule and the measured spread it
+// replaced in drawSlideKick.
 const SLIDE_ROLL_R = 0.30;   // tuck ball radius, in u
 const SLIDE_ROLL_SPIN = 13;  // rad/s — ~2 rev/s; rim speed 3.9u/s, see gallery
 
@@ -10449,9 +11064,55 @@ const SLIDE_HEAD_SEAT = 0.01;
 // something the slide silently goes without. `tests/slide-kit.js` found this.
 // (x, y) is the shoulder anchor — the blade peeks over the deltoid beside the
 // beard, never off the head.
-function paintBackAxe(ctx, p, u, ow, lod, x, y) {
+// The shipped axe, plus three dials for the bake-off. The ART IS UNCHANGED —
+// the same absolute path that has always been here — and every variant is a
+// transform applied around it: `angle` rotates the whole axe about the point
+// it is pinned to the shoulder, `blade` scales the head about its own centre,
+// and `steel`/`sheen` restate its two values. Passing nothing draws exactly
+// what shipped, which is the only way a bake-off row can honestly include the
+// current art as its reference.
+//
+// Rotating rather than re-pointing matters: written as absolute points the
+// angle and the size could not be changed independently, because every point
+// carried both.
+function paintBackAxe(ctx, p, u, ow, lod, x, y, o = {}) {
+  const SHIPPED_DEG = 41.3;
+  const steel = o.steel || '#b8d8f0';
+  const sheen = o.sheen || '#eaf8ff';
+  const blade = o.blade ?? 1;
+  ctx.save();
+  if (o.angle != null && o.angle !== SHIPPED_DEG) {
+    // Pivot on the haft's butt — where the axe meets him. Turning it about any
+    // other point slides the whole thing off the shoulder as well as rotating
+    // it, and then the row is comparing two changes at once.
+    const rx = x + 0.08 * u, ry = y + 0.12 * u;
+    ctx.translate(rx, ry);
+    // POSITIVE ANGLE RAISES THE BLADE. The haft's head end is up and to his
+    // left, so a positive rotation in canvas (y down) was swinging it further
+    // round and DOWN toward his hip — the opposite of "more vertical". The
+    // sign is flipped so `angle` reads the way it is named: 90 stands the
+    // shaft straight up with the head beside his own.
+    ctx.rotate((o.angle - SHIPPED_DEG) * Math.PI / 180);
+    ctx.translate(-rx, -ry);
+  }
   limb(ctx, x + 0.08 * u, y + 0.12 * u, x - 0.33 * u, y - 0.24 * u, 0.06 * u, p.w, ow);
-  outlined(ctx, '#b8d8f0', ow, (c) => {
+  ctx.save();
+  // The HEAD turns independently of the haft. Rotating the whole axe moves the
+  // blade's own bearing with it, so a steeper haft also tips the cutting edge
+  // over — and the haft's position and the head's attitude are two different
+  // judgements. `headAngle` is degrees applied to the head alone, positive
+  // bringing the edge toward vertical; both it and the blade scale pivot on the
+  // head's own centre, so a smaller or turned head stays on the end of the
+  // haft instead of drifting off it.
+  const headTurn = o.headAngle || 0;
+  if (blade !== 1 || headTurn) {
+    const cx = x - 0.37 * u, cy = y - 0.14 * u;
+    ctx.translate(cx, cy);
+    if (headTurn) ctx.rotate(headTurn * Math.PI / 180);
+    if (blade !== 1) ctx.scale(blade, blade);
+    ctx.translate(-cx, -cy);
+  }
+  outlined(ctx, steel, ow, (c) => {
     c.moveTo(x - 0.34 * u, y - 0.3 * u);
     c.quadraticCurveTo(x - 0.54 * u, y - 0.16 * u, x - 0.41 * u, y + 0.03 * u);
     c.lineTo(x - 0.27 * u, y - 0.04 * u);
@@ -10459,9 +11120,11 @@ function paintBackAxe(ctx, p, u, ow, lod, x, y) {
     c.closePath();
   });
   if (!lod) {
-    ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = hair(0.6, ow * 0.55);
+    ctx.strokeStyle = sheen; ctx.lineWidth = hair(0.6, ow * 0.55);
     ctx.beginPath(); ctx.moveTo(x - 0.44 * u, y - 0.16 * u); ctx.lineTo(x - 0.3 * u, y - 0.1 * u); ctx.stroke();
   }
+  ctx.restore();
+  ctx.restore();
 }
 
 const lodCapsule = (u) => u < 16;
@@ -11348,56 +12011,29 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   }
   outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
     c.ellipse(kickX + (0.03 - 0.012 * bc) * u, kickY - 0.01 * u, (0.085 + 0.012 * bc) * u, (0.055 + 0.01 * bc) * u, -0.1 - 0.5 * kick, 0, Math.PI * 2));
-  // THE TOOL BELT AND POUCH. The slide is its own painter and returns before
-  // drawHumanoid's kit passes ever run — the same structural gap that left this
-  // pose tailless and then stickless.
+  // THE TOOL BELT AND POUCH, in the slide. This pose is its own painter and
+  // returns before drawHumanoid's kit passes ever run — the same structural gap
+  // that left it tailless, then stickless — so everything worn has to be drawn
+  // again here.
   //
-  // Drawn AFTER BOTH LEGS, with the hanging garments. Placed before them the
-  // band passed behind the thighs and only its two ends showed, on opposite
-  // sides of the figure — which read as the belt vanishing and leaving debris,
-  // not as a belt. A reclined body puts its hips squarely in front, so the band
-  // belongs over the legs here even though the standing rig tucks it behind a
-  // raised knee.
+  // Everything about the placement comes from `torso`, the capsule this pose
+  // already drew, rather than from numbers dialled against one frame of one
+  // build. `beltX` is where this rig already puts a waistband, which is up the
+  // belly and clear of the folded thighs by construction; clipping to `capsule`
+  // makes the silhouette decide the length, the way the standing band clips to
+  // torsoPath, so `half` only has to be generous rather than right.
   if (spec.bundle === 'belt' || spec.bundle === 'tilt' || spec.bundle === 'dispenser') {
-    // ON THE TORSO'S OWN BELT LINE, CLIPPED TO THE TORSO. Everything about the
-    // placement now comes from `torso` — the capsule this pose already drew —
-    // rather than from numbers dialled against one frame of one build.
-    //
-    // Three passes failed here before this one, all the same way: a band placed
-    // by hand near the hips. At the hips both thighs fold across it, so no
-    // z-order reads as worn; slid up the belly by eye it cleared the legs but
-    // sat a twentieth of a unit off centre, because the band is drawn about the
-    // CALLER's origin and the reclined hips are not there — so it hung off his
-    // right and ran out before his left waist, which is exactly what it looked
-    // like. And its length was a guess, so neither end landed on his edge.
-    //
-    // The capsule answers all three. `beltX` is where this rig already puts a
-    // waistband (the trouser seam is drawn there), which is up the belly and
-    // clear of the thighs by construction. Clipping to `capsule` makes the
-    // silhouette decide the length, the way the standing band clips to
-    // torsoPath — it reaches exactly as far as he does on both sides, at any
-    // build, in any phase, so `half` only has to be generous rather than right.
-    // The lean the canes carry STANDING. The slide is measured against it below
-    // rather than against a second number, because "same as when he is running"
-    // is the note, and two constants would drift apart the first time either
-    // moved.
-    const standLean = spec.bundle === 'dispenser' ? 0.4 : spec.bundle === 'tilt' ? 0.2 : 0;
     // How much of the recline the CANISTER takes. The belt is worn round him
     // and takes all of it — that is what makes it a belt — but the canes read
     // as sticks standing in a tube, and a tube rotated with a body lying at 44
-    // degrees points them backwards over his shoulder. Standing they lean a
-    // little forward; through the whole recline they leaned hard the other way,
-    // which is the "angle the other direction" note.
-    //
-    // 0 hangs them exactly as they hang standing, 1 welds them to the body.
-    // The share is what is left of the recline after the frame below has
-    // already rotated by it, so this subtracts rather than adds.
+    // degrees points them backwards over his shoulder. 0 hangs them exactly as
+    // they hang standing, 1 welds them to the body.
     const recline = spec.slideKitRecline ?? 0.25;
     const frameTurn = torso.angle + Math.PI / 2;
     const kit = {
       half: torsoW * 0.42,
       bx: 0, by: 0, beltCx: 0,
-      lean: standLean,
+      lean: spec.bundle === 'dispenser' ? 0.4 : spec.bundle === 'tilt' ? 0.2 : 0,
       belt: true,
       canes: { ...(spec.canes || {}), parity: pose.stickParity | 0 },
       thrown: !!pose.axeThrown,
@@ -11663,8 +12299,14 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
         // not lift the hem off the legs), and the panel's waist end is pinned,
         // so no gap can open between neighbours where they overlap.
         const ph = t * 3.2 + i * 1.15;
-        const drift = Math.sin(ph) * 0.02 * u * (0.5 + Math.abs(fc));
-        const lift = Math.cos(ph * 0.9) * 0.008 * u;
+        // A slide is never airborne and never a celebration hop, so the hem's
+        // air share is zero here. (The standing gown's copy of this term reads
+        // `jump` and `cm`, which drawHumanoid defines and this painter does
+        // not — copied verbatim it threw ReferenceError on every gown slide.)
+        const airG = 0;
+        const drift = Math.sin(ph) * 0.02 * u * (0.5 + Math.abs(fc))
+          - airG * 0.05 * u * (0.45 + Math.abs(fc));
+        const lift = Math.cos(ph * 0.9) * 0.008 * u - airG * 0.035 * u * (0.4 + Math.abs(fc));
         const panel = (c) => {
           c.moveTo(beltX, (f0 - o) * wTop);
           c.lineTo(beltX, (f1 + o) * wTop);
@@ -11676,7 +12318,9 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
             hemX + lift, (f0 - o) * wHem + drift);
           c.closePath();
         };
-        outlined(ctx, skirtFill, ow, panel);
+        // Fine seams here too, so the slide is drawn in the same weights as the
+        // run — the base below carries the silhouette.
+        outlined(ctx, skirtFill, gown.skirt.fineSeams ? ow * 0.4 : ow, panel);
         if (!lod) {
           const a = W[i % W.length];
           ctx.save();
@@ -11799,9 +12443,39 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
     nearX = armX + Math.cos(na) * 0.05 * u - 0.08 * u;
     nearY = armY + Math.sin(na) * 0.05 * u - 0.06 * u;
   }
-  const tx2 = nearX + (trailX - nearX) * armReach;
-  const ty2 = nearY + (trailY - nearY) * armReach;
-  limb2(ctx, nearX, nearY, tx2, ty2, 0.19 * u * upperBias, -1, armW, armFill, ow, armW * 0.93, true);
+  const nearSeg = 0.19 * u * upperBias;
+  // HOW STRAIGHT THIS ARM IS, is a decision — it used to be a side effect. The
+  // hand target is a fixed point in the figure's frame and the shoulder socket
+  // is not, so every build that moved its socket got a different elbow out of
+  // the same two numbers: measured at rest, the plain and slim rigs reached 92%
+  // of the arm, Grumpos 99% (his `stretch` carries the socket back up the
+  // recline) and Kiko 66% (the dropped puff socket plus her 0.74 armReach).
+  // Only Grumpos read right, and by accident — an arm folded to two thirds
+  // reads as a hero riding his own hip, and the near arm is the one thing in
+  // this pose that says he is on the ground under control.
+  //
+  // So the hand is SOLVED for an extension instead of accepting one. 0.96 of
+  // the whole two-bone arm, cast-wide (bake-off, 2026-09-08, A2 of five): a
+  // hair straighter than any rig shipped, with enough bend left that the elbow
+  // still takes the pose's sway instead of locking. armReach is deliberately
+  // out of it now — it shortens Kiko's LIMB, which is its job, and pulling the
+  // target in was only ever a proxy for that.
+  const NEAR_EXT = 0.96;
+  const want = 2 * nearSeg * NEAR_EXT;
+  // The height is the cast's SHARED one and only the x is solved: the hand
+  // riding just off the deck is the whole point of a trailing arm, so the extra
+  // reach is spent going further back rather than swinging the arm down through
+  // the floor. Kiko is why this is not her own hand height — armReach pulls her
+  // target up as well as back, and preserving that straightened her into a
+  // hover.
+  const ty2 = trailY;
+  const dy = ty2 - nearY;
+  const dx2 = want * want - dy * dy;
+  // Out of reach at that height — a short arm on a socket sat high. Fall back
+  // to the most extension there is: straight down the line to the hand.
+  const nearDir = Math.hypot(trailX - nearX, dy) || 1e-6;
+  const tx2 = dx2 > 0 ? nearX - Math.sqrt(dx2) : nearX + (trailX - nearX) / nearDir * want;
+  limb2(ctx, nearX, nearY, tx2, ty2, nearSeg, -1, armW, armFill, ow, armW * 0.93, true);
   // The sleeve goes on over it — under the hand, and UNDER the head that
   // follows, so the jaw crops whatever of it still laps behind her. It was
   // drawn dead last, after the head, which is how a sleeve ends up painted
@@ -13506,7 +14180,10 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
     // The LEFT end also lifts and stops short, to finish ABOVE the tail: the
     // plume roots at the hip on that side, and a band running level into it
     // read as passing through the tail rather than around the body under it.
-    const bandH = 0.05 * u;
+    // `beltH` widens the band. It is the other half of the same complaint: a
+    // thin strap in the same value as the canister reads as one more dark line
+    // beside the leg rather than as the thing the canister hangs from.
+    const bandH = (spec.beltH ?? 0.05) * u;
     // DRAWN WIDE AND CLIPPED TO THE BODY. Sizing the band by hand could not
     // win: `half` is the width at the WAIST, and the belt rides a little above
     // it where the torso is still wider, so a band cut to waistHalf fell short
@@ -13523,8 +14200,22 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
     // so a band about x = 0 hung off his right side and stopped short of his
     // left waist. The band belongs on the HIPS wherever the pose puts them.
     const xL = beltCx - half * 1.6, xR = beltCx + half * 1.6;
-    const yL = by - 0.052 * u;              // high on the tail side
-    const yR = by - 0.024 * u;
+    // `beltLift` is how high the tail-side end finishes, in u. It has to land
+    // just ABOVE the plume: the tail roots at this hip, so a band that arrives
+    // level reads as passing through it, and one that arrives too high reads as
+    // a sash sliding off. Dialled rather than fixed because where the plume
+    // roots is a per-hero thing.
+    const yL = by - (spec.beltLift ?? 0.052) * u;   // high on the tail side
+    // LEVEL with the left end. `beltSlant` is how much LOWER the right end
+    // finishes, in u, and it was effectively 0.028 — the empty side hanging
+    // below the loaded one, which is backwards for what this belt carries. The
+    // canister is on the LEFT; a belt sits lower where the weight is. 0 reads
+    // as worn; a negative tips it the physical way, loaded side lowest.
+    //
+    // NOT `beltDrop` — that name is taken, by Clara's dial for wearing her belt
+    // on the hips instead of the waist. Two unrelated things, one word, and the
+    // collision would have moved her midriff every time this band tilted.
+    const yR = yL + (spec.beltSlant ?? 0) * u;
     const bow = 0.028 * u;                  // sag at the centre
     const band = (c) => {
       c.moveTo(xL, yL);
@@ -13546,9 +14237,36 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
   if (parts === 'belt') return;
   const w = (pack ? 0.19 : 0.1) * u, h = (pack ? 0.22 : 0.17) * u;
   ctx.save();
-  // The canister hangs `sling` below the band it is worn on — the belt block
-  // above already drew at `by`, so this offset moves only the pouch.
-  ctx.translate(bx, by + sling * u);
+  // The canister hangs `sling` below THE BAND WHERE IT ACTUALLY IS, not below
+  // `by`. The two used to be the same thing; they stopped being the same the
+  // moment the band's tail-side end lifted, because the canister hangs near
+  // that end — so raising the belt left the bag behind and the two read as
+  // separate pieces rather than as one hung off the other.
+  //
+  // So the band's own curve is evaluated at the canister's x. Same three points
+  // the belt block draws through (the lifted left end, the sagging middle, the
+  // right end), so this cannot drift from it: change the band and the bag
+  // follows for free.
+  const bandTop = (() => {
+    if (!belt) return by;
+    const xL = beltCx - half * 1.6, xR = beltCx + half * 1.6;
+    const yL = by - (spec.beltLift ?? 0.052) * u;
+    // LEVEL with the left end. `beltSlant` is how much LOWER the right end
+    // finishes, in u, and it was effectively 0.028 — the empty side hanging
+    // below the loaded one, which is backwards for what this belt carries. The
+    // canister is on the LEFT; a belt sits lower where the weight is. 0 reads
+    // as worn; a negative tips it the physical way, loaded side lowest.
+    //
+    // NOT `beltDrop` — that name is taken, by Clara's dial for wearing her belt
+    // on the hips instead of the waist. Two unrelated things, one word, and the
+    // collision would have moved her midriff every time this band tilted.
+    const yR = yL + (spec.beltSlant ?? 0) * u;
+    const cY = yL + 0.028 * u;
+    const q = Math.max(0, Math.min(1, (bx - xL) / ((xR - xL) || 1)));
+    // the quadratic the band is drawn as, at the canister's own x
+    return (1 - q) * (1 - q) * yL + 2 * (1 - q) * q * cY + q * q * yR;
+  })();
+  ctx.translate(bx, bandTop + sling * u);
   if (lean) ctx.rotate(lean);
   // Canes first so the tube's mouth crops their butts and they sit IN it.
   // TWO canes, and they lie along the BAG'S OWN AXIS. Three at slightly
@@ -13613,9 +14331,16 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
       ctx.restore();
     }
   }
-  outlined(ctx, p.f, ow, (c) => roundRectPath(c, -w / 2, -h * 0.4, w, h, 0.035 * u));
+  // The canister has its OWN colour slot, falling back to the belt leather.
+  // On Rusty those were the same navy as his boots and the pair merged into one
+  // dark mass against his legs — the bag stopped reading as a bag worn on him
+  // and became part of the trouser. `pouch` is the seam for pulling it off that.
+  outlined(ctx, p.pouch || p.f, ow, (c) => roundRectPath(c, -w / 2, -h * 0.4, w, h, 0.035 * u));
   if (!lod) {
-    ctx.strokeStyle = p.p; ctx.lineWidth = hair(0.6, 0.018 * u);
+    // The band round the canister. It was 0.018u of the trouser colour — a dark
+    // line on a dark tube, which is why the canister read as one solid lump.
+    ctx.strokeStyle = p.pouchLine || p.p;
+    ctx.lineWidth = hair(0.6, (spec.pouchLineW ?? 0.018) * u);
     ctx.beginPath();
     ctx.moveTo(-w / 2, -h * 0.4 + h * 0.45);
     ctx.lineTo(w / 2, -h * 0.4 + h * 0.45);
@@ -14408,8 +15133,13 @@ export function poseFromPlayer(player, t) {
     // (bake-off, 2026-08). Ability rolls keep priority — drawHumanoid checks
     // pose.roll first — and the blob/pika/disc rigs never read slideStyle, so
     // they keep their crouch and its whole-figure squash.
+    // 'kick' is a KEY IN SLIDE_STYLE_DRAWS, and the two live in different files.
+    // Miss the match and the lookup returns undefined, the humanoid falls
+    // through to the generic crouch, and the old ducking animation is back in
+    // gameplay with every test still green — which is exactly what the
+    // duck->slide rename did here. tests/slide-kit.js now asserts the pair.
     slideStyle: kind === 'slide' && !player.rolling
-      && ['humanoid', 'ray'].includes(TOON_SPECS[hero.id]?.rig) ? 'slide' : undefined,
+      && ['humanoid', 'ray'].includes(TOON_SPECS[hero.id]?.rig) ? 'kick' : undefined,
     // The contact kick, already shaped into the 0..1 the painter poses from.
     // The player owns the timer and its curve; this side only reads it, the
     // same bargain every other term here keeps.
