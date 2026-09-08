@@ -33,16 +33,16 @@ export const LANDED_T = 0.12;
 export const ICE_SLIDE_T = 0.35;
 // The drop has enough time to read and settle; releasing is a touch faster so
 // controls never feel sticky. Collision stays crouched through most of the
-// recovery via hitH's duckAmount threshold.
-export const DUCK_IN_T = 0.14;
-export const DUCK_OUT_T = 0.1;
-// How long a slide can be HELD before the hero stands back up. The duck is a
-// move to get under one obstacle, not a stance: every duck pattern in
+// recovery via hitH's slideAmount threshold.
+export const SLIDE_IN_T = 0.14;
+export const SLIDE_OUT_T = 0.1;
+// How long a slide can be HELD before the hero stands back up. The slide is a
+// move to get under one obstacle, not a stance: every slide pattern in
 // cabinets.js places a single drone or paperwork (never a corridor), and at
 // BASE_SPEED the actual pass-under lasts ~0.2s — the second is anticipation
-// room for ducking early. Releasing re-arms instantly; the cost of overstaying
+// room for sliding early. Releasing re-arms instantly; the cost of overstaying
 // is having to re-press with the hazard already overhead.
-export const DUCK_MAX_T = 1.0;
+export const SLIDE_MAX_T = 1.0;
 // The contact kick's whole life, in seconds: the leg snaps out over the first
 // ~45% of it, holds extended while the crate comes apart, then recovers. The
 // hold is what the bake-off picked ('held', 0.22s out) over a faster jab and a
@@ -110,7 +110,7 @@ export const ANIM_SPEED_DIVISOR = 40;
 export const PLAYER_X = 59;      // fixed world offset from camX
 export const PLAYER_W = 8;       // hitbox (12px sprite, 2px inset)
 export const PLAYER_H = 14;
-export const DUCK_H = 7;
+export const SLIDE_H = 7;
 // How wide the hero is DRAWN. The hitbox is inset inside it — 2px of shoulder
 // and elbow either side that hazards are allowed to pass through, because being
 // clipped by a crate your sleeve overlapped is not a hit anyone accepts.
@@ -183,10 +183,10 @@ export class Player {
     // of every run.
     this.jumpFace = 2;
     this.powerJumpBonus = 0;
-    this.ducking = false;
-    this.duckAmount = 0; // visual crouch blend: 0 standing, 1 fully planted
-    this.duckDirection = 0;
-    this.duckHoldT = 0;      // how long the current slide has been held
+    this.sliding = false;
+    this.slideAmount = 0; // visual crouch blend: 0 standing, 1 fully planted
+    this.slideDirection = 0;
+    this.slideHoldT = 0;      // how long the current slide has been held
     // The contact kick. Counts DOWN from SLIDE_KICK_T on the frame a slide
     // plows a crate; poseFromPlayer turns it into the front leg's extension.
     // A timer rather than a flag because the pose is a snap out and a slower
@@ -195,7 +195,7 @@ export class Player {
     this.slideKickT = 0;
     // A short, forced stand — set when a slide finishes something off, so the
     // hero gets up rather than riding the slide through the debris. Counts
-    // down on its own and does NOT touch duckSpent: holding the key through it
+    // down on its own and does NOT touch slideSpent: holding the key through it
     // resumes the slide the moment it expires.
     this.standT = 0;
     // One cone juggle per trip through the air. Cleared on landing, so the
@@ -203,7 +203,7 @@ export class Player {
     // number of frames two boxes happened to overlap for.
     this.airJuggled = false;
     this.airJuggled = false;
-    this.duckSpent = false;  // window used up; release to re-arm
+    this.slideSpent = false;  // window used up; release to re-arm
     this.floating = false;
     this.iframes = 0;
     this.anim = 0;
@@ -295,13 +295,13 @@ export class Player {
     this.spannerFlurryCd = 0;
     this.fistThrown = false;
     this.axeThrown = false;
-    this.ducking = false;
-    this.duckAmount = 0;
-    this.duckDirection = 0;
+    this.sliding = false;
+    this.slideAmount = 0;
+    this.slideDirection = 0;
     this.slideKickT = 0;
     this.standT = 0;
-    this.duckHoldT = 0;
-    this.duckSpent = false;
+    this.slideHoldT = 0;
+    this.slideSpent = false;
   }
 
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
@@ -315,7 +315,7 @@ export class Player {
     m += this.powerJumpBonus;
     return m;
   }
-  get hitH() { return (this.ducking || this.duckAmount > 0.35 || this.rollT > 0 || this.compressT > 0) ? DUCK_H : PLAYER_H; }
+  get hitH() { return (this.sliding || this.slideAmount > 0.35 || this.rollT > 0 || this.compressT > 0) ? SLIDE_H : PLAYER_H; }
   get hitW() {
     let w = PLAYER_W;
     if (this.compressT > 0) w = 5;
@@ -339,9 +339,9 @@ export class Player {
       || this.stumbleT > 0 || this.slipT > 0) return false;
     this.slideSlamming = true;
     this.floating = false;
-    this.ducking = false;
-    this.duckAmount = 0;
-    this.duckDirection = -1;
+    this.sliding = false;
+    this.slideAmount = 0;
+    this.slideDirection = -1;
     this.vy = Math.min(this.vy, SLIDE_SLAM_VY);
     return true;
   }
@@ -354,11 +354,11 @@ export class Player {
     this.standT = 0;
     this.slideKickT = SLIDE_KICK_T;
     this.landingSlideT = SLIDE_KICK_T;
-    this.duckHoldT = 0;
-    this.duckSpent = false;
-    this.ducking = true;
-    this.duckDirection = 1;
-    this.duckAmount = 1;
+    this.slideHoldT = 0;
+    this.slideSpent = false;
+    this.sliding = true;
+    this.slideDirection = 1;
+    this.slideAmount = 1;
   }
 
   clearSlideState() {
@@ -367,32 +367,32 @@ export class Player {
     this.slideKickT = 0;
   }
 
-  // The timed duck window. Holding past DUCK_MAX_T stands the hero up under a
-  // held key; the key must come up before another slide arms. Ability ducks
+  // The timed slide window. Holding past SLIDE_MAX_T stands the hero up under a
+  // held key; the key must come up before another slide arms. Ability slides
   // (rollT / compressT) bypass this — they carry their own timers.
-  duckWindow(holdDuck, dt) {
+  slideWindow(holdSlide, dt) {
     if (this.standT > 0) this.standT = Math.max(0, this.standT - dt);
-    if (!holdDuck) {
-      this.duckHoldT = 0;
-      this.duckSpent = false;
+    if (!holdSlide) {
+      this.slideHoldT = 0;
+      this.slideSpent = false;
       return false;
     }
-    if (this.duckSpent) return false;
-    // Getting up after a plow. Deliberately NOT duckSpent, which would demand
+    if (this.slideSpent) return false;
+    // Getting up after a plow. Deliberately NOT slideSpent, which would demand
     // the key come up before another slide armed — that stranded anyone who
-    // holds duck through a run of hazards, standing them up into the next one
+    // holds slide through a run of hazards, standing them up into the next one
     // with no way to get back down. A timer stands him up and hands the slide
     // straight back.
     if (this.standT > 0) return false;
-    this.duckHoldT += dt;
-    if (this.duckHoldT >= DUCK_MAX_T) {
-      this.duckSpent = true;
+    this.slideHoldT += dt;
+    if (this.slideHoldT >= SLIDE_MAX_T) {
+      this.slideSpent = true;
       return false;
     }
     return true;
   }
 
-  // The kick runs down on its own clock, not the duck's: the leg has to finish
+  // The kick runs down on its own clock, not the slide's: the leg has to finish
   // its swing even if the slide ends or the hero stands up mid-recovery, or a
   // crate broken on the last frame of a slide leaves the leg snapped out and
   // then teleports it home.
@@ -415,13 +415,13 @@ export class Player {
     return age < 0.45 ? age / 0.45 : Math.max(0, 1 - (age - 0.45) / 0.55);
   }
 
-  updateDuckBlend(dt, target) {
-    const before = this.duckAmount;
-    const duration = target ? DUCK_IN_T : DUCK_OUT_T;
-    this.duckAmount = Math.max(0, Math.min(1,
+  updateSlideBlend(dt, target) {
+    const before = this.slideAmount;
+    const duration = target ? SLIDE_IN_T : SLIDE_OUT_T;
+    this.slideAmount = Math.max(0, Math.min(1,
       before + (target ? 1 : -1) * dt / duration));
-    this.duckDirection = this.duckAmount > before ? 1
-      : this.duckAmount < before ? -1 : 0;
+    this.slideDirection = this.slideAmount > before ? 1
+      : this.slideAmount < before ? -1 : 0;
   }
 
   /**
@@ -441,8 +441,8 @@ export class Player {
     this.stomping = false;
     this.clearSlideState();
     this.standT = 0;
-    this.ducking = false;
-    this.duckDirection = -1;
+    this.sliding = false;
+    this.slideDirection = -1;
     this.jumps = 1;
   }
 
@@ -456,8 +456,8 @@ export class Player {
       this.standT = 0;
       this.jumps++;
       this.grounded = false;
-      this.ducking = false;
-      this.duckDirection = -1;
+      this.sliding = false;
+      this.slideDirection = -1;
       audio && audio.sfx(this.jumps > 1 ? 'jump2' : 'jump');
       return true;
     }
@@ -503,7 +503,7 @@ export class Player {
     if (this.landingSlideT > 0) this.landingSlideT = Math.max(0, this.landingSlideT - dt);
 
     const holdJump = input.held('jump');
-    const holdDuck = input.held('duck');
+    const holdSlide = input.held('slide');
 
     // Variable jump: release early = short hop. `launched` is exempt, and has
     // to be: the cut is a contract about the JUMP BUTTON — hold it for height,
@@ -541,24 +541,24 @@ export class Player {
         if (wasSlideSlam) {
           this.startLandingSlide();
         } else {
-          this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
-          this.updateDuckBlend(dt, this.ducking);
+          this.sliding = this.slideWindow(holdSlide, dt) && this.rollT <= 0;
+          this.updateSlideBlend(dt, this.sliding);
         }
         return { landed: true, stompLand: wasStomp, slideKickLand: wasSlideSlam };
       }
-      this.updateDuckBlend(dt, false);
+      this.updateSlideBlend(dt, false);
     } else {
       const landingSlide = this.landingSlideT > 0 && this.standT <= 0 && this.rollT <= 0;
       if (landingSlide) {
         // A released Down still owns the short landing kick. Count this as a
         // fresh slide for puntPower; a held Down naturally continues into the
-        // ordinary duck window after the guaranteed timer expires.
-        this.duckHoldT += dt;
-        this.ducking = true;
+        // ordinary slide window after the guaranteed timer expires.
+        this.slideHoldT += dt;
+        this.sliding = true;
       } else {
-        this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
+        this.sliding = this.slideWindow(holdSlide, dt) && this.rollT <= 0;
       }
-      this.updateDuckBlend(dt, this.ducking);
+      this.updateSlideBlend(dt, this.sliding);
     }
     return { landed: false, stompLand: false, slideKickLand: false };
   }

@@ -14,7 +14,7 @@
 //
 //   kind === 'jump' + !grounded  → the air stretch (AIR_STRETCH_Y/X)
 //   squash                       → the landing squash (LAND_SQUASH_Y/X)
-//   kind === 'duck'              → the crouch's own tall-to-short scale
+//   kind === 'slide'              → the crouch's own tall-to-short scale
 //
 // so pinning all three at rest is the same claim as pinning sx and sy at 1,
 // stated in the units the run actually controls.
@@ -67,8 +67,8 @@ function newRun(opts = {}) {
 }
 
 // The three body scales drawToon reads, restated as one verdict.
-const atRest = (pose) => pose.squash === 0 && pose.kind !== 'jump' && pose.kind !== 'duck';
-const describe = (pose) => `kind=${pose.kind} squash=${pose.squash.toFixed(3)} duck=${pose.duckAmount.toFixed(2)}`;
+const atRest = (pose) => pose.squash === 0 && pose.kind !== 'jump' && pose.kind !== 'slide';
+const describe = (pose) => `kind=${pose.kind} squash=${pose.squash.toFixed(3)} slide=${pose.slideAmount.toFixed(2)}`;
 
 // Everything the death hold ever draws, not just its first frame: the pose is
 // held for the whole hold, and a timer that keeps running is exactly the bug.
@@ -124,15 +124,15 @@ function worstPoseThroughHold(run, frames = 40) {
 }
 
 // ---- a hit taken mid-slide ------------------------------------------------------
-// A duck is a whole-body scale too — the rigs start tall and are squeezed down
-// by duckAmount — so dying in one holds him folded over for the hold.
+// A slide is a whole-body scale too — the rigs start tall and are squeezed down
+// by slideAmount — so dying in one holds him folded over for the hold.
 {
   const run = newRun();
   for (let i = 0; i < 30; i++) run.update(TICK);
   run.battery = 1;
-  run.player.ducking = true;
-  run.player.duckAmount = 1;
-  run.player.duckDirection = 1;
+  run.player.sliding = true;
+  run.player.slideAmount = 1;
+  run.player.slideDirection = 1;
   run.takeHit('TEST');
   const pose = poseFromPlayer(run.player, 0);
   assert(pose.kind === 'run', `he stands up out of the slide to die (${describe(pose)})`);
@@ -141,7 +141,7 @@ function worstPoseThroughHold(run, frames = 40) {
 }
 
 // ---- a hit taken mid-ability ----------------------------------------------------
-// Lorenzo's roll is a forced duck with a timer of its own, and that timer is on
+// Lorenzo's roll is a forced slide with a timer of its own, and that timer is on
 // the player, which stops updating at the death.
 {
   const run = newRun();

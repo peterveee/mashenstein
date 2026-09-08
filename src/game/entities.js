@@ -1,6 +1,6 @@
 // Obstacle/pickup type registry. All hitboxes are style-independent.
 // alt = altitude of the entity's BOTTOM above ground (flyers); ground types sit on it.
-// Action classes drive fairness: 'jump' | 'duck' | 'none' (avoidable by running).
+// Action classes drive fairness: 'jump' | 'slide' | 'none' (avoidable by running).
 
 export const OBSTACLES = {
   // `skins`: three reds to one green, so a green one is an occasional visitor
@@ -28,7 +28,7 @@ export const OBSTACLES = {
   //
   // EXCEPT ON A BEAT LANE, which is what `beatPunt` is for. It is the same flag
   // `beatShoot` is on cardBox below — the mark that says a def may stand as the
-  // physical half of a chart slot — and it says this one answers to a DUCK
+  // physical half of a chart slot — and it says this one answers to a SLIDE
   // there while staying `action: 'jump'` everywhere else. Both readings are
   // true of the object and neither is a compromise: off the grid a rolling
   // barrel is a thing you hop and the kick is a flourish, and on the grid the
@@ -42,10 +42,10 @@ export const OBSTACLES = {
   // not a taste decision — a standing hero's box is 14 tall, so a drone one
   // pixel higher stops touching him and stops being an obstacle at all, which
   // is the same thing the spawner refuses to let a pattern do. Meanwhile the
-  // shipped duck is the POWER SLIDE (toons.js drawDuckSlide), whose whole
+  // shipped slide is the POWER SLIDE (toons.js drawSlideKick), whose whole
   // thesis is a head left upright and camera-facing, and it draws 19 to 21 tall
   // depending on the build. The drone's own ink starts 2px above its box, at
-  // 15 — so the head was inside the drone by 4 to 6 pixels on every duck in the
+  // 15 — so the head was inside the drone by 4 to 6 pixels on every slide in the
   // game. The box cannot move, so the ART does: 6 lifts the ink to 21 and gets
   // the shorter sliders out from under it entirely.
   //
@@ -54,16 +54,16 @@ export const OBSTACLES = {
   // clear the stack, so the one jump the column was designed around passed
   // through the drone it had just beaten. Nothing clears the column any more
   // (DRONE_COLUMN_ALTS), so that half is settled by the rung count instead and
-  // six now rests on the duck alone — which is the half that happens every
+  // six now rests on the slide alone — which is the half that happens every
   // single time. A standing hero draws 26 to 31 tall against ink at 21,
-  // so failing to duck still visibly runs into the thing that hits you — which
+  // so failing to slide still visibly runs into the thing that hits you — which
   // is the test artLift's own note in game/draw.js sets for itself.
   //
-  // ONE of these is a duck a hero may decline: the box tops out at alt+h = 20
-  // and the shortest jump in the cast clears 51. A beat cabinet's duck slot can
+  // ONE of these is a slide a hero may decline: the box tops out at alt+h = 20
+  // and the shortest jump in the cast clears 51. A beat cabinet's slide slot can
   // stack four of them into a ceiling no jump in the game reaches — see
   // DRONE_COLUMN_ALTS below for the altitudes and the arithmetic behind them.
-  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, artLift: 6, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
+  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, artLift: 6, armored: true, action: 'slide', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
   // Buzzbirds use the shared gentle vertical hover, plus a modest world-space
   // approach toward the player. There is no independent side-to-side wobble.
   buzzbird:   { w: 12, h: 7,  sprite: 'buzzbird', alt: 34, armored: false, action: 'none', bob: true, airVx: -28 },
@@ -148,13 +148,13 @@ export const OBSTACLES = {
   cardboardMonster: { w: 12, h: 9, sprite: 'cardboardMonster', ground: true, breakable: true, action: 'jump' },
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
-  paperwork:  { w: 8, h: 6,   sprite: null, alt: 13, armored: false, action: 'duck', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
+  paperwork:  { w: 8, h: 6,   sprite: null, alt: 13, armored: false, action: 'slide', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
   // `punt`: light enough that a boot sends it somewhere rather than through a
   // debris cloud. It stays `action: 'jump'` — jumping is still the answer the
   // spawner and the fairness sim budget for, and the punt is an ALTERNATIVE a
-  // slide can take, never the required clear. Declaring it 'duck' would make it
-  // the first ground-standing duckable in the game and would falsify the
-  // "roll always clears duckables" shortcut in RunState.collide.
+  // slide can take, never the required clear. Declaring it 'slide' would make it
+  // the first ground-standing slideable in the game and would falsify the
+  // "roll always clears slideables" shortcut in RunState.collide.
   //
   // `true` is the light arc. A heavier prop names its own — see barrel above.
   // `puntLabel` is what the juggle chain calls it on screen: the readout used
@@ -173,9 +173,9 @@ export const OBSTACLES = {
   //     would have put the game's one jump-only hazard back in the pile that
   //     half the cast shoots from a distance.
   //   not puntable        a boot going in low meets the floor, not the prop.
-  //   not duckable        `action: 'jump'`, and sliding into it still slips —
+  //   not slideable        `action: 'jump'`, and sliding into it still slips —
   //     which is deliberate: it is the one hazard that punishes the slide, so
-  //     holding duck through a row of cones stops being free.
+  //     holding slide through a row of cones stops being free.
   //
   // What it costs is a battery cell like anything else, plus the slip itself:
   // his feet go out, he is slowed and he cannot jump for a beat (RunState.slip).
@@ -243,7 +243,7 @@ export const OBSTACLES = {
   floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
   // The razor hurdle (legacy id `boomBarrier`): a short, ground-standing jump.
   // Its full two-post silhouette is now the box — no harmless art-only legs and
-  // no airborne duck strip. Nine pixels keeps it decisively below crates and
+  // no airborne slide strip. Nine pixels keeps it decisively below crates and
   // barrels while still requiring a real hop. `armored` so pellets spark off
   // the rail; `breakable: false` because jumping is the only answer.
   boomBarrier: { w: 16, h: 9, sprite: 'boomBarrier', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
@@ -417,10 +417,10 @@ export function makeObstacle(type, worldX, opts = {}) {
 }
 
 // THE DRONE COLUMN'S RUNGS — the altitude of each body's underside, bottom
-// first. A beat cabinet's duck slot may lay this instead of a lone drone (see
+// first. A beat cabinet's slide slot may lay this instead of a lone drone (see
 // `column` in game/beatchart.js), and it exists because a lone drone was never
-// really a duck at all: its box tops out at 20, the shortest jump in the cast
-// reaches 51, and so every hero in the game could answer a duck beat with the
+// really a slide at all: its box tops out at 20, the shortest jump in the cast
+// reaches 51, and so every hero in the game could answer a slide beat with the
 // jump button and the slot asked nothing of anybody.
 //
 // WHERE THE TOP OF THE COLUMN LANDS IS THE WHOLE POINT, and it is 65.
@@ -430,7 +430,7 @@ export function makeObstacle(type, worldX, opts = {}) {
 // Gnash and Lorenzo, and 63 at Clara's x1.10.
 //
 // THREE RUNGS USED TO BE THE GATE AND CANNOT BE ANY MORE. At a top of 50 it
-// split the cast: B-33P and Grumpos both apexed at 46 and had to duck, everyone
+// split the cast: B-33P and Grumpos both apexed at 46 and had to slide, everyone
 // else at 57-and-up could take it with the jump button, and 50 sat in an 11px
 // gap with margin on both sides. Compressing the jump band closed that gap.
 // The cast now runs 51 to 63 with no space in it wider than 6px, so any ceiling
@@ -443,7 +443,7 @@ export function makeObstacle(type, worldX, opts = {}) {
 // A FOURTH rung at a 16px pitch tops out at 68,
 // clear of every jump in the game in the same direction and by 5px at the
 // closest — Clara's 63 — which is the margin the old 50 held against the hero
-// below it. A duck slot is a duck, for the whole cast, and the decision it asks
+// below it. A slide slot is a slide, for the whole cast, and the decision it asks
 // for is timing rather than roster. Kiko's second jump still clears anything,
 // and is still supposed to.
 //
@@ -459,7 +459,7 @@ export function makeObstacle(type, worldX, opts = {}) {
 // is the clearance and the table above can be read straight off.
 //
 // AND THE GAPS ARE NOT DOORS. An airborne hero is 14 tall, always: jumpPressed
-// clears `ducking`, and the airborne branch blends duckAmount back to zero, so
+// clears `sliding`, and the airborne branch blends slideAmount back to zero, so
 // Down in mid-air is a slide-slam that falls faster without shrinking the box
 // (game/player.js). Nothing in the cast can be threaded through 9px of air.
 // The gaps are here to buy the height with four bodies instead of nine, and
@@ -477,7 +477,7 @@ export const DRONE_COLUMN_ALTS = Object.freeze([13, 29, 45, 61]);
  * wears a single body instead of turning into a mixed patrol stacked on top of
  * itself.
  *
- * The bottom rung keeps the def's own altitude, and must: that is the duck
+ * The bottom rung keeps the def's own altitude, and must: that is the slide
  * contract the spawner refuses to let a pattern move (see the altitude note in
  * game/spawner.js), the underside has to sit where a slide clears it and a
  * stand does not, and it is the only rung a running hero ever meets. The three

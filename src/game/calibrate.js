@@ -429,8 +429,7 @@ export class CalibrateState {
       const w = Math.max(96, textWidth(label) + 28);
       if (i === this.idx) drawMenuRow(ctx, W / 2 - w / 2, rowY, w, ROW_H - 2);
       const color = i === this.idx ? '#fff' : '#8a8a98';
-      drawText(ctx, `${i === this.idx ? '> ' : '  '}${label}`,
-        W / 2 - w / 2 + 14, textYForMid(rowY + (ROW_H - 2) / 2), color);
+      drawText(ctx, label, W / 2 - w / 2 + 14, textYForMid(rowY + (ROW_H - 2) / 2), color);
     });
   }
 }

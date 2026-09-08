@@ -115,6 +115,17 @@ assert(save.settings.audioSyncMs === -100, 'and at the bottom');
 syncRow().adjust(10);
 assert(save.settings.audioSyncMs === 0, 'back to nothing');
 
+// And the way back out of a measurement, for the player who calibrated on
+// bluetooth and has since plugged a cable in: zero means "use the figure the
+// system reports", which is what the reset row hands back.
+const resetRow = () => settings.options().find((o) => /^RESET AUDIO SYNC/.test(o.label));
+assert(!!resetRow(), 'settings offers a reset row that names the system figure');
+syncRow().adjust(18);
+assert(save.settings.audioSyncMs === 180, 'with a measured offset in force');
+resetRow().act();
+assert(save.settings.audioSyncMs === 0, 'reset drops back to the system offset');
+assert(Audio.syncOffsetSec === 0, 'and the audio clock hears about it at once');
+
 let calibrated = 0;
 const withCal = new SettingsState({ save, onDone() {}, onCalibrate: () => { calibrated++; } });
 withCal.enter();

@@ -78,7 +78,7 @@ export function declareRunChrome(state) {
     for (const b of discs) {
       const fill = Input.held(b.action) ? GLASS_PRESSED : GLASS;
       if (b.id === 'jump') drawRoundButton(ctx, { ...box(b), icon: 'up' }, { fill, ink: ACTION_INK.jump });
-      else if (b.id === 'duck') drawRoundButton(ctx, { ...box(b), icon: 'down' }, { fill, ink: ACTION_INK.duck });
+      else if (b.id === 'slide') drawRoundButton(ctx, { ...box(b), icon: 'down' }, { fill, ink: ACTION_INK.slide });
       else if (b.id === 'pause') drawRoundButton(ctx, { ...box(b), icon: 'pause' }, { fill, ink: PAUSE_INK });
       else if (b.id === 'ability') {
         drawRoundButton(ctx, { ...box(b), label: 'USE' }, {

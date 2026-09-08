@@ -83,7 +83,7 @@ export const HEROES = [
     id: 'b33p', name: 'UNIT B-33P "BLASTBOT"', short: 'B-33P',
     tagline: 'LOW ON CYAN.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 0.9, maxJumps: 1, canFloat: false,
-    startShield: 0, magnetRadius: 0, duckIsRoll: false, variableJump: true,
+    startShield: 0, magnetRadius: 0, slideIsRoll: false, variableJump: true,
     ability: { type: 'shoot', cooldown: 1.8, cooldownMult: 0.75, label: 'LEMON CANNON', callout: 'SHOOT' }, stomp: false,
     joke: 'CONSTANTLY REPORTS LOW ON CYAN. REGARDLESS OF CONTEXT.',
     skillLabel: 'BATTERY EFFICIENT',

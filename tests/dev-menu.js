@@ -269,7 +269,7 @@ const bundle = outputFiles[0].text;
 
 // ------------------------------------------------- tune mode claims its keys
 // Every key the tuning strip uses is a live gameplay action during a run:
-// ArrowUp jumps, ArrowDown ducks, ArrowLeft rewinds, ArrowRight fires the
+// ArrowUp jumps, ArrowDown slides, ArrowLeft rewinds, ArrowRight fires the
 // ability, and Shift fires it too. Tuning with them while they still reached
 // the player meant every nudge also threw a wrench or scrubbed the run
 // backwards. preventDefault does not stop that — Input listens on window in the

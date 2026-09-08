@@ -378,7 +378,7 @@ const heroScaleRange = Math.max(...gallery.heroes.map((p) => p.galleryScale))
   - Math.min(...gallery.heroes.map((p) => p.galleryScale));
 assert(propScaleRange > 1 && heroScaleRange > 0.8,
   'arcade art gallery gives both props and heroes a clearly varied size range');
-assert(gallery.heroes.every((hero, i) => hero.animClock > heroClocks[i] && ['run', 'jump', 'duck', 'celebrate'].includes(hero.poseKind)),
+assert(gallery.heroes.every((hero, i) => hero.animClock > heroClocks[i] && ['run', 'jump', 'slide', 'celebrate'].includes(hero.poseKind)),
   'arcade art gallery heroes use advancing animated toon poses rather than static stand sprites');
 gallery.update(0, { ...analysis, beat: 31.75, beatPhase: 0.75 });
 assert(!gallery.galleryRunner.active && gallery.galleryRunner.backgroundFade === 0,

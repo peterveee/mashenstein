@@ -381,11 +381,11 @@ const RHYTHM_SIGN_BEATS_MIN = 2;
 // THE ORDER IS TAUGHT, NOT DERIVED, and this is the one place the panel does
 // not simply report the chart. The charts introduce their whole vocabulary in
 // the first sixteen-beat loop — rhythm-3 happens to ask for a jump before a
-// duck — so "the order they are first asked for" is an accident of authoring
+// slide — so "the order they are first asked for" is an accident of authoring
 // rather than a teaching order. Slide is the hardest of the three and the one
 // the cabinet adds LAST across its stages, so it leads; the power comes after
 // the two movements. A stage that never asks for one of them never shows it.
-const RHYTHM_SIGN_ORDER = ['duck', 'jump', 'ability'];
+const RHYTHM_SIGN_ORDER = ['slide', 'jump', 'ability'];
 const RHYTHM_DEATH_SYNC_SEC = 1;
 // The retry hold is intentionally invisible to control, but a hero held in the
 // restored pose for that whole second reads like a stuck game. Let the hero
@@ -593,7 +593,7 @@ const LANE_CALLS = {
 };
 
 /**
- * How the popup stack's duck moves — see floatieShift and the call in updateRun.
+ * How the popup stack's slide moves — see floatieShift and the call in updateRun.
  *
  * Asymmetric, and that is the whole design. GETTING OUT OF THE WAY is urgent:
  * the hero is rising into the row and every frame spent easing is a frame with
@@ -603,7 +603,7 @@ const LANE_CALLS = {
  * screen. Same shape as the camera's own easePan, three times as sharp on the
  * way out.
  */
-function easeFloatDuck(current, target, dt) {
+function easeFloatClear(current, target, dt) {
   const k = target > current ? 34 : 7;
   return current + (target - current) * (1 - Math.exp(-k * dt));
 }
@@ -617,7 +617,16 @@ const FLOAT_RISE = 13;
 // than round and glyphed: these are read once and pressed once, which is the
 // opposite of the play controls, and CONTINUE/EXIT are not symbols anyone
 // shares. Laid out to match the pause copy above them — see drawPaused.
+//
+// SIDE BY SIDE, not stacked. Stacked they cost 58 of the screen's last 74
+// pixels, which squeezed every row above them into 12-pixel steps and put the
+// AUDIO SYNC row six pixels under the legend it had nothing to do with. One
+// row of two gives that band back to the copy, and the pair reads as what it
+// is: a choice between two answers to the same question, not a list.
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
+const PAUSE_PLATE_W = 120, PAUSE_PLATE_GAP = 14;
+const PAUSE_PLATE_Y = 230;
+const PAUSE_PLATE_X = W / 2 - PAUSE_PLATE_W - PAUSE_PLATE_GAP / 2;
 // The portal's height off the ground — how far a player has to be above it to miss.
 const PORTAL_H = 40;
 // How far ahead of a boost pad the approach begins. 56 was about a third of a
@@ -662,8 +671,8 @@ const PAUSE_BUTTONS = [
   // 'pause' toggles, so it resumes from here; 'escape' while already paused is
   // the quit half of the Escape key's behaviour. Both actions already existed —
   // the buttons just give a thumb somewhere to send them.
-  { id: 'resume', x: W / 2 - PAUSE_MENU_W / 2, y: 196, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
-  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
+  { id: 'resume', x: PAUSE_PLATE_X, y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
+  { id: 'quit', x: PAUSE_PLATE_X + PAUSE_PLATE_W + PAUSE_PLATE_GAP, y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
 ];
 
 // AUDIO SYNC, nudgeable from the pause screen of a beat stage.
@@ -677,11 +686,21 @@ const PAUSE_BUTTONS = [
 // A blind nudge, deliberately — the picture is frozen, so nothing here can be
 // heard against anything. It is the coarse control for "that felt late"; the
 // tap test on the briefing is the one that measures.
-const PAUSE_SYNC_Y = 178;
+const PAUSE_SYNC_Y = 206;
 const PAUSE_SYNC_H = 14;
+//
+// RESET hangs off the right end, outside the plate column and with a gap, so a
+// thumb aiming for + cannot find it: it is the one control on the row that
+// throws a measurement away. Zero is not "no correction" — the offset is added
+// to what the device reports (audio.js, heardLatencySec), so zero means "trust
+// the system's figure", which is what a player wants back the moment they
+// unplug the headphones they calibrated for.
 const PAUSE_SYNC_BUTTONS = [
   { id: 'syncDown', x: W / 2 - PAUSE_MENU_W / 2, y: PAUSE_SYNC_Y, w: 22, h: PAUSE_SYNC_H, action: 'syncDown', label: '-' },
   { id: 'syncUp', x: W / 2 + PAUSE_MENU_W / 2 - 22, y: PAUSE_SYNC_Y, w: 22, h: PAUSE_SYNC_H, action: 'syncUp', label: '+' },
+  // Right edge flush with BACK's, so the extra hangs off a line the eye
+  // already has rather than ending in mid-air.
+  { id: 'syncReset', x: PAUSE_PLATE_X + PAUSE_PLATE_W * 2 + PAUSE_PLATE_GAP - 44, y: PAUSE_SYNC_Y, w: 44, h: PAUSE_SYNC_H, action: 'syncReset', label: 'RESET' },
 ];
 
 // Semitones above the root for each juggle in a chain — root, third, fifth,
@@ -797,7 +816,7 @@ const GORILLA_COLUMN = [410, 446];
 // chin is enough to read as going around him. Peter: "only dip A little to
 // avoid covering Kong's face and upper body."
 const GORILLA_CHIN_Y = 86;
-const GORILLA_DUCK_ALT = 55;
+const GORILLA_SLIDE_ALT = 55;
 // He arrives UNDER the gorilla and climbs once he is past its building: a
 // villain who slides in beneath the cabinet's own landmark and only then takes
 // his height reads as coming from somewhere, where crossing at cruising height
@@ -1308,7 +1327,7 @@ const CELEBRATE_DIP = {
 // its snapshot must own the face angle as explicitly as it owns lean/squash.
 export const FINISH_CELEBRATION_POSE = Object.freeze({
   kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0, headTurn: 0,
-  ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0,
+  sliding: false, slideAmount: 0, roll: false, float: false, stomp: false, cling: 0,
 });
 // Seconds the payoff takes to run. It was 0.18 when the whole event was a lever
 // swinging through its arc. The marker's payoff is now a five-beat CHAIN — push,
@@ -1442,7 +1461,7 @@ export class RunState {
     this.rewindFx = new TapeRewindEffect();
     this.beatCombo = 0;
     // WHAT THE SKYLINE'S SHARE PRICE IS TRACKING. Neutral at 0.5, a step up per
-    // on-beat jump or duck, a step down for a beat that went by unanswered and
+    // on-beat jump or slide, a step down for a beat that went by unanswered and
     // a plunge for a hit. It is a presentation number and nothing else reads
     // it — no score, no mission, no physics — which is what keeps handing it to
     // a style pack honest. `rhythmCheer` is the seconds left on the thumbs-up
@@ -2198,7 +2217,7 @@ export class RunState {
     this.projectiles = [];
     this.chompBites = [];        // eaten obstacle snapshots flying into Chompo's mouth
     this.floaties = [];
-    this.floatDuck = 0;         // eased shift keeping the popup stack off the hero
+    this.floatClear = 0;         // eased shift keeping the popup stack off the hero
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
     // Purchased bench upgrades announce themselves the same way a banked plug
     // does: gold pills sliding in under the health bar, one after another, in
@@ -2844,7 +2863,7 @@ export class RunState {
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
-  // replace the play controls (setButtons), the arrows stop meaning jump/duck
+  // replace the play controls (setButtons), the arrows stop meaning jump/slide
   // and start meaning "next plate" (setMenuKeys), and the cursor goes back to
   // CONTINUE — a pause screen that opens on EXIT because that is where you left
   // the highlight last time is a run lost to muscle memory.
@@ -2869,9 +2888,14 @@ export class RunState {
       const step = (Input.pressed('right') || Input.pressed('syncUp') ? 1 : 0)
         - (Input.pressed('left') || Input.pressed('syncDown') ? 1 : 0);
       if (step) this.nudgeAudioSync(step);
+      if (Input.pressed('syncReset')) this.resetAudioSync();
     }
-    if (Input.pressed('up')) { this.pauseIdx = (this.pauseIdx + n - 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('down')) { this.pauseIdx = (this.pauseIdx + 1) % n; Audio.sfx('ui'); }
+    // Up/down always works — it is what the stacked plates taught. Left/right
+    // joins it now the pair is a row, wherever the nudge has not claimed it.
+    const back = Input.pressed('up') || (!this.beatLock && Input.pressed('left'));
+    const fwd = Input.pressed('down') || (!this.beatLock && Input.pressed('right'));
+    if (back) { this.pauseIdx = (this.pauseIdx + n - 1) % n; Audio.sfx('ui'); }
+    if (fwd) { this.pauseIdx = (this.pauseIdx + 1) % n; Audio.sfx('ui'); }
     if (!Input.pressed('confirm')) return;
     Audio.sfx('uiConfirm');
     // Both plates already have an action that does exactly this from a tap —
@@ -2896,6 +2920,22 @@ export class RunState {
     if (next === clampAudioSyncMs(s.audioSyncMs)) { Audio.sfx('uiBad'); return; }
     s.audioSyncMs = next;
     Audio.setSyncOffset(next);
+    this.save.persist();
+    Audio.sfx('ui');
+  }
+
+  /**
+   * Back to the device's own figure, without tapping sixteen clicks out.
+   *
+   * Saved on the spot for the same reason a nudge is: it is a global setting
+   * changed mid-run, and a run that ends in a quit must not take it with it.
+   * Refuses rather than pretends when the offset is already nothing.
+   */
+  resetAudioSync() {
+    const s = this.save.settings;
+    if (clampAudioSyncMs(s.audioSyncMs) === 0) { Audio.sfx('uiBad'); return; }
+    s.audioSyncMs = 0;
+    Audio.setSyncOffset(0);
     this.save.persist();
     Audio.sfx('ui');
   }
@@ -3011,7 +3051,7 @@ export class RunState {
    * JUMP then ATTACK, and rhythm-2 and rhythm-3 both put SLIDE in front of
    * them — which is the point of the order being taught rather than read off
    * the chart, since rhythm-3 happens to ask for a jump two beats before its
-   * first duck.
+   * first slide.
    *
    * WHAT IT TEACHES IS THE KEY. Three surfaces on this cabinet draw the same
    * marks and none of them says what they mean: the beat ribbon names every
@@ -3020,7 +3060,7 @@ export class RunState {
    * the shape and the word together, once, and gives the board back.
    *
    * DERIVED FROM THE CHART, because a fixed list would be wrong on every stage
-   * of this cabinet: rhythm-1 contains no duck at all, so it rolls two signs
+   * of this cabinet: rhythm-1 contains no slide at all, so it rolls two signs
    * and the other two roll three. What it is NOT keyed on is the hero — see the
    * note on the power below.
    */
@@ -3076,8 +3116,8 @@ export class RunState {
         // be building in an exception with a shelf life.
         const barrel = asks.some((e) => e.type === 'barrel');
         const other = asks.some((e) => e.type !== 'barrel');
-        const ink = action !== 'duck' ? [ACTION_INK[action]]
-          : [barrel ? ACTION_INK.barrel : null, other ? ACTION_INK.duck : null].filter(Boolean);
+        const ink = action !== 'slide' ? [ACTION_INK[action]]
+          : [barrel ? ACTION_INK.barrel : null, other ? ACTION_INK.slide : null].filter(Boolean);
         if (ink.length) roll.push({ action, ink });
       }
       this.rhythmSignRoll = roll;
@@ -3088,7 +3128,7 @@ export class RunState {
   /**
    * NOTHING BUT JUMPS UNTIL THE SIGN HAS FINISHED. The beat (in the judge's
    * and the spawner's shared numbering) before which the lane lays only bars
-   * and coins — no duck, no box, no hole — or null when there is no gate.
+   * and coins — no slide, no box, no hole — or null when there is no gate.
    *
    * The rooftop sign spends the opening bars saying what the three marks
    * mean, and a lane that asked for a slide or a shot while the word for it
@@ -3645,12 +3685,12 @@ export class RunState {
       if (ok && this.beatLock) this.checkOnBeat('jump');
       if (ok) this.cueHeadBonk();
     }
-    if (Input.pressed('duck')) {
-      // The edge starts the universal mid-air slide-kick. Ground ducking still
+    if (Input.pressed('slide')) {
+      // The edge starts the universal mid-air slide-kick. Ground sliding still
       // remains held-state driven inside Player.update(), and a loop ride keeps
       // Down inert just like every other movement control on the ring.
       if (!this.loop) this.player.slidePressed();
-      if (this.beatLock) this.checkOnBeat('duck');
+      if (this.beatLock) this.checkOnBeat('slide');
       this.cueBarrelKick();
     }
     if (Input.pressed('ability') && !this.loop) {
@@ -3716,7 +3756,7 @@ export class RunState {
     // as long as the hero is down, and the scrape cue on the frame the slide
     // starts. Same dust the footsteps and landings throw — one material.
     {
-      const sliding = this.player.grounded && this.player.duckAmount > 0.5;
+      const sliding = this.player.grounded && this.player.slideAmount > 0.5;
       if (sliding && !this.wasSliding) Audio.sfx('slide');
       this.wasSliding = sliding;
       if (sliding && !this.save.settings.reducedMotion) {
@@ -3784,7 +3824,7 @@ export class RunState {
     // path from one side of a hero to the other — and a card that teleports as
     // he steps onto a platform reads as a glitch. Same easing the camera uses
     // for the same reason.
-    this.floatDuck = easeFloatDuck(this.floatDuck, floatieShift(this.floaties, this.heroRestRect()), dt);
+    this.floatClear = easeFloatClear(this.floatClear, floatieShift(this.floaties, this.heroRestRect()), dt);
     this.updateChompBites(dt);
     if (this.goalToasts.length) {
       this.goalToasts[0].t -= dt;
@@ -4004,11 +4044,11 @@ export class RunState {
     // Live input. tRun and powerup timers deliberately do NOT advance — the
     // legend and any starting powerup belong to the run, not to the walk-on —
     // but the buttons that shape the hero do. Real Input (not a null stub) so a
-    // held jump gives its full arc and a duck reads through. sp is fed as the
+    // held jump gives its full arc and a slide reads through. sp is fed as the
     // run-cycle speed so the legs match the accelerating travel.
     this.player.powerJumpBonus = this.powerups.bonusJumps();
     if (Input.pressed('jump') && this.player.jumpPressed(Audio)) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
-    if (Input.pressed('duck')) this.player.slidePressed();
+    if (Input.pressed('slide')) this.player.slidePressed();
     if (Input.pressed('ability')) this.useAbility();
     const res = this.player.update(dt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice',
@@ -4081,7 +4121,7 @@ export class RunState {
     // here made him blink out the frame the finish armed.
     if (this.copter) { this.copter.flyOff = true; this.copter.hitT = 0; }
     this.floaties = [];
-    this.floatDuck = 0;
+    this.floatClear = 0;
   }
 
   updateFinish(dt) {
@@ -4094,7 +4134,7 @@ export class RunState {
     this.updateInvincibility(dt);
     this.player.powerJumpBonus = this.powerups.bonusJumps();
     if (Input.pressed('jump') && this.player.jumpPressed(Audio)) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
-    if (Input.pressed('duck')) this.player.slidePressed();
+    if (Input.pressed('slide')) this.player.slidePressed();
     if (Input.pressed('ability')) this.useAbility();
     const res = this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice',
@@ -4132,7 +4172,7 @@ export class RunState {
       // It is a survival power and there is nothing left to survive: from this
       // frame the world holds and nothing can reach him. What would carry on is
       // the star mix — the finale hold never calls updateInvincibility, so a
-      // capsule grabbed late ducked the music under the whole celebration and
+      // capsule grabbed late slid the music under the whole celebration and
       // handed the results screen a warped bank.
       this.endInvincibility();
       // Damage mercy is finished too. It protects the live run to the tape,
@@ -4162,7 +4202,7 @@ export class RunState {
       this.speechQueue = [];
       this.speechWaitT = 0;
       this.floaties = [];
-      this.floatDuck = 0;
+      this.floatClear = 0;
       this.resolveFlip();
       // The slide. resolveFlip has already graded the CATCH — it reads
       // player.y, so it must run before anything here moves the hero — and from
@@ -4380,7 +4420,7 @@ export class RunState {
       this.player.rollBashed = false;
       this.player.rollDeflectUsed = false;
       this.player.rollContactIds = new Set();
-      this.player.ducking = false;
+      this.player.sliding = false;
       Audio.sfx('dash');
     } else if (type === 'shoot') {
       // TWO heroes shoot, and they are not the same weapon. B-33P's lemon is
@@ -4910,7 +4950,7 @@ export class RunState {
   // ------------------------------------------------------------------ relay
   // Two separate keep-clear rules, because they protect different things.
   //
-  // The APPROACH is about fairness: an obstacle that wants a jump or a duck in
+  // The APPROACH is about fairness: an obstacle that wants a jump or a slide in
   // the run-up gets deleted, since the portal already owns that input window.
   //
   // The COLUMN is about the portal itself. The art is 14px wide with a face
@@ -5654,7 +5694,7 @@ export class RunState {
   // they can spend on the villain, and one overhead while a hurdle arrives
   // makes the two reads fight. Anything the hero has to act on counts —
   // hurdles, fliers, gaps — and gaps count double because the landing is not
-  // a lane. Fliers are included even though they are ducked: the answer this
+  // a lane. Fliers are included even though they are slid: the answer this
   // question wants is "is the player free right now", not "must they jump".
   laneClearFor(fromSecs, toSecs, sp, gapsOnly = false) {
     const px = this.camX + PLAYER_X;
@@ -6068,7 +6108,7 @@ export class RunState {
       // his dip under its chin), as functions, so the planner can put its
       // predicted roam through the same ones.
       const clampRightFor = (alt) => !hasGorilla ? Infinity
-        : (alt <= GORILLA_DUCK_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4) / zoom - COPTER_BOX / 2;
+        : (alt <= GORILLA_SLIDE_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4) / zoom - COPTER_BOX / 2;
       const dippedFor = (alt, atDx) => {
         if (!hasGorilla) return alt;
         const artL = (atDx - COPTER_BOX / 2) * zoom;
@@ -6390,7 +6430,7 @@ export class RunState {
       // up at the top of his band he stops short of that building, and only
       // down at barrel height may he cross it. The recoil climbs and drifts,
       // so both are clamped here rather than inside each case.
-      const rightEdge = !hasGorilla || c.alt <= GORILLA_DUCK_ALT
+      const rightEdge = !hasGorilla || c.alt <= GORILLA_SLIDE_ALT
         ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4;
       // The arrival flies THROUGH the gorilla's column; only the roam has to
       // keep off it.
@@ -7289,7 +7329,7 @@ export class RunState {
    *
    * A re-read beat may land on a slot the chart does not want a jump on, and
    * the scoreboard reads the CHART. Rather than let a hole stand on a beat that
-   * demands a duck, that beat is consumed: the jump over it scores nothing, and
+   * demands a slide, that beat is consumed: the jump over it scores nothing, and
    * — the part that matters — it cannot break a combo the player did nothing
    * wrong to lose. A set piece keeps its credit, because its beats are its own
    * (rhythmSetEvents) rather than the chart's.
@@ -7334,7 +7374,7 @@ export class RunState {
     const set = this.rhythmSetEvents?.find((e) => e.beat === beat && !e.pit.passed);
     if (set) return set;
     // A crossing replaces the repeating chart for its full authored phrase;
-    // suppressed duck/jump slots must not silently reset combo while the
+    // suppressed slide/jump slots must not silently reset combo while the
     // player is following the stone sequence.
     const crossing = this.pitPlan?.find((p) => !p.passed && p.crossing
       && p.actionBeats?.length && beat >= p.actionBeats[0] && beat <= p.actionBeats.at(-1));
@@ -7368,11 +7408,11 @@ export class RunState {
     // reason and by the same means. The stage that teaches the kick deals a
     // handful of barrels across ninety seconds rather than one every seven
     // (see `every` in songs/rhythm.js), and a quiet pass has to be a beat
-    // nobody is scored against — not a duck the scoreboard demands of an empty
+    // nobody is scored against — not a slide the scoreboard demands of an empty
     // road. Asked of the LANE, not the chart, because the lane is what decided.
     if (event.punt) {
       const laid = this.spawner?.eventInstances?.some(
-        (e) => e.chartAction === 'duck' && e.actionBeat === beat);
+        (e) => e.chartAction === 'slide' && e.actionBeat === beat);
       if (!laid) return null;
     }
     // A pit and a bar are one input. The chart distinguishes them because they
@@ -7406,7 +7446,7 @@ export class RunState {
    * and keeps its cue at the contact, where it belongs.
    */
   cueBarrelKick() {
-    if (!this.beatLock || this.player.duckSpent || !this.player.grounded) return;
+    if (!this.beatLock || this.player.slideSpent || !this.player.grounded) return;
     const front = this.playerWorldX() + PLAYER_W;
     for (const ob of this.obstacles) {
       if (!ob.live || ob.punted || ob.puntCued || !ob.def.beatPunt || ob.hurtPlayer) continue;
@@ -7685,7 +7725,7 @@ export class RunState {
     while (this.beatJudgeCursor <= through) {
       const n = this.beatJudgeCursor++;
       const event = this.rhythmRequiredAt(n, chart);
-      if (event && (event.action === 'jump' || event.action === 'duck' || event.action === 'ability')
+      if (event && (event.action === 'jump' || event.action === 'slide' || event.action === 'ability')
           && !this.beatJudgeConsumed.has(event.id)) {
         this.beatJudgeConsumed.add(event.id);
         this.beatCombo = 0;
@@ -8406,7 +8446,7 @@ export class RunState {
         // So a prop needs the room its OWN answer takes, not the room its body
         // takes. Something to jump needs its own height plus a hero's above it —
         // that is where his feet are at the moment he clears it, and his head is
-        // a full body higher — while something to duck or simply pass needs only
+        // a full body higher — while something to slide or simply pass needs only
         // to fit, with a little air so it is not scraping the ceiling. Under any
         // island a jumpable prop fails that by a wide margin, which is the rule
         // Peter asked for; a road that has climbed well clear, or a sprung one
@@ -8968,9 +9008,9 @@ export class RunState {
       playerMotion: {
         y: this.player.y, vy: this.player.vy, jumps: this.player.jumps,
         grounded: this.player.grounded, launched: this.player.launched,
-        ducking: this.player.ducking, duckAmount: this.player.duckAmount,
-        duckDirection: this.player.duckDirection, duckHoldT: this.player.duckHoldT,
-        duckSpent: this.player.duckSpent, stomping: this.player.stomping,
+        sliding: this.player.sliding, slideAmount: this.player.slideAmount,
+        slideDirection: this.player.slideDirection, slideHoldT: this.player.slideHoldT,
+        slideSpent: this.player.slideSpent, stomping: this.player.stomping,
         slideSlamming: this.player.slideSlamming,
         landingSlideT: this.player.landingSlideT, slideKickT: this.player.slideKickT,
         standT: this.player.standT,
@@ -9038,9 +9078,9 @@ export class RunState {
       const m = s.playerMotion;
       this.player.y = m.y ?? 0; this.player.vy = m.vy ?? 0; this.player.jumps = m.jumps ?? 0;
       this.player.grounded = m.grounded !== false; this.player.launched = !!m.launched;
-      this.player.ducking = !!m.ducking; this.player.duckAmount = m.duckAmount ?? 0;
-      this.player.duckDirection = m.duckDirection ?? 0; this.player.duckHoldT = m.duckHoldT ?? 0;
-      this.player.duckSpent = !!m.duckSpent; this.player.stomping = !!m.stomping;
+      this.player.sliding = !!m.sliding; this.player.slideAmount = m.slideAmount ?? 0;
+      this.player.slideDirection = m.slideDirection ?? 0; this.player.slideHoldT = m.slideHoldT ?? 0;
+      this.player.slideSpent = !!m.slideSpent; this.player.stomping = !!m.stomping;
       this.player.slideSlamming = !!m.slideSlamming;
       this.player.landingSlideT = m.landingSlideT ?? 0; this.player.slideKickT = m.slideKickT ?? 0;
       this.player.standT = m.standT ?? 0;
@@ -9266,12 +9306,12 @@ export class RunState {
     const p = this.player;
     const ps = s.player || (s.player = {});
     ps.heroId = p.heroId; ps.y = p.y; ps.vy = p.vy; ps.jumps = p.jumps;
-    ps.powerJumpBonus = p.powerJumpBonus; ps.ducking = p.ducking;
-    ps.duckAmount = p.duckAmount; ps.duckDirection = p.duckDirection;
+    ps.powerJumpBonus = p.powerJumpBonus; ps.sliding = p.sliding;
+    ps.slideAmount = p.slideAmount; ps.slideDirection = p.slideDirection;
     ps.floating = p.floating; ps.iframes = p.iframes; ps.anim = p.anim;
     ps.stomping = p.stomping; ps.slideSlamming = p.slideSlamming;
     ps.landingSlideT = p.landingSlideT; ps.slideKickT = p.slideKickT;
-    ps.standT = p.standT; ps.duckHoldT = p.duckHoldT; ps.duckSpent = p.duckSpent;
+    ps.standT = p.standT; ps.slideHoldT = p.slideHoldT; ps.slideSpent = p.slideSpent;
     ps.dashT = p.dashT; ps.rollT = p.rollT;
     ps.launched = p.launched;
     ps.compressT = p.compressT; ps.stumbleT = p.stumbleT; ps.slipT = p.slipT;
@@ -9393,12 +9433,12 @@ export class RunState {
     // If the hero changed during the recorded window, setHero to swap rig.
     if (p.heroId !== ps.heroId) p.setHero(ps.heroId);
     p.y = ps.y; p.vy = ps.vy; p.jumps = ps.jumps;
-    p.powerJumpBonus = ps.powerJumpBonus; p.ducking = ps.ducking;
-    p.duckAmount = ps.duckAmount; p.duckDirection = ps.duckDirection;
+    p.powerJumpBonus = ps.powerJumpBonus; p.sliding = ps.sliding;
+    p.slideAmount = ps.slideAmount; p.slideDirection = ps.slideDirection;
     p.floating = ps.floating; p.iframes = ps.iframes; p.anim = ps.anim;
     p.stomping = !!ps.stomping; p.slideSlamming = !!ps.slideSlamming;
     p.landingSlideT = ps.landingSlideT || 0; p.slideKickT = ps.slideKickT || 0;
-    p.standT = ps.standT || 0; p.duckHoldT = ps.duckHoldT || 0; p.duckSpent = !!ps.duckSpent;
+    p.standT = ps.standT || 0; p.slideHoldT = ps.slideHoldT || 0; p.slideSpent = !!ps.slideSpent;
     p.dashT = ps.dashT; p.rollT = ps.rollT;
     p.launched = !!ps.launched;
     p.compressT = ps.compressT; p.stumbleT = ps.stumbleT; p.slipT = ps.slipT;
@@ -9521,7 +9561,7 @@ export class RunState {
 
     // Clear transient visuals.
     this.floaties = [];
-    this.floatDuck = 0;
+    this.floatClear = 0;
     this.speech = null;
     this.speechQueue = [];
     this.speechWaitT = 0;
@@ -9774,8 +9814,8 @@ export class RunState {
         ob.landedOn = true;
         continue;
       }
-      // Rolling under a duck-flyer, jumping over: geometric, nothing to do here.
-      if (this.player.rolling && ob.def.action === 'duck') continue; // roll always clears duckables
+      // Rolling under a slide-flyer, jumping over: geometric, nothing to do here.
+      if (this.player.rolling && ob.def.action === 'slide') continue; // roll always clears slideables
       // I-frames make him unhittable, not incapable. The slide kick below is an
       // ACTION — the player pressed for it, and the boot connecting is the only
       // feedback that the press landed — so it has to survive being invulnerable.
@@ -9792,7 +9832,7 @@ export class RunState {
       // flashing second still kicks exactly as it did.
       // KICKED ON THE INPUT, NOT ON THE BLEND — but only a beat barrel is.
       //
-      // 0.6 of the crouch blend is DUCK_IN_T * 0.6 = 84ms of animation the
+      // 0.6 of the crouch blend is SLIDE_IN_T * 0.6 = 84ms of animation the
       // player has already committed to, and for a crate that is right: the
       // plow is a body check and a half-crouched hero has no business landing
       // one. On a beat lane it is a tax. The barrel has to arrive far enough
@@ -9807,10 +9847,10 @@ export class RunState {
       // the contact honest about what the player did, and buys back the whole
       // 84ms — which is what closes the gap between the press and the hit.
       const sliding = this.player.grounded
-        && (this.player.duckAmount > 0.6 || (ob.def.beatPunt && this.player.ducking));
+        && (this.player.slideAmount > 0.6 || (ob.def.beatPunt && this.player.sliding));
       const slideKick = sliding && !ob.hurtPlayer
         && ((ob.type === 'crate' || ob.type === 'qcrate')
-        || (ob.def.punt && puntPower(this.player.duckHoldT) > 0));
+        || (ob.def.punt && puntPower(this.player.slideHoldT) > 0));
       if (!slideKick && (this.player.invincible || this.powerups.isInvincible())) {
         // Targets and switches are objectives, not hazards. Post-hit i-frames
         // must not make a !-crate temporarily unusable.
@@ -9860,7 +9900,7 @@ export class RunState {
       }
       // The power slide is a plow — for BOXES only. A crate is furniture in
       // the way; a cactus is a hazard, and sliding through hazards for free
-      // would beggar the jump. It spends the timed duck window to do it, so
+      // would beggar the jump. It spends the timed slide window to do it, so
       // it is a commit rather than free invincibility — airborne or
       // half-risen contact still hurts like it always did.
       if (sliding && !ob.hurtPlayer && (ob.type === 'crate' || ob.type === 'qcrate')) {
@@ -9874,10 +9914,10 @@ export class RunState {
         // with it, and riding the slide through the debris read as sliding
         // past a thing he had already dealt with.
         //
-        // A short timer, NOT duckSpent. duckSpent was the first attempt and it
+        // A short timer, NOT slideSpent. slideSpent was the first attempt and it
         // demands the key come up before another slide arms — which stranded
-        // anyone holding duck through a run of hazards: it stood them up into
-        // the next duckable with no way back down, and then into the one after
+        // anyone holding slide through a run of hazards: it stood them up into
+        // the next slideable with no way back down, and then into the one after
         // that. The timer stands him up and gives the slide straight back.
         //
         // The cone punt deliberately does NOT do this: cones come in rows of
@@ -9897,7 +9937,7 @@ export class RunState {
       }
       // PUNTABLE props LEAVE rather than shatter. Same commitment as the crate
       // plow above — grounded, mid-slide — with a timing read on top: the
-      // punt is spent from the front of the duck window, so a slide committed
+      // punt is spent from the front of the slide window, so a slide committed
       // late launches the prop and one you coasted in on does not. Miss the
       // window and nothing here fires; it falls through to takeHit below,
       // exactly as it does today.
@@ -9910,7 +9950,7 @@ export class RunState {
       // closing target, and beating it turns a hazard he would have jumped into
       // one he sends back over his own head.
       if (sliding && !ob.hurtPlayer && ob.def.punt) {
-        const power = puntPower(this.player.duckHoldT);
+        const power = puntPower(this.player.slideHoldT);
         if (power > 0) {
           this.player.slideKickT = SLIDE_KICK_T;
           const heavy = ob.def.punt === 'heavy';
@@ -9972,11 +10012,11 @@ export class RunState {
     // Pickups.
     //
     // Judged against the STANDING-height box even mid-slide. The hitbox
-    // shrinks when he ducks because what may HURT him is judged meanly — but a
+    // shrinks when he slides because what may HURT him is judged meanly — but a
     // sliding hero has not really gone anywhere, he has folded, and a coin row
-    // at head height is still his. Docking a fill for ducking punished the
+    // at head height is still his. Docking a fill for sliding punished the
     // very input the lane just asked for, on every cabinet that mixes coins
-    // with ducks.
+    // with slides.
     const reachBox = { x: pbox.x, y: pbox.y + pbox.h - PLAYER_H, w: pbox.w, h: PLAYER_H };
     for (const p of this.pickups) {
       if (!p.live) continue;
@@ -10086,12 +10126,12 @@ export class RunState {
     // already handled everywhere stumbleT is (the loop ride's timer wind-down,
     // the rewind snapshot, `get speed`).
     this.player.stumbleT = Math.max(this.player.stumbleT, SLIP_T);
-    // He goes down, so he is not ducking, not stomping and not mid-kick. Left
+    // He goes down, so he is not sliding, not stomping and not mid-kick. Left
     // set, any of the three fights the tumble for the same silhouette.
-    this.player.ducking = false;
+    this.player.sliding = false;
     this.player.stomping = false;
     this.player.clearSlideState();
-    this.player.duckDirection = -1;
+    this.player.slideDirection = -1;
     // The gag. A short slide whistle pitched down on top of the hit — the peel
     // is a pratfall, and the cue the pole ride already uses for "gravity is
     // having its way with him" is exactly the right one, at a third the length.
@@ -10225,8 +10265,8 @@ export class RunState {
       this.player.jumps = 0;
       this.player.launched = false;
       this.player.clearSlideState();
-      this.player.ducking = false;
-      this.player.duckAmount = 0;
+      this.player.sliding = false;
+      this.player.slideAmount = 0;
       this.player.rollT = 0;
       this.player.compressT = 0;
       this.player.stomping = false;
@@ -10368,7 +10408,7 @@ export class RunState {
    * A death freezes the world and the player's own update stops running, so
    * whatever silhouette the hero happened to be in on the killing frame is the
    * one held for the entire death hold: a landing squash flattened mid-arrival,
-   * the tucked launch pose with air stretch on it, a duck, a roll, a stomp. The
+   * the tucked launch pose with air stretch on it, a slide, a roll, a stomp. The
    * hero read as caught mid-move rather than as beaten, and the squash timer in
    * particular kept counting against a clock nothing was advancing.
    *
@@ -10383,11 +10423,11 @@ export class RunState {
     p.jumps = 0;
     p.launched = false;
     p.landedT = 0;
-    p.ducking = false;
-    p.duckAmount = 0;
-    p.duckDirection = 0;
-    p.duckHoldT = 0;
-    p.duckSpent = false;
+    p.sliding = false;
+    p.slideAmount = 0;
+    p.slideDirection = 0;
+    p.slideHoldT = 0;
+    p.slideSpent = false;
     p.stomping = false;
     p.floating = false;
     p.rollT = 0;
@@ -11312,8 +11352,8 @@ export class RunState {
     // HUD, the banners, the pause and fail screens — exactly as before.
     //
     // On the ground he is enqueued where he always was, under the whole
-    // overlay. A card that has ducked under a standing hero is not in his way,
-    // and the one case the duck cannot fix — him LIVING up in the row on an
+    // overlay. A card that has slid under a standing hero is not in his way,
+    // and the one case the slide cannot fix — him LIVING up in the row on an
     // island — is answered by the card's crossing fade, which needs him
     // underneath to be the thing that reads through.
     let heroLift = null;
@@ -11325,7 +11365,7 @@ export class RunState {
         queueOverlay: liftHero ? (fn) => { heroLift = fn; } : undefined,
         // Every field the LAST live frame left behind has to be cleared, not
         // just the kind. He arrives here mid-landing — squash from hitting the
-        // cap, lean from the run, and whatever duck state the slide left — and
+        // cap, lean from the run, and whatever slide state the slide left — and
         // the sim is frozen from this point, so none of it ever decays. The
         // result is a hero celebrating while permanently compressed. `kind`
         // alone was not enough; the pose is a snapshot, so it needs a clean one.
@@ -11344,7 +11384,7 @@ export class RunState {
           ? FINISH_CELEBRATION_POSE
           : (this.loop && !this.loop.pending)
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
-              ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
+              sliding: false, slideAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
             : undefined,
       groundY: this.renderGroundY(cam + heroScreenX, this.route),
         // How the terrain rises or falls either side of the hero, so a floor
@@ -11458,7 +11498,7 @@ export class RunState {
       // The popup stack rides the hero's own column, so a jump carries him up
       // into it. One shift for the whole stack keeps their 19px slotting, and it
       // is the EASED one — see updateRun.
-      const floatShift = Math.round(this.floatDuck);
+      const floatShift = Math.round(this.floatClear);
       for (const f of this.floaties) {
         drawFloatie(d, f, {
           heroX,
@@ -11476,7 +11516,10 @@ export class RunState {
       // instrument the player is reading continuously and its position is the
       // one thing that must not move, where a line of banter is up for four
       // seconds and does not care where it stands.
-      if (this.speech) {
+      // Not while paused: the pause screen owns the top of the picture now, and
+      // a line of banter printed under PAUSED is one card too many on a screen
+      // that exists to be read.
+      if (this.speech && !this.paused) {
         // The card talks from the band the beat ribbon left behind, narrowed to
         // whatever gap the HUD's own shoulders leave it — one row on every
         // stage now, beat-locked or not. See speechChannel.
@@ -11579,12 +11622,14 @@ export class RunState {
   }
 
   // The pause screen: a status read-out over a dimmed run, then the two ways
-  // out. The whole block sits higher than it used to — the copy ended at y 192
-  // when the only way out was a keypress, and the menu plates need that room.
+  // out. It uses the whole 270 — title near the top, plates near the bottom,
+  // and the read-out breathing between them. Every row is a fixed height, so a
+  // legend you paused to look up is where it was last time whatever the run
+  // above it happens to be doing.
   drawPaused(ctx) {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'PAUSED', W / 2, 62, '#fff', 2, 'title');
+    drawTextCentered(ctx, 'PAUSED', W / 2, 28, '#fff', 2, 'title');
     const pHero = HERO_BY_ID[this.relay.current];
     const pBtn = Input.usingTouch ? 'USE' : 'RIGHT/D';
     // Every key on this screen is painted by the same legend painter the HUD
@@ -11594,12 +11639,26 @@ export class RunState {
     // read word by word to find the one word you paused to look up.
     const legend = (pairs, y, opts) =>
       drawKeyLegend(ctx, pairs, W / 2 - keyLegendWidth(pairs, opts?.scale) / 2, y, opts);
-    drawTextCentered(ctx, pHero.name, W / 2, 92, '#48e0c8');
-    // The power line reports state rather than teaching a control, so it keeps
-    // its gold — only the key in front of it joins the legend.
-    const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
-    legend([[pBtn, `${pHero.ability.label}  ${cd}`, '#f6d33c']], 104);
-    drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 118, '#c8e0ff');
+    // WHERE YOU ARE, first. The hero is on screen behind the dim and the mission
+    // is two lines down, but nothing else here says which cabinet this is — and
+    // "which stage was I on" is a question a paused player genuinely has, with
+    // nine cabinets of three stages each. Numbered exactly as the briefing card
+    // numbers it (cabinet's place in the roll, then the stage's), so the two
+    // screens name the same stage the same way. A boss and an overtime lap have
+    // no number, so they say what they are instead.
+    const cabNo = CABINETS.findIndex((c) => c.id === this.cabinet.id) + 1;
+    const where = this.overtime ? 'OVERTIME'
+      : this.bossCab ? 'BOSS'
+      : this.stage ? `STAGE ${cabNo}-${this.stage.index}` : '';
+    // A quarter larger than the rows under it, and the only line on the read-out
+    // that is: it is the answer to "where am I", which is what the rest of the
+    // panel is context for, and at a flat scale it read as just another grey row
+    // in the stack. The three pixels the rows below give up keep the gap under it
+    // wider than the gaps between them, so the size reads as a heading rather
+    // than as one line that happens to be big.
+    drawTextCentered(ctx, where ? `${this.cabinet.name} — ${where}` : this.cabinet.name,
+      W / 2, 48, '#e8e8f0', 1.25);
+    drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 76, '#c8e0ff');
     // The challenge in full, directly under the mission and in the same order
     // the HUD stacks them. The HUD folds this sentence away ten seconds into the
     // stage and keeps only the count, which is the right trade while you are
@@ -11609,7 +11668,7 @@ export class RunState {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
       const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
-      drawTextCentered(ctx, `BONUS: ${c.desc}${tail ? ` ${tail}` : ''}`, W / 2, 130,
+      drawTextCentered(ctx, `BONUS: ${c.desc}${tail ? ` ${tail}` : ''}`, W / 2, 92,
         c.failed ? '#6a6a78' : done ? '#74c947' : '#8a8a98');
     }
     // Plug standing lives here rather than in the HUD: it is a "how am I doing"
@@ -11630,28 +11689,37 @@ export class RunState {
       const CHIP_GAP = 12;
       const total = chips.reduce((a, [t]) => a + textWidth(t), 0) + CHIP_GAP * (chips.length - 1);
       let cx = W / 2 - total / 2;
-      for (const [t, ink] of chips) { drawText(ctx, t, cx, 142, ink); cx += textWidth(t) + CHIP_GAP; }
+      for (const [t, ink] of chips) { drawText(ctx, t, cx, 108, ink); cx += textWidth(t) + CHIP_GAP; }
     }
+    // WHO you are, under WHERE you are and what you are doing there. The stage
+    // and its three lines are the read-out a pause is for; the hero is standing
+    // on the screen behind this one, so his name is a caption on something
+    // already visible rather than news. It leads the controls instead: the
+    // power line under it is the one control that changes with the hero.
+    drawTextCentered(ctx, pHero.name, W / 2, 132, '#48e0c8');
+    // The power line reports state rather than teaching a control, so it keeps
+    // its gold — only the key in front of it joins the legend.
+    const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
+    legend([[pBtn, `${pHero.ability.label}  ${cd}`, '#f6d33c']], 148);
     // The touch line names the halves, which nothing else on screen advertises
     // — the discs look like the only controls there are — and both ways to the
     // power.
     legend(Input.usingTouch
       ? [['TAP LEFT', 'JUMP'], ['TAP RIGHT', 'SLIDE'], ['USE / SWIPE RIGHT', 'POWER']]
-      : [['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT/D', 'POWER']], 158,
+      : [['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT/D', 'POWER']], 170,
     { actionInk: '#c8c8d8' });
-    // Only keyboard needs telling: the plates below say it for everyone else,
-    // and printing a resume key under a button marked CONTINUE is the same
-    // instruction twice in two languages. P is listed as both halves of what it
+    // Only keyboard needs telling, and only about the SHORTCUTS. Arrows-then-
+    // ENTER is how every list in the game works and the plate under the cursor
+    // is lit — printing "LEFT/RIGHT PICK  ENTER SELECT" over a highlighted
+    // button teaches nobody anything and cost the row half its width. The keys
+    // still work; they are just not news. P is listed as both halves of what it
     // does — it is the key you pressed to get here and the key that undoes
     // that, and naming only one of them makes the other look like a different
     // key you have not found yet.
     //
-    // UP/DOWN + ENTER lead, because they are the pair the highlighted plate
-    // below is asking about; P and ESC follow as the shortcuts past it.
-    //
     // Dimmer than the controls above: these work the menu, not the run.
     if (!Input.usingTouch) {
-      legend([['UP/DOWN', 'PICK'], ['ENTER', 'SELECT'], ['P', 'PAUSE/RESUME'], ['ESC', 'QUIT']], 172,
+      legend([['P', 'PAUSE/RESUME'], ['ESC', 'QUIT']], 188,
         { keyInk: 'rgba(116,201,71,0.65)', actionInk: '#8a8a98' });
     }
     // CONTINUE leads in teal, the game's "this one" colour; EXIT sits back in
@@ -11672,20 +11740,20 @@ export class RunState {
       // target rather than an instruction: they are the one mark that says
       // "the arrows move this" without spending a line saying it, and the row
       // has no line to spend — CONTINUE starts eighteen pixels below.
-      drawTextCentered(ctx, Input.usingTouch ? value : `< ${value} >`,
+      drawTextCentered(ctx, value,
         W / 2, textYForMid(PAUSE_SYNC_Y + PAUSE_SYNC_H / 2), ms ? '#48e0c8' : '#8a8a98');
     }
     const cursor = !Input.usingTouch;
     Input.buttons.forEach((b, i) => {
       const go = b.id === 'resume';
-      const nudge = b.id === 'syncUp' || b.id === 'syncDown';
+      const nudge = b.id === 'syncUp' || b.id === 'syncDown' || b.id === 'syncReset';
       // Only the two full-width plates take the arrow cursor; the nudge plates
       // are never a destination, so a highlight on one would be a lie.
       const sel = cursor && !nudge && i === this.pauseIdx;
       drawPanel(ctx, b.x, b.y, b.w, b.h, 5, 'rgba(11,11,20,0.82)',
         { border: sel ? '#ffcf33' : go ? 'rgba(72,224,200,0.75)' : 'rgba(255,255,255,0.22)', shadow: true });
       if (sel) drawMenuRow(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, 4);
-      drawTextCentered(ctx, sel ? `> ${b.label} <` : b.label,
+      drawTextCentered(ctx, b.label,
         b.x + b.w / 2, textYForMid(b.y + b.h / 2), go ? '#48e0c8' : nudge ? '#8a8a98' : '#c8c8d8');
     });
   }

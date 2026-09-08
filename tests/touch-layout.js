@@ -58,7 +58,7 @@ for (const d of DEVICES) {
   const fit = fitFor(d.vw, d.vh, d.safe);
   const lay = layoutTouchChrome(fit);
   const discs = lay.run.filter((b) => b.r != null);
-  assert(discs.map((b) => b.id).join(',') === 'jump,duck,ability,pause', `${d.name}: the run registers its four discs`);
+  assert(discs.map((b) => b.id).join(',') === 'jump,slide,ability,pause', `${d.name}: the run registers its four discs`);
   for (const b of discs) {
     assert(b.x - b.r >= fit.ox && b.x + b.r <= fit.ox + fit.cssW && b.y - b.r >= fit.oy && b.y + b.r <= fit.oy + fit.cssH,
       `${d.name}: ${b.id} disc lies on the picture`);
@@ -69,8 +69,8 @@ for (const d of DEVICES) {
     assert(b.x - b.r > fit.safe.left && b.x + b.r < fit.vw - fit.safe.right && b.y - b.r > fit.safe.top && b.y + b.r < fit.vh - fit.safe.bottom,
       `${d.name}: ${b.id} disc clears every reported inset`);
   }
-  const jump = discs.find((b) => b.id === 'jump'), duck = discs.find((b) => b.id === 'duck');
-  assert(Math.abs(jump.y - duck.y) < 1e-6, `${d.name}: JUMP is level with SLIDE`);
+  const jump = discs.find((b) => b.id === 'jump'), slide = discs.find((b) => b.id === 'slide');
+  assert(Math.abs(jump.y - slide.y) < 1e-6, `${d.name}: JUMP is level with SLIDE`);
   assert(Math.abs(lay.split - (fit.ox + fit.cssW / 2)) <= 0.5, `${d.name}: the halves split where the picture's centre is`);
   checkZones(d.name, fit, lay.run);
   const noPower = lay.runNoPower;
@@ -99,14 +99,14 @@ const pixel = layoutTouchChrome(fitFor(915, 412, {}));
 const pixelLeft = pixel.hub.find((b) => b.id === 'hubLeft');
 assert(pixelLeft.x + pixelLeft.r <= 91, 'a 91px pillar with no inset takes the walk arrow');
 const proRight = pro.run.filter((b) => b.zone && b.zone.x >= 775).sort((a, b) => a.zone.y - b.zone.y);
-assert(proRight.map((b) => b.action).join(',') === 'escape,ability,duck',
+assert(proRight.map((b) => b.action).join(',') === 'escape,ability,slide',
   'the right pillar reads PAUSE / USE / SLIDE from the top down');
 const proPause = pro.run.find((b) => b.id === 'pause');
 assert(Math.abs(proRight[0].zone.y + proRight[0].zone.h - (proPause.y + proPause.r)) < 1e-6,
   'the PAUSE band ends at the pause disc\'s bottom edge');
 const ipad = layoutTouchChrome(fitFor(1180, 820, { bottom: 20 }));
 const bands = ipad.run.filter((b) => b.zone).map((b) => `${b.id}=${b.action}`).join(' ');
-assert(bands === 'zone:topLeft=jump zone:topRight=escape zone:bottomLeft=jump zone:bottomRight=duck',
+assert(bands === 'zone:topLeft=jump zone:topRight=escape zone:bottomLeft=jump zone:bottomRight=slide',
   `an iPad's bands split JUMP | PAUSE above and JUMP | SLIDE below (${bands})`);
 assert(DISC_SLOP > 0 && DISC_SLOP < 12, 'disc slop is a thumb\'s worth, not a zone\'s');
 

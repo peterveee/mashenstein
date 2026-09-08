@@ -675,7 +675,7 @@ export const ANIMAL_OBSTACLE_CANDIDATES = [
   { id:'sewerCroc', letter:'C', name:'SEWER CROCODILE', cabinet:'plumber', box:[27,11], elevation:0,
     action:'jump', note:'long low snapper; the jaw cycle changes its occupied height' },
   { id:'diveBat', letter:'D', name:'DIVE-BOMBING BAT', cabinet:'crypt', box:[19,14], elevation:9,
-    action:'duck / timing', note:'airborne crossing threat; jagged wings and fangs lead the read' },
+    action:'slide / timing', note:'airborne crossing threat; jagged wings and fangs lead the read' },
   { id:'strikeCobra', letter:'E', name:'STRIKING COBRA', cabinet:'neon', box:[15,19], elevation:0,
     action:'timing / jump', note:'coils in place, then extends its hood and fangs into the lane' },
   { id:'quillhog', letter:'F', name:'ATTACK PORCUPINE', cabinet:'frost', box:[22,16], elevation:0,

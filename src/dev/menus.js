@@ -508,7 +508,7 @@ function tuneMenu(dev, group) {
       items.push({ label: `JUMP HEIGHT: ${d.jump.toFixed(1)}px   AIRTIME: ${d.air.toFixed(3)}s`, act: null });
       items.push({ label: `SPEED NOW: ${Math.round(d.speed)} px/s`, act: null });
       if (d.gap != null) {
-        items.push({ label: `FAIR GAP jump>duck: ${Math.round(d.gap)}px  (react ${d.react})`, act: null });
+        items.push({ label: `FAIR GAP jump>slide: ${Math.round(d.gap)}px  (react ${d.react})`, act: null });
         items.push({ label: `RUNWAY: ${d.runway.toFixed(2)}s   MARGIN: ${d.margin.toFixed(3)}s`, act: null });
       }
       if (d.pan != null) {

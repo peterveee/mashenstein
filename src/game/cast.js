@@ -297,7 +297,7 @@ export class CastState {
           pose.lean = 0.26;
           pose.castDash = true;
         } else {
-          pose.kind = 'duck';
+          pose.kind = 'slide';
           pose.phase = 0;
           pose.roll = true;
         }

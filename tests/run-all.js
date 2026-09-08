@@ -340,6 +340,7 @@ const suites = [
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
+  'tests/slide-kit.js',
   'tests/toon-ink-scale.js',
   'tests/renderer.js',
   'tests/density.js',
@@ -420,7 +421,7 @@ const suites = [
   // and changes nothing about the sound is the one failure the unit half cannot see.
   'tests/note-duration.js',
   // What a length that long does to the song AFTER it: opening another song has to
-  // stop the note that is still ringing, not merely duck it for half a second.
+  // stop the note that is still ringing, not merely slide it for half a second.
   'tests/song-switch.js',
   // A lane trimmed over a range of bars. Also a claim about the speakers and not the
   // graph: the trim routed every note on that lane through a gain pair BUILT PER STEP,

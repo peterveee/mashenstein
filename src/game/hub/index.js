@@ -3537,7 +3537,7 @@ export class StageSelectState {
         // A locked row keeps its name and its empty pips — it is a place you
         // are going, not a hole in the list — but drops to a colour that reads
         // as unavailable even while the cursor is sitting on it.
-        drawText(ctx, `${sel ? '> ' : '  '}${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`,
+        drawText(ctx, `${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`,
           40, y, open ? c : sel ? '#8a7a52' : '#54545e', ROW_S);
         // The pip row already says how many plugs you have, so the n/3 counter
         // that used to sit here was the same fact twice.
@@ -3549,10 +3549,10 @@ export class StageSelectState {
         const desc = open ? o.stage.mission.desc : `LOCKED - EARN A PLUG IN ${prevStage(o.stage).id.toUpperCase()}`;
         drawText(ctx, fitText(desc, W - 60, DESC_S), 52, descY(y), open ? '#5a5a68' : '#6a5a3a', DESC_S);
       } else if (o.kind === 'boss') {
-        drawText(ctx, `${sel ? '> ' : '  '}BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050', ROW_S);
+        drawText(ctx, `BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050', ROW_S);
       } else if (o.kind === 'corrupt') {
         const m = CORRUPTED_MODIFIERS.find((mm) => mm.id === this.corrupt);
-        drawText(ctx, `${sel ? '> ' : '  '}CORRUPTED MODE: ${m ? m.name : 'OFF'}`, 40, y, sel ? '#8858c8' : '#6a5a8a', ROW_S);
+        drawText(ctx, `CORRUPTED MODE: ${m ? m.name : 'OFF'}`, 40, y, sel ? '#8858c8' : '#6a5a8a', ROW_S);
         if (m) drawText(ctx, fitText(m.desc + ' (ONE-HIT RULES)', W - 60, DESC_S), 52, descY(y), '#5a5a68', DESC_S);
       } else {
         // BACK is the last row and carries no blurb, so it centres its single
@@ -3560,7 +3560,7 @@ export class StageSelectState {
         // rows above it use — otherwise the label rides the top of its
         // highlight with a blank half-row hanging beneath it.
         const backY = rowTextY(this, i, ROW_S);
-        drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, backY, c, ROW_S);
+        drawText(ctx, 'BACK', 40, backY, c, ROW_S);
       }
     });
     // The tally is reference, not a headline: it rides the bottom status row
@@ -3693,9 +3693,9 @@ export class BenchState {
       const sel = i === this.idx;
       if (sel) drawMenuRow(ctx, boxL, this.listY + listVisualRow(this, i) * this.rowH + 1, boxR - boxL, this.rowH - 2);
       const y = rowTextY(this, i, MENU_ROW_S);
-      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, labelX, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
+      if (o.back) { drawText(ctx, 'BACK', labelX, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = sel ? '#f6d33c' : '#c8c8d8';
-      drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} (TIER ${o.targetTier})`, labelX, y, c, MENU_ROW_S);
+      drawText(ctx, `${o.u.name} (TIER ${o.targetTier})`, labelX, y, c, MENU_ROW_S);
       const current = o.u.currentDesc && o.u.currentDesc[o.lvl - o.baseLevel];
       const next = !o.maxed && o.u.desc[o.lvl - o.baseLevel];
       // Right column is right-aligned to an anchor pulled well in from the edge
@@ -3817,12 +3817,12 @@ export class ShopState {
       const sel = i === this.idx;
       if (sel) drawSelRow(ctx, this, i, 30);
       const y = rowTextY(this, i, MENU_ROW_S);
-      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 30, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
+      if (o.back) { drawText(ctx, 'BACK', 30, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
       // Names are measured against the price column rather than trusted to fit:
       // a size up, the longest mod name reached the coins it costs.
       const priceX = W - 76;
-      drawText(ctx, fitText(`${sel ? '> ' : '  '}${o.equipped ? '[E] ' : ''}${o.m.name}`, priceX - 36, MENU_ROW_S), 30, y, c, MENU_ROW_S);
+      drawText(ctx, fitText(`${o.equipped ? '[E] ' : ''}${o.m.name}`, priceX - 36, MENU_ROW_S), 30, y, c, MENU_ROW_S);
       if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, priceX, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
       if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     });
@@ -3926,11 +3926,11 @@ export class ArcadeState {
       const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back || o.none) {
         const label = o.back ? 'BACK' : 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.';
-        drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S);
+        drawText(ctx, label, 40, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S);
         return;
       }
       const c = broke ? '#5a5a68' : sel ? '#f6d33c' : '#c8c8d8';
-      drawText(ctx, `${sel ? '> ' : '  '}${MINIGAME_NAMES[o.game]}`, 40, y, c, MENU_ROW_S);
+      drawText(ctx, MINIGAME_NAMES[o.game], 40, y, c, MENU_ROW_S);
       drawText(ctx, `${ARCADE_PLAY_COST}`, W - 76, y, broke ? '#5a5a68' : '#f6d33c', MENU_ROW_S);
     });
     if (!touch && broke) drawTextCentered(ctx, 'THE COIN SLOT IS UNMOVED BY YOUR POVERTY.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);

@@ -131,8 +131,8 @@ for (const h of CAST_HEROES) {
     const special = h.id === 'gnash'
       ? celebrating.kind === 'run' && celebrating.lean > 0 && celebrating.castDash
         && finishing.kind === 'run' && finishing.castDash
-      : celebrating.kind === 'duck' && celebrating.roll
-        && finishing.kind === 'duck' && finishing.roll;
+      : celebrating.kind === 'slide' && celebrating.roll
+        && finishing.kind === 'slide' && finishing.roll;
     assert(walking.kind === 'run' && middle.kind === 'run' && special,
       `${h.short} moves 70%, then enters the gameplay special directly`);
     st.slotT = 11.2 - 0.000001;

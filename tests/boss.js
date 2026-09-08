@@ -29,7 +29,7 @@ for (const bossCab of ['neon', 'rhythm', 'surge']) {
   });
   boss.enter();
   const TICK = 1 / 60;
-  let ticks = 0, duckHold = false;
+  let ticks = 0, slideHold = false;
   // 420s watchdog: the scripted bot is a floor, not a bar — the relay's
   // banter-biased hero order can hand it slower ability mixes on some seeds.
   while (!result && ticks < 60 * 420) {
@@ -44,13 +44,13 @@ for (const bossCab of ['neon', 'rhythm', 'surge']) {
     }
     const sp = boss.speed;
     if (!boss.player.grounded) {
-      // stomp down onto the obstacle: press duck mid-air over it
-      if (nearest && Math.abs(nearest.x - px) < 30 && !duckHold) { Input.press('duck'); duckHold = true; }
+      // stomp down onto the obstacle: press slide mid-air over it
+      if (nearest && Math.abs(nearest.x - px) < 30 && !slideHold) { Input.press('slide'); slideHold = true; }
     } else {
-      if (duckHold) { Input.release('duck'); duckHold = false; }
+      if (slideHold) { Input.release('slide'); slideHold = false; }
       if (nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3) Input.press('jump');
       else Input.release('jump');
-      if (nearest && nearest.def.action === 'duck' && (nearest.x - px) < sp * 0.4) { Input.press('duck'); duckHold = true; }
+      if (nearest && nearest.def.action === 'slide' && (nearest.x - px) < sp * 0.4) { Input.press('slide'); slideHold = true; }
     }
     if (ticks % 45 === 0) { Input.press('ability'); }
     if (ticks % 45 === 1) { Input.release('ability'); }

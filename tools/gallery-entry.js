@@ -482,22 +482,22 @@ function pose(kind, t, extra = {}) {
     stomp: false, headless: false, facing: 1, ...extra,
   };
 }
-// What a held duck IS per hero, mirroring poseFromPlayer's own gate: playable
+// What a held slide IS per hero, mirroring poseFromPlayer's own gate: playable
 // humanoid and ray rigs ship the POWER SLIDE, the other rigs keep their
 // crouch — and so do Gary and Dolores, who are cast-roll flavour with no run
-// to duck in. Every production duck tile draws through this so the gallery
+// to slide in. Every production slide tile draws through this so the gallery
 // cannot drift from the game.
-function duckExtra(id) {
+function slideExtra(id) {
   // THE GUEST IS A PLAYABLE HUMANOID, and this gate could not see that. It
   // asks TOON_SPECS for the rig and HERO_BY_ID whether the hero is playable —
   // a candidate is deliberately in neither, so it returned {} and Rusty fell
   // through to the generic crouch while every shipped humanoid got the POWER
-  // SLIDE. The bake-off sheets passed duckStyle by hand, which is exactly why
+  // SLIDE. The bake-off sheets passed slideStyle by hand, which is exactly why
   // it never showed up there.
   const rig = id === GUEST_ID ? GUEST_OPTS.spec.rig : TOON_SPECS[id]?.rig;
   const playable = id === GUEST_ID || !!HERO_BY_ID[id];
   return playable && (rig === 'humanoid' || rig === 'ray')
-    ? { duckStyle: 'slide' } : {};
+    ? { slideStyle: 'kick' } : {};
 }
 
 // What a real run actually shows the instant an ability fires: poseFromPlayer's
@@ -516,8 +516,8 @@ const powerPoseAlpha = (t, budget) => Math.min(1, Math.max(0, budget - (t % POWE
 function powerupExtra(type, local) {
   if (type === 'stomp') return local <= 0.3 ? { menuAction: 'smash', actionTime: local } : {};
   if (type === 'dash') return { lean: 0.26 };
-  if (type === 'roll') return { kind: 'duck', roll: true };
-  if (type === 'compress') return { kind: 'duck' };
+  if (type === 'roll') return { kind: 'slide', roll: true };
+  if (type === 'compress') return { kind: 'slide' };
   if (type === 'fist') return { headless: true };
   if (type === 'axe') return { axeThrown: true };
   if (type === 'shoot') return local <= 0.3 ? { menuAction: 'aim', actionTime: local } : {};
@@ -610,12 +610,12 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const GAP = 18;  // feet line to the bottom edge, where the name sits
   // Each strip is only as tall as its pose needs. Standing clears grumpos's
   // axe, which rides ~1.25*HH above his feet; the celebration hops and spins up
-  // to ~0.26*HH higher again; a held duck never leaves the floor.
-  const HEIGHTS = { idle: 96, run: 96, jump: 96, duck: 72, celebrate: 112 };
+  // to ~0.26*HH higher again; a held slide never leaves the floor.
+  const HEIGHTS = { idle: 96, run: 96, jump: 96, slide: 72, celebrate: 112 };
   // Drawn through the SAME per-hero pose helpers the production sections use,
-  // so the line-up cannot show a duck or a celebration the game does not serve.
+  // so the line-up cannot show a slide or a celebration the game does not serve.
   const extraFor = (kind, hid) => kind === 'celebrate' ? { menu: true }
-    : kind === 'duck' ? duckExtra(hid) : {};
+    : kind === 'slide' ? slideExtra(hid) : {};
   const lineup = (kind, label, note) => {
     const TH = HEIGHTS[kind], FEET = TH - GAP;
     tile(grid, label, note, COL * ids.length, TH, (ctx, t) => {
@@ -632,7 +632,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   lineup('idle', 'all idle', `${N} heroes · standing, one clock, one feet line`);
   lineup('run', 'all run', `${N} heroes · the run cycle, every hero on the same phase`);
   lineup('jump', 'all jump', `${N} heroes · the airborne pose, rising`);
-  lineup('duck', 'all slide', `${N} heroes · the shipped power slide; gary and dolores are cast-roll `
+  lineup('slide', 'all slide', `${N} heroes · the shipped power slide; gary and dolores are cast-roll `
     + 'flavour with no roster entry, so poseFromPlayer keeps them in the crouch');
   lineup('celebrate', 'all celebrate', `${N} heroes · the results-screen routine — signature bounce, then the big move`);
 
@@ -662,7 +662,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   function bake(id, seconds, script) {
     const player = new Player(id);
     if (!player.hero) player.hero = STAND_IN_HERO;
-    const held = { jump: false, duck: false };
+    const held = { jump: false, slide: false };
     const input = { held: (k) => !!held[k] };
     const frames = [];
     for (let i = 0; i * STEP < seconds; i++) {
@@ -713,7 +713,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     }, 258, true);
 
   // THE SLIDE, END TO END, and the whole point is what happens either side of
-  // the plant. Down goes on at 0.30s and the blend takes DUCK_IN_T to plant
+  // the plant. Down goes on at 0.30s and the blend takes SLIDE_IN_T to plant
   // him; at 0.80s he plows a crate, which in the run sets exactly the two
   // fields set here — the leg's own kick timer and the short forced stand that
   // gets him up off a box he has already dealt with. Those two run on
@@ -721,9 +721,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // his feet while the leg is still finishing its swing. Frozen on one frame
   // that reads as a bug; running, it is the follow-through.
   animStrip('slide', 'all slide — entry, plant, kick, recovery',
-    `${N} heroes · duck held at 0.30s, crate plowed at 0.80s · gary and dolores have no roster entry, so poseFromPlayer keeps them in the crouch`,
+    `${N} heroes · slide held at 0.30s, crate plowed at 0.80s · gary and dolores have no roster entry, so poseFromPlayer keeps them in the crouch`,
     1.7, (player, t, held, i) => {
-      held.duck = t >= 0.3 && t < 1.15;
+      held.slide = t >= 0.3 && t < 1.15;
       if (i === Math.round(0.8 / STEP)) {
         player.slideKickT = SLIDE_KICK_T;
         player.standT = STAND_AFTER_PLOW_T;
@@ -738,21 +738,21 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     `${ids.length} heroes across the five shared poses plus each playable hero's special, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
     + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move. '
     + 'Power up is what a real run actually shows the instant their ability fires — poseFromPlayer\'s '
-    + 'ability-specific pose fields (lean/roll/duck/headless/menuAction) plus drawPowerPose()\'s overlay '
+    + 'ability-specific pose fields (lean/roll/slide/headless/menuAction) plus drawPowerPose()\'s overlay '
     + 'flourish where one exists. World-space projectiles are not duplicated here, but Grumpos does lose '
     + 'the axe from his back while it is in flight and Lorenzo shows the grounded wrench-smash body action. '
-    + 'Duck is the shipped POWER SLIDE on the humanoid rigs, per-hero garments and all; B-33P, Mochi, '
+    + 'Slide is the shipped POWER SLIDE on the humanoid rigs, per-hero garments and all; B-33P, Mochi, '
     + 'Chompo and Ray M\'n keep their crouch, exactly as poseFromPlayer serves it.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
   for (const id of ids) {
-    for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
+    for (const kind of ['idle', 'run', 'jump', 'slide', 'celebrate']) {
       // The victory routine hops/spins up to ~0.26*HH above standing, so its
       // tile is taller; the feet baseline keeps the same bottom padding. The
       // standing tile clears 1.3*HH so the tallest hero's gear (grumpos's axe
       // rides ~1.25 above his feet) isn't cropped at the tile's top edge.
       const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
       tile(grid, id, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(id));
+        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'slide' ? slideExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(id));
       }, { animated: true });
     }
     // Gary and Dolores are cast-roll flavour, not roster members — neither has
@@ -782,7 +782,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 
   const HH = 60;
   const LABELS = {
-    idle: 'All Idle', run: 'All Run', jump: 'All Jump', duck: 'All Duck',
+    idle: 'All Idle', run: 'All Run', jump: 'All Jump', slide: 'All Slide',
     celebrate: 'All Celebrate', powerup: 'All Special Move',
   };
   const subhead = (text, note) => {
@@ -801,21 +801,21 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     s.appendChild(grid);
     return grid;
   };
-  for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
+  for (const kind of ['idle', 'run', 'jump', 'slide', 'celebrate']) {
     const grid = subhead(LABELS[kind]);
     // Mirrors the heroes section's own tile heights so a side-by-side glance
     // between the two sections compares like for like.
     const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
-    if (kind === 'duck') {
-      // The whole cast's duck in ONE row on one clock — the humanoid slides
+    if (kind === 'slide') {
+      // The whole cast's slide in ONE row on one clock — the humanoid slides
       // and the other rigs' crouches shoulder to shoulder, exactly the split
       // poseFromPlayer serves. The per-hero tiles below stay for close study;
       // this row is where an outlier jumps out.
       const COL = 74, FEET = 48;
-      tile(grid, 'all duck — in a row', 'one clock, whole cast · humanoids slide, the other rigs keep their crouch',
+      tile(grid, 'all slide — in a row', 'one clock, whole cast · humanoids slide, the other rigs keep their crouch',
         COL * ids.length, 62, (ctx, t) => {
           ids.forEach((hid, i) => {
-            drawToon(ctx, hid, pose('duck', t, duckExtra(hid)), COL * (i + 0.5), FEET, HH, heroOpts(hid));
+            drawToon(ctx, hid, pose('slide', t, slideExtra(hid)), COL * (i + 0.5), FEET, HH, heroOpts(hid));
             ctx.fillStyle = '#8a8a9e';
             ctx.font = '7px ui-monospace, monospace';
             ctx.textAlign = 'center';
@@ -825,7 +825,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     }
     for (const hid of ids) {
       tile(grid, hid, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(hid));
+        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'slide' ? slideExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(hid));
       }, { animated: true });
     }
   }
@@ -853,7 +853,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 }
 
 // ----------------------------------------- 2b. complete character animation map
-// The primary rows above own the shared locomotion, duck transitions,
+// The primary rows above own the shared locomotion, slide transitions,
 // celebrations and one ability per playable hero. This section records the
 // production-only branches that used to be invisible in the gallery: both
 // menu systems, multi-state abilities, and title-screen reactions.
@@ -861,7 +861,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const ids = Object.keys(TITLE_PARADE_ACTIONS);
   const HH = 60, TW = 58, TH = 92, FEET = 86;
   const grid = section('character-animation-map', 'Hero animations — complete production map',
-    'Completes the shared Idle / Run / Jump / Duck / Celebrate and Special rows above. '
+    'Completes the shared Idle / Run / Jump / Slide / Celebrate and Special rows above. '
     + 'TITLE BEAT calls the exact title-parade choreography helper used by the game; TRANSITION calls '
     + 'the exact shutter-cameo helper. The final tiles cover ability substates and shared title reactions '
     + 'that are not visible in a single standard pose. No gallery-only choreography is used here.');
@@ -1108,7 +1108,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const th = HERO_DRAW_H + PAD * 2;
   for (const id of withGuest(Object.keys(TOON_SPECS))) {
     const player = {
-      hero: {}, anim: 0, vy: 0, grounded: true, ducking: false, rolling: false,
+      hero: {}, anim: 0, vy: 0, grounded: true, sliding: false, rolling: false,
       compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
       headless: 0, fistThrown: false, y: 0, invuln: 0, powers: {},
     };
@@ -1133,7 +1133,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const HERO_CX = 70, TW = 54, TH = 54, FLOOR = 47;
   for (const id of Object.keys(HERO_BY_ID)) {
     const player = {
-      hero: {}, anim: 0, vy: 0, grounded: true, ducking: false, rolling: false,
+      hero: {}, anim: 0, vy: 0, grounded: true, sliding: false, rolling: false,
       compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
       headless: 0, fistThrown: false, y: 0, invuln: 0, powers: {},
       deflectFlashT: 0, powerPoseT: 0,
@@ -2053,7 +2053,7 @@ beginLab();
   // powerupExtra gives the same thing a run gives it, every frame.
   const candPose = (kind, t) => (kind === 'power'
     ? pose('run', t, powerupExtra('dash', 0))
-    : pose(kind, t, kind === 'duck' ? { duckStyle: 'slide' } : {}));
+    : pose(kind, t, kind === 'slide' ? { slideStyle: 'kick' } : {}));
 
   // A row of candidates in one tile at one instant, per pose. One tile per
   // candidate instead would make the comparison a memory test.
@@ -2121,7 +2121,7 @@ beginLab();
       ['run', 'The pose he is in for 95% of a stage. The plume swings on the stride clock, and on A the rings double as a motion trail — which is how a round body keeps a speed cue it would otherwise need spines for.'],
       ['power', 'SPIN DASH, or whatever replaces it: poseFromPlayer\'s own dash lean, held the way a run holds it.'],
       ['jump', 'Airborne. Watch the ears against the raised knee, and the tail against the trailing leg.'],
-      ['duck', 'The power slide. NOTE a pre-existing gap, not a fault of these cuts: hero gear is not in the slide pose yet — Gnash\'s tail is named in that TODO — so a plume goes missing here on every candidate.'],
+      ['slide', 'The power slide. NOTE a pre-existing gap, not a fault of these cuts: hero gear is not in the slide pose yet — Gnash\'s tail is named in that TODO — so a plume goes missing here on every candidate.'],
     ]);
 
     // The HUD cell: the smallest thing a design has to survive, and a cut that
@@ -2183,7 +2183,7 @@ beginLab();
     poseTiles(grid, PANDA_BUILD_CANDIDATES, [
       ['idle', 'Standing, where proportion is most legible.'],
       ['run', 'In motion, where it matters. A chibi build has less leg to swing, so the gait reads slower even at the same speed.'],
-      ['duck', 'The slide, which is the pose the build changes most.'],
+      ['slide', 'The slide, which is the pose the build changes most.'],
     ]);
     laneTile(grid, PANDA_BUILD_CANDIDATES, 'panda builds — in the lane, at size');
   }
@@ -2217,7 +2217,7 @@ beginLab();
       ['idle', 'Standing. The hub, the stage select and every menu.'],
       ['run', 'The stride, with whatever brows the cut still owns doing the focus face — or not owning: watch what F2 and F5 lose here.'],
       ['power', 'The dash lean.'],
-      ['duck', 'The slide, nose-down: the pose where a dropped face (F3, F5) is nearest the floor.'],
+      ['slide', 'The slide, nose-down: the pose where a dropped face (F3, F5) is nearest the floor.'],
     ]);
 
     tile(grid, 'panda faces — face crops', 'drawToonFace(), the size the HUD and the portal crop actually use. This tile outranks every study row above it.',
@@ -2257,7 +2257,7 @@ beginLab();
       ['idle', 'Standing. The ear silhouette is the first read.'],
       ['run', 'The stride. Pointed ears change the head\'s leading edge in motion.'],
       ['power', 'The dash lean.'],
-      ['duck', 'The slide — the ears are most of what shows above the body here.'],
+      ['slide', 'The slide — the ears are most of what shows above the body here.'],
     ]);
 
     tile(grid, 'panda ears — face crops', 'drawToonFace(), the HUD cell. This tile outranks the study rows.',
@@ -2297,7 +2297,7 @@ beginLab();
     poseTiles(grid, PANDA_HEAD_CANDIDATES, [
       ['idle', 'Standing. The head outline is the whole question this round.'],
       ['run', 'The stride — the pose where H1\'s scallop does its Gnash impression.'],
-      ['duck', 'The slide: the head leads and the cheek line is the silhouette\'s front edge.'],
+      ['slide', 'The slide: the head leads and the cheek line is the silhouette\'s front edge.'],
     ]);
 
     tile(grid, 'panda heads — face crops', 'drawToonFace(), the HUD cell. This tile outranks the study rows.',
@@ -2335,7 +2335,7 @@ beginLab();
     poseTiles(grid, PANDA_EARSIZE_CANDIDATES, [
       ['idle', 'Standing. Judge the ear-to-head balance here.'],
       ['run', 'The stride — bigger ears move the head\'s leading edge.'],
-      ['duck', 'The slide, where the ears are most of what shows above the body.'],
+      ['slide', 'The slide, where the ears are most of what shows above the body.'],
     ]);
 
     tile(grid, 'panda ear sizes — face crops', 'drawToonFace(), the HUD cell.',
@@ -2374,7 +2374,7 @@ beginLab();
     poseTiles(grid, PANDA_EARSEAT_CANDIDATES, [
       ['idle', 'Standing. The seating question, straight on.'],
       ['run', 'The stride. Watch the tips against the tail.'],
-      ['duck', 'The slide, where the ears are most of the silhouette above the body.'],
+      ['slide', 'The slide, where the ears are most of the silhouette above the body.'],
     ]);
 
     tile(grid, 'panda ear seating — face crops', 'drawToonFace(), the HUD cell — where ear-to-eye distance shows up.',
@@ -2469,7 +2469,7 @@ beginLab();
     poseTiles(grid, PANDA_EARWIDTH_CANDIDATES, [
       ['idle', 'Standing. Watch the gap between the pair across the crown — a wide BASE eats it faster than a wide angle does.'],
       ['run', 'The stride.'],
-      ['duck', 'The slide, where the ears are most of the silhouette above the body.'],
+      ['slide', 'The slide, where the ears are most of the silhouette above the body.'],
     ]);
 
     tile(grid, 'panda ear widths — face crops', 'drawToonFace(), the HUD cell — where base width reads hardest.',
@@ -2507,7 +2507,7 @@ beginLab();
     poseTiles(grid, RUSTY_BROW_CANDIDATES, [
       ['idle', 'Standing. Look for fur showing BETWEEN brow and cheek — that gap is the whole fix.'],
       ['run', 'The focus face, where the rig draws its own ink brows over whatever mark is there. N4 is the cut to watch.'],
-      ['duck', 'The slide.'],
+      ['slide', 'The slide.'],
     ]);
 
     tile(grid, 'rusty brows — face crops', 'drawToonFace(), the HUD cell. A brow mark that does not survive here is not a brow mark.',
@@ -2687,13 +2687,13 @@ beginLab();
       + 'only rotates in place reads as a dial rather than a face. '
       + '<br><br><b>T1 against T2 is the question</b> — expressive against frozen level, both without '
       + 'the ink brow. If T1 does not beat T2 clearly ACROSS the poses, the system is costing '
-      + 'complexity for nothing. <b>T3</b> is what he had, and the run and duck tiles are where you '
+      + 'complexity for nothing. <b>T3</b> is what he had, and the run and slide tiles are where you '
       + 'can see two horizontal lines stacked above each eye.');
 
     poseTiles(grid, RUSTY_EXPRESSIVE_CANDIDATES, [
       ['idle', 'Level — no mood fires here, so the marks are pure marking.'],
       ['run', 'FOCUS: a light furrow, +0.18. T3 stacks the ink brow on top of the same mark.'],
-      ['duck', 'Also focus, and the pose where T3\'s doubling is worst.'],
+      ['slide', 'Also focus, and the pose where T3\'s doubling is worst.'],
     ]);
 
     // THE MOOD MATRIX, and it replaces the neutral face-crop row this section
@@ -2706,7 +2706,7 @@ beginLab();
     //
     // Trigger fields are taken from expressionFor rather than guessed:
     // `pose.annoyed` is a 0..1 RAMP and not a flag, joy comes from faceJoy,
-    // surprise from faceSurprised, focus from kind 'run'/'duck'.
+    // surprise from faceSurprised, focus from kind 'run'/'slide'.
     {
       const MOODS = [
         ['neutral', {}],
@@ -3190,7 +3190,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// The jump/duck legacy-vs-improved comparison used to sit here. The improved
+// The jump/slide legacy-vs-improved comparison used to sit here. The improved
 // motion shipped as ACTIVE_LOCOMOTION_STYLE and the section came out.
 
 // ------------------------------------------------------- head yaw candidates
@@ -5506,13 +5506,13 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // construction would now have to be maintained alongside. docs/notes/kiko-persona.md
 // is the record of what they were and why they lost.
 
-// The duck-replacement bake-off used to sit here — four candidates for
+// The slide-replacement bake-off used to sit here — four candidates for
 // Lorenzo (the shipped crouch, a tuck roll, the power slide, a belly dive),
 // then the winning POWER SLIDE mocked across five builds with per-hero
-// garments. It is settled and SHIPPED: poseFromPlayer sets duckStyle 'slide'
-// on every humanoid rig's duck, the tip-back arrival rides the 0.14s duck
-// blend, and the production sections above draw it wherever a duck appears
-// (see duckExtra). The slide painter (drawDuckSlide + duckTorsoCapsule) lives
+// garments. It is settled and SHIPPED: poseFromPlayer sets slideStyle 'kick'
+// on every humanoid rig's slide, the tip-back arrival rides the 0.14s slide
+// blend, and the production sections above draw it wherever a slide appears
+// (see slideExtra). The slide painter (drawSlideKick + slideTorsoCapsule) lives
 // in toons.js; the tuck-roll and belly-dive painters stay there too, out of
 // the running. Still open, and why a lab section may return: the non-humanoid
 // rigs (B-33P, Mochi, Chompo, Ray M'n) keep the crouch and need their own
@@ -5521,7 +5521,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 
 // The slide head-tilt bake-off used to sit here — 0.00, 0.28, 0.38 and 0.50
 // rad against the shipped 0.18, on four skulls. Settled and SHIPPED at 0.28:
-// drawDuckSlide rotates the head that far about its own centre and counters
+// drawSlideKick rotates the head that far about its own centre and counters
 // with a gaze that holds the pupils level, so the hero lies back and keeps
 // watching the track. The pose.slideHeadTilt seam it read is gone with it —
 // the angle has one home now, which is the point.
@@ -5533,13 +5533,13 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 
 // The slide kick-reaction bake-off used to sit here — look, brace, face, and
 // two stacks of them, each against the shipped leg-only head. Settled and
-// SHIPPED at LOOK + BRACE: drawDuckSlide brings the chin down 0.09 rad and
+// SHIPPED at LOOK + BRACE: drawSlideKick brings the chin down 0.09 rad and
 // puts the eyes on the crate, both riding the leg's own `kick` 0..1. The
 // pose.kickFace seam is gone with it.
 //
 // `face` lost, and on cost rather than taste: a contact expression has to ride
 // browRaise/faceSurprised, and those open Gnash's smirk into a surprise mouth
-// and re-shape B-33P's visor — the same tax the drawDuckSlide note records
+// and re-shape B-33P's visor — the same tax the drawSlideKick note records
 // pose.roll charging when the head was handed it.
 //
 // Two things this cost elsewhere, both kept: drawEyes now CLAMPS the pupil
@@ -5602,7 +5602,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       for (let s2 = 0; s2 < ph && s2 < 2.2; s2 += DT) stepPunt(ob, DT, tune);
       const k = ph < 0.34 ? (ph < 0.153 ? ph / 0.153 : Math.max(0, 1 - (ph - 0.153) / 0.187)) : 0;
       // hero, at the left, mid-kick
-      drawToon(ctx, 'lorenzo', pose('duck', t, { duckStyle: 'slide', slideKick: k }), 60, FEET, HH);
+      drawToon(ctx, 'lorenzo', pose('slide', t, { slideStyle: 'kick', slideKick: k }), 60, FEET, HH);
       // his crown, and the deck
       ctx.save();
       ctx.globalAlpha = 0.5;
@@ -5703,7 +5703,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       startPunt(ob, RUN, tune);
       for (let s2 = 0; s2 < ph; s2 += DT) stepPunt(ob, DT, tune);
       const k = ph < 0.34 ? (ph < 0.153 ? ph / 0.153 : Math.max(0, 1 - (ph - 0.153) / 0.187)) : 0;
-      drawToon(ctx, 'lorenzo', pose('duck', t, { duckStyle: 'slide', slideKick: k }), 60, FEET, HH);
+      drawToon(ctx, 'lorenzo', pose('slide', t, { slideStyle: 'kick', slideKick: k }), 60, FEET, HH);
       const Z = HH / 24;
       ctx.save();
       ctx.globalAlpha = 0.5;
@@ -5780,8 +5780,8 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       const k = kickAt(t, cand.hold);
       IDS.forEach((id, i) => {
         const x = 22 + i * 68;
-        drawToon(ctx, id, pose('duck', t, { duckStyle: 'slide' }), x, FEET - 34, HH * 0.42);
-        drawToon(ctx, id, pose('duck', t, { duckStyle: 'slide', slideKick: k }), x, FEET, HH * 0.42);
+        drawToon(ctx, id, pose('slide', t, { slideStyle: 'kick' }), x, FEET - 34, HH * 0.42);
+        drawToon(ctx, id, pose('slide', t, { slideStyle: 'kick', slideKick: k }), x, FEET, HH * 0.42);
         // the crate the foot is aimed at, flashing on the frame the kick peaks
         const cw = 9;
         ctx.fillStyle = k > 0.85 ? '#fff' : '#8a5a32';
@@ -5801,7 +5801,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 
 // The kiko slide-arm bake-off used to sit here — four candidates against the
 // shipped reach, each with her jump beside it as the control. Settled and
-// SHIPPED: drawDuckSlide gives her armReach 0.74 and upperBias 0.85, the
+// SHIPPED: drawSlideKick gives her armReach 0.74 and upperBias 0.85, the
 // shortest of the four. The pose.slideArm seam it read is gone with it; a
 // second way to set those numbers is exactly the kind of thing that drifts
 // from the one the game uses. Slide-only remains the point — her aim and
@@ -7210,13 +7210,21 @@ const io = new IntersectionObserver((entries) => {
 }, { rootMargin: '200px' });
 for (const t of tiles) io.observe(t.card);
 
-let start = performance.now();
+// The gallery clock is ACCUMULATED rather than read off `now - start`, because
+// `slow` changes the rate mid-run: derived from a fixed origin, every toggle
+// would jump the whole page to a different point in every cycle. Adding the
+// scaled delta each frame means the rate changes and the pose does not.
+let clock = 0;
+let last = performance.now();
+let rate = 1;
 function frame(now) {
   // Clamp: a rAF timestamp is the frame's start time and can predate a
-  // performance.now() sampled after it, so `now - start` goes slightly
-  // negative on the first frame. surgePack.pick() indexes packs[] by
+  // performance.now() sampled after it, so a raw delta goes slightly negative
+  // on the first frame. surgePack.pick() indexes packs[] by
   // floor(t/period) % len, and a negative t lands on packs[-1] === undefined.
-  const t = Math.max(0, (now - start) / 1000);
+  clock += Math.max(0, (now - last) / 1000) * rate;
+  last = now;
+  const t = clock;
   if (animate) for (const e of tiles) if (e.animated && e.visible) paint(e, t);
   requestAnimationFrame(frame);
 }
@@ -7319,8 +7327,18 @@ const animEl = document.getElementById('animate');
 animEl.addEventListener('change', () => {
   animate = animEl.checked;
   if (!animate) return;
-  start = performance.now();
+  // Resume from where the clock stands rather than from a fresh origin: the
+  // frame loop keeps running while paused, so `last` has to be caught up or
+  // the first resumed frame advances by the whole pause.
+  last = performance.now();
 });
+
+// SLOW: a quarter speed, for reading a gesture frame by frame. It scales the
+// gallery clock, so everything animated slows together and stays in step —
+// a per-tile factor would put the cast lineups out of phase with each other,
+// which is the one thing those tiles exist to show.
+const slowEl = document.getElementById('slowmo');
+slowEl.addEventListener('change', () => { rate = slowEl.checked ? 0.25 : 1; });
 
 const filterEl = document.getElementById('filter');
 filterEl.addEventListener('input', () => {

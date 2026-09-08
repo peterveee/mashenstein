@@ -490,7 +490,7 @@ function drawLane(id, c, m, fc) {
       const kind = classify(o.type);
       const col = kind === 'pits' ? css('--hazard')
         : kind === 'animals' ? '#e8a04a'
-        : o.def.action === 'duck' ? '#8fb8ff'
+        : o.def.action === 'slide' ? '#8fb8ff'
         : o.def.action === 'jump' ? '#c8c2d8' : '#5c5470';
       const ht = o.def.action === 'none' ? 5 : (o.def.ground ? 12 : 8);
       const y = o.def.ground ? h - 12 - ht : 8;

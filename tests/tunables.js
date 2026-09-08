@@ -188,7 +188,7 @@ for (const rel of ['src/game/player.js', 'src/game/run.js', 'src/game/layout.js'
   const dev = read('src/dev/index.js');
   ok(/TUNE_CLAIMED\s*=\s*new Set\(\[[^\]]*'ArrowUp'[^\]]*'ArrowDown'[^\]]*'ArrowLeft'[^\]]*'ArrowRight'[^\]]*'ShiftLeft'[^\]]*'ShiftRight'/s.test(dev),
     'the claimed set is exactly the six gameplay keys the strip needs');
-  for (const [action, alt] of [['jump', 'Space'], ['duck', 'KeyS'], ['left', 'KeyA'], ['ability', 'KeyX']]) {
+  for (const [action, alt] of [['jump', 'Space'], ['slide', 'KeyS'], ['left', 'KeyA'], ['ability', 'KeyX']]) {
     const line = block.match(new RegExp(`${action}:\\s*\\[([^\\]]*)\\]`));
     ok(line && line[1].includes(`'${alt}'`),
       `${action} keeps an unclaimed alternate (${alt}) so the hero stays drivable while tuning`);

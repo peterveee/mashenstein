@@ -19,7 +19,7 @@ const LIP_MARGIN = 4;     // px of road the take-off must still have under it
 // drone to pass and for a barrel to meet the boot, short enough that the button
 // is up again before the next beat — a punt needs a FRESH press (see the punt
 // note in beatchart.js), so a slide held into one simply cannot fire.
-const CHART_DUCK_HOLD = 0.28;
+const CHART_SLIDE_HOLD = 0.28;
 // What the clonk leaves him with when he bonks the villain: the rise stops and
 // he drops off the hull at this (run.js's bonk branch). The bot needs the
 // number to solve the flight it will really have — see `flight`.
@@ -48,12 +48,12 @@ const HIT_BACK = (PLAYER_SPRITE_W - PLAYER_W) / 2;                  // 2
 // REACT_T is the old third of a second, kept: taking off then puts the apex of
 // every hero's arc on the thing. LAST_T is the frame the window shuts, and it
 // is what the landing test below is allowed to be overruled by — a bad jump
-// beats a hazard met standing up. DUCK_T is longer than REACT_T because the
+// beats a hazard met standing up. SLIDE_T is longer than REACT_T because the
 // slide has to already be down when the flyer arrives rather than merely
 // started. LAND_SETTLE is the beat between touching down and a button being
 // answered: a hazard due inside it is a hazard the landing cannot answer.
 const REACT_T = 0.3;
-const DUCK_T = 0.4;
+const SLIDE_T = 0.4;
 const LAST_T = 0.1;
 const LAND_SETTLE = 0.12;
 // HOW HIGH A SHOT HAS TO BE TO PASS OVER A STANDING HERO. An enemy round is a
@@ -65,7 +65,7 @@ const SHOT_REACH = 16;
 export class DemoBot {
   constructor(run) {
     this.run = run;
-    this.duckHold = false;
+    this.slideHold = false;
     this.jumpHold = false;
     // Whether he has left the ground since the button went down. See the
     // landing release below — it is what makes that release once per landing
@@ -73,8 +73,8 @@ export class DemoBot {
     this.wasAir = false;
     this.abilityT = 1.5;
     this.abHeld = false;
-    // Counts down while a chart-asked slide is held. See CHART_DUCK_HOLD.
-    this.chartDuckT = 0;
+    // Counts down while a chart-asked slide is held. See CHART_SLIDE_HOLD.
+    this.chartSlideT = 0;
     // WHICH MARK THE LAST SLIDE AND THE LAST SHOT ANSWERED.
     //
     // A cue does not stop being due once it has been played — `actionX` is a
@@ -83,7 +83,7 @@ export class DemoBot {
     // press lands wherever the first one's hold ran out. That is a beat broken
     // for nothing, half a beat after a beat that was kept. Cues are answered in
     // the order the road meets them, so remembering the last one is enough.
-    this.duckCueKey = null;
+    this.slideCueKey = null;
     this.abilityCueKey = null;
   }
 
@@ -185,7 +185,7 @@ export class DemoBot {
    * hazard is met further down the arc than the near side.
    */
   clears(t) {
-    if (!t || t.act === 'duck') return false;
+    if (!t || t.act === 'slide') return false;
     const top = t.shot ? (t.shot.alt || 0) + 3
       : (t.ob.alt || 0) + (t.ob.def.h || 0);
     const from = Math.max(0, t.enter);
@@ -404,7 +404,7 @@ export class DemoBot {
         if (ob.def.ground || ob.def.isTarget || ob.def.isSwitch) continue;
         if ((ob.alt || 0) > reach) continue;
         act = 'air';
-      } else if (act !== 'jump' && act !== 'duck') continue;
+      } else if (act !== 'jump' && act !== 'slide') continue;
       if (ob.route && ob.route !== run.route) continue;
       const drift = ob.def.airDrift ? ob.def.airDrift.amp : 0;
       // Only the half of its motion that closes on him counts. A prop drifting
@@ -420,7 +420,7 @@ export class DemoBot {
       const closing = sp + Math.abs(pr.vx || 0);
       const exit = (pr.x + 5 - back) / closing;
       if (exit < 0) continue;
-      // A round is jumped, never ducked: a printer fires at 8 and the box it
+      // A round is jumped, never slid: a printer fires at 8 and the box it
       // fires reaches from 6 to 11, which is over a slide's 7px head and under
       // a standing hero's 14. Getting off the ground is the only answer.
       out.push({ act: 'jump', shot: pr, enter: (pr.x - front) / closing, exit });
@@ -441,7 +441,7 @@ export class DemoBot {
    *
    * A jump hazard in the middle of the flight is allowed on purpose — that is
    * what the arc is for, and refusing it would ground the bot on any road busy
-   * enough to always have something on it. A duck hazard is not: there is no
+   * enough to always have something on it. A slide hazard is not: there is no
    * height at which a slide gets made in the air. Nor is a flyer, which is only
    * dangerous BECAUSE he is up there.
    */
@@ -575,7 +575,7 @@ export class DemoBot {
     for (const ob of run.obstacles) {
       if (!ob.live || !Number.isFinite(ob.actionX)) continue;
       const act = ob.chartAction;
-      if (act !== 'jump' && act !== 'duck' && act !== 'ability') continue;
+      if (act !== 'jump' && act !== 'slide' && act !== 'ability') continue;
       if (ob.x + ob.w < px - 8) continue;        // answered, or gone by
       if (ob.actionX < px - late) continue;      // the beat is missed; let it go
       if (!best || ob.actionX < best.actionX) best = ob;
@@ -778,12 +778,12 @@ export class DemoBot {
     // below because on these stages it REPLACES them: the marks are the level.
     const cue = this.chartCue(px);
     // A press is ordered from where the hitbox will be, not from where the
-    // sprite starts: a duck answered at `actionX` on the nose is answered a
+    // sprite starts: a slide answered at `actionX` on the nose is answered a
     // body length after the drone has already met his face. The lead is well
     // inside the judge's on-beat window, so it is still the beat being played.
     //
     // ...OR THE THING IS SIMPLY HERE, whatever the mark says. A drone wanders
-    // (`airDrift`, ±4px) and a duck's approach is a single frame of road, so
+    // (`airDrift`, ±4px) and a slide's approach is a single frame of road, so
     // the mark and the hitbox can disagree by more than the lead — a slide
     // ordered on the mark alone met the drone that had drifted back toward him.
     // The mark is what the bot plays; this is what keeps it honest.
@@ -877,7 +877,7 @@ export class DemoBot {
       this.jumpHold = false;
     }
 
-    // duck under low flyers (and stomp with stomp-heroes in boss fights)
+    // slide under low flyers (and stomp with stomp-heroes in boss fights)
     //
     // On a beat cabinet the slide is a MARK like every other press, and it is
     // held for a fixed stretch rather than for as long as the flyer is in
@@ -886,22 +886,22 @@ export class DemoBot {
     // fresh press (see the punt note in beatchart.js).
     if (run.beatLock) {
       const key = cue ? `${cue.chartAction}:${Math.round(cue.actionX)}` : null;
-      if (cueDue && cue.chartAction === 'duck' && this.chartDuckT <= 0
-        && !this.duckHold && key !== this.duckCueKey) {
-        this.chartDuckT = CHART_DUCK_HOLD;
-        this.duckCueKey = key;
+      if (cueDue && cue.chartAction === 'slide' && this.chartSlideT <= 0
+        && !this.slideHold && key !== this.slideCueKey) {
+        this.chartSlideT = CHART_SLIDE_HOLD;
+        this.slideCueKey = key;
       }
-      this.chartDuckT = Math.max(0, this.chartDuckT - dt);
+      this.chartSlideT = Math.max(0, this.chartSlideT - dt);
     }
-    const duckWanted = run.beatLock
-      ? this.chartDuckT > 0
-      : !!(next && next.act === 'duck' && next.enter < DUCK_T && run.player.grounded);
+    const slideWanted = run.beatLock
+      ? this.chartSlideT > 0
+      : !!(next && next.act === 'slide' && next.enter < SLIDE_T && run.player.grounded);
     const stompWanted = run.bossCab && run.player.hero && run.player.hero.stomp && !run.player.grounded && run.player.vy < 60;
-    if (duckWanted || stompWanted) {
-      if (!this.duckHold) { Input.press('duck'); this.duckHold = true; }
-    } else if (this.duckHold) {
-      Input.release('duck');
-      this.duckHold = false;
+    if (slideWanted || stompWanted) {
+      if (!this.slideHold) { Input.press('slide'); this.slideHold = true; }
+    } else if (this.slideHold) {
+      Input.release('slide');
+      this.slideHold = false;
     }
 
     // abilities: fire at real targets, off cooldown, at a human-ish rate
@@ -960,9 +960,9 @@ export class DemoBot {
   }
 
   releaseAll() {
-    this.chartDuckT = 0;
+    this.chartSlideT = 0;
     if (this.jumpHold) { Input.release('jump'); this.jumpHold = false; }
-    if (this.duckHold) { Input.release('duck'); this.duckHold = false; }
+    if (this.slideHold) { Input.release('slide'); this.slideHold = false; }
     if (this.abHeld) { Input.release('ability'); this.abHeld = false; }
   }
 }

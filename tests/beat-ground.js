@@ -33,7 +33,7 @@ for (const bad of [null, NaN, undefined, 'x']) {
 const run = {
   obstacles: [
     { live: true, chartAction: 'jump', actionX: 4100, type: 'beatBar' },
-    { live: true, chartAction: 'duck', actionX: 4200, type: 'barrel' },
+    { live: true, chartAction: 'slide', actionX: 4200, type: 'barrel' },
     { live: false, chartAction: 'jump', actionX: 4300, type: 'beatBar' },
     { live: true, actionX: 4400, type: 'crate' },
   ],
@@ -43,7 +43,7 @@ const run = {
     eventInstances: [
       { live: true, chartAction: 'ability', actionX: 4250 },
       { live: true, chartAction: 'coin', actionX: 4700 },
-      { live: true, chartAction: 'duck', actionX: 4999 },
+      { live: true, chartAction: 'slide', actionX: 4999 },
     ],
   },
   rhythmSetEvents: [{ beat: 41, action: 'jump' }],
@@ -58,9 +58,9 @@ assert(at(4250)?.action === 'ability', 'ability slots come off the event instanc
 assert(!at(4300), 'a dead entity is not marked');
 assert(!at(4400), 'an entity the chart never authored is not marked');
 assert(!at(4700), 'a coin instance is skipped as well as a coin pickup');
-assert(!at(4999), 'a duck is read off the obstacles, not off the event instances');
-assert(marks.every((m) => ['jump', 'duck', 'ability'].includes(m.action)),
-  'the road only ever speaks about jump, duck and shoot');
+assert(!at(4999), 'a slide is read off the obstacles, not off the event instances');
+assert(marks.every((m) => ['jump', 'slide', 'ability'].includes(m.action)),
+  'the road only ever speaks about jump, slide and shoot');
 
 // A crossing whose ask is not one of the three verbs stays off the road too.
 assert(beatGroundMarks({ rhythmSetEvents: [{ beat: 41, action: 'coin' }] },

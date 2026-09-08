@@ -582,12 +582,12 @@ const STEPS = [
     // This section used to stand a DRONE in the road, which taught the wrong
     // lesson twice over. A drone is `armored`, so the shot it is teaching pings
     // off it everywhere in the real game — the module was the only place in
-    // MASHENSTEIN where a lemon killed one. And a drone has a duck, so the
+    // MASHENSTEIN where a lemon killed one. And a drone has a slide, so the
     // section about the cannon had a second answer that was not the cannon.
     //
     // A `target` has neither problem: it is `isTarget`, which is half of what
     // the run's own pellet gate asks for, and it stands at alt 40 — well clear
-    // of a 14px hero, so it cannot be walked into, ducked under or jumped over
+    // of a 14px hero, so it cannot be walked into, slid under or jumped over
     // into a pass. `sawShotDown` is unfakeable now rather than merely unlikely.
     //
     // It is the RED BULLSEYE, not the yellow star: `target` carries a stale
@@ -1165,8 +1165,8 @@ export class TutorialState {
   tryPunt(ob) {
     if (!ob.def.punt) return false;
     const p = this.player;
-    if (!(p.grounded && p.duckAmount > 0.6)) return false;
-    if (puntPower(p.duckHoldT) <= 0) return false;
+    if (!(p.grounded && p.slideAmount > 0.6)) return false;
+    if (puntPower(p.slideHoldT) <= 0) return false;
     p.slideKickT = SLIDE_KICK_T;
     startPunt(ob, this.speed, puntTuneFor(ob));
     this.sawPunt = true;
@@ -1659,7 +1659,7 @@ export class TutorialState {
       this.player.jumpPressed(Audio);
       if (this.player.jumps > 1) this.sawDoubleJump = true;
     }
-    if (Input.pressed('duck')) this.player.slidePressed();
+    if (Input.pressed('slide')) this.player.slidePressed();
     if (Input.pressed('ability')) this.useAbility();
     this.player.update(dt, Input, { speed: this.speed, gravityScale: 1, ice: false });
     this.grantChargeGrace();
@@ -1727,7 +1727,7 @@ export class TutorialState {
         // Check for any input to advance.
         if (Input.pressed('confirm') || Input.pressed('jump')
           || Input.pressed('pointer') || Input.pressed('ability')
-          || Input.pressed('duck')) {
+          || Input.pressed('slide')) {
           this.introPhase = 2;
           this.introTimer = 0;
           // Snapshot where Gary is in world space at the moment of the press,
@@ -2289,7 +2289,7 @@ export class TutorialState {
     if (this.player) declareRunChrome(this.chromeShim());
     if (!this.paused) pushOverlayDraw((d) => this.drawSpeechCard(d));
     // Once the treadmill has stopped the controller still reports a RUN — it
-    // only knows run/jump/duck — so the hero held whatever stride frame the
+    // only knows run/jump/slide — so the hero held whatever stride frame the
     // lane died on for the whole epilogue. He stands instead, and waves when
     // there is someone to wave at.
     const stopped = this.finished && this.speed < 4;
@@ -2431,7 +2431,7 @@ export class TutorialState {
       drawPanel(ctx, b.x, b.y, b.w, b.h, 5, 'rgba(11,11,20,0.82)',
         { border: sel ? '#ffcf33' : go ? 'rgba(72,224,200,0.75)' : 'rgba(255,255,255,0.22)', shadow: true });
       if (sel) drawMenuRow(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, 4);
-      drawTextCentered(ctx, sel ? `> ${b.label} <` : b.label,
+      drawTextCentered(ctx, b.label,
         b.x + b.w / 2, textYForMid(b.y + b.h / 2), go ? '#48e0c8' : '#c8c8d8');
     });
   }

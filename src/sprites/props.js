@@ -1539,7 +1539,7 @@ export const PROP_PAINTERS = {
   // form one low piece of ground furniture. Teeth point UP so the action reads
   // as jump before the player has to infer anything from its height.
   // The 8-frame cycle is warning light/electrical activity; the blade never
-  // moves — a rising gate would be a timing puzzle `action: 'duck'` cannot
+  // moves — a rising gate would be a timing puzzle `action: 'slide'` cannot
   // declare. Its teeth stop at the old arm's painted lower edge, preserving
   // the forgiving visual clearance above the crouched hero.
   boomBarrier(ctx, w, h, frame = 0) {
@@ -1564,7 +1564,7 @@ export const PROP_PAINTERS = {
       });
     }
     // A dark structural rail with a continuous row of steel teeth on TOP. The
-    // old downward teeth said duck even after the frame became a hurdle; this
+    // old downward teeth said slide even after the frame became a hurdle; this
     // silhouette says jump and keeps the opening beneath visually irrelevant.
     const drawH = railH;
     const bladeStart = w * 0.1;
@@ -4722,7 +4722,7 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 // The fliers are here for readability rather than heft. A drone's box is 12x7,
 // which even with the standard 1.33x hazard overdraw draws about 16x9 against a
 // 24px hero — small enough that at speed it reads as a smudge in the lane
-// rather than as the thing you are meant to duck or shoot. 1.35 puts it at
+// rather than as the thing you are meant to slide or shoot. 1.35 puts it at
 // roughly 22x13: unmistakable, and still visibly smaller than the hero.
 //
 // It stops there on purpose. This is ART over an UNCHANGED collision box, so

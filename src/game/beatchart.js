@@ -7,8 +7,8 @@ import { worstAirtime } from './spawner.js';
 import { jumpV, gravityFor, PLAYER_W } from './player.js';
 import { BASE_SPEED } from './layout.js';
 
-const REQUIRED_ACTIONS = new Set(['jump', 'duck', 'ability']);
-const ACTION_TYPES = { jump: 'beatBar', duck: 'drone', ability: null, pit: 'gap' };
+const REQUIRED_ACTIONS = new Set(['jump', 'slide', 'ability']);
+const ACTION_TYPES = { jump: 'beatBar', slide: 'drone', ability: null, pit: 'gap' };
 const COIN_ALT = 10;
 const ACTION_MARGIN = 2;
 // How wide the judge's on-beat window is, in beats either side of the line.
@@ -249,7 +249,7 @@ export const LANE_RUNWAY_BEATS = 2;
 // (a cabinet-screen handover, a retry) is past it already and unaffected.
 export const OPENING_COIN_BEAT = 2;
 export const PIT_LANE_RUNWAY_BEATS = 4;
-// A PUNT IS NOT A DUCK, FOR SPACING. It takes the same button and the judge and
+// A PUNT IS NOT A SLIDE, FOR SPACING. It takes the same button and the judge and
 // the ribbon are right to treat it as one, but the BODY does something else
 // entirely: a drone is slid under and left behind, while a kick plants the hero
 // mid-slide with a boot out (SLIDE_KICK_T) and a barrel leaving it. One beat is
@@ -258,35 +258,35 @@ export const PIT_LANE_RUNWAY_BEATS = 4;
 // to an immediate jump" is.
 //
 // AND COMING INTO ONE IS WORSE, for a reason the table could not see at all: a
-// punt needs a FRESH press. puntPower reads duckHoldT from the start of the
-// slide, so a player still holding the duck they took the drone with has a
+// punt needs a FRESH press. puntPower reads slideHoldT from the start of the
+// slide, so a player still holding the slide they took the drone with has a
 // hold time past the window before the barrel is even there, and the kick
-// simply cannot fire. Duck-then-punt one beat apart is not tight, it is
+// simply cannot fire. Slide-then-punt one beat apart is not tight, it is
 // impossible, and two beats is the least that leaves room to let go and press
 // again.
 //
 // So `punt` is its own kind in the pairs below, derived from the def rather
 // than from the chart's own word for the slot (see puntKind).
 const REQUIRED_GAP_BEATS = Object.freeze({
-  jumpJump: 2, jumpDuck: 2, duckJump: 1, duckDuck: 1,
-  puntJump: 2, puntDuck: 2, puntPit: 2, puntPunt: 4,
-  jumpPunt: 2, duckPunt: 2, pitPunt: 2,
+  jumpJump: 2, jumpSlide: 2, slideJump: 1, slideSlide: 1,
+  puntJump: 2, puntSlide: 2, puntPit: 2, puntPunt: 4,
+  jumpPunt: 2, slidePunt: 2, pitPunt: 2,
   // A HOLE IS A JUMP THAT CANNOT BE SHORTENED, so it takes the jump's spacing on
   // both sides. The one asymmetry is the pair either side of a landing: coming
   // OUT of a hole the hero is still in the air a good part of the next beat, so
-  // a duck one beat later is an input he has no feet on the ground to make
-  // (pitDuck: 2) — while ducking and then jumping a beat later is the same
-  // ground-to-air move duckJump already allows.
-  jumpPit: 2, pitJump: 2, pitPit: 2, pitDuck: 2, duckPit: 1,
+  // a slide one beat later is an input he has no feet on the ground to make
+  // (pitSlide: 2) — while sliding and then jumping a beat later is the same
+  // ground-to-air move slideJump already allows.
+  jumpPit: 2, pitJump: 2, pitPit: 2, pitSlide: 2, slidePit: 1,
 });
 
 function finiteNumber(n) { return typeof n === 'number' && Number.isFinite(n); }
 
 // What a slot costs the BODY, which is what the spacing table is about. Every
-// action is its own word for it except the duck, which covers two things the
+// action is its own word for it except the slide, which covers two things the
 // hero does with quite different recoveries — see REQUIRED_GAP_BEATS.
 function puntKind(event) {
-  return event.action === 'duck' && OBSTACLES[event.type]?.beatPunt ? 'punt' : event.action;
+  return event.action === 'slide' && OBSTACLES[event.type]?.beatPunt ? 'punt' : event.action;
 }
 
 /** Return a monotonically increasing beat number across a looping clock. */
@@ -356,10 +356,10 @@ export function pitWindowBeats(beats = PIT_BEATS, bpm = 120) {
 // A barrel does not wait to be answered — it rolls at the hero at `def.vx`
 // while he runs at it — so a chart slot that asks for the boot has to say WHEN
 // the two meet, not just where the barrel stands. Three gates have to be open
-// at that instant, all measured from the frame the player presses duck:
+// at that instant, all measured from the frame the player presses slide:
 //
-//   the slide has to be DOWN      contact is only a kick above duckAmount 0.6,
-//                                 and the blend takes DUCK_IN_T to reach 1 —
+//   the slide has to be DOWN      contact is only a kick above slideAmount 0.6,
+//                                 and the blend takes SLIDE_IN_T to reach 1 —
 //                                 so 0.6 * 0.14 = 0.084s at the earliest.
 //   the punt window has to be OPEN puntPower falls to nothing at PUNT.windowT,
 //                                 0.35s — so 0.35s at the latest.
@@ -443,10 +443,10 @@ export function validateBeatChart(chart, physics = {}) {
     }
     if (seen.has(raw.slot)) throw new Error(`duplicate beat chart slot: ${raw.slot}`);
     seen.add(raw.slot);
-    if (!['jump', 'duck', 'pit', 'ability', 'coin'].includes(raw.action)) {
+    if (!['jump', 'slide', 'pit', 'ability', 'coin'].includes(raw.action)) {
       throw new Error(`unknown beat chart action: ${raw.action}`);
     }
-    const isPuntSlot = raw.action === 'duck' && OBSTACLES[raw.type]?.beatPunt;
+    const isPuntSlot = raw.action === 'slide' && OBSTACLES[raw.type]?.beatPunt;
     if (raw.action !== 'coin' && raw.action !== 'ability' && !isPuntSlot && raw.every != null) {
       // The judge reads the chart and the spawner reads the chart, and they
       // agree because every slot means the same thing on every pass. A skipped
@@ -558,14 +558,14 @@ export function validateBeatChart(chart, physics = {}) {
     } else if (REQUIRED_ACTIONS.has(raw.action)) {
       const type = raw.type || ACTION_TYPES[raw.action];
       const def = OBSTACLES[type];
-      // A DUCK SLOT HAS TWO ANSWERS TO "what is standing there". The drone is
+      // A SLIDE SLOT HAS TWO ANSWERS TO "what is standing there". The drone is
       // the one it was born with — a thing you slide UNDER — and `beatPunt`
       // marks the other: a thing you slide INTO, whose def answers to a jump
-      // everywhere off this grid (see OBSTACLES.barrel). The slot is a duck
+      // everywhere off this grid (see OBSTACLES.barrel). The slot is a slide
       // either way, which is the whole reason this is a flag and not a new
       // action: the judge scores it, the ribbon draws it and the spacing table
       // spaces it exactly as it always has.
-      const puntable = raw.action === 'duck' && def?.beatPunt;
+      const puntable = raw.action === 'slide' && def?.beatPunt;
       if (!def || (def.action !== raw.action && !puntable)) {
         throw new Error(`invalid obstacle for ${raw.action}: ${type}`);
       }
@@ -575,8 +575,8 @@ export function validateBeatChart(chart, physics = {}) {
       // hazard waits where it is put — so the barrel would arrive early by the
       // ratio of its speed to the hero's and the beat would be unplayable for
       // a reason nothing in the chart could show. The trap is worth a rule.
-      if (def.beatPunt && raw.action !== 'duck') {
-        throw new Error(`${type} moves, so it may only stand on a duck slot `
+      if (def.beatPunt && raw.action !== 'slide') {
+        throw new Error(`${type} moves, so it may only stand on a slide slot `
           + `(slot ${raw.slot} is a ${raw.action})`);
       }
       if (puntable) {
@@ -594,7 +594,7 @@ export function validateBeatChart(chart, physics = {}) {
             + `(${lo.toFixed(3)}s earliest, ${hi.toFixed(3)}s latest)`);
         }
       }
-      // A COLUMN IS THE DRONE'S AND THE DUCK'S ALONE. The drone is the only
+      // A COLUMN IS THE DRONE'S AND THE SLIDE'S ALONE. The drone is the only
       // type with a ladder of altitudes measured against the cast's jumps
       // (DRONE_COLUMN_ALTS), and stacking a JUMP hazard is not this feature at
       // all — it is a wall, which is a different decision and not one a chart
@@ -614,23 +614,23 @@ export function validateBeatChart(chart, physics = {}) {
       // coin-flip in between, and the validator refuses it rather than leaving
       // it lying around for a chart to reach for. See DRONE_COLUMN_ALTS.
       if (raw.column != null) {
-        if (raw.action !== 'duck' || type !== 'drone') {
-          throw new Error(`only a drone duck slot may be a column `
+        if (raw.action !== 'slide' || type !== 'drone') {
+          throw new Error(`only a drone slide slot may be a column `
             + `(slot ${raw.slot} is a ${raw.action} of ${type})`);
         }
         if (raw.column !== 2 && raw.column !== 4) {
-          throw new Error(`a duck column is two rungs or four, not ${raw.column} (slot ${raw.slot})`);
+          throw new Error(`a slide column is two rungs or four, not ${raw.column} (slot ${raw.slot})`);
         }
       }
     }
     // `punt` is stamped here rather than re-derived downstream, because the
-    // judge has to know a duck slot is a barrel one without reaching into the
+    // judge has to know a slide slot is a barrel one without reaching into the
     // obstacle table from run.js to find out (see RunState.rhythmRequiredAt).
     const slotType = raw.type || ACTION_TYPES[raw.action];
     bySlot[raw.slot] = Object.freeze({
       ...raw,
       type: slotType,
-      ...(raw.action === 'duck' && OBSTACLES[slotType]?.beatPunt ? { punt: true } : {}),
+      ...(raw.action === 'slide' && OBSTACLES[slotType]?.beatPunt ? { punt: true } : {}),
     });
   }
   for (let slot = 0; slot < chart.loopBeats; slot++) {
@@ -748,9 +748,9 @@ export function validateBeatChart(chart, physics = {}) {
     }
   }
 
-  // Spacing is a collision-feasibility rule for physical jump/duck hazards.
+  // Spacing is a collision-feasibility rule for physical jump/slide hazards.
   // Ability events are timing markers and impose no obstacle gap of their own.
-  const actionSlots = bySlot.filter((e) => e.action === 'jump' || e.action === 'duck'
+  const actionSlots = bySlot.filter((e) => e.action === 'jump' || e.action === 'slide'
     || e.action === 'pit').map((e) => e.slot);
   const minGap = { ...REQUIRED_GAP_BEATS, ...(physics.minGapBeats || {}) };
   for (let i = 0; i < actionSlots.length; i++) {
@@ -801,7 +801,7 @@ function worstClearTime(height) {
 // other action's approach is a pure function of the hero's physics and the road.
 export function actionApproachPx(action, type, speed, bpm = null) {
   if (!finiteNumber(speed) || speed <= 0 || action === 'coin' || action === 'ability') return 0;
-  const punt = action === 'duck' && OBSTACLES[type]?.beatPunt;
+  const punt = action === 'slide' && OBSTACLES[type]?.beatPunt;
   if (punt) {
     // AGAINST A CLOSING TARGET. The gap the boot has to eat is opened at the
     // hero's speed PLUS the barrel's own, because both of them are spending it
@@ -817,10 +817,10 @@ export function actionApproachPx(action, type, speed, bpm = null) {
     // beat rather than on it.
     return closing * puntLeadSec(bpm || 120) + PLAYER_W;
   }
-  // Ducking is resolved from the same input edge as collision.  A one-frame
+  // Sliding is resolved from the same input edge as collision.  A one-frame
   // lead keeps the drone's contact on the following update without moving it
   // a full hitbox ahead of the judged beat.
-  if (action === 'duck') return speed / 60;
+  if (action === 'slide') return speed / 60;
   const def = OBSTACLES[type];
   const clearTime = worstClearTime((def?.h || 10) + ACTION_MARGIN);
   return speed * clearTime + PLAYER_W + ACTION_MARGIN;
@@ -1082,7 +1082,7 @@ export class BeatSpawner {
         this.cursorBeat++;
         continue;
       }
-      // THE OPENING IS JUMPS-ONLY, the same way: a duck, a box or a hole asked
+      // THE OPENING IS JUMPS-ONLY, the same way: a slide, a box or a hole asked
       // before the sign has finished saying what it is gets skipped outright,
       // and the judge (rhythmRequiredAt) reads the same gate. Bars still go
       // down — a jump needs no lesson — and so do the coins.
@@ -1306,14 +1306,14 @@ export class BeatSpawner {
             ob.actionX = actionX;
             obstacles.push(ob);
             this.eventInstances.push({
-              live: true, chartEventId: id, chartAction: 'duck', chartSlot: event.slot,
+              live: true, chartEventId: id, chartAction: 'slide', chartSlot: event.slot,
               actionBeat: this.cursorBeat, actionX,
             });
             this.lastActionX = actionX;
             this.lastActionKind = event.action;
           }
         } else {
-          // A DUCK SLOT MAY BE A COLUMN, two rungs or four. One drone tops
+          // A SLIDE SLOT MAY BE A COLUMN, two rungs or four. One drone tops
           // out at 20 and every hero in the cast jumps 51 or better, so the
           // lone-drone version of this beat was a slide the player was free to
           // decline. Four rungs reach 68, which is over every jump in the game;
@@ -1322,7 +1322,7 @@ export class BeatSpawner {
           // is 68, why it stopped being 50, and why three rungs are not offered.
           //
           // EVERY RUNG CARRIES THE SAME CHART STAMP, and nothing downstream
-          // minds: a duck is judged off the chart rather than off the lane
+          // minds: a slide is judged off the chart rather than off the lane
           // (RunState.rhythmRequiredAt), the ribbon dedupes its markers by
           // action and beat (hud.js drawBeatRibbon), and the portal sweep's
           // consumed-beat key goes into a Set. So the column stays ONE event

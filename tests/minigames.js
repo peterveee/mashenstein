@@ -25,7 +25,7 @@ for (const game of MINIGAMES) {
   st.enter();
   const TICK = 1 / 60;
   let t = 0;
-  const actions = ['left', 'right', 'jump', 'duck'];
+  const actions = ['left', 'right', 'jump', 'slide'];
   let i = 0;
   while (!ended && t < 45) {
     t += TICK;

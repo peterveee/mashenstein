@@ -154,7 +154,7 @@ export const bank = {
 // so a jump good enough to keep the combo is a jump that lands.
 //
 // The stages ramp in holes rather than in speed: two, then four, then four with
-// the ducks still running underneath.  See stages.js for the crossing, which is
+// the slides still running underneath.  See stages.js for the crossing, which is
 // a different animal — a break too wide to jump, taken on stones.
 //
 // AND A COIN SLOT MAY BE A FILL.  A spread of `...eighth`, `...sixteenth` or
@@ -171,7 +171,7 @@ export const bank = {
 // ones physics insists on, below.
 //
 // AND A RUN INTO AN ACTION IS A COUNT-IN.  A slot whose next line is a jump or
-// a duck takes the `...sixteenth` — four coins closing on the beat you have to
+// a slide takes the `...sixteenth` — four coins closing on the beat you have to
 // answer, which is the oldest way a rhythm game has of telling you where the
 // one is, and it plays as a fill rather than as a warning.  Slots that lead to
 // another coin stay a pair; the 32nd is the flourish and arrives on a schedule
@@ -224,7 +224,7 @@ export const beatCharts = {
     ],
   },
   2: {
-    // The duck arrives, and each half now ends in a pair of holes: duck, bar,
+    // The slide arrives, and each half now ends in a pair of holes: slide, bar,
     // hole, hole.  Two strides of the same figure per loop, which is what makes
     // the stage's crossing at 0.70 read as the extension of a phrase the player
     // already knows rather than as a new mechanic in the last third.
@@ -254,17 +254,17 @@ export const beatCharts = {
       // cabinet you can watch arrive, and the boot sends it back the way it
       // came (OBSTACLES.barrel, and the punt window in beatchart.js). The
       // drone slide is still taught — slot 9 is the full three-rung column,
-      // now the only duck here that cannot be jumped at all.
+      // now the only slide here that cannot be jumped at all.
       //
       // Slot 0 rather than 1 because of the spacing table, not taste: a kick
       // wants two beats before the jump on 2 (see REQUIRED_GAP_BEATS), and the
       // hole on 14 wants two before the kick. Nought is the only line in this
       // bar with both. The eighth fill it displaced moves to 1, where the rest
       // after a fill is a jump rather than another coin.
-      { slot: 0, action: 'duck', type: 'barrel', every: 3 },
+      { slot: 0, action: 'slide', type: 'barrel', every: 3 },
       { slot: 1, action: 'coin', ...sixteenth },
       { slot: 2, action: 'jump', type: 'beatBar' },
-      // Duck, bar, SHOOT — and the box goes on 4, half a beat in front of the
+      // Slide, bar, SHOOT — and the box goes on 4, half a beat in front of the
       // hero (BOX_LEAD_BEATS), with the first hole a beat behind it on 5. The
       // holes used to sit on 4 and 6, with the round fired across the first
       // gap and the box opening on 5 between them; a box standing 1.5 beats
@@ -289,12 +289,12 @@ export const beatCharts = {
       // worst jump in the cast — so the same INPUT comes back half a loop later
       // with the jump-button escape taken off it. Two objects, one button, and
       // the second one is the one that means it.
-      // Two beats out of the second hole to the column (pitDuck: 2) — the
+      // Two beats out of the second hole to the column (pitSlide: 2) — the
       // hero lands from 7 with 8 to get his feet back. A pair rather than the
       // count-in it used to be: the loop's one sixteenth is on 1, into the
       // bar, and with 7 now a hole the pairs need this slot to stay the ground.
       { slot: 8, action: 'coin', ...eighth },
-      { slot: 9, action: 'duck', type: 'drone', column: 4 },
+      { slot: 9, action: 'slide', type: 'drone', column: 4 },
       // Slot 11 is a lone coin and has to be: a bar on 10 and a hole on 12 own
       // the beat either side of it, and neither will share its stride.  A pair
       // counting into 11 put its first coin half a beat past the bar — the one
@@ -306,7 +306,7 @@ export const beatCharts = {
     ],
   },
   3: {
-    // The finale states both halves plainly: a bar of ducking — two drone
+    // The finale states both halves plainly: a bar of sliding — two drone
     // columns with one of stage 2's barrels between them, two beats apart
     // because a kick needs a fresh press — then a whole bar of holes, four of
     // them, one every other beat, which is the fastest a jump may be asked for
@@ -325,7 +325,7 @@ export const beatCharts = {
       // always about. The bar is still taught on the two stages before it.
       { slot: 0, action: 'coin', ...thirtysecond, every: 2 },
       { slot: 1, action: 'coin', ...sixteenth },
-      // THE BAR OF DUCKING, AND IT IS TWO OBJECTS. Nothing new is introduced on
+      // THE BAR OF SLIDING, AND IT IS TWO OBJECTS. Nothing new is introduced on
       // the finale and neither of these is: the column is the stage-2 figure
       // with the jump-button escape taken off it, and the barrel is the thing
       // stage 2 opened with. What IS new is having to read which is which at
@@ -337,21 +337,21 @@ export const beatCharts = {
       // things being asked at once.
       //
       // TWO BEATS BETWEEN THEM, and the table insists on it (REQUIRED_GAP_BEATS
-      // duckPunt / puntDuck). This bar was drone-barrel-jump on 2-3-4 and it
-      // could not be played: the kick needs a FRESH duck press and a player
+      // slidePunt / puntSlide). This bar was drone-barrel-jump on 2-3-4 and it
+      // could not be played: the kick needs a FRESH slide press and a player
       // still holding the one that took the drone has a hold time past the punt
       // window before the barrel arrives. Drone on 2, barrel on 4, column on 6
       // is the same figure with room to let go of the button between its
       // halves, and what it cost is the bar that used to stand on 4 — the loop
       // keeps the one on 0 and spends the rest of its jumps on the four holes,
       // which is what this stage was always about.
-      { slot: 2, action: 'duck', type: 'drone', column: 4 },
+      { slot: 2, action: 'slide', type: 'drone', column: 4 },
       { slot: 3, action: 'coin', ...eighth },
-      { slot: 4, action: 'duck', type: 'barrel', every: 2 },
+      { slot: 4, action: 'slide', type: 'barrel', every: 2 },
       { slot: 5, action: 'coin', ...eighth },
-      { slot: 6, action: 'duck', type: 'drone', column: 4 },
+      { slot: 6, action: 'slide', type: 'drone', column: 4 },
       // The finale's one card box, and it is the tightest the cabinet asks for:
-      // duck on 6, shoot on 7, and the box goes on 8 half a beat ahead of the
+      // slide on 6, shoot on 7, and the box goes on 8 half a beat ahead of the
       // hero, with the first of the four holes a beat behind it on 9.  It is
       // also the cheapest thing on the stage to decline — a missed box costs
       // the combo and nothing else, and running through one costs not even

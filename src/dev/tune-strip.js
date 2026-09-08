@@ -134,13 +134,13 @@ export function derived(run) {
   out.airtimeUnderstated = out.worst < castMax;
 
   // The spacing the spawner will use for the worst transition it can lay down:
-  // a jump obstacle followed by a duck obstacle, which cannot be ducked while
+  // a jump obstacle followed by a slide obstacle, which cannot be slid while
   // still in the air. Read off the LIVE spawner so a shadowed react floor shows
   // up here rather than hiding.
   const sp = run && run.spawner;
   if (sp && speed) {
     out.react = sp.react;
-    out.gap = sp.fairGap ? sp.fairGap(speed, 'jump', 'duck') : null;
+    out.gap = sp.fairGap ? sp.fairGap(speed, 'jump', 'slide') : null;
     out.runway = (VIEW_W - PLAYER_X) / speed;
     out.margin = out.runway - (sp.react + out.worst);
     if (out.margin < 0) out.warn.push('no runway');
@@ -221,7 +221,7 @@ export function drawTuneStrip(ctx, dev) {
   // The header states what the strip has taken over, because both are silent
   // otherwise: arrows no longer reach the hero, and hits no longer count.
   const head = `TUNE ${GROUPS[TuneStrip.group]}${moved ? ` (${moved} moved)` : ''}`
-    + '  ·  arrows=tuner (jump SPACE/W · duck S · rewind A · ability X/D)'
+    + '  ·  arrows=tuner (jump SPACE/W · slide S · rewind A · ability X/D)'
     + `${run && run.devInvuln ? '  ·  INVULN' : ''}`;
   const consts = window.map((r) => {
     const v = readOne(r.name);

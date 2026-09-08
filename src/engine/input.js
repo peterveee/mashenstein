@@ -1,10 +1,10 @@
 // Unified input: keyboard + touch gestures + virtual buttons + gamepad.
-// Actions: jump, duck, ability, left, right, confirm, back, escape, pause, mute.
+// Actions: jump, slide, ability, left, right, confirm, back, escape, pause, mute.
 import { clientToLogical, W } from './renderer.js';
 
 const DEFAULT_KEYS = {
   jump: ['Space', 'ArrowUp', 'KeyW'],
-  duck: ['ArrowDown', 'KeyS'],
+  slide: ['ArrowDown', 'KeyS'],
   ability: ['KeyX', 'ShiftLeft', 'ShiftRight'],
   left: ['ArrowLeft', 'KeyA'],
   right: ['ArrowRight', 'KeyD'],
@@ -15,7 +15,7 @@ const DEFAULT_KEYS = {
   debug: ['F2'],   // Backquote now opens the dev menu (dev builds only)
 };
 
-const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'duck', 14: 'left', 15: 'right' };
+const GAMEPAD_MAP = { 0: 'jump', 1: 'slide', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'slide', 14: 'left', 15: 'right' };
 
 // Where the picture splits into its two broad thumb halves during a run:
 // everything left of this fraction is JUMP, everything right of it is SLIDE —
@@ -32,7 +32,7 @@ export const TOUCH_JUMP_FRAC = 0.5;
 //
 // The old behaviour was to fire on contact and convert afterwards, which meant
 // every swipe down ALSO jumped (or, from the power side, spent the special) on
-// its way to the duck. You cannot un-hop a hop.
+// its way to the slide. You cannot un-hop a hop.
 //
 // The wait is short and usually invisible: a still finger commits after
 // TAP_HOLD_MS, and a finger lifted sooner than that commits on the lift, which
@@ -49,7 +49,7 @@ const TAP_MAX_MS = 260;
 // short jump. Swipe arbitration delays the press until pointerup; replaying a
 // 5-20ms contact literally then lets variable-jump cut it almost immediately.
 // This floor applies only to lifted jump taps. A finger that remains down still
-// commits and releases in real time, and ability/duck gestures are unchanged.
+// commits and releases in real time, and ability/slide gestures are unchanged.
 const TAP_MIN_JUMP_HOLD_MS = 100;
 // The longest a lifted tap's hold is replayed for. A finger that sat there for
 // a second and then lifted has already had its jump committed by the timer
@@ -125,7 +125,7 @@ class InputSys {
       this.press('pointer', e.timeStamp);
       // A three-button mouse gets the three gameplay verbs directly, one to a
       // button: left jumps (below, with the canvas hit-testing), RIGHT is the
-      // Down control — duck on the ground and the same downward kick/stomp the
+      // Down control — slide on the ground and the same downward kick/stomp the
       // keyboard gets in the air — and MIDDLE is the special. The two
       // non-primary buttons are resolved here, ahead of canvas/chrome button
       // hit-testing, so they stay stable shortcuts wherever the cursor happens
@@ -136,7 +136,7 @@ class InputSys {
         const liveRunHere = this.context === 'run' && !this.menuKeys;
         let action = null;
         if (e.button === 1 && (liveRunHere || this.context === 'workshop')) action = 'ability';
-        else if (e.button === 2 && liveRunHere) action = 'duck';
+        else if (e.button === 2 && liveRunHere) action = 'slide';
         if (action) {
           this.touches.set(e.pointerId, {
             x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true,
@@ -169,7 +169,7 @@ class InputSys {
         // is JUMP and its right half is SLIDE — the two frequent actions, both
         // press-and-hold, one per thumb — because a phone has no second button
         // to press. The special has its own disc (and the swipe-right below).
-        // A mouse has buttons: left is jump over the whole canvas, and duck and
+        // A mouse has buttons: left is jump over the whole canvas, and slide and
         // the special each have one (above), so where the cursor happens to be
         // sitting never changes what a click does. All mappings stay off menus
         // and paused runs.
@@ -182,10 +182,10 @@ class InputSys {
         const guarded = liveRun && primaryCanvas && this.guardAt(p.x, p.y);
         if (liveRun && primaryCanvas) {
           action = guarded ? null
-            : (this.usingTouch && p.x >= W * TOUCH_JUMP_FRAC ? 'duck' : 'jump');
+            : (this.usingTouch && p.x >= W * TOUCH_JUMP_FRAC ? 'slide' : 'jump');
         }
         // A tap started anywhere on the picture can become the established
-        // down/right swipe — both halves, not just the jump side. Ducking is a
+        // down/right swipe — both halves, not just the jump side. Sliding is a
         // defensive move and has to be available under whichever thumb is
         // already down, and the swipe-right is what lets a one-handed player
         // reach the special without the disc.
@@ -235,7 +235,7 @@ class InputSys {
         // A swipe that resolves takes the touch outright. On a pending touch
         // the tap action was never fired, so there is nothing to release and
         // nothing to undo — which is the entire point of holding it: a swipe
-        // down used to hop first and duck second, and a swipe out of the power
+        // down used to hop first and slide second, and a swipe out of the power
         // zone used to spend the special on the way past.
         const swipe = (action) => {
           if (action === t.action && !t.pending) return; // already firing it
@@ -248,8 +248,8 @@ class InputSys {
         // Dominant axis wins, so a swipe that drifts diagonally still resolves
         // to the one the thumb meant rather than to whichever test ran first.
         if (performance.now() - t.t0 < 300) {
-          // Swipe down = duck (held).
-          if (dy > 24 && dy >= Math.abs(dx)) swipe('duck');
+          // Swipe down = slide (held).
+          if (dy > 24 && dy >= Math.abs(dx)) swipe('slide');
           // Swipe right = power, so the whole game is playable one-handed:
           // JUMP and PWR are opposite bottom corners, which is a two-thumb
           // layout, and a phone held in one hand can only reach one of them.
@@ -370,7 +370,7 @@ class InputSys {
 
   // Whether this player can reach rewind at all. Rewind is a HELD 'left', which
   // the touch layout never binds — see touch-layout.js, which offers
-  // jump/duck/ability/pause and nothing else. Recording snapshots for a
+  // jump/slide/ability/pause and nothing else. Recording snapshots for a
   // control the player cannot press is pure cost, so both halves of the feature
   // ask this first: the audio capture node (main.js) and the simulation
   // snapshot ring (run.js).
@@ -424,7 +424,7 @@ class InputSys {
   // Dormant since the play pill left the picture: no registered button sets
   // `guard` today. Kept because the failure it answers is real — a near-miss
   // that jumps INSTEAD OF SLIDING puts the player over the top of the obstacle
-  // they were ducking under, which is the same failure the swipe arbitration in
+  // they were sliding under, which is the same failure the swipe arbitration in
   // pointermove was written to remove — and an in-canvas control that ever
   // needs it again should set `guard` rather than reinvent this.
   guardAt(x, y) {
@@ -578,7 +578,7 @@ class InputSys {
       if (pad.axes[0] < -0.5) now.add('left');
       if (pad.axes[0] > 0.5) now.add(this.context === 'run' && !this.menuKeys ? 'ability' : 'right');
       if (pad.axes[1] < -0.5) now.add(this.menuNav() ? 'up' : 'jump');
-      if (pad.axes[1] > 0.5) now.add(this.menuNav() ? 'down' : 'duck');
+      if (pad.axes[1] > 0.5) now.add(this.menuNav() ? 'down' : 'slide');
     }
     for (const a of now) if (!this.padPrev.has(a)) this.press(a);
     for (const a of this.padPrev) if (!now.has(a)) this.release(a);
@@ -593,7 +593,7 @@ class InputSys {
   released(a) { return this.up.has(a); }
   // Commit any held tap whose gesture has now declared itself. A finger still
   // sliding downward is left pending — it may yet cross the swipe threshold and
-  // become a duck, and firing its tap action in the meantime is the double
+  // become a slide, and firing its tap action in the meantime is the double
   // input this whole mechanism exists to remove.
   //
   // Called at the TOP of the frame (states.updateState, beside the gamepad

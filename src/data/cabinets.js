@@ -123,7 +123,7 @@ const BASE_PATTERNS = [
   P(1, [{ t: 'cactusBig', dx: 0 }]),
   P(1, [{ t: 'crate', dx: 0 }, { t: 'crate', dx: 40, n: 2 }]), // low then high: a two-beat read
   P(1, [{ t: 'buzzbird', dx: 0 }]),
-  P(1, [{ t: 'drone', dx: 0 }]), // low flyer: duck under
+  P(1, [{ t: 'drone', dx: 0 }]), // low flyer: slide under
   P(1, [{ t: 'cactus', dx: 0 }, coinBlock(64)]),                // punch up through the slab
   P(1, [coinStair(0), { t: 'crate', dx: 84 }]),                 // the ramp telegraphs the crate
   P(2, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
@@ -512,7 +512,7 @@ export const CABINETS = [
       P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 80 }, { t: 'beatBar', dx: 160 }]),
       // Spread from Act I: the saw spins on its own clock against the bars'
       // beat, the spikes are the off-beat floor read, and the crossing gate is
-      // this cabinet's first duck that is not the shared drone row.
+      // this cabinet's first slide that is not the shared drone row.
       P(1, [{ t: 'floorSaw', dx: 0 }]),
       P(1, [{ t: 'boomBarrier', dx: 0 }]),
       P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'beatBar', dx: 70 }]),
@@ -563,8 +563,8 @@ export const CABINETS = [
       // warm thing on the ice — same argument as Corporate's bin fire, and it
       // breaks up a lane that was 60% snowman-or-crate at stage 1.
       P(0, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
-      // Ice spikes and a ski gate: the floor read and the duck read, both of
-      // which this cabinet had none of (its whole duck game was one shared
+      // Ice spikes and a ski gate: the floor read and the slide read, both of
+      // which this cabinet had none of (its whole slide game was one shared
       // drone row).
       P(1, [{ t: 'popSpikes', dx: 0 }]),
       P(1, [{ t: 'boomBarrier', dx: 0 }]),

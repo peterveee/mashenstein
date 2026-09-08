@@ -566,7 +566,7 @@ export function drawBeatRibbon(ctx, run) {
     // are one up-arrow because they are one button, and drawing them differently
     // would teach a distinction the pad does not have. That law is about SHAPE,
     // and it is untouched here: a barrel beat is a down-arrow like every other
-    // duck beat, because it is the same button.
+    // slide beat, because it is the same button.
     //
     // What it does not settle is which THING is arriving, and on the finale
     // that stopped being cosmetic: a drone hangs still overhead and a barrel
@@ -580,14 +580,14 @@ export function drawBeatRibbon(ctx, run) {
     // the strip and the road draw the same events, and the moment each keeps
     // its own copy of the barrel's wood they are one edit from disagreeing.
     ctx.fillStyle = ACTION_INK[marker.prop === 'barrel' ? 'barrel' : marker.action] || '#ffffff';
-    // EVERY GLYPH CENTRES ON THE BAND'S MIDLINE. The jump and duck arrows used
+    // EVERY GLYPH CENTRES ON THE BAND'S MIDLINE. The jump and slide arrows used
     // to sit two units high and two units low of it, so the pair were not
     // merely reflections about one line and the strip said DOWN twice. That
     // reading cost more than it bought once the arrows were drawn at scale: two
     // big triangles at different heights read as a strip that cannot keep its
     // own baseline, and the direction they point is already unmissable. Which
     // way it points is what the player reads at a glance; the colour (the
-    // duck's cyan against the jump's green) is what confirms it.
+    // slide's cyan against the jump's green) is what confirms it.
     // AND EVERY ARROW IS BORDERED, on the same terms as the ones painted on the
     // road: a dark edge with rounded joins, stroked before the fill so it reads
     // as a rim the colour sits inside rather than a line eating half the shape.
@@ -601,7 +601,7 @@ export function drawBeatRibbon(ctx, run) {
       const aw = ARROW_W * glyphSwell, ah = ARROW_H * glyphSwell;
       ctx.lineWidth = GLYPH_EDGE;
       ctx.beginPath(); ctx.moveTo(x, mid - ah); ctx.lineTo(x - aw, mid + ah); ctx.lineTo(x + aw, mid + ah); ctx.closePath(); ctx.stroke(); ctx.fill();
-    } else if (marker.action === 'duck') {
+    } else if (marker.action === 'slide') {
       const aw = ARROW_W * glyphSwell, ah = ARROW_H * glyphSwell;
       ctx.lineWidth = GLYPH_EDGE;
       ctx.beginPath(); ctx.moveTo(x, mid + ah); ctx.lineTo(x - aw, mid - ah); ctx.lineTo(x + aw, mid - ah); ctx.closePath(); ctx.stroke(); ctx.fill();
@@ -2228,7 +2228,7 @@ export function floatieShift(floaties, hero) {
   }
   top = Math.max(38, Math.round(top));
   if (bottom <= hero.y0 || top >= hero.y1) return 0;   // already clear of him
-  return Math.max(0, Math.round(hero.y1 + FLOAT_DUCK_GAP - top));
+  return Math.max(0, Math.round(hero.y1 + FLOAT_CLEAR_GAP - top));
 }
 
 // The highest row a drifting card may reach: clear of the beat ribbon by the
@@ -2237,8 +2237,8 @@ const FLOAT_CEILING = BEAT_RIBBON_BOTTOM + 3;
 // One slotted card's height — the pitch floatText stacks them at. Only ever
 // used to ask whether the stack and the hero are in the same band.
 const FLOAT_CARD_H = 19;
-// Air between the hero's feet and the stack once it has ducked under him.
-const FLOAT_DUCK_GAP = 6;
+// Air between the hero's feet and the stack once it has slid under him.
+const FLOAT_CLEAR_GAP = 6;
 // What a card fades to on the frames it is unavoidably over the hero. Low
 // enough that he reads through it, high enough that the card is still there —
 // blinking a popup out mid-word is its own kind of distracting.
@@ -2255,9 +2255,9 @@ const SPEECH_ROW = 11;
 // stopped being true the moment the card moved.
 export const FLOAT_BASE_CEILING = SPEECH_Y - 4
   + Math.max(15 + 6, 4 * SPEECH_ROW + 8) + 16;
-// Air left between the hero and a card that has ducked under him. Enough that
+// Air left between the hero and a card that has slid under him. Enough that
 // the two read as separate things rather than as a card he is wearing.
-const SPEECH_DUCK_GAP = 6;
+const SPEECH_CLEAR_GAP = 6;
 
 /**
  * Where the card actually lands, given something on screen it must not cover.
@@ -2268,7 +2268,7 @@ const SPEECH_DUCK_GAP = 6;
  * crown near the top edge and leaves it there, and the card prints across him
  * for the whole stretch.
  *
- * So it ducks UNDER him rather than moving him or fading out: the line is still
+ * So it slides UNDER him rather than moving him or fading out: the line is still
  * readable, it is still in the same place relative to the speaker, and nothing
  * changes at all for the running that is most of a stage. `avoid` is a screen
  * rect in the overlay's own unscaled space; without one this is a no-op, which
@@ -2286,8 +2286,8 @@ function placeSpeechCard(baseY, cardX, cardW, cardH, avoid) {
   if (top + cardH <= avoid.y0 || top >= avoid.y1) return baseY;
   // The lowest the plate's top may sit: the bottom edge's own margin.
   const topLimit = H - EDGE_BOTTOM - 5 - cardH;
-  const ducked = avoid.y1 + SPEECH_DUCK_GAP;
-  return ducked <= topLimit ? ducked + 4 : baseY;
+  const cleared = avoid.y1 + SPEECH_CLEAR_GAP;
+  return cleared <= topLimit ? cleared + 4 : baseY;
 }
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
@@ -2298,7 +2298,7 @@ function placeSpeechCard(baseY, cardX, cardW, cardH, avoid) {
 // the band a held jump actually travels through.
 //
 // `opts.avoid` is a screen rect the card must keep off — the run passes the
-// hero's own STANDING box, so a card fired while he is up on a platform ducks
+// hero's own STANDING box, so a card fired while he is up on a platform slides
 // under him instead of printing across him, and a jump — which is over in half
 // a second — never moves it at all. See placeSpeechCard.
 //
@@ -2647,10 +2647,11 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
     bx += dx; floatX += dx; edgeX += dx;
   }
   // The crossing. A hero passing through the row has to share it with the cards
-  // for a few frames however fast the duck moves — there is no continuous path
-  // from one side of him to the other — so for those frames the card goes
-  // translucent and he reads through it. It is the same idea as the duck, at
-  // the one scale the duck cannot fix.
+  // for a few frames however fast the card's DODGE moves — there is no
+  // continuous path from one side of him to the other — so for those frames the
+  // card goes translucent and he reads through it. It is the same idea as the
+  // dodge, at the one scale the dodge cannot fix. (This paragraph said "duck"
+  // when the card getting out of the way and the hero's move shared a word.)
   const cardH = lines.length * LINE_H + 8;
   const onHero = avoid
     && bx + tw + PADX * 2 > avoid.x0 && bx < avoid.x1

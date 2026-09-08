@@ -1606,7 +1606,7 @@ class ArcadeArtGallery extends BaseVisualiser {
       p.rotation += dt * p.spin * (0.72 + this.treble * 0.85);
       // Every cast member runs a little looping animation clip. The clip
       // changes pose over time instead of ever falling back to a cached stand
-      // image: run -> jump -> duck -> celebrate, then back to run.
+      // image: run -> jump -> slide -> celebrate, then back to run.
       p.animClock += dt * p.animRate * (1 + this.mid * 0.16 + this.beatPulse * 0.03);
     }
     // Distant worlds are coin-sized details that continuously cross the room;
@@ -1681,7 +1681,7 @@ class ArcadeArtGallery extends BaseVisualiser {
       const heroScale = 0.88 + 0.14 * Math.sin(this.t * p.scaleRate + p.phase) + pulse * 0.04;
       const heroTurn = 0.58 + 0.42 * Math.abs(Math.cos(p.rotation));
       const clip = p.animClock % 5.6;
-      const kind = clip < 2.8 ? 'run' : clip < 3.8 ? 'jump' : clip < 4.6 ? 'duck' : 'celebrate';
+      const kind = clip < 2.8 ? 'run' : clip < 3.8 ? 'jump' : clip < 4.6 ? 'slide' : 'celebrate';
       const phase = (p.animClock * (1.2 + i * 0.07) + p.phase / TAU) % 1;
       const pose = {
         kind,
@@ -1689,7 +1689,7 @@ class ArcadeArtGallery extends BaseVisualiser {
         time: p.animClock + p.phase,
         grounded: kind !== 'jump',
         vy: kind === 'jump' ? Math.sin(p.animClock * 2.1 + p.phase) * 260 : 0,
-        duckAmount: kind === 'duck' ? 0.8 + 0.2 * Math.sin(p.animClock * 3 + p.phase) : 0,
+        slideAmount: kind === 'slide' ? 0.8 + 0.2 * Math.sin(p.animClock * 3 + p.phase) : 0,
         // Celebration rigs use the same full-body motion as the cast reel;
         // explicitly select the reworked style so none of the poses are static.
         celebrateStyle: kind === 'celebrate' ? 'reworked' : undefined,

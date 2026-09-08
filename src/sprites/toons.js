@@ -310,7 +310,7 @@ export const TOON_SPECS = {
   // gown is drawn by princessCostume instead (see PRINCESS_COSTUMES).
   fernwick: {
     rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'quiver', ranged: 'bow',
-    bowStyle: 'high', tunic: true, rollDuck: true, slim: true, armDepth: true,
+    bowStyle: 'high', tunic: true, rollTuck: true, slim: true, armDepth: true,
     hands: true, limbStyle: 'tunic', ears: true,
     // The head, off the G1 study.
     faceLike: 'fernwick', referenceHair: 'kicked', lockLift: 0.14, joinedLocks: true,
@@ -324,7 +324,33 @@ export const TOON_SPECS = {
     // The body: the gored gown, a slim build with a real waist, a shade under
     // Kiko's height, and long sleeves that ARE the arms (bareArms false).
     princessCostume: 'gown', torsoWidth: 0.94, taper: 0.7, tall: 0.95,
-    armOut: 0.03, puffs: false, bareArms: false, handsFront: true,
+    armOut: 0.03, puffs: false, bareArms: false,
+    // And then shortened a little further. Dropping handsFront (below) put her
+    // arm back on the cast's 0.200u, but `tall: 0.95` gives her the LOWEST
+    // shoulder in the cast — 0.400u above the feet against everyone else's
+    // 0.443u — so a cast-length arm still hung her hand 0.04u lower than
+    // anyone's. `armLength` is the only dial that touches the arm without
+    // touching her height: 0.88 lands the hand at 0.223u against the cast's
+    // 0.240u. Not all the way — 0.82 matches exactly and reads stubby, and the
+    // point is that she is a shorter hero, not that she has short arms.
+    armLength: 0.88,
+    // NO `handsFront` (removed 8 Sep 2026): it was Kiko's, and on Fernwick it
+    // made her arms the longest in the cast by a wide margin. Measured, fitting
+    // hand height against armLength so the slope is the arm and the intercept
+    // is the shoulder: the cast's arm is 0.200u and lands the hand 0.240u above
+    // the feet; hers came out 0.295u, landing at 0.128u — half everyone's
+    // ground clearance, hands hanging past the hem to mid-thigh.
+    //
+    // Nothing in her spec said "long arms". `handsFront` solves the rest pose
+    // through reach() at 0.84 of arm length, which is FULL extension — the
+    // shared rest deliberately hangs at 0.78 of a 1.1 reach so the elbow keeps
+    // a visible bend. Kiko survives that because her shoulder is the highest in
+    // the cast (0.515u); `tall: 0.95` gives Fernwick the LOWEST (0.422u), so
+    // she starts lowest and then reaches furthest. Two dials, neither hers
+    // alone, compounding.
+    //
+    // She does not need it either way: handsFront exists to keep hands down the
+    // front of a skirt instead of elbows out, and that was Kiko's split dress.
     // The necklace is the THREE-STONE collar, chosen 7 Sep 2026 over a plain
     // pendant, a teardrop, a layered pair, a choker and a gold torc. It and
     // the torc were the only two that still read as jewellery at lane size,
@@ -332,10 +358,13 @@ export const TOON_SPECS = {
     goldCuffs: true, necklace: true, necklaceStyle: 'trio',
     neckStyle: 'scoop', neckWide: 0.5, neckDeep: 0.5,
     quiverTuck: 0.09, quiverStrap: true,
+    // Approved B sling: 20% thinner than the study baseline, 85% opacity.
+    quiverMount: 'loop', quiverStrapWidth: 0.024, quiverStrapOpacity: 0.85,
+    runArmSeatIn: 0.0285, runArmSeatDown: 0.01,
     // The slide's own tuning. Every one of these is hers alone — the cast's
     // shared slide geometry is untouched by all of them.
     slideBootCover: true, slideNearOut: 0.04, slideNearLegLen: 0.86,
-    slideRearBack: 0.03, slideHeadBack: 0.07, slideNeckFollow: 0.2,
+    slideRearBack: 0.03, slideNeckFollow: 0.2,
   },
   // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
   // died right on his own silhouette edge with no gun sticking out of him. The
@@ -1262,7 +1291,7 @@ export const ACTIVE_CELEBRATION_STYLE = 'reworked';
 const usesReworkedCelebration = (pose) =>
   (pose && pose.celebrateStyle ? pose.celebrateStyle : ACTIVE_CELEBRATION_STYLE) === 'reworked';
 
-// Jump/duck motion has the same one-switch escape hatch as celebrations. The
+// Jump/slide motion has the same one-switch escape hatch as celebrations. The
 // gallery requests `legacy` explicitly for its A/B; ordinary callers omit the
 // field and receive the approved motion. Geometry and standing proportions are
 // untouched — this only changes pose targets while airborne or crouching.
@@ -1825,7 +1854,7 @@ export const DEATH_FACE_TIMING = DEATH_FACE;
 // rather than on the still: an X arrives as a finished stamp, while the spiral
 // is a mark still winding as it lands, which is the read this moment wants. The
 // other two stay drawable behind the same seam, and a pose picks one with
-// `deathStyle` exactly the way a duck picks `duckStyle`.
+// `deathStyle` exactly the way a slide picks `slideStyle`.
 export const DEATH_EYE_STYLE = 'spiral';
 
 // A MOUTH UNDER A MUSTACHE. Lorenzo is the one face whose death mouth has to be
@@ -1909,7 +1938,7 @@ function expressionFor(id, pose = {}, spec = null) {
   // ledge is drawn RUNNING until the fall catches up with him (poseFromPlayer's
   // bigFall), so without it the idle blink can shut his eyes on the one beat
   // they are meant to be wide open.
-  const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate'
+  const active = pose.kind === 'jump' || pose.kind === 'slide' || pose.kind === 'celebrate'
     || pose.stomp || pose.roll || pose.float || !!pose.faceSurprised;
   // The pole ride is the moment the stage is WON, and the face is the only part
   // of the hero that can say so — the body is busy holding on. It borrows the
@@ -2045,7 +2074,7 @@ function expressionFor(id, pose = {}, spec = null) {
     // Carried so downstream marks can be keyed to the hero, not just the mood —
     // BROW_L_SCALE is the one that needs it.
     id,
-    focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll || jf === 2,
+    focus: pose.kind === 'run' || pose.kind === 'slide' || pose.roll || jf === 2,
     surprise: !clinging && (jf === 0 || jf === 3 || !!pose.faceSurprised),
     // Startled brow: opt-in via pose.browRaise (a cameo can force it), or the
     // jump face rolled the startled variant; see the branch it unlocks in
@@ -3306,7 +3335,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // painted ON the head instead reads as a helmet: the giveaway is the hard
     // edge where it meets the cheek, which the skull's own fill hides here.
     const motion = pose.kind === 'run' || pose.kind === 'jump';
-    const tucked = pose.kind === 'duck';
+    const tucked = pose.kind === 'slide';
     // THE SLIDE IS NOT THE CROUCH, and long hair is where the two part
     // company. A crouch folds the hero up and lifts the head; a slide lays
     // her out with her head barely half a unit off the deck and her back
@@ -3314,7 +3343,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // slide it cropped the plait to a stub beside her jaw, which is the one
     // thing this cut cannot afford: the length past her outline IS the
     // silhouette. Only the braid reads this; the other cuts keep the tuck.
-    const sliding = tucked && pose.duckStyle === 'slide';
+    const sliding = tucked && pose.slideStyle === 'kick';
     // Cropped to a face cell the hanging hair is cut to just past the jaw: long
     // enough to break the head's outline and say which cut this is, short
     // enough that the crop is still a face. See paintFace.
@@ -5676,6 +5705,34 @@ function paintPrincessCape(ctx, spec, p, u, ow, g) {
   });
 }
 
+function paintQuiverSling(ctx, spec, p, u, x, torsoTop, returnY) {
+    const halfStrip = (spec.quiverStrapWidth ?? 0.030) * u / 2;
+    const outerX = x - 0.018 * u + halfStrip;
+    const innerX = x - 0.018 * u - halfStrip;
+      ctx.save(); ctx.fillStyle = p.f; ctx.globalAlpha *= spec.quiverStrapOpacity ?? 0.85;
+      // One filled ribbon: a narrow shoulder start widens smoothly to 0.03u.
+      ctx.beginPath();
+      ctx.moveTo(x - 0.060 * u, torsoTop + 0.012 * u);
+      ctx.bezierCurveTo(x - 0.030 * u, torsoTop - 0.004 * u,
+        outerX, torsoTop - 0.001 * u, outerX, torsoTop + 0.025 * u);
+      if (spec.quiverAngular) {
+        ctx.lineTo(outerX, returnY - 0.009 * u);
+        ctx.lineTo(x - 0.078 * u, returnY + 0.014 * u);
+        ctx.lineTo(x - 0.086 * u, returnY - 0.014 * u);
+        ctx.lineTo(innerX, returnY - 0.031 * u);
+        ctx.lineTo(innerX, torsoTop + 0.025 * u);
+      } else {
+        ctx.bezierCurveTo(outerX, torsoTop + 0.09 * u,
+          x - 0.004 * u + halfStrip, returnY + halfStrip, x - 0.082 * u, returnY + halfStrip);
+        ctx.lineTo(x - 0.082 * u, returnY - halfStrip);
+        ctx.bezierCurveTo(x - 0.004 * u - halfStrip, returnY - halfStrip,
+          innerX, torsoTop + 0.09 * u, innerX, torsoTop + 0.025 * u);
+      }
+      ctx.quadraticCurveTo(innerX - 0.001 * u, torsoTop + 0.018 * u,
+        x - 0.060 * u, torsoTop + 0.018 * u);
+      ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
 function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
   const k = PRINCESS_COSTUMES[spec.princessCostume];
   if (!k) return;
@@ -5912,46 +5969,30 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     }
     ctx.restore();
   }
-  if (spec.quiverMountStudy === 'loop') {
-    // Plain leather, slightly lighter than the case, with a tight underarm turn.
+  if (spec.quiverMount === 'loop') {
+    // Plain case-colour strip, ending at the shoulder with a shorter jump return.
     const x = px - torsoHalf * 0.48;
-    const paintStrip = () => {
-      ctx.save();
-      ctx.strokeStyle = '#956b46';
-      ctx.lineWidth = 0.030 * u;
-      ctx.lineCap = 'butt';
-      ctx.lineJoin = spec.quiverAngular ? 'miter' : 'round';
-      ctx.miterLimit = 2;
-      ctx.beginPath();
-      ctx.moveTo(x - 0.070 * u, torsoTop + 0.024 * u);
-      // Shared vertical tangents make the shoulder and underarm one soft arc.
-      ctx.bezierCurveTo(x - 0.046 * u, torsoTop - 0.004 * u,
-        x - 0.018 * u, torsoTop - 0.004 * u,
-        x - 0.018 * u, torsoTop + 0.025 * u);
-      if (spec.quiverAngular) {
-        // Backward L: straight body-side length, angled return to the case.
-        ctx.lineTo(x - 0.018 * u, torsoTop + 0.098 * u);
-        ctx.lineTo(x - 0.082 * u, torsoTop + 0.12 * u);
-      } else {
-        ctx.bezierCurveTo(x - 0.018 * u, torsoTop + 0.07 * u,
-          x - 0.004 * u, torsoTop + 0.12 * u,
-          x - 0.082 * u, torsoTop + 0.12 * u);
-      }
-      ctx.stroke();
-      ctx.restore();
+    const returnY = torsoTop + (jump ? 0.13 : 0.16) * u;
+    const paintStrip = () => paintQuiverSling(ctx, spec, p, u, x, torsoTop, returnY);
+    // The overlay includes the shoulder crown above the socket, preventing
+    // the jumping sleeve from punching a gap through the tapered start.
+    const socketMask = () => {
+      const r = g.slingSocketR;
+      ctx.moveTo(g.slingSocketX - r, torsoTop - u);
+      ctx.lineTo(g.slingSocketX + r, torsoTop - u);
+      ctx.lineTo(g.slingSocketX + r, g.slingSocketY);
+      ctx.arc(g.slingSocketX, g.slingSocketY, r, 0, Math.PI);
+      ctx.closePath();
     };
-    paintStrip();
+    ctx.save(); ctx.beginPath();
+    ctx.rect(px - 2 * u, torsoTop - 2 * u, 4 * u, 4 * u);
+    socketMask(); ctx.clip('evenodd'); paintStrip(); ctx.restore();
     if (g.setSlingOverArm) g.setSlingOverArm(() => {
-      // Recover leather only over the actual shoulder socket. Its anatomical
-      // footprint follows the seated arm; the moving upper arm stays in front.
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(g.slingSocketX, g.slingSocketY, g.slingSocketR,
-        g.slingSocketR, 0, 0, Math.PI * 2);
+      ctx.save(); ctx.beginPath(); socketMask();
       ctx.clip(); paintStrip(); ctx.restore();
     });
-  } else if (spec.quiverMountStudy && spec.quiverMountStudy !== 'belt') {
-    const compact = spec.quiverMountStudy === 'loop';
+  } else if (spec.quiverMount && spec.quiverMount !== 'belt') {
+    const compact = spec.quiverMount === 'loop';
     const x = px - torsoHalf * (compact ? 0.67 : 0.59);
     const endY = torsoTop + (compact ? 0.105 : 0.12) * u;
     // The body-side length is underneath the animated sleeve. Only the tiny
@@ -5977,7 +6018,7 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     };
     if (g.setSlingOverArm) g.setSlingOverArm(() => paintSling(true));
     paintSling();
-  } else if (spec.quiverStrap && !spec.quiverMountStudy) {
+  } else if (spec.quiverStrap && !spec.quiverMount) {
     // THE QUIVER'S SLING. Not a bandolier: the case hangs off ONE shoulder and
     // the strap goes over that shoulder and down under the same armpit, so
     // from the front all you should see is a short brown band at the shoulder
@@ -6290,13 +6331,13 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
 }
 
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
-  if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
-  if (pose.kind === 'duck' && DUCK_STYLE_DRAWS[pose.duckStyle]) {
+  if (pose.kind === 'slide' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
+  if (pose.kind === 'slide' && SLIDE_STYLE_DRAWS[pose.slideStyle]) {
     ctx.save();
     // The slide owns its arrival (a tip-back onto the grounded hip); the
     // other styles take the generic height blend.
-    if (pose.duckStyle !== 'slide') duckStyleEntry(ctx, pose);
-    DUCK_STYLE_DRAWS[pose.duckStyle](ctx, id, spec, p, pose, u, ow, lod);
+    if (pose.slideStyle !== 'kick') slideStyleEntry(ctx, pose);
+    SLIDE_STYLE_DRAWS[pose.slideStyle](ctx, id, spec, p, pose, u, ow, lod);
     ctx.restore();
     return;
   }
@@ -6375,14 +6416,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // muscle where a straight barrel reads as belly.
   const waistHalf = torsoHalf * (spec.taper || 1) * (spec.waistScale || 1);
   // legLen is the one styled term that is NOT gated on the run: a hero's legs
-  // are the same length standing, ducking and airborne, so lengthening them
+  // are the same length standing, sliding and airborne, so lengthening them
   // for the gait alone would change his proportions the moment he stopped.
   const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u
     * (spec.legLength || 1) * (spec.tall || 1) * (L ? L.legLen : 1);
   // Front-on hip half-separation, and how far outboard of it the crouch plants
   // its feet. Both in u; the crouch's leg length is solved against them.
   const HIP_HALF = 0.095;
-  const DUCK_SPREAD = 0.215;
+  const SLIDE_SPREAD = 0.215;
   // The heavy rig's arm is LONG. Its shoulder sits far higher than everyone
   // else's (-0.708u vs -0.5u) while the old length hung the running hand a
   // full 0.095u above its own belt — the light rigs land theirs right on it —
@@ -6474,7 +6515,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // is a body proportion rather than a gait, still applies.
   const styledGait = !!L && run && !walk;
   const jump = !clung && pose.kind === 'jump';
-  const duck = !clung && pose.kind === 'duck';
+  const slide = !clung && pose.kind === 'slide';
   const enhancedMotion = usesEnhancedLocomotion(pose);
   const airV = jump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
   // Player physics uses positive Y/velocity upward and negative downward.
@@ -6489,12 +6530,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // and the feet draw as symmetric front-facing ovals instead of profile
   // shoes. Rooted at a shared center hip, the IK flares the front thigh up
   // over the torso while the back one hides behind it — a lopsided can-can.
-  const stand = !run && !jump && !duck;
+  const stand = !run && !jump && !slide;
   // Poses whose legs are genuinely symmetric about the body: each leg roots at
   // its own hip and the shoes read as front-facing ovals. The crouch belongs
   // here with standing and the victory hop — only running and jumping are
   // profile gaits with one leg crossing the body.
-  const frontLegs = stand || duck;
+  const frontLegs = stand || slide;
   // A pure sine spends as long at the top of the bob as at the bottom, which
   // is a float, not a footfall. bobShape > 1 sharpens the dip so the body
   // drops onto each contact and rides up between them.
@@ -6514,7 +6555,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // strongest lever there is on perceived height, and the reason a 7% dial
   // reads as more than 7%: the same head on a longer body is what the eye
   // actually measures. Applied to the crouch's own landmarks too, so a taller
-  // hero gives up the same FRACTION of her height ducking that everyone else
+  // hero gives up the same FRACTION of her height sliding that everyone else
   // does rather than folding to a shared absolute.
   const tall = spec.tall || 1;
   let hipY = -legL * 0.92 * (styledGait ? L.stance : 1);
@@ -6543,14 +6584,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   let torsoTop = -(heavy ? 0.768 : 0.56) * u + upper;
   let headY = headBase + tallLift + bob;
   let shoulderY = -(heavy ? 0.708 : 0.5) * u + upper;
-  if (duck) {
+  if (slide) {
     // The crouch used to drop every hero to the same flat height, which is not
     // the same thing as every hero crouching by the same amount: grumpos stands
     // a head taller than the rest (-0.978u vs -0.76u), so landing on a shared
     // -0.42u folded him to 43% of his standing height where the stout heroes
     // only gave up 45%. He read as a boulder with a face on it. The heavy rig
     // crouches to the same FRACTION of its OWN height instead, so he stays
-    // visibly the biggest hero on the screen even ducking.
+    // visibly the biggest hero on the screen even sliding.
     // 1.36 is solved, not eyeballed: it puts his crouched crown at the same
     // fraction of his standing crown (0.65) that the stout heroes fold to, so
     // he gives up exactly as much height as everyone else and no more.
@@ -6619,7 +6660,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const armYF = armY - (depthArms && (run || jump) && !turned
     ? (heavy ? 0.018 : 0.03) + (jump ? (heavy ? 0.006 : 0.008) : 0) : 0) * u;
   const leanX = run ? (walk ? 0.018 : 0.05) * u * (styledGait ? L.lean : 1)
-    : duck && enhancedMotion ? 0.025 * u : 0; // crouch puts weight over the toes
+    : slide && enhancedMotion ? 0.025 * u : 0; // crouch puts weight over the toes
   // A yawed torso has a small shoulder-to-hip offset; the top of the body is
   // no longer a perfectly flat front-facing slab over the feet.
   const torsoCx = leanX * 0.5 + nearSign * turnDepth * 0.04 * u;
@@ -6641,7 +6682,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // tunic mid-swing, a brown wedge apparently floating outside the cloth. A
   // shorter bone is the only lever that touches it: stride and foot lift barely
   // move the bulge, because it points across the leg rather than along it.
-  let legSeg = (duck ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
+  let legSeg = (slide ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
   if (walk && heavy) legSeg = 0.4 * legL + 0.005 * u;
   const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
     * (styledGait ? L.stride : 1);
@@ -6725,19 +6766,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         hipY + legL * (0.82 - 0.38 * airApex - 0.12 * airFall - 0.05 * airRise),
       ];
     } else { footF = [0.15 * u, hipY + legL * 0.5]; footB = [-0.12 * u, hipY + legL * 0.85]; }
-  } else if (duck) {
+  } else if (slide) {
     // A crouch is a FRONT-ON pose, like standing and the victory hop — not a
     // profile one. Rooted at a shared center hip (the profile rig) the two legs
     // left that point as straight diagonals to feet 0.19u either side: a hard X
     // under the body that reads as crossed legs, because at this scale a
     // straight limb carries no knee to say otherwise. Each leg now hangs off
     // its OWN hip (see frontLegs) with the feet planted just outboard of it.
-    footF = [DUCK_SPREAD * u, 0]; footB = [-DUCK_SPREAD * u, 0]; kneeB = -1;
+    footF = [SLIDE_SPREAD * u, 0]; footB = [-SLIDE_SPREAD * u, 0]; kneeB = -1;
     // Sized off the real hip-to-ankle run, then let out ~30% so the crouch
     // actually folds: the slack becomes the sideways bow of the knee, which is
     // the whole silhouette of a squat. Locked to the old flat 0.2*legL the leg
     // couldn't even reach the foot and straightened out again.
-    legSeg = Math.hypot(DUCK_SPREAD * u - HIP_HALF * u, Math.abs(hipY) - ankleLift) / 2 * 1.3;
+    legSeg = Math.hypot(SLIDE_SPREAD * u - HIP_HALF * u, Math.abs(hipY) - ankleLift) / 2 * 1.3;
   } else if (cm || cling > 0) {
     // Feet mirror under their own hips and share one tuck height — uneven
     // lifts read as a one-legged kick, not a hop.
@@ -7844,7 +7885,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]); elbF = sideF;
       handB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]); elbB = sideB;
     }
-  } else if (duck) {
+  } else if (slide) {
     // Braced out at a fixed 0.2u the crouch folded the heavy rig's longer arm
     // to 56% of its reach where the light rigs sit at 82% — his crouch read
     // stubby-armed. Scaled off armL every rig folds by the same amount, and
@@ -8505,20 +8546,75 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // instead of shifting it.
   // Signed off sideF (the near arm's outward direction), not off screen x, so
   // it stays inboard when a negative yaw mirrors the rig.
-  const ARM_SEAT_IN = spec.armSeatIn ?? 0.022;
-  const ARM_SEAT_DOWN = spec.armSeatDown ?? 0.02;
+  const ARM_SEAT_IN = spec.armSeatIn ?? (pose.kind === 'run' ? spec.runArmSeatIn : undefined) ?? 0.022;
+  const ARM_SEAT_DOWN = spec.armSeatDown ?? (pose.kind === 'run' ? spec.runArmSeatDown : undefined) ?? 0.02;
+  const nearArmSeated = pose.kind !== 'celebrate' && !(frontLegs && !turned);
+  // Gallery opt-in only. Keep the shipped capsule/cap treatment until the
+  // Gary/Dolores comparison is approved. Only the near arm in locomotion or
+  // an action receives it; resting pairs and celebrations retain their joins.
+  const smoothShoulderPreview = spec.shoulderJoinPreview === 'smooth'
+    && (id === 'gary' || id === 'dolores')
+    && pose.kind !== 'celebrate' && (nearArmSeated || armsReachFront)
+    && !turned && !spec.taper && !spec.puffs && !spec.bareArms && !spec.cannon && !heavy;
+  const drawShoulderJoin = () => {
+    if (!smoothShoulderPreview) return;
+    const side = sideF;
+    const seatX = nearArmSeated ? side * ARM_SEAT_IN * u : 0;
+    const seatY = nearArmSeated ? ARM_SEAT_DOWN * u : 0;
+    const sx = shF - seatX, sy = armYF + seatY;
+    const hx = handF[0] - seatX, hy = handF[1] + seatY;
+    // Read the same IK and seat as limb2; the bones and hand do not move.
+    const [ex, ey] = joint(sx, sy, hx, hy, armSeg, elbF);
+    const length = Math.hypot(ex - sx, ey - sy);
+    if (length < 1e-6) return;
+    const dx = (ex - sx) / length, dy = (ey - sy) / length;
+    const radius = armWF / 2;
+    const nx = side * dy, ny = -side * dx;
+    const bx = sx + dx * length * 0.65 + nx * radius;
+    const by = sy + dy * length * 0.65 + ny * radius;
+    // A limb crossing the chest has no exposed shoulder notch to bridge.
+    const half = roundHalfAt(by, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7);
+    if (by >= torsoTop && side * (bx - torsoCx) <= half) return;
+    const ax = torsoCx + side * torsoHalf * 0.3, ay = torsoTop;
+    const reach = Math.max(radius, side * (bx - ax));
+    const tangent = Math.min(length * 0.25, reach * 0.35);
+    const curve = (c) => {
+      c.moveTo(ax, ay);
+      c.bezierCurveTo(ax + side * reach * 0.45, ay,
+        bx - dx * tangent, by - dy * tangent, bx, by);
+    };
+    ctx.save();
+    ctx.beginPath();
+    curve(ctx);
+    // Return inside the upper arm and chest. Only the crown is outlined;
+    // outlining this closure would draw the socket seam back in again.
+    ctx.lineTo(bx - nx * radius * 1.8, by - ny * radius * 1.8);
+    ctx.lineTo(sx - side * radius, sy + radius);
+    ctx.lineTo(ax, Math.max(sy + radius, ay + radius));
+    ctx.closePath();
+    ctx.fillStyle = p.b; ctx.fill();
+    const g = formRamps(ctx, torsoPath);
+    if (g) {
+      ctx.fillStyle = g.core; ctx.fill();
+      ctx.fillStyle = g.lit; ctx.fill();
+      if (g.spec) { ctx.fillStyle = g.spec; ctx.fill(); }
+    }
+    ctx.beginPath(); curve(ctx);
+    ctx.lineWidth = ow; ctx.strokeStyle = OUTLINE; ctx.stroke();
+    ctx.restore();
+  };
   const drawFrontArm = () => {
     // The victory routine is choreographed as a mirrored PAIR — fernwick's
     // hands clasp overhead, grumpos claps — so seating one arm of it breaks
     // the join. Left alone there.
-    // Front-on stand and duck are mirrored pairs for the same reason: both
+    // Front-on stand and slide are mirrored pairs for the same reason: both
     // arms hang off the same hand targets, reflected about the body, and both
     // draw at the same depth. Seating one of them there drops the near hand
     // 0.02u below its twin and pulls it 0.022u inboard — every hero standing
     // with one arm visibly lower than the other. The seat is a NEAR-arm cue,
     // so it needs the arm to actually be staged in front: a turn, or a gait
     // that paints it over the torso.
-    const seat = pose.kind !== 'celebrate' && !(frontLegs && !turned);
+    const seat = nearArmSeated;
     ctx.save();
     // The cannon takes the inboard seat but NOT the drop. The drop exists so a
     // normal shoulder does not pin to the torso's top corner, and a fleshy arm
@@ -8825,6 +8921,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       if (!spec.puffs) shoulderCap(shF, armYF);
     }
     ctx.restore();
+    drawShoulderJoin();
   };
 
   // The axe is the DEEPEST layer — slung flat on his back, so every limb
@@ -8847,18 +8944,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // same screen-left side the axe is slung on, and at the top of the upswing
     // the elbow was grazing the haft.
     const axy = shoulderY - 0.05 * u;
-    limb(ctx, axx + 0.08 * u, axy + 0.12 * u, axx - 0.33 * u, axy - 0.24 * u, 0.06 * u, p.w, ow);
-    outlined(ctx, '#b8d8f0', ow, (c) => {
-      c.moveTo(axx - 0.34 * u, axy - 0.3 * u);
-      c.quadraticCurveTo(axx - 0.54 * u, axy - 0.16 * u, axx - 0.41 * u, axy + 0.03 * u);
-      c.lineTo(axx - 0.27 * u, axy - 0.04 * u);
-      c.lineTo(axx - 0.24 * u, axy - 0.25 * u);
-      c.closePath();
-    });
-    if (!lod) {
-      ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = hair(0.6, ow * 0.55);
-      ctx.beginPath(); ctx.moveTo(axx - 0.44 * u, axy - 0.16 * u); ctx.lineTo(axx - 0.3 * u, axy - 0.1 * u); ctx.stroke();
-    }
+    paintBackAxe(ctx, p, u, ow, lod, axx, axy);
   }
 
   // The pack is slung on his back, so like the axe it belongs UNDER every
@@ -8891,7 +8977,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (spec.princessCostume) {
     paintPrincessCape(ctx, spec, p, u, ow, { px: torsoCx, torsoHalf, shoulderY, hipY, legL, bob, run, jump, t: pose.time || 0 });
   }
-  if (spec.flowHair && !duck) {
+  if (spec.flowHair && !slide) {
     paintFlowHair(ctx, spec, p, u, ow, lod, { px: torsoCx, headY, shoulderY, hipY, legL, bob,
       run, jump, t: pose.time || 0, phase: pose.phase || 0 });
   }
@@ -8916,26 +9002,28 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // sit on, but it still stood further off her than a worn thing should.
     const tuck = (spec.quiverTuck ?? 0) * u * (stand ? 1 : 0.5);
     const slung = bowSlungAt(torsoHalf, shoulderY, u);
+    const quiverLift = spec.quiverMount === 'loop' ? 0.035 * u : 0;
     paintQuiverKit(ctx, spec, p, u, ow, lod, {
-      qx: -torsoHalf - 0.07 * u + tuck, qTop: shoulderY - 0.06 * u, qBot: shoulderY + 0.3 * u,
+      qx: -torsoHalf - 0.07 * u + tuck, qTop: shoulderY - 0.06 * u - quiverLift, qBot: shoulderY + 0.3 * u - quiverLift,
       bow: aiming ? null : [slung[0] + tuck, slung[1]],
     });
-    if (spec.quiverMountStudy === 'loop' && !duck) {
+    if (spec.quiverMount === 'loop' && !slide) {
       // Join the actual case to the body-side strip in the back pass. Both
       // ends share the front strip's coordinates, so no loose anchor floats
       // beside the shoulder as the sleeve moves.
       const qx = -torsoHalf - 0.07 * u + tuck;
       const sx = torsoCx - torsoHalf * 0.48;
       ctx.save();
-      ctx.strokeStyle = '#956b46'; ctx.lineWidth = 0.030 * u;
+      ctx.strokeStyle = p.f; ctx.globalAlpha *= spec.quiverStrapOpacity ?? 0.85;
+      ctx.lineWidth = (spec.quiverStrapWidth ?? 0.030) * u;
       ctx.lineCap = 'butt';
       ctx.beginPath();
-      ctx.moveTo(qx + 0.045 * u, shoulderY - 0.025 * u);
-      ctx.quadraticCurveTo(sx - 0.035 * u, torsoTop - 0.014 * u,
-        sx - 0.060 * u, torsoTop + 0.021 * u);
-      ctx.moveTo(qx + 0.045 * u, shoulderY + 0.26 * u);
-      ctx.quadraticCurveTo(qx + 0.07 * u, torsoTop + 0.15 * u,
-        sx - 0.082 * u, torsoTop + 0.12 * u);
+      ctx.moveTo(qx + 0.045 * u, torsoTop + 0.016 * u);
+      ctx.lineTo(sx - 0.052 * u, torsoTop + 0.016 * u);
+      // Short lower attachment at the underarm return's own height.
+      // No length runs down the face of the quiver.
+      ctx.moveTo(qx + 0.065 * u, torsoTop + (jump ? 0.13 : 0.16) * u);
+      ctx.lineTo(sx - 0.082 * u, torsoTop + (jump ? 0.13 : 0.16) * u);
       ctx.stroke(); ctx.restore();
     }
   }
@@ -9045,7 +9133,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // leg simply ended at an independent point inside the belly; the skirt hid
   // that missing anatomical bridge. The pelvis sits over the far thigh and
   // under the torso/near thigh, giving both legs a continuous socket mass.
-  if (id === 'grumpos' && turned && !duck) {
+  if (id === 'grumpos' && turned && !slide) {
     const pelvisCx = (hipAt(1) + hipAt(-1)) * 0.5;
     const pelvisRx = Math.max(waistHalf * 0.94, legW);
     const pelvisRy = 0.075 * u;
@@ -9088,7 +9176,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // A princess costume whose bodice is not the sleeve colour repaints the
   // torso HERE, with the torso and before either arm, so a puffed sleeve
   // drawn later sits on top of it instead of underneath.
-  if (spec.princessCostume && p.bodice && p.bodice !== p.b && !duck) {
+  if (spec.princessCostume && p.bodice && p.bodice !== p.b && !slide) {
     ctx.save();
     ctx.beginPath(); torsoPath(ctx); ctx.clip();
     ctx.fillStyle = p.bodice;
@@ -9227,7 +9315,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.fillRect(torsoCx - torsoHalf * 1.2, beltY, torsoHalf * 2.4, torsoBot - beltY + 0.1 * u);
     ctx.restore();
   }
-  if (turned && !duck) {
+  if (turned && !slide) {
     // Shade the receding far side. Grumpos's body and skin share a colour, so
     // using skin here was invisible and left his torso reading front-on.
     const side = -nearSign;
@@ -9290,7 +9378,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.stroke();
     ctx.restore();
   }
-  if (id === 'grumpos' && !duck) {
+  if (id === 'grumpos' && !slide) {
     // The war paint carries on down his body: one stripe on the same side as
     // the face streak, running from the shoulder to just off-center at the
     // belt line, where the belt (drawn later) covers its end. A shade heavier
@@ -9333,7 +9421,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Belt and buckle are drawn later, after the legs and loincloth: painted
     // here they sit under the front leg, whose thigh crosses the belt line.
   }
-  if (id === 'b33p' && !duck) {
+  if (id === 'b33p' && !slide) {
     // Chest screen with alternating status lights, plus a hull seam at the
     // waist — the torso reads as plated machine, not a onesie.
     const px = torsoCx;
@@ -9370,7 +9458,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // chest, clipped to the torso so they cannot run off his sides, plus the
   // sternum strap that is the detail which actually says "pack" rather than
   // "braces".
-  if (spec.bundle === 'backpack' && !lod && !duck) {
+  if (spec.bundle === 'backpack' && !lod && !slide) {
     ctx.save();
     ctx.beginPath(); torsoPath(ctx); ctx.clip();
     ctx.strokeStyle = p.f;
@@ -9389,7 +9477,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.stroke();
     ctx.restore();
   }
-  if (spec.straps && !lod && !duck) {
+  if (spec.straps && !lod && !slide) {
     // Straps and belt track the torso's run-lean shift (leanX * 0.5), else
     // they drift off-center whenever the body leans forward.
     const px = torsoCx;
@@ -9501,7 +9589,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath(); ctx.moveTo(px - torsoHalf * 0.88, beltY); ctx.lineTo(px + torsoHalf * 0.88, beltY); ctx.stroke();
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => roundRectPath(c, px - 0.035 * u, beltY - 0.033 * u, 0.07 * u, 0.06 * u, 0.012 * u));
   }
-  if (spec.nameTag && !lod && !duck) {
+  if (spec.nameTag && !lod && !slide) {
     outlined(ctx, p.w, hair(0.6, ow * 0.5), (c) => roundRectPath(c, torsoHalf * 0.15, torsoTop + 0.05 * u, 0.09 * u, 0.06 * u, 0.01 * u));
   }
 
@@ -9518,7 +9606,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     paint();
     ctx.restore();
   };
-  if (spec.jacket && !duck) {
+  if (spec.jacket && !slide) {
     // An open jacket: two panels down the sides with the shirt showing between
     // them. A CLOSED coat on this rig is indistinguishable from recolouring the
     // torso — the strip of shirt down the middle is the entire second garment.
@@ -9539,7 +9627,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       }
     });
   }
-  if (spec.harness && !duck) {
+  if (spec.harness && !slide) {
     // Climbing harness: two shoulder straps and the sternum strap joining
     // them. Straight lines over a curved body, which is what webbing does.
     const sternumY = torsoTop + (beltY - torsoTop) * 0.36;
@@ -9557,7 +9645,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     });
     if (!lod) outlined(ctx, p.a, hair(0.4, ow * 0.45), (c) => c.arc(gearX, sternumY, 0.025 * u, 0, Math.PI * 2));
   }
-  if (spec.bandolier && !duck) {
+  if (spec.bandolier && !slide) {
     // One strap, near shoulder to far hip. Signed off sideF rather than screen
     // x so it crosses the chest the same way whichever shoulder the depth rig
     // has put in front.
@@ -9681,7 +9769,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // leather riding up, so only the shin below carries the gait. The heavy
     // rig's shallow stride is what lets them sit this short. Crouching they
     // shorten again, or the tucked legs and feet vanish under them.
-    const tipY = hipY + legL * (duck ? 0.35 : 0.47) + bob * 0.5;
+    const tipY = hipY + legL * (slide ? 0.35 : 0.47) + bob * 0.5;
     // Body half-width where the belt sits and where the skirt hangs from.
     const halfAt = (y) => (spec.taper
       ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft)
@@ -9801,12 +9889,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       dot(ctx, px, beltY + 0.002 * u, 0.034 * u, p.w);
     }
   }
-  if (spec.princessCostume && !duck) {
-    paintPrincessCostume(ctx, spec, p, u, ow, lod, { px: torsoCx, torsoTop, torsoBot, torsoHalf, torsoPath, hipY, legL, bob, run, jump, frontLegs, hipAt, footB, waistHalf, shoulderSoft, t: pose.time || 0, slingSocketX: shF - sideF * ARM_SEAT_IN * u,
-      slingSocketY: armY + ARM_SEAT_DOWN * u,
+  if (spec.princessCostume && !slide) {
+    paintPrincessCostume(ctx, spec, p, u, ow, lod, { px: torsoCx, torsoTop, torsoBot, torsoHalf, torsoPath, hipY, legL, bob, run, jump, frontLegs, hipAt, footB, waistHalf, shoulderSoft, t: pose.time || 0, slingSocketX: shF - (nearArmSeated ? sideF * ARM_SEAT_IN * u : 0),
+      slingSocketY: armY + (nearArmSeated ? ARM_SEAT_DOWN * u : 0),
       slingSocketR: armWF * 0.52,
       setSlingOverArm: (paint) => { slingOverArm = paint; } });
-  } else if (spec.tunic && !duck) {
+  } else if (spec.tunic && !slide) {
     // Green tunic: the torso's flat hem flares into a short skirt over the
     // thighs, cinched by a belt. Drawn after the legs so it drapes over the
     // thigh roots (like grumpos's skirt); the belt hides the top seam. Kept
@@ -9848,7 +9936,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.p, hair(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
   }
-  if (spec.dress && !duck) {
+  if (spec.dress && !slide) {
     // A qipao, in two builds. Both are constructed the way Fernwick's tunic is
     // — the torso's flat hem carries on into cloth over the thighs, drawn after
     // the legs so it drapes over the thigh roots — and both carry the three
@@ -9907,7 +9995,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // screen-left (trailing) side here. What shows through it is the legging,
       // which is already drawn — the skirt simply is not there.
       const splitSide = -1;
-      const hemLow = hipY + legL * (duck ? 0.24 : 0.36) + bob * 0.5;
+      const hemLow = hipY + legL * (slide ? 0.24 : 0.36) + bob * 0.5;
       const halfAtY = (y) => (spec.taper
         ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft)
         : torsoHalf);
@@ -10020,7 +10108,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         c.ellipse(px - sashHalf * 0.36, dressBeltY + 0.004 * u, 0.032 * u, 0.026 * u, 0, 0, Math.PI * 2));
     }
   }
-  if (spec.apron && !duck) {
+  if (spec.apron && !slide) {
     // A bib apron, which is one shape and not two: bib, waist and skirt are cut
     // as a single panel so the join never shows a seam of uniform through it at
     // small sizes. Narrower at the chest than at the hem, the way an apron
@@ -10157,7 +10245,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     drawFrontArm();
     if (strapOverArm) strapOverArm();
     if (slingOverArm) slingOverArm();
-    if (apronStrapOver) apronStrapOver(); // strap passes over the near arm in the run/jump/duck cycle
+    if (apronStrapOver) apronStrapOver(); // strap passes over the near arm in the run/jump/slide cycle
+  }
+
+  // Idle drew its arm before the costume, so finish the reserved socket pass
+  // here; moving poses already finish it immediately after their front arm.
+  if (stand && !raisedArmStudyFront && !armsReachFront && !clapFront
+      && !armOverHead && !armsInFront && slingOverArm) {
+    // The arm must occlude the lower return before recovering the shoulder.
+    drawFrontArm();
+    slingOverArm();
   }
 
   // head (or the stump of one)
@@ -10279,26 +10376,26 @@ function drawRoll(ctx, spec, p, pose, u, ow) {
   ctx.globalAlpha /= 0.45;
 }
 
-// ------------------------------------------- duck replacement candidates (lab)
-// GALLERY ONLY. The duck is the one pose the hero HOLDS while the world streams
+// ------------------------------------------- slide replacement candidates (lab)
+// GALLERY ONLY. The slide is the one pose the hero HOLDS while the world streams
 // past, and a front-on crouch gliding sideways is the read the bake-off exists
-// to fix. `pose.duckStyle` names a candidate below; no production pose sets it,
-// so the shipped crouch (and every duck test) is untouched. The winner wires
+// to fix. `pose.slideStyle` names a candidate below; no production pose sets it,
+// so the shipped crouch (and every slide test) is untouched. The winner wires
 // into poseFromPlayer and this table comes out — see the gallery section.
 //
-// All three draw feet-at-origin facing +x (travel), inside the duck's own
+// All three draw feet-at-origin facing +x (travel), inside the slide's own
 // height envelope: the shipped crouch crowns at ~0.66u, and the gallery draws
 // its clearance bar there.
-const DUCK_ROLL_R = 0.30;   // tuck ball radius, in u
-const DUCK_ROLL_SPIN = 13;  // rad/s — ~2 rev/s; rim speed 3.9u/s, see gallery
+const SLIDE_ROLL_R = 0.30;   // tuck ball radius, in u
+const SLIDE_ROLL_SPIN = 13;  // rad/s — ~2 rev/s; rim speed 3.9u/s, see gallery
 
 // The shipped crouch folds a standing figure by scaling 1.7 -> 1.0 over the
-// 0.14s duckAmount blend. The candidates own their whole geometry, so they
+// 0.14s slideAmount blend. The candidates own their whole geometry, so they
 // take the same trick at the dispatch: taller and slightly narrower while
 // still folding, settled at 1:1.
-function duckStyleEntry(ctx, pose) {
-  const raw = pose.duckAmount == null ? 1
-    : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
+function slideStyleEntry(ctx, pose) {
+  const raw = pose.slideAmount == null ? 1
+    : Math.max(0, Math.min(1, Number(pose.slideAmount) || 0));
   const e = raw * raw * (3 - 2 * raw);
   if (e < 1) ctx.scale(0.92 + 0.08 * e, 1.55 - 0.55 * e);
 }
@@ -10318,7 +10415,7 @@ function duckStyleEntry(ctx, pose) {
 const V_FOLLOWS_FACE = 0.5;
 
 // How far a world point sits ACROSS a capsule's axis, in the capsule's own
-// local frame — the frame duckTorsoCapsule paints in, where +x runs hip to
+// local frame — the frame slideTorsoCapsule paints in, where +x runs hip to
 // shoulder and +y is a quarter turn on from it. The reclined poses use it to
 // tell the capsule where their head landed.
 function axisOffset(hipX, hipY, shX, shY, px, py) {
@@ -10329,6 +10426,44 @@ function axisOffset(hipX, hipY, shX, shY, px, py) {
 
 // drawToon's own LOD threshold, so the capsule's detail drops out at exactly
 // the size the standing rig's does instead of guessing a second number.
+// Where the head SEATS on the reclined body, in u forward of the shoulder.
+//
+// This was 0.08u, and it was wrong for the whole cast. Fernwick carried a
+// `slideHeadBack: 0.07` to undo almost all of it — a per-hero dial for "her
+// head reads thrust forward" — and she was the only slide anyone thought
+// looked right. Swept across the cast at 0, 0.04, 0.07 and 0.1 back, every
+// hero told the same story hers did: at the old seat the skull stands off the
+// shoulders with the neck showing, and at 0.07 back it sits down into them.
+// One hero needing a correction is a dial; nine needing the same one is the
+// default being wrong, so the default moved and her dial came off.
+//
+// It is not zero. A head seated dead on the shoulder axis parks the face on
+// the near shoulder — the failure the comment at the head placement below
+// still records — so the seat keeps a little forward lead, just a tenth of
+// what it had.
+const SLIDE_HEAD_SEAT = 0.01;
+
+// The slung axe, in ONE place. It used to live inline in the standing pass,
+// which is why the slide had no axe at all: the slide is its own painter and
+// re-implements every worn thing, so anything left inline in drawHumanoid is
+// something the slide silently goes without. `tests/slide-kit.js` found this.
+// (x, y) is the shoulder anchor — the blade peeks over the deltoid beside the
+// beard, never off the head.
+function paintBackAxe(ctx, p, u, ow, lod, x, y) {
+  limb(ctx, x + 0.08 * u, y + 0.12 * u, x - 0.33 * u, y - 0.24 * u, 0.06 * u, p.w, ow);
+  outlined(ctx, '#b8d8f0', ow, (c) => {
+    c.moveTo(x - 0.34 * u, y - 0.3 * u);
+    c.quadraticCurveTo(x - 0.54 * u, y - 0.16 * u, x - 0.41 * u, y + 0.03 * u);
+    c.lineTo(x - 0.27 * u, y - 0.04 * u);
+    c.lineTo(x - 0.24 * u, y - 0.25 * u);
+    c.closePath();
+  });
+  if (!lod) {
+    ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = hair(0.6, ow * 0.55);
+    ctx.beginPath(); ctx.moveTo(x - 0.44 * u, y - 0.16 * u); ctx.lineTo(x - 0.3 * u, y - 0.1 * u); ctx.stroke();
+  }
+}
+
 const lodCapsule = (u) => u < 16;
 function thighHolsterAt(ctx, p, u, ow, lod, rootX, rootY, kx, ky, w, shadeAmt, drawn, t = 0.74) {
   // Low on the thigh, near the knee. Up at the hip — where the first cut put
@@ -10411,7 +10546,7 @@ function slideHand(ctx, id, spec, p, u, ow, armW, x, y, lod) {
   }
 }
 
-function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, flatSh = false, strapReach = 0, throatY = 0) {
+function slideTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, flatSh = false, strapReach = 0, throatY = 0) {
   const ax = shX - hipX, ay = shY - hipY;
   const L = Math.hypot(ax, ay) || 1;
   ctx.save();
@@ -10471,7 +10606,7 @@ function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, f
   // The V throat, at the shoulder end and pointing back down the chest. Same
   // proportions as the standing cut — 0.32 of the half-width across, a soft
   // shouldered curve rather than a spike — read along the capsule's axis.
-  if (spec.quiverStrap) {
+  if (spec.quiverStrap && spec.quiverMount !== 'loop') {
     // The strap, on the reclined trunk. The standing figure has worn one since
     // the case stopped floating; this pose did not, so the quiver came off its
     // strap the moment she went down on her hip. Local x runs hip(0) to
@@ -10569,6 +10704,40 @@ function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, f
       ctx.restore();
     }
   }
+  // The quiver sling is HANDED BACK rather than painted here, because when it
+  // paints is the whole question. Drawn at this point it goes on before the
+  // garments, and the slide paints its skirt and belt over the torso further
+  // down — so the strap crossed her chest and was then buried under her own
+  // tunic. Standing, the same strap runs OVER the garment; it is the thing
+  // holding the quiver on, and nothing is worn on top of it.
+  //
+  // Every caller draws it in this frame; they differ only in where in their
+  // own order it belongs.
+  const sling = spec.quiverMount === 'loop' ? () => {
+    ctx.save();
+    ctx.translate(hipX, hipY);
+    ctx.rotate(Math.atan2(ay, ax));
+    // At FULL scale, and on the standing strap's own numbers. This used to
+    // draw at 0.6u with a return at 0.13 of that — a ribbon a twelfth of a unit
+    // long, which is a stub, not a sling. It got away with it because the
+    // garment painted over it afterwards and only a corner ever showed; drawn
+    // on top it has to be the strap it is standing up.
+    //
+    // Standing: x = -torsoHalf * 0.48 across the chest, running 0.16u down from
+    // the shoulder. `w` here is the FULL torso width, so its half-width is
+    // w * 0.5 and the same lateral seat is w * 0.24. The trim the capsule takes
+    // back off the shoulder is added on, or the strap starts a third of a torso
+    // width down her chest instead of on the joint.
+    // The strap's END is measured against the BELT, not in u. Standing it dies
+    // partway down the chest with clear cloth between it and the waistband;
+    // 0.16u from the shoulder happens to land exactly ON the slide's belt,
+    // because the reclined torso between shoulder and waistband is shorter
+    // than the standing one. `L - beltX` is that run in this pose, so a
+    // fraction of it holds the standing relationship at any build.
+    ctx.translate(L + strapReach, 0); ctx.rotate(Math.PI / 2);
+    paintQuiverSling(ctx, spec, p, u, -w * 0.24, 0, (L - beltX) * (spec.slideSlingEnd ?? 0.5));
+    ctx.restore();
+  } : null;
   ctx.restore();
   // The belt on the colour seam, leather with a brass buckle — the standing
   // rig's own band and weights. It used to live inside the `spec.straps` branch
@@ -10687,26 +10856,51 @@ function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, f
     }
     ctx.stroke();
     ctx.restore();
+    // FULL WIDTH, CLIPPED — the same bargain the gear-belt branch above makes,
+    // and for the same reason. Sized by hand at 0.47 of the torso width it fell
+    // short of both edges: the belt does not sit at the hip end of the capsule,
+    // it sits a quarter of the way up one that widens from rHip to rSh, so the
+    // body under it is wider than the number the leather was cut to. Running it
+    // past both edges and letting the contour cut it is also the truer read — a
+    // belt seen on a body lying down wraps out of sight rather than stopping.
+    ctx.save();
+    ctx.beginPath(); capsule(ctx); ctx.clip();
     ctx.lineCap = 'butt';
     ctx.strokeStyle = p.m;
     ctx.lineWidth = 0.05 * u;
     ctx.beginPath();
-    ctx.moveTo(beltX, -w * 0.47);
-    ctx.lineTo(beltX, w * 0.47);
+    ctx.moveTo(beltX, -w);
+    ctx.lineTo(beltX, w);
     ctx.stroke();
+    ctx.restore();
     ctx.lineCap = 'round';
-    outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(beltX, 0, 0.03 * u, 0, Math.PI * 2));
+    // The SAME buckle the gear-belt branch draws, and the same one he wears
+    // standing: a rounded square. This branch had a disc, so the one hero whose
+    // buckle is his most recognisable mark swapped shape the moment he went to
+    // ground — and it is the only pose where it did.
+    const bk = spec.buckle || 1;
+    outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) =>
+      roundRectPath(c, beltX - 0.029 * u * bk, -0.031 * u * bk,
+        0.055 * u * bk, 0.062 * u * bk, 0.012 * u * bk));
   }
   ctx.restore();
+  // Handed back so anything WORN on this torso can use the body's own frame
+  // rather than deriving a second, slightly different one. The tool belt did
+  // exactly that and drifted: its own hand-placed centre put the band a
+  // twentieth of a unit off the hips, so it ran out before reaching his left
+  // waist. `capsule` is the silhouette to clip to — the same clip that makes
+  // the standing band reach exactly as far as he does — `beltX` is where this
+  // rig already puts a waistband, and `angle` runs hip -> shoulder.
+  return { hipX, hipY, angle: Math.atan2(ay, ax), capsule, L, beltX, w, sling };
 }
 
 // B — TUCK ROLL: a somersault, not Fernwick's ability ball. The hero stays a
 // FIGURE — cap, mustache, boots — curled and tumbling, so the cast's identity
 // survives the pose the way it does not in drawRoll's striped sphere.
-function drawDuckTuckRoll(ctx, id, spec, p, pose, u, ow, lod) {
+function drawSlideTuckRoll(ctx, id, spec, p, pose, u, ow, lod) {
   const t = pose.time || 0;
-  const R = DUCK_ROLL_R * u;
-  const headPose = { kind: 'duck', roll: true, time: t };
+  const R = SLIDE_ROLL_R * u;
+  const headPose = { kind: 'slide', roll: true, time: t };
   // speed arcs trailing behind, in ground space
   ctx.strokeStyle = OUTLINE;
   ctx.lineWidth = hair(1, ow * 0.6);
@@ -10716,7 +10910,7 @@ function drawDuckTuckRoll(ctx, id, spec, p, pose, u, ow, lod) {
   ctx.globalAlpha /= 0.4;
   ctx.save();
   ctx.translate(0, -R - 0.01 * u);
-  ctx.rotate(t * DUCK_ROLL_SPIN); // travelling +x, so the tumble is clockwise
+  ctx.rotate(t * SLIDE_ROLL_SPIN); // travelling +x, so the tumble is clockwise
   // ONE clean circle is the whole read at speed: earlier cuts that let the
   // head or legs break the circle read as tumbling laundry, not a roll. The
   // ball shows his BACK — shirt colour, like the standing torso — and the
@@ -10762,7 +10956,7 @@ function drawDuckTuckRoll(ctx, id, spec, p, pose, u, ow, lod) {
 // back on the grounded hip, near leg bent in front, trailing arm up off the
 // deck. The head stays upright and camera-facing, which is what the crouch
 // never manages: this pose only makes sense IN motion.
-function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
+function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   const t = pose.time || 0;
   const jig = Math.sin(t * 34) * 0.006 * u; // ground rumble through the pose
   // The held slide stays ALIVE: the feet work back and forth along the ground
@@ -10849,20 +11043,20 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   const torsoW = 2 * (heavy ? 0.23 : spec.stout ? 0.2 : spec.slim ? 0.148 : 0.17)
     * u * ((spec.shoulders || 1) / (heavy ? 1.08 : 1)) * (spec.torsoWidth || 1) * 0.88;
   // No pose.roll in the head's pose: the effort expression it forces owns the
-  // mouth slot, and it cost B-33P his grille and Gnash his smirk. The duck
+  // mouth slot, and it cost B-33P his grille and Gnash his smirk. The slide
   // kind alone keeps the focused eyes.
   // The head is in a SLIDE, not a crouch, and it has to say so: drawHead's
-  // long-hair block poses off the pose it is handed, and a bare 'duck' asked
+  // long-hair block poses off the pose it is handed, and a bare 'slide' asked
   // it for the crouch's shoulder tuck. See the braid's own note there.
-  const headPose = { kind: 'duck', duckStyle: 'slide', time: t };
+  const headPose = { kind: 'slide', slideStyle: 'kick', time: t };
   ctx.save();
   ctx.translate(0, jig);
   // Arrival: instead of the generic height blend, the slide TIPS BACK onto
-  // the grounded hip over the duck blend — at duckAmount 0 the figure is
+  // the grounded hip over the slide blend — at slideAmount 0 the figure is
   // rotated up near standing, and it falls into the recline as the blend
   // completes, pivoting on the buttock that never leaves the ground.
-  const raw = pose.duckAmount == null ? 1
-    : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
+  const raw = pose.slideAmount == null ? 1
+    : Math.max(0, Math.min(1, Number(pose.slideAmount) || 0));
   const e = raw * raw * (3 - 2 * raw);
   if (e < 1) {
     // Upright is PLUS rotation here (the first cut tipped him flatter), and
@@ -10932,7 +11126,7 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     // shadow end
     drawRayHead(ctx, id, p, headPose, u, ow, -0.24 * u, -0.5 * u, lod, false);
     ctx.restore();
-    if (pose.grounded) duckDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
+    if (pose.grounded) slideDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
     return;
   }
   // Kiko's arms leave from LOWER on the recline than everyone else's. The
@@ -11032,6 +11226,28 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // back of the reclined torso: local -y runs hip-to-shoulder, and the case
   // sits the same distance off the spine it does standing, so what shows is
   // the strip along the back edge and the bow's tips past shoulder and hip.
+  if (spec.back === 'axe' && !pose.axeThrown && pose.axeReady !== false) {
+    // Slung on the reclined back, from the same painter the standing pose uses.
+    // Grumpos simply had no axe in this pose — the standing pass drew it inline
+    // and the slide, being its own painter, went without. The anchor is his
+    // shoulder either way; here it is pushed out along the back normal so the
+    // haft lies against the spine rather than through the torso, and turned
+    // with the recline so the blade still reads over the deltoid.
+    const dx = shX - hipX, dy = shY - hipY, L = Math.hypot(dx, dy) || 1;
+    const ax = dx / L, ay = dy / L;          // hip -> shoulder
+    const nx = ay, ny = -ax;                  // down-back
+    // Rotated the way the QUIVER is, not by the body angle: the standing axe is
+    // drawn with its haft running up the spine, so its local "up" (-y) has to
+    // land on the hip->shoulder axis. atan2(ax, -ay) is that rotation, and it
+    // is the same one the quiver beside this uses for the same reason. Turned
+    // by the plain body angle instead, the axe's up became the recline's
+    // down-left and the blade ended up beside his hip.
+    ctx.save();
+    ctx.translate(shX + nx * torsoW * 0.34, shY + ny * torsoW * 0.34);
+    ctx.rotate(Math.atan2(ax, -ay));
+    paintBackAxe(ctx, p, u, ow, lod, 0.16 * u, 0.1 * u);
+    ctx.restore();
+  }
   if (spec.back === 'quiver') {
     const dx = shX - hipX, dy = shY - hipY, L = Math.hypot(dx, dy) || 1;
     const ax = dx / L, ay = dy / L;          // hip -> shoulder
@@ -11049,10 +11265,21 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     // through her own legs and out through the deck — a bow apparently planted
     // in the ground she is sliding along. Shifted toward the shoulder, both
     // tips stay inside the figure and it still reads as a bow worn on her back.
-    paintQuiverKit(ctx, spec, p, u, ow, lod, { qx: 0, qTop: -0.18 * u, qBot: 0.18 * u, bow: [0.05 * u, -0.13 * u] });
+    const kitLift = spec.quiverMount === 'loop' ? 0.035 * u : 0;
+    paintQuiverKit(ctx, spec, p, u, ow, lod, { qx: 0, qTop: -0.18 * u - kitLift, qBot: 0.18 * u - kitLift, bow: [0.05 * u, -0.13 * u] });
+    if (spec.quiverMount === 'loop') {
+      ctx.save(); ctx.strokeStyle = p.f;
+      ctx.globalAlpha *= spec.quiverStrapOpacity ?? 0.85;
+      ctx.lineWidth = (spec.quiverStrapWidth ?? 0.030) * u;
+      ctx.beginPath();
+      for (const y of [-0.12, 0.015]) {
+        ctx.moveTo(0.055 * u, y * u); ctx.lineTo(0.16 * u, y * u);
+      }
+      ctx.stroke(); ctx.restore();
+    }
     ctx.restore();
   }
-  duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY,
+  const torso = slideTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY,
     capSx, capSy, torsoW, heavy, capTrim,
     // Measured from where the head ACTUALLY sits, `slideHeadBack` included —
     // the neckline lands under the chin or it does not read as a neckline.
@@ -11061,7 +11288,7 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     // of the chin and still read; a pendant on a chain either hangs from the
     // chin or looks pinned to her shoulder, so the gown follows nearly all the
     // way.
-    axisOffset(hipX, hipY, capSx, capSy, shX + 0.08 * u - (spec.slideHeadBack || 0) * u, shY - (heavy ? 0.15 : 0.12) * u)
+    axisOffset(hipX, hipY, capSx, capSy, shX + SLIDE_HEAD_SEAT * u - (spec.slideHeadBack || 0) * u, shY - (heavy ? 0.15 : 0.12) * u)
       * (spec.slideNeckFollow ?? V_FOLLOWS_FACE));
   // near leg: bent like the rear one — knee up, foot planted ahead — and OVER
   // the body: a slide crosses the near leg in front of the reclined torso, so
@@ -11072,7 +11299,7 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // outside the body.
   //
   // And the seat is the WAIST, not the shoulders. This measured torsoW/2 —
-  // the chest — while duckTorsoCapsule tapers its hip end to spec.taper of
+  // the chest — while slideTorsoCapsule tapers its hip end to spec.taper of
   // that. On Grumpos, whose taper is 0.58, the two disagree by most of a
   // thigh: his leg rooted below the bottom of his own seat and hung there
   // attached to nothing, which is the same 0.58 the standing rig spends on
@@ -11105,7 +11332,19 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     // slide actually drew — quoting the IK rather than guessing a point along
     // the root-to-foot line, which on a folded knee is not on the thigh at all.
     const [kx, ky] = joint(slideRootX, slideRootY, kickX, kickY, slideSeg, 1, slideSeg);
-    thighHolsterAt(ctx, p, u, ow, lod, slideRootX, slideRootY, kx, ky, legW, 0, false, 0.55);
+    // `slideHolsterT` is dialled because 0.55 folds the rig up ONTO the belt in
+    // this pose: the thigh comes up to meet the waist, so a holster halfway
+    // along it lands across the band and leaves the buckle stranded near one
+    // end of the only part of the belt you can still see. The buckle itself is
+    // on her centre line and always was.
+    //
+    // 0.76, not the standing 0.74 and not the old 0.55: far enough down the
+    // folded thigh to clear the band with belt showing either side of the
+    // buckle, and short of 0.86, where it climbs onto the kneecap and reads as
+    // a knee pad — which is the failure the 0.55 was reaching for in the first
+    // place, overcorrected.
+    thighHolsterAt(ctx, p, u, ow, lod, slideRootX, slideRootY, kx, ky, legW, 0, false,
+      spec.slideHolsterT ?? 0.76);
   }
   outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
     c.ellipse(kickX + (0.03 - 0.012 * bc) * u, kickY - 0.01 * u, (0.085 + 0.012 * bc) * u, (0.055 + 0.01 * bc) * u, -0.1 - 0.5 * kick, 0, Math.PI * 2));
@@ -11120,48 +11359,78 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // belongs over the legs here even though the standing rig tucks it behind a
   // raised knee.
   if (spec.bundle === 'belt' || spec.bundle === 'tilt' || spec.bundle === 'dispenser') {
-    // UP ONTO THE STOMACH, and squared to the BODY rather than to the screen.
-    // At the hips it sat exactly where both thighs fold across, so whichever
-    // order it drew in it was either buried behind them or laid over them —
-    // there is no z-order that makes a band read as worn when the legs occupy
-    // the same space. Slid a third of the way up the torso it clears them
-    // entirely and has bare belly to sit on, which is the only place this pose
-    // has room for it.
+    // ON THE TORSO'S OWN BELT LINE, CLIPPED TO THE TORSO. Everything about the
+    // placement now comes from `torso` — the capsule this pose already drew —
+    // rather than from numbers dialled against one frame of one build.
     //
-    // Angles come from the rig, not from a dialled number: the body's own axis
-    // is hip -> shoulder, and a belt round a torso is PERPENDICULAR to that. A
-    // hand-tuned rotation was right for one build and wrong for the next.
-    const axX = shX - hipX, axY = shY - hipY;
-    const axLen = Math.hypot(axX, axY) || 1;
-    const beltAngle = Math.atan2(axY, axX) + Math.PI / 2;
+    // Three passes failed here before this one, all the same way: a band placed
+    // by hand near the hips. At the hips both thighs fold across it, so no
+    // z-order reads as worn; slid up the belly by eye it cleared the legs but
+    // sat a twentieth of a unit off centre, because the band is drawn about the
+    // CALLER's origin and the reclined hips are not there — so it hung off his
+    // right and ran out before his left waist, which is exactly what it looked
+    // like. And its length was a guess, so neither end landed on his edge.
+    //
+    // The capsule answers all three. `beltX` is where this rig already puts a
+    // waistband (the trouser seam is drawn there), which is up the belly and
+    // clear of the thighs by construction. Clipping to `capsule` makes the
+    // silhouette decide the length, the way the standing band clips to
+    // torsoPath — it reaches exactly as far as he does on both sides, at any
+    // build, in any phase, so `half` only has to be generous rather than right.
+    // The lean the canes carry STANDING. The slide is measured against it below
+    // rather than against a second number, because "same as when he is running"
+    // is the note, and two constants would drift apart the first time either
+    // moved.
+    const standLean = spec.bundle === 'dispenser' ? 0.4 : spec.bundle === 'tilt' ? 0.2 : 0;
+    // How much of the recline the CANISTER takes. The belt is worn round him
+    // and takes all of it — that is what makes it a belt — but the canes read
+    // as sticks standing in a tube, and a tube rotated with a body lying at 44
+    // degrees points them backwards over his shoulder. Standing they lean a
+    // little forward; through the whole recline they leaned hard the other way,
+    // which is the "angle the other direction" note.
+    //
+    // 0 hangs them exactly as they hang standing, 1 welds them to the body.
+    // The share is what is left of the recline after the frame below has
+    // already rotated by it, so this subtracts rather than adds.
+    const recline = spec.slideKitRecline ?? 0.25;
+    const frameTurn = torso.angle + Math.PI / 2;
     const kit = {
-      // SHORTER than the standing band. Nothing clips it here — the slide has
-      // no reusable torso path — so its length is the only thing keeping it on
-      // the body, and a full torso width ran off him at both ends and read as a
-      // sash slung across the whole figure.
-      half: torsoW * 0.26,
-      // 0.045u along the axis, not 0.1u: at a tenth of a unit the band had
-      // travelled past the belly and was crossing his chest toward the chin.
-      // This is far enough to clear the folded thighs and no further.
-      bx: hipX + (axX / axLen) * 0.045 * u,
-      by: hipY + (axY / axLen) * 0.045 * u,
-      lean: (spec.bundle === 'dispenser' ? 0.4 : spec.bundle === 'tilt' ? 0.2 : 0) - 0.5,
+      half: torsoW * 0.42,
+      bx: 0, by: 0, beltCx: 0,
+      lean: standLean,
       belt: true,
       canes: { ...(spec.canes || {}), parity: pose.stickParity | 0 },
       thrown: !!pose.axeThrown,
     };
-    // THE BAND LIES ALONG THE RECLINE. paintBambooBundle draws the belt in the
-    // CALLER's frame as a near-level band about x = 0 — right for a standing
-    // figure, wrong for one tipped back along his own axis. Rotated about the
-    // hip it is worn round, it crosses the hips the way the standing one
-    // crosses the waist.
     ctx.save();
-    ctx.translate(kit.bx, kit.by);
-    ctx.rotate(beltAngle);
-    ctx.translate(-kit.bx, -kit.by);
+    ctx.translate(torso.hipX, torso.hipY);
+    ctx.rotate(torso.angle);
+    ctx.beginPath(); torso.capsule(ctx); ctx.clip();
+    // Up the axis to the waistband, then a quarter turn so the band painter's
+    // local +x runs ACROSS the body. paintBambooBundle draws a near-level band
+    // about x = 0 — right for a standing figure, and right here too once the
+    // frame it is handed is the body's rather than the screen's.
+    ctx.translate(torso.beltX, 0);
+    ctx.rotate(Math.PI / 2);
     paintBambooBundle(ctx, spec, p, u, ow, lod, { ...kit, parts: 'belt' });
     ctx.restore();
+    // THE CANISTER hangs off that same band, so it is placed from it too — on
+    // the waistband, a little to the near side. Drawn outside the clip: the
+    // pouch is worn ON him and overhangs his edge, which is the whole reason it
+    // reads as a pouch rather than as a panel painted on his belly.
+    ctx.save();
+    ctx.translate(torso.hipX, torso.hipY);
+    ctx.rotate(torso.angle);
+    // ALONG THE BAND, toward his far side. On the belt line alone the canister
+    // sat over the near hip where the thigh folds up to meet it; a nudge across
+    // puts it on open belly, which is where it is reachable and where it reads.
+    ctx.translate(torso.beltX, -(spec.slideKitShift ?? 0.09) * u);
+    ctx.rotate(Math.PI / 2);
+    // Take back all but `recline` of the body's turn, so the canes hang the way
+    // they hang standing instead of pointing back over his shoulder.
+    ctx.rotate(-frameTurn * (1 - recline));
     paintBambooBundle(ctx, spec, p, u, ow, lod, { ...kit, parts: 'pouch' });
+    ctx.restore();
   }
 
   // Garments that hang over the thighs come WITH the hero — drawn after the
@@ -11448,18 +11717,33 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     if (spec.dress) {
       // the sash in its own colour, with the off-centre knot and tail the
       // standing qipao ties
+      // Run past both sides and CLIPPED to the body, like every other band on
+      // this pose. Cut to 0.94 of the garment's own waist it overhung her
+      // silhouette on the side — the sash is sized to the SKIRT, which is
+      // wider than the torso it is tied round, so any fraction of it is the
+      // wrong yardstick. The contour is the only thing that knows where she
+      // ends.
+      ctx.save();
+      ctx.beginPath(); torso.capsule(ctx); ctx.clip();
       ctx.lineCap = 'butt';
       ctx.strokeStyle = p.sash || p.p;
       ctx.lineWidth = 0.06 * u;
-      ctx.beginPath(); ctx.moveTo(beltX, -wTop * 0.94); ctx.lineTo(beltX, wTop * 0.94); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(beltX, -wTop * 1.3); ctx.lineTo(beltX, wTop * 1.3); ctx.stroke();
+      ctx.restore();
       ctx.lineCap = 'round';
       ctx.strokeStyle = p.sash || p.p;
       ctx.lineWidth = 0.03 * u;
-      ctx.beginPath();
-      ctx.moveTo(beltX, wTop * 0.42);
-      ctx.lineTo(beltX - 0.055 * u, wTop * 0.6);
-      ctx.stroke();
-      outlined(ctx, p.sash || p.p, hair(0.4, ow * 0.5), (c) => c.arc(beltX, wTop * 0.4, 0.032 * u, 0, Math.PI * 2));
+      // The knot ties on the side she ties it on STANDING. Local +y here runs
+      // across the body toward her far side once the frame is raked, so a knot
+      // at +0.4 came out on the opposite hip from the standing qipao's — the
+      // same tie, mirrored, on the one pose that rotates the frame.
+      //
+      // NO TAIL. The standing tie has a short one falling from the knot, which
+      // works because it hangs DOWN the skirt. Rotated into the recline the
+      // same stroke points off across her hip into open air, with nothing under
+      // it to fall against — a stray blue stub hanging off the belt rather than
+      // a length of sash. The knot alone carries the tie here.
+      outlined(ctx, p.sash || p.p, hair(0.4, ow * 0.5), (c) => c.arc(beltX, -wTop * 0.4, 0.032 * u, 0, Math.PI * 2));
     }
     if (id === 'grumpos') {
       // his belt is the GOLD band with the pale disc buckle, same as standing
@@ -11492,6 +11776,13 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     }
     ctx.restore();
   }
+  // The quiver sling goes on LAST of the worn things, over the garment and its
+  // belt — a strap is what holds the quiver on, so nothing is worn on top of
+  // it. Painted inside the capsule (where it used to be) the skirt and belt
+  // below went on after it and buried it: on Fernwick the strap crossed her
+  // chest and then her own tunic covered it, so the quiver on her back had
+  // visibly nothing holding it there.
+  torso.sling?.();
   // near arm: hangs down off the shoulder, hand trailing just clear of the
   // ground, elbow soft and back.
   //
@@ -11545,9 +11836,8 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // Moving it the other way was tried and is much worse — a neck up the spine
   // lifts every crown, and laying it back parks the head on the near shoulder.
   // `slideHeadBack` pulls the head back along the axis, in u — a per-spec dial
-  // for a head that reads as thrust forward off the reclined body. The shared
-  // 0.08u forward seat is the cast's; nothing else moves with it.
-  const hxx = shX + 0.08 * u - (spec.slideHeadBack || 0) * u, hyy = shY - (heavy ? 0.15 : 0.12) * u;
+  // for a head that reads as thrust forward off the reclined body.
+  const hxx = shX + SLIDE_HEAD_SEAT * u - (spec.slideHeadBack || 0) * u, hyy = shY - (heavy ? 0.15 : 0.12) * u;
   // Canted back into the slide. Rotated about the head's OWN centre, so it
   // costs no height and no reach — the crown lays back the way a slider's
   // does instead of sitting bolt upright on a reclined body. About the
@@ -11607,12 +11897,12 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   ctx.restore();
   ctx.restore();
   // dust ground off the SEAT — that is what touches the deck now
-  if (pose.grounded) duckDust(ctx, u, ow, t, -0.24 * u, -0.02 * u);
+  if (pose.grounded) slideDust(ctx, u, ow, t, -0.24 * u, -0.02 * u);
 }
 
 // D — BELLY DIVE: prone, arms ahead, chin up — the lowest silhouette of the
 // three, with a light flutter kick so the held pose stays alive.
-function drawDuckDive(ctx, id, spec, p, pose, u, ow, lod) {
+function drawSlideDive(ctx, id, spec, p, pose, u, ow, lod) {
   const t = pose.time || 0;
   const flut = Math.sin(t * 9) * 0.025 * u;
   const chestX = 0.16 * u, chestY = -0.17 * u;
@@ -11624,8 +11914,11 @@ function drawDuckDive(ctx, id, spec, p, pose, u, ow, lod) {
   outlined(ctx, recede(p.f, 0.3), hair(0.6, ow * 0.8), (c) =>
     c.ellipse(-0.47 * u, -0.105 * u - flut * 0.8, 0.075 * u, 0.05 * u, 0.25, 0, Math.PI * 2));
   // torso: near-horizontal capsule chest -> hips, dressed like the standing rig
-  duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, chestX, chestY, 0.28 * u, false, 0,
+  const diveTorso = slideTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, chestX, chestY, 0.28 * u, false, 0,
     axisOffset(hipX, hipY, chestX, chestY, 0.33 * u, -0.29 * u) * V_FOLLOWS_FACE);
+  // Straight after the capsule, which is where it painted before the sling was
+  // handed back — the dive wears nothing over the chest, so nothing buries it.
+  diveTorso.sling?.();
   // near leg trailing, knee soft, boot toe pointed back
   limb2(ctx, hipX, hipY - 0.01 * u, -0.50 * u, -0.07 * u + flut, 0.24 * u, -1, 0.09 * u, p.p, ow, 0.085 * u);
   if (spec.holster === 'thigh') {
@@ -11641,15 +11934,15 @@ function drawDuckDive(ctx, id, spec, p, pose, u, ow, lod) {
   ctx.save();
   ctx.translate(0.33 * u, -0.29 * u);
   ctx.rotate(-0.24);
-  drawHead(ctx, id, spec, p, u * 0.92, ow, 0, 0, lod, { kind: 'duck', roll: true, time: t });
+  drawHead(ctx, id, spec, p, u * 0.92, ow, 0, 0, lod, { kind: 'slide', roll: true, time: t });
   ctx.restore();
   // dust off the chest contact
-  if (pose.grounded) duckDust(ctx, u, ow, t, -0.30 * u, -0.04 * u);
+  if (pose.grounded) slideDust(ctx, u, ow, t, -0.30 * u, -0.04 * u);
 }
 
 // Two little contact puffs, pulsing on their own clock so a held slide keeps
 // visibly grinding. Drawn in ground space, always behind the figure.
-function duckDust(ctx, u, ow, t, x, y) {
+function slideDust(ctx, u, ow, t, x, y) {
   const q = (t * 7) % 1;
   ctx.strokeStyle = OUTLINE;
   ctx.lineWidth = hair(0.8, ow * 0.5);
@@ -11659,23 +11952,23 @@ function duckDust(ctx, u, ow, t, x, y) {
   ctx.globalAlpha /= 0.35 * (1 - q * 0.6);
 }
 
-const DUCK_STYLE_DRAWS = {
-  tuck: drawDuckTuckRoll, slide: drawDuckSlide, dive: drawDuckDive,
+const SLIDE_STYLE_DRAWS = {
+  tuck: drawSlideTuckRoll, kick: drawSlideKick, dive: drawSlideDive,
 };
 
-// What the gallery bake-off enumerates. Ids are pose.duckStyle values.
-export const DUCK_STYLE_CANDIDATES = [
+// What the gallery bake-off enumerates. Ids are pose.slideStyle values.
+export const SLIDE_STYLE_CANDIDATES = [
   { id: 'tuck', name: 'B — TUCK ROLL' },
-  { id: 'slide', name: 'C — POWER SLIDE' },
+  { id: 'kick', name: 'C — POWER SLIDE' },
   { id: 'dive', name: 'D — BELLY DIVE' },
 ];
 
 function drawBlob(ctx, id, p, pose, u, ow, lod) {
   const t = pose.time || 0;
   const ph = (pose.phase || 0) * Math.PI * 2;
-  const duck = pose.kind === 'duck';
+  const slide = pose.kind === 'slide';
   let rx = 0.36 * u, ry = 0.34 * u, cy = -0.4 * u;
-  if (duck && pose.roll) {
+  if (slide && pose.roll) {
     ctx.save();
     ctx.translate(0, -0.27 * u);
     ctx.rotate((t || 0) * 12);
@@ -11687,7 +11980,7 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
     ctx.restore();
     return;
   }
-  if (duck) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
+  if (slide) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
   if (pose.kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
   // celebrate: a joyful squash-and-stretch jiggle, arms up like the float pose
   if (pose.kind === 'celebrate') { const b = Math.sin(t * 7); ry *= 1 + 0.1 * b; rx *= 1 - 0.08 * b; cy -= 0.03 * u * Math.max(0, b); }
@@ -11798,8 +12091,8 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   const t = pose.time || 0;
   const ph = (pose.phase || 0) * Math.PI * 2;
   const kind = pose.kind;
-  const duck = kind === 'duck';
-  const enhancedDuck = duck && usesEnhancedLocomotion(pose);
+  const slide = kind === 'slide';
+  const enhancedSlide = slide && usesEnhancedLocomotion(pose);
   const enhancedJump = kind === 'jump' && usesEnhancedLocomotion(pose);
   const airV = enhancedJump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
   const airApex = enhancedJump ? 1 - Math.abs(airV) : 0;
@@ -11814,7 +12107,7 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   const cheek = p.cheek || p.m;
 
   let rx = 0.34 * u, ry = 0.35 * u, cy = -0.4 * u;
-  if (duck) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
+  if (slide) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
   else if (kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
   else if (kind === 'idle') { cy -= 0.012 * u * (1 + Math.sin(t * 3)) * 0.5; }
   else if (enhancedJump) {
@@ -11856,7 +12149,7 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
 
   // tail: star-tipped stalk, drawn on the LEFT in rig space so it trails behind
   // (the drawToon wrapper mirrors the whole rig with facing, keeping it correct).
-  if (!duck) {
+  if (!slide) {
     const wag = Math.sin(t * 4 + (kind === 'run' ? ph : 0)) * 0.05;
     ctx.save();
     ctx.translate(-rx * 0.7, cy + ry * 0.35);
@@ -11882,22 +12175,22 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
     ctx.restore();
   }
 
-  // ears: rounded purple-tipped, splayed outward. They stay UP while ducking
+  // ears: rounded purple-tipped, splayed outward. They stay UP while sliding
   // (just a little shorter), poking above the flattened head — drawn before the
-  // body, so the wide duck body would otherwise swallow anything drooped down.
+  // body, so the wide slide body would otherwise swallow anything drooped down.
   {
     const baseY = cy - ry * 0.78;
-    const earLen = (duck ? 0.22 : 0.3) * u;
+    const earLen = (slide ? 0.22 : 0.3) * u;
     for (const side of [-1, 1]) {
       const baseX = side * rx * 0.5;
       const lean = side * 0.12 * u;
       const wob = celebrate
         ? 0.03 * u * Math.max(0, celebrateSync ? celebrateSync.lift / 0.15 : Math.sin(t * 7))
         : 0;
-      const tipX = baseX + lean + side * (0.06 + airApex * 0.025 + (enhancedDuck ? 0.025 : 0)) * u;
+      const tipX = baseX + lean + side * (0.06 + airApex * 0.025 + (enhancedSlide ? 0.025 : 0)) * u;
       // The ears trail a rising body, then splay back open at the apex.
       const tipY = baseY - earLen - wob + airRise * 0.055 * u - airApex * 0.025 * u
-        + (enhancedDuck ? 0.025 * u : 0);
+        + (enhancedSlide ? 0.025 * u : 0);
       const halfBase = 0.11 * u, halfTip = 0.075 * u;
       // The base corners have to meet a DOME, not a flat line. Both used to sit
       // at one shared y: fine for the inner corner, which lands well inside the
@@ -11942,8 +12235,8 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
 
   // feet stubs
   const step = kind === 'run' ? Math.sin(ph) * 0.06 * u : 0;
-  const duckSpread = enhancedDuck ? 0.025 * u : 0;
-  const footIn = enhancedJump ? airApex * 0.035 * u : -duckSpread;
+  const slideSpread = enhancedSlide ? 0.025 * u : 0;
+  const footIn = enhancedJump ? airApex * 0.035 * u : -slideSpread;
   const footUp = enhancedJump ? (0.055 + airApex * 0.055) * u : 0;
   outlined(ctx, p.b, ow, (c) => c.ellipse(-0.14 * u + step + footIn, -0.03 * u - footUp, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
   outlined(ctx, p.b, ow, (c) => c.ellipse(0.14 * u - step - footIn, -0.03 * u - footUp, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
@@ -11957,7 +12250,7 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   ctx.restore();
 
   // arm nubs (rotate up while floating / celebrating)
-  const nubY = armsUp ? cy - ry * 0.5 : cy + ry * (enhancedDuck ? 0.42 : 0.2);
+  const nubY = armsUp ? cy - ry * 0.5 : cy + ry * (enhancedSlide ? 0.42 : 0.2);
   const nubR = 0.08 * u;
   // The pole-side nub's target. Divided by the 0.9 the whole rig is scaled by
   // above, so it lands on the column in WORLD space — where the mast actually
@@ -12182,14 +12475,14 @@ function chompoEye(ctx, p, e, bodyFill, lod, blink, gaze = 0, death = null) {
 
 function drawDisc(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
-  const duck = pose.kind === 'duck';
+  const slide = pose.kind === 'slide';
   const enhancedMotion = usesEnhancedLocomotion(pose);
   const enhancedJump = pose.kind === 'jump' && enhancedMotion;
   const airV = enhancedJump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
   const airApex = enhancedJump ? 1 - Math.abs(airV) : 0;
-  const r = (duck ? 0.3 : 0.34) * u;
-  const cy = duck ? -0.31 * u : -0.44 * u;
-  if (duck && pose.roll) {
+  const r = (slide ? 0.3 : 0.34) * u;
+  const cy = slide ? -0.31 * u : -0.44 * u;
+  if (slide && pose.roll) {
     ctx.save();
     ctx.translate(0, cy);
     ctx.rotate((pose.time || 0) * 13);
@@ -12215,8 +12508,8 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   // 15° while only the jaw (lower lip) swings. The jaw travels from -15° (flush
   // against the top lip — mouth FULLY closed, she becomes a circle) down to a
   // wide bite, twice a stride. Idle matches the spec's static 15/15 look.
-  const upDeg = duck ? 10 : 15;
-  let loDeg = duck ? 10 : 15;
+  const upDeg = slide ? 10 : 15;
+  let loDeg = slide ? 10 : 15;
   const mt = pose.time || 0;
   // Special move (HAZARD BITE): one deliberate CHOMP per ~0.6s — a wide gape,
   // a held beat, then a hard SNAP shut. The hold + snap read nothing like the
@@ -12247,7 +12540,7 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.008 * u
       : enhancedJump ? -airApex * 0.03 * u : 0;
   const squash = pose.kind === 'run' ? (0.5 - Math.abs(Math.cos(ph))) * 0.06
-    : duck && enhancedMotion ? 0.115
+    : slide && enhancedMotion ? 0.115
       : enhancedJump ? airApex * 0.035
         : Math.sin((pose.time || 0) * 2.2) * 0.012;
   const pivotY = cy + r * 0.9;
@@ -12462,19 +12755,19 @@ function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
 }
 
 function drawRay(ctx, id, p, pose, u, ow, lod) {
-  // The ray rig ducks with the same POWER SLIDE the humanoids ship — the
+  // The ray rig slides with the same POWER SLIDE the humanoids ship — the
   // slide painter has a floating-limb branch for him. Ability rolls do not
-  // exist on this rig, so the duckStyle check is the whole dispatch.
-  if (pose.kind === 'duck' && DUCK_STYLE_DRAWS[pose.duckStyle]) {
+  // exist on this rig, so the slideStyle check is the whole dispatch.
+  if (pose.kind === 'slide' && SLIDE_STYLE_DRAWS[pose.slideStyle]) {
     ctx.save();
-    if (pose.duckStyle !== 'slide') duckStyleEntry(ctx, pose);
-    DUCK_STYLE_DRAWS[pose.duckStyle](ctx, id, TOON_SPECS[id] || {}, p, pose, u, ow, lod);
+    if (pose.slideStyle !== 'kick') slideStyleEntry(ctx, pose);
+    SLIDE_STYLE_DRAWS[pose.slideStyle](ctx, id, TOON_SPECS[id] || {}, p, pose, u, ow, lod);
     ctx.restore();
     return;
   }
   const ph = (pose.phase || 0) * Math.PI * 2;
   const run = pose.kind === 'run';
-  const duck = pose.kind === 'duck';
+  const slide = pose.kind === 'slide';
   const enhancedMotion = usesEnhancedLocomotion(pose);
   const jump = pose.kind === 'jump' && enhancedMotion;
   const airV = jump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
@@ -12484,11 +12777,11 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   const footF = run ? floatingFoot(pose.phase || 0, 0.115 * u, 0.082 * u) : [0, 0];
   const footB = run ? floatingFoot((pose.phase || 0) + 0.5, 0.115 * u, 0.082 * u) : [0, 0];
   const bob = run ? -Math.abs(Math.sin(ph)) * 0.028 * u : 0;
-  const cy = (duck ? -0.3 : -0.5) * u + bob - airApex * 0.03 * u;
+  const cy = (slide ? -0.3 : -0.5) * u + bob - airApex * 0.03 * u;
   const handSwing = run ? Math.cos(ph) * 0.075 * u : jump ? 0.055 * u : 0;
   const handLift = run ? Math.sin(ph) * 0.035 * u : jump ? (0.045 + 0.035 * airApex) * u : 0;
   // Floating shoes—no connecting legs.
-  const shoeSpread = duck && enhancedMotion ? 0.165 : 0.13;
+  const shoeSpread = slide && enhancedMotion ? 0.165 : 0.13;
   // Clinging: Raymn has no arms and no legs, so his grip is the gloves gathered
   // over the top of him and the shoes drawn up underneath — a swimmer's shape
   // with a pole through it. The body's own stretch and cant come from drawToon.
@@ -12536,8 +12829,8 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   ctx.fillStyle = p.m; ctx.beginPath(); ctx.moveTo(-0.14 * u, cy - 0.245 * u); ctx.quadraticCurveTo(-0.3 * u, cy - 0.225 * u + scarfLag, -0.37 * u, cy - 0.17 * u + scarfLag); ctx.lineTo(-0.14 * u, cy - 0.14 * u); ctx.fill();
   drawRayHead(ctx, id, p, pose, u, ow, 0, cy - 0.35 * u, lod, run);
   // Floating gloves—hide the throwing glove until it returns.
-  const handY = cy + (duck && enhancedMotion ? 0.085 : jump ? -0.11 : 0.02) * u;
-  const handOut = duck && enhancedMotion ? 0.34 : 0.29;
+  const handY = cy + (slide && enhancedMotion ? 0.085 : jump ? -0.11 : 0.02) * u;
+  const handOut = slide && enhancedMotion ? 0.34 : 0.29;
   const cheer = pose.kind === 'celebrate';
   const gloveStudy = cheer && usesReworkedCelebration(pose);
   if (gloveStudy) {
@@ -13177,7 +13470,7 @@ const CANE_SHORT = 0.78;
 export function caneScale(parity) { return (parity | 0) ? CANE_SHORT : 1; }
 
 function paintBambooBundle(ctx, spec, p, u, ow, lod,
-  { bx, by, thrown = false, belt = false, lean = 0, pack = false, half = 0, clip = null, sling = 0, canes = null, parts = 'both' }) {
+  { bx, by, beltCx = 0, thrown = false, belt = false, lean = 0, pack = false, half = 0, clip = null, sling = 0, canes = null, parts = 'both' }) {
   // CANES STAND UP. The first cut rotated the whole bundle and let the canes
   // lean off it, which put them somewhere between vertical and horizontal and
   // read as a handful of sticks falling out of a bag. A quiver works because
@@ -13224,15 +13517,20 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
     // The band still LIFTS on the tail side and bows in the middle: the lift
     // finishes it above the plume, and the bow is what a band round a barrel
     // looks like from the front.
-    const xL = -half * 1.6, xR = half * 1.6;
+    // Centred on `beltCx`, NOT on the caller's origin. Standing, the two are
+    // the same point and this reads as 0; in the slide they are not — the hips
+    // sit a twentieth of a unit back along the recline from the frame origin,
+    // so a band about x = 0 hung off his right side and stopped short of his
+    // left waist. The band belongs on the HIPS wherever the pose puts them.
+    const xL = beltCx - half * 1.6, xR = beltCx + half * 1.6;
     const yL = by - 0.052 * u;              // high on the tail side
     const yR = by - 0.024 * u;
     const bow = 0.028 * u;                  // sag at the centre
     const band = (c) => {
       c.moveTo(xL, yL);
-      c.quadraticCurveTo(0, yL + bow, xR, yR);
+      c.quadraticCurveTo(beltCx, yL + bow, xR, yR);
       c.lineTo(xR, yR + bandH);
-      c.quadraticCurveTo(0, yL + bow + bandH, xL, yL + bandH);
+      c.quadraticCurveTo(beltCx, yL + bow + bandH, xL, yL + bandH);
       c.closePath();
     };
     if (clip) {
@@ -13360,9 +13658,9 @@ function paintQuiverKit(ctx, spec, p, u, ow, lod, { qx, qTop, qBot, bow }) {
       ctx.beginPath(); ctx.moveTo(qx - 0.075 * u, y); ctx.lineTo(qx + 0.075 * u, y); ctx.stroke();
     }
   }
-  if (spec.quiverMountStudy && spec.quiverMountStudy !== 'loop') {
+  if (spec.quiverMount && spec.quiverMount !== 'loop') {
     // Actual case anchors; the torso occludes the return lengths naturally.
-    const belt = spec.quiverMountStudy === 'belt';
+    const belt = spec.quiverMount === 'belt';
     const ys = belt ? [qBot - 0.07 * u, qBot - 0.015 * u] : [qTop + 0.04 * u, qBot - 0.04 * u];
     ctx.save();
     ctx.lineCap = 'round';
@@ -13371,10 +13669,10 @@ function paintQuiverKit(ctx, spec, p, u, ow, lod, { qx, qTop, qBot, bow }) {
         ctx.beginPath(); ctx.moveTo(qx + 0.045 * u, y);
         ctx.quadraticCurveTo(qx + 0.10 * u, y - (belt ? 0 : 0.055 * u), qx + 0.20 * u, y - (belt ? 0 : 0.045 * u));
       };
-      if (spec.quiverMountStudy !== 'loop') {
+      if (spec.quiverMount !== 'loop') {
         path(); ctx.strokeStyle = OUTLINE; ctx.lineWidth = 0.047 * u; ctx.stroke();
       }
-      path(); ctx.strokeStyle = spec.quiverMountStudy === 'loop' ? '#956b46' : '#875b36';
+      path(); ctx.strokeStyle = spec.quiverMount === 'loop' ? '#956b46' : '#875b36';
       ctx.lineWidth = 0.035 * u; ctx.stroke();
     }
     ctx.restore();
@@ -13497,15 +13795,15 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
       sx = 1 - 0.6 * st;
     }
   }
-  if (pose.kind === 'duck' && usesEnhancedLocomotion(pose) && !pose.roll
-    && !DUCK_STYLE_DRAWS[pose.duckStyle]) {
-    const raw = pose.duckAmount == null ? 1
-      : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
+  if (pose.kind === 'slide' && usesEnhancedLocomotion(pose) && !pose.roll
+    && !SLIDE_STYLE_DRAWS[pose.slideStyle]) {
+    const raw = pose.slideAmount == null ? 1
+      : Math.max(0, Math.min(1, Number(pose.slideAmount) || 0));
     let crouch = raw * raw * (3 - 2 * raw);
     // On entry, dip just past the held pose and rebound during the final third.
     // It is deliberately tiny: enough to show weight arriving, not enough to
     // pulse the hitbox or make the hero look rubbery.
-    if (pose.duckDirection > 0 && raw > 0.68 && raw < 1) {
+    if (pose.slideDirection > 0 && raw > 0.68 && raw < 1) {
       crouch += Math.sin((raw - 0.68) / 0.32 * Math.PI) * 0.055;
     }
     const startTall = spec.rig === 'disc' ? 1.28
@@ -13784,14 +14082,14 @@ function effectPoses(heroId) {
     ({ kind: 'run', phase, time: phase, grounded: true, facing: 1 }));
   poses.push(
     { kind: 'jump', phase: 0.25, time: 0.25, grounded: false, facing: 1, vy: 280 },
-    { kind: 'duck', phase: 0.5, time: 0.5, grounded: true, facing: 1 },
+    { kind: 'slide', phase: 0.5, time: 0.5, grounded: true, facing: 1 },
   );
   const special = {
     lorenzo: { kind: 'jump', phase: 0.5, time: 0.2, grounded: false, facing: 1, stomp: true, vy: -240 },
     gnash: { kind: 'run', phase: 0.25, time: 0.25, grounded: true, facing: 1, lean: 0.26 },
-    fernwick: { kind: 'duck', phase: 0.5, time: 0.3, grounded: true, facing: 1, roll: true },
+    fernwick: { kind: 'slide', phase: 0.5, time: 0.3, grounded: true, facing: 1, roll: true },
     b33p: { kind: 'run', phase: 0.25, time: 0.2, grounded: true, facing: 1, menuAction: 'aim' },
-    mochi: { kind: 'duck', phase: 0.5, time: 0.2, grounded: true, facing: 1, squash: 1 },
+    mochi: { kind: 'slide', phase: 0.5, time: 0.2, grounded: true, facing: 1, squash: 1 },
     chompo: { kind: 'run', phase: 0.25, time: 0.22, grounded: true, facing: 1, menuAction: 'chomp' },
     kiko: { kind: 'run', phase: 0.25, time: 0.2, grounded: true, facing: 1, menuAction: 'aim' },
   }[heroId];
@@ -14040,8 +14338,8 @@ export function poseFromPlayer(player, t) {
   const flurrying = (player.spannerFlurryT || 0) > 0;
   const smashing = (firing && player.powerType === 'stomp' && player.grounded) || flurrying;
   const airSlideKick = !!player.slideSlamming;
-  const forcedDuck = player.rolling || player.compressT > 0;
-  const recoveringDuck = player.grounded && (player.duckAmount || 0) > 0;
+  const forcedSlide = player.rolling || player.compressT > 0;
+  const recoveringSlide = player.grounded && (player.slideAmount || 0) > 0;
   // AIRBORNE IS NOT THE SAME AS JUMPING.
   //
   // `kind` was `!grounded ? 'jump' : 'run'`, so the instant you stepped off the
@@ -14075,7 +14373,7 @@ export function poseFromPlayer(player, t) {
   // the 47 above a tunnel and clear of the 96 off a cloud.
   const FALL_POSE_VY = -340;
   const bigFall = fell && (Number(player.vy) || 0) < FALL_POSE_VY;
-  const kind = (airSlideKick || player.ducking || forcedDuck || recoveringDuck) ? 'duck'
+  const kind = (airSlideKick || player.sliding || forcedSlide || recoveringSlide) ? 'slide'
     : (!player.grounded && (!fell || bigFall)) ? 'jump' : 'run';
   return {
     kind,
@@ -14103,14 +14401,14 @@ export function poseFromPlayer(player, t) {
     // Ordinary input uses the controller's entry/exit blend.
     // The aerial move is visual-only until contact: force the slide silhouette
     // without changing Player.hitH, so an airborne hero keeps the standing
-    // collision box and cannot duck through a hazard for free.
-    duckAmount: airSlideKick || forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
-    duckDirection: forcedDuck ? 0 : (player.duckDirection || 0),
-    // The shipped duck on the humanoid and ray rigs is the POWER SLIDE
+    // collision box and cannot slide through a hazard for free.
+    slideAmount: airSlideKick || forcedSlide ? 1 : Math.max(0, Math.min(1, player.slideAmount || 0)),
+    slideDirection: forcedSlide ? 0 : (player.slideDirection || 0),
+    // The shipped slide on the humanoid and ray rigs is the POWER SLIDE
     // (bake-off, 2026-08). Ability rolls keep priority — drawHumanoid checks
-    // pose.roll first — and the blob/pika/disc rigs never read duckStyle, so
+    // pose.roll first — and the blob/pika/disc rigs never read slideStyle, so
     // they keep their crouch and its whole-figure squash.
-    duckStyle: kind === 'duck' && !player.rolling
+    slideStyle: kind === 'slide' && !player.rolling
       && ['humanoid', 'ray'].includes(TOON_SPECS[hero.id]?.rig) ? 'slide' : undefined,
     // The contact kick, already shaped into the 0..1 the painter poses from.
     // The player owns the timer and its curve; this side only reads it, the

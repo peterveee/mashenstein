@@ -63,9 +63,9 @@ export const PUNT = {
   // enough that the white bands stay legible rather than smearing to a blur.
   spinRate: 9,
   // How fresh the slide has to be, in seconds, for contact to punt rather than
-  // hurt. Read against player.duckHoldT: commit late and the boot is still
+  // hurt. Read against player.slideHoldT: commit late and the boot is still
   // travelling, coast in on a slide you started early and you eat the cone.
-  // 0.35 is a little over a third of the 1.0s duck window (DUCK_MAX_T).
+  // 0.35 is a little over a third of the 1.0s slide window (SLIDE_MAX_T).
   windowT: 0.35,
   // Below this the arc has run out and the cone is furniture again.
   restVy: 40,

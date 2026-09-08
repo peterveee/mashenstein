@@ -51,7 +51,7 @@ const run = new RunState({
   // record of the bot's play instead of the stage's generation.
   devInvuln: true,
   // Objective missions (cords, chase, targets) can't be cleared by a bot that
-  // only jumps and ducks; forcing the mission arms the finish so every stage
+  // only jumps and slides; forcing the mission arms the finish so every stage
   // ends at the tape rather than at the clock.
   devForceMission: true,
   onEnd: (r) => { result = r; },
@@ -112,7 +112,7 @@ function collect() {
 }
 
 const TICK = 1 / 60;
-let duckHold = false;
+let slideHold = false;
 let ticks = 0;
 const MAX_TICKS = 60 * 60 * 6; // 6 minutes of sim time hard cap
 
@@ -136,9 +136,9 @@ while (!result && ticks < MAX_TICKS) {
   } else {
     Input.release('jump');
   }
-  if (nearest && nearest.def.action === 'duck' && (nearest.x - px) < sp * 0.4 && run.player.grounded) {
-    if (!duckHold) { Input.press('duck'); duckHold = true; }
-  } else if (duckHold) { Input.release('duck'); duckHold = false; }
+  if (nearest && nearest.def.action === 'slide' && (nearest.x - px) < sp * 0.4 && run.player.grounded) {
+    if (!slideHold) { Input.press('slide'); slideHold = true; }
+  } else if (slideHold) { Input.release('slide'); slideHold = false; }
   run.update(TICK);
   collect();
 }

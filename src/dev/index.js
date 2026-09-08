@@ -35,14 +35,14 @@ const REPEATABLE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 // Keys the tuning strip takes away from the game while it is on.
 //
 // Every one of them is a live gameplay action during a run — ArrowUp is jump,
-// ArrowDown is duck, ArrowLeft is the rewind, ArrowRight is the ability, and
+// ArrowDown is slide, ArrowLeft is the rewind, ArrowRight is the ability, and
 // Shift is the ability again. Tuning with them while they still reached the
 // player meant every nudge also fired a wrench or scrubbed the run backwards.
 //
 // They are safe to take precisely because each has an alternate binding that
 // tune mode does NOT touch, so the hero stays drivable while you tune:
 //
-//   jump    Space, W        duck     S
+//   jump    Space, W        slide     S
 //   rewind  A               ability  X, D
 //
 // That is the whole reason to claim these five rather than suspending Input
@@ -300,7 +300,7 @@ export const Dev = {
     if (on === TuneStrip.on) return;
     // Refuse to take the arrow keys off the game when there is nothing to tune
     // with them. Without the bundle transform there are no registered
-    // constants, so claiming jump/duck/rewind/ability would cost the run its
+    // constants, so claiming jump/slide/rewind/ability would cost the run its
     // controls and buy nothing.
     if (on && !tuningAvailable()) {
       this.say('NO TUNABLES — needs a watch build (npm run dev)');

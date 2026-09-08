@@ -15,8 +15,9 @@
 // are the handles for those halves plus the two precise targets, USE and PAUSE.
 // JUMP sits alone on the left, level with SLIDE, just clear of the hero (who
 // stands at the far left, x 0-15, head at y~192) and of the CRASH / ability
-// shelf (y >= 240). The right column of three is centred on the picture's
-// midline (y 135), rare control high and frequent control low, PAUSE a size
+// shelf (y >= 240). The right column of three sits low on the picture, spread
+// wide (73 logical px between centres), rare control high and frequent control
+// low, PAUSE a size
 // smaller because it is the one you reach for least. Every number here is a
 // tunable Peter has already moved twice; retune on the phone before trusting it.
 //
@@ -40,14 +41,14 @@ const LOGICAL_H = 270;
 // r is a radius; 22 makes a 44-logical disc, which lands at ~61 CSS px on the
 // smallest phone and ~108 on an iPad — past the 44pt a thumb needs everywhere.
 export const TOUCH_DISCS = [
-  { id: 'jump',    action: 'jump',    cx: 40,  cy: 183, r: 22 },
-  { id: 'duck',    action: 'duck',    cx: 450, cy: 183, r: 22 },
-  { id: 'ability', action: 'ability', cx: 450, cy: 131, r: 22 },
-  { id: 'pause',   action: 'escape',  cx: 450, cy: 83,  r: 18 },
+  { id: 'jump',    action: 'jump',    cx: 40,  cy: 207, r: 22 },
+  { id: 'slide',    action: 'slide',    cx: 450, cy: 207, r: 22 },
+  { id: 'ability', action: 'ability', cx: 450, cy: 133, r: 22 },
+  { id: 'pause',   action: 'escape',  cx: 450, cy: 60,  r: 18 },
 ];
 export const HUB_DISCS = [
-  { id: 'hubLeft',  action: 'left',  cx: 40,  cy: 183, r: 22 },
-  { id: 'hubRight', action: 'right', cx: 450, cy: 183, r: 22 },
+  { id: 'hubLeft',  action: 'left',  cx: 40,  cy: 207, r: 22 },
+  { id: 'hubRight', action: 'right', cx: 450, cy: 207, r: 22 },
 ];
 // CSS px a thumb may land outside a disc and still be on it (input.js).
 export const DISC_SLOP = 6;
@@ -124,12 +125,12 @@ function runList(fit, hasPower) {
     if (hasPower) {
       const useBottom = by.ability.y + by.ability.r;
       zones.push(zone('rightMid', 'ability', x, pauseBottom, m.right, useBottom - pauseBottom));
-      zones.push(zone('rightBottom', 'duck', x, useBottom, m.right, fit.vh - useBottom));
+      zones.push(zone('rightBottom', 'slide', x, useBottom, m.right, fit.vh - useBottom));
     } else {
-      zones.push(zone('rightBottom', 'duck', x, pauseBottom, m.right, fit.vh - pauseBottom));
+      zones.push(zone('rightBottom', 'slide', x, pauseBottom, m.right, fit.vh - pauseBottom));
     }
   }
-  zones.push(...bandZones(fit, m, 'jump', 'escape', 'jump', 'duck'));
+  zones.push(...bandZones(fit, m, 'jump', 'escape', 'jump', 'slide'));
   return [...discs, ...zones];
 }
 

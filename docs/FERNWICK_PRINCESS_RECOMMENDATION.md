@@ -1,5 +1,19 @@
 # Fernwick princess direction — recommendation
 
+## Shipped quiver attachment — 8 September 2026
+
+The approved attachment is the rounded **B** sling at **W2 (20% thinner)**:
+width `0.024u`, quiver palette brown, and **85% opacity**. It has a tapered
+shoulder start, two short quiver connections, and a shorter return in the jump.
+The quiver and arrows sit `0.035u` above their former position; the bow stays
+at its original height. The near arm uses the smaller inward/upward adjustment
+only while running (`0.0285u` inward seat, `0.01u` downward seat).
+
+These settings are now in the production Fernwick spec. The comparison page
+retains width options and labels W2 as shipped. The older recommendation below
+is historical and predates the production character and this selection.
+
+
 Date: 2026-09-06  
 Status: visual recommendation / gallery study; not yet a final production integration
 

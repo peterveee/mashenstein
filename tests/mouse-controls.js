@@ -102,10 +102,10 @@ const touchRight = pointer(0, 4, 400, 'touch');
 dom.fire('canvas:pointerdown', touchRight);
 dom.frame(70);
 dom.fire('canvas:pointerup', touchRight);
-assert(Input.pressed('duck') && Input.held('duck') && !Input.held('ability') && !Input.held('jump'),
+assert(Input.pressed('slide') && Input.held('slide') && !Input.held('ability') && !Input.held('jump'),
   'the right half of a touch slides during a level, and spends no power');
 frame(90);
-assert(!Input.held('duck'), 'the replayed slide hold ends one tap-length later');
+assert(!Input.held('slide'), 'the replayed slide hold ends one tap-length later');
 
 // The seam is the picture's centre: a tap just left of it jumps, just right
 // of it slides.
@@ -114,13 +114,13 @@ const nearLeft = pointer(0, 31, 239, 'touch');
 dom.fire('canvas:pointerdown', nearLeft);
 dom.frame(70);
 dom.fire('canvas:pointerup', nearLeft);
-assert(Input.pressed('jump') && !Input.held('duck'), 'x 239 is the jump half');
+assert(Input.pressed('jump') && !Input.held('slide'), 'x 239 is the jump half');
 frame(120);
 const nearRight = pointer(0, 32, 241, 'touch');
 dom.fire('canvas:pointerdown', nearRight);
 dom.frame(70);
 dom.fire('canvas:pointerup', nearRight);
-assert(Input.pressed('duck') && !Input.held('jump'), 'x 241 is the slide half');
+assert(Input.pressed('slide') && !Input.held('jump'), 'x 241 is the slide half');
 frame(120);
 
 // A finger that stays down commits on its own, without waiting for the lift —
@@ -139,20 +139,20 @@ frame();
 const touchSwipe = pointer(0, 5, 120, 'touch');
 dom.fire('canvas:pointerdown', touchSwipe);
 dom.fire('canvas:pointermove', { ...touchSwipe, clientY: 170 });
-assert(Input.pressed('duck') && Input.held('duck') && !Input.held('jump'),
-  'a left-zone down-swipe ducks and never fires the jump it landed on');
+assert(Input.pressed('slide') && Input.held('slide') && !Input.held('jump'),
+  'a left-zone down-swipe slides and never fires the jump it landed on');
 dom.fire('canvas:pointerup', touchSwipe);
 
-// The slide half promotes the same way: a down-swipe from it is still one duck,
-// not a tap-duck followed by a swipe-duck.
+// The slide half promotes the same way: a down-swipe from it is still one slide,
+// not a tap-slide followed by a swipe-slide.
 frame();
 const touchSwipeRight = pointer(0, 7, 400, 'touch');
 dom.fire('canvas:pointerdown', touchSwipeRight);
 dom.fire('canvas:pointermove', { ...touchSwipeRight, clientY: 170 });
-assert(Input.pressed('duck') && Input.held('duck') && !Input.held('ability'),
-  'a right-half down-swipe ducks once and never spends the power');
+assert(Input.pressed('slide') && Input.held('slide') && !Input.held('ability'),
+  'a right-half down-swipe slides once and never spends the power');
 dom.fire('canvas:pointerup', touchSwipeRight);
-assert(Input.released('duck') && !Input.held('duck'), 'the right-half duck ends on release');
+assert(Input.released('slide') && !Input.held('slide'), 'the right-half slide ends on release');
 
 // A rightward drag from either half is the special — once, and without the
 // slide the half would otherwise have meant. The swipe-right mapping releasing
@@ -161,7 +161,7 @@ frame();
 const dragRight = pointer(0, 8, 400, 'touch');
 dom.fire('canvas:pointerdown', dragRight);
 dom.fire('canvas:pointermove', { ...dragRight, clientX: 440 });
-assert(Input.pressed('ability') && Input.held('ability') && !Input.held('duck'),
+assert(Input.pressed('ability') && Input.held('ability') && !Input.held('slide'),
   'a rightward drag from the slide half fires the power once and never slides');
 frame();
 dom.fire('canvas:pointermove', { ...dragRight, clientX: 470 });
@@ -179,17 +179,17 @@ Input.setChromeButtons([
 ]);
 const onDisc = { ...pointer(0, 50, 450, 'touch'), clientY: 58 };
 dom.fire('canvas:pointerdown', onDisc);
-assert(Input.pressed('escape') && Input.held('escape') && !Input.held('duck'),
+assert(Input.pressed('escape') && Input.held('escape') && !Input.held('slide'),
   'a tap on the PAUSE disc fires on contact and never reaches the slide half under it');
 dom.fire('canvas:pointerup', onDisc);
 assert(Input.released('escape'), 'and releases on the lift');
 frame();
 const nearDisc = { ...pointer(0, 51, 478, 'touch'), clientY: 58 };
 dom.fire('canvas:pointerdown', nearDisc);
-assert(!Input.held('escape') && !Input.held('duck'), 'a tap past the disc\'s slop is a pending gesture, not a press');
+assert(!Input.held('escape') && !Input.held('slide'), 'a tap past the disc\'s slop is a pending gesture, not a press');
 dom.frame(70);
 dom.fire('canvas:pointerup', nearDisc);
-assert(Input.pressed('duck') && !Input.held('escape'), 'and resolves to the half it landed on');
+assert(Input.pressed('slide') && !Input.held('escape'), 'and resolves to the half it landed on');
 frame(120);
 const inZone = { ...pointer(0, 52, 20, 'touch'), clientY: 200 };
 dom.fire('canvas:pointerdown', inZone);
@@ -201,10 +201,10 @@ Input.setChromeButtons([]);
 frame();
 const right = pointer(2, 6, 240);
 dom.fire('canvas:pointerdown', right);
-assert(Input.pressed('duck') && Input.held('duck'),
-  'right mouse press slides — the same held duck/kick action as Down Arrow');
+assert(Input.pressed('slide') && Input.held('slide'),
+  'right mouse press slides — the same held slide/kick action as Down Arrow');
 dom.fire('canvas:pointerup', right);
-assert(Input.released('duck') && !Input.held('duck'), 'right mouse release ends the duck/kick hold');
+assert(Input.released('slide') && !Input.held('slide'), 'right mouse release ends the slide/kick hold');
 
 frame();
 const middle = pointer(1, 15, 240);
@@ -217,7 +217,7 @@ Input.setContext('menu');
 dom.fire('canvas:pointerdown', pointer(0, 10));
 dom.fire('canvas:pointerdown', pointer(2, 11));
 dom.fire('canvas:pointerdown', pointer(1, 16));
-assert(!Input.pressed('jump') && !Input.pressed('ability') && !Input.pressed('duck'),
+assert(!Input.pressed('jump') && !Input.pressed('ability') && !Input.pressed('slide'),
   'mouse gameplay controls stay inactive outside levels');
 Input.endFrame();
 const menuSwipe = pointer(0, 14, 240, 'touch');
@@ -232,7 +232,7 @@ Input.setMenuKeys(true);
 dom.fire('canvas:pointerdown', pointer(0, 12));
 dom.fire('canvas:pointerdown', pointer(2, 13));
 dom.fire('canvas:pointerdown', pointer(1, 17));
-assert(!Input.pressed('jump') && !Input.pressed('ability') && !Input.pressed('duck'),
+assert(!Input.pressed('jump') && !Input.pressed('ability') && !Input.pressed('slide'),
   'mouse gameplay controls stay inactive while paused');
 
 Input.setContext('workshop');

@@ -1374,7 +1374,7 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     .filter((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT && op[4] === 2 && op[5] === 2
       && op[3] > 100).length;
 
-  assert(marks(sign('duck', ['#72d8f0'], 0), '#72d8f0') > 0,
+  assert(marks(sign('slide', ['#72d8f0'], 0), '#72d8f0') > 0,
     "the sign draws its mark in the action's own colour");
   // Colour is passed, never kept: a mark asked for in a colour the pack has
   // never heard of comes out in it, which is why the action list lives with the
@@ -1384,14 +1384,14 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // A SLIDE CAN ANSWER TWO OBJECTS AND SHOWS TWO MARKS. Shape is the button,
   // colour is the thing arriving: a barrel along the floor in wood, a drone
   // overhead in cyan, and a stage that stages both says both.
-  const two = sign('duck', ['#d4a35e', '#72d8f0'], 0);
+  const two = sign('slide', ['#d4a35e', '#72d8f0'], 0);
   assert(marks(two, '#d4a35e') === 1 && marks(two, '#72d8f0') === 1,
     'a slide that answers two objects shows a mark for each');
   assert(marks(sign('jump', ['#3fbf5a'], 0), '#3fbf5a') === 1, 'and a jump shows one');
   // The word underneath, a different length per verb — the check that it is the
   // label being printed and not a fixed decoration.
   const j = letters(sign('jump', ['#3fbf5a'], 0));
-  const d = letters(sign('duck', ['#72d8f0'], 0));
+  const d = letters(sign('slide', ['#72d8f0'], 0));
   const a = letters(sign('ability', ['#f890b8'], 0));
   assert(j > 0 && d > j && a > d,
     `the word is printed under it (JUMP ${j} < SLIDE ${d} < ATTACK ${a} cells)`);
@@ -1399,7 +1399,7 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // are the same three points reflected.
   const corners = (action) => sign(action, ['#3fbf5a'], 0)
     .filter((op) => op[0] === 'lineTo').length;
-  assert(corners('jump') === corners('duck'), 'up and down are the same triangle reflected');
+  assert(corners('jump') === corners('slide'), 'up and down are the same triangle reflected');
   // ONE BOARD, WHATEVER IS ON IT — same origin, same square, on every stage.
   for (const stage of [1, 2, 3]) {
     const quietBoard = board(background(stage, 0, {}, 0, 0, { streak: 12, verbCue: null }));
@@ -1412,7 +1412,7 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // and the moment the shout ends it is back exactly as it was.
   const quiet = price({ streak: 12 });
   assert(quiet > 0, 'the board counts the streak when nothing is being shouted');
-  assert(price({ streak: 12, verbCue: { action: 'duck', ink: ['#72d8f0'] } }) === 0,
+  assert(price({ streak: 12, verbCue: { action: 'slide', ink: ['#72d8f0'] } }) === 0,
     'and gives its whole face over while the sign is up');
   assert(price({ streak: 12, verbCue: null }) === quiet, 'and takes it back afterwards');
   // ONE DARK BEAT A BAR, not a strobe — and reduced flashing keeps the message
@@ -1421,17 +1421,17 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // than across bars: this is the one thing on the panel that happens at a
   // finer grain than the beat grid.
   for (const phase of [0, 0.3, 0.74]) {
-    assert(marks(sign('duck', ['#72d8f0'], 3 + phase), '#72d8f0') > 0,
+    assert(marks(sign('slide', ['#72d8f0'], 3 + phase), '#72d8f0') > 0,
       `lit ${Math.round(phase * 100)}% of the way through a beat`);
   }
   for (const phase of [0.75, 0.99]) {
-    assert(marks(sign('duck', ['#72d8f0'], 3 + phase), '#72d8f0') === 0
-      && letters(sign('duck', ['#72d8f0'], 3 + phase)) === 0,
+    assert(marks(sign('slide', ['#72d8f0'], 3 + phase), '#72d8f0') === 0
+      && letters(sign('slide', ['#72d8f0'], 3 + phase)) === 0,
       `dark ${Math.round(phase * 100)}% of the way through a beat`);
   }
-  assert(marks(sign('duck', ['#72d8f0'], 3.9, { reducedFlashing: true }), '#72d8f0') > 0,
+  assert(marks(sign('slide', ['#72d8f0'], 3.9, { reducedFlashing: true }), '#72d8f0') > 0,
     'reduced flashing keeps the message and drops the flash');
-  assert(marks(sign('duck', ['#72d8f0'], 0, { reducedMotion: true }), '#72d8f0') === 0,
+  assert(marks(sign('slide', ['#72d8f0'], 0, { reducedMotion: true }), '#72d8f0') === 0,
     'a frozen panel is never shouted at');
 }
 

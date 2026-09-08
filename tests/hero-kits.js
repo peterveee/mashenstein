@@ -3,7 +3,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Input } = await import('../src/engine/input.js');
-const { Player, PLAYER_X, DUCK_MAX_T } = await import('../src/game/player.js');
+const { Player, PLAYER_X, SLIDE_MAX_T } = await import('../src/game/player.js');
 const { RunState } = await import('../src/game/run.js');
 const { makeObstacle } = await import('../src/game/entities.js');
 const { save } = await import('../src/engine/save.js');
@@ -32,13 +32,13 @@ player.update(0.64, idleInput, { speed: 160 });
 assert(player.rolling, 'Fernwick roll remains active before 0.65 seconds');
 player.update(0.02, idleInput, { speed: 160 });
 assert(!player.rolling, 'Fernwick roll ends after 0.65 seconds');
-player.ducking = true;
-// Held for less than DUCK_MAX_T on purpose. Past that the duck window closes and the
-// hero stands up under a held key — see duckWindow in player.js — which is a claim about
-// how long a slide lasts, not about this one. What is checked here is that holding duck
+player.sliding = true;
+// Held for less than SLIDE_MAX_T on purpose. Past that the slide window closes and the
+// hero stands up under a held key — see slideWindow in player.js — which is a claim about
+// how long a slide lasts, not about this one. What is checked here is that holding slide
 // never promotes it into a roll, so the hold has to stay inside the window to ask it.
-player.update(DUCK_MAX_T / 2, { held: (action) => action === 'duck' }, { speed: 160 });
-assert(player.ducking && !player.rolling, 'ordinary duck can be held without becoming a roll');
+player.update(SLIDE_MAX_T / 2, { held: (action) => action === 'slide' }, { speed: 160 });
+assert(player.sliding && !player.rolling, 'ordinary slide can be held without becoming a roll');
 
 save.load();
 save.newSlot(0, 0);

@@ -24,7 +24,7 @@ assert(p.slidePressed(), 'a real airborne jump accepts the slide-kick edge');
 assert(p.slideSlamming && p.vy === SLIDE_SLAM_VY, 'the edge commits an immediate downward slam');
 assert(p.hitH === PLAYER_H, 'the aerial pose keeps the standing collision height');
 const airPose = poseFromPlayer(p, 0);
-assert(airPose.airSlideKick && airPose.kind === 'duck' && !airPose.grounded,
+assert(airPose.airSlideKick && airPose.kind === 'slide' && !airPose.grounded,
   'the aerial slide-kick has its own visual pose without becoming a stomp');
 
 let landing = null;
@@ -34,7 +34,7 @@ for (let i = 0; i < 120 && !landing; i++) {
 }
 assert(landing?.landed && landing.slideKickLand && !landing.stompLand,
   'the slam reports a slide-kick landing, not a stomp landing');
-assert(p.grounded && p.ducking && p.duckAmount === 1 && p.slideKickT === SLIDE_KICK_T,
+assert(p.grounded && p.sliding && p.slideAmount === 1 && p.slideKickT === SLIDE_KICK_T,
   'landing starts a full grounded kick even after Down is released');
 
 const held = new Player('gnash');
@@ -42,11 +42,11 @@ held.jumpPressed(); held.y = 28; held.vy = -80; held.jumps = 1;
 assert(held.slidePressed(), 'a second hero can commit the same universal move');
 let heldLanding = null;
 for (let i = 0; i < 120 && !heldLanding; i++) {
-  const result = held.update(1 / 60, { held: action => action === 'duck' }, { speed: 160 });
+  const result = held.update(1 / 60, { held: action => action === 'slide' }, { speed: 160 });
   if (result.landed) heldLanding = result;
 }
-held.update(1 / 60, { held: action => action === 'duck' }, { speed: 160 });
-assert(heldLanding?.slideKickLand && held.ducking && held.duckHoldT > 0,
+held.update(1 / 60, { held: action => action === 'slide' }, { speed: 160 });
+assert(heldLanding?.slideKickLand && held.sliding && held.slideHoldT > 0,
   'holding Down continues the landing kick as a normal fresh slide');
 
 const spring = new Player('lorenzo');

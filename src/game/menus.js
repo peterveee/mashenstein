@@ -207,7 +207,7 @@ function titlePoseKey(id, pose, h) {
     // would serve a cached frame with the axe still on his back.
     pose.axeThrown ? 1 : 0, pose.axeReady === false ? 0 : 1,
     pose.stomp ? 1 : 0, pose.roll ? 1 : 0,
-    pose.duckAmount == null ? '' : Math.round(Number(pose.duckAmount) * 8),
+    pose.slideAmount == null ? '' : Math.round(Number(pose.slideAmount) * 8),
   ].join('|');
 }
 
@@ -2237,10 +2237,9 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     const textY = textYForMid(rowTop + g.rowH / 2);
     if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
     if (left) {
-      if (selected) drawText(d, '>', (g.x + 7 + textX) / 2, textY, '#c9a0ff', modalTextS, 'bold');
       drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
     }
-    else drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}`, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+    else drawTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
   });
 }
 
@@ -2378,7 +2377,7 @@ export class DifficultyState {
       const p = Input.pointer;
       const tapped = Input.pressed('pointer') && p.y >= 142 && p.y <= 160;
       if (Input.pressed('confirm') || (tapped && p.x < W / 2)) { Audio.sfx('uiConfirm'); this.commit(5); }
-      if (Input.pressed('back') || Input.pressed('duck') || (tapped && p.x >= W / 2)) { this.confirming = false; Audio.sfx('ui'); }
+      if (Input.pressed('back') || Input.pressed('slide') || (tapped && p.x >= W / 2)) { this.confirming = false; Audio.sfx('ui'); }
       Input.endFrame();
       return;
     }
@@ -2412,7 +2411,7 @@ export class DifficultyState {
     drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2, 'title');
     // Widest of the two columns of type, since the names are set a size above
     // their glosses and either can be the long one.
-    const names = centredBand(DIFFICULTIES.map((d) => `> ${d.name}`), DIFF_NAME_S);
+    const names = centredBand(DIFFICULTIES.map((d) => d.name), DIFF_NAME_S);
     const glosses = centredBand(DIFFICULTIES.map((d) => d.desc), DIFF_GLOSS_S);
     const band = names.w >= glosses.w ? names : glosses;
     [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }].forEach((d, i) => {
@@ -2425,7 +2424,7 @@ export class DifficultyState {
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
       const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - DIFF_GLOSS_DY / 2;
-      drawTextCentered(ctx, (sel ? '> ' : '') + label, W / 2, nameY, color, DIFF_NAME_S);
+      drawTextCentered(ctx, label, W / 2, nameY, color, DIFF_NAME_S);
       drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68', DIFF_GLOSS_S);
       // the skull is smiling
       if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label, DIFF_NAME_S) / 2 + 18, nameY, '#8a8a98', DIFF_NAME_S);
@@ -2755,7 +2754,7 @@ export class BriefingState {
       for (const [i, text, y] of rows) {
         const on = this.idx === i;
         if (on && !blink) continue;
-        drawTextCentered(ctx, `${on ? '> ' : '  '}${text}`, W / 2, y, on ? '#c8c8d8' : dim, promptS);
+        drawTextCentered(ctx, text, W / 2, y, on ? '#c8c8d8' : dim, promptS);
       }
       return;
     }
@@ -3151,7 +3150,7 @@ export class ResultsState {
         const sel = i === this.idx;
         const y = RESULT_OPT_TOP + i * RESULT_OPT_H;
         if (sel) drawMenuRow(ctx, TUBE_INSET_X + 6, y + 1, W - (TUBE_INSET_X + 6) * 2, RESULT_OPT_H - 2);
-        drawTextCentered(ctx, `${sel ? '> ' : '  '}${label}`, W / 2,
+        drawTextCentered(ctx, label, W / 2,
           textYForMid(y + RESULT_OPT_H / 2, 1), sel ? '#c9a0ff' : '#8a8a98', 1);
       });
     } else {
@@ -4061,19 +4060,13 @@ export class SoundTestState {
         const titleY = textYForMid(rowMid - lineGap / 2, inkScale);
         const bpmY = textYForMid(rowMid + lineGap / 2, inkScale);
         // Both lines share one left margin so the stack reads as a column.
-        // Portrait keeps the marker inside the plate instead of hanging it off
-        // the left edge, so the text sits a touch past the landscape margin to
-        // clear it — any further right and the longest title reaches the frame.
-        const markerX = band.x + 6;
         const titleX = band.textX + 6;
-        if (sel) menuText('>', markerX, titleY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
         menuText(`${this.trackCounter(i)} ${tr.name}`, titleX, titleY,
           on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
         menuText(`(${jukeboxBpm(tr)} BPM)`, titleX, bpmY,
           on ? '#48e0c8' : sel ? '#c9a0ff' : '#8b8ba0', LEFT_MENU_ITEM_S);
       } else {
         const textY = textYForMid(rowMid);
-        if (sel) menuText('>', band.textX - 16, textY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
         menuText(`${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`, band.textX,
           textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
       }
@@ -4091,7 +4084,6 @@ export class SoundTestState {
     const backSelected = this.idx === this.tracks.length;
     if (backSelected) drawMenuRow(ctx, band.x, this.backY + 1, band.w, this.backH - 2);
     const backTextY = textYForMid(this.backY + this.backH / 2);
-    if (backSelected) menuText('>', band.textX - 16, backTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
     menuText('BACK', band.textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     if (this.playing >= 0) {
       const bars = 12;
@@ -4311,6 +4303,30 @@ export class SettingsState {
       adjust,
     };
   }
+  /**
+   * The way back to the browser's own figure, without tapping sixteen clicks.
+   *
+   * AUDIO SYNC is an offset ON TOP of what the device reports (audio.js,
+   * heardLatencySec), so zero is not "no correction at all" — it is "trust the
+   * system's number", which is the right answer on a wired output and the
+   * answer a player wants back the moment they unplug the bluetooth headphones
+   * they calibrated for. The row names the figure it is handing back to, and
+   * refuses when it is already in force rather than pretending to act.
+   */
+  audioSyncResetOption() {
+    const s = this.save.settings;
+    const reported = Math.round(Audio.reportedLatencySec() * 1000);
+    const ms = clampAudioSyncMs(s.audioSyncMs);
+    return {
+      label: `RESET AUDIO SYNC (USE SYSTEM ~${reported} MS)`,
+      act: () => {
+        if (ms === 0) { Audio.sfx('uiBad'); return; }
+        s.audioSyncMs = 0;
+        Audio.setSyncOffset(0);
+        this.save.persist();
+      },
+    };
+  }
   options() {
     const s = this.save.settings;
     return [
@@ -4322,6 +4338,7 @@ export class SettingsState {
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
       this.audioSyncOption(),
+      this.audioSyncResetOption(),
       { label: `REDUCED MOTION: ${s.reducedMotion ? 'ON' : 'OFF'}`, act: () => { s.reducedMotion = !s.reducedMotion; } },
       { label: `REDUCED FLASHING: ${s.reducedFlashing ? 'ON' : 'OFF'}`, act: () => { s.reducedFlashing = !s.reducedFlashing; } },
       { label: `SCREEN SHAKE: ${Math.round(s.screenShake * 100)}%`, act: () => { s.screenShake = s.screenShake >= 1 ? 0 : s.screenShake + 0.5; } },
@@ -4373,7 +4390,7 @@ export class SettingsState {
     const opts = this.options();
     if (this.confirming) {
       if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); this.resetToDefaults(); }
-      if (Input.pressed('back') || Input.pressed('duck')) { this.confirming = false; Audio.sfx('ui'); }
+      if (Input.pressed('back') || Input.pressed('slide')) { this.confirming = false; Audio.sfx('ui'); }
       Input.endFrame();
       return;
     }
@@ -4449,7 +4466,6 @@ export class SettingsState {
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2);
       const textY = textYForMid(rowTop + this.rowH / 2);
-      if (sel) drawText(ctx, '>', (band.x + band.textX) / 2, textY, '#c9a0ff', LEFT_MENU_ITEM_S);
       drawText(ctx, o.label, band.textX, textY, sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     });
     if (this.listCount(opts) > this.visibleRows) {
@@ -4465,7 +4481,6 @@ export class SettingsState {
     const doneSelected = this.idx === doneIndex;
     if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2);
     const doneTextY = textYForMid(this.doneY + this.doneH / 2);
-    if (doneSelected) drawText(ctx, '>', (band.x + band.textX) / 2, doneTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
     drawText(ctx, 'BACK', band.textX, doneTextY, doneSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
     // Use the same device-local formatter as the portrait shell. The dev-only

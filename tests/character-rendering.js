@@ -121,7 +121,7 @@ assert(FACE_CROP.max / FACE_CROP.min <= 1.1,
 assert(FACE_CROP.max <= 1 && FACE_CROP.pad > 0.1,
   'the face crop leaves the head clear of a circular rim');
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
-assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');
+assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and slide default to the improved motion');
 assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');
 assert(FINISH_CELEBRATION_POSE.kind === 'celebrate' && FINISH_CELEBRATION_POSE.headTurn === 0,
   'the flag-pole celebration clears the inherited run face angle');
@@ -140,7 +140,7 @@ assert(FINISH_CELEBRATION_POSE.kind === 'celebrate' && FINISH_CELEBRATION_POSE.h
     { kind: 'run', grounded: true, vy: 0 },
     { kind: 'jump', grounded: false, vy: 380 },
     { kind: 'jump', grounded: false, vy: -380 },
-    { kind: 'duck', grounded: true, vy: 0, duckAmount: 1 },
+    { kind: 'slide', grounded: true, vy: 0, slideAmount: 1 },
     { kind: 'idle', grounded: true, vy: 0 },
     { kind: 'celebrate', grounded: true, vy: 0 },
     // gaitTune is a pose-level dial sweep for the gallery. Garbage in it must
@@ -247,7 +247,14 @@ const GALLERY_BODY_DIALS = [
 // Fernwick's `torsoWidth` is approved: her princess redesign shipped a
 // deliberately slimmer chest than the `slim` build gives (2026-09-07), and it
 // is a promotion out of the bake-off, not a candidate left switched on.
-const APPROVED_BODY_DIALS = { kiko: ['legLength'], fernwick: ['torsoWidth'] };
+// Her `armLength` is approved too (2026-09-08): dropping Kiko's `handsFront`
+// off her spec put her arm back on the cast's 0.200u, but `tall: 0.95` leaves
+// her with the lowest shoulder in the cast (0.400u above the feet against
+// everyone else's 0.443u), so a cast-length arm still hung her hand 0.04u
+// lower than anyone's. 0.88 lands it at 0.223u against the cast's 0.240u.
+// Measured with work/local/_arm-fit.mjs, which fits hand height against this
+// very dial so the slope is the arm and the intercept is the shoulder.
+const APPROVED_BODY_DIALS = { kiko: ['legLength'], fernwick: ['torsoWidth', 'armLength'] };
 assert(Object.entries(TOON_SPECS).every(([id, spec]) =>
   GALLERY_BODY_DIALS.every((key) =>
     !Object.hasOwn(spec, key) || (APPROVED_BODY_DIALS[id] || []).includes(key))),
@@ -290,14 +297,14 @@ for (const id of Object.keys(TOON_SPECS)) {
         }, 40, 80, 60);
       }
       drawToon(bctx, id, {
-        kind: 'duck', time: 0.3, phase: 0.25, grounded: true, facing: 1,
+        kind: 'slide', time: 0.3, phase: 0.25, grounded: true, facing: 1,
         vy: 0, motionStyle,
       }, 40, 80, 60);
       if (motionStyle === ACTIVE_LOCOMOTION_STYLE) {
-        for (const duckAmount of [0, 0.5, 1]) {
+        for (const slideAmount of [0, 0.5, 1]) {
           drawToon(bctx, id, {
-            kind: 'duck', time: 0.3, phase: 0.25, grounded: true, facing: 1,
-            vy: 0, motionStyle, duckAmount, duckDirection: 1,
+            kind: 'slide', time: 0.3, phase: 0.25, grounded: true, facing: 1,
+            vy: 0, motionStyle, slideAmount, slideDirection: 1,
           }, 40, 80, 60);
         }
       }
@@ -306,24 +313,24 @@ for (const id of Object.keys(TOON_SPECS)) {
     safe = false;
     console.error(err);
   }
-  assert(safe, `${id} legacy and improved jump/duck poses render safely`);
+  assert(safe, `${id} legacy and improved jump/slide poses render safely`);
 }
 
-const duckTransition = new Player('lorenzo');
-const duckInput = (down) => ({ held: (action) => action === 'duck' && down });
-duckTransition.update(0.07, duckInput(true), null);
-assert(duckTransition.duckAmount > 0 && duckTransition.duckAmount < 1,
-  'duck input animates through a partial crouch');
-duckTransition.update(0.07, duckInput(true), null);
-assert(duckTransition.duckAmount === 1 && poseFromPlayer(duckTransition, 0).kind === 'duck',
-  'held duck settles into the planted pose');
-duckTransition.update(0.05, duckInput(false), null);
-const recoveringPose = poseFromPlayer(duckTransition, 0);
-assert(recoveringPose.kind === 'duck' && recoveringPose.duckAmount > 0 && recoveringPose.duckAmount < 1,
-  'duck release keeps the recovery animation visible');
-duckTransition.update(0.05, duckInput(false), null);
-assert(duckTransition.duckAmount === 0 && poseFromPlayer(duckTransition, 0).kind === 'run',
-  'duck recovery returns cleanly to the run pose');
+const slideTransition = new Player('lorenzo');
+const slideInput = (down) => ({ held: (action) => action === 'slide' && down });
+slideTransition.update(0.07, slideInput(true), null);
+assert(slideTransition.slideAmount > 0 && slideTransition.slideAmount < 1,
+  'slide input animates through a partial crouch');
+slideTransition.update(0.07, slideInput(true), null);
+assert(slideTransition.slideAmount === 1 && poseFromPlayer(slideTransition, 0).kind === 'slide',
+  'held slide settles into the planted pose');
+slideTransition.update(0.05, slideInput(false), null);
+const recoveringPose = poseFromPlayer(slideTransition, 0);
+assert(recoveringPose.kind === 'slide' && recoveringPose.slideAmount > 0 && recoveringPose.slideAmount < 1,
+  'slide release keeps the recovery animation visible');
+slideTransition.update(0.05, slideInput(false), null);
+assert(slideTransition.slideAmount === 0 && poseFromPlayer(slideTransition, 0).kind === 'run',
+  'slide recovery returns cleanly to the run pose');
 
 for (const hero of HEROES) {
   const player = new Player(hero.id);
@@ -344,10 +351,10 @@ for (const hero of HEROES) {
   player.vy = 0;
   player.fallFace = false;
   player.grounded = true;
-  player.ducking = true;
-  const ducking = poseFromPlayer(player, 0);
+  player.sliding = true;
+  const sliding = poseFromPlayer(player, 0);
   assert(running.headTurn === RUN_HEAD_TURN, `${hero.id} gets the production treatment while running`);
-  assert(jumping.headTurn === 0 && ducking.headTurn === 0,
+  assert(jumping.headTurn === 0 && sliding.headTurn === 0,
     `${hero.id} keeps non-run poses front-facing`);
   assert(stepped.kind === 'run' && stepped.headTurn === RUN_HEAD_TURN,
     `${hero.id} keeps running off a short ledge, head and all — the snap to front-facing at the edge was the tell`);

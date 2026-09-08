@@ -1,7 +1,7 @@
 // Fairness simulation: for every cabinet × speed tier × seed batch, generate
 // long obstacle streams through the REAL spawner and assert the invariant:
 // between any two action-required obstacles there is at least
-// speed × (worst airtime + reaction floor) of runway (accounting for jump-then-duck).
+// speed × (worst airtime + reaction floor) of runway (accounting for jump-then-slide).
 // Runs headless; no DOM needed.
 import { Spawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime } from '../src/game/spawner.js';
 import { CABINETS, CABINET_BY_ID } from '../src/data/cabinets.js';
@@ -37,7 +37,7 @@ function sweep(label, makeSpawner, cab) {
         checks++;
         let minT = react;
         if (prev.def.action === 'jump') minT += worstAirtime();
-        if (prev.def.action === 'jump' && next.def.action === 'duck') minT += 0.15;
+        if (prev.def.action === 'jump' && next.def.action === 'slide') minT += 0.15;
         const minGap = speed * minT - 1; // 1px numeric slack
         const gap = next.x - (prev.x + prev.w);
         // Overlapping same-pattern clusters count as one composite obstacle if

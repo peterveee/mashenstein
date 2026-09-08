@@ -733,7 +733,7 @@ overtimeHub.exit();
 run = makeRun(); run.enter();
 run.relay.current = 'lorenzo'; run.player.setHero('lorenzo');
 run.player.grounded = false; run.player.vy = 0;
-run.player.update(1 / 60, { held: (a) => a === 'duck' }, { speed: 160 });
+run.player.update(1 / 60, { held: (a) => a === 'slide' }, { speed: 160 });
 assert(!run.player.stomping, 'Down no longer triggers Lorenzo air stomp');
 
 // Gravity bypasses dash and power-up invulnerability — and a pit is fatal, so

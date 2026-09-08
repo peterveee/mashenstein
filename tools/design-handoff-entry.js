@@ -111,7 +111,7 @@ function section(title, note) {
   return g;
 }
 
-const POSES = ['idle', 'run', 'jump', 'duck', 'celebrate'];
+const POSES = ['idle', 'run', 'jump', 'slide', 'celebrate'];
 
 // ------------------------------------------------------------ scale ladder
 // Real presented sizes, not multipliers. Judging this character at a size it is
@@ -180,7 +180,7 @@ const POSES = ['idle', 'run', 'jump', 'duck', 'celebrate'];
 // ------------------------------------------------------------ pose sheet
 {
   const g = section('Poses — every state the rig has to hold',
-    'A silhouette tuned on the idle frame routinely breaks the run or the duck. All five are '
+    'A silhouette tuned on the idle frame routinely breaks the run or the slide. All five are '
     + 'drawn by the same painter, so all five move together. Celebrate is the results-screen '
     + 'routine: signature bounce, then the big move.');
   const HH = Math.round(heroCssPx(1440, 810)); // the common laptop case
@@ -293,7 +293,7 @@ const FLAG_MEANING = {
   back: 'item carried on the back',
   cannon: 'arm-mounted cannon',
   nameTag: 'name tag on the chest',
-  rollDuck: 'duck pose is a roll',
+  rollTuck: 'slide pose is a roll',
   shoulders: 'shoulder width multiplier (1 = rig default)',
   taper: 'torso taper, 0..1 — lower is more V-shaped',
   armLen: 'arm length multiplier (1 = rig default)',

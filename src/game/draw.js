@@ -231,7 +231,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   const starLeft = opts.invincible || 0;
   if (!starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
   // opts.pose patches the derived pose. The controller only ever reports run /
-  // jump / duck, because those are the only things a hero does while a stage is
+  // jump / slide, because those are the only things a hero does while a stage is
   // moving — a scene that has STOPPED the world (training's epilogue) has to be
   // able to say "stand there and wave", or the hero holds whatever stride frame
   // the treadmill died on.
@@ -413,14 +413,14 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   const bottom = GROUND_Y - e.alt;
   // `artLift` raises the DRAWING without touching the box, for the case where a
   // hazard's legal altitude and its readable altitude are not the same number.
-  // A flier's box has to stay low enough to catch a hero who does not duck, and
+  // A flier's box has to stay low enough to catch a hero who does not slide, and
   // the hero's crouched ART is taller than his crouched box — so at the highest
-  // legal altitude a clean duck can still look like it grazed the underside.
+  // legal altitude a clean slide can still look like it grazed the underside.
   //
   // Only ever positive, and only by a few pixels: this is art drawn ABOVE what
   // can hit you, so it errs toward "that should have missed me". It stays
   // believable because the standing hero's art is 24px against a box of 14 — far
-  // taller than any lift here — so a hero who fails to duck still visibly runs
+  // taller than any lift here — so a hero who fails to slide still visibly runs
   // into the thing that hits him.
   let y = Math.round(bottom - e.h) - (e.artLift || 0);
   if (e.def && (e.def.bob || (e.def && e.def.power))) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);

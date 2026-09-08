@@ -390,7 +390,7 @@ function drawMashGate(c,w,h,t){
 
 function drawRuleSwitcher(c,w,h,t){
   shadow(c,w,h);box(c,w*.2,h*.22,w*.6,h*.66,w*.05,'#7d303c');box(c,w*.27,h*.3,w*.46,h*.24,w*.025,'#111522');
-  const state=Math.floor(t*.8)%3;const icon=['JUMP','DUCK','GO'][state];c.fillStyle=['#f6d33c','#52eafa','#74e58b'][state];c.font=`700 ${Math.max(5,w*.13)}px system-ui`;c.textAlign='center';c.textBaseline='middle';c.fillText(icon,w*.5,h*.42);
+  const state=Math.floor(t*.8)%3;const icon=['JUMP','SLIDE','GO'][state];c.fillStyle=['#f6d33c','#52eafa','#74e58b'][state];c.font=`700 ${Math.max(5,w*.13)}px system-ui`;c.textAlign='center';c.textBaseline='middle';c.fillText(icon,w*.5,h*.42);
   const angle=[-.65,.65,0][state];line(c,'#dce4ec',w*.055,(p)=>{p.moveTo(w*.5,h*.69);p.lineTo(w*.5+Math.sin(angle)*w*.19,h*.69-Math.cos(angle)*h*.16);});dot(c,w*.5,h*.69,w*.065,'#e24f5d','#171522',w*.022);
 }
 
@@ -410,10 +410,10 @@ export const OBSTACLE_CANDIDATES = [
   ['plumber','pipePiston','A','PIPE PISTON','rises after a mechanical wind-up','jump'],
   ['plumber','steamValve','B','STEAM VALVE','timed vertical steam burst','timing'],
   ['plumber','manhole','C','LOOSE MANHOLE','lifts into a temporary barrier','jump'],
-  ['speed','roadBarrier','A','ROAD BARRIER','alternates high and low','jump / duck'],
+  ['speed','roadBarrier','A','ROAD BARRIER','alternates high and low','jump / slide'],
   ['speed','rollingTyre','B','ROLLING TYRE','fast readable rolling hazard','jump / smash'],
   ['speed','fallingSign','C','FALLING SIGN','shadow telegraph, then drop','timing'],
-  ['neon','laserGate','A','LASER GATE','high-low beam cycle','jump / duck'],
+  ['neon','laserGate','A','LASER GATE','high-low beam cycle','jump / slide'],
   ['neon','pulseMine','B','PULSE MINE','charge ring warns before pulse','timing'],
   ['neon','shieldDrone','C','SHIELD DRONE','protects a nearby target','shoot'],
   ['frost','crackingIce','A','CRACKING ICE','three visible failure stages','move'],
@@ -432,7 +432,7 @@ export const OBSTACLE_CANDIDATES = [
   ['office','shredder','B','PAPER SHREDDER','pulls loose paper toward its mouth','jump'],
   ['office','turnstile','C','SECURITY TURNSTILE','rotating three-arm gate','timing'],
   ['surge','glitchCrate','A','GLITCH CRATE','familiar object breaks visual rules','jump / smash'],
-  ['surge','mashGate','B','MASH GATE','changes cabinet identity and height','jump / duck'],
+  ['surge','mashGate','B','MASH GATE','changes cabinet identity and height','jump / slide'],
   ['surge','ruleSwitcher','C','RULE SWITCHER','announces the next action rule','read / react'],
 ].map(([cabinet,id,letter,name,note,action])=>({cabinet,id,letter,name,note,action}));
 

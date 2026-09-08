@@ -42,8 +42,8 @@ export const TUNABLES = [
   { file: 'src/game/player.js', name: 'TERMINAL_VY', short: 'TERMINAL_VY', group: PHYSICS, step: 10, coarse: 50, min: -1200, max: -80, fmt: 0 },
   { file: 'src/game/player.js', name: 'STOMP_GRAVITY_MULT', short: 'STOMP_GRAV', group: PHYSICS, step: 0.1, coarse: 0.5, min: 1, max: 6, fmt: 2 },
   { file: 'src/game/player.js', name: 'LANDED_T', short: 'LANDED_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
-  { file: 'src/game/player.js', name: 'DUCK_IN_T', short: 'DUCK_IN_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
-  { file: 'src/game/player.js', name: 'DUCK_OUT_T', short: 'DUCK_OUT_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
+  { file: 'src/game/player.js', name: 'SLIDE_IN_T', short: 'SLIDE_IN_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
+  { file: 'src/game/player.js', name: 'SLIDE_OUT_T', short: 'SLIDE_OUT_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
   // The gait/scroll coupling. Lower means faster legs at the same speed, and
   // it is the one number that ties the animation to the world rather than to
   // the clock — which is why it sits in physics and not in gait.

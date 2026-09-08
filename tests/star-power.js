@@ -35,7 +35,7 @@ run.powerups.active.unpeel.t = 0.001;
 run.update(1 / 60);
 assert(!Audio.starMode, 'the star layer drops when unpeel expires');
 
-// Leaving the run must not strand the music ducked under a silent star bus.
+// Leaving the run must not strand the music slid under a silent star bus.
 run.powerups.grab('unpeel');
 run.update(1 / 60);
 run.exit();

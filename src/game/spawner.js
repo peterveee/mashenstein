@@ -228,7 +228,7 @@ export class Spawner {
     const air = worstAirtime();
     let t = this.react;
     if (prevKind === 'jump') t += air;               // must land first
-    if (prevKind === 'jump' && nextKind === 'duck') t += 0.15; // can't duck mid-air
+    if (prevKind === 'jump' && nextKind === 'slide') t += 0.15; // can't slide mid-air
     // Seconds of hang the previous prop bought, from puntClearanceT — a number
     // now rather than a flag, since two puntable props with different arcs owe
     // different amounts of room. `true` from an older caller still reads as a
@@ -340,8 +340,8 @@ export class Spawner {
         // Altitude. A def's `alt` is its home; a cell's `y` may override it,
         // but ONLY for `action: 'none'` flyers — targets, prize crates, the
         // shooter, the switch — where where-it-hangs is legitimate authored
-        // variety. A `duck` flyer's altitude IS its contract: the underside
-        // has to sit where the duck clears it and the stand does not, so a
+        // variety. A `slide` flyer's altitude IS its contract: the underside
+        // has to sit where the slide clears it and the stand does not, so a
         // pattern cannot move it (a drone lifted to y 26 would sail over a
         // standing hero and stop being an obstacle at all). For years every
         // `y` here was dead — the guard was `def.alt == null` and every flyer
@@ -391,7 +391,7 @@ export class Spawner {
       // purpose — see pickPattern.
       if (pat.once) this.usedOnce.add(pat.onceGroup || pat);
       // Gap to the next pattern: random but never below the fairness floor.
-      // The next pattern may open with a duck obstacle, so budget for the worst case.
+      // The next pattern may open with a slide obstacle, so budget for the worst case.
       // A section's density DIVIDES the rolled gap — 2 packs the lane twice as
       // tight, 0.5 opens it out — and it is applied to the roll's RESULT, never
       // to its bounds, so the draw is identical and density 1 is exact
@@ -400,7 +400,7 @@ export class Spawner {
       // to give, and never the reaction runway underneath it.
       const density = this.sectionFor(this.nextX)?.density ?? 1;
       const roll = this.rng.range(90, 220) / density;
-      const fair = this.fairGap(speed, this.lastActionKind, 'duck', this.lastWasPunt);
+      const fair = this.fairGap(speed, this.lastActionKind, 'slide', this.lastWasPunt);
       this.nextX = Math.max(lastX, this.lastActionX) + Math.max(roll, fair);
     }
   }

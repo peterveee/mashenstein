@@ -1312,7 +1312,7 @@ const DESERT_DUNES = [
 //
 // The silhouette has one requirement above looking nice: it must not read as a
 // HAZARD. The lane already teaches that a thing in the sky is a buzzbird or a
-// drone — something to duck — and buzzbird is drawn in hazard orange with a
+// drone — something to slide — and buzzbird is drawn in hazard orange with a
 // fast six-frame flap. So this is its opposite on every axis carrying that
 // meaning: warm dark with no hazard colour anywhere, wings in the flat
 // dihedral V of a soaring bird, and a flap that is mostly absent.
@@ -2160,7 +2160,7 @@ const LCD_CITY_SCENES = [
     //
     // AND THE TOWER GREW INTO THE ROOM THAT FREED UP — twice over, because the
     // case was costing sky at both ends. It stood 8px above the roof, and it
-    // was also the thing the plane's ENTRY altitude was set to duck under: 101
+    // was also the thing the plane's ENTRY altitude was set to slide under: 101
     // -> 140, with `plane.from` lifted 78 -> 68 to match, which is the one
     // number that was only ever low because something stood on this roof.
     // The binding case is the plane's first two steps, still climbing over this
@@ -3539,7 +3539,7 @@ const LCD_BILLBOARD_ART = {
 // THE SHARE PRICE, drawn from how the run is actually going.
 //
 // `form` is the one gameplay number this city is allowed to see: 0.5 at the
-// start of a stage, climbing a step per on-beat jump or duck, dropping on a
+// start of a stage, climbing a step per on-beat jump or slide, dropping on a
 // missed beat and dropping hard on a hit. Everything else about the trace is
 // authored — a fixed wobble so the line reads as a market rather than a ramp —
 // and the form only sets where the RIGHT-HAND end of it lands. Null form (the
@@ -3673,7 +3673,7 @@ function lcdComboBoard(ctx, building, frame) {
 // drone hanging still overhead in cyan — and the strip already draws that
 // distinction (hud.js, `marker.prop === 'barrel'`). A stage that asks for both
 // shows both, in the order the run hands them over.
-const LCD_SIGN_WORD = { jump: 'JUMP', duck: 'SLIDE', ability: 'ATTACK' };
+const LCD_SIGN_WORD = { jump: 'JUMP', slide: 'SLIDE', ability: 'ATTACK' };
 const LCD_SIGN_TRACK = 1;    // between letters, as the banner sets it
 // RIM TO CONTENTS. Three, not one — the sign used to run its longest word from
 // rim to rim, which reads as a board that could not hold what was put on it. A
@@ -3756,7 +3756,7 @@ function lcdSignMark(ctx, action, mx, my, ink) {
     ctx.lineWidth = 1;
     return;
   }
-  const up = action !== 'duck';
+  const up = action !== 'slide';
   ctx.beginPath();
   ctx.moveTo(mx, my + (up ? -LCD_SIGN_MARK_H : LCD_SIGN_MARK_H));
   ctx.lineTo(mx - LCD_SIGN_MARK_W, my + (up ? LCD_SIGN_MARK_H : -LCD_SIGN_MARK_H));

@@ -33,7 +33,7 @@ export class MinigameState {
       { id: 'left', x: 8, y: H - 52, w: 40, h: 40, action: 'left', label: '<' },
       { id: 'right', x: 56, y: H - 52, w: 40, h: 40, action: 'right', label: '>' },
       { id: 'jump', x: W - 96, y: H - 52, w: 40, h: 40, action: 'jump', label: 'A' },
-      { id: 'duck', x: W - 48, y: H - 52, w: 40, h: 40, action: 'duck', label: 'B' },
+      { id: 'slide', x: W - 48, y: H - 52, w: 40, h: 40, action: 'slide', label: 'B' },
     ];
     buttons.push({ id: 'skip', x: W - 52, y: 6, w: 44, h: 16, action: 'back', label: 'SKIP' });
     Input.setButtons(buttons);
@@ -151,7 +151,7 @@ function blockSurge(rng) {
       if (input.pressed('left') && fits(-1, 0)) px--;
       if (input.pressed('right') && fits(1, 0)) px++;
       if (input.pressed('jump') && fits(0, 0, 1)) { rot++; Audio.sfx('ui'); }
-      dropT += dt * (input.held('duck') ? 6 : 1);
+      dropT += dt * (input.held('slide') ? 6 : 1);
       if (dropT > fallSpeed) {
         dropT = 0;
         if (fits(0, 1)) py++;
@@ -197,12 +197,12 @@ function paddleWar(rng) {
   return {
     buttons: () => [
       { id: 'up', x: W - 48, y: 40, w: 40, h: 70, action: 'jump', label: 'UP' },
-      { id: 'down', x: W - 48, y: H - 110, w: 40, h: 70, action: 'duck', label: 'DN' },
+      { id: 'down', x: W - 48, y: H - 110, w: 40, h: 70, action: 'slide', label: 'DN' },
     ],
     update(dt, input) {
       taunt += dt;
       if (input.held('jump') || input.held('left')) my -= 140 * dt;
-      if (input.held('duck') || input.held('right')) my += 140 * dt;
+      if (input.held('slide') || input.held('right')) my += 140 * dt;
       my = Math.max(50, Math.min(H - 50, my));
       // Eggshell AI: confident, imperfect.
       const targetY = by + Math.sin(taunt * 2) * 18;

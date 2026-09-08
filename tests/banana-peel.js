@@ -35,7 +35,7 @@ assert(peel.slip === true, 'the peel declares the slip that makes it different')
 // The three escape hatches it deliberately does not have.
 assert(peel.breakable === false, 'no weapon, stomp or shockwave removes a peel');
 assert(!peel.punt, 'a peel cannot be punted — a low boot meets the floor, not the prop');
-assert(peel.action !== 'duck', 'the peel is never duckable: sliding into it still slips');
+assert(peel.action !== 'slide', 'the peel is never slideable: sliding into it still slips');
 // It STANDS. Two earlier passes drew it flat on the road at 12x5 and both were
 // unreadable: a five-pixel hazard has no silhouette, and the kart-racer peel it
 // is modelled on stands up — one skin upright with the stalk on top, the rest
@@ -236,13 +236,13 @@ function runIntoPeel(prepare) {
 }
 
 // THE SLIDE DOES NOT SAVE YOU. This is the peel's reason to exist beside the
-// cone rows: holding duck through a lane stops being free.
+// cone rows: holding slide through a lane stops being free.
 {
   const { run } = runIntoPeel((r) => {
     r.player.grounded = true;
-    r.player.duckAmount = 1;
-    r.player.duckHoldT = 0;
-    r.player.ducking = true;
+    r.player.slideAmount = 1;
+    r.player.slideHoldT = 0;
+    r.player.sliding = true;
   });
   assert(run.player.slipT === SLIP_T, 'sliding into a peel still slips');
 }

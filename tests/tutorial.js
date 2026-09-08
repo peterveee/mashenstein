@@ -227,7 +227,7 @@ for (const type of ['drone', 'buzzbird']) {
   range.enter();
   range.startStep(8);
   const flier = makeObstacle(type, range.playerWorldX() + 200);
-  flier.alt = 13;                        // the duck band, where the lemon used to reach
+  flier.alt = 13;                        // the slide band, where the lemon used to reach
   range.obstacles = [flier];
   range.sawShotDown = false;
   range.player.abilityCd = 0;

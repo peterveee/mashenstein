@@ -1022,7 +1022,7 @@ export const RUSTY_MOUTH_CANDIDATES = [0, 0.015, 0.028, 0.042, 0.055].map((m, i)
 // furrow is reserved for moods that earn it. The mapping:
 //
 //     annoyed / hmph / gruff   +0.34  furrow, and dropped a touch
-//     focus (running, ducking) +0.18  a light furrow — he is concentrating
+//     focus (running, sliding) +0.18  a light furrow — he is concentrating
 //     surprise / browRaise     -0.30  up and lifted, the open face
 //     joy / cheer              -0.22  up, softer than surprise
 //     everything else            0    level: a marking, not a mood
@@ -1061,7 +1061,7 @@ export const RUSTY_EXPRESSIVE_CANDIDATES = [
     id: 'texp-ink',
     name: 'T3 — INK BROW ON (was)',
     note: 'What he had: white marks AND the rig\'s ink brow stroked over them whenever a mood fires. '
-      + 'The control, and the reason for the change — watch the run and duck columns, where two '
+      + 'The control, and the reason for the change — watch the run and slide columns, where two '
       + 'horizontal lines stack above each eye.',
     spec: { ...RUSTY_R16, browExpressive: false, faceSeed: 2.3 },
     pal: PANDA_PAL,

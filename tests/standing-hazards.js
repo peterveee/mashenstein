@@ -169,7 +169,7 @@ for (const id of HAZARDS) {
 // `cell.y` is LIVE for `action: 'none'` flyers only (see the altitude note in
 // Spawner.fill). Two contracts follow, and both are the kind an edit elsewhere
 // breaks silently:
-//   1. a `duck` flyer's cell must not carry a y — its altitude is the duck
+//   1. a `slide` flyer's cell must not carry a y — its altitude is the slide
 //      contract, and for years dead y values on drones claimed otherwise;
 //   2. a prize/target cell's y must keep the box reachable: its bottom under
 //      the worst hero's head at apex, or the pattern deals a prize nobody can
@@ -195,29 +195,29 @@ for (const id of HAZARDS) {
   }
 }
 
-// --- the duck flyer's altitude, and the art that rides above it -------------
+// --- the slide flyer's altitude, and the art that rides above it -------------
 // 13 is not a taste decision and must not be edited into one. A standing hero's
-// box is PLAYER_H tall, so a duck flyer one pixel higher stops overlapping him
+// box is PLAYER_H tall, so a slide flyer one pixel higher stops overlapping him
 // and stops being an obstacle — which is the same rule Spawner.fill refuses to
 // let a pattern break, stated here against the DEF rather than against a cell.
 //
-// `artLift` is the pressure valve that exists because of it: the shipped duck
+// `artLift` is the pressure valve that exists because of it: the shipped slide
 // is the power slide, whose head draws far taller than its 7px box, and the
 // only way to get the drone off it is to raise the drawing. What has to stay
 // true is that the lift never carries the art clear of a STANDING hero, or a
-// hero who failed to duck takes a hit from something drawn above him.
+// hero who failed to slide takes a hit from something drawn above him.
 {
-  const { PLAYER_H, DUCK_H } = await import('../src/game/player.js');
+  const { PLAYER_H, SLIDE_H } = await import('../src/game/player.js');
   // Measured off the real painter (work/local/slide-height.mjs, 2026-09): the
   // tallest standing toon puts 26px of ink over its 14px box, and that is the
   // figure a lifted drone still has to visibly touch.
   const STANDING_ART_H = 26;
   for (const [name, def] of Object.entries(OBSTACLES)) {
-    if (def.action !== 'duck' || def.ground) continue;
+    if (def.action !== 'slide' || def.ground) continue;
     assert(def.alt < PLAYER_H,
       `'${name}' at alt ${def.alt} still catches a standing hero (< ${PLAYER_H})`);
-    assert(def.alt >= DUCK_H,
-      `'${name}' at alt ${def.alt} leaves room for the ${DUCK_H}px duck box under it`);
+    assert(def.alt >= SLIDE_H,
+      `'${name}' at alt ${def.alt} leaves room for the ${SLIDE_H}px slide box under it`);
     const lift = def.artLift || 0;
     assert(def.alt + lift < STANDING_ART_H,
       `'${name}' draws its underside at ${def.alt + lift}, still inside a standing `

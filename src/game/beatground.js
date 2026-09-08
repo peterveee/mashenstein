@@ -40,7 +40,7 @@ import { LCD_ROAD_INK } from '../engine/stylePacks/index.js';
 // the lesson that retired the bar is the reason these are shapes at all.)
 //
 // So the road draws the ribbon's own shapes — up-arrow to jump, down-arrow to
-// duck, ring to shoot — under the ribbon's own law: the direction is read off
+// slide, ring to shoot — under the ribbon's own law: the direction is read off
 // the SHAPE, and the colour only confirms which object is arriving. It costs
 // nothing to learn, because it is not a second vocabulary; it is the strip's
 // vocabulary, painted where the feet are. And an arrow painted on a road is
@@ -80,13 +80,13 @@ const OUTLINE_W = 1;
 // like two systems.
 const PULSE = 0.25;
 
-// THE ROAD ONLY EVER ASKS FOR A BUTTON. Jump, duck, shoot — the three verbs the
+// THE ROAD ONLY EVER ASKS FOR A BUTTON. Jump, slide, shoot — the three verbs the
 // game actually has — and nothing else. A coin is not an ask: it is scored by
 // running into it, it needs no timing, and marking one puts a stripe on the
 // road that answers a question nobody was posed. The ribbon still carries them,
 // which is the right place for a thing worth knowing about and not worth
 // acting on.
-const ASKS = new Set(['jump', 'duck', 'ability']);
+const ASKS = new Set(['jump', 'slide', 'ability']);
 
 // COLOUR IS THE OBJECT. Exported and imported BY the ribbon rather than copied
 // from it: the strip and the road are drawing the same events, and two lists of
@@ -101,20 +101,20 @@ const ASKS = new Set(['jump', 'duck', 'ability']);
 // cabinet it had no value contrast to spend: the LCD road is pale yellow-green,
 // gold is pale yellow, and a bake-off of the two surfaces side by side (the
 // strip's dark plate and the road's cream) showed the road glyph surviving on
-// its outline alone. Green is the one hue the strip had left — cyan is duck,
+// its outline alone. Green is the one hue the strip had left — cyan is slide,
 // wood is the barrel, pink is the ability ring, white is the coin tick, and the
 // playhead took vermilion — and it is a full value step down from the road.
 //
-// The duck keeps its cyan. Deepening it read better on the road in the bake-off
-// and worse where it counts — the ribbon's dark plate is the surface duck most
-// needs to survive, and a heavier blue goes muddy on it. On the road the duck
+// The slide keeps its cyan. Deepening it read better on the road in the bake-off
+// and worse where it counts — the ribbon's dark plate is the surface slide most
+// needs to survive, and a heavier blue goes muddy on it. On the road the slide
 // is carried by its outline and its direction, as it was.
 //
 // The pair stays SHAPE-first: the direction is read off the triangle, and these
 // two only confirm it.
 export const ACTION_INK = {
   jump: '#3fbf5a',
-  duck: '#72d8f0',
+  slide: '#72d8f0',
   barrel: '#d4a35e',
   ability: '#f890b8',
 };
