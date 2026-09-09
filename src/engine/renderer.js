@@ -3,7 +3,9 @@
 // phones start from a bounded adaptive tier so Retina fill-rate cannot overwhelm
 // the frame budget on a device that has to stay cool.
 export const W = 480;
-export const H = 270;
+export let H = 270;
+
+import { getActiveFrame, setActiveFrame } from './frame.js';
 
 let canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
 
@@ -139,6 +141,7 @@ export const screen = {
   scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, portraitFill: false,
   inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
   safeTop: 0, safeRight: 0, safeBottom: 0, safeLeft: 0,
+  frameRevision: 0, groundScreenY: 232,
 };
 export const visualiserFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualiserFullscreen = false;
@@ -177,6 +180,23 @@ export function setDevPortraitFill(on) {
   devPortraitFill = next;
   if (typeof window !== 'undefined' && canvas) resize();
 }
+
+// Development framing hook. The ordinary boot never calls this, so the
+// shipped renderer remains a 480x270 surface. A preview may install a frame
+// before initRenderer (the safest point for modules that cache H-derived art),
+// or while running to exercise a resize/rotation transition.
+export function setPresentationFrame(frame) {
+  const next = setActiveFrame(frame);
+  H = next.height;
+  Object.assign(screen, {
+    frameRevision: next.revision,
+    groundScreenY: next.groundScreenY,
+  });
+  if (backend && typeof window !== 'undefined' && canvas) resize();
+  return next;
+}
+
+export function presentationFrame() { return getActiveFrame(); }
 
 // Supersample factor for art baked into an offscreen canvas ahead of time —
 // scenery tiles, the volcano stack, cached toon sprites. Those canvases are
@@ -710,6 +730,8 @@ function resize() {
     scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W, portraitFill,
     inputScaleX, inputScaleY, inputLeft, inputTop,
     safeTop, safeRight, safeBottom, safeLeft,
+    frameRevision: getActiveFrame().revision,
+    groundScreenY: getActiveFrame().groundScreenY,
   });
   if (glfx.active) { glfx.resize(bw, bh); glfx.setTierFx(!isBloomSuppressed(renderPx)); }
   resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr);

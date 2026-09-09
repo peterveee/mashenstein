@@ -2,6 +2,7 @@ import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo } from '../engine/renderer.js';
+import { frameGroundY } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
@@ -10832,7 +10833,20 @@ export class RunState {
     // is the range visibly sinking as you rise, which is the whole read.
     const climb = anchorShift(z, floorY);
     const bgShift = (pan + climb * BG_FOLLOW) * (this.style.bgPan ?? 1);
+    const frameShift = frameGroundY() - GROUND_Y;
     ctx.save();
+    // Portrait keeps the authored world scale and moves the presentation
+    // groundline down into the full-height frame. A base sky fill covers the
+    // newly exposed upper region before the shipped background painter is
+    // translated; the landscape path has a zero shift and remains untouched.
+    if (frameShift > 0) {
+      const sky = ctx.createLinearGradient(0, frameShift + bgShift, 0, frameShift + bgShift + H);
+      sky.addColorStop(0, this.cabinet.sky ? this.cabinet.sky[0] : '#78c8f0');
+      sky.addColorStop(1, this.cabinet.sky ? this.cabinet.sky[1] : '#a8e0f8');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+      ctx.translate(0, frameShift);
+    }
     if (Math.abs(climb) > 0.5) {
       // The sky is not scenery and cannot be allowed to run out. A pack's own
       // gradient is drawn 0..H in the SHIFTED space, so once the shift is more

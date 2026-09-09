@@ -15,6 +15,12 @@
 //     take the same `pan`, and the dolly below can change zoom mid-jump without
 //     the horizon sliding.
 import { W, H } from './renderer.js';
+import { getActiveFrame } from './frame.js';
+
+// The legacy landscape anchor is 232. Portrait framing changes only the
+// presentation anchor; terrain, hitboxes and every authored world coordinate
+// continue to use GROUND_Y below.
+const frameGroundY = () => getActiveFrame().groundScreenY;
 
 // The world y the hero runs along. Owned here rather than in run.js because the
 // camera is defined against it; run.js re-exports it for its own importers.
@@ -157,7 +163,7 @@ export function setRestingZoom(z) {
 // is what climbing is supposed to look like. run.js eases this value, so on the
 // base ground it is GROUND_Y to the pixel and every existing framing is
 // byte-identical.
-export function camYFor(z, floorY = GROUND_Y) { return floorY - GROUND_Y / z; }
+export function camYFor(z, floorY = GROUND_Y) { return floorY - frameGroundY() / z; }
 
 // Screen y of a world y at zoom z. For the handful of things that draw in screen
 // space but have to sit on a world object (the blackout mission's light radius).
@@ -223,7 +229,7 @@ export const FALL_LEAD_AT = 0.45;
 // The world distance the anchor leads a falling hero's feet by to put him
 // there. Divided by the zoom because the fraction above is a FRAME position:
 // the same 0.45 on a phone and on a monitor, whatever the world costs.
-export function fallLead(z) { return (GROUND_Y - H * FALL_LEAD_AT) / z; }
+export function fallLead(z) { return (frameGroundY() - H * FALL_LEAD_AT) / z; }
 
 // How much faster than the hero himself the anchor may travel to take up that
 // lead, in SCREEN px per second. This is the number the whole fall hangs on.
@@ -262,8 +268,9 @@ export function fallLimit(current, drop, z, dt) {
 // times over, still open the frame up the way every jump above 79px used to.
 export function framingFor(y, groundLift = 0) {
   const need = Math.max(1, y + HERO_HEIGHT + HEAD_MARGIN + groundLift);
-  const pan = Math.max(0, Math.min(PAN_MAX, need * ZOOM - GROUND_Y));
-  return { pan, zoom: Math.min(ZOOM, Math.max(ZOOM_MIN, (GROUND_Y + pan) / need)) };
+  const anchor = frameGroundY();
+  const pan = Math.max(0, Math.min(PAN_MAX, need * ZOOM - anchor));
+  return { pan, zoom: Math.min(ZOOM, Math.max(ZOOM_MIN, (anchor + pan) / need)) };
 }
 
 // How much hero ALTITUDE the resting frame can hold, in world px, with the
@@ -278,7 +285,7 @@ export function framingFor(y, groundLift = 0) {
 // Live, not a constant: ZOOM moves with the device and the settings, and a
 // phone frame genuinely holds less than a desktop one, so it re-pins sooner.
 export function restingHeadroom() {
-  return (GROUND_Y + PAN_MAX) / ZOOM - HERO_HEIGHT - HEAD_MARGIN;
+  return (frameGroundY() + PAN_MAX) / ZOOM - HERO_HEIGHT - HEAD_MARGIN;
 }
 
 // Ease the live zoom toward a target. Pulls back fast so a jump is never clipped

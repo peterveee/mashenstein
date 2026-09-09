@@ -103,38 +103,22 @@ export const WRENCH_CANDIDATES = [
 // the CARRY — is it readable worn, does it survive the run, and does the fetch
 // read as taking it out.
 //
-// The throw itself is held at W1 for all five: one variable at a time. Winner
-// wires into TOON_SPECS.lorenzo as `wrenchCarry` and this list comes out.
+// C4 PICKED (9 Sep 2026, Peter: "C4 is the preferred walking / standing version",
+// then "i only want c4"). C1 near hip / C2 far hip / C3 chest pocket / C5 two
+// wrenches are retired — the `wrenchCarry` painter still takes all five, the
+// same way BOW_STYLES kept the draws that lost, so any of them can be put back
+// by adding a row here. The throw is held at W1 throughout: one variable at a
+// time. When this settles into the cast it becomes TOON_SPECS.lorenzo's
+// `wrenchCarry` and the section comes out.
 export const WRENCH_CARRY_CANDIDATES = [
   {
-    id: 'carry-hip', name: 'C1 — NEAR HIP, HEAD UP', wrenchCarry: 'hip',
-    note: 'Butt below the belt, shaft crossing it, head up on the trouser seam — the belt paints over '
-      + 'the shaft, and that crossing IS the tuck. Cheapest cut here: one painter, no depth flip, and '
-      + 'the shortest fetch. The risk is the near arm, which swings past this spot every stride.',
-  },
-  {
-    id: 'carry-back', name: 'C2 — FAR HIP, BEHIND HIM', wrenchCarry: 'backHip',
-    note: 'Worn on his back hip and painted in the BACK pass, under every limb, the way the quiver and '
-      + 'the slung bow are. The fetch has real travel — the hand goes back, comes forward with the tool, '
-      + 'and the wrench crosses depth on the hand rather than on one frame. Clear of the near arm.',
-  },
-  {
-    id: 'carry-bib', name: 'C3 — CHEST POCKET', wrenchCarry: 'bib',
-    note: 'Head out of a breast pocket. Highest on the body, so the most visible at 24u, and the '
-      + 'shortest reach of the five. Against it: it crowds the straps, and a pipe wrench in a shirt '
-      + 'pocket is the least plumberly place on him to keep one.',
-  },
-  {
-    id: 'carry-loop', name: 'C4 — HUNG OFF A LOOP', wrenchCarry: 'loop',
-    note: 'Head DOWN off a belt loop, swinging on the stride clock — the only cut with motion in it '
-      + 'before he throws anything. Most character standing and running; also the most to go wrong, '
-      + 'since it hangs into the leg and needs its own swing to stay honest.',
-  },
-  {
-    id: 'carry-twin', name: 'C5 — TWO WRENCHES', wrenchCarry: 'twin',
-    note: 'C1, but the belt keeps a spare: the silhouette never loses the tool while one is in the air, '
-      + 'which is the awkward half of a return flight answered by carrying two. Clara\'s argument for '
-      + 'two pistols, in steel.',
+    id: 'carry-loop', name: 'C4 — HEAD UP IN A BELT LOOP', wrenchCarry: 'loop',
+    note: 'Shaft through a loop on the belt over the NEAR leg, HEAD UP, jaw turned inboard. Head down '
+      + '(the first cut) was a spade — a heavy blade at the bottom of a stick is a digging tool whatever '
+      + 'colour the stick is — and it put the only steel on him down by his knee. Inverted, the jaw '
+      + 'stands where the eye already is and the red runs down the thigh. It sits inboard of where the '
+      + 'near hand hangs, and the jaw faces AWAY from that arm, so the swing passes outside it. Sways on '
+      + 'the stride, half as far as a free-hanging tool: it is held in a loop, so it does not flap.',
   },
 ].map((c) => ({ ...c, prop: 'wrench', flight: 'return', gesture: 'throw',
   spec: { ...L, ranged: 'wrench', throwStyle: 'high', wrenchCarry: c.wrenchCarry } }));

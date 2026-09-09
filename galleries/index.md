@@ -23,7 +23,6 @@ history thins to one a week. Do not edit by hand.
 | 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | -- | Archive published build 414ae37 |
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
-| 2026-09-02 | `4ab5228` | [2026-09-02-4ab5228.html](2026-09-02-4ab5228.html) | -- | Refactor MIDI and arrangement handling in mixer tools |
 | 2026-09-03 | `f52f1d1` | [2026-09-03-f52f1d1.html](2026-09-03-f52f1d1.html) | -- | Remove unused LCD_RUNNER_STYLES and related code for the tower plumber bake-off; add new gallery entry for September 2026. |
 | 2026-09-03 | `6a2d8ea` | [2026-09-03-6a2d8ea.html](2026-09-03-6a2d8ea.html) | [bake-offs](2026-09-03-6a2d8ea-lab.html) | Refactor gallery entry and shell for improved organization and functionality |
 | 2026-09-03 | `c94052a` | [2026-09-03-c94052a.html](2026-09-03-c94052a.html) | [bake-offs](2026-09-03-c94052a-lab.html) | Refactor gallery archiving to include both production and lab pages |
@@ -42,3 +41,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-07 | `6b94167` | [2026-09-07-6b94167.html](2026-09-07-6b94167.html) | [bake-offs](2026-09-07-6b94167-lab.html) | Add JMJR-4 test suites and validate playwright requirements |
 | 2026-09-08 | `b816b54` | [2026-09-08-b816b54.html](2026-09-08-b816b54.html) | [bake-offs](2026-09-08-b816b54-lab.html) | feat: rename 'duck' to 'slide' across the codebase |
 | 2026-09-09 | `413dbd5` | [2026-09-09-413dbd5.html](2026-09-09-413dbd5.html) | [bake-offs](2026-09-09-413dbd5-lab.html) | Refactor and enhance game assets and testing framework |
+| 2026-09-09 | `373d3d6` | [2026-09-09-373d3d6.html](2026-09-09-373d3d6.html) | [bake-offs](2026-09-09-373d3d6-lab.html) | Add new gallery HTML files for 2026-09-09 with large content |
