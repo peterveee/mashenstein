@@ -93,3 +93,48 @@ export const WRENCH_CANDIDATES = [
       + 'hammer. Heavy — the throw of a stout man with a big tool — and both arms come over the head.',
   },
 ].map((c) => ({ ...c, prop: 'wrench', flight: 'return', gesture: 'throw', spec: { ...L, ranged: 'wrench', throwStyle: c.throwStyle } }));
+
+// ---------------------------------------------------------------------------
+// ROUND 3 (9 Sep 2026) — WHERE THE WRENCH LIVES. Round 2 asked what the throw
+// looks like; this asks where the tool is the rest of the time. Today it is
+// nowhere: painted only while it is being swung or thrown, so it flashes into
+// an empty hand. Every cut below wears it, and every cut pays the same 0.08s
+// reach to get it (WRENCH_REACH_T, the bow's number), so the question is only
+// the CARRY — is it readable worn, does it survive the run, and does the fetch
+// read as taking it out.
+//
+// The throw itself is held at W1 for all five: one variable at a time. Winner
+// wires into TOON_SPECS.lorenzo as `wrenchCarry` and this list comes out.
+export const WRENCH_CARRY_CANDIDATES = [
+  {
+    id: 'carry-hip', name: 'C1 — NEAR HIP, HEAD UP', wrenchCarry: 'hip',
+    note: 'Butt below the belt, shaft crossing it, head up on the trouser seam — the belt paints over '
+      + 'the shaft, and that crossing IS the tuck. Cheapest cut here: one painter, no depth flip, and '
+      + 'the shortest fetch. The risk is the near arm, which swings past this spot every stride.',
+  },
+  {
+    id: 'carry-back', name: 'C2 — FAR HIP, BEHIND HIM', wrenchCarry: 'backHip',
+    note: 'Worn on his back hip and painted in the BACK pass, under every limb, the way the quiver and '
+      + 'the slung bow are. The fetch has real travel — the hand goes back, comes forward with the tool, '
+      + 'and the wrench crosses depth on the hand rather than on one frame. Clear of the near arm.',
+  },
+  {
+    id: 'carry-bib', name: 'C3 — CHEST POCKET', wrenchCarry: 'bib',
+    note: 'Head out of a breast pocket. Highest on the body, so the most visible at 24u, and the '
+      + 'shortest reach of the five. Against it: it crowds the straps, and a pipe wrench in a shirt '
+      + 'pocket is the least plumberly place on him to keep one.',
+  },
+  {
+    id: 'carry-loop', name: 'C4 — HUNG OFF A LOOP', wrenchCarry: 'loop',
+    note: 'Head DOWN off a belt loop, swinging on the stride clock — the only cut with motion in it '
+      + 'before he throws anything. Most character standing and running; also the most to go wrong, '
+      + 'since it hangs into the leg and needs its own swing to stay honest.',
+  },
+  {
+    id: 'carry-twin', name: 'C5 — TWO WRENCHES', wrenchCarry: 'twin',
+    note: 'C1, but the belt keeps a spare: the silhouette never loses the tool while one is in the air, '
+      + 'which is the awkward half of a return flight answered by carrying two. Clara\'s argument for '
+      + 'two pistols, in steel.',
+  },
+].map((c) => ({ ...c, prop: 'wrench', flight: 'return', gesture: 'throw',
+  spec: { ...L, ranged: 'wrench', throwStyle: 'high', wrenchCarry: c.wrenchCarry } }));

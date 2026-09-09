@@ -392,8 +392,13 @@ const clara = {
     // lives outdoors, and beside Fernwick's new pallor the two of them now sit
     // at opposite ends of the roster's skin range instead of both near its
     // middle. Small on purpose — this is weathering, not a different person.
+    // ONE skin, and `hand` is deliberately not here. She wore two: a tanner
+    // face and a paler pair of hands, which on the hero who has the most skin
+    // showing in the cast — bare arms, cropped tank — read as three tones down
+    // one body rather than as one person. Her face is the reference the rest of
+    // her matches, so the hands come to it.
     s: '#e8b489', e: '#1a1028', m: '#a8465c',
-    hair: '#8f4a22', hairDark: '#5a2c12', hand: '#f0c49a',
+    hair: '#8f4a22', hairDark: '#5a2c12',
     a: '#e0b24a',        // brass: buckle, plait tie, hardware
     w: '#7a4f2c',        // leather: belt, holster, glove cuffs
     b: '#6a7340',        // olive tank

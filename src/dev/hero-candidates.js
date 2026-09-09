@@ -246,7 +246,11 @@ export const ANIMAL_HERO_CANDIDATES = [
 // the costume rather than being a colour introduced for one prop. It falls back
 // to the trouser rust everywhere else, which is what it was and why the tube
 // read as a solid lump.
-export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, pouchLine: '#f0c07a' };
+// The hands are FUR, not gloves. `hand` was WHITE, inherited from the shared
+// face block, so a red panda ended his arms in two white paws with a white cuff
+// round each — the one place on him where the animal stopped. The cuff (p.w)
+// stays white and the paw inside it is his own coat.
+export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, hand: '#c65a2c', pouchLine: '#f0c07a' };
 
 export const PANDA_BUILD_CANDIDATES = [
   {
@@ -1297,6 +1301,13 @@ export const RUSTY_W3B = {
   // belt rather than a turned body). The slide takes none of it: a reclined
   // body is tipped, not turned.
   beltSlantRun: 0.03,
+  // Standing, the canister sits 0.024u further IN. `hipAt(-1)` is the near
+  // thigh's root, and running the leg swings out under the bag and carries the
+  // eye with it; standing there is no swing, and the same offset left it
+  // hanging off his side rather than on his hip. Swept 0 / 0.012 / 0.024 /
+  // 0.038 — 0.012 is lost behind the hand, 0.038 starts crowding the buckle.
+  // Idle only: the run column was identical across the whole sweep.
+  pouchIdleIn: 0.038,
 };
 
 // ROUND 21 — THE CANES IN THE MOUTH. On W3b the two canes read as ONE THICK

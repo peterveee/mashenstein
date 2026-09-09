@@ -24,7 +24,7 @@ canvas{display:block;width:100%;height:350px}footer{color:#aeb9c9;margin-top:16p
 .single-pose canvas{height:480px}
 @media(max-width:850px){.poses{grid-template-columns:1fr}.poses section+section{border-left:0;border-top:1px solid #394455}body{padding:12px}}
 </style>
-<h1>Smooth shoulders · full cast</h1><p>Run, jump and each character’s own attack. Each pair compares the current drawing with the preview. The near-arm correction eases away as the arm folds inward. Special arms and clothing joins remain unchanged references. The live cast is unchanged.</p>
+<h1>Smooth shoulders · full cast</h1><p>Shipped 9 Sep 2026. Run, jump and each character’s own attack. Each pair compares the old cap treatment with the shipped join. The near-arm correction eases away as the arm folds inward. Special arms and clothing joins remain unchanged references.</p>
 <div class="controls"><button id="play">Pause</button>
 <label>Character <select id="character"><option value="all">Everyone</option></select></label>
 <label>View <select id="pose"><option value="all">Run + jump + attack</option><option value="run">Run / walk</option><option value="jump">Jump</option><option value="shoot">Attack</option></select></label>

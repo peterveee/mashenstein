@@ -310,7 +310,7 @@ XP thresholds: 100, 300, 700, 1400 (levels 1–5). Each hero has one sidegrade w
 |---|---|---|
 | Lorenzo | SHOCK STOMP | Shockwave breaks nearby obstacles, scatters nearby coins |
 | Gnash | MOMENTUM GUY | Stacking speed after every tag |
-| Fernwick | SHIELD BASH | Roll breaks hazards, ends in brief stumble |
+| Fernwick | BROADHEAD | The arrow punches through and keeps going |
 | B-33P | CHARGE SHOT | Pellets pierce ground and flying obstacles |
 | Clara | SERIALIZED | The shot is faster but smaller |
 | Kiko | REASONABLE FORCE | The warning shot is wider but travels slower |

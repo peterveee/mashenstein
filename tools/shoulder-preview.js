@@ -98,8 +98,10 @@ function paint(force = false) {
       const x = width * (0.25 + i * 0.5);
       ctx.textAlign = 'center'; ctx.font = '11px system-ui';
       ctx.fillStyle = smooth && eligible ? '#acd8b4' : '#bdc5d0';
-      ctx.fillText(smooth ? (eligible ? 'SMOOTH JOIN' : 'UNCHANGED') : 'CURRENT', x, 18);
-      const opts = { spec: smooth ? { ...spec, shoulderJoinPreview: 'smooth' } : spec,
+      ctx.fillText(smooth ? (eligible ? 'SMOOTH JOIN (shipped)' : 'UNCHANGED') : 'OLD CAP', x, 18);
+      // The join shipped 9 Sep 2026: the spec itself now carries it, so the
+      // comparison column strips the key to show the cap treatment it replaced.
+      const opts = { spec: smooth ? spec : { ...spec, shoulderJoinPreview: 'cap' },
         ...(id === 'rusty' ? { pal: PANDA_PAL } : {}) };
       drawToon(ctx, id, pose, x, close ? 306 : 232, Math.min(close ? 236 : 166, width * 0.39), opts);
       ctx.fillStyle = '#aeb9c9'; ctx.fillText('GAMEPLAY SIZE', x, close ? 358 : 266);

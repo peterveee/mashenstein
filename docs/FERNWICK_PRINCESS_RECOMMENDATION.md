@@ -15,7 +15,9 @@ is historical and predates the production character and this selection.
 
 
 Date: 2026-09-06  
-Status: visual recommendation / gallery study; not yet a final production integration
+Status: SUPERSEDED — the direction below was approved and shipped on 7 September 2026.
+See "Current implementation status" at the foot of this document for what actually ships;
+the body of this document is kept as the record of how the design was arrived at.
 
 ## Recommendation
 
@@ -125,30 +127,41 @@ that better than the rounded ornament-like versions.
 
 ## Current implementation status
 
-This work is currently a gallery-only visual study. The normal production Fernwick path
-remains unchanged unless the gallery passes are later promoted deliberately.
+**SHIPPED (7 September 2026).** Fernwick IS the princess: the design was promoted out of
+the bake-off into the production hero and she draws through the ordinary path everywhere —
+hub, stage select, menus, credits and the run. Nothing below this line is a study any more.
 
-The active study is implemented through the candidate seam in:
+- spec: `TOON_SPECS.fernwick` in [src/sprites/toons.js](../src/sprites/toons.js)
+- palette: `HERO_SPRITES.fernwick.pal` in [src/sprites/heroes.js](../src/sprites/heroes.js)
 
-- [src/dev/fernwick-princess-candidates.js](../src/dev/fernwick-princess-candidates.js)
-- [src/sprites/toons.js](../src/sprites/toons.js)
-- [tools/gallery-entry.js](../tools/gallery-entry.js)
+The candidate file this document used to point at, `src/dev/fernwick-princess-candidates.js`,
+and its gallery lab section have both been **deleted**. So have the necklace bake-off's
+candidates. Per the project's rule, a settled bake-off leaves the gallery and only the
+painter stays.
 
-The active gallery now presents G1 followed by the two cap studies. Older alternatives
-remain available in the development source as historical material but are not part of the
-current decision set.
+### What shipped, where it differs from the study above
 
-The gallery was rebuilt with `npm run gallery`, and `git diff --check` passed. The current
-comparison page is [dist/gallery-lab.html](../dist/gallery-lab.html). Final art approval
-should still be judged at the game camera scale and during movement before any production
-asset or hero-data promotion.
+The head is G1 as described, with two changes: the ear point is 1.24 and its **tip is
+rounded** rather than meeting at a point, and the floppy cap is **gone** — replaced by a
+green headband with the ruby set in it. `head: 'floppy'` and the cap dials remain on the
+spec but are inert under the headband; they are kept because the skull they describe is
+still hers.
 
-## Recommended next decision
+The body did get the dress-like treatment this document deferred:
 
-Compare C1 and C2 directly against G1 at running scale. If C1 keeps the point high enough
-without losing the floppy fold, use it as the next working cap. If the fold disappears at
-the real sprite size, use C2’s stronger fold while keeping its point raised and narrow.
+- a gored green gown, five panels running bodice to hem, the skirt panels loose and
+  swinging on their own clocks;
+- a deep scoop neckline with a fine chain and a three-stone gold collar;
+- long green sleeves — the arms ARE the sleeves (`bareArms: false`), so there is no cuff;
+- green tights, gold wrist bracelets, a narrow gold belt;
+- one metal and one stone across headpiece, belt, collar and bracelets.
 
-After the cap is chosen, the next separate decision is whether the existing green body
-should receive a restrained dress-like adjustment. That should be evaluated independently
-so it does not disturb the approved head silhouette or bow readability.
+Build proportions: `tall` 0.95 (a little under Kiko), `taper` 0.7, `torsoWidth` 0.94. Her
+skin is a shade paler than the cast's shared tone, which is the Zelda-parody read and also
+separates her from Lorenzo and Kiko, who share it.
+
+### Still open
+
+Dialogue and hero data are deliberately untouched beyond pronouns — the tagline, the
+ability text and the coupon gag are unchanged, and the writing direction in this document
+still stands as a brief rather than as a record.

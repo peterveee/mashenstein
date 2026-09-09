@@ -41,3 +41,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
 | 2026-09-07 | `6b94167` | [2026-09-07-6b94167.html](2026-09-07-6b94167.html) | [bake-offs](2026-09-07-6b94167-lab.html) | Add JMJR-4 test suites and validate playwright requirements |
 | 2026-09-08 | `b816b54` | [2026-09-08-b816b54.html](2026-09-08-b816b54.html) | [bake-offs](2026-09-08-b816b54-lab.html) | feat: rename 'duck' to 'slide' across the codebase |
+| 2026-09-09 | `413dbd5` | [2026-09-09-413dbd5.html](2026-09-09-413dbd5.html) | [bake-offs](2026-09-09-413dbd5-lab.html) | Refactor and enhance game assets and testing framework |

@@ -93,6 +93,16 @@ the body. Visible in the gallery's "Heroes — in-run render" tiles.
 - **Must verify cast-wide:** shared painter — measured per-hero before/after
   (incl. grumpos unchanged, b33p's cannon arm exempt, dolores under her apron
   straps) before shipping.
+- **SHIPPED 9 Sep 2026**, on by default for every rig `supportsShoulderJoinPreview`
+  accepts (Lorenzo, Gnash, Gary, Dolores, Fernwick, and candidates such as Rusty);
+  `shoulderJoinPreview: 'cap'` opts a rig out. A fillet crown from the torso's
+  corner arc to the arm, both trimmed to it, the notch bridged in body colour
+  under the worn kit, the crown stroked last with butt caps (translucent OUTLINE
+  must never stack). Approved shots in `docs/shots/shoulder-join/`;
+  `dist/shoulder-preview.html` compares against the old cap. Rode along: the run's
+  near-hand chord is capped at 0.96 of the arm (Fernwick's locked straight),
+  Fernwick's sling strip sits outboard of the neckline under the arm, and
+  Lorenzo's celebration strap bends onto the raised arm.
 
 ### Auto-collect Grumpos' arm or axe when hovering nearby
 When Grumpos throws his arm or the arm detaches and ends up hovering/idle on the

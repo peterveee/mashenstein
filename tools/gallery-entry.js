@@ -44,8 +44,9 @@ import {
   b33pTitleShotPose,
   poseFromPlayer,
   drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC,
+  WRENCH_REACH_T,
 } from '../src/sprites/toons.js';
-import { LORENZO_RANGED_CANDIDATES, WRENCH_CANDIDATES } from '../src/dev/ranged-candidates.js';
+import { LORENZO_RANGED_CANDIDATES, WRENCH_CANDIDATES, WRENCH_CARRY_CANDIDATES } from '../src/dev/ranged-candidates.js';
 import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
   LCD_GORILLA_NOSTRIL_STYLES,
@@ -107,7 +108,6 @@ import {
   RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_T1, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES,
   RUSTY_W3B, PANDA_PAL,
 } from '../src/dev/hero-candidates.js';
-import { GRUMPOS_AXES } from '../src/dev/grumpos-axe-candidates.js';
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
@@ -330,7 +330,13 @@ let animate = true;
 // rate the game runs its own cycles at — and it is deliberately the SAME
 // number on every tile at any instant, so "frame 41" means one moment across
 // the whole page rather than a per-tile count nobody can line up.
-let frameNos = true;
+//
+// OFF by default. It is a measuring tool, not part of the art: left on, every
+// animated tile carries a yellow badge over its top-left corner, which is
+// exactly where a hero's head is on most of them, and screenshots taken off the
+// page come out with it stamped on. The toggle stays — turn it on to point at a
+// frame, turn it off to look at the picture.
+let frameNos = false;
 const FRAME_FPS = 24;
 const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
 // Halved from 6/10 because world-scale tiles now bake WORLD_Z in: samples per
@@ -2035,55 +2041,125 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
+// ------------------------------------------- hands: ring width, then shape
+// OPEN 9 Sep 2026. Two questions about the same disc, asked in this order
+// because the second builds on the first. Both ride seams in toons.js —
+// `spec.handRing` and `spec.handShape`, read by paintHand — through drawToon's
+// opts.spec, so nothing here touches TOON_SPECS; unset, both draw what ships.
+//
+// The sheet is the same for both: one wide tile per hero, one column per
+// option, three rows — the 144u review size with the run live, the 60u menu
+// idle, and the real 24u in-run sprite through the run's own camera zoom.
+// Judge on the bottom row: the hand is a 2px blob there, and a shape that only
+// reads at 144u has already been shipped wrongly once (see the ink bake-off).
 {
-  // OPEN: Grumpos's back axe. Each cut is his production spec with one key
-  // changed, and the painter's default reproduces the shipped art exactly, so
-  // X1 in this row IS what ships rather than a re-drawing of it.
-  const A = GRUMPOS_AXES;
-  const RH = 62, RCOL = 82, RFEET = 92;
-  const opts = (c) => ({ spec: c.spec });
-  const grid = section('grumpos-axe', 'Grumpos — back axe',
-    'OPEN. Three things are wrong with the axe he carries and they can only be judged apart. '
-    + 'Its haft runs at 41.3&deg;, shallow enough to sit the blade beside his jaw at ear height where it '
-    + 'competes with his face. Its head is 0.30 x 0.33u against a 0.44u skull — about three quarters the '
-    + 'size of his head — standing a head\'s radius clear of his shoulder. And its ice blue is lighter than '
-    + 'his skin, so the eye reaches the axe before the face. '
-    + '<br><br>X2, X3 and X4 each move ONE of those. X5 is all three together and is my recommendation; '
-    + 'X6 is deliberately too steep, so the row has a ceiling rather than an open end. Judge the idle first '
-    + '(it is the hub and the menus), then the run, where the axe travels with the shoulder.');
-  for (const c of A) {
-    tile(grid, c.name, c.note, 128, 184, (ctx, t) => {
-      drawToon(ctx, 'grumpos', pose('idle', t), 64, 176, 150, opts(c));
-    }, { animated: true, hires: 4 });
-  }
-  for (const [kind, note] of [
-    ['idle', 'Standing, all six. The blade against the beard is the thing to look at.'],
-    ['run', 'Running — the axe shifts forward with the body, so this is where a steep haft either reads or crowds his back.'],
-    ['jump', 'Airborne.'],
-  ]) {
-    tile(grid, `axe — ${kind}`, note, RCOL * A.length, RH * 1.62, (ctx, t) => {
-      A.forEach((c, i) => {
-        drawToon(ctx, 'grumpos', pose(kind, t), RCOL * (i + 0.5), RFEET, RH, opts(c));
-        ctx.fillStyle = '#8a8a9e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(c.name, RCOL * (i + 0.5), RH * 1.55);
-      });
-    }, { animated: true, wide: true, hires: 4 });
-  }
-  {
-    const LW = 24 + A.length * 62 + 40, LH = 62, LGY = 46;
-    tile(grid, 'axe — in the lane, at size',
-      `Real ${HERO_DRAW_H}px hero. Idle and running. A blade this pale is a bright shape at any size; this is where that either helps him read or steals the face.`,
-      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        laneStrip(ctx, LW, LH, LGY);
-        A.forEach((c, i) => {
-          const x = 24 + i * 62;
-          drawToon(ctx, 'grumpos', pose('idle', t), x, LGY, HERO_DRAW_H, opts(c));
-          drawToon(ctx, 'grumpos', pose('run', t), x + 26, LGY, HERO_DRAW_H, opts(c));
+  const spec = (id, extra) => ({ spec: { ...TOON_SPECS[id], ...extra } });
+  const COL = 118, LABEL_W = 34, TOP = 12;
+  const ROWS = [
+    ['144u', 144, 'run'],
+    ['60u', 60, 'idle'],
+    ['24u', HERO_DRAW_H, 'run'],
+  ];
+  const rowH = ([, h]) => (h === HERO_DRAW_H ? h * WORLD_Z : h) * 1.22 + 10;
+  const FROZEN = 0.2625; // phase 0.42 through pose()'s 1.6 — an A/B that bobs cannot be read
+  const mono = (ctx, px, fill = '#8a8a9a') => {
+    ctx.fillStyle = fill;
+    ctx.font = `${px}px ui-monospace, monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  };
+  // One hero, every option side by side at every rung. `live` animates the
+  // rows; frozen sheets sample one instant so the widths can be read.
+  const handSheet = (grid, id, cols, sub, live) => {
+    const W = LABEL_W + cols.length * COL;
+    const H = TOP + ROWS.reduce((a, r) => a + rowH(r), 0);
+    tile(grid, `${id} — ${cols.length} ways`, sub, W, H, (ctx, tt) => {
+      const t = live ? tt : FROZEN;
+      mono(ctx, 7);
+      cols.forEach(([label], i) => ctx.fillText(label, LABEL_W + i * COL + 4, 9));
+      let y = TOP;
+      for (const row of ROWS) {
+        const [rowLabel, h, kind] = row;
+        const rh = rowH(row);
+        mono(ctx, 7);
+        ctx.fillText(rowLabel, 4, y + rh / 2);
+        const feet = y + rh - 6;
+        cols.forEach(([, extra], i) => {
+          const cx = LABEL_W + i * COL + COL / 2;
+          if (h === HERO_DRAW_H) {
+            // The honest one: u = 24 exactly as a run passes it, then the
+            // camera's zoom on the CONTEXT, so the stroke floors bind at 24.
+            ctx.save();
+            ctx.translate(cx, feet);
+            ctx.scale(WORLD_Z, WORLD_Z);
+            drawToon(ctx, id, pose(kind, t), 0, 0, HERO_DRAW_H, spec(id, extra));
+            ctx.restore();
+          } else {
+            drawToon(ctx, id, pose(kind, t), cx, feet, h, spec(id, extra));
+          }
         });
-      }, { animated: true, wide: true, world: true, hires: 5 });
+        y += rh;
+      }
+      // Hairlines between columns: an edge for the eye to compare across.
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      for (let i = 1; i < cols.length; i++) {
+        ctx.moveTo(LABEL_W + i * COL, TOP);
+        ctx.lineTo(LABEL_W + i * COL, H);
+      }
+      ctx.stroke();
+    }, { animated: live, wide: true, hires: 4 });
+  };
+
+  // ROUND 1 — THE RING. Every cuff keeps its shipped outer radius (the glove,
+  // the bracer and its spikes, the bracelet, the gauntlet are the size they
+  // were); only the band's width changes, and the skin disc inside is what is
+  // left. One width in u for the whole cast, against the five it ships with.
+  {
+    const grid = section('hand-ring-bakeoff', 'Hands — the ring round them, one width',
+      'A SHIPPED 9 Sep 2026 — HAND_RING = 0.012u, cast-wide. The cuff round a hand used to be a '
+      + 'different width on every hero who had one: Fernwick\'s bracelet 0.0135u, Lorenzo\'s glove '
+      + 'and Clara\'s fingerless 0.018u, Grumpos\'s gauntlet 0.030u, Kiko\'s bracer 0.031u. The '
+      + 'cuff\'s OUTER edge is unchanged on every hero, so what the width sets is how much skin '
+      + 'shows inside it. \'current\' is now A; B, C and D stay so the call can be reversed by eye '
+      + 'rather than by archaeology. The bare-handed heroes have no ring and are not on this '
+      + 'sheet. Frozen at run phase 0.42.');
+    const RINGS = [
+      ['current · A', {}],
+      ['B · 0.017u', { handRing: 0.017 }],
+      ['C · 0.022u', { handRing: 0.022 }],
+      ['D · 0.028u', { handRing: 0.028 }],
+    ];
+    for (const id of ['lorenzo', 'kiko', 'clara', 'fernwick', 'grumpos']) {
+      handSheet(grid, id, RINGS, 'A shipped (0.012u) · B · C · D heavy — the cuff\'s outside edge never moves', false);
+    }
+  }
+
+  // ROUND 2 — THE SHAPE. The hand is a plain disc on everyone. Round one of
+  // this (9 Sep, morning) outlined every finger on its own and the hands came
+  // out as bundles of sausages; this cut draws each hand as ONE silhouette
+  // with the contour stroked under the fill, and gives a runner the two hands
+  // a runner has — a fist on the move, a relaxed hand standing. The cuff stays
+  // the shipped disc at the wrist, behind the hand.
+  {
+    const grid = section('hand-shape-bakeoff', 'Hands — a fist running, a relaxed hand standing',
+      'OPEN. Same radius, same ring, same ink as the disc that ships; the cuff is untouched and '
+      + 'the hand lies over it, fingers along the forearm (the elbow is solved the way the arm '
+      + 'was drawn, so the hand turns with the swing). AUTO is a side-on fist in the run and the '
+      + 'jump, a hanging hand with softly curled fingers when idle; CLEAN is AUTO with no creases '
+      + 'at all — one silhouette, no interior line; FIST and RELAXED hold one hand in every pose, '
+      + 'to see each on its own. Live, so the direction can be judged mid-swing.');
+    const SHAPES = [
+      ['current', {}],
+      ['AUTO', { handShape: 'auto' }],
+      ['CLEAN', { handShape: 'auto', handCreases: false }],
+      ['FIST', { handShape: 'fist' }],
+      ['RELAXED', { handShape: 'relaxed' }],
+    ];
+    for (const id of ['lorenzo', 'grumpos', 'kiko', 'clara', 'fernwick', 'b33p', 'gary', 'dolores']) {
+      handSheet(grid, id, SHAPES, 'disc · auto · clean · fist · relaxed — live run above, menu idle, in-run 24u below', true);
+    }
   }
 }
 
@@ -3282,44 +3358,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
 // The jump/slide legacy-vs-improved comparison used to sit here. The improved
 // motion shipped as ACTIVE_LOCOMOTION_STYLE and the section came out.
 
-// ------------------------------------------------------- head yaw candidates
-// This is deliberately a pose field that production never supplies. Body turn
-// already has its own sheet below; this one asks the narrower question: does a
-// directional face improve the run without changing the character silhouette?
-{
-  const ids = Object.keys(TOON_SPECS);
-  const YAWS = [0, 12, 20, 28];
-  const grid = section('head-yaw', 'Head yaw — unresolved before / candidates',
-    'GALLERY ONLY — production remains at 0°. Columns are current 0°, subtle 12°, medium 20°, '
-    + 'strong 28°. Every row shares one live run phase; the second tile reproduces the normal '
-    + 'run camera: a 24-world-unit rig drawn through the 2× camera, approximately 48 logical '
-    + 'screen pixels before device-density scaling.');
-
-  for (const id of ids) {
-    const largeW = 4 * 66, largeH = 78;
-    tile(grid, `${id} — inspection`, '0° current · 12° · 20° · 28°', largeW, largeH, (ctx, t) => {
-      for (let i = 0; i < YAWS.length; i++) {
-        const x = i * 66 + 33;
-        drawToon(ctx, id, pose('run', t, { headTurn: YAWS[i] }), x, 68, 60);
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '9px ui-monospace, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(`${YAWS[i]}°`, x, 77);
-      }
-    }, { animated: true, wide: true, hires: 4 });
-
-    const runW = 4 * 60, runH = 64;
-    tile(grid, `${id} — normal run size`, '24-unit rig × 2× camera = ~48px · 0° / 12° / 20° / 28°', runW, runH, (ctx, t) => {
-      for (let i = 0; i < YAWS.length; i++) {
-        // Match applyWorld() rather than passing h=48: stroke floors are chosen
-        // from the real 24-unit rig first, then the camera magnifies the result.
-        ctx.save();
-        ctx.translate(i * 60 + 30, 60);
-        ctx.scale(2, 2);
-        drawToon(ctx, id, pose('run', t, { headTurn: YAWS[i] }), 0, 0, HERO_DRAW_H);
-        ctx.restore();
-      }
-    }, { animated: true, wide: true, hires: 6 });
-  }
-}
+// The head yaw — unresolved before / candidates section used to sit here.
+// Production remains at 0°; TOON_SPECS never gained a headTurn field.
 
 // ------------------------------------------ raised-arm celebration candidates
 // The whole cast's retired routines remain here beside the shipped rework.
@@ -3923,324 +3963,21 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// --------------------------------------------------- 3c. cabinet style bake-off
-// Four silhouettes of the same machine, so the choice can be made by looking
-// rather than by describing. Every style shares the hardware (controls, coin
-// door, marquee art) and differs only in outline and proportion. Whichever wins
-// becomes CABINET_STYLE in sprites/arcade.js — a one-word edit.
-{
-  const grid = section('cabinet-styles', 'Cabinet style bake-off',
-    'The same cabinets drawn in each candidate silhouette. '
-    + `Active style is "${CABINET_STYLE}". `
-    + 'Rows are the styles; each is shown at hub size against a representative '
-    + 'spread of palettes — bright, dark, pale — plus a locked one.');
-  // A spread that stresses the palette maths: a bright cabinet, a near-black
-  // one, a near-white one, and the remix cabinet.
-  const PICKS = ['plumber', 'crypt', 'office', 'surge'];
-  for (const [name, st] of Object.entries(CABINET_STYLES)) {
-    for (const id of PICKS) {
-      const cab = CABINETS.find((c) => c.id === id);
-      const pal = cabinetPalette(cab, true);
-      tile(grid, `${name} — ${id}`, `${st.w}x${st.h}${name === CABINET_STYLE ? ' (active)' : ''}`,
-        st.w + 8, st.h + 8, (ctx, t) => {
-          drawCabinetShell(ctx, 4, 4, st.w, st.h, pal, name);
-          const scr = drawCabinetScreen(ctx, 4, 4, st.w, st.h, pal, name);
-          if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
-        }, { animated: true });
-    }
-    const locked = cabinetPalette(CABINETS.find((c) => c.id === 'rhythm'), false);
-    tile(grid, `${name} — locked`, 'unplugged', st.w + 8, st.h + 8,
-      (ctx) => drawCabinetShell(ctx, 4, 4, st.w, st.h, locked), { animated: false });
-  }
-}
+// The cabinet style bake-off used to sit here. CABINET_STYLE settled and
+// CABINET_STYLES in sprites/arcade.js still holds the candidates.
 
 // The back wall bake-off used to sit here. The dressing was chosen and the
 // section came out of the gallery; WALL_DRESSINGS still holds the candidates.
 
-// The eye ring is currently 0.02u wide on an eye 0.11u across, while the body
-// contour it sits inside is 0.016u — so the darkest, thinnest-looking line on
-// the hero is in fact the FATTEST one he owns, wrapped around his smallest
-// feature. Slice an eye horizontally at u=60 and it goes ring 1.2 / white 1.1 /
-// pupil 3.1 / white 1.1 / ring 1.2: the outline is wider than the sclera.
-//
-// Four ways out, and they are not interchangeable — thinning the face leaves the
-// silhouette's weight alone, thinning everything changes the hero's whole read,
-// and dropping alpha changes neither width but risks losing the figure against
-// the room. The 24px column is the one that decides it: `u` is 24 in a real run
-// (drawHeroSprite passes HERO_DRAW_H), which is small enough that the Math.max
-// floors bind and hand back a HEAVIER-than-proportional line. A treatment that
-// looks right at gallery size and dissolves at 24px is not a treatment.
-{
-  const grid = section('ink-bakeoff', 'Outline weight bake-off',
-    'One rig, five ink weights. `face` scales the eye/brow/mouth strokes, `body` scales the '
-    + 'contour `ow`, `alpha` scales the outline colors — see INK in toons.js. `current` is what '
-    + 'ships; `was` winds the face strokes back to their pre-2026-07-22 weights, when the eye '
-    + 'ring was drawn wider than the contour around it. Each row is the same hero at three '
-    + 'scales: the 60u gallery pose, the 32px HUD face crop, and the real in-run 24u sprite at '
-    + '2x world zoom. Judge on the 24u column, not the big one — the stroke floors only bind '
-    + 'down there, and that is where the game actually lives.');
-
-  // Rebased on the shipped weights. `was` is the pre-thin-face rig — face 1.818
-  // is 1/0.55, which winds the baked 0.011u ring back to the 0.020u it used to
-  // be — kept so the change stays visible and reversible by eye rather than by
-  // archaeology. The rest are the NEXT levers, not the ones already spent.
-  const TREATMENTS = [
-    ['current', 'shipped — 0.011u ring, 0.016u contour', { body: 1, face: 1, alpha: 1 }],
-    ['was', 'pre-thin-face — 0.020u ring over a 0.016u contour', { body: 1, face: 1.818, alpha: 1 }],
-    ['thinner face', 'ring →0.008u, if current still reads heavy', { body: 1, face: 0.72, alpha: 1 }],
-    ['thin body', 'contour 0.016u→0.011u · face as shipped', { body: 0.7, face: 1, alpha: 1 }],
-    ['soft', 'no geometry change · outline alpha 0.32→0.20', { body: 1, face: 1, alpha: 0.62 }],
-  ];
-  // grumpos is the complaint (bald, beard-gap mouth, brows); lorenzo carries a
-  // mustache and a nose; b33p's eyes are LED bars, a different face dialect that
-  // a face-only dial could easily wreck while the other two look fine.
-  const IDS = ['grumpos', 'lorenzo', 'b33p'];
-
-  const HH = 60;
-
-  // Head-to-head, which is the only layout that actually settles this. Five
-  // full-body cards stacked down the page put ~250px of gap and a scroll between
-  // the things being compared, and a 0.009u stroke difference does not survive
-  // that trip. Same feature, touching, same frozen phase, magnified — and
-  // rendered at 6x into a 3x display so the extra density comes back as tone
-  // rather than as a fatter run of whole pixels.
-  //
-  // Each row keeps its OWN u and scales the context to match sizes on screen.
-  // Blowing 24u up to 60u instead would relax the Math.max stroke floors and
-  // quietly show a sprite the game never draws.
-  const CELL = 78, LABEL_W = 62, HEAD_ROWS = [['60u', HH], ['24u', HERO_DRAW_H]];
-  const HEAD_SPAN = 0.62;  // fraction of u the crop covers, top of skull to chin
-  const headCell = (ctx, id, h, cellX, cellY, phase) => {
-    // Where drawHumanoid parks the head, in u above the feet: see `headY`.
-    const anchor = TOON_SPECS[id].heavy ? 0.978 : 0.76;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cellX, cellY, CELL, CELL);
-    ctx.clip();
-    ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
-    ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
-    // That scale is a MAGNIFYING GLASS, not a camera: it exists so a 0.009u
-    // difference survives the trip to your eye. Pin the ink to the zoom this
-    // row is actually about — the 60u row is a menu at 1:1, the 24u row is the
-    // in-run sprite at the world zoom — or the cell blows the stroke floors
-    // open by 5x and shows ink the game never draws at either size.
-    setInkScale(h === HERO_DRAW_H ? WORLD_Z : 1);
-    try {
-      // feet at +anchor*h below the cell center puts the head center ON it
-      drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
-    } finally {
-      setInkScale();
-    }
-    ctx.restore();
-  };
-
-  const PHASE = 0.42; // frozen: an A/B that bobs is an A/B you cannot read
-  for (const id of IDS) {
-    const cmpW = LABEL_W + TREATMENTS.length * CELL;
-    const cmpH = 14 + HEAD_ROWS.length * CELL;
-    tile(grid, `${id} — head to head`, 'all five treatments, frozen, 6x supersampled', cmpW, cmpH, (ctx) => {
-      ctx.font = 'bold 7px ui-monospace, monospace';
-      ctx.fillStyle = '#8a8a9a';
-      ctx.textBaseline = 'alphabetic';
-      TREATMENTS.forEach(([name], i) => {
-        ctx.fillText(name, LABEL_W + i * CELL + 4, 9);
-      });
-      HEAD_ROWS.forEach(([rowLabel, h], r) => {
-        const y = 14 + r * CELL;
-        ctx.fillStyle = '#8a8a9a';
-        ctx.fillText(rowLabel, 4, y + CELL / 2);
-        TREATMENTS.forEach(([, , ink], i) => {
-          setInk(ink);
-          try {
-            headCell(ctx, id, h, LABEL_W + i * CELL, y, PHASE);
-          } finally {
-            setInk();
-          }
-        });
-      });
-      // Hairlines between cells so the eye has an edge to compare across.
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-      ctx.lineWidth = 0.4;
-      ctx.beginPath();
-      for (let i = 0; i <= TREATMENTS.length; i++) {
-        ctx.moveTo(LABEL_W + i * CELL, 12);
-        ctx.lineTo(LABEL_W + i * CELL, cmpH);
-      }
-      for (let r = 0; r <= HEAD_ROWS.length; r++) {
-        ctx.moveTo(LABEL_W, 14 + r * CELL);
-        ctx.lineTo(cmpW, 14 + r * CELL);
-      }
-      ctx.stroke();
-    }, { wide: true, hires: 6 });
-  }
-
-  const POSE_W = Math.round(HH * 0.9), POSE_H = Math.round(HH * 1.3);
-  const FACE = 34;
-  const RUN_W = (HERO_DRAW_W + 10) * WORLD_Z, RUN_H = (HERO_DRAW_H + 8) * WORLD_Z;
-  const GAP = 6;
-  const TW = POSE_W + GAP + FACE + GAP + RUN_W;
-  const TH = Math.max(POSE_H, FACE, RUN_H);
-
-  for (const id of IDS) {
-    for (const [name, note, ink] of TREATMENTS) {
-      tile(grid, `${id} — ${name}`, note, TW, TH, (ctx, t) => {
-        setInk(ink);
-        try {
-          drawToon(ctx, id, pose('run', t), POSE_W / 2, POSE_H - HH * 0.05, HH);
-
-          const fx = POSE_W + GAP;
-          drawToonFace(ctx, id, fx, (TH - FACE) / 2, FACE, FACE);
-
-          // The honest one: u = HERO_DRAW_H exactly as a run passes it, then a
-          // world-zoom scale on top. Scaling the CONTEXT (not the unit) is what
-          // the game does, so the floors bind at 24 and magnify from there.
-          ctx.save();
-          ctx.translate(fx + FACE + GAP, 0);
-          ctx.scale(WORLD_Z, WORLD_Z);
-          drawToon(ctx, id, pose('run', t), (HERO_DRAW_W + 10) / 2, RUN_H / WORLD_Z - 4, HERO_DRAW_H);
-          ctx.restore();
-        } finally {
-          setInk(); // never leak a treatment into the next tile
-        }
-      }, { animated: true, wide: true });
-    }
-  }
-}
+// The outline weight bake-off used to sit here. The eye-ring/contour
+// question settled and INK in toons.js still holds the treatments.
 
 // The Lorenzo cap & face was/is section used to sit here. Settled 2026-07-23
 // and removed from the gallery on 2026-08-05; LORENZO_FACES and setLorenzoFace
 // in toons.js still hold the before and the after.
 
-// The bevel on grumpos's skull: is the lit-side rim reading as a raised edge,
-// and which lever fixes it. Laid out like the ink bake-off next door, with one
-// axis it needs and that one does not — the BACKDROP. A canvas stroke straddles
-// its path, so half the contour lands on the background and half on the fill;
-// the whole effect is that dark-on-black is a no-op while dark-on-skin is not.
-// An A/B run only against the gallery's black cannot see that, and the game
-// stands its cast on a lit wall.
-{
-  const grid = section('rim-bakeoff', 'Lit-side rim bake-off',
-    'SETTLED — `current` is the clipped rim, `was` is the centred one it replaced. The rim used '
-    + 'to be a stroke centred on the contour, which put a warm band OUTSIDE the silhouette and '
-    + 'left the dark ink inside it: measured across grumpos\'s skull at 24u on the wall, +68 out '
-    + 'against -67 in, which reads as an embossed edge rather than an outlined one. Every hero '
-    + 'but chompo carried one. Clipping the rim to its own shape confines it to the fill; see '
-    + 'RIM in toons.js. Rows run twice, on the gallery black and on the hub\'s own WALL_BASE, '
-    + 'because the whole question is what the ink has to darken — the outer half of a contour '
-    + 'moves the wall four levels out of 255, so it was never doing the work the centred rim '
-    + 'assumed it was. `wide` is the clip taken too far (it eats the inner dark line as well); '
-    + '`full` is the old failure that deleted the leading shoulder. Note INK.alpha does NOT '
-    + 'reach the rim, so the ink bake-off\'s `soft` column still shifts this balance toward the '
-    + 'light half as a side effect. Judge the 24u rows.');
-
-  // Every column spells out `inside`. setRim() defaults each field it is not
-  // given to the SHIPPED value — which is what makes the bare setRim() in the
-  // finally below a restore — so a centred column that omitted it would quietly
-  // inherit the clip and render as a duplicate of `current`.
-  const TREATMENTS = [
-    ['current', 'shipped — clipped to the shape, surviving band 0.3', { w: 0.3, a: 1, inside: true }],
-    ['was', 'pre-2026-07-22 — centred at 0.6, halo +68 outside vs -67 in', { w: 0.6, a: 1, inside: false }],
-    ['wide', 'clipped but double the band — eats the inner dark line too', { w: 0.6, a: 1, inside: true }],
-    ['full', 'centred at 1.0 · rim covers the contour outright on the lit side', { w: 1, a: 1, inside: false }],
-    ['half', 'centred, no geometry change · rim alpha 0.34→0.17', { w: 0.6, a: 0.5, inside: false }],
-    ['none', 'rim off entirely — contour and form ramps only', { w: 0, a: 0, inside: false }],
-  ];
-
-  // grumpos is the complaint: #ded9d2 is the palest fill in the cast, so his
-  // inner dark sliver has the most to bite on. gnash is the opposite end — a
-  // #4a50d2 head, where the fill is darker than the ink and the rim is the only
-  // edge there is. lorenzo carries both at once, pale skin under a dark cap.
-  const IDS = ['grumpos', 'gnash', 'lorenzo'];
-
-  const CELL = 72, LABEL_W = 62;
-  const HEAD_SPAN = 0.62;
-  // Same u twice, once per backdrop — never one u stretched to stand in for the
-  // other, for the reason the ink bake-off spells out: blowing 24u up to 60u
-  // relaxes the stroke floors and shows a sprite the game never draws.
-  const HEAD_ROWS = [
-    ['60u', 60, null],
-    ['60u ·wall', 60, WALL_BASE],
-    ['24u', HERO_DRAW_H, null],
-    ['24u ·wall', HERO_DRAW_H, WALL_BASE],
-  ];
-  const headCell = (ctx, id, h, cellX, cellY, phase, bg) => {
-    const anchor = TOON_SPECS[id].heavy ? 0.978 : 0.76;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cellX, cellY, CELL, CELL);
-    ctx.clip();
-    if (bg) { ctx.fillStyle = bg; ctx.fillRect(cellX, cellY, CELL, CELL); }
-    ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
-    ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
-    // Magnifying glass, not a camera — see the ink bake-off's headCell.
-    setInkScale(h === HERO_DRAW_H ? WORLD_Z : 1);
-    try {
-      drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
-    } finally {
-      setInkScale();
-    }
-    ctx.restore();
-  };
-
-  const PHASE = 0.42; // frozen, same as the ink bake-off, so the two compare
-  for (const id of IDS) {
-    const cmpW = LABEL_W + TREATMENTS.length * CELL;
-    const cmpH = 14 + HEAD_ROWS.length * CELL;
-    tile(grid, `${id} — rim head to head`, 'six treatments x two backdrops, frozen', cmpW, cmpH, (ctx) => {
-      ctx.font = 'bold 7px ui-monospace, monospace';
-      ctx.fillStyle = '#8a8a9a';
-      ctx.textBaseline = 'alphabetic';
-      TREATMENTS.forEach(([name], i) => {
-        ctx.fillText(name, LABEL_W + i * CELL + 4, 9);
-      });
-      HEAD_ROWS.forEach(([rowLabel, h, bg], r) => {
-        const y = 14 + r * CELL;
-        ctx.fillStyle = '#8a8a9a';
-        ctx.fillText(rowLabel, 4, y + CELL / 2);
-        TREATMENTS.forEach(([, , rim], i) => {
-          setRim(rim);
-          try {
-            headCell(ctx, id, h, LABEL_W + i * CELL, y, PHASE, bg);
-          } finally {
-            setRim(); // never leak a treatment into the next cell
-          }
-        });
-      });
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-      ctx.lineWidth = 0.4;
-      ctx.beginPath();
-      for (let i = 0; i <= TREATMENTS.length; i++) {
-        ctx.moveTo(LABEL_W + i * CELL, 12);
-        ctx.lineTo(LABEL_W + i * CELL, cmpH);
-      }
-      for (let r = 0; r <= HEAD_ROWS.length; r++) {
-        ctx.moveTo(LABEL_W, 14 + r * CELL);
-        ctx.lineTo(cmpW, 14 + r * CELL);
-      }
-      ctx.stroke();
-    }, { wide: true, hires: 5 });
-  }
-
-  // The bevel is an EDGE effect, and a head crop still shows it wrapped around
-  // a curve where a highlight and a contour are hard to tell apart. One full
-  // body per treatment, on the wall, is the check that whatever wins the crop
-  // has not quietly deleted a shoulder or flattened the whole figure.
-  const POSE_W = 54, POSE_H = 78;
-  for (const [name, note, rim] of TREATMENTS) {
-    tile(grid, `full figure — ${name}`, note, POSE_W * IDS.length, POSE_H, (ctx, t) => {
-      ctx.fillStyle = WALL_BASE;
-      ctx.fillRect(0, 0, POSE_W * IDS.length, POSE_H);
-      setRim(rim);
-      try {
-        IDS.forEach((id, i) => {
-          drawToon(ctx, id, pose('run', t), POSE_W * i + POSE_W / 2, POSE_H - 3, 60);
-        });
-      } finally {
-        setRim();
-      }
-    }, { animated: true, wide: true });
-  }
-}
+// The lit-side rim bake-off used to sit here. SETTLED — the clipped rim
+// shipped and RIM in toons.js still holds the treatments.
 
 // Brow weight. Carved off the ink bake-off because the thin-face pass moved the
 // eye ring and the brows on one dial, and only the ring was the defect — the
@@ -7134,9 +6871,12 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         marks: (ft) => [-1, 0, 1].map((k) => ({ x: ft * 260 - Math.abs(k) * 6, alt: ALT + k * ft * 18, rot: ft * 20 + k })),
       },
     };
-    const releaseAt = (c) => (c.spec.bowStyle ? BOW_REACH_T : 0) + 0.3 * (c.spec.bowStyle ? BOW_RELEASE_AT(c.spec.bowStyle)
+    // A carried wrench pays the same reach the bow does before its 0.3s starts,
+    // so both the release instant and the length of the window move with it.
+    const preT = (c) => (c.spec.bowStyle ? BOW_REACH_T : 0) + (c.spec.wrenchCarry ? WRENCH_REACH_T : 0);
+    const releaseAt = (c) => preT(c) + 0.3 * (c.spec.bowStyle ? BOW_RELEASE_AT(c.spec.bowStyle)
       : RANGED_RELEASE_AT[c.gesture === 'throw' ? 'toss' : (c.gesture || 'toss')]);
-    const aimT = (c) => (c.gesture === 'draw' ? BOW_AIM_T : 0.3);
+    const aimT = (c) => (c.gesture === 'draw' ? BOW_AIM_T : 0.3 + preT(c));
     const heroPose = (c, t, local) => {
       const aiming = local <= aimT(c);
       const rel = releaseAt(c);
@@ -7156,6 +6896,32 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     for (const c of cands) {
       const opts = { spec: c.spec };
       const fl = flights[c.flight];
+      // THE CARRY, with nothing happening: standing, then a full stride cycle.
+      // No aim on any of these frames, so what is drawn is only what he wears —
+      // whether it survives the run, whether the near arm swings through it,
+      // and whether it still reads at the size below.
+      if (c.carryStrip) {
+        const CN = 7, CH = 56, CCOL = 62, CFEET = 82;
+        tile(grid, `${c.name} — worn, doing nothing`,
+          'Standing, then a full stride. The wrench is on the belt for every frame here; the fetch strip '
+          + 'below is the same cut taking it off.',
+          CCOL * (CN + 1) + 20, CH * 1.7, (ctx) => {
+            for (let i = 0; i < CN; i++) {
+              const x = 34 + i * CCOL;
+              // Frame 0 is the STAND; the rest walk one stride cycle, which is
+              // the pose the carry has to survive.
+              const t = i === 0 ? 0 : (i - 1) / (CN - 1) / 1.6;
+              drawToon(ctx, heroId, pose(i === 0 ? 'stand' : 'run', t), x, CFEET, CH, opts);
+              ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
+              ctx.fillText(i === 0 ? 'STAND' : `${i}/${CN - 1}`, x, CFEET + 12);
+            }
+            // ...and the same carry at the size he is actually seen, where a
+            // mark this small either survives or does not.
+            const x = 34 + CN * CCOL;
+            drawToon(ctx, heroId, pose('run', 0.2), x, CFEET, HERO_DRAW_H, opts);
+            ctx.fillStyle = '#8a8a9e'; ctx.fillText('24u', x, CFEET + 12);
+          }, { wide: true, hires: 4 });
+      }
       // THE STUDY: wind-up, release, follow-through, at study size. The
       // projectile is drawn on the release beat only, just off the hand.
       if (c.strip) {
@@ -7264,6 +7030,18 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     'OPEN, 6 Sep 2026. See the longbow section above for the brief. All four release at the same '
     + 'instant (0.168s), so the flight code will not care which wins.',
     'lorenzo', WRENCH_CANDIDATES.map((c) => ({ ...c, strip: true })));
+  // ROUND 3: the same four throws are not the question here — the CARRY is, so
+  // every cut throws W1 and differs only in where the tool was kept. The lane
+  // and the fetch strip come from the same rangedBakeoff machinery; the carry
+  // strip above them is the new tile, and it is the one that matters, because
+  // it is the pose he is in for the whole game except the third of a second he
+  // is throwing.
+  rangedBakeoff('wrench-carry-bakeoff', 'RANGED, ROUND 3 — where the wrench lives',
+    'OPEN, 9 Sep 2026. Today the wrench is painted only while it is being swung or thrown, so it '
+    + 'flashes into an empty hand and out again. Each cut WEARS it and pays the same 0.08s reach to '
+    + 'get it (the bow\'s number), and all five throw W1 — one variable at a time. Judge the carry '
+    + 'strip first: that is the pose he holds for the whole game.',
+    'lorenzo', WRENCH_CARRY_CANDIDATES.map((c) => ({ ...c, strip: true, carryStrip: true })));
   rangedBakeoff('lorenzo-ranged-bakeoff', 'LORENZO — a ranged move, six cuts',
     'OPEN, 6 Sep 2026. Lorenzo keeps his wrench and gets something to throw with it. L1 is the ask; '
     + 'the rest are the toolbag. Same construction as Fernwick\'s section above: prop at the hand, same '
