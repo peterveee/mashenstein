@@ -5,7 +5,7 @@ import {
   beginRenderFrame, bctx, blit, presentCanvas, screen,
   setPresentationFrame,
 } from '../src/engine/renderer.js';
-import { frameForViewport } from '../src/engine/frame.js';
+import { frameForViewport, cameraForFrame } from '../src/engine/frame.js';
 import { PortraitInputSurface, portraitTouchLayout } from '../src/engine/portrait-input.js';
 
 const REFERENCE = typeof window !== 'undefined' ? window.__PORTRAIT_REFERENCE__ : '';
@@ -23,9 +23,17 @@ const SCENES = {
     label: 'GAP / SLIDE', stage: 'plumber-2', startAt: 0.36, seed: 0x504f5255,
     note: 'Plumber Panic · four-step gear crossing',
   },
+  underground: {
+    label: 'PLUMBER 2 · THE WORKS', stage: 'plumber-2', startAt: 0.24, seed: 0x504f5258,
+    note: 'Plumber Panic · underground works, upper lane and lower machinery',
+  },
   raised: {
     label: 'RAISED ROAD', stage: 'speed-1', startAt: 0.55, seed: 0x504f5256,
     note: 'Speed Zone · spring fork and raised road',
+  },
+  rhythm: {
+    label: 'LEVEL 3-1 · RHYTHM BANKRUPTCY', stage: 'rhythm-1', startAt: 0.08, seed: 0x504f5257,
+    note: 'Rhythm Bankruptcy · beat lane, city backdrop and rhythm HUD',
   },
 };
 
@@ -296,7 +304,7 @@ async function bootEmbed() {
     blit();
     paintControls();
     const pose = toonMod.poseFromPlayer(run.player, run.tRun);
-    const cam = cameraMod.cameraForFrame({ frame, camX: run.camX, zoom: chosen.zoom, pan: 0, floorY: cameraMod.GROUND_Y });
+    const cam = cameraForFrame({ frame, camX: run.camX, zoom: chosen.zoom, pan: 0, floorY: cameraMod.GROUND_Y });
     const report = readouts(run, cam, frame, toonMod.drawToon, pose, run.relay.current);
     window.__portraitPreview = {
       frame, choice: chosen, scene, run, report,
@@ -362,6 +370,8 @@ function shell() {
   const aInput = document.getElementById('a-zoom');
   const aValue = document.getElementById('a-zoom-value');
   const frames = [...document.querySelectorAll('iframe[data-choice]')];
+  const initialScene = params().get('scene');
+  if (SCENES[initialScene]) sceneSelect.value = initialScene;
   const queryFor = (choice) => {
     const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value });
     return `portrait-preview.html?${q}`;

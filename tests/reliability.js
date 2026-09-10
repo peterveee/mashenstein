@@ -1072,6 +1072,9 @@ for (const type of ['pellet', 'axe', 'fist']) {
   run.updateProjectiles(0, 160);
   assert(pipe.live, `${type} cannot destroy an unbreakable pipe`);
 }
+// LORENZO'S WRENCH BREAKS WHAT IT REACHES (10 Sep 2026, replacing the smash).
+// It leaves his hand at the gesture's release, so the crate goes when the tool
+// gets there, not on the press — step the flight far enough to arrive.
 run.relay.current = 'lorenzo';
 run.player.setHero('lorenzo');
 run.player.grounded = true;
@@ -1079,7 +1082,12 @@ run.player.abilityCd = 0;
 const spannerTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
 run.obstacles = [spannerTarget];
 run.useAbility();
-assert(!spannerTarget.live, 'Lorenzo spanner still breaks its direct target');
+const thrownWrench = run.projectiles.find((p) => p.art === 'wrench');
+assert(!!thrownWrench, 'Lorenzo throws the pipe wrench');
+thrownWrench.holdT = 0;
+thrownWrench.x = spannerTarget.x;
+run.updateProjectiles(0, 160);
+assert(!spannerTarget.live, 'Lorenzo wrench still breaks its direct target');
 // Fernwick's arrow is its own cue family. It is HELD for the reach and the
 // draw before it leaves, so the flight is stepped through in small dts (one
 // big step would carry it past the hazard and into the ground). BROADHEAD
@@ -1129,6 +1137,17 @@ for (const id of ['b33p', 'raymn', 'grumpos', 'kiko']) {
   run.player.abilityCd = 0;
   run.projectiles = [];
   run.useAbility();
+  // GRUMPOS' AXE IS HELD, like Fernwick's arrow (9 Sep 2026, when his throw
+  // got a body): nothing leaves on the press, so his launch cue plays when the
+  // gesture releases it. Stepped in small dts for the same reason hers is —
+  // and the hold is what the step proves, since a press-time spawn would
+  // already have counted before the loop ran.
+  if (id === 'grumpos') {
+    const axe = run.projectiles.find((pr) => pr.type === 'axe');
+    assert(axe && axe.holdT > 0, 'Grumpos holds the axe until the throw releases it');
+    for (let i = 0; i < 40 && axe.holdT > 0; i++) run.updateProjectiles(0.01, 160);
+    assert(run.player.axeThrown, 'and it leaves his hand on the release beat');
+  }
 }
 Audio.sfx = originalSfx;
 assert(projectileContacts === 5, 'every reachable weapon contact family plays its specific WAV cue');

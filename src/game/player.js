@@ -237,6 +237,7 @@ export class Player {
     this.spannerFlurryCd = 0; // deferred cooldown, applied when flurry ends
     this.fistThrown = false;
     this.axeThrown = false;
+    this.wrenchThrown = false;   // Lorenzo's belt loop, empty while the tool is out
     this.headless = 0;    // Gary
     this.assemblyGraceUsed = 0;
     this.hazardEaten = false; // Miss Chomp mastery
@@ -295,6 +296,7 @@ export class Player {
     this.spannerFlurryCd = 0;
     this.fistThrown = false;
     this.axeThrown = false;
+    this.wrenchThrown = false;   // Lorenzo's belt loop, empty while the tool is out
     this.sliding = false;
     this.slideAmount = 0;
     this.slideDirection = 0;

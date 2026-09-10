@@ -613,7 +613,10 @@ const WEAPON_AUDIO_GAIN = {
   // she starts between him and Kiko on launch, a touch under Kiko on the
   // ricochet zing.
   contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9, kiko: 0.82, clara: 0.78 },
-  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78, clara: 0.62, fernwick: 0.8 },
+  // lorenzo sits UNDER grumpos (0.82 -> 0.7): the wrench cue is the axe's pitched
+  // up, and the same energy moved up the spectrum reads louder to the ear than
+  // it measures — level it by its opposite number, not by its peak.
+  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78, clara: 0.62, fernwick: 0.8, lorenzo: 0.7 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.

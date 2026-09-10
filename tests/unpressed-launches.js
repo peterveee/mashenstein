@@ -143,8 +143,16 @@ const TICK = 1 / 60;
   // Which hero the relay hands you is the relay's business, so switch until it
   // produces a stomp hero and test THAT tag-in. The crate is laid fresh before
   // each switch, because the rebound only fires when the sweep finds something.
+  //
+  // NO HERO STOMPS ANY MORE (10 Sep 2026): Lorenzo was the last one, and the
+  // pipe wrench replaced his stomp/smash. The rebound this suite was written
+  // against therefore cannot fire — `hero.stomp` gates it in run.js — so the
+  // case is asserted as GONE rather than deleted. If a stomping hero is ever
+  // added back, this flips to the original assertion and the bug it guards
+  // against is live again.
+  const anyStomps = ['mochi', 'lorenzo'].some((id) => HERO_BY_ID[id]?.stomp);
   let taggedStomp = false;
-  for (let i = 0; i < 10 && !taggedStomp; i++) {
+  for (let i = 0; i < (anyStomps ? 10 : 0) && !taggedStomp; i++) {
     const c = makeObstacle('crate', run.camX + PLAYER_X, {});
     run.obstacles.push(c);
     run.player.y = 0;
@@ -157,7 +165,9 @@ const TICK = 1 / 60;
     assert(run.player.vy <= 0.01 && run.player.grounded,
       `and leaves him standing on the ground (vy ${run.player.vy.toFixed(0)}, was 200 before)`);
   }
-  assert(taggedStomp, 'the relay tagged in a stomp hero, which is the case that bounced');
+  assert(anyStomps ? taggedStomp : !taggedStomp,
+    anyStomps ? 'the relay tagged in a stomp hero, which is the case that bounced'
+      : 'no hero stomps any more, so the tag-in rebound cannot fire');
 
   // The same sweep as a LANDING keeps its rebound: that one is the move working.
   const crate2 = makeObstacle('crate', run.camX + PLAYER_X, {});

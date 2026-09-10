@@ -44,9 +44,8 @@ import {
   b33pTitleShotPose,
   poseFromPlayer,
   drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC,
-  WRENCH_REACH_T,
+  AXE_THROW_AT,
 } from '../src/sprites/toons.js';
-import { LORENZO_RANGED_CANDIDATES, WRENCH_CANDIDATES, WRENCH_CARRY_CANDIDATES } from '../src/dev/ranged-candidates.js';
 import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
   LCD_GORILLA_NOSTRIL_STYLES,
@@ -563,7 +562,14 @@ function powerupExtra(type, local) {
   if (type === 'roll') return { kind: 'slide', roll: true };
   if (type === 'compress') return { kind: 'slide' };
   if (type === 'fist') return { headless: true };
-  if (type === 'axe') return { axeThrown: true };
+  // The axe throw is a GESTURE now (9 Sep 2026): the same aim pose every other
+  // throw takes, with the axe leaving his hand — and only then his back — on
+  // the release beat. `axeThrown` used to be the whole move.
+  if (type === 'axe') {
+    return local <= 0.3
+      ? { menuAction: 'aim', actionTime: local, axeThrown: local >= 0.3 * AXE_THROW_AT.release }
+      : { axeThrown: true };
+  }
   if (type === 'shoot') return local <= 0.3 ? { menuAction: 'aim', actionTime: local } : {};
   if (type === 'bow') return local <= BOW_AIM_T ? { menuAction: 'aim', actionTime: local } : {};
   if (type === 'eat') return { menuAction: 'chomp', time: local };
@@ -679,6 +685,33 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   lineup('slide', 'all slide', `${N} heroes · the shipped power slide; gary and dolores are cast-roll `
     + 'flavour with no roster entry, so poseFromPlayer keeps them in the crouch');
   lineup('celebrate', 'all celebrate', `${N} heroes · the results-screen routine — signature bounce, then the big move`);
+
+  // ---- AND THE SPECIAL MOVES, SHOULDER TO SHOULDER.
+  //
+  // The five strips above are the shared poses, so every drawable toon is in
+  // them. This one is not a pose: it is the ROSTER'S abilities, all firing on
+  // one clock. Gary, Dolores, Chompo and Mochi have no ability to fire — only
+  // heroes with a row (the eight, plus the guest) can appear — and the roster
+  // order is HEROES' own, so the strip reads in card order.
+  //
+  // Same drawPowerupTile() the per-hero powerup tiles and the pose-comparison
+  // rows use, so the strip cannot show a special the game does not serve: the
+  // ability pose from poseFromPlayer's own fields, plus drawPowerPose()'s
+  // flourish pulsing on useAbility()'s countdown, plus the guest's thrown cane.
+  {
+    const pids = withGuest(Object.keys(HERO_BY_ID));
+    const TH = 96, FEET = TH - GAP;
+    tile(grid, 'all special move', `${pids.length} heroes · every ability firing on one clock, one feet line`,
+      COL * pids.length, TH, (ctx, t) => {
+        pids.forEach((hid, i) => {
+          drawPowerupTile(ctx, hid, heroRow(hid), t, COL * (i + 0.5), FEET, HH);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '7px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(hid, COL * (i + 0.5), TH - 4);
+        });
+      }, { animated: true, wide: true, hires: 4 });
+  }
 
   // ---- AND THE TWO THAT ARE ACTUALLY ANIMATIONS.
   //
@@ -6874,7 +6907,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     };
     // A carried wrench pays the same reach the bow does before its 0.3s starts,
     // so both the release instant and the length of the window move with it.
-    const preT = (c) => (c.spec.bowStyle ? BOW_REACH_T : 0) + (c.spec.wrenchCarry ? WRENCH_REACH_T : 0);
+    const preT = (c) => (c.spec.bowStyle ? BOW_REACH_T : 0);
     const releaseAt = (c) => preT(c) + 0.3 * (c.spec.bowStyle ? BOW_RELEASE_AT(c.spec.bowStyle)
       : RANGED_RELEASE_AT[c.gesture === 'throw' ? 'toss' : (c.gesture || 'toss')]);
     const aimT = (c) => (c.gesture === 'draw' ? BOW_AIM_T : 0.3 + preT(c));
@@ -6882,9 +6915,17 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       const aiming = local <= aimT(c);
       const rel = releaseAt(c);
       const inFlight = c.id === 'shield' && local > rel && local < rel + 0.93;
+      // A THROWN WRENCH IS OFF HIS HIP until the flight ends — `fl.marks` is
+      // empty once the return has landed, which is exactly when he has it back.
+      // `flights[c.flight]`, not the loop's `fl` — that const is declared in the
+      // per-candidate block BELOW this function, so reaching for it here threw a
+      // ReferenceError the moment a lane tile painted.
+      const wrenchOut = c.prop === 'wrench' && local > rel
+        && flights[c.flight].marks(local - rel).length > 0;
       return pose('run', t, {
         ...(aiming ? { menuAction: 'aim', actionTime: local } : {}),
         ...(inFlight ? { shieldThrown: true } : {}),
+        ...(wrenchOut ? { wrenchThrown: true } : {}),
       });
     };
     const drawCrate = (ctx, x, gy, flash) => {
@@ -6947,7 +6988,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
               // (below), and RANGED_RELEASE_POINT is one shared object the next
               // frame overwrites — so held by reference every arrow in the
               // strip came out at the last frame's release point.
-              const rp = c.gesture === 'draw' && RANGED_RELEASE_POINT.set
+              const rp = RANGED_RELEASE_POINT.set
                 ? { x: RANGED_RELEASE_POINT.x, y: RANGED_RELEASE_POINT.y, ang: RANGED_RELEASE_POINT.ang } : null;
               for (const m of fl.marks((q - rel) * 0.9)) {
                 const hx = c.gesture === 'draw' ? 0.66 : 0.46, hy = c.gesture === 'draw' ? 0.44 : 0.62;
@@ -7007,7 +7048,10 @@ function frameStrip(grid, name, label, note, w, h, cell) {
           if (!broken || flash || stuck) drawCrate(ctx, X0 + CRATE, LGY, flash);
           RANGED_RELEASE_POINT.set = false;
           drawToon(ctx, heroId, heroPose(c, t, local), X0, LGY, HERO_DRAW_H, opts);
-          if (c.gesture === 'draw' && RANGED_RELEASE_POINT.set) laneRel = { x: RANGED_RELEASE_POINT.x, y: RANGED_RELEASE_POINT.y, ang: RANGED_RELEASE_POINT.ang };
+          // Throws report a release point now too (a hand's width past the
+          // glove), so the lane places the tool from it exactly as it does the
+          // arrow — and the first frame of flight clears the fist.
+          if (RANGED_RELEASE_POINT.set) laneRel = { x: RANGED_RELEASE_POINT.x, y: RANGED_RELEASE_POINT.y, ang: RANGED_RELEASE_POINT.ang };
           if (ft >= 0) {
             for (const m of fl.marks(ft)) {
               if (m.x > LW - X0 - 6) continue;
@@ -7027,30 +7071,20 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   // round one, the B2 strip and the size sweep — came out here; the painter
   // stays, the tombstone is in ranged-move-bakeoff. The Fernwick power-up
   // tile in the production heroes section now shows the whole handling.
-  rangedBakeoff('wrench-round2-bakeoff', 'RANGED, ROUND 2 — the wrench throw, four styles',
-    'OPEN, 6 Sep 2026. See the longbow section above for the brief. All four release at the same '
-    + 'instant (0.168s), so the flight code will not care which wins.',
-    'lorenzo', WRENCH_CANDIDATES.map((c) => ({ ...c, strip: true })));
-  // ROUND 3: the same four throws are not the question here — the CARRY is, so
-  // every cut throws W1 and differs only in where the tool was kept. The lane
-  // and the fetch strip come from the same rangedBakeoff machinery; the carry
-  // strip above them is the new tile, and it is the one that matters, because
-  // it is the pose he is in for the whole game except the third of a second he
-  // is throwing.
-  rangedBakeoff('wrench-carry-bakeoff', 'RANGED, ROUND 3 — where the wrench lives',
-    'OPEN, 9 Sep 2026. Today the wrench is painted only while it is being swung or thrown, so it '
-    + 'flashes into an empty hand and out again. Each cut WEARS it and pays the same 0.08s reach to '
-    + 'get it (the bow\'s number), and all five throw W1 — one variable at a time. Judge the carry '
-    + 'strip first: that is the pose he holds for the whole game.',
-    'lorenzo', WRENCH_CARRY_CANDIDATES.map((c) => ({ ...c, strip: true, carryStrip: true })));
-  rangedBakeoff('lorenzo-ranged-bakeoff', 'LORENZO — a ranged move, six cuts',
-    'OPEN, 6 Sep 2026. Lorenzo keeps his wrench and gets something to throw with it. L1 is the ask; '
-    + 'the rest are the toolbag. Same construction as Fernwick\'s section above: prop at the hand, same '
-    + 'prop in flight, study then lane. Two flights here are new to the game — the bouncing slug (L4) '
-    + 'and the held jet (L5); the other four are flights run.js already has.',
-    'lorenzo', LORENZO_RANGED_CANDIDATES);
+  // WRENCH SHIPPED 10 Sep 2026. The round-3 carry section (C1-C5, settled on C4
+  // — head up in a belt loop) came out with it: TOON_SPECS.lorenzo carries
+  // `ranged`/`throwStyle`/`wrenchCarry` now and HEROES has the ability row. The
+  // painters all survive — `wrenchCarry` still takes all five carries and
+  // `throwStyle` all four throws — so any of it can be reopened with one row.
 }
 
+// BELT LINE — SETTLED 10 Sep 2026. Five drops at the shipped buckle plus one
+// with the brass slimmed; Peter picked beltDrop 0.036u with buckleH 0.048u and
+// it is on TOON_SPECS.lorenzo now. The finding worth keeping: the leg root does
+// NOT come down with the belt, so the buckle's bottom is what runs out of room
+// first — at the shipped 0.06u brass a 0.036u drop pinched the thigh, and
+// slimming the buckle is what bought the drop back. Both dials survive
+// (`beltDrop`, `buckleH`), so the question can be reopened without the section.
 // --------------------------------------------- the hip join (lab only)
 // "Legs directly attached to the lower torso with no skirt — could we not have
 // the rounding attachment for the leg so it all looks like a single body?"
@@ -7460,6 +7494,13 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // instead of inheriting one from where its shoulder socket happens to sit. The
 // pose seam it read is gone with it; the production slide rows above draw the
 // shipped result.
+
+// The Grumpos axe-throw and Kiko chamber bake-offs used to sit here. SETTLED
+// 9 Sep 2026: A2 OVERHAND is his throw and K3 is her chamber, both in the
+// shipped painter now — his on `axeThrow` in TOON_SPECS with the axe leaving
+// his hand on the release beat (run.js holds the projectile until then), hers
+// as the only chamber the ki-press has. The production rows above draw them:
+// the cast's ALL SPECIAL MOVE strip is where both were noticed missing.
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

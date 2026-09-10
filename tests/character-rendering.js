@@ -13,7 +13,7 @@ const {
   TOON_SPECS, toonEffectEllipse, poseFromPlayer, RUN_HEAD_TURN, drawToon,
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
-  B33P_TITLE_WINDUP_T, b33pTitleShotPose, FACE_CONTOUR, FACE_CROP,
+  B33P_TITLE_WINDUP_T, b33pTitleShotPose, FACE_CONTOUR, FACE_CROP, roundHalfAt,
 } = await import('../src/sprites/toons.js');
 const { initRenderer, blit, bctx, pendingOverlayDrawCount } = await import('../src/engine/renderer.js');
 const { save } = await import('../src/engine/save.js');
@@ -382,6 +382,76 @@ b33p.powerPoseT = 0.24;
 const shot = poseFromPlayer(b33p, 0);
 assert(shot.menuAction === 'aim' && shot.actionTime > 0,
   'B-33P cannon receives deterministic muzzle-flash and recoil timing');
+
+// Waist geometry must follow the same lower contour as the torso. This is the
+// regression for the character editor's hip-tuck dial: before the shared
+// measurement, belts kept quoting the shoulder-sized round corner, so changing
+// tuck or round altered the body while leaving the belt width behind.
+{
+  const y = 1.8, top = 0, bot = 2, half = 1, shoulder = 0.7;
+  const stock = roundHalfAt(y, top, bot, half, shoulder, 1, shoulder);
+  const tucked = roundHalfAt(y, top, bot, half, shoulder, 0.78, shoulder);
+  const rounded = roundHalfAt(y, top, bot, half, shoulder, 0.78, 1);
+  assert(tucked < stock, 'hip tuck narrows the measured belt contour');
+  assert(rounded !== tucked, 'hip round changes the measured lower belt contour');
+assert(Number.isFinite(stock) && Number.isFinite(tucked) && Number.isFinite(rounded),
+    'belt contour measurements stay finite across hip dials');
+}
+
+// Lorenzo's editor values exercise the two attachment fixes directly. The
+// belt is a filled source band clipped by the torso (so it cannot stop short
+// when the body narrows), and the seated shoulder cap must still have real
+// coverage after the arm is raised and spread. This probe records only the
+// geometry calls and keeps the production canvas stub untouched.
+{
+  const grad = { addColorStop() {} };
+  const calls = [];
+  const METHODS = new Set([
+    'fillRect', 'moveTo', 'lineTo', 'quadraticCurveTo', 'bezierCurveTo',
+    'arc', 'arcTo', 'ellipse', 'rect', 'roundRect', 'translate', 'scale',
+    'rotate', 'transform', 'setTransform', 'strokeRect', 'fill', 'stroke', 'clip',
+  ]);
+  const target = {
+    canvas: { width: 1200, height: 900 }, fillStyle: '#000', strokeStyle: '#000',
+    globalAlpha: 1, lineWidth: 1, lineCap: 'round', lineJoin: 'round',
+    createLinearGradient: () => grad, createRadialGradient: () => grad,
+    getTransform: () => ({}), setTransform() {}, drawImage() {}, clearRect() {},
+  };
+  const attachmentProbe = new Proxy(target, {
+    get(t, k) {
+      if (k in t) return t[k];
+      if (METHODS.has(k)) return (...args) => calls.push({ method: k, args, fill: t.fillStyle });
+      return () => {};
+    },
+    set(t, k, v) { t[k] = v; return true; },
+  });
+  const edited = {
+    ...TOON_SPECS.lorenzo,
+    armLift: -0.03, armOut: 0.02, torsoWidth: 1.16,
+    hipTuck: 0.72, hipRound: 1,
+  };
+  drawToon(attachmentProbe, 'lorenzo',
+    { kind: 'run', grounded: true, phase: 0.25, time: 0.4, facing: 1 },
+    500, 800, 600, { spec: edited });
+  const beltColour = HERO_SPRITES.lorenzo.pal.m;
+  const belt = calls.filter((c) => c.method === 'fillRect' && c.fill === beltColour
+    && Math.abs(c.args[3] - 0.055 * 600) < 1e-6);
+  assert(belt.length === 1 && belt[0].args[2] > 2 * 0.2 * 600,
+    'Lorenzo belt source band runs past the torso and is clipped flush at both sides');
+  const shoulderColour = HERO_SPRITES.lorenzo.pal.b;
+  const shoulderCaps = calls.filter((c) => c.method === 'ellipse' && c.fill === shoulderColour);
+  assert(shoulderCaps.some((c) => c.args[2] > 0),
+    'Lorenzo seated shoulder cap keeps positive coverage at the edited socket');
+
+  calls.length = 0;
+  drawToon(attachmentProbe, 'lorenzo',
+    { kind: 'slide', slideStyle: 'kick', slideAmount: 1, grounded: true, time: 0.4 },
+    500, 800, 600, { spec: edited });
+  const slideBelt = calls.filter((c) => c.method === 'fillRect' && c.fill === beltColour
+    && Math.abs(c.args[2] - 0.05 * 600) < 1e-6);
+  assert(slideBelt.length === 1,
+    'Lorenzo slide belt uses the same clipped attachment band');
+}
 
 console.log(failed ? 'CHARACTER RENDERING: FAILED' : 'CHARACTER RENDERING: PASSED');
 process.exit(failed ? 1 : 0);

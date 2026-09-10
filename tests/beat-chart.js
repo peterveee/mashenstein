@@ -320,12 +320,14 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
     }
   }
   // WHO IS DEALT ONE AT ALL, and the boundary is a range decision: a thrown
-  // weapon parks after a fixed FLIGHT TIME, and the rocket fist's 0.42s does
-  // not cover the box's lead at this cabinet's speed. Fernwick's LONGBOW is a
-  // ranged type like the rest of them, so she is dealt one; Lorenzo's stomp and
-  // Gnash's dash reach nothing off their own body. See RANGED_ABILITY_TYPES.
+  // weapon parks after a fixed FLIGHT TIME, and that time has to cover the
+  // box's lead at this cabinet's speed. Fernwick's LONGBOW is a ranged type like
+  // the rest of them, and LORENZO joined them on 10 Sep 2026 when the pipe
+  // wrench replaced his stomp — a thrown tool on the axe's flight reaches the
+  // box, where a stomp reached nothing off his own body. Only Gnash's dash is
+  // left out. See RANGED_ABILITY_TYPES.
   for (const [id, can] of [['b33p', true], ['clara', true], ['kiko', true], ['grumpos', true],
-    ['raymn', true], ['lorenzo', false], ['gnash', false], ['fernwick', true]]) {
+    ['raymn', true], ['lorenzo', true], ['gnash', false], ['fernwick', true]]) {
     assert(heroShoots(id) === can,
       `${id} is ${can ? '' : 'not '}dealt a card box`);
   }
@@ -341,6 +343,11 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
     // Ray M'N is dealt one (RANGED_ABILITY_TYPES).
     assert((sp + 210) * 0.42 >= lead,
       `and so does the rocket fist (${((sp + 210) * 0.42).toFixed(0)} >= ${lead.toFixed(0)}px)`);
+    // ...and the pipe wrench, which flies the axe's path 10px slower and parks
+    // on the same 0.55s hover. It is dealt a box, so it has to be able to reach
+    // one.
+    assert((sp + 210) * 0.55 >= lead,
+      `and so does the pipe wrench (${((sp + 210) * 0.55).toFixed(0)} >= ${lead.toFixed(0)}px)`);
   }
   // And the box is still IN FRONT of the hero when it goes, or the explosion
   // happens behind him.

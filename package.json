@@ -13,6 +13,7 @@
     "test:all": "node tests/run-all.js --all",
     "test:sound": "node tests/run-all.js --sound",
     "levels": "node tools/level-editor.js",
+    "characters": "node tools/character-editor.js",
     "gallery": "node tools/build-gallery.js",
     "visualiser": "node tools/build-visualiser.js",
     "archive": "node tools/archive-release.js",

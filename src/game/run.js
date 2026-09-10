@@ -47,7 +47,7 @@ import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatie
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
-import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, ARROW_ARC, ARROW_BOX_SPEED } from '../sprites/toons.js';
+import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, AXE_THROW_AT, ARROW_ARC, ARROW_BOX_SPEED, RANGED_RELEASE_AT } from '../sprites/toons.js';
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
@@ -372,6 +372,15 @@ function warmHeroArt(heroId) {
 // 360 does it with a visible dive rather than a snap. Grumpos' axe is the slow
 // end of the cast (~370px/s from the ground) and has longer. See homeRound.
 const ROUND_HOME_RATE = 360;
+// THE RETURN'S HANG AND ARC. A thrown weapon that turns round on one frame
+// reads as snapping back, so the outbound leg ends with the weapon braking,
+// floating up and spinning in place for this long before it starts home — long
+// enough to see the turn, short enough that it never looks parked. RETURN_RISE
+// is how fast it climbs out of the combat lane while it hangs (px/s); the catch
+// eases it back down, which is what makes the round trip an arc rather than one
+// line travelled twice.
+const RETURN_HANG_T = 0.3;
+const RETURN_RISE = 42;
 const ROUND_HOME_RANGE = 240;
 const RHYTHM_SIGN_FROM = 4;
 // ONE BAR EACH. Four beats is long enough to read a mark and a word off a sign
@@ -4500,11 +4509,26 @@ export class RunState {
       this.player.fistThrown = true;
       this.projectiles.push({ type: 'fist', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false, pierce: false, hitIds: new Set(), hover: false, hoverT: 0 });
     } else if (type === 'axe') {
-      Audio.sfx('launch', { hero: 'grumpos', pitch: 0.9 });
-      this.player.axeThrown = true;
+      // NOTHING LEAVES ON THE PRESS, the same bargain the bow keeps. He reaches
+      // over his shoulder, takes the haft and whips it through, and the axe
+      // goes at the gesture's release beat — 0.3 * AXE_THROW_AT.release into
+      // the pose, which is the frame drawHumanoid stops drawing it in his fist.
+      // Before the throw had a body this fired here, on the press, and the axe
+      // was a prop teleporting out of a running man.
       const hits = this.modIds.includes('ricochet') ? 2 : 1;
-      this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
-      if (this.fxRng.chance(0.25)) this.floatText('BOY.', '#ecc3a1');
+      this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, holdT: 0.3 * AXE_THROW_AT.release, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
+    } else if (type === 'wrench') {
+      // LORENZO'S PIPE WRENCH — the axe's flight, wearing his tool. It leaves
+      // at the throw's own release beat (RANGED_RELEASE_AT.toss into the 0.3s
+      // gesture), which is the frame drawHumanoid stops drawing it in his fist,
+      // so the tool never teleports out of a running man. `art` is the only
+      // thing that separates it from Grumpos's axe in flight; everything the
+      // return does — spin, hover, come home, break what it touches — is his
+      // code, unchanged. RICOCHET is a wrench that bites twice.
+      // SECOND BITE is HIS mastery mod — `ricochet` is Grumpos's, and sharing
+      // the id would have let one hero's unlock silently upgrade the other's.
+      const hits = this.modIds.includes('secondbite') ? 2 : 1;
+      this.projectiles.push({ type: 'axe', art: 'wrench', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
     }
     return true;
   }
@@ -4649,10 +4673,10 @@ export class RunState {
   // hit read as the attack that caused it. Breakable props still play their own
   // material/debris sound separately.
   projectileImpact(pr, cx, cy) {
-    const hero = pr.contactHero || ({
+    const hero = pr.contactHero || (pr.art === 'wrench' ? 'lorenzo' : ({
       pellet: 'b33p', axe: 'grumpos', fist: 'raymn', spanner: 'lorenzo',
       shield: 'fernwick', arrow: 'fernwick', chomp: 'chompo',
-    }[pr.type]);
+    }[pr.type]));
     const pitch = pr.type === 'axe' ? 0.82 : pr.type === 'fist' ? 0.96
       : pr.type === 'shield' ? 0.9 : pr.type === 'chomp' ? 0.88 : 1.12;
     Audio.sfx(hero ? 'contact' : 'impact', { hero, pitch });
@@ -6654,12 +6678,54 @@ export class RunState {
     for (const pr of this.projectiles) {
       if (!pr.live) continue;
       if (pr.type === 'axe' || pr.type === 'fist') {
+        if (pr.holdT > 0) {
+          // Still in his fist. It dies with the pose if the hero is swapped or
+          // the gesture is cut short — the same rule the drawn arrow keeps,
+          // because both are a projectile the SPRITE is holding.
+          pr.holdT -= dt;
+          // WHOSE HAND IS IT IN. This used to name grumpos outright, which was
+          // true while the axe was the only held throw — and the moment Lorenzo
+          // got one, the wrench killed itself on the frame after it spawned,
+          // because the hero holding it was not Grumpos. The owner travels on
+          // the projectile now: the axe belongs to Grumpos, the wrench to
+          // Lorenzo, and either dies if ITS hero is swapped away or the gesture
+          // is cut short — the same rule the drawn arrow keeps, since both are a
+          // projectile the SPRITE is holding.
+          const owner = pr.art === 'wrench' ? 'lorenzo' : 'grumpos';
+          if (this.relay.current !== owner || this.player.powerPoseT <= 0) { pr.live = false; continue; }
+          if (pr.holdT > 0) continue;
+          pr.x = this.playerWorldX() + 12;
+          pr.alt = this.player.y + 10;
+          if (pr.art === 'wrench') {
+            this.player.wrenchThrown = true;
+            Audio.sfx('launch', { hero: 'lorenzo', pitch: 1.05 });
+          } else {
+            this.player.axeThrown = true;
+            Audio.sfx('launch', { hero: 'grumpos', pitch: 0.9 });
+            if (this.fxRng.chance(0.25)) this.floatText('BOY.', '#ecc3a1');
+          }
+        }
         pr.t += dt;
         const hoverAlt = 48; // well above any hero or obstacle — clearly spent
-        if (pr.type === 'fist') {
-          if (!pr.returning && !pr.hover && pr.t > 0.42) { pr.hover = true; pr.hoverX = pr.x; }
-        } else {
-          if (!pr.returning && !pr.hover && pr.t > 0.55) { pr.hover = true; pr.hoverX = pr.x; }
+        // THE TURN IS AN EVENT, not a sign flip. All three returning weapons
+        // (axe, wrench, rocket fist) used to park off-screen until the cooldown
+        // cleared; then they came straight home, which read as snapping back —
+        // the eye never saw them turn. So the outbound leg now ENDS in a hang:
+        // the weapon brakes to a stop, floats up a little, keeps spinning on
+        // its own clock, and only then starts back. Three tenths of a second is
+        // enough to read "it stopped, and now it is coming back" and short
+        // enough that it never feels parked.
+        //
+        // The rise is the other half of it. Out at lane height and home at lane
+        // height is a straight line drawn twice; lifting through the hang and
+        // easing down into the catch makes the whole trip an ARC, so the return
+        // leg is visibly a different path from the throw.
+        const spentAt = pr.type === 'fist' ? 0.42 : 0.5;
+        if (!pr.returning && pr.t > spentAt) {
+          pr.hang = (pr.hang == null ? RETURN_HANG_T : pr.hang) - dt;
+          pr.vx *= Math.max(0, 1 - dt * 8);          // brake, do not stop dead
+          pr.alt += RETURN_RISE * dt;                 // float up out of the lane
+          if (pr.hang <= 0) pr.returning = true;
         }
         if (pr.hover && !pr.returning) {
           pr.hoverT += dt;
@@ -6671,16 +6737,22 @@ export class RunState {
           continue; // don't move under its own velocity this frame
         }
         if (!pr.returning) this.homeRound(pr, dt);
-        pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 240 : 300)) : pr.vx) * dt;
+        // Home SLOWER than it went out. At the old speed the return leg was
+        // over in about a third of a second, which is most of why it read as a
+        // snap rather than a flight.
+        pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 170 : 200)) : pr.vx) * dt;
         if (pr.returning) {
-          // Lower back toward the catch height as it flies home.
+          // ...and eases DOWN out of the hang into the catch, which is the
+          // second half of the arc. Gentler than the old rate (7 snapped it
+          // level almost at once, flattening the very curve the hang buys).
           const catchAlt = this.player.y + 10;
-          pr.alt += (catchAlt - pr.alt) * Math.min(1, dt * 7);
+          pr.alt += (catchAlt - pr.alt) * Math.min(1, dt * 2.6);
         }
         if (pr.returning && pr.x < this.playerWorldX()) {
           pr.live = false;
           if (pr.type === 'fist') this.player.fistThrown = false;
-          if (pr.type === 'axe') {
+          if (pr.art === 'wrench') this.player.wrenchThrown = false;
+          else if (pr.type === 'axe') {
             this.player.axeThrown = false;
             if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
           }
@@ -6836,10 +6908,18 @@ export class RunState {
       }
     }
     if (!this.projectiles.some((p) => p.live && p.type === 'fist')) this.player.fistThrown = false;
-    if (!this.projectiles.some((p) => p.live && p.type === 'axe')) this.player.axeThrown = false;
+    if (!this.projectiles.some((p) => p.live && p.type === 'axe' && p.art !== 'wrench')) this.player.axeThrown = false;
+    // ...and the same for the wrench, which is what empties his belt loop while
+    // the tool is in the air (see `wrenchWorn` in toons.js). Keyed on the art so
+    // Grumpos's axe cannot clear Lorenzo's belt.
+    this.player.wrenchThrown = this.projectiles.some((p) => p.live && p.art === 'wrench' && p.holdT <= 0);
     // A hovering weapon belongs to its thrower — another hero cannot catch it.
-    if (this.relay.current !== 'grumpos') {
-      for (const pr of this.projectiles) { if (pr.type === 'axe') pr.live = false; }
+    // Two heroes fly this type now (Grumpos's axe, Lorenzo's wrench), so the
+    // check is per-projectile: swapping to Lorenzo used to despawn nothing of
+    // his and everything of Grumpos's, and vice versa.
+    for (const pr of this.projectiles) {
+      if (pr.type !== 'axe') continue;
+      if (this.relay.current !== (pr.art === 'wrench' ? 'lorenzo' : 'grumpos')) pr.live = false;
     }
     if (this.relay.current !== 'raymn') {
       for (const pr of this.projectiles) { if (pr.type === 'fist') pr.live = false; }
@@ -9321,7 +9401,7 @@ export class RunState {
     ps.powerPoseT = p.powerPoseT; ps.powerType = p.powerType;
     ps.spannerFlurryT = p.spannerFlurryT; ps.spannerFlurryCd = p.spannerFlurryCd;
     ps.spannerFlurryHitIds = copySetInto(p.spannerFlurryHitIds, ps.spannerFlurryHitIds);
-    ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown;
+    ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown; ps.wrenchThrown = p.wrenchThrown;
     ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
     ps.hazardEaten = p.hazardEaten; ps.grounded = p.grounded;
     ps.slideT = p.slideT; ps.landedT = p.landedT;
@@ -9448,7 +9528,7 @@ export class RunState {
     p.powerPoseT = ps.powerPoseT; p.powerType = ps.powerType;
     p.spannerFlurryT = ps.spannerFlurryT; p.spannerFlurryCd = ps.spannerFlurryCd;
     p.spannerFlurryHitIds = ps.spannerFlurryHitIds ? new Set(ps.spannerFlurryHitIds) : null;
-    p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown;
+    p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown; p.wrenchThrown = ps.wrenchThrown;
     p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
     p.hazardEaten = ps.hazardEaten; p.grounded = ps.grounded;
     p.slideT = ps.slideT; p.landedT = ps.landedT;
@@ -11177,17 +11257,28 @@ export class RunState {
         const slope = ARROW_ARC.a - 2 * ARROW_ARC.b * pr.t + (pr.dive || 0);
         drawRangedProjectile(ctx, 'arrow', x, y + 4, { rot: -Math.atan2(slope, pr.rel || ARROW_ARC.v), hero: 'fernwick', flying: true });
       } else if (pr.type === 'axe') {
+        // In his fist it is the hero's to paint, exactly as a nocked arrow is.
+        if (pr.holdT > 0) continue;
         ctx.save();
         if (pr.hover) {
           ctx.globalAlpha = 0.42;
-          // A faint ring around the spinning axe tells the player it is coming home soon.
-          ctx.strokeStyle = '#ecc3a1';
+          // A faint ring around the spinning tool tells the player it is coming
+          // home soon. It is meant to be quiet — the axe's is a pale tan at 42%
+          // alpha — so the wrench takes its own STEEL, not its red: a red ring
+          // round a red tool stops being a tell and becomes a bright circle
+          // trailing him down the lane.
+          ctx.strokeStyle = pr.art === 'wrench' ? '#b9c0cc' : '#ecc3a1';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(x + 4, y + 4, 11, 0, Math.PI * 2);
           ctx.stroke();
         }
-        drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
+        // `art` lets a projectile fly the axe's path wearing something else.
+        // Lorenzo's pipe wrench IS the axe's flight — thrown, spins, hovers,
+        // comes home — so it takes the whole return behaviour rather than a
+        // second copy of it, and differs only in what is drawn.
+        if (pr.art === 'wrench') drawRangedProjectile(ctx, 'wrench', x + 4, y + 4, { rot: pr.t * 12, hero: 'lorenzo', flying: true });
+        else drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
         ctx.restore();
       } else if (pr.type === 'fist') {
         ctx.save();

@@ -45,7 +45,7 @@ label{display:flex;align-items:center;gap:6px;color:#d6e0ef}select,input,button{
   <h1>Phone portrait framing · real game render</h1>
   <p class="lede">Development-only review surface. The reference is the supplied leftmost A option; each live card below boots the shipped RunState, level scenery, hazards and Lorenzo painter at a fixed seed and scene time. A changes only the uniform world zoom, and the target is A × 1.0625.</p>
   <div class="toolbar">
-    <label>Scene <select id="scene-select"><option value="flat">Flat obstacle</option><option value="gap">Gap / slide</option><option value="raised">Raised road</option></select></label>
+    <label>Scene <select id="scene-select"><option value="flat">Flat obstacle</option><option value="gap">Gap / slide</option><option value="underground">Plumber 2 · The Works</option><option value="raised">Raised road</option><option value="rhythm">Level 3-1 · Rhythm Bankruptcy</option></select></label>
     <label>Viewport <select id="viewport-select"><option value="390x844">390 × 844</option><option value="375x667">375 × 667</option><option value="430x932">430 × 932</option></select></label>
     <label>Safe area <select id="safe-select"><option value="0,0,0,0">None</option><option value="59,0,34,0">Notch + home indicator</option><option value="0,47,21,47">Landscape edge preset</option></select></label>
     <label>A zoom <input id="a-zoom" type="range" min="1.600" max="3.000" step="0.001" value="2.200"><output id="a-zoom-value">2.200</output></label>

@@ -340,6 +340,10 @@ const suites = [
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
+  'tests/hero-dials.js',
+  'tests/character-editor-viewport.js',
+  'tests/character-editor-actions.js',
+  'tests/character-editor-browser.js',
   'tests/slide-kit.js',
   'tests/toon-ink-scale.js',
   'tests/renderer.js',
@@ -466,6 +470,7 @@ const suites = [
 // `npx playwright install chromium` fails all of them at the launch rather than at an
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
+  'tests/character-editor-browser.js',
   'tests/render-culling-browser.js',
   'tests/lcd-cache-browser.js',
   'tests/mixer-metering.js',

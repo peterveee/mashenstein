@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { matchBrace, topLevelProps } from './source-scan.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const VOICES_PATH = join(ROOT, 'src/data/voices.js');
@@ -32,37 +33,6 @@ export const USER_TABLES = { tone: 'USER_TONE', drum: 'USER_DRUM' };
 const ALL_TABLES = [...Object.values(TABLES), ...Object.values(USER_TABLES)];
 
 // ---- scanning ---------------------------------------------------------------
-
-/**
- * Walk `src` from `i`, which must be at an opening brace or bracket, and return the
- * index just past its match.
- *
- * Strings and comments are tracked because both can hold braces — the catalogue's
- * notes talk about "the 303 move" and its section rules are made of slashes — and a
- * scanner that counted those would close an entry in the middle of a sentence.
- */
-function matchBrace(src, i) {
-  const open = src[i];
-  const close = open === '{' ? '}' : ']';
-  let depth = 0;
-  for (let n = i; n < src.length; n++) {
-    const c = src[n];
-    if (c === '\'' || c === '"' || c === '`') {
-      // Skip the string. A backslash escapes the next character, including the quote.
-      const quote = c;
-      for (n++; n < src.length; n++) {
-        if (src[n] === '\\') { n++; continue; }
-        if (src[n] === quote) break;
-      }
-      continue;
-    }
-    if (c === '/' && src[n + 1] === '/') { n = src.indexOf('\n', n); if (n < 0) return -1; continue; }
-    if (c === '/' && src[n + 1] === '*') { n = src.indexOf('*/', n); if (n < 0) return -1; n++; continue; }
-    if (c === open) depth++;
-    else if (c === close) { depth--; if (!depth) return n + 1; }
-  }
-  return -1;
-}
 
 /** The body span of a top-level table: `const TONE = {` … the matching `}`. */
 function tableSpan(src, name) {
@@ -84,30 +54,9 @@ function tableSpan(src, name) {
 export function entriesIn(src, name) {
   const { inner } = tableSpan(src, name);
   const [from, to] = inner;
-  const out = [];
-  for (let n = from; n < to; n++) {
-    const c = src[n];
-    if (c === '\'' || c === '"' || c === '`') {
-      const quote = c;
-      for (n++; n < to; n++) { if (src[n] === '\\') { n++; continue; } if (src[n] === quote) break; }
-      continue;
-    }
-    if (c === '/' && src[n + 1] === '/') { n = src.indexOf('\n', n); continue; }
-    if (c === '/' && src[n + 1] === '*') { n = src.indexOf('*/', n) + 1; continue; }
-    if (c === '{' || c === '[') { n = matchBrace(src, n) - 1; continue; }
-    // A key at this depth: an identifier, a colon, then the value.
-    const key = /^([A-Za-z_$][\w$]*)\s*:\s*\{/.exec(src.slice(n, n + 120));
-    if (!key) continue;
-    const brace = src.indexOf('{', n + key[1].length);
-    const close = matchBrace(src, brace);
-    if (close < 0) break;
-    // Take the comma with it, and the newline after that, so a delete closes the gap.
-    let end = close;
-    if (src[end] === ',') end++;
-    out.push({ id: key[1], start: n, end });
-    n = end - 1;
-  }
-  return out;
+  return topLevelProps(src, from, to)
+    .filter((p) => src[p.valueStart] === '{')
+    .map((p) => ({ id: p.key, start: p.keyStart, end: p.end }));
 }
 
 /** Which table an id lives in, or null if it is not in the file. */

@@ -202,6 +202,18 @@ export const CUES = [
     osc(b, SR, { duration: 0.2, f0: 118, f1: 72, gain: 0.32, type: 'sine' });
     noise(b, SR, { seed: 39, duration: 0.08, gain: 0.13, cutoff: 3400, mode: 'highpass' });
   }],
+  // LORENZO'S WRENCH LEAVING HIS HAND — the axe's throw ring, pitched up
+  // (Peter). Same three voices in the same order, every frequency multiplied by
+  // ~1.45 and the whole thing shortened a fifth: a lighter tool spinning faster
+  // off a shorter arm, rather than a second sound that happens to play at the
+  // same moment. The low triangle keeps a little more of its weight than a
+  // straight transpose would give it, because a pipe wrench is still steel and a
+  // pure pitch-shift turns it into a toy.
+  ['40-lorenzo-wrench-throw-ring.wav', 0.29, (b, SR) => {
+    noise(b, SR, { seed: 40, duration: 0.18, gain: 0.23, cutoff: 3400, mode: 'highpass', attack: 0.04 });
+    osc(b, SR, { start: 0.06, duration: 0.21, f0: 1420, f1: 1040, gain: 0.32, type: 'sine', tremolo: 52 });
+    osc(b, SR, { duration: 0.18, f0: 250, f1: 104, gain: 0.3, type: 'triangle' });
+  }],
   ['18-grumpos-axe-throw-ring.wav', 0.36, (b, SR) => {
     noise(b, SR, { seed: 18, duration: 0.23, gain: 0.25, cutoff: 2400, mode: 'highpass', attack: 0.05 });
     osc(b, SR, { start: 0.08, duration: 0.26, f0: 980, f1: 720, gain: 0.34, type: 'sine', tremolo: 38 });
@@ -404,6 +416,7 @@ export const LAUNCH_CUE = {
   kiko: '31-kiko-warning-shot-crack.wav',
   clara: '37-clara-pistol-pew.wav',
   fernwick: '39-fernwick-bow-twang.wav',
+  lorenzo: '40-lorenzo-wrench-throw-ring.wav',
 };
 
 const BY_NAME = new Map(CUES.map((cue) => [cue[0], cue]));

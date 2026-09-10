@@ -30,14 +30,21 @@ export const HEROES = [
     tagline: 'STANDARD PLUMBING PROCEDURE.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.08, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'stomp', cooldown: 2.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
+    // THE PIPE WRENCH (10 Sep 2026, replacing the stomp/smash). Nothing leaves
+    // on the press: he takes the wrench off his belt loop, brings it up past his
+    // face and throws it across himself, and the tool goes at the gesture's own
+    // release beat — 0.3 * RANGED_RELEASE_AT.toss into the pose, the frame
+    // drawHumanoid stops drawing it in his fist. It flies the AXE's return: out,
+    // hover, home. The belt loop is empty the whole time it is away, which is
+    // what stops him reading as a man with two wrenches.
+    ability: { type: 'wrench', cooldown: 2.4, label: 'PIPE WRENCH', callout: 'THROW' }, stomp: false,
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     skillLabel: 'HIGH JUMP',
     skillDesc: 'JUMPS 12% HIGHER',
-    powerDesc: 'STOMPS OR SMASHES GROUND HAZARDS',
-    abilityDesc: 'AIR STOMP OR GROUNDED WRENCH SMASH.',
+    powerDesc: 'THROWN WRENCH BREAKS GROUND HAZARDS',
+    abilityDesc: 'THROWS THE PIPE WRENCH; IT BREAKS HAZARDS AND COMES BACK.',
     sidegrades: [
-      { id: 'shockwave', name: 'SHOCK STOMP', desc: 'STOMP SHOCKWAVE BREAKS NEARBY OBSTACLES BUT SCATTERS NEARBY COINS.' },
+      { id: 'secondbite', name: 'SECOND BITE', desc: 'THE WRENCH BREAKS A SECOND HAZARD BEFORE IT COMES HOME.' },
     ],
   },
   {
@@ -227,7 +234,7 @@ export const HERO_BY_ID = Object.fromEntries(HEROES.map((h) => [h.id, h]));
 // visibly hang in mid-air in front of a box it had just opened. The box now
 // stands 1.05 beats out (BOX_LEAD_BEATS, ~94px) and the fist's 176px covers it
 // with room, so Ray M'N is dealt the box like the other four.
-export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist', 'bow']);
+export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist', 'bow', 'wrench']);
 
 /** Can this hero destroy something in front of them without touching it? */
 export function heroShoots(id) {

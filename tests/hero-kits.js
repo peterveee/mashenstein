@@ -103,13 +103,20 @@ function selectHero(id) {
   run.projectiles = [];
 }
 
+// LORENZO THROWS THE WRENCH (10 Sep 2026, replacing the stomp/smash). Nothing
+// leaves on the press — the tool is queued with a hold and spawns at the hand on
+// the gesture's release, the same bargain the bow and the axe keep — so the
+// assertion is that a projectile exists and is still in his fist, not that a
+// crate broke on the frame he pressed.
 selectHero('lorenzo');
-const smashCrate = makeObstacle('crate', run.camX + PLAYER_X + 20);
-run.obstacles = [smashCrate];
 run.useAbility();
-assert(!smashCrate.live, 'Lorenzo ground power performs a short-range wrench smash');
-run.player.abilityCd = 0; run.player.grounded = false; run.player.vy = 20; run.useAbility();
-assert(run.player.stomping && run.player.vy < 0, 'Lorenzo air power initiates a stomp');
+const wrench = run.projectiles.find((p) => p.art === 'wrench');
+assert(!!wrench, 'Lorenzo power queues the pipe wrench');
+assert(wrench.holdT > 0, 'and nothing leaves on the press — it is still in his fist');
+assert(wrench.type === 'axe', 'it flies the axe return: out, hover, home');
+// The belt loop empties only once it is actually away.
+run.updateProjectiles(0.001);
+assert(!run.player.wrenchThrown, 'the belt still has it while the throw is winding up');
 
 selectHero('gnash'); run.useAbility();
 assert(run.player.dashT > 0, 'Gnash power starts the spin dash');
