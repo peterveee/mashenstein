@@ -1,5 +1,4 @@
 import { TOON_SPECS } from '../src/sprites/toons.js';
-import { RUSTY_W3B } from '../src/dev/hero-candidates.js';
 import { actionFor, actionOptions, actionPose } from '../tools/lib/character-editor-actions.js';
 
 const ok = (condition, message) => { if (!condition) throw new Error(message); };
@@ -12,7 +11,7 @@ for (const [id, key] of [['lorenzo', 'wrench'], ['fernwick', 'bow'], ['b33p', 's
   if (key === 'wrench') ok(!before.wrenchThrown && after.wrenchThrown, 'wrench release did not cross its release point');
   if (key === 'fist') ok(!before.headless && after.headless, 'rocket fist did not hide the throwing glove after release');
 }
-const rusty = actionFor('rusty', RUSTY_W3B, 'bundle');
+const rusty = actionFor('rusty', TOON_SPECS.rusty, 'bundle');
 ok(rusty?.key === 'bundle', 'Rusty bundle throw is not exposed as an attack');
 ok(!actionPose({ kind: 'run' }, rusty, .2).axeThrown && actionPose({ kind: 'run' }, rusty, .9).axeThrown, 'Rusty cane ownership did not cross release');
 ok(actionOptions('gnash', TOON_SPECS.gnash).length === 0, 'dash was incorrectly presented as a projectile attack');

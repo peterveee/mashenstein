@@ -23,6 +23,12 @@
 // HEROES row, and delete it from here. When the question is settled the
 // section comes out of the gallery too — the painter stays, the bake-off does
 // not.
+//
+// RUSTY, FOCUS-TESTED won the speedster slot on 10 Sep 2026 and is cast:
+// TOON_SPECS.rusty, HERO_SPRITES.rusty, Gnash's row in HEROES. His candidate
+// lists below are history now — the twenty-seven rounds that got him there —
+// and the gallery's lab sections that read them are due to come out; the
+// persona and the cast decision are in docs/notes/rusty-persona.md.
 
 // ---------------------------------------------------------------------------
 // THE RAIDER used to be worked out here. SETTLED, and shipped as CLARA VAULT:
@@ -1262,10 +1268,13 @@ export const RUSTY_BUNDLE_CANDIDATES = [
 // pouch. There is ONE throw now — reach, pull, whip, through, drawn from the
 // canister with the alternating cane — and it lives in toons.js under
 // `throwQ`, not in a candidate list.
+// RUSTY IS CAST (10 Sep 2026): this object now lives in TOON_SPECS.rusty and
+// PANDA_PAL in HERO_SPRITES.rusty, and the row below is kept ONLY so the
+// gallery's lab sections and the round-by-round notes here still read; it is
+// asserted equal to the shipped spec by tests/character-rendering.js so it
+// cannot drift into a second source of truth. See docs/notes/rusty-persona.md.
 export const RUSTY_W3B = {
-  // The RUNNER, 10 Sep 2026 — the racing flat off the shoe bake-off. It lives
-  // here and not in TOON_SPECS because he is still a candidate: the whole point
-  // of the spec/pal seam is that nothing about him touches the cast.
+  // The RUNNER, 10 Sep 2026 — the racing flat off the shoe bake-off.
   ...RUSTY_T1, stick: false, bundle: 'tilt', shoeShape: 'runner',
   // ROUND 21 SETTLED (6 Sep 2026): X3 — two canes, gapped and STAGGERED. The
   // stagger is what sells two separate sticks; the pair stays parallel to the

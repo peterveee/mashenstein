@@ -41,3 +41,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-09 | `373d3d6` | [2026-09-09-373d3d6.html](2026-09-09-373d3d6.html) | [bake-offs](2026-09-09-373d3d6-lab.html) | Add new gallery HTML files for 2026-09-09 with large content |
 | 2026-09-09 | `ec8af02` | [2026-09-09-ec8af02.html](2026-09-09-ec8af02.html) | [bake-offs](2026-09-09-ec8af02-lab.html) | feat: add Lorenzo polished variant and review page for art comparison |
 | 2026-09-10 | `5450f08` | [2026-09-10-5450f08.html](2026-09-10-5450f08.html) | [bake-offs](2026-09-10-5450f08-lab.html) | Enhance Grumpos and axe mechanics; update gallery entries |
+| 2026-09-10 | `b2dab03` | [2026-09-10-b2dab03.html](2026-09-10-b2dab03.html) | [bake-offs](2026-09-10-b2dab03-lab.html) | Refactor portrait preview entry and add background zoom functionality |

@@ -354,6 +354,8 @@ const suites = [
   'tests/density.js',
   'tests/frame-health.js',
   'tests/camera-framing.js',
+  'tests/portrait-framing.js',
+  'tests/portrait-lab.js',
   'tests/routes.js',
   // The set piece built out of them: four jumps over a spiked break on three
   // island stones. Beside the routes suite because the stones ARE routes — what

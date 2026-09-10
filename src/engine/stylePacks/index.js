@@ -32,6 +32,19 @@ import { terrainGroundY } from '../../game/terrain.js';
 // the groundline these layers hang off does not move at any zoom.
 const PLX = ZOOM;
 
+// The playable preview may audition a portrait-only cloud lift without
+// changing authored terrain or production scenery. Production and landscape
+// paths stay at zero; negative values move the sky layer upward.
+function portraitCloudOffset(context = null) {
+  const n = Number(context?.cloudOffsetY);
+  return Number.isFinite(n) ? Math.max(-100, Math.min(60, n)) : 0;
+}
+
+function portraitSunOffset(context = null) {
+  const n = Number(context?.sunOffsetY);
+  return Number.isFinite(n) ? Math.max(-100, Math.min(60, n)) : 0;
+}
+
 // Camera-derived positions in here are deliberately NOT rounded to whole
 // pixels. Rounding looks harmless per frame and is a stutter in motion: the
 // world scrolls a fractional number of pixels per tick (2.54 at a typical
@@ -1049,7 +1062,7 @@ export function sunShock() {
   else cloudShockT = 1.4;
 }
 
-function drawStaticSun(ctx, t, bgShift = 0) {
+function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null) {
   // Animated but dignified: it slowly arcs across the sky like a day passing,
   // its rays rotate and breathe, and its halo pulses. It does not bop.
   const sx = (t * 3.2) % (W + 150);
@@ -1057,7 +1070,7 @@ function drawStaticSun(ctx, t, bgShift = 0) {
   const u = (x - W / 2) / (W / 2);
   // Base sits below the HUD pill row (~y 23) plus the halo/ray radius (~30),
   // so the sun never hides behind the score furniture at the apex of its arc.
-  const y = 58 + 26 * u * u;                          // shallow day-arc
+  const y = 58 + portraitSunOffset(backgroundContext) + 26 * u * u;    // shallow day-arc
   const breathe = 1 + 0.06 * Math.sin(t * 1.1);
   ctx.save();
   // The Plumber background is drawn in a shifted context so the hills follow
@@ -1112,7 +1125,7 @@ function drawCloudBody(ctx, fill) {
   ctx.fill();
 }
 
-function drawCloudPal(ctx, t, reduced) {
+function drawCloudPal(ctx, t, reduced, backgroundContext = null) {
   if (t < cloudLastT) { cloudShockT = 0; cloudLaughT = 0; } // new run: compose yourself
   const dt = Math.max(0, Math.min(0.1, t - cloudLastT));
   cloudLastT = t;
@@ -1129,7 +1142,7 @@ function drawCloudPal(ctx, t, reduced) {
   // silhouette reaches ~21px above its origin and the pill row owns everything
   // down to y 23, so the top of the bob is tuned to land at y ~28 — as high as
   // the pal can ride while its face still clears the score.
-  let y = 61 + Math.sin(t * 0.33) * 9.5 + Math.sin(t * 0.9) * 2.5;
+  let y = 61 + portraitCloudOffset(backgroundContext) + Math.sin(t * 0.33) * 9.5 + Math.sin(t * 0.9) * 2.5;
   let jx = 0;
   if (!reduced && laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
   if (!reduced && shocked) jx = Math.sin(t * 26) * 1.2;
@@ -1673,10 +1686,10 @@ function drawButte(ctx, camX, atCam) {
 function pixelPack(settings) {
   return {
     name: 'pixel',
-    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber') {
-        drawStaticSun(ctx, t, bgShift);
+        drawStaticSun(ctx, t, bgShift, backgroundContext);
       }
       // PLUMBER PANIC's far layer is a snow-capped range; the near green hills
       // stay rounded so the two layers read as distance, not repetition. It gets
@@ -1697,6 +1710,7 @@ function pixelPack(settings) {
         // a few bigger than the pal, a few small and distant. Greys mixed in
         // so the flock isn't a stamp sheet. Drawn BEFORE the pal so it always
         // floats in front of its plain cousins.
+        const cloudOffset = portraitCloudOffset(backgroundContext);
         for (const [off, cy, s, tint] of [
           [30, 34, 0.8, PIXEL_CLOUD_LIGHT],
           [110, 20, 1.15, PIXEL_CLOUD_LIGHT],
@@ -1710,17 +1724,18 @@ function pixelPack(settings) {
           const span = W + 130;
           const cx = ((off - camX * 0.2 * PLX - t * 4) % span + span) % span - 65;
           ctx.save();
-          ctx.translate(cx, cy);
+          ctx.translate(cx, cy + cloudOffset);
           ctx.scale(s, s);
           drawCloudBody(ctx, tint);
           ctx.restore();
         }
-        drawCloudPal(ctx, t, settings && settings.reducedMotion);
+        drawCloudPal(ctx, t, settings && settings.reducedMotion, backgroundContext);
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.82)';
+        const cloudOffset = portraitCloudOffset(backgroundContext);
         for (let i = 0; i < 5; i++) {
           const cx = ((i * 137 - camX * 0.2 * PLX) % (W + 60)) - 30;
-          const cy = 30 + (i * 37) % 60;
+          const cy = 30 + (i * 37) % 60 + cloudOffset;
           ctx.fillRect(cx, cy, 34, 8);
           ctx.fillRect(cx + 6, cy - 5, 20, 5);
         }
@@ -3345,7 +3360,7 @@ function lcdCloud(ctx, x, y, pose) {
   lcdStrokePath(ctx, (pose ? b : a).map(([px, py]) => [x + px, y + py]), true);
 }
 
-function lcdCloudLayer(ctx, art, frame) {
+function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
   // The sky was the one part of the panel that never moved. Each cloud now
   // drifts leftward in whole-pixel steps on the heard beat — a different pace
   // per cloud so the layer has depth — wrapping off one edge of the display
@@ -3367,7 +3382,7 @@ function lcdCloudLayer(ctx, art, frame) {
     } else {
       x = lcdMod(cx0 + 36 - beatAbs * pace, span) - 36;
     }
-    const y = cy0 + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
+    const y = cy0 + portraitCloudOffset(backgroundContext) + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
     lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
   }
 }
@@ -7570,13 +7585,13 @@ export function drawLCDPanelUncached(ctx, scene, settings = {}) {
   const motion = !!settings.reducedMotion, flashing = !!settings.reducedFlashing;
   const sky = settings.skyMeter !== false;
   const { frame } = prepareLCDPanel(scene, motion, flashing, sky);
-  paintLCDCity(ctx, frame, motion, flashing, sky);
+  paintLCDCity(ctx, frame, motion, flashing, sky, settings.backgroundContext || null);
 }
 
 export function drawLCDPanel(ctx, scene, settings = {}) {
   // `skyMeter` on: the jukebox wants the analyser in the sky.
   drawLCDCity(ctx, scene, !!settings.reducedMotion, !!settings.reducedFlashing,
-    settings.skyMeter !== false);
+    settings.skyMeter !== false, settings.backgroundContext || null);
 }
 
 /** The screen treatment on its own: the soft-light wash and the cell lattice. */
@@ -7808,15 +7823,16 @@ function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNee
   return { frame, supported };
 }
 
-function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false) {
+function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false, backgroundContext = null) {
   const { frame, supported } = prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, lcdPanelCacheEnabled);
   const cv = ctx.canvas;
   panelKey.push(ctx.imageSmoothingEnabled);
+  panelKey.push(backgroundContext?.cloudOffsetY || 0);
   // Grouping semi-transparent operations changes nonstandard compositing. Keep
   // those callers direct, and keep the operation recorder's real-surface fallback.
   if (!lcdPanelCacheEnabled || !supported || ctx.globalAlpha !== 1
     || ctx.globalCompositeOperation !== 'source-over' || !cv?.width || !cv?.height) {
-    paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter);
+    paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter, backgroundContext);
     return;
   }
   let bake = lcdPanelBake;
@@ -7831,7 +7847,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     const made = sized ? { canvas: bake.c, ctx: bake.ctx } : lcdBakeSurface(cv.width, cv.height);
     if (!made) {
       clearLCDPanelCache();
-      paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter);
+      paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter, backgroundContext);
       return;
     }
     const started = efficiencyProfile.enabled ? performance.now() : 0;
@@ -7841,7 +7857,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     c.lineWidth = 1; c.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
-    paintLCDCity(c, frame, reducedMotion, reducedFlashing, skyMeter);
+    paintLCDCity(c, frame, reducedMotion, reducedFlashing, skyMeter, backgroundContext);
     bake = { c: made.canvas, ctx: made.ctx, owner: ctx, key: panelKey.slice() };
     lcdPanelBake = bake;
     efficiencyProfile.lcdBytes = cv.width * cv.height * 4;
@@ -7855,7 +7871,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   ctx.restore();
 }
 
-function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = false) {
+function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = false, backgroundContext = null) {
   const art = LCD_CITY_SCENES[frame.stageIndex];
   const palette = LCD_GBC_PALETTES[frame.stageIndex];
   // The sky is painted HERE rather than by each caller, so the scene frame is
@@ -7874,7 +7890,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   // train, searchlight and roof traffic all cross their band, and painting the
   // clouds after those objects made the wisps cut across them. Put this one
   // cloud layer straight onto the sky so every object remains in front.
-  if (frame.stageIndex === 2) lcdCloudLayer(ctx, art, frame);
+  if (frame.stageIndex === 2) lcdCloudLayer(ctx, art, frame, backgroundContext);
   if (skyMeter) lcdSkylineEq(ctx, frame);
   // WHICH STRUCTURES ARE STILL WALKING ON, or null once the skyline is standing
   // — which is every frame of every stage but the first eleven beats of a run,
@@ -7960,7 +7976,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   }
   // Stages 1 and 3 keep their authored mid-scene cloud depth. Rhythm 2 is the
   // exception above: its monorail and other sky traffic must cover every wisp.
-  if (frame.stageIndex !== 2) lcdCloudLayer(ctx, art, frame);
+  if (frame.stageIndex !== 2) lcdCloudLayer(ctx, art, frame, backgroundContext);
   const towerRise = riseOf('gameWatch');
   if (art.gameWatch && towerRise !== null) {
     if (towerRise) ctx.save();
@@ -8141,12 +8157,12 @@ function lcdPack(settings) {
     // backplate art, bezel, screen plate — is fixed to the display; sliding it
     // down on a jump would move the physical handheld, not the picture.
     bgPan: 0,
-    bg(ctx, t, camX, cab, totalDist, scene = null) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       // Sky and all — drawLCDPanel above is the same call, for callers outside
       // a run. The city is alive, but the glass still does not travel. It
       // changes by switching cells between fixed authored poses on heard
       // musical beats; neither camX nor gameplay chart data enters the painter.
-      drawLCDCity(ctx, scene, reducedMotion, reduced);
+      drawLCDCity(ctx, scene, reducedMotion, reduced, false, backgroundContext);
       // No hardware frame around the screen any more: the bezel cost more
       // than it said (it doubled against facades, and its restore pass caused
       // the phantom-line saga), and the city reads as a place, not a toy.
@@ -8535,8 +8551,8 @@ function surgePack(settings) {
     // the run's draw for exactly that reason.
     get ownPitFills() { return pick(this._t || 0).ownPitFills === true; },
     get ownSurface() { return pick(this._t || 0).ownSurface === true; },
-    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0) {
-      pick(t).bg(ctx, t, camX, cab, totalDist, scene, bgShift);
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
+      pick(t).bg(ctx, t, camX, cab, totalDist, scene, bgShift, backgroundContext);
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W) { pick(this._t || 0).ground(ctx, camX, cab, obstacles, overhangs, t, viewW); },
     post(ctx, t) {

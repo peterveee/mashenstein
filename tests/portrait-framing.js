@@ -24,7 +24,26 @@ const frame = frameForViewport({
 });
 close(frame.height, 844 * 480 / 390, 'portrait logical height follows the CSS aspect ratio');
 close(frame.scale, 390 / 480, 'portrait scale is CSS px per logical unit');
-close(frame.groundScreenY, frame.height * 0.62, 'portrait ground anchor starts at 62% of the frame');
+close(frame.groundScreenY, frame.safeRect.top + frame.safeRect.height * 0.62,
+  'portrait ground anchor starts at 62% of the usable safe frame');
+const lowerFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+  safeInsets: { top: 59, right: 0, bottom: 34, left: 0 }, groundAnchorRatio: 0.66,
+});
+close(lowerFrame.groundScreenY, lowerFrame.safeRect.top + lowerFrame.safeRect.height * 0.66,
+  'portrait ground anchor follows the selected safe-frame ratio');
+const lowClamped = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+  safeInsets: { top: 59, bottom: 34 }, groundAnchorRatio: 0,
+});
+const highClamped = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+  safeInsets: { top: 59, bottom: 34 }, groundAnchorRatio: 1,
+});
+close(lowClamped.groundScreenY, lowClamped.safeRect.top + lowClamped.safeRect.height * 0.55,
+  'portrait ground anchor clamps at 55%');
+close(highClamped.groundScreenY, highClamped.safeRect.top + highClamped.safeRect.height * 0.75,
+  'portrait ground anchor clamps at 75%');
 close(frame.safeRect.top, 59 / frame.scale, 'top safe inset converts with the frame scale');
 close(frame.safeRect.bottom, frame.height - 34 / frame.scale, 'bottom safe inset converts with the frame scale');
 assert.equal(frame.revision, 4, 'frame revision is carried through unchanged');
@@ -66,6 +85,20 @@ const landscape = frameForViewport({ mode: 'landscape', viewportWidth: 852, view
 assert.equal(landscape.width, 480, 'landscape logical width remains 480');
 assert.equal(landscape.height, 270, 'landscape logical height remains 270');
 assert.equal(landscape.groundScreenY, 232, 'landscape ground anchor remains shipped');
+
+for (const [width, height, top, bottom] of [[375, 667, 47, 21], [390, 844, 59, 34], [430, 932, 59, 34]]) {
+  const f = frameForViewport({
+    mode: 'phone-portrait', viewportWidth: width, viewportHeight: height,
+    safeInsets: { top, bottom }, groundAnchorRatio: 0.66, revision: 10,
+  });
+  close(f.height, height * 480 / width, `${width}x${height} keeps uniform portrait aspect`);
+  close(f.groundScreenY, f.safeRect.top + f.safeRect.height * 0.66,
+    `${width}x${height} anchors ground inside its safe rect`);
+  assert.equal(f.revision, 10, `${width}x${height} carries its frame revision`);
+}
+const rotated = frameForViewport({ mode: 'landscape', viewportWidth: 844, viewportHeight: 390, revision: 11 });
+assert.equal(rotated.height, 270, 'rotation back to horizontal restores 480x270');
+assert.equal(rotated.mode, 'landscape', 'rotation back to horizontal restores landscape mode');
 
 const controls = portraitTouchLayout({ viewportWidth: 390, viewportHeight: 844, safeInsets: { top: 59, bottom: 34 }, revision: 8 });
 for (const [id, diameter] of Object.entries(PORTRAIT_CONTROL_DIAMETERS)) {

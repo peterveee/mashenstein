@@ -117,7 +117,7 @@ assert(room.hits === 2 && room.chain === 2 && room.bestChain === 2,
 
 room.px = 1060;
 Input.press('confirm'); room.update(1 / 60); Input.release('confirm'); Input.endFrame();
-assert(hero === 'gnash' && room.player.heroId === 'gnash', 'the podium swaps the active hub hero');
+assert(hero === 'rusty' && room.player.heroId === 'rusty', 'the podium swaps the active hub hero');
 room.queueInteraction('podiumPrev', 1060); room.usePending();
 assert(hero === 'lorenzo' && room.player.heroId === 'lorenzo', 'the podium can also cycle to the previous hero');
 room.update(2.1);

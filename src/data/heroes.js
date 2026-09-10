@@ -48,16 +48,28 @@ export const HEROES = [
     ],
   },
   {
-    id: 'gnash', name: 'GNASH THE NEEDLEMOUSE', short: 'GNASH',
+    // RUSTY took the speedster slot off Gnash on 10 Sep 2026. The NUMBERS are
+    // the slot's — speed, jump, score, the MOMENTUM GUY mastery — and so, for
+    // now, are the LINES: tagline, joke, exit and hub lines all still read as
+    // Gnash's, on purpose, until his own writing exists. Gnash keeps his spec
+    // and palette in sprites/ so he can return as an NPC.
+    //
+    // THE BAMBOO SHOOT. Nothing leaves on the press: he reaches to the pouch,
+    // pulls a cane, whips it forward and it goes on the throw's own release
+    // beat (RANGED_RELEASE_AT.toss into the 0.3s gesture). It flies the axe's
+    // cycle — out, hover, home — so it comes back to the pouch; the two canes
+    // alternate every throw (player.stickParity), and the one in the air is
+    // the one he pulled.
+    id: 'rusty', name: 'RUSTY, FOCUS-TESTED', short: 'RUSTY', subtitle: 'FOCUS-TESTED',
     tagline: 'ALREADY THERE. WAITING.',
-    speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.06, maxJumps: 1, canFloat: false,
+    speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.05, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'dash', cooldown: 3.5, label: 'SPIN DASH', callout: 'SPIN DASH' }, stomp: false,
+    ability: { type: 'toss', cooldown: 3.2, label: 'BAMBOO SHOOT', callout: 'BAMBOO SHOOT' }, stomp: false,
     joke: 'ARRIVES TOO EARLY AND WAITS FOR REALITY TO CATCH UP.',
     skillLabel: 'SPEED BOOST',
     skillDesc: 'RUNS 15% FASTER',
-    powerDesc: 'INVINCIBLE BURST THAT SMASHES HAZARDS',
-    abilityDesc: 'INVINCIBLE BURST OF SPEED THAT SMASHES BREAKABLES.',
+    powerDesc: 'THROWN BAMBOO CANE THAT BREAKS HAZARDS AND RETURNS',
+    abilityDesc: 'THROWS A BAMBOO CANE THAT SMASHES BREAKABLES AND COMES BACK.',
     sidegrades: [
       { id: 'tagspeed', name: 'MOMENTUM GUY', desc: '+SPEED AFTER EVERY PERFECT TAG. STACKING. INCLUDING DANGEROUSLY.' },
     ],
@@ -234,7 +246,7 @@ export const HERO_BY_ID = Object.fromEntries(HEROES.map((h) => [h.id, h]));
 // visibly hang in mid-air in front of a box it had just opened. The box now
 // stands 1.05 beats out (BOX_LEAD_BEATS, ~94px) and the fist's 176px covers it
 // with room, so Ray M'N is dealt the box like the other four.
-export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist', 'bow', 'wrench']);
+export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist', 'bow', 'wrench', 'toss']);
 
 /** Can this hero destroy something in front of them without touching it? */
 export function heroShoots(id) {

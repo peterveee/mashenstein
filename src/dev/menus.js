@@ -29,6 +29,7 @@ import { nudge, revertTuning, resyncRun } from './tune-store.js';
 import { derived, TuneStrip } from './tune-strip.js';
 import { PAN_MAX } from '../engine/camera.js';
 import { proseMenu } from './prose.js';
+import { PortraitLab, PORTRAIT_LAB_DEFAULTS } from './portrait-lab.js';
 
 const GOLD = '#f6d33c';
 const DIM = '#5a5a68';
@@ -43,7 +44,7 @@ function fakeResult(stage) {
     score: 12345, coins: 250,
     damageTaken: 0, bestCombo: 0,
     challengeDone: true, applianceGot: true,
-    team: ['lorenzo', 'gnash', 'b33p'],
+    team: ['lorenzo', 'rusty', 'b33p'],
     failMsg: null,
     distance: stage ? Math.floor(stage.durationSec * 160) : 4000,
     time: stage ? stage.durationSec : 60,
@@ -161,6 +162,124 @@ function stagesMenu(dev) {
       submenu: () => cabinetStages(dev, cab),
     })),
   });
+  return { ...build(), rebuild: build };
+}
+
+// ---------------------------------------------------------------- portrait lab
+// The lab shares the authored cabinet/stage hierarchy, but its launcher has a
+// separate completion policy in main.js and never routes through ResultsState.
+function portraitZoomLabel(value) {
+  return value === PORTRAIT_LAB_DEFAULTS.worldZoom ? '2.3375' : Number(value).toFixed(3);
+}
+
+function signedPixels(value) {
+  const n = Math.round(Number(value) || 0);
+  return `${n >= 0 ? '+' : ''}${n} PX`;
+}
+
+function portraitAdjustMenu(dev, name, title, steps, format, resetValue) {
+  const build = () => {
+    const value = PortraitLab.config()[name];
+    return {
+      title,
+      items: [
+        { label: format(-steps.coarse), act: () => { PortraitLab.adjust(name, -steps.coarse); dev.refresh(); } },
+        { label: format(-steps.fine), act: () => { PortraitLab.adjust(name, -steps.fine); dev.refresh(); } },
+        { label: format(value), act: null },
+        { label: format(steps.fine), act: () => { PortraitLab.adjust(name, steps.fine); dev.refresh(); } },
+        { label: format(steps.coarse), act: () => { PortraitLab.adjust(name, steps.coarse); dev.refresh(); } },
+        { label: `RESET ${format(resetValue)}`, act: () => { PortraitLab.adjust(name, resetValue - value); dev.refresh(); } },
+      ],
+    };
+  };
+  return { ...build(), rebuild: build };
+}
+
+function portraitStageActions(dev, stage) {
+  const cab = CABINET_BY_ID[stage.cabinet];
+  const currentHero = () => dev.ctx.Flow.heroId?.() || dev.run()?.relay?.current || 'lorenzo';
+  const launch = (heroId) => {
+    dev.close();
+    dev.ctx.Flow.launchPortraitStage(cab, stage, {
+      heroId: heroId || currentHero(),
+      seed: dev.seedLock ?? undefined,
+      startPercent: PortraitLab.session().startPercent,
+      invulnerable: PortraitLab.session().invulnerable,
+      config: PortraitLab.config(),
+    });
+  };
+  const playAs = () => ({
+    title: 'PLAY AS',
+    items: HEROES.map((hero) => ({ label: hero.short, act: () => launch(hero.id) })),
+  });
+  const build = () => ({
+    title: `${stage.id.toUpperCase()} PORTRAIT`,
+    items: [
+      { label: 'PLAY PORTRAIT', act: () => launch(currentHero()) },
+      { label: 'PLAY AS ▸', submenu: playAs },
+      { label: `SEED: ${dev.seedLock == null ? 'AUTO' : dev.seedLock}`, act: null },
+      { label: `START AT: ${Math.round(PortraitLab.session().startPercent * 100)}%`, act: null },
+      { label: `INVULNERABLE: ${PortraitLab.session().invulnerable ? 'ON' : 'OFF'}`, act: null },
+    ],
+  });
+  return { ...build(), rebuild: build };
+}
+
+function portraitCabinetStages(dev, cab) {
+  const build = () => ({
+    title: cab.name.toUpperCase(),
+    items: stagesForCabinet(cab.id).map((stage) => ({
+      label: `${stage.id}  ${stage.mission.type}`,
+      submenu: () => portraitStageActions(dev, stage),
+    })),
+  });
+  return { ...build(), rebuild: build };
+}
+
+function portraitChooseStageMenu(dev) {
+  const current = dev.run()?.cabinet || CABINETS[0];
+  const build = () => ({
+    title: 'CHOOSE STAGE',
+    items: CABINETS.map((cab) => ({
+      label: `${cab.name}${cab.id === current.id ? '  (CURRENT)' : ''}`,
+      submenu: () => portraitCabinetStages(dev, cab),
+    })),
+  });
+  return { ...build(), rebuild: build };
+}
+
+function portraitStartMenu(dev) {
+  const build = () => ({
+    title: 'START AT',
+    items: [0, 25, 50, 75].map((pct) => ({
+      label: `${pct}%`,
+      act: () => { PortraitLab.setStartPercent(pct / 100); dev.refresh(); },
+    })),
+  });
+  return { ...build(), rebuild: build };
+}
+
+function portraitLabMenu(dev) {
+  const build = () => {
+    const cfg = PortraitLab.config();
+    const session = PortraitLab.session();
+    const last = PortraitLab.last();
+    const items = [
+      { label: `WORLD ZOOM  ${portraitZoomLabel(cfg.worldZoom)} ▸`, submenu: () => portraitAdjustMenu(dev, 'worldZoom', 'WORLD ZOOM', { fine: 0.001, coarse: 0.01 }, portraitZoomLabel, PORTRAIT_LAB_DEFAULTS.worldZoom) },
+      { label: `BACKGROUND  ${Math.round(cfg.backgroundZoom * 100)}% ▸`, submenu: () => portraitAdjustMenu(dev, 'backgroundZoom', 'BACKGROUND', { fine: 0.01, coarse: 0.05 }, (n) => `${Math.round(n * 100)}%`, PORTRAIT_LAB_DEFAULTS.backgroundZoom) },
+      { label: `CLOUD Y  ${signedPixels(cfg.cloudOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'cloudOffsetY', 'CLOUD Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
+      { label: `SUN Y  ${signedPixels(cfg.sunOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'sunOffsetY', 'SUN Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
+      { label: `GROUND LEVEL  ${Math.round(cfg.groundAnchorRatio * 100)}% ▸`, submenu: () => portraitAdjustMenu(dev, 'groundAnchorRatio', 'GROUND LEVEL', { fine: 0.005, coarse: 0.02 }, (n) => `${Math.round(Number(n) * 100)}%`, PORTRAIT_LAB_DEFAULTS.groundAnchorRatio) },
+      { label: `START AT  ${Math.round(session.startPercent * 100)}% ▸`, submenu: () => portraitStartMenu(dev) },
+      { label: `INVULNERABLE  ${session.invulnerable ? 'ON' : 'OFF'}`, act: () => { PortraitLab.setInvulnerable(!session.invulnerable); dev.refresh(); } },
+      { label: 'CHOOSE STAGE ▸', submenu: () => portraitChooseStageMenu(dev) },
+      { label: 'RESET REVIEW DEFAULTS', act: () => { PortraitLab.reset(); dev.refresh(); } },
+    ];
+    if (last?.stage?.id || last?.reason) {
+      items.push({ label: `LAST: ${last.stage?.id?.toUpperCase() || 'RUN'} — ${last.reason || 'EXIT'}`, act: null });
+    }
+    return { title: 'PORTRAIT LAB', items };
+  };
   return { ...build(), rebuild: build };
 }
 
@@ -668,6 +787,7 @@ export function rootMenu(dev) {
     title: 'DEV MENU',
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
+      { label: 'PORTRAIT LAB ▸', submenu: () => portraitLabMenu(dev) },
       // Keep the saved-song launcher in the first screenful. On a phone the
       // root menu has fewer visible rows, and this overlay deliberately has no
       // swipe-to-scroll gesture; a row below the fold is otherwise unreachable

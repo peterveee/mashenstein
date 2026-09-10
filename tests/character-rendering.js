@@ -95,6 +95,18 @@ for (const hero of HEROES) {
 const toonIds = Object.keys(TOON_SPECS);
 assert(toonIds.length >= HEROES.length,
   `the toon roster covers at least the playable cast (${toonIds.length} toons, ${HEROES.length} heroes)`);
+// RUSTY'S CANDIDATE SPEC STILL EXISTS in src/dev/hero-candidates.js, kept so
+// the gallery's lab sections and the bake-off notes read; the shipped spec is
+// TOON_SPECS.rusty. Two copies of one look are the drift that file exists to
+// prevent, so they are held equal here — edit the shipped one, and this says
+// where the other is.
+{
+  const { RUSTY_W3B, PANDA_PAL } = await import('../src/dev/hero-candidates.js');
+  assert(JSON.stringify(RUSTY_W3B) === JSON.stringify(TOON_SPECS.rusty),
+    'src/dev/hero-candidates.js RUSTY_W3B has drifted from TOON_SPECS.rusty');
+  assert(JSON.stringify(PANDA_PAL) === JSON.stringify(HERO_SPRITES.rusty.pal),
+    'src/dev/hero-candidates.js PANDA_PAL has drifted from HERO_SPRITES.rusty.pal');
+}
 assert(toonIds.every((id) => HERO_SPRITES[id] && HERO_SPRITES[id].pal),
   'every toon in the roster has a palette to draw with');
 assert(HEROES.every((h) => TOON_SPECS[h.id]),

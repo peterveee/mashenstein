@@ -115,57 +115,13 @@ import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
 import { proFaceWith, PRO_STACHE_SIZE, proMouthPartWith } from '../src/sprites/props.js';
 import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
 
-// ------------------------------------------------------- the guest hero
-// RUSTY IS STILL A CANDIDATE. He has no row in HEROES and no entry in
-// TOON_SPECS, and he must not get one until his look is signed off — that
-// separation is the whole point of src/dev/hero-candidates.js.
-//
-// But a candidate can only be judged against the cast it wants to join, so the
-// GALLERY — and only the gallery — appends him to the cast-wide line-ups and
-// hands his spec and palette through drawToon's opts seam, exactly as the
-// bake-off sections do. Nothing here reaches production: TOON_SPECS is
-// untouched, so the hub wall, the design handoff and the roster the tests count
-// are all unchanged.
-//
-// GNASH STAYS. The point is the comparison, not the swap.
-const GUEST_ID = 'rusty';
-const GUEST_OPTS = { spec: RUSTY_W3B, pal: PANDA_PAL };
-// A synthetic HEROES row for him. Several cast sections are keyed on
-// HERO_BY_ID rather than on TOON_SPECS — the special-move rows and the whole
-// jump-height chart — so a candidate with no row is silently absent from them.
-// That is why his jump was missing from the measured chart while appearing in
-// every pose strip. Nothing here reaches production: it is a gallery-local
-// object, and the real row only exists once he is cast.
-//
-// The kit is the speedster slot he is auditioning for, taken from Gnash so the
-// comparison is like for like. PROVISIONAL — the numbers are his only in the
-// sense that they are the slot's. The ability TYPE is deliberately 'shoot',
-// because that is what drives the aim pose his throw is built on; the
-// projectile is a thrown-and-returned cane (the axe's cycle), and which type
-// carries that — reuse 'axe', or add a 'boomerang' — is still open.
-const GUEST_HERO = {
-  id: GUEST_ID,
-  name: 'RUSTY, FOCUS-TESTED',
-  short: 'RUSTY',
-  speedMult: 1.15,
-  jumpMult: 1.05,
-  scoreMult: 1,
-  maxJumps: 1,
-  variableJump: true,
-  ability: { type: 'shoot', cooldown: 3.2, label: 'BAMBOO SHOOT', callout: 'BAMBOO SHOOT' },
-};
-// HERO_BY_ID, plus the guest — for sections that enumerate the playable roster
-// rather than the drawable specs.
-const heroRow = (id) => (id === GUEST_ID ? GUEST_HERO : HERO_BY_ID[id]);
-// Keep the gallery's final three seats for Gnash, Gary and Dolores, with the
-// guest immediately before them. Preserve the other heroes' relative order.
-const withGuest = (ids) => {
-  const end = ['gnash', 'gary', 'dolores'];
-  return [...ids.filter(id => !end.includes(id)), GUEST_ID, ...end.filter(id => ids.includes(id))];
-};
-// The opts any cast-wide draw call needs: the guest's spec/pal, or nothing at
-// all for a hero who has his own entry in TOON_SPECS.
-const heroOpts = (id) => (id === GUEST_ID ? GUEST_OPTS : {});
+// RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
+// drawToon's spec/pal seam and spliced into every cast-wide line-up by a
+// gallery-local helper, because a candidate can only be judged against the
+// cast he wants to join. He is cast now (TOON_SPECS.rusty, HERO_SPRITES.rusty,
+// a HEROES row in Gnash's slot), so the production sections enumerate him the
+// ordinary way and the splice is gone. The lab sections further down still
+// read RUSTY_W3B, which is now an alias of the shipped spec.
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -536,8 +492,8 @@ function slideExtra(id) {
   // through to the generic crouch while every shipped humanoid got the POWER
   // SLIDE. The bake-off sheets passed slideStyle by hand, which is exactly why
   // it never showed up there.
-  const rig = id === GUEST_ID ? GUEST_OPTS.spec.rig : TOON_SPECS[id]?.rig;
-  const playable = id === GUEST_ID || !!HERO_BY_ID[id];
+  const rig = TOON_SPECS[id]?.rig;
+  const playable = !!HERO_BY_ID[id];
   return playable && (rig === 'humanoid' || rig === 'ray')
     ? { slideStyle: 'kick' } : {};
 }
@@ -569,6 +525,13 @@ function powerupExtra(type, local) {
       ? { menuAction: 'aim', actionTime: local, axeThrown: local >= 0.3 * AXE_THROW_AT.release }
       : { axeThrown: true };
   }
+  // Rusty's toss: the same gesture, released on the toss beat, and the pouch
+  // slot stays empty while the cane is out (run.js sets axeThrown for it too).
+  if (type === 'toss') {
+    return local <= 0.3
+      ? { menuAction: 'aim', actionTime: local, axeThrown: local >= 0.3 * RANGED_RELEASE_AT.toss }
+      : { axeThrown: true };
+  }
   if (type === 'shoot') return local <= 0.3 ? { menuAction: 'aim', actionTime: local } : {};
   if (type === 'bow') return local <= BOW_AIM_T ? { menuAction: 'aim', actionTime: local } : {};
   if (type === 'eat') return { menuAction: 'chomp', time: local };
@@ -596,20 +559,7 @@ function drawPowerupTile(ctx, id, hero, t, cx, feetY, hh) {
     drawProp(ctx, 'crate', -0.25 * hh, -0.23 * hh, 0.5 * hh, 0.46 * hh);
     ctx.restore();
   }
-  drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, hh, heroOpts(id));
-  // The guest's special is a THROWN CANE, not a shot. He borrows ability type
-  // 'shoot' only because that is what drives the aim pose his throw is built
-  // on — so he takes the pose and skips drawPowerPose, whose 'shoot' flourish
-  // is a muzzle flash. The cane is drawn instead, spawned at the release beat
-  // (0.66 of the window) exactly as the throw section does it.
-  if (id === GUEST_ID) {
-    const q = Math.max(0, Math.min(1, local / 0.3));
-    if (q >= 0.66) {
-      drawBambooShoot(ctx, cx + 0.14 * hh + (q - 0.66) * 0.9 * hh, feetY - hh * 0.5,
-        { size: (hh / 36) * caneScale(0), spin: q * 8 });
-    }
-    return;
-  }
+  drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, hh);
   drawPowerPose(ctx, cx, feetY, type, powerPoseAlpha(t, budget), hh / HERO_DRAW_H);
 }
 
@@ -648,7 +598,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 // tile they had in the sections below — this is the line-up, not the cast list.
 {
   const LINEUP_OMIT = new Set(['chompo', 'mochi']);
-  const ids = withGuest(Object.keys(TOON_SPECS).filter((id) => !LINEUP_OMIT.has(id)));
+  const ids = Object.keys(TOON_SPECS).filter((id) => !LINEUP_OMIT.has(id));
   const grid = section('cast-lineup', 'The cast — one line-up per pose',
     `${ids.length} heroes shoulder to shoulder on a shared feet line, drawn by the game's own `
     + `drawToon() on a single clock (chompo and mochi are held out of the line-up). The per-hero `
@@ -669,7 +619,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     const TH = HEIGHTS[kind], FEET = TH - GAP;
     tile(grid, label, note, COL * ids.length, TH, (ctx, t) => {
       ids.forEach((hid, i) => {
-        drawToon(ctx, hid, pose(kind, t, extraFor(kind, hid)), COL * (i + 0.5), FEET, HH, heroOpts(hid));
+        drawToon(ctx, hid, pose(kind, t, extraFor(kind, hid)), COL * (i + 0.5), FEET, HH);
         ctx.fillStyle = '#8a8a9e';
         ctx.font = '7px ui-monospace, monospace';
         ctx.textAlign = 'center';
@@ -698,12 +648,12 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // ability pose from poseFromPlayer's own fields, plus drawPowerPose()'s
   // flourish pulsing on useAbility()'s countdown, plus the guest's thrown cane.
   {
-    const pids = withGuest(Object.keys(HERO_BY_ID));
+    const pids = Object.keys(HERO_BY_ID);
     const TH = 96, FEET = TH - GAP;
     tile(grid, 'all special move', `${pids.length} heroes · every ability firing on one clock, one feet line`,
       COL * pids.length, TH, (ctx, t) => {
         pids.forEach((hid, i) => {
-          drawPowerupTile(ctx, hid, heroRow(hid), t, COL * (i + 0.5), FEET, HH);
+          drawPowerupTile(ctx, hid, HERO_BY_ID[hid], t, COL * (i + 0.5), FEET, HH);
           ctx.fillStyle = '#8a8a9e';
           ctx.font = '7px ui-monospace, monospace';
           ctx.textAlign = 'center';
@@ -809,7 +759,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 
 // ---------------------------------------------------------------- 2. heroes
 {
-  const ids = withGuest(Object.keys(TOON_SPECS));
+  const ids = Object.keys(TOON_SPECS);
   const grid = section('heroes', 'Heroes — poses',
     `${ids.length} heroes across the five shared poses plus each playable hero's special, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
     + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move. '
@@ -828,12 +778,12 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       // rides ~1.25 above his feet) isn't cropped at the tile's top edge.
       const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
       tile(grid, id, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'slide' ? slideExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(id));
+        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'slide' ? slideExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
     // Gary and Dolores are cast-roll flavour, not roster members — neither has
     // a gameplay ability to show.
-    const hero = heroRow(id);
+    const hero = HERO_BY_ID[id];
     if (!hero) continue;
     const th = HH * 1.3;
     tile(grid, id, `powerup · ${hero.ability.label}`, HH * 0.9, th, (ctx, t) => {
@@ -848,7 +798,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 // judging one character, bad for spotting the one hero whose run cycle reads
 // wrong next to everyone else's. This is that comparison, the other way round.
 {
-  const ids = withGuest(Object.keys(TOON_SPECS));
+  const ids = Object.keys(TOON_SPECS);
   const secId = 'pose-compare';
   const title = 'Heroes — pose comparison';
   const s = sectionEl(secId, title,
@@ -891,7 +841,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       tile(grid, 'all slide — in a row', 'one clock, whole cast · humanoids slide, the other rigs keep their crouch',
         COL * ids.length, 62, (ctx, t) => {
           ids.forEach((hid, i) => {
-            drawToon(ctx, hid, pose('slide', t, slideExtra(hid)), COL * (i + 0.5), FEET, HH, heroOpts(hid));
+            drawToon(ctx, hid, pose('slide', t, slideExtra(hid)), COL * (i + 0.5), FEET, HH);
             ctx.fillStyle = '#8a8a9e';
             ctx.font = '7px ui-monospace, monospace';
             ctx.textAlign = 'center';
@@ -901,7 +851,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     }
     for (const hid of ids) {
       tile(grid, hid, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'slide' ? slideExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH, heroOpts(hid));
+        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'slide' ? slideExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
   }
@@ -913,13 +863,13 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // comparison, and lined up together it is the fastest way to see which
   // specials do not read as specials.
   {
-    const roster = ids.filter((hid) => heroRow(hid));
+    const roster = ids.filter((hid) => HERO_BY_ID[hid]);
     const grid = subhead(LABELS.powerup,
       `${roster.length} of ${ids.length} heroes — the ability pose plus drawPowerPose()'s flourish, `
       + 'pulsing on the same countdown a real run gives it.');
     const th = HH * 1.3;
     for (const hid of roster) {
-      const hero = heroRow(hid);
+      const hero = HERO_BY_ID[hid];
       const tw = hid === 'chompo' ? HH * 1.55 : HH * 0.9;
       tile(grid, hid, `${hero.ability.label} · ${hero.ability.type}`, tw, th, (ctx, t) => {
         drawPowerupTile(ctx, hid, hero, t, hid === 'chompo' ? HH * 0.48 : tw / 2, th - HH * 0.05, HH);
@@ -1006,7 +956,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 }
 
 {
-  const ids = withGuest(Object.keys(TOON_SPECS));
+  const ids = Object.keys(TOON_SPECS);
   const grid = section('faces', 'Heroes — faces', 'drawToonFace(), as used for HUD cells and portal crops.');
   for (const id of ids) {
     tile(grid, id, 'face', 32, 32, (ctx) => drawToonFace(ctx, id, 0, 0, 32, 32));
@@ -1182,7 +1132,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const PAD = 6;
   const tw = HERO_DRAW_W + PAD * 2;
   const th = HERO_DRAW_H + PAD * 2;
-  for (const id of withGuest(Object.keys(TOON_SPECS))) {
+  for (const id of Object.keys(TOON_SPECS)) {
     const player = {
       hero: {}, anim: 0, vy: 0, grounded: true, sliding: false, rolling: false,
       compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
@@ -1260,8 +1210,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // A human tap, not a one-frame theoretical minimum.
   const TAP = 0.1;
 
-  const ROWS = withGuest(Object.keys(HERO_BY_ID))
-    .map((id) => ({ id, hero: heroRow(id), apex: apexOf(heroRow(id)) }))
+  const ROWS = Object.keys(HERO_BY_ID)
+    .map((id) => ({ id, hero: HERO_BY_ID[id], apex: apexOf(HERO_BY_ID[id]) }))
     .sort((a, b) => b.apex - a.apex);
 
   // LEFT is the gutter the outboard height labels hang in; without it the
@@ -7241,9 +7191,6 @@ if (location.hash) requestAnimationFrame(() => {
 // its own height, so "how tall is this hero really?" needs a scratch canvas.
 window.__gallery = {
   tiles, paint, drawToon, TOON_SPECS, RUSTY_W3B, PANDA_PAL, HERO_DRAW_H, RANGED_RELEASE_POINT, drawRangedProjectile,
-  // The guest rides the spec/pal seam rather than TOON_SPECS, so a console
-  // question about him ("what would this palette do?") had no way to reach him.
-  GUEST_ID, GUEST_OPTS,
   get errors() { return tiles.filter((t) => t.stack); },
 };
 

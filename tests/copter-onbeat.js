@@ -53,7 +53,7 @@ function play(seed, onBeat) {
   };
   let result = null;
   const run = new RunState({
-    stage, team: ['lorenzo', 'gnash', 'clara'], save, seed, difficulty: 1,
+    stage, team: ['lorenzo', 'rusty', 'clara'], save, seed, difficulty: 1,
     onEnd: (r) => { result = r; },
   });
   run.enter();

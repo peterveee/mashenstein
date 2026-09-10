@@ -65,13 +65,12 @@ export function dialApplicability(row, spec, context = {}) {
   return { active: true, reason: '' };
 }
 
-export const HUMANOIDS = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'kiko', 'clara', 'gary', 'dolores', 'grumpos'];
-export const CAST = [...HUMANOIDS, 'rusty'];
+export const HUMANOIDS = ['lorenzo', 'gnash', 'rusty', 'fernwick', 'b33p', 'kiko', 'clara', 'gary', 'dolores', 'grumpos'];
+export const CAST = [...HUMANOIDS];
 export const EDITOR_BLOCK_HEADER = '// proportions — written by the character editor (tools/character-editor.js)';
 export const EDITOR_BLOCK_END = '// end character editor proportions';
 export const SPEC_HOMES = {
   '*': { file: 'src/sprites/toons.js', anchor: /export const TOON_SPECS\s*=\s*\{/, entry: (id) => id },
-  rusty: { file: 'src/dev/hero-candidates.js', anchor: /export const RUSTY_W3B\s*=\s*\{/, entry: null },
 };
 
 export const dialByKey = (key) => HERO_DIALS.find((row) => row.key === key) || null;

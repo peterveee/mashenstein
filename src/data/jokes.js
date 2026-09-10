@@ -81,6 +81,7 @@ export const RANK_LINES = {
 export const TAG_LINES = {
   lorenzo: 'STANDARD PROCEDURE.',
   gnash: 'FINALLY.',
+  rusty: 'FINALLY.',            // Gnash's, on loan, until Rusty has his own
   fernwick: 'THE RECEIPT FORETOLD THIS.',
   b33p: 'LOW ON CYAN.',
   mochi: 'POYO.',
@@ -125,6 +126,8 @@ export const EXIT_LINES = {
     'TOO SLOW. I ALREADY PASSED THE VALVE.',
     'I FINISHED THIS SHIFT BEFORE IT STARTED.',
   ],
+  // Rusty reads Gnash's exit lines for now; see the note on his HEROES row.
+  get rusty() { return this.gnash; },
   fernwick: [
     'THE RECEIPT SAYS SOMEONE ELSE HANDLES THIS PART.',
     'MY PROPHECY ENDS HERE. IT WAS A SHORT PROPHECY.',
@@ -238,6 +241,7 @@ export const HUB_LINES = {
     'I BEAT THE HIGH SCORE ON THE ARCADE CABINET BEFORE IT FINISHED BOOTING.',
     'I HAVE MASTERED WAITING. IT TOOK FOREVER.',
   ],
+  get rusty() { return this.gnash; },
   fernwick: [
     'MY PROPHECY MENTIONS A "BUY ONE GET ONE" EVENT. DARK TIMES.',
     'THE RECEIPT FADES FURTHER EVERY DAY. AS DO WE ALL.',

@@ -44,7 +44,7 @@ save.newSlot(0, 0);
 
 const TICK = 1 / 60;
 const MAX_TICKS = 60 * 60 * 4;
-const TEAM = ['lorenzo', 'gnash', 'clara'];
+const TEAM = ['lorenzo', 'rusty', 'clara'];
 const SEEDS = 14;
 
 // Every stage of every cabinet that declares a tunnel. Plumber is the one that

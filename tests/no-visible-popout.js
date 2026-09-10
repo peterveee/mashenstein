@@ -55,7 +55,7 @@ for (const stageId of PLAY) {
     let result = null;
     const run = new RunState({
       stage,
-      team: ['lorenzo', 'gnash', 'clara'],
+      team: ['lorenzo', 'rusty', 'clara'],
       save,
       seed,
       difficulty: 1,

@@ -60,7 +60,9 @@ function parseViewport(p) {
 
 function parseSafe(p) {
   const raw = p.get('safe');
-  if (!raw) return { top: 0, right: 0, bottom: 0, left: 0 };
+  // A direct embed defaults to the iPhone notch/home-indicator preset. The
+  // outer shell exposes an explicit None option for identity comparisons.
+  if (!raw) return { top: 59, right: 0, bottom: 34, left: 0 };
   const [top, right, bottom, left] = raw.split(',').map((v) => Math.max(0, Number.parseFloat(v) || 0));
   return { top: top || 0, right: right || 0, bottom: bottom || 0, left: left || 0 };
 }
@@ -223,15 +225,20 @@ async function bootEmbed() {
   document.getElementById('embed-surface')?.removeAttribute('hidden');
   document.getElementById('error')?.setAttribute('hidden', '');
   const p = params();
-  // Review-only background scale. The RunState applies this to its single
-  // background pass around the authored ground line; world actors and UI stay
-  // outside that transform. Production boot never sets this preview global.
-  window.__MASH_PORTRAIT_BG_ZOOM__ = numberParam(p, 'bgZoom', 1);
+  // Review-only background scale is carried by the explicit RunState adapter
+  // below. Production never reads preview globals.
   const viewportParam = parseViewport(p);
   const actual = activeViewport();
   const requested = p.has('viewport') ? viewportParam : actual;
   const scene = sceneConfig(p);
   const chosen = choiceConfig(p);
+  const previewConfig = {
+    worldZoom: chosen.zoom,
+    backgroundZoom: numberParam(p, 'bgZoom', 1),
+    cloudOffsetY: numberParam(p, 'cloudOffset', 0),
+    sunOffsetY: numberParam(p, 'sunOffset', 0),
+    groundAnchorRatio: 0.62,
+  };
   const safe = safeForPreview(p);
   let frame = frameForViewport({
     mode: chosen.choice.mode, viewportWidth: requested.width, viewportHeight: requested.height,
@@ -268,7 +275,8 @@ async function bootEmbed() {
   let run = new runMod.RunState({
     stage, cabinet, seed: scene.seed, save, demo: true, devInvuln: true,
     devStartPercent: scene.startAt, skipRunIn: true, announceBench: false,
-    initialHeroId: 'lorenzo',
+    initialHeroId: 'lorenzo', portraitLabRun: chosen.choice.mode === FRAME_MODE,
+    portraitPreview: true, devPortraitLab: previewConfig,
   });
   run.enter();
   // The one warm tick lets authored scripted pieces and the ordinary spawner
@@ -351,7 +359,15 @@ async function bootEmbed() {
     if (msg.action === 'step') { paused = true; run.update(1 / 60); }
     if (msg.action === 'background-zoom') {
       const next = Number(msg.value);
-      if (Number.isFinite(next)) window.__MASH_PORTRAIT_BG_ZOOM__ = Math.max(1, Math.min(1.3, next));
+      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, backgroundZoom: next });
+    }
+    if (msg.action === 'cloud-offset') {
+      const next = Number(msg.value);
+      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, cloudOffsetY: next });
+    }
+    if (msg.action === 'sun-offset') {
+      const next = Number(msg.value);
+      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, sunOffsetY: next });
     }
     render();
   });
@@ -379,19 +395,29 @@ function shell() {
   const aValue = document.getElementById('a-zoom-value');
   const backgroundInput = document.getElementById('background-zoom');
   const backgroundValue = document.getElementById('background-zoom-value');
+  const cloudInput = document.getElementById('cloud-offset');
+  const cloudValue = document.getElementById('cloud-offset-value');
+  const sunInput = document.getElementById('sun-offset');
+  const sunValue = document.getElementById('sun-offset-value');
   const frames = [...document.querySelectorAll('iframe[data-choice]')];
   const outerParams = params();
   const initialScene = outerParams.get('scene');
   if (SCENES[initialScene]) sceneSelect.value = initialScene;
   const initialBackgroundZoom = numberParam(outerParams, 'bgZoom', Number(backgroundInput.value));
   if (Number.isFinite(initialBackgroundZoom)) backgroundInput.value = String(Math.max(1, Math.min(1.3, initialBackgroundZoom)));
+  const initialCloudOffset = numberParam(outerParams, 'cloudOffset', Number(cloudInput.value));
+  if (Number.isFinite(initialCloudOffset)) cloudInput.value = String(Math.max(-100, Math.min(60, initialCloudOffset)));
+  const initialSunOffset = numberParam(outerParams, 'sunOffset', Number(sunInput.value));
+  if (Number.isFinite(initialSunOffset)) sunInput.value = String(Math.max(-100, Math.min(60, initialSunOffset)));
   const queryFor = (choice) => {
-    const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value, bgZoom: backgroundInput.value });
+    const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value, bgZoom: backgroundInput.value, cloudOffset: cloudInput.value, sunOffset: sunInput.value });
     return `portrait-preview.html?${q}`;
   };
   const reload = () => {
     aValue.textContent = Number(aInput.value).toFixed(3);
     backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
+    cloudValue.textContent = `${Math.round(Number(cloudInput.value))} px`;
+    sunValue.textContent = `${Math.round(Number(sunInput.value))} px`;
     for (const frame of frames) frame.src = queryFor(frame.dataset.choice);
   };
   for (const input of [sceneSelect, viewportSelect, safeSelect, aInput]) input.addEventListener('change', reload);
@@ -401,6 +427,16 @@ function shell() {
   backgroundInput.addEventListener('input', () => {
     backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
     send('background-zoom', Number(backgroundInput.value));
+  });
+  cloudValue.textContent = `${Math.round(Number(cloudInput.value))} px`;
+  cloudInput.addEventListener('input', () => {
+    cloudValue.textContent = `${Math.round(Number(cloudInput.value))} px`;
+    send('cloud-offset', Number(cloudInput.value));
+  });
+  sunValue.textContent = `${Math.round(Number(sunInput.value))} px`;
+  sunInput.addEventListener('input', () => {
+    sunValue.textContent = `${Math.round(Number(sunInput.value))} px`;
+    send('sun-offset', Number(sunInput.value));
   });
   document.getElementById('play-button')?.addEventListener('click', () => send('play'));
   document.getElementById('pause-button')?.addEventListener('click', () => send('pause'));

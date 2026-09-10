@@ -64,7 +64,7 @@ function play(stage, zoomIn, seed) {
   if (beat) Audio.songBeat = () => (t * rhythmBank.bpm) / 60;
   let result = null;
   const run = new RunState({
-    stage, team: ['lorenzo', 'gnash', 'clara'], save, seed, difficulty: 1,
+    stage, team: ['lorenzo', 'rusty', 'clara'], save, seed, difficulty: 1,
     onEnd: (r) => { result = r; },
   });
   run.enter();

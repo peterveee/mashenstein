@@ -23,7 +23,7 @@ All eight are available in every normal stage. Portals switch between them autom
 | # | Hero | Full Name | Tagline | Skill | Ability |
 |---|---|---|---|---|---|
 | 1 | **LORENZO** | Lorenzo "Wrenches" Bracciano | "STANDARD PLUMBING PROCEDURE." | High Jump (15% higher) | STOMP / SMASH — air stomp or grounded wrench smash |
-| 2 | **GNASH** | Gnash the Needlemouse | "ALREADY THERE. WAITING." | Speed Boost (15% faster) | SPIN DASH — invincible burst that smashes breakables |
+| 2 | **RUSTY** | Rusty, Focus-Tested | "ALREADY THERE. WAITING." *(Gnash's, on loan)* | Speed Boost (15% faster) | BAMBOO SHOOT — pulls a cane from his pouch and throws it; it breaks hazards and returns |
 | 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | LONGBOW — reaches back for her bow, draws, and looses an arcing arrow that breaks ground hazards |
 | 4 | **B-33P** | Unit B-33P "Blastbot" | "LOW ON CYAN." | Battery Efficient (25% faster recharge) | LEMON CANNON — fires a shot that destroys ground obstacles |
 | 5 | **CLARA** | Clara Vault, Mall Raider | "CHAPTER ONE: SHE ARRIVED." | Cliffhanger (jumps 15% higher) | PLOT HOLE — fires both pistols, a quick pair of slugs that destroy ground obstacles |
@@ -33,7 +33,7 @@ All eight are available in every normal stage. Portals switch between them autom
 
 **Tag-in lines** (spoken when entering via portal):
 - LORENZO: "STANDARD PROCEDURE."
-- GNASH: "FINALLY."
+- RUSTY: "FINALLY." *(Gnash's line — Rusty took his slot on 10 Sep 2026 and reads Gnash's lines until his own are written; see [notes/rusty-persona.md](notes/rusty-persona.md))*
 - FERNWICK: "THE RECEIPT FORETOLD THIS."
 - B-33P: "LOW ON CYAN."
 - CLARA: "SUDDENLY: CLARA VAULT."
@@ -43,7 +43,7 @@ All eight are available in every normal stage. Portals switch between them autom
 
 **Running jokes** (one comedic bit per hero, hammered repeatedly):
 - Lorenzo produces increasingly inappropriate plumbing tools.
-- Gnash arrives too early and waits for reality to catch up.
+- Rusty arrives too early and waits for reality to catch up. *(Gnash's bit, on loan.)*
 - Fernwick's sacred prophecy is printed on a faded supermarket receipt.
 - B-33P constantly reports low on cyan, regardless of context.
 - Clara narrates her own lunch. In the past tense.
@@ -54,8 +54,8 @@ All eight are available in every normal stage. Portals switch between them autom
 **Authored portal hand-offs** (scripted exchanges between specific pairs):
 | Outgoing → Incoming | Lines |
 |---|---|
-| LORENZO → GNASH | "APPLYING INDUSTRIAL THREAD SEALANT." → "TOO SLOW. I ALREADY PASSED THE VALVE." |
-| GNASH → FERNWICK | "ALREADY AT THE NEXT CORNER. SPEED UP." → "THE RECEIPT EXPRESSLY FORBIDS RUNNING." |
+| LORENZO → RUSTY *(Gnash's lines)* | "APPLYING INDUSTRIAL THREAD SEALANT." → "TOO SLOW. I ALREADY PASSED THE VALVE." |
+| RUSTY → FERNWICK *(Gnash's lines)* | "ALREADY AT THE NEXT CORNER. SPEED UP." → "THE RECEIPT EXPRESSLY FORBIDS RUNNING." |
 | FERNWICK → B-33P | "THE PROPHECY FORETOLD A METALLIC CHASSIS." → "CHASSIS OPERATIONAL. CYAN LEVEL: CRITICAL." |
 | B-33P → CLARA | "PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN." → "SUDDENLY: CLARA VAULT." |
 | CLARA → KIKO | "TO BE CONTINUED." → "I WILL NEED THAT AS A STATEMENT." |
@@ -177,7 +177,7 @@ Each hero has a unique ability on a cooldown (1.8–3.5 seconds). An in-world ci
 
 - **Stomp / Smash** (Lorenzo, 2.5s, held jump = 15% higher): In the air, stomps downward to break ground obstacles beneath him. On the ground, swings a wrench forward to smash a single nearby obstacle. A banked Relay Blast charge clears the whole screen.
 
-- **Spin Dash** (Gnash, 3.5s, passive +15% speed): Invincible horizontal burst forward; smashes every breakable in his path. A charged Relay Blast version runs much longer.
+- **Bamboo Shoot** (Rusty, 3.2s, passive +15% speed): Reaches to the pouch on his hip, pulls a bamboo cane and whips it forward; it leaves on the throw's release beat, flies the axe's cycle (out, hover, home) and breaks hazards on the way. His two canes — one long, one short — alternate every throw, and the one in the air is the one he pulled. *(Replaced Gnash's Spin Dash on 10 Sep 2026; Gnash is held for an NPC role.)*
 
 - **Longbow** (Fernwick, 2.4s, starts stages with one shield): She reaches back for the bow, draws, and the arrow leaves 0.18s after the press on a short arc into ground hazards, then she lowers and slings the bow. Broadhead (mastery) and a charged Relay Blast make the arrow pierce.
 
@@ -309,7 +309,7 @@ XP thresholds: 100, 300, 700, 1400 (levels 1–5). Each hero has one sidegrade w
 | Hero | Sidegrade | Effect |
 |---|---|---|
 | Lorenzo | SHOCK STOMP | Shockwave breaks nearby obstacles, scatters nearby coins |
-| Gnash | MOMENTUM GUY | Stacking speed after every tag |
+| Rusty | MOMENTUM GUY | Stacking speed after every tag |
 | Fernwick | BROADHEAD | The arrow punches through and keeps going |
 | B-33P | CHARGE SHOT | Pellets pierce ground and flying obstacles |
 | Clara | SERIALIZED | The shot is faster but smaller |

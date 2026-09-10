@@ -5,7 +5,9 @@
 export const W = 480;
 export let H = 270;
 
-import { getActiveFrame, setActiveFrame } from './frame.js';
+import {
+  defaultFrame, frameForViewport, getActiveFrame, LANDSCAPE, PHONE_PORTRAIT, setActiveFrame,
+} from './frame.js';
 
 let canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
 
@@ -20,6 +22,7 @@ let canvas = typeof document !== 'undefined' ? document.getElementById('game') :
 const chromeCanvas = typeof document !== 'undefined' ? document.getElementById('chrome') : null;
 export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d') : null;
 import { layoutTouchChrome } from './touch-layout.js';
+import { portraitTouchLayout } from './portrait-input.js';
 
 // env(safe-area-inset-*) isn't readable from JS directly — only a computed
 // style reports it — so #safe-area (template.html) exists purely to have its
@@ -141,12 +144,45 @@ export const screen = {
   scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, portraitFill: false,
   inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
   safeTop: 0, safeRight: 0, safeBottom: 0, safeLeft: 0,
-  frameRevision: 0, groundScreenY: 232,
+  frameRevision: 0, groundScreenY: 232, presentationMode: LANDSCAPE,
 };
 export const visualiserFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualiserFullscreen = false;
 let jukeboxPortrait = false;
 let devPortraitFill = false;
+let presentationMode = LANDSCAPE;
+let presentationManaged = false;
+let presentationGroundAnchorRatio = 0.62;
+
+function sameFrame(a, b) {
+  return a.mode === b.mode && a.width === b.width
+    && Math.abs(a.height - b.height) < 0.0001
+    && Math.abs(a.scale - b.scale) < 0.0001
+    && Math.abs(a.groundScreenY - b.groundScreenY) < 0.0001
+    && a.safeRect.left === b.safeRect.left && a.safeRect.top === b.safeRect.top
+    && a.safeRect.right === b.safeRect.right && a.safeRect.bottom === b.safeRect.bottom;
+}
+
+function derivePresentationFrame(winW, winH, safe) {
+  const targetMode = presentationMode === PHONE_PORTRAIT && winH > winW
+    ? PHONE_PORTRAIT : LANDSCAPE;
+  const current = getActiveFrame();
+  const next = frameForViewport({
+    mode: targetMode, viewportWidth: winW, viewportHeight: winH, safeInsets: safe,
+    groundAnchorRatio: presentationGroundAnchorRatio,
+    revision: current.revision,
+  });
+  if (!sameFrame(current, next)) {
+    setActiveFrame({ ...next, revision: current.revision + 1 });
+  }
+  const frame = getActiveFrame();
+  H = frame.height;
+  Object.assign(screen, {
+    frameRevision: frame.revision,
+    groundScreenY: frame.groundScreenY,
+    presentationMode: frame.mode,
+  });
+}
 
 // The game normally preserves its 16:9 logical frame with letterbox margins.
 // Screensaver visuals are an exception: they are decorative and can stretch
@@ -181,16 +217,43 @@ export function setDevPortraitFill(on) {
   if (typeof window !== 'undefined' && canvas) resize();
 }
 
+// Opt-in production presentation mode used by the dev Portrait Lab. Unlike
+// setDevPortraitFill this keeps the world uniform: portrait derives a logical
+// height from the viewport aspect and follows orientation through resize().
+export function setPresentationMode(mode = LANDSCAPE, options = {}) {
+  presentationMode = mode === PHONE_PORTRAIT || mode === 'portrait'
+    ? PHONE_PORTRAIT : LANDSCAPE;
+  if (Number.isFinite(Number(options.groundAnchorRatio))) {
+    presentationGroundAnchorRatio = Math.max(0.55, Math.min(0.75, Number(options.groundAnchorRatio)));
+  }
+  presentationManaged = true;
+  if (typeof window === 'undefined' || !canvas) {
+    const frame = presentationMode === LANDSCAPE ? defaultFrame() : getActiveFrame();
+    setActiveFrame(frame);
+    H = frame.height;
+    Object.assign(screen, { frameRevision: frame.revision, groundScreenY: frame.groundScreenY, presentationMode: frame.mode });
+    return frame;
+  }
+  resize();
+  return getActiveFrame();
+}
+
+export function isPhonePortraitPresentation() {
+  return getActiveFrame().mode === PHONE_PORTRAIT;
+}
+
 // Development framing hook. The ordinary boot never calls this, so the
 // shipped renderer remains a 480x270 surface. A preview may install a frame
 // before initRenderer (the safest point for modules that cache H-derived art),
 // or while running to exercise a resize/rotation transition.
 export function setPresentationFrame(frame) {
+  presentationManaged = false;
   const next = setActiveFrame(frame);
   H = next.height;
   Object.assign(screen, {
     frameRevision: next.revision,
     groundScreenY: next.groundScreenY,
+    presentationMode: next.mode,
   });
   if (backend && typeof window !== 'undefined' && canvas) resize();
   return next;
@@ -612,6 +675,8 @@ function resize() {
   const viewport = window.visualViewport;
   const winW = viewport ? viewport.width : window.innerWidth;
   const winH = viewport ? viewport.height : window.innerHeight;
+  const safe = safeInsets();
+  if (presentationManaged) derivePresentationFrame(winW, winH, safe);
   // Art is resolution-independent now, so fill the viewport at any fractional
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
@@ -697,7 +762,6 @@ function resize() {
   // so logical y=0 IS under the island and every pixel of the inset is real.
   // Divided by the same input mapping pointers use, so all three modes convert
   // with one formula.
-  const safe = safeInsets();
   const safeScaleX = Math.max(0.001, inputScaleX);
   const safeScaleY = Math.max(0.001, inputScaleY);
   const safeTop = Math.max(0, safe.top - oy) / safeScaleY;
@@ -893,12 +957,34 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
   chrome.vw = winW;
   chrome.vh = winH;
   chrome.mode = ox >= CHROME_MIN_MARGIN ? 'side' : oy >= CHROME_MIN_MARGIN ? 'topbottom' : 'none';
-  // One layout for every device (touch-layout.js): the discs on the picture,
-  // the margin tiled into zones. `screen` was published just above, so the fit
-  // it carries is this resize's.
-  Object.assign(chrome, layoutTouchChrome({
-    vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe: safeInsets(),
-  }));
+  const safe = safeInsets();
+  if (getActiveFrame().mode === PHONE_PORTRAIT) {
+    // Portrait controls live in viewport CSS pixels and keep their geometry
+    // independent of the camera/world zoom. Broad lower zones are explicitly
+    // marked as gesture surfaces so Input can run tap/hold/swipe arbitration.
+    const layout = portraitTouchLayout({ viewportWidth: winW, viewportHeight: winH, safeInsets: safe, revision: getActiveFrame().revision });
+    const controls = (hasPower) => {
+      const discs = Object.entries(layout.controls)
+        .filter(([id]) => hasPower || id !== 'use')
+        .map(([id, b]) => ({
+          id: id === 'use' ? 'ability' : id,
+          action: b.action, x: b.cx, y: b.cy, r: b.r,
+        }));
+      const zones = layout.zones.map((z) => ({
+        id: `zone:${z.id}`, action: z.action,
+        zone: { x: z.x, y: z.y, w: z.width, h: z.height }, gesture: true,
+      }));
+      return [...discs, ...zones];
+    };
+    Object.assign(chrome, {
+      run: controls(true), runNoPower: controls(false), hub: [], split: winW / 2, scale: screen.scale,
+    });
+  } else {
+    // Landscape and all ordinary screens retain the shipped shared layout.
+    Object.assign(chrome, layoutTouchChrome({
+      vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe,
+    }));
+  }
   chrome.gen++;
   // The backing store was just reassigned (blank): force the next commit to
   // repaint even if the button signature is unchanged.

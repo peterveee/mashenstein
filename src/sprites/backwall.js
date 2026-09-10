@@ -56,7 +56,7 @@ export function phoneDressing() {
 // raider on the tomb game is the plumber-fronts-the-plumber-game gag — which
 // bumps Grumpos from crypt to rhythm, where DAD OF BOY becomes BOY BAND.
 export const CABINET_STAR = {
-  plumber: 'lorenzo', speed: 'gnash', neon: 'b33p', frost: 'fernwick',
+  plumber: 'lorenzo', speed: 'rusty', neon: 'b33p', frost: 'fernwick',
   crypt: 'clara', rhythm: 'grumpos', cardboard: 'raymn', office: 'kiko',
   surge: 'gary',
 };

@@ -1125,7 +1125,27 @@ export const TOON_SPECS = {
     tall: 1,
     // end character editor proportions
   },
+  // GNASH is no longer in HEROES (10 Sep 2026) — Rusty took the speedster
+  // slot — but he keeps his spec and palette so he can come back as an NPC.
   gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true, armDepth: true, limbStyle: 'snap' },
+  // RUSTY, FOCUS-TESTED — the red panda who took the speedster slot off Gnash
+  // (cast 10 Sep 2026). This is the W3b cut from src/dev/hero-candidates.js,
+  // resolved: twenty-four bake-off rounds are recorded there and in
+  // docs/notes/rusty-persona.md. The kit is the pouch on the left hip
+  // (`bundle: 'tilt'`) with two staggered canes that ALTERNATE slots on every
+  // throw — `pose.stickParity` picks which is in the hand and which is in the
+  // air, and `caneScale` sizes the projectile to match, so the pouch visibly
+  // changes after each throw.
+  rusty: {
+    rig: 'humanoid', head: 'redpanda', mouth: 'smile', headShape: 'cheeks', ruff: 'tuft',
+    earShape: 'point', earSize: 1.15, earAngle: 0.68, earWidth: 1.35,
+    tail: 'bushy', armDepth: true, limbStyle: 'snap', hands: true, gloves: true,
+    faceSeed: 0.7, browMark: 'spot', cheekPatch: 'low', eyePatch: true, browSquash: 0.7, browTilt: 0,
+    muzzleScale: 0.9, mouthLift: 0.028, brow: 'none', celebrate: 'spread',
+    stick: false, bundle: 'tilt', shoeShape: 'runner', canes: { n: 2, gap: 0.045, stagger: 0.03 },
+    faceTrim: 0.2, faceTaper: 0.35, cheekScale: 1.05, pouchLineW: 0.03, tailRoot: 0.8,
+    beltSlantRun: 0.03, pouchIdleIn: 0.038,
+  },
   // `tunic` is the SHIPPED leg swing plus the new foot and jump — his gait was
   // judged better before the port and reverted, and the rest of it kept. Not a
   // cloth problem: the tunic escape measured 0.003u either way. His legs simply
@@ -2586,7 +2606,7 @@ function locoFoot(p, stride, lift, L) {
 }
 
 // ---------------------------------------------------------------- faces
-const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9, clara: 2.7 };
+const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9, clara: 2.7, rusty: 3.4 };
 
 // ------------------------------------------------------ victory routines
 // The results screen holds for a while, so a single looping wiggle reads as a
@@ -2791,6 +2811,7 @@ const SQUASH_T = 0.12;
 export const TITLE_PARADE_ACTIONS = Object.freeze({
   lorenzo: 'compact wave',
   gnash: 'running hop',
+  rusty: 'cane throw',
   fernwick: 'longbow draw',
   b33p: 'cannon aim',
   mochi: 'float and squish',
@@ -2809,6 +2830,13 @@ export function titleParadeAction(id, time, progress) {
   if (id === 'gnash') {
     patch.kind = 'jump'; patch.grounded = false;
     feetLift = Math.abs(Math.sin(p * Math.PI * 2)) * 7 / 26;
+  }
+  // Rusty's throw, looped: the pull-and-whip, with the cane leaving at the
+  // release beat and the pouch slot empty after it.
+  if (id === 'rusty') {
+    const q = p % 1;
+    patch.menuAction = 'aim'; patch.actionTime = q * 0.3;
+    patch.axeThrown = q >= RANGED_RELEASE_AT.toss;
   }
   // Held at full draw — the frame of the bow that reads.
   if (id === 'fernwick') { patch.menuAction = 'aim'; patch.actionTime = BOW_REACH_T + 0.13; }
@@ -2843,6 +2871,7 @@ export function transitionCameoAction(id) {
   const patch = {};
   if (id === 'lorenzo' || id === 'fernwick') patch.menuAction = 'wave';
   if (id === 'gnash') { patch.kind = 'jump'; patch.grounded = false; }
+  if (id === 'rusty') { patch.menuAction = 'aim'; patch.actionTime = 0.3 * RANGED_RELEASE_AT.toss - 0.04; }
   if (id === 'b33p') patch.menuAction = 'aim';
   if (id === 'mochi') patch.float = true;
   if (id === 'chompo') patch.menuAction = 'chomp';
@@ -2905,6 +2934,7 @@ const CLING = {
   lorenzo: { gripUp: 0.86 },
   // Showing off — the highest reach in the cast, arm locked out.
   gnash:   { gripUp: 1.0 },
+  rusty:   { gripUp: 1.0 },   // the same showing-off: it is the slot's pose
   // Terrified and tidy: holding the pole rather than riding it, so the hand
   // comes in low and the elbow stays folded.
   fernwick:{ gripUp: 0.62 },
@@ -3072,7 +3102,7 @@ function celebrateMotion(id, t, reworked = false, moveOverride = null) {
   }
   const q = (c - CEL_SIG) / (1 - CEL_SIG);  // 0..1 through the big move
   const proposedMove = reworked ? {
-    gnash: 'stepturn', fernwick: 'present', b33p: 'salute', clara: 'twostep',
+    gnash: 'stepturn', rusty: 'stepturn', fernwick: 'present', b33p: 'salute', clara: 'twostep',
   }[id] : null;
   // `present` IS the shield plant — the raised disc comes down and is planted
   // in front of her. With a quiver on her back there is no disc, so the move
@@ -3248,7 +3278,7 @@ function deathFaceState(pose) {
 // reach it too: the rig dialect outlives the expression, and b33p's LED panels
 // die in their own language.
 const FACE_MOODS = {
-  gnash: 'cocky', raymn: 'cocky', fernwick: 'bright', b33p: 'robot',
+  gnash: 'cocky', rusty: 'cocky', raymn: 'cocky', fernwick: 'bright', b33p: 'robot',
   grumpos: 'gruff', lorenzo: 'worried',
 };
 const moodFor = (id) => FACE_MOODS[id] || 'soft';
@@ -17082,6 +17112,13 @@ function rangedArt(ctx, kind, u, ow, p, o = {}) {
       // Spun about its middle in flight; the hand anchors the handle end.
       if (o.flying) ctx.translate(-0.17 * u, 0);
       drawWrench(ctx, 0, 0, 0, u, ow, false, o.open ?? 1); return;
+    case 'bamboo':
+      // Rusty's cane in flight, at the SAME u/36 the held stick uses (see
+      // drawHeldStick) so the thing that left his hand is the thing in the air.
+      // `o.scale` is caneScale(parity): the long or the short one, whichever
+      // he actually pulled. Tumbles about its middle; the frame's own rotation
+      // (o.rot, applied by the caller) is the spin.
+      drawBambooShoot(ctx, 0, 0, { size: (u / 36) * (o.scale ?? 1) }); return;
     case 'plunger': {
       // Wooden handle, red rubber cup — cup forward, the business end.
       limb(ctx, -0.24 * u, 0, 0.06 * u, 0, 0.045 * u, WOOD_HI, ow * 0.7);
@@ -17890,6 +17927,7 @@ const EFFECT_PAD = 0.055;
 const EFFECT_FALLBACK = {
   lorenzo:  { cx: 0, cy: -0.5,  rx: 0.58, ry: 0.68 },
   gnash:    { cx: 0, cy: -0.53, rx: 0.62, ry: 0.72 },
+  rusty:    { cx: 0, cy: -0.53, rx: 0.62, ry: 0.74 },
   fernwick: { cx: 0, cy: -0.52, rx: 0.62, ry: 0.72 },
   b33p:     { cx: 0.04, cy: -0.52, rx: 0.72, ry: 0.72 },
   mochi:    { cx: 0, cy: -0.58, rx: 0.64, ry: 0.88 },
@@ -17913,6 +17951,7 @@ function effectPoses(heroId) {
   const special = {
     lorenzo: { kind: 'jump', phase: 0.5, time: 0.2, grounded: false, facing: 1, stomp: true, vy: -240 },
     gnash: { kind: 'run', phase: 0.25, time: 0.25, grounded: true, facing: 1, lean: 0.26 },
+    rusty: { kind: 'run', phase: 0.25, time: 0.25, grounded: true, facing: 1, menuAction: 'aim', actionTime: 0.3 * RANGED_RELEASE_AT.toss - 0.04 },
     fernwick: { kind: 'slide', phase: 0.5, time: 0.3, grounded: true, facing: 1, roll: true },
     b33p: { kind: 'run', phase: 0.25, time: 0.2, grounded: true, facing: 1, menuAction: 'aim' },
     mochi: { kind: 'slide', phase: 0.5, time: 0.2, grounded: true, facing: 1, squash: 1 },
@@ -18287,7 +18326,7 @@ export function poseFromPlayer(player, t) {
     // the throw was a prop teleporting out of a running man.
     menuAction: eating ? 'chomp'
       : (firing && (player.powerType === 'shoot' || player.powerType === 'bow' || player.powerType === 'axe'
-        || player.powerType === 'wrench')) ? 'aim'
+        || player.powerType === 'wrench' || player.powerType === 'toss')) ? 'aim'
         : smashing ? 'smash' : undefined,
     // The bow's handling is BOW_AIM_T long (reach, draw, lower, sling), so its
     // clock runs off that budget rather than the 0.3s every other aim gets.
@@ -18297,6 +18336,9 @@ export function poseFromPlayer(player, t) {
     // wrench reappears on his hip the frame the throw's pose ends, which reads
     // as a second wrench.
     wrenchThrown: !!player.wrenchThrown,
+    // Rusty's pouch: which cane is in the right-hand slot. run.js flips it on
+    // every throw, so the piece he pulls next is the other one.
+    stickParity: player.stickParity | 0,
     // ...and once it is back, it is drawn DIMMED until the power is ready
     // again. The wrench on his belt IS the cooldown readout: bright means he
     // can throw, dull means it is still cooling. Nothing in the HUD says so,

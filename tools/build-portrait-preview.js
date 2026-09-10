@@ -47,9 +47,11 @@ label{display:flex;align-items:center;gap:6px;color:#d6e0ef}select,input,button{
   <div class="toolbar">
     <label>Scene <select id="scene-select"><option value="flat">Flat obstacle</option><option value="gap">Gap / slide</option><option value="underground">Plumber 1 · The Works</option><option value="raised">Raised road</option><option value="rhythm">Level 3-1 · Rhythm Bankruptcy</option></select></label>
     <label>Viewport <select id="viewport-select"><option value="390x844">390 × 844</option><option value="375x667">375 × 667</option><option value="430x932">430 × 932</option></select></label>
-    <label>Safe area <select id="safe-select"><option value="0,0,0,0">None</option><option value="59,0,34,0">Notch + home indicator</option><option value="0,47,21,47">Landscape edge preset</option></select></label>
+    <label>Safe area <select id="safe-select"><option value="59,0,34,0">Notch + home indicator</option><option value="0,0,0,0">None</option><option value="0,47,21,47">Landscape edge preset</option></select></label>
     <label>A zoom <input id="a-zoom" type="range" min="1.600" max="3.000" step="0.001" value="2.200"><output id="a-zoom-value">2.200</output></label>
     <label>Background zoom <input id="background-zoom" type="range" min="1.00" max="1.30" step="0.01" value="1.00"><output id="background-zoom-value">100%</output></label>
+    <label>Portrait cloud offset <input id="cloud-offset" type="range" min="-100" max="60" step="1" value="0"><output id="cloud-offset-value">0 px</output></label>
+    <label>Portrait sun offset <input id="sun-offset" type="range" min="-100" max="60" step="1" value="0"><output id="sun-offset-value">0 px</output></label>
     <span aria-label="animation controls"><button id="play-button" type="button">Play</button> <button id="pause-button" type="button">Pause</button> <button id="step-button" type="button">Step</button></span>
   </div>
   <section class="reference">

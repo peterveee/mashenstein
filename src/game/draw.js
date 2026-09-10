@@ -233,6 +233,8 @@ export function specialMoveColor(fill, ready) {
 // that crown line so it reads as a companion beside the head, not a torso HUD.
 const SPECIAL_FOLLOWER_CROWN = {
   lorenzo: 0.99, gnash: 1.08, fernwick: 1.05, b33p: 0.93,
+  // Rusty's pointed ears stand a little proud of Gnash's quills.
+  rusty: 1.1,
   mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
   // Just above Fernwick's: same slim build, but the buns sit on top of the skull
   // and the orb has to clear them.

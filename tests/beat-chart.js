@@ -324,10 +324,11 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
   // box's lead at this cabinet's speed. Fernwick's LONGBOW is a ranged type like
   // the rest of them, and LORENZO joined them on 10 Sep 2026 when the pipe
   // wrench replaced his stomp — a thrown tool on the axe's flight reaches the
-  // box, where a stomp reached nothing off his own body. Only Gnash's dash is
-  // left out. See RANGED_ABILITY_TYPES.
+  // box, where a stomp reached nothing off his own body. RUSTY took Gnash's
+  // slot on 10 Sep 2026 with a thrown cane, so the whole roster is dealt one
+  // now; Gnash's dash was the last hold-out. See RANGED_ABILITY_TYPES.
   for (const [id, can] of [['b33p', true], ['clara', true], ['kiko', true], ['grumpos', true],
-    ['raymn', true], ['lorenzo', true], ['gnash', false], ['fernwick', true]]) {
+    ['raymn', true], ['lorenzo', true], ['rusty', true], ['fernwick', true], ['gnash', false]]) {
     assert(heroShoots(id) === can,
       `${id} is ${can ? '' : 'not '}dealt a card box`);
   }
@@ -1037,7 +1038,7 @@ Audio.songBeat = oldSongBeat;
 
   // And the other half of the contract: a hero with no ranged answer meets no
   // box, and the beat they cannot play does not cost them the combo they built.
-  for (const hero of ['lorenzo', 'gnash']) {
+  for (const hero of ['lorenzo', 'rusty']) {
     save.load(); save.newSlot(0, 0);
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
     run.enter();

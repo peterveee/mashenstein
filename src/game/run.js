@@ -1,8 +1,8 @@
 import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo } from '../engine/renderer.js';
-import { frameGroundY } from '../engine/frame.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation } from '../engine/renderer.js';
+import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
@@ -47,7 +47,7 @@ import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatie
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
-import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, AXE_THROW_AT, ARROW_ARC, ARROW_BOX_SPEED, RANGED_RELEASE_AT } from '../sprites/toons.js';
+import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, AXE_THROW_AT, ARROW_ARC, ARROW_BOX_SPEED, RANGED_RELEASE_AT, caneScale } from '../sprites/toons.js';
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
@@ -58,6 +58,7 @@ import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
 import { beginStageArtWarmup, stepArtWarmup, artWarmupPending } from './art-warmup.js';
+import { validatePortraitConfig } from '../dev/portrait-lab.js';
 
 export { GROUND_Y };
 // The hero's screen x at the resting zoom: 24.6% of the frame. The HUD/floatie
@@ -1350,8 +1351,13 @@ const FLIP_COIN_STEP = 0.075;  // seconds per coin
 // Module scope rather than a static field on RunState: a static initialiser that
 // names its own class makes the bundler emit `_RunState`, and the smoke test
 // reads that name out of window.__mash_state to know where it is.
+// Whose hand a returning weapon is in. Three heroes fly the 'axe' type and the
+// art tells them apart; every gate that asks "is the thrower still here" and
+// every cue that asks whose sound to play goes through this one map.
+const AXE_OWNER = { wrench: 'lorenzo', bamboo: 'rusty' };
+const axeOwner = (pr) => AXE_OWNER[pr.art] || 'grumpos';
 const CELEBRATE_DIP = {
-  lorenzo: 0.043, gnash: 0.043, fernwick: 0.043, b33p: 0.043, mochi: 0.010,
+  lorenzo: 0.043, gnash: 0.043, rusty: 0.043, fernwick: 0.043, b33p: 0.043, mochi: 0.010,
   chompo: 0.043, gary: 0.067, dolores: 0.043, raymn: 0.024, grumpos: 0.058,
   kiko: 0.043,
 };
@@ -1477,6 +1483,11 @@ export class RunState {
     this.devMaxTime = opts.devMaxTime || 0; // seconds; 0 = no limit
     this.devRunTime = 0;                     // elapsed wall-clock seconds
     this.devStartPercent = opts.devStartPercent || 0; // 0–1; skip to N% of the stage
+    this.portraitLabRun = !!opts.portraitLabRun;
+    this.portraitPreview = !!opts.portraitPreview;
+    this.devPortraitLab = opts.devPortraitLab ? validatePortraitConfig(opts.devPortraitLab) : null;
+    if (this.portraitLabRun && !this.devPortraitLab) this.portraitLabRun = false;
+    if (this.portraitLabRun) setRestingZoom(this.devPortraitLab.worldZoom);
     this.devHits = [];
     // Rewind: rolling snapshot buffer + capture timer. Capacity is fixed at
     // construction: free rewind gets the full 10s tape, the touch power-up
@@ -1555,6 +1566,15 @@ export class RunState {
     this.prevFinishPlayerX = PLAYER_X;
     this.prevIntroRunX = PLAYER_X;
     this.prevPitDx = 0;
+  }
+
+  // The standalone portrait review iframe is the one explicit adapter allowed
+  // to change its values live. A production lab run snapshots once at launch.
+  setDevPortraitLabConfig(raw) {
+    if (!this.portraitPreview) return false;
+    this.devPortraitLab = validatePortraitConfig(raw);
+    if (this.portraitLabRun) setRestingZoom(this.devPortraitLab.worldZoom);
+    return true;
   }
 
   // The base ground: the one line every stage has had, a pure function of x.
@@ -1958,6 +1978,12 @@ export class RunState {
     // rather than describing a frame that is no longer on screen. A no-op in
     // the overwhelming case where nothing has changed.
     applyFraming(this.renderSettings || this.save.settings);
+    if (this.portraitLabRun && this.devPortraitLab) {
+      // Keep the lab calibration authoritative across every camera tick. The
+      // ordinary phone framing policy still runs first, so exiting the lab
+      // restores the shipped 2.2 path cleanly.
+      setRestingZoom(this.devPortraitLab.worldZoom);
+    }
     const heroX = this.playerWorldX();
     const floor = this.routeGroundY(heroX, this.route);
     // ---- where the frame is pinned -----------------------------------------
@@ -2143,6 +2169,10 @@ export class RunState {
     // panel's contract is that a non-finite opening beat means STANDING, so
     // this says the thing rather than out-counting it.
     if (this.introDone && this.cityIntroBeat != null) this.cityIntroBeat = Infinity;
+    if (this.portraitLabRun && this.devPortraitLab) {
+      setPresentationMode(PHONE_PORTRAIT, { groundAnchorRatio: this.devPortraitLab.groundAnchorRatio });
+      setRestingZoom(this.devPortraitLab.worldZoom);
+    }
     Input.setContext('run');
     // The ramp starts flat on every entry, retries included: a stage re-entered
     // is a stage played from its opening tempo.
@@ -2850,6 +2880,10 @@ export class RunState {
 
   exit() {
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
+    if (this.portraitLabRun) {
+      setPresentationMode(LANDSCAPE);
+      applyFraming(this.renderSettings || this.save.settings);
+    }
     // The skip belongs to the RUN and to nothing else. The results screen keeps the
     // song playing, the cabinet screens and the jukebox play treatments that mute and
     // un-mute lanes on purpose, and the desk sets this flag itself — so every path out
@@ -4579,6 +4613,18 @@ export class RunState {
       // the id would have let one hero's unlock silently upgrade the other's.
       const hits = this.modIds.includes('secondbite') ? 2 : 1;
       this.projectiles.push({ type: 'axe', art: 'wrench', route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
+    } else if (type === 'toss') {
+      // RUSTY'S BAMBOO SHOOT — the third thing to fly the axe's cycle, after
+      // the axe itself and the wrench. Same bargain: nothing leaves on the
+      // press, the cane goes at the throw's release beat (the pull-whip
+      // gesture in drawHumanoid, keyed on `spec.bundle`), and it comes home.
+      // `caneParity` travels ON the projectile so it is drawn at the size of
+      // the cane he actually pulled even after the pouch has flipped for the
+      // next throw; the flip itself happens here, on the press, which is the
+      // frame the sprite's hand reaches for the other slot.
+      const parity = this.player.stickParity | 0;
+      this.player.stickParity = parity ^ 1;
+      this.projectiles.push({ type: 'axe', art: 'bamboo', caneParity: parity, route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 215, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits: 1, hitIds: new Set(), hover: false, hoverT: 0 });
     }
     return true;
   }
@@ -4723,7 +4769,7 @@ export class RunState {
   // hit read as the attack that caused it. Breakable props still play their own
   // material/debris sound separately.
   projectileImpact(pr, cx, cy) {
-    const hero = pr.contactHero || (pr.art === 'wrench' ? 'lorenzo' : ({
+    const hero = pr.contactHero || (pr.type === 'axe' ? axeOwner(pr) : ({
       pellet: 'b33p', axe: 'grumpos', fist: 'raymn', spanner: 'lorenzo',
       shield: 'fernwick', arrow: 'fernwick', chomp: 'chompo',
     }[pr.type]));
@@ -5339,7 +5385,7 @@ export class RunState {
     // He is standing on the ground at this point and nobody pressed anything.
     if (hero.stomp) this.stompBreak({ bounce: false });
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
-    if (this.modIds.includes('tagspeed') && result.to === 'gnash') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
+    if (this.modIds.includes('tagspeed') && result.to === 'rusty') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
     // No per-swap button callout: the HUD's ability panel top-right already
     // names this hero's power and shows whether it is ready, so repeating it in
     // a bubble every swap is the same fact twice. The one-time firstAbility
@@ -6742,7 +6788,7 @@ export class RunState {
           // Lorenzo, and either dies if ITS hero is swapped away or the gesture
           // is cut short — the same rule the drawn arrow keeps, since both are a
           // projectile the SPRITE is holding.
-          const owner = pr.art === 'wrench' ? 'lorenzo' : 'grumpos';
+          const owner = axeOwner(pr);
           if (this.relay.current !== owner || this.player.powerPoseT <= 0) { pr.live = false; continue; }
           if (pr.holdT > 0) continue;
           pr.x = this.playerWorldX() + 12;
@@ -6750,6 +6796,13 @@ export class RunState {
           if (pr.art === 'wrench') {
             this.player.wrenchThrown = true;
             Audio.sfx('launch', { hero: 'lorenzo', pitch: 1.05 });
+          } else if (pr.art === 'bamboo') {
+            // `axeThrown` is what empties the pouch slot on the sprite (the
+            // bundle painter keys on pose.axeThrown), the same flag the axe
+            // uses for its own empty back — one hero is drawn at a time, so
+            // they never contend for it.
+            this.player.axeThrown = true;
+            Audio.sfx('launch', { hero: 'rusty', pitch: 1.12 });
           } else {
             this.player.axeThrown = true;
             Audio.sfx('launch', { hero: 'grumpos', pitch: 0.9 });
@@ -6987,12 +7040,12 @@ export class RunState {
     // Grumpos's axe cannot clear Lorenzo's belt.
     this.player.wrenchThrown = this.projectiles.some((p) => p.live && p.art === 'wrench' && p.holdT <= 0);
     // A hovering weapon belongs to its thrower — another hero cannot catch it.
-    // Two heroes fly this type now (Grumpos's axe, Lorenzo's wrench), so the
-    // check is per-projectile: swapping to Lorenzo used to despawn nothing of
-    // his and everything of Grumpos's, and vice versa.
+    // Three heroes fly this type now (Grumpos's axe, Lorenzo's wrench, Rusty's
+    // cane), so the check is per-projectile: swapping to Lorenzo used to
+    // despawn nothing of his and everything of Grumpos's, and vice versa.
     for (const pr of this.projectiles) {
       if (pr.type !== 'axe') continue;
-      if (this.relay.current !== (pr.art === 'wrench' ? 'lorenzo' : 'grumpos')) pr.live = false;
+      if (this.relay.current !== axeOwner(pr)) pr.live = false;
     }
     if (this.relay.current !== 'raymn') {
       for (const pr of this.projectiles) { if (pr.type === 'fist') pr.live = false; }
@@ -11064,12 +11117,14 @@ export class RunState {
     // the playable lane, actors, hazards and HUD retain their shipped scale.
     // The preview page is the only caller that installs this global; ordinary
     // production boots take the exact identity path.
-    const bgStudyZoom = typeof window !== 'undefined'
-      && window.__MASH_BUILD__ === 'portrait-preview'
-      ? Number(window.__MASH_PORTRAIT_BG_ZOOM__) : 1;
-    const bgZoom = Number.isFinite(bgStudyZoom) && bgStudyZoom > 0 ? bgStudyZoom : 1;
+    const portraitLabActive = !!(this.portraitLabRun && this.devPortraitLab && isPhonePortraitPresentation());
+    const bgZoom = portraitLabActive ? this.devPortraitLab.backgroundZoom : 1;
     if (Math.abs(bgZoom - 1) > 0.0001) {
-      const bgAnchorY = GROUND_Y + frameShift + bgShift;
+      // frameShift and bgShift are already on the canvas transform. The
+      // authored groundline is therefore GROUND_Y in this local background
+      // space; adding either shift again would scale around a point below the
+      // actual horizon on a tall portrait frame.
+      const bgAnchorY = GROUND_Y;
       ctx.translate(W / 2, bgAnchorY);
       ctx.scale(bgZoom, bgZoom);
       ctx.translate(-W / 2, -bgAnchorY);
@@ -11147,7 +11202,13 @@ export class RunState {
         maxRoadRise: maxTerrainHeight(this.cabinet),
       }
       : null;
-    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene, bgShift);
+    const backgroundContext = portraitLabActive ? {
+      cloudOffsetY: this.devPortraitLab.cloudOffsetY,
+      sunOffsetY: this.devPortraitLab.sunOffsetY,
+      backgroundZoom: this.devPortraitLab.backgroundZoom,
+      groundAnchorRatio: this.devPortraitLab.groundAnchorRatio,
+    } : null;
+    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene, bgShift, backgroundContext);
     ctx.restore();
 
     // A phone gets its backdrop quieted a little, so the cast has less to
@@ -11412,7 +11473,7 @@ export class RunState {
           // alpha — so the wrench takes its own STEEL, not its red: a red ring
           // round a red tool stops being a tell and becomes a bright circle
           // trailing him down the lane.
-          ctx.strokeStyle = pr.art === 'wrench' ? '#b9c0cc' : '#ecc3a1';
+          ctx.strokeStyle = pr.art === 'wrench' ? '#b9c0cc' : pr.art === 'bamboo' ? '#b7dc8e' : '#ecc3a1';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(x + 4, y + 4, 11, 0, Math.PI * 2);
@@ -11423,6 +11484,7 @@ export class RunState {
         // comes home — so it takes the whole return behaviour rather than a
         // second copy of it, and differs only in what is drawn.
         if (pr.art === 'wrench') drawRangedProjectile(ctx, 'wrench', x + 4, y + 4, { rot: pr.t * 12, hero: 'lorenzo', flying: true });
+        else if (pr.art === 'bamboo') drawRangedProjectile(ctx, 'bamboo', x + 4, y + 4, { rot: pr.t * 14, hero: 'rusty', flying: true, scale: caneScale(pr.caneParity) });
         else drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
         ctx.restore();
       } else if (pr.type === 'fist') {

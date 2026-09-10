@@ -418,4 +418,21 @@ const clara = {
   },
 };
 
-export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores, kiko, clara };
+// RUSTY, FOCUS-TESTED — cast 10 Sep 2026 into the speedster slot. Palette
+// only, like Kiko and Clara: the whole figure is drawToon. This is PANDA_PAL
+// from src/dev/hero-candidates.js, resolved, where the bake-off that chose it
+// is recorded (and docs/notes/rusty-persona.md).
+const rusty = {
+  pal: {
+    e: '#1a1028', m: '#a0403c', w: '#ffffff',
+    hand: '#c65a2c',        // paws are fur, not skin: same red as the coat
+    mask: '#ffffff', ear: '#f6e7d2', s: '#f6e7d2',   // the cream face and ear linings
+    h: '#c65a2c', b: '#c65a2c',                      // the red coat, head and body
+    p: '#8e3c1c', furDark: '#8e3c1c',                // the dark legs and the tail rings
+    f: '#c2342e',                                    // runner flats, a shade off the coat
+    a: '#f0c07a', pouchLine: '#f0c07a',              // costume gold: belt, pouch band
+    kit: '#7a3a2a', cuff: '#7a3a2a',                 // the leather pouch and glove cuffs
+  },
+};
+
+export const HERO_SPRITES = { lorenzo, gnash, rusty, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores, kiko, clara };

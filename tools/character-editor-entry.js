@@ -1,5 +1,4 @@
 import { TOON_SPECS, drawToon, setInkDensity } from '../src/sprites/toons.js';
-import { RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import {
   BODY_GROUPS, BODY_SHAPES, CAST, HERO_DIALS, EDITOR_HELP,
@@ -16,7 +15,7 @@ const labels = {
   grumpos: 'Grumpos', rusty: 'Rusty',
 };
 const clone = (value) => JSON.parse(JSON.stringify(value));
-const baseSpec = (id) => clone(id === 'rusty' ? RUSTY_W3B : TOON_SPECS[id]);
+const baseSpec = (id) => clone(TOON_SPECS[id]);
 const BASE_POSES = ['run', 'walk', 'jump', 'slide', 'stand'];
 const state = {
   hero: ids[0], mode: 'run', actionKey: null, phase: .18, facing: 1,
@@ -44,7 +43,6 @@ const effective = (id) => {
 const original = (id) => state.shipped[id];
 const options = (id, which) => ({
   spec: which === 'now' ? original(id) : effective(id),
-  ...(id === 'rusty' ? { pal: PANDA_PAL } : {}),
 });
 
 function currentAction(id = state.hero, which = 'edit') {
@@ -64,7 +62,7 @@ function pose(kind, phase, facing = state.facing, spec = effective(state.hero)) 
   }
   let slideStyle;
   if (kind === 'slide') {
-    const playable = state.hero === 'rusty' || !!HERO_BY_ID[state.hero];
+    const playable = !!HERO_BY_ID[state.hero];
     if (playable && ['humanoid', 'ray'].includes(spec.rig)) slideStyle = 'kick';
   }
   return {

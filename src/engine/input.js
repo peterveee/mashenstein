@@ -1,6 +1,6 @@
 // Unified input: keyboard + touch gestures + virtual buttons + gamepad.
 // Actions: jump, slide, ability, left, right, confirm, back, escape, pause, mute.
-import { clientToLogical, W } from './renderer.js';
+import { clientToLogical, W, screen } from './renderer.js';
 
 const DEFAULT_KEYS = {
   jump: ['Space', 'ArrowUp', 'KeyW'],
@@ -153,8 +153,18 @@ class InputSys {
       const chromeBtn = !btn && this.chromeButtonAt(e.clientX, e.clientY);
       if (btn || chromeBtn) {
         const action = btn ? btn.action : chromeBtn.action;
-        this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true });
-        this.press(action, e.timeStamp);
+        // Portrait lower zones are broad gesture surfaces, not instant
+        // buttons. Keep their action pending so a tap, hold, swipe-down and
+        // swipe-right follow the same arbitration as an in-frame thumb.
+        if (chromeBtn?.gesture && this.context === 'run' && !this.menuKeys) {
+          this.touches.set(e.pointerId, {
+            x0: p.x, y0: p.y, t0: performance.now(), action,
+            x: p.x, y: p.y, pending: true, allowSwipe: true, downT: 0,
+          });
+        } else {
+          this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true });
+          this.press(action, e.timeStamp);
+        }
       } else {
         let action = null;
         // Tap-to-jump is a RUN-gameplay convenience only. Every other context
@@ -180,7 +190,8 @@ class InputSys {
         // slide half and then pulls down slides anyway — the halo removes a
         // wrong press, it does not remove the swipe.
         const guarded = liveRun && primaryCanvas && this.guardAt(p.x, p.y);
-        if (liveRun && primaryCanvas) {
+        const portraitRun = liveRun && screen.presentationMode === 'phone-portrait';
+        if (liveRun && primaryCanvas && !portraitRun) {
           action = guarded ? null
             : (this.usingTouch && p.x >= W * TOUCH_JUMP_FRAC ? 'slide' : 'jump');
         }
@@ -292,7 +303,7 @@ class InputSys {
         // playable glass an actionless touch WAS a jump that never resolved.
         // A guarded one was deliberately given no action, so releasing jump
         // here would cut a jump a DIFFERENT finger is holding on the pill.
-        else if (this.usingTouch && !t.guarded) this.release('jump');
+        else if (this.usingTouch && !t.guarded && screen.presentationMode !== 'phone-portrait') this.release('jump');
         if (t.menuSwipeBack) this.release('back');
         this.touches.delete(e.pointerId);
       }

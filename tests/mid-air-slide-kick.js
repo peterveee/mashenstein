@@ -37,7 +37,7 @@ assert(landing?.landed && landing.slideKickLand && !landing.stompLand,
 assert(p.grounded && p.sliding && p.slideAmount === 1 && p.slideKickT === SLIDE_KICK_T,
   'landing starts a full grounded kick even after Down is released');
 
-const held = new Player('gnash');
+const held = new Player('rusty');
 held.jumpPressed(); held.y = 28; held.vy = -80; held.jumps = 1;
 assert(held.slidePressed(), 'a second hero can commit the same universal move');
 let heldLanding = null;

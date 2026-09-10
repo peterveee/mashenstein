@@ -154,7 +154,7 @@ export const STAGES = [
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
-    { introBy: 'gnash', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.' }),
+    { introBy: 'rusty', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.' }),
   // The collapsing road finally collapses. Both holes clear the loop set piece
   // at 0.55 (see LOOP.at) by a third of the stage or more, so neither can be
   // laid inside its guard lane — and 0.14 rather than the 0.25 this used to be,

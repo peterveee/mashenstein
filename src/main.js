@@ -60,6 +60,7 @@ import {
   drawGameplayProfile, drawGameplayProfileWaiting,
 } from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
+import { PortraitLab } from './dev/portrait-lab.js';
 
 save.load();
 setShakeScale(save.settings.screenShake);
@@ -418,6 +419,48 @@ const Flow = {
     }));
   },
 
+  // Portrait Lab owns its RunState and its exit policy. The visual config is
+  // copied at launch, so a second tab changing localStorage cannot move a live
+  // run underneath the player; the normal campaign path above stays untouched.
+  launchPortraitStage(cab, stage, options = {}) {
+    const heroId = options.heroId || Flow.heroId();
+    const seed = options.seed ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0);
+    const config = options.config || PortraitLab.config();
+    const run = new RunState({
+      stage, cabinet: cab, save,
+      seed,
+      difficulty: save.slot.difficulty,
+      corrupted: [],
+      initialHeroId: heroId,
+      devInvuln: !!options.invulnerable,
+      devStartPercent: options.startPercent || 0,
+      devPortraitLab: config,
+      portraitLabRun: true,
+      announceBench: false,
+      musicSong: this.gameSongFor(cab.id),
+      onEnd: (result) => {
+        Flow.lastTeam = result.team;
+        Flow.setHero(result.finalHero);
+        const reason = result.success ? 'FINISH' : result.reason === 'QUIT' ? 'QUIT' : 'FAIL';
+        // No ResultsState and no applyResult: this run is a review session,
+        // and the completed state remains behind the reopened dev menu.
+        run.exit();
+        Input.clearAll();
+        PortraitLab.returnToMenu(reason);
+        Dev.openMenu();
+        Dev.say(`LAST: ${stage.id.toUpperCase()} — ${reason}`);
+      },
+    });
+    PortraitLab.launch({
+      run, cab, stage, heroId, seed,
+      startPercent: options.startPercent || 0,
+      invulnerable: !!options.invulnerable,
+    });
+    levelOpenCue();
+    setState(run);
+    return run;
+  },
+
   startBoss(cabId, seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
     levelOpenCue();
     setState(new BossState({
@@ -694,6 +737,7 @@ function boot() {
   // the swap, and the loop below re-applies once the reveal ends. A shipped
   // build has no such launcher and keeps the old behaviour untouched.
   const allowPortraitNow = () => Dev.open || (Dev.enabled && isTransitioning())
+    || PortraitLab.allowsPortrait(currentState())
     || portraitAllowedFor(currentState(), diagPortrait);
   Audio.setLifecyclePaused(lifecyclePolicy({
     ...platform,

@@ -91,7 +91,8 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
   if (id === 'lorenzo') {
     ctx.fillStyle = '#f6d33c';
     ctx.fillRect(x + 8, feetY - 24, 2, 5); ctx.fillRect(x + 6, feetY - 22, 6, 2);
-  } else if (id === 'gnash') {
+  } else if (id === 'gnash' || id === 'rusty') {
+    // The speed lines are the SLOT's mark, so Rusty inherits them with the slot.
     ctx.strokeStyle = '#9ca8ff'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x - 12, feetY - 8); ctx.lineTo(x - 5, feetY - 8); ctx.moveTo(x - 10, feetY - 12); ctx.lineTo(x - 4, feetY - 12); ctx.stroke();
   } else if (id === 'fernwick') {
@@ -1325,7 +1326,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
 // Shuffled each time we enter the title so the cast doesn't always cross in the
 // same order. Mutated in place (Fisher-Yates) so every reader that indexes into
 // it — the parade draw, heroX, the invader strike — stays in agreement.
-const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
+const HERO_PARADE = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
 function shuffleParade() {
   for (let i = HERO_PARADE.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -2518,7 +2519,7 @@ export class IntroState {
       // box gets them to 78 — three times the original, on the one screen whose
       // entire job is introducing them. A row also says "a line-up" in a way a
       // block of four-by-two does not, which is what these two panels are about.
-      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
+      const heroes = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
       // Pitch comes from the LIVE frame width, so the line-up spreads as the
       // frame opens instead of sitting at a fixed spacing inside a moving box.
       // 64 rather than 72, tuned when this row held chompo's flame trail and

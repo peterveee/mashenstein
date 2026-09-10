@@ -238,6 +238,10 @@ export class Player {
     this.fistThrown = false;
     this.axeThrown = false;
     this.wrenchThrown = false;   // Lorenzo's belt loop, empty while the tool is out
+    // Rusty's pouch: which of his two canes sits in the throwing slot. Flipped
+    // by run.js on every throw and NOT reset by a hero swap — the pouch is a
+    // worn thing, and it should be in whatever state he left it.
+    this.stickParity = 0;
     this.headless = 0;    // Gary
     this.assemblyGraceUsed = 0;
     this.hazardEaten = false; // Miss Chomp mastery

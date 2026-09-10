@@ -31,7 +31,7 @@ const stage = {
   durationSec: 40, applianceAt: 0.5, applianceHigh: false,
 };
 const makeRun = () => new RunState({
-  stage, team: ['lorenzo', 'gnash', 'clara'], save, seed: 12345, difficulty: 1, onEnd: () => {},
+  stage, team: ['lorenzo', 'rusty', 'clara'], save, seed: 12345, difficulty: 1, onEnd: () => {},
 });
 
 // ---- the handover path: a treatment is still waiting for its bar line ----------

@@ -472,7 +472,7 @@ const SCRIPT = [
   { k: 'role', role: 'Executive Producer', name: 'Priya Deshbandhu' },
   { k: 'role', role: 'Studio Head / General Manager', name: 'Walter Krebbs' },
   { k: 'gap', px: 14 },
-  { k: 'handoff', a: 'DIRECTION', b: 'PRODUCTION', from: 'lorenzo', to: 'gnash', lineA: 'Your turn.', lineB: 'I have filed a form about that.' },
+  { k: 'handoff', a: 'DIRECTION', b: 'PRODUCTION', from: 'lorenzo', to: 'rusty', lineA: 'Your turn.', lineB: 'I have filed a form about that.' },
   { k: 'gap', px: 16 },
 
   { k: 'header', text: 'PRODUCTION' },
@@ -565,7 +565,7 @@ const SCRIPT = [
 
   { k: 'header', text: 'STARRING', color: GOLD },
   { k: 'castRole', face: 'lorenzo', role: 'Lorenzo "Wrenches" Bracciano', name: '"Big Sal" Marchetti, Local 4' },
-  { k: 'castRole', face: 'gnash', role: 'Gnash the Needlemouse', name: 'Credited as Already Left' },
+  { k: 'castRole', face: 'rusty', role: 'Rusty, Focus-Tested', name: 'Credited as Already Left' },
   { k: 'castRole', face: 'fernwick', role: 'Fernwick, Hero of Thyme', name: 'A grocery receipt, itself' },
   { k: 'castRole', face: 'b33p', role: 'Unit B-33P "Blastbot"', name: 'Grievance filed on his behalf' },
   { k: 'castRole', face: 'clara', role: 'Clara Vault, Mall Raider', name: 'Narration performed by herself' },

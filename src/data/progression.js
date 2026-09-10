@@ -31,7 +31,7 @@ export const MODS = [
   { id: 'coupon', name: 'HAUNTED COUPON', desc: 'PAWN SHOP PRICES -25%. GARY\'S HEAD FOLLOWS YOU IN THE FOOD COURT.', source: 'shop', price: 600 },
   { id: 'thirdslot', name: 'A THIRD POCKET', desc: 'EQUIP A THIRD MOD. THE POCKET WAS THERE ALL ALONG.', source: 'shop', price: 2500 },
   { id: 'secondbite', name: 'SECOND BITE', hero: 'lorenzo', source: 'mastery', desc: 'THE WRENCH BREAKS A SECOND HAZARD BEFORE IT COMES HOME.' },
-  { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'gnash', source: 'mastery', desc: 'GNASH GAINS STACKING SPEED AFTER EVERY TAG.' },
+  { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'rusty', source: 'mastery', desc: 'RUSTY GAINS STACKING SPEED AFTER EVERY TAG.' },
   { id: 'bash', name: 'BROADHEAD', hero: 'fernwick', source: 'mastery', desc: 'THE ARROW PUNCHES THROUGH ONE HAZARD AND KEEPS GOING.' },
   { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery', desc: 'PELLETS PIERCE GROUND AND FLYING OBSTACLES.' },
   // Mochi is out of the roster (held for a cameo), so 'wide' is unreachable —

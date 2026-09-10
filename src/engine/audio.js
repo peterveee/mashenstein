@@ -2603,6 +2603,9 @@ class AudioSys {
       if (hero === 'b33p') this.sfx('shoot', { pitch });
       else if (hero === 'raymn') this.sfx('plop', { pitch });
       else if (hero === 'grumpos') this.sfx('axe', { pitch });
+      // Rusty has no baked launch yet (cast 10 Sep 2026): the axe's ring,
+      // pitched up by the caller, until his own cane cue is rendered.
+      else if (hero === 'rusty') this.sfx('axe', { pitch });
       return;
     }
     const t = this.cueAt();

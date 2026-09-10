@@ -278,7 +278,7 @@ assert(hole.live, 'and the route sweeps do not delete the hole the stones stand 
 // point on a stone overshoots the next one. So the pads come out of the approach
 // rather than the geometry stretching to catch them.
 {
-  const run = newRun('gnash');
+  const run = newRun('rusty');
   const cross = run.crossings[0];
   const pad = makeObstacle('boostPad', cross.x - cross.hop * 2, {});
   run.obstacles.push(pad);

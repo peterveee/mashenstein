@@ -25,7 +25,7 @@ function assert(cond, msg) {
 const TICK = 1 / 60;
 function makeRun(stage, onEnd = () => {}) {
   const run = new RunState({
-    stage, team: ['lorenzo', 'gnash', 'clara'], save, seed: 12345, difficulty: 1, onEnd,
+    stage, team: ['lorenzo', 'rusty', 'clara'], save, seed: 12345, difficulty: 1, onEnd,
   });
   run.enter();
   return run;
@@ -286,7 +286,7 @@ function clearIntro(run) {
   clearIntro(run);
   for (let i = 0; i < 5; i++) run.update(TICK);
   run.relay.current = 'lorenzo';
-  run.relay.next = 'gnash';
+  run.relay.next = 'rusty';
   run.doSwitch();
   assert(run.speech && run.speech.who === 'lorenzo' && EXIT_LINES.lorenzo.includes(run.speech.text),
     'the departing hero speaks at the swap');
@@ -300,7 +300,7 @@ function clearIntro(run) {
 
   // Second time around, lorenzo has said his piece: the swap is silent.
   run.relay.current = 'lorenzo';
-  run.relay.next = 'gnash';
+  run.relay.next = 'rusty';
   run.doSwitch();
   assert(!run.speech && !run.speechQueue.length,
     'a hero only says goodbye once per run');
@@ -324,7 +324,7 @@ function clearIntro(run) {
     const early = new Relay(new Rng(seed), { tags: 0 }, null, 'lorenzo');
     const second = early.switchHero().to;
     const third = early.switchHero().to;
-    if (second === 'gnash' && third === 'fernwick') lorenzoGnashFernwick++;
+    if (second === 'rusty' && third === 'fernwick') lorenzoGnashFernwick++;
   }
   const successorRate = successors / handoffs;
   assert(successorRate > 0.11 && successorRate < 0.18,

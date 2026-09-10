@@ -63,7 +63,7 @@ run.useAbility();
 // Cooldowns are stored per hero instead of being reset by swaps.
 run.player.grounded = true;
 run.player.abilityCd = 3;
-run.player.setHero('gnash');
+run.player.setHero('rusty');
 run.player.abilityCd = 2;
 run.player.setHero('fernwick');
 assert(run.player.abilityCd === 3, 'portal-style hero changes preserve each hero cooldown');
@@ -88,7 +88,7 @@ run.collide();
 assert(!crate.live && run.player.stumbleT > 0 && !run.player.rolling, 'Shield Bash breaks one ground hazard and ends in a stumble');
 
 // Every hero definition is now active and Tune-Up applies through shared cooldown setup.
-for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos']) {
+for (const id of ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos']) {
   run.relay.current = id;
   run.player.setHero(id);
   assert(!!run.player.hero.ability, `${id} has an active power definition`);
@@ -118,8 +118,21 @@ assert(wrench.type === 'axe', 'it flies the axe return: out, hover, home');
 run.updateProjectiles(0.001);
 assert(!run.player.wrenchThrown, 'the belt still has it while the throw is winding up');
 
-selectHero('gnash'); run.useAbility();
-assert(run.player.dashT > 0, 'Gnash power starts the spin dash');
+// RUSTY'S BAMBOO SHOOT (10 Sep 2026): a thrown cane on the axe's cycle, and
+// the two canes in his pouch alternate — the parity flips on the press and the
+// projectile carries the one he pulled.
+selectHero('rusty');
+run.player.stickParity = 0;
+run.useAbility();
+const cane = run.projectiles.find((p) => p.art === 'bamboo');
+assert(cane && cane.type === 'axe', 'Rusty power throws a bamboo cane on the axe return');
+assert(cane.caneParity === 0 && run.player.stickParity === 1, 'the cane is the one he pulled, and the pouch flips for the next throw');
+assert(cane.holdT > 0, 'nothing leaves on the press — he is still pulling it');
+run.updateProjectiles(0.001);
+assert(!run.player.axeThrown, 'the pouch slot is full while the throw winds up');
+run.updateProjectiles(cane.holdT + 0.01);
+assert(run.player.axeThrown, 'and empties once the cane is away');
+assert(!run.player.dashT, 'no spin dash rides along with the slot');
 
 selectHero('b33p'); run.useAbility();
 assert(run.projectiles.some((p) => p.type === 'pellet'), 'B-33P power fires a pellet');
@@ -156,8 +169,8 @@ selectHero('grumpos'); run.useAbility();
 assert(run.projectiles.some((p) => p.type === 'axe'), 'Grumpos power throws his axe');
 
 run.bench.tuneup = 3;
-selectHero('gnash'); run.useAbility();
-assert(Math.abs(run.player.abilityCd - HERO_BY_ID.gnash.ability.cooldown * 0.7) < 0.001,
+selectHero('rusty'); run.useAbility();
+assert(Math.abs(run.player.abilityCd - HERO_BY_ID.rusty.ability.cooldown * 0.7) < 0.001,
   'Hero Tune-Up reduces the shared cooldown for every active kit');
 
 run.exit();

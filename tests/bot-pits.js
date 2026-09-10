@@ -97,7 +97,7 @@ function play(stage, team) {
 //
 // The team is the ordinary three-hero bag rather than one hero, because a relay
 // swap changes the arc mid-run and the arc is what the hole is aimed with.
-const TEAM = ['lorenzo', 'gnash', 'clara'];
+const TEAM = ['lorenzo', 'rusty', 'clara'];
 let unfinished = 0;
 for (const stage of STAGES) {
   const r = play(stage, TEAM);
