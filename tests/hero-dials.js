@@ -31,20 +31,35 @@ ok(clampDial(dialByKey('hipJoin'), 'flush') === 'flush', 'enum accepts flush');
 let rejected = false; try { clampDial(dialByKey('hipJoin'), 'sideways'); } catch { rejected = true; }
 ok(rejected, 'off-enum value was accepted');
 
-const rendered = renderHeroDials(src, SPEC_HOMES['*'], 'lorenzo', { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 });
+// These fixtures need a hero with NO editor block yet, so they exercise
+// creating one and then removing it again. Gnash is the plain humanoid — every
+// hero the editor has actually been driven on now ships a block, and merging
+// into an existing one is covered separately below.
+const BARE = 'gnash';
+const rendered = renderHeroDials(src, SPEC_HOMES['*'], BARE, { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 });
 ok(rendered.changed.length === 3, 'writer did not report three changes');
 ok(rendered.next.includes('EDITOR_BLOCK_HEADER') === false, 'writer emitted a placeholder rather than its marker');
 ok(rendered.next.includes('proportions — written by the character editor'), 'writer marker missing');
 ok(rendered.next.includes("limbStyle: 'snap',"), 'writer did not preserve separator');
-const again = renderHeroDials(rendered.next, SPEC_HOMES['*'], 'lorenzo', { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 });
+const again = renderHeroDials(rendered.next, SPEC_HOMES['*'], BARE, { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 });
 ok(again.changed.length === 0, 'same values are not idempotent');
-const arms = renderHeroDials(src, SPEC_HOMES['*'], 'lorenzo', { armLength: 1.1, armWidth: 1.1, armLift: 0.01, armOut: 0.02 });
+const arms = renderHeroDials(src, SPEC_HOMES['*'], BARE, { armLength: 1.1, armWidth: 1.1, armLift: 0.01, armOut: 0.02 });
 ok(arms.changed.length === 4, 'writer did not report all four arm changes');
 ok(arms.next.includes('armLength: 1.1') && arms.next.includes('armWidth: 1.1'), 'arm values were not written');
-const armsAgain = renderHeroDials(arms.next, SPEC_HOMES['*'], 'lorenzo', { armLength: 1.1, armWidth: 1.1, armLift: 0.01, armOut: 0.02 });
+const armsAgain = renderHeroDials(arms.next, SPEC_HOMES['*'], BARE, { armLength: 1.1, armWidth: 1.1, armLift: 0.01, armOut: 0.02 });
 ok(armsAgain.changed.length === 0, 'arm values are not idempotent');
-const reset = renderHeroDials(rendered.next, SPEC_HOMES['*'], 'lorenzo', { tall: { op: 'inherit' }, hipJoin: { op: 'inherit' }, legShiftFoot: { op: 'inherit' } });
-ok(!reset.next.includes('proportions — written by the character editor'), 'empty editor block was not removed');
+const reset = renderHeroDials(rendered.next, SPEC_HOMES['*'], BARE, { tall: { op: 'inherit' }, hipJoin: { op: 'inherit' }, legShiftFoot: { op: 'inherit' } });
+ok(reset.next.includes(`${BARE}: {`) && !new RegExp(`${BARE}: \\{[^}]*proportions — written by the character editor`).test(reset.next),
+  'empty editor block was not removed');
+
+// Lorenzo already ships a block, so a save on him MERGES: the marker is written
+// once, an existing key is updated in place, and a new key joins the same block.
+const shipped = renderHeroDials(src, SPEC_HOMES['*'], 'lorenzo', { torsoWidth: 1.04, legShiftFoot: -0.02 });
+ok(shipped.changed.length === 2, 'merge into an existing block did not report both changes');
+ok(shipped.next.match(/lorenzo: \{[\s\S]*?\n  \}/)[0].match(/proportions — written by the character editor/g).length === 1,
+  'merge duplicated the editor block marker');
+ok(/lorenzo: \{[\s\S]*?torsoWidth: 1\.04,[\s\S]*?\n  \}/.test(shipped.next), 'existing dial was not updated in place');
+ok(/lorenzo: \{[\s\S]*?legShiftFoot: -0\.02,[\s\S]*?end character editor/.test(shipped.next), 'new dial did not join the block');
 let transientRejected = false;
 try { renderHeroDials(src, SPEC_HOMES['*'], 'lorenzo', { hideSkirt: true }); } catch { transientRejected = true; }
 ok(transientRejected, 'transient hide-skirts flag entered the source writer');
@@ -56,13 +71,14 @@ try {
   cpSync(new URL('../src', import.meta.url), join(fixture, 'src'), { recursive: true });
   cpSync(new URL('../tests', import.meta.url), join(fixture, 'tests'), { recursive: true });
   cpSync(new URL('../tools', import.meta.url), join(fixture, 'tools'), { recursive: true });
-  const saved = writeHeroDials(fixture, 'lorenzo', { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 });
+  const saved = writeHeroDials(fixture, BARE, { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 });
   ok(saved.ok && saved.changed.length === 3, 'atomic writer did not save the fixture');
-  const loaded = readHeroDials(fixture, 'lorenzo');
+  const loaded = readHeroDials(fixture, BARE);
   ok(loaded.dials.tall === 1.03 && loaded.dials.hipJoin === 'flush', 'fixture did not reload authoritative values');
-  const noOp = writeHeroDials(fixture, 'lorenzo', { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 }, { baseRevision: loaded.revision });
+  ok(loaded.editor.join(',') === 'tall,hipJoin,legShiftFoot', 'reload did not report the block as editor-owned');
+  const noOp = writeHeroDials(fixture, BARE, { tall: 1.03, hipJoin: 'flush', legShiftFoot: -0.09 }, { baseRevision: loaded.revision });
   ok(noOp.ok && noOp.changed.length === 0 && noOp.snapshot === null, 'identical save was not a no-op');
-  const conflict = writeHeroDials(fixture, 'lorenzo', { tall: 1.04 }, { baseRevision: 'stale' });
+  const conflict = writeHeroDials(fixture, BARE, { tall: 1.04 }, { baseRevision: 'stale' });
   ok(conflict.conflict && !conflict.ok, 'stale revision was not refused');
   const rusty = writeHeroDials(fixture, 'rusty', { tall: 1.05 });
   ok(rusty.ok, 'Rusty spread-backed save failed');

@@ -23,8 +23,6 @@ history thins to one a week. Do not edit by hand.
 | 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | -- | Archive published build 414ae37 |
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
-| 2026-09-03 | `6a2d8ea` | [2026-09-03-6a2d8ea.html](2026-09-03-6a2d8ea.html) | [bake-offs](2026-09-03-6a2d8ea-lab.html) | Refactor gallery entry and shell for improved organization and functionality |
-| 2026-09-03 | `c94052a` | [2026-09-03-c94052a.html](2026-09-03-c94052a.html) | [bake-offs](2026-09-03-c94052a-lab.html) | Refactor gallery archiving to include both production and lab pages |
 | 2026-09-03 | `c94c455` | [2026-09-03-c94c455.html](2026-09-03-c94c455.html) | [bake-offs](2026-09-03-c94c455-lab.html) | Refactor jump height calculations and update related tests |
 | 2026-09-03 | `4174be0` | [2026-09-03-4174be0.html](2026-09-03-4174be0.html) | [bake-offs](2026-09-03-4174be0-lab.html) | Add new gallery entry for September 2026 and refactor related files |
 | 2026-09-04 | `7f614a7` | [2026-09-04-7f614a7.html](2026-09-04-7f614a7.html) | [bake-offs](2026-09-04-7f614a7-lab.html) | Implement audio sync calibration feature with comprehensive tests |
@@ -42,3 +40,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-09 | `413dbd5` | [2026-09-09-413dbd5.html](2026-09-09-413dbd5.html) | [bake-offs](2026-09-09-413dbd5-lab.html) | Refactor and enhance game assets and testing framework |
 | 2026-09-09 | `373d3d6` | [2026-09-09-373d3d6.html](2026-09-09-373d3d6.html) | [bake-offs](2026-09-09-373d3d6-lab.html) | Add new gallery HTML files for 2026-09-09 with large content |
 | 2026-09-09 | `ec8af02` | [2026-09-09-ec8af02.html](2026-09-09-ec8af02.html) | [bake-offs](2026-09-09-ec8af02-lab.html) | feat: add Lorenzo polished variant and review page for art comparison |
+| 2026-09-10 | `5450f08` | [2026-09-10-5450f08.html](2026-09-10-5450f08.html) | [bake-offs](2026-09-10-5450f08-lab.html) | Enhance Grumpos and axe mechanics; update gallery entries |

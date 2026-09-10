@@ -1,6 +1,6 @@
 // Entity + hero drawing (logic-free; style packs may decorate).
 import { getSprite, buildSprite, scaled2x, tinted } from '../engine/sprites.js';
-import { W, pushOverlayDraw } from '../engine/renderer.js';
+import { W, H, pushOverlayDraw } from '../engine/renderer.js';
 import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
@@ -37,6 +37,137 @@ export const HERO_DRAW_H = 24;
 // the finish snap did exactly that and parked him six pixels right of the
 // plunger he was supposed to be standing in the middle of.
 export const HERO_CENTER_OFF = 6;
+
+// ------------------------------------------------------------ contact shadow
+//
+// A soft ellipse on the ground under the hero. It is here for LEGIBILITY, and
+// it earns its place twice.
+//
+// It separates. The hero renders above the low-res backbuffer at device
+// resolution, so on a phone he is already the sharpest thing in the frame —
+// what he is short of is VALUE CONTRAST at the silhouette, and the busiest,
+// least predictable part of the backdrop is the strip he is standing on. A
+// dark note directly under the feet is the one mark that is always behind him
+// and never behind anything else.
+//
+// And it reads. The shadow stays on the ground while the hero rises, so its
+// size and distance say how high he is. On a four-inch screen, judging a jump
+// off a 24px figure against rolling terrain is the hardest read in the game,
+// and this is the standard answer to it — the shadow is the altimeter.
+//
+// The ink is the cast's own contour colour, so it reads as part of the same
+// drawing rather than as a light effect laid over it.
+const SHADOW_INK = '26,16,40';
+export const CONTACT_SHADOW = {
+  // WHY THIS IS A RAMP AND NOT A DISC. An evenly-filled ellipse reads as a
+  // puddle the hero is standing in, however soft its edge and however faint it
+  // is — evenness is what makes it a thing rather than a shadow. A real contact
+  // shadow is dense and TIGHT where the feet meet the floor and falls away
+  // fast into a long, very faint spread. So the ink is spent on a small core
+  // and the width is nearly free: `a` can come down and the pool goes with it,
+  // while the mark under the feet stays where the eye needs it.
+  a: 0.26,      // planted opacity at the core; the spread is a fraction of this
+  core: 0.30,   // the dense contact patch, as a fraction of the radius
+  coreA: 0.70,  // what is left at the edge of that patch
+  tail: 0.62,   // where the faint spread has almost gone
+  tailA: 0.16,  // ...and how little is left there
+  // Radii as a fraction of hero height. WIDER THAN THE HERO on purpose: at 0.30
+  // the pool was 14px across under an 18px figure, so a planted hero stood on
+  // top of his own shadow and nothing showed. It is also FLATTER than it is
+  // wide — a shadow lies on the ground plane, and the rounder it gets the more
+  // it stands up as an object of its own.
+  rx: 0.56,
+  ry: 0.105,
+  apex: 3.0,    // altitude, in hero heights, at which it reaches its smallest
+  far: 0.34,    // how much of its size is left at that apex
+  // AND IT GAINS A LITTLE DENSITY AS IT TIGHTENS. Physically backwards — a real
+  // shadow softens and fades as its caster climbs away from the floor — but the
+  // shadow is doing a job here, and the job is at its hardest at the top of a
+  // jump, where the player is picking a landing off a mark that has shrunk to a
+  // third of its size. Concentrating the same ink into a smaller mark is also
+  // the reading the eye will accept: it looks like a shadow drawing in, not
+  // like one being turned up. Keep it modest; past ~1.5 it stops passing.
+  airGain: 1.3,
+};
+const CONTACT_SHADOW_SHIPPED = { ...CONTACT_SHADOW };
+// The bake-off's way in; no argument restores what ships.
+export function setContactShadow(o = null) {
+  Object.assign(CONTACT_SHADOW, CONTACT_SHADOW_SHIPPED, o || {});
+}
+
+// ----------------------------------------------------------- backdrop veil
+//
+// THE OTHER HALF OF THE SAME JOB. The contact shadow adds contrast under the
+// hero; this takes a little away from everything behind him. Separation is
+// relative, and on a phone the backdrop is competing for an eye that has a
+// quarter of the physical area to work with.
+//
+// A flat translucent fill and not a desaturate: a `saturation` composite is the
+// textbook answer, but it is a full-frame blend every frame on the device with
+// the least fill-rate to spare, and it takes the colour out of art that was
+// drawn in colour. A veil in the backdrop's own polarity lowers the CONTRAST
+// and leaves the hues alone, which is the thing actually in the way.
+//
+// The polarity comes from the pack's own `lightBg` claim, because the veil has
+// to move the backdrop toward its own extreme to flatten it: dark packs get a
+// dark veil (the bright notes come down), light packs a light one (the dark
+// notes come up). Getting this backwards does not quiet a backdrop, it
+// silhouettes it — a dark wash over a paper-white sheet is a storm cloud.
+//
+// It lands AFTER style.bg and BEFORE the world band, so it touches the backdrop
+// and nothing else: the ground, the hazards, the pickups and the hero are all
+// drawn over it at full strength. Anything the player has to read or react to
+// must not be behind this.
+export const BACKDROP_VEIL = { a: 0.20, dark: '#141024', light: '#f4eee1' };
+const BACKDROP_VEIL_SHIPPED = { ...BACKDROP_VEIL };
+export function setBackdropVeil(o = null) {
+  Object.assign(BACKDROP_VEIL, BACKDROP_VEIL_SHIPPED, o || {});
+}
+export function drawBackdropVeil(c, style = null) {
+  const a = BACKDROP_VEIL.a;
+  if (!(a > 0)) return;
+  c.save();
+  c.globalAlpha = a;
+  c.fillStyle = style && style.lightBg ? BACKDROP_VEIL.light : BACKDROP_VEIL.dark;
+  c.fillRect(0, 0, W, H);
+  c.restore();
+}
+
+/**
+ * `alt` is height above the ground line, in the same units as `h`; `strength`
+ * is how much ground is actually under the feet (0 over an open pit), so the
+ * shadow slides off a lip rather than hanging over the hole.
+ */
+export function drawContactShadow(c, cx, groundY, h, alt, strength = 1) {
+  const S = CONTACT_SHADOW;
+  if (!(strength > 0) || !(S.a > 0)) return;
+  // Airborne, it draws IN toward `far` and then stops: a shadow that vanishes at
+  // the top of a jump takes the altitude read away at exactly the moment the
+  // player is using it to aim the landing.
+  const q = Math.max(0, Math.min(1, alt / Math.max(1e-6, h * S.apex)));
+  const k = 1 - (1 - S.far) * q;
+  const rx = h * S.rx * k, ry = h * S.ry * k;
+  const a = Math.min(1, S.a * (1 + (S.airGain - 1) * q)) * strength;
+  if (!(rx > 0) || !(ry > 0) || !(a > 0)) return;
+  const ink = (f) => `rgba(${SHADOW_INK},${(a * f).toFixed(3)})`;
+  c.save();
+  c.translate(cx, groundY);
+  c.scale(rx, ry);
+  // Built in the scaled space, so the ramp is round in the ellipse's own terms
+  // and the falloff is even all the way round rather than pinched at the ends.
+  // Four stops and not two: the whole point is that the density is UNEVEN — a
+  // tight core, a fast drop, then a long faint spread that costs almost no ink.
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, ink(1));
+  g.addColorStop(S.core, ink(S.coreA));
+  g.addColorStop(S.tail, ink(S.tailA));
+  g.addColorStop(1, `rgba(${SHADOW_INK},0)`);
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(0, 0, 1, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+}
 // How long an incoming hero burns in for after a tag. Sits just inside the
 // portal's own discharge (PORTAL_SPEND_TIME) on purpose: the hero should have
 // finished arriving while the column is still visibly collapsing, so the two
@@ -229,13 +360,27 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // Star power outranks the i-frame blink: while it is up the hero is always
   // on screen (the aura, not a flicker, is what says "you can't be hurt").
   const starLeft = opts.invincible || 0;
-  if (!starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
+  // THE BLINK HIDES THE HERO, NOT THE FLOOR. This used to return outright, which
+  // took the contact shadow with it — and a shadow that flickers reads as the
+  // GROUND glitching rather than as the hero being briefly untouchable. The
+  // shadow is cast by a body that is still there; only its drawing is being
+  // withheld. So the frame is still queued and still paints the shadow, and the
+  // figure alone drops out.
+  const blink = !starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
+  if (blink && !(opts.contactShadow > 0)) return;
   // opts.pose patches the derived pose. The controller only ever reports run /
   // jump / slide, because those are the only things a hero does while a stage is
   // moving — a scene that has STOPPED the world (training's epilogue) has to be
   // able to say "stand there and wave", or the hero holds whatever stride frame
   // the treadmill died on.
   const pose = opts.pose ? { ...poseFromPlayer(player, t), ...opts.pose } : poseFromPlayer(player, t);
+  // THE GROUND UNDER EACH FOOT. `groundDelta` already existed for the boost
+  // effect's chevrons, which shear to lie along a hill; the rig never got it,
+  // so the hero's feet planted on a level line however the terrain ran. Handing
+  // it to the pose is the whole plumbing — drawHumanoid samples it per foot.
+  // A caller with no terrain (menus, the gallery) passes none and the rig falls
+  // back to flat, which is what those contexts actually are.
+  if (opts.groundDelta) pose.groundDelta = opts.groundDelta;
   const cx = Math.round(opts.screenX ?? PLAYER_X) + HERO_CENTER_OFF; // center of the 12px slot
   const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
   const ghosts = player.dashT > 0;
@@ -350,13 +495,29 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     }
   };
   // No slip, no transform at all: the ordinary frame pays nothing for this.
-  const paint = slipAngle === 0 ? paintFigure : (c) => {
+  const paintBody = slipAngle === 0 ? paintFigure : (c) => {
     c.save();
     c.translate(cx, feetY);
     c.rotate(-slipAngle);
     c.translate(-cx, -feetY);
     paintFigure(c);
     c.restore();
+  };
+  // THE SHADOW IS THE GROUND, so it sits outside both of the things that happen
+  // to the FIGURE. Outside the pratfall rotation, because that turns the whole
+  // hero about his heels and a shadow that tilts with him is a floor tilting.
+  // And outside the i-frame blink, because a flickering shadow reads as the
+  // ground glitching rather than as the hero being briefly untouchable.
+  //
+  // `contactShadow` is the share of the footprint with floor under it, so the
+  // caller decides both whether there is a shadow at all and whether the hero is
+  // over a hole this frame.
+  const paint = (c) => {
+    if (opts.contactShadow > 0) {
+      drawContactShadow(c, cx, Math.round(opts.groundY ?? GROUND_Y), HERO_DRAW_H,
+        player.y, opts.contactShadow);
+    }
+    if (!blink) paintBody(c);
   };
   if (opts.flat) paint(ctx);
   else {
@@ -381,7 +542,11 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     // stays exactly as it was: straight into the queue, under the whole overlay.
     (opts.queueOverlay || pushOverlayDraw)(paintOverlay);
   }
-  if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
+  // The fuse is CARRIED, so it blinks with the man carrying it. It draws outside
+  // paintFigure (straight to the backbuffer, not the overlay), so the blink has
+  // to be spelled out again here — before the shadow fix this line was behind
+  // the function's early return and got it for free.
+  if (carryingFuse && !blink) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }
 
 // How far a `bedded` plate's ART sinks below the ground line (the box never

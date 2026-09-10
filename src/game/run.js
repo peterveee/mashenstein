@@ -51,7 +51,7 @@ import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFace
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
-import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
+import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawBackdropVeil, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
@@ -381,6 +381,29 @@ const ROUND_HOME_RATE = 360;
 // line travelled twice.
 const RETURN_HANG_T = 0.3;
 const RETURN_RISE = 42;
+// ...and how high the HOME leg lifts over the straight line between the turn
+// and his hand, at its midpoint. This is the arc you actually watch: the hang's
+// rise happens before the weapon turns, so on its own it left the return as a
+// falling line.
+// How high the carry leg rides while it comes home, and how far in front of him
+// it sits while it drops. The apex is well over his head on purpose: the point
+// of the return is that you can watch it, and the obstacle band is where things
+// get lost. RETURN_DROP_G is the fall's acceleration — it leaves the apex
+// slowly and arrives fast, which is what reads as the weapon reattaching rather
+// than being deleted.
+const RETURN_APEX = 92;
+const RETURN_OVERHEAD = 4;
+const RETURN_DROP_G = 340;
+// HOW FAST IT CLOSES ON HIM, relative to the hero — the world speed is
+// `sp + this`, because he is running away from it the whole way back. Slow is
+// what makes the return readable, and the ceiling is his COOLDOWN: the weapon
+// has to be in his hand before the power is ready again, or he stands there
+// able to throw something that is not on him. The outbound leg and the hang
+// spend 0.8s of the 2.4s cooldown, and the turn happens ~230px ahead of him,
+// so 150px/s brings it home around 1.5s later — about 2.3s of the 2.4 used,
+// which is as slow as this can honestly go.
+const RETURN_CLOSE = 150;
+const RETURN_CLOSE_FIST = 140;
 const ROUND_HOME_RANGE = 240;
 const RHYTHM_SIGN_FROM = 4;
 // ONE BAR EACH. Four beats is long enough to read a mark and a word off a sign
@@ -3997,6 +4020,30 @@ export class RunState {
     return { x0, x1: x0 + PLAYER_SPRITE_W };
   }
 
+  /**
+   * HOW MUCH FLOOR IS UNDER THE HERO, 0..1 — the contact shadow's strength.
+   *
+   * Read off `playerFootprint` and the live gaps, which is the same span and
+   * the same holes the surface tests use, so the shadow can never disagree
+   * with the floor it is drawn on: it fades out as he crosses a lip and is
+   * gone over open air, instead of hanging in the middle of the hole.
+   *
+   * A tunnel mouth is not a hole for this purpose any more than it is for the
+   * pit check — the hero is on a road a moment later, and the mouth is drawn
+   * as an opening in ground that is still there.
+   */
+  groundUnderHero() {
+    const { x0, x1 } = this.playerFootprint();
+    const w = Math.max(1e-6, x1 - x0);
+    let open = 0;
+    for (const ob of this.obstacles) {
+      if (!ob.live || !ob.def.isGap || ob.tunnel) continue;
+      if (!this.sharesRoute(ob)) continue;
+      open += Math.max(0, Math.min(x1, ob.x + ob.w) - Math.max(x0, ob.x));
+    }
+    return Math.max(0, Math.min(1, 1 - open / w));
+  }
+
   // The two-button card, held between the ACT card and the entrance. Nothing
   // ticks here but the card's own clock — the world is parked, the hero has not
   // walked on yet, and the run's timer has not started, so a player who stops to
@@ -4466,7 +4513,7 @@ export class RunState {
         // contactHero is what makes the IMPACT play her burst instead of his
         // orb pop, and it is also what the renderer reads to colour the shot —
         // scalars only, because projectiles are pooled through assignInto.
-        this.projectiles.push({ type: 'pellet', x: px - i * 16, alt, vx: this.speed + speedAdd, size, contactHero: hero.id, live: true, pierce: this.modIds.includes('charge'), hitIds: new Set() });
+        this.projectiles.push({ type: 'pellet', route: this.route, x: px - i * 16, alt, vx: this.speed + speedAdd, size, contactHero: hero.id, live: true, pierce: this.modIds.includes('charge'), hitIds: new Set() });
       }
       if (hero.id === 'kiko') this.floatText('WARNED', '#8fe4ff');
       // Clara's narrator calls her own shots; two pistols means the ordinary
@@ -4500,14 +4547,17 @@ export class RunState {
       // sidegrade, id 'bash') and a charged blast both make it pierce.
       const rel = this.beatLock ? Math.max(ARROW_ARC.v, ARROW_BOX_SPEED) : ARROW_ARC.v;
       this.projectiles.push({
-        type: 'arrow', x: this.playerWorldX(), alt: this.player.y + 11, alt0: this.player.y + 11,
+        // ROUTE-STAMPED, like every other shot: `alt` is measured off the road
+        // he is standing on, so the thing that draws and collides it has to
+        // know which road that was. See entityGroundY.
+        type: 'arrow', route: this.route, x: this.playerWorldX(), alt: this.player.y + 11, alt0: this.player.y + 11,
         vx: this.speed + rel, rel, t: 0, holdT: BOW_REACH_T + 0.3 * BOW_RELEASE_AT('high'), live: true,
         pierce: this.modIds.includes('bash') || this.modIds.includes('charge'), hitIds: new Set(),
       });
     } else if (type === 'fist') {
       Audio.sfx('launch', { hero: 'raymn', pitch: 1 });
       this.player.fistThrown = true;
-      this.projectiles.push({ type: 'fist', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false, pierce: false, hitIds: new Set(), hover: false, hoverT: 0 });
+      this.projectiles.push({ type: 'fist', route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false, pierce: false, hitIds: new Set(), hover: false, hoverT: 0 });
     } else if (type === 'axe') {
       // NOTHING LEAVES ON THE PRESS, the same bargain the bow keeps. He reaches
       // over his shoulder, takes the haft and whips it through, and the axe
@@ -4516,7 +4566,7 @@ export class RunState {
       // Before the throw had a body this fired here, on the press, and the axe
       // was a prop teleporting out of a running man.
       const hits = this.modIds.includes('ricochet') ? 2 : 1;
-      this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, holdT: 0.3 * AXE_THROW_AT.release, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
+      this.projectiles.push({ type: 'axe', route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, holdT: 0.3 * AXE_THROW_AT.release, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
     } else if (type === 'wrench') {
       // LORENZO'S PIPE WRENCH — the axe's flight, wearing his tool. It leaves
       // at the throw's own release beat (RANGED_RELEASE_AT.toss into the 0.3s
@@ -4528,7 +4578,7 @@ export class RunState {
       // SECOND BITE is HIS mastery mod — `ricochet` is Grumpos's, and sharing
       // the id would have let one hero's unlock silently upgrade the other's.
       const hits = this.modIds.includes('secondbite') ? 2 : 1;
-      this.projectiles.push({ type: 'axe', art: 'wrench', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
+      this.projectiles.push({ type: 'axe', art: 'wrench', route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
     }
     return true;
   }
@@ -5944,7 +5994,7 @@ export class RunState {
         if (ob.shootT <= 0 && ob.x > this.playerWorldX() + 60 && ob.x < this.camX + VIEW_W + 40) {
           ob.shootT = 2.2;
           const alt = ob.def.ground ? 8 : ob.alt;
-          this.projectiles.push({ type: 'enemyShot', x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
+          this.projectiles.push({ type: 'enemyShot', route: ob.route || null, x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
           Audio.sfx('shoot');
         }
       }
@@ -6660,6 +6710,7 @@ export class RunState {
     let target = null;
     for (const ob of this.obstacles) {
       if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
+      if ((ob.route || null) !== (pr.route || null)) continue;   // its own road only
       if (ob.def.breakable === false || ob.def.armored) continue;
       if (!thrown && !pr.pierce && !(ob.def.ground || ob.def.isTarget)) continue;
       if (pr.hitIds?.has(ob.id)) continue;
@@ -6737,25 +6788,41 @@ export class RunState {
           continue; // don't move under its own velocity this frame
         }
         if (!pr.returning) this.homeRound(pr, dt);
-        // Home SLOWER than it went out. At the old speed the return leg was
-        // over in about a third of a second, which is most of why it read as a
-        // snap rather than a flight.
-        pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 170 : 200)) : pr.vx) * dt;
-        if (pr.returning) {
-          // ...and eases DOWN out of the hang into the catch, which is the
-          // second half of the arc. Gentler than the old rate (7 snapped it
-          // level almost at once, flattening the very curve the hang buys).
+        // THE RETURN IS TWO MOVES, not one curve. Sending it home on a single
+        // arc that bottomed out at his hand meant the weapon was still coming
+        // down as it reached him, and the catch simply deleted it mid-descent —
+        // it appeared on him rather than arriving. So:
+        //
+        //   1. CARRY, high and slow. It climbs to RETURN_APEX and STAYS there
+        //      while it closes on him, so the whole trip home is legible
+        //      against the sky instead of hidden in the obstacle band.
+        //   2. DROP, over his head. Once it is above him it stops travelling,
+        //      holds his x as he runs, and falls under an acceleration into the
+        //      catch — slow to leave the apex, quickest at the moment it lands
+        //      on him. The speed-up at the end is what sells the reattach.
+        if (pr.returning && !pr.dropping) {
+          pr.x += -(sp + (pr.type === 'fist' ? RETURN_CLOSE_FIST : RETURN_CLOSE)) * dt;
+          pr.alt += (RETURN_APEX - pr.alt) * Math.min(1, dt * 2.4);
+          if (pr.x <= this.playerWorldX() + RETURN_OVERHEAD) { pr.dropping = true; pr.dropV = 0; }
+        } else if (pr.dropping) {
+          // Rides above him while it comes down: he is running, and a weapon
+          // that dropped onto the spot where he WAS would land behind him.
+          pr.x = this.playerWorldX() + RETURN_OVERHEAD;
+          pr.dropV += RETURN_DROP_G * dt;
+          pr.alt -= pr.dropV * dt;
           const catchAlt = this.player.y + 10;
-          pr.alt += (catchAlt - pr.alt) * Math.min(1, dt * 2.6);
-        }
-        if (pr.returning && pr.x < this.playerWorldX()) {
-          pr.live = false;
-          if (pr.type === 'fist') this.player.fistThrown = false;
-          if (pr.art === 'wrench') this.player.wrenchThrown = false;
-          else if (pr.type === 'axe') {
-            this.player.axeThrown = false;
-            if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
+          if (pr.alt <= catchAlt) {
+            pr.alt = catchAlt;
+            pr.live = false;
+            if (pr.type === 'fist') this.player.fistThrown = false;
+            if (pr.art === 'wrench') this.player.wrenchThrown = false;
+            else if (pr.type === 'axe') {
+              this.player.axeThrown = false;
+              if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
+            }
           }
+        } else {
+          pr.x += pr.vx * dt;
         }
       } else if (pr.type === 'arrow') {
         if (pr.holdT > 0) {
@@ -6802,6 +6869,12 @@ export class RunState {
       if (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist') {
         for (const ob of this.obstacles) {
           if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
+          // ...AND ONLY ON ITS OWN ROAD. Both boxes are now measured off their
+          // own floors, but two roads can still put a crate and a shot at the
+          // same screen height by coincidence — the hero's own hitbox has taken
+          // the same precaution since routes landed (see sharesRoute). A shot
+          // fired in a tunnel cannot break something on the lane above it.
+          if ((ob.route || null) !== (pr.route || null)) continue;
           pr.hitIds ||= new Set();
           if (pr.hitIds.has(ob.id)) continue;
           const canHit = pr.type === 'axe' || pr.type === 'fist' || pr.pierce
@@ -6810,14 +6883,14 @@ export class RunState {
           if (!canHit) {
             // pellet pings off armored flyers
             if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && (pr.type === 'pellet' || pr.type === 'arrow')) {
-              this.projectileImpact(pr, pr.x + 4, this.groundYAt(pr.x) - pr.alt - 4);
+              this.projectileImpact(pr, pr.x + 4, this.entityGroundY(pr) - pr.alt - 4);
               pr.live = false;
               break;
             }
             continue;
           }
           const box = entityBox(ob, this.entityGroundY(ob));
-          const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
+          const pbox = { x: pr.x, y: this.entityGroundY(pr) - pr.alt - 4, w: 8, h: 8 };
           if (overlaps(box, pbox)) {
             pr.hitIds.add(ob.id);
             const ix = (Math.max(box.x, pbox.x) + Math.min(box.x + box.w, pbox.x + pbox.w)) / 2;
@@ -6861,7 +6934,7 @@ export class RunState {
         const c = this.copter;
         pr.hitIds ||= new Set();
         const box = this.copterBox();
-        const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
+        const pbox = { x: pr.x, y: this.entityGroundY(pr) - pr.alt - 4, w: 8, h: 8 };
         if (!pr.hitIds.has('copter') && overlaps(box, pbox)) {
           pr.hitIds.add('copter');
           const ix = (Math.max(box.x, pbox.x) + Math.min(box.x + box.w, pbox.x + pbox.w)) / 2;
@@ -6882,7 +6955,7 @@ export class RunState {
       }
       // Gary mastery: the independent thrown head picks up coins in flight.
       if (pr.type === 'fist' && this.modIds.includes('head')) {
-        const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
+        const pbox = { x: pr.x, y: this.entityGroundY(pr) - pr.alt - 4, w: 8, h: 8 };
         for (const pickup of this.pickups) {
           if (!pickup.live || !pickup.def.coin) continue;
           const box = { x: pickup.x, y: this.groundYAt(pickup.x) - pickup.alt - pickup.h, w: pickup.w, h: pickup.h };
@@ -6891,7 +6964,7 @@ export class RunState {
       }
       // Enemy shot vs player.
       if (pr.type === 'enemyShot' && pr.telegraph <= 0) {
-        const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 3, w: 5, h: 5 };
+        const pbox = { x: pr.x, y: this.entityGroundY(pr) - pr.alt - 3, w: 5, h: 5 };
         const playerX = this.playerWorldX();
         const playerBox = this.playerBox();
         if (overlaps(playerBox, pbox) && this.player.rolling && this.relay.current === 'fernwick' && !this.player.rollDeflectUsed) {
@@ -8469,6 +8542,42 @@ export class RunState {
           // `type`, not `kind` (every obstacle's kind is 'obstacle') and not
           // `def.sprite` (the pipe def wears the crate sprite).
           if (ob.type === 'pipe') { ob.live = false; continue; }
+          // AND NO HOLE IN THE ROOF, anywhere along it, for the same kind of
+          // reason and a harder one.
+          //
+          // The lane over a chamber is the upper of two paths and it is the one
+          // surface on the stage that cannot have a fatal break in it: there is
+          // a floor ninety-six pixels under it. A pit dealt here is a hole with
+          // ground at the bottom that kills you anyway — `tunnelMouthAt` does
+          // not recognise it (it is not in `tunnelOpenings`), so falling in is
+          // not an entrance, and `collide`'s isGap branch has nothing to stop it
+          // being the death it usually is. The renderers disagree with it too:
+          // the roof slab draws straight across a break it was never told about.
+          //
+          // Scripted pits are authored clear of a cabinet's tunnels — see
+          // spawnScriptedPits, which says exactly that — and nothing was
+          // covering the BAG. Plumber deals a tier-2 `gap` pattern from the same
+          // bank as its crates, so about one plumber-3 run in eight put a tar
+          // pit in the roof of its own underground section.
+          //
+          // Scoped to the SPAN, unlike the pipe rule above it, which reaches
+          // every obstacle in the list for as long as the tunnel is in camera
+          // range. A pipe is being refused a promise it cannot keep and losing
+          // one early costs nothing; a hole is only wrong where there is a
+          // chamber under it, and killing lane pits for eleven hundred pixels
+          // either side of the mouth deletes holes the player is looking at.
+          //
+          // Retired outright rather than through `retireExit`. A gap never moves
+          // and is never something the player is reading BEFORE it matters, and
+          // the lane is filled some six hundred pixels ahead of a view three
+          // hundred wide, so one of these is always cut off screen and always
+          // swept on the same frame it is laid. The mouths and the mid-span
+          // holes are exempt already — they carry `tunnel`, which the guard at
+          // the top of this loop skipped several lines ago.
+          if (ob.def.isGap && ob.x + ob.w > is.x && ob.x < is.x + is.w) {
+            ob.live = false;
+            continue;
+          }
           // Each way in gets the same clearance the entrance gets: whatever was
           // standing on a hole is standing on nothing.
           // `tunnelOpenings`, the same list the coin sweep and the renderers
@@ -10891,6 +11000,12 @@ export class RunState {
         : this.pitDeath
           ? PLAYER_X + mix(this.prevPitDx || 0, this.pitDeath.dx)
           : PLAYER_X;
+    // ...and the column the ART is centred on, which is six pixels along from
+    // it (see HERO_CENTER_OFF in drawHeroSprite). Anything asking the TERRAIN a
+    // question on the hero's behalf — how high is the floor, which way does it
+    // run — has to ask here rather than at the slot's left edge, or it gets an
+    // answer for a place he is not standing.
+    const heroArtX = heroScreenX + HERO_CENTER_OFF;
     ctx.save();
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
     // Backgrounds stay in SCREEN space. Their layers are anchored to the
@@ -10943,6 +11058,22 @@ export class RunState {
       ctx.fillRect(0, 0, W, H);
     }
     ctx.translate(0, bgShift);
+    // Development-only portrait study: scale the ONE background pass around
+    // its authored ground line. This deliberately sits outside the world
+    // transform below, so mountains/clouds/hills move as one backdrop while
+    // the playable lane, actors, hazards and HUD retain their shipped scale.
+    // The preview page is the only caller that installs this global; ordinary
+    // production boots take the exact identity path.
+    const bgStudyZoom = typeof window !== 'undefined'
+      && window.__MASH_BUILD__ === 'portrait-preview'
+      ? Number(window.__MASH_PORTRAIT_BG_ZOOM__) : 1;
+    const bgZoom = Number.isFinite(bgStudyZoom) && bgStudyZoom > 0 ? bgStudyZoom : 1;
+    if (Math.abs(bgZoom - 1) > 0.0001) {
+      const bgAnchorY = GROUND_Y + frameShift + bgShift;
+      ctx.translate(W / 2, bgAnchorY);
+      ctx.scale(bgZoom, bgZoom);
+      ctx.translate(-W / 2, -bgAnchorY);
+    }
     // Optional renderer context, deliberately smaller than the run. The LCD
     // city may know which authored panel this is, where the heard musical beat
     // is, WHAT THE PLAYER IS HEARING, how far through the stage they are, and —
@@ -11018,6 +11149,14 @@ export class RunState {
       : null;
     this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene, bgShift);
     ctx.restore();
+
+    // A phone gets its backdrop quieted a little, so the cast has less to
+    // compete with on a screen a quarter the physical size (see BACKDROP_VEIL).
+    // Phone only, unlike the contact shadow: this one is paying for lost
+    // physical area, and a desktop that has the area should keep the art it
+    // paid for at full strength. Between bg() and the world band on purpose —
+    // everything the player reads or reacts to is drawn over it.
+    if (tier() === 'phone') drawBackdropVeil(ctx, this.style);
 
     // ---- world band. Everything from here to post() draws through the camera,
     // in the same coordinates it always did: x offsets from cam, absolute y.
@@ -11241,7 +11380,13 @@ export class RunState {
       // long as it stayed alive. They are small, so the margin covers them
       // comfortably without a per-type width.
       if (pr.x < cullLeft || pr.x > cullRight) continue;
-      const x = pr.x - cam, y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
+      // OFF THE ROAD IT WAS FIRED FROM. `pr.alt` comes from `player.y`, which is
+      // altitude above the hero's LOCAL floor — so on a tunnel or a high road it
+      // is measured from that road. Drawn against `groundYAt` (the bare lane) a
+      // shot fired on the low path appeared up on the high one. `entityGroundY`
+      // is the helper obstacles already use for exactly this reason; projectiles
+      // simply never carried a route to hand it.
+      const x = pr.x - cam, y = Math.round(this.entityGroundY(pr) - pr.alt - 4);
       if (pr.type === 'enemyShot') {
         ctx.fillStyle = '#101018';
         ctx.fillRect(x - 1, y - 1, 6, 6);
@@ -11465,6 +11610,18 @@ export class RunState {
     const liftHero = this.player.y > 0;
     const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, specialOrbAlpha: orbAlpha,
+        // THE CONTACT SHADOW (see CONTACT_SHADOW in draw.js). Every platform,
+        // not just the phone it was asked for: separating the hero from the
+        // strip he is standing on is worth having on a monitor too, and the
+        // altitude read it gives — the shadow stays on the ground while he
+        // rises — is the same help when aiming a landing at any size. A device
+        // that only some players get would also mean two different games to
+        // judge a jump in. The ink boost stays phone-only because that one is
+        // compensating for physical screen size; this one is not.
+        //
+        // A pack that says heroShadow: false paints its own ground and gets no
+        // soft ellipse laid on top of it.
+        contactShadow: this.style.heroShadow === false ? 0 : this.groundUnderHero(),
         // Airborne, the sprite hands its overlay pass back instead of queueing
         // it, and this frame's chatter push below decides where it goes.
         queueOverlay: liftHero ? (fn) => { heroLift = fn; } : undefined,
@@ -11491,13 +11648,24 @@ export class RunState {
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
               sliding: false, slideAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
             : undefined,
-      groundY: this.renderGroundY(cam + heroScreenX, this.route),
+      // SAMPLED WHERE HE IS DRAWN, not where his slot starts. drawHeroSprite
+      // centres the art in its 12px slot — `cx = screenX + HERO_CENTER_OFF` —
+      // while this asked the terrain for its height at `screenX` itself. Six
+      // pixels of disagreement, which on the flat is nothing and on a hill is
+      // six pixels TIMES THE GRADIENT: on a steep face a quarter of the hero's
+      // height, and signed, so he sank into the climbs and floated over the
+      // descents. Invisible for as long as the cast wore ellipses and obvious
+      // the moment real soles had to meet a line.
+      groundY: this.renderGroundY(cam + heroArtX, this.route),
         // How the terrain rises or falls either side of the hero, so a floor
         // effect can lie IN the floor instead of on a level line through it.
         // On a slab this comes out flat, which is correct — the island is a
         // level platform, whatever the hills below it are doing.
-        groundDelta: (dx) => this.renderGroundY(cam + heroScreenX + dx, this.route)
-          - this.renderGroundY(cam + heroScreenX, this.route),
+        //
+        // Relative to the same point `groundY` is, or every offset it hands out
+        // is measured from a place the hero is not standing.
+        groundDelta: (dx) => this.renderGroundY(cam + heroArtX + dx, this.route)
+          - this.renderGroundY(cam + heroArtX, this.route),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 

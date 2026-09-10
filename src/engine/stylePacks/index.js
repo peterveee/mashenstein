@@ -8115,6 +8115,13 @@ function lcdPack(settings) {
     // pickups — draws on top in its production colours, as the things the
     // player is meant to track.
     actorsAbovePost: true,
+    // NO SOFT SHADE ON THIS GROUND. A segment display has two states per cell
+    // and no greys between them, so a gradient ellipse under the hero is the
+    // one mark on the screen that could not be printed by the thing the whole
+    // pack is imitating. The cast draws above post() here, so the shadow would
+    // land on top of the conversion rather than being converted by it — a wash
+    // laid over a Game & Watch.
+    heroShadow: false,
     // THIS PACK FILLS EVERY HOLE ITSELF, and it fills them all with the same
     // thing. ground() cuts cogwheels into the bedrock under any break it draws,
     // so the run's own pass for a hole that names its own material (a
@@ -8519,6 +8526,9 @@ function surgePack(settings) {
     // ...and for the crane: the cycle passes through lcd and doodle, whose
     // backgrounds are screen furniture and must stay put while it is on them.
     get bgPan() { return pick(this._t || 0).bgPan ?? 1; },
+    // ...and whether a soft contact shadow may be laid on the ground, which is
+    // the LCD pack's to refuse for the same reason it owns its surface.
+    get heroShadow() { return pick(this._t || 0).heroShadow !== false; },
     // ...and for the two claims a pack can make on the ground: whether it fills
     // its own holes and whether it walks its own surface. Both are true only
     // while the cycle is sitting on the LCD pack, and both are read fresh by

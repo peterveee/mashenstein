@@ -24,7 +24,7 @@ const SCENES = {
     note: 'Plumber Panic · four-step gear crossing',
   },
   underground: {
-    label: 'PLUMBER 2 · THE WORKS', stage: 'plumber-2', startAt: 0.24, seed: 0x504f5258,
+    label: 'PLUMBER 1 · THE WORKS', stage: 'plumber-1', startAt: 0.20, seed: 0x504f5258,
     note: 'Plumber Panic · underground works, upper lane and lower machinery',
   },
   raised: {
@@ -223,6 +223,10 @@ async function bootEmbed() {
   document.getElementById('embed-surface')?.removeAttribute('hidden');
   document.getElementById('error')?.setAttribute('hidden', '');
   const p = params();
+  // Review-only background scale. The RunState applies this to its single
+  // background pass around the authored ground line; world actors and UI stay
+  // outside that transform. Production boot never sets this preview global.
+  window.__MASH_PORTRAIT_BG_ZOOM__ = numberParam(p, 'bgZoom', 1);
   const viewportParam = parseViewport(p);
   const actual = activeViewport();
   const requested = p.has('viewport') ? viewportParam : actual;
@@ -345,6 +349,10 @@ async function bootEmbed() {
     if (msg.action === 'play') paused = false;
     if (msg.action === 'pause') paused = true;
     if (msg.action === 'step') { paused = true; run.update(1 / 60); }
+    if (msg.action === 'background-zoom') {
+      const next = Number(msg.value);
+      if (Number.isFinite(next)) window.__MASH_PORTRAIT_BG_ZOOM__ = Math.max(1, Math.min(1.3, next));
+    }
     render();
   });
   window.addEventListener('resize', () => {
@@ -369,20 +377,31 @@ function shell() {
   const safeSelect = document.getElementById('safe-select');
   const aInput = document.getElementById('a-zoom');
   const aValue = document.getElementById('a-zoom-value');
+  const backgroundInput = document.getElementById('background-zoom');
+  const backgroundValue = document.getElementById('background-zoom-value');
   const frames = [...document.querySelectorAll('iframe[data-choice]')];
-  const initialScene = params().get('scene');
+  const outerParams = params();
+  const initialScene = outerParams.get('scene');
   if (SCENES[initialScene]) sceneSelect.value = initialScene;
+  const initialBackgroundZoom = numberParam(outerParams, 'bgZoom', Number(backgroundInput.value));
+  if (Number.isFinite(initialBackgroundZoom)) backgroundInput.value = String(Math.max(1, Math.min(1.3, initialBackgroundZoom)));
   const queryFor = (choice) => {
-    const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value });
+    const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value, bgZoom: backgroundInput.value });
     return `portrait-preview.html?${q}`;
   };
   const reload = () => {
     aValue.textContent = Number(aInput.value).toFixed(3);
+    backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
     for (const frame of frames) frame.src = queryFor(frame.dataset.choice);
   };
   for (const input of [sceneSelect, viewportSelect, safeSelect, aInput]) input.addEventListener('change', reload);
   aInput.addEventListener('input', () => { aValue.textContent = Number(aInput.value).toFixed(3); });
-  const send = (action) => frames.forEach((frame) => frame.contentWindow?.postMessage({ type: 'portrait-preview', action }, '*'));
+  const send = (action, value) => frames.forEach((frame) => frame.contentWindow?.postMessage({ type: 'portrait-preview', action, value }, '*'));
+  backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
+  backgroundInput.addEventListener('input', () => {
+    backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
+    send('background-zoom', Number(backgroundInput.value));
+  });
   document.getElementById('play-button')?.addEventListener('click', () => send('play'));
   document.getElementById('pause-button')?.addEventListener('click', () => send('pause'));
   document.getElementById('step-button')?.addEventListener('click', () => send('step'));

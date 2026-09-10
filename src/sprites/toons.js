@@ -113,16 +113,78 @@ const BROW_L_SCALE = { gary: 0.4, kiko: 0.3 };
 // browA/browL are absolute overrides rather than multipliers because both are
 // already fractions with a meaningful zero, and a multiplier on a fraction is a
 // number nobody can picture.
-export const INK = { body: 1, face: 1, alpha: 1, brow: 1, browA: BROW_A, browL: BROW_L };
+export const INK = { body: 1, face: 1, alpha: 1, brow: 1, browA: BROW_A, browL: BROW_L, floor: 1 };
 
 export function setInk({
-  body = 1, face = 1, alpha = 1, brow = 1, browA = BROW_A, browL = BROW_L,
+  body = 1, face = 1, alpha = 1, brow = 1, browA = BROW_A, browL = BROW_L, floor = 1,
 } = {}) {
   INK.body = body; INK.face = face; INK.alpha = alpha;
-  INK.brow = brow; INK.browA = browA; INK.browL = browL;
+  INK.brow = brow; INK.browA = browA; INK.browL = browL; INK.floor = floor;
   OUTLINE = `rgba(26,16,40,${+Math.min(1, OUTLINE_A * alpha).toFixed(3)})`;
   SKIN_OUTLINE = `rgba(26,16,40,${+Math.min(1, SKIN_OUTLINE_A * alpha).toFixed(3)})`;
 }
+
+// THE CAST IS INKED A SHADE HEAVIER ON A HANDSET. Not because a phone renders
+// the strokes any thinner — hair()'s floors are stated in logical 480x270 px,
+// so a phone and a 4K desktop get identical widths in the frame — but because
+// the frame itself is four inches wide there. A contour that reads as a drawn
+// line at arm's length on a monitor is a grey suggestion at a phone's physical
+// size, and the hero is the one thing on screen the player is tracking.
+//
+// WIDTH AND OPACITY BOTH, because width alone was not the whole complaint.
+// The cast's contour is deliberately whisper-light — 0.32 alpha, a mark that
+// reads as drawn-in rather than outlined — and that treatment survives a
+// monitor at arm's length. On a four-inch screen it does not: a translucent
+// line at a small physical size reads as a smudge at the edge of the shape
+// rather than as an edge, and no amount of extra width fixes a mark the eye
+// cannot find. So the phone gets a heavier line AND a more solid one.
+//
+// `alpha` is a multiplier on the two translucent inks — OUTLINE_A (0.32) and
+// SKIN_OUTLINE_A (0.20) — and touches nothing else, since nothing else on the
+// rig is translucent. setInk clamps the product at 1, so 3.125 is the highest
+// figure that means anything. Past ~2 the contour stops being a soft edge and
+// becomes a hard black outline; the cast is not drawn that way.
+//
+// It does NOT reach the rim (see RIM), so darkening the contour alone shifts
+// the light/dark balance a little toward the dark half. That is the intended
+// direction here — the phone wants the shape read, not the modelling.
+//
+// IT CAME DOWN FROM 1.5, and the reason is worth keeping. 1.5 was chosen while
+// the stroke was doing the separating ON ITS OWN. The contact shadow and the
+// backdrop veil now carry part of that job, so the same darkness was doing more
+// work than it had been asked for and the contour had gone from a soft edge to
+// a drawn black line — the treatment the cast is deliberately NOT drawn in.
+// Judge this dial against whatever else is separating the hero at the time, not
+// on its own: it is the third of three, and it was set as if it were the only.
+//
+// `floor` rides along with `body` for the reason hair() gives below: without it
+// the width boost is a rounding error at the size the game plays at.
+//
+// `face` STAYS AT 1, and the boost rides `body` + `floor` alone. Most face marks
+// are struck from `ow`, which already carries INK.body, so scaling face too
+// multiplies the boost by itself on them: measured over the cast, 3% of ink
+// strokes came out at K^2 — tolerable at 1.15 (x1.32), a blown mouth line at
+// 1.75 (x3.06). With face at 1 the worst stroke on the rig is exactly K at
+// every rung up to 1.75, 83% land on K, and nothing over-inks. The marks that
+// take INK.face alone are picked up by the floor instead, which is why the
+// share left unmoved FALLS as the boost grows (17% at 1.15, 8% at 1.5).
+//
+// ONE figure and not a per-part tune: what is wanted is the rig as drawn, a
+// shade heavier — every relative weight the cast was tuned to is preserved, and
+// there is no hero on which the boost lands differently.
+//
+// 2.0 is the ceiling this design has: past ~1.75 the floor starts winning on
+// the mid-weight strokes as well, half the rig lands over target, and the cast
+// comes back inked like a colouring book. Do not go there without re-measuring.
+//
+// Applied once at boot (main.js) and never toggled: toonCache keys its baked
+// face and stand sprites on hero and size alone, so a mid-session change would
+// leave stale bakes behind at the old weight.
+export const PHONE_INK_BOOST = 1.45;   // stroke WIDTH
+export const PHONE_INK_ALPHA = 1.2;    // contour OPACITY: 0.32 -> 0.38, 0.20 -> 0.24
+export const PHONE_INK = {
+  body: PHONE_INK_BOOST, face: 1, floor: PHONE_INK_BOOST, alpha: PHONE_INK_ALPHA,
+};
 
 // ---------------------------------------------------- scale-aware ink floors
 // Every stroke width in this file is written `hair(px, w)`: `w` is the width
@@ -144,7 +206,15 @@ export function setInk({
 // is the ink that lands.
 let inkScale = 1;       // logical px per world unit at the current draw scale
 let inkBake = 0;        // supersample factor while painting into a cache bake
-const hair = (px, w) => Math.max(px / inkScale, w);
+// INK.floor scales the FLOOR, and is the other half of a `body`/`face` boost.
+// Those two multiply the width a stroke ASKS for, and at in-run size (a 24u
+// hero at the run's 2x) most of the rig is not asking — it is pinned to its
+// floor, where a multiplier on `w` does nothing at all. Measured over the whole
+// cast in that pose, half to two-thirds of strokes never moved and a 15% body
+// boost came out as 2% of ink. Raise both together and a stroke gains the same
+// fraction whether the floor or the drawing is deciding it, which is the only
+// way "slightly thicker" means one thing across the rig.
+const hair = (px, w) => Math.max(px * INK.floor / inkScale, w);
 
 // HOW HEAVY THE RING ROUND A HAND IS. A hand is the smallest enclosed shape on
 // the rig — a disc a fifth of a head across — and it took the same contour a
@@ -291,6 +361,606 @@ function paintHand(ctx, spec, u, ow, x, y, outer, cuff, skin, ang, skinInk = tru
     ctx.moveTo(...handAt(f, a0, s0, r));
     ctx.lineTo(...handAt(f, a1, s1, r));
   }
+  ctx.stroke();
+}
+// ---------------------------------------------------------------------------
+// SHOES. Every hero's foot is one un-rotated-in-place ellipse — footRx by
+// footRy about the ankle, rolled by the gait's ankle angle. It reads as a
+// shoe at 24u and as a bean at 144u, which is the complaint. `spec.shoeShape`
+// swaps that ellipse for a shaped shoe; 'oval' is the shipped ellipse and is
+// what an unset spec draws, so the cast renders untouched.
+//
+// The shape is authored in the ellipse's OWN normalized frame — a along the
+// foot (+1 the toe, -1 the heel), b across it (+1 the sole, -1 the top) —
+// so every shape inherits the shoe's size, its ankle offset and its roll for
+// free, and a hero with a bigger footScale gets a bigger shoe of the same
+// design rather than a differently proportioned one.
+//
+// Two rules the frame enforces and every shape has to keep:
+//   - the sole reaches b = +1. The ground clamp (see shoeGeom) plants the
+//     shoe on the sole line, so a shape that stops short hovers.
+//   - the heel reaches a = -1 and the silhouette is closed under the ankle.
+//     The leg's round end cap is buried INSIDE the shoe — the shoe is drawn
+//     after the leg — and what buries it is the sole and the heel, not the
+//     collar, so a low-cut shoe is free to sit as low as it likes.
+// Like a shaped hand, a shoe is ONE silhouette: the whole outline goes into a
+// single path and `outlined` strokes it once, so no interior piece can draw an
+// edge across another. What detail there is — a midsole, a welt, a toe cap —
+// is a stroke laid on top, and it is dropped at LOD like every other crease.
+export const SHOE_SHAPES = ['oval', 'sneaker', 'boot', 'runner', 'slipper'];
+// Path commands in the normalized frame: ['M'|'L', a, b] or ['Q', ca, cb, a, b].
+// `side` is the profile shoe the run and the slide wear; `front` is the
+// symmetric view the idle stance wears, where both feet face the camera and a
+// profile shoe would read as a hero standing sideways.
+//
+// ROUND 1 OF THIS KEPT EVERY SHAPE INSIDE THE ELLIPSE'S BOX and they were four
+// versions of the same foot — the difference was in the toe and nowhere else,
+// which is no difference at all at 24u. Nothing constrains a shape to ±1: the
+// ground clamp measures the shape's own lowest point (see shoeDrop), so length
+// and height are free, and they are the first thing the eye reads. So they
+// differ in PROPORTION first — the sneaker is short and tall, the boot taller
+// still, the runner and the plimsoll long and low — in SOLE second, and only
+// then in the toe. `sole` is a second closed shape filled in a tone mixed off the
+// leather and CLIPPED to the silhouette, so the shoe stays one outline with a
+// band of contrast inside it rather than two outlined objects stacked.
+const SHOE_PIECES = {
+  // The toon trainer, cut to the 1990s (10 Sep 2026 — Peter's call). The era is
+  // recognisable by GEOMETRY, not by branding: take the marks off — no swoosh,
+  // no stripes, nothing anybody owns — and what is left is a wedge, a strap and
+  // a heel window. Only the wedge changes the outline, so only the wedge
+  // survives 24u; the rest buys the menus, the portraits and the lineup.
+  sneaker: {
+    // Where the LEG ENDS inside this shoe: under a collar that stands higher
+    // than the plain trainer's, because a high-top is the point.
+    //
+    // NO CUFF. The high-top's collar is in the SHAPE — the outline stands 0.70
+    // of a shoe proud of the ankle on its own — and the shin stroke on top of
+    // that was a second band in the same colour, round-capped, sitting on the
+    // leg above the shoe: a sock. Sportswear does not get one; only the boot
+    // keeps a shin cuff, and that one is cut flat.
+    ankle: [-0.34, -0.36],
+    side: [
+      ['M', -0.86, -1.06],
+      ['Q', -1.10, -0.86, -1.10, -0.24],
+      ['L', -1.10, 0.46],
+      ['Q', -1.10, 1.02, -0.70, 1.02],
+      ['L', 0.72, 1.02],
+      ['Q', 1.12, 1.02, 1.10, 0.38],
+      ['Q', 1.06, -0.28, 0.54, -0.52],
+      ['Q', 0.14, -0.72, -0.18, -0.88],
+      ['Q', -0.48, -1.10, -0.86, -1.06],
+    ],
+    front: [
+      ['M', -0.66, -0.78],
+      ['Q', -0.90, -0.62, -0.90, -0.08],
+      ['L', -0.90, 0.48],
+      ['Q', -0.90, 1.02, -0.56, 1.02],
+      ['L', 0.56, 1.02],
+      ['Q', 0.90, 1.02, 0.90, 0.48],
+      ['L', 0.90, -0.08],
+      ['Q', 0.90, -0.62, 0.66, -0.78],
+      ['Q', 0.00, -1.00, -0.66, -0.78],
+    ],
+    frontAnkle: [0, -0.22],
+    // THE WEDGE: 0.82 of the shoe deep at the heel, 0.46 at the toe. The plain
+    // trainer's slab is the same depth end to end, which is a 2010s shoe.
+    sole: [
+      ['M', -1.18, 0.20], ['Q', 0.10, 0.44, 1.18, 0.56],
+      ['L', 1.18, 1.16], ['L', -1.18, 1.16],
+    ],
+    frontSole: [
+      ['M', -0.96, 0.40], ['L', 0.96, 0.40], ['L', 0.96, 1.14], ['L', -0.96, 1.14],
+    ],
+    soleTone: 0.74,
+    // The instep strap, and the heel pull tab.
+    sideLines: [
+      [['M', -0.34, -0.74], ['L', 0.34, -0.36]],
+      [['M', -0.96, -0.80], ['L', -0.62, -0.88]],
+    ],
+    frontLines: [
+      [['M', -0.76, -0.28], ['L', 0.76, -0.28]],
+      [['M', -0.36, -0.76], ['L', 0.00, -0.50], ['L', 0.36, -0.76]],
+    ],
+  },
+  // The ankle boot: a cuff straight across the top, well above everything else
+  // on this sheet, a blunt squared toe, and a dark slab sole with a welt. On
+  // the heroes who already wear `boots` the cuff doubles the shaft's own — that
+  // is the question this column asks, not an accident.
+  boot: {
+    // Where the LEG ENDS inside this shoe: at the top of the foot, under a cuff
+    // that stops just above the ankle bone rather than a third up the shin.
+    ankle: [-0.34, -0.44],
+    // LOW CUT (10 Sep 2026): the tall shaft made it a riding boot, and the cast
+    // is not on horses. Short enough to read as a work boot, long enough that
+    // the cuff line is still a line.
+    cuff: [0.18, 1.22, 'butt'],
+    // SQUARED OFF: every corner here is a corner. Not one quadratic in the
+    // outline — a heel that is a vertical, a sole that is a horizontal, a
+    // single chamfer at the toe box and a cuff straight across the top. The
+    // curves it had were doing the sneaker's job on a shape whose whole
+    // argument is that it is built rather than moulded.
+    //
+    // AND BIGGER IN EVERY DIRECTION. Cutting the shaft down took the boot's
+    // bulk with it and left it the smallest thing on the sheet, which is the
+    // opposite of what a work boot is — so the length, the toe and the sole
+    // slab all grew to put the mass back BELOW the ankle, where a low boot
+    // carries it, instead of back up the shin where it just came from.
+    side: [
+      ['M', -1.10, -0.88],
+      ['L', 0.18, -0.88],
+      ['L', 0.26, -0.22],
+      ['L', 0.86, -0.22],
+      ['L', 1.16, 0.10],
+      ['L', 1.16, 1.06],
+      ['L', -1.10, 1.06],
+    ],
+    front: [
+      ['M', -0.78, -0.70],
+      ['L', 0.78, -0.70],
+      ['L', 0.88, -0.18],
+      ['L', 0.94, 0.42],
+      ['L', 0.94, 1.04],
+      ['L', -0.94, 1.04],
+      ['L', -0.94, 0.42],
+      ['L', -0.88, -0.18],
+    ],
+    frontAnkle: [0, -0.24],
+    sole: [
+      ['M', -1.16, 0.36], ['L', 1.22, 0.36], ['L', 1.22, 1.16], ['L', -1.16, 1.16],
+    ],
+    frontSole: [
+      ['M', -1.00, 0.42], ['L', 1.00, 0.42], ['L', 1.00, 1.14], ['L', -1.00, 1.14],
+    ],
+    soleTone: -0.45,
+    // The cuff line, and a toe cap seam that is a straight vertical like
+    // everything else on it.
+    sideLines: [
+      [['M', -1.08, -0.56], ['L', 0.24, -0.56]],
+      [['M', 0.68, 0.34], ['L', 0.68, -0.22]],
+    ],
+    frontLines: [
+      [['M', -0.92, -0.52], ['L', 0.92, -0.52]],
+      [['M', -0.74, -0.06], ['L', 0.74, -0.06]],
+    ],
+  },
+  // The racing flat, cut to the same decade: the wedge again, plus THE WINDOW —
+  // a bite out of the top of the midsole letting the upper's colour through.
+  // Long and low, and the toe still springs up off the ground.
+  runner: {
+    // Where the LEG ENDS inside this shoe: a low shoe wears its ankle where the
+    // ellipse always had one. NO CUFF — a racing flat is cut below the ankle
+    // bone and has no collar to put on the shin; the stub that was here showed
+    // as its own round cap sitting on the leg, a sock rather than a shoe.
+    ankle: [-0.30, -0.20],
+    side: [
+      ['M', -0.78, -0.52],
+      ['Q', -1.06, -0.34, -1.10, 0.34],
+      ['Q', -1.12, 0.86, -0.76, 0.98],
+      ['L', 0.52, 0.98],
+      ['Q', 1.10, 0.86, 1.30, 0.30],
+      ['Q', 1.34, 0.02, 0.86, -0.14],
+      ['Q', 0.30, -0.34, -0.10, -0.52],
+      ['Q', -0.48, -0.68, -0.78, -0.52],
+    ],
+    front: [
+      ['M', -0.62, -0.40],
+      ['Q', -0.90, -0.16, -0.92, 0.38],
+      ['Q', -0.92, 1.00, -0.56, 1.00],
+      ['L', 0.56, 1.00],
+      ['Q', 0.92, 1.00, 0.92, 0.38],
+      ['Q', 0.90, -0.16, 0.62, -0.40],
+      ['Q', 0.00, -0.62, -0.62, -0.40],
+    ],
+    frontAnkle: [0, -0.10],
+    // THE WEDGE, and THE WINDOW cut into the top of it — the notch between
+    // -0.88 and -0.64 lets the upper's own colour through the midsole, which is
+    // the whole of that trick at this size. Thin under the forefoot so the
+    // toe spring survives.
+    sole: [
+      ['M', -1.18, 0.34],
+      ['L', -0.88, 0.34], ['L', -0.78, 0.74], ['L', -0.64, 0.36],
+      ['Q', 0.30, 0.60, 1.30, 0.28],
+      ['L', 1.38, 0.52], ['Q', 1.14, 0.96, 0.52, 1.10],
+      ['L', -0.76, 1.10], ['Q', -1.22, 0.96, -1.18, 0.34],
+    ],
+    frontSole: [
+      ['M', -0.96, 0.62], ['L', 0.96, 0.62], ['L', 0.96, 1.08], ['L', -0.96, 1.08],
+    ],
+    soleTone: 0.62,
+    sideLines: [[['M', -0.66, 0.06], ['Q', 0.20, -0.14, 0.94, -0.08]]],
+    frontLines: [],
+  },
+  // The plimsoll. This is round one's sneaker, kept: a plain low shoe that
+  // follows the foot, no midsole slab, no laces, a thin sole and one seam
+  // across the throat where you would slip it on. It replaced the dress shoe,
+  // which was a long pointed thing on a stacked heel — a costume next to four
+  // pieces of sportswear, and nothing about it said running.
+  //
+  // It is deliberately the QUIET option, and the sheet needs one: it answers
+  // what the shoe costs when the answer is "barely more than the ellipse".
+  // Judge it against the oval on its left and the sneaker two along.
+  slipper: {
+    // Where the LEG ENDS inside this shoe: low and soft, barely proud of the ankle.
+    ankle: [-0.30, -0.26],
+    // NO CUFF, same as the runner and more so: a plimsoll's collar is one seam's
+    // worth of canvas, and a stroke that short is all cap and no stroke.
+    side: [
+      ['M', -0.80, -0.58],
+      ['Q', -1.00, -0.28, -1.00, 0.36],
+      ['Q', -1.00, 1.02, -0.62, 1.02],
+      ['L', 0.66, 1.02],
+      ['Q', 1.02, 1.02, 1.02, 0.48],
+      ['Q', 1.00, -0.06, 0.52, -0.28],
+      ['Q', 0.14, -0.46, -0.20, -0.62],
+      ['Q', -0.52, -0.80, -0.80, -0.58],
+    ],
+    front: [
+      ['M', -0.64, -0.46],
+      ['Q', -0.88, -0.22, -0.88, 0.40],
+      ['Q', -0.88, 1.02, -0.54, 1.02],
+      ['L', 0.54, 1.02],
+      ['Q', 0.88, 1.02, 0.88, 0.40],
+      ['Q', 0.88, -0.22, 0.64, -0.46],
+      ['Q', 0.00, -0.70, -0.64, -0.46],
+    ],
+    frontAnkle: [0, -0.12],
+    // A THIN sole, and barely tinted. It was a third of the shoe deep and mixed
+    // halfway to the sneaker's cream, which made it a trainer's midsole on a
+    // shape whose whole argument is that it has none — 0.16 of the shoe now,
+    // and a fifth of the way to the rubber rather than half. What is left is a
+    // strip of canvas edging, which is what a plimsoll actually has.
+    sole: [
+      ['M', -1.06, 0.88], ['Q', 0.00, 0.84, 1.08, 0.86],
+      ['L', 1.08, 1.10], ['L', -1.06, 1.10],
+    ],
+    frontSole: [
+      ['M', -0.94, 0.86], ['L', 0.94, 0.86], ['L', 0.94, 1.10], ['L', -0.94, 1.10],
+    ],
+    soleTone: 0.22,
+    // NO EDGE LINE. At this depth and this contrast the seam stroke is heavier
+    // than the band it divides, and the shoe reads as an outlined stripe rather
+    // than as a sole. The fill boundary is the whole of it.
+    soleEdge: false,
+    // The one seam: across the throat, where a slip-on opens.
+    sideLines: [[['M', -0.18, -0.58], ['Q', 0.08, -0.32, 0.44, -0.24]]],
+    frontLines: [[['M', -0.44, -0.34], ['Q', 0.00, -0.08, 0.44, -0.34]]],
+  },
+};
+// The tones a sole is mixed to: + toward a rubber cream, - toward a leather
+// near-black. Mixed off the hero's OWN leather rather than stated flat, so a
+// black shoe gets a grey midsole and a tan one gets an off-white.
+//
+// MIXED OFF THE BASE LEATHER, NEVER OFF THE SHADED ONE. The far foot is drawn
+// in recede(leather, farShade) and handing that to the mix gives the back shoe
+// a different sole from the front — which is what a rubber sole is not. It is
+// one material, cut and glued the same on both feet, so it is one colour on
+// both feet; the depth cue is the far shoe's UPPER, and a sole that also
+// recedes says the two shoes are made of different rubber.
+const SOLE_PALE = [238, 231, 214];
+const SOLE_DEEP = [34, 26, 22];
+// recede() hands back `rgb(r,g,b)`, and parseHex answers null to anything that
+// is not a `#`. Mixing through parseHex alone therefore returned the LEATHER
+// UNCHANGED for the far foot — not a slightly-off sole but no sole at all, a
+// whole band silently missing on one shoe. Parse both notations so a colour
+// that has been through any of the shading helpers still mixes.
+function parseColor(col) {
+  const hex = parseHex(col);
+  if (hex) return hex;
+  const m = typeof col === 'string' && col.match(/^rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const parts = m[1].split(',').map((v) => parseFloat(v));
+  return parts.length >= 3 && parts.slice(0, 3).every((v) => v === v)
+    ? parts.slice(0, 3).map((v) => Math.round(v)) : null;
+}
+const lumOf = (rgb) => (rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114) / 255;
+function soleTone(col, t) {
+  const rgb = parseColor(col);
+  if (!rgb) return col;
+  let to = t >= 0 ? SOLE_PALE : SOLE_DEEP;
+  let k = Math.min(1, Math.abs(t));
+  // A SOLE IS A CONTRAST BAND, so it has to mix AWAY from the leather rather
+  // than toward a fixed end of the scale. A cream midsole under a brown shoe is
+  // the whole read; under a WHITE one it is the same colour as the shoe and the
+  // band silently disappears — which two heroes were already shipping with,
+  // before anyone asked for white shoes. When the target the shape named is
+  // already where the leather is, take the other end instead, and take less of
+  // it: a white plimsoll wants a grey sole, not a black slab.
+  if (Math.abs(lumOf(to) - lumOf(rgb)) < 0.22) {
+    to = t >= 0 ? SOLE_DEEP : SOLE_PALE;
+    k = Math.min(k, 0.42);
+  }
+  const out = rgb.map((v, i) => Math.round(v + (to[i] - v) * k));
+  return `rgb(${out[0]},${out[1]},${out[2]})`;
+}
+
+// Which shape a spec asks for, or null for the shipped ellipse.
+function shoeShapeOf(spec) {
+  const s = spec && spec.shoeShape;
+  return s && s !== 'oval' && SHOE_PIECES[s] ? s : null;
+}
+
+// The angle a sole takes on sloping ground: the gradient across the shoe's own
+// length, at the foot's own position. Pure, and exported, because the drawn
+// figure turned out to be a bad witness for it — a silhouette cannot be asked
+// which of its lowest points is which foot, and at some gait phases the two
+// shoes overlap or swap sides, so a test that measures the picture measures the
+// gait as much as the terrain. This is the whole of the arithmetic; the rig
+// applies it, and `tests/shoe-slope.js` checks it here where the answer is
+// unambiguous, plus the end-to-end properties that survive any phase.
+export function soleTilt(groundDelta, fx, reach) {
+  if (typeof groundDelta !== 'function' || !(reach > 0)) return 0;
+  return Math.atan2(groundDelta(fx + reach) - groundDelta(fx - reach), reach * 2);
+}
+
+// THE BODY'S OWN LEAN ON A HILL. A runner going up one pitches forward and
+// coming down one sits back; the feet stay flat on the floor and the body is
+// what moves. `pose.slopeLean` is how much of the hill's angle the body takes,
+// 0 being the upright figure that ships and 1 being a body square to the slope
+// — which is NOT what a runner looks like, so the useful range is well under it.
+//
+// Measured across the STRIDE rather than across a shoe: the body answers to the
+// hill it is crossing, not to the patch under one foot, or it would rock every
+// time a foot landed. The figure rotates about the feet — `pose.lean`'s own
+// pivot, which is the ground point — so a lean swings the body and leaves the
+// contact where it was, and the soles then subtract it back off (see the tilt
+// below) so they stay on the floor rather than taking the lean twice.
+// SHIPPED 10 Sep 2026 at 0.4, cast-wide: a stance is a rig behaviour, not a
+// costume, so this is a constant and not a spec key. 0.25 barely registered and
+// 0.7 tipped the figure past running into falling.
+export const SLOPE_LEAN = 0.4;
+// AND A CEILING ON IT, because the terrain is not all slopes. A STEP is a
+// discontinuity, not a gradient: measured across it the ground appears to climb
+// near-vertically, and a fraction of near-vertical is still absurd — Peter
+// caught the hero lying back at forty-odd degrees against a step climb, which
+// is not leaning into a hill, it is falling over on one.
+//
+// The proportional lean is right for the terrain it was tuned on and wrong
+// wherever the ground stops being a ramp, so it is clamped rather than
+// re-tuned. The cap has come DOWN twice from the 0.18 it started at, both times
+// on the same note — still too much on the steep stuff — and at 0.085 it is
+// doing most of the work on real hills too: 0.4 of a 0.28 gradient is already
+// past it. That is the honest reading of "a bit extreme": the proportional part
+// is only really in charge of the gentle ground, and the cap governs the rest.
+//
+// The SOLE gets a looser one for the same reason. A foot can honestly sit on a
+// steeper slope than a body can lean on — it is a shorter thing on a smaller
+// patch of ground — but it cannot sit on a vertical face either.
+export const SLOPE_LEAN_MAX = 0.085;  // ~5 degrees of body
+export const SOLE_TILT_MAX = 0.5;     // ~29 degrees of foot
+const clampTilt = (a, max) => Math.max(-max, Math.min(max, a));
+
+export function slopeLean(pose, u) {
+  if (!pose || !pose.grounded) return 0;   // nothing to lean against mid-air
+  // An explicit number wins, ZERO INCLUDED — the lab sweeps this and needs to
+  // be able to ask for the upright figure. Only an absent one takes the default.
+  const k = typeof pose.slopeLean === 'number' ? pose.slopeLean : SLOPE_LEAN;
+  if (!(k > 0)) return 0;
+  return clampTilt(-k * soleTilt(pose.groundDelta, 0, 0.14 * u), SLOPE_LEAN_MAX);
+}
+
+// A SHAPED SHOE HANGS OFF THE ANKLE, NOT OFF THE ELLIPSE'S CENTRE. The oval
+// could be placed centre-first and rolled about that centre because it is only
+// half a shoe-height tall either side of it; a collar or a shaft that stands
+// 0.8 of a shoe proud of the leg cannot. Rolled about the centre, the top of
+// the shoe swings a long way for a small ankle angle and the shoe reads as
+// hinged somewhere it is not — Peter's note was that it "isn't sitting
+// properly with the ankle", and that is exactly what it was.
+//
+// So each shape names its own `ankle`: the point IN THE SHAPE where the leg
+// ends. That point is pinned to the leg's endpoint and the roll turns the shape
+// about it, which is what an ankle is. Height above the ankle is then free —
+// growing a collar cannot move the shoe off the leg, it can only put more shoe
+// up the shin.
+const shoeFrame = (ax, ay, a0, b0, rx, ry, rot) => {
+  const c = Math.cos(rot || 0), s = Math.sin(rot || 0);
+  return (a, b) => {
+    const u = (a - a0) * rx, v = (b - b0) * ry;
+    return [ax + u * c - v * s, ay + u * s + v * c];
+  };
+};
+// The shape's ankle for this view, defaulting to the ellipse's own implicit one
+// (the leg ends a little behind and above the oval's centre) when unstated.
+// `centred` is for a shoe with no leg on it — Raymn's float free — where there
+// is no ankle to hang from and the shape should simply sit where the oval sat.
+const shoeAnkle = (S, front, centred) =>
+  (centred ? null : (front ? S.frontAnkle : S.ankle)) || [0, 0];
+
+// THE SPLAY. Front on, both feet point straight at the camera, and that throws
+// away everything a shaped shoe is for: the wedge, the toe, the sole sweep are
+// all along an axis pointing away from you. It also reads as a mannequin —
+// nearly every toon standing pose turns the feet OUT, because a stance is what
+// a planted figure has and two parallel feet is what a shop dummy has.
+//
+// The honest version of turning a foot out is a YAW, not a rotation in the
+// picture plane: the shoe keeps its sole flat on the ground and shows its own
+// side profile, foreshortened, angled away from the centre line. So that is
+// exactly what this draws — the SIDE silhouette, mirrored so each foot points
+// away from its neighbour, with the long axis compressed by how far round the
+// yaw has gone. Nothing new is authored: `spec.footSplay` is the compression,
+// 1 being a full side view and 0 the front view we had.
+//
+// It is why this beats squashing the front shape's depth, which was the other
+// answer: the squash makes the front view smaller, the splay makes it MEAN
+// something. Front-facing shoes get their shape back.
+// SHIPPED 10 Sep 2026 at 0.62, cast-wide and constant rather than a spec key —
+// a stance is a rig behaviour, not a costume, the same call the body lean took.
+// 0.45 barely registered, 0.80 was close behind, and 1.0 is a full side profile
+// on both feet, which reads as clown shoes rather than as a stance.
+export const FOOT_SPLAY = 0.62;
+const splayOf = (spec) => {
+  // An explicit number wins, ZERO INCLUDED, so the lab can still ask for the
+  // square-on feet to compare against. Only an absent one takes the default.
+  const v = spec && typeof spec.footSplay === 'number' ? spec.footSplay : FOOT_SPLAY;
+  return v > 0 ? Math.min(1, v) : 0;
+};
+
+function shoePath(c, at, cmds, close = true) {
+  for (const cmd of cmds) {
+    if (cmd[0] === 'M') c.moveTo(...at(cmd[1], cmd[2]));
+    else if (cmd[0] === 'L') c.lineTo(...at(cmd[1], cmd[2]));
+    else c.quadraticCurveTo(...at(cmd[1], cmd[2]), ...at(cmd[3], cmd[4]));
+  }
+  if (close) c.closePath();
+}
+
+// How far the shoe reaches BELOW its centre, for the gait's ground clamp. The
+// oval's answer is the rotated ellipse's exact half-height; a shaped sole has
+// corners, and a flat sole rolled toe-down puts its toe corner lower than any
+// point of the ellipse it replaces — clamping on the ellipse's number would
+// drive that corner through the floor. Bounding by the authored points (curve
+// controls included) is conservative by at most the sag of one quadratic, and
+// it is what lets a shape be longer or deeper than the box it replaces. The
+// SOLE is not measured: it is clipped to the silhouette and cannot reach past.
+// Measured from the LEG'S ENDPOINT, not from the shoe's centre, so the two
+// placements answer the same question and a caller can clamp without knowing
+// which one it got. For the oval that is the rolled offset plus the rotated
+// ellipse's exact half-height; for a shape it is the lowest authored point in
+// the ankle-anchored frame.
+export function shoeDrop(spec, dx, dy, rx, ry, rot, front, centred) {
+  const shape = shoeShapeOf(spec);
+  const sp = splayOf(spec);
+  if (front && sp) front = false;              // a splayed foot is a side view
+  const c = Math.cos(rot || 0), s = Math.sin(rot || 0);
+  const off = dx * s + dy * c;
+  if (!shape) return off + Math.hypot(rx * s, ry * c);
+  const S = SHOE_PIECES[shape];
+  const [a0raw, b0] = shoeAnkle(S, front, centred);
+  const a0 = a0raw * (sp || 1);                // matches paintShoe's ankle slide
+  const cmds = S[front ? 'front' : 'side'];
+  let lo = 0;
+  const put = (a, b) => {
+    const y = (a - a0) * rx * s + (b - b0) * ry * c;
+    if (y > lo) lo = y;
+  };
+  for (const cmd of cmds) {
+    if (cmd[0] === 'Q') { put(cmd[1], cmd[2]); put(cmd[3], cmd[4]); }
+    else put(cmd[1], cmd[2]);
+  }
+  return lo;
+}
+
+// One shoe. `fill` is the leather (already receded on the far foot), `front`
+// picks the camera-facing view the idle stance wears. The sole is filled inside
+// a clip of the silhouette and then re-takes the light on the silhouette's own
+// ramp — an opaque band dropped over shaded pixels stops being part of the shoe
+// otherwise, the same rule shoulderCap and the hip disc are painted under.
+// Detail strokes go on in the contour ink at a fraction of its weight, and
+// never at LOD: at 24u they land on the same pixel as the outline.
+// THE CUFF, and it is what stops a shoe looking loose. The shoe body rolls with
+// the ANKLE, which is a different angle from the one the shin arrives at — so a
+// collar drawn in shoe space opens across the leg instead of around it, and the
+// taller the collar the wider that gap. Peter's note was that the shoe does not
+// mould to the lower leg, and this is the whole of it: nothing in the shoe was
+// ever asked where the leg was pointing.
+//
+// So the collar comes off the shoe and goes onto the SHIN, as a short limb
+// stroke from a little way up the leg down to the ankle, in the shoe's own
+// colour and a touch wider than the leg. It is the same trick bootShaft is
+// built on, and for the same stated reason: the clothing is the limb in a
+// different colour rather than a shape laid over it, so it cannot part company
+// with the leg however the knee folds. Drawn BEFORE the shoe body, which then
+// covers its lower end — what is left showing is a band the exact width and
+// direction of the shin, which is what "gripping" looks like.
+//
+// `cuff` is [length as a fraction of the knee-to-ankle bone, width in legW,
+// how the top is cut]. A fraction rather than a distance, so a short-shinned
+// rig gets a cuff in proportion to its own leg rather than one dialled against
+// somebody else's.
+//
+// ONLY THE BOOT HAS ONE, and its cut is flat. Every other shape carries its
+// collar in its own outline instead: a stroke up the shin is a second band in
+// the shoe's colour sitting ON the leg, and round-capped it is unmistakably a
+// sock. The plimsoll and the racing flat lost theirs first (they are cut below
+// the ankle bone and had nothing to put up there anyway), the high-top after —
+// its collar was already in the silhouette, so the stroke was pure sock.
+//
+// The cut is STATED rather than inherited. limb() strokes with whatever lineCap
+// is in force, so a cuff drawn without saying takes the last cap somebody else
+// set — which is how a squared boot ended up with a rounded collar. Round for
+// the sneaker's padding, butt for the boot, where a flat cut is the point.
+function paintShoeCuff(ctx, S, fill, ow, ax, ay, knee, legW) {
+  if (!S.cuff || !knee || !legW) return;
+  const [len, wide, cap] = S.cuff;
+  const dx = knee[0] - ax, dy = knee[1] - ay;
+  ctx.lineCap = cap || 'butt';
+  limb(ctx, ax + dx * len, ay + dy * len, ax, ay, legW * wide, fill, ow);
+  ctx.lineCap = 'butt';
+}
+
+// `opts.base` is the leather BEFORE any depth shading — the sole is mixed off
+// it so both feet name the same rubber. `opts.knee` and `opts.legW` place the
+// cuff on the shin. `opts.ink` overrides the contour weight, `opts.centred` is
+// for a shoe with no leg on it.
+export function paintShoe(ctx, spec, ow, lod, fill, ax, ay, dx, dy, rx, ry, rot, front, opts = {}) {
+  const { ink: inkW, centred, base, knee, legW } = opts;
+  const shape = shoeShapeOf(spec);
+  const ink = inkW ?? hair(0.6, ow * 0.8);
+  if (!shape) {
+    // The shipped placement, unchanged: a rigid foot whose centre orbits the
+    // ankle by the rolled offset, then an ellipse about that centre.
+    const c = Math.cos(rot || 0), s = Math.sin(rot || 0);
+    const sp = splayOf(spec);
+    const erx = sp && front ? rx * sp : rx;
+    outlined(ctx, fill, ink, (p) => p.ellipse(
+      ax + dx * c - dy * s, ay + dx * s + dy * c, Math.abs(erx), ry, rot, 0, Math.PI * 2));
+    return;
+  }
+  const S = SHOE_PIECES[shape];
+  // `toe` is which way this foot points, +1 outboard-right. A splayed foot
+  // reads the SIDE shape with its long axis mirrored onto that side and
+  // compressed to `splay` — the yaw. Everything below is unchanged by it,
+  // because a negative rx is all a mirror is in this frame.
+  const splay = splayOf(spec);
+  let ankleSlide = 1;
+  if (splay && front) {
+    front = false;
+    rx = rx * splay * (opts.toe || 1);
+    // AND THE ANKLE TRAVELS WITH THE YAW. Side on the leg enters behind the
+    // middle of the shoe; head on it enters the middle. Pinning a half-turned
+    // foot to the side shape's own ankle leaves too little shoe behind the leg
+    // — the heel has to cover the leg's end cap and at 0.62 of the length it no
+    // longer could. Sliding the anchor by the same yaw carries it back to
+    // centre as the foot turns to face you, which is where a foot pointing at
+    // you actually meets its leg.
+    ankleSlide = splay;
+  }
+  const [a0raw, b0] = shoeAnkle(S, front, centred);
+  const a0 = a0raw * ankleSlide;
+  const at = shoeFrame(ax, ay, a0, b0, rx, ry, rot);
+  paintShoeCuff(ctx, S, fill, ow, ax, ay, knee, legW);
+  const outline = (c) => shoePath(c, at, S[front ? 'front' : 'side']);
+  ctx.lineJoin = 'round';
+  outlined(ctx, fill, ink, outline);
+  const sole = front ? S.frontSole : S.sole;
+  if (sole && !lod) {
+    ctx.save();
+    ctx.beginPath(); outline(ctx); ctx.clip();
+    ctx.beginPath(); shoePath(ctx, at, sole);
+    ctx.fillStyle = soleTone(base ?? fill, S.soleTone);
+    ctx.fill();
+    const g = formRamps(ctx, outline);
+    if (g) { ctx.fillStyle = g.core; ctx.fill(); ctx.fillStyle = g.lit; ctx.fill(); }
+    ctx.restore();
+    // The sole's own top edge, so the band reads as a part of the shoe rather
+    // than as a stripe painted across it — unless the shape opts out, which a
+    // thin low-contrast sole must: see the plimsoll.
+    if (S.soleEdge !== false) {
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = hair(0.4, ink * 0.55);
+      ctx.save();
+      ctx.beginPath(); outline(ctx); ctx.clip();
+      ctx.beginPath(); shoePath(ctx, at, sole, false);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  const lines = front ? S.frontLines : S.sideLines;
+  if (lod || !lines || !lines.length) return;
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = hair(0.4, ink * 0.62);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (const line of lines) shoePath(ctx, at, line, false);
   ctx.stroke();
 }
 
@@ -442,7 +1112,19 @@ export const TOON_SPECS = {
   // 0.036u lower (a longer teal torso on a stout hero) with the brass slimmed to
   // 0.048u so its bottom still clears the thigh root — at the shipped 0.06u it
   // pinched, because the leg does not come down with the belt.
-  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true, pants: true, limbStyle: 'snap', beltDrop: 0.036, buckleH: 0.048, ranged: 'wrench', throwStyle: 'high', wrenchCarry: 'loop' },
+  lorenzo: { rig: 'humanoid', shoeShape: 'sneaker', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true, pants: true, limbStyle: 'snap', beltDrop: 0.036, buckleH: 0.048, ranged: 'wrench', throwStyle: 'high', wrenchCarry: 'loop' ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    hipJoin: 'flush',
+    legShiftRoot: -0.06,
+    hipUnderside: 1,
+    legInto: 0.005,
+    armOut: 0.01,
+    torsoWidth: 1.01,
+    hipRound: 0.7,
+    torsoDrop: 0.035,
+    tall: 1,
+    // end character editor proportions
+  },
   gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true, armDepth: true, limbStyle: 'snap' },
   // `tunic` is the SHIPPED leg swing plus the new foot and jump — his gait was
   // judged better before the port and reverted, and the rest of it kept. Not a
@@ -469,7 +1151,7 @@ export const TOON_SPECS = {
   // rig's shortened bones and its foot are what her gait is built on, and the
   // gown is drawn by princessCostume instead (see PRINCESS_COSTUMES).
   fernwick: {
-    rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'quiver', ranged: 'bow',
+    rig: 'humanoid', shoeShape: 'slipper', head: 'floppy', mouth: 'smile', back: 'quiver', ranged: 'bow',
     bowStyle: 'high', tunic: true, rollTuck: true, slim: true, armDepth: true,
     hands: true, limbStyle: 'tunic', ears: true,
     // The head, off the G1 study.
@@ -487,7 +1169,7 @@ export const TOON_SPECS = {
     settingWidth: 0.94, settingOffset: 0.04,
     // The body: the gored gown, a slim build with a real waist, a shade under
     // Kiko's height, and long sleeves that ARE the arms (bareArms false).
-    princessCostume: 'gown', torsoWidth: 0.94, taper: 0.7, tall: 0.95,
+    princessCostume: 'gown', torsoWidth: 0.94, taper: 0.6, tall: 0.95,
     armOut: 0.03, puffs: false, bareArms: false,
     // And then shortened a little further. Dropping handsFront (below) put her
     // arm back on the cast's 0.200u, but `tall: 0.95` gives her the LOWEST
@@ -532,13 +1214,32 @@ export const TOON_SPECS = {
     // The lead knee sits lower in the air than the cast's, so it tucks under
     // the gown's waistband instead of coming up through it.
     jumpKneeDrop: 0.16, celebTuck: 0.3,
+  
+    // proportions — written by the character editor (tools/character-editor.js)
+    waistScale: 0.96,
+    legInto: -0.02,
+    legWidth: 0.87,
+    armWidth: 0.9,
+    // end character editor proportions
   },
   // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
   // died right on his own silhouette edge with no gun sticking out of him. The
   // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
   // own width to 2.5x. Held short of 1.4, where the reach starts to read lanky
   // against his short legs.
-  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' },
+  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    hipTuck: 1.2,
+    legShiftRoot: -0.025,
+    legWidth: 0.87,
+    legShiftFoot: 0,
+    armOut: 0.025,
+    armWidth: 0.95,
+    armLift: 0,
+    hipJoin: 'now',
+    hipUnderside: 1,
+    // end character editor proportions
+  },
   mochi: { rig: 'pika' },
   chompo: { rig: 'disc' },
   // Kiko, straight off candidate N. The split skirt is `dress: 'split'` — one
@@ -562,8 +1263,18 @@ export const TOON_SPECS = {
   // jaw, a W cut into the hairline with hair piled on the crown, two ribbon ends
   // per bun beside the long tails, a gold band on the bun/hair join, and ears.
   // docs/notes/kiko-persona.md records what each of those beat and why.
-  kiko: { rig: 'humanoid', tall: 1.02, legLength: 1.06, headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true, taper: 0.8, armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true, jumpKneeDrop: 0.14, celebTuck: 0.48,
-    hairCut: 'jaw', fringe: 'twin-pile', bunStubs: 'pair', bunJoin: 'band', ears: true, earStud: true },
+  kiko: { rig: 'humanoid', shoeShape: 'slipper', headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true,  armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true, jumpKneeDrop: 0.14, celebTuck: 0.48,
+    hairCut: 'jaw', fringe: 'twin-pile', bunStubs: 'pair', bunJoin: 'band', ears: true, earStud: true ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    hipTuck: 1.2,
+    armWidth: 1.05,
+    legShiftFoot: 0.005,
+    taper: 0.74,
+    waistScale: 0.95,
+    torsoLong: -0.005,
+    tall: 0.93,
+    // end character editor proportions
+  },
   // Clara Vault, straight off raider candidate A3 with the two-wisp hairline —
   // the whole bake-off record is in docs/notes/clara-persona.md. Olive tank
   // with a V throat, hip belt (`beltDrop`) opening a sliver of midriff under
@@ -590,16 +1301,57 @@ export const TOON_SPECS = {
   // breaks the corner and the shirt's own edge IS the shoulder — at 0.5 that
   // came out square, a box with a head on it. She is opted in alone; Kiko and
   // Grumpos share the taper path and keep the shipped corner.
-  clara: { rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', hairCut: 'pulled', fringe: 'swept-wisps', mouth: 'smile', slim: true, taper: 0.78, shoulderSoft: 0.75,
+  clara: { rig: 'humanoid', shoeShape: 'boot', armLift: 0.014,  head: 'braid', hairCut: 'pulled', fringe: 'swept-wisps', mouth: 'smile', slim: true, taper: 0.9, shoulderSoft: 0.75,
     armDepth: true, hands: true, limbStyle: 'snap', pants: true,
     bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true,
-    gearBelt: true, holster: 'thigh', boots: 0.5, pistol: 'twin', ears: true, earOut: 0.91 },
-  gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' },
+    gearBelt: true, holster: 'thigh', boots: 0.5, pistol: 'twin', ears: true, earOut: 0.91 ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    waistScale: 0.9,
+    torsoLong: 0.015,
+    torsoWidth: 0.87,
+    hipJoin: 'flush',
+    legLength: 0.98,
+    legShiftFoot: -0.055,
+    hipUnderside: 1,
+    legShiftRoot: 0.03,
+    armWidth: 0.92,
+    // end character editor proportions
+  },
+  gary: { rig: 'humanoid', shoeShape: 'sneaker', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    legShiftFoot: -0.03,
+    hipRound: 0,
+    hipTuck: 0.98,
+    hipJoin: 'now',
+    legShiftRoot: -0.025,
+    legWidth: 0.89,
+    legInto: 0.025,
+    torsoLong: 0.03,
+    tall: 0.97,
+    // end character editor proportions
+  },
   // The serving line's own staff. Stout and short-armed on purpose: she is only
   // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
   // has to work is shoulders-bun-apron and nothing below it. `flat` mouth is the
   // whole performance — she is not pleased to see you and she is not displeased.
-  dolores: { rig: 'humanoid', head: 'hairnet', mouth: 'flat', apron: true, stout: true, armDepth: true, hands: true, limbStyle: 'snap' },
+  // A WHITE SNEAKER, because that is what she would actually own: a hairnet and
+  // an apron is catering uniform, and catering uniform is worn with a white
+  // trainer. The plimsoll she had was the right shape for her legs and the
+  // wrong shoe for her job.
+  dolores: { rig: 'humanoid', shoeShape: 'sneaker', head: 'hairnet', mouth: 'flat', apron: true, stout: true, armDepth: true, hands: true, limbStyle: 'snap' ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    armWidth: 0.91,
+    armLength: 0.9,
+    hipTuck: 0.84,
+    legLength: 0.85,
+    legInto: -0.02,
+    tall: 0.94,
+    waistScale: 0.7,
+    armOut: -0.02,
+    hipRound: 0,
+    torsoWidth: 0.89,
+    // end character editor proportions
+  },
   raymn: { rig: 'ray', limbStyle: 'float' },
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
@@ -622,7 +1374,15 @@ export const TOON_SPECS = {
   // off his back and the world entity appeared while his arms carried on
   // running. See the gesture in drawHumanoid, and run.js's held spawn — the
   // axe now leaves his hand on the release beat, not on the press.
-  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', axeThrow: true, shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', ears: true, earOut: 0.88, jumpKneeDrop: 0.12, celebTuck: 0.52,
+  // HIS FEET ARE LONG, NOT BIG. footRx floors at 0.095u and his own cap only
+  // asks for 0.0825u, so the floor won and his shoe came out exactly as long as
+  // Lorenzo's — on a leg 22% wider. The first fix was `footScale: 1.18`, which
+  // grows both axes: it put the length back and took the slipper with it, so he
+  // came out in a deeper, chunkier shoe rather than a longer one. `footLong`
+  // does the half that was wanted — 1.42 of the length, the standard girth — so
+  // the plimsoll stays a plimsoll and simply has more of itself in front of the
+  // ankle, which is what a tall man's foot does.
+  grumpos: { rig: 'humanoid', shoeShape: 'slipper', footLong: 1.42, heavy: true, head: 'bald', beard: true, back: 'axe', axeThrow: true, shoulders: 1.08, taper: 0.6, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', ears: true, earOut: 0.88, jumpKneeDrop: 0.12, celebTuck: 0.52,
     // `headAngle: -57` is SOLVED, not eyeballed. The blade's socket edge runs
     // from (-0.27,-0.04) to (-0.24,-0.25) in the art's own coordinates, so its
     // axis — square to that edge — bears -171.9 degrees, while the haft bears
@@ -634,7 +1394,14 @@ export const TOON_SPECS = {
     // HEAD: 15% smaller, and a steel that sits below his skin instead of above
     // it. In the shipped ice blue the blade was lighter than he is and the eye
     // reached the axe before the face; it is his weapon, not his focal point.
-    axeArt: { blade: 0.74, headSlide: 0.06, headAngle: -57, steel: '#8fa9bd', sheen: '#cfe2ef' } },
+    axeArt: { blade: 0.74, headSlide: 0.06, headAngle: -57, steel: '#8fa9bd', sheen: '#cfe2ef' } ,
+    // proportions — written by the character editor (tools/character-editor.js)
+    armWidth: 1.02,
+    armLift: 0.015,
+    waistScale: 0.94,
+    shoulderSoft: 0.4,
+    // end character editor proportions
+  },
 };
 
 // ---------------------------------------------------------------- helpers
@@ -745,6 +1512,16 @@ function taperHalfAt(y, top, bot, halfTop, halfBot, soft) {
   const it = 1 - t;
   return it * it * halfTop + 2 * t * it * ctlX + t * t * halfBot;
 }
+// The waist as a fraction of the shoulder line, for the painters that have to
+// quote the standing build without being able to measure it — the reclined
+// capsule and its waistbands. `waistScale` is the character editor's waist dial
+// and it rides ON the taper, which is why it is gated on one: a build with no
+// taper stands as a round barrel whose sides never read the dial (Dolores wears
+// waistScale 0.7 and stands as wide at the belt as at the chest), so quoting it
+// there would give her a reclined waist she does not have standing.
+function waistTaper(spec) {
+  return spec.taper ? spec.taper * (spec.waistScale || 1) : 1;
+}
 function taperTorsoPath(c, cx, top, bot, halfTop, halfBot, soft) {
   const { rT, rB, midY, ctlX } = taperCtl(top, bot, halfTop, halfBot, soft);
   c.moveTo(cx - halfTop + rT, top);
@@ -757,6 +1534,47 @@ function taperTorsoPath(c, cx, top, bot, halfTop, halfBot, soft) {
   c.quadraticCurveTo(cx - ctlX, midY, cx - halfTop, top + rT);
   c.quadraticCurveTo(cx - halfTop, top, cx - halfTop + rT, top);
   c.closePath();
+}
+
+// Half-width of turnedTorsoPath on ONE side at a given y — the three-quarter
+// answer to taperHalfAt, and built by inverting the same way: each side of that
+// path is a single quadratic from the shoulder anchor to the hip anchor, so
+// solve its y(t) for t and read x(t). `side` is -1 for the screen-left edge and
+// +1 for the screen-right one, and the result is always a positive half-width.
+// Outside the two anchors it holds the anchor's own width, exactly as
+// taperHalfAt holds its ends: past the hip anchor the path is rounding its
+// corner in toward the centre, and no band wants to be measured on a corner.
+function turnedHalfAt(y, top, bot, halfTop, halfBot, yaw, side) {
+  const d = Math.abs(yaw);
+  const nearLeft = yaw >= 0;
+  const left = side < 0;
+  // The NEAR side is the broad one, and it is the one whose shoulder drops:
+  // turnedTorsoPath slopes that corner down by halfTop * 0.28 * d.
+  const near = left === nearLeft;
+  const halfT = halfTop * (near ? 1.1 : 0.84);
+  const halfB = halfBot * (near ? 1.02 : 0.86);
+  const topY = top + (near ? halfTop * 0.28 * d : 0);
+  const shoulderRound = halfTop * 0.38;
+  const hipRound = Math.max(halfBot * 0.32, halfTop * 0.12);
+  const y0 = topY + shoulderRound, y1 = bot - hipRound;
+  if (y <= y0) return halfT;
+  if (y >= y1) return halfB;
+  const ctlX = halfT * (left ? 0.88 : 0.82);
+  const midY = top + (bot - top) * 0.58;
+  const a = y1 - 2 * midY + y0, b = 2 * (midY - y0), c = y0 - y;
+  let t;
+  if (Math.abs(a) < 1e-9) {
+    t = -c / b;
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) return halfB;
+    const r = Math.sqrt(disc);
+    t = (-b + r) / (2 * a);
+    if (t < 0 || t > 1) t = (-b - r) / (2 * a);
+  }
+  t = Math.max(0, Math.min(1, t));
+  const it = 1 - t;
+  return it * it * halfT + 2 * t * it * ctlX + t * t * halfB;
 }
 
 // Asymmetric torso for a real three-quarter view. Positive yaw exposes the
@@ -1334,8 +2152,14 @@ function drawWrench(ctx, x, y, angle, u, ow, flip = false, open = 1) {
   // they are the one mark that says pipe wrench rather than hammer.
   outlined(ctx, PIPE_POST, fine, (c) =>
     roundRectPath(c, 0.15 * u, -0.046 * u, 0.115 * u, 0.017 * u, 0.004 * u));
+  // THINNER BAND (Peter, twice): worn head-up the tool's own axis runs
+  // vertically, so the nut's LENGTH along the shaft is what reads as its
+  // thickness on screen. 0.032u was a block, 0.024u a band, and this is the
+  // band pulled in again — near the floor, because under about 0.017u the
+  // 0.006u corner radius eats the straight edge and it stops reading as a nut.
+  // Trimmed about its own centre so it stays where it sits on the slide.
   outlined(ctx, PIPE_STEEL, fine, (c) =>
-    roundRectPath(c, 0.178 * u, -0.060 * u, 0.032 * u, 0.044 * u, 0.006 * u));
+    roundRectPath(c, 0.1845 * u, -0.060 * u, 0.019 * u, 0.044 * u, 0.005 * u));
   // The red bracket the slide runs in: a short shoulder off the handle, which
   // is what carries the post rather than leaving it floating alongside.
   outlined(ctx, PIPE_RED, fine, (c) => {
@@ -7592,8 +8416,20 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // not remain on the old waist when a body dial changes. Turned torsos keep
   // their asymmetric path and rely on that exact clip; the front-on paths can
   // be measured directly, including the plain body's hip tuck and round.
-  const bodyHalfAt = (yy) => {
-    if (turned) return torsoHalf;
+  // `side` (-1 screen-left, +1 screen-right) asks the THREE-QUARTER body for
+  // the width of one of its own edges. It matters because the turned torso is
+  // asymmetric — the near side is broad and the far one recedes — so there is
+  // no single honest answer, and a garment that is not clipped to the contour
+  // has to know which edge it is about to hang off. Asked without a side the
+  // turned body still answers with the shoulder line it always has: every
+  // caller that measures a band it then CLIPS to torsoPath is right to be
+  // generous, and none of them changes behaviour here.
+  const bodyHalfAt = (yy, side = 0) => {
+    if (turned) {
+      return side
+        ? turnedHalfAt(yy, torsoTop, torsoBot, torsoHalf, waistHalf, turnYaw, side)
+        : torsoHalf;
+    }
     if (spec.taper) return taperHalfAt(yy, torsoTop, torsoBot, torsoHalf, waistHalf, shoulderSoft);
     return roundHalfAt(yy, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7,
       torsoHalf * hipTuck, torsoHalf * (0.7 + 0.3 * hipRound));
@@ -9568,7 +10404,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // wrist, because handDeco is handed a POINT and not a direction — a
       // directional band would need the forearm's angle threaded through every
       // caller, and a ring reads the same at every one of them.
-      paintHand(ctx, spec, u, ow, x, y, armW * 0.8, recede(p.w, back), recede(p.hand || p.s, back), ang, true, kind);
+      // `p.cuff` opts a palette out of the leather default. A cuff is the one
+      // worn thing that sits directly against the skin of the hand, so on a
+      // FURRED hero a white leather ring reads as a bandage rather than as a
+      // glove — it is the brightest thing on the arm and the eye lands on it
+      // before the hand. Rusty takes a darker shade of his own fur instead.
+      paintHand(ctx, spec, u, ow, x, y, armW * 0.8, recede(p.cuff || p.w, back), recede(p.hand || p.s, back), ang, true, kind);
     } else if (spec.goldCuffs) {
       // A BRACELET: one gold ring at the wrist with the bare hand over it, so
       // the band reads as a strip of metal round the arm and not as a glove.
@@ -9744,8 +10585,53 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // end cap (legW / 2 past the ankle point) on the wider-legged rigs too.
   const capR = legW * 0.5;
   const footScale = Number(spec.footScale) > 0 ? Number(spec.footScale) : 1;
-  const footRx = Math.max(frontLegs ? 0.075 * u : 0.095 * u, capR * 1.5) * footScale;
-  const footRy = (capR + 0.008 * u) * footScale;
+  // LENGTH ON ITS OWN. `footScale` grows the whole shoe, which is the honest
+  // dial for a heavier rig — but "bigger feet" and "longer feet" are different
+  // notes, and only one of them was available. A shoe scaled on both axes gets
+  // deeper as it gets longer and reads as a bigger BOOT; what a tall, heavy
+  // character usually wants is the same slim shoe with more of it in front of
+  // the ankle. `footLong` multiplies the long axis alone, on top of footScale,
+  // so a spec can say either thing or both.
+  const footLong = Number(spec.footLong) > 0 ? Number(spec.footLong) : 1;
+  // FRONT ON, THE SHOE IS SIZED OFF THE LEG. It was `max(0.075u, capR * 1.5)`,
+  // and that floor wins for nearly everybody: Lorenzo's 0.09u leg asks for
+  // 0.0675u and the three slim heroes' 0.082u legs ask for 0.0615u, so all four
+  // came out on the SAME 0.075u-wide foot while their depths tracked their legs
+  // properly. A slim hero was wearing a standard hero's width — which is
+  // exactly the "not fitting" read, and it is a fit problem, not a size one.
+  //
+  // 1.67 of the ankle cap instead, floored only against nothing sensible. It is
+  // picked so the reference build does not move (0.09u leg -> 0.0752u, against
+  // the 0.075u it had), which leaves the slim cast narrower and the heavy rig
+  // wider — each shoe now in proportion to the leg standing in it. The PROFILE
+  // branch keeps its own floor: side on the shoe's length is about the shoe,
+  // not about the ankle, and 0.095u is the length that reads as footwear.
+  const FRONT_WIDTH = 1.67;
+  // A SPLAYED FOOT IS A SIDE VIEW, so it takes the side's radius. It was being
+  // handed the front one — a WIDTH, sized off the ankle — and then compressed
+  // by the yaw on top, which left the shoe barely wider than the leg standing
+  // in it. Anchored behind the middle the way a side shape is, that put the
+  // heel's coverage under the leg's own end cap and the cap came out through
+  // the back of the shoe: Peter's "does not wrap around". The side radius is a
+  // LENGTH (0.095u floor, about twice the cap) and survives the compression.
+  const splayed = frontLegs && splayOf(spec) > 0;
+  const footRx = (frontLegs && !splayed ? Math.max(capR * FRONT_WIDTH, 0.055 * u)
+    : Math.max(0.095 * u, capR * 1.5)) * footScale * footLong;
+  // FRONT ON, A SHOE IS SHALLOWER. Both views shared one footRy, so a foot seen
+  // end-on was drawn as deep as the same shoe is in profile — and with a real
+  // sole on it now that reads as a boot stood on its toe rather than as a foot
+  // pointing at you. Foreshortening is not a cheat here: side on you see the
+  // whole length, front on you see the toe box, and a toe box is not as deep as
+  // a shoe is long. Only the DEPTH is squashed — the width is untouched,
+  // because narrow was the previous complaint and this is the other axis, and
+  // `footLong` above owns the long one.
+  //
+  // It costs almost nothing at the sole: the shoe's reach below the ankle
+  // shrinks with ry, so the shipped oval's bottom edge rises 0.011u — a quarter
+  // of a pixel at the 24u the game runs at. The oval heroes are in this too;
+  // end-on foreshortening is a fact about every foot, not just the shaped ones.
+  const FRONT_DEPTH = 0.78;
+  const footRy = (capR + 0.008 * u) * footScale * (frontLegs ? FRONT_DEPTH : 1);
   // The rolled shoe is a RIGID FOOT: it pivots about the ankle the way a real
   // shoe does, so the shoe's offset from the leg's endpoint rotates with it
   // and the leg's round end cap stays buried at every angle — burial is the
@@ -9763,17 +10649,92 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // its own hip, handed the IK that much more slack, and swung the KNEE down
   // below the lifted shoe — a leg-coloured blob under the heel, worst on the
   // toe-off frames.) Zero at rot 0, so the unstyled cast renders untouched.
-  const shoeGeom = (rot) => {
-    const c = Math.cos(rot), sn = Math.sin(rot);
-    return {
-      dx: footDx * c - 0.01 * u * sn,
-      dy: footDx * sn + 0.01 * u * c,
-      hyp: Math.hypot(footRx * sn, footRy * c),
-    };
-  };
-  const shoeF = shoeGeom(ankleF), shoeB = shoeGeom(ankleB);
-  footF[1] = Math.min(footF[1], 0.01 * u + footRy - shoeF.dy - shoeF.hyp);
-  footB[1] = Math.min(footB[1], 0.01 * u + footRy - shoeB.dy - shoeB.hyp);
+  // `shoeDrop` answers how far the shoe reaches below the LEG'S ENDPOINT, so
+  // the clamp reads the same whether the foot is an oval or a shape — the
+  // placement arithmetic that used to live here has moved into paintShoe,
+  // which is the only thing that needs to know which of the two it is drawing.
+  const dropF = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleF, frontLegs);
+  const dropB = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleB, frontLegs);
+  // THE GROUND IS NOT LEVEL, and until now the rig has drawn as though it were.
+  // Foot targets are figure-space and the clamp below plants a sole on a
+  // HORIZONTAL line, so on a hill both feet sat at the same height and both
+  // soles stayed flat while the terrain ran away underneath. The oval hid it —
+  // a shape with no flat sole and no defined "down" reads the same at any
+  // angle — and putting real soles on the cast is what made it visible.
+  //
+  // `pose.groundDelta(dx)` is how far the terrain rises or falls dx pixels
+  // either side of the hero, the same contract the boost chevrons already use,
+  // and figure space IS world pixels here (u is the hero's draw height in world
+  // units), so a foot's own x goes straight in. Two things come out of it:
+  //
+  //   HEIGHT   each foot plants on its own piece of ground rather than on the
+  //            hero's. A stride is only ~5px at the size the game runs, so this
+  //            is a pixel or two — but it is the difference between a figure
+  //            standing ON a hill and one standing THROUGH it.
+  //   ANGLE    the sole turns to lie along the local gradient, measured across
+  //            the shoe's own length so a long boot reads the slope it actually
+  //            covers. This is the half you can see.
+  //
+  // Both are zero on flat ground and for every caller with no terrain, so the
+  // menus, the portraits and the gallery draw exactly what they drew.
+  const gd = typeof pose.groundDelta === 'function' ? pose.groundDelta : null;
+  // Across the shoe, not across a fixed span: the gradient a foot sits on is
+  // the one under the foot, so a long boot reads the slope it actually covers.
+  const groundAngle = (fx) =>
+    clampTilt(soleTilt(gd, fx, Math.max(footRx, 0.06 * u)), SOLE_TILT_MAX);
+  // AND THE DROP EACH FOOT WILL FOLLOW IS CAPPED, for the same reason the lean
+  // is. The terrain is free to fall faster than a pair of legs can span: on a
+  // 45-degree face the ground drops a whole stride's width across one stride,
+  // which is most of a hero's leg. Handed that raw, the trailing leg is asked to
+  // reach past its own length and straightens short while the leading knee folds
+  // to nothing — and the body, hung between two feet it cannot reach, settles
+  // into the hill. Peter's "I'm being pushed into the ground".
+  //
+  // A third of the leg is as far as a foot will chase the floor. Under that
+  // nothing engages, which covers every hill the game rolls; past it the figure
+  // stops trying to plant on ground it cannot stand on and runs across the face
+  // instead, which is at least a thing a body can do.
+  const footReach = legL * 0.34;
+  const chase = (dx) => Math.max(-footReach, Math.min(footReach, gd(dx)));
+  // A LEAN MUST NOT MOVE THE FEET, and this is the half of it the soles already
+  // knew about but the FOOT TARGETS did not. drawToon rotates the whole figure
+  // about the ground point to lean it, so a foot standing a stride away from
+  // that point swings by the stride times the sine of the angle — at the cap
+  // that is a couple of pixels at the size the game runs, downhill, straight
+  // into the hill. A runner leans; a runner's planted feet do not move. Undoing
+  // the rotation's own vertical travel per foot is what makes that true, and it
+  // is exact rather than a fudge: it is the same sine, subtracted back off.
+  const leanRot = slopeLean(pose, u);
+  const leanLift = (fx) => -fx * Math.sin(leanRot);
+  if (gd) {
+    footF[1] += chase(footF[0]) + leanLift(footF[0]);
+    footB[1] += chase(footB[0]) + leanLift(footB[0]);
+  }
+  // Where each foot's sole would touch its own ground.
+  const touchF = (gd ? chase(footF[0]) + leanLift(footF[0]) : 0) + 0.01 * u + footRy - dropF;
+  const touchB = (gd ? chase(footB[0]) + leanLift(footB[0]) : 0) + 0.01 * u + footRy - dropB;
+  footF[1] = Math.min(footF[1], touchF);
+  footB[1] = Math.min(footB[1], touchB);
+  // ONLY A FOOT THAT IS DOWN TAKES THE GROUND'S ANGLE. The first cut handed the
+  // gradient to both, which is wrong twice over: a foot at the top of its swing
+  // is nowhere near the floor and has no business quoting it, and worse, the
+  // hill it would quote is the one under a point it is only passing over — so
+  // the airborne shoe cocked and uncocked as it travelled, a flutter that read
+  // as a broken ankle rather than as terrain.
+  //
+  // `planted` is not a taste dial and there is no percentage to pick: it is
+  // simply how far the foot is off its own ground, faded out over a quarter of
+  // a shoe-height so a foot leaving the floor lets go of the slope smoothly
+  // instead of snapping level. Down = 1, clear of the floor = 0, and the gait's
+  // own heel-strike and toe-off roll carry the swing exactly as they did.
+  const LIFT_FADE = 0.25 * u;
+  const planted = (footY, touch) =>
+    Math.max(0, Math.min(1, 1 - (touch - footY) / LIFT_FADE));
+  // ...less whatever the body already leaned by. drawToon has rotated the whole
+  // figure, shoes included, so a sole that also took the full gradient would be
+  // tilted twice and dig into the hill it is standing on.
+  const tiltF = (groundAngle(footF[0]) - leanRot) * planted(footF[1], touchF);
+  const tiltB = (groundAngle(footB[0]) - leanRot) * planted(footB[1], touchB);
   // Unequal leg bones for the styled gait: `thigh` is the thigh's share of
   // the two-bone leg, 0.5 the shipped 1:1 split. The TOTAL is held constant,
   // so the extension guard's reach arithmetic still stands; only where the
@@ -9954,7 +10915,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         ctx.stroke();
       }
     }
-    outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + shoeF.dx, footF[1] - ankleLift + shoeF.dy, footRx, footRy, ankleF, 0, Math.PI * 2));
+    paintShoe(ctx, spec, ow, lod, footFill,
+      footF[0], footF[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleF + tiltF, frontLegs,
+      // The SAME two-bone solution the leg was just drawn with, so the cuff
+      // cannot drift off the shin the knee actually folded on. `toe` turns a
+      // splayed foot outboard — the near foot to the right, the far one left,
+      // so the stance opens instead of both feet pointing the same way.
+      { knee: kneeAt(hipX, legRootYF, footF, kneeF), legW: legWF, toe: 1 });
     // Near-leg holster last: it sits ON the thigh, so it has to land after the
     // limb it is strapped to. This is also the side the gun is drawn from.
     if (spec.holster === 'thigh') thighHolster(hipX, legRootYF, footF, kneeF, legWF, 0, holsterDrawn);
@@ -11009,7 +11976,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(legFill, farShade), ow, legWB, false, shinSeg);
   shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
   bootShaft(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(footFill, farShade));
-  outlined(ctx, recede(footFill, farShade), hair(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + shoeB.dx, footB[1] - ankleLift + shoeB.dy, footRx, footRy, ankleB, 0, Math.PI * 2));
+  paintShoe(ctx, spec, ow, lod, recede(footFill, farShade),
+    footB[0], footB[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleB + tiltB, frontLegs,
+    { base: footFill, knee: kneeAt(hipAt(-1), legRootYB, footB, kneeB), legW: legWB, toe: -1 });
   // The far holster recedes with the leg it is on, like every other far-side
   // piece — an un-pushed one reads as a bright tag floating off the back thigh.
   if (spec.holster === 'thigh') thighHolster(hipAt(-1), legRootYB, footB, kneeB, legWB, farShade, false);
@@ -11908,6 +12877,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Belt sits high on the waist: a low band leaves a long round belly above
     // it and reads chubby rather than barrel-chested.
     const beltY = hipY - 0.075 * u + bob;
+    // The band's own rims, named because the skirt below is TIED TO THEM: the
+    // belt is drawn clipped to the torso, so its lower rim is exactly how wide
+    // the body is where the leather ends, and that is the line the straps have
+    // to hang from.
+    const bandUp = 0.03 * u, bandDown = 0.035 * u;
     const top = beltY + 0.025 * u;
     // Panels stop just past the knee — a joint crossing the hem reads as the
     // leather riding up, so only the shin below carries the gait. The heavy
@@ -11922,7 +12896,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // so the belt and the skirt top pinched in on the jump and only on the
     // jump. Clamped, they measure the bottom of the torso instead, which is
     // the widest the leather is ever asked to span.
-    const halfAt = (y0) => bodyHalfAt(Math.min(y0, torsoBot - 0.005 * u));
+    const halfAt = (y0, side) => bodyHalfAt(Math.min(y0, torsoBot - 0.005 * u), side);
+    // Declared up here because the TIE below has to divide by it: each strap is
+    // scaled by the depth of the side it hangs on, so the width the tie solves
+    // for is the pre-depth one.
+    const depthScaleAt = (f) => turned ? (f * nearSign > 0 ? 1.08 : 0.78) : 1;
     // A HAIR WIDER THAN THE TAPER SAYS. `halfAt` returns the torso's half-width
     // at the belt's own height, which is the right measurement for a band that
     // has to sit ON the body — but the belt is drawn as a rounded rect and its
@@ -11932,15 +12910,45 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // front of him rather than fastened round him. The same 1.06 goes on the
     // skirt top below, so the leather still hangs off the belt's own line.
     const beltHalf = halfAt(beltY) * 1.06;
+    // The turned band's own ends, measured per side at the belt's height.
+    const turnedBeltHalf = (side) => halfAt(beltY, side) * 1.06;
     // Panels span the body's edge at the belt, then splay outward — sized off
     // the shoulder line they'd hang past the hips and re-read as belly.
-    const wTop = halfAt(top) * 1.04;
+    //
+    // TIED TO THE BELT'S LOWER RIM. This used to measure the body 0.01u ABOVE
+    // that rim and then add 4% on top, which on a tapering waist put the
+    // outermost strap's top corner outboard of the leather: a shelf of skirt
+    // hanging off nothing, with the belt visibly narrower than the garment it
+    // fastens. It is the widest CORNER that has to land on the rim, not wTop —
+    // the outer strap's centre sits at PANEL_SPREAD of wTop and it is
+    // PANEL_HALF of wTop wide either side of that, so the skirt's own edge is
+    // (PANEL_SPREAD + PANEL_HALF) * wTop.
+    // The strap fan's two numbers: how far out the outermost strap's centre
+    // sits as a fraction of wTop, and how wide each strap is either side of
+    // its own centre. Named here because the tie below measures the corner
+    // they make between them, and the PANELS array further down uses them.
+    const PANEL_SPREAD = 0.75, PANEL_HALF = 0.3;
+    const wFree = halfAt(top) * 1.04;
+    // Turned, the body is asymmetric and so is the fan: solve the tie on the
+    // NEAR side, the broad one whose straps are also scaled up the most. The
+    // far straps then land inside their own narrower edge on their own — the
+    // body recedes to 0.86 of the waist there while the strap recedes to 0.78.
+    const rimY = beltY + bandDown;
+    const rimHalf = turned
+      ? halfAt(rimY, nearSign) / depthScaleAt(nearSign)
+      : halfAt(rimY);
+    const wTop = Math.min(wFree, rimHalf / (PANEL_SPREAD + PANEL_HALF));
+    // The HEM keeps the width it shipped with. The A-line is not decoration —
+    // it exists to clear thighs that root at ±0.095u front-on — so tying the
+    // waist in must not pull the leather off them: the flare absorbs the tie,
+    // and the strap tips, the under-layer and the hem all land where they did.
+    const tie = wTop / wFree;
     // The splay has to clear the thighs, and front-on they root wide (±0.095u,
     // half a legW each side) instead of stacking on one center hip — so the
     // standing and celebrating poses need a real A-line or his legs show past
     // the leather. In profile the legs are behind it and a tighter hang reads
     // better. Fanned wider than this the straps stop overlapping.
-    const flare = frontLegs || cm ? 1.5 : 1.18;
+    const flare = (frontLegs || cm ? 1.5 : 1.18) / tie;
     // Spreads with the hop and the jump, like every hem on the roster: the
     // straps are free at the bottom and the air opens them.
     // Spreads as she leaves the floor — the straps are free at the bottom and
@@ -11970,19 +12978,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // it hard, the back pair barely stir, which is what keeps the stack from
     // moving as one board. `f` is the panel's center as a fraction of wTop.
     const PANELS = [
-      { f: -0.75, gain: 0.25 },
+      { f: -PANEL_SPREAD, gain: 0.25 },
       { f: -0.25, gain: 0.4 },
       { f: 0.25, gain: 0.95 },
-      { f: 0.75, gain: 1 },
+      { f: PANEL_SPREAD, gain: 1 },
     ];
-    const pTopHalf = wTop * 0.3;    // 4 panels across 2*wTop, overlapping
+    const pTopHalf = wTop * PANEL_HALF;    // 4 panels across 2*wTop, overlapping
     // Leather on a belt loop can only travel so far. Poses that tuck the legs
     // right up — the victory routine, a jump — would otherwise fling the
     // panels clear of the body, so the drag is capped, not scaled.
     const drag = (v, max) => Math.max(-max, Math.min(max, v));
     const skirtSlope = turned ? turnDepth * 0.025 * u : 0;
     const waistBow = turned ? turnDepth * 0.022 * u : 0;
-    const depthScaleAt = (f) => turned ? (f * nearSign > 0 ? 1.08 : 0.78) : 1;
     // The roots sit on the bowed front edge of a cylindrical waist. A linear
     // edge makes the whole garment look pasted onto a flat board.
     const topYAt = (f) => top + f * nearSign * skirtSlope + (1 - f * f) * waistBow;
@@ -12046,15 +13053,17 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const beltSlope = turnDepth * 0.018 * u;
       const leftY = beltY - nearSign * beltSlope;
       const rightY = beltY + nearSign * beltSlope;
-      // The perspective multipliers keep the turned band readable, but the
-      // receding side can otherwise become narrower than the actual torso
-      // edge. Give both ends a conservative minimum before the torso clip
-      // trims them back to the exact silhouette at this height.
-      const sideMin = torsoHalf * 0.92;
-      const leftHalf = Math.max(beltHalf * depthScaleAt(-1), sideMin);
-      const rightHalf = Math.max(beltHalf * depthScaleAt(1), sideMin);
+      // Each end measures ITS OWN EDGE of the three-quarter body, a hair wide
+      // (the same 1.06 the front-on band is given) so the torso clip owns the
+      // final side pixels. This used to scale one waist-blind number by the
+      // strap depths and then floor both ends at 0.92 of the SHOULDER width —
+      // a full torso-half outboard of his receding hip — so the far-side
+      // turnover below was placed outside the body and clipped away entirely,
+      // and the buckle rode a band whose ends were fiction.
+      const leftHalf = turnedBeltHalf(-1);
+      const rightHalf = turnedBeltHalf(1);
       const bandTop = 0.028 * u;
-      const bandBottom = 0.035 * u;
+      const bandBottom = bandDown;
       // Curved upper and lower rims turn the belt into a band around a barrel,
       // while the shortened far edge shows it disappearing around his side.
       outlined(ctx, p.g, hair(0.5, ow * 0.55), (c) => {
@@ -12078,7 +13087,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       dot(ctx, px + nearSign * beltHalf * 0.08, beltY + waistBow + nearSign * beltSlope * 0.08, 0.034 * u, p.w);
     } else {
       outlined(ctx, p.g, hair(0.5, ow * 0.55), (c) =>
-        roundRectPath(c, px - torsoHalf * 1.6, beltY - 0.03 * u, torsoHalf * 3.2, 0.065 * u, 0.02 * u));
+        roundRectPath(c, px - torsoHalf * 1.6, beltY - bandUp,
+          torsoHalf * 3.2, bandUp + bandDown, 0.02 * u));
       dot(ctx, px, beltY + 0.002 * u, 0.034 * u, p.w);
     }
     ctx.restore();
@@ -12178,6 +13188,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // split build wears it high, which is what lets its skirt be short without
     // the panels looking cropped.
     const dressBeltY = hipY - (0.05 + (spec.waistRise || 0)) * u + bob;
+    // The sash's own rims. The skirt below is TIED TO THE LOWER ONE: the band
+    // is drawn clipped to the torso, so that rim is exactly how wide she is
+    // where the sash ends, and a panel top sized anywhere above it comes out
+    // wider than the sash it hangs from.
+    const sashUp = 0.032 * u, sashDown = 0.034 * u;
     const top = dressBeltY + 0.02 * u;
     const hemY = hipY + legL * 0.42 + bob * 0.5;
     const wTop = torsoHalf * 0.98;
@@ -12207,15 +13222,48 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // which is already drawn — the skirt simply is not there.
       const splitSide = -1;
       const hemLow = hipY + legL * (slide ? 0.24 : 0.36) + bob * 0.5;
-      const halfAtY = (y) => bodyHalfAt(y);
-      const wTopS = halfAtY(top) * 0.98;
+      // Clamped inside the torso's own span, like the pteruges: airborne the
+      // bob can drop the waist below torsoBot, where the taper has nothing
+      // left to interpolate and returns its narrowest width.
+      const halfAtY = (y, side) => bodyHalfAt(Math.min(y, torsoBot - 0.005 * u), side);
+      // `f` is the panel's centre as a fraction of wTop; `gain` how much of its
+      // leg it inherits. The panel over the split side is pulled in and barely
+      // stirs — it is the edge of the opening, and an edge that swings as hard
+      // as the middle closes the split it is supposed to be making.
+      // Equal lengths. A staggered hem — centre panel dropped, the two beside
+      // it lifted — was tried and lost: it made the skirt look damaged rather
+      // than cut.
+      const PANELS = [
+        { f: splitSide * 0.72, half: 0.3, gain: 0.25 },
+        { f: 0, half: 0.46, gain: 0.85 },
+        { f: -splitSide * 0.66, half: 0.42, gain: 1 },
+      ];
+      // TIED TO THE SASH'S LOWER RIM, and it is the widest panel CORNER that
+      // has to land on it: each panel's centre sits at `f` of wTopS and it is
+      // `half` of wTopS wide either side, so the skirt's own edge is the
+      // largest |f| + half across the three of them. Measured at `top` with a
+      // 0.98 fudge — as it was — the corners stood outboard of the sash, and
+      // the narrower waist the character editor gave her made the shelf plain.
+      const panelEdge = Math.max(...PANELS.map(({ f, half }) => Math.abs(f) + half));
+      const wFree = halfAtY(top) * 0.98;
+      // These panels are pinned symmetrically — unlike the pteruges they carry
+      // no per-side depth scale — so a turned body is tied on its NARROWER
+      // edge, the only measurement that keeps both sides on the sash.
+      const rimY = dressBeltY + sashDown;
+      const rimHalf = turned
+        ? Math.min(halfAtY(rimY, -1), halfAtY(rimY, 1))
+        : halfAtY(rimY);
+      const wTopS = Math.min(wFree, rimHalf / panelEdge);
+      // The hem keeps the width it shipped with: the A-line clears thighs that
+      // root wide front-on, so the flare absorbs the tie (see the pteruges).
+      const tie = wTopS / wFree;
       // Front-on the legs root wide, so the hem needs a real A-line or the
       // thighs show past the cloth on both sides instead of only in the split.
       // Flares harder than it did. A short skirt hanging near-straight reads as
       // a tube; the A-line is most of what says "skirt" once there is not much
       // length left to say it with, and the panels have to clear thighs that
       // root wide front-on.
-      const flare = frontLegs ? 1.72 : 1.44;
+      const flare = (frontLegs ? 1.72 : 1.44) / tie;
       // Same spread as the pteruges: the panels open as she leaves the floor.
       // Same spread as the pteruges: the panels open as she leaves the floor.
       const upNowK = Math.max(0, jump
@@ -12231,18 +13279,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 160))
         : cm ? -Math.min(1, (cm.lift || 0) / 0.09) : 0;
       const drag = (v, max) => Math.max(-max, Math.min(max, v));
-      // `f` is the panel's centre as a fraction of wTop; `gain` how much of its
-      // leg it inherits. The panel over the split side is pulled in and barely
-      // stirs — it is the edge of the opening, and an edge that swings as hard
-      // as the middle closes the split it is supposed to be making.
-      // Equal lengths. A staggered hem — centre panel dropped, the two beside
-      // it lifted — was tried and lost: it made the skirt look damaged rather
-      // than cut.
-      const PANELS = [
-        { f: splitSide * 0.72, half: 0.3, gain: 0.25 },
-        { f: 0, half: 0.46, gain: 0.85 },
-        { f: -splitSide * 0.66, half: 0.42, gain: 1 },
-      ];
       // A base across the CLOSED side — centre panel to the far edge, stopping
       // short of the split so the opening stays open. It carries the skirt's
       // outer contour at full ink weight, which lets the panel seams on top of
@@ -12335,8 +13371,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // waist to show it on.
     const sashHalf = bodyHalfAt(dressBeltY) * 1.04;
     beltClip(() => outlined(ctx, p.sash || p.p, hair(0.5, ow * 0.6), (c) =>
-      roundRectPath(c, px - torsoHalf * 1.6, dressBeltY - 0.032 * u,
-        torsoHalf * 3.2, 0.066 * u, 0.018 * u)));
+      roundRectPath(c, px - torsoHalf * 1.6, dressBeltY - sashUp,
+        torsoHalf * 3.2, sashUp + sashDown, 0.018 * u)));
     if (!lod) {
       // The knot, off-centre, with a short tail — a sash tied rather than a
       // band pulled on.
@@ -12876,7 +13912,7 @@ function slideHand(ctx, id, spec, p, u, ow, armW, x, y, lod, shX = null, shY = n
     }
     paintHand(ctx, spec, u, ow, x, y, br, p.ribbon || p.w, p.hand || p.s, ang, true, 'slide');
   } else if (spec.gloves) {
-    paintHand(ctx, spec, u, ow, x, y, armW * 0.8, p.w, p.hand || p.s, ang, true, 'slide');
+    paintHand(ctx, spec, u, ow, x, y, armW * 0.8, p.cuff || p.w, p.hand || p.s, ang, true, 'slide');
   } else if (spec.goldCuffs) {
     // The bracelet, sliding: the standing hand has had one since it shipped
     // and this pose did not, so she took her jewellery off to power-slide.
@@ -12897,9 +13933,13 @@ function slideTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, 
   // line-cap bulged half a torso-width past the belt line — an oval hanging
   // off the belt, not trousers ending at one.
   // `taper` narrows the hip end the way the standing rig narrows the waist —
-  // Grumpos is broad at the shoulders and 0.58 of that at the belt, and a
+  // Grumpos is broad at the shoulders and 0.6 of that at the belt, and a
   // constant-width tube read as a different body entirely.
-  const taper = spec.taper || 1;
+  // Via waistTaper, so the character editor's `waistScale` comes with it: the
+  // standing rig narrows the waist by taper AND that dial, and quoting only
+  // half of the pair had Kiko and Grumpos sliding on a waist several percent
+  // wider than the one they stand on.
+  const taper = waistTaper(spec);
   const rHip = (w / 2) * taper, rSh = w / 2;
   const capsule = taper === 1
     ? (c) => roundRectPath(c, -w / 2, -w / 2, L + w, w, w / 2)
@@ -13549,11 +14589,40 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   // shipped cast keeps its exact boots.
   const bc = spec.slideBootCover ? 1 : 0;
   const slideFootScale = Number(spec.footScale) > 0 ? Number(spec.footScale) : 1;
+  // ...and the long axis with it, for the reason footLong exists at all: this
+  // painter returns before the standing rig's shoe code ever runs, so a dial it
+  // does not read is a hero whose feet change length when he slides.
+  const slideFootLong = Number(spec.footLong) > 0 ? Number(spec.footLong) : 1;
   const slideBootWidth = Number(spec.bootWidth) > 0 ? Number(spec.bootWidth) : 1;
-  outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
-    c.ellipse(footRearX + (0.03 - 0.012 * bc) * u, -0.055 * u,
-      (0.08 + 0.012 * bc) * u * slideFootScale * slideBootWidth,
-      (0.05 + 0.01 * bc) * u * slideFootScale, 0.35, 0, Math.PI * 2));
+  // THE SHOE IS A RIGID FOOT HERE TOO. Both slide shoes were placed at a FIXED
+  // offset from the point their leg is drawn to and then rotated in place —
+  // the same mistake the standing rig made before shoeGeom. A rotated shoe's
+  // edge CLIMBS on the ankle side, and what climbs out from under it is the
+  // leg's own round end cap: the leg reads as missing the back of the shoe,
+  // which is exactly what it looks like. `slideBootCover` was the per-spec
+  // patch, and it could only ever cover the heroes it was switched on for.
+  //
+  // Two rules, both borrowed from the standing rig, both cast-wide now:
+  //   - the ankle offset ROTATES with the shoe, so the cap keeps the same
+  //     relationship to the leather at every angle the slide reaches;
+  //   - the radii are FLOORED against the leg's own cap (legW / 2). At the
+  //     authored 0.05u the shoe was THINNER THAN THE LEG IS WIDE on the heavy
+  //     rig — 0.055u of cap inside 0.05u of shoe — and no offset hides a cap
+  //     inside a shoe too small to hold it. The floor is what makes the fix
+  //     hold for a build nobody dialled these numbers against.
+  const slideCapR = legW * 0.5;
+  const slideShoe = (ax, ay, rot, rxBase, ryBase, knee) => {
+    paintShoe(ctx, spec, ow, lod, footFill, ax, ay,
+      (0.03 - 0.012 * bc) * u, -0.01 * u,
+      Math.max(rxBase, slideCapR * 1.9), Math.max(ryBase, slideCapR + 0.016 * u),
+      rot, false, { knee, legW });
+  };
+  // Quoting limb2's own solver rather than the hip-to-ankle line: on a leg
+  // folded this hard the midpoint of that line is not on the shin at all.
+  slideShoe(footRearX, -0.045 * u, 0.35,
+    (0.08 + 0.012 * bc) * u * slideFootScale * slideBootWidth * slideFootLong,
+    (0.05 + 0.01 * bc) * u * slideFootScale,
+    joint(hipX, hipY, footRearX, -0.045 * u, 0.17 * u, 1, 0.17 * u));
   // torso reclined hip -> shoulder, dressed exactly like the standing rig
   // The capsule stops a third of a torso-width SHORT of the shoulder. Its top
   // is a round cap of torsoW/2, which the head used to cover completely; with
@@ -13662,7 +14731,7 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   // attached to nothing, which is the same 0.58 the standing rig spends on
   // making him broad. Quote the tapered end and the root is back inside the
   // body on every build.
-  const rootD = (torsoW / 2) * (spec.taper || 1) - legW * 0.55;
+  const rootD = (torsoW / 2) * waistTaper(spec) - legW * 0.55;
   // `pose.slideKick` (0..1) drives the near leg from its tucked slide into a
   // KICK: the foot leaves along the deck, rises off it, and the knee
   // straightens as the upper bone lengthens toward the reach. Player owns the
@@ -13715,8 +14784,13 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
     thighHolsterAt(ctx, p, u, ow, lod, slideRootX, slideRootY, kx, ky, legW, 0, false,
       spec.slideHolsterT ?? 0.76);
   }
-  outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
-    c.ellipse(kickX + (0.03 - 0.012 * bc) * u, kickY - 0.01 * u, (0.085 + 0.012 * bc) * u, (0.055 + 0.01 * bc) * u, -0.1 - 0.5 * kick, 0, Math.PI * 2));
+  // ...and the same footScale the rear foot takes. This foot ignored it, which
+  // cost nothing while no hero set the dial and is a MISMATCHED PAIR the moment
+  // one does — a big foot trailing and a standard one kicking.
+  slideShoe(kickX, kickY, -0.1 - 0.5 * kick,
+    (0.085 + 0.012 * bc) * u * slideFootScale * slideFootLong,
+    (0.055 + 0.01 * bc) * u * slideFootScale,
+    joint(slideRootX, slideRootY, kickX, kickY, slideSeg, 1, slideSeg));
   // THE TOOL BELT AND POUCH, in the slide. This pose is its own painter and
   // returns before drawHumanoid's kit passes ever run — the same structural gap
   // that left it tailless, then stickless — so everything worn has to be drawn
@@ -13826,7 +14900,7 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
     // Waist bands and panel roots measure the body AT THE WAIST, which on a
     // tapered build is far inside the shoulder width — a belt sized off the
     // full torso overhung Grumpos's narrow middle on both sides.
-    const taper = spec.taper || 1;
+    const taper = waistTaper(spec);
     const waistHalf = torsoW * 0.5 * (taper + (1 - taper) * 0.24);
     // The gown flares MORE sliding than standing. Matched to its standing
     // flare it came out as a tube lying along her thighs, which is not what a
@@ -15134,7 +16208,7 @@ function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
   ctx.restore();
 }
 
-function drawRay(ctx, id, p, pose, u, ow, lod) {
+function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   // The ray rig slides with the same POWER SLIDE the humanoids ship — the
   // slide painter has a floating-limb branch for him. Ability rolls do not
   // exist on this rig, so the slideStyle check is the whole dispatch.
@@ -15194,9 +16268,14 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   const backTilt = -0.08 + (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0));
   const frontTilt = 0.08 + (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0));
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
-  outlined(ctx, p.f, ow, (c) => c.ellipse(backShoeX, backShoeY, 0.125 * u, 0.063 * u, backTilt, 0, Math.PI * 2));
+  // Raymn has no legs, so there is no endpoint to hang a shoe off: `centred`
+  // sits a shaped shoe exactly where his floating oval sat, and a zero offset
+  // leaves the oval itself byte-for-byte what it always was.
+  paintShoe(ctx, spec, ow, lod, p.f, backShoeX, backShoeY, 0, 0,
+    0.125 * u, 0.063 * u, backTilt, false, { ink: ow, centred: true });
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(frontShoeX - 0.015 * u, frontShoeY - 0.04 * u, 0.07 * u, 0.04 * u, frontTilt, 0, Math.PI * 2));
-  outlined(ctx, p.f, ow, (c) => c.ellipse(frontShoeX, frontShoeY, 0.125 * u, 0.063 * u, frontTilt, 0, Math.PI * 2));
+  paintShoe(ctx, spec, ow, lod, p.f, frontShoeX, frontShoeY, 0, 0,
+    0.125 * u, 0.063 * u, frontTilt, false, { ink: ow, centred: true });
   // Torso and scarf.
   outlined(ctx, p.b, ow, (c) => roundRectPath(c, -0.165 * u, cy - 0.2 * u, 0.33 * u, 0.4 * u, 0.09 * u));
   // Collar sits flush with the torso top — dropped even slightly, a band of
@@ -16205,10 +17284,10 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
     if (clip) {
       ctx.save();
       ctx.beginPath(); clip(ctx); ctx.clip();
-      outlined(ctx, p.f, hair(0.6, ow * 0.8), band);
+      outlined(ctx, p.kit || p.f, hair(0.6, ow * 0.8), band);
       ctx.restore();
     } else {
-      outlined(ctx, p.f, hair(0.6, ow * 0.8), band);
+      outlined(ctx, p.kit || p.f, hair(0.6, ow * 0.8), band);
     }
   }
   // A pack is a bigger, squarer body than a tube; a quiver is a tube.
@@ -16575,6 +17654,9 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
     ctx.scale(spec.figureScaleX || 1, spec.figureScaleY || 1);
   }
   if (pose.lean) ctx.rotate(pose.lean);
+  // The hill's own lean, on top of whatever the pose already asked for.
+  const hillLean = slopeLean(pose, u);
+  if (hillLean) ctx.rotate(hillLean);
   // Chompo hangs off his own jaw and Raymn streams off the pole at an angle;
   // both need the whole figure canted, and neither has a joint to do it with.
   if (rigCling && rigCling.tilt) ctx.rotate(rigCling.tilt * clingAmt);
@@ -16628,7 +17710,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   if (spec.rig === 'pika') drawPika(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'disc') drawDisc(ctx, heroId, p, pose, u, ow, lod);
-  else if (spec.rig === 'ray') drawRay(ctx, heroId, p, pose, u, ow, lod);
+  else if (spec.rig === 'ray') drawRay(ctx, heroId, spec, p, pose, u, ow, lod);
   else drawHumanoid(ctx, heroId, spec, p, pose, u, ow, lod);
   disarmLight(prevLight);
   ctx.restore();

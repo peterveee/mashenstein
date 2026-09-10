@@ -46,6 +46,7 @@ import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy, portraitNow, portraitAllowedFor } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
+import { setInk, PHONE_INK } from './sprites/toons.js';
 import { applyPhoneAudioProfile } from './engine/phone-audio.js';
 import { efficiencyProfile } from './engine/render-efficiency.js';
 import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
@@ -645,6 +646,10 @@ function boot() {
   });
   releaseBenchRenderer(benchDiag);
   setFancyFx(save.settings.fancyFx);
+  // A shade more ink on the cast on a handset, where the picture is four inches
+  // wide — see PHONE_INK. Before buildAllSprites() and before any state can
+  // draw, because the toon bakes are keyed on hero and size, not on ink.
+  if (platform.isIphone || platform.isAndroidPhone) setInk(PHONE_INK);
   Input.init();
   buildAllSprites();
 

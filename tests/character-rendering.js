@@ -17,6 +17,8 @@ const {
 } = await import('../src/sprites/toons.js');
 const { initRenderer, blit, bctx, pendingOverlayDrawCount } = await import('../src/engine/renderer.js');
 const { save } = await import('../src/engine/save.js');
+const { readHeroDials } = await import('../tools/lib/toon-specs-source.js');
+const REPO_ROOT = new URL('..', import.meta.url).pathname;
 
 let failed = false;
 function assert(cond, msg) {
@@ -241,9 +243,14 @@ const GALLERY_BODY_DIALS = [
 ];
 // The guard is against a PROPOSAL leaking into the cast: the body-shape section
 // drives these dials on real rigs, and a value that survives into TOON_SPECS is
-// a bake-off candidate nobody chose. An approved one is listed here by hero and
-// dial, so shipping a shape stays a deliberate edit to this line rather than
-// something a gallery experiment can do quietly.
+// a bake-off candidate nobody chose.
+//
+// There are now two sanctioned ways a shape ships. The character editor
+// (tools/character-editor.js) writes its dials into a marked block inside the
+// spec, on an explicit save, with a revision check and a history snapshot — so
+// anything the editor owns is by construction a deliberate edit and passes.
+// A dial written by HAND, outside that block, still has to be named here by
+// hero, so a value pasted out of a gallery experiment cannot ride in quietly.
 // Fernwick's `torsoWidth` is approved: her princess redesign shipped a
 // deliberately slimmer chest than the `slim` build gives (2026-09-07), and it
 // is a promotion out of the bake-off, not a candidate left switched on.
@@ -254,19 +261,23 @@ const GALLERY_BODY_DIALS = [
 // lower than anyone's. 0.88 lands it at 0.223u against the cast's 0.240u.
 // Measured with work/local/_arm-fit.mjs, which fits hand height against this
 // very dial so the slope is the arm and the intercept is the shoulder.
-const APPROVED_BODY_DIALS = { kiko: ['legLength'], fernwick: ['torsoWidth', 'armLength'] };
-assert(Object.entries(TOON_SPECS).every(([id, spec]) =>
-  GALLERY_BODY_DIALS.every((key) =>
-    !Object.hasOwn(spec, key) || (APPROVED_BODY_DIALS[id] || []).includes(key))),
-'gallery body-shape candidates do not alter production specs');
-// `legLength` moves the HIP, not the crown — it splits her height between torso
-// and leg, and cannot make her taller on its own. Her height is `tall`, and the
-// band is the brief: above the rig default, under Lorenzo's crown (1.025 of the
-// draw height) and well under B-33P's dome (1.094). 1.02 measures 1.006.
-assert(TOON_SPECS.kiko.legLength > 1,
-  'a little more of Kiko\'s height sits in the leg than the rig default');
-assert(TOON_SPECS.kiko.tall > 1 && TOON_SPECS.kiko.tall < 1.04,
-  'Kiko stands taller than the rig default but no taller than Lorenzo');
+const APPROVED_BODY_DIALS = { fernwick: ['torsoWidth', 'armLength'] };
+const editorOwned = (id) => {
+  try { return new Set(readHeroDials(REPO_ROOT, id).editor); } catch { return new Set(); }
+};
+assert(Object.entries(TOON_SPECS).every(([id, spec]) => {
+  const owned = editorOwned(id);
+  return GALLERY_BODY_DIALS.every((key) =>
+    !Object.hasOwn(spec, key) || owned.has(key) || (APPROVED_BODY_DIALS[id] || []).includes(key));
+}), 'hand-written body-shape dials are declared, editor-written ones are marked');
+// Kiko's height was `tall: 1.02` with `legLength: 1.06` — taller than the rig
+// default, under Lorenzo's crown, with more of the height in the leg. The
+// character-editor pass of 10 Sep 2026 REVERSED that: both hand-written dials
+// came off and her block now carries `tall: 0.93`, making her the second
+// shortest in the cast after Fernwick. Kept as an assertion rather than
+// deleted so the reversal is a deliberate edit to this line if it moves again.
+assert(TOON_SPECS.kiko.tall > 0.9 && TOON_SPECS.kiko.tall < 1,
+  'Kiko stands shorter than the rig default (character editor, 10 Sep 2026)');
 
 for (const id of Object.keys(TOON_SPECS)) {
   let safe = true;

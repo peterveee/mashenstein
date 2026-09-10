@@ -350,7 +350,12 @@ const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d
 // colours a cafeteria has always been, and neither of them is a colour any
 // cabinet in the concourse uses, so she does not read as belonging to a
 // machine. `hair` is the set grey the net goes over.
-const dolores = { ...gary, pal: { s: '#e0a884', a: '#e4dccc', e: '#171126', m: '#8a4a52', b: '#6fa89c', p: '#3a3a48', f: '#2e2a38', w: '#fff', hair: '#b4aac0' } };
+// Her legs are the SAME green as her sleeves, not the charcoal they were: she is
+// in a uniform, and a uniform is one colour from the collar down. Charcoal read
+// as her own trousers worn under a work top — two garments where there should
+// be one — and it left the white shoes stranded on a dark column. Green legs
+// carry the outfit to the floor and the shoes are the only white below the apron.
+const dolores = { ...gary, pal: { s: '#e0a884', a: '#e4dccc', e: '#171126', m: '#8a4a52', b: '#6fa89c', p: '#b6a898', f: '#f2efe9', w: '#fff', hair: '#b4aac0' } };
 
 // Kiko brings a palette and nothing else, the same arrangement Ray M'n and
 // Dolores are on. Worth saying plainly, because the note that used to sit in

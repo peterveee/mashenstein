@@ -250,7 +250,38 @@ export const ANIMAL_HERO_CANDIDATES = [
 // face block, so a red panda ended his arms in two white paws with a white cuff
 // round each — the one place on him where the animal stopped. The cuff (p.w)
 // stays white and the paw inside it is his own coat.
-export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, hand: '#c65a2c', pouchLine: '#f0c07a' };
+// `f` is the kit colour — shoes AND the cane belt, which is why it is worth
+// more than a shrug. It was #2f3a52 slate navy: the only cool note in a palette
+// that is otherwise cream, burnt orange, rust and sand, and close enough in
+// VALUE to the #8e3c1c trousers that the shoes read as a smudge at the ankle
+// rather than as footwear.
+//
+// THE RUNNER, in red. The shape is the racing flat off the shoe bake-off — he
+// is auditioning for the speedster slot and it is the only shoe on the sheet
+// whose silhouette says anything about how fast the wearer is moving. It went
+// briefly to the sneaker on a misread: "a red sneaker" was a note about the
+// COLOUR, and the shape came along with it uninvited.
+//
+// #c2342e red — Peter's call, and the reasoning is his: it goes with the fur,
+// and red is fast. Finding one that does BOTH took three passes. The
+// #a0403c brick already in his palette vanished into the #c65a2c fur, and so
+// did a coral; a hot #d8232f separated but fought it, reading as a borrowed
+// pillar-box red rather than as his. This one sits a step deeper and a shade
+// cooler than the fur — same family, clearly a different colour — and against
+// the 90s wedge's cream sole it lands on a colourway the decade actually ran.
+//
+// `kit` is the BELT, which used to take the shoe colour and so came out as a
+// second bright red band across the middle of him. Muted to #7a3a2a: a worn
+// leather that reads as the thing the canes hang from rather than as a
+// matching accessory. Everyone else has no `kit` and falls back to `f`.
+// (Deep teal #1f4b4a is the cool-complement answer if the red ever reads as
+// too much; charcoal #20242f is the quiet one.)
+// `cuff` is the ring round the hand. The default is `w`, white leather, and on a
+// FURRED hero that is the brightest thing on the whole arm — the eye lands on
+// the wrist before the hand, and the band reads as a bandage rather than as
+// something he wears. His own kit brown instead: the same leather as the belt,
+// so the cuff belongs to the outfit and the hand stays the lightest thing there.
+export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, hand: '#c65a2c', pouchLine: '#f0c07a', f: '#c2342e', kit: '#7a3a2a', cuff: '#7a3a2a' };
 
 export const PANDA_BUILD_CANDIDATES = [
   {
@@ -1232,7 +1263,10 @@ export const RUSTY_BUNDLE_CANDIDATES = [
 // canister with the alternating cane — and it lives in toons.js under
 // `throwQ`, not in a candidate list.
 export const RUSTY_W3B = {
-  ...RUSTY_T1, stick: false, bundle: 'tilt',
+  // The RUNNER, 10 Sep 2026 — the racing flat off the shoe bake-off. It lives
+  // here and not in TOON_SPECS because he is still a candidate: the whole point
+  // of the spec/pal seam is that nothing about him touches the cast.
+  ...RUSTY_T1, stick: false, bundle: 'tilt', shoeShape: 'runner',
   // ROUND 21 SETTLED (6 Sep 2026): X3 — two canes, gapped and STAGGERED. The
   // stagger is what sells two separate sticks; the pair stays parallel to the
   // bag. And it turned into a mechanic: the long and short canes ALTERNATE

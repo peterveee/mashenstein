@@ -340,6 +340,10 @@ const suites = [
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
+  // Slope tracking, which is invisible on flat ground and therefore free to
+  // rot: the rig planted every sole on a horizontal line until the cast wore
+  // real soles and it started to show.
+  'tests/shoe-slope.js',
   'tests/hero-dials.js',
   'tests/character-editor-viewport.js',
   'tests/character-editor-actions.js',
@@ -363,6 +367,14 @@ const suites = [
   // beat cabinet's stronger claim too — there the chart marks every press, so
   // the bot is held to taking no damage at all.
   'tests/bot-pits.js',
+  // And the one surface a hole may not be cut into: the roof of a tunnel. It is
+  // the upper of two paths with a floor ninety-six pixels under it, so a lane
+  // pit there is a break the renderers do not draw, the route system does not
+  // recognise as a way in, and `collide` kills for anyway. Beside the bot suite
+  // because it is the same claim from the other end — that one is about the
+  // holes the demo must not fall down, this is about a hole that must not be
+  // there to fall down.
+  'tests/tunnel-roof.js',
   // And the villain the demo is bonking, held to the same claim across the two
   // desktop framings: his roam is a WORLD band and a WORLD distance ahead, so a
   // punted barrel — world physics — meets him the same way however the camera

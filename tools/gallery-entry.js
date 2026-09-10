@@ -114,7 +114,6 @@ import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
 import { proFaceWith, PRO_STACHE_SIZE, proMouthPartWith } from '../src/sprites/props.js';
 import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
-import { HIP_JOIN_CANDIDATES, HIP_JOIN_HEROES, LEG_SHIFT_CANDIDATES } from '../src/dev/hip-join-candidates.js';
 
 // ------------------------------------------------------- the guest hero
 // RUSTY IS STILL A CANDIDATE. He has no row in HEROES and no entry in
@@ -7085,407 +7084,28 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // first — at the shipped 0.06u brass a 0.036u drop pinched the thigh, and
 // slimming the buckle is what bought the drop back. Both dials survive
 // (`beltDrop`, `buckleH`), so the question can be reopened without the section.
-// --------------------------------------------- the hip join (lab only)
-// "Legs directly attached to the lower torso with no skirt — could we not have
-// the rounding attachment for the leg so it all looks like a single body?"
-// Raised 9 Sep 2026 off a lane-size run frame of Lorenzo, SETTLED the same day
-// at FLUSH out of nine cuts. What is left here is the record (now vs flush,
-// cast-wide, run and slide) and the question flush opened: where the near leg
-// should SIT.
-{
-  const grid = section('hip-join-bakeoff', 'THE HIP JOIN — the near thigh into the body',
-    'SETTLED 9 Sep 2026 at FLUSH. Shipped, the near thigh is stroked with a round cap crowning '
-    + 'half a stroke PAST its root, covered by a trouser disc whose outboard half is OUTLINED — a '
-    + 'joint line printed across the top of the leg, which is what read as a ball-socket thigh '
-    + 'bolted to a body rather than one mass. Flush lands the cap ON the root and drops that arc. '
-    + 'It affects only heroes with nothing hanging over the hip: no gown, no split dress, no '
-    + 'apron, and not Grumpos, who already has a drawn pelvis. Two details are not symmetrical '
-    + 'and were asked for by name — the SLIDE cuts the root flat at full length instead of '
-    + 'insetting it (an inset opens a gap where the buttock should be at a reclined hip), and the '
-    + 'UNDERSIDE contour is drawn back in by hand, because that line is the thigh\'s own edge '
-    + 'against the trousers and only the TOP rim was ever the problem.');
-  const CUTS = HIP_JOIN_CANDIDATES;
-  // THE UNDERSIDE LINE, which side. Flush insets the whole rim; the top edge is
-  // the point, the bottom edge is the thigh's own contour against the trousers
-  // and was lost with it. It is drawn back in by hand, and which side of the
-  // bone counts as "under" is a pose dial until it is chosen: A and B are the
-  // two edges, NONE is flush exactly as it was first judged.
-  const SIDES = [
-    { key: 'none', label: 'NONE — flush as first judged', side: 0,
-      note: 'No line put back. The rim is inset top AND bottom, so the thigh loses its own '
-        + 'contour for the first stretch below the hip.' },
-    { key: 'A', label: 'A — the edge away from the knee\'s bend', side: 1,
-      note: 'One hairline down the thigh, root to knee, at the rim\'s own weight and offset.' },
-    { key: 'B', label: 'B — the other edge', side: -1,
-      note: 'The same line on the opposite side of the bone.' },
-  ];
-  for (const sd of SIDES) {
-    tile(grid, `underside — ${sd.label}`, sd.note, 150, 156, (ctx) => {
-      drawToon(ctx, 'lorenzo', pose('run', 0, { phase: 0.25, hipJoin: 'flush', hipUnderside: sd.side }), 75, 146, 116);
-    }, { hires: 6 });
-  }
-  tile(grid, 'underside — the three, and NOW', 'Left to right: now (the shipped socket arc), flush with '
-    + 'no line, flush with A, flush with B. The question is only the bottom edge of the thigh.',
-    4 * 92 + 8, 150, (ctx) => {
-      const cols = [{ j: 'now', s: null }, { j: 'flush', s: 0 }, { j: 'flush', s: 1 }, { j: 'flush', s: -1 }];
-      cols.forEach((c, i) => {
-        drawToon(ctx, 'lorenzo', pose('run', 0, { phase: 0.25, hipJoin: c.j, hipUnderside: c.s }),
-          4 + 92 * (i + 0.5), 138, 112);
-      });
-      ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-      ['NOW', 'FLUSH', 'FLUSH + A', 'FLUSH + B'].forEach((l, i) => ctx.fillText(l, 4 + 92 * (i + 0.5), 148));
-    }, { wide: true, hires: 6 });
-  for (const c of CUTS) {
-    // FROZEN, and both on the SAME phase: two live tiles paint on their own
-    // clocks, so the cuts drift apart in the stride and the one thing that
-    // differs between them stops being the only thing that differs.
-    tile(grid, c.label, c.note, 150, 156, (ctx) => {
-      drawToon(ctx, 'lorenzo', pose('run', 0, { phase: 0.25, hipJoin: c.key }), 75, 146, 116);
-    }, { hires: 5 });
-  }
-  const HH = 96, COL = 58, FEET = 112, TH = 128;
-  for (const h of HIP_JOIN_HEROES) {
-    const opts = heroOpts(h.id);
-    tile(grid, `${h.id} — run, now vs flush`, h.note, COL * CUTS.length + 8, TH, (ctx, t) => {
-      CUTS.forEach((c, i) => {
-        drawToon(ctx, h.id, pose('run', t, { hipJoin: c.key }), 4 + COL * (i + 0.5), FEET, HH, opts);
-      });
-      ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-      CUTS.forEach((c, i) => ctx.fillText(c.key.toUpperCase(), 4 + COL * (i + 0.5), TH - 4));
-    }, { animated: true, wide: true, hires: 4 });
-  }
-  // The stride, both cuts, eight phases each — the join has to hold everywhere
-  // in the cycle, not on the frame a live tile happened to be showing.
-  const PHASES = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
-  for (const c of CUTS) {
-    tile(grid, `stride — ${c.key}`, `Lorenzo, eight phases of one stride. ${c.label}`,
-      44 * PHASES.length + 8, 116, (ctx) => {
-        PHASES.forEach((ph, i) => {
-          drawToon(ctx, 'lorenzo', pose('run', 0, { phase: ph, hipJoin: c.key }), 4 + 44 * (i + 0.5), 100, 86);
-        });
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '6px ui-monospace, monospace'; ctx.textAlign = 'center';
-        PHASES.forEach((ph, i) => ctx.fillText(ph.toFixed(3), 4 + 44 * (i + 0.5), 112));
-      }, { wide: true, hires: 5 });
-  }
-  // The slide, where flush means the FLAT root rather than the inset one.
-  const SH = 72, SFEET = 78, SCOL = 104, STH = 98;
-  for (const h of HIP_JOIN_HEROES) {
-    const opts = heroOpts(h.id);
-    const sx = slideExtra(h.id);
-    if (!sx.slideStyle) continue;
-    tile(grid, `${h.id} — slide, now vs flush`, `${h.note}. Flush is the FLAT root here, not the inset one.`,
-      SCOL * CUTS.length + 8, STH, (ctx, t) => {
-        CUTS.forEach((c, i) => {
-          drawToon(ctx, h.id, pose('slide', t, { ...sx, hipJoin: c.key }), 4 + SCOL * (i + 0.5), SFEET, SH, opts);
-        });
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-        CUTS.forEach((c, i) => ctx.fillText(c.key.toUpperCase(), 4 + SCOL * (i + 0.5), STH - 4));
-      }, { animated: true, wide: true, hires: 4 });
-  }
-  // THE HIP SINK. How deep the leg roots was a flat number over a body whose
-  // width is not: the same root buried in Lorenzo sat out at the corner of
-  // Clara's much narrower trouser mass. It is a fraction of the build now, and
-  // this is the A/B on the four heroes it actually moves.
-  {
-    const SINK = [['clara', 0.033], ['kiko', 0.030], ['grumpos', 0.041], ['fernwick', 0.050]];
-    tile(grid, 'the hip sink — before and after', 'How far the leg roots INSIDE the body, as a '
-      + 'fraction of that hero\'s own waist rather than a flat 0. Zero on Lorenzo and 0.005u on the '
-      + 'plain builds, so nothing already right moves; the pairs below are the four it does, with '
-      + 'the sink in u. Grumpos and Fernwick are covered by a skirt and a gown besides — Clara and '
-      + 'Kiko are the two you actually see it on.',
-      118 * SINK.length * 2 + 8, 176, (ctx) => {
-        SINK.forEach(([id, amt], i) => {
-          [0, 1].forEach((sink, j) => {
-            const cx = 4 + 118 * (i * 2 + j + 0.5);
-            drawToon(ctx, id, pose('run', 0, { phase: 0.25, hipJoin: 'flush', hipSink: sink }), cx, 158, 150);
-            ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-            ctx.fillText(sink ? `AFTER +${amt}u` : `${id} before`, cx, 170);
-          });
-        });
-      }, { wide: true, hires: 5 });
-  }
-  tile(grid, 'slide kick — now vs flush', 'Lorenzo, the near leg at full extension (slideKick 1). '
-    + 'The tuck hides a bad join; this does not.',
-    SCOL * CUTS.length + 8, STH, (ctx) => {
-      CUTS.forEach((c, i) => {
-        drawToon(ctx, 'lorenzo', pose('slide', 0, { slideStyle: 'kick', slideKick: 1, hipJoin: c.key }),
-          4 + SCOL * (i + 0.5), SFEET, SH);
-      });
-      ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-      CUTS.forEach((c, i) => ctx.fillText(c.key.toUpperCase(), 4 + SCOL * (i + 0.5), STH - 4));
-    }, { wide: true, hires: 5 });
-}
 
-// ---------------------------------------- where the near leg sits (lab only)
-// ROUND 2 of the hip join: "can we shift the near leg further to the left?" —
-// of the RUN, and of the run alone. Every tile here draws the FLUSH join.
-{
-  const grid = section('near-leg-shift-bakeoff', 'THE NEAR LEG — how far back it sits, six cuts',
-    'OPEN, 9 Sep 2026. Left on screen is BACKWARD in body space, so these shifts travel with the '
-    + 'hero. Two different things can move and they do not look alike: RAKE moves the HIP only — '
-    + 'the feet are absolute gait targets, so the stride lands exactly where it did and the thigh '
-    + 'rakes back from a hip set further behind it — while SHIFT moves hip and stride together, so '
-    + 'the whole leg slides back keeping its shape and the near foot lands further behind the '
-    + 'chest. BOTH does one of each. Run and jump only; the slide is not in this question, and '
-    + 'every cut here already has the flush join. 0.03u is about 0.7px on the lane hero and about '
-    + '3px in a study, so the AT SIZE row at the bottom is the one that decides it.');
-  const SHIFTS = LEG_SHIFT_CANDIDATES;
-  const flushed = (extra) => ({ hipJoin: 'flush', ...extra });
-  for (const c of SHIFTS) {
-    tile(grid, c.label, c.note, 150, 156, (ctx) => {
-      drawToon(ctx, 'lorenzo', pose('run', 0, flushed({ phase: 0.25, legShift: c.shift })), 75, 146, 116);
-    }, { hires: 5 });
-  }
-  const HH = 96, COL = 58, FEET = 112, TH = 128;
-  for (const h of HIP_JOIN_HEROES) {
-    const opts = heroOpts(h.id);
-    tile(grid, `${h.id} — run, six shifts`, h.note, COL * SHIFTS.length + 8, TH, (ctx, t) => {
-      SHIFTS.forEach((c, i) => {
-        drawToon(ctx, h.id, pose('run', t, flushed({ legShift: c.shift })), 4 + COL * (i + 0.5), FEET, HH, opts);
-      });
-      ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-      SHIFTS.forEach((c, i) => ctx.fillText(c.key.toUpperCase(), 4 + COL * (i + 0.5), TH - 4));
-    }, { animated: true, wide: true, hires: 4 });
-  }
-  // WALK AND RUN ARE DIFFERENT GAITS on this rig — a shorter stride and a
-  // different hip separation — so a shift judged on one has not been judged on
-  // the other, and the question was asked about both.
-  const PHASES = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
-  for (const gait of ['run', 'walk']) {
-    for (const c of SHIFTS) {
-      tile(grid, `${gait} stride — ${c.key}`, `Lorenzo, eight phases of one ${gait} stride. ${c.label}`,
-        44 * PHASES.length + 8, 116, (ctx) => {
-          PHASES.forEach((ph, i) => {
-            drawToon(ctx, 'lorenzo', pose(gait, 0, flushed({ phase: ph, legShift: c.shift })),
-              4 + 44 * (i + 0.5), 100, 86);
-          });
-          ctx.fillStyle = '#8a8a9e'; ctx.font = '6px ui-monospace, monospace'; ctx.textAlign = 'center';
-          PHASES.forEach((ph, i) => ctx.fillText(ph.toFixed(3), 4 + 44 * (i + 0.5), 112));
-        }, { wide: true, hires: 5 });
-    }
-  }
-  // THE JUMP TAKES THE RUN'S PELVIS, so any shift to the run's near hip is a
-  // shift to the airborne one as well — worth seeing before it is chosen.
-  tile(grid, 'the jump — six shifts', 'The styled jump shares the run\'s pelvis, so it inherits '
-    + 'whatever is chosen here. Lorenzo, rising.',
-    COL * SHIFTS.length + 8, TH, (ctx, t) => {
-      SHIFTS.forEach((c, i) => {
-        drawToon(ctx, 'lorenzo', pose('jump', t, flushed({ legShift: c.shift })), 4 + COL * (i + 0.5), FEET, HH);
-      });
-      ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-      SHIFTS.forEach((c, i) => ctx.fillText(c.key.toUpperCase(), 4 + COL * (i + 0.5), TH - 4));
-    }, { animated: true, wide: true, hires: 4 });
-  // THE TORSO, on its own dial. Asked for looking at the shift row: "perhaps a
-  // slight lengthening of his torso may make the entire thing look better."
-  // Neither existing dial can do it — `tall` grows the legs with the body and
-  // `legLength` buys torso by spending leg — so `torsoLong` lifts the torso
-  // top, the shoulder line and the head together and leaves the hip, the legs
-  // and the feet exactly where they are. The hero gains the same amount at the
-  // crown and the gait is not in the change at all.
-  // AND THE ONE THAT WAS ACTUALLY WANTED: "I kinda wanted the legs to go
-  // further INTO the torso so they emerged a bit smoother." The torso dial
-  // above does not do that — it lengthens the body UPWARD and leaves the hip,
-  // the legs and the feet exactly where they are. These two do, from opposite
-  // ends: `legInto` raises the leg root inside the body (the visible thigh
-  // shortens, the silhouette is untouched, the feet do not move because the
-  // gait targets are absolute), `torsoDrop` hangs the body's bottom edge
-  // further down over the thighs (the thigh is untouched, the body grows).
-  const DEEP = [0, 0.02, 0.035, 0.05, 0.07];
-  for (const [key, label, note] of [
-    ['legInto', 'INTO — the leg roots deeper in the body',
-      'The root climbs inside the trousers, so more of the thigh is buried and the leg emerges '
-      + 'lower down. Silhouette unchanged; the feet land exactly where they did.'],
-    ['torsoDrop', 'DROP — the body hangs further over the leg',
-      'The torso\'s bottom edge comes down past the hip, over the top of the thighs. The leg is '
-      + 'untouched; what changes is how much body is covering it.'],
-  ]) {
-    tile(grid, label, note, 112 * DEEP.length + 8, 176, (ctx) => {
-      DEEP.forEach((v, i) => {
-        const cx = 4 + 112 * (i + 0.5);
-        drawToon(ctx, 'lorenzo', pose('run', 0, { phase: 0.25, hipJoin: 'flush', [key]: v }), cx, 158, 150);
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(v ? `+${v}u` : 'NOW', cx, 170);
-      });
-    }, { wide: true, hires: 5 });
-  }
-  tile(grid, 'INTO + DROP together', 'Both at 60% of the rung, so the leg comes up and the body '
-    + 'comes down and neither has to do the whole job alone.',
-    112 * DEEP.length + 8, 176, (ctx) => {
-      DEEP.forEach((v, i) => {
-        const cx = 4 + 112 * (i + 0.5);
-        drawToon(ctx, 'lorenzo', pose('run', 0, { phase: 0.25, hipJoin: 'flush', legInto: v * 0.6, torsoDrop: v * 0.6 }), cx, 158, 150);
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(v ? `+${(v * 0.6).toFixed(3)}u each` : 'NOW', cx, 170);
-      });
-    }, { wide: true, hires: 5 });
-  // THE MATRIX. "I need to see into + drop together in combination with the
-  // near leg moving left and a slight torso increase, otherwise too hard to
-  // tell what looks best." Six shifts down, four depths across, one tile per
-  // torso length — live, so it is judged running.
-  for (const tl of [0, 0.035]) {
-    const MDEEP = [0, 0.021, 0.03, 0.042];
-    const MW = 62, MH = 112;
-    tile(grid, `the matrix — torso ${tl ? '+' + tl + 'u' : 'as now'}`,
-      'Rows: the six shifts. Columns: INTO and DROP together, each at 0 / +0.021 / +0.03 / '
-      + '+0.042u. Every figure has the flush join. Compare against the other torso tile beside it.',
-      MW * MDEEP.length + 8, MH * SHIFTS.length + 4, (ctx, t) => {
-        SHIFTS.forEach((c, r) => {
-          MDEEP.forEach((d, i) => {
-            const cx = 4 + MW * (i + 0.5), fy = MH * (r + 1) - 14;
-            drawToon(ctx, 'lorenzo', pose('run', t, flushed({ legShift: c.shift, legInto: d, torsoDrop: d, torsoLong: tl })), cx, fy, 88);
-            ctx.fillStyle = '#8a8a9e'; ctx.font = '5px ui-monospace, monospace'; ctx.textAlign = 'center';
-            ctx.fillText(`${c.key} · ${d ? '+' + d : '0'}`, cx, fy + 9);
-          });
-        });
-      }, { animated: true, wide: true, hires: 4 });
-  }
-  const TORSO = [0, 0.02, 0.035, 0.05, 0.07];
-  tile(grid, 'the torso — five lengths', 'Lorenzo running, flush join, no shift. The legs are '
-    + 'identical in all five: only the torso, shoulders and head move, so what grows is the body '
-    + 'and what it costs is nothing below the belt.',
-    112 * TORSO.length + 8, 176, (ctx) => {
-      TORSO.forEach((t, i) => {
-        const cx = 4 + 112 * (i + 0.5);
-        drawToon(ctx, 'lorenzo', pose('run', 0, { phase: 0.25, hipJoin: 'flush', torsoLong: t }), cx, 158, 150);
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(t ? `+${t}u` : 'NOW', cx, 170);
-      });
-    }, { wide: true, hires: 5 });
-  tile(grid, 'the torso — at size', `Real ${HERO_DRAW_H}px hero through the ${WORLD_Z}x world zoom. `
-    + 'The same five lengths, where a hero is 24px tall and a rung is a fraction of a pixel.',
-    (26 * TORSO.length + 6) * WORLD_Z, 40 * WORLD_Z, (ctx, t) => {
-      ctx.scale(WORLD_Z, WORLD_Z);
-      TORSO.forEach((tl, i) => {
-        drawToon(ctx, 'lorenzo', pose('run', t, { hipJoin: 'flush', torsoLong: tl }), 3 + 26 * (i + 0.5), 32, HERO_DRAW_H);
-      });
-    }, { animated: true, wide: true, world: true, hires: 5 });
-  tile(grid, 'the torso, against the shifts', 'A middle torso (+0.035u) under all six shifts, so the '
-    + 'two questions can be read together rather than one at a time.',
-    COL * SHIFTS.length + 8, TH, (ctx, t) => {
-      SHIFTS.forEach((c, i) => {
-        drawToon(ctx, 'lorenzo', pose('run', t, flushed({ legShift: c.shift, torsoLong: 0.035 })),
-          4 + COL * (i + 0.5), FEET, HH);
-      });
-      ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-      SHIFTS.forEach((c, i) => ctx.fillText(c.key.toUpperCase(), 4 + COL * (i + 0.5), TH - 4));
-    }, { animated: true, wide: true, hires: 4 });
-  for (const id of ['lorenzo', 'clara']) {
-    const opts = heroOpts(id);
-    tile(grid, `${id} — at size, running`, `Real ${HERO_DRAW_H}px hero through the ${WORLD_Z}x world zoom. `
-      + 'A shift that is invisible here costs nothing and buys nothing.',
-      (26 * SHIFTS.length + 6) * WORLD_Z, 40 * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        SHIFTS.forEach((c, i) => {
-          drawToon(ctx, id, pose('run', t, flushed({ legShift: c.shift })), 3 + 26 * (i + 0.5), 32, HERO_DRAW_H, opts);
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
-  }
-  // WHOLE LEG 0.09 × TORSO. Peter's number for the shift, against the five
-  // torso lengths — the combination he asked to see, live.
-  tile(grid, 'whole leg 0.09u × five torso lengths', 'The near leg back 0.09u — hip and foot '
-    + 'together — with INTO and DROP at +0.03u and the flush join, under each torso length. '
-    + 'Shipped on the left for the distance travelled.',
-    112 * 6 + 8, 176, (ctx, t) => {
-      const TL = [null, 0, 0.02, 0.035, 0.05, 0.07];
-      TL.forEach((tl, i) => {
-        const cx = 4 + 112 * (i + 0.5);
-        const extra = tl == null ? {} : flushed({ legShift: { foot: -0.09 }, legInto: 0.03, torsoDrop: 0.03, torsoLong: tl });
-        drawToon(ctx, 'lorenzo', pose('run', t, extra), cx, 158, 150);
-        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(tl == null ? 'NOW' : tl ? `torso +${tl}u` : 'torso as now', cx, 170);
-      });
-    }, { animated: true, wide: true, hires: 5 });
-  // THE BOTTOM OF THE BODY. "I don't love how tubby and squared off he looks
-  // at the bottom" — of the recommended cell. DROP hangs the plain rounded box
-  // lower over the thighs, and a rounded box hung lower is a slab. Two new
-  // dials on the plain body: `hipTuck` narrows its bottom, `hipRound` rounds
-  // the corner off up to a semicircle. Everything else held at the recommended
-  // numbers (leg 0.09, INTO 0.03, torso +0.035, flush).
-  {
-    const BOT = [
-      ['REC as is', { torsoDrop: 0.03 }],
-      ['no DROP', { torsoDrop: 0 }],
-      ['DROP, rounder', { torsoDrop: 0.03, hipRound: 1 }],
-      ['DROP, tuck 0.9', { torsoDrop: 0.03, hipTuck: 0.9, hipRound: 0.6 }],
-      ['no DROP, tuck 0.92 round', { torsoDrop: 0, hipTuck: 0.92, hipRound: 1 }],
-      ['half DROP, tuck 0.92 round', { torsoDrop: 0.015, hipTuck: 0.92, hipRound: 1 }],
-      ['half DROP, tuck 0.86 round', { torsoDrop: 0.015, hipTuck: 0.86, hipRound: 1 }],
-    ];
-    const base = { legShift: { foot: -0.09 }, legInto: 0.03, torsoLong: 0.035 };
-    tile(grid, 'the bottom of the body — seven cuts', 'Left is the recommended cell as it stood. '
-      + 'DROP off, or DROP kept and the plain body\'s bottom tucked in and rounded off. '
-      + 'The leg, the join and the torso length are the same in all seven.',
-      112 * BOT.length + 8, 176, (ctx, t) => {
-        BOT.forEach(([label, extra], i) => {
-          const cx = 4 + 112 * (i + 0.5);
-          drawToon(ctx, 'lorenzo', pose('run', t, flushed({ ...base, ...extra })), cx, 158, 150);
-          ctx.fillStyle = '#8a8a9e'; ctx.font = '6.5px ui-monospace, monospace'; ctx.textAlign = 'center';
-          ctx.fillText(label, cx, 170);
-        });
-      }, { animated: true, wide: true, hires: 5 });
-    tile(grid, 'the bottom of the body — frozen', 'Same seven, one frame (phase 0.25), for the shape alone.',
-      112 * BOT.length + 8, 176, (ctx) => {
-        BOT.forEach(([label, extra], i) => {
-          const cx = 4 + 112 * (i + 0.5);
-          drawToon(ctx, 'lorenzo', pose('run', 0, flushed({ ...base, ...extra, phase: 0.25 })), cx, 158, 150);
-          ctx.fillStyle = '#8a8a9e'; ctx.font = '6.5px ui-monospace, monospace'; ctx.textAlign = 'center';
-          ctx.fillText(label, cx, 170);
-        });
-      }, { wide: true, hires: 5 });
-  }
-  // ---- RECOMMENDED LEG. The one cell of the matrix I would pick, on the cast
-  // it is about, so it can be judged as a cast and not as one hero. Asked for
-  // by name. The numbers are pose-level here — nothing is in any spec yet —
-  // and `torsoLong` was proposed for Lorenzo, so on the others it is a preview
-  // of the same lift, not a recommendation for them.
-  {
-    const sec = grid.parentElement;
-    const h3 = document.createElement('h3');
-    h3.className = 'subhead';
-    h3.textContent = 'RECOMMENDED LEG';
-    sec.appendChild(h3);
-    const note = document.createElement('p');
-    note.className = 'note';
-    note.textContent = 'whole leg back 0.09u (Peter\'s number) · INTO +0.03u · DROP +0.03u · torso +0.035u, on the flush join. '
-      + 'Clara\'s build-scaled sink stacks under the INTO here, so she is buried a little deeper than the rest.';
-    sec.appendChild(note);
-    const rg = document.createElement('div');
-    rg.className = 'grid';
-    sec.appendChild(rg);
-    const REC = { legShift: { foot: -0.09 }, legInto: 0.03, torsoDrop: 0.03, torsoLong: 0.035 };
-    const IDS = HIP_JOIN_HEROES.map((h) => h.id);
-    const RW = 74, RH = 150, RFEET = 134;
-    tile(rg, 'recommended — running', 'NOW on the left of each pair, RECOMMENDED on the right.',
-      RW * IDS.length * 2 + 8, RH, (ctx, t) => {
-        IDS.forEach((id, i) => {
-          [null, REC].forEach((r, j) => {
-            const cx = 4 + RW * (i * 2 + j + 0.5);
-            drawToon(ctx, id, pose('run', t, r ? flushed(r) : {}), cx, RFEET, 112, heroOpts(id));
-            ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
-            ctx.fillText(r ? 'REC' : id, cx, RH - 5);
-          });
-        });
-      }, { animated: true, wide: true, hires: 4 });
-    const PH = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
-    for (const id of IDS) {
-      tile(rg, `recommended — ${id}, one stride`, 'Eight phases, recommended settings.',
-        40 * PH.length + 8, 106, (ctx) => {
-          PH.forEach((ph, i) => {
-            drawToon(ctx, id, pose('run', 0, flushed({ ...REC, phase: ph })), 4 + 40 * (i + 0.5), 92, 78, heroOpts(id));
-          });
-        }, { wide: true, hires: 5 });
-    }
-    tile(rg, 'recommended — at size', `Real ${HERO_DRAW_H}px heroes through the ${WORLD_Z}x world zoom, NOW then REC per hero.`,
-      (26 * IDS.length * 2 + 6) * WORLD_Z, 40 * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        IDS.forEach((id, i) => {
-          [null, REC].forEach((r, j) => {
-            drawToon(ctx, id, pose('run', t, r ? flushed(r) : {}), 3 + 26 * (i * 2 + j + 0.5), 32, HERO_DRAW_H, heroOpts(id));
-          });
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
-  }
-}
+// The hip join and the near-leg bake-offs used to sit here — the nine-cut join
+// (now vs flush, cast-wide, run and slide), then round two: six leg shifts
+// against INTO, DROP, torso length and the bottom of the plain body, with a
+// RECOMMENDED LEG panel at the end. Both are out of the gallery.
+//
+// FLUSH is the join, settled 9 Sep 2026 and shipped: the near thigh's round cap
+// lands ON its root instead of half a stroke past it, and the outlined trouser
+// disc that printed a joint line across the top of the leg is gone, so the hip
+// reads as one mass. The underside contour is drawn back in by hand, because
+// that line is the thigh's own edge and not the rim's.
+//
+// The leg numbers the round-two panel recommended, for whoever reopens this:
+// whole leg back 0.09u, INTO +0.03u, DROP +0.03u, torso +0.035u, on flush. The
+// finding under them is that the two easy dials fight — DROP hangs the plain
+// rounded body lower over the thighs and a rounded box hung lower is a slab,
+// which is what `hipTuck` and `hipRound` were cut to answer.
+//
+// Every dial survives the sections — `hipJoin`, `hipUnderside`, `hipSink`,
+// `legShift`, `legInto`, `torsoDrop`, `torsoLong`, `hipTuck`, `hipRound` — and
+// the cuts are still listed in src/dev/hip-join-candidates.js, so either
+// question reopens with a section and no painter work.
 
 // The slide near-arm extension bake-off used to sit here — the whole sliding
 // cast at five target extensions, plus kiko/lorenzo/grumpos close-ups. SETTLED
@@ -7501,6 +7121,65 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // his hand on the release beat (run.js holds the projectile until then), hers
 // as the only chamber the ki-press has. The production rows above draw them:
 // the cast's ALL SPECIAL MOVE strip is where both were noticed missing.
+
+// The shoe bake-off used to sit here — the whole cast at five feet, four rows
+// each (144u run, 144u slide, the front-on 60u idle and the honest 24u).
+// SETTLED 10 Sep 2026, every hero called, so it is gone by the usual rule and
+// the record is this:
+//
+//   BOOT      lorenzo, clara       squared off, low cut, big below the ankle
+//   SLIPPER   grumpos, kiko, fernwick, dolores
+//   SNEAKER   gary
+//   OVAL      b33p, gnash, raymn, and the guest — unchanged, unset
+//
+// Mochi and Chompo are not on the seam at all: the disc rig paints its own
+// high-heel pumps and the pika rig has no shoe.
+//
+// It rode `spec.shoeShape` and still does — the painter stays, 'oval' is what
+// an unset spec draws, and the four shapes are all still in SHOE_PIECES, so
+// any of this reopens by putting a different string in TOON_SPECS. What the
+// bake-off cost, and what is worth not paying twice:
+//   - four shapes held inside the ellipse's box came out as four versions of
+//     the same foot. They differ in PROPORTION first, sole second, toe last.
+//   - a shape rolled about the ellipse's CENTRE swings its collar off the leg.
+//     Each one names the ankle it hangs from and turns about that.
+//   - the collar cannot live in shoe space at all: it goes on the SHIN, as a
+//     limb stroke, or the shoe never grips (see paintShoeCuff).
+//   - the far foot's sole must mix off the BASE leather. recede() returns
+//     `rgb()`, parseHex answered null, and the back shoe silently lost its
+//     sole entirely.
+// The production cast rows above draw the shipped result.
+
+// The stance bake-offs used to sit here — the splay sheet (every shipped shoe
+// at four yaws, plus four heroes in their own) and the body-lean sweep
+// (Lorenzo, Clara and Grumpos at five strengths against four slopes, hill drawn
+// under each figure with a red hairline on the ground so the soles could be
+// checked by eye). Both SETTLED 10 Sep 2026, so both are gone by the usual rule
+// and the record is this:
+//
+//   FOOT_SPLAY = 0.62   feet turned out front on. 0.45 barely registered, 0.80
+//                       was close behind, 1.0 is a full side profile on both
+//                       feet and reads as clown shoes.
+//   SLOPE_LEAN = 0.4    the body's pitch on a hill, capped at SLOPE_LEAN_MAX.
+//
+// Both are CONSTANTS, not spec keys: a stance is a rig behaviour and not a
+// costume, so it is the same for everyone who stands on the ground. Both seams
+// stay — `spec.footSplay` and `pose.slopeLean` still override per draw, and an
+// explicit ZERO still means "square on" / "upright" rather than "use the
+// default", which is what let these sheets sweep them in the first place.
+//
+// What they cost, and what is worth not paying twice:
+//   - a splayed foot is a SIDE view and must be sized with the side's radius. It
+//     was taking the front one — a width, sized off the ankle — and after the
+//     yaw compressed it the shoe was barely wider than the leg, so the leg's own
+//     end cap came out through the back of the heel.
+//   - the ankle has to TRAVEL with the yaw. Side on the leg enters behind the
+//     middle of the shoe, head on it enters the middle; pinning a half-turned
+//     foot to the side shape's ankle leaves too little shoe behind the leg.
+//   - the lean must be CAPPED. A step is a discontinuity, not a gradient:
+//     measured across one the ground reads near-vertical, and a fraction of
+//     near-vertical is a hero lying down.
+// tests/shoe-slope.js pins the lean, the cap and the step cases.
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
@@ -7561,7 +7240,10 @@ if (location.hash) requestAnimationFrame(() => {
 // drawToon/TOON_SPECS ride along for silhouette measuring: every tile crops at
 // its own height, so "how tall is this hero really?" needs a scratch canvas.
 window.__gallery = {
-  tiles, paint, drawToon, TOON_SPECS, HERO_DRAW_H, RANGED_RELEASE_POINT, drawRangedProjectile,
+  tiles, paint, drawToon, TOON_SPECS, RUSTY_W3B, PANDA_PAL, HERO_DRAW_H, RANGED_RELEASE_POINT, drawRangedProjectile,
+  // The guest rides the spec/pal seam rather than TOON_SPECS, so a console
+  // question about him ("what would this palette do?") had no way to reach him.
+  GUEST_ID, GUEST_OPTS,
   get errors() { return tiles.filter((t) => t.stack); },
 };
 
