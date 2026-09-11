@@ -28,7 +28,7 @@ assert.equal(PortraitLab.config().heroAnchorX, 24, 'portrait moves the character
 assert.equal(PortraitLab.config().backgroundZoom, 1, 'portrait shows the full backdrop for more surrounding scenery');
 assert.equal(PortraitLab.config().cloudOffsetY, -100, 'the portrait review keeps the selected cloud lift');
 assert.equal(PortraitLab.config().sunOffsetY, -100, 'the portrait review keeps the selected sun lift');
-assert.equal(PortraitLab.config().sceneryOffsetY, -42, 'portrait lifts the mountain backdrop within the taller sky');
+assert.equal(PortraitLab.config().sceneryOffsetY, -90, 'portrait lifts the mountain backdrop within the taller sky');
 assert.equal(PortraitLab.config().groundAnchorRatio, 0.70, 'portrait production places the hero around 70% down the safe frame');
 
 values.set(PORTRAIT_LAB_STORAGE_KEY, '{bad json');
@@ -153,6 +153,8 @@ assert.equal(labRun.portraitFrameFitState.edgeActive, true,
 labRun.player.y = 0;
 labRun.route = { kind: 'tunnel' };
 labRun.playerGroundY = () => 312;
+labRun.player.y = 46;
+labRun.player.grounded = false;
 labRun.updateCamera(1 / 60);
 assert.equal(labRun.portraitFrameFitState.branch, 'tunnel-fixed',
   'portrait camera keeps an explicit fixed underground branch');
@@ -170,11 +172,17 @@ assert.ok(tunnelHeroBottom <= labRun.portraitFrameFitState.playableBottom + 1e-9
   'underground portrait heroes clear the touch shelf');
 assert.equal(labRun.portraitFrameFitState.edgeActive, true,
   'portrait framing reports the active lower-edge correction');
+const tunnelPan = labRun.camPan;
+labRun.player.y = 80;
+labRun.updateCamera(1 / 60);
+assert.equal(labRun.camPan, tunnelPan,
+  'ordinary underground jumps do not retrigger the lower camera pan');
 labRun.route = null;
 labRun.playerGroundY = () => 232;
+labRun.player.y = 0;
 labRun.updateCamera(1 / 60);
 assert.equal(labRun.camPan, fixedPan,
-  'leaving underground keeps the same portrait composition');
+  'leaving underground returns the camera to the surface composition');
 
 // The same contract must hold for an ordinary shipped run, not only for the
 // lab snapshot above. Its config comes from the approved production defaults,

@@ -10,8 +10,8 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   // usable safe frame so the character occupies the lower playfield without
   // colliding with the bottom touch shelf.
   // Landscape phones use a 2.2x camera on the 480x270 frame. A portrait
-  // phone's short side is 480 logical px wide, so 3.75x keeps the same
-  // readable character/object scale while opening a little more runway.
+  // phone's short side is 480 logical px wide, so 3.75x keeps the portrait
+  // character/object scale close to landscape while leaving a little runway.
   worldZoom: 3.75,
   // Move the authored player column farther left to pay for the closer view:
   // this is presentation-only and does not change simulation or collisions.
@@ -23,7 +23,7 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   sunOffsetY: -100,
   // Lift the mountain/terrain backdrop within the tall portrait sky while
   // leaving the authored ground, hero and controls at their existing anchors.
-  sceneryOffsetY: -42,
+  sceneryOffsetY: -90,
   groundAnchorRatio: 0.70,
 });
 

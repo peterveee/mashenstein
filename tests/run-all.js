@@ -356,6 +356,7 @@ const suites = [
   'tests/camera-framing.js',
   'tests/tunnel-camera.js',
   'tests/portrait-framing.js',
+  'tests/portrait-finish.js',
   'tests/portrait-lab.js',
   'tests/portrait-layout.js',
   'tests/routes.js',

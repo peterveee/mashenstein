@@ -55,9 +55,9 @@ assert(grounded && highJump && grounded[1] === highJump[1]
   'the Plumber sun stays fixed on screen when the raised-road background shifts');
 
 const landscapeScenery = sceneryPosition(null);
-const portraitScenery = sceneryPosition({ sceneryOffsetY: -42 });
+const portraitScenery = sceneryPosition({ sceneryOffsetY: -90 });
 assert(landscapeScenery && landscapeScenery[2] === 0
-  && portraitScenery && portraitScenery[2] === -42,
+  && portraitScenery && portraitScenery[2] === -90,
   'portrait lifts the mountain layer without changing landscape scenery');
 
 function skyCoverage(coverage) {

@@ -196,6 +196,10 @@ const PORTRAIT_EDGE_PAN_BOTTOM_MARGIN = 0;
 // enough to clear the action shelf; allow at least one logical frame of bounded
 // travel while still keeping the camera from running away on malformed state.
 const PORTRAIT_EDGE_PAN_LIMIT = 480;
+// Reframe a tunnel only when its standing floor has moved materially, never
+// because the hero is hopping above that floor. This keeps a sloped lower route
+// readable without bringing back the distracting jump-by-jump camera motion.
+const PORTRAIT_TUNNEL_FLOOR_REFRAME_THRESHOLD = 4;
 
 // The world frame is taller than the landscape canvas in portrait, but the
 // readable gameplay band is smaller than that frame: the centered HUD owns the
@@ -1436,7 +1440,13 @@ const INTRO_RUN_EXP = 1.8;
 // and there are none spare. The marker does not need them anyway: its right
 // extent is set by the readout box standing off at 34, not by the mast, and the
 // flag's cloth still ends a good 29px inside the box's far edge.
-const finishLineX = () => VIEW_W - 72;
+//
+// Portrait is a narrower WORLD view, not a shorter level. At the phone's 3.75x
+// presentation VIEW_W is about 128, so the old 72px edge margin left less than
+// PLAYER_X of runway and put the trigger beyond totalDist. Keep the authored
+// margin where it fits, but guarantee a short final dash exists on narrow views.
+const FINISH_MIN_RUNWAY = 24;
+const finishLineX = () => Math.max(VIEW_W - 72, PLAYER_X + FINISH_MIN_RUNWAY);
 // FINISH_CLEAR — the clear lane in front of the marker — is defined in
 // layout.js and re-exported at the top of this file. An obstacle parked
 // against the pole is a hazard wearing the goal as camouflage, a coin behind
@@ -1929,8 +1939,8 @@ export class RunState {
         GROUND_Y, PORTRAIT_FRAME_MARGIN, 0);
       underground = { ...fit, pan, floor };
       // This diagnostic fit proves the tunnel contents fit, but deliberately
-      // does not become the camera target. Underground is a content change,
-      // not a camera event in portrait unless the hero reaches an edge.
+      // does not become the camera target. updateCamera owns one entry edge
+      // pan and then parks it through jumps so the lower route stays readable.
       branch = 'tunnel-fixed';
     }
     return Object.freeze({ ...envelope, pan, surfacePan: preferredPan, heroPan: preferredPan, branch,
@@ -2416,36 +2426,63 @@ export class RunState {
     if (portraitActive) {
       // Keep the portrait composition fixed through ordinary jumps, hills and
       // tunnels. The full-height frame already contains the underground
-      // cutaway; only the drawn hero reaching an actual top/bottom edge earns
-      // the bounded correction below.
+      // cutaway; surface jumps and the first tunnel entry are the only normal
+      // edge events, with a grounded lower floor allowed to reframe if a
+      // sloped tunnel has moved materially.
       setRestingZoom(portraitConfig.worldZoom);
       this.camZoom = portraitConfig.worldZoom;
       const frameFit = this.portraitFrameFit();
       const frame = presentationFrame();
       const gameplayEdges = portraitGameplayEdges(frame);
+      const inTunnel = this.route?.kind === 'tunnel';
+      const wasInTunnel = this.portraitFrameFitState?.branch === 'tunnel-fixed';
+      const frameChanged = this.portraitFrameFitState?.frameRevision !== frame?.revision;
+      const previousTunnelFloor = Number(this.portraitFrameFitState?.tunnelFloor);
+      const groundedTunnel = !!this.player?.grounded || Number(this.player?.y) <= 0.01;
+      const floor = this.playerGroundY();
+      const tunnelFloorChanged = inTunnel && wasInTunnel && groundedTunnel
+        && Number.isFinite(previousTunnelFloor)
+        && Math.abs(floor - previousTunnelFloor) >= PORTRAIT_TUNNEL_FLOOR_REFRAME_THRESHOLD;
       const edgePanLimit = Math.max(PORTRAIT_EDGE_PAN_LIMIT,
         Number.isFinite(Number(frame?.height)) ? Number(frame.height) : 0);
-      const floor = this.playerGroundY();
       const feet = floor - (Number(this.player?.y) || 0);
-      const edgePan = portraitEdgePanForBounds({
-        top: feet - HERO_DRAW_H,
-        bottom: feet,
-      }, this.camZoom, GROUND_Y, frameFit.pan,
+      // Entering a tunnel begins with the hero still falling from the upper
+      // lane, so use the lower route's standing footprint for that first pan.
+      // Otherwise the camera would freeze on the surface composition before
+      // the fall reached the controls. Subsequent airborne jumps use the
+      // parked pan and cannot retrigger it.
+      const panBounds = inTunnel && (!wasInTunnel || frameChanged || tunnelFloorChanged)
+        ? { top: floor - HERO_DRAW_H, bottom: floor }
+        : { top: feet - HERO_DRAW_H, bottom: feet };
+      const edgePan = portraitEdgePanForBounds(panBounds, this.camZoom, GROUND_Y, frameFit.pan,
       PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN,
       edgePanLimit, gameplayEdges);
+      // A tunnel entry is one deliberate composition change. Once the lower
+      // route has earned that pan, keep it parked through ordinary jumps so
+      // every hop cannot bounce the camera between the HUD and the controls.
+      // Re-resolve only when the route is first entered or the viewport changes;
+      // leaving the tunnel returns to the surface composition once.
+      const tunnelPan = inTunnel && wasInTunnel && !frameChanged && !tunnelFloorChanged
+        ? (Number.isFinite(Number(this.camPan)) ? this.camPan : edgePan)
+        : edgePan;
+      const targetPan = inTunnel
+        ? tunnelPan
+        : (wasInTunnel ? frameFit.pan : edgePan);
       this.portraitFrameFitState = Object.freeze({
         ...frameFit,
+        frameRevision: frame?.revision,
         playableTop: gameplayEdges.top,
         playableBottom: gameplayEdges.bottom,
-        pan: edgePan,
-        edgePan: edgePan - frameFit.pan,
-        edgeActive: Math.abs(edgePan - frameFit.pan) > 0.001,
+        tunnelFloor: inTunnel ? floor : null,
+        pan: targetPan,
+        edgePan: targetPan - frameFit.pan,
+        edgeActive: Math.abs(targetPan - frameFit.pan) > 0.001,
       });
-      const targetPan = this.portraitFrameFitState.pan;
       // The surface is still a parked composition. Assign directly so an
-      // ordinary jump or an underground route cannot spend several frames
-      // easing from a stale camera value and appear to pan; edge corrections
-      // follow only while the hero is against the frame boundary.
+      // ordinary jump cannot spend several frames easing from a stale camera
+      // value and appear to pan. A tunnel gets one entry pan and one exit pan;
+      // edge corrections otherwise follow only while the hero is against the
+      // surface frame boundary.
       this.camPan = targetPan;
       this.camFloorY = GROUND_Y;
       this.camFeetY = this.route?.kind === 'tunnel' ? this.playerGroundY() : null;
