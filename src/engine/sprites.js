@@ -757,10 +757,18 @@ export function drawBambooShoot(ctx, cx, cy, opts = {}) {
   // ~7.3:1. Slim and long: a cane, not a dowel and not a needle. The caller
   // scales the whole thing (drawHeldStick uses h/36, and the projectile must
   // use the same), so held and thrown are one object at one size.
-  const len = 5.8 * s, wid = 0.8 * s;
+  // `wid` is a dial (default the held 0.8): in flight the cane is drawn fatter,
+  // see rangedArt's 'bamboo' case for why.
+  const len = 5.8 * s, wid = (opts.wid ?? 0.8) * s;
   ctx.save();
   ctx.translate(Math.round(cx), Math.round(cy));
   ctx.rotate(opts.spin || 0);
+  // Ink around the body, when asked (the projectile asks; the held cane sits
+  // against the body and gets its edge from the hand and pouch).
+  if (opts.outline) {
+    ctx.strokeStyle = opts.ink || '#1a1028'; ctx.lineWidth = opts.outline; ctx.lineJoin = 'round';
+    ctx.strokeRect(-len, -wid, len * 2, wid * 2);
+  }
   // FLAT ENDS. Drawn first as a round-capped stroke, this was a pill — bamboo
   // is CUT, and a cut cane ends square with a hollow bore showing. So the body
   // is a rectangle and each end carries a dark cut face: that pair of marks is
@@ -787,6 +795,24 @@ export function drawBambooShoot(ctx, cx, cy, opts = {}) {
     ctx.beginPath();
     ctx.moveTo(len * f, -wid); ctx.lineTo(len * f, wid);
     ctx.stroke();
+  }
+  // THE SPRIG. A cut cane is a stick; a cane with a pair of leaves at the
+  // forward node is a SHOOT — which is the name of the move, and the widest
+  // thing that can hang off it. Two blades, one each side, in the shoot's own
+  // green with the body's ink around them.
+  // `sprig` is the leaf's LENGTH as a multiple of the full blade, not a flag:
+  // the leaves are most of what reads as bulk, so this is the dial that decides
+  // how big the thing looks — more than the cane's own scale does.
+  if (opts.sprig) {
+    const L = opts.sprig;
+    ctx.fillStyle = opts.leaf || '#7fb043';
+    ctx.strokeStyle = opts.ink || '#1a1028'; ctx.lineWidth = opts.outline || Math.max(0.6, 0.5 * s);
+    for (const sgn of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(len / 3, -wid * sgn);
+      ctx.quadraticCurveTo(len / 3 + 2.2 * s * L, -wid * sgn - 3.4 * s * L * sgn, len / 3 + 5.5 * s * L, -wid * sgn - 2.6 * s * L * sgn);
+      ctx.quadraticCurveTo(len / 3 + 3 * s * L, -wid * sgn - 0.4 * s * L * sgn, len / 3, -wid * sgn); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
   }
   ctx.restore();
 }

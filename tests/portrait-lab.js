@@ -4,9 +4,13 @@ import {
 } from '../src/dev/portrait-lab.js';
 import { lifecyclePolicy } from '../src/engine/lifecycle.js';
 import { RunState } from '../src/game/run.js';
+import { screenYFor } from '../src/engine/camera.js';
+import { HERO_DRAW_H } from '../src/game/draw.js';
 import { defaultSettings, defaultSlot } from '../src/engine/save.js';
 import { STAGE_BY_ID } from '../src/data/stages.js';
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
+import { frameForViewport, defaultFrame } from '../src/engine/frame.js';
+import { setPresentationFrame } from '../src/engine/renderer.js';
 
 const values = new Map();
 globalThis.localStorage = {
@@ -19,7 +23,13 @@ const close = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, `${message}: 
 
 PortraitLab.reset();
 assert.deepEqual(PortraitLab.config(), PORTRAIT_LAB_DEFAULTS, 'reset writes the review defaults');
-assert.equal(PortraitLab.config().worldZoom, 2.3375, 'the agreed calibration keeps four decimals');
+assert.equal(PortraitLab.config().worldZoom, 3.75, 'portrait keeps a near-landscape sprite scale with a little extra runway');
+assert.equal(PortraitLab.config().heroAnchorX, 24, 'portrait moves the character column left for runway');
+assert.equal(PortraitLab.config().backgroundZoom, 1, 'portrait shows the full backdrop for more surrounding scenery');
+assert.equal(PortraitLab.config().cloudOffsetY, -100, 'the portrait review keeps the selected cloud lift');
+assert.equal(PortraitLab.config().sunOffsetY, -100, 'the portrait review keeps the selected sun lift');
+assert.equal(PortraitLab.config().sceneryOffsetY, -42, 'portrait lifts the mountain backdrop within the taller sky');
+assert.equal(PortraitLab.config().groundAnchorRatio, 0.70, 'portrait production places the hero around 70% down the safe frame');
 
 values.set(PORTRAIT_LAB_STORAGE_KEY, '{bad json');
 assert.deepEqual(PortraitLab.config(), PORTRAIT_LAB_DEFAULTS, 'corrupt storage falls back');
@@ -28,15 +38,17 @@ assert.deepEqual(PortraitLab.config(), PORTRAIT_LAB_DEFAULTS, 'old records fall 
 
 values.set(PORTRAIT_LAB_STORAGE_KEY, JSON.stringify({
   version: 1, worldZoom: 9, backgroundZoom: 0, cloudOffsetY: -999, sunOffsetY: 999,
-  groundAnchorRatio: 2, session: true, unexpected: 'discard me',
+  heroAnchorX: -10, sceneryOffsetY: 999, groundAnchorRatio: 2, session: true, unexpected: 'discard me',
 }));
 const clamped = PortraitLab.config();
-assert.equal(clamped.worldZoom, 3, 'world zoom clamps');
+assert.equal(clamped.worldZoom, 4.5, 'world zoom clamps');
+assert.equal(clamped.heroAnchorX, 24, 'character anchor clamps');
 assert.equal(clamped.backgroundZoom, 1, 'background zoom clamps');
 assert.equal(clamped.cloudOffsetY, -100, 'cloud offset clamps');
 assert.equal(clamped.sunOffsetY, 60, 'sun offset clamps');
 assert.equal(clamped.groundAnchorRatio, 0.75, 'ground anchor clamps');
-assert.deepEqual(Object.keys(clamped).sort(), ['backgroundZoom', 'cloudOffsetY', 'groundAnchorRatio', 'sunOffsetY', 'version', 'worldZoom'],
+assert.equal(clamped.sceneryOffsetY, 40, 'scenery offset clamps');
+assert.deepEqual(Object.keys(clamped).sort(), ['backgroundZoom', 'cloudOffsetY', 'groundAnchorRatio', 'heroAnchorX', 'sceneryOffsetY', 'sunOffsetY', 'version', 'worldZoom'],
   'unknown fields are discarded');
 
 PortraitLab.adjust('worldZoom', -99);
@@ -57,6 +69,8 @@ assert.equal(PortraitLab.allowsPortrait(run), false, 'return revokes portrait al
 
 assert.equal(validatePortraitConfig({ version: 1, groundAnchorRatio: 0.655 }).groundAnchorRatio, 0.655,
   'ground anchor uses its 0.005 fine step');
+assert.equal(validatePortraitConfig({ version: 1, heroAnchorX: 43.6 }).heroAnchorX, 44,
+  'character anchor uses whole world pixels');
 
 const regularPortrait = lifecyclePolicy({ isIphone: true, standalone: true, portrait: true });
 assert.equal(regularPortrait.paused, true, 'a normal iPhone run remains behind the portrait blocker');
@@ -78,4 +92,167 @@ assert(Object.isFrozen(labRun.devPortraitLab), 'the launch snapshot is frozen');
 assert.equal(labRun.devPortraitLab.groundAnchorRatio, 0.655, 'the run keeps the selected ground anchor');
 assert.equal(labRun.devStartPercent, 0.5, 'Portrait Lab carries its session start percentage');
 assert.equal(labRun.devInvuln, true, 'Portrait Lab carries its session invulnerability');
+assert.equal(labRun.rewindFrames.capacity, 150, 'Portrait Lab keeps the full ten-second rewind tape');
+assert.equal(labRun.rewindAvailableForRun(), true, 'Portrait Lab enables continuous rewind recording');
+const pauseFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+  safeInsets: { top: 59, right: 0, bottom: 34, left: 0 }, revision: 13,
+});
+setPresentationFrame(pauseFrame);
+const portraitPause = labRun.portraitPauseButtons();
+assert.equal(portraitPause.length, 2, 'portrait pause exposes CONTINUE and BACK plates');
+assert.ok(portraitPause[0].h >= 56, 'portrait pause plates use a thumb-sized height');
+assert.ok(portraitPause[0].w > 180, 'portrait pause plates use the available safe-frame width');
+assert.ok(portraitPause[0].y > 800, 'portrait pause plates sit in the lower safe frame');
+for (const button of portraitPause) {
+  assert.ok(button.x >= pauseFrame.safeRect.left, `${button.id} clears the left safe edge`);
+  assert.ok(button.x + button.w <= pauseFrame.safeRect.right, `${button.id} clears the right safe edge`);
+  assert.ok(button.y + button.h <= pauseFrame.safeRect.bottom, `${button.id} clears the bottom safe edge`);
+}
+labRun.beatLock = true;
+const syncButtons = labRun.portraitPauseSyncButtons(portraitPause);
+assert.equal(syncButtons.length, 3, 'beat pause keeps all three audio-sync controls');
+assert.ok(syncButtons.every((button) => button.y < portraitPause[0].y),
+  'audio-sync controls sit above the main pause plates');
+setPresentationFrame(pauseFrame);
+labRun.camZoom = 1.5;
+labRun.camPan = 12;
+labRun.camFloorY = 80;
+labRun.camX = 0;
+labRun.save = labSave;
+labRun.player = { y: 0, grounded: true, vy: 0 };
+labRun.route = null;
+labRun.portraitSurfaceBounds = labRun.portraitWorldBounds({ includeTunnel: false });
+labRun.portraitBounds = labRun.portraitWorldBounds();
+labRun.portraitSurfaceFloorY = labRun.playerGroundY();
+labRun.updateCamera(1 / 60);
+assert.equal(labRun.camZoom, labRun.devPortraitLab.worldZoom, 'portrait lab keeps a fixed camera zoom');
+assert.equal(labRun.camPan, labRun.portraitFrameFitState.pan,
+  'portrait lab applies the fixed surface framing target immediately');
+assert.ok(Number.isFinite(labRun.portraitFrameFitState?.pan), 'portrait lab exposes the live framing target');
+assert.equal(labRun.portraitFrameFitState.pan, labRun.portraitFrameFitState.heroPan,
+  'portrait composition follows the configured ground anchor rather than a distant route envelope');
+assert.equal(labRun.camFloorY, 232, 'portrait lab keeps the authored base floor visible');
+const fixedPan = labRun.portraitFrameFitState.pan;
+labRun.player.y = 185;
+labRun.updateCamera(1 / 60);
+assert.ok(labRun.portraitFrameFitState.pan > fixedPan,
+  'portrait edge correction makes room when a high jump reaches the HUD band');
+assert.ok(labRun.portraitFrameFitState.pan <= fixedPan + pauseFrame.height,
+  'portrait HUD edge correction remains bounded to one logical frame');
+const highHeroTop = screenYFor(labRun.playerGroundY() - labRun.player.y - HERO_DRAW_H,
+  labRun.camZoom, labRun.camPan, labRun.camFloorY);
+const highHeroBottom = screenYFor(labRun.playerGroundY() - labRun.player.y,
+  labRun.camZoom, labRun.camPan, labRun.camFloorY);
+assert.ok(highHeroTop >= labRun.portraitFrameFitState.playableTop - 1e-9,
+  'high portrait jumps remain below the centered HUD');
+assert.ok(highHeroBottom <= labRun.portraitFrameFitState.playableBottom + 1e-9,
+  'high portrait jumps remain above the touch shelf');
+assert.equal(labRun.portraitFrameFitState.edgeActive, true,
+  'portrait framing reports the active upper-edge correction');
+labRun.player.y = 0;
+labRun.route = { kind: 'tunnel' };
+labRun.playerGroundY = () => 312;
+labRun.updateCamera(1 / 60);
+assert.equal(labRun.portraitFrameFitState.branch, 'tunnel-fixed',
+  'portrait camera keeps an explicit fixed underground branch');
+assert.ok(labRun.portraitFrameFitState.pan < fixedPan,
+  'underground content can use the lower edge correction above the touch controls');
+assert.ok(labRun.portraitFrameFitState.pan >= fixedPan - pauseFrame.height,
+  'underground lower-edge correction remains bounded to one logical frame');
+const tunnelHeroTop = screenYFor(labRun.playerGroundY() - labRun.player.y - HERO_DRAW_H,
+  labRun.camZoom, labRun.camPan, labRun.camFloorY);
+const tunnelHeroBottom = screenYFor(labRun.playerGroundY() - labRun.player.y,
+  labRun.camZoom, labRun.camPan, labRun.camFloorY);
+assert.ok(tunnelHeroTop >= labRun.portraitFrameFitState.playableTop - 1e-9,
+  'underground portrait heroes remain below the centered HUD');
+assert.ok(tunnelHeroBottom <= labRun.portraitFrameFitState.playableBottom + 1e-9,
+  'underground portrait heroes clear the touch shelf');
+assert.equal(labRun.portraitFrameFitState.edgeActive, true,
+  'portrait framing reports the active lower-edge correction');
+labRun.route = null;
+labRun.playerGroundY = () => 232;
+labRun.updateCamera(1 / 60);
+assert.equal(labRun.camPan, fixedPan,
+  'leaving underground keeps the same portrait composition');
+
+// The same contract must hold for an ordinary shipped run, not only for the
+// lab snapshot above. Its config comes from the approved production defaults,
+// and an airborne hero must not move the surface composition.
+setPresentationFrame(pauseFrame);
+const productionRun = new RunState({
+  stage, cabinet: CABINET_BY_ID[stage.cabinet], save: labSave, seed: 321,
+  difficulty: 1, initialHeroId: 'lorenzo', onEnd() {},
+});
+productionRun.camX = 0;
+productionRun.camPan = 0;
+productionRun.camFloorY = 80;
+productionRun.camZoom = 1;
+productionRun.player = { y: 0, grounded: true, vy: 0 };
+productionRun.route = null;
+productionRun.portraitSurfaceBounds = productionRun.portraitWorldBounds({ includeTunnel: false });
+productionRun.portraitBounds = productionRun.portraitWorldBounds();
+productionRun.portraitSurfaceFloorY = productionRun.playerGroundY();
+productionRun.updateCamera(1 / 60);
+const productionPan = productionRun.camPan;
+assert.equal(productionRun.portraitConfig().worldZoom, PORTRAIT_LAB_DEFAULTS.worldZoom,
+  'ordinary portrait gameplay uses the approved production calibration');
+// At the 70% groundline, a 10px hop remains below the HUD band and
+// keeps the fixed surface composition. Higher jumps are allowed to use the
+// bounded correction exercised by the lab run above.
+productionRun.player.y = 10;
+productionRun.updateCamera(1 / 60);
+assert.equal(productionRun.camPan, productionPan,
+  'ordinary portrait gameplay does not pan for a normal jump');
+
+// A portrait gameplay run must keep the upper-road release continuous too. The
+// fixed phone composition made this seam invisible to the landscape camera
+// assertions: after a route releases, the hero is airborne above the base lane
+// while the road remains in the same frame, so a stale route claim is a visible
+// lower-ground flash followed by a snap back to the slab.
+const portraitRouteRun = new RunState({
+  stage, cabinet: CABINET_BY_ID[stage.cabinet], save: labSave, seed: 322,
+  difficulty: 1, initialHeroId: 'lorenzo', portraitLabRun: true,
+  devPortraitLab: PORTRAIT_LAB_DEFAULTS, onEnd() {},
+});
+portraitRouteRun.enter();
+portraitRouteRun.introRunning = false;
+portraitRouteRun.introFreeze = 0;
+portraitRouteRun.zoneCard = null;
+portraitRouteRun.rhythmSyncPending = false;
+portraitRouteRun.hitstop = 0;
+const portraitIsland = portraitRouteRun.routes.find((r) => r.kind === 'island');
+const portraitHeroX = portraitRouteRun.playerWorldX() - portraitRouteRun.camX;
+portraitRouteRun.camX = portraitIsland.x + portraitIsland.w + 1 - portraitHeroX;
+portraitRouteRun.route = portraitIsland;
+portraitRouteRun.player.y = 0;
+portraitRouteRun.player.vy = 0;
+portraitRouteRun.player.grounded = true;
+portraitRouteRun.update(1 / 60);
+assert.equal(portraitRouteRun.route, null,
+  'portrait walking off a slab releases the upper road');
+assert.equal(portraitRouteRun.routeReleaseLock, portraitIsland,
+  'portrait edge fall locks the released slab out of the landing sweep');
+assert.equal(portraitRouteRun.player.grounded, false,
+  'portrait walking off a slab starts a fall');
+for (let i = 0; i < 60 && !portraitRouteRun.player.grounded; i++) {
+  portraitRouteRun.update(1 / 60);
+  assert.equal(portraitRouteRun.route, null,
+    'portrait falling off a slab never reclaims the upper road');
+  if (!portraitRouteRun.player.grounded) {
+    assert.equal(portraitRouteRun.routeReleaseLock, portraitIsland,
+      'portrait released slab stays locked during descent');
+  }
+}
+assert.equal(portraitRouteRun.player.grounded, true,
+  'portrait upper-road release eventually lands on the base lane');
+assert.equal(portraitRouteRun.routeReleaseLock, null,
+  'portrait landing clears the released-slab lock');
+
+setPresentationFrame(defaultFrame());
+labRun.player.y = 0;
+labRun.camZoom = 1.5;
+for (let i = 0; i < 120; i++) labRun.updateCamera(1 / 60);
+assert.ok(Math.abs(labRun.camZoom - 1.6) < 0.001,
+  'landscape rotation restores the ordinary landscape framing');
 console.log('PORTRAIT LAB CONFIG: PASSED');

@@ -8,9 +8,10 @@ import {
 } from '../src/engine/frame.js';
 import {
   portraitTouchLayout, portraitHitTest, clearPortraitInput,
-  PORTRAIT_CONTROL_DIAMETERS,
+  PORTRAIT_CONTROL_DIAMETERS, PORTRAIT_CONTROL_BOTTOM_MARGIN, PORTRAIT_CONTROL_TOP_CLEARANCE,
 } from '../src/engine/portrait-input.js';
 import { H, screen as rendererScreen, setPresentationFrame } from '../src/engine/renderer.js';
+import { portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds } from '../src/engine/camera.js';
 
 const close = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, `${message}: ${a} ~= ${b}`);
 
@@ -18,20 +19,56 @@ assert.equal(H, 270, 'the production renderer keeps its landscape height by defa
 assert.equal(defaultFrame().height, 270, 'the default frame remains landscape');
 
 const A = 2.2;
+const baseRenderW = portraitRenderViewWidth(2.3375, 0);
+close(portraitRenderViewWidth(2.3375, -16) - baseRenderW, 16,
+  'leftward hero anchors extend the rendered world by the exposed runway');
+close(portraitRenderViewWidth(2.3375, 8), baseRenderW,
+  'rightward hero anchors do not request extra render width');
 const frame = frameForViewport({
   mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
   safeInsets: { top: 59, right: 0, bottom: 34, left: 0 }, revision: 4,
 });
 close(frame.height, 844 * 480 / 390, 'portrait logical height follows the CSS aspect ratio');
 close(frame.scale, 390 / 480, 'portrait scale is CSS px per logical unit');
-close(frame.groundScreenY, frame.safeRect.top + frame.safeRect.height * 0.62,
-  'portrait ground anchor starts at 62% of the usable safe frame');
+close(frame.groundScreenY, frame.safeRect.top + frame.safeRect.height * 0.70,
+  'portrait ground anchor starts at 70% of the usable safe frame');
 const lowerFrame = frameForViewport({
   mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
   safeInsets: { top: 59, right: 0, bottom: 34, left: 0 }, groundAnchorRatio: 0.66,
 });
 close(lowerFrame.groundScreenY, lowerFrame.safeRect.top + lowerFrame.safeRect.height * 0.66,
   'portrait ground anchor follows the selected safe-frame ratio');
+setActiveFrame(lowerFrame);
+const level11Fit = portraitPanForBounds({ top: 24.23, bottom: 366 }, 2.3375, 232, 8);
+assert.equal(level11Fit.fits, true, 'Level 1-1 low/high envelope fits the fixed portrait zoom');
+assert.ok(level11Fit.pan < 0 && level11Fit.pan > -12,
+  `Level 1-1 only needs a small safe-area correction (${level11Fit.pan.toFixed(2)}px)`);
+assert.ok(level11Fit.topScreen + level11Fit.pan >= level11Fit.topEdge - 1e-9,
+  'portrait fit keeps the highest authored point below the usable top edge');
+assert.ok(level11Fit.bottomScreen + level11Fit.pan <= level11Fit.bottomEdge + 1e-9,
+  'portrait fit keeps the lowest authored point above the usable bottom edge');
+const pitPreferred = portraitPanForBounds({ top: 192, bottom: 270 }, 2.3375, 232, 8, 82);
+assert.equal(pitPreferred.fits, true, 'a flat pit-bearing level keeps room for a lower start line');
+close(pitPreferred.pan, 82, 'pit framing honours its preferred lower start while it fits');
+const heroGroundPan = portraitPanForFloor(232, 2.3375, 232, 8);
+close(heroGroundPan, lowerFrame.safeRect.top + lowerFrame.safeRect.height * 0.70 - lowerFrame.groundScreenY,
+  'portrait hero floor leaves a lower safe-frame margin');
+const lowerRoutePan = portraitPanForFloor(270, 2.3375, 232, 8);
+assert.ok(lowerRoutePan < heroGroundPan, 'a lower route scrolls the camera farther down');
+const tooTall = portraitPanForBounds({ top: -100, bottom: 500 }, 2.3375, 232, 8);
+assert.equal(tooTall.fits, false, 'an over-tall authored span is reported instead of being silently clipped');
+const topEdgePan = portraitEdgePanForBounds({ top: -20, bottom: 4 }, 2.8, 232, 0, 8, 0, 48);
+assert.ok(topEdgePan > 0 && topEdgePan <= 48,
+  'portrait adds only a bounded downward pan at the upper extreme');
+const bottomEdgePan = portraitEdgePanForBounds({ top: 350, bottom: 374 }, 2.8, 232, 0, 8, 0, 48);
+assert.ok(bottomEdgePan < 0 && bottomEdgePan >= -48,
+  'portrait adds only a bounded upward pan at the lower extreme');
+const hudButtonBandPan = portraitEdgePanForBounds(
+  { top: 40, bottom: 64 }, 2.8, 232, 0, 8, 0, 48,
+  { top: 200, bottom: 300 },
+);
+assert.ok(hudButtonBandPan > 0 && hudButtonBandPan <= 48,
+  'portrait edge pan honors the HUD-to-button gameplay band');
 const lowClamped = frameForViewport({
   mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
   safeInsets: { top: 59, bottom: 34 }, groundAnchorRatio: 0,
@@ -100,7 +137,9 @@ const rotated = frameForViewport({ mode: 'landscape', viewportWidth: 844, viewpo
 assert.equal(rotated.height, 270, 'rotation back to horizontal restores 480x270');
 assert.equal(rotated.mode, 'landscape', 'rotation back to horizontal restores landscape mode');
 
-const controls = portraitTouchLayout({ viewportWidth: 390, viewportHeight: 844, safeInsets: { top: 59, bottom: 34 }, revision: 8 });
+const controls = portraitTouchLayout({ viewportWidth: 390, viewportHeight: 844, safeInsets: { top: 59, bottom: 34 }, revision: 8, includeRewind: true });
+assert.equal(portraitTouchLayout({ viewportWidth: 390, viewportHeight: 844 }).controls.rewind, undefined,
+  'standalone portrait preview keeps its four-control surface');
 for (const [id, diameter] of Object.entries(PORTRAIT_CONTROL_DIAMETERS)) {
   assert.equal(controls.controls[id].diameter, diameter, `${id} control has its locked CSS diameter`);
   assert.ok(controls.controls[id].cy >= controls.safe.top && controls.controls[id].cy <= 844 - controls.safe.bottom,
@@ -108,9 +147,24 @@ for (const [id, diameter] of Object.entries(PORTRAIT_CONTROL_DIAMETERS)) {
 }
 assert.equal(portraitHitTest(controls, controls.controls.use.cx, controls.controls.use.cy).action,
   'ability', 'USE wins over its broad thumb zone');
+assert.equal(portraitHitTest(controls, controls.controls.rewind.cx, controls.controls.rewind.cy).action,
+  'left', 'Portrait Lab RWD control maps to the held rewind action');
+assert.ok(controls.controls.rewind.cy - controls.controls.rewind.r >= controls.safe.top,
+  'Portrait Lab RWD control clears the top safe area');
+assert.equal((844 - controls.safe.bottom) - controls.controls.jump.cy,
+  PORTRAIT_CONTROL_DIAMETERS.jump / 2 + PORTRAIT_CONTROL_BOTTOM_MARGIN,
+  'bottom controls keep the configured safe-area clearance');
+assert.equal(controls.controls.jump.cy, controls.controls.use.cy,
+  'USE shares the same baseline as JUMP');
+assert.equal(controls.controls.slide.cy, controls.controls.use.cy,
+  'SLIDE shares the same baseline as USE');
 assert.equal(portraitHitTest(controls, 24, 780).action, 'jump', 'left lower zone maps to JUMP');
 assert.equal(portraitHitTest(controls, 366, 780).action, 'slide', 'right lower zone maps to SLIDE');
-assert.equal(portraitHitTest(controls, 366, 90).action, 'escape', 'PAUSE is an explicit top-right target');
+assert.equal(portraitHitTest(controls, controls.controls.pause.cx, controls.controls.pause.cy).action,
+  'escape', 'PAUSE is an explicit top-right target');
+assert.ok(controls.controls.pause.cy - controls.controls.pause.r
+  >= controls.safe.top + PORTRAIT_CONTROL_TOP_CLEARANCE,
+  'PAUSE leaves the authored status/notch breathing band');
 assert.equal(portraitHitTest(controls, 195, 350), null, 'the middle world remains free of generic zones');
 const active = new Map([[1, 'jump'], [2, 'slide']]);
 assert.deepEqual(clearPortraitInput(active).sort(), ['jump', 'slide'], 'resize cancellation returns held actions');

@@ -35,13 +35,14 @@ sections and the round notes still read.
 ## The ability — BAMBOO SHOOT
 
 `ability.type: 'toss'`, cooldown 3.2s. Nothing leaves on the press: he reaches
-to the pouch, pulls a cane and whips it forward (the `bundle` throw gesture in
-`drawHumanoid`, 0.3s), and the cane leaves at `RANGED_RELEASE_AT.toss` of that
-window. It flies the returning-axe cycle in `run.js` (`type: 'axe'`,
-`art: 'bamboo'`): out, a short hover, home to the pouch. Ranged, so he is dealt
-card boxes on the rhythm charts like every other thrower.
+to the dispenser, pulls a cane and whips it forward (the `bundle` throw gesture
+in `drawHumanoid`, 0.3s), and the cane leaves at `RANGED_RELEASE_AT.toss` of
+that window. It uses the axe's outbound motion in `run.js` (`type: 'axe'`,
+`art: 'bamboo'`) and breaks on its first contact; the dispenser supplies the
+next one. Ranged, so he is dealt card boxes on the rhythm charts like every
+other thrower.
 
-The pouch is stateful. `player.stickParity` flips on every press; the
+The dispenser is stateful. `player.stickParity` flips on every press; the
 projectile carries `caneParity` and is drawn at `caneScale(parity)`, so the
 long and the short cane alternate and the one in the air is the one he pulled.
 While it is out, `player.axeThrown` empties that slot on the sprite.

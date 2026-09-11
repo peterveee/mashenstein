@@ -5,18 +5,35 @@ export const PORTRAIT_LAB_STORAGE_KEY = 'mash_portrait_lab_v1';
 
 export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   version: 1,
-  worldZoom: 2.3375,
+  // These are the review values that gave the portrait frame its clearest
+  // starting composition. Keep the hero's feet/groundline around 70% of the
+  // usable safe frame so the character occupies the lower playfield without
+  // colliding with the bottom touch shelf.
+  // Landscape phones use a 2.2x camera on the 480x270 frame. A portrait
+  // phone's short side is 480 logical px wide, so 3.75x keeps the same
+  // readable character/object scale while opening a little more runway.
+  worldZoom: 3.75,
+  // Move the authored player column farther left to pay for the closer view:
+  // this is presentation-only and does not change simulation or collisions.
+  heroAnchorX: 24,
+  // Keep the portrait backdrop at identity so the taller phone frame shows
+  // more of the shipped sky and terrain around the gameplay action.
   backgroundZoom: 1,
-  cloudOffsetY: 0,
-  sunOffsetY: 0,
-  groundAnchorRatio: 0.66,
+  cloudOffsetY: -100,
+  sunOffsetY: -100,
+  // Lift the mountain/terrain backdrop within the tall portrait sky while
+  // leaving the authored ground, hero and controls at their existing anchors.
+  sceneryOffsetY: -42,
+  groundAnchorRatio: 0.70,
 });
 
 const LIMITS = Object.freeze({
-  worldZoom: [1.6, 3],
+  worldZoom: [1.6, 4.5],
+  heroAnchorX: [24, 72],
   backgroundZoom: [1, 1.3],
   cloudOffsetY: [-100, 60],
   sunOffsetY: [-100, 60],
+  sceneryOffsetY: [-120, 40],
   groundAnchorRatio: [0.55, 0.75],
 });
 
@@ -27,7 +44,9 @@ const clamp = (value, [lo, hi], fallback) => {
 
 const round = (name, value) => {
   if (name === 'worldZoom') return Math.round(value * 1000) / 1000;
+  if (name === 'heroAnchorX') return Math.round(value);
   if (name === 'backgroundZoom') return Math.round(value * 100) / 100;
+  if (name === 'sceneryOffsetY') return Math.round(value);
   if (name === 'groundAnchorRatio') return Math.round(value * 200) / 200;
   return Math.round(value);
 };
@@ -38,12 +57,14 @@ export function validatePortraitConfig(raw) {
   const worldZoom = clamp(source.worldZoom, LIMITS.worldZoom, PORTRAIT_LAB_DEFAULTS.worldZoom);
   const out = {
     version: 1,
-    // Keep the agreed four-decimal calibration visible in the default record;
+    // Keep the authored starting calibration visible in the default record;
     // ordinary fine nudges are still stored at the exposed 0.001 step.
     worldZoom: worldZoom === PORTRAIT_LAB_DEFAULTS.worldZoom ? worldZoom : round('worldZoom', worldZoom),
+    heroAnchorX: round('heroAnchorX', clamp(source.heroAnchorX, LIMITS.heroAnchorX, PORTRAIT_LAB_DEFAULTS.heroAnchorX)),
     backgroundZoom: round('backgroundZoom', clamp(source.backgroundZoom, LIMITS.backgroundZoom, PORTRAIT_LAB_DEFAULTS.backgroundZoom)),
     cloudOffsetY: round('cloudOffsetY', clamp(source.cloudOffsetY, LIMITS.cloudOffsetY, PORTRAIT_LAB_DEFAULTS.cloudOffsetY)),
     sunOffsetY: round('sunOffsetY', clamp(source.sunOffsetY, LIMITS.sunOffsetY, PORTRAIT_LAB_DEFAULTS.sunOffsetY)),
+    sceneryOffsetY: round('sceneryOffsetY', clamp(source.sceneryOffsetY, LIMITS.sceneryOffsetY, PORTRAIT_LAB_DEFAULTS.sceneryOffsetY)),
     groundAnchorRatio: round('groundAnchorRatio', clamp(source.groundAnchorRatio, LIMITS.groundAnchorRatio, PORTRAIT_LAB_DEFAULTS.groundAnchorRatio)),
   };
   return Object.freeze(out);

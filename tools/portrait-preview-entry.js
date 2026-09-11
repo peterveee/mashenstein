@@ -7,11 +7,12 @@ import {
 } from '../src/engine/renderer.js';
 import { frameForViewport, cameraForFrame } from '../src/engine/frame.js';
 import { PortraitInputSurface, portraitTouchLayout } from '../src/engine/portrait-input.js';
+import { PORTRAIT_LAB_DEFAULTS } from '../src/dev/portrait-lab.js';
 
 const REFERENCE = typeof window !== 'undefined' ? window.__PORTRAIT_REFERENCE__ : '';
 const FRAME_MODE = 'phone-portrait';
-const CURRENT_ZOOM = 2;
-const CALIBRATION_ZOOM = 2.2;
+const CURRENT_ZOOM = 2.2;
+const CALIBRATION_ZOOM = PORTRAIT_LAB_DEFAULTS.worldZoom;
 const TARGET_FACTOR = 1.0625;
 
 const SCENES = {
@@ -176,8 +177,9 @@ function readouts(run, camera, frame, drawToon, pose, heroId) {
   const logicalBounds = bounds ? (() => {
     const topPoint = { x: heroWorldX + bounds.left, y: groundY - run.player.y + bounds.top };
     const bottomPoint = { x: heroWorldX + bounds.right, y: groundY - run.player.y + bounds.bottom };
-    const top = { x: topPoint.x * camera.scale + camera.tx, y: topPoint.y * camera.scale + camera.ty };
-    const bottom = { x: bottomPoint.x * camera.scale + camera.tx, y: bottomPoint.y * camera.scale + camera.ty };
+    const xOffset = (run.portraitWorldXOffset?.() || 0) * camera.scale;
+    const top = { x: topPoint.x * camera.scale + camera.tx + xOffset, y: topPoint.y * camera.scale + camera.ty };
+    const bottom = { x: bottomPoint.x * camera.scale + camera.tx + xOffset, y: bottomPoint.y * camera.scale + camera.ty };
     return { left: top.x, right: bottom.x, top: top.y, bottom: bottom.y };
   })() : null;
   const cssBounds = logicalBounds ? {
@@ -190,7 +192,7 @@ function readouts(run, camera, frame, drawToon, pose, heroId) {
   } : null;
   const box = run.playerBox();
   const hitRightLogical = box.x + box.w - run.camX;
-  const hitRightCss = hitRightLogical * camera.scale * frame.scale + screen.ox;
+  const hitRightCss = (hitRightLogical * camera.scale + (run.portraitWorldXOffset?.() || 0) * camera.scale) * frame.scale + screen.ox;
   const worldWidth = frame.width / camera.scale;
   const actionObstacles = (run.obstacles || []).filter((ob) => ob.live && ob.def?.action !== 'none' && ob.x >= heroWorldX);
   const react = Number.isFinite(run.spawner?.react) ? run.spawner.react : null;
@@ -234,15 +236,16 @@ async function bootEmbed() {
   const chosen = choiceConfig(p);
   const previewConfig = {
     worldZoom: chosen.zoom,
-    backgroundZoom: numberParam(p, 'bgZoom', 1),
-    cloudOffsetY: numberParam(p, 'cloudOffset', 0),
-    sunOffsetY: numberParam(p, 'sunOffset', 0),
-    groundAnchorRatio: 0.62,
+    heroAnchorX: numberParam(p, 'heroX', PORTRAIT_LAB_DEFAULTS.heroAnchorX),
+    backgroundZoom: numberParam(p, 'bgZoom', PORTRAIT_LAB_DEFAULTS.backgroundZoom),
+    cloudOffsetY: numberParam(p, 'cloudOffset', PORTRAIT_LAB_DEFAULTS.cloudOffsetY),
+    sunOffsetY: numberParam(p, 'sunOffset', PORTRAIT_LAB_DEFAULTS.sunOffsetY),
+    groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio,
   };
   const safe = safeForPreview(p);
   let frame = frameForViewport({
     mode: chosen.choice.mode, viewportWidth: requested.width, viewportHeight: requested.height,
-    safeInsets: safe, revision: 1,
+    safeInsets: safe, groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio, revision: 1,
   });
   setPresentationFrame(frame);
 
@@ -308,7 +311,19 @@ async function bootEmbed() {
   const render = () => {
     run.camZoom = chosen.zoom;
     run.prevCamZoom = chosen.zoom;
-    run.camPan = 0; run.prevCamPan = 0;
+    // The embedded review frame uses the same measured low/high fit as a live
+    // Portrait Lab run. Landscape and the comparison baseline keep their
+    // original zero-pan composition; portrait scenes carry the stable level
+    // correction computed after the routes were authored.
+    if (chosen.choice.mode === FRAME_MODE && run.portraitFrameFit) {
+      // Re-read the active safe rectangle on every paint. The preview can be
+      // resized or rotated without a simulation tick, so the level correction
+      // must follow that frame immediately rather than waiting for gameplay.
+      run.portraitFrameFitState = run.portraitFrameFit();
+    }
+    const fitPan = chosen.choice.mode === FRAME_MODE
+      ? Number(run.portraitFrameFitState?.pan || 0) : 0;
+    run.camPan = fitPan; run.prevCamPan = fitPan;
     run.camFloorY = cameraMod.GROUND_Y; run.prevCamFloorY = cameraMod.GROUND_Y;
     run.prevCamX = run.camX;
     beginRenderFrame();
@@ -316,7 +331,7 @@ async function bootEmbed() {
     blit();
     paintControls();
     const pose = toonMod.poseFromPlayer(run.player, run.tRun);
-    const cam = cameraForFrame({ frame, camX: run.camX, zoom: chosen.zoom, pan: 0, floorY: cameraMod.GROUND_Y });
+    const cam = cameraForFrame({ frame, camX: run.camX, zoom: chosen.zoom, pan: fitPan, floorY: cameraMod.GROUND_Y });
     const report = readouts(run, cam, frame, toonMod.drawToon, pose, run.relay.current);
     window.__portraitPreview = {
       frame, choice: chosen, scene, run, report,
@@ -361,6 +376,10 @@ async function bootEmbed() {
       const next = Number(msg.value);
       if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, backgroundZoom: next });
     }
+    if (msg.action === 'hero-anchor') {
+      const next = Number(msg.value);
+      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, heroAnchorX: next });
+    }
     if (msg.action === 'cloud-offset') {
       const next = Number(msg.value);
       if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, cloudOffsetY: next });
@@ -373,7 +392,7 @@ async function bootEmbed() {
   });
   window.addEventListener('resize', () => {
     const nextViewport = activeViewport();
-    const next = frameForViewport({ mode: chosen.choice.mode, viewportWidth: nextViewport.width, viewportHeight: nextViewport.height, safeInsets: safe, revision: frame.revision + 1 });
+    const next = frameForViewport({ mode: chosen.choice.mode, viewportWidth: nextViewport.width, viewportHeight: nextViewport.height, safeInsets: safe, groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio, revision: frame.revision + 1 });
     frame = next;
     setPresentationFrame(next);
     layout = surface.resize({ viewportWidth: nextViewport.width, viewportHeight: nextViewport.height, safeInsets: safe });
@@ -393,6 +412,8 @@ function shell() {
   const safeSelect = document.getElementById('safe-select');
   const aInput = document.getElementById('a-zoom');
   const aValue = document.getElementById('a-zoom-value');
+  const heroAnchorInput = document.getElementById('hero-anchor');
+  const heroAnchorValue = document.getElementById('hero-anchor-value');
   const backgroundInput = document.getElementById('background-zoom');
   const backgroundValue = document.getElementById('background-zoom-value');
   const cloudInput = document.getElementById('cloud-offset');
@@ -409,12 +430,15 @@ function shell() {
   if (Number.isFinite(initialCloudOffset)) cloudInput.value = String(Math.max(-100, Math.min(60, initialCloudOffset)));
   const initialSunOffset = numberParam(outerParams, 'sunOffset', Number(sunInput.value));
   if (Number.isFinite(initialSunOffset)) sunInput.value = String(Math.max(-100, Math.min(60, initialSunOffset)));
+  const initialHeroAnchor = numberParam(outerParams, 'heroX', Number(heroAnchorInput.value));
+  if (Number.isFinite(initialHeroAnchor)) heroAnchorInput.value = String(Math.max(36, Math.min(72, Math.round(initialHeroAnchor))));
   const queryFor = (choice) => {
-    const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value, bgZoom: backgroundInput.value, cloudOffset: cloudInput.value, sunOffset: sunInput.value });
+    const q = new URLSearchParams({ embed: '1', choice, scene: sceneSelect.value, viewport: viewportSelect.value, safe: safeSelect.value, renderer: '2d', density: '1', a: aInput.value, heroX: heroAnchorInput.value, bgZoom: backgroundInput.value, cloudOffset: cloudInput.value, sunOffset: sunInput.value });
     return `portrait-preview.html?${q}`;
   };
   const reload = () => {
     aValue.textContent = Number(aInput.value).toFixed(3);
+    heroAnchorValue.textContent = `${Math.round(Number(heroAnchorInput.value))} px`;
     backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
     cloudValue.textContent = `${Math.round(Number(cloudInput.value))} px`;
     sunValue.textContent = `${Math.round(Number(sunInput.value))} px`;
@@ -423,6 +447,10 @@ function shell() {
   for (const input of [sceneSelect, viewportSelect, safeSelect, aInput]) input.addEventListener('change', reload);
   aInput.addEventListener('input', () => { aValue.textContent = Number(aInput.value).toFixed(3); });
   const send = (action, value) => frames.forEach((frame) => frame.contentWindow?.postMessage({ type: 'portrait-preview', action, value }, '*'));
+  heroAnchorInput.addEventListener('input', () => {
+    heroAnchorValue.textContent = `${Math.round(Number(heroAnchorInput.value))} px`;
+    send('hero-anchor', Number(heroAnchorInput.value));
+  });
   backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;
   backgroundInput.addEventListener('input', () => {
     backgroundValue.textContent = `${Math.round(Number(backgroundInput.value) * 100)}%`;

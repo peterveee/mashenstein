@@ -174,10 +174,132 @@ export function screenYFor(worldY, z, pan = 0, floorY = GROUND_Y) {
 // The transform itself. Draw world content between save/restore around this.
 // Anything drawing in SCREEN space that has to stay welded to the world — the
 // style packs' backgrounds — takes the same `pan` as a plain translate.
-export function applyWorld(ctx, z, pan = 0, floorY = GROUND_Y) {
-  ctx.translate(0, pan);
+export function applyWorld(ctx, z, pan = 0, floorY = GROUND_Y, xOffset = 0) {
+  // `xOffset` is presentation-only. It is a logical screen-pixel translation
+  // applied before the world scale, so a portrait character anchor can move
+  // the rendered lane without changing camX, hitboxes, or authored world x.
+  ctx.translate(xOffset, pan);
   ctx.scale(z, z);
   ctx.translate(0, -camYFor(z, floorY));
+}
+
+// World width visible after a presentation-only horizontal anchor shift. A
+// negative shift moves the lane left and exposes more authored runway on the
+// right, so the painters/cullers must cover that same amount. Positive shifts
+// do not need extra work because they reveal less of the right edge.
+export function portraitRenderViewWidth(zoom, xOffset = 0, width = W) {
+  const z = Number(zoom);
+  const base = Number.isFinite(z) && z > 0 ? width / z : width;
+  const shift = Number.isFinite(Number(xOffset)) ? Math.min(0, Number(xOffset)) : 0;
+  return base - shift;
+}
+
+/**
+ * Find the fixed portrait pan that keeps a measured world span inside the
+ * usable frame.  The portrait review camera deliberately does not zoom while
+ * a run is moving: this helper only chooses a bodily vertical translation.
+ *
+ * `bounds` are world y coordinates (the visual top and bottom, not hitboxes).
+ * `preferredPan` is a composition request, such as a desired lower starting
+ * line; it is clamped to the measured fit interval.
+ * Safe-area edges come from the active presentation frame, so a notch or home
+ * indicator is treated as part of the framing contract.  When the span is too
+ * large for the fixed zoom, the returned pan is its midpoint and `fits` is
+ * false; callers can surface that as a level-authorship issue instead of
+ * silently clipping one end.
+ */
+export function portraitPanForBounds(bounds, zoom, floorY = GROUND_Y, margin = 8, preferredPan = 0) {
+  const b = bounds && typeof bounds === 'object' ? bounds : {};
+  const top = Number(b.top);
+  const bottom = Number(b.bottom);
+  const z = Number(zoom);
+  if (!Number.isFinite(top) || !Number.isFinite(bottom) || !Number.isFinite(z) || z <= 0) {
+    return Object.freeze({ pan: 0, fits: true, minPan: 0, maxPan: 0 });
+  }
+  const frame = getActiveFrame();
+  const safe = frame?.safeRect || { top: 0, bottom: H };
+  const inset = Number.isFinite(Number(margin)) ? Math.max(0, Number(margin)) : 0;
+  const topEdge = safe.top + inset;
+  const bottomEdge = safe.bottom - inset;
+  const topScreen = screenYFor(top, z, 0, floorY);
+  const bottomScreen = screenYFor(bottom, z, 0, floorY);
+  const minPan = topEdge - topScreen;
+  const maxPan = bottomEdge - bottomScreen;
+  const fits = minPan <= maxPan;
+  const preferred = Number.isFinite(Number(preferredPan)) ? Number(preferredPan) : 0;
+  const pan = fits ? Math.max(minPan, Math.min(maxPan, preferred)) : (minPan + maxPan) / 2;
+  return Object.freeze({ pan, fits, minPan, maxPan, topScreen, bottomScreen, topEdge, bottomEdge });
+}
+
+/**
+ * Add a small edge correction to an existing portrait composition. Unlike
+ * portraitPanForBounds(), this is deliberately local: it reacts to the drawn
+ * subject reaching an edge, not to every authored floor in the level. The
+ * The caller may provide an explicit gameplay band (for example, the space
+ * between the centered portrait HUD and the action shelf). When it does, the
+ * subject clears that band rather than merely clearing the physical frame;
+ * the old safe-frame behavior remains the default for existing callers.
+ */
+export function portraitEdgePanForBounds(
+  bounds, zoom, floorY = GROUND_Y, basePan = 0, topMargin = 8, bottomMargin = 0, maxDelta = 48,
+  edges = null,
+) {
+  const b = bounds && typeof bounds === 'object' ? bounds : {};
+  const top = Number(b.top);
+  const bottom = Number(b.bottom);
+  const z = Number(zoom);
+  const base = Number.isFinite(Number(basePan)) ? Number(basePan) : 0;
+  if (!Number.isFinite(top) || !Number.isFinite(bottom) || !Number.isFinite(z) || z <= 0) return base;
+  const frame = getActiveFrame();
+  const safe = frame?.safeRect || { top: 0 };
+  const topInset = Number.isFinite(Number(topMargin)) ? Math.max(0, Number(topMargin)) : 0;
+  const bottomInset = Number.isFinite(Number(bottomMargin)) ? Math.max(0, Number(bottomMargin)) : 0;
+  const defaultTopEdge = (Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0) + topInset;
+  const frameHeight = Number.isFinite(Number(frame?.height)) ? Number(frame.height) : H;
+  const defaultBottomEdge = Math.max(defaultTopEdge, frameHeight - bottomInset);
+  // Callers that own a denser presentation (the portrait HUD and touch
+  // controls) can reserve a smaller gameplay band than the physical frame.
+  // Keep the old safe-frame behavior when no explicit band is supplied so
+  // landscape and existing camera callers remain byte-for-byte compatible.
+  const explicitTop = Number(edges?.top);
+  const explicitBottom = Number(edges?.bottom);
+  const topEdge = Number.isFinite(explicitTop) ? explicitTop : defaultTopEdge;
+  const bottomEdge = Math.max(topEdge,
+    Number.isFinite(explicitBottom) ? explicitBottom : defaultBottomEdge);
+  const topScreen = screenYFor(top, z, base, floorY);
+  const bottomScreen = screenYFor(bottom, z, base, floorY);
+  let pan = base;
+  if (topScreen < topEdge) pan += topEdge - topScreen;
+  else if (bottomScreen > bottomEdge) pan += bottomEdge - bottomScreen;
+  const limit = Number.isFinite(Number(maxDelta)) ? Math.max(0, Number(maxDelta)) : 48;
+  return Math.max(base - limit, Math.min(base + limit, pan));
+}
+
+/**
+ * Find the portrait pan that puts a route floor at a lower safe-frame target.
+ *
+ * This is deliberately independent of the authored level envelope. A lower
+ * route can scroll into view as the hero reaches it; the caller may still
+ * clamp the result against the envelope's upper edge so high geometry is not
+ * cut off before the run has descended.
+ */
+export function portraitPanForFloor(worldFloorY, zoom, floorY = GROUND_Y, margin = 8, targetRatio = 0.70) {
+  const z = Number(zoom);
+  const worldY = Number(worldFloorY);
+  if (!Number.isFinite(worldY) || !Number.isFinite(z) || z <= 0) return 0;
+  const frame = getActiveFrame();
+  const safe = frame?.safeRect || { top: 0, bottom: H };
+  const inset = Number.isFinite(Number(margin)) ? Math.max(0, Number(margin)) : 0;
+  const floorScreen = screenYFor(worldY, z, 0, floorY);
+  const top = Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0;
+  const bottom = Number.isFinite(Number(safe.bottom)) ? Number(safe.bottom) : H;
+  const ratio = Number.isFinite(Number(targetRatio))
+    ? Math.max(0, Math.min(1, Number(targetRatio))) : 0.70;
+  const target = top + (bottom - top) * ratio;
+  // Keep the target out of the safe-area edges even if a caller supplies an
+  // extreme ratio for an inspection run.
+  const boundedTarget = Math.max(top + inset, Math.min(bottom - inset, target));
+  return boundedTarget - floorScreen;
 }
 
 // How far a re-pinned anchor has carried the frame, in SCREEN px. Positive when
@@ -213,6 +335,18 @@ export const BG_FOLLOW = 0.42;
 // still up where the road was — off the top of the frame.
 export function easeFloor(current, target, dt) {
   const k = target < current ? 4.5 : 14;
+  return current + (target - current) * (1 - Math.exp(-k * dt));
+}
+
+// A tunnel is the one route whose lower floor is worth showing BEFORE the
+// hero reaches it. The ordinary floor ease is intentionally quick when a
+// hero is already falling; using that here would move the whole frame in one
+// or two ticks as soon as the opening entered the look-ahead window. Keep the
+// approach on a slower, readable time constant. Returning to a shallower
+// target uses a similarly gentle release so an upper-path choice leaves the
+// lower option visible for a moment instead of snapping the frame upward.
+export function easeTunnelPreview(current, target, dt) {
+  const k = target > current ? 2.2 : 1.6;
   return current + (target - current) * (1 - Math.exp(-k * dt));
 }
 

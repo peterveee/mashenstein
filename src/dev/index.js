@@ -227,8 +227,9 @@ export const Dev = {
     return cur.player ? cur : null;
   },
 
-  openMenu() {
-    this.stack = [{ ...rootMenu(this), idx: 0 }];
+  openMenu(menuBuilder = null) {
+    const menu = menuBuilder ? menuBuilder(this) : rootMenu(this);
+    this.stack = [{ ...menu, idx: 0 }];
     this.open = true;
     this.syncPortrait();
   },

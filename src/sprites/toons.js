@@ -1226,6 +1226,10 @@ export const TOON_SPECS = {
     quiverTuck: 0.09, quiverStrap: true,
     // Approved B sling: 20% thinner than the study baseline, 85% opacity.
     quiverMount: 'loop', quiverStrapWidth: 0.024, quiverStrapOpacity: 0.85,
+    // BROADHEAD: the moderate mobile-read cut approved 11 Sep 2026. These
+    // dials are consumed by both the nocked arrow and its flying counterpart,
+    // so the thing in her hand stays the thing that leaves it.
+    arrowShaft: 1.25, arrowHead: 1.3, arrowVane: 1.15,
     runArmSeatIn: 0.0285, runArmSeatDown: 0.01,
     // The slide's own tuning. Every one of these is hers alone — the cast's
     // shared slide geometry is untouched by all of them.
@@ -2273,11 +2277,10 @@ function drawWrench(ctx, x, y, angle, u, ow, flip = false, open = 1) {
 // size a hero is actually seen the guard is the only thing that says "pistol"
 // rather than "block", which is why it survives the detail cut and the sight
 // does not.
-// The carried BAMBOO STICK. Rusty's ranged move is thrown and caught rather
-// than fired, so unlike a pistol the prop is not a holstered thing that appears
-// for the shot — it is in his hand every frame he is not mid-throw, which is
-// what answers "where does the ammunition come from": there is one stick and
-// he owns it.
+// The carried BAMBOO STICK. Rusty's ranged move is thrown and breaks on contact
+// rather than fired, so unlike a pistol the prop is not a holstered thing that
+// appears for the shot — it is in his hand every frame he is not mid-throw.
+// The dispenser on his hip answers where the next cane comes from.
 //
 // ONE painter for the cane wherever it is: this calls the projectile painter
 // rather than redrawing it, so the cut ends, the bore, the node bands and the
@@ -2301,7 +2304,7 @@ function drawHeldStick(ctx, x, y, angle, u, ow, scale = 1) {
   // radius and the fist swallowed it — this leaves a stub showing above the
   // hand, so it reads as GRIPPED rather than balanced on the knuckles.
   const size = u / 36;
-  // `scale` is the long/short alternation from the pouch (caneScale), so the
+  // `scale` is the long/short alternation from the dispenser (caneScale), so the
   // cane in his hand is the one he just pulled and not a generic one.
   drawBambooShoot(ctx, 5.8 * size * 0.58, 0, { size: size * scale });
   ctx.restore();
@@ -9045,8 +9048,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   //   WHIP     0.50-0.66  forward across the face; RELEASE at 0.66
   //   THROUGH  0.66-1.00  arm settles down-forward and rejoins the gait
   // The cane is IN HAND from the pull to the release and nowhere else. After
-  // release `pose.axeThrown` (run.js's flag for the returning weapon) is the
-  // authority for the empty hand and the empty pouch slot, because the flight
+  // release `pose.axeThrown` (run.js's flag for the thrown weapon) is the
+  // authority for the empty hand and the empty dispenser slot, because the flight
   // outlasts this window by a second. run.js should spawn the projectile at
   // the release — 0.2s into the pose — not on the frame the ability fires.
   const throwQ = spec.bundle && pose.menuAction === 'aim'
@@ -16512,6 +16515,28 @@ const BOW_STYLES = {
   snap: { release: 0.36, pullFrac: 0.9, anchor: [0.1, -0.06], bowFrom: null, cant: 0.15 },
 };
 export const RANGED_RELEASE_AT = { draw: 0.5, toss: 0.56, hose: 0.12 };
+// HOW RUSTY'S CANE FLIES. Three dials, one row of a size bake-off run on
+// 10 Sep 2026 (work/local/shot-cane-sizes.js draws them all at the run's real
+// 1x, magnified, against the axe and the arrow). Measured against a 24px hero:
+//
+//   A  1.5  · sprig 1.0            15x10   too big — "still seems gigantic"
+//   B  1.3  · sprig 1.0            13x10   barely smaller; the LEAF is the bulk
+//   C  1.15 · sprig 0.55 · wid 1.2 11x8    the wrench's presence
+//   D  1.0  · sprig 0.55 · wid 1.25 10x6   held size, half sprig
+//   D+ 1.0  · sprig 1.0  · wid 0.8   <- SHIPPED (Peter, 10 Sep 2026). The cane
+//       is the pouch's cane in every dimension — same length, same width — and
+//       everything it gained is a MARK rather than a size: an ink edge, the
+//       full leaf sprig, and the faint spin disc. Widening the body to 1.25
+//       was tried and read as "much bigger"; it was the width, not the leaf.
+//   E  1.0  · no sprig                     ink + disc only
+//   F  1.0  · nothing               8x1    where it started: unreadable
+//
+// D keeps the honest rule — the cane in the air is the size of the cane that
+// left his hand — and buys the read back with ink, a half sprig and the spin
+// disc instead of with size. To switch rows, these three numbers are the edit.
+export const BAMBOO_FLIGHT_SCALE = 1.0;
+export const BAMBOO_FLIGHT_WID = 0.8;
+export const BAMBOO_FLIGHT_SPRIG = 1.0;
 // THE AXE THROW'S OWN BEATS, as fractions of the 0.3s ability window: the fist
 // closes on the haft at `grab`, the arm is cocked beside the ear at `cock`, and
 // the axe leaves at `release` — the same beat every other throw in the rig lets
@@ -16986,7 +17011,10 @@ function rangedArt(ctx, kind, u, ow, p, o = {}) {
         // The value is measured: the pull runs 0.24u to 0.60u (see the style
         // table), so this puts the point a little past the bow at full draw
         // and well out in front of it at the nock.
-        rangedArt(ctx, 'arrow', u, ow, p, { len: ARROW_DRAW_LEN * u, headScale: o.headScale, vaneScale: o.vaneScale });
+        rangedArt(ctx, 'arrow', u, ow, p, {
+          len: ARROW_DRAW_LEN * u,
+          headScale: o.headScale, vaneScale: o.vaneScale, shaftScale: o.shaftScale,
+        });
         ctx.restore();
       }
       return;
@@ -16997,6 +17025,7 @@ function rangedArt(ctx, kind, u, ow, p, o = {}) {
       // tunic's mid green: at the same value the fletching disappeared into
       // his sleeve, which is the note that started this round.
       const L = o.len || 0.44 * u;
+      const ss = o.shaftScale || 1;
       const vs = o.vaneScale || 1;
       const xB = 0.004 * u, xF = 0.15 * u * vs, vw = 0.06 * u * vs;
       // The shaft ENDS where the feathers do. It used to start at the arrow's
@@ -17023,7 +17052,7 @@ function rangedArt(ctx, kind, u, ow, p, o = {}) {
       // stroke pretending to be the shaft. Butt cap at the back, flush with
       // the feathers.
       ctx.lineCap = 'butt';
-      limb(ctx, xB, 0, L, 0, 0.03 * u, ARROW_SHAFT, ow * 0.6);
+      limb(ctx, xB, 0, L, 0, 0.03 * u * ss, ARROW_SHAFT, ow * 0.6);
       ctx.lineCap = 'round';
       // NO nock stub. A cross-piece on the string side was one more small
       // mark in the busiest part of the drawing, and at size it read as an
@@ -17112,13 +17141,29 @@ function rangedArt(ctx, kind, u, ow, p, o = {}) {
       // Spun about its middle in flight; the hand anchors the handle end.
       if (o.flying) ctx.translate(-0.17 * u, 0);
       drawWrench(ctx, 0, 0, 0, u, ow, false, o.open ?? 1); return;
-    case 'bamboo':
-      // Rusty's cane in flight, at the SAME u/36 the held stick uses (see
-      // drawHeldStick) so the thing that left his hand is the thing in the air.
-      // `o.scale` is caneScale(parity): the long or the short one, whichever
-      // he actually pulled. Tumbles about its middle; the frame's own rotation
-      // (o.rot, applied by the caller) is the spin.
-      drawBambooShoot(ctx, 0, 0, { size: (u / 36) * (o.scale ?? 1) }); return;
+    case 'bamboo': {
+      // Rusty's cane in flight. It started at the held size (u/36, the pouch's
+      // scale) on the principle that the thing in the air is the thing that
+      // left his hand — and at the run's real 1x that is an 8x1 pixel sliver
+      // tumbling at 14 rad/s, unreadable at any zoom (Peter, 10 Sep 2026)
+      // while Grumpos's axe flies at ~14px with an ink edge. So the rule is
+      // broken on purpose, three ways: 2.2x the held cane and fatter, which
+      // puts it on the axe's footprint; ink around it like every other
+      // projectile; and the SPRIG, a pair of leaves at the forward node — a
+      // cane is a stick, a cane with leaves is a shoot, which is the move's
+      // name and the widest silhouette a stick can carry. Plus the axe's own
+      // trick, a faint spin disc, so the eye reads "a spinning thing" even on
+      // the frames where the stick itself is edge-on.
+      // `u` already carries caneScale(parity) via o.scale (drawRangedProjectile's
+      // unit is 24 * scale), so long and short still alternate.
+      const s = (u / 36) * BAMBOO_FLIGHT_SCALE;
+      if (o.flying) {
+        ctx.save(); ctx.globalAlpha *= 0.18; ctx.strokeStyle = '#b7dc8e'; ctx.lineWidth = hair(0.6, 0.02 * u);
+        ctx.beginPath(); ctx.arc(0, 0, 5.8 * s * 0.92, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      }
+      drawBambooShoot(ctx, 0, 0, { size: s, wid: BAMBOO_FLIGHT_WID, outline: ow, sprig: BAMBOO_FLIGHT_SPRIG, ink: p.e });
+      return;
+    }
     case 'plunger': {
       // Wooden handle, red rubber cup — cup forward, the business end.
       limb(ctx, -0.24 * u, 0, 0.06 * u, 0, 0.045 * u, WOOD_HI, ow * 0.7);
@@ -17549,6 +17594,7 @@ function drawRangedHeld(ctx, spec, handF, handB, shF, armY, pose, u, ow, p, hold
       q: qd, pull: [handF[0] - handB[0], handF[1] - handB[1]], axis,
       nocked, cant: st ? st.cant : 0,
       gauge: spec.bowGauge, headScale: spec.arrowHead, vaneScale: spec.arrowVane,
+      shaftScale: spec.arrowShaft,
     });
   } else if (g === 'hose') {
     ctx.translate(handF[0], handF[1]);
@@ -17611,7 +17657,13 @@ export function drawRangedProjectile(ctx, kind, x, y, opts = {}) {
   ctx.rotate(opts.rot || 0);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  rangedArt(ctx, kind, u, ow, p, opts);
+  const spec = TOON_SPECS[opts.hero];
+  rangedArt(ctx, kind, u, ow, p, {
+    ...opts,
+    headScale: opts.headScale ?? spec?.arrowHead,
+    vaneScale: opts.vaneScale ?? spec?.arrowVane,
+    shaftScale: opts.shaftScale ?? spec?.arrowShaft,
+  });
   ctx.restore();
   inkScale = prevInkScale;
 }

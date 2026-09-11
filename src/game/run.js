@@ -1,9 +1,9 @@
 import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
-import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
+import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
 import { Input } from '../engine/input.js';
@@ -16,7 +16,7 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, drawMenuRow, textYForMid, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
@@ -51,16 +51,23 @@ import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFace
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
-import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawBackdropVeil, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
+import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawBackdropVeil, drawSkyEdgeGradient, drawGroundEdgeGradient, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
 import { beginStageArtWarmup, stepArtWarmup, artWarmupPending } from './art-warmup.js';
-import { validatePortraitConfig } from '../dev/portrait-lab.js';
+import { PORTRAIT_LAB_DEFAULTS, validatePortraitConfig } from '../dev/portrait-lab.js';
+import { portraitHudLayout } from './portrait-layout.js';
+import { portraitTouchLayout } from '../engine/portrait-input.js';
 
 export { GROUND_Y };
+
+// The portrait lab's approved calibration is now the production phone
+// presentation. A lab run may still provide a per-session snapshot, but a
+// normal run never reads dev storage or changes these values at runtime.
+const PORTRAIT_PRODUCTION_CONFIG = validatePortraitConfig(PORTRAIT_LAB_DEFAULTS);
 // The hero's screen x at the resting zoom: 24.6% of the frame. The HUD/floatie
 // layer draws UNSCALED above the world, so anything that has to sit over the
 // hero up there anchors here rather than to the world-space PLAYER_X.
@@ -128,6 +135,19 @@ const CAM_ANCHOR_DOWN = 10;
 // groundline, so rolling terrain — which dips the hero up to 18px below
 // GROUND_Y and has always been framed by the crane — never sees it.
 const CAM_FOOTROOM = 6;
+// Start paying for a tunnel's lower floor before the hero reaches its mouth.
+// This is in travel time rather than pixels so the warning is consistent as
+// the stage ramps and across cabinets with different base speeds.
+const TUNNEL_CAMERA_LOOKAHEAD_SEC = 1.35;
+// The preview is a suggestion, not a commitment to the lower route. Keep only
+// enough of the drop visible to explain that there is another path below.
+const TUNNEL_CAMERA_PREVIEW_MAX_DROP = 36;
+// Give an upper-path choice a short beat after the mouth before the camera
+// starts returning, so the lower option remains readable as the hero clears it.
+const TUNNEL_CAMERA_RETURN_DELAY_SEC = 0.35;
+// On the upper path, put the surface hero around the middle of the frame. This
+// is a presentation anchor only; the simulated surface remains at GROUND_Y.
+const TUNNEL_CAMERA_UPPER_PATH_LIFT = 48;
 // How far past the right edge a self-moving obstacle wakes up. Enough that it is
 // already rolling when it comes into shot rather than starting dead.
 const WAKE_MARGIN = 48;
@@ -150,6 +170,79 @@ const SPRING_CLEAR = 16;
 // height and the placement solves for distance, so this is the one number that
 // says "arrive just inside the road rather than exactly on its lip".
 const SPRING_LEAD = 12;
+// Portrait framing measures the part of a level the player can actually read:
+// a standing hero above each floor, plus the 38px cutaway the terrain painter
+// exposes below a low road. This keeps Level 1-1's tunnel fossils inside the
+// safe frame without making decorative sky or the camera's bottom fill part of
+// the gameplay bounds.
+const PORTRAIT_TUNNEL_VISUAL_DEPTH = 38;
+const PORTRAIT_FRAME_MARGIN = 8;
+const PORTRAIT_BOUNDS_SAMPLE_STEP = 4;
+// Portrait keeps the hero's feet low without pinning them to the controls. The
+// target leaves about 30% of the usable frame below the groundline for terrain
+// undulations, pit readability and the play buttons.
+const PORTRAIT_HERO_GROUND_RATIO = 0.70;
+const PORTRAIT_EDGE_PAN_TOP_MARGIN = PORTRAIT_FRAME_MARGIN;
+// Keep a small visual gutter between the hero's feet and the translucent
+// action shelf. The controls are separate screen-space chrome, so this is
+// expressed in CSS pixels and converted with the active frame scale below.
+const PORTRAIT_HERO_CONTROL_GUTTER_CSS = 12;
+// The explicit gameplay band below already includes the CSS gutter. Keep the
+// camera helper's legacy safe-frame margin at zero so it does not double-count
+// that clearance when the band is passed in.
+const PORTRAIT_EDGE_PAN_BOTTOM_MARGIN = 0;
+// A lower tunnel can be roughly one authored hero-height below the surface,
+// and the portrait zoom magnifies that drop. The old 48px correction was not
+// enough to clear the action shelf; allow at least one logical frame of bounded
+// travel while still keeping the camera from running away on malformed state.
+const PORTRAIT_EDGE_PAN_LIMIT = 480;
+
+// The world frame is taller than the landscape canvas in portrait, but the
+// readable gameplay band is smaller than that frame: the centered HUD owns the
+// top and the large touch discs own the bottom.  Derive both boundaries from
+// the same safe-area-aware layout painters use, so an edge correction never
+// pans the hero underneath either layer.
+function portraitGameplayEdges(frame = presentationFrame()) {
+  const f = frame || {};
+  const scale = Number.isFinite(Number(f.scale)) && Number(f.scale) > 0 ? Number(f.scale) : 1;
+  const safe = f.safeRect || {};
+  const safeTop = Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0;
+  const safeBottom = Number.isFinite(Number(safe.bottom))
+    ? Number(safe.bottom) : (Number.isFinite(Number(f.height)) ? Number(f.height) : 270);
+  const hud = portraitHudLayout(f);
+  const top = Math.max(safeTop + PORTRAIT_FRAME_MARGIN, Number(hud?.floatieY) || safeTop);
+  const cssWidth = (Number.isFinite(Number(f.width)) ? Number(f.width) : 480) * scale;
+  const cssHeight = (Number.isFinite(Number(f.height)) ? Number(f.height) : 270) * scale;
+  const touch = portraitTouchLayout({
+    viewportWidth: cssWidth,
+    viewportHeight: cssHeight,
+    safeInsets: safe.css || {},
+  });
+  const actionTops = ['jump', 'slide', 'use']
+    .map((id) => touch.controls?.[id])
+    .filter(Boolean)
+    .map((control) => control.cy - control.r);
+  const bottom = actionTops.length
+    ? Math.max(top, Math.min(...actionTops) / scale - PORTRAIT_HERO_CONTROL_GUTTER_CSS / scale)
+    : Math.max(top, safeBottom);
+  return Object.freeze({ top, bottom });
+}
+
+// The background painter works in its own local screen coordinates, after the
+// optional portrait backdrop zoom and before the common horizontal presentation
+// shift. Return the local interval that maps to the complete 480px frame so
+// full-surface fills and tiled hills do not stop at the old unshifted edge.
+function portraitBackgroundCoverage(xOffset = 0, bgZoom = 1) {
+  const offset = Number.isFinite(Number(xOffset)) ? Number(xOffset) : 0;
+  const zoom = Number.isFinite(Number(bgZoom)) && Number(bgZoom) > 0 ? Number(bgZoom) : 1;
+  const half = W / 2;
+  const left = (0 - offset - half) / zoom + half;
+  const right = (W - offset - half) / zoom + half;
+  const lo = Math.min(left, right);
+  const hi = Math.max(left, right);
+  return Object.freeze({ left: lo, right: hi, width: hi - lo });
+}
+
 // Lane kept clear either side of an opening, so nothing can crowd a hero into
 // one he did not choose.
 const OPENING_CLEAR = 26;
@@ -611,6 +704,9 @@ const REWIND_LOCKOUT = 3.0;
 const FLOAT_AIR_TOP = 70;   // world px above ground: crown of the highest air spawn
 const FLOAT_BASE_MAX = 128;
 export function floatBaseY() {
+  if (isPhonePortraitPresentation()) {
+    return Math.round(portraitHudLayout(presentationFrame()).floatieY);
+  }
   return Math.max(FLOAT_BASE_CEILING,
     Math.min(FLOAT_BASE_MAX, Math.round(GROUND_Y - FLOAT_AIR_TOP * ZOOM - 8)));
 }
@@ -1141,6 +1237,154 @@ const SMEAR_SPAN = 1;
 // way and the "distance travelled since last frame" is a teleport rather than
 // motion. Without it that frame paints ghosts across half the screen.
 const SMEAR_MAX_PX = 14;
+
+// Projectile readability pass. These are intentionally drawn as a separate
+// projectile treatment rather than folded into the weapon painters: collision,
+// spawn timing, and the authoritative projectile silhouette stay unchanged.
+const PROJECTILE_TRAIL_GHOSTS = [
+  { distance: 10, alpha: 0.16 },
+  { distance: 20, alpha: 0.08 },
+];
+
+function projectileTravelDirection(pr) {
+  if (pr.type === 'arrow') {
+    const slope = ARROW_ARC.a - 2 * ARROW_ARC.b * pr.t + (pr.dive || 0);
+    const vx = pr.vx || ARROW_ARC.v;
+    const vy = -slope;
+    const length = Math.hypot(vx, vy) || 1;
+    return { x: vx / length, y: vy / length };
+  }
+  const x = pr.type === 'axe' || pr.type === 'fist'
+    ? (pr.returning || pr.dropping ? -1 : Math.sign(pr.vx || 1))
+    : Math.sign(pr.vx || 1);
+  return { x: x || 1, y: 0 };
+}
+
+function projectileTrailColour(pr) {
+  if (pr.type === 'arrow') return '#e3c36f';
+  if (pr.type === 'fist') return '#f7bacc';
+  if (pr.type === 'axe') {
+    if (pr.art === 'bamboo') return '#b7dc8e';
+    if (pr.art === 'wrench') return '#b9c0cc';
+    return '#ecc3a1';
+  }
+  const pal = HERO_SPRITES[pr.contactHero]?.pal;
+  return pal?.ki || '#f6d33c';
+}
+
+function drawGameplayProjectileArt(ctx, pr, x, y) {
+  if (pr.type === 'arrow') {
+    const slope = ARROW_ARC.a - 2 * ARROW_ARC.b * pr.t + (pr.dive || 0);
+    drawRangedProjectile(ctx, 'arrow', x, y + 4, {
+      rot: -Math.atan2(slope, pr.rel || ARROW_ARC.v), hero: 'fernwick', flying: true,
+    });
+  } else if (pr.type === 'axe') {
+    if (pr.art === 'wrench') drawRangedProjectile(ctx, 'wrench', x + 4, y + 4, { rot: pr.t * 12, hero: 'lorenzo', flying: true });
+    else if (pr.art === 'bamboo') drawRangedProjectile(ctx, 'bamboo', x + 4, y + 4, { rot: pr.t * 14, hero: 'rusty', flying: true, scale: caneScale(pr.caneParity) });
+    else drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
+  } else if (pr.type === 'fist') {
+    drawRocketFist(ctx, x + 4, y + 2, pr.t, pr.returning);
+  } else if (pr.type === 'pellet') {
+    const shotPal = HERO_SPRITES[pr.contactHero]?.pal;
+    const coral = shotPal?.ki === '#f2767f';
+    drawPellet(ctx, x + 3, y + 2, {
+      size: pr.size,
+      fill: shotPal?.ki,
+      hi: coral ? '#ffc0bb' : undefined,
+      spark: shotPal?.a,
+      orb: !!shotPal?.ki,
+    });
+  }
+}
+
+function drawGameplayProjectileStreak(ctx, pr, x, y) {
+  const d = projectileTravelDirection(pr);
+  const colour = projectileTrailColour(pr);
+  const anchorX = pr.type === 'arrow' ? x : x + 4;
+  const anchorY = pr.type === 'fist' ? y + 2 : y + 4;
+  const marks = [
+    { from: 5, to: 10, alpha: 0.38, width: 1.15 },
+    { from: 13, to: 18, alpha: 0.22, width: 0.9 },
+    { from: 21, to: 25, alpha: 0.1, width: 0.7 },
+  ];
+  ctx.save();
+  ctx.strokeStyle = colour;
+  ctx.lineCap = 'round';
+  for (const mark of marks) {
+    ctx.globalAlpha = mark.alpha;
+    ctx.lineWidth = mark.width;
+    ctx.beginPath();
+    ctx.moveTo(anchorX - d.x * mark.from, anchorY - d.y * mark.from);
+    ctx.lineTo(anchorX - d.x * mark.to, anchorY - d.y * mark.to);
+    ctx.stroke();
+  }
+  if (pr.art === 'wrench') {
+    ctx.globalAlpha = 0.18;
+    ctx.lineWidth = 0.65;
+    const px = -d.y, py = d.x;
+    ctx.beginPath();
+    ctx.moveTo(anchorX - d.x * 12 - px * 1.8, anchorY - d.y * 12 - py * 1.8);
+    ctx.lineTo(anchorX - d.x * 12 + px * 1.8, anchorY - d.y * 12 + py * 1.8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawGameplayProjectileTrail(ctx, pr, x, y) {
+  if (pr.holdT > 0 || pr.hover || pr.dropping) return;
+  const d = projectileTravelDirection(pr);
+  const anchorX = pr.type === 'arrow' ? x : x + 4;
+  const anchorY = pr.type === 'fist' ? y + 2 : y + 4;
+
+  if (pr.type === 'pellet' && (pr.contactHero === 'kiko' || pr.contactHero === 'clara')) {
+    // Small, separated, coreless orb shadows. They are intentionally much
+    // smaller than the live shot so Clara's twin bullets never become a third
+    // readable round.
+    const colour = projectileTrailColour(pr);
+    ctx.save();
+    ctx.globalAlpha = pr.contactHero === 'kiko' ? 0.2 : 0.18;
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.ellipse(anchorX - d.x * 18, anchorY + 0.75, pr.contactHero === 'kiko' ? 2.5 : 1.5,
+      pr.contactHero === 'kiko' ? 1.25 : 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (pr.type === 'pellet') {
+    ctx.save();
+    for (const ghost of PROJECTILE_TRAIL_GHOSTS) {
+      ctx.globalAlpha = ghost.alpha;
+      drawGameplayProjectileArt(ctx, pr, anchorX - d.x * ghost.distance - (pr.type === 'arrow' ? 0 : 4),
+        anchorY - d.y * ghost.distance - (pr.type === 'fist' ? 2 : 4));
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (pr.type === 'fist') {
+    ctx.save();
+    for (const ghost of PROJECTILE_TRAIL_GHOSTS) {
+      ctx.globalAlpha = ghost.alpha * 0.8;
+      drawGameplayProjectileArt(ctx, pr, anchorX - d.x * ghost.distance - 4,
+        anchorY - d.y * ghost.distance - 2);
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (pr.type === 'arrow' || pr.type === 'axe') {
+    drawGameplayProjectileStreak(ctx, pr, x, y);
+    ctx.save();
+    for (const ghost of PROJECTILE_TRAIL_GHOSTS) {
+      ctx.globalAlpha = ghost.alpha;
+      drawGameplayProjectileArt(ctx, pr, x - d.x * ghost.distance, y - d.y * ghost.distance);
+    }
+    ctx.restore();
+  }
+}
+
 // The hero is off stage when a level opens: he sprints in from beyond the left
 // edge to the running anchor (PLAYER_X) before the world goes live. Behind an
 // ACT card he waits out of frame until it lifts; on a card-less stage the
@@ -1451,6 +1695,10 @@ const GIRDER_RING_NORM = (() => {
 })();
 
 export class RunState {
+  // The lifecycle admits this frame-based screen on a phone in portrait. The
+  // active renderer still falls back to landscape when the viewport is wide.
+  static portraitMode = 'frame';
+
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
   constructor(opts) {
     this.o = opts;
@@ -1485,16 +1733,20 @@ export class RunState {
     this.devStartPercent = opts.devStartPercent || 0; // 0–1; skip to N% of the stage
     this.portraitLabRun = !!opts.portraitLabRun;
     this.portraitPreview = !!opts.portraitPreview;
+    // All ordinary gameplay states use the approved frame-based portrait
+    // presentation when the active viewport is a phone in portrait. The
+    // explicit opt-out is useful for tooling/screens that embed a RunState.
+    this.portraitGameplay = opts.portraitGameplay !== false;
     this.devPortraitLab = opts.devPortraitLab ? validatePortraitConfig(opts.devPortraitLab) : null;
     if (this.portraitLabRun && !this.devPortraitLab) this.portraitLabRun = false;
     if (this.portraitLabRun) setRestingZoom(this.devPortraitLab.worldZoom);
     this.devHits = [];
     // Rewind: rolling snapshot buffer + capture timer. Capacity is fixed at
     // construction: free rewind gets the full 10s tape, the touch power-up
-    // only ever plays back 3s. The one edge this accepts is a pad paired
-    // MID-RUN on a touch device — that run's free rewind is 3s, not 10.
+    // only ever plays back 3s. Portrait Lab is an explicit dev surface, so it
+    // gets the full tape even when the host is a touch-only phone.
     this.rewindFrames = new RewindRing(this.beatLock ? 0
-      : (Input.rewindAvailable() ? REWIND_MAX_FRAMES : POWER_REWIND_FRAMES));
+      : (this.portraitLabRun || Input.rewindAvailable() ? REWIND_MAX_FRAMES : POWER_REWIND_FRAMES));
     this.rewindCaptureT = 0;
     this.rewinding = false;
     this.rewindCooldown = 0;
@@ -1568,6 +1820,10 @@ export class RunState {
     this.prevPitDx = 0;
   }
 
+  portraitConfig() {
+    return this.devPortraitLab || PORTRAIT_PRODUCTION_CONFIG;
+  }
+
   // The standalone portrait review iframe is the one explicit adapter allowed
   // to change its values live. A production lab run snapshots once at launch.
   setDevPortraitLabConfig(raw) {
@@ -1581,6 +1837,123 @@ export class RunState {
   // Entities live on this. Nothing below changes what it returns.
   groundYAt(worldX) {
     return this.bossCab ? GROUND_Y : terrainGroundY(this.cabinet, worldX, GROUND_Y);
+  }
+
+  /**
+   * Measure the authored vertical envelope once the stage's routes exist.
+   *
+   * The bounds describe what the portrait player must be able to read, rather
+   * than the camera's arbitrary bottom fill: a standing hero above every floor,
+   * and the terrain cutaway below it. Sampling the same ground and route
+   * functions used by collision/rendering keeps a high fork, a low tunnel and
+   * rolling terrain in one coordinate system. The transition points are added
+   * explicitly so a short road cannot hide its peak between samples.
+   */
+  portraitWorldBounds({ includeTunnel = true } = {}) {
+    const total = Number(this.totalDist);
+    if (!Number.isFinite(total) || total <= 0) {
+      return Object.freeze({ top: GROUND_Y - HERO_DRAW_H, bottom: GROUND_Y + PORTRAIT_TUNNEL_VISUAL_DEPTH,
+        span: HERO_DRAW_H + PORTRAIT_TUNNEL_VISUAL_DEPTH, topSource: 'base-hero', bottomSource: 'base-cutaway' });
+    }
+    let top = Infinity;
+    let bottom = -Infinity;
+    let topSource = 'base-hero';
+    let bottomSource = 'base-cutaway';
+    const add = (y, source) => {
+      if (!Number.isFinite(y)) return;
+      if (y < top) { top = y; topSource = source; }
+      if (y > bottom) { bottom = y; bottomSource = source; }
+    };
+    const floorPoints = new Set([0, total]);
+    for (const r of this.routes || []) {
+      floorPoints.add(Math.max(0, Math.min(total, r.x)));
+      floorPoints.add(Math.max(0, Math.min(total, r.x + r.w)));
+      for (const f of [r.lip, r.climb, r.hold]) {
+        if (Number.isFinite(f)) floorPoints.add(Math.max(0, Math.min(total, r.x + r.w * f)));
+      }
+    }
+    const sample = (x) => {
+      const wx = Math.max(0, Math.min(total, x));
+      const ground = this.groundYAt(wx);
+      add(ground - HERO_DRAW_H, 'base-hero');
+      add(ground + PORTRAIT_TUNNEL_VISUAL_DEPTH, 'base-cutaway');
+      for (const r of this.routes || []) {
+        if (!includeTunnel && r.kind === 'tunnel') continue;
+        if (wx < r.x || wx > r.x + r.w) continue;
+        const floor = this.routeGroundY(wx, r);
+        add(floor - HERO_DRAW_H, `route-${r.kind}-hero`);
+        const depth = r.kind === 'tunnel' ? PORTRAIT_TUNNEL_VISUAL_DEPTH
+          : r.kind === 'island' ? ISLAND_THICKNESS : 8;
+        add(floor + depth, `route-${r.kind}-body`);
+      }
+    };
+    for (let x = 0; x <= total; x += PORTRAIT_BOUNDS_SAMPLE_STEP) sample(x);
+    for (const x of floorPoints) sample(x);
+    if (!Number.isFinite(top) || !Number.isFinite(bottom)) {
+      top = GROUND_Y - HERO_DRAW_H;
+      bottom = GROUND_Y + PORTRAIT_TUNNEL_VISUAL_DEPTH;
+    }
+    return Object.freeze({ top, bottom, span: bottom - top, topSource, bottomSource });
+  }
+
+  portraitFrameFit() {
+    const portraitConfig = this.portraitConfig();
+    if (!this.portraitBounds || !portraitConfig) {
+      return Object.freeze({ pan: 0, fits: true, minPan: 0, maxPan: 0 });
+    }
+    // The portrait frame starts as a fixed composition. The complete level
+    // envelope is retained as a diagnostic fit, but it must not pull the
+    // camera toward a distant high route: that makes the standing groundline
+    // drift down and defeats the phone's larger, ground-up composition. The
+    // small edge correction is applied later only when the drawn hero reaches
+    // an actual frame extreme.
+    const surfaceBounds = this.portraitSurfaceBounds || this.portraitBounds;
+    const envelope = portraitPanForBounds(surfaceBounds, portraitConfig.worldZoom,
+      GROUND_Y, PORTRAIT_FRAME_MARGIN, 0);
+    const configured = Number(portraitConfig.groundAnchorRatio);
+    const ratio = Number.isFinite(configured) ? configured : PORTRAIT_HERO_GROUND_RATIO;
+    const surfaceFloor = Number.isFinite(this.portraitSurfaceFloorY)
+      ? this.portraitSurfaceFloorY : GROUND_Y;
+    const preferredPan = portraitPanForFloor(surfaceFloor, portraitConfig.worldZoom,
+      GROUND_Y, PORTRAIT_FRAME_MARGIN, ratio);
+    const pan = preferredPan;
+    let branch = 'surface-fixed';
+    let underground = null;
+    if (this.route?.kind === 'tunnel') {
+      const floor = this.playerGroundY();
+      const bounds = {
+        top: floor - HERO_DRAW_H,
+        bottom: floor + PORTRAIT_TUNNEL_VISUAL_DEPTH,
+      };
+      const fit = portraitPanForBounds(bounds, portraitConfig.worldZoom,
+        GROUND_Y, PORTRAIT_FRAME_MARGIN, 0);
+      underground = { ...fit, pan, floor };
+      // This diagnostic fit proves the tunnel contents fit, but deliberately
+      // does not become the camera target. Underground is a content change,
+      // not a camera event in portrait unless the hero reaches an edge.
+      branch = 'tunnel-fixed';
+    }
+    return Object.freeze({ ...envelope, pan, surfacePan: preferredPan, heroPan: preferredPan, branch,
+      underground, bottomOverflow: Math.max(0, pan - envelope.maxPan) });
+  }
+
+  portraitHeroPreferredPan() {
+    if (!this.portraitGameplay || !isPhonePortraitPresentation() || !this.player) return 0;
+    const frame = presentationFrame();
+    if (!frame?.safeRect || !Number.isFinite(frame.groundScreenY)) return 0;
+    const portraitConfig = this.portraitConfig();
+    const configured = Number(portraitConfig.groundAnchorRatio);
+    const ratio = Number.isFinite(configured) ? configured : PORTRAIT_HERO_GROUND_RATIO;
+    return portraitPanForFloor(this.playerGroundY(), portraitConfig.worldZoom,
+      GROUND_Y, PORTRAIT_FRAME_MARGIN, ratio);
+  }
+
+  // The lab is a controlled development run and may expose the held RWD
+  // control, so it needs the same continuous tape as keyboard play. Ordinary
+  // shipped touch still uses the normal rewind capability; rhythm stages keep
+  // their existing no-rewind rule.
+  rewindAvailableForRun() {
+    return !this.beatLock && (this.portraitLabRun || Input.rewindAvailable());
   }
 
   /**
@@ -1731,7 +2104,12 @@ export class RunState {
     const x = this.playerWorldX();
     const r = this.route;
     if (!r) return x;
-    return Math.min(Math.max(x, r.x), r.x + r.w);
+    // `routeRise` is half-open at the far edge (`t >= 1` means the road is
+    // already gone), so clamping to `r.x + r.w` would sample the base lane on
+    // the very frame the hero walks off the lip. Keep the sample on the last
+    // authored column, the same column used by routeExitDrop().
+    const last = Math.max(r.x, r.x + r.w - 0.001);
+    return Math.min(Math.max(x, r.x), last);
   }
 
   /**
@@ -1744,6 +2122,12 @@ export class RunState {
   routeAt(x0, x1) {
     for (const r of this.routes) {
       if (r.kind === 'tunnel') continue;
+      // Once a hero has walked off a raised road, that same road is no longer
+      // a candidate for the downward landing sweep. Without this one-way
+      // handoff, the footprint can still overlap the lip for a few frames and
+      // the sweep reclaims the road after the hero has visibly dropped to the
+      // lane, producing the ground flash followed by a snap back up.
+      if (r === this.routeReleaseLock) continue;
       if (roadUnderFeet(x0, x1, r)) return r;
     }
     return null;
@@ -1839,6 +2223,7 @@ export class RunState {
         const feet = this.routeGroundY(this.routeSampleX(), this.route) - this.player.y;
         if (prevFeetY <= lane && feet >= lane) {
           this.route = null;
+          this.routeReleaseLock = null;
           this.player.y = 0;
           this.player.vy = 0;
           this.player.jumps = 0;
@@ -1856,9 +2241,14 @@ export class RunState {
       // only difference is where the height comes from: at a break it is the
       // road's height right there, and at the end it is the lip's.
       const drop = overGap ? routeRise(x, this.route) : this.routeExitDrop(x, this.route);
+      const released = this.route;
       this.player.y += drop;
       if (drop > 0.01) this.player.grounded = false;
       this.route = null;
+      // A real edge fall stays released until the hero reaches the lower
+      // floor. A ramp or zero-height exit is already continuous, so it needs
+      // no lock and remains free to resolve normally on the next tick.
+      this.routeReleaseLock = !onRoad && drop > 0.01 ? released : null;
       return false;
     }
     // Down the hole. Checked before the landing sweep because a hero at ground
@@ -1892,7 +2282,15 @@ export class RunState {
     }
     if (this.player.vy > 0) return false;       // rising: pass through from below
     const is = this.routeAt(x0, x1);
-    if (!is) return false;
+    // Reaching the lower floor ends the one-way edge handoff, but only after
+    // this frame has had its chance to reject the just-released route. Clearing
+    // the lock before routeAt() let a landing frame reclaim the upper slab when
+    // the footprint still touched its lip, producing the same ground flash and
+    // snap-back that the lock is meant to prevent.
+    if (!is) {
+      if (this.player.grounded) this.routeReleaseLock = null;
+      return false;
+    }
     // Read at the column he actually caught, not at an anchor that may still be
     // short of the lip — off the end of the profile `routeRise` is zero, and a
     // toe-hold would be resolved against the lane instead of against the slab.
@@ -1905,8 +2303,15 @@ export class RunState {
     // The vertical test alone cannot ever see that crossing — see TOE_CATCH.
     const crossed = prevFeetY <= top && feetY >= top;
     const toeCatch = !crossed && prevToeX < is.x && feetY > top && feetY - top <= TOE_CATCH;
-    if (!crossed && !toeCatch) return false;            // did not cross downward
+    if (!crossed && !toeCatch) {
+      // routeAt() can see a different road that the grounded hero is not yet
+      // crossing. That still counts as reaching the lower floor; do not carry
+      // the old edge lock into the next frame and strand the next landing.
+      if (this.player.grounded) this.routeReleaseLock = null;
+      return false;
+    }            // did not cross downward
     this.route = is;
+    this.routeReleaseLock = null;
     this.ringGirder(is, this.player.vy);
     this.player.y = 0;
     this.player.vy = 0;
@@ -1966,6 +2371,35 @@ export class RunState {
       && !p.stomping && !p.slideSlamming && !p.floating;
   }
 
+  /**
+   * The lower floor a tunnel is about to put under the frame, or null when
+   * there is no tunnel inside the short travel-time look-ahead. Before the
+   * mouth this is only a shallow preview: enough to make the lower choice
+   * legible without framing it as the route the hero must take. Once the hero
+   * clears the mouth, it holds briefly while an upper-path choice settles;
+   * after that, the preview is over unless the live route is actually the
+   * tunnel. That makes an upper-path jump release the camera deliberately.
+   *
+   * This is presentation only. `updateRoute` still decides when the hero has
+   * actually entered the opening, and the returned floor is combined with the
+   * live route floor rather than replacing it.
+   */
+  tunnelPreviewFloor(heroX) {
+    const speed = Math.max(1, Number(this.speed) || Number(this.baseSpeed()) || 1);
+    const lookX = heroX + speed * TUNNEL_CAMERA_LOOKAHEAD_SEC;
+    const inTunnel = this.route?.kind === 'tunnel';
+    const route = inTunnel
+      ? this.route
+      : (this.routes || []).find((r) => r.kind === 'tunnel'
+        && heroX < r.x + speed * TUNNEL_CAMERA_RETURN_DELAY_SEC
+        && lookX >= r.x);
+    if (!route || (!inTunnel && heroX >= route.x + speed * TUNNEL_CAMERA_RETURN_DELAY_SEC)
+      || heroX > route.x + route.w || lookX < route.x) return null;
+    const sampleX = Math.min(route.x + route.w, Math.max(route.x, lookX));
+    const floor = this.routeGroundY(sampleX, route);
+    return inTunnel ? floor : Math.min(floor, GROUND_Y + TUNNEL_CAMERA_PREVIEW_MAX_DROP);
+  }
+
   // The dolly. Camera Y never TRACKS the hero — both numbers come out of
   // framingFor, so the groundline stays welded to its screen y and the frame
   // opens or cranes as one piece rather than chasing them around. A jump that
@@ -1973,19 +2407,92 @@ export class RunState {
   // nothing else) and only pulls the zoom back for what is left over. Most
   // single jumps (57px against 103px of headroom) still move neither.
   updateCamera(dt) {
+    // Portrait is a presentation branch, not a second phone zoom tier. It is
+    // active only while the renderer has an actual portrait frame; rotating a
+    // lab run to landscape must immediately return to the ordinary camera.
+    const portraitConfig = this.portraitConfig();
+    const portraitActive = this.portraitGameplay && portraitConfig
+      && isPhonePortraitPresentation();
+    if (portraitActive) {
+      // Keep the portrait composition fixed through ordinary jumps, hills and
+      // tunnels. The full-height frame already contains the underground
+      // cutaway; only the drawn hero reaching an actual top/bottom edge earns
+      // the bounded correction below.
+      setRestingZoom(portraitConfig.worldZoom);
+      this.camZoom = portraitConfig.worldZoom;
+      const frameFit = this.portraitFrameFit();
+      const frame = presentationFrame();
+      const gameplayEdges = portraitGameplayEdges(frame);
+      const edgePanLimit = Math.max(PORTRAIT_EDGE_PAN_LIMIT,
+        Number.isFinite(Number(frame?.height)) ? Number(frame.height) : 0);
+      const floor = this.playerGroundY();
+      const feet = floor - (Number(this.player?.y) || 0);
+      const edgePan = portraitEdgePanForBounds({
+        top: feet - HERO_DRAW_H,
+        bottom: feet,
+      }, this.camZoom, GROUND_Y, frameFit.pan,
+      PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN,
+      edgePanLimit, gameplayEdges);
+      this.portraitFrameFitState = Object.freeze({
+        ...frameFit,
+        playableTop: gameplayEdges.top,
+        playableBottom: gameplayEdges.bottom,
+        pan: edgePan,
+        edgePan: edgePan - frameFit.pan,
+        edgeActive: Math.abs(edgePan - frameFit.pan) > 0.001,
+      });
+      const targetPan = this.portraitFrameFitState.pan;
+      // The surface is still a parked composition. Assign directly so an
+      // ordinary jump or an underground route cannot spend several frames
+      // easing from a stale camera value and appear to pan; edge corrections
+      // follow only while the hero is against the frame boundary.
+      this.camPan = targetPan;
+      this.camFloorY = GROUND_Y;
+      this.camFeetY = this.route?.kind === 'tunnel' ? this.playerGroundY() : null;
+      return;
+    }
     // Re-resolved every frame so a settings change, or the dev strip moving
     // ZOOM_NORMAL, takes effect with VIEW_W and the finish line following it
     // rather than describing a frame that is no longer on screen. A no-op in
     // the overwhelming case where nothing has changed.
+    // The normal run seeds these values in enter(), but a presentation-mode
+    // rotation can be observed by a dev harness before enter has completed.
+    // Keep that boundary harmless instead of letting one undefined camera
+    // member poison the ordinary framing math with NaN.
+    if (!Number.isFinite(this.camX)) this.camX = 0;
+    if (!Number.isFinite(this.camPan)) this.camPan = 0;
+    if (!Number.isFinite(this.camFloorY)) this.camFloorY = GROUND_Y;
+    if (!Number.isFinite(this.camZoom)) this.camZoom = ZOOM;
     applyFraming(this.renderSettings || this.save.settings);
-    if (this.portraitLabRun && this.devPortraitLab) {
-      // Keep the lab calibration authoritative across every camera tick. The
-      // ordinary phone framing policy still runs first, so exiting the lab
-      // restores the shipped 2.2 path cleanly.
-      setRestingZoom(this.devPortraitLab.worldZoom);
-    }
     const heroX = this.playerWorldX();
-    const floor = this.routeGroundY(heroX, this.route);
+    // Keep the camera on the route's lip until updateRoute gets its chance to
+    // release it. `routeGroundY(heroX, route)` returns the base lane as soon
+    // as the hero's anchor is one pixel past the span, but the hero can still
+    // have his footprint on the route for that tick and `player.y` is still
+    // measured from its floor. Sampling through playerGroundY() clamps to the
+    // route span, matching the collision/render seam and preventing a one-frame
+    // camera drop before the ledge fall is rebased.
+    const floor = this.playerGroundY();
+    // A tunnel can be known before the route claim changes from null to tunnel.
+    // Keep this separate from `floor`: the latter is the physics floor under
+    // the hero right now, while this is only the lower floor the frame is
+    // preparing to reveal ahead of him.
+    const tunnelFloor = this.tunnelPreviewFloor(heroX);
+    const speed = Math.max(1, Number(this.speed) || Number(this.baseSpeed()) || 1);
+    const tunnelTransition = (this.routes || []).find((r) => r.kind === 'tunnel'
+      && heroX >= r.x
+      && heroX <= r.x + r.w + speed * TUNNEL_CAMERA_RETURN_DELAY_SEC);
+    const upperPathFraming = this.route?.kind !== 'tunnel'
+      && tunnelTransition
+      && heroX >= tunnelTransition.x + speed * TUNNEL_CAMERA_RETURN_DELAY_SEC
+      && heroX <= tunnelTransition.x + tunnelTransition.w;
+    const upperPathFloor = upperPathFraming
+      ? GROUND_Y + TUNNEL_CAMERA_UPPER_PATH_LIFT : null;
+    const releasingTunnelPreview = tunnelFloor == null
+      && upperPathFloor == null
+      && this.route?.kind !== 'tunnel'
+      && this.camFloorY > GROUND_Y + 0.5
+      && tunnelTransition;
     // ---- where the frame is pinned -----------------------------------------
     //
     // The crane and the zoom can hold a hero who is somewhere ELSE for a moment;
@@ -2054,10 +2561,21 @@ export class RunState {
     // than reading a teleport as a mile of falling.
     const drop = Number.isFinite(this.camFeetY) ? feetY - this.camFeetY : 0;
     const falling = !this.player.grounded && floor > this.camFloorY + 0.5;
-    const anchorTo = falling
+    const routeAnchorTo = falling
       ? Math.min(GROUND_Y - anchorLift, feetY + fallLead(this.camZoom))
       : GROUND_Y - anchorLift;
-    const eased = easeFloor(this.camFloorY, anchorTo, dt);
+    // The preview may carry the anchor a little farther down than the live
+    // floor. It is deliberately blended into the existing fall target rather
+    // than replacing it, so the actual falling cap still owns a fast unplanned
+    // descent. `tunnelPreviewFloor` caps the pre-mouth suggestion; a live
+    // tunnel route is allowed to use its full floor.
+    const sectionFloor = tunnelFloor == null ? upperPathFloor : tunnelFloor;
+    const anchorTo = sectionFloor == null ? routeAnchorTo
+      : Math.max(routeAnchorTo, sectionFloor);
+    const previewingTunnel = sectionFloor != null && sectionFloor > this.camFloorY;
+    const eased = previewingTunnel || releasingTunnelPreview
+      ? easeTunnelPreview(this.camFloorY, anchorTo, dt)
+      : easeFloor(this.camFloorY, anchorTo, dt);
     this.camFloorY = falling && eased > this.camFloorY
       ? Math.min(eased, fallLimit(this.camFloorY, drop, this.camZoom, dt))
       : eased;
@@ -2169,9 +2687,13 @@ export class RunState {
     // panel's contract is that a non-finite opening beat means STANDING, so
     // this says the thing rather than out-counting it.
     if (this.introDone && this.cityIntroBeat != null) this.cityIntroBeat = Infinity;
-    if (this.portraitLabRun && this.devPortraitLab) {
-      setPresentationMode(PHONE_PORTRAIT, { groundAnchorRatio: this.devPortraitLab.groundAnchorRatio });
-      setRestingZoom(this.devPortraitLab.worldZoom);
+    if (this.portraitGameplay) {
+      const portraitConfig = this.portraitConfig();
+      setPresentationMode(PHONE_PORTRAIT, { groundAnchorRatio: portraitConfig.groundAnchorRatio });
+      // On landscape this is immediately resolved back to the ordinary device
+      // tier by updateCamera/applyFraming. On a portrait phone it is the one
+      // approved close framing shared by lab and production runs.
+      if (isPhonePortraitPresentation()) setRestingZoom(portraitConfig.worldZoom);
     }
     Input.setContext('run');
     // The ramp starts flat on every entry, retries included: a stage re-entered
@@ -2508,6 +3030,10 @@ export class RunState {
     // is broken on exactly one eighth of the relay bag. Same instinct as
     // spawner.js's worstAirtime().
     this.route = null;
+    // The raised road just left is excluded from landing sweeps until the
+    // fall reaches a lower floor. This prevents a lip handoff from becoming a
+    // one-frame route reclaim and is carried by rewind/checkpoint snapshots.
+    this.routeReleaseLock = null;
 
     // The stage's own pits, as world x. A fraction of the stage the way the
     // appliance is placed, resolved once here so nothing downstream has to know
@@ -2571,6 +3097,20 @@ export class RunState {
         groundYAt: (wx) => this.groundYAt(wx),
         crossings: this.crossings,
       });
+    // The portrait frame keeps one fixed gameplay scale, so establish the
+    // level's vertical envelope before the first frame. updateCamera rechecks
+    // the pan against the active safe frame (which may change on rotation),
+    // but the authored bounds themselves do not move during a run.
+    this.portraitSurfaceBounds = this.portraitWorldBounds({ includeTunnel: false });
+    this.portraitBounds = this.portraitWorldBounds();
+    this.portraitSurfaceFloorY = this.playerGroundY();
+    this.portraitFrameFitState = this.portraitFrameFit();
+    if (this.portraitGameplay && isPhonePortraitPresentation()) {
+      // The opening frame should already honour the lower-edge composition;
+      // easing is reserved for route changes and later viewport changes.
+      this.camPan = this.portraitFrameFitState.pan;
+      this.prevCamPan = this.camPan;
+    }
 
     // Mission setup.
     this.mission = this.stage ? { ...this.stage.mission, count: 0, done: false } : { type: 'endless', desc: 'RUN. FOREVER. THAT IS THE WHOLE DEAL.' };
@@ -2702,7 +3242,14 @@ export class RunState {
     }
 
     this.styleName = this.corrupted.length ? 'pixel' : this.cabinet.style;
-    this.style = getStylePack(this.styleName, this.save.settings);
+    // The LCD pack's portrait grid is a presentation treatment, not a saved
+    // gameplay setting. Snapshot the active frame mode here after the run has
+    // installed its portrait presentation, so retries keep the same authored
+    // level while the background texture remains stable on the phone.
+    this.style = getStylePack(this.styleName, {
+      ...this.save.settings,
+      portraitPresentation: isPhonePortraitPresentation(),
+    });
     this.renderSettings = { ...this.save.settings, smoothMotion: true };
     this.mirror = this.corrupted.includes('mirror');
 
@@ -2790,7 +3337,7 @@ export class RunState {
     this.rewindArmedPrev = false;
     // A retry can re-enter with the capture node still up from an armed window
     // the death cut short. Desktop's boot-time node is never touched from here.
-    Audio.setCaptureEnabled(this.beatLock ? false : Input.rewindAvailable());
+    Audio.setCaptureEnabled(this.rewindAvailableForRun());
     this.rewindFx = new TapeRewindEffect();
     this.beatCombo = 0;
     this.cityAccidentBeat = null;
@@ -2880,7 +3427,7 @@ export class RunState {
 
   exit() {
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
-    if (this.portraitLabRun) {
+    if (this.portraitGameplay) {
       setPresentationMode(LANDSCAPE);
       applyFraming(this.renderSettings || this.save.settings);
     }
@@ -2892,13 +3439,58 @@ export class RunState {
     this.silentSkipArmed = false;
     // Leaving mid-armed-window must not strand the capture node; desktop's
     // boot-time node stays (same predicate as everywhere else in the feature).
-    if (this.beatLock || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
+    // A lab run owns the capture node it enabled at entry; always release it
+    // on exit even though its touch host normally reports no rewind capability.
+    if (this.beatLock || this.portraitLabRun || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
     // setContext already dropped the paused screen's borrowed key mapping.
     this.keepSongTempo(); Audio.setInvincible(false);
     // Nothing here changes the song — the results screen deliberately keeps playing it —
     // but a handover still waiting for its bar line has to be settled. See endStage:
     // quit inside the first two bars and it would otherwise land on the results screen.
     MusicDirector.endStage();
+  }
+
+  // Portrait pause plates are laid out in the active safe frame rather than
+  // borrowing the 270px landscape coordinates. Input.buttons and
+  // drawPortraitPaused both call these helpers, so a resize/rotation rebuild
+  // cannot leave a large-looking button with a small or misplaced hit box.
+  portraitPauseButtons() {
+    if (!isPhonePortraitPresentation()) return PAUSE_BUTTONS;
+    const frame = presentationFrame();
+    const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
+    const edge = 14;
+    const gap = 16;
+    const h = 60;
+    const x = Math.max(edge, Number(safe.left) + edge);
+    const right = Math.min(W - edge, Number(safe.right) - edge);
+    const width = Math.max(1, (right - x - gap) / 2);
+    const y = Math.max(Number(safe.top) + edge,
+      Math.min(H - h - edge, Number(safe.bottom) - h - edge));
+    return [
+      { id: 'resume', x, y, w: width, h, action: 'pause', label: 'CONTINUE' },
+      { id: 'quit', x: x + width + gap, y, w: width, h, action: 'escape', label: 'BACK' },
+    ];
+  }
+
+  portraitPauseSyncButtons(mainButtons = this.portraitPauseButtons()) {
+    if (!isPhonePortraitPresentation() || !this.beatLock || !mainButtons?.length) {
+      return PAUSE_SYNC_BUTTONS;
+    }
+    const main = mainButtons[0];
+    // Portrait has enough width for one compact row. Keeping all three tools
+    // together avoids a second vertical stack consuming the short iPhone SE
+    // pause frame above the main CONTINUE/BACK plates.
+    const gap = 10;
+    const h = 44;
+    const y = Math.max(0, main.y - h - 28);
+    const total = W - 2 * 14;
+    const width = Math.max(1, (total - gap * 2) / 3);
+    const x = W / 2 - total / 2;
+    return [
+      { id: 'syncDown', x, y, w: width, h, action: 'syncDown', label: '−' },
+      { id: 'syncUp', x: x + width + gap, y, w: width, h, action: 'syncUp', label: '+' },
+      { id: 'syncReset', x: x + (width + gap) * 2, y, w: width, h, action: 'syncReset', label: 'RESET' },
+    ];
   }
 
   setButtons() {
@@ -2914,19 +3506,22 @@ export class RunState {
       // The nudge plates go on the END of the list so PAUSE_BUTTONS keeps index
       // 0 and 1: pauseIdx addresses Input.buttons directly, in updatePauseMenu
       // and in drawPaused alike.
-      Input.setButtons(this.beatLock ? [...PAUSE_BUTTONS, ...PAUSE_SYNC_BUTTONS] : PAUSE_BUTTONS);
+      const mainButtons = this.portraitPauseButtons();
+      Input.setButtons(this.beatLock
+        ? [...mainButtons, ...this.portraitPauseSyncButtons(mainButtons)] : mainButtons);
       Input.setChromeButtons([]); return;
     }
     // Play controls are touch only: keyboard players have SPACE/DOWN/RIGHT/P/ESC,
     // and the corners hold HUD instead.
     if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); return; }
-    // The four discs on the picture plus whatever margin this device has
-    // around it (touchchrome.js, touch-layout.js) — one set, every device.
+    // The portrait discs on the picture plus whatever margin this device has
+    // around it (touchchrome.js, the shared layout modules) — Portrait Lab
+    // adds its held RWD disc to the same registration path.
     // PAUSE fires 'escape', which mirrors the Escape key exactly: pauses if
     // running, quits if already paused. The second half is unreachable from
     // here, since pausing swaps this set out for the plates above.
     Input.setButtons([]);
-    Input.setChromeButtons(runChromeButtons());
+    Input.setChromeButtons(runChromeButtons({ portraitLab: this.portraitLabRun }));
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
@@ -3989,6 +4584,14 @@ export class RunState {
     if (this.pitDeath) return PLAYER_X + this.pitDeath.dx;
     return PLAYER_X;
   }
+
+  // The portrait character anchor is presentation-only. The simulation keeps
+  // PLAYER_X so collision, spawning and runway timing remain shipped; the
+  // renderer shifts the complete world by this many world units instead.
+  portraitWorldXOffset() {
+    if (!this.portraitGameplay || !isPhonePortraitPresentation()) return 0;
+    return Number(this.portraitConfig().heroAnchorX) - PLAYER_X;
+  }
   playerWorldX() { return this.camX + this.heroScreenX(); }
 
   /**
@@ -4017,7 +4620,7 @@ export class RunState {
    * across him. So terrain moves the cards and jumping never does.
    */
   heroScreenRect(z = this.camZoom, pan = this.camPan, floorY = this.camFloorY, standing = false) {
-    const heroX = this.heroScreenX() * z;
+    const heroX = (this.heroScreenX() + this.portraitWorldXOffset()) * z;
     const feetY = screenYFor(this.playerGroundY() - (standing ? 0 : this.player.y), z, pan, floorY);
     // Mirror flips the overlay's anchor by hand, exactly as drawFloatie does.
     const left = this.mirror ? W - heroX - PLAYER_SPRITE_W * z : heroX;
@@ -4614,10 +5217,11 @@ export class RunState {
       const hits = this.modIds.includes('secondbite') ? 2 : 1;
       this.projectiles.push({ type: 'axe', art: 'wrench', route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
     } else if (type === 'toss') {
-      // RUSTY'S BAMBOO SHOOT — the third thing to fly the axe's cycle, after
-      // the axe itself and the wrench. Same bargain: nothing leaves on the
-      // press, the cane goes at the throw's release beat (the pull-whip
-      // gesture in drawHumanoid, keyed on `spec.bundle`), and it comes home.
+      // RUSTY'S BAMBOO SHOOT — a disposable third thing to use the axe's
+      // outbound motion, after the axe itself and the wrench. Same wind-up:
+      // nothing leaves on the press, the cane goes at the throw's release beat
+      // (the pull-whip gesture in drawHumanoid, keyed on `spec.bundle`). It
+      // breaks on its first contact; Rusty's dispenser supplies the next one.
       // `caneParity` travels ON the projectile so it is drawn at the size of
       // the cane he actually pulled even after the pouch has flipped for the
       // next throw; the flip itself happens here, on the press, which is the
@@ -6738,15 +7342,15 @@ export class RunState {
    * the ground is already at the height of the things it hits, so the
    * ordinary shot does not change.
    *
-   * ALL FOUR FLYING ROUNDS — Clara's and B33P's pellet, Grumpos' axe, Ray
-   * M'N's fist and Fernwick's arrow. It was the pellet alone, and Grumpos'
+   * ALL FIVE FLYING ROUNDS — Clara's and B33P's pellet, Grumpos' axe, Rusty's
+   * bamboo cane, Ray M'N's fist and Fernwick's arrow. It was the pellet alone, and Grumpos'
    * axe thrown off a jump flew over the box while the box, armed by the
    * press, went anyway: a bang with no cause. The instant abilities (spanner,
    * shield, chomp) pick their target directly and never miss.
    *
-   * WHAT IT WILL NOT DIVE ONTO: scenery. A thrown weapon parks on anything
-   * unbreakable it touches, and a bar, a pipe or a saw plate between the
-   * hero and the thing they threw at is not the thing they threw at. The
+   * WHAT IT WILL NOT DIVE ONTO: scenery. A returning thrown weapon parks on
+   * anything unbreakable it touches, and a bar, a pipe or a saw plate between
+   * the hero and the thing they threw at is not the thing they threw at. The
    * round flies past at its own height, the same as it always did, and
    * finds the target behind. The card box is breakable, so it is always a
    * target; so is anything a pellet can break and anything it can ring.
@@ -6810,6 +7414,16 @@ export class RunState {
           }
         }
         pr.t += dt;
+        const disposable = pr.art === 'bamboo';
+        if (disposable) {
+          // Rusty has an endless supply in the dispenser. Bamboo is a
+          // one-contact throw: it keeps its outbound flight, then breaks on
+          // the first thing it touches instead of parking and returning.
+          this.homeRound(pr, dt);
+          pr.x += pr.vx * dt;
+          const viewRight = this.camX + W / this.camZoom;
+          if (pr.x > viewRight + 16 || pr.x < this.camX - 60) { pr.live = false; continue; }
+        }
         const hoverAlt = 48; // well above any hero or obstacle — clearly spent
         // THE TURN IS AN EVENT, not a sign flip. All three returning weapons
         // (axe, wrench, rocket fist) used to park off-screen until the cooldown
@@ -6825,13 +7439,13 @@ export class RunState {
         // easing down into the catch makes the whole trip an ARC, so the return
         // leg is visibly a different path from the throw.
         const spentAt = pr.type === 'fist' ? 0.42 : 0.5;
-        if (!pr.returning && pr.t > spentAt) {
+        if (!disposable && !pr.returning && pr.t > spentAt) {
           pr.hang = (pr.hang == null ? RETURN_HANG_T : pr.hang) - dt;
           pr.vx *= Math.max(0, 1 - dt * 8);          // brake, do not stop dead
           pr.alt += RETURN_RISE * dt;                 // float up out of the lane
           if (pr.hang <= 0) pr.returning = true;
         }
-        if (pr.hover && !pr.returning) {
+        if (!disposable && pr.hover && !pr.returning) {
           pr.hoverT += dt;
           // Rise up out of the combat lane so it is clear the weapon is spent.
           pr.alt += (hoverAlt - pr.alt) * Math.min(1, dt * 6);
@@ -6840,7 +7454,7 @@ export class RunState {
           if (this.player.abilityCd <= 0) pr.returning = true;
           continue; // don't move under its own velocity this frame
         }
-        if (!pr.returning) this.homeRound(pr, dt);
+        if (!disposable && !pr.returning) this.homeRound(pr, dt);
         // THE RETURN IS TWO MOVES, not one curve. Sending it home on a single
         // arc that bottomed out at his hand meant the weapon was still coming
         // down as it reached him, and the catch simply deleted it mid-descent —
@@ -6853,11 +7467,11 @@ export class RunState {
         //      holds his x as he runs, and falls under an acceleration into the
         //      catch — slow to leave the apex, quickest at the moment it lands
         //      on him. The speed-up at the end is what sells the reattach.
-        if (pr.returning && !pr.dropping) {
+        if (!disposable && pr.returning && !pr.dropping) {
           pr.x += -(sp + (pr.type === 'fist' ? RETURN_CLOSE_FIST : RETURN_CLOSE)) * dt;
           pr.alt += (RETURN_APEX - pr.alt) * Math.min(1, dt * 2.4);
           if (pr.x <= this.playerWorldX() + RETURN_OVERHEAD) { pr.dropping = true; pr.dropV = 0; }
-        } else if (pr.dropping) {
+        } else if (!disposable && pr.dropping) {
           // Rides above him while it comes down: he is running, and a weapon
           // that dropped onto the spot where he WAS would land behind him.
           pr.x = this.playerWorldX() + RETURN_OVERHEAD;
@@ -6874,7 +7488,7 @@ export class RunState {
               if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
             }
           }
-        } else {
+        } else if (!disposable) {
           pr.x += pr.vx * dt;
         }
       } else if (pr.type === 'arrow') {
@@ -6951,20 +7565,23 @@ export class RunState {
             this.projectileImpact(pr, ix, iy);
             // THE CARD BOX DOES NOT BREAK WHEN IT IS HIT. It lights, and it
             // goes on the beat — see lightCardBox and BOX_BURST_BEATS. The
-            // round is spent either way (a thrown weapon parks and comes home,
-            // the same as hitting anything unbreakable), because a pellet that
+            // round is spent either way (a returning weapon parks and comes
+            // home; bamboo breaks on contact), because a pellet that
             // carried on through would arrive at the NEXT box a beat early.
             if (this.lightCardBox(ob)) {
+              if (pr.art === 'bamboo') { pr.live = false; break; }
               if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
               else if (!pr.pierce) pr.live = false;
               continue;
             }
             if (ob.def.breakable === false) {
+              if (pr.art === 'bamboo') { pr.live = false; break; }
               if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
               else pr.live = false;
               continue;
             }
             this.breakObstacle(ob);
+            if (pr.art === 'bamboo') { pr.live = false; break; }
             if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0 && !pr.returning) { pr.hover = true; pr.hoverX = pr.x; } }
             else if (pr.type === 'fist' && !pr.pierce) { pr.hover = true; pr.hoverX = pr.x; }
             else if (!pr.pierce) pr.live = false;
@@ -6973,11 +7590,12 @@ export class RunState {
       }
 
       // THE FORCEFIELD. He is not an obstacle, so until now a pellet, a thrown
-      // axe and a thrown fist all flew clean through the drawing, and a shot
+      // axe, a bamboo cane and a thrown fist all flew clean through the drawing,
+      // and a shot
       // that visibly connects and does nothing is worse than one that misses.
       // It pings off instead, and the round is spent exactly as it is on
-      // anything unbreakable: a thrown weapon parks and comes home, a pellet
-      // dies unless it pierces.
+      // anything unbreakable: a returning weapon parks and comes home, bamboo
+      // breaks, and a pellet dies unless it pierces.
       //
       // AND IT NEVER COUNTS. The mission is a bonk — the hero's own head — and
       // a copter that could be shot down would be a different, easier level for
@@ -7002,7 +7620,8 @@ export class RunState {
           // the round did nothing; the eyeroll says what he thinks of the
           // attempt, which is the half a floatie cannot carry.
           if (c.hitT <= 0 && !c.nearMissT) c.rollT = 1.6;
-          if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
+          if (pr.art === 'bamboo') pr.live = false;
+          else if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
           else if (!pr.pierce) pr.live = false;
         }
       }
@@ -7039,9 +7658,10 @@ export class RunState {
     // the tool is in the air (see `wrenchWorn` in toons.js). Keyed on the art so
     // Grumpos's axe cannot clear Lorenzo's belt.
     this.player.wrenchThrown = this.projectiles.some((p) => p.live && p.art === 'wrench' && p.holdT <= 0);
-    // A hovering weapon belongs to its thrower — another hero cannot catch it.
-    // Three heroes fly this type now (Grumpos's axe, Lorenzo's wrench, Rusty's
-    // cane), so the check is per-projectile: swapping to Lorenzo used to
+    // A held or hovering axe-type weapon belongs to its thrower — another hero
+    // cannot catch it. Three heroes fly this type now (Grumpos's axe, Lorenzo's
+    // wrench, Rusty's cane), so the check is per-projectile: swapping to Lorenzo
+    // used to
     // despawn nothing of his and everything of Grumpos's, and vice versa.
     for (const pr of this.projectiles) {
       if (pr.type !== 'axe') continue;
@@ -9285,6 +9905,7 @@ export class RunState {
       // a snapshot outlives the frame it was taken in, and storing the live
       // object would tie a restore to an entity graph that has moved on.
       route: this.routes.indexOf(this.route),
+      routeReleaseLock: this.routes.indexOf(this.routeReleaseLock),
       // And where the camera was pinned while he was on it. Restoring the road
       // without the anchor drops a hero who checkpointed on a cloud back into a
       // frame still centred on the groundline two hundred pixels below him.
@@ -9314,6 +9935,7 @@ export class RunState {
     // floor has to be the one the snapshot was taken on, or the hero is stood
     // on the base ground while the run still believes he is on a slab.
     this.route = s.route >= 0 ? this.routes[s.route] : null;
+    this.routeReleaseLock = s.routeReleaseLock >= 0 ? this.routes[s.routeReleaseLock] : null;
     this.camFloorY = s.camFloorY ?? GROUND_Y;
     this.camFeetY = null;
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
@@ -9417,7 +10039,7 @@ export class RunState {
     const armed = !!this.powerups.active.rewind;
     if (armed === this.rewindArmedPrev) return;
     this.rewindArmedPrev = armed;
-    if (Input.rewindAvailable()) return;
+    if (this.rewindAvailableForRun()) return;
     // The reversed-SFX recorder only exists while a charge is armed — that is
     // the whole cost story of the power-up (docs/mobile-rewind-powerup.md).
     Audio.setCaptureEnabled(armed);
@@ -9487,7 +10109,7 @@ export class RunState {
     // "record on demand" necessarily means "record while armed". The charge
     // no longer times out; this stays live until it fires or the level ends.
     if (REWIND_DISABLED || this.beatLock) return;
-    if (!Input.rewindAvailable() && !this.powerups.active.rewind) return;
+    if (!this.rewindAvailableForRun() && !this.powerups.active.rewind) return;
     this.rewindCaptureT += dt;
     if (this.rewindCaptureT < REWIND_STEP) return;
     this.rewindCaptureT -= REWIND_STEP;
@@ -9525,6 +10147,7 @@ export class RunState {
     // hero at the right height above the wrong thing — rewinding onto a slab
     // would drop him through it, and off one would stand him on air.
     s.route = this.routes.indexOf(this.route);
+    s.routeReleaseLock = this.routes.indexOf(this.routeReleaseLock);
     // The ride, if one is running. Written into a slot the pool owns rather than
     // stored by reference, for the same reason the player's fields are.
     s.loopSpawned = this.loopSpawned;
@@ -9669,6 +10292,7 @@ export class RunState {
     this.hintT = s.hintT; this.bonusT = s.bonusT;
     // Before the player fields below: `p.y` is read against this floor.
     this.route = s.route >= 0 ? this.routes[s.route] : null;
+    this.routeReleaseLock = s.routeReleaseLock >= 0 ? this.routes[s.routeReleaseLock] : null;
 
     // Player: restore mutable fields in-place.
     const p = this.player;
@@ -10962,9 +11586,17 @@ export class RunState {
     // Newest lands at the base; if a recent one is still near it, slot in below
     // so simultaneous popups (pickup + power name) never overprint. The gap is
     // a full panel height now that each floatie carries its own card.
+    // Floaties use the same portrait ink budget as the HUD: the old 1.24
+    // multiplier was only enough to undo the phone's downscale and still
+    // landed around six CSS pixels.  Keep the card a little smaller than the
+    // primary panels so it reads as feedback without stealing their hierarchy.
+    const scale = isPhonePortraitPresentation()
+      ? Math.max(1.8, Math.min(2.4, portraitHudLayout(presentationFrame()).panelScale * 0.85))
+      : 1;
+    const pitch = 19 * scale;
     let y = base;
-    for (const f of this.floaties) if (f.y + 19 > y) y = f.y + 19;
-    this.floaties.push({ text, color, t: readingTime, y, solid });
+    for (const f of this.floaties) if (f.y + 19 * (f.scale || 1) > y) y = f.y + 19 * (f.scale || 1);
+    this.floaties.push({ text, color, t: readingTime, y, solid, scale, pitch });
     if (this.floaties.length > 8) this.floaties.shift();
   }
 
@@ -11059,6 +11691,17 @@ export class RunState {
     // run — has to ask here rather than at the slot's left edge, or it gets an
     // answer for a place he is not standing.
     const heroArtX = heroScreenX + HERO_CENTER_OFF;
+    const portraitWorldXOffset = this.portraitWorldXOffset();
+    const portraitXOffset = portraitWorldXOffset * z;
+    const portraitFrameActive = !!(this.portraitGameplay && isPhonePortraitPresentation());
+    // Moving the presentation lane left makes more of the authored world visible
+    // on the right. Extend the render band by that exact world-space amount so
+    // ground, routes and entities continue painting all the way to the phone edge.
+    // The extra band belongs only to the phone portrait frame; shipped
+    // landscape framing keeps its existing width and culling behavior.
+    const visibleWorldW = portraitRenderViewWidth(z,
+      portraitFrameActive ? portraitWorldXOffset : 0);
+    const portraitRenderViewW = portraitFrameActive ? visibleWorldW : null;
     ctx.save();
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
     // Backgrounds stay in SCREEN space. Their layers are anchored to the
@@ -11117,8 +11760,7 @@ export class RunState {
     // the playable lane, actors, hazards and HUD retain their shipped scale.
     // The preview page is the only caller that installs this global; ordinary
     // production boots take the exact identity path.
-    const portraitLabActive = !!(this.portraitLabRun && this.devPortraitLab && isPhonePortraitPresentation());
-    const bgZoom = portraitLabActive ? this.devPortraitLab.backgroundZoom : 1;
+    const bgZoom = portraitFrameActive ? this.portraitConfig().backgroundZoom : 1;
     if (Math.abs(bgZoom - 1) > 0.0001) {
       // frameShift and bgShift are already on the canvas transform. The
       // authored groundline is therefore GROUND_Y in this local background
@@ -11129,6 +11771,13 @@ export class RunState {
       ctx.scale(bgZoom, bgZoom);
       ctx.translate(-W / 2, -bgAnchorY);
     }
+    // The character anchor is a whole-scene presentation shift. Apply it
+    // after the optional backdrop scale so mountains, clouds and the playable
+    // lane remain in the same horizontal frame rather than being painted twice
+    // at different anchors.
+    if (Math.abs(portraitXOffset) > 0.0001) ctx.translate(portraitXOffset, 0);
+    const backgroundCoverage = portraitFrameActive
+      ? portraitBackgroundCoverage(portraitXOffset, bgZoom) : null;
     // Optional renderer context, deliberately smaller than the run. The LCD
     // city may know which authored panel this is, where the heard musical beat
     // is, WHAT THE PLAYER IS HEARING, how far through the stage they are, and —
@@ -11202,13 +11851,25 @@ export class RunState {
         maxRoadRise: maxTerrainHeight(this.cabinet),
       }
       : null;
-    const backgroundContext = portraitLabActive ? {
-      cloudOffsetY: this.devPortraitLab.cloudOffsetY,
-      sunOffsetY: this.devPortraitLab.sunOffsetY,
-      backgroundZoom: this.devPortraitLab.backgroundZoom,
-      groundAnchorRatio: this.devPortraitLab.groundAnchorRatio,
+    const backgroundContext = portraitFrameActive ? {
+      cloudOffsetY: this.portraitConfig().cloudOffsetY,
+      sunOffsetY: this.portraitConfig().sunOffsetY,
+      sceneryOffsetY: this.portraitConfig().sceneryOffsetY,
+      backgroundZoom: this.portraitConfig().backgroundZoom,
+      groundAnchorRatio: this.portraitConfig().groundAnchorRatio,
     } : null;
-    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene, bgShift, backgroundContext);
+    // Style packs historically paint a 480px logical backdrop. In portrait the
+    // shifted local range can be wider than that, so expose the exact coverage
+    // interval to their full-surface and periodic painters for this call only.
+    const previousBackgroundCoverage = ctx.__mashBackgroundCoverage;
+    if (backgroundCoverage) ctx.__mashBackgroundCoverage = backgroundCoverage;
+    try {
+      this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist,
+        backgroundScene, bgShift, backgroundContext);
+    } finally {
+      if (previousBackgroundCoverage === undefined) delete ctx.__mashBackgroundCoverage;
+      else ctx.__mashBackgroundCoverage = previousBackgroundCoverage;
+    }
     ctx.restore();
 
     // A phone gets its backdrop quieted a little, so the cast has less to
@@ -11218,11 +11879,15 @@ export class RunState {
     // paid for at full strength. Between bg() and the world band on purpose —
     // everything the player reads or reacts to is drawn over it.
     if (tier() === 'phone') drawBackdropVeil(ctx, this.style);
+    // Finish the sky's outer edge before the camera/world pass. The band is
+    // screen-space and short, so portrait's extra height gets a subtle edge
+    // value without tinting the mountains or the playable horizon.
+    drawSkyEdgeGradient(ctx, this.style);
 
     // ---- world band. Everything from here to post() draws through the camera,
     // in the same coordinates it always did: x offsets from cam, absolute y.
     ctx.save();
-    applyWorld(ctx, z, pan, floorY);
+    applyWorld(ctx, z, pan, floorY, portraitXOffset);
 
     // Ground line + gaps.
     //
@@ -11240,12 +11905,12 @@ export class RunState {
     // chamber floor stands on are one band rather than two drawn to match.
     const hillDepth = this.routes.reduce(
       (d, r) => (r.kind === 'tunnel' ? Math.max(d, r.rise) : d), 0);
-    // W / z is the world this frame actually shows — the same quantity cullRight
-    // is built from below, and derived here for the same reason: z drifts
-    // between the resting tier and the 1.3 pull-back, so nothing precomputed
-    // stays true. A pack that walks its own ground in columns needs it or it
-    // paints past the right edge; the ones that do not simply ignore it.
-    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun, W / z);
+    // visibleWorldW is the world this frame actually shows, including the
+    // portrait runway exposed when the presentation lane is shifted left. It is
+    // derived from the interpolated z every frame, so a pack that walks its own
+    // ground in columns paints right through the phone edge instead of stopping
+    // at the unshifted camera width.
+    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun, W / z, portraitRenderViewW);
     // A HOLE THAT NAMES ITS OWN MATERIAL IS FILLED WHATEVER THE PACK IS.
     //
     // Six packs paint the cabinet's fill on their way past; the other three draw
@@ -11263,10 +11928,10 @@ export class RunState {
     // while the ordinary hole a beat earlier held only works.
     if (!this.style.ownPitFills) {
       drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true,
-        (ob) => riseHeight(ob.x + ob.w / 2));
+        (ob) => riseHeight(ob.x + ob.w / 2), portraitRenderViewW ?? W);
     }
     if (!this.bossCab) {
-      drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z, laneCuts,
+      drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
         this.style.ownSurface === true);
     }
     if (this.routes.length) {
@@ -11277,10 +11942,10 @@ export class RunState {
       // edge. Only paid for when a road actually goes down there.
       const bottomWorldY = camYFor(z, floorY) + H / z + 8;
       if (this.camFloorY > GROUND_Y + 1 || this.routes.some((r) => r.kind === 'tunnel'
-        && r.x - cam < W / z + 8 && r.x + r.w - cam > -8)) {
-        drawSubsoil(ctx, this.cabinet, W / z, bottomWorldY, cam, laneCuts, hillDepth);
+        && r.x - cam < visibleWorldW + 8 && r.x + r.w - cam > -8)) {
+        drawSubsoil(ctx, this.cabinet, visibleWorldW, bottomWorldY, cam, laneCuts, hillDepth);
       }
-      drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), W / z,
+      drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), visibleWorldW,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
           bottomY: bottomWorldY, hillDepth });
     }
@@ -11291,7 +11956,7 @@ export class RunState {
     // a marking and an overlay. Beat stages only: anywhere else the speed ramps
     // and there is no chart, so there is nothing honest to paint.
     if (this.beatLock && !this.rhythmSyncPending) {
-      drawBeatGround(ctx, this, cam, W / z, {
+      drawBeatGround(ctx, this, cam, visibleWorldW, {
         // The same read backgroundScene already made this frame, not a second
         // one: rhythmBeatNow() re-anchors the lane on a bank handoff.
         beat: backgroundScene?.beat,
@@ -11314,12 +11979,12 @@ export class RunState {
     // captured ZOOM at module load and never saw the change from 2 to 1.6; this
     // is the same trap, one loop further in.)
     const cullLeft = cam - LOOP_CULL_MARGIN;
-    const cullRight = cam + W / z + LOOP_CULL_MARGIN;
+    const cullRight = cam + visibleWorldW + LOOP_CULL_MARGIN;
     // Culled here rather than inside drawWorldEntity because by the time that
     // runs the frame has already paid drawAtGround's terrain samples, a
     // transform and a closure for an entity it is about to reject.
     const onScreen = (e) => {
-      const visible = entityInRenderBand(e, cam, W / z);
+      const visible = entityInRenderBand(e, cam, visibleWorldW);
       if (efficiencyProfile.enabled && !e.def?.isLoop) {
         efficiencyProfile.entitiesConsidered++;
         if (visible) efficiencyProfile.entitiesPainted++;
@@ -11448,6 +12113,9 @@ export class RunState {
       // is the helper obstacles already use for exactly this reason; projectiles
       // simply never carried a route to hand it.
       const x = pr.x - cam, y = Math.round(this.entityGroundY(pr) - pr.alt - 4);
+      if (!renderSettings.reducedMotion && (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist')) {
+        drawGameplayProjectileTrail(ctx, pr, x, y);
+      }
       if (pr.type === 'enemyShot') {
         ctx.fillStyle = '#101018';
         ctx.fillRect(x - 1, y - 1, 6, 6);
@@ -11508,9 +12176,11 @@ export class RunState {
         // of. `a` is the warm fleck in the core — her piping gold, not a second
         // hex invented in the renderer.
         const shotPal = (HERO_SPRITES[pr.contactHero] || {}).pal;
+        const coral = shotPal && shotPal.ki === '#f2767f';
         drawPellet(ctx, x + 3, y + 2, {
           size: pr.size,
           fill: shotPal && shotPal.ki,
+          hi: coral ? '#ffc0bb' : undefined,
           spark: shotPal && shotPal.a,
           orb: !!(shotPal && shotPal.ki),
         });
@@ -11577,7 +12247,7 @@ export class RunState {
       copterLift = (g) => {
         g.save();
         if (this.mirror) { g.translate(W, 0); g.scale(-1, 1); }
-        applyWorld(g, z, pan, floorY);
+        applyWorld(g, z, pan, floorY, portraitXOffset);
         this.drawAtGround(g, copterView.x, () => drawCopter(g, copterView, cam, renderT, true, this.save.settings.reducedMotion, songBeat, this.save.settings.reducedFlashing));
         g.restore();
       };
@@ -11671,7 +12341,7 @@ export class RunState {
     let heroLift = null;
     const liftHero = this.player.y > 0;
     const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, specialOrbAlpha: orbAlpha,
+      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, xOffset: portraitXOffset, specialOrbAlpha: orbAlpha,
         // THE CONTACT SHADOW (see CONTACT_SHADOW in draw.js). Every platform,
         // not just the phone it was asked for: separating the hero from the
         // strip he is standing on is worth having on a monitor too, and the
@@ -11746,9 +12416,13 @@ export class RunState {
     // ---- end world band. post() is a treatment of the FRAME (scanlines, the
     // LCD conversion, vignettes), so it runs at screen scale like the bg did.
     this.style.post(ctx, renderT);
+    // Ground is painted through the world transform above; this final screen
+    // edge pass darkens only the last small band of the frame, where portrait
+    // otherwise leaves a large flat slab beneath the playable route.
+    drawGroundEdgeGradient(ctx, this.style);
     if (this.style.actorsAbovePost) {
       ctx.save();
-      applyWorld(ctx, z, pan, floorY);
+      applyWorld(ctx, z, pan, floorY, portraitXOffset);
       drawActors();
       // In the order the pre-post path draws them, so nothing changes but which
       // side of the conversion they land on. The hero goes last on both: he
@@ -11767,7 +12441,7 @@ export class RunState {
       // space with a screen-space radius: scaled with the zoom it would light
       // nearly the whole frame and the mission would stop being a mission.
       const hsx = heroScreenX;   // follows the opening run-in, not the anchor
-      const px = (hsx + 6) * z;
+      const px = (hsx + 6) * z + portraitXOffset;
       // ROUTE ground, not lane ground. Every other consumer of the hero's
       // world y uses playerGroundY(); this was the one holdout, and it pinned
       // the light 96px above a hero in a tunnel (or below one on an island).
@@ -11808,13 +12482,13 @@ export class RunState {
       // at the far side of the frame from the marker it was describing. The
       // blackout overlay below already reads the same accessor for the same
       // reason.
-      const heroX = heroScreenX * z;
+      const heroX = (heroScreenX + portraitWorldXOffset) * z;
       // While the marker is on screen the cards have to stay off it — see
       // keepLeftOf in drawFloatie. Only once it is actually drawn: for most of
       // a stage there is no pole to avoid and the chatter belongs over the
       // hero's own column.
       const markerX = (!this.overtime && Number.isFinite(this.totalDist))
-        ? this.finishWorldX() - cam
+        ? this.finishWorldX() - cam + portraitWorldXOffset
         : null;
       // Not in mirror mode: that flips the whole floatie layout into a
       // right-edged one, where the pole is on the other side of the card and
@@ -11842,6 +12516,9 @@ export class RunState {
           keepLeftOf,
           shiftY: floatShift,
           avoid: heroRect,
+          scale: f.scale || (isPhonePortraitPresentation()
+            ? Math.max(1.8, Math.min(2.4, portraitHudLayout(presentationFrame()).panelScale * 0.85))
+            : 1),
         });
       }
       // UNDER THE RIBBON ON A BEAT STAGE. The card's default anchor puts its
@@ -11866,7 +12543,15 @@ export class RunState {
         // own words mid-sentence as the gap around it opened. A printed card
         // does not reflow; it was set at the width the page had when it went
         // to press.
-        if (!this.speech.chan) this.speech.chan = speechChannel(this);
+        // Portrait HUD geometry is resolved from the active safe frame.  A
+        // rotation, notch change, or browser toolbar resize can revise that
+        // frame while the same line is still alive; refresh the channel then
+        // so its wrap and portrait card do not keep stale landscape bounds.
+        const frameRevision = presentationFrame().revision;
+        if (!this.speech.chan || this.speech.chanRevision !== frameRevision) {
+          this.speech.chan = speechChannel(this);
+          this.speech.chanRevision = frameRevision;
+        }
         drawSpeech(d, this.speech, { avoid: heroRect, ...this.speech.chan });
       }
     };
@@ -11956,12 +12641,129 @@ export class RunState {
     if (this.debug) this.drawDebug(ctx);
   }
 
-  // The pause screen: a status read-out over a dimmed run, then the two ways
-  // out. It uses the whole 270 — title near the top, plates near the bottom,
-  // and the read-out breathing between them. Every row is a fixed height, so a
-  // legend you paused to look up is where it was last time whatever the run
-  // above it happens to be doing.
+  // Portrait pause uses the full safe frame. It is deliberately a different
+  // composition from the compact landscape read-out: large type, wrapped
+  // mission copy, stacked controls and button-sized plates all use the height
+  // a phone gives us instead of leaving the lower three quarters empty.
+  drawPortraitPaused(ctx) {
+    const frame = presentationFrame();
+    const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
+    const edge = 14;
+    const panelX = Math.max(edge, Number(safe.left) + edge);
+    const panelRight = Math.min(W - edge, Number(safe.right) - edge);
+    const panelW = Math.max(1, panelRight - panelX);
+    const panelTop = Math.max(edge, Number(safe.top) + edge);
+    const panelBottom = Math.min(H - edge, Number(safe.bottom) - edge);
+    const panelH = Math.max(1, panelBottom - panelTop);
+    const innerX = panelX + 20;
+    const innerW = Math.max(1, panelW - 40);
+    const mainButtons = Input.buttons.filter((b) => b.id === 'resume' || b.id === 'quit');
+    const buttons = mainButtons.length ? mainButtons : this.portraitPauseButtons();
+    const syncButtons = this.beatLock
+      ? Input.buttons.filter((b) => b.id === 'syncDown' || b.id === 'syncUp' || b.id === 'syncReset')
+      : [];
+
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0, 0, W, H);
+    drawPanel(ctx, panelX, panelTop, panelW, panelH, 10, 'rgba(11,11,20,0.94)',
+      { border: 'rgba(72,224,200,0.42)', shadow: true });
+
+    const pHero = HERO_BY_ID[this.relay.current];
+    const cabNo = CABINETS.findIndex((c) => c.id === this.cabinet.id) + 1;
+    const where = this.overtime ? 'OVERTIME'
+      : this.bossCab ? 'BOSS'
+      : this.stage ? `STAGE ${cabNo}-${this.stage.index}` : '';
+    const title = where ? `${this.cabinet.name} · ${where}` : this.cabinet.name;
+    drawTextCentered(ctx, 'PAUSED', W / 2, panelTop + 30, '#fff', 3.2, 'title');
+    drawTextCentered(ctx, title, W / 2, panelTop + 86, '#e8e8f0', 1.65, 'bold');
+
+    let y = panelTop + 132;
+    // Keep the shortest phone pause readable without allowing mission copy to
+    // squeeze the controls into the sync row. Taller phones retain the full
+    // three-line read-out.
+    const compact = panelH < 820;
+    const drawBlock = (label, value, color = '#c8e0ff', scale = 1.35, maxLines = 3) => {
+      drawText(ctx, label, innerX, y, '#74c947', 1.1, 'bold');
+      y += 25;
+      const lines = wrapText(value, innerW, scale, maxLines);
+      for (const line of lines) {
+        drawText(ctx, line, innerX, y, color, scale);
+        y += 19 * scale;
+      }
+      y += 16;
+    };
+    drawBlock('MISSION', this.mission.desc, '#c8e0ff', 1.35, compact ? 2 : 3);
+    if (this.challenge && !this.overtime && this.stage) {
+      const c = this.challenge;
+      const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
+      const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
+      drawBlock('BONUS', `${c.desc}${tail ? ` · ${tail}` : ''}`,
+        c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9', 1.25, compact ? 2 : 3);
+    }
+
+    drawTextCentered(ctx, pHero.name, W / 2, y + 4, '#48e0c8', 1.8, 'bold');
+    const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
+    drawTextCentered(ctx, `${pHero.ability.label} · ${cd}`, W / 2, y + 36, '#f6d33c', 1.35, 'bold');
+    y += 78;
+
+    const touchRows = [
+      ['TAP LEFT', 'JUMP'], ['TAP RIGHT', 'SLIDE'], ['USE / SWIPE', 'POWER'],
+      ...(this.rewindAvailableForRun() ? [['HOLD RWD', 'REWIND']] : []),
+    ];
+    const keyRows = [
+      ['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT / D', 'POWER'], ['LEFT / A', 'REWIND'],
+    ];
+    const rows = Input.usingTouch ? touchRows : (this.beatLock ? keyRows.slice(0, 3) : keyRows);
+    const rowH = compact ? 32 : 36;
+    const rowGap = compact ? 8 : 10;
+    const actionBottom = syncButtons.length ? syncButtons[2].y - 18 : buttons[0].y - 24;
+    const controlsTop = Math.max(y, actionBottom - rows.length * (rowH + rowGap) - 42);
+    drawTextCentered(ctx, Input.usingTouch ? 'TOUCH CONTROLS' : 'KEYBOARD CONTROLS',
+      W / 2, controlsTop, '#dbe9ff', 1.25, 'bold');
+    let rowY = controlsTop + 28;
+    for (const pair of rows) {
+      drawPanel(ctx, innerX + 12, rowY, innerW - 24, rowH, 6, 'rgba(28,32,48,0.78)',
+        { border: 'rgba(255,255,255,0.14)' });
+      const scale = 1.35;
+      const width = keyLegendWidth([pair], scale);
+      drawKeyLegend(ctx, [pair], W / 2 - width / 2,
+        textYForMid(rowY + rowH / 2, scale), { scale, actionInk: '#dbe9ff' });
+      rowY += rowH + rowGap;
+    }
+
+    if (syncButtons.length) {
+      drawTextCentered(ctx, 'AUDIO SYNC', W / 2, syncButtons[2].y - 28, '#8a8a98', 1.15, 'bold');
+      for (const b of syncButtons) {
+        drawPanel(ctx, b.x, b.y, b.w, b.h, 6, 'rgba(28,32,48,0.82)',
+          { border: 'rgba(255,255,255,0.18)', shadow: true });
+        drawTextCentered(ctx, b.label, b.x + b.w / 2,
+          textYForMid(b.y + b.h / 2, b.id === 'syncReset' ? 1.1 : 1.7),
+          '#c8c8d8', b.id === 'syncReset' ? 1.1 : 1.7, 'bold');
+      }
+    }
+
+    const cursor = !Input.usingTouch;
+    buttons.forEach((b, i) => {
+      const go = b.id === 'resume';
+      const sel = cursor && i === this.pauseIdx;
+      drawPanel(ctx, b.x, b.y, b.w, b.h, 8, 'rgba(11,11,20,0.88)',
+        { border: sel ? '#ffcf33' : go ? 'rgba(72,224,200,0.75)' : 'rgba(255,255,255,0.28)', shadow: true });
+      if (sel) drawMenuRow(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 6);
+      drawTextCentered(ctx, b.label, b.x + b.w / 2,
+        textYForMid(b.y + b.h / 2, 1.8), go ? '#48e0c8' : '#c8c8d8', 1.8, 'bold');
+    });
+  }
+
+  // The landscape pause screen: a status read-out over a dimmed run, then the
+  // two ways out. It uses the whole 270 — title near the top, plates near the
+  // bottom, and the read-out breathing between them. Every row is a fixed
+  // height, so a legend you paused to look up is where it was last time whatever
+  // the run above it happens to be doing.
   drawPaused(ctx) {
+    if (this.portraitGameplay && isPhonePortraitPresentation()) {
+      this.drawPortraitPaused(ctx);
+      return;
+    }
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'PAUSED', W / 2, 28, '#fff', 2, 'title');
@@ -12100,7 +12902,8 @@ export class RunState {
     // Hitboxes are world objects, so they need the camera to land on the things
     // they describe; the readout underneath is screen chrome.
     ctx.save();
-    applyWorld(ctx, this.camZoom, this.camPan);
+    applyWorld(ctx, this.camZoom, this.camPan, this.camFloorY,
+      this.portraitWorldXOffset() * this.camZoom);
     ctx.lineWidth = 1 / this.camZoom;
     ctx.strokeStyle = '#0f0';
     const pb = this.player.box(this.camX, this.playerGroundY());

@@ -42,11 +42,34 @@ function sunPosition(bgShift) {
   return ops.find((op) => op[0] === 'translate');
 }
 
+function sceneryPosition(backgroundContext) {
+  const { ctx, ops } = recorder();
+  pack.bg(ctx, 12, 0, plumber, Infinity, null, 0, backgroundContext);
+  return ops.find((op) => op[0] === 'translate' && op[1] === 0);
+}
+
 const grounded = sunPosition(0);
 const highJump = sunPosition(42);
 assert(grounded && highJump && grounded[1] === highJump[1]
   && grounded[2] === highJump[2] + 42,
   'the Plumber sun stays fixed on screen when the raised-road background shifts');
+
+const landscapeScenery = sceneryPosition(null);
+const portraitScenery = sceneryPosition({ sceneryOffsetY: -42 });
+assert(landscapeScenery && landscapeScenery[2] === 0
+  && portraitScenery && portraitScenery[2] === -42,
+  'portrait lifts the mountain layer without changing landscape scenery');
+
+function skyCoverage(coverage) {
+  const { ctx, ops } = recorder();
+  ctx.__mashBackgroundCoverage = coverage;
+  pack.bg(ctx, 12, 0, plumber, Infinity, null, 0);
+  return ops.find((op) => op[0] === 'fillRect');
+}
+
+const shiftedSky = skyCoverage({ left: 77, right: 557, width: 480 });
+assert(shiftedSky && shiftedSky[1] === 77 && shiftedSky[3] === 480,
+  'a shifted portrait background sky covers the translated visible range');
 
 console.log(failed ? 'PIXEL BACKGROUND: FAILED' : 'PIXEL BACKGROUND: PASSED');
 process.exit(failed ? 1 : 0);

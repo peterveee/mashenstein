@@ -3,11 +3,26 @@
 // drive both the subtle control drawing and hit testing.
 
 export const PORTRAIT_CONTROL_DIAMETERS = Object.freeze({
-  jump: 56,
-  slide: 56,
-  use: 48,
-  pause: 44,
+  jump: 100,
+  slide: 100,
+  use: 88,
+  pause: 64,
+  // Portrait Lab is a review surface, so it exposes the desktop rewind tape
+  // as a held touch control. Production portrait gameplay never registers it;
+  // keeping the geometry here lets the lab use the same hit-test path as the
+  // other controls without teaching ordinary phone runs a new verb.
+  rewind: 72,
 });
+
+// Keep the pause/rewind targets below the same extra top breathing band as the
+// HUD. The safe inset protects the physical cutout; this margin protects the
+// readable control from sitting against it.
+export const PORTRAIT_CONTROL_TOP_CLEARANCE = 28;
+
+// The discs now occupy the lower action shelf instead of floating high above
+// it. The reported inset still belongs to the operating system; this smaller
+// authored margin leaves 24px of extra breathing room beyond that boundary.
+export const PORTRAIT_CONTROL_BOTTOM_MARGIN = 24;
 
 const radius = (id) => PORTRAIT_CONTROL_DIAMETERS[id] / 2;
 
@@ -31,7 +46,8 @@ function rect(id, action, x, y, width, height) {
 
 /**
  * Resolve portrait controls for a CSS viewport. The frequent actions own broad
- * lower-half zones; explicit USE and PAUSE circles are tested first.
+ * lower-half zones; explicit controls are tested first. `includeRewind` is a
+ * Portrait Lab-only opt-in so the standalone preview keeps its four controls.
  */
 export function portraitTouchLayout({
   viewportWidth = 390,
@@ -39,6 +55,7 @@ export function portraitTouchLayout({
   safe = {},
   safeInsets = {},
   revision = 0,
+  includeRewind = false,
 } = {}) {
   const vw = Math.max(1, Number(viewportWidth) || 390);
   const vh = Math.max(1, Number(viewportHeight) || 844);
@@ -46,19 +63,21 @@ export function portraitTouchLayout({
   const left = inset.left + radius('jump') + 10;
   const right = vw - inset.right - radius('slide') - 10;
   const bottom = vh - inset.bottom;
-  const jumpY = bottom - radius('jump') - 8;
-  const useY = jumpY - radius('jump') - radius('use') - 14;
+  const controlY = bottom - radius('jump') - PORTRAIT_CONTROL_BOTTOM_MARGIN;
   const pauseX = vw - inset.right - radius('pause') - 8;
-  const pauseY = inset.top + radius('pause') + 8;
+  const pauseY = inset.top + radius('pause') + PORTRAIT_CONTROL_TOP_CLEARANCE;
+  const rewindX = inset.left + radius('rewind') + 10;
+  const rewindY = inset.top + radius('rewind') + PORTRAIT_CONTROL_TOP_CLEARANCE;
   const half = vw / 2;
   const zoneTop = Math.min(vh - 1, Math.max(inset.top + 96, vh * 0.56));
   const zoneBottom = Math.max(zoneTop, bottom);
   const controls = {
-    jump: circle('jump', 'jump', left, jumpY),
-    slide: circle('slide', 'slide', right, jumpY),
-    use: circle('use', 'ability', vw / 2, useY),
+    jump: circle('jump', 'jump', left, controlY),
+    slide: circle('slide', 'slide', right, controlY),
+    use: circle('use', 'ability', vw / 2, controlY),
     pause: circle('pause', 'escape', pauseX, pauseY),
   };
+  if (includeRewind) controls.rewind = circle('rewind', 'left', rewindX, rewindY);
   const zones = [
     rect('jump-zone', 'jump', 0, zoneTop, half, zoneBottom - zoneTop),
     rect('slide-zone', 'slide', half, zoneTop, vw - half, zoneBottom - zoneTop),
@@ -84,7 +103,7 @@ function insideRect(r, x, y) {
 export function portraitHitTest(layout, x, y, slop = 6) {
   if (!layout) return null;
   // Explicit controls always win when a broad thumb zone overlaps them.
-  for (const id of ['pause', 'use', 'jump', 'slide']) {
+  for (const id of ['pause', 'rewind', 'use', 'jump', 'slide']) {
     const c = layout.controls?.[id];
     if (c && insideCircle(c, x, y, slop)) return c;
   }
@@ -162,4 +181,3 @@ export class PortraitInputSurface {
     this.bound = [];
   }
 }
-

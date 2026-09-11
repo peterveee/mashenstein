@@ -20,8 +20,11 @@ import { specialMoveColor } from './draw.js';
 
 // The button lists a playable screen registers. `hasPower` false (the tutorial
 // before B-33P hands over the cannon) drops the USE disc and gives its band of
-// the right pillar to SLIDE, so the pillar still tiles.
-export function runChromeButtons({ hasPower = true } = {}) {
+// the right pillar to SLIDE, so the pillar still tiles. Portrait Lab opts into
+// a separate list that adds its held RWD control; shipped touch runs never see
+// that control.
+export function runChromeButtons({ hasPower = true, portraitLab = false } = {}) {
+  if (portraitLab) return hasPower ? chrome.runPortraitLab : chrome.runPortraitLabNoPower;
   return hasPower ? chrome.run : chrome.runNoPower;
 }
 export function hubChromeButtons() { return chrome.hub; }
@@ -33,6 +36,7 @@ const GLASS = 'rgba(11,11,20,0.14)';
 const GLASS_PRESSED = 'rgba(11,11,20,0.30)';
 const PAUSE_INK = 'rgba(255,255,255,0.9)';
 const WALK_INK = 'rgba(255,255,255,0.9)';
+const REWIND_INK = 'rgba(124,232,160,0.95)';
 // USE is the one disc that carries a word. Its em height as a fraction of the
 // disc's radius, turned into the text system's scale (GLYPH_PX em at scale 1).
 const LABEL_EM = 0.56;
@@ -80,6 +84,10 @@ export function declareRunChrome(state) {
       if (b.id === 'jump') drawRoundButton(ctx, { ...box(b), icon: 'up' }, { fill, ink: ACTION_INK.jump });
       else if (b.id === 'slide') drawRoundButton(ctx, { ...box(b), icon: 'down' }, { fill, ink: ACTION_INK.slide });
       else if (b.id === 'pause') drawRoundButton(ctx, { ...box(b), icon: 'pause' }, { fill, ink: PAUSE_INK });
+      else if (b.id === 'rewind') drawRoundButton(ctx, { ...box(b), label: 'RWD' }, {
+        fill, ink: REWIND_INK,
+        labelScale: (b.r * 0.56) / GLYPH_PX, labelStyle: 'ui',
+      });
       else if (b.id === 'ability') {
         drawRoundButton(ctx, { ...box(b), label: 'USE' }, {
           fill, ink: meter.ink,

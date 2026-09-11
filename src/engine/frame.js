@@ -47,7 +47,7 @@ export function frameForViewport({
   viewportHeight = LANDSCAPE_HEIGHT,
   safeInsets = {},
   safe = null,
-  groundAnchorRatio = 0.62,
+  groundAnchorRatio = 0.70,
   revision = 0,
 } = {}) {
   const vw = finitePositive(Number(viewportWidth), FRAME_WIDTH);
@@ -76,7 +76,7 @@ export function frameForViewport({
     // authored groundline inside the usable safe rectangle. The ratio is a
     // camera/presentation choice only; terrain and physics remain unchanged.
     groundScreenY: phone
-      ? top + Math.max(0.55, Math.min(0.75, Number.isFinite(Number(groundAnchorRatio)) ? Number(groundAnchorRatio) : 0.62)) * Math.max(0, bottom - top)
+      ? top + Math.max(0.55, Math.min(0.75, Number.isFinite(Number(groundAnchorRatio)) ? Number(groundAnchorRatio) : 0.70)) * Math.max(0, bottom - top)
       : 232,
     revision: Number.isFinite(revision) ? revision : 0,
   };

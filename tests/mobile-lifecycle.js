@@ -42,6 +42,14 @@ assert(devPortrait.paused && devPortrait.showPortraitOverlay,
 assert(!lifecyclePolicy({
   isIphone: true, standalone: false, devBrowserBypass: true, portrait: false,
 }).paused, 'dev-bypassed browser iPhone runs in landscape');
+const devPhonePortrait = lifecyclePolicy({
+  isIphone: true, standalone: true, devMode: true, portrait: true,
+});
+assert(!devPhonePortrait.paused && !devPhonePortrait.showPortraitOverlay,
+  'dev iPhone keeps every portrait screen running without the rotate overlay');
+assert(!lifecyclePolicy({
+  isAndroidPhone: true, standalone: true, devMode: true, portrait: true,
+}).paused, 'dev Android phone keeps portrait screens running');
 assert(!lifecyclePolicy({ isIpad: true, standalone: true, portrait: true }).paused,
   'iPad portrait keeps running');
 assert(lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true }).paused,
@@ -63,8 +71,8 @@ assert(!portraitAllowedFor(null), 'no state installed yet keeps the landscape ga
 assert(!portraitAllowedFor(new NoPortrait()), 'a screen without portraitMode keeps the landscape gate');
 assert(portraitAllowedFor(new ShippedPortrait()), 'the shipped stretch surface is allowed in portrait');
 assert(portraitAllowedFor(new ShippedPortrait(), true), 'the shipped surface stays allowed with the diag switch on');
-assert(!portraitAllowedFor(new RolloutPortrait()), 'rollout portrait modes stay dark without the diag switch');
-assert(portraitAllowedFor(new RolloutPortrait(), true), 'the diag switch opens rollout portrait modes');
+assert(portraitAllowedFor(new RolloutPortrait()), 'the frame-based portrait run is shipped');
+assert(portraitAllowedFor(new RolloutPortrait(), true), 'the shipped frame surface stays allowed with the diag switch on');
 
 class Events {
   constructor() { this.listeners = {}; }

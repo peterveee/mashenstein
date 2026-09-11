@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame } from '../engine/renderer.js';
+import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -2642,6 +2642,8 @@ function briefingLayout(pieces, scale) {
 }
 
 export class BriefingState {
+  static portraitMode = 'frame';
+
   constructor({ cab, stage, onDone, askCalibrate = false, onCalibrate = null, settings = null }) {
     this.cab = cab;
     this.stage = stage;
@@ -2703,7 +2705,15 @@ export class BriefingState {
         // find an 18-unit band to get on with the stage made the common answer
         // the hard one. Missing the row now proceeds instead of doing nothing.
         const y = Input.pointer.y;
-        this.idx = (y >= CALIBRATE_ROW_TOP && y < CALIBRATE_ROW_BOTTOM) ? 0 : 1;
+        if (isPhonePortraitPresentation()) {
+          const frame = presentationFrame();
+          const safe = frame.safeRect;
+          const rowTop = safe.bottom - 56 / frame.scale;
+          const rowBottom = safe.bottom - 24 / frame.scale;
+          this.idx = (y >= rowTop && y < rowBottom) ? 0 : 1;
+        } else {
+          this.idx = (y >= CALIBRATE_ROW_TOP && y < CALIBRATE_ROW_BOTTOM) ? 0 : 1;
+        }
       }
       if (acting) { Audio.sfx('uiConfirm'); this.pick(); Input.endFrame(); return; }
       // BACK is the way past a question, and the way past this one is to play.
@@ -2723,6 +2733,10 @@ export class BriefingState {
   pick() { if (this.idx === 0) this.onCalibrate(); else this.onDone(); }
   landed() { return cascadeDone(this.reveal, this.layout.lines.length); }
   draw(ctx) {
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     const cabNo = CABINETS.findIndex((c) => c.id === this.cab.id) + 1;
@@ -2762,6 +2776,49 @@ export class BriefingState {
     if (!done || Math.floor(this.t * 2) % 2 === 0) {
       drawTextCentered(ctx, playLine, W / 2, textYForMid(H - 16, promptS),
         done ? '#c8c8d8' : '#5a5a68', promptS);
+    }
+  }
+
+  drawPortrait(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const margin = css(12);
+    const bodyTop = safe.top + css(70);
+    const promptH = css(this.askCalibrate ? 76 : 50);
+    const bodyBottom = safe.bottom - promptH;
+    const width = Math.max(css(180), safe.width - margin * 2);
+    const source = this.pieces || [];
+    const words = source.map((p) => p.head ? `${p.head} ${p.text}` : p.text);
+    let scale = Math.max(1.7, Math.min(2.7, 13 / (TEXT_INK_H * frame.scale)));
+    let lines = words.flatMap((text) => wrapText(text, width, scale, 4));
+    const lineH = 10 * scale;
+    if (lines.length * lineH > bodyBottom - bodyTop) {
+      scale = Math.max(1.15, scale * (bodyBottom - bodyTop) / (lines.length * lineH));
+      lines = words.flatMap((text) => wrapText(text, width, scale, 4));
+    }
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    drawTextCentered(ctx, `STAGE ${this.stage.index} BRIEFING`, W / 2,
+      safe.top + css(28), '#e8e8f0', Math.min(2.2, scale), 'title');
+    const revealed = Math.min(this.reveal / 0.02, lines.join(' ').length);
+    let chars = 0;
+    lines.forEach((line, i) => {
+      const alpha = revealed >= chars ? 1 : 0;
+      if (alpha) drawTextCentered(ctx, line, W / 2, bodyTop + i * lineH,
+        i === 0 ? '#48e0c8' : '#c8c8d8', scale);
+      chars += line.length + 1;
+    });
+    const promptS = Math.max(1.7, Math.min(2.5, 13 / (TEXT_INK_H * frame.scale)));
+    const playLine = `[${confirmVerb()}]: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`;
+    if (this.askCalibrate && this.landed()) {
+      const row = safe.bottom - css(52);
+      const rows = [[this.calibrateLabel(), row], [playLine, safe.bottom - css(18)]];
+      rows.forEach(([text, y], i) => drawTextCentered(ctx, text, W / 2, textYForMid(y, promptS),
+        this.idx === i ? '#c8c8d8' : '#5a5a68', promptS));
+    } else if (!this.landed() || Math.floor(this.t * 2) % 2 === 0) {
+      drawTextCentered(ctx, playLine, W / 2, textYForMid(safe.bottom - css(18), promptS),
+        this.landed() ? '#c8c8d8' : '#5a5a68', promptS);
     }
   }
 }
@@ -2934,6 +2991,8 @@ const RESULT_OPT_H = 14;
 // line: they name their own actions, so there is nothing left to prompt for.
 const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2 - RESULT_OPT_H * 2;
 export class ResultsState {
+  static portraitMode = 'frame';
+
   constructor({ result, gains, save, onDone, onRetry }) {
     this.result = result; this.gains = gains; this.save = save; this.onDone = onDone;
     // No retry offered (overtime's seed is the day's, not the run's) falls back
@@ -3020,7 +3079,10 @@ export class ResultsState {
       // Tap-to-select, tap-again-to-confirm, the same contract every hub list
       // makes — a phone has no arrow keys and the rows are the only way through.
       if (Input.pressed('pointer')) {
-        const i = Math.floor((Input.pointer.y - RESULT_OPT_TOP) / RESULT_OPT_H);
+        const options = isPhonePortraitPresentation() ? this.portraitOptions() : null;
+        const top = options ? options[0].y : RESULT_OPT_TOP;
+        const height = options ? options[0].h : RESULT_OPT_H;
+        const i = Math.floor((Input.pointer.y - top) / height);
         if (i >= 0 && i < 2) {
           if (this.idx === i) this.choose(i);
           else { this.idx = i; Audio.sfx('ui'); }
@@ -3039,7 +3101,37 @@ export class ResultsState {
     Audio.sfx('uiConfirm');
     if (i === 0) this.onRetry(); else this.onDone();
   }
+  ledgerRows() {
+    const r = this.result;
+    const rows = [];
+    const line = (t, c) => { if (String(t).trim()) rows.push([t, c || '#c8c8d8']); };
+    line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
+    if (r.newBestScore) line(r.success ? 'NEW BEST SCORE ON THIS STAGE!' : 'STILL A NEW BEST SCORE ON THIS STAGE.', r.success ? '#f6d33c' : '#8a8a98');
+    if (r.stage) {
+      const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
+      line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? 'X' : '-'}`).join('  ')}`, '#48e0c8');
+      if (this.gains.plugsNew > 0) line(`+${this.gains.plugsNew} NEW PLUG${this.gains.plugsNew > 1 ? 'S' : ''}`, '#48e0c8');
+      else {
+        const nxt = nextStage(r.stage);
+        if (nxt && !stageUnlocked(this.save.slot, nxt)) line(`NO PLUGS. ${nxt.id.toUpperCase()} STAYS LOCKED.`, '#c05050');
+      }
+      if (r.rank) {
+        const osha = this.save.slot.mods.equipped.includes('osha');
+        line(`RANK: ${r.rank}${osha ? '*' : ''}`, r.rank === 'S' || r.rank === 'CONCERNING' ? '#f6d33c' : '#c8c8d8');
+        line(RANK_LINES[r.rank] || '', '#8a8a98');
+        if (osha) line('* THE BINDER IS DISAPPOINTED.', '#8a8a98');
+      }
+    }
+    const mastery = this.gains.mastery || [];
+    mastery.slice(0, 2).forEach((m) => line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8'));
+    if (mastery.length > 2) line(`+${mastery.length - 2} MORE MASTERY-UPS. THE BENCH IS IMPRESSED.`, '#f890b8');
+    return rows;
+  }
   draw(ctx) {
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     drawTubeFace(ctx);
     drawTubeTexture(ctx);
     drawTubeMask(ctx);
@@ -3063,42 +3155,7 @@ export class ResultsState {
     // out of how many rows there turned out to be, so the rows have to exist
     // first. Blank ones are dropped rather than left as a gap — an empty row
     // used to cost the whole block a size for nothing.
-    const rows = [];
-    const line = (t, c) => { if (String(t).trim()) rows.push([t, c || '#c8c8d8']); };
-    line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
-    // The best score banks whether or not the run cleared, so this row can land
-    // on a loss — where a gold exclamation directly above NO PLUGS was the
-    // screen congratulating and penalising in the same breath. The fact keeps
-    // its place; the party is only thrown for a clear.
-    if (r.newBestScore) line(r.success ? 'NEW BEST SCORE ON THIS STAGE!' : 'STILL A NEW BEST SCORE ON THIS STAGE.', r.success ? '#f6d33c' : '#8a8a98');
-    if (r.stage) {
-      const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
-      line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? 'X' : '-'}`).join('  ')}`, '#48e0c8');
-      if (this.gains.plugsNew > 0) line(`+${this.gains.plugsNew} NEW PLUG${this.gains.plugsNew > 1 ? 'S' : ''}`, '#48e0c8');
-      // Three dashes on the row above is the whole consequence, and it is a long
-      // way from "the next stage is still shut". Name the stage that stayed
-      // locked — and only when it did, so a toaster salvaged from a lost run
-      // (which opens the next stage on its own) is not told off for it.
-      else {
-        const nxt = nextStage(r.stage);
-        if (nxt && !stageUnlocked(this.save.slot, nxt)) line(`NO PLUGS. ${nxt.id.toUpperCase()} STAYS LOCKED.`, '#c05050');
-      }
-      if (r.rank) {
-        const osha = this.save.slot.mods.equipped.includes('osha');
-        line(`RANK: ${r.rank}${osha ? '*' : ''}`, r.rank === 'S' || r.rank === 'CONCERNING' ? '#f6d33c' : '#c8c8d8');
-        line(RANK_LINES[r.rank] || '', '#8a8a98');
-        // Quietest row on the screen, but not below the floor: #5a5a68 measures
-        // ~2.3:1 against the lit tube, which is the same grey the prompt just
-        // lost for being unreadable at phone size. The aside shares the rank
-        // line's grey instead — the asterisk already ties the two together.
-        if (osha) line('* THE BINDER IS DISAPPOINTED.', '#8a8a98');
-      }
-    }
-    // Two named mastery-ups, then a summary — a full-cast run would otherwise
-    // stack eight lines straight through the celebration row below.
-    const mastery = this.gains.mastery || [];
-    mastery.slice(0, 2).forEach((m) => line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8'));
-    if (mastery.length > 2) line(`+${mastery.length - 2} MORE MASTERY-UPS. THE BENCH IS IMPRESSED.`, '#f890b8');
+    const rows = this.ledgerRows();
 
     // The prompt is placed and sized FIRST and everything else is fitted above
     // it, because it is the one line on this screen that has to be acted on
@@ -3156,6 +3213,68 @@ export class ResultsState {
       });
     } else {
       drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2, textYForMid(RESULT_FOOTER_MID, promptS), '#c8c8d8', promptS);
+    }
+  }
+
+  portraitOptions() {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const h = css(56), gap = css(10), margin = css(12);
+    const y = safe.bottom - h * 2 - gap - css(12);
+    return [
+      { x: safe.left + margin, y, w: safe.width - margin * 2, h },
+      { x: safe.left + margin, y: y + h + gap, w: safe.width - margin * 2, h },
+    ];
+  }
+
+  drawPortrait(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const margin = css(12);
+    const r = this.result;
+    const rows = this.ledgerRows();
+    const title = r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED');
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawTextCentered(ctx, title, W / 2, safe.top + css(32), r.success ? '#48c848' : '#e04848', 2.15, 'title');
+    if (r.failDetail) drawTextCentered(ctx, r.failDetail, W / 2, safe.top + css(58), '#e8a0a0', 1.2);
+    drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, safe.top + css(88), '#fff', 1.7, 'bold');
+    const options = this.retryable ? this.portraitOptions() : null;
+    const bodyTop = safe.top + css(112);
+    const bodyBottom = options ? options[0].y - css(14) : safe.bottom - css(68);
+    const widest = rows.reduce((m, [text]) => Math.max(m, textWidth(text, 1)), 1);
+    let scale = Math.max(1.7, Math.min(2.45,
+      13 / (TEXT_INK_H * frame.scale),
+      (bodyBottom - bodyTop) / Math.max(1, rows.length * 12),
+      (safe.width - margin * 2) / widest));
+    const lineH = 12 * scale;
+    let y = bodyTop;
+    for (const [text, color] of rows) {
+      const lines = wrapText(text, safe.width - margin * 2, scale, 3);
+      for (const line of lines) {
+        if (y + lineH > bodyBottom) break;
+        drawTextCentered(ctx, line, W / 2, y, color, scale);
+        y += lineH;
+      }
+    }
+    if (r.success && r.team?.length && y + css(42) < bodyBottom) {
+      const heroH = Math.min(css(42), Math.max(css(24), bodyBottom - y - css(8)));
+      r.team.forEach((id, i) => drawToon(ctx, id,
+        { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
+        W / 2 + (i - (r.team.length - 1) / 2) * heroH * 1.35, y + heroH, heroH));
+    }
+    if (options) {
+      ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
+        const b = options[i];
+        if (i === this.idx) drawMenuRow(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 8);
+        drawTextCentered(ctx, label, b.x + b.w / 2, textYForMid(b.y + b.h / 2, 1.8),
+          i === this.idx ? '#c9a0ff' : '#8a8a98', 1.8, 'bold');
+      });
+    } else {
+      drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2,
+        textYForMid(safe.bottom - css(24), 1.8), '#c8c8d8', 1.8);
     }
   }
 }

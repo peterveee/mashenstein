@@ -45,7 +45,7 @@ const { airtimeFor, PLAYER_X, PLAYER_SPRITE_W } = await import('../src/game/play
 const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
 const { CROSSING_BEAT_HOP, actionApproachPx } = await import('../src/game/beatchart.js');
 const { makeObstacle } = await import('../src/game/entities.js');
-const { hasPitFill } = await import('../src/game/pitFill.js');
+const { hasPitFill, hardFillCutoff } = await import('../src/game/pitFill.js');
 const { GROUND_Y } = await import('../src/game/run.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { HEROES } = await import('../src/data/heroes.js');
@@ -58,6 +58,20 @@ function assert(cond, msg) {
 }
 
 const cast = Object.values(HEROES);
+
+// Solid pit art gets a bottom edge only when the portrait apron is genuinely
+// taller than the old landscape band. Liquids, including lava, retain their
+// full-depth treatment.
+assert(hardFillCutoff('spikes', 56, 38) === 38,
+  'landscape spike pits keep their existing full apron depth');
+assert(hardFillCutoff('gears', 56, 38) === 38,
+  'landscape gear pits keep their existing full apron depth');
+assert(hardFillCutoff('spikes', 56, 700) < 700,
+  'portrait spike pits close below the teeth instead of running to the edge');
+assert(hardFillCutoff('gears', 56, 700) < 700,
+  'portrait gear pits close below the wheels instead of floating');
+assert(hardFillCutoff('lava', 56, 700) === 700,
+  'lava pits retain their full-depth material');
 
 // ---- the window, hero by hero ----------------------------------------------
 // Scale-invariant, so one pass covers every stage the crossing could ever be

@@ -118,20 +118,31 @@ assert(wrench.type === 'axe', 'it flies the axe return: out, hover, home');
 run.updateProjectiles(0.001);
 assert(!run.player.wrenchThrown, 'the belt still has it while the throw is winding up');
 
-// RUSTY'S BAMBOO SHOOT (10 Sep 2026): a thrown cane on the axe's cycle, and
-// the two canes in his pouch alternate — the parity flips on the press and the
+// RUSTY'S BAMBOO SHOOT (10 Sep 2026): a disposable thrown cane, and the two
+// canes in his dispenser alternate — the parity flips on the press and the
 // projectile carries the one he pulled.
 selectHero('rusty');
 run.player.stickParity = 0;
 run.useAbility();
 const cane = run.projectiles.find((p) => p.art === 'bamboo');
-assert(cane && cane.type === 'axe', 'Rusty power throws a bamboo cane on the axe return');
-assert(cane.caneParity === 0 && run.player.stickParity === 1, 'the cane is the one he pulled, and the pouch flips for the next throw');
+assert(cane && cane.type === 'axe', 'Rusty power throws a bamboo cane');
+assert(cane.caneParity === 0 && run.player.stickParity === 1, 'the cane is the one he pulled, and the dispenser flips for the next throw');
 assert(cane.holdT > 0, 'nothing leaves on the press — he is still pulling it');
 run.updateProjectiles(0.001);
-assert(!run.player.axeThrown, 'the pouch slot is full while the throw winds up');
+assert(!run.player.axeThrown, 'the dispenser slot is full while the throw winds up');
 run.updateProjectiles(cane.holdT + 0.01);
 assert(run.player.axeThrown, 'and empties once the cane is away');
+const oldZoom = run.camZoom;
+run.camZoom = 0.1; // keep this miss in view long enough to prove it never turns back
+run.updateProjectiles(0.6);
+assert(cane.live && !cane.returning, 'the disposable cane never starts a return flight');
+const caneTarget = makeObstacle('crate', cane.x + 2);
+run.obstacles = [caneTarget];
+run.updateProjectiles(0);
+run.camZoom = oldZoom;
+assert(!cane.live, 'the bamboo breaks on contact');
+assert(!caneTarget.live, 'the contact still breaks the obstacle');
+assert(!run.player.axeThrown, 'contact clears the empty pouch slot');
 assert(!run.player.dashT, 'no spin dash rides along with the slot');
 
 selectHero('b33p'); run.useAbility();

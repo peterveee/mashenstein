@@ -1,5 +1,5 @@
 // State machine with a CRT-shutter transition between states.
-import { W, H, pushOverlayDraw, beginChromeFrame, commitChromeFrame } from './renderer.js';
+import { W, H, pushOverlayDraw, beginChromeFrame, commitChromeFrame, setPresentationMode } from './renderer.js';
 import { Input } from './input.js';
 import { drawToon, transitionCameoAction } from '../sprites/toons.js';
 
@@ -26,6 +26,16 @@ export function setTransitionHero(id) {
 }
 
 let cameo = true;
+
+// Presentation is selected while the shutter fully covers the old screen and
+// before the destination measures any height-dependent layout. This keeps a
+// portrait briefing/results screen from entering with the landscape constants
+// and then jumping a frame later when lifecycle publishes it.
+function preparePresentation(next) {
+  const mode = next?.constructor?.portraitMode;
+  if (mode === 'frame') setPresentationMode('portrait');
+  else if (mode !== 'stretch') setPresentationMode('landscape');
+}
 
 // Debug handles the browser harness drives the game through. Published from
 // wherever `current` is assigned — including the boot state below, which skips
@@ -71,6 +81,7 @@ export function setStateFade(next, ...args) {
 function firstState(next, args) {
   current = next;
   fade = 0; fading = 0;
+  preparePresentation(next);
   next.enter && next.enter(...args);
   pending = null;
   publish();
@@ -102,6 +113,7 @@ export function updateState(dt) {
       Input.clearAll();
       current && current.exit && current.exit();
       current = pending.next;
+      preparePresentation(current);
       current.enter && current.enter(...pending.args);
       publish();
       pending = null;

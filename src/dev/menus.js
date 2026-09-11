@@ -169,12 +169,16 @@ function stagesMenu(dev) {
 // The lab shares the authored cabinet/stage hierarchy, but its launcher has a
 // separate completion policy in main.js and never routes through ResultsState.
 function portraitZoomLabel(value) {
-  return value === PORTRAIT_LAB_DEFAULTS.worldZoom ? '2.3375' : Number(value).toFixed(3);
+  return Number(value).toFixed(3);
 }
 
 function signedPixels(value) {
   const n = Math.round(Number(value) || 0);
   return `${n >= 0 ? '+' : ''}${n} PX`;
+}
+
+function heroAnchorLabel(value) {
+  return `${Math.round(Number(value) || 0)} PX`;
 }
 
 function portraitAdjustMenu(dev, name, title, steps, format, resetValue) {
@@ -199,6 +203,10 @@ function portraitStageActions(dev, stage) {
   const cab = CABINET_BY_ID[stage.cabinet];
   const currentHero = () => dev.ctx.Flow.heroId?.() || dev.run()?.relay?.current || 'lorenzo';
   const launch = (heroId) => {
+    if (!dev.ctx.save.slot) {
+      dev.say('SELECT A SAVE SLOT FIRST');
+      return;
+    }
     dev.close();
     dev.ctx.Flow.launchPortraitStage(cab, stage, {
       heroId: heroId || currentHero(),
@@ -259,16 +267,18 @@ function portraitStartMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
-function portraitLabMenu(dev) {
+export function portraitLabMenu(dev) {
   const build = () => {
     const cfg = PortraitLab.config();
     const session = PortraitLab.session();
     const last = PortraitLab.last();
     const items = [
       { label: `WORLD ZOOM  ${portraitZoomLabel(cfg.worldZoom)} ▸`, submenu: () => portraitAdjustMenu(dev, 'worldZoom', 'WORLD ZOOM', { fine: 0.001, coarse: 0.01 }, portraitZoomLabel, PORTRAIT_LAB_DEFAULTS.worldZoom) },
+      { label: `CHARACTER X  ${heroAnchorLabel(cfg.heroAnchorX)} ▸`, submenu: () => portraitAdjustMenu(dev, 'heroAnchorX', 'CHARACTER X', { fine: 1, coarse: 4 }, heroAnchorLabel, PORTRAIT_LAB_DEFAULTS.heroAnchorX) },
       { label: `BACKGROUND  ${Math.round(cfg.backgroundZoom * 100)}% ▸`, submenu: () => portraitAdjustMenu(dev, 'backgroundZoom', 'BACKGROUND', { fine: 0.01, coarse: 0.05 }, (n) => `${Math.round(n * 100)}%`, PORTRAIT_LAB_DEFAULTS.backgroundZoom) },
       { label: `CLOUD Y  ${signedPixels(cfg.cloudOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'cloudOffsetY', 'CLOUD Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
       { label: `SUN Y  ${signedPixels(cfg.sunOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'sunOffsetY', 'SUN Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
+      { label: `SCENERY Y  ${signedPixels(cfg.sceneryOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'sceneryOffsetY', 'SCENERY Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
       { label: `GROUND LEVEL  ${Math.round(cfg.groundAnchorRatio * 100)}% ▸`, submenu: () => portraitAdjustMenu(dev, 'groundAnchorRatio', 'GROUND LEVEL', { fine: 0.005, coarse: 0.02 }, (n) => `${Math.round(Number(n) * 100)}%`, PORTRAIT_LAB_DEFAULTS.groundAnchorRatio) },
       { label: `START AT  ${Math.round(session.startPercent * 100)}% ▸`, submenu: () => portraitStartMenu(dev) },
       { label: `INVULNERABLE  ${session.invulnerable ? 'ON' : 'OFF'}`, act: () => { PortraitLab.setInvulnerable(!session.invulnerable); dev.refresh(); } },

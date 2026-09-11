@@ -54,12 +54,12 @@ export const HEROES = [
     // Gnash's, on purpose, until his own writing exists. Gnash keeps his spec
     // and palette in sprites/ so he can return as an NPC.
     //
-    // THE BAMBOO SHOOT. Nothing leaves on the press: he reaches to the pouch,
-    // pulls a cane, whips it forward and it goes on the throw's own release
-    // beat (RANGED_RELEASE_AT.toss into the 0.3s gesture). It flies the axe's
-    // cycle — out, hover, home — so it comes back to the pouch; the two canes
-    // alternate every throw (player.stickParity), and the one in the air is
-    // the one he pulled.
+    // THE BAMBOO SHOOT. Nothing leaves on the press: he reaches to the
+    // dispenser, pulls a cane, whips it forward and it goes on the throw's
+    // own release beat (RANGED_RELEASE_AT.toss into the 0.3s gesture). It uses
+    // the axe's outbound motion, then breaks on contact instead of returning; the
+    // dispenser supplies the next cane. The two canes alternate every throw
+    // (player.stickParity), and the one in the air is the one he pulled.
     id: 'rusty', name: 'RUSTY, FOCUS-TESTED', short: 'RUSTY', subtitle: 'FOCUS-TESTED',
     tagline: 'ALREADY THERE. WAITING.',
     speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.05, maxJumps: 1, canFloat: false,
@@ -68,8 +68,8 @@ export const HEROES = [
     joke: 'ARRIVES TOO EARLY AND WAITS FOR REALITY TO CATCH UP.',
     skillLabel: 'SPEED BOOST',
     skillDesc: 'RUNS 15% FASTER',
-    powerDesc: 'THROWN BAMBOO CANE THAT BREAKS HAZARDS AND RETURNS',
-    abilityDesc: 'THROWS A BAMBOO CANE THAT SMASHES BREAKABLES AND COMES BACK.',
+    powerDesc: 'THROWN BAMBOO CANE THAT BREAKS HAZARDS ON CONTACT',
+    abilityDesc: 'THROWS A BAMBOO CANE THAT SMASHES HAZARDS AND BREAKS ON CONTACT.',
     sidegrades: [
       { id: 'tagspeed', name: 'MOMENTUM GUY', desc: '+SPEED AFTER EVERY PERFECT TAG. STACKING. INCLUDING DANGEROUSLY.' },
     ],

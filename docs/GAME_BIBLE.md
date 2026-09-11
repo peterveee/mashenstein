@@ -23,7 +23,7 @@ All eight are available in every normal stage. Portals switch between them autom
 | # | Hero | Full Name | Tagline | Skill | Ability |
 |---|---|---|---|---|---|
 | 1 | **LORENZO** | Lorenzo "Wrenches" Bracciano | "STANDARD PLUMBING PROCEDURE." | High Jump (15% higher) | STOMP / SMASH — air stomp or grounded wrench smash |
-| 2 | **RUSTY** | Rusty, Focus-Tested | "ALREADY THERE. WAITING." *(Gnash's, on loan)* | Speed Boost (15% faster) | BAMBOO SHOOT — pulls a cane from his pouch and throws it; it breaks hazards and returns |
+| 2 | **RUSTY** | Rusty, Focus-Tested | "ALREADY THERE. WAITING." *(Gnash's, on loan)* | Speed Boost (15% faster) | BAMBOO SHOOT — pulls a cane from his dispenser and throws it; it breaks on contact |
 | 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | LONGBOW — reaches back for her bow, draws, and looses an arcing arrow that breaks ground hazards |
 | 4 | **B-33P** | Unit B-33P "Blastbot" | "LOW ON CYAN." | Battery Efficient (25% faster recharge) | LEMON CANNON — fires a shot that destroys ground obstacles |
 | 5 | **CLARA** | Clara Vault, Mall Raider | "CHAPTER ONE: SHE ARRIVED." | Cliffhanger (jumps 15% higher) | PLOT HOLE — fires both pistols, a quick pair of slugs that destroy ground obstacles |
@@ -177,7 +177,7 @@ Each hero has a unique ability on a cooldown (1.8–3.5 seconds). An in-world ci
 
 - **Stomp / Smash** (Lorenzo, 2.5s, held jump = 15% higher): In the air, stomps downward to break ground obstacles beneath him. On the ground, swings a wrench forward to smash a single nearby obstacle. A banked Relay Blast charge clears the whole screen.
 
-- **Bamboo Shoot** (Rusty, 3.2s, passive +15% speed): Reaches to the pouch on his hip, pulls a bamboo cane and whips it forward; it leaves on the throw's release beat, flies the axe's cycle (out, hover, home) and breaks hazards on the way. His two canes — one long, one short — alternate every throw, and the one in the air is the one he pulled. *(Replaced Gnash's Spin Dash on 10 Sep 2026; Gnash is held for an NPC role.)*
+- **Bamboo Shoot** (Rusty, 3.2s, passive +15% speed): Reaches to the dispenser on his hip, pulls a bamboo cane and whips it forward; it leaves on the throw's release beat and breaks on first contact. His two canes — one long, one short — alternate every throw, and the one in the air is the one he pulled. *(Replaced Gnash's Spin Dash on 10 Sep 2026; Gnash is held for an NPC role.)*
 
 - **Longbow** (Fernwick, 2.4s, starts stages with one shield): She reaches back for the bow, draws, and the arrow leaves 0.18s after the press on a short arc into ground hazards, then she lowers and slings the bow. Broadhead (mastery) and a charged Relay Blast make the arrow pierce.
 

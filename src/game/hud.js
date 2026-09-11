@@ -6,7 +6,7 @@
 // (a coin on a soft text plate, a row of pickup sprites, a tray of framed plug
 // squares) stacked down the left, and the corner read as clutter rather than as
 // one instrument. One chrome, and the eye can learn it once.
-import { W, H } from '../engine/renderer.js';
+import { W, H, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
   textWidth, wrapText, drawPanel, textYForMid, UI_PANEL_BORDER,
@@ -22,6 +22,7 @@ import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
 import { PLAYER_X } from './player.js';
 import { formatCoins } from './progress.js';
 import { Audio } from '../engine/audio.js';
+import { portraitHudLayout } from './portrait-layout.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
@@ -710,7 +711,11 @@ function playheadPath(ctx, x, y, w, h, r) {
 // nameplate and the keyboard hints level across the screen instead of each
 // hanging at its own height.
 const BOTTOM_ROW_H = 14;
-const BOTTOM_CY = H - EDGE_BOTTOM - BOTTOM_ROW_H / 2;
+// H is a live renderer binding: the portrait presentation changes the logical
+// frame height to match the phone aspect ratio. Keep this as a function so
+// bottom HUD readouts follow the current frame instead of the 270px landscape
+// import-time value.
+const bottomCy = () => H - EDGE_BOTTOM - BOTTOM_ROW_H / 2;
 
 // ---------------------------------------------------------------- bake-off
 // WHERE THE SECONDARY OBJECTIVE LIVES. The BONUS readout is the one row of the
@@ -840,7 +845,7 @@ export function bonusPanelFold(run) {
  * the run does not have. Returns the LEFT edge it landed on, which is how a
  * second chip on the same row knows where the first one ended.
  */
-export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = OBJ_RIGHT) {
+function objectivePanelMetrics(tag, text, scale, fold = 0) {
   const TP = 5, GAP = 5;
   // The full-scale row is the pill's twin at the other end of the strip, so it
   // takes the pill's height: two equal bookends with the beat lane between
@@ -848,7 +853,6 @@ export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold
   // that merely agree about their midline. The reduced BONUS row underneath
   // keeps its own smaller height — it is the hierarchy, not the bookend.
   const h = scale < 1 ? 12 : PILL_H;
-  const cy = y + h / 2;
   const tw = textWidth(tag, 0.8, 'bold');
   const lead = TP * 2 + tw + GAP;      // panel's left edge -> first glyph
   const [head, tail, widest = tail] = Array.isArray(text) ? text : [text, ''];
@@ -862,6 +866,13 @@ export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold
   const wFull = lead + headW + slotW;
   const wTail = lead + slotW;
   const w = Math.round(wFull + (wTail - wFull) * fold);
+  return { width: w, height: h, lead, headW, slotW, head, tail };
+}
+
+export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = OBJ_RIGHT) {
+  const TP = 5, GAP = 5;
+  const { width: w, height: h, lead, headW, slotW, head, tail } = objectivePanelMetrics(tag, text, scale, fold);
+  const cy = y + h / 2;
   const x = OBJ_R - w;
   drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
   rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
@@ -912,6 +923,18 @@ let objLeft = OBJ_RIGHT;
  * Given to drawSpeech as plain `y`/`maxWidth` opts, the two it already takes.
  */
 export function speechChannel(run) {
+  if (isPhonePortraitPresentation()) {
+    const layout = portraitHudLayout(presentationFrame());
+    return {
+      y: layout.chatterY,
+      maxWidth: layout.chatterWidth,
+      centerX: layout.center,
+      // Speech is a primary portrait read, not a landscape card merely moved
+      // lower.  Match its glyphs to the enlarged GOAL row while leaving a
+      // little room for the speaker portrait and the card's padding.
+      scale: Math.max(1.9, Math.min(2.8, layout.panelScale * 0.92)),
+    };
+  }
   const left = PILL_X + statusCornerW(run);
   const half = Math.min(W / 2 - left, objLeft - W / 2);
   return { y: SPEECH_Y, maxWidth: Math.max(0, Math.round(half * 2) - 40) };
@@ -1799,12 +1822,171 @@ function drawRingGauge(ctx, cx, cy, rOuter, rInner, frac, color) {
   ctx.restore();
 }
 
+function portraitTrim(text, maxWidth, scale = 1) {
+  let out = String(text ?? '');
+  while (out.length > 4 && textWidth(out, scale) > maxWidth) out = out.slice(0, -1);
+  return out === String(text ?? '') ? out : `${out.slice(0, -2)}..`;
+}
+
+function portraitGoalText(run) {
+  if (!run?.stage) return 'READY';
+  if (run.overtime) return 'OVERTIME';
+  const m = run.mission || {};
+  const label = GOAL_LABELS[m.type] ?? String(m.type || 'GOAL').toUpperCase();
+  const count = m.n
+    ? (m.type === 'chase' && typeof run.missionCount === 'function'
+      ? run.missionCount() : (m.count ?? 0))
+    : null;
+  return count == null ? label : `${label} ${count}/${m.n}`;
+}
+
+function portraitBonusText(run) {
+  const c = run?.challenge;
+  if (!c) return null;
+  if (c.failed) return ['BONUS', 'NOT THIS TIME', '#a8a0b0', 'rgba(255,255,255,0.45)'];
+  const clock = run?.beatLock ? run.rhythmBonusT : run.bonusT;
+  const open = Number(clock) > 0;
+  if (c.type === 'noDamage') {
+    const done = run.damageTaken === 0 && run.distance > 0;
+    return ['BONUS', done ? 'OK' : (open ? c.desc || 'NO DAMAGE' : 'NO DAMAGE'),
+      done ? '#74c947' : '#f6c945', '#ffffff'];
+  }
+  const n = Number(c.n) || 0;
+  const count = Math.min(Number(c.count) || 0, n);
+  return ['BONUS', open ? (c.desc || `${count}/${n}`) : `${count}/${n}`,
+    count >= n ? '#74c947' : '#f6c945', '#ffffff'];
+}
+
+function drawPortraitActionShelf(ctx, run, layout) {
+  const hero = HERO_BY_ID[run.relay?.current];
+  if (!hero?.ability) return;
+  const names = [String(hero.ability.label || 'USE').toUpperCase(),
+    ...Object.entries(run.powerups?.active || {})
+      .map(([id]) => POWER_DEFS[id]?.name)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((name) => String(name).toUpperCase())];
+  const pad = 6;
+  const gap = 6;
+  const available = Math.max(1, layout.right - layout.left);
+  let s = layout.actionLabelScale || 1.8;
+  const groupWidth = (scale) => names.reduce((total, name, i) => total
+    + textWidth(name, 0.95, 'bold') * scale + pad * 2 * scale
+    + (i ? gap * scale : 0), 0);
+  const naturalWidth = groupWidth(s);
+  if (naturalWidth > available) s = Math.max(1.25, s * available / naturalWidth);
+  const totalWidth = groupWidth(s);
+  const x = (layout.left + layout.right - totalWidth) / 2;
+  const y = layout.actionY;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  let px = 0;
+  for (const [i, name] of names.entries()) {
+    const w = textWidth(name, 0.95, 'bold') + pad * 2;
+    drawPanel(ctx, px, -7, w, 14, 4, undefined, PANEL);
+    rawDrawText(ctx, name, px + pad, textY(0), i === 0 ? '#48e0c8' : '#f6c945', 0.95, 'bold');
+    px += w + 6;
+  }
+  ctx.restore();
+}
+
+/**
+ * Portrait HUD: one readable vertical instrument.  It intentionally reuses
+ * the shipped status/objective painters so icons, coin treatment and mission
+ * wording remain identical to landscape; only their safe-area placement and
+ * scale change.
+ */
+function drawPortraitHud(ctx, run) {
+  const frame = presentationFrame();
+  const layout = portraitHudLayout(frame);
+  // `layout` is expressed in logical canvas pixels.  The frame's scale is the
+  // CSS conversion; panelScale is the authored enlargement needed to keep the
+  // same glyphs readable after that conversion on a phone.
+  const s = layout.panelScale;
+  objLeft = layout.right;
+
+  if (!run.overtime && run.stage && Number.isFinite(run.totalDist) && run.totalDist > 0) {
+    const frac = Math.max(0, Math.min(1, run.distance / run.totalDist));
+    const x = layout.railLeft, w = Math.max(1, layout.railRight - layout.railLeft);
+    const y = layout.railY, h = layout.railH;
+    ctx.fillStyle = '#10141c';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = mix('#6495ed', '#f6d33c', Math.max(0, Math.min(1,
+      (run.totalDist - run.distance < 900 ? 900 - (run.totalDist - run.distance) : 0) / 340)));
+    ctx.fillRect(x, y, w * frac, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(Math.min(layout.right - h, x + w * frac - h / 2), y, h, h);
+  }
+
+  // Status remains a single coherent pill, now enlarged and given the first
+  // row by itself rather than competing with the goal in the opposite corner.
+  const portraitCenter = (layout.left + layout.right) / 2;
+  const statusStyle = HERO_BY_ID[run.relay?.current] ? HERO_CHIP : null;
+  const statusGeom = heroChipGeom(statusStyle, run);
+  const statusWidth = statusPillW(run, statusStyle);
+  ctx.save();
+  // The disc sits beside the pill, so center the complete block from the
+  // disc's left edge to the pill's right edge rather than centering only the
+  // pill.  Styles without a separate hero column reduce to the pill center.
+  ctx.translate(portraitCenter - (PILL_X + (statusGeom.x + statusWidth) / 2) * s,
+    layout.statusY - PILL_Y * s);
+  ctx.scale(s, s);
+  drawStatusPill(ctx, run, statusStyle);
+  ctx.restore();
+
+  const maxText = Math.max(90, (layout.right - layout.left) / s - 22);
+  const goalText = portraitTrim(portraitGoalText(run), maxText, 1);
+  const goalWidth = objectivePanelMetrics('GOAL', goalText, 1, 0).width;
+  const goalRight = portraitCenter / s + goalWidth / 2;
+  ctx.save();
+  ctx.translate(0, layout.goalY - OBJ_ROW_Y * s);
+  ctx.scale(s, s);
+  const goalLeft = drawObjectivePanel(ctx, 'GOAL', '#74c947', goalText, '#ffffff',
+    OBJ_ROW_Y, 1, 0, goalRight);
+  ctx.restore();
+  run.hudGoalLeft = goalLeft * s;
+  objLeft = Math.min(objLeft, run.hudGoalLeft);
+
+  const bonus = portraitBonusText(run);
+  if (bonus) {
+    const [tag, text, tagColor, ink] = bonus;
+    const fold = bonusPanelFold(run);
+    const bonusText = portraitTrim(text, maxText, 0.9);
+    const bonusWidth = objectivePanelMetrics(tag, bonusText, 0.9, fold).width;
+    const bonusRight = portraitCenter / s + bonusWidth / 2;
+    ctx.save();
+    ctx.translate(0, layout.bonusY - OBJ_ROW_Y * s);
+    ctx.scale(s, s);
+    drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
+      OBJ_ROW_Y, 0.9, fold, bonusRight);
+    ctx.restore();
+  }
+
+  // Rhythm stages keep their lane in the same portrait stack. Reusing the
+  // shipped ribbon painter preserves the marker shapes and beat clock; only
+  // its vertical band changes. A non-rhythm stage reserves the band so a
+  // chatter card never jumps when a run changes objective state.
+  if (run.beatLock) {
+    ctx.save();
+    ctx.translate(0, layout.rhythmY - RIBBON_Y);
+    drawBeatRibbon(ctx, run);
+    ctx.restore();
+  }
+
+  drawPortraitActionShelf(ctx, run, layout);
+}
+
 export function drawHud(ctx, run) {
   // Forget last frame's right shoulder before anything redraws it. A speech
   // card asking mid-frame gets the objective panels as they were an instant
   // ago, which is what a card that lives for seconds wants; what it must not
   // get is an edge from a mission that has since been completed and shrunk.
   objLeft = OBJ_RIGHT;
+  if (isPhonePortraitPresentation()) {
+    drawPortraitHud(ctx, run);
+    return;
+  }
   // The top row's shared midline: the status pill and the hero badge centre on
   // it, so the strip sits level instead of each piece hanging at its own
   // height. (The ability ring used to share it; it lives in the bottom band
@@ -1888,7 +2070,7 @@ export function drawHud(ctx, run) {
   // readouts sit level across the screen instead of each hanging at its own
   // height — and it puts the ability panel directly opposite the hint that names
   // the same button.
-  const GAUGE_CY = BOTTOM_CY;
+  const GAUGE_CY = bottomCy();
   // Each timer entry: a donut, a name panel hung off its right at the same
   // midline. Returns the panel's right edge, so a row of them can be laid end
   // to end. `show` false measures without drawing, which is how a blinking
@@ -2177,7 +2359,7 @@ export function drawHud(ctx, run) {
     const hints = [['SPC', 'JUMP'], ['DN', 'SLIDE'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
     const S = 0.85, HP = 6, HH = 12;
     const inner = keyLegendWidth(hints, S);
-    const hx = W - EDGE - (inner + HP * 2), hy = BOTTOM_CY - HH / 2;
+    const hx = W - EDGE - (inner + HP * 2), hy = bottomCy() - HH / 2;
     ctx.save();
     ctx.globalAlpha = Math.min(1, run.hintT / HINT_FADE);
     drawPanel(ctx, hx, hy, inner + HP * 2, HH, 4, undefined, PANEL);
@@ -2224,7 +2406,7 @@ export function floatieShift(floaties, hero) {
   let top = Infinity, bottom = -Infinity;
   for (const f of floaties) {
     top = Math.min(top, f.y);
-    bottom = Math.max(bottom, f.y + FLOAT_CARD_H);
+    bottom = Math.max(bottom, f.y + FLOAT_CARD_H * (f.scale || 1));
   }
   top = Math.max(38, Math.round(top));
   if (bottom <= hero.y0 || top >= hero.y1) return 0;   // already clear of him
@@ -2343,6 +2525,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
     : drawPanel(ctx, px, py, pw, ph, 3));
   const baseY = opts.y ?? SPEECH_Y;
   const s = opts.scale ?? 1;
+  const centerX = Number.isFinite(opts.centerX) ? opts.centerX : W / 2;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
   //
@@ -2355,7 +2538,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
     const tw = Math.max(...lines.map((line) => textWidth(line, s)));
     // Measured before it is placed: the card can only get out of the hero's way
     // once it knows how tall it is.
-    const cardX = W / 2 - tw / 2 - 6 * s;
+    const cardX = centerX - tw / 2 - 6 * s;
     const cardW = tw + 12 * s;
     const cardH = 8 * s + lines.length * SPEECH_ROW * s;
     const y = placeSpeechCard(baseY, cardX, cardW, cardH, opts.avoid);
@@ -2365,7 +2548,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
     // that row rather than having its 12-unit glyph box hung off the top of it,
     // which sat every tutorial line high on its own plate.
     lines.forEach((line, i) =>
-      rawDrawTextCentered(ctx, line, W / 2,
+      rawDrawTextCentered(ctx, line, centerX,
         textY(y + (i * SPEECH_ROW + SPEECH_ROW / 2) * s, s), ink, s));
     return;
   }
@@ -2382,7 +2565,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const textH = (lines.length + (showName ? 1 : 0)) * ROW;
   const h = Math.max(FACE_H + 6 * s, textH + 8 * s);
   const w = PAD + FACE_W + GAP + tw + PAD;
-  const x = Math.round(W / 2 - w / 2);
+  const x = Math.round(centerX - w / 2);
   const y = placeSpeechCard(baseY, x, w, h, opts.avoid);
   panel(x, y - 4, w, h);
   const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
@@ -2613,28 +2796,34 @@ export function drawFailBanner(ctx, text) {
 // upward, and both of those are measured from FLOAT_BASE — a row chosen to
 // clear a STANDING hero's head. `shiftY` is what happens when the hero is not
 // standing: see floatieShift.
-export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeftOf = null, shiftY = 0, avoid = null } = {}) {
+export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeftOf = null, shiftY = 0, avoid = null, scale = 1 } = {}) {
   // Impact words (PEW, BOY.) center over the hero's head; anything longer
   // shares one left edge at the hero column and rags rightward into the
   // direction of travel — centering long lines on a hero this near the screen
   // edge just shoved each one to its own x. In mirror mode the shared edge is
   // on the right and text rags leftward.
-  let floatX = mirror ? W - heroX - 6 : heroX + 6;
-  let edgeX = mirror ? W - heroX : heroX;
+  const centered = isPhonePortraitPresentation();
+  const centerX = centered ? portraitHudLayout(presentationFrame()).center : W / 2;
+  let floatX = centered ? centerX : (mirror ? W - heroX - 6 : heroX + 6);
+  let edgeX = centered ? centerX : (mirror ? W - heroX : heroX);
   const short = f.text.length <= 5;
-  const lines = wrapText(f.text, short ? W - 32 : W - heroX - 8, 1, 2);
+  const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const lines = wrapText(f.text, centered ? W - 32 * s : (short ? W - 32 * s : W - heroX - 8 * s), s, 2);
   // HOW HIGH A CARD MAY DRIFT. It was a flat 38, which was three of air under
   // a beat ribbon that ended at 40; the strip has moved to the top of the
   // screen and the number stayed, so the cards were stopping fourteen pixels
   // short of anything. Off the strip's own export now, so the two cannot drift
   // apart again. Nothing else is up there in the hero's column — the HUD's
   // shoulders are out at the edges and a floatie rises from where he stands.
-  const topY = Math.max(FLOAT_CEILING, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y) + shiftY));
+  const topY = Math.max(FLOAT_CEILING, Math.min(H - 48 * s - lines.length * LINE_H * s,
+    Math.round(f.y) + shiftY));
   // Each floatie rides its own HUD panel — the bare text plate washed out over
   // light packs.
-  const tw = Math.max(...lines.map((line) => textWidth(line)));
-  const PADX = 5;
-  let bx = short ? floatX - tw / 2 - PADX : (mirror ? edgeX - tw - PADX : edgeX - PADX);
+  const tw = Math.max(...lines.map((line) => textWidth(line, s)));
+  const PADX = 5 * s;
+  let bx = centered || short
+    ? floatX - tw / 2 - PADX
+    : (mirror ? edgeX - tw - PADX : edgeX - PADX);
   // Clear of the finish marker. Floaties rise from the hero's column, and at
   // the end of a stage the hero's column IS the flagpole — so the card that
   // says what you just scored prints across the flag it is describing, over the
@@ -2642,7 +2831,7 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // whole card slides left until its right edge is off the pole; it is moved
   // bodily, panel and text together, so the ragged left edge the long lines
   // share stays a straight edge.
-  if (keepLeftOf != null) {
+  if (keepLeftOf != null && !centered) {
     const dx = Math.min(0, keepLeftOf - (bx + tw + PADX * 2));
     bx += dx; floatX += dx; edgeX += dx;
   }
@@ -2652,7 +2841,7 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // card goes translucent and he reads through it. It is the same idea as the
   // dodge, at the one scale the dodge cannot fix. (This paragraph said "duck"
   // when the card getting out of the way and the hero's move shared a word.)
-  const cardH = lines.length * LINE_H + 8;
+  const cardH = lines.length * LINE_H * s + 8 * s;
   const onHero = avoid
     && bx + tw + PADX * 2 > avoid.x0 && bx < avoid.x1
     && topY - 4 + cardH > avoid.y0 && topY - 4 < avoid.y1;
@@ -2666,9 +2855,9 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // at the row top — which is what this did — left every bark riding high on
   // its own card, by most of the 3 units of padding the card actually has.
   lines.forEach((line, i) => {
-    const y = textY(topY + i * LINE_H + LINE_H / 2);
-    if (short) rawDrawTextCentered(ctx, line, floatX, y, f.color);
-    else rawDrawText(ctx, line, mirror ? edgeX - textWidth(line) : edgeX, y, f.color);
+    const y = textY(topY + (i * LINE_H + LINE_H / 2) * s, s);
+    if (centered || short) rawDrawTextCentered(ctx, line, floatX, y, f.color, s);
+    else rawDrawText(ctx, line, mirror ? edgeX - textWidth(line, s) : edgeX, y, f.color, s);
   });
   ctx.restore();
 }

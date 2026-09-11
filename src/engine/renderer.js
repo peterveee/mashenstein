@@ -56,8 +56,9 @@ function safeInsets() {
   };
 }
 
-// The touch chrome, recomputed every resize() by touch-layout.js: `run`,
-// `runNoPower` and `hub` are the button lists a screen hands to
+// The touch chrome, recomputed every resize() by the shared portrait/landscape
+// layout modules: `run`, `runNoPower`, the dev-only `runPortraitLab` variants,
+// and `hub` are the button lists a screen hands to
 // Input.setChromeButtons (discs in viewport CSS px, plus the margin's zones),
 // `gen` ticks on every relayout so a screen knows to re-register, and `scale`
 // is CSS px per logical px for the painter. `mode` survives only for
@@ -65,7 +66,11 @@ function safeInsets() {
 // (pillars, landscape phones), 'topbottom' (bands, iPads and portrait), or
 // 'none' (an exact-16:9 device). Nothing else may branch on it — the controls
 // are the same on every device now, which is the point of the layout.
-export const chrome = { mode: 'none', vw: 0, vh: 0, gen: 0, run: [], runNoPower: [], hub: [], split: 0, scale: 1 };
+export const chrome = {
+  mode: 'none', vw: 0, vh: 0, gen: 0,
+  run: [], runNoPower: [], runPortraitLab: [], runPortraitLabNoPower: [],
+  hub: [], split: 0, scale: 1,
+};
 const CHROME_MIN_MARGIN = 72;
 
 const uploadBack = (() => {
@@ -152,7 +157,7 @@ let jukeboxPortrait = false;
 let devPortraitFill = false;
 let presentationMode = LANDSCAPE;
 let presentationManaged = false;
-let presentationGroundAnchorRatio = 0.62;
+let presentationGroundAnchorRatio = 0.70;
 
 function sameFrame(a, b) {
   return a.mode === b.mode && a.width === b.width
@@ -962,10 +967,10 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     // Portrait controls live in viewport CSS pixels and keep their geometry
     // independent of the camera/world zoom. Broad lower zones are explicitly
     // marked as gesture surfaces so Input can run tap/hold/swipe arbitration.
-    const layout = portraitTouchLayout({ viewportWidth: winW, viewportHeight: winH, safeInsets: safe, revision: getActiveFrame().revision });
-    const controls = (hasPower) => {
+    const layout = portraitTouchLayout({ viewportWidth: winW, viewportHeight: winH, safeInsets: safe, revision: getActiveFrame().revision, includeRewind: true });
+    const controls = (hasPower, portraitLab = false) => {
       const discs = Object.entries(layout.controls)
-        .filter(([id]) => hasPower || id !== 'use')
+        .filter(([id]) => (portraitLab || id !== 'rewind') && (hasPower || id !== 'use'))
         .map(([id, b]) => ({
           id: id === 'use' ? 'ability' : id,
           action: b.action, x: b.cx, y: b.cy, r: b.r,
@@ -977,13 +982,17 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
       return [...discs, ...zones];
     };
     Object.assign(chrome, {
-      run: controls(true), runNoPower: controls(false), hub: [], split: winW / 2, scale: screen.scale,
+      run: controls(true), runNoPower: controls(false),
+      runPortraitLab: controls(true, true), runPortraitLabNoPower: controls(false, true),
+      hub: [], split: winW / 2, scale: screen.scale,
     });
   } else {
     // Landscape and all ordinary screens retain the shipped shared layout.
     Object.assign(chrome, layoutTouchChrome({
       vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe,
     }));
+    chrome.runPortraitLab = [];
+    chrome.runPortraitLabNoPower = [];
   }
   chrome.gen++;
   // The backing store was just reassigned (blank): force the next commit to

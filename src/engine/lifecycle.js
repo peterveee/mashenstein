@@ -19,20 +19,21 @@ export function lifecyclePolicy({
   isAndroidPhone = false,
   standalone = false,
   devBrowserBypass = false,
+  devMode = false,
   portrait = false,
   allowPortrait = false,
 } = {}) {
-  // A dev-bypassed browser iPhone deliberately impersonates the installed
-  // lifecycle so Chrome device emulation and real-phone LAN testing exercise
-  // the rotate overlay, paused loop, input and audio. Production browser
-  // iPhones never receive this flag and remain blocked before boot.
+  // A dev build keeps phone portrait running so Chrome device emulation and
+  // real-phone LAN testing can inspect every screen at its actual narrow
+  // viewport. Production keeps the installed-phone orientation gate, while a
+  // browser-only iPhone still needs devBrowserBypass to get through the
+  // pre-game install gate in the first place.
   //
-  // Android phones get the same treatment outside the jukebox: portrait is
-  // useless for a landscape-only arcade game and the rotate overlay is the
-  // clearest signal. The listening/visualiser surface can explicitly opt out;
-  // tablets are wide enough to be usable in either orientation.
+  // Android phones get the same treatment for states that have not opted into
+  // a portrait composition. The listening surface and frame-based gameplay
+  // can explicitly opt in; tablets are wide enough to be usable either way.
   const phonePortrait = (isIphone || isAndroidPhone)
-    && (standalone || devBrowserBypass) && portrait && !allowPortrait;
+    && !devMode && (standalone || devBrowserBypass) && portrait && !allowPortrait;
   return {
     iphonePortrait: phonePortrait,
     paused: !allowed || !visible || phonePortrait,
@@ -51,12 +52,10 @@ export function portraitNow(win) {
 // still found across the module-identity mismatches that make `instanceof`
 // quietly fail.
 //
-// 'stretch' is the shipped jukebox presentation and is always honoured. The
-// frame-based modes belong to the portrait rollout and stay behind the diag
-// switch until that work is ready to put in front of testers, so marking a
-// screen portrait-capable cannot change what a tester sees until the switch is
-// deliberately set on a device.
-const SHIPPED_PORTRAIT_MODES = new Set(['stretch']);
+// 'stretch' is the shipped jukebox presentation and 'frame' is the shipped
+// gameplay presentation. Keeping the allow-list here means a screen still has
+// to opt in explicitly; unrelated menus remain behind the landscape gate.
+const SHIPPED_PORTRAIT_MODES = new Set(['stretch', 'frame']);
 
 export function portraitAllowedFor(state, diagPortrait = false) {
   const mode = state && state.constructor ? state.constructor.portraitMode : null;
@@ -77,6 +76,7 @@ export class LifecycleController {
     audio,
     doc = document,
     win = window,
+    devMode = false,
     allowPortrait = () => false,
     onPortraitJukebox = () => {},
     onDevMenu = null,
@@ -87,6 +87,7 @@ export class LifecycleController {
     this.audio = audio;
     this.doc = doc;
     this.win = win;
+    this.devMode = devMode;
     this.allowPortrait = allowPortrait;
     this.onPortraitJukebox = onPortraitJukebox;
     // Supplied by main.js only where a dev menu exists; returns false when it
@@ -335,6 +336,7 @@ export class LifecycleController {
     if (stateAllowsPortrait) this.portraitJukeboxOpening = false;
     return lifecyclePolicy({
       ...this.platform,
+      devMode: this.devMode,
       visible: !this.doc.hidden && !this.pageHidden,
       portrait: portraitNow(this.win),
       allowPortrait: stateAllowsPortrait || this.portraitJukeboxOpening,

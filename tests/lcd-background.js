@@ -6,7 +6,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
-  LCD_DEFAULT_ROAD_RISE,
+  LCD_DEFAULT_ROAD_RISE, LCD_SCREEN_GRID_CELL, LCD_PORTRAIT_SCREEN_GRID_CELL, lcdScreenGridCellSize,
   LCD_ROAD_INK } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
@@ -699,6 +699,22 @@ function post(settings, t) {
 }
 const normalPost = post({}, 0.25);
 const reducedPost = post({ reducedFlashing: true }, 0.25);
+assert(LCD_SCREEN_GRID_CELL === 3, 'the landscape LCD lattice keeps its three-pixel cell pitch');
+assert(LCD_PORTRAIT_SCREEN_GRID_CELL === null, 'the portrait LCD omits the periodic lattice to avoid moire');
+assert(lcdScreenGridCellSize({}) === 3, 'ordinary LCD callers keep the fine lattice');
+assert(lcdScreenGridCellSize({ portraitPresentation: true }) === null,
+  'portrait LCD callers disable the periodic lattice');
+const createdForPortraitGrid = [];
+const createElement = document.createElement;
+document.createElement = (...args) => {
+  const element = createElement(...args);
+  createdForPortraitGrid.push(element);
+  return element;
+};
+try { post({ portraitPresentation: true }, 0.25); }
+finally { document.createElement = createElement; }
+assert(!createdForPortraitGrid.some((element) => element.width === 6 && element.height === 6),
+  'portrait LCD post does not bake a periodic grid tile');
 assert(!normalPost.some((op) => op[0] === 'fillRect' && op[1] === '#808080'),
 'the GBC screen treatment preserves hue instead of converting scenery to monochrome');
 assert(normalPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba(255,244,180,'))

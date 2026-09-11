@@ -413,8 +413,9 @@ const clara = {
     gunGrip: '#6b4324',  // and its wooden grip
     // The muzzle flash and the slug. `ki` is what selects the coloured round in
     // the projectile renderer (run.js reads pal.ki) — without it her shot would
-    // fall through to B-33P's default lemon. Brass-warm, off her own hardware.
-    ki: '#ffd27a',
+    // fall through to B-33P's default lemon. Coral-red, distinct from both the
+    // lemon and Clara's brass hardware.
+    ki: '#f2767f',
   },
 };
 

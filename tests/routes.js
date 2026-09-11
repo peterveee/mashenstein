@@ -241,6 +241,7 @@ const dropFrom = run.playerGroundY();
 run.camX = island.x + island.w + 1 - PLAYER_X;   // just past the far edge
 frames(1);
 assert(run.route === null, 'walking off the end leaves the slab');
+assert(run.routeReleaseLock === island, 'the slab stays excluded while the edge fall is in progress');
 assert(!run.player.grounded, 'and puts the hero in the air rather than snapping him down');
 // He should now be exactly the slab's height above the ground below — the
 // rebase, not a teleport to either surface.
@@ -248,10 +249,21 @@ const expected = run.groundYAt(run.playerWorldX()) - dropFrom;
 assert(Math.abs(run.player.y - expected) < 1.5,
   `altitude rebased to the slab's height above the ground (${run.player.y.toFixed(1)} ~= ${expected.toFixed(1)})`);
 
+// The release must stay released for the whole descent. If the route is still
+// allowed to catch the hero while his footprint is crossing its far lip, he
+// spends a few frames on the base lane and then pops back onto the upper road.
+for (let i = 0; i < 60 && !run.player.grounded; i++) {
+  frames(1);
+  assert(run.route === null, 'falling off a slab never reclaims the upper road');
+  if (!run.player.grounded) {
+    assert(run.routeReleaseLock === island, 'the released slab stays locked during descent');
+  }
+}
 // And he lands, rather than falling forever or hanging.
-frames(60);
+frames(1);
 assert(run.player.grounded, 'and he lands on the ground below');
 assert(run.route === null, 'back on the base ground');
+assert(run.routeReleaseLock === null, 'landing clears the released-slab lock');
 
 // ---- one-way: a rising hero passes up through the slab ----------------------
 standAt(island.x + island.w / 2);   // directly underneath the middle
@@ -446,6 +458,13 @@ run.route = fork;
 run.player.y = 0;
 run.player.grounded = true;
 run.camX = fork.x + fork.w + 2 - PLAYER_X;
+// The camera and the hero both get one last tick while the route is still the
+// active floor. The route profile is half-open, so the inclusive span edge
+// must sample its last authored column rather than the base lane; otherwise
+// the camera drops before updateRoute rebases the fall and the hero flickers
+// between the two floors.
+assert(Math.abs(run.playerGroundY() - run.routeGroundY(fork.x + fork.w - 0.001, fork)) < 0.01,
+  'one tick past a route lip still samples the route\'s last floor column');
 frames(1);
 assert(run.route === null, 'riding a fork to the end takes the hero off it');
 assert(!run.player.grounded, 'into a FALL rather than back onto the ground');

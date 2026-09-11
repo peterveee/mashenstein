@@ -60,6 +60,7 @@ import {
   drawGameplayProfile, drawGameplayProfileWaiting,
 } from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
+import { portraitLabMenu } from './dev/menus.js';
 import { PortraitLab } from './dev/portrait-lab.js';
 
 save.load();
@@ -423,6 +424,11 @@ const Flow = {
   // copied at launch, so a second tab changing localStorage cannot move a live
   // run underneath the player; the normal campaign path above stays untouched.
   launchPortraitStage(cab, stage, options = {}) {
+    if (!save.slot) {
+      Dev.say('SELECT A SAVE SLOT FIRST');
+      Dev.openMenu(portraitLabMenu);
+      return null;
+    }
     const heroId = options.heroId || Flow.heroId();
     const seed = options.seed ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0);
     const config = options.config || PortraitLab.config();
@@ -447,7 +453,7 @@ const Flow = {
         run.exit();
         Input.clearAll();
         PortraitLab.returnToMenu(reason);
-        Dev.openMenu();
+        Dev.openMenu(portraitLabMenu);
         Dev.say(`LAST: ${stage.id.toUpperCase()} — ${reason}`);
       },
     });
@@ -672,6 +678,10 @@ function boot() {
   }
 
   const platform = window.__mash_platform || readPlatform();
+  // The watch build is the only build that carries __MASH_BUILD__. In dev,
+  // phone portrait stays live so each screen can be inspected at its narrow
+  // viewport; lifecycle.js still applies the production gate otherwise.
+  const devMode = !!(typeof window !== 'undefined' && window.__MASH_BUILD__);
   // The renderer measures each device and settles on a sustainable density;
   // persist that so the next launch starts near it (the renderer re-probes one
   // rung optimistically on top of this seed).
@@ -696,12 +706,10 @@ function boot() {
   Input.init();
   buildAllSprites();
 
-  // Touch players cannot rewind, so do not create the continuously-running
-  // audio capture node on coarse-pointer devices. Same capability the snapshot
-  // ring asks (run.js), so the two halves of rewind can never disagree about
-  // whether the feature exists. Read once here because the capture node is a
-  // boot-time fixture; no pad has been polled yet, so this is exactly the
-  // coarse-pointer test it has always been.
+  // Touch players do not need the continuously-running rewind capture during
+  // shipped gameplay. Portrait Lab enables its own full tape when the review
+  // run enters, so this boot-time seed can stay cheap on a phone while the lab
+  // still gets the explicit RWD control and recording it asks for.
   // The game uses songAnalyser, not the desk display meters.
   Audio.setMixerMeteringEnabled(false);
   Audio.setCaptureEnabled(Input.rewindAvailable());
@@ -719,9 +727,9 @@ function boot() {
   // controller installed further down, so the two can never disagree about
   // which screens are allowed to stay running sideways. Read the diag switch
   // once here the way every other diag switch is read: changing it takes a
-  // reload regardless. No state is installed yet at this point, so this seed
-  // resolves to "not portrait-capable" — matching the landscape gate the old
-  // inline check applied by simply omitting allowPortrait.
+  // reload regardless. The explicit devMode override below keeps the local
+  // build inspectable on a phone; the production allow-list still comes from
+  // each state's portraitMode declaration.
   const diagPortrait = !!readDiag().portrait;
   // The open dev menu is a portrait surface of its own. It consumes the frame
   // before any state updates (see Dev.update), so admitting portrait here runs
@@ -741,6 +749,7 @@ function boot() {
     || portraitAllowedFor(currentState(), diagPortrait);
   Audio.setLifecyclePaused(lifecyclePolicy({
     ...platform,
+    devMode,
     visible: !document.hidden,
     portrait: portraitNow(window),
     allowPortrait: allowPortraitNow(),
@@ -782,7 +791,7 @@ function boot() {
   // Dev menu: local builds only. __MASH_BUILD__ is emitted by build/build.js
   // under --watch and is absent from a published bundle, so install() never
   // runs there and no listener is ever registered.
-  Dev.enabled = !!(typeof window !== 'undefined' && window.__MASH_BUILD__);
+  Dev.enabled = devMode;
   // onOpenChange: opening or closing the overlay changes the answer
   // allowPortraitNow gives, and nothing else would ask the question again while
   // the phone is held still.
@@ -1051,10 +1060,11 @@ function boot() {
     loop,
     input: Input,
     audio: Audio,
-    // Screens opt in by declaring a static portraitMode (see portraitAllowedFor);
-    // today that is the jukebox alone, a self-contained listening/visualiser
-    // surface intentionally usable in portrait. The landscape gate still covers
-    // everything else, including the title and gameplay states.
+    devMode,
+    // Screens opt in by declaring a static portraitMode (see portraitAllowedFor):
+    // the jukebox uses its stretch surface, while briefing, gameplay and results
+    // use the frame-based phone composition. The title and other screens remain
+    // landscape-only in production.
     allowPortrait: allowPortraitNow,
     onPortraitJukebox: () => setStateFade(new SoundTestState({ onDone: () => Flow.toTitle({ fade: true }) })),
     // Five taps on the portrait heading. Local builds only, like every other

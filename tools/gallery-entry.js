@@ -14,7 +14,7 @@ import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
 import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook } from '../src/game/hub/index.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
-import { getSprite } from '../src/engine/sprites.js';
+import { getSprite, drawPellet } from '../src/engine/sprites.js';
 import {
   buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, drawPortal,
   HERO_DRAW_W, HERO_DRAW_H,
@@ -44,8 +44,10 @@ import {
   b33pTitleShotPose,
   poseFromPlayer,
   drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC,
+  drawThrownAxe, drawRocketFist,
   AXE_THROW_AT,
 } from '../src/sprites/toons.js';
+import { HERO_SPRITES } from '../src/sprites/heroes.js';
 import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
   LCD_GORILLA_NOSTRIL_STYLES,
@@ -765,7 +767,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move. '
     + 'Power up is what a real run actually shows the instant their ability fires — poseFromPlayer\'s '
     + 'ability-specific pose fields (lean/roll/slide/headless/menuAction) plus drawPowerPose()\'s overlay '
-    + 'flourish where one exists. World-space projectiles are not duplicated here, but Grumpos does lose '
+    + 'flourish where one exists. The dedicated Hero projectiles section below puts each world-space shot back '
+    + 'on the Plumber Panic lane; these pose tiles stay focused on the hero bodies. Grumpos does lose '
     + 'the axe from his back while it is in flight and Lorenzo shows the grounded wrench-smash body action. '
     + 'Slide is the shipped POWER SLIDE on the humanoid rigs, per-hero garments and all; B-33P, Mochi, '
     + 'Chompo and Ray M\'n keep their crouch, exactly as poseFromPlayer serves it.');
@@ -789,6 +792,126 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     tile(grid, id, `powerup · ${hero.ability.label}`, HH * 0.9, th, (ctx, t) => {
       drawPowerupTile(ctx, id, hero, t, (HH * 0.9) / 2, th - HH * 0.05, HH);
     }, { animated: true });
+  }
+}
+
+// ------------------------------------------------------ 2a. hero projectiles
+// A projectile is only judged properly when it is put back into the problem
+// the player sees: the Plumber Panic sky, the green lane, a real hero at 24u,
+// and a real crate at the distance the shot is meant to answer. These tiles are
+// production reference, not candidates. Each projectile below calls the same
+// painter the run calls, including the hero-specific shot palette, the bamboo
+// parity scale, the arrow's tangent and the returning-tool art.
+{
+  const cab = CABINETS.find((c) => c.id === 'plumber');
+  const style = getStylePack(cab.style, {});
+  const ids = Object.keys(HERO_BY_ID);
+  const TOTAL_DIST = 9072; // plumber-1's authored world length
+  const TARGET_X = 190;
+  const START_X = PLAYER_X + 12; // the same spawn x the run gives a shot
+  const target = makeObstacle('crate', TARGET_X);
+
+  const projectileLabel = (hero) => {
+    switch (hero.ability.type) {
+      case 'wrench': return 'PIPE WRENCH · OUT / HOVER / HOME';
+      case 'toss': return 'BAMBOO SHOOT · TUMBLING CANE';
+      case 'bow': return 'LONGBOW · ARCING ARROW';
+      case 'fist': return 'ROCKET FIST · OUT / RETURN';
+      case 'axe': return 'RETURNING AXE · OUT / RETURN';
+      case 'shoot': return hero.shotBurst === 2 ? 'PLOT HOLE · TWIN SLUGS' : hero.id === 'kiko' ? 'WARNING SHOT · ENERGY ORB' : 'LEMON CANNON · LEMON SHOT';
+      default: return hero.ability.label;
+    }
+  };
+
+  // A short loop keeps the projectile in motion while leaving the first frame
+  // in a useful flight position when animation is paused for inspection.
+  const returnPath = (t) => {
+    const out = 0.56, hover = 0.18, back = 0.44;
+    if (t < out) return { x: START_X + (TARGET_X - START_X) * t / out, returning: false };
+    if (t < out + hover) return { x: TARGET_X, returning: false };
+    const q = Math.min(1, (t - out - hover) / back);
+    return { x: TARGET_X + (START_X - TARGET_X) * q, returning: true };
+  };
+
+  const drawProjectile = (ctx, hero, t, frameT) => {
+    const type = hero.ability.type;
+    if (type === 'shoot') {
+      const shotPal = HERO_SPRITES[hero.id]?.pal;
+      const shotSpeed = hero.shotSpeed || 260;
+      const x = Math.min(TARGET_X, START_X + frameT * shotSpeed);
+      const y = GROUND_Y - 8 - 4; // run.js: alt=player.y+8, then y+2
+      const burst = hero.shotBurst || 1;
+      for (let i = 0; i < burst; i++) {
+        drawPellet(ctx, x - i * 16 + 3, y + 2, {
+          size: hero.shotSize || 1,
+          fill: shotPal?.ki,
+          spark: shotPal?.a,
+          orb: !!shotPal?.ki,
+        });
+      }
+      return;
+    }
+
+    if (type === 'bow') {
+      const arrowT = Math.min(frameT, 0.5);
+      const slope = ARROW_ARC.a - 2 * ARROW_ARC.b * arrowT;
+      const alt = 11 + ARROW_ARC.a * arrowT - ARROW_ARC.b * arrowT * arrowT;
+      const y = GROUND_Y - alt - 4;
+      drawRangedProjectile(ctx, 'arrow', START_X + arrowT * ARROW_ARC.v, y + 4, {
+        rot: -Math.atan2(slope, ARROW_ARC.v), hero: hero.id, flying: true, t,
+      });
+      return;
+    }
+
+    const path = returnPath(frameT % 1.18);
+    const alt = 10;
+    const y = GROUND_Y - alt - 4;
+    ctx.save();
+    if (type === 'fist') {
+      drawRocketFist(ctx, path.x + 4, y + 2, t, path.returning);
+    } else if (type === 'axe') {
+      drawThrownAxe(ctx, path.x + 4, y + 4, frameT * 12);
+    } else {
+      const art = type === 'wrench' ? 'wrench' : 'bamboo';
+      drawRangedProjectile(ctx, art, path.x + 4, y + 4, {
+        rot: frameT * (type === 'toss' ? 14 : 12),
+        hero: hero.id,
+        flying: true,
+        scale: type === 'toss' ? caneScale(0) : 1,
+        t,
+      });
+    }
+    ctx.restore();
+  };
+
+  const grid = section('hero-projectiles', 'Hero projectiles — Plumber Panic read test',
+    `${ids.length} playable heroes on the real Plumber Panic background. The hero and projectile use the run's ${WORLD_Z}x world camera; `
+    + `the shared crate is the production ground obstacle at ${TARGET_X} world units. Animation loops through flight so the projectile can be judged `
+    + 'both moving and at rest; pause animation for a still read.');
+
+  for (const id of ids) {
+    const hero = HERO_BY_ID[id];
+    const type = hero.ability.type;
+    const duration = type === 'bow' ? 0.62 : type === 'shoot' ? 0.8 : 1.18;
+    tile(grid, hero.short, projectileLabel(hero), W, H, (ctx, t) => {
+      // The background is screen-space, exactly as it is in RunState.draw.
+      style.bg(ctx, t, 0, cab, TOTAL_DIST);
+
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      style.ground(ctx, 0, cab, [target], [], t * 60, VIEW_W);
+      drawWorldEntity(ctx, target, 0, t, style, {});
+
+      const frameT = (t + 0.42) % duration;
+      const heroPose = pose('run', t, {
+        ...(type === 'wrench' ? { wrenchThrown: true } : {}),
+        ...(type === 'toss' || type === 'axe' ? { axeThrown: true } : {}),
+        ...(type === 'fist' ? { fistThrown: true } : {}),
+      });
+      drawToon(ctx, id, heroPose, PLAYER_X + 6, GROUND_Y, HERO_DRAW_H);
+      drawProjectile(ctx, hero, t, frameT);
+      ctx.restore();
+    }, { animated: true, wide: true, hires: 3 });
   }
 }
 
@@ -7191,6 +7314,10 @@ if (location.hash) requestAnimationFrame(() => {
 // its own height, so "how tall is this hero really?" needs a scratch canvas.
 window.__gallery = {
   tiles, paint, drawToon, TOON_SPECS, RUSTY_W3B, PANDA_PAL, HERO_DRAW_H, RANGED_RELEASE_POINT, drawRangedProjectile,
+  // drawThrownAxe rides along for the same reason: "how big is this thing
+  // really, next to the others?" is a question about the flying weapons as a
+  // family, and the axe is the biggest of them.
+  drawThrownAxe,
   get errors() { return tiles.filter((t) => t.stack); },
 };
 

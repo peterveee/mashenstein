@@ -57,6 +57,13 @@ export const SPIKE_TIPS = 0.13;
 // and the turning is at the rim.
 export const GEAR_TOPS = 0.2;
 
+// Portrait gives the pit apron much more vertical room than the shipped
+// landscape frame. A solid hazard should occupy that room as a little bay,
+// not become a dark shaft that runs to the bottom edge. Keep the old depth on
+// landscape (38px), then close the portrait bay shortly below its hazard.
+export const HARD_FILL_BORDER_GAP = 12;
+export const HARD_FILL_LANDSCAPE_DEPTH = 96;
+
 const TAU = Math.PI * 2;
 
 function ellipse(ctx, cx, cy, rx, ry, fill, alpha = 1) {
@@ -257,7 +264,7 @@ function spikes(ctx, w, d, t, lift = 0) {
   // and the depth comes from the ROAD standing up either side (see
   // CROSSING_ROAD_RISE in game/run.js).
   const plate = d * 0.5;
-  basePlate(ctx, w, d, plate, lift);
+  basePlate(ctx, w, d, plate, lift, hardFillCutoff('spikes', w, d));
   // THE SAME TOOTH THE LANE USES. `popSpikes` in sprites/props.js is the spike
   // hazard a player already knows — narrow, inked, alternating pale and grey —
   // and a pit full of some other spike would be a second vocabulary for one
@@ -303,8 +310,33 @@ function hzTooth(ctx, cx, base, half, height, fill, lw) {
   ctx.stroke();
 }
 
-// THE PLATE the teeth stand on, and the whole of what a hard fill paints
-// besides the hazard itself.
+/**
+ * Return the bottom edge of a solid pit's visible bay. `d` is the full apron
+ * depth passed by the world renderer. Landscape's apron is short enough that
+ * the historical full-depth treatment is unchanged; portrait gets a closed
+ * bay just below the actual teeth or gear train.
+ */
+export function hardFillCutoff(id, w, d) {
+  if (!(d > HARD_FILL_LANDSCAPE_DEPTH)) return d;
+  if (id === 'spikes') {
+    return Math.min(d, d * 0.5 + HARD_FILL_BORDER_GAP);
+  }
+  if (id === 'gears') {
+    const pitch = 26;
+    const n = Math.max(2, Math.round(w / pitch));
+    const step = w / n;
+    const big = Math.min(step * 0.52, d * 0.26);
+    // Gear teeth can reach 1.15r beyond the wheel centre. Leave a small
+    // breathing gap below that silhouette before the bay's bottom edge.
+    return Math.min(d, d * GEAR_TOPS + big * 1.15 + HARD_FILL_BORDER_GAP);
+  }
+  return d;
+}
+
+// THE PLATE the teeth/gear train stand on, and the whole of what a hard fill
+// paints besides the hazard itself. In portrait, `bottom` closes this plate
+// shortly below the silhouette so the solid fill does not hang to the screen
+// edge. Liquids continue to use the full apron and never call this helper.
 //
 // It is a floor rather than a fill: three pixels of dark at the foot of the
 // teeth and solid below that, where the frame has already run out. Everything
@@ -312,11 +344,21 @@ function hzTooth(ctx, cx, base, half, height, fill, lw) {
 // spikes(). `lift` is how far the road stands above the flat groundline over
 // this hole (game/terrain.js), and it is the only reason a painter may paint
 // above y = 0; drawPitFill's clip is what bounds it.
-function basePlate(ctx, w, d, y, lift = 0) {
+function basePlate(ctx, w, d, y, lift = 0, bottom = d) {
+  const end = Math.max(y + 2, Math.min(d, Number.isFinite(bottom) ? bottom : d));
   ctx.fillStyle = '#232a34';
   ctx.fillRect(0, y, w, Math.max(2, d * 0.06));
   ctx.fillStyle = '#171522';
-  ctx.fillRect(0, y + Math.max(2, d * 0.06), w, d - y);
+  ctx.fillRect(0, y + Math.max(2, d * 0.06), w,
+    Math.max(0, end - (y + Math.max(2, d * 0.06))));
+  if (end < d) {
+    // A thin lit lip and a dark underside make the cutoff read as the far
+    // wall of a service bay, not as a texture that happened to stop.
+    ctx.fillStyle = '#59636f';
+    ctx.fillRect(0, end, w, 2);
+    ctx.fillStyle = '#0f1018';
+    ctx.fillRect(0, end + 2, w, 2);
+  }
 }
 
 // ONE glint, travelling. A machine of teeth is otherwise still, and stillness on
@@ -362,6 +404,10 @@ function gears(ctx, w, d, t, lift = 0) {
   const n = Math.max(2, Math.round(w / pitch));
   const step = w / n;
   const big = Math.min(step * 0.52, d * 0.26);
+  // Unlike the liquid fills, a gear train needs a floor behind it. The bay
+  // ends just below the largest tooth, so the wheels are visibly seated rather
+  // than floating in the scenery or trailing to the phone's bottom edge.
+  basePlate(ctx, w, d, top, lift, hardFillCutoff('gears', w, d));
   for (let i = 0; i < n; i++) {
     const small = i % 2 === 1;
     const r = small ? big * 0.66 : big;

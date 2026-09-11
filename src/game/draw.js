@@ -133,6 +133,50 @@ export function drawBackdropVeil(c, style = null) {
   c.restore();
 }
 
+// A small frame-edge fade gives the tall portrait bands a finished edge without
+// washing the authored sky, hills, ground or actors. It is deliberately screen
+// space: the band stays a modest 42 logical pixels on both phones and desktops,
+// while its full width naturally spans any unused portrait area.
+export const FRAME_EDGE_GRADIENT = Object.freeze({
+  range: 42,
+  skyAlpha: 0.12,
+  groundAlpha: 0.16,
+});
+
+function frameEdgeInk(style, alpha) {
+  // A deep plum sits naturally over the light paper/cardboard packs; black is
+  // quieter on the darker scenery packs. Both are transparent at the inner
+  // edge, so this is an edge value shift rather than a second horizon.
+  const rgb = style && style.lightBg ? '26,16,40' : '0,0,0';
+  return `rgba(${rgb},${alpha})`;
+}
+
+export function drawSkyEdgeGradient(c, style = null, options = {}) {
+  const range = Math.max(0, Math.min(H, Number(options.range) || FRAME_EDGE_GRADIENT.range));
+  if (!(range > 0)) return;
+  const alpha = Number.isFinite(options.alpha) ? options.alpha : FRAME_EDGE_GRADIENT.skyAlpha;
+  c.save();
+  const g = c.createLinearGradient(0, 0, 0, range);
+  g.addColorStop(0, frameEdgeInk(style, alpha));
+  g.addColorStop(1, frameEdgeInk(style, 0));
+  c.fillStyle = g;
+  c.fillRect(0, 0, W, range);
+  c.restore();
+}
+
+export function drawGroundEdgeGradient(c, style = null, options = {}) {
+  const range = Math.max(0, Math.min(H, Number(options.range) || FRAME_EDGE_GRADIENT.range));
+  if (!(range > 0)) return;
+  const alpha = Number.isFinite(options.alpha) ? options.alpha : FRAME_EDGE_GRADIENT.groundAlpha;
+  c.save();
+  const g = c.createLinearGradient(0, H - range, 0, H);
+  g.addColorStop(0, frameEdgeInk(style, 0));
+  g.addColorStop(1, frameEdgeInk(style, alpha));
+  c.fillStyle = g;
+  c.fillRect(0, H - range, W, range);
+  c.restore();
+}
+
 /**
  * `alt` is height above the ground line, in the same units as `h`; `strength`
  * is how much ground is actually under the feet (0 over an open pit), so the
@@ -533,7 +577,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       // this transform in RunState.draw(); the full-resolution overlay has its
       // own context and must recreate it before applying the same world camera.
       if (opts.mirror) { c.translate(W, 0); c.scale(-1, 1); }
-      applyWorld(c, z, pan, opts.floorY ?? GROUND_Y);
+      applyWorld(c, z, pan, opts.floorY ?? GROUND_Y, opts.xOffset ?? 0);
       paint(c);
       c.restore();
     };
