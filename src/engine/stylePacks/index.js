@@ -16,6 +16,7 @@ import { efficiencyProfile } from '../render-efficiency.js';
 // wholesale instead; their art carries its own drawn highlights.
 import { W, H, bakeSS } from '../renderer.js';
 import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
+import { backgroundParallaxOffset } from '../scenery-layout.js';
 import { glowSprite } from '../../sprites/props.js';
 // The 5x7 pixel font's raw rows. The LCD panel lays its own cells, so it takes
 // the letterforms and not the blitter — see lcdSkyBanner.
@@ -29,18 +30,69 @@ import { terrainGroundY } from '../../game/terrain.js';
 // magnifies that foreground — so each parallax factor is scaled by the same
 // amount to keep the depth ratio the run was tuned with. Without it the world
 // races past a backdrop that has effectively frozen. Layer sizes are untouched:
-// the groundline these layers hang off does not move at any zoom.
-const PLX = ZOOM;
+// the groundline these layers hang off does not move at any zoom. ZOOM is a live
+// camera binding; do not snapshot it at module load because portrait rewrites it.
+
+function backgroundY(context, layer) {
+  return backgroundParallaxOffset(context?.cameraShiftY, layer);
+}
+
+function sceneryBandY(context, bandName, fallback) {
+  const band = context?.sceneryLayout?.bands?.[bandName];
+  return Number.isFinite(Number(band?.center)) ? Number(band.center) : fallback;
+}
+
+// Return the centre of a band while keeping a finite-sized sky object inside
+// it whenever the band is large enough.  A band describes the object's visible
+// envelope, not just the point at which its painter happens to be anchored;
+// using the raw centre for an 80px sun made its halo/rays visibly escape above
+// the celestial diagnostic range on short portrait frames.
+function sceneryBandPointY(context, bandName, fallback, extent = 0) {
+  const band = context?.sceneryLayout?.bands?.[bandName];
+  if (!band || !Number.isFinite(Number(band.top))
+    || !Number.isFinite(Number(band.bottom))
+    || !Number.isFinite(Number(band.center))) return fallback;
+  const radius = Math.max(0, Number(extent) || 0);
+  const lo = Number(band.top) + radius;
+  const hi = Number(band.bottom) - radius;
+  const center = Number(band.center);
+  if (lo > hi) return center;
+  return Math.max(lo, Math.min(hi, center));
+}
+
+const DESERT_SUN_RADIUS = 40;
+const DESERT_LOOP_RADIUS = 28;
+// Positive values sink the ring behind the near crest. Twenty logical pixels
+// leaves a clear upper arc while making the hills visibly own the landmark.
+const DESERT_LOOP_PEEK = 20;
+
+function sceneryRidgeBaseY(context, bandName, amplitude, fallback = GROUND_Y) {
+  if (!context?.sceneryLayout) return fallback;
+  return sceneryBandY(context, bandName, fallback - amplitude) + amplitude;
+}
+
+function portraitCloudY(context, index, fallback) {
+  const bands = context?.sceneryLayout?.bands;
+  if (!bands) return fallback;
+  const names = ['upperCloud', 'upperCloud', 'middleCloud', 'middleCloud',
+    'upperCloud', 'lowerCloud', 'middleCloud', 'lowerCloud'];
+  const band = bands[names[index % names.length]] || bands.middleCloud;
+  if (!band) return fallback;
+  const spread = Math.min(band.height * 0.35, 18);
+  return band.center + ((index % 3) - 1) * spread;
+}
 
 // The playable preview may audition a portrait-only cloud lift without
 // changing authored terrain or production scenery. Production and landscape
 // paths stay at zero; negative values move the sky layer upward.
 function portraitCloudOffset(context = null) {
+  if (context?.sceneryLayout) return 0;
   const n = Number(context?.cloudOffsetY);
   return Number.isFinite(n) ? Math.max(-100, Math.min(60, n)) : 0;
 }
 
 function portraitSunOffset(context = null) {
+  if (context?.sceneryLayout) return 0;
   const n = Number(context?.sunOffsetY);
   return Number.isFinite(n) ? Math.max(-100, Math.min(60, n)) : 0;
 }
@@ -49,6 +101,7 @@ function portraitSunOffset(context = null) {
 // landscape frame. Lift the mountain/terrain backdrop into that space while
 // leaving the authored lane, hero and touch controls on their existing anchors.
 function portraitSceneryOffset(context = null) {
+  if (context?.sceneryLayout) return 0;
   const n = Number(context?.sceneryOffsetY);
   return Number.isFinite(n) ? Math.max(-120, Math.min(40, n)) : 0;
 }
@@ -89,6 +142,27 @@ function solidRuns(camX, obstacles, viewW = W) {
   return runs.filter(([a, b]) => b > a);
 }
 
+// The pixel pack's apron is the ground UNDER the lane, not the lane surface.
+// A tunnel roof owns that space, so foreground texture has to stop there even
+// though the playable road continues across the overhang.
+function apronRuns(camX, obstacles, overhangs = [], viewW = W) {
+  const cut = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
+  const body = [];
+  for (const [a, b] of solidRuns(camX, obstacles, viewW)) {
+    let pieces = [[a, b]];
+    for (const [ca, cb] of cut) {
+      const next = [];
+      for (const [p, q] of pieces) {
+        if (ca > p) next.push([p, Math.min(q, ca)]);
+        if (cb < q) next.push([Math.max(p, cb), q]);
+      }
+      pieces = next.filter(([p, q]) => q > p);
+    }
+    body.push(...pieces);
+  }
+  return body;
+}
+
 function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = [], t = 0, viewW = W) {
   // A gap is drawn by NOT drawing, rather than by painting a black rectangle
   // over ground that has already been laid.
@@ -99,36 +173,23 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
   // under it: the sky, the hills, and the ground of the area below. A hole you
   // can see through is the whole difference between a level with two heights in
   // it and a level with a black rectangle in it.
-  const runs = solidRuns(camX, obstacles, viewW);
+  const runs = apronRuns(camX, obstacles, overhangs, viewW);
   // `overhangs` are WORLD-x spans with a second area running under them. The
   // apron below the line is 38px of body colour painted clean across the frame
   // with no idea of that, so over a chamber it is left hanging in mid-air with
   // a flat bottom edge — the one shape in the picture that cannot be ground.
   // The lane's lit surface still gets drawn there: you run along it. What stops
   // is the fill UNDER it, which belongs to the tunnel's roof slab instead.
-  const cut = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
   for (const [a, b] of runs) {
     if (b <= a) continue;
-    let body = [[a, b]];
-    for (const [ca, cb] of cut) {
-      const next = [];
-      for (const [p, q] of body) {
-        if (ca > p) next.push([p, Math.min(q, ca)]);
-        if (cb < q) next.push([Math.max(p, cb), q]);
-      }
-      body = next.filter(([p, q]) => q > p);
-    }
     // The cap goes with the body. It is drawn at the FLAT groundline while the
     // terrain rolls above it, so over a chamber — where the body it belongs to
     // has been cut away — it is left as a green bar hanging in the air under
     // the island. What the lane's surface is up there is the island's own cap.
+    ctx.fillStyle = colBody;
+    ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
     ctx.fillStyle = colTop;
-    for (const [p, q] of body) {
-      ctx.fillStyle = colBody;
-      ctx.fillRect(p, GROUND_Y, q - p, H - GROUND_Y);
-      ctx.fillStyle = colTop;
-      ctx.fillRect(p, GROUND_Y, q - p, 3);
-    }
+    ctx.fillRect(a, GROUND_Y, b - a, 3);
   }
   // ...and what is in the holes. After the ground, because the fill is clipped
   // to its own break and would otherwise be painted over by the apron either
@@ -212,7 +273,7 @@ const OVER = MARGIN + 4;
 const TREE_MAX = 18; // tallest crown, reserved as tile headroom
 // Slower than the far hill layer's 0.15: the volcano sits behind that range,
 // so it must drift more slowly than the crests occluding it.
-const VOLCANO_PLX = 0.09 * PLX;
+const VOLCANO_PLX = 0.09;
 // How far a hill's body is baked BELOW the bottom of the frame.
 //
 // A hill tile used to stop at `H`, which is right for as long as the background
@@ -290,7 +351,7 @@ function ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes) {
 // answer is the pixel the tile actually put there.
 export function ridgeYAt(screenX, camX, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
-  const off = ((camX * factor * PLX) % period + period) % period;
+  const off = ((camX * factor * ZOOM) % period + period) % period;
   const px = ((screenX + off) % period + period) % period;
   return ridgeProfile(px, yBase, amp, wl, period,
     !!(opts && opts.peak), !!(opts && opts.mesa), !!(opts && opts.dunes));
@@ -305,12 +366,13 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const snow = (opts && opts.snow) || null;
   const rock = (opts && opts.rock) || null;
   const trees = (opts && opts.trees) || null;
+  const paper = !!(opts && opts.paper);
   // A tree standing on a crest has its base at `top`, so its crown would reach
   // above the tile and get sliced flat by the canvas edge. Give the tile that
   // much headroom and blit from there.
   const tileTop = top - (trees ? TREE_MAX : 0);
   const key = `${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|`
-    + (trees ? trees.leaf + trees.trunk : '');
+    + (trees ? trees.leaf + trees.trunk : '') + `|paper:${paper ? 1 : 0}`;
   const SS = bakeSS();
   if (SS !== hillCacheSS) { hillCache.clear(); hillCacheSS = SS; }
   let tile = hillCache.get(key);
@@ -329,6 +391,13 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
       x.lineTo(period + OVER, H + HILL_UNDERFILL);
       x.closePath();
     };
+    if (paper) {
+      // Shadows are baked with the ridge, so the per-frame path remains the
+      // existing tile blit. This is the important performance boundary for the
+      // preview: no multiply fill or repeated hill trace during gameplay.
+      paperShadowPass(x, ridgePath, PAPER_DEEP_OFFSET);
+      paperShadowPass(x, ridgePath, PAPER_CONTACT_OFFSET, PAPER_CONTACT_COLOR);
+    }
     ridgePath();
     x.fillStyle = color;
     x.fill();
@@ -401,9 +470,12 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
         }
       }
     }
+    if (paper) {
+      paperFinishPass(x, ridgePath, paperPatternFor(x));
+    }
     hillCache.set(key, tile);
   }
-  const off = ((camX * factor * PLX) % period + period) % period;
+  const off = ((camX * factor * ZOOM) % period + period) % period;
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   const coverage = backgroundCoverage(ctx);
@@ -621,7 +693,7 @@ function vCapPath() {
 // `cone` and `cap` are kept for the per-frame highlight clip — it needs BOTH,
 // see the note where it is drawn. `under`/`over` are the baked halves of the
 // static stack.
-const volcBake = { under: null, over: null, cone: null, cap: null, ss: 0 };
+const volcBake = { under: null, over: null, cone: null, cap: null, ss: 0, paper: false };
 // Layer-local drawing happens in ABSOLUTE y and CXB-relative x, so every
 // context that touches the volcano wants the same transform.
 function volcCtx(canvas, ss) {
@@ -665,18 +737,23 @@ function bakeSlice(paint, y0, y1, out) {
   g.drawImage(sc, 0, (y0 - V_LY) * ss, V_LW * ss, h * ss, 0, 0, V_LW * out, h * out);
   return { c, y: y0, h };
 }
-function bakeVolcano() {
+function bakeVolcano(paper = false) {
   const out = bakeSS();
   // A density change makes the existing bakes the wrong resolution, not merely
   // stale — hold the factor they were built at rather than re-baking blindly.
-  if (volcBake.under && volcBake.ss === out) return;
+  if (volcBake.under && volcBake.ss === out && volcBake.paper === paper) return;
   volcBake.ss = out;
+  volcBake.paper = paper;
   const cone = vConePath(), cap = vCapPath();
   volcBake.cone = cone;
   volcBake.cap = cap;
 
   // ---- under: rock, ink outline, shadow faces, lava gradient ----
   volcBake.under = bakeSlice((g) => {
+  if (paper) {
+    paperShadowPass(g, cone, PAPER_DEEP_OFFSET);
+    paperShadowPass(g, cone, PAPER_CONTACT_OFFSET, PAPER_CONTACT_COLOR);
+  }
   g.fillStyle = V_ROCK;
   g.fill(cone);
   g.strokeStyle = V_INK;
@@ -715,6 +792,7 @@ function bakeVolcano() {
   g.fillStyle = grad;
   g.fill(cap);
   g.restore();
+  if (paper) paperFinishPass(g, cone, paperPatternFor(g), { grainAlpha: 0.9 });
   // The cone's own band: the ink stroke's half-width above the summit, down to
   // just past the groundline. Everything above is plume, which is drawn live.
   }, V_RIM_Y - 2, GROUND_Y + 2, out);
@@ -743,16 +821,20 @@ function bakeVolcano() {
   }, V_RIM_Y - 3, V_CAP_BOT + 18, out);
 }
 
-function drawVolcano(ctx, t, camX, atCam, reduced) {
-  const cx = W / 2 + (atCam - camX) * VOLCANO_PLX;
-  if (cx + V_MAX_HALF < -40 || cx - V_MAX_HALF > W + 40) return; // off screen
-  bakeVolcano();
+function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false) {
+  const cx = viewCenterX(ctx) + (atCam - camX) * VOLCANO_PLX * ZOOM;
+  // Culled against the real edges of the picture, so the cone cannot wink into
+  // existence while part of it is already on screen. The margin covers the
+  // plume and the bake's own overhang past V_MAX_HALF.
+  if (outsideView(ctx, cx + V_MAX_HALF, 120)
+    && outsideView(ctx, cx - V_MAX_HALF, 120)) return; // off screen
+  bakeVolcano(paper);
   // Straight onto the scene, no intermediate layer: the bakes already carry the
   // depth blur, so there is nothing left that has to be flattened before it can
   // be filtered. `translate` puts the parallax offset on the context, which
   // means the cached cone/cap paths keep working as clips without rebuilding.
   ctx.save();
-  ctx.translate(cx - CXB, 0);
+  ctx.translate(cx - CXB, yOffset);
 
   // Smoke goes down first so the plume passes BEHIND the summit — puffs that
   // overlap the crater lip read as sitting on top of it otherwise.
@@ -934,6 +1016,64 @@ function backgroundCoverage(ctx) {
   return c;
 }
 
+// WRAP A DRIFTING OBJECT INTO THE VISIBLE BAND, NOT INTO THE AUTHORED FRAME.
+//
+// Everything that tiles across the sky — clouds, the pal, vultures, a skyline,
+// a castle on a stick — used to wrap inside `0..W` plus a margin, because in
+// landscape the picture IS the authored 480px frame and those are the same
+// interval.
+//
+// Portrait moves the whole backdrop sideways (the hero column sits further
+// left to buy runway), so the visible local range is no longer `0..W`: at the
+// shipped anchor it is about 131..611. An object wrapping at `W + 65` then
+// winks out of existence 66 pixels INSIDE the right edge of the picture, in
+// full view. That is the pop-in.
+//
+// So the window comes from the coverage the renderer publishes for this pass.
+// With the identity coverage this is arithmetically the old expression, which
+// is why landscape is untouched.
+function wrapIntoView(ctx, value, margin) {
+  const c = backgroundCoverage(ctx);
+  const span = c.width + margin * 2;
+  // The modulo is taken on the raw value, exactly as the inline expressions
+  // did, and only the window it lands in moves. Folding the window's origin
+  // into the modulo instead would slide every object sideways by the margin,
+  // which in landscape is a silent art change.
+  return c.left - margin + (((value % span) + span) % span);
+}
+
+// The matching cull: "far enough past the edge of what is actually on screen
+// to stop drawing", rather than past the edge of the authored frame.
+// A landmark pinned to one spot in the level arrives at the middle of the
+// PICTURE when the camera reaches it. In portrait the picture's middle is not
+// W/2 — the backdrop is shifted — so a butte anchored at W/2 sits about 131px
+// left of centre and, worse, is culled while a third of it is still on screen.
+function viewCenterX(ctx) {
+  const c = backgroundCoverage(ctx);
+  return c.left + c.width / 2;
+}
+
+function outsideView(ctx, x, margin) {
+  const c = backgroundCoverage(ctx);
+  return x < c.left - margin || x > c.right + margin;
+}
+
+// Exposed for tests/background-wrap.js, which holds the wrap rule to its two
+// claims: identical to the old inline arithmetic in landscape, and tied to the
+// view in portrait.
+export const __testing = {
+  wrapIntoView, outsideView, backgroundCoverage, viewCenterX, sceneryBandPointY, desertThermals,
+  desertLoopLandmarkY, DESERT_SUN_RADIUS, DESERT_LOOP_RADIUS, DESERT_LOOP_PEEK,
+  paperCutoutPreviewRequested,
+  // The pinned landmarks, so a test can watch ONE of them cross the picture
+  // instead of trying to pick it out of a whole painted background. Both are
+  // presented with the SAME (ctx, camX, atCam) shape: their real signatures
+  // differ, and a test that has to remember which is which is a test that
+  // silently measures nothing.
+  drawButte: (ctx, camX, atCam) => drawButte(ctx, camX, atCam),
+  drawVolcano: (ctx, camX, atCam) => drawVolcano(ctx, 0, camX, atCam, true, 0),
+};
+
 // Per-frame gradient construction is surprisingly costly at device res —
 // cache gradients by their color stops (they are reusable frame to frame).
 const gradCache = new Map();
@@ -973,6 +1113,187 @@ function patternFill(ctx, key, tw, th, paint) {
     ctx.fillStyle = pat;
     ctx.fillRect(0, 0, W, H);
   }
+}
+
+// PLUMBER PAPER STUDY -------------------------------------------------------
+//
+// This checkout keeps the paper treatment active for Plumber's Panic while the
+// direction is being evaluated. `settings.paperCutout:false` and `?paper=off`
+// remain comparison seams; the normal game path no longer needs a flag.
+const PAPER_TEXTURE_SIZE = 200;
+// The first pass read as noise in the live game because the pattern was only
+// seven percent opaque. The reference has a continuous cardstock surface, so
+// give the material enough body to survive the game's native zoom and palette.
+const PAPER_TEXTURE_OPACITY = 0.16;
+const PAPER_GRAIN_ALPHA = 0.95;
+const PAPER_SURFACE_ALPHA = 0.92;
+// Scenery gets a lift, not a second silhouette. Keep the offsets and alpha
+// short enough that clouds remain part of the sky instead of casting a long
+// game-object shadow across it.
+const PAPER_DEEP_OFFSET = Object.freeze({ x: 4, y: 8 });
+const PAPER_CONTACT_OFFSET = Object.freeze({ x: 1.5, y: 3 });
+const PAPER_DEEP_COLOR = 'rgba(15,23,36,0.18)';
+const PAPER_CONTACT_COLOR = 'rgba(0,0,0,0.08)';
+const PAPER_RIM_COLOR = 'rgba(255,255,255,0.24)';
+const PAPER_RIM_WIDTH = 1.15;
+const paperPatternCache = new WeakMap();
+const paperSurfaceCache = new Map();
+let paperTextureCanvas = null;
+
+function paperCutoutPreviewRequested(settings = {}) {
+  // The paper treatment is intentionally the active Plumber study for this
+  // checkout. Keep the explicit false seam so focused tests and comparisons
+  // can still render the original treatment without changing source again.
+  if (settings.paperCutout === false || settings.paperCutout === 'off') return false;
+  if (settings.paperCutout === true || settings.paperCutout === 'plumber') return true;
+  if (typeof window === 'undefined' || !window.location) return true;
+  try {
+    const paper = new URLSearchParams(window.location.search || '').get('paper');
+    return paper !== 'off' && paper !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function paperTextureSource() {
+  if (paperTextureCanvas || typeof document === 'undefined') return paperTextureCanvas;
+  try {
+    const c = document.createElement('canvas');
+    c.width = PAPER_TEXTURE_SIZE;
+    c.height = PAPER_TEXTURE_SIZE;
+    const p = c.getContext('2d');
+    const image = p?.createImageData?.(PAPER_TEXTURE_SIZE, PAPER_TEXTURE_SIZE);
+    if (!p || !image?.data) return null;
+    // Deterministic grain keeps the preview stable across cache rebuilds and
+    // makes visual comparisons useful. It is still a one-time 40k-pixel bake.
+    let seed = 0x4d415348;
+    const next = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed >>> 24;
+    };
+    const data = image.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const grain = next();
+      data[i] = grain;
+      data[i + 1] = grain;
+      data[i + 2] = grain;
+      // Avoid transparent holes in the tile: paper fibres vary in value, but
+      // the surface itself is continuous.
+      data[i + 3] = Math.floor((0.35 + (next() / 255) * 0.65)
+        * PAPER_TEXTURE_OPACITY * 255);
+    }
+    p.putImageData(image, 0, 0);
+    paperTextureCanvas = c;
+    return paperTextureCanvas;
+  } catch {
+    return null;
+  }
+}
+
+function paperPatternFor(ctx) {
+  if (!ctx || typeof ctx.createPattern !== 'function') return null;
+  let pattern = paperPatternCache.get(ctx);
+  if (pattern !== undefined) return pattern;
+  const source = paperTextureSource();
+  pattern = source ? ctx.createPattern(source, 'repeat') : null;
+  paperPatternCache.set(ctx, pattern);
+  return pattern;
+}
+
+function paperPath(ctx, source) {
+  if (typeof source === 'function') source();
+  else if (source) return source;
+  return null;
+}
+
+function fillPaperPath(ctx, source) {
+  const path = paperPath(ctx, source);
+  if (path) ctx.fill(path);
+  else if (typeof source === 'function') ctx.fill();
+}
+
+function strokePaperPath(ctx, source) {
+  const path = paperPath(ctx, source);
+  if (path) ctx.stroke(path);
+  else if (typeof source === 'function') ctx.stroke();
+}
+
+function paperShadowPass(ctx, source, offset, color = PAPER_DEEP_COLOR) {
+  ctx.save();
+  ctx.translate(offset.x, offset.y);
+  ctx.fillStyle = color;
+  fillPaperPath(ctx, source);
+  ctx.restore();
+}
+
+function paperFinishPass(ctx, source, pattern = paperPatternFor(ctx), rim = {}) {
+  ctx.save();
+  if (pattern) {
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = rim.grainAlpha ?? PAPER_GRAIN_ALPHA;
+    ctx.fillStyle = pattern;
+    fillPaperPath(ctx, source);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = rim.strokeStyle || PAPER_RIM_COLOR;
+  ctx.lineWidth = rim.lineWidth || PAPER_RIM_WIDTH;
+  strokePaperPath(ctx, source);
+  ctx.restore();
+}
+
+function drawPaperShape(ctx, source, fillColor, options = {}) {
+  const deep = options.deep || PAPER_DEEP_OFFSET;
+  const contact = options.contact || PAPER_CONTACT_OFFSET;
+  ctx.save();
+  paperShadowPass(ctx, source, deep, options.deepColor);
+  paperShadowPass(ctx, source, contact, options.contactColor || PAPER_CONTACT_COLOR);
+  ctx.fillStyle = fillColor;
+  fillPaperPath(ctx, source);
+  paperFinishPass(ctx, source, options.pattern || paperPatternFor(ctx), options);
+  ctx.restore();
+}
+
+// A whole-sky grain pass is cached at the current backing-store density. A
+// per-frame pattern fill over a phone-height portrait frame is needlessly
+// expensive; this is one ordinary image blit after the first bake. The source
+// is a local-width strip so the translated portrait coverage is still filled.
+function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
+  const source = paperTextureSource();
+  if (!source || !ctx?.canvas || !coverage?.width) return;
+  const cv = ctx.canvas;
+  const sx = cv.width / Math.max(1, W);
+  const sy = cv.height / Math.max(1, H);
+  const width = Math.max(1, Math.ceil(coverage.width * sx));
+  const height = Math.max(1, Math.ceil(H * sy));
+  let bake = paperSurfaceCache.get(key);
+  if (!bake || bake.pixelWidth !== width || bake.pixelHeight !== height
+    || bake.logicalWidth !== coverage.width || bake.logicalHeight !== H) {
+    const layer = document.createElement('canvas');
+    layer.width = width;
+    layer.height = height;
+    const b = layer.getContext('2d');
+    if (!b) return;
+    b.setTransform(sx, 0, 0, sy, 0, 0);
+    const pattern = b.createPattern(source, 'repeat');
+    if (!pattern) return;
+    b.fillStyle = pattern;
+    b.fillRect(0, 0, coverage.width, H);
+    bake = {
+      layer,
+      pixelWidth: width,
+      pixelHeight: height,
+      logicalWidth: coverage.width,
+      logicalHeight: H,
+    };
+    paperSurfaceCache.set(key, bake);
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = PAPER_SURFACE_ALPHA;
+  ctx.drawImage(bake.layer, 0, 0, bake.pixelWidth, bake.pixelHeight,
+    coverage.left, 0, bake.logicalWidth, bake.logicalHeight);
+  ctx.restore();
 }
 
 // A repeating texture that covers the WHOLE screen every frame is cheaper
@@ -1090,21 +1411,45 @@ export function sunShock() {
   else cloudShockT = 1.4;
 }
 
-function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null) {
+function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null, paper = false) {
   // Animated but dignified: it slowly arcs across the sky like a day passing,
   // its rays rotate and breathe, and its halo pulses. It does not bop.
-  const sx = (t * 3.2) % (W + 150);
-  const x = W + 60 - sx;                              // drifts right to left
-  const u = (x - W / 2) / (W / 2);
+  const view = backgroundCoverage(ctx);
+  const sx = (t * 3.2) % (view.width + 150);
+  const x = view.right + 60 - sx;                     // drifts right to left
+  const u = (x - (view.left + view.width / 2)) / Math.max(1, view.width / 2);
   // Base sits below the HUD pill row (~y 23) plus the halo/ray radius (~30),
   // so the sun never hides behind the score furniture at the apex of its arc.
-  const y = 58 + portraitSunOffset(backgroundContext) + 26 * u * u;    // shallow day-arc
+  // This helper applies the celestial compensation itself below (`y -
+  // bgShift`), so do not add backgroundY here as well or the sun would cancel
+  // the camera twice when the common scene context is present.
+  const y = sceneryBandY(backgroundContext, 'celestial',
+    58 + portraitSunOffset(backgroundContext)) + 26 * u * u;
   const breathe = 1 + 0.06 * Math.sin(t * 1.1);
   ctx.save();
   // The Plumber background is drawn in a shifted context so the hills follow
   // a raised road. The sun belongs to the sky, not that scenery: cancel that
   // context shift here so a jump cannot carry the sun along with the camera.
   ctx.translate(x, y - bgShift);
+  if (paper) {
+    // The sun is animated, so keep its small geometry live, but still give the
+    // disc the same cardstock lift as the cached mountain layers. The full
+    // paper pass is tiny compared with the background surface.
+    ctx.save();
+    ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+    ctx.beginPath();
+    ctx.arc(0, 0, 15 * breathe, 0, Math.PI * 2);
+    ctx.fillStyle = PAPER_DEEP_COLOR;
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+    ctx.beginPath();
+    ctx.arc(0, 0, 15 * breathe, 0, Math.PI * 2);
+    ctx.fillStyle = PAPER_CONTACT_COLOR;
+    ctx.fill();
+    ctx.restore();
+  }
   // halo
   ctx.beginPath();
   ctx.arc(0, 0, 30 * breathe, 0, Math.PI * 2);
@@ -1126,8 +1471,24 @@ function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null) {
   ctx.arc(0, 0, 15 * breathe, 0, Math.PI * 2);
   ctx.fillStyle = '#f6d33c';
   ctx.fill();
-  ctx.strokeStyle = 'rgba(26,16,40,0.25)';
-  ctx.lineWidth = 1;
+  if (paper) {
+    const pattern = paperPatternFor(ctx);
+    if (pattern) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = PAPER_GRAIN_ALPHA;
+      ctx.fillStyle = pattern;
+      ctx.beginPath();
+      ctx.arc(0, 0, 15 * breathe, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.strokeStyle = PAPER_RIM_COLOR;
+    ctx.lineWidth = PAPER_RIM_WIDTH;
+  } else {
+    ctx.strokeStyle = 'rgba(26,16,40,0.25)';
+    ctx.lineWidth = 1;
+  }
   ctx.stroke();
   ctx.restore();
 }
@@ -1135,12 +1496,20 @@ function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null) {
 // The one puffy silhouette every sky cloud shares — the cloud pal wears it
 // with a face, the background clouds wear it plain. Draw at origin; callers
 // translate/scale first.
-function drawCloudBody(ctx, fill) {
+function cloudPath(ctx) {
   ctx.beginPath();
   for (const [px, py, rx, ry] of [[-15, 3, 10, 8], [0, -5, 13, 10], [15, 3, 10, 8], [0, 4, 17, 9]]) {
     ctx.moveTo(px + rx, py);
     ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
   }
+}
+
+function drawCloudBody(ctx, fill, paper = false) {
+  if (paper) {
+    drawPaperShape(ctx, () => cloudPath(ctx), fill);
+    return;
+  }
+  cloudPath(ctx);
   // Stroke BEFORE fill: the fill then covers every stroke segment inside the
   // union, leaving only the outer silhouette outlined — otherwise each lobe's
   // full ellipse shows and the puff reads as a clump of bubbles on any fill
@@ -1153,7 +1522,7 @@ function drawCloudBody(ctx, fill) {
   ctx.fill();
 }
 
-function drawCloudPal(ctx, t, reduced, backgroundContext = null) {
+function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false) {
   if (t < cloudLastT) { cloudShockT = 0; cloudLaughT = 0; } // new run: compose yourself
   const dt = Math.max(0, Math.min(0.1, t - cloudLastT));
   cloudLastT = t;
@@ -1164,13 +1533,15 @@ function drawCloudPal(ctx, t, reduced, backgroundContext = null) {
 
   // Wandering path: crosses the whole sky slowly, then exits and stays gone
   // for a stretch before floating back in from the left.
-  const x = ((t * 13) % (W + 190)) - 95;
-  if (x < -45 || x > W + 45) return; // off having a private moment
+  const x = wrapIntoView(ctx, t * 13, 95);
+  if (outsideView(ctx, x, 45)) return; // off having a private moment
   // Sits just under the HUD, not down in the middle of the sky: at PAL_S the
   // silhouette reaches ~21px above its origin and the pill row owns everything
   // down to y 23, so the top of the bob is tuned to land at y ~28 — as high as
   // the pal can ride while its face still clears the score.
-  let y = 61 + portraitCloudOffset(backgroundContext) + Math.sin(t * 0.33) * 9.5 + Math.sin(t * 0.9) * 2.5;
+  let y = portraitCloudY(backgroundContext, 1, 61 + portraitCloudOffset(backgroundContext))
+    + Math.sin(t * 0.33) * 9.5 + Math.sin(t * 0.9) * 2.5
+    + backgroundY(backgroundContext, 'clouds');
   let jx = 0;
   if (!reduced && laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
   if (!reduced && shocked) jx = Math.sin(t * 26) * 1.2;
@@ -1178,7 +1549,7 @@ function drawCloudPal(ctx, t, reduced, backgroundContext = null) {
   ctx.save();
   ctx.translate(x + jx, y);
   ctx.scale(PAL_S, PAL_S); // the pal is the big one; the flock stays smaller
-  drawCloudBody(ctx, PIXEL_CLOUD_LIGHT);
+  drawCloudBody(ctx, PIXEL_CLOUD_LIGHT, paper);
 
   // idle micro-expressions: every ~8s slot, briefly giggle or doze
   const slot = Math.floor(t / 8);
@@ -1327,6 +1698,30 @@ const DESERT_FAR = { amp: 100, wl: 230, factor: 0.12 };
 const DESERT_MID = { amp: 78, wl: 200, factor: 0.22, color: '#c0884c' };
 const DESERT_RIDGE = { amp: 52, wl: 150, factor: 0.35 };
 
+// Decorative wire loops belong to the near desert scenery. They sit slightly
+// behind the near crest so the mountains mask their lower arc: the player gets
+// a readable hint of a loop without being shown a free-floating target. This
+// is deliberately separate from the interactive world loop in game/loop.js.
+function desertLoopLandmarkY(layerBaseY, layerAmp) {
+  return Number(layerBaseY) - Number(layerAmp) - DESERT_LOOP_RADIUS + DESERT_LOOP_PEEK;
+}
+
+function drawDesertLoopLandmarks(ctx, camX, nearBaseY, nearAmp) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(160,104,48,0.26)';
+  ctx.lineWidth = 4;
+  const ringY = desertLoopLandmarkY(nearBaseY, nearAmp);
+  for (let i = 0; i < 2; i++) {
+    // Match the near dunes' horizontal rate so the rings stay part of that
+    // scenery plane in both orientations.
+    const lx = wrapIntoView(ctx, i * 340 - camX * DESERT_RIDGE.factor * ZOOM, 80);
+    ctx.beginPath();
+    ctx.arc(lx, ringY, DESERT_LOOP_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // Where the dunes are, as fractions of one tile. `ridgeProfile`'s dune mode
 // builds each ridge from exactly these three humps, so anything that needs to
 // stand ON a dune — the cacti — can be placed at a peak rather than dropped at
@@ -1393,16 +1788,46 @@ const DESERT_THERMALS = [
   { x: 352, y: 40, rx: 31, ry: 7, n: 2, s: 13, rate: 0.55, plx: 0.09, ink: DESERT_INK_FAR },
 ];
 
-function drawVultures(ctx, t, camX, reduced) {
-  const span = W + 160;
-  for (const th of DESERT_THERMALS) {
+const DESERT_PORTRAIT_BIRD_SCALE = 1.45;
+
+function desertThermals(backgroundContext) {
+  const band = backgroundContext?.sceneryLayout?.bands?.birds;
+  if (!band || !Number.isFinite(Number(band.top))
+    || !Number.isFinite(Number(band.bottom)) || !Number.isFinite(Number(band.center))) {
+    return DESERT_THERMALS;
+  }
+  const height = Math.max(0, Number(band.bottom) - Number(band.top));
+  const inBand = (source, fraction, orbitFraction) => {
+    const ry = Math.min(source.ry, Math.max(3, height * orbitFraction));
+    const requested = Number(band.top) + height * fraction;
+    const lo = Number(band.top) + ry;
+    const hi = Number(band.bottom) - ry;
+    return {
+      ...source,
+      y: lo <= hi ? Math.max(lo, Math.min(hi, requested)) : Number(band.center),
+      ry,
+    };
+  };
+  // Two staggered envelopes use the whole authored birds band instead of
+  // leaving both thermals in the celestial strip. Their local coordinates are
+  // intentional: the caller applies the clouds' shared depth offset once.
+  return [
+    inBand(DESERT_THERMALS[0], 0.34, 0.12),
+    inBand(DESERT_THERMALS[1], 0.68, 0.09),
+  ];
+}
+
+function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
+  const thermals = desertThermals(backgroundContext);
+  const sizeScale = backgroundContext?.sceneryLayout ? DESERT_PORTRAIT_BIRD_SCALE : 1;
+  for (const th of thermals) {
     for (let i = 0; i < th.n; i++) {
       // Reduced motion freezes the wheel rather than emptying the sky — the
       // volcano plume's rule: a frozen cloud is not a motion trigger, and an
       // empty sky reads as wrong rather than as calm.
       const a = (reduced ? 0 : t * th.rate) + (i * TAU_BG) / th.n;
-      const drift = camX * th.plx * PLX;
-      const x = ((th.x + Math.cos(a) * th.rx - drift) % span + span) % span - 80;
+      const drift = camX * th.plx * ZOOM;
+      const x = wrapIntoView(ctx, th.x + Math.cos(a) * th.rx - drift, 80);
       const y = th.y + Math.sin(a) * th.ry;
       // Nearer on the front of the circle. The size difference is small on
       // purpose: enough to give the ring depth, not enough to read as a bird
@@ -1417,7 +1842,7 @@ function drawVultures(ctx, t, camX, reduced) {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(-Math.sin(a) * 0.22);
-      drawVulture(ctx, th.s * depth, flap, th.ink);
+      drawVulture(ctx, th.s * depth * sizeScale, flap, th.ink);
       ctx.restore();
     }
   }
@@ -1448,10 +1873,10 @@ function drawVultures(ctx, t, camX, reduced) {
 // which at eleven pixels is a dark egg sitting on a hill, and a prickly pear's
 // pads collapse into a paw print. A silhouette that has to be explained is
 // worse than a fourth saguaro.
-function drawSaguaros(ctx, camX) {
+function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y) {
   const { amp, wl, factor } = DESERT_RIDGE;
   const period = Math.max(16, Math.round(Math.PI * wl));
-  const off = ((camX * factor * PLX) % period + period) % period;
+  const off = ((camX * factor * ZOOM) % period + period) % period;
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -1489,9 +1914,10 @@ function drawSaguaros(ctx, camX) {
   // left-to-right, both in the middle of the screen where you cannot miss it.
   // `tile` is derived from the scroll distance itself, so it names the same
   // dune for as long as that dune exists and every choice below is stable.
-  const base = Math.floor((camX * factor * PLX) / period);
-  const first = Math.floor((-off - period) / period);
-  const last = Math.ceil((W + period) / period);
+  const base = Math.floor((camX * factor * ZOOM) / period);
+  const view = backgroundCoverage(ctx);
+  const first = Math.floor((view.left - off - period) / period);
+  const last = Math.ceil((view.right + period) / period);
   for (let k = first; k <= last; k++) {
     const tile = base + k;
     for (let i = 0; i < DESERT_DUNES.length; i++) {
@@ -1510,7 +1936,7 @@ function drawSaguaros(ctx, camX) {
       const x = k * period - off + (dune.at + nudge) * period;
       // Margin covers the widest a cactus can reach from its trunk, so one
       // never blinks into existence at the frame edge either.
-      if (x < -70 || x > W + 70) continue;
+      if (outsideView(ctx, x, 70)) continue;
       const h = Math.max(12, dune.h * amp * CACTUS_OF_DUNE);
       const flip = parity ? 1 : -1;
       // The crest under this cactus, sampled from the same function the tile
@@ -1519,7 +1945,7 @@ function drawSaguaros(ctx, camX) {
       // silhouette whose base exactly meets the ridge always leaves a hairline
       // of sky where the two curves disagree, and the eye reads that hairline
       // as "in front of" rather than "on".
-      const crest = ridgeYAt(x, camX, GROUND_Y, amp, wl, factor, { dunes: true });
+      const crest = ridgeYAt(x, camX, layerBaseY, amp, wl, factor, { dunes: true });
       // Buried nearly HALF its height, up from a third. The base is drawn over
       // the hill's own body, so the deeper it sits the more the plant reads as
       // emerging from the ground rather than resting on the line of it — and
@@ -1581,12 +2007,12 @@ const DUST_DEVILS = [
   { x: 760, h: 132, w: 9, rate: 0.8, drift: 3.5, plx: 0.15, lean: -0.1, alpha: 0.6 },
 ];
 
-function drawDustDevils(ctx, t, camX, reduced) {
+function drawDustDevils(ctx, t, camX, reduced, layerBaseY = GROUND_Y) {
   // A wrap span far wider than the screen, so most of the time you are looking
   // at one devil or none. At W + 220 both were on screen almost always, which
   // turned a thing you notice into weather — and a plain with a dust devil on
   // it every few seconds is not a still afternoon.
-  const span = W * 4;
+  const span = backgroundCoverage(ctx).width * 4;
   ctx.save();
   // LIGHTER than the country behind it. The first cut used #c99a63, which is
   // within a few points of the middle range's own #c0884c — a dust column the
@@ -1600,11 +2026,13 @@ function drawDustDevils(ctx, t, camX, reduced) {
     // the camera is still — the cloud flock's trick. Frozen under reduced
     // motion rather than removed: the column is still a thing standing there.
     const wander = reduced ? 0 : t * d.drift;
-    const x = ((d.x - camX * d.plx * PLX - wander) % span + span) % span - 110;
-    if (x < -60 || x > W + 60) continue;
+    const view = backgroundCoverage(ctx);
+    const x = view.left - 110
+      + (((d.x - camX * d.plx * ZOOM - wander) % span) + span) % span;
+    if (outsideView(ctx, x, 60)) continue;
     // Base sits on the middle range's ground line, not on the frame's — a
     // column whose foot floats above the country is a smudge on the glass.
-    const base = GROUND_Y - 4;
+    const base = layerBaseY - 4;
     // A STACK OF PUFFS, not a polygon. The first cut drew the funnel as one
     // filled path and it read as a flat translucent slab leaning over the
     // hills — hard edges, one flat alpha, and a taper too gradual to be a
@@ -1648,11 +2076,16 @@ function drawDustDevils(ctx, t, camX, reduced) {
 // The point of a landmark is not decoration: it is that the run acquires a
 // destination. A stage with one thing on the horizon that slowly gets closer is
 // a journey; a stage with a repeating ridge is a treadmill.
-function drawButte(ctx, camX, atCam) {
-  const cx = W / 2 + (atCam - camX) * 0.09 * PLX;
+function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y) {
+  const cx = viewCenterX(ctx) + (atCam - camX) * 0.09 * ZOOM;
   const halfW = 74;
-  if (cx + halfW + 70 < -40 || cx - halfW > W + 40) return;
-  const baseY = GROUND_Y - 4;
+  // The margin has to cover the WIDEST ink this painter can put down, not the
+  // silhouette's nominal half-width: the talus and shadow reach about 26px
+  // further left than `cx - halfW`, and at the old 40 the landmark's first
+  // frame appeared that far inside the picture. Cheap insurance — being
+  // generous here costs one draw call at the very edge of the crossing.
+  if (outsideView(ctx, cx + halfW + 70, 120) && outsideView(ctx, cx - halfW, 120)) return;
+  const baseY = layerBaseY - 4;
   // Raised with the ranges. The landmark only works if it stands clearly over
   // the far mesas, and at the old 96 it was level with them once they went up.
   const capY = baseY - 128;
@@ -1670,7 +2103,7 @@ function drawButte(ctx, camX, atCam) {
     c.lineTo(halfW, baseY);
     c.closePath();
   };
-  // The smaller sibling goes down FIRST and to the left, so the main butte
+// The smaller sibling goes down FIRST and to the left, so the main butte
   // overlaps it. One butte on an empty horizon reads as a prop; two at
   // different distances read as country.
   ctx.globalAlpha = 0.55;
@@ -1711,14 +2144,131 @@ function drawButte(ctx, camX, atCam) {
 // range instead.
 
 // ---------------------------------------------------------------------------
+// Plumber's foreground apron: broad grass bands rather than Speed's checker
+// road. The marks grow with distance down the apron and their scroll rates
+// separate gently, so portrait's extra lower runway reads as moving ground
+// without turning the platformer's surface into a racing strip.
+const PLUMBER_APRON_STRATA = Object.freeze([
+  { y: 9, h: 3, span: 64, width: 24, rate: 0.72, color: 'rgba(112, 196, 92, 0.30)' },
+  { y: 21, h: 5, span: 108, width: 58, rate: 0.98, color: 'rgba(24, 92, 42, 0.22)' },
+  { y: 32, h: 5, span: 156, width: 94, rate: 1.24, color: 'rgba(112, 196, 92, 0.22)' },
+]);
+
+function drawPlumberApronStrata(ctx, camX, obstacles, overhangs, viewW, reduced = false) {
+  const runs = apronRuns(camX, obstacles, overhangs, viewW);
+  const travel = reduced ? 0 : camX;
+  ctx.save();
+  for (const band of PLUMBER_APRON_STRATA) {
+    const y = GROUND_Y + band.y;
+    const phase = ((travel * band.rate) % band.span + band.span) % band.span;
+    ctx.fillStyle = band.color;
+    for (const [a, b] of runs) {
+      if (b <= a) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(a, y, b - a, band.h);
+      ctx.clip();
+      for (let x = -band.span - phase; x < viewW + band.span; x += band.span) {
+        ctx.fillRect(x, y, band.width, band.h);
+      }
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function drawPaperApronTexture(ctx, camX, obstacles, overhangs, viewW) {
+  const pattern = paperPatternFor(ctx);
+  if (!pattern) return;
+  const runs = apronRuns(camX, obstacles, overhangs, viewW);
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = PAPER_SURFACE_ALPHA;
+  ctx.fillStyle = pattern;
+  for (const [a, b] of runs) {
+    if (b > a) ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
+  }
+  ctx.restore();
+}
+
+/**
+ * THE GROUND TEXTURE CARRIES ON OVER A STAGED EXIT, one step lower.
+ *
+ * A pack's apron has to stop for the whole of a tunnel — its flat body would
+ * hang in the air over the chamber — and that cut used to take the texture with
+ * it right to the end of the span. So the ground died at the chamber and came
+ * back only once the lane had fully levelled out, a screen and a half later,
+ * with a blank stripe in between. Out on the staged exit (routes.js,
+ * TUNNEL_EXIT_SHELF) there IS ground: a shelf a step below the lane, climbing
+ * home. Only the TEXTURE belongs there — the apron body still does not.
+ *
+ * Drawn in its own pass because the pack's ground goes down before the terrain
+ * and the routes, and the hillside over the shelf is painted by those: anything
+ * laid here in the ground pass is buried by the time the frame is finished.
+ * Each dash sits at the depth under its own middle, so a row tilts with the
+ * climb rather than stepping down it.
+ */
+function drawShelfTexture(ctx, camX, cab, shelves, reduced = false, viewW = W) {
+  if (!shelves || !shelves.length) return;
+  const travel = reduced ? 0 : camX;
+  const spans = [];
+  for (const sp of shelves) {
+    const a = Math.max(0, sp.x - camX);
+    const b = Math.min(viewW, sp.x + sp.w - camX);
+    if (b > a) spans.push([a, b, sp]);
+  }
+  if (!spans.length) return;
+  ctx.save();
+  if (cab.id === 'plumber') {
+    for (const band of PLUMBER_APRON_STRATA) {
+      const y = GROUND_Y + band.y;
+      const phase = ((travel * band.rate) % band.span + band.span) % band.span;
+      ctx.fillStyle = band.color;
+      for (const [a, b, sp] of spans) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(a, y, b - a, band.h + 80);
+        ctx.clip();
+        for (let x = -band.span - phase; x < viewW + band.span; x += band.span) {
+          if (x + band.width < a || x > b) continue;
+          ctx.fillRect(x, y + sp.depthAt(camX + x + band.width / 2), band.width, band.h);
+        }
+        ctx.restore();
+      }
+    }
+  } else {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    for (const [a, b, sp] of spans) {
+      for (let x = -(camX % 24); x < viewW; x += 24) {
+        if (x < a || x + 10 > b) continue;
+        ctx.fillRect(x, GROUND_Y + 8 + sp.depthAt(camX + x + 5), 10, 2);
+      }
+    }
+  }
+  ctx.restore();
+}
+
 function pixelPack(settings) {
+  const paperPreview = paperCutoutPreviewRequested(settings);
   return {
     name: 'pixel',
+    lightBg: paperPreview,
+    paperSlab: paperPreview ? {
+      shadow: (ctx, source) => paperShadowPass(ctx, source, PAPER_DEEP_OFFSET),
+      finish: (ctx, source) => paperFinishPass(ctx, source, paperPatternFor(ctx)),
+    } : null,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
+      if (cab.id === 'plumber' && paperPreview) {
+        drawPaperSurface(ctx, backgroundCoverage(ctx));
+      }
       const sceneryOffset = portraitSceneryOffset(backgroundContext);
+      const farAmp = cab.id === 'plumber' ? 96 : 60;
+      const nearAmp = 34;
+      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', farAmp, GROUND_Y);
+      const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', nearAmp, GROUND_Y);
       if (cab.id === 'plumber') {
-        drawStaticSun(ctx, t, bgShift, backgroundContext);
+        drawStaticSun(ctx, t, bgShift, backgroundContext, paperPreview);
       }
       // PLUMBER PANIC's far layer is a snow-capped range; the near green hills
       // stay rounded so the two layers read as distance, not repetition. It gets
@@ -1729,70 +2279,102 @@ function pixelPack(settings) {
       // Overtime runs have no midpoint (totalDist is Infinity), so no volcano.
       if (cab.id === 'plumber' && Number.isFinite(totalDist) && totalDist > 0) {
         ctx.save();
-        ctx.translate(0, sceneryOffset);
-        drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion);
+        ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'far'));
+        drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion,
+          farBaseY - GROUND_Y, paperPreview);
         ctx.restore();
       }
-      // Clouds go down AFTER the volcano so they drift in front of its smoke —
-      // the plume is far-off background, the clouds are nearer sky. Still before
-      // the hill layers, so the ranges keep occluding them as they always did.
-      if (cab.id === 'plumber') {
-        // Faceless cousins of the cloud pal: identical silhouette so the sky
-        // reads as one weather system, parallax-scrolled at varied sizes —
-        // a few bigger than the pal, a few small and distant. Greys mixed in
-        // so the flock isn't a stamp sheet. Drawn BEFORE the pal so it always
-        // floats in front of its plain cousins.
-        const cloudOffset = portraitCloudOffset(backgroundContext);
-        for (const [off, cy, s, tint] of [
-          [30, 34, 0.8, PIXEL_CLOUD_LIGHT],
-          [110, 20, 1.15, PIXEL_CLOUD_LIGHT],
-          [180, 68, 0.55, PIXEL_CLOUD_SHADE],
-          [255, 44, 0.95, PIXEL_CLOUD_MID],
-          [305, 26, 0.65, PIXEL_CLOUD_LIGHT],
-          [390, 78, 1.1, PIXEL_CLOUD_LIGHT],
-          [430, 58, 0.7, PIXEL_CLOUD_MID],
-          [510, 36, 0.6, PIXEL_CLOUD_SHADE],
-        ]) {
-          const span = W + 130;
-          const cx = ((off - camX * 0.2 * PLX - t * 4) % span + span) % span - 65;
-          ctx.save();
-          ctx.translate(cx, cy + cloudOffset);
-          ctx.scale(s, s);
-          drawCloudBody(ctx, tint);
-          ctx.restore();
+      // THE CLOUDS GO DOWN LAST, AFTER THE RANGES.
+      //
+      // They used to be painted before the hills, which was invisible for as
+      // long as the frame was 270px tall: the sky ended where the crests
+      // began and the two never met. A portrait frame composes the clouds
+      // into bands that DO cross the ridges, and painting them first meant a
+      // cloud dragged below the skyline simply disappeared behind a hill.
+      //
+      // A cloud is weather in front of the country, not a sticker behind it,
+      // so it passes in front of every range. Depth is still the depth table's
+      // job — the clouds travel at their own rate — and this is only the
+      // question of who is in front when they overlap.
+      const paintClouds = () => {
+        if (cab.id === 'plumber') {
+          // Faceless cousins of the cloud pal: identical silhouette so the sky
+          // reads as one weather system, parallax-scrolled at varied sizes —
+          // a few bigger than the pal, a few small and distant. Greys mixed in
+          // so the flock isn't a stamp sheet. Drawn BEFORE the pal so it always
+          // floats in front of its plain cousins.
+          for (const [off, cy, s, tint] of [
+            [30, 34, 0.8, PIXEL_CLOUD_LIGHT],
+            [110, 20, 1.15, PIXEL_CLOUD_LIGHT],
+            [180, 68, 0.55, PIXEL_CLOUD_SHADE],
+            [255, 44, 0.95, PIXEL_CLOUD_MID],
+            [305, 26, 0.65, PIXEL_CLOUD_LIGHT],
+            [390, 78, 1.1, PIXEL_CLOUD_LIGHT],
+            [430, 58, 0.7, PIXEL_CLOUD_MID],
+            [510, 36, 0.6, PIXEL_CLOUD_SHADE],
+          ]) {
+            const cx = wrapIntoView(ctx, off - camX * 0.2 * ZOOM - t * 4, 65);
+            ctx.save();
+            ctx.translate(cx, portraitCloudY(backgroundContext, [30, 110, 180, 255, 305, 390, 430, 510]
+              .indexOf(off), cy) + backgroundY(backgroundContext, 'clouds'));
+            ctx.scale(s, s);
+            drawCloudBody(ctx, tint, paperPreview);
+            ctx.restore();
+          }
+          drawCloudPal(ctx, t, settings && settings.reducedMotion, backgroundContext, paperPreview);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.82)';
+          for (let i = 0; i < 5; i++) {
+            const cx = wrapIntoView(ctx, i * 137 - camX * 0.2 * ZOOM, 30);
+            const cy = portraitCloudY(backgroundContext, i, 30 + (i * 37) % 60)
+              + backgroundY(backgroundContext, 'clouds');
+            ctx.fillRect(cx, cy, 34, 8);
+            ctx.fillRect(cx + 6, cy - 5, 20, 5);
+          }
         }
-        drawCloudPal(ctx, t, settings && settings.reducedMotion, backgroundContext);
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.82)';
-        const cloudOffset = portraitCloudOffset(backgroundContext);
-        for (let i = 0; i < 5; i++) {
-          const cx = ((i * 137 - camX * 0.2 * PLX) % (W + 60)) - 30;
-          const cy = 30 + (i * 37) % 60 + cloudOffset;
-          ctx.fillRect(cx, cy, 34, 8);
-          ctx.fillRect(cx + 6, cy - 5, 20, 5);
-        }
-      }
+      };
       // The ranges and their ridge props are a single depth layer. Lift them
       // together so the mountain bases still flow behind the foreground lane.
       ctx.save();
-      ctx.translate(0, sceneryOffset);
+      ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'far'));
       if (cab.id === 'plumber') {
         // Rock and snow are haze-desaturated toward the sky rather than true
         // brown/white: distance reads better, and it keeps the cap under the
         // bloom bright-pass. Pure white snow (#eef6ff, luma .96) sailed past
         // the smoothstep(0.8, 0.97) cutoff in glfx.js and glowed like neon.
-        parallaxHills(ctx, camX, cab.far, GROUND_Y, 96, 90, 0.15,
-          { peak: true, rock: '#5e6e7c', snow: '#b9c8d8' });
+        parallaxHills(ctx, camX, cab.far, farBaseY, 96, 90, 0.15,
+          { peak: true, rock: '#5e6e7c', snow: '#b9c8d8', paper: paperPreview });
       } else {
-        parallaxHills(ctx, camX, cab.far, GROUND_Y, 60, 90, 0.15);
+        parallaxHills(ctx, camX, cab.far, farBaseY, 60, 90, 0.15);
       }
-      parallaxHills(ctx, camX, cab.hills, GROUND_Y, 34, 50, 0.35,
-        cab.id === 'plumber' ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' } } : null);
       ctx.restore();
+      ctx.save();
+      ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'near'));
+      parallaxHills(ctx, camX, cab.hills, nearBaseY, nearAmp, 50, 0.35,
+        cab.id === 'plumber'
+          ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' }, paper: paperPreview }
+          : null);
+      ctx.restore();
+      paintClouds();
+    },
+    // The texture over a staged exit, laid AFTER the terrain and the routes —
+    // see drawShelfTexture. Optional on a pack; only this one has ground
+    // texture to carry.
+    shelfTexture(ctx, camX, cab, shelves, viewW = W) {
+      drawShelfTexture(ctx, camX, cab, shelves, !!(settings && settings.reducedMotion), viewW);
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t, drawW);
+      if (cab.id === 'plumber') {
+        drawPlumberApronStrata(ctx, camX, obstacles, overhangs, drawW,
+          !!(settings && settings.reducedMotion));
+        // Terrain routes, including floating islands, are painted afterward by
+        // game/terrain.js. This paper pass belongs to the base scenery apron;
+        // route surfaces retain their authored gameplay material.
+        if (paperPreview) drawPaperApronTexture(ctx, camX, obstacles, overhangs, drawW);
+        return;
+      }
       // Scrolling ground ticks — a texture ON the apron, so they stop where the
       // apron does. Left to run they hang in open air: under a road that has a
       // chamber below it, and — until now — straight across every hole in the
@@ -1816,7 +2398,7 @@ function pixelPack(settings) {
 function faux3dPack(settings) {
   return {
     name: 'faux3d',
-    bg(ctx, t, camX, cab, totalDist) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       // Read through at draw time rather than captured when the pack is built,
       // so a mid-session toggle takes effect — the pixelPack idiom, not
       // cardboardPack's.
@@ -1825,28 +2407,56 @@ function faux3dPack(settings) {
       // cabinet screens, the gallery and the social renderers, and none of
       // those are the desert.
       const desert = cab.id === 'speed';
+      const farAmp = desert ? DESERT_FAR.amp : 50;
+      const middleAmp = DESERT_MID.amp;
+      const nearAmp = DESERT_RIDGE.amp;
+      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', farAmp, GROUND_Y);
+      const middleBaseY = sceneryRidgeBaseY(backgroundContext, 'middle', middleAmp, GROUND_Y);
+      const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', nearAmp, GROUND_Y);
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // chunky "pre-rendered" sun with gradient shading
-      const g = ctx.createRadialGradient(380, 60, 6, 380, 60, 30);
+      const celestialOffset = backgroundY(backgroundContext, 'celestial');
+      // This is the speed-zone sun's one canonical placement. It belongs to
+      // the celestial band, never the birds/cloud band, and the anchor is
+      // clamped by the complete 80px visible envelope when the portrait band
+      // has room for it. The layer offset is applied exactly once below.
+      const sunLocalY = sceneryBandPointY(backgroundContext, 'celestial', 60, DESERT_SUN_RADIUS);
+      const sunY = sunLocalY + celestialOffset;
+      ctx.save();
+      ctx.translate(0, celestialOffset);
+      const g = ctx.createRadialGradient(380, sunLocalY, 6,
+        380, sunLocalY, 30);
       g.addColorStop(0, '#fff0c0'); g.addColorStop(1, 'rgba(248,192,96,0)');
-      ctx.fillStyle = g; ctx.fillRect(340, 20, 80, 80);
+      ctx.fillStyle = g; ctx.fillRect(340, sunLocalY - 40, 80, 80);
+      ctx.restore();
       // Draw order is depth order. The butte goes down BEFORE the far range so
       // those crests overlap its flanks and it sits behind them — the same
       // reason the volcano precedes plumber's hills. Overtime has no midpoint
       // (totalDist is Infinity), so it gets no landmark, exactly as plumber
       // gets no volcano there.
       if (desert && Number.isFinite(totalDist) && totalDist > 0) {
-        drawButte(ctx, camX, totalDist * 0.55);
+        ctx.save();
+        ctx.translate(0, backgroundY(backgroundContext, 'far'));
+        drawButte(ctx, camX, totalDist * 0.55, farBaseY);
+        ctx.restore();
       }
       // Mesas rather than rounded sine hills on the desert: a cut-off cap is
       // the one silhouette that can only be desert.
-      parallaxHills(ctx, camX, cab.far, GROUND_Y,
-        desert ? DESERT_FAR.amp : 50, desert ? DESERT_FAR.wl : 110,
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'far'));
+      parallaxHills(ctx, camX, cab.far, farBaseY,
+        farAmp, desert ? DESERT_FAR.wl : 110,
         desert ? DESERT_FAR.factor : 0.12,
         desert ? { mesa: true } : null);
+      ctx.restore();
       // Birds after the far range and before the near one: they fly in front
       // of the distance and behind anything close.
-      if (desert) drawVultures(ctx, t, camX, reduced);
+      if (desert) {
+        ctx.save();
+        ctx.translate(0, backgroundY(backgroundContext, 'clouds'));
+        drawVultures(ctx, t, camX, reduced, backgroundContext);
+        ctx.restore();
+      }
       if (desert) {
         // The middle range — the layer that makes the other two read as far
         // and near rather than as backdrop and foreground.
@@ -1857,22 +2467,21 @@ function faux3dPack(settings) {
         // middle hills cut the foot off and each devil rises out of the country
         // rather than standing on top of it. The base still sits at the ground
         // line; it is simply never visible, which is the point.
-        drawDustDevils(ctx, t, camX, reduced);
+        ctx.save();
+        ctx.translate(0, backgroundY(backgroundContext, 'middle'));
+        drawDustDevils(ctx, t, camX, reduced, middleBaseY);
         const m = DESERT_MID;
-        parallaxHills(ctx, camX, m.color, GROUND_Y, m.amp, m.wl, m.factor, { dunes: true });
+        parallaxHills(ctx, camX, m.color, middleBaseY, m.amp, m.wl, m.factor, { dunes: true });
+        ctx.restore();
         // The layer the cabinet always defined and this pack never drew.
         const { amp, wl, factor } = DESERT_RIDGE;
-        parallaxHills(ctx, camX, cab.hills, GROUND_Y, amp, wl, factor, { dunes: true });
-        drawSaguaros(ctx, camX);
+        ctx.save();
+        ctx.translate(0, backgroundY(backgroundContext, 'near'));
+        drawDesertLoopLandmarks(ctx, camX, nearBaseY, amp);
+        parallaxHills(ctx, camX, cab.hills, nearBaseY, amp, wl, factor, { dunes: true });
+        drawSaguaros(ctx, camX, nearBaseY);
+        ctx.restore();
       }
-      // loop-de-loop background props
-      ctx.strokeStyle = 'rgba(160,104,48,0.5)';
-      ctx.lineWidth = 4;
-      for (let i = 0; i < 2; i++) {
-        const lx = ((i * 340 - camX * 0.3 * PLX) % (W + 160)) - 80;
-        ctx.beginPath(); ctx.arc(lx, GROUND_Y - 40, 28, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.lineWidth = 1;
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       // pseudo-3D checkered road
@@ -1933,20 +2542,22 @@ function neonPack(settings) {
   return {
     name: 'neon',
     dark: true,
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       const coverage = backgroundCoverage(ctx);
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // starfield
       ctx.fillStyle = '#8888c8';
       for (let i = 0; i < 40; i++) {
-        const sx = ((i * 97 - camX * 0.05 * PLX) % coverage.width + coverage.width) % coverage.width + coverage.left;
-        const sy = (i * 61) % (GROUND_Y - 60);
+        const sx = ((i * 97 - camX * 0.05 * ZOOM) % coverage.width + coverage.width) % coverage.width + coverage.left;
+        const sy = (i * 61) % (GROUND_Y - 60) + backgroundY(backgroundContext, 'stars');
         ctx.fillRect(Math.round(sx), sy, 1, 1);
       }
       // wireframe skyline
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'middle'));
       ctx.strokeStyle = '#e838f8';
       for (let i = 0; i < 8; i++) {
-        const bx = ((i * 90 - camX * 0.25 * PLX) % (W + 100)) - 50;
+        const bx = wrapIntoView(ctx, i * 90 - camX * 0.25 * ZOOM, 50);
         const bh = 40 + (i * 53) % 70;
         ctx.strokeRect(Math.round(bx) + 0.5, GROUND_Y - bh + 0.5, 36, bh);
         ctx.strokeStyle = i % 2 ? '#38d8f8' : '#e838f8';
@@ -1957,6 +2568,7 @@ function neonPack(settings) {
         const y = GROUND_Y - 4 - i * 3;
         ctx.beginPath(); ctx.moveTo(coverage.left, y); ctx.lineTo(coverage.right, y); ctx.stroke();
       }
+      ctx.restore();
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
@@ -1997,25 +2609,35 @@ function watercolorPack(settings) {
   return {
     name: 'watercolor',
     lightBg: true,
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
-      // soft wash blobs
-      for (let i = 0; i < 6; i++) {
-        const bx = ((i * 120 - camX * 0.1 * PLX) % (W + 120)) - 60;
-        const by = 30 + (i * 47) % 80;
-        const g = ctx.createRadialGradient(bx, by, 4, bx, by, 40);
-        g.addColorStop(0, 'rgba(255,255,255,0.25)');
-        g.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(bx - 40, by - 40, 80, 80);
-      }
       // blotchy hills with irregular edges
-      for (const [color, yb, amp, wl, f] of [[cab.far, GROUND_Y, 66, 130, 0.12], [cab.hills, GROUND_Y, 40, 70, 0.3]]) {
+      for (const [color, yb, amp, wl, f, depth] of [
+        [cab.far, sceneryRidgeBaseY(backgroundContext, 'farLandmark', 66, GROUND_Y), 66, 130, 0.12, 'far'],
+        [cab.hills, sceneryRidgeBaseY(backgroundContext, 'near', 40, GROUND_Y), 40, 70, 0.3, 'near'],
+      ]) {
+        ctx.save();
+        ctx.translate(0, backgroundY(backgroundContext, depth));
         ctx.globalAlpha = 0.7;
         parallaxHills(ctx, camX, color, yb, amp, wl, f);
         ctx.globalAlpha = 0.4;
         parallaxHills(ctx, camX + 13, color, yb + 4, amp, wl * 1.1, f);
         ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+      // The wash blobs are this cabinet's clouds, and they follow the same
+      // rule as the Plumber flock: weather passes in front of the country, so
+      // a blob composed into a low band still reads instead of vanishing
+      // behind a hill.
+      const cloudOffset = backgroundY(backgroundContext, 'clouds');
+      for (let i = 0; i < 6; i++) {
+        const bx = wrapIntoView(ctx, i * 120 - camX * 0.1 * ZOOM, 60);
+        const by = portraitCloudY(backgroundContext, i, 30 + (i * 47) % 80) + cloudOffset;
+        const g = ctx.createRadialGradient(bx, by, 4, bx, by, 40);
+        g.addColorStop(0, 'rgba(255,255,255,0.25)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(bx - 40, by - 40, 80, 80);
       }
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
@@ -2042,10 +2664,18 @@ function vhsPack(settings) {
   return {
     name: 'vhs',
     dark: true,
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
-      parallaxHills(ctx, camX, cab.far, GROUND_Y, 55, 100, 0.15);
-      parallaxHills(ctx, camX, cab.hills, GROUND_Y, 32, 56, 0.35);
+      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', 55, GROUND_Y);
+      const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', 32, GROUND_Y);
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'far'));
+      parallaxHills(ctx, camX, cab.far, farBaseY, 55, 100, 0.15);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'near'));
+      parallaxHills(ctx, camX, cab.hills, nearBaseY, 32, 56, 0.35);
+      ctx.restore();
       // fog
       ctx.fillStyle = 'rgba(140,120,160,0.12)';
       const coverage = backgroundCoverage(ctx);
@@ -3424,7 +4054,6 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
   // everything else here: the beat advances it, nothing else does, and reduced
   // motion (beat 0 forever) gets a parked sky.
   const beatAbs = frame.bar * 4 + frame.beat4;
-  const span = W + 72;
   for (let i = 0; i < art.clouds.length; i++) {
     const [cx0, cy0] = art.clouds[i];
     const pace = LCD_CLOUD_DRIFT[i % LCD_CLOUD_DRIFT.length];
@@ -3436,11 +4065,78 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
       const p = lcdMod(beatAbs * pace, art.cloudSway * 2);
       x = cx0 - (p < art.cloudSway ? p : art.cloudSway * 2 - p);
     } else {
-      x = lcdMod(cx0 + 36 - beatAbs * pace, span) - 36;
+      // Wraps off the edge of what is ON SCREEN. In portrait the panel is
+      // drawn through a shifted coverage, so a cloud wrapping at the authored
+      // frame's edge would disappear well inside the glass. The `+ 36` is the
+      // authored phase and stays inside the modulo, or every cloud on the
+      // panel slides sideways by a margin.
+      x = Math.round(wrapIntoView(ctx, cx0 + 36 - beatAbs * pace, 36));
     }
     const y = cy0 + portraitCloudOffset(backgroundContext) + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
     lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
   }
+}
+
+// Portrait gets more vertical room, not a vertically stretched landscape
+// panel. Add a distant, stepped skyline and a second cloud vocabulary into the
+// resolver's upper bands. The authored 480x270 city remains unchanged below;
+// these rows are deliberately simpler and lighter so they read as depth.
+function lcdPortraitCityExtension(ctx, frame, backgroundContext = null) {
+  const bands = backgroundContext?.sceneryLayout?.bands;
+  if (!bands) return;
+  const bandY = (name, fallback) => Number.isFinite(Number(bands[name]?.center))
+    ? Number(bands[name].center) : fallback;
+  const farBase = bandY('farLandmark', 0) + 18;
+  const middleBase = bandY('middle', 72) + 16;
+  const rows = [
+    { base: farBase, heights: [92, 116, 78, 104, 86, 120, 74, 98, 88, 110], alpha: 0.58 },
+    { base: middleBase, heights: [52, 68, 44, 62, 48, 72, 56, 64, 46, 70], alpha: 0.78 },
+  ];
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (const [rowIndex, row] of rows.entries()) {
+    ctx.globalAlpha = row.alpha;
+    for (let i = 0, x = -8; x < W + 8; i++, x += 49) {
+      const w = 38 + (i % 3) * 4;
+      const h = row.heights[(i + frame.stageIndex + rowIndex) % row.heights.length];
+      const top = row.base - h;
+      ctx.fillStyle = LCD_FACADE_WASH;
+      ctx.fillRect(x, top, w, h);
+      ctx.strokeStyle = LCD_WALL_LINE;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, top + 0.5);
+      ctx.lineTo(x + w - 0.5, top + 0.5);
+      ctx.stroke();
+      ctx.fillStyle = LCD_WINDOW_GHOST;
+      for (let wy = top + 10; wy < row.base - 5; wy += 12) {
+        ctx.fillRect(x + 8, wy, 4, 4);
+        if (w > 40) ctx.fillRect(x + w - 12, wy, 4, 4);
+      }
+    }
+    // A rooftop row is a line of separate authored blocks, not one stretched
+    // rectangle. The repeated gaps are important at phone scale.
+    ctx.globalAlpha = Math.min(1, row.alpha + 0.08);
+    ctx.strokeStyle = LCD_WALL_LINE;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 24) {
+      ctx.moveTo(x + 0.5, row.base + 0.5);
+      ctx.lineTo(x + 12.5, row.base + 0.5);
+    }
+    ctx.stroke();
+  }
+  // Clouds are placed by the same normalized bands as every other cabinet,
+  // with two rows in the upper sky so a tall portrait does not become one
+  // uninterrupted blue/green void above the city.
+  ctx.globalAlpha = 0.78;
+  const cloudBands = ['upperCloud', 'middleCloud', 'lowerCloud'];
+  for (let i = 0; i < cloudBands.length; i++) {
+    const band = bands[cloudBands[i]];
+    if (!band) continue;
+    const y = Number(band.top) + Math.min(8, Number(band.height) * 0.2);
+    lcdCloud(ctx, 38 + i * 154, y, (frame.bar + i) % 2);
+    if (i < 2) lcdCloud(ctx, 286 - i * 42, y + 9, (frame.bar + i + 1) % 2);
+  }
+  ctx.restore();
 }
 
 // ---- the chase ----------------------------------------------------------
@@ -7886,6 +8582,9 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   const shiftedCoverage = coverage.left !== 0 || coverage.right !== W;
   panelKey.push(ctx.imageSmoothingEnabled);
   panelKey.push(backgroundContext?.cloudOffsetY || 0);
+  const sceneryRect = backgroundContext?.sceneryLayout?.screenRect;
+  panelKey.push(sceneryRect?.top || 0, sceneryRect?.bottom || 0,
+    sceneryRect?.height || 0);
   // Grouping semi-transparent operations changes nonstandard compositing. Keep
   // those callers direct, and keep the operation recorder's real-surface fallback.
   if (shiftedCoverage || !lcdPanelCacheEnabled || !supported || ctx.globalAlpha !== 1
@@ -7945,6 +8644,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   const coverage = backgroundCoverage(ctx);
   ctx.fillRect(coverage.left, GROUND_Y, coverage.width, H - GROUND_Y);
   ctx.lineWidth = 1;
+  lcdPortraitCityExtension(ctx, frame, backgroundContext);
   // RHYTHM 2'S CLOUDS ARE THE BACK OF THE CITY. This stage's elevated rail,
   // train, searchlight and roof traffic all cross their band, and painting the
   // clouds after those objects made the wisps cut across them. Put this one
@@ -8413,25 +9113,36 @@ function cardboardPack(settings) {
   return {
     name: 'cardboard',
     lightBg: true,
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       const wob = reducedMotion ? 0 : Math.sin(t * 2) * 1.5;
+      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', 56, GROUND_Y) + wob;
+      const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', 34, GROUND_Y) - wob;
       // cardboard cutout hills with corrugation ticks
-      parallaxHills(ctx, camX, cab.far, GROUND_Y + wob, 56, 120, 0.15);
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'far'));
+      parallaxHills(ctx, camX, cab.far, farBaseY, 56, 120, 0.15);
       ctx.fillStyle = 'rgba(90,64,32,0.3)';
       const coverage = backgroundCoverage(ctx);
       for (let x = Math.floor(coverage.left / 10) * 10; x < coverage.right; x += 10) {
-        ctx.fillRect(x, GROUND_Y - 60 + Math.round(wob), 2, 6);
+        ctx.fillRect(x, farBaseY - 60, 2, 6);
       }
-      parallaxHills(ctx, camX, cab.hills, GROUND_Y - wob, 34, 60, 0.35);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'near'));
+      parallaxHills(ctx, camX, cab.hills, nearBaseY, 34, 60, 0.35);
+      ctx.restore();
       // a "distant" castle that is obviously four inches tall, on a stick
-      const cx = ((300 - camX * 0.4 * PLX) % (W + 200)) - 100;
+      const cx = wrapIntoView(ctx, 300 - camX * 0.4 * ZOOM, 100);
+      ctx.save();
+      ctx.translate(0, backgroundY(backgroundContext, 'landmark'));
       ctx.fillStyle = '#b89058';
       ctx.fillRect(cx, GROUND_Y - 40, 24, 20);
       ctx.fillRect(cx + 2, GROUND_Y - 46, 5, 6);
       ctx.fillRect(cx + 17, GROUND_Y - 46, 5, 6);
       ctx.fillStyle = '#8a6a4a';
       ctx.fillRect(cx + 11, GROUND_Y - 20, 3, 20); // the visible stick
+      ctx.restore();
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
@@ -8520,7 +9231,7 @@ function doodlePack(settings) {
     // The camera's crane is the same argument in y: the sheet is held still and
     // the ink is redrawn higher up it, so the page does not travel either.
     bgPan: 0,
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       // graph paper — a warm off-white, not near-#fff, so blue ink reads
       const coverage = backgroundCoverage(ctx);
       ctx.fillStyle = '#eceadf';

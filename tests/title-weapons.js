@@ -1,7 +1,10 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { titleWeaponMotion } = await import('../src/game/menus.js');
+const { frameForViewport, defaultFrame } = await import('../src/engine/frame.js');
+const renderer = await import('../src/engine/renderer.js');
+const { setPresentationFrame } = renderer;
+const { titleWeaponMotion, titleLayout } = await import('../src/game/menus.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -30,6 +33,22 @@ for (const [kind, outAt, holdAt, returnT] of [
   assert(caught?.done === true,
     `${kind} completes its catch before another throw is allowed`);
 }
+
+setPresentationFrame(frameForViewport({
+  mode: 'phone-portrait',
+  viewportWidth: 390,
+  viewportHeight: 844,
+  safeInsets: { top: 59, right: 0, bottom: 34, left: 0 },
+  revision: 1,
+}));
+const portraitLayout = titleLayout();
+for (const [kind, outAt] of [['fist', 1.42], ['axe', 1.55]]) {
+  const shot = { kind, source: 0, dir: 1, x0: 100, tFired: 1 };
+  const outgoing = titleWeaponMotion(shot, outAt);
+  assert(outgoing && outgoing.x - shot.x0 > portraitLayout.paradeGap,
+    `portrait ${kind} reaches the next character at the landscape-equivalent range`);
+}
+setPresentationFrame(defaultFrame());
 
 console.log(failed ? 'TITLE WEAPONS: FAILED' : 'TITLE WEAPONS: PASSED');
 process.exit(failed ? 1 : 0);

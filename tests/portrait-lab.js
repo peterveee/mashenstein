@@ -3,7 +3,7 @@ import {
   PortraitLab, PORTRAIT_LAB_DEFAULTS, PORTRAIT_LAB_STORAGE_KEY, validatePortraitConfig,
 } from '../src/dev/portrait-lab.js';
 import { lifecyclePolicy } from '../src/engine/lifecycle.js';
-import { RunState } from '../src/game/run.js';
+import { RunState, GROUND_Y } from '../src/game/run.js';
 import { screenYFor } from '../src/engine/camera.js';
 import { HERO_DRAW_H } from '../src/game/draw.js';
 import { defaultSettings, defaultSlot } from '../src/engine/save.js';
@@ -11,6 +11,10 @@ import { STAGE_BY_ID } from '../src/data/stages.js';
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
 import { frameForViewport, defaultFrame } from '../src/engine/frame.js';
 import { setPresentationFrame } from '../src/engine/renderer.js';
+import { portraitHudLayout } from '../src/game/portrait-layout.js';
+import {
+  PORTRAIT_GROUND_ANCHOR_RATIO, PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
+} from '../src/engine/portrait-geometry.js';
 
 const values = new Map();
 globalThis.localStorage = {
@@ -29,7 +33,8 @@ assert.equal(PortraitLab.config().backgroundZoom, 1, 'portrait shows the full ba
 assert.equal(PortraitLab.config().cloudOffsetY, -100, 'the portrait review keeps the selected cloud lift');
 assert.equal(PortraitLab.config().sunOffsetY, -100, 'the portrait review keeps the selected sun lift');
 assert.equal(PortraitLab.config().sceneryOffsetY, -90, 'portrait lifts the mountain backdrop within the taller sky');
-assert.equal(PortraitLab.config().groundAnchorRatio, 0.70, 'portrait production places the hero around 70% down the safe frame');
+assert.equal(PortraitLab.config().groundAnchorRatio, PORTRAIT_GROUND_ANCHOR_RATIO,
+  'portrait production requests the chat-clearing ground floor');
 
 values.set(PORTRAIT_LAB_STORAGE_KEY, '{bad json');
 assert.deepEqual(PortraitLab.config(), PORTRAIT_LAB_DEFAULTS, 'corrupt storage falls back');
@@ -46,7 +51,8 @@ assert.equal(clamped.heroAnchorX, 24, 'character anchor clamps');
 assert.equal(clamped.backgroundZoom, 1, 'background zoom clamps');
 assert.equal(clamped.cloudOffsetY, -100, 'cloud offset clamps');
 assert.equal(clamped.sunOffsetY, 60, 'sun offset clamps');
-assert.equal(clamped.groundAnchorRatio, 0.75, 'ground anchor clamps');
+assert.equal(clamped.groundAnchorRatio, PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
+  'ground anchor clamps');
 assert.equal(clamped.sceneryOffsetY, 40, 'scenery offset clamps');
 assert.deepEqual(Object.keys(clamped).sort(), ['backgroundZoom', 'cloudOffsetY', 'groundAnchorRatio', 'heroAnchorX', 'sceneryOffsetY', 'sunOffsetY', 'version', 'worldZoom'],
   'unknown fields are discarded');
@@ -134,8 +140,9 @@ assert.equal(labRun.portraitFrameFitState.pan, labRun.portraitFrameFitState.hero
   'portrait composition follows the configured ground anchor rather than a distant route envelope');
 assert.equal(labRun.camFloorY, 232, 'portrait lab keeps the authored base floor visible');
 const fixedPan = labRun.portraitFrameFitState.pan;
-labRun.player.y = 185;
+labRun.player.y = 230;
 labRun.updateCamera(1 / 60);
+
 assert.ok(labRun.portraitFrameFitState.pan > fixedPan,
   'portrait edge correction makes room when a high jump reaches the HUD band');
 assert.ok(labRun.portraitFrameFitState.pan <= fixedPan + pauseFrame.height,
@@ -177,12 +184,51 @@ labRun.player.y = 80;
 labRun.updateCamera(1 / 60);
 assert.equal(labRun.camPan, tunnelPan,
   'ordinary underground jumps do not retrigger the lower camera pan');
+// The height that genuinely REACHES an edge, which is what this assertion is
+// about — and it tracks the HUD, because the HUD is what the hero runs out of
+// room against. Every pixel the objective stack moves up gives a jump that much
+// more clearance, so this number goes up with it: 200 was too short once the
+// scenery row was reclaimed, and 230 became too short when the top clearance
+// came down to 20 (measured, see PORTRAIT_HUD_TOP_CLEARANCE_CSS).
+labRun.player.y = 300;
+labRun.updateCamera(1 / 60);
+assert.ok(labRun.camPan > tunnelPan,
+  'a tall underground jump gets a bounded visibility correction');
+const tunnelJumpTop = screenYFor(labRun.playerGroundY() - labRun.player.y - HERO_DRAW_H,
+  labRun.camZoom, labRun.camPan, labRun.camFloorY);
+const tunnelJumpBottom = screenYFor(labRun.playerGroundY() - labRun.player.y,
+  labRun.camZoom, labRun.camPan, labRun.camFloorY);
+assert.ok(tunnelJumpTop >= labRun.portraitFrameFitState.playableTop - 1e-9,
+  'a tall underground jump stays below the portrait HUD');
+assert.ok(tunnelJumpBottom <= labRun.portraitFrameFitState.playableBottom + 1e-9,
+  'a tall underground jump stays above the portrait touch shelf');
+const panBeforeTunnelExit = labRun.camPan;
 labRun.route = null;
 labRun.playerGroundY = () => 232;
 labRun.player.y = 0;
 labRun.updateCamera(1 / 60);
-assert.equal(labRun.camPan, fixedPan,
-  'leaving underground returns the camera to the surface composition');
+assert.ok(Math.abs(labRun.camPan - fixedPan) < Math.abs(tunnelPan - fixedPan),
+  'leaving underground eases toward the surface composition');
+assert.equal(labRun.portraitFrameTransition?.kind, 'tunnel',
+  'underground exit uses the slower tunnel transition');
+const tunnelExitStep = Math.abs(labRun.camPan - panBeforeTunnelExit);
+const tunnelExitDistance = Math.abs(fixedPan - panBeforeTunnelExit);
+assert.ok(tunnelExitStep <= Math.max(12, tunnelExitDistance * 0.10),
+  `underground exit limits its first pan step (${tunnelExitStep.toFixed(1)}px)`);
+let previousExitPan = labRun.camPan;
+for (let i = 0; i < 179; i++) {
+  labRun.updateCamera(1 / 60);
+  assert.ok(Math.abs(labRun.camPan - previousExitPan)
+    <= Math.abs(fixedPan - previousExitPan) + 1e-9,
+  'underground exit moves toward the surface target without a snap');
+  previousExitPan = labRun.camPan;
+}
+// The eased return lands on the live surface target, which is recomputed every
+// tick from the HUD layout; a sub-hundredth difference from the pan captured
+// before the descent is the easing parking, not a composition that failed to
+// return. What matters is that it arrives and stays.
+assert.ok(Math.abs(labRun.camPan - fixedPan) < 0.05,
+  `leaving underground eventually returns to the surface composition (${labRun.camPan.toFixed(3)} vs ${fixedPan.toFixed(3)})`);
 
 // The same contract must hold for an ordinary shipped run, not only for the
 // lab snapshot above. Its config comes from the approved production defaults,
@@ -205,13 +251,178 @@ productionRun.updateCamera(1 / 60);
 const productionPan = productionRun.camPan;
 assert.equal(productionRun.portraitConfig().worldZoom, PORTRAIT_LAB_DEFAULTS.worldZoom,
   'ordinary portrait gameplay uses the approved production calibration');
-// At the 70% groundline, a 10px hop remains below the HUD band and
-// keeps the fixed surface composition. Higher jumps are allowed to use the
-// bounded correction exercised by the lab run above.
+// At the chat-clearing groundline, ordinary jumps use the spare sky below the actual
+// HUD rather than the decorative breathing gap. Higher jumps are allowed to
+// use the bounded correction exercised by the lab run above.
 productionRun.player.y = 10;
 productionRun.updateCamera(1 / 60);
 assert.equal(productionRun.camPan, productionPan,
   'ordinary portrait gameplay does not pan for a normal jump');
+productionRun.player.y = 80;
+productionRun.updateCamera(1 / 60);
+assert.equal(productionRun.camPan, productionPan,
+  'ordinary portrait gameplay uses the available sky before panning');
+
+// The same lower shelf contract is checked on a short 375x812 portrait frame,
+// both on the flat lane and on a materially raised path. This catches the
+// tunnel/route cases where a camera target can otherwise be correct in theory
+// but still place the hero's feet into the reserved message shelf for a tick.
+const shortPortraitFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 375, viewportHeight: 812,
+  safeInsets: { top: 47, right: 0, bottom: 21, left: 0 }, revision: 14,
+});
+setPresentationFrame(shortPortraitFrame);
+const shortHud = portraitHudLayout(shortPortraitFrame);
+productionRun.route = null;
+productionRun.player = { y: 0, grounded: true, vy: 0 };
+productionRun.camPan = 0;
+productionRun.camFloorY = 80;
+productionRun.camZoom = 1;
+productionRun.portraitFrameFitState = null;
+productionRun.portraitFrameTransition = null;
+productionRun.portraitSurfaceBounds = productionRun.portraitWorldBounds({ includeTunnel: false });
+productionRun.portraitBounds = productionRun.portraitWorldBounds();
+productionRun.portraitSurfaceFloorY = productionRun.playerGroundY();
+for (let i = 0; i < 8; i++) {
+  productionRun.updateCamera(1 / 60);
+  const flatFeet = screenYFor(productionRun.playerGroundY(), productionRun.camZoom,
+    productionRun.camPan, productionRun.camFloorY);
+  assert.ok(flatFeet <= shortHud.gameplayBottom + 1e-9,
+    'flat 375x812 portrait feet stay above the message shelf on every tick');
+}
+productionRun.route = { kind: 'fork', sky: true };
+productionRun.groundYAt = () => GROUND_Y;
+productionRun.playerGroundY = () => GROUND_Y - 120;
+for (let i = 0; i < 60; i++) {
+  productionRun.updateCamera(1 / 60);
+  const raisedFeet = screenYFor(GROUND_Y - 120, productionRun.camZoom,
+    productionRun.camPan, productionRun.camFloorY);
+  assert.ok(raisedFeet <= shortHud.gameplayBottom + 1e-9,
+    'raised 375x812 portrait feet stay above the message shelf on every tick');
+}
+setPresentationFrame(pauseFrame);
+
+// A materially raised route is a new resting composition, not a jump that
+// should leave the hero at the bottom of a tall portrait frame. It must move
+// the active route into the gameplay band, then return smoothly to the normal
+// ground composition when the hero leaves it.
+const highPathRun = new RunState({
+  stage, cabinet: CABINET_BY_ID[stage.cabinet], save: labSave, seed: 323,
+  difficulty: 1, initialHeroId: 'lorenzo', portraitLabRun: true,
+  devPortraitLab: PORTRAIT_LAB_DEFAULTS, onEnd() {},
+});
+highPathRun.camX = 0;
+highPathRun.camPan = 0;
+highPathRun.camFloorY = 80;
+highPathRun.camZoom = 1;
+highPathRun.player = { y: 0, grounded: true, vy: 0 };
+highPathRun.route = null;
+highPathRun.portraitSurfaceBounds = highPathRun.portraitWorldBounds({ includeTunnel: false });
+highPathRun.portraitBounds = highPathRun.portraitWorldBounds();
+highPathRun.portraitSurfaceFloorY = GROUND_Y;
+highPathRun.updateCamera(1 / 60);
+const surfacePanBeforeHighPath = highPathRun.camPan;
+highPathRun.route = { kind: 'fork', sky: true };
+highPathRun.groundYAt = () => GROUND_Y;
+highPathRun.playerGroundY = () => GROUND_Y - 120;
+
+// Stage 2 camera rule: merely overlapping a high route during a jump must not
+// claim the raised composition. The available sky remains usable until the
+// hero actually lands on the route.
+highPathRun.player.grounded = false;
+highPathRun.player.y = 32;
+highPathRun.playerGroundY = () => GROUND_Y - 60;
+highPathRun.updateCamera(1 / 60);
+assert.equal(highPathRun.portraitFrameFitState.highPath, false,
+  'airborne overlap does not claim the high-path composition');
+assert.ok(Math.abs(highPathRun.camPan - surfacePanBeforeHighPath) < 1e-9,
+  'airborne overlap leaves the resting camera parked');
+
+highPathRun.player.grounded = true;
+highPathRun.player.y = 0;
+highPathRun.updateCamera(1 / 60);
+const highPathTarget = highPathRun.portraitFrameFitState.pan;
+assert.ok(Math.abs(highPathRun.camPan - surfacePanBeforeHighPath)
+  < Math.abs(highPathTarget - surfacePanBeforeHighPath),
+  'high-path reframe starts as a transition instead of snapping on its first tick');
+let previousHighPathPan = highPathRun.camPan;
+for (let i = 0; i < 119; i++) {
+  highPathRun.updateCamera(1 / 60);
+  assert.ok(Math.abs(highPathRun.camPan - previousHighPathPan)
+    <= Math.abs(highPathTarget - previousHighPathPan) + 1e-9,
+  'high-path reframe moves toward its live target on every tick');
+  previousHighPathPan = highPathRun.camPan;
+}
+const highPathFeet = screenYFor(GROUND_Y - 60, highPathRun.camZoom,
+  highPathRun.camPan, highPathRun.camFloorY);
+const highPathEdges = highPathRun.portraitFrameFitState;
+const highPathRatio = (highPathFeet - highPathEdges.playableTop)
+  / (highPathEdges.playableBottom - highPathEdges.playableTop);
+assert.equal(highPathEdges.highPath, true,
+  'portrait identifies a materially raised route as a high-path composition');
+assert.ok(Math.abs(highPathRun.camPan - surfacePanBeforeHighPath) > 1,
+  'portrait reframes the high route instead of preserving the low-ground composition');
+assert.ok(highPathRatio > 0.50 && highPathRatio < 0.62,
+  `high-path feet sit in the composed gameplay band (${highPathRatio.toFixed(2)})`);
+highPathRun.route = null;
+highPathRun.playerGroundY = () => GROUND_Y;
+const highPathPanBeforeReturn = highPathRun.camPan;
+highPathRun.updateCamera(1 / 60);
+const returnTarget = highPathRun.portraitFrameFitState.pan;
+assert.ok(Math.abs(highPathRun.camPan - highPathPanBeforeReturn)
+  < Math.abs(returnTarget - highPathPanBeforeReturn),
+  'leaving a high path also starts as a transition instead of snapping');
+for (let i = 0; i < 119; i++) highPathRun.updateCamera(1 / 60);
+const returnedFeet = screenYFor(GROUND_Y, highPathRun.camZoom,
+  highPathRun.camPan, highPathRun.camFloorY);
+const returned = highPathRun.portraitFrameFitState;
+const baseLaneFeet = screenYFor(GROUND_Y, highPathRun.camZoom,
+  surfacePanBeforeHighPath, highPathRun.camFloorY);
+const returnedRatio = (returnedFeet - returned.playableTop)
+  / (returned.playableBottom - returned.playableTop);
+assert.equal(returned.highPath, false,
+  'portrait leaves high-path composition when the route ends');
+assert.ok(Math.abs(returnedFeet - baseLaneFeet) < 1e-9,
+  `portrait returns the base lane to its lower composition (${returnedRatio.toFixed(2)})`);
+
+// A spring road is already a committed high-path choice before the landing
+// frame. Portrait should spend that launch time moving toward the raised
+// composition, then continue smoothly through the climb instead of starting
+// the pan at the lip.
+const anticipatedHighPathRun = new RunState({
+  stage, cabinet: CABINET_BY_ID[stage.cabinet], save: labSave, seed: 324,
+  difficulty: 1, initialHeroId: 'lorenzo', portraitLabRun: true,
+  devPortraitLab: PORTRAIT_LAB_DEFAULTS, onEnd() {},
+});
+anticipatedHighPathRun.enter();
+setPresentationFrame(pauseFrame);
+anticipatedHighPathRun.updateCamera(1 / 60);
+const anticipatedRoute = anticipatedHighPathRun.routes.find((r) => r.kind === 'fork' && r.spring);
+const anticipatedHeroOffset = anticipatedHighPathRun.playerWorldX() - anticipatedHighPathRun.camX;
+anticipatedRoute.sprung = true;
+anticipatedHighPathRun.camX = anticipatedRoute.x - anticipatedHighPathRun.speed * 0.45 - anticipatedHeroOffset;
+anticipatedHighPathRun.route = null;
+anticipatedHighPathRun.player.launched = true;
+anticipatedHighPathRun.player.grounded = false;
+anticipatedHighPathRun.player.y = 40;
+anticipatedHighPathRun.player.vy = 120;
+anticipatedHighPathRun.updateCamera(1 / 60);
+const anticipatedPan = anticipatedHighPathRun.camPan;
+assert.equal(anticipatedHighPathRun.portraitFrameFitState.highPath, true,
+  'a committed spring launch anticipates the portrait high-path composition');
+assert.equal(anticipatedHighPathRun.portraitFrameFitState.highPathAnticipated, true,
+  'the early high-path reframe is marked as anticipated before landing');
+assert.ok(anticipatedPan > fixedPan,
+  `portrait starts the high-path pan during the launch (${anticipatedPan.toFixed(1)} > ${fixedPan.toFixed(1)})`);
+assert.ok(anticipatedPan < anticipatedHighPathRun.portraitFrameFitState.pan,
+  'the anticipated high-path pan eases toward its target instead of snapping');
+anticipatedHighPathRun.route = anticipatedRoute;
+anticipatedHighPathRun.player.launched = false;
+anticipatedHighPathRun.player.grounded = true;
+anticipatedHighPathRun.player.y = 0;
+anticipatedHighPathRun.updateCamera(1 / 60);
+assert.ok(Math.abs(anticipatedHighPathRun.camPan - anticipatedPan) < 80,
+  'landing on the slope does not create a second portrait camera jump');
 
 // A portrait gameplay run must keep the upper-road release continuous too. The
 // fixed phone composition made this seam invisible to the landscape camera

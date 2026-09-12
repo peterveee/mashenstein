@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Composition tuner · MASHENSTEIN</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0d1119;--panel:#171e2a;--panel-2:#1e2736;--line:#334055;
+  --muted:#aab7c9;--ink:#eef4ff;--accent:#77d8c2;--bad:#ff6b7f;--ok:#8ce39a;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font:13px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{display:grid;grid-template-columns:minmax(280px,320px) 1fr minmax(300px,380px);gap:0;height:100vh;overflow:hidden}
+h1{font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin:0;color:var(--accent)}
+h2{font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 8px;color:var(--muted)}
+.col{overflow-y:auto;padding:14px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:16px}
+.col:last-child{border-right:0;border-left:1px solid var(--line)}
+.stage{display:flex;align-items:center;justify-content:center;background:#05070b;overflow:auto;padding:20px}
+.phone{position:relative;box-shadow:0 24px 60px rgba(0,0,0,.6);border-radius:22px;overflow:hidden;flex:none}
+.phone iframe{display:block;border:0;width:100%;height:100%}
+/* Every control is drawn here rather than borrowed from the OS: a native
+   listbox on this page would be the one element that ignores the palette. */
+.list{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
+.group{flex:none;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);padding:8px 8px 4px}
+/* flex:none matters: without it a scrolling column squashes every row to a
+   sliver of its own text. */
+.option{flex:none;appearance:none;background:transparent;border:0;color:var(--ink);text-align:left;
+  font:inherit;padding:7px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.option:hover{background:var(--panel-2)}
+.option[aria-selected="true"]{background:var(--accent);color:#06140f;font-weight:600}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+button.btn{appearance:none;font:inherit;color:var(--ink);background:var(--panel-2);
+  border:1px solid var(--line);border-radius:7px;padding:7px 11px;cursor:pointer}
+button.btn:hover{border-color:var(--accent)}
+button.btn[aria-pressed="true"]{background:var(--accent);color:#06140f;border-color:var(--accent);font-weight:600}
+button.btn:disabled{opacity:.45;cursor:not-allowed;border-color:var(--line)}
+button.btn.primary{background:var(--accent);color:#06140f;border-color:var(--accent);font-weight:600}
+table.bands{width:100%;border-collapse:collapse;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+table.bands th,table.bands td{padding:4px 5px;border-bottom:1px solid var(--line);text-align:left;font-weight:400}
+table.bands thead th{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+table.bands tbody tr{cursor:pointer}
+table.bands tbody tr:hover{background:var(--panel-2)}
+table.bands tr.on{background:rgba(119,216,194,.14)}
+table.bands tr.moved td:first-of-type{color:var(--accent)}
+.num{text-align:right}
+/* The per-edge sliders under each band row. The table is the precise surface:
+   sixteen edges stack into one column on the picture and several handles can
+   land on top of each other, so every edge gets a target that cannot be
+   covered by another. */
+tr.sliders td{padding:0 5px 7px;border-bottom:1px solid var(--line)}
+tr.sliders .edges{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+tr.sliders label{display:flex;align-items:center;gap:6px;font-size:9px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+input.edge{flex:1;appearance:none;height:14px;background:transparent;cursor:pointer;margin:0}
+input.edge::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:var(--line)}
+input.edge::-webkit-slider-thumb{appearance:none;width:12px;height:12px;margin-top:-5px;
+  border-radius:50%;background:var(--band,var(--accent));border:1px solid #06140f}
+input.edge::-moz-range-track{height:3px;border-radius:2px;background:var(--line)}
+input.edge::-moz-range-thumb{width:12px;height:12px;border-radius:50%;
+  background:var(--band,var(--accent));border:1px solid #06140f}
+input.edge:focus-visible{outline:1px solid var(--accent);outline-offset:3px;border-radius:4px}
+.swatch{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:baseline}
+.facts{margin:12px 0 0;display:flex;flex-direction:column;gap:5px;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+.facts>div{display:flex;justify-content:space-between;gap:10px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0}
+.facts dd.bad{color:var(--bad);font-weight:700}
+.muted{color:var(--muted)}
+#status{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+  border-top:1px solid var(--line);padding-top:10px;min-height:32px}
+#status[data-tone="ok"]{color:var(--ok)}
+#status[data-tone="bad"]{color:var(--bad)}
+.hint{font-size:11px;color:var(--muted);margin:0}
+/* The embed lives in the same document (the renderer binds #game at module
+   load, so the canvas must exist before the bundle runs). In embed mode the
+   desk is removed and this surface fills the iframe. */
+#embed-surface{position:fixed;inset:0;overflow:hidden;background:#070a10}
+#embed-surface #game{position:absolute;left:0;top:0;display:block}
+#embed-surface #controls{position:absolute;left:0;top:0;display:block;touch-action:none}
+body.embed{display:block;overflow:hidden}
+@media (max-width:1100px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;overflow:auto}
+  .col{border-right:0;border-bottom:1px solid var(--line)}
+  .col:last-child{border-left:0}}
+</style>
+</head>
+<body>
+  <div class="col">
+    <h1>Composition tuner</h1>
+    <p class="hint">Drag a band edge on the phone. Arrow keys nudge the selected edge by 1%, shift by 5%. Every number is a fraction of the scenery rectangle, so it means the same composition on any supported phone.</p>
+    <section>
+      <h2>Level</h2>
+      <div class="list" id="stage-list" role="listbox" aria-label="Level"></div>
+    </section>
+    <section>
+      <h2>Phone</h2>
+      <div class="list" id="viewport-list" role="listbox" aria-label="Phone"></div>
+    </section>
+  </div>
+
+  <div class="stage" id="frame-host"></div>
+
+  <div class="col">
+    <section>
+      <h2>Transport</h2>
+      <div class="row">
+        <button class="btn" id="play" type="button">Play</button>
+        <button class="btn" id="pause" type="button">Pause</button>
+        <button class="btn" id="step" type="button">Step</button>
+        <button class="btn" id="diagnostic" type="button">Overlay</button>
+      </div>
+    </section>
+    <section>
+      <h2>Ground anchor</h2>
+      <div class="row">
+        <button class="btn" id="ground-up" type="button">Raise 0.5%</button>
+        <button class="btn" id="ground-down" type="button">Lower 0.5%</button>
+      </div>
+    </section>
+    <section>
+      <h2>Composition</h2>
+      <div id="readout"></div>
+    </section>
+    <section>
+      <h2>Save to</h2>
+      <div class="row">
+        <button class="btn" id="scope-cabinet" type="button" aria-pressed="true">This cabinet</button>
+        <button class="btn" id="scope-stage" type="button" aria-pressed="false">This level only</button>
+      </div>
+    </section>
+    <section>
+      <div class="row">
+        <button class="btn primary" id="save" type="button">Save</button>
+        <button class="btn" id="copy" type="button">Copy JSON</button>
+        <button class="btn" id="snapshot" type="button">Snapshot PNG</button>
+        <button class="btn" id="reset" type="button">Reset</button>
+      </div>
+    </section>
+    <div id="status"></div>
+  </div>
+<div id="embed-surface" hidden><canvas id="game" aria-label="Portrait level"></canvas><canvas id="controls" aria-label="Composition bands"></canvas></div>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>

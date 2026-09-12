@@ -17,9 +17,14 @@
 // down to y = d at the bottom of the apron. They may not paint above y = 0 and
 // they may not paint across the open part of the break.
 
+// The authored pit shaft is 38 world pixels deep. Keep the liquid surface and
+// its local detail independent of the presentation frame: portrait expands the
+// visible canvas height, but it does not move the material's near surface.
+export const PIT_APRON_DEPTH = 38;
+
 // Where the material's surface sits, as a fraction of the apron.
 //
-// AND THE APRON IS TWICE AS DEEP AS IT LOOKS. `H - GROUND_Y` is 38 WORLD px, and
+// AND THE APRON IS TWICE AS DEEP AS IT LOOKS. The 38-world-pixel apron is
 // the camera magnifies the world band by ZOOM — so 38 world px of apron is 76
 // screen px against a frame with only 38 below the groundline. The bottom half
 // of every pit in this game is off the bottom of the screen, and the camera only
@@ -58,9 +63,8 @@ export const SPIKE_TIPS = 0.13;
 export const GEAR_TOPS = 0.2;
 
 // Portrait gives the pit apron much more vertical room than the shipped
-// landscape frame. A solid hazard should occupy that room as a little bay,
-// not become a dark shaft that runs to the bottom edge. Keep the old depth on
-// landscape (38px), then close the portrait bay shortly below its hazard.
+// landscape frame. Keep the hazard at the authored scale, then continue a
+// dark floor beneath it to the bottom of the visible pit.
 export const HARD_FILL_BORDER_GAP = 12;
 export const HARD_FILL_LANDSCAPE_DEPTH = 96;
 
@@ -76,6 +80,13 @@ function ellipse(ctx, cx, cy, rx, ry, fill, alpha = 1) {
   ctx.restore();
 }
 
+// Portrait gives the fill body more room to run, but the readable liquid
+// surface stays at the authored shaft depth. The body itself still uses the
+// caller's full `d`, so lava and tar continue all the way to the screen edge.
+export function liquidSurfaceDepth(d) {
+  return Math.min(d, PIT_APRON_DEPTH);
+}
+
 // BOILING TAR — candidate C. Black, unlit, and the cheapest fill on the sheet:
 // no gradient, no particles, four bubbles and a sheen.
 //
@@ -84,23 +95,24 @@ function ellipse(ctx, cx, cy, rx, ry, fill, alpha = 1) {
 // pit is back to being empty. One pale ellipse is the entire difference between
 // a liquid and a hole that happens to be darker at the bottom.
 function tar(ctx, w, d, t) {
-  const surf = d * PIT_FLOOR;
+  const detailD = liquidSurfaceDepth(d);
+  const surf = detailD * PIT_FLOOR;
   ctx.fillStyle = '#141019';
   ctx.beginPath();
   ctx.moveTo(0, surf);
-  ctx.quadraticCurveTo(w * 0.28, surf - d * 0.025, w * 0.52, surf);
-  ctx.quadraticCurveTo(w * 0.78, surf + d * 0.02, w, surf - d * 0.012);
+  ctx.quadraticCurveTo(w * 0.28, surf - detailD * 0.025, w * 0.52, surf);
+  ctx.quadraticCurveTo(w * 0.78, surf + detailD * 0.02, w, surf - detailD * 0.012);
   ctx.lineTo(w, d); ctx.lineTo(0, d); ctx.closePath();
   ctx.fill();
-  ellipse(ctx, w * 0.4, surf + d * 0.09, w * 0.26, d * 0.035, '#6b5c80', 0.32);
-  ellipse(ctx, w * 0.76, surf + d * 0.15, w * 0.13, d * 0.025, '#8a7f99', 0.16);
+  ellipse(ctx, w * 0.4, surf + detailD * 0.09, w * 0.26, detailD * 0.035, '#6b5c80', 0.32);
+  ellipse(ctx, w * 0.76, surf + detailD * 0.15, w * 0.13, detailD * 0.025, '#8a7f99', 0.16);
   // Bubbles inflate above the surface, then pop into a ring. Phased off the
   // pit's own x so two holes on one screen are never in step — the give-away
   // that a hazard is a stamp rather than a place.
   for (let i = 0; i < 4; i++) {
     const p = (t * 0.5 + i * 0.26) % 1;
     const x = w * (0.14 + i * 0.24);
-    const rMax = d * (i % 2 === 0 ? 0.09 : 0.055);
+    const rMax = detailD * (i % 2 === 0 ? 0.09 : 0.055);
     if (p < 0.74) {
       const r = rMax * (0.25 + p);
       ctx.fillStyle = '#1d1826';
@@ -171,12 +183,13 @@ function voidFill(ctx, w, d, t) {
 // lane size), crust plates so it is a material and not a lamp. The sheet's
 // road-spill and haze do not survive the y=0 clip and are dropped.
 function lava(ctx, w, d, t) {
-  const surf = d * PIT_FLOOR;
+  const detailD = liquidSurfaceDepth(d);
+  const surf = detailD * PIT_FLOOR;
   ctx.save();
-  ctx.beginPath(); ctx.rect(0, surf - d * 0.06, w, d - surf + d * 0.06); ctx.clip();
+  ctx.beginPath(); ctx.rect(0, surf - detailD * 0.06, w, d - surf + detailD * 0.06); ctx.clip();
   poly(ctx, '#f2621d', null, 0, (p) => {
     p.moveTo(0, surf);
-    for (let i = 0; i <= 8; i++) p.lineTo(w * (i / 8), surf + Math.sin(t * 1.6 + i * 0.9) * d * 0.018);
+    for (let i = 0; i <= 8; i++) p.lineTo(w * (i / 8), surf + Math.sin(t * 1.6 + i * 0.9) * detailD * 0.018);
     p.lineTo(w, d); p.lineTo(0, d); p.closePath();
   });
   ctx.save(); ctx.globalAlpha = 0.8;
@@ -184,26 +197,26 @@ function lava(ctx, w, d, t) {
     const k = 0.5 + 0.5 * Math.sin(t * 2.2 + i * 1.6);
     ctx.fillStyle = k > 0.6 ? '#ffef9e' : '#ffb02e';
     ctx.beginPath();
-    ctx.ellipse(w * (0.16 + i * 0.23), surf + d * (0.13 + 0.04 * k), w * 0.1, d * 0.055 * (0.6 + k), 0, 0, TAU);
+    ctx.ellipse(w * (0.16 + i * 0.23), surf + detailD * (0.13 + 0.04 * k), w * 0.1, detailD * 0.055 * (0.6 + k), 0, 0, TAU);
     ctx.fill();
   }
   ctx.restore();
   for (let i = 0; i < 3; i++) {
     const x = ((t * 3.5 + i * w * 0.42) % (w * 1.3)) - w * 0.15;
     poly(ctx, '#40201a', '#6d2410', Math.max(0.12, w * 0.008), (p) => {
-      p.moveTo(x, surf + d * 0.03); p.lineTo(x + w * 0.16, surf + d * 0.01);
-      p.lineTo(x + w * 0.2, surf + d * 0.09); p.lineTo(x + w * 0.03, surf + d * 0.1); p.closePath();
+      p.moveTo(x, surf + detailD * 0.03); p.lineTo(x + w * 0.16, surf + detailD * 0.01);
+      p.lineTo(x + w * 0.2, surf + detailD * 0.09); p.lineTo(x + w * 0.03, surf + detailD * 0.1); p.closePath();
     });
   }
   ctx.restore();
-  glowUp(ctx, w, surf, d * 0.38, 'rgba(255,120,30,1)', 0.34);
+  glowUp(ctx, w, surf, detailD * 0.38, 'rgba(255,120,30,1)', 0.34);
   // Embers off the melt. They rise past the groundline and the clip eats them
   // there, which is fine — they have faded to nearly nothing by then anyway.
   for (let i = 0; i < 5; i++) {
     const p = (t * 0.4 + i / 5) % 1;
     const ex = w * (0.12 + ((i * 0.37) % 0.76)) + Math.sin(i * 2.1 + p * 4.6) * w * 0.05;
     const er = w * 0.016 * (1 - p * 0.5);
-    ellipse(ctx, ex, d * 0.4 - p * d * 0.8, er, er, '#ffca55', Math.max(0, 1 - p) * 0.85);
+    ellipse(ctx, ex, detailD * 0.4 - p * detailD * 0.8, er, er, '#ffca55', Math.max(0, 1 - p) * 0.85);
   }
 }
 
@@ -212,28 +225,29 @@ function lava(ctx, w, d, t) {
 // the frost cabinet's whole idiom is slow, and a fast plume would read as
 // steam and therefore hot.
 function slush(ctx, w, d, t) {
-  const surf = d * PIT_FLOOR;
+  const detailD = liquidSurfaceDepth(d);
+  const surf = detailD * PIT_FLOOR;
   poly(ctx, '#0d2334', null, 0, (p) => {
     p.moveTo(0, surf);
-    for (let i = 0; i <= 6; i++) p.lineTo(w * (i / 6), surf + Math.sin(t * 1.1 + i * 1.2) * d * 0.01);
+    for (let i = 0; i <= 6; i++) p.lineTo(w * (i / 6), surf + Math.sin(t * 1.1 + i * 1.2) * detailD * 0.01);
     p.lineTo(w, d); p.lineTo(0, d); p.closePath();
   });
-  ellipse(ctx, w * 0.46, surf + d * 0.09, w * 0.28, d * 0.03, '#79b6d8', 0.22);
+  ellipse(ctx, w * 0.46, surf + detailD * 0.09, w * 0.28, detailD * 0.03, '#79b6d8', 0.22);
   for (let i = 0; i < 3; i++) {
     const x = ((t * 1.6 + i * w * 0.4) % (w * 1.2)) - w * 0.12;
     poly(ctx, '#2b5b74', null, 0, (p) => {
-      p.moveTo(x, surf + d * 0.02); p.lineTo(x + w * 0.17, surf + d * 0.005);
-      p.lineTo(x + w * 0.15, surf + d * 0.07); p.lineTo(x + w * 0.02, surf + d * 0.075); p.closePath();
+      p.moveTo(x, surf + detailD * 0.02); p.lineTo(x + w * 0.17, surf + detailD * 0.005);
+      p.lineTo(x + w * 0.15, surf + detailD * 0.07); p.lineTo(x + w * 0.02, surf + detailD * 0.075); p.closePath();
     });
     poly(ctx, '#cfe9f5', '#7ba8c0', Math.max(0.1, w * 0.007), (p) => {
-      p.moveTo(x, surf + d * 0.02); p.lineTo(x + w * 0.16, surf - d * 0.005);
-      p.lineTo(x + w * 0.17, surf + d * 0.005); p.lineTo(x + w * 0.005, surf + d * 0.03); p.closePath();
+      p.moveTo(x, surf + detailD * 0.02); p.lineTo(x + w * 0.16, surf - detailD * 0.005);
+      p.lineTo(x + w * 0.17, surf + detailD * 0.005); p.lineTo(x + w * 0.005, surf + detailD * 0.03); p.closePath();
     });
   }
   for (let i = 0; i < 3; i++) {
     const p = (t * 0.22 + i * 0.34) % 1;
     const vr = w * (0.05 + 0.1 * p);
-    ellipse(ctx, w * (0.25 + i * 0.26) + p * w * 0.1, Math.max(0, surf - p * d * 0.3),
+    ellipse(ctx, w * (0.25 + i * 0.26) + p * w * 0.1, Math.max(0, surf - p * detailD * 0.3),
       vr, vr, '#cfe9f5', 0.2 * (1 - p));
   }
 }
@@ -263,7 +277,8 @@ function spikes(ctx, w, d, t, lift = 0) {
   // scenery is the picture. So the fill is the teeth and the plate under them,
   // and the depth comes from the ROAD standing up either side (see
   // CROSSING_ROAD_RISE in game/run.js).
-  const plate = d * 0.5;
+  const detailD = liquidSurfaceDepth(d);
+  const plate = detailD * 0.5;
   basePlate(ctx, w, d, plate, lift, hardFillCutoff('spikes', w, d));
   // THE SAME TOOTH THE LANE USES. `popSpikes` in sprites/props.js is the spike
   // hazard a player already knows — narrow, inked, alternating pale and grey —
@@ -285,14 +300,14 @@ function spikes(ctx, w, d, t, lift = 0) {
     // across the whole row would be a bed inflating; a fifth of a cycle between
     // neighbours is a ripple running along it.
     const pump = 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(t * 3.1 + i * 0.62));
-    const full = plate - (i % 2 === 0 ? d * SPIKE_TIPS : d * SPIKE_TIPS + d * 0.11);
+    const full = plate - (i % 2 === 0 ? detailD * SPIKE_TIPS : detailD * SPIKE_TIPS + detailD * 0.11);
     // The ink is scaled to the TOOTH, not to the hole. Off the hole's width it
     // was two world pixels of outline round a three-pixel triangle — the row
     // went solid black and the teeth stopped having a shape at all.
     hzTooth(ctx, cx, plate, half, full * pump,
       i % 2 ? '#e4eaf1' : '#b9c4d0', Math.max(0.1, half * 0.16));
   }
-  glint(ctx, w, d, t, d * SPIKE_TIPS);
+  glint(ctx, w, d, t, detailD * SPIKE_TIPS);
 }
 
 // One tooth of the lane's own spike plate: a narrow triangle with an ink line
@@ -311,32 +326,34 @@ function hzTooth(ctx, cx, base, half, height, fill, lw) {
 }
 
 /**
- * Return the bottom edge of a solid pit's visible bay. `d` is the full apron
+ * Return the upper edge of the solid pit's lower floor. `d` is the full apron
  * depth passed by the world renderer. Landscape's apron is short enough that
- * the historical full-depth treatment is unchanged; portrait gets a closed
- * bay just below the actual teeth or gear train.
+ * the historical full-depth treatment is unchanged; portrait puts the edge
+ * just below the authored teeth or gear train and continues the dark floor.
  */
 export function hardFillCutoff(id, w, d) {
   if (!(d > HARD_FILL_LANDSCAPE_DEPTH)) return d;
+  const detailD = liquidSurfaceDepth(d);
   if (id === 'spikes') {
-    return Math.min(d, d * 0.5 + HARD_FILL_BORDER_GAP);
+    return Math.min(d, detailD * 0.5 + HARD_FILL_BORDER_GAP);
   }
   if (id === 'gears') {
     const pitch = 26;
     const n = Math.max(2, Math.round(w / pitch));
     const step = w / n;
-    const big = Math.min(step * 0.52, d * 0.26);
+    const big = Math.min(step * 0.52, detailD * 0.26);
     // Gear teeth can reach 1.15r beyond the wheel centre. Leave a small
     // breathing gap below that silhouette before the bay's bottom edge.
-    return Math.min(d, d * GEAR_TOPS + big * 1.15 + HARD_FILL_BORDER_GAP);
+    return Math.min(d, detailD * GEAR_TOPS + big * 1.15 + HARD_FILL_BORDER_GAP);
   }
   return d;
 }
 
 // THE PLATE the teeth/gear train stand on, and the whole of what a hard fill
-// paints besides the hazard itself. In portrait, `bottom` closes this plate
-// shortly below the silhouette so the solid fill does not hang to the screen
-// edge. Liquids continue to use the full apron and never call this helper.
+// paints besides the hazard itself. In portrait, `bottom` marks the bay wall
+// shortly below the silhouette; the dark floor continues below it to the
+// screen edge. Liquids continue to use the full apron and never call this
+// helper.
 //
 // It is a floor rather than a fill: three pixels of dark at the foot of the
 // teeth and solid below that, where the frame has already run out. Everything
@@ -346,18 +363,22 @@ export function hardFillCutoff(id, w, d) {
 // above y = 0; drawPitFill's clip is what bounds it.
 function basePlate(ctx, w, d, y, lift = 0, bottom = d) {
   const end = Math.max(y + 2, Math.min(d, Number.isFinite(bottom) ? bottom : d));
+  const detailD = liquidSurfaceDepth(d);
+  const topBand = Math.max(2, detailD * 0.06);
   ctx.fillStyle = '#232a34';
-  ctx.fillRect(0, y, w, Math.max(2, d * 0.06));
+  ctx.fillRect(0, y, w, topBand);
   ctx.fillStyle = '#171522';
-  ctx.fillRect(0, y + Math.max(2, d * 0.06), w,
-    Math.max(0, end - (y + Math.max(2, d * 0.06))));
+  ctx.fillRect(0, y + topBand, w, Math.max(0, end - (y + topBand)));
   if (end < d) {
     // A thin lit lip and a dark underside make the cutoff read as the far
-    // wall of a service bay, not as a texture that happened to stop.
+    // wall of a service bay. The floor continues below that wall to the
+    // bottom of the portrait pit; leaving it transparent exposed scenery as
+    // empty air beneath the machinery.
     ctx.fillStyle = '#59636f';
     ctx.fillRect(0, end, w, 2);
     ctx.fillStyle = '#0f1018';
     ctx.fillRect(0, end + 2, w, 2);
+    ctx.fillRect(0, end + 4, w, Math.max(0, d - (end + 4)));
   }
 }
 
@@ -366,13 +387,14 @@ function basePlate(ctx, w, d, y, lift = 0, bottom = d) {
 // flicker, so what moves is the LIGHT on it: once across the row, slowly, the
 // way a highlight crosses a knife.
 function glint(ctx, w, d, t, y) {
+  const detailD = liquidSurfaceDepth(d);
   const p = (t * 0.22) % 1.6;
   const gx = -w * 0.1 + p * w * 0.75;
   if (gx <= -w * 0.05 || gx >= w * 1.05) return;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.globalAlpha = 0.5;
-  ellipse(ctx, gx, y + d * 0.04, Math.max(0.5, w * 0.012), d * 0.06, '#ffffff');
+  ellipse(ctx, gx, y + detailD * 0.04, Math.max(0.5, w * 0.012), detailD * 0.06, '#ffffff');
   ctx.restore();
 }
 
@@ -390,7 +412,8 @@ function glint(ctx, w, d, t, y) {
 // The top of the tooth circle is the surface a falling hero comes to rest on
 // (GEAR_TOPS), so what he lands on is what the eye was measuring.
 function gears(ctx, w, d, t, lift = 0) {
-  const top = d * GEAR_TOPS;
+  const detailD = liquidSurfaceDepth(d);
+  const top = detailD * GEAR_TOPS;
   // A TRAIN, not a row: big wheel, small wheel, big wheel, with their pitch
   // circles touching and every neighbour turning the other way. Alternating the
   // size is what stops nine identical circles reading as a texture — a machine
@@ -403,7 +426,7 @@ function gears(ctx, w, d, t, lift = 0) {
   const pitch = 26;
   const n = Math.max(2, Math.round(w / pitch));
   const step = w / n;
-  const big = Math.min(step * 0.52, d * 0.26);
+  const big = Math.min(step * 0.52, detailD * 0.26);
   // Unlike the liquid fills, a gear train needs a floor behind it. The bay
   // ends just below the largest tooth, so the wheels are visibly seated rather
   // than floating in the scenery or trailing to the phone's bottom edge.
@@ -489,6 +512,8 @@ export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0) {
   // `lift` opens the clip UPWARD by however far the ground rises above the flat
   // line over this break — see shaft(). Zero everywhere the lane is flat, which
   // is most cabinets, and the only reason a painter may put anything above y=0.
+  // The body uses the full presentation apron. Liquid painters clamp only
+  // their surface/detail depth so portrait lava and tar reach the lower edge.
   ctx.rect(x, y0 - lift, w, d + lift);
   ctx.clip();
   ctx.translate(x, y0);

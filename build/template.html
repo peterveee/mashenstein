@@ -27,8 +27,25 @@
 <title>MASHENSTEIN: The Unpluggening</title>
 <script>window.__MASH_BUILT_AT__="__BUILD_TIMESTAMP__";window.__MASH_TELEMETRY_URL__="__TLM_URL__";/*__DEV_GATE__*/</script>
 <style>
+  /* MEASURED 12 Sep 2026, worth keeping written down: under the OPAQUE
+     status-bar styles iOS fills its reserved band from this background — not
+     from theme-color, which a Home Screen app ignores (a white page gave a
+     white band with a black clock). We ship black-translucent, so the band is
+     our canvas instead and this is only what shows if a phone ever hands the
+     page a window shorter than its screen. The game still sets it per stage
+     (see setPageChrome) so that strip is never the wrong colour. */
   html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden;
                -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  /* A Home Screen app under a translucent status bar is given a window one
+     status bar SHORT of the display — 812 for an 874pt 17 Pro — while the
+     display paints the full height; the missing strip shows at the bottom as
+     this page's background. The document reaches it by being that much taller
+     than the window (the renderer sizes the canvas to the display for the same
+     reason, see resize()). Scoped to standalone so a browser tab, whose
+     shortfall is its own toolbar, is left alone. */
+  @media (display-mode: standalone) {
+    html, body { min-height: calc(100% + env(safe-area-inset-top)); }
+  }
   body { touch-action: none; -webkit-user-select: none; user-select: none;
          -webkit-touch-callout: none; overscroll-behavior: none;
          -webkit-tap-highlight-color: transparent; }

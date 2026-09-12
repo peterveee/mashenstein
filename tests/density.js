@@ -464,5 +464,28 @@ function webglStub() {
   assert(d.density === d.native, 'so the ladder ceiling is still native, unchanged');
 }
 
+// A PORTRAIT PHONE IS NOT THROTTLED BY THE CAP.
+//
+// The budget is a pixel count, not a logical height. Portrait keeps the 480
+// width and derives a ~1040 logical height, so against the old height cap the
+// ceiling collapsed to about 1.38x and every glyph in the game was upscaled
+// from there to the display's own density. The same 2560x1440 budget, measured
+// as area, leaves a portrait phone asking for its native resolution.
+{
+  installDom({ locationSearch: '', innerWidth: 402, innerHeight: 874, devicePixelRatio: 3 });
+  const r = await import('../src/engine/renderer.js?d-portrait-cap');
+  r.initRenderer(detectPlatform({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)', screenW: 402, screenH: 874 }));
+  r.setPresentationMode('phone-portrait');
+  const d = r.rendererDiagnostics();
+  const frame = r.presentationFrame();
+  assert(frame.mode === 'phone-portrait' && frame.height > 900,
+    `the portrait frame is tall in logical units (${frame.height.toFixed(0)})`);
+  assert(d.density > 2, `portrait is not capped down to a soft density (${d.density.toFixed(2)})`);
+  assert(Math.abs(d.density - d.native) < 1e-6,
+    `a portrait phone renders at its native density (${d.density.toFixed(2)} vs ${d.native.toFixed(2)})`);
+  assert(480 * frame.height * d.density * d.density <= 2560 * 1440 + 1,
+    'and still fits inside the shipped 2560x1440 backing budget');
+}
+
 console.log(failed ? 'DENSITY: FAILED' : 'DENSITY: PASSED');
 process.exit(failed ? 1 : 0);

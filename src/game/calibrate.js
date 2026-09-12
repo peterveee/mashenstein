@@ -29,6 +29,10 @@ import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { clampAudioSyncMs } from '../engine/save.js';
 import { drawText, drawTextCentered, textWidth, drawMenuRow, textYForMid } from '../engine/sprites.js';
+import {
+  portraitMenuActive, portraitMenuFit, portraitMenuSafeBottom, portraitMenuSafeTop,
+  portraitMenuText, portraitMenuTextCentered, portraitMenuTextY,
+} from '../engine/portrait-menu.js';
 
 // 120 BPM: half a second a click. Fast enough that sixteen of them is eight
 // seconds of the player's time, slow enough that nobody is rushed into
@@ -142,6 +146,8 @@ const RESULT_ROWS_Y = 176;
 function signed(ms) { return `${ms > 0 ? '+' : ''}${Math.round(ms)}`; }
 
 export class CalibrateState {
+  static portraitMode = 'frame';
+
   constructor({ save, onDone }) {
     this.save = save;
     this.onDone = onDone;
@@ -158,6 +164,7 @@ export class CalibrateState {
     this.idx = 0;
     this.stalled = 0;
     this.lastCtxTime = -1;
+    this.layout();
     // The clicks have to be the only thing in the room. Remember the bank
     // rather than the fact that there was one: returning to a menu that starts
     // its own music is common, but returning to the hub mid-tune is too, and
@@ -169,6 +176,17 @@ export class CalibrateState {
     };
     Audio.setBank(null);
     Input.setMenuButtons();
+  }
+
+  layout() {
+    if (!portraitMenuActive()) {
+      this.resultRowsY = RESULT_ROWS_Y;
+      this.rowH = ROW_H;
+      return;
+    }
+    const rows = this.resultRows ? this.resultRows().length : 2;
+    this.rowH = 58;
+    this.resultRowsY = portraitMenuSafeBottom(42) - rows * this.rowH;
   }
 
   exit() {
@@ -224,6 +242,7 @@ export class CalibrateState {
 
   update(dt) {
     this.t += dt;
+    this.layout();
     if (Input.pressed('back')) {
       this.cancelRun();
       Audio.sfx('ui');
@@ -277,7 +296,7 @@ export class CalibrateState {
     if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % rows.length; Audio.sfx('ui'); }
     if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + rows.length - 1) % rows.length; Audio.sfx('ui'); }
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - RESULT_ROWS_Y) / ROW_H);
+      const i = Math.floor((Input.pointer.y - this.resultRowsY) / this.rowH);
       if (i >= 0 && i < rows.length) {
         if (this.idx === i) { this.choose(rows[i]); return; }
         this.idx = i;
@@ -305,6 +324,10 @@ export class CalibrateState {
   }
 
   draw(ctx) {
+    if (portraitMenuActive()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'AUDIO SYNC', W / 2, 22, '#fff', 2, 'title');
@@ -334,6 +357,163 @@ export class CalibrateState {
     drawTextCentered(ctx, `CURRENT AUDIO SYNC: ${signed(ms)} MS ON TOP OF THAT`, W / 2, y + 23, ms ? '#48e0c8' : '#5a5a68');
     if (this.notice) drawTextCentered(ctx, this.notice, W / 2, H - 34, '#d84828');
     drawTextCentered(ctx, `${Input.confirmVerb()}: START   BACK: CANCEL`, W / 2, textYForMid(H - 16), '#8a8a98');
+  }
+
+  drawPortrait(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    const safeTop = portraitMenuSafeTop();
+    const safeBottom = portraitMenuSafeBottom();
+    const titleMid = safeTop + 34;
+    portraitMenuTextCentered(ctx, 'AUDIO SYNC', W / 2,
+      portraitMenuTextY(titleMid, 2.35, 'title'), '#fff', 2.35, 'title');
+
+    if (this.phase === 'ready') this.drawReadyPortrait(ctx, safeTop, safeBottom);
+    else if (this.phase === 'tapping') this.drawTappingPortrait(ctx, safeTop, safeBottom);
+    else this.drawResultPortrait(ctx, safeTop, safeBottom);
+  }
+
+  drawReadyPortrait(ctx, safeTop, safeBottom) {
+    const lines = [
+      ['TAP ON EVERY CLICK.', '#f6d33c', 1.25],
+      [`${CAL_COUNT} CLICKS. FIRST ${CAL_COUNT_IN} ARE COUNT-IN.`, '#c8c8d8', 1.0],
+      ['USE THE HEADPHONES OR SPEAKERS YOU WILL PLAY WITH.', '#c8c8d8', 1.0],
+      ['', '#c8c8d8', 1.0],
+      ['WIRELESS HEADPHONES DELIVER SOUND LATE.', '#8a8a98', 0.94],
+      ['THIS MEASURES IT FOR THE RHYTHM STAGES.', '#8a8a98', 0.94],
+    ];
+    let y = safeTop + 130;
+    for (const [text, color, size] of lines) {
+      if (text) {
+        const fitted = portraitMenuFit(text, size, W - 34);
+        portraitMenuTextCentered(ctx, text, W / 2,
+          portraitMenuTextY(y, fitted), color, fitted);
+      }
+      y += 34;
+    }
+    const reported = Math.round(Audio.reportedLatencySec() * 1000);
+    const device = `THIS DEVICE REPORTS ~${reported} MS`;
+    const currentMs = clampAudioSyncMs(this.save.settings.audioSyncMs);
+    const current = `CURRENT AUDIO SYNC: ${signed(currentMs)} MS ON TOP OF THAT`;
+    portraitMenuTextCentered(ctx, device, W / 2,
+      portraitMenuTextY(y + 18, 0.98), '#5a5a68', 0.98);
+    const currentS = portraitMenuFit(current, 0.98, W - 30);
+    portraitMenuTextCentered(ctx, current, W / 2,
+      portraitMenuTextY(y + 48, currentS), currentMs ? '#48e0c8' : '#5a5a68', currentS);
+    if (this.notice) {
+      const noticeS = portraitMenuFit(this.notice, 0.96, W - 28);
+      portraitMenuTextCentered(ctx, this.notice, W / 2,
+        portraitMenuTextY(safeBottom - 76, noticeS), '#d84828', noticeS);
+    }
+    portraitMenuTextCentered(ctx, `${Input.confirmVerb()}: START   BACK: CANCEL`, W / 2,
+      portraitMenuTextY(safeBottom - 18, 1.05), '#8a8a98', 1.05);
+  }
+
+  drawTappingPortrait(ctx, safeTop, safeBottom) {
+    const now = Audio.ctx?.currentTime ?? 0;
+    const x0 = 36;
+    const x1 = W - 36;
+    const midX = W / 2;
+    const laneY = Math.round(safeTop + (safeBottom - safeTop) * 0.52);
+    const pxPerSec = (x1 - x0) / 8;
+    const title = 'TAP ON EVERY CLICK';
+    portraitMenuTextCentered(ctx, title, W / 2,
+      portraitMenuTextY(safeTop + 104, 1.2), '#f6d33c', 1.2);
+
+    ctx.fillStyle = '#1c1c2a';
+    ctx.fillRect(x0, laneY - 2, x1 - x0, 4);
+    for (let i = 0; i < this.clicks.length; i++) {
+      const due = this.clicks[i] + this.reportedSec;
+      const x = midX + (due - now) * pxPerSec;
+      if (x < x0 - 4 || x > x1 + 4) continue;
+      const countIn = i < CAL_COUNT_IN;
+      ctx.fillStyle = countIn ? '#3a3a4a' : '#8a8a98';
+      ctx.fillRect(Math.round(x), laneY - 14, 2, 28);
+    }
+
+    const sinceClick = this.clicks.reduce((acc, c) => {
+      const d = now - (c + this.reportedSec);
+      return d >= 0 && d < acc ? d : acc;
+    }, Infinity);
+    const flash = sinceClick < 0.12;
+    ctx.fillStyle = flash ? '#f6d33c' : '#48e0c8';
+    ctx.fillRect(midX - 2, laneY - 28, 4, 56);
+
+    for (const tap of this.taps) {
+      let bestGap = Infinity;
+      for (const c of this.clicks) {
+        const gap = tap - (c + this.reportedSec);
+        if (Math.abs(gap) < Math.abs(bestGap)) bestGap = gap;
+      }
+      if (!Number.isFinite(bestGap) || Math.abs(bestGap) > CAL_WINDOW_SEC) continue;
+      const age = now - tap;
+      if (age < 0 || age > 1.4) continue;
+      const ms = Math.abs(bestGap) * 1000;
+      ctx.fillStyle = ms <= 30 ? '#48c848' : ms <= 80 ? '#f6d33c' : '#d84828';
+      ctx.fillRect(Math.round(midX + bestGap * pxPerSec) - 3, laneY + 24, 6, 6);
+    }
+
+    const scored = this.taps.length
+      ? assignTaps(this.taps, this.clicks, this.reportedSec).length : 0;
+    portraitMenuTextCentered(ctx, `${scored} / ${SCORED}`, W / 2,
+      portraitMenuTextY(laneY + 72, 1.2), '#c8c8d8', 1.2);
+    const upcoming = this.clicks.filter((c) => c + this.reportedSec > now).length;
+    const counting = this.clicks.length - upcoming <= CAL_COUNT_IN;
+    portraitMenuTextCentered(ctx, counting ? 'COUNT-IN' : 'KEEP TAPPING', W / 2,
+      portraitMenuTextY(laneY + 104, 1.0), '#5a5a68', 1.0);
+    portraitMenuTextCentered(ctx, 'BACK: CANCEL', W / 2,
+      portraitMenuTextY(safeBottom - 18, 1.05), '#5a5a68', 1.05);
+  }
+
+  drawResultPortrait(ctx, safeTop, safeBottom) {
+    const r = this.result;
+    const reported = Math.round(this.reportedSec * 1000);
+    let y = safeTop + 116;
+    if (!r.enough) {
+      const heading = 'NOT ENOUGH TAPS.';
+      portraitMenuTextCentered(ctx, heading, W / 2,
+        portraitMenuTextY(y, 1.3), '#d84828', 1.3);
+      const detail = `${r.count} OF ${SCORED} CLICKS ANSWERED. TAP ON EVERY ONE.`;
+      const detailS = portraitMenuFit(detail, 0.98, W - 28);
+      portraitMenuTextCentered(ctx, detail, W / 2,
+        portraitMenuTextY(y + 38, detailS), '#c8c8d8', detailS);
+    } else {
+      portraitMenuTextCentered(ctx, `DEVICE REPORTS ~${reported} MS`, W / 2,
+        portraitMenuTextY(y, 1.0), '#8a8a98', 1.0);
+      const measured = `MEASURED EXTRA ${signed(r.medianMs)} MS`;
+      portraitMenuTextCentered(ctx, measured, W / 2,
+        portraitMenuTextY(y + 34, 1.0), '#c8c8d8', 1.0);
+      const fresh = `NEW AUDIO SYNC: ${signed(r.suggestedMs)} MS`;
+      const freshS = portraitMenuFit(fresh, 1.6, W - 30, 'title');
+      portraitMenuTextCentered(ctx, fresh, W / 2,
+        portraitMenuTextY(y + 76, freshS, 'title'), '#48e0c8', freshS, 'title');
+      y += 136;
+      if (r.unsteady) {
+        const warning = 'UNSTEADY. TAPS SCATTERED — CONSIDER A RETRY.';
+        const warningS = portraitMenuFit(warning, 0.94, W - 26);
+        portraitMenuTextCentered(ctx, warning, W / 2,
+          portraitMenuTextY(y, warningS), '#f6d33c', warningS);
+        y += 32;
+      }
+      if (!Input.isTouchDevice() && r.suggestedMs > CAL_LARGE_MS) {
+        const cable = 'LARGE OFFSET. WIRED HEADPHONES FEEL TIGHTER.';
+        const cableS = portraitMenuFit(cable, 0.88, W - 26);
+        portraitMenuTextCentered(ctx, cable, W / 2,
+          portraitMenuTextY(y, cableS), '#8a8a98', cableS);
+      }
+    }
+    const rows = this.resultRows();
+    rows.forEach((label, i) => {
+      const rowY = this.resultRowsY + i * this.rowH;
+      const rowW = Math.min(W - 48, Math.max(150, textWidth(label, portraitMenuScale(1.15)) + 42));
+      if (i === this.idx) drawMenuRow(ctx, W / 2 - rowW / 2, rowY, rowW, this.rowH - 4);
+      const color = i === this.idx ? '#fff' : '#8a8a98';
+      const labelS = portraitMenuFit(label, 1.15, rowW - 28);
+      portraitMenuText(ctx, label, W / 2 - rowW / 2 + 14,
+        portraitMenuTextY(rowY + (this.rowH - 4) / 2, labelS), color, labelS);
+    });
+    portraitMenuTextCentered(ctx, 'TAP A ROW   BACK: CANCEL', W / 2,
+      portraitMenuTextY(safeBottom - 18, 1.0), '#5a5a68', 1.0);
   }
 
   /**

@@ -104,6 +104,33 @@ export const TUNABLES = [
   // and changed from the same strip.
   { file: 'src/game/run.js', name: 'ZOOM_CLOSE', short: 'ZOOM_CLOSE', group: MOTION, step: 0.05, coarse: 0.25, min: 1, max: 3, fmt: 2 },
   { file: 'src/game/run.js', name: 'ZOOM_PHONE', short: 'ZOOM_PHONE', group: MOTION, step: 0.05, coarse: 0.25, min: 1, max: 3, fmt: 2 },
+
+  // ---- the jump guard ----------------------------------------------------
+  // The crane's behaviour during a jump, which is the one camera decision that
+  // can only be judged while something is jumping — the whole of it is a feel
+  // about a move lasting two thirds of a second, and a still frame says nothing
+  // about any of it. See "the jump guard" in src/engine/camera.js.
+  //
+  // GUARD_MARG 0 is the honest off position: the guard then does nothing at
+  // all until the hero's crown is on the frame edge, which is the A/B for
+  // whether the six pixels are buying anything.
+  { file: 'src/engine/camera.js', name: 'GUARD_TOP_MARGIN', short: 'GUARD_MARG', group: MOTION, step: 1, coarse: 4, min: 0, max: 60, fmt: 0 },
+  { file: 'src/engine/camera.js', name: 'GUARD_DWELL', short: 'GUARD_DWELL', group: MOTION, step: 0.02, coarse: 0.1, min: 0, max: 1, fmt: 2 },
+  { file: 'src/engine/camera.js', name: 'GUARD_APPROACH_K', short: 'GUARD_TAKE', group: MOTION, step: 0.5, coarse: 2, min: 1, max: 30, fmt: 1 },
+  { file: 'src/engine/camera.js', name: 'GUARD_RELEASE_K', short: 'GUARD_GIVE', group: MOTION, step: 0.5, coarse: 2, min: 0.5, max: 20, fmt: 1 },
+  { file: 'src/engine/camera.js', name: 'GUARD_SPEED', short: 'GUARD_SPEED', group: MOTION, step: 20, coarse: 100, min: 40, max: 1500, fmt: 0 },
+
+  // ---- the anchor, and the budget the two of them share -------------------
+  // SLIDE_MAX is the one to reach for first: it is the whole promise in one
+  // number — how fast the camera is ever allowed to move the world on screen by
+  // its own doing, with the anchor and the crane spending out of it together.
+  // Wind it down until a sky fork reads as a move rather than a cut, then use
+  // the two stiffnesses to change the SHAPE of that move inside it.
+  { file: 'src/engine/camera.js', name: 'CAM_SLIDE_MAX', short: 'SLIDE_MAX', group: MOTION, step: 20, coarse: 100, min: 60, max: 2000, fmt: 0 },
+  { file: 'src/engine/camera.js', name: 'FLOOR_RISE_W', short: 'ANCH_RISE', group: MOTION, step: 0.5, coarse: 2, min: 1, max: 40, fmt: 1 },
+  { file: 'src/engine/camera.js', name: 'FLOOR_FALL_W', short: 'ANCH_FALL', group: MOTION, step: 0.5, coarse: 2, min: 1, max: 40, fmt: 1 },
+  { file: 'src/engine/camera.js', name: 'FLOOR_MAX_SPEED', short: 'ANCH_SPEED', group: MOTION, step: 20, coarse: 100, min: 40, max: 2000, fmt: 0 },
+  { file: 'src/engine/camera.js', name: 'FOOTROOM_CATCHUP', short: 'FOOTROOM_V', group: MOTION, step: 20, coarse: 100, min: 20, max: 2000, fmt: 0 },
 ];
 
 export const GROUPS = [PHYSICS, GAIT, MOTION];

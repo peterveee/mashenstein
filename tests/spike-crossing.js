@@ -45,7 +45,7 @@ const { airtimeFor, PLAYER_X, PLAYER_SPRITE_W } = await import('../src/game/play
 const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
 const { CROSSING_BEAT_HOP, actionApproachPx } = await import('../src/game/beatchart.js');
 const { makeObstacle } = await import('../src/game/entities.js');
-const { hasPitFill, hardFillCutoff } = await import('../src/game/pitFill.js');
+const { hasPitFill, hardFillCutoff, liquidSurfaceDepth } = await import('../src/game/pitFill.js');
 const { GROUND_Y } = await import('../src/game/run.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { HEROES } = await import('../src/data/heroes.js');
@@ -60,18 +60,22 @@ function assert(cond, msg) {
 const cast = Object.values(HEROES);
 
 // Solid pit art gets a bottom edge only when the portrait apron is genuinely
-// taller than the old landscape band. Liquids, including lava, retain their
-// full-depth treatment.
+// taller than the old landscape band. Liquids stay tied to the authored shaft,
+// so their surfaces do not disappear below a tall portrait viewport.
 assert(hardFillCutoff('spikes', 56, 38) === 38,
   'landscape spike pits keep their existing full apron depth');
 assert(hardFillCutoff('gears', 56, 38) === 38,
   'landscape gear pits keep their existing full apron depth');
 assert(hardFillCutoff('spikes', 56, 700) < 700,
-  'portrait spike pits close below the teeth instead of running to the edge');
+  'portrait spike pits place the floor edge below the teeth');
 assert(hardFillCutoff('gears', 56, 700) < 700,
-  'portrait gear pits close below the wheels instead of floating');
+  'portrait gear pits place the floor edge below the wheels');
 assert(hardFillCutoff('lava', 56, 700) === 700,
-  'lava pits retain their full-depth material');
+  'lava cutoff remains open because it is a liquid');
+assert(liquidSurfaceDepth(700) === 38,
+  'portrait lava keeps its authored shaft depth');
+assert(liquidSurfaceDepth(700) === 38,
+  'portrait tar keeps its authored shaft depth');
 
 // ---- the window, hero by hero ----------------------------------------------
 // Scale-invariant, so one pass covers every stage the crossing could ever be

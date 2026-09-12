@@ -7,10 +7,10 @@ import { Audio } from '../engine/audio.js';
 import { VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, smooth } from '../engine/visualisers.js';
 import { defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
-import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawB33pPellet } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawPellet } from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
-  b33pTitleShotPose, B33P_TITLE_WINDUP_T,
+  drawRangedProjectile, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
 } from '../sprites/toons.js';
 import {
   drawProp, hasProp, glowSprite, propFrames, propFps, propSprite, PORTAL_SPRITE, portalArtWidth,
@@ -44,6 +44,7 @@ import {
   FINALE_THANKS_TITLE, FINALE_THANKS, FINALE_SIGNOFF,
 } from '../data/jokes.js';
 import { HEROES } from '../data/heroes.js';
+import { HERO_SPRITES } from '../sprites/heroes.js';
 import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
@@ -54,6 +55,11 @@ import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
 import { totalPlugs, MAX_PLUGS, formatCoins, nextStage, stageUnlocked } from './progress.js';
+import {
+  portraitMenuActive, portraitMenuScale, portraitMenuText, portraitMenuTextCentered,
+  portraitMenuTextY, portraitMenuFit, portraitMenuWrap,
+  portraitMenuSafeTop, portraitMenuSafeBottom,
+} from '../engine/portrait-menu.js';
 
 // See Input.confirmVerb — the word is shared with the in-run ACT card now, so
 // it lives with the device test. Kept as a local name because every screen in
@@ -158,7 +164,6 @@ const INV_CROSS = 11;      // slower than the hero parade, so targets change
 const INV_DROP_PS = [0.10, 0.45, 0.80];
 const INV_SPAN = W + 44;
 const BOLT_G = 260;        // px/s^2
-const BOLT_HEAD_Y = 227;   // where the parade's heads are
 const KNOCK_T = 1.9;       // how long a clobbered hero stays airborne
 const INV_HIT_RADIUS = 48;
 const PARADE_EDGE_FADE = 32;
@@ -252,8 +257,6 @@ function drawCachedTitleToon(ctx, id, pose, cx, feetY, h, scale = 1) {
 // hero positions and tap tests independent, but composite the settled lower
 // strip as one image: six high-resolution drawImage calls every frame were
 // enough to pull both Canvas2D and WebGL into the 40 FPS range on iPhone.
-const TITLE_PARADE_TOP = 160;
-const TITLE_PARADE_H = H - TITLE_PARADE_TOP;
 const titleParadeCache = { canvas: null, ctx: null, ss: 0, key: '' };
 
 function invalidateTitleParadeCache() {
@@ -267,12 +270,13 @@ function titleParadeStateKey(state) {
     .map(([key, w]) => `${key}:${w.frozen ? `${w.frozen.x}:${w.frozen.resumeAt}` : ''}`).join(',');
   const bombs = state.tapBombs.map((b) => `${b.id}:${b.victim}:${b.tHit}`).join(',');
   const shots = state.shots.map((s) => `${s.id}:${s.tFired}:${s.source}:${s.kind || ''}`).join(',');
+  const shooters = [...(state.titleShooters || [])].sort().join(',');
   return [
     HERO_PARADE.join(','),
     state.frightStart,
     state.wispsDismissed ? 1 : 0,
     state.save.settings.reducedFlashing ? 1 : 0,
-    pokes, eaten, scatter, bombs, shots,
+    shooters, pokes, eaten, scatter, bombs, shots,
   ].join('|');
 }
 
@@ -284,52 +288,75 @@ function drawCachedTitleParade(ctx, cast, t, stateKey) {
     cast(ctx, 'stable');
     return;
   }
+  const layout = titleLayout();
   const ss = bakeSS();
-  const key = `${Math.floor(t * 30)}|${ss}|${stateKey}`;
+  // The portrait parade has a transparent headroom buffer above its visible
+  // floor. A regular jump stretches above the lower stage, and cropping the
+  // retained canvas there made the top of a head disappear even though the
+  // stars were correctly painted underneath it.
+  const cacheTop = layout.portrait
+    ? Math.max(0, layout.paradeTop - layout.castH * 0.9)
+    : layout.paradeTop;
+  const cacheH = Math.max(1, H - cacheTop);
+  const key = `${Math.floor(t * 30)}|${ss}|${cacheTop}|${cacheH}|${stateKey}`;
   if (titleParadeCache.key !== key) {
-    if (!titleParadeCache.canvas || titleParadeCache.ss !== ss) {
+    if (!titleParadeCache.canvas || titleParadeCache.ss !== ss
+        || titleParadeCache.w !== W || titleParadeCache.h !== cacheH) {
       titleParadeCache.canvas = document.createElement('canvas');
       titleParadeCache.canvas.width = Math.max(1, Math.round(W * ss));
-      titleParadeCache.canvas.height = Math.max(1, Math.round(TITLE_PARADE_H * ss));
+      titleParadeCache.canvas.height = Math.max(1, Math.round(cacheH * ss));
       titleParadeCache.ctx = titleParadeCache.canvas.getContext('2d');
       titleParadeCache.ss = ss;
+      titleParadeCache.w = W;
+      titleParadeCache.h = cacheH;
     }
     const x = titleParadeCache.ctx;
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.clearRect(0, 0, titleParadeCache.canvas.width, titleParadeCache.canvas.height);
-    x.setTransform(ss, 0, 0, ss, 0, -TITLE_PARADE_TOP * ss);
+    x.setTransform(ss, 0, 0, ss, 0, -cacheTop * ss);
     x.imageSmoothingEnabled = true;
     cast(x, 'stable');
     titleParadeCache.key = key;
   }
-  ctx.drawImage(titleParadeCache.canvas, 0, TITLE_PARADE_TOP, W, TITLE_PARADE_H);
+  ctx.drawImage(titleParadeCache.canvas, 0, cacheTop, W, cacheH);
 }
 
 // Every hop, accent and tap footprint below was tuned against a 26-tall parade;
 // they scale off this rather than being re-eyeballed one at a time.
-const PARADE_K = HERO_PARADE_H / 26;
 const HERO_PARADE_SPEED = 42;
 const HERO_PARADE_DELAY = 3.5;
 // The parade is an 11-slot loop: eight hero slots, two ghost slots, then one
 // permanently empty slot before slot one returns. This leaves a real handoff
 // gap without allowing the cameo to drift into the hero stream.
 const HERO_PARADE_SLOTS = 11;
-const HERO_ENTRY_GAP = 84 / HERO_PARADE_SPEED;
-const HERO_PARADE_SPAN = HERO_ENTRY_GAP * HERO_PARADE_SPEED * HERO_PARADE_SLOTS;
+const HERO_PARADE_LANDSCAPE_GAP = 84;
 const HERO_ENTRY_JUMP_T = 2.1;
-const HERO_ENTRY_JUMP_H = 30 * PARADE_K;
 const HERO_ENTRY_ZOOM = 1.35;
 // A tapped hero's startled little hop, overriding whatever they were doing.
 const HERO_POKE_T = 0.4;
-const HERO_POKE_H = 11 * PARADE_K;
+
+// The landscape parade's 84-unit spacing was tuned for a 60-unit-tall toon.
+// Portrait makes the toons larger, so preserve that same visual breathing room
+// by scaling the gap with the cast rather than packing the enlarged bodies into
+// the old horizontal rhythm. The landscape result remains byte-for-byte the
+// old 84-unit schedule.
+function titleHeroGap() {
+  return titleLayout().paradeGap;
+}
+function titleHeroEntryGap() { return titleHeroGap() / HERO_PARADE_SPEED; }
+function titleHeroParadeSpan() { return titleHeroGap() * HERO_PARADE_SLOTS; }
 
 const invX = (trip, p) => (trip % 2 === 0 ? -22 + p * INV_SPAN : W + 22 - p * INV_SPAN);
 // Tucked right under the top edge: the marquee moved up to give the cast the
 // bottom of the screen, so the fly-by has less sky to keep out of its way.
-const invY = (trip, t) => 2 + (trip % 3) * 3 + Math.sin(t * 2.3) * 1.6;
+const invY = (trip, t) => {
+  const layout = titleLayout();
+  const top = layout.portrait ? layout.safeTop + 8 : 2;
+  return top + (trip % 3) * 3 + Math.sin(t * 2.3) * 1.6;
+};
 const heroX = (i, t) => {
-  const local = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
-  return local < 0 ? -70 : ((local * HERO_PARADE_SPEED) % HERO_PARADE_SPAN) - 70;
+  const local = t - HERO_PARADE_DELAY - i * titleHeroEntryGap();
+  return local < 0 ? -70 : ((local * HERO_PARADE_SPEED) % titleHeroParadeSpan()) - 70;
 };
 function paradeEdgeAlpha(x) {
   // Let each hero leave fully before the modulo wrap puts them back at the
@@ -350,8 +377,8 @@ const PARADE_SPAN = W + 140;
 // Ghosts occupy parade slots 9 and 10 only (the two slots immediately after
 // the eight heroes). They enter when slot 9 reaches the left edge, then share
 // the hero loop's timing instead of drifting on a separate schedule.
-const WISP_FIRST = HERO_PARADE_DELAY + HERO_ENTRY_GAP * (HERO_PARADE_SLOTS - 3);
-const WISP_PERIOD = HERO_ENTRY_GAP * HERO_PARADE_SLOTS;
+function titleWispFirst() { return HERO_PARADE_DELAY + titleHeroEntryGap() * (HERO_PARADE_SLOTS - 3); }
+function titleWispPeriod() { return titleHeroEntryGap() * HERO_PARADE_SLOTS; }
 const WISP_COUNT = 2;
 const WISP_COLORS = ['#f06c88', '#66cbe8', '#f2a45f', '#ad82e8', '#79d48d'];
 // Tapping any visitor spooks the whole crossing gang into a power-pellet
@@ -359,13 +386,11 @@ const WISP_COLORS = ['#f06c88', '#66cbe8', '#f2a45f', '#ad82e8', '#79d48d'];
 // seconds, still crossing normally rather than fleeing. Tapping one of them
 // again while frightened eats it — the body drops away to just a pair of
 // eyes that zip straight off whichever edge is nearest.
-const WISP_TAP_RADIUS = 12 * PARADE_K;
 // Top of the strip a tap has to land in to count as poking the parade rather
 // than the menu. Tracks the tallest head, so it follows HERO_PARADE_H.
-const PARADE_TAP_TOP = 268 - HERO_PARADE_H - 6;
+// The actual bound is resolved by titleParadeTapTop() below.
 // The visitors share the parade's floor line, so they share its scaling too —
 // a fixed 0.68 left them knee-high once the cast grew.
-const WISP_SCALE = 0.68 * PARADE_K;
 const WISP_FRIGHT_T = 7;
 const WISP_FRIGHT_COLOR = '#4a5be0';
 const WISP_FRIGHT_FLASH_T = 2; // last stretch blinks blue/white, the classic warning
@@ -379,7 +404,6 @@ const WISP_EATEN_SPEED = 150;
 const WISP_SCATTER_SPEED = 58;
 // How close a hero can be to a spot before it no longer counts as clear for a
 // calmed-down wisp to walk back out through.
-const WISP_GAP_CLEARANCE = 22 * PARADE_K;
 function wispScatterX(t, w) {
   if (w.frozen) {
     if (w.frozen.resumeAt == null) return w.frozen.x;
@@ -391,21 +415,22 @@ function wispScatterX(t, w) {
 function heroGapAt(t, x, tapBombs) {
   for (let i = 0; i < HERO_PARADE.length; i++) {
     if (!heroOnScreen(i, t) || heroIsKnockedOut(i, t, tapBombs)) continue;
-    if (Math.abs(heroX(i, t) - x) < WISP_GAP_CLEARANCE) return false;
+    if (Math.abs(heroX(i, t) - x) < titleWispGapClearance()) return false;
   }
   return true;
 }
 
 function mazeWispPass(t) {
-  if (t < WISP_FIRST) return null;
-  const trip = Math.floor((t - HERO_PARADE_DELAY) / WISP_PERIOD);
+  const first = titleWispFirst();
+  if (t < first) return null;
+  const trip = Math.floor((t - HERO_PARADE_DELAY) / titleWispPeriod());
   return { trip, count: WISP_COUNT };
 }
 
 function wispX(i, t) {
-  const local = (t - WISP_FIRST) * PARADE_SPEED;
-  return ((local % HERO_PARADE_SPAN) + HERO_PARADE_SPAN) % HERO_PARADE_SPAN - 70
-    - i * HERO_ENTRY_GAP * PARADE_SPEED;
+  const local = (t - titleWispFirst()) * PARADE_SPEED;
+  return ((local % titleHeroParadeSpan()) + titleHeroParadeSpan()) % titleHeroParadeSpan() - 70
+    - i * titleHeroEntryGap() * PARADE_SPEED;
 }
 
 function drawMazeWisp(ctx, x, feetY, color, phase, mood, scatter) {
@@ -417,7 +442,7 @@ function drawMazeWisp(ctx, x, feetY, color, phase, mood, scatter) {
   const blinking = !scatter && blinkClock > 5.68;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(feetY + bob));
-  ctx.scale(WISP_SCALE, WISP_SCALE);
+  ctx.scale(titleWispScale(), titleWispScale());
   ctx.lineJoin = 'round';
   // Rounded hood, tapered sides and three uneven little skirt points make a
   // soft floating mascot rather than a literal arcade-ghost sprite.
@@ -463,7 +488,7 @@ function drawMazeWisp(ctx, x, feetY, color, phase, mood, scatter) {
 function drawWispEyes(ctx, x, feetY, dir) {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(feetY));
-  ctx.scale(WISP_SCALE, WISP_SCALE);
+  ctx.scale(titleWispScale(), titleWispScale());
   const gx = dir * 1.4;
   ctx.fillStyle = '#fff8e8';
   ctx.beginPath(); ctx.ellipse(-3.3, -16, 2.7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
@@ -488,7 +513,7 @@ function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter, wispsDi
     for (const w of eaten.values()) {
       const x = w.x0 + w.dir * (t - w.t0) * WISP_EATEN_SPEED;
       if (x < -24 || x > W + 24) continue;
-      drawWispEyes(ctx, x, 267, w.dir);
+      drawWispEyes(ctx, x, titleCastFeetY() - 1, w.dir);
     }
   }
   // Scattering visitors also run on their own clock, independent of the
@@ -499,9 +524,9 @@ function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter, wispsDi
       const x = wispScatterX(t, w);
       if (x < -24 || x > W + 24) continue;
       ctx.fillStyle = 'rgba(4,3,9,0.25)';
-      ctx.beginPath(); ctx.ellipse(x, 268, 5.5 * PARADE_K, 1.5 * PARADE_K, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x, titleCastFeetY(), 5.5 * titleParadeK(), 1.5 * titleParadeK(), 0, 0, Math.PI * 2); ctx.fill();
       const color = frightActive ? frightColor : WISP_COLORS[w.colorIdx];
-      drawMazeWisp(ctx, x, 267, color, t * 1.8 + w.colorIdx * 0.24, w.colorIdx % 3, !w.frozen);
+      drawMazeWisp(ctx, x, titleCastFeetY() - 1, color, t * 1.8 + w.colorIdx * 0.24, w.colorIdx % 3, !w.frozen);
     }
   }
   // No new visitor appears while the current episode (scattering or still
@@ -520,22 +545,22 @@ function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter, wispsDi
     const x = wispX(i, t);
     if (x < -24 || x > W + 24) continue;
     ctx.fillStyle = 'rgba(4,3,9,0.25)';
-    ctx.beginPath(); ctx.ellipse(x, 268, 5.5 * PARADE_K, 1.5 * PARADE_K, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, titleCastFeetY(), 5.5 * titleParadeK(), 1.5 * titleParadeK(), 0, 0, Math.PI * 2); ctx.fill();
     const color = frightActive ? frightColor : WISP_COLORS[(pass.trip + i) % WISP_COLORS.length];
-    drawMazeWisp(ctx, x, 267, color, t * 1.8 + i * 0.24, (pass.trip + i) % 3, frightActive);
+    drawMazeWisp(ctx, x, titleCastFeetY() - 1, color, t * 1.8 + i * 0.24, (pass.trip + i) % 3, frightActive);
   }
 }
 
 // A tap landing on a not-yet-eaten maze-wisp visitor. Returns its map key and
 // current x (so eating it knows which edge is nearest), or null.
 function wispTapHit(t, px, py, eaten, scatter, wispsDismissed = false) {
-  if (py < PARADE_TAP_TOP || py > 270) return null;
+  if (py < titleParadeTapTop() || py > titleCastFeetY() + 12) return null;
   if (scatter) {
     for (const [key, w] of scatter) {
       if (eaten && eaten.has(key)) continue;
       const x = wispScatterX(t, w);
       if (x < -24 || x > W + 24) continue;
-      if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key, x };
+      if (Math.abs(px - x) < titleWispTapRadius()) return { key, x };
     }
   }
   // No new visitor to tap while the current episode is still unresolved.
@@ -548,7 +573,7 @@ function wispTapHit(t, px, py, eaten, scatter, wispsDismissed = false) {
   for (let i = 0; i < pass.count; i++) {
     const x = wispX(i, t);
     if (x < -24 || x > W + 24) continue;
-    if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key: `${pass.trip}:${i}`, x };
+    if (Math.abs(px - x) < titleWispTapRadius()) return { key: `${pass.trip}:${i}`, x };
   }
   return null;
 }
@@ -574,14 +599,22 @@ let titleToasterIntroSeen = false;
 const TOASTER_FIRST = INV_FIRST + INV_CROSS + 2;
 const TOASTER_PERIOD = 29;
 const TOASTER_SPEED = 72;
-const TOASTER_GAP = 30;
-const TOASTER_EDGE = 38;
+const TOASTER_GAP = 38;
+const TOASTER_EDGE = 48;
 const TOASTER_BREATH = 2;
 const TOASTER_LANES = {
   1: [0],
   2: [-16, 16],
   3: [-22, 0, 22],
   4: [-27, -9, 9, 27],
+};
+// Portrait has enough vertical breathing room below the menu to let a large
+// formation read as two staggered lines instead of one tiny ribbon.
+const TOASTER_LANES_PORTRAIT = {
+  1: [0],
+  2: [-46, 46],
+  3: [-48, 0, 48],
+  4: [-48, -16, 16, 48],
 };
 
 function titleToasterCount(trip, singleOpening) {
@@ -619,6 +652,20 @@ function titleToasterStart(trip, count) {
   return { start, cross };
 }
 
+function titleToasterCenterY(trip) {
+  const layout = titleLayout();
+  if (!layout.portrait) return 84 + shaderHash21(trip + 7, 41) * 76;
+  // Portrait gives the enlarged appliances a proper stage in the open band
+  // below the button stack. The two-row offsets let a formation fill that
+  // space, while the draw order still permits the largest bodies to overlap a
+  // card edge when they cross.
+  const cardsBottom = layout.panelY + layout.cardH * 4 + layout.cardGap * 3;
+  const laneTop = cardsBottom + 34;
+  const laneBottom = Math.min(layout.paradeTop + 42, cardsBottom + 80);
+  const span = Math.max(0, laneBottom - laneTop);
+  return laneTop + shaderHash21(trip + 7, 41) * span;
+}
+
 // Which fly-by (if any) is on screen right now. Exported as a small visual
 // contract so the title tests can pin the promised 1–4 range without needing
 // to inspect pixels.
@@ -637,9 +684,9 @@ export function titleToasterPass(t, singleOpening = true) {
     p: local / cross,
     count,
     dir: trip % 2 === 0 ? 1 : -1,
-    // Keep the yellow appliances below the gold logo; they may share the cyan
-    // subtitle band, whose contrast remains clear against the warm sprites.
-    centerY: 84 + shaderHash21(trip + 7, 41) * 76,
+    // Portrait places the yellow appliances in the reserved lane below STAFF
+    // ONLY; landscape keeps its established sky cameo height.
+    centerY: titleToasterCenterY(trip),
   };
 }
 
@@ -653,18 +700,32 @@ export function invaderPass(t) {
 
 function drawFlyingToasters(ctx, t, reduced, singleOpening) {
   if (reduced) return;
+  const layout = titleLayout();
   const pass = titleToasterPass(t, singleOpening);
   if (!pass) return;
-  const offsets = TOASTER_LANES[pass.count];
+  const offsets = (layout.portrait ? TOASTER_LANES_PORTRAIT : TOASTER_LANES)[pass.count];
   for (let i = 0; i < pass.count; i++) {
     const x = pass.dir > 0
       ? -TOASTER_EDGE + pass.local * TOASTER_SPEED - i * TOASTER_GAP
       : W + TOASTER_EDGE - pass.local * TOASTER_SPEED + i * TOASTER_GAP;
     if (x < -TOASTER_EDGE - 42 || x > W + TOASTER_EDGE + 42) continue;
-    const size = 32 + shaderHash21(pass.trip + i + 13, 59) * 13;
+    // These are a foreground gag now, not distant sky decoration. Give the
+    // appliance body enough scale to read clearly over the portrait cards.
+    const size = layout.portrait
+      ? 108 + shaderHash21(pass.trip + i + 13, 59) * 36
+      : 68 + shaderHash21(pass.trip + i + 13, 59) * 24;
     const h = size * 0.82;
     const y = pass.centerY + offsets[i] + Math.sin(t * 2.2 + i * 0.8 + pass.trip) * 1.5;
-    const edge = Math.min(1, Math.max(0, (x + TOASTER_EDGE) / TOASTER_EDGE), Math.max(0, (W + TOASTER_EDGE - x) / TOASTER_EDGE));
+    // The old edge fade was tied to the small toaster's centre point. With
+    // portrait bodies this large, the appliance could still be clipped while
+    // its centre was fading in. Use the actual half-width and a real inner
+    // gutter so the body never appears beyond the screen's left/right edges.
+    const edgeFade = 18;
+    const bodyHalf = size / 2;
+    if (x < bodyHalf || x > W - bodyHalf) continue;
+    const edge = Math.min(1,
+      Math.max(0, (x - bodyHalf) / edgeFade),
+      Math.max(0, (W - bodyHalf - x) / edgeFade));
     const animationOffset = titleToasterStagger(pass.trip, i);
     const frame = Math.floor((t + animationOffset) * propFps('appliance')) % propFrames('appliance');
     // Rasterize one authored appliance size and scale it only at draw time.
@@ -697,7 +758,7 @@ function drawFlyingToasters(ctx, t, reduced, singleOpening) {
 // ever pick a target the player can actually see get hit — otherwise a
 // not-yet-entered or already-offscreen hero snaps into view just to be flung.
 function heroOnScreen(i, t) {
-  const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+  const entryT = t - HERO_PARADE_DELAY - i * titleHeroEntryGap();
   if (entryT < 0) return false;
   return paradeEdgeAlpha(heroX(i, t)) > 0;
 }
@@ -711,7 +772,7 @@ function invaderBombsForTrip(trip) {
     const tDrop = INV_FIRST + trip * INV_PERIOD + dropP * INV_CROSS;
     const x = invX(trip, dropP) + 5;
     const y0 = invY(trip, tDrop) + 8;
-    const tHit = tDrop + Math.sqrt((2 * (BOLT_HEAD_Y - y0)) / BOLT_G);
+    const tHit = tDrop + Math.sqrt((2 * (titleBoltHeadY() - y0)) / BOLT_G);
     // A bomb landing within the hero's sprite width counts as a clobber. The
     // slightly generous radius makes the hit legible at the title's small scale.
     let victim = -1;
@@ -728,7 +789,7 @@ function invaderBombsForTrip(trip) {
     // Once the knockback has carried the hero away, their next scheduled
     // parade wrap is the first fair moment to let them rejoin the line.
     const phase = victim < 0 ? 0 : heroX(victim, tHit) + 70;
-    const returnAt = victim < 0 ? Infinity : tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
+    const returnAt = victim < 0 ? Infinity : tHit + (titleHeroParadeSpan() - phase) / HERO_PARADE_SPEED;
     bombs.push({ id: `${trip}:${dropP}`, tDrop, x, y0, tHit, victim, returnAt, dir: trip % 2 === 0 ? 1 : -1 });
   }
   return bombs;
@@ -739,7 +800,7 @@ function bombStrike(bomb, t) {
   if (t < bomb.tHit) {
     return { id: bomb.id, x: bomb.x, y: bomb.y0 + 0.5 * BOLT_G * (t - bomb.tDrop) * (t - bomb.tDrop), tHit: bomb.tHit };
   }
-  return { id: bomb.id, x: bomb.x, y: BOLT_HEAD_Y, tHit: bomb.tHit, kt: t - bomb.tHit, victim: bomb.victim, dir: bomb.dir };
+  return { id: bomb.id, x: bomb.x, y: titleBoltHeadY(), tHit: bomb.tHit, kt: t - bomb.tHit, victim: bomb.victim, dir: bomb.dir };
 }
 
 // The active bombs for the current pass, plus who each one lands on. Every
@@ -794,7 +855,7 @@ function invaderTapHit(t, px, py) {
 // flow through bombStrike/heroIsKnockedOut unmodified.
 function makeTapBomb(id, tDrop, invaderX, invaderY, dir, tapBombs) {
   const x = invaderX + 5, y0 = invaderY + 8;
-  const tHit = tDrop + Math.sqrt((2 * (BOLT_HEAD_Y - y0)) / BOLT_G);
+  const tHit = tDrop + Math.sqrt((2 * (titleBoltHeadY() - y0)) / BOLT_G);
   let victim = -1, best = INV_HIT_RADIUS;
   for (let i = 0; i < HERO_PARADE.length; i++) {
     if (!heroOnScreen(i, tHit) || heroIsKnockedOut(i, tHit, tapBombs)) continue;
@@ -802,7 +863,7 @@ function makeTapBomb(id, tDrop, invaderX, invaderY, dir, tapBombs) {
     if (d < best) { best = d; victim = i; }
   }
   const phase = victim < 0 ? 0 : heroX(victim, tHit) + 70;
-  const returnAt = victim < 0 ? Infinity : tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
+  const returnAt = victim < 0 ? Infinity : tHit + (titleHeroParadeSpan() - phase) / HERO_PARADE_SPEED;
   return { id, tDrop, x, y0, tHit, victim, returnAt, dir };
 }
 
@@ -810,14 +871,13 @@ function makeTapBomb(id, tDrop, invaderX, invaderY, dir, tapBombs) {
 // use to find a victim, keyed off the pointer instead of a bomb's landing
 // site. Knocked-out heroes are mid-knockback (translated/rotated in their own
 // draw branch) and not worth hit-testing against their nominal floor spot.
-const HERO_TAP_RADIUS = 13 * PARADE_K;
 function heroTapIndex(t, px, py, tapBombs) {
-  if (py < PARADE_TAP_TOP || py > 270) return -1;
+  if (py < titleParadeTapTop() || py > titleCastFeetY() + 12) return -1;
   for (let i = 0; i < HERO_PARADE.length; i++) {
     if (heroIsKnockedOut(i, t, tapBombs)) continue;
     const hx = heroX(i, t);
     if (paradeEdgeAlpha(hx) <= 0) continue;
-    if (Math.abs(px - hx) < HERO_TAP_RADIUS) return i;
+    if (Math.abs(px - hx) < titleHeroTapRadius()) return i;
   }
   return -1;
 }
@@ -826,18 +886,17 @@ function heroTapIndex(t, px, py, tapBombs) {
 // the usual startled hop. It travels until it hits a hero (who goes through
 // the same explode/knockback the invader's bombs use) or a wisp (who takes
 // it exactly like a tap would — fright if calm, eaten if already blue).
-const SHOT_SPEED = 220;
-const SHOT_HIT_RADIUS = 12 * PARADE_K;
-// Raised cannon muzzle, rather than the old hip-height projectile line.
-const SHOT_Y = 268 - HERO_PARADE_H * 0.58;
-// Ray's and Grumpos's weapons begin at the same hand-height and hand-offset
-// as their parade rigs. B33P keeps the separate raised cannon line above.
-const TITLE_WEAPON_HAND_X = HERO_PARADE_H * 0.29;
-const TITLE_WEAPON_Y = 268 - HERO_PARADE_H * 0.48;
-// The projectile helpers use their own authored units: the fist is 40 units
-// wide-rigged and the axe is 24. Scale each to the 60px title toon separately.
-const TITLE_FIST_SCALE = HERO_PARADE_H / 40;
-const TITLE_AXE_SCALE = HERO_PARADE_H / 24;
+const TITLE_SHOT_SPEED = 220;
+// Title weapons travel in the same character-relative space in both layouts.
+// This is deliberately derived from the parade gap, not from W or a percentage
+// of the canvas: portrait enlarges the cast and its slot spacing together, so a
+// fist or pellet still reaches the next hero before its outbound story ends.
+function titleProjectileScale() {
+  return titleHeroGap() / HERO_PARADE_LANDSCAPE_GAP;
+}
+function titleShotSpeed() { return TITLE_SHOT_SPEED * titleProjectileScale(); }
+// Raised cannon muzzle, rather than the old hip-height projectile line. The
+// portrait values follow the enlarged cast instead of remaining near y=227.
 
 function drawInvader(ctx, t) {
   const pass = invaderPass(t);
@@ -886,30 +945,31 @@ function drawBolt(ctx, t, strikes) {
 const TITLE_WEAPON_OUT_T = { fist: 0.42, axe: 0.55 };
 const TITLE_WEAPON_HOLD_T = { fist: 0.35, axe: 0.45 };
 const TITLE_WEAPON_RETURN_T = { fist: 0.42, axe: 0.5 };
+function titleWeaponOutT(kind) { return TITLE_WEAPON_OUT_T[kind] * titleProjectileScale(); }
 
 export function titleWeaponMotion(shot, t) {
   if (!shot || (shot.kind !== 'fist' && shot.kind !== 'axe') || t < shot.tFired) return null;
   const age = t - shot.tFired;
-  const outT = TITLE_WEAPON_OUT_T[shot.kind];
+  const outT = titleWeaponOutT(shot.kind);
   const defaultHoldAt = shot.tFired + outT;
   const holdAt = shot.hoverAt ?? defaultHoldAt;
   const dir = shot.dir || 1;
   if (t < holdAt) {
     return {
-      x: shot.x0 + age * SHOT_SPEED * dir,
+      x: shot.x0 + age * titleShotSpeed() * dir,
       age,
       returning: false,
       done: false,
     };
   }
-  const hoverX = shot.hoverX ?? (shot.x0 + (holdAt - shot.tFired) * SHOT_SPEED * dir);
+  const hoverX = shot.hoverX ?? (shot.x0 + (holdAt - shot.tFired) * titleShotSpeed() * dir);
   const returnAt = shot.returnAt ?? (defaultHoldAt + TITLE_WEAPON_HOLD_T[shot.kind]);
   if (t < returnAt) {
     return { x: hoverX, age, returning: false, done: false };
   }
   const returnT = shot.returnT ?? TITLE_WEAPON_RETURN_T[shot.kind];
   const returnP = Math.max(0, Math.min(1, (t - returnAt) / returnT));
-  const catchX = shot.source == null ? shot.x0 : heroX(shot.source, t) + TITLE_WEAPON_HAND_X * dir;
+  const catchX = shot.source == null ? shot.x0 : heroX(shot.source, t) + titleWeaponHandX() * dir;
   return {
     x: hoverX + (catchX - hoverX) * returnP,
     age,
@@ -929,14 +989,28 @@ function drawShots(ctx, t, shots) {
         // Gameplay starts the fist's animation clock when the projectile is
         // spawned, so the title version does the same instead of using the
         // parade's absolute clock.
-        drawRocketFist(ctx, motion.x, shot.y, motion.age, motion.returning, TITLE_FIST_SCALE);
+        drawRocketFist(ctx, motion.x, shot.y, motion.age, motion.returning, titleFistScale());
       } else {
-        drawThrownAxe(ctx, motion.x, shot.y, motion.age * 14, TITLE_AXE_SCALE);
+        drawThrownAxe(ctx, motion.x, shot.y, motion.age * 14, titleAxeScale());
       }
       continue;
     }
-    const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
-    drawB33pPellet(ctx, x, shot.y);
+    const x = shot.x0 + (t - shot.tFired) * titleShotSpeed() * (shot.dir || 1);
+    const hero = shot.hero || 'b33p';
+    if (shot.kind === 'arrow' || shot.kind === 'wrench' || shot.kind === 'bamboo') {
+      drawRangedProjectile(ctx, shot.kind, x, shot.y, {
+        hero, flying: true, rot: (t - shot.tFired) * (shot.kind === 'arrow' ? 0.2 : 12),
+      });
+    } else {
+      const pal = HERO_SPRITES[hero]?.pal || {};
+      drawPellet(ctx, x, shot.y, {
+        size: shot.size || 1,
+        fill: pal.ki || '#f6d33c',
+        hi: hero === 'kiko' ? '#eafcff' : undefined,
+        spark: pal.a,
+        orb: hero === 'kiko',
+      });
+    }
   }
 }
 
@@ -948,7 +1022,7 @@ function drawInvaderImpact(ctx, strikes) {
     const ringP = Math.min(1, age / 0.42);
     const fade = Math.max(0, 1 - age / 0.72);
     const x = Math.round(strike.x);
-    const y = BOLT_HEAD_Y;
+    const y = titleBoltHeadY();
     ctx.save();
     ctx.globalAlpha = fade;
     // A hot square core and a widening pixel ring sell contact even when the
@@ -998,8 +1072,11 @@ function ensureTitleCanvas(slot, w, h, ss) {
 function drawRetainedTitleBase(ctx, skyMode) {
   // Two fixed samples are enough for the broad gradients while avoiding
   // another full 6x canvas on iPad. Stars live in their own sharper layers.
+  const layout = titleLayout();
+  const floorY = layout.floorY;
+  const backgroundBottom = layout.backgroundBottom;
   const ss = 2;
-  const key = `${ss}|${skyMode}`;
+  const key = `${ss}|${skyMode}|${H}|${floorY}|${backgroundBottom}`;
   const x = ensureTitleCanvas(titleBaseCache, W, H, ss);
   if (titleBaseCache.key !== key) {
     x.setTransform(1, 0, 0, 1, 0, 0);
@@ -1021,16 +1098,21 @@ function drawRetainedTitleBase(ctx, skyMode) {
       violet.addColorStop(0.52, 'rgba(49,34,87,0.09)');
       violet.addColorStop(1, 'rgba(10,8,24,0)');
       x.fillStyle = violet;
-      x.fillRect(0, 0, W, TITLE_FLOOR_Y);
+      x.fillRect(0, 0, W, backgroundBottom);
       const blue = x.createRadialGradient(408, 48, 0, 408, 48, 180);
       blue.addColorStop(0, 'rgba(45,99,139,0.13)');
       blue.addColorStop(0.58, 'rgba(26,55,91,0.06)');
       blue.addColorStop(1, 'rgba(8,10,24,0)');
       x.fillStyle = blue;
-      x.fillRect(0, 0, W, TITLE_FLOOR_Y);
+      x.fillRect(0, 0, W, backgroundBottom);
     }
-    x.fillStyle = '#171222';
-    x.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
+    if (skyMode === 'none' && backgroundBottom === H) {
+      x.fillStyle = '#04050e';
+      x.fillRect(0, 0, W, H);
+    } else if (backgroundBottom < H) {
+      x.fillStyle = '#171222';
+      x.fillRect(0, floorY, W, H - floorY);
+    }
     titleBaseCache.key = key;
   }
   ctx.drawImage(titleBaseCache.canvas, 0, 0, W, H);
@@ -1040,18 +1122,23 @@ function drawRetainedTitleStars(ctx, t, reduced) {
   // The old fallback was 26 logical-pixel squares. Three retained high-detail
   // layers provide varied size, colour temperature and gentle independent
   // twinkle without rebuilding radial gradients every frame.
-  const ss = Math.max(2, Math.min(3, bakeSS()));
+  const layout = titleLayout();
+  // Stars are a soft background layer. Keep them at 2x on the tall portrait
+  // frame so a 390x844 phone does not allocate three full-height 3x atlases;
+  // the logo and toon parade remain at the selected device density.
+  const ss = layout.portrait ? 2 : Math.max(2, Math.min(3, bakeSS()));
+  const starBottom = layout.backgroundBottom;
   for (let layer = 0; layer < titleStarCaches.length; layer++) {
     const slot = titleStarCaches[layer];
-    const x = ensureTitleCanvas(slot, W, TITLE_FLOOR_Y, ss);
-    const key = `${ss}|${layer}`;
+    const x = ensureTitleCanvas(slot, W, starBottom, ss);
+    const key = `${ss}|${layer}|${starBottom}`;
     if (slot.key !== key) {
       x.setTransform(1, 0, 0, 1, 0, 0);
       x.clearRect(0, 0, slot.canvas.width, slot.canvas.height);
       x.setTransform(ss, 0, 0, ss, 0, 0);
       for (let i = layer; i < 90; i += titleStarCaches.length) {
         const sx = 4 + shaderHash21(i + 3, 17) * (W - 8);
-        const sy = 3 + shaderHash21(i + 19, 31) * (TITLE_FLOOR_Y - 12);
+        const sy = 3 + shaderHash21(i + 19, 31) * (starBottom - 12);
         const bright = i % 13 === 0;
         const radius = bright
           ? 1.05 + shaderHash21(i + 7, 43) * 0.65
@@ -1079,24 +1166,27 @@ function drawRetainedTitleStars(ctx, t, reduced) {
       : 0.76 + Math.sin(t * (0.55 + layer * 0.17) + layer * 2.1) * 0.14;
     ctx.save();
     ctx.globalAlpha *= pulse;
-    ctx.drawImage(slot.canvas, 0, 0, W, TITLE_FLOOR_Y);
+    ctx.drawImage(slot.canvas, 0, 0, W, starBottom);
     ctx.restore();
   }
 }
 
 function drawRetainedMarquee(ctx, alpha) {
+  const layout = titleLayout();
   const ss = bakeSS();
-  const x = ensureTitleCanvas(titleMarqueeCache, W, 108, ss);
-  if (!titleMarqueeCache.key) {
+  const marqueeH = Math.max(108, layout.subtitleY + 22);
+  const key = `${ss}|${layout.logoScale}|${layout.marqueeY}|${layout.subtitleY}|${layout.subtitleTextS}`;
+  const x = ensureTitleCanvas(titleMarqueeCache, W, marqueeH, ss);
+  if (titleMarqueeCache.key !== key) {
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.clearRect(0, 0, titleMarqueeCache.canvas.width, titleMarqueeCache.canvas.height);
     x.setTransform(ss, 0, 0, ss, 0, 0);
-    drawTextCentered(x, 'MASHENSTEIN', W / 2 + 1.5, TITLE_MARQUEE_Y + 1.5, '#a8791f', TITLE_SCALE, 'marquee');
-    drawTextCentered(x, 'MASHENSTEIN', W / 2, TITLE_MARQUEE_Y, '#ffcf33', TITLE_SCALE, 'marquee');
-    const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
-    const seamK = TITLE_SCALE / 4;
-    const seamTop = TITLE_MARQUEE_Y + 4 * seamK;
-    const seamBot = TITLE_MARQUEE_Y + 22 * seamK;
+    drawTextCentered(x, 'MASHENSTEIN', W / 2 + 1.5, layout.marqueeY + 1.5, '#a8791f', layout.logoScale, 'marquee');
+    drawTextCentered(x, 'MASHENSTEIN', W / 2, layout.marqueeY, '#ffcf33', layout.logoScale, 'marquee');
+    const logoW = textWidth('MASHENSTEIN', layout.logoScale, 'marquee');
+    const seamK = layout.logoScale / 4;
+    const seamTop = layout.marqueeY + 4 * seamK;
+    const seamBot = layout.marqueeY + 22 * seamK;
     x.strokeStyle = 'rgba(42,30,5,0.85)';
     x.lineWidth = 1.4;
     for (let i = 0; i < 6; i++) {
@@ -1104,16 +1194,18 @@ function drawRetainedMarquee(ctx, alpha) {
       x.beginPath(); x.moveTo(sx, seamTop); x.lineTo(sx + 8, seamBot); x.stroke();
       x.beginPath(); x.moveTo(sx + 8, seamTop); x.lineTo(sx, seamBot); x.stroke();
     }
-    drawTextCentered(x, 'THE UNPLUGGENING', W / 2, TITLE_SUBTITLE_Y, '#8fb0f5', 1, 'subtitle');
-    titleMarqueeCache.key = `${ss}`;
+    drawTextCentered(x, 'THE UNPLUGGENING', W / 2, layout.subtitleY, '#8fb0f5', layout.subtitleTextS, 'subtitle');
+    titleMarqueeCache.key = key;
   }
   ctx.save();
   ctx.globalAlpha *= alpha;
-  ctx.drawImage(titleMarqueeCache.canvas, 0, 0, W, 108);
+  ctx.drawImage(titleMarqueeCache.canvas, 0, 0, W, marqueeH);
   ctx.restore();
 }
 
-function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots, profile) {
+function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots, profile, titleShooters) {
+  const layout = titleLayout();
+  const activeShooters = titleShooters || new Set();
   // night sky over the last functioning food court
   // Under WebGL the sky is generated on the GPU — gradient, drifting nebula,
   // parallax twinkle and the odd shooting star — so we leave a transparent
@@ -1154,7 +1246,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
     const dynamic = mode === 'dynamic';
     // Keep the parade physically consistent across devices; the responsive
     // layout changes spacing and hit targets, not the size of the characters.
-    const castH = HERO_PARADE_H;
+    const castH = layout.castH;
     const castK = castH / 26;
     const entryZoomExtra = HERO_ENTRY_ZOOM;
     // The cast still crosses the arcade, but each hero occasionally breaks into
@@ -1168,7 +1260,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
     for (let i = 0; i < HERO_PARADE.length; i++) {
       const hx = heroX(i, t);
       const id = HERO_PARADE[i];
-      const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+      const entryT = t - HERO_PARADE_DELAY - i * titleHeroEntryGap();
       const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
       // Clobbered: launched into a spin and tumbled off the side of the screen,
       // fading out before the parade loop would have wrapped them around.
@@ -1177,7 +1269,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
         if (stable) continue;
         const kt = strike.kt;
         const kx = heroX(i, strike.tHit) + strike.dir * kt * 165;
-        const ky = 268 - (kt * 190 - 0.5 * 150 * kt * kt);
+        const ky = layout.castFeetY - (kt * 190 - 0.5 * 150 * kt * kt);
         const knockScale = 1 + Math.min(0.8, kt * 0.42);
         c.save();
         c.globalAlpha = Math.min(1, (KNOCK_T - kt) / 0.5) * paradeEdgeAlpha(kx);
@@ -1201,16 +1293,18 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
         phase: (t * 1.5 + i * 0.37) % 1,
         axeReady: id === 'grumpos',
       };
-      let feetY = 268;
+      let feetY = layout.castFeetY;
       if (entering) {
         const landing = entryT / HERO_ENTRY_JUMP_T;
         // Keep the gait moving during the airborne part so this reads as a
         // running leap into the arcade, not a frozen sprite sliding in.
         pose.kind = 'run'; pose.grounded = false; pose.vy = -260 + landing * 260;
-        feetY -= Math.sin((1 - landing) * Math.PI / 2) * HERO_ENTRY_JUMP_H;
+        feetY -= Math.sin((1 - landing) * Math.PI / 2) * 30 * castK;
       }
       if (acting) {
-        const action = titleParadeAction(id, t, actionP);
+        const action = activeShooters.has(id)
+          ? titleShooterAction(id, t, actionP)
+          : titleJumpAction(actionP);
         Object.assign(pose, action.pose);
         feetY -= action.feetLift * castH;
       }
@@ -1221,17 +1315,26 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       const pokeAt = poke && poke.get(i);
       if (pokeAt != null && t - pokeAt < HERO_POKE_T) {
         const pokeP = (t - pokeAt) / HERO_POKE_T;
-        if (id === 'b33p') {
-          // Raise first, then fire and recoil. The projectile uses the same
-          // wind-up delay below, so it cannot leave before the arm is level.
-          Object.assign(pose, b33pTitleShotPose(t - pokeAt));
+        if (activeShooters.has(id)) {
+          const kind = titleShot?.kind || titleShotKind(id);
+          if (id === 'b33p') {
+            // Raise first, then fire and recoil. The projectile uses the same
+            // wind-up delay below, so it cannot leave before the arm is level.
+            Object.assign(pose, b33pTitleShotPose(t - pokeAt));
+          } else {
+            Object.assign(pose, {
+              menuAction: 'aim',
+              actionTime: Math.min(0.3, Math.max(0, t - pokeAt)),
+            });
+            if (kind === 'fist') pose.headless = true;
+          }
         } else if (titleShot?.kind === 'fist' && titleShotMotion) {
           pose.headless = true;
         } else if (titleShot?.kind === 'axe' && titleShotMotion) {
           pose.axeThrown = true;
         } else {
           pose.kind = 'jump'; pose.grounded = false;
-          feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
+        feetY -= Math.sin(pokeP * Math.PI) * 11 * castK;
         }
       }
       // Keep the thrown weapon off the hero until the title projectile has
@@ -1258,7 +1361,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       // into the cache key forced a fresh full toon raster on every few pixels
       // of the two-second entrance, exactly as more heroes joined the parade.
       drawCachedTitleToon(c, id, pose, hx, feetY, castH, entryZoom);
-      if (acting) {
+      if (acting && activeShooters.has(id)) {
         c.translate(hx, feetY);
         c.scale(castK, castK);
         drawParadeAccent(c, id, 0, 0, actionP);
@@ -1272,8 +1375,8 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // out of parts, and wired to a sign that has seen better decades. It stutters
   // twice in quick succession, then holds steady for a few seconds before the
   // next fit — a constant strobe reads as broken rather than characterful.
-  const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
-  const seamK = TITLE_SCALE / 4;
+  const logoW = textWidth('MASHENSTEIN', layout.logoScale, 'marquee');
+  const seamK = layout.logoScale / 4;
   drawRetainedMarquee(ctx, flickerAlpha(t, reduced));
 
   // A live power cord dangles off the logo, swinging, occasionally sparking.
@@ -1287,12 +1390,12 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // advance includes the N's right side bearing, so parking the cord at the raw
   // logoW edge floated it in the gap beside the letter, and starting it halfway
   // up the letterform read as a wire crossing the sign rather than leaving it.
-  const ax = W / 2 + logoW / 2 - 5 * seamK, ay = TITLE_MARQUEE_Y + 24 * seamK;
+  const ax = W / 2 + logoW / 2 - 5 * seamK, ay = layout.marqueeY + 24 * seamK;
   const sway = reduced ? 0 : Math.sin(t * 1.15) * 9;
   // Stops above the cards so the plug swings in open air at any phase of the
   // swing. Its length is independent of the card row: centring the controls in
   // the open middle of the screen should not stretch the title artwork.
-  const px2 = ax + sway, py2 = TITLE_PLUG_Y;
+  const px2 = ax + sway, py2 = layout.plugY;
   ctx.strokeStyle = '#241c30';
   ctx.lineWidth = 2.4;
   ctx.beginPath();
@@ -1327,6 +1430,51 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
 // same order. Mutated in place (Fisher-Yates) so every reader that indexes into
 // it — the parade draw, heroX, the invader strike — stays in agreement.
 const HERO_PARADE = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
+export const TITLE_SHOOTER_COUNT = 3;
+
+// Every current title hero owns a ranged ability. The title keeps the
+// interaction deliberately sparse: three heroes get a shot on this visit and
+// the other five get the familiar jump reaction. The art kind follows the
+// ability data, so the randomized choice still shows the weapon that belongs
+// to the hero rather than turning every shot into B-33P's pellet.
+const TITLE_SHOT_KIND_BY_ABILITY = Object.freeze({
+  shoot: 'pellet', axe: 'axe', fist: 'fist', bow: 'arrow', wrench: 'wrench', toss: 'bamboo',
+});
+function titleShotKind(id) {
+  const hero = HEROES.find((candidate) => candidate.id === id);
+  return TITLE_SHOT_KIND_BY_ABILITY[hero?.ability?.type] || 'pellet';
+}
+
+function chooseTitleShooters() {
+  const pool = HERO_PARADE.slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return new Set(pool.slice(0, TITLE_SHOOTER_COUNT));
+}
+
+function titleJumpAction(progress) {
+  const lift = Math.sin(Math.max(0, Math.min(1, progress)) * Math.PI);
+  return {
+    pose: { kind: 'jump', grounded: false, vy: -240 + lift * 480 },
+    feetLift: lift * 8 / 26,
+  };
+}
+
+function titleShooterAction(id, time, progress) {
+  const action = titleParadeAction(id, time, progress);
+  const pose = {
+    ...action.pose,
+    menuAction: 'aim',
+    actionTime: Math.max(0, Math.min(0.3, progress * 0.3)),
+  };
+  // Ray's glove is his launcher. Keep his established orbiting glove beat
+  // while the other rigs use their shared aim pose and authored weapon prop.
+  if (id === 'raymn') pose.headless = progress > 0.18 && progress < 0.78;
+  return { pose, feetLift: action.feetLift };
+}
+
 function shuffleParade() {
   for (let i = HERO_PARADE.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -1336,8 +1484,8 @@ function shuffleParade() {
 
 // Title menu geometry, shared by the renderer and the touch hit-test so a tap
 // always lands on the row it looks like it lands on.
-// The stack is tight: marquee, subtitle, panel, then the two footer lines, all
-// of which have to finish above the cast's heads at 268 - HERO_PARADE_H.
+// Landscape keeps its compact horizontal row; portrait resolves a full-height
+// logo/menu/cast composition below, from the published safe frame.
 const TITLE_SCALE = 4.4;        // sized so the logo spans about the panel's width
 // Set by build.js ahead of the bundle, and only for `npm run dev` — the
 // published build never defines it, so this is '' and the title draws no stamp.
@@ -1362,18 +1510,35 @@ const TITLE_FOOTER_GAP = 20;
 const TITLE_FOOTER_LINE_H = 11;
 
 function titleMarqueeAt(x, y) {
-  const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
+  const layout = titleLayout();
+  const logoW = textWidth('MASHENSTEIN', layout.logoScale, 'marquee');
   return x >= W / 2 - logoW / 2 - 8 && x <= W / 2 + logoW / 2 + 8
-    && y >= TITLE_MARQUEE_Y - 8 && y <= TITLE_SUBTITLE_Y + 12;
+    && y >= layout.marqueeY - 8 && y <= layout.subtitleY + 12;
 }
 // The footer lives in the ground band now: cards stay airy, while the opening
 // instruction and gag have a deliberate low-screen home before the parade
 // arrives and takes over that space.
 const TITLE_FOOTER_Y = 250;
-// The tagline and the attract countdown were set at 0.875 — about 10 CSS px on
-// a phone, under the smallest size iOS itself sets body copy at. There is room
-// under the panel for a full-size line, so they get one.
+  // The tagline and the attract countdown were set at 0.875 — about 10 CSS px on
+  // a phone, under the smallest size iOS itself sets body copy at. There is room
+  // under the panel for a full-size line, so they get one.
 const TITLE_FLAVOR_S = 1;
+
+function titleCaptionLines(text, scale) {
+  const maxWidth = W - 48;
+  let lines = wrapText(text, maxWidth, scale, 2, 'ui').filter(Boolean);
+  // Short taglines naturally fit on one line at the larger display size, but
+  // the pre-parade caption is intentionally a two-line sign. Split those
+  // cases at the nearest word midpoint while keeping both lines readable.
+  if (lines.length === 1) {
+    const words = String(text).trim().split(/\s+/).filter(Boolean);
+    if (words.length > 1) {
+      const mid = Math.ceil(words.length / 2);
+      lines = [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+    }
+  }
+  return lines.slice(0, 2);
+}
 // Wide enough for a clear three-line hierarchy, but only as tall as a phone
 // finger target needs. Gloss supplies finish without turning them back into
 // literal props that need an explanation.
@@ -1403,16 +1568,151 @@ const TITLE_CARD_STATUS_MID = TITLE_CARD_H - TITLE_CARD_STACK_TOP - TITLE_STATUS
 const TITLE_CARD_LINE1_MID =
   (TITLE_CARD_H - (TITLE_LABEL_INK * 2 + TITLE_CARD_STACK_GAP)) / 2 + TITLE_LABEL_INK / 2;
 const TITLE_CARD_LINE2_MID = TITLE_CARD_LINE1_MID + TITLE_LABEL_INK + TITLE_CARD_STACK_GAP;
+
+// The title is one of the screens that can use the frame-based phone portrait
+// presentation. It cannot simply stretch the old 16:9 coordinates: doing that
+// would leave the logo and menu in the top quarter while the cast remains a
+// tiny footer. Keep the established landscape values as the default, then
+// resolve a real portrait composition from the current safe frame.
+export function titleLayout() {
+  if (!isPhonePortraitPresentation()) {
+    return {
+      portrait: false,
+      safeTop: 0,
+      safeBottom: H,
+      logoScale: TITLE_SCALE,
+      marqueeY: TITLE_MARQUEE_Y,
+      subtitleY: TITLE_SUBTITLE_Y,
+      plugY: TITLE_PLUG_Y,
+      panelY: TITLE_PANEL_Y,
+      floorY: TITLE_FLOOR_Y,
+      backgroundBottom: TITLE_FLOOR_Y,
+      paradeTop: 160,
+      paradeH: H - 160,
+      castH: HERO_PARADE_H,
+      castFeetY: 268,
+      cardsX: TITLE_CARDS_X,
+      cardW: TITLE_CARD_W,
+      cardH: TITLE_CARD_H,
+      cardGap: TITLE_CARD_GAP,
+      paradeGap: HERO_PARADE_LANDSCAPE_GAP,
+      footerY: TITLE_FOOTER_Y,
+      footerLineH: TITLE_FOOTER_LINE_H,
+      menuTextS: TITLE_MENU_TEXT_S,
+      statusTextS: TITLE_STATUS_TEXT_S,
+      subtitleTextS: 1,
+      cardStackGap: TITLE_CARD_STACK_GAP,
+      cardBarH: TITLE_CARD_BAR_H,
+      footerTextS: TITLE_FLAVOR_S,
+    };
+  }
+
+  const frame = presentationFrame();
+  const safe = frame?.safeRect || { top: 0, bottom: H };
+  const safeTop = Math.max(0, Number(safe.top) || 0);
+  const safeBottom = Math.min(H, Number.isFinite(Number(safe.bottom)) ? Number(safe.bottom) : H);
+  const logoBase = TITLE_SCALE * 1.72;
+  const logoFit = (W - 22) / Math.max(1, textWidth('MASHENSTEIN', logoBase, 'marquee'));
+  const logoScale = logoBase * Math.min(1, logoFit);
+  const marqueeY = safeTop + 56;
+  const subtitleY = marqueeY + logoScale * 8.3 + 20;
+  const plugY = subtitleY + 30;
+  const panelY = plugY + 45;
+  const menuTextS = 2.8;
+  const statusTextS = 2.5;
+  const subtitleTextS = 2.4;
+  // Size the menu column from the two display labels that must read at a
+  // glance. Keep it just inside the subtitle's width, but never pinch STAFF
+  // ONLY or the plug-count line, leaving generous star-field gutters on both
+  // sides of the stack.
+  const subtitleW = textWidth('THE UNPLUGGENING', subtitleTextS, 'subtitle');
+  const staffW = textWidth('STAFF ONLY', menuTextS, 'bold');
+  const cardW = Math.min(Math.max(180, W - 112), Math.max(180, subtitleW - 18, staffW + 32));
+  const cardH = 104;
+  const cardGap = 14;
+  const castH = Math.min(124, Math.max(100, H * 0.115));
+  const paradeGap = HERO_PARADE_LANDSCAPE_GAP * (castH / HERO_PARADE_H);
+  // Let the enlarged parade walk nearer the lower edge while preserving a
+  // small home-indicator-safe breathing room on phones.
+  const castFeetY = Math.min(H - 10, safeBottom - 10);
+  const floorY = Math.max(panelY + cardH * 4 + cardGap * 3 + 28, castFeetY - castH - 18);
+  const paradeTop = Math.min(floorY, castFeetY - castH - 8 * (castH / 26) - 12);
+  return {
+    portrait: true,
+    safeTop,
+    safeBottom,
+    logoScale,
+    marqueeY,
+    subtitleY,
+    plugY,
+    panelY,
+    floorY,
+    backgroundBottom: H,
+    paradeTop,
+    paradeH: Math.max(1, H - paradeTop),
+    castH,
+    castFeetY,
+    cardsX: (W - cardW) / 2,
+    cardW,
+    cardH,
+    cardGap,
+    paradeGap,
+    // This is a temporary pre-parade caption. Lift it into the open band above
+    // the hero heads so the larger type has air, then let the existing fade
+    // remove it when the parade becomes the focus.
+    footerY: floorY - 82,
+    footerLineH: 14,
+    // The first bump was still too close to the landscape ink at phone size,
+    // especially on the plug-count line. Give the cards a clear headline and
+    // status hierarchy instead of asking the progress bar to carry it.
+    menuTextS,
+    statusTextS,
+    subtitleTextS,
+    cardStackGap: 7,
+    cardBarH: 4,
+    footerTextS: 2.5,
+  };
+}
+
+function titleCastH() { return titleLayout().castH; }
+function titleCastFeetY() { return titleLayout().castFeetY; }
+function titleParadeK() { return titleCastH() / 26; }
+function titleWispScale() { return 0.68 * titleParadeK(); }
+function titleBoltHeadY() { return titleCastFeetY() - titleCastH() * 0.68; }
+function titleShotY() { return titleCastFeetY() - titleCastH() * 0.58; }
+function titleWeaponY() { return titleCastFeetY() - titleCastH() * 0.48; }
+function titleWeaponHandX() { return titleCastH() * 0.29; }
+function titleFistScale() { return titleCastH() / 40; }
+function titleAxeScale() { return titleCastH() / 24; }
+function titleParadeTapTop() { return titleCastFeetY() - titleCastH() - 6; }
+function titleWispTapRadius() { return 12 * titleParadeK(); }
+function titleHeroTapRadius() { return 13 * titleParadeK(); }
+function titleShotHitRadius() { return 12 * titleParadeK(); }
+function titleWispGapClearance() { return 22 * titleParadeK(); }
+
+function titleCardMetrics(layout = titleLayout()) {
+  const labelInk = TEXT_INK_H * layout.menuTextS;
+  const statusInk = TEXT_INK_H * layout.statusTextS;
+  const stackTop = (layout.cardH - (labelInk + statusInk + layout.cardBarH + layout.cardStackGap * 2)) / 2;
+  return {
+    labelMid: stackTop + labelInk / 2,
+    progressY: stackTop + labelInk + layout.cardStackGap,
+    statusMid: layout.cardH - stackTop - statusInk / 2,
+    line1Mid: (layout.cardH - (labelInk * 2 + layout.cardStackGap)) / 2 + labelInk / 2,
+    line2Mid: (layout.cardH - (labelInk * 2 + layout.cardStackGap)) / 2 + labelInk * 1.5 + layout.cardStackGap,
+  };
+}
 // isTouchDevice(), not usingTouch: a phone should get the touch layout on its
 // FIRST paint, not only once a finger has landed. Both the renderer and the tap
 // hit-test read this, so a tap always lands on the card it looks like it does.
 function titleTouch() { return Input.isTouchDevice(); }
 function titleCardGeom(i) {
+  const layout = titleLayout();
   return {
-    x: TITLE_CARDS_X + i * (TITLE_CARD_W + TITLE_CARD_GAP),
-    y: TITLE_PANEL_Y,
-    w: TITLE_CARD_W,
-    h: TITLE_CARD_H,
+    x: layout.portrait ? layout.cardsX : layout.cardsX + i * (layout.cardW + layout.cardGap),
+    y: layout.panelY + (layout.portrait ? i * (layout.cardH + layout.cardGap) : 0),
+    w: layout.cardW,
+    h: layout.cardH,
   };
 }
 // Which card a pointer landed on. The gutters belong to the sky, not either
@@ -1483,8 +1783,16 @@ function warningGlowSprite(text, scale) {
   return sprite;
 }
 function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = false, labels = null) {
-  const rowH = spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
-  const headH = hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
+  const portrait = portraitMenuActive();
+  // STAFF ONLY is a real page on a phone, not a small dialog floating in the
+  // old landscape strip. Give its rows a thumb-sized pitch and let the box
+  // use the generous portrait height; the same geometry feeds modalRowAt().
+  const rowH = portrait
+    ? (spaciousRows ? 62 : 56)
+    : spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
+  const headH = portrait
+    ? (hasNote ? 82 : 48)
+    : hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
   // Sized from the row count rather than pinned. The old fixed 92-unit box
   // wasn't tall enough for its own longest list — three files plus BACK
@@ -1495,7 +1803,8 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   // hanging off the bottom.
   const y = Math.max(8, Math.round((H - h) / 2));
   const defaultX = spaciousRows ? 72 : 88;
-  const widest = labels ? labels.reduce((m, label) => Math.max(m, textWidth(label, 1.35)), 0) : 0;
+  const widest = labels
+    ? labels.reduce((m, label) => Math.max(m, textWidth(label, portrait ? 1.55 : 1.35)), 0) : 0;
   const w = labels ? Math.min(W - 32, widest + 42) : W - defaultX * 2;
   const x = labels ? (W - w) / 2 : defaultX;
   return { x, y, w, h, rowH, firstY: y + headH, cancelGap };
@@ -1569,6 +1878,8 @@ function flickerBlock(t) {
 }
 
 export class TitleState {
+  static portraitMode = 'frame';
+
   constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onSettings = onSettings;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onIntro = onIntro;
@@ -1584,6 +1895,7 @@ export class TitleState {
     this.singleToasterOpening = !titleToasterIntroSeen;
     titleToasterIntroSeen = true;
     shuffleParade();
+    this.titleShooters = chooseTitleShooters();
     this.idx = 0;
     this.erase = null;
     const extrasIndex = this.extrasFocus
@@ -1700,8 +2012,33 @@ export class TitleState {
   explodeHero(id, x, victim, dir) {
     const tHit = this.t;
     const phase = heroX(victim, tHit) + 70;
-    const returnAt = tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
-    this.tapBombs.push({ id, tDrop: tHit, x, y0: BOLT_HEAD_Y, tHit, victim, returnAt, dir });
+    const returnAt = tHit + (titleHeroParadeSpan() - phase) / HERO_PARADE_SPEED;
+    this.tapBombs.push({ id, tDrop: tHit, x, y0: titleBoltHeadY(), tHit, victim, returnAt, dir });
+  }
+  fireTitleShot(heroIndex) {
+    const hero = HERO_PARADE[heroIndex];
+    const kind = titleShotKind(hero);
+    const tFired = this.t + B33P_TITLE_WINDUP_T;
+    const returning = kind === 'fist' || kind === 'axe';
+    const data = HEROES.find((candidate) => candidate.id === hero);
+    const shot = {
+      id: `shot:${this.shotId++}`,
+      kind,
+      hero,
+      tFired,
+      x0: heroX(heroIndex, tFired) + (returning ? titleWeaponHandX() : 12),
+      y: returning ? titleWeaponY() : titleShotY(),
+      dir: 1,
+      source: heroIndex,
+      sounded: false,
+      size: data?.shotSize || 1,
+    };
+    if (returning) {
+      shot.returnAt = tFired + titleWeaponOutT(kind) + TITLE_WEAPON_HOLD_T[kind];
+      shot.returnT = TITLE_WEAPON_RETURN_T[kind];
+    }
+    this.shots.push(shot);
+    this.poke.set(heroIndex, this.t);
   }
   options() {
     const opts = [];
@@ -1826,7 +2163,7 @@ export class TitleState {
     for (const bomb of this.tapBombs) {
       if (bomb._wispChecked || this.t < bomb.tHit) continue;
       bomb._wispChecked = true;
-      const wisp = wispTapHit(bomb.tHit, bomb.x, SHOT_Y, this.eaten, this.scatter, this.wispsDismissed);
+      const wisp = wispTapHit(bomb.tHit, bomb.x, titleShotY(), this.eaten, this.scatter, this.wispsDismissed);
       if (wisp) { bomb.victim = -1; this.hitWisp(wisp); }
     }
     const cometCycle = Math.floor(this.t / 6.5);
@@ -1907,33 +2244,10 @@ export class TitleState {
           // Or a parading hero.
           const hero = heroTapIndex(this.t, p.x, p.y, this.tapBombs);
           if (hero >= 0) {
-            if (HERO_PARADE[hero] === 'b33p') {
-              // b33p doesn't hop when poked — he shoots. Still routes through
-              // `poke` so his pose snaps to the aiming stance (arm up, gun
-              // level) instead of firing from whatever his run-cycle arm was
-              // doing a moment ago.
-              const tFired = this.t + B33P_TITLE_WINDUP_T;
-              this.shots.push({
-                id: `shot:${this.shotId++}`,
-                kind: 'pellet',
-                tFired,
-                x0: heroX(hero, tFired) + 12,
-                y: SHOT_Y,
-                dir: 1,
-                source: hero,
-                sounded: false,
-              });
-              this.poke.set(hero, this.t);
-            } else if (HERO_PARADE[hero] === 'grumpos' && this.shots.some((shot) => {
-              if (shot.source !== hero || shot.kind !== 'axe') return false;
-              const motion = titleWeaponMotion(shot, this.t);
-              return !motion || !motion.done;
-            })) {
-              this.poke.set(hero, this.t);
-              Audio.sfx('jump');
-            } else if (HERO_PARADE[hero] === 'raymn' || HERO_PARADE[hero] === 'grumpos') {
-              const kind = HERO_PARADE[hero] === 'raymn' ? 'fist' : 'axe';
-              const active = this.shots.some((shot) => {
+            const id = HERO_PARADE[hero];
+            if (this.titleShooters?.has(id)) {
+              const kind = titleShotKind(id);
+              const active = (kind === 'fist' || kind === 'axe') && this.shots.some((shot) => {
                 if (shot.source !== hero || shot.kind !== kind) return false;
                 const motion = titleWeaponMotion(shot, this.t);
                 return !motion || !motion.done;
@@ -1942,21 +2256,7 @@ export class TitleState {
                 this.poke.set(hero, this.t);
                 Audio.sfx('jump');
               } else {
-                const dir = 1;
-                const tFired = this.t + B33P_TITLE_WINDUP_T;
-                this.shots.push({
-                  id: `shot:${this.shotId++}`,
-                  kind,
-                  tFired,
-                  x0: heroX(hero, tFired) + dir * TITLE_WEAPON_HAND_X,
-                  y: TITLE_WEAPON_Y,
-                  dir,
-                  returnAt: tFired + TITLE_WEAPON_OUT_T[kind] + TITLE_WEAPON_HOLD_T[kind],
-                  returnT: TITLE_WEAPON_RETURN_T[kind],
-                  source: hero,
-                  sounded: false,
-                });
-                this.poke.set(hero, this.t);
+                this.fireTitleShot(hero);
               }
             } else {
               this.poke.set(hero, this.t);
@@ -1988,9 +2288,9 @@ export class TitleState {
         }
       }
     }
-    // Resolve title shots. B33P's pellet is one-way; Ray's fist and Grumpos's
-    // axe stay alive through their hold and return so the title cannot show a
-    // second throw while the first weapon is still out.
+    // Resolve title shots. Ordinary projectiles are one-way; Ray's fist and
+    // Grumpos's axe stay alive through their hold and return so the title
+    // cannot show a second throw while the first weapon is still out.
     this.shots = this.shots.filter((shot) => {
       if (this.t < shot.tFired) return true;
       if (!shot.sounded) { shot.sounded = true; Audio.sfx('shoot'); }
@@ -2000,13 +2300,13 @@ export class TitleState {
       if (weapon && motion.returning) return true;
       const x = motion
         ? motion.x
-        : shot.x0 + (this.t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
+        : shot.x0 + (this.t - shot.tFired) * titleShotSpeed() * (shot.dir || 1);
       if (!weapon && (x < -40 || x > W + 40)) return false;
       if (weapon && shot.hit) return true;
       for (let i = 0; i < HERO_PARADE.length; i++) {
         if (i === shot.source || (shot.source == null && HERO_PARADE[i] === 'b33p')) continue;
         if (!heroOnScreen(i, this.t) || heroIsKnockedOut(i, this.t, this.tapBombs)) continue;
-        if (Math.abs(heroX(i, this.t) - x) < SHOT_HIT_RADIUS) {
+        if (Math.abs(heroX(i, this.t) - x) < titleShotHitRadius()) {
           this.explodeHero(shot.id, x, i, 1);
           Audio.sfx('hit');
           if (weapon) {
@@ -2048,7 +2348,7 @@ export class TitleState {
   }
   draw(ctx) {
     const profile = titleProfileOptions();
-    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile);
+    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile, this.titleShooters);
     // The parade is always queued before the menu UI, including on touch. This
     // keeps the cards readable when a large character crosses their lower edge.
     // Modals are painted by the UI pass as the final surface over both layers.
@@ -2066,7 +2366,9 @@ export class TitleState {
     const ui = (d) => {
       // Four self-contained cards under the logo, then the controls and flavour
       // line as a footer. No surrounding machine or decorative object is needed.
-      const menuTextS = TITLE_MENU_TEXT_S;
+      const layout = titleLayout();
+      const cardMetrics = titleCardMetrics(layout);
+      const menuTextS = layout.menuTextS;
       opts.forEach((o, i) => {
         const focused = i === this.idx;
         const sel = focused && !titleTouch();
@@ -2103,11 +2405,14 @@ export class TitleState {
         d.lineWidth = sel ? 1.25 : 0.8;
         platePath(d, g.x + 0.5, y + 0.5, g.w - 1, cardH - 1, 3); d.stroke();
         if (o.status) {
-          const labelMid = y + TITLE_CARD_LABEL_MID;
-          const statusMid = y + TITLE_CARD_STATUS_MID;
+          const labelMid = y + cardMetrics.labelMid;
+          const statusMid = y + cardMetrics.statusMid;
           drawTextCentered(d, o.label, cx, textYForMid(labelMid, menuTextS), sel ? '#f3eaff' : '#e3e9f3', menuTextS, 'bold');
           if (o.progress != null) {
-            const barX = g.x + 10, barY = y + TITLE_CARD_PROGRESS_Y, barW = g.w - 20, barH = TITLE_CARD_BAR_H;
+            const barX = g.x + (layout.portrait ? 16 : 10);
+            const barY = y + cardMetrics.progressY;
+            const barW = g.w - (layout.portrait ? 32 : 20);
+            const barH = layout.cardBarH;
             d.fillStyle = sel ? 'rgba(221,196,239,0.22)' : 'rgba(111,133,158,0.24)';
             platePath(d, barX, barY, barW, barH, 1.5); d.fill();
             const fillW = barW * Math.max(0, Math.min(1, o.progress));
@@ -2116,18 +2421,22 @@ export class TitleState {
               platePath(d, barX, barY, fillW, barH, 1.5); d.fill();
             }
           }
-          drawTextCentered(d, o.status, cx, textYForMid(statusMid, TITLE_STATUS_TEXT_S), sel ? '#e4cdf7' : '#c0cbd9', TITLE_STATUS_TEXT_S, 'ui');
+          drawTextCentered(d, o.status, cx, textYForMid(statusMid, layout.statusTextS), sel ? '#e4cdf7' : '#c0cbd9', layout.statusTextS, 'ui');
         } else {
           const staffColor = sel ? '#f3eaff' : '#e3e9f3';
-          drawTextCentered(d, 'STAFF', cx, textYForMid(y + TITLE_CARD_LINE1_MID, menuTextS), staffColor, menuTextS, 'bold');
-          drawTextCentered(d, 'ONLY', cx, textYForMid(y + TITLE_CARD_LINE2_MID, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
+          if (layout.portrait) {
+            drawTextCentered(d, o.label, cx, textYForMid(y + layout.cardH / 2, menuTextS), staffColor, menuTextS, 'bold');
+          } else {
+            drawTextCentered(d, 'STAFF', cx, textYForMid(y + cardMetrics.line1Mid, menuTextS), staffColor, menuTextS, 'bold');
+            drawTextCentered(d, 'ONLY', cx, textYForMid(y + cardMetrics.line2Mid, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
+          }
         }
         d.restore();
       });
       // On touch the cards read as tappable without an instruction beneath them.
       const touch = titleTouch();
-      const flavorY = TITLE_FOOTER_Y;
-      const controlsY = touch ? flavorY : flavorY - TITLE_FOOTER_LINE_H;
+      const flavorY = layout.footerY;
+      const controlsY = touch ? flavorY : flavorY - layout.footerLineH;
       // The footer is useful while the title is waiting for input, then gets
       // The footer has a short opening beat of its own, then clears as the first
       // hero arrives so it never competes with the parade in the ground band.
@@ -2142,14 +2451,18 @@ export class TitleState {
       // touch layout avoids by dropping this line entirely.
       if (!touch) drawTextCentered(d, 'ARROWS: CHOOSE   ENTER: CONFIRM', W / 2, controlsY, '#6b7d95');
       d.globalAlpha = flavorFade * 0.85;
-      if (this.onAttract && this.attractDelay <= 10) {
-        // A tap bumps Input.activity exactly like a keypress does, so it cancels
-        // the countdown too — named for the device in hand rather than listing
-        // both, the way every other prompt on this screen is.
-        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ${touch ? 'TAP' : 'ANY KEY'}: BACK`, W / 2, flavorY, '#8858c8', TITLE_FLAVOR_S);
-      } else {
-        drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', TITLE_FLAVOR_S);
-      }
+      const captionIsAttract = this.onAttract && this.attractDelay <= 10;
+      const caption = captionIsAttract
+        ? `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ${touch ? 'TAP' : 'ANY KEY'}: BACK`
+        : this.tagline;
+      const captionLines = titleCaptionLines(caption, layout.footerTextS);
+      const captionLineH = 10.5 * layout.footerTextS;
+      const captionFirstY = flavorY - ((captionLines.length - 1) * captionLineH) / 2;
+      const captionColor = captionIsAttract ? '#8858c8' : '#55647a';
+      captionLines.forEach((line, i) => {
+        drawTextCentered(d, line, W / 2, captionFirstY + i * captionLineH,
+          captionColor, layout.footerTextS);
+      });
       d.globalAlpha = 1;
       if (BUILD_STAMP) {
         d.globalAlpha = 0.55;
@@ -2165,11 +2478,13 @@ export class TitleState {
     // Modal lists are solid surfaces: toaster cameos sit behind them so they
     // never compete with destructive choices, cabinet grids, or their labels.
     if (profile.ui && (this.erase || this.extras) && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
-    if (profile.ui && !pushOverlayDraw(ui)) ui(ctx);
-    // Toasters are the title's foreground cameo on the normal title screen:
-    // queue them after the menu so they can pass over the logo, panel, heroes,
-    // and invader. Modal lists are handled above so they stay on top.
-    if (profile.ui && !this.erase && !this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    // On the normal title screen the menu is queued before the toasters, so the
+    // enlarged appliances visibly cross the cards. Modal lists keep the
+    // opposite order: their solid panel remains the final readable surface.
+    if (profile.ui && !this.erase && !this.extras) {
+      if (!pushOverlayDraw(ui)) ui(ctx);
+      if (!pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    } else if (profile.ui && !pushOverlayDraw(ui)) ui(ctx);
   }
   drawEraseModal(d) {
     let title = 'ERASE WHICH SHIFT?';
@@ -2206,7 +2521,9 @@ export class TitleState {
 // are exactly the rows on screen at whatever size the device asked for.
 function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBeforeLast = false, spaciousRows = false, warningPulse = 0, align = 'center', fitWidth = false }) {
   const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows, fitWidth ? choices.map((choice) => choice.label) : null);
-  const modalTextS = spaciousRows ? 1.55 : 1.35;
+  const portrait = portraitMenuActive();
+  const modalTextS = portrait ? (spaciousRows ? 1.45 : 1.35) : spaciousRows ? 1.55 : 1.35;
+  const modalTitleS = portrait ? (spaciousRows ? 1.95 : 1.8) : spaciousRows ? 1.75 : 1.5;
   const left = align === 'left';
   const textX = g.x + 24;
   d.fillStyle = 'rgba(2,3,10,0.78)';
@@ -2215,8 +2532,14 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
   d.strokeStyle = accent; d.lineWidth = 1;
   platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
-  if (left) drawText(d, title, textX, g.y + 12, '#f4f1fa', spaciousRows ? 1.75 : 1.5, 'title');
-  else drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', spaciousRows ? 1.75 : 1.5, 'title');
+  if (left) {
+    if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', modalTitleS, 'title');
+    else drawText(d, title, textX, g.y + 12, '#f4f1fa', modalTitleS, 'title');
+  } else if (portrait) {
+    portraitMenuTextCentered(d, title, W / 2, g.y + 16, '#f4f1fa', modalTitleS, 'title');
+  } else {
+    drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', modalTitleS, 'title');
+  }
   if (note) {
     d.save();
     const noteY = g.y + 30;
@@ -2228,19 +2551,31 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     d.drawImage(glow.canvas, glowX, noteY - noteScale - glow.pad);
     d.globalCompositeOperation = 'source-over';
     d.globalAlpha = 1;
-    if (left) drawText(d, note, textX, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
-    else drawTextCentered(d, note, W / 2, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+    if (left) {
+      if (portrait) portraitMenuText(d, note, textX, g.y + 48, '#ff727c', 1.1, 'ui');
+      else drawText(d, note, textX, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+    } else if (portrait) {
+      portraitMenuTextCentered(d, note, W / 2, g.y + 48, '#ff727c', 1.1, 'ui');
+    } else {
+      drawTextCentered(d, note, W / 2, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+    }
     d.restore();
   }
   choices.forEach((choice, i) => {
     const selected = i === idx;
     const rowTop = g.firstY + i * g.rowH + (g.cancelGap && i === choices.length - 1 ? g.cancelGap : 0);
-    const textY = textYForMid(rowTop + g.rowH / 2);
+    const textY = portrait
+      ? portraitMenuTextY(rowTop + g.rowH / 2, modalTextS, selected ? 'bold' : 'ui')
+      : textYForMid(rowTop + g.rowH / 2);
     if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
     if (left) {
-      drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+      if (portrait) portraitMenuText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+      else drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+    } else if (portrait) {
+      portraitMenuTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+    } else {
+      drawTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
     }
-    else drawTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
   });
 }
 
@@ -2587,7 +2922,8 @@ export class IntroState {
 
 // THE BRIEFING MANIFEST: a full-black establishment screen before every
 // stage. The MISSION line carries the real information; the memo blocks are
-// letterhead comedy. One input completes the typewriter, a second proceeds.
+// letterhead comedy. Touch advances in one tap; keyboard can still use one press
+// to complete the typewriter and a second to proceed.
 //
 // The type is sized to the memo rather than fixed: at a constant scale 1 the
 // longest briefing and the shortest one both crowded the top third and left
@@ -2606,6 +2942,15 @@ const BRIEF_BOTTOM = H - 36;      // above the confirm line
 const BRIEF_HEAD_GAP = 1;         // letterhead to its own body
 const BRIEF_PIECE_GAP = 8;        // memo to memo
 const BRIEF_MARGIN = 56;          // total horizontal margin
+const PORTRAIT_BRIEF_SIDE_MARGIN_CSS = 22;
+const PORTRAIT_BRIEF_FOOTER_LAST_MID_CSS = 52;
+const PORTRAIT_BRIEF_CALIBRATE_LAST_MID_CSS = 104;
+const PORTRAIT_BRIEF_CALIBRATE_POINTER_TOP_CSS = 132;
+const PORTRAIT_BRIEF_CALIBRATE_POINTER_BOTTOM_CSS = 78;
+// Portrait has enough vertical room to show the memo, so do not let the
+// desktop-style four-line safety cap turn a long interruption into a fake
+// ellipsis. The height fit below still scales a genuinely dense briefing down.
+const PORTRAIT_BRIEF_MAX_LINES = 32;
 // The AUDIO SYNC row's tap band, around its drawn middle at H - 35. Everything
 // outside it — every other pixel of the briefing — is the PLAY target.
 const CALIBRATE_ROW_TOP = H - 44;
@@ -2708,8 +3053,8 @@ export class BriefingState {
         if (isPhonePortraitPresentation()) {
           const frame = presentationFrame();
           const safe = frame.safeRect;
-          const rowTop = safe.bottom - 56 / frame.scale;
-          const rowBottom = safe.bottom - 24 / frame.scale;
+          const rowTop = safe.bottom - PORTRAIT_BRIEF_CALIBRATE_POINTER_TOP_CSS / frame.scale;
+          const rowBottom = safe.bottom - PORTRAIT_BRIEF_CALIBRATE_POINTER_BOTTOM_CSS / frame.scale;
           this.idx = (y >= rowTop && y < rowBottom) ? 0 : 1;
         } else {
           this.idx = (y >= CALIBRATE_ROW_TOP && y < CALIBRATE_ROW_BOTTOM) ? 0 : 1;
@@ -2721,9 +3066,18 @@ export class BriefingState {
       Input.endFrame();
       return;
     }
+    if (Input.isTouchDevice() && acting) {
+      // Touch is already an explicit continue gesture. Do not make a phone
+      // player tap once to dismiss the typewriter and again to launch the run.
+      this.reveal = CASCADE_ALL;
+      Audio.sfx('uiConfirm');
+      this.onDone();
+      Input.endFrame();
+      return;
+    }
     if (acting) {
-      // Still two inputs — land the memo, then proceed — but the memo lands in
-      // well under a second, so the first one is a courtesy rather than a gate.
+      // Keyboard keeps the two-step memo interaction: one press lands the copy,
+      // and the next proceeds, which preserves the desktop read-through.
       if (!this.landed()) { this.reveal = CASCADE_ALL; Audio.sfx('ui'); }
       else { Audio.sfx('uiConfirm'); this.onDone(); }
     }
@@ -2783,42 +3137,70 @@ export class BriefingState {
     const frame = presentationFrame();
     const safe = frame.safeRect;
     const css = (n) => n / frame.scale;
-    const margin = css(12);
-    const bodyTop = safe.top + css(70);
-    const promptH = css(this.askCalibrate ? 76 : 50);
-    const bodyBottom = safe.bottom - promptH;
+    // Portrait briefing copy is a reading surface, not HUD garnish. Keep it
+    // off the curved glass with a real physical gutter, then let the extra
+    // width budget come back as a larger face instead of a single clipped
+    // footer line.
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(PORTRAIT_BRIEF_SIDE_MARGIN_CSS);
+    // Leave a little more bottom padding under the enlarged title before the
+    // mission starts; the heading should read as its own card label.
+    const bodyTop = safe.top + css(84);
+    const bodyBottom = safe.bottom - css(this.askCalibrate ? 172 : 104);
     const width = Math.max(css(180), safe.width - margin * 2);
     const source = this.pieces || [];
     const words = source.map((p) => p.head ? `${p.head} ${p.text}` : p.text);
-    let scale = Math.max(1.7, Math.min(2.7, 13 / (TEXT_INK_H * frame.scale)));
-    let lines = words.flatMap((text) => wrapText(text, width, scale, 4));
-    const lineH = 10 * scale;
+    // The old 13px physical cap-height was still caption-sized on a phone.
+    // This target gives the mission and memo copy the weight of the screen's
+    // main instruction while the line count remains comfortable in portrait.
+    let scale = Math.max(2.35, Math.min(3.25, 15.5 / (TEXT_INK_H * frame.scale)));
+    let lines = words.flatMap((text) => wrapText(text, width, scale, PORTRAIT_BRIEF_MAX_LINES));
+    let lineH = 10.5 * scale;
     if (lines.length * lineH > bodyBottom - bodyTop) {
       scale = Math.max(1.15, scale * (bodyBottom - bodyTop) / (lines.length * lineH));
-      lines = words.flatMap((text) => wrapText(text, width, scale, 4));
+      lines = words.flatMap((text) => wrapText(text, width, scale, PORTRAIT_BRIEF_MAX_LINES));
+      lineH = 10.5 * scale;
     }
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, `STAGE ${this.stage.index} BRIEFING`, W / 2,
-      safe.top + css(28), '#e8e8f0', Math.min(2.2, scale), 'title');
+    const headingText = `STAGE ${this.stage.index} BRIEFING`;
+    // Title is the largest thing on the card, but its fit is measured against
+    // the same padded glass as the body so it never becomes a one-line crop.
+    const headingWidth = Math.max(css(180), safe.width - margin * 2);
+    const headingScale = headingWidth / Math.max(1, textWidth(headingText, 1, 'title'));
+    drawTextCentered(ctx, headingText, center,
+      safe.top + css(28), '#e8e8f0', headingScale, 'title');
     const revealed = Math.min(this.reveal / 0.02, lines.join(' ').length);
     let chars = 0;
     lines.forEach((line, i) => {
       const alpha = revealed >= chars ? 1 : 0;
-      if (alpha) drawTextCentered(ctx, line, W / 2, bodyTop + i * lineH,
+      if (alpha) drawTextCentered(ctx, line, center, bodyTop + i * lineH,
         i === 0 ? '#48e0c8' : '#c8c8d8', scale);
       chars += line.length + 1;
     });
-    const promptS = Math.max(1.7, Math.min(2.5, 13 / (TEXT_INK_H * frame.scale)));
+    const promptS = Math.max(2.1, Math.min(3, 15 / (TEXT_INK_H * frame.scale)));
     const playLine = `[${confirmVerb()}]: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`;
+    const promptWidth = Math.max(css(180), safe.width - margin * 2);
+    const promptLineH = 10.5 * promptS;
+    const drawPromptBlock = (text, lastMid, color) => {
+      const promptLines = wrapText(text, promptWidth, promptS, 2);
+      promptLines.forEach((line, i) => {
+        drawTextCentered(ctx, line, center,
+          textYForMid(lastMid - (promptLines.length - 1 - i) * promptLineH, promptS),
+          color, promptS);
+      });
+    };
     if (this.askCalibrate && this.landed()) {
-      const row = safe.bottom - css(52);
-      const rows = [[this.calibrateLabel(), row], [playLine, safe.bottom - css(18)]];
-      rows.forEach(([text, y], i) => drawTextCentered(ctx, text, W / 2, textYForMid(y, promptS),
-        this.idx === i ? '#c8c8d8' : '#5a5a68', promptS));
+      drawPromptBlock(this.calibrateLabel(), safe.bottom - css(PORTRAIT_BRIEF_CALIBRATE_LAST_MID_CSS),
+        this.idx === 0 ? '#c8c8d8' : '#5a5a68');
+      drawPromptBlock(playLine, safe.bottom - css(PORTRAIT_BRIEF_FOOTER_LAST_MID_CSS),
+        this.idx === 1 ? '#c8c8d8' : '#5a5a68');
     } else if (!this.landed() || Math.floor(this.t * 2) % 2 === 0) {
-      drawTextCentered(ctx, playLine, W / 2, textYForMid(safe.bottom - css(18), promptS),
-        this.landed() ? '#c8c8d8' : '#5a5a68', promptS);
+      // Acknowledgement copy is deliberately allowed two lines. The old
+      // single line was wider than the physical glass, so its first and last
+      // words disappeared into the iPhone's curved corners.
+      drawPromptBlock(playLine, safe.bottom - css(PORTRAIT_BRIEF_FOOTER_LAST_MID_CSS),
+        this.landed() ? '#c8c8d8' : '#5a5a68');
     }
   }
 }
@@ -3606,6 +3988,8 @@ const GUIDE_PAGES = [
 ];
 
 export class FieldGuideState {
+  static portraitMode = 'frame';
+
   constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
   // Paging already claims the whole screen (see update()), so BACK gets its
   // own carved-out corner.
@@ -3619,7 +4003,8 @@ export class FieldGuideState {
       const p = Input.pointer;
       // BACK lives in the bottom-right corner (see draw()), carved out of the
       // otherwise screen-wide paging zones so leaving needs no other button.
-      if (p.x > W - 56 && p.y > H - 20) { Audio.sfx('ui'); this.onDone(); }
+      const backY = portraitMenuActive() ? portraitMenuSafeBottom(34) : H - 20;
+      if (p.x > W - 56 && p.y > backY) { Audio.sfx('ui'); this.onDone(); }
       else if (p.x < W / 3) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
       else { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
     }
@@ -3677,6 +4062,10 @@ export class FieldGuideState {
     if (spr) ctx.drawImage(spr, cx - Math.floor(spr.width / 2), top(spr.height));
   }
   draw(ctx) {
+    if (portraitMenuActive()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const p = GUIDE_PAGES[this.page];
@@ -3703,6 +4092,56 @@ export class FieldGuideState {
     } else {
       drawTextCentered(ctx, `< PREV   PAGE ${this.page + 1}/${GUIDE_PAGES.length}   NEXT >   ESC: BACK`, W / 2, H - 14, '#5a5a68');
     }
+  }
+
+  drawPortrait(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    const p = GUIDE_PAGES[this.page];
+    const safeTop = portraitMenuSafeTop();
+    const safeBottom = portraitMenuSafeBottom();
+    const titleMid = safeTop + 34;
+    const titleS = portraitMenuFit('FIELD GUIDE', 2.35, W - 44, 'title');
+    portraitMenuTextCentered(ctx, 'FIELD GUIDE', W / 2,
+      portraitMenuTextY(titleMid, titleS, 'title'), '#fff', titleS, 'title');
+    const pageTitleS = portraitMenuFit(p.title, 1.35, W - 44);
+    portraitMenuTextCentered(ctx, p.title, W / 2,
+      portraitMenuTextY(titleMid + 40, pageTitleS), p.color, pageTitleS);
+    const hintS = portraitMenuFit(p.hint, 1.0, W - 44);
+    portraitMenuTextCentered(ctx, p.hint, W / 2,
+      portraitMenuTextY(titleMid + 70, hintS), '#8a8a98', hintS);
+
+    const listTop = titleMid + 102;
+    const footerMid = safeBottom - 17;
+    const rowH = Math.max(70, Math.min(84,
+      (footerMid - listTop - 24) / p.rows.length));
+    p.rows.forEach((r, i) => {
+      const rowMid = listTop + i * rowH + rowH / 2;
+      // The guide's vector props are authored at tiny gameplay scale. Enlarge
+      // the icon in portrait while keeping the text columns independent.
+      ctx.save();
+      ctx.translate(50, rowMid);
+      ctx.scale(1.5, 1.5);
+      this.drawIcon(ctx, r.s, 0, 0);
+      ctx.restore();
+
+      const nameS = portraitMenuFit(r.name, 1.12, 100, 'bold');
+      portraitMenuText(ctx, r.name, 84,
+        portraitMenuTextY(rowMid, nameS, 'bold'), p.color, nameS, 'bold');
+      const descX = 194;
+      const descW = W - descX - 18;
+      const lines = portraitMenuWrap(r.desc, descW, 0.98, 3);
+      const lineGap = 15;
+      const firstMid = rowMid - (lines.length - 1) * lineGap / 2;
+      lines.forEach((line, j) => portraitMenuText(ctx, line, descX,
+        portraitMenuTextY(firstMid + j * lineGap, 0.98), '#c8c8d8'));
+    });
+
+    portraitMenuTextCentered(ctx,
+      `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`,
+      W / 2, portraitMenuTextY(footerMid, 1.0), '#5a5a68', 1.0);
+    portraitMenuText(ctx, 'BACK', W - 58,
+      portraitMenuTextY(footerMid, 1.0), '#f6d33c', 1.0);
   }
 }
 
@@ -4312,6 +4751,8 @@ export class SoundTestState {
 }
 
 export class HowToPlayState {
+  static portraitMode = 'frame';
+
   constructor({ onDone }) { this.onDone = onDone; }
   // A tap ANYWHERE dismisses this card (update()), and the footer already
   // says so — no floating corner button needed on top of that.
@@ -4325,6 +4766,10 @@ export class HowToPlayState {
     Input.endFrame();
   }
   draw(ctx) {
+    if (portraitMenuActive()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'HOW TO PLAY', W / 2, 22, '#fff', 2, 'title');
@@ -4360,6 +4805,61 @@ export class HowToPlayState {
     drawTextCentered(ctx, 'JUMP RED HAZARDS. SLIDE UNDER DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2, H - 16, '#5a5a68');
   }
+
+  drawPortrait(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+
+    const safeTop = portraitMenuSafeTop();
+    const safeBottom = portraitMenuSafeBottom();
+    const titleMid = safeTop + 34;
+    portraitMenuTextCentered(ctx, 'HOW TO PLAY', W / 2,
+      portraitMenuTextY(titleMid, 2.35, 'title'), '#fff', 2.35, 'title');
+    const subtitle = 'ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.';
+    const subtitleS = portraitMenuFit(subtitle, 1.05, W - 44);
+    portraitMenuTextCentered(ctx, subtitle, W / 2,
+      portraitMenuTextY(titleMid + 36, subtitleS), '#8a8a98', subtitleS);
+
+    // Portrait turns each compact landscape row into a readable two-column
+    // lookup. Long explanations wrap within their column instead of running
+    // under the right edge of the phone.
+    const rows = [
+      ['JUMP', 'TAP THE LEFT HALF. HOLD FOR HIGHER.', '#f6d33c'],
+      ['POWER SLIDE', 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.', '#f6d33c'],
+      ['HERO POWER', 'THE USE DISC, OR SWIPE RIGHT.', '#f6d33c'],
+      ['PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8'],
+      ['REWIND', 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.', '#48e0c8'],
+      ['MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8'],
+      ['CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8'],
+      ['TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8'],
+      ['PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8'],
+      ['BREAKER BOX', 'WIN IT: BONUS POWERUP. TAP SKIP TO BAIL OUT.', '#f890b8'],
+      ['PAUSE / MUTE', 'THE PAUSE BUTTON. EXIT TO FOOD COURT QUITS.', '#f890b8'],
+    ];
+    const labelX = 28;
+    const descX = 154;
+    const descW = W - descX - 22;
+    const rowH = 62;
+    let rowTop = titleMid + 70;
+    rows.forEach(([label, description, color], i) => {
+      if (i === 5 || i === 9) rowTop += 14;
+      const rowMid = rowTop + rowH / 2;
+      const labelS = portraitMenuFit(label, 1.05, descX - labelX - 14, 'bold');
+      portraitMenuText(ctx, label, labelX,
+        portraitMenuTextY(rowMid, labelS, 'bold'), color, labelS, 'bold');
+      const lines = portraitMenuWrap(description, descW, 1.0, 2);
+      const lineGap = 15;
+      const firstMid = rowMid - (lines.length - 1) * lineGap / 2;
+      lines.forEach((line, j) => {
+        portraitMenuText(ctx, line, descX,
+          portraitMenuTextY(firstMid + j * lineGap, 1.0), '#c8c8d8');
+      });
+      rowTop += rowH;
+    });
+
+    portraitMenuTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2,
+      portraitMenuTextY(safeBottom - 16, 1.05), '#5a5a68', 1.05);
+  }
 }
 
 const SETTINGS_TOP = 68;
@@ -4369,6 +4869,8 @@ const SETTINGS_BACK_TOP = 216;
 const SETTINGS_BACK_H = 25;
 
 export class SettingsState {
+  static portraitMode = 'frame';
+
   constructor({ save, onDone, onCalibrate = null }) {
     this.save = save;
     this.onDone = onDone;
@@ -4381,11 +4883,34 @@ export class SettingsState {
     this.listStart = 0;
     this.pointerGesture = null;
   }
+  layout() {
+    if (!portraitMenuActive()) {
+      this.listY = SETTINGS_TOP;
+      this.rowH = SETTINGS_ROW;
+      this.visibleRows = SETTINGS_VISIBLE_ROWS;
+      this.doneY = SETTINGS_BACK_TOP;
+      this.doneH = SETTINGS_BACK_H;
+      return;
+    }
+    const safeTop = portraitMenuSafeTop();
+    const safeBottom = portraitMenuSafeBottom();
+    // The portrait frame is roughly four times as tall as the landscape one.
+    // Use that room for larger touch rows first; only the genuinely longer
+    // settings lists need scrolling now.
+    this.listY = Math.max(safeTop + 70, 142);
+    this.rowH = 54;
+    this.doneH = 56;
+    const count = this.listCount();
+    this.visibleRows = Math.max(1, Math.min(count,
+      Math.floor((safeBottom - this.listY - this.doneH - 26) / this.rowH)));
+    this.doneY = this.listY + this.visibleRows * this.rowH + 12;
+  }
   enter() {
     this.idx = 0;
     this.listStart = 0;
     this.pointerGesture = null;
     this.confirming = false;
+    this.layout();
     Input.setMenuButtons();
   }
   volumeOption(key, name) {
@@ -4489,6 +5014,7 @@ export class SettingsState {
     this.listStart = Math.max(0, Math.min(this.maxListStart(opts), this.listStart));
   }
   pointerIndex(y, opts = this.options()) {
+    this.layout();
     const done = opts.length - 1;
     if (y >= this.doneY && y < this.doneY + this.doneH) return done;
     if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
@@ -4513,6 +5039,7 @@ export class SettingsState {
     this.confirming = false;
   }
   update(dt) {
+    this.layout();
     const opts = this.options();
     if (this.confirming) {
       if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); this.resetToDefaults(); }
@@ -4579,6 +5106,10 @@ export class SettingsState {
     Input.endFrame();
   }
   draw(ctx) {
+    if (portraitMenuActive()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const opts = this.options();
@@ -4625,6 +5156,74 @@ export class SettingsState {
       ctx.strokeRect(40.5, 90.5, W - 81, 60);
       drawTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2, 108, '#e04848', 1.5);
       drawTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK`, W / 2, 132, '#8a8a98');
+    }
+  }
+
+  drawPortrait(ctx) {
+    this.layout();
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    const opts = this.options();
+    const doneIndex = opts.length - 1;
+    const labels = opts.slice(0, doneIndex).map((o) => o.label);
+    const itemS = 1.3;
+    const band = leftBand(labels, portraitMenuScale(itemS));
+    const titleX = band.textX;
+    const titleMid = portraitMenuSafeTop() + 34;
+    portraitMenuText(ctx, 'SETTINGS', titleX,
+      portraitMenuTextY(titleMid, 2.35, 'title'), '#fff', 2.35, 'title');
+    const subtitle = 'ALL OF THESE DO EXACTLY WHAT THEY SAY.';
+    const subtitleS = portraitMenuFit(subtitle, 1.05, W - titleX - 18);
+    portraitMenuText(ctx, subtitle, titleX,
+      portraitMenuTextY(titleMid + 34, subtitleS), '#5a5a68', subtitleS);
+
+    labels.forEach((_, i) => {
+      if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
+      const o = opts[i];
+      const rowTop = this.listY + (i - this.listStart) * this.rowH;
+      const selected = i === this.idx;
+      if (selected) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2, 5);
+      const size = portraitMenuFit(o.label, itemS, W - titleX - 28);
+      portraitMenuText(ctx, o.label, titleX,
+        portraitMenuTextY(rowTop + this.rowH / 2, size),
+        selected ? '#c9a0ff' : '#c8c8d8', size);
+    });
+
+    if (this.listCount(opts) > this.visibleRows) {
+      const trackY = this.listY + 6;
+      const trackH = this.visibleRows * this.rowH - 12;
+      const thumbH = Math.max(26, trackH * this.visibleRows / this.listCount(opts));
+      const thumbY = trackY + (trackH - thumbH) * this.listStart / this.maxListStart(opts);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(W - 18, trackY, 3, trackH);
+      ctx.fillStyle = 'rgba(201,160,255,0.62)';
+      ctx.fillRect(W - 20, thumbY, 6, thumbH);
+    }
+
+    const doneSelected = this.idx === doneIndex;
+    if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2, 5);
+    const backSize = portraitMenuFit('BACK', itemS, W - titleX - 28);
+    portraitMenuText(ctx, 'BACK', titleX,
+      portraitMenuTextY(this.doneY + this.doneH / 2, backSize),
+      doneSelected ? '#c9a0ff' : '#c8c8d8', backSize);
+    portraitMenuTextCentered(ctx,
+      Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE',
+      W / 2, portraitMenuTextY(portraitMenuSafeBottom(18), 1.0), '#5a5a68', 1.0);
+
+    if (this.confirming) {
+      const mw = W - 64;
+      const mh = 150;
+      const my = Math.round((H - mh) / 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.90)';
+      ctx.fillRect(32, my, mw, mh);
+      ctx.strokeStyle = '#e04848';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(32.5, my + 0.5, mw - 1, mh - 1);
+      const confirmS = portraitMenuFit('RESET ALL TO DEFAULTS?', 1.55, mw - 24, 'title');
+      portraitMenuTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2,
+        portraitMenuTextY(my + 47, confirmS, 'title'), '#e04848', confirmS, 'title');
+      portraitMenuTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK`, W / 2,
+        portraitMenuTextY(my + 101, 1.05), '#8a8a98', 1.05);
     }
   }
 }

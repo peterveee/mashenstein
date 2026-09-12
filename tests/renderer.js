@@ -263,6 +263,42 @@ phoneDiag = phoneRenderer.rendererDiagnostics();
 assert(phoneDiag.rung === 3 && phoneDiag.density === 2.5,
   'a sustained second below 52 FPS steps a phone down one rung to 2.5x');
 
+// The dev menu is allowed to be dense because it is a review surface, not a
+// gameplay frame. Its canvas backing must match the visible CSS box in both
+// orientations; otherwise portrait pre-compresses the glyphs into the ordinary
+// 480x270 surface and the browser magnifies those few rows across the phone.
+const devPortraitDom = installDom({
+  locationSearch: '?renderer=2d',
+  innerWidth: 390,
+  innerHeight: 844,
+  devicePixelRatio: 3,
+});
+const devPortraitRenderer = await import('../src/engine/renderer.js?dev-overlay-portrait');
+devPortraitRenderer.initRenderer({ isIphone: true });
+devPortraitRenderer.setDevPortraitFill(true);
+assert(devPortraitDom.canvas.width === 1170 && devPortraitDom.canvas.height === 2532,
+  'portrait dev overlay uses a device-pixel backing for the full visible phone');
+assert(devPortraitRenderer.screen.dpy > devPortraitRenderer.screen.dpx * 3,
+  'portrait dev overlay keeps the tall Y backing explicit instead of hiding it in a CSS stretch');
+devPortraitRenderer.setDevPortraitFill(false);
+assert(devPortraitDom.canvas.width === 1170 && devPortraitDom.canvas.height === 658,
+  'closing the portrait dev overlay restores the bounded gameplay backing');
+
+const devLandscapeDom = installDom({
+  locationSearch: '?renderer=2d',
+  innerWidth: 852,
+  innerHeight: 393,
+  devicePixelRatio: 3,
+});
+const devLandscapeRenderer = await import('../src/engine/renderer.js?dev-overlay-landscape');
+devLandscapeRenderer.initRenderer({ isIphone: true });
+devLandscapeRenderer.setDevPortraitFill(true);
+assert(devLandscapeDom.canvas.width === 2097 && devLandscapeDom.canvas.height === 1179,
+  'landscape dev overlay uses the visible letterboxed box at device density too');
+devLandscapeRenderer.setDevPortraitFill(false);
+assert(devLandscapeDom.canvas.width === 1440 && devLandscapeDom.canvas.height === 810,
+  'closing the landscape dev overlay restores the bounded gameplay backing');
+
 // The same viewport on desktop renders at full native density from the first
 // frame — no seed, no climb. A desktop has no thermal budget to protect, and
 // starting it soft was a visible quality regression on Retina displays. The

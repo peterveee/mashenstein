@@ -1,9 +1,9 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
-import { W, H, chrome as chromeGeo } from '../../engine/renderer.js';
+import { W, H, chrome as chromeGeo, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
@@ -3262,6 +3262,15 @@ function listMenu(state, opts) {
   if (Input.pressed('pointer')) {
     const i = listIndexAt(state, opts.length, Input.pointer.y);
     if (i !== null) {
+      // Stage select opts into one-tap activation on touch. A locked stage is
+      // deliberately the exception: the first tap only moves the highlight so
+      // its gate text can be read, and a second tap still cannot launch it.
+      if (state.touchActivates && Input.isTouchDevice()) {
+        if (opts[i].kind === 'stage' && !stageUnlocked(state.save.slot, opts[i].stage)) {
+          state.idx = i; Audio.sfx('ui'); return null;
+        }
+        Audio.sfx('uiConfirm'); return opts[i];
+      }
       if (opts[i].back || opts[i].kind === 'back' || state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
       state.idx = i; Audio.sfx('ui');
     }
@@ -3344,8 +3353,8 @@ function listVisualRow(state, i) {
   return i - (state.listStart || 0);
 }
 
-// Every hub sub-menu is listMenu-driven: arrow keys or a tap-to-select,
-// tap-again-to-confirm, spelled out at the bottom of the screen.
+// Every hub sub-menu is listMenu-driven: arrow keys or a tap-to-select, with
+// stage select allowed to activate an unlocked level immediately on touch.
 //
 // isTouchDevice(), not usingTouch: usingTouch only turns true once a finger has
 // landed, so a phone arriving at one of these screens cold was told to press
@@ -3424,9 +3433,47 @@ const ROW_S = 1.4, DESC_S = 1.1, PIP = 13;
 // corrupted mode both unlocked) tightens to 30 rather than running off the
 // bottom of the panel.
 const LIST_TOP = 74, LIST_BOTTOM = 250, ROW_MIN = 28, ROW_MAX = 48;
+const PORTRAIT_STAGE_SIDE_MARGIN_CSS = 22;
+const PORTRAIT_STAGE_LIST_TOP_CSS = 175;
+const PORTRAIT_STAGE_LIST_BOTTOM_CSS = 105;
+const PORTRAIT_STAGE_ROW_MIN = 72;
+const PORTRAIT_STAGE_ROW_MAX = 154;
+const PORTRAIT_STAGE_PIP = 22;
+const PORTRAIT_STAGE_FOOTER_LAST_MID_CSS = 38;
 
 export class StageSelectState {
-  constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = LIST_TOP; this.rowH = ROW_MAX; }
+  static portraitMode = 'frame';
+
+  constructor({ save, cab, flow }) {
+    this.save = save;
+    this.cab = cab;
+    this.flow = flow;
+    this.listY = LIST_TOP;
+    this.listBottom = LIST_BOTTOM;
+    this.rowH = ROW_MAX;
+    this.layoutKey = '';
+    this.touchActivates = true;
+  }
+  syncLayout() {
+    const frame = presentationFrame();
+    const portrait = isPhonePortraitPresentation();
+    const opts = this.options();
+    const key = `${portrait ? 'portrait' : 'landscape'}:${frame.revision}:${opts.length}`;
+    if (key === this.layoutKey) return;
+    if (portrait) {
+      const css = (n) => n / frame.scale;
+      const safe = frame.safeRect;
+      this.listY = safe.top + css(PORTRAIT_STAGE_LIST_TOP_CSS);
+      this.listBottom = safe.bottom - css(PORTRAIT_STAGE_LIST_BOTTOM_CSS);
+      this.rowH = Math.max(PORTRAIT_STAGE_ROW_MIN,
+        Math.min(PORTRAIT_STAGE_ROW_MAX, (this.listBottom - this.listY) / opts.length));
+    } else {
+      this.listY = LIST_TOP;
+      this.listBottom = LIST_BOTTOM;
+      this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));
+    }
+    this.layoutKey = key;
+  }
   enter() {
     // The cabinet's own theme starts here, and keeps playing through the stage list, the
     // briefing and into the level itself — where it opens up rather than restarting. See
@@ -3466,8 +3513,9 @@ export class StageSelectState {
     if (hasTngr2) Audio.prefill?.(1.2);
     Audio.warmWorkletLanes?.();
     this.corrupt = null;
+    this.layoutKey = '';
+    this.syncLayout();
     const opts = this.options();
-    this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));
     // Open on the frontier — the last stage that is actually playable — rather
     // than always on stage 1. Coming back from a clear, the thing you just
     // unlocked is the thing you came here for; replaying an earlier stage for
@@ -3486,6 +3534,7 @@ export class StageSelectState {
     return opts;
   }
   update(dt) {
+    this.syncLayout();
     const sel = listMenu(this, this.options());
     if (sel) {
       // A locked stage stays selectable so you can read what is behind it and
@@ -3503,6 +3552,11 @@ export class StageSelectState {
     Input.endFrame();
   }
   draw(ctx) {
+    this.syncLayout();
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, this.cab.name, W / 2, 20, '#f6d33c', 2, 'title');
@@ -3568,6 +3622,121 @@ export class StageSelectState {
     const tally = `PLUGS HERE: ${cabGot}/${cabMax}   TOTAL: ${totalPlugs(slot)}/${MAX_PLUGS}`;
     drawText(ctx, tally, W - 12 - textWidth(tally, HINT_S), H - 13, cabGot >= cabMax ? '#f6d33c' : '#48e0c8', HINT_S);
     drawMenuHint(ctx, 'PLAY');
+  }
+
+  drawPortrait(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(PORTRAIT_STAGE_SIDE_MARGIN_CSS);
+    const contentLeft = safe.left + margin;
+    const contentRight = safe.right - margin;
+    const contentWidth = Math.max(css(180), contentRight - contentLeft);
+    const opts = this.options();
+    const slot = this.save.slot;
+    const cabStages = stagesForCabinet(this.cab.id);
+    const cabGot = cabStages.reduce((n, s) => n + (slot.campaign.plugs[s.id] || []).filter(Boolean).length, 0);
+    const cabMax = cabStages.length * 3;
+    const title = this.cab.name;
+    const titleScale = Math.min(5, contentWidth / Math.max(1, textWidth(title, 1, 'title')));
+    const tally = `PLUGS HERE: ${cabGot}/${cabMax}   TOTAL: ${totalPlugs(slot)}/${MAX_PLUGS}`;
+    const tallyScale = Math.min(2.5, contentWidth / Math.max(1, textWidth(tally, 1, 'bold')));
+    const rowX = safe.left + css(10);
+    const rowRight = safe.right - css(10);
+    const infoRight = contentRight;
+    const rankCx = infoRight - css(31);
+    const plugX = infoRight - css(82);
+    const labelX = contentLeft;
+    const labelRight = plugX - css(14);
+    const labelWidth = Math.max(css(120), labelRight - labelX);
+    const longestStageLabel = stagesForCabinet(this.cab.id)
+      .map((s) => `${s.id.toUpperCase()}  ${s.mission.type.toUpperCase()}`)
+      .reduce((longest, label) => textWidth(label, 1) > textWidth(longest, 1) ? label : longest, '');
+    const labelFit = labelWidth / Math.max(1, textWidth(longestStageLabel, 1));
+    const labelScale = Math.max(1.8, Math.min(3, 15 / (TEXT_INK_H * frame.scale), labelFit));
+    const descScale = Math.max(1.7, labelScale * 0.8);
+    const rowCompact = this.rowH < css(108);
+    const labelMidOffset = css(rowCompact ? 20 : 29);
+    const descMidOffset = css(rowCompact ? 49 : 76);
+    const descWidth = Math.max(css(140), labelRight - labelX);
+    const descLineH = 11 * descScale;
+    const rankScale = Math.max(2, Math.min(3.1,
+      css(62) / Math.max(1, textWidth('CONC.', 1, 'bold'))));
+
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawTextCentered(ctx, title, center, safe.top + css(30), '#f6d33c', titleScale, 'title');
+    // The cabinet name and the plug tally are the useful decisions here. Genre
+    // and style were tiny catalogue metadata on a phone, so give that width and
+    // vertical room back to the heading and the campaign count.
+    drawTextCentered(ctx, tally, center, safe.top + css(105),
+      cabGot >= cabMax ? '#f6d33c' : '#48e0c8', tallyScale, 'bold');
+
+    const columnHeaderScale = 1.65;
+    const columnHeaderY = textYForMid(this.listY - css(18), columnHeaderScale, 'bold');
+    drawTextCentered(ctx, 'PLUGS', plugX + PORTRAIT_STAGE_PIP / 2,
+      columnHeaderY, '#b0a8bc', columnHeaderScale, 'bold');
+    drawTextCentered(ctx, 'RANK', rankCx, columnHeaderY, '#b0a8bc', columnHeaderScale, 'bold');
+
+    opts.forEach((o, i) => {
+      const rowTop = this.listY + i * this.rowH;
+      const selected = i === this.idx;
+      if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
+      const labelY = textYForMid(rowTop + labelMidOffset, labelScale);
+      const c = selected ? '#f6d33c' : '#c8c8d8';
+      if (o.kind === 'stage') {
+        const plugs = slot.campaign.plugs[o.stage.id] || [];
+        const rank = slot.campaign.ranks[o.stage.id];
+        const open = stageUnlocked(slot, o.stage);
+        const label = `${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`;
+        drawText(ctx, label, labelX, labelY, open ? c : selected ? '#8a7a52' : '#54545e', labelScale);
+        const plugGap = Math.max(2, Math.min(8,
+          (this.rowH - PORTRAIT_STAGE_PIP * 3) / 2));
+        const plugStackH = PORTRAIT_STAGE_PIP * 3 + plugGap * 2;
+        drawPlugRow(ctx, plugX, rowTop + Math.max(2, (this.rowH - plugStackH) / 2), plugs, undefined,
+          PORTRAIT_STAGE_PIP, undefined, undefined, 'vertical', plugGap);
+        if (rank) {
+          const shownRank = rank === 'CONCERNING' ? 'CONC.' : rank;
+          drawTextCentered(ctx, shownRank, rankCx,
+            textYForMid(rowTop + this.rowH / 2, rankScale, 'bold'), '#48e0c8', rankScale, 'bold');
+        }
+        const desc = open ? o.stage.mission.desc
+          : `LOCKED - EARN A PLUG IN ${prevStage(o.stage).id.toUpperCase()}`;
+        const lines = rowCompact
+          ? [fitText(desc, descWidth, descScale)]
+          : wrapText(desc, descWidth, descScale, 2);
+        lines.forEach((line, lineI) => drawText(ctx, line, labelX,
+          textYForMid(rowTop + descMidOffset + lineI * descLineH, descScale),
+          open ? '#8a8492' : '#8a6a42', descScale));
+      } else if (o.kind === 'boss') {
+        const boss = `BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`;
+        const lines = wrapText(boss, labelWidth, labelScale, rowCompact ? 1 : 2);
+        lines.forEach((line, lineI) => drawText(ctx, line, labelX,
+          textYForMid(rowTop + labelMidOffset + lineI * 12 * labelScale, labelScale),
+          selected ? '#e04848' : '#c05050', labelScale));
+      } else if (o.kind === 'corrupt') {
+        const m = CORRUPTED_MODIFIERS.find((mm) => mm.id === this.corrupt);
+        drawText(ctx, `CORRUPTED MODE: ${m ? m.name : 'OFF'}`, labelX, labelY,
+          selected ? '#c39ae8' : '#6a5a8a', labelScale);
+        if (m && !rowCompact) {
+          const lines = wrapText(`${m.desc} (ONE-HIT RULES)`, descWidth, descScale, 2);
+          lines.forEach((line, lineI) => drawText(ctx, line, labelX,
+            textYForMid(rowTop + descMidOffset + lineI * descLineH, descScale), '#8a8492', descScale));
+        }
+      } else {
+        drawText(ctx, 'BACK', labelX, labelY, c, labelScale);
+      }
+    });
+
+    const hintScale = Math.max(1.65, Math.min(2.1, 12 / (TEXT_INK_H * frame.scale)));
+    const lastMid = safe.bottom - css(PORTRAIT_STAGE_FOOTER_LAST_MID_CSS);
+    const hintLines = Input.isTouchDevice()
+      ? ['TAP LEVEL TO PLAY']
+      : ['UP / DOWN: SELECT', `${Input.confirmVerb()}: PLAY`];
+    hintLines.forEach((line, i) => drawTextCentered(ctx, line, center,
+      textYForMid(lastMid - (hintLines.length - 1 - i) * 13 * hintScale, hintScale),
+      '#8a8492', hintScale, 'bold'));
   }
 }
 

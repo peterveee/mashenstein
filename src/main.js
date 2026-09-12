@@ -1062,9 +1062,9 @@ function boot() {
     audio: Audio,
     devMode,
     // Screens opt in by declaring a static portraitMode (see portraitAllowedFor):
-    // the jukebox uses its stretch surface, while briefing, gameplay and results
-    // use the frame-based phone composition. The title and other screens remain
-    // landscape-only in production.
+    // the jukebox uses its stretch surface, while the title, briefing, gameplay,
+    // results, and Staff Only utility screens use the frame-based phone
+    // composition.
     allowPortrait: allowPortraitNow,
     onPortraitJukebox: () => setStateFade(new SoundTestState({ onDone: () => Flow.toTitle({ fade: true }) })),
     // Five taps on the portrait heading. Local builds only, like every other

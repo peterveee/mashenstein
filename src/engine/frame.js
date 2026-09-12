@@ -1,6 +1,9 @@
 // Presentation frame geometry shared by the renderer, camera and development
 // previews.  The simulation still owns the authored 480px world; this module
 // only describes the logical surface that the world is presented through.
+import {
+  portraitGeometry, PORTRAIT_GROUND_ANCHOR_RATIO,
+} from './portrait-geometry.js';
 
 export const FRAME_WIDTH = 480;
 export const LANDSCAPE_HEIGHT = 270;
@@ -15,6 +18,7 @@ const DEFAULT_FRAME = Object.freeze({
   safeRect: Object.freeze({ left: 0, top: 0, right: FRAME_WIDTH, bottom: LANDSCAPE_HEIGHT,
     width: FRAME_WIDTH, height: LANDSCAPE_HEIGHT }),
   groundScreenY: 232,
+  cornerRadiusCss: 0,
   revision: 0,
 });
 
@@ -47,7 +51,11 @@ export function frameForViewport({
   viewportHeight = LANDSCAPE_HEIGHT,
   safeInsets = {},
   safe = null,
-  groundAnchorRatio = 0.70,
+  groundAnchorRatio = PORTRAIT_GROUND_ANCHOR_RATIO,
+  // Display corner radius in CSS px (0 = square, and 0 is the default because
+  // only iPhone is known — see displayCornerRadiusCss). Anything laid flush to
+  // an edge uses it to stay off the curve.
+  cornerRadiusCss = 0,
   revision = 0,
 } = {}) {
   const vw = finitePositive(Number(viewportWidth), FRAME_WIDTH);
@@ -61,23 +69,30 @@ export function frameForViewport({
   const top = Math.max(0, cssInsets.top / scale);
   const right = Math.min(width, width - Math.max(0, cssInsets.right / scale));
   const bottom = Math.min(height, height - Math.max(0, cssInsets.bottom / scale));
+  const safeRect = {
+    left, top, right, bottom,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+    css: cssInsets,
+  };
+  const portrait = phone ? portraitGeometry({
+    width,
+    height,
+    scale,
+    safeRect,
+    groundAnchorRatio,
+  }) : null;
   return {
     mode: phone ? PHONE_PORTRAIT : LANDSCAPE,
     width,
     height,
     scale,
-    safeRect: {
-      left, top, right, bottom,
-      width: Math.max(0, right - left),
-      height: Math.max(0, bottom - top),
-      css: cssInsets,
-    },
+    safeRect,
     // The legacy landscape anchor is preserved exactly. Portrait places the
     // authored groundline inside the usable safe rectangle. The ratio is a
     // camera/presentation choice only; terrain and physics remain unchanged.
-    groundScreenY: phone
-      ? top + Math.max(0.55, Math.min(0.75, Number.isFinite(Number(groundAnchorRatio)) ? Number(groundAnchorRatio) : 0.70)) * Math.max(0, bottom - top)
-      : 232,
+    groundScreenY: phone ? portrait.groundScreenY : 232,
+    cornerRadiusCss: Math.max(0, Number(cornerRadiusCss) || 0),
     revision: Number.isFinite(revision) ? revision : 0,
   };
 }

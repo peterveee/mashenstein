@@ -56,6 +56,37 @@ export function abilityMeter(state) {
 const box = (b) => ({ x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 });
 const discsOf = (list) => list.filter((b) => b.r != null);
 
+// The portrait review page has its own CSS-pixel layout, but it must not have
+// its own button vocabulary. Keep the production chrome painter usable with a
+// supplied disc list so screenshots and live touch chrome cannot disagree on
+// arrow direction, ink, outline, label scale, or cooldown treatment.
+export function drawRunChrome(ctx, discs, state, isHeld = (action) => Input.held(action)) {
+  const list = discsOf(discs);
+  const use = list.find((b) => b.id === 'ability' || b.id === 'use');
+  const meter = use && state ? abilityMeter(state) : null;
+  for (const b of list) {
+    const held = isHeld(b.action);
+    const fill = held ? GLASS_PRESSED : GLASS;
+    const button = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 };
+    if (b.id === 'jump') drawRoundButton(ctx, { ...button, icon: 'up' }, { fill, ink: ACTION_INK.jump });
+    else if (b.id === 'slide') drawRoundButton(ctx, { ...button, icon: 'down' }, { fill, ink: ACTION_INK.slide });
+    else if (b.id === 'pause') drawRoundButton(ctx, { ...button, icon: 'pause' }, { fill, ink: PAUSE_INK });
+    else if (b.id === 'rewind') drawRoundButton(ctx, { ...button, label: 'RWD' }, {
+      fill, ink: REWIND_INK,
+      labelScale: (b.r * 0.56) / GLYPH_PX, labelStyle: 'ui',
+    });
+    else if (b.id === 'ability' || b.id === 'use') {
+      const frac = meter?.frac ?? 1;
+      const ink = meter?.ink ?? ACTION_INK.ability;
+      drawRoundButton(ctx, { ...button, label: 'USE' }, {
+        fill, ink,
+        frac, levelFill: ink, levelAlpha: 0.22, waterline: '#d7fff6',
+        labelScale: (b.r * LABEL_EM) / GLYPH_PX, labelStyle: 'ui',
+      });
+    }
+  }
+}
+
 // Whether the dev overlay is up: it draws on #game, and a live control painted
 // over an open menu is a control that looks pressable and is not.
 function devMenuOpen() {
@@ -69,33 +100,17 @@ export function declareRunChrome(state) {
   if (!chromeCtx || devMenuOpen()) return;
   const discs = discsOf(Input.chromeButtons);
   if (!discs.length) return;
-  const use = discs.find((b) => b.id === 'ability');
-  const meter = use ? abilityMeter(state) : null;
   // Everything that changes the painted pixels: the layout generation, which
   // discs are up and which are held, and the waterline quantised to the pixel
   // it would move — so a ready USE repaints zero times while a recharge
   // repaints once per pixel of rise.
   let sig = `run|${chrome.gen}`;
   for (const b of discs) sig += `|${b.id}${Input.held(b.action) ? '*' : ''}`;
+  const use = discs.find((b) => b.id === 'ability');
+  const meter = use ? abilityMeter(state) : null;
   if (meter) sig += `|${Math.round(meter.frac * use.r * 2)}|${meter.ink}`;
   paintChrome(sig, (ctx) => {
-    for (const b of discs) {
-      const fill = Input.held(b.action) ? GLASS_PRESSED : GLASS;
-      if (b.id === 'jump') drawRoundButton(ctx, { ...box(b), icon: 'up' }, { fill, ink: ACTION_INK.jump });
-      else if (b.id === 'slide') drawRoundButton(ctx, { ...box(b), icon: 'down' }, { fill, ink: ACTION_INK.slide });
-      else if (b.id === 'pause') drawRoundButton(ctx, { ...box(b), icon: 'pause' }, { fill, ink: PAUSE_INK });
-      else if (b.id === 'rewind') drawRoundButton(ctx, { ...box(b), label: 'RWD' }, {
-        fill, ink: REWIND_INK,
-        labelScale: (b.r * 0.56) / GLYPH_PX, labelStyle: 'ui',
-      });
-      else if (b.id === 'ability') {
-        drawRoundButton(ctx, { ...box(b), label: 'USE' }, {
-          fill, ink: meter.ink,
-          frac: meter.frac, levelFill: meter.ink, levelAlpha: 0.22, waterline: '#d7fff6',
-          labelScale: (b.r * LABEL_EM) / GLYPH_PX, labelStyle: 'ui',
-        });
-      }
-    }
+    drawRunChrome(ctx, discs, state);
   });
 }
 

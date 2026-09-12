@@ -7,6 +7,8 @@ import { installDom } from './dom-stub.js';
 const dom = installDom();
 
 const { Input } = await import('../src/engine/input.js');
+const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
+const { setPresentationFrame } = await import('../src/engine/renderer.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -168,6 +170,47 @@ dom.fire('canvas:pointermove', { ...dragRight, clientX: 470 });
 assert(!Input.pressed('ability') && Input.held('ability'),
   'dragging further does not re-fire it');
 dom.fire('canvas:pointerup', dragRight);
+
+// Portrait has a taller playfield, so the main picture is one tap-to-jump
+// surface instead of repeating the landscape left/right split. Down and right
+// swipes still arbitrate before the pending tap and become slide/power without
+// firing the jump they started over.
+setPresentationFrame(frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+}));
+Input.setContext('run');
+Input.setChromeButtons([]);
+frame();
+const portraitTap = pointer(0, 60, 220, 'touch');
+portraitTap.clientY = 300;
+dom.fire('canvas:pointerdown', portraitTap);
+assert(!Input.pressed('jump') && !Input.held('jump'),
+  'a portrait main-area tap waits for gesture arbitration');
+dom.frame(70);
+dom.fire('canvas:pointerup', portraitTap);
+assert(Input.pressed('jump') && Input.held('jump'),
+  'a portrait main-area tap jumps');
+frame(120);
+
+const portraitSlide = pointer(0, 61, 220, 'touch');
+portraitSlide.clientY = 300;
+dom.fire('canvas:pointerdown', portraitSlide);
+dom.fire('canvas:pointermove', { ...portraitSlide, clientY: 340 });
+assert(Input.pressed('slide') && Input.held('slide') && !Input.held('jump'),
+  'a portrait main-area down-swipe slides without firing jump');
+dom.fire('canvas:pointerup', portraitSlide);
+assert(Input.released('slide'), 'a portrait down-swipe releases cleanly');
+frame();
+
+const portraitPower = pointer(0, 62, 220, 'touch');
+portraitPower.clientY = 300;
+dom.fire('canvas:pointerdown', portraitPower);
+dom.fire('canvas:pointermove', { ...portraitPower, clientX: 260 });
+assert(Input.pressed('ability') && Input.held('ability') && !Input.held('jump'),
+  'a portrait main-area right-swipe fires the hero power');
+dom.fire('canvas:pointerup', portraitPower);
+assert(Input.released('ability'), 'a portrait right-swipe releases cleanly');
+setPresentationFrame(defaultFrame());
 
 // The touch chrome: discs on the picture and zones in the margin, in viewport
 // px, both firing on contact. A disc wins inside its slop; outside it a tap

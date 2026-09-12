@@ -38,6 +38,7 @@ const suites = [
   'tests/render-culling-browser.js',
   'tests/lcd-cache-browser.js',
   'tests/reliability.js',
+  'tests/text-centering.js',
   'tests/flyer-motion.js',
   'tests/mouse-controls.js',
   // The touch chrome's geometry against real phones and tablets: discs on the
@@ -354,11 +355,16 @@ const suites = [
   'tests/density.js',
   'tests/frame-health.js',
   'tests/camera-framing.js',
+  'tests/camera-jump-guard.js',
+  'tests/camera-anchor-spring.js',
   'tests/tunnel-camera.js',
   'tests/portrait-framing.js',
   'tests/portrait-finish.js',
   'tests/portrait-lab.js',
   'tests/portrait-layout.js',
+  'tests/scenery-layout.js',
+  'tests/composition-profile.js',
+  'tests/background-wrap.js',
   'tests/routes.js',
   // The set piece built out of them: four jumps over a spiked break on three
   // island stones. Beside the routes suite because the stones ARE routes — what
@@ -389,6 +395,7 @@ const suites = [
   // And on level 3-3 a connecting barrel lands on the beat line, without the
   // lining-up changing how often one connects.
   'tests/copter-onbeat.js',
+  'tests/copter-portrait.js',
   // How a run ENDS, as a picture. Beside the crossing suite because the pit is
   // the death with the most to show and the one whose journey these poses have
   // to leave intact: everything else settles the figure the instant it dies.
@@ -411,6 +418,7 @@ const suites = [
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',
   'tests/title-sign.js',
+  'tests/title-portrait.js',
   'tests/sfx-routing.js',
   'tests/title-toasters.js',
   'tests/title-weapons.js',

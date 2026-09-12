@@ -141,6 +141,13 @@ export const FRAME_EDGE_GRADIENT = Object.freeze({
   range: 42,
   skyAlpha: 0.12,
   groundAlpha: 0.16,
+  // PORTRAIT'S TOP EDGE IS A DIFFERENT JOB. In landscape this is a whisper over
+  // 42px — enough to stop the frame's edge reading as a cut. On a phone the
+  // band runs the whole objective stack (see run.js), and the same 12% spread
+  // that far is invisible: the per-pixel step is under a value level. This is
+  // the weight that reads across that distance, and it is deliberately the
+  // knob to turn if the top of the picture wants more or less drama.
+  portraitSkyAlpha: 0.45,
 });
 
 function frameEdgeInk(style, alpha) {
@@ -149,6 +156,63 @@ function frameEdgeInk(style, alpha) {
   // edge, so this is an edge value shift rather than a second horizon.
   const rgb = style && style.lightBg ? '26,16,40' : '0,0,0';
   return `rgba(${rgb},${alpha})`;
+}
+
+// THE PORTRAIT SKY CAP.
+//
+// iOS washes a gradient over the top of the screen for its status bar, on a
+// Home Screen app, over whatever the page draws — tested with a flat red fill:
+// it fades regardless. What that wash costs is CONTRAST: the further the band
+// under it is from the colour it is dimming toward, the more obvious the fade.
+// So give it very little to take. A solid, already-dark band covers exactly the
+// depth the wash reaches, and then OUR gradient carries that colour out into
+// the scene, so the eye reads one deliberate shading from the top of the
+// picture rather than the OS's ramp and then ours.
+//
+// `capEnd` is where the solid band stops (the wash's own depth) and `fadeEnd`
+// where our ramp has finished handing back to the sky.
+export function drawPortraitSkyCap(c, { capEnd = 0, fadeEnd = 0, ink = null, alpha = 1 } = {}) {
+  const cap = Math.max(0, Math.min(H, Number(capEnd) || 0));
+  const fade = Math.max(cap, Math.min(H, Number(fadeEnd) || 0));
+  const a = Math.max(0, Math.min(1, Number(alpha)));
+  if (!(fade > 0) || !ink || !(a > 0)) return;
+  c.save();
+  // `capEnd` 0 means no solid section at all: the band simply starts at `alpha`
+  // and thins from there, which is the shape a sky wants — a tint at the top of
+  // the picture rather than a bar with a fade under it.
+  if (cap > 0) {
+    c.fillStyle = rgbaOf(ink, a);
+    c.fillRect(0, 0, W, cap);
+  }
+  if (fade > cap) {
+    const g = c.createLinearGradient(0, cap, 0, fade);
+    g.addColorStop(0, rgbaOf(ink, a));
+    g.addColorStop(1, rgbaOf(ink, 0));
+    c.fillStyle = g;
+    c.fillRect(0, cap, W, fade - cap);
+  }
+  c.restore();
+}
+
+// '#rrggbb' at a given alpha. The cap's colour comes from the cabinet, so this
+// is the one place that has to understand the palette's own notation.
+function rgbaOf(hex, alpha) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return `rgba(0,0,0,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+// A cabinet's own sky, taken down toward night by `k`. Keeping the hue means
+// the cap reads as this stage's sky at dusk rather than as a grey bar.
+export function darkenHex(hex, k = 0.5) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return '#000000';
+  const n = parseInt(m[1], 16);
+  const f = Math.max(0, Math.min(1, 1 - k));
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    .map((v) => Math.round(v * f).toString(16).padStart(2, '0')).join('');
+  return `#${ch}`;
 }
 
 export function drawSkyEdgeGradient(c, style = null, options = {}) {

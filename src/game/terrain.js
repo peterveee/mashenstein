@@ -358,7 +358,7 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // would be dirt at its mouth and weather at its peak, and a single verdict
     // for the whole span would have to be wrong at one end of it.
     const asCloud = (wx) => (r.cloud ? cloudMix(groundAt(wx) - topInside(wx, r), cloudFrom, cloudTo) : 0);
-    drawSlab(ctx, camX, cabinet, r, topInside, from, to, asCloud);
+    drawSlab(ctx, camX, cabinet, r, topInside, from, to, asCloud, null, opts.paperSlab);
     if (r.cloud) drawCloudRoad(ctx, camX, r, topInside, groundAt, from, to, cloudFrom, cloudTo);
   }
 }
@@ -385,7 +385,7 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
  * are rounded on an island (it is an object) and left square on a road (it is
  * a stretch of ground that happens to be up here).
  */
-function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null) {
+function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null, paperSlab = null) {
   const soil = soilOf(cabinet);
   const island = r.kind === 'island';
   const CAP = 3;                              // turf
@@ -463,6 +463,26 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     const body = island
       ? (wx) => TIP + (bodyOf(wx) - TIP) * taperAt(wx)
       : bodyOf;
+    const BITE = 4;
+    const slabPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(a, y(a));
+      for (let x = a; x <= b; x += 3) ctx.lineTo(x, y(x));
+      ctx.lineTo(b, y(b));
+      ctx.lineTo(b, y(b) + body(camX + b));
+      for (let wx = Math.floor((camX + b) / BITE) * BITE; wx > camX + a; wx -= BITE) {
+        const x = wx - camX;
+        if (x <= a || x >= b) continue;
+        ctx.lineTo(x, y(x) + body(wx)
+          + 1.2 + Math.sin(wx * 0.55) * 0.8 + Math.sin(wx * 0.21) * 1.1);
+      }
+      ctx.lineTo(a, y(a) + body(camX + a));
+      ctx.closePath();
+    };
+    // Islands are playable ground, so they receive the same paper lift as the
+    // base scenery. The callback only affects the slab silhouette; props and
+    // route decorations remain on their normal painter paths.
+    if (island && paperSlab?.shadow) paperSlab.shadow(ctx, slabPath);
     // ---- soil body, with the scalloped underside ---------------------------
     ctx.beginPath();
     ctx.moveTo(a, y(a));
@@ -477,7 +497,6 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     //
     // The two corners are added explicitly at zero bite so the path closes on
     // the slab's real edges whatever the grid happens to land on.
-    const BITE = 4;
     ctx.lineTo(b, y(b) + body(camX + b));
     for (let wx = Math.floor((camX + b) / BITE) * BITE; wx > camX + a; wx -= BITE) {
       const x = wx - camX;
@@ -547,6 +566,7 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     ctx.lineTo(b + lip, y(b) + 0.75);
     ctx.stroke();
     ctx.lineWidth = 1;
+    if (island && paperSlab?.finish) paperSlab.finish(ctx, slabPath);
   }
 }
 

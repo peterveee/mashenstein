@@ -8,10 +8,14 @@ import {
 } from '../src/engine/frame.js';
 import {
   portraitTouchLayout, portraitHitTest, clearPortraitInput,
-  PORTRAIT_CONTROL_DIAMETERS, PORTRAIT_CONTROL_BOTTOM_MARGIN, PORTRAIT_CONTROL_TOP_CLEARANCE,
+  PORTRAIT_CONTROL_DIAMETERS, PORTRAIT_CONTROL_BOTTOM_MARGIN, PORTRAIT_CONTROL_TOP_CLEARANCE, PORTRAIT_PAUSE_TOP_OFFSET_CSS,
 } from '../src/engine/portrait-input.js';
 import { H, screen as rendererScreen, setPresentationFrame } from '../src/engine/renderer.js';
 import { portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds } from '../src/engine/camera.js';
+import {
+  portraitGeometry, PORTRAIT_GROUND_ANCHOR_RATIO, PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
+  PORTRAIT_GROUND_GAP_CSS,
+} from '../src/engine/portrait-geometry.js';
 
 const close = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, `${message}: ${a} ~= ${b}`);
 
@@ -30,8 +34,21 @@ const frame = frameForViewport({
 });
 close(frame.height, 844 * 480 / 390, 'portrait logical height follows the CSS aspect ratio');
 close(frame.scale, 390 / 480, 'portrait scale is CSS px per logical unit');
-close(frame.groundScreenY, frame.safeRect.top + frame.safeRect.height * 0.70,
-  'portrait ground anchor starts at 70% of the usable safe frame');
+// The default is the lowest request, but the largest chat card is the actual
+// floor. On phones where that card needs more room, portraitGeometry wins by
+// lifting the groundline a few pixels.
+const defaultGeometry = portraitGeometry({
+  width: frame.width, height: frame.height, scale: frame.scale, safeRect: frame.safeRect,
+});
+close(frame.groundScreenY, defaultGeometry.groundFloorScreenY,
+  'portrait default ground sits at the chat-clearing floor');
+close((defaultGeometry.largestChatTop - frame.groundScreenY) * frame.scale,
+  PORTRAIT_GROUND_GAP_CSS, 'portrait default ground clears the largest chat card');
+const desiredDefault = frame.safeRect.top + frame.safeRect.height * PORTRAIT_GROUND_ANCHOR_RATIO;
+assert.ok(frame.groundScreenY <= desiredDefault + 1e-6,
+  'portrait ground anchor never drops below the default request');
+assert.ok(frame.groundScreenY >= frame.safeRect.top + frame.safeRect.height * 0.6,
+  'portrait ground anchor stays in the lower part of the usable safe frame');
 const lowerFrame = frameForViewport({
   mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
   safeInsets: { top: 59, right: 0, bottom: 34, left: 0 }, groundAnchorRatio: 0.66,
@@ -51,7 +68,7 @@ const pitPreferred = portraitPanForBounds({ top: 192, bottom: 270 }, 2.3375, 232
 assert.equal(pitPreferred.fits, true, 'a flat pit-bearing level keeps room for a lower start line');
 close(pitPreferred.pan, 82, 'pit framing honours its preferred lower start while it fits');
 const heroGroundPan = portraitPanForFloor(232, 2.3375, 232, 8);
-close(heroGroundPan, lowerFrame.safeRect.top + lowerFrame.safeRect.height * 0.70 - lowerFrame.groundScreenY,
+close(heroGroundPan, lowerFrame.safeRect.top + lowerFrame.safeRect.height * PORTRAIT_GROUND_ANCHOR_RATIO - lowerFrame.groundScreenY,
   'portrait hero floor leaves a lower safe-frame margin');
 const lowerRoutePan = portraitPanForFloor(270, 2.3375, 232, 8);
 assert.ok(lowerRoutePan < heroGroundPan, 'a lower route scrolls the camera farther down');
@@ -79,8 +96,15 @@ const highClamped = frameForViewport({
 });
 close(lowClamped.groundScreenY, lowClamped.safeRect.top + lowClamped.safeRect.height * 0.55,
   'portrait ground anchor clamps at 55%');
-close(highClamped.groundScreenY, highClamped.safeRect.top + highClamped.safeRect.height * 0.75,
-  'portrait ground anchor clamps at 75%');
+assert.ok(highClamped.groundScreenY <= highClamped.safeRect.top
+  + highClamped.safeRect.height * PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
+  'portrait ground anchor never exceeds the default upper composition limit');
+const highGeometry = portraitGeometry({
+  width: highClamped.width, height: highClamped.height,
+  scale: highClamped.scale, safeRect: highClamped.safeRect,
+});
+assert.ok(highClamped.groundScreenY <= highGeometry.groundFloorScreenY + 1e-9,
+  'portrait ground anchor also clears the largest chat card');
 close(frame.safeRect.top, 59 / frame.scale, 'top safe inset converts with the frame scale');
 close(frame.safeRect.bottom, frame.height - 34 / frame.scale, 'bottom safe inset converts with the frame scale');
 assert.equal(frame.revision, 4, 'frame revision is carried through unchanged');
@@ -129,8 +153,20 @@ for (const [width, height, top, bottom] of [[375, 667, 47, 21], [390, 844, 59, 3
     safeInsets: { top, bottom }, groundAnchorRatio: 0.66, revision: 10,
   });
   close(f.height, height * 480 / width, `${width}x${height} keeps uniform portrait aspect`);
-  close(f.groundScreenY, f.safeRect.top + f.safeRect.height * 0.66,
+  // The anchor is a REQUEST, not a guarantee: on a phone short enough that the
+  // message shelf would meet the resting hero, portraitGeometry lifts the
+  // groundline instead (see PORTRAIT_GROUND_GAP_CSS). 375x667 is below the
+  // supported floor and is the size that exercises that clamp; the supported
+  // sizes still land on the requested ratio exactly.
+  const desired = f.safeRect.top + f.safeRect.height * 0.66;
+  assert.ok(f.groundScreenY <= desired + 1e-6,
+    `${width}x${height} never anchors ground below the requested ratio`);
+  assert.ok(f.groundScreenY > f.safeRect.top,
     `${width}x${height} anchors ground inside its safe rect`);
+  if (height >= 812) {
+    close(f.groundScreenY, desired,
+      `${width}x${height} anchors ground exactly on the requested ratio`);
+  }
   assert.equal(f.revision, 10, `${width}x${height} carries its frame revision`);
 }
 const rotated = frameForViewport({ mode: 'landscape', viewportWidth: 844, viewportHeight: 390, revision: 11 });
@@ -142,8 +178,8 @@ assert.equal(portraitTouchLayout({ viewportWidth: 390, viewportHeight: 844 }).co
   'standalone portrait preview keeps its four-control surface');
 for (const [id, diameter] of Object.entries(PORTRAIT_CONTROL_DIAMETERS)) {
   assert.equal(controls.controls[id].diameter, diameter, `${id} control has its locked CSS diameter`);
-  assert.ok(controls.controls[id].cy >= controls.safe.top && controls.controls[id].cy <= 844 - controls.safe.bottom,
-    `${id} control clears the safe viewport`);
+  assert.ok(controls.controls[id].cy >= controls.safe.top && controls.controls[id].cy <= 844,
+    `${id} control stays on the glass`);
 }
 assert.equal(portraitHitTest(controls, controls.controls.use.cx, controls.controls.use.cy).action,
   'ability', 'USE wins over its broad thumb zone');
@@ -151,9 +187,12 @@ assert.equal(portraitHitTest(controls, controls.controls.rewind.cx, controls.con
   'left', 'Portrait Lab RWD control maps to the held rewind action');
 assert.ok(controls.controls.rewind.cy - controls.controls.rewind.r >= controls.safe.top,
   'Portrait Lab RWD control clears the top safe area');
-assert.equal((844 - controls.safe.bottom) - controls.controls.jump.cy,
+// Measured from the PHYSICAL bottom edge: the discs deliberately sit on the
+// glass, inside the home-indicator inset, and only the authored gutter is left
+// below them.
+assert.equal(844 - controls.controls.jump.cy,
   PORTRAIT_CONTROL_DIAMETERS.jump / 2 + PORTRAIT_CONTROL_BOTTOM_MARGIN,
-  'bottom controls keep the configured safe-area clearance');
+  'bottom controls keep the configured gutter off the physical bottom edge');
 assert.equal(controls.controls.jump.cy, controls.controls.use.cy,
   'USE shares the same baseline as JUMP');
 assert.equal(controls.controls.slide.cy, controls.controls.use.cy,
@@ -162,9 +201,11 @@ assert.equal(portraitHitTest(controls, 24, 780).action, 'jump', 'left lower zone
 assert.equal(portraitHitTest(controls, 366, 780).action, 'slide', 'right lower zone maps to SLIDE');
 assert.equal(portraitHitTest(controls, controls.controls.pause.cx, controls.controls.pause.cy).action,
   'escape', 'PAUSE is an explicit top-right target');
+// PAUSE tracks the first HUD panel, which now starts at the (much smaller)
+// authored breathing band: the safe inset already pays for the cutout.
 assert.ok(controls.controls.pause.cy - controls.controls.pause.r
-  >= controls.safe.top + PORTRAIT_CONTROL_TOP_CLEARANCE,
-  'PAUSE leaves the authored status/notch breathing band');
+  >= controls.safe.top + PORTRAIT_PAUSE_TOP_OFFSET_CSS - 1e-9,
+'PAUSE leaves the authored breathing band below the safe edge');
 assert.equal(portraitHitTest(controls, 195, 350), null, 'the middle world remains free of generic zones');
 const active = new Map([[1, 'jump'], [2, 'slide']]);
 assert.deepEqual(clearPortraitInput(active).sort(), ['jump', 'slide'], 'resize cancellation returns held actions');

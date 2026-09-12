@@ -353,6 +353,9 @@ if (typeof document !== 'undefined' && document.fonts) {
   const drop = () => {
     glyphCache.clear();
     advCache.clear();
+    // Cap metrics belong to the FACE, so a face that arrives late invalidates
+    // them exactly as it invalidates the rasterized glyphs.
+    inkMetricsCache.clear();
     for (const fn of fontListeners) fn();
   };
   if (document.fonts.load) {
@@ -461,12 +464,81 @@ export function drawPanel(ctx, x, y, w, h, r = 3, fill = UI_PANEL, opts = null) 
 export const TEXT_INK_TOP = 0.85;
 export const TEXT_INK_H = 5.95;
 
+// ...AND THE SAME NUMBERS, MEASURED, BY RASTERIZING.
+//
+// The two constants above were read off Chromium with Fredoka. A phone that
+// renders a different face — or the same one hinted differently — puts its caps
+// somewhere else in the box, and every panel that centres text in itself is
+// then out by that much. So measure instead of assume.
+//
+// NOT with measureText: `actualBoundingBoxAscent` is reported from a different
+// origin in WebKit than in Blink, so the one engine this exists to correct for
+// is the one whose answer cannot be trusted. Draw the letters instead and look
+// at which rows have ink. That is the same question the panel is asking, and a
+// rasterizer cannot disagree with itself.
+//
+// Once per style, at a large em so a row of pixels is a fine unit, and dropped
+// whenever a face lands (see the fonts hook below).
+const inkMetricsCache = new Map();
+const INK_SAMPLE = 'HEXAGON';   // caps only: what this game writes in
+const INK_MEASURE_SCALE = 8;    // em multiples, for sub-tenth-unit resolution
+
+function inkMetrics(style = 'ui') {
+  const hit = inkMetricsCache.get(style);
+  if (hit) return hit;
+  let m = { top: TEXT_INK_TOP, height: TEXT_INK_H };
+  try {
+    const k = INK_MEASURE_SCALE;
+    const em = GLYPH_PX * k;
+    const c = document.createElement('canvas');
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.font = fontString(style, k);
+    const w = Math.ceil(x.measureText(INK_SAMPLE).width) + 8;
+    const top = Math.round(em);          // where the 'top' alignment point goes
+    c.width = w; c.height = Math.ceil(em * 3);
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.font = fontString(style, k);
+    g.textBaseline = 'top';
+    g.textAlign = 'left';
+    g.fillStyle = '#fff';
+    g.fillText(INK_SAMPLE, 4, top);
+    const data = g.getImageData(0, 0, c.width, c.height).data;
+    let first = -1, last = -1;
+    for (let row = 0; row < c.height; row++) {
+      let inked = false;
+      for (let col = 0; col < c.width; col++) {
+        if (data[(row * c.width + col) * 4 + 3] > 16) { inked = true; break; }
+      }
+      if (inked) { if (first < 0) first = row; last = row; }
+    }
+    if (first >= 0 && last > first) {
+      m = { top: (first - top) / k, height: (last - first + 1) / k };
+    }
+  } catch { /* no DOM, or a context that will not read back: keep the constants */ }
+  inkMetricsCache.set(style, m);
+  return m;
+}
+
+const TEXT_INK_MID = TEXT_INK_TOP + TEXT_INK_H / 2;
+
+// Every text call enters through this seam, including the old call sites that
+// were authored with a glyph-box top rather than a row midpoint. WebKit can
+// place the loaded face a fraction of a pixel differently from Blink; without
+// this normalization those calls drift while the HUD calls that use
+// textYForMid() do not. Keep the authored coordinate in the reference metric,
+// then move the rasterized glyphs by the difference for the face actually in
+// use. That makes the fix global without double-correcting callers that already
+// use textYForMid().
+function normalizedTextY(y, scale, style) {
+  const m = inkMetrics(style);
+  return y + (TEXT_INK_MID - (m.top + m.height / 2)) * scale;
+}
+
 // The y to hand drawText so its lettering sits optically centred on `midY`.
-// Anything that centres text in a box it also draws — menu row highlights, HUD
-// panels, button discs — measures from here, so the box and the words inside it
-// are always derived from the same number.
-export function textYForMid(midY, scale = 1) {
-  return midY - (TEXT_INK_TOP + TEXT_INK_H / 2) * scale;
+// The returned coordinate is in the reference metric; drawText applies the
+// device/font-specific normalization exactly once for every style.
+export function textYForMid(midY, scale = 1, style = 'ui') {
+  return midY - TEXT_INK_MID * scale;
 }
 
 // The cursor behind the selected row of any list the player can arrow through.
@@ -496,6 +568,7 @@ export function platePath(ctx, x, y, w, h, r) {
 
 export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
   const s = String(str);
+  const drawY = normalizedTextY(y, scale, style);
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   if (plate && s.trim()) {
@@ -503,12 +576,13 @@ export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui'
     const padX = 2.2 * scale, padY = 1.2 * scale, band = 9 * scale;
     // Centred on the ink rather than on the glyph box: measured from the box,
     // the plate hung three units below the lettering and only two above it.
-    const inkMid = y + (TEXT_INK_TOP + TEXT_INK_H / 2) * scale;
+    const im = inkMetrics(style);
+    const inkMid = drawY + (im.top + im.height / 2) * scale;
     ctx.fillStyle = plate;
     platePath(ctx, x - padX, inkMid - band / 2 - padY, w + padX * 2, band + padY * 2, 3 * scale);
     ctx.fill();
   }
-  const cx = paintGlyphs(ctx, s, x, y, color, scale, style);
+  const cx = paintGlyphs(ctx, s, x, drawY, color, scale, style);
   ctx.imageSmoothingEnabled = prev;
   return cx;
 }
@@ -583,24 +657,63 @@ const BUTTON_LABEL_S = 0.85;
 // recharge: a level, not a ticking number. Full reads as ready, and the
 // waterline carries a bright meniscus only while there is headroom above it —
 // pinned to the rim of a full disc it read as a stray ring.
+// The same colour at zero alpha, for a gradient's outer stop. Handles the two
+// forms the callers actually use — rgba()/rgb() and #rrggbb — and falls back to
+// transparent black, which is the right answer for any dark glass anyway.
+function fadeColor(color) {
+  const m = /^rgba?\(([^)]+)\)$/i.exec(String(color).trim());
+  if (m) {
+    const [r, g, b] = m[1].split(',');
+    return `rgba(${r},${g},${b},0)`;
+  }
+  const hex = /^#([0-9a-f]{6})$/i.exec(String(color).trim());
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0)`;
+  }
+  return 'rgba(0,0,0,0)';
+}
+
 export function drawRoundButton(ctx, b, opts = {}) {
   const cx = b.x + b.w / 2, cy = b.y + b.h / 2, r = Math.min(b.w, b.h) / 2;
   const ink = opts.ink || '#48e0c8';
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.14)';
+  // A SOFT EDGE, not a cut one. These discs are glass laid over the picture,
+  // and a hard circular edge against moving scenery reads as a sticker: the eye
+  // tracks the rim instead of the glyph. Feathering the last tenth of the
+  // radius keeps the same weight of tint while the boundary stops being a line
+  // to look at. `feather: 0` gives the old flat disc back for anything that
+  // wants a defined edge (a ring still strokes the true radius).
+  const feather = opts.feather != null ? opts.feather : 0.16;
+  const fill = opts.fill || 'rgba(11,11,20,0.14)';
+  if (feather > 0 && ctx.createRadialGradient) {
+    const g = ctx.createRadialGradient(cx, cy, Math.max(0, r * (1 - feather)), cx, cy, r);
+    g.addColorStop(0, fill);
+    g.addColorStop(1, fadeColor(fill));
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = fill;
+  }
   ctx.fill();
   if (opts.frac != null) {
+    // The level fill stops where the feather starts, so a full meter cannot
+    // hand the disc back the hard edge the feather just took off it.
+    if (feather > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * (1 - feather), 0, Math.PI * 2);
+    }
     ctx.clip();
-    const fh = Math.round(r * 2 * Math.max(0, Math.min(1, opts.frac)));
+    const inner = feather > 0 ? r * (1 - feather) : r;
+    const fh = Math.round(inner * 2 * Math.max(0, Math.min(1, opts.frac)));
     ctx.globalAlpha = opts.levelAlpha != null ? opts.levelAlpha : 1;
     ctx.fillStyle = opts.levelFill || 'rgba(72,224,200,0.18)';
-    ctx.fillRect(cx - r, cy + r - fh, r * 2, fh);
+    ctx.fillRect(cx - inner, cy + inner - fh, inner * 2, fh);
     ctx.globalAlpha = 1;
     if (opts.frac < 1) {
       ctx.fillStyle = opts.waterline || 'rgba(184,248,232,0.6)';
-      ctx.fillRect(cx - r, cy + r - fh, r * 2, 1);
+      ctx.fillRect(cx - inner, cy + inner - fh, inner * 2, 1);
     }
   }
   ctx.restore();
@@ -631,15 +744,24 @@ export function drawRoundButton(ctx, b, opts = {}) {
     const aw = r * 0.42, ah = r * 0.34;
     const dx = icon === 'right' ? 1 : icon === 'left' ? -1 : 0;
     const dy = icon === 'down' ? 1 : icon === 'up' ? -1 : 0;
+    // CENTRED ON ITS MASS, not on its bounding box. A triangle box-centred in a
+    // circle always reads as pushed toward its base — two thirds of its area is
+    // down there. Its centroid sits a third of the height from the base, so
+    // shifting by that puts the shape's weight on the disc's centre, which is
+    // where the eye looks for it.
+    const bias = ah / 3;
+    // Toward the apex: an up arrow's mass is in its base at the bottom, so the
+    // shape moves UP to bring that mass onto the centre.
+    const ix = cx + dx * bias, iy = cy + dy * bias;
     ctx.beginPath();
     if (dy) {
-      ctx.moveTo(cx, cy + dy * ah);
-      ctx.lineTo(cx - aw, cy - dy * ah);
-      ctx.lineTo(cx + aw, cy - dy * ah);
+      ctx.moveTo(ix, iy + dy * ah);
+      ctx.lineTo(ix - aw, iy - dy * ah);
+      ctx.lineTo(ix + aw, iy - dy * ah);
     } else {
-      ctx.moveTo(cx + dx * ah, cy);
-      ctx.lineTo(cx - dx * ah, cy - aw);
-      ctx.lineTo(cx - dx * ah, cy + aw);
+      ctx.moveTo(ix + dx * ah, iy);
+      ctx.lineTo(ix - dx * ah, iy - aw);
+      ctx.lineTo(ix - dx * ah, iy + aw);
     }
     ctx.closePath();
     ctx.stroke();

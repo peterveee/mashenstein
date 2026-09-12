@@ -3,10 +3,13 @@
 // drive both the subtle control drawing and hit testing.
 
 export const PORTRAIT_CONTROL_DIAMETERS = Object.freeze({
-  jump: 100,
-  slide: 100,
-  use: 88,
-  pause: 64,
+  // A step down from the first pass. These are still well clear of the 44pt
+  // minimum touch target at every size; the discs were sized when they had the
+  // bottom of the screen to themselves, and they no longer do.
+  jump: 88,
+  slide: 88,
+  use: 76,
+  pause: 56,
   // Portrait Lab is a review surface, so it exposes the desktop rewind tape
   // as a held touch control. Production portrait gameplay never registers it;
   // keeping the geometry here lets the lab use the same hit-test path as the
@@ -14,15 +17,28 @@ export const PORTRAIT_CONTROL_DIAMETERS = Object.freeze({
   rewind: 72,
 });
 
-// Keep the pause/rewind targets below the same extra top breathing band as the
-// HUD. The safe inset protects the physical cutout; this margin protects the
-// readable control from sitting against it.
+// Keep the rewind target below the authored top breathing band. The safe inset
+// protects the physical cutout; this margin protects the readable control from
+// sitting against it.
 export const PORTRAIT_CONTROL_TOP_CLEARANCE = 28;
 
-// The discs now occupy the lower action shelf instead of floating high above
-// it. The reported inset still belongs to the operating system; this smaller
-// authored margin leaves 24px of extra breathing room beyond that boundary.
-export const PORTRAIT_CONTROL_BOTTOM_MARGIN = 24;
+// The pause disc's top aligns with the first HUD panel, which now starts at the
+// authored breathing band itself — the rail and its gap have moved to the
+// bottom edge. Keep this separate from rewind, which remains in the upper
+// review-control band.
+export const PORTRAIT_PAUSE_TOP_OFFSET_CSS = 20;
+
+// The discs are measured from the PHYSICAL bottom edge, not from the safe
+// rectangle. The home-indicator inset is a place iOS asks you not to put
+// anything it would be sad to lose a tap on — a thumb resting on a jump disc is
+// not that, and holding the discs above the inset spent 34px of glass on a bar
+// the player is already reaching past. Keep only a 2px authored gutter beyond
+// the largest phone inset, so the action shelf hands the rest of that height
+// back to the world.
+// Clears the progress rail on the bottom edge AND the hero's power name, which
+// hangs under the middle disc (see portraitHudLayout's powerLabelY). Measured
+// from the physical bottom, like the rail.
+export const PORTRAIT_CONTROL_BOTTOM_MARGIN = 36;
 
 const radius = (id) => PORTRAIT_CONTROL_DIAMETERS[id] / 2;
 
@@ -62,15 +78,16 @@ export function portraitTouchLayout({
   const inset = safeCss({ safe, safeInsets });
   const left = inset.left + radius('jump') + 10;
   const right = vw - inset.right - radius('slide') - 10;
-  const bottom = vh - inset.bottom;
-  const controlY = bottom - radius('jump') - PORTRAIT_CONTROL_BOTTOM_MARGIN;
+  const controlY = vh - radius('jump') - PORTRAIT_CONTROL_BOTTOM_MARGIN;
   const pauseX = vw - inset.right - radius('pause') - 8;
-  const pauseY = inset.top + radius('pause') + PORTRAIT_CONTROL_TOP_CLEARANCE;
+  const pauseY = inset.top + radius('pause') + PORTRAIT_PAUSE_TOP_OFFSET_CSS;
   const rewindX = inset.left + radius('rewind') + 10;
   const rewindY = inset.top + radius('rewind') + PORTRAIT_CONTROL_TOP_CLEARANCE;
   const half = vw / 2;
   const zoneTop = Math.min(vh - 1, Math.max(inset.top + 96, vh * 0.56));
-  const zoneBottom = Math.max(zoneTop, bottom);
+  // The gesture zones follow the discs down to the glass: a thumb that lands
+  // below the safe line is still a thumb on the playfield.
+  const zoneBottom = Math.max(zoneTop, vh);
   const controls = {
     jump: circle('jump', 'jump', left, controlY),
     slide: circle('slide', 'slide', right, controlY),

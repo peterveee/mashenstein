@@ -67,6 +67,55 @@ export function tunnelRoofEnd(r) {
 }
 export const TUNNEL_HOLE_W = PLAYER_W * 6;
 
+// LEAVING A CAVE IN TWO STAGES.
+//
+// The exit used to be the entrance run backwards: the full depth of the chamber
+// — ninety-six pixels on both cabinets that have one — climbed inside the last
+// eighth of the span, which is about a second of lane. Geometrically that is
+// just a low road coming back to meet the lane. On SCREEN it is the camera
+// hauling the entire world down in one move, and because the frame is still
+// holding the chamber's depth while it does, the thing that fills it on the way
+// up is a featureless wall of grass.
+//
+// So the climb out is SPLIT. It comes up to a SHELF — plainly outdoors, no roof
+// over it, the lane's own hillside — runs LEVEL there for about a screen, and
+// only then eases the rest of the way up over nearly twice that again. The
+// same height, three times the distance, and the level stretch in the middle is
+// the part that reads: you are out of the cave, you are simply not back up yet.
+//
+// THIRTY, and not half of ninety-six. Past 34px of separation the lane above
+// and the floor below are drawn as two levels with a roof slab between them
+// (`openSpan`, and the island over it in drawTunnel) — at half depth the shelf
+// would be a second, shallower CHAMBER, which is the opposite of the point. So
+// it sits just under that threshold: the deepest ledge that still draws as one
+// continuous hillside.
+export const TUNNEL_EXIT_SHELF = 30;
+// Both in SECONDS of lane travel, like every other span in this file, so the
+// exit is the same exit in world 1 and on UNPLUGGED. The frame is 240 world px
+// wide at the resting zoom and the lane runs at 144-176, so a screen is about
+// a second and a half: the shelf is one screen, and the climb home is longer
+// again because the SLOW climb is the whole request — the shelf only has to
+// establish that the cave is behind you.
+export const TUNNEL_EXIT_SHELF_SEC = 1.5;
+export const TUNNEL_EXIT_CLIMB_SEC = 2.4;
+// HOW LONG THE CLIMB TO THE SHELF GETS, and why it is not the authored one.
+//
+// The chamber's own descent — `hold` to the end of the span — is about an
+// eighth of it, which on a ten-second cabinet is a second of lane. Sixty-six
+// pixels of rise inside that is a steep ramp, and the camera's anchor IS the
+// route's depth (run.js, `roadRise`): the frame therefore hauls itself up at
+// 90px/s and then has to be level again within a fifth of a second, because the
+// shelf is flat. Nothing jumps — the profile is smoothstepped at both ends and
+// every measurement says so — but a fast move stopped that quickly is read as a
+// snap, and it is read at exactly the moment the ground reaches half way.
+//
+// So the climb out starts EARLIER instead, biting into the flat bottom of the
+// chamber: it is given a full stride of lane to spend, which halves the peak
+// and spreads the arrival at the shelf over half a second. The chamber is a
+// tenth shorter for it and reads no different — the hazards and the prize are
+// laid against the same span they always were.
+export const TUNNEL_EXIT_RISE_SEC = 1.8;
+
 // Clear lane between one road ending and the next beginning, in SECONDS — the
 // same unit the roads themselves are authored in, so the breathing space scales
 // with the stage's speed exactly as their spans do.
@@ -249,6 +298,18 @@ export function routeRise(worldX, f) {
   // road easy to author: lip, climb and hold read straight off as the three
   // places along the span where it changes what it is doing.
   if (t < f.hold) return f.peak;
+  // THE WAY OUT OF A CAVE, IN TWO STAGES — see TUNNEL_EXIT_SHELF. Absent
+  // `shelf` this is the one eased climb it has always been, which is what
+  // every island, fork and shallow ramp still wants.
+  if (f.shelf != null) {
+    if (t < f.shelfAt) {
+      const k = (t - f.hold) / (f.shelfAt - f.hold);
+      return f.shelf + (f.peak - f.shelf) * (1 - k * k * (3 - 2 * k));
+    }
+    if (t < f.shelfEnd) return f.shelf;
+    const k = (t - f.shelfEnd) / (1 - f.shelfEnd);
+    return f.end + (f.shelf - f.end) * (1 - k * k * (3 - 2 * k));
+  }
   const k = (t - f.hold) / (1 - f.hold);
   return f.end + (f.peak - f.end) * (1 - k * k * (3 - 2 * k));
 }
@@ -272,16 +333,60 @@ export function tunnelOpenings(r) {
   ];
 }
 
+/**
+ * The openings a SWEEP should read as holes.
+ *
+ * Every way in, exactly as above, EXCEPT the far half of the roof gap. The lane
+ * is missing over the whole of it — that is what the gap is — but the two
+ * halves are missing for different reasons, and only one of them is a hole.
+ * Past the chamber the ground is the staged exit (TUNNEL_EXIT_SHELF): a shelf
+ * one step below the lane, drawn as one continuous hillside, with the climb
+ * home on the end of it. A crate standing there is standing on GROUND, and a
+ * sweep that reads it as air deletes everything the lane deals for a screen and
+ * a half — which leaves a bare green stripe, and leaves whatever is not an
+ * ordinary entity (the portal) hanging over it.
+ *
+ * So the roof gap is trimmed at the end of the chamber for sweeping purposes
+ * only. `tunnelOpenings` itself stays whole: the renderers still take the lane
+ * away over the shelf, and `tunnelMouthAt` still drops a hero who stayed up top
+ * onto it rather than walking him along a lane that is not drawn.
+ */
+export function tunnelSweepOpenings(r) {
+  const chamberEnd = r.x + (r.bodyW ?? r.w);
+  const out = [];
+  for (const h of tunnelOpenings(r)) {
+    if (h !== r.roofGap || r.shelf == null) { out.push(h); continue; }
+    if (h.x < chamberEnd) out.push({ x: h.x, w: chamberEnd - h.x });
+  }
+  return out;
+}
+
 export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = [] }) {
   const mk = (kind) => (d) => {
     const x = d.at * totalDist;
-    const w = (d.dwell ?? 0.7) * speed;
+    // THE CHAMBER and THE SPAN are two lengths now, and only for a tunnel.
+    // `dwell` has always authored the chamber — the corridor with the hazards
+    // and the prize in it — so it keeps meaning exactly that, and the staged
+    // exit is added to the span AFTER it. Every fraction in the data (lip,
+    // climb, hold, gaps, the mid-span hole) is authored against the chamber
+    // and rescaled here, which is what makes the floor under the chamber
+    // itself byte-identical to what it was before the shelf existed.
+    const bodyW = (d.dwell ?? 0.7) * speed;
     const down = kind === 'tunnel';
+    // Nothing to stage on a shallow one: a chamber no deeper than the shelf
+    // would "climb" to a ledge it is already standing on. `exitShelf: false`
+    // in the data opts one out.
+    const staged = down && d.exitShelf !== false
+      && (d.depth ?? 46) > TUNNEL_EXIT_SHELF + 8;
+    const tail = staged ? (TUNNEL_EXIT_SHELF_SEC + TUNNEL_EXIT_CLIMB_SEC) * speed : 0;
+    const w = bodyW + tail;
+    // Authored fractions -> fractions of the longer span.
+    const fr = bodyW / w;
     // Both openings are sized off the HERO rather than off the span: a hole
     // is something you step into or step over, and the size that reads as
     // either is the size of the man doing it. Off the span they also grew
     // with the stage's speed while he stayed exactly as big as ever.
-    const mouthW = down ? (d.mouth ? d.mouth * w : TUNNEL_MOUTH_W) : w;
+    const mouthW = down ? (d.mouth ? d.mouth * bodyW : TUNNEL_MOUTH_W) : w;
     // The mouth height — what the hero has to reach to take this road at all.
     //
     // Capped at the reachable ceiling ONLY when he gets there under his own
@@ -302,16 +407,42 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
     // Where the road stops being flat, stops climbing, and starts coming back
     // down. An island is flat for its whole length and then simply stops, so
     // it is all lip and nothing else.
-    const lip = kind === 'island' ? 1 : (d.lip ?? (d.spring ? 0.2 : 0.08));
-    const climb = kind === 'island' ? 0 : (d.climb ?? (peak === entry ? 0 : 0.3));
-    const hold = kind === 'island' ? 1 : Math.max(lip + climb, d.hold ?? 0.6);
+    const lip = kind === 'island' ? 1 : fr * (d.lip ?? (d.spring ? 0.2 : 0.08));
+    const climb = kind === 'island' ? 0 : fr * (d.climb ?? (peak === entry ? 0 : 0.3));
+    const authoredHold = kind === 'island' ? 1
+      : Math.max((d.lip ?? (d.spring ? 0.2 : 0.08)) + (d.climb ?? (peak === entry ? 0 : 0.3)),
+        d.hold ?? 0.6);
+    // A STAGED EXIT STARTS CLIMBING EARLIER. See TUNNEL_EXIT_RISE_SEC: the
+    // authored descent is too short a run for the frame to come up and be
+    // level again, so the climb takes the length it needs out of the flat
+    // bottom of the chamber rather than out of the shelf. Never earlier than
+    // the end of the entrance slide, which is the one part of the profile that
+    // is a decision rather than a shape.
+    const hold = kind === 'island' ? 1
+      : staged
+        ? Math.max(lip + climb, (bodyW - TUNNEL_EXIT_RISE_SEC * speed) / w)
+        : fr * authoredHold;
     // Where the descent settles before the span closes. A tunnel has to come
     // back to the lane — there is no falling off the bottom of one — and an
     // island is its own height all the way to its lip. Everything else ends
     // in the air unless the data says otherwise.
     const end = down ? 0 : kind === 'island' ? entry : Math.min(d.end ?? 0, peak);
+    // THE STAGED EXIT, as three fractions of the span: the chamber's own climb
+    // runs from `hold` to `shelfAt` and stops at `shelf` instead of at the
+    // lane, the shelf is level from there to `shelfEnd`, and the rest of the
+    // span is the slow climb home. `shelfAt` lands exactly at the end of the
+    // chamber, so the authored descent is the first stage — it is the same
+    // length it always was, over half as much height.
+    const shelf = staged ? -TUNNEL_EXIT_SHELF : null;
+    const shelfAt = staged ? fr : 0;
+    const shelfEnd = staged ? (bodyW + TUNNEL_EXIT_SHELF_SEC * speed) / w : 0;
+    const prof = { kind, x, w, entry, peak, lip, climb, hold, end, shelf, shelfAt, shelfEnd };
     return {
-      kind, x, w, entry, peak, lip, climb, hold, end,
+      ...prof,
+      // Where the CHAMBER ends. What the data authored as `dwell`, and what
+      // everything that furnishes a tunnel means by its length: hazards, the
+      // coin run and the bonus all belong underground, not out on the shelf.
+      bodyW,
       // A tunnel that starts LEVEL with the lane is a ramp, not a hole: the
       // ground peels away downward and you ride it, and the way to refuse is to
       // jump the mouth and land back on the lane past it. Nothing is cut out of
@@ -329,9 +460,7 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
         let b = null;
         for (let t = 0; t <= 1; t += 0.002) {
           const wx = x + w * t;
-          const deep = -routeRise(wx, {
-            x, w, entry, peak, lip, climb, hold, end,
-          }) >= SEP;
+          const deep = -routeRise(wx, prof) >= SEP;
           if (deep && a === null) a = wx;
           if (deep) b = wx;
         }
@@ -348,7 +477,7 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // at the very end (the drop off the lip is already the ending), so a gap
       // is always somewhere you arrive at running.
       gaps: (d.gaps || []).map((at) => ({
-        x: x + w * Math.max(lip + 0.04, Math.min(0.92, at)),
+        x: x + bodyW * Math.max(lip / fr + 0.04, Math.min(0.92, at)),
         w: (d.gapSec ?? 0.3) * speed,
       })),
       // Which staircase this step belongs to, if any — the overlap guard lets
@@ -399,9 +528,9 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // chance rather than a second decision, so it is a stride wide: you
       // step in if you fancy it, and if you did not notice it you were
       // already running fast enough to be over it.
-      holes: down && w > mouthW * 8
-        ? [{ x: x + w * (0.44 + ((d.holeAt ?? 0.5) - 0.5) * 0.3),
-          w: d.holeW ? d.holeW * w : TUNNEL_HOLE_W }]
+      holes: down && bodyW > mouthW * 8
+        ? [{ x: x + bodyW * (0.44 + ((d.holeAt ?? 0.5) - 0.5) * 0.3),
+          w: d.holeW ? d.holeW * bodyW : TUNNEL_HOLE_W }]
         : [],
       // Filled in below: the road above stops before the climb reaches it, and
       // where it stops the lane is open. Needs the finished route to scan.

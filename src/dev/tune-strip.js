@@ -16,7 +16,7 @@ import { readOne, defaultOf, knows, tuningAvailable, changed } from './tunables.
 import { nudge, revertTuning } from './tune-store.js';
 import { jumpHeightFor, airtimeFor } from '../game/player.js';
 import { worstAirtime } from '../game/spawner.js';
-import { framingFor, PAN_MAX, VIEW_W, ZOOM } from '../engine/camera.js';
+import { guardNeed, guardFraming, PAN_MAX, VIEW_W, ZOOM } from '../engine/camera.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { PLAYER_X } from '../game/player.js';
 
@@ -146,12 +146,14 @@ export function derived(run) {
     if (out.margin < 0) out.warn.push('no runway');
   }
 
-  // What the crane has left. framingFor spends pan to its limit before it
-  // touches zoom, so pan === PAN_MAX is the moment every jump this high starts
-  // pulling the whole frame back.
+  // What the crane has left. The guard spends pan to its limit before it touches
+  // zoom, so pan === PAN_MAX is the moment every jump this high starts pulling
+  // the whole frame back. Read through guardNeed rather than framingFor so the
+  // figure is the one the dolly is actually going to choose — the two differ by
+  // the head margin, and a readout off by that much is worse than none.
   const peak = TuneStrip.shownPeak();
   if (peak > 0) {
-    const f = framingFor(peak);
+    const f = guardFraming(guardNeed(peak));
     out.pan = f.pan;
     out.zoom = f.zoom;
     out.peak = peak;

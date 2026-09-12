@@ -1,14 +1,18 @@
 // Portrait Lab owns the review values and the short-lived launch session.
 // This is deliberately dev-only state: a reload never re-enters a lab run.
+import {
+  PORTRAIT_GROUND_ANCHOR_RATIO, PORTRAIT_GROUND_ANCHOR_MIN_RATIO,
+  PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
+} from '../engine/portrait-geometry.js';
 
 export const PORTRAIT_LAB_STORAGE_KEY = 'mash_portrait_lab_v1';
 
 export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   version: 1,
   // These are the review values that gave the portrait frame its clearest
-  // starting composition. Keep the hero's feet/groundline around 70% of the
-  // usable safe frame so the character occupies the lower playfield without
-  // colliding with the bottom touch shelf.
+  // starting composition. The ground is intentionally requested below the
+  // shelf-derived floor; portraitGeometry places it just above the largest
+  // possible chat card on every supported phone.
   // Landscape phones use a 2.2x camera on the 480x270 frame. A portrait
   // phone's short side is 480 logical px wide, so 3.75x keeps the portrait
   // character/object scale close to landscape while leaving a little runway.
@@ -24,7 +28,7 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   // Lift the mountain/terrain backdrop within the tall portrait sky while
   // leaving the authored ground, hero and controls at their existing anchors.
   sceneryOffsetY: -90,
-  groundAnchorRatio: 0.70,
+  groundAnchorRatio: PORTRAIT_GROUND_ANCHOR_RATIO,
 });
 
 const LIMITS = Object.freeze({
@@ -34,7 +38,7 @@ const LIMITS = Object.freeze({
   cloudOffsetY: [-100, 60],
   sunOffsetY: [-100, 60],
   sceneryOffsetY: [-120, 40],
-  groundAnchorRatio: [0.55, 0.75],
+  groundAnchorRatio: [PORTRAIT_GROUND_ANCHOR_MIN_RATIO, PORTRAIT_GROUND_ANCHOR_MAX_RATIO],
 });
 
 const clamp = (value, [lo, hi], fallback) => {

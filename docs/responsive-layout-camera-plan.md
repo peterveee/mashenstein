@@ -21,8 +21,17 @@ Preserve character identity, physics, collisions, route geometry, musical timing
 
 The checkout contains substantial uncommitted work. Record its status and inspect relevant diffs before editing. Work from the current checkout and preserve unrelated changes. The uncommitted run.js hunk that latches the tunnel pan (one entry pan, one exit pan, no re-pan on ordinary underground jumps) and its portrait-lab test are the baseline: build on them, do not re-derive them.
 
+### Implementation status — 2026-09-11
+
+The first implementation pass is in the checkout, uncommitted. It adds a shared portrait geometry resolver (src/engine/portrait-geometry.js), a scenery composition resolver with normalized bands and one depth number per layer (src/engine/scenery-layout.js), a lower portrait message shelf, high-path reframing, and depth-aware background transforms in all nine packs. It also carries a compact-shelf branch and a short-phone policy that the supported-phone floor above makes unnecessary; the rework handover removes them. Landscape keeps its existing crane-then-zoom camera policy.
+
+The current camera pass also contains two visibility corrections from rendered review: the portrait upper camera boundary is the actual HUD bottom plus a small gap rather than the whole decorative scenery gap, and tunnel framing performs a bounded hero-body visibility correction. Ordinary surface jumps therefore use the spare sky, while a deep tunnel jump cannot leave the hero above the frame in either orientation. These are camera-only corrections; world geometry and the parked tunnel composition remain unchanged.
+
+`npm test`, `npm run build` and `git diff --check` pass. That is necessary, not sufficient: the suites check band arithmetic, not what the packs draw. A rendered review of the pass found defects that make it not ready to commit. The rework is a separate handover: docs/responsive-layout-rework.md. This plan stays the spec; that file says what to change in the checkout.
+
 ### Scope
 
+- Supported phones are iPhone 11-class and newer: the smallest portrait viewport this plan designs for is 375x812 CSS px with a 44/34 safe inset. Smaller and shorter phones cannot run the game and are out of scope; no layout rule, test or capture targets them.
 - Portrait gameplay stays behind the existing presentation flag (the phone-portrait mode the renderer exposes as an opt-in). Nothing here decides when it ships; that decision is Peter's and is out of scope.
 - The run screen only. Hub, food court, minigames, title, attract and menus keep whatever portrait handling they have today and are not touched.
 - Landscape behaviour is a baseline to protect, not a second target to redesign. Every landscape change this plan makes is listed explicitly below; anything not listed is a regression.
@@ -86,44 +95,56 @@ Use these as initial targets:
 
 | Region | Initial target |
 |---|---|
-| Progress and primary HUD | Compact group within approximately the upper 4–22% of safe height |
+| Progress and primary HUD | Progress/status plus an objective group in the upper safe band; GOAL/BONUS start expanded, then share one compact row |
 | Pause disc | Top right, inside the primary HUD group; the status/goal rows must yield its column |
-| Rhythm ribbon | Immediately below primary HUD when needed |
-| Main groundline | Approximately 68% of safe height |
-| Chat and notifications | Below the active world view, above controls (a move: today portrait speech sits under the HUD and the gameplay top edge is derived from it) |
+| Rhythm ribbon | Optional overlay just below the objective group; it does not reserve a layout row |
+| Main groundline | Approximately 73% of safe height, capped by the message shelf |
+| Chat and notifications | Below the active world view, above controls; portrait cards may use nearly the full safe width with only a 4px CSS side gutter |
 | Controls and lower status | Bottom shelf sized from actual controls |
 
 Resolve constraints in this order:
 
 1. Preserve the existing 28 CSS px top clearance and 8px progress rail.
 2. Measure status, objective and bonus with at least 12px visible text.
-3. Reserve an 18px rhythm row plus an 8px gap on rhythm stages.
-4. Reserve the existing 100px jump/slide and 88px ability controls, 24px bottom clearance, and measured lower-status labels.
+3. Do not reserve the optional rhythm row; draw it over the top of the scenery rectangle.
+4. Reserve the existing 100px jump/slide and 88px ability controls, with a 4px authored bottom gutter and measured lower-status labels.
 5. Reserve a 64px message shelf above controls with an 8px gap.
-6. On safe heights below 650px, use a 48px message shelf with at most two lines and a compact speaker treatment.
-7. Keep gameplay at least 12px above the message shelf.
-8. Place resting ground at the smaller of 68% safe height and 24px above the gameplay bottom.
-9. Keep required gameplay content at least 12px below the measured HUD/rhythm group.
+6. Keep gameplay at least 12px above the message shelf.
+7. Place resting ground at the smaller of 73% safe height and 24px above the gameplay bottom.
+8. Keep required gameplay content at least 12px below the measured objective-group bottom; rhythm is decorative overlay and does not move this boundary.
+9. In portrait, a tap in the main playfield is JUMP; a downward swipe is SLIDE and a rightward swipe is the hero POWER. The explicit lower controls remain available as the precision targets.
 
 These constraints take precedence over approximate percentages.
 
 Moving speech from the top band to the bottom shelf frees roughly the same height under the HUD that the shelf spends above the controls, so the resting ground moves up, not down. Relocate the speech channel and the floatie band together; do not leave the old top band reserved as well.
 
-The stack does not close on the smallest listed phone. With the shipped frame, HUD and control code plus the shelf and gaps above, the headroom above the resting ground and the height a hero plus one base jump needs are:
+### Active high-path framing
+
+The resting ground anchor is not a universal vertical anchor. When the hero is standing on a materially raised route (48 or more logical world pixels above the base lane), portrait switches to a high-path composition. A route that is only being overlapped during an airborne jump does not claim that composition; the camera keeps the normal jump framing until the hero lands. The active route floor is placed at 56% of the gameplay rectangle, leaving approximately 10–18% of that rectangle above the hero while retaining route and landing context below. The transition must use the existing eased pan (k=12 out, 7 back) for its whole duration, then park through ordinary jumps; leaving the route eases back to the lower base-lane composition the same way. Low islands and short ramps below the threshold retain the resting composition.
+
+This rule prevents a high route from producing the large empty-sky region that a fixed 73% base-ground anchor creates. It applies to the camera target only: HUD, controls, message shelf, celestial stability, physics and route geometry remain unchanged.
+
+### Upper-sky density
+
+The portrait scenery profile deliberately fills from the top of the scenery rectangle. Celestial objects occupy 0–14%, upper clouds 10–27% with overlap, middle clouds 32–48%, and lower clouds 50–62%. Far landmark crests occupy 24–44%, middle scenery 48–68%, and near scenery 60–82%. This puts the sun and first cloud group immediately below the objective HUD, raises the distant and near scenery, and keeps the lower route visible without a featureless sky block.
+
+Portrait ridge painters must use these bands for their crest positions, not merely translate a landscape ridge upward from the authored groundline. Their bodies may continue below the crest and behind the near layers. Landscape retains the authored groundline-based ridge coordinates.
+
+The stack closes on every supported phone. With the shipped frame, HUD and control code plus the shelf and gaps above, the headroom above the resting ground and the height a hero plus one base jump needs are:
 
 | Phone | Headroom above ground | Hero + base jump apex |
 |---|---:|---:|
-| 320x568 | ~140 CSS px | ~202 CSS px |
+| 375x812 | ~304 CSS px | ~237 CSS px |
 | 390x844 | ~313 | ~246 |
+| 414x896 | ~363 | ~262 |
 | 430x932 | ~365 | ~272 |
 
-So a 390 or 430 phone keeps ordinary jumps camera-still; a 320x568 cannot. Choose and document one policy for short safe heights before tuning anything else: a lower zoom floor for that tier, a one-row compact HUD, or accepted per-jump camera travel. Do not let the resolver silently pick a different one per device.
+So ordinary jumps stay camera-still on the whole supported range, and no short-height policy, compact shelf or one-row HUD is needed. The resolver keeps one set of rules for every device; if a future phone falls below 375x812 it is unsupported, not a new tier.
 
 Resolve band heights from reserved rows, never from live content: objective wording changes mid-stage and must not move the scenery rectangle. Measure actual panel bounds only for diagnostics and the fit report. Re-resolve on stage entry, orientation change and viewport change; decide explicitly whether a browser-chrome height change (the iOS URL bar collapsing, which bumps the frame revision today) reflows the composition live or is deferred to the next stage, because a live reflow is a visible jump.
 
 Keep the message shelf reserved while empty. Do not relocate it when entering a tunnel. Decorative soil can continue behind it; required hazards, route choices and landing surfaces cannot.
 
-On short screens, compact HUD wording before reducing gameplay space. Preserve counters and make full descriptions available in briefing/pause.
 
 ### Landscape
 
@@ -154,14 +175,14 @@ Use the following initial profile. Percentages below are relative to the scenery
 
 | Element | Resting placement |
 |---|---|
-| Sun/moon centre | Upper 10–22%, respecting its full visible radius |
-| Upper cloud group | Centres at 12–28% |
+| Sun/moon centre | Upper 0–14%, respecting its full visible radius |
+| Upper cloud group | Centres at 10–27%, overlapping the celestial band |
 | Middle cloud group | Centres at 32–48% |
 | Lower/distant cloud group | Centres at 50–62%, partly occluded where appropriate |
 | Decorative birds | Flight envelopes within 25–50% |
-| Far mountain/landmark crests | 30–50% |
+| Far mountain/landmark crests | 24–44% |
 | Middle hills/building tops | 48–68% |
-| Near scenery crests | 68–88% |
+| Near scenery crests | 60–82% |
 | Scenery bases | Extend beneath the resting ground anchor |
 
 These ranges intentionally overlap because the scene has depth. They are not horizontal strips that every object must fill.
@@ -264,7 +285,8 @@ Tunnel terrain should occlude the outdoor scene naturally. Entirely enclosed sce
 
 Use one policy in both orientations, constrained by the resolved gameplay rectangle. Landscape today cranes to PAN_MAX first and then zooms out toward ZOOM_MIN (1.3) on tall jumps; portrait already holds zoom fixed. Constant zoom would remove the landscape zoom-out, which is a visible baseline change. Landscape keeps its crane-then-zoom framing unless Peter approves the change from a side-by-side capture; portrait uses constant zoom. The shared policy is the target definition, easing and reset rules below, not the zoom behaviour.
 
-- Ordinary jumps remain camera-still when they fit.
+- Ordinary surface jumps remain camera-still while the hero is below the actual HUD edge; the decorative gap below the HUD is available sky, not an additional camera wall.
+- Tunnel entry still establishes one lower-route composition and ordinary tunnel hops keep it parked, but a genuinely tall underground jump may apply a bounded body-edge correction so the hero remains fully visible.
 - Keep zoom constant during running and jumps in portrait.
 - Ease upward with exponential response k=12 and return with k=7 (these are the existing easePan constants; keep them).
 - Optional, to be justified by a capture before it stays: predict upward motion 0.15 seconds ahead, hold ascent framing 0.12 seconds around the apex, and ignore small target changes during ascent so the pan cannot reverse. None of these exist today; drop any that a recording does not show earning its place.
@@ -361,8 +383,8 @@ Do not deploy or publish as part of this task.
 
 Test:
 
-- Portrait phones: 320x568, 390x844, 430x932. The 320x568 case is expected to trigger the short-height policy chosen in section 2; the test asserts that policy, not camera-still jumps.
-- Landscape phones: 568x320, 844x390, 932x430.
+- Portrait phones: 375x812, 390x844, 414x896, 430x932. Ordinary jumps are camera-still on all four.
+- Landscape phones: 812x375, 844x390, 896x414, 932x430.
 - Desktop: 1280x720, 1920x1080 and ultrawide 2560x1080.
 - Tablets: 768x1024 and 1024x768 using existing routing.
 - Safe insets and browser-height changes.
@@ -408,4 +430,3 @@ Also require:
 - Landscape remaining visually consistent with its baseline.
 
 Luna Max’s handover must include before/after composition images, jump recordings, test results, unresolved fit cases and production activation status. Report physical-device touch and performance testing separately from browser and automated verification.
-

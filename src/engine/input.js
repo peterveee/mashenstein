@@ -17,13 +17,16 @@ const DEFAULT_KEYS = {
 
 const GAMEPAD_MAP = { 0: 'jump', 1: 'slide', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'slide', 14: 'left', 15: 'right' };
 
-// Where the picture splits into its two broad thumb halves during a run:
-// everything left of this fraction is JUMP, everything right of it is SLIDE —
-// the two frequent actions, both press-and-hold, one per thumb. The special
-// has its own disc (touch-layout.js) and the swipe-right below. Exported
-// because a screen that TEACHES the split has to draw the same line the
-// handler tests against — training's touch zone card measured its own split
-// for one build, which is the version of this that goes wrong quietly.
+// Where the picture splits into its two broad thumb halves during a landscape
+// run: everything left of this fraction is JUMP, everything right of it is
+// SLIDE — the two frequent actions, both press-and-hold, one per thumb. The
+// portrait main area is intentionally different: it is one tap-to-jump
+// surface, while the explicit lower controls and down/right swipes provide
+// slide and power. The special has its own disc (touch-layout.js) and the
+// swipe-right below. Exported because a screen that TEACHES the split has to
+// draw the same line the handler tests against — training's touch zone card
+// measured its own split for one build, which is the version of this that goes
+// wrong quietly.
 export const TOUCH_JUMP_FRAC = 0.5;
 
 // Telling a tap apart from the start of a swipe. Both are one finger landing on
@@ -55,6 +58,8 @@ const TAP_MIN_JUMP_HOLD_MS = 100;
 // a second and then lifted has already had its jump committed by the timer
 // above, so this only ever caps the odd slow tap that resolved late.
 const TAP_MAX_HOLD_MS = 250;
+const DOUBLE_TAP_MS = 360;
+const DOUBLE_TAP_SLOP = 14;
 
 class InputSys {
   constructor() {
@@ -79,6 +84,8 @@ class InputSys {
     this.onAnyGesture = null;   // audio unlock hook
     this.usingTouch = false;
     this.swipeLeft = false;     // menu back gesture, consumed by the current state
+    this.doubleTapTarget = null;
+    this.doubleTapCandidate = null;
     this.context = 'default';
     this.menuKeys = false;      // menu key meanings without a full context switch
     this.suspended = false;     // lifecycle gate: hidden/locked/iPhone portrait
@@ -122,6 +129,25 @@ class InputSys {
       this.onAnyGesture && this.onAnyGesture();
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer = { x: p.x, y: p.y, down: true };
+      const target = this.doubleTapTarget;
+      const targetHit = target?.contains?.(p.x, p.y);
+      const targetAllowsPointer = targetHit && target?.allowPointer?.(p.x, p.y, e);
+      if (targetAllowsPointer) this.doubleTapCandidate = null;
+      if (targetHit && !targetAllowsPointer) {
+        const now = performance.now();
+        const previous = this.doubleTapCandidate;
+        if (previous && now - previous.t <= DOUBLE_TAP_MS
+          && Math.hypot(p.x - previous.x, p.y - previous.y) <= DOUBLE_TAP_SLOP) {
+          this.doubleTapCandidate = null;
+          target.onDoubleTap?.({ x: p.x, y: p.y, event: e });
+        } else {
+          this.doubleTapCandidate = { x: p.x, y: p.y, t: now };
+        }
+        // The top HUD is an inspection target, not gameplay glass: a gesture
+        // used to toggle diagnostics must not also jump, slide or pause.
+        e.preventDefault();
+        return;
+      }
       this.press('pointer', e.timeStamp);
       // A three-button mouse gets the three gameplay verbs directly, one to a
       // button: left jumps (below, with the canvas hit-testing), RIGHT is the
@@ -175,10 +201,13 @@ class InputSys {
         // you're standing at"), and since this fired from ANY tap anywhere on
         // screen, merely being near a station — not tapping it — was enough
         // to confirm it.
-        // For a THUMB the picture is a broad two-button surface: its left half
-        // is JUMP and its right half is SLIDE — the two frequent actions, both
-        // press-and-hold, one per thumb — because a phone has no second button
-        // to press. The special has its own disc (and the swipe-right below).
+        // For a THUMB in landscape the picture is a broad two-button surface:
+        // its left half is JUMP and its right half is SLIDE — the two frequent
+        // actions, both press-and-hold, one per thumb — because a phone has no
+        // second button to press. Portrait uses the taller world differently:
+        // a tap anywhere in the main playfield jumps, and a downward/rightward
+        // swipe resolves to SLIDE/POWER without asking the player to hit a
+        // narrow side half. The explicit lower controls still win first.
         // A mouse has buttons: left is jump over the whole canvas, and slide and
         // the special each have one (above), so where the cursor happens to be
         // sitting never changes what a click does. All mappings stay off menus
@@ -191,8 +220,9 @@ class InputSys {
         // wrong press, it does not remove the swipe.
         const guarded = liveRun && primaryCanvas && this.guardAt(p.x, p.y);
         const portraitRun = liveRun && screen.presentationMode === 'phone-portrait';
-        if (liveRun && primaryCanvas && !portraitRun) {
+        if (liveRun && primaryCanvas) {
           action = guarded ? null
+            : portraitRun ? 'jump'
             : (this.usingTouch && p.x >= W * TOUCH_JUMP_FRAC ? 'slide' : 'jump');
         }
         // A tap started anywhere on the picture can become the established
@@ -473,6 +503,11 @@ class InputSys {
 
   setChromeButtons(list) { this.chromeButtons = list || []; }
 
+  setDoubleTapTarget(target) {
+    this.doubleTapTarget = target || null;
+    this.doubleTapCandidate = null;
+  }
+
   setContext(context) {
     this.context = context || 'default';
     // A borrowed mapping never outlives the screen that borrowed it — leaving a
@@ -544,6 +579,7 @@ class InputSys {
     this.padPrev = new Set();
     this.pointer.down = false;
     this.swipeLeft = false;
+    this.doubleTapCandidate = null;
   }
   setSuspended(on) {
     on = !!on;

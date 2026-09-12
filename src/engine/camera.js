@@ -16,6 +16,7 @@
 //     the horizon sliding.
 import { W, H } from './renderer.js';
 import { getActiveFrame } from './frame.js';
+import { PORTRAIT_GROUND_ANCHOR_RATIO } from './portrait-geometry.js';
 
 // The legacy landscape anchor is 232. Portrait framing changes only the
 // presentation anchor; terrain, hitboxes and every authored world coordinate
@@ -171,6 +172,14 @@ export function screenYFor(worldY, z, pan = 0, floorY = GROUND_Y) {
   return (worldY - camYFor(z, floorY)) * z + pan;
 }
 
+// Inverse of screenYFor for callers that need to extend world geometry to a
+// screen-space edge. The pan is part of the inverse: when the camera has
+// moved the world up, a larger world y is required to reach the same lower
+// screen edge.
+export function worldYForScreenY(screenY, z, pan = 0, floorY = GROUND_Y) {
+  return camYFor(z, floorY) + (screenY - pan) / z;
+}
+
 // The transform itself. Draw world content between save/restore around this.
 // Anything drawing in SCREEN space that has to stay welded to the world — the
 // style packs' backgrounds — takes the same `pan` as a plain translate.
@@ -283,7 +292,8 @@ export function portraitEdgePanForBounds(
  * clamp the result against the envelope's upper edge so high geometry is not
  * cut off before the run has descended.
  */
-export function portraitPanForFloor(worldFloorY, zoom, floorY = GROUND_Y, margin = 8, targetRatio = 0.70) {
+export function portraitPanForFloor(worldFloorY, zoom, floorY = GROUND_Y, margin = 8,
+  targetRatio = PORTRAIT_GROUND_ANCHOR_RATIO) {
   const z = Number(zoom);
   const worldY = Number(worldFloorY);
   if (!Number.isFinite(worldY) || !Number.isFinite(z) || z <= 0) return 0;
@@ -294,7 +304,7 @@ export function portraitPanForFloor(worldFloorY, zoom, floorY = GROUND_Y, margin
   const top = Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0;
   const bottom = Number.isFinite(Number(safe.bottom)) ? Number(safe.bottom) : H;
   const ratio = Number.isFinite(Number(targetRatio))
-    ? Math.max(0, Math.min(1, Number(targetRatio))) : 0.70;
+    ? Math.max(0, Math.min(1, Number(targetRatio))) : PORTRAIT_GROUND_ANCHOR_RATIO;
   const target = top + (bottom - top) * ratio;
   // Keep the target out of the safe-area edges even if a caller supplies an
   // extreme ratio for an inspection run.
@@ -337,6 +347,120 @@ export function easeFloor(current, target, dt) {
   const k = target < current ? 4.5 : 14;
   return current + (target - current) * (1 - Math.exp(-k * dt));
 }
+
+// ---- the anchor, sprung ------------------------------------------------------
+//
+// easeFloor above and every other ease in this file are exponential, which is
+// ease-OUT and nothing else: the velocity is at its maximum on the very first
+// frame and decays from there. For a target that moves smoothly that is fine —
+// the ease is only ever a few pixels behind. For a target that JUMPS it is the
+// whole problem. A sky fork lifts the anchor about a hundred pixels the instant
+// the hero claims it, and k=4.5 on a hundred pixels is 450 world px/s on frame
+// one, out of a standing stop: measured across every stage in the game the
+// anchor was the source of every world-slide over 400px/s, topping out at 898 —
+// more than twice the speed of the hero it was following.
+//
+// A critically damped spring is the same settling shape with the missing half
+// put back. It starts at zero velocity (the ease-in), accelerates into the move,
+// peaks at about 0.37 * omega * distance a third of the way through, and comes
+// to rest without overshooting — so the same journey in a comparable time with
+// less than half the peak speed and no corner at either end. The cost is one
+// number of state per sprung value, which is why easeFloor could not simply be
+// changed in place: the velocity has to live on the run.
+//
+// Implicit (backward Euler) rather than the explicit form, because the explicit
+// one goes unstable when omega * dt approaches 1 and this runs at whatever frame
+// rate the machine manages.
+export function springFloor(current, velocity, target, omega, dt) {
+  const w = Math.max(0.01, Number(omega) || 0);
+  const h = Math.max(0, Number(dt) || 0);
+  const x = Number(current) || 0;
+  const v = Number(velocity) || 0;
+  const to = Number(target) || 0;
+  const f = 1 + 2 * h * w;
+  const hoo = h * w * w;
+  const hhoo = h * hoo;
+  const det = f + hhoo;
+  return {
+    value: (f * x + h * v + hhoo * to) / det,
+    velocity: (v + hoo * (to - x)) / det,
+  };
+}
+
+// The spring's stiffnesses, and the same asymmetry the exponential had: a rise
+// is meant to be FELT (the anchor lagging a climbing hero is what shows him
+// gaining height) and a fall is a hero at terminal velocity who will leave the
+// bottom of the frame if the anchor is polite about it.
+//
+// Numerically higher than the k they replace because a spring's peak speed is
+// about 0.37 * omega against an exponential's k: 7 against 4.5 is a settle of
+// roughly the same length at 42% less peak speed, which is the trade the whole
+// change is for.
+export const FLOOR_RISE_W = 7;
+export const FLOOR_FALL_W = 16;
+// The tunnel preview is a look-ahead, not a correction, and it was already the
+// gentlest thing on this screen. Sprung at the same relative stiffness so the
+// one variable has one behaviour rather than two.
+export const PREVIEW_APPROACH_W = 3.4;
+export const PREVIEW_RELEASE_W = 2.5;
+
+// And a ceiling on the anchor however far behind it is, in SCREEN px per second
+// — the same unit and the same order as GUARD_SPEED and FALL_CATCHUP, because
+// it is the same promise to the same eye. The spring alone already keeps an
+// ordinary route under this; what it catches is the authored outlier, a fork
+// that lifts three hundred pixels, where the spring's peak would scale with the
+// distance and this does not.
+export const FLOOR_MAX_SPEED = 340;
+
+// Which stiffness a given move gets. `preview` is the tunnel look-ahead.
+export function floorSpringW(current, target, preview = false) {
+  if (preview) return target > current ? PREVIEW_APPROACH_W : PREVIEW_RELEASE_W;
+  return target < current ? FLOOR_RISE_W : FLOOR_FALL_W;
+}
+
+// One sprung step, with the screen-speed ceiling applied to the result and
+// folded back into the velocity. Clamping the position alone winds the spring
+// up: it keeps integrating toward a target it is not being allowed to approach
+// and arrives with all of that speed still in it.
+export function stepFloorSpring(current, velocity, target, omega, z, dt) {
+  const next = springFloor(current, velocity, target, omega, dt);
+  const cap = (FLOOR_MAX_SPEED / Math.max(0.01, z)) * Math.max(0, dt);
+  const moved = next.value - current;
+  if (Math.abs(moved) <= cap) return next;
+  const clamped = current + Math.sign(moved) * cap;
+  return { value: clamped, velocity: Math.sign(moved) * (cap / Math.max(1e-6, dt)) };
+}
+
+// How fast the camera may move the world on screen by its OWN doing, in screen
+// px per second — the anchor and the crane together, as one budget.
+//
+// Separate caps on the two were not enough, and the measurement is why. A sky
+// fork jumped at is both mechanisms at once: the anchor climbing to re-pin on
+// the road AND the crane opening for the jump taken on the way up, both in the
+// same direction, each politely inside its own limit and 620px/s between them.
+// The player does not see two mechanisms. They see the world slide.
+//
+// Note what this is NOT measuring. `-anchor * z + pan` is the camera's own
+// contribution; the hero's altitude adds to it and is not the camera's doing at
+// all. A hero dropping 400px/s takes the world with him and that reads as
+// falling, not as a pan — which is why the visibility clamps below are allowed
+// to outspend this, and why capping the raw on-screen motion instead would have
+// made the game follow him worse for no gain in smoothness.
+export const CAM_SLIDE_MAX = 380;
+
+// The footroom clamp — "the anchor never leaves the hero's feet more than
+// CAM_FOOTROOM under the bottom edge" — measured as the source of every spike
+// the spring and the two caps did not already cover: 648px/s in a tunnel and
+// 605 stepping off a sky fork, while the hero himself was doing 90 and 103.
+//
+// It fires when the spring is LAGGING, and it was discharging the whole of that
+// lag in one frame. Bounded here the way fallLimit bounds the fall: the hero's
+// own descent, plus an allowance, and not a pixel more. Because the allowance is
+// on TOP of the hero's own drop the clamp can never lose ground to him however
+// small it is — it only takes longer to close a lag it is already behind on —
+// so this is free to sit under CAM_SLIDE_MAX rather than having to outrun a
+// fall.
+export const FOOTROOM_CATCHUP = 260;
 
 // A tunnel is the one route whose lower floor is worth showing BEFORE the
 // hero reaches it. The ordinary floor ease is intentionally quick when a
@@ -436,4 +560,141 @@ export function easeZoom(current, target, dt) {
 export function easePan(current, target, dt) {
   const k = target > current ? 12 : 7;
   return current + (target - current) * (1 - Math.exp(-k * dt));
+}
+
+// ---- the jump guard ---------------------------------------------------------
+//
+// framingFor above answers "how much frame does a hero at altitude y need", and
+// for a decade the dolly asked it that question every tick and flew wherever the
+// answer went. What that produces is a crane welded to the JUMP ARC: nothing at
+// all until the altitude crosses the threshold, and then — because the hero is
+// travelling at 170px/s by the time he gets there — a pan target that goes from
+// standing still to 340 screen px/s between one frame and the next, tracks a
+// parabola up, and runs the whole thing backwards on the way down. easePan
+// rounds that corner but it cannot hide it: the discontinuity is in the target's
+// VELOCITY, and no amount of smoothing on a position fixes that.
+//
+// It is also a promise the camera has no business making. Craning as the hero
+// leaves the ground says "we are going up there", and at that moment nobody
+// knows whether he is. The frame commits to a jump that may well end in the pit
+// it started over.
+//
+// So the guard is the same arithmetic asked a different question: not "where
+// does the hero want the frame" but "is the hero about to LEAVE it". It is
+// one-sided (it only ever pushes the crane up), it is latched (it never retreats
+// while he is still in the air, so a descent does not run the ascent backwards),
+// it is aimed at the apex he is ACTUALLY going to reach rather than at the
+// altitude he happens to be passing through, and it is released only once he has
+// landed and stayed landed. A jump that fits the frame therefore moves the
+// camera by exactly nothing, and the camera's only remaining opinion about a
+// jump is that it would rather the hero stayed in shot.
+//
+// Where the anchor (camFloorY, run.js) is what says "we made it" — it re-pins to
+// the floor the hero is STANDING on — the guard is what keeps him visible in the
+// meantime. Between them: the picture commits on the landing, not on the launch.
+
+// Air kept above the hero's crown before the guard fires, in SCREEN px. A screen
+// distance rather than framingFor's world-space HEAD_MARGIN, and deliberately:
+// the thing being protected is a frame edge, so the promise should be the same
+// twelve pixels of sky on a phone and on a monitor rather than twice as much on
+// one of them. Small on purpose — every pixel of it is altitude at which an
+// otherwise well-framed jump starts moving the camera. At 6 and ZOOM 2 an
+// ordinary double jump (98px) spends 18px of crane and a single (57px) spends
+// none at all.
+export const GUARD_TOP_MARGIN = 6;
+// How long the hero has to stay on the ground before the crane is given back.
+// Zero would bounce the frame on every hop along a raised route; long enough to
+// outlast a landing-and-immediately-jumping-again reads as the camera waiting to
+// be sure rather than as lag.
+export const GUARD_DWELL = 0.14;
+// Giving the crane back is scenery settling, never a gameplay correction, so it
+// is slower than taking it.
+export const GUARD_RELEASE_K = 5;
+// Taking it is not urgent either — the target is latched at the apex long before
+// the hero reaches it, so there is a whole ascent to cover the distance in.
+export const GUARD_APPROACH_K = 9;
+// And a hard ceiling on how fast the crane may travel however far behind it is,
+// in screen px per second. This is what turns the last of the exponential's
+// initial kick into a glide; about a ninth of the frame per second, the same
+// order as FALL_CATCHUP, and the reason is the same — past this the camera stops
+// reading as a camera.
+export const GUARD_SPEED = 280;
+
+// The UNCLAMPED crane a hero `y` px above their floor needs to keep the guard
+// margin above their crown. Same shape as framingFor's `need * ZOOM - anchor`,
+// with the head margin moved out of world space; kept unclamped so one number
+// carries both the crane and, once it outruns PAN_MAX, the zoom that has to
+// cover the rest.
+export function guardNeed(y, groundLift = 0, margin = GUARD_TOP_MARGIN) {
+  return margin + (Math.max(0, Number(y) || 0) + HERO_HEIGHT + groundLift) * ZOOM - frameGroundY();
+}
+
+// Split one such requirement into the crane and the zoom left over. The crane is
+// spent first to the last pixel of PAN_MAX, exactly as framingFor does it, and
+// the zoom is a backstop that ordinary play never reaches: at ZOOM 2 it does not
+// move until 185px of altitude.
+export function guardFraming(need, margin = GUARD_TOP_MARGIN) {
+  const anchor = frameGroundY();
+  const raw = Number.isFinite(Number(need)) ? Number(need) : 0;
+  const pan = Math.max(0, Math.min(PAN_MAX, raw));
+  if (raw <= PAN_MAX) return { pan, zoom: ZOOM };
+  const world = Math.max(1, (raw + anchor - margin) / ZOOM);
+  return { pan, zoom: Math.max(ZOOM_MIN, Math.min(ZOOM, (PAN_MAX + anchor - margin) / world)) };
+}
+
+// The altitude a ballistic hero is actually going to reach. This is the whole
+// predictive half of the guard and it costs one multiply: the apex is known the
+// instant the feet leave the floor, so the crane can be aimed at its final value
+// at takeoff and simply glide there, instead of being dragged up the arc behind
+// a hero it is trying to keep up with.
+//
+// It is not a forecast of the JUMP — an air jump taken later raises the apex and
+// the guard simply re-aims, which is correct, because until the button is
+// pressed the taller jump is not happening. A falling hero has no apex above
+// where he already is, so this returns his current altitude and the latch holds
+// the crane where it is.
+export function ballisticApex(y, vy, gravity) {
+  const base = Number(y) || 0;
+  const v = Number(vy);
+  const g = Number(gravity);
+  if (!(g > 0) || !(v > 0)) return base;
+  return base + (v * v) / (2 * g);
+}
+
+// Move the crane toward a latched target: an ordinary ease, then a hard cap on
+// the distance covered this frame. The ease alone is smooth in position but not
+// in velocity — it starts at k * distance, which off a tall apex is a yank — and
+// the cap alone is smooth in velocity but arrives with a corner. Together the
+// move accelerates into the cap, holds it, and eases out of it.
+export function guardApproach(current, target, dt, speed = GUARD_SPEED) {
+  const from = Number(current) || 0;
+  const to = Number(target) || 0;
+  const step = Math.max(0, Number(dt) || 0);
+  const eased = from + (to - from) * (1 - Math.exp(-GUARD_APPROACH_K * step));
+  const cap = Math.max(0, Number(speed) || 0) * step;
+  return Math.max(from - cap, Math.min(from + cap, eased));
+}
+
+// The crane below which the hero's crown leaves the top of the picture, at the
+// LIVE zoom rather than the resting one. This is the guard's floor, and it is
+// applied as a floor every frame rather than as an emergency snap: where the
+// glide is keeping up it binds on nothing, and where it cannot — the last third
+// of a triple, where a second air jump raises the apex 45px with 0.3s of flight
+// left — the crane simply rides the hero's own arc for as long as it takes to
+// catch up. That is the old altitude-tracking dolly, confined to the one place
+// it was ever the right answer.
+//
+// Note the margin is zero here and GUARD_TOP_MARGIN in guardNeed: the guard
+// would LIKE six pixels of sky and will not accept less than none.
+export function guardFloorPan(y, groundLift, z) {
+  return (Math.max(0, Number(y) || 0) + HERO_HEIGHT + groundLift) * z - frameGroundY();
+}
+
+// Giving it back. No cap: the release target is the resting frame, the distance
+// is whatever the jump bought, and GUARD_RELEASE_K is already slower than
+// anything the cap would impose.
+export function guardRelease(current, target, dt) {
+  const from = Number(current) || 0;
+  const to = Number(target) || 0;
+  return from + (to - from) * (1 - Math.exp(-GUARD_RELEASE_K * (Number(dt) || 0)));
 }

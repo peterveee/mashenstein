@@ -22,7 +22,12 @@ import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
 import { PLAYER_X } from './player.js';
 import { formatCoins } from './progress.js';
 import { Audio } from '../engine/audio.js';
-import { portraitHudLayout } from './portrait-layout.js';
+import {
+  portraitHudLayout, portraitChatScale, PORTRAIT_CHAT_MAX_LINES,
+  PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
+  PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
+  portraitObjectiveSlide, PORTRAIT_OBJECTIVE_EXIT_OVERSHOOT,
+} from './portrait-layout.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
@@ -925,19 +930,79 @@ let objLeft = OBJ_RIGHT;
 export function speechChannel(run) {
   if (isPhonePortraitPresentation()) {
     const layout = portraitHudLayout(presentationFrame());
+    const speechScale = portraitChatScale(presentationFrame(), layout);
+    const named = !!run?.speech?.who;
+    const cardH = (PORTRAIT_CHAT_MAX_LINES * PORTRAIT_CHAT_ROW
+      + PORTRAIT_CHAT_PADDING) * speechScale;
+    const shelfInset = Math.max(0,
+      (layout.messageShelfBottom - layout.messageShelfTop - cardH) / 2);
+    // The lower shelf is a compact chat log: a speaker face remains as the
+    // identity cue, but the repeated name row is removed so a full three-line
+    // page fits above the action labels on the shortest phone.
     return {
-      y: layout.chatterY,
-      maxWidth: layout.chatterWidth,
+      y: layout.messageShelfTop + shelfInset + 4 * speechScale,
+      maxWidth: Math.max(1, layout.chatterWidth - (named ? 40 * speechScale : 0)),
+      allowWide: true,
       centerX: layout.center,
-      // Speech is a primary portrait read, not a landscape card merely moved
-      // lower.  Match its glyphs to the enlarged GOAL row while leaving a
-      // little room for the speaker portrait and the card's padding.
-      scale: Math.max(1.9, Math.min(2.8, layout.panelScale * 0.92)),
+      topY: layout.messageShelfTop,
+      bottomY: layout.messageShelfBottom,
+      maxLines: PORTRAIT_CHAT_MAX_LINES,
+      compact: true,
+      scale: speechScale,
     };
   }
   const left = PILL_X + statusCornerW(run);
   const half = Math.min(W / 2 - left, objLeft - W / 2);
   return { y: SPEECH_Y, maxWidth: Math.max(0, Math.round(half * 2) - 40) };
+}
+
+// Unlike the compact HUD wrapper, speech pages must first wrap the complete
+// sentence. `wrapText` intentionally ellipsizes at its maxLines boundary for
+// ordinary HUD copy; dialogue uses the same glyph metrics but keeps the rest
+// for the next timed page.
+function wrapSpeechAll(text, maxWidth, scale) {
+  const words = String(text ?? '').split(/\s+/).filter(Boolean);
+  if (!words.length) return [''];
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && textWidth(next, scale) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function speechTextMaxWidth(speech, opts = {}) {
+  const s = opts.scale ?? 1;
+  const named = !!speech?.who;
+  const requested = Number.isFinite(Number(opts.maxWidth)) ? Number(opts.maxWidth) : W;
+  // Landscape speech shares the HUD shoulders, so retain its conservative
+  // cap. A portrait channel has already measured a dedicated safe shelf and
+  // opts into its wider card explicitly.
+  if (opts.allowWide) return Math.max(1, requested);
+  return Math.min(requested, W - (named ? 100 : 56) * s);
+}
+
+export function speechPageLines(speech, opts = {}) {
+  const s = opts.scale ?? 1;
+  const maxWidth = speechTextMaxWidth(speech, opts);
+  const all = wrapSpeechAll(speech?.text, maxWidth, s);
+  const pageSize = Math.max(1, Math.trunc(opts.maxLines ?? 3));
+  const page = Math.max(0, Math.trunc(Number(speech?.page) || 0));
+  return all.slice(page * pageSize, page * pageSize + pageSize);
+}
+
+export function speechPageCount(speech, opts = {}) {
+  const s = opts.scale ?? 1;
+  const maxWidth = speechTextMaxWidth(speech, opts);
+  const all = wrapSpeechAll(speech?.text, maxWidth, s);
+  return Math.max(1, Math.ceil(all.length / Math.max(1, Math.trunc(opts.maxLines ?? 3))));
 }
 
 /**
@@ -1257,7 +1322,7 @@ function heroChipGeom(style, run) {
   }
 }
 
-// The face, smoothed. toonFaceSprite caches on the exact box, so the box is
+// The face, kept crisp. toonFaceSprite caches on the exact box, so the box is
 // whole pixels — a chip measured to a half would mint a new raster per frame.
 // `over` is how much bigger than its window the face is drawn. drawToonFace
 // fits a whole head inside the box it is given, padding included — which in a
@@ -1286,8 +1351,22 @@ function drawChipFace(ctx, id, x, y, w, h, over = 1, joy = false) {
     joy ? { key: 'joy', pose: { faceJoy: true } } : null);
   if (!face) return;
   const prev = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = true;
+  // This is a deliberately tiny pixel portrait, not a photo. The source is
+  // already supersampled, so smoothing the second time while reducing it into
+  // the HUD cell averages the eyes, brows and mouth into a grey haze. Nearest
+  // compositing keeps those high-contrast features intact at shipped scale.
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(face, x - (fw - w) / 2, y - (fh - h) / 2, fw, fh);
+  ctx.imageSmoothingEnabled = prev;
+}
+
+// All other HUD portrait callers use the same crisp compositing rule. Keeping
+// it in one helper prevents a badge or speech card from quietly reintroducing
+// the soft resample that the status pill no longer uses.
+function drawHudFaceImage(ctx, face, x, y, w, h) {
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(face, x, y, w, h);
   ctx.imageSmoothingEnabled = prev;
 }
 
@@ -1503,11 +1582,9 @@ export function drawHeroBadge(ctx, run, cy = PILL_CY) {
   drawPanel(ctx, badgeX, cy - BADGE_H / 2, badgeW, BADGE_H, BADGE_R, undefined, PANEL);
   const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
   if (face) {
-    ctx.imageSmoothingEnabled = true;
     // Whole pixels: FACE_H is odd and cy is a midline, so the unrounded y put
     // the badge portrait on a half pixel and resampled it. See drawChipFace.
-    ctx.drawImage(face, badgeX + PAD_L, Math.round(cy - FACE_H / 2), FACE_W, FACE_H);
-    ctx.imageSmoothingEnabled = false;
+    drawHudFaceImage(ctx, face, badgeX + PAD_L, Math.round(cy - FACE_H / 2), FACE_W, FACE_H);
   }
   // Raw text: the badge is already the backing, so it must not carry a plate
   // of its own.
@@ -1860,12 +1937,23 @@ function portraitBonusText(run) {
 function drawPortraitActionShelf(ctx, run, layout) {
   const hero = HERO_BY_ID[run.relay?.current];
   if (!hero?.ability) return;
-  const names = [String(hero.ability.label || 'USE').toUpperCase(),
-    ...Object.entries(run.powerups?.active || {})
-      .map(([id]) => POWER_DEFS[id]?.name)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((name) => String(name).toUpperCase())];
+  // The power-ups ride above the discs; the hero's own power is the caption
+  // under the disc that fires it (see powerLabelY).
+  const powerups = Object.entries(run.powerups?.active || {})
+    .map(([id]) => POWER_DEFS[id]?.name)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((name) => String(name).toUpperCase());
+  if (powerups.length) {
+    drawPortraitNameStrip(ctx, layout, powerups, layout.actionY, '#f6c945');
+  }
+  drawPortraitNameStrip(ctx, layout, [String(hero.ability.label || 'USE').toUpperCase()],
+    layout.powerLabelY, '#48e0c8');
+}
+
+// One centred row of small name plates. Both action strips are the same object
+// in two places, so they scale, pad and shrink-to-fit identically.
+function drawPortraitNameStrip(ctx, layout, names, y, ink) {
   const pad = 6;
   const gap = 6;
   const available = Math.max(1, layout.right - layout.left);
@@ -1877,7 +1965,6 @@ function drawPortraitActionShelf(ctx, run, layout) {
   if (naturalWidth > available) s = Math.max(1.25, s * available / naturalWidth);
   const totalWidth = groupWidth(s);
   const x = (layout.left + layout.right - totalWidth) / 2;
-  const y = layout.actionY;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
@@ -1885,7 +1972,7 @@ function drawPortraitActionShelf(ctx, run, layout) {
   for (const [i, name] of names.entries()) {
     const w = textWidth(name, 0.95, 'bold') + pad * 2;
     drawPanel(ctx, px, -7, w, 14, 4, undefined, PANEL);
-    rawDrawText(ctx, name, px + pad, textY(0), i === 0 ? '#48e0c8' : '#f6c945', 0.95, 'bold');
+    rawDrawText(ctx, name, px + pad, textY(0, 0.95, 'bold'), ink, 0.95, 'bold');
     px += w + 6;
   }
   ctx.restore();
@@ -1899,7 +1986,11 @@ function drawPortraitActionShelf(ctx, run, layout) {
  */
 function drawPortraitHud(ctx, run) {
   const frame = presentationFrame();
+  // The objective panels are a startup read over the first scenery band. They
+  // never participate in the camera floor: after five seconds the whole pair
+  // slides up beneath the permanent status HUD and is clipped away.
   const layout = portraitHudLayout(frame);
+  const objectiveSlide = portraitObjectiveSlide(run?.tRun);
   // `layout` is expressed in logical canvas pixels.  The frame's scale is the
   // CSS conversion; panelScale is the authored enlargement needed to keep the
   // same glyphs readable after that conversion on a phone.
@@ -1910,13 +2001,46 @@ function drawPortraitHud(ctx, run) {
     const frac = Math.max(0, Math.min(1, run.distance / run.totalDist));
     const x = layout.railLeft, w = Math.max(1, layout.railRight - layout.railLeft);
     const y = layout.railY, h = layout.railH;
-    ctx.fillStyle = '#10141c';
-    ctx.fillRect(x, y, w, h);
+    // THE TRACK IS INSET OFF THE CURVE; THE PAINT IS NOT.
+    //
+    // Progress is measured across the inset track, so the first movement and
+    // the last percent both land on flat glass rather than behind the display's
+    // rounded corner. The FILL still runs out to the frame's own edges: on the
+    // phone those few pixels are under the curve and nobody sees them, and in a
+    // screenshot — which is a plain rectangle, corners and all — the bar reads
+    // as starting at the edge instead of floating a thumb's width inside it.
+    // At 100% the same applies to the right: a finished run fills the screen.
+    const edgeL = 0, edgeR = W;
+    // NO TRACK. The bar is the fill and nothing else: an unfilled rail laid
+    // across the bottom of the picture is a black line under the art for the
+    // whole run, and the thing being read is how far the colour has come, not
+    // how much rail is left. The checkpoint notches below keep their own ink,
+    // which is why they are drawn as marks ON the fill rather than gaps in it.
     ctx.fillStyle = mix('#6495ed', '#f6d33c', Math.max(0, Math.min(1,
       (run.totalDist - run.distance < 900 ? 900 - (run.totalDist - run.distance) : 0) / 340)));
-    ctx.fillRect(x, y, w * frac, h);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(Math.min(layout.right - h, x + w * frac - h / 2), y, h, h);
+    const head = x + w * frac;
+    ctx.fillRect(edgeL, y, Math.max(0, (frac >= 1 ? edgeR : head) - edgeL), h);
+    // Banked checkpoints are reference notches in the timeline, not a second
+    // progress row. Use a fixed CSS-pixel width so the marks stay visible on
+    // every portrait phone, regardless of the rail's percentage width.
+    ctx.fillStyle = 'rgba(16,20,28,0.72)';
+    const markerW = Math.max(1, Number(layout.railMarkerW) || 0);
+    for (const marker of run.checkpointMarkers || []) {
+      if (!Number.isFinite(marker)) continue;
+      const checkpointFrac = Math.max(0, Math.min(1, marker / run.totalDist));
+      // A notch past the fill has nothing to notch: with no track behind it, it
+      // would read as a dash floating on the scenery.
+      if (checkpointFrac > frac) continue;
+      const markerX = x + w * checkpointFrac;
+      const left = Math.max(x, Math.min(x + w - markerW, markerX - markerW / 2));
+      ctx.fillRect(left, y, markerW, h);
+    }
+    // The head rides the TRACK, and stops being a head once the run is done:
+    // at 100% a white tick sitting inside a full bar is a notch, not a marker.
+    if (frac < 1) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.min(x + w - h, head - h / 2), y, h, h);
+    }
   }
 
   // Status remains a single coherent pill, now enlarged and given the first
@@ -1935,6 +2059,14 @@ function drawPortraitHud(ctx, run) {
   drawStatusPill(ctx, run, statusStyle);
   ctx.restore();
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, layout.sceneryTop, W, Math.max(0, H - layout.sceneryTop));
+  ctx.clip();
+  const objectiveTravel = Math.max(0,
+    layout.bonusY + layout.bonusH - layout.sceneryTop)
+    + PORTRAIT_OBJECTIVE_EXIT_OVERSHOOT;
+  ctx.translate(0, -objectiveTravel * objectiveSlide);
   const maxText = Math.max(90, (layout.right - layout.left) / s - 22);
   const goalText = portraitTrim(portraitGoalText(run), maxText, 1);
   const goalWidth = objectivePanelMetrics('GOAL', goalText, 1, 0).width;
@@ -1951,22 +2083,21 @@ function drawPortraitHud(ctx, run) {
   const bonus = portraitBonusText(run);
   if (bonus) {
     const [tag, text, tagColor, ink] = bonus;
-    const fold = bonusPanelFold(run);
     const bonusText = portraitTrim(text, maxText, 0.9);
-    const bonusWidth = objectivePanelMetrics(tag, bonusText, 0.9, fold).width;
-    const bonusRight = portraitCenter / s + bonusWidth / 2;
+    const bonusFullWidth = objectivePanelMetrics(tag, bonusText, 0.9, 0).width;
+    const expandedRight = portraitCenter / s + bonusFullWidth / 2;
     ctx.save();
     ctx.translate(0, layout.bonusY - OBJ_ROW_Y * s);
     ctx.scale(s, s);
     drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
-      OBJ_ROW_Y, 0.9, fold, bonusRight);
+      OBJ_ROW_Y, 0.9, 0, expandedRight);
     ctx.restore();
   }
+  ctx.restore();
 
-  // Rhythm stages keep their lane in the same portrait stack. Reusing the
-  // shipped ribbon painter preserves the marker shapes and beat clock; only
-  // its vertical band changes. A non-rhythm stage reserves the band so a
-  // chatter card never jumps when a run changes objective state.
+  // Rhythm stages overlay the first scenery band. Reusing the shipped ribbon
+  // painter preserves the marker shapes and beat clock; it is deliberately not
+  // part of the reserved status HUD because only one cabinet uses it.
   if (run.beatLock) {
     ctx.save();
     ctx.translate(0, layout.rhythmY - RIBBON_Y);
@@ -2013,8 +2144,8 @@ export function drawHud(ctx, run) {
     const k = Number.isFinite(run.totalDist)
       ? Math.max(0, Math.min(1, (FINISH_WARM - remaining) / (FINISH_WARM - FINISH_HOT)))
       : 0;
-    ctx.fillStyle = '#10141c';
-    ctx.fillRect(0, 0, W, 3);
+    // No track behind it, in either orientation: the bar is the fill (see the
+    // portrait rail above).
     ctx.fillStyle = mix('#6495ed', '#f6d33c', k);
     ctx.fillRect(0, 0, W * frac, 3);
     // Keep every banked checkpoint visible, not just the latest death snapshot.
@@ -2025,6 +2156,7 @@ export function drawHud(ctx, run) {
       for (const marker of run.checkpointMarkers || []) {
         if (!Number.isFinite(marker)) continue;
         const checkpointFrac = Math.max(0, Math.min(1, marker / run.totalDist));
+        if (checkpointFrac > frac) continue;
         ctx.fillRect(Math.round(W * checkpointFrac), 0, 1, 3);
       }
     }
@@ -2392,10 +2524,11 @@ const EXTRA_SPEAKERS = { gary: { short: 'GARY' }, dolores: { short: 'DOLORES' } 
  * the camera cranes and holds, so he now LIVES with his crown above the row and
  * the stack printing across his chest for as long as he stays up there.
  *
- * So the row goes UNDER him. One displacement for the whole stack rather than
- * a clamp per card, because the cards are slotted 19px apart on purpose and a
- * per-card clamp would pile simultaneous popups on the same line. Zero the rest
- * of the time, which is nearly always.
+ * Landscape moves the row UNDER him. Portrait is the deliberate exception:
+ * its row belongs above the hero, so the whole stack lifts together when a
+ * raised route brings the standing box into that band. One displacement for
+ * the whole stack rather than a clamp per card keeps simultaneous popups in
+ * their authored slots. Zero the rest of the time, which is nearly always.
  *
  * `hero` is the hero's STANDING box — the caller drops his jump height before
  * asking, so an ordinary hop never moves a card. Both it and the return are in
@@ -2406,10 +2539,20 @@ export function floatieShift(floaties, hero) {
   let top = Infinity, bottom = -Infinity;
   for (const f of floaties) {
     top = Math.min(top, f.y);
-    bottom = Math.max(bottom, f.y + FLOAT_CARD_H * (f.scale || 1));
+    const scale = f.scale || 1;
+    const cardH = isPhonePortraitPresentation()
+      ? (PORTRAIT_FLOATIE_MAX_LINES * PORTRAIT_FLOATIE_ROW + PORTRAIT_FLOATIE_PADDING) * scale
+      : FLOAT_CARD_H * scale;
+    bottom = Math.max(bottom, f.y + cardH);
   }
   top = Math.max(38, Math.round(top));
   if (bottom <= hero.y0 || top >= hero.y1) return 0;   // already clear of him
+  if (isPhonePortraitPresentation()) {
+    // Portrait floaties belong above the hero. A raised route can move the
+    // standing hero into their normal band, so lift the whole stack as one
+    // unit rather than dropping it into the lower chat shelf.
+    return Math.min(0, Math.round(hero.y0 - FLOAT_CLEAR_GAP - bottom));
+  }
   return Math.max(0, Math.round(hero.y1 + FLOAT_CLEAR_GAP - top));
 }
 
@@ -2461,15 +2604,25 @@ const SPEECH_CLEAR_GAP = 6;
  * pixels buys nothing, and a card half off the bottom edge is worse than a card
  * over a hero.
  */
-function placeSpeechCard(baseY, cardX, cardW, cardH, avoid) {
-  if (!avoid) return baseY;
+function placeSpeechCard(baseY, cardX, cardW, cardH, avoid, bounds = null) {
+  const bounded = (candidate) => {
+    let y = candidate;
+    if (Number.isFinite(Number(bounds?.bottomY))) {
+      y = Math.min(y, Number(bounds.bottomY) + 4 - cardH);
+    }
+    if (Number.isFinite(Number(bounds?.topY))) {
+      y = Math.max(y, Number(bounds.topY) + 4);
+    }
+    return y;
+  };
+  if (!avoid) return bounded(baseY);
   const top = baseY - 4;                       // the PLATE's top; baseY is its first row
-  if (cardX + cardW <= avoid.x0 || cardX >= avoid.x1) return baseY;
-  if (top + cardH <= avoid.y0 || top >= avoid.y1) return baseY;
+  if (cardX + cardW <= avoid.x0 || cardX >= avoid.x1) return bounded(baseY);
+  if (top + cardH <= avoid.y0 || top >= avoid.y1) return bounded(baseY);
   // The lowest the plate's top may sit: the bottom edge's own margin.
   const topLimit = H - EDGE_BOTTOM - 5 - cardH;
   const cleared = avoid.y1 + SPEECH_CLEAR_GAP;
-  return cleared <= topLimit ? cleared + 4 : baseY;
+  return cleared <= topLimit ? bounded(cleared + 4) : bounded(baseY);
 }
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
@@ -2534,14 +2687,14 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // is centred here is the ink inside the plate.
   if (!isEgg && !hero) {
     // Three lines, not two: Eggshell's longest grievances need the room.
-    const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 56 * s), s, 3);
+    const lines = speechPageLines(speech, opts);
     const tw = Math.max(...lines.map((line) => textWidth(line, s)));
     // Measured before it is placed: the card can only get out of the hero's way
     // once it knows how tall it is.
     const cardX = centerX - tw / 2 - 6 * s;
     const cardW = tw + 12 * s;
     const cardH = 8 * s + lines.length * SPEECH_ROW * s;
-    const y = placeSpeechCard(baseY, cardX, cardW, cardH, opts.avoid);
+    const y = placeSpeechCard(baseY, cardX, cardW, cardH, opts.avoid, opts);
     panel(cardX, y - 4, cardW, cardH);
     // Through textY, like every other panel in this file. The plate's 4 units
     // of top padding put the first ROW at y; the ink then has to be centred on
@@ -2556,17 +2709,17 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // the words. Face, name, and text read as a single card per speaker. A
   // caller may hide the repeated name while retaining the portrait; the
   // omitted header row is removed from the card's measured height as well.
-  const showName = speech.showName !== false;
+  const showName = speech.showName !== false && !opts.compact;
   const name = isEgg ? 'EGGSHELL' : hero.short;
   const FACE_W = 20 * s, FACE_H = 15 * s, PAD = 7 * s, GAP = 6 * s;
   const ROW = SPEECH_ROW * s;
-  const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 100 * s), s, 3);
+  const lines = speechPageLines(speech, opts);
   const tw = Math.max(showName ? textWidth(name, s) : 0, ...lines.map((line) => textWidth(line, s)));
   const textH = (lines.length + (showName ? 1 : 0)) * ROW;
   const h = Math.max(FACE_H + 6 * s, textH + 8 * s);
   const w = PAD + FACE_W + GAP + tw + PAD;
   const x = Math.round(centerX - w / 2);
-  const y = placeSpeechCard(baseY, x, w, h, opts.avoid);
+  const y = placeSpeechCard(baseY, x, w, h, opts.avoid, opts);
   panel(x, y - 4, w, h);
   const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
   // Eggshell has no toon rig — his prop painter plays the portrait.
@@ -2577,15 +2730,20 @@ export function drawSpeech(ctx, speech, opts = {}) {
   } else {
     const face = toonFaceSprite(speech.who, FACE_W, FACE_H);
     if (face) {
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(face, x + PAD, faceY, FACE_W, FACE_H);
-      ctx.imageSmoothingEnabled = false;
+      drawHudFaceImage(ctx, face, x + PAD, faceY, FACE_W, FACE_H);
     }
   }
   const tx = x + PAD + FACE_W + GAP;
-  const ty = y - 4 + Math.round((h - textH) / 2) + 3 * s;
-  if (showName) rawDrawText(ctx, name, tx, ty, nameInk, s);
-  lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + (showName ? ROW : 0) + i * ROW, ink, s));
+  const textBlockTop = y - 4 + (h - textH) / 2;
+  // Keep the portrait and the complete name/body block centred on the same
+  // card midline. Each row is an ink band, not the 12-unit glyph canvas, so
+  // use the shared HUD correction for the row midpoint instead of the old
+  // hand-tuned `+3` offset (which looked different as the font changed on iOS).
+  if (showName) {
+    rawDrawText(ctx, name, tx, textY(textBlockTop + ROW / 2, s), nameInk, s);
+  }
+  lines.forEach((line, i) => rawDrawText(ctx, line, tx,
+    textY(textBlockTop + (i + (showName ? 1 : 0) + 0.5) * ROW, s), ink, s));
 }
 
 // ACT announcement: full-screen corporate-glitch card over the frozen world.
@@ -2650,11 +2808,12 @@ export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip
   ctx.restore();
 }
 
-// THE TWO HALVES, drawn on themselves. The left TOUCH_JUMP_FRAC of the screen
-// is JUMP and the right is SLIDE (input.js), and nothing else on a touch screen
-// says so — the discs look like the only controls there are, so a thumb that
-// only ever taps a disc plays whole stages without knowing the glass under it
-// is the bigger button.
+// THE LANDSCAPE TWO HALVES, drawn on themselves. The left TOUCH_JUMP_FRAC of
+// the screen is JUMP and the right is SLIDE (input.js), and nothing else on a
+// touch screen says so — the discs look like the only controls there are, so a
+// thumb that only ever taps a disc plays whole stages without knowing the glass
+// under it is the bigger button. Portrait takes a separate branch below: its
+// main glass is tap-to-jump and teaches the down/right swipe gestures instead.
 //
 // Both halves are washed rather than just one: shading one half reads as "this
 // half is disabled", which is the opposite of the point. Each half wears its
@@ -2665,7 +2824,6 @@ export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip
 // training (run.js). One painter, so the two can never drift into teaching the
 // same screen two different layouts.
 export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {}) {
-  const split = Math.round(W * TOUCH_JUMP_FRAC);
   ctx.save();
   ctx.globalAlpha = alpha;
   // Optional, and off for the caller that draws this over a moving world: a
@@ -2678,6 +2836,25 @@ export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {
     ctx.fillStyle = `rgba(0,0,0,${scrim})`;
     ctx.fillRect(0, 0, W, H);
   }
+  if (isPhonePortraitPresentation()) {
+    // Portrait's main playfield is a single jump surface. Do not draw the
+    // landscape left/right seam here: it teaches a mapping the portrait input
+    // intentionally does not use.
+    ctx.fillStyle = 'rgba(72,224,200,0.16)';
+    ctx.fillRect(0, 0, W, H);
+    rawDrawTextCentered(ctx, 'PORTRAIT TOUCH', W / 2, 76,
+      'rgba(255,255,255,0.92)', 1.35, 'bold');
+    rawDrawTextCentered(ctx, 'TAP ANYWHERE', W / 2, 112, '#d8ffe0', 3.2, 'title');
+    rawDrawTextCentered(ctx, 'JUMP', W / 2, 134, '#d8ffe0', 1.4, 'bold');
+    rawDrawTextCentered(ctx, 'SWIPE DOWN', W / 2, 164, '#dcf6ff', 3.0, 'title');
+    rawDrawTextCentered(ctx, 'SLIDE', W / 2, 186, '#dcf6ff', 1.4, 'bold');
+    rawDrawTextCentered(ctx, 'POWER: THE USE DISC, OR SWIPE RIGHT', W / 2, 216,
+      'rgba(255,255,255,0.85)', 1.25, 'bold');
+    if (hint) rawDrawTextCentered(ctx, hint, W / 2, 238, '#fff', 1.5, 'bold');
+    ctx.restore();
+    return;
+  }
+  const split = Math.round(W * TOUCH_JUMP_FRAC);
   // The JUMP disc's green and the SLIDE disc's blue (beatground.js ACTION_INK),
   // washed to a fifth.
   ctx.fillStyle = 'rgba(63,191,90,0.20)';

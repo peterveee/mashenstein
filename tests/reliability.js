@@ -923,6 +923,18 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
           // fragments used to sit. Half a pixel of slack because a run pushed
           // to exactly the far edge of the window is on the right side of it.
           const pad = 120 - 0.5;
+          // THE FAR HALF OF A ROOF GAP IS NOT A HOLE. A tunnel's staged exit
+          // (routes.js, TUNNEL_EXIT_SHELF) takes the lane away over a shelf one
+          // step below it and climbs home, so there is ground all the way and
+          // no lip at the end of it: a coin out there is standing on the shelf,
+          // planted on it by plantOnStagedExits. Only the deep half is a hole.
+          let gx = g.x;
+          let gw = g.w;
+          if (g.tunnel && g.tunnel.shelf != null) {
+            const chamberEnd = g.tunnel.x + (g.tunnel.bodyW ?? g.tunnel.w);
+            if (gx + gw > chamberEnd) gw = chamberEnd - gx;
+            if (gw <= 0) continue;
+          }
           for (const pk of r.pickups) {
             if (!pk.live || pk.following || !pk.def.coin) continue;
             // A ROUTE's own coins stay. The line diving into a mouth and the run
@@ -930,8 +942,8 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
             // the hole is a way in, and they carry no formation id — which is
             // exactly what tells the sweep they are the road's, not the lane's.
             if (pk.formation == null) continue;
-            if (pk.x + pk.w > g.x - pad && pk.x < g.x + g.w + pad) {
-              offenders.push(`${st.id}/${seed}: lane coin ${Math.round(pk.x - g.x)}px into a ${g.w}px ${g.tunnel ? 'tunnel mouth' : 'pit'} at alt ${Math.round(pk.alt)}`);
+            if (pk.x + pk.w > gx - pad && pk.x < gx + gw + pad) {
+              offenders.push(`${st.id}/${seed}: lane coin ${Math.round(pk.x - gx)}px into a ${gw}px ${g.tunnel ? 'tunnel mouth' : 'pit'} at alt ${Math.round(pk.alt)}`);
             }
           }
         }

@@ -40,7 +40,7 @@ function assert(cond, msg) {
 }
 
 // ---- the reachability bound, before any of the driving ----------------------
-const { worstJumpApex } = await import('../src/game/spawner.js');
+const { worstJumpApex, COIN_FLOOR } = await import('../src/game/spawner.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { jumpHeightFor } = await import('../src/game/player.js');
 
@@ -304,6 +304,25 @@ const heights = onSlab.map((p) => run.groundYAt(p.x) - p.alt);
 assert(onSlab.length > 0 && heights.every((h) => h < island.topY && h > island.topY - 20),
   'and they sit just above the slab, in the hero\'s path along it');
 
+// A magnet is a utility for the lane the hero is already running through, not
+// a reason to commit to an optional raised route. Its x remains tied to the
+// staircase reward, but its box must stay at the base-lane floor.
+const magnetRoute = run.routes.find((r) => r.prize === 'capMagnet' || r.bonus === 'capMagnet');
+assert(!!magnetRoute, 'the stage has a route magnet reward to keep near the hero');
+if (magnetRoute) {
+  magnetRoute.spawned = false;
+  run.camX = magnetRoute.x - 100;
+  run.spawnRoutePrizes();
+  const magnet = run.pickups.find((p) => p.live && p.type === 'capMagnet'
+    && p.x >= magnetRoute.x && p.x <= magnetRoute.x + magnetRoute.w);
+  assert(!!magnet, 'the route magnet still spawns');
+  if (magnet) {
+    assert(magnet.alt === COIN_FLOOR && run.groundYAt(magnet.x) - magnet.alt
+      > run.routeGroundY(magnet.x, magnetRoute),
+    'the magnet stays on the base lane instead of the raised route');
+  }
+}
+
 // ---- the far lip's landing is kept clear ------------------------------------
 // Stepping off is the one move whose timing the player does not choose, so the
 // spawner's fairness rule (which assumes a grounded hero with a jump in hand)
@@ -398,12 +417,34 @@ assert(!latecomer.live, 'and so is one that arrives after the first sweep has ru
 // know it, so a hazard laid there stood on the lane line with nothing drawn
 // under it: a cactus in mid-air past the end of the roof.
 assert(!!tunnelEarly.roofGap, 'the tunnel has a roof gap to test against');
-const overExit = makeObstacle(hazardType,
-  tunnelEarly.roofGap.x + tunnelEarly.roofGap.w / 2, {});
+// The DEEP half of it, between the roof's end and the end of the chamber. There
+// is a drop under that, so anything standing on it still goes.
+const deepGapX = (tunnelEarly.roofGap.x
+  + Math.min(tunnelEarly.roofGap.x + tunnelEarly.roofGap.w,
+    tunnelEarly.x + (tunnelEarly.bodyW ?? tunnelEarly.w))) / 2;
+const overExit = makeObstacle(hazardType, deepGapX, {});
 run.obstacles.push(overExit);
 run.clearRouteHazards();
 assert(!overExit.live,
   'a hazard standing on the roof gap is cleared — nothing floats past the roof\'s end');
+
+// ---- but the STAGED EXIT is ground, and keeps what it is dealt --------------
+// The far half of the same gap is the climb out (routes.js, TUNNEL_EXIT_SHELF):
+// the lane is missing there too, but a shelf a step below it is not. Sweeping it
+// left a screen and a half of bare hillside; the answer is to plant what lands
+// there on the floor it is standing on, which is what plantOnStagedExits does.
+const shelfRoute = run.stagedExits?.[0];
+assert(!!shelfRoute, 'the tunnel has a staged exit');
+// Well clear of the chamber's own mouth-clearance, which still applies where
+// the deep half of the gap ends: this is the middle of the shelf.
+const onShelf = makeObstacle(hazardType, shelfRoute.x + shelfRoute.bodyW + 300, {});
+run.obstacles.push(onShelf);
+run.clearRouteHazards();
+run.plantOnStagedExits();
+assert(onShelf.live, 'a hazard out on the staged exit is kept — it is standing on ground');
+assert(onShelf.route === shelfRoute, 'and it is planted on that ground, not on the lane');
+assert(Math.abs(run.entityGroundY(onShelf) - run.laneSurfaceY(onShelf.x)) < 0.01,
+  'so its feet are on the drawn surface');
 
 // ---- and the LIP gets the same clearance the pits give theirs ---------------
 // A hazard a few pixels short of the roof's end asks for a jump the player
@@ -628,7 +669,13 @@ const anchorBefore = run.camFloorY;
 frames(1);
 assert(run.route === sky, 'jumping a break keeps the hero on the road');
 run.camFloorY = anchorBefore;
-for (let i = 0; i < 20; i++) {
+// 45 frames rather than 20. The anchor is sprung now (camera.js, "the anchor,
+// sprung") and shares one screen-slide budget with the crane, so a hundred-pixel
+// hand-over takes about two thirds of a second instead of a third — deliberately,
+// and it is the whole point of the change. What is being asserted is still that
+// the camera goes UP WITH HIM rather than snapping to the lane; only the time it
+// is given to do it has moved.
+for (let i = 0; i < 45; i++) {
   run.camX = sky.gaps[1].x + sky.gaps[1].w * 0.4 - PLAYER_X;
   run.route = sky; run.player.y = 34; run.player.vy = 120; run.player.grounded = false;
   frames(1);
@@ -701,10 +748,16 @@ const laid = run.obstacles.filter((o) => o.live && o.route === furnished);
 // divided by the widest step.
 const runway = run.spawner.react * run.baseSpeed();
 const step = Math.max(110, runway * 2.2);
-const want = Math.max(3, Math.floor((furnished.w - step * 1.4) / (step * 1.6)));
+// Measured against the CHAMBER and not the span. A tunnel's span now runs on
+// past its chamber — the staged climb out (routes.js, TUNNEL_EXIT_SHELF) is
+// open hillside, and populateRoute deliberately furnishes none of it — so the
+// span is no longer the length the density claim is about. `bodyW` is that
+// length, and on every other kind of route it IS the span.
+const body = furnished.bodyW ?? furnished.w;
+const want = Math.max(3, Math.floor((body - step * 1.4) / (step * 1.6)));
 assert(laid.length >= want,
   `and they are laid along it (${laid.length} of them, ${want} the least a `
-  + `${furnished.w.toFixed(0)}px road may carry)`);
+  + `${body.toFixed(0)}px chamber may carry)`);
 assert(laid.every((o) => o.x > furnished.x && o.x < furnished.x + furnished.w),
   'all of them inside the span');
 // Nothing at the way in or the way out: both are moments whose timing the

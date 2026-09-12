@@ -8,6 +8,9 @@ export let H = 270;
 import {
   defaultFrame, frameForViewport, getActiveFrame, LANDSCAPE, PHONE_PORTRAIT, setActiveFrame,
 } from './frame.js';
+import {
+  PORTRAIT_GROUND_ANCHOR_MIN_RATIO, PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
+} from './portrait-geometry.js';
 
 let canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
 
@@ -87,6 +90,7 @@ const uploadCtx = uploadBack ? uploadBack.getContext('2d') : null;
 export let back = uploadBack;
 export let bctx = uploadCtx;
 import { glfx } from './glfx.js';
+import { displayCornerRadiusCss } from './platform.js';
 import { readDiag } from './diag.js';
 
 // Device-density 2D overlay layer (hero, demo banners). Under WebGL it becomes
@@ -146,7 +150,8 @@ export function setSkyFx(on, time) {
 // safeTop/right/bottom/left: how far a notch, Dynamic Island or home indicator
 // reaches INTO the drawn frame, in logical units — see resize().
 export const screen = {
-  scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, portraitFill: false,
+  scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, py: 1, portraitFill: false,
+  dpx: 1, dpy: 1,
   inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
   safeTop: 0, safeRight: 0, safeBottom: 0, safeLeft: 0,
   frameRevision: 0, groundScreenY: 232, presentationMode: LANDSCAPE,
@@ -157,7 +162,20 @@ let jukeboxPortrait = false;
 let devPortraitFill = false;
 let presentationMode = LANDSCAPE;
 let presentationManaged = false;
-let presentationGroundAnchorRatio = 0.70;
+let presentationGroundAnchorRatio = 0.80;
+
+// The display's corner radius, which only the renderer can work out: it needs
+// the platform and the physical screen size. `window.screen` does not rotate on
+// iOS, so its two sides are the portrait CSS size the radius table is keyed on.
+function displayCornerRadius(safe) {
+  if (typeof window === 'undefined' || !window.screen) return 0;
+  return displayCornerRadiusCss({
+    isIphone: !!rendererPlatform?.isIphone,
+    width: Number(window.screen.width) || 0,
+    height: Number(window.screen.height) || 0,
+    safeTop: Number(safe?.top) || 0,
+  });
+}
 
 function sameFrame(a, b) {
   return a.mode === b.mode && a.width === b.width
@@ -175,6 +193,7 @@ function derivePresentationFrame(winW, winH, safe) {
   const next = frameForViewport({
     mode: targetMode, viewportWidth: winW, viewportHeight: winH, safeInsets: safe,
     groundAnchorRatio: presentationGroundAnchorRatio,
+    cornerRadiusCss: displayCornerRadius(safe),
     revision: current.revision,
   });
   if (!sameFrame(current, next)) {
@@ -229,7 +248,8 @@ export function setPresentationMode(mode = LANDSCAPE, options = {}) {
   presentationMode = mode === PHONE_PORTRAIT || mode === 'portrait'
     ? PHONE_PORTRAIT : LANDSCAPE;
   if (Number.isFinite(Number(options.groundAnchorRatio))) {
-    presentationGroundAnchorRatio = Math.max(0.55, Math.min(0.75, Number(options.groundAnchorRatio)));
+    presentationGroundAnchorRatio = Math.max(PORTRAIT_GROUND_ANCHOR_MIN_RATIO,
+      Math.min(PORTRAIT_GROUND_ANCHOR_MAX_RATIO, Number(options.groundAnchorRatio)));
   }
   presentationManaged = true;
   if (typeof window === 'undefined' || !canvas) {
@@ -318,6 +338,20 @@ const LADDER_EPS = 1e-6;
 // A ?density= pin is NOT bound by this: an explicit request for native is still
 // honoured, which is what keeps the two comparable side by side.
 const MAX_BACKING_H = 1440;
+// ...AND THE BUDGET IS AREA, NOT HEIGHT.
+//
+// `MAX_BACKING_H` was written when the logical frame was always 480x270: a
+// 2560x1440 backing store, which is 5.33x density on that frame. Portrait keeps
+// the 480 width and derives a much taller logical height (~1044 on a 17 Pro),
+// and against a HEIGHT cap that same budget collapsed to 1.38x — every glyph in
+// the game upscaled from 1.38 to the display's 2.51, which is exactly as soft
+// as it sounds. The pixel count is what actually costs anything, so cap that:
+// the identical budget, expressed the way it was always meant.
+//
+// Landscape is unchanged to the digit (sqrt(3686400 / (480*270)) = 5.33), and
+// portrait now asks for 1206x2622 — the phone's own resolution, and under
+// budget, so `native` becomes the ceiling instead.
+const MAX_BACKING_PX = 2560 * MAX_BACKING_H;
 const PHONE_SEED_DENSITY = 3;         // initial rung on iPhone/Android handsets
 // Desktops and tablets seed at rung 0 — native, the display's own resolution.
 // Adaptation stays armed underneath: a machine that genuinely cannot hold 60 FPS
@@ -343,6 +377,7 @@ const AVG_ALPHA = 0.1;                // EWMA weight for the frame-interval aver
 
 let phonePlatform = false;   // iPhone|Android phone — gates density seed and chrome dpr cap
 let desktopPlatform = false; // no touch platform detected — seeds at native density
+let rendererPlatform = null; // the whole platform record, for displayCornerRadius()
 let ladder = [1];
 let nativeDensity = 1;
 let rung = -1;             // -1 until resize() seeds it
@@ -514,7 +549,7 @@ function densityRequested() {
 // MAX_BACKING_H, whichever is lower. On a display below the cap the ceiling is
 // still native and nothing changes; only dense panels see a difference.
 function buildLadder(native) {
-  const ceiling = Math.min(native, MAX_BACKING_H / H);
+  const ceiling = Math.min(native, Math.sqrt(MAX_BACKING_PX / Math.max(1, W * H)));
   return [ceiling, ...STANDARD_RUNGS.filter((v) => v < ceiling - LADDER_EPS)];
 }
 
@@ -563,7 +598,18 @@ function seedRung() {
   if (savedNative) return 0;
   const i = ladder.findIndex((v) => v <= PHONE_SEED_DENSITY + LADDER_EPS);
   const platformSeedIdx = i < 0 ? 0 : i;
-  if (savedSeedDensity > 0) {
+  // A REMEMBERED DENSITY IS ONLY EVIDENCE IF IT WAS A RUNG OF THIS LADDER.
+  //
+  // The value persisted is a rung the device actually settled on. If it is not
+  // on the ladder we have now, the frame it was measured against was a
+  // different shape — portrait's backing budget changed, or the window did —
+  // and it is a reading from another instrument. Honouring it anyway is how a
+  // phone that once ran a throttled portrait frame stayed a rung soft for good,
+  // long after the reason had gone. Re-probe instead; the controller still
+  // steps down within seconds if the device really cannot hold it.
+  const onThisLadder = savedSeedDensity > 0
+    && ladder.some((v) => Math.abs(v - savedSeedDensity) <= LADDER_EPS);
+  if (onThisLadder) {
     const persistedIdx = nearestIndex(ladder, savedSeedDensity);
     return Math.max(platformSeedIdx, persistedIdx - 1);
   }
@@ -593,6 +639,8 @@ export function initRenderer(platform = {}, persistence = {}) {
   // entirely and starts at native.
   phonePlatform = !!(platform.isIphone || platform.isAndroidPhone);
   desktopPlatform = !!platform.isDesktop;
+  // Kept whole for displayCornerRadius(): only iPhone has a radius we know.
+  rendererPlatform = platform;
   pinnedDensity = densityRequested();
   // Select history only after the backend is known below. Keep the input here
   // so a WebGL result can never seed the 2D path, or vice versa.
@@ -677,10 +725,48 @@ resize.pending = 0;
 resize.dueAt = 0;
 
 function resize() {
+  // MEASURE THE LAYOUT VIEWPORT, NOT THE VISUAL ONE.
+  //
+  // `#game` and `#chrome` are `position: fixed`, so the box they are laid out
+  // and positioned in is the LAYOUT viewport. The visual viewport is a
+  // different rectangle — what is currently visible through it — and on an iOS
+  // Home Screen app it can be materially shorter than the page's own box: a
+  // 16 Pro reported 812 against a layout height of 874. Sizing the canvas from
+  // that left it 62px short, top-aligned (the same short number is what the
+  // centring subtracts from), so the whole deficit landed as an unpainted strip
+  // of page background over the home indicator.
+  //
+  // `documentElement.clientHeight` is that layout box, and with
+  // `viewport-fit=cover` it is the full screen, which is exactly where the art
+  // should reach. The visual viewport stays the fallback for anything that does
+  // not expose a document, and it keeps its resize listener: a visual-viewport
+  // change is still the signal that something moved.
   const viewport = window.visualViewport;
-  const winW = viewport ? viewport.width : window.innerWidth;
-  const winH = viewport ? viewport.height : window.innerHeight;
+  const doc = document.documentElement;
+  const layoutW = doc && doc.clientWidth > 0 ? doc.clientWidth : 0;
+  const layoutH = doc && doc.clientHeight > 0 ? doc.clientHeight : 0;
+  const winW = layoutW || (viewport ? viewport.width : window.innerWidth);
+  let winH = layoutH || (viewport ? viewport.height : window.innerHeight);
   const safe = safeInsets();
+  // THE HOME SCREEN APP'S WINDOW IS ONE STATUS BAR SHORT.
+  //
+  // With `black-translucent` the status bar is laid OVER the page, but iOS
+  // still reports the window as `display − status bar` — on a 17 Pro, 812 for
+  // an 874pt screen. The display paints the full height regardless (the page
+  // background showed through the gap, so the pixels are ours), and both
+  // viewports agree on the short number, so nothing above can see it. The
+  // display itself can: `screen` does not rotate on iOS, so its long side is
+  // the portrait height. When we are a standalone app, taller than wide, and
+  // short of the display by no more than the top inset, the window IS the
+  // display. Bounded that way so a browser tab, whose deficit is its own chrome
+  // and far larger than any inset, is never stretched under a toolbar.
+  // (`window.screen` in full: this module's own `screen` export shadows it.)
+  const display = window.screen
+    ? Math.max(Number(window.screen.width) || 0, Number(window.screen.height) || 0) : 0;
+  if (navigator.standalone === true && winH > winW && display > 0) {
+    const deficit = display - winH;
+    if (deficit > 0 && deficit <= safe.top + 2) winH = display;
+  }
   if (presentationManaged) derivePresentationFrame(winW, winH, safe);
   // Art is resolution-independent now, so fill the viewport at any fractional
   // scale — no integer-snapping needed, on desktop or phone.
@@ -729,7 +815,11 @@ function resize() {
   const prevLadder = ladder;
   // Preserve the renderer's existing rounded-CSS density contract outside
   // fullscreen mode; the visualiser presentation only changes the element's
-  // CSS box, not the logical backing-store budget.
+  // CSS box, not the logical backing-store budget. The dev overlay is the one
+  // exception: it is itself the thing being inspected, so its visible canvas
+  // gets a device-pixel backing that matches its CSS box in both orientations.
+  // Without this exception, portrait text is rasterized into the ordinary
+  // 480x270 backing and then enlarged through the phone's entire height.
   nativeDensity = (coverFit ? scale : Math.round(W * scale) / W) * dpr;
   ladder = buildLadder(nativeDensity);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
@@ -740,7 +830,9 @@ function resize() {
     rung = nearestIndex(ladder, cur);
   }
   const px = pinnedDensity != null ? Math.min(nativeDensity, pinnedDensity) : ladder[rung];
-  const pxW = Math.round(W * px), pxH = Math.round(H * px);
+  const devBacking = devPortraitFill;
+  const pxW = devBacking ? Math.max(1, Math.round(cssW * dpr)) : Math.round(W * px);
+  const pxH = devBacking ? Math.max(1, Math.round(cssH * dpr)) : Math.round(H * px);
   // Setting a canvas dimension, even to the same value, clears its backing
   // store and resets the drawing state. Avoid turning duplicate viewport
   // notifications into needless surface churn.
@@ -778,7 +870,8 @@ function resize() {
   const renderPx = pxW / W;
   const bw = pxW, bh = pxH;
   if (back.width !== bw || back.height !== bh) { back.width = bw; back.height = bh; }
-  bctx.setTransform(renderPx, 0, 0, bh / H, 0, 0);
+  const renderPy = bh / H;
+  bctx.setTransform(renderPx, 0, 0, renderPy, 0, 0);
   bctx.imageSmoothingEnabled = true;
   // Overlay layer (heroes, banners) stays at the selected render density and
   // is composited directly in the final shader pass.
@@ -796,7 +889,8 @@ function resize() {
     glowLayer.height = glowH;
   }
   Object.assign(screen, {
-    scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W, portraitFill,
+    scale, ox, oy, cssW, cssH, px: renderPx, py: renderPy,
+    dpx: pxW / W, dpy: pxH / H, portraitFill,
     inputScaleX, inputScaleY, inputLeft, inputTop,
     safeTop, safeRight, safeBottom, safeLeft,
     frameRevision: getActiveFrame().revision,
@@ -1007,16 +1101,49 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
 // can cache the layer instead of taking a full-viewport clear + re-upload every
 // frame. An empty frame (menus, pause) clears once, then no-ops.
 let chromeOverlay = null;
-export function beginChromeFrame() { chromeWant = null; }
+let chromeExtraOverlay = null;
+export function beginChromeFrame() {
+  chromeWant = null;
+  // Extra overlays are state-owned and repainted after the ordinary chrome;
+  // clearing the request each frame prevents a diagnostic from surviving a
+  // state transition while the FPS overlay remains main-owned.
+  chromeExtraOverlay = null;
+}
+// THE STRIP ABOVE THE PICTURE.
+//
+// With `apple-mobile-web-app-status-bar-style: default`, iOS reserves a band
+// for the status bar and fills it from the PAGE's background colour — proven by
+// setting the page white and watching the band turn white and its clock go
+// black. theme-color does not do this for a Home Screen app; the page's own
+// background does. So the band is ours to colour: given the stage's sky, the
+// strip reads as the top of the picture rather than as a bar bolted above it.
+//
+// Harmless everywhere else — a browser tab or a desktop simply has no reserved
+// band, and the canvas covers the page anyway.
+const PAGE_CHROME_DEFAULT = '#0b0b14';
+let pageChrome = PAGE_CHROME_DEFAULT;
+export function setPageChrome(color) {
+  const next = typeof color === 'string' && color ? color : PAGE_CHROME_DEFAULT;
+  if (next === pageChrome) return;
+  pageChrome = next;
+  if (typeof document === 'undefined') return;
+  if (document.documentElement?.style) document.documentElement.style.backgroundColor = next;
+  if (document.body?.style) document.body.style.backgroundColor = next;
+}
+
 export function paintChrome(sig, painter) { chromeWant = { sig, painter }; }
 export function setChromeOverlay(sig, painter) { chromeOverlay = sig ? { sig, painter } : null; }
+export function setChromeExtraOverlay(sig, painter) {
+  chromeExtraOverlay = sig ? { sig, painter } : null;
+}
 export function commitChromeFrame() {
   if (!chromeCtx) return;
-  const sig = `${chromeWant ? chromeWant.sig : ''}|${chromeOverlay ? chromeOverlay.sig : ''}`;
+  const sig = `${chromeWant ? chromeWant.sig : ''}|${chromeOverlay ? chromeOverlay.sig : ''}|${chromeExtraOverlay ? chromeExtraOverlay.sig : ''}`;
   if (sig === chromePaintedSig) return;
   chromeCtx.clearRect(0, 0, chrome.vw, chrome.vh);
   if (chromeWant && chromeWant.painter) chromeWant.painter(chromeCtx);
   if (chromeOverlay && chromeOverlay.painter) chromeOverlay.painter(chromeCtx);
+  if (chromeExtraOverlay && chromeExtraOverlay.painter) chromeExtraOverlay.painter(chromeCtx);
   chromePaintedSig = sig;
 }
 
@@ -1083,14 +1210,16 @@ export function beginRenderFrame() {
     dctx.setTransform(1, 0, 0, 1, 0, 0);
     dctx.clearRect(0, 0, canvas.width, canvas.height);
     const px = screen.dpx || 1;
-    dctx.setTransform(px, 0, 0, px,
-      Math.round(shakeX * px), Math.round(shakeY * px));
+    const py = screen.dpy || px;
+    dctx.setTransform(px, 0, 0, py,
+      Math.round(shakeX * px), Math.round(shakeY * py));
     dctx.imageSmoothingEnabled = true;
   });
 }
 
 export function blit() {
   const px = screen.px || 1;
+  const py = screen.py || px;
   const hasOverlay = overlaySprites.length || overlayDraws.length;
   const bloomEnabled = glfx.active && glfx.fx > 0 && glfx.glow > 0 && glfx.tierFx > 0;
   const hasGlow = selectiveGlow && bloomEnabled;
@@ -1144,12 +1273,12 @@ export function blit() {
       // combined canvas. The title's world and foreground already share this
       // exact render density, so no sharpness is lost.
       paintOverlays(bctx, false, false);
-      profileTimed('submitMs', () => glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * px), glowCanvas));
+      profileTimed('submitMs', () => glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * py), glowCanvas));
     } else {
       // Gameplay still keeps the isolated overlay so world-only bloom and the
       // crisp foreground composite retain their existing semantics.
       if (hasOverlay) paintOverlays(octx);
-      profileTimed('submitMs', () => glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px), glowCanvas));
+      profileTimed('submitMs', () => glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * py), glowCanvas));
     }
     return;
   }
@@ -1171,8 +1300,9 @@ export function blit() {
       dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
     }
     const px = screen.dpx || 1;
-    dctx.setTransform(px, 0, 0, px,
-      Math.round(shakeX * px), Math.round(shakeY * px));
+    const py = screen.dpy || px;
+    dctx.setTransform(px, 0, 0, py,
+      Math.round(shakeX * px), Math.round(shakeY * py));
     dctx.imageSmoothingEnabled = true;
   });
 }

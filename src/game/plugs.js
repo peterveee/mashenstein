@@ -114,7 +114,8 @@ function roundRectPath(ctx, x, y, w, h, r) {
 }
 
 // banked/live are [mission, challenge, toaster] boolean triples. Unearned plugs
-// keep their icon at low alpha so the row always reads as three fixed slots.
+// keep their icon at low alpha so the row (or vertical stack) always reads as
+// three fixed slots.
 //
 // `icons` exists only so the asset gallery can swap one slot's art and render
 // a bake-off candidate through this exact function rather than a copy of it.
@@ -122,9 +123,12 @@ function roundRectPath(ctx, x, y, w, h, r) {
 //
 // `frame` is the same escape hatch for the frame palette. Also gallery-only.
 export function drawPlugRow(ctx, x, y, banked, live = [false, false, false], size = 11,
-  icons = PLUG_ICONS, frame = PLUG_FRAME_COLORS) {
+  icons = PLUG_ICONS, frame = PLUG_FRAME_COLORS, orientation = 'horizontal', spacing = 2) {
+  const vertical = orientation === 'vertical';
   for (let i = 0; i < 3; i++) {
-    const bx = x + i * (size + 2);
+    const pitch = size + (vertical ? spacing : 2);
+    const bx = vertical ? x : x + i * pitch;
+    const by = vertical ? y + i * pitch : y;
     const has = !!(banked && banked[i]);
     const now = !has && !!(live && live[i]);
     // Rounded frame at a third of a game pixel: the canvas is 480x270 upscaled
@@ -141,7 +145,7 @@ export function drawPlugRow(ctx, x, y, banked, live = [false, false, false], siz
     // hard pixel and it was showing up on all four corners.
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    roundRectPath(ctx, bx + 0.2, y + 0.2, size - 0.4, size - 0.4, size * PLUG_FRAME_RADIUS);
+    roundRectPath(ctx, bx + 0.2, by + 0.2, size - 0.4, size - 0.4, size * PLUG_FRAME_RADIUS);
     ctx.fill();
     // Soft outer pass, then the hairline on top. See PLUG_FRAME_HALO_LW.
     const prevFrameAlpha = ctx.globalAlpha;
@@ -154,7 +158,7 @@ export function drawPlugRow(ctx, x, y, banked, live = [false, false, false], siz
     ctx.restore();
     const prevAlpha = ctx.globalAlpha;
     ctx.globalAlpha = has ? ALPHA_BANKED : now ? ALPHA_LIVE : ALPHA_EMPTY;
-    drawProp(ctx, icons[i], bx + 1.5, y + 1.5, size - 3, size - 3);
+    drawProp(ctx, icons[i], bx + 1.5, by + 1.5, size - 3, size - 3);
     ctx.globalAlpha = prevAlpha;
   }
 }

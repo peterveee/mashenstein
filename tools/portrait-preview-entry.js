@@ -8,6 +8,8 @@ import {
 import { frameForViewport, cameraForFrame } from '../src/engine/frame.js';
 import { PortraitInputSurface, portraitTouchLayout } from '../src/engine/portrait-input.js';
 import { PORTRAIT_LAB_DEFAULTS } from '../src/dev/portrait-lab.js';
+import { drawLayoutDiagnostic, layoutDiagnosticEnabled, toggleLayoutDiagnostic } from '../src/game/layout-diagnostic.js';
+import { drawRunChrome } from '../src/game/touchchrome.js';
 
 const REFERENCE = typeof window !== 'undefined' ? window.__PORTRAIT_REFERENCE__ : '';
 const FRAME_MODE = 'phone-portrait';
@@ -105,51 +107,19 @@ function setCanvasPixels(canvas, width, height) {
   return { ctx, dpr };
 }
 
-function drawArrow(ctx, x, y, direction, color) {
-  ctx.save();
-  ctx.translate(x, y);
-  if (direction < 0) ctx.rotate(Math.PI);
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(0, -13); ctx.lineTo(10, -1); ctx.lineTo(4, -1);
-  ctx.lineTo(4, 13); ctx.lineTo(-4, 13); ctx.lineTo(-4, -1); ctx.lineTo(-10, -1);
-  ctx.closePath(); ctx.fill();
-  ctx.restore();
-}
-
-function drawPreviewControls(canvas, layout, held = new Set()) {
-  const { ctx } = setCanvasPixels(canvas, layout.viewport.width, layout.viewport.height);
+function drawPreviewControls(canvas, layout, held = new Set(), state = null) {
+  const pixels = setCanvasPixels(canvas, layout.viewport.width, layout.viewport.height);
+  const { ctx } = pixels;
   ctx.clearRect(0, 0, layout.viewport.width, layout.viewport.height);
-  const paint = (id, color, label, arrow = 0) => {
-    const c = layout.controls[id];
-    const active = held.has(c.action);
-    ctx.save();
-    ctx.globalAlpha = active ? 0.38 : 0.16;
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(c.cx, c.cy, c.r, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = active ? 0.88 : 0.42;
-    ctx.strokeStyle = color; ctx.lineWidth = active ? 2 : 1;
-    ctx.stroke();
-    ctx.restore();
-    if (arrow) drawArrow(ctx, c.cx, c.cy - 3, arrow, 'rgba(255,255,255,0.82)');
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.72)';
-    ctx.font = '700 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(label, c.cx, c.cy + c.r * 0.3);
-    ctx.restore();
-  };
-  paint('jump', '#3a9cf4', 'JUMP', 1);
-  paint('slide', '#b27af3', 'SLIDE', -1);
-  paint('use', '#6de1cc', 'USE');
-  const pause = layout.controls.pause;
-  ctx.save();
-  ctx.globalAlpha = held.has(pause.action) ? 0.42 : 0.2;
-  ctx.fillStyle = '#dbe9ff'; ctx.beginPath(); ctx.arc(pause.cx, pause.cy, pause.r, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 0.52; ctx.strokeStyle = '#dbe9ff'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.globalAlpha = 0.8; ctx.fillStyle = '#152338';
-  ctx.fillRect(pause.cx - 5, pause.cy - 7, 3, 14); ctx.fillRect(pause.cx + 2, pause.cy - 7, 3, 14);
-  ctx.restore();
+  const discs = Object.values(layout.controls).map((c) => ({
+    id: c.id,
+    action: c.action,
+    x: c.cx,
+    y: c.cy,
+    r: c.r,
+  }));
+  drawRunChrome(ctx, discs, state, (action) => held.has(action));
+  return pixels;
 }
 
 function spriteBounds(drawToon, pose, heroId) {
@@ -291,7 +261,7 @@ async function bootEmbed() {
   const controls = document.getElementById('controls');
   let layout = portraitTouchLayout({ viewportWidth: requested.width, viewportHeight: requested.height, safeInsets: safe, revision: frame.revision });
   const held = new Set();
-  const paintControls = () => drawPreviewControls(controls, layout, held);
+  const paintControls = () => drawPreviewControls(controls, layout, held, run);
   const surface = new PortraitInputSurface(controls, {
     layout,
     onPress(action) {
@@ -303,6 +273,30 @@ async function bootEmbed() {
       input.Input.release(action); input.Input.release(action === 'escape' && run.paused ? 'confirm' : action); paintControls();
     },
   });
+  let diagnosticCandidate = null;
+  controls.addEventListener('pointerdown', (event) => {
+    const x = (event.clientX - screen.ox) / Math.max(0.001, screen.scale);
+    const y = (event.clientY - screen.oy) / Math.max(0.001, screen.scale);
+    const rect = run.layoutDiagnosticHudRect?.();
+    if (!rect || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
+    // The preview surface paints its pause disc independently of Input's
+    // chrome, so preserve that deliberate single-tap target here as well.
+    const pause = layout.controls.pause;
+    if (pause && Math.hypot(event.clientX - pause.cx, event.clientY - pause.cy) <= pause.r + 6) {
+      diagnosticCandidate = null;
+      return;
+    }
+    const now = performance.now();
+    if (diagnosticCandidate && now - diagnosticCandidate.t <= 360
+      && Math.hypot(x - diagnosticCandidate.x, y - diagnosticCandidate.y) <= 14) {
+      diagnosticCandidate = null;
+      toggleLayoutDiagnostic();
+      render();
+    } else {
+      diagnosticCandidate = { x, y, t: now };
+    }
+    event.preventDefault();
+  }, { passive: false });
   let paused = true;
   let last = performance.now();
   let accum = 0;
@@ -329,7 +323,13 @@ async function bootEmbed() {
     beginRenderFrame();
     run.draw(bctx, 0);
     blit();
-    paintControls();
+    const controlSurface = paintControls();
+    if (layoutDiagnosticEnabled()) {
+      drawLayoutDiagnostic(controlSurface.ctx, run, frame, {
+        outputScale: controlSurface.dpr,
+        cssWidth: layout.viewport.width,
+      });
+    }
     const pose = toonMod.poseFromPlayer(run.player, run.tRun);
     const cam = cameraForFrame({ frame, camX: run.camX, zoom: chosen.zoom, pan: fitPan, floorY: cameraMod.GROUND_Y });
     const report = readouts(run, cam, frame, toonMod.drawToon, pose, run.relay.current);

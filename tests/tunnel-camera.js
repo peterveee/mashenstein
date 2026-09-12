@@ -10,7 +10,10 @@ installDom();
 const { RunState } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
 const { STAGE_BY_ID } = await import('../src/data/stages.js');
-const { GROUND_Y, screenYFor } = await import('../src/engine/camera.js');
+const { GROUND_Y, screenYFor, worldYForScreenY, camYFor } = await import('../src/engine/camera.js');
+const renderer = await import('../src/engine/renderer.js');
+const { H } = renderer;
+const { HERO_DRAW_H } = await import('../src/game/draw.js');
 
 save.load();
 save.newSlot(0, 0);
@@ -120,6 +123,48 @@ run.updateCamera(dt);
 const claimStep = run.camFloorY - beforeClaim;
 assert(claimStep < 12,
   `the live tunnel hand-off is still smooth (${claimStep.toFixed(1)}px in one frame)`);
+
+// A jump inside the lower chamber must remain drawable while the anchor is
+// still settling. The old framing target eased from the surface rule and could
+// leave the hero's crown above the 270px landscape frame for several ticks.
+placeHero(tunnel.x + tunnel.w * 0.3);
+run.route = tunnel;
+run.player.y = 200;
+run.player.grounded = false;
+run.player.vy = -1;
+run.camFloorY = GROUND_Y;
+run.camPan = 0;
+run.camZoom = 1.6;
+run.camFeetY = null;
+run.updateCamera(dt);
+const jumpFeet = run.playerGroundY() - run.player.y;
+const jumpTop = screenYFor(jumpFeet - HERO_DRAW_H, run.camZoom, run.camPan, run.camFloorY);
+const jumpBottom = screenYFor(jumpFeet, run.camZoom, run.camPan, run.camFloorY);
+assert(jumpTop >= 0,
+  `a deep tunnel jump keeps the hero crown in frame (${jumpTop.toFixed(1)}px)`);
+assert(jumpBottom <= H,
+  `a deep tunnel jump keeps the hero feet in frame (${jumpBottom.toFixed(1)}px <= ${H}px)`);
+
+// The lower fill is painted in world coordinates beneath the camera. With a
+// negative portrait pan, the visible screen bottom is farther down in world
+// space than H/z, so the old formula stopped early and exposed the wrong
+// layer beneath the tunnel. Exercise the inverse used by RunState's render
+// path with a real portrait frame and prove the old arithmetic would fail.
+const { frameForViewport } = await import('../src/engine/frame.js');
+renderer.setPresentationFrame(frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+  safeInsets: { top: 59, right: 0, bottom: 34, left: 0 }, revision: 22,
+}));
+const portraitZoom = 2.2;
+const portraitPan = -176;
+const fixedBottomWorldY = worldYForScreenY(renderer.H, portraitZoom, portraitPan, GROUND_Y) + 8;
+const fixedBottomScreenY = screenYFor(fixedBottomWorldY, portraitZoom, portraitPan, GROUND_Y);
+assert(fixedBottomScreenY > renderer.H,
+  `portrait tunnel fill extends below the screen after pan (${fixedBottomScreenY.toFixed(1)} > ${renderer.H.toFixed(1)})`);
+const legacyBottomWorldY = camYFor(portraitZoom, GROUND_Y) + renderer.H / portraitZoom + 8;
+const legacyBottomScreenY = screenYFor(legacyBottomWorldY, portraitZoom, portraitPan, GROUND_Y);
+assert(legacyBottomScreenY < renderer.H,
+  `the old unpanned bottom formula would leave the portrait fill short (${legacyBottomScreenY.toFixed(1)} < ${renderer.H.toFixed(1)})`);
 
 console.log(failed ? 'TUNNEL CAMERA: FAILED' : 'TUNNEL CAMERA: PASSED');
 process.exit(failed ? 1 : 0);
