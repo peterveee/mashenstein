@@ -18207,9 +18207,15 @@ export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
 // 8x, where a fixed 6 would magnify every cached face by a third.
 const toonCache = new Map();
 let toonCacheSS = 0;
-function cached(key, w, h, paint) {
-  const SS = bakeSS();
-  if (SS !== toonCacheSS) { toonCache.clear(); toonCacheSS = SS; }
+function cached(key, w, h, paint, density = bakeSS()) {
+  // Face portraits may request a denser source than the ordinary render
+  // density when portrait HUD panels apply their own scale. That variant must
+  // not make the next world/portal request clear the cache; the density is
+  // already part of the face key. Only a real renderer-density change clears
+  // the cache, as it did before portrait-aware faces existed.
+  const baseSS = bakeSS();
+  if (baseSS !== toonCacheSS) { toonCache.clear(); toonCacheSS = baseSS; }
+  const SS = Math.max(1, Number(density) || 1);
   if (toonCache.has(key)) return toonCache.get(key);
   const c = document.createElement('canvas');
   c.width = Math.max(1, w * SS);
@@ -18231,8 +18237,10 @@ function cached(key, w, h, paint) {
 // whichever of the two was baked first — the cache is keyed on the crop, and the
 // crop does not know what face is inside it.
 export function toonFaceSprite(heroId, w, h, opts = null) {
-  const key = `${heroId}|face|${w}x${h}${opts?.key ? `|${opts.key}` : ''}`;
-  return cached(key, w, h, (x) => drawToonFace(x, heroId, 0, 0, w, h, opts || {}));
+  const density = Math.max(1, Math.ceil(Number(opts?.density) || bakeSS()));
+  const key = `${heroId}|face|${w}x${h}|ss${density}${opts?.key ? `|${opts.key}` : ''}`;
+  return cached(key, w, h,
+    (x) => drawToonFace(x, heroId, 0, 0, w, h, opts || {}), density);
 }
 export function toonStandSprite(heroId, w, h) {
   return cached(`${heroId}|stand|${w}x${h}`, w, h, (x) => drawToon(x, heroId, { kind: 'idle', time: 0, grounded: true }, w / 2, h - 0.5, h * 0.96));

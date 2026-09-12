@@ -366,6 +366,11 @@ export { CORRUPTED_MODIFIERS };
 // uses to pin GROUND_Y for the run camera — so zooming in crops the ceiling
 // rather than sliding the ground out from under the player.
 export const HUB_ZOOM = 1.3;
+// Portrait uses the authored 270px room height as the portrait crop. At 3.5x
+// the 480px logical width fits two complete 48px cabinets plus their 88px
+// pitch, while the wall and floor fill the tall phone frame; the cabinet bank
+// itself stays at its normal spacing for this first pass.
+export const HUB_PORTRAIT_ZOOM = 3.5;
 // The concourse is intentionally long enough to browse cabinet by cabinet, but
 // returning players also cross it end to end. At 90 that trip overstayed its
 // welcome; 120 keeps precise station approaches while cutting traversal time by
@@ -444,6 +449,28 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // door's width and half its height on purpose: a counter is a horizontal thing,
 // and the whole point of it is that you can see over it to the person behind.
 const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
+
+// The renderer publishes a taller logical frame in phone portrait. Keep the
+// hub's authored room coordinates intact and change only its presentation
+// camera: world y=0 becomes the top of the phone, while the existing floor is
+// enlarged into the lower part of the frame. The extra floor below the line is
+// intentional breathing room for the phone's bottom status/prompt strip.
+function hubPresentation() {
+  const portrait = isPhonePortraitPresentation();
+  const zoom = portrait ? HUB_PORTRAIT_ZOOM : HUB_ZOOM;
+  return {
+    portrait,
+    zoom,
+    viewW: W / zoom,
+    camY: portrait ? 0 : HUB_CAM_Y,
+    wallY0: portrait ? 0 : HUB_WALL_Y0,
+    wallDressY0: HUB_WALL_Y0,
+    wallY1: HUB_WALL_Y1,
+    floorY: HUB_FLOOR_PIN_Y,
+    lightY: portrait ? 0 : HUB_LIGHT_Y,
+    ceilY: portrait ? 4 : HUB_CEIL_Y,
+  };
+}
 
 // One floor treatment for both halves of the hub. The Food Court draws this in
 // camera space while the Trophy Room draws it across its whole world, but the
@@ -677,15 +704,16 @@ function nearestTo(list, x, r) {
 // The serving counter is wider and taller than its station's approach radius.
 // Its menu board is the sign behind Dolores, so both rendered surfaces belong
 // to the same interaction. Dolores herself remains a character target.
-function benchVisualHit(station, worldX, worldY, dolores) {
+function benchVisualHit(station, worldX, worldY, dolores, layout = hubPresentation()) {
   const onCounter = Math.abs(worldX - station.x) <= COUNTER_W / 2
-    && worldY >= CTR_Y && worldY <= HUB_FLOOR_PIN_Y;
+    && worldY >= CTR_Y && worldY <= layout.floorY;
   const boardLeft = station.x - BAY_W * (MENU_PANEL_CENTRE + MENU_PANEL_W / 2);
   const boardRight = station.x - BAY_W * (MENU_PANEL_CENTRE - MENU_PANEL_W / 2);
   const onSign = worldX >= boardLeft && worldX <= boardRight
-    && worldY >= HUB_WALL_Y0 && worldY <= HUB_WALL_Y0 + (HUB_WALL_Y1 - HUB_WALL_Y0) * 0.57;
+    && worldY >= layout.wallDressY0 && worldY <= layout.wallDressY0
+      + (layout.wallY1 - layout.wallDressY0) * 0.57;
   const onDolores = dolores && Math.abs(worldX - dolores.x) <= NPC_H * 0.42
-    && worldY >= HUB_FLOOR_PIN_Y - (dolores.staffH || DOLORES_H) && worldY <= HUB_FLOOR_PIN_Y;
+    && worldY >= layout.floorY - (dolores.staffH || DOLORES_H) && worldY <= layout.floorY;
   return (onCounter || onSign) && !onDolores;
 }
 
@@ -1156,6 +1184,11 @@ function drawPlayerMarker(ctx, cx, cy, r) {
 }
 
 export class HubState {
+  // The food court uses the same tall, uniform frame as phone gameplay. Its
+  // own draw pass still chooses the tighter hub camera below, so landscape
+  // remains on the established composition.
+  static portraitMode = 'frame';
+
   constructor({ save, flow }) { this.save = save; this.flow = flow; }
 
   stations() {
@@ -1548,7 +1581,10 @@ export class HubState {
 
   // Camera follows the player, clamped to the concourse — shared by update()
   // (to turn a tap's screen x back into world x) and draw() (to place it).
-  camX() { return Math.max(0, Math.min(this.width - HUB_VIEW_W, this.px - HUB_VIEW_W / 2)); }
+  camX() {
+    const { viewW } = hubPresentation();
+    return Math.max(0, Math.min(this.width - viewW, this.px - viewW / 2));
+  }
 
   update(dt) {
     // A poster held open owns the screen, and the concourse holds still behind
@@ -1617,8 +1653,9 @@ export class HubState {
       // on the wall a poster is legibly a poster and nothing more: the star
       // reads, the wordmark is a shape, and the tagline under it is a smudge.
       // This is the only way to actually read one.
-      const pwx = Input.pointer.x / HUB_ZOOM + this.camX();
-      const pwy = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
+      const layout = hubPresentation();
+      const pwx = Input.pointer.x / layout.zoom + this.camX();
+      const pwy = Input.pointer.y / layout.zoom + layout.camY;
       const tappedPoster = pwy > POSTER_TOP_Y - 4 && pwy < POSTER_TOP_Y + POSTER_H + 4
         ? st.find((s) => (s.type === 'cabinet' || s.type === 'overtime')
           && Math.abs(s.x - pwx) < POSTER_W / 2 + 4)
@@ -1636,7 +1673,7 @@ export class HubState {
       if (chipNpc) {
         const chipOpts = npcMenuFor(chipNpc);
         const chipLayout = npcPromptLayout(chipNpc, chipOpts,
-          (chipNpc.x - this.camX()) * HUB_ZOOM);
+          (chipNpc.x - this.camX()) * layout.zoom);
         for (let i = 0; i < chipOpts.length; i++) {
           const r = chipLayout.rects[i];
           if (Input.pointer.x >= r.x - 4 && Input.pointer.x <= r.x + r.w + 4
@@ -1648,11 +1685,11 @@ export class HubState {
           }
         }
       }
-      const worldX = Input.pointer.x / HUB_ZOOM + this.camX();
-      const worldY = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
+      const worldX = Input.pointer.x / layout.zoom + this.camX();
+      const worldY = Input.pointer.y / layout.zoom + layout.camY;
       const bench = st.find((s) => s.type === 'bench');
       const dolores = this.npcs().find((n) => n.id === 'dolores' && !n.clearingStation);
-      const visualBenchHit = bench && benchVisualHit(bench, worldX, worldY, dolores) ? bench : null;
+      const visualBenchHit = bench && benchVisualHit(bench, worldX, worldY, dolores, layout) ? bench : null;
       const stationHit = visualBenchHit || nearestTo(st, worldX, 22);
       // Widened from 14: a hero is about that wide on screen, so half of every
       // sprite was outside its own tap target and clicking someone's shoulder
@@ -1703,7 +1740,7 @@ export class HubState {
     if (!Input.held('pointer')) {
       this.dragging = false;
     } else if (this.dragging && !Input.pressed('pointer')) {
-      const worldX = Input.pointer.x / HUB_ZOOM + this.camX();
+      const worldX = Input.pointer.x / hubPresentation().zoom + this.camX();
       this.walkTarget = Math.max(20, Math.min(this.width - 20, worldX));
       this.walkToNpc = null;
     }
@@ -2233,16 +2270,17 @@ export class HubState {
   draw(ctx) {
     const slot = this.save.slot;
     const act = actForSlot(slot);
+    const layout = hubPresentation();
     const cam = this.camX();
     ctx.fillStyle = '#14101c';
     ctx.fillRect(0, 0, W, H);
     ctx.save();
-    ctx.scale(HUB_ZOOM, HUB_ZOOM);
-    ctx.translate(0, -HUB_CAM_Y);
+    ctx.scale(layout.zoom, layout.zoom);
+    ctx.translate(0, -layout.camY);
     // back wall + floor
     ctx.fillStyle = '#241c30';
-    ctx.fillRect(0, HUB_WALL_Y0, HUB_VIEW_W, HUB_WALL_Y1 - HUB_WALL_Y0);
-    drawFoodCourtFloor(ctx, HUB_FLOOR_PIN_Y, HUB_VIEW_W, cam);
+    ctx.fillRect(0, layout.wallY0, layout.viewW, layout.wallY1 - layout.wallY0);
+    drawFoodCourtFloor(ctx, layout.floorY, layout.viewW, cam);
     // Wall dressing, drawn straight onto the wall the block above just laid
     // down (hence base:false) and before the stations, so a cabinet stands in
     // front of its own poster.
@@ -2306,8 +2344,8 @@ export class HubState {
     // Room furniture first (the menu board), then ONE poster per cabinet.
     for (const bay of hubWallBays(this.stations())) {
       const bx = bay.x - cam;
-      if (bx + BAY_W < 0 || bx > HUB_VIEW_W) continue;
-      drawWallBay(ctx, bx, HUB_WALL_Y0, BAY_W, HUB_WALL_Y1 - HUB_WALL_Y0, bay.id, {
+      if (bx + BAY_W < 0 || bx > layout.viewW) continue;
+      drawWallBay(ctx, bx, layout.wallDressY0, BAY_W, layout.wallY1 - layout.wallDressY0, bay.id, {
         t: this.t, seed: bay.x, lit: wallLit, base: false,
       });
     }
@@ -2321,7 +2359,7 @@ export class HubState {
     for (const s of this.stations()) {
       if (s.type !== 'cabinet' && s.type !== 'overtime') continue;
       const sx = s.x - cam;
-      if (sx < -POSTER_W || sx > HUB_VIEW_W + POSTER_W) continue;
+      if (sx < -POSTER_W || sx > layout.viewW + POSTER_W) continue;
       const look = posterLook(s.x);
       drawPoster(ctx, sx, POSTER_TOP_Y, POSTER_W, POSTER_H, {
         pal: posterPalFor(s),
@@ -2350,9 +2388,9 @@ export class HubState {
     // dressing and every face in it, several times a minute.
     fixtures.forEach((f, i) => {
       const lx = Math.round(f.x - cam);
-      if (lx < -LIGHT_W - 60 || lx > HUB_VIEW_W + 60) return;
+      if (lx < -LIGHT_W - 60 || lx > layout.viewW + 60) return;
       const flick = lightFlicker(this.t, i, this.save.settings.reducedFlashing);
-      drawCeilingLight(ctx, lx, HUB_LIGHT_Y, f.k > 0 ? f.k * flick : 0);
+      drawCeilingLight(ctx, lx, layout.lightY, f.k > 0 ? f.k * flick : 0, lx, layout.viewW);
     });
     // Light pooling: every lit machine throws its screen colour onto the tiles
     // in front of it. Drawn before the stations so each cabinet stands ON its
@@ -2361,8 +2399,8 @@ export class HubState {
     for (const s of this.stations()) {
       if (s.type !== 'cabinet' || !s.unlocked) continue;
       const x = Math.round(s.x - cam);
-      if (x < -80 || x > HUB_VIEW_W + 40) continue;
-      const g = ctx.createLinearGradient(0, HUB_FLOOR_PIN_Y, 0, HUB_FLOOR_PIN_Y + 34);
+      if (x < -80 || x > layout.viewW + 40) continue;
+      const g = ctx.createLinearGradient(0, layout.floorY, 0, layout.floorY + 34);
       g.addColorStop(0, s.cab.sky[0]);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save();
@@ -2370,10 +2408,10 @@ export class HubState {
       ctx.fillStyle = g;
       // Splayed: a pool of light is wider the further it falls from its source.
       ctx.beginPath();
-      ctx.moveTo(x - CAB_W * 0.5, HUB_FLOOR_PIN_Y);
-      ctx.lineTo(x + CAB_W * 0.5, HUB_FLOOR_PIN_Y);
-      ctx.lineTo(x + CAB_W * 0.85, HUB_FLOOR_PIN_Y + 34);
-      ctx.lineTo(x - CAB_W * 0.85, HUB_FLOOR_PIN_Y + 34);
+      ctx.moveTo(x - CAB_W * 0.5, layout.floorY);
+      ctx.lineTo(x + CAB_W * 0.5, layout.floorY);
+      ctx.lineTo(x + CAB_W * 0.85, layout.floorY + 34);
+      ctx.lineTo(x - CAB_W * 0.85, layout.floorY + 34);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
@@ -2381,7 +2419,7 @@ export class HubState {
     // stations
     for (const s of this.stations()) {
       const x = Math.round(s.x - cam);
-      if (x < -80 || x > HUB_VIEW_W + 40) continue;
+      if (x < -80 || x > layout.viewW + 40) continue;
       if (s.type === 'cabinet') {
         const pal = palFor(s.cab, s.unlocked);
         drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal);
@@ -2439,7 +2477,7 @@ export class HubState {
             grounded: true, facing: staff.facing || 1, vy: 0,
             // Eyes on the customer while he crosses the room; see updateNpcs.
             gazeX: staff.gazeX || 0, gazeY: staff.gazeY || 0, gazeAmt: staff.gazeAmt || 0,
-          }, Math.round(staff.x - cam), HUB_FLOOR_PIN_Y, staff.staffH || NPC_H,
+          }, Math.round(staff.x - cam), layout.floorY, staff.staffH || NPC_H,
           { lit: castLit(Math.round(staff.x - cam)) }) : null,
         });
       } else if (DOOR_PALETTES[s.type]) {
@@ -2457,12 +2495,12 @@ export class HubState {
       // front of the serving line.
       if (n.pinned) continue;
       const x = Math.round(n.x - cam);
-      if (x < -20 || x > HUB_VIEW_W + 20) continue;
+      if (x < -20 || x > layout.viewW + 20) continue;
       // Hop height and contact shadow both ride NPC_H, so scaling the cast
       // doesn't leave them hopping a token amount over a pinprick of shade.
       const hop = n.state === 'hop' ? Math.sin(Math.PI * (1 - n.timer / n.duration)) * NPC_H * 0.26 : 0;
       ctx.fillStyle = 'rgba(4,3,9,0.28)';
-      ctx.beginPath(); ctx.ellipse(x, HUB_FLOOR_PIN_Y, NPC_H * (n.state === 'hop' ? 0.26 : 0.37), NPC_H * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x, layout.floorY, NPC_H * (n.state === 'hop' ? 0.26 : 0.37), NPC_H * 0.1, 0, 0, Math.PI * 2); ctx.fill();
       drawToon(ctx, n.id, {
         kind: n.state === 'walk' ? 'run' : n.state === 'hop' ? 'jump' : 'idle',
         phase: (this.t * 1.25 + n.cycles * 0.17) % 1,
@@ -2473,7 +2511,7 @@ export class HubState {
         // Lit by the bay they are standing in, same as the wall behind them.
         // Exempt, they stood at full daylight in front of a dead bay — the one
         // thing in the concourse the ceiling had no authority over.
-      }, x, HUB_FLOOR_PIN_Y - hop, NPC_H, { lit: castLit(x) });
+      }, x, layout.floorY - hop, NPC_H, { lit: castLit(x) });
     }
     // THE DUST DEVIL comes through occasionally, cleaning something (which
     // surface varies). ~9s of every ~48, unannounced, then gone. Nobody
@@ -2486,16 +2524,16 @@ export class HubState {
       // scrub laid over the traverse that's deep enough to briefly reverse, so
       // it works a square twice before moving on instead of gliding like a
       // cardboard cutout on a string.
-      const travel = (HUB_VIEW_W + 60) * p + Math.sin(p * Math.PI * 7) * 16;
-      const ddX = Math.round(pass.dir > 0 ? travel - 40 : HUB_VIEW_W + 20 - travel);
+      const travel = (layout.viewW + 60) * p + Math.sin(p * Math.PI * 7) * 16;
+      const ddX = Math.round(pass.dir > 0 ? travel - 40 : layout.viewW + 20 - travel);
       // Brush head on a surface either way. Floor pass: the same line the cast
       // stands on. Ceiling pass: the line the light housings bolt to, which is
       // the only thing in the frame that says where the ceiling actually IS —
       // the top of the wall is a crop, not a plane, so hanging below it just
       // reads as floating again. The vertical flip puts the head at ddY and
       // leaves the handle dangling.
-      const ddY = pass.onCeiling ? HUB_CEIL_Y - 4
-        : HUB_FLOOR_PIN_Y + pass.depth + DD_SIT - DD_H;
+      const ddY = pass.onCeiling ? layout.ceilY - 4
+        : layout.floorY + pass.depth + DD_SIT - DD_H;
       ctx.save();
       ctx.globalAlpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
       if (!pass.onCeiling) {
@@ -2504,7 +2542,7 @@ export class HubState {
         // ellipse that only matched it would be a shadow nobody can see.
         ctx.fillStyle = 'rgba(4,3,9,0.28)';
         ctx.beginPath();
-        ctx.ellipse(ddX + DD_W * 0.42, HUB_FLOOR_PIN_Y + pass.depth, DD_W * 0.55, 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(ddX + DD_W * 0.42, layout.floorY + pass.depth, DD_W * 0.55, 2, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       // Mirrored about its own box so the cord always trails the direction of
@@ -2529,7 +2567,7 @@ export class HubState {
     // voice.
     const pxs = Math.round(this.px - cam);
     ctx.fillStyle = 'rgba(4,3,9,0.4)';
-    ctx.beginPath(); ctx.ellipse(pxs, HUB_FLOOR_PIN_Y, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(pxs, layout.floorY, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
     drawToon(ctx, heroId, {
       kind: airborne ? 'jump' : moving ? 'run' : 'idle',
       // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
@@ -2547,13 +2585,13 @@ export class HubState {
       grounded: !airborne,
       vy: this.jumpVy,
       facing: this.facing || 1,
-    }, pxs, HUB_FLOOR_PIN_Y - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
+    }, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits
     // in clear air over grumpos' helmet crest and pika's ears while hovering a
     // head-and-a-half above the ones who end at the nominal line. Measured, the
     // marker keeps the same sliver of air over every hero in the cast.
-    const headY = HUB_FLOOR_PIN_Y - this.jumpY - toonInkTop(heroId) * PLAYER_H;
+    const headY = layout.floorY - this.jumpY - toonInkTop(heroId) * PLAYER_H;
     drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
@@ -2583,7 +2621,7 @@ export class HubState {
       // Identity and verbs stay together in this one contextual cluster. The
       // same rectangles are used by update() for touch hit-testing.
       drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc),
-        (this.focusNpc.x - cam) * HUB_ZOOM);
+        (this.focusNpc.x - cam) * layout.zoom);
     } else if (this.near) {
       // A locked cabinet gets no verb. "PRESS ENTER" on a machine that will
       // refuse you is an instruction that does not work — the line's whole job
@@ -2664,14 +2702,16 @@ export class HubState {
   drawPosterZoom(ctx) {
     const p = this.poster;
     const s = p.station;
+    const layout = hubPresentation();
     const k = Math.min(1, p.t / 0.22);
     const e = k * k * (3 - 2 * k);
     const lerp = (a, b) => a + (b - a) * e;
-    // Where it hangs, in SCREEN space: the wall is painted inside the HUB_ZOOM
+    // Where it hangs, in SCREEN space: the wall is painted inside the hub's
+    // current zoom
     // transform and this is not, so the poster's world position has to be run
     // through the same zoom and camera by hand.
-    const srcCx = (s.x - this.camX()) * HUB_ZOOM;
-    const srcCy = (POSTER_TOP_Y + POSTER_H / 2 - HUB_CAM_Y) * HUB_ZOOM;
+    const srcCx = (s.x - this.camX()) * layout.zoom;
+    const srcCy = (POSTER_TOP_Y + POSTER_H / 2 - layout.camY) * layout.zoom;
     // As tall as the frame allows with the close hint clear underneath.
     const DST_H = 216, DST_W = DST_H * (POSTER_W / POSTER_H);
     ctx.save();
@@ -2683,7 +2723,7 @@ export class HubState {
     ctx.fillStyle = 'rgba(6,4,12,0.95)';
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
-    const pw = lerp(POSTER_W * HUB_ZOOM, DST_W), ph = lerp(POSTER_H * HUB_ZOOM, DST_H);
+    const pw = lerp(POSTER_W * layout.zoom, DST_W), ph = lerp(POSTER_H * layout.zoom, DST_H);
     // Straightens as it comes forward, and comes up to full light. On the wall
     // it is tilted and half in shadow because it is a thing in a room; held up
     // to read, it is just the sheet.

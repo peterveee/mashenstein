@@ -51,6 +51,12 @@ export function resolveSceneryLayout({
   frame = null,
   hud = null,
   groundY = 232,
+  // When the background pass is enlarged to preserve landscape physical
+  // scale, its local coordinates are compressed before the canvas transform.
+  // That keeps the authored portrait bands on screen while the art inside
+  // them grows; otherwise a ground-centred scale would throw the celestial
+  // band off the top of a tall phone.
+  backgroundZoom = 1,
   // The authored band table for this cabinet/stage. Defaults to the shipped
   // profile, so every caller that does not compose deliberately still gets
   // exactly the shipped composition.
@@ -64,10 +70,13 @@ export function resolveSceneryLayout({
   const bottom = Math.max(top, Number(f.groundScreenY) || groundY);
   const screenRect = Object.freeze({ top, bottom, height: bottom - top });
   const shift = bottom - groundY;
+  const zoom = Number.isFinite(Number(backgroundZoom)) && Number(backgroundZoom) > 0
+    ? Number(backgroundZoom) : 1;
+  const localHeight = screenRect.height / zoom;
   const localRect = Object.freeze({
-    top: top - shift,
+    top: groundY - localHeight,
     bottom: groundY,
-    height: Math.max(0, bottom - top),
+    height: Math.max(0, localHeight),
   });
   const screenBands = Object.fromEntries(Object.entries(bands)
     .map(([name, range]) => [name, band(screenRect, range)]));

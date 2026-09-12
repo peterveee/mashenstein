@@ -15,7 +15,7 @@ import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
-import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
+import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn, spawnPuff } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, drawMenuRow, textYForMid, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
@@ -278,6 +278,9 @@ function portraitGameplayEdges(frame = presentationFrame(), run = null) {
 // optional portrait backdrop zoom and before the common horizontal presentation
 // shift. Return the local interval that maps to the complete 480px frame so
 // full-surface fills and tiled hills do not stop at the old unshifted edge.
+// The extra lead is expressed in the same pre-scale coordinates and is used
+// only by background painters for edge look-ahead.
+const BACKGROUND_EDGE_LOOKAHEAD = 96;
 function portraitBackgroundCoverage(xOffset = 0, bgZoom = 1) {
   const offset = Number.isFinite(Number(xOffset)) ? Number(xOffset) : 0;
   const zoom = Number.isFinite(Number(bgZoom)) && Number(bgZoom) > 0 ? Number(bgZoom) : 1;
@@ -286,7 +289,12 @@ function portraitBackgroundCoverage(xOffset = 0, bgZoom = 1) {
   const right = (W - offset - half) / zoom + half;
   const lo = Math.min(left, right);
   const hi = Math.max(left, right);
-  return Object.freeze({ left: lo, right: hi, width: hi - lo });
+  return Object.freeze({
+    left: lo,
+    right: hi,
+    width: hi - lo,
+    lookahead: Math.max(0, BACKGROUND_EDGE_LOOKAHEAD / zoom),
+  });
 }
 
 // Lane kept clear either side of an opening, so nothing can crowd a hero into
@@ -810,6 +818,21 @@ const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
 const PAUSE_PLATE_W = 120, PAUSE_PLATE_GAP = 14;
 const PAUSE_PLATE_Y = 230;
 const PAUSE_PLATE_X = W / 2 - PAUSE_PLATE_W - PAUSE_PLATE_GAP / 2;
+// Portrait pause is a safe, readable card rather than a black sheet laid
+// against the phone's top and bottom edges. Keep this margin on the panel and
+// its plates together so the status/home-indicator areas have visible air.
+const PORTRAIT_PAUSE_EDGE = 28;
+const PORTRAIT_PAUSE_BUTTON_H = 84;
+const PORTRAIT_PAUSE_TITLE_S = 6.4;
+const PORTRAIT_PAUSE_WHERE_S = 3.0;
+const PORTRAIT_PAUSE_LABEL_S = 1.8;
+const PORTRAIT_PAUSE_MISSION_S = 1.9;
+const PORTRAIT_PAUSE_BONUS_S = 1.8;
+const PORTRAIT_PAUSE_HERO_S = 2.8;
+const PORTRAIT_PAUSE_ABILITY_S = 1.9;
+const PORTRAIT_PAUSE_CONTROLS_S = 1.8;
+const PORTRAIT_PAUSE_LEGEND_S = 1.95;
+const PORTRAIT_PAUSE_BUTTON_S = 2.8;
 // The portal's height off the ground — how far a player has to be above it to miss.
 const PORTAL_H = 40;
 // How far ahead of a boost pad the approach begins. 56 was about a third of a
@@ -4026,9 +4049,9 @@ export class RunState {
     if (!isPhonePortraitPresentation()) return PAUSE_BUTTONS;
     const frame = presentationFrame();
     const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
-    const edge = 16;
+    const edge = PORTRAIT_PAUSE_EDGE;
     const gap = 16;
-    const h = 76;
+    const h = PORTRAIT_PAUSE_BUTTON_H;
     const x = Math.max(edge, Number(safe.left) + edge);
     const right = Math.min(W - edge, Number(safe.right) - edge);
     const width = Math.max(1, (right - x - gap) / 2);
@@ -5004,12 +5027,74 @@ export class RunState {
     if (!riding) this.updateFallFace();
     if (res.landed || tookIsland) {
       Audio.sfx('land');
-      burst(this.camX + PLAYER_X + 6, this.playerGroundY(), 5, 30, 0.3, '#c8b898', 1, 40, () => this.fxRng.float());
+      // The landing hit, in the same material the footsteps throw. burst()
+      // fires in a circle, half of it downward into the floor; a landing
+      // squashes dust OUTWARD along the ground, so the puffs are thrown to
+      // both sides with only a little lift, and they swell where they stop.
+      {
+        const r = () => this.fxRng.float();
+        const ly = this.playerGroundY();
+        for (let i = 0; i < 4; i++) {
+          const side = i % 2 ? 1 : -1;
+          spawnPuff(this.camX + PLAYER_X + 6 + side * (1 + r() * 3), ly - 1 - r() * 2,
+            side * (26 + r() * 30), -10 - r() * 12,
+            0.3 + r() * 0.2, '#c8b898', 1.5 + r() * 1.1, 2.6);
+        }
+      }
       if (res.stompLand) { shake(2, 0.15); this.stompBreak(); }
       if (res.slideKickLand || routeSlideKickLand) shake(1.6, 0.11);
     }
-    if (this.player.grounded && Math.floor(this.player.anim) % 4 === 0 && this.fxRng.chance(0.1)) {
-      spawn(this.camX + PLAYER_X, this.playerGroundY() - 1, -30, -10, 0.4, '#c8b898', 1, 30);
+    // FOOTFALL DUST. This used to be one speck a frame at a tenth chance,
+    // gated on `floor(anim) % 4` — a clock four strides long, which is to say
+    // unrelated to the feet. What you saw was a sparse dribble of sparks that
+    // never lined up with a step, and the cast walks on it in every route.
+    //
+    // The gait runs on `anim`, one full cycle per unit, with the two feet half
+    // a cycle apart (see poseFromPlayer's `phase` and locoFoot): a foot plants
+    // whenever anim crosses a HALF-integer. So the puff is emitted on that
+    // crossing — one per footfall, twice a stride, in step with the legs at any
+    // speed, because the same clock drives both.
+    //
+    // Position is the contact, not the hip: locoFoot starts its stance at
+    // +stride and drags back to -stride, so the heel lands about 3px ahead of
+    // the hero's centre and the toe leaves from behind him. The dust is spawned
+    // in world space, so the scroll then carries it back past him for free.
+    {
+      const step = Math.floor(this.player.anim * 2);
+      const footfall = this.lastFootStep !== undefined && step !== this.lastFootStep;
+      this.lastFootStep = step;
+      const afoot = this.player.grounded && this.player.slideAmount <= 0.5 && sp > 1;
+      if (footfall && afoot && !this.save.settings.reducedMotion) {
+        const r = () => this.fxRng.float();
+        const gy = this.playerGroundY();
+        const cx = this.camX + PLAYER_X + 6;
+        // 0 at the opening jog, 1 once the ramp has run out, so a sprint
+        // kicks up visibly more than a walk does off the same legs.
+        const pace = Math.max(0, Math.min(1, (sp / BASE_SPEED - 0.9) / 1.0));
+        // The puff itself: kicked back and slightly up off the heel strike,
+        // and it stalls within a few frames (that is the drag) so what reads
+        // is a cloud hanging where the foot was rather than a thrown particle.
+        spawnPuff(cx + 3 - r() * 2, gy - 1 - r(),
+          -16 - r() * 18 - pace * 26, -6 - r() * 8,
+          0.32 + r() * 0.2 + pace * 0.14, '#c8b898',
+          1.4 + r() * 0.8 + pace * 1.2, 2.5 + pace * 1.1);
+        // A sprint throws a second, fainter puff off the toe-off behind him,
+        // which is what gives the trail its length at speed.
+        if (pace > 0.3) {
+          spawnPuff(cx - 4 - r() * 3, gy - 1,
+            -30 - r() * 24 - pace * 30, -4 - r() * 6,
+            0.26 + r() * 0.18, '#b8a888', 1.1 + r() * 0.7 + pace * 0.7, 2.8);
+        }
+        // Grit off the same contact: a speck or two of the ground itself,
+        // darker than the dust and with real weight, so it arcs and drops
+        // instead of hanging. This is the part that reads as traction.
+        const grit = pace > 0.55 ? 2 : 1;
+        for (let i = 0; i < grit; i++) {
+          spawn(cx + 1 - r() * 4, gy - 1 - r() * 2,
+            -44 - r() * 70 - pace * 70, -34 - r() * 46,
+            0.2 + r() * 0.16, '#9a8a6c', 1, 320);
+        }
+      }
     }
     // The power slide grinds: a steady dust trail off the ground contact for
     // as long as the hero is down, and the scrape cue on the frame the slide
@@ -5025,8 +5110,8 @@ export class RunState {
           const r = () => this.fxRng.float();
           // off the trailing edge — the heel and the dragging hand — kicked
           // up and back; world-space, so it trails behind on its own
-          spawn(this.camX + PLAYER_X - 8 - r() * 6, this.playerGroundY() - 1 - r() * 2,
-            -26 - r() * 30, -14 - r() * 22, 0.3 + r() * 0.2, '#c8b898', 1 + r() * 0.5, 26);
+          spawnPuff(this.camX + PLAYER_X - 8 - r() * 6, this.playerGroundY() - 1 - r() * 2,
+            -26 - r() * 30, -14 - r() * 22, 0.3 + r() * 0.2, '#c8b898', 1.2 + r() * 0.7, 2.4);
         }
       }
     }
@@ -12454,13 +12539,13 @@ export class RunState {
       ctx.fillRect(0, 0, W, H);
     }
     ctx.translate(0, bgShift);
-    // Development-only portrait study: scale the ONE background pass around
-    // its authored ground line. This deliberately sits outside the world
-    // transform below, so mountains/clouds/hills move as one backdrop while
-    // the playable lane, actors, hazards and HUD retain their shipped scale.
-    // The preview page is the only caller that installs this global; ordinary
-    // production boots take the exact identity path.
     const bgZoom = portraitFrameActive ? this.portraitConfig().backgroundZoom : 1;
+    // Scale the ONE background pass around its authored ground line. This
+    // deliberately sits outside the world transform below, so
+    // mountains/clouds/hills move as one backdrop while the playable lane,
+    // actors, hazards and HUD retain their shipped scale. The scenery resolver
+    // supplies pre-scale local bands, keeping the final portrait placements in
+    // their intended screen-space ranges instead of throwing the sky upward.
     if (Math.abs(bgZoom - 1) > 0.0001) {
       // frameShift and bgShift are already on the canvas transform. The
       // authored groundline is therefore GROUND_Y in this local background
@@ -12559,6 +12644,7 @@ export class RunState {
         frame: presentation,
         hud: portraitHud,
         groundY: GROUND_Y,
+        backgroundZoom: bgZoom,
         bands: this.compositionProfile().bands,
       })
       : null;
@@ -12576,7 +12662,7 @@ export class RunState {
       frameShiftY: frameShift,
       parallaxDepths: BACKGROUND_DEPTHS,
       sceneryLayout,
-      backgroundZoom: portraitFrameActive ? this.portraitConfig().backgroundZoom : 1,
+      backgroundZoom: bgZoom,
       groundAnchorRatio: portraitFrameActive ? this.portraitGroundAnchorRatio() : 0.70,
     };
     // Style packs historically paint a 480px logical backdrop. In portrait the
@@ -12599,7 +12685,13 @@ export class RunState {
     // physical area, and a desktop that has the area should keep the art it
     // paid for at full strength. Between bg() and the world band on purpose —
     // everything the player reads or reacts to is drawn over it.
-    if (tier() === 'phone') drawBackdropVeil(ctx, this.style);
+    // Plumber's paper study already has its material contrast and cutout
+    // shadows. The warm phone backdrop veil would wash those colours toward
+    // cream after the paper pass, so leave this study un-veiled; other styles
+    // keep the shipped phone quieting treatment.
+    const plumberPaperBackdrop = this.cabinet?.id === 'plumber'
+      && this.style?.name === 'pixel' && this.style?.lightBg;
+    if (tier() === 'phone' && !plumberPaperBackdrop) drawBackdropVeil(ctx, this.style);
     // Finish the sky's outer edge before the camera/world pass. The band is
     // screen-space and short, so portrait's extra height gets a subtle edge
     // value without tinting the mountains or the playable horizon.
@@ -13420,14 +13512,15 @@ export class RunState {
     }
   }
 
-  // Portrait pause uses the full safe frame. It is deliberately a different
-  // composition from the compact landscape read-out: large type, wrapped
-  // mission copy, stacked controls and button-sized plates all use the height
-  // a phone gives us instead of leaving the lower three quarters empty.
+  // Portrait pause uses a padded safe frame. It is deliberately a different
+  // composition from the compact landscape read-out: oversized type, wrapped
+  // mission copy, stacked controls and button-sized plates use the height a
+  // phone gives us without becoming a sheet pressed against the status bar or
+  // home indicator.
   drawPortraitPaused(ctx) {
     const frame = presentationFrame();
     const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
-    const edge = 14;
+    const edge = PORTRAIT_PAUSE_EDGE;
     const panelX = Math.max(edge, Number(safe.left) + edge);
     const panelRight = Math.min(W - edge, Number(safe.right) - edge);
     const panelW = Math.max(1, panelRight - panelX);
@@ -13453,39 +13546,43 @@ export class RunState {
       : this.bossCab ? 'BOSS'
       : this.stage ? `STAGE ${cabNo}-${this.stage.index}` : '';
     const title = where ? `${this.cabinet.name} · ${where}` : this.cabinet.name;
-    const pauseScale = Math.min(5.2, innerW / Math.max(1, textWidth('PAUSED', 1, 'title')));
-    const titleScale = Math.min(2.3, innerW / Math.max(1, textWidth(title, 1, 'bold')));
-    drawTextCentered(ctx, 'PAUSED', W / 2, panelTop + 24, '#fff', pauseScale, 'title');
-    drawTextCentered(ctx, title, W / 2, panelTop + 96, '#e8e8f0', titleScale, 'bold');
+    const pauseScale = Math.min(PORTRAIT_PAUSE_TITLE_S,
+      innerW / Math.max(1, textWidth('PAUSED', 1, 'title')));
+    const titleScale = Math.min(PORTRAIT_PAUSE_WHERE_S,
+      innerW / Math.max(1, textWidth(title, 1, 'bold')));
+    drawTextCentered(ctx, 'PAUSED', W / 2, panelTop + 42, '#fff', pauseScale, 'title');
+    drawTextCentered(ctx, title, W / 2, panelTop + 124, '#e8e8f0', titleScale, 'bold');
 
-    let y = panelTop + 144;
+    let y = panelTop + 178;
     // Keep the shortest phone pause readable without allowing mission copy to
     // squeeze the controls into the sync row. Taller phones retain the full
     // three-line read-out.
     const compact = panelH < 820;
-    const drawBlock = (label, value, color = '#c8e0ff', scale = 1.35, maxLines = 3) => {
-      drawText(ctx, label, innerX, y, '#74c947', 1.35, 'bold');
-      y += 30;
+    const drawBlock = (label, value, color = '#c8e0ff', scale = PORTRAIT_PAUSE_MISSION_S, maxLines = 3) => {
+      drawText(ctx, label, innerX, y, '#74c947', compact ? 1.65 : PORTRAIT_PAUSE_LABEL_S, 'bold');
+      y += compact ? 26 : 32;
       const lines = wrapText(value, innerW, scale, maxLines);
       for (const line of lines) {
         drawText(ctx, line, innerX, y, color, scale);
         y += 20 * scale;
       }
-      y += 20;
+      y += compact ? 12 : 18;
     };
-    drawBlock('MISSION', this.mission.desc, '#c8e0ff', 1.6, compact ? 2 : 3);
+    drawBlock('MISSION', this.mission.desc, '#c8e0ff',
+      compact ? 1.75 : PORTRAIT_PAUSE_MISSION_S, compact ? 2 : 3);
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
       const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
       drawBlock('BONUS', `${c.desc}${tail ? ` · ${tail}` : ''}`,
-        c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9', 1.5, compact ? 2 : 3);
+        c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9',
+        compact ? 1.7 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
     }
 
-    drawTextCentered(ctx, pHero.name, W / 2, y + 4, '#48e0c8', 2.25, 'bold');
+    drawTextCentered(ctx, pHero.name, W / 2, y + 4, '#48e0c8', PORTRAIT_PAUSE_HERO_S, 'bold');
     const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
-    drawTextCentered(ctx, `${pHero.ability.label} · ${cd}`, W / 2, y + 42, '#f6d33c', 1.55, 'bold');
-    y += 86;
+    drawTextCentered(ctx, `${pHero.ability.label} · ${cd}`, W / 2, y + 50, '#f6d33c', PORTRAIT_PAUSE_ABILITY_S, 'bold');
+    y += compact ? 94 : 100;
 
     const touchRows = [
       ['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['SWIPE RIGHT', 'POWER'],
@@ -13495,17 +13592,17 @@ export class RunState {
       ['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT / D', 'POWER'], ['LEFT / A', 'REWIND'],
     ];
     const rows = Input.usingTouch ? touchRows : (this.beatLock ? keyRows.slice(0, 3) : keyRows);
-    const rowH = compact ? 42 : 48;
-    const rowGap = compact ? 10 : 12;
+    const rowH = compact ? 50 : 60;
+    const rowGap = compact ? 10 : 14;
     const actionBottom = syncButtons.length ? syncButtons[2].y - 18 : buttons[0].y - 24;
     const controlsTop = Math.max(y, actionBottom - rows.length * (rowH + rowGap) - 42);
     drawTextCentered(ctx, Input.usingTouch ? 'TOUCH CONTROLS' : 'KEYBOARD CONTROLS',
-      W / 2, controlsTop, '#dbe9ff', 1.4, 'bold');
-    let rowY = controlsTop + 32;
+      W / 2, controlsTop, '#dbe9ff', PORTRAIT_PAUSE_CONTROLS_S, 'bold');
+    let rowY = controlsTop + 38;
     for (const pair of rows) {
       drawPanel(ctx, innerX + 12, rowY, innerW - 24, rowH, 6, 'rgba(28,32,48,0.78)',
         { border: 'rgba(255,255,255,0.14)' });
-      const scale = 1.5;
+      const scale = PORTRAIT_PAUSE_LEGEND_S;
       const width = keyLegendWidth([pair], scale);
       drawKeyLegend(ctx, [pair], W / 2 - width / 2,
         textYForMid(rowY + rowH / 2, scale), { scale, actionInk: '#dbe9ff' });
@@ -13513,13 +13610,13 @@ export class RunState {
     }
 
     if (syncButtons.length) {
-      drawTextCentered(ctx, 'AUDIO SYNC', W / 2, syncButtons[2].y - 32, '#8a8a98', 1.35, 'bold');
+      drawTextCentered(ctx, 'AUDIO SYNC', W / 2, syncButtons[2].y - 38, '#8a8a98', 1.65, 'bold');
       for (const b of syncButtons) {
         drawPanel(ctx, b.x, b.y, b.w, b.h, 6, 'rgba(28,32,48,0.82)',
           { border: 'rgba(255,255,255,0.18)', shadow: true });
         drawTextCentered(ctx, b.label, b.x + b.w / 2,
-          textYForMid(b.y + b.h / 2, b.id === 'syncReset' ? 1.3 : 2),
-          '#c8c8d8', b.id === 'syncReset' ? 1.3 : 2, 'bold');
+          textYForMid(b.y + b.h / 2, b.id === 'syncReset' ? 1.55 : 2.4),
+          '#c8c8d8', b.id === 'syncReset' ? 1.55 : 2.4, 'bold');
       }
     }
 
@@ -13531,7 +13628,8 @@ export class RunState {
         { border: sel ? '#ffcf33' : go ? 'rgba(72,224,200,0.75)' : 'rgba(255,255,255,0.28)', shadow: true });
       if (sel) drawMenuRow(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 6);
       drawTextCentered(ctx, b.label, b.x + b.w / 2,
-        textYForMid(b.y + b.h / 2, 2.1), go ? '#48e0c8' : '#c8c8d8', 2.1, 'bold');
+        textYForMid(b.y + b.h / 2, PORTRAIT_PAUSE_BUTTON_S),
+        go ? '#48e0c8' : '#c8c8d8', PORTRAIT_PAUSE_BUTTON_S, 'bold');
     });
   }
 

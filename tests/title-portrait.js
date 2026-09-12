@@ -36,6 +36,7 @@ assert.ok(layout.menuTextS > 2.6, 'portrait card labels use the larger type scal
 assert.ok(layout.statusTextS > 2.3, 'portrait plug counts use the larger type scale');
 assert.ok(layout.subtitleTextS > 2.2, 'portrait subtitle uses the larger display type scale');
 assert.ok(layout.footerTextS > 2.2, 'portrait pre-parade caption uses the larger display type scale');
+assert.ok(layout.controlsTextS > 2, 'portrait keyboard hint uses a much larger display type scale');
 assert.ok(layout.footerY < layout.floorY - 70, 'portrait pre-parade caption sits higher above the cast');
 assert.ok(layout.paradeGap > 84, 'portrait cast keeps landscape-equivalent breathing room');
 assert.ok(layout.paradeTop > layout.panelY + layout.cardH * 4,
@@ -47,9 +48,9 @@ assert.equal(layout.backgroundBottom, renderer.H,
   'portrait star field fills the full logical frame');
 const portraitToaster = titleToasterPass(37);
 const cardsBottom = layout.panelY + layout.cardH * 4 + layout.cardGap * 3;
-assert.ok(portraitToaster && portraitToaster.centerY >= cardsBottom + 34
-  && portraitToaster.centerY <= cardsBottom + 80,
-  'portrait toaster cameo uses the open stage below the button stack');
+assert.ok(portraitToaster && portraitToaster.centerY >= layout.panelY + 32
+  && portraitToaster.centerY <= cardsBottom - 32,
+  'portrait toaster cameo crosses the button stack above the heroes');
 
 let chosen = -1;
 const title = new TitleState({

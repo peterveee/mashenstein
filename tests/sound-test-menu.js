@@ -12,6 +12,8 @@ const { trackIdOf } = await import('../src/data/tracks.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { VISUALISER_NAMES } = await import('../src/engine/visualisers.js');
 const { portraitAllowedFor } = await import('../src/engine/lifecycle.js');
+const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
+const renderer = await import('../src/engine/renderer.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -24,8 +26,8 @@ const sound = new SoundTestState({ onDone: () => { returned++; } });
 // The rotate overlay stays down on this screen because the class declares its
 // portrait presentation. Losing the declaration would silently restore the
 // landscape gate here, which is the one regression the capability flag risks.
-assert(SoundTestState.portraitMode === 'stretch' && portraitAllowedFor(sound),
-  'the jukebox declares its portrait presentation and is allowed to stay sideways');
+assert(SoundTestState.portraitMode === 'frame' && portraitAllowedFor(sound),
+  'the jukebox declares its frame-based portrait presentation');
 sound.enter();
 assert(sound.visibleRows === 6 && sound.rowH === 23 && sound.listStart === 0,
   'sound test opens with six finger-sized scrolling rows');
@@ -147,6 +149,19 @@ forced.enter();
 assert(forced.visualiserIndex === 13 && forced.visualiser?.name === 'TOASTER SKY PARADE',
   'dev visualiser submenu can launch a specific preset');
 forced.exit();
+
+const portraitFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+});
+renderer.setPresentationFrame(portraitFrame);
+const portrait = new SoundTestState({ onDone: () => {}, initialTrack: 0, startVisualiser: true });
+portrait.enter();
+assert(renderer.H === portraitFrame.height && portrait.visibleRows === 10 && portrait.rowH >= 60
+  && portrait.visualiser?.viewportH === portraitFrame.height,
+  'portrait sound test fills the frame with denser rows and a full-height visualiser field');
+portrait.draw(document.createElement('canvas').getContext('2d'));
+portrait.exit();
+renderer.setPresentationFrame(defaultFrame());
 
 Input.clearAll();
 console.log(failed ? 'SOUND TEST MENU: FAILED' : 'SOUND TEST MENU: PASSED');

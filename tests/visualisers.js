@@ -3,7 +3,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Audio } = await import('../src/engine/audio.js');
-const { createVisualiser, pickVisualiser, VISUALISER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS } = await import('../src/engine/visualisers.js');
+const { createVisualiser, pickVisualiser, VISUALISER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition, setVisualiserViewport, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS } = await import('../src/engine/visualisers.js');
 const { SoundTestState } = await import('../src/game/menus.js');
 const { Input } = await import('../src/engine/input.js');
 
@@ -34,6 +34,15 @@ for (let i = 0; i < VISUALISER_NAMES.length; i++) {
   assert(v.name === VISUALISER_NAMES[i] && v.dust.length >= 96,
     `preset ${i + 1} has the expected name, moving focal point, and particle field`);
 }
+
+setVisualiserViewport(900);
+const portraitVisualiser = createVisualiser(0, 0x51515151, { bpm: 120 });
+portraitVisualiser.update(1 / 60, analysis);
+portraitVisualiser.draw(ctx);
+assert(portraitVisualiser.viewportH === 900 && portraitVisualiser.focusY > 300
+  && portraitVisualiser.dust.some((p) => p.y > 270),
+  'portrait visualisers expand their logical field instead of stretching a 480x270 scene');
+setVisualiserViewport(270);
 
 const kaleido = createVisualiser(4, 0x12345678, { bpm: 120 });
 const kaleidoCounts = [];

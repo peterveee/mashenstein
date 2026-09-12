@@ -219,9 +219,9 @@ export function setVisualiserFullscreen(on) {
   if (typeof window !== 'undefined' && canvas) resize();
 }
 
-// The jukebox list is allowed to use a phone's portrait height. Its logical
-// art remains 16:9, but the list presentation may fill the portrait viewport;
-// SoundTestState compensates its text vertically so lettering stays crisp.
+// Legacy hook retained for callers and focused tests. The production jukebox
+// now uses the same uniform portrait frame as the other staff menus, so it no
+// longer enables the old non-uniform fill path.
 export function setJukeboxPortrait(on) {
   const next = !!on;
   if (next === jukeboxPortrait) return;
@@ -772,10 +772,12 @@ function resize() {
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
   // An open dev overlay claims portrait for itself and outranks the cover crop
-  // (see setDevPortraitFill), so `coverFit` — not the visualiser flag — is what
-  // the rest of this function asks about.
+  // (see setDevPortraitFill). A sound-test visualiser in the frame-based phone
+  // presentation already has a matching tall logical surface, so it must keep
+  // that frame instead of reverting to the old landscape cover crop.
   const devFill = devPortraitFill && winH > winW;
-  const coverFit = visualiserFullscreen && !devFill;
+  const portraitFrame = getActiveFrame().mode === PHONE_PORTRAIT && winH > winW;
+  const coverFit = visualiserFullscreen && !devFill && !portraitFrame;
   const portraitFill = devFill || (jukeboxPortrait && !coverFit && winH > winW);
   const fillViewport = coverFit || portraitFill;
   const cssW = fillViewport ? Math.round(winW) : Math.round(W * scale);
@@ -813,14 +815,14 @@ function resize() {
   // VALUE — snap to the nearest new rung — rather than by index, which would
   // drift as the ladder's length changes.
   const prevLadder = ladder;
-  // Preserve the renderer's existing rounded-CSS density contract outside
-  // fullscreen mode; the visualiser presentation only changes the element's
-  // CSS box, not the logical backing-store budget. The dev overlay is the one
-  // exception: it is itself the thing being inspected, so its visible canvas
-  // gets a device-pixel backing that matches its CSS box in both orientations.
-  // Without this exception, portrait text is rasterized into the ordinary
-  // 480x270 backing and then enlarged through the phone's entire height.
-  nativeDensity = (coverFit ? scale : Math.round(W * scale) / W) * dpr;
+  // Preserve the renderer's existing rounded-CSS density contract for normal
+  // frames. A fullscreen cover uses its actual cover scale so the visualiser
+  // is not softened by a backing store sized from the letterbox scale. The dev
+  // overlay is the other deliberate exception: it is itself the thing being
+  // inspected, so its visible canvas gets a device-pixel backing that matches
+  // its CSS box in both orientations.
+  const coverScale = Math.max(winW / W, winH / H);
+  nativeDensity = (coverFit ? coverScale : Math.round(W * scale) / W) * dpr;
   ladder = buildLadder(nativeDensity);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
@@ -840,9 +842,10 @@ function resize() {
   if (canvas.height !== pxH) canvas.height = pxH;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
-  // Fullscreen visualisers use the viewport as a cover frame, preserving the
-  // logical 16:9 aspect ratio instead of stretching circles and typography.
-  // A little edge crop is preferable to visibly distorted artwork.
+  // Landscape fullscreen visualisers use the viewport as a cover frame,
+  // preserving the logical 16:9 aspect ratio instead of stretching circles
+  // and typography. Portrait visualisers use the already-derived tall frame,
+  // so they reach the full phone without cropping or non-uniform scaling.
   canvas.style.objectFit = coverFit ? 'cover' : portraitFill ? 'fill' : '';
   canvas.style.objectPosition = coverFit ? 'center center' : '';
   canvas.style.imageRendering = 'auto';
@@ -898,6 +901,10 @@ function resize() {
   });
   if (glfx.active) { glfx.resize(bw, bh); glfx.setTierFx(!isBloomSuppressed(renderPx)); }
   resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr);
+  // A rotation changes which of the two page chromes applies without anything
+  // else asking for it, so the bars are re-resolved here rather than only where
+  // a stage sets its sky.
+  applyPageChrome();
   if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
 }
 
@@ -1075,10 +1082,23 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
       }));
       return [...discs, ...zones];
     };
+    // The hub has no jump/slide vocabulary, but it still needs two explicit
+    // walk handles on a full-height portrait surface. Reuse the portrait
+    // lower-corner control geometry so the arrows clear the same safe area and
+    // bottom gutter as the gameplay discs; the hub's painter swaps the ids and
+    // glyphs while Input receives the ordinary left/right actions.
+    const hub = ['jump', 'slide'].map((id) => {
+      const b = layout.controls[id];
+      return {
+        id: id === 'jump' ? 'hubLeft' : 'hubRight',
+        action: id === 'jump' ? 'left' : 'right',
+        x: b.cx, y: b.cy, r: b.r,
+      };
+    });
     Object.assign(chrome, {
       run: controls(true), runNoPower: controls(false),
       runPortraitLab: controls(true, true), runPortraitLabNoPower: controls(false, true),
-      hub: [], split: winW / 2, scale: screen.scale,
+      hub, split: winW / 2, scale: screen.scale,
     });
   } else {
     // Landscape and all ordinary screens retain the shipped shared layout.
@@ -1121,9 +1141,28 @@ export function beginChromeFrame() {
 // Harmless everywhere else — a browser tab or a desktop simply has no reserved
 // band, and the canvas covers the page anyway.
 const PAGE_CHROME_DEFAULT = '#0b0b14';
-let pageChrome = PAGE_CHROME_DEFAULT;
+// LANDSCAPE IS ALWAYS BLACK, and this is the other half of the same fact.
+//
+// Portrait fills the viewport, so the page shows only in that reserved band and
+// colouring it the sky is the whole point. Letterboxed — every desktop, and
+// every landscape phone — the page is not a band above the picture but the BARS
+// above and below it, and a bar tinted the stage's sky is a second, duller sky
+// framing the real one: the picture stops looking like a picture and starts
+// looking like it leaked. Black bars are the frame the eye already ignores.
+const PAGE_CHROME_LANDSCAPE = '#000';
+// What the state ASKED for, kept separate from what is applied: the mode can
+// change under it (a rotation, a lab preset) long after the stage set it, and
+// on the way back to portrait the sky has to still be there to return to.
+let pageChromeWant = null;
+let pageChrome = null;
 export function setPageChrome(color) {
-  const next = typeof color === 'string' && color ? color : PAGE_CHROME_DEFAULT;
+  pageChromeWant = typeof color === 'string' && color ? color : null;
+  applyPageChrome();
+}
+function applyPageChrome() {
+  const next = isPhonePortraitPresentation()
+    ? (pageChromeWant || PAGE_CHROME_DEFAULT)
+    : PAGE_CHROME_LANDSCAPE;
   if (next === pageChrome) return;
   pageChrome = next;
   if (typeof document === 'undefined') return;

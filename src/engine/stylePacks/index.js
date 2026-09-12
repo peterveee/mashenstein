@@ -357,6 +357,35 @@ export function ridgeYAt(screenX, camX, yBase, amp, wl, factor, opts) {
     !!(opts && opts.peak), !!(opts && opts.mesa), !!(opts && opts.dunes));
 }
 
+// Split a peaked range at its natural low points so each visible mountain is
+// treated as its own paper sheet. Rounded near hills already have one crest per
+// period, so their period itself is one sheet and does not need extra cuts.
+function paperRidgeSheetRanges(ridge, period, split = false) {
+  if (!split) return [[0, period]];
+  const step = 2;
+  const samples = Math.max(2, Math.ceil(period / step));
+  const values = new Array(samples);
+  for (let i = 0; i < samples; i++) values[i] = ridge(i * period / samples);
+  const cuts = [0];
+  for (let i = 1; i < samples; i++) {
+    const prev = values[i - 1];
+    const current = values[i];
+    const next = values[(i + 1) % samples];
+    // Screen y is larger in a valley. Strictness avoids collecting the flat
+    // portions that can occur in a future mesa profile.
+    if (current >= prev && current >= next && (current > prev || current > next)) {
+      cuts.push(i * period / samples);
+    }
+  }
+  cuts.push(period);
+  cuts.sort((a, b) => a - b);
+  const ranges = [];
+  for (let i = 1; i < cuts.length; i++) {
+    if (cuts[i] - cuts[i - 1] > 1) ranges.push([cuts[i - 1], cuts[i]]);
+  }
+  return ranges.length ? ranges : [[0, period]];
+}
+
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
@@ -391,12 +420,31 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
       x.lineTo(period + OVER, H + HILL_UNDERFILL);
       x.closePath();
     };
+    const paperSheets = paperRidgeSheetRanges(ridge, period, paper && (peak || mesa || dunes));
+    const sheetEdge = (from, to) => {
+      x.beginPath();
+      x.moveTo(from, ridge(from));
+      for (let px = from + 2; px < to; px += 2) x.lineTo(px, ridge(px));
+      x.lineTo(to, ridge(to));
+    };
+    const sheetShadow = (from, to, depth) => {
+      x.beginPath();
+      x.moveTo(from, ridge(from));
+      for (let px = from + 2; px < to; px += 2) x.lineTo(px, ridge(px));
+      x.lineTo(to, ridge(to) + depth);
+      for (let px = to - 2; px >= from; px -= 2) x.lineTo(px, ridge(px) + depth);
+      x.closePath();
+    };
     if (paper) {
       // Shadows are baked with the ridge, so the per-frame path remains the
       // existing tile blit. This is the important performance boundary for the
       // preview: no multiply fill or repeated hill trace during gameplay.
-      paperShadowPass(x, ridgePath, PAPER_DEEP_OFFSET);
-      paperShadowPass(x, ridgePath, PAPER_CONTACT_OFFSET, PAPER_CONTACT_COLOR);
+      for (const [from, to] of paperSheets) {
+        paperShadowPass(x, () => sheetShadow(from, to, 8),
+          PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+        paperShadowPass(x, () => sheetShadow(from, to, 3),
+          PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+      }
     }
     ridgePath();
     x.fillStyle = color;
@@ -471,17 +519,31 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
       }
     }
     if (paper) {
-      paperFinishPass(x, ridgePath, paperPatternFor(x));
+      // Keep one continuous material fill across the cached tile so the
+      // texture cannot expose raster seams at sheet boundaries. The shadow and
+      // contour remain per-sheet, which is the visual cue that separates the
+      // hills without painting vertical cuts into the body.
+      paperFinishPass(x, ridgePath, paperPatternFor(x), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+        rim: false,
+      });
+      for (const [from, to] of paperSheets) {
+        x.save();
+        x.strokeStyle = PAPER_LANDMARK_RIM_COLOR;
+        x.lineWidth = PAPER_LANDMARK_RIM_WIDTH;
+        strokePaperPath(x, () => sheetEdge(from, to));
+        x.restore();
+      }
     }
     hillCache.set(key, tile);
   }
   const off = ((camX * factor * ZOOM) % period + period) % period;
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
-  const coverage = backgroundCoverage(ctx);
+  const coverage = backgroundPaintCoverage(ctx);
   // Start one tile early so a positive portrait shift also fills the left
   // edge. The canvas clips the extra copy in the identity path.
-  for (let x0 = -off - period; x0 < coverage.right; x0 += period) {
+  for (let x0 = coverage.left - off - period; x0 < coverage.right; x0 += period) {
     ctx.drawImage(tile, x0 - MARGIN, tileTop,
       period + MARGIN * 2, H - tileTop + HILL_UNDERFILL);
   }
@@ -1016,6 +1078,18 @@ function backgroundCoverage(ctx) {
   return c;
 }
 
+// Give edge-bound background painters a staging interval beyond the physical
+// frame. The renderer expresses this lead in the same pre-scale local units as
+// the coverage, so enlarged portrait art gets the same screen-space warning
+// distance without changing the actual canvas clip or picture centre.
+function backgroundPaintCoverage(ctx) {
+  const c = backgroundCoverage(ctx);
+  const lead = Number.isFinite(Number(c.lookahead))
+    ? Math.max(0, Number(c.lookahead)) : 0;
+  if (lead <= 0) return c;
+  return { left: c.left - lead, right: c.right + lead, width: c.width + lead * 2 };
+}
+
 // WRAP A DRIFTING OBJECT INTO THE VISIBLE BAND, NOT INTO THE AUTHORED FRAME.
 //
 // Everything that tiles across the sky — clouds, the pal, vultures, a skyline,
@@ -1033,7 +1107,7 @@ function backgroundCoverage(ctx) {
 // With the identity coverage this is arithmetically the old expression, which
 // is why landscape is untouched.
 function wrapIntoView(ctx, value, margin) {
-  const c = backgroundCoverage(ctx);
+  const c = backgroundPaintCoverage(ctx);
   const span = c.width + margin * 2;
   // The modulo is taken on the raw value, exactly as the inline expressions
   // did, and only the window it lands in moves. Folding the window's origin
@@ -1054,7 +1128,7 @@ function viewCenterX(ctx) {
 }
 
 function outsideView(ctx, x, margin) {
-  const c = backgroundCoverage(ctx);
+  const c = backgroundPaintCoverage(ctx);
   return x < c.left - margin || x > c.right + margin;
 }
 
@@ -1062,7 +1136,8 @@ function outsideView(ctx, x, margin) {
 // claims: identical to the old inline arithmetic in landscape, and tied to the
 // view in portrait.
 export const __testing = {
-  wrapIntoView, outsideView, backgroundCoverage, viewCenterX, sceneryBandPointY, desertThermals,
+  wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
+  sceneryBandPointY, desertThermals,
   desertLoopLandmarkY, DESERT_SUN_RADIUS, DESERT_LOOP_RADIUS, DESERT_LOOP_PEEK,
   paperCutoutPreviewRequested,
   // The pinned landmarks, so a test can watch ONE of them cross the picture
@@ -1092,7 +1167,7 @@ function skyGrad(ctx, c0, c1) {
   // opens at the top of the screen is whatever was in the backbuffer. The
   // gradient itself still runs 0..GROUND_Y as authored — a canvas gradient
   // clamps outside its stops, so the extra rows are flat sky, not a stretch.
-  const coverage = backgroundCoverage(ctx);
+  const coverage = backgroundPaintCoverage(ctx);
   ctx.fillRect(coverage.left, -PAN_MAX, coverage.width, GROUND_Y + PAN_MAX);
 }
 
@@ -1121,21 +1196,31 @@ function patternFill(ctx, key, tw, th, paint) {
 // direction is being evaluated. `settings.paperCutout:false` and `?paper=off`
 // remain comparison seams; the normal game path no longer needs a flag.
 const PAPER_TEXTURE_SIZE = 200;
+const PAPER_GRAIN_CELL = 3;
 // The first pass read as noise in the live game because the pattern was only
 // seven percent opaque. The reference has a continuous cardstock surface, so
 // give the material enough body to survive the game's native zoom and palette.
-const PAPER_TEXTURE_OPACITY = 0.16;
-const PAPER_GRAIN_ALPHA = 0.95;
-const PAPER_SURFACE_ALPHA = 0.92;
+const PAPER_TEXTURE_OPACITY = 0.08;
+const PAPER_GRAIN_ALPHA = 0.75;
+const PAPER_SURFACE_ALPHA = 0.68;
+const PAPER_SKY_SURFACE_ALPHA = 0.42;
 // Scenery gets a lift, not a second silhouette. Keep the offsets and alpha
 // short enough that clouds remain part of the sky instead of casting a long
 // game-object shadow across it.
-const PAPER_DEEP_OFFSET = Object.freeze({ x: 4, y: 8 });
-const PAPER_CONTACT_OFFSET = Object.freeze({ x: 1.5, y: 3 });
-const PAPER_DEEP_COLOR = 'rgba(15,23,36,0.18)';
-const PAPER_CONTACT_COLOR = 'rgba(0,0,0,0.08)';
+const PAPER_DEEP_OFFSET = Object.freeze({ x: 2, y: 4 });
+const PAPER_CONTACT_OFFSET = Object.freeze({ x: 0.75, y: 1.5 });
+const PAPER_DEEP_COLOR = 'rgba(15,23,36,0.10)';
+const PAPER_CONTACT_COLOR = 'rgba(0,0,0,0.04)';
 const PAPER_RIM_COLOR = 'rgba(255,255,255,0.24)';
 const PAPER_RIM_WIDTH = 1.15;
+// Broad scenery silhouettes need a little more separation than clouds or the
+// full-sky wash. Keep this local to the cached mountain/hill tiles so the
+// surface can read as cardstock without making the whole frame noisy again.
+const PAPER_LANDMARK_DEEP_COLOR = 'rgba(15,23,36,0.15)';
+const PAPER_LANDMARK_CONTACT_COLOR = 'rgba(0,0,0,0.06)';
+const PAPER_LANDMARK_RIM_COLOR = 'rgba(255,255,255,0.32)';
+const PAPER_LANDMARK_RIM_WIDTH = 1.25;
+const PAPER_LANDMARK_GRAIN_ALPHA = 1;
 const paperPatternCache = new WeakMap();
 const paperSurfaceCache = new Map();
 let paperTextureCanvas = null;
@@ -1171,9 +1256,29 @@ function paperTextureSource() {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed >>> 24;
     };
+    const coarseCells = Math.ceil(PAPER_TEXTURE_SIZE / PAPER_GRAIN_CELL) + 1;
+    const coarse = new Uint8Array(coarseCells * coarseCells);
+    for (let i = 0; i < coarse.length; i++) coarse[i] = next();
+    const coarseAt = (x, y) => {
+      const gx = x / PAPER_GRAIN_CELL;
+      const gy = y / PAPER_GRAIN_CELL;
+      const x0 = Math.floor(gx);
+      const y0 = Math.floor(gy);
+      const tx = gx - x0;
+      const ty = gy - y0;
+      const at = (ix, iy) => coarse[Math.min(coarseCells - 1, iy) * coarseCells
+        + Math.min(coarseCells - 1, ix)];
+      const top = at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx;
+      const bottom = at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx;
+      return top * (1 - ty) + bottom * ty;
+    };
     const data = image.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const grain = next();
+    for (let y = 0; y < PAPER_TEXTURE_SIZE; y++) {
+      for (let x = 0; x < PAPER_TEXTURE_SIZE; x++) {
+        const i = (y * PAPER_TEXTURE_SIZE + x) * 4;
+        // Low-frequency variation reads as fibre/cardstock rather than a
+        // field of single-pixel static. A tiny fine component keeps it tactile.
+        const grain = Math.round(coarseAt(x, y) * 0.82 + next() * 0.18);
       data[i] = grain;
       data[i + 1] = grain;
       data[i + 2] = grain;
@@ -1181,6 +1286,7 @@ function paperTextureSource() {
       // the surface itself is continuous.
       data[i + 3] = Math.floor((0.35 + (next() / 255) * 0.65)
         * PAPER_TEXTURE_OPACITY * 255);
+      }
     }
     p.putImageData(image, 0, 0);
     paperTextureCanvas = c;
@@ -1236,9 +1342,11 @@ function paperFinishPass(ctx, source, pattern = paperPatternFor(ctx), rim = {}) 
   }
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = rim.strokeStyle || PAPER_RIM_COLOR;
-  ctx.lineWidth = rim.lineWidth || PAPER_RIM_WIDTH;
-  strokePaperPath(ctx, source);
+  if (rim !== false && rim.rim !== false) {
+    ctx.strokeStyle = rim.strokeStyle || PAPER_RIM_COLOR;
+    ctx.lineWidth = rim.lineWidth || PAPER_RIM_WIDTH;
+    strokePaperPath(ctx, rim.edgeSource || source);
+  }
   ctx.restore();
 }
 
@@ -1265,10 +1373,15 @@ function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
   const sx = cv.width / Math.max(1, W);
   const sy = cv.height / Math.max(1, H);
   const width = Math.max(1, Math.ceil(coverage.width * sx));
-  const height = Math.max(1, Math.ceil(H * sy));
+  // Match the sky gradient's vertical overscan so camera/background movement
+  // cannot expose the untextured prefill as a horizontal wash boundary.
+  const logicalTop = -PAN_MAX;
+  const logicalHeight = H + PAN_MAX * 2;
+  const height = Math.max(1, Math.ceil(logicalHeight * sy));
   let bake = paperSurfaceCache.get(key);
   if (!bake || bake.pixelWidth !== width || bake.pixelHeight !== height
-    || bake.logicalWidth !== coverage.width || bake.logicalHeight !== H) {
+    || bake.logicalWidth !== coverage.width || bake.logicalTop !== logicalTop
+    || bake.logicalHeight !== logicalHeight) {
     const layer = document.createElement('canvas');
     layer.width = width;
     layer.height = height;
@@ -1278,21 +1391,22 @@ function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
     const pattern = b.createPattern(source, 'repeat');
     if (!pattern) return;
     b.fillStyle = pattern;
-    b.fillRect(0, 0, coverage.width, H);
+    b.fillRect(0, logicalTop, coverage.width, logicalHeight);
     bake = {
       layer,
       pixelWidth: width,
       pixelHeight: height,
       logicalWidth: coverage.width,
-      logicalHeight: H,
+      logicalTop,
+      logicalHeight,
     };
     paperSurfaceCache.set(key, bake);
   }
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha = PAPER_SURFACE_ALPHA;
+  ctx.globalAlpha = PAPER_SKY_SURFACE_ALPHA;
   ctx.drawImage(bake.layer, 0, 0, bake.pixelWidth, bake.pixelHeight,
-    coverage.left, 0, bake.logicalWidth, bake.logicalHeight);
+    coverage.left, bake.logicalTop, bake.logicalWidth, bake.logicalHeight);
   ctx.restore();
 }
 
@@ -1414,7 +1528,7 @@ export function sunShock() {
 function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null, paper = false) {
   // Animated but dignified: it slowly arcs across the sky like a day passing,
   // its rays rotate and breathe, and its halo pulses. It does not bop.
-  const view = backgroundCoverage(ctx);
+  const view = backgroundPaintCoverage(ctx);
   const sx = (t * 3.2) % (view.width + 150);
   const x = view.right + 60 - sx;                     // drifts right to left
   const u = (x - (view.left + view.width / 2)) / Math.max(1, view.width / 2);
@@ -1788,8 +1902,6 @@ const DESERT_THERMALS = [
   { x: 352, y: 40, rx: 31, ry: 7, n: 2, s: 13, rate: 0.55, plx: 0.09, ink: DESERT_INK_FAR },
 ];
 
-const DESERT_PORTRAIT_BIRD_SCALE = 1.45;
-
 function desertThermals(backgroundContext) {
   const band = backgroundContext?.sceneryLayout?.bands?.birds;
   if (!band || !Number.isFinite(Number(band.top))
@@ -1819,7 +1931,6 @@ function desertThermals(backgroundContext) {
 
 function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
   const thermals = desertThermals(backgroundContext);
-  const sizeScale = backgroundContext?.sceneryLayout ? DESERT_PORTRAIT_BIRD_SCALE : 1;
   for (const th of thermals) {
     for (let i = 0; i < th.n; i++) {
       // Reduced motion freezes the wheel rather than emptying the sky — the
@@ -1842,7 +1953,7 @@ function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(-Math.sin(a) * 0.22);
-      drawVulture(ctx, th.s * depth * sizeScale, flap, th.ink);
+      drawVulture(ctx, th.s * depth, flap, th.ink);
       ctx.restore();
     }
   }
@@ -1915,7 +2026,7 @@ function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y) {
   // `tile` is derived from the scroll distance itself, so it names the same
   // dune for as long as that dune exists and every choice below is stable.
   const base = Math.floor((camX * factor * ZOOM) / period);
-  const view = backgroundCoverage(ctx);
+  const view = backgroundPaintCoverage(ctx);
   const first = Math.floor((view.left - off - period) / period);
   const last = Math.ceil((view.right + period) / period);
   for (let k = first; k <= last; k++) {
@@ -2012,7 +2123,7 @@ function drawDustDevils(ctx, t, camX, reduced, layerBaseY = GROUND_Y) {
   // at one devil or none. At W + 220 both were on screen almost always, which
   // turned a thing you notice into weather — and a plain with a dust devil on
   // it every few seconds is not a still afternoon.
-  const span = backgroundCoverage(ctx).width * 4;
+  const span = backgroundPaintCoverage(ctx).width * 4;
   ctx.save();
   // LIGHTER than the country behind it. The first cut used #c99a63, which is
   // within a few points of the middle range's own #c0884c — a dust column the
@@ -2026,7 +2137,7 @@ function drawDustDevils(ctx, t, camX, reduced, layerBaseY = GROUND_Y) {
     // the camera is still — the cloud flock's trick. Frozen under reduced
     // motion rather than removed: the column is still a thing standing there.
     const wander = reduced ? 0 : t * d.drift;
-    const view = backgroundCoverage(ctx);
+    const view = backgroundPaintCoverage(ctx);
     const x = view.left - 110
       + (((d.x - camX * d.plx * ZOOM - wander) % span) + span) % span;
     if (outsideView(ctx, x, 60)) continue;
@@ -2260,7 +2371,20 @@ function pixelPack(settings) {
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber' && paperPreview) {
-        drawPaperSurface(ctx, backgroundCoverage(ctx));
+        // The fibre belongs to the sheet of sky, not to the camera move. Draw
+        // it in the renderer's base logical space before the moving scenery is
+        // painted over it, so it stays pinned while hills and clouds scroll.
+        ctx.save();
+        if (typeof ctx.setTransform === 'function' && ctx.canvas) {
+          ctx.setTransform(ctx.canvas.width / Math.max(1, W), 0, 0,
+            ctx.canvas.height / Math.max(1, H), 0, 0);
+          drawPaperSurface(ctx, DEFAULT_BACKGROUND_COVERAGE, 'plumber-paper-sky-static');
+        } else {
+          // Keep lightweight renderer test doubles compatible; they do not
+          // expose a real backing canvas or transform state.
+          drawPaperSurface(ctx, backgroundCoverage(ctx));
+        }
+        ctx.restore();
       }
       const sceneryOffset = portraitSceneryOffset(backgroundContext);
       const farAmp = cab.id === 'plumber' ? 96 : 60;
@@ -2543,7 +2667,7 @@ function neonPack(settings) {
     name: 'neon',
     dark: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
-      const coverage = backgroundCoverage(ctx);
+      const coverage = backgroundPaintCoverage(ctx);
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // starfield
       ctx.fillStyle = '#8888c8';
@@ -2678,7 +2802,7 @@ function vhsPack(settings) {
       ctx.restore();
       // fog
       ctx.fillStyle = 'rgba(140,120,160,0.12)';
-      const coverage = backgroundCoverage(ctx);
+      const coverage = backgroundPaintCoverage(ctx);
       ctx.fillRect(coverage.left, GROUND_Y - 40, coverage.width, 40);
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
@@ -8578,7 +8702,7 @@ function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNee
 function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false, backgroundContext = null) {
   const { frame, supported } = prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, lcdPanelCacheEnabled);
   const cv = ctx.canvas;
-  const coverage = backgroundCoverage(ctx);
+  const coverage = backgroundPaintCoverage(ctx);
   const shiftedCoverage = coverage.left !== 0 || coverage.right !== W;
   panelKey.push(ctx.imageSmoothingEnabled);
   panelKey.push(backgroundContext?.cloudOffsetY || 0);
@@ -8641,7 +8765,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   const sky = LCD_SKY_PHASES[frame.stageIndex][frame.phase] || palette.sky;
   skyGrad(ctx, sky[0], sky[1]);
   ctx.fillStyle = sky[1];
-  const coverage = backgroundCoverage(ctx);
+  const coverage = backgroundPaintCoverage(ctx);
   ctx.fillRect(coverage.left, GROUND_Y, coverage.width, H - GROUND_Y);
   ctx.lineWidth = 1;
   lcdPortraitCityExtension(ctx, frame, backgroundContext);
@@ -9123,7 +9247,7 @@ function cardboardPack(settings) {
       ctx.translate(0, backgroundY(backgroundContext, 'far'));
       parallaxHills(ctx, camX, cab.far, farBaseY, 56, 120, 0.15);
       ctx.fillStyle = 'rgba(90,64,32,0.3)';
-      const coverage = backgroundCoverage(ctx);
+      const coverage = backgroundPaintCoverage(ctx);
       for (let x = Math.floor(coverage.left / 10) * 10; x < coverage.right; x += 10) {
         ctx.fillRect(x, farBaseY - 60, 2, 6);
       }
@@ -9233,7 +9357,7 @@ function doodlePack(settings) {
     bgPan: 0,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       // graph paper — a warm off-white, not near-#fff, so blue ink reads
-      const coverage = backgroundCoverage(ctx);
+      const coverage = backgroundPaintCoverage(ctx);
       ctx.fillStyle = '#eceadf';
       ctx.fillRect(coverage.left, 0, coverage.width, H);
       ctx.lineWidth = 1;

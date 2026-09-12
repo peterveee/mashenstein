@@ -27,6 +27,10 @@ The first implementation pass is in the checkout, uncommitted. It adds a shared 
 
 The current camera pass also contains two visibility corrections from rendered review: the portrait upper camera boundary is the actual HUD bottom plus a small gap rather than the whole decorative scenery gap, and tunnel framing performs a bounded hero-body visibility correction. Ordinary surface jumps therefore use the spare sky, while a deep tunnel jump cannot leave the hero above the frame in either orientation. These are camera-only corrections; world geometry and the parked tunnel composition remain unchanged.
 
+Portrait backdrop scale rule: scenery art keeps the authored landscape physical scale. The portrait renderer scales the complete background pass by `480 / 270` (178%, centred on the authored groundline) and crops the resulting view to the phone's narrower width. This applies to sky objects, landmarks, clouds and background terrain only; HUD, hero, gameplay terrain and collision geometry retain their existing portrait rules.
+
+Portrait background edge rule: the scaled pass publishes a 96 logical-pixel screen-space look-ahead, converted into backdrop-local units. Wrapping and culling use that staging interval so clouds, birds, dust, hills and pinned landmarks are already being painted before their enlarged silhouettes cross the phone edge. Landscape keeps zero look-ahead and its existing wrap arithmetic.
+
 `npm test`, `npm run build` and `git diff --check` pass. That is necessary, not sufficient: the suites check band arithmetic, not what the packs draw. A rendered review of the pass found defects that make it not ready to commit. The rework is a separate handover: docs/responsive-layout-rework.md. This plan stays the spec; that file says what to change in the checkout.
 
 ### Scope

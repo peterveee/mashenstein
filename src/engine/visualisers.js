@@ -1,6 +1,7 @@
 // Jukebox screensaver visuals. These are deliberately Canvas2D-native: the
-// game already presents a fixed 480x270 logical backbuffer, so keeping the
-// presets here makes the 2D fallback and the WebGL upload path identical.
+// game presents a 480px-wide logical backbuffer, with a 270px landscape height
+// or the active tall portrait frame, so the 2D fallback and WebGL upload path
+// stay identical.
 import { Rng } from './rng.js';
 import { screen } from './renderer.js';
 import { TITLE_FONT, onGameFontsChanged, drawText, textWidth } from './sprites.js';
@@ -43,9 +44,23 @@ export const VISUALISER_NAMES = [
 ];
 
 const W = 480;
-const H = 270;
+const LANDSCAPE_H = 270;
+let H = LANDSCAPE_H;
 const CX = W / 2;
-const CY = H / 2;
+let CY = H / 2;
+
+// The standalone visualiser keeps its original 16:9 field. The portrait
+// jukebox installs the active presentation frame before creating a preset, so
+// the scene can paint through the whole tall logical surface instead of
+// stretching a short 480x270 picture over the phone.
+export function setVisualiserViewport(height = LANDSCAPE_H) {
+  const next = Math.max(LANDSCAPE_H, Number(height) || LANDSCAPE_H);
+  if (Math.abs(next - H) < 0.0001) return H;
+  H = next;
+  CY = H / 2;
+  RAIN_ROWS = Math.ceil(H / RAIN_ROW_H) + 2;
+  return H;
+}
 const SPECIAL_TOASTER_FINISHES = [
   { id: 'silver', back: '#74879b', side: '#bdcad8', top: '#edf4ff' },
   { id: 'red', back: '#8d1e31', side: '#d94653', top: '#ff9aa0' },
@@ -236,6 +251,7 @@ class BaseVisualiser {
     this.focusPhase = this.rng.float() * TAU;
     this.focusX = CX;
     this.focusY = CY;
+    this.viewportH = H;
     this.dust = makePool(96);
     this.dust.forEach((p) => seedDust(p, this.rng));
     this.name = 'VISUALISER';
@@ -279,6 +295,15 @@ class BaseVisualiser {
   }
 
   update(dt, analysis = {}) {
+    // A live phone can rotate while the sound test is open. Re-anchor the
+    // shared focal field and dust when its portrait frame changes height so a
+    // preset does not keep the old landscape centre after the resize.
+    if (this.viewportH !== H) {
+      const ratio = H / Math.max(1, this.viewportH);
+      this.focusY *= ratio;
+      this.dust.forEach((p) => { p.y *= ratio; p.py *= ratio; });
+      this.viewportH = H;
+    }
     this.t += Math.max(0, dt);
     this.analysis = analysis;
     this.prevBeat = this.beat;
@@ -2079,7 +2104,7 @@ const RAIN_LATIN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ?!';
 const RAIN_CELL_W = 12;
 const RAIN_ROW_H = 12;
 const RAIN_COLS = Math.ceil(W / RAIN_CELL_W);
-const RAIN_ROWS = Math.ceil(H / RAIN_ROW_H) + 2;
+let RAIN_ROWS = Math.ceil(H / RAIN_ROW_H) + 2;
 // The atlas cell is wider than the layout cell: half-width katakana fall back
 // to whatever font the platform has for them, and a wider glyph should overhang
 // its column rather than get clipped at the raster edge.

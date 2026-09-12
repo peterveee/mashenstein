@@ -4,7 +4,9 @@ import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMer
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, smooth } from '../engine/visualisers.js';
+import {
+  VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, smooth, setVisualiserViewport,
+} from '../engine/visualisers.js';
 import { defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawPellet } from '../engine/sprites.js';
@@ -655,13 +657,12 @@ function titleToasterStart(trip, count) {
 function titleToasterCenterY(trip) {
   const layout = titleLayout();
   if (!layout.portrait) return 84 + shaderHash21(trip + 7, 41) * 76;
-  // Portrait gives the enlarged appliances a proper stage in the open band
-  // below the button stack. The two-row offsets let a formation fill that
-  // space, while the draw order still permits the largest bodies to overlap a
-  // card edge when they cross.
+  // Portrait follows the landscape gag: the appliances fly through the menu
+  // stack, not down at the hero heads. The two-row offsets let a formation
+  // occupy different buttons while the overlay draw order keeps it visible.
   const cardsBottom = layout.panelY + layout.cardH * 4 + layout.cardGap * 3;
-  const laneTop = cardsBottom + 34;
-  const laneBottom = Math.min(layout.paradeTop + 42, cardsBottom + 80);
+  const laneTop = layout.panelY + 32;
+  const laneBottom = cardsBottom - 32;
   const span = Math.max(0, laneBottom - laneTop);
   return laneTop + shaderHash21(trip + 7, 41) * span;
 }
@@ -712,7 +713,7 @@ function drawFlyingToasters(ctx, t, reduced, singleOpening) {
     // These are a foreground gag now, not distant sky decoration. Give the
     // appliance body enough scale to read clearly over the portrait cards.
     const size = layout.portrait
-      ? 108 + shaderHash21(pass.trip + i + 13, 59) * 36
+      ? 96 + shaderHash21(pass.trip + i + 13, 59) * 32
       : 68 + shaderHash21(pass.trip + i + 13, 59) * 24;
     const h = size * 0.82;
     const y = pass.centerY + offsets[i] + Math.sin(t * 2.2 + i * 0.8 + pass.trip) * 1.5;
@@ -1523,6 +1524,7 @@ const TITLE_FOOTER_Y = 250;
   // a phone, under the smallest size iOS itself sets body copy at. There is room
   // under the panel for a full-size line, so they get one.
 const TITLE_FLAVOR_S = 1;
+const TITLE_CONTROLS_S = 2.0;
 
 function titleCaptionLines(text, scale) {
   const maxWidth = W - 48;
@@ -1598,6 +1600,7 @@ export function titleLayout() {
       paradeGap: HERO_PARADE_LANDSCAPE_GAP,
       footerY: TITLE_FOOTER_Y,
       footerLineH: TITLE_FOOTER_LINE_H,
+      controlsTextS: TITLE_CONTROLS_S,
       menuTextS: TITLE_MENU_TEXT_S,
       statusTextS: TITLE_STATUS_TEXT_S,
       subtitleTextS: 1,
@@ -1662,6 +1665,7 @@ export function titleLayout() {
     // remove it when the parade becomes the focus.
     footerY: floorY - 82,
     footerLineH: 14,
+    controlsTextS: 2.1,
     // The first bump was still too close to the landscape ink at phone size,
     // especially on the plug-count line. Give the cards a clear headline and
     // status hierarchy instead of asking the progress bar to carry it.
@@ -1784,6 +1788,16 @@ function warningGlowSprite(text, scale) {
 }
 function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = false, labels = null) {
   const portrait = portraitMenuActive();
+  const fullPortrait = portrait && !!labels;
+  if (fullPortrait) {
+    const firstY = portraitMenuSafeTop() + 92;
+    const footerY = portraitMenuSafeBottom(22);
+    const rowH = Math.max(56, Math.min(86,
+      (footerY - firstY - 38) / Math.max(1, count)));
+    return {
+      x: 0, y: 0, w: W, h: H, rowH, firstY, cancelGap: 0,
+    };
+  }
   // STAFF ONLY is a real page on a phone, not a small dialog floating in the
   // old landscape strip. Give its rows a thumb-sized pitch and let the box
   // use the generous portrait height; the same geometry feeds modalRowAt().
@@ -2347,6 +2361,10 @@ export class TitleState {
     Input.endFrame();
   }
   draw(ctx) {
+    // Staff Only and erase are opaque utility surfaces painted inside the title
+    // state. Do not run the title's bloom/aberration over their glyphs: the
+    // high-contrast text turns into a soft, shimmering fringe on WebGL.
+    setSceneGlow(!(this.erase || this.extras));
     const profile = titleProfileOptions();
     const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile, this.titleShooters);
     // The parade is always queued before the menu UI, including on touch. This
@@ -2436,7 +2454,6 @@ export class TitleState {
       // On touch the cards read as tappable without an instruction beneath them.
       const touch = titleTouch();
       const flavorY = layout.footerY;
-      const controlsY = touch ? flavorY : flavorY - layout.footerLineH;
       // The footer is useful while the title is waiting for input, then gets
       // The footer has a short opening beat of its own, then clears as the first
       // hero arrives so it never competes with the parade in the ground band.
@@ -2445,12 +2462,6 @@ export class TitleState {
       // footer clears; the copy remains legible through the full entrance beat.
       const flavorFade = fade(HERO_PARADE_DELAY + 2.6, 1.2);
       const controlsFade = fade(HERO_PARADE_DELAY + 2.3, 1.2);
-      d.globalAlpha = controlsFade;
-      // Keyboard-only by the branch above, so it names keys only: listing taps
-      // to the one reader who cannot make them is the mirror of the mistake the
-      // touch layout avoids by dropping this line entirely.
-      if (!touch) drawTextCentered(d, 'ARROWS: CHOOSE   ENTER: CONFIRM', W / 2, controlsY, '#6b7d95');
-      d.globalAlpha = flavorFade * 0.85;
       const captionIsAttract = this.onAttract && this.attractDelay <= 10;
       const caption = captionIsAttract
         ? `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ${touch ? 'TAP' : 'ANY KEY'}: BACK`
@@ -2458,6 +2469,15 @@ export class TitleState {
       const captionLines = titleCaptionLines(caption, layout.footerTextS);
       const captionLineH = 10.5 * layout.footerTextS;
       const captionFirstY = flavorY - ((captionLines.length - 1) * captionLineH) / 2;
+      const controlsY = touch
+        ? flavorY
+        : captionFirstY - 14 - (TEXT_INK_H + 1.5) * layout.controlsTextS;
+      d.globalAlpha = controlsFade;
+      // Keyboard-only by the branch above, so it names keys only: listing taps
+      // to the one reader who cannot make them is the mirror of the mistake the
+      // touch layout avoids by dropping this line entirely.
+      if (!touch) drawTextCentered(d, 'ARROWS: CHOOSE   ENTER: CONFIRM', W / 2, controlsY, '#6b7d95');
+      d.globalAlpha = flavorFade * 0.85;
       const captionColor = captionIsAttract ? '#8858c8' : '#55647a';
       captionLines.forEach((line, i) => {
         drawTextCentered(d, line, W / 2, captionFirstY + i * captionLineH,
@@ -2513,6 +2533,11 @@ export class TitleState {
       title: 'STAFF ONLY', accent: 'rgba(109,90,145,0.35)', titleColor: '#f4f1fa',
       align: 'left', fitWidth: true,
     });
+    if (portraitMenuActive()) {
+      portraitMenuTextCentered(d,
+        Input.isTouchDevice() ? 'TAP: CHOOSE   BACK: EXIT' : 'ARROWS: CHOOSE   ENTER: CONFIRM',
+        W / 2, portraitMenuTextY(portraitMenuSafeBottom(22), 1.0), '#5a5a68', 1.0);
+    }
   }
 }
 
@@ -2522,19 +2547,29 @@ export class TitleState {
 function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBeforeLast = false, spaciousRows = false, warningPulse = 0, align = 'center', fitWidth = false }) {
   const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows, fitWidth ? choices.map((choice) => choice.label) : null);
   const portrait = portraitMenuActive();
+  const fullPortrait = portrait && fitWidth;
   const modalTextS = portrait ? (spaciousRows ? 1.45 : 1.35) : spaciousRows ? 1.55 : 1.35;
   const modalTitleS = portrait ? (spaciousRows ? 1.95 : 1.8) : spaciousRows ? 1.75 : 1.5;
   const left = align === 'left';
-  const textX = g.x + 24;
-  d.fillStyle = 'rgba(2,3,10,0.78)';
+  const textX = fullPortrait ? 28 : g.x + 24;
+  d.fillStyle = fullPortrait ? '#0b0b14' : 'rgba(2,3,10,0.78)';
   d.fillRect(0, 0, W, H);
-  d.fillStyle = 'rgba(11,10,20,0.98)';
-  platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
-  d.strokeStyle = accent; d.lineWidth = 1;
-  platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
+  if (!fullPortrait) {
+    d.fillStyle = 'rgba(11,10,20,0.98)';
+    platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
+    d.strokeStyle = accent; d.lineWidth = 1;
+    platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
+  }
+  const titleMid = fullPortrait ? portraitMenuSafeTop() + 34 : g.y + 16;
+  const titleFit = fullPortrait ? portraitMenuFit(title, modalTitleS, W - 48, 'title') : modalTitleS;
   if (left) {
-    if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', modalTitleS, 'title');
+    if (fullPortrait) portraitMenuText(d, title, textX,
+      portraitMenuTextY(titleMid, titleFit, 'title'), '#f4f1fa', titleFit, 'title');
+    else if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', modalTitleS, 'title');
     else drawText(d, title, textX, g.y + 12, '#f4f1fa', modalTitleS, 'title');
+  } else if (fullPortrait) {
+    portraitMenuTextCentered(d, title, W / 2,
+      portraitMenuTextY(titleMid, titleFit, 'title'), '#f4f1fa', titleFit, 'title');
   } else if (portrait) {
     portraitMenuTextCentered(d, title, W / 2, g.y + 16, '#f4f1fa', modalTitleS, 'title');
   } else {
@@ -2564,15 +2599,21 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   choices.forEach((choice, i) => {
     const selected = i === idx;
     const rowTop = g.firstY + i * g.rowH + (g.cancelGap && i === choices.length - 1 ? g.cancelGap : 0);
+    const labelSize = fullPortrait
+      ? portraitMenuFit(choice.label, modalTextS, W - 56, selected ? 'bold' : 'ui')
+      : modalTextS;
     const textY = portrait
-      ? portraitMenuTextY(rowTop + g.rowH / 2, modalTextS, selected ? 'bold' : 'ui')
+      ? portraitMenuTextY(rowTop + g.rowH / 2, labelSize, selected ? 'bold' : 'ui')
       : textYForMid(rowTop + g.rowH / 2);
-    if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
+    if (selected) drawMenuRow(d, fullPortrait ? 18 : g.x + 7, rowTop + 1,
+      fullPortrait ? W - 36 : g.w - 14, g.rowH - 2);
     if (left) {
-      if (portrait) portraitMenuText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+      if (portrait) portraitMenuText(d, choice.label, textX, textY,
+        selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
       else drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
     } else if (portrait) {
-      portraitMenuTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+      portraitMenuTextCentered(d, choice.label, W / 2, textY,
+        selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
     } else {
       drawTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
     }
@@ -3252,6 +3293,10 @@ const RESULT_FOOTER_MID = H - 27;
 const TUBE_INSET_X = 16;
 const TUBE_INSET_Y = 19;
 const TUBE_R = 34;       // generous: a shallow curve reads as a rounded box
+// The portrait hero tube is a scaled presentation of this same glass, not a
+// second tall layout. Use the visible landscape tube rather than the full
+// canvas so its bezel/gutter relationship survives the orientation change.
+const LANDSCAPE_TUBE_ASPECT = (W - TUBE_INSET_X * 2) / (270 - TUBE_INSET_Y * 2);
 let tubeGlow = null;
 let tubeWash = null;
 
@@ -3363,6 +3408,104 @@ function drawTubeMask(ctx) {
   ctx.restore();
 }
 
+// The phone has enough vertical room to give the curtain call two separate
+// surfaces: a reading band above, and a scaled landscape-proportion tube for
+// the cast below. Keep this path local to the results card instead of stretching
+// the landscape tube over the whole tall frame — the copy feels like a poster
+// mounted above the CRT, while the hero party stays inside the same screen shape
+// players see in landscape.
+function portraitResultTubePath(ctx, box, fresh = true) {
+  const x0 = box.x, y0 = box.y, x1 = box.x + box.w, y1 = box.y + box.h;
+  const r = Math.min(box.r, box.w / 2, box.h / 2);
+  if (fresh) ctx.beginPath();
+  ctx.moveTo(x0 + r, y0);
+  ctx.lineTo(x1 - r, y0);
+  ctx.quadraticCurveTo(x1, y0, x1, y0 + r);
+  ctx.lineTo(x1, y1 - r);
+  ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+  ctx.lineTo(x0 + r, y1);
+  ctx.quadraticCurveTo(x0, y1, x0, y1 - r);
+  ctx.lineTo(x0, y0 + r);
+  ctx.quadraticCurveTo(x0, y0, x0 + r, y0);
+  ctx.closePath();
+}
+
+function portraitResultTube(ctx, box) {
+  const bezel = 5;
+  const inner = {
+    x: box.x + bezel, y: box.y + bezel,
+    w: box.w - bezel * 2, h: box.h - bezel * 2,
+    r: Math.max(4, box.r - bezel),
+  };
+  ctx.fillStyle = '#030309';
+  portraitResultTubePath(ctx, box);
+  ctx.fill();
+  ctx.save();
+  portraitResultTubePath(ctx, inner);
+  ctx.clip();
+  ctx.fillStyle = '#0b0b14';
+  ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
+  const wash = ctx.createRadialGradient(
+    inner.x + inner.w / 2, inner.y + inner.h * 0.38, 8,
+    inner.x + inner.w / 2, inner.y + inner.h * 0.38, inner.w * 0.72,
+  );
+  wash.addColorStop(0, 'rgba(104,132,214,0.34)');
+  wash.addColorStop(0.55, 'rgba(78,96,168,0.16)');
+  wash.addColorStop(1, 'rgba(60,70,140,0)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
+  const glow = ctx.createLinearGradient(0, inner.y + inner.h, 0, inner.y + inner.h * 0.52);
+  glow.addColorStop(0, 'rgba(255,168,88,0.18)');
+  glow.addColorStop(1, 'rgba(255,168,88,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(inner.x, inner.y + inner.h * 0.45, inner.w, inner.h * 0.55);
+  // The landscape tube's texture is intentionally repeated here at the
+  // panel's own scale. It lands under the sprites, so the CRT reads as glass
+  // around the team without turning their faces into a dim scanline mesh.
+  // Use broad bands here: at portrait phone scale, a dense 3u texture blends
+  // into a flat grey wash. The 7u cadence keeps the CRT read visible without
+  // competing with the tiny character pixels.
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  for (let y = inner.y; y < inner.y + inner.h; y += 7) ctx.fillRect(inner.x, y, inner.w, 1);
+  ctx.fillStyle = 'rgba(150,180,255,0.07)';
+  for (let y = inner.y + 2; y < inner.y + inner.h; y += 7) ctx.fillRect(inner.x, y, inner.w, 1);
+  for (let i = 0; i < 360; i++) {
+    const a = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const b = Math.abs(Math.sin(i * 78.233) * 24634.6345) % 1;
+    ctx.fillStyle = `rgba(190,205,255,${0.025 + a * 0.055})`;
+    ctx.fillRect(inner.x + a * inner.w, inner.y + b * inner.h, 1, 1);
+  }
+  ctx.restore();
+  ctx.lineWidth = 1;
+  portraitResultTubePath(ctx, box);
+  ctx.strokeStyle = 'rgba(150,190,255,0.22)';
+  ctx.stroke();
+  portraitResultTubePath(ctx, inner);
+  ctx.strokeStyle = 'rgba(150,190,255,0.10)';
+  ctx.stroke();
+  // A lit top seam makes the boundary unmistakable at phone size: everything
+  // above it is the results poster, everything below it is the celebration
+  // playing inside the tube.
+  ctx.strokeStyle = 'rgba(190,215,255,0.22)';
+  ctx.beginPath();
+  ctx.moveTo(inner.x + inner.r, inner.y + 1.5);
+  ctx.lineTo(inner.x + inner.w - inner.r, inner.y + 1.5);
+  ctx.stroke();
+  return inner;
+}
+
+function drawPortraitTubeParty(ctx, inner, shells) {
+  ctx.save();
+  portraitResultTubePath(ctx, inner);
+  ctx.clip();
+  drawParticles(ctx);
+  for (const s of shells) {
+    ctx.fillStyle = s.color;
+    ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 3);
+  }
+  ctx.restore();
+}
+
 // A failed run used to end on a single CONTINUE that walked you to the food
 // court, leaving the cabinet four screens away — so the cheapest thing a player
 // could do after a loss was the most expensive one to ask for. The retry rows
@@ -3372,6 +3515,11 @@ const RESULT_OPT_H = 14;
 // The rows stand in the curtain call's place and reach down over the prompt
 // line: they name their own actions, so there is nothing left to prompt for.
 const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2 - RESULT_OPT_H * 2;
+// Portrait losses are a decision screen, not a ledger squeezed into the
+// landscape footprint. These are CSS-sized so the plates stay genuinely large
+// as the logical frame changes with the phone's aspect ratio.
+const PORTRAIT_FAIL_BUTTON_H_CSS = 84;
+const PORTRAIT_FAIL_BUTTON_GAP_CSS = 14;
 export class ResultsState {
   static portraitMode = 'frame';
 
@@ -3602,8 +3750,10 @@ export class ResultsState {
     const frame = presentationFrame();
     const safe = frame.safeRect;
     const css = (n) => n / frame.scale;
-    const h = css(56), gap = css(10), margin = css(12);
-    const y = safe.bottom - h * 2 - gap - css(12);
+    const h = css(PORTRAIT_FAIL_BUTTON_H_CSS);
+    const gap = css(PORTRAIT_FAIL_BUTTON_GAP_CSS);
+    const margin = css(12);
+    const y = safe.bottom - h * 2 - gap - css(16);
     return [
       { x: safe.left + margin, y, w: safe.width - margin * 2, h },
       { x: safe.left + margin, y: y + h + gap, w: safe.width - margin * 2, h },
@@ -3611,6 +3761,260 @@ export class ResultsState {
   }
 
   drawPortrait(ctx) {
+    const r = this.result;
+    if (r.success && r.team?.length) {
+      this.drawPortraitSuccess(ctx);
+      return;
+    }
+    // Keep the loss/retry card's existing two-button contract. The portrait
+    // CRT is the success curtain call, where it has a team to frame.
+    if (!r.success) this.drawPortraitFailure(ctx);
+    else this.drawPortraitLegacy(ctx);
+  }
+
+  drawPortraitSuccess(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const r = this.result;
+    const rows = this.ledgerRows();
+    const title = r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE';
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(18);
+    const textWidthLimit = Math.max(css(210), safe.width - margin * 2);
+    const titleS = textWidthLimit / Math.max(1, textWidth(title, 1, 'title'));
+    const scoreText = `SCORE: ${Math.floor(this.shown)}`;
+    const footerMid = safe.bottom - css(23);
+    const footerS = Math.min(2.3,
+      textWidthLimit / Math.max(1, textWidth(`${confirmVerb()} TO CONTINUE`, 1)));
+    const tubeBottom = footerMid - css(27);
+    // Keep the actual glass proportional to the landscape CRT. On a phone the
+    // available width is the limiting dimension, so the extra height remains a
+    // clean reading gap instead of distorting the TV into a tall card.
+    const tubeW = Math.max(css(220), safe.width - css(16));
+    const tubeH = tubeW / LANDSCAPE_TUBE_ASPECT;
+    const wantedTubeTop = tubeBottom - tubeH;
+    const bodyTop = safe.top + css(30);
+    const textTubeGap = css(17);
+    // Give each information tier its own air. These are CSS-sized gaps so the
+    // separation stays generous on both the narrow phone and the tall review
+    // canvas instead of collapsing with the render density.
+    const titleGap = css(18);
+    const detailLineGap = css(8);
+    const detailScoreGap = css(16);
+    const scoreLedgerGap = css(16);
+    const ledgerLineGap = css(9);
+
+    // Fit the copy first. A long plug ledger may wrap to two or three large
+    // lines, and the tube gives up a little height for that before the type is
+    // allowed to fall back to the small landscape scale.
+    const buildTextLayout = (bodyS) => {
+      const detailS = r.failDetail
+        ? Math.min(2.55, bodyS * 0.82,
+          textWidthLimit / Math.max(1, textWidth(r.failDetail, 1))) : 0;
+      const detailLines = r.failDetail
+        ? wrapText(r.failDetail, textWidthLimit, detailS, 2) : [];
+      const scoreS = Math.min(3.8, bodyS + 0.35,
+        textWidthLimit / Math.max(1, textWidth(scoreText, 1, 'bold')));
+      const ledgerLines = rows.flatMap(([text, color]) =>
+        wrapText(text, textWidthLimit, bodyS, 3).map((line) => [line, color]));
+      const titleH = 11.5 * titleS;
+      const detailH = detailLines.length
+        ? detailLines.length * 10.5 * detailS
+          + Math.max(0, detailLines.length - 1) * detailLineGap + detailScoreGap : 0;
+      const scoreH = 10.5 * scoreS + scoreLedgerGap;
+      const ledgerH = ledgerLines.length
+        ? ledgerLines.length * 10.5 * bodyS
+          + Math.max(0, ledgerLines.length - 1) * ledgerLineGap : 0;
+      return {
+        bodyS, detailS, detailLines, scoreS, ledgerLines,
+        height: titleH + titleGap + detailH + scoreH + ledgerH,
+      };
+    };
+
+    let textLayout = buildTextLayout(3.35);
+    let tubeTop = wantedTubeTop;
+    let available = tubeTop - bodyTop - textTubeGap;
+    if (textLayout.height > available) {
+      const fittedS = Math.max(1.85, textLayout.bodyS * available / textLayout.height);
+      textLayout = buildTextLayout(fittedS);
+      available = tubeTop - bodyTop - textTubeGap;
+      if (textLayout.height > available) {
+        textLayout = buildTextLayout(Math.max(1.55,
+          textLayout.bodyS * available / textLayout.height));
+      }
+    }
+
+    ctx.fillStyle = '#07070c';
+    ctx.fillRect(0, 0, W, H);
+    let y = bodyTop;
+    drawTextCentered(ctx, title, center, y, '#48c848', titleS, 'title');
+    y += 11.5 * titleS + titleGap;
+    if (textLayout.detailLines.length) {
+      textLayout.detailLines.forEach((line, i) => {
+        drawTextCentered(ctx, line, center, y, '#e8a0a0', textLayout.detailS);
+        y += 10.5 * textLayout.detailS + (i < textLayout.detailLines.length - 1 ? detailLineGap : 0);
+      });
+      y += detailScoreGap;
+    }
+    drawTextCentered(ctx, scoreText, center, y, '#fff', textLayout.scoreS, 'bold');
+    y += 10.5 * textLayout.scoreS + scoreLedgerGap;
+    textLayout.ledgerLines.forEach(([line, color], i) => {
+      drawTextCentered(ctx, line, center, y, color, textLayout.bodyS);
+      y += 10.5 * textLayout.bodyS + (i < textLayout.ledgerLines.length - 1 ? ledgerLineGap : 0);
+    });
+
+    const box = {
+      x: safe.left + css(8), y: tubeTop,
+      w: tubeW,
+      h: tubeH,
+      r: Math.min(css(30), tubeH * 0.18),
+    };
+    const inner = portraitResultTube(ctx, box);
+    drawPortraitTubeParty(ctx, inner, this.shells);
+    // The copy now occupies a deliberately airy band above the tube, so lift
+    // the curtain-call line well clear of the lower bezel instead of letting
+    // the team sink back to the screen floor.
+    const heroFeet = inner.y + inner.h - css(62);
+    const heroRoom = Math.max(css(50), heroFeet - inner.y - css(18));
+    const pitchK = 1.15;
+    const widthK = r.team.length === 1 ? 1.05 : (r.team.length - 1) * pitchK + 1.05;
+    const heroH = Math.min(heroRoom * 0.88,
+      (inner.w - css(24)) / Math.max(1, widthK));
+    // The landscape curtain call lets confetti spill over the glass, but the
+    // hero line is the picture on the tube. Clip the portrait party to the
+    // inner glass so the phone version preserves that screen read rather than
+    // growing characters over the bezel.
+    ctx.save();
+    portraitResultTubePath(ctx, inner);
+    ctx.clip();
+    r.team.forEach((id, i) => drawToon(ctx, id,
+      { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
+      center + (i - (r.team.length - 1) / 2) * heroH * pitchK,
+      heroFeet, heroH));
+    ctx.restore();
+
+    drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, center,
+      textYForMid(footerMid, footerS), '#c8c8d8', footerS);
+  }
+
+  drawPortraitFailure(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const r = this.result;
+    const rows = this.ledgerRows();
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(16);
+    const contentW = Math.max(1, safe.width - margin * 2);
+    const options = this.retryable ? this.portraitOptions() : null;
+    const buttonTop = options?.[0]?.y ?? safe.bottom - css(96);
+    const copyTop = safe.top + css(24);
+    const copyBottom = buttonTop - css(24);
+    const title = r.failMsg || 'UNPLUGGED';
+    // A failure headline should feel like a verdict. Keep it large and let a
+    // long authored joke take two lines rather than shrinking it back to a
+    // caption-sized sentence.
+    const titleS = 3.7;
+    const titleLines = wrapText(title, contentW, titleS, 2, 'title');
+    const scoreText = `SCORE: ${Math.floor(this.shown)}`;
+    const scoreS = Math.min(3.4,
+      contentW / Math.max(1, textWidth(scoreText, 1, 'bold')));
+
+    const buildLayout = (bodyS) => {
+      const detailS = Math.min(2.55,
+        contentW / Math.max(1, textWidth(r.failDetail || '', 1)));
+      const detailLines = r.failDetail
+        ? wrapText(r.failDetail, contentW, detailS, 2) : [];
+      const ledgerLines = rows.flatMap(([text, color]) =>
+        wrapText(text, contentW, bodyS, 2).map((line) => [line, color]));
+      const titleLineGap = css(8);
+      const detailLineGap = css(9);
+      const titleGap = css(18);
+      const detailScoreGap = css(20);
+      const scoreLedgerGap = css(22);
+      const ledgerLineGap = css(10);
+      const titleH = titleLines.length * 11.5 * titleS
+        + Math.max(0, titleLines.length - 1) * titleLineGap;
+      const detailH = detailLines.length
+        ? detailLines.length * 10.5 * detailS
+          + Math.max(0, detailLines.length - 1) * detailLineGap
+          + detailScoreGap : 0;
+      const scoreH = 10.5 * scoreS + scoreLedgerGap;
+      const ledgerH = ledgerLines.length
+        ? ledgerLines.length * 10.5 * bodyS
+          + Math.max(0, ledgerLines.length - 1) * ledgerLineGap : 0;
+      return {
+        bodyS, detailS, detailLines, ledgerLines,
+        titleGap, scoreH, ledgerLineGap,
+        height: titleH + titleGap + detailH + scoreH + ledgerH,
+      };
+    };
+
+    // Keep the first choice generous even on the shortest supported phone. If
+    // a particularly wordy loss has more ledger lines, spend a little of that
+    // room before allowing the type to fall below the large-text floor.
+    const available = Math.max(1, copyBottom - copyTop);
+    let layout = buildLayout(2.35);
+    if (layout.height > available) {
+      layout = buildLayout(Math.max(1.85, layout.bodyS * available / layout.height));
+    }
+
+    ctx.fillStyle = '#07070c';
+    ctx.fillRect(0, 0, W, H);
+    const panelX = safe.left + css(8);
+    const panelW = Math.max(1, safe.width - css(16));
+    const panelY = copyTop - css(14);
+    const panelH = Math.min(copyBottom - panelY, layout.height + css(28));
+    drawPanel(ctx, panelX, panelY, panelW, panelH, 12, 'rgba(26,18,32,0.96)', {
+      border: 'rgba(224,72,72,0.62)', shadow: true,
+    });
+
+    let y = copyTop;
+    titleLines.forEach((line, i) => {
+      drawTextCentered(ctx, line, center, y, '#ff6b6b', titleS, 'title');
+      y += 11.5 * titleS + (i < titleLines.length - 1 ? css(8) : 0);
+    });
+    y += layout.titleGap;
+    layout.detailLines.forEach((line, i) => {
+      drawTextCentered(ctx, line, center, y, '#e8a0a0', layout.detailS);
+      y += 10.5 * layout.detailS + (i < layout.detailLines.length - 1 ? css(9) : 0);
+    });
+    if (layout.detailLines.length) y += css(20);
+    drawTextCentered(ctx, scoreText, center, y, '#fff', scoreS, 'bold');
+    y += 10.5 * scoreS + css(22);
+    layout.ledgerLines.forEach(([line, color], i) => {
+      drawTextCentered(ctx, line, center, y, color, layout.bodyS);
+      y += 10.5 * layout.bodyS + (i < layout.ledgerLines.length - 1 ? layout.ledgerLineGap : 0);
+    });
+
+    if (options) {
+      const hint = Input.usingTouch
+        ? 'TAP TO SELECT · TAP AGAIN TO CONFIRM'
+        : `${confirmVerb()} TO CHOOSE · ARROWS TO MOVE`;
+      drawTextCentered(ctx, hint, center, options[0].y - css(18), '#a8a0b0', 1.45, 'bold');
+      ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
+        const b = options[i];
+        const sel = i === this.idx;
+        const buttonLabelS = Math.min(2.65,
+          (b.w - css(28)) / Math.max(1, textWidth(label, 1, 'bold')));
+        drawPanel(ctx, b.x, b.y, b.w, b.h, 12, 'rgba(11,11,20,0.96)', {
+          border: sel ? '#ffcf33' : i === 0 ? 'rgba(224,72,72,0.78)' : 'rgba(255,255,255,0.30)',
+          shadow: true,
+        });
+        if (sel) drawMenuRow(ctx, b.x + 3, b.y + 3, b.w - 6, b.h - 6, 9,
+          'rgba(201,160,255,0.18)');
+        drawTextCentered(ctx, label, b.x + b.w / 2,
+          textYForMid(b.y + b.h / 2, buttonLabelS, 'bold'),
+          sel ? '#f0d8ff' : '#c8c8d8', buttonLabelS, 'bold');
+      });
+    } else {
+      drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, center,
+        textYForMid(safe.bottom - css(24), 2.2), '#c8c8d8', 2.2);
+    }
+  }
+
+  drawPortraitLegacy(ctx) {
     const frame = presentationFrame();
     const safe = frame.safeRect;
     const css = (n) => n / frame.scale;
@@ -4184,11 +4588,11 @@ const VISUAL_OUT_GAP = 0.10;
 const VISUAL_OUT_TOTAL = 0.45;
 
 export class SoundTestState {
-  // The listening/visualiser surface is deliberately usable in portrait: it
-  // fills the viewport non-uniformly and counter-scales its own type (see
-  // layout() and portraitTextYScale below). lifecycle.js reads this to decide
-  // the rotate overlay stays down here.
-  static portraitMode = 'stretch';
+  // The listening/visualiser surface is deliberately usable in portrait. Its
+  // list uses the same uniform frame and full-height rows as the other staff
+  // menus; the visualiser itself still takes over the whole viewport when it
+  // wakes. lifecycle.js reads this to decide the rotate overlay stays down here.
+  static portraitMode = 'frame';
 
   // `tracks` defaults to the shipped jukebox, so every production route is the list it
   // always was. The dev menu passes a longer one to audition a song that lives on the
@@ -4230,7 +4634,13 @@ export class SoundTestState {
     this.actTok = 0;
   }
   enter() {
-    setJukeboxPortrait(true);
+    // The list now uses the same uniform frame as Settings. Keeping the old
+    // non-uniform jukebox flag here made glyphs soft and gave long labels a
+    // narrower effective column than the rest of the staff screens.
+    setJukeboxPortrait(false);
+    // Sound Test can also be opened directly by the portrait hand-off, so do
+    // not rely on TitleState.exit() to turn off title post-processing.
+    setSceneGlow(false);
     this.layout();
     const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < this.tracks.length
       ? this.initialTrack : -1;
@@ -4381,6 +4791,30 @@ export class SoundTestState {
   // cutouts sit out in the black margin — and this is the fixed layout the
   // screen has always had, to the pixel.
   layout() {
+    // Keep the preset's logical field in lockstep with the active frame before
+    // enter() creates it. Landscape remains the original 480x270 visualiser;
+    // portrait gets the full tall frame at the same uniform scale as the menu.
+    setVisualiserViewport(portraitMenuActive() ? H : 270);
+    if (portraitMenuActive()) {
+      const safeTop = portraitMenuSafeTop();
+      const safeBottom = portraitMenuSafeBottom();
+      const footerY = safeBottom - 22;
+      const itemCount = Math.min(this.tracks.length, 10);
+      this.titleY = safeTop + 34;
+      this.statusY = safeTop + 70;
+      this.barsBase = safeTop + 99;
+      this.listY = safeTop + 118;
+      this.visibleRows = Math.max(1, itemCount);
+      // Reserve a compact footer shelf first, then let up to ten album rows
+      // take the rest of the phone. The two-line title/BPM stack still has
+      // room to breathe, but no longer leaves a large unused lower band.
+      this.backH = 60;
+      this.backY = footerY - 18 - this.backH;
+      this.rowH = Math.max(56, Math.min(96,
+        (this.backY - this.listY - 12) / this.visibleRows));
+      this.hintY = footerY;
+      return;
+    }
     const menuScale = screen.portraitFill ? PORTRAIT_MENU_S : 1;
     const yScale = this.portraitTextYScale();
     // Measured against the INK, not the glyph box: the box carries ascender and
@@ -4566,6 +5000,10 @@ export class SoundTestState {
     Input.endFrame();
   }
   drawList(ctx, alpha = 1) {
+    if (portraitMenuActive()) {
+      this.drawPortraitList(ctx, alpha);
+      return;
+    }
     ctx.save();
     ctx.globalAlpha = alpha;
     this.layout();
@@ -4656,6 +5094,66 @@ export class SoundTestState {
       W / 2, this.hintY, '#5a5a68');
     ctx.restore();
   }
+  drawPortraitList(ctx, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    this.layout();
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    const titleX = 28;
+    const titleS = portraitMenuFit('SOUND TEST', 2.35, W - 56, 'title');
+    portraitMenuText(ctx, 'SOUND TEST', titleX,
+      portraitMenuTextY(this.titleY, titleS, 'title'), '#fff', titleS, 'title');
+    const status = this.playing >= 0 ? `NOW PLAYING: ${this.tracks[this.playing].name}` : 'STOPPED';
+    const statusS = portraitMenuFit(status, 1.0, W - titleX - 28);
+    portraitMenuText(ctx, status, titleX,
+      portraitMenuTextY(this.statusY, statusS), this.playing >= 0 ? '#48e0c8' : '#5a5a68', statusS);
+
+    const labels = this.tracks.map((tr, i) => `${this.trackCounter(i)} ${tr.name}`);
+    const band = leftBand(labels, portraitMenuScale(1.35));
+    this.tracks.forEach((tr, i) => {
+      if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
+      const selected = i === this.idx;
+      const rowTop = this.listY + (i - this.listStart) * this.rowH;
+      if (selected) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2, 5);
+      const rowMid = rowTop + this.rowH / 2;
+      const label = `${this.trackCounter(i)} ${tr.name}`;
+      const labelS = portraitMenuFit(label, 1.35, W - titleX - 30);
+      const bpmText = `(${jukeboxBpm(tr)} BPM)`;
+      const bpmS = portraitMenuFit(bpmText, 1.05, W - titleX - 30);
+      const labelColor = this.playing === i ? '#48e0c8' : selected ? '#c9a0ff' : '#c8c8d8';
+      portraitMenuText(ctx, label, titleX,
+        portraitMenuTextY(rowMid - 14, labelS), labelColor, labelS);
+      portraitMenuText(ctx, bpmText, titleX,
+        portraitMenuTextY(rowMid + 16, bpmS), this.playing === i ? '#48e0c8' : selected ? '#c9a0ff' : '#8b8ba0', bpmS);
+    });
+    if (this.tracks.length > this.visibleRows) {
+      const trackY = this.listY + 6;
+      const trackH = this.visibleRows * this.rowH - 12;
+      const thumbH = Math.max(28, trackH * this.visibleRows / this.tracks.length);
+      const thumbY = trackY + (trackH - thumbH) * this.listStart / this.maxListStart();
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(W - 14, trackY, 3, trackH);
+      ctx.fillStyle = 'rgba(72,224,200,0.58)';
+      ctx.fillRect(W - 16, thumbY, 7, thumbH);
+    }
+    const backSelected = this.idx === this.tracks.length;
+    if (backSelected) drawMenuRow(ctx, 18, this.backY + 1, W - 36, this.backH - 2, 5);
+    const backS = portraitMenuFit('BACK', 1.18, W - titleX - 30);
+    portraitMenuText(ctx, 'BACK', titleX,
+      portraitMenuTextY(this.backY + this.backH / 2, backS), backSelected ? '#c9a0ff' : '#c8c8d8', backS);
+    if (this.playing >= 0) {
+      for (let i = 0; i < 12; i++) {
+        const hgt = 3 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 10;
+        ctx.fillStyle = '#48e0c8';
+        ctx.fillRect(titleX + i * 7, this.barsBase - hgt, 5, hgt);
+      }
+    }
+    portraitMenuTextCentered(ctx,
+      Input.isTouchDevice() ? 'TAP: PLAY/STOP   SWIPE: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
+      W / 2, portraitMenuTextY(this.hintY, 1.0), '#5a5a68', 1.0);
+    ctx.restore();
+  }
   draw(ctx) {
     if (this.visualState === 'list' || !this.visualiser) {
       this.drawList(ctx);
@@ -4712,7 +5210,7 @@ export class SoundTestState {
       // portrait list does. Those read 0 on hardware with nothing to dodge.
       const portraitLabels = visualiserFrame.bottom - visualiserFrame.top
         > (visualiserFrame.right - visualiserFrame.left) * 1.35;
-      const labelScale = portraitLabels ? 0.9 : 0.82;
+      const labelScale = portraitLabels ? 1.05 : 0.82;
       const labelInset = portraitLabels ? 10 : 24;
       const trackLabel = this.tracks[this.playing]?.name || 'NOW PLAYING';
       const visualLabel = this.visualiser.label || this.visualiser.name;
@@ -4895,15 +5393,21 @@ export class SettingsState {
     const safeTop = portraitMenuSafeTop();
     const safeBottom = portraitMenuSafeBottom();
     // The portrait frame is roughly four times as tall as the landscape one.
-    // Use that room for larger touch rows first; only the genuinely longer
-    // settings lists need scrolling now.
-    this.listY = Math.max(safeTop + 70, 142);
-    this.rowH = 54;
-    this.doneH = 56;
+    // Use that room for a denser full-page list: the type stays large while
+    // the extra height goes toward showing more settings at once.
+    this.listY = Math.max(safeTop + 52, 118);
+    this.doneH = 60;
     const count = this.listCount();
+    const footerY = safeBottom - 18;
+    this.doneY = footerY - 18 - this.doneH;
+    const listBottom = this.doneY - 12;
+    // Fit the complete settings list on a tall phone where possible. Smaller
+    // portrait windows keep scrolling, but the minimum pitch stays large
+    // enough for a clearly tappable row with the enlarged type.
+    this.rowH = Math.max(54, Math.min(66,
+      (listBottom - this.listY) / Math.max(1, Math.min(count, 13))));
     this.visibleRows = Math.max(1, Math.min(count,
-      Math.floor((safeBottom - this.listY - this.doneH - 26) / this.rowH)));
-    this.doneY = this.listY + this.visibleRows * this.rowH + 12;
+      Math.floor((listBottom - this.listY) / this.rowH)));
   }
   enter() {
     this.idx = 0;
@@ -5166,7 +5670,7 @@ export class SettingsState {
     const opts = this.options();
     const doneIndex = opts.length - 1;
     const labels = opts.slice(0, doneIndex).map((o) => o.label);
-    const itemS = 1.3;
+    const itemS = 1.4;
     const band = leftBand(labels, portraitMenuScale(itemS));
     const titleX = band.textX;
     const titleMid = portraitMenuSafeTop() + 34;

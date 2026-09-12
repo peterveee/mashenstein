@@ -380,6 +380,11 @@ export const glfx = {
     if (!gl || !this.ready) return;
     this.profile.renderCalls++;
     const loc = this.locations;
+    // Scene glow is opt-in for the title/gameplay surfaces. Menus still pass
+    // through this final composite when WebGL is active, but they must not
+    // inherit chromatic aberration or vignette: both are especially visible as
+    // a moving coloured fringe on small, high-contrast glyphs.
+    const postFx = this.fx > 0 && this.glow > 0 && this.tierFx > 0 ? this.fx : 0;
     this.upload(this.texBack, backCanvas);
     // A null overlay means the frame queued no overlay draws (menus, most
     // frames): skip the full-size upload and bind the 1x1 transparent stand-in.
@@ -471,11 +476,11 @@ export const glfx = {
       g.uniform1i(loc.final.uBloom, 1);
       g.uniform1i(loc.final.uOv, 2);
       g.uniform1i(loc.final.uSkyTex, 3);
-      g.uniform1f(loc.final.uFx, this.fx);
+      g.uniform1f(loc.final.uFx, postFx);
       g.uniform1f(loc.final.uGlow, this.glow * this.tierFx);
       g.uniform1f(loc.final.uSky, this.sky);
       g.uniform1f(loc.final.uSkyTexOn, this.sky > 0 && this.skyValid ? 1 : 0);
-      g.uniform1f(loc.final.uApplyVignette, 1);
+      g.uniform1f(loc.final.uApplyVignette, postFx > 0 ? 1 : 0);
       g.uniform1f(loc.final.uTime, this.time);
       g.uniform2f(loc.final.uShake, shakeX / this.srcW, -shakeY / this.srcH);
     });

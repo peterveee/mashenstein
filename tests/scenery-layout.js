@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { defaultFrame, frameForViewport } from '../src/engine/frame.js';
+import {
+  defaultFrame, frameForViewport, PORTRAIT_BACKGROUND_ZOOM,
+} from '../src/engine/frame.js';
 import {
   portraitHudLayout, portraitChatScale, PORTRAIT_CHAT_MAX_LINES,
   PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
@@ -59,6 +61,28 @@ for (const viewport of phones) {
   }
   assert.equal(scene.localRect.bottom, 232,
     `${label} pack-local scenery remains welded to the authored groundline`);
+}
+
+const scaledFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+  safeInsets: { top: 59, right: 0, bottom: 34, left: 0 },
+});
+const scaledHud = portraitHudLayout(scaledFrame);
+const scaledScene = resolveSceneryLayout({
+  frame: scaledFrame,
+  hud: scaledHud,
+  backgroundZoom: PORTRAIT_BACKGROUND_ZOOM,
+});
+assert.ok(Math.abs(scaledScene.localRect.height
+  - scaledScene.screenRect.height / PORTRAIT_BACKGROUND_ZOOM) < 1e-9,
+  'portrait background coordinates compress before the landscape-scale backdrop grows');
+for (const name of ['celestial', 'farLandmark', 'near']) {
+  const local = scaledScene.bands[name];
+  const screen = scaledScene.screenBands[name];
+  const finalCenter = scaledFrame.groundScreenY
+    + PORTRAIT_BACKGROUND_ZOOM * (local.center - 232);
+  assert.ok(Math.abs(finalCenter - screen.center) < 1e-9,
+    `${name} remains in its resolved portrait band after backdrop scaling`);
 }
 
 assert.equal(backgroundParallaxOffset(100, 'celestial'), -100,

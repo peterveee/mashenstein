@@ -10,6 +10,7 @@ import { defaultSettings, defaultSlot } from '../src/engine/save.js';
 import { STAGE_BY_ID } from '../src/data/stages.js';
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
 import { frameForViewport, defaultFrame } from '../src/engine/frame.js';
+import { PORTRAIT_BACKGROUND_ZOOM } from '../src/engine/frame.js';
 import { setPresentationFrame } from '../src/engine/renderer.js';
 import { portraitHudLayout } from '../src/game/portrait-layout.js';
 import {
@@ -29,7 +30,9 @@ PortraitLab.reset();
 assert.deepEqual(PortraitLab.config(), PORTRAIT_LAB_DEFAULTS, 'reset writes the review defaults');
 assert.equal(PortraitLab.config().worldZoom, 3.75, 'portrait keeps a near-landscape sprite scale with a little extra runway');
 assert.equal(PortraitLab.config().heroAnchorX, 24, 'portrait moves the character column left for runway');
-assert.equal(PortraitLab.config().backgroundZoom, 1, 'portrait shows the full backdrop for more surrounding scenery');
+assert.equal(PortraitLab.config().backgroundZoom,
+  Math.round(PORTRAIT_BACKGROUND_ZOOM * 100) / 100,
+  'portrait keeps backdrop art at the landscape physical scale and crops the view');
 assert.equal(PortraitLab.config().cloudOffsetY, -100, 'the portrait review keeps the selected cloud lift');
 assert.equal(PortraitLab.config().sunOffsetY, -100, 'the portrait review keeps the selected sun lift');
 assert.equal(PortraitLab.config().sceneryOffsetY, -90, 'portrait lifts the mountain backdrop within the taller sky');
@@ -251,6 +254,8 @@ productionRun.updateCamera(1 / 60);
 const productionPan = productionRun.camPan;
 assert.equal(productionRun.portraitConfig().worldZoom, PORTRAIT_LAB_DEFAULTS.worldZoom,
   'ordinary portrait gameplay uses the approved production calibration');
+assert.equal(productionRun.portraitConfig().backgroundZoom, PORTRAIT_LAB_DEFAULTS.backgroundZoom,
+  'ordinary portrait gameplay uses the landscape-scale backdrop calibration');
 // At the chat-clearing groundline, ordinary jumps use the spare sky below the actual
 // HUD rather than the decorative breathing gap. Higher jumps are allowed to
 // use the bounded correction exercised by the lab run above.

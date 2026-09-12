@@ -6,6 +6,8 @@ for (let i = 0; i < MAX; i++) {
     live: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, color: '#fff', size: 1, grav: 0,
     // shards are chunks of the thing that just broke: they tumble, land, and skid.
     shard: false, w: 1, h: 1, rot: 0, spin: 0, floor: 0,
+    // puffs are dust and smoke: they swell and thin instead of shrinking. See spawnPuff().
+    puff: false, grow: 1, drag: 0,
     // foil is paper: confetti and streamers. See spawnFoil().
     foil: false, ribbon: false, flip: 0, flipRate: 0, twist: 0,
     swayA: 0, swayF: 0, swayP: 0, vt: 0, len: 0, lean: 0, settled: false,
@@ -43,7 +45,25 @@ export function spawn(x, y, vx, vy, life, color, size = 1, grav = 0) {
   const p = take();
   p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
   p.life = life; p.maxLife = life; p.color = color; p.size = size; p.grav = grav;
-  p.shard = false; p.foil = false;
+  p.shard = false; p.foil = false; p.puff = false;
+}
+
+// A puff of dust or smoke. The round particle above SHRINKS as it dies (see
+// drawParticles), which is right for a grit speck burning out and wrong for
+// dust: a real puff swells as it thins, because the cloud is spreading. So a
+// puff carries its own growth factor and a drag, and it fades on a softer
+// curve — it blooms in over the first few frames rather than appearing at full
+// strength, which is what separates a cloud from a dot.
+//
+// `grow` is the end radius as a multiple of the start; `drag` is how quickly it
+// forgets the velocity it was kicked out with (dust has no momentum to speak
+// of, so it stalls almost at once and is then simply left behind by the scroll).
+export function spawnPuff(x, y, vx, vy, life, color, size = 1, grow = 2.4, drag = 3.6) {
+  const p = take();
+  p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+  p.life = life; p.maxLife = life; p.color = color; p.size = size; p.grav = 0;
+  p.shard = false; p.foil = false; p.puff = true;
+  p.grow = grow; p.drag = drag;
 }
 
 export function burst(x, y, count, speed, life, color, size = 1, grav = 120, rand = Math.random) {
@@ -59,7 +79,7 @@ export function spawnShard(x, y, vx, vy, life, color, w, h, spin, grav = 300, fl
   const p = take();
   p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
   p.life = life; p.maxLife = life; p.color = color; p.grav = grav;
-  p.shard = true; p.foil = false;
+  p.shard = true; p.foil = false; p.puff = false;
   p.w = w; p.h = h; p.rot = 0; p.spin = spin; p.floor = floor;
   p.size = Math.max(w, h);
 }
@@ -125,7 +145,7 @@ export function spawnFoil(x, y, color, opts = {}) {
   const far = depth < 1;
   p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
   p.life = life; p.maxLife = life; p.grav = 0;
-  p.shard = false; p.foil = true; p.ribbon = ribbon;
+  p.shard = false; p.foil = true; p.puff = false; p.ribbon = ribbon;
   p.w = w * depth; p.h = h * depth; p.len = len * depth;
   p.floor = floor; p.vt = vt * (0.72 + 0.38 * depth);
   p.size = Math.max(p.w, p.h);
@@ -175,6 +195,12 @@ export function updateParticles(dt) {
     p.life -= dt;
     if (p.life <= 0) { p.live = false; continue; }
     if (p.foil) { updateFoil(p, dt); continue; }
+    if (p.puff) {
+      const k = Math.min(1, p.drag * dt);
+      p.vx -= p.vx * k; p.vy -= p.vy * k;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      continue;
+    }
     p.vy += p.grav * dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
@@ -334,8 +360,19 @@ export function drawParticles(ctx, camX = 0) {
       ctx.rotate(p.rot);
       ctx.fillRect(-w / 2, -h / 2, w, h);
       ctx.restore();
+    } else if (p.puff) {
+      // Dust: it swells as it thins. The disc is centred on its own position
+      // (the spark below is offset by its radius so it sits where a rect
+      // would) because a growing circle drawn off-centre visibly walks as it
+      // expands. The fade blooms in over the first eighth of its life, so the
+      // puff appears as air being disturbed rather than as a dot switching on.
+      const r = Math.max(0.4, p.size * (1 + (1 - a) * (p.grow - 1)) * 0.6);
+      ctx.globalAlpha = a * Math.min(1, (1 - a) * 8 + 0.2) * 0.72;
+      ctx.beginPath();
+      ctx.arc(p.x - camX, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
     } else {
-      // round, antialiased puffs — they shrink and fade as they die
+      // round, antialiased specks — they shrink and fade as they die
       const r = Math.max(0.4, p.size * (0.5 + a * 0.5) * 0.6);
       ctx.beginPath();
       ctx.arc(p.x - camX + r, p.y + r, r, 0, Math.PI * 2);

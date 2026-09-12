@@ -33,8 +33,13 @@
      white band with a black clock). We ship black-translucent, so the band is
      our canvas instead and this is only what shows if a phone ever hands the
      page a window shorter than its screen. The game still sets it per stage
-     (see setPageChrome) so that strip is never the wrong colour. */
-  html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden;
+     (see setPageChrome) so that strip is never the wrong colour.
+
+     BLACK, because the other thing this paints is the LETTERBOX. Landscape
+     leaves bars above and below the 16:9 picture, and they are this. Black from
+     the first paint means they never flash a colour on the way in — and
+     setPageChrome holds landscape at black for the rest of the session. */
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden;
                -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   /* A Home Screen app under a translucent status bar is given a window one
      status bar SHORT of the display — 812 for an 874pt 17 Pro — while the

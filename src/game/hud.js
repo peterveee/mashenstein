@@ -6,7 +6,9 @@
 // (a coin on a soft text plate, a row of pickup sprites, a tray of framed plug
 // squares) stacked down the left, and the corner read as clutter rather than as
 // one instrument. One chrome, and the eye can learn it once.
-import { W, H, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
+import {
+  W, H, screen, isPhonePortraitPresentation, presentationFrame,
+} from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
   textWidth, wrapText, drawPanel, textYForMid, UI_PANEL_BORDER,
@@ -1334,6 +1336,27 @@ function heroChipGeom(style, run) {
 // The baked size for a face drawn `over` times bigger than its window: the
 // overhang rounded to an EVEN number of pixels, so half of it is a whole one.
 export const faceCropBox = (w, over) => w + 2 * Math.round(w * (over - 1) / 2);
+
+// The portrait HUD is drawn inside a second logical scale (`panelScale`) after
+// the renderer's device-density transform. A face baked only at `screen.px`
+// would therefore be enlarged again by that panel scale on the phone. Read the
+// complete transform so the cached face arrives at the final canvas at 1:1 or
+// as a slight minification, never as a soft upscale.
+export function hudFaceBakeDensity(ctx) {
+  const base = Math.max(1, Number(screen.px) || 1);
+  const m = ctx?.getTransform ? ctx.getTransform() : null;
+  if (!m) return Math.ceil(base);
+  // Use the largest basis-vector scale, not the determinant/geometric mean:
+  // relay flips squash the face horizontally while leaving it full height.
+  // The source still needs enough rows for that unsquashed vertical axis.
+  const density = Math.max(
+    Math.hypot(Number(m.a), Number(m.b)),
+    Math.hypot(Number(m.c), Number(m.d)),
+  );
+  return Number.isFinite(density) && density > 0
+    ? Math.max(Math.ceil(base), Math.ceil(density)) : Math.ceil(base);
+}
+
 function drawChipFace(ctx, id, x, y, w, h, over = 1, joy = false) {
   // THE OVERSIZE IS ROUNDED TO AN EVEN NUMBER OF PIXELS, and the sprite is
   // blitted at exactly the size it was baked.
@@ -1347,8 +1370,10 @@ function drawChipFace(ctx, id, x, y, w, h, over = 1, joy = false) {
   // An even overhang keeps (fw - w) / 2 whole, so a face centred on a whole
   // pixel lands on one.
   const fw = faceCropBox(w, over), fh = faceCropBox(h, over);
-  const face = toonFaceSprite(id, fw, fh,
-    joy ? { key: 'joy', pose: { faceJoy: true } } : null);
+  const face = toonFaceSprite(id, fw, fh, {
+    density: hudFaceBakeDensity(ctx),
+    ...(joy ? { key: 'joy', pose: { faceJoy: true } } : {}),
+  });
   if (!face) return;
   const prev = ctx.imageSmoothingEnabled;
   // This is a deliberately tiny pixel portrait, not a photo. The source is
@@ -1580,7 +1605,8 @@ export function drawHeroBadge(ctx, run, cy = PILL_CY) {
   const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
   const badgeX = Math.round(W / 2 - badgeW / 2);
   drawPanel(ctx, badgeX, cy - BADGE_H / 2, badgeW, BADGE_H, BADGE_R, undefined, PANEL);
-  const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
+  const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H,
+    { density: hudFaceBakeDensity(ctx) });
   if (face) {
     // Whole pixels: FACE_H is odd and cy is a midline, so the unrounded y put
     // the badge portrait on a half pixel and resampled it. See drawChipFace.
@@ -2728,7 +2754,8 @@ export function drawSpeech(ctx, speech, opts = {}) {
     // take two thirds of the slot (see eggshellFace).
     drawProp(ctx, 'eggshellFace', x + PAD, faceY, FACE_W, FACE_H);
   } else {
-    const face = toonFaceSprite(speech.who, FACE_W, FACE_H);
+    const face = toonFaceSprite(speech.who, FACE_W, FACE_H,
+      { density: hudFaceBakeDensity(ctx) });
     if (face) {
       drawHudFaceImage(ctx, face, x + PAD, faceY, FACE_W, FACE_H);
     }

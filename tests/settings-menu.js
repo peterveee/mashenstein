@@ -5,6 +5,8 @@ installDom();
 const { Input } = await import('../src/engine/input.js');
 const { defaultSettings } = await import('../src/engine/save.js');
 const { SettingsState } = await import('../src/game/menus.js');
+const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
+const renderer = await import('../src/engine/renderer.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -131,6 +133,18 @@ const withCal = new SettingsState({ save, onDone() {}, onCalibrate: () => { cali
 withCal.enter();
 withCal.options().find((o) => /^AUDIO SYNC/.test(o.label)).act();
 assert(calibrated === 1, 'confirming the row opens the calibration screen');
+
+const portraitFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+});
+renderer.setPresentationFrame(portraitFrame);
+const portraitSettings = new SettingsState({ save, onDone() {} });
+portraitSettings.enter();
+assert(portraitSettings.visibleRows === portraitSettings.listCount()
+  && portraitSettings.rowH >= 54 && portraitSettings.rowH <= 66,
+  'portrait settings use the available height to show the complete list at a readable pitch');
+portraitSettings.draw(document.createElement('canvas').getContext('2d'));
+renderer.setPresentationFrame(defaultFrame());
 
 Input.clearAll();
 console.log(failed ? 'SETTINGS MENU: FAILED' : 'SETTINGS MENU: PASSED');

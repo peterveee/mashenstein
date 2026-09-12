@@ -4,6 +4,7 @@ import {
   PORTRAIT_GROUND_ANCHOR_RATIO, PORTRAIT_GROUND_ANCHOR_MIN_RATIO,
   PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
 } from '../engine/portrait-geometry.js';
+import { PORTRAIT_BACKGROUND_ZOOM } from '../engine/frame.js';
 
 export const PORTRAIT_LAB_STORAGE_KEY = 'mash_portrait_lab_v1';
 
@@ -20,9 +21,10 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   // Move the authored player column farther left to pay for the closer view:
   // this is presentation-only and does not change simulation or collisions.
   heroAnchorX: 24,
-  // Keep the portrait backdrop at identity so the taller phone frame shows
-  // more of the shipped sky and terrain around the gameplay action.
-  backgroundZoom: 1,
+  // Keep background silhouettes at the same physical scale as landscape.
+  // Portrait then shows a narrower crop of the authored 480x270 backdrop,
+  // rather than shrinking the scenery to expose more of it.
+  backgroundZoom: Math.round(PORTRAIT_BACKGROUND_ZOOM * 100) / 100,
   cloudOffsetY: -100,
   sunOffsetY: -100,
   // Lift the mountain/terrain backdrop within the tall portrait sky while
@@ -34,7 +36,7 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
 const LIMITS = Object.freeze({
   worldZoom: [1.6, 4.5],
   heroAnchorX: [24, 72],
-  backgroundZoom: [1, 1.3],
+  backgroundZoom: [1, 2.2],
   cloudOffsetY: [-100, 60],
   sunOffsetY: [-100, 60],
   sceneryOffsetY: [-120, 40],

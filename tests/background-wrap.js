@@ -28,6 +28,12 @@ function assert(cond, msg) {
 // authored anchor 24, and that 35-world-px shift is multiplied by the portrait
 // zoom before it reaches the background pass.
 const PORTRAIT_COVERAGE = Object.freeze({ left: 131.25, right: 611.25, width: 480 });
+// The 178% portrait backdrop uses a narrower local window. `lookahead` is the
+// extra staging lead supplied by the renderer before that window reaches the
+// physical frame edge.
+const PORTRAIT_SCALED_COVERAGE = Object.freeze({
+  left: 178.65, right: 448.1, width: 269.45, lookahead: 54,
+});
 const LANDSCAPE_COVERAGE = Object.freeze({ left: 0, right: W, width: W });
 
 function recorder(coverage) {
@@ -134,6 +140,14 @@ for (const [style, cabinetId] of CASES) {
     `${style} still covers the landscape frame (${landscape.lo.toFixed(0)}..${landscape.hi.toFixed(0)})`);
 }
 
+for (const [style, cabinetId] of CASES) {
+  const cabinet = CABINETS.find((cab) => cab.id === cabinetId);
+  const scaled = paintedSpan(style, cabinet, PORTRAIT_SCALED_COVERAGE);
+  assert(scaled.hi >= PORTRAIT_SCALED_COVERAGE.right
+    && scaled.lo <= PORTRAIT_SCALED_COVERAGE.left,
+  `${style} keeps the scaled portrait edge covered with look-ahead (${scaled.lo.toFixed(0)}..${scaled.hi.toFixed(0)})`);
+}
+
 // The helper itself, stated plainly: with the identity coverage it is exactly
 // the expression every pack used to inline, which is why landscape is
 // untouched; with a shifted coverage the window moves with the view.
@@ -154,6 +168,20 @@ if (__testing?.wrapIntoView) {
     if (x < PORTRAIT_COVERAGE.left - 65 || x >= PORTRAIT_COVERAGE.right + 65) inside = false;
   }
   assert(inside, 'the wrap helper keeps every value inside the portrait view plus its margin');
+
+  const scaledCtx = recorder(PORTRAIT_SCALED_COVERAGE).ctx;
+  const scaledPaint = __testing.backgroundPaintCoverage(scaledCtx);
+  assert(Math.abs(scaledPaint.left
+    - (PORTRAIT_SCALED_COVERAGE.left - PORTRAIT_SCALED_COVERAGE.lookahead)) < 1e-9
+    && Math.abs(scaledPaint.right
+      - (PORTRAIT_SCALED_COVERAGE.right + PORTRAIT_SCALED_COVERAGE.lookahead)) < 1e-9,
+  'scaled portrait painters receive an explicit edge look-ahead interval');
+  let scaledInside = true;
+  for (let v = -2000; v < 2000; v += 37) {
+    const x = wrapIntoView(scaledCtx, v, 65);
+    if (x < scaledPaint.left - 65 || x >= scaledPaint.right + 65) scaledInside = false;
+  }
+  assert(scaledInside, 'scaled portrait wrapping uses the widened look-ahead interval');
 }
 
 // ---- pinned landmarks ------------------------------------------------------

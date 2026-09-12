@@ -7,15 +7,17 @@ const { RunState, FINISH_CELEBRATION_POSE } = await import('../src/game/run.js')
 const { Player } = await import('../src/game/player.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { HERO_SPRITES } = await import('../src/sprites/heroes.js');
-const { HERO_DISC_PLATE, HERO_DISC_RIM_W, faceCropBox } = await import('../src/game/hud.js');
+const {
+  HERO_DISC_PLATE, HERO_DISC_RIM_W, faceCropBox, hudFaceBakeDensity,
+} = await import('../src/game/hud.js');
 const { UI_PANEL } = await import('../src/engine/sprites.js');
 const {
-  TOON_SPECS, toonEffectEllipse, poseFromPlayer, RUN_HEAD_TURN, drawToon,
+  TOON_SPECS, toonEffectEllipse, toonFaceSprite, poseFromPlayer, RUN_HEAD_TURN, drawToon,
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   B33P_TITLE_WINDUP_T, b33pTitleShotPose, FACE_CONTOUR, FACE_CROP, roundHalfAt,
 } = await import('../src/sprites/toons.js');
-const { initRenderer, blit, bctx, pendingOverlayDrawCount } = await import('../src/engine/renderer.js');
+const { initRenderer, blit, bctx, screen, pendingOverlayDrawCount } = await import('../src/engine/renderer.js');
 const { save } = await import('../src/engine/save.js');
 const { readHeroDials } = await import('../tools/lib/toon-specs-source.js');
 const REPO_ROOT = new URL('..', import.meta.url).pathname;
@@ -126,6 +128,26 @@ for (const [w, over] of [[22, 1], [12, 1.3], [16, 1.12], [12, 1], [9, 1]]) {
 }
 assert(FACE_CONTOUR.w === null,
   'no bake-off override is left armed on the face-crop contour');
+// Portrait HUD panels apply a second scale around the status pill. The face
+// cache must follow that complete transform, or the phone enlarges a
+// base-density raster and softens it again.
+{
+  const base = Math.max(1, Number(screen.px) || 1);
+  const baseCtx = { getTransform: () => ({ a: base, d: base, b: 0, c: 0 }) };
+  const portraitCtx = { getTransform: () => ({ a: base * 2.25, d: base * 2.25, b: 0, c: 0 }) };
+  const baseDensity = hudFaceBakeDensity(baseCtx);
+  const portraitDensity = hudFaceBakeDensity(portraitCtx);
+  assert(portraitDensity >= Math.ceil(base * 2.25),
+    `portrait HUD face bake follows the full canvas density (${portraitDensity})`);
+  assert(portraitDensity > baseDensity,
+    `portrait HUD face bake is denser than the base face (${baseDensity} -> ${portraitDensity})`);
+  const baseFace = toonFaceSprite('lorenzo', 12, 9, { density: baseDensity });
+  const portraitFace = toonFaceSprite('lorenzo', 12, 9, { density: portraitDensity });
+  assert(portraitFace.width > baseFace.width && portraitFace.height > baseFace.height,
+    'portrait HUD face cache allocates the larger source raster');
+  assert(toonFaceSprite('lorenzo', 12, 9, { density: baseDensity }) === baseFace,
+    'portrait HUD density variant does not flush the base face cache');
+}
 // THE HEADS ARE SIBLINGS. The fit normalizes a whole silhouette, so without a
 // clamp a spiked or bunned hero gets a small skull and a bald one a large;
 // what the eye reads across a row of 22px portraits is head size. A range this

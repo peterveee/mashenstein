@@ -6,7 +6,7 @@
 // fills the taller frame is still hard to read at arm's length.
 import { H, screen } from './renderer.js';
 import {
-  drawText, drawTextCentered, textWidth, textYForMid, wrapText,
+  drawText, textWidth, textYForMid, wrapText,
 } from './sprites.js';
 
 export const PORTRAIT_MENU_TEXT_SCALE = 1.55;
@@ -19,12 +19,21 @@ export function portraitMenuScale(size = 1) {
   return size * (portraitMenuActive() ? PORTRAIT_MENU_TEXT_SCALE : 1);
 }
 
+function snapToBacking(value, density) {
+  const d = Number.isFinite(density) && density > 0 ? density : 1;
+  return Math.round(value * d) / d;
+}
+
 export function portraitMenuText(ctx, text, x, y, color, size = 1, style = 'ui') {
-  drawText(ctx, text, x, y, color, portraitMenuScale(size), style);
+  drawText(ctx, text, snapToBacking(x, screen.dpx), snapToBacking(y, screen.dpy),
+    color, portraitMenuScale(size), style);
 }
 
 export function portraitMenuTextCentered(ctx, text, x, y, color, size = 1, style = 'ui') {
-  drawTextCentered(ctx, text, x, y, color, portraitMenuScale(size), style);
+  const scale = portraitMenuScale(size);
+  const startX = x - textWidth(String(text), scale, style) / 2;
+  drawText(ctx, text, snapToBacking(startX, screen.dpx), snapToBacking(y, screen.dpy),
+    color, scale, style);
 }
 
 export function portraitMenuTextY(midY, size = 1, style = 'ui') {

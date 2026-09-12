@@ -2,6 +2,7 @@
 // WebGL selection, a claimed-canvas shader failure, GPU resize cleanup and a
 // visible failure instead of a silent post-boot black screen.
 import { installDom } from './dom-stub.js';
+const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -14,6 +15,7 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   const calls = {
     deletedFramebuffers: 0, deletedTextures: 0, framebuffers: 0,
     viewports: [], textureAllocations: 0, textureUpdates: 0, draws: 0,
+    uniforms: [],
     // Ordered bind/draw log, so a test can ask what a specific pass was
     // sampling rather than only how many passes ran.
     events: [],
@@ -44,6 +46,8 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
     texImage2D: () => { calls.textureAllocations++; },
     texSubImage2D: () => { calls.textureUpdates++; },
     activeTexture: (u) => { unit = u - 33984; },
+    getUniformLocation: (_program, name) => name,
+    uniform1f: (location, value) => { calls.uniforms.push({ location, value }); },
     bindTexture: (target, tex) => { calls.events.push({ kind: 'bind', unit, tex }); },
     drawArrays: () => { calls.draws++; calls.events.push({ kind: 'draw' }); },
   }, {
@@ -117,6 +121,10 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
   assert(good.calls.draws - drawsBeforeNoGlow === 1,
     'disabled scene glow skips the bright and both blur passes');
+  const noGlowFx = good.calls.uniforms.filter((u) => u.location === 'uFx').at(-1);
+  const noGlowVignette = good.calls.uniforms.filter((u) => u.location === 'uApplyVignette').at(-1);
+  assert(noGlowFx?.value === 0 && noGlowVignette?.value === 0,
+    'disabled scene glow removes aberration and vignette from menu text');
   glfx.glow = 1; glfx.fx = 0;
   const drawsBeforeFxOff = good.calls.draws;
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
@@ -298,6 +306,35 @@ assert(devLandscapeDom.canvas.width === 2097 && devLandscapeDom.canvas.height ==
 devLandscapeRenderer.setDevPortraitFill(false);
 assert(devLandscapeDom.canvas.width === 1440 && devLandscapeDom.canvas.height === 810,
   'closing the landscape dev overlay restores the bounded gameplay backing');
+
+// A portrait sound-test visualiser stays on the frame-based phone surface.
+// It must not switch back to the old 16:9 cover crop when its fullscreen fade
+// completes, and its backing must retain the frame's uniform aspect ratio.
+const visualPortraitDom = installDom({
+  locationSearch: '?renderer=2d',
+  innerWidth: 390,
+  innerHeight: 844,
+  devicePixelRatio: 3,
+});
+const visualPortraitRenderer = await import('../src/engine/renderer.js?visualiser-portrait');
+const visualPortraitFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844,
+});
+visualPortraitRenderer.setPresentationFrame(visualPortraitFrame);
+visualPortraitRenderer.initRenderer({ isIphone: true });
+visualPortraitRenderer.setVisualiserFullscreen(true);
+assert(visualPortraitRenderer.screen.presentationMode === 'phone-portrait'
+  && visualPortraitRenderer.screen.cssW === 390
+  && visualPortraitRenderer.screen.cssH === 844
+  && visualPortraitRenderer.screen.portraitFill === false
+  && visualPortraitDom.canvas.style.objectFit === '',
+  'portrait visualisers use the full frame without falling back to a cropped cover surface');
+assert(Math.abs(visualPortraitRenderer.screen.dpx - visualPortraitRenderer.screen.dpy) < 1e-9
+  && Math.abs(visualPortraitDom.canvas.height / visualPortraitDom.canvas.width
+    - visualPortraitFrame.height / visualPortraitFrame.width) < 1e-9,
+  'portrait visualiser backing keeps uniform native pixels across the full logical height');
+visualPortraitRenderer.setVisualiserFullscreen(false);
+visualPortraitRenderer.setPresentationFrame(defaultFrame());
 
 // The same viewport on desktop renders at full native density from the first
 // frame — no seed, no climb. A desktop has no thermal budget to protect, and

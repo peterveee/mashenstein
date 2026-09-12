@@ -7,6 +7,11 @@ import {
 
 export const FRAME_WIDTH = 480;
 export const LANDSCAPE_HEIGHT = 270;
+// A portrait phone is narrower in CSS than the same device rotated to
+// landscape. Background art is painted in the authored 480x270 screen space,
+// so this is the factor that keeps a backdrop object the same physical size
+// in both orientations; portrait then shows a narrower crop of it.
+export const PORTRAIT_BACKGROUND_ZOOM = FRAME_WIDTH / LANDSCAPE_HEIGHT;
 export const PHONE_PORTRAIT = 'phone-portrait';
 export const LANDSCAPE = 'landscape';
 
