@@ -202,9 +202,10 @@ and authored object motion unchanged. See the motion bakeoff in
 The paper pass also has dev-only surface-strength seams: `paperStrength` is a
 master multiplier, while `paperSkyStrength`, `paperSceneryStrength`, and
 `paperGroundStrength` address the sky sheet, scenery silhouettes, and ground
-surfaces independently. They default to `1` so the shipped look is unchanged;
-the surface-strength bakeoff compares sky `0.6` and ground `0.65` against that
-baseline at the selected 50% motion speed. See
+surfaces independently. The approved shipped defaults are sky `0.8`, scenery
+`1`, and ground/foreground `0.2`; the master remains `1`. The surface-strength
+bakeoff compares alternate quieter balances at the selected 50% motion speed.
+See
 [`work/mockups/paper-materials/paper-strength-bakeoff/index.html`](../work/mockups/paper-materials/paper-strength-bakeoff/index.html).
 
 `paperPreset` is an optional stage presentation field. `?paper=cardstockClear`,

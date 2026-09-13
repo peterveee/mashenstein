@@ -261,8 +261,19 @@ assert(quietest > 0.02, `no family has a silent frame at the base level (quietes
     + 'just released every lane and the next note would rebuild one mid-song');
   assert(/Audio\.warmWorkletLanes\?\.\(\)/.test(hub),
     'the stage-select screen builds the cabinet it just opened, and waits for the tables');
+  assert(/canHostTngr2/.test(audio)
+    && /if \(tngr2Ready && v\.synth === 'TNGR-2'\)/.test(audio),
+    'the audio warm-up does not expand TNGR-2 tables on an insecure phone context');
   assert(/Audio\.prefill\?\.\(1\.2\)/.test(hub),
     'and queues the sequencer past the block first, so the wait costs no notes');
+  const primeAt = hub.indexOf('function primeFoodCourtAudio');
+  const prepareAt = hub.indexOf('Audio.prepareRealtimeVoices?.(', primeAt);
+  const hubWarmAt = hub.indexOf('Audio.warmWorkletLanes?.()', primeAt);
+  assert(primeAt >= 0 && prepareAt > primeAt && hubWarmAt > prepareAt,
+    'Food Court entry primes pooled voices and worklet lanes behind the shutter');
+  assert(/const canWarmTngr2 = Audio\.canHostTngr2 \? Audio\.canHostTngr2\(\) : true/.test(hub)
+    && /if \(hasTngr2 && canWarmTngr2\) Audio\.prefill/.test(hub),
+    'the selector skips the matching prefill when the phone cannot host the worklet');
   const enterAt = run.indexOf('MusicDirector.enterStage(');
   const warmAt = run.indexOf('Audio.warmWorkletLanes?.()');
   assert(enterAt > 0 && warmAt > enterAt,

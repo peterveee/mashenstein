@@ -1916,6 +1916,9 @@ function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false,
 const TAU_BG = Math.PI * 2;
 const DESERT_INK = '#4a2a1c';
 const DESERT_INK_FAR = '#667c79';
+// Background saguaros need to read as vegetation without becoming a foreground
+// hazard. A dark, desaturated sage separates them from the warm clay ridge.
+const DESERT_CACTUS_INK = '#3f5b43';
 const DESERT_ROCK = '#a97558';
 const DESERT_ROCK_LIT = '#c69a6f';
 const DESERT_ROCK_DARK = '#755a58';
@@ -2026,15 +2029,12 @@ const DESERT_MESA_STRATA = Object.freeze([
   { fromTop: 0.86, height: 5, color: '#8b927f', alpha: 0.18 },
 ]);
 const DESERT_TELEGRAPH_INK = '#586b68';
-const DESERT_TELEGRAPH_WIRE = 'rgba(54,59,54,0.68)';
+const DESERT_TELEGRAPH_WIRE = 'rgba(76,82,77,0.56)';
 const DESERT_TELEGRAPH_WIRE_WIDTH = 0.78;
-const DESERT_TELEGRAPH_WIRE_SHADOW_WIDTH = 1.12;
-// The desktop paper pass was doubling the wire into a dark stripe between
-// poles. Keep the portrait weight, where the extra vertical scenery needs the
-// stronger read, but use a lighter desktop stroke and a much tighter paper
-// shadow so the lines stay background detail instead of becoming rails.
+// Keep the portrait weight, where the extra vertical scenery needs the stronger
+// read, but use a lighter desktop stroke so the lines stay background detail
+// instead of becoming rails.
 const DESERT_TELEGRAPH_WIRE_DESKTOP_WIDTH = 0.58;
-const DESERT_TELEGRAPH_WIRE_DESKTOP_SHADOW_WIDTH = 0.72;
 // Keep the off-screen endpoint alive for the complete wire interval. If the
 // left pole is culled as soon as it crosses the edge, its segment to the next
 // pole vanishes in one frame and the line visibly pops in.
@@ -2367,7 +2367,7 @@ function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
     // Tinted toward the layer it stands on rather than drawn in the nearest
     // ink. The lower part is occluded by the ridge in the caller, so this is
     // part of that scenery plane instead of a foreground prop.
-    ctx.strokeStyle = '#5e361f';
+    ctx.strokeStyle = DESERT_CACTUS_INK;
     drawCactusShape(ctx, cactus);
     if (paper) {
       const pattern = sharedPaperPatternFor(ctx, paperMaterial);
@@ -2849,6 +2849,10 @@ function drawTelegraphField(ctx, poles, poleColor = DESERT_TELEGRAPH_INK,
   for (const pole of poles) drawTelegraphPole(ctx, pole, poleColor);
 }
 
+function drawTelegraphPoleField(ctx, poles, poleColor = DESERT_TELEGRAPH_INK) {
+  for (const pole of poles) drawTelegraphPole(ctx, pole, poleColor);
+}
+
 function drawTelegraphPoles(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   const poles = desertTelegraphPlacements(ctx, camX, layerBaseY);
   if (!poles.length) return;
@@ -2857,20 +2861,16 @@ function drawTelegraphPoles(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   const paperMaterial = options.paperMaterial || 'cardstockClear';
   const wireWidth = portrait
     ? DESERT_TELEGRAPH_WIRE_WIDTH : DESERT_TELEGRAPH_WIRE_DESKTOP_WIDTH;
-  const shadowWidth = portrait
-    ? DESERT_TELEGRAPH_WIRE_SHADOW_WIDTH : DESERT_TELEGRAPH_WIRE_DESKTOP_SHADOW_WIDTH;
   ctx.save();
   ctx.globalAlpha = 0.76;
   if (paper) {
     ctx.save();
     ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
-    drawTelegraphField(ctx, poles, PAPER_DEEP_COLOR, PAPER_DEEP_COLOR,
-      shadowWidth);
+    drawTelegraphPoleField(ctx, poles, PAPER_DEEP_COLOR);
     ctx.restore();
     ctx.save();
     ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
-    drawTelegraphField(ctx, poles, PAPER_CONTACT_COLOR, PAPER_CONTACT_COLOR,
-      shadowWidth);
+    drawTelegraphPoleField(ctx, poles, PAPER_CONTACT_COLOR);
     ctx.restore();
   }
   drawTelegraphField(ctx, poles, DESERT_TELEGRAPH_INK,

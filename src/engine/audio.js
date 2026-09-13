@@ -21,7 +21,7 @@ import {
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import { warmTngr2Families } from './tngr2/tables.js';
-import { tngr2FamiliesOfVoice } from './tngr2/controller.js';
+import { canHostTngr2, tngr2FamiliesOfVoice } from './tngr2/controller.js';
 import {
   rearrangementPosition as resolveRearrangementPosition,
   rearrangementOutputSteps,
@@ -5709,8 +5709,13 @@ class AudioSys {
    * cannot be built; the rack has already said why, so a failure counts as zero here
    * rather than throwing.
    */
+  canHostTngr2() {
+    return !this.offline && canHostTngr2(this.ctx);
+  }
+
   warmWorkletLanes() {
     if (this.offline || !this.ctx || !this.bank) return Promise.resolve(0);
+    const tngr2Ready = this.canHostTngr2();
     const lanes = [];
     const ids = [];
     for (const lane of laneList(this.bank)) {
@@ -5720,7 +5725,11 @@ class AudioSys {
       lanes.push([key, v]);
       // TNGR-2's tables are expanded HERE rather than inside the lane build, which is
       // async: an expansion that lands in a later task lands on a visible frame.
-      if (v.synth === 'TNGR-2') ids.push(...tngr2FamiliesOfVoice(v));
+      // Do not expand the large table payload when this context cannot host the
+      // worklet anyway. This is the normal phone-dev path over http://*.local:
+      // the later lane warm correctly refuses the insecure context, so expanding
+      // here would only spend a few hundred milliseconds blocking the selector.
+      if (tngr2Ready && v.synth === 'TNGR-2') ids.push(...tngr2FamiliesOfVoice(v));
     }
     if (!lanes.length) return Promise.resolve(0);
     if (ids.length) warmTngr2Families(ids, { idle: false });

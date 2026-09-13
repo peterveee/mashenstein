@@ -2755,23 +2755,117 @@ function drawCascade(ctx, block, top, band, color, t) {
 // tap hit-test and the cursor band both cover — so the geometry lives here
 // rather than being spelled out again in update() and draw().
 //
-// Five rows used to take 120 of the 270 units and leave the bottom third black,
-// at a pitch of 24 — 35 CSS px on a phone, under every platform's 44pt touch
-// minimum. They fill the screen now, which fixes the target and the type size
-// with the same number.
+// Landscape keeps the compact authored layout. Portrait resolves a separate
+// full-height page below; both the painter and pointer hit-test use that page.
 const DIFF_TOP = 68, DIFF_ROW = 31, DIFF_BACK_GAP = 12, DIFF_GLOSS_DY = 13;
 const DIFF_NAME_S = 1.3, DIFF_GLOSS_S = 1.05;
 
+function difficultyLayout() {
+  if (!portraitMenuActive()) {
+    const rows = [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }]
+      .map((d, i) => ({ d, y: DIFF_TOP + i * DIFF_ROW + (i === DIFFICULTIES.length ? DIFF_BACK_GAP : 0), h: DIFF_ROW }));
+    return { portrait: false, rows };
+  }
+  const count = DIFFICULTIES.length + 1;
+  const safeTop = portraitMenuSafeTop();
+  const safeBottom = portraitMenuSafeBottom();
+  const x = screen.safeLeft + 18;
+  const right = W - screen.safeRight - 18;
+  const w = Math.max(1, right - x);
+  const firstY = safeTop + 104;
+  const bottom = safeBottom - 22;
+  const gap = 10;
+  const rowH = Math.max(72, Math.min(132,
+    (bottom - firstY - gap * (count - 1)) / count));
+  const rows = [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }]
+    .map((d, i) => ({ d, y: firstY + i * (rowH + gap), h: rowH }));
+  return {
+    portrait: true, x, w, rows,
+    titleY: safeTop + 34,
+    subtitleY: safeTop + 75,
+  };
+}
+
 function difficultyRowAt(y) {
-  if (y < DIFF_TOP) return -1;
-  const firstRowsEnd = DIFF_TOP + DIFFICULTIES.length * DIFF_ROW;
-  if (y < firstRowsEnd) return Math.floor((y - DIFF_TOP) / DIFF_ROW);
-  const backTop = firstRowsEnd + DIFF_BACK_GAP;
-  if (y >= backTop && y < backTop + DIFF_ROW) return DIFFICULTIES.length;
+  const rows = difficultyLayout().rows;
+  const i = rows.findIndex((row) => y >= row.y && y < row.y + row.h);
+  if (i >= 0) return i;
   return -1;
 }
 
+function difficultyConfirmLayout() {
+  if (!portraitMenuActive()) {
+    return { x: 40, y: 90, w: W - 80, h: 80, actionY: 142, actionH: 18 };
+  }
+  const safeTop = portraitMenuSafeTop();
+  const safeBottom = portraitMenuSafeBottom();
+  const w = Math.min(W - screen.safeLeft - screen.safeRight - 32, 440);
+  const x = (W - w) / 2;
+  const h = Math.min(238, Math.max(210, (safeBottom - safeTop) * 0.27));
+  const y = safeTop + (safeBottom - safeTop - h) / 2;
+  return { x, y, w, h, actionY: y + h - 68, actionH: 54 };
+}
+
+function drawDifficultyPortrait(ctx, state, layout) {
+  const titleS = portraitMenuFit('SELECT DIFFICULTY', 2.55, layout.w, 'title');
+  portraitMenuTextCentered(ctx, 'SELECT DIFFICULTY', W / 2,
+    portraitMenuTextY(layout.titleY, titleS, 'title'), '#fff', titleS, 'title');
+  const subtitleS = portraitMenuFit('CHOOSE THE TERMS OF YOUR SHIFT', 1.05,
+    layout.w, 'ui');
+  portraitMenuTextCentered(ctx, 'CHOOSE THE TERMS OF YOUR SHIFT', W / 2,
+    portraitMenuTextY(layout.subtitleY, subtitleS), '#8a8a98', subtitleS);
+
+  layout.rows.forEach(({ d, y, h }, i) => {
+    const selected = i === state.idx;
+    const danger = d.id === 5;
+    if (selected) drawMenuRow(ctx, layout.x, y, layout.w, h, 8,
+      'rgba(201,160,255,0.12)');
+    const nameS = portraitMenuFit(d.name, 2.0, layout.w - 40, 'bold');
+    const glossS = portraitMenuFit(d.desc, 1.35, layout.w - 40, 'ui');
+    const nameH = TEXT_INK_H * portraitMenuScale(nameS);
+    const glossH = TEXT_INK_H * portraitMenuScale(glossS);
+    const pairGap = 10;
+    const pairH = nameH + pairGap + glossH;
+    const pairTop = y + Math.max(0, (h - pairH) / 2);
+    const nameMid = pairTop + nameH / 2;
+    const glossMid = pairTop + nameH + pairGap + glossH / 2;
+    const color = danger ? '#e04848' : selected ? '#c9a0ff' : '#f0eef6';
+    portraitMenuTextCentered(ctx, d.name, W / 2,
+      portraitMenuTextY(nameMid, nameS, 'bold'), color, nameS, 'bold');
+    portraitMenuTextCentered(ctx, d.desc, W / 2,
+      portraitMenuTextY(glossMid, glossS), selected ? '#c9a0ff' : '#8f8b9e', glossS);
+    // Keep the little joke attached to the enlarged name rather than letting
+    // it become a second, misaligned column on the phone.
+    if (d.id === 3 && selected) {
+      const nameW = textWidth(d.name, portraitMenuScale(nameS), 'bold');
+      portraitMenuText(ctx, ':)', W / 2 + nameW / 2 + 12,
+        portraitMenuTextY(nameMid, nameS, 'bold'), '#8a8a98', nameS, 'bold');
+    }
+  });
+}
+
+function drawDifficultyConfirmPortrait(ctx) {
+  const g = difficultyConfirmLayout();
+  ctx.fillStyle = 'rgba(0,0,0,0.9)';
+  ctx.fillRect(g.x, g.y, g.w, g.h);
+  ctx.strokeStyle = '#e04848';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(g.x + 1, g.y + 1, g.w - 2, g.h - 2);
+  const titleS = portraitMenuFit('ARE YOU SURE?', 2.05, g.w - 32, 'title');
+  portraitMenuTextCentered(ctx, 'ARE YOU SURE?', W / 2,
+    portraitMenuTextY(g.y + 48, titleS, 'title'), '#e04848', titleS, 'title');
+  portraitMenuTextCentered(ctx, '(WE ARE NOT.)', W / 2,
+    portraitMenuTextY(g.y + 94, 1.25), '#8a8a98', 1.25);
+  const actionMid = g.actionY + g.actionH / 2;
+  portraitMenuTextCentered(ctx, 'YES', g.x + g.w * 0.26,
+    portraitMenuTextY(actionMid, 1.45, 'bold'), '#e04848', 1.45, 'bold');
+  portraitMenuTextCentered(ctx, 'NO — WISDOM', g.x + g.w * 0.74,
+    portraitMenuTextY(actionMid, 1.45, 'bold'), '#c8c8d8', 1.45, 'bold');
+}
+
 export class DifficultyState {
+  static portraitMode = 'frame';
+
   constructor({ save, onStart, onDone, onCancel }) { this.save = save; this.onStart = onStart; this.onDone = onDone; this.onCancel = onCancel; }
   enter() { this.onStart?.(); this.idx = 0; this.confirming = false; Input.setMenuButtons(); }
   update(dt) {
@@ -2780,9 +2874,12 @@ export class DifficultyState {
       // Two explicit tap zones (see draw()) rather than "anywhere but the
       // corner button" — this is a menu now, not a floating-button screen.
       const p = Input.pointer;
-      const tapped = Input.pressed('pointer') && p.y >= 142 && p.y <= 160;
-      if (Input.pressed('confirm') || (tapped && p.x < W / 2)) { Audio.sfx('uiConfirm'); this.commit(5); }
-      if (Input.pressed('back') || Input.pressed('slide') || (tapped && p.x >= W / 2)) { this.confirming = false; Audio.sfx('ui'); }
+      const g = difficultyConfirmLayout();
+      const tapped = Input.pressed('pointer')
+        && p.x >= g.x && p.x <= g.x + g.w
+        && p.y >= g.actionY && p.y <= g.actionY + g.actionH;
+      if (Input.pressed('confirm') || (tapped && p.x < g.x + g.w / 2)) { Audio.sfx('uiConfirm'); this.commit(5); }
+      if (Input.pressed('back') || Input.pressed('slide') || (tapped && p.x >= g.x + g.w / 2)) { this.confirming = false; Audio.sfx('ui'); }
       Input.endFrame();
       return;
     }
@@ -2813,6 +2910,12 @@ export class DifficultyState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
+    const layout = difficultyLayout();
+    if (layout.portrait) {
+      drawDifficultyPortrait(ctx, this, layout);
+      if (this.confirming) drawDifficultyConfirmPortrait(ctx);
+      return;
+    }
     drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2, 'title');
     // Widest of the two columns of type, since the names are set a size above
     // their glosses and either can be the long one.

@@ -43,12 +43,15 @@ assert(PAPER_TEXTURE_SPEED_DEFAULT === 0.5 && paperTextureSpeedOf() === 0.5
   && paperTextureSpeedOf(9) === 1.25 && paperTextureCameraX(80, 0.5) === 40,
   'paper motion bakeoff speed is clamped and scales only the texture camera');
 const quietSurfaces = paperStrengthsOf({ paperSkyStrength: 0.6, paperGroundStrength: 0.65 });
-assert(PAPER_EFFECT_STRENGTH === 1 && PAPER_SKY_STRENGTH === 1
-  && PAPER_SCENERY_STRENGTH === 1 && PAPER_GROUND_STRENGTH === 1
+const approvedSurfaces = paperStrengthsOf();
+assert(PAPER_EFFECT_STRENGTH === 1 && PAPER_SKY_STRENGTH === 0.8
+  && PAPER_SCENERY_STRENGTH === 1 && PAPER_GROUND_STRENGTH === 0.2
   && paperStrengthOf(-1) === 0 && paperStrengthOf(9) === 1.25
   && quietSurfaces.sky === 0.6 && quietSurfaces.scenery === 1
-  && quietSurfaces.ground === 0.65,
-  'paper surface strengths are independent, clamped, and neutral by default');
+  && quietSurfaces.ground === 0.65
+  && approvedSurfaces.sky === 0.8 && approvedSurfaces.scenery === 1
+  && approvedSurfaces.ground === 0.2,
+  'paper surface strengths are independent, clamped, and use the approved 80/100/20 defaults');
 const skyA = paperTextureSource('skySmooth');
 const skyB = paperTextureSource('skySmooth');
 const soft = paperTextureSource('cardstockSoft');

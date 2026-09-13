@@ -283,6 +283,15 @@ function leaveTrophyRoomAudio() {
   leaveWholeMixTreatment(TROPHY_ROOM_TREAT_SECONDS);
 }
 
+// The Food Court is the one room every route returns to, and its first notes include
+// pooled Tone voices. Build that reusable part while the state transition is fully
+// covered. The hub has no TNGR-2 bank, so a long queue prefill would cost more than it
+// saves by constructing several per-note synths before the room is even visible.
+function primeFoodCourtAudio() {
+  Audio.prepareRealtimeVoices?.({ startStep: Audio.step, windowSteps: 256 });
+  Audio.warmWorkletLanes?.();
+}
+
 function enterArcadeCornerAudio() {
   enterWholeMixTreatment(ARCADE_CORNER_TREATMENT, ARCADE_CORNER_TREAT_SECONDS);
 }
@@ -1589,6 +1598,7 @@ export class HubState {
     // still takes the ordinary setBank path; the same one keeps the transport alive.
     if (Audio.sourceBank !== musicBank) {
       Audio.setBank(musicBank, musicSong?.mix, musicSong?.arrangement);
+      primeFoodCourtAudio();
     } else {
       leaveTrophyRoomAudio();
     }
@@ -2854,13 +2864,18 @@ export class HubState {
 // while the floor is a tiny no-stakes practice space: swap heroes at the podium
 // and hit the sprung target as often as desired. Nothing here changes campaign
 // rewards or combat cooldowns.
-// The room is unzoomed, so pin its floor to the Food Court's rendered floor
-// line. This makes the shared doors and their skirting meet at the same height.
+// The gallery's existing artwork was authored in the Food Court's landscape
+// screen scale: its door is already DOOR_W * HUB_ZOOM wide and its hero is
+// already cabinet-sized. Keep that design scale for landscape, then magnify
+// it by the same ratio the Food Court uses when it goes portrait. That gives
+// both rooms one visible floor, character size, and zoom without rewriting the
+// gallery's long horizontal exhibit coordinates.
 const TROPHY_FLOOR_Y = HUB_FLOOR_PIN_Y;
 const TROPHY_WORLD_W = 1290;
 const TROPHY_DOOR_W = DOOR_W * HUB_ZOOM;
 const TROPHY_DOOR_H = DOOR_H * HUB_ZOOM;
 const TROPHY_EXIT_X = TROPHY_DOOR_W / 2;
+const TROPHY_PLAYER_H = PLAYER_H * HUB_ZOOM;
 const TROPHY_BOARD_GAP = 30;
 const TROPHY_RECORDS_X = 80;
 const TROPHY_RECORDS_W = 300;
@@ -2876,10 +2891,39 @@ const TROPHY_BOARD_TITLE_SCALE = 1.38;
 const TROPHY_BOARD_TITLE_Y = 13;
 // Keep the first exhibit's established position as the alignment reference.
 const TROPHY_BOARD_Y = 27;
+// Portrait has a generous wall band above the pinned Food Court floor. Lift
+// the exhibit plaques into it so their headings clear the hero's head and read
+// as centered wall signs instead of low labels behind the character.
+const TROPHY_PORTRAIT_BOARD_Y = -62;
+const TROPHY_PORTRAIT_BOARD_TITLE_Y = TROPHY_PORTRAIT_BOARD_Y - 14;
 const TROPHY_PODIUM_X = 1060;
 const TROPHY_DUMMY_X = 1180;
 const TROPHY_ATTACK_RANGE = 112;
 const TROPHY_MOVE_SPEED = 140;
+
+function trophyBoardLayout(layout = trophyPresentation()) {
+  return {
+    y: layout.portrait ? TROPHY_PORTRAIT_BOARD_Y : TROPHY_BOARD_Y,
+    titleY: layout.portrait ? TROPHY_PORTRAIT_BOARD_TITLE_Y : TROPHY_BOARD_TITLE_Y,
+  };
+}
+
+function trophyPresentation() {
+  const portrait = isPhonePortraitPresentation();
+  // Trophy coordinates are already at the Food Court's landscape visual
+  // scale, so portrait magnification is the ratio between the two room zooms.
+  const zoom = portrait ? HUB_PORTRAIT_ZOOM / HUB_ZOOM : 1;
+  const camY = portrait
+    ? TROPHY_FLOOR_Y - (H * PORTRAIT_HUB_FLOOR_RATIO) / zoom
+    : 0;
+  return {
+    portrait,
+    zoom,
+    camY,
+    viewW: W / zoom,
+    floorY: TROPHY_FLOOR_Y,
+  };
+}
 
 function drawTrophyPanel(ctx, x, y, w, h, radius = 5, fill = '#100e16', border = null) {
   ctx.fillStyle = fill;
@@ -2899,6 +2943,8 @@ const TROPHY_BOSSES = [
 ];
 
 export class TrophyRoomState {
+  static portraitMode = 'frame';
+
   constructor({ save, flow }) {
     this.save = save;
     this.flow = flow;
@@ -2910,11 +2956,16 @@ export class TrophyRoomState {
 
   enter() {
     Input.setContext('workshop');
+    this.setChromeWalkButtons();
     Input.setButtons([]);
-    Input.setChromeButtons([]);
     enterTrophyRoomAudio();
     this.t = 0;
-    this.px = 90;
+    const presentation = trophyPresentation();
+    // The landscape room opens at the exit. On a phone, open on the first
+    // exhibit instead so the narrower camera does not begin on its left edge.
+    this.px = presentation.portrait
+      ? TROPHY_RECORDS_X + TROPHY_RECORDS_W / 2 - presentation.viewW * 0.08
+      : 90;
     this.facing = 1;
     this.walkTarget = null;
     this.walkHoldT = 0;
@@ -2936,6 +2987,17 @@ export class TrophyRoomState {
     leaveTrophyRoomAudio();
     Input.setButtons([]);
     Input.setChromeButtons([]);
+  }
+
+  setChromeWalkButtons() {
+    this.chromeGen = chromeGeo.gen;
+    this.chromeTouch = Input.usingTouch;
+    Input.setChromeButtons(Input.usingTouch ? hubChromeButtons() : []);
+  }
+
+  drawChromeWalkButtons() {
+    if (!Input.usingTouch) return;
+    declareHubChrome();
   }
 
   defeatedBosses() {
@@ -2995,7 +3057,8 @@ export class TrophyRoomState {
   near(x, r = 34) { return Math.abs(this.px - x) <= r; }
 
   camX() {
-    return Math.max(0, Math.min(TROPHY_WORLD_W - W, this.px - W * 0.42));
+    const { viewW } = trophyPresentation();
+    return Math.max(0, Math.min(TROPHY_WORLD_W - viewW, this.px - viewW * 0.42));
   }
 
   cycleHero(dir = 1) {
@@ -3058,6 +3121,7 @@ export class TrophyRoomState {
 
   update(dt) {
     this.t += dt;
+    if (chromeGeo.gen !== this.chromeGen || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
     this.attackT = Math.max(0, this.attackT - dt);
     this.dummyHitT = Math.max(0, this.dummyHitT - dt);
     const comboBefore = this.comboT;
@@ -3075,7 +3139,13 @@ export class TrophyRoomState {
     // The room itself is the touch UI. Tapping an exhibit walks over and uses
     // it; tapping open floor just walks there.
     if (Input.pressed('pointer')) {
-      const x = Input.pointer.x + this.camX(), y = Input.pointer.y;
+      const layout = trophyPresentation();
+      const camera = this.camX();
+      // The room is painted through the same uniform zoom as the Food Court.
+      // Convert the pointer back through that transform before checking the
+      // exhibit bounds, so the large portrait targets remain where they look.
+      const x = Input.pointer.x / layout.zoom + camera;
+      const y = Input.pointer.y / layout.zoom + layout.camY;
       // The exit door and its sign are one explicit control surface. A tap on
       // either should leave immediately, just like the hub's station hit-test;
       // making it a walk target first made the sign feel inert, especially on
@@ -3125,13 +3195,14 @@ export class TrophyRoomState {
     this.player.update(dt, Input, { speed: move ? walkSpeed : 0 });
   }
 
-  drawLevelRecords(ctx) {
+  drawLevelRecords(ctx, layout = trophyPresentation()) {
     const records = this.levelRecords();
+    const board = trophyBoardLayout(layout);
     for (let act = 0; act < 3; act++) {
       const x = TROPHY_LEVELS_X + act * (TROPHY_LEVEL_BOARD_W + TROPHY_LEVEL_BOARD_GAP);
-      const y = TROPHY_BOARD_Y, w = TROPHY_LEVEL_BOARD_W, h = 156;
+      const y = board.y, w = TROPHY_LEVEL_BOARD_W, h = 156;
       const actTitle = `ACT ${act + 1} PROGRESS`;
-      drawTextCentered(ctx, actTitle, x + w / 2, TROPHY_BOARD_TITLE_Y, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+      drawTextCentered(ctx, actTitle, x + w / 2, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
       drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
       records.slice(act * 3, act * 3 + 3).forEach((group, cabinetIndex) => {
         const blockY = y + 3 + cabinetIndex * 50;
@@ -3180,11 +3251,12 @@ export class TrophyRoomState {
     ctx.beginPath(); ctx.moveTo(x - 20, y + 24); ctx.quadraticCurveTo(x - 31, y + 29, x - 25, y + 37); ctx.stroke();
   }
 
-  drawBossCase(ctx) {
+  drawBossCase(ctx, layout = trophyPresentation()) {
     const earned = this.defeatedBosses();
-    const w = TROPHY_BOSSES_W, h = 94, x0 = TROPHY_BOSSES_X - w / 2, y0 = TROPHY_BOARD_Y;
+    const board = trophyBoardLayout(layout);
+    const w = TROPHY_BOSSES_W, h = 94, x0 = TROPHY_BOSSES_X - w / 2, y0 = board.y;
     const title = 'MANAGEMENT ARCHIVE';
-    drawTextCentered(ctx, title, TROPHY_BOSSES_X, TROPHY_BOARD_TITLE_Y, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTextCentered(ctx, title, TROPHY_BOSSES_X, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
     drawTrophyPanel(ctx, x0, y0, w, h, 5, '#100e16', '#73657c');
     if (!earned.length) {
       // One closed archive instead of three mystery silhouettes. Before the
@@ -3210,16 +3282,17 @@ export class TrophyRoomState {
     });
   }
 
-  drawRecordsBoard(ctx) {
+  drawRecordsBoard(ctx, layout = trophyPresentation()) {
     const groups = this.statGroups();
-    const x = TROPHY_RECORDS_X, y = TROPHY_BOARD_Y, w = TROPHY_RECORDS_W, h = 132, colW = w / 3;
+    const board = trophyBoardLayout(layout);
+    const x = TROPHY_RECORDS_X, y = board.y, w = TROPHY_RECORDS_W, h = 132, colW = w / 3;
     // Still a wall board rather than a screen-filling report, but large enough
     // that its nine entries survive a phone-sized landscape display. Three
     // semantic columns keep related values together. Labels sit upper-left and
     // values stagger beneath them at lower-right, so neither has to surrender
     // size to share one baseline and the whole board can be substantially
     // narrower.
-    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, TROPHY_BOARD_TITLE_Y, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
     drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
     groups.forEach((group, column) => {
       const gx = x + column * colW;
@@ -3245,14 +3318,20 @@ export class TrophyRoomState {
     });
   }
 
-  drawRoom(ctx, camera) {
-    ctx.fillStyle = '#0d0a12'; ctx.fillRect(0, 0, TROPHY_WORLD_W, H);
-    ctx.fillStyle = '#281f32'; ctx.fillRect(0, 0, TROPHY_WORLD_W, TROPHY_FLOOR_Y);
+  drawRoom(ctx, camera, layout) {
+    // Portrait's camera top is above world y=0. Fill the actual visible world
+    // span rather than leaving a transparent strip above the old wall origin.
+    const visibleTop = layout.camY;
+    const visibleBottom = layout.camY + H / layout.zoom + 4;
+    ctx.fillStyle = '#0d0a12';
+    ctx.fillRect(0, visibleTop, TROPHY_WORLD_W, visibleBottom - visibleTop);
+    ctx.fillStyle = '#281f32';
+    ctx.fillRect(0, visibleTop, TROPHY_WORLD_W, TROPHY_FLOOR_Y - visibleTop);
     // Reclaimed wall panels stop the museum from reading as one flat fill.
     for (let x = 0; x < TROPHY_WORLD_W; x += 48) {
       ctx.fillStyle = (x / 48) % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.035)';
-      ctx.fillRect(x, 0, 47, TROPHY_FLOOR_Y);
-      ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, 0, 1, TROPHY_FLOOR_Y);
+      ctx.fillRect(x, visibleTop, 47, TROPHY_FLOOR_Y - visibleTop);
+      ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, visibleTop, 1, TROPHY_FLOOR_Y - visibleTop);
     }
     // This is still the same failing food-court building, so its gallery uses
     // the same housings, warm tubes, halos, soft-edged beams and independent
@@ -3274,7 +3353,8 @@ export class TrophyRoomState {
     lights.forEach(([center, strength], i) => {
       const x = center - LIGHT_W / 2;
       const flick = lightFlicker(this.t, i + 11, this.save.settings.reducedFlashing);
-      drawCeilingLight(ctx, x, 0, strength * flick, x - camera, W);
+      drawCeilingLight(ctx, x, layout.portrait ? layout.camY : 0,
+        strength * flick, x - camera, layout.viewW);
     });
     drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W);
     // Practice-lane mat, taped off and already scuffed from entirely voluntary
@@ -3334,14 +3414,16 @@ export class TrophyRoomState {
   }
 
   draw(ctx) {
+    const layout = trophyPresentation();
     const camera = this.camX();
     ctx.save();
-    ctx.translate(-camera, 0);
-    this.drawRoom(ctx, camera);
+    ctx.scale(layout.zoom, layout.zoom);
+    ctx.translate(-camera, -layout.camY);
+    this.drawRoom(ctx, camera, layout);
 
-    this.drawLevelRecords(ctx);
-    this.drawBossCase(ctx);
-    this.drawRecordsBoard(ctx);
+    this.drawLevelRecords(ctx, layout);
+    this.drawBossCase(ctx, layout);
+    this.drawRecordsBoard(ctx, layout);
 
     // Visually this is the same EXIT service door used in the Food Court, so
     // the route reads consistently in both rooms. Mechanically it remains a
@@ -3370,8 +3452,9 @@ export class TrophyRoomState {
       pose.headTurn = 0;
     }
     pose.facing = this.facing;
-    drawToon(ctx, this.player.heroId, pose, Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), 58);
-    drawPlayerMarker(ctx, this.px, TROPHY_FLOOR_Y - this.player.y - 69, MARKER_R);
+    drawToon(ctx, this.player.heroId, pose, Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), TROPHY_PLAYER_H);
+    const headY = TROPHY_FLOOR_Y - this.player.y - toonInkTop(this.player.heroId) * TROPHY_PLAYER_H;
+    drawPlayerMarker(ctx, this.px, headY - MARKER_GAP, MARKER_R);
 
     if (this.comboT > 0) drawTextCentered(ctx, `CHAIN x${this.chain}   BEST x${this.bestChain}`, TROPHY_DUMMY_X, 118, '#f6d33c', 0.82, 'bold');
     drawTextCentered(ctx, this.player.hero.short, TROPHY_PODIUM_X, 184, '#48e0c8', 0.78, 'bold');
@@ -3383,18 +3466,32 @@ export class TrophyRoomState {
           : (Input.isTouchDevice() ? 'TAP TO WALK' : 'LEFT / RIGHT: WALK   SPACE: JUMP');
     ctx.restore();
 
-    // Match the food court's persistent bottom status row: location on the
-    // left, contextual controls on the right. This keeps the entire top band
-    // available for the exhibit headings and larger board type.
+    // Match the food court's persistent bottom status row. Portrait has a deep
+    // floor band below the pinned room floor, so it can use larger type without
+    // competing with the exhibits or the character.
     const roomTitle = 'TROPHY ROOM';
-    const roomTitleScale = 1.1;
-    drawText(ctx, roomTitle, 8, H - 11, '#f6d33c', roomTitleScale, 'bold');
+    const roomTitleScale = layout.portrait ? 2.1 : 1.1;
+    const footerY = layout.portrait ? H - 34 : H - 11;
+    const footerText = layout.portrait ? drawTextVector : drawText;
+    const footerCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
+    footerText(ctx, roomTitle, 12, footerY, '#f6d33c', roomTitleScale, 'bold');
     const titleW = textWidth(roomTitle, roomTitleScale, 'bold');
-    const hintScale = Math.min(0.95, (W - 32 - titleW) / Math.max(1, textWidth(hint, 1, 'bold')));
-    drawText(ctx, hint, W - 8 - textWidth(hint, hintScale, 'bold'), H - 11, '#c8c8d8', hintScale, 'bold');
-    if (camera < TROPHY_WORLD_W - W - 8) {
-      drawText(ctx, 'MORE  >', W - 54, H - 25, '#8a8a98', 0.55, 'bold');
+    if (layout.portrait) {
+      const hintLines = wrapText(hint, W - 32, 1.75, 2, 'bold');
+      hintLines.forEach((line, i) => footerCentered(ctx, line, W / 2,
+        H - 82 + i * 18, '#c8c8d8', 1.75, 'bold'));
+      if (camera < TROPHY_WORLD_W - layout.viewW - 8) {
+        footerCentered(ctx, 'SWIPE / TAP TO WALK  ·  MORE  >', W / 2, H - 14,
+          '#8a8a98', 1.05, 'bold');
+      }
+    } else {
+      const hintScale = Math.min(0.95, (W - 32 - titleW) / Math.max(1, textWidth(hint, 1, 'bold')));
+      footerText(ctx, hint, W - 8 - textWidth(hint, hintScale, 'bold'), footerY, '#c8c8d8', hintScale, 'bold');
+      if (camera < TROPHY_WORLD_W - layout.viewW - 8) {
+        drawText(ctx, 'MORE  >', W - 54, H - 25, '#8a8a98', 0.55, 'bold');
+      }
     }
+    this.drawChromeWalkButtons();
   }
 }
 
@@ -3659,7 +3756,11 @@ export class StageSelectState {
     // is filled past it before the main thread goes away. Same move as run.js enter().
     const hasTngr2 = Object.values(this.cab.songMix?.voiceParams || {})
       .some((v) => v?.synth === 'TNGR-2');
-    if (hasTngr2) Audio.prefill?.(1.2);
+    // A phone reached over the ordinary LAN dev URL is not a secure context, so
+    // it cannot host AudioWorklet. Do not spend the selector's frame budget
+    // queueing notes for a TNGR-2 lane that will immediately refuse to build.
+    const canWarmTngr2 = Audio.canHostTngr2 ? Audio.canHostTngr2() : true;
+    if (hasTngr2 && canWarmTngr2) Audio.prefill?.(1.2);
     Audio.warmWorkletLanes?.();
     this.corrupt = null;
     this.layoutKey = '';
@@ -3893,7 +3994,7 @@ export class StageSelectState {
 export class BenchState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 82; this.listBottom = 202; this.rowH = MENU_ROW_MAX; this.notice = ''; this.soldOutKey = ''; this.soldOutNotice = ''; this.t = 0; this.annoyedT = 0; this.madStyle = 0; this.enterT = 0; }
   enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; fitRows(this, this.options().length); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
-  exit() { Audio.setBank(HUB_THEME); }
+  exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
   options() {
     const slot = this.save.slot;
     const purchaseCount = BENCH_UPGRADES.reduce((total, u) => {
@@ -4080,7 +4181,7 @@ export class BenchState {
 export class ShopState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 58; this.rowH = MENU_ROW_MAX; this.visibleRows = 7; this.fixedLastRow = true; this.listStart = 0; }
   enter() { this.idx = 0; this.listStart = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
-  exit() { Audio.setBank(HUB_THEME); }
+  exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {

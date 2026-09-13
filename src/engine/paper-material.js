@@ -3,12 +3,12 @@ const TILE_SIZE = 1024;
 export const PAPER_PATTERN_SCALE = 0.5;
 export const PAPER_TEXTURE_BLEND = 'source-over';
 // Surface-strength controls are application alphas, separate from the paper
-// recipe itself. Keep the shipped baseline neutral while allowing a bakeoff to
-// compare a quieter sky or foreground without rebaking the fibre source.
+// recipe itself. The approved shipped balance keeps scenery tactile while
+// quieting the sky and foreground without rebaking the fibre source.
 export const PAPER_EFFECT_STRENGTH = 1;
-export const PAPER_SKY_STRENGTH = 1;
+export const PAPER_SKY_STRENGTH = 0.8;
 export const PAPER_SCENERY_STRENGTH = 1;
-export const PAPER_GROUND_STRENGTH = 1;
+export const PAPER_GROUND_STRENGTH = 0.2;
 export function paperStrengthOf(value, fallback = 1) {
   const strength = Number(value);
   const base = Number.isFinite(Number(fallback)) ? Number(fallback) : 1;

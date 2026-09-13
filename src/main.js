@@ -83,10 +83,12 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   ?goto=stage&cab=plumber&stage=plumber-1&seed=7   — ...on a known seed
 //   ?goto=stage&cab=plumber                   — stage select for that cabinet
 //   ?goto=hub&hero=lorenzo                     — start hub as a specific hero
+//   ?goto=trophy&hero=lorenzo                  — open the trophy room
+//   ?goto=difficulty                           — open difficulty select
 //   ?goto=soundtest&audition                   — audition every megamix move
 //
 // Recognised goto values:
-//   title  tutorial  hub  howto  fieldguide  settings  calibrate  cast
+//   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  calibrate  cast
 //   attract  intro  finale  soundtest  stage  boss  overtime
 function routeDevUrl(goto, p) {
   // So Flow.toTitle() is skipped. The last line of boot() guards on this flag.
@@ -170,6 +172,17 @@ function routeDevUrl(goto, p) {
       Flow.toHub();
       break;
     }
+    case 'trophy':
+      heroFrom(p);
+      setState(new TrophyRoomState({ save, flow: Flow }));
+      break;
+    case 'difficulty':
+      setState(new DifficultyState({
+        save,
+        onCancel: () => Flow.toTitle(),
+        onDone: () => Flow.toHub(),
+      }));
+      break;
     case 'howto':
       setState(new HowToPlayState({ onDone: () => Flow.toTitle() }));
       break;
@@ -1003,9 +1016,15 @@ function boot() {
             const x = visualiserActive
               ? (visualiserFrame.left + visualiserFrame.right - tw) * 0.5
               : W - 5 - tw;
+            // Clear the notch. Letterboxed (desktop, landscape phones) the
+            // inset lands out in the black margin and screen.safeTop is 0, so
+            // this is the same y it has always been there. Portrait standalone
+            // has no margin: logical y=0 is UNDER the Dynamic Island, and the
+            // density/native/flags field — the one field you open this readout
+            // to see — was the half that got covered.
             const y = visualiserActive
               ? visualiserFrame.bottom - 14
-              : 3;
+              : 3 + screen.safeTop;
             ctx.fillStyle = 'rgba(5,6,12,0.68)';
             ctx.fillRect(x - 5, y - scale * 3, tw + 10, scale * 16);
             drawText(ctx, label, x, y, '#f4f1fa', scale, 'bold');
