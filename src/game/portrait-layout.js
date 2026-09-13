@@ -15,7 +15,17 @@ export const PORTRAIT_FLOATIE_MAX_LINES = 2;
 export const PORTRAIT_FLOATIE_ROW = 10;
 export const PORTRAIT_FLOATIE_PADDING = 8;
 export const PORTRAIT_FLOATIE_HERO_HEIGHT = 24;
-export const PORTRAIT_FLOATIE_WORLD_ZOOM = 3.75;
+// The resting portrait magnification, for the one HUD measurement that has to
+// know how tall the drawn hero is: the chatter hangs above the standing hero's
+// crown, so it needs his drawn height.
+//
+// This MUST track the camera's resting zoom in src/dev/portrait-lab.js. It is
+// a literal rather than an import because portrait-layout is DOM-free HUD
+// geometry and has no business importing dev state — but that makes it a
+// second copy, and a stale one floats the chatter a hero-height off. It was
+// 3.75 while the camera came down to 3.5, which sat the cards higher and
+// emptier than they had been. If the resting zoom moves again, move this.
+export const PORTRAIT_FLOATIE_WORLD_ZOOM = 3.5;
 export const PORTRAIT_CHAT_MAX_LINES = 3;
 export const PORTRAIT_CHAT_ROW = 11;
 export const PORTRAIT_CHAT_PADDING = 8;
@@ -108,14 +118,16 @@ export const PORTRAIT_TIMELINE_HEIGHT_CSS = 4;
 // minimum physical stroke, never a percentage of the phone width.
 export const PORTRAIT_TIMELINE_MARKER_MIN_CSS = 4;
 // Portrait objectives are an opening read, not permanent furniture. They sit
-// over the first scenery band for five seconds, then leave upward beneath the
-// permanent status HUD so the camera never has to reserve their rows.
+// over the first scenery band for five seconds, then leave through the left
+// edge beneath the permanent status HUD so the camera never reserves their rows.
 export const PORTRAIT_OBJECTIVE_HOLD_SEC = 5;
 export const PORTRAIT_OBJECTIVE_SLIDE_SEC = 0.65;
-// Shadowed panels lift one logical pixel below their content rectangle. Give
-// the shared exit travel a little more than that so no bonus edge survives at
-// the scenery clip boundary.
-export const PORTRAIT_OBJECTIVE_EXIT_OVERSHOOT = 2;
+// Progress notices use the same objective column, but are short-lived event
+// cards rather than the opening read. They enter and leave horizontally so a
+// notice never drops through the playfield or stacks with the other objective.
+export const PORTRAIT_OBJECTIVE_NOTICE_SEC = 2.8;
+export const PORTRAIT_OBJECTIVE_NOTICE_ENTRY_SEC = 0.25;
+export const PORTRAIT_OBJECTIVE_NOTICE_EXIT_SEC = 0.3;
 let cachedKey = '';
 let cachedLayout = null;
 
@@ -133,11 +145,12 @@ export function portraitObjectiveSlide(elapsed = 0) {
  * pixels to CSS pixels, so the margins and minimum text sizes below stay
  * meaningful on both small and large phones.
  */
-export function portraitHudLayout(frame) {
+export function portraitHudLayout(frame, options = {}) {
   const scale = Number.isFinite(frame?.scale) && frame.scale > 0 ? frame.scale : 1;
   const safe = frame?.safeRect || { left: 0, top: 0, right: 480, bottom: 270 };
+  const rhythmStage = options?.rhythmStage === true;
   const key = [frame?.revision ?? -1, scale, safe.left, safe.top, safe.right, safe.bottom,
-    frame?.height ?? -1, frame?.cornerRadiusCss ?? 0].join('|');
+    frame?.height ?? -1, frame?.cornerRadiusCss ?? 0, rhythmStage ? 1 : 0].join('|');
   if (key === cachedKey && cachedLayout) return cachedLayout;
   const css = (px) => px / scale;
   const safeWidth = Number.isFinite(safe.width) ? safe.width : Math.max(0, safe.right - safe.left);
@@ -168,13 +181,12 @@ export function portraitHudLayout(frame) {
   // the primary portrait ink roughly 12–13 CSS px without letting the panels
   // consume the whole safe frame on a narrow phone.
   const panelScale = portraitPanelScale(scale);
-  // The top stack starts at the authored breathing band directly: the rail and
-  // its gap used to sit above it and no longer do.
+  // The status row starts at the authored breathing band. Rhythm's rail sits
+  // immediately below it, with the temporary objective cards following.
   const statusY = safe.top + css(PORTRAIT_HUD_TOP_CLEARANCE_CSS);
   const statusH = 18 * panelScale;
-  const goalY = statusY + statusH + gap;
   const goalH = 18 * panelScale;
-  const bonusY = goalY + goalH + gap;
+  const topHudBottom = statusY + statusH;
   const bonusScale = Math.max(0.9, panelScale * 0.9);
   // drawObjectivePanel receives `bonusScale` as its text scale, but uses its
   // full 18px row whenever that scale is >= 1.  Keep the resolver's band
@@ -182,6 +194,22 @@ export function portraitHudLayout(frame) {
   // smaller glyph scale, otherwise the chatter row can sit inside BONUS on
   // the smallest phones.
   const bonusH = 12 * panelScale;
+  // Rhythm's rail is permanent; both opening objective panels are temporary.
+  // Put the rail immediately below the status HUD, then let GOAL and BONUS
+  // occupy the transient bands underneath it. Their painters share `left`
+  // below, making the two rows one readable column even when their words have
+  // different widths.
+  const rhythmH = css(40);
+  const firstObjectiveY = topHudBottom + gap;
+  const rhythmY = rhythmStage
+    ? firstObjectiveY
+    : firstObjectiveY + goalH + gap + bonusH + css(10);
+  const goalY = rhythmStage
+    ? rhythmY + rhythmH + gap
+    : firstObjectiveY;
+  const bonusY = rhythmStage
+    ? goalY + goalH + gap
+    : firstObjectiveY + goalH + gap;
   const bonusCompactY = goalY + (goalH - bonusH) / 2;
   const expandedObjectiveBottom = bonusY + bonusH;
   const compactObjectiveBottom = goalY + goalH;
@@ -192,11 +220,9 @@ export function portraitHudLayout(frame) {
   // and preview tools, but none of them moves the world boundary.
   const hudGroupBottom = statusY + statusH;
   const bonusRenderY = bonusY;
-  // Rhythm is an optional overlay on the first scenery band. It is not part of
-  // the reserved HUD stack, and the objective panels share that scenery space.
+  // Keep the rhythm rail below the top HUD. On rhythm stages the temporary
+  // BONUS card is deliberately measured below the rail instead of blocking it.
   const sceneryTop = hudGroupBottom;
-  const rhythmY = sceneryTop + css(12);
-  const rhythmH = css(18);
   const portrait = portraitGeometry({
     width: frame?.width,
     height: frame?.height,

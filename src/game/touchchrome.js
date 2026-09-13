@@ -9,8 +9,9 @@
 // visible changes: a relayout, a disc pressed or released, the USE recharge
 // crossing a pixel.
 //
-// Nothing here knows which device it is on. The discs sit on the picture at
-// fixed logical spots and the margin's zones extend them, on every device.
+// Nothing here knows which device it is on. The layout supplies CSS-pixel
+// positions for the current safe frame; this painter only gives each disc its
+// shared visual vocabulary.
 import { chrome, chromeCtx, paintChrome } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { drawRoundButton, GLYPH_PX } from '../engine/sprites.js';
@@ -29,18 +30,42 @@ export function runChromeButtons({ hasPower = true, portraitLab = false } = {}) 
 }
 export function hubChromeButtons() { return chrome.hub; }
 
-// The look, once. A 14% glass disc that deepens while it is held — the press
-// is the only feedback a thumb gets from a control it is not looking at — and
-// glyphs on the shadow drawRoundButton gives them.
+// The look, once. Landscape actions get a slightly stronger translucent glass
+// fill so they stay readable when they sit over the level; portrait keeps the
+// quieter legacy fill. Neither mode draws an outer button rim: the attack's
+// pink ring is its glyph, while the shared glass makes the three actions a set.
 const GLASS = 'rgba(11,11,20,0.14)';
 const GLASS_PRESSED = 'rgba(11,11,20,0.30)';
-const PAUSE_INK = 'rgba(255,255,255,0.9)';
+// A dark tint disappears against the landscape letterbox. These low-alpha
+// action tints read as smoky/frosted glass on black while still carrying the
+// action's established colour: green jump, blue slide, pink attack.
+const ACTION_GLASS = {
+  jump: 'rgba(63,191,90,0.20)',
+  slide: 'rgba(114,216,240,0.20)',
+  ability: 'rgba(248,144,184,0.18)',
+};
+const ACTION_GLASS_PRESSED = {
+  jump: 'rgba(104,218,126,0.30)',
+  slide: 'rgba(157,233,249,0.30)',
+  ability: 'rgba(255,180,210,0.28)',
+};
+const GLASS_PAUSE = 'rgba(11,11,20,0.035)';
+const GLASS_PAUSE_PRESSED = 'rgba(11,11,20,0.09)';
+const PAUSE_GLASS = 'rgba(255,255,255,0.11)';
+const PAUSE_GLASS_PRESSED = 'rgba(255,255,255,0.19)';
+const PAUSE_INK = 'rgba(255,255,255,0.54)';
+const PAUSE_OUTLINE = 'rgba(18,24,46,0.28)';
 const WALK_INK = 'rgba(255,255,255,0.9)';
 const REWIND_INK = 'rgba(124,232,160,0.95)';
-// USE is the one disc that carries a word. Its em height as a fraction of the
-// disc's radius, turned into the text system's scale (GLYPH_PX em at scale 1).
-const LABEL_EM = 0.56;
 
+function actionButtonStyle(held, ink, landscape, id) {
+  return {
+    fill: landscape
+      ? (held ? ACTION_GLASS_PRESSED[id] : ACTION_GLASS[id])
+      : (held ? GLASS_PRESSED : GLASS),
+    ink,
+  };
+}
 // USE's recharge, read off a run — or the tutorial's shim, which is the same
 // two fields: {player, relay:{current}}. Full reads as ready, not empty: it
 // drains to 0 the instant you fire it, rises back as the cooldown counts down,
@@ -62,26 +87,38 @@ const discsOf = (list) => list.filter((b) => b.r != null);
 // arrow direction, ink, outline, label scale, or cooldown treatment.
 export function drawRunChrome(ctx, discs, state, isHeld = (action) => Input.held(action)) {
   const list = discsOf(discs);
+  const landscape = chrome.landscapeSide != null;
   const use = list.find((b) => b.id === 'ability' || b.id === 'use');
   const meter = use && state ? abilityMeter(state) : null;
   for (const b of list) {
     const held = isHeld(b.action);
     const fill = held ? GLASS_PRESSED : GLASS;
     const button = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 };
-    if (b.id === 'jump') drawRoundButton(ctx, { ...button, icon: 'up' }, { fill, ink: ACTION_INK.jump });
-    else if (b.id === 'slide') drawRoundButton(ctx, { ...button, icon: 'down' }, { fill, ink: ACTION_INK.slide });
-    else if (b.id === 'pause') drawRoundButton(ctx, { ...button, icon: 'pause' }, { fill, ink: PAUSE_INK });
+    if (b.id === 'jump') drawRoundButton(ctx, { ...button, icon: 'up' }, actionButtonStyle(held, ACTION_INK.jump, landscape, 'jump'));
+    else if (b.id === 'slide') drawRoundButton(ctx, { ...button, icon: 'down' }, actionButtonStyle(held, ACTION_INK.slide, landscape, 'slide'));
+    else if (b.id === 'pause') drawRoundButton(ctx, { ...button, icon: 'pause' }, {
+      fill: landscape
+        ? (held ? PAUSE_GLASS_PRESSED : PAUSE_GLASS)
+        : (held ? GLASS_PAUSE_PRESSED : GLASS_PAUSE),
+      ink: PAUSE_INK,
+      outline: PAUSE_OUTLINE,
+      shadowColor: 'rgba(0,0,0,0.24)',
+      shadowBlur: 0.24,
+      shadowOffsetY: 0.05,
+    });
     else if (b.id === 'rewind') drawRoundButton(ctx, { ...button, label: 'RWD' }, {
       fill, ink: REWIND_INK,
       labelScale: (b.r * 0.56) / GLYPH_PX, labelStyle: 'ui',
     });
     else if (b.id === 'ability' || b.id === 'use') {
       const frac = meter?.frac ?? 1;
-      const ink = meter?.ink ?? ACTION_INK.ability;
-      drawRoundButton(ctx, { ...button, label: 'USE' }, {
-        fill, ink,
+      // Attack is the same action glyph as the rhythm ribbon: an outlined
+      // pink circle. The meter still fills the disc from below while it
+      // recharges, but the control no longer needs a separate word.
+      const ink = ACTION_INK.ability;
+      drawRoundButton(ctx, { ...button, icon: 'ability' }, {
+        ...actionButtonStyle(held, ink, landscape, 'ability'),
         frac, levelFill: ink, levelAlpha: 0.22, waterline: '#d7fff6',
-        labelScale: (b.r * LABEL_EM) / GLYPH_PX, labelStyle: 'ui',
       });
     }
   }

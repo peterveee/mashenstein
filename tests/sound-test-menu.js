@@ -157,8 +157,8 @@ renderer.setPresentationFrame(portraitFrame);
 const portrait = new SoundTestState({ onDone: () => {}, initialTrack: 0, startVisualiser: true });
 portrait.enter();
 assert(renderer.H === portraitFrame.height && portrait.visibleRows === 10 && portrait.rowH >= 60
-  && portrait.visualiser?.viewportH === portraitFrame.height,
-  'portrait sound test fills the frame with denser rows and a full-height visualiser field');
+  && portrait.visualiser?.viewportH === 270,
+  'portrait sound test fills the frame with denser rows; the visualiser keeps its fixed 480x270 field for the renderer to cover-crop');
 portrait.draw(document.createElement('canvas').getContext('2d'));
 portrait.exit();
 renderer.setPresentationFrame(defaultFrame());

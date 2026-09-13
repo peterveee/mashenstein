@@ -10,6 +10,7 @@ import { COPTER_BOX, copterFrame, copterLamp } from './draw.js';
 import { VIEW_W, applyWorld } from '../engine/camera.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
+import { PLAYER_X } from './player.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
 import { BOSS_HIT_SHORT, BOSS_DEFLECT_SHORT } from '../data/jokes.js';
 
@@ -17,6 +18,47 @@ import { BOSS_HIT_SHORT, BOSS_DEFLECT_SHORT } from '../data/jokes.js';
 // one. Low on purpose: in a sustained fight the long variants stack into a wall
 // of text over the boss you are trying to read.
 const BOSS_LONG_CHANCE = 0.1;
+
+// HOW CLOSE A BOSS DROP MAY LAND, in world units ahead of the hero.
+//
+// The boss's own x is FRAMING — a fraction of the view, so it hovers in the
+// upper right whatever the zoom (see update). Its drops were placed off that
+// same x, which quietly made the hazard's distance a function of the view
+// width, so the one fight was five different fights:
+//
+//   desktop 1.6   drop lands 71..223 ahead of the hero   0.49s of warning
+//   close 2.0                41..179                     0.28s
+//   phone land 2.2           30..162                     0.21s
+//   portrait 3.5            -10..102                     none — BEHIND him
+//
+// A floor rather than a constant, because the two bounds do not otherwise
+// meet: a fair drop needs the boss 151 world units ahead of the camera, and
+// staying inside the portrait picture needs it no more than 149. So the boss
+// keeps its framing and the DROP gets the world guarantee. On desktop the
+// floor is 131 against a boss edge of 130 and never binds — that framing is
+// unchanged to within a world unit, and it is the one this number is taken
+// from. Every narrower view now gets the same half second.
+//
+// 0.5s at the cruising 145 wu/s, which is twice the spawner's REACT_FLOOR —
+// right for a hazard you cannot see coming from its shadow on the ground.
+const BOSS_DROP_MIN_AHEAD = 72;
+// The spread a drop is scattered across, forward of whichever bound won.
+const BOSS_DROP_SPREAD = 80;
+
+/**
+ * WHERE THE NEXT DROP MAY LAND AT THE EARLIEST, in world x.
+ *
+ * Named and exported because it is the fairness rule, not an expression: it is
+ * the one place the boss's framing and the hero's reaction budget meet, and
+ * tests/boss-fairness.js holds it to the table above at every shipped zoom.
+ * Taking the FURTHER of the two means the boss's own composition still leads
+ * wherever the view is wide enough to afford it.
+ */
+export function bossDropNearLip(bossX, heroWorldX) {
+  return Math.max(bossX - 20, heroWorldX + BOSS_DROP_MIN_AHEAD);
+}
+
+export { BOSS_DROP_MIN_AHEAD, BOSS_DROP_SPREAD };
 
 // World-unit boxes the three boss painters are authored in (props.js).
 // The copter is COPTER_BOX square (draw.js); the balloon keeps the ape the
@@ -118,7 +160,12 @@ export class BossState extends RunState {
     if (this.dropT <= 0) {
       this.dropT = this.boss.dropEvery[this.phaseIdx()];
       const type = this.rng.pick(this.boss.drops);
-      const ob = makeObstacle(type, this.bossX + this.rng.range(-20, 60));
+      // The near lip is the boss's trailing edge OR the hero's fairness floor,
+      // whichever is further down the road. On a narrow view the floor wins and
+      // the drop lands ahead of the boss instead of on top of the hero, which
+      // reads as the thing being hurled down the road rather than posted.
+      const nearLip = bossDropNearLip(this.bossX, this.camX + PLAYER_X);
+      const ob = makeObstacle(type, nearLip + this.rng.range(0, BOSS_DROP_SPREAD));
       ob.fromBoss = true;
       this.obstacles.push(ob);
       Audio.sfx('plop');

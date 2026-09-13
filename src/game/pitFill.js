@@ -63,10 +63,18 @@ export const SPIKE_TIPS = 0.13;
 export const GEAR_TOPS = 0.2;
 
 // Portrait gives the pit apron much more vertical room than the shipped
-// landscape frame. Keep the hazard at the authored scale, then continue a
-// dark floor beneath it to the bottom of the visible pit.
+// landscape frame. Keep the hazard at the authored scale, then close a dry
+// mechanical bay with a short boundary line instead of extending a shaft.
 export const HARD_FILL_BORDER_GAP = 12;
 export const HARD_FILL_LANDSCAPE_DEPTH = 96;
+// Dry portrait bays are rendered in the same one-pixel logical grid as the
+// rest of the authored canvas. Keep the cutoff on that grid, and always round
+// it toward the lower edge of the visible background so the hazard silhouette
+// never gets covered by its own closing rule.
+export const HARD_FILL_GRID = 1;
+
+const DRY_PIT_LINE_LIGHT = '#59636f';
+const DRY_PIT_LINE_DARK = '#232a34';
 
 const TAU = Math.PI * 2;
 
@@ -85,6 +93,10 @@ function ellipse(ctx, cx, cy, rx, ry, fill, alpha = 1) {
 // caller's full `d`, so lava and tar continue all the way to the screen edge.
 export function liquidSurfaceDepth(d) {
   return Math.min(d, PIT_APRON_DEPTH);
+}
+
+function snapHardFillCutoff(value, d) {
+  return Math.min(d, Math.ceil(value / HARD_FILL_GRID) * HARD_FILL_GRID);
 }
 
 // BOILING TAR — candidate C. Black, unlit, and the cheapest fill on the sheet:
@@ -165,15 +177,19 @@ function glowUp(ctx, w, surf, span, color, alpha) {
 // Cardboard's pick on purpose — a kingdom whose castle is four inches tall gets
 // a hole that is honestly just a hole cut out of the set.
 function voidFill(ctx, w, d, t) {
+  const bottom = hardFillCutoff('void', w, d);
+  const gritDepth = Math.min(d, bottom);
   for (let i = 0; i < 4; i++) {
     const p = (t * 0.5 + i * 0.29) % 1;
     const x = w * (i % 2 ? 0.08 : 0.9) + Math.sin(i * 3) * w * 0.02;
     ctx.save();
     ctx.globalAlpha = 0.55 * (1 - p * 0.7);
     ctx.fillStyle = '#2a2c36';
-    ctx.fillRect(x, d * 0.05 + p * d * 0.9, Math.max(0.25, w * 0.012), Math.max(0.25, w * 0.022));
+    ctx.fillRect(x, gritDepth * 0.05 + p * gritDepth * 0.9,
+      Math.max(0.25, w * 0.012), Math.max(0.25, w * 0.022));
     ctx.restore();
   }
+  if (bottom < d) drawDryPitLine(ctx, w, bottom);
 }
 
 // MOLTEN CHANNEL — candidate B, ported for Speed's collapsing road. The one
@@ -326,16 +342,22 @@ function hzTooth(ctx, cx, base, half, height, fill, lw) {
 }
 
 /**
- * Return the upper edge of the solid pit's lower floor. `d` is the full apron
- * depth passed by the world renderer. Landscape's apron is short enough that
- * the historical full-depth treatment is unchanged; portrait puts the edge
- * just below the authored teeth or gear train and continues the dark floor.
+ * Return the lower boundary of a dry pit. `d` is the full apron depth passed by
+ * the world renderer. Landscape's apron is short enough that the historical
+ * full-depth treatment is unchanged; portrait puts a line just below the
+ * authored teeth, gear train, or empty bay and leaves the normal background
+ * visible below it.
  */
 export function hardFillCutoff(id, w, d) {
   if (!(d > HARD_FILL_LANDSCAPE_DEPTH)) return d;
   const detailD = liquidSurfaceDepth(d);
+  if (id === 'void') {
+    // An open-air pit has no hazard to seat, but it still needs a finite
+    // portrait bay so the background does not read as an endless shaft.
+    return snapHardFillCutoff(detailD * 0.84, d);
+  }
   if (id === 'spikes') {
-    return Math.min(d, detailD * 0.5 + HARD_FILL_BORDER_GAP);
+    return snapHardFillCutoff(detailD * 0.5 + HARD_FILL_BORDER_GAP, d);
   }
   if (id === 'gears') {
     const pitch = 26;
@@ -344,26 +366,42 @@ export function hardFillCutoff(id, w, d) {
     const big = Math.min(step * 0.52, detailD * 0.26);
     // Gear teeth can reach 1.15r beyond the wheel centre. Leave a small
     // breathing gap below that silhouette before the bay's bottom edge.
-    return Math.min(d, detailD * GEAR_TOPS + big * 1.15 + HARD_FILL_BORDER_GAP);
+    // The wheel centre is one radius below its top, and the teeth extend 1.15r
+    // beyond that centre. The boundary must clear the complete silhouette.
+    return snapHardFillCutoff(
+      detailD * GEAR_TOPS + big * 2.15 + HARD_FILL_BORDER_GAP, d);
   }
   return d;
 }
 
+function drawDryPitLine(ctx, w, y) {
+  ctx.fillStyle = DRY_PIT_LINE_LIGHT;
+  ctx.fillRect(0, y, w, 1);
+  ctx.fillStyle = DRY_PIT_LINE_DARK;
+  ctx.fillRect(0, y + 1, w, 1);
+}
+
 // THE PLATE the teeth/gear train stand on, and the whole of what a hard fill
-// paints besides the hazard itself. In portrait, `bottom` marks the bay wall
-// shortly below the silhouette; the dark floor continues below it to the
-// screen edge. Liquids continue to use the full apron and never call this
-// helper.
+// paints besides the hazard itself. In portrait, `bottom` marks the bay line
+// shortly below the silhouette; the normal background continues below it.
+// Liquids continue to use the full apron and never call this helper.
 //
-// It is a floor rather than a fill: three pixels of dark at the foot of the
-// teeth and solid below that, where the frame has already run out. Everything
-// above it is the break, and the break is transparent — see the note in
-// spikes(). `lift` is how far the road stands above the flat groundline over
-// this hole (game/terrain.js), and it is the only reason a painter may paint
-// above y = 0; drawPitFill's clip is what bounds it.
+// In portrait it is only a line: everything below it is the break's ordinary
+// background, and everything above it is the open break — see the note in
+// spikes(). Landscape retains its existing plate treatment. `lift` is how far
+// the road stands above the flat groundline over this hole (game/terrain.js),
+// and it is the only reason a painter may paint above y = 0; drawPitFill's clip
+// is what bounds it.
 function basePlate(ctx, w, d, y, lift = 0, bottom = d) {
   const end = Math.max(y + 2, Math.min(d, Number.isFinite(bottom) ? bottom : d));
   const detailD = liquidSurfaceDepth(d);
+  if (d > HARD_FILL_LANDSCAPE_DEPTH) {
+    // Portrait leaves the cabinet's normal background visible below the dry
+    // hazard. The line is the bottom of the little mechanical bay; painting a
+    // dark shaft beneath it made the pit continue to the phone's bottom edge.
+    drawDryPitLine(ctx, w, end);
+    return;
+  }
   const topBand = Math.max(2, detailD * 0.06);
   ctx.fillStyle = '#232a34';
   ctx.fillRect(0, y, w, topBand);
@@ -499,12 +537,14 @@ export function fillSurface(id) { return FILL_SURFACE[id] || { at: PIT_FLOOR, ha
  * Paint one pit's material. `x`/`y0` are the screen position of the break's
  * top-left — its left lip on the groundline — and `d` is the apron depth below
  * that. `phase` shifts the animation so neighbouring pits are out of step.
+ * `groundFill` is the level's ordinary ground colour for the solid section
+ * below a portrait dry-pit boundary; liquid fills leave it unused.
  *
  * Clipped to the break, so a fill can never bleed onto the road either side:
  * the ground has already been drawn by the time this runs, and a material that
  * painted over it would be reporting a hole wider than the one you fall into.
  */
-export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0) {
+export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0, groundFill = null) {
   const paint = FILLS[id];
   if (!paint || w <= 0 || d <= 0) return;
   ctx.save();
@@ -519,6 +559,18 @@ export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0) {
   ctx.translate(x, y0);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  // A dry pit has a real ground/floor beneath its hazard. Paint that lower
+  // section before the hazard painter so the boundary line remains on top and
+  // the level's normal texture/post pass can continue across the fill.
+  const bottom = hardFillCutoff(id, w, d);
+  if (bottom < d && groundFill) {
+    ctx.fillStyle = groundFill;
+    // Overlap the boundary by one logical pixel. The dry-pit line is painted
+    // afterward, so this closes fractional-scaling seams without softening the
+    // visible edge.
+    const floorTop = Math.max(0, bottom - 1);
+    ctx.fillRect(-1, floorTop, w + 2, Math.max(0, d - floorTop + 1));
+  }
   paint(ctx, w, d, t + phase, lift);
   ctx.restore();
 }

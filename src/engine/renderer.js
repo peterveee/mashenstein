@@ -6,7 +6,9 @@ export const W = 480;
 export let H = 270;
 
 import {
-  defaultFrame, frameForViewport, getActiveFrame, LANDSCAPE, PHONE_PORTRAIT, setActiveFrame,
+  defaultFrame, fitPhonePortraitViewport, frameForViewport, getActiveFrame,
+  DESKTOP_PORTRAIT_LANDSCAPE_FALLBACK_HEIGHT, LANDSCAPE, PHONE_PORTRAIT,
+  setActiveFrame,
 } from './frame.js';
 import {
   PORTRAIT_GROUND_ANCHOR_MIN_RATIO, PORTRAIT_GROUND_ANCHOR_MAX_RATIO,
@@ -17,9 +19,9 @@ let canvas = typeof document !== 'undefined' ? document.getElementById('game') :
 // Second canvas, full viewport, sitting ON TOP of #game in the DOM (gate.js
 // emits it second; #game is pointer-events:none in template.html). It is the
 // ONE pointer surface — input.js binds every listener to it and converts with
-// clientToLogical — and it draws the touch controls: translucent discs over
-// the picture at fixed logical spots, plus whatever the black margin around
-// the picture extends (touch-layout.js). It is transparent everywhere else,
+// clientToLogical — and it draws the touch controls: translucent discs placed
+// by touch-layout.js in the safe-area-aware landscape rails (or the portrait
+// frame), plus whatever margin those rails extend into. It is transparent elsewhere,
 // and a dirty-flag layer (paintChrome/commitChromeFrame below), so between
 // presses and cooldown ticks the compositor caches it as one static quad.
 const chromeCanvas = typeof document !== 'undefined' ? document.getElementById('chrome') : null;
@@ -59,6 +61,21 @@ function safeInsets() {
   };
 }
 
+// Safari can expose both horizontal Dynamic-Island insets in landscape, so the
+// touch rail also needs the physical orientation. Prefer the Screen
+// Orientation API, then the older iOS window.orientation value. The layout
+// module uses asymmetric safe insets first when a browser gives us them.
+function viewportOrientationInfo() {
+  const orientation = typeof window !== 'undefined' ? window.screen?.orientation : null;
+  let angle = Number(orientation?.angle);
+  if (!Number.isFinite(angle) && typeof window !== 'undefined') angle = Number(window.orientation);
+  if (!Number.isFinite(angle)) angle = null;
+  return {
+    angle,
+    type: orientation?.type || null,
+  };
+}
+
 // The touch chrome, recomputed every resize() by the shared portrait/landscape
 // layout modules: `run`, `runNoPower`, the dev-only `runPortraitLab` variants,
 // and `hub` are the button lists a screen hands to
@@ -72,7 +89,7 @@ function safeInsets() {
 export const chrome = {
   mode: 'none', vw: 0, vh: 0, gen: 0,
   run: [], runNoPower: [], runPortraitLab: [], runPortraitLabNoPower: [],
-  hub: [], split: 0, scale: 1,
+  hub: [], split: 0, scale: 1, landscapeSide: null,
 };
 const CHROME_MIN_MARGIN = 72;
 
@@ -151,18 +168,46 @@ export function setSkyFx(on, time) {
 // reaches INTO the drawn frame, in logical units — see resize().
 export const screen = {
   scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, py: 1, portraitFill: false,
-  dpx: 1, dpy: 1,
+  dpx: 1, dpy: 1, originX: 0, originY: 0,
   inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
   safeTop: 0, safeRight: 0, safeBottom: 0, safeLeft: 0,
   frameRevision: 0, groundScreenY: 232, presentationMode: LANDSCAPE,
 };
 export const visualiserFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualiserFullscreen = false;
+// Whether the last resize sized a cover crop, and the density the ladder was on
+// before it did — see the rung seeding in resize().
+let coverFitActive = false;
+let coverRestoreDensity = 0;
 let jukeboxPortrait = false;
 let devPortraitFill = false;
 let presentationMode = LANDSCAPE;
 let presentationManaged = false;
 let presentationGroundAnchorRatio = 0.80;
+// Subscribers own retained art that cannot infer a viewport change from the
+// canvas alone. Notify them only after the settled resize has published the
+// new frame, backing store, density and touch geometry.
+const presentationListeners = new Set();
+let viewportOrientation = null;
+
+export function onPresentationChanged(fn) {
+  if (typeof fn !== 'function') return () => {};
+  presentationListeners.add(fn);
+  return () => presentationListeners.delete(fn);
+}
+
+function notifyPresentationChanged(detail) {
+  for (const fn of presentationListeners) {
+    try { fn(detail); } catch (error) {
+      // One optional cache must not prevent the renderer from completing a
+      // rotation. Keep the failure visible while allowing the other owners to
+      // refresh as well.
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('Presentation refresh failed.', error);
+      }
+    }
+  }
+}
 
 // The display's corner radius, which only the renderer can work out: it needs
 // the platform and the physical screen size. `window.screen` does not rotate on
@@ -186,9 +231,17 @@ function sameFrame(a, b) {
     && a.safeRect.right === b.safeRect.right && a.safeRect.bottom === b.safeRect.bottom;
 }
 
-function derivePresentationFrame(winW, winH, safe) {
-  const targetMode = presentationMode === PHONE_PORTRAIT && winH > winW
-    ? PHONE_PORTRAIT : LANDSCAPE;
+function derivePresentationFrame(winW, winH, safe, forcedMode = null) {
+  // A fullscreen visualiser is composed in the fixed 480x270 field the presets
+  // are authored for (see tools/visualiser-entry.js's drawFrame) and reaches a
+  // portrait screen by cover-cropping that field, exactly like the standalone
+  // tool — never by stretching it into a tall, mostly-empty logical surface.
+  // Forcing LANDSCAPE here while it is up is what lets the `!portraitFrame`
+  // check below re-enable that cover crop.
+  const targetMode = forcedMode || (
+    presentationMode === PHONE_PORTRAIT && winH > winW && !visualiserFullscreen
+      ? PHONE_PORTRAIT : LANDSCAPE
+  );
   const current = getActiveFrame();
   const next = frameForViewport({
     mode: targetMode, viewportWidth: winW, viewportHeight: winH, safeInsets: safe,
@@ -548,8 +601,12 @@ function densityRequested() {
 // so no device is ever asked to render above its own native density — or above
 // MAX_BACKING_H, whichever is lower. On a display below the cap the ceiling is
 // still native and nothing changes; only dense panels see a difference.
-function buildLadder(native) {
-  const ceiling = Math.min(native, Math.sqrt(MAX_BACKING_PX / Math.max(1, W * H)));
+// `area` is the logical area actually rendered, which is the whole frame except
+// under a cover crop — there only the visible sliver is drawn, and budgeting the
+// discarded remainder is what kept a portrait visualiser off its own display's
+// resolution (see the crop-aware backing in resize).
+function buildLadder(native, area = W * H) {
+  const ceiling = Math.min(native, Math.sqrt(MAX_BACKING_PX / Math.max(1, area)));
   return [ceiling, ...STANDARD_RUNGS.filter((v) => v < ceiling - LADDER_EPS)];
 }
 
@@ -632,7 +689,10 @@ function freshCanvasAfterWebglFailure() {
 
 export function initRenderer(platform = {}, persistence = {}) {
   visualiserFullscreen = false;
+  coverFitActive = false;
+  coverRestoreDensity = 0;
   devPortraitFill = false;
+  viewportOrientation = null;
   // The density seed limits initial high-DPI fill-rate; measured frame timing
   // decides where every device ultimately settles. phonePlatform picks the
   // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
@@ -767,14 +827,37 @@ function resize() {
     const deficit = display - winH;
     if (deficit > 0 && deficit <= safe.top + 2) winH = display;
   }
-  if (presentationManaged) derivePresentationFrame(winW, winH, safe);
+  const previousOrientation = viewportOrientation;
+  const orientation = winH > winW ? 'portrait' : 'landscape';
+  viewportOrientation = orientation;
+  // A desktop browser can be dragged into a very tall, narrow window. Once a
+  // screen has opted into the phone portrait frame, keep that frame at one
+  // common phone proportion and contain it in the available viewport. The
+  // real handset path remains exact to its measured viewport, including older
+  // 16:9 phones and the safe-area geometry built around them.
+  const desktopPortraitConstraint = desktopPlatform && presentationManaged
+    && presentationMode === PHONE_PORTRAIT && orientation === 'portrait';
+  const desktopPortraitLandscapeFallback = desktopPortraitConstraint
+    && winH < DESKTOP_PORTRAIT_LANDSCAPE_FALLBACK_HEIGHT;
+  const presentationViewport = desktopPortraitConstraint
+    && !desktopPortraitLandscapeFallback
+    ? fitPhonePortraitViewport({ viewportWidth: winW, viewportHeight: winH })
+    : null;
+  if (presentationManaged) {
+    derivePresentationFrame(
+      presentationViewport?.width ?? winW,
+      presentationViewport?.height ?? winH,
+      safe,
+      desktopPortraitLandscapeFallback ? LANDSCAPE : null,
+    );
+  }
   // Art is resolution-independent now, so fill the viewport at any fractional
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
   // An open dev overlay claims portrait for itself and outranks the cover crop
-  // (see setDevPortraitFill). A sound-test visualiser in the frame-based phone
-  // presentation already has a matching tall logical surface, so it must keep
-  // that frame instead of reverting to the old landscape cover crop.
+  // (see setDevPortraitFill). `portraitFrame` reads false while a visualiser is
+  // fullscreen — derivePresentationFrame forces LANDSCAPE for the duration —
+  // so coverFit below is free to take over for it.
   const devFill = devPortraitFill && winH > winW;
   const portraitFrame = getActiveFrame().mode === PHONE_PORTRAIT && winH > winW;
   const coverFit = visualiserFullscreen && !devFill && !portraitFrame;
@@ -787,9 +870,18 @@ function resize() {
   let inputScaleY = scale;
   let inputLeft = 0;
   let inputTop = 0;
+  // The logical rectangle actually rendered. Only a cover crop narrows it, and
+  // sizing the backing store to it — rather than to the whole 480x270 field —
+  // is what buys a portrait visualiser its display's real resolution: at 390x844
+  // and 3x, the crop shows 125 of the 480 logical columns, so three quarters of
+  // every pixel the old sizing allocated was scrolled off the screen unseen.
+  let renderW = W;
+  let renderH = H;
   if (coverFit) {
     const cover = Math.max(winW / W, winH / H);
     const visibleW = winW / cover, visibleH = winH / cover;
+    renderW = visibleW;
+    renderH = visibleH;
     visualiserFrame.left = (W - visibleW) * 0.5;
     visualiserFrame.top = (H - visibleH) * 0.5;
     visualiserFrame.right = visualiserFrame.left + visibleW;
@@ -823,18 +915,40 @@ function resize() {
   // its CSS box in both orientations.
   const coverScale = Math.max(winW / W, winH / H);
   nativeDensity = (coverFit ? coverScale : Math.round(W * scale) / W) * dpr;
-  ladder = buildLadder(nativeDensity);
+  ladder = buildLadder(nativeDensity, renderW * renderH);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
     rung = seedRung();
+  } else if (coverFit && !coverFitActive) {
+    // ENTERING THE FULLSCREEN VISUALISER: START AT THE CEILING, DO NOT CLIMB TO IT.
+    //
+    // Everywhere else the density carried over from the previous frame is the
+    // best evidence available, and climbing a rung at a time is right. A cover
+    // crop is the exception on both counts. It is a decorative full-screen
+    // picture whose entire point is the picture, and the rung it inherits was
+    // measured against a completely different backing: the crop asks for FEWER
+    // pixels than the frame it replaces (a 17 Pro wants 2.96MP here against the
+    // 3.69MP budget), so the inherited number understates what the device can
+    // hold. Climbing there took a rung per eight seconds — half a minute of
+    // visibly soft type before a screensaver reached its own display. Start
+    // optimistic instead; a device that cannot hold it steps down within a
+    // second, and the strike system bars the rung for the session after twice.
+    coverRestoreDensity = prevLadder[Math.min(rung, prevLadder.length - 1)];
+    rung = 0;
+  } else if (!coverFit && coverFitActive && coverRestoreDensity > 0) {
+    // Leaving it again, hand the menu back the density it was actually running,
+    // rather than letting the visualiser's optimism promote every other screen.
+    rung = nearestIndex(ladder, coverRestoreDensity);
+    coverRestoreDensity = 0;
   } else {
     const cur = pinnedDensity != null ? pinnedDensity : prevLadder[Math.min(rung, prevLadder.length - 1)];
     rung = nearestIndex(ladder, cur);
   }
+  coverFitActive = coverFit;
   const px = pinnedDensity != null ? Math.min(nativeDensity, pinnedDensity) : ladder[rung];
   const devBacking = devPortraitFill;
-  const pxW = devBacking ? Math.max(1, Math.round(cssW * dpr)) : Math.round(W * px);
-  const pxH = devBacking ? Math.max(1, Math.round(cssH * dpr)) : Math.round(H * px);
+  const pxW = devBacking ? Math.max(1, Math.round(cssW * dpr)) : Math.max(1, Math.round(renderW * px));
+  const pxH = devBacking ? Math.max(1, Math.round(cssH * dpr)) : Math.max(1, Math.round(renderH * px));
   // Setting a canvas dimension, even to the same value, clears its backing
   // store and resets the drawing state. Avoid turning duplicate viewport
   // notifications into needless surface churn.
@@ -842,10 +956,10 @@ function resize() {
   if (canvas.height !== pxH) canvas.height = pxH;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
-  // Landscape fullscreen visualisers use the viewport as a cover frame,
-  // preserving the logical 16:9 aspect ratio instead of stretching circles
-  // and typography. Portrait visualisers use the already-derived tall frame,
-  // so they reach the full phone without cropping or non-uniform scaling.
+  // Fullscreen visualisers use the viewport as a cover frame in either
+  // orientation, preserving the logical 16:9 aspect ratio instead of stretching
+  // circles and typography. The backing store is already cut to that crop, so
+  // 'cover' has nothing left to trim beyond a rounding sliver.
   canvas.style.objectFit = coverFit ? 'cover' : portraitFill ? 'fill' : '';
   canvas.style.objectPosition = coverFit ? 'center center' : '';
   canvas.style.imageRendering = 'auto';
@@ -870,11 +984,17 @@ function resize() {
   const safeRight = Math.max(0, safe.right - (winW - ox - cssW)) / safeScaleX;
   // The world and overlay share one density: native on desktop, adaptive on
   // phones. Keeping both aligned avoids an extra resample in the final pass.
-  const renderPx = pxW / W;
+  const renderPx = pxW / renderW;
   const bw = pxW, bh = pxH;
   if (back.width !== bw || back.height !== bh) { back.width = bw; back.height = bh; }
-  const renderPy = bh / H;
-  bctx.setTransform(renderPx, 0, 0, renderPy, 0, 0);
+  const renderPy = bh / renderH;
+  // Everything still draws in logical coordinates; under a cover crop the
+  // backing starts partway into the frame, so the crop's origin is folded into
+  // the transform instead of asking every caller about it. Zero everywhere
+  // else, which keeps the letterboxed and stretched paths exactly as they were.
+  const originX = -visualiserFrame.left * renderPx;
+  const originY = -visualiserFrame.top * renderPy;
+  bctx.setTransform(renderPx, 0, 0, renderPy, originX, originY);
   bctx.imageSmoothingEnabled = true;
   // Overlay layer (heroes, banners) stays at the selected render density and
   // is composited directly in the final shader pass.
@@ -883,7 +1003,7 @@ function resize() {
     overlayLayer.height = pxH;
   }
   if (octx) {
-    octx.setTransform(pxW / W, 0, 0, pxH / H, 0, 0);
+    octx.setTransform(renderPx, 0, 0, renderPy, originX, originY);
     octx.imageSmoothingEnabled = true;
   }
   const glowW = Math.max(1, pxW >> 2), glowH = Math.max(1, pxH >> 2);
@@ -893,19 +1013,30 @@ function resize() {
   }
   Object.assign(screen, {
     scale, ox, oy, cssW, cssH, px: renderPx, py: renderPy,
-    dpx: pxW / W, dpy: pxH / H, portraitFill,
+    dpx: renderPx, dpy: renderPy, originX, originY, portraitFill,
     inputScaleX, inputScaleY, inputLeft, inputTop,
     safeTop, safeRight, safeBottom, safeLeft,
     frameRevision: getActiveFrame().revision,
     groundScreenY: getActiveFrame().groundScreenY,
   });
   if (glfx.active) { glfx.resize(bw, bh); glfx.setTierFx(!isBloomSuppressed(renderPx)); }
-  resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr);
+  resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr,
+    desktopPortraitConstraint ? { width: cssW, height: cssH, x: ox, y: oy } : null);
   // A rotation changes which of the two page chromes applies without anything
   // else asking for it, so the bars are re-resolved here rather than only where
   // a stage sets its sky.
   applyPageChrome();
   if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
+  if (previousOrientation && previousOrientation !== orientation) {
+    notifyPresentationChanged({
+      orientation,
+      previousOrientation,
+      viewportWidth: winW,
+      viewportHeight: winH,
+      frameRevision: getActiveFrame().revision,
+      density: renderPx,
+    });
+  }
 }
 
 function resetAdaptiveSamples() {
@@ -925,7 +1056,11 @@ function resetSettle() {
 // an explicit token rather than 0/auto: a phone that proved it can sustain its
 // display ceiling should not be forced to re-earn 4x and native every launch.
 function updateSettle(elapsed) {
-  if (pinnedDensity != null || settleReported) return;
+  // A cover crop is never the device's verdict on itself. It starts at the
+  // ceiling by policy and its scene is a screensaver, so letting it persist
+  // `native` would seed every other screen — gameplay included — from a
+  // measurement gameplay never took.
+  if (pinnedDensity != null || settleReported || coverFitActive) return;
   settledFor += elapsed;
   if (settledFor < SETTLE_MS) return;
   settleReported = true;
@@ -1050,7 +1185,7 @@ export function noteRendererFrame(now) {
   }
 }
 
-function resizeChrome(winW, winH, ox, oy, dpr) {
+function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
   if (chromeCanvas) {
     const chromeW = Math.round(winW * dpr);
     const chromeH = Math.round(winH * dpr);
@@ -1068,17 +1203,23 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     // Portrait controls live in viewport CSS pixels and keep their geometry
     // independent of the camera/world zoom. Broad lower zones are explicitly
     // marked as gesture surfaces so Input can run tap/hold/swipe arbitration.
-    const layout = portraitTouchLayout({ viewportWidth: winW, viewportHeight: winH, safeInsets: safe, revision: getActiveFrame().revision, includeRewind: true });
+    const surface = portraitSurface || { width: winW, height: winH, x: 0, y: 0 };
+    const layout = portraitTouchLayout({
+      viewportWidth: surface.width, viewportHeight: surface.height,
+      safeInsets: safe, revision: getActiveFrame().revision, includeRewind: true,
+    });
     const controls = (hasPower, portraitLab = false) => {
       const discs = Object.entries(layout.controls)
         .filter(([id]) => (portraitLab || id !== 'rewind') && (hasPower || id !== 'use'))
         .map(([id, b]) => ({
           id: id === 'use' ? 'ability' : id,
-          action: b.action, x: b.cx, y: b.cy, r: b.r,
+          action: b.action, x: surface.x + b.cx, y: surface.y + b.cy, r: b.r,
         }));
       const zones = layout.zones.map((z) => ({
         id: `zone:${z.id}`, action: z.action,
-        zone: { x: z.x, y: z.y, w: z.width, h: z.height }, gesture: true,
+        zone: {
+          x: surface.x + z.x, y: surface.y + z.y, w: z.width, h: z.height,
+        }, gesture: true,
       }));
       return [...discs, ...zones];
     };
@@ -1092,18 +1233,21 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
       return {
         id: id === 'jump' ? 'hubLeft' : 'hubRight',
         action: id === 'jump' ? 'left' : 'right',
-        x: b.cx, y: b.cy, r: b.r,
+        x: surface.x + b.cx, y: surface.y + b.cy, r: b.r,
       };
     });
     Object.assign(chrome, {
       run: controls(true), runNoPower: controls(false),
       runPortraitLab: controls(true, true), runPortraitLabNoPower: controls(false, true),
-      hub, split: winW / 2, scale: screen.scale,
+      hub, split: surface.x + surface.width / 2, scale: screen.scale,
+      landscapeSide: null,
     });
   } else {
     // Landscape and all ordinary screens retain the shipped shared layout.
+    const orientation = viewportOrientationInfo();
     Object.assign(chrome, layoutTouchChrome({
       vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe,
+      orientationAngle: orientation.angle, orientationType: orientation.type,
     }));
     chrome.runPortraitLab = [];
     chrome.runPortraitLabNoPower = [];
@@ -1160,7 +1304,10 @@ export function setPageChrome(color) {
   applyPageChrome();
 }
 function applyPageChrome() {
-  const next = isPhonePortraitPresentation()
+  // Desktop portrait is a contained 20:9 phone surface, so its surrounding
+  // area must stay black and read as letterbox bars. Physical phone portrait
+  // still owns the page band for the status bar and keeps the cabinet sky.
+  const next = isPhonePortraitPresentation() && !desktopPlatform
     ? (pageChromeWant || PAGE_CHROME_DEFAULT)
     : PAGE_CHROME_LANDSCAPE;
   if (next === pageChrome) return;
@@ -1251,7 +1398,8 @@ export function beginRenderFrame() {
     const px = screen.dpx || 1;
     const py = screen.dpy || px;
     dctx.setTransform(px, 0, 0, py,
-      Math.round(shakeX * px), Math.round(shakeY * py));
+      Math.round(shakeX * px) + (screen.originX || 0),
+      Math.round(shakeY * py) + (screen.originY || 0));
     dctx.imageSmoothingEnabled = true;
   });
 }
@@ -1341,7 +1489,8 @@ export function blit() {
     const px = screen.dpx || 1;
     const py = screen.dpy || px;
     dctx.setTransform(px, 0, 0, py,
-      Math.round(shakeX * px), Math.round(shakeY * py));
+      Math.round(shakeX * px) + (screen.originX || 0),
+      Math.round(shakeY * py) + (screen.originY || 0));
     dctx.imageSmoothingEnabled = true;
   });
 }

@@ -293,8 +293,10 @@ assert(run.route === island, 'a hero falling at speed still catches the slab (no
 // one-shot spawn has fired and those coins are long gone. Re-arm it.
 island.spawned = false;
 run.camX = island.x - 100;
+const pickupsBeforeRoutePrize = new Set(run.pickups);
 run.spawnRoutePrizes();
-const onSlab = run.pickups.filter((p) => p.live && p.type === 'coin'
+const onSlab = run.pickups.filter((p) => !pickupsBeforeRoutePrize.has(p)
+  && p.live && p.type === 'coin'
   && p.x >= island.x && p.x <= island.x + island.w);
 assert(onSlab.length > 0, `the slab carries a reward (${onSlab.length} coins)`);
 // A coin's world y is groundY - alt; it should land just above the slab top,

@@ -1,6 +1,6 @@
 // Procedural pixel sprites: string grids + palette maps compiled once into
 // offscreen canvases. '.' and ' ' are transparent; any other char indexes the palette.
-import { screen } from './renderer.js';
+import { onPresentationChanged, screen } from './renderer.js';
 
 const cache = new Map();
 
@@ -224,6 +224,12 @@ const BODY_FONT = `${BODY_FAMILY}, ${FALLBACK}`;
 // rather than through drawText — see onGameFontsChanged below.
 export const TITLE_FONT = `${TITLE_FAMILY}, ${FALLBACK}`;
 const MARKER_FONT = `${MARKER_FAMILY}, ${FALLBACK}`;
+const GAME_FONT_REQUESTS = [
+  `400 32px ${TITLE_FAMILY}`,
+  `500 12px ${BODY_FAMILY}`,
+  `600 12px ${BODY_FAMILY}`,
+  `400 12px ${MARKER_FAMILY}`,
+];
 
 // Text styles the game draws in. 'ui' is the default everywhere; 'bold' is the
 // highlighted menu row; 'title' is the marquee and every screen header.
@@ -349,31 +355,50 @@ export function onGameFontsChanged(fn) {
 //
 // So ask for the faces by name. That both starts the download and gives a
 // promise that resolves when they are genuinely usable.
+function invalidateGameFontCaches() {
+  glyphCache.clear();
+  advCache.clear();
+  // Cap metrics belong to the FACE, so a face that arrives late invalidates
+  // them exactly as it invalidates the rasterized glyphs.
+  inkMetricsCache.clear();
+  for (const fn of fontListeners) fn();
+}
+
+function loadGameFonts() {
+  if (typeof document === 'undefined' || !document.fonts?.load) return Promise.resolve();
+  return Promise.all(GAME_FONT_REQUESTS.map((face) => {
+    try {
+      return Promise.resolve(document.fonts.load(face)).catch(() => {});
+    } catch {
+      return Promise.resolve();
+    }
+  }));
+}
+
+export function refreshGameFonts() {
+  // Repaint immediately with fresh fallback/face metrics, then clear again
+  // after the browser has confirmed every requested face is usable. This is
+  // important on mobile, where a rotation can expose a font race that the
+  // initial boot's bounded wait did not catch.
+  invalidateGameFontCaches();
+  loadGameFonts().then(invalidateGameFontCaches);
+}
+
 if (typeof document !== 'undefined' && document.fonts) {
-  const drop = () => {
-    glyphCache.clear();
-    advCache.clear();
-    // Cap metrics belong to the FACE, so a face that arrives late invalidates
-    // them exactly as it invalidates the rasterized glyphs.
-    inkMetricsCache.clear();
-    for (const fn of fontListeners) fn();
-  };
-  if (document.fonts.load) {
-    const faces = [
-      `400 32px ${TITLE_FAMILY}`,
-      `500 12px ${BODY_FAMILY}`,
-      `600 12px ${BODY_FAMILY}`,
-      `400 12px ${MARKER_FAMILY}`,
-    ];
-    Promise.all(faces.map((f) => document.fonts.load(f).catch(() => {}))).then(drop);
-  }
-  if (document.fonts.ready) document.fonts.ready.then(drop);
+  loadGameFonts().then(invalidateGameFontCaches);
+  if (document.fonts.ready) document.fonts.ready.then(invalidateGameFontCaches);
   // The boot gate normally settles every face before game.js starts. Its
   // offline safeguard is deliberately bounded, though, so a very slow font
   // response can still finish after the first fallback glyphs were cached.
   // FontFaceSet's completion event repairs that late path as well.
-  if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', drop);
+  if (document.fonts.addEventListener) {
+    document.fonts.addEventListener('loadingdone', invalidateGameFontCaches);
+  }
 }
+
+// The renderer emits this after the settled orientation resize, so the next
+// glyph raster is measured against the same frame the player is looking at.
+onPresentationChanged(() => refreshGameFonts());
 
 function paintGlyphs(ctx, s, x, y, color, scale, style) {
   let cx = x;
@@ -591,6 +616,86 @@ export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1, sty
   drawText(ctx, str, cx - textWidth(String(str), scale, style) / 2, y, color, scale, style, plate);
 }
 
+// A small number of large, presentation-only labels are clearer when the
+// loaded face is rasterized directly at the destination density. The ordinary
+// glyph-sprite path is still the right choice for dense HUD/menu text, but a
+// portrait hub footer is sparse and is later displayed at a fractional phone
+// scale; downsampling each cached glyph there makes the type look softer than
+// the surrounding art. Keep the same metrics/normalization and only change the
+// final paint path.
+export function drawTextVector(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
+  const s = String(str);
+  const drawY = normalizedTextY(y, scale, style);
+  const prevSmooth = ctx.imageSmoothingEnabled;
+  const prevFont = ctx.font;
+  const prevBaseline = ctx.textBaseline;
+  const prevAlign = ctx.textAlign;
+  const prevStroke = ctx.strokeStyle;
+  const prevLineWidth = ctx.lineWidth;
+  const prevLineJoin = ctx.lineJoin;
+  ctx.imageSmoothingEnabled = true;
+  if (plate && s.trim()) {
+    const w = textWidth(s, scale, style);
+    const padX = 2.2 * scale, padY = 1.2 * scale, band = 9 * scale;
+    const im = inkMetrics(style);
+    const inkMid = drawY + (im.top + im.height / 2) * scale;
+    ctx.fillStyle = plate;
+    platePath(ctx, x - padX, inkMid - band / 2 - padY, w + padX * 2, band + padY * 2, 3 * scale);
+    ctx.fill();
+  }
+  ctx.font = fontString(style, scale);
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = color;
+  // Canvas has no dependable letter-spacing support across the browsers this
+  // game runs on. Paint the same per-character advances as the cached path so
+  // vector text keeps the game's spacing and centred widths instead of drawing
+  // a narrower, differently aligned string.
+  const st = TEXT_STYLES[style] || TEXT_STYLES.ui;
+  let cx = x;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch !== ' ') {
+      if (st.stroke) {
+        ctx.strokeStyle = st.stroke.color;
+        ctx.lineWidth = st.stroke.width * 2;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(ch, cx, drawY);
+      }
+      ctx.fillText(ch, cx, drawY);
+    }
+    cx += advance(ch, scale, style);
+  }
+  ctx.imageSmoothingEnabled = prevSmooth;
+  ctx.font = prevFont;
+  ctx.textBaseline = prevBaseline;
+  ctx.textAlign = prevAlign;
+  ctx.strokeStyle = prevStroke;
+  ctx.lineWidth = prevLineWidth;
+  ctx.lineJoin = prevLineJoin;
+  return x + textWidth(s, scale, style);
+}
+
+export function drawTextVectorCentered(ctx, str, cx, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
+  drawTextVector(ctx, str, cx - textWidth(String(str), scale, style) / 2, y,
+    color, scale, style, plate);
+}
+
+// Portrait gameplay is composed at a phone's fractional CSS scale. Use the
+// loaded face directly at the destination density there, while retaining the
+// cached glyph path for landscape's denser text-heavy layouts.
+export function drawTextForPresentation(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
+  return screen.presentationMode === 'phone-portrait'
+    ? drawTextVector(ctx, str, x, y, color, scale, style, plate)
+    : drawText(ctx, str, x, y, color, scale, style, plate);
+}
+
+export function drawTextCenteredForPresentation(ctx, str, cx, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
+  return screen.presentationMode === 'phone-portrait'
+    ? drawTextVectorCentered(ctx, str, cx, y, color, scale, style, plate)
+    : drawTextCentered(ctx, str, cx, y, color, scale, style, plate);
+}
+
 // A control legend: a KEY, then what it does, repeated. Keys carry the green
 // the HUD's cells already use for "this is live" and the actions stay quiet, so
 // the row scans as a lookup table instead of reading as a sentence — you come
@@ -619,9 +724,9 @@ export function keyLegendWidth(pairs, scale = 1) {
 export function drawKeyLegend(ctx, pairs, x, y, { scale = 1, keyInk = KEY_INK, actionInk = ACTION_INK } = {}) {
   let tx = x;
   for (const [key, action, ink] of pairs) {
-    drawText(ctx, key, tx, y, keyInk, scale, 'bold');
+    drawTextForPresentation(ctx, key, tx, y, keyInk, scale, 'bold');
     tx += textWidth(key, scale, 'bold') + LEGEND_KEY_GAP * scale;
-    drawText(ctx, action, tx, y, ink || actionInk, scale);
+    drawTextForPresentation(ctx, action, tx, y, ink || actionInk, scale);
     tx += textWidth(action, scale) + LEGEND_PAIR_GAP * scale;
   }
 }
@@ -648,10 +753,11 @@ const BUTTON_LABEL_S = 0.85;
 // The glyphs share one footprint and one rim so they read as a set: the beat
 // ribbon's 2.5:2 triangle for up / down / left / right (the dark edge stroked
 // BEFORE the fill, so the colour sits inside a rim rather than under a line
-// eating half the shape), and a music player's pause beside its play — two
-// bars with the triangle's height and width, NOT two thin lines, which read as
-// the number 11. The inks arrive as opts and are never literals here: the
-// arrows' live in game/beatground.js, which the engine must not import.
+// eating half the shape), the ribbon's outlined circle for the ability action,
+// and a music player's pause beside its play — two bars with the triangle's
+// height and width, NOT two thin lines, which read as the number 11. The inks
+// arrive as opts and are never literals here: the arrows' live in
+// game/beatground.js, which the engine must not import.
 //
 // `opts.frac` (0..1) floods the disc from the bottom for the power button's
 // recharge: a level, not a ticking number. Full reads as ready, and the
@@ -728,9 +834,9 @@ export function drawRoundButton(ctx, b, opts = {}) {
   }
   ctx.save();
   if (opts.shadow !== false) {
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = r * 0.35;
-    ctx.shadowOffsetY = r * 0.08;
+    ctx.shadowColor = opts.shadowColor || 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = r * (opts.shadowBlur == null ? 0.35 : opts.shadowBlur);
+    ctx.shadowOffsetY = r * (opts.shadowOffsetY == null ? 0.08 : opts.shadowOffsetY);
   }
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(1, r * 0.06);
@@ -773,11 +879,26 @@ export function drawRoundButton(ctx, b, opts = {}) {
       ctx.stroke();
       ctx.fill();
     }
+  } else if (icon === 'ability') {
+    // The attack control uses the same outlined pink circle as the rhythm
+    // ribbon's ability marker. Keep the dark rim under the colour, just as the
+    // ribbon does, so the two surfaces teach one shape for the same button.
+    // Match the triangles' overall footprint: their width is 0.84r, so the
+    // ring's outside edge lands at roughly the same visual scale once its
+    // stroke is included.
+    const ringR = r * 0.38;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(1, r * 0.06) + Math.max(1, r * 0.025);
+    ctx.stroke();
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = Math.max(1, r * 0.06);
+    ctx.stroke();
   } else if (b.label) {
     // Same ink-centred midline every HUD panel uses, so a label in a disc sits
     // at the same height as a label in a plate.
     const s = opts.labelScale || BUTTON_LABEL_S;
-    drawTextCentered(ctx, b.label, cx, textYForMid(cy, s), ink, s, opts.labelStyle || 'ui');
+    drawTextCenteredForPresentation(ctx, b.label, cx, textYForMid(cy, s), ink, s, opts.labelStyle || 'ui');
   }
   ctx.restore();
 }

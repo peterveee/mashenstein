@@ -3,6 +3,14 @@
 import { W } from '../engine/renderer.js';
 import { roadAt, routeRise, tunnelRoofEnd, tunnelOpenings } from '../game/routes.js';
 import { PLAYER_H } from '../game/player.js';
+import {
+  PAPER_TEXTURE_BLEND,
+  paperPatternFor,
+  anchorPaperPattern,
+  paperTextureCameraX,
+} from '../engine/paper-material.js';
+
+const PAPER_TERRAIN_ALPHA = 1;
 
 const PROFILES = {
   plumber:   { amp: 16, period: 430, phase: 0 },
@@ -229,9 +237,15 @@ const MERGE = 0;
 // Where the climb has all but arrived. Scanned rather than solved — the profile
 // has four segments and the answer is a place, not a root.
 function mergeX(r, clear) {
-  for (let t = 1; t >= 0; t -= 0.002) {
+  // `routeRise` is exactly zero at t=1 by contract, so starting there returns
+  // the route's endpoint immediately and leaves the apron/cutaway painters to
+  // meet on a hard vertical line. Walk inward first and accept a tiny residual
+  // rise as merged; at gameplay scale a sub-pixel of separation is no longer a
+  // distinct surface, and both painters then own the same continuous green.
+  const tolerance = Math.max(0.75, clear);
+  for (let t = 1 - 0.002; t >= 0; t -= 0.002) {
     const wx = r.x + r.w * t;
-    if (-routeRise(wx, r) >= clear) return wx;
+    if (-routeRise(wx, r) <= tolerance) return wx;
   }
   return r.openSpan.x + r.openSpan.w;
 }
@@ -311,9 +325,12 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
   const cloudFrom = opts.cloudFrom ?? 74;
   const cloudTo = opts.cloudTo ?? 128;
   const bottomY = opts.bottomY ?? (GROUND_BASE + 160);
+  // Include both the deep/contact offset and the widest puff edge in culling;
+  // otherwise an attached shadow can pop in a few pixels after its silhouette.
+  const shadowMargin = opts.paperSlab?.paper ? 12 : 0;
   for (const r of routes) {
     const sx = r.x - camX;
-    if (sx > right || sx + r.w < 0) continue;
+    if (sx > right + shadowMargin || sx + r.w < -shadowMargin) continue;
     // Walked in columns rather than drawn as a rect, because a road is not
     // level: it holds its entry height, climbs, holds again and then eases back
     // down to meet the ground, and every one of those changes is something the
@@ -342,7 +359,11 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     const to = Math.min(right, Math.ceil(sx + r.w));
     // The slab's own height, never sampled past its ends. See the rounding note.
     const topInside = (wx, rr) => topAt(Math.min(Math.max(wx, rr.x), rr.x + rr.w - 0.001), rr);
-    if (r.kind === 'tunnel') { drawTunnel(ctx, camX, cabinet, r, topInside, groundAt, from, to, bottomY, opts.hillDepth ?? 0); continue; }
+    if (r.kind === 'tunnel') {
+      drawTunnel(ctx, camX, cabinet, r, topInside, groundAt, from, to, bottomY,
+        opts.hillDepth ?? 0, opts.paperSlab || null);
+      continue;
+    }
     // A high road CAN stop being made of ground on the way up, and by default
     // it does not — `cloud`, not `sky`, is what asks for that. The two used to
     // be the same flag, and painting the top of every high road as weather beat
@@ -359,7 +380,7 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // for the whole span would have to be wrong at one end of it.
     const asCloud = (wx) => (r.cloud ? cloudMix(groundAt(wx) - topInside(wx, r), cloudFrom, cloudTo) : 0);
     drawSlab(ctx, camX, cabinet, r, topInside, from, to, asCloud, null, opts.paperSlab);
-    if (r.cloud) drawCloudRoad(ctx, camX, r, topInside, groundAt, from, to, cloudFrom, cloudTo);
+    if (r.cloud) drawCloudRoad(ctx, camX, r, topInside, groundAt, from, to, cloudFrom, cloudTo, opts.paperSlab);
   }
 }
 
@@ -482,7 +503,13 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     // Islands are playable ground, so they receive the same paper lift as the
     // base scenery. The callback only affects the slab silhouette; props and
     // route decorations remain on their normal painter paths.
-    if (island && paperSlab?.shadow) paperSlab.shadow(ctx, slabPath);
+    const paperShadowOptions = island ? { subtle: true } : undefined;
+    if (paperSlab?.shadow) {
+      ctx.__paperCamX = camX; paperSlab.shadow(ctx, slabPath, paperShadowOptions);
+    }
+    if (paperSlab?.contact) {
+      ctx.__paperCamX = camX; paperSlab.contact(ctx, slabPath, paperShadowOptions);
+    }
     // ---- soil body, with the scalloped underside ---------------------------
     ctx.beginPath();
     ctx.moveTo(a, y(a));
@@ -507,11 +534,37 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     ctx.lineTo(a, y(a) + body(camX + a));
     ctx.closePath();
     const mid = (a + b) / 2;
-    const g = ctx.createLinearGradient(0, y(a) + CAP, 0, y(a) + body(camX + mid) + 3);
-    g.addColorStop(0, soil);
-    g.addColorStop(1, darken(soil, 0.55));
-    ctx.fillStyle = g;
+    if (paperSlab?.paper) {
+      ctx.fillStyle = soil;
+    } else {
+      const g = ctx.createLinearGradient(0, y(a) + CAP, 0, y(a) + body(camX + mid) + 3);
+      g.addColorStop(0, soil);
+      g.addColorStop(1, darken(soil, 0.55));
+      ctx.fillStyle = g;
+    }
     ctx.fill();
+    if (paperSlab?.paper) {
+      // A two-pixel underside band supplies the cut edge without a vertical
+      // lighting gradient. It follows the same world-grid scallop as the body.
+      ctx.fillStyle = darken(soil, 0.85);
+      ctx.beginPath();
+      ctx.moveTo(b, y(b) + body(camX + b));
+      for (let wx = Math.floor((camX + b) / BITE) * BITE; wx > camX + a; wx -= BITE) {
+        const x = wx - camX;
+        if (x <= a || x >= b) continue;
+        ctx.lineTo(x, y(x) + body(wx)
+          + 1.2 + Math.sin(wx * 0.55) * 0.8 + Math.sin(wx * 0.21) * 1.1);
+      }
+      ctx.lineTo(a, y(a) + body(camX + a));
+      ctx.lineTo(a, y(a) + body(camX + a) + 2);
+      for (let wx = Math.ceil((camX + a) / BITE) * BITE; wx < camX + b; wx += BITE) {
+        const x = wx - camX;
+        if (x <= a || x >= b) continue;
+        ctx.lineTo(x, y(x) + body(wx)
+          + 1.2 + Math.sin(wx * 0.55) * 0.8 + Math.sin(wx * 0.21) * 1.1 + 2);
+      }
+      ctx.lineTo(b, y(b) + body(camX + b) + 2); ctx.closePath(); ctx.fill();
+    }
     // ---- a couple of stones, and now and then a skeleton --------------------
     // THIS is the band worth looking into, on a road and on an island alike: a
     // slab seen edge-on is the only place in the game the ground is cut open,
@@ -566,7 +619,7 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     ctx.lineTo(b + lip, y(b) + 0.75);
     ctx.stroke();
     ctx.lineWidth = 1;
-    if (island && paperSlab?.finish) paperSlab.finish(ctx, slabPath);
+    if (paperSlab?.finish) { ctx.__paperCamX = camX; paperSlab.finish(ctx, slabPath); }
   }
 }
 
@@ -838,8 +891,11 @@ function cloudMix(rise, from, to) {
  * road is drawn afresh every frame and it does not move, so anything rolled per
  * frame boils; anything keyed to the screen swims as the camera scrolls.
  */
-function drawCloudRoad(ctx, camX, r, topAt, groundAt, from, to, cloudFrom, cloudTo) {
+function drawCloudRoad(ctx, camX, r, topAt, groundAt, from, to, cloudFrom, cloudTo, paperSlab = null) {
   const STEP = 7;
+  const patternCamX = paperTextureCameraX(camX, paperSlab?.textureSpeed);
+  const paperPattern = paperSlab?.paper
+    ? anchorPaperPattern(paperPatternFor(ctx, paperSlab.material || 'cardstockSoft'), patternCamX, 0) : null;
   // Snapped to a world grid for the same reason the stones and the scallop are:
   // stepping in SCREEN space resamples different world positions every frame, so
   // the puffs swim along the road rather than scrolling with it.
@@ -856,15 +912,21 @@ function drawCloudRoad(ctx, camX, r, topAt, groundAt, from, to, cloudFrom, cloud
     const n = ((wx * 0.61803398875) % 1 + 1) % 1;
     const rad = 5 + n * 3.5;
     const lift = n * 2;
+    const puff = (yOffset, radius) => {
+      ctx.beginPath(); ctx.arc(x, yOffset, radius, 0, Math.PI * 2); ctx.closePath();
+    };
+    if (paperSlab?.shadow) paperSlab.shadow(ctx, () => puff(y + 3.5, rad), { subtle: true });
+    if (paperSlab?.contact) paperSlab.contact(ctx, () => puff(y + 1.5, rad * 0.98), { subtle: true });
     ctx.globalAlpha = a * 0.92;
     ctx.fillStyle = 'rgba(198,214,236,1)';
-    ctx.beginPath();
-    ctx.arc(x, y + 3.5, rad, 0, Math.PI * 2);
-    ctx.fill();
+    puff(y + 3.5, rad); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(x, y + 1.5 - lift * 0.4, rad * 0.92, 0, Math.PI * 2);
-    ctx.fill();
+    puff(y + 1.5 - lift * 0.4, rad * 0.92); ctx.fill();
+    if (paperPattern) {
+      ctx.save(); ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+      ctx.globalAlpha = a * (paperSlab?.groundStrength ?? 1);
+      ctx.fillStyle = paperPattern; puff(y + 1.5 - lift * 0.4, rad * 0.92); ctx.fill(); ctx.restore();
+    }
     ctx.globalAlpha = 1;
   }
 }
@@ -1098,7 +1160,7 @@ function drawEarth(ctx, cabinet, camX, runs, surfaceY, bottomY, seamFrom = null)
  * difference between a level with a high road and a low road and a level with a
  * cave in it, and it is entirely a question of what you decline to draw.
  */
-export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = [], hillDepth = 0) {
+export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = [], hillDepth = 0, paperMaterial = null) {
   const runs = [];
   let open = camX - 8;
   for (const sp of [...overhangs].sort((a, b) => a.x - b.x)) {
@@ -1121,9 +1183,31 @@ export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = 
     // included.
     drawHillside(ctx, cabinet, camX, runs, () => GROUND_BASE + APRON - 1,
       (wx) => groundAt(wx) + hillDepth, bottomY, groundAt);
+    if (paperMaterial?.paper) paintPaperEarth(ctx, cabinet, camX, runs,
+      () => GROUND_BASE + APRON - 1, bottomY, paperMaterial);
     return;
   }
   drawEarth(ctx, cabinet, camX, runs, (wx) => terrainGroundY(cabinet, wx), bottomY);
+  if (paperMaterial?.paper) paintPaperEarth(ctx, cabinet, camX, runs,
+    (wx) => terrainGroundY(cabinet, wx), bottomY, paperMaterial);
+}
+
+function paintPaperEarth(ctx, cabinet, camX, runs, surfaceY, bottomY, paperMaterial) {
+  const patternCamX = paperTextureCameraX(camX, paperMaterial?.textureSpeed);
+  const pattern = anchorPaperPattern(
+    paperPatternFor(ctx, paperMaterial.material || 'cardstockSoft'), patternCamX, 0);
+  if (!pattern) return;
+  ctx.save();
+  ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+  ctx.globalAlpha = paperMaterial.groundStrength ?? 1;
+  ctx.fillStyle = pattern;
+  for (const [from, to] of runs) {
+    if (to <= from) continue;
+    ctx.beginPath(); ctx.moveTo(from - camX, surfaceY(from));
+    for (let wx = from; wx <= to; wx += 4) ctx.lineTo(wx - camX, surfaceY(wx));
+    ctx.lineTo(to - camX, bottomY); ctx.lineTo(from - camX, bottomY); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
 }
 
 /**
@@ -1275,7 +1359,7 @@ function drawFloorSkin(ctx, cabinet, camX, a, b, floorAt, datum) {
  * Both edges then get a lit rim, and both are strokes along the same path the
  * fill used, so neither can step away from the other.
  */
-function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, hillDepth = 0) {
+function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, hillDepth = 0, paperSlab = null) {
   const soil = soilOf(cabinet);
   const trueFloorAt = (wx) => topAt(wx, r);
   const openings = tunnelOpenings(r);
@@ -1365,29 +1449,48 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, h
       const bump = Math.pow(Math.sin(Math.PI * t), 0.55);
       return ISLAND_THIN + (ISLAND_FAT - ISLAND_THIN) * bump;
     };
-    if (t2 > f2) drawSlab(ctx, camX, cabinet, roof, (wx) => groundAt(wx), f2, t2, () => 0, bodyAt);
+    if (t2 > f2) drawSlab(ctx, camX, cabinet, roof, (wx) => groundAt(wx), f2, t2, () => 0, bodyAt, paperSlab);
   }
   for (const [f, t] of (TUNNEL_LOOK === 'island' ? [] : lit)) {
     if (t <= f) continue;
-    ctx.beginPath();
-    ctx.moveTo(f - camX, groundAt(f));
-    for (let wx = f; wx <= t; wx += 4) ctx.lineTo(wx - camX, groundAt(wx));
-    ctx.lineTo(t - camX, groundAt(t));
+    const roofPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(f - camX, groundAt(f));
+      for (let wx = f; wx <= t; wx += 4) ctx.lineTo(wx - camX, groundAt(wx));
+      ctx.lineTo(t - camX, groundAt(t));
+      ctx.lineTo(t - camX, underAt(t));
+      for (let wx = Math.floor(t / 5) * 5; wx > f; wx -= 5) {
+        ctx.lineTo(wx - camX, underAt(wx)
+          + 1.4 + Math.sin(wx * 0.5) * 1.1 + Math.sin(wx * 0.19) * 1.5);
+      }
+      ctx.lineTo(f - camX, underAt(f));
+      ctx.closePath();
+    };
+    if (paperSlab?.shadow) { ctx.__paperCamX = camX; paperSlab.shadow(ctx, roofPath); }
+    if (paperSlab?.contact) { ctx.__paperCamX = camX; paperSlab.contact(ctx, roofPath); }
+    roofPath();
     // Back along the underside, bitten, on a world grid so the teeth belong to
     // the slab rather than crawling along it.
     const BITE = 5;
-    ctx.lineTo(t - camX, underAt(t));
-    for (let wx = Math.floor(t / BITE) * BITE; wx > f; wx -= BITE) {
-      ctx.lineTo(wx - camX, underAt(wx)
-        + 1.4 + Math.sin(wx * 0.5) * 1.1 + Math.sin(wx * 0.19) * 1.5);
+    if (paperSlab?.paper) {
+      ctx.fillStyle = soil;
+    } else {
+      const g = ctx.createLinearGradient(0, groundAt((f + t) / 2), 0, underAt((f + t) / 2));
+      g.addColorStop(0, mix(cabinet.groundDark || '#2a7038', soil, 0.55));
+      g.addColorStop(1, darken(soil, 0.66));
+      ctx.fillStyle = g;
     }
-    ctx.lineTo(f - camX, underAt(f));
-    ctx.closePath();
-    const g = ctx.createLinearGradient(0, groundAt((f + t) / 2), 0, underAt((f + t) / 2));
-    g.addColorStop(0, mix(cabinet.groundDark || '#2a7038', soil, 0.55));
-    g.addColorStop(1, darken(soil, 0.66));
-    ctx.fillStyle = g;
     ctx.fill();
+    if (paperSlab?.paper) {
+      ctx.fillStyle = darken(soil, 0.85);
+      ctx.beginPath();
+      ctx.moveTo(f - camX, underAt(f));
+      for (let wx = f; wx <= t; wx += 5) ctx.lineTo(wx - camX, underAt(wx));
+      ctx.lineTo(t - camX, underAt(t) + 2);
+      for (let wx = t; wx >= f; wx -= 5) ctx.lineTo(wx - camX, underAt(wx) + 2);
+      ctx.closePath(); ctx.fill();
+    }
+    if (paperSlab?.finish) { ctx.__paperCamX = camX; paperSlab.finish(ctx, roofPath); }
     // A couple of stones in the cut face, the same as any other soil band.
     drawStones(ctx, camX, soil, f - camX, t - camX,
       (x) => groundAt(camX + x) + 7, (x) => underAt(camX + x) - 2,
@@ -1402,20 +1505,32 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, h
   // there is eighty pixels of hill under the slide, and the band runs level out
   // of the picture instead of stepping at the cut.
   const datum = (wx) => Math.max(floorAt(wx), groundAt(wx) + hillDepth);
+  // The apron and the cutaway are separate paths. At a fractional camera
+  // position Canvas antialiases their shared vertical edge, which can expose a
+  // one-pixel dark line even though both sides are the same paper surface. Give
+  // the cutaway a small opaque overlap at each join; it stays inside the route
+  // silhouette and never reaches a playable route gap.
+  const join = paperSlab?.paper ? 1 : 0;
+  const lowerA = a - join;
+  const lowerB = b + join;
   if ((TUNNEL_LOOK === 'keepgrass-thru' || TUNNEL_LOOK === 'island') && hillDepth > 0) {
     // Nothing under the floor but hill, down to the one datum the stage shares.
-    drawHillside(ctx, cabinet, camX, [[a - 2, b + 2]], floorAt, datum, bottomY, groundAt);
+    drawHillside(ctx, cabinet, camX, [[lowerA - 2, lowerB + 2]], floorAt, datum, bottomY, groundAt);
   } else if (TUNNEL_LOOK === 'keepgrass-skin' && hillDepth > 0) {
     // A SKIN of cut earth hugging the floor, hill under it, the datum below
     // that. The tunnel is a cut through a grassy hill and the only dirt it
     // shows is the dirt it has just been cut out of, which is also the one
     // reading that keeps the floor you run on distinct from the mass under it.
-    drawHillside(ctx, cabinet, camX, [[a, b]], floorAt, datum, bottomY, groundAt);
-    drawFloorSkin(ctx, cabinet, camX, a, b, floorAt, datum);
+    drawHillside(ctx, cabinet, camX, [[lowerA, lowerB]], floorAt, datum, bottomY, groundAt);
+    drawFloorSkin(ctx, cabinet, camX, lowerA, lowerB, floorAt, datum);
   } else {
-    drawEarth(ctx, cabinet, camX, [[a, b]], floorAt, bottomY,
+    drawEarth(ctx, cabinet, camX, [[lowerA, lowerB]], floorAt, bottomY,
       TUNNEL_LOOK === 'current' ? null : groundAt);
   }
+  // The tunnel floor is redrawn over the shared subsoil pass, so finish this
+  // visible cut face here as well. It keeps the material single and quiet in
+  // the chamber instead of leaving a plain strip under a textured roof.
+  if (paperSlab?.paper) paintPaperEarth(ctx, cabinet, camX, [[lowerA, lowerB]], floorAt, bottomY, paperSlab);
   // ---- and the shade the lane casts over it -------------------------------
   //
   // Without this the air under the slab shows bright parallax hills at exactly
@@ -1433,10 +1548,12 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, h
       // shade drawn at a flat 26 hangs below the thing casting it.
       const top = TUNNEL_LOOK === 'island' ? groundAt(mid) + ISLAND_FAT + 3
         : TUNNEL_LOOK === 'current' ? groundAt(mid) + UNDER : underAt(mid);
-      const sh = ctx.createLinearGradient(0, top, 0, top + 34);
-      sh.addColorStop(0, 'rgba(24,16,8,0.34)');
-      sh.addColorStop(1, 'rgba(24,16,8,0)');
-      ctx.fillStyle = sh;
+      const sh = paperSlab?.paper ? null : ctx.createLinearGradient(0, top, 0, top + 34);
+      if (sh) {
+        sh.addColorStop(0, 'rgba(24,16,8,0.34)');
+        sh.addColorStop(1, 'rgba(24,16,8,0)');
+      }
+      ctx.fillStyle = sh || 'rgba(24,16,8,0.10)';
       const lidAt = TUNNEL_LOOK === 'island' ? (wx) => groundAt(wx) + ISLAND_FAT + 3
         : TUNNEL_LOOK === 'current' ? (wx) => groundAt(wx) + UNDER
           : (wx) => underAt(wx);
@@ -1597,7 +1714,7 @@ function drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt) {
 }
 
 export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = GROUND_BASE, viewW = W, overhangs = [],
-  packOwnsSurface = false) {
+  packOwnsSurface = false, paperMaterial = null) {
   // A cabinet with no hills draws nothing — UNLESS a crossing has raised the
   // road somewhere in view, which is ground that exists and has to be painted
   // by somebody. `flat` is that case, and it is why the runs are clipped to the
@@ -1702,4 +1819,25 @@ export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = GROUND_BASE, 
   }
   ctx.stroke();
   ctx.lineWidth = 1;
+  if (paperMaterial?.paper) {
+    const patternCamX = paperTextureCameraX(camX, paperMaterial.textureSpeed);
+    const pattern = anchorPaperPattern(
+      paperPatternFor(ctx, paperMaterial.material || 'cardstockSoft'), patternCamX, 0);
+    if (pattern) {
+      ctx.save();
+      ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+      ctx.globalAlpha = PAPER_TERRAIN_ALPHA * (paperMaterial.groundStrength ?? 1);
+      ctx.fillStyle = pattern;
+      for (const [a, b] of minusSpans(runs, overhangs)) {
+        if (b <= a) continue;
+        ctx.beginPath();
+        ctx.moveTo(a - camX, terrainGroundY(cabinet, a, baseY));
+        for (let wx = a; wx <= b; wx += STEP) ctx.lineTo(wx - camX, terrainGroundY(cabinet, wx, baseY));
+        ctx.lineTo(b - camX, terrainGroundY(cabinet, b, baseY));
+        ctx.lineTo(b - camX, baseY); ctx.lineTo(a - camX, baseY);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
 }

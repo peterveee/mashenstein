@@ -14,6 +14,16 @@ export const LANDSCAPE_HEIGHT = 270;
 export const PORTRAIT_BACKGROUND_ZOOM = FRAME_WIDTH / LANDSCAPE_HEIGHT;
 export const PHONE_PORTRAIT = 'phone-portrait';
 export const LANDSCAPE = 'landscape';
+// 20:9 is a useful upper bound for a modern phone portrait surface: the
+// iPhone 17 Pro Max is about 19.5:9, while current large Android flagships
+// commonly reach 20:9. Desktop portrait presentation uses this one contained
+// shape instead of teaching the game about every monitor window ratio.
+export const PHONE_PORTRAIT_ASPECT_RATIO = 20 / 9;
+// Below this height a desktop portrait window is too short to make a useful
+// phone-shaped canvas without making the gameplay surface excessively narrow.
+// Return to the authored 16:9 presentation until there is room for the phone
+// frame again; the page background supplies the black bars around it.
+export const DESKTOP_PORTRAIT_LANDSCAPE_FALLBACK_HEIGHT = 720;
 
 const DEFAULT_FRAME = Object.freeze({
   mode: LANDSCAPE,
@@ -40,6 +50,30 @@ function insetsOf(raw) {
     right: Math.max(0, Number(insets.right) || 0),
     bottom: Math.max(0, Number(insets.bottom) || 0),
     left: Math.max(0, Number(insets.left) || 0),
+  };
+}
+
+/**
+ * Fit a phone-shaped portrait surface inside a viewport without stretching it.
+ * The renderer uses this for desktop portrait presentation; physical phones
+ * still pass their actual viewport through frameForViewport unchanged.
+ */
+export function fitPhonePortraitViewport({
+  viewportWidth = FRAME_WIDTH,
+  viewportHeight = LANDSCAPE_HEIGHT,
+  aspectRatio = PHONE_PORTRAIT_ASPECT_RATIO,
+} = {}) {
+  const vw = finitePositive(Number(viewportWidth), FRAME_WIDTH);
+  const vh = finitePositive(Number(viewportHeight), LANDSCAPE_HEIGHT);
+  const ratio = finitePositive(Number(aspectRatio), PHONE_PORTRAIT_ASPECT_RATIO);
+  const width = Math.min(vw, vh / ratio);
+  const height = Math.min(vh, vw * ratio);
+  return {
+    width,
+    height,
+    left: (vw - width) / 2,
+    top: (vh - height) / 2,
+    aspectRatio: ratio,
   };
 }
 

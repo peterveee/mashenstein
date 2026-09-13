@@ -1,6 +1,6 @@
 // Unified input: keyboard + touch gestures + virtual buttons + gamepad.
 // Actions: jump, slide, ability, left, right, confirm, back, escape, pause, mute.
-import { clientToLogical, W, screen } from './renderer.js';
+import { clientToLogical, screen } from './renderer.js';
 
 const DEFAULT_KEYS = {
   jump: ['Space', 'ArrowUp', 'KeyW'],
@@ -17,17 +17,11 @@ const DEFAULT_KEYS = {
 
 const GAMEPAD_MAP = { 0: 'jump', 1: 'slide', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'slide', 14: 'left', 15: 'right' };
 
-// Where the picture splits into its two broad thumb halves during a landscape
-// run: everything left of this fraction is JUMP, everything right of it is
-// SLIDE — the two frequent actions, both press-and-hold, one per thumb. The
-// portrait main area is intentionally different: it is one tap-to-jump
-// surface, while the explicit lower controls and down/right swipes provide
-// slide and power. The special has its own disc (touch-layout.js) and the
-// swipe-right below. Exported because a screen that TEACHES the split has to
-// draw the same line the handler tests against — training's touch zone card
-// measured its own split for one build, which is the version of this that goes
-// wrong quietly.
-export const TOUCH_JUMP_FRAC = 0.5;
+// Landscape touch has no invisible left/right action split. The main playfield
+// is JUMP everywhere; the explicit rail controls and the down/right swipes
+// provide SLIDE and POWER. Kept as a compatibility export for old gallery
+// callers, but it is no longer used to choose an action.
+export const TOUCH_JUMP_FRAC = 1;
 
 // Telling a tap apart from the start of a swipe. Both are one finger landing on
 // the glass, so the playable canvas holds the tap's action for a moment instead
@@ -201,13 +195,14 @@ class InputSys {
         // you're standing at"), and since this fired from ANY tap anywhere on
         // screen, merely being near a station — not tapping it — was enough
         // to confirm it.
-        // For a THUMB in landscape the picture is a broad two-button surface:
-        // its left half is JUMP and its right half is SLIDE — the two frequent
-        // actions, both press-and-hold, one per thumb — because a phone has no
-        // second button to press. Portrait uses the taller world differently:
+        // For a THUMB in landscape the picture is a broad JUMP surface. The
+        // rail gives SLIDE and POWER explicit targets, and the down/right
+        // swipes make those actions reachable without a precise target. A
+        // phone no longer has to guess from which invisible half it landed in.
+        // Portrait uses the taller world differently:
         // a tap anywhere in the main playfield jumps, and a downward/rightward
         // swipe resolves to SLIDE/POWER without asking the player to hit a
-        // narrow side half. The explicit lower controls still win first.
+        // narrow side button. The explicit rail controls still win first.
         // A mouse has buttons: left is jump over the whole canvas, and slide and
         // the special each have one (above), so where the cursor happens to be
         // sitting never changes what a click does. All mappings stay off menus
@@ -216,15 +211,10 @@ class InputSys {
         const primaryCanvas = this.usingTouch || (e.pointerType === 'mouse' && e.button === 0);
         // Inside a guard halo the zone's default is suppressed (see guardAt).
         // The touch still becomes a gesture, so a finger that lands beside the
-        // slide half and then pulls down slides anyway — the halo removes a
+        // slide control and then pulls down slides anyway — the halo removes a
         // wrong press, it does not remove the swipe.
         const guarded = liveRun && primaryCanvas && this.guardAt(p.x, p.y);
-        const portraitRun = liveRun && screen.presentationMode === 'phone-portrait';
-        if (liveRun && primaryCanvas) {
-          action = guarded ? null
-            : portraitRun ? 'jump'
-            : (this.usingTouch && p.x >= W * TOUCH_JUMP_FRAC ? 'slide' : 'jump');
-        }
+        if (liveRun && primaryCanvas) action = guarded ? null : 'jump';
         // A tap started anywhere on the picture can become the established
         // down/right swipe — both halves, not just the jump side. Sliding is a
         // defensive move and has to be available under whichever thumb is
@@ -483,9 +473,9 @@ class InputSys {
   // renderer.js's `chrome`), not the logical 480x270 space `buttonAt` tests —
   // hence the separate list. Two kinds: DISCS on the picture ({x, y, r}),
   // hit-tested as circles with a thumb's worth of slop, and ZONES ({zone}),
-  // the stretches of margin that extend the control beside them, hit-tested as
-  // the whole rectangle. Discs first: a zone never reaches the picture, but a
-  // disc's slop may reach a zone's edge, and the disc is the more deliberate
+  // local rectangles that extend the control beside it, hit-tested as the whole
+  // rectangle. A zone may overlap the picture slightly when the safe margin is
+  // too narrow for the full disc; discs are checked first as the deliberate
   // target.
   chromeButtonAt(cx, cy) {
     const SLOP = 6;

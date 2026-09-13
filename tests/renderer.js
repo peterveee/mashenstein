@@ -2,7 +2,11 @@
 // WebGL selection, a claimed-canvas shader failure, GPU resize cleanup and a
 // visible failure instead of a silent post-boot black screen.
 import { installDom } from './dom-stub.js';
-const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
+const {
+  defaultFrame, fitPhonePortraitViewport, frameForViewport,
+  DESKTOP_PORTRAIT_LANDSCAPE_FALLBACK_HEIGHT,
+  PHONE_PORTRAIT_ASPECT_RATIO,
+} = await import('../src/engine/frame.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -361,6 +365,43 @@ for (let i = 0; i < 55; i++) {
 desktopDiag = desktopRenderer.rendererDiagnostics();
 assert(desktopDiag.rung === 1 && desktopDiag.density === 4,
   'desktop still steps down off native under sustained slowness');
+
+// Desktop portrait presentation is a contained phone surface rather than a
+// new composition for every tall window. The fit helper leaves the full height
+// available when necessary, and the renderer keeps the chrome inside that same
+// phone-shaped rectangle.
+const phoneFit = fitPhonePortraitViewport({ viewportWidth: 600, viewportHeight: 1000 });
+assert(Math.abs(phoneFit.height / phoneFit.width - PHONE_PORTRAIT_ASPECT_RATIO) < 1e-12
+  && phoneFit.width === 450 && phoneFit.height === 1000,
+  'desktop portrait fit resolves the common 20:9 phone surface');
+window.innerWidth = 600;
+window.innerHeight = 1000;
+const desktopPortraitFrame = desktopRenderer.setPresentationMode('portrait');
+assert(Math.abs(desktopPortraitFrame.height / desktopPortraitFrame.width
+  - PHONE_PORTRAIT_ASPECT_RATIO) < 1e-12
+  && desktopDom.canvas.style.width === '450px'
+  && desktopDom.canvas.style.height === '1000px'
+  && desktopDom.canvas.style.left === '75px'
+  && desktopDom.documentElement.style.backgroundColor === '#000'
+  && desktopDom.body.style.backgroundColor === '#000',
+  'desktop portrait canvas is contained and centred with black letterbox bars');
+const portraitChromeXs = desktopRenderer.chrome.runPortraitLab
+  .filter((b) => b.r != null).map((b) => b.x);
+assert(portraitChromeXs.every((x) => x >= 75 && x <= 525),
+  'desktop portrait touch chrome stays inside the contained canvas');
+window.innerHeight = DESKTOP_PORTRAIT_LANDSCAPE_FALLBACK_HEIGHT - 1;
+const shortDesktopFrame = desktopRenderer.setPresentationMode('portrait');
+assert(shortDesktopFrame.mode === 'landscape'
+  && desktopDom.canvas.style.width === '600px'
+  && desktopDom.canvas.style.height === '338px'
+  && desktopDom.canvas.style.top === '190px'
+  && desktopDom.documentElement.style.backgroundColor === '#000',
+  'short desktop portrait falls back to the authored 16:9 canvas with black bars');
+window.innerHeight = 1000;
+desktopRenderer.setPresentationMode('portrait');
+window.innerWidth = 852;
+window.innerHeight = 393;
+desktopRenderer.setPresentationMode('landscape');
 
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.

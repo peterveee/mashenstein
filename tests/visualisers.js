@@ -13,6 +13,9 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
+assert(!VISUALISER_NAMES.includes('CLOCK-IN CITY'),
+  'CLOCK-IN CITY is removed from the visualiser pack');
+
 const ctx = document.createElement('canvas').getContext('2d');
 const spectrum = new Uint8Array(128);
 spectrum.fill(96);

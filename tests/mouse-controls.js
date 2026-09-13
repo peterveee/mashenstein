@@ -1,8 +1,8 @@
-// A mouse gets one verb per button — left jump, right slide, middle attack — while
-// touch gets the two halves it needs for two thumbs: left JUMP, right SLIDE,
-// with the special on its own disc and on a swipe right. Every pointer lands
-// on #chrome, the one surface; the discs and margin zones it registers fire on
-// contact, the halves wait for the gesture to declare itself.
+// A mouse gets one verb per button — left jump, right slide, middle attack —
+// while landscape touch gets a broad JUMP surface, explicit rail controls, and
+// down/right swipe fallbacks. Every pointer lands on #chrome, the one surface;
+// the discs and margin zones it registers fire on contact, the playfield waits
+// for the gesture to declare itself.
 import { installDom } from './dom-stub.js';
 const dom = installDom();
 
@@ -16,7 +16,7 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-// x 120 is well inside the left (jump) half; the seam is the picture's centre, 240.
+// x 120 is inside the playfield. Landscape touch no longer has an action seam.
 const pointer = (button, pointerId = button + 1, clientX = 120, pointerType = 'mouse') => ({
   pointerType, pointerId, button, clientX, clientY: 135,
   preventDefault() {},
@@ -60,7 +60,7 @@ Input.endFrame();
 const leftFarSide = pointer(0, 2, 400);
 dom.fire('canvas:pointerdown', leftFarSide);
 assert(Input.pressed('jump') && Input.held('jump') && !Input.held('ability'),
-  'a left click over the power zone still jumps — the split is thumbs only');
+  'a left click over the power rail still jumps — cursor position is ignored');
 dom.fire('canvas:pointerup', leftFarSide);
 assert(Input.released('jump') && !Input.held('jump'), 'that release ends the jump hold too');
 
@@ -75,7 +75,7 @@ assert(!Input.pressed('jump') && !Input.held('jump'),
 dom.frame(70);
 dom.fire('canvas:pointerup', touchLeft);
 assert(Input.pressed('jump') && Input.held('jump'),
-  'lifting the finger resolves it as a tap: the left half of a touch jumps');
+  'lifting the finger resolves it as a tap: the landscape playfield jumps');
 // The hold the player performed is replayed rather than collapsed: a press and
 // a release in the same frame would cut the jump on the frame it started.
 frame();
@@ -98,31 +98,31 @@ assert(Input.held('jump') && !Input.released('jump'), 'an ultra-quick tap gets a
 frame(25);
 assert(Input.released('jump') && !Input.held('jump'), 'the minimum quick-tap hold still releases promptly');
 
-// The right half is SLIDE — the other frequent, held action — not the special.
+// The other side of the landscape playfield is still JUMP. SLIDE is explicit
+// on the rail or comes from a downward swipe.
 frame();
 const touchRight = pointer(0, 4, 400, 'touch');
 dom.fire('canvas:pointerdown', touchRight);
 dom.frame(70);
 dom.fire('canvas:pointerup', touchRight);
-assert(Input.pressed('slide') && Input.held('slide') && !Input.held('ability') && !Input.held('jump'),
-  'the right half of a touch slides during a level, and spends no power');
-frame(90);
-assert(!Input.held('slide'), 'the replayed slide hold ends one tap-length later');
+assert(Input.pressed('jump') && Input.held('jump') && !Input.held('ability') && !Input.held('slide'),
+  'a touch anywhere in the landscape playfield jumps, including the right side');
+frame(120);
+assert(!Input.held('jump'), 'the replayed jump hold ends one tap-length later');
 
-// The seam is the picture's centre: a tap just left of it jumps, just right
-// of it slides.
+// There is no centre seam: both sides of the playfield jump.
 frame();
 const nearLeft = pointer(0, 31, 239, 'touch');
 dom.fire('canvas:pointerdown', nearLeft);
 dom.frame(70);
 dom.fire('canvas:pointerup', nearLeft);
-assert(Input.pressed('jump') && !Input.held('slide'), 'x 239 is the jump half');
+assert(Input.pressed('jump') && !Input.held('slide'), 'x 239 is on the jump surface');
 frame(120);
 const nearRight = pointer(0, 32, 241, 'touch');
 dom.fire('canvas:pointerdown', nearRight);
 dom.frame(70);
 dom.fire('canvas:pointerup', nearRight);
-assert(Input.pressed('slide') && !Input.held('jump'), 'x 241 is the slide half');
+assert(Input.pressed('jump') && !Input.held('slide'), 'x 241 is still the jump surface');
 frame(120);
 
 // A finger that stays down commits on its own, without waiting for the lift —
@@ -145,20 +145,20 @@ assert(Input.pressed('slide') && Input.held('slide') && !Input.held('jump'),
   'a left-zone down-swipe slides and never fires the jump it landed on');
 dom.fire('canvas:pointerup', touchSwipe);
 
-// The slide half promotes the same way: a down-swipe from it is still one slide,
-// not a tap-slide followed by a swipe-slide.
+// A down-swipe from the other side promotes the same way: it is one slide, not
+// a tap-slide followed by a swipe-slide.
 frame();
 const touchSwipeRight = pointer(0, 7, 400, 'touch');
 dom.fire('canvas:pointerdown', touchSwipeRight);
 dom.fire('canvas:pointermove', { ...touchSwipeRight, clientY: 170 });
 assert(Input.pressed('slide') && Input.held('slide') && !Input.held('ability'),
-  'a right-half down-swipe slides once and never spends the power');
+  'a down-swipe from the other side slides once and never spends the power');
 dom.fire('canvas:pointerup', touchSwipeRight);
-assert(Input.released('slide') && !Input.held('slide'), 'the right-half slide ends on release');
+assert(Input.released('slide') && !Input.held('slide'), 'the down-swipe slide ends on release');
 
-// A rightward drag from either half is the special — once, and without the
-// slide the half would otherwise have meant. The swipe-right mapping releasing
-// and re-pressing it would be one drag firing two specials off one cooldown.
+// A rightward drag from the playfield is the special — once. The swipe-right
+// mapping releasing and re-pressing it would be one drag firing two specials
+// off one cooldown.
 frame();
 const dragRight = pointer(0, 8, 400, 'touch');
 dom.fire('canvas:pointerdown', dragRight);
@@ -232,7 +232,7 @@ dom.fire('canvas:pointerdown', nearDisc);
 assert(!Input.held('escape') && !Input.held('slide'), 'a tap past the disc\'s slop is a pending gesture, not a press');
 dom.frame(70);
 dom.fire('canvas:pointerup', nearDisc);
-assert(Input.pressed('slide') && !Input.held('escape'), 'and resolves to the half it landed on');
+assert(Input.pressed('jump') && !Input.held('escape'), 'and resolves to the broad jump surface');
 frame(120);
 const inZone = { ...pointer(0, 52, 20, 'touch'), clientY: 200 };
 dom.fire('canvas:pointerdown', inZone);

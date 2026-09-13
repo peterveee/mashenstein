@@ -1792,9 +1792,9 @@ function propNominalSize(name) {
     + 'little across four phases of a run — with stage 2 growing a working city (searchlight, a monorail '
     + 'above the whole skyline that crosses, waits, and comes back the other way, and a window washer) '
     + 'as it goes. With no analyser the '
-    + 'whole reactive layer stands down and the authored panel plays exactly as it always did. The sky analyser '
-    + 'belongs to the JUKEBOX alone (CLOCK-IN CITY, which draws this very panel): clipped behind the skyline it '
-    + 'read as banding rather than a meter in a run, so a stage keeps its sky clear. Each tile keeps an '
+    + 'whole reactive layer stands down and the authored panel plays exactly as it always did. The optional sky '
+    + 'analyser is reserved for authoring and audition views: clipped behind the skyline it read as banding rather '
+    + 'than a meter in a run, so a stage keeps its sky clear. Each tile keeps an '
     + 'open pit so the gear train and the sky-tinted shaft stay on the sheet.');
   for (let stageIndex = 1; stageIndex <= 3; stageIndex++) {
     for (const [label, beat] of states) {

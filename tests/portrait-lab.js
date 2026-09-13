@@ -28,8 +28,8 @@ const close = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, `${message}: 
 
 PortraitLab.reset();
 assert.deepEqual(PortraitLab.config(), PORTRAIT_LAB_DEFAULTS, 'reset writes the review defaults');
-assert.equal(PortraitLab.config().worldZoom, 3.75, 'portrait keeps a near-landscape sprite scale with a little extra runway');
-assert.equal(PortraitLab.config().heroAnchorX, 24, 'portrait moves the character column left for runway');
+assert.equal(PortraitLab.config().worldZoom, 3.5, 'portrait trades a little sprite scale for runway');
+assert.equal(PortraitLab.config().heroAnchorX, 16, 'portrait moves the character column left for runway');
 assert.equal(PortraitLab.config().backgroundZoom,
   Math.round(PORTRAIT_BACKGROUND_ZOOM * 100) / 100,
   'portrait keeps backdrop art at the landscape physical scale and crops the view');
@@ -50,7 +50,7 @@ values.set(PORTRAIT_LAB_STORAGE_KEY, JSON.stringify({
 }));
 const clamped = PortraitLab.config();
 assert.equal(clamped.worldZoom, 4.5, 'world zoom clamps');
-assert.equal(clamped.heroAnchorX, 24, 'character anchor clamps');
+assert.equal(clamped.heroAnchorX, 12, 'character anchor clamps');
 assert.equal(clamped.backgroundZoom, 1, 'background zoom clamps');
 assert.equal(clamped.cloudOffsetY, -100, 'cloud offset clamps');
 assert.equal(clamped.sunOffsetY, 60, 'sun offset clamps');
@@ -139,15 +139,43 @@ assert.equal(labRun.camZoom, labRun.devPortraitLab.worldZoom, 'portrait lab keep
 assert.equal(labRun.camPan, labRun.portraitFrameFitState.pan,
   'portrait lab applies the fixed surface framing target immediately');
 assert.ok(Number.isFinite(labRun.portraitFrameFitState?.pan), 'portrait lab exposes the live framing target');
-assert.equal(labRun.portraitFrameFitState.pan, labRun.portraitFrameFitState.heroPan,
-  'portrait composition follows the configured ground anchor rather than a distant route envelope');
+// The composition RESTS ON THE PUBLISHED FRAME. portraitGeometry has already
+// solved the ground anchor for the handset and clamped it clear of the chat
+// card; solving it again here panned the ground back down by exactly the
+// clamped amount (51.4px on a 390x844 phone), which spent the bottom of the
+// frame on empty ground. So the resting pan is zero, and the hero's own floor
+// stays resolved for updateCamera's edge correction rather than becoming the
+// resting target.
+assert.equal(labRun.portraitFrameFitState.pan, labRun.portraitFrameFitState.restingPan,
+  'portrait composition rests on the published frame, not on a distant route envelope');
+assert.equal(labRun.portraitFrameFitState.restingPan, 0,
+  'and that resting pan is zero: the frame already carries the ground anchor');
+assert.ok(Number.isFinite(labRun.portraitFrameFitState.heroPan),
+  'the hero-floor pan stays resolved for the edge correction to reach for');
+assert.notEqual(labRun.portraitFrameFitState.pan, labRun.portraitFrameFitState.maxPan,
+  'and it is not the level envelope either');
 assert.equal(labRun.camFloorY, 232, 'portrait lab keeps the authored base floor visible');
 const fixedPan = labRun.portraitFrameFitState.pan;
 labRun.player.y = 230;
 labRun.updateCamera(1 / 60);
 
-assert.ok(labRun.portraitFrameFitState.pan > fixedPan,
-  'portrait edge correction makes room when a high jump reaches the HUD band');
+// The correction fires when the drawn hero would actually leave the picture,
+// not at a fixed altitude: the resting pan is now zero, so a jump that still
+// fits simply does not move the camera. Sweep upward and hold the rule that
+// SOME altitude earns a pan, and that it is the edge correction doing it.
+// Verified against the live game: pan stays 0 to 120 world units of altitude,
+// then rises (102.6 at 180, 277.6 at 230) and parks the hero's crown just
+// below the HUD.
+let earned = null;
+for (const alt of [120, 180, 230, 300, 380]) {
+  labRun.player.y = alt;
+  labRun.updateCamera(1 / 60);
+  if (labRun.portraitFrameFitState.pan > fixedPan) { earned = { alt, pan: labRun.portraitFrameFitState.pan }; break; }
+}
+assert.ok(earned,
+  'portrait edge correction makes room once a jump reaches the HUD band');
+assert.ok(labRun.portraitFrameFitState.edgeActive,
+  'and it is the edge correction that did it, not the resting composition');
 assert.ok(labRun.portraitFrameFitState.pan <= fixedPan + pauseFrame.height,
   'portrait HUD edge correction remains bounded to one logical frame');
 const highHeroTop = screenYFor(labRun.playerGroundY() - labRun.player.y - HERO_DRAW_H,

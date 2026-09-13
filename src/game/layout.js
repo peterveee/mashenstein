@@ -26,7 +26,7 @@ export const BASE_SPEED = 160;
 // the late ones barely move — a stage feels like it is building without ever
 // outrunning the reaction runway the spawner guarantees. The cap is what the
 // ramp is allowed to reach; overtime raises both (run.js owns that variant).
-export const SPEED_RAMP_K = 0.03;
+export const SPEED_RAMP_K = 0.025;
 export const SPEED_RAMP_CAP = 1.6;
 // The clear lane in front of the finish marker: how much empty ground the
 // spawner has to leave before the flagpole. An obstacle parked against the

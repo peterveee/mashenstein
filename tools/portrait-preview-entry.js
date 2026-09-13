@@ -210,12 +210,18 @@ async function bootEmbed() {
     backgroundZoom: numberParam(p, 'bgZoom', PORTRAIT_LAB_DEFAULTS.backgroundZoom),
     cloudOffsetY: numberParam(p, 'cloudOffset', PORTRAIT_LAB_DEFAULTS.cloudOffsetY),
     sunOffsetY: numberParam(p, 'sunOffset', PORTRAIT_LAB_DEFAULTS.sunOffsetY),
-    groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio,
+    groundAnchorRatio: numberParam(p, 'ground', PORTRAIT_LAB_DEFAULTS.groundAnchorRatio),
+    sceneryOffsetY: numberParam(p, 'sceneryOffset', PORTRAIT_LAB_DEFAULTS.sceneryOffsetY),
   };
   const safe = safeForPreview(p);
+  // The lab default is only the DEFAULT request. A cabinet's authored
+  // composition profile ships its own ground ratio (plumber is 0.715), and a
+  // review pinned to 0.80 is reviewing a composition the game never draws, so
+  // the ratio is a parameter here rather than a constant.
+  const groundAnchorRatio = numberParam(p, 'ground', PORTRAIT_LAB_DEFAULTS.groundAnchorRatio);
   let frame = frameForViewport({
     mode: chosen.choice.mode, viewportWidth: requested.width, viewportHeight: requested.height,
-    safeInsets: safe, groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio, revision: 1,
+    safeInsets: safe, groundAnchorRatio, revision: 1,
   });
   setPresentationFrame(frame);
 
@@ -392,7 +398,7 @@ async function bootEmbed() {
   });
   window.addEventListener('resize', () => {
     const nextViewport = activeViewport();
-    const next = frameForViewport({ mode: chosen.choice.mode, viewportWidth: nextViewport.width, viewportHeight: nextViewport.height, safeInsets: safe, groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio, revision: frame.revision + 1 });
+    const next = frameForViewport({ mode: chosen.choice.mode, viewportWidth: nextViewport.width, viewportHeight: nextViewport.height, safeInsets: safe, groundAnchorRatio, revision: frame.revision + 1 });
     frame = next;
     setPresentationFrame(next);
     layout = surface.resize({ viewportWidth: nextViewport.width, viewportHeight: nextViewport.height, safeInsets: safe });

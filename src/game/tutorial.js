@@ -380,7 +380,7 @@ const STEPS = [
     // land on a shorter line — and gives the touch variant, which had no joke in
     // it at all, the same one.
     brief: (touch) => (touch
-      ? 'CRATES. HOLD THE LEFT OF THE SCREEN. I DID NOT WRITE SECTION ONE.'
+      ? 'CRATES. TAP AND HOLD ANYWHERE TO JUMP. SWIPE DOWN TO SLIDE. I DID NOT WRITE SECTION ONE.'
       : 'CRATES. HOLD SPACE TO JUMP. I DID NOT WRITE SECTION ONE.'),
     again: (touch) => (touch
       ? 'YOU FLICKED IT. HOLD IT DOWN. THE CRATE COMES BACK.'
@@ -569,12 +569,11 @@ const STEPS = [
     label: 'HERO POWER',
     legend: (touch) => (touch ? [['USE', 'LEMON CANNON']] : [['RT/D', 'LEMON CANNON']]),
     brief: (touch) => (touch
-      ? 'EVERY HERO HAS A POWER. B-33P SHOOTS. TAP THE USE DISC, OR SWIPE RIGHT. THE CANNON IS COMPANY PROPERTY.'
+      ? 'EVERY HERO HAS A POWER. B-33P SHOOTS. TAP THE ATTACK BUTTON, OR SWIPE RIGHT. THE CANNON IS COMPANY PROPERTY.'
       : 'EVERY HERO HAS A POWER. B-33P SHOOTS. PRESS RIGHT OR D. THE CANNON IS COMPANY PROPERTY.'),
-    // The whole screen has been a two-button surface since section one — left
-    // half JUMP, right half SLIDE — and the split is shown in level 1-1, where
-    // it belongs; the tutorial no longer duplicates it. The power is the one
-    // control with its own disc, so it is the disc this brief names.
+    // The whole screen has been a JUMP surface since section one. The rail and
+    // the swipe fallbacks are named by the opening touch card; the power is the
+    // one control with its own disc, so it is the disc this brief names.
     // zones: true,
     again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS SIGNED OUT TO YOU.',
     // THE CANNON IS THE ONLY ANSWER HERE, and the prop is what guarantees it.
@@ -771,7 +770,8 @@ export class TutorialState {
     // Once the module has paid out once the readout stays up — including at
     // zero, which is where the joke lives.
     this.paidOut = false;
-    // Touch only: the card that shows which half of the screen does what.
+    // Touch only: the card that shows the broad JUMP surface and the swipe
+    // actions; it also names the orientation-aware rail arrangement.
     this.zoneT = 0;
     // Epilogue: how long the hero is waving for, and how long he stays sour
     // about the reclaim. He is the only one on this screen allowed to have a
@@ -953,10 +953,9 @@ export class TutorialState {
     this.legend = typeof step.legend === 'function' ? step.legend(Input.isTouchDevice()) : step.legend;
     this.say(step.brief(Input.isTouchDevice()));
     // Outlives the brief on purpose. It is a diagram of the whole input
-    // surface, arriving at the one moment the player has a reason to care about
-    // the half they have never touched — and it is read, looked away from, and
-    // then read again once the target is actually on screen. Expiring with the
-    // speech panel gave it about a second of attention after the sentence
+    // surface, arriving at the one moment the player has a reason to learn the
+    // swipe fallback and why the rails may swap after rotation. Expiring with
+    // the speech panel gave it about a second of attention after the sentence
     // explaining it had gone.
     this.zoneT = step.zones && Input.isTouchDevice() ? ZONE_T : 0;
     step.setup(this);
@@ -1897,9 +1896,9 @@ export class TutorialState {
     // in ways this lane has nothing to say about yet.
     const hero = this.player.hero;
     if (hero.ability.type !== 'shoot' || this.player.abilityCd > 0) return;
-    // The zone card has done its job the moment a shot comes out of the right
-    // half of the screen; it fades rather than cutting so the connection
-    // between the tap and the card going away is visible.
+    // The zone card has done its job the moment a shot comes from the power
+    // rail or a swipe-right; it fades rather than cutting so the connection
+    // between the gesture and the card going away is visible.
     if (this.zoneT > 0.4) this.zoneT = 0.4;
     Audio.sfx('launch', { hero: 'b33p', pitch: 1.08 });
     this.pellets.push({ x: this.playerWorldX() + 12, alt: this.player.y + 8, live: true });
@@ -2436,7 +2435,7 @@ export class TutorialState {
     });
   }
 
-  // The two-button surface, drawn on itself — the painter is hud.js's, shared
+  // The touch surface, drawn on itself — the painter is hud.js's, shared
   // with the campaign's opening stage, which shows the same card to players who
   // never took the training. Only the fade is this module's: the card arrives
   // with the section and leaves with it, over the lane, without stopping it.

@@ -3,18 +3,17 @@
 // drive both the subtle control drawing and hit testing.
 
 export const PORTRAIT_CONTROL_DIAMETERS = Object.freeze({
-  // A step down from the first pass. These are still well clear of the 44pt
-  // minimum touch target at every size; the discs were sized when they had the
-  // bottom of the screen to themselves, and they no longer do.
+  // Action controls share the large touch target; pause is intentionally
+  // smaller and quieter as a secondary control.
   jump: 88,
   slide: 88,
-  use: 76,
-  pause: 56,
+  use: 88,
+  pause: 48,
   // Portrait Lab is a review surface, so it exposes the desktop rewind tape
   // as a held touch control. Production portrait gameplay never registers it;
   // keeping the geometry here lets the lab use the same hit-test path as the
   // other controls without teaching ordinary phone runs a new verb.
-  rewind: 72,
+  rewind: 88,
 });
 
 // Keep the rewind target below the authored top breathing band. The safe inset
@@ -22,11 +21,10 @@ export const PORTRAIT_CONTROL_DIAMETERS = Object.freeze({
 // sitting against it.
 export const PORTRAIT_CONTROL_TOP_CLEARANCE = 28;
 
-// The pause disc's top aligns with the first HUD panel, which now starts at the
-// authored breathing band itself — the rail and its gap have moved to the
-// bottom edge. Keep this separate from rewind, which remains in the upper
-// review-control band.
-export const PORTRAIT_PAUSE_TOP_OFFSET_CSS = 20;
+// The pause disc's centre aligns with the portrait status HUD. Its smaller
+// diameter means the top of the disc sits 14px into the authored breathing
+// band, rather than merely lining up with the HUD panel's top edge.
+export const PORTRAIT_PAUSE_TOP_OFFSET_CSS = 14;
 
 // The discs are measured from the PHYSICAL bottom edge, not from the safe
 // rectangle. The home-indicator inset is a place iOS asks you not to put

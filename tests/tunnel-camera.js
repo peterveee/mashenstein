@@ -166,5 +166,24 @@ const legacyBottomScreenY = screenYFor(legacyBottomWorldY, portraitZoom, portrai
 assert(legacyBottomScreenY < renderer.H,
   `the old unpanned bottom formula would leave the portrait fill short (${legacyBottomScreenY.toFixed(1)} < ${renderer.H.toFixed(1)})`);
 
+run.portraitGameplay = true;
+run.route = null;
+run.player.y = 0;
+run.player.grounded = true;
+run.updateCamera(dt);
+const deathPan = run.camPan;
+const deathFloor = run.camFloorY;
+run.dead = true;
+run.deadT = 0;
+run.pitDeath = null;
+run.player.y = -120;
+run.player.vy = -200;
+run.player.deathT = 0;
+for (let i = 0; i < 12; i++) run.updateDead(dt);
+assert(run.camPan === deathPan && run.camFloorY === deathFloor,
+  'portrait death does not pan down after a falling hero');
+assert(run.player.y < -120 && run.player.deathT > 0 && run.deadT > 0,
+  'death motion, face animation and recovery clock continue while the camera stays parked');
+
 console.log(failed ? 'TUNNEL CAMERA: FAILED' : 'TUNNEL CAMERA: PASSED');
 process.exit(failed ? 1 : 0);

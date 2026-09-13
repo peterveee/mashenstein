@@ -1,9 +1,9 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
-import { W, H, chrome as chromeGeo, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
+import { H, W, chrome as chromeGeo, isPhonePortraitPresentation, onPresentationChanged, presentationFrame } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
@@ -366,11 +366,11 @@ export { CORRUPTED_MODIFIERS };
 // uses to pin GROUND_Y for the run camera — so zooming in crops the ceiling
 // rather than sliding the ground out from under the player.
 export const HUB_ZOOM = 1.3;
-// Portrait uses the authored 270px room height as the portrait crop. At 3.5x
-// the 480px logical width fits two complete 48px cabinets plus their 88px
-// pitch, while the wall and floor fill the tall phone frame; the cabinet bank
-// itself stays at its normal spacing for this first pass.
-export const HUB_PORTRAIT_ZOOM = 3.5;
+// Portrait uses a moderate lift over the landscape world zoom. On a phone this
+// keeps the hero close to, and just a touch larger than, the landscape's
+// apparent size after the portrait frame's narrower CSS scale; cabinet count
+// is secondary to keeping the cast readable.
+export const HUB_PORTRAIT_ZOOM = 2.5;
 // The concourse is intentionally long enough to browse cabinet by cabinet, but
 // returning players also cross it end to end. At 90 that trip overstayed its
 // welcome; 120 keeps precise station approaches while cutting traversal time by
@@ -449,26 +449,34 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // door's width and half its height on purpose: a counter is a horizontal thing,
 // and the whole point of it is that you can see over it to the person behind.
 const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
-
-// The renderer publishes a taller logical frame in phone portrait. Keep the
-// hub's authored room coordinates intact and change only its presentation
-// camera: world y=0 becomes the top of the phone, while the existing floor is
-// enlarged into the lower part of the frame. The extra floor below the line is
-// intentional breathing room for the phone's bottom status/prompt strip.
+// The renderer publishes a taller logical frame in phone portrait. The
+// landscape-scale cabinets still own their authored floor line, but the phone
+// gets a deliberate presentation band: extra air below the fixtures and above
+// the cabinet row makes the room read as a room instead of a tall crop.
+const PORTRAIT_HUB_FLOOR_RATIO = 0.70;
+const PORTRAIT_WALL_DRESS_DROP = 48;
+const PORTRAIT_POSTER_LIFT = 48;
 function hubPresentation() {
   const portrait = isPhonePortraitPresentation();
   const zoom = portrait ? HUB_PORTRAIT_ZOOM : HUB_ZOOM;
+  const camY = portrait
+    ? HUB_FLOOR_PIN_Y - (H * PORTRAIT_HUB_FLOOR_RATIO) / zoom
+    : HUB_CAM_Y;
   return {
     portrait,
     zoom,
     viewW: W / zoom,
-    camY: portrait ? 0 : HUB_CAM_Y,
-    wallY0: portrait ? 0 : HUB_WALL_Y0,
-    wallDressY0: HUB_WALL_Y0,
+    camY,
+    // The taller frame needs wall fill all the way to its new top crop. Drop
+    // the wall dressing and lift posters independently so both gaps are read
+    // before the unchanged landscape-scale cabinet row begins.
+    wallY0: portrait ? camY : HUB_WALL_Y0,
+    wallDressY0: portrait ? HUB_WALL_Y0 + PORTRAIT_WALL_DRESS_DROP : HUB_WALL_Y0,
     wallY1: HUB_WALL_Y1,
+    posterY: portrait ? POSTER_TOP_Y - PORTRAIT_POSTER_LIFT : POSTER_TOP_Y,
     floorY: HUB_FLOOR_PIN_Y,
-    lightY: portrait ? 0 : HUB_LIGHT_Y,
-    ceilY: portrait ? 4 : HUB_CEIL_Y,
+    lightY: portrait ? camY : HUB_LIGHT_Y,
+    ceilY: portrait ? camY + 4 : HUB_CEIL_Y,
   };
 }
 
@@ -735,6 +743,8 @@ export function heroIdFor(flow) {
 // screen blits a moving window across it. Rendering the pack live per frame per
 // cabinet would mean four full parallax scenes a frame for a 33x22 result.
 const SCENES = new Map();
+onPresentationChanged(() => SCENES.clear());
+
 function cabinetScene(cab) {
   let c = SCENES.get(cab.id);
   if (c !== undefined) return c;
@@ -973,6 +983,11 @@ const NPC_MENU = [{ id: 'swap', label: 'SWAP' }];
 function npcMenuFor(npc) { return npc && npc.swappable === false ? [] : NPC_MENU; }
 const NPC_CHIP_W = 34, NPC_CHIP_H = 16, NPC_CHIP_GAP = 3;
 const NPC_NAME_GAP = 8;
+const NPC_PORTRAIT_NAME_SCALE = 2.6;
+const NPC_PORTRAIT_CHIP_SCALE = 2.2;
+const NPC_PORTRAIT_CHIP_W = 82, NPC_PORTRAIT_CHIP_H = 40, NPC_PORTRAIT_CHIP_GAP = 12;
+const NPC_PORTRAIT_NAME_GAP = 18;
+const NPC_PORTRAIT_PROMPT_GAP = 26;
 // How far short of the back wall a hero has to stop.
 //
 // Keep the crowd clear of the room's hard end. The interaction row no longer
@@ -982,36 +997,61 @@ const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 
 // One screen-space layout for name, drawing and hit-testing. Long names expand
 // leftward while the actions remain immediately beside them; centring the full
-// group under the focused NPC keeps the prompt attached to its character.
-function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2) {
+// group under the focused NPC keeps the prompt attached to its character. The
+// landscape footer remains the compact fallback; portrait supplies a y anchor
+// below the hero so the prompt travels with the thing it names.
+function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2, anchorY = null) {
+  const portrait = isPhonePortraitPresentation();
   const name = npc.name || HERO_BY_ID[npc.id].short;
-  const nameW = textWidth(name, 1, 'ui');
+  const nameScale = portrait ? NPC_PORTRAIT_NAME_SCALE : 1;
+  const chipScale = portrait ? NPC_PORTRAIT_CHIP_SCALE : 0.85;
+  const chipW = portrait ? NPC_PORTRAIT_CHIP_W : NPC_CHIP_W;
+  const chipH = portrait ? NPC_PORTRAIT_CHIP_H : NPC_CHIP_H;
+  const chipGap = portrait ? NPC_PORTRAIT_CHIP_GAP : NPC_CHIP_GAP;
+  const nameGap = portrait ? NPC_PORTRAIT_NAME_GAP : NPC_NAME_GAP;
+  const nameW = textWidth(name, nameScale, 'ui');
   // Counter staff have no chips at all, so the row is the bare name — and the
   // name has to centre on ITSELF. Carrying the gap (or a negative chipsW from
   // the joining term) would hang the label off to one side of a person who has
   // nothing standing next to them.
   const chipsW = opts.length
-    ? NPC_NAME_GAP + opts.length * NPC_CHIP_W + (opts.length - 1) * NPC_CHIP_GAP
+    ? nameGap + opts.length * chipW + (opts.length - 1) * chipGap
     : 0;
   const totalW = nameW + chipsW;
   const x = Math.max(4, Math.min(W - totalW - 4, anchorX - totalW / 2));
-  const y = H - 39;
+  const y = Number.isFinite(anchorY) ? anchorY : H - 39;
   return {
+    portrait,
     name,
     nameX: x,
-    nameY: y + 4,
+    nameY: portrait ? textYForMid(y + chipH / 2, nameScale) : y + 4,
+    nameScale,
+    chipScale,
+    hitPadX: portrait ? 8 : 4,
+    hitPadY: portrait ? 8 : 3,
     rects: opts.map((_, i) => ({
-      x: x + nameW + NPC_NAME_GAP + i * (NPC_CHIP_W + NPC_CHIP_GAP),
+      x: x + nameW + nameGap + i * (chipW + chipGap),
       y,
-      w: NPC_CHIP_W,
-      h: NPC_CHIP_H,
+      w: chipW,
+      h: chipH,
     })),
   };
 }
 
-function drawNpcPrompt(ctx, npc, idx, opts, anchorX) {
-  const layout = npcPromptLayout(npc, opts, anchorX);
-  drawText(ctx, layout.name, layout.nameX, layout.nameY, '#48e0c8');
+function npcPromptAnchorY(layout) {
+  // NPCs stand on the authored floor. Convert that world line through the same
+  // presentation camera as the cast, then leave a small, stable breathing gap
+  // so the name/chip row sits beneath their feet instead of in the page footer.
+  return layout.portrait
+    ? (layout.floorY - layout.camY) * layout.zoom + NPC_PORTRAIT_PROMPT_GAP
+    : null;
+}
+
+function drawNpcPrompt(ctx, npc, idx, opts, anchorX, anchorY = null) {
+  const layout = npcPromptLayout(npc, opts, anchorX, anchorY);
+  const drawLabel = layout.portrait ? drawTextVector : drawText;
+  const drawLabelCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
+  drawLabel(ctx, layout.name, layout.nameX, layout.nameY, '#48e0c8', layout.nameScale);
   for (let i = 0; i < opts.length; i++) {
     const r = layout.rects[i];
     const sel = i === idx;
@@ -1024,8 +1064,9 @@ function drawNpcPrompt(ctx, npc, idx, opts, anchorX) {
     ctx.strokeStyle = sel ? 'rgba(26,16,40,0.5)' : 'rgba(246,211,60,0.45)';
     ctx.stroke();
     ctx.restore();
-    drawTextCentered(ctx, opts[i].label, r.x + r.w / 2, r.y + 4.5,
-      sel ? '#1a1028' : '#f6d33c', 0.85, 'bold');
+    drawLabelCentered(ctx, opts[i].label, r.x + r.w / 2,
+      textYForMid(r.y + r.h / 2, layout.chipScale, 'bold'),
+      sel ? '#1a1028' : '#f6d33c', layout.chipScale, 'bold');
   }
 }
 
@@ -1656,7 +1697,7 @@ export class HubState {
       const layout = hubPresentation();
       const pwx = Input.pointer.x / layout.zoom + this.camX();
       const pwy = Input.pointer.y / layout.zoom + layout.camY;
-      const tappedPoster = pwy > POSTER_TOP_Y - 4 && pwy < POSTER_TOP_Y + POSTER_H + 4
+      const tappedPoster = pwy > layout.posterY - 4 && pwy < layout.posterY + POSTER_H + 4
         ? st.find((s) => (s.type === 'cabinet' || s.type === 'overtime')
           && Math.abs(s.x - pwx) < POSTER_W / 2 + 4)
         : null;
@@ -1672,12 +1713,13 @@ export class HubState {
       const chipNpc = this.focusNpc;
       if (chipNpc) {
         const chipOpts = npcMenuFor(chipNpc);
+        const chipY = npcPromptAnchorY(layout);
         const chipLayout = npcPromptLayout(chipNpc, chipOpts,
-          (chipNpc.x - this.camX()) * layout.zoom);
+          (chipNpc.x - this.camX()) * layout.zoom, chipY);
         for (let i = 0; i < chipOpts.length; i++) {
           const r = chipLayout.rects[i];
-          if (Input.pointer.x >= r.x - 4 && Input.pointer.x <= r.x + r.w + 4
-            && Input.pointer.y >= r.y - 3 && Input.pointer.y <= r.y + r.h + 3) {
+          if (Input.pointer.x >= r.x - chipLayout.hitPadX && Input.pointer.x <= r.x + r.w + chipLayout.hitPadX
+            && Input.pointer.y >= r.y - chipLayout.hitPadY && Input.pointer.y <= r.y + r.h + chipLayout.hitPadY) {
             this.npcMenuIdx = i;
             this.chooseNpc(chipNpc);
             Input.endFrame();
@@ -2361,7 +2403,7 @@ export class HubState {
       const sx = s.x - cam;
       if (sx < -POSTER_W || sx > layout.viewW + POSTER_W) continue;
       const look = posterLook(s.x);
-      drawPoster(ctx, sx, POSTER_TOP_Y, POSTER_W, POSTER_H, {
+      drawPoster(ctx, sx, layout.posterY, POSTER_W, POSTER_H, {
         pal: posterPalFor(s),
         tilt: look.tilt,
         torn: look.torn,
@@ -2617,11 +2659,14 @@ export class HubState {
     // used to test the station first, which meant standing nose to nose with a
     // hero in front of a cabinet read out the CABINET's name and verb while the
     // hero's actions were the thing on screen.
+    let promptText = null;
     if (this.focusNpc) {
       // Identity and verbs stay together in this one contextual cluster. The
-      // same rectangles are used by update() for touch hit-testing.
+      // same rectangles are used by update() for touch hit-testing. Portrait
+      // anchors the cluster directly below the focused hero; landscape keeps
+      // its established footer row.
       drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc),
-        (this.focusNpc.x - cam) * layout.zoom);
+        (this.focusNpc.x - cam) * layout.zoom, npcPromptAnchorY(layout));
     } else if (this.near) {
       // A locked cabinet gets no verb. "PRESS ENTER" on a machine that will
       // refuse you is an instruction that does not work — the line's whole job
@@ -2631,11 +2676,9 @@ export class HubState {
       const lockedCabinet = this.near.type === 'cabinet' && !this.near.unlocked;
       const lockedTrophy = this.near.type === 'shelf' && !this.near.unlocked;
       if (lockedCabinet) {
-        drawTextCentered(ctx, `${this.near.label} - LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS`,
-          W / 2, H - 30, '#8a8a98');
+        promptText = `${this.near.label} - LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS`;
       } else if (lockedTrophy) {
-        drawTextCentered(ctx, 'TROPHY ROOM - LOCKED: CLEAR 1 LEVEL',
-          W / 2, H - 30, '#8a8a98');
+        promptText = 'TROPHY ROOM - LOCKED: CLEAR 1 LEVEL';
       } else {
         // isTouchDevice(), not usingTouch: the hub is the first screen a phone
         // lands on after the title, and until a finger had touched something it
@@ -2644,23 +2687,85 @@ export class HubState {
         const verb = this.near.type === 'exit' ? 'WALK THROUGH TO EXIT'
           : this.near.type === 'shelf' ? 'WALK THROUGH TO ENTER'
             : (touch ? 'TAP TO ENTER' : 'PRESS ENTER');
-        drawTextCentered(ctx, `${this.near.label} - ${verb}`, W / 2, H - 30, '#f6d33c');
+        promptText = `${this.near.label} - ${verb}`;
       }
     }
-    // One status row along the very bottom: where you are on the left, what you
-    // have on the right. The location name used to be a fading title card, but a
-    // place label is not an announcement — it wants to just be there, quietly,
-    // the way a sign on a wall is. Sitting it on the same baseline as the
-    // resources turns three stacked lines into one row that reads left to right.
-    // Set at 0.85 this row was ten CSS px on a phone — the coin count is a
-    // number you check before deciding what to buy, not decoration. The whole
-    // strip moves together at HINT_S so it stays one line.
-    drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, H - 11, '#3f8a80', HINT_S);
+    // Portrait has enough floor below the cast to give the hub's descriptive
+    // chrome a proper reading band. Keep it above the lower-corner walk discs,
+    // and size the three lines in CSS terms so they remain equally legible on
+    // phones and larger portrait frames. Landscape keeps the compact shipped
+    // strip and its existing positions.
+    const frameScale = presentationFrame().scale;
+    const footerOffset = (cssPx) => layout.portrait ? cssPx / frameScale : cssPx;
+    const statusS = layout.portrait ? 2.1 : HINT_S;
+    const legendS = layout.portrait ? 1.8 : HINT_S;
+    const promptS = layout.portrait ? 2.2 : 1;
+    // Portrait's footer is measured upward from the floor rather than downward
+    // from the canvas edge. The controls own the glass at the bottom; the room
+    // owns the space immediately above them, so larger type stays separated and
+    // never collapses into a tiny status strip.
+    const portraitFloorY = (layout.floorY - layout.camY) * layout.zoom;
+    const floorFooter = (cssGap) => portraitFloorY + footerOffset(cssGap);
+    // Leave the first 48px below the floor clear for the focused hero's larger
+    // name and SWAP chip. On a hand-operated portrait view the footer then
+    // hugs the lower edge; touch keeps a shorter, control-safe floor-relative
+    // layout above the lower-corner walk discs.
+    const touchFooter = layout.portrait && Input.isTouchDevice();
+    const touchNpcFooter = touchFooter && !!this.focusNpc;
+    // Cabinet name reads first (it's what you're standing at), resources sit
+    // in the middle, and the food court name anchors the bottom row — evenly
+    // spaced across the same band the strip used to fill top-to-bottom in the
+    // opposite order.
+    const statusY = layout.portrait
+      ? (touchFooter
+        ? floorFooter(touchNpcFooter ? 96 : 73)
+        : H - footerOffset(144))
+      : H - 11;
+    const resourceY = layout.portrait
+      ? (touchFooter
+        ? floorFooter(touchNpcFooter ? 82 : 48)
+        : H - footerOffset(184))
+      : statusY;
+    const legendY = layout.portrait
+      ? (touchFooter
+        ? floorFooter(touchNpcFooter ? 110 : 99)
+        : H - footerOffset(104))
+      : H - 48;
+    const promptLastY = layout.portrait
+      ? (touchFooter ? floorFooter(124) : H - footerOffset(64))
+      : H - 30;
+    const drawFooterText = layout.portrait ? drawTextVector : drawText;
+    const drawFooterTextCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
     const coins = `COINS ${formatCoins(slot.coins)}`;
     const plugs = `PLUGS ${totalPlugs(slot)}/${MAX_PLUGS}`;
-    const coinsW = textWidth(coins, HINT_S);
-    drawText(ctx, coins, W - 8 - coinsW, H - 11, '#f6d33c', HINT_S);
-    drawText(ctx, plugs, W - 20 - coinsW - textWidth(plugs, HINT_S), H - 11, '#48e0c8', HINT_S);
+    if (layout.portrait) {
+      const plugsW = textWidth(plugs, statusS);
+      const coinsW = textWidth(coins, statusS);
+      const resourceGap = 14 * statusS;
+      const resourceW = plugsW + resourceGap + coinsW;
+      drawFooterText(ctx, plugs, W / 2 - resourceW / 2, statusY, '#48e0c8', statusS);
+      drawFooterText(ctx, coins, W / 2 + resourceW / 2 - coinsW, statusY, '#f6d33c', statusS);
+      drawFooterTextCentered(ctx, 'THE LAST FUNCTIONING FOOD COURT', W / 2, promptLastY, '#3f8a80', statusS);
+    } else {
+      drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, statusY, '#3f8a80', statusS);
+      const coinsW = textWidth(coins, statusS);
+      drawText(ctx, coins, W - 8 - coinsW, statusY, '#f6d33c', statusS);
+      drawText(ctx, plugs, W - 20 - coinsW - textWidth(plugs, statusS), statusY, '#48e0c8', statusS);
+    }
+
+    if (promptText) {
+      const promptLines = layout.portrait
+        ? wrapText(promptText, W - 32, promptS, 2)
+        : [promptText];
+      const rowGap = layout.portrait ? 10.5 * promptS + footerOffset(5) : 0;
+      // Portrait anchors this at the top of the band and grows downward
+      // (it's the topmost row there); landscape keeps its single fixed row.
+      const promptAnchorY = layout.portrait ? resourceY : promptLastY;
+      promptLines.forEach((line, i) => drawFooterTextCentered(ctx, line, W / 2,
+        promptAnchorY + i * rowGap,
+        this.near?.type === 'cabinet' && !this.near.unlocked || this.near?.type === 'shelf' && !this.near.unlocked
+          ? '#8a8a98' : '#f6d33c', promptS));
+    }
 
     // The legend still introduces itself and leaves — it is the one thing here
     // that genuinely has nothing to say after you have read it once. It takes
@@ -2669,17 +2774,21 @@ export class HubState {
     if (legendA > 0) {
       ctx.save();
       ctx.globalAlpha = legendA;
-      // The posters earn a clause here rather than a line of their own: there
-      // is no room for one (below the floor line the legend, the prompt and
-      // the status row already take all 58px, and anything above it lands on
-      // the cast's feet), and this is the one piece of chrome whose job is to
-      // name what is tappable and then get out of the way.
-      drawTextCentered(ctx, Input.isTouchDevice()
+      // The posters earn a clause here rather than a line of their own in
+      // landscape. Portrait has room to make this legend substantially larger
+      // while keeping it above the prompt and the lower-corner walk discs.
+      const legendText = Input.isTouchDevice()
         ? 'TAP TO WALK, TAP AGAIN TO ENTER, A POSTER TO READ'
         // UP/DOWN PICK left with the TALK chip. One chip is not a list, so the
         // legend was teaching a keypress that now does nothing — and the intro
         // line is the last place to spend a clause on a no-op.
-        : 'LEFT/RIGHT WALK   SPACE JUMP   ENTER CONFIRM', W / 2, H - 48, '#8a8a98', HINT_S);
+        : 'LEFT/RIGHT WALK   SPACE JUMP   ENTER CONFIRM';
+      const legendLines = layout.portrait
+        ? wrapText(legendText, W - 28, legendS, 2)
+        : [legendText];
+      const legendGap = layout.portrait ? 10.5 * legendS + footerOffset(2) : 0;
+      legendLines.forEach((line, i) => drawFooterTextCentered(ctx, line, W / 2,
+        legendY - (legendLines.length - 1 - i) * legendGap, '#8a8a98', legendS));
       ctx.restore();
     }
     // The same speech card the stages use — portrait, name header, words —
@@ -2711,7 +2820,7 @@ export class HubState {
     // transform and this is not, so the poster's world position has to be run
     // through the same zoom and camera by hand.
     const srcCx = (s.x - this.camX()) * layout.zoom;
-    const srcCy = (POSTER_TOP_Y + POSTER_H / 2 - layout.camY) * layout.zoom;
+    const srcCy = (layout.posterY + POSTER_H / 2 - layout.camY) * layout.zoom;
     // As tall as the frame allows with the close hint clear underneath.
     const DST_H = 216, DST_W = DST_H * (POSTER_W / POSTER_H);
     ctx.save();

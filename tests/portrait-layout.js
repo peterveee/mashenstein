@@ -8,7 +8,7 @@ import {
   portraitObjectiveSlide, PORTRAIT_OBJECTIVE_HOLD_SEC, PORTRAIT_OBJECTIVE_SLIDE_SEC,
   PORTRAIT_CHAT_MAX_LINES, PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
-  PORTRAIT_FLOATIE_GAP_CSS,
+  PORTRAIT_FLOATIE_GAP_CSS, PORTRAIT_FLOATIE_WORLD_ZOOM,
 } from '../src/game/portrait-layout.js';
 import { portraitTouchLayout } from '../src/engine/portrait-input.js';
 import { cornerInsetAt } from '../src/engine/platform.js';
@@ -59,9 +59,10 @@ for (const viewport of phones) {
     `${label} both ends of the timeline clear the curve by the same amount`);
   assert.equal(layout.railH * frame.scale, PORTRAIT_TIMELINE_HEIGHT_CSS,
     `${label} timeline uses its ${PORTRAIT_TIMELINE_HEIGHT_CSS}px CSS portrait height`);
-  assert.ok(Math.abs((touch.controls.pause.cy - touch.controls.pause.r)
-    - layout.statusY * frame.scale) < 1e-9,
-  `${label} pause top aligns with the top of the top HUD panel`);
+  const pauseCenterY = touch.controls.pause.cy;
+  const statusCenterY = (layout.statusY + layout.statusH / 2) * frame.scale;
+  assert.ok(Math.abs(pauseCenterY - statusCenterY) <= 2,
+    `${label} pause centre aligns with the centre of the top HUD panel`);
   assert.ok(layout.railMarkerW * frame.scale >= PORTRAIT_TIMELINE_MARKER_MIN_CSS - 1e-9,
     `${label} checkpoint markers keep their ${PORTRAIT_TIMELINE_MARKER_MIN_CSS}px CSS minimum`);
   assert.ok(layout.statusY + layout.statusH + layout.gap <= layout.goalY,
@@ -74,19 +75,21 @@ for (const viewport of phones) {
     `${label} scenery starts immediately below the main HUD`);
   assert.ok(layout.sceneryTop < layout.goalY,
     `${label} GOAL is an overlay inside the scenery band`);
+  assert.equal(layout.left, frame.safeRect.left + 12 / frame.scale,
+    `${label} objective stack uses the inset safe-frame left anchor`);
   assert.ok(layout.rhythmY > layout.sceneryTop,
     `${label} rhythm is an overlay inside the scenery, not reserved HUD space`);
   assert.ok(layout.rhythmY + layout.rhythmH <= layout.chatterY,
     `${label} rhythm band and chatter do not overlap`);
   const floatScale = portraitFloatieScale(frame, layout.panelScale);
   const floatBase = portraitFloatieBaseY(frame, {
-    layout, zoom: 3.75, heroHeight: 24, floatScale,
+    layout, zoom: PORTRAIT_FLOATIE_WORLD_ZOOM, heroHeight: 24, floatScale,
   });
   const floatCardH = (PORTRAIT_FLOATIE_MAX_LINES * PORTRAIT_FLOATIE_ROW
     + PORTRAIT_FLOATIE_PADDING) * floatScale;
   const floatPanelTop = floatBase - 4 * floatScale;
   const floatPanelBottom = floatPanelTop + floatCardH;
-  const standingHeroTop = frame.groundScreenY - 3.75 * 24;
+  const standingHeroTop = frame.groundScreenY - PORTRAIT_FLOATIE_WORLD_ZOOM * 24;
   assert.ok(floatPanelTop >= layout.gameplayTop - 1e-9,
     `${label} floaties stay below the permanent HUD`);
   assert.ok(floatPanelBottom <= standingHeroTop - PORTRAIT_FLOATIE_GAP_CSS / frame.scale + 1e-9,
@@ -116,6 +119,14 @@ for (const viewport of phones) {
 
   assert.equal(layout.bonusRenderY, layout.bonusY,
     `${label} BONUS keeps its opening overlay row until the shared slide`);
+
+  const rhythm = portraitHudLayout(frame, { rhythmStage: true });
+  assert.ok(rhythm.statusY + rhythm.statusH + rhythm.gap <= rhythm.rhythmY,
+    `${label} rhythm rail sits below the permanent status HUD`);
+  assert.ok(rhythm.rhythmY + rhythm.rhythmH + rhythm.gap <= rhythm.goalY,
+    `${label} temporary GOAL sits below the rhythm rail`);
+  assert.ok(rhythm.goalY + rhythm.goalH + rhythm.gap <= rhythm.bonusY,
+    `${label} temporary BONUS sits below GOAL and the rhythm rail`);
 }
 
 assert.equal(portraitObjectiveSlide(0), 0, 'portrait objectives start fully visible');

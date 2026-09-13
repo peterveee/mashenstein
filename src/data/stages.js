@@ -36,6 +36,10 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
   speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
+  // Optional renderer-only material selection. Most non-Plumber cabinets leave
+  // this unset; a cabinet can opt its authored stages into the shared paper
+  // surface without changing gameplay or its style vocabulary.
+  paperPreset: opts.paperPreset || null,
   // HOW MUCH THIS STAGE'S TEMPO CLIMBS AT EACH CHECKPOINT, in bpm. 0 = it does
   // not, which is every stage but one.
   //
@@ -98,7 +102,7 @@ export const STAGES = [
   // ACT I ---------------------------------------------------------------------
   S('plumber', 1,
     { type: 'reach', desc: 'REACH THE FINISH LINE. HIT IT. SAVE EVERYTHING.' },
-    { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
+    { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
       introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
       speedMult: 0.9 }),
@@ -154,7 +158,8 @@ export const STAGES = [
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
-    { introBy: 'rusty', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.' }),
+    { introBy: 'rusty', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.',
+      paperPreset: 'cardstockClear' }),
   // The collapsing road finally collapses. Both holes clear the loop set piece
   // at 0.55 (see LOOP.at) by a third of the stage or more, so neither can be
   // laid inside its guard lane — and 0.14 rather than the 0.25 this used to be,
@@ -162,7 +167,7 @@ export const STAGES = [
   S('speed', 2,
     { type: 'chase', n: 3, desc: 'BONK THE CLOWN-COPTER FROM BELOW, 3 TIMES. IT IS UNDERINSURED.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }] }),
+    { pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }], paperPreset: 'cardstockClear' }),
   // THE THIRD CROSSING, and the one the cabinet's own furniture argues for: a
   // road that files for collapse should have a stretch where it has actually
   // collapsed. At 0.70 it is clear of the loop-de-loop at 0.55 by 0.15 of the
@@ -175,7 +180,7 @@ export const STAGES = [
   S('speed', 3,
     { type: 'reach', desc: 'FINISH THE LAP. GNASH HAS OPINIONS ABOUT YOUR PACE.' },
     { type: 'boosts', n: 5, desc: 'HIT 5 BOOST PADS' },
-    { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 5 }] }),
+    { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 5 }], paperPreset: 'cardstockClear' }),
   S('rhythm', 1,
     { type: 'reach', desc: 'RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE.' },
     { type: 'onbeat', n: 30, desc: '30 ON-BEAT ACTIONS' },
@@ -257,7 +262,7 @@ export const STAGES = [
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' }),
   S('neon', 1,
     { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
-    { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
+    { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
     { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.' }),
   S('neon', 2,
     { type: 'cords', n: 4, desc: 'RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY.' },

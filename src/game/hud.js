@@ -10,16 +10,17 @@ import {
   W, H, screen, isPhonePortraitPresentation, presentationFrame,
 } from '../engine/renderer.js';
 import {
-  drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
+  drawTextForPresentation as rawDrawText,
+  drawTextCenteredForPresentation as rawDrawTextCentered,
   textWidth, wrapText, drawPanel, textYForMid, UI_PANEL_BORDER,
-  keyLegendWidth, drawKeyLegend, platePath, UI_PANEL, UI_PLATE,
+  keyLegendWidth, drawKeyLegend, platePath, UI_PANEL, UI_PLATE, drawRoundButton,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp, drawHudBattery, hudBatteryW } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { HERO_CENTER_OFF } from './draw.js';
-import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
+import { Input } from '../engine/input.js';
 import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
 import { PLAYER_X } from './player.js';
 import { formatCoins } from './progress.js';
@@ -28,7 +29,8 @@ import {
   portraitHudLayout, portraitChatScale, PORTRAIT_CHAT_MAX_LINES,
   PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
-  portraitObjectiveSlide, PORTRAIT_OBJECTIVE_EXIT_OVERSHOOT,
+  portraitObjectiveSlide,
+  PORTRAIT_OBJECTIVE_NOTICE_ENTRY_SEC, PORTRAIT_OBJECTIVE_NOTICE_EXIT_SEC,
 } from './portrait-layout.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
@@ -139,6 +141,10 @@ const FOLDUP_SLIDE = 0.65;
 // between two sixteenths is beatPx/4 and the tick has to stay small against it.
 // Grow one without the other and a fill closes into a bar.
 const RIBBON_SCALE = 2;
+// Portrait gives the rhythm timeline a much tighter, more readable camera:
+// the arrows and beat spacing grow together, while the landscape strip keeps
+// its authored scale and runway.
+const PORTRAIT_RIBBON_SCALE = 5;
 // THINNER THAN THE HUD, but not so thin that it feels like a hairline: fifteen
 // pixels against the pill's eighteen. The midline every glyph hangs off (see
 // `mid` in drawBeatRibbon) stays put while the plate gets a little more room
@@ -180,8 +186,14 @@ export const RIBBON_BEAT_PX = Math.round(26 * RIBBON_SCALE);
 // A mirrored run reverses the whole frame, so it reverses this too: the future
 // has to run off toward the side the world is arriving from, or the strip and
 // the ground disagree about which way time points.
-function ribbonAnchor(run) {
-  const cx = (PLAYER_X + HERO_CENTER_OFF) * (run.camZoom || 1);
+function ribbonAnchor(run, portraitAnchor = false) {
+  // Portrait shifts the rendered world left to put the hero on the phone's
+  // left runway edge. The live rail is screen-space, so it has to carry that
+  // presentation shift too or its playhead stays over the old landscape
+  // column. Landscape keeps the authored anchor exactly as it was.
+  const portraitOffset = portraitAnchor && typeof run.portraitWorldXOffset === 'function'
+    ? Number(run.portraitWorldXOffset()) || 0 : 0;
+  const cx = (PLAYER_X + HERO_CENTER_OFF + portraitOffset) * (run.camZoom || 1);
   return run.mirror ? W - cx : cx;
 }
 // The plate's live geometry in screen px, measured along its own axis: how much
@@ -189,9 +201,24 @@ function ribbonAnchor(run) {
 // distance from the edge the past runs off toward, and it is the same number
 // mirrored or not — ribbonAnchor has already flipped the frame — so everything
 // below is written once and works both ways round.
-function ribbonSpan(run) {
-  const anchor = ribbonAnchor(run);
+function ribbonSpan(run, fullWidth = false, options = {}) {
+  const anchor = ribbonAnchor(run, options.portraitAnchor === true);
   const near = run.mirror ? W - anchor : anchor;
+  if (fullWidth) {
+    // Portrait uses the ribbon as a real top edge, not as a short lane between
+    // the status and goal panels. Keep the playhead at the hero, but let the
+    // plate run from glass edge to glass edge around it.
+    const plateBackW = Math.max(1, near);
+    const plateAheadW = Math.max(1, W - near);
+    const beatPx = Number(options.beatPx);
+    const backBeats = Number(options.markerBackBeats);
+    const aheadBeats = Number(options.markerAheadBeats);
+    const backW = Number.isFinite(beatPx) && Number.isFinite(backBeats)
+      ? Math.min(plateBackW, Math.max(1, backBeats * beatPx)) : plateBackW;
+    const aheadW = Number.isFinite(beatPx) && Number.isFinite(aheadBeats)
+      ? Math.min(plateAheadW, Math.max(1, aheadBeats * beatPx)) : plateAheadW;
+    return { anchor, backW, aheadW, plateBackW, plateAheadW };
+  }
   const minBack = RIBBON_MIN_BACK_BEATS * RIBBON_BEAT_PX;
   const margin = Math.min(RIBBON_MARGIN, Math.max(0, near - minBack));
   // THE FAR END IS THE GOAL PANEL, not a mirror of the near one. Now that the
@@ -232,7 +259,9 @@ function ribbonSpan(run) {
   // floored at, which is the one place it was ever doing work.
   const backRoom = run.mirror ? near - margin
     : anchor - (PILL_X + statusCornerW(run) + RIBBON_CORNER_GAP);
-  return { anchor, backW: Math.max(1, backRoom), aheadW: Math.max(minBack, ahead - near) };
+  const backW = Math.max(1, backRoom);
+  const aheadW = Math.max(minBack, ahead - near);
+  return { anchor, backW, aheadW, plateBackW: backW, plateAheadW: aheadW };
 }
 // THE PLATE IS LAID OUT FROM THE FRAME, NOT FROM THE BEAT COUNT. It ends the
 // same distance from the right edge of the screen as it begins from the left —
@@ -409,19 +438,30 @@ function ribbonPlateGrad(ctx, tail, head, fadeStop, fadeStopAhead) {
   return g;
 }
 
-export function drawBeatRibbon(ctx, run) {
+export function drawBeatRibbon(ctx, run, options = {}) {
   if (!run.beatLock || run.paused || run.dead || run.finishing || run.introRunning
     || run.introFreeze > 0 || run.zoneCard || run.rhythmSyncPending) return;
   const beat = run.rhythmBeatNow?.();
   if (!Number.isFinite(beat)) return;
+  const fullWidth = options.fullWidth === true;
+  const ribbonScale = Number.isFinite(Number(options.scale)) && Number(options.scale) > 0
+    ? Number(options.scale) : RIBBON_SCALE;
+  const y = Number.isFinite(Number(options.y)) ? Number(options.y) : RIBBON_Y;
+  const h = Number.isFinite(Number(options.h)) ? Number(options.h) : RIBBON_H;
+  const scaleRatio = ribbonScale / RIBBON_SCALE;
+  const beatPx = Number.isFinite(Number(options.beatPx))
+    ? Number(options.beatPx) : Math.max(1, Math.round(RIBBON_BEAT_PX * scaleRatio));
+  const fadeBack = Math.max(1, Math.round(RIBBON_FADE_BACK * scaleRatio));
+  const fadeAhead = Math.max(1, Math.round(RIBBON_FADE_AHEAD * scaleRatio));
+  const plateFade = Math.max(1, Math.round(RIBBON_PLATE_FADE * scaleRatio));
   // BeatSpawner owns the unwrap epoch used by every actionBeat it emits. Add
   // that same epoch to the heard clock so markers remain exact across the song
   // loop instead of falling back to world-space reconstruction.
   const currentBeat = beat + (run.spawner?.beatEpoch || 0);
   const beatPhase = ((currentBeat % 1) + 1) % 1;
-  const y = RIBBON_Y, h = RIBBON_H, beatPx = RIBBON_BEAT_PX;
-  const { anchor, backW, aheadW } = ribbonSpan(run);
-  const dir = run.mirror ? -1 : 1, u = RIBBON_SCALE;
+  const { anchor, backW, aheadW, plateBackW = backW, plateAheadW = aheadW }
+    = ribbonSpan(run, fullWidth, { ...options, beatPx });
+  const dir = run.mirror ? -1 : 1, u = ribbonScale;
   // The band's midline and the arrows' half-height, named once: every glyph
   // hangs off these two rather than off the plate's top edge.
   // THE ARROW HAS TO FIT ITS PLATE AT FULL SWELL, NOT AT REST. The old 2.5u
@@ -452,8 +492,6 @@ export function drawBeatRibbon(ctx, run) {
   // body of the strip, ramping to nothing across the last RIBBON_FADE px of
   // whichever end it is approaching. Every tick and marker takes it, so nothing
   // ever pops against a strip that fades.
-  const fadeBack = Math.max(1, Math.min(RIBBON_FADE_BACK, backW));
-  const fadeAhead = Math.max(1, Math.min(RIBBON_FADE_AHEAD, aheadW));
   const edgeFade = (dx) => {
     if (dx >= 0) return Math.max(0, Math.min(1, (aheadW - dx) / fadeAhead));
     // THE BACK RAMP IS CURVED, THE FRONT ONE IS NOT, and the reason is what
@@ -472,8 +510,8 @@ export function drawBeatRibbon(ctx, run) {
   ctx.save();
   // Built along the strip's own axis — back end to front end — so a mirrored
   // run gets the gradient reversed for free rather than a second copy of it.
-  const tail = anchor - dir * backW, head = anchor + dir * aheadW;
-  const span = backW + aheadW;
+  const tail = anchor - dir * plateBackW, head = anchor + dir * plateAheadW;
+  const span = plateBackW + plateAheadW;
   // ONE FADE LENGTH, USED AT BOTH ENDS. Each end used to clamp RIBBON_PLATE_FADE
   // to its OWN length, which sounds symmetrical and is not: the near end is
   // twenty-odd pixels long so its ramp came out clamped short and dense, while
@@ -482,8 +520,11 @@ export function drawBeatRibbon(ctx, run) {
   // the GOAL panel — the ramp is the whole near end but only the last fourteenth
   // of the far one, so the eye reads it as an edge on one side and a dissolve on
   // the other. Taking the shorter of the two makes them the same ramp in fact.
-  const plateFade = Math.max(1, Math.min(RIBBON_PLATE_FADE, backW, aheadW));
-  const back = ribbonPlateGrad(ctx, tail, head, plateFade / span, plateFade / span);
+  const back = fullWidth
+    ? 'rgba(16,20,28,0.55)'
+    : ribbonPlateGrad(ctx, tail, head,
+      Math.min(plateFade, plateBackW, plateAheadW) / span,
+      Math.min(plateFade, plateBackW, plateAheadW) / span);
   // Translucent, not a black bar. At full strength a strip this long stopped
   // being chrome and became a hole in the sky — the widest, heaviest object in
   // the frame, sitting over the prettiest part of the stage. It only has to
@@ -505,7 +546,7 @@ export function drawBeatRibbon(ctx, run) {
   // than the mark it stood on. A line that touches both edges is the bar the
   // plate is divided by, and the arrows sit ON it rather than beside it.
   ctx.fillStyle = 'rgba(72,224,200,0.26)';
-  const tickW = Math.max(1, Math.round(RIBBON_SCALE));
+  const tickW = Math.max(1, Math.round(u));
   for (let i = -Math.ceil(backW / beatPx); i <= Math.ceil(aheadW / beatPx); i++) {
     const dx = i * beatPx - beatPhase * beatPx;
     const a = edgeFade(dx);
@@ -634,7 +675,8 @@ export function drawBeatRibbon(ctx, run) {
       ctx.beginPath(); ctx.arc(x, mid, 1.15 * u, 0, Math.PI * 2); ctx.fill();
     }
   }
-  drawRibbonPlayhead(ctx, anchor, y, h, pulse);
+  drawRibbonPlayhead(ctx, anchor, y, h, pulse, scaleRatio,
+    fullWidth && options.portraitAnchor === true);
   ctx.restore();
 }
 
@@ -674,15 +716,21 @@ const PLAYHEAD_W = 3, PLAYHEAD_EDGE = 0.5;
 // softened: at four pixels across there is no radius between "square" and
 // "capsule" that is legible as a choice.
 const PLAYHEAD_R = (PLAYHEAD_W + PLAYHEAD_EDGE * 2) / 2;
-function drawRibbonPlayhead(ctx, anchor, y, h, pulse) {
-  const w = PLAYHEAD_W, x = Math.round(anchor - w / 2);
-  const top = PLAYHEAD_TOP, bot = PLAYHEAD_BOTTOM;
+function drawRibbonPlayhead(ctx, anchor, y, h, pulse, scaleRatio = 1, portraitBand = false) {
+  const ratio = Number.isFinite(Number(scaleRatio)) && Number(scaleRatio) > 0
+    ? Number(scaleRatio) : 1;
+  const w = portraitBand ? PLAYHEAD_W * ratio : PLAYHEAD_W;
+  const edge = portraitBand ? PLAYHEAD_EDGE * ratio : PLAYHEAD_EDGE;
+  const x = Math.round(anchor - w / 2);
+  const top = portraitBand ? y : PLAYHEAD_TOP;
+  const bot = portraitBand ? y + h : PLAYHEAD_BOTTOM;
+  const radius = portraitBand ? (w + edge * 2) / 2 : PLAYHEAD_R;
   ctx.globalAlpha = 1;
-  const e = PLAYHEAD_EDGE;
+  const e = edge;
   // The casing is what makes it legible on a light stage; on the plate it is
   // the plate's own colour and simply disappears.
   ctx.fillStyle = 'rgba(16,20,28,0.6)';
-  playheadPath(ctx, x - e, top - e, w + e * 2, (bot - top) + e * 2, PLAYHEAD_R);
+  playheadPath(ctx, x - e, top - e, w + e * 2, (bot - top) + e * 2, radius);
   ctx.fill();
   // The three bands — solid above the plate, wash across it, solid below —
   // painted as rects and cut to the capsule, so the rounding is stated once
@@ -1977,6 +2025,37 @@ function drawPortraitActionShelf(ctx, run, layout) {
     layout.powerLabelY, '#48e0c8');
 }
 
+function drawPortraitObjectiveNotice(ctx, run, layout, s) {
+  const notice = run?.portraitObjectiveNotice;
+  if (!notice) return false;
+  const age = Math.max(0, Number(notice.t0 || 0) - Number(notice.t || 0));
+  const entry = Math.min(1, age / PORTRAIT_OBJECTIVE_NOTICE_ENTRY_SEC);
+  const exitStart = Math.max(0, Number(notice.t0 || 0) - PORTRAIT_OBJECTIVE_NOTICE_EXIT_SEC);
+  const exit = Math.max(0, Math.min(1,
+    (age - exitStart) / PORTRAIT_OBJECTIVE_NOTICE_EXIT_SEC));
+  const easeIn = smoothstep(entry);
+  const easeOut = smoothstep(exit);
+  const alpha = easeIn * (1 - easeOut);
+  if (alpha <= 0) return true;
+
+  const text = portraitTrim(notice.text, Math.max(90, (layout.right - layout.left) / s - 22), 1);
+  const width = objectivePanelMetrics(notice.tag, text, 1, 0).width;
+  const objectiveLeft = layout.left / s;
+  const travel = layout.left + width * s + 8;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  // The whole card travels as one object. Starting past the left edge keeps
+  // the rounded leading cap from appearing before the notice has arrived;
+  // the same travel on exit leaves no half-panel hanging in the column.
+  ctx.translate(-travel * ((1 - easeIn) + easeOut),
+    layout.goalY - OBJ_ROW_Y * s);
+  ctx.scale(s, s);
+  drawObjectivePanel(ctx, notice.tag, notice.tagColor, text, notice.ink,
+    OBJ_ROW_Y, 1, 0, objectiveLeft + width);
+  ctx.restore();
+  return true;
+}
+
 // One centred row of small name plates. Both action strips are the same object
 // in two places, so they scale, pad and shrink-to-fit identically.
 function drawPortraitNameStrip(ctx, layout, names, y, ink) {
@@ -2012,10 +2091,13 @@ function drawPortraitNameStrip(ctx, layout, names, y, ink) {
  */
 function drawPortraitHud(ctx, run) {
   const frame = presentationFrame();
+  const rhythmStage = /^rhythm-[123]$/.test(run?.stage?.id || '');
   // The objective panels are a startup read over the first scenery band. They
   // never participate in the camera floor: after five seconds the whole pair
   // slides up beneath the permanent status HUD and is clipped away.
-  const layout = portraitHudLayout(frame);
+  const layout = portraitHudLayout(frame, {
+    rhythmStage,
+  });
   const objectiveSlide = portraitObjectiveSlide(run?.tRun);
   // `layout` is expressed in logical canvas pixels.  The frame's scale is the
   // CSS conversion; panelScale is the authored enlargement needed to keep the
@@ -2071,63 +2153,80 @@ function drawPortraitHud(ctx, run) {
 
   // Status remains a single coherent pill, now enlarged and given the first
   // row by itself rather than competing with the goal in the opposite corner.
-  const portraitCenter = (layout.left + layout.right) / 2;
   const statusStyle = HERO_BY_ID[run.relay?.current] ? HERO_CHIP : null;
-  const statusGeom = heroChipGeom(statusStyle, run);
-  const statusWidth = statusPillW(run, statusStyle);
   ctx.save();
-  // The disc sits beside the pill, so center the complete block from the
-  // disc's left edge to the pill's right edge rather than centering only the
-  // pill.  Styles without a separate hero column reduce to the pill center.
-  ctx.translate(portraitCenter - (PILL_X + (statusGeom.x + statusWidth) / 2) * s,
+  // The disc sits beside the pill, so anchor the complete block from the
+  // disc's left edge to the pill's right edge rather than anchoring only the
+  // pill. This keeps the main status, GOAL and BONUS on one left edge.
+  ctx.translate(layout.left - PILL_X * s,
     layout.statusY - PILL_Y * s);
   ctx.scale(s, s);
   drawStatusPill(ctx, run, statusStyle);
   ctx.restore();
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, layout.sceneryTop, W, Math.max(0, H - layout.sceneryTop));
-  ctx.clip();
-  const objectiveTravel = Math.max(0,
-    layout.bonusY + layout.bonusH - layout.sceneryTop)
-    + PORTRAIT_OBJECTIVE_EXIT_OVERSHOOT;
-  ctx.translate(0, -objectiveTravel * objectiveSlide);
-  const maxText = Math.max(90, (layout.right - layout.left) / s - 22);
-  const goalText = portraitTrim(portraitGoalText(run), maxText, 1);
-  const goalWidth = objectivePanelMetrics('GOAL', goalText, 1, 0).width;
-  const goalRight = portraitCenter / s + goalWidth / 2;
-  ctx.save();
-  ctx.translate(0, layout.goalY - OBJ_ROW_Y * s);
-  ctx.scale(s, s);
-  const goalLeft = drawObjectivePanel(ctx, 'GOAL', '#74c947', goalText, '#ffffff',
-    OBJ_ROW_Y, 1, 0, goalRight);
-  ctx.restore();
-  run.hudGoalLeft = goalLeft * s;
-  objLeft = Math.min(objLeft, run.hudGoalLeft);
-
-  const bonus = portraitBonusText(run);
-  if (bonus) {
-    const [tag, text, tagColor, ink] = bonus;
-    const bonusText = portraitTrim(text, maxText, 0.9);
-    const bonusFullWidth = objectivePanelMetrics(tag, bonusText, 0.9, 0).width;
-    const expandedRight = portraitCenter / s + bonusFullWidth / 2;
+  const noticeActive = drawPortraitObjectiveNotice(ctx, run, layout, s);
+  if (!noticeActive) {
     ctx.save();
-    ctx.translate(0, layout.bonusY - OBJ_ROW_Y * s);
+    ctx.beginPath();
+    ctx.rect(0, layout.sceneryTop, W, Math.max(0, H - layout.sceneryTop));
+    ctx.clip();
+    // The opening objective read also leaves through the left edge now that
+    // the portrait stack is a left-aligned column.
+    const maxText = Math.max(90, (layout.right - layout.left) / s - 22);
+    const goalText = portraitTrim(portraitGoalText(run), maxText, 1);
+    const goalWidth = objectivePanelMetrics('GOAL', goalText, 1, 0).width;
+    const objectiveLeft = layout.left / s;
+    const goalRight = objectiveLeft + goalWidth;
+    ctx.save();
+    ctx.translate(-((layout.left + goalWidth * s + 8) * objectiveSlide),
+      layout.goalY - OBJ_ROW_Y * s);
     ctx.scale(s, s);
-    drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
-      OBJ_ROW_Y, 0.9, 0, expandedRight);
+    const goalLeft = drawObjectivePanel(ctx, 'GOAL', '#74c947', goalText, '#ffffff',
+      OBJ_ROW_Y, 1, 0, goalRight);
+    ctx.restore();
+    run.hudGoalLeft = goalLeft * s;
+    objLeft = Math.min(objLeft, run.hudGoalLeft);
+
+    const bonus = portraitBonusText(run);
+    if (bonus) {
+      const [tag, text, tagColor, ink] = bonus;
+      const bonusText = portraitTrim(text, maxText, 0.9);
+      const bonusFullWidth = objectivePanelMetrics(tag, bonusText, 0.9, 0).width;
+      const expandedRight = objectiveLeft + bonusFullWidth;
+      ctx.save();
+      ctx.translate(-((layout.left + bonusFullWidth * s + 8) * objectiveSlide),
+        layout.bonusY - OBJ_ROW_Y * s);
+      ctx.scale(s, s);
+      drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
+        OBJ_ROW_Y, 0.9, 0, expandedRight);
+      ctx.restore();
+    }
     ctx.restore();
   }
-  ctx.restore();
 
-  // Rhythm stages overlay the first scenery band. Reusing the shipped ribbon
-  // painter preserves the marker shapes and beat clock; it is deliberately not
-  // part of the reserved status HUD because only one cabinet uses it.
-  if (run.beatLock) {
+  // Rhythm stages own a permanent, full-width rail immediately below the
+  // status HUD. GOAL and BONUS follow it as temporary cards; the live markers
+  // join the plate once the beat lane locks, but the rail never changes
+  // position or width.
+  if (/^rhythm-[123]$/.test(run.stage?.id || '')) {
     ctx.save();
-    ctx.translate(0, layout.rhythmY - RIBBON_Y);
-    drawBeatRibbon(ctx, run);
+    ctx.translate(0, layout.rhythmY);
+    ctx.fillStyle = 'rgba(16,20,28,0.55)';
+    ctx.fillRect(0, 0, W, layout.rhythmH);
+    if (run.beatLock) {
+      drawBeatRibbon(ctx, run, {
+        fullWidth: true,
+        portraitAnchor: true,
+        // Keep the plate edge-to-edge, but use a much tighter 0.5-beat trail
+        // and two-beat lookahead. The larger markers are then a readable
+        // timeline around the hero instead of a long strip of tiny runway.
+        markerBackBeats: 0.5,
+        markerAheadBeats: 2,
+        y: 0,
+        h: layout.rhythmH,
+        scale: PORTRAIT_RIBBON_SCALE,
+      });
+    }
     ctx.restore();
   }
 
@@ -2835,21 +2934,36 @@ export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip
   ctx.restore();
 }
 
-// THE LANDSCAPE TWO HALVES, drawn on themselves. The left TOUCH_JUMP_FRAC of
-// the screen is JUMP and the right is SLIDE (input.js), and nothing else on a
-// touch screen says so — the discs look like the only controls there are, so a
-// thumb that only ever taps a disc plays whole stages without knowing the glass
-// under it is the bigger button. Portrait takes a separate branch below: its
-// main glass is tap-to-jump and teaches the down/right swipe gestures instead.
-//
-// Both halves are washed rather than just one: shading one half reads as "this
-// half is disabled", which is the opposite of the point. Each half wears its
-// own disc's ink, so the card and the control it describes agree.
+// TOUCH CONTROLS, drawn on itself. The main playfield is JUMP everywhere;
+// SLIDE and POWER have rail controls and down/right swipes. The card describes
+// those broad gestures rather than teaching an invisible left/right split.
+// Portrait takes a separate branch below because its tall playfield has its
+// own lower control shelf.
 //
 // It lives here rather than in the tutorial that first drew it because the
 // campaign's opening stage now shows the same card to players who skipped
 // training (run.js). One painter, so the two can never drift into teaching the
 // same screen two different layouts.
+function drawTouchHintRow(ctx, {
+  y, phrase, action, icon, ink, scale, buttonSize,
+}) {
+  const text = `${phrase}  /  ${action}`;
+  const textW = textWidth(text, scale, 'bold');
+  const gap = 8;
+  const totalW = buttonSize + gap + textW;
+  const left = W / 2 - totalW / 2;
+  drawRoundButton(ctx, {
+    x: left, y: y - buttonSize / 2, w: buttonSize, h: buttonSize, icon,
+  }, {
+    fill: 'rgba(11,18,29,0.38)',
+    ink,
+    shadowColor: 'rgba(0,0,0,0.5)',
+    shadowBlur: 0.22,
+    shadowOffsetY: 0.04,
+  });
+  rawDrawText(ctx, text, left + buttonSize + gap, textYForMid(y, scale), ink, scale, 'bold');
+}
+
 export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {}) {
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -2869,58 +2983,62 @@ export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {
     // intentionally does not use.
     ctx.fillStyle = 'rgba(72,224,200,0.16)';
     ctx.fillRect(0, 0, W, H);
-    rawDrawTextCentered(ctx, 'PORTRAIT TOUCH', W / 2, 76,
-      'rgba(255,255,255,0.92)', 1.35, 'bold');
-    rawDrawTextCentered(ctx, 'TAP ANYWHERE', W / 2, 112, '#d8ffe0', 3.2, 'title');
-    rawDrawTextCentered(ctx, 'JUMP', W / 2, 134, '#d8ffe0', 1.4, 'bold');
-    rawDrawTextCentered(ctx, 'SWIPE DOWN', W / 2, 164, '#dcf6ff', 3.0, 'title');
-    rawDrawTextCentered(ctx, 'SLIDE', W / 2, 186, '#dcf6ff', 1.4, 'bold');
-    rawDrawTextCentered(ctx, 'POWER: THE USE DISC, OR SWIPE RIGHT', W / 2, 216,
-      'rgba(255,255,255,0.85)', 1.25, 'bold');
-    if (hint) rawDrawTextCentered(ctx, hint, W / 2, 238, '#fff', 1.5, 'bold');
+    const s = 1.85;
+    // The top quarter belongs to the portrait status HUD. Start the tutorial
+    // below it, then give each instruction its own full-height row.
+    const titleY = Math.max(180, Math.round(H * 0.22));
+    const firstY = titleY + 68;
+    const rowGap = Math.max(68, Math.min(82, Math.round(H * 0.075)));
+    rawDrawTextCentered(ctx, 'PORTRAIT TOUCH', W / 2, textYForMid(titleY, s),
+      'rgba(255,255,255,0.92)', s, 'bold');
+    drawTouchHintRow(ctx, {
+      y: firstY, phrase: 'TAP & HOLD ANYWHERE', action: 'JUMP', icon: 'up',
+      ink: '#d8ffe0', scale: s, buttonSize: 36,
+    });
+    drawTouchHintRow(ctx, {
+      y: firstY + rowGap, phrase: 'SWIPE DOWN ANYWHERE', action: 'SLIDE', icon: 'down',
+      ink: '#dcf6ff', scale: s, buttonSize: 36,
+    });
+    drawTouchHintRow(ctx, {
+      y: firstY + rowGap * 2, phrase: 'SWIPE RIGHT OR TAP ATTACK', action: 'ATTACK', icon: 'ability',
+      ink: '#ffd2e3', scale: s, buttonSize: 36,
+    });
+    drawTouchHintRow(ctx, {
+      y: firstY + rowGap * 3, phrase: 'TAP PAUSE ANY TIME', action: 'PAUSE', icon: 'pause',
+      ink: '#fff', scale: s, buttonSize: 36,
+    });
+    const noteY = firstY + rowGap * 4 + 34;
+    rawDrawTextCentered(ctx, 'LANDSCAPE: ROTATE TO SWAP BUTTONS', W / 2,
+      textYForMid(noteY, s), 'rgba(255,255,255,0.86)', s, 'bold');
+    if (hint) rawDrawTextCentered(ctx, hint, W / 2, textYForMid(noteY + 44, s), '#fff', s, 'bold');
     ctx.restore();
     return;
   }
-  const split = Math.round(W * TOUCH_JUMP_FRAC);
-  // The JUMP disc's green and the SLIDE disc's blue (beatground.js ACTION_INK),
-  // washed to a fifth.
-  ctx.fillStyle = 'rgba(63,191,90,0.20)';
-  ctx.fillRect(0, 0, split, H);
-  ctx.fillStyle = 'rgba(114,216,240,0.20)';
-  ctx.fillRect(split, 0, W - split, H);
-  // The seam, dashed, so it reads as a boundary you could put a thumb either
-  // side of rather than as a wall.
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  for (let y = 4; y < H; y += 12) ctx.fillRect(split - 0.5, y, 1, 6);
-  // Two rows a side, each centred on its own half, then two full-width lines
-  // under them — the power, which has a disc and a gesture, and the way out.
-  //
-  // Every line is far bigger than a HUD line, because this is not a HUD: it is
-  // the one screen in the game whose entire job is to be read once, by someone
-  // who does not yet know how to play, at arm's length, on a phone.
-  //
-  // The tutorial draws this card over LIVE controls with no scrim to quiet
-  // them, so every row keeps off the disc footprints (touch-layout.js): JUMP at
-  // x 18-62 / y 161-205, the right column at x 428-472 / y 65-205. SLIDE runs a
-  // size smaller than JUMP for the room it has beside USE, not for its
-  // importance.
-  const lx = split / 2, rx = split + (W - split) / 2;
-  const GREEN = '#d8ffe0', BLUE = '#dcf6ff';
-  // The header clears a THREE-line speech panel, not a two-line one: this card
-  // only ever appears on touch, where the wrap is narrowest and the tutorial's
-  // brief for this section runs to three rows. That panel bottoms out at 74.
-  rawDrawTextCentered(ctx, 'THE WHOLE SCREEN IS TWO BUTTONS', W / 2, 76, 'rgba(255,255,255,0.92)', 1.35, 'bold');
-  rawDrawTextCentered(ctx, 'JUMP', lx, 100, GREEN, 3.6, 'title');
-  rawDrawTextCentered(ctx, 'SLIDE', rx, 104, BLUE, 3.1, 'title');
-  rawDrawTextCentered(ctx, 'TAP & HOLD ANYWHERE', lx, 140, GREEN, 1.4, 'bold');
-  rawDrawTextCentered(ctx, 'TAP & HOLD ANYWHERE', rx, 140, BLUE, 1.4, 'bold');
-  // One line rather than one per column: the swipe is read from whichever half
-  // the thumb is already in, and the disc is named first because it is the
-  // reliable path — the swipe is the one-handed fallback.
-  rawDrawTextCentered(ctx, 'POWER: THE USE DISC, OR SWIPE RIGHT', W / 2, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
-  // Below the discs, where nothing else on this card sits — a call to action
-  // wants its own air.
-  if (hint) rawDrawTextCentered(ctx, hint, W / 2, 220, '#fff', 1.5, 'bold');
+  ctx.fillStyle = 'rgba(72,224,200,0.13)';
+  ctx.fillRect(0, 0, W, H);
+  const s = 1.45;
+  const GREEN = '#d8ffe0', BLUE = '#dcf6ff', PINK = '#ffd2e3';
+  rawDrawTextCentered(ctx, 'LANDSCAPE TOUCH', W / 2, textYForMid(28, s),
+    'rgba(255,255,255,0.92)', s, 'bold');
+  drawTouchHintRow(ctx, {
+    y: 65, phrase: 'TAP & HOLD ANYWHERE', action: 'JUMP', icon: 'up',
+    ink: GREEN, scale: s, buttonSize: 25,
+  });
+  drawTouchHintRow(ctx, {
+    y: 101, phrase: 'SWIPE DOWN ANYWHERE', action: 'SLIDE', icon: 'down',
+    ink: BLUE, scale: s, buttonSize: 25,
+  });
+  drawTouchHintRow(ctx, {
+    y: 137, phrase: 'SWIPE RIGHT OR TAP ATTACK', action: 'ATTACK', icon: 'ability',
+    ink: PINK, scale: s, buttonSize: 25,
+  });
+  drawTouchHintRow(ctx, {
+    y: 173, phrase: 'TAP PAUSE ANY TIME', action: 'PAUSE', icon: 'pause',
+    ink: '#fff', scale: s, buttonSize: 25,
+  });
+  rawDrawTextCentered(ctx, 'LANDSCAPE: ROTATE TO SWAP BUTTONS', W / 2,
+    textYForMid(211, s), 'rgba(255,255,255,0.84)', s, 'bold');
+  if (hint) rawDrawTextCentered(ctx, hint, W / 2, textYForMid(247, s), '#fff', s, 'bold');
   ctx.restore();
 }
 

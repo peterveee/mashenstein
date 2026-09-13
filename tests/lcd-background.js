@@ -5,9 +5,10 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
+const { getStylePack, drawLCDPanel, LCD_PORTRAIT_CITY_SHIFT,
+  lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
   LCD_DEFAULT_ROAD_RISE, LCD_SCREEN_GRID_CELL, LCD_PORTRAIT_SCREEN_GRID_CELL, lcdScreenGridCellSize,
-  LCD_ROAD_INK } = await import('../src/engine/stylePacks/index.js');
+  lcdPortraitGridLineY, LCD_ROAD_INK, LCD_CLOUD_CLEARANCE_BOTTOM } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
@@ -61,6 +62,12 @@ function background(stageIndex, beat, settings = {}, t = 0, camX = 0, extra = nu
   const { ctx, ops } = recorder();
   getStylePack('lcd', settings).bg(ctx, t, camX, rhythm, 1000,
     { stageIndex, beat, ...(extra || {}) });
+  return ops;
+}
+function backgroundWithContext(stageIndex, beat, backgroundContext = {}) {
+  const { ctx, ops } = recorder();
+  getStylePack('lcd', {}).bg(ctx, 0, 0, rhythm, 1000,
+    { stageIndex, beat }, 0, backgroundContext);
   return ops;
 }
 // A stand-in for Audio.musicAnalysis(). Only the fields the panel reads.
@@ -220,6 +227,109 @@ assert(gearCentres.every((cx) => cx - GEAR_R > 100 + LCD_ROAD_INK
 // apart, the same in every hole whatever its width.
 assert(gearCentres.slice(1).every((cx, i) => Math.abs(cx - gearCentres[i] - (GEAR_R * 2 - 2)) < 0.001),
 'neighbouring wheels sit at one fixed meshing pitch, not one scaled to the hole');
+
+// Portrait keeps the ordinary panel/grid visible below a dry gear bay. The
+// boundary is a line beneath the machinery, not a new opaque shaft.
+const portraitStyle = getStylePack('lcd', { portraitPresentation: true });
+const portraitRecorder = recorder();
+portraitStyle.ground(portraitRecorder.ctx, 0, rhythm, [testGap], [], 0, 480, 480);
+const portraitLine = portraitRecorder.ops.find((op) =>
+  op[0] === 'fillRect' && op[1] === INK && op[2] === 100
+  && op[4] === testGap.w && op[5] === LCD_ROAD_INK && op[3] > GROUND_Y);
+const portraitLineY = portraitLine?.[3];
+assert(portraitLine && portraitLineY === lcdPortraitGridLineY(GROUND_Y + 16 + GEAR_R + 4)
+  && portraitLineY % LCD_PORTRAIT_SCREEN_GRID_CELL
+    === LCD_PORTRAIT_SCREEN_GRID_CELL - 2,
+  'portrait gear-pit boundary lands on the periodic LCD grid rule');
+const portraitLineIndex = portraitRecorder.ops.findIndex((op) =>
+  op[0] === 'fillRect' && op[1] === INK && op[2] === 100
+  && op[3] === portraitLineY && op[4] === testGap.w && op[5] === LCD_ROAD_INK);
+const firstGearIndex = portraitRecorder.ops.findIndex((op) => op[0] === 'arc' && op[3] === 6.5);
+assert(portraitLineIndex > firstGearIndex,
+  'portrait gear pits draw a horizontal boundary beneath the wheels');
+assert(portraitRecorder.ops.some((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT
+  && op[2] === 100 - LCD_ROAD_INK && op[3] === portraitLineY
+  && op[4] === testGap.w + LCD_ROAD_INK * 2
+  && op[5] === H - portraitLineY + 1),
+'portrait gear pits fill the ground below the boundary with the normal panel surface');
+assert(!portraitRecorder.ops.some((op) => op[0] === 'fillRect' && op[1] === INK
+  && op[2] === 100 && op[3] === GROUND_Y && op[4] === LCD_ROAD_INK
+  && op[5] === H - GROUND_Y),
+'portrait gear pit walls stop at the boundary instead of running to the screen bottom');
+
+// In the live portrait frame the pit is drawn below the camera transform, but
+// the LCD lattice is drawn after that transform in screen space. Exercise the
+// real contract rather than only the identity fallback above: the rendered
+// opening expands to vertical screen rules, and the closing rule is snapped
+// after the world zoom before it is inverted back into painter coordinates.
+const portraitWorldContext = {
+  portrait: true, worldZoom: 3.5, worldPan: 0, floorY: GROUND_Y,
+  worldXOffset: -150.5, groundScreenY: 760.6, mirror: false,
+};
+const transformedPortraitRecorder = recorder();
+portraitStyle.ground(transformedPortraitRecorder.ctx, 0, rhythm, [testGap], [], 0, 480, 480,
+  portraitWorldContext);
+const transformedPitLine = transformedPortraitRecorder.ops.find((op) =>
+  op[0] === 'fillRect' && op[1] === INK && op[3] > GROUND_Y
+    && Math.abs(op[5] - (2 / portraitWorldContext.worldZoom)) < 0.0001);
+const gearBottomScreen = portraitWorldContext.groundScreenY
+  + (GROUND_Y + 16 + GEAR_R + 4 - GROUND_Y) * portraitWorldContext.worldZoom;
+const expectedPitLineScreen = lcdPortraitGridLineY(gearBottomScreen);
+const expectedPitLineWorld = GROUND_Y
+  + (expectedPitLineScreen - portraitWorldContext.groundScreenY)
+    / portraitWorldContext.worldZoom;
+assert(transformedPitLine
+  && Math.abs(transformedPitLine[3] - expectedPitLineWorld) < 0.0001
+  && Math.abs((transformedPitLine[3] - GROUND_Y) * portraitWorldContext.worldZoom
+    + portraitWorldContext.groundScreenY - expectedPitLineScreen) < 0.0001,
+  'portrait gear-pit bottom is snapped in screen space, not world space');
+const transformedInk = 2 / portraitWorldContext.worldZoom;
+const transformedFloor = transformedPortraitRecorder.ops.find((op) =>
+  op[0] === 'fillRect' && op[1] === PANEL_LIT
+    && Math.abs(op[2] - (99 - transformedInk)) < 0.0001
+    && Math.abs(op[3] - expectedPitLineWorld) < 0.0001);
+const transformedLeft = transformedPitLine?.[2];
+const transformedRight = transformedPitLine ? transformedPitLine[2] + transformedPitLine[4] : NaN;
+const renderedLeft = transformedLeft * portraitWorldContext.worldZoom
+  + portraitWorldContext.worldXOffset;
+const renderedRight = transformedRight * portraitWorldContext.worldZoom
+  + portraitWorldContext.worldXOffset;
+assert(transformedFloor
+  && Math.abs(renderedLeft - (LCD_PORTRAIT_SCREEN_GRID_CELL - 2
+    + Math.floor(((-150.5 + 100 * 3.5) - (LCD_PORTRAIT_SCREEN_GRID_CELL - 2))
+      / LCD_PORTRAIT_SCREEN_GRID_CELL) * LCD_PORTRAIT_SCREEN_GRID_CELL)) < 0.0001
+  && Math.abs(renderedRight - (LCD_PORTRAIT_SCREEN_GRID_CELL - 2
+    + Math.ceil(((-150.5 + 156 * 3.5) - (LCD_PORTRAIT_SCREEN_GRID_CELL - 2))
+      / LCD_PORTRAIT_SCREEN_GRID_CELL) * LCD_PORTRAIT_SCREEN_GRID_CELL)) < 0.0001,
+  'portrait pit fill and walls share the outward-snapped screen-grid interval');
+
+// Sample the entire solid apron outside the opening, including the narrow
+// strips beside its fractional edges. Background pixels must never survive.
+const solidApron = transformedPortraitRecorder.ops.filter((op) =>
+  op[0] === 'fillRect' && op[1] === PANEL_LIT && op[3] === GROUND_Y);
+let apronCovered = true;
+for (let x = 0.025; x < 480; x += 0.05) {
+  if (x >= transformedLeft && x < transformedRight) continue;
+  if (!solidApron.some((op) => x >= op[2] && x < op[2] + op[4])) {
+    apronCovered = false; break;
+  }
+}
+assert(apronCovered, 'solid apron reaches both fractional pit edges without exposed scenery strips');
+
+// The raster interval comes from the same rounded left/right edges everywhere:
+// a fractional world position must not make the floor one pixel narrower than
+// its walls or leave the side road cut mask on a different edge.
+const fractionalGap = { live: true, x: 100.49, w: 55.49, def: { isGap: true } };
+const fractionalRecorder = recorder();
+portraitStyle.ground(fractionalRecorder.ctx, 0, rhythm, [fractionalGap], [], 0, 480, 480);
+const fractionalLine = fractionalRecorder.ops.find((op) =>
+  op[0] === 'fillRect' && op[1] === INK && op[2] === 100
+  && op[3] === portraitLineY && op[4] === 56 && op[5] === LCD_ROAD_INK);
+const fractionalFloor = fractionalRecorder.ops.find((op) =>
+  op[0] === 'fillRect' && op[1] === PANEL_LIT && op[2] === 99
+  && op[3] === portraitLineY && op[4] === 58);
+assert(fractionalLine && fractionalFloor,
+  'fractional pit edges share one rounded interval for the walls, line and floor');
 
 for (const stage of [1, 2, 3]) {
   const beat0 = fingerprint(background(stage, 0));
@@ -417,6 +527,55 @@ for (const stage of [1, 2, 3]) {
   assert(cloudFloor < carTop,
     `and its clouds stay off the service below them `
     + `(lowest cloud row ${cloudFloor}, cars start ${carTop})`);
+}
+
+// Clouds wrap for the life of a level, so checking only the first phrase can
+// miss a later cloud crossing the skyline. The reserved vertical band keeps
+// every cloud body clear of the billboards/buildings after many full wraps;
+// test the real painter over a long run, including every bob phase.
+{
+  let checked = 0;
+  for (const stage of [1, 2, 3]) {
+    let lowest = -Infinity;
+    for (let beat = 0; beat < 2048; beat++) {
+      const ops = background(stage, beat, {}, 0, 0, { progress: 0.3 });
+      for (const j of cloudStrokeIndexes(ops)) {
+        for (let k = j - 11; k <= j - 2; k++) lowest = Math.max(lowest, ops[k][2]);
+      }
+      checked++;
+    }
+    assert(lowest < LCD_CLOUD_CLEARANCE_BOTTOM[stage],
+      `stage ${stage} keeps clouds clear of rooftop scenery through long wraps `
+      + `(lowest row ${lowest}, clearance row ${LCD_CLOUD_CLEARANCE_BOTTOM[stage]})`);
+  }
+  assert(checked === 6144, 'long-wrap clearance covers all three rhythm levels');
+}
+
+// Portrait rhythm-1 is not the landscape city scaled into a phone. It uses a
+// taller Kong tower, a chart board on the neighbouring facade, and then lifts
+// that complete city by LCD_PORTRAIT_CITY_SHIFT.y. Compare the cloud floor to
+// the board in the same local space: the shared lift cancels, so this catches
+// the exact overlap the phone composition can otherwise introduce.
+{
+  const first = backgroundWithContext(1, 0, { portrait: true });
+  const chart = first.find((op) => op[0] === 'fillRect' && op[1] === PRINT
+    && op[4] === 43 && op[5] === 32);
+  let checked = 0;
+  let lowest = -Infinity;
+  let cloudCount = true;
+  for (let beat = 0; beat < 2048; beat++) {
+    const ops = backgroundWithContext(1, beat, { portrait: true });
+    const clouds = cloudStrokeIndexes(ops);
+    cloudCount = cloudCount && clouds.length === 3;
+    for (const j of clouds) {
+      for (let k = j - 11; k <= j - 2; k++) lowest = Math.max(lowest, ops[k][2]);
+    }
+    checked++;
+  }
+  assert(cloudCount && chart && lowest < chart[3],
+    `portrait rhythm-1 clouds clear the lifted chart billboard through long wraps `
+    + `(lowest cloud row ${lowest}, board starts ${chart?.[3]})`);
+  assert(checked === 2048, 'portrait rhythm-1 long-wrap clearance covers the full test run');
 }
 
 // Stage 1's DONKEY KONG tower: an eight-cell ghosted barrel path across two
@@ -667,9 +826,9 @@ for (const stage of [1, 2, 3]) {
   assert(girder(12, 0.3).length === 1, 'and it is a single line, not a deck');
 }
 
-// ---- the jukebox panel ----------------------------------------------------
-// drawLCDPanel is the whole city for callers outside a run — the CLOCK-IN CITY
-// preset. Same scene, same data, plus the sky meter the game declines.
+// ---- the shared LCD panel -------------------------------------------------
+// drawLCDPanel is the whole city for callers outside a run. Same scene, same
+// data, plus the optional sky meter that gameplay declines.
 {
   const panel = (extra, settings = {}) => {
     const { ctx, ops } = recorder();
@@ -692,6 +851,17 @@ for (const stage of [1, 2, 3]) {
   'a caller may still ask for the panel without it');
 }
 
+// Portrait shifts are a single LCD backplate contract, not device-specific
+// coordinates scattered through the building painters.
+{
+  const { ctx, ops } = recorder();
+  getStylePack('lcd', {}).bg(ctx, 0, 0, rhythm, 1000,
+    { stageIndex: 1, beat: 0 }, 0, { portrait: true });
+  assert(ops.some((op) => op[0] === 'translate'
+    && op[1] === LCD_PORTRAIT_CITY_SHIFT.x && op[2] === LCD_PORTRAIT_CITY_SHIFT.y),
+  'portrait LCD scenery shifts right and up as one layer');
+}
+
 function post(settings, t) {
   const { ctx, ops } = recorder();
   getStylePack('lcd', settings).post(ctx, t);
@@ -700,10 +870,10 @@ function post(settings, t) {
 const normalPost = post({}, 0.25);
 const reducedPost = post({ reducedFlashing: true }, 0.25);
 assert(LCD_SCREEN_GRID_CELL === 3, 'the landscape LCD lattice keeps its three-pixel cell pitch');
-assert(LCD_PORTRAIT_SCREEN_GRID_CELL === null, 'the portrait LCD omits the periodic lattice to avoid moire');
+assert(LCD_PORTRAIT_SCREEN_GRID_CELL === 6, 'the portrait LCD uses a coarser six-pixel lattice for readability');
 assert(lcdScreenGridCellSize({}) === 3, 'ordinary LCD callers keep the fine lattice');
-assert(lcdScreenGridCellSize({ portraitPresentation: true }) === null,
-  'portrait LCD callers disable the periodic lattice');
+assert(lcdScreenGridCellSize({ portraitPresentation: true }) === 6,
+  'portrait LCD callers use the coarse readable lattice');
 const createdForPortraitGrid = [];
 const createElement = document.createElement;
 document.createElement = (...args) => {
@@ -713,8 +883,8 @@ document.createElement = (...args) => {
 };
 try { post({ portraitPresentation: true }, 0.25); }
 finally { document.createElement = createElement; }
-assert(!createdForPortraitGrid.some((element) => element.width === 6 && element.height === 6),
-  'portrait LCD post does not bake a periodic grid tile');
+assert(createdForPortraitGrid.some((element) => element.width === 6 && element.height === 6),
+  'portrait LCD post bakes the coarse periodic grid tile');
 assert(!normalPost.some((op) => op[0] === 'fillRect' && op[1] === '#808080'),
 'the GBC screen treatment preserves hue instead of converting scenery to monochrome');
 assert(normalPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba(255,244,180,'))

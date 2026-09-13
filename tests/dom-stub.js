@@ -81,11 +81,15 @@ export function installDom({
   // before a single test ran.
   const chromeCanvas = makeCanvas();
   const bootErrorEl = { style: {}, textContent: '' };
+  const documentElement = { style: {} };
+  const body = { style: {} };
 
   globalThis.document = {
     readyState: 'complete',
     hidden: false,
     activeElement: null,
+    documentElement,
+    body,
     getElementById: (id) => {
       if (id === 'game') return gameCanvas;
       if (id === 'chrome') return chromeCanvas;
@@ -131,6 +135,8 @@ export function installDom({
     chromeCanvas,
     originalCanvas: canvas,
     bootErrorEl,
+    documentElement,
+    body,
     store,
     fire(key, ev) { for (const fn of listeners[key] || []) fn(ev); },
     key(code) {

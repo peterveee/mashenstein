@@ -1,7 +1,9 @@
-// The touch chrome layout against real device geometries: every disc on the
-// picture, big enough for a thumb, the margins tiled by zones with no gaps and
-// no overlaps, and nothing reaching into the picture. Pure module, no DOM.
-import { layoutTouchChrome, fitFor, DISC_SLOP, MARGIN_MIN } from '../src/engine/touch-layout.js';
+// Landscape touch chrome: safe-area-aware rails, orientation swapping, and
+// local hit zones that follow the visible controls even when they straddle the
+// edge of the game picture.
+import {
+  DISC_SLOP, MARGIN_MIN, fitFor, landscapeControlSide, layoutTouchChrome,
+} from '../src/engine/touch-layout.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -9,106 +11,129 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-// CSS-px viewports and the env(safe-area-inset-*) each reports in that
-// orientation. iOS reports the island's DEPTH on both sides in landscape.
 const DEVICES = [
   { name: 'iPhone 15 Pro', vw: 852, vh: 393, safe: { right: 59, bottom: 21, left: 59 } },
   { name: 'iPhone 13 mini', vw: 812, vh: 375, safe: { right: 47, bottom: 21, left: 47 } },
   { name: 'iPhone SE', vw: 667, vh: 375, safe: {} },
   { name: 'iPad 11 landscape', vw: 1180, vh: 820, safe: { bottom: 20 } },
-  { name: 'iPad 11 portrait', vw: 820, vh: 1180, safe: { top: 24, bottom: 20 } },
   { name: 'Pixel 8', vw: 915, vh: 412, safe: {} },
   { name: 'desktop window', vw: 1440, vh: 900, safe: {} },
 ];
 
 const MIN_THUMB = 44;
+const discsOf = (list) => list.filter((b) => b.r != null);
+const zonesOf = (list) => list.filter((b) => b.zone);
+const safeRect = (fit) => ({
+  left: fit.safe.left,
+  right: fit.vw - fit.safe.right,
+  top: fit.safe.top,
+  bottom: fit.vh - fit.safe.bottom,
+});
 
-// The picture, half-open so a point on its far edge counts as margin.
-const inPicture = (fit, x, y) => x >= fit.ox && x < fit.ox + fit.cssW && y >= fit.oy && y < fit.oy + fit.cssH;
-const inZone = (z, x, y) => x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.h;
-// Whether a margin point sits in a sliver too thin to be a zone (fit rounding).
-function inSliver(fit, x, y) {
-  const left = fit.ox, right = fit.vw - fit.ox - fit.cssW, top = fit.oy, bottom = fit.vh - fit.oy - fit.cssH;
-  if (x < fit.ox && left < MARGIN_MIN) return true;
-  if (x >= fit.ox + fit.cssW && right < MARGIN_MIN) return true;
-  if (y < fit.oy && top < MARGIN_MIN) return true;
-  if (y >= fit.oy + fit.cssH && bottom < MARGIN_MIN) return true;
-  return false;
+function zoneContainsDisc(z, b) {
+  return z.x <= b.x - b.r + 0.001
+    && z.x + z.w >= b.x + b.r - 0.001
+    && z.y <= b.y - b.r + 0.001
+    && z.y + z.h >= b.y + b.r - 0.001;
 }
 
-function checkZones(name, fit, list) {
-  const zones = list.filter((b) => b.zone).map((b) => b.zone);
-  let insideClaimed = 0, marginUnclaimed = 0, marginDouble = 0, samples = 0;
-  for (let x = 1.5; x < fit.vw; x += 3) {
-    for (let y = 1.5; y < fit.vh; y += 3) {
-      const hits = zones.filter((z) => inZone(z, x, y)).length;
-      if (inPicture(fit, x, y)) { if (hits) insideClaimed++; continue; }
-      if (inSliver(fit, x, y)) continue;
-      samples++;
-      if (hits === 0) marginUnclaimed++;
-      if (hits > 1) marginDouble++;
+function zonesOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x
+    && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function checkLandscape(device, fit, expectedSide) {
+  const layout = layoutTouchChrome(fit);
+  const discs = discsOf(layout.run);
+  const zones = zonesOf(layout.run);
+  const safe = safeRect(fit);
+  assert(layout.landscapeSide === expectedSide,
+    `${device.name}: resolves ${expectedSide} control rail`);
+  assert(discs.map((b) => b.id).join(',') === 'pause,jump,ability,slide',
+    `${device.name}: pause plus the three action discs are registered`);
+
+  for (const b of discs) {
+    assert(b.x - b.r >= -0.001 && b.x + b.r <= fit.vw + 0.001
+      && b.y - b.r >= safe.top - 0.001 && b.y + b.r <= safe.bottom + 0.001,
+    `${device.name}: ${b.id} disc stays in the viewport`);
+    assert(b.r * 2 >= MIN_THUMB,
+      `${device.name}: ${b.id} disc is at least ${MIN_THUMB} css px across (${Math.round(b.r * 2)})`);
+    const z = zones.find((candidate) => candidate.id === `zone:${b.id}`)?.zone;
+    assert(!!z && zoneContainsDisc(z, b), `${device.name}: ${b.id} hit zone surrounds its disc`);
+  }
+
+  const actionIds = ['jump', 'ability', 'slide'];
+  const actionDiscs = actionIds.map((id) => discs.find((b) => b.id === id));
+  const actionOnLeft = expectedSide === 'right';
+  assert(actionDiscs.every((b) => actionOnLeft ? b.x < fit.vw / 2 : b.x > fit.vw / 2),
+    `${device.name}: jump/power/slide use the rail opposite the notch`);
+  const actionMargin = actionOnLeft ? fit.ox : fit.vw - fit.ox - fit.cssW;
+  assert(actionMargin < actionDiscs[0].r * 2
+    ? actionDiscs.every((b) => actionOnLeft ? b.x - b.r <= 0.001 : b.x + b.r >= fit.vw - 0.001)
+    : actionDiscs.every((b) => actionOnLeft
+      ? Math.abs(b.x - fit.ox / 2) < 0.001
+      : Math.abs(b.x - (fit.ox + fit.cssW + actionMargin / 2)) < 0.001),
+  `${device.name}: action controls are centered in the available rail${actionMargin < actionDiscs[0].r * 2 ? ' edge' : ' margin'}`);
+  const gaps = actionDiscs.slice(1).map((b, i) => b.y - actionDiscs[i].y);
+  assert(Math.abs(gaps[0] - gaps[1]) < 0.01,
+    `${device.name}: jump/power/slide are evenly spread vertically`);
+  assert(actionDiscs[2].y - actionDiscs[0].y < fit.vh * 0.7,
+    `${device.name}: action rail stays clear of the top and bottom HUD bands`);
+  const pause = discs.find((b) => b.id === 'pause');
+  assert(pause.y < actionDiscs[0].y,
+    `${device.name}: pause is the upper control on its own rail`);
+  const pauseMargin = expectedSide === 'left'
+    ? fit.ox : fit.vw - fit.ox - fit.cssW;
+  if (pauseMargin >= pause.r * 2) {
+    const pauseCenter = expectedSide === 'left'
+      ? fit.ox / 2 : fit.ox + fit.cssW + pauseMargin / 2;
+    assert(Math.abs(pause.x - pauseCenter) < 0.001,
+      `${device.name}: pause is centered in its available rail margin`);
+  }
+  assert(zones.every((entry) => {
+    const z = entry.zone;
+    return z.x >= -0.001 && z.x + z.w <= fit.vw + 0.001
+      && z.y >= safe.top - 0.001 && z.y + z.h <= safe.bottom + 0.001;
+  }), `${device.name}: hit zones stay inside the safe rectangle`);
+  for (let i = 0; i < zones.length; i++) {
+    for (let j = i + 1; j < zones.length; j++) {
+      assert(!zonesOverlap(zones[i].zone, zones[j].zone),
+        `${device.name}: ${zones[i].id} and ${zones[j].id} do not overlap`);
     }
   }
-  assert(insideClaimed === 0, `${name}: no zone reaches into the picture (${insideClaimed} points claimed)`);
-  assert(marginUnclaimed === 0, `${name}: every margin point belongs to a zone (${marginUnclaimed} of ${samples} unclaimed)`);
-  assert(marginDouble === 0, `${name}: no margin point belongs to two zones (${marginDouble} doubled)`);
+
+  const noPower = discsOf(layout.runNoPower);
+  assert(!noPower.some((b) => b.id === 'ability'),
+    `${device.name}: the no-power layout removes the power disc`);
+  assert(noPower.some((b) => b.id === 'jump') && noPower.some((b) => b.id === 'slide'),
+    `${device.name}: the no-power layout keeps jump and slide`);
 }
 
-for (const d of DEVICES) {
-  const fit = fitFor(d.vw, d.vh, d.safe);
-  const lay = layoutTouchChrome(fit);
-  const discs = lay.run.filter((b) => b.r != null);
-  assert(discs.map((b) => b.id).join(',') === 'jump,slide,ability,pause', `${d.name}: the run registers its four discs`);
-  for (const b of discs) {
-    assert(b.x - b.r >= fit.ox && b.x + b.r <= fit.ox + fit.cssW && b.y - b.r >= fit.oy && b.y + b.r <= fit.oy + fit.cssH,
-      `${d.name}: ${b.id} disc lies on the picture`);
-    assert(b.r * 2 >= MIN_THUMB, `${d.name}: ${b.id} disc is at least ${MIN_THUMB} css px across (${Math.round(b.r * 2)})`);
-  }
-  // On the picture means inside the safe area by construction; say so anyway.
-  for (const b of discs) {
-    assert(b.x - b.r > fit.safe.left && b.x + b.r < fit.vw - fit.safe.right && b.y - b.r > fit.safe.top && b.y + b.r < fit.vh - fit.safe.bottom,
-      `${d.name}: ${b.id} disc clears every reported inset`);
-  }
-  const jump = discs.find((b) => b.id === 'jump'), slide = discs.find((b) => b.id === 'slide');
-  assert(Math.abs(jump.y - slide.y) < 1e-6, `${d.name}: JUMP is level with SLIDE`);
-  assert(Math.abs(lay.split - (fit.ox + fit.cssW / 2)) <= 0.5, `${d.name}: the halves split where the picture's centre is`);
-  checkZones(d.name, fit, lay.run);
-  const noPower = lay.runNoPower;
-  assert(!noPower.some((b) => b.id === 'ability') && !noPower.some((b) => b.action === 'ability'),
-    `${d.name}: without a power there is no USE disc and no USE zone`);
-  checkZones(`${d.name} (no power)`, fit, noPower);
-  const hub = lay.hub;
-  const arrows = hub.filter((b) => b.r != null);
-  assert(arrows.map((b) => b.action).join(',') === 'left,right', `${d.name}: the food court registers its two arrows`);
-  for (const b of arrows) {
-    const onPicture = b.x - b.r >= fit.ox && b.x + b.r <= fit.ox + fit.cssW;
-    const inLeftPillar = b.x + b.r <= fit.ox && b.x - b.r >= fit.safe.left;
-    const inRightPillar = b.x - b.r >= fit.ox + fit.cssW && b.x + b.r <= fit.vw - fit.safe.right;
-    assert(onPicture || inLeftPillar || inRightPillar,
-      `${d.name}: ${b.id} arrow is on the picture or in a pillar clear of the inset`);
-    assert(b.y - b.r >= 0 && b.y + b.r <= fit.vh - fit.safe.bottom, `${d.name}: ${b.id} arrow clears the home indicator`);
-  }
-  checkZones(`${d.name} (hub)`, fit, hub);
+for (const device of DEVICES) {
+  checkLandscape(device, fitFor(device.vw, device.vh, device.safe), 'left');
 }
 
-// The specific claims behind the design.
-const pro = layoutTouchChrome(fitFor(852, 393, { right: 59, bottom: 21, left: 59 }));
-const proArrows = pro.hub.filter((b) => b.r != null);
-assert(proArrows.every((b) => b.x - b.r >= 76), 'a Pro iPhone pillar (76pt beside a 59pt inset) cannot hold an arrow, so both stay on the picture');
-const pixel = layoutTouchChrome(fitFor(915, 412, {}));
-const pixelLeft = pixel.hub.find((b) => b.id === 'hubLeft');
-assert(pixelLeft.x + pixelLeft.r <= 91, 'a 91px pillar with no inset takes the walk arrow');
-const proRight = pro.run.filter((b) => b.zone && b.zone.x >= 775).sort((a, b) => a.zone.y - b.zone.y);
-assert(proRight.map((b) => b.action).join(',') === 'escape,ability,slide',
-  'the right pillar reads PAUSE / USE / SLIDE from the top down');
-const proPause = pro.run.find((b) => b.id === 'pause');
-assert(Math.abs(proRight[0].zone.y + proRight[0].zone.h - (proPause.y + proPause.r)) < 1e-6,
-  'the PAUSE band ends at the pause disc\'s bottom edge');
-const ipad = layoutTouchChrome(fitFor(1180, 820, { bottom: 20 }));
-const bands = ipad.run.filter((b) => b.zone).map((b) => `${b.id}=${b.action}`).join(' ');
-assert(bands === 'zone:topLeft=jump zone:topRight=escape zone:bottomLeft=jump zone:bottomRight=slide',
-  `an iPad's bands split JUMP | PAUSE above and JUMP | SLIDE below (${bands})`);
-assert(DISC_SLOP > 0 && DISC_SLOP < 12, 'disc slop is a thumb\'s worth, not a zone\'s');
+// Equal left/right insets are common on iOS landscape, so orientation is the
+// deciding signal there. The two rotations swap the rails, and an asymmetric
+// inset wins if a browser gives us one.
+const pro = { vw: 852, vh: 393, safe: { left: 59, right: 59, bottom: 21 } };
+checkLandscape({ name: 'iPhone 15 Pro, landscape-secondary' },
+  fitFor(pro.vw, pro.vh, pro.safe, { angle: 270, type: 'landscape-secondary' }), 'right');
+assert(landscapeControlSide({ safe: { left: 72, right: 20 }, orientationAngle: 90 }) === 'left',
+  'an asymmetric left safe inset wins over the angle fallback');
+assert(landscapeControlSide({ safe: { left: 20, right: 72 }, orientationAngle: 270 }) === 'right',
+  'an asymmetric right safe inset wins over the angle fallback');
+assert(landscapeControlSide({ safe: { left: 59, right: 59 }, orientationAngle: 270, orientationType: 'landscape-primary' }) === 'right',
+  'the measured angle wins when a platform labels that rotation primary');
+
+// The portrait fallback remains available to callers that use this pure module
+// directly; shipped phone portrait gameplay uses portrait-input.js instead.
+const portrait = layoutTouchChrome(fitFor(820, 1180, { top: 24, bottom: 20 }));
+assert(discsOf(portrait.run).length === 4, 'portrait fallback retains its four controls');
+assert(discsOf(portrait.run).every((b) => b.x >= 0 && b.x <= 820 && b.y >= 0 && b.y <= 1180),
+  'portrait fallback controls remain in the viewport');
+assert(DISC_SLOP > 0 && DISC_SLOP < 12, 'disc slop is a thumb-sized allowance');
+assert(MARGIN_MIN > 0, 'fit rounding still ignores paper-thin margins');
 
 console.log(failed ? 'TOUCH LAYOUT: FAILED' : 'TOUCH LAYOUT: PASSED');
 process.exit(failed ? 1 : 0);

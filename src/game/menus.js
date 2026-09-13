@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
+import { W, H, bakeSS, onPresentationChanged, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -9,7 +9,12 @@ import {
 } from '../engine/visualisers.js';
 import { defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
-import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawPellet } from '../engine/sprites.js';
+import {
+  drawTextForPresentation as drawText,
+  drawTextCenteredForPresentation as drawTextCentered,
+  textWidth, getSprite, wrapText, platePath, drawPanel, drawMenuRow, onGameFontsChanged,
+  textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawPellet,
+} from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
   drawRangedProjectile, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
@@ -602,6 +607,7 @@ const TOASTER_FIRST = INV_FIRST + INV_CROSS + 2;
 const TOASTER_PERIOD = 29;
 const TOASTER_SPEED = 72;
 const TOASTER_GAP = 38;
+const PORTRAIT_TOASTER_GAP = 68;
 const TOASTER_EDGE = 48;
 const TOASTER_BREATH = 2;
 const TOASTER_LANES = {
@@ -619,6 +625,10 @@ const TOASTER_LANES_PORTRAIT = {
   4: [-48, -16, 16, 48],
 };
 
+function titleToasterGap() {
+  return titleLayout().portrait ? PORTRAIT_TOASTER_GAP : TOASTER_GAP;
+}
+
 function titleToasterCount(trip, singleOpening) {
   if (trip === 0 && singleOpening) return TITLE_TOASTER_MIN_COUNT;
   return 2 + Math.floor(shaderHash21(trip + 1, 23) * (TITLE_TOASTER_MAX_COUNT - 1));
@@ -635,7 +645,7 @@ export function titleToasterStagger(trip, index) {
 // would overlap a spaceship pass, move the toaster cameo to just after that
 // ship clears instead of hiding the toaster halfway through its crossing.
 function titleToasterStart(trip, count) {
-  const cross = (W + TOASTER_EDGE * 2 + (count - 1) * TOASTER_GAP) / TOASTER_SPEED;
+  const cross = (W + TOASTER_EDGE * 2 + (count - 1) * titleToasterGap()) / TOASTER_SPEED;
   let start = TOASTER_FIRST + trip * TOASTER_PERIOD;
   for (let attempt = 0; attempt < 8; attempt++) {
     const firstShip = Math.max(0, Math.floor((start - INV_FIRST) / INV_PERIOD) - 1);
@@ -695,6 +705,7 @@ export function titleToasterPass(t, singleOpening = true) {
 // second guard is deliberately reciprocal: if a pass is already crossing,
 // the ship waits for it instead of making the toaster disappear mid-flight.
 export function invaderPass(t) {
+  if (isPhonePortraitPresentation()) return null;
   if (titleToasterPass(t, false)) return null;
   return rawInvaderPass(t);
 }
@@ -705,10 +716,11 @@ function drawFlyingToasters(ctx, t, reduced, singleOpening) {
   const pass = titleToasterPass(t, singleOpening);
   if (!pass) return;
   const offsets = (layout.portrait ? TOASTER_LANES_PORTRAIT : TOASTER_LANES)[pass.count];
+  const gap = titleToasterGap();
   for (let i = 0; i < pass.count; i++) {
     const x = pass.dir > 0
-      ? -TOASTER_EDGE + pass.local * TOASTER_SPEED - i * TOASTER_GAP
-      : W + TOASTER_EDGE - pass.local * TOASTER_SPEED + i * TOASTER_GAP;
+      ? -TOASTER_EDGE + pass.local * TOASTER_SPEED - i * gap
+      : W + TOASTER_EDGE - pass.local * TOASTER_SPEED + i * gap;
     if (x < -TOASTER_EDGE - 42 || x > W + TOASTER_EDGE + 42) continue;
     // These are a foreground gag now, not distant sky decoration. Give the
     // appliance body enough scale to read clearly over the portrait cards.
@@ -765,6 +777,7 @@ function heroOnScreen(i, t) {
 }
 
 function invaderBombsForTrip(trip) {
+  if (isPhonePortraitPresentation()) return [];
   if (trip < 0 || trip % 2 !== 0) return [];
   const bombs = [];
   const claimedVictims = new Set();
@@ -845,6 +858,7 @@ function heroIsKnockedOut(i, t, tapBombs) {
 // its current spot regardless of whether this trip was already armed.
 const INV_TAP_PAD = 9;
 function invaderTapHit(t, px, py) {
+  if (isPhonePortraitPresentation()) return null;
   const pass = invaderPass(t);
   if (!pass) return null;
   const x = invX(pass.trip, pass.p), y = invY(pass.trip, t);
@@ -900,6 +914,7 @@ function titleShotSpeed() { return TITLE_SHOT_SPEED * titleProjectileScale(); }
 // portrait values follow the enlarged cast instead of remaining near y=227.
 
 function drawInvader(ctx, t) {
+  if (isPhonePortraitPresentation()) return;
   const pass = invaderPass(t);
   if (!pass) return;
   const x = invX(pass.trip, pass.p), y = invY(pass.trip, t);
@@ -1056,6 +1071,17 @@ function drawInvaderImpact(ctx, strikes) {
 const titleBaseCache = { canvas: null, ctx: null, key: '' };
 const titleMarqueeCache = { canvas: null, ctx: null, ss: 0 };
 const titleStarCaches = Array.from({ length: 3 }, () => ({ canvas: null, ctx: null, key: '' }));
+
+function invalidateTitleArtwork() {
+  titleToonSlots.clear();
+  invalidateTitleParadeCache();
+  titleBaseCache.key = '';
+  titleMarqueeCache.key = '';
+  for (const slot of titleStarCaches) slot.key = '';
+}
+
+onGameFontsChanged(invalidateTitleArtwork);
+onPresentationChanged(invalidateTitleArtwork);
 
 function ensureTitleCanvas(slot, w, h, ss) {
   if (!slot.canvas || slot.ss !== ss || slot.canvas.width !== Math.round(w * ss)
@@ -1219,7 +1245,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   if (skyEnabled && !gpuSky) {
     drawRetainedTitleStars(ctx, t, reduced);
   }
-  if (!reduced) drawInvader(ctx, t);
+  if (!reduced && !layout.portrait) drawInvader(ctx, t);
 
   // The nine-cabinet row used to stand here. It was competing with the marquee,
   // the save-file panel and the hero parade for the same screen, and the title
@@ -1252,7 +1278,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
     const entryZoomExtra = HERO_ENTRY_ZOOM;
     // The cast still crosses the arcade, but each hero occasionally breaks into
     // a small personality beat. Cycles are offset so the parade stays readable.
-    const strikes = reduced ? null : invaderStrikes(t, tapBombs);
+    const strikes = reduced || layout.portrait ? null : invaderStrikes(t, tapBombs);
     if (stable) {
       drawBolt(c, t, strikes);
       drawShots(c, t, shots);
@@ -1397,32 +1423,34 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // swing. Its length is independent of the card row: centring the controls in
   // the open middle of the screen should not stretch the title artwork.
   const px2 = ax + sway, py2 = layout.plugY;
+  const plugK = layout.logoScale / TITLE_SCALE;
   ctx.strokeStyle = '#241c30';
-  ctx.lineWidth = 2.4;
+  ctx.lineWidth = 2.4 * plugK;
   ctx.beginPath();
   ctx.moveTo(ax, ay);
-  ctx.quadraticCurveTo(ax + sway * 0.4, (ay + py2) / 2 + 8, px2, py2);
+  ctx.quadraticCurveTo(ax + sway * 0.4, (ay + py2) / 2 + 8 * plugK, px2, py2);
   ctx.stroke();
   // A grommet where the cord leaves the sign, so the join reads as deliberate
   // hardware instead of a line that happens to end on a letter.
   ctx.fillStyle = '#241c30';
   ctx.beginPath();
-  ctx.arc(ax, ay, 2.2, 0, Math.PI * 2);
+  ctx.arc(ax, ay, 2.2 * plugK, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#3a3a48';
-  ctx.fillRect(px2 - 3, py2, 6, 8);
+  ctx.fillRect(px2 - 3 * plugK, py2, 6 * plugK, 8 * plugK);
   ctx.fillStyle = '#8a8a98';
-  ctx.fillRect(px2 - 2, py2 + 8, 1.6, 3);
-  ctx.fillRect(px2 + 0.6, py2 + 8, 1.6, 3);
+  ctx.fillRect(px2 - 2 * plugK, py2 + 8 * plugK, 1.6 * plugK, 3 * plugK);
+  ctx.fillRect(px2 + 0.6 * plugK, py2 + 8 * plugK, 1.6 * plugK, 3 * plugK);
   if (flickerDark(t, reduced)) {
     // Zap: sparks plus the same cached radial glow the power capsules use. A
     // flat translucent rectangle read as a yellow card sitting behind the plug
     // — a radial falloff has no edge to mistake for a background.
     const glow = glowSprite('rgba(246,211,60,0.3)', 6);
-    ctx.drawImage(glow, px2 - 7, py2 + 2, 14, 14);
+    ctx.drawImage(glow, px2 - 7 * plugK, py2 + 2 * plugK, 14 * plugK, 14 * plugK);
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     for (let i = 0; i < 3; i++) {
-      ctx.fillRect(px2 - 4 + ((i * 37 + Math.floor(t * 60)) % 8), py2 + 9 + (i % 3) * 2, 1.6, 1.6);
+      ctx.fillRect(px2 - 4 * plugK + ((i * 37 + Math.floor(t * 60)) % 8) * plugK,
+        py2 + 9 * plugK + (i % 3) * 2 * plugK, 1.6 * plugK, 1.6 * plugK);
     }
   }
   return cast;
@@ -3293,12 +3321,31 @@ const RESULT_FOOTER_MID = H - 27;
 const TUBE_INSET_X = 16;
 const TUBE_INSET_Y = 19;
 const TUBE_R = 34;       // generous: a shallow curve reads as a rounded box
-// The portrait hero tube is a scaled presentation of this same glass, not a
-// second tall layout. Use the visible landscape tube rather than the full
-// canvas so its bezel/gutter relationship survives the orientation change.
-const LANDSCAPE_TUBE_ASPECT = (W - TUBE_INSET_X * 2) / (270 - TUBE_INSET_Y * 2);
+// The portrait hero tube is the inside of a CRT, so give the glass the classic
+// 4:3 screen proportion instead of inheriting the landscape game's widescreen
+// tube. The portrait layout can spend its extra vertical room on the picture.
+const PORTRAIT_TUBE_ASPECT = 4 / 3;
+const PORTRAIT_TUBE_SIDE_MARGIN_CSS = 28;
+const PORTRAIT_RESULT_TUBE_BOTTOM_GAP_CSS = 118;
 let tubeGlow = null;
 let tubeWash = null;
+
+function portraitResultTubeBox(frame = presentationFrame()) {
+  const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
+  const css = (n) => n / (frame?.scale || 1);
+  const side = css(PORTRAIT_TUBE_SIDE_MARGIN_CSS);
+  const footerMid = safe.bottom - css(23);
+  const bottom = footerMid - css(PORTRAIT_RESULT_TUBE_BOTTOM_GAP_CSS);
+  const w = Math.max(css(220), safe.width - side * 2);
+  const h = w / PORTRAIT_TUBE_ASPECT;
+  return {
+    x: safe.left + side,
+    y: bottom - h,
+    w,
+    h,
+    r: Math.min(css(30), h * 0.18),
+  };
+}
 
 // Traced by hand rather than platePath() — the corner is a quadratic through
 // the actual corner point, which gives the slightly-inflated curve of real
@@ -3409,9 +3456,9 @@ function drawTubeMask(ctx) {
 }
 
 // The phone has enough vertical room to give the curtain call two separate
-// surfaces: a reading band above, and a scaled landscape-proportion tube for
-// the cast below. Keep this path local to the results card instead of stretching
-// the landscape tube over the whole tall frame — the copy feels like a poster
+// surfaces: a reading band above, and a 4:3 CRT tube for the cast below. Keep
+// this path local to the results card instead of stretching the landscape tube
+// over the whole tall frame — the copy feels like a poster
 // mounted above the CRT, while the hero party stays inside the same screen shape
 // players see in landscape.
 function portraitResultTubePath(ctx, box, fresh = true) {
@@ -3547,13 +3594,30 @@ export class ResultsState {
   // frame. Losses get neither — a quiet screen is part of the joke.
   updateParty(dt) {
     if (!this.result.success || this.save.settings.reducedMotion) return;
+    const portrait = isPhonePortraitPresentation();
+    const portraitTube = portrait ? portraitResultTubeBox() : null;
+    const portraitFrame = portrait ? presentationFrame() : null;
+    const portraitCss = portraitFrame ? (n) => n / (portraitFrame.scale || 1) : null;
     this.shellT -= dt;
     if (this.shellT <= 0) {
       this.shellT = 0.55 + Math.random() * 0.7;
-      const x = 40 + Math.random() * (W - 80);
+      const x = portraitTube
+        ? portraitTube.x + portraitCss(24)
+          + Math.random() * Math.max(1, portraitTube.w - portraitCss(48))
+        : 40 + Math.random() * (W - 80);
+      const fuse = portraitTube ? 0.72 + Math.random() * 0.14 : 0.85 + Math.random() * 0.3;
       this.shells.push({
-        x, y: H + 6, vx: (Math.random() - 0.5) * 24, vy: -(230 + Math.random() * 50),
-        fuse: 0.85 + Math.random() * 0.3, color: PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0],
+        x,
+        y: portraitTube
+          ? portraitTube.y + portraitTube.h - portraitCss(18) : H + 6,
+        vx: portraitTube ? (Math.random() - 0.5) * portraitCss(32) : (Math.random() - 0.5) * 24,
+        // A portrait firework launches from the lower glass and needs a real
+        // CRT-sized arc. The old full-canvas launch only reached the bottom
+        // edge of the taller phone frame, so its burst was mostly clipped.
+        vy: portraitTube
+          ? -(portraitTube.h * (0.95 + Math.random() * 0.12))
+          : -(230 + Math.random() * 50),
+        fuse, color: PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0],
       });
       // The original blip stays as the tonal layer — it's the part that reads
       // as "a thing launched" — with the new air underneath it for body.
@@ -3639,7 +3703,9 @@ export class ResultsState {
     if (r.newBestScore) line(r.success ? 'NEW BEST SCORE ON THIS STAGE!' : 'STILL A NEW BEST SCORE ON THIS STAGE.', r.success ? '#f6d33c' : '#8a8a98');
     if (r.stage) {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
-      line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? 'X' : '-'}`).join('  ')}`, '#48e0c8');
+      // The plug marks are status, not multiplication signs: a tick means the
+      // objective was earned, while a dash means it is still missing.
+      line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? '✓' : '-'}`).join('  ')}`, '#48e0c8');
       if (this.gains.plugsNew > 0) line(`+${this.gains.plugsNew} NEW PLUG${this.gains.plugsNew > 1 ? 'S' : ''}`, '#48e0c8');
       else {
         const nxt = nextStage(r.stage);
@@ -3787,13 +3853,13 @@ export class ResultsState {
     const footerMid = safe.bottom - css(23);
     const footerS = Math.min(2.3,
       textWidthLimit / Math.max(1, textWidth(`${confirmVerb()} TO CONTINUE`, 1)));
-    const tubeBottom = footerMid - css(27);
-    // Keep the actual glass proportional to the landscape CRT. On a phone the
-    // available width is the limiting dimension, so the extra height remains a
-    // clean reading gap instead of distorting the TV into a tall card.
-    const tubeW = Math.max(css(220), safe.width - css(16));
-    const tubeH = tubeW / LANDSCAPE_TUBE_ASPECT;
-    const wantedTubeTop = tubeBottom - tubeH;
+    // Lift the whole portrait CRT into the open band left by the spaced copy;
+    // the footer keeps its own safe-frame anchor below it.
+    // The portrait result is the CRT's 4:3 inner screen. On a phone the width
+    // still sets the scale, while the taller glass gives the jumping cast room
+    // to read as a picture rather than a stretched widescreen strip.
+    const tubeBox = portraitResultTubeBox(frame);
+    const wantedTubeTop = tubeBox.y;
     const bodyTop = safe.top + css(30);
     const textTubeGap = css(17);
     // Give each information tier its own air. These are CSS-sized gaps so the
@@ -3864,18 +3930,13 @@ export class ResultsState {
       y += 10.5 * textLayout.bodyS + (i < textLayout.ledgerLines.length - 1 ? ledgerLineGap : 0);
     });
 
-    const box = {
-      x: safe.left + css(8), y: tubeTop,
-      w: tubeW,
-      h: tubeH,
-      r: Math.min(css(30), tubeH * 0.18),
-    };
-    const inner = portraitResultTube(ctx, box);
+    tubeBox.y = tubeTop;
+    const inner = portraitResultTube(ctx, tubeBox);
     drawPortraitTubeParty(ctx, inner, this.shells);
-    // The copy now occupies a deliberately airy band above the tube, so lift
-    // the curtain-call line well clear of the lower bezel instead of letting
-    // the team sink back to the screen floor.
-    const heroFeet = inner.y + inner.h - css(62);
+    // Keep the jumping team close to the base of the glass. The CRT itself is
+    // lifted above the footer, so the lower hero line can sit low without
+    // colliding with the prompt.
+    const heroFeet = inner.y + inner.h - css(18);
     const heroRoom = Math.max(css(50), heroFeet - inner.y - css(18));
     const pitchK = 1.15;
     const widthK = r.team.length === 1 ? 1.05 : (r.team.length - 1) * pitchK + 1.05;
@@ -4791,10 +4852,11 @@ export class SoundTestState {
   // cutouts sit out in the black margin — and this is the fixed layout the
   // screen has always had, to the pixel.
   layout() {
-    // Keep the preset's logical field in lockstep with the active frame before
-    // enter() creates it. Landscape remains the original 480x270 visualiser;
-    // portrait gets the full tall frame at the same uniform scale as the menu.
-    setVisualiserViewport(portraitMenuActive() ? H : 270);
+    // The fullscreen visualiser always composes in the original 480x270 field
+    // — the renderer cover-crops that field to reach a portrait screen, the
+    // same way tools/visualiser-entry.js does, rather than stretching the
+    // scene into a tall, mostly-empty logical surface.
+    setVisualiserViewport(270);
     if (portraitMenuActive()) {
       const safeTop = portraitMenuSafeTop();
       const safeBottom = portraitMenuSafeBottom();

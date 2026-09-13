@@ -12,7 +12,6 @@
 // them, and the tuner is what writes this file.
 export const COMPOSITION_PROFILES = {
   plumber: {
-    groundAnchorRatio: 0.715,
     bands: {
       celestial: [0.00, 0.05],
       upperCloud: [0.10, 0.48],

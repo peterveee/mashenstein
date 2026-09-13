@@ -1,50 +1,43 @@
 // TOUCH CHROME LAYOUT — where the on-screen controls go, decided in one place.
 //
-// Every touch control is a translucent disc drawn by #chrome (the full-viewport
-// canvas that sits ON TOP of #game) at a fixed LOGICAL position on the 480x270
-// picture, so the set is the same on every device. The picture is always
-// letterboxed inside the safe area in landscape and sits mid-screen on a
-// portrait tablet, so a disc on the picture can never meet a notch, the Dynamic
-// Island, the home indicator or a rounded screen corner. The margin layout this
-// replaced parked a stacked JUMP-over-SLIDE pill in a 76pt pillar beside a 59pt
-// inset, and the island hid the JUMP disc on every Pro iPhone.
+// Landscape touch has one broad default: a tap or hold in the playfield is a
+// JUMP. SLIDE and POWER are explicit rail controls, or the established
+// down/right swipes. That keeps a thumb in the action instead of making an
+// invisible left/right seam decide which move happened.
 //
-// THE HALVES CARRY THE FREQUENT ACTIONS. The left half of the whole viewport is
-// JUMP and the right half is SLIDE (input.js, TOUCH_JUMP_FRAC); both need
-// press-and-hold and both get it from the swipe arbitration there. The discs
-// are the handles for those halves plus the two precise targets, USE and PAUSE.
-// JUMP sits alone on the left, level with SLIDE, just clear of the hero (who
-// stands at the far left, x 0-15, head at y~192) and of the CRASH / ability
-// shelf (y >= 240). The right column of three sits low on the picture, spread
-// wide (73 logical px between centres), rare control high and frequent control
-// low, PAUSE a size
-// smaller because it is the one you reach for least. Every number here is a
-// tunable Peter has already moved twice; retune on the phone before trusting it.
+// The rail follows the display cutout. If the notch/Dynamic Island is on the
+// left, PAUSE is the only visible control on the upper-left rail and
+// JUMP/POWER/SLIDE are spread down the right rail. A rotated device reverses
+// those rails. Each control is centered in its side margin when the margin can
+// hold it; otherwise it uses the safe/physical edge and can sit over the level.
+// The action rail's compressed vertical band stays clear of rounded corners.
+// Each nearby touch zone follows the same boundary so the visible control and
+// its hit area remain one thing.
 //
-// Whatever margin a device has around the picture extends whichever control it
-// sits beside, as tap ZONES that tile the margin with no gaps and stop exactly
-// at the picture's edge: a pillar's top is PAUSE, its middle is USE, its bottom
-// is SLIDE, the whole left pillar is JUMP; an iPad's bands split down the middle
-// the way the picture does. Zones never reach into the picture — the halves own
-// it, and a zone that did would pre-empt the swipe arbitration (zone hits fire
-// on contact, like any button).
+// Pure and DOM-free: renderer.js feeds this module the fit and orientation on
+// every settled resize, and tests/touch-layout.js feeds it real geometries.
 //
-// Pure and DOM-free: renderer.js feeds it the fit on every resize, and
-// tests/touch-layout.js feeds it real device geometries.
 
 // The picture's logical size. Not imported from renderer.js, which imports this
 // module — and a layout that only ever sees a fit has no other use for it.
 const LOGICAL_W = 480;
 const LOGICAL_H = 270;
 
-// The run's four discs and the food court's two, in logical px of the picture.
+// The run's four discs and the food court's two. The cx/cy values remain the
+// legacy logical fallback; landscape resolves positions from the viewport.
 // r is a radius; 22 makes a 44-logical disc, which lands at ~61 CSS px on the
 // smallest phone and ~108 on an iPad — past the 44pt a thumb needs everywhere.
+// Landscape action controls get a little more breathing room than the legacy
+// portrait fallback: they are the three primary run actions and share a rail.
 export const TOUCH_DISCS = [
+  // Radii are shared by the responsive landscape rail and the legacy portrait
+  // fallback below. Landscape positions are resolved from the viewport.
   { id: 'jump',    action: 'jump',    cx: 40,  cy: 207, r: 22 },
   { id: 'slide',    action: 'slide',    cx: 450, cy: 207, r: 22 },
   { id: 'ability', action: 'ability', cx: 450, cy: 133, r: 22 },
-  { id: 'pause',   action: 'escape',  cx: 450, cy: 60,  r: 18 },
+  // The smaller pause disc sits on the top HUD row, with its 32px diameter
+  // just touching the top edge of the picture.
+  { id: 'pause',   action: 'escape',  cx: 450, cy: 19,  r: 16 },
 ];
 export const HUB_DISCS = [
   { id: 'hubLeft',  action: 'left',  cx: 40,  cy: 207, r: 22 },
@@ -55,6 +48,23 @@ export const DISC_SLOP = 6;
 // A margin thinner than this is fit rounding, not a place for a zone: on a
 // near-16:9 device the picture can leave a 1px sliver on one side.
 export const MARGIN_MIN = 2;
+// Leave a small breathing edge around the safe-side pause disc. The six pixels
+// keep it from living on a notch or rounded corner's last usable pixel; the
+// action rail has its own central-band corner clearance and reaches the edge.
+const RAIL_PAD = 6;
+// The action rail is deliberately allowed to touch the viewport edge. Its
+// compressed vertical band stays away from the rounded corners, so the only
+// horizontal obstruction we need to honour there is the canvas boundary.
+const EDGE_PAD = 0;
+// Keep the action rail out of the top/bottom HUD shoulders. At 15% of the
+// usable vertical range the three controls remain comfortably separated by
+// their hit zones, but no longer span from the top HUD to the bottom HUD.
+const RAIL_SPREAD_INSET = 0.15;
+const LANDSCAPE_ACTION_R = 24;
+// The rectangular hit zone is deliberately larger than the visible disc. It
+// is clipped to the safe area for PAUSE and to the viewport for the edge rail,
+// then allowed to overlap the picture around its own control.
+const ZONE_PAD = 12;
 // The food court's arrows prefer the margin when there is one wide enough to
 // hold a disc clear of the reported inset — this much air past the inset and
 // past the screen edge.
@@ -63,14 +73,53 @@ const HUB_PILLAR_PAD = 8;
 // The fit renderer.js computes for a viewport, restated for callers that have
 // no renderer (tests, tools): a uniform scale, the picture centred, offsets
 // floored exactly as resize() floors them.
-export function fitFor(vw, vh, safe = {}) {
+export function fitFor(vw, vh, safe = {}, orientation = {}) {
   const scale = Math.min(vw / LOGICAL_W, vh / LOGICAL_H);
   const cssW = Math.round(LOGICAL_W * scale), cssH = Math.round(LOGICAL_H * scale);
+  const orientationAngle = orientation?.orientationAngle ?? orientation?.angle ?? null;
+  const orientationType = orientation?.orientationType ?? orientation?.type ?? null;
   return {
     vw, vh, scale, cssW, cssH,
     ox: Math.floor((vw - cssW) / 2), oy: Math.floor((vh - cssH) / 2),
     safe: { top: safe.top || 0, right: safe.right || 0, bottom: safe.bottom || 0, left: safe.left || 0 },
+    orientationAngle, orientationType,
   };
+}
+
+function positive(n) { return Math.max(0, Number(n) || 0); }
+
+function normalAngle(value) {
+  const angle = Number(value);
+  if (!Number.isFinite(angle)) return null;
+  return ((angle % 360) + 360) % 360;
+}
+
+/**
+ * Resolve the side occupied by a landscape cutout.
+ *
+ * Asymmetric safe insets are the strongest signal. Some iOS landscape builds
+ * report the Dynamic Island's depth on both horizontal sides, so use the
+ * physical orientation angle next. On WebKit, +90 means the device was turned
+ * left and its portrait top/notch edge is now on the left; -90/270 puts it on
+ * the right. The primary/secondary type is only a fallback, and a browser
+ * without either signal uses the screenshot's notch-left starting posture.
+ */
+export function landscapeControlSide({ safe = {}, orientationAngle = null, orientationType = null } = {}) {
+  const left = positive(safe.left), right = positive(safe.right);
+  if (left > right + 1) return 'left';
+  if (right > left + 1) return 'right';
+
+  // The angle describes the physical rotation. The platform is allowed to
+  // choose which physical rotation it calls "primary", so prefer it whenever
+  // it is available and use the type only as a fallback.
+  const angle = normalAngle(orientationAngle);
+  if (angle === 90) return 'left';
+  if (angle === 270) return 'right';
+
+  const type = String(orientationType || '').toLowerCase();
+  if (type.includes('landscape-primary')) return 'left';
+  if (type.includes('landscape-secondary')) return 'right';
+  return 'left';
 }
 
 // The four margins around the picture, with rounding slivers zeroed.
@@ -90,6 +139,95 @@ const disc = (d, fit) => ({
 });
 const zone = (id, action, x, y, w, h) => ({ id: `zone:${id}`, action, zone: { x, y, w, h } });
 
+function clamp(value, min, max) {
+  if (max < min) return (min + max) / 2;
+  return Math.max(min, Math.min(max, value));
+}
+
+function xRange(fit, r, respectSafe) {
+  const safe = fit.safe || {};
+  const left = respectSafe ? positive(safe.left) : 0;
+  const right = respectSafe ? positive(safe.right) : 0;
+  const pad = respectSafe ? RAIL_PAD : EDGE_PAD;
+  return {
+    min: Math.max(r + pad, left + r + pad),
+    max: Math.min(fit.vw - r - pad, fit.vw - right - r - pad),
+  };
+}
+
+function railPlacement(fit, side, r, respectSafe = true) {
+  const frameEdge = side === 'left' ? fit.ox : fit.ox + fit.cssW;
+  const margin = side === 'left' ? fit.ox : fit.vw - frameEdge;
+  // The letterbox is real touch territory, not dead layout: if the control
+  // fits there, centering it keeps the glass off the level and clear of HUD
+  // shoulders. Only the fallback needs the safe-area/edge clamp.
+  if (margin >= r * 2 + EDGE_PAD * 2) {
+    return {
+      x: side === 'left' ? margin / 2 : frameEdge + margin / 2,
+      inMargin: true,
+    };
+  }
+  const target = respectSafe
+    ? (side === 'left' ? frameEdge - r - RAIL_PAD : frameEdge + r + RAIL_PAD)
+    : (side === 'left' ? r + EDGE_PAD : fit.vw - r - EDGE_PAD);
+  const range = xRange(fit, r, respectSafe);
+  return { x: clamp(target, range.min, range.max), inMargin: false };
+}
+
+function safeYRange(fit, r) {
+  const safe = fit.safe || {};
+  return {
+    min: Math.max(r + RAIL_PAD, positive(safe.top) + r + RAIL_PAD),
+    max: Math.min(fit.vh - r - RAIL_PAD, fit.vh - positive(safe.bottom) - r - RAIL_PAD),
+  };
+}
+
+function spread(min, max, count) {
+  if (count <= 1) return [(min + max) / 2];
+  return Array.from({ length: count }, (_, i) => min + (max - min) * i / (count - 1));
+}
+
+function insetRange(range, fraction) {
+  const inset = Math.max(0, range.max - range.min) * fraction;
+  return { min: range.min + inset, max: range.max - inset };
+}
+
+function clippedControlZone(id, action, b, fit, respectSafe) {
+  const safe = fit.safe || {};
+  const leftBound = respectSafe ? positive(safe.left) : 0;
+  const rightBound = respectSafe ? fit.vw - positive(safe.right) : fit.vw;
+  const left = Math.max(leftBound, b.x - b.r - ZONE_PAD);
+  const right = Math.min(rightBound, b.x + b.r + ZONE_PAD);
+  const top = Math.max(positive(safe.top), b.y - b.r - ZONE_PAD);
+  const bottom = Math.min(fit.vh - positive(safe.bottom), b.y + b.r + ZONE_PAD);
+  return zone(id, action, left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+}
+
+function landscapeRunList(fit, hasPower) {
+  const notchSide = landscapeControlSide(fit);
+  const actionSide = notchSide === 'left' ? 'right' : 'left';
+  const pauseR = TOUCH_DISCS.find((d) => d.id === 'pause').r * fit.scale;
+  const actionR = LANDSCAPE_ACTION_R * fit.scale;
+  const pauseY = safeYRange(fit, pauseR).min;
+  const actionRange = insetRange(safeYRange(fit, actionR), RAIL_SPREAD_INSET);
+  const actions = hasPower
+    ? [['jump', 'jump'], ['ability', 'ability'], ['slide', 'slide']]
+    : [['jump', 'jump'], ['slide', 'slide']];
+  const actionY = spread(actionRange.min, actionRange.max, actions.length);
+  const pausePlacement = railPlacement(fit, notchSide, pauseR);
+  const actionPlacement = railPlacement(fit, actionSide, actionR, false);
+  const discs = [{
+    id: 'pause', action: 'escape',
+    x: pausePlacement.x, y: pauseY, r: pauseR, railInMargin: pausePlacement.inMargin,
+  }];
+  actions.forEach(([id, action], i) => discs.push({
+    id, action, x: actionPlacement.x, y: actionY[i], r: actionR,
+    railInMargin: actionPlacement.inMargin,
+  }));
+  return [...discs, ...discs.map((b) => clippedControlZone(
+    b.id, b.action, b, fit, b.id === 'pause' && !b.railInMargin))];
+}
+
 // The bands above and below the picture, split down the middle like the
 // picture itself. Confined to the picture's columns so that on the (unusual)
 // viewport with margins on both axes the corners are not claimed twice.
@@ -108,7 +246,7 @@ function bandZones(fit, m, topLeft, topRight, bottomLeft, bottomRight) {
   return out;
 }
 
-function runList(fit, hasPower) {
+function legacyRunList(fit, hasPower) {
   const discs = TOUCH_DISCS.filter((d) => hasPower || d.id !== 'ability').map((d) => disc(d, fit));
   const by = Object.fromEntries(discs.map((d) => [d.id, d]));
   const m = margins(fit);
@@ -162,11 +300,14 @@ function hubList(fit) {
 // Returns flat button lists in the shape Input.setChromeButtons takes: discs
 // as {id, action, x, y, r}, zones as {id, action, zone:{x, y, w, h}}.
 export function layoutTouchChrome(fit) {
+  const landscape = fit.vw >= fit.vh;
+  const landscapeSide = landscape ? landscapeControlSide(fit) : null;
   return {
-    run: runList(fit, true),
-    runNoPower: runList(fit, false),
+    run: landscape ? landscapeRunList(fit, true) : legacyRunList(fit, true),
+    runNoPower: landscape ? landscapeRunList(fit, false) : legacyRunList(fit, false),
     hub: hubList(fit),
     split: fit.vw / 2,
     scale: fit.scale,
+    landscapeSide,
   };
 }

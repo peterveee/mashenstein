@@ -45,7 +45,7 @@ const { airtimeFor, PLAYER_X, PLAYER_SPRITE_W } = await import('../src/game/play
 const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
 const { CROSSING_BEAT_HOP, actionApproachPx } = await import('../src/game/beatchart.js');
 const { makeObstacle } = await import('../src/game/entities.js');
-const { hasPitFill, hardFillCutoff, liquidSurfaceDepth } = await import('../src/game/pitFill.js');
+const { hasPitFill, hardFillCutoff, liquidSurfaceDepth, HARD_FILL_GRID } = await import('../src/game/pitFill.js');
 const { GROUND_Y } = await import('../src/game/run.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { HEROES } = await import('../src/data/heroes.js');
@@ -70,6 +70,11 @@ assert(hardFillCutoff('spikes', 56, 700) < 700,
   'portrait spike pits place the floor edge below the teeth');
 assert(hardFillCutoff('gears', 56, 700) < 700,
   'portrait gear pits place the floor edge below the wheels');
+assert(hardFillCutoff('void', 56, 700) < 700,
+  'portrait dry open pits get a finite boundary instead of an endless shaft');
+assert([hardFillCutoff('void', 56, 700), hardFillCutoff('spikes', 56, 700),
+  hardFillCutoff('gears', 56, 700)].every((y) => Number.isInteger(y / HARD_FILL_GRID)),
+  'portrait dry-pit boundaries land on the logical pixel grid');
 assert(hardFillCutoff('lava', 56, 700) === 700,
   'lava cutoff remains open because it is a liquid');
 assert(liquidSurfaceDepth(700) === 38,

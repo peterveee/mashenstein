@@ -14,17 +14,30 @@ import { efficiencyProfile } from '../render-efficiency.js';
 // of this: a coin (#f6d33c) sits at 0.80 luma, BELOW a pastel sky at 0.92, so no
 // cutoff separates "bright detail" from "bright background". Light packs opt out
 // wholesale instead; their art carries its own drawn highlights.
-import { W, H, bakeSS } from '../renderer.js';
+import { H, W, bakeSS, onPresentationChanged } from '../renderer.js';
 import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
 import { backgroundParallaxOffset } from '../scenery-layout.js';
 import { glowSprite } from '../../sprites/props.js';
 // The 5x7 pixel font's raw rows. The LCD panel lays its own cells, so it takes
 // the letterforms and not the blitter — see lcdSkyBanner.
-import { pixelGlyph } from '../sprites.js';
+import { drawTextVectorCentered, pixelGlyph, textYForMid } from '../sprites.js';
 // What lies at the bottom of a hole, when the cabinet names one. A pack draws a
 // gap by not drawing; the fill is the other half of that bargain.
 import { drawPitFill } from '../../game/pitFill.js';
 import { terrainGroundY } from '../../game/terrain.js';
+import {
+  PAPER_MATERIALS,
+  PAPER_TEXTURE_BLEND,
+  paperTextureSource as sharedPaperTextureSource,
+  paperPatternFor as sharedPaperPatternFor,
+  anchorPaperPattern,
+  paperShadowPass as sharedPaperShadowPass,
+  paperFinishPass as sharedPaperFinishPass,
+  PAPER_TEXTURE_SPEED_DEFAULT,
+  paperTextureCameraX,
+  paperTextureSpeedOf,
+  paperStrengthsOf,
+} from '../paper-material.js';
 
 // Every layer back here scrolls a FRACTION of the foreground, and the camera now
 // magnifies that foreground — so each parallax factor is scaled by the same
@@ -61,10 +74,6 @@ function sceneryBandPointY(context, bandName, fallback, extent = 0) {
 }
 
 const DESERT_SUN_RADIUS = 40;
-const DESERT_LOOP_RADIUS = 28;
-// Positive values sink the ring behind the near crest. Twenty logical pixels
-// leaves a clear upper arc while making the hills visibly own the landmark.
-const DESERT_LOOP_PEEK = 20;
 
 function sceneryRidgeBaseY(context, bandName, amplitude, fallback = GROUND_Y) {
   if (!context?.sceneryLayout) return fallback;
@@ -195,13 +204,14 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
   // to its own break and would otherwise be painted over by the apron either
   // side of it. Nothing is drawn if the cabinet names no material: an open
   // break is a legitimate answer and it is what eight of the nine still use.
-  drawPitFills(ctx, camX, cab, obstacles, t, false, null, viewW);
+  drawPitFills(ctx, camX, cab, obstacles, t, false, null, viewW, colBody);
 }
 
 // One material per cabinet, in every hole on it. Split out so the packs that
 // draw their ground some other way — the checkered road, the neon grid — can
 // call it without also inheriting drawGapsAwareGround's idea of what a road is.
-export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false, liftOf = null, viewW = W) {
+export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false,
+  liftOf = null, viewW = W, groundFill = null) {
   if (!cab) return;
   const right = Math.max(0, Number.isFinite(viewW) ? viewW : W);
   // TAR EVERYWHERE, until a cabinet says otherwise. An empty break is a
@@ -233,7 +243,7 @@ export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false, 
     // seam of sky under it. Only the run knows (the rise is its own), so it is
     // handed in rather than looked up.
     drawPitFill(ctx, id, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013,
-      liftOf ? liftOf(ob) : 0);
+      liftOf ? liftOf(ob) : 0, groundFill);
   }
 }
 
@@ -241,10 +251,11 @@ export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false, 
 // then scroll as GPU texture blits instead of re-tracing a 60-segment path
 // on the CPU every frame.
 const hillCache = new Map();
-// Tiles are baked at the render density, so a density change (rotation, a
-// window resize, an adaptive step) invalidates every one of them. Tracking the
-// factor the cache was built at is cheaper than baking it into each key, and it
-// drops the stale canvases instead of leaving both generations resident.
+// Tiles are baked at the render density and logical frame height, so a density
+// change (rotation, a window resize, an adaptive step) invalidates every one of
+// them. The height is part of the key because portrait can change H without
+// changing density; the factor guard drops stale canvases instead of leaving
+// both generations resident.
 let hillCacheSS = 0;
 // `opts.peak` swaps the rounded |sin| ridge for a triangular one with a lower
 // shoulder — hills become mountains. `opts.rock` and `opts.snow` then band them:
@@ -345,14 +356,29 @@ function ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes) {
   ) * amp;
 }
 
+// One transform for every painter that belongs to a ridge.  The hill tile,
+// the object standing on it, and the diagnostic sampler must agree on both
+// the fractional camera offset and the absolute tile number. Keeping those
+// values together prevents a second implementation from slowly separating an
+// attached prop after a portrait zoom or a long scroll.
+function ridgeScroll(camX, factor, period) {
+  const travel = camX * factor * ZOOM;
+  return {
+    off: ((travel % period) + period) % period,
+    tile: Math.floor(travel / period),
+  };
+}
+
 // Screen y of a hill layer's crest at screen x, for the same (amp, wl, factor)
 // that layer was drawn with. This is how you plant something on a ridge: the
 // offset is reconstructed exactly as the blit loop below computes it, so the
 // answer is the pixel the tile actually put there.
 export function ridgeYAt(screenX, camX, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
-  const off = ((camX * factor * ZOOM) % period + period) % period;
-  const px = ((screenX + off) % period + period) % period;
+  const off = ridgeScroll(camX, factor, period).off;
+  const coverageLeft = Number.isFinite(Number(opts?.coverageLeft))
+    ? Number(opts.coverageLeft) : 0;
+  const px = ((screenX - coverageLeft + off) % period + period) % period;
   return ridgeProfile(px, yBase, amp, wl, period,
     !!(opts && opts.peak), !!(opts && opts.mesa), !!(opts && opts.dunes));
 }
@@ -396,12 +422,21 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const rock = (opts && opts.rock) || null;
   const trees = (opts && opts.trees) || null;
   const paper = !!(opts && opts.paper);
+  const paperMaterial = (opts && opts.paperMaterial) || 'cardstockClear';
+  const paperStrength = paperStrengthsOf({
+    paperSceneryStrength: opts && opts.paperStrength,
+  }).scenery;
+  const strata = Array.isArray(opts && opts.strata) ? opts.strata : null;
+  const strataKey = strata
+    ? strata.map((stripe) => `${stripe.fromTop}|${stripe.height}|${stripe.color}|${stripe.alpha}`).join(';')
+    : '';
   // A tree standing on a crest has its base at `top`, so its crown would reach
   // above the tile and get sliced flat by the canvas edge. Give the tile that
   // much headroom and blit from there.
   const tileTop = top - (trees ? TREE_MAX : 0);
-  const key = `${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|`
-    + (trees ? trees.leaf + trees.trunk : '') + `|paper:${paper ? 1 : 0}`;
+  const key = `${H}|${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|`
+    + (trees ? trees.leaf + trees.trunk : '')
+    + `|paper:${paper ? 1 : 0}|material:${paperMaterial}|strength:${paperStrength}|strata:${strataKey}`;
   const SS = bakeSS();
   if (SS !== hillCacheSS) { hillCache.clear(); hillCacheSS = SS; }
   let tile = hillCache.get(key);
@@ -471,6 +506,24 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     };
     if (rock) band(rock, 0.46, 2, 3.5, 5, 2);
     if (snow) band(snow, 0.62, 3, 2.5, 5, 1.5);
+    if (strata) {
+      // Sedimentary bands are clipped to the mesa body, so they disappear at
+      // the cut face instead of becoming sky lines. The slight alpha keeps
+      // the cool rock readable through paper grain without suggesting shrubs.
+      for (const stripe of strata) {
+        const fromTop = Math.max(0, Math.min(1, Number(stripe.fromTop) || 0));
+        const y = top + amp * fromTop;
+        const height = Math.max(1, Number(stripe.height) || 1);
+        x.save();
+        ridgePath();
+        x.clip();
+        x.globalAlpha = Number.isFinite(Number(stripe.alpha))
+          ? Math.max(0, Math.min(1, Number(stripe.alpha))) : 1;
+        x.fillStyle = stripe.color || color;
+        x.fillRect(-OVER, y, period + OVER * 2, height);
+        x.restore();
+      }
+    }
     // Trunk-and-crown trees along the ridge, baked in so they cost nothing per
     // frame. Each is drawn at tx-period and tx+period too: the ridge is
     // periodic, so one straddling the tile edge shows its other half on the
@@ -523,8 +576,8 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
       // texture cannot expose raster seams at sheet boundaries. The shadow and
       // contour remain per-sheet, which is the visual cue that separates the
       // hills without painting vertical cuts into the body.
-      paperFinishPass(x, ridgePath, paperPatternFor(x), {
-        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+      paperFinishPass(x, ridgePath, sharedPaperPatternFor(x, paperMaterial), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA * paperStrength,
         rim: false,
       });
       for (const [from, to] of paperSheets) {
@@ -537,7 +590,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     }
     hillCache.set(key, tile);
   }
-  const off = ((camX * factor * ZOOM) % period + period) % period;
+  const off = ridgeScroll(camX, factor, period).off;
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   const coverage = backgroundPaintCoverage(ctx);
@@ -755,7 +808,7 @@ function vCapPath() {
 // `cone` and `cap` are kept for the per-frame highlight clip — it needs BOTH,
 // see the note where it is drawn. `under`/`over` are the baked halves of the
 // static stack.
-const volcBake = { under: null, over: null, cone: null, cap: null, ss: 0, paper: false };
+const volcBake = { under: null, over: null, cone: null, cap: null, ss: 0, paper: false, material: 'cardstockClear' };
 // Layer-local drawing happens in ABSOLUTE y and CXB-relative x, so every
 // context that touches the volcano wants the same transform.
 function volcCtx(canvas, ss) {
@@ -799,13 +852,15 @@ function bakeSlice(paint, y0, y1, out) {
   g.drawImage(sc, 0, (y0 - V_LY) * ss, V_LW * ss, h * ss, 0, 0, V_LW * out, h * out);
   return { c, y: y0, h };
 }
-function bakeVolcano(paper = false) {
+function bakeVolcano(paper = false, paperMaterial = 'cardstockClear') {
   const out = bakeSS();
   // A density change makes the existing bakes the wrong resolution, not merely
   // stale — hold the factor they were built at rather than re-baking blindly.
-  if (volcBake.under && volcBake.ss === out && volcBake.paper === paper) return;
+  if (volcBake.under && volcBake.ss === out && volcBake.paper === paper
+    && volcBake.material === paperMaterial) return;
   volcBake.ss = out;
   volcBake.paper = paper;
+  volcBake.material = paperMaterial;
   const cone = vConePath(), cap = vCapPath();
   volcBake.cone = cone;
   volcBake.cap = cap;
@@ -847,14 +902,20 @@ function bakeVolcano(paper = false) {
   // read as stripes. A gradient sidesteps the tradeoff entirely.
   g.save();
   g.clip(cone);
-  const grad = g.createLinearGradient(0, V_RIM_Y - 2, 0, V_LAVA_BOT);
-  for (let i = 0; i < V_LAVA.length; i++) {
-    grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
+  if (paper) {
+    g.fillStyle = V_LAVA[Math.floor(V_LAVA.length * 0.55)];
+    g.fill(cap);
+  } else {
+    const grad = g.createLinearGradient(0, V_RIM_Y - 2, 0, V_LAVA_BOT);
+    for (let i = 0; i < V_LAVA.length; i++) {
+      grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
+    }
+    g.fillStyle = grad;
+    g.fill(cap);
   }
-  g.fillStyle = grad;
-  g.fill(cap);
   g.restore();
-  if (paper) paperFinishPass(g, cone, paperPatternFor(g), { grainAlpha: 0.9 });
+  if (paper) paperFinishPass(g, cone, sharedPaperPatternFor(g, paperMaterial),
+    { grainAlpha: 1, rim: false });
   // The cone's own band: the ink stroke's half-width above the summit, down to
   // just past the groundline. Everything above is plume, which is drawn live.
   }, V_RIM_Y - 2, GROUND_Y + 2, out);
@@ -883,14 +944,14 @@ function bakeVolcano(paper = false) {
   }, V_RIM_Y - 3, V_CAP_BOT + 18, out);
 }
 
-function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false) {
+function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false, paperMaterial = 'cardstockClear') {
   const cx = viewCenterX(ctx) + (atCam - camX) * VOLCANO_PLX * ZOOM;
   // Culled against the real edges of the picture, so the cone cannot wink into
   // existence while part of it is already on screen. The margin covers the
   // plume and the bake's own overhang past V_MAX_HALF.
   if (outsideView(ctx, cx + V_MAX_HALF, 120)
     && outsideView(ctx, cx - V_MAX_HALF, 120)) return; // off screen
-  bakeVolcano(paper);
+  bakeVolcano(paper, paperMaterial);
   // Straight onto the scene, no intermediate layer: the bakes already carry the
   // depth blur, so there is nothing left that has to be flattened before it can
   // be filtered. `translate` puts the parallax offset on the context, which
@@ -906,7 +967,7 @@ function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false) {
   // Motion comes from a soft highlight travelling down the slope instead of
   // from moving the colour fronts. Its alpha follows sin(pi*u), so it fades in
   // at the mouth and out at the fringe rather than popping when it wraps.
-  if (!reduced) {
+  if (!reduced && !paper) {
     const u = (t * 0.15) % 1;
     const hy = V_RIM_Y + (V_LAVA_BOT - V_RIM_Y) * u;
     const band = 13;
@@ -1137,8 +1198,34 @@ function outsideView(ctx, x, margin) {
 // view in portrait.
 export const __testing = {
   wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
-  sceneryBandPointY, desertThermals,
-  desertLoopLandmarkY, DESERT_SUN_RADIUS, DESERT_LOOP_RADIUS, DESERT_LOOP_PEEK,
+  sceneryBandPointY, desertThermals, ridgeYAt,
+  DESERT_SUN_RADIUS, windTurbineRotation,
+  get DESERT_SUN_PORTRAIT_OFFSET() { return DESERT_SUN_PORTRAIT_OFFSET; },
+  get DESERT_SUN_PORTRAIT_X_INSET() { return DESERT_SUN_PORTRAIT_X_INSET; },
+  desertSunX,
+  get DESERT_FAR_AMP() { return DESERT_FAR.amp; },
+  get DESERT_FAR_PORTRAIT_AMP() { return DESERT_FAR_PORTRAIT_AMP; },
+  get DESERT_FAR_PORTRAIT_DROP() { return DESERT_FAR_PORTRAIT_DROP; },
+  get DESERT_SCENERY_LIFT() { return DESERT_SCENERY_LIFT; },
+  get DESERT_SCENERY_LIFT_PORTRAIT() { return DESERT_SCENERY_LIFT_PORTRAIT; },
+  get DESERT_LANDSCAPE_BACK_LIFT() { return DESERT_LANDSCAPE_BACK_LIFT; },
+  desertSceneryLift,
+  get DESERT_HIGH_MESA_PHASE() { return DESERT_HIGH_MESA_PHASE; },
+  get DESERT_LOWER_MESA_PHASE() { return DESERT_LOWER_MESA_PHASE; },
+  desertHorizonPropKind,
+  desertCactusPlacements,
+  desertWaterTowerPlacements, desertSatelliteDishPlacements,
+  desertWindTurbinePlacements, desertTelegraphPlacements,
+  desertSpeedLimitPlacements,
+  desertSignPostHeight,
+  get DESERT_ROAD_SIGNS() { return DESERT_ROAD_SIGNS; },
+  get DESERT_DUNES() { return DESERT_DUNES; },
+  get CACTUS_OF_DUNE() { return CACTUS_OF_DUNE; },
+  get CACTUS_PORTRAIT_OF_DUNE() { return CACTUS_PORTRAIT_OF_DUNE; },
+  get DESERT_SPEED_SIGN_RAISE() { return DESERT_SPEED_SIGN_RAISE; },
+  get DESERT_SPEED_SIGN_LANDSCAPE_DROP() { return DESERT_SPEED_SIGN_LANDSCAPE_DROP; },
+  get CACTUS_BURY() { return CACTUS_BURY; },
+  get CACTUS_PORTRAIT_BURY() { return CACTUS_PORTRAIT_BURY; },
   paperCutoutPreviewRequested,
   // The pinned landmarks, so a test can watch ONE of them cross the picture
   // instead of trying to pick it out of a whole painted background. Both are
@@ -1168,7 +1255,14 @@ function skyGrad(ctx, c0, c1) {
   // gradient itself still runs 0..GROUND_Y as authored — a canvas gradient
   // clamps outside its stops, so the extra rows are flat sky, not a stretch.
   const coverage = backgroundPaintCoverage(ctx);
-  ctx.fillRect(coverage.left, -PAN_MAX, coverage.width, GROUND_Y + PAN_MAX);
+  // A shifted portrait backdrop can have a different local origin from the
+  // canvas's fallback sky. Give the LCD-style full-surface fill a whole frame
+  // of sideways bleed in that case, so a stale/undersized coverage interval
+  // can never show through as a vertical seam at the phone edge. Landscape's
+  // identity path remains the same rectangle.
+  const bleed = coverage.left !== 0 || coverage.right !== W ? W : 0;
+  ctx.fillRect(coverage.left - bleed, -PAN_MAX,
+    coverage.width + bleed * 2, GROUND_Y + PAN_MAX);
 }
 
 // Full-screen textures (scanlines, dot lattices) as tiny repeating patterns:
@@ -1195,15 +1289,9 @@ function patternFill(ctx, key, tw, th, paint) {
 // This checkout keeps the paper treatment active for Plumber's Panic while the
 // direction is being evaluated. `settings.paperCutout:false` and `?paper=off`
 // remain comparison seams; the normal game path no longer needs a flag.
-const PAPER_TEXTURE_SIZE = 200;
-const PAPER_GRAIN_CELL = 3;
-// The first pass read as noise in the live game because the pattern was only
-// seven percent opaque. The reference has a continuous cardstock surface, so
-// give the material enough body to survive the game's native zoom and palette.
-const PAPER_TEXTURE_OPACITY = 0.08;
-const PAPER_GRAIN_ALPHA = 0.75;
-const PAPER_SURFACE_ALPHA = 0.68;
-const PAPER_SKY_SURFACE_ALPHA = 0.42;
+const PAPER_GRAIN_ALPHA = 1;
+const PAPER_SURFACE_ALPHA = 1;
+const PAPER_SKY_SURFACE_ALPHA = 1;
 // Scenery gets a lift, not a second silhouette. Keep the offsets and alpha
 // short enough that clouds remain part of the sky instead of casting a long
 // game-object shadow across it.
@@ -1211,6 +1299,12 @@ const PAPER_DEEP_OFFSET = Object.freeze({ x: 2, y: 4 });
 const PAPER_CONTACT_OFFSET = Object.freeze({ x: 0.75, y: 1.5 });
 const PAPER_DEEP_COLOR = 'rgba(15,23,36,0.10)';
 const PAPER_CONTACT_COLOR = 'rgba(0,0,0,0.04)';
+// Clouds and islands only need a quiet lift from the page. Keep their shadow
+// close to the silhouette so it reads as a paper edge instead of a cast blob.
+const PAPER_SUBTLE_DEEP_OFFSET = Object.freeze({ x: 1, y: 2 });
+const PAPER_SUBTLE_CONTACT_OFFSET = Object.freeze({ x: 0.35, y: 0.75 });
+const PAPER_SUBTLE_DEEP_COLOR = 'rgba(15,23,36,0.055)';
+const PAPER_SUBTLE_CONTACT_COLOR = 'rgba(0,0,0,0.018)';
 const PAPER_RIM_COLOR = 'rgba(255,255,255,0.24)';
 const PAPER_RIM_WIDTH = 1.15;
 // Broad scenery silhouettes need a little more separation than clouds or the
@@ -1221,9 +1315,16 @@ const PAPER_LANDMARK_CONTACT_COLOR = 'rgba(0,0,0,0.06)';
 const PAPER_LANDMARK_RIM_COLOR = 'rgba(255,255,255,0.32)';
 const PAPER_LANDMARK_RIM_WIDTH = 1.25;
 const PAPER_LANDMARK_GRAIN_ALPHA = 1;
-const paperPatternCache = new WeakMap();
 const paperSurfaceCache = new Map();
-let paperTextureCanvas = null;
+// Celestial paper is part of the cloud/sun cutout, not a second sheet sliding
+// underneath it. Bake these small surfaces once so their fibres travel with
+// the object, as they do on the cached mountain tiles. The ground remains a
+// world surface and keeps its camera-anchored motion.
+const paperCloudSpriteCache = new Map();
+const paperSunDiscCache = new Map();
+const paperPresetName = (value) => value === 'cardstockSoft' || value === 'cardstockQuiet'
+  || value === 'cardstockClear'
+  ? value : 'cardstockClear';
 
 function paperCutoutPreviewRequested(settings = {}) {
   // The paper treatment is intentionally the active Plumber study for this
@@ -1241,69 +1342,11 @@ function paperCutoutPreviewRequested(settings = {}) {
 }
 
 function paperTextureSource() {
-  if (paperTextureCanvas || typeof document === 'undefined') return paperTextureCanvas;
-  try {
-    const c = document.createElement('canvas');
-    c.width = PAPER_TEXTURE_SIZE;
-    c.height = PAPER_TEXTURE_SIZE;
-    const p = c.getContext('2d');
-    const image = p?.createImageData?.(PAPER_TEXTURE_SIZE, PAPER_TEXTURE_SIZE);
-    if (!p || !image?.data) return null;
-    // Deterministic grain keeps the preview stable across cache rebuilds and
-    // makes visual comparisons useful. It is still a one-time 40k-pixel bake.
-    let seed = 0x4d415348;
-    const next = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed >>> 24;
-    };
-    const coarseCells = Math.ceil(PAPER_TEXTURE_SIZE / PAPER_GRAIN_CELL) + 1;
-    const coarse = new Uint8Array(coarseCells * coarseCells);
-    for (let i = 0; i < coarse.length; i++) coarse[i] = next();
-    const coarseAt = (x, y) => {
-      const gx = x / PAPER_GRAIN_CELL;
-      const gy = y / PAPER_GRAIN_CELL;
-      const x0 = Math.floor(gx);
-      const y0 = Math.floor(gy);
-      const tx = gx - x0;
-      const ty = gy - y0;
-      const at = (ix, iy) => coarse[Math.min(coarseCells - 1, iy) * coarseCells
-        + Math.min(coarseCells - 1, ix)];
-      const top = at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx;
-      const bottom = at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx;
-      return top * (1 - ty) + bottom * ty;
-    };
-    const data = image.data;
-    for (let y = 0; y < PAPER_TEXTURE_SIZE; y++) {
-      for (let x = 0; x < PAPER_TEXTURE_SIZE; x++) {
-        const i = (y * PAPER_TEXTURE_SIZE + x) * 4;
-        // Low-frequency variation reads as fibre/cardstock rather than a
-        // field of single-pixel static. A tiny fine component keeps it tactile.
-        const grain = Math.round(coarseAt(x, y) * 0.82 + next() * 0.18);
-      data[i] = grain;
-      data[i + 1] = grain;
-      data[i + 2] = grain;
-      // Avoid transparent holes in the tile: paper fibres vary in value, but
-      // the surface itself is continuous.
-      data[i + 3] = Math.floor((0.35 + (next() / 255) * 0.65)
-        * PAPER_TEXTURE_OPACITY * 255);
-      }
-    }
-    p.putImageData(image, 0, 0);
-    paperTextureCanvas = c;
-    return paperTextureCanvas;
-  } catch {
-    return null;
-  }
+  return sharedPaperTextureSource('cardstockClear');
 }
 
 function paperPatternFor(ctx) {
-  if (!ctx || typeof ctx.createPattern !== 'function') return null;
-  let pattern = paperPatternCache.get(ctx);
-  if (pattern !== undefined) return pattern;
-  const source = paperTextureSource();
-  pattern = source ? ctx.createPattern(source, 'repeat') : null;
-  paperPatternCache.set(ctx, pattern);
-  return pattern;
+  return sharedPaperPatternFor(ctx, 'cardstockClear');
 }
 
 function paperPath(ctx, source) {
@@ -1335,7 +1378,9 @@ function paperShadowPass(ctx, source, offset, color = PAPER_DEEP_COLOR) {
 function paperFinishPass(ctx, source, pattern = paperPatternFor(ctx), rim = {}) {
   ctx.save();
   if (pattern) {
-    ctx.globalCompositeOperation = 'multiply';
+    // Neutral midpoint stays neutral, so the paper field embosses the colour
+    // instead of laying a dirty one-way dark wash over it.
+    ctx.globalCompositeOperation = rim.compositeOperation || PAPER_TEXTURE_BLEND;
     ctx.globalAlpha = rim.grainAlpha ?? PAPER_GRAIN_ALPHA;
     ctx.fillStyle = pattern;
     fillPaperPath(ctx, source);
@@ -1362,13 +1407,86 @@ function drawPaperShape(ctx, source, fillColor, options = {}) {
   ctx.restore();
 }
 
+const PAPER_CLOUD_SPRITE = Object.freeze({ x: -30, y: -20, width: 60, height: 40 });
+
+function paperCloudSprite(fill, paperMaterial, paperStrength = 1) {
+  const out = bakeSS();
+  const key = `${fill}|${paperMaterial}|${paperStrength}|${out}`;
+  let sprite = paperCloudSpriteCache.get(key);
+  if (sprite) return sprite;
+  if (typeof document === 'undefined') return null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = PAPER_CLOUD_SPRITE.width * out;
+    canvas.height = PAPER_CLOUD_SPRITE.height * out;
+    const g = canvas.getContext('2d');
+    if (!g) return null;
+    if (typeof g.setTransform === 'function') g.setTransform(out, 0, 0, out, 0, 0);
+    else g.scale(out, out);
+    g.translate(-PAPER_CLOUD_SPRITE.x, -PAPER_CLOUD_SPRITE.y);
+    drawPaperShape(g, () => cloudPath(g), fill, {
+      pattern: sharedPaperPatternFor(g, paperMaterial),
+      deep: PAPER_SUBTLE_DEEP_OFFSET,
+      contact: PAPER_SUBTLE_CONTACT_OFFSET,
+      deepColor: PAPER_SUBTLE_DEEP_COLOR,
+      contactColor: PAPER_SUBTLE_CONTACT_COLOR,
+      grainAlpha: PAPER_GRAIN_ALPHA * paperStrength,
+    });
+    sprite = { canvas, ...PAPER_CLOUD_SPRITE };
+    paperCloudSpriteCache.set(key, sprite);
+    return sprite;
+  } catch {
+    return null;
+  }
+}
+
+function paperSunDisc(paperMaterial, paperStrength = 1) {
+  const out = bakeSS();
+  const key = `${paperMaterial}|${paperStrength}|${out}`;
+  let disc = paperSunDiscCache.get(key);
+  if (disc) return disc;
+  if (typeof document === 'undefined') return null;
+  try {
+    const radius = 17;
+    const size = radius * 2 + 4;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size * out;
+    const g = canvas.getContext('2d');
+    if (!g) return null;
+    if (typeof g.setTransform === 'function') g.setTransform(out, 0, 0, out, 0, 0);
+    else g.scale(out, out);
+    const center = size / 2;
+    g.beginPath();
+    g.arc(center, center, 15, 0, Math.PI * 2);
+    g.fillStyle = '#f6d33c';
+    g.fill();
+    const pattern = sharedPaperPatternFor(g, paperMaterial);
+    if (pattern) {
+      g.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+      g.globalAlpha = PAPER_GRAIN_ALPHA * paperStrength;
+      g.fillStyle = pattern;
+      g.beginPath();
+      g.arc(center, center, 15, 0, Math.PI * 2);
+      g.fill();
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 1;
+    }
+    disc = { canvas, x: -center, y: -center, size };
+    paperSunDiscCache.set(key, disc);
+    return disc;
+  } catch {
+    return null;
+  }
+}
+
 // A whole-sky grain pass is cached at the current backing-store density. A
 // per-frame pattern fill over a phone-height portrait frame is needlessly
 // expensive; this is one ordinary image blit after the first bake. The source
 // is a local-width strip so the translated portrait coverage is still filled.
-function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
-  const source = paperTextureSource();
+function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky', material = 'skySmooth', strength = 1) {
+  const source = sharedPaperTextureSource(material) || paperTextureSource();
   if (!source || !ctx?.canvas || !coverage?.width) return;
+  const cacheKey = `${key}:${material}:${PAPER_MATERIALS[material]?.revision}`;
   const cv = ctx.canvas;
   const sx = cv.width / Math.max(1, W);
   const sy = cv.height / Math.max(1, H);
@@ -1378,7 +1496,7 @@ function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
   const logicalTop = -PAN_MAX;
   const logicalHeight = H + PAN_MAX * 2;
   const height = Math.max(1, Math.ceil(logicalHeight * sy));
-  let bake = paperSurfaceCache.get(key);
+  let bake = paperSurfaceCache.get(cacheKey);
   if (!bake || bake.pixelWidth !== width || bake.pixelHeight !== height
     || bake.logicalWidth !== coverage.width || bake.logicalTop !== logicalTop
     || bake.logicalHeight !== logicalHeight) {
@@ -1388,9 +1506,15 @@ function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
     const b = layer.getContext('2d');
     if (!b) return;
     b.setTransform(sx, 0, 0, sy, 0, 0);
-    const pattern = b.createPattern(source, 'repeat');
+    const pattern = anchorPaperPattern(b.createPattern(source, 'repeat'));
     if (!pattern) return;
     b.fillStyle = pattern;
+    // The offscreen bitmap has a positive origin. Translate the logical
+    // overscan into that bitmap before painting. The translated origin maps
+    // `logicalTop` to backing row zero, so the fill must still start at
+    // `logicalTop`; filling from logical zero would leave the top of the bake
+    // empty and expose a strip when the background is shifted.
+    b.translate(0, -logicalTop);
     b.fillRect(0, logicalTop, coverage.width, logicalHeight);
     bake = {
       layer,
@@ -1400,11 +1524,13 @@ function drawPaperSurface(ctx, coverage, key = 'plumber-paper-sky') {
       logicalTop,
       logicalHeight,
     };
-    paperSurfaceCache.set(key, bake);
+    paperSurfaceCache.set(cacheKey, bake);
   }
   ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha = PAPER_SKY_SURFACE_ALPHA;
+  // The sky sheet uses the same neutral emboss blend as scenery. It preserves
+  // the cabinet's flat sky colour while giving the surface a soft paper lift.
+  ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+  ctx.globalAlpha = PAPER_SKY_SURFACE_ALPHA * strength;
   ctx.drawImage(bake.layer, 0, 0, bake.pixelWidth, bake.pixelHeight,
     coverage.left, bake.logicalTop, bake.logicalWidth, bake.logicalHeight);
   ctx.restore();
@@ -1525,7 +1651,8 @@ export function sunShock() {
   else cloudShockT = 1.4;
 }
 
-function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null, paper = false) {
+function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null, paper = false,
+  paperMaterial = 'cardstockClear', paperStrength = 1) {
   // Animated but dignified: it slowly arcs across the sky like a day passing,
   // its rays rotate and breathe, and its halo pulses. It does not bop.
   const view = backgroundPaintCoverage(ctx);
@@ -1586,15 +1713,13 @@ function drawStaticSun(ctx, t, bgShift = 0, backgroundContext = null, paper = fa
   ctx.fillStyle = '#f6d33c';
   ctx.fill();
   if (paper) {
-    const pattern = paperPatternFor(ctx);
-    if (pattern) {
+    // Draw a cached disc so the fibre field stays fixed to the sun while the
+    // sun's halo/rays continue their deliberately gentle animation.
+    const disc = paperSunDisc(paperMaterial, paperStrength);
+    if (disc) {
       ctx.save();
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = PAPER_GRAIN_ALPHA;
-      ctx.fillStyle = pattern;
-      ctx.beginPath();
-      ctx.arc(0, 0, 15 * breathe, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.scale(breathe, breathe);
+      ctx.drawImage(disc.canvas, disc.x, disc.y, disc.size, disc.size);
       ctx.restore();
     }
     ctx.strokeStyle = PAPER_RIM_COLOR;
@@ -1618,9 +1743,20 @@ function cloudPath(ctx) {
   }
 }
 
-function drawCloudBody(ctx, fill, paper = false) {
+function drawCloudBody(ctx, fill, paper = false, paperMaterial = 'cardstockClear', paperStrength = 1) {
   if (paper) {
-    drawPaperShape(ctx, () => cloudPath(ctx), fill);
+    // The cloud is a moving paper cutout. Keep its fibre field on the cutout
+    // instead of letting a live canvas pattern swim through it each frame.
+    const sprite = paperCloudSprite(fill, paperMaterial, paperStrength);
+    if (sprite) {
+      ctx.drawImage(sprite.canvas, sprite.x, sprite.y, sprite.width, sprite.height);
+    } else {
+      drawPaperShape(ctx, () => cloudPath(ctx), fill,
+        { pattern: sharedPaperPatternFor(ctx, paperMaterial),
+          deep: PAPER_SUBTLE_DEEP_OFFSET, contact: PAPER_SUBTLE_CONTACT_OFFSET,
+          deepColor: PAPER_SUBTLE_DEEP_COLOR, contactColor: PAPER_SUBTLE_CONTACT_COLOR,
+          grainAlpha: PAPER_GRAIN_ALPHA * paperStrength });
+    }
     return;
   }
   cloudPath(ctx);
@@ -1636,7 +1772,8 @@ function drawCloudBody(ctx, fill, paper = false) {
   ctx.fill();
 }
 
-function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false) {
+function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false,
+  paperMaterial = 'cardstockClear', paperStrength = 1) {
   if (t < cloudLastT) { cloudShockT = 0; cloudLaughT = 0; } // new run: compose yourself
   const dt = Math.max(0, Math.min(0.1, t - cloudLastT));
   cloudLastT = t;
@@ -1663,7 +1800,7 @@ function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false) 
   ctx.save();
   ctx.translate(x + jx, y);
   ctx.scale(PAL_S, PAL_S); // the pal is the big one; the flock stays smaller
-  drawCloudBody(ctx, PIXEL_CLOUD_LIGHT, paper);
+  drawCloudBody(ctx, PIXEL_CLOUD_LIGHT, paper, paperMaterial, paperStrength);
 
   // idle micro-expressions: every ~8s slot, briefly giggle or doze
   const slot = Math.floor(t / 8);
@@ -1763,24 +1900,25 @@ function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false) 
 //
 // The desert cabinet's background. It was the plainest in the game and the
 // reason was measurable rather than a matter of taste: faux3d drew a sky, a
-// fixed sun blob, ONE ridge and two loop wireframes, it never touched `t` — the
-// only pack whose background had no motion of its own — and it never drew
-// `cab.hills`, a colour the cabinet defines and paid for.
+// fixed sun blob, three ridges and a few distant landmarks, it never touched
+// `t` — the only pack whose background had no motion of its own — and it never
+// drew `cab.hills`, a colour the cabinet defines and paid for.
 //
 // Everything below is gated on `cab.id === 'speed'` at the call site, exactly
 // as the plumber cabinet's sun, volcano and clouds are: faux3d is not
 // SPEED ZONE's alone. THE SURGE cycles all eight packs, and the hub cabinet
 // screens, the gallery and the social renderers all instantiate it too.
 
-// Nearest silhouettes and their hazed cousins. Warm browns, never neutral or
-// black — the sky is #f08048 to #f8c060 and a black bird against that is a
+// Nearest silhouettes and their hazed cousins. Land stays in warm clay, but
+// the far mesas borrow a desaturated sage/blue-gray so depth is not a stack of
+// browns — the sky is #f08048 to #f8c060 and a black bird against that is a
 // hole punched in it rather than a bird.
 const TAU_BG = Math.PI * 2;
 const DESERT_INK = '#4a2a1c';
-const DESERT_INK_FAR = '#7a4a32';
-const DESERT_ROCK = '#a8683a';
-const DESERT_ROCK_LIT = '#c88a52';
-const DESERT_ROCK_DARK = '#7c4526';
+const DESERT_INK_FAR = '#667c79';
+const DESERT_ROCK = '#a97558';
+const DESERT_ROCK_LIT = '#c69a6f';
+const DESERT_ROCK_DARK = '#755a58';
 // The near ridge's own numbers, in one place because THREE things read them:
 // the layer itself, the cacti standing on its crest, and the haze that has to
 // know where the horizon is.
@@ -1809,32 +1947,156 @@ const DESERT_ROCK_DARK = '#7c4526';
 // climbing about twice as steeply for the same reason its hills read as
 // pointy. Height alone was never the problem.
 const DESERT_FAR = { amp: 100, wl: 230, factor: 0.12 };
-const DESERT_MID = { amp: 78, wl: 200, factor: 0.22, color: '#c0884c' };
+// Portrait has enough vertical sky that the far mesa does not need to rise
+// into the prop clearance band. Lower its body and drop the crest a little;
+// landscape keeps the authored silhouette exactly as before.
+const DESERT_FAR_PORTRAIT_AMP = 56;
+const DESERT_FAR_PORTRAIT_DROP = 24;
+// The portrait celestial band sits behind the compact objective cards once
+// the authored backdrop is enlarged around GROUND_Y. Keep the Speed sun just
+// below that HUD while still above the lifted mesa; landscape keeps the
+// original anchor.
+const DESERT_SUN_PORTRAIT_OFFSET = 6;
+// Leave enough local room for the full glow rectangle at the right edge of the
+// portrait coverage. The inset is applied before the backdrop scale, so the
+// sun stays aligned on phones with different widths and safe areas.
+const DESERT_SUN_PORTRAIT_X_INSET = 45;
+// Lift the complete Speed Zone country composition inside the scenery pass.
+// These are painter-local offsets: the road, hero, camera, and sky bands keep
+// their authored anchors, while terrain and its attached props fill more of
+// the available frame in both orientations.
+const DESERT_SCENERY_LIFT = 22;
+const DESERT_SCENERY_LIFT_PORTRAIT = 36;
+// Landscape has less vertical room above the road, so raise only the distant
+// country another step. The near ridge and roadside signs keep their shared
+// landscape lift, preserving the depth separation and planting.
+const DESERT_LANDSCAPE_BACK_LIFT = 12;
+
+function desertSceneryLift(portrait = false) {
+  return portrait ? DESERT_SCENERY_LIFT_PORTRAIT : DESERT_SCENERY_LIFT;
+}
+
+function desertSunX(ctx, portrait = false) {
+  if (!portrait) return 380;
+  return backgroundCoverage(ctx).right - DESERT_SUN_PORTRAIT_X_INSET;
+}
+// Keep the tower repeat on the same period as the mesa cap. A free-running
+// spacing slowly walks towers onto the steep outer face, where a leg can end
+// against the sky and read as floating. The cap centre is the only stable
+// horizontal ground contract for a distant tower in either orientation.
+const DESERT_FAR_PERIOD = Math.max(16, Math.round(Math.PI * DESERT_FAR.wl));
+const DESERT_MID = { amp: 78, wl: 200, factor: 0.22, color: '#b78f68' };
 const DESERT_RIDGE = { amp: 52, wl: 150, factor: 0.35 };
 
-// Decorative wire loops belong to the near desert scenery. They sit slightly
-// behind the near crest so the mountains mask their lower arc: the player gets
-// a readable hint of a loop without being shown a free-floating target. This
-// is deliberately separate from the interactive world loop in game/loop.js.
-function desertLoopLandmarkY(layerBaseY, layerAmp) {
-  return Number(layerBaseY) - Number(layerAmp) - DESERT_LOOP_RADIUS + DESERT_LOOP_PEEK;
-}
-
-function drawDesertLoopLandmarks(ctx, camX, nearBaseY, nearAmp) {
-  ctx.save();
-  ctx.strokeStyle = 'rgba(160,104,48,0.26)';
-  ctx.lineWidth = 4;
-  const ringY = desertLoopLandmarkY(nearBaseY, nearAmp);
-  for (let i = 0; i < 2; i++) {
-    // Match the near dunes' horizontal rate so the rings stay part of that
-    // scenery plane in both orientations.
-    const lx = wrapIntoView(ctx, i * 340 - camX * DESERT_RIDGE.factor * ZOOM, 80);
-    ctx.beginPath();
-    ctx.arc(lx, ringY, DESERT_LOOP_RADIUS, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
+// Sparse infrastructure gives the horizon a journey without turning it into
+// a row of props. The six-mesa cycle keeps the first and last slots blank:
+// one lower-mesa water tower, two high-mesa satellite dishes, and one
+// high-mesa wind-farm slot fill the four later positions. All share the same
+// screen coverage and parallax travel as the mesa caps they stand on.
+const DESERT_HORIZON_PROP_SPACING = DESERT_FAR_PERIOD;
+const DESERT_HORIZON_PROP_SLOTS = 6;
+const DESERT_HIGH_MESA_PHASE = Math.round(DESERT_FAR_PERIOD * 0.5);
+const DESERT_LOWER_MESA_PHASE = Math.round(DESERT_FAR_PERIOD * 0.08);
+// Stay inside the broad cap while giving the portrait tower a little more
+// clearance from the centred goal/bonus cards.
+const DESERT_WATER_TOWER_PORTRAIT_PHASE_OFFSET = -30;
+// A lower-mesa prop can be about one cap-width left of a high-mesa prop. Keep
+// the slot enumerator alive far enough beyond the viewport to include it, then
+// cull the final, type-specific x position below.
+const DESERT_HORIZON_PROP_CULL_MARGIN = 120
+  + Math.abs(DESERT_HIGH_MESA_PHASE - DESERT_LOWER_MESA_PHASE);
+const DESERT_TELEGRAPH_SPACING = 172;
+const DESERT_TELEGRAPH_PHASE = 24;
+const DESERT_WATER_TOWER_INK = '#526b72';
+const DESERT_WATER_TOWER_DARK = '#40545c';
+const DESERT_WATER_TOWER_LIGHT = '#9baba6';
+const DESERT_SATELLITE_INK = '#607875';
+const DESERT_SATELLITE_DARK = '#455f61';
+const DESERT_SATELLITE_LIGHT = '#a5b2a7';
+const DESERT_WIND_INK = '#647c79';
+const DESERT_WIND_DARK = '#496466';
+// Muted cool bands echo the larger butte's strata. They are intentionally
+// geological rather than green: the eye should read sedimentary layers, not a
+// row of vegetation, especially after the portrait mesa is shortened.
+const DESERT_MESA_STRATA = Object.freeze([
+  { fromTop: 0.16, height: 5, color: '#a5b1a5', alpha: 0.34 },
+  { fromTop: 0.34, height: 4, color: '#6f8582', alpha: 0.28 },
+  { fromTop: 0.52, height: 7, color: '#9a9d89', alpha: 0.22 },
+  { fromTop: 0.71, height: 4, color: '#657b7a', alpha: 0.26 },
+  { fromTop: 0.86, height: 5, color: '#8b927f', alpha: 0.18 },
+]);
+const DESERT_TELEGRAPH_INK = '#586b68';
+const DESERT_TELEGRAPH_WIRE = 'rgba(54,59,54,0.68)';
+const DESERT_TELEGRAPH_WIRE_WIDTH = 0.78;
+const DESERT_TELEGRAPH_WIRE_SHADOW_WIDTH = 1.12;
+// The desktop paper pass was doubling the wire into a dark stripe between
+// poles. Keep the portrait weight, where the extra vertical scenery needs the
+// stronger read, but use a lighter desktop stroke and a much tighter paper
+// shadow so the lines stay background detail instead of becoming rails.
+const DESERT_TELEGRAPH_WIRE_DESKTOP_WIDTH = 0.58;
+const DESERT_TELEGRAPH_WIRE_DESKTOP_SHADOW_WIDTH = 0.72;
+// Keep the off-screen endpoint alive for the complete wire interval. If the
+// left pole is culled as soon as it crosses the edge, its segment to the next
+// pole vanishes in one frame and the line visibly pops in.
+const DESERT_TELEGRAPH_WIRE_MARGIN = DESERT_TELEGRAPH_SPACING + 48;
+// Roadside signs are distant landmarks, not a roadside UI ticker. One sign per
+// long stretch gives the eye time to register its silhouette and keeps the
+// five-sign vocabulary feeling like a journey rather than a repeated texture.
+const DESERT_SPEED_SIGN_SPACING = 1120;
+const DESERT_SPEED_SIGN_PHASE = 350;
+const DESERT_SPEED_SIGN_FACTOR = 0.42;
+const DESERT_SPEED_SIGN_BASE_OFFSET = -7;
+// Raise the readable board without changing where its post meets the
+// roadside plane. The post painter compensates for each sign's scale.
+const DESERT_SPEED_SIGN_RAISE = 16;
+// Landscape has enough vertical room to let the sign sit into the dune a bit
+// more. Portrait keeps the higher board for the tighter sky/ground split.
+const DESERT_SPEED_SIGN_LANDSCAPE_DROP = 18;
+const DESERT_SPEED_SIGN_FACE = '#d8c493';
+const DESERT_SPEED_SIGN_TRIM = '#5d7778';
+const DESERT_SPEED_SIGN_INK = '#4c3f3e';
+// A sign can be geometrically planted and still read as a sticker if its last
+// pixel simply stops against a similarly flat dune. This is deliberately a
+// small disturbed-soil cue, not a ring: a soft flattened shadow plus an
+// irregular collar makes the post's contact legible at distant scale.
+const DESERT_SPEED_SIGN_CONTACT_SHADOW = 'rgba(76,63,62,0.18)';
+const DESERT_SPEED_SIGN_CONTACT_SOIL = 'rgba(123,88,61,0.78)';
+const DESERT_SPEED_SIGN_CONTACT_LIGHT = 'rgba(213,165,108,0.56)';
+const DESERT_SPEED_SIGN_CONTACT_STONE = 'rgba(92,64,47,0.62)';
+const DESERT_SPEED_SIGN_CONTACT_DROP = 2;
+// The road has been here long enough for its signage to lose any relationship
+// with a municipal standard. Keep the sequence deterministic so a snapshot is
+// reproducible, but let the speed and highway boards carry the cabinet's dry
+// nonsense instead of a row of tidy round numbers.
+const DESERT_SPEED_LIMIT_VALUES = Object.freeze(['93', '103', 'πr²', '∞']);
+const DESERT_HIGHWAY_VALUES = Object.freeze(['13', '404', 'πr²', '∞', '7']);
+const DESERT_ROAD_SIGNS = Object.freeze([
+  {
+    kind: 'speed', w: 62, top: -58, bottom: -26,
+    face: DESERT_SPEED_SIGN_FACE, trim: DESERT_SPEED_SIGN_TRIM,
+    label: 'SPEED LIMIT', value: '93', labelCell: 0.72, valueCell: 1.9, scale: 0.88,
+  },
+  {
+    kind: 'highway', w: 70, top: -55, bottom: -25,
+    face: '#416b56', trim: '#ead9a5', ink: '#fff1bd',
+    label: 'HIGHWAY', value: '13', labelCell: 0.82, valueCell: 2.2, scale: 0.84,
+  },
+  {
+    kind: 'route', w: 50, top: -67, bottom: -24,
+    face: '#eee2b8', trim: '#5d7778',
+    label: 'ROUTE', value: '66', labelCell: 0.72, valueCell: 1.85, scale: 0.82,
+  },
+  {
+    kind: 'caution', w: 46, top: -62, bottom: -18,
+    face: '#d7b85f', trim: '#775a3f', ink: '#4c3f3e',
+    label: '', value: '', labelCell: 0, valueCell: 0, scale: 0.86,
+  },
+  {
+    kind: 'exit', w: 70, top: -55, bottom: -25,
+    face: '#416b56', trim: '#ead9a5', ink: '#fff1bd',
+    label: 'NEXT EXIT', value: '42', labelCell: 0.75, valueCell: 1.9, scale: 0.84,
+  },
+]);
 
 // Where the dunes are, as fractions of one tile. `ridgeProfile`'s dune mode
 // builds each ridge from exactly these three humps, so anything that needs to
@@ -1984,53 +2246,54 @@ function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
 // which at eleven pixels is a dark egg sitting on a hill, and a prickly pear's
 // pads collapse into a paw print. A silhouette that has to be explained is
 // worse than a fourth saguaro.
-function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y) {
+// One cactus per DUNE, planted on the peak, rather than five at fixed x
+// offsets. Fixed offsets land in a trough as often as on a crest, and a
+// cactus in a valley reads as floating in front of the hills — which is
+// exactly what it was doing.
+//
+// These are local background units. Landscape keeps the distant 30% landmark
+// relationship; portrait gets a stronger silhouette because its enlarged near
+// ridge occupies the readable part of the phone frame. The old twelve-pixel
+// floor and 46% burial made the shallow dune just as small and buried as the
+// tall one on a phone.
+const PLANT = [{ arms: 2 }, { arms: 1 }, { arms: 1 }];
+const CACTUS_OF_DUNE = 0.3;
+// Portrait keeps the scenery at landscape physical scale, but the near ridge
+// occupies much more of the phone frame. Give its plants a stronger silhouette
+// there instead of letting the crop make them read as punctuation.
+const CACTUS_PORTRAIT_OF_DUNE = 0.62;
+const CACTUS_MIN_HEIGHT = 8;
+// Only let the ridge occlude the contact end. A deeper landscape bite made
+// the cactus look buried even though its crest sample was correct; keeping
+// both orientations on the same contact fraction makes the attachment read
+// as one rule after responsive resizing.
+const CACTUS_BURY = 0.10;
+const CACTUS_PORTRAIT_BURY = CACTUS_BURY;
+const CACTUS_STROKE = 0.14;
+const CACTUS_MIN_STROKE = 1.5;
+
+// Return the geometry before painting it. Both the hill tile and the cactus
+// now use `ridgeScroll`, and the crest is evaluated from the SAME tile-local
+// x that is blitted to the screen. That makes the attachment a contract rather
+// than a second camera calculation, including across fractional scroll.
+function desertCactusPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   const { amp, wl, factor } = DESERT_RIDGE;
+  const portrait = !!options.portrait;
+  const cactusScale = portrait ? CACTUS_PORTRAIT_OF_DUNE : CACTUS_OF_DUNE;
+  const cactusBury = portrait ? CACTUS_PORTRAIT_BURY : CACTUS_BURY;
   const period = Math.max(16, Math.round(Math.PI * wl));
-  const off = ((camX * factor * ZOOM) % period + period) % period;
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  // Tinted toward the layer it stands on rather than drawn in the nearest ink.
-  // At full DESERT_INK they read as foreground objects that happen to overlap a
-  // hill; a step back toward the ridge's own value puts them IN that layer.
-  ctx.strokeStyle = '#5e361f';
-  // One cactus per DUNE, planted on the peak, rather than five at fixed x
-  // offsets. Fixed offsets land in a trough as often as on a crest, and a
-  // cactus in a valley reads as floating in front of the hills — which is
-  // exactly what it was doing.
-  //
-  // Size follows the dune's own height, so the tall dune gets the tall cactus
-  // and the low one gets a short one. That is the relationship a real skyline
-  // has and it is free here, since the profile already states both.
-  // Height is a FRACTION OF THE DUNE, not a fixed number. Stated absolutely it
-  // has to be re-tuned every time the ranges move, and it was wrong in both
-  // directions within a day: too small against a 34-amplitude ridge, then 46px
-  // tall on a 58px dune — a saguaro four-fifths the height of the hill it grows
-  // on, which is why it read as HUGE and could not look planted whatever the
-  // burial. Nothing on a horizon is anywhere near the size of the land under
-  // it. Tied to the dune, the relationship survives the next resize.
-  const PLANT = [{ arms: 2 }, { arms: 1 }, { arms: 1 }];
-  // Smaller again. Against a shallow ridge a cactus at 0.42 of the dune reads
-  // as a landmark rather than as vegetation — these are meant to be distant
-  // plants, not the subject of the frame.
-  const CACTUS_OF_DUNE = 0.3;
-  // Which ABSOLUTE tile the loop starts from. This is the whole fix for the
-  // cacti popping in and out mid-screen.
-  //
-  // `k` is a loop counter measured from the current scroll offset, so the same
-  // physical dune is k one frame and k+1 the frame after `off` wraps past the
-  // period. Every decision keyed off k therefore flipped as you drove: the
-  // every-third-bare rule turned a cactus on and off, and the mirror flipped it
-  // left-to-right, both in the middle of the screen where you cannot miss it.
-  // `tile` is derived from the scroll distance itself, so it names the same
-  // dune for as long as that dune exists and every choice below is stable.
-  const base = Math.floor((camX * factor * ZOOM) / period);
+  const scroll = ridgeScroll(camX, factor, period);
   const view = backgroundPaintCoverage(ctx);
-  const first = Math.floor((view.left - off - period) / period);
-  const last = Math.ceil((view.right + period) / period);
-  for (let k = first; k <= last; k++) {
-    const tile = base + k;
+  // Match parallaxHills() exactly: its first cached tile starts at the
+  // coverage edge, not at logical x=0. The old cactus pass used `k * period`
+  // here, which was harmless in landscape but lost the portrait crop's
+  // shifted left edge after the backdrop was resized and lifted.
+  const firstX = view.left - scroll.off - period;
+  const placements = [];
+  for (let tileIndex = 0, tileX = firstX;
+    tileX < view.right + period;
+    tileIndex++, tileX += period) {
+    const tile = scroll.tile + tileIndex - 1;
     for (let i = 0; i < DESERT_DUNES.length; i++) {
       // Every third dune is left bare. A cactus on every peak is an orchard;
       // the gaps are what make it desert.
@@ -2038,52 +2301,787 @@ function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y) {
       const dune = DESERT_DUNES[i];
       const spec = PLANT[i];
       const parity = (((tile + i) % 2) + 2) % 2;
-      // Slightly off the summit — dead centre on every peak is a pattern.
-      // Nudge measured in PIXELS, not as a fraction of the dune. As a fraction
-      // it scaled with the dune's width, so widening the humps slid every
-      // cactus further down the slope away from its summit — which is a good
-      // part of why they read as stuck on rather than planted.
-      const nudge = (parity ? 3 : -4) / period;
-      const x = k * period - off + (dune.at + nudge) * period;
-      // Margin covers the widest a cactus can reach from its trunk, so one
-      // never blinks into existence at the frame edge either.
+      // A small, fixed-pixel offset keeps the plants from becoming a repeated
+      // row of centre marks without pushing one down a dune shoulder.
+      const localX = (dune.at + (parity ? 3 : -4) / period) * period;
+      const x = tileX + localX;
       if (outsideView(ctx, x, 70)) continue;
-      const h = Math.max(12, dune.h * amp * CACTUS_OF_DUNE);
-      const flip = parity ? 1 : -1;
-      // The crest under this cactus, sampled from the same function the tile
-      // was cut from — see ridgeProfile — so it cannot drift as the stage
-      // scrolls. BURIED a third of its height, not balanced on top: a
-      // silhouette whose base exactly meets the ridge always leaves a hairline
-      // of sky where the two curves disagree, and the eye reads that hairline
-      // as "in front of" rather than "on".
-      const crest = ridgeYAt(x, camX, layerBaseY, amp, wl, factor, { dunes: true });
-      // Buried nearly HALF its height, up from a third. The base is drawn over
-      // the hill's own body, so the deeper it sits the more the plant reads as
-      // emerging from the ground rather than resting on the line of it — and
-      // a shallow ridge curves away slowly enough that a deep base still sits
-      // under the summit rather than out on the face.
-      const y = crest + h * 0.46;
-      const wdt = Math.max(3, h * 0.19);
-      ctx.lineWidth = wdt;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, y - h + wdt * 0.5);
-      ctx.stroke();
-      // Out, then up, in one sweep. The control point is the corner an earlier
-      // version drew literally — as rectangles it met the trunk at a right
-      // angle and the whole thing read as a drawn 4. As a quadratic the corner
-      // becomes the bend a saguaro actually grows.
-      const arm = (dir, atFrac, reach, rise) => {
-        const ay = y - h * atFrac;
-        ctx.lineWidth = wdt * 0.82;
-        ctx.beginPath();
-        ctx.moveTo(x, ay);
-        ctx.quadraticCurveTo(x + dir * reach, ay, x + dir * reach, ay - rise);
-        ctx.stroke();
-      };
-      arm(-flip, 0.56, h * 0.28, h * 0.42);
-      if (spec.arms > 1) arm(flip, 0.38, h * 0.24, h * 0.34);
+      const height = Math.max(CACTUS_MIN_HEIGHT, dune.h * amp * cactusScale);
+      const crest = ridgeProfile(localX, layerBaseY, amp, wl, period, false, false, true);
+      placements.push({
+        tile, duneIndex: i, x, localX, crest,
+        baseY: crest + height * cactusBury,
+        height,
+        lineWidth: Math.max(CACTUS_MIN_STROKE, height * CACTUS_STROKE),
+        flip: parity ? 1 : -1,
+        arms: spec.arms,
+      });
     }
+  }
+  return placements;
+}
+
+function drawCactusShape(ctx, cactus) {
+  const { x, baseY: y, height: h, lineWidth: wdt, flip, arms } = cactus;
+  ctx.lineWidth = wdt;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y - h + wdt * 0.5);
+  ctx.stroke();
+  // Out, then up, in one sweep. The control point is the corner an earlier
+  // version drew literally — as rectangles it met the trunk at a right angle
+  // and the whole thing read as a drawn 4. As a quadratic the corner becomes
+  // the bend a saguaro actually grows.
+  const arm = (dir, atFrac, reach, rise) => {
+    const ay = y - h * atFrac;
+    ctx.lineWidth = wdt * 0.82;
+    ctx.beginPath();
+    ctx.moveTo(x, ay);
+    ctx.quadraticCurveTo(x + dir * reach, ay, x + dir * reach, ay - rise);
+    ctx.stroke();
+  };
+  arm(-flip, 0.56, h * 0.28, h * 0.42);
+  if (arms > 1) arm(flip, 0.38, h * 0.24, h * 0.34);
+}
+
+function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const paper = !!options.paper;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const placements = desertCactusPlacements(ctx, camX, layerBaseY, options);
+  for (const cactus of placements) {
+    if (paper) {
+      ctx.save();
+      ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+      ctx.strokeStyle = PAPER_DEEP_COLOR;
+      drawCactusShape(ctx, cactus);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+      ctx.strokeStyle = PAPER_CONTACT_COLOR;
+      drawCactusShape(ctx, cactus);
+      ctx.restore();
+    }
+    // Tinted toward the layer it stands on rather than drawn in the nearest
+    // ink. The lower part is occluded by the ridge in the caller, so this is
+    // part of that scenery plane instead of a foreground prop.
+    ctx.strokeStyle = '#5e361f';
+    drawCactusShape(ctx, cactus);
+    if (paper) {
+      const pattern = sharedPaperPatternFor(ctx, paperMaterial);
+      if (pattern) {
+        ctx.save();
+        ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+        ctx.globalAlpha = PAPER_GRAIN_ALPHA;
+        ctx.strokeStyle = pattern;
+        drawCactusShape(ctx, cactus);
+        ctx.restore();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function periodicDesertXs(ctx, camX, factor, spacing, phase, margin = 96) {
+  const view = backgroundPaintCoverage(ctx);
+  const travel = camX * factor * ZOOM;
+  const first = Math.floor((travel - phase - margin) / spacing);
+  const last = Math.ceil((travel - phase + view.width + margin) / spacing);
+  const points = [];
+  for (let index = first; index <= last; index++) {
+    const x = view.left + phase + index * spacing - travel;
+    if (!outsideView(ctx, x, margin)) points.push({ index, x });
+  }
+  return points;
+}
+
+function desertFarAmplitude(options = {}) {
+  return options.portrait ? DESERT_FAR_PORTRAIT_AMP : DESERT_FAR.amp;
+}
+
+function desertHorizonPropKind(index) {
+  const slot = ((index % DESERT_HORIZON_PROP_SLOTS)
+    + DESERT_HORIZON_PROP_SLOTS) % DESERT_HORIZON_PROP_SLOTS;
+  if (slot === 0 || slot === 5) return null;
+  if (slot === 2) return 'water';
+  if (slot === 3) return 'wind';
+  return 'dish';
+}
+
+function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const view = backgroundPaintCoverage(ctx);
+  const highPhase = DESERT_HIGH_MESA_PHASE;
+  const lowerPhase = DESERT_LOWER_MESA_PHASE
+    + (options.portrait ? DESERT_WATER_TOWER_PORTRAIT_PHASE_OFFSET : 0);
+  return periodicDesertXs(ctx, camX, DESERT_FAR.factor,
+    DESERT_HORIZON_PROP_SPACING, highPhase, DESERT_HORIZON_PROP_CULL_MARGIN)
+    .flatMap(({ index, x }) => {
+      const kind = desertHorizonPropKind(index);
+      if (!kind) return [];
+      const slot = ((index % DESERT_HORIZON_PROP_SLOTS)
+        + DESERT_HORIZON_PROP_SLOTS) % DESERT_HORIZON_PROP_SLOTS;
+      const propPhase = kind === 'water' ? lowerPhase : highPhase;
+      // A rare wind slot is a tiny wind farm rather than a lone stick. Both
+      // anchors stay on the same broad cap, but each base is still sampled at
+      // its own x so the contract remains correct if the cap is ever narrowed.
+      const offsets = kind === 'wind' ? [-38, 38] : [0];
+      return offsets.map((offset, variant) => {
+        const propX = x + propPhase - highPhase + offset;
+        if (outsideView(ctx, propX, 120)) return null;
+        return {
+          kind,
+          slot,
+          index,
+          variant,
+          x: propX,
+          baseY: ridgeYAt(propX, camX, layerBaseY, desertFarAmplitude(options),
+            DESERT_FAR.wl, DESERT_FAR.factor,
+            { mesa: true, coverageLeft: view.left }) + 2,
+          scale: kind === 'water' ? 0.92 : kind === 'dish' ? 0.86
+            : (variant === 0 ? 0.82 : 0.72),
+        };
+      }).filter(Boolean);
+    });
+}
+
+function desertWaterTowerPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  return desertHorizonPropPlacements(ctx, camX, layerBaseY, options)
+    .filter((prop) => prop.kind === 'water')
+    .map(({ kind, slot, ...tower }) => tower);
+}
+
+function desertSatelliteDishPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  return desertHorizonPropPlacements(ctx, camX, layerBaseY, options)
+    .filter((prop) => prop.kind === 'dish')
+    .map(({ kind, slot, ...dish }) => dish);
+}
+
+function desertWindTurbinePlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  return desertHorizonPropPlacements(ctx, camX, layerBaseY, options)
+    .filter((prop) => prop.kind === 'wind')
+    .map(({ kind, slot, ...turbine }) => turbine);
+}
+
+function desertTelegraphPlacements(ctx, camX, layerBaseY = GROUND_Y) {
+  const view = backgroundPaintCoverage(ctx);
+  return periodicDesertXs(ctx, camX, DESERT_MID.factor,
+    DESERT_TELEGRAPH_SPACING, DESERT_TELEGRAPH_PHASE,
+    DESERT_TELEGRAPH_WIRE_MARGIN)
+    .map(({ index, x }) => {
+      const baseY = ridgeYAt(x, camX, layerBaseY, DESERT_MID.amp,
+        DESERT_MID.wl, DESERT_MID.factor,
+        { dunes: true, coverageLeft: view.left }) + 1;
+      const height = index % 3 === 0 ? 40 : 36;
+      return { index, x, baseY, height, topY: baseY - height };
+    });
+}
+
+function desertSignOverRoadGap(sign, camX, options = {}) {
+  const gaps = Array.isArray(options.roadGaps) ? options.roadGaps : [];
+  if (!gaps.length) return false;
+
+  // Signs are painted in the backdrop's local screen space while gaps are
+  // authored world spans. Compare their final screen positions, then invert
+  // the backdrop transform once. This keeps the culling correct when the
+  // portrait backdrop is enlarged or the lane is shifted left.
+  const backgroundZoom = Number.isFinite(Number(options.backgroundZoom))
+    && Number(options.backgroundZoom) > 0 ? Number(options.backgroundZoom) : 1;
+  const worldZoom = Number.isFinite(Number(options.worldZoom))
+    && Number(options.worldZoom) > 0 ? Number(options.worldZoom) : 1;
+  const backgroundXOffset = Number.isFinite(Number(options.backgroundXOffset))
+    ? Number(options.backgroundXOffset) : 0;
+  const worldXOffset = Number.isFinite(Number(options.worldXOffset))
+    ? Number(options.worldXOffset) : 0;
+  const fromScreenX = (screenX) =>
+    (screenX - backgroundXOffset - W / 2) / backgroundZoom + W / 2;
+  const postHalfWidth = Math.max(2, sign.scale * 1.3);
+  const postLeft = sign.x - postHalfWidth;
+  const postRight = sign.x + postHalfWidth;
+
+  return gaps.some((gap) => {
+    if (!gap || !Number.isFinite(Number(gap.x)) || !Number.isFinite(Number(gap.w))) {
+      return false;
+    }
+    const gapLeftScreen = (Number(gap.x) - camX) * worldZoom + worldXOffset;
+    const gapRightScreen = (Number(gap.x) + Number(gap.w) - camX)
+      * worldZoom + worldXOffset;
+    const gapLeft = fromScreenX(Math.min(gapLeftScreen, gapRightScreen));
+    const gapRight = fromScreenX(Math.max(gapLeftScreen, gapRightScreen));
+    return postRight >= gapLeft && postLeft <= gapRight;
+  });
+}
+
+function desertSpeedLimitPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const phase = DESERT_SPEED_SIGN_PHASE + (options.portrait ? 120 : 70);
+  const landscapeDrop = options.portrait ? 0 : DESERT_SPEED_SIGN_LANDSCAPE_DROP;
+  return periodicDesertXs(ctx, camX, DESERT_SPEED_SIGN_FACTOR,
+    DESERT_SPEED_SIGN_SPACING, phase, 96)
+    .map(({ index, x }) => {
+      const sign = DESERT_ROAD_SIGNS[((index % DESERT_ROAD_SIGNS.length)
+        + DESERT_ROAD_SIGNS.length) % DESERT_ROAD_SIGNS.length];
+      const cycle = ((Math.floor(index / DESERT_ROAD_SIGNS.length)
+        % (sign.kind === 'speed' ? DESERT_SPEED_LIMIT_VALUES.length
+          : DESERT_HIGHWAY_VALUES.length))
+        + (sign.kind === 'speed' ? DESERT_SPEED_LIMIT_VALUES.length
+          : DESERT_HIGHWAY_VALUES.length))
+        % (sign.kind === 'speed' ? DESERT_SPEED_LIMIT_VALUES.length
+          : DESERT_HIGHWAY_VALUES.length);
+      const value = sign.kind === 'speed'
+        ? DESERT_SPEED_LIMIT_VALUES[cycle]
+        : sign.kind === 'highway' ? DESERT_HIGHWAY_VALUES[cycle] : sign.value;
+      return {
+        ...sign,
+        index,
+        value,
+        x,
+        // The post ends just beyond this base, leaving a visible planted foot
+        // against the horizon in both aspect ratios. The smaller scale and the
+        // slower x-parallax put the sign in the middle distance without losing
+        // the text read.
+        baseY: layerBaseY + DESERT_SPEED_SIGN_BASE_OFFSET
+          - DESERT_SPEED_SIGN_RAISE + landscapeDrop,
+        // Keep the foot in the roadside plane even when the board is lowered
+        // for landscape. Drawing from this explicit target prevents the post
+        // from ending halfway down a hill after an orientation-specific lift.
+        postFootY: layerBaseY + DESERT_SPEED_SIGN_BASE_OFFSET + sign.scale * 33,
+      };
+    })
+    .filter((sign) => !desertSignOverRoadGap(sign, camX, options));
+}
+
+function waterTowerTank(ctx) {
+  ctx.beginPath();
+  ctx.ellipse(0, -47, 17, 10, 0, 0, TAU_BG);
+}
+
+function waterTowerLegs(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(-9, -39); ctx.lineTo(-15, 0);
+  ctx.moveTo(9, -39); ctx.lineTo(15, 0);
+  ctx.moveTo(-12, -20); ctx.lineTo(12, -20);
+  ctx.moveTo(-14, -5); ctx.lineTo(14, -5);
+  // Short feet make the exact ridge contact survive the distant scale. The
+  // mesa still occludes their lower edge because the tower is painted first.
+  ctx.moveTo(-17, 0); ctx.lineTo(-10, 0);
+  ctx.moveTo(10, 0); ctx.lineTo(17, 0);
+}
+
+function drawWaterTower(ctx, tower, options = {}) {
+  const paper = !!options.paper;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  const portraitHeightScale = options.portrait ? 1.45 : 1;
+  ctx.save();
+  ctx.translate(tower.x, tower.baseY);
+  // Portrait gives the far horizon much more vertical room. Stretch the
+  // planted mast upward in that mode so the tower can clear the lifted nearer
+  // dunes without moving its feet off the exact far-mesa crest.
+  ctx.scale(tower.scale, tower.scale * portraitHeightScale);
+  const tank = () => waterTowerTank(ctx);
+  const paintLegs = (color) => {
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = color;
+    waterTowerLegs(ctx);
+    ctx.stroke();
+  };
+  if (paper) {
+    ctx.save();
+    ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+    paintLegs(PAPER_DEEP_COLOR);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+    paintLegs(PAPER_CONTACT_COLOR);
+    ctx.restore();
+  }
+  paintLegs(DESERT_WATER_TOWER_DARK);
+  if (paper) {
+    paperShadowPass(ctx, tank, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, tank, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  ctx.fillStyle = DESERT_WATER_TOWER_INK;
+  tank();
+  ctx.fill();
+  ctx.fillStyle = DESERT_WATER_TOWER_LIGHT;
+  ctx.fillRect(-16, -48, 32, 4);
+  ctx.fillStyle = DESERT_WATER_TOWER_DARK;
+  ctx.fillRect(-13, -39, 26, 3);
+  if (paper) {
+    paperFinishPass(ctx, tank,
+      sharedPaperPatternFor(ctx, paperMaterial), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+        strokeStyle: PAPER_LANDMARK_RIM_COLOR,
+        lineWidth: PAPER_LANDMARK_RIM_WIDTH,
+      });
+  } else {
+    ctx.strokeStyle = DESERT_WATER_TOWER_DARK;
+    ctx.lineWidth = 1.2;
+    tank();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWaterTowers(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  for (const tower of desertWaterTowerPlacements(ctx, camX, layerBaseY, options)) {
+    drawWaterTower(ctx, tower, options);
+  }
+  ctx.restore();
+}
+
+function satelliteDishBowl(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(-15, -31);
+  ctx.arc(0, -31, 15, Math.PI * 0.15, Math.PI * 0.85);
+  ctx.lineTo(11, -21);
+  ctx.lineTo(-10, -24);
+  ctx.closePath();
+}
+
+function satelliteDishMast(ctx, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(0, -21); ctx.lineTo(0, 0);
+  ctx.moveTo(0, 0); ctx.lineTo(-9, 0);
+  ctx.moveTo(0, 0); ctx.lineTo(9, 0);
+  ctx.moveTo(-5, -10); ctx.lineTo(5, -10);
+  ctx.stroke();
+}
+
+function satelliteDishArm(ctx, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(3, -28); ctx.lineTo(12, -38);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(13, -39, 2, 0, TAU_BG);
+  ctx.fill();
+}
+
+function drawSatelliteDish(ctx, dish, options = {}) {
+  const paper = !!options.paper;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  ctx.save();
+  ctx.translate(dish.x, dish.baseY);
+  const portraitHeightScale = options.portrait ? 1.18 : 1;
+  ctx.scale(dish.scale, dish.scale * portraitHeightScale);
+  if (paper) {
+    ctx.save();
+    ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+    satelliteDishMast(ctx, PAPER_DEEP_COLOR);
+    satelliteDishArm(ctx, PAPER_DEEP_COLOR);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+    satelliteDishMast(ctx, PAPER_CONTACT_COLOR);
+    satelliteDishArm(ctx, PAPER_CONTACT_COLOR);
+    ctx.restore();
+    paperShadowPass(ctx, () => satelliteDishBowl(ctx), PAPER_DEEP_OFFSET,
+      PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, () => satelliteDishBowl(ctx), PAPER_CONTACT_OFFSET,
+      PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  satelliteDishMast(ctx, DESERT_SATELLITE_DARK);
+  satelliteDishArm(ctx, DESERT_SATELLITE_DARK);
+  ctx.fillStyle = DESERT_SATELLITE_INK;
+  satelliteDishBowl(ctx);
+  ctx.fill();
+  ctx.fillStyle = DESERT_SATELLITE_LIGHT;
+  ctx.fillRect(-9, -29, 15, 2);
+  if (paper) {
+    paperFinishPass(ctx, () => satelliteDishBowl(ctx),
+      sharedPaperPatternFor(ctx, paperMaterial), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+        strokeStyle: PAPER_LANDMARK_RIM_COLOR,
+        lineWidth: PAPER_LANDMARK_RIM_WIDTH,
+      });
+  } else {
+    ctx.strokeStyle = DESERT_SATELLITE_DARK;
+    ctx.lineWidth = 1.05;
+    satelliteDishBowl(ctx);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSatelliteDishes(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  ctx.save();
+  ctx.globalAlpha = 0.74;
+  for (const dish of desertSatelliteDishPlacements(ctx, camX, layerBaseY, options)) {
+    drawSatelliteDish(ctx, dish, options);
+  }
+  ctx.restore();
+}
+
+function windTurbineMast(ctx, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-7, 0); ctx.lineTo(0, -39);
+  ctx.moveTo(7, 0); ctx.lineTo(0, -39);
+  ctx.moveTo(-4, -14); ctx.lineTo(4, -14);
+  ctx.moveTo(-6, -27); ctx.lineTo(6, -27);
+  ctx.stroke();
+}
+
+export function windTurbineRotation(t = 0, index = 0, reducedMotion = false) {
+  if (reducedMotion) return 0;
+  const time = Number(t);
+  if (!Number.isFinite(time)) return 0;
+  // A quick, readable three-blade turn. Slight phase offsets keep a distant
+  // pair from looking mechanically stamped while every frame shares one clock.
+  return time * 2.4 + Number(index || 0) * 0.22;
+}
+
+function windTurbineRotor(ctx, color, rotation = 0) {
+  ctx.save();
+  ctx.translate(0, -41);
+  ctx.rotate(rotation);
+  ctx.fillStyle = color;
+  for (let i = 0; i < 3; i++) {
+    ctx.save();
+    ctx.rotate(i * TAU_BG / 3);
+    ctx.beginPath();
+    ctx.moveTo(-1, -2);
+    ctx.lineTo(3, -8);
+    ctx.lineTo(2, -20);
+    ctx.lineTo(-2, -17);
+    ctx.lineTo(-3, -7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, 2.7, 0, TAU_BG);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawWindTurbine(ctx, turbine, options = {}) {
+  const paper = !!options.paper;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  const rotation = windTurbineRotation(options.t,
+    turbine.index + Number(turbine.variant || 0) * 0.7, options.reducedMotion);
+  ctx.save();
+  ctx.translate(turbine.x, turbine.baseY);
+  const portraitHeightScale = options.portrait ? 1.18 : 1;
+  ctx.scale(turbine.scale, turbine.scale * portraitHeightScale);
+  if (paper) {
+    ctx.save();
+    ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+    windTurbineMast(ctx, PAPER_DEEP_COLOR);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+    windTurbineMast(ctx, PAPER_CONTACT_COLOR);
+    ctx.restore();
+    paperShadowPass(ctx, () => windTurbineRotor(ctx, PAPER_DEEP_COLOR, rotation),
+      PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, () => windTurbineRotor(ctx, PAPER_CONTACT_COLOR, rotation),
+      PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  windTurbineMast(ctx, DESERT_WIND_DARK);
+  windTurbineRotor(ctx, DESERT_WIND_INK, rotation);
+  ctx.fillStyle = DESERT_SATELLITE_LIGHT;
+  ctx.beginPath();
+  ctx.arc(0, -41, 2, 0, TAU_BG);
+  ctx.fill();
+  if (paper) {
+    paperFinishPass(ctx, () => windTurbineRotor(ctx, DESERT_WIND_INK, rotation),
+      sharedPaperPatternFor(ctx, paperMaterial), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+        rim: false,
+      });
+  }
+  ctx.restore();
+}
+
+function drawWindTurbines(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  ctx.save();
+  ctx.globalAlpha = 0.70;
+  for (const turbine of desertWindTurbinePlacements(ctx, camX, layerBaseY, options)) {
+    drawWindTurbine(ctx, turbine, options);
+  }
+  ctx.restore();
+}
+
+function drawTelegraphPole(ctx, pole, color = DESERT_TELEGRAPH_INK) {
+  ctx.lineWidth = 2.1;
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(pole.x, pole.baseY);
+  ctx.lineTo(pole.x, pole.topY);
+  ctx.moveTo(pole.x - 11, pole.topY + 8);
+  ctx.lineTo(pole.x + 11, pole.topY + 8);
+  ctx.moveTo(pole.x - 8, pole.topY + 17);
+  ctx.lineTo(pole.x + 8, pole.topY + 17);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.fillRect(pole.x - 1.5, pole.topY + 5, 3, 3);
+  ctx.fillRect(pole.x - 1.5, pole.topY + 14, 3, 3);
+}
+
+function drawTelegraphWires(ctx, poles, wireColor = DESERT_TELEGRAPH_WIRE,
+  lineWidth = DESERT_TELEGRAPH_WIRE_WIDTH) {
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = wireColor;
+  for (let i = 0; i < poles.length - 1; i++) {
+    const a = poles[i], b = poles[i + 1];
+    for (const dy of [8, 17]) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.topY + dy);
+      ctx.lineTo((a.x + b.x) / 2, (a.topY + b.topY) / 2 + dy + 3);
+      ctx.lineTo(b.x, b.topY + dy);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawTelegraphField(ctx, poles, poleColor = DESERT_TELEGRAPH_INK,
+  wireColor = DESERT_TELEGRAPH_WIRE, wireWidth = DESERT_TELEGRAPH_WIRE_WIDTH) {
+  drawTelegraphWires(ctx, poles, wireColor, wireWidth);
+  for (const pole of poles) drawTelegraphPole(ctx, pole, poleColor);
+}
+
+function drawTelegraphPoles(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const poles = desertTelegraphPlacements(ctx, camX, layerBaseY);
+  if (!poles.length) return;
+  const paper = !!options.paper;
+  const portrait = !!options.portrait;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  const wireWidth = portrait
+    ? DESERT_TELEGRAPH_WIRE_WIDTH : DESERT_TELEGRAPH_WIRE_DESKTOP_WIDTH;
+  const shadowWidth = portrait
+    ? DESERT_TELEGRAPH_WIRE_SHADOW_WIDTH : DESERT_TELEGRAPH_WIRE_DESKTOP_SHADOW_WIDTH;
+  ctx.save();
+  ctx.globalAlpha = 0.76;
+  if (paper) {
+    ctx.save();
+    ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+    drawTelegraphField(ctx, poles, PAPER_DEEP_COLOR, PAPER_DEEP_COLOR,
+      shadowWidth);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+    drawTelegraphField(ctx, poles, PAPER_CONTACT_COLOR, PAPER_CONTACT_COLOR,
+      shadowWidth);
+    ctx.restore();
+  }
+  drawTelegraphField(ctx, poles, DESERT_TELEGRAPH_INK,
+    DESERT_TELEGRAPH_WIRE, wireWidth);
+  if (paper) {
+    const pattern = sharedPaperPatternFor(ctx, paperMaterial);
+    if (pattern) {
+      ctx.save();
+      ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+      ctx.globalAlpha = PAPER_GRAIN_ALPHA;
+      drawTelegraphField(ctx, poles, pattern, pattern, wireWidth);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// Sign lettering is small, but it is still typography rather than LCD data.
+// Keep the old `cell` values as the authored height contract, then rasterize
+// the loaded game face directly at that size so the letters stay smooth after
+// the sign is scaled for portrait or a distant landscape placement.
+function drawRoadSignText(ctx, text, x, centerY, cell, color) {
+  if (!text || !cell) return;
+  const scale = Math.max(0.52, Number(cell) * 7 / 8.2);
+  drawTextVectorCentered(
+    ctx,
+    String(text).toUpperCase(),
+    x,
+    textYForMid(centerY, scale, 'bold'),
+    color,
+    scale,
+    'bold',
+  );
+}
+
+function desertSignLocalFootY(sign) {
+  const scale = Math.max(0.01, Number(sign?.scale) || 1);
+  return Number.isFinite(Number(sign?.postFootY))
+    ? (Number(sign.postFootY) - Number(sign.baseY)) / scale
+    : 33 + DESERT_SPEED_SIGN_RAISE / scale;
+}
+
+function desertSignPostHeight(sign) {
+  const bottom = Number.isFinite(Number(sign?.bottom)) ? Number(sign.bottom) : 0;
+  return Math.max(0, desertSignLocalFootY(sign) - bottom);
+}
+
+function drawRoadSign(ctx, sign, options = {}) {
+  const paper = !!options.paper;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  ctx.save();
+  ctx.translate(sign.x, sign.baseY);
+  ctx.scale(sign.scale, sign.scale);
+  const footY = desertSignLocalFootY(sign);
+  // Keep the post's endpoint authoritative, then let the soil sit just below
+  // it with a small overlap. That makes the dirt read as gathered around the
+  // pole rather than as a separate mark shifted up its shaft.
+  const contactY = footY + DESERT_SPEED_SIGN_CONTACT_DROP;
+  const board = () => {
+    ctx.beginPath();
+    if (sign.kind === 'route') {
+      // A simple highway-shield silhouette: broad shoulders at the top and a
+      // tapered lower point, still legible when it is a distant prop.
+      ctx.moveTo(-sign.w * 0.44, sign.top + 2);
+      ctx.lineTo(sign.w * 0.44, sign.top + 2);
+      ctx.lineTo(sign.w * 0.5, sign.top + 13);
+      ctx.lineTo(sign.w * 0.36, sign.bottom - 7);
+      ctx.lineTo(0, sign.bottom);
+      ctx.lineTo(-sign.w * 0.36, sign.bottom - 7);
+      ctx.lineTo(-sign.w * 0.5, sign.top + 13);
+    } else if (sign.kind === 'caution') {
+      const mid = (sign.top + sign.bottom) / 2;
+      ctx.moveTo(0, sign.top);
+      ctx.lineTo(sign.w / 2, mid);
+      ctx.lineTo(0, sign.bottom);
+      ctx.lineTo(-sign.w / 2, mid);
+    } else {
+      ctx.rect(-sign.w / 2, sign.top, sign.w, sign.bottom - sign.top);
+    }
+    ctx.closePath();
+  };
+  const groundShadow = () => {
+    ctx.beginPath();
+    // Offset the soft shadow slightly down-right so it reads as contact with
+    // the dune, not as a dark oval bolted onto the bottom of the pole.
+    ctx.ellipse(2.5, contactY + 3.6, 11.5, 2.1, -0.08, 0, TAU_BG);
+  };
+  const groundCollar = () => {
+    ctx.beginPath();
+    // Three low humps make this a disturbed patch of soil rather than a
+    // symmetrical washer. It overlaps the post at the top and settles below
+    // it at the front edge.
+    ctx.moveTo(-8.5, contactY + 0.9);
+    ctx.quadraticCurveTo(-5.2, contactY - 1.9, -1.2, contactY - 0.9);
+    ctx.quadraticCurveTo(1.3, contactY - 2.2, 4.2, contactY - 0.5);
+    ctx.quadraticCurveTo(7.1, contactY - 1.6, 8.8, contactY + 0.8);
+    ctx.quadraticCurveTo(5.7, contactY + 4.1, 1.5, contactY + 3.8);
+    ctx.quadraticCurveTo(-2.7, contactY + 4.7, -5.7, contactY + 3.3);
+    ctx.quadraticCurveTo(-8.2, contactY + 3.0, -8.5, contactY + 0.9);
+    ctx.closePath();
+  };
+  const groundHighlight = () => {
+    ctx.beginPath();
+    ctx.moveTo(-6.3, contactY + 0.2);
+    ctx.quadraticCurveTo(-3.3, contactY - 1.2, -0.4, contactY - 0.3);
+    ctx.quadraticCurveTo(2.8, contactY - 1.2, 6.2, contactY + 0.1);
+    ctx.quadraticCurveTo(3.4, contactY + 0.9, 0.2, contactY + 0.55);
+    ctx.quadraticCurveTo(-3.0, contactY + 1.2, -6.3, contactY + 0.2);
+    ctx.closePath();
+  };
+  const groundStones = () => {
+    ctx.beginPath();
+    ctx.arc(-8.8, contactY + 2.0, 0.85, 0, TAU_BG);
+    ctx.arc(8.3, contactY + 2.9, 0.65, 0, TAU_BG);
+  };
+  const post = () => {
+    // The placement owns the planted world-space foot. Convert it back into
+    // this sign's local coordinates so a portrait lift or landscape drop can
+    // never leave the pole suspended above the roadside plane.
+    ctx.beginPath();
+    // `rect` takes a height, so this must be the distance from the board's
+    // bottom to the foot. Using `footY` directly leaves a gap whenever the
+    // board bottom is above the local origin, which is every sign here.
+    ctx.rect(-1.3, sign.bottom, 2.6, desertSignPostHeight(sign));
+    ctx.closePath();
+  };
+  if (paper) {
+    paperShadowPass(ctx, post, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, board, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, post, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+    paperShadowPass(ctx, board, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+    paperShadowPass(ctx, groundCollar, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, groundCollar, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  // Put the contact shadow down first so the post and soil collar sit into it.
+  // The collar is painted after the post below, hiding its final edge the way
+  // loose dirt would gather around a driven roadside stake.
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_SHADOW;
+  groundShadow();
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = sign.trim;
+  post();
+  ctx.fill();
+  ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_SOIL;
+  groundCollar();
+  ctx.fill();
+  ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_LIGHT;
+  groundHighlight();
+  ctx.fill();
+  ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_STONE;
+  groundStones();
+  ctx.fill();
+  ctx.fillStyle = sign.face;
+  board();
+  ctx.fill();
+  // A restrained top glint makes the board feel like painted metal/cardstock
+  // rather than a flat rectangle, while the paper pass still owns the grain.
+  if (sign.kind !== 'caution') {
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-sign.w / 2 + 4, sign.top + 3, sign.w - 8, 1.5);
+    ctx.restore();
+  }
+  ctx.strokeStyle = sign.trim;
+  ctx.lineWidth = sign.kind === 'route' ? 1.8 : 1.6;
+  board();
+  ctx.stroke();
+  if (paper) {
+    paperFinishPass(ctx, board, sharedPaperPatternFor(ctx, paperMaterial), {
+      grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+      strokeStyle: PAPER_LANDMARK_RIM_COLOR,
+      lineWidth: PAPER_LANDMARK_RIM_WIDTH,
+    });
+  }
+  const ink = sign.ink || DESERT_SPEED_SIGN_INK;
+  const mid = (sign.top + sign.bottom) / 2;
+  if (sign.kind === 'caution') {
+    drawRoadSignText(ctx, '!', 0, mid, 2.35, ink);
+  } else {
+    const textX = sign.kind === 'exit' ? 4 : 0;
+    drawRoadSignText(ctx, sign.label, textX,
+      sign.top + (sign.bottom - sign.top) * 0.28, sign.labelCell, ink);
+    drawRoadSignText(ctx, sign.value, textX,
+      sign.kind === 'route' ? mid + 6 : sign.bottom - (sign.bottom - sign.top) * 0.31,
+      sign.valueCell, ink);
+    if (sign.kind === 'exit') {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = 'square';
+      ctx.beginPath();
+      ctx.moveTo(-sign.w * 0.34, mid);
+      ctx.lineTo(-sign.w * 0.22, mid);
+      ctx.moveTo(-sign.w * 0.34, mid);
+      ctx.lineTo(-sign.w * 0.27, mid - 5);
+      ctx.moveTo(-sign.w * 0.34, mid);
+      ctx.lineTo(-sign.w * 0.27, mid + 5);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawSpeedLimitSigns(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  for (const sign of desertSpeedLimitPlacements(ctx, camX, layerBaseY, options)) {
+    drawRoadSign(ctx, sign, options);
   }
   ctx.restore();
 }
@@ -2187,7 +3185,8 @@ function drawDustDevils(ctx, t, camX, reduced, layerBaseY = GROUND_Y) {
 // The point of a landmark is not decoration: it is that the run acquires a
 // destination. A stage with one thing on the horizon that slowly gets closer is
 // a journey; a stage with a repeating ridge is a treadmill.
-function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y) {
+function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y,
+  paper = false, paperMaterial = 'cardstockClear') {
   const cx = viewCenterX(ctx) + (atCam - camX) * 0.09 * ZOOM;
   const halfW = 74;
   // The margin has to cover the WIDEST ink this painter can put down, not the
@@ -2204,15 +3203,15 @@ function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y) {
   ctx.translate(cx, 0);
   // Talus slope out to a flat cap: steep sides, dead-flat top, the same
   // silhouette logic as the mesa ridge at a size that can carry strata.
-  const body = (c) => {
-    c.beginPath();
-    c.moveTo(-halfW, baseY);
-    c.lineTo(-halfW * 0.62, capY + 14);
-    c.lineTo(-halfW * 0.52, capY);
-    c.lineTo(halfW * 0.5, capY);
-    c.lineTo(halfW * 0.6, capY + 12);
-    c.lineTo(halfW, baseY);
-    c.closePath();
+  const body = () => {
+    ctx.beginPath();
+    ctx.moveTo(-halfW, baseY);
+    ctx.lineTo(-halfW * 0.62, capY + 14);
+    ctx.lineTo(-halfW * 0.52, capY);
+    ctx.lineTo(halfW * 0.5, capY);
+    ctx.lineTo(halfW * 0.6, capY + 12);
+    ctx.lineTo(halfW, baseY);
+    ctx.closePath();
   };
 // The smaller sibling goes down FIRST and to the left, so the main butte
   // overlaps it. One butte on an empty horizon reads as a prop; two at
@@ -2227,13 +3226,17 @@ function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y) {
   ctx.closePath();
   ctx.fill();
   ctx.globalAlpha = 1;
-  body(ctx);
+  if (paper) {
+    paperShadowPass(ctx, body, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, body, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  body();
   ctx.fillStyle = DESERT_ROCK;
   ctx.fill();
   // Strata, clipped to the silhouette so the bands stop at the cut faces
   // rather than running out into the sky.
   ctx.save();
-  body(ctx);
+  body();
   ctx.clip();
   for (const [y, h, col] of [
     [capY, 7, DESERT_ROCK_LIT], [capY + 22, 5, DESERT_ROCK_DARK],
@@ -2243,6 +3246,13 @@ function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y) {
     ctx.fillRect(-halfW, y, halfW * 2, h);
   }
   ctx.restore();
+  if (paper) {
+    paperFinishPass(ctx, body, sharedPaperPatternFor(ctx, paperMaterial), {
+      grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+      strokeStyle: PAPER_LANDMARK_RIM_COLOR,
+      lineWidth: PAPER_LANDMARK_RIM_WIDTH,
+    });
+  }
   ctx.restore();
 }
 
@@ -2288,13 +3298,16 @@ function drawPlumberApronStrata(ctx, camX, obstacles, overhangs, viewW, reduced 
   ctx.restore();
 }
 
-function drawPaperApronTexture(ctx, camX, obstacles, overhangs, viewW) {
-  const pattern = paperPatternFor(ctx);
+function drawPaperApronTexture(ctx, camX, obstacles, overhangs, viewW,
+  material = 'cardstockClear', textureSpeed = PAPER_TEXTURE_SPEED_DEFAULT, strength = 1) {
+  const patternCamX = paperTextureCameraX(camX, textureSpeed);
+  const pattern = anchorPaperPattern(sharedPaperPatternFor(ctx, material), patternCamX, 0)
+    || anchorPaperPattern(paperPatternFor(ctx), patternCamX, 0);
   if (!pattern) return;
   const runs = apronRuns(camX, obstacles, overhangs, viewW);
   ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha = PAPER_SURFACE_ALPHA;
+  ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+  ctx.globalAlpha = PAPER_SURFACE_ALPHA * strength;
   ctx.fillStyle = pattern;
   for (const [a, b] of runs) {
     if (b > a) ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
@@ -2319,7 +3332,7 @@ function drawPaperApronTexture(ctx, camX, obstacles, overhangs, viewW) {
  * Each dash sits at the depth under its own middle, so a row tilts with the
  * climb rather than stepping down it.
  */
-function drawShelfTexture(ctx, camX, cab, shelves, reduced = false, viewW = W) {
+function drawShelfTexture(ctx, camX, cab, shelves, reduced = false, viewW = W, material = null) {
   if (!shelves || !shelves.length) return;
   const travel = reduced ? 0 : camX;
   const spans = [];
@@ -2360,16 +3373,55 @@ function drawShelfTexture(ctx, camX, cab, shelves, reduced = false, viewW = W) {
 }
 
 function pixelPack(settings) {
-  const paperPreview = paperCutoutPreviewRequested(settings);
+  const requested = paperCutoutPreviewRequested(settings);
+  const paperPreview = requested && ((settings.paperCabinet || 'plumber') === 'plumber'
+    || !!settings.paperPreset);
+  const paperPreset = paperPresetName(settings.paperPreset);
+  const textureSpeed = paperTextureSpeedOf(settings.paperTextureSpeed);
+  const paperStrengths = paperStrengthsOf(settings);
   return {
     name: 'pixel',
     lightBg: paperPreview,
+    paperSkyStatic: paperPreview && (settings.paperCabinet || 'plumber') === 'plumber',
     paperSlab: paperPreview ? {
-      shadow: (ctx, source) => paperShadowPass(ctx, source, PAPER_DEEP_OFFSET),
-      finish: (ctx, source) => paperFinishPass(ctx, source, paperPatternFor(ctx)),
+      shadow: (ctx, source, options = {}) => sharedPaperShadowPass(ctx, source,
+        options.subtle ? PAPER_SUBTLE_DEEP_OFFSET : PAPER_DEEP_OFFSET,
+        options.subtle ? PAPER_SUBTLE_DEEP_COLOR : PAPER_DEEP_COLOR),
+      contact: (ctx, source, options = {}) => sharedPaperShadowPass(ctx, source,
+        options.subtle ? PAPER_SUBTLE_CONTACT_OFFSET : PAPER_CONTACT_OFFSET,
+        options.subtle ? PAPER_SUBTLE_CONTACT_COLOR : PAPER_CONTACT_COLOR),
+      finish: (ctx, source, options = {}) => sharedPaperFinishPass(ctx, source,
+        anchorPaperPattern(sharedPaperPatternFor(ctx, paperPreset),
+          paperTextureCameraX(ctx.__paperCamX || 0, textureSpeed), 0),
+        { alpha: paperStrengths.ground, ...options, rim: false }),
+      material: PAPER_MATERIALS[paperPreset],
+      textureSpeed,
+      groundStrength: paperStrengths.ground,
+      paper: true,
     } : null,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
-      skyGrad(ctx, cab.sky[0], cab.sky[1]);
+      if (cab.id === 'plumber' && paperPreview) {
+        // THE VISIBLE BAND, not `0..W`.
+        //
+        // This fill happens in the SHIFTED space, where portrait's picture runs
+        // from about 131 to 611 rather than 0 to 480 — so a fill of `0..W` left
+        // the rightmost strip of the sky unpainted, and with run.js's own sky
+        // fill skipped for this study there was nothing underneath it. The
+        // static fibre sheet below is the opposite case and wants the base
+        // frame, because it resets the transform first; the two were swapped.
+        const coverage = backgroundPaintCoverage(ctx) || DEFAULT_BACKGROUND_COVERAGE;
+        ctx.fillStyle = cab.sky[0];
+        // OVERSCANNED SIDEWAYS, for the same reason it is overscanned by
+        // PAN_MAX vertically: this is one flat colour, and a sky that falls
+        // even a few pixels short of the picture leaves the page showing
+        // through. The published coverage came up 22 logical px shy of the
+        // right-hand edge in portrait — measured as 18 canvas columns at alpha
+        // 101 instead of 255 — so the fill is given a frame's width of slack
+        // either side rather than being trusted to be exact. Overdrawing a
+        // fillRect costs nothing; coming up short costs the sky.
+        ctx.fillRect(coverage.left - W, -PAN_MAX,
+          coverage.width + W * 2, H + PAN_MAX * 2);
+      } else skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber' && paperPreview) {
         // The fibre belongs to the sheet of sky, not to the camera move. Draw
         // it in the renderer's base logical space before the moving scenery is
@@ -2378,11 +3430,23 @@ function pixelPack(settings) {
         if (typeof ctx.setTransform === 'function' && ctx.canvas) {
           ctx.setTransform(ctx.canvas.width / Math.max(1, W), 0, 0,
             ctx.canvas.height / Math.max(1, H), 0, 0);
-          drawPaperSurface(ctx, DEFAULT_BACKGROUND_COVERAGE, 'plumber-paper-sky-static');
+          // THE BASE FRAME, not the camera's coverage.
+          //
+          // The transform has just been reset to the renderer's base logical
+          // space, which is what pins the fibre to the sheet of sky instead of
+          // letting it scroll. The published coverage describes the visible
+          // band in the SHIFTED space — in portrait it starts around 131, not
+          // 0 — so handing it to a pass that draws in base space laid the sheet
+          // 131px to the right and ran it off the edge, leaving the sky
+          // textured in a band with bare stripes either side. Measured: band
+          // edges at logical x 140 and 400 of a 480-wide frame.
+          drawPaperSurface(ctx, DEFAULT_BACKGROUND_COVERAGE,
+            'plumber-paper-sky-static', 'skySmooth', paperStrengths.sky);
         } else {
           // Keep lightweight renderer test doubles compatible; they do not
           // expose a real backing canvas or transform state.
-          drawPaperSurface(ctx, backgroundCoverage(ctx));
+          drawPaperSurface(ctx, backgroundCoverage(ctx),
+            'plumber-paper-sky', 'skySmooth', paperStrengths.sky);
         }
         ctx.restore();
       }
@@ -2392,7 +3456,8 @@ function pixelPack(settings) {
       const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', farAmp, GROUND_Y);
       const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', nearAmp, GROUND_Y);
       if (cab.id === 'plumber') {
-        drawStaticSun(ctx, t, bgShift, backgroundContext, paperPreview);
+        drawStaticSun(ctx, t, bgShift, backgroundContext, paperPreview, paperPreset,
+          paperStrengths.sky);
       }
       // PLUMBER PANIC's far layer is a snow-capped range; the near green hills
       // stay rounded so the two layers read as distance, not repetition. It gets
@@ -2405,7 +3470,7 @@ function pixelPack(settings) {
         ctx.save();
         ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'far'));
         drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion,
-          farBaseY - GROUND_Y, paperPreview);
+          farBaseY - GROUND_Y, paperPreview, paperPreset);
         ctx.restore();
       }
       // THE CLOUDS GO DOWN LAST, AFTER THE RANGES.
@@ -2442,10 +3507,11 @@ function pixelPack(settings) {
             ctx.translate(cx, portraitCloudY(backgroundContext, [30, 110, 180, 255, 305, 390, 430, 510]
               .indexOf(off), cy) + backgroundY(backgroundContext, 'clouds'));
             ctx.scale(s, s);
-            drawCloudBody(ctx, tint, paperPreview);
+            drawCloudBody(ctx, tint, paperPreview, paperPreset, paperStrengths.sky);
             ctx.restore();
           }
-          drawCloudPal(ctx, t, settings && settings.reducedMotion, backgroundContext, paperPreview);
+          drawCloudPal(ctx, t, settings && settings.reducedMotion, backgroundContext,
+            paperPreview, paperPreset, paperStrengths.sky);
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.82)';
           for (let i = 0; i < 5; i++) {
@@ -2467,7 +3533,8 @@ function pixelPack(settings) {
         // bloom bright-pass. Pure white snow (#eef6ff, luma .96) sailed past
         // the smoothstep(0.8, 0.97) cutoff in glfx.js and glowed like neon.
         parallaxHills(ctx, camX, cab.far, farBaseY, 96, 90, 0.15,
-          { peak: true, rock: '#5e6e7c', snow: '#b9c8d8', paper: paperPreview });
+          { peak: true, rock: '#5e6e7c', snow: '#b9c8d8', paper: paperPreview,
+            paperMaterial: paperPreset, paperStrength: paperStrengths.scenery });
       } else {
         parallaxHills(ctx, camX, cab.far, farBaseY, 60, 90, 0.15);
       }
@@ -2476,7 +3543,8 @@ function pixelPack(settings) {
       ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'near'));
       parallaxHills(ctx, camX, cab.hills, nearBaseY, nearAmp, 50, 0.35,
         cab.id === 'plumber'
-          ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' }, paper: paperPreview }
+          ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' }, paper: paperPreview,
+            paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
           : null);
       ctx.restore();
       paintClouds();
@@ -2485,7 +3553,8 @@ function pixelPack(settings) {
     // see drawShelfTexture. Optional on a pack; only this one has ground
     // texture to carry.
     shelfTexture(ctx, camX, cab, shelves, viewW = W) {
-      drawShelfTexture(ctx, camX, cab, shelves, !!(settings && settings.reducedMotion), viewW);
+      drawShelfTexture(ctx, camX, cab, shelves, !!(settings && settings.reducedMotion), viewW,
+        paperPreview ? paperPreset : null);
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
@@ -2494,9 +3563,10 @@ function pixelPack(settings) {
         drawPlumberApronStrata(ctx, camX, obstacles, overhangs, drawW,
           !!(settings && settings.reducedMotion));
         // Terrain routes, including floating islands, are painted afterward by
-        // game/terrain.js. This paper pass belongs to the base scenery apron;
-        // route surfaces retain their authored gameplay material.
-        if (paperPreview) drawPaperApronTexture(ctx, camX, obstacles, overhangs, drawW);
+        // game/terrain.js. Terrain and route surfaces receive the same adapter
+        // after this base pass, so the material stays continuous across joins.
+        if (paperPreview) drawPaperApronTexture(ctx, camX, obstacles, overhangs, drawW,
+          paperPreset, textureSpeed, paperStrengths.ground);
         return;
       }
       // Scrolling ground ticks — a texture ON the apron, so they stop where the
@@ -2520,8 +3590,13 @@ function pixelPack(settings) {
 }
 
 function faux3dPack(settings) {
+  const paperPreview = !!(settings?.paperPreset
+    && settings.paperCutout !== false && settings.paperCutout !== 'off');
+  const paperPreset = paperPresetName(settings?.paperPreset);
+  const paperStrengths = paperStrengthsOf(settings);
   return {
     name: 'faux3d',
+    lightBg: paperPreview,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       // Read through at draw time rather than captured when the pack is built,
       // so a mid-session toggle takes effect — the pixelPack idiom, not
@@ -2531,28 +3606,62 @@ function faux3dPack(settings) {
       // cabinet screens, the gallery and the social renderers, and none of
       // those are the desert.
       const desert = cab.id === 'speed';
-      const farAmp = desert ? DESERT_FAR.amp : 50;
+      const portrait = !!backgroundContext?.portrait;
+      // Keep every country layer in one composition. The offset is applied to
+      // the layer translates, rather than to individual ridge bases, so each
+      // cactus, pole, tower, dish, and turbine remains attached to the exact
+      // crest it was sampled from. Celestial art and birds deliberately do not
+      // use this offset, and the gameplay ground remains at GROUND_Y.
+      const sceneryOffset = desert ? -desertSceneryLift(portrait) : 0;
+      const backSceneryOffset = desert && !portrait
+        ? sceneryOffset - DESERT_LANDSCAPE_BACK_LIFT : sceneryOffset;
+      const farAmp = desert
+        ? (portrait ? DESERT_FAR_PORTRAIT_AMP : DESERT_FAR.amp) : 50;
       const middleAmp = DESERT_MID.amp;
       const nearAmp = DESERT_RIDGE.amp;
-      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', farAmp, GROUND_Y);
+      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', farAmp, GROUND_Y)
+        + (desert && portrait ? DESERT_FAR_PORTRAIT_DROP : 0);
       const middleBaseY = sceneryRidgeBaseY(backgroundContext, 'middle', middleAmp, GROUND_Y);
       const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', nearAmp, GROUND_Y);
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
+      if (desert && paperPreview) {
+        // The speed cabinet's paper sheet is a screen surface, while its
+        // ridges remain moving paper cutouts below. Keep this pass in the
+        // backdrop so the sky texture cannot scroll with the hills.
+        drawPaperSurface(ctx, backgroundPaintCoverage(ctx),
+          `speed-paper-sky:${paperPreset}`, paperPreset, paperStrengths.sky);
+      }
       // chunky "pre-rendered" sun with gradient shading
       const celestialOffset = backgroundY(backgroundContext, 'celestial');
       // This is the speed-zone sun's one canonical placement. It belongs to
       // the celestial band, never the birds/cloud band, and the anchor is
       // clamped by the complete 80px visible envelope when the portrait band
       // has room for it. The layer offset is applied exactly once below.
-      const sunLocalY = sceneryBandPointY(backgroundContext, 'celestial', 60, DESERT_SUN_RADIUS);
+      const sunLocalX = desertSunX(ctx, desert && portrait);
+      const sunLocalY = sceneryBandPointY(backgroundContext, 'celestial', 60, DESERT_SUN_RADIUS)
+        + (desert && portrait ? DESERT_SUN_PORTRAIT_OFFSET : 0);
       const sunY = sunLocalY + celestialOffset;
       ctx.save();
       ctx.translate(0, celestialOffset);
-      const g = ctx.createRadialGradient(380, sunLocalY, 6,
-        380, sunLocalY, 30);
+      const g = ctx.createRadialGradient(sunLocalX, sunLocalY, 6,
+        sunLocalX, sunLocalY, 30);
       g.addColorStop(0, '#fff0c0'); g.addColorStop(1, 'rgba(248,192,96,0)');
-      ctx.fillStyle = g; ctx.fillRect(340, sunLocalY - 40, 80, 80);
+      ctx.fillStyle = g; ctx.fillRect(sunLocalX - 40, sunLocalY - 40, 80, 80);
       ctx.restore();
+      if (desert && paperPreview) {
+        const pattern = sharedPaperPatternFor(ctx, paperPreset);
+        if (pattern) {
+          ctx.save();
+          ctx.translate(0, celestialOffset);
+          ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+          ctx.globalAlpha = PAPER_GRAIN_ALPHA * paperStrengths.sky;
+          ctx.fillStyle = pattern;
+          ctx.beginPath();
+          ctx.arc(sunLocalX, sunLocalY, 30, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
       // Draw order is depth order. The butte goes down BEFORE the far range so
       // those crests overlap its flanks and it sits behind them — the same
       // reason the volcano precedes plumber's hills. Overtime has no midpoint
@@ -2560,18 +3669,42 @@ function faux3dPack(settings) {
       // gets no volcano there.
       if (desert && Number.isFinite(totalDist) && totalDist > 0) {
         ctx.save();
-        ctx.translate(0, backgroundY(backgroundContext, 'far'));
-        drawButte(ctx, camX, totalDist * 0.55, farBaseY);
+        ctx.translate(0, backSceneryOffset + backgroundY(backgroundContext, 'far'));
+        drawButte(ctx, camX, totalDist * 0.55, farBaseY, paperPreview, paperPreset);
         ctx.restore();
       }
       // Mesas rather than rounded sine hills on the desert: a cut-off cap is
       // the one silhouette that can only be desert.
       ctx.save();
-      ctx.translate(0, backgroundY(backgroundContext, 'far'));
+      ctx.translate(0, backSceneryOffset + backgroundY(backgroundContext, 'far'));
+      if (desert) {
+        // Paint distant infrastructure before the mesa. The mesa then naturally
+        // covers each last foot pixel, so towers, dishes, and turbines are
+        // embedded in the crest rather than ending on top of its outline.
+        drawWaterTowers(ctx, camX, farBaseY, {
+          paper: paperPreview, paperMaterial: paperPreset,
+          portrait: !!backgroundContext?.portrait,
+        });
+        drawSatelliteDishes(ctx, camX, farBaseY, {
+          paper: paperPreview, paperMaterial: paperPreset,
+          portrait: !!backgroundContext?.portrait,
+        });
+        drawWindTurbines(ctx, camX, farBaseY, {
+          paper: paperPreview, paperMaterial: paperPreset,
+          portrait,
+          t, reducedMotion: reduced,
+        });
+      }
       parallaxHills(ctx, camX, cab.far, farBaseY,
         farAmp, desert ? DESERT_FAR.wl : 110,
         desert ? DESERT_FAR.factor : 0.12,
-        desert ? { mesa: true } : null);
+        desert ? {
+          mesa: true,
+          strata: DESERT_MESA_STRATA,
+          paper: paperPreview,
+          paperMaterial: paperPreset,
+          paperStrength: paperStrengths.scenery,
+        } : null);
       ctx.restore();
       // Birds after the far range and before the near one: they fly in front
       // of the distance and behind anything close.
@@ -2592,19 +3725,46 @@ function faux3dPack(settings) {
         // rather than standing on top of it. The base still sits at the ground
         // line; it is simply never visible, which is the point.
         ctx.save();
-        ctx.translate(0, backgroundY(backgroundContext, 'middle'));
+        ctx.translate(0, backSceneryOffset + backgroundY(backgroundContext, 'middle'));
         drawDustDevils(ctx, t, camX, reduced, middleBaseY);
         const m = DESERT_MID;
-        parallaxHills(ctx, camX, m.color, middleBaseY, m.amp, m.wl, m.factor, { dunes: true });
+        drawTelegraphPoles(ctx, camX, middleBaseY, {
+          paper: paperPreview, paperMaterial: paperPreset,
+          portrait: !!backgroundContext?.portrait,
+        });
+        parallaxHills(ctx, camX, m.color, middleBaseY, m.amp, m.wl, m.factor,
+          { dunes: true, paper: paperPreview, paperMaterial: paperPreset,
+            paperStrength: paperStrengths.scenery });
         ctx.restore();
         // The layer the cabinet always defined and this pack never drew.
         const { amp, wl, factor } = DESERT_RIDGE;
         ctx.save();
-        ctx.translate(0, backgroundY(backgroundContext, 'near'));
-        drawDesertLoopLandmarks(ctx, camX, nearBaseY, amp);
-        parallaxHills(ctx, camX, cab.hills, nearBaseY, amp, wl, factor, { dunes: true });
-        drawSaguaros(ctx, camX, nearBaseY);
+        ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'near'));
+        // Cacti belong to this ridge, not to the surface of the frame. Draw
+        // them first and let the ridge occlude the buried base; drawing them
+        // after the filled hill made every trunk visibly sit on top of it.
+        drawSaguaros(ctx, camX, nearBaseY, {
+          paper: paperPreview,
+          paperMaterial: paperPreset,
+          portrait: !!backgroundContext?.portrait,
+        });
+        parallaxHills(ctx, camX, cab.hills, nearBaseY, amp, wl, factor,
+          { dunes: true, paper: paperPreview, paperMaterial: paperPreset,
+            paperStrength: paperStrengths.scenery });
         ctx.restore();
+        // Roadside signs are a very-near background plane: they sit above the
+        // road shoulder, in front of the near dunes, but still behind every
+        // gameplay actor and obstacle drawn after the background pass.
+        drawSpeedLimitSigns(ctx, camX, GROUND_Y + 5 + sceneryOffset, {
+          paper: paperPreview,
+          paperMaterial: paperPreset,
+          portrait: !!backgroundContext?.portrait,
+          roadGaps: backgroundContext?.roadGaps,
+          backgroundZoom: backgroundContext?.backgroundZoom,
+          backgroundXOffset: backgroundContext?.backgroundXOffset,
+          worldZoom: backgroundContext?.worldZoom,
+          worldXOffset: backgroundContext?.worldXOffset,
+        });
       }
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
@@ -2639,7 +3799,7 @@ function faux3dPack(settings) {
         ctx.fillRect(ra, GROUND_Y, rb - ra, 2);
         ctx.restore();
       }
-      drawPitFills(ctx, camX, cab, obstacles, t, false, null, drawW);
+      drawPitFills(ctx, camX, cab, obstacles, t, false, null, drawW, cab.groundDark);
     },
     post(ctx, t) {
       // soft vertical sheen, very "rendered in 1994"
@@ -2730,6 +3890,9 @@ function neonPack(settings) {
 }
 
 function watercolorPack(settings) {
+  const paperPreview = !!(settings?.paperPreset
+    && settings.paperCutout !== false && settings.paperCutout !== 'off');
+  const paperPreset = paperPresetName(settings?.paperPreset);
   return {
     name: 'watercolor',
     lightBg: true,
@@ -2743,9 +3906,11 @@ function watercolorPack(settings) {
         ctx.save();
         ctx.translate(0, backgroundY(backgroundContext, depth));
         ctx.globalAlpha = 0.7;
-        parallaxHills(ctx, camX, color, yb, amp, wl, f);
+        parallaxHills(ctx, camX, color, yb, amp, wl, f,
+          paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
         ctx.globalAlpha = 0.4;
-        parallaxHills(ctx, camX + 13, color, yb + 4, amp, wl * 1.1, f);
+        parallaxHills(ctx, camX + 13, color, yb + 4, amp, wl * 1.1, f,
+          paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
         ctx.globalAlpha = 1;
         ctx.restore();
       }
@@ -2771,6 +3936,7 @@ function watercolorPack(settings) {
       ctx.globalAlpha = 1;
     },
     post(ctx, t) {
+      if (paperPreview) return;
       // paper grain: sparse dot lattice (tiled pattern — one fill)
       patternFill(ctx, 'paperGrain', 6, 8, (c) => {
         c.fillStyle = 'rgba(120,100,80,0.06)';
@@ -2866,16 +4032,45 @@ const LCD_INK = '#3c3f45';
 // to restore this exact value or the break reads as a lit strip.
 const LCD_PANEL_LIT = '#dce49a';
 
-// The phone portrait panel is the same 480px-wide logical screen squeezed into
-// a narrow CSS viewport. Any repeated full-screen lattice therefore lands at a
-// fractional display pitch and can form a moire pattern while the phone or
-// compositor presents the frame. Portrait deliberately has no periodic mask;
-// the authored city/level lines remain, and landscape keeps the LCD lattice.
+// The phone portrait panel is the same 480px-wide logical screen in a narrow
+// CSS viewport. Keep a coarser six-pixel lattice there: it survives the phone
+// resample as a readable grid instead of the three-pixel landscape lattice's
+// moire, while preserving the authored building lines in both orientations.
 export const LCD_SCREEN_GRID_CELL = 3;
-export const LCD_PORTRAIT_SCREEN_GRID_CELL = null;
+export const LCD_PORTRAIT_SCREEN_GRID_CELL = 6;
+const LCD_PORTRAIT_GRID_LINE_W = 2;
 export function lcdScreenGridCellSize(settings = {}) {
   return settings?.portraitPresentation
     ? LCD_PORTRAIT_SCREEN_GRID_CELL : LCD_SCREEN_GRID_CELL;
+}
+// Portrait LCD's periodic lattice starts its two-pixel rule at cell - 2.
+// Mechanical pit bottoms use the same rule, rounded toward the lower side of
+// the panel so a wheel can never be clipped by the closing line. The argument
+// is SCREEN space: the world painter supplies the inverse camera transform
+// when it needs to place this rule in its own coordinates.
+export function lcdPortraitGridLineY(y) {
+  const unit = LCD_PORTRAIT_SCREEN_GRID_CELL;
+  const origin = unit - LCD_PORTRAIT_GRID_LINE_W;
+  const value = Number(y);
+  if (!Number.isFinite(value)) return origin;
+  return origin + Math.ceil((value - origin) / unit) * unit;
+}
+
+// The post() lattice uses the same origin on x as it does on y. Pit openings
+// are cut by the world painter, so a raw obstacle edge can land between two
+// printed rules after the portrait zoom and presentation shift. Expand the
+// rendered interval to the surrounding rules: the road cut, dry-bay fill and
+// both walls then own one identical interval, with no one-pixel city sliver
+// left beside the frame.
+function lcdPortraitGridLineX(x, direction = 'nearest') {
+  const unit = LCD_PORTRAIT_SCREEN_GRID_CELL;
+  const origin = unit - LCD_PORTRAIT_GRID_LINE_W;
+  const value = Number(x);
+  if (!Number.isFinite(value)) return origin;
+  const n = (value - origin) / unit;
+  if (direction === 'floor') return origin + Math.floor(n) * unit;
+  if (direction === 'ceil') return origin + Math.ceil(n) * unit;
+  return origin + Math.round(n) * unit;
 }
 
 // THREE SCENES, not one city with its gain turned up. These are the authored
@@ -2915,12 +4110,33 @@ const LCD_COL_PITCH = 15;                          // window + gutter, 5 cells
 const LCD_ROW_PITCH = 12;                          // window + gutter, 4 cells
 const LCD_CELL_W = 8;                              // the fill inside a 3-cell box
 const LCD_CELL_H = 5;                              // the fill inside a 2-cell box
+const LCD_GRID = Object.freeze({
+  unit: LCD_U, colPitch: LCD_COL_PITCH, rowPitch: LCD_ROW_PITCH,
+  cellW: LCD_CELL_W, cellH: LCD_CELL_H, lineW: 1,
+});
+// Portrait gets a larger, lower-density print grid. The authored landscape
+// grid remains three-pixel graph paper; these metrics are used only by the
+// tagged rhythm-1 portrait facades so the windows and wall rules survive the
+// phone's narrower physical presentation.
+const LCD_PORTRAIT_GRID = Object.freeze({
+  unit: 4, colPitch: 20, rowPitch: 16, cellW: 12, cellH: 8, lineW: 2,
+});
+const lcdGridFor = (building) => building?.[4] === 'portrait-grid'
+  ? LCD_PORTRAIT_GRID : LCD_GRID;
+const LCD_PORTRAIT_COMBO_W = 2 * LCD_PORTRAIT_GRID.unit
+  + 3 * LCD_PORTRAIT_GRID.colPitch;
+// Portrait's LCD city is a scenic backplate, not the playable lane. Move the
+// complete authored panel a small, fixed amount so the rooftop gorilla clears
+// the phone's left crop and gets more headroom. Landscape and all non-LCD
+// cabinets remain unchanged; the renderer supplies the portrait contract.
+export const LCD_PORTRAIT_CITY_SHIFT = Object.freeze({ x: 52, y: -12 });
 const LCD_CITY_SCENES = [
   null,
   {
     // Reading order, left to right: the clock tower opens the scene, three
     // buildings walk up to the invader billboard, THEN the DONKEY KONG tower,
-    // and the skyline continues past it.
+    // and the skyline continues past it. This authored arrangement is shared
+    // by landscape and must not be changed by portrait composition work.
     //
     // 125 TALL, AND THE CRASH STILL SETS IT — but it is no longer a ceiling.
     // Everything above this roof is one rigid stack: his skull tops out at
@@ -2947,23 +4163,7 @@ const LCD_CITY_SCENES = [
     // the tower stands twelve deeper into a frame that just got taller. The
     // three buildings this stack has to stay clear of never moved, so every one
     // of those clearances went UP by twelve and none of them went down.
-    // EIGHT structures, evenly spaced (~12px of air between neighbours and at
-    // both edges), and the DONKEY KONG tower is the fifth: clock, chart,
-    // transmitter, invader, TOWER, the smoke stacks, burger, cassette.
-    // THE SIXTH ROOF CARRIES THE CHIMNEY AND NOTHING ELSE. It used to be a
-    // water tower with the stack bolted on beside it, which put two unrelated
-    // silhouettes — a capped drum on legs and a smoking chimney — on one 46px
-    // roof, and the smoke came out of the middle of the pair. `office` is the
-    // plain banded facade with no crown of its own, so the stack is the only
-    // thing standing up there and the plume plainly belongs to it.
     buildings: [
-      // Sits 17 in on the left and 10 on the right rather than centred: the
-      // tower's barrel has to stay at screen x 268, where the plane's authored
-      // crossing meets it on exactly one phase of four (lcdBarrelStrike). At
-      // 221 a second phase struck too and the gag stopped being occasional.
-      // THE COMBO BOARD'S BUILDING IS THREE WINDOWS WIDE on every stage — it
-      // carries the one sign the player reads — and the deco beside it gave up
-      // the width so the row's total, and every gap, stayed the same.
       [17, 36, 149, 'clockworks'], [65, 51, 101, 'storefront'], [128, 36, 125, 'deco'],
       [176, 36, 95, 'fire-escape'],
       [323, 51, 113, 'office'], [386, 36, 74, 'storefront'], [434, 36, 89, 'workshop'],
@@ -2972,7 +4172,11 @@ const LCD_CITY_SCENES = [
     // whose band ended at 40 and they kept those rows after it moved to 24,
     // which left sixteen empty pixels above them and the wisps sitting down
     // among the rooftop furniture. Four lattice rules up, same spread.
-    clouds: [[28, 40], [184, 30], [346, 46]],
+    // The cloud band is above the tallest rooftop detail, not merely above
+    // the facades. The transmitter's outer ring reaches y=51; keeping the
+    // cloud bodies below y=48 leaves a real gap even after the long-run wrap
+    // carries any cloud across the whole panel.
+    clouds: [[28, 28], [184, 30], [346, 34]],
     // THE CLOCK IS THE BUILDING. [building index, dial radius] — the dial is
     // SET INTO the tower's own facade, in a clock stage with a lintel over it
     // and a sill under it, not stood on the roof on braced feet.
@@ -3005,27 +4209,8 @@ const LCD_CITY_SCENES = [
     // pixel plane that crosses the sky once every sixteen bars. Billboards
     // and the mast suppress their building's own crown; a chimney shares its
     // roof with whatever crown is already there.
-    // THE SHARE PRICE SITS SECOND FROM THE LEFT, not last. The hero runs at
-    // screen x 56, so the board that answers to the run belongs on the roof
-    // he is under — out at 431 it was the one sign nobody reading the lane
-    // ever looked at. The cassette takes the far roof instead: it is authored,
-    // it says nothing about the run, and the far edge is where it can say it.
-    //
-    // AND THE SHOP STANDS UP TO THE CROSSING, not to the clock. It was solved
-    // against the dial for a while — the tower opening the scene, the board
-    // finishing three pixels after it, read in that order — and at 68 that put
-    // the one sign the player reads down among the ground floor windows. The
-    // clock is in another column, so the reading order it was buying was never
-    // really at stake; what IS above this roof is the plane. Over the board's
-    // own span (x 69-112) the crossing is still climbing, and the lowest its
-    // rig gets there is y 78. At 101 the board's top edge is 91 — thirteen
-    // clear of the aircraft — and the sign has climbed out of the windows.
     billboards: [[1, 'chart'], [3, 'invader'], [5, 'burger'], [6, 'cassette']],
     transmitter: 2,
-    // dx 20, not 6: with the water tower gone the stack bank owns this roof, so
-    // it stands on its middle and the plume leans off its own building rather
-    // than immediately out over the gap beside it. The dx is the TALL stack's
-    // left edge; the two short ones are placed either side of it.
     smokestacks: [[4, 20]],
     // In low over the left-hand roofs, level by the tower's centre line
     // (224 + 88/2). Snapped to the 2px grid the cruise is y 44, so the belly
@@ -3361,6 +4546,46 @@ const LCD_CITY_SCENES = [
   },
 ];
 
+// Portrait-only composition for rhythm-1. Keep the authored scene above as
+// the landscape contract; the phone gets its own sparse, taller foreground so
+// the combo and Kong landmarks can use the full narrow frame without rewriting
+// landscape spacing or rooftop traffic.
+const LCD_PORTRAIT_STAGE_1 = Object.freeze({
+  ...LCD_CITY_SCENES[1],
+  buildings: Object.freeze([
+    // Portrait keeps only the two landmarks that carry the rhythm-1 read. The
+    // combo facade is exactly three windows wide on the larger 4px grid — the
+    // same three-column read as its landscape counterpart, not a four-column
+    // block stretched to fill the phone.
+    [224, LCD_PORTRAIT_COMBO_W, 176, 'storefront', 'portrait-grid'],
+  ]),
+  // Keep the sparse foreground, but restore the authored sky traffic. These
+  // are scene art, not part of the removed city visualiser.
+  // Portrait's taller Kong facade reaches the local roof at y=24. Keep the
+  // wisps high in the open sky, with the lowest one still above the foreground
+  // roofs after the portrait city shift.
+  clouds: Object.freeze([[0, 28], [150, 18], [300, 12]]),
+  // 120px is 30 portrait-grid cells: a broad Kong facade that still fits
+  // inside the shifted/zoomed portrait panel without clipping its right wall.
+  // Its x=336 placement leaves the same practical outer gutter as the combo's
+  // x=224 placement, with only a 16px grid gap between the two facades.
+  gameWatch: Object.freeze([336, 120, 208, 'game-watch', 'portrait-grid']),
+  clock: null,
+  billboards: Object.freeze([[0, 'chart']]),
+  transmitter: null,
+  rooftopGorilla: null,
+  smokestacks: Object.freeze([]),
+  // Kong's portrait roof is 83px higher than the authored landscape roof.
+  // Translate the whole flight lane by that same amount: the normal pass then
+  // crosses the raised barrel over Kong, while lcdPassAltitude lifts the
+  // non-striking phases further clear so the collision remains occasional.
+  plane: Object.freeze({
+    ...LCD_CITY_SCENES[1].plane,
+    from: -27,
+    to: -40,
+  }),
+});
+
 // Each stage's sky pair, which LCD_SKY_PHASES phase 0 opens on. The tinted
 // building planes and stage-specific cloud inks that used to live here are
 // gone with the OLED treatment: every wall is LCD_FACADE_WASH and every cloud
@@ -3398,6 +4623,15 @@ const LCD_EQ_LEVELS = [2, 4, 3, 6, 4, 5, 2, 4, 6, 3, 5, 4, 2, 5, 3, 6];
 // on this screen eases.
 const LCD_CLOUD_DRIFT = [2, 1, 3];
 const LCD_CLOUD_BOB = [0, 1, 0, -1];
+// Lower edge of the reserved sky band. These are the highest rows occupied by
+// rooftop scenery plus a small gap: stage 1's transmitter ring (51), stage
+// 2's roof traffic/sign band (44), and stage 3's raised gorilla arm (56).
+// Clouds wrap horizontally for the life of a level, so the vertical contract
+// is what keeps them clear of a billboard/building after an arbitrary number
+// of song loops, not their starting x positions.
+export const LCD_CLOUD_CLEARANCE_BOTTOM = Object.freeze([null, 48, 44, 56]);
+const LCD_CLOUD_BODY_H = 13;
+const LCD_CLOUD_CLEAR_GAP = 1;
 const LCD_WINDOW_OFF = 'rgba(80,85,92,0.24)';
 const LCD_MOTION_GHOST = 'rgba(80,85,92,0.12)';
 const LCD_WINDOW_ON = 'rgba(211,91,67,0.82)';
@@ -3812,34 +5046,35 @@ const lcdBayHits = (bay, x, y, w, h) => !!bay
   && x + w > bay.left && x < bay.right && y + h > bay.top && y < bay.bottom;
 
 function lcdWindowCells(building, bay = null) {
-  const hit = lcdCellCache.get(building);
+  let hit = lcdCellCache.get(building);
   if (hit) return hit;
   const [x, w, h] = building;
+  const grid = lcdGridFor(building);
   const top = GROUND_Y - h;
   // Columns follow from the width, which was set from the columns: see
   // LCD_FACADE_W. A window is the fill inside a 3x2-cell box whose rules are
   // x + 6 + 15·col and top + 6 + 12·row, so the box's edges are grid lines
   // and the fill sits one pixel inside them.
-  const cols = Math.max(2, Math.round((w - 2 * LCD_U) / LCD_COL_PITCH));
+  const cols = Math.max(2, Math.round((w - 2 * grid.unit) / grid.colPitch));
   // Rows the beat may light: those whose box clears the quiet 27px above the
   // lane. The rest run on down past the road for a pit to show.
-  const activeRows = Math.max(2, Math.floor((h - 27 - 2 * LCD_U) / LCD_ROW_PITCH));
-  const rows = Math.max(activeRows, Math.floor((H - top - 2 * LCD_U - 1) / LCD_ROW_PITCH));
+  const activeRows = Math.max(2, Math.floor((h - 27 - 2 * grid.unit) / grid.rowPitch));
+  const rows = Math.max(activeRows, Math.floor((H - top - 2 * grid.unit - 1) / grid.rowPitch));
   const cells = [];
   for (let row = 0; row < rows; row++) {
-    const y = top + 2 * LCD_U + 1 + row * LCD_ROW_PITCH;
-    if (y + LCD_CELL_H > H) continue;
+    const y = top + 2 * grid.unit + 1 + row * grid.rowPitch;
+    if (y + grid.cellH > H) continue;
     for (let col = 0; col < cols; col++) {
-      const cellX = x + 2 * LCD_U + 1 + col * LCD_COL_PITCH;
+      const cellX = x + 2 * grid.unit + 1 + col * grid.colPitch;
       // The clock stage has no windows in it. Dropped at BUILD time rather than
       // masked at draw time, so the lit half cannot light a cell the dial is
       // standing on — and so the baked layer and the live one agree by
       // construction instead of by both remembering to check.
-      if (lcdBayHits(bay, cellX, y, LCD_CELL_W, LCD_CELL_H)) continue;
+      if (lcdBayHits(bay, cellX, y, grid.cellW, grid.cellH)) continue;
       cells.push({ row, col, x: cellX, y });
     }
   }
-  const built = { cells, cols, activeRows };
+  const built = { cells, cols, activeRows, grid };
   lcdCellCache.set(building, built);
   return built;
 }
@@ -3850,16 +5085,19 @@ function lcdWindowCells(building, bay = null) {
 //
 // Big, solid tiles: closer to a GBC game's readable window blocks than the
 // old fine H-shaped LCD segments.
-function lcdWindowGridBase(ctx, building, bay) {
-  const { cells } = lcdWindowCells(building, bay);
+function lcdWindowGridBase(ctx, building, bay, minY = -Infinity) {
+  const { cells, grid } = lcdWindowCells(building, bay);
+  const firstY = Number.isFinite(Number(minY)) ? Number(minY) : -Infinity;
   // One uniform ghost cell, no glint: a segment that is off.
   ctx.fillStyle = LCD_WINDOW_GHOST;
-  for (const cell of cells) ctx.fillRect(cell.x, cell.y, LCD_CELL_W, LCD_CELL_H);
+  for (const cell of cells) {
+    if (cell.y >= firstY) ctx.fillRect(cell.x, cell.y, grid.cellW, grid.cellH);
+  }
 }
 
 // THE LIT HALF, and the only part of the grid a beat can move.
 function lcdWindowGridLit(ctx, building, index, frame, bay) {
-  const { cells, cols, activeRows } = lcdWindowCells(building, bay);
+  const { cells, cols, activeRows, grid } = lcdWindowCells(building, bay);
   const floorY = lcdLightFloor(frame.maxRoadRise);
   const lightable = (cell) => cell.row < activeRows && cell.y <= floorY;
   const active = [];
@@ -3873,7 +5111,7 @@ function lcdWindowGridLit(ctx, building, index, frame, bay) {
   // building fills up in the evening; `phase` adds a floor, so the city has
   // more lights on at the end of a run than at the start.
   // ADDITIVE, not a replacement. The level says HOW MANY cells; the authored
-  // per-stage cycle still says WHICH — so CLOCK-IN CITY still walks its single
+  // per-stage cycle still says WHICH — so the first city still walks its single
   // cell, CHORUS DISTRICT still alternates its column parity and OVERDRAFT
   // SKYLINE still runs two cells in opposite directions. Replacing those
   // branches outright made all three stages the same city the moment music
@@ -3908,11 +5146,11 @@ function lcdWindowGridLit(ctx, building, index, frame, bay) {
   for (const [pad, colour] of LCD_GLOW) {
     ctx.fillStyle = colour;
     for (const cell of active) {
-      ctx.fillRect(cell.x - pad, cell.y - pad, LCD_CELL_W + pad * 2, LCD_CELL_H + pad * 2);
+      ctx.fillRect(cell.x - pad, cell.y - pad, grid.cellW + pad * 2, grid.cellH + pad * 2);
     }
   }
   ctx.fillStyle = LCD_WINDOW_LIT;
-  for (const cell of active) ctx.fillRect(cell.x, cell.y, LCD_CELL_W, LCD_CELL_H);
+  for (const cell of active) ctx.fillRect(cell.x, cell.y, grid.cellW, grid.cellH);
 }
 
 function lcdStrokePath(ctx, points, close = false) {
@@ -3925,6 +5163,7 @@ function lcdStrokePath(ctx, points, close = false) {
 
 function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
   const [x, w, h, style] = building;
+  const grid = lcdGridFor(building);
   const top = GROUND_Y - h;
   const detailBottom = GROUND_Y - 27;
   const cx = Math.round(x + w / 2);
@@ -3941,6 +5180,7 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
   // The facade continues to the bottom of the display. The road apron masks
   // this lower portion everywhere except a pit, where it becomes the actual
   // background seen through the opening.
+  ctx.lineWidth = grid.lineW;
   ctx.strokeRect(x + 0.5, top + 0.5, w, H - top);
   // The lines on the wall: one pixel wide, in the window gutters, one
   // signature element per style — see lcdLeanDetail. The lower 27px remain
@@ -4068,7 +5308,7 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
 function lcdLeanDetail(ctx, building, bay, detailBottom) {
   const [x, w, h, style] = building;
   const top = GROUND_Y - h;
-  const { cells, cols } = lcdWindowCells(building, bay);
+  const { cells, cols, grid } = lcdWindowCells(building, bay);
   // Wall to wall, inside the outline.
   const left = x + 1;
   const right = x + w;
@@ -4081,26 +5321,33 @@ function lcdLeanDetail(ctx, building, bay, detailBottom) {
   for (let r = 0; ref.length < cols && r < 40; r++) ref = rowOf(r);
   const gutters = [];
   for (let i = 1; i < ref.length; i++) {
-    gutters.push(Math.floor((ref[i - 1].x + LCD_CELL_W + ref[i].x) / 2));
+    gutters.push(Math.floor((ref[i - 1].x + grid.cellW + ref[i].x) / 2));
   }
   // Row gutters: the rule between two window rows' boxes.
-  const rowGutter = (r) => top + 2 * LCD_U + (r + 1) * LCD_ROW_PITCH - LCD_U;
-  const rows = Math.floor((detailBottom - (top + 2 * LCD_U)) / LCD_ROW_PITCH);
-  // One-pixel lines, skipping anything the clock bay owns.
-  const hline = (y) => { if (!lcdBayHits(bay, left, y, span, 1)) ctx.fillRect(left, y, span, 1); };
+  const rowGutter = (r) => top + 2 * grid.unit + (r + 1) * grid.rowPitch - grid.unit;
+  const rows = Math.floor((detailBottom - (top + 2 * grid.unit)) / grid.rowPitch);
+  // Lines are deliberately heavier in the portrait grid, skipping anything
+  // the clock bay owns.
+  const hline = (y) => {
+    if (!lcdBayHits(bay, left, y, span, grid.lineW)) {
+      ctx.fillRect(left, y, span, grid.lineW);
+    }
+  };
   const vline = (gx, y0, y1) => {
     if (y1 <= y0) return;
-    if (lcdBayHits(bay, gx, y0, 1, y1 - y0)) {
+    if (lcdBayHits(bay, gx, y0, grid.lineW, y1 - y0)) {
       // Pick up under the bay's sill, exactly as the shipped spine does.
-      if (bay && bay.bottom < y1) ctx.fillRect(gx, bay.bottom, 1, y1 - bay.bottom);
+      if (bay && bay.bottom < y1) {
+        ctx.fillRect(gx, bay.bottom, grid.lineW, y1 - bay.bottom);
+      }
       return;
     }
-    ctx.fillRect(gx, y0, 1, y1 - y0);
+    ctx.fillRect(gx, y0, grid.lineW, y1 - y0);
   };
-  const wallTop = top + 2 * LCD_U;
+  const wallTop = top + 2 * grid.unit;
   // The cornice, on the rule half-way between the roof and the first row.
   // Not on a clock tower: the dial owns that storey.
-  if (!bay) hline(top + LCD_U);
+  if (!bay) hline(top + grid.unit);
   switch (style) {
     case 'clockworks':
     case 'spire':
@@ -4170,6 +5417,29 @@ function lcdCloud(ctx, x, y, pose) {
   lcdStrokePath(ctx, (pose ? b : a).map(([px, py]) => [x + px, y + py]), true);
 }
 
+// The cloud floor is not just a stage constant. Portrait rhythm-1 swaps in a
+// taller Kong tower and keeps the chart billboard on the neighbouring roof;
+// after the portrait city lift those are the first things a cloud can touch.
+// Derive the tightest ceiling from the scene actually being painted so a new
+// building, billboard size, or portrait lift cannot leave the old cloud band
+// sitting on a roof.
+function lcdCloudClearanceBottom(art, stageIndex) {
+  let bottom = LCD_CLOUD_CLEARANCE_BOTTOM[stageIndex] ?? H;
+  const roofOf = (building) => GROUND_Y - building[2];
+  for (const building of art.buildings || []) bottom = Math.min(bottom, roofOf(building));
+  if (art.gameWatch) bottom = Math.min(bottom, roofOf(art.gameWatch));
+  for (const [bi, name] of art.billboards || []) {
+    const building = art.buildings?.[bi];
+    if (!building) continue;
+    const sign = LCD_BILLBOARD_ART[name];
+    const frame = sign?.frames?.[0];
+    const ph = name === 'chart' ? LCD_BOARD_H
+      : frame ? frame.length * 2 + 8 : 0;
+    if (ph > 0) bottom = Math.min(bottom, roofOf(building) - 8 - ph);
+  }
+  return bottom - LCD_CLOUD_CLEAR_GAP;
+}
+
 function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
   // The sky was the one part of the panel that never moved. Each cloud now
   // drifts leftward in whole-pixel steps on the heard beat — a different pace
@@ -4196,7 +5466,12 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
       // panel slides sideways by a margin.
       x = Math.round(wrapIntoView(ctx, cx0 + 36 - beatAbs * pace, 36));
     }
-    const y = cy0 + portraitCloudOffset(backgroundContext) + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
+    const naturalY = cy0 + portraitCloudOffset(backgroundContext)
+      + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
+    const clearanceBottom = lcdCloudClearanceBottom(art, frame.stageIndex);
+    const maxY = clearanceBottom == null ? naturalY
+      : clearanceBottom - LCD_CLOUD_BODY_H - LCD_CLOUD_CLEAR_GAP;
+    const y = Math.min(naturalY, maxY);
     lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
   }
 }
@@ -8052,26 +9327,49 @@ function lcdRunnerCells(ctx, rx, footY, mode, silhouette) {
 function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, vanished = -1,
   planeAt = null) {
   const [x, w, h] = spec;
+  const grid = lcdGridFor(spec);
   const top = GROUND_Y - h;
   const span = w - 10;
+  const FLOOR_PITCH = 32;
+  const KONG_LEVELS = 3;
+  // The portrait tower is a building still going up: its lower facade has
+  // ordinary ghost windows, while the three upper floors are the open Kong
+  // playfield. The plumber appears on that boundary, so the windows stop below
+  // him and the girders above read as the special levels built on top.
+  const constructionWindowTop = spec?.[4] === 'portrait-grid'
+    ? top + FLOOR_PITCH * KONG_LEVELS : null;
   // THE LADDERS ARE ON THE PANEL'S OWN GRID. Everything else on this screen is
   // laid out in graph-paper cells (LCD_U) and the ladders were not: seven
   // pixels wide, at whatever x the tower's own offsets happened to give, so
   // they cut across the lattice instead of sitting in it. Three cells wide,
   // snapped to the grid, and the rungs on it too — which also gives the runner
   // a rail either side of him instead of one under each hand.
-  const LADDER_W = LCD_U * 3;
-  const snapU = (v) => Math.round(v / LCD_U) * LCD_U;
+  const LADDER_W = grid.unit * 3;
+  const snapU = (v) => Math.round(v / grid.unit) * grid.unit;
   const ladA = snapU(x + 26), ladB = snapU(x + 56), ladRoof = snapU(x + 70);
+  // The old roof ladder offset was authored for the landscape tower's wider
+  // panel. In portrait the narrower Kong facade uses a larger grid, so x+70
+  // puts the ladder rails beyond the right wall. Keep landscape byte-for-byte
+  // identical, but fit the portrait ladder inside its own facade and grid.
+  const roofLadderInset = spec?.[4] === 'portrait-grid'
+    ? Math.max(grid.unit, w - LADDER_W - grid.unit) : 70;
+  const portraitLadRoof = spec?.[4] === 'portrait-grid'
+    ? snapU(x + roofLadderInset) : ladRoof;
   const ladMid = (lx) => lx + (LADDER_W - 1) / 2;
   // The facade obeys every rule the other buildings do: a colour plane, a
   // print outline running to the bottom of the display (so a pit in front of
-  // it exposes real tower, not a void), a cornice, corner masonry, and a
-  // quiet lower 27px that never becomes false lane furniture.
+  // it exposes real tower, not a void), a cornice, corner masonry, and — on
+  // portrait — a lower windowed section that stops below the Kong playfield.
   ctx.fillStyle = 'rgba(211,139,66,0.26)';
   ctx.fillRect(x + 1, top + 1, w - 1, H - top - 1);
+  if (constructionWindowTop !== null) {
+    lcdWindowGridBase(ctx, spec, null, constructionWindowTop);
+  }
   ctx.strokeStyle = LCD_PRINT;
-  ctx.lineWidth = 1;
+  // Match the portrait facade print weight to its larger window grid. The
+  // landscape grid remains one pixel, so this is also a no-op for the authored
+  // landscape tower.
+  ctx.lineWidth = grid.lineW;
   // THE ROOF IS OPEN WHERE THE TOP LADDER COMES THROUGH. In the arcade the
   // climb ends by going UP through the girders, not by stopping under a solid
   // parapet — and this tower already draws that last ladder from the roof down
@@ -8086,11 +9384,12 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   // Cut at the ladder's outer edges the roof stopped a pixel short of the left
   // rail and restarted half a pixel into the right one, so the climb arrived
   // at a hole it did not touch on either side — a ladder drawn near the roof
-  // rather than through it. The rails stand in the two columns ladRoof and
-  // ladRoof + LADDER_W - 1, so the roof line now runs across BOTH of them and
-  // stops between: whole-pixel endpoints, one dark pixel directly over each
-  // rail's top, and the seven columns of daylight the man would climb through.
-  const roofGap = [ladRoof + 1, ladRoof + LADDER_W - 1];
+  // rather than through it. The rails stand in the two columns
+  // portraitLadRoof and portraitLadRoof + LADDER_W - 1, so the roof line now
+  // runs across BOTH of them and stops between: whole-pixel endpoints, one
+  // dark pixel directly over each rail's top, and the grid-sized daylight the
+  // man would climb through.
+  const roofGap = [portraitLadRoof + 1, portraitLadRoof + LADDER_W - 1];
   ctx.beginPath();
   ctx.moveTo(x + 0.5, H + 0.5);
   ctx.lineTo(x + 0.5, top + 0.5);
@@ -8130,7 +9429,6 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   // this tower is one floor — and tests/lcd-background.js now asserts no steel
   // breaks the road surface, so the next height change fails loudly instead of
   // growing another sliver.
-  const FLOOR_PITCH = 32;
   const floors = [];
   for (let fy = top + FLOOR_PITCH; fy < H - 6; fy += FLOOR_PITCH) floors.push(fy);
   // Slope parity is set by the RUNNER's route: he travels right on even
@@ -8148,8 +9446,8 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   // One ladder between each pair of floors, swapping sides as they descend.
   ctx.fillStyle = LCD_PRINT_SOFT;
   const ladder = (lx, t, b) => {
-    ctx.fillRect(lx, t, 1, b - t);
-    ctx.fillRect(lx + LADDER_W - 1, t, 1, b - t);
+    ctx.fillRect(lx, t, grid.lineW, b - t);
+    ctx.fillRect(lx + LADDER_W - grid.lineW, t, grid.lineW, b - t);
     // Rungs every two cells, on the grid's own rows rather than a fixed step
     // from a sloped girder — so every ladder's rungs line up with every other
     // ladder's, and with the lattice behind them. The series starts at the
@@ -8158,8 +9456,8 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     // meets the opening instead of starting three pixels below it. Under a
     // girder the same rule lands the first rung just clear of the steel, which
     // is where it already was.
-    for (let ry = snapU(t + 1); ry < b - 2; ry += LCD_U * 2) {
-      ctx.fillRect(lx + 1, ry, LADDER_W - 2, 1);
+    for (let ry = snapU(t + 1); ry < b - 2; ry += grid.unit * 2) {
+      ctx.fillRect(lx + grid.lineW, ry, LADDER_W - grid.lineW * 2, grid.lineW);
     }
   };
   for (let i = 0; i + 1 < floors.length; i++) {
@@ -8169,7 +9467,8 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   // And one ladder from the top girder to the ROOF itself — past the spot
   // where the barrel always gets him, so the way up visibly exists and he
   // visibly never takes it. That is the whole tragedy of the toy.
-  ladder(ladRoof, top + 1, Math.round(floorY(0, ladMid(ladRoof))) + 1);
+  ladder(portraitLadRoof, top + 1,
+    Math.round(floorY(0, ladMid(portraitLadRoof))) + 1);
   // THE GIRDERS, bolted at the HIGH end and open at the low one, like the
   // arcade's: each runs from the wall it rises toward and stops a barrel's
   // width short of the other, which is the gap the barrel drops through to
@@ -8251,7 +9550,7 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     // Down the roof ladder, high under the eaves — it was halfway to the top
     // girder and read as a second barrel already on it. It enters with no
     // attitude yet: it has only just left his hands.
-    [ladMid(ladRoof), top + 9, 0],
+    [ladMid(portraitLadRoof), top + 9, 0],
     onFloor(x + 70, 0, -1), onFloor(x + 54, 0, -1),
     onFloor(x + 38, 0, -1), onFloor(x + 22, 0, -1),
     fell(fallLeft, 0, -1),
@@ -8447,11 +9746,9 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
  * THE WHOLE PANEL, sky and all — the one entry point anything outside a run
  * uses to draw this city.
  *
- * It exists because the jukebox plays the city as a visualiser preset, and the
- * alternative was a second copy of the scene that would drift from this one
- * the first time a billboard moved. The pack's own bg() and the preset now
- * paint the SAME city from the same data; the only difference between them is
- * who supplies the clock.
+ * It exists so tooling and other callers can use the same city painter as the
+ * production background without maintaining a second copy that would drift
+ * the first time a billboard moved.
  *
  * `scene` is the same optional context bg() takes — { stageIndex, beat,
  * progress, audio } — and every field is optional.
@@ -8465,7 +9762,7 @@ export function drawLCDPanelUncached(ctx, scene, settings = {}) {
 }
 
 export function drawLCDPanel(ctx, scene, settings = {}) {
-  // `skyMeter` on: the jukebox wants the analyser in the sky.
+  // `skyMeter` on: an authoring or audition caller wants the analyser in the sky.
   drawLCDCity(ctx, scene, !!settings.reducedMotion, !!settings.reducedFlashing,
     settings.skyMeter !== false, settings.backgroundContext || null);
 }
@@ -8506,8 +9803,7 @@ function lcdCrowned(art, i) {
 // layer per (stage, phase) — see bakedCity — and blitted every frame after.
 // Carries no sky: the train runs behind the skyline and has to be painted
 // between the two.
-function paintLCDStaticCity(ctx, stageIndex) {
-  const art = LCD_CITY_SCENES[stageIndex];
+function paintLCDStaticCity(ctx, stageIndex, art = LCD_CITY_SCENES[stageIndex]) {
   ctx.lineWidth = 1;
   const clockBay = lcdClockBay(art);
   for (let i = 0; i < art.buildings.length; i++) {
@@ -8648,6 +9944,22 @@ export function setLCDPanelCacheEnabled(enabled) {
   clearLCDPanelCache();
 }
 
+// Rotation changes the logical frame and usually the backing store as well.
+// Drop retained surfaces tied to either so the first frame in the new
+// orientation cannot reuse an old-height hill, pattern, or skyline bake.
+export function clearPresentationCaches() {
+  hillCache.clear();
+  hillCacheSS = 0;
+  gradCache.clear();
+  patCache.clear();
+  paperSurfaceCache.clear();
+  bakeCache.clear();
+  cityBake = null;
+  clearLCDPanelCache();
+}
+
+onPresentationChanged(clearPresentationCaches);
+
 // Resolve the exact existing cell/flash decisions once, shared by key and painter.
 // No new quantization and no retained references to mutable analyser/ink buffers.
 function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNeeded = false) {
@@ -8699,12 +10011,15 @@ function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNee
   return { frame, supported };
 }
 
-function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false, backgroundContext = null) {
-  const { frame, supported } = prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, lcdPanelCacheEnabled);
+function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false,
+  backgroundContext = null) {
+  const { frame, supported } = prepareLCDPanel(scene, reducedMotion, reducedFlashing,
+    skyMeter, lcdPanelCacheEnabled);
   const cv = ctx.canvas;
   const coverage = backgroundPaintCoverage(ctx);
   const shiftedCoverage = coverage.left !== 0 || coverage.right !== W;
   panelKey.push(ctx.imageSmoothingEnabled);
+  panelKey.push(backgroundContext?.portrait ? 1 : 0);
   panelKey.push(backgroundContext?.cloudOffsetY || 0);
   const sceneryRect = backgroundContext?.sceneryLayout?.screenRect;
   panelKey.push(sceneryRect?.top || 0, sceneryRect?.bottom || 0,
@@ -8753,7 +10068,11 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
 }
 
 function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = false, backgroundContext = null) {
-  const art = LCD_CITY_SCENES[frame.stageIndex];
+  const isPortraitRhythm1 = !!(backgroundContext?.portrait && frame.stageIndex === 1);
+  const art = isPortraitRhythm1 ? LCD_PORTRAIT_STAGE_1 : LCD_CITY_SCENES[frame.stageIndex];
+  // Portrait rhythm-1 keeps its sparse two-building skyline and no portrait
+  // extension, but its authored clouds and plane are part of the scene again.
+  const portraitSparseCity = isPortraitRhythm1;
   const palette = LCD_GBC_PALETTES[frame.stageIndex];
   // The sky is painted HERE rather than by each caller, so the scene frame is
   // derived once per frame instead of once by bg() and again on the way in.
@@ -8766,9 +10085,15 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   skyGrad(ctx, sky[0], sky[1]);
   ctx.fillStyle = sky[1];
   const coverage = backgroundPaintCoverage(ctx);
-  ctx.fillRect(coverage.left, GROUND_Y, coverage.width, H - GROUND_Y);
+  // Keep the lower city fill under the same sideways bleed as skyGrad(). A
+  // pit is allowed to reveal this band, so letting it stop at a narrower
+  // fallback interval would trade the original left-edge seam for a seam
+  // visible precisely through the opening.
+  const bleed = coverage.left !== 0 || coverage.right !== W ? W : 0;
+  ctx.fillRect(coverage.left - bleed, GROUND_Y,
+    coverage.width + bleed * 2, H - GROUND_Y);
   ctx.lineWidth = 1;
-  lcdPortraitCityExtension(ctx, frame, backgroundContext);
+  if (!portraitSparseCity) lcdPortraitCityExtension(ctx, frame, backgroundContext);
   // RHYTHM 2'S CLOUDS ARE THE BACK OF THE CITY. This stage's elevated rail,
   // train, searchlight and roof traffic all cross their band, and painting the
   // clouds after those objects made the wisps cut across them. Put this one
@@ -8789,8 +10114,8 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   };
   // The facades, their line art and every unlit window, in one blit — or, while
   // the city is arriving, one column window per structure at its own offset.
-  bakedCity(ctx, `${frame.stageIndex}|${frame.phase}`,
-    (c) => paintLCDStaticCity(c, frame.stageIndex),
+  bakedCity(ctx, `${frame.stageIndex}|${frame.phase}|${isPortraitRhythm1 ? 'portrait' : 'landscape'}`,
+    (c) => paintLCDStaticCity(c, frame.stageIndex, art),
     arrive
       ? [...arrive.entries()].filter(([k]) => k !== 'gameWatch')
         .map(([, a]) => ({ x: a.x - 1, w: a.w + 3, dy: a.dy }))
@@ -8864,8 +10189,10 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
   if (art.gameWatch && towerRise !== null) {
     if (towerRise) ctx.save();
     if (towerRise) ctx.translate(0, towerRise);
-    lcdGameWatch(ctx, art.gameWatch, frame, lcdBurstPhase(art, frame), reducedFlashing,
-      lcdVanishedBarrelCell(art, frame), lcdPlanePoint(art, frame, art.plane));
+    lcdGameWatch(ctx, art.gameWatch, frame,
+      portraitSparseCity ? -1 : lcdBurstPhase(art, frame), reducedFlashing,
+      portraitSparseCity ? -1 : lcdVanishedBarrelCell(art, frame),
+      lcdPlanePoint(art, frame, art.plane));
     if (towerRise) ctx.restore();
   }
   // EVERY ROOF FURNISHING BELONGS TO A ROOF, so each one is drawn through its
@@ -9045,7 +10372,31 @@ function lcdPack(settings) {
       // a run. The city is alive, but the glass still does not travel. It
       // changes by switching cells between fixed authored poses on heard
       // musical beats; neither camX nor gameplay chart data enters the painter.
-      drawLCDCity(ctx, scene, reducedMotion, reduced, false, backgroundContext);
+      const shift = backgroundContext?.portrait ? LCD_PORTRAIT_CITY_SHIFT : null;
+      const previousCoverage = ctx.__mashBackgroundCoverage;
+      if (shift) {
+        ctx.save();
+        ctx.translate(shift.x, shift.y);
+        // Coverage is published in the unshifted local background space. Move
+        // the interval with the city as well, otherwise a shifted portrait
+        // fill can leave a one-sided sky seam at the phone edge.
+        if (previousCoverage) {
+          ctx.__mashBackgroundCoverage = {
+            ...previousCoverage,
+            left: previousCoverage.left - shift.x,
+            right: previousCoverage.right - shift.x,
+          };
+        }
+      }
+      try {
+        drawLCDCity(ctx, scene, reducedMotion, reduced, false, backgroundContext);
+      } finally {
+        if (shift) {
+          if (previousCoverage === undefined) delete ctx.__mashBackgroundCoverage;
+          else ctx.__mashBackgroundCoverage = previousCoverage;
+          ctx.restore();
+        }
+      }
       // No hardware frame around the screen any more: the bezel cost more
       // than it said (it doubled against facades, and its restore pass caused
       // the phantom-line saga), and the city reads as a place, not a toy.
@@ -9058,15 +10409,62 @@ function lcdPack(settings) {
     // terrainGroundY — two Math.sin and a pair of smoothsteps — and a linear
     // scan of the cut list before it was thrown away. Defaults to W so every
     // other caller, and every other pack, is unchanged.
-    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null,
+      worldContext = null) {
       const right = Math.max(0, Number.isFinite(portraitViewW) ? portraitViewW : viewW);
+      const portrait = !!settings?.portraitPresentation;
+      const worldZoom = Number.isFinite(Number(worldContext?.worldZoom))
+        && Number(worldContext.worldZoom) > 0 ? Number(worldContext.worldZoom) : null;
+      const worldXOffset = Number.isFinite(Number(worldContext?.worldXOffset))
+        ? Number(worldContext.worldXOffset) : 0;
+      const canSnapPortrait = portrait && worldZoom !== null
+        && Number.isFinite(Number(worldContext?.groundScreenY));
+      const screenXFor = (worldX) => {
+        const x = worldXOffset + worldX * (worldZoom || 1);
+        return worldContext?.mirror ? W - x : x;
+      };
+      const worldXForScreen = (screenX) => {
+        const x = worldContext?.mirror ? W - screenX : screenX;
+        return (x - worldXOffset) / (worldZoom || 1);
+      };
       const pits = [];
       for (const ob of obstacles || []) {
         if (!ob.live || !ob.def || !ob.def.isGap || ob.tunnel) continue;
-        const x = Math.round(ob.x - camX);
-        const w = Math.round(ob.w);
-        if (x + w < -4 || x > right + 4) continue;
-        pits.push({ x, w, wx: ob.x });
+        // Round the two world-space edges, then derive the width. Rounding the
+        // width independently lets the right wall, floor overscan and cut mask
+        // disagree by one pixel for fractional obstacle positions.
+        let x = Math.round(ob.x - camX);
+        let edge = Math.round(ob.x + ob.w - camX);
+        if (canSnapPortrait) {
+          // The post() lattice is screen-fixed, while this painter is below
+          // the world scale. Expand the opening to the surrounding vertical
+          // rules in SCREEN space, then invert the same transform the run
+          // applied. Doing this before building `cuts` is important: a wall
+          // that snaps without its apron mask leaves a thin road overlap at
+          // the corner, which is the exact seam this contract is meant to
+          // prevent.
+          const a = screenXFor(x);
+          const b = screenXFor(edge);
+          const left = Math.min(a, b);
+          const rightEdge = Math.max(a, b);
+          const snappedLeft = lcdPortraitGridLineX(left, 'floor');
+          const snappedRight = lcdPortraitGridLineX(rightEdge, 'ceil');
+          const snappedA = worldXForScreen(snappedLeft);
+          const snappedB = worldXForScreen(snappedRight);
+          x = Math.min(snappedA, snappedB);
+          edge = Math.max(snappedA, snappedB);
+        }
+        const w = edge - x;
+        if (w <= 0 || edge < -4 || x > right + 4) continue;
+        pits.push({
+          x, w,
+          // Once an edge has been moved to a printed rule, sample the surface
+          // at that same rendered edge so a rolling lane cannot leave a tiny
+          // height mismatch at the wall. Landscape keeps the old obstacle
+          // sample and therefore the old picture.
+          wx: canSnapPortrait ? camX + x : ob.x,
+          wxRight: canSnapPortrait ? camX + edge : ob.x + ob.w,
+        });
       }
       // Merge the visible openings into a mask. The city has already been
       // drawn all the way down; this apron covers it everywhere except here.
@@ -9102,10 +10500,26 @@ function lcdPack(settings) {
       let span = null;
       for (let wx = Math.floor(camX / STEP) * STEP; wx < camX + right + STEP; wx += STEP) {
         const sx = wx - camX;
-        if (inCut(sx, sx + STEP)) { span = null; continue; }
+        // Keep the solid portion of boundary columns. Dropping a whole 2wu
+        // column for a fractional cut exposed a vertical strip of scenery
+        // beside each wall, continuing all the way below the pit floor.
+        let pieces = [{ from: sx, to: sx + STEP }];
+        for (const cut of cuts) {
+          pieces = pieces.flatMap((piece) => {
+            if (piece.to <= cut.from || piece.from >= cut.to) return [piece];
+            const kept = [];
+            if (piece.from < cut.from) kept.push({ from: piece.from, to: cut.from });
+            if (piece.to > cut.to) kept.push({ from: cut.to, to: piece.to });
+            return kept;
+          });
+        }
         const y = terrainGroundY(cab, wx);
-        if (span && span.y === y && span.x + span.w === sx) span.w += STEP;
-        else spans.push((span = { x: sx, y, w: STEP }));
+        for (const piece of pieces) {
+          const w = piece.to - piece.from;
+          if (span && span.y === y && Math.abs(span.x + span.w - piece.from) < 1e-9) span.w += w;
+          else spans.push((span = { x: piece.from, y, w }));
+        }
+        if (!pieces.length) span = null;
       }
       ctx.fillStyle = LCD_PANEL_LIT;
       for (const sp of spans) ctx.fillRect(sp.x, sp.y, sp.w, H - sp.y);
@@ -9146,18 +10560,38 @@ function lcdPack(settings) {
       // bedrock the hole opens onto, not hanging at the mouth. The camera
       // shows the top of them from the road and the rest as the crane lifts.
       const GEAR_CY = GROUND_Y + 16;
-      // The daylight the train keeps off the shaft walls. The walls themselves
-      // are LCD_ROAD_INK thick — see below — so the clearance is measured from
-      // that and moves with it.
+      // Portrait gives the machinery a finite little bay. Below this line the
+      // ordinary panel ground takes over; the side walls stop with the bay so
+      // a gear pit cannot read as a shaft running to the phone's bottom edge.
+      // This is a WORLD y for the painter below. In the live portrait run the
+      // candidate is first projected through the actual frame camera and
+      // snapped to the screen lattice, then inverted. The old code snapped
+      // 261 directly, which only happened to look right at zoom one; at the
+      // phone zoom it put the closing rule between two post() grid rules.
+      const portraitGroundScreenY = Number(worldContext?.groundScreenY);
+      const gearBottom = GEAR_CY + GEAR_R + 4;
+      const gearBottomScreen = canSnapPortrait
+        ? portraitGroundScreenY + (gearBottom - GROUND_Y) * worldZoom
+        : gearBottom;
+      const snappedPitLineScreen = portrait
+        ? lcdPortraitGridLineY(gearBottomScreen) : gearBottomScreen;
+      const GEAR_PIT_LINE_Y = canSnapPortrait
+        ? GROUND_Y + (snappedPitLineScreen - portraitGroundScreenY) / worldZoom
+        : snappedPitLineScreen;
+      const pitInk = canSnapPortrait ? LCD_PORTRAIT_GRID_LINE_W / worldZoom : LCD_ROAD_INK;
+      // The daylight the train keeps off the shaft walls. The frame gauge is
+      // `pitInk`: landscape keeps the road's one-world-pixel ink, while live
+      // portrait inverts the two-pixel screen-grid rule through the zoom so
+      // the clearance and the walls stay on the same displayed gauge.
       const GEAR_PITCH = GEAR_R * 2 - 2;
       const GEAR_CLEAR = 3;
 
       const ratchet = Math.round(camX / PITCH) * (Math.PI / 8);
-      for (const { x, w, wx } of pits) {
+      for (const { x, w, wx, wxRight } of pits) {
         // The cut edges, full depth — from the LOCAL surface, not from the
         // flat groundline, so a rolled lip and its wall meet exactly. Wall
-        // thickness is the road's own ink line, LCD_ROAD_INK, so the hole's
-        // frame and the surface it is cut into read as ONE gauge of steel
+        // thickness is the same `pitInk` gauge as the hole's closing rule, so
+        // the frame and the surface it is cut into read as ONE piece of steel
         // meeting at the lip. A wall heavier than the road it is cut into is
         // two gauges at a corner, and the corner is where that shows worst.
         //
@@ -9166,15 +10600,27 @@ function lcdPack(settings) {
         // reading as a shaft — is real but loses to the joint. The mouth still
         // reads as an opening because of the FULL-DEPTH ink either side and the
         // works at the bottom of it, neither of which is the wall's thickness.
-        ctx.fillStyle = LCD_INK;
         const topL = terrainGroundY(cab, wx);
-        const topR = terrainGroundY(cab, wx + w);
-        ctx.fillRect(x, topL, LCD_ROAD_INK, H - topL);
-        ctx.fillRect(x + w - LCD_ROAD_INK, topR, LCD_ROAD_INK, H - topR);
+        const topR = terrainGroundY(cab, wxRight);
+        const wallBottom = portrait ? GEAR_PIT_LINE_Y + pitInk : H;
+
+        if (portrait) {
+          // Start directly under the bottom ink. Starting above it left a
+          // bright extra stripe inside the bay. Overscan sideways underneath
+          // the solid apron so antialiasing cannot uncover the background.
+          ctx.fillStyle = LCD_PANEL_LIT;
+          const floorTop = GEAR_PIT_LINE_Y;
+          ctx.fillRect(x - pitInk, floorTop,
+            w + pitInk * 2, Math.max(0, H - floorTop + 1));
+        }
+
+        ctx.fillStyle = LCD_INK;
+        ctx.fillRect(x, topL, pitInk, Math.max(0, wallBottom - topL));
+        ctx.fillRect(x + w - pitInk, topR, pitInk, Math.max(0, wallBottom - topR));
         // Mitred lips: the surface line turns the corner into the wall as one
         // continuous piece — the column walk alone leaves a stepped joint.
-        ctx.fillRect(x - LCD_ROAD_INK, topL, LCD_ROAD_INK * 2, LCD_ROAD_INK);
-        ctx.fillRect(x + w - LCD_ROAD_INK, topR, LCD_ROAD_INK * 2, LCD_ROAD_INK);
+        ctx.fillRect(x - pitInk, topL, pitInk * 2, pitInk);
+        ctx.fillRect(x + w - pitInk, topR, pitInk * 2, pitInk);
         // Wheels meshed across the opening, centres pitched a hair under two
         // radii so the teeth interleave. Anchored to the pit (world space), so
         // the train stands still in the hole as the panel steps past it.
@@ -9196,6 +10642,13 @@ function lcdPack(settings) {
           const dir = i % 2 === 0 ? 1 : -1;
           lcdGear(ctx, cx, GEAR_CY, GEAR_R, dir * ratchet + (i % 2) * (Math.PI / 8));
         }
+        if (portrait) {
+          // This is the bottom edge of the dry mechanical pit. The filled panel
+          // ground below it is deliberately the same surface as outside the
+          // opening, rather than an empty background showing through forever.
+          ctx.fillStyle = LCD_INK;
+          ctx.fillRect(x, GEAR_PIT_LINE_Y, w, pitInk);
+        }
       }
       // NO frame restore here. ground() runs inside the world transform, so a
       // strokeRect(5,5,…) lands at WORLD x5 and the camera magnifies its left
@@ -9207,16 +10660,18 @@ function lcdPack(settings) {
       // NO WASH. The soft-light pass that tied the old spot palette together
       // muddied it as much as it tied it; an OLED's light comes from the
       // panel, and the glow on the lit cells is the whole of that idea.
-      // Landscape keeps the very faint LCD lattice. Portrait omits the
-      // periodic mask entirely: at a fractional phone scale even a coarse
-      // repeated lattice can produce moire, while the authored city/level
-      // lines remain stable and readable.
+      // Landscape keeps its fine, faint LCD lattice. Portrait uses a coarser
+      // and stronger rule so the grid survives the phone resample and reads
+      // as clearly as the landscape version.
       const cell = lcdScreenGridCellSize(settings);
       if (cell) {
+        const portraitGrid = !!settings?.portraitPresentation;
+        const line = portraitGrid ? LCD_PORTRAIT_GRID_LINE_W : 1;
         bakedFill(ctx, `gbcCellsFaint:${cell}`, cell, cell, (c) => {
-          c.fillStyle = 'rgba(50,53,58,0.055)';
-          c.fillRect(cell - 1, 0, 1, cell);
-          c.fillRect(0, cell - 1, cell, 1);
+          c.fillStyle = portraitGrid
+            ? 'rgba(50,53,58,0.10)' : 'rgba(50,53,58,0.055)';
+          c.fillRect(cell - line, 0, line, cell);
+          c.fillRect(0, cell - line, cell, line);
         });
       }
       if (!reduced) {
@@ -9234,6 +10689,9 @@ function lcdPack(settings) {
 
 function cardboardPack(settings) {
   const reducedMotion = settings && settings.reducedMotion;
+  const paperPreview = !!(settings?.paperPreset
+    && settings.paperCutout !== false && settings.paperCutout !== 'off');
+  const paperPreset = paperPresetName(settings?.paperPreset);
   return {
     name: 'cardboard',
     lightBg: true,
@@ -9245,7 +10703,8 @@ function cardboardPack(settings) {
       // cardboard cutout hills with corrugation ticks
       ctx.save();
       ctx.translate(0, backgroundY(backgroundContext, 'far'));
-      parallaxHills(ctx, camX, cab.far, farBaseY, 56, 120, 0.15);
+      parallaxHills(ctx, camX, cab.far, farBaseY, 56, 120, 0.15,
+        paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
       ctx.fillStyle = 'rgba(90,64,32,0.3)';
       const coverage = backgroundPaintCoverage(ctx);
       for (let x = Math.floor(coverage.left / 10) * 10; x < coverage.right; x += 10) {
@@ -9254,7 +10713,8 @@ function cardboardPack(settings) {
       ctx.restore();
       ctx.save();
       ctx.translate(0, backgroundY(backgroundContext, 'near'));
-      parallaxHills(ctx, camX, cab.hills, nearBaseY, 34, 60, 0.35);
+      parallaxHills(ctx, camX, cab.hills, nearBaseY, 34, 60, 0.35,
+        paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
       ctx.restore();
       // a "distant" castle that is obviously four inches tall, on a stick
       const cx = wrapIntoView(ctx, 300 - camX * 0.4 * ZOOM, 100);
@@ -9282,6 +10742,7 @@ function cardboardPack(settings) {
       }
     },
     post(ctx, t) {
+      if (paperPreview) return;
       ctx.fillStyle = 'rgba(200,160,104,0.05)';
       ctx.fillRect(0, 0, W, H);
     },
@@ -9485,6 +10946,45 @@ const FACTORIES = {
 export function getStylePack(name, settings) {
   const f = FACTORIES[name] || FACTORIES.pixel;
   const pack = f(settings || {});
+  // Preview-only material injection for non-Plumber cabinets. Their authored
+  // style painter remains intact, while shared terrain/routes can be audited
+  // with the same cardstock and shadow treatment through `?paper=...`.
+  if (settings?.paperPreset && settings.paperCutout !== false && settings.paperCutout !== 'off' && !pack.paperSlab) {
+    const preset = paperPresetName(settings.paperPreset);
+    const paperStrengths = paperStrengthsOf(settings);
+    pack.paperSlab = {
+      shadow: (ctx, source, options = {}) => sharedPaperShadowPass(ctx, source,
+        options.subtle ? PAPER_SUBTLE_DEEP_OFFSET : PAPER_DEEP_OFFSET,
+        options.subtle ? PAPER_SUBTLE_DEEP_COLOR : PAPER_DEEP_COLOR),
+      contact: (ctx, source, options = {}) => sharedPaperShadowPass(ctx, source,
+        options.subtle ? PAPER_SUBTLE_CONTACT_OFFSET : PAPER_CONTACT_OFFSET,
+        options.subtle ? PAPER_SUBTLE_CONTACT_COLOR : PAPER_CONTACT_COLOR),
+      finish: (ctx, source, options = {}) => sharedPaperFinishPass(ctx, source,
+        anchorPaperPattern(sharedPaperPatternFor(ctx, preset),
+          paperTextureCameraX(ctx.__paperCamX || 0, paperTextureSpeedOf(settings.paperTextureSpeed)), 0),
+        { alpha: paperStrengths.ground, ...options, rim: false }),
+      material: PAPER_MATERIALS[preset], paper: true,
+      textureSpeed: paperTextureSpeedOf(settings.paperTextureSpeed),
+      groundStrength: paperStrengths.ground,
+    };
+    pack.lightBg = true;
+    pack.paperSkyStatic = false;
+    // Keep each preview cabinet's authored ground painter and palette, then
+    // lay one shared material over its solid apron. Routes and terrain receive
+    // the same adapter below in run.js; gaps and tunnel overhangs stay cut out.
+    if (typeof pack.ground === 'function') {
+      const authoredGround = pack.ground;
+      pack.ground = (ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) => {
+        authoredGround(ctx, camX, cab, obstacles, overhangs, t, viewW, portraitViewW);
+        const width = Number.isFinite(portraitViewW) ? portraitViewW
+          : Number.isFinite(viewW) ? viewW : W;
+        if (cab?.id !== 'plumber') {
+          drawPaperApronTexture(ctx, camX, obstacles, overhangs, width, preset,
+            paperTextureSpeedOf(settings.paperTextureSpeed), paperStrengths.ground);
+        }
+      };
+    }
+  }
   if (!pack.decorate) pack.decorate = null;
   return pack;
 }

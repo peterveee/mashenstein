@@ -16,7 +16,12 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn, spawnPuff } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, drawMenuRow, textYForMid, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
+import {
+  drawTextForPresentation as drawText,
+  drawTextCenteredForPresentation as drawTextCentered,
+  textWidth, wrapText, drawPanel, drawMenuRow, textYForMid,
+  drawKeyLegend, keyLegendWidth, drawPellet,
+} from '../engine/sprites.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
@@ -43,6 +48,7 @@ import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS }
   from '../engine/stylePacks/index.js';
+import { paperStrengthOf } from '../engine/paper-material.js';
 import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
@@ -62,6 +68,7 @@ import { PORTRAIT_LAB_DEFAULTS, validatePortraitConfig } from '../dev/portrait-l
 import {
   portraitHudLayout, portraitFloatieBaseY, portraitFloatieScale,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
+  PORTRAIT_OBJECTIVE_NOTICE_SEC,
 } from './portrait-layout.js';
 import { portraitTouchLayout } from '../engine/portrait-input.js';
 import { BACKGROUND_DEPTHS, resolveSceneryLayout } from '../engine/scenery-layout.js';
@@ -114,7 +121,7 @@ export const ACT_BANNER_TIME = 4.0;
 // the card vanishing mid-pixel; skipping to the fade plays the same exit the
 // card always plays, just sooner.
 const ACT_BANNER_FADE = 0.3;
-// The two-button card that follows the ACT card on the campaign's first stage
+// The touch-control card that follows the ACT card on the campaign's first stage
 // (touch only). It fades in over ZONE_CARD_FADE and cannot be dismissed until
 // ZONE_CARD_ARM has passed — the arm is longer than the fade on purpose, so the
 // earliest a tap can take it is a beat after it is fully legible. Neither number
@@ -276,7 +283,9 @@ function portraitGameplayEdges(frame = presentationFrame(), run = null) {
 
 // The background painter works in its own local screen coordinates, after the
 // optional portrait backdrop zoom and before the common horizontal presentation
-// shift. Return the local interval that maps to the complete 480px frame so
+// shift. `xOffset` is the user-space translate concatenated beneath that scale,
+// so it must be subtracted directly, not divided by the zoom a second time.
+// Return the local interval that maps to the complete 480px frame so
 // full-surface fills and tiled hills do not stop at the old unshifted edge.
 // The extra lead is expressed in the same pre-scale coordinates and is used
 // only by background painters for edge look-ahead.
@@ -285,8 +294,8 @@ function portraitBackgroundCoverage(xOffset = 0, bgZoom = 1) {
   const offset = Number.isFinite(Number(xOffset)) ? Number(xOffset) : 0;
   const zoom = Number.isFinite(Number(bgZoom)) && Number(bgZoom) > 0 ? Number(bgZoom) : 1;
   const half = W / 2;
-  const left = (0 - offset - half) / zoom + half;
-  const right = (W - offset - half) / zoom + half;
+  const left = (0 - half) / zoom + half - offset;
+  const right = (W - half) / zoom + half - offset;
   const lo = Math.min(left, right);
   const hi = Math.max(left, right);
   return Object.freeze({
@@ -822,14 +831,14 @@ const PAUSE_PLATE_X = W / 2 - PAUSE_PLATE_W - PAUSE_PLATE_GAP / 2;
 // against the phone's top and bottom edges. Keep this margin on the panel and
 // its plates together so the status/home-indicator areas have visible air.
 const PORTRAIT_PAUSE_EDGE = 28;
+const PORTRAIT_PAUSE_PANEL_PAD_X = 16;
+const PORTRAIT_PAUSE_PANEL_PAD_BOTTOM = 16;
 const PORTRAIT_PAUSE_BUTTON_H = 84;
 const PORTRAIT_PAUSE_TITLE_S = 6.4;
 const PORTRAIT_PAUSE_WHERE_S = 3.0;
-const PORTRAIT_PAUSE_LABEL_S = 1.8;
-const PORTRAIT_PAUSE_MISSION_S = 1.9;
-const PORTRAIT_PAUSE_BONUS_S = 1.8;
-const PORTRAIT_PAUSE_HERO_S = 2.8;
-const PORTRAIT_PAUSE_ABILITY_S = 1.9;
+const PORTRAIT_PAUSE_LABEL_S = 2.0;
+const PORTRAIT_PAUSE_MISSION_S = 2.2;
+const PORTRAIT_PAUSE_BONUS_S = 2.1;
 const PORTRAIT_PAUSE_CONTROLS_S = 1.8;
 const PORTRAIT_PAUSE_LEGEND_S = 1.95;
 const PORTRAIT_PAUSE_BUTTON_S = 2.8;
@@ -1541,11 +1550,33 @@ const INTRO_RUN_EXP = 1.8;
 // extent is set by the readout box standing off at 34, not by the mast, and the
 // flag's cloth still ends a good 29px inside the box's far edge.
 //
-// Portrait is a narrower WORLD view, not a shorter level. At the phone's 3.75x
-// presentation VIEW_W is about 128, so the old 72px edge margin left less than
+// Portrait is a narrower WORLD view, not a shorter level. At the phone's 3.5x
+// presentation VIEW_W is about 137, so the old 72px edge margin left less than
 // PLAYER_X of runway and put the trigger beyond totalDist. Keep the authored
 // margin where it fits, but guarantee a short final dash exists on narrow views.
 const FINISH_MIN_RUNWAY = 24;
+// How far ahead of the hero a shooting obstacle may open fire, in WORLD units.
+// Taken from desktop NORMAL, the framing the shooters were tuned in: its
+// VIEW_W is 300, the old bound was VIEW_W + 40 from the camera, and the hero
+// stands PLAYER_X into that. See the site in updateEntities for why it stopped
+// being a view fraction.
+export const SHOOTER_RANGE_AHEAD = 281;
+// The muzzle's near edge: closer than this and the shot has no road to cross,
+// so a shooter the hero has already run up on holds its fire.
+const SHOOTER_MIN_AHEAD = 60;
+
+/**
+ * MAY THIS SHOOTER OPEN FIRE, given where it and the hero are in the world?
+ *
+ * Named and exported because it is a fairness rule and it used to be a framing
+ * one — see the site in updateEntities. Takes no camera, which is the whole
+ * point: tests/boss-fairness.js asserts the window is the same at every zoom,
+ * and the only way to break that again is to put a view term back in here.
+ */
+export function shooterMayFire(obX, heroWorldX) {
+  const gap = obX - heroWorldX;
+  return gap > SHOOTER_MIN_AHEAD && gap < SHOOTER_RANGE_AHEAD;
+}
 const finishLineX = () => Math.max(VIEW_W - 72, PLAYER_X + FINISH_MIN_RUNWAY);
 // FINISH_CLEAR — the clear lane in front of the marker — is defined in
 // layout.js and re-exported at the top of this file. An obstacle parked
@@ -2048,11 +2079,46 @@ export class RunState {
     const envelope = portraitPanForBounds(surfaceBounds, portraitConfig.worldZoom,
       GROUND_Y, PORTRAIT_FRAME_MARGIN, 0);
     const ratio = this.portraitGroundAnchorRatio();
+    // EVERY LEVEL OPENS ON THE SAME GROUNDLINE.
+    //
+    // The resting pan was solved for THIS level's own starting floor, so a
+    // stage that opens on a raised road panned to drag that road down to the
+    // composed anchor — spending the bottom of the frame on empty ground while
+    // the hero sat high with sky to spare, and giving every cabinet a different
+    // opening. Measured on the real game: plumber opened at pan 51.4, speed at
+    // 12.2, rhythm at 0.0, which is why plumber's ground looked wrong beside
+    // speed's. Peter, twice: "I want every level to start at the same starting
+    // off point so the ground is consistent when starting (generally) and we
+    // pan down if we need to", and "why are we panning here? there is tons of
+    // room ABOVE the hero, makes no sense".
+    //
+    // So the resting pan is solved for the AUTHORED groundline, the one thing
+    // every cabinet shares. The opening frame becomes a property of the
+    // composition rather than of whatever the first few metres of terrain do.
+    // The level's own floor is still resolved as `surfacePan`: updateCamera's
+    // edge correction pans to it when the drawn hero actually reaches a frame
+    // extreme, which is the "pan down if we need to" half.
     const surfaceFloor = Number.isFinite(this.portraitSurfaceFloorY)
       ? this.portraitSurfaceFloorY : GROUND_Y;
     const preferredPan = portraitPanForFloor(surfaceFloor, portraitConfig.worldZoom,
       GROUND_Y, PORTRAIT_FRAME_MARGIN, ratio);
-    const pan = preferredPan;
+    // AND THAT RESTING PAN IS ZERO, because the published frame already is the
+    // composition.
+    //
+    // portraitGeometry solves the ground anchor for this handset and then
+    // CLAMPS it upward so the largest possible chat card can never cover the
+    // hero's feet: on a 390x844 phone it wants 812.1 and publishes 760.6.
+    // Solving `portraitPanForFloor` for the same ratio here produced exactly
+    // the 51.4px that clamp had just removed and panned it straight back down
+    // — undoing the clamp, spending the bottom of the frame on empty ground,
+    // and leaving the hero high with sky to spare. The anchor was being
+    // applied twice: once by the frame, once by the camera.
+    //
+    // So the resting camera is the frame, untouched. `surfacePan` below still
+    // carries the level's own floor for updateCamera's edge correction, which
+    // is what pans when the hero actually reaches an extreme.
+    const restingPan = 0;
+    const pan = restingPan;
     let branch = 'surface-fixed';
     let underground = null;
     if (this.route?.kind === 'tunnel') {
@@ -2069,7 +2135,8 @@ export class RunState {
       // pan and then parks it through jumps so the lower route stays readable.
       branch = 'tunnel-fixed';
     }
-    return Object.freeze({ ...envelope, pan, surfacePan: preferredPan, heroPan: preferredPan, branch,
+    return Object.freeze({ ...envelope, pan, restingPan, surfacePan: preferredPan,
+      heroPan: preferredPan, branch,
       underground, bottomOverflow: Math.max(0, pan - envelope.maxPan) });
   }
 
@@ -2681,6 +2748,8 @@ export class RunState {
     const portraitActive = this.portraitGameplay && portraitConfig
       && isPhonePortraitPresentation();
     if (portraitActive) {
+      // Let the death animation finish without following the hero into a pit.
+      if (this.dead) return;
       // Keep the portrait composition fixed through ordinary jumps and hills.
       // A materially raised route is a deliberate second composition: it
       // reframes once around that route, then parks through ordinary jumps.
@@ -3379,6 +3448,7 @@ export class RunState {
     this.floaties = [];
     this.floatClear = 0;         // eased shift keeping the popup stack off the hero
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
+    this.portraitObjectiveNotice = null;
     // Purchased bench upgrades announce themselves the same way a banked plug
     // does: gold pills sliding in under the health bar, one after another, in
     // place of a full-screen card that froze the opening of the run. Only tiers
@@ -3427,7 +3497,7 @@ export class RunState {
     this.introText = act;
     this.introT = 0; // banner animation clock (tRun is frozen during the freeze)
     this.introSkippable = !!act && seen;
-    // The two-button card, on the campaign's opening stage only, on touch only.
+    // The touch-control card, on the campaign's opening stage only, on touch only.
     // MANDATORY TRAINING teaches the control surface, but training is optional
     // and skipping it is the common path — so a phone that walks straight into
     // plumber-1 has never been told that the glass itself is the buttons, and
@@ -3752,7 +3822,7 @@ export class RunState {
       // level opens on the lane and he joins it — the alternative reads as a
       // villain who was always in the room.
       this.copter = {
-        x: this.camX + VIEW_W + 40, alt: 78, cooldown: 0,
+        x: this.viewRightX() + 40, alt: 78, cooldown: 0,
         mode: 'away', modeT: 0, bar, hitT: 0, fromDx: null,
         enterAt: 2 * bar,
       };
@@ -3835,8 +3905,56 @@ export class RunState {
     // gameplay setting. Snapshot the active frame mode here after the run has
     // installed its portrait presentation, so retries keep the same authored
     // level while the background texture remains stable on the phone.
+    let queryPaperPreset = null;
+    let queryPaperOff = false;
+    let queryPaperTextureSpeed = null;
+    let queryPaperEffectStrength = null;
+    let queryPaperSkyStrength = null;
+    let queryPaperSceneryStrength = null;
+    let queryPaperGroundStrength = null;
+    try {
+      // Preset URLs are a development comparison seam. Shipped stages can
+      // opt in through their explicit `paperPreset`; an arbitrary production
+      // URL must not silently repaint another cabinet.
+      if (typeof window !== 'undefined' && window.location) {
+        const q = new URLSearchParams(window.location.search || '').get('paper');
+        queryPaperOff = q === 'off' || q === '0';
+        if (window.__MASH_BUILD__ && (q === 'cardstockSoft' || q === 'cardstockQuiet'
+          || q === 'cardstockClear')) {
+          queryPaperPreset = q;
+        }
+        if (window.__MASH_BUILD__) {
+          const params = new URLSearchParams(window.location.search || '');
+          const readStrength = (name) => {
+            const raw = params.get(name);
+            if (raw == null || !Number.isFinite(Number(raw))) return null;
+            return paperStrengthOf(raw);
+          };
+          const rawSpeed = params.get('paperSpeed');
+          const speed = Number(rawSpeed);
+          if (rawSpeed != null && Number.isFinite(speed)) {
+            queryPaperTextureSpeed = Math.max(0, Math.min(1.25, speed));
+          }
+          queryPaperEffectStrength = readStrength('paperStrength');
+          queryPaperSkyStrength = readStrength('paperSkyStrength');
+          queryPaperSceneryStrength = readStrength('paperSceneryStrength');
+          queryPaperGroundStrength = readStrength('paperGroundStrength');
+        }
+      }
+    } catch { /* headless/non-browser */ }
     this.style = getStylePack(this.styleName, {
       ...this.save.settings,
+      paperCabinet: this.cabinet.id,
+      // A known query preset is an intentional dev bakeoff override. It wins
+      // over a stage's review default so the same authored level can show the
+      // baseline and the candidate without editing stage data.
+      paperPreset: queryPaperPreset || this.stage?.paperPreset || this.save.settings.paperPreset,
+      paperTextureSpeed: queryPaperTextureSpeed ?? this.save.settings.paperTextureSpeed,
+      paperEffectStrength: queryPaperEffectStrength ?? this.save.settings.paperEffectStrength,
+      paperSkyStrength: queryPaperSkyStrength ?? this.save.settings.paperSkyStrength,
+      paperSceneryStrength: queryPaperSceneryStrength ?? this.save.settings.paperSceneryStrength,
+      paperGroundStrength: queryPaperGroundStrength ?? this.save.settings.paperGroundStrength,
+      paperCutout: queryPaperOff ? false : this.save.settings.paperCutout,
       portraitPresentation: isPhonePortraitPresentation(),
     });
     this.renderSettings = { ...this.save.settings, smoothMotion: true };
@@ -4052,11 +4170,13 @@ export class RunState {
     const edge = PORTRAIT_PAUSE_EDGE;
     const gap = 16;
     const h = PORTRAIT_PAUSE_BUTTON_H;
-    const x = Math.max(edge, Number(safe.left) + edge);
-    const right = Math.min(W - edge, Number(safe.right) - edge);
+    const x = Math.max(edge, Number(safe.left) + edge + PORTRAIT_PAUSE_PANEL_PAD_X);
+    const right = Math.min(W - edge,
+      Number(safe.right) - edge - PORTRAIT_PAUSE_PANEL_PAD_X);
     const width = Math.max(1, (right - x - gap) / 2);
     const y = Math.max(Number(safe.top) + edge,
-      Math.min(H - h - edge, Number(safe.bottom) - h - edge));
+      Math.min(H - h - edge - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM,
+        Number(safe.bottom) - h - edge - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM));
     return [
       { id: 'resume', x, y, w: width, h, action: 'pause', label: 'CONTINUE' },
       { id: 'quit', x: x + width + gap, y, w: width, h, action: 'escape', label: 'BACK' },
@@ -4687,7 +4807,7 @@ export class RunState {
       }
       Input.endFrame(); return;
     }
-    // The two-button card. Holds everything still until it is acknowledged —
+    // The touch-control card. Holds everything still until it is acknowledged —
     // this is the one screen in the game whose entire job is to be read, and a
     // timed one would expire under a player still working out that the glass is
     // the button.
@@ -5176,6 +5296,10 @@ export class RunState {
       this.goalToasts[0].t -= dt;
       if (this.goalToasts[0].t <= 0) this.goalToasts.shift();
     }
+    if (this.portraitObjectiveNotice) {
+      this.portraitObjectiveNotice.t -= dt;
+      if (this.portraitObjectiveNotice.t <= 0) this.portraitObjectiveNotice = null;
+    }
     this.updateSpeech(dt);
 
     updateParticles(dt);
@@ -5209,6 +5333,62 @@ export class RunState {
       // finish must satisfy the mission or late pickups soft-lock the run.
       case 'rescue': return m.count + this.pickups.filter((p) => p.live && p.def.resident && p.following).length;
       default: return m.count ?? 0;
+    }
+  }
+
+  challengeCount() {
+    const c = this.challenge;
+    if (!c || c.type === 'noDamage' || !c.n) return 0;
+    return Math.min(Number(c.n), Math.max(0, Number(c.count) || 0));
+  }
+
+  showPortraitObjectiveNotice(tag, text, complete = false) {
+    if (!isPhonePortraitPresentation() || this.overtime || !this.stage) return;
+    this.portraitObjectiveNotice = {
+      tag,
+      text: String(text),
+      tagColor: complete ? '#74c947' : tag === 'BONUS' ? '#f6c945' : '#74c947',
+      ink: complete ? '#74c947' : '#ffffff',
+      t: PORTRAIT_OBJECTIVE_NOTICE_SEC,
+      t0: PORTRAIT_OBJECTIVE_NOTICE_SEC,
+    };
+  }
+
+  updatePortraitObjectiveNotice(beforeMission, beforeChallenge) {
+    if (!isPhonePortraitPresentation() || this.overtime || !this.stage) return;
+    const m = this.mission;
+    const c = this.challenge;
+    const missionTotal = Number(m?.n) || 0;
+    const challengeTotal = Number(c?.n) || 0;
+    const missionNow = missionTotal
+      ? Math.min(missionTotal, Math.max(0, Number(this.missionCount()) || 0)) : 0;
+    const challengeNow = c && !c.failed && c.type !== 'noDamage' && challengeTotal
+      ? this.challengeCount() : 0;
+    // Small objectives are readable one step at a time. Longer objectives
+    // announce each ten-count boundary (including a skipped boundary when a
+    // counter advances by more than one), plus the final completion event.
+    const shouldAnnounce = (now, before, total) => (
+      total > 0 && now > before && (
+        total <= 6 || now >= total || Math.floor(now / 10) > Math.floor(before / 10)
+      )
+    );
+    const missionAdvanced = shouldAnnounce(missionNow, beforeMission, missionTotal);
+    const bonusAdvanced = shouldAnnounce(challengeNow, beforeChallenge, challengeTotal);
+    const missionComplete = missionAdvanced && missionNow >= missionTotal;
+    const bonusComplete = bonusAdvanced && challengeNow >= challengeTotal;
+
+    // A single card is intentional. If two counters land in one simulation
+    // tick, the completion read outranks ordinary progress, then the goal
+    // outranks the bonus; the next event can replace it without building a
+    // stale queue of coin-by-coin notices.
+    if (bonusComplete) {
+      this.showPortraitObjectiveNotice('BONUS', 'COMPLETE', true);
+    } else if (missionComplete) {
+      this.showPortraitObjectiveNotice('GOAL', 'COMPLETE', true);
+    } else if (bonusAdvanced) {
+      this.showPortraitObjectiveNotice('BONUS', `${challengeNow}/${challengeTotal}`);
+    } else if (missionAdvanced) {
+      this.showPortraitObjectiveNotice('GOAL', `${missionNow}/${missionTotal}`);
     }
   }
 
@@ -5365,7 +5545,7 @@ export class RunState {
     return Math.max(0, Math.min(1, 1 - open / w));
   }
 
-  // The two-button card, held between the ACT card and the entrance. Nothing
+  // The touch-control card, held between the ACT card and the entrance. Nothing
   // ticks here but the card's own clock — the world is parked, the hero has not
   // walked on yet, and the run's timer has not started, so a player who stops to
   // read this pays nothing for it.
@@ -6443,7 +6623,7 @@ export class RunState {
     // its pixels for a moment sooner than the lane can vanish things.
     // "In view" is the visible band exactly — camX through camX + W/camZoom —
     // so anything already scrolled off the back stays sweepable.
-    const viewRight = this.camX + W / this.camZoom;
+    const viewRight = this.viewRightX();
     const inView = (e) => e.x <= viewRight && e.x + e.w >= this.camX;
     for (const ob of this.obstacles) {
       if (!ob.live || inView(ob)) continue;
@@ -6725,7 +6905,7 @@ export class RunState {
     c.alt += 30 * dt;
     if (c.hitT > 0) c.hitT = Math.max(0, c.hitT - dt);
     if (c.shieldT > 0) c.shieldT = Math.max(0, c.shieldT - dt);
-    if (c.dx > VIEW_W + 40) this.copter = null;
+    if (c.dx > this.viewRightDx() + 40) this.copter = null;
   }
 
   // THE HIGHEST HE MAY FLY, in world alt, so his art stays clear of the HUD.
@@ -6754,6 +6934,20 @@ export class RunState {
     const z = this.camZoom || ZOOM;
     return (W - this.portraitWorldXOffset() * z) / z;
   }
+
+  /**
+   * THE WORLD X OF THE PICTURE'S RIGHT-HAND EDGE.
+   *
+   * The one thing every cull, retire, wake and sweep in here actually wants,
+   * and nine of them used to spell it `camX + W / camZoom` — which is the
+   * width of the VIEW added to the camera, and so assumes the picture starts
+   * at the camera. In landscape it does. Portrait shifts the whole
+   * presentation left to buy the hero runway, so there the real edge is 35
+   * world units further on, and everything quoting the short number was
+   * retiring, waking and sweeping entities inside the visible band, with the
+   * player looking straight at them.
+   */
+  viewRightX() { return this.camX + this.viewRightDx(); }
 
   copterCeilingAlt() {
     const z = this.camZoom || ZOOM;
@@ -7174,7 +7368,7 @@ export class RunState {
     // change every stage in the game to fix one that lays its hazards
     // differently. Everything else about an obstacle — beat sync, a falling
     // icicle's telegraph, collision — is left alone either way.
-    const wake = this.camX + W / this.camZoom + WAKE_MARGIN;
+    const wake = this.viewRightX() + WAKE_MARGIN;
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
       const moving = !ob.route || ob.x <= wake;
@@ -7257,7 +7451,7 @@ export class RunState {
         // without this it rides along in the obstacle list, and in every rewind
         // snapshot of it, for the rest of the run. Retired off screen, where
         // nothing can see it go.
-        if (ob.rolledOut && ob.x > this.camX + W / this.camZoom + PUNT_EXIT_MARGIN) ob.live = false;
+        if (ob.rolledOut && ob.x > this.viewRightX() + PUNT_EXIT_MARGIN) ob.live = false;
       }
       if (ob.def.falls && !ob.fell) {
         // Telegraph, then drop when the player approaches.
@@ -7354,10 +7548,20 @@ export class RunState {
       }
       if (ob.def.shoots) {
         ob.shootT -= dt;
-        // Bounded by the VIEW, not the logical frame: a shooter that opens fire
-        // from W away is over two screens back, and its shot arrives with no
-        // telegraph at all.
-        if (ob.shootT <= 0 && ob.x > this.playerWorldX() + 60 && ob.x < this.camX + VIEW_W + 40) {
+        // A WORLD distance ahead of the hero, not the view's right edge.
+        //
+        // This was `camX + VIEW_W + 40`, which meant a shooter opened fire the
+        // moment it entered the picture — so the zoom decided how many shots it
+        // got and how much road each one had to cross. Same enemy, five
+        // different weapons: 281 world units of engagement on desktop against
+        // 109 in portrait, which is half the warning on the shot itself.
+        //
+        // 280 is desktop NORMAL's own number (VIEW_W 300 + 40 - PLAYER_X),
+        // because that is the framing the fight was tuned in. On a narrower
+        // view the shooter now fires while still off screen and the SHOT is
+        // what arrives out of the edge — which is how every other hazard on
+        // the lane already announces itself.
+        if (ob.shootT <= 0 && shooterMayFire(ob.x, this.playerWorldX())) {
           ob.shootT = 2.2;
           const alt = ob.def.ground ? 8 : ob.alt;
           this.projectiles.push({ type: 'enemyShot', route: ob.route || null, x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
@@ -8146,7 +8350,7 @@ export class RunState {
           // the first thing it touches instead of parking and returning.
           this.homeRound(pr, dt);
           pr.x += pr.vx * dt;
-          const viewRight = this.camX + W / this.camZoom;
+          const viewRight = this.viewRightX();
           if (pr.x > viewRight + 16 || pr.x < this.camX - 60) { pr.live = false; continue; }
         }
         const hoverAlt = 48; // well above any hero or obstacle — clearly spent
@@ -8239,7 +8443,7 @@ export class RunState {
         pr.dive = dt > 0 ? this.homeRound(pr, dt) / dt : 0;
         pr.homeOff = pr.alt - arc;
         // Into the ground, or out of the frame: spent.
-        const viewRight = this.camX + W / this.camZoom;
+        const viewRight = this.viewRightX();
         if (pr.alt <= 0 || pr.x > viewRight + 16 || pr.x < this.camX - 60) { pr.live = false; continue; }
       } else {
         if (pr.type === 'pellet') this.homeRound(pr, dt);
@@ -8254,7 +8458,7 @@ export class RunState {
         // BOX_LEAD_BEATS ahead, comfortably inside the frame, so nothing the
         // shot is aimed at is lost by ending the flight at the edge; the margin
         // is only enough for the pellet to clear its own body first.
-        const viewRight = this.camX + W / this.camZoom;
+        const viewRight = this.viewRightX();
         if (pr.x > viewRight + 16 || pr.x < this.camX - 60) pr.live = false;
       }
       // Projectile vs obstacles.
@@ -8530,6 +8734,8 @@ export class RunState {
 
   updateMission(dt) {
     const m = this.mission;
+    const beforeMission = m?.n ? Math.min(Number(m.n), Math.max(0, Number(this.missionCount()) || 0)) : 0;
+    const beforeChallenge = this.challengeCount();
     if (m.type === 'cords') {
       this.missionTimers.cord -= dt;
       if (this.missionTimers.cord <= 0 && m.count + this.pickups.filter((p) => p.def.cord).length < m.n) {
@@ -8556,6 +8762,7 @@ export class RunState {
       this.challenge.count = Math.max(this.challenge.count || 0, this.beatCombo);
     }
     this.checkGoalsMet();
+    this.updatePortraitObjectiveNotice(beforeMission, beforeChallenge);
   }
 
   // A replacement cord or resident, dropped far enough ahead that it scrolls in
@@ -8580,7 +8787,7 @@ export class RunState {
     const def = PICKUPS[type];
     const maxX = this.laneWallX() - def.w;
     const x = this.clearOfHazards(Math.min(this.camX + W + 80, maxX), def.w, alt, def.h, maxX);
-    if (x == null || x < this.camX + VIEW_W) return false;
+    if (x == null || x < this.viewRightX()) return false;
     this.pickups.push(makePickup(type, x, alt));
     return true;
   }
@@ -8808,7 +9015,7 @@ export class RunState {
     // run of them blinking out mid-screen was the whole complaint. New events
     // start a full runway past the view, so a kept coin is never doubled by its
     // relay.
-    const keepTo = this.camX + W / this.camZoom;
+    const keepTo = this.viewRightX();
     // A HOLE IS GEOMETRY, NOT A PROMISE.
     //
     // A bar is not spared: the judge will no longer credit it, and a bar that
@@ -9561,7 +9768,7 @@ export class RunState {
     // laid, and a continuous sweep that takes it in plain view deletes it
     // halfway down the lane with the player watching. Off screen the sweep
     // clears everything it always did; in view it takes nothing.
-    const viewRight = this.camX + W / this.camZoom;
+    const viewRight = this.viewRightX();
     for (const ob of this.obstacles) {
       if (!ob.live || !ob.def || ob.def.isLoop || ob.tunnel || ob.route) continue;
       if (ob.def.action === 'none' && !ob.def.isGap) continue;
@@ -9851,10 +10058,11 @@ export class RunState {
     // slab — and leaving either in place to spare a pop-out trades a deletion
     // for a drawing that is simply wrong.
     //
-    // The right edge is `camX + W / camZoom` with no margin, because the left
-    // edge of the view is welded to camX at every zoom (camera.js) and an
-    // obstacle whose own left edge is past that line has nothing on screen.
-    const viewRight = this.camX + W / this.camZoom;
+    // The right edge carries no margin, because an obstacle whose own left
+    // edge is past it has nothing on screen. It comes from viewRightX rather
+    // than `camX + W / camZoom`: the left edge of the view is welded to camX
+    // in LANDSCAPE (camera.js), and portrait moves the picture off it.
+    const viewRight = this.viewRightX();
     const retireExit = (ob) => { if (ob.x > viewRight) ob.live = false; };
     for (const is of this.routes) {
       // A CROSSING'S STONE SWEEPS NOTHING.
@@ -11202,6 +11410,7 @@ export class RunState {
     this.speechQueue = [];
     this.speechWaitT = 0;
     this.goalToasts = [];
+    this.portraitObjectiveNotice = null;
     clearParticles();
     // On touch, rebuild the button set since the hero may have changed.
     this.setButtons();
@@ -11725,6 +11934,7 @@ export class RunState {
       // Quiet: the 'win' jingle above is already this plug's sound. The floatie
       // carries the joke, the toast carries the fact that you banked something.
       this.goalToast('BONUS: THE GOLDEN APPLIANCE', true);
+      this.showPortraitObjectiveNotice('BONUS', 'COMPLETE', true);
     } else if (p.def.cord) {
       this.mission.count++;
       Audio.sfx('checkpoint');
@@ -12508,22 +12718,65 @@ export class RunState {
     // of the frame the instant a road leaves the ground. What the fraction buys
     // is the range visibly sinking as you rise, which is the whole read.
     const climb = anchorShift(z, floorY);
-    const bgShift = (pan + climb * BG_FOLLOW) * (this.style.bgPan ?? 1);
+    // THE BACKDROP TAKES THE ANCHOR RE-PIN, NEVER THE PORTRAIT FRAME FIT.
+    //
+    // Filmed off the real game at the same tunnel mouth on plumber-1
+    // (work/local/tilt/film.mjs), the two orientations get there completely
+    // differently:
+    //
+    //   landscape   camPan stays 0.0 and camFloorY eases 232 -> 328 over
+    //               twelve frames. bgShift is therefore climb * BG_FOLLOW:
+    //               small, smooth, and the horizon sinks as the road drops.
+    //   portrait    camFloorY stays 232 and camPan is slammed 0 -> -294 in
+    //               seven frames by the frame FIT, which exists to keep the
+    //               hero composed in a frame four times taller than authored.
+    //
+    // Feeding that fit to the backdrop is what tilts the picture: the layers
+    // each take their own share of a 294px lurch, so they slide across one
+    // another by tens of pixels while the world moves by the whole amount.
+    // Nothing in the world moved when the fit changed — it is a framing
+    // correction, not a camera crane over the terrain.
+    //
+    // So portrait uses the same expression landscape effectively does: the
+    // re-pinned anchor and nothing else. `climb` is anchorShift(), which is
+    // exactly the "range visibly sinking as you rise" read BG_FOLLOW was
+    // written for, and it is untouched here.
+    //
+    // Do NOT reintroduce the pan term with a scale factor. That was tried
+    // (PORTRAIT_BG_FOLLOW 0.19) and it only shrinks the lurch; the backdrop
+    // still moves on a beat the world does not share.
+    const bgShift = (portraitFrameActive ? 0 : pan) * (this.style.bgPan ?? 1)
+      + climb * BG_FOLLOW * (this.style.bgPan ?? 1);
     const frameShift = frameGroundY() - GROUND_Y;
     ctx.save();
     // Portrait keeps the authored world scale and moves the presentation
     // groundline down into the full-height frame. A base sky fill covers the
     // newly exposed upper region before the shipped background painter is
     // translated; the landscape path has a zero shift and remains untouched.
+    // A pack that paints its own sky (the paper study) does not want this
+    // gradient laid under it. It does still want the SHIFT: `frameShift` is
+    // what carries the authored 480x270 backdrop down into the tall portrait
+    // frame, and it is nothing to do with what the sky is made of.
+    //
+    // Both used to live inside the same `!paperActive` guard, so turning the
+    // paper study on left the whole backdrop at its landscape position —
+    // measured at 408 logical px too high on a 390x844 phone, which pushed the
+    // sky off the top of the frame and dragged the hills over it. Peter, twice:
+    // "why can I still not see hardly any scenery in the plumbers levels", and
+    // then "I want it to match what it is WITHOUT paper". This is why it did
+    // not: the material switch was also moving the picture.
+    const paperActive = !!this.style.paperSkyStatic;
     if (frameShift > 0) {
-      const sky = ctx.createLinearGradient(0, frameShift + bgShift, 0, frameShift + bgShift + H);
-      sky.addColorStop(0, this.cabinet.sky ? this.cabinet.sky[0] : '#78c8f0');
-      sky.addColorStop(1, this.cabinet.sky ? this.cabinet.sky[1] : '#a8e0f8');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, W, H);
+      if (!paperActive) {
+        const sky = ctx.createLinearGradient(0, frameShift + bgShift, 0, frameShift + bgShift + H);
+        sky.addColorStop(0, this.cabinet.sky ? this.cabinet.sky[0] : '#78c8f0');
+        sky.addColorStop(1, this.cabinet.sky ? this.cabinet.sky[1] : '#a8e0f8');
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+      }
       ctx.translate(0, frameShift);
     }
-    if (Math.abs(climb) > 0.5) {
+    if (Math.abs(climb) > 0.5 && !paperActive) {
       // The sky is not scenery and cannot be allowed to run out. A pack's own
       // gradient is drawn 0..H in the SHIFTED space, so once the shift is more
       // than a few pixels the top of the frame is raw canvas. This lays the
@@ -12539,7 +12792,8 @@ export class RunState {
       ctx.fillRect(0, 0, W, H);
     }
     ctx.translate(0, bgShift);
-    const bgZoom = portraitFrameActive ? this.portraitConfig().backgroundZoom : 1;
+    const portraitConfig = portraitFrameActive ? this.portraitConfig() : null;
+    const bgZoom = portraitConfig ? portraitConfig.backgroundZoom : 1;
     // Scale the ONE background pass around its authored ground line. This
     // deliberately sits outside the world transform below, so
     // mountains/clouds/hills move as one backdrop while the playable lane,
@@ -12654,12 +12908,29 @@ export class RunState {
     // arrive at the same final camera position without independent x/y rules.
     const backgroundContext = {
       portrait: portraitFrameActive,
+      // A backdrop landmark must not be allowed to stand over an open lane:
+      // once the foreground ground pass cuts a gap away, a sign's post would
+      // otherwise remain visible and read as floating. Pass only the compact
+      // live-gap geometry needed for that visual cull, not the run's obstacle
+      // objects themselves.
+      roadGaps: this.obstacles
+        .filter((ob) => ob?.live && ob.def?.isGap)
+        .map((ob) => ({ x: ob.x, w: ob.w })),
+      backgroundXOffset: portraitXOffset,
+      worldZoom: z,
+      worldXOffset: portraitXOffset,
       // Keep the responsive depth composition scoped to portrait until each
       // cabinet's landscape baseline has been explicitly reviewed. The common
       // frame crane still applies in landscape; packs do not receive the new
       // layer-depth input there.
       cameraShiftY: portraitFrameActive ? bgShift : 0,
       frameShiftY: frameShift,
+      // Keep the portrait lab's three independent scenery controls available
+      // to the pack. In particular, a cloud/building clearance check must use
+      // the same scenery lift that moves the backdrop, not only LCD-local y.
+      cloudOffsetY: portraitConfig?.cloudOffsetY ?? 0,
+      sunOffsetY: portraitConfig?.sunOffsetY ?? 0,
+      sceneryOffsetY: portraitConfig?.sceneryOffsetY ?? 0,
       parallaxDepths: BACKGROUND_DEPTHS,
       sceneryLayout,
       backgroundZoom: bgZoom,
@@ -12759,7 +13030,22 @@ export class RunState {
     // derived from the interpolated z every frame, so a pack that walks its own
     // ground in columns paints right through the phone edge instead of stopping
     // at the unshifted camera width.
-    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun, W / z, portraitRenderViewW);
+    // The LCD portrait pit is the one foreground shape that has to agree with
+    // the screen-fixed post() lattice while still being painted in world
+    // coordinates. Hand it the exact transform already applied above so the
+    // style can snap its opening and bottom rule in screen space, then invert
+    // without guessing from the resting zoom.
+    const groundWorldContext = portraitFrameActive ? {
+      portrait: true,
+      worldZoom: z,
+      worldPan: pan,
+      floorY,
+      worldXOffset: portraitXOffset,
+      groundScreenY: screenYFor(GROUND_Y, z, pan, floorY),
+      mirror: this.mirror,
+    } : null;
+    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun,
+      W / z, portraitRenderViewW, groundWorldContext);
     // A HOLE THAT NAMES ITS OWN MATERIAL IS FILLED WHATEVER THE PACK IS.
     //
     // Six packs paint the cabinet's fill on their way past; the other three draw
@@ -12777,11 +13063,12 @@ export class RunState {
     // while the ordinary hole a beat earlier held only works.
     if (!this.style.ownPitFills) {
       drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true,
-        (ob) => riseHeight(ob.x + ob.w / 2), portraitRenderViewW ?? W);
+        (ob) => riseHeight(ob.x + ob.w / 2), portraitRenderViewW ?? W,
+        this.cabinet.groundDark);
     }
     if (!this.bossCab) {
       drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
-        this.style.ownSurface === true);
+        this.style.ownSurface === true, this.style.paperSlab);
     }
     if (this.routes.length) {
       // The ground under the lane, which the packs only paint 38px of. Below
@@ -12796,12 +13083,13 @@ export class RunState {
       const bottomWorldY = worldYForScreenY(H, z, pan, floorY) + 8;
       if (this.camFloorY > GROUND_Y + 1 || this.routes.some((r) => r.kind === 'tunnel'
         && r.x - cam < visibleWorldW + 8 && r.x + r.w - cam > -8)) {
-        drawSubsoil(ctx, this.cabinet, visibleWorldW, bottomWorldY, cam, laneCuts, hillDepth);
+        drawSubsoil(ctx, this.cabinet, visibleWorldW, bottomWorldY, cam, laneCuts, hillDepth,
+          this.style.paperSlab);
       }
       drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), visibleWorldW,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
           bottomY: bottomWorldY, hillDepth,
-          paperSlab: this.cabinet.id === 'plumber' ? this.style.paperSlab : null });
+          paperSlab: this.style.paperSlab });
     }
     // The pack's ground texture over a staged exit, which has to be laid HERE:
     // the ground pass runs before the terrain and the routes, and the hillside
@@ -13514,9 +13802,9 @@ export class RunState {
 
   // Portrait pause uses a padded safe frame. It is deliberately a different
   // composition from the compact landscape read-out: oversized type, wrapped
-  // mission copy, stacked controls and button-sized plates use the height a
-  // phone gives us without becoming a sheet pressed against the status bar or
-  // home indicator.
+  // mission copy, a compact text legend and real Continue/Back plates use the
+  // height a phone gives us without becoming a sheet pressed against the status
+  // bar or home indicator.
   drawPortraitPaused(ctx) {
     const frame = presentationFrame();
     const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
@@ -13527,8 +13815,8 @@ export class RunState {
     const panelTop = Math.max(edge, Number(safe.top) + edge);
     const panelBottom = Math.min(H - edge, Number(safe.bottom) - edge);
     const panelH = Math.max(1, panelBottom - panelTop);
-    const innerX = panelX + 24;
-    const innerW = Math.max(1, panelW - 48);
+    const innerX = panelX + 32;
+    const innerW = Math.max(1, panelW - 64);
     const mainButtons = Input.buttons.filter((b) => b.id === 'resume' || b.id === 'quit');
     const buttons = mainButtons.length ? mainButtons : this.portraitPauseButtons();
     const syncButtons = this.beatLock
@@ -13540,7 +13828,6 @@ export class RunState {
     drawPanel(ctx, panelX, panelTop, panelW, panelH, 10, 'rgba(11,11,20,0.94)',
       { border: 'rgba(72,224,200,0.42)', shadow: true });
 
-    const pHero = HERO_BY_ID[this.relay.current];
     const cabNo = CABINETS.findIndex((c) => c.id === this.cabinet.id) + 1;
     const where = this.overtime ? 'OVERTIME'
       : this.bossCab ? 'BOSS'
@@ -13553,36 +13840,32 @@ export class RunState {
     drawTextCentered(ctx, 'PAUSED', W / 2, panelTop + 42, '#fff', pauseScale, 'title');
     drawTextCentered(ctx, title, W / 2, panelTop + 124, '#e8e8f0', titleScale, 'bold');
 
-    let y = panelTop + 178;
+    let y = panelTop + 184;
     // Keep the shortest phone pause readable without allowing mission copy to
     // squeeze the controls into the sync row. Taller phones retain the full
     // three-line read-out.
     const compact = panelH < 820;
     const drawBlock = (label, value, color = '#c8e0ff', scale = PORTRAIT_PAUSE_MISSION_S, maxLines = 3) => {
-      drawText(ctx, label, innerX, y, '#74c947', compact ? 1.65 : PORTRAIT_PAUSE_LABEL_S, 'bold');
-      y += compact ? 26 : 32;
+      drawText(ctx, label, innerX, y, '#74c947', compact ? 1.85 : PORTRAIT_PAUSE_LABEL_S, 'bold');
+      y += compact ? 30 : 36;
       const lines = wrapText(value, innerW, scale, maxLines);
-      for (const line of lines) {
+      lines.forEach((line, i) => {
         drawText(ctx, line, innerX, y, color, scale);
-        y += 20 * scale;
-      }
-      y += compact ? 12 : 18;
+        y += 23 * scale + (i < lines.length - 1 ? 4 : 0);
+      });
+      y += compact ? 20 : 26;
     };
     drawBlock('MISSION', this.mission.desc, '#c8e0ff',
-      compact ? 1.75 : PORTRAIT_PAUSE_MISSION_S, compact ? 2 : 3);
+      compact ? 2.0 : PORTRAIT_PAUSE_MISSION_S, compact ? 2 : 3);
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
       const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
       drawBlock('BONUS', `${c.desc}${tail ? ` · ${tail}` : ''}`,
         c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9',
-        compact ? 1.7 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
+        compact ? 1.95 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
     }
-
-    drawTextCentered(ctx, pHero.name, W / 2, y + 4, '#48e0c8', PORTRAIT_PAUSE_HERO_S, 'bold');
-    const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
-    drawTextCentered(ctx, `${pHero.ability.label} · ${cd}`, W / 2, y + 50, '#f6d33c', PORTRAIT_PAUSE_ABILITY_S, 'bold');
-    y += compact ? 94 : 100;
+    y += compact ? 26 : 34;
 
     const touchRows = [
       ['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['SWIPE RIGHT', 'POWER'],
@@ -13592,20 +13875,27 @@ export class RunState {
       ['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT / D', 'POWER'], ['LEFT / A', 'REWIND'],
     ];
     const rows = Input.usingTouch ? touchRows : (this.beatLock ? keyRows.slice(0, 3) : keyRows);
-    const rowH = compact ? 50 : 60;
-    const rowGap = compact ? 10 : 14;
+    const rowH = compact ? 30 : 36;
+    const rowGap = compact ? 14 : 18;
     const actionBottom = syncButtons.length ? syncButtons[2].y - 18 : buttons[0].y - 24;
-    const controlsTop = Math.max(y, actionBottom - rows.length * (rowH + rowGap) - 42);
+    const controlRows = [];
+    for (let i = 0; i < rows.length; i += 2) controlRows.push(rows.slice(i, i + 2));
+    const controlsTop = Math.max(y,
+      actionBottom - controlRows.length * (rowH + rowGap) - 48);
     drawTextCentered(ctx, Input.usingTouch ? 'TOUCH CONTROLS' : 'KEYBOARD CONTROLS',
       W / 2, controlsTop, '#dbe9ff', PORTRAIT_PAUSE_CONTROLS_S, 'bold');
     let rowY = controlsTop + 38;
-    for (const pair of rows) {
-      drawPanel(ctx, innerX + 12, rowY, innerW - 24, rowH, 6, 'rgba(28,32,48,0.78)',
-        { border: 'rgba(255,255,255,0.14)' });
-      const scale = PORTRAIT_PAUSE_LEGEND_S;
-      const width = keyLegendWidth([pair], scale);
-      drawKeyLegend(ctx, [pair], W / 2 - width / 2,
-        textYForMid(rowY + rowH / 2, scale), { scale, actionInk: '#dbe9ff' });
+    const legendScale = PORTRAIT_PAUSE_LEGEND_S;
+    const columnGap = compact ? 18 : 24;
+    const columnW = (innerW - columnGap) / 2;
+    for (const row of controlRows) {
+      row.forEach((pair, column) => {
+        const pairW = keyLegendWidth([pair], legendScale);
+        const columnCenter = innerX + columnW * (column + 0.5) + columnGap * column;
+        drawKeyLegend(ctx, [pair], columnCenter - pairW / 2,
+          textYForMid(rowY + rowH / 2, legendScale),
+          { scale: legendScale, actionInk: '#dbe9ff' });
+      });
       rowY += rowH + rowGap;
     }
 
@@ -13717,11 +14007,11 @@ export class RunState {
     // its gold — only the key in front of it joins the legend.
     const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
     legend([[pBtn, `${pHero.ability.label}  ${cd}`, '#f6d33c']], 148);
-    // The touch line names the halves, which nothing else on screen advertises
-    // — the discs look like the only controls there are — and both ways to the
-    // power.
+    // The touch line names the broad JUMP surface and the swipe fallbacks. The
+    // visible rail can swap sides with the notch after rotation, so this copy
+    // describes the action rather than a fixed left/right location.
     legend(Input.usingTouch
-      ? [['TAP LEFT', 'JUMP'], ['TAP RIGHT', 'SLIDE'], ['USE / SWIPE RIGHT', 'POWER']]
+      ? [['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['USE / SWIPE RIGHT', 'POWER']]
       : [['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT/D', 'POWER']], 170,
     { actionInk: '#c8c8d8' });
     // Only keyboard needs telling, and only about the SHORTCUTS. Arrows-then-

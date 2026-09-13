@@ -9,7 +9,7 @@ const { frameForViewport, defaultFrame } = await import('../src/engine/frame.js'
 const renderer = await import('../src/engine/renderer.js');
 const { setPresentationFrame } = renderer;
 const { Input } = await import('../src/engine/input.js');
-const { TitleState, titleLayout, titleToasterPass } = await import('../src/game/menus.js');
+const { TitleState, titleLayout, titleToasterPass, invaderPass } = await import('../src/game/menus.js');
 const { save } = await import('../src/engine/save.js');
 save.load();
 
@@ -46,6 +46,8 @@ assert.ok(layout.castFeetY <= portraitFrame.safeRect.bottom,
   'portrait cast stays above the home-indicator safe edge');
 assert.equal(layout.backgroundBottom, renderer.H,
   'portrait star field fills the full logical frame');
+assert.equal(invaderPass(24), null,
+  'portrait title suppresses the space invader fly-by');
 const portraitToaster = titleToasterPass(37);
 const cardsBottom = layout.panelY + layout.cardH * 4 + layout.cardGap * 3;
 assert.ok(portraitToaster && portraitToaster.centerY >= layout.panelY + 32

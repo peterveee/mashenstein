@@ -33,6 +33,7 @@ const suites = [
   'tests/beat-ground.js',
   'tests/lane-calls.js',
   'tests/pixel-background.js',
+  'tests/paper-material.js',
   'tests/lcd-background.js',
   'tests/render-culling.js',
   'tests/render-culling-browser.js',
@@ -352,6 +353,7 @@ const suites = [
   'tests/slide-kit.js',
   'tests/toon-ink-scale.js',
   'tests/renderer.js',
+  'tests/orientation-refresh.js',
   'tests/density.js',
   'tests/frame-health.js',
   'tests/camera-framing.js',
@@ -362,6 +364,7 @@ const suites = [
   'tests/portrait-finish.js',
   'tests/portrait-lab.js',
   'tests/portrait-layout.js',
+  'tests/portrait-objective-notices.js',
   'tests/scenery-layout.js',
   'tests/composition-profile.js',
   'tests/background-wrap.js',
@@ -425,9 +428,18 @@ const suites = [
   'tests/minigames.js',
   'tests/plug-tally.js',
   'tests/boss.js',
+  // The boss's drops and the lane's shooters used to be placed off VIEW_W,
+  // which made the same fight a different fight at each zoom — the bug
+  // tests/copter-fairness.js was written for, in two more places.
+  'tests/boss-fairness.js',
+  // The other half of that rule: the picture's right-hand edge. Portrait
+  // moves the picture off the camera, so `camX + VIEW_W` culls entities
+  // that are still on screen.
+  'tests/view-right-edge.js',
   'tests/attract.js',
   'tests/dev-menu.js',
   'tests/cast.js',
+  'tests/cast-portrait.js',
   'tests/mobile-lifecycle.js',
   // The audio half of the same platform question: which devices get a bigger output
   // buffer and a wider scheduler window, and that the game asks for them before it

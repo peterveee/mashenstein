@@ -380,10 +380,13 @@ export const CABINETS = [
   },
   {
     id: 'speed', name: 'SPEED ZONE', act: 1, style: 'faux3d',
-    genre: 'RACING', unlockPlugs: 2, speedBonus: 0.15,
+    genre: 'RACING', unlockPlugs: 2, speedBonus: 0.125,
     mechanic: 'boost',
-    sky: ['#f08048', '#f8c060'], ground: '#c88848', groundDark: '#a06830',
-    far: '#d09858', hills: '#b07840',
+    // Keep the sky and road in sun-baked clay, then cool the depth cues: the
+    // far mesas carry a dusty sage/blue-gray, while the near hills stay warm
+    // enough that the road still belongs to the same desert.
+    sky: ['#f08048', '#f8c060'], ground: '#c4865b', groundDark: '#806b64',
+    far: '#8b9d97', hills: '#a77f62',
     // MOLTEN CHANNEL under the collapsing road (pitFill.js candidate B): the
     // one fill that throws light, so a speed-zone pit announces itself by glow
     // before the mouth is in frame — worth having on the cabinet where you
@@ -522,7 +525,7 @@ export const CABINETS = [
   },
   {
     id: 'frost', name: 'FROST FORTRESS', act: 2, style: 'watercolor',
-    genre: 'ICE ADVENTURE', unlockPlugs: 12, speedBonus: 0.45,
+    genre: 'ICE ADVENTURE', unlockPlugs: 12, speedBonus: 0.35,
     mechanic: 'ice', // slidey landings + icicles + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',
@@ -579,7 +582,7 @@ export const CABINETS = [
   },
   {
     id: 'crypt', name: 'CRYPT SHIFT', act: 2, style: 'vhs',
-    genre: 'HORROR', unlockPlugs: 16, speedBonus: 0.45,
+    genre: 'HORROR', unlockPlugs: 16, speedBonus: 0.35,
     mechanic: 'darkness', // light radius; cursed shortcuts
     sky: ['#181020', '#281830'], ground: '#3a3048', groundDark: '#281c30',
     far: '#302040', hills: '#282038',
@@ -635,7 +638,7 @@ export const CABINETS = [
   },
   {
     id: 'neon', name: 'NEON BLASTERS', act: 2, style: 'neon',
-    genre: 'SHMUP', unlockPlugs: 20, speedBonus: 0.45,
+    genre: 'SHMUP', unlockPlugs: 20, speedBonus: 0.35,
     mechanic: 'pellets',
     sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
     far: '#302868', hills: '#282050',
@@ -680,7 +683,7 @@ export const CABINETS = [
   },
   {
     id: 'cardboard', name: 'CARDBOARD KINGDOM', act: 3, style: 'cardboard',
-    genre: 'FAKE-O-RAMA', unlockPlugs: 28, speedBonus: 0.55,
+    genre: 'FAKE-O-RAMA', unlockPlugs: 28, speedBonus: 0.40,
     mechanic: 'collapse', // scenery collapses behind; fake perspective props
     sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#9a7848',
     far: '#b89058', hills: '#a88448',
@@ -726,7 +729,7 @@ export const CABINETS = [
   },
   {
     id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'doodle',
-    genre: 'OFFICE ACTION', unlockPlugs: 34, speedBonus: 0.55,
+    genre: 'OFFICE ACTION', unlockPlugs: 34, speedBonus: 0.40,
     mechanic: 'meetings', // printers, chairs, paperwork
     sky: ['#e8e8f0', '#f4f4f8'], ground: '#b0b0c0', groundDark: '#8a8a98',
     far: '#c8c8d8', hills: '#b8b8c8',
@@ -762,7 +765,7 @@ export const CABINETS = [
   },
   {
     id: 'surge', name: 'THE SURGE', act: 3, style: 'surge',
-    genre: 'EVERYTHING', unlockPlugs: 40, speedBonus: 0.65,
+    genre: 'EVERYTHING', unlockPlugs: 40, speedBonus: 0.45,
     mechanic: 'remix', // segments sample other cabinets
     sky: ['#181828', '#282838'], ground: '#484858', groundDark: '#303040',
     far: '#404050', hills: '#383848',

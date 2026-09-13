@@ -15,12 +15,47 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
   // shelf-derived floor; portraitGeometry places it just above the largest
   // possible chat card on every supported phone.
   // Landscape phones use a 2.2x camera on the 480x270 frame. A portrait
-  // phone's short side is 480 logical px wide, so 3.75x keeps the portrait
-  // character/object scale close to landscape while leaving a little runway.
-  worldZoom: 3.75,
+  // phone's short side is 480 logical px wide, so about 3.75x would match the
+  // landscape character scale exactly — and that is where this sat.
+  //
+  // IT CAME DOWN TO 3.5, and what it buys is RUNWAY. Portrait maps the frame
+  // onto the phone's SHORT side, so at equal character size it can only show
+  // 46% of the horizontal world landscape does; the hero anchor above claws
+  // some back and is already at its leftmost. Measured against the rotated
+  // phone (work/local/portrait-zoom):
+  //
+  //   3.75   view 128 wu   104 ahead of the hero   96% of landscape size
+  //   3.50   view 137 wu   113 ahead              89% of size
+  //   3.20   view 150 wu   126 ahead              82%
+  //   3.00   view 160 wu   136 ahead              77%
+  //
+  // 3.5 is the step that costs almost nothing to look at — 89% against 96% is
+  // not a difference you can see without the two side by side — and returns 9
+  // world units of warning, about 6% of the landscape runway. Below it the
+  // trade turns honest: 3.2 is visibly smaller for another 9 units. The lane
+  // SPEED is deliberately not part of this trade; it is the same on every
+  // device, because slowing one orientation changes what a jump clears.
+  worldZoom: 3.5,
   // Move the authored player column farther left to pay for the closer view:
   // this is presentation-only and does not change simulation or collisions.
-  heroAnchorX: 24,
+  //
+  // 24 -> 16 on 12 Sep 2026, and it is worth a world unit of runway each. The
+  // simulation keeps PLAYER_X 59 and the renderer shifts the whole picture
+  // left by the difference, so the visible band runs 43..180 world units ahead
+  // of the camera rather than 35..172, and the hero sees 121 units of road
+  // instead of 113 — about 7%, on top of what the 3.5 zoom buys.
+  //
+  // What made it safe to spend was fixing the twelve places that spelled the
+  // picture's right-hand edge `camX + VIEW_W`: that number is 35-plus world
+  // units short once the picture leaves the camera, and everything quoting it
+  // was retiring, waking and sweeping entities inside the visible band. They
+  // all read RunState.viewRightX() now, so the band this buys is a band the
+  // game actually draws and keeps.
+  //
+  // The floor is what stops here: at 16 the hero's own left edge is 26 CSS px
+  // from the glass on a 390px phone, which is inside the corner radius of some
+  // handsets and close enough to the edge that a slide's dust is clipped.
+  heroAnchorX: 16,
   // Keep background silhouettes at the same physical scale as landscape.
   // Portrait then shows a narrower crop of the authored 480x270 backdrop,
   // rather than shrinking the scenery to expose more of it.
@@ -35,7 +70,7 @@ export const PORTRAIT_LAB_DEFAULTS = Object.freeze({
 
 const LIMITS = Object.freeze({
   worldZoom: [1.6, 4.5],
-  heroAnchorX: [24, 72],
+  heroAnchorX: [12, 72],
   backgroundZoom: [1, 2.2],
   cloudOffsetY: [-100, 60],
   sunOffsetY: [-100, 60],
