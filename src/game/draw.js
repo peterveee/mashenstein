@@ -19,6 +19,8 @@ import {
 const POWER_GLOW = {
   capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)',
   capAirJump: 'rgba(114,216,240,0.5)', capSpeed: 'rgba(248,144,72,0.5)', capLowGrav: 'rgba(184,136,240,0.5)',
+  capUnpeel: 'rgba(232,232,240,0.5)',
+  capRewind: 'rgba(124,232,160,0.52)',
 };
 // The battery's halo. Not an entry in POWER_GLOW because that table is keyed by
 // capsule type and gated on def.power, and the battery is a heal. Green rather
@@ -1086,6 +1088,9 @@ function drawBoostReaction(ctx, e, x, t, propName) {
 // queues to the full-resolution overlay, so he rides in front of the whole ring.
 // A near wall passing over him would want a second pass ordered after his, which
 // is more machinery than the read is short of.
+const LOOP_TRACK_SHADOW = '#2f4249';
+const LOOP_TRACK_BODY = '#49636b';
+
 function drawLoopRing(ctx, e, x, t, settings = {}) {
   const r = LOOP.r;
   // Centred on the line the hero VISUALLY travels, not on the pad's box. The
@@ -1172,8 +1177,8 @@ function drawLoopRing(ctx, e, x, t, settings = {}) {
   ctx.lineCap = 'round';
   // Under-side first, a fraction wide of the running surface, so the surface
   // sits on top of a dark edge the whole way round rather than being outlined.
-  band(mid, T + 2, '#6a4420');
-  band(mid, T, '#a06830');
+  band(mid, T + 2, LOOP_TRACK_SHADOW);
+  band(mid, T, LOOP_TRACK_BODY);
   // The running surface: the face the hero actually travels on, so it is the one
   // that catches the light.
   band(inner + 1.5, 2, '#c88848');

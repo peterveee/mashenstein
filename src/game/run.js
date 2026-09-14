@@ -306,6 +306,34 @@ function portraitBackgroundCoverage(xOffset = 0, bgZoom = 1) {
   });
 }
 
+// THE VERTICAL TWIN OF portraitBackgroundCoverage, AND IT EXISTS FOR FILL RATE.
+//
+// A hill tile is baked down to `H + HILL_UNDERFILL` and blitted at that full
+// height, because in landscape that IS roughly the frame. Portrait breaks both
+// halves of that assumption at once: H becomes ~1041 instead of 270, and the
+// whole background pass is then scaled by `backgroundZoom` (1.78) around the
+// authored groundline. The tile is drawn into local y 166..1261 while the band
+// that actually maps onto the canvas is about -236..349 — so roughly 83% of
+// every hill blit is rasterized below the bottom of the screen and thrown away,
+// multiplied by the horizontal tile count and by every live parallax layer.
+//
+// Publishing the band lets the painters clip to it. Landscape publishes
+// nothing and takes the identity path, so its arithmetic is untouched.
+//
+// The inverse of the transform run.js has just concatenated:
+//   canvas_y = appliedFrameShift + bgShift + GROUND_Y + (local_y - GROUND_Y) * zoom
+// solved for local_y at the two canvas edges. `frameShift` is only translated
+// when it is positive (see the bg() preamble), so it is clamped the same way
+// here rather than trusted as given.
+function portraitBackgroundBand(frameShift = 0, bgShift = 0, bgZoom = 1) {
+  const zoom = Number.isFinite(Number(bgZoom)) && Number(bgZoom) > 0 ? Number(bgZoom) : 1;
+  const shift = Math.max(0, Number(frameShift) || 0) + (Number(bgShift) || 0);
+  const toLocal = (canvasY) => GROUND_Y + (canvasY - shift - GROUND_Y) / zoom;
+  const top = toLocal(0);
+  const bottom = toLocal(H);
+  return Object.freeze({ top: Math.min(top, bottom), bottom: Math.max(top, bottom) });
+}
+
 // Lane kept clear either side of an opening, so nothing can crowd a hero into
 // one he did not choose.
 const OPENING_CLEAR = 26;
@@ -1872,6 +1900,9 @@ export class RunState {
     this.devMaxTime = opts.devMaxTime || 0; // seconds; 0 = no limit
     this.devRunTime = 0;                     // elapsed wall-clock seconds
     this.devStartPercent = opts.devStartPercent || 0; // 0–1; skip to N% of the stage
+    // Dev Scenes can inspect the opening touch-controls card even after the
+    // current save has completed the campaign's first stage.
+    this.previewTouchControls = !!opts.previewTouchControls;
     this.portraitLabRun = !!opts.portraitLabRun;
     this.portraitPreview = !!opts.portraitPreview;
     // All ordinary gameplay states use the approved frame-based portrait
@@ -3472,7 +3503,7 @@ export class RunState {
     // a stage may carry both (plumber-1 opens the campaign with the act card,
     // then Lorenzo talks over the first seconds of running).
     const opens = !this.demo && !this.overtime && this.stage && !this.introDone;
-    const intro = opens ? this.stage.intro : null;
+    const intro = opens && !this.previewTouchControls ? this.stage.intro : null;
     // The ACT card gets out of the way as the stage becomes familiar, in three
     // steps, measured in plugs banked on THIS stage:
     //
@@ -3491,7 +3522,7 @@ export class RunState {
     // there, so it needs no guard of its own here.
     const seen = !!(opens && stagePlayed(slot, this.stage));
     const done = !!(opens && stageAllPlugs(slot, this.stage));
-    const act = opens && !done ? this.stage.act : null;
+    const act = opens && !done && !this.previewTouchControls ? this.stage.act : null;
     this.introDone = true;
     this.introFreeze = act ? ACT_BANNER_TIME : 0;
     this.introText = act;
@@ -3510,7 +3541,8 @@ export class RunState {
     // to the first stage. It retires on the same terms that card does — a stage
     // with every plug banked is being replayed by someone who demonstrably
     // knows where to put their thumb.
-    this.zoneCard = !!act && this.stage.id === 'plumber-1' && Input.isTouchDevice();
+    this.zoneCard = this.previewTouchControls
+      || (!!act && this.stage.id === 'plumber-1' && Input.isTouchDevice());
     this.zoneCardT = 0;
     // Queue this stage's artwork. Normally the briefing has already started it
     // and most of it is built by now; a dev launch that skips the briefing
@@ -9422,7 +9454,7 @@ export class RunState {
     // Audio.cueTimeInBeats); placed, it is in the song. A beat of lead is more
     // than any output path needs, so the clamp there never bites.
     const next = heard + 1;
-    if (lcdBarrelStrikeAt(this.stage?.index, next)) {
+    if (lcdBarrelStrikeAt(this.stage?.index, next, isPhonePortraitPresentation())) {
       Audio.sfx('barrelBurst', { inBeats: next - beat });
     }
   }
@@ -12941,12 +12973,22 @@ export class RunState {
     // interval to their full-surface and periodic painters for this call only.
     const previousBackgroundCoverage = ctx.__mashBackgroundCoverage;
     if (backgroundCoverage) ctx.__mashBackgroundCoverage = backgroundCoverage;
+    // And the same for the vertical band, so a tiled painter can stop
+    // rasterizing the four fifths of its tile that fall past the bottom of a
+    // portrait frame. Published only in portrait; landscape keeps the
+    // unclipped path it has always had.
+    const previousBackgroundBand = ctx.__mashBackgroundBand;
+    const backgroundBand = portraitFrameActive
+      ? portraitBackgroundBand(frameShift, bgShift, bgZoom) : null;
+    if (backgroundBand) ctx.__mashBackgroundBand = backgroundBand;
     try {
       this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist,
         backgroundScene, bgShift, backgroundContext);
     } finally {
       if (previousBackgroundCoverage === undefined) delete ctx.__mashBackgroundCoverage;
       else ctx.__mashBackgroundCoverage = previousBackgroundCoverage;
+      if (previousBackgroundBand === undefined) delete ctx.__mashBackgroundBand;
+      else ctx.__mashBackgroundBand = previousBackgroundBand;
     }
     ctx.restore();
 

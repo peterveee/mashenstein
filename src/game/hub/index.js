@@ -996,7 +996,22 @@ const NPC_PORTRAIT_NAME_SCALE = 2.6;
 const NPC_PORTRAIT_CHIP_SCALE = 2.2;
 const NPC_PORTRAIT_CHIP_W = 82, NPC_PORTRAIT_CHIP_H = 40, NPC_PORTRAIT_CHIP_GAP = 12;
 const NPC_PORTRAIT_NAME_GAP = 18;
-const NPC_PORTRAIT_PROMPT_GAP = 26;
+// The portrait footer is one three-row composition. Keep the rows in CSS
+// pixels so the spacing stays the same on a phone and on a contained desktop
+// portrait surface. The first row is a replacement slot: it contains either a
+// station prompt or the focused hero's name plus SWAP chip.
+export const HUB_PORTRAIT_FOOTER_GAPS_CSS = Object.freeze({ top: 48, middle: 86, bottom: 124 });
+
+export function hubPortraitFooterRows(layout, frameScale = presentationFrame().scale) {
+  const scale = Number.isFinite(frameScale) && frameScale > 0 ? frameScale : 1;
+  const floorY = (layout.floorY - layout.camY) * layout.zoom;
+  const row = (gapCss) => floorY + gapCss / scale;
+  return {
+    top: row(HUB_PORTRAIT_FOOTER_GAPS_CSS.top),
+    middle: row(HUB_PORTRAIT_FOOTER_GAPS_CSS.middle),
+    bottom: row(HUB_PORTRAIT_FOOTER_GAPS_CSS.bottom),
+  };
+}
 // How far short of the back wall a hero has to stop.
 //
 // Keep the crowd clear of the room's hard end. The interaction row no longer
@@ -1006,9 +1021,9 @@ const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 
 // One screen-space layout for name, drawing and hit-testing. Long names expand
 // leftward while the actions remain immediately beside them; centring the full
-// group under the focused NPC keeps the prompt attached to its character. The
-// landscape footer remains the compact fallback; portrait supplies a y anchor
-// below the hero so the prompt travels with the thing it names.
+// group on the focused NPC keeps the prompt attached to its character. The
+// landscape footer remains the compact fallback; portrait supplies a fixed
+// replacement-row y anchor shared with the station prompt.
 function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2, anchorY = null) {
   const portrait = isPhonePortraitPresentation();
   const name = npc.name || HERO_BY_ID[npc.id].short;
@@ -1048,11 +1063,12 @@ function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2, anchorY =
 }
 
 function npcPromptAnchorY(layout) {
-  // NPCs stand on the authored floor. Convert that world line through the same
-  // presentation camera as the cast, then leave a small, stable breathing gap
-  // so the name/chip row sits beneath their feet instead of in the page footer.
+  // The focused hero replaces the first footer row, rather than taking its own
+  // world-relative row. This keeps the resources and location rows stationary
+  // when the chooser appears, and gives the prompt text and chooser one shared
+  // vertical slot.
   return layout.portrait
-    ? (layout.floorY - layout.camY) * layout.zoom + NPC_PORTRAIT_PROMPT_GAP
+    ? hubPortraitFooterRows(layout).top - NPC_PORTRAIT_CHIP_H / 2
     : null;
 }
 
@@ -2701,10 +2717,11 @@ export class HubState {
       }
     }
     // Portrait has enough floor below the cast to give the hub's descriptive
-    // chrome a proper reading band. Keep it above the lower-corner walk discs,
-    // and size the three lines in CSS terms so they remain equally legible on
-    // phones and larger portrait frames. Landscape keeps the compact shipped
-    // strip and its existing positions.
+    // chrome a proper reading band. Use three fixed row centers: the first is
+    // a replacement slot for either the contextual prompt or the focused
+    // hero/SWAP chooser, the second is resources, and the third is the room
+    // name. Landscape keeps the compact shipped strip and its existing
+    // positions.
     const frameScale = presentationFrame().scale;
     const footerOffset = (cssPx) => layout.portrait ? cssPx / frameScale : cssPx;
     const statusS = layout.portrait ? 2.1 : HINT_S;
@@ -2716,34 +2733,25 @@ export class HubState {
     // never collapses into a tiny status strip.
     const portraitFloorY = (layout.floorY - layout.camY) * layout.zoom;
     const floorFooter = (cssGap) => portraitFloorY + footerOffset(cssGap);
-    // Leave the first 48px below the floor clear for the focused hero's larger
-    // name and SWAP chip. On a hand-operated portrait view the footer then
-    // hugs the lower edge; touch keeps a shorter, control-safe floor-relative
-    // layout above the lower-corner walk discs.
+    const footerRows = layout.portrait ? hubPortraitFooterRows(layout, frameScale) : null;
+    // The transient movement legend remains outside the three persistent rows.
+    // It fades after the first movement, so it cannot change the composition's
+    // fixed prompt/resources/location contract.
     const touchFooter = layout.portrait && Input.isTouchDevice();
-    const touchNpcFooter = touchFooter && !!this.focusNpc;
-    // Cabinet name reads first (it's what you're standing at), resources sit
-    // in the middle, and the food court name anchors the bottom row — evenly
-    // spaced across the same band the strip used to fill top-to-bottom in the
-    // opposite order.
     const statusY = layout.portrait
-      ? (touchFooter
-        ? floorFooter(touchNpcFooter ? 96 : 73)
-        : H - footerOffset(144))
+      ? textYForMid(footerRows.middle, statusS)
       : H - 11;
-    const resourceY = layout.portrait
-      ? (touchFooter
-        ? floorFooter(touchNpcFooter ? 82 : 48)
-        : H - footerOffset(184))
-      : statusY;
     const legendY = layout.portrait
       ? (touchFooter
-        ? floorFooter(touchNpcFooter ? 110 : 99)
+        ? floorFooter(99)
         : H - footerOffset(104))
       : H - 48;
     const promptLastY = layout.portrait
-      ? (touchFooter ? floorFooter(124) : H - footerOffset(64))
+      ? textYForMid(footerRows.bottom, statusS)
       : H - 30;
+    const promptRowY = layout.portrait
+      ? footerRows.top
+      : promptLastY;
     const drawFooterText = layout.portrait ? drawTextVector : drawText;
     const drawFooterTextCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
     const coins = `COINS ${formatCoins(slot.coins)}`;
@@ -2768,11 +2776,13 @@ export class HubState {
         ? wrapText(promptText, W - 32, promptS, 2)
         : [promptText];
       const rowGap = layout.portrait ? 10.5 * promptS + footerOffset(5) : 0;
-      // Portrait anchors this at the top of the band and grows downward
-      // (it's the topmost row there); landscape keeps its single fixed row.
-      const promptAnchorY = layout.portrait ? resourceY : promptLastY;
+      // Portrait centers one or two prompt lines inside the same first-row
+      // slot occupied by the focused hero/SWAP chooser. Landscape keeps its
+      // single fixed row.
       promptLines.forEach((line, i) => drawFooterTextCentered(ctx, line, W / 2,
-        promptAnchorY + i * rowGap,
+        layout.portrait
+          ? textYForMid(promptRowY + (i - (promptLines.length - 1) / 2) * rowGap, promptS)
+          : promptRowY + i * rowGap,
         this.near?.type === 'cabinet' && !this.near.unlocked || this.near?.type === 'shelf' && !this.near.unlocked
           ? '#8a8a98' : '#f6d33c', promptS));
     }
@@ -2900,6 +2910,12 @@ const TROPHY_PODIUM_X = 1060;
 const TROPHY_DUMMY_X = 1180;
 const TROPHY_ATTACK_RANGE = 112;
 const TROPHY_MOVE_SPEED = 140;
+// Player.update owns the shared crouch/slide state and reads held actions
+// directly. The Trophy Room is a standing practice floor, so give that one
+// call a filtered input view instead of changing the runner's player rules.
+const TROPHY_PLAYER_INPUT = {
+  held(action) { return action !== 'slide' && Input.held(action); },
+};
 
 function trophyBoardLayout(layout = trophyPresentation()) {
   return {
@@ -2960,12 +2976,10 @@ export class TrophyRoomState {
     Input.setButtons([]);
     enterTrophyRoomAudio();
     this.t = 0;
-    const presentation = trophyPresentation();
-    // The landscape room opens at the exit. On a phone, open on the first
-    // exhibit instead so the narrower camera does not begin on its left edge.
-    this.px = presentation.portrait
-      ? TROPHY_RECORDS_X + TROPHY_RECORDS_W / 2 - presentation.viewW * 0.08
-      : 90;
+    // Keep the authored entrance spawn in every presentation. The portrait
+    // camera is narrower, but entering the room should still put the hero
+    // beside the Food Court door rather than silently moving him gallery-deep.
+    this.px = 90;
     this.facing = 1;
     this.walkTarget = null;
     this.walkHoldT = 0;
@@ -3192,7 +3206,7 @@ export class TrophyRoomState {
       ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
       : 0;
     this.moving = !!move;
-    this.player.update(dt, Input, { speed: move ? walkSpeed : 0 });
+    this.player.update(dt, TROPHY_PLAYER_INPUT, { speed: move ? walkSpeed : 0 });
   }
 
   drawLevelRecords(ctx, layout = trophyPresentation()) {

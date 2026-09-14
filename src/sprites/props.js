@@ -2904,14 +2904,30 @@ export const PROP_PAINTERS = {
   capRewind(ctx, w, h) {
     // The ◀◀ scrub glyph, dark on a solid mint disc. Dark-on-light rather
     // than a reel with a light glyph: at the native 8px a ring swallowed the
-    // triangles and the capsule read as a lifesaver. Two fat dark notches on
-    // an unbroken mint field survive the shrink, and mint alone already says
-    // "rewind" — no other capsule owns green.
+    // triangles and the capsule read as a lifesaver. The disc and glyph now
+    // keep a deliberate quiet band between them, so the mark reads as a
+    // button rather than three shapes pressed against one another.
     const u = Math.max(w, h);
-    fineShape(ctx, '#7ce8a0', u, (c) => c.arc(w * 0.5, h * 0.5, w * 0.46, 0, Math.PI * 2));
+    const cx = w / 2, cy = h / 2;
+    const discR = Math.min(w, h) * 0.44;
+    fineShape(ctx, '#7ce8a0', u, (c) => c.arc(cx, cy, discR, 0, Math.PI * 2));
+
+    // Both triangles point left, so their visual mass sits toward each
+    // triangle's flat right edge. Centre the pair by its mass, not only by its
+    // outer bounds; otherwise the double-chevron looks a little right-heavy
+    // even though its bounding box is mathematically centred.
+    const triW = Math.min(w, h) * 0.22;
+    const triH = Math.min(w, h) * 0.42;
+    const gap = Math.min(w, h) * 0.08;
+    const massShift = -triW / 6;
+    const top = cy - triH / 2;
+    const bottom = cy + triH / 2;
+    const pairCx = cx + massShift;
+    const leftBase = pairCx - gap / 2;
+    const rightBase = pairCx + gap / 2 + triW;
     plain(ctx, '#1c4834', (c) => {
-      c.moveTo(w * 0.84, h * 0.24); c.lineTo(w * 0.84, h * 0.76); c.lineTo(w * 0.52, h * 0.5); c.closePath();
-      c.moveTo(w * 0.48, h * 0.24); c.lineTo(w * 0.48, h * 0.76); c.lineTo(w * 0.16, h * 0.5); c.closePath();
+      c.moveTo(leftBase - triW, cy); c.lineTo(leftBase, top); c.lineTo(leftBase, bottom); c.closePath();
+      c.moveTo(rightBase - triW, cy); c.lineTo(rightBase, top); c.lineTo(rightBase, bottom); c.closePath();
     });
   },
   appliance(ctx, w, h, frame = 0, finish = null) {

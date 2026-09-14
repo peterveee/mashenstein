@@ -1,6 +1,6 @@
 // Real pixels and total replay cost, including cache misses. No canvas stubs.
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { build } from 'esbuild';
 import { openLiveBrowser } from './lib/live-browser.js';
 const bundle = await build({ stdin: { contents: `
@@ -97,22 +97,45 @@ try {
   });
   console.log('ok: LCD cached/direct pixel parity and invalidation', JSON.stringify(parity));
   if (process.env.MASH_PERF_BENCH) {
-    const bench = await page.evaluate(async () => {
+    // A/B ACROSS A CODE CHANGE NEEDS THE SAME INPUT ON BOTH SIDES.
+    //
+    // Every run otherwise captures six fresh seconds of live analyser output, so
+    // a hit-rate or timing difference between two runs is part code change and
+    // part different music. MASH_LCD_SAMPLES names a file: absent, the run
+    // captures as before and writes it; present, the run replays it. The
+    // round-robin inside a single run is unaffected — this is only for
+    // comparing one build against another.
+    const samplePath = process.env.MASH_LCD_SAMPLES || '';
+    let saved = null;
+    if (samplePath && existsSync(samplePath)) {
+      saved = JSON.parse(readFileSync(samplePath, 'utf8'));
+      console.log(`LCD bench: replaying ${saved.samples.length} saved samples from ${samplePath}`);
+    }
+    const bench = await page.evaluate(async (preset) => {
       const api = window.lcdTest, A = api.Audio;
+      let samples, scheduler;
+      if (preset) {
+        // Restore the typed array musicAnalysis hands out; the painter reads
+        // `spectrum` as one, and a plain array would quietly take a slow path.
+        samples = preset.samples.map((s) => ({ ...s,
+          audio: { ...s.audio, spectrum: Uint8Array.from(s.audio.spectrum) } }));
+        scheduler = preset.scheduler;
+      } else {
       A.setMixerMeteringEnabled(false); A.setSilentLaneSkip(true); A.setSequencerLookahead(0.5);
       A.ensure(); await A.ctx.resume();
       if (!A.ctx.audioWorklet) throw Error('live rhythm benchmark requires AudioWorklet');
       A.setBank(api.bank, api.mix);
       A.setStepAtBoundary(512);
       // Capture actual rhythm analyser output, including mutable-spectrum updates.
-      const samples = [];
+      samples = [];
       for (let i = 0; i < 360; i++) {
         await new Promise(r => setTimeout(r, 1000 / 60));
         const audio = A.musicAnalysis();
         samples.push({ beat: A.songBeat(), audio: { ...audio, spectrum: Array.from(audio.spectrum) } });
       }
-      const scheduler = A.takeSchedulerHealth();
+      scheduler = A.takeSchedulerHealth();
       A.setBank(null); clearInterval(A.timer); await A.ctx.close();
+      }
       const c = document.createElement('canvas'); c.width = 1440; c.height = 810;
       const ctx = c.getContext('2d'); ctx.scale(3, 3);
       // Gameplay uploads its completed canvas to WebGL every frame. Include
@@ -140,8 +163,16 @@ try {
             worst: sorted[sorted.length - 1] });
         }
       }
-      return { scheduler, sampleCount: samples.length, report };
-    });
+      return { scheduler, sampleCount: samples.length, report,
+        samples: preset ? null : samples.map((s) => ({ ...s,
+          audio: { ...s.audio, spectrum: Array.from(s.audio.spectrum) } })) };
+    }, saved);
+    if (samplePath && !saved && bench.samples) {
+      writeFileSync(samplePath, JSON.stringify({
+        scheduler: bench.scheduler, samples: bench.samples }));
+      console.log(`LCD bench: captured ${bench.samples.length} samples to ${samplePath}`);
+    }
+    delete bench.samples;
     writeFileSync('/tmp/mash-lcd-bench.json', JSON.stringify(bench, null, 2));
     console.log('LCD replay bench:', JSON.stringify(bench));
   }

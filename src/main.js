@@ -34,7 +34,7 @@ import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
 import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
-import { STAGE_BY_ID } from './data/stages.js';
+import { STAGES, STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
 import { HubState, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
@@ -396,7 +396,7 @@ const Flow = {
 
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
-  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false) {
+  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false, previewTouchControls = false) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
     levelOpenCue();
@@ -411,6 +411,7 @@ const Flow = {
       corrupted,
       initialHeroId,
       devInvuln, devAutoExit, devMaxTime, devStartPercent, devForceMission,
+      previewTouchControls,
       musicSong: this.gameSongFor(cab.id),
       // The bench-upgrade parade is a once-per-visit thing; a retry has already
       // seen it (same as the briefing it also skips).
@@ -431,6 +432,17 @@ const Flow = {
         }));
       },
     }));
+  },
+
+  // Dev-only view of the opening touch-controls card. It uses the real opening
+  // RunState path, but does not depend on the current save having an unfinished
+  // plumber-1, so a completed development slot can still review the card.
+  previewTouchControls() {
+    const stage = STAGES.find((s) => s.id === 'plumber-1');
+    const cab = stage && CABINET_BY_ID[stage.cabinet];
+    if (!cab || !stage) return;
+    this.launchStage(cab, stage, [], undefined, undefined, false, true, false,
+      0, 0, false, true);
   },
 
   // Portrait Lab owns its RunState and its exit policy. The visual config is

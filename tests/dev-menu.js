@@ -70,6 +70,12 @@ const bundle = outputFiles[0].text;
   assert(benches.length === 1 && benches[0].label.includes('AUDITION'),
     'the megamix move audition sits after the preset list rather than inside it');
 
+  const scenesItem = dev.top().items.find((item) => item.label === 'SCENES ▸');
+  const scenesMenu = scenesItem && scenesItem.submenu && scenesItem.submenu(dev);
+  assert(scenesMenu && scenesMenu.items.some((item) =>
+    item.label === 'TOUCH CONTROLS INTRO' && item.act),
+  'scenes menu exposes the opening touch-controls card preview');
+
   // The tuning constants get a reference view in the menu; the working surface
   // is the strip, which deliberately lives outside it. This suite builds
   // WITHOUT the tunable plugin, so nothing is registered here — which is

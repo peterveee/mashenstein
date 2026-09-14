@@ -2,7 +2,17 @@
 
 Date: 2026-09-13
 Repository: `/Users/Peter/mashenstein`
-Status: proposed implementation plan; no scenery changes have been made by this handover.
+Status: implemented in the working tree; the plan below remains the design and
+acceptance reference for review.
+
+Review tuning applied: Plumber ridge trees are now 1.45x larger; fences are
+occasional and tucked below the crest; bushes are embedded lower in the hill;
+houses use one-to-two reserved landmark cells per level. Two or three of the
+larger broadleaf trees remain plain so the greenery stays quiet. The watering
+pipe, butterfly, pinwheel, path, and bridge prototypes were removed after
+review. The landscape country layer is now lifted 34 logical
+pixels as one unit so the mountains, volcano, hills, and attached props clear
+more of the foreground; portrait keeps its resolved band composition.
 
 ## Brief
 
@@ -10,12 +20,13 @@ Make the Plumber levels feel more inhabited and interesting by adding small hand
 
 Build simple Canvas 2D shapes, cached at appropriate resolution. No generated raster assets are needed. These are decorative background objects: no collision, pickups, triggers, sounds, mission changes, or new gameplay rules.
 
-Implement in two passes:
+Implementation is now settled to the retained set: flowers/grass, embedded
+bushes, occasional short fences, larger ridge trees, and one-to-two rare houses
+per level. The plumbing, pinwheel, butterfly, path, and bridge prototypes were
+removed after visual review rather than being forced into the final catalogue.
 
-1. Establish flowers/grass, bushes, short fences, and small plumbing vignettes. Verify their composition in landscape and portrait.
-2. Add sparse houses, pinwheels, butterflies, and short hillside paths/bridges using the same system. Keep their frequency low. Complete both passes, adjusting density after visual review rather than treating every available object as something every screen must contain.
-
-The intended impression is an occasional little scene: a leaking elbow pipe watering daisies beside a crooked fence, followed by a quiet stretch of countryside.
+The intended impression is an occasional little scene: flowers tucked beside a
+crooked fence or bush, followed by a quiet stretch of countryside.
 
 ## Working rules and current source map
 
@@ -43,10 +54,10 @@ All dimensions below are starting values in renderer logical pixels, not screens
 Use these rules:
 
 - Place objects on or just inside the green background hills. Let the existing foreground terrain naturally cover their bases where it overlaps.
-- Keep upright props upright; sample the hillside under each foot/post instead of rotating a whole house or pipe to match a slope.
+- Keep upright props upright; sample the hillside under each foot/post instead of rotating a whole house or pipe to match a slope. Fences, bushes, and houses that sit below the crest are clipped to the ridge silhouette so their roots stay inside the hill face.
 - Use restrained colours and small silhouettes. Bright gold, warning symbols, heavy black outlines, and crate-like block shapes would compete with gameplay cues.
 - Keep the existing cloud face as the principal scenery character. Do not put faces on flowers, houses, pipes, or bushes.
-- Keep the upper sky clear. New movement belongs close to its flower or pinwheel cluster.
+- Keep the upper sky clear. The scenery has no new independent moving elements.
 - Aim for approximately 1–2 substantial clusters per 480 logical pixels, plus 2–4 tiny vegetation accents. These are tuning targets, not a promise that every viewport contains that many.
 - Leave approximately half the hillside frontage visually quiet. A narrow portrait crop may contain only one small cluster or part of a larger one.
 - Limit a substantial cluster to approximately 28–60 logical pixels wide. Separate major cluster anchors by at least 100 logical pixels; use more spacing for houses.
@@ -78,15 +89,18 @@ Bake 3–4 finite variants. Do not animate every flower. Plant bases 1–2 pixel
 
 Use a mid green near `#4d8e54` and a lighter panel near `#70a15b`; tune for separation from the particular hill colour. Put one bush at a fence end or beside a house, occasionally alone. Avoid a continuous hedge band.
 
-### 3. Short wonky fences — common structural accent
+### 3. Short wonky fences — occasional structural accent
 
 **Appearance:** 2–3 warm cream timber posts and two narrow rails. Approximately 18–30 wide and 7–11 tall; softly crooked, not ruined or hazardous.
 
 **Build:** use tapered four-point polygons for posts, with at most 3–6 degrees of lean. Draw rails behind posts. Sample the ridge separately beneath each post; connect rails using those post heights. One darker side strip is enough to suggest layered card. Omit tiny woodgrain and nail details that disappear at gameplay scale.
 
-Starting colours: timber `#c9b78b`, shaded edge `#a18b65`. Partly bury post bottoms and tuck a bush or flowers near one end. A gap or one lower rail is sufficient variation; avoid arrows or signs implying a route choice.
+Starting colours: timber `#c9b78b`, shaded edge `#a18b65`. Place the fence well down the hill face rather than on the crest, clip it to the ridge silhouette, partly bury the post bottoms, and tuck a bush or flowers near one end. A gap or one lower rail is sufficient variation; avoid arrows or signs implying a route choice. Keep the cluster occasional so the open hills remain dominant.
 
-### 4. Small plumbing vignettes — signature detail
+### 4. Small plumbing vignettes — removed after review
+
+This prototype is retained below as historical design context only; it is no
+longer part of the implemented scenery catalogue.
 
 **Appearance:** a little elbow pipe emerging from the hill, sometimes with a muted red valve wheel, occasionally watering flowers. Pipe approximately 8–14 wide and 8–14 tall; combined scene approximately 24–40 wide.
 
@@ -108,11 +122,14 @@ Variants: elbow only; elbow plus valve; watering elbow plus three daisies. Avoid
 
 **Build:** a slightly uneven wall quadrilateral, triangular/trapezoidal roof with a small overhang, short chimney behind the roof, and one dark muted circular window with a cream surround. A small doorway is optional if it remains readable. Use flat panels and one restrained roof edge shadow.
 
-Starting colours: wall `#d0c39f`, roof `#ad7969` or `#7e959a`, window `#697970`. Select a broad, low-slope ridge location. Bury the lower wall behind a bush or the hillside. No smoke needed; the volcano already supplies a major smoke feature.
+Starting colours: wall `#d0c39f`, roof `#ad7969` or `#7e959a`, window `#697970`. Select a broad, low-slope ridge location, then place the house well below the peak and clip it to the hill silhouette so it reads as part of the slope. Bury the lower wall behind a bush or the hillside. No smoke needed; the volcano already supplies a major smoke feature.
 
-Target roughly one house per 900–1400 logical pixels of scenery distance. No rows of houses and no prominent route leading toward a doorway.
+Target one or two houses across an entire level, using reserved deterministic landmark cells rather than a regular random frequency. No rows of houses and no prominent route leading toward a doorway.
 
-### 6. Paper pinwheels — sparse local motion
+### 6. Paper pinwheels — removed after review
+
+This prototype is retained below as historical design context only; it is no
+longer part of the implemented scenery catalogue.
 
 **Appearance:** thin stalk, four folded triangular blades, and a small centre pin. Approximately 10–14 tall, rotor 6–9 across.
 
@@ -120,7 +137,10 @@ Target roughly one house per 900–1400 logical pixels of scenery distance. No r
 
 Rotate the cached rotor once every 12–20 seconds using the supplied game time and a stable per-instance phase. Never use wall-clock time or accumulate rotation frame by frame. Reduced motion freezes at a pleasing diagonal angle. Start with at most one visible pinwheel.
 
-### 7. Butterflies — rare flower-associated motion
+### 7. Butterflies — removed after review
+
+This prototype is retained below as historical design context only; it is no
+longer part of the implemented scenery catalogue.
 
 **Appearance:** tiny pair of wing lobes and a short body, approximately 3–5 wide and 2–3 tall. Muted peach or lavender; never gold or flashing white.
 
@@ -128,7 +148,10 @@ Rotate the cached rotor once every 12–20 seconds using the supplied game time 
 
 Use deterministic time/phase and no gameplay entities. Reduced motion draws a resting butterfly on a flower. Do not let its path wander into the upper sky or wrap independently across the screen.
 
-### 8. Hillside path and tiny bridge — rare static vignette
+### 8. Hillside path and tiny bridge — removed after review
+
+This prototype is retained below as historical design context only; it is no
+longer part of the implemented scenery catalogue.
 
 **Appearance:** a short cream path curving over the face of a background hill, tapering toward the ridge. A miniature bridge can cross an implied shallow hollow within that same hill. Entire vignette approximately 25–45 wide and 12–22 tall; bridge 12–18 wide.
 
@@ -147,7 +170,7 @@ Recommended approach:
 3. Work in scenery-layer coordinates. At factor `0.35`, camera travel is `camX * 0.35 * ZOOM`. Match the existing coverage origin, hill phase, and vertical transform exactly. Account for `coverage.left` when using `ridgeYAt()`; pass it as `coverageLeft`.
 4. Enumerate cells overlapping visible background coverage plus the largest cluster overhang. Derive cell bounds directly from camera travel, with correct floor/modulo behaviour for negative coordinates. Do not maintain a growing world list.
 5. Anchor static and animated parts to the same cluster position. Sample the actual ridge for each independent foot or root. Evaluate wide footprints before selecting a house or fence site; choose a deterministic alternate position or simpler cluster when the slope is unsuitable.
-6. Paint new hillside details after the near hill fill, inside the same near-layer transform and before the existing `paintClouds()` call. Preserve the current cloud ordering. Face-of-hill paths need a local ridge clip; upright props must be allowed to rise above that clip.
+6. Paint new hillside details after the near hill fill, inside the same near-layer transform and before the existing `paintClouds()` call. Preserve the current cloud ordering. Upright props that sit below the crest use a local ridge clip so they remain inside the hill face.
 7. Keep static props in a bounded sprite/cluster cache. Animation only transforms already baked art. Use finite variant keys, material/strength, paper mode, and bake density; never include time or camera position in raster cache keys.
 8. Register cache clearing with the existing presentation refresh. Rebuild at the settled density/layout change, preserving gameplay state. Pad cached bounds for protruding petals, chimney, rotor, and shadows.
 
@@ -156,12 +179,8 @@ Important: existing hill trees repeat in a short tile. Avoid putting all new pro
 Suggested cluster catalogue:
 
 - Tiny flowers or grass: frequent standalone accent.
-- Fence + low bush + flowers: common.
-- Watering pipe + daisies: occasional signature scene.
-- Valve elbow + grass: occasional.
-- Pinwheel + flowers: uncommon.
+- Fence + low bush + flowers: occasional.
 - House + bush + short fence: rare.
-- Path + bush, optionally miniature bridge: rare.
 - Quiet cell: frequent and explicit.
 
 Centralize sizes, cell spacing, weights, colours, and animation periods in a concise configuration area. Enforce minimum separation deterministically using neighbouring cells or reserved slots, so appearance does not depend on draw order or which viewport was visited first.
@@ -209,7 +228,7 @@ Browser review matrix:
 - Emulated phone portrait around 390×844, using the actual game composition.
 - All Plumber stages: beginning, middle, and later portions; verify actual stage IDs in current data.
 - Several fractional camera positions and cell boundaries, long scroll, and an overtime/infinite-distance draw probe.
-- Elevated routes, pits, tunnel sections, and the volcano area: decorative paths/pipes must remain clearly background.
+- Elevated routes, pits, tunnel sections, and the volcano area: retained decorative scenery must remain clearly background.
 - Reduced motion, paper off, and an orientation change that refreshes presentation caches.
 - At least one other cabinet to verify feature gating.
 
@@ -217,7 +236,7 @@ Use the existing stage-preview query convention, for example `?goto=stage&cab=pl
 
 Acceptance criteria:
 
-- Flowers, short fences, and plumbing details provide visible interest at normal gameplay scale.
+- Flowers, short fences, bushes, and larger ridge trees provide visible interest at normal gameplay scale.
 - Houses and animated accents remain sparse, with substantial quiet space.
 - Every root/post/base stays attached to its hill during scrolling and portrait changes.
 - No clipped rotor/chimney/shadow, tile-edge cuts, obvious short repeating scene, or popping at viewport boundaries.

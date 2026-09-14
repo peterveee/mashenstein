@@ -33,6 +33,7 @@ const suites = [
   'tests/beat-ground.js',
   'tests/lane-calls.js',
   'tests/pixel-background.js',
+  'tests/plumber-scenery.js',
   'tests/paper-material.js',
   'tests/lcd-background.js',
   'tests/render-culling.js',

@@ -149,13 +149,15 @@ export function setInk({
 // the light/dark balance a little toward the dark half. That is the intended
 // direction here — the phone wants the shape read, not the modelling.
 //
-// IT CAME DOWN FROM 1.5, and the reason is worth keeping. 1.5 was chosen while
-// the stroke was doing the separating ON ITS OWN. The contact shadow and the
-// backdrop veil now carry part of that job, so the same darkness was doing more
-// work than it had been asked for and the contour had gone from a soft edge to
-// a drawn black line — the treatment the cast is deliberately NOT drawn in.
-// Judge this dial against whatever else is separating the hero at the time, not
-// on its own: it is the third of three, and it was set as if it were the only.
+// The handset boost previously came down from 1.5 while the stroke was doing
+// the separating ON ITS OWN. The contact shadow and backdrop veil now carry
+// part of that job, so the same darkness was doing more work than it had been
+// asked for. The current 1.55/1.3 values are a small return after the physical
+// iPhone read: enough extra contour and solidity to survive the smaller screen,
+// still well short of the colouring-book line the cast is deliberately NOT
+// drawn in. Judge this dial against whatever else is separating the hero at the
+// time, not on its own: it is the third of three, and it was set as if it were
+// the only.
 //
 // `floor` rides along with `body` for the reason hair() gives below: without it
 // the width boost is a rounding error at the size the game plays at.
@@ -180,8 +182,8 @@ export function setInk({
 // Applied once at boot (main.js) and never toggled: toonCache keys its baked
 // face and stand sprites on hero and size alone, so a mid-session change would
 // leave stale bakes behind at the old weight.
-export const PHONE_INK_BOOST = 1.45;   // stroke WIDTH
-export const PHONE_INK_ALPHA = 1.2;    // contour OPACITY: 0.32 -> 0.38, 0.20 -> 0.24
+export const PHONE_INK_BOOST = 1.55;   // stroke WIDTH
+export const PHONE_INK_ALPHA = 1.3;    // contour OPACITY: 0.32 -> 0.42, 0.20 -> 0.26
 export const PHONE_INK = {
   body: PHONE_INK_BOOST, face: 1, floor: PHONE_INK_BOOST, alpha: PHONE_INK_ALPHA,
 };

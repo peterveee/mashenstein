@@ -137,10 +137,15 @@ const wideWaterTowers = __testing.desertWaterTowerPlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true });
 const windTurbines = __testing.desertWindTurbinePlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true });
+const windSlotCounts = new Map();
+for (const turbine of windTurbines) {
+  windSlotCounts.set(turbine.index, (windSlotCounts.get(turbine.index) || 0) + 1);
+}
 assert(wideWaterTowers.length < __testing.desertSatelliteDishPlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true }).length,
   'water towers are less frequent than satellite dishes on the horizon');
 assert(windTurbines.length > 1
+  && [...windSlotCounts.values()].every((count) => count === 3)
   && windTurbines.every((turbine) => Math.abs(turbine.baseY - __testing.ridgeYAt(
     turbine.x, 137, portraitFarBaseY, portraitFarAmp, 230, 0.12,
     { mesa: true, coverageLeft: wideHorizonProbe.__mashBackgroundCoverage.left }) - 2) < 1e-9),
@@ -158,6 +163,10 @@ assert(horizonKinds[0] === null && horizonKinds[5] === null,
 assert(__testing.windTurbineRotation(0, 0) !== __testing.windTurbineRotation(1, 0)
   && __testing.windTurbineRotation(1, 2) !== __testing.windTurbineRotation(1, 3),
   'wind turbine rotors advance over time and vary by landmark phase');
+assert(__testing.satelliteDishScanAngle(0, 0) !== __testing.satelliteDishScanAngle(1, 0)
+  && __testing.satelliteDishScanAngle(1, 2) !== __testing.satelliteDishScanAngle(1, 3)
+  && __testing.satelliteDishScanAngle(1, 0, true) === 0,
+  'satellite dish antennas sweep independently and freeze with reduced motion');
 const telegraphPoles = __testing.desertTelegraphPlacements(
   ridgeProbe, 137, portraitMiddleBaseY);
 assert(telegraphPoles.length >= 3
@@ -278,10 +287,10 @@ assert(composedGrounded && composedHigh && composedGrounded[1] === composedHigh[
   'the shared scene context does not double-cancel celestial parallax');
 
 const landscapeScenery = sceneryPosition(null);
-const portraitScenery = sceneryPosition({ sceneryOffsetY: -90 });
-assert(landscapeScenery && landscapeScenery[2] === 0
+const portraitScenery = sceneryPosition({ portrait: true, sceneryOffsetY: -90 });
+assert(landscapeScenery && landscapeScenery[2] === -__testing.PLUMBER_LANDSCAPE_SCENERY_LIFT
   && portraitScenery && portraitScenery[2] === -90,
-  'portrait lifts the mountain layer without changing landscape scenery');
+  'landscape lifts Plumber hills while portrait keeps its existing scenery offset');
 
 function skyCoverage(coverage) {
   const { ctx, ops } = recorder();

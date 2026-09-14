@@ -42,6 +42,25 @@ function band(rect, range) {
   return Object.freeze({ top: a, bottom: b, height: b - a, center: (a + b) / 2 });
 }
 
+// ONE SLOT, AND EVERY OUTPUT IS ALREADY FROZEN.
+//
+// The run calls this once per frame in portrait (and not at all in landscape),
+// and it builds about twenty fresh frozen objects each time — two
+// Object.fromEntries passes over the band table plus the rects. None of its
+// inputs move between frames: the presentation frame is one retained object
+// replaced only by a resize, portraitHudLayout is memoised on its own revision
+// key, and the zoom and band table belong to the cabinet. So the whole thing is
+// recomputed sixty times a second to produce the same answer, and the garbage is
+// the kind that shows up as an occasional deep frame rather than a slow one.
+//
+// Identity comparison is the right test precisely because every result here is
+// Object.freeze'd: nothing can mutate a band table behind the cache and have the
+// stale layout survive. A caller that passes a fresh bands object each time
+// simply misses, which is the honest outcome — the shipped path does not.
+// Same shape as portraitHudLayout's cache, deliberately.
+let cachedInput = null;
+let cachedLayout = null;
+
 /**
  * Resolve both screen-space and pack-local scenery coordinates.  `groundY` is
  * the authored local groundline (232 in the shipped packs); the frame's
@@ -62,6 +81,11 @@ export function resolveSceneryLayout({
   // exactly the shipped composition.
   bands: authored = SCENERY_BANDS,
 } = {}) {
+  if (cachedLayout && cachedInput
+    && cachedInput.frame === frame && cachedInput.hud === hud
+    && cachedInput.groundY === groundY
+    && cachedInput.backgroundZoom === backgroundZoom
+    && cachedInput.authored === authored) return cachedLayout;
   const bands = authored || SCENERY_BANDS;
   const f = frame || {};
   const safe = f.safeRect || { top: 0, bottom: f.height || 270 };
@@ -82,7 +106,7 @@ export function resolveSceneryLayout({
     .map(([name, range]) => [name, band(screenRect, range)]));
   const localBands = Object.fromEntries(Object.entries(bands)
     .map(([name, range]) => [name, band(localRect, range)]));
-  return Object.freeze({
+  cachedLayout = Object.freeze({
     profileBands: bands,
     screenRect,
     localRect,
@@ -90,6 +114,8 @@ export function resolveSceneryLayout({
     bands: Object.freeze(localBands),
     cameraReferenceY: shift,
   });
+  cachedInput = { frame, hud, groundY, backgroundZoom, authored };
+  return cachedLayout;
 }
 
 export function backgroundDepth(layer) {

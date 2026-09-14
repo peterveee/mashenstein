@@ -372,6 +372,10 @@ function scenesMenu(dev) {
     items: [
       { label: 'HUB', act: go(() => Flow.toHub()) },
       { label: 'TITLE', act: go(() => Flow.toTitle()) },
+      // Keep the card preview near the top: on a phone this scene menu has more
+      // rows than fit at once, and this is the quickest way to review the page
+      // that tells a new player what to press.
+      { label: 'TOUCH CONTROLS INTRO', act: go(() => Flow.previewTouchControls()) },
       { label: 'NEW FILE ▸', submenu: () => newFileMenu(dev) },
       { label: 'ARCADE', act: go(() => Flow.openArcade()) },
       { label: 'STAGE SELECT', act: go(() => Flow.openCabinet(CABINETS[0])) },

@@ -100,6 +100,10 @@ room.walkTarget = null;
 room.update(1 / 60);
 assert(room.moving === false, 'the trophy-room hero returns to idle after walking stops');
 
+Input.press('slide'); room.update(1 / 60); Input.release('slide'); Input.endFrame();
+assert(room.player.sliding === false && room.player.slideAmount === 0,
+  'the trophy-room hero cannot slide');
+
 const beforeRemoteAttack = room.px;
 assert(Input.actionForKey('ShiftLeft') === 'ability' && Input.actionForKey('ShiftRight') === 'ability',
   'both Shift keys retain their attack mapping in the trophy room');

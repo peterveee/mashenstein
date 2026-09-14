@@ -2807,10 +2807,10 @@ function difficultyConfirmLayout() {
 }
 
 function drawDifficultyPortrait(ctx, state, layout) {
-  const titleS = portraitMenuFit('SELECT DIFFICULTY', 2.55, layout.w, 'title');
+  const titleS = portraitMenuFit('SELECT DIFFICULTY', 2.8, layout.w, 'title');
   portraitMenuTextCentered(ctx, 'SELECT DIFFICULTY', W / 2,
     portraitMenuTextY(layout.titleY, titleS, 'title'), '#fff', titleS, 'title');
-  const subtitleS = portraitMenuFit('CHOOSE THE TERMS OF YOUR SHIFT', 1.05,
+  const subtitleS = portraitMenuFit('CHOOSE THE TERMS OF YOUR SHIFT', 1.2,
     layout.w, 'ui');
   portraitMenuTextCentered(ctx, 'CHOOSE THE TERMS OF YOUR SHIFT', W / 2,
     portraitMenuTextY(layout.subtitleY, subtitleS), '#8a8a98', subtitleS);
@@ -2820,11 +2820,11 @@ function drawDifficultyPortrait(ctx, state, layout) {
     const danger = d.id === 5;
     if (selected) drawMenuRow(ctx, layout.x, y, layout.w, h, 8,
       'rgba(201,160,255,0.12)');
-    const nameS = portraitMenuFit(d.name, 2.0, layout.w - 40, 'bold');
-    const glossS = portraitMenuFit(d.desc, 1.35, layout.w - 40, 'ui');
+    const nameS = portraitMenuFit(d.name, 2.35, layout.w - 40, 'bold');
+    const glossS = portraitMenuFit(d.desc, 1.55, layout.w - 40, 'ui');
     const nameH = TEXT_INK_H * portraitMenuScale(nameS);
     const glossH = TEXT_INK_H * portraitMenuScale(glossS);
-    const pairGap = 10;
+    const pairGap = 12;
     const pairH = nameH + pairGap + glossH;
     const pairTop = y + Math.max(0, (h - pairH) / 2);
     const nameMid = pairTop + nameH / 2;
@@ -2851,16 +2851,16 @@ function drawDifficultyConfirmPortrait(ctx) {
   ctx.strokeStyle = '#e04848';
   ctx.lineWidth = 2;
   ctx.strokeRect(g.x + 1, g.y + 1, g.w - 2, g.h - 2);
-  const titleS = portraitMenuFit('ARE YOU SURE?', 2.05, g.w - 32, 'title');
+  const titleS = portraitMenuFit('ARE YOU SURE?', 2.4, g.w - 32, 'title');
   portraitMenuTextCentered(ctx, 'ARE YOU SURE?', W / 2,
     portraitMenuTextY(g.y + 48, titleS, 'title'), '#e04848', titleS, 'title');
   portraitMenuTextCentered(ctx, '(WE ARE NOT.)', W / 2,
-    portraitMenuTextY(g.y + 94, 1.25), '#8a8a98', 1.25);
+    portraitMenuTextY(g.y + 94, 1.4), '#8a8a98', 1.4);
   const actionMid = g.actionY + g.actionH / 2;
   portraitMenuTextCentered(ctx, 'YES', g.x + g.w * 0.26,
-    portraitMenuTextY(actionMid, 1.45, 'bold'), '#e04848', 1.45, 'bold');
+    portraitMenuTextY(actionMid, 1.7, 'bold'), '#e04848', 1.7, 'bold');
   portraitMenuTextCentered(ctx, 'NO — WISDOM', g.x + g.w * 0.74,
-    portraitMenuTextY(actionMid, 1.45, 'bold'), '#c8c8d8', 1.45, 'bold');
+    portraitMenuTextY(actionMid, 1.7, 'bold'), '#c8c8d8', 1.7, 'bold');
 }
 
 export class DifficultyState {

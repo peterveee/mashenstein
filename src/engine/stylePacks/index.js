@@ -115,6 +115,18 @@ function portraitSceneryOffset(context = null) {
   return Number.isFinite(n) ? Math.max(-120, Math.min(40, n)) : 0;
 }
 
+// Landscape's shorter sky-to-ground composition leaves the Plumber hills
+// tucked behind too much of the foreground apron. Raise the complete country
+// layer together so the mountain range, volcano, near ridge, and its props
+// keep their existing depth and planting. Portrait has its own resolved band
+// geometry and keeps that composition unchanged.
+const PLUMBER_LANDSCAPE_SCENERY_LIFT = 34;
+
+function plumberLandscapeSceneryOffset(context = null) {
+  return (context?.portrait === true || context?.sceneryLayout)
+    ? 0 : -PLUMBER_LANDSCAPE_SCENERY_LIFT;
+}
+
 // Camera-derived positions in here are deliberately NOT rounded to whole
 // pixels. Rounding looks harmless per frame and is a stutter in motion: the
 // world scrolls a fractional number of pixels per tick (2.54 at a typical
@@ -421,6 +433,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const snow = (opts && opts.snow) || null;
   const rock = (opts && opts.rock) || null;
   const trees = (opts && opts.trees) || null;
+  const treeScale = trees ? Math.max(0.8, Number(trees.scale) || 1) : 1;
   const paper = !!(opts && opts.paper);
   const paperMaterial = (opts && opts.paperMaterial) || 'cardstockClear';
   const paperStrength = paperStrengthsOf({
@@ -433,9 +446,9 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   // A tree standing on a crest has its base at `top`, so its crown would reach
   // above the tile and get sliced flat by the canvas edge. Give the tile that
   // much headroom and blit from there.
-  const tileTop = top - (trees ? TREE_MAX : 0);
+  const tileTop = top - (trees ? TREE_MAX * treeScale : 0);
   const key = `${H}|${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|`
-    + (trees ? trees.leaf + trees.trunk : '')
+    + (trees ? `${trees.leaf}${trees.trunk}|${treeScale}` : '')
     + `|paper:${paper ? 1 : 0}|material:${paperMaterial}|strength:${paperStrength}|strata:${strataKey}`;
   const SS = bakeSS();
   if (SS !== hillCacheSS) { hillCache.clear(); hillCacheSS = SS; }
@@ -537,7 +550,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
         const k = Math.sin(i * 78.233 + 1.7) * 24634.6345;
         const g = k - Math.floor(k);                    // second stream: type + jitter
         const tx = ((i + 0.2 + g * 0.6) / n) * period;
-        const th = 9 + f * 5;
+        const th = (9 + f * 5) * treeScale;
         const by = ridge(tx) + 1;                       // bite into the hill
         for (const dx of [-period, 0, period]) {
           const cx = tx + dx;
@@ -562,11 +575,29 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
           } else {
             // broadleaf: three overlapping circles — one alone reads as a lollipop
             const r = th * 0.30;
-            x.beginPath();
-            x.arc(cx, by - th * 0.72, r, 0, Math.PI * 2);
-            x.arc(cx - r * 0.85, by - th * 0.52, r * 0.78, 0, Math.PI * 2);
-            x.arc(cx + r * 0.85, by - th * 0.52, r * 0.78, 0, Math.PI * 2);
-            x.fill();
+            const crownCircle = (px, py, radius) => {
+              x.beginPath();
+              x.arc(px, py, radius, 0, Math.PI * 2);
+              x.fill();
+            };
+            const crownEllipse = (px, py, rx, ry) => {
+              x.beginPath();
+              x.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+              x.fill();
+            };
+            // Each lobe is a separate path. Appending complete circles to one
+            // path makes Canvas connect their endpoints with straight lines;
+            // the resulting compound winding was the triangular sky hole on
+            // the right-hand join.
+            crownCircle(cx, by - th * 0.72, r);
+            crownCircle(cx - r * 0.85, by - th * 0.52, r * 0.78);
+            crownCircle(cx + r * 0.85, by - th * 0.52, r * 0.78);
+            // The three lower lobes can leave an open sky notch at the upper
+            // joins when the tree is enlarged. Broad connector ellipses make
+            // the crown one continuous silhouette while keeping the lobed
+            // outline visible at gameplay scale.
+            crownEllipse(cx - r * 0.58, by - th * 0.64, r * 0.82, r * 0.58);
+            crownEllipse(cx + r * 0.58, by - th * 0.64, r * 0.82, r * 0.58);
           }
         }
       }
@@ -594,13 +625,255 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   const coverage = backgroundPaintCoverage(ctx);
+  const fullH = H - tileTop + HILL_UNDERFILL;
+  // DO NOT RASTERIZE THE PART OF THE TILE THAT IS UNDER THE FLOOR OF THE SCREEN.
+  //
+  // The tile is baked to `H + HILL_UNDERFILL` so that a background driven UP
+  // (going below the lane) never runs out of body — see the note on
+  // HILL_UNDERFILL. In landscape that overshoot is small. In portrait H is ~1041
+  // AND the whole pass is scaled by backgroundZoom around the groundline, so the
+  // tile is drawn into local y 166..1261 while only about -236..349 is on the
+  // canvas: better than four fifths of every blit is fill the GPU throws away,
+  // once per horizontal tile per parallax layer per frame.
+  //
+  // Only the BOTTOM is clipped, and the source rect keeps its origin at row
+  // zero with the height rounded UP to a whole source row. That holds the
+  // vertical mapping at exactly 1/SS, so the rows that do survive land on the
+  // same destinations as before and the blit cannot resample differently — the
+  // picture is identical, there is simply less of it below the frame.
+  const band = backgroundPaintBand(ctx);
+  const clipped = Math.min(fullH, Math.max(0, band.bottom - tileTop));
+  // A layer whose crest has gone below the bottom of the screen clips to
+  // nothing. Keep one source row rather than skipping the blit outright: the
+  // cost is already negligible at that point, and it means an arithmetic slip
+  // in the band can never express itself as hills that vanish.
+  const sh = clipped < fullH
+    ? Math.min(tile.height, Math.max(1, Math.ceil(clipped * SS))) : 0;
+  const dh = sh ? sh / SS : fullH;
   // Start one tile early so a positive portrait shift also fills the left
   // edge. The canvas clips the extra copy in the identity path.
   for (let x0 = coverage.left - off - period; x0 < coverage.right; x0 += period) {
-    ctx.drawImage(tile, x0 - MARGIN, tileTop,
-      period + MARGIN * 2, H - tileTop + HILL_UNDERFILL);
+    if (sh) {
+      ctx.drawImage(tile, 0, 0, tile.width, sh,
+        x0 - MARGIN, tileTop, period + MARGIN * 2, dh);
+    } else {
+      ctx.drawImage(tile, x0 - MARGIN, tileTop,
+        period + MARGIN * 2, fullH);
+    }
   }
   ctx.imageSmoothingEnabled = prev;
+}
+
+// PLUMBER NEAR-HILL SCENERY -------------------------------------------------
+// Small handmade vignettes keep Plumber's open hills from feeling empty. The
+// placement sequence is deterministic scenery data, separate from gameplay
+// RNG, and each finished prop is baked once at the current render density.
+const PLUMBER_SCENERY_SPACING = 122;
+const PLUMBER_SCENERY_CULL_MARGIN = 74;
+const PLUMBER_NEAR_TREE_SCALE = 1.45;
+// Houses are landmarks, not scenery wallpaper. One reserved slot every 48
+// placement cells gives a one-to-two-house level at the current stage lengths,
+// while keeping the exact cell deterministic across cameras and wraps.
+const PLUMBER_SCENERY_HOUSE_BLOCK = 48;
+const PLUMBER_SCENERY_HOUSE_START = 12;
+const PLUMBER_SCENERY_PALETTE = Object.freeze({
+  stem: '#4f8650', leaf: '#6d9c55', petal: '#eee4bf', petalPink: '#cf8d9c',
+  pollen: '#bd9546', bush: '#4d8e54', bushLight: '#70a15b',
+  timber: '#c9b78b', timberShade: '#a18b65', house: '#d0c39f', roof: '#ad7969',
+  roofCool: '#7e959a', window: '#697970',
+});
+const plumberScenerySpriteCache = new Map();
+let plumberSceneryCacheSS = 0;
+
+function plumberSceneryHash(value) {
+  let x = (Number(value) | 0) ^ 0x6d2b79f5;
+  x = Math.imul(x ^ (x >>> 15), 1 | x);
+  x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+  return ((x ^ (x >>> 14)) >>> 0);
+}
+
+function plumberSceneryClusterForCell(cell) {
+  const houseBand = Math.floor(cell / PLUMBER_SCENERY_HOUSE_BLOCK);
+  const houseCell = houseBand * PLUMBER_SCENERY_HOUSE_BLOCK
+    + PLUMBER_SCENERY_HOUSE_START
+    + (plumberSceneryHash(houseBand * 37 + 211) % 17);
+  if (cell === houseCell) return 'house';
+  const slot = plumberSceneryHash(cell) % 100;
+  if (slot < 22) return 'flowers';
+  if (slot < 27) return 'fence';
+  if (slot < 37) return 'bush';
+  return null;
+}
+
+function plumberSceneryFill(ctx, source, color, paper, paperMaterial, paperStrength, options = {}) {
+  if (paper) {
+    drawPaperShape(ctx, source, color, {
+      pattern: sharedPaperPatternFor(ctx, paperMaterial),
+      deep: options.deep || PAPER_SUBTLE_DEEP_OFFSET,
+      contact: options.contact || PAPER_SUBTLE_CONTACT_OFFSET,
+      deepColor: options.deepColor || PAPER_SUBTLE_DEEP_COLOR,
+      contactColor: options.contactColor || PAPER_SUBTLE_CONTACT_COLOR,
+      grainAlpha: PAPER_GRAIN_ALPHA * paperStrength,
+      rim: options.rim !== false,
+      strokeStyle: options.strokeStyle,
+      lineWidth: options.lineWidth,
+    });
+  } else {
+    ctx.fillStyle = color;
+    fillPaperPath(ctx, source);
+  }
+}
+
+function plumberSceneryRect(ctx, x, y, width, height, color, paper, material, strength) {
+  plumberSceneryFill(ctx, () => {
+    ctx.beginPath(); ctx.rect(x, y, width, height);
+  }, color, paper, material, strength, { rim: false });
+}
+
+function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength) {
+  const SS = bakeSS();
+  if (SS !== plumberSceneryCacheSS) {
+    plumberScenerySpriteCache.clear();
+    plumberSceneryCacheSS = SS;
+  }
+  const key = `${kind}|${variant}|${paper ? 1 : 0}|${paperMaterial}|${paperStrength}|${SS}`;
+  const cached = plumberScenerySpriteCache.get(key);
+  if (cached) return cached;
+  if (typeof document === 'undefined') return null;
+  const dimensions = {
+    flower: [20, 12], grass: [14, 9], bush: [22, 11], fence: [34, 16],
+    house: [30, 29],
+  }[kind];
+  if (!dimensions) return null;
+  const [width, height] = dimensions;
+  // A few paper passes extend beyond the nominal silhouette. Keep a small
+  // logical pad in the source canvas so a rim/shadow cannot be clipped; the
+  // draw path below subtracts that pad when recovering the attached baseline.
+  const pad = 3;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil((width + pad * 2) * SS);
+    canvas.height = Math.ceil((height + pad * 2) * SS);
+    const g = canvas.getContext('2d');
+    if (!g) return null;
+    if (typeof g.setTransform === 'function') g.setTransform(SS, 0, 0, SS, 0, 0);
+    else g.scale(SS, SS);
+    g.translate(pad, pad);
+    const p = PLUMBER_SCENERY_PALETTE;
+    const fill = (source, color, options) => plumberSceneryFill(
+      g, source, color, paper, paperMaterial, paperStrength, options);
+    const petal = (cx, cy, rx, ry, color = p.petal) => fill(() => {
+      g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    }, color);
+
+    if (kind === 'flower') {
+      g.lineCap = 'round'; g.strokeStyle = p.stem; g.lineWidth = 0.8;
+      for (const [x, top] of [[4, 6], [10, 3.5], [16, 5.2]]) {
+        g.beginPath(); g.moveTo(x, height); g.lineTo(x + (x % 3) - 1, top + 2); g.stroke();
+        g.fillStyle = x === 10 ? p.leaf : p.stem;
+        g.beginPath(); g.moveTo(x + 0.1, top + 4.8); g.lineTo(x + 3.2, top + 3.4);
+        g.lineTo(x + 1.1, top + 6.1); g.closePath(); g.fill();
+      }
+      const pink = (variant % 3) === 2;
+      for (const [x, y, r] of [[4, 4, 1.6], [10, 1.8, 1.9], [16, 3.2, 1.6]]) {
+        const c = pink && x === 16 ? p.petalPink : p.petal;
+        petal(x - r, y, r * 0.95, r * 0.58, c); petal(x + r, y, r * 0.95, r * 0.58, c);
+        petal(x, y - r * 0.78, r * 0.58, r * 0.95, c); petal(x, y + r * 0.78, r * 0.58, r * 0.95, c);
+        petal(x, y, r * 0.62, r * 0.62, p.pollen);
+      }
+    } else if (kind === 'grass') {
+      for (const [x, lean, c] of [[3, -2, p.stem], [7, 1, p.leaf], [11, -1, p.stem]]) {
+        g.fillStyle = c; g.beginPath(); g.moveTo(x, height); g.lineTo(x + lean, 1);
+        g.lineTo(x + 2.2, height); g.closePath(); g.fill();
+      }
+    } else if (kind === 'bush') {
+      const body = () => {
+        g.beginPath(); g.moveTo(1, height); g.lineTo(1, 7);
+        g.arc(5, 7, 4, Math.PI, Math.PI * 2); g.arc(11, 5.5, 5.5, Math.PI, Math.PI * 2);
+        g.arc(17, 7, 4.5, Math.PI, Math.PI * 2); g.lineTo(21, height); g.closePath();
+      };
+      fill(body, p.bush); fill(() => { g.beginPath(); g.arc(11, 5.8, 3.5, Math.PI, Math.PI * 2); g.closePath(); }, p.bushLight, { rim: false });
+      if (variant % 3 === 1) { petal(6, 5.1, 0.8, 0.55, p.petalPink); petal(17, 6, 0.75, 0.5, p.petal); }
+    } else if (kind === 'fence') {
+      g.fillStyle = p.timberShade;
+      g.beginPath(); g.moveTo(2, 6); g.lineTo(31, 4.5); g.lineTo(31, 6.5); g.lineTo(2, 8); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(3, 10); g.lineTo(30, 9); g.lineTo(30, 11); g.lineTo(3, 12); g.closePath(); g.fill();
+      for (const [x, lean] of [[3, -0.5], [17, 0.4], [30, -0.35]]) {
+        fill(() => { g.beginPath(); g.moveTo(x - 1 + lean, height); g.lineTo(x - 0.75, 2.5); g.lineTo(x + 1.35, 2.8); g.lineTo(x + 1 + lean, height); g.closePath(); }, p.timber, { rim: false });
+        plumberSceneryRect(g, x + 0.7, 3.3, 0.6, 11, p.timberShade, false, paperMaterial, paperStrength);
+      }
+    } else if (kind === 'house') {
+      plumberSceneryRect(g, 4, 12, 22, 17, p.house, paper, paperMaterial, paperStrength);
+      fill(() => { g.beginPath(); g.moveTo(2, 13); g.lineTo(15, 2); g.lineTo(28, 13); g.closePath(); }, variant % 2 ? p.roofCool : p.roof);
+      plumberSceneryRect(g, 20.5, 5, 3, 7, p.roof, paper, paperMaterial, paperStrength);
+      petal(15, 18, 2.5, 2.5, p.window); g.strokeStyle = p.house; g.lineWidth = 0.8; g.beginPath(); g.arc(15, 18, 3.1, 0, Math.PI * 2); g.stroke();
+      plumberSceneryRect(g, 7, 22, 4, 7, p.timberShade, false, paperMaterial, paperStrength);
+    }
+    const sprite = { canvas, width: width + pad * 2, height: height + pad * 2, pad };
+    plumberScenerySpriteCache.set(key, sprite);
+    return sprite;
+  } catch {
+    return null;
+  }
+}
+
+function plumberSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y) {
+  const view = backgroundPaintCoverage(ctx);
+  const travel = camX * 0.35 * ZOOM;
+  const first = Math.floor((travel - PLUMBER_SCENERY_CULL_MARGIN) / PLUMBER_SCENERY_SPACING);
+  const last = Math.ceil((travel + view.width + PLUMBER_SCENERY_CULL_MARGIN) / PLUMBER_SCENERY_SPACING);
+  const placements = [];
+  const add = (cell, anchorX, kind, dx, scale = 1, variant = 0, baseOffset = 0) => {
+    const x = anchorX + dx;
+    if (outsideView(ctx, x, PLUMBER_SCENERY_CULL_MARGIN)) return;
+    const crest = ridgeYAt(x, camX, layerBaseY, 34, 50, 0.35, { coverageLeft: view.left });
+    placements.push({ cell, kind, x, baseY: crest + 1 + baseOffset, scale, variant });
+  };
+  for (let cell = first; cell <= last; cell++) {
+    const cluster = plumberSceneryClusterForCell(cell);
+    if (!cluster) continue;
+    const anchorX = view.left + cell * PLUMBER_SCENERY_SPACING - travel;
+    const variant = plumberSceneryHash(cell + 19) % 3;
+    if (cluster === 'flowers') {
+      add(cell, anchorX, 'flower', -6, 0.9, variant); add(cell, anchorX, 'flower', 7, 0.78, (variant + 1) % 3); add(cell, anchorX, 'grass', -14, 0.85, variant);
+    } else if (cluster === 'fence') {
+      add(cell, anchorX, 'fence', 0, 0.92, variant, 17); add(cell, anchorX, 'bush', -18, 0.78, variant, 12); add(cell, anchorX, 'flower', 18, 0.68, (variant + 1) % 3, 4);
+    } else if (cluster === 'bush') {
+      add(cell, anchorX, 'bush', 0, 0.9, variant, 12); if (variant === 1) add(cell, anchorX, 'flower', -10, 0.62, 2, 5);
+    } else if (cluster === 'house') {
+      add(cell, anchorX, 'house', 0, 0.86, variant, 28); add(cell, anchorX, 'bush', 17, 0.72, variant, 15); add(cell, anchorX, 'fence', -20, 0.55, variant, 18);
+    }
+  }
+  return placements;
+}
+
+function drawPlumberScenery(ctx, camX, layerBaseY, paper, paperMaterial, paperStrength) {
+  const coverage = backgroundPaintCoverage(ctx);
+  const clipToRidge = (prop, width) => {
+    const left = prop.x - width * 0.5 - 2;
+    const right = prop.x + width * 0.5 + 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 6; i++) {
+      const x = left + (right - left) * i / 6;
+      const y = ridgeYAt(x, camX, layerBaseY, 34, 50, 0.35,
+        { coverageLeft: coverage.left });
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(right, H + HILL_UNDERFILL); ctx.lineTo(left, H + HILL_UNDERFILL); ctx.closePath();
+    ctx.clip();
+  };
+  for (const prop of plumberSceneryPlacements(ctx, camX, layerBaseY)) {
+    const sprite = plumberScenerySprite(prop.kind, prop.variant, paper, paperMaterial, paperStrength);
+    if (!sprite) continue;
+    const width = sprite.width * prop.scale; const height = sprite.height * prop.scale;
+    const pad = sprite.pad * prop.scale;
+    const x = prop.x; const baseY = prop.baseY;
+    const embedded = prop.kind === 'fence' || prop.kind === 'bush' || prop.kind === 'house';
+    if (embedded) ctx.save();
+    if (embedded) clipToRidge(prop, width);
+    ctx.drawImage(sprite.canvas, x - width * 0.5, baseY - height + pad, width, height);
+    if (embedded) ctx.restore();
+  }
 }
 
 // A single volcano, pinned to one spot in the level rather than tiled: it lives
@@ -1177,6 +1450,18 @@ function wrapIntoView(ctx, value, margin) {
   return c.left - margin + (((value % span) + span) % span);
 }
 
+// The vertical companion to backgroundCoverage: the local y-band that actually
+// lands on the canvas for this pass. Portrait publishes it (see
+// portraitBackgroundBand in run.js); landscape publishes nothing and gets an
+// unbounded band, which is what keeps every existing caller byte-compatible.
+const UNBOUNDED_BACKGROUND_BAND = Object.freeze({ top: -Infinity, bottom: Infinity });
+function backgroundPaintBand(ctx) {
+  const b = ctx && ctx.__mashBackgroundBand;
+  if (!b || !Number.isFinite(b.bottom) || !Number.isFinite(b.top)
+    || b.bottom <= b.top) return UNBOUNDED_BACKGROUND_BAND;
+  return b;
+}
+
 // The matching cull: "far enough past the edge of what is actually on screen
 // to stop drawing", rather than past the edge of the authored frame.
 // A landmark pinned to one spot in the level arrives at the middle of the
@@ -1198,8 +1483,13 @@ function outsideView(ctx, x, margin) {
 // view in portrait.
 export const __testing = {
   wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
+  backgroundPaintBand,
   sceneryBandPointY, desertThermals, ridgeYAt,
-  DESERT_SUN_RADIUS, windTurbineRotation,
+  plumberSceneryPlacements, plumberSceneryClusterForCell,
+  plumberLandscapeSceneryOffset,
+  get PLUMBER_LANDSCAPE_SCENERY_LIFT() { return PLUMBER_LANDSCAPE_SCENERY_LIFT; },
+  get PLUMBER_SCENERY_SPACING() { return PLUMBER_SCENERY_SPACING; },
+  DESERT_SUN_RADIUS, windTurbineRotation, satelliteDishScanAngle,
   get DESERT_SUN_PORTRAIT_OFFSET() { return DESERT_SUN_PORTRAIT_OFFSET; },
   get DESERT_SUN_PORTRAIT_X_INSET() { return DESERT_SUN_PORTRAIT_X_INSET; },
   desertSunX,
@@ -2256,7 +2546,9 @@ function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
 // ridge occupies the readable part of the phone frame. The old twelve-pixel
 // floor and 46% burial made the shallow dune just as small and buried as the
 // tall one on a phone.
-const PLANT = [{ arms: 2 }, { arms: 1 }, { arms: 1 }];
+// Most distant saguaros carry three side branches; the smaller third dune keeps
+// two so the repeated silhouette still has a little species-level variation.
+const PLANT = [{ arms: 3 }, { arms: 3 }, { arms: 2 }];
 const CACTUS_OF_DUNE = 0.3;
 // Portrait keeps the scenery at landscape physical scale, but the near ridge
 // occupies much more of the phone frame. Give its plants a stronger silhouette
@@ -2342,6 +2634,7 @@ function drawCactusShape(ctx, cactus) {
   };
   arm(-flip, 0.56, h * 0.28, h * 0.42);
   if (arms > 1) arm(flip, 0.38, h * 0.24, h * 0.34);
+  if (arms > 2) arm(flip, 0.72, h * 0.20, h * 0.22);
 }
 
 function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
@@ -2423,10 +2716,11 @@ function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options =
       const slot = ((index % DESERT_HORIZON_PROP_SLOTS)
         + DESERT_HORIZON_PROP_SLOTS) % DESERT_HORIZON_PROP_SLOTS;
       const propPhase = kind === 'water' ? lowerPhase : highPhase;
-      // A rare wind slot is a tiny wind farm rather than a lone stick. Both
-      // anchors stay on the same broad cap, but each base is still sampled at
-      // its own x so the contract remains correct if the cap is ever narrowed.
-      const offsets = kind === 'wind' ? [-38, 38] : [0];
+      // A rare wind slot is a tiny three-turbine farm rather than a lone
+      // stick. All anchors stay on the same broad cap, but each base is still
+      // sampled at its own x so the contract remains correct if the cap is
+      // ever narrowed.
+      const offsets = kind === 'wind' ? [-42, 0, 42] : [0];
       return offsets.map((offset, variant) => {
         const propX = x + propPhase - highPhase + offset;
         if (outsideView(ctx, propX, 120)) return null;
@@ -2440,7 +2734,7 @@ function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options =
             DESERT_FAR.wl, DESERT_FAR.factor,
             { mesa: true, coverageLeft: view.left }) + 2,
           scale: kind === 'water' ? 0.92 : kind === 'dish' ? 0.86
-            : (variant === 0 ? 0.82 : 0.72),
+            : (variant === 1 ? 0.82 : 0.72),
         };
       }).filter(Boolean);
     });
@@ -2664,9 +2958,31 @@ function satelliteDishArm(ctx, color) {
   ctx.fill();
 }
 
+function satelliteDishHead(ctx, scanAngle, paint) {
+  // The mast stays planted; the bowl and feed arm turn together around their
+  // shared head pivot, making the fake signal search read as one mechanism.
+  ctx.save();
+  ctx.translate(0, -28);
+  ctx.rotate(scanAngle);
+  ctx.translate(0, 28);
+  paint();
+  ctx.restore();
+}
+
+export function satelliteDishScanAngle(t = 0, index = 0, reducedMotion = false) {
+  if (reducedMotion) return 0;
+  const time = Number(t);
+  if (!Number.isFinite(time)) return 0;
+  // A restrained left-right sweep sells signal seeking without making the tiny
+  // distant dishes look like spinning pinwheels. Phase the landmarks apart so
+  // the horizon does not move as one synchronized row.
+  return Math.sin(time * 1.35 + Number(index || 0) * 1.7) * 0.34;
+}
+
 function drawSatelliteDish(ctx, dish, options = {}) {
   const paper = !!options.paper;
   const paperMaterial = options.paperMaterial || 'cardstockClear';
+  const scanAngle = satelliteDishScanAngle(options.t, dish.index, options.reducedMotion);
   ctx.save();
   ctx.translate(dish.x, dish.baseY);
   const portraitHeightScale = options.portrait ? 1.18 : 1;
@@ -2675,27 +2991,32 @@ function drawSatelliteDish(ctx, dish, options = {}) {
     ctx.save();
     ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
     satelliteDishMast(ctx, PAPER_DEEP_COLOR);
-    satelliteDishArm(ctx, PAPER_DEEP_COLOR);
+    satelliteDishHead(ctx, scanAngle, () => satelliteDishArm(ctx, PAPER_DEEP_COLOR));
     ctx.restore();
     ctx.save();
     ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
     satelliteDishMast(ctx, PAPER_CONTACT_COLOR);
-    satelliteDishArm(ctx, PAPER_CONTACT_COLOR);
+    satelliteDishHead(ctx, scanAngle, () => satelliteDishArm(ctx, PAPER_CONTACT_COLOR));
     ctx.restore();
-    paperShadowPass(ctx, () => satelliteDishBowl(ctx), PAPER_DEEP_OFFSET,
+    paperShadowPass(ctx, () => satelliteDishHead(ctx, scanAngle,
+      () => satelliteDishBowl(ctx)), PAPER_DEEP_OFFSET,
       PAPER_LANDMARK_DEEP_COLOR);
-    paperShadowPass(ctx, () => satelliteDishBowl(ctx), PAPER_CONTACT_OFFSET,
+    paperShadowPass(ctx, () => satelliteDishHead(ctx, scanAngle,
+      () => satelliteDishBowl(ctx)), PAPER_CONTACT_OFFSET,
       PAPER_LANDMARK_CONTACT_COLOR);
   }
   satelliteDishMast(ctx, DESERT_SATELLITE_DARK);
-  satelliteDishArm(ctx, DESERT_SATELLITE_DARK);
-  ctx.fillStyle = DESERT_SATELLITE_INK;
-  satelliteDishBowl(ctx);
-  ctx.fill();
-  ctx.fillStyle = DESERT_SATELLITE_LIGHT;
-  ctx.fillRect(-9, -29, 15, 2);
+  satelliteDishHead(ctx, scanAngle, () => satelliteDishArm(ctx, DESERT_SATELLITE_DARK));
+  satelliteDishHead(ctx, scanAngle, () => {
+    ctx.fillStyle = DESERT_SATELLITE_INK;
+    satelliteDishBowl(ctx);
+    ctx.fill();
+    ctx.fillStyle = DESERT_SATELLITE_LIGHT;
+    ctx.fillRect(-9, -29, 15, 2);
+  });
   if (paper) {
-    paperFinishPass(ctx, () => satelliteDishBowl(ctx),
+    paperFinishPass(ctx, () => satelliteDishHead(ctx, scanAngle,
+      () => satelliteDishBowl(ctx)),
       sharedPaperPatternFor(ctx, paperMaterial), {
         grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
         strokeStyle: PAPER_LANDMARK_RIM_COLOR,
@@ -2704,8 +3025,10 @@ function drawSatelliteDish(ctx, dish, options = {}) {
   } else {
     ctx.strokeStyle = DESERT_SATELLITE_DARK;
     ctx.lineWidth = 1.05;
-    satelliteDishBowl(ctx);
-    ctx.stroke();
+    satelliteDishHead(ctx, scanAngle, () => {
+      satelliteDishBowl(ctx);
+      ctx.stroke();
+    });
   }
   ctx.restore();
 }
@@ -3185,10 +3508,15 @@ function drawDustDevils(ctx, t, camX, reduced, layerBaseY = GROUND_Y) {
 // The point of a landmark is not decoration: it is that the run acquires a
 // destination. A stage with one thing on the horizon that slowly gets closer is
 // a journey; a stage with a repeating ridge is a treadmill.
+// Keep the butte only modestly above the far mesa. The original 74px half-width
+// and 128px rise made the landmark dominate the country instead of anchoring it.
+const DESERT_BUTTE_HALF_WIDTH = 62;
+const DESERT_BUTTE_HEIGHT = 108;
+
 function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y,
   paper = false, paperMaterial = 'cardstockClear') {
   const cx = viewCenterX(ctx) + (atCam - camX) * 0.09 * ZOOM;
-  const halfW = 74;
+  const halfW = DESERT_BUTTE_HALF_WIDTH;
   // The margin has to cover the WIDEST ink this painter can put down, not the
   // silhouette's nominal half-width: the talus and shadow reach about 26px
   // further left than `cx - halfW`, and at the old 40 the landmark's first
@@ -3198,7 +3526,7 @@ function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y,
   const baseY = layerBaseY - 4;
   // Raised with the ranges. The landmark only works if it stands clearly over
   // the far mesas, and at the old 96 it was level with them once they went up.
-  const capY = baseY - 128;
+  const capY = baseY - DESERT_BUTTE_HEIGHT;
   ctx.save();
   ctx.translate(cx, 0);
   // Talus slope out to a flat cap: steep sides, dead-flat top, the same
@@ -3219,9 +3547,9 @@ function drawButte(ctx, camX, atCam, layerBaseY = GROUND_Y,
   ctx.globalAlpha = 0.55;
   ctx.fillStyle = DESERT_ROCK_DARK;
   ctx.beginPath();
-  ctx.moveTo(-halfW - 66, baseY);
-  ctx.lineTo(-halfW - 44, capY + 52);
-  ctx.lineTo(-halfW - 12, capY + 52);
+  ctx.moveTo(-halfW - 56, baseY);
+  ctx.lineTo(-halfW - 38, capY + 52);
+  ctx.lineTo(-halfW - 10, capY + 52);
   ctx.lineTo(-halfW - 2, baseY);
   ctx.closePath();
   ctx.fill();
@@ -3451,6 +3779,8 @@ function pixelPack(settings) {
         ctx.restore();
       }
       const sceneryOffset = portraitSceneryOffset(backgroundContext);
+      const plumberLandscapeOffset = cab.id === 'plumber'
+        ? plumberLandscapeSceneryOffset(backgroundContext) : 0;
       const farAmp = cab.id === 'plumber' ? 96 : 60;
       const nearAmp = 34;
       const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', farAmp, GROUND_Y);
@@ -3468,7 +3798,8 @@ function pixelPack(settings) {
       // Overtime runs have no midpoint (totalDist is Infinity), so no volcano.
       if (cab.id === 'plumber' && Number.isFinite(totalDist) && totalDist > 0) {
         ctx.save();
-        ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'far'));
+        ctx.translate(0, sceneryOffset + plumberLandscapeOffset
+          + backgroundY(backgroundContext, 'far'));
         drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion,
           farBaseY - GROUND_Y, paperPreview, paperPreset);
         ctx.restore();
@@ -3526,7 +3857,8 @@ function pixelPack(settings) {
       // The ranges and their ridge props are a single depth layer. Lift them
       // together so the mountain bases still flow behind the foreground lane.
       ctx.save();
-      ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'far'));
+      ctx.translate(0, sceneryOffset + plumberLandscapeOffset
+        + backgroundY(backgroundContext, 'far'));
       if (cab.id === 'plumber') {
         // Rock and snow are haze-desaturated toward the sky rather than true
         // brown/white: distance reads better, and it keeps the cap under the
@@ -3540,12 +3872,17 @@ function pixelPack(settings) {
       }
       ctx.restore();
       ctx.save();
-      ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'near'));
+      ctx.translate(0, sceneryOffset + plumberLandscapeOffset
+        + backgroundY(backgroundContext, 'near'));
       parallaxHills(ctx, camX, cab.hills, nearBaseY, nearAmp, 50, 0.35,
         cab.id === 'plumber'
-          ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' }, paper: paperPreview,
+          ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30', scale: PLUMBER_NEAR_TREE_SCALE }, paper: paperPreview,
             paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
           : null);
+      if (cab.id === 'plumber') {
+        drawPlumberScenery(ctx, camX, nearBaseY, paperPreview, paperPreset,
+          paperStrengths.scenery);
+      }
       ctx.restore();
       paintClouds();
     },
@@ -3688,6 +4025,7 @@ function faux3dPack(settings) {
         drawSatelliteDishes(ctx, camX, farBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
           portrait: !!backgroundContext?.portrait,
+          t, reducedMotion: reduced,
         });
         drawWindTurbines(ctx, camX, farBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
@@ -6842,9 +7180,10 @@ function lcdSwingPhase(frame) {
   return lcdMod(frame.beatAbs - frame.barrelGrid + LCD_CHUTE_HOLD_BEATS, LCD_BARREL_POSES);
 }
 
-export function lcdBarrelStrikeAt(stageIndex, beat) {
+export function lcdBarrelStrikeAt(stageIndex, beat, portrait = false) {
   if (!Number.isFinite(beat)) return false;
-  const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
+  const index = Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1));
+  const art = portrait && index === 1 ? LCD_PORTRAIT_STAGE_1 : LCD_CITY_SCENES[index];
   if (!art) return false;
   // Asked of the same crossing the picture is drawing, so the cue cannot fire
   // on a pass where nothing was destroyed. lcdPlaneCyc reads only these two
@@ -9953,6 +10292,8 @@ export function clearPresentationCaches() {
   gradCache.clear();
   patCache.clear();
   paperSurfaceCache.clear();
+  plumberScenerySpriteCache.clear();
+  plumberSceneryCacheSS = 0;
   bakeCache.clear();
   cityBake = null;
   clearLCDPanelCache();
@@ -10190,9 +10531,8 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
     if (towerRise) ctx.save();
     if (towerRise) ctx.translate(0, towerRise);
     lcdGameWatch(ctx, art.gameWatch, frame,
-      portraitSparseCity ? -1 : lcdBurstPhase(art, frame), reducedFlashing,
-      portraitSparseCity ? -1 : lcdVanishedBarrelCell(art, frame),
-      lcdPlanePoint(art, frame, art.plane));
+      lcdBurstPhase(art, frame), reducedFlashing,
+      lcdVanishedBarrelCell(art, frame), lcdPlanePoint(art, frame, art.plane));
     if (towerRise) ctx.restore();
   }
   // EVERY ROOF FURNISHING BELONGS TO A ROOF, so each one is drawn through its

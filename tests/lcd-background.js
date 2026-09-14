@@ -8,7 +8,7 @@ installDom();
 const { getStylePack, drawLCDPanel, LCD_PORTRAIT_CITY_SHIFT,
   lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
   LCD_DEFAULT_ROAD_RISE, LCD_SCREEN_GRID_CELL, LCD_PORTRAIT_SCREEN_GRID_CELL, lcdScreenGridCellSize,
-  lcdPortraitGridLineY, LCD_ROAD_INK, LCD_CLOUD_CLEARANCE_BOTTOM } = await import('../src/engine/stylePacks/index.js');
+  lcdPortraitGridLineY, LCD_ROAD_INK, LCD_CLOUD_CLEARANCE_BOTTOM, lcdBarrelStrikeAt } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
@@ -860,6 +860,16 @@ for (const stage of [1, 2, 3]) {
   assert(ops.some((op) => op[0] === 'translate'
     && op[1] === LCD_PORTRAIT_CITY_SHIFT.x && op[2] === LCD_PORTRAIT_CITY_SHIFT.y),
   'portrait LCD scenery shifts right and up as one layer');
+
+  // Portrait uses the taller Kong tower and therefore has its own authored
+  // strike beat. The crash must follow that scene, not the landscape tower's
+  // old beat, or the sound and picture will disagree on the phone.
+  const portraitBurst = (beat) => backgroundWithContext(1, beat, { portrait: true })
+    .some((op) => op[0] === 'fillRect' && op[1] === '#f6d33c' && op[3] < 0);
+  assert(!portraitBurst(20) && portraitBurst(160),
+    'portrait rhythm-1 shows the plane crash on its own crossing');
+  assert(!lcdBarrelStrikeAt(1, 20, true) && lcdBarrelStrikeAt(1, 160, true),
+    'portrait rhythm-1 schedules the crash for the same beat as its picture');
 }
 
 function post(settings, t) {
