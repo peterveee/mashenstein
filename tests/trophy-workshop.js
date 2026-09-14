@@ -104,28 +104,17 @@ Input.press('slide'); room.update(1 / 60); Input.release('slide'); Input.endFram
 assert(room.player.sliding === false && room.player.slideAmount === 0,
   'the trophy-room hero cannot slide');
 
-const beforeRemoteAttack = room.px;
-assert(Input.actionForKey('ShiftLeft') === 'ability' && Input.actionForKey('ShiftRight') === 'ability',
-  'both Shift keys retain their attack mapping in the trophy room');
+// The practice lane is gone: no podium, no target, and therefore no attack
+// vocabulary in this room at all. Hero swapping lives on the Food Court's SWAP
+// chip, which is the one place that does it.
+const beforeAbility = room.px;
 Input.press('ability'); room.update(1 / 60); Input.release('ability'); Input.endFrame();
-assert(room.px === beforeRemoteAttack && room.walkTarget === null && room.hits === 0,
-  'an out-of-range Shift attack never starts walking toward the target');
-
-room.px = 1110;
-Input.press('ability'); room.update(1 / 60); Input.release('ability'); Input.endFrame();
-assert(room.hits === 1 && room.dummyHitT > 0 && room.player.abilityCd === 0,
-  'an ability hits and animates the dummy without starting a cooldown');
-Input.press('ability'); room.update(1 / 60); Input.release('ability'); Input.endFrame();
-assert(room.hits === 2 && room.chain === 2 && room.bestChain === 2,
-  'the training dummy accepts immediate attacks and builds a hit chain');
-
-room.px = 1060;
-Input.press('confirm'); room.update(1 / 60); Input.release('confirm'); Input.endFrame();
-assert(hero === 'rusty' && room.player.heroId === 'rusty', 'the podium swaps the active hub hero');
-room.queueInteraction('podiumPrev', 1060); room.usePending();
-assert(hero === 'lorenzo' && room.player.heroId === 'lorenzo', 'the podium can also cycle to the previous hero');
-room.update(2.1);
-assert(room.chain === 0 && room.bestChain === 2, 'an expired chain resets while preserving the session best');
+assert(room.px === beforeAbility && room.walkTarget === null,
+  'an ability press does nothing at all in the gallery');
+assert(room.attackT === undefined && room.hits === undefined,
+  'the trophy room keeps no attack state');
+assert(typeof room.cycleHero !== 'function' && typeof room.attackDummy !== 'function',
+  'the podium and target behaviours are gone rather than merely unreachable');
 
 const ctx = document.createElement('canvas').getContext('2d');
 room.draw(ctx);

@@ -37,7 +37,15 @@ assert.ok(layout.statusTextS > 2.3, 'portrait plug counts use the larger type sc
 assert.ok(layout.subtitleTextS > 2.2, 'portrait subtitle uses the larger display type scale');
 assert.ok(layout.footerTextS > 2.2, 'portrait pre-parade caption uses the larger display type scale');
 assert.ok(layout.controlsTextS > 2, 'portrait keyboard hint uses a much larger display type scale');
-assert.ok(layout.footerY < layout.floorY - 70, 'portrait pre-parade caption sits higher above the cast');
+// The caption is a temporary gag and must never land on a button. It is a
+// BLOCK centred on footerY (two lines at the display size), so the top of that
+// block is what has to clear the last card — a fixed lift off floorY put it
+// across STAFF ONLY on any viewport where the stack, not the parade, set the
+// floor.
+const captionTop = layout.footerY - (10.5 * layout.footerTextS) / 2;
+assert.ok(captionTop > layout.panelY + layout.cardH * 4 + layout.cardGap * 3,
+  'portrait pre-parade caption sits below the whole card stack');
+assert.ok(layout.footerY < layout.paradeTop, 'portrait pre-parade caption sits above the cast');
 assert.ok(layout.paradeGap > 84, 'portrait cast keeps landscape-equivalent breathing room');
 assert.ok(layout.paradeTop > layout.panelY + layout.cardH * 4,
   'portrait cast is given its own lower stage below the menu stack');

@@ -117,12 +117,17 @@ shop.exit();
 assert(Audio.sourceBank === HUB_THEME, 'leaving Gary restores the Food Court theme');
 
 // Gary's counter uses the ordinary unprocessed counter mix.
-const oldCtx = Audio.ctx;
+//
+// No ctx stub goes with the mixer stub here, unlike the Arcade Corner and the Trophy
+// Room: a treatment is gated on the MIXER, not the context — enterWholeMixTreatment
+// calls setTreatment either way, and leaveWholeMixTreatment ramps from `?? 0` — so a
+// shop that wrongly treated the mix would still be caught. What a context would buy
+// instead is a lie: leaving Gary primes the Food Court's realtime voices, and that
+// walk reads `ctx` as proof of a live Tone graph. Node has none.
 const oldMixer = Audio.mixer;
 const oldSetBank = Audio.setBank;
 const oldSourceBank = Audio.sourceBank;
 const treatmentCalls = [];
-Audio.ctx = { currentTime: 3, startRendering() {} };
 Audio.mixer = {
   setTreatment(list, bpm) { treatmentCalls.push({ type: 'set', list, bpm }); },
   rampTreatment(wet, when, seconds) { treatmentCalls.push({ type: 'ramp', wet, when, seconds }); },
@@ -135,7 +140,6 @@ assert(!treatmentCalls.some((call) => call.type === 'set'
   || call.type === 'ramp' || call.type === 'clear')
   && treatmentCalls.filter((call) => call.type === 'bank').length === 2,
   'entering and exiting Gary leaves the counter mix unprocessed');
-Audio.ctx = oldCtx;
 Audio.mixer = oldMixer;
 Audio.setBank = oldSetBank;
 Audio.sourceBank = oldSourceBank;

@@ -20,7 +20,7 @@ import {
   drawTextForPresentation as drawText,
   drawTextCenteredForPresentation as drawTextCentered,
   textWidth, wrapText, drawPanel, drawMenuRow, textYForMid,
-  drawKeyLegend, keyLegendWidth, drawPellet,
+  drawKeyLegend, keyLegendWidth, drawPellet, TEXT_INK_H,
 } from '../engine/sprites.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
@@ -879,9 +879,16 @@ const PORTRAIT_PAUSE_WHERE_S = 3.0;
 const PORTRAIT_PAUSE_LABEL_S = 2.0;
 const PORTRAIT_PAUSE_MISSION_S = 2.2;
 const PORTRAIT_PAUSE_BONUS_S = 2.1;
-const PORTRAIT_PAUSE_CONTROLS_S = 1.8;
 const PORTRAIT_PAUSE_LEGEND_S = 1.95;
 const PORTRAIT_PAUSE_BUTTON_S = 2.8;
+// The single vertical rhythm of the portrait pause card: the air between two
+// groups (controls, audio sync, the two plates), the air between a group's
+// heading and its contents, and the step from one row to the next inside a
+// group. Three numbers rather than a dozen literals, so the card reads as
+// grouped rather than as a list of rows that happen to be different distances
+// apart.
+const PORTRAIT_PAUSE_GROUP_GAP = 34;
+const PORTRAIT_PAUSE_HEADING_GAP = 26;
 // The portal's height off the ground — how far a player has to be above it to miss.
 const PORTAL_H = 40;
 // How far ahead of a boost pad the approach begins. 56 was about a third of a
@@ -4256,23 +4263,48 @@ export class RunState {
   // borrowing the 270px landscape coordinates. Input.buttons and
   // drawPortraitPaused both call these helpers, so a resize/rotation rebuild
   // cannot leave a large-looking button with a small or misplaced hit box.
-  portraitPauseButtons() {
-    if (!isPhonePortraitPresentation()) return PAUSE_BUTTONS;
+  // THE PANEL AND THE ONE COLUMN EVERYTHING IN IT LINES UP ON.
+  //
+  // Headings, wrapped copy, the sync row and the two plates were each deriving
+  // their own left edge — the plates off the panel plus 16, the text off the
+  // panel plus 32, and the sync row off the SCREEN, which is how it ended up
+  // hanging over the border. One measure, read by the hit boxes and the painter
+  // alike, so a control cannot look like it is somewhere it is not.
+  portraitPauseFrame() {
     const frame = presentationFrame();
     const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
     const edge = PORTRAIT_PAUSE_EDGE;
+    const panelX = Math.max(edge, Number(safe.left) + edge);
+    const panelRight = Math.min(W - edge, Number(safe.right) - edge);
+    const panelTop = Math.max(edge, Number(safe.top) + edge);
+    const panelBottom = Math.min(H - edge, Number(safe.bottom) - edge);
+    const innerX = panelX + PORTRAIT_PAUSE_PANEL_PAD_X;
+    const innerW = Math.max(1, panelRight - PORTRAIT_PAUSE_PANEL_PAD_X - innerX);
+    return {
+      panelX,
+      panelRight,
+      panelW: Math.max(1, panelRight - panelX),
+      panelTop,
+      panelBottom,
+      panelH: Math.max(1, panelBottom - panelTop),
+      innerX,
+      innerW,
+      safe,
+    };
+  }
+
+  portraitPauseButtons() {
+    if (!isPhonePortraitPresentation()) return PAUSE_BUTTONS;
+    const { innerX, innerW, panelTop, panelBottom } = this.portraitPauseFrame();
     const gap = 16;
     const h = PORTRAIT_PAUSE_BUTTON_H;
-    const x = Math.max(edge, Number(safe.left) + edge + PORTRAIT_PAUSE_PANEL_PAD_X);
-    const right = Math.min(W - edge,
-      Number(safe.right) - edge - PORTRAIT_PAUSE_PANEL_PAD_X);
-    const width = Math.max(1, (right - x - gap) / 2);
-    const y = Math.max(Number(safe.top) + edge,
-      Math.min(H - h - edge - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM,
-        Number(safe.bottom) - h - edge - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM));
+    const width = Math.max(1, (innerW - gap) / 2);
+    const y = Math.max(panelTop,
+      Math.min(H - h - PORTRAIT_PAUSE_EDGE - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM,
+        panelBottom - h - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM));
     return [
-      { id: 'resume', x, y, w: width, h, action: 'pause', label: 'CONTINUE' },
-      { id: 'quit', x: x + width + gap, y, w: width, h, action: 'escape', label: 'BACK' },
+      { id: 'resume', x: innerX, y, w: width, h, action: 'pause', label: 'CONTINUE' },
+      { id: 'quit', x: innerX + width + gap, y, w: width, h, action: 'escape', label: 'BACK' },
     ];
   }
 
@@ -4284,12 +4316,16 @@ export class RunState {
     // Portrait has enough width for one compact row. Keeping all three tools
     // together avoids a second vertical stack consuming the short iPhone SE
     // pause frame above the main CONTINUE/BACK plates.
+    //
+    // The row spans the panel's content column, NOT the screen: it used to be
+    // measured off W, so on any frame with a safe inset the minus plate and
+    // RESET hung outside the card's own border.
+    const { innerX, innerW } = this.portraitPauseFrame();
     const gap = 12;
     const h = 52;
-    const y = Math.max(0, main.y - h - 34);
-    const total = W - 2 * 14;
-    const width = Math.max(1, (total - gap * 2) / 3);
-    const x = W / 2 - total / 2;
+    const y = Math.max(0, main.y - h - PORTRAIT_PAUSE_GROUP_GAP);
+    const width = Math.max(1, (innerW - gap * 2) / 3);
+    const x = innerX;
     return [
       { id: 'syncDown', x, y, w: width, h, action: 'syncDown', label: '−' },
       { id: 'syncUp', x: x + width + gap, y, w: width, h, action: 'syncUp', label: '+' },
@@ -13899,17 +13935,7 @@ export class RunState {
   // height a phone gives us without becoming a sheet pressed against the status
   // bar or home indicator.
   drawPortraitPaused(ctx) {
-    const frame = presentationFrame();
-    const safe = frame?.safeRect || { left: 0, right: W, top: 0, bottom: H };
-    const edge = PORTRAIT_PAUSE_EDGE;
-    const panelX = Math.max(edge, Number(safe.left) + edge);
-    const panelRight = Math.min(W - edge, Number(safe.right) - edge);
-    const panelW = Math.max(1, panelRight - panelX);
-    const panelTop = Math.max(edge, Number(safe.top) + edge);
-    const panelBottom = Math.min(H - edge, Number(safe.bottom) - edge);
-    const panelH = Math.max(1, panelBottom - panelTop);
-    const innerX = panelX + 32;
-    const innerW = Math.max(1, panelW - 64);
+    const { panelX, panelW, panelTop, panelH, innerX, innerW } = this.portraitPauseFrame();
     const mainButtons = Input.buttons.filter((b) => b.id === 'resume' || b.id === 'quit');
     const buttons = mainButtons.length ? mainButtons : this.portraitPauseButtons();
     const syncButtons = this.beatLock
@@ -13938,15 +13964,24 @@ export class RunState {
     // squeeze the controls into the sync row. Taller phones retain the full
     // three-line read-out.
     const compact = panelH < 820;
+    // ONE HEADING, USED THREE TIMES. MISSION and BONUS were left-aligned green
+    // bold on the content column while TOUCH CONTROLS and AUDIO SYNC were
+    // centred in two other sizes and two other inks — three headings that were
+    // all the same kind of thing, dressed as three different things. Anything
+    // that opens a group on this card goes through here.
+    const headingS = compact ? 1.85 : PORTRAIT_PAUSE_LABEL_S;
+    const heading = (label, hy) => drawText(ctx, label, innerX, hy, '#74c947', headingS, 'bold');
+    const headingGap = compact ? PORTRAIT_PAUSE_HEADING_GAP - 6 : PORTRAIT_PAUSE_HEADING_GAP;
+    const groupGap = compact ? PORTRAIT_PAUSE_GROUP_GAP - 8 : PORTRAIT_PAUSE_GROUP_GAP;
     const drawBlock = (label, value, color = '#c8e0ff', scale = PORTRAIT_PAUSE_MISSION_S, maxLines = 3) => {
-      drawText(ctx, label, innerX, y, '#74c947', compact ? 1.85 : PORTRAIT_PAUSE_LABEL_S, 'bold');
-      y += compact ? 30 : 36;
+      heading(label, y);
+      y += headingGap + 8;
       const lines = wrapText(value, innerW, scale, maxLines);
       lines.forEach((line, i) => {
         drawText(ctx, line, innerX, y, color, scale);
         y += 23 * scale + (i < lines.length - 1 ? 4 : 0);
       });
-      y += compact ? 20 : 26;
+      y += groupGap - 10;
     };
     drawBlock('MISSION', this.mission.desc, '#c8e0ff',
       compact ? 2.0 : PORTRAIT_PAUSE_MISSION_S, compact ? 2 : 3);
@@ -13958,7 +13993,7 @@ export class RunState {
         c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9',
         compact ? 1.95 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
     }
-    y += compact ? 26 : 34;
+    y += groupGap;
 
     const touchRows = [
       ['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['SWIPE RIGHT', 'POWER'],
@@ -13970,22 +14005,27 @@ export class RunState {
     const rows = Input.usingTouch ? touchRows : (this.beatLock ? keyRows.slice(0, 3) : keyRows);
     const rowH = compact ? 30 : 36;
     const rowGap = compact ? 14 : 18;
-    const actionBottom = syncButtons.length ? syncButtons[2].y - 18 : buttons[0].y - 24;
     const controlRows = [];
     for (let i = 0; i < rows.length; i += 2) controlRows.push(rows.slice(i, i + 2));
-    const controlsTop = Math.max(y,
-      actionBottom - controlRows.length * (rowH + rowGap) - 48);
-    drawTextCentered(ctx, Input.usingTouch ? 'TOUCH CONTROLS' : 'KEYBOARD CONTROLS',
-      W / 2, controlsTop, '#dbe9ff', PORTRAIT_PAUSE_CONTROLS_S, 'bold');
-    let rowY = controlsTop + 38;
+    // The controls group ends where the next group begins — the sync heading if
+    // there is one, otherwise the plates. Measuring the block from its own
+    // bottom keeps the gap under the last legend row equal to every other gap
+    // between groups, instead of whatever the copy above happened to leave.
+    const controlsH = headingGap + controlRows.length * (rowH + rowGap) - rowGap;
+    const nextGroupTop = syncButtons.length
+      ? syncButtons[0].y - headingGap - TEXT_INK_H * headingS - groupGap
+      : buttons[0].y - groupGap;
+    const controlsTop = Math.max(y, nextGroupTop - controlsH);
+    heading(Input.usingTouch ? 'TOUCH CONTROLS' : 'KEYBOARD CONTROLS', controlsTop);
+    let rowY = controlsTop + headingGap;
     const legendScale = PORTRAIT_PAUSE_LEGEND_S;
     const columnGap = compact ? 18 : 24;
     const columnW = (innerW - columnGap) / 2;
     for (const row of controlRows) {
       row.forEach((pair, column) => {
-        const pairW = keyLegendWidth([pair], legendScale);
-        const columnCenter = innerX + columnW * (column + 0.5) + columnGap * column;
-        drawKeyLegend(ctx, [pair], columnCenter - pairW / 2,
+        // Left-aligned in its column, on the same edge as the heading above it,
+        // rather than centred inside a column nothing else is centred in.
+        drawKeyLegend(ctx, [pair], innerX + (columnW + columnGap) * column,
           textYForMid(rowY + rowH / 2, legendScale),
           { scale: legendScale, actionInk: '#dbe9ff' });
       });
@@ -13993,7 +14033,7 @@ export class RunState {
     }
 
     if (syncButtons.length) {
-      drawTextCentered(ctx, 'AUDIO SYNC', W / 2, syncButtons[2].y - 38, '#8a8a98', 1.65, 'bold');
+      heading('AUDIO SYNC', syncButtons[0].y - headingGap - TEXT_INK_H * headingS);
       for (const b of syncButtons) {
         drawPanel(ctx, b.x, b.y, b.w, b.h, 6, 'rgba(28,32,48,0.82)',
           { border: 'rgba(255,255,255,0.18)', shadow: true });

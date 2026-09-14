@@ -181,24 +181,33 @@ const maxAdjacentStep = (samples) => {
 // same graph come back with `diff` at 0. The exceptions are the two effects that ask
 // Chromium to OVERSAMPLE: a WaveShaper at '2x'/'4x' resamples up, shapes, and filters
 // back down, and that resampler is not bit-reproducible between renders. `tape` (4x)
-// drifts by ~3e-6 and `vowel` (2x) by ~7e-8 — in the last few digits of every sample
-// after the first 50ms, with the signal itself unchanged — and it is intermittent, so
-// a threshold pinned just above the drift passes here and fails on a CI runner, which
-// is exactly how this arrived.
+// drifts by ~3e-6 of full scale here and `vowel` (2x) by ~1e-7 — in the last few
+// digits of every sample after the first 50ms, with the signal itself unchanged — and
+// it is intermittent.
 //
-// The allowance is still three orders of magnitude under what the assertion is for.
-// What it catches is an effect seeded from `Math.random` — the reason Reverb is ours
-// rather than Tone's — and that differs by the size of the SIGNAL, ~1e-1, never by the
-// size of a rounding error.
+// AND THE ALLOWANCE FOR IT IS NOT A NUMBER OF THIS MACHINE'S. The drift is the last
+// bits of whatever the signal happens to be, and where a runner's resampler puts them
+// is the runner's business: 1e-4 was thirty times the drift measured on this laptop
+// and it still failed on CI, which is the second time an absolute threshold has been
+// pinned to the wrong machine. So it is measured against the render's own peak
+// instead, where the two things this assertion tells apart live on scales that do not
+// move — the resampler's drift is ~4e-6 of peak, and an effect seeded from
+// `Math.random` (the reason Reverb is ours rather than Tone's) differs by the size of
+// the SIGNAL, ~1e-1 of it. A hundredth of peak sits two orders clear of both.
 const OVERSAMPLED = new Set(['tape', 'vowel']);
-const determinism = (id) => (OVERSAMPLED.has(id) ? 1e-4 : 5e-6);
+const determinism = (id, chs) => (OVERSAMPLED.has(id) ? peak(chs) * 1e-2 : 5e-6);
 
 for (const id of ids) {
   const a = await page.evaluate((x) => window.__renderEffect(x), { id, params: params[id], gate: id === 'rhythmgate' });
   const b = await page.evaluate((x) => window.__renderEffect(x), { id, params: params[id], gate: id === 'rhythmgate' });
   assert(a.every((ch) => ch.every(finite)), `${id} renders finite samples`);
   assert(peak(a) > 1e-5, `${id} renders audible output`);
-  assert(diff(a, b) < determinism(id), `${id} renders deterministically`);
+  // The drift goes in the message either way: a determinism failure that does not say
+  // by how much is a failure nobody can size from a CI log, which is how the last one
+  // arrived with nothing to go on.
+  const drift = diff(a, b);
+  assert(drift < determinism(id, a),
+    `${id} renders deterministically (drift ${drift.toExponential(2)})`);
   const dry = await page.evaluate((x) => window.__renderEffect(x), { id: null });
   const transparent = await page.evaluate((x) => window.__renderEffect(x), { id, params: params[id], wet0: true, gate: false });
   assert(diff(dry, transparent) < 5e-6, `${id} is transparent at wet 0`);

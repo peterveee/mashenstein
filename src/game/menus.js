@@ -1668,6 +1668,21 @@ export function titleLayout() {
   const castFeetY = Math.min(H - 10, safeBottom - 10);
   const floorY = Math.max(panelY + cardH * 4 + cardGap * 3 + 28, castFeetY - castH - 18);
   const paradeTop = Math.min(floorY, castFeetY - castH - 8 * (castH / 26) - 12);
+  // THE GAG SITS UNDER THE CARDS, AT EVERY SIZE.
+  //
+  // `floorY` is the later of two things: the bottom of the card stack plus a
+  // margin, or the parade's headroom. On a tall phone the stack wins, and a
+  // fixed 82-unit lift off it put the caption straight across STAFF ONLY. Take
+  // the lift only when it already clears the last card, and otherwise measure
+  // down from the card itself; `footerY` is the caption BLOCK's centre, so a
+  // two-line gag needs half a line of room above its first line.
+  const footerTextS = 2.5;
+  const captionLineH = 10.5 * footerTextS;
+  const cardsBottom = panelY + cardH * 4 + cardGap * 3;
+  const footerY = Math.min(
+    H - 10 - captionLineH / 2 - TEXT_INK_H * footerTextS,
+    Math.max(floorY - 82, cardsBottom + 24 + captionLineH / 2),
+  );
   return {
     portrait: true,
     safeTop,
@@ -1691,7 +1706,7 @@ export function titleLayout() {
     // This is a temporary pre-parade caption. Lift it into the open band above
     // the hero heads so the larger type has air, then let the existing fade
     // remove it when the parade becomes the focus.
-    footerY: floorY - 82,
+    footerY,
     footerLineH: 14,
     controlsTextS: 2.1,
     // The first bump was still too close to the landscape ink at phone size,
@@ -1702,7 +1717,7 @@ export function titleLayout() {
     subtitleTextS,
     cardStackGap: 7,
     cardBarH: 4,
-    footerTextS: 2.5,
+    footerTextS,
   };
 }
 

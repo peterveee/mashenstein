@@ -39,9 +39,14 @@ export const TOUCH_DISCS = [
   // just touching the top edge of the picture.
   { id: 'pause',   action: 'escape',  cx: 450, cy: 19,  r: 16 },
 ];
+// The food court's arrows sit in the FOOTER BAND, below the floor line at
+// logical y 212 (HUB_FLOOR_PIN_Y) — not on the floor itself, where they stood
+// over the cast and the cabinet fronts. 240 clears the skirting by 6 and leaves
+// 8 under the disc; the trophy room reads the same list, so both rooms put the
+// arrows in exactly the same place.
 export const HUB_DISCS = [
-  { id: 'hubLeft',  action: 'left',  cx: 40,  cy: 207, r: 22 },
-  { id: 'hubRight', action: 'right', cx: 450, cy: 207, r: 22 },
+  { id: 'hubLeft',  action: 'left',  cx: 40,  cy: 240, r: 22 },
+  { id: 'hubRight', action: 'right', cx: 450, cy: 240, r: 22 },
 ];
 // CSS px a thumb may land outside a disc and still be on it (input.js).
 export const DISC_SLOP = 6;

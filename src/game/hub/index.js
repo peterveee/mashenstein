@@ -1,6 +1,6 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
-import { H, W, chrome as chromeGeo, isPhonePortraitPresentation, onPresentationChanged, presentationFrame } from '../../engine/renderer.js';
+import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
@@ -530,6 +530,10 @@ function trophyRoomUnlocked(slot) {
 // the same floor line at the same distance; there is no reason Lorenzo is
 // shorter when you happen not to be driving him.
 const NPC_H = 46, PLAYER_H = 46;
+// Speech type in portrait. One notch under the footer's status scale: the card
+// carries a portrait and a name header as well, so the words can be a little
+// smaller than a bare row and still read as the largest thing on screen.
+const PORTRAIT_SPEECH_S = 1.9;
 // How dark the cast is allowed to get in a dead bay, as a floor under the room's
 // own 0..1 brightness. The wall may go to nothing; bodies may not. Raise it and
 // the concourse lighting stops reading on the cast at all; drop it and the hero
@@ -1001,6 +1005,33 @@ const NPC_PORTRAIT_NAME_GAP = 18;
 // portrait surface. The first row is a replacement slot: it contains either a
 // station prompt or the focused hero's name plus SWAP chip.
 export const HUB_PORTRAIT_FOOTER_GAPS_CSS = Object.freeze({ top: 48, middle: 86, bottom: 124 });
+
+// Where the two walk arrows land ON THE PICTURE, in logical units — or null
+// when they are not up (keyboard/mouse) or they sit out in a letterbox margin,
+// which is off the picture and cannot collide with anything drawn.
+//
+// touch-layout.js places them in viewport CSS pixels because the margin is a
+// legitimate home for them, so the footer cannot assume a logical position: it
+// has to convert back through the same transform input.js uses for a tap.
+export function hubWalkArrowBox() {
+  const discs = Input.chromeButtons || [];
+  const left = discs.find((b) => b.id === 'hubLeft' && b.r != null);
+  const right = discs.find((b) => b.id === 'hubRight' && b.r != null);
+  if (!left || !right) return null;
+  const a = clientToLogical(left.x - left.r, left.y - left.r);
+  const b = clientToLogical(right.x + right.r, right.y + right.r);
+  const box = {
+    leftEdge: a.x,
+    leftRight: clientToLogical(left.x + left.r, left.y).x,
+    rightLeft: clientToLogical(right.x - right.r, right.y).x,
+    rightEdge: b.x,
+    top: a.y,
+    bottom: b.y,
+  };
+  // Wholly outside the picture on both sides: a pillar took them.
+  if (box.leftRight <= 0 && box.rightLeft >= W) return null;
+  return box;
+}
 
 export function hubPortraitFooterRows(layout, frameScale = presentationFrame().scale) {
   const scale = Number.isFinite(frameScale) && frameScale > 0 ? frameScale : 1;
@@ -2746,8 +2777,21 @@ export class HubState {
         ? floorFooter(99)
         : H - footerOffset(104))
       : H - 48;
+    // The room name is the bottom row, and in portrait the walk arrows live in
+    // the lower corners — the label was reading straight through them. Drop it
+    // BELOW the arrows when they are up, and only ever downward, so the
+    // keyboard/mouse composition keeps its authored row.
+    const arrows = hubWalkArrowBox();
+    const locationMid = layout.portrait
+      ? (arrows
+        ? Math.min(
+          H - footerOffset(8) - TEXT_INK_H * statusS / 2,
+          Math.max(footerRows.bottom, arrows.bottom + footerOffset(10) + TEXT_INK_H * statusS / 2),
+        )
+        : footerRows.bottom)
+      : 0;
     const promptLastY = layout.portrait
-      ? textYForMid(footerRows.bottom, statusS)
+      ? textYForMid(locationMid, statusS)
       : H - 30;
     const promptRowY = layout.portrait
       ? footerRows.top
@@ -2791,17 +2835,23 @@ export class HubState {
     // that genuinely has nothing to say after you have read it once. It takes
     // the slot above the prompt now that the location name has moved out of it.
     const legendA = this.hasMoved ? fadeOut(this.movedAt, 0.35, 0.5) : fadeOut(this.t, 7, 1);
-    if (legendA > 0) {
+    if (legendA > 0 && !Input.isTouchDevice()) {
       ctx.save();
       ctx.globalAlpha = legendA;
       // The posters earn a clause here rather than a line of their own in
       // landscape. Portrait has room to make this legend substantially larger
       // while keeping it above the prompt and the lower-corner walk discs.
+      // Touch gets no legend at all. The walk arrows are on screen, the
+      // contextual prompt already names the thing under the hero and its verb,
+      // and a third line that captions taps was simply the crowded row the
+      // room name had to dodge. A keyboard has no visible controls to read, so
+      // it keeps its key list.
+      //
+      // UP/DOWN PICK left with the TALK chip. One chip is not a list, so the
+      // legend was teaching a keypress that now does nothing — and the intro
+      // line is the last place to spend a clause on a no-op.
       const legendText = Input.isTouchDevice()
-        ? 'TAP TO WALK, TAP AGAIN TO ENTER, A POSTER TO READ'
-        // UP/DOWN PICK left with the TALK chip. One chip is not a list, so the
-        // legend was teaching a keypress that now does nothing — and the intro
-        // line is the last place to spend a clause on a no-op.
+        ? null
         : 'LEFT/RIGHT WALK   SPACE JUMP   ENTER CONFIRM';
       const legendLines = layout.portrait
         ? wrapText(legendText, W - 28, legendS, 2)
@@ -2815,8 +2865,35 @@ export class HubState {
     // rather than a "NAME: line" of centred text. Talking to a hero in the food
     // court is the same act as a hero talking mid-stage, so it gets the same
     // chrome; the null-speaker path handles the cabinet and shelf notes.
-    if (this.talk) drawSpeech(ctx, this.talk, { light: true });
+    if (this.talk) drawSpeech(ctx, this.talk, this.speechOpts(layout, cam));
     this.drawChromeWalkButtons();
+  }
+
+  // WHERE A LINE OF DIALOGUE SITS, AND HOW BIG IT IS.
+  //
+  // Landscape keeps the shared HUD anchor: the card hangs at SPEECH_Y near the
+  // top of a 270-tall frame, which is a hand's breadth above a cast standing on
+  // the floor. Portrait is three times as tall, so that same anchor parks the
+  // words at the very top of the phone while the character who said them is
+  // most of a screen below — a caption, not a speech bubble. Pin the card's
+  // BOTTOM just over the speaker's head instead (placeSpeechCard's `bottomY`
+  // does exactly that once the card has measured itself), and set the type at
+  // the portrait footer's weight so it reads at arm's length.
+  speechOpts(layout = hubPresentation(), cam = this.camX()) {
+    if (!layout.portrait) return { light: true };
+    const speakerX = this.talk?.who
+      ? (this.npcs().find((n) => n.id === this.talk.who)?.x ?? this.px)
+      : this.px;
+    const headTopY = (layout.floorY - NPC_H - layout.camY) * layout.zoom;
+    return {
+      light: true,
+      scale: PORTRAIT_SPEECH_S,
+      centerX: Math.max(W * 0.3, Math.min(W * 0.7, (speakerX - cam) * layout.zoom)),
+      // A gap in the same CSS terms the rest of the portrait footer uses, so
+      // the bubble floats the same distance off a head on every phone.
+      bottomY: headTopY - 14 / presentationFrame().scale,
+      topY: 10,
+    };
   }
 
   // The blown-up read. drawPoster is fully parametric — the plate, the star,
@@ -2841,8 +2918,23 @@ export class HubState {
     // through the same zoom and camera by hand.
     const srcCx = (s.x - this.camX()) * layout.zoom;
     const srcCy = (layout.posterY + POSTER_H / 2 - layout.camY) * layout.zoom;
-    // As tall as the frame allows with the close hint clear underneath.
-    const DST_H = 216, DST_W = DST_H * (POSTER_W / POSTER_H);
+    // As large as the frame allows with the close hint clear underneath.
+    //
+    // Landscape keeps its authored 216. Portrait is a different frame, not a
+    // taller one: 216 there is a postcard held up in the middle of a phone
+    // screen, so the sheet is fitted to the actual measure instead — full width
+    // bar a margin, and however much height that costs, centred in the band
+    // above the hint. A poster you tapped to READ should be the screen.
+    const closeS = layout.portrait ? 2.2 : HINT_S;
+    const closeMid = H - (layout.portrait ? closeS * 12 : 11);
+    const posterTop = layout.portrait ? 22 : 8;
+    const posterBand = closeMid - TEXT_INK_H * closeS - posterTop
+      - (layout.portrait ? 20 : 12);
+    const posterFit = layout.portrait
+      ? Math.min((W - 36) / POSTER_W, posterBand / POSTER_H)
+      : 216 / POSTER_H;
+    const DST_H = POSTER_H * posterFit, DST_W = POSTER_W * posterFit;
+    const dstTop = layout.portrait ? posterTop + (posterBand - DST_H) / 2 : 8;
     ctx.save();
     ctx.globalAlpha = e;
     // Near-opaque. At 0.86 the concourse's own bottom row — the walk-up
@@ -2856,13 +2948,17 @@ export class HubState {
     // Straightens as it comes forward, and comes up to full light. On the wall
     // it is tilted and half in shadow because it is a thing in a room; held up
     // to read, it is just the sheet.
-    drawPoster(ctx, lerp(srcCx, W / 2), lerp(srcCy, 8 + DST_H / 2) - ph / 2, pw, ph, {
+    drawPoster(ctx, lerp(srcCx, W / 2), lerp(srcCy, dstTop + DST_H / 2) - ph / 2, pw, ph, {
       pal: posterPalFor(s), tilt: lerp(p.tilt, 0), torn: p.torn, seed: p.seed, lit: 1,
     });
     ctx.save();
     ctx.globalAlpha = e;
-    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE',
-      W / 2, H - 14, '#8a8a98', HINT_S);
+    const closeText = Input.isTouchDevice() ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE';
+    if (layout.portrait) {
+      drawTextVectorCentered(ctx, closeText, W / 2, textYForMid(closeMid, closeS), '#c0c0d0', closeS);
+    } else {
+      drawTextCentered(ctx, closeText, W / 2, H - 14, '#8a8a98', HINT_S);
+    }
     ctx.restore();
   }
 }
@@ -2871,9 +2967,11 @@ export class HubState {
 // TROPHY ROOM
 //
 // A room, not a report. Campaign progress is embodied as objects on the wall,
-// while the floor is a tiny no-stakes practice space: swap heroes at the podium
-// and hit the sprung target as often as desired. Nothing here changes campaign
-// rewards or combat cooldowns.
+// and the floor is simply the gallery you walk down to read them. It used to
+// carry a practice lane as well — a hero podium and a sprung target — but a
+// second place to swap heroes and a combat toy with no stakes were two rooms
+// sharing one floor; the SWAP chip in the Food Court is the one place that
+// changes hero now.
 // The gallery's existing artwork was authored in the Food Court's landscape
 // screen scale: its door is already DOOR_W * HUB_ZOOM wide and its hero is
 // already cabinet-sized. Keep that design scale for landscape, then magnify
@@ -2881,7 +2979,10 @@ export class HubState {
 // both rooms one visible floor, character size, and zoom without rewriting the
 // gallery's long horizontal exhibit coordinates.
 const TROPHY_FLOOR_Y = HUB_FLOOR_PIN_Y;
-const TROPHY_WORLD_W = 1290;
+// The gallery ends a little past the last exhibit case. It used to run on for
+// another 350 units to hold the practice lane; with the podium and the target
+// gone that was blank floor with a walk arrow pointing at it.
+const TROPHY_WORLD_W = 1010;
 const TROPHY_DOOR_W = DOOR_W * HUB_ZOOM;
 const TROPHY_DOOR_H = DOOR_H * HUB_ZOOM;
 const TROPHY_EXIT_X = TROPHY_DOOR_W / 2;
@@ -2906,9 +3007,6 @@ const TROPHY_BOARD_Y = 27;
 // as centered wall signs instead of low labels behind the character.
 const TROPHY_PORTRAIT_BOARD_Y = -62;
 const TROPHY_PORTRAIT_BOARD_TITLE_Y = TROPHY_PORTRAIT_BOARD_Y - 14;
-const TROPHY_PODIUM_X = 1060;
-const TROPHY_DUMMY_X = 1180;
-const TROPHY_ATTACK_RANGE = 112;
 const TROPHY_MOVE_SPEED = 140;
 // Player.update owns the shared crouch/slide state and reads held actions
 // directly. The Trophy Room is a standing practice floor, so give that one
@@ -2984,17 +3082,8 @@ export class TrophyRoomState {
     this.walkTarget = null;
     this.walkHoldT = 0;
     this.moving = false;
-    this.pending = null;
     this.player = new Player(this.heroId());
     this.player.grounded = true;
-    this.attackT = 0;
-    this.attackType = null;
-    this.dummyHitT = 0;
-    this.hits = 0;
-    this.chain = 0;
-    this.bestChain = 0;
-    this.comboT = 0;
-    this.heroFlashT = 0;
   }
 
   exit() {
@@ -3075,78 +3164,9 @@ export class TrophyRoomState {
     return Math.max(0, Math.min(TROPHY_WORLD_W - viewW, this.px - viewW * 0.42));
   }
 
-  cycleHero(dir = 1) {
-    const at = HEROES.findIndex((h) => h.id === this.player.heroId);
-    const next = HEROES[(at + dir + HEROES.length) % HEROES.length];
-    this.player.setHero(next.id);
-    this.player.grounded = true;
-    this.flow.setHero && this.flow.setHero(next.id);
-    this.heroFlashT = 0.35;
-    Audio.sfx('power');
-  }
-
-  queueInteraction(kind, target) {
-    this.pending = kind;
-    this.walkTarget = target;
-  }
-
-  usePending() {
-    const kind = this.pending;
-    this.pending = null;
-    this.walkTarget = null;
-    if (kind === 'podium' || kind === 'podiumNext') this.cycleHero(1);
-    else if (kind === 'podiumPrev') this.cycleHero(-1);
-    else if (kind === 'dummy') this.attackDummy();
-  }
-
-  attackDummy() {
-    // Ability keys/buttons are attacks, never navigation. Tapping the physical
-    // target has its own explicit walk-over path in update(); pressing Shift or
-    // right-click somewhere else in the room must not pull the hero across the
-    // gallery toward it.
-    if (!this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) return false;
-    const type = this.player.hero.ability.type;
-    this.attackType = type;
-    this.attackT = 0.52;
-    this.dummyHitT = 0.38;
-    this.chain = this.comboT > 0 ? this.chain + 1 : 1;
-    this.bestChain = Math.max(this.bestChain, this.chain);
-    this.comboT = 2;
-    this.hits++;
-    this.facing = 1;
-    this.player.powerType = type;
-    this.player.powerPoseT = type === 'eat' ? 0.5 : 0.3;
-    if (type === 'dash') this.player.dashT = 0.4;
-    else if (type === 'roll') this.player.rollT = 0.65;
-    else if (type === 'compress') this.player.compressT = 0.8;
-    else if (type === 'fist') this.player.fistThrown = true;
-    else if (type === 'axe') this.player.axeThrown = true;
-    else if (type === 'stomp' && !this.player.grounded) {
-      this.player.stomping = true;
-      this.player.vy = Math.min(this.player.vy, -180);
-    }
-    Audio.sfx(type === 'shoot' ? 'shoot'
-      : type === 'eat' ? 'chomp'
-        : type === 'axe' ? 'axe'
-          : type === 'fist' ? 'plop'
-            : type === 'stomp' ? 'crunch' : 'dash');
-    return true;
-  }
-
   update(dt) {
     this.t += dt;
     if (chromeGeo.gen !== this.chromeGen || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
-    this.attackT = Math.max(0, this.attackT - dt);
-    this.dummyHitT = Math.max(0, this.dummyHitT - dt);
-    const comboBefore = this.comboT;
-    this.comboT = Math.max(0, this.comboT - dt);
-    if (comboBefore > 0 && this.comboT === 0) this.chain = 0;
-    this.heroFlashT = Math.max(0, this.heroFlashT - dt);
-    if (this.attackT <= 0) {
-      this.player.fistThrown = false;
-      this.player.axeThrown = false;
-      this.attackType = null;
-    }
 
     if (Input.pressed('back')) { this.flow.toHub(); return; }
 
@@ -3167,39 +3187,26 @@ export class TrophyRoomState {
       const onExit = x >= 0 && x <= TROPHY_DOOR_W + 6
         && y >= TROPHY_FLOOR_Y - TROPHY_DOOR_H - 6 && y <= TROPHY_FLOOR_Y + 6;
       if (onExit) { this.flow.toHub(); return; }
-      if (x < TROPHY_DOOR_W + 6) { this.pending = null; this.walkTarget = TROPHY_EXIT_X; }
-      else if (x >= TROPHY_PODIUM_X - 45 && x <= TROPHY_PODIUM_X + 45 && y > 142) {
-        this.queueInteraction(x < TROPHY_PODIUM_X ? 'podiumPrev' : 'podiumNext', TROPHY_PODIUM_X + 48);
-      }
-      else if (x >= TROPHY_DUMMY_X - 35 && y > 112) this.queueInteraction('dummy', TROPHY_DUMMY_X - 68);
-      else { this.pending = null; this.walkTarget = Math.max(68, Math.min(TROPHY_WORLD_W - 30, x)); }
+      if (x < TROPHY_DOOR_W + 6) this.walkTarget = TROPHY_EXIT_X;
+      else this.walkTarget = Math.max(68, Math.min(TROPHY_WORLD_W - 30, x));
     }
 
-    if (Input.pressed('ability')) this.attackDummy();
     if (Input.pressed('jump')) this.player.jumpPressed(Audio);
-
-    if (Input.pressed('confirm')) {
-      if (this.near(TROPHY_PODIUM_X, 58)) this.cycleHero(1);
-      else if (this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) this.attackDummy();
-    }
 
     const directionHeld = Input.held('left') || Input.held('right');
     const walkSpeed = heldWalkSpeed(TROPHY_MOVE_SPEED, this.walkHoldT);
     let move = (Input.held('right') ? 1 : 0) - (Input.held('left') ? 1 : 0);
-    if (move) { this.walkTarget = null; this.pending = null; }
+    if (move) this.walkTarget = null;
     if (!move && this.walkTarget != null) {
       const d = this.walkTarget - this.px;
-      if (Math.abs(d) <= 2.5) {
-        this.px = this.walkTarget;
-        if (this.pending) this.usePending();
-        else this.walkTarget = null;
-      } else move = Math.sign(d);
+      if (Math.abs(d) <= 2.5) { this.px = this.walkTarget; this.walkTarget = null; }
+      else move = Math.sign(d);
     }
     if (move) {
       this.facing = move;
       this.px = Math.max(22, Math.min(TROPHY_WORLD_W - 30, this.px + move * walkSpeed * dt));
       if (this.px <= TROPHY_EXIT_X) { this.flow.toHub(); return; }
-    } else if (!this.attackT) this.facing = this.px < TROPHY_DUMMY_X ? 1 : -1;
+    } else this.facing = 1;
 
     const steeringHeld = Input.held('pointer') && this.walkTarget != null;
     this.walkHoldT = directionHeld || steeringHeld
@@ -3361,8 +3368,6 @@ export class TrophyRoomState {
         0.68,
       ]),
       [TROPHY_BOSSES_X, this.defeatedBosses().length ? 0.72 : 0.42],
-      [TROPHY_PODIUM_X, 0.76],
-      [TROPHY_DUMMY_X, 0.82],
     ];
     lights.forEach(([center, strength], i) => {
       const x = center - LIGHT_W / 2;
@@ -3371,60 +3376,6 @@ export class TrophyRoomState {
         strength * flick, x - camera, layout.viewW);
     });
     drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W);
-    // Practice-lane mat, taped off and already scuffed from entirely voluntary
-    // quality assurance.
-    ctx.fillStyle = '#292432'; ctx.fillRect(TROPHY_PODIUM_X - 48, TROPHY_FLOOR_Y + 5, 208, 23);
-    for (let x = TROPHY_PODIUM_X - 46; x < TROPHY_DUMMY_X + 70; x += 16) {
-      ctx.fillStyle = (x / 16) % 2 ? '#c8a020' : '#3a3030';
-      ctx.beginPath(); ctx.moveTo(x, TROPHY_FLOOR_Y + 5); ctx.lineTo(x + 8, TROPHY_FLOOR_Y + 5); ctx.lineTo(x + 16, TROPHY_FLOOR_Y + 10); ctx.lineTo(x + 8, TROPHY_FLOOR_Y + 10); ctx.closePath(); ctx.fill();
-    }
-    ctx.strokeStyle = 'rgba(200,200,216,0.18)'; ctx.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-      const x = TROPHY_PODIUM_X + 18 + i * 25;
-      ctx.beginPath(); ctx.moveTo(x, TROPHY_FLOOR_Y + 14 + (i % 2) * 4); ctx.lineTo(x + 10, TROPHY_FLOOR_Y + 12); ctx.stroke();
-    }
-  }
-
-  drawDummy(ctx) {
-    const q = this.dummyHitT > 0 ? this.dummyHitT / 0.38 : 0;
-    const wobble = q ? Math.sin((1 - q) * Math.PI * 5) * q * 0.18 : 0;
-    ctx.save();
-    ctx.translate(TROPHY_DUMMY_X, TROPHY_FLOOR_Y);
-    ctx.rotate(wobble);
-    ctx.fillStyle = '#6a4a2a'; ctx.fillRect(-3, -55, 6, 51);
-    ctx.fillStyle = '#4a3422'; ctx.fillRect(-17, -6, 34, 6);
-    drawProp(ctx, 'target', -21, -80, 42, 42);
-    ctx.restore();
-    if (q) {
-      ctx.save(); ctx.globalAlpha = Math.min(1, q * 2);
-      ctx.fillStyle = '#f6d33c';
-      for (let i = 0; i < 8; i++) {
-        const a = i * Math.PI / 4 + this.hits;
-        const r = 25 + (1 - q) * 18;
-        ctx.fillRect(TROPHY_DUMMY_X + Math.cos(a) * r - 2, TROPHY_FLOOR_Y - 59 + Math.sin(a) * r - 2, 4, 4);
-      }
-      ctx.restore();
-    }
-  }
-
-  drawAttackEffect(ctx) {
-    if (!this.attackT || !this.attackType) return;
-    const p = 1 - this.attackT / 0.52;
-    const y = TROPHY_FLOOR_Y - 37;
-    if (['shoot', 'fist', 'axe'].includes(this.attackType)) {
-      const x = this.px + 18 + (TROPHY_DUMMY_X - this.px - 28) * Math.min(1, p * 2.1);
-      if (this.attackType === 'shoot') drawProp(ctx, 'capStar', x - 4, y - 4, 8, 8);
-      else if (this.attackType === 'fist') {
-        ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
-      } else {
-        ctx.save(); ctx.translate(x, y); ctx.rotate(p * 18);
-        ctx.fillStyle = '#b8c8d8'; ctx.fillRect(-9, -3, 18, 6); ctx.fillStyle = '#7a4a2a'; ctx.fillRect(-2, -8, 4, 16); ctx.restore();
-      }
-    } else if (p < 0.55) {
-      ctx.save(); ctx.globalAlpha = 1 - p;
-      ctx.strokeStyle = this.attackType === 'eat' ? '#f890b8' : '#48e0c8'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(TROPHY_DUMMY_X - 17, y, 14 + p * 18, -1.2, 1.2); ctx.stroke(); ctx.restore();
-    }
   }
 
   draw(ctx) {
@@ -3446,20 +3397,6 @@ export class TrophyRoomState {
     drawDoor(ctx, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
       TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t, this.save.settings.reducedFlashing);
 
-    // Hero swap podium: the selected hero is the object being displayed.
-    ctx.fillStyle = '#342840'; ctx.fillRect(TROPHY_PODIUM_X - 31, TROPHY_FLOOR_Y - 8, 62, 8);
-    ctx.fillStyle = '#f6d33c'; ctx.fillRect(TROPHY_PODIUM_X - 24, TROPHY_FLOOR_Y - 11, 48, 3);
-    ctx.fillStyle = '#f6d33c';
-    ctx.beginPath(); ctx.moveTo(TROPHY_PODIUM_X - 25, TROPHY_FLOOR_Y - 19); ctx.lineTo(TROPHY_PODIUM_X - 17, TROPHY_FLOOR_Y - 23); ctx.lineTo(TROPHY_PODIUM_X - 17, TROPHY_FLOOR_Y - 15); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(TROPHY_PODIUM_X + 25, TROPHY_FLOOR_Y - 19); ctx.lineTo(TROPHY_PODIUM_X + 17, TROPHY_FLOOR_Y - 23); ctx.lineTo(TROPHY_PODIUM_X + 17, TROPHY_FLOOR_Y - 15); ctx.closePath(); ctx.fill();
-    drawTextCentered(ctx, 'HERO PODIUM', TROPHY_PODIUM_X, TROPHY_FLOOR_Y + 9, '#c8b880', 0.65, 'bold');
-    if (this.heroFlashT > 0) {
-      ctx.save(); ctx.globalAlpha = this.heroFlashT / 0.35;
-      ctx.fillStyle = '#f6d33c'; ctx.beginPath(); ctx.ellipse(this.px, TROPHY_FLOOR_Y - 24, 25, 34, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-    }
-
-    this.drawDummy(ctx);
-    this.drawAttackEffect(ctx);
     const pose = poseFromPlayer(this.player, this.t);
     if (!this.moving && pose.kind === 'run') {
       pose.kind = 'idle';
@@ -3470,14 +3407,12 @@ export class TrophyRoomState {
     const headY = TROPHY_FLOOR_Y - this.player.y - toonInkTop(this.player.heroId) * TROPHY_PLAYER_H;
     drawPlayerMarker(ctx, this.px, headY - MARKER_GAP, MARKER_R);
 
-    if (this.comboT > 0) drawTextCentered(ctx, `CHAIN x${this.chain}   BEST x${this.bestChain}`, TROPHY_DUMMY_X, 118, '#f6d33c', 0.82, 'bold');
-    drawTextCentered(ctx, this.player.hero.short, TROPHY_PODIUM_X, 184, '#48e0c8', 0.78, 'bold');
-    drawTextCentered(ctx, this.player.hero.ability.label, TROPHY_PODIUM_X, 194, '#8a8a98', 0.58, 'bold');
+    // The room is exhibits and a door now — the practice lane, its podium and
+    // its target are gone, and so are the verbs that only they had. What is
+    // left is walking, which touch reads off the arrows and a keyboard reads
+    // off this line.
     const hint = this.near(TROPHY_EXIT_X, 54) ? 'WALK LEFT: FOOD COURT'
-      : this.near(TROPHY_PODIUM_X, 58) ? (Input.isTouchDevice() ? 'TAP PODIUM SIDES: PREV / NEXT' : `${Input.confirmVerb()}: NEXT HERO`)
-        : this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)
-          ? (Input.isTouchDevice() ? 'TAP THE TARGET TO ATTACK' : 'X / SHIFT / MIDDLE CLICK: ATTACK')
-          : (Input.isTouchDevice() ? 'TAP TO WALK' : 'LEFT / RIGHT: WALK   SPACE: JUMP');
+      : (Input.isTouchDevice() ? null : 'LEFT / RIGHT: WALK   SPACE: JUMP');
     ctx.restore();
 
     // Match the food court's persistent bottom status row. Portrait has a deep
@@ -3488,21 +3423,22 @@ export class TrophyRoomState {
     const footerY = layout.portrait ? H - 34 : H - 11;
     const footerText = layout.portrait ? drawTextVector : drawText;
     const footerCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
-    footerText(ctx, roomTitle, 12, footerY, '#f6d33c', roomTitleScale, 'bold');
     const titleW = textWidth(roomTitle, roomTitleScale, 'bold');
     if (layout.portrait) {
-      const hintLines = wrapText(hint, W - 32, 1.75, 2, 'bold');
-      hintLines.forEach((line, i) => footerCentered(ctx, line, W / 2,
-        H - 82 + i * 18, '#c8c8d8', 1.75, 'bold'));
-      if (camera < TROPHY_WORLD_W - layout.viewW - 8) {
-        footerCentered(ctx, 'SWIPE / TAP TO WALK  ·  MORE  >', W / 2, H - 14,
-          '#8a8a98', 1.05, 'bold');
+      // Portrait has no second thing on this row — the hint sits well above it
+      // and the walk arrows hold the corners — so the room name centres like
+      // every other portrait footer row instead of hanging off the left edge.
+      footerCentered(ctx, roomTitle, W / 2, footerY, '#f6d33c', roomTitleScale, 'bold');
+      if (hint) {
+        const hintLines = wrapText(hint, W - 32, 1.75, 2, 'bold');
+        hintLines.forEach((line, i) => footerCentered(ctx, line, W / 2,
+          H - 82 + i * 18, '#c8c8d8', 1.75, 'bold'));
       }
     } else {
-      const hintScale = Math.min(0.95, (W - 32 - titleW) / Math.max(1, textWidth(hint, 1, 'bold')));
-      footerText(ctx, hint, W - 8 - textWidth(hint, hintScale, 'bold'), footerY, '#c8c8d8', hintScale, 'bold');
-      if (camera < TROPHY_WORLD_W - layout.viewW - 8) {
-        drawText(ctx, 'MORE  >', W - 54, H - 25, '#8a8a98', 0.55, 'bold');
+      footerText(ctx, roomTitle, 12, footerY, '#f6d33c', roomTitleScale, 'bold');
+      if (hint) {
+        const hintScale = Math.min(0.95, (W - 32 - titleW) / Math.max(1, textWidth(hint, 1, 'bold')));
+        footerText(ctx, hint, W - 8 - textWidth(hint, hintScale, 'bold'), footerY, '#c8c8d8', hintScale, 'bold');
       }
     }
     this.drawChromeWalkButtons();

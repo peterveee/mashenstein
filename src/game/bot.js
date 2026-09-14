@@ -484,9 +484,32 @@ export class DemoBot {
       // The whole range, not its ends: on the ice stage both ends of a
       // low-gravity jump cleared the break — one short of the near lip, one
       // past the far one — and every landing between them was the hole.
-      if (hi > h.near - LIP_MARGIN && lo < h.far + LAND_MARGIN) return false;
+      if (hi > this.landingLimit(h) && lo < h.far + LAND_MARGIN) return false;
     }
     return !this.strandsAtCrossing(lo) && !this.strandsAtCrossing(hi);
+  }
+
+  /**
+   * THE LAST PLACE A LANDING STILL LEAVES HIM THE JUMP, which is not the last
+   * piece of road in front of the hole.
+   *
+   * LIP_MARGIN is a TAKE-OFF margin — the road a press has to have under it —
+   * and landing on road is a weaker thing than being able to leave it. The
+   * window for answering a hole shuts at pitAim's `to`, a frame of travel short
+   * of the lip, and a landing costs a frame of its own: the first grounded
+   * update spends itself letting the button go (see the release-once rule), so
+   * the earliest press a landing can produce is a stride further on than the
+   * landing itself.
+   *
+   * Two strides back from the lip, then. This is how the demo went into the
+   * cardboard stage's last break: it came down seven pixels short of the lip,
+   * on road by every margin here, with the take-off window already shut behind
+   * it — one frame on the ground, spent releasing, and it walked off the edge
+   * without ever pressing. Nothing was misread. The landing simply was not
+   * somewhere a jump could be ordered from.
+   */
+  landingLimit(h) {
+    return h.near - LIP_MARGIN - (this.run.speed / 60) * 2;
   }
 
   /** Would a landing at `x` be on road? */
