@@ -22,6 +22,8 @@ export function lifecyclePolicy({
   devMode = false,
   portrait = false,
   allowPortrait = false,
+  presentationRefreshing = false,
+  presentationRhythm = false,
 } = {}) {
   // A dev build keeps phone portrait running so Chrome device emulation and
   // real-phone LAN testing can inspect every screen at its actual narrow
@@ -34,9 +36,17 @@ export function lifecyclePolicy({
   // can explicitly opt in; tablets are wide enough to be usable either way.
   const phonePortrait = (isIphone || isAndroidPhone)
     && !devMode && (standalone || devBrowserBypass) && portrait && !allowPortrait;
+  const lifecycleBlocked = !allowed || !visible || phonePortrait;
   return {
     iphonePortrait: phonePortrait,
-    paused: !allowed || !visible || phonePortrait,
+    paused: lifecycleBlocked || presentationRefreshing,
+    // Ordinary levels can keep their soundtrack running while the picture is
+    // rebuilt. Beat-locked runs must hold audio with the simulation so their
+    // lane cannot advance underneath a paused world.
+    audioPaused: lifecycleBlocked || (presentationRefreshing && presentationRhythm),
+    // Keep the existing phone rotate card visible when it is the applicable
+    // lifecycle surface. The renderer cover sits below it, so a rotation does
+    // not flash from card -> black -> card as the backing store settles.
     showPortraitOverlay: allowed && visible && phonePortrait,
   };
 }
@@ -117,6 +127,8 @@ export class LifecycleController {
     this.restoreFocus = null;
     this.wasOverlayVisible = false;
     this.portraitQuery = win.matchMedia ? win.matchMedia('(orientation: portrait)') : null;
+    this.presentationRefreshing = false;
+    this.presentationRhythm = false;
 
     this.onVisibility = () => this.apply();
     this.onPageHide = () => { this.pageHidden = true; this.apply(); };
@@ -340,7 +352,15 @@ export class LifecycleController {
       visible: !this.doc.hidden && !this.pageHidden,
       portrait: portraitNow(this.win),
       allowPortrait: stateAllowsPortrait || this.portraitJukeboxOpening,
+      presentationRefreshing: this.presentationRefreshing,
+      presentationRhythm: this.presentationRhythm,
     });
+  }
+
+  setPresentationRefreshing(active, rhythm = false) {
+    this.presentationRefreshing = !!active;
+    this.presentationRhythm = !!rhythm;
+    return this.apply();
   }
 
   setOverlay(show) {
@@ -574,7 +594,7 @@ export class LifecycleController {
       else this.shell.removeAttribute('aria-hidden');
     }
     this.input.setSuspended(policy.paused);
-    this.audio.setLifecyclePaused(policy.paused);
+    this.audio.setLifecyclePaused(policy.audioPaused);
     if (policy.paused) this.loop.pause();
     else this.loop.resume();
     return policy;

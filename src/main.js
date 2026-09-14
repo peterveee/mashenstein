@@ -2,6 +2,7 @@
 import {
   initRenderer, beginRenderFrame, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
   noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualiserFrame, setChromeOverlay,
+  onPresentationRefresh, revealPresentationRefresh,
 } from './engine/renderer.js';
 import { startLoop, frameRate, frameHealth } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
@@ -778,7 +779,7 @@ function boot() {
     visible: !document.hidden,
     portrait: portraitNow(window),
     allowPortrait: allowPortraitNow(),
-  }).paused);
+  }).audioPaused);
   Audio.ensure();
   Audio.setSessionMute(sessionMute);
   Audio.setMuted(save.settings.muted);
@@ -1074,7 +1075,14 @@ function boot() {
     },
     // The sweep counts presented frames, so it reads the same clock the density
     // controller does. While it holds a pin the controller is inert anyway.
-    present: (now) => { noteRendererFrame(now); benchFrame(now); },
+    present: (now) => {
+      // The first complete frame after a settled rebuild is the reveal point.
+      // Keeping this on the presentation callback means the dark cover never
+      // exposes a half-painted Canvas2D/WebGL surface.
+      revealPresentationRefresh();
+      noteRendererFrame(now);
+      benchFrame(now);
+    },
   });
   if (benchRequested) startBench();
   if (titleProfileRequested) {
@@ -1105,6 +1113,15 @@ function boot() {
       Dev.openMenu();
       return true;
     },
+  });
+  // Presentation refreshes pause the game loop. Only beat-locked runs pause
+  // the AudioContext too; ordinary level music continues through the covered
+  // rebuild and the existing scheduler keeps the track position intact.
+  onPresentationRefresh((detail) => {
+    window.__mash_lifecycle?.setPresentationRefreshing(
+      detail.active,
+      currentState()?.beatLock === true,
+    );
   });
   window.__mash_booted = true;
   // The audio engine, for a verification script measuring cue timing against the

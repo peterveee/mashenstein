@@ -153,5 +153,38 @@ const compactChatCss = (PORTRAIT_CHAT_MAX_LINES * PORTRAIT_CHAT_ROW
     portraitHudLayout(portraitSpeechFrame)) * portraitSpeechFrame.scale;
 assert.ok(compactChatCss <= portraitHudLayout(portraitSpeechFrame).messageShelfHeightCss - 2 + 1e-9,
   `portrait compact chat fits its shelf (${compactChatCss.toFixed(1)}px)`);
+const shortPortraitSpeech = { who: 'eggshell', text: 'PEW', page: 0 };
+const mediumPortraitSpeech = {
+  who: 'eggshell', text: 'THIS MESSAGE NEEDS TWO ROWS TO STAY INSIDE THE CHAT SHELF', page: 0,
+};
+const longestPortraitSpeech = {
+  who: 'eggshell',
+  text: 'HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT.',
+  page: 0,
+};
+const shortChannel = speechChannel({ bonusT: 0, speech: shortPortraitSpeech });
+const mediumChannel = speechChannel({ bonusT: 0, speech: mediumPortraitSpeech });
+const longestChannel = speechChannel({ bonusT: 0, speech: longestPortraitSpeech });
+assert.ok(shortChannel.textScale > shortChannel.scale,
+  'short portrait speech grows beyond the three-line safety scale');
+assert.ok(shortChannel.textScale > mediumChannel.textScale
+  && mediumChannel.textScale > longestChannel.textScale,
+  'portrait speech scales down progressively as wrapped rows increase');
+assert.equal(shortChannel.cardWidth, longestChannel.cardWidth,
+  'portrait speech keeps one fixed card width');
+assert.equal(shortChannel.cardHeight, longestChannel.cardHeight,
+  'portrait speech keeps one fixed card height');
+assert.equal(shortChannel.cardHeight * portraitSpeechFrame.scale,
+  portraitHudLayout(portraitSpeechFrame).messageShelfHeightCss - 2,
+  'the fixed portrait card keeps the existing two-pixel shelf buffer');
+assert.equal(speechPageLines(shortPortraitSpeech,
+  { ...shortChannel, scale: shortChannel.textScale }).length, 1,
+  'the short portrait line remains one centred row at its larger scale');
+assert.equal(speechPageLines(mediumPortraitSpeech,
+  { ...mediumChannel, scale: mediumChannel.textScale }).length, 2,
+  'the medium portrait line remains two rows at its intermediate scale');
+assert.equal(speechPageLines(longestPortraitSpeech,
+  { ...longestChannel, scale: longestChannel.textScale }).length, 3,
+  'the longest portrait line still uses the three-row safety case');
 setPresentationFrame(defaultFrame());
 console.log('SCENERY LAYOUT: PASSED');

@@ -336,6 +336,8 @@ function glyphSprite(ch, color, scale, style) {
 // rain's glyph atlas — subscribe here rather than re-deriving the loading dance
 // below, which is subtle enough to be worth having in exactly one place.
 const fontListeners = new Set();
+let fontRefreshGeneration = 0;
+let fontLoadInFlight = null;
 export function onGameFontsChanged(fn) {
   fontListeners.add(fn);
   return () => fontListeners.delete(fn);
@@ -366,13 +368,21 @@ function invalidateGameFontCaches() {
 
 function loadGameFonts() {
   if (typeof document === 'undefined' || !document.fonts?.load) return Promise.resolve();
-  return Promise.all(GAME_FONT_REQUESTS.map((face) => {
+  if (fontLoadInFlight) return fontLoadInFlight;
+  const pending = Promise.all(GAME_FONT_REQUESTS.map((face) => {
     try {
       return Promise.resolve(document.fonts.load(face)).catch(() => {});
     } catch {
       return Promise.resolve();
     }
   }));
+  fontLoadInFlight = pending;
+  pending.then(() => {
+    if (fontLoadInFlight === pending) fontLoadInFlight = null;
+  }, () => {
+    if (fontLoadInFlight === pending) fontLoadInFlight = null;
+  });
+  return pending;
 }
 
 export function refreshGameFonts() {
@@ -380,13 +390,24 @@ export function refreshGameFonts() {
   // after the browser has confirmed every requested face is usable. This is
   // important on mobile, where a rotation can expose a font race that the
   // initial boot's bounded wait did not catch.
+  const generation = ++fontRefreshGeneration;
   invalidateGameFontCaches();
-  loadGameFonts().then(invalidateGameFontCaches);
+  return loadGameFonts().then(() => {
+    // A settled presentation supersedes any boot-time font promise that was
+    // still in flight. Let only the current request notify listeners, keeping
+    // one rotation from looking like two independent refreshes.
+    if (generation === fontRefreshGeneration) invalidateGameFontCaches();
+  });
 }
 
 if (typeof document !== 'undefined' && document.fonts) {
-  loadGameFonts().then(invalidateGameFontCaches);
-  if (document.fonts.ready) document.fonts.ready.then(invalidateGameFontCaches);
+  const bootGeneration = fontRefreshGeneration;
+  loadGameFonts().then(() => {
+    if (bootGeneration === fontRefreshGeneration) invalidateGameFontCaches();
+  });
+  if (document.fonts.ready) document.fonts.ready.then(() => {
+    if (bootGeneration === fontRefreshGeneration) invalidateGameFontCaches();
+  });
   // The boot gate normally settles every face before game.js starts. Its
   // offline safeguard is deliberately bounded, though, so a very slow font
   // response can still finish after the first fallback glyphs were cached.

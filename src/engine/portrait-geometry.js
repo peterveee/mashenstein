@@ -5,13 +5,16 @@
 import { portraitTouchLayout } from './portrait-input.js';
 
 export const PORTRAIT_MESSAGE_SHELF_CSS = 64;
-export const PORTRAIT_MESSAGE_GAP_CSS = 12;
+// The chat shelf gives four of its former pixels back to the ground side: the
+// card now sits 8px clear of the ground while retaining a readable gap before
+// the power-up labels.
+export const PORTRAIT_MESSAGE_GAP_CSS = 8;
 // The compact portrait chat card is allowed two CSS px of breathing room in
 // the 64px shelf. The ground sits just above that largest possible card, not
 // an arbitrary distance above the shelf.
 export const PORTRAIT_CHAT_CARD_BUFFER_CSS = 2;
 export const PORTRAIT_CHAT_CARD_MAX_CSS = PORTRAIT_MESSAGE_SHELF_CSS - PORTRAIT_CHAT_CARD_BUFFER_CSS;
-export const PORTRAIT_GROUND_GAP_CSS = 4;
+export const PORTRAIT_GROUND_GAP_CSS = 8;
 // The power names are a strip ABOVE the discs now that the discs themselves sit
 // on the glass: there is no longer a band between a disc and the bottom edge to
 // hang them in. The shelf gives that strip its height so a line of dialogue and

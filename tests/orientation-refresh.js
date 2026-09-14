@@ -21,6 +21,8 @@ const renderer = await import('../src/engine/renderer.js');
 const sprites = await import('../src/engine/sprites.js');
 let changed = 0;
 sprites.onGameFontsChanged(() => { changed++; });
+const refreshPhases = [];
+renderer.onPresentationRefresh((detail) => refreshPhases.push(`${detail.phase}:${detail.active}`));
 
 // Let the initial boot font requests settle before measuring the rotation pass.
 await Promise.resolve();
@@ -37,13 +39,28 @@ renderer.setPresentationMode('portrait');
 window.innerWidth = 390;
 window.innerHeight = 844;
 dom.fire('win:orientationchange');
-for (let i = 0; i < 10; i++) dom.frame();
-if (changed !== 1 || fontLoads.length !== 4) {
+if (!renderer.presentationRefreshState().active) {
+  console.error('FAIL: orientation change enters a covered presentation refresh');
+  process.exit(1);
+}
+for (let i = 0; i < 25; i++) dom.frame();
+if (changed < 1 || fontLoads.length !== 4) {
   console.error('FAIL: portrait rotation refreshes fonts after the settled resize');
   process.exit(1);
 }
 if (renderer.screen.cssW !== 390 || renderer.screen.cssH !== 844) {
   console.error('FAIL: portrait rotation publishes the new renderer geometry');
+  process.exit(1);
+}
+if (!renderer.presentationRefreshState().revealPending) {
+  console.error('FAIL: settled orientation waits for a complete frame before reveal');
+  process.exit(1);
+}
+renderer.revealPresentationRefresh();
+const refreshCountAfterReveal = refreshPhases.length;
+dom.fire('win:resize');
+if (renderer.presentationRefreshState().active || refreshPhases.length !== refreshCountAfterReveal) {
+  console.error('FAIL: a late duplicate resize does not reopen the blackout');
   process.exit(1);
 }
 
@@ -61,13 +78,19 @@ window.screen.orientation.angle = 270;
 window.screen.orientation.type = 'landscape-secondary';
 window.orientation = 270;
 dom.fire('win:orientationchange');
-for (let i = 0; i < 10; i++) dom.frame();
+dom.fire('win:resize');
+for (let i = 0; i < 25; i++) dom.frame();
 if (changed !== 1 || fontLoads.length !== 4 || renderer.screen.cssW !== 699 || renderer.screen.cssH !== 393) {
   console.error('FAIL: landscape rotation refreshes fonts and geometry on the way back');
   process.exit(1);
 }
 if (renderer.chrome.landscapeSide !== 'right') {
   console.error('FAIL: landscape-secondary swaps the controls to the other rail');
+  process.exit(1);
+}
+if (refreshPhases.filter((phase) => phase === 'settling:true').length !== 2
+  || refreshPhases.filter((phase) => phase === 'ready:false').length !== 2) {
+  console.error('FAIL: duplicate viewport events share one blackout');
   process.exit(1);
 }
 

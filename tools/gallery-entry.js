@@ -51,7 +51,7 @@ import { HERO_SPRITES } from '../src/sprites/heroes.js';
 import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
   LCD_GORILLA_NOSTRIL_STYLES,
-  lcdGorillaHeadPos,
+  lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem,
 } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
@@ -99,6 +99,9 @@ import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
 import {
   SPRING_PAD_CANDIDATES, drawSpringPadCandidate,
 } from '../src/dev/spring-pad-candidates.js';
+import {
+  WATER_TOWER_CANDIDATES, drawWaterTowerCandidate,
+} from '../src/dev/water-tower-candidates.js';
 import {
   ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
   PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES,
@@ -1742,6 +1745,80 @@ function propNominalSize(name) {
   }
 }
 
+// ---------------------------------------------------------------- 7a. in-level scenery
+// A compact source-backed sheet for the props that disappear into the full
+// background frame. These are the same Speed Zone painters, presented at their
+// authored in-run scale with a small scenery swatch behind them so their layer
+// role and planted foot are easy to compare.
+{
+  const speed = CABINETS.find((cab) => cab.id === 'speed');
+  const grid = section('level-scenery', 'ALL LEVELS — in-level scenery',
+    'Individual background items at authored in-run scale. Plumber, Speed, Rhythm, Neon and Cardboard already have '
+    + 'dedicated scenery; this sheet adds the missing Frost, Crypt, Corporate Kombat and Surge accents. The full '
+    + 'background section below remains the all-nine-level composition reference.');
+  const sceneryBackdrop = (ctx, w, h, cab) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, cab.sky[0]);
+    sky.addColorStop(1, cab.sky[1]);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = cab.far;
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.67);
+    ctx.quadraticCurveTo(w * 0.24, h * 0.52, w * 0.47, h * 0.67);
+    ctx.quadraticCurveTo(w * 0.72, h * 0.56, w, h * 0.68);
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.fill();
+    ctx.fillStyle = cab.hills;
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.81);
+    ctx.quadraticCurveTo(w * 0.28, h * 0.66, w * 0.55, h * 0.82);
+    ctx.quadraticCurveTo(w * 0.79, h * 0.70, w, h * 0.80);
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.fill();
+    ctx.fillStyle = cab.ground;
+    ctx.fillRect(0, h * 0.91, w, h * 0.09);
+  };
+  const itemTile = (name, sub, kind, meta = {}) => {
+    tile(grid, name, sub, 120, 96, (ctx, t) => {
+      sceneryBackdrop(ctx, 120, 96, speed);
+      ctx.save();
+      ctx.translate(60, 84);
+      drawSpeedSceneryItem(ctx, kind, { ...meta, t });
+      ctx.restore();
+    }, { animated: !!meta.animated, hires: 3 });
+  };
+  const levelItemTile = (name, sub, cab, kind, meta = {}) => {
+    tile(grid, name, sub, 120, 96, (ctx) => {
+      sceneryBackdrop(ctx, 120, 96, cab);
+      ctx.save();
+      ctx.translate(60, 84);
+      drawLevelSceneryItem(ctx, kind, meta);
+      ctx.restore();
+    }, { hires: 3 });
+  };
+  itemTile('cactus', 'near ridge · enlarged 3-branch landmark', 'cactus', { height: 22 });
+  itemTile('rock outcrop', 'near ridge · occasional, smaller, higher-contrast', 'rock', { scale: 0.65 });
+  itemTile('sage tuft', 'near ridge · pointed 9-blade crown', 'sage', { scale: 0.92 });
+  itemTile('telegraph pole', 'middle ridge · parallax wires', 'telegraph-pole');
+  itemTile('water tower', 'far mesa · planted horizon slot', 'water-tower', { scale: 0.92 });
+  itemTile('satellite dish', 'far mesa · fake signal sweep', 'satellite-dish', { scale: 0.86, animated: true });
+  itemTile('satellite dish cluster', 'far mesa · 3 feed points · faint signal triangle', 'satellite-dish-cluster', { animated: true });
+  itemTile('wind turbine', 'far mesa · 3-blade rotor', 'wind-turbine', { scale: 0.82, animated: true });
+  itemTile('route sign', 'roadside · planted post and contact soil', 'road-sign');
+  const frost = CABINETS.find((cab) => cab.id === 'frost');
+  const crypt = CABINETS.find((cab) => cab.id === 'crypt');
+  const office = CABINETS.find((cab) => cab.id === 'office');
+  const surge = CABINETS.find((cab) => cab.id === 'surge');
+  levelItemTile('FROST · pine', 'far/near ridge · sparse pointed tree', frost, 'frost-pine', { layer: 'near', scale: 1.05 });
+  levelItemTile('CRYPT · dead tree', 'near ridge · crooked silhouette', crypt, 'crypt-dead-tree', { layer: 'near', scale: 1.02 });
+  levelItemTile('CRYPT · grave stone', 'near ridge · tangent-planted marker', crypt, 'crypt-stone', { layer: 'near', scale: 0.9, angle: -0.08 });
+  levelItemTile('CORPORATE · skyline', 'fixed paper sheet · varied office blocks', office, 'office-building', { roof: 'antenna' });
+  levelItemTile('SURGE · signal pylon', 'style-cycle fallback · planted relay marker', surge, 'surge-pylon', { scale: 1 });
+}
+
 // ---------------------------------------------------------------- 7b. backgrounds
 // Last of the world sections rather than first of the page. A background is the
 // thing everything above stands in front of, so it reads as context once you
@@ -2147,6 +2224,63 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
+// ---------------------------------------- Speed Zone water-tower bake-off
+// Ten gallery-only silhouettes, including the live production painter as A.
+// The cards show the tower against a quiet far-mesa slice at the same planted
+// baseline, so the decision stays about recognition and structure rather than
+// a floating icon on a blank canvas. Nothing here changes the run.
+{
+  const speed = CABINETS.find((cab) => cab.id === 'speed');
+  const grid = section('water-tower-bakeoff', 'SPEED ZONE — water tower bake-off',
+    'OPEN — ten far-mesa silhouettes. A is the current production tower; B–J are gallery-only alternatives. '
+    + 'Every card uses the same planted baseline and authored comparison scale. The labels identify the one '
+    + 'structural question each option is testing; choose a winner before anything is promoted into the game.');
+  const TW = 188, TH = 126, BASE = 108;
+  const sceneryBackdrop = (ctx) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, TH);
+    sky.addColorStop(0, speed.sky[0]);
+    sky.addColorStop(1, speed.sky[1]);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, TW, TH);
+    ctx.fillStyle = speed.far;
+    ctx.beginPath();
+    ctx.moveTo(0, 77);
+    ctx.quadraticCurveTo(28, 61, 58, 75);
+    ctx.quadraticCurveTo(92, 58, 124, 76);
+    ctx.quadraticCurveTo(156, 63, TW, 77);
+    ctx.lineTo(TW, TH); ctx.lineTo(0, TH); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = speed.hills;
+    ctx.beginPath();
+    ctx.moveTo(0, 94);
+    ctx.quadraticCurveTo(37, 76, 73, 93);
+    ctx.quadraticCurveTo(111, 77, 148, 94);
+    ctx.quadraticCurveTo(170, 84, TW, 94);
+    ctx.lineTo(TW, TH); ctx.lineTo(0, TH); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = speed.ground;
+    ctx.fillRect(0, 104, TW, TH - 104);
+    ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(0, 104.5); ctx.lineTo(TW, 104.5); ctx.stroke();
+  };
+  for (const candidate of WATER_TOWER_CANDIDATES) {
+    tile(grid, `${candidate.letter} — ${candidate.name}`, candidate.note, TW, TH,
+      (ctx) => {
+        sceneryBackdrop(ctx);
+        ctx.save();
+        ctx.translate(TW / 2, BASE);
+        if (candidate.id === 'control') {
+          drawSpeedSceneryItem(ctx, 'water-tower', { scale: 0.92 });
+        } else {
+          drawWaterTowerCandidate(ctx, candidate.id, 1);
+        }
+        ctx.restore();
+        ctx.fillStyle = 'rgba(255,255,255,.58)';
+        ctx.font = '5px ui-monospace, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('PLANTED · FAR MESA', 6, TH - 6);
+      }, { animated: false, hires: 6 });
+  }
+}
 // ------------------------------------------- hands: ring width, then shape
 // OPEN 9 Sep 2026. Two questions about the same disc, asked in this order
 // because the second builds on the first. Both ride seams in toons.js —

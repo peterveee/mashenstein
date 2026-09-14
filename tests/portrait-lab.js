@@ -193,7 +193,10 @@ labRun.route = { kind: 'tunnel' };
 labRun.playerGroundY = () => 312;
 labRun.player.y = 46;
 labRun.player.grounded = false;
-labRun.updateCamera(1 / 60);
+// The entry is eased now, like every other tunnel pan (the feet clamp is what
+// keeps a falling hero out of the shelf), so let it settle before reading the
+// composition it arrives at.
+for (let i = 0; i < 240 && (i === 0 || labRun.portraitFrameTransition?.active); i++) labRun.updateCamera(1 / 60);
 assert.equal(labRun.portraitFrameFitState.branch, 'tunnel-fixed',
   'portrait camera keeps an explicit fixed underground branch');
 assert.ok(labRun.portraitFrameFitState.pan < fixedPan,
@@ -371,8 +374,19 @@ assert.equal(highPathRun.portraitFrameFitState.highPath, false,
 assert.ok(Math.abs(highPathRun.camPan - surfacePanBeforeHighPath) < 1e-9,
   'airborne overlap leaves the resting camera parked');
 
+// PLENTY OF CLEARANCE IS NOT A HIGH PATH. Standing on a sixty-pixel island the
+// hero is higher in the frame and the lane is where it always is; the band
+// still has room above his crown, so nothing moves. Reframing this dragged the
+// world down and filled the bottom of the phone with ground.
 highPathRun.player.grounded = true;
 highPathRun.player.y = 0;
+highPathRun.updateCamera(1 / 60);
+assert.equal(highPathRun.portraitFrameFitState.highPath, false,
+  'a raised route with room above the hero is not a high-path composition');
+assert.ok(Math.abs(highPathRun.camPan - surfacePanBeforeHighPath) < 1e-9,
+  'and the resting camera stays parked on it');
+// Only a route that would push his crown past the top of the band earns it.
+highPathRun.playerGroundY = () => GROUND_Y - 200;
 highPathRun.updateCamera(1 / 60);
 const highPathTarget = highPathRun.portraitFrameFitState.pan;
 assert.ok(Math.abs(highPathRun.camPan - surfacePanBeforeHighPath)
@@ -386,7 +400,7 @@ for (let i = 0; i < 119; i++) {
   'high-path reframe moves toward its live target on every tick');
   previousHighPathPan = highPathRun.camPan;
 }
-const highPathFeet = screenYFor(GROUND_Y - 60, highPathRun.camZoom,
+const highPathFeet = screenYFor(GROUND_Y - 200, highPathRun.camZoom,
   highPathRun.camPan, highPathRun.camFloorY);
 const highPathEdges = highPathRun.portraitFrameFitState;
 const highPathRatio = (highPathFeet - highPathEdges.playableTop)

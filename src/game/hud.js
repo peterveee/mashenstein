@@ -984,22 +984,32 @@ export function speechChannel(run) {
     const named = !!run?.speech?.who;
     const cardH = (PORTRAIT_CHAT_MAX_LINES * PORTRAIT_CHAT_ROW
       + PORTRAIT_CHAT_PADDING) * speechScale;
+    const cardFurniture = named ? 40 : 12;
+    const maxWidth = Math.max(1,
+      layout.chatterWidth - cardFurniture * speechScale);
     const shelfInset = Math.max(0,
       (layout.messageShelfBottom - layout.messageShelfTop - cardH) / 2);
-    // The lower shelf is a compact chat log: a speaker face remains as the
-    // identity cue, but the repeated name row is removed so a full three-line
-    // page fits above the action labels on the shortest phone.
-    return {
+    const channel = {
       y: layout.messageShelfTop + shelfInset + 4 * speechScale,
-      maxWidth: Math.max(1, layout.chatterWidth - (named ? 40 * speechScale : 0)),
+      maxWidth,
       allowWide: true,
       centerX: layout.center,
       topY: layout.messageShelfTop,
       bottomY: layout.messageShelfBottom,
       maxLines: PORTRAIT_CHAT_MAX_LINES,
       compact: true,
+      // The panel scale is the existing three-line fit. It is intentionally
+      // stable: changing the type must not change the shelf or the ground.
       scale: speechScale,
+      panelScale: speechScale,
+      panelInset: 4 * speechScale,
+      cardWidth: layout.chatterWidth,
+      cardHeight: cardH,
     };
+    // The lower shelf is a compact chat log: a speaker face remains as the
+    // identity cue, but the repeated name row is removed so a full three-line
+    // page fits above the action labels on the shortest phone.
+    return { ...channel, textScale: portraitChatTextScale(run?.speech, channel) };
   }
   const left = PILL_X + statusCornerW(run);
   const half = Math.min(W / 2 - left, objLeft - W / 2);
@@ -1026,6 +1036,39 @@ function wrapSpeechAll(text, maxWidth, scale) {
   }
   if (line) lines.push(line);
   return lines;
+}
+
+// The portrait shelf is the same 62 CSS px for every line. Three wrapped rows
+// establish the minimum readable size; shorter pages are allowed to grow until
+// their row block fills that same plate. The cap keeps a tiny bark from turning
+// into a title card, while still making a one-line response materially larger.
+const PORTRAIT_CHAT_TEXT_MAX_SCALE = 3.25;
+function portraitChatTextScale(speech, channel) {
+  const panelScale = Number(channel?.panelScale ?? channel?.scale);
+  const cardHeight = Number(channel?.cardHeight);
+  const maxWidth = Number(channel?.maxWidth);
+  const maxLines = Math.max(1, Math.trunc(Number(channel?.maxLines) || 3));
+  if (!(panelScale > 0) || !(cardHeight > 0) || !(maxWidth > 0)) return panelScale || 1;
+  const page = Math.max(0, Math.trunc(Number(speech?.page) || 0));
+  const high = Math.max(panelScale,
+    Math.min(PORTRAIT_CHAT_TEXT_MAX_SCALE, panelScale * 1.45));
+  const pageLinesAt = (scale) => wrapSpeechAll(speech?.text, maxWidth, scale)
+    .slice(page * maxLines, page * maxLines + maxLines);
+  const fits = (scale) => {
+    const lines = pageLinesAt(scale);
+    const textHeight = lines.length * SPEECH_ROW * scale;
+    // Padding belongs to the fixed plate, not the variable type scale.
+    return textHeight + PORTRAIT_CHAT_PADDING * panelScale <= cardHeight + 1e-9;
+  };
+  if (!fits(panelScale)) return panelScale;
+  let lo = panelScale;
+  let hi = high;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function speechTextMaxWidth(speech, opts = {}) {
@@ -2010,9 +2053,10 @@ function portraitBonusText(run) {
 
 function drawPortraitActionShelf(ctx, run, layout) {
   const hero = HERO_BY_ID[run.relay?.current];
-  if (!hero?.ability) return;
-  // The power-ups ride above the discs; the hero's own power is the caption
-  // under the disc that fires it (see powerLabelY).
+  // The power-ups ride above the discs. The lower row is the control legend:
+  // JUMP, the hero's own power, and SLIDE all sit under their respective discs
+  // on one shared baseline. The labels are on the game HUD rather than the
+  // chrome canvas so they remain part of the same portrait layout contract.
   const powerups = Object.entries(run.powerups?.active || {})
     .map(([id]) => POWER_DEFS[id]?.name)
     .filter(Boolean)
@@ -2021,8 +2065,19 @@ function drawPortraitActionShelf(ctx, run, layout) {
   if (powerups.length) {
     drawPortraitNameStrip(ctx, layout, powerups, layout.actionY, '#f6c945');
   }
-  drawPortraitNameStrip(ctx, layout, [String(hero.ability.label || 'USE').toUpperCase()],
-    layout.powerLabelY, '#48e0c8');
+  const lowerLabels = [
+    ['jump', 'JUMP', ACTION_INK.jump],
+    ['use', hero?.ability?.label || 'USE', '#48e0c8'],
+    ['slide', 'SLIDE', ACTION_INK.slide],
+  ];
+  const frameScale = Number(layout.scale) > 0 ? Number(layout.scale) : 1;
+  for (const [id, label, ink] of lowerLabels) {
+    const control = layout.touch?.controls?.[id];
+    const centerX = control && Number.isFinite(Number(control.cx))
+      ? Number(control.cx) / frameScale : layout.center;
+    drawPortraitNameStrip(ctx, layout, [String(label).toUpperCase()],
+      layout.powerLabelY, ink, centerX);
+  }
 }
 
 function drawPortraitObjectiveNotice(ctx, run, layout, s) {
@@ -2058,7 +2113,7 @@ function drawPortraitObjectiveNotice(ctx, run, layout, s) {
 
 // One centred row of small name plates. Both action strips are the same object
 // in two places, so they scale, pad and shrink-to-fit identically.
-function drawPortraitNameStrip(ctx, layout, names, y, ink) {
+function drawPortraitNameStrip(ctx, layout, names, y, ink, centerX = null) {
   const pad = 6;
   const gap = 6;
   const available = Math.max(1, layout.right - layout.left);
@@ -2069,7 +2124,9 @@ function drawPortraitNameStrip(ctx, layout, names, y, ink) {
   const naturalWidth = groupWidth(s);
   if (naturalWidth > available) s = Math.max(1.25, s * available / naturalWidth);
   const totalWidth = groupWidth(s);
-  const x = (layout.left + layout.right - totalWidth) / 2;
+  const anchor = Number.isFinite(Number(centerX))
+    ? Number(centerX) : (layout.left + layout.right) / 2;
+  const x = anchor - totalWidth / 2;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
@@ -2730,24 +2787,26 @@ const SPEECH_CLEAR_GAP = 6;
  * over a hero.
  */
 function placeSpeechCard(baseY, cardX, cardW, cardH, avoid, bounds = null) {
+  const panelInset = Number.isFinite(Number(bounds?.panelInset))
+    ? Number(bounds.panelInset) : 4;
   const bounded = (candidate) => {
     let y = candidate;
     if (Number.isFinite(Number(bounds?.bottomY))) {
-      y = Math.min(y, Number(bounds.bottomY) + 4 - cardH);
+      y = Math.min(y, Number(bounds.bottomY) + panelInset - cardH);
     }
     if (Number.isFinite(Number(bounds?.topY))) {
-      y = Math.max(y, Number(bounds.topY) + 4);
+      y = Math.max(y, Number(bounds.topY) + panelInset);
     }
     return y;
   };
   if (!avoid) return bounded(baseY);
-  const top = baseY - 4;                       // the PLATE's top; baseY is its first row
+  const top = baseY - panelInset;              // the PLATE's top; baseY is its first row
   if (cardX + cardW <= avoid.x0 || cardX >= avoid.x1) return bounded(baseY);
   if (top + cardH <= avoid.y0 || top >= avoid.y1) return bounded(baseY);
   // The lowest the plate's top may sit: the bottom edge's own margin.
   const topLimit = H - EDGE_BOTTOM - 5 - cardH;
   const cleared = avoid.y1 + SPEECH_CLEAR_GAP;
-  return cleared <= topLimit ? bounded(cleared + 4) : bounded(baseY);
+  return cleared <= topLimit ? bounded(cleared + panelInset) : bounded(baseY);
 }
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
@@ -2802,7 +2861,11 @@ export function drawSpeech(ctx, speech, opts = {}) {
     ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)
     : drawPanel(ctx, px, py, pw, ph, 3));
   const baseY = opts.y ?? SPEECH_Y;
-  const s = opts.scale ?? 1;
+  const s = opts.textScale ?? opts.scale ?? 1;
+  const panelScale = opts.panelScale ?? opts.scale ?? s;
+  const panelInset = opts.panelInset ?? 4;
+  const fixedCardWidth = Number.isFinite(Number(opts.cardWidth));
+  const fixedCardHeight = Number.isFinite(Number(opts.cardHeight));
   const centerX = Number.isFinite(opts.centerX) ? opts.centerX : W / 2;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
@@ -2812,22 +2875,27 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // is centred here is the ink inside the plate.
   if (!isEgg && !hero) {
     // Three lines, not two: Eggshell's longest grievances need the room.
-    const lines = speechPageLines(speech, opts);
+    const textOpts = opts.textScale == null ? opts : { ...opts, scale: s };
+    const lines = speechPageLines(speech, textOpts);
     const tw = Math.max(...lines.map((line) => textWidth(line, s)));
     // Measured before it is placed: the card can only get out of the hero's way
     // once it knows how tall it is.
-    const cardX = centerX - tw / 2 - 6 * s;
-    const cardW = tw + 12 * s;
-    const cardH = 8 * s + lines.length * SPEECH_ROW * s;
+    const cardW = fixedCardWidth ? Number(opts.cardWidth) : tw + 12 * s;
+    const cardH = fixedCardHeight
+      ? Number(opts.cardHeight) : 8 * s + lines.length * SPEECH_ROW * s;
+    const cardX = fixedCardWidth ? centerX - cardW / 2 : centerX - tw / 2 - 6 * s;
     const y = placeSpeechCard(baseY, cardX, cardW, cardH, opts.avoid, opts);
-    panel(cardX, y - 4, cardW, cardH);
+    const panelTop = y - panelInset;
+    panel(cardX, panelTop, cardW, cardH);
     // Through textY, like every other panel in this file. The plate's 4 units
     // of top padding put the first ROW at y; the ink then has to be centred on
     // that row rather than having its 12-unit glyph box hung off the top of it,
     // which sat every tutorial line high on its own plate.
+    const textTop = fixedCardHeight
+      ? panelTop + (cardH - lines.length * SPEECH_ROW * s) / 2 : y;
     lines.forEach((line, i) =>
       rawDrawTextCentered(ctx, line, centerX,
-        textY(y + (i * SPEECH_ROW + SPEECH_ROW / 2) * s, s), ink, s));
+        textY(textTop + (i * SPEECH_ROW + SPEECH_ROW / 2) * s, s), ink, s));
     return;
   }
   // Named speakers: one block — portrait on the left, name as a header over
@@ -2836,17 +2904,21 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // omitted header row is removed from the card's measured height as well.
   const showName = speech.showName !== false && !opts.compact;
   const name = isEgg ? 'EGGSHELL' : hero.short;
-  const FACE_W = 20 * s, FACE_H = 15 * s, PAD = 7 * s, GAP = 6 * s;
+  const FACE_W = 20 * panelScale, FACE_H = 15 * panelScale;
+  const PAD = 7 * panelScale, GAP = 6 * panelScale;
   const ROW = SPEECH_ROW * s;
-  const lines = speechPageLines(speech, opts);
+  const textOpts = opts.textScale == null ? opts : { ...opts, scale: s };
+  const lines = speechPageLines(speech, textOpts);
   const tw = Math.max(showName ? textWidth(name, s) : 0, ...lines.map((line) => textWidth(line, s)));
   const textH = (lines.length + (showName ? 1 : 0)) * ROW;
-  const h = Math.max(FACE_H + 6 * s, textH + 8 * s);
-  const w = PAD + FACE_W + GAP + tw + PAD;
+  const h = fixedCardHeight ? Number(opts.cardHeight)
+    : Math.max(FACE_H + 6 * panelScale, textH + 8 * panelScale);
+  const w = fixedCardWidth ? Number(opts.cardWidth) : PAD + FACE_W + GAP + tw + PAD;
   const x = Math.round(centerX - w / 2);
   const y = placeSpeechCard(baseY, x, w, h, opts.avoid, opts);
-  panel(x, y - 4, w, h);
-  const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
+  const panelTop = y - panelInset;
+  panel(x, panelTop, w, h);
+  const faceY = Math.round(panelTop + (h - FACE_H) / 2);
   // Eggshell has no toon rig — his prop painter plays the portrait.
   if (isEgg) {
     // His FACE, not his machine: the card is him talking, and the tub would
@@ -2860,7 +2932,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
     }
   }
   const tx = x + PAD + FACE_W + GAP;
-  const textBlockTop = y - 4 + (h - textH) / 2;
+  const textBlockTop = panelTop + (h - textH) / 2;
   // Keep the portrait and the complete name/body block centred on the same
   // card midline. Each row is an ink band, not the 12-unit glyph canvas, so
   // use the shared HUD correction for the row midpoint instead of the old

@@ -294,6 +294,23 @@ let hillCacheSS = 0;
 const MARGIN = 2;
 const OVER = MARGIN + 4;
 const TREE_MAX = 18; // tallest crown, reserved as tile headroom
+
+// Small per-cabinet scenery accents. These are deliberately quieter than the
+// foreground gameplay art: a few strong silhouettes give each empty backdrop
+// a place without turning the horizon into confetti.
+const FROST_SCENERY_PALETTE = Object.freeze({
+  far: '#66879d', near: '#416579', snow: '#d8e9ef', shadow: '#304b5b',
+});
+const CRYPT_SCENERY_PALETTE = Object.freeze({
+  far: '#665371', near: '#4b3859', edge: '#2d2238', lit: '#876f8c',
+});
+const OFFICE_SCENERY_PALETTE = Object.freeze({
+  line: '#68748b', fill: 'rgba(191,198,212,0.58)', shade: '#9aa4b7',
+  warm: '#c28672',
+});
+const SURGE_SCENERY_PALETTE = Object.freeze({
+  pixel: '#687f9c', faux: '#5b777d', edge: '#273247', signal: '#d6c35a',
+});
 // Slower than the far hill layer's 0.15: the volcano sits behind that range,
 // so it must drift more slowly than the crests occluding it.
 const VOLCANO_PLX = 0.09;
@@ -395,6 +412,18 @@ export function ridgeYAt(screenX, camX, yBase, amp, wl, factor, opts) {
     !!(opts && opts.peak), !!(opts && opts.mesa), !!(opts && opts.dunes));
 }
 
+// The local tangent is part of the ridge attachment contract too. A feature
+// with a horizontal foot on a steep dune looks pinned into the face instead
+// of growing from it, even when its base y is sampled from the right curve.
+// Canvas rotation uses the same screen-space convention as the ridge: a
+// positive slope (down toward the right) is a positive rotation.
+function ridgeTangentAngle(px, yBase, amp, wl, period, peak, mesa, dunes) {
+  const step = 2;
+  const before = ridgeProfile(px - step, yBase, amp, wl, period, peak, mesa, dunes);
+  const after = ridgeProfile(px + step, yBase, amp, wl, period, peak, mesa, dunes);
+  return Math.atan2(after - before, step * 2);
+}
+
 // Split a peaked range at its natural low points so each visible mountain is
 // treated as its own paper sheet. Rounded near hills already have one crest per
 // period, so their period itself is one sheet and does not need extra cuts.
@@ -434,6 +463,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const rock = (opts && opts.rock) || null;
   const trees = (opts && opts.trees) || null;
   const treeScale = trees ? Math.max(0.8, Number(trees.scale) || 1) : 1;
+  const surface = (opts && opts.surface) || null;
   const paper = !!(opts && opts.paper);
   const paperMaterial = (opts && opts.paperMaterial) || 'cardstockClear';
   const paperStrength = paperStrengthsOf({
@@ -447,7 +477,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   // above the tile and get sliced flat by the canvas edge. Give the tile that
   // much headroom and blit from there.
   const tileTop = top - (trees ? TREE_MAX * treeScale : 0);
-  const key = `${H}|${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|`
+  const key = `${H}|${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|surface:${surface || ''}|`
     + (trees ? `${trees.leaf}${trees.trunk}|${treeScale}` : '')
     + `|paper:${paper ? 1 : 0}|material:${paperMaterial}|strength:${paperStrength}|strata:${strataKey}`;
   const SS = bakeSS();
@@ -536,6 +566,9 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
         x.fillRect(-OVER, y, period + OVER * 2, height);
         x.restore();
       }
+    }
+    if (surface) {
+      desertHillSurfaceDetails(x, ridge, ridgePath, period, yBase, amp, surface);
     }
     // Trunk-and-crown trees along the ridge, baked in so they cost nothing per
     // frame. Each is drawn at tx-period and tx+period too: the ridge is
@@ -1484,7 +1517,7 @@ function outsideView(ctx, x, margin) {
 export const __testing = {
   wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
   backgroundPaintBand,
-  sceneryBandPointY, desertThermals, ridgeYAt,
+  sceneryBandPointY, desertThermals, ridgeYAt, ridgeTangentAngle,
   plumberSceneryPlacements, plumberSceneryClusterForCell,
   plumberLandscapeSceneryOffset,
   get PLUMBER_LANDSCAPE_SCENERY_LIFT() { return PLUMBER_LANDSCAPE_SCENERY_LIFT; },
@@ -1504,12 +1537,15 @@ export const __testing = {
   get DESERT_LOWER_MESA_PHASE() { return DESERT_LOWER_MESA_PHASE; },
   desertHorizonPropKind,
   desertCactusPlacements,
+  desertNearSurfacePlacements,
+  frostSceneryPlacements, cryptSceneryPlacements, surgeSceneryPlacements,
   desertWaterTowerPlacements, desertSatelliteDishPlacements,
   desertWindTurbinePlacements, desertTelegraphPlacements,
   desertSpeedLimitPlacements,
   desertSignPostHeight,
   get DESERT_ROAD_SIGNS() { return DESERT_ROAD_SIGNS; },
   get DESERT_DUNES() { return DESERT_DUNES; },
+  get DESERT_MID_SURFACE() { return DESERT_MID_SURFACE; },
   get CACTUS_OF_DUNE() { return CACTUS_OF_DUNE; },
   get CACTUS_PORTRAIT_OF_DUNE() { return CACTUS_PORTRAIT_OF_DUNE; },
   get DESERT_SPEED_SIGN_RAISE() { return DESERT_SPEED_SIGN_RAISE; },
@@ -2209,9 +2245,18 @@ const DESERT_INK_FAR = '#667c79';
 // Background saguaros need to read as vegetation without becoming a foreground
 // hazard. A dark, desaturated sage separates them from the warm clay ridge.
 const DESERT_CACTUS_INK = '#3f5b43';
+const DESERT_SAGE_INK = '#526c54';
+const DESERT_SAGE_LIGHT = '#87936d';
 const DESERT_ROCK = '#a97558';
 const DESERT_ROCK_LIT = '#c69a6f';
 const DESERT_ROCK_DARK = '#755a58';
+// Near-ridge outcrops need their own small-scale contrast. Keep the butte and
+// its strata palette above unchanged; these colors give the occasional rock a
+// cleaner edge against the warm hill without making it a foreground hazard.
+const DESERT_NEAR_ROCK = '#b8845e';
+const DESERT_NEAR_ROCK_LIT = '#d9aa76';
+const DESERT_NEAR_ROCK_DARK = '#654e4a';
+const DESERT_NEAR_ROCK_EDGE = '#514840';
 // The near ridge's own numbers, in one place because THREE things read them:
 // the layer itself, the cacti standing on its crest, and the haze that has to
 // know where the horizon is.
@@ -2280,10 +2325,11 @@ function desertSunX(ctx, portrait = false) {
 const DESERT_FAR_PERIOD = Math.max(16, Math.round(Math.PI * DESERT_FAR.wl));
 const DESERT_MID = { amp: 78, wl: 200, factor: 0.22, color: '#b78f68' };
 const DESERT_RIDGE = { amp: 52, wl: 150, factor: 0.35 };
+const DESERT_MID_SURFACE = 'desert-mid-surface';
 
 // Sparse infrastructure gives the horizon a journey without turning it into
 // a row of props. The six-mesa cycle keeps the first and last slots blank:
-// one lower-mesa water tower, two high-mesa satellite dishes, and one
+// one lower-mesa water tower, two high-mesa satellite dish clusters, and one
 // high-mesa wind-farm slot fill the four later positions. All share the same
 // screen coverage and parallax travel as the mesa caps they stand on.
 const DESERT_HORIZON_PROP_SPACING = DESERT_FAR_PERIOD;
@@ -2303,11 +2349,12 @@ const DESERT_TELEGRAPH_PHASE = 24;
 const DESERT_WATER_TOWER_INK = '#526b72';
 const DESERT_WATER_TOWER_DARK = '#40545c';
 const DESERT_WATER_TOWER_LIGHT = '#9baba6';
-const DESERT_SATELLITE_INK = '#607875';
-const DESERT_SATELLITE_DARK = '#455f61';
-const DESERT_SATELLITE_LIGHT = '#a5b2a7';
-const DESERT_WIND_INK = '#647c79';
-const DESERT_WIND_DARK = '#496466';
+const DESERT_SATELLITE_INK = '#4f6f6a';
+const DESERT_SATELLITE_DARK = '#324e52';
+const DESERT_SATELLITE_LIGHT = '#99aa96';
+const DESERT_WIND_INK = '#566f70';
+const DESERT_WIND_DARK = '#344f54';
+const DESERT_WIND_LIGHT = '#9ca895';
 // Muted cool bands echo the larger butte's strata. They are intentionally
 // geological rather than green: the eye should read sedimentary layers, not a
 // row of vegetation, especially after the portrait mesa is shortened.
@@ -2409,6 +2456,46 @@ const DESERT_DUNES = [
   { at: 0.52, w: 0.40, h: 0.6 },
   { at: 0.81, w: 0.48, h: 0.84 },
 ];
+
+// Broad, broken contour bands give the middle hills a surface instead of
+// leaving them as three uninterrupted brown sine waves. They are painted
+// inside the cached ridge tile, and every y sample is taken from that tile's
+// own ridge function, so the bands inherit the exact same parallax and cannot
+// slide free of the hill when the camera moves.
+function desertHillSurfaceDetails(ctx, ridge, ridgePath, period, yBase, amp, surface) {
+  if (surface !== DESERT_MID_SURFACE) return;
+  const contour = ({ from, to, depth, phase, color, alpha, width }) => {
+    ctx.save();
+    ridgePath();
+    ctx.clip();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    const start = from * period;
+    const end = to * period;
+    for (let px = start; px <= end; px += 4) {
+      const wobble = Math.sin(px * 0.026 + phase) * 1.8
+        + Math.sin(px * 0.057 + phase * 0.63) * 0.75;
+      const y = ridge(px) + depth + wobble;
+      if (px === start) ctx.moveTo(px, y);
+      else ctx.lineTo(px, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // Three deliberately incomplete shelves. The gaps are long enough to read
+  // as erosion breaks, not a tiled stripe texture; the widths stay large so
+  // the details survive the small distant scale in portrait and landscape.
+  contour({ from: 0.04, to: 0.34, depth: 20, phase: 0.6,
+    color: DESERT_ROCK_LIT, alpha: 0.42, width: 4.5 });
+  contour({ from: 0.43, to: 0.78, depth: 34, phase: 2.4,
+    color: DESERT_ROCK_DARK, alpha: 0.30, width: 4.8 });
+  contour({ from: 0.70, to: 0.97, depth: 49, phase: 4.2,
+    color: DESERT_ROCK_LIT, alpha: 0.34, width: 4.2 });
+}
 
 // One vulture, wingspan `s`, centred on the origin.
 //
@@ -2541,19 +2628,19 @@ function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
 // cactus in a valley reads as floating in front of the hills — which is
 // exactly what it was doing.
 //
-// These are local background units. Landscape keeps the distant 30% landmark
-// relationship; portrait gets a stronger silhouette because its enlarged near
-// ridge occupies the readable part of the phone frame. The old twelve-pixel
-// floor and 46% burial made the shallow dune just as small and buried as the
-// tall one on a phone.
+// These are local background units. Landscape keeps the cacti substantial at
+// the distant 42% landmark relationship; portrait gets a stronger silhouette
+// because its enlarged near ridge occupies the readable part of the phone
+// frame. The two scales are deliberately larger now so the plants describe a
+// desert skyline instead of reading as punctuation on the dunes.
 // Most distant saguaros carry three side branches; the smaller third dune keeps
 // two so the repeated silhouette still has a little species-level variation.
 const PLANT = [{ arms: 3 }, { arms: 3 }, { arms: 2 }];
-const CACTUS_OF_DUNE = 0.3;
+const CACTUS_OF_DUNE = 0.42;
 // Portrait keeps the scenery at landscape physical scale, but the near ridge
 // occupies much more of the phone frame. Give its plants a stronger silhouette
 // there instead of letting the crop make them read as punctuation.
-const CACTUS_PORTRAIT_OF_DUNE = 0.62;
+const CACTUS_PORTRAIT_OF_DUNE = 0.72;
 const CACTUS_MIN_HEIGHT = 8;
 // Only let the ridge occlude the contact end. A deeper landscape bite made
 // the cactus look buried even though its crest sample was correct; keeping
@@ -2677,6 +2764,202 @@ function drawSaguaros(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   ctx.restore();
 }
 
+// Small, widely spaced foreground texture for the near ridge. These features
+// are intentionally placed between cactus peaks rather than sprinkled at
+// arbitrary screen positions: a rock or sage tuft gets the same ridge sample
+// and parallax offset as the hill it grows from.
+const DESERT_NEAR_SURFACE_FEATURES = Object.freeze([
+  Object.freeze([
+    Object.freeze({ at: 0.30, kind: 'rock', scale: 0.65 }),
+    Object.freeze({ at: 0.67, kind: 'sage', scale: 0.88 }),
+  ]),
+  Object.freeze([
+    Object.freeze({ at: 0.24, kind: 'sage', scale: 0.92 }),
+    Object.freeze({ at: 0.73, kind: 'rock', scale: 0.58 }),
+  ]),
+]);
+
+function desertNearSurfacePlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const { amp, wl, factor } = DESERT_RIDGE;
+  const period = Math.max(16, Math.round(Math.PI * wl));
+  const scroll = ridgeScroll(camX, factor, period);
+  const view = backgroundPaintCoverage(ctx);
+  const firstX = view.left - scroll.off - period;
+  const portrait = !!options.portrait;
+  const placements = [];
+  for (let tileIndex = 0, tileX = firstX;
+    tileX < view.right + period;
+    tileIndex++, tileX += period) {
+    const tile = scroll.tile + tileIndex - 1;
+    const set = DESERT_NEAR_SURFACE_FEATURES[
+      ((tile % DESERT_NEAR_SURFACE_FEATURES.length)
+        + DESERT_NEAR_SURFACE_FEATURES.length) % DESERT_NEAR_SURFACE_FEATURES.length
+    ];
+    for (let featureIndex = 0; featureIndex < set.length; featureIndex++) {
+      const spec = set[featureIndex];
+      // Rocks are a rare geological accent, not a second vegetation rhythm.
+      // Keep the alternating sage beat, but let an outcrop appear only every
+      // other ridge period so a long run does not acquire a dotted rock line.
+      if (spec.kind === 'rock'
+        && (((tile % 2) + 2) % 2) !== 0) continue;
+      const parity = (((tile + featureIndex) % 2) + 2) % 2;
+      const localX = spec.at * period + (parity ? 3 : -4);
+      const x = tileX + localX;
+      if (outsideView(ctx, x, 60)) continue;
+      const ridgeY = ridgeProfile(localX, layerBaseY, amp, wl, period,
+        false, false, true);
+      placements.push({
+        tile, featureIndex, kind: spec.kind, x, localX, ridgeY,
+        // Follow the hill's local slope and sink the foot a little into the
+        // fill. The ridge is painted after these details, so the buried edge
+        // is naturally occluded instead of needing a fake contact shadow.
+        baseY: ridgeY + 2,
+        angle: ridgeTangentAngle(localX, layerBaseY, amp, wl, period,
+          false, false, true),
+        scale: spec.scale * (portrait ? 1.10 : 1),
+      });
+    }
+  }
+  return placements;
+}
+
+function desertRockPath(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(-11, 0);
+  ctx.lineTo(-9, -5);
+  ctx.lineTo(-3, -10);
+  ctx.lineTo(4, -8);
+  ctx.lineTo(10, -3);
+  ctx.lineTo(11, 0);
+  ctx.closePath();
+}
+
+function drawDesertRockShape(ctx, color = null) {
+  desertRockPath(ctx);
+  if (color) ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawDesertRockDetail(ctx) {
+  ctx.fillStyle = DESERT_NEAR_ROCK;
+  drawDesertRockShape(ctx, DESERT_NEAR_ROCK);
+  ctx.fillStyle = DESERT_NEAR_ROCK_DARK;
+  ctx.beginPath();
+  ctx.moveTo(-11, 0);
+  ctx.lineTo(-5, -4);
+  ctx.lineTo(1, -2);
+  ctx.lineTo(6, -5);
+  ctx.lineTo(11, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = DESERT_NEAR_ROCK_LIT;
+  ctx.beginPath();
+  ctx.moveTo(-8, -5);
+  ctx.lineTo(-3, -10);
+  ctx.lineTo(4, -8);
+  ctx.lineTo(7, -4);
+  ctx.lineTo(1, -2);
+  ctx.lineTo(-5, -4);
+  ctx.closePath();
+  ctx.fill();
+  // A single restrained edge is what separates the small outcrop from the
+  // hill. It follows the same rotated local geometry, so it cannot float or
+  // become a dark sticker when the ridge turns.
+  desertRockPath(ctx);
+  ctx.strokeStyle = DESERT_NEAR_ROCK_EDGE;
+  ctx.lineWidth = 0.85;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+function drawDesertRockSilhouette(ctx) {
+  desertRockPath(ctx);
+}
+
+// A sage tuft is a low starburst, not a miniature saguaro. Pointed blades
+// radiate from one buried crown with deliberately uneven heights and spread;
+// the wide side points do most of the silhouette work at the distant scale.
+const DESERT_SAGE_BLADES = Object.freeze([
+  Object.freeze([-16, -3, 1.8]),
+  Object.freeze([-13, -8, 1.8]),
+  Object.freeze([-9, -12, 1.7]),
+  Object.freeze([-5, -16, 1.6]),
+  Object.freeze([-1, -13, 1.5]),
+  Object.freeze([4, -17, 1.6]),
+  Object.freeze([8, -12, 1.7]),
+  Object.freeze([13, -8, 1.8]),
+  Object.freeze([16, -3, 1.8]),
+]);
+
+function drawDesertSageShape(ctx, color = DESERT_SAGE_INK) {
+  ctx.fillStyle = color;
+  for (const [tipX, tipY, halfWidth] of DESERT_SAGE_BLADES) {
+    const length = Math.hypot(tipX, tipY) || 1;
+    const nx = (-tipY / length) * halfWidth;
+    const ny = (tipX / length) * halfWidth;
+    ctx.beginPath();
+    ctx.moveTo(nx, ny);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(-nx, -ny);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Keep the crown low and broad so the points do not leave a visible trunk.
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 4.5, 2.1, 0, 0, TAU_BG);
+  ctx.fill();
+}
+
+function drawDesertSageSilhouette(ctx) {
+  drawDesertSageShape(ctx, PAPER_DEEP_COLOR);
+}
+
+function drawDesertNearSurfaceFeature(ctx, feature, options = {}) {
+  const paper = !!options.paper;
+  const paperMaterial = options.paperMaterial || 'cardstockClear';
+  ctx.save();
+  ctx.translate(feature.x, feature.baseY);
+  ctx.scale(feature.scale, feature.scale);
+  const silhouette = feature.kind === 'rock'
+    ? () => drawDesertRockSilhouette(ctx)
+    : () => drawDesertSageSilhouette(ctx);
+  const detail = () => {
+    if (feature.kind === 'rock') drawDesertRockDetail(ctx);
+    else {
+      drawDesertSageShape(ctx, DESERT_SAGE_INK);
+      ctx.save();
+      ctx.globalAlpha = 0.62;
+      drawDesertSageShape(ctx, DESERT_SAGE_LIGHT);
+      ctx.restore();
+    }
+  };
+  // The rock's foot is authored along its local x-axis. Rotating that axis to
+  // the ridge tangent makes the outcrop emerge from the hill rather than
+  // cutting across its slope like a loose sticker.
+  ctx.rotate(feature.angle || 0);
+  if (paper) {
+    paperShadowPass(ctx, silhouette, PAPER_DEEP_OFFSET,
+      PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, silhouette, PAPER_CONTACT_OFFSET,
+      PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  detail();
+  if (paper) {
+    paperFinishPass(ctx, silhouette, sharedPaperPatternFor(ctx, paperMaterial), {
+      grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
+      rim: false,
+    });
+  }
+  ctx.restore();
+}
+
+function drawDesertNearSurfaceFeatures(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const placements = desertNearSurfacePlacements(ctx, camX, layerBaseY, options);
+  for (const feature of placements) {
+    drawDesertNearSurfaceFeature(ctx, feature, options);
+  }
+}
+
 function periodicDesertXs(ctx, camX, factor, spacing, phase, margin = 96) {
   const view = backgroundPaintCoverage(ctx);
   const travel = camX * factor * ZOOM;
@@ -2688,6 +2971,265 @@ function periodicDesertXs(ctx, camX, factor, spacing, phase, margin = 96) {
     if (!outsideView(ctx, x, margin)) points.push({ index, x });
   }
   return points;
+}
+
+// The non-desert cabinets use the same planting rule as Speed: choose a local
+// point inside the ridge tile, sample that exact tile-local curve, and let the
+// hill paint over the last pixel of the foot. The art changes by cabinet; the
+// attachment contract does not.
+const FROST_SCENERY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'pine', at: 0.24, scale: 0.82 }),
+  Object.freeze({ kind: 'pine', at: 0.72, scale: 1.00 }),
+]);
+const CRYPT_SCENERY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'dead-tree', at: 0.28, scale: 0.92 }),
+  Object.freeze({ kind: 'stone', at: 0.72, scale: 0.72 }),
+]);
+const SURGE_SCENERY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'signal-pylon', at: 0.48, scale: 0.90 }),
+  Object.freeze({ kind: 'signal-pylon', at: 0.92, scale: 0.72 }),
+]);
+
+function ridgeSceneryPlacements(ctx, camX, layerBaseY, options = {}) {
+  const amp = Number(options.amp) || 40;
+  const wl = Number(options.wl) || 70;
+  const factor = Number(options.factor) || 0.3;
+  const features = Array.isArray(options.features) && options.features.length
+    ? options.features : FROST_SCENERY_FEATURES;
+  const period = Math.max(16, Math.round(Math.PI * wl));
+  const scroll = ridgeScroll(camX, factor, period);
+  const view = backgroundPaintCoverage(ctx);
+  const firstX = view.left - scroll.off - period;
+  const placements = [];
+  for (let tileIndex = 0, tileX = firstX;
+    tileX < view.right + period;
+    tileIndex++, tileX += period) {
+    const tile = scroll.tile + tileIndex - 1;
+    const spec = features[((tile % features.length) + features.length) % features.length];
+    const parity = (((tile + tileIndex) % 2) + 2) % 2;
+    const localX = spec.at * period + (parity ? 3 : -3);
+    const x = tileX + localX;
+    if (outsideView(ctx, x, 48)) continue;
+    const crest = ridgeProfile(localX, layerBaseY, amp, wl, period,
+      !!options.peak, !!options.mesa, !!options.dunes);
+    placements.push({
+      ...spec, tile, localX, x, crest, baseY: crest + 1,
+      angle: ridgeTangentAngle(localX, layerBaseY, amp, wl, period,
+        !!options.peak, !!options.mesa, !!options.dunes),
+    });
+  }
+  return placements;
+}
+
+function frostSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const far = options.layer === 'far';
+  return ridgeSceneryPlacements(ctx, camX, layerBaseY, {
+    amp: far ? 66 : 40,
+    wl: far ? 130 : 70,
+    factor: far ? 0.12 : 0.3,
+    features: FROST_SCENERY_FEATURES,
+  });
+}
+
+function cryptSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const far = options.layer === 'far';
+  return ridgeSceneryPlacements(ctx, camX, layerBaseY, {
+    amp: far ? 55 : 32,
+    wl: far ? 100 : 56,
+    factor: far ? 0.15 : 0.35,
+    features: CRYPT_SCENERY_FEATURES,
+  });
+}
+
+function surgeSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  return ridgeSceneryPlacements(ctx, camX, layerBaseY, {
+    amp: Number(options.amp) || 50,
+    wl: Number(options.wl) || 110,
+    factor: Number(options.factor) || 0.12,
+    features: SURGE_SCENERY_FEATURES,
+  });
+}
+
+function frostPineShape(ctx, palette = FROST_SCENERY_PALETTE) {
+  ctx.fillStyle = palette.shadow || palette.trunk;
+  ctx.fillRect(-1.2, -18, 2.4, 18);
+  ctx.fillStyle = palette.far || palette.leaf;
+  for (const [tipY, halfWidth, shoulderY] of [[-18, 5, -11], [-13, 7, -5], [-8, 9, -1]]) {
+    ctx.beginPath();
+    ctx.moveTo(0, tipY);
+    ctx.lineTo(halfWidth, shoulderY);
+    ctx.lineTo(-halfWidth, shoulderY);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = palette.snow;
+  ctx.beginPath();
+  ctx.moveTo(0, -18);
+  ctx.lineTo(2.2, -14.3);
+  ctx.lineTo(-1.2, -14.3);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawFrostSceneryFeature(ctx, feature, options = {}) {
+  const palette = options.layer === 'far'
+    ? { ...FROST_SCENERY_PALETTE, far: FROST_SCENERY_PALETTE.far }
+    : { ...FROST_SCENERY_PALETTE, far: FROST_SCENERY_PALETTE.near };
+  ctx.save();
+  ctx.translate(feature.x, feature.baseY);
+  ctx.scale(feature.scale, feature.scale);
+  if (options.paper) {
+    paperShadowPass(ctx, () => frostPineShape(ctx, { far: PAPER_DEEP_COLOR, shadow: PAPER_DEEP_COLOR, snow: PAPER_DEEP_COLOR }),
+      PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, () => frostPineShape(ctx, { far: PAPER_CONTACT_COLOR, shadow: PAPER_CONTACT_COLOR, snow: PAPER_CONTACT_COLOR }),
+      PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  frostPineShape(ctx, palette);
+  if (options.paper) {
+    paperFinishPass(ctx, () => frostPineShape(ctx, { far: palette.far, shadow: palette.shadow, snow: palette.snow }),
+      sharedPaperPatternFor(ctx, options.paperMaterial || 'cardstockClear'), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA, rim: false,
+      });
+  }
+  ctx.restore();
+}
+
+function drawFrostScenery(ctx, camX, layerBaseY, options = {}) {
+  for (const feature of frostSceneryPlacements(ctx, camX, layerBaseY, options)) {
+    drawFrostSceneryFeature(ctx, feature, options);
+  }
+}
+
+function cryptDeadTreeShape(ctx, color = CRYPT_SCENERY_PALETTE.near) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.moveTo(0, 1); ctx.lineTo(-1, -23);
+  ctx.moveTo(-1, -10); ctx.lineTo(-10, -17); ctx.lineTo(-14, -16);
+  ctx.moveTo(-1, -15); ctx.lineTo(7, -21); ctx.lineTo(11, -20);
+  ctx.moveTo(-1, -6); ctx.lineTo(6, -11);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function cryptStoneShape(ctx, fill = CRYPT_SCENERY_PALETTE.near) {
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(-8, 1); ctx.lineTo(-7, -10); ctx.quadraticCurveTo(-6, -16, 0, -17);
+  ctx.quadraticCurveTo(6, -16, 7, -10); ctx.lineTo(8, 1); ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = CRYPT_SCENERY_PALETTE.lit;
+  ctx.fillRect(-4.5, -10, 1.5, 6);
+}
+
+function drawCryptSceneryFeature(ctx, feature, options = {}) {
+  const far = options.layer === 'far';
+  const color = far ? CRYPT_SCENERY_PALETTE.far : CRYPT_SCENERY_PALETTE.near;
+  ctx.save();
+  ctx.translate(feature.x, feature.baseY);
+  ctx.scale(feature.scale, feature.scale);
+  if (feature.kind === 'stone') {
+    ctx.rotate(feature.angle || 0);
+    cryptStoneShape(ctx, color);
+    ctx.strokeStyle = CRYPT_SCENERY_PALETTE.edge;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  } else {
+    cryptDeadTreeShape(ctx, color);
+  }
+  ctx.restore();
+}
+
+function drawCryptScenery(ctx, camX, layerBaseY, options = {}) {
+  for (const feature of cryptSceneryPlacements(ctx, camX, layerBaseY, options)) {
+    drawCryptSceneryFeature(ctx, feature, options);
+  }
+}
+
+function drawOfficeBuilding(ctx, building, baseY = GROUND_Y - 2) {
+  const { x, w, h, roof, variant = 0 } = building;
+  const top = baseY - h;
+  ctx.fillStyle = OFFICE_SCENERY_PALETTE.fill;
+  ctx.fillRect(x, top, w, h);
+  ctx.strokeStyle = OFFICE_SCENERY_PALETTE.line;
+  ctx.lineWidth = 1.3;
+  ctx.strokeRect(x + 0.5, top + 0.5, w - 1, h - 1);
+  ctx.beginPath();
+  if (roof === 'step') {
+    ctx.moveTo(x, top); ctx.lineTo(x + w * 0.28, top - 5);
+    ctx.lineTo(x + w * 0.72, top - 5); ctx.lineTo(x + w, top);
+  } else {
+    ctx.moveTo(x, top); ctx.lineTo(x + w, top);
+  }
+  ctx.stroke();
+  const cols = w > 45 ? 3 : 2;
+  const rows = h > 48 ? 3 : 2;
+  ctx.fillStyle = variant % 2 ? OFFICE_SCENERY_PALETTE.shade : OFFICE_SCENERY_PALETTE.line;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const ww = 4;
+      const wh = 3;
+      const wx = x + 8 + col * ((w - 16 - ww) / Math.max(1, cols - 1));
+      const wy = top + 12 + row * ((h - 22 - wh) / Math.max(1, rows - 1));
+      ctx.fillRect(wx, wy, ww, wh);
+    }
+  }
+  if (roof === 'antenna') {
+    ctx.strokeStyle = OFFICE_SCENERY_PALETTE.warm;
+    ctx.beginPath(); ctx.moveTo(x + w * 0.5, top); ctx.lineTo(x + w * 0.5, top - 13);
+    ctx.moveTo(x + w * 0.5 - 5, top - 9); ctx.lineTo(x + w * 0.5 + 5, top - 9);
+    ctx.stroke();
+  }
+}
+
+function drawOfficeScenery(ctx) {
+  const coverage = backgroundPaintCoverage(ctx);
+  const left = coverage.left;
+  const width = coverage.width;
+  const buildings = [
+    { x: left + width * 0.08, w: width * 0.13, h: 38, roof: 'flat', variant: 0 },
+    { x: left + width * 0.25, w: width * 0.15, h: 56, roof: 'antenna', variant: 1 },
+    { x: left + width * 0.45, w: width * 0.12, h: 31, roof: 'step', variant: 0 },
+    { x: left + width * 0.61, w: width * 0.17, h: 48, roof: 'flat', variant: 1 },
+    { x: left + width * 0.83, w: width * 0.12, h: 64, roof: 'antenna', variant: 0 },
+  ];
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  for (const building of buildings) drawOfficeBuilding(ctx, building);
+  ctx.restore();
+}
+
+function surgePylonShape(ctx, palette = SURGE_SCENERY_PALETTE) {
+  ctx.save();
+  ctx.strokeStyle = palette.edge;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'square';
+  ctx.beginPath();
+  ctx.moveTo(0, 1); ctx.lineTo(0, -26);
+  ctx.moveTo(-7, -7); ctx.lineTo(7, -7);
+  ctx.moveTo(-10, -17); ctx.lineTo(10, -17);
+  ctx.stroke();
+  ctx.fillStyle = palette.signal;
+  ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(-8, -18); ctx.lineTo(8, -18); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = palette.pixel || palette.faux;
+  ctx.fillRect(-3, -4, 6, 4);
+  ctx.restore();
+}
+
+function drawSurgeScenery(ctx, camX, layerBaseY, options = {}) {
+  const palette = options.mode === 'pixel'
+    ? { ...SURGE_SCENERY_PALETTE, edge: SURGE_SCENERY_PALETTE.edge, pixel: SURGE_SCENERY_PALETTE.pixel }
+    : SURGE_SCENERY_PALETTE;
+  for (const feature of surgeSceneryPlacements(ctx, camX, layerBaseY, options)) {
+    ctx.save();
+    ctx.translate(feature.x, feature.baseY);
+    ctx.scale(feature.scale, feature.scale);
+    surgePylonShape(ctx, palette);
+    ctx.restore();
+  }
 }
 
 function desertFarAmplitude(options = {}) {
@@ -2717,10 +3259,12 @@ function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options =
         + DESERT_HORIZON_PROP_SLOTS) % DESERT_HORIZON_PROP_SLOTS;
       const propPhase = kind === 'water' ? lowerPhase : highPhase;
       // A rare wind slot is a tiny three-turbine farm rather than a lone
-      // stick. All anchors stay on the same broad cap, but each base is still
-      // sampled at its own x so the contract remains correct if the cap is
-      // ever narrowed.
-      const offsets = kind === 'wind' ? [-42, 0, 42] : [0];
+      // stick. The high-mesa dish slots use the same readable three-shape
+      // grouping as the mockup. All anchors stay on the same broad cap, but
+      // each base is still sampled at its own x so the contract remains
+      // correct if the cap is ever narrowed.
+      const offsets = kind === 'wind' ? [-42, 0, 42]
+        : kind === 'dish' ? [-24, 0, 24] : [0];
       return offsets.map((offset, variant) => {
         const propX = x + propPhase - highPhase + offset;
         if (outsideView(ctx, propX, 120)) return null;
@@ -2733,7 +3277,8 @@ function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options =
           baseY: ridgeYAt(propX, camX, layerBaseY, desertFarAmplitude(options),
             DESERT_FAR.wl, DESERT_FAR.factor,
             { mesa: true, coverageLeft: view.left }) + 2,
-          scale: kind === 'water' ? 0.92 : kind === 'dish' ? 0.86
+          scale: kind === 'water' ? 0.92
+            : kind === 'dish' ? (variant === 1 ? 0.86 : 0.68)
             : (variant === 1 ? 0.82 : 0.72),
         };
       }).filter(Boolean);
@@ -2935,6 +3480,23 @@ function satelliteDishBowl(ctx) {
   ctx.closePath();
 }
 
+function satelliteDishBase(ctx, color, highlight = null) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(-11, 1);
+  ctx.lineTo(-8, -3);
+  ctx.lineTo(8, -3);
+  ctx.lineTo(11, 1);
+  ctx.lineTo(9, 3);
+  ctx.lineTo(-9, 3);
+  ctx.closePath();
+  ctx.fill();
+  if (highlight) {
+    ctx.fillStyle = highlight;
+    ctx.fillRect(-6.5, -2.4, 13, 1.1);
+  }
+}
+
 function satelliteDishMast(ctx, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.8;
@@ -2979,10 +3541,61 @@ export function satelliteDishScanAngle(t = 0, index = 0, reducedMotion = false) 
   return Math.sin(time * 1.35 + Number(index || 0) * 1.7) * 0.34;
 }
 
+function satelliteDishFeedPoint(dish, options = {}) {
+  const scanAngle = satelliteDishScanAngle(
+    options.t,
+    dish.index + Number(dish.variant || 0) * 0.75,
+    options.reducedMotion,
+  );
+  const cos = Math.cos(scanAngle);
+  const sin = Math.sin(scanAngle);
+  // The feed dot is at (13,-39), rotated around the shared head pivot (0,-28)
+  // by the same angle as the bowl and arm. Apply the painter's non-uniform
+  // portrait scale only after that local rotation, exactly as drawSatelliteDish.
+  const localX = 13 * cos + 11 * sin;
+  const localY = -28 + 13 * sin - 11 * cos;
+  const portraitHeightScale = options.portrait ? 1.18 : 1;
+  return {
+    x: dish.x + localX * dish.scale,
+    y: dish.baseY + localY * dish.scale * portraitHeightScale,
+  };
+}
+
+function drawSatelliteSignalLinks(ctx, dishes, options = {}) {
+  const clusters = new Map();
+  for (const dish of dishes) {
+    const key = Number(dish.index);
+    if (!clusters.has(key)) clusters.set(key, []);
+    clusters.get(key).push(dish);
+  }
+  for (const cluster of clusters.values()) {
+    if (cluster.length < 3) continue;
+    cluster.sort((a, b) => Number(a.variant || 0) - Number(b.variant || 0));
+    const points = cluster.map((dish) => satelliteDishFeedPoint(dish, options));
+    ctx.save();
+    ctx.globalAlpha = 0.74 * (options.paper ? 0.12 : 0.18);
+    ctx.strokeStyle = DESERT_SATELLITE_LIGHT;
+    ctx.lineWidth = 1.15;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawSatelliteDish(ctx, dish, options = {}) {
   const paper = !!options.paper;
   const paperMaterial = options.paperMaterial || 'cardstockClear';
-  const scanAngle = satelliteDishScanAngle(options.t, dish.index, options.reducedMotion);
+  const scanAngle = satelliteDishScanAngle(
+    options.t,
+    dish.index + Number(dish.variant || 0) * 0.75,
+    options.reducedMotion,
+  );
   ctx.save();
   ctx.translate(dish.x, dish.baseY);
   const portraitHeightScale = options.portrait ? 1.18 : 1;
@@ -2990,11 +3603,13 @@ function drawSatelliteDish(ctx, dish, options = {}) {
   if (paper) {
     ctx.save();
     ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
+    satelliteDishBase(ctx, PAPER_DEEP_COLOR);
     satelliteDishMast(ctx, PAPER_DEEP_COLOR);
     satelliteDishHead(ctx, scanAngle, () => satelliteDishArm(ctx, PAPER_DEEP_COLOR));
     ctx.restore();
     ctx.save();
     ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
+    satelliteDishBase(ctx, PAPER_CONTACT_COLOR);
     satelliteDishMast(ctx, PAPER_CONTACT_COLOR);
     satelliteDishHead(ctx, scanAngle, () => satelliteDishArm(ctx, PAPER_CONTACT_COLOR));
     ctx.restore();
@@ -3005,6 +3620,7 @@ function drawSatelliteDish(ctx, dish, options = {}) {
       () => satelliteDishBowl(ctx)), PAPER_CONTACT_OFFSET,
       PAPER_LANDMARK_CONTACT_COLOR);
   }
+  satelliteDishBase(ctx, DESERT_SATELLITE_DARK, DESERT_SATELLITE_LIGHT);
   satelliteDishMast(ctx, DESERT_SATELLITE_DARK);
   satelliteDishHead(ctx, scanAngle, () => satelliteDishArm(ctx, DESERT_SATELLITE_DARK));
   satelliteDishHead(ctx, scanAngle, () => {
@@ -3036,20 +3652,31 @@ function drawSatelliteDish(ctx, dish, options = {}) {
 function drawSatelliteDishes(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   ctx.save();
   ctx.globalAlpha = 0.74;
-  for (const dish of desertSatelliteDishPlacements(ctx, camX, layerBaseY, options)) {
+  const dishes = desertSatelliteDishPlacements(ctx, camX, layerBaseY, options);
+  drawSatelliteSignalLinks(ctx, dishes, options);
+  for (const dish of dishes) {
     drawSatelliteDish(ctx, dish, options);
   }
   ctx.restore();
 }
 
 function windTurbineMast(ctx, color) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.8;
+  // A tapered filled tower reads as a wind turbine at this scale; two thin
+  // crossbars retain the hand-built roadside silhouette without turning the
+  // mast into a telephone pole.
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.moveTo(-7, 0); ctx.lineTo(0, -39);
-  ctx.moveTo(7, 0); ctx.lineTo(0, -39);
-  ctx.moveTo(-4, -14); ctx.lineTo(4, -14);
-  ctx.moveTo(-6, -27); ctx.lineTo(6, -27);
+  ctx.moveTo(-5.5, 0);
+  ctx.lineTo(-1.15, -39);
+  ctx.lineTo(1.15, -39);
+  ctx.lineTo(5.5, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.05;
+  ctx.beginPath();
+  ctx.moveTo(-3.8, -14); ctx.lineTo(3.8, -14);
+  ctx.moveTo(-4.7, -27); ctx.lineTo(4.7, -27);
   ctx.stroke();
 }
 
@@ -3058,7 +3685,7 @@ export function windTurbineRotation(t = 0, index = 0, reducedMotion = false) {
   const time = Number(t);
   if (!Number.isFinite(time)) return 0;
   // A quick, readable three-blade turn. Slight phase offsets keep a distant
-  // pair from looking mechanically stamped while every frame shares one clock.
+  // cluster from looking mechanically stamped while every frame shares one clock.
   return time * 2.4 + Number(index || 0) * 0.22;
 }
 
@@ -3111,7 +3738,7 @@ function drawWindTurbine(ctx, turbine, options = {}) {
   }
   windTurbineMast(ctx, DESERT_WIND_DARK);
   windTurbineRotor(ctx, DESERT_WIND_INK, rotation);
-  ctx.fillStyle = DESERT_SATELLITE_LIGHT;
+  ctx.fillStyle = DESERT_WIND_LIGHT;
   ctx.beginPath();
   ctx.arc(0, -41, 2, 0, TAU_BG);
   ctx.fill();
@@ -3407,6 +4034,134 @@ function drawSpeedLimitSigns(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
     drawRoadSign(ctx, sign, options);
   }
   ctx.restore();
+}
+
+// The authoring gallery needs to inspect the things that live inside a level
+// without recreating their silhouettes. Keep this small adapter beside the
+// real painters: each item below still goes through the same source path and
+// the same authored scale/alpha used by the Speed Zone background.
+export function drawSpeedSceneryItem(ctx, kind, options = {}) {
+  const t = Number.isFinite(Number(options.t)) ? Number(options.t) : 0;
+  const layerOptions = { ...options, t };
+  switch (kind) {
+    case 'cactus': {
+      const height = Number.isFinite(Number(options.height)) ? Number(options.height) : 22;
+      const cactus = {
+        x: 0,
+        baseY: 0,
+        height,
+        lineWidth: Math.max(CACTUS_MIN_STROKE, height * CACTUS_STROKE),
+        flip: 1,
+        arms: 3,
+      };
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = DESERT_CACTUS_INK;
+      drawCactusShape(ctx, cactus);
+      ctx.restore();
+      return;
+    }
+    case 'rock':
+    case 'sage': {
+      const scale = Number.isFinite(Number(options.scale)) ? Number(options.scale) : 1;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      drawDesertNearSurfaceFeature(ctx, {
+        x: 0,
+        baseY: 0,
+        scale,
+        angle: Number.isFinite(Number(options.angle)) ? Number(options.angle) : 0,
+        kind,
+      }, layerOptions);
+      ctx.restore();
+      return;
+    }
+    case 'water-tower':
+      ctx.save();
+      ctx.globalAlpha = 0.78;
+      drawWaterTower(ctx, { x: 0, baseY: 0, scale: options.scale || 0.92 }, layerOptions);
+      ctx.restore();
+      return;
+    case 'satellite-dish':
+      ctx.save();
+      ctx.globalAlpha = 0.74;
+      drawSatelliteDish(ctx, { x: 0, baseY: 0, scale: options.scale || 0.86, index: 0, variant: 1 }, layerOptions);
+      ctx.restore();
+      return;
+    case 'satellite-dish-cluster': {
+      const dishes = [-24, 0, 24].map((x, variant) => ({
+        x,
+        baseY: 0,
+        scale: variant === 1 ? 0.86 : 0.68,
+        index: 0,
+        variant,
+      }));
+      ctx.save();
+      ctx.globalAlpha = 0.74;
+      drawSatelliteSignalLinks(ctx, dishes, layerOptions);
+      for (const dish of dishes) drawSatelliteDish(ctx, dish, layerOptions);
+      ctx.restore();
+      return;
+    }
+    case 'wind-turbine':
+      ctx.save();
+      ctx.globalAlpha = 0.70;
+      drawWindTurbine(ctx, { x: 0, baseY: 0, scale: options.scale || 0.82, index: 0, variant: 1 }, layerOptions);
+      ctx.restore();
+      return;
+    case 'telegraph-pole':
+      ctx.save();
+      ctx.globalAlpha = 0.76;
+      drawTelegraphPole(ctx, { x: 0, baseY: 0, topY: -40 });
+      ctx.restore();
+      return;
+    case 'road-sign': {
+      const source = DESERT_ROAD_SIGNS[2];
+      const sign = {
+        ...source,
+        x: 0,
+        baseY: 0,
+        postFootY: source.scale * 33,
+      };
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      drawRoadSign(ctx, sign, layerOptions);
+      ctx.restore();
+      return;
+    }
+    default:
+      throw new Error(`Unknown Speed Zone scenery item: ${kind}`);
+  }
+}
+
+// The same small adapter for the scenery owned by the other cabinets. Keeping
+// these calls next to the production painters means the gallery can review a
+// prop at source-backed scale without inventing a second silhouette.
+export function drawLevelSceneryItem(ctx, kind, options = {}) {
+  const scale = Number.isFinite(Number(options.scale)) ? Number(options.scale) : 1;
+  switch (kind) {
+    case 'frost-pine':
+      drawFrostSceneryFeature(ctx, { x: 0, baseY: 0, scale }, { layer: options.layer || 'near' });
+      return;
+    case 'crypt-dead-tree':
+      drawCryptSceneryFeature(ctx, { x: 0, baseY: 0, scale, kind: 'dead-tree' }, { layer: options.layer || 'near' });
+      return;
+    case 'crypt-stone':
+      drawCryptSceneryFeature(ctx, { x: 0, baseY: 0, scale, kind: 'stone', angle: options.angle || 0 }, { layer: options.layer || 'near' });
+      return;
+    case 'office-building':
+      drawOfficeBuilding(ctx, { x: -26, w: 52, h: 43, roof: options.roof || 'antenna', variant: 1 }, 0);
+      return;
+    case 'surge-pylon':
+      ctx.save();
+      ctx.scale(scale, scale);
+      surgePylonShape(ctx, SURGE_SCENERY_PALETTE);
+      ctx.restore();
+      return;
+    default:
+      throw new Error(`Unknown level scenery item: ${kind}`);
+  }
 }
 
 // Dust devils: thin ochre columns wandering the middle distance.
@@ -3868,6 +4623,11 @@ function pixelPack(settings) {
           { peak: true, rock: '#5e6e7c', snow: '#b9c8d8', paper: paperPreview,
             paperMaterial: paperPreset, paperStrength: paperStrengths.scenery });
       } else {
+        if (cab.id === 'surge') {
+          drawSurgeScenery(ctx, camX, farBaseY, {
+            amp: 60, wl: 90, factor: 0.15, mode: 'pixel',
+          });
+        }
         parallaxHills(ctx, camX, cab.far, farBaseY, 60, 90, 0.15);
       }
       ctx.restore();
@@ -4033,6 +4793,11 @@ function faux3dPack(settings) {
           t, reducedMotion: reduced,
         });
       }
+      if (!desert && cab.id === 'surge') {
+        drawSurgeScenery(ctx, camX, farBaseY, {
+          amp: farAmp, wl: 110, factor: 0.12, mode: 'faux',
+        });
+      }
       parallaxHills(ctx, camX, cab.far, farBaseY,
         farAmp, desert ? DESERT_FAR.wl : 110,
         desert ? DESERT_FAR.factor : 0.12,
@@ -4071,13 +4836,19 @@ function faux3dPack(settings) {
           portrait: !!backgroundContext?.portrait,
         });
         parallaxHills(ctx, camX, m.color, middleBaseY, m.amp, m.wl, m.factor,
-          { dunes: true, paper: paperPreview, paperMaterial: paperPreset,
+          { dunes: true, surface: DESERT_MID_SURFACE,
+            paper: paperPreview, paperMaterial: paperPreset,
             paperStrength: paperStrengths.scenery });
         ctx.restore();
         // The layer the cabinet always defined and this pack never drew.
         const { amp, wl, factor } = DESERT_RIDGE;
         ctx.save();
         ctx.translate(0, sceneryOffset + backgroundY(backgroundContext, 'near'));
+        drawDesertNearSurfaceFeatures(ctx, camX, nearBaseY, {
+          paper: paperPreview,
+          paperMaterial: paperPreset,
+          portrait: !!backgroundContext?.portrait,
+        });
         // Cacti belong to this ridge, not to the surface of the frame. Draw
         // them first and let the ridge occlude the buried base; drawing them
         // after the filled hill made every trunk visibly sit on top of it.
@@ -4244,6 +5015,11 @@ function watercolorPack(settings) {
         ctx.save();
         ctx.translate(0, backgroundY(backgroundContext, depth));
         ctx.globalAlpha = 0.7;
+        if (cab.id === 'frost' || cab.id === 'surge') {
+          drawFrostScenery(ctx, camX, yb, {
+            layer: depth, paper: paperPreview, paperMaterial: paperPreset,
+          });
+        }
         parallaxHills(ctx, camX, color, yb, amp, wl, f,
           paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
         ctx.globalAlpha = 0.4;
@@ -4298,10 +5074,16 @@ function vhsPack(settings) {
       const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', 32, GROUND_Y);
       ctx.save();
       ctx.translate(0, backgroundY(backgroundContext, 'far'));
+      if (cab.id === 'crypt' || cab.id === 'surge') {
+        drawCryptScenery(ctx, camX, farBaseY, { layer: 'far' });
+      }
       parallaxHills(ctx, camX, cab.far, farBaseY, 55, 100, 0.15);
       ctx.restore();
       ctx.save();
       ctx.translate(0, backgroundY(backgroundContext, 'near'));
+      if (cab.id === 'crypt' || cab.id === 'surge') {
+        drawCryptScenery(ctx, camX, nearBaseY, { layer: 'near' });
+      }
       parallaxHills(ctx, camX, cab.hills, nearBaseY, 32, 56, 0.35);
       ctx.restore();
       // fog
@@ -11172,6 +11954,7 @@ function doodlePack(settings) {
         ctx.strokeStyle = i % 4 === 0 ? 'rgba(88,132,200,0.55)' : 'rgba(88,132,200,0.3)';
         ctx.beginPath(); ctx.moveTo(coverage.left, y + 0.5); ctx.lineTo(coverage.right, y + 0.5); ctx.stroke();
       }
+      if (cab.id === 'office' || cab.id === 'surge') drawOfficeScenery(ctx);
       // margin line + coffee ring
       ctx.strokeStyle = 'rgba(210,70,70,0.55)';
       ctx.beginPath(); ctx.moveTo(30.5, 0); ctx.lineTo(30.5, H); ctx.stroke();

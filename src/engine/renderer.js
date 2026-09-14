@@ -188,7 +188,124 @@ let presentationGroundAnchorRatio = 0.80;
 // canvas alone. Notify them only after the settled resize has published the
 // new frame, backing store, density and touch geometry.
 const presentationListeners = new Set();
+const presentationRefreshListeners = new Set();
 let viewportOrientation = null;
+
+// A refresh is a presentation concern. It may pause the game loop while the
+// expensive surface rebuild happens, but it must not decide whether audio is
+// paused: lifecycle.js makes that decision from the active state (rhythm levels
+// need the beat clock held; ordinary levels may let music continue).
+const presentationRefresh = {
+  active: false, phase: 'idle', generation: 0, dueAt: 0,
+  stable: 0, probe: '', baseline: '', published: '', quietUntil: 0,
+  revealPending: false,
+};
+
+export function onPresentationRefresh(fn) {
+  if (typeof fn !== 'function') return () => {};
+  presentationRefreshListeners.add(fn);
+  return () => presentationRefreshListeners.delete(fn);
+}
+
+export function presentationRefreshState() {
+  return { ...presentationRefresh };
+}
+
+function emitPresentationRefresh(detail = {}) {
+  const payload = { ...presentationRefresh, ...detail };
+  for (const fn of presentationRefreshListeners) {
+    try { fn(payload); } catch (error) {
+      if (typeof console !== 'undefined' && console.error) console.error('Presentation refresh failed.', error);
+    }
+  }
+}
+
+function refreshCover() {
+  if (typeof document === 'undefined' || !document.body) return null;
+  let el = document.getElementById('presentation-refresh-cover');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'presentation-refresh-cover';
+    Object.assign(el.style, {
+      position: 'fixed', inset: '0', zIndex: '9998',
+      background: '#070810', opacity: '1', pointerEvents: 'auto',
+      transition: 'opacity 80ms linear',
+    });
+    if (el.setAttribute) el.setAttribute('aria-hidden', 'true');
+    if (document.body.appendChild) document.body.appendChild(el);
+  }
+  return el;
+}
+
+function setRefreshCover(visible) {
+  const el = refreshCover();
+  if (!el) return;
+  el.hidden = !visible;
+  el.style.opacity = visible ? '1' : '0';
+  el.style.pointerEvents = visible ? 'auto' : 'none';
+}
+
+function startPresentationRefresh() {
+  if (!presentationRefresh.active) {
+    presentationRefresh.active = true;
+    presentationRefresh.phase = 'settling';
+    presentationRefresh.generation++;
+    presentationRefresh.stable = 0;
+    presentationRefresh.probe = '';
+    presentationRefresh.baseline = presentationViewportSignature();
+    presentationRefresh.published = '';
+    presentationRefresh.quietUntil = 0;
+    presentationRefresh.revealPending = false;
+    resetAdaptiveSamples();
+    setRefreshCover(true);
+    emitPresentationRefresh({ phase: 'settling', active: true });
+  } else if (presentationRefresh.phase === 'holding') {
+    // A late viewport event belongs to this same rotation. Keep the cover up,
+    // discard the old stability proof, and take two fresh matching probes.
+    presentationRefresh.phase = 'settling';
+    presentationRefresh.stable = 0;
+    presentationRefresh.probe = '';
+    presentationRefresh.quietUntil = 0;
+  }
+  presentationRefresh.dueAt = resizeNow() + RESIZE_SETTLE_MS;
+}
+
+function presentationViewportSignature() {
+  const dpr = typeof window !== 'undefined' ? Number(window.devicePixelRatio) || 1 : 1;
+  const viewportScale = typeof window !== 'undefined'
+    ? Number(window.visualViewport?.scale) || 1 : 1;
+  const orientation = typeof window !== 'undefined'
+    ? (window.innerHeight > window.innerWidth ? 'portrait' : 'landscape') : 'landscape';
+  const rawSafe = typeof window !== 'undefined' ? safeInsets() : { top: 0, right: 0, bottom: 0, left: 0 };
+  return [getActiveFrame().revision, Math.round(screen.cssW * 100) / 100, Math.round(screen.cssH * 100) / 100,
+    Math.round(dpr * 1000) / 1000, Math.round(viewportScale * 1000) / 1000, orientation,
+    Math.round(screen.safeTop * 100) / 100, Math.round(screen.safeRight * 100) / 100,
+    Math.round(screen.safeBottom * 100) / 100, Math.round(screen.safeLeft * 100) / 100,
+    Math.round(rawSafe.top * 100) / 100, Math.round(rawSafe.right * 100) / 100,
+    Math.round(rawSafe.bottom * 100) / 100, Math.round(rawSafe.left * 100) / 100].join('|');
+}
+
+function finishPresentationRefresh() {
+  if (!presentationRefresh.active) return;
+  presentationRefresh.phase = 'ready';
+  presentationRefresh.active = false;
+  presentationRefresh.revealPending = true;
+  presentationRefresh.dueAt = 0;
+  presentationRefresh.stable = 0;
+  presentationRefresh.quietUntil = 0;
+  qualitySuppressedUntil = resizeNow() + 500;
+  resetAdaptiveSamples();
+  emitPresentationRefresh({ phase: 'ready', active: false });
+}
+
+export function revealPresentationRefresh() {
+  if (!presentationRefresh.revealPending) return false;
+  presentationRefresh.revealPending = false;
+  presentationRefresh.phase = 'idle';
+  setRefreshCover(false);
+  presentationRefresh.baseline = presentationViewportSignature();
+  return true;
+}
 
 export function onPresentationChanged(fn) {
   if (typeof fn !== 'function') return () => {};
@@ -443,6 +560,7 @@ let onSettle = null;       // called with the settled density value to persist i
 let lastPresentedAt = 0, lastFrameNow = 0;
 let slowFor = 0, fastFor = 0, emergencyFor = 0;
 let densityCooldown = 0;
+let qualitySuppressedUntil = 0;
 let frameAvgMs = 0;        // EWMA of frame interval; 0 = unseeded
 let arrivedAt = 0;         // clock when the current rung was reached
 const strikes = new Map();       // rung VALUE -> strike count (survives ladder rebuilds)
@@ -464,6 +582,10 @@ let chromeWant = null, chromePaintedSig = null;
 // Keep the first resize synchronous, then wait for the viewport to settle so a
 // live drag produces one expensive rebuild instead of a stream of them.
 const RESIZE_SETTLE_MS = 120;
+// Safari/iOS often reports visualViewport.resize after orientationchange. Keep
+// the same cover up for one more quiet window so that late notification extends
+// the blackout instead of producing a second flash.
+const REFRESH_QUIET_MS = 180;
 const resizeNow = () => {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
     return performance.now();
@@ -688,6 +810,19 @@ function freshCanvasAfterWebglFailure() {
 }
 
 export function initRenderer(platform = {}, persistence = {}) {
+  if (typeof resize.cleanup === 'function') resize.cleanup();
+  resize.pending = 0;
+  presentationRefresh.generation++;
+  presentationRefresh.active = false;
+  presentationRefresh.phase = 'idle';
+  presentationRefresh.dueAt = 0;
+  presentationRefresh.stable = 0;
+  presentationRefresh.probe = '';
+  presentationRefresh.baseline = '';
+  presentationRefresh.published = '';
+  presentationRefresh.quietUntil = 0;
+  presentationRefresh.revealPending = false;
+  setRefreshCover(false);
   visualiserFullscreen = false;
   coverFitActive = false;
   coverRestoreDensity = 0;
@@ -715,6 +850,7 @@ export function initRenderer(platform = {}, persistence = {}) {
   lastSettleValue = null;
   throttleSuspendedUntil = 0;
   densityCooldown = 0;
+  qualitySuppressedUntil = 0;
   guard = null;
   capReverts = 0;
   frozen = false;
@@ -761,30 +897,95 @@ export function initRenderer(platform = {}, persistence = {}) {
   // Coalesce the following resize notifications and read the final dimensions
   // on the next frame, so #chrome's backing store and button geometry belong
   // to the same orientation as #game.
-  resize();
+  // Boot establishes the first presentation; cache listeners should only hear
+  // about subsequent viewport changes, not mistake initial sizing for a
+  // rotation refresh.
+  resize({ notify: false });
+  presentationRefresh.baseline = presentationViewportSignature();
   const scheduleResize = () => {
-    resize.dueAt = resizeNow() + RESIZE_SETTLE_MS;
+    // Late duplicate viewport notifications are common on phones. If the
+    // published presentation already matches the current raw viewport, there
+    // is nothing to cover or rebuild.
+    if (!presentationRefresh.active && !presentationRefresh.revealPending
+      && presentationRefresh.baseline
+      && presentationViewportSignature() === presentationRefresh.baseline) return;
+    startPresentationRefresh();
+    const generation = presentationRefresh.generation;
     if (resize.pending) return;
     const settle = (frameNow) => {
       resize.pending = 0;
+      if (generation !== presentationRefresh.generation) return;
       const now = Number.isFinite(frameNow) ? frameNow : resizeNow();
-      if (now < resize.dueAt) {
+      if (now < presentationRefresh.dueAt) {
         resize.pending = requestAnimationFrame(settle);
         return;
       }
-      resize();
+      // Two matching probes avoid publishing the transient dimensions Safari
+      // exposes between orientationchange and its final visual viewport.
+      resize({ notify: false });
+      const probe = presentationViewportSignature();
+      if (probe === presentationRefresh.probe) presentationRefresh.stable++;
+      else { presentationRefresh.probe = probe; presentationRefresh.stable = 1; }
+      if (presentationRefresh.stable < 2) {
+        resize.pending = requestAnimationFrame(settle);
+        return;
+      }
+      if (presentationRefresh.published !== probe
+        && (presentationRefresh.baseline !== probe || presentationRefresh.published !== '')) {
+        notifyPresentationChanged({
+          orientation: viewportOrientation,
+          viewportWidth: screen.cssW,
+          viewportHeight: screen.cssH,
+          frameRevision: getActiveFrame().revision,
+          density: screen.px,
+          refresh: true,
+        });
+        presentationRefresh.published = probe;
+      }
+      if (presentationRefresh.phase !== 'holding') {
+        presentationRefresh.phase = 'holding';
+        presentationRefresh.quietUntil = now + REFRESH_QUIET_MS;
+        presentationRefresh.dueAt = presentationRefresh.quietUntil;
+      }
+      if (now < presentationRefresh.quietUntil) {
+        resize.pending = requestAnimationFrame(settle);
+        return;
+      }
+      finishPresentationRefresh();
     };
     resize.pending = requestAnimationFrame(settle);
   };
   window.addEventListener('resize', scheduleResize);
   window.addEventListener('orientationchange', scheduleResize);
   window.visualViewport && window.visualViewport.addEventListener('resize', scheduleResize);
+  let dprQuery = null;
+  const armDprQuery = () => {
+    if (dprQuery?.removeEventListener) dprQuery.removeEventListener('change', onDprChange);
+    if (typeof window.matchMedia !== 'function') { dprQuery = null; return; }
+    try {
+      dprQuery = window.matchMedia(`(resolution: ${Number(window.devicePixelRatio) || 1}dppx)`);
+      if (dprQuery?.addEventListener) dprQuery.addEventListener('change', onDprChange);
+      else if (dprQuery?.addListener) dprQuery.addListener(onDprChange);
+    } catch { dprQuery = null; }
+  };
+  const onDprChange = () => { scheduleResize(); armDprQuery(); };
+  armDprQuery();
+  resize.cleanup = () => {
+    window.removeEventListener('resize', scheduleResize);
+    window.removeEventListener('orientationchange', scheduleResize);
+    window.visualViewport && window.visualViewport.removeEventListener('resize', scheduleResize);
+    if (dprQuery?.removeEventListener) dprQuery.removeEventListener('change', onDprChange);
+    else if (dprQuery?.removeListener) dprQuery.removeListener(onDprChange);
+  };
 }
 
 resize.pending = 0;
 resize.dueAt = 0;
+resize.cleanup = null;
 
-function resize() {
+function resize(options = {}) {
+  const notify = options.notify !== false;
+  const previousPresentation = presentationViewportSignature();
   // MEASURE THE LAYOUT VIEWPORT, NOT THE VISUAL ONE.
   //
   // `#game` and `#chrome` are `position: fixed`, so the box they are laid out
@@ -1027,7 +1228,7 @@ function resize() {
   // a stage sets its sky.
   applyPageChrome();
   if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
-  if (previousOrientation && previousOrientation !== orientation) {
+  if (notify && previousPresentation !== presentationViewportSignature()) {
     notifyPresentationChanged({
       orientation,
       previousOrientation,
@@ -1141,6 +1342,7 @@ function resolveGuard(now) {
 // borderline devices do not resize their canvases back and forth.
 export function noteRendererFrame(now) {
   if (!adaptationEnabled || !Number.isFinite(now)) return;
+  if (presentationRefresh.active || now < qualitySuppressedUntil) return;
   lastFrameNow = now;
   if (!lastPresentedAt) { lastPresentedAt = now; if (!arrivedAt) arrivedAt = now; return; }
   const elapsed = now - lastPresentedAt;

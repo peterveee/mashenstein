@@ -59,6 +59,23 @@ assert(!lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true
 assert(!lifecyclePolicy({ isAndroidTablet: true, standalone: true, portrait: true }).paused,
   'Android tablet portrait keeps running (like iPad)');
 assert(lifecyclePolicy({ visible: false }).paused, 'every hidden platform pauses');
+const presentationMusic = lifecyclePolicy({
+  presentationRefreshing: true,
+  presentationRhythm: false,
+});
+assert(presentationMusic.paused && !presentationMusic.audioPaused,
+  'presentation refresh holds ordinary gameplay while its music continues');
+const presentationRhythm = lifecyclePolicy({
+  presentationRefreshing: true,
+  presentationRhythm: true,
+});
+assert(presentationRhythm.paused && presentationRhythm.audioPaused,
+  'presentation refresh holds beat-locked gameplay and music together');
+assert(lifecyclePolicy({
+  presentationRefreshing: true,
+  presentationRhythm: false,
+  visible: false,
+}).audioPaused, 'hidden lifecycle pause still wins over continued presentation music');
 
 // Portrait capability. Screens opt in with a static portraitMode; the shipped
 // jukebox presentation is always honoured, while the frame-based modes of the
@@ -156,6 +173,13 @@ const lifecycle = new LifecycleController({
 });
 assert(calls.at(-1) === 'loop:resume', 'initial landscape lifecycle resumes');
 assert(overlay.hidden, 'portrait overlay starts hidden in landscape');
+lifecycle.setPresentationRefreshing(true, false);
+assert(calls.includes('loop:pause') && calls.includes('audio:false'),
+  'ordinary presentation refresh pauses the loop without pausing audio');
+lifecycle.setPresentationRefreshing(true, true);
+assert(calls.includes('audio:true'), 'beat-locked refresh pauses audio with the loop');
+lifecycle.setPresentationRefreshing(false, false);
+assert(calls.at(-1) === 'loop:resume', 'presentation refresh releases its pause cleanly');
 for (let i = 0; i < 5; i++) portraitTitle.fire('click');
 assert(devMenuOpens === 0, 'the rotate heading is inert while the portrait card is not up');
 portraitQuery.matches = true;

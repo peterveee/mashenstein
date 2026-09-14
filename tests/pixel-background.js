@@ -112,6 +112,39 @@ assert(landscapeCactusPlacements.length > 0
 assert(landscapeCactusPlacements.every((cactus) => cactus.baseY > cactus.crest
   && cactus.baseY <= cactus.crest + cactus.height * (__testing.CACTUS_BURY + 1e-9)),
   'landscape speed cactus bases only bite into their ridge for natural occlusion');
+const nearSurfaceFeatures = __testing.desertNearSurfacePlacements(
+  ridgeProbe, 137, portraitNearBaseY, { portrait: true });
+const nearFeatureKinds = new Set(nearSurfaceFeatures.map((feature) => feature.kind));
+assert(nearSurfaceFeatures.length > 0 && nearSurfaceFeatures.length <= 6
+  && nearFeatureKinds.has('rock') && nearFeatureKinds.has('sage')
+  && nearSurfaceFeatures.every((feature) => Math.abs(feature.baseY - (__testing.ridgeYAt(
+    feature.x, 137, portraitNearBaseY, 52, 150, 0.35,
+    { dunes: true, coverageLeft: ridgeProbe.__mashBackgroundCoverage.left }) + 2)) < 1e-9)
+  && nearSurfaceFeatures.every((feature) => Math.abs(feature.angle - __testing.ridgeTangentAngle(
+    feature.localX, portraitNearBaseY, 52, 150, 471, false, false, true)) < 1e-9),
+  'near-hill rocks and sage follow the exact ridge geometry and tangent');
+const frostFeatures = __testing.frostSceneryPlacements(
+  ridgeProbe, 137, portraitNearBaseY, { layer: 'near' });
+assert(frostFeatures.length > 0
+  && frostFeatures.every((feature) => Math.abs(feature.baseY - (__testing.ridgeYAt(
+    feature.x, 137, portraitNearBaseY, 40, 70, 0.3,
+    { coverageLeft: ridgeProbe.__mashBackgroundCoverage.left }) + 1)) < 1e-9),
+  'Frost pines use the exact near-ridge planting curve');
+const cryptFeatures = __testing.cryptSceneryPlacements(
+  ridgeProbe, 137, portraitNearBaseY, { layer: 'far' });
+const cryptKinds = new Set(cryptFeatures.map((feature) => feature.kind));
+assert(cryptFeatures.length > 0 && cryptKinds.has('dead-tree') && cryptKinds.has('stone')
+  && cryptFeatures.every((feature) => Math.abs(feature.baseY - (__testing.ridgeYAt(
+    feature.x, 137, portraitNearBaseY, 55, 100, 0.15,
+    { coverageLeft: ridgeProbe.__mashBackgroundCoverage.left }) + 1)) < 1e-9),
+  'Crypt dead trees and stones share the far-ridge planting curve');
+const surgeFeatures = __testing.surgeSceneryPlacements(
+  ridgeProbe, 137, portraitNearBaseY, { amp: 60, wl: 90, factor: 0.15 });
+assert(surgeFeatures.length > 0
+  && surgeFeatures.every((feature) => Math.abs(feature.baseY - (__testing.ridgeYAt(
+    feature.x, 137, portraitNearBaseY, 60, 90, 0.15,
+    { coverageLeft: ridgeProbe.__mashBackgroundCoverage.left }) + 1)) < 1e-9),
+  'Surge signal pylons stay welded to their fallback ridge');
 const portraitFarAmp = __testing.DESERT_FAR_PORTRAIT_AMP;
 const portraitFarBaseY = speedScene.bands.farLandmark.center + portraitFarAmp
   + __testing.DESERT_FAR_PORTRAIT_DROP;
@@ -152,10 +185,16 @@ assert(windTurbines.length > 1
   'occasional portrait wind turbines repeat on the exact far-mesa crest');
 const highMesaDishes = __testing.desertSatelliteDishPlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true });
+const dishSlotCounts = new Map();
+for (const dish of highMesaDishes) {
+  dishSlotCounts.set(dish.index, (dishSlotCounts.get(dish.index) || 0) + 1);
+}
 assert(wideWaterTowers.length > 0 && highMesaDishes.length > 0
   && Math.min(...wideWaterTowers.map((tower) => tower.baseY))
     > Math.max(...highMesaDishes.map((dish) => dish.baseY)),
   'water towers sit on lower mesas while satellite dishes sit on higher mesas');
+assert([...dishSlotCounts.values()].every((count) => count === 3),
+  'satellite dish slots use a readable three-dish cluster');
 const horizonKinds = Array.from({ length: 6 }, (_, index) =>
   __testing.desertHorizonPropKind(index));
 assert(horizonKinds[0] === null && horizonKinds[5] === null,

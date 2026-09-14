@@ -59,6 +59,18 @@ for (const s of STAGES) {
     `${s.id}: checkpoints resolve to fractions inside the stage`);
 }
 
+// Plumber-2 teaches the two ordinary pit responses before its set-piece:
+// release into a short hop for the small pit, then hold the full arc for the
+// stepping-stone crossing. Keep the distinction authored rather than allowing
+// a later width cleanup to flatten the early-game lesson.
+{
+  const pits = resolveLayout(STAGE_BY_ID['plumber-2'], CABINET_BY_ID.plumber).pits || [];
+  ok(pits.some((p) => !p.jumps && p.w <= 48),
+    'plumber-2 opens with a short-hop pit');
+  ok(pits.some((p) => p.jumps === 4),
+    'plumber-2 keeps its full crossing after the short pit');
+}
+
 // The finish dog's defaults, which are the one fallback with three answers.
 {
   const dog = (id) => resolveLayout(STAGE_BY_ID[id], CABINET_BY_ID[STAGE_BY_ID[id].cabinet]).finishDogChance;
