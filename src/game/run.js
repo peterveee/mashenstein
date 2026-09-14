@@ -57,7 +57,7 @@ import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFace
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
-import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawBackdropVeil, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
+import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
@@ -2353,6 +2353,25 @@ export class RunState {
    */
   renderGroundY(worldX, route) {
     return this.routeGroundY(worldX, route) + this.girderRing(route);
+  }
+
+  /**
+   * The floor under the hero's DRAWN feet.
+   *
+   * The render camera is interpolated between simulation ticks, so its sample
+   * can be a few pixels past a route's far edge while the live footprint still
+   * overlaps that edge and `updateRoute()` is correctly keeping the route as
+   * the active floor. `routeGroundY()` is half-open there and returns the base
+   * lane, which makes a grounded hero flash down to the lane for one frame.
+   * Keep the presentation sample on the route's final authored column until
+   * the simulation releases the hero; this mirrors `routeSampleX()` without
+   * changing world geometry or collision.
+   */
+  heroRenderGroundY(worldX, route = this.route) {
+    if (!route) return this.renderGroundY(worldX, route);
+    const last = Math.max(route.x, route.x + route.w - 0.001);
+    const sampleX = Math.min(Math.max(worldX, route.x), last);
+    return this.renderGroundY(sampleX, route);
   }
 
   /**
@@ -13034,19 +13053,9 @@ export class RunState {
     }
     ctx.restore();
 
-    // A phone gets its backdrop quieted a little, so the cast has less to
-    // compete with on a screen a quarter the physical size (see BACKDROP_VEIL).
-    // Phone only, unlike the contact shadow: this one is paying for lost
-    // physical area, and a desktop that has the area should keep the art it
-    // paid for at full strength. Between bg() and the world band on purpose —
-    // everything the player reads or reacts to is drawn over it.
-    // Plumber's paper study already has its material contrast and cutout
-    // shadows. The warm phone backdrop veil would wash those colours toward
-    // cream after the paper pass, so leave this study un-veiled; other styles
-    // keep the shipped phone quieting treatment.
-    const plumberPaperBackdrop = this.cabinet?.id === 'plumber'
-      && this.style?.name === 'pixel' && this.style?.lightBg;
-    if (tier() === 'phone' && !plumberPaperBackdrop) drawBackdropVeil(ctx, this.style);
+    // Keep the authored scenery at full contrast on phones. The separate
+    // portrait sky-edge tint below is only for the status-bar handoff and is
+    // intentionally not a full-scene softening pass.
     // Finish the sky's outer edge before the camera/world pass. The band is
     // screen-space and short, so portrait's extra height gets a subtle edge
     // value without tinting the mountains or the playable horizon.
@@ -13620,7 +13629,7 @@ export class RunState {
       // height, and signed, so he sank into the climbs and floated over the
       // descents. Invisible for as long as the cast wore ellipses and obvious
       // the moment real soles had to meet a line.
-      groundY: this.renderGroundY(cam + heroArtX, this.route),
+      groundY: this.heroRenderGroundY(cam + heroArtX, this.route),
         // How the terrain rises or falls either side of the hero, so a floor
         // effect can lie IN the floor instead of on a level line through it.
         // On a slab this comes out flat, which is correct — the island is a
@@ -13628,8 +13637,8 @@ export class RunState {
         //
         // Relative to the same point `groundY` is, or every offset it hands out
         // is measured from a place the hero is not standing.
-        groundDelta: (dx) => this.renderGroundY(cam + heroArtX + dx, this.route)
-          - this.renderGroundY(cam + heroArtX, this.route),
+        groundDelta: (dx) => this.heroRenderGroundY(cam + heroArtX + dx, this.route)
+          - this.heroRenderGroundY(cam + heroArtX, this.route),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 

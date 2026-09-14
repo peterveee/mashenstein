@@ -2468,13 +2468,26 @@ function desertHillSurfaceDetails(ctx, ridge, ridgePath, period, yBase, amp, sur
     ctx.save();
     ridgePath();
     ctx.clip();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
     const start = from * period;
     const end = to * period;
+    const fade = Math.min(26, (end - start) * 0.2);
+    const rgba = (value, a) => {
+      const match = /^#([0-9a-f]{6})$/i.exec(value);
+      if (!match) return value;
+      const rgb = Number.parseInt(match[1], 16);
+      return `rgba(${(rgb >> 16) & 0xff},${(rgb >> 8) & 0xff},${rgb & 0xff},${a})`;
+    };
+    const stroke = ctx.createLinearGradient(start, 0, end, 0);
+    stroke.addColorStop(0, rgba(color, 0));
+    stroke.addColorStop(Math.min(0.24, fade / (end - start)), rgba(color, alpha * 0.72));
+    stroke.addColorStop(0.5, rgba(color, alpha));
+    stroke.addColorStop(Math.max(0.76, 1 - fade / (end - start)), rgba(color, alpha * 0.72));
+    stroke.addColorStop(1, rgba(color, 0));
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'bevel';
+    ctx.beginPath();
     for (let px = start; px <= end; px += 4) {
       const wobble = Math.sin(px * 0.026 + phase) * 1.8
         + Math.sin(px * 0.057 + phase * 0.63) * 0.75;
@@ -3392,19 +3405,44 @@ function desertSpeedLimitPlacements(ctx, camX, layerBaseY = GROUND_Y, options = 
 
 function waterTowerTank(ctx) {
   ctx.beginPath();
-  ctx.ellipse(0, -47, 17, 10, 0, 0, TAU_BG);
+  // A shallow rounded drum reads as a municipal tank at horizon scale. The
+  // old ellipse made the top look like a balloon; this keeps the soft corners
+  // while giving the tank a flatter crown, straighter sides, and a steadier
+  // bottom for the legs to meet.
+  ctx.moveTo(-11, -57);
+  ctx.quadraticCurveTo(0, -59, 11, -57);
+  ctx.quadraticCurveTo(16, -56, 16, -50);
+  ctx.lineTo(16, -43);
+  ctx.quadraticCurveTo(16, -38, 11, -37);
+  ctx.quadraticCurveTo(0, -35.5, -11, -37);
+  ctx.quadraticCurveTo(-16, -38, -16, -43);
+  ctx.lineTo(-16, -50);
+  ctx.quadraticCurveTo(-16, -56, -11, -57);
+  ctx.closePath();
 }
 
 function waterTowerLegs(ctx) {
   ctx.beginPath();
   ctx.moveTo(-9, -39); ctx.lineTo(-15, 0);
   ctx.moveTo(9, -39); ctx.lineTo(15, 0);
+  // A centre post and two braced bays make this read as a supported tower,
+  // rather than a ladder leaning under the tank.
+  ctx.moveTo(0, -39); ctx.lineTo(0, 0);
+  ctx.moveTo(-11, -36); ctx.lineTo(11, -22);
+  ctx.moveTo(11, -36); ctx.lineTo(-11, -22);
+  ctx.moveTo(-12, -21); ctx.lineTo(14, -5);
+  ctx.moveTo(12, -21); ctx.lineTo(-14, -5);
   ctx.moveTo(-12, -20); ctx.lineTo(12, -20);
   ctx.moveTo(-14, -5); ctx.lineTo(14, -5);
-  // Short feet make the exact ridge contact survive the distant scale. The
-  // mesa still occludes their lower edge because the tower is painted first.
-  ctx.moveTo(-17, 0); ctx.lineTo(-10, 0);
-  ctx.moveTo(10, 0); ctx.lineTo(17, 0);
+}
+
+function waterTowerFoundation(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(-19, -1);
+  ctx.lineTo(19, -1);
+  ctx.lineTo(17, 3);
+  ctx.lineTo(-17, 3);
+  ctx.closePath();
 }
 
 function drawWaterTower(ctx, tower, options = {}) {
@@ -3418,23 +3456,38 @@ function drawWaterTower(ctx, tower, options = {}) {
   // dunes without moving its feet off the exact far-mesa crest.
   ctx.scale(tower.scale, tower.scale * portraitHeightScale);
   const tank = () => waterTowerTank(ctx);
+  const foundation = () => waterTowerFoundation(ctx);
   const paintLegs = (color) => {
     ctx.lineWidth = 2.2;
     ctx.strokeStyle = color;
     waterTowerLegs(ctx);
     ctx.stroke();
   };
+  const paintFoundation = (color) => {
+    ctx.fillStyle = color;
+    foundation();
+    ctx.fill();
+  };
   if (paper) {
     ctx.save();
     ctx.translate(PAPER_DEEP_OFFSET.x, PAPER_DEEP_OFFSET.y);
     paintLegs(PAPER_DEEP_COLOR);
+    paintFoundation(PAPER_DEEP_COLOR);
     ctx.restore();
     ctx.save();
     ctx.translate(PAPER_CONTACT_OFFSET.x, PAPER_CONTACT_OFFSET.y);
     paintLegs(PAPER_CONTACT_COLOR);
+    paintFoundation(PAPER_CONTACT_COLOR);
     ctx.restore();
   }
   paintLegs(DESERT_WATER_TOWER_DARK);
+  paintFoundation(DESERT_WATER_TOWER_INK);
+  ctx.fillStyle = DESERT_WATER_TOWER_LIGHT;
+  ctx.fillRect(-17, -1, 34, 1);
+  ctx.strokeStyle = DESERT_WATER_TOWER_DARK;
+  ctx.lineWidth = 0.9;
+  foundation();
+  ctx.stroke();
   if (paper) {
     paperShadowPass(ctx, tank, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
     paperShadowPass(ctx, tank, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
@@ -3443,9 +3496,9 @@ function drawWaterTower(ctx, tower, options = {}) {
   tank();
   ctx.fill();
   ctx.fillStyle = DESERT_WATER_TOWER_LIGHT;
-  ctx.fillRect(-16, -48, 32, 4);
+  ctx.fillRect(-15, -54, 30, 4);
   ctx.fillStyle = DESERT_WATER_TOWER_DARK;
-  ctx.fillRect(-13, -39, 26, 3);
+  ctx.fillRect(-13, -40, 26, 3);
   if (paper) {
     paperFinishPass(ctx, tank,
       sharedPaperPatternFor(ctx, paperMaterial), {
@@ -4140,7 +4193,41 @@ export function drawSpeedSceneryItem(ctx, kind, options = {}) {
 // prop at source-backed scale without inventing a second silhouette.
 export function drawLevelSceneryItem(ctx, kind, options = {}) {
   const scale = Number.isFinite(Number(options.scale)) ? Number(options.scale) : 1;
+  const drawPlumberSprite = (spriteKind) => {
+    const sprite = plumberScenerySprite(
+      spriteKind,
+      Number.isFinite(Number(options.variant)) ? Number(options.variant) : 1,
+      false,
+      'scenery',
+      1,
+    );
+    if (!sprite) return;
+    const width = sprite.width * scale;
+    const height = sprite.height * scale;
+    ctx.drawImage(sprite.canvas, -width * 0.5, -height, width, height);
+  };
   switch (kind) {
+    case 'plumber-flower':
+      drawPlumberSprite('flower');
+      return;
+    case 'plumber-house':
+      drawPlumberSprite('house');
+      return;
+    case 'plumber-cluster': {
+      ctx.save();
+      ctx.translate(-18, 0);
+      drawPlumberSprite('flower');
+      ctx.restore();
+      ctx.save();
+      ctx.translate(14, 0);
+      drawPlumberSprite('bush');
+      ctx.restore();
+      ctx.save();
+      ctx.translate(0, -2);
+      drawPlumberSprite('fence');
+      ctx.restore();
+      return;
+    }
     case 'frost-pine':
       drawFrostSceneryFeature(ctx, { x: 0, baseY: 0, scale }, { layer: options.layer || 'near' });
       return;

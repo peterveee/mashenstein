@@ -140,6 +140,15 @@ export function portraitObjectiveSlide(elapsed = 0) {
   return smoothstep(Math.max(0, Math.min(1, t)));
 }
 
+// The HUD labels must follow the discs that the chrome painter actually
+// registers. Zones are gesture surfaces, not visible buttons, so they must
+// not create a caption on their own.
+export function portraitVisibleControlIds(chromeButtons = []) {
+  return new Set((Array.isArray(chromeButtons) ? chromeButtons : [])
+    .filter((button) => button && button.r != null && button.id)
+    .map((button) => button.id));
+}
+
 /**
  * Return the logical portrait HUD bands.  `frame.scale` converts logical
  * pixels to CSS pixels, so the margins and minimum text sizes below stay
@@ -301,6 +310,7 @@ export function portraitHudLayout(frame, options = {}) {
     actionLabelScale,
     actionY,
     powerLabelY,
+    touch: portrait.touch,
     // Chat cards may use nearly the whole safe width. Keep only a 4px CSS
     // gutter on each side; the old HUD margin made portrait dialogue wrap
     // early even though this shelf has no neighbouring HUD panel to clear.

@@ -5726,7 +5726,7 @@ class AudioSys {
       // TNGR-2's tables are expanded HERE rather than inside the lane build, which is
       // async: an expansion that lands in a later task lands on a visible frame.
       // Do not expand the large table payload when this context cannot host the
-      // worklet anyway. This is the normal phone-dev path over http://*.local:
+      // worklet anyway. This is the normal local phone-dev path:
       // the later lane warm correctly refuses the insecure context, so expanding
       // here would only spend a few hundred milliseconds blocking the selector.
       if (tngr2Ready && v.synth === 'TNGR-2') ids.push(...tngr2FamiliesOfVoice(v));

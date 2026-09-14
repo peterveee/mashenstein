@@ -274,10 +274,16 @@ function presentationViewportSignature() {
   const dpr = typeof window !== 'undefined' ? Number(window.devicePixelRatio) || 1 : 1;
   const viewportScale = typeof window !== 'undefined'
     ? Number(window.visualViewport?.scale) || 1 : 1;
+  const rawWidth = typeof window !== 'undefined' ? Number(window.innerWidth) || 0 : 0;
+  const rawHeight = typeof window !== 'undefined' ? Number(window.innerHeight) || 0 : 0;
+  const visualWidth = typeof window !== 'undefined' ? Number(window.visualViewport?.width) || 0 : 0;
+  const visualHeight = typeof window !== 'undefined' ? Number(window.visualViewport?.height) || 0 : 0;
   const orientation = typeof window !== 'undefined'
     ? (window.innerHeight > window.innerWidth ? 'portrait' : 'landscape') : 'landscape';
   const rawSafe = typeof window !== 'undefined' ? safeInsets() : { top: 0, right: 0, bottom: 0, left: 0 };
-  return [getActiveFrame().revision, Math.round(screen.cssW * 100) / 100, Math.round(screen.cssH * 100) / 100,
+  return [Math.round(rawWidth * 100) / 100, Math.round(rawHeight * 100) / 100,
+    Math.round(visualWidth * 100) / 100, Math.round(visualHeight * 100) / 100,
+    getActiveFrame().revision, Math.round(screen.cssW * 100) / 100, Math.round(screen.cssH * 100) / 100,
     Math.round(dpr * 1000) / 1000, Math.round(viewportScale * 1000) / 1000, orientation,
     Math.round(screen.safeTop * 100) / 100, Math.round(screen.safeRight * 100) / 100,
     Math.round(screen.safeBottom * 100) / 100, Math.round(screen.safeLeft * 100) / 100,

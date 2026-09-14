@@ -1753,9 +1753,8 @@ function propNominalSize(name) {
 {
   const speed = CABINETS.find((cab) => cab.id === 'speed');
   const grid = section('level-scenery', 'ALL LEVELS — in-level scenery',
-    'Individual background items at authored in-run scale. Plumber, Speed, Rhythm, Neon and Cardboard already have '
-    + 'dedicated scenery; this sheet adds the missing Frost, Crypt, Corporate Kombat and Surge accents. The full '
-    + 'background section below remains the all-nine-level composition reference.');
+    'Individual background items at authored in-run scale across every cabinet. The full background section below '
+    + 'remains the all-nine-level composition reference.');
   const sceneryBackdrop = (ctx, w, h, cab) => {
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, cab.sky[0]);
@@ -1808,10 +1807,13 @@ function propNominalSize(name) {
   itemTile('satellite dish cluster', 'far mesa · 3 feed points · faint signal triangle', 'satellite-dish-cluster', { animated: true });
   itemTile('wind turbine', 'far mesa · 3-blade rotor', 'wind-turbine', { scale: 0.82, animated: true });
   itemTile('route sign', 'roadside · planted post and contact soil', 'road-sign');
+  const plumber = CABINETS.find((cab) => cab.id === 'plumber');
   const frost = CABINETS.find((cab) => cab.id === 'frost');
   const crypt = CABINETS.find((cab) => cab.id === 'crypt');
   const office = CABINETS.find((cab) => cab.id === 'office');
   const surge = CABINETS.find((cab) => cab.id === 'surge');
+  levelItemTile('PLUMBER · flower cluster', 'near ridge · authored garden vignette', plumber, 'plumber-cluster', { scale: 1.15 });
+  levelItemTile('PLUMBER · house', 'near ridge · landmark with planted foot', plumber, 'plumber-house', { scale: 1.32 });
   levelItemTile('FROST · pine', 'far/near ridge · sparse pointed tree', frost, 'frost-pine', { layer: 'near', scale: 1.05 });
   levelItemTile('CRYPT · dead tree', 'near ridge · crooked silhouette', crypt, 'crypt-dead-tree', { layer: 'near', scale: 1.02 });
   levelItemTile('CRYPT · grave stone', 'near ridge · tangent-planted marker', crypt, 'crypt-stone', { layer: 'near', scale: 0.9, angle: -0.08 });

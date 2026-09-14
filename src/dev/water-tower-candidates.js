@@ -196,8 +196,8 @@ function drawPlatform(ctx, s) {
 }
 
 export const WATER_TOWER_CANDIDATES = [
-  { id: 'control', letter: 'A', name: 'Current oval tank',
-    note: 'CONTROL — the shipped Speed Zone painter, retained as the visual baseline.' },
+  { id: 'control', letter: 'A', name: 'Current shallow tank',
+    note: 'CONTROL — the shipped Speed Zone painter with the braced frame and planted foundation.' },
   { id: 'shallow-drum', letter: 'B', name: 'Shallow drum',
     note: 'Wider, lower tank; the calmest skyline read with less vertical mass.' },
   { id: 'round-cistern', letter: 'C', name: 'Round cistern',

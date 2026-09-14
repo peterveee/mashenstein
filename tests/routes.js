@@ -508,6 +508,10 @@ run.camX = fork.x + fork.w + 2 - PLAYER_X;
 // between the two floors.
 assert(Math.abs(run.playerGroundY() - run.routeGroundY(fork.x + fork.w - 0.001, fork)) < 0.01,
   'one tick past a route lip still samples the route\'s last floor column');
+const heroArtWorldX = run.camX + run.heroScreenX() + 6;
+assert(Math.abs(run.heroRenderGroundY(heroArtWorldX, fork)
+  - run.renderGroundY(fork.x + fork.w - 0.001, fork)) < 0.01,
+  'the drawn hero stays on the route\'s last floor column until the release tick');
 frames(1);
 assert(run.route === null, 'riding a fork to the end takes the hero off it');
 assert(!run.player.grounded, 'into a FALL rather than back onto the ground');

@@ -9,6 +9,7 @@ import {
   PORTRAIT_CHAT_MAX_LINES, PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
   PORTRAIT_FLOATIE_GAP_CSS, PORTRAIT_FLOATIE_WORLD_ZOOM,
+  portraitVisibleControlIds,
 } from '../src/game/portrait-layout.js';
 import { portraitTouchLayout } from '../src/engine/portrait-input.js';
 import { cornerInsetAt } from '../src/engine/platform.js';
@@ -137,6 +138,18 @@ assert.ok(portraitObjectiveSlide(PORTRAIT_OBJECTIVE_HOLD_SEC + PORTRAIT_OBJECTIV
   'portrait objectives are partway through their exit during the slide');
 assert.equal(portraitObjectiveSlide(PORTRAIT_OBJECTIVE_HOLD_SEC + PORTRAIT_OBJECTIVE_SLIDE_SEC), 1,
   'portrait objectives finish sliding off after the five-second hold');
+
+const visibleControls = portraitVisibleControlIds([
+  { id: 'jump', r: 44 },
+  { id: 'slide', r: 44 },
+  { id: 'ability', r: 44 },
+  { id: 'zone:jump-zone', zone: {} },
+]);
+assert.ok(visibleControls.has('jump') && visibleControls.has('slide')
+  && visibleControls.has('ability'),
+  'portrait label visibility sees registered action discs');
+assert.ok(!portraitVisibleControlIds([{ id: 'zone:jump-zone', zone: {} }]).has('jump'),
+  'portrait gesture zones do not make hidden action labels appear');
 
 const landscape = frameForViewport({ mode: 'landscape', viewportWidth: 844, viewportHeight: 390 });
 const landscapeLayout = portraitHudLayout(landscape);

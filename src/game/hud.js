@@ -30,6 +30,7 @@ import {
   PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
   portraitObjectiveSlide,
+  portraitVisibleControlIds,
   PORTRAIT_OBJECTIVE_NOTICE_ENTRY_SEC, PORTRAIT_OBJECTIVE_NOTICE_EXIT_SEC,
 } from './portrait-layout.js';
 
@@ -2052,6 +2053,7 @@ function portraitBonusText(run) {
 }
 
 function drawPortraitActionShelf(ctx, run, layout) {
+  if (!isPhonePortraitPresentation()) return;
   const hero = HERO_BY_ID[run.relay?.current];
   // The power-ups ride above the discs. The lower row is the control legend:
   // JUMP, the hero's own power, and SLIDE all sit under their respective discs
@@ -2063,7 +2065,7 @@ function drawPortraitActionShelf(ctx, run, layout) {
     .slice(0, 2)
     .map((name) => String(name).toUpperCase());
   if (powerups.length) {
-    drawPortraitNameStrip(ctx, layout, powerups, layout.actionY, '#f6c945');
+    drawPortraitNameStrip(ctx, layout, powerups, layout.actionY, '#f6c945', null, 'left');
   }
   const lowerLabels = [
     ['jump', 'JUMP', ACTION_INK.jump],
@@ -2071,10 +2073,13 @@ function drawPortraitActionShelf(ctx, run, layout) {
     ['slide', 'SLIDE', ACTION_INK.slide],
   ];
   const frameScale = Number(layout.scale) > 0 ? Number(layout.scale) : 1;
+  const visibleControls = portraitVisibleControlIds(Input.chromeButtons);
   for (const [id, label, ink] of lowerLabels) {
+    const chromeId = id === 'use' ? 'ability' : id;
+    if (!visibleControls.has(chromeId)) continue;
     const control = layout.touch?.controls?.[id];
-    const centerX = control && Number.isFinite(Number(control.cx))
-      ? Number(control.cx) / frameScale : layout.center;
+    if (!control || !Number.isFinite(Number(control.cx))) continue;
+    const centerX = Number(control.cx) / frameScale;
     drawPortraitNameStrip(ctx, layout, [String(label).toUpperCase()],
       layout.powerLabelY, ink, centerX);
   }
@@ -2111,9 +2116,10 @@ function drawPortraitObjectiveNotice(ctx, run, layout, s) {
   return true;
 }
 
-// One centred row of small name plates. Both action strips are the same object
-// in two places, so they scale, pad and shrink-to-fit identically.
-function drawPortraitNameStrip(ctx, layout, names, y, ink, centerX = null) {
+// Small name plates share the portrait HUD's safe-frame width. Power-up names
+// are left aligned with the status/objective/chat column; action captions stay
+// centred on their own visible controls.
+function drawPortraitNameStrip(ctx, layout, names, y, ink, centerX = null, align = 'center') {
   const pad = 6;
   const gap = 6;
   const available = Math.max(1, layout.right - layout.left);
@@ -2122,11 +2128,11 @@ function drawPortraitNameStrip(ctx, layout, names, y, ink, centerX = null) {
     + textWidth(name, 0.95, 'bold') * scale + pad * 2 * scale
     + (i ? gap * scale : 0), 0);
   const naturalWidth = groupWidth(s);
-  if (naturalWidth > available) s = Math.max(1.25, s * available / naturalWidth);
+  if (naturalWidth > available) s *= available / naturalWidth;
   const totalWidth = groupWidth(s);
   const anchor = Number.isFinite(Number(centerX))
     ? Number(centerX) : (layout.left + layout.right) / 2;
-  const x = anchor - totalWidth / 2;
+  const x = align === 'left' ? layout.left : anchor - totalWidth / 2;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
