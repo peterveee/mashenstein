@@ -578,6 +578,9 @@ let frozen = false;              // adaptation given up: dropping proved not to 
 let settledFor = 0, settleReported = false, lastSettleValue = null;
 // chrome dirty-flag: repaint the touch overlay only when its signature changes
 let chromeWant = null, chromePaintedSig = null;
+// Per-frame orientation look, installed with the resize listeners. Null until
+// initRenderer has run, and nulled again by resize.cleanup.
+let orientationTick = null;
 
 // A browser can deliver one resize event per display frame while a desktop
 // window is being dragged. `resize()` is deliberately a complete surface
@@ -907,7 +910,123 @@ export function initRenderer(platform = {}, persistence = {}) {
   // rotation refresh.
   resize({ notify: false });
   presentationRefresh.baseline = presentationViewportSignature();
+  // A FLIP INSIDE LANDSCAPE MOVES THE RAIL WITHOUT MOVING THE VIEWPORT.
+  //
+  // Turning the phone end for end swaps which side the cutout — and with it
+  // the whole action rail — belongs on, while every number the geometry
+  // signature is built from stays exactly the same: the width, the height, the
+  // density, the frame. Safari often reports the Dynamic Island's depth on
+  // BOTH horizontal sides in landscape (the reason landscapeControlSide falls
+  // back to the angle at all), so even the insets can come back identical. The
+  // settled-resize path below would see no change and drop the event, leaving
+  // JUMP/SLIDE on the hand that is no longer there.
+  //
+  // So watch the orientation itself, separately. Nothing about the PICTURE
+  // changed, so this must not cost a cover blackout or a density re-settle —
+  // just re-lay the chrome out, which the screens pick up on the next frame
+  // through chrome.gen. iOS can publish the new angle a frame or more before
+  // the safe-area insets follow it, so keep looking for a short while after
+  // and lay out again when they land.
+  // Waiting for the viewport to hold still is what separates the two cases,
+  // because iOS fires the rotation events BEFORE the viewport catches up (the
+  // settle loop below exists for the same reason). So a flip is NOT consumed
+  // until the box is quiet: a transient mid-rotation dimension must never be
+  // able to swallow one. 600ms is the quiet tail for insets that land late;
+  // the longer ceiling only applies while a flip is still unresolved.
+  const ORIENTATION_WATCH_MS = 600;
+  const ORIENTATION_PENDING_MS = 3000;
+  // The angle alone: three property reads, cheap enough to look at every frame.
+  const orientationAngleSignature = () => {
+    const o = viewportOrientationInfo();
+    return `${o.angle}|${o.type}`;
+  };
+  const orientationSignature = () => {
+    const s = safeInsets();
+    return `${orientationAngleSignature()}|${s.top}|${s.right}|${s.bottom}|${s.left}`;
+  };
+  // The BOX alone — every number a rebuild would depend on, and no inset. A
+  // flip that only moves the cutout comes back to exactly these numbers, which
+  // is what makes it safe to lay out immediately instead of behind the cover.
+  const orientationBoxSignature = () => {
+    const doc = document.documentElement;
+    const vv = window.visualViewport;
+    return [
+      Number(window.innerWidth) || 0, Number(window.innerHeight) || 0,
+      Math.round((Number(vv?.width) || 0) * 100) / 100,
+      Math.round((Number(vv?.height) || 0) * 100) / 100,
+      doc?.clientWidth || 0, doc?.clientHeight || 0,
+      Math.round((Number(window.devicePixelRatio) || 1) * 1000) / 1000,
+      Math.round((Number(vv?.scale) || 1) * 1000) / 1000,
+      getActiveFrame().revision,
+    ].join('|');
+  };
+  let orientationSig = orientationSignature();
+  let orientationPending = null;   // { sig, box } waiting for a quiet frame
+  let orientationWatch = 0, orientationWatchUntil = 0, orientationPendingUntil = 0;
+  // `settled` is true only from the frame callback. Quiet has to mean "the box
+  // held the same numbers from one FRAME to the next": two calls inside one
+  // event turn read the same viewport by definition, and would call a rotation
+  // finished the instant it was announced.
+  const checkOrientation = (settled = false) => {
+    const sig = orientationSignature();
+    if (sig === orientationSig) { orientationPending = null; return; }
+    // A viewport that also changed SIZE is the settle path's business: it puts
+    // the cover up first and calls resize() itself, and laying out here would
+    // show one uncovered frame of the old presentation at the new dimensions —
+    // the flash that whole machine exists to prevent. That path HAS the
+    // rotation, so this one may consider it dealt with.
+    if (presentationRefresh.active || presentationRefresh.revealPending) {
+      orientationSig = sig;
+      orientationPending = null;
+      return;
+    }
+    const box = orientationBoxSignature();
+    // Not quiet yet — remember what we saw and come back next frame WITHOUT
+    // consuming the rotation. A transient mid-rotation dimension must never be
+    // able to swallow a flip, which is exactly what turning the phone end for
+    // end in one movement produces.
+    if (!settled || !orientationPending
+      || orientationPending.sig !== sig || orientationPending.box !== box) {
+      orientationPending = { sig, box };
+      return;
+    }
+    orientationPending = null;
+    orientationSig = sig;
+    resize({ notify: false });
+    // The insets we just adopted are part of the published presentation now.
+    // Without this the next viewport event would compare against the pre-flip
+    // baseline, see the swapped insets, and cover the screen for a rotation
+    // that has already been dealt with.
+    presentationRefresh.baseline = presentationViewportSignature();
+  };
+  const pollOrientation = (frameNow) => {
+    orientationWatch = 0;
+    checkOrientation(true);
+    const now = Number.isFinite(frameNow) ? frameNow : resizeNow();
+    if (now < orientationWatchUntil || (orientationPending && now < orientationPendingUntil)) {
+      orientationWatch = requestAnimationFrame(pollOrientation);
+    }
+  };
+  const armOrientationWatch = () => {
+    const now = resizeNow();
+    orientationWatchUntil = now + ORIENTATION_WATCH_MS;
+    orientationPendingUntil = now + ORIENTATION_PENDING_MS;
+    checkOrientation();
+    if (!orientationWatch) orientationWatch = requestAnimationFrame(pollOrientation);
+  };
+  // The events are the fast path, not the contract. A phone turned end for end
+  // in one movement need not produce a resize at all, and a standalone app has
+  // been seen to coalesce the rotation events themselves — so the frame loop
+  // also looks, through beginChromeFrame. It compares only the angle, and only
+  // when no watch is already running, so the steady state is three property
+  // reads and a string compare per frame.
+  orientationTick = () => {
+    if (orientationWatch) return;
+    if (orientationSig.startsWith(`${orientationAngleSignature()}|`)) return;
+    armOrientationWatch();
+  };
   const scheduleResize = () => {
+    checkOrientation();
     // Late duplicate viewport notifications are common on phones. If the
     // published presentation already matches the current raw viewport, there
     // is nothing to cover or rebuild.
@@ -960,8 +1079,16 @@ export function initRenderer(platform = {}, persistence = {}) {
     };
     resize.pending = requestAnimationFrame(settle);
   };
+  // The rotation events arrive before any resize does — and on an end-for-end
+  // flip, instead of one. Handle the rail first, then let the ordinary settle
+  // path decide whether the presentation itself needs rebuilding.
+  const onOrientation = () => {
+    armOrientationWatch();
+    scheduleResize();
+  };
   window.addEventListener('resize', scheduleResize);
-  window.addEventListener('orientationchange', scheduleResize);
+  window.addEventListener('orientationchange', onOrientation);
+  window.screen?.orientation?.addEventListener?.('change', onOrientation);
   window.visualViewport && window.visualViewport.addEventListener('resize', scheduleResize);
   let dprQuery = null;
   const armDprQuery = () => {
@@ -977,8 +1104,17 @@ export function initRenderer(platform = {}, persistence = {}) {
   armDprQuery();
   resize.cleanup = () => {
     window.removeEventListener('resize', scheduleResize);
-    window.removeEventListener('orientationchange', scheduleResize);
+    window.removeEventListener('orientationchange', onOrientation);
+    window.screen?.orientation?.removeEventListener?.('change', onOrientation);
     window.visualViewport && window.visualViewport.removeEventListener('resize', scheduleResize);
+    if (orientationWatch && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(orientationWatch);
+    }
+    orientationWatch = 0;
+    orientationWatchUntil = 0;
+    orientationPendingUntil = 0;
+    orientationPending = null;
+    orientationTick = null;
     if (dprQuery?.removeEventListener) dprQuery.removeEventListener('change', onDprChange);
     else if (dprQuery?.removeListener) dprQuery.removeListener(onDprChange);
   };
@@ -1471,6 +1607,9 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
 let chromeOverlay = null;
 let chromeExtraOverlay = null;
 export function beginChromeFrame() {
+  // Cheapest possible place to notice the phone has been turned: the rail must
+  // follow the cutout even when the rotation produced no viewport event.
+  if (orientationTick) orientationTick();
   chromeWant = null;
   // Extra overlays are state-owned and repainted after the ordinary chrome;
   // clearing the request each frame prevents a diagnostic from surviving a

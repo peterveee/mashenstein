@@ -132,6 +132,44 @@ const BASE_PATTERNS = [
   P(2, [{ t: 'cactusBig', dx: 0 }, { t: 'cactus', dx: 100 }]),
 ];
 
+// Plumber Panic does the same for the same reason, one cabinet earlier in the
+// act. Its turf is #3a9c48 under cottages, timber fences and flowers, and a
+// saguaro standing in that is the one prop on screen that came from a different
+// game. The thistle is the bake-off winner: a real countryside thorn, and a
+// magenta that appears in no cabinet's ground, no scenery layer and no other
+// hazard. Same box, same PROP_TALL, same tier — the swap changes the plant and
+// nothing a player's hands can feel.
+//
+// SOME, NOT ALL. The first cut of this gated on TIER — thistles at 0 and 1, the
+// cactus kept for 2 — and it was wrong in a way only a real run showed: three
+// seeds of plumber-2 dealt sixteen thistles and not one cactus, because tier 2
+// arrives late enough that most of a stage never reaches it. A rule that leaves
+// the cactus technically in the bag and practically absent is not a mix.
+//
+// So: EVERY OTHER cactus-bearing pattern, in list order. Alternating is
+// self-balancing — it stays about half and half whatever is added to
+// BASE_PATTERNS later — and because it toggles per PATTERN rather than per
+// cell, a slot that deals two of them deals two of the same plant. One cactus
+// and one thistle 26px apart reads as indecision; a clump reads as a field.
+// Starts false so the FIRST cactus pattern in the list is the one that turns:
+// that is the lone tier-0 opener, the first standing hazard a plumber run ever
+// meets, and the thistle is the plant this cabinet is supposed to be about.
+let plumberSwap = false;
+const PLUMBER_PATTERNS = BASE_PATTERNS.map((pattern) => {
+  const hasCactus = pattern.cells.some((c) => c.t === 'cactus' || c.t === 'cactusBig');
+  if (!hasCactus) return pattern;
+  plumberSwap = !plumberSwap;
+  if (!plumberSwap) return pattern;
+  return {
+    ...pattern,
+    cells: pattern.cells.map((cell) => {
+      if (cell.t === 'cactus') return { ...cell, t: 'thistle' };
+      if (cell.t === 'cactusBig') return { ...cell, t: 'thistleBig' };
+      return cell;
+    }),
+  };
+});
+
 // Frost Fortress keeps the shared jump timing and difficulty curve, but wears
 // its own ground enemy. Clone only the cells that change so the base patterns
 // remain the source of truth for spacing, tiers, coins, and mixed hazards.
@@ -313,10 +351,15 @@ export const CABINETS = [
     // the wrap drops back to the lone melody.
     music: PLUMBER.bank,
     patterns: [
-      ...BASE_PATTERNS,
+      ...PLUMBER_PATTERNS,
       P(0, [{ t: 'qcrate', dx: 0 }]),
       P(0, [{ t: 'crate', dx: 0, n: 2 }, { t: 'qcrate', dx: 0 }]), // the stack under the prize makes the ram a two-step
       P(1, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
+      // STAYS A CACTUS. Tier 1 already takes four thistle cells out of
+      // BASE — one of those patterns deals two — so turning this one as well
+      // would leave the tier the thistle monoculture the alternation exists
+      // to avoid. Counted, not eyeballed: see the tier tally in the note on
+      // PLUMBER_PATTERNS.
       P(1, [{ t: 'qcrate', dx: 0 }, { t: 'qcrate', dx: 16 }, { t: 'cactus', dx: 90 }]),
       P(2, [{ t: 'pipe', dx: 0 }, coinArc(60)]),
       P(2, [{ t: 'qcrate', dx: 0 }, { t: 'qcrate', dx: 16 }, { t: 'qcrate', dx: 32 }]),

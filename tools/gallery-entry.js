@@ -166,6 +166,12 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // Lab sections that have been retired from the chooser remain in source for
 // reference, but are intentionally omitted from the rendered gallery.
 const HIDDEN_GALLERY_SECTIONS = new Set([
+  // SETTLED 15 Sep 2026: the THISTLE won and is in the game — props.js
+  // paints it, OBSTACLES registers it, and PLUMBER_PATTERNS deals it on
+  // tiers 0 and 1 with the cactus kept at tier 2. The sheet stays in source
+  // as the record of the six; src/dev/countryside-hazard-candidates.js goes
+  // when nobody wants to see the losers again.
+  'countryside-hazard-bakeoff',
   // Retired 8 Sep 2026 at Peter's call — all settled, the winners are in the
   // painter and the specs, and a decided question in the lab is just a page to
   // scroll past. `section()` returns a detached grid for a hidden id, so the

@@ -3938,10 +3938,46 @@ function frostLandmarkShape(ctx, palette, stageIndex = 1, options = {}) {
     ], options);
     return;
   }
+  // THE CROWN NEEDS LEGS.
+  //
+  // The cap fills the WHOLE interior of the crenellation with snow, offset
+  // three units below the sawtooth and then carried on down to y = -14, so the
+  // merlons survive as a 3-unit dark rim with nine to twelve units of snow
+  // under them. Snow would be fine if it read as snow. On Frost 1 it does not:
+  // the act opens on a flat white afternoon and the landmark takes 0.46 x 0.8
+  // haze toward that sky, so hazed #d8e9ef and the sky behind the fortress land
+  // on the same value. The field reads as background showing through and the
+  // rim floats over the building with nothing holding it up.
+  //
+  // TAKING THE SNOW AWAY IS THE WRONG FIX. It was tried — cap shortened to a
+  // ribbon lying on the parapet — and it turns the merlons into spikes. The
+  // band is the right shape; what it was missing is the two uprights that make
+  // it a crown rather than a mark. So each end merlon gets a leg down the outer
+  // edge of the crown to the foot of the cap, and the shape closes.
+  //
+  // 1.6 is the lightest weight that does it, picked over 2.6 in the gallery: the
+  // leg is a stroke closing a drawn shape, not a second wall, and at the rim's
+  // own weight it stopped being a crown and became a box. Its top follows the
+  // merlon's own slope so it can never poke above the silhouette.
+  const CROWN_LEG = 1.6;
   frostFill(ctx, palette.snow, (c) => {
     c.moveTo(-16, -17); c.lineTo(-11, -17); c.lineTo(-11, -23);
     c.lineTo(-5, -19); c.lineTo(0, -26); c.lineTo(6, -19); c.lineTo(11, -23);
     c.lineTo(11, -17); c.lineTo(16, -17); c.lineTo(13, -14); c.lineTo(-13, -14);
+    c.closePath();
+  });
+  // Slopes of the two outer merlons: (-11,-26)->(-5,-22) is 4/6, and
+  // (11,-26)->(6,-22) is 4/5. The leg's inner top sits on that line.
+  frostFill(ctx, palette.landmark || palette.shadow, (c) => {
+    c.moveTo(-11, -26);
+    c.lineTo(-11 + CROWN_LEG, -26 + (4 / 6) * CROWN_LEG);
+    c.lineTo(-11 + CROWN_LEG, -14); c.lineTo(-11, -14);
+    c.closePath();
+  });
+  frostFill(ctx, palette.landmark || palette.shadow, (c) => {
+    c.moveTo(11, -26);
+    c.lineTo(11 - CROWN_LEG, -26 + (4 / 5) * CROWN_LEG);
+    c.lineTo(11 - CROWN_LEG, -14); c.lineTo(11, -14);
     c.closePath();
   });
   frostWindows(ctx, palette, [

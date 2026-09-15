@@ -32,3 +32,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-10 | `b2dab03` | [2026-09-10-b2dab03.html](2026-09-10-b2dab03.html) | [bake-offs](2026-09-10-b2dab03-lab.html) | Refactor portrait preview entry and add background zoom functionality |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
 | 2026-09-14 | `31e205b` | [2026-09-14-31e205b.html](2026-09-14-31e205b.html) | [bake-offs](2026-09-14-31e205b-lab.html) | Refactor title layout and pause menu for improved alignment and readability |
+| 2026-09-15 | `08fc2a3` | [2026-09-15-08fc2a3.html](2026-09-15-08fc2a3.html) | [bake-offs](2026-09-15-08fc2a3-lab.html) | Add tests for dev URL handling, Frost aurora, weather mechanics, and object shadows |

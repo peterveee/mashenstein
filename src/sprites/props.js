@@ -1875,6 +1875,91 @@ export const PROP_PAINTERS = {
     plain(ctx, '#1d4a26', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.04, 0, 0, Math.PI * 2));
   },
 
+  // THE THISTLE — Plumber's standing hazard, and the answer to a cactus in a
+  // green field. It keeps the cactus's box, its tier placements and its jump
+  // exactly (see PLUMBER_PATTERNS in data/cabinets.js); only the plant changes.
+  //
+  // THE HEAD IS THE WHOLE READ. Magenta over a spined cup is a colour that
+  // appears in no cabinet's ground, no scenery layer and no other hazard, so
+  // this is the one candidate from the bake-off that never needed to borrow the
+  // guide's RED = AVOID to be seen — it is simply the only thing that colour on
+  // screen. The silver spine fan off the crown gives it a top edge to clear.
+  //
+  // THE STEM IS GREEN, which the standing-hazard brief forbids for a BODY, and
+  // the exception is the same one cactusGreen argues above: a stalk is not a
+  // mass. It is two units wide under a head three times its width, and it is
+  // taken to an olive a full value step below the turf, so it reads as the
+  // thing holding the head up rather than as the thing that hurts. Take the
+  // head off and this fails the brief; that is the correct test of it.
+  thistle(ctx, w, h, frame = 0) {
+    const p = hzPhase(frame, 6);
+    const base = h * 0.995;
+    // Shear about the planted base, not a rotation, so the root never lifts off
+    // the ground line. A thistle is stiffer than a cactus is: 0.035 against the
+    // cactus's 0.045, because a woody stalk sways from the head, not the waist.
+    const k = 0.035 * Math.sin(p);
+    const ink = '#1b2b12';
+    const lineW = Math.max(0.3, w * 0.05);
+    ctx.save();
+    ctx.transform(1, 0, -k, 1, k * base, 0);
+
+    hzLine(ctx, '#2e4420', Math.max(0.4, w * 0.11), (c) => {
+      c.moveTo(w * 0.5, base); c.lineTo(w * 0.5, h * 0.44);
+    });
+    // Two spined leaves, one per side at different heights — the asymmetry is
+    // what stops a 13x12 silhouette reading as a lollipop.
+    hzPath(ctx, '#39521f', ink, lineW * 0.8, (c) => {
+      c.moveTo(w * 0.48, h * 0.8);
+      c.lineTo(w * 0.18, h * 0.69); c.lineTo(w * 0.3, h * 0.755);
+      c.lineTo(w * 0.12, h * 0.8); c.lineTo(w * 0.33, h * 0.845);
+      c.closePath();
+      c.moveTo(w * 0.52, h * 0.66);
+      c.lineTo(w * 0.84, h * 0.555); c.lineTo(w * 0.71, h * 0.625);
+      c.lineTo(w * 0.9, h * 0.665); c.lineTo(w * 0.67, h * 0.72);
+      c.closePath();
+    });
+
+    // The cup: a hatched bulb the head sits in, so the magenta is seated on the
+    // plant rather than balanced on the stalk.
+    hzPath(ctx, '#4a5c2a', ink, lineW * 0.85, (c) => {
+      c.moveTo(w * 0.34, h * 0.46);
+      c.quadraticCurveTo(w * 0.5, h * 0.57, w * 0.66, h * 0.46);
+      c.lineTo(w * 0.62, h * 0.29); c.lineTo(w * 0.38, h * 0.29);
+      c.closePath();
+    });
+    hzLine(ctx, '#2e4420', Math.max(0.22, w * 0.032), (c) => {
+      c.moveTo(w * 0.42, h * 0.31); c.lineTo(w * 0.46, h * 0.5);
+      c.moveTo(w * 0.58, h * 0.31); c.lineTo(w * 0.54, h * 0.5);
+    });
+
+    hzPath(ctx, '#c03a86', '#5e1540', lineW * 0.85, (c) => {
+      c.moveTo(w * 0.36, h * 0.31);
+      c.quadraticCurveTo(w * 0.5, h * 0.36, w * 0.64, h * 0.31);
+      c.lineTo(w * 0.6, h * 0.14); c.lineTo(w * 0.4, h * 0.14);
+      c.closePath();
+    });
+    // The fan bobs a beat behind the stalk's shear, which is the whole animation
+    // — a thistle head is heavy and lags what is carrying it.
+    const bob = h * 0.02 * Math.sin(p + 2.1);
+    hzLine(ctx, '#e05aa0', Math.max(0.28, w * 0.04), (c) => {
+      for (const [sx, dx] of [[0.4, -0.9], [0.45, -0.4], [0.5, 0], [0.55, 0.4], [0.6, 0.9]]) {
+        c.moveTo(w * sx, h * 0.18);
+        c.lineTo(w * (sx + dx * 0.09), h * 0.02 + bob);
+      }
+    });
+    hzLine(ctx, '#efe4f4', Math.max(0.24, w * 0.032), (c) => {
+      for (const [sx, dx] of [[0.43, -0.7], [0.5, -0.15], [0.57, 0.6]]) {
+        c.moveTo(w * sx, h * 0.17);
+        c.lineTo(w * (sx + dx * 0.1), h * 0.005 + bob);
+      }
+    });
+    ctx.restore();
+    // Outside the shear: the ground does not dance. Soil rather than the
+    // cactus's desert red — cabinets.js plumber.soil.
+    plain(ctx, '#4a2f1a', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.32, h * 0.04, 0, 0, Math.PI * 2));
+  },
+  thistleBig(ctx, w, h, frame = 0) { PROP_PAINTERS.thistle(ctx, w, h, frame); },
+
   // Frost Fortress swaps the desert hazard for this hostile little snowman.
   // It keeps the cactus hitbox and red "avoid" read, but belongs to the ice
   // cabinet: blue-shadowed snow, coal eyes, carrot nose, and a broad red scarf.
@@ -4756,6 +4841,9 @@ export const PROP_FRAMES = {
   ...ANIMAL_FRAMES,
   ...finishDogTable(ANIMAL_FRAMES),
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
+  // The thistle takes the cactus's six: it replaces it in the lane, so the two
+  // must sway on the same ring or a mixed pattern reads as two clocks.
+  thistle: 6, thistleBig: 6,
   buzzbird: 6,
   // Standing hazards. Eight is the ring these were authored against — see
   // hzPhase — and the saw's eight turn the disc by exactly one tooth, so the
@@ -4824,6 +4912,9 @@ export const PROP_TALL = {
   ...ANIMAL_TALL,
   ...finishDogTable(ANIMAL_TALL),
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
+  // IDENTICAL to the cactus by design. A pattern swap that also changed the
+  // overdraw would be a different jump wearing the same tier.
+  thistle: 1.55, thistleBig: 1.4,
   // Standing hazards, over UNCHANGED boxes. Every one of these buys its
   // presence upward, the same trade the boost pad makes, and every one of them
   // buys it with something that cannot hurt you: flame above a barrel, flame

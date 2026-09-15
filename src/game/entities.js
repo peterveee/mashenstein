@@ -9,6 +9,12 @@ export const OBSTACLES = {
   // Purely cosmetic — same box, same debris, same jump.
   cactus:      { w: 13, h: 12, sprite: 'cactus', ground: true, breakable: true, action: 'jump', skins: ['cactus', 'cactus', 'cactusGreen', 'cactus'] },
   cactusBig:   { w: 17, h: 14, sprite: 'cactusBig', ground: true, breakable: true, action: 'jump' },
+  // PLUMBER'S STANDING HAZARD. Same box, same flags and same PROP_TALL as the
+  // cactus it stands in for, so the swap in PLUMBER_PATTERNS is a change of
+  // plant and nothing else: identical jump, identical spacing, identical
+  // fairness budget. A desert plant in a green field was the only problem.
+  thistle:     { w: 13, h: 12, sprite: 'thistle', ground: true, breakable: true, action: 'jump' },
+  thistleBig:  { w: 17, h: 14, sprite: 'thistleBig', ground: true, breakable: true, action: 'jump' },
   snowman:     { w: 13, h: 12, sprite: 'snowman', ground: true, breakable: true, action: 'jump' },
   snowmanBig:  { w: 17, h: 14, sprite: 'snowmanBig', ground: true, breakable: true, action: 'jump' },
   crate:      { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'jump', stack: true },
@@ -331,6 +337,12 @@ export function isFloorPad(def) {
 export const DEBRIS = {
   cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6, mat: 'soft' },
   cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14, mat: 'soft' },
+  // The head, the stalk and the spine fan — the three things the eye was
+  // actually tracking. Debris off a thistle must not be the cactus's reds:
+  // the magenta is the whole reason this prop was picked out of the bake-off,
+  // and a burst that does not carry it reads as the wrong plant shattering.
+  thistle:     { colors: ['#c03a86', '#39521f', '#efe4f4'], size: 2.6, mat: 'soft' },
+  thistleBig:  { colors: ['#c03a86', '#39521f', '#efe4f4'], size: 3.2, count: 14, mat: 'soft' },
   snowman:     { colors: ['#eaf6ff', '#b9d9ee', '#d84848'], size: 2.6, mat: 'soft' },
   snowmanBig:  { colors: ['#eaf6ff', '#b9d9ee', '#d84848'], size: 3.2, count: 14, mat: 'soft' },
   crate:       { colors: ['#c89858', '#8a6432', '#5a4020'], size: 3, mat: 'wood' },

@@ -94,4 +94,112 @@ if (refreshPhases.filter((phase) => phase === 'settling:true').length !== 2
   process.exit(1);
 }
 
+// TURNING THE PHONE END FOR END, STILL IN LANDSCAPE.
+//
+// Nothing about the picture moves — same width, same height, same density — so
+// this must swap the rail on the spot, with no cover and no settle. The stub
+// reports no safe-area insets at all, which is exactly the Safari case the
+// angle fallback exists for: if the layout only listened to the insets, the
+// controls would stay on the hand that is no longer there.
+renderer.revealPresentationRefresh();
+const phasesBeforeFlip = refreshPhases.length;
+changed = 0;
+window.screen.orientation.angle = 90;
+window.screen.orientation.type = 'landscape-primary';
+window.orientation = 90;
+dom.fire('win:orientationchange');
+// iOS announces the rotation before the viewport has caught up, so the watch
+// takes one frame to see the box hold still — and one frame is the whole cost.
+// It must NOT need the box to change, which is what a full 180 never does.
+dom.frame();
+if (renderer.chrome.landscapeSide !== 'left') {
+  console.error('FAIL: a landscape flip swaps the rail within a frame, with no settle');
+  process.exit(1);
+}
+if (renderer.presentationRefreshState().active || refreshPhases.length !== phasesBeforeFlip) {
+  console.error('FAIL: a landscape flip costs no cover blackout');
+  process.exit(1);
+}
+if (renderer.screen.cssW !== 699 || renderer.screen.cssH !== 393 || changed !== 0) {
+  console.error('FAIL: a landscape flip leaves the presentation and its art alone');
+  process.exit(1);
+}
+// The watch keeps looking for a few frames in case the insets land late; when
+// they never do, it must fall quiet rather than relaying out every frame.
+const genAfterFlip = renderer.chrome.gen;
+for (let i = 0; i < 60; i++) dom.frame();
+if (renderer.chrome.gen !== genAfterFlip) {
+  console.error('FAIL: the orientation watch stops relaying out once nothing is moving');
+  process.exit(1);
+}
+// And back again, this time announced only by the Screen Orientation API.
+window.screen.orientation.angle = 270;
+window.screen.orientation.type = 'landscape-secondary';
+window.orientation = 270;
+dom.fire('win:orientationchange');
+dom.frame();
+if (renderer.chrome.landscapeSide !== 'right') {
+  console.error('FAIL: flipping back returns the rail to the other side');
+  process.exit(1);
+}
+// A duplicate viewport event after the flip must not mistake the adopted
+// insets for a fresh rotation and cover the screen.
+const phasesAfterFlips = refreshPhases.length;
+dom.fire('win:resize');
+if (renderer.presentationRefreshState().active || refreshPhases.length !== phasesAfterFlips) {
+  console.error('FAIL: a resize after a flip does not reopen the blackout');
+  process.exit(1);
+}
+
+// A FLIP THAT ANNOUNCES ITSELF WITH A VIEWPORT THAT IS STILL MOVING.
+//
+// Turned end for end in one movement, iOS reports the new angle while the
+// dimensions are still mid-animation — the same lag the settle loop above
+// exists for. The rotation must survive that: a transient reading is allowed
+// to delay the swap, never to swallow it.
+window.screen.orientation.angle = 90;
+window.screen.orientation.type = 'landscape-primary';
+window.orientation = 90;
+window.innerWidth = 480;
+window.innerHeight = 480;
+dom.fire('win:orientationchange');
+window.innerWidth = 852;
+window.innerHeight = 393;
+for (let i = 0; i < 40; i++) dom.frame();
+if (renderer.chrome.landscapeSide !== 'left') {
+  console.error('FAIL: a transient mid-rotation viewport does not swallow the flip');
+  process.exit(1);
+}
+renderer.revealPresentationRefresh();
+if (renderer.screen.cssW !== 699 || renderer.screen.cssH !== 393) {
+  console.error('FAIL: the flip settles back on the real landscape geometry');
+  process.exit(1);
+}
+
+// AND A FLIP THAT PRODUCES NO VIEWPORT EVENT AT ALL.
+//
+// The events are the fast path, not the contract, so the frame loop looks too.
+window.screen.orientation.angle = 270;
+window.screen.orientation.type = 'landscape-secondary';
+window.orientation = 270;
+const phasesBeforeSilentFlip = refreshPhases.length;
+renderer.beginChromeFrame();
+dom.frame();
+if (renderer.chrome.landscapeSide !== 'right') {
+  console.error('FAIL: the frame loop catches a flip that fired no event');
+  process.exit(1);
+}
+if (renderer.presentationRefreshState().active
+  || refreshPhases.length !== phasesBeforeSilentFlip) {
+  console.error('FAIL: the frame loop catches it without a cover blackout');
+  process.exit(1);
+}
+// Steady state: nothing is turning, so the frame loop must cost no relayouts.
+const genAfterSilentFlip = renderer.chrome.gen;
+for (let i = 0; i < 60; i++) { renderer.beginChromeFrame(); dom.frame(); }
+if (renderer.chrome.gen !== genAfterSilentFlip) {
+  console.error('FAIL: a still phone costs the frame loop no relayouts');
+  process.exit(1);
+}
+
 console.log('ORIENTATION REFRESH: PASSED');
