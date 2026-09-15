@@ -29,7 +29,7 @@ import { setState, setStateFade, setStateNoCameo, updateState, drawState, curren
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState, applyFraming } from './game/run.js';
-import { BossState } from './game/boss.js';
+import { BossState, BOSSES } from './game/boss.js';
 import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
@@ -199,9 +199,25 @@ function routeDevUrl(goto, p) {
     case 'cast':
       setState(new CastState({ realSettings: save.settings, slot: save.slot, onExit: () => Flow.toTitle() }));
       break;
-    case 'attract':
-      setState(new AttractState({ realSettings: save.settings, onExit: () => Flow.toTitle() }));
+    case 'attract': {
+      // ?goto=attract alone is the idle demo. With &stage=3-3 (or &boss=neon) it
+      // is the dev menu's BOT-PLAY for that scenario, seed- and hero-pinned, in
+      // quiet dev mode so a recording of it shows only the game — the shape the
+      // teaser footage is taped from (work/local/teaser/record.mjs).
+      const { stageId } = (p.has('stage') || p.has('level')) ? devStageRoute(p) : {};
+      const bossId = p.get('boss');
+      const stage = stageId ? STAGE_BY_ID[stageId] : null;
+      const scenario = stage ? { kind: 'stage', id: stage.id }
+        : bossId && BOSSES[bossId] ? { kind: 'boss', id: bossId } : null;
+      setState(new AttractState({
+        realSettings: save.settings,
+        ...(scenario ? {
+          scenario, seed: seedFrom(p), hero: heroFrom(p), devMode: true, quiet: true,
+        } : {}),
+        onExit: () => Flow.toTitle(),
+      }));
       break;
+    }
     case 'intro':
       setState(new IntroState({ onDone: () => Flow.toTitle() }));
       break;

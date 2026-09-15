@@ -684,3 +684,32 @@ Ideas worth trying on what is already built:
   from parts of other games. Needs nine `renderBank` calls and a sample-accurate
   concatenation.
 - **A 9:16 cut of the reel** for Reels/Stories: `--size=1080x1920 --band=360`.
+
+## The teaser trailer (15 Sep 2026)
+
+`work/video/teaser-16x9.mp4` (1920x1080, YouTube) and `work/video/teaser-9x16.mp4`
+(the same master letterboxed under the wordmark, for Reels). 51.7s, cut on the bar
+grid of RHYTHM BANKRUPTCY (124 bpm, 1.935s a bar); the music is bars 1–24 of the
+song's arranged form and stops dead before Gary.
+
+Everything is real footage. The scripts live in `work/local/teaser/` and are
+disposable; what they lean on is tracked:
+
+- **`?goto=attract&stage=3-3&hero=fernwick&seed=11`** — the dev router now runs
+  the dev menu's BOT-PLAY for a named scenario, quiet, seed- and hero-pinned, and
+  `AttractState` passes `hero` through as `initialHeroId`. A Playwright script
+  drives it in headless Chromium on Metal (`--use-angle=metal`; plain headless
+  runs the game at 47 fps and captures 22) and starts the dev recorder bound to
+  the state, so each take opens and closes on black.
+- **True slow motion**, not stretched frames: the script polls `copter.hitT` and
+  drops `Dev.timeScale` to 0.25 for the life of the hit animation, so the barrel
+  bonk on Eggshell — hair up, shocked face, lamps out, then the sour face — is
+  taped at full frame rate over four seconds.
+- **Bubble close-ups** are 3840x2160 canvas screenshots of a run with the line
+  forced through `RunState.say`, cropped 16:9 around the card with a slow push.
+- **Cards** (the act titles, the pit fail line, COMING SOON) are typeset through
+  `drawTextCentered` in the `title` face via `tools/lib/art-page.js`.
+- **Gary** is the shipped lean-in loop at its native 1080x1350, pinned into the
+  16:9 frame on black — sized off width, the 16:9 render puts his face out of shot.
+- Music is bounced with the song's **arrangement** passed to `renderBankBrowser`;
+  `render-track.js` renders the composed two-bar form only.

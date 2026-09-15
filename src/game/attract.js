@@ -79,6 +79,8 @@ export class AttractState {
       demo: true,
       devInvuln: this.crash,
       devForceMission: this.crash,
+      // Dev watch modes may name the hero; the idle demo takes the slot's own.
+      initialHeroId: this.o.hero || undefined,
       onEnd: () => { this.done = true; },
     };
     this.run = stage
