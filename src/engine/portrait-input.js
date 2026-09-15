@@ -9,9 +9,9 @@ export const PORTRAIT_CONTROL_DIAMETERS = Object.freeze({
   slide: 88,
   use: 88,
   pause: 48,
-  // Portrait Lab is a review surface, so it exposes the desktop rewind tape
-  // as a held touch control. Production portrait gameplay never registers it;
-  // keeping the geometry here lets the lab use the same hit-test path as the
+  // The standalone portrait preview exposes the desktop rewind tape as a held
+  // touch control. Production portrait gameplay never registers it; keeping
+  // the geometry here lets the preview use the same hit-test path as the
   // other controls without teaching ordinary phone runs a new verb.
   rewind: 88,
 });
@@ -61,7 +61,7 @@ function rect(id, action, x, y, width, height) {
 /**
  * Resolve portrait controls for a CSS viewport. The frequent actions own broad
  * lower-half zones; explicit controls are tested first. `includeRewind` is a
- * Portrait Lab-only opt-in so the standalone preview keeps its four controls.
+ * preview-only opt-in so the standalone preview keeps its four controls.
  */
 export function portraitTouchLayout({
   viewportWidth = 390,

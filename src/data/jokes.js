@@ -165,7 +165,7 @@ export const EXIT_LINES = {
   ],
 };
 
-export const EGGSHELL_NARRATION = [ // inaccurate, for corrupted mode + UNPLUGGED
+export const EGGSHELL_NARRATION = [ // ambient observations for UNPLUGGED
   'HE JUMPS. HE DOES NOT. I AM NOT WATCHING.',
   'THE HERO TRIPS. MAGNIFICENTLY. I ASSUME.',
   'NOTHING IS HAPPENING. NOTHING HAS EVER HAPPENED.',

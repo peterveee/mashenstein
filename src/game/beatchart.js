@@ -1,7 +1,7 @@
 // Beat-locked gameplay data and spawner.  This module deliberately knows
 // nothing about Audio or the DOM: RunState supplies the heard-beat callback so
 // the same placement and validation code can run in deterministic tests.
-import { makeObstacle, makeDroneColumn, makePickup, OBSTACLES } from './entities.js';
+import { makeObstacle, makeDroneColumn, makePickup, OBSTACLES, PICKUPS } from './entities.js';
 import { HEROES } from '../data/heroes.js';
 import { worstAirtime } from './spawner.js';
 import { jumpV, gravityFor, PLAYER_W } from './player.js';
@@ -222,6 +222,18 @@ export const CROSSING_BEAT_HOP = 0.32;
 export const BOX_LEAD_BEATS = 1.5;
 export const BOX_BURST_BEATS = 1;
 export const BOX_SHOT_MIN_SPEED = 200;
+// A CHART MAY PLACE ITS OWN BOX. The pair above is the cabinet's default, and
+// two of the three charts were re-authored around it (their holes moved a beat
+// later). rhythm-1 was not: its box shares the road with the coin figure the
+// stage was written with ("8, and, 9" into the first hole), and at 1.5 beats
+// the box's body stood on that figure's second coin. So that chart keeps the
+// timing the cabinet shipped with before 3 Sep 2026 — 2.4 beats out, a
+// two-beat fuse — by saying so on the event (`boxLead`, `boxBurst`), and the
+// validator and the lane read the event before the default. The price of a
+// box that far out is range: a thrown weapon that parks short of it is not
+// dealt one (RunState's canShoot is asked with the lead in px).
+export function boxLeadBeats(event) { return event?.boxLead ?? BOX_LEAD_BEATS; }
+export function boxBurstBeats(event) { return event?.boxBurst ?? BOX_BURST_BEATS; }
 // ACTION-FREE LANE AFTER A RESYNC, in beats, and it is the one number the
 // spawner and the judge must agree on: the spawner lays nothing that ASKS AN
 // INPUT inside it and the judge scores nothing inside it. Two beats is a beat
@@ -657,12 +669,48 @@ export function validateBeatChart(chart, physics = {}) {
     const pxPerBeat = (physics.speed || BASE_SPEED) * beatSec;
     const lip = pitWindowBeats(PIT_BEATS, physics.bpm);
     for (const a of bySlot.filter((e) => e.action === 'ability' && e.type)) {
-      const landing = bySlot[(a.slot + BOX_BURST_BEATS) % chart.loopBeats];
+      // A chart's own timing has to be a real fuse and a box in front of the
+      // hero when it goes — the two facts every default-timed box already has.
+      if (a.boxBurst != null && (!Number.isInteger(a.boxBurst) || a.boxBurst < 1)) {
+        throw new Error(`card box at slot ${a.slot}: boxBurst must be a whole beat or more`);
+      }
+      if (!(boxLeadBeats(a) > boxBurstBeats(a))) {
+        throw new Error(`card box at slot ${a.slot} would open behind the hero `
+          + `(lead ${boxLeadBeats(a)} is not past its ${boxBurstBeats(a)}-beat fuse)`);
+      }
+      const landing = bySlot[(a.slot + boxBurstBeats(a)) % chart.loopBeats];
       if (landing?.action !== 'pit') continue;
-      const far = BOX_LEAD_BEATS - BOX_BURST_BEATS + OBSTACLES[a.type].w / pxPerBeat;
+      const far = boxLeadBeats(a) - boxBurstBeats(a) + OBSTACLES[a.type].w / pxPerBeat;
       if (far >= lip) {
         throw new Error(`card box at slot ${a.slot} stands over the hole at slot ${landing.slot} `
           + `(far edge ${far.toFixed(2)} beats past the line, lip at ${lip.toFixed(2)})`);
+      }
+    }
+    // A CARD BOX MAY NOT SHARE ROAD WITH A COIN. The box is not on its chart
+    // line: it stands BOX_LEAD_BEATS later, and a fill can reach into the next
+    // slot. Checking only the two event lines therefore misses the exact bug
+    // this rule is for — a coin whose sprite is laid on top of the box's body.
+    // Use the actual widths in beats, and check the loop seam in both
+    // directions. Cadence does not make an overlap safe: any two recurring
+    // events eventually share a pass, while a quiet coin pass still keeps its
+    // on-line coin.
+    const boxes = bySlot.filter((e) => e.action === 'ability' && e.type)
+      .map((e) => ({ e, left: e.slot + boxLeadBeats(e),
+        right: e.slot + boxLeadBeats(e) + OBSTACLES[e.type].w / pxPerBeat }));
+    const coins = bySlot.filter((e) => e.action === 'coin').flatMap((e) => {
+      const width = PICKUPS.coin.w / pxPerBeat;
+      return coinRunOffsets(e).map((off) => ({ e, left: e.slot + off, right: e.slot + off + width }));
+    });
+    for (const box of boxes) {
+      for (const coin of coins) {
+        for (const shift of [-chart.loopBeats, 0, chart.loopBeats]) {
+          const left = coin.left + shift;
+          const right = coin.right + shift;
+          if (left < box.right - 1e-9 && right > box.left + 1e-9) {
+            throw new Error(`coin at slot ${coin.e.slot} (${(coin.left - shift).toFixed(2)}) overlaps `
+              + `card box at slot ${box.e.slot} (${box.left.toFixed(2)})`);
+          }
+        }
       }
     }
     // WHERE EVERY COIN IN THE LOOP STANDS, and EVERY WAY ROUND THE LOOP CAN
@@ -867,9 +915,32 @@ export class BeatSpawner {
     this.actionFreeUntilBeat = null;
     this.lastRawBeat = null;
     this.beatEpoch = 0;
+    // WHERE THE CADENCES COUNT FROM, in beats of this spawner's own numbering.
+    // An `every` slot fires on one loop pass in N, and the pass has to be a
+    // property of the ROAD rather than of the clock: a retry keeps the song
+    // playing and re-anchors the lane on whatever beat it has reached, which
+    // renumbers every stretch of road by some whole loops (RunState's beat-jump
+    // respawn). The run moves this by the same whole loops, so the pass a
+    // stretch of road falls in — and with it whether the box stands there —
+    // is the same on every attempt. Zero until a retry has happened.
+    this.passOffset = 0;
     this._approachCache = new Map();
     this.eventInstances = [];
     this.onPitAlign = onPitAlign;
+  }
+
+  /** The loop pass a beat of this spawner's numbering falls in — see passOffset. */
+  _pass(beat) {
+    return Math.floor((beat - this.passOffset) / this.chart.loopBeats);
+  }
+
+  /**
+   * A raw clock reading in this spawner's own unwrapped numbering, without
+   * advancing the wrap detector — the number `fill` would stamp on a beat right
+   * now. A checkpoint records it so a retry can renumber the road exactly.
+   */
+  laneBeat(raw) {
+    return finiteNumber(raw) ? raw + this.beatEpoch : null;
   }
 
   _unwrappedBeat(raw) {
@@ -1052,6 +1123,14 @@ export class BeatSpawner {
     if (!finiteNumber(beat)) return;
     const pxPerBeat = speed * 60 / this.bpmNow();
     const playerX = this.playerWorldX(worldX);
+    // WHAT THIS FILL LAID BY: every mark below stands at
+    // playerX + (its beat - this beat) * pxPerBeat, so this beat and this
+    // camera ARE the lane's mapping of song to road, to the pixel. A checkpoint
+    // reads them back (RunState.rhythmLaneAnchor) rather than its own clock and
+    // camera, which are a frame's scroll away from what the marks were cut by.
+    this.fillRaw = raw;
+    this.fillBeat = beat;
+    this.fillX = worldX;
     if (this.cursorBeat == null) this.resetFromBeat(beat, worldX);
     // A long render/audio jump can leave the old lookahead cursor behind the
     // heard clock. Re-anchor atomically instead of replaying dozens of stale
@@ -1105,23 +1184,26 @@ export class BeatSpawner {
         // later lands in front of the hero rather than on him.
         const boxType = event.type || null;
         const boxDef = boxType ? OBSTACLES[boxType] : null;
-        const lead = boxType ? BOX_LEAD_BEATS * pxPerBeat : 0;
+        const lead = boxType ? boxLeadBeats(event) * pxPerBeat : 0;
         const boxW = boxDef?.w || 8;
         if (actionX + lead + boxW > stopX) {
           this.nextX = stopX;
           return;
         }
-        // The loop pass, off the heard clock's own zero, exactly as a coin
-        // fill's cadence is counted — see the `every` note in validateBeatChart
-        // for why a card box is allowed one at all.
-        const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
+        // The loop pass, counted off the road (passOffset), exactly as a coin
+        // fill's cadence is — see the `every` note in validateBeatChart for why
+        // a card box is allowed one at all.
+        const pass = this._pass(this.cursorBeat);
         const skipped = (event.every ?? 1) > 1 && pass % event.every !== 0;
         // BOTH ENDS ARE CHECKED against the set pieces: the beat the shot is
         // asked on and the road the box would stand on are two different places
         // on this cabinet, and a crossing owns the whole stretch between them.
         const clear = !this._isSuppressed(actionX, event)
           && !this._isSuppressed(actionX + lead, event);
-        const armed = !skipped && clear && (!boxType || this.canShoot());
+        // Asked with the lead in px: a box a chart puts further out than the
+        // default can be past a thrown weapon's park, and that hero is not
+        // handed a box they would watch their weapon stop short of.
+        const armed = !skipped && clear && (!boxType || this.canShoot(lead));
         if (armed) {
           if (boxType) {
             const box = makeObstacle(boxType, actionX + lead);
@@ -1133,6 +1215,8 @@ export class BeatSpawner {
             // circle against, and what the fuse counts from.
             box.actionBeat = this.cursorBeat;
             box.actionX = actionX;
+            // The fuse ceiling this box was laid against (RunState.lightChartBoxOnBeat).
+            box.burstBeats = boxBurstBeats(event);
             obstacles.push(box);
           }
           this.eventInstances.push({
@@ -1235,11 +1319,9 @@ export class BeatSpawner {
           // beat. Spaced off pxPerBeat rather than off COIN_GAP: these are notes
           // before they are pickups, and a fixed pixel gap would be a different
           // rhythm at every speed the cabinet runs at.
-          // The loop pass this beat falls in. Anchored to the heard clock's own
-          // zero, so a resync re-phases the cadence rather than preserving it —
-          // which is the right trade: the alternative is carrying a counter
-          // across a lane rebuild that has just thrown away everything else.
-          const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
+          // The loop pass this beat falls in, counted off the road (passOffset)
+          // so the same stretch plays the same figure on every attempt.
+          const pass = this._pass(this.cursorBeat);
           const quiet = (event.every ?? 1) > 1 && pass % event.every !== 0;
           // A QUIET PASS IS THE COIN ON THE LINE, whichever way the figure
           // runs — a count-in's line is its LAST coin, so dropping it to one
@@ -1289,14 +1371,12 @@ export class BeatSpawner {
           }
         } else if (event.punt) {
           // A BARREL SLOT, AND IT MAY BE A QUIET PASS. The loop pass is counted
-          // off the heard clock's own zero, exactly as a coin fill's cadence
-          // and a card box's are — so a resync re-phases it rather than
-          // carrying a counter across a lane rebuild that has thrown away
-          // everything else. The judge reads what was LAID back off
+          // off the road (passOffset), exactly as a coin fill's cadence and a
+          // card box's are. The judge reads what was LAID back off
           // `eventInstances` (RunState.rhythmRequiredAt), which is what makes
           // a skipped pass a beat nobody is owed rather than a beat the
           // scoreboard demands and the lane never furnished.
-          const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
+          const pass = this._pass(this.cursorBeat);
           if ((event.every ?? 1) === 1 || pass % event.every === 0) {
             const ob = makeObstacle(type, spawnX);
             ob.chartEventId = id;

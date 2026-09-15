@@ -4,7 +4,7 @@ import { efficiencyProfile } from '../render-efficiency.js';
 // ground(ctx,camX,cab,obstacles), post(ctx,t). `scene` is optional renderer
 // context: most packs ignore it, while LCD reads the rhythm stage and heard
 // beat without importing game or audio state into this renderer-only module.
-// Hitboxes/timings are style-independent; reduced motion/flashing tame effects.
+// Hitboxes/timings are style-independent; reduced flashing tames effects.
 //
 // `lightBg: true` opts a pack out of the GPU scene bloom. The bloom bright-pass
 // (glfx.js FS_BRIGHT) keeps anything above ~0.8 luma, and the final composite
@@ -20,7 +20,7 @@ import { backgroundParallaxOffset } from '../scenery-layout.js';
 import { glowSprite } from '../../sprites/props.js';
 // The 5x7 pixel font's raw rows. The LCD panel lays its own cells, so it takes
 // the letterforms and not the blitter — see lcdSkyBanner.
-import { drawTextVectorCentered, pixelGlyph, textYForMid } from '../sprites.js';
+import { drawTextVectorCentered, pixelGlyph, textYForMid, textWidth } from '../sprites.js';
 // What lies at the bottom of a hole, when the cabinet names one. A pack draws a
 // gap by not drawing; the fill is the other half of that bargain.
 import { drawPitFill } from '../../game/pitFill.js';
@@ -38,6 +38,7 @@ import {
   paperTextureSpeedOf,
   paperStrengthsOf,
 } from '../paper-material.js';
+import { drawSoftContactShadow } from '../shadows.js';
 
 // Every layer back here scrolls a FRACTION of the foreground, and the camera now
 // magnifies that foreground — so each parallax factor is scaled by the same
@@ -284,13 +285,11 @@ let hillCacheSS = 0;
 // hidden behind the near layer; a triangular shoulder crest lands at the tile
 // edge and lifts that seam into open sky.
 // Blits at a fractional x antialias their own dest-rect edge against the sky,
-// and two abutting tiles composite that boundary pixel twice at partial alpha
-// (0.5 over sky, then 0.5 over that = 0.75) — a fine translucent seam that
-// appears only at some scroll offsets. So the tile carries MARGIN px of its
-// neighbours' content on each side and blits MARGIN wider on both sides: the
-// ridge is periodic, so the overlap agrees exactly and covers the boundary
-// with opaque pixels instead of blending toward it. OVER (the path overdraw)
-// must stay clear of the margin so those columns are solid too.
+// and two abutting tiles put two of those together — a translucent gap showing
+// sky. Overdrawing past both edges keeps the edge columns fully opaque. Frost
+// uses a continuous ridge instead of relying on this cached-tile seam
+// treatment, because its translucent wash makes the partial-alpha overlap
+// visible in either orientation.
 const MARGIN = 2;
 const OVER = MARGIN + 4;
 const TREE_MAX = 18; // tallest crown, reserved as tile headroom
@@ -300,7 +299,106 @@ const TREE_MAX = 18; // tallest crown, reserved as tile headroom
 // a place without turning the horizon into confetti.
 const FROST_SCENERY_PALETTE = Object.freeze({
   far: '#66879d', near: '#416579', snow: '#d8e9ef', shadow: '#304b5b',
+  ice: '#789eb5', iceShadow: '#3b6077', landmark: '#304d66', warm: '#e4ba68',
 });
+// DAY TO DUSK ACROSS THE THREE STAGES.
+//
+// Frost 1 opens on a flat white afternoon, Frost 2 has the sun on the way down,
+// and Frost 3 is the evening the aurora and the fortress's lit windows were
+// always drawn for. It is one light per stage rather than a wash over the
+// finished frame: a wash greys the aurora and the snow together, and the whole
+// point is that as the sky goes down the aurora comes UP.
+//
+// Every field here is a light, not a decoration, which is why the lane is in
+// the table. Snow is the brightest thing in the picture because of what is
+// falling on it, so a dusk sky over a noon lane reads as a lit stage set. The
+// one thing that does not move is `warm`, the fortress's windows: they are
+// emitting, not reflecting, and they are the only warm mark left by stage 3.
+//
+// `tint` and `tintAmount` are what the stage does to the SCENERY palette before
+// aerial perspective hazes it — less light reaching the rock, applied first, so
+// the haze still mixes toward the sky that stage actually has.
+const FROST_STAGE_LIGHT = Object.freeze([
+  null,
+  Object.freeze({
+    name: 'day',
+    // Stage 1 is the shipped cabinet palette, unchanged: the ramp starts from
+    // the picture that was signed off, and only stages 2 and 3 are new.
+    sky: Object.freeze(['#b8d8f0', '#e0ecf8']),
+    far: '#a8c8e8', hills: '#88a8c8',
+    ground: '#c8e0f0', groundDark: '#98b8d8',
+    foreground: '#5b7e96', haze: '#e6f1fa',
+    tint: '#ffffff', tintAmount: 0,
+  }),
+  Object.freeze({
+    name: 'low sun',
+    // The sun is off to one side and low: the top of the sky deepens while the
+    // horizon takes the warmth. The snow barely moves yet — it is still day.
+    sky: Object.freeze(['#93b7de', '#f2ddc6']),
+    far: '#9cb7d8', hills: '#7d99bf',
+    ground: '#c3d8ea', groundDark: '#92aecd',
+    foreground: '#56768f', haze: '#eae9f0',
+    tint: '#e9c9a4', tintAmount: 0.16,
+  }),
+  Object.freeze({
+    name: 'dusk',
+    // Twilight over snow: deep blue overhead, the last of the sun on the
+    // horizon, and a lane that has gone blue-violet because nothing white is
+    // lighting it any more. The traps still read — that was checked against the
+    // real 16x8 mark before this palette was kept.
+    sky: Object.freeze(['#41568a', '#dda283']),
+    far: '#6f80ab', hills: '#56658e',
+    ground: '#9aa9c9', groundDark: '#6c7ca2',
+    foreground: '#3e4a6d', haze: '#c9c6dd',
+    tint: '#6b6ea0', tintAmount: 0.42,
+  }),
+]);
+
+function frostStageLight(stageIndex) {
+  return FROST_STAGE_LIGHT[Math.max(1, Math.min(3, Number(stageIndex) || 1))];
+}
+
+// The first feature in each ridge tile is the authored landmark rhythm. A
+// small secondary slot makes the long portrait window feel inhabited without
+// turning the playable lane into a wall of props.
+const FROST_FAR_SECONDARY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'ice-rock', at: 0.47, scale: 0.84 }),
+  Object.freeze({ kind: 'snowbank', at: 0.88, scale: 0.58 }),
+]);
+// Portrait has a taller viewing window but the same world-space ridge period.
+// Add one quiet third slot there so the extra sky is inhabited without
+// shortening the hill wavelength or making the scenery look stamped.
+const FROST_FAR_PORTRAIT_EXTRA_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'snowbank', at: 0.62, scale: 0.46 }),
+]);
+const FROST_NEAR_SECONDARY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'ice-rock', at: 0.50, scale: 0.84 }),
+  Object.freeze({ kind: 'snowbank', at: 0.88, scale: 0.64 }),
+]);
+const FROST_NEAR_PORTRAIT_EXTRA_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'pine', at: 0.06, scale: 0.95 }),
+]);
+const FROST_SCENERY_LIFT = 16;
+// Landscape has much less sky above the lane, so the same Frost country
+// settles too close to the apron. Move the complete Frost stack up only in
+// landscape; portrait keeps its resolved band geometry and existing lift.
+const FROST_LANDSCAPE_SCENERY_LIFT = 36;
+// Frost props are painted immediately after their own ridge. The ridge is
+// still opaque so its color remains the support plane, while the scenery's
+// exact footprint can stay visible instead of being buried several pixels
+// below the snow line.
+const FROST_SCENERY_ALPHA = 1;
+const FROST_HILL_ALPHA = 1;
+// A separate foreground sheet restores the depth that translucency used to
+// provide, without asking the gameplay ridge to do two jobs. It is decorative
+// only: the opaque near ridge still owns all prop occlusion, while this broad
+// fold passes in front of it at a restrained alpha and never owns a hitbox.
+const FROST_FOREGROUND_HILL_ALPHA = 0.22;
+const FROST_FOREGROUND_HILL_DEPTH = 0.55;
+const FROST_FOREGROUND_HILL_AMP = 28;
+const FROST_FOREGROUND_HILL_WL = 88;
+const FROST_FOREGROUND_HILL_OFFSET = 14;
+const FROST_FOREGROUND_HILL_COLOR = '#5b7e96';
 const CRYPT_SCENERY_PALETTE = Object.freeze({
   far: '#665371', near: '#4b3859', edge: '#2d2238', lit: '#876f8c',
 });
@@ -336,6 +434,57 @@ const HILL_UNDERFILL = 220;
 // phase from raw camX drifts against the baked tile by a third of a pixel per
 // period and the cacti slowly lift off the hills. Sampling the same function
 // through the same modulo is the only version of this that cannot drift.
+// The peaked far range's summits, as fractions of one tile period. Feet
+// overlap on purpose: neighbouring flanks cross well above the base line, so
+// the range is a continuous skyline with saddles in it rather than a row of
+// separate cones standing on a flat horizon. The last summit wraps across the
+// seam, which is why its foot reaches past 1.
+//
+// `at` centre of the base, `w` base width, `h` height as a fraction of amp,
+// `skew` how far the apex leans off centre (-1..1, negative leans left).
+//
+// SPACING IS A CONSTRAINT, not a free parameter. The frame is 480 wide against
+// a 628px period, so about three quarters of the range is on screen at once.
+// The first cut clustered the two big summits in the first half and put two
+// low foothills in the second, and for a good few seconds of running the far
+// range dropped entirely behind the near hills and left a bare sky. The
+// summits are therefore spread at a roughly even 0.18 of period, and the two
+// tallest sit 0.35 apart — closer than the frame is wide, so one of them is
+// always in the picture.
+const PEAK_SUMMITS = Object.freeze([
+  // The one the eye lands on: broad, snow-capped, apex left of its base so the
+  // eastern flank runs long into the saddle behind it.
+  Object.freeze({ at: 0.20, w: 0.36, h: 1.00, skew: -0.18 }),
+  // Its east shoulder, rock but no snow — part of the same massif, and the
+  // band cut-off is what makes it the lesser of the two.
+  Object.freeze({ at: 0.38, w: 0.18, h: 0.58, skew: 0.30 }),
+  // A separate horn across a real valley — narrower, steeper, leaning the
+  // other way so the two big summits are not each other's mirror.
+  Object.freeze({ at: 0.55, w: 0.25, h: 0.86, skew: -0.28 }),
+  // The low point of the range: rock only, and the widest saddle either side.
+  Object.freeze({ at: 0.74, w: 0.22, h: 0.56, skew: 0.20 }),
+  // A third capped summit straddling the seam, well short of the other two.
+  Object.freeze({ at: 0.92, w: 0.26, h: 0.74, skew: -0.12 }),
+]);
+
+// Triangle wave, -1..1 over one cycle of `u`. Used for the altitude lines
+// below: a sine boundary undulates, and undulating is a sand dune — a
+// triangle wave has CORNERS, and corners are what read as rock and ice.
+const triWave = (u) => 2 * Math.abs(u - Math.floor(u + 0.5)) - 1;
+
+// One summit's own height at `u`, 0 outside its base. The composite ridge is
+// the max of these. THE FLANKS ARE STRAIGHT ON PURPOSE: a broken, cragged
+// silhouette was tried here and lost — the clean triangle is the look, and
+// the sharpness the range needs belongs to the snow line, not the outline.
+function peakSummitTop(u, m) {
+  const d = ((u - m.at + 1.5) % 1) - 0.5;              // signed wrapped offset
+  const half = m.w / 2;
+  if (Math.abs(d) >= half) return 0;
+  const apex = half * m.skew;
+  const flank = d >= apex ? half - apex : half + apex;
+  return m.h * (1 - Math.abs(d - apex) / flank);
+}
+
 function ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes) {
   if (!peak && !mesa && !dunes) return yBase - Math.abs(Math.sin(px / wl)) * amp;
   const u = (((px % period) + period) % period) / period; // px may go negative
@@ -355,15 +504,30 @@ function ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes) {
     }
     return yBase - top * amp;
   }
-  const main = 1 - Math.abs(u * 2 - 1);               // /\ centered in the tile
-  const v = (u * 2 + 0.5) % 1;
-  const side = (1 - Math.abs(v * 2 - 1)) * 0.55;      // smaller shoulder peaks
-  if (!mesa) return yBase - Math.max(main, side) * amp;
+  if (!mesa) {
+    // A RANGE, NOT A STAMP. This used to be one symmetric triangle filling the
+    // tile with a 0.55 shoulder either side, and at 283px of period that meant
+    // the same isosceles cone every 283px across the sky — the shape reads as
+    // wallpaper the moment two of them are on screen at once. The dunes above
+    // already solved this for the desert: state several summits of different
+    // width, height and lean inside ONE period, so the variation is the period
+    // and the tile still meets itself at the seam.
+    //
+    // `skew` moves the apex off the middle of the base, which is what stops
+    // these looking drafted: a mountain has a long flank and a short one. Each
+    // summit's `h` is chosen against the altitude bands in parallaxHills —
+    // rock at 0.46 of amp, snow at 0.62 — so the table also decides which
+    // crests get a cap: two summits carry snow, one is bare rock, and the two
+    // foothills stay the range's own colour.
+    let top = 0;
+    for (const m of PEAK_SUMMITS) top = Math.max(top, peakSummitTop(u, m));
+    return yBase - top * amp;
+  }
   // A MESA is a trapezoid: steep sides, a dead-flat cap, and FLAT GROUND
   // between one and the next. A rounded sine ridge could be any landscape on
   // earth; a cut-off cap can only be desert.
   //
-  // The first cut got this by clamping a triangle — min(1, main * 2.2) — and
+  // The first cut got this by clamping a triangle — min(1, peak * 2.2) — and
   // it was wrong in a way that only showed once the near ridge and the haze
   // were drawn under it. Clamping ties the cap width to the slope angle: the
   // multiplier that made the sides steep also made the flat top 55% of the
@@ -424,6 +588,28 @@ function ridgeTangentAngle(px, yBase, amp, wl, period, peak, mesa, dunes) {
   return Math.atan2(after - before, step * 2);
 }
 
+// Keep the tree positions and silhouettes in one recipe. Plumber's hillside
+// accents use these samples to leave a little breathing room around the trees
+// that parallaxHills() bakes into the near-ridge tile.
+function ridgeTreeSamples(period, treeScale = 1) {
+  const n = Math.max(2, Math.round(period / 38));
+  const samples = [];
+  for (let i = 0; i < n; i++) {
+    const j = Math.sin(i * 12.9898) * 43758.5453;
+    const f = j - Math.floor(j);
+    const k = Math.sin(i * 78.233 + 1.7) * 24634.6345;
+    const g = k - Math.floor(k);
+    const tx = ((i + 0.2 + g * 0.6) / n) * period;
+    const th = (9 + f * 5) * treeScale;
+    const broadleaf = g >= 0.45;
+    // These are the widest extents of the actual baked crown recipes. The
+    // extra pixel is supplied by the flower clearance check below.
+    const halfWidth = broadleaf ? th * 0.30 * 1.63 : th * 0.34;
+    samples.push({ tx, th, broadleaf, halfWidth });
+  }
+  return samples;
+}
+
 // Split a peaked range at its natural low points so each visible mountain is
 // treated as its own paper sheet. Rounded near hills already have one crest per
 // period, so their period itself is one sheet and does not need extra cuts.
@@ -453,6 +639,46 @@ function paperRidgeSheetRanges(ridge, period, split = false) {
   return ranges.length ? ranges : [[0, period]];
 }
 
+function drawSeamFreeHill(ctx, camX, color, yBase, amp, wl, factor, options = {}) {
+  const coverage = backgroundPaintCoverage(ctx);
+  const period = Math.max(16, Math.round(Math.PI * wl));
+  const scroll = ridgeScroll(camX, factor, period).off;
+  const peak = !!options.peak;
+  const mesa = !!options.mesa;
+  const dunes = !!options.dunes;
+  const start = coverage.left - 8;
+  const end = coverage.right + 8;
+  const ridgeAt = (screenX) => {
+    // `screenX` is in the current background's local picture space. The
+    // cached-tile path below starts its first ridge at coverage.left, so the
+    // continuous path must use the same local origin or portrait and
+    // landscape will resolve the same world ridge at different phases.
+    const px = ((screenX - coverage.left + scroll) % period + period) % period;
+    return ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes);
+  };
+  const path = () => {
+    ctx.beginPath();
+    ctx.moveTo(start, H + HILL_UNDERFILL);
+    for (let x = start; x <= end; x += 2) ctx.lineTo(x, ridgeAt(x));
+    ctx.lineTo(end, H + HILL_UNDERFILL);
+    ctx.closePath();
+  };
+  if (options.paper) {
+    paperShadowPass(ctx, path, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(ctx, path, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+  }
+  ctx.fillStyle = color;
+  path();
+  ctx.fill();
+  if (options.paper) {
+    paperFinishPass(ctx, path,
+      sharedPaperPatternFor(ctx, options.paperMaterial || 'cardstockClear'), {
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA * (options.paperStrength ?? 1),
+        rim: false,
+      });
+  }
+}
+
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
@@ -470,6 +696,12 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     paperSceneryStrength: opts && opts.paperStrength,
   }).scenery;
   const strata = Array.isArray(opts && opts.strata) ? opts.strata : null;
+  if (opts && opts.seamFree) {
+    drawSeamFreeHill(ctx, camX, color, yBase, amp, wl, factor, {
+      paper, paperMaterial, paperStrength, peak, mesa, dunes,
+    });
+    return;
+  }
   const strataKey = strata
     ? strata.map((stripe) => `${stripe.fromTop}|${stripe.height}|${stripe.color}|${stripe.alpha}`).join(';')
     : '';
@@ -530,8 +762,49 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     // Altitude bands, low to high. Each re-traces the ridge to clip against:
     // restore() rolls back the clip but NOT the current path, so a second band
     // would otherwise clip itself to the first band's polygon.
-    const band = (col, frac, h1, a1, h2, a2) => {
-      const lineY = yBase - amp * frac;
+    // THE SNOW LINE IS A ROW OF TEETH, not a wave. This is the one thing the
+    // flat-vector mountain reference does that the shipped range did not: the
+    // cap does not end on a curve, it ends in sharp Vs where the snow has run
+    // further down the gullies than down the ribs between them. It was a pair
+    // of low sines, which drew one broad bulge per summit and made the cap
+    // read as a sticker laid over the peak.
+    //
+    // The SILHOUETTE stays a clean triangle. A cragged outline was tried with
+    // this and lost: the sharpness belongs to the ice, and a mountain that is
+    // jagged in both places is just noisy.
+    //
+    // Every wave count is a WHOLE NUMBER of cycles per period, so the line
+    // meets itself at the seam. That constraint is why the teeth are stated
+    // as cycle counts rather than as a pixel wavelength. At 628px of period,
+    // 13 cycles is a tooth about every 48px — four or five across the big
+    // summit's cap, which is the reference's count. Finer than that and they
+    // stop resolving: the ridge is traced every 2px, and this range is drawn
+    // at the far layer's scale.
+    const ROCK_LINE = Object.freeze([
+      Object.freeze({ cycles: 5, amp: 3.0 }),
+      Object.freeze({ cycles: 13, amp: 2.5 }),
+    ]);
+    // The 3-cycle drift is the reason no two caps come down to the same
+    // depth; the 13 and 29 are the teeth, at amplitudes that beat against each
+    // other so no two are the same size either.
+    const SNOW_LINE = Object.freeze([
+      Object.freeze({ cycles: 3, amp: 2.0 }),
+      Object.freeze({ cycles: 13, amp: 5.0 }),
+      Object.freeze({ cycles: 29, amp: 2.5 }),
+    ]);
+    const ROUND_LINE = Object.freeze([
+      Object.freeze({ cycles: 2, amp: 3.5, round: true }),
+      Object.freeze({ cycles: 5, amp: 2.0, round: true }),
+    ]);
+    const bandLineY = (px, frac, waves) => {
+      let y = yBase - amp * frac;
+      for (const w of waves) {
+        const u = (px / period) * w.cycles;
+        y += w.amp * (w.round ? Math.sin(u * Math.PI * 2) : triWave(u));
+      }
+      return y;
+    };
+    const band = (col, frac, waves) => {
       x.save();
       ridgePath();
       x.clip();
@@ -540,15 +813,18 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
       x.moveTo(-OVER, top);
       x.lineTo(period + OVER, top);
       for (let px = period + OVER; px >= -OVER; px -= 2) {
-        const a = (px / period) * Math.PI * 2;
-        x.lineTo(px, lineY + Math.sin(a * h1) * a1 + Math.sin(a * h2) * a2);
+        x.lineTo(px, bandLineY(px, frac, waves));
       }
       x.closePath();
       x.fill();
       x.restore();
     };
-    if (rock) band(rock, 0.46, 2, 3.5, 5, 2);
-    if (snow) band(snow, 0.62, 3, 2.5, 5, 1.5);
+    // Rounded hills keep the soft line they always had; only the peaked range
+    // gets the cornered one, because only it is meant to read as rock.
+    const rockLine = peak ? ROCK_LINE : ROUND_LINE;
+    const snowLine = peak ? SNOW_LINE : ROUND_LINE;
+    if (rock) band(rock, 0.46, rockLine);
+    if (snow) band(snow, 0.62, snowLine);
     if (strata) {
       // Sedimentary bands are clipped to the mesa body, so they disappear at
       // the cut face instead of becoming sky lines. The slight alpha keeps
@@ -575,22 +851,39 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     // periodic, so one straddling the tile edge shows its other half on the
     // neighbouring copy. The crown is three overlapping circles rather than one
     // — a lone circle reads as a lollipop at this size.
-    if (trees) {
-      const n = Math.max(2, Math.round(period / 38));
-      for (let i = 0; i < n; i++) {
-        const j = Math.sin(i * 12.9898) * 43758.5453;
-        const f = j - Math.floor(j);                    // stable 0..1 per index
-        const k = Math.sin(i * 78.233 + 1.7) * 24634.6345;
-        const g = k - Math.floor(k);                    // second stream: type + jitter
-        const tx = ((i + 0.2 + g * 0.6) / n) * period;
-        const th = (9 + f * 5) * treeScale;
+    const paintTrees = () => {
+      // A trunk with a horizontal foot cannot stand on a sloped ridge. The
+      // near crest falls two thirds of a pixel per pixel here, so across a
+      // trunk barely three pixels wide the downhill corner floats over open
+      // grass while the uphill corner buries — and the trunk's own flat
+      // bottom edge shows as a cut in the hillside. Clip each trunk to the
+      // SKY SIDE of the ridge and run it well past the crest: the cut is then
+      // the ground line itself, at every x across the trunk, on any slope.
+      // The crowns stay unclipped — one growing near a downslope is meant to
+      // overhang the hill behind it.
+      const skyPath = () => {
+        x.beginPath();
+        x.moveTo(-OVER, tileTop - 8);
+        x.lineTo(period + OVER, tileTop - 8);
+        for (let px = period + OVER; px >= -OVER; px -= 2) x.lineTo(px, ridge(px));
+        x.closePath();
+      };
+      for (const tree of ridgeTreeSamples(period, treeScale)) {
+        const { tx, th, broadleaf } = tree;
         const by = ridge(tx) + 1;                       // bite into the hill
         for (const dx of [-period, 0, period]) {
           const cx = tx + dx;
+          const trunkTop = by - th * 0.55;
+          x.save();
+          skyPath();
+          x.clip();
           x.fillStyle = trees.trunk;
-          x.fillRect(cx - th * 0.07, by - th * 0.55, th * 0.14, th * 0.55);
+          // Down to the floor of the tile; the clip decides where it ends.
+          x.fillRect(cx - th * 0.07, trunkTop, th * 0.14,
+            H + HILL_UNDERFILL - trunkTop);
+          x.restore();
           x.fillStyle = trees.leaf;
-          if (g < 0.45) {
+          if (!broadleaf) {
             // pine: two stacked tiers, narrowing to a point
             const w = th * 0.34;
             x.beginPath();
@@ -634,7 +927,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
           }
         }
       }
-    }
+    };
     if (paper) {
       // Keep one continuous material fill across the cached tile so the
       // texture cannot expose raster seams at sheet boundaries. The shadow and
@@ -652,11 +945,19 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
         x.restore();
       }
     }
+    // Trees go down LAST. The crest rim highlight is a stroke centred on the
+    // ridge, so drawn after the trees it painted a pale bar straight across
+    // the bark; behind them it reads as the ground passing behind the trunk.
+    if (trees) paintTrees();
     hillCache.set(key, tile);
   }
   const off = ridgeScroll(camX, factor, period).off;
   const prev = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = true;
+  // The cached tile already contains its antialiased ridge. Smoothing the
+  // destination rectangle again makes fractional portrait tile edges sample
+  // transparent texels and exposes a one-pixel join; nearest-neighbour keeps
+  // the abutting copies closed while the outer canvas scaling remains smooth.
+  ctx.imageSmoothingEnabled = false;
   const coverage = backgroundPaintCoverage(ctx);
   const fullH = H - tileTop + HILL_UNDERFILL;
   // DO NOT RASTERIZE THE PART OF THE TILE THAT IS UNDER THE FLOOR OF THE SCREEN.
@@ -704,6 +1005,14 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
 const PLUMBER_SCENERY_SPACING = 122;
 const PLUMBER_SCENERY_CULL_MARGIN = 74;
 const PLUMBER_NEAR_TREE_SCALE = 1.45;
+const PLUMBER_NEAR_TREE_WL = 50;
+const PLUMBER_NEAR_TREE_FACTOR = 0.35;
+const PLUMBER_NEAR_TREE_PERIOD = Math.max(16, Math.round(Math.PI * PLUMBER_NEAR_TREE_WL));
+const PLUMBER_SCENERY_SPRITE_PAD = 3;
+const PLUMBER_SCENERY_SPRITE_DIMENSIONS = Object.freeze({
+  flower: [20, 12], grass: [14, 9], bush: [22, 11], fence: [34, 16],
+  house: [30, 29],
+});
 // Houses are landmarks, not scenery wallpaper. One reserved slot every 48
 // placement cells gives a one-to-two-house level at the current stage lengths,
 // while keeping the exact cell deterministic across cameras and wraps.
@@ -736,6 +1045,27 @@ function plumberSceneryClusterForCell(cell) {
   if (slot < 27) return 'fence';
   if (slot < 37) return 'bush';
   return null;
+}
+
+function plumberNearTreeCenters(ctx, camX) {
+  const coverage = backgroundPaintCoverage(ctx);
+  const off = ridgeScroll(camX, PLUMBER_NEAR_TREE_FACTOR, PLUMBER_NEAR_TREE_PERIOD).off;
+  const trees = ridgeTreeSamples(PLUMBER_NEAR_TREE_PERIOD, PLUMBER_NEAR_TREE_SCALE);
+  const centers = [];
+  for (let x0 = coverage.left - off - PLUMBER_NEAR_TREE_PERIOD;
+    x0 < coverage.right; x0 += PLUMBER_NEAR_TREE_PERIOD) {
+    for (const tree of trees) {
+      centers.push({ x: x0 + tree.tx, halfWidth: tree.halfWidth });
+    }
+  }
+  return centers;
+}
+
+function plumberFlowerOverlapsTree(treeCenters, x, scale = 1) {
+  const flowerHalfWidth = (PLUMBER_SCENERY_SPRITE_DIMENSIONS.flower[0]
+    + PLUMBER_SCENERY_SPRITE_PAD * 2) * scale * 0.5;
+  return treeCenters.some((tree) =>
+    Math.abs(x - tree.x) <= flowerHalfWidth + tree.halfWidth + 1);
 }
 
 function plumberSceneryFill(ctx, source, color, paper, paperMaterial, paperStrength, options = {}) {
@@ -773,16 +1103,13 @@ function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength
   const cached = plumberScenerySpriteCache.get(key);
   if (cached) return cached;
   if (typeof document === 'undefined') return null;
-  const dimensions = {
-    flower: [20, 12], grass: [14, 9], bush: [22, 11], fence: [34, 16],
-    house: [30, 29],
-  }[kind];
+  const dimensions = PLUMBER_SCENERY_SPRITE_DIMENSIONS[kind];
   if (!dimensions) return null;
   const [width, height] = dimensions;
   // A few paper passes extend beyond the nominal silhouette. Keep a small
   // logical pad in the source canvas so a rim/shadow cannot be clipped; the
   // draw path below subtracts that pad when recovering the attached baseline.
-  const pad = 3;
+  const pad = PLUMBER_SCENERY_SPRITE_PAD;
   try {
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil((width + pad * 2) * SS);
@@ -852,14 +1179,17 @@ function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength
 
 function plumberSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y) {
   const view = backgroundPaintCoverage(ctx);
-  const travel = camX * 0.35 * ZOOM;
+  const travel = camX * PLUMBER_NEAR_TREE_FACTOR * ZOOM;
+  const treeCenters = plumberNearTreeCenters(ctx, camX);
   const first = Math.floor((travel - PLUMBER_SCENERY_CULL_MARGIN) / PLUMBER_SCENERY_SPACING);
   const last = Math.ceil((travel + view.width + PLUMBER_SCENERY_CULL_MARGIN) / PLUMBER_SCENERY_SPACING);
   const placements = [];
   const add = (cell, anchorX, kind, dx, scale = 1, variant = 0, baseOffset = 0) => {
     const x = anchorX + dx;
     if (outsideView(ctx, x, PLUMBER_SCENERY_CULL_MARGIN)) return;
-    const crest = ridgeYAt(x, camX, layerBaseY, 34, 50, 0.35, { coverageLeft: view.left });
+    if (kind === 'flower' && plumberFlowerOverlapsTree(treeCenters, x, scale)) return;
+    const crest = ridgeYAt(x, camX, layerBaseY, 34, PLUMBER_NEAR_TREE_WL,
+      PLUMBER_NEAR_TREE_FACTOR, { coverageLeft: view.left });
     placements.push({ cell, kind, x, baseY: crest + 1 + baseOffset, scale, variant });
   };
   for (let cell = first; cell <= last; cell++) {
@@ -1250,7 +1580,7 @@ function bakeVolcano(paper = false, paperMaterial = 'cardstockClear') {
   }, V_RIM_Y - 3, V_CAP_BOT + 18, out);
 }
 
-function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false, paperMaterial = 'cardstockClear') {
+function drawVolcano(ctx, t, camX, atCam, yOffset = 0, paper = false, paperMaterial = 'cardstockClear') {
   const cx = viewCenterX(ctx) + (atCam - camX) * VOLCANO_PLX * ZOOM;
   // Culled against the real edges of the picture, so the cone cannot wink into
   // existence while part of it is already on screen. The margin covers the
@@ -1267,13 +1597,13 @@ function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false, p
 
   // Smoke goes down first so the plume passes BEHIND the summit — puffs that
   // overlap the crater lip read as sitting on top of it otherwise.
-  drawVolcanoSmoke(ctx, t, CXB, V_RIM_Y + V_CRATER_D, reduced, V_SMOKE_SC, V_SMOKE_RISE);
+  drawVolcanoSmoke(ctx, t, CXB, V_RIM_Y + V_CRATER_D, V_SMOKE_SC, V_SMOKE_RISE);
   const under = volcBake.under;
   ctx.drawImage(under.c, 0, under.y, V_LW, under.h);
   // Motion comes from a soft highlight travelling down the slope instead of
   // from moving the colour fronts. Its alpha follows sin(pi*u), so it fades in
   // at the mouth and out at the fringe rather than popping when it wraps.
-  if (!reduced && !paper) {
+  if (!paper) {
     const u = (t * 0.15) % 1;
     const hy = V_RIM_Y + (V_LAVA_BOT - V_RIM_Y) * u;
     const band = 13;
@@ -1305,17 +1635,7 @@ function drawVolcano(ctx, t, camX, atCam, reduced, yOffset = 0, paper = false, p
 // pulsing in lockstep. Lobe offsets come from index hashes, not RNG, so the
 // plume is identical frame to frame at a given `t` — nothing here is stateful.
 const V_PUFFS = 5;
-function drawVolcanoSmoke(ctx, t, cx, apex, reduced, sc = 1, rise = 1) {
-  if (reduced) {
-    // Reduced motion still gets a plume, just a static one: the summit reads as
-    // wrong without it, and a frozen cloud is not a motion trigger.
-    for (let i = 0; i < 3; i++) {
-      const p = 0.2 + i * 0.3;
-      smokePuff(ctx, cx + Math.sin(i * 2.1) * 12 * sc * p, apex - (8 + p * 64 * rise) * sc,
-        (6 + p * 18) * sc, (1 - p * 0.55) * 0.6, i);
-    }
-    return;
-  }
+function drawVolcanoSmoke(ctx, t, cx, apex, sc = 1, rise = 1) {
   for (let i = 0; i < V_PUFFS; i++) {
     const p = (t * 0.13 + i / V_PUFFS) % 1;
     // Drift widens as it climbs, and each puff leans a different way, so the
@@ -1518,7 +1838,8 @@ export const __testing = {
   wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
   backgroundPaintBand,
   sceneryBandPointY, desertThermals, ridgeYAt, ridgeTangentAngle,
-  plumberSceneryPlacements, plumberSceneryClusterForCell,
+  plumberSceneryPlacements, plumberSceneryClusterForCell, plumberNearTreeCenters,
+  plumberFlowerOverlapsTree,
   plumberLandscapeSceneryOffset,
   get PLUMBER_LANDSCAPE_SCENERY_LIFT() { return PLUMBER_LANDSCAPE_SCENERY_LIFT; },
   get PLUMBER_SCENERY_SPACING() { return PLUMBER_SCENERY_SPACING; },
@@ -1539,6 +1860,29 @@ export const __testing = {
   desertCactusPlacements,
   desertNearSurfacePlacements,
   frostSceneryPlacements, cryptSceneryPlacements, surgeSceneryPlacements,
+  get FROST_SCENERY_EMBED() { return FROST_SCENERY_EMBED; },
+  get FROST_PINE_EMBED() { return FROST_PINE_EMBED; },
+  frostSceneryUsesPaperShadow,
+  frostFeatureSkirt,
+  frostStageLight,
+  get FROST_STAGE_LIGHT() { return FROST_STAGE_LIGHT; },
+  frostBlizzardRamp,
+  frostBlizzardRung,
+  frostBlizzardAt,
+  get FROST_BLIZZARD_LADDER() { return FROST_BLIZZARD_LADDER; },
+  get FROST_BLIZZARD_MAX() { return FROST_BLIZZARD_MAX; },
+  get FROST_FEATURE_FOOTPRINTS() { return FROST_FEATURE_FOOTPRINTS; },
+  get FROST_FEATURE_MARGIN() { return FROST_FEATURE_MARGIN; },
+  setFrostAtmosphere, frostAtmosphericPalette,
+  get FROST_ATMOSPHERE() { return FROST_ATMOSPHERE; },
+  frostAuroraRect,
+  frostAuroraBounds,
+  get FROST_AURORA_BLUR() { return FROST_AURORA_BLUR; },
+  get FROST_SCENERY_LIFT() { return FROST_SCENERY_LIFT; },
+  get FROST_LANDSCAPE_SCENERY_LIFT() { return FROST_LANDSCAPE_SCENERY_LIFT; },
+  get FROST_AURORA_CURTAINS() { return FROST_AURORA_CURTAINS; },
+  get FROST_AURORA_STAGE_GAIN() { return FROST_AURORA_STAGE_GAIN; },
+  get FROST_AURORA_STAGE_CURTAINS() { return FROST_AURORA_STAGE_CURTAINS; },
   desertWaterTowerPlacements, desertSatelliteDishPlacements,
   desertWindTurbinePlacements, desertTelegraphPlacements,
   desertSpeedLimitPlacements,
@@ -1559,7 +1903,7 @@ export const __testing = {
   // differ, and a test that has to remember which is which is a test that
   // silently measures nothing.
   drawButte: (ctx, camX, atCam) => drawButte(ctx, camX, atCam),
-  drawVolcano: (ctx, camX, atCam) => drawVolcano(ctx, 0, camX, atCam, true, 0),
+  drawVolcano: (ctx, camX, atCam) => drawVolcano(ctx, 0, camX, atCam, 0),
 };
 
 // Per-frame gradient construction is surprisingly costly at device res —
@@ -1649,7 +1993,7 @@ const paperSurfaceCache = new Map();
 const paperCloudSpriteCache = new Map();
 const paperSunDiscCache = new Map();
 const paperPresetName = (value) => value === 'cardstockSoft' || value === 'cardstockQuiet'
-  || value === 'cardstockClear'
+  || value === 'cardstockClear' || value === 'felt'
   ? value : 'cardstockClear';
 
 function paperCutoutPreviewRequested(settings = {}) {
@@ -2098,7 +2442,7 @@ function drawCloudBody(ctx, fill, paper = false, paperMaterial = 'cardstockClear
   ctx.fill();
 }
 
-function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false,
+function drawCloudPal(ctx, t, backgroundContext = null, paper = false,
   paperMaterial = 'cardstockClear', paperStrength = 1) {
   if (t < cloudLastT) { cloudShockT = 0; cloudLaughT = 0; } // new run: compose yourself
   const dt = Math.max(0, Math.min(0.1, t - cloudLastT));
@@ -2120,8 +2464,8 @@ function drawCloudPal(ctx, t, reduced, backgroundContext = null, paper = false,
     + Math.sin(t * 0.33) * 9.5 + Math.sin(t * 0.9) * 2.5
     + backgroundY(backgroundContext, 'clouds');
   let jx = 0;
-  if (!reduced && laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
-  if (!reduced && shocked) jx = Math.sin(t * 26) * 1.2;
+  if (laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
+  if (shocked) jx = Math.sin(t * 26) * 1.2;
 
   ctx.save();
   ctx.translate(x + jx, y);
@@ -2383,35 +2727,43 @@ const DESERT_SPEED_SIGN_SPACING = 1120;
 const DESERT_SPEED_SIGN_PHASE = 350;
 const DESERT_SPEED_SIGN_FACTOR = 0.42;
 const DESERT_SPEED_SIGN_BASE_OFFSET = -7;
-// Raise the readable board without changing where its post meets the
-// roadside plane. The post painter compensates for each sign's scale.
-const DESERT_SPEED_SIGN_RAISE = 16;
+// Raise every board above the 24px hero silhouette with a 6px breathing
+// margin. This includes landscape's +5 layer base and +18 board drop; the
+// post painter compensates so the roadside foot does not move.
+const DESERT_SPEED_SIGN_RAISE = 37;
 // Landscape has enough vertical room to let the sign sit into the dune a bit
-// more. Portrait keeps the higher board for the tighter sky/ground split.
+// more, but the clearance above the hero still wins. Portrait keeps the same
+// safe board height for the tighter sky/ground split.
 const DESERT_SPEED_SIGN_LANDSCAPE_DROP = 18;
 const DESERT_SPEED_SIGN_FACE = '#d8c493';
 const DESERT_SPEED_SIGN_TRIM = '#5d7778';
 const DESERT_SPEED_SIGN_INK = '#4c3f3e';
+const DESERT_WARNING_FACE = '#f1e8d5';
+const DESERT_WARNING_TRIM = '#a85f55';
+const DESERT_WARNING_INK = '#3f3130';
+const DESERT_AUTOBAHN_FACE = '#3f6571';
 // A sign can be geometrically planted and still read as a sticker if its last
 // pixel simply stops against a similarly flat dune. This is deliberately a
 // small disturbed-soil cue, not a ring: a soft flattened shadow plus an
 // irregular collar makes the post's contact legible at distant scale.
-const DESERT_SPEED_SIGN_CONTACT_SHADOW = 'rgba(76,63,62,0.18)';
 const DESERT_SPEED_SIGN_CONTACT_SOIL = 'rgba(123,88,61,0.78)';
 const DESERT_SPEED_SIGN_CONTACT_LIGHT = 'rgba(213,165,108,0.56)';
 const DESERT_SPEED_SIGN_CONTACT_STONE = 'rgba(92,64,47,0.62)';
 const DESERT_SPEED_SIGN_CONTACT_DROP = 2;
-// The road has been here long enough for its signage to lose any relationship
-// with a municipal standard. Keep the sequence deterministic so a snapshot is
-// reproducible, but let the speed and highway boards carry the cabinet's dry
-// nonsense instead of a row of tidy round numbers.
-const DESERT_SPEED_LIMIT_VALUES = Object.freeze(['93', '103', 'πr²', '∞']);
+// Speed limits are cosmetic: choose a fresh two-digit value per sign index when
+// a pixel-pack run is created, then cache it so the number does not flicker
+// between frames. Highway boards keep their deterministic silly cycle.
 const DESERT_HIGHWAY_VALUES = Object.freeze(['13', '404', 'πr²', '∞', '7']);
+const DESERT_SPEED_LIMIT_RANDOM_VALUES = new Map();
+function randomSpeedLimitValue(index, cache = DESERT_SPEED_LIMIT_RANDOM_VALUES) {
+  if (!cache.has(index)) cache.set(index, String(10 + Math.floor(Math.random() * 90)));
+  return cache.get(index);
+}
 const DESERT_ROAD_SIGNS = Object.freeze([
   {
     kind: 'speed', w: 62, top: -58, bottom: -26,
     face: DESERT_SPEED_SIGN_FACE, trim: DESERT_SPEED_SIGN_TRIM,
-    label: 'SPEED LIMIT', value: '93', labelCell: 0.72, valueCell: 1.9, scale: 0.88,
+    label: 'SPEED LIMIT', value: '50', labelCell: 0.72, valueCell: 1.9, scale: 0.88,
   },
   {
     kind: 'highway', w: 70, top: -55, bottom: -25,
@@ -2419,14 +2771,22 @@ const DESERT_ROAD_SIGNS = Object.freeze([
     label: 'HIGHWAY', value: '13', labelCell: 0.82, valueCell: 2.2, scale: 0.84,
   },
   {
-    kind: 'route', w: 50, top: -67, bottom: -24,
-    face: '#eee2b8', trim: '#5d7778',
-    label: 'ROUTE', value: '66', labelCell: 0.72, valueCell: 1.85, scale: 0.82,
+    // The old Route 66 shield was the live route slot. Keep the slot's fixed
+    // placement semantics, but use the actual square Autobahn symbol instead.
+    kind: 'route', shape: 'autobahn',
+    // Keep the planted lower edge fixed while using the requested tall panel.
+    w: 32, top: -60, bottom: -12, scale: 0.80,
+    face: DESERT_AUTOBAHN_FACE, trim: '#ffffff', ink: '#ffffff', icon: '#ffffff',
+    label: '', value: '', labelCell: 0, valueCell: 0,
   },
   {
-    kind: 'caution', w: 46, top: -62, bottom: -18,
-    face: '#d7b85f', trim: '#775a3f', ink: '#4c3f3e',
-    label: '', value: '', labelCell: 0, valueCell: 0, scale: 0.86,
+    kind: 'caution', shape: 'triangle', w: 44, top: -57, bottom: -18,
+    face: DESERT_WARNING_FACE, trim: DESERT_WARNING_TRIM, ink: DESERT_WARNING_INK,
+    warningFormula: 'mc²', warningFormulaScale: 1.7,
+    // Set the formula below the triangle's optical midpoint so the raised ²
+    // clears the sloping terracotta border instead of crowding its shoulder.
+    warningFormulaOffset: 0.14, warningFormulaPadding: 0.16, warningMarkOffset: 0,
+    label: '', value: '', labelCell: 0, valueCell: 0, scale: 0.82,
   },
   {
     kind: 'exit', w: 70, top: -55, bottom: -25,
@@ -2464,12 +2824,16 @@ const DESERT_DUNES = [
 // slide free of the hill when the camera moves.
 function desertHillSurfaceDetails(ctx, ridge, ridgePath, period, yBase, amp, surface) {
   if (surface !== DESERT_MID_SURFACE) return;
-  const contour = ({ from, to, depth, phase, color, alpha, width }) => {
+  const contour = ({ from, span, depth, phase, color, alpha, width }) => {
     ctx.save();
     ridgePath();
     ctx.clip();
-    const start = from * period;
-    const end = to * period;
+    const start = Math.max(0, Math.min(1, from)) * period;
+    // A contour may trail around most of a hill, but never the complete arc.
+    // Keeping this as a span cap lets each shelf stop at a different place
+    // while avoiding a set of lines that simply traces the whole ridge.
+    const arcSpan = Math.max(0.06, Math.min(0.75, span));
+    const end = Math.min(period, start + arcSpan * period);
     const fade = Math.min(26, (end - start) * 0.2);
     const rgba = (value, a) => {
       const match = /^#([0-9a-f]{6})$/i.exec(value);
@@ -2485,6 +2849,10 @@ function desertHillSurfaceDetails(ctx, ridge, ridgePath, period, yBase, amp, sur
     stroke.addColorStop(1, rgba(color, 0));
     ctx.strokeStyle = stroke;
     ctx.lineWidth = width;
+    // Keep the contour readable, but soften its whole length like pigment
+    // sinking into paper rather than leaving a crisp painted stripe.
+    ctx.shadowColor = rgba(color, alpha * 0.46);
+    ctx.shadowBlur = Math.max(2.5, width * 1.05);
     ctx.lineCap = 'butt';
     ctx.lineJoin = 'bevel';
     ctx.beginPath();
@@ -2499,15 +2867,22 @@ function desertHillSurfaceDetails(ctx, ridge, ridgePath, period, yBase, amp, sur
     ctx.restore();
   };
 
-  // Three deliberately incomplete shelves. The gaps are long enough to read
-  // as erosion breaks, not a tiled stripe texture; the widths stay large so
-  // the details survive the small distant scale in portrait and landscape.
-  contour({ from: 0.04, to: 0.34, depth: 20, phase: 0.6,
-    color: DESERT_ROCK_LIT, alpha: 0.42, width: 4.5 });
-  contour({ from: 0.43, to: 0.78, depth: 34, phase: 2.4,
-    color: DESERT_ROCK_DARK, alpha: 0.30, width: 4.8 });
-  contour({ from: 0.70, to: 0.97, depth: 49, phase: 4.2,
-    color: DESERT_ROCK_LIT, alpha: 0.34, width: 4.2 });
+  // Four candidate shelves with deliberately different arc lengths and
+  // thicknesses. Their staggered starts and gaps mean one dune reads with
+  // three bands while another gets a fourth, rather than every hill becoming
+  // a uniform stack. The longest one still stops before it can wrap the whole
+  // hill.
+  // Keep the stack near the crest. The lower half of the middle ridge is
+  // legitimately covered by the near ridge, so deep offsets made the third
+  // and fourth shelves technically present but practically invisible.
+  contour({ from: 0.04, span: 0.36, depth: 7, phase: 0.6,
+    color: DESERT_ROCK_LIT, alpha: 0.58, width: 3.0 });
+  contour({ from: 0.16, span: 0.75, depth: 16, phase: 2.4,
+    color: DESERT_ROCK_DARK, alpha: 0.44, width: 7.0 });
+  contour({ from: 0.38, span: 0.30, depth: 26, phase: 4.2,
+    color: DESERT_ROCK_LIT, alpha: 0.52, width: 4.5 });
+  contour({ from: 0.60, span: 0.25, depth: 35, phase: 5.5,
+    color: DESERT_ROCK_DARK, alpha: 0.38, width: 2.6 });
 }
 
 // One vulture, wingspan `s`, centred on the origin.
@@ -2581,14 +2956,11 @@ function desertThermals(backgroundContext) {
   ];
 }
 
-function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
+function drawVultures(ctx, t, camX, backgroundContext = null) {
   const thermals = desertThermals(backgroundContext);
   for (const th of thermals) {
     for (let i = 0; i < th.n; i++) {
-      // Reduced motion freezes the wheel rather than emptying the sky — the
-      // volcano plume's rule: a frozen cloud is not a motion trigger, and an
-      // empty sky reads as wrong rather than as calm.
-      const a = (reduced ? 0 : t * th.rate) + (i * TAU_BG) / th.n;
+      const a = t * th.rate + (i * TAU_BG) / th.n;
       const drift = camX * th.plx * ZOOM;
       const x = wrapIntoView(ctx, th.x + Math.cos(a) * th.rx - drift, 80);
       const y = th.y + Math.sin(a) * th.ry;
@@ -2599,7 +2971,7 @@ function drawVultures(ctx, t, camX, reduced, backgroundContext = null) {
       // Mostly zero. The subtraction clips the sine so a flap is a brief event
       // between long glides — the cadence that separates soaring from
       // flapping, where buzzbird runs a continuous six-frame cycle at 16fps.
-      const flap = reduced ? 0 : Math.max(0, Math.sin(t * 1.7 + i * 2.3) - 0.8) * 4.4;
+      const flap = Math.max(0, Math.sin(t * 1.7 + i * 2.3) - 0.8) * 4.4;
       // Banking into the turn: cos(a) is the x velocity, so the roll follows
       // the direction of travel and the bird leans the way it is going.
       ctx.save();
@@ -2987,12 +3359,19 @@ function periodicDesertXs(ctx, camX, factor, spacing, phase, margin = 96) {
 }
 
 // The non-desert cabinets use the same planting rule as Speed: choose a local
-// point inside the ridge tile, sample that exact tile-local curve, and let the
-// hill paint over the last pixel of the foot. The art changes by cabinet; the
-// attachment contract does not.
-const FROST_SCENERY_FEATURES = Object.freeze([
-  Object.freeze({ kind: 'pine', at: 0.24, scale: 0.82 }),
-  Object.freeze({ kind: 'pine', at: 0.72, scale: 1.00 }),
+// point inside the ridge tile and sample that exact tile-local curve. Frost
+// plants each full footprint against the deepest part of the ridge; its own
+// hill is painted first so the scenery can sit on the snow instead of vanishing
+// behind it.
+const FROST_FAR_SCENERY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'glacier', at: 0.21, scale: 1.45 }),
+  Object.freeze({ kind: 'landmark', at: 0.72, scale: 1.00 }),
+]);
+const FROST_NEAR_SCENERY_FEATURES = Object.freeze([
+  Object.freeze({ kind: 'pine', at: 0.24, scale: 1.25 }),
+  Object.freeze({ kind: 'ice-rock', at: 0.72, scale: 1.28 }),
+  Object.freeze({ kind: 'pine', at: 0.36, scale: 1.50 }),
+  Object.freeze({ kind: 'snowbank', at: 0.82, scale: 0.76 }),
 ]);
 const CRYPT_SCENERY_FEATURES = Object.freeze([
   Object.freeze({ kind: 'dead-tree', at: 0.28, scale: 0.92 }),
@@ -3003,12 +3382,237 @@ const SURGE_SCENERY_FEATURES = Object.freeze([
   Object.freeze({ kind: 'signal-pylon', at: 0.92, scale: 0.72 }),
 ]);
 
+// A feature is planted from the deepest point of its whole foot, not just
+// from the ridge sample underneath its centre. That matters on a sloping
+// hill: the wide base of a large ice formation can otherwise peek out on one
+// side even though its centre is correctly attached. Frost scenery is painted
+// after its support hill, so the footprint ends exactly on the snow instead of
+// leaving a buried flat-bottom silhouette.
+const FROST_FEATURE_FOOTPRINTS = Object.freeze({
+  // A MASSIF, NOT A THING STANDING ON THE HILL. Everything else here has a foot
+  // that meets the snow, and the contour clip is what buries it. A glacier has
+  // no foot to bury: it is the mountain the snow field is lying against, so it
+  // runs from its peaks all the way down past the lane and is cut by the NEAR
+  // ridge, which is painted after it. Clipping it to its own ridge instead put a
+  // perfectly straight horizontal edge across the one shape in the picture that
+  // should never have one, and left the peaks floating over a hill they were
+  // supposed to be part of.
+  glacier: Object.freeze({ halfWidth: 31, bottom: 2, massif: true }),
+  // Stage 2 is the widest fortress silhouette, so its full footprint is the
+  // safe width for every stage-specific landmark shape.
+  landmark: Object.freeze({ halfWidth: 23, bottom: 2 }),
+  // Rocks and drifts LIE ON the hill, so they take its angle. A pine grows
+  // vertically and a fortress is built level whatever it is built on, so both
+  // stay upright; a glacier is a mountain rather than something resting on one.
+  'ice-rock': Object.freeze({ halfWidth: 13, bottom: 2, lean: 1 }),
+  // A DRIFT, not an object standing on the hill. Everything else here is a hard
+  // thing with a foot, and lifting it to the high ground and sweeping its
+  // silhouette down to the snow is what makes that foot read. A snow bank is
+  // already snow: give it the same treatment and the sweep shows up as a pale
+  // straight edge running off down the slope, which is the one shape a drift
+  // cannot have. So it plants on the ground under its own middle and takes no
+  // skirt — the contour clip buries its uphill side, and being half-swallowed
+  // by the slope is exactly what a drift does.
+  snowbank: Object.freeze({ halfWidth: 18, bottom: 2, drift: true, lean: 1 }),
+  // The trunk extends below the lowest boughs to the actual planting point.
+  pine: Object.freeze({ halfWidth: 9, bottom: 3 }),
+});
+const FROST_SCENERY_EMBED = 0;
+// Past the footprint on both sides, for the contour clip and the foot scan: a
+// silhouette may be a little wider than the width it is planted on, and a clip
+// that ends inside the art is a vertical cut, which is the same crime as the
+// horizontal one.
+const FROST_FEATURE_MARGIN = 4;
+// A leaning silhouette reaches further sideways than the width it is planted
+// on, so the contour it is clipped against has to be sampled wider still. A
+// clip that is too wide costs nothing; one that ends inside the art is a
+// vertical cut through it.
+const FROST_LEAN_MARGIN = 12;
+
+function frostFeatureLean(kind) {
+  return FROST_FEATURE_FOOTPRINTS[kind]?.lean || 0;
+}
+
+function frostFeatureHalfSpan(kind, scale) {
+  const footprint = FROST_FEATURE_FOOTPRINTS[kind];
+  if (!footprint) return 0;
+  return footprint.halfWidth * scale + FROST_FEATURE_MARGIN
+    + (footprint.lean ? FROST_LEAN_MARGIN * scale : 0);
+}
+// Keep the trunk just inside the snow line. This is a real planting bite, not
+// a cast shadow, and is small enough that the trunk remains visible.
+const FROST_PINE_EMBED = 1.25;
+
+// NOTHING ON THE FROST RIDGES CASTS A PAPER SHADOW.
+//
+// This used to be true of pines only, on the grounds that a bigger feature could
+// carry cardstock depth. It cannot. An offset copy behind a fortress or a rock
+// is the one mark in this picture that says "sheet lying on top of a sheet", and
+// it fights the thing the ridges are for: distance. A drop shadow is a statement
+// about how close something is to the surface behind it, and a peak on the far
+// ridge is kilometres from it.
+//
+// Kept as a named predicate rather than deleted so the rule stays one decision
+// with one place to argue about it, and so the suite can pin it.
+function frostSceneryUsesPaperShadow() {
+  return false;
+}
+
+// PLANT FROM THE CENTRE, THEN BURY AND EXTEND TO FIT.
+//
+// This used to plant from the DEEPEST point of the whole footprint, which was
+// the only way to guarantee nothing hung in the air while the feature was drawn
+// flat on top of the hill. It bought that at the price of the thing it was
+// hiding: on a curved ridge the deepest edge of a wide foot can be twenty or
+// thirty pixels below the ground under the feature's middle, so the feature
+// stood that far down the slope with a horizontal line under it.
+//
+// Now the foot is solved properly instead. The feature is planted where the
+// ridge is under its MIDDLE, which is simply where a thing standing there would
+// be; frostFeatureFoot() reports how much further the ground falls away inside
+// the footprint, and the painter extends the silhouette down by that much so
+// there is material all the way to the snow on the downhill side. The contour
+// clip then cuts both back to the hill. Nothing hangs, nothing is flat.
+function frostRidgeAt(localX, dx, layerBaseY, amp, wl, period, options) {
+  return ridgeProfile(localX + dx, layerBaseY, amp, wl, period,
+    !!options.peak, !!options.mesa, !!options.dunes);
+}
+
+// How far the ground rises above and falls below the line the feature's base
+// will lie on, across its footprint. For an upright feature that line is
+// horizontal and this is simply the highest and lowest ground under it; for one
+// that leans with the hill it is the ridge TANGENT, which is the whole value of
+// leaning — the linear part of the slope disappears into the tilt and only the
+// curvature is left for the lift and the skirt to deal with.
+function frostFootprintRange(spec, localX, layerBaseY, amp, wl, period, options, slope = 0) {
+  const scale = Math.max(0.1, Number(spec.scale) || 1);
+  const centre = frostRidgeAt(localX, 0, layerBaseY, amp, wl, period, options);
+  // The same span the contour clip covers, so the skirt can never stop short of
+  // ground the clip is still showing.
+  const halfWidth = frostFeatureHalfSpan(spec.kind, scale);
+  let high = Infinity;
+  let deep = -Infinity;
+  const step = Math.max(1, halfWidth / 8);
+  const sample = (dx) => {
+    const rel = frostRidgeAt(localX, dx, layerBaseY, amp, wl, period, options)
+      - centre - slope * dx;
+    if (rel < high) high = rel;
+    if (rel > deep) deep = rel;
+  };
+  for (let dx = -halfWidth; dx <= halfWidth + 0.001; dx += step) sample(dx);
+  sample(-halfWidth);
+  sample(halfWidth);
+  return { centre, high: centre + high, deep: centre + deep };
+}
+
+// The angle a feature lies at: the ridge tangent under it, times how much of it
+// that kind takes.
+function frostFeatureAngle(spec, localX, layerBaseY, amp, wl, period, options) {
+  const lean = frostFeatureLean(spec.kind);
+  if (!lean) return 0;
+  return ridgeTangentAngle(localX, layerBaseY, amp, wl, period,
+    !!options.peak, !!options.mesa, !!options.dunes) * lean;
+}
+
+function frostEmbeddedBaseY(spec, localX, layerBaseY, amp, wl, period, options = {}, slope = 0) {
+  const footprint = FROST_FEATURE_FOOTPRINTS[spec.kind];
+  if (!footprint) return frostRidgeAt(localX, 0, layerBaseY, amp, wl, period, options) + 1;
+  const scale = Math.max(0.1, Number(spec.scale) || 1);
+  const embed = spec.kind === 'pine' ? FROST_PINE_EMBED : FROST_SCENERY_EMBED;
+  const range = frostFootprintRange(spec, localX, layerBaseY, amp, wl, period, options, slope);
+  const ground = footprint.drift ? range.centre : range.high;
+  return ground - footprint.bottom * scale + embed;
+}
+
+/**
+ * How far the ground falls below the planting point inside a feature's
+ * footprint, in world pixels. The painter turns this into a skirt under the
+ * silhouette; it is 0 on flat ground and on the uphill side, where the contour
+ * clip does the work instead.
+ */
+function frostFeatureFoot(spec, localX, layerBaseY, amp, wl, period, options = {}, slope = 0) {
+  const footprint = FROST_FEATURE_FOOTPRINTS[spec.kind];
+  if (!footprint || footprint.drift) return 0;
+  const { high, deep } = frostFootprintRange(spec, localX, layerBaseY, amp, wl, period, options, slope);
+  // A pixel past the deepest sample: the clip is sampled at its own rate and a
+  // skirt that stops exactly on the contour can leave a hairline of hill.
+  return Math.max(0, deep - high) + 1;
+}
+
+// THE SKIRT IS THE SILHOUETTE, SWEPT DOWN — not a box under it.
+//
+// A rectangle was tried first and is what a rock outcrop looks like when it has
+// gone wrong: the art ends on its own outline and then a slab of flat colour
+// with two vertical sides carries on to the snow. Tapering the slab is worse
+// again, because the contour clip is already cutting the bottom off, so the
+// taper only pulls the sides in ABOVE the snow line and puts back the flat base
+// this whole mechanism exists to remove.
+//
+// So the skirt is the feature's OWN silhouette, filled a few times on the way
+// down. The union of those copies is the shape swept along its fall line, which
+// means the foot keeps the sides the art had — and one path per copy, two or
+// three copies at most, is the cheap way to get it.
+// Small enough that a silhouette with a notch in its side sweeps down smoothly
+// instead of stepping; large enough that the deepest foot on either ridge costs
+// three extra paths, not ten.
+const FROST_SKIRT_STEP = 4;
+// The colour under each kind: what that silhouette's own base band is painted
+// in by the shape above it.
+const FROST_SKIRT_COLORS = Object.freeze({
+  glacier: 'ice', 'ice-rock': 'iceShadow', snowbank: 'snow',
+  pine: 'shadow', landmark: 'landmark',
+});
+
+function frostFeatureSkirt(kind) {
+  const color = FROST_SKIRT_COLORS[kind];
+  return color ? { color } : null;
+}
+
+// THE SNOW LINE IS THE BOTTOM EDGE, NOT A STRAIGHT CUT.
+//
+// A feature is planted from the DEEPEST point of its footprint, which is the
+// only way to guarantee no part of it hangs in the air. On a slope that leaves
+// the rest of its flat base standing proud of the hill: the fortress reads as a
+// cut-out propped against the snow rather than something standing in it, and the
+// giveaway is a perfectly horizontal line under a picture with no other
+// horizontals in it.
+//
+// So the feature is clipped to the hill it stands on. Sample the ridge across
+// the footprint and hand the placement that contour; the painter clips every
+// pass to the region above it, and the snow itself — already painted, since
+// Frost draws its scenery after its support hill — becomes the base. The shallow
+// side is buried exactly as deep as the hill rises, which is what burial looks
+// like.
+function frostFeatureSurface(spec, localX, layerBaseY, amp, wl, period, options = {}) {
+  const footprint = FROST_FEATURE_FOOTPRINTS[spec.kind];
+  if (!footprint) return null;
+  const scale = Math.max(0.1, Number(spec.scale) || 1);
+  const half = frostFeatureHalfSpan(spec.kind, scale);
+  const points = [];
+  // Sixteen samples across. The contour is a smooth ridge, not terrain detail;
+  // finer than this buys nothing and the array is rebuilt every frame.
+  const step = (half * 2) / 16;
+  for (let i = 0; i <= 16; i++) {
+    const dx = -half + step * i;
+    points.push({
+      dx,
+      y: ridgeProfile(localX + dx, layerBaseY, amp, wl, period,
+        !!options.peak, !!options.mesa, !!options.dunes),
+    });
+  }
+  return points;
+}
+
 function ridgeSceneryPlacements(ctx, camX, layerBaseY, options = {}) {
   const amp = Number(options.amp) || 40;
   const wl = Number(options.wl) || 70;
   const factor = Number(options.factor) || 0.3;
   const features = Array.isArray(options.features) && options.features.length
-    ? options.features : FROST_SCENERY_FEATURES;
+    ? options.features : FROST_NEAR_SCENERY_FEATURES;
+  const secondaryFeatures = Array.isArray(options.secondaryFeatures)
+    && options.secondaryFeatures.length ? options.secondaryFeatures : null;
+  const extraFeatures = Array.isArray(options.extraFeatures)
+    && options.extraFeatures.length ? options.extraFeatures : null;
   const period = Math.max(16, Math.round(Math.PI * wl));
   const scroll = ridgeScroll(camX, factor, period);
   const view = backgroundPaintCoverage(ctx);
@@ -3018,29 +3622,69 @@ function ridgeSceneryPlacements(ctx, camX, layerBaseY, options = {}) {
     tileX < view.right + period;
     tileIndex++, tileX += period) {
     const tile = scroll.tile + tileIndex - 1;
-    const spec = features[((tile % features.length) + features.length) % features.length];
-    const parity = (((tile + tileIndex) % 2) + 2) % 2;
-    const localX = spec.at * period + (parity ? 3 : -3);
-    const x = tileX + localX;
-    if (outsideView(ctx, x, 48)) continue;
-    const crest = ridgeProfile(localX, layerBaseY, amp, wl, period,
-      !!options.peak, !!options.mesa, !!options.dunes);
-    placements.push({
-      ...spec, tile, localX, x, crest, baseY: crest + 1,
-      angle: ridgeTangentAngle(localX, layerBaseY, amp, wl, period,
-        !!options.peak, !!options.mesa, !!options.dunes),
-    });
+    const primary = features[((tile % features.length) + features.length) % features.length];
+    const specs = secondaryFeatures
+      ? [primary, secondaryFeatures[((tile % secondaryFeatures.length)
+        + secondaryFeatures.length) % secondaryFeatures.length]]
+      : [primary];
+    if (extraFeatures) {
+      specs.push(extraFeatures[((tile + 2) % extraFeatures.length
+        + extraFeatures.length) % extraFeatures.length]);
+    }
+    for (let slotIndex = 0; slotIndex < specs.length; slotIndex++) {
+      const spec = specs[slotIndex];
+      // tileIndex is only the current screen iteration; it shifts by one when
+      // the camera crosses a period. World-tile keys keep the same prop and
+      // its small offset fixed through that wrap in both orientations.
+      const parity = (((tile + slotIndex) % 2) + 2) % 2;
+      const localX = spec.at * period + (parity ? 3 : -3);
+      const x = tileX + localX;
+      if (outsideView(ctx, x, 48)) continue;
+      const crest = ridgeProfile(localX, layerBaseY, amp, wl, period,
+        !!options.peak, !!options.mesa, !!options.dunes);
+      // The angle the feature lies at, and the slope that follows from it: both
+      // the planting and the skirt are measured against THAT line rather than a
+      // horizontal one, so a rock lying along the hill needs almost no foot.
+      const lean = options.embedFeatures
+        ? frostFeatureAngle(spec, localX, layerBaseY, amp, wl, period, options) : 0;
+      const leanSlope = lean ? Math.tan(lean) : 0;
+      const baseY = options.embedFeatures
+        ? frostEmbeddedBaseY(spec, localX, layerBaseY, amp, wl, period, options, leanSlope)
+        : crest + 1;
+      placements.push({
+        ...spec, tile, slotIndex, localX, x, crest, baseY, lean,
+        surface: options.embedFeatures
+          ? frostFeatureSurface(spec, localX, layerBaseY, amp, wl, period, options)
+          : null,
+        foot: options.embedFeatures
+          ? frostFeatureFoot(spec, localX, layerBaseY, amp, wl, period, options, leanSlope)
+          : 0,
+        angle: ridgeTangentAngle(localX, layerBaseY, amp, wl, period,
+          !!options.peak, !!options.mesa, !!options.dunes),
+      });
+    }
   }
   return placements;
 }
 
 function frostSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   const far = options.layer === 'far';
+  const secondaryFeatures = options.secondaryFeatures === undefined
+    ? (far ? FROST_FAR_SECONDARY_FEATURES : FROST_NEAR_SECONDARY_FEATURES)
+    : options.secondaryFeatures;
+  const extraFeatures = options.extraFeatures === undefined
+    ? (options.portrait
+      ? (far ? FROST_FAR_PORTRAIT_EXTRA_FEATURES : FROST_NEAR_PORTRAIT_EXTRA_FEATURES)
+      : null)
+    : options.extraFeatures;
   return ridgeSceneryPlacements(ctx, camX, layerBaseY, {
     amp: far ? 66 : 40,
     wl: far ? 130 : 70,
     factor: far ? 0.12 : 0.3,
-    features: FROST_SCENERY_FEATURES,
+    features: far ? FROST_FAR_SCENERY_FEATURES : FROST_NEAR_SCENERY_FEATURES,
+    secondaryFeatures,
+    extraFeatures,
+    embedFeatures: true,
   });
 }
 
@@ -3065,9 +3709,11 @@ function surgeSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) 
 
 function frostPineShape(ctx, palette = FROST_SCENERY_PALETTE) {
   ctx.fillStyle = palette.shadow || palette.trunk;
-  ctx.fillRect(-1.2, -18, 2.4, 18);
+  // Extend the trunk to the planting point. The lower bough stops above it,
+  // leaving a visible trunk all the way down to the snow line.
+  ctx.fillRect(-1.2, -18, 2.4, 21);
   ctx.fillStyle = palette.far || palette.leaf;
-  for (const [tipY, halfWidth, shoulderY] of [[-18, 5, -11], [-13, 7, -5], [-8, 9, -1]]) {
+  for (const [tipY, halfWidth, shoulderY] of [[-18, 5, -11], [-13, 7, -5], [-8, 9, -3]]) {
     ctx.beginPath();
     ctx.moveTo(0, tipY);
     ctx.lineTo(halfWidth, shoulderY);
@@ -3084,24 +3730,421 @@ function frostPineShape(ctx, palette = FROST_SCENERY_PALETTE) {
   ctx.fill();
 }
 
+function frostFill(ctx, color, path) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  path(ctx);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// THE GLACIER IS A MOUNTAIN, SO IT IS DRAWN LIKE ONE: peaks at the top, flanks
+// that SPLAY as they fall, and a base far below the planting point — 40 units,
+// which at its 1.45 scale is ~58px, the whole distance from the far ridge down
+// past the lane. Nothing sees that base: the near ridge paints over it, and the
+// edge where the two meet is the near ridge's own curve. That is the point. The
+// old shape stopped at the planting line with a flat bottom and was then clipped
+// to the ridge contour, which on flat ground is a ruler-straight horizontal line
+// under a peak — the one giveaway that a mountain is a sticker.
+function frostGlacierPath(ctx) {
+  ctx.moveTo(-34, 44);
+  ctx.lineTo(-29, 4);
+  ctx.lineTo(-23, -13);
+  ctx.lineTo(-14, -31);
+  ctx.lineTo(-8, -20);
+  ctx.lineTo(1, -47);
+  ctx.lineTo(8, -27);
+  ctx.lineTo(15, -36);
+  ctx.lineTo(22, -13);
+  ctx.lineTo(28, 6);
+  ctx.lineTo(34, 44);
+}
+
+function frostGlacierShape(ctx, palette) {
+  // Body first, then the shadowed half, then the lit face, then the caps. The
+  // body is the SHADOW tone rather than the ice tone: a formation this size is
+  // mostly rock in its own shade, and the ice is the light coming off the faces
+  // that turn toward the sky. Painted the other way round it was a pale cut-out
+  // the same value as the hills it stands behind.
+  frostFill(ctx, palette.iceShadow || palette.shadow, frostGlacierPath);
+  // The lit flank of each peak: everything east of the ridge line catches the
+  // sky, so the peaks read as solid rather than as outlines.
+  frostFill(ctx, palette.ice || palette.far, (c) => {
+    c.moveTo(1, -47); c.lineTo(8, -27); c.lineTo(12, 2); c.lineTo(18, 44);
+    c.lineTo(34, 44); c.lineTo(28, 6); c.lineTo(22, -13); c.lineTo(15, -36);
+    c.lineTo(11, -24); c.closePath();
+  });
+  frostFill(ctx, palette.ice || palette.far, (c) => {
+    c.moveTo(-14, -31); c.lineTo(-8, -20); c.lineTo(-6, 44); c.lineTo(-14, 44);
+    c.closePath();
+  });
+  // Snow caps, on the three summits and down the main peak's shoulder.
+  frostFill(ctx, palette.snow, (c) => {
+    c.moveTo(1, -47); c.lineTo(6, -33); c.lineTo(3, -32); c.lineTo(0, -27);
+    c.lineTo(-5, -23); c.lineTo(-2, -32); c.closePath();
+  });
+  frostFill(ctx, palette.snow, (c) => {
+    c.moveTo(15, -36); c.lineTo(18, -28); c.lineTo(15, -27); c.lineTo(12, -24);
+    c.closePath();
+  });
+  frostFill(ctx, palette.snow, (c) => {
+    c.moveTo(-14, -31); c.lineTo(-11, -24); c.lineTo(-14, -23); c.lineTo(-17, -20);
+    c.closePath();
+  });
+}
+
+function frostIceRockPath(ctx) {
+  ctx.moveTo(-13, 2);
+  ctx.lineTo(-12, -6);
+  ctx.lineTo(-5, -11);
+  ctx.lineTo(3, -9);
+  ctx.lineTo(10, -4);
+  ctx.lineTo(13, 2);
+}
+
+function frostIceRockShape(ctx, palette) {
+  frostFill(ctx, palette.iceShadow || palette.shadow, frostIceRockPath);
+  frostFill(ctx, palette.ice || palette.near, (c) => {
+    c.moveTo(-12, -6); c.lineTo(-5, -11); c.lineTo(3, -9);
+    c.lineTo(-1, -3); c.lineTo(-9, -2); c.closePath();
+  });
+  frostFill(ctx, palette.snow, (c) => {
+    c.moveTo(-5, -11); c.lineTo(3, -9); c.lineTo(0, -6); c.lineTo(-5, -7);
+    c.closePath();
+  });
+}
+
+function frostSnowbankPath(ctx) {
+  ctx.moveTo(-18, 2);
+  ctx.quadraticCurveTo(-16, -7, -8, -6);
+  ctx.quadraticCurveTo(-3, -14, 5, -7);
+  ctx.quadraticCurveTo(13, -10, 18, 2);
+}
+
+function frostSnowbankShape(ctx, palette) {
+  frostFill(ctx, palette.iceShadow || palette.shadow, frostSnowbankPath);
+  frostFill(ctx, palette.snow, (c) => {
+    c.moveTo(-17, -1); c.quadraticCurveTo(-12, -7, -7, -5);
+    c.quadraticCurveTo(-2, -11, 5, -5); c.quadraticCurveTo(11, -7, 16, -1);
+    c.lineTo(16, 2); c.lineTo(-17, 2); c.closePath();
+  });
+  ctx.strokeStyle = palette.ice || palette.near;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-11, -2); ctx.quadraticCurveTo(-6, -5, -2, -2);
+  ctx.moveTo(5, -2); ctx.quadraticCurveTo(10, -5, 13, -2);
+  ctx.stroke();
+}
+
+function frostLandmarkPath(ctx, stageIndex = 1) {
+  if (stageIndex === 2) {
+    ctx.moveTo(-22, 2); ctx.lineTo(-20, -11); ctx.lineTo(-13, -16);
+    ctx.lineTo(-8, -10); ctx.lineTo(-5, -25); ctx.lineTo(1, -31);
+    ctx.lineTo(7, -22); ctx.lineTo(9, -13); ctx.lineTo(16, -18);
+    ctx.lineTo(22, -10); ctx.lineTo(23, 2); return;
+  }
+  if (stageIndex === 3) {
+    ctx.moveTo(-13, 2); ctx.lineTo(-11, -24); ctx.lineTo(-5, -28);
+    ctx.lineTo(-4, -37); ctx.lineTo(0, -41); ctx.lineTo(4, -37);
+    ctx.lineTo(5, -28); ctx.lineTo(11, -24); ctx.lineTo(13, 2); return;
+  }
+  ctx.moveTo(-18, 2); ctx.lineTo(-16, -17); ctx.lineTo(-11, -17);
+  ctx.lineTo(-11, -26); ctx.lineTo(-5, -22); ctx.lineTo(0, -29);
+  ctx.lineTo(6, -22); ctx.lineTo(11, -26); ctx.lineTo(11, -17);
+  ctx.lineTo(16, -17); ctx.lineTo(18, 2);
+}
+
+// THE LIT FACE RUNS THE FULL HEIGHT OF THE WALL. It used to stop at the
+// planting line while the silhouette below it carried on into the snow on the
+// skirt, so the one bright band in the picture ended in mid-wall with a hand's
+// width of dark stone under it. `depth` is how far the skirt sweeps past the
+// base (in the feature's own units), and the band is taken to the bottom of it;
+// the snow contour clip is then the only thing that decides where it stops,
+// which is the same rule the silhouette follows.
+//
+// WINDOWS ARE THE ONLY LIGHT IN ACT II, and there are never more than THREE of
+// them on a fortress. A grid of them turns the one building in the picture into
+// an apartment block: regular spacing is the single strongest signal a shape can
+// send that it is modern, occupied and municipal, which is three things a frozen
+// keep is not. Five was still a row of offices; three is a place with somebody
+// in it. They are placed by hand, no two sharing a row or a column, in slightly
+// different sizes.
+//
+// They blink: each one keeps its own slow clock, seeded off the world tile the
+// fortress stands on, so the pattern belongs to THAT fortress and does not slide
+// with the camera — and a blink is a dimming to the wall's own shade, not a hole
+// punched in the wall.
+const FROST_WINDOW_DIM = 0.78;
+function frostWindows(ctx, palette, cells, lights = {}) {
+  const t = Number(lights.t) || 0;
+  const seed = Math.abs(Math.round(Number(lights.seed) || 0));
+  const lit = palette.warm;
+  // Mixed toward the wall rather than to nothing: an unlit window is still a
+  // window, and at this size a transparent one is just a missing pixel.
+  const dark = frostMix(lit, palette.landmark || palette.shadow || '#39506b',
+    FROST_WINDOW_DIM);
+  for (let i = 0; i < cells.length; i++) {
+    const [x, y, w, h] = cells[i];
+    const key = seed * 31 + i * 7;
+    // 2.6–4.7s per window, each starting somewhere else in its own cycle. With
+    // three windows on a clock this short something in the building is always
+    // just about to go dark, which is the whole point of the light being there:
+    // at the far end of a blizzard a steady lamp is a texture and a flickering
+    // one is a person.
+    const period = 2.6 + (key % 8) * 0.3;
+    const u = ((t / period) + ((key * 0.6180339887) % 1)) % 1;
+    // A blink and a second one right behind it for two windows in three: one
+    // clean on/off reads as a bulb, two reads as somebody walking past the
+    // glass.
+    const blink = u < 0.06 || (key % 3 !== 0 && u > 0.1 && u < 0.15);
+    ctx.fillStyle = blink ? dark : lit;
+    ctx.fillRect(x, y, w, h);
+  }
+}
+
+function frostLandmarkShape(ctx, palette, stageIndex = 1, options = {}) {
+  const depth = Math.max(0, Number(options.depth) || 0);
+  const foot = 2 + depth;
+  frostFill(ctx, palette.landmark || palette.shadow, (c) => frostLandmarkPath(c, stageIndex));
+  if (stageIndex === 2) {
+    frostFill(ctx, palette.ice || palette.near, (c) => {
+      c.moveTo(-20, -11); c.lineTo(-13, -16); c.lineTo(-8, -10);
+      c.lineTo(-10, foot); c.lineTo(-20, foot); c.closePath();
+    });
+    frostFill(ctx, palette.snow, (c) => {
+      c.moveTo(-5, -25); c.lineTo(1, -31); c.lineTo(7, -22); c.lineTo(3, -22);
+      c.lineTo(0, -26); c.lineTo(-3, -21); c.closePath();
+    });
+    frostWindows(ctx, palette, [
+      [-16.5, -6.5, 2.6, 3], [2.5, -8, 2.4, 2.8], [12.5, -3, 2.2, 2.4],
+    ], options);
+    return;
+  }
+  if (stageIndex === 3) {
+    frostFill(ctx, palette.ice || palette.near, (c) => {
+      c.moveTo(-10, -23); c.lineTo(-4, -27); c.lineTo(-4, foot); c.lineTo(-10, foot);
+      c.closePath();
+    });
+    ctx.strokeStyle = palette.warm;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-4, -31); ctx.lineTo(4, -34); ctx.lineTo(-4, -37);
+    ctx.stroke();
+    // The tower is the tallest thing on the ridge and the one the player sees
+    // most of: it gets a whole stack of windows up the dark face, two abreast,
+    // and a lone pair down where the snow is about to take the wall.
+    frostWindows(ctx, palette, [
+      [-1.4, -24.5, 2.6, 3], [4, -14, 2.2, 2.4], [-1, -5, 2.4, 3],
+    ], options);
+    return;
+  }
+  frostFill(ctx, palette.snow, (c) => {
+    c.moveTo(-16, -17); c.lineTo(-11, -17); c.lineTo(-11, -23);
+    c.lineTo(-5, -19); c.lineTo(0, -26); c.lineTo(6, -19); c.lineTo(11, -23);
+    c.lineTo(11, -17); c.lineTo(16, -17); c.lineTo(13, -14); c.lineTo(-13, -14);
+    c.closePath();
+  });
+  frostWindows(ctx, palette, [
+    [-11.5, -10.5, 2.6, 3], [1, -6, 2.2, 2.4], [8.5, -11, 2.4, 2.8],
+  ], options);
+}
+
+function frostFeatureSilhouette(ctx, feature, stageIndex = 1) {
+  if (feature.kind === 'pine') {
+    ctx.moveTo(0, -18); ctx.lineTo(5, -11); ctx.lineTo(7, -5);
+    ctx.lineTo(9, -1); ctx.lineTo(-9, -1); ctx.lineTo(-7, -5); ctx.lineTo(-5, -11);
+    ctx.closePath();
+    return;
+  }
+  if (feature.kind === 'glacier') {
+    frostGlacierPath(ctx); return;
+  }
+  if (feature.kind === 'ice-rock') {
+    frostIceRockPath(ctx); return;
+  }
+  if (feature.kind === 'snowbank') {
+    frostSnowbankPath(ctx); return;
+  }
+  frostLandmarkPath(ctx, stageIndex);
+}
+
+// Mix a hex toward another hex. Distance is a COLOUR operation here, not an
+// alpha one: dropping the opacity of a peak lets the ridge's own edge show
+// through it, and two overlapping peaks then read as glass.
+function frostMix(hex, toward, amount) {
+  const a = parseInt(hex.slice(1), 16);
+  const b = parseInt(toward.slice(1), 16);
+  const f = Math.max(0, Math.min(1, amount));
+  const ch = (shift) => {
+    const x = (a >> shift) & 255;
+    const y = (b >> shift) & 255;
+    return Math.round(x + (y - x) * f);
+  };
+  return `#${((1 << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).slice(1)}`;
+}
+
+// AERIAL PERSPECTIVE, NOT A DARKER BLUE.
+//
+// The Frost scenery palette was authored against nothing and read as a set of
+// near-black cut-outs pasted onto a pale blue country — the far ridge's peaks
+// were the highest-contrast thing in the frame, which is exactly backwards.
+// Every colour is mixed toward what is actually behind that layer (the sky for
+// the far ridge, the far ridge's own hill for the near one), which keeps the
+// palette's internal order — snow lightest, shadow darkest — while moving the
+// whole set into the family of its surroundings.
+// Picked off the ladder in the gallery. Further than this and the fortress
+// stops being a landmark; nearer and the peaks are still the highest-contrast
+// thing in a pale frame, which is backwards for the most distant object in it.
+const FROST_ATMOSPHERE = Object.freeze({ far: 0.46, near: 0.2 });
+// HAZE BY WHAT THE THING IS, not only by which sheet it is on.
+//
+// The far ridge carries two features with opposite jobs. A glacier is a
+// mountain on the horizon and should be most of the way to sky — left at the
+// layer's own strength it was the tallest, hardest-edged thing in the frame,
+// standing over the hills instead of behind them. The fortress on the same
+// sheet is the level's landmark and the one thing on that ridge the player is
+// meant to pick out, so it gets LESS than the layer, not more.
+//
+// REVISED for the massif: 1.6 was the right number for a peak floating on the
+// horizon, and the wrong one for a mountain the near hills are standing in front
+// of. At that haze the formation was the same value as the ridge it rose out of
+// and the silhouette disappeared; the depth now comes from the near ridge
+// crossing it, which only reads if there is something there to cross. It still
+// takes MORE haze than its own layer — it is the most distant thing in the
+// picture — just not most of the way to sky.
+const FROST_HAZE_BY_KIND = Object.freeze({
+  glacier: 0.8, landmark: 0.8,
+});
+const FROST_HAZE_MAX = 0.86;
+// Gallery seam: a bake-off dials the pair without a second copy of the palette.
+let frostAtmosphereOverride = null;
+function setFrostAtmosphere(next) { frostAtmosphereOverride = next || null; }
+const frostAtmospherePalettes = new Map();
+
+function frostAtmosphericPalette(layer, cab, kind, stageIndex = 1) {
+  const light = frostStageLight(stageIndex);
+  const far = layer === 'far';
+  // Toward the sky THIS STAGE has. Aerial perspective is a statement about what
+  // is behind a thing, so it has to follow the light rather than a fixed day.
+  const toward = far ? light.sky[0] : light.far;
+  const table = frostAtmosphereOverride || FROST_ATMOSPHERE;
+  const amount = Math.min(FROST_HAZE_MAX,
+    (far ? table.far : table.near) * (FROST_HAZE_BY_KIND[kind] ?? 1));
+  const key = `${layer}|${toward}|${amount}|${light.name}`;
+  let palette = frostAtmospherePalettes.get(key);
+  if (palette) return palette;
+  palette = {};
+  for (const [name, hex] of Object.entries(FROST_SCENERY_PALETTE)) {
+    // The lit window stays the warm accent it is: haze washes the rock, not the
+    // one thing in the picture that is emitting — and by dusk it is the only
+    // warm mark left, so the stage tint skips it too.
+    palette[name] = name === 'warm' ? hex
+      : frostMix(frostMix(hex, light.tint, light.tintAmount), toward, amount);
+  }
+  palette = Object.freeze(palette);
+  frostAtmospherePalettes.set(key, palette);
+  return palette;
+}
+
+function frostPaperPalette(palette, color) {
+  return {
+    ...palette, far: color, near: color, snow: color, shadow: color,
+    ice: color, iceShadow: color, landmark: color, warm: color,
+  };
+}
+
+// Clip to the snow. Called after the translate to the planting point and BEFORE
+// the feature's own scale, because the contour arrives in world pixels — it was
+// sampled across a footprint that already had the feature's scale in it.
+function frostClipToSnow(ctx, feature) {
+  const surface = feature.surface;
+  if (!Array.isArray(surface) || surface.length < 2) return;
+  const first = surface[0];
+  const last = surface[surface.length - 1];
+  // Tall enough to clear anything on either ridge; the sky end of the clip is
+  // never the edge that matters.
+  const top = -400;
+  ctx.beginPath();
+  ctx.moveTo(first.dx, top);
+  for (const point of surface) ctx.lineTo(point.dx, point.y - feature.baseY);
+  ctx.lineTo(last.dx, top);
+  ctx.closePath();
+  ctx.clip();
+}
+
 function drawFrostSceneryFeature(ctx, feature, options = {}) {
+  const stageIndex = Math.max(1, Math.min(3, Number(options.stageIndex) || 1));
+  const hazed = frostAtmosphericPalette(options.layer, options.cab, feature.kind, stageIndex);
   const palette = options.layer === 'far'
-    ? { ...FROST_SCENERY_PALETTE, far: FROST_SCENERY_PALETTE.far }
-    : { ...FROST_SCENERY_PALETTE, far: FROST_SCENERY_PALETTE.near };
+    ? { ...hazed, far: hazed.far }
+    : { ...hazed, far: hazed.near };
+  const paint = (paintPalette) => {
+    switch (feature.kind) {
+      case 'glacier': frostGlacierShape(ctx, paintPalette); break;
+      case 'ice-rock': frostIceRockShape(ctx, paintPalette); break;
+      case 'snowbank': frostSnowbankShape(ctx, paintPalette); break;
+      case 'landmark':
+        frostLandmarkShape(ctx, paintPalette, stageIndex, {
+          // How far the skirt sweeps past the base, in the feature's own units,
+          // so the lit face reaches the snow instead of stopping at the base.
+          depth: feature.foot > 0.5
+            ? feature.foot / Math.max(0.1, Number(feature.scale) || 1) : 0,
+          t: options.t,
+          // The world tile the fortress stands on: the same fortress keeps the
+          // same window pattern however the camera moves past it.
+          seed: (Number(feature.tile) || 0) * 3 + (Number(feature.slotIndex) || 0),
+        });
+        break;
+      default: frostPineShape(ctx, paintPalette); break;
+    }
+  };
+  const massif = !!FROST_FEATURE_FOOTPRINTS[feature.kind]?.massif;
   ctx.save();
   ctx.translate(feature.x, feature.baseY);
+  // The clip is world-space snow, so it goes on before the feature's own frame.
+  // A MASSIF IS NOT CLIPPED: it does not stand on the snow line, it passes
+  // through it and keeps going, and the near ridge painted after it is what cuts
+  // it off — with the near ridge's own curve rather than a horizontal rule.
+  if (!massif) frostClipToSnow(ctx, feature);
+  // Then lie the thing along the hill. A rock and a drift take the ridge's
+  // angle; a pine and a fortress do not, and get 0 here.
+  if (feature.lean) ctx.rotate(feature.lean);
   ctx.scale(feature.scale, feature.scale);
-  if (options.paper) {
-    paperShadowPass(ctx, () => frostPineShape(ctx, { far: PAPER_DEEP_COLOR, shadow: PAPER_DEEP_COLOR, snow: PAPER_DEEP_COLOR }),
+  // The skirt first, so the silhouette's own colours win everywhere they exist
+  // and the skirt is only ever the strip between the art and the snow.
+  // And it takes no skirt either — the sweep exists to close the gap between a
+  // foot and the snow, and this shape has already gone past both.
+  const skirt = (!massif && feature.foot > 0.5) ? frostFeatureSkirt(feature.kind) : null;
+  if (skirt) {
+    const scale = Math.max(0.1, Number(feature.scale) || 1);
+    const depth = feature.foot / scale;
+    const steps = Math.max(1, Math.ceil(depth / FROST_SKIRT_STEP));
+    ctx.fillStyle = palette[skirt.color] || palette.shadow;
+    // Deepest copy first: the nearer ones lie over it, so the union comes out
+    // with the silhouette's own edges rather than the deepest copy's.
+    for (let i = steps; i >= 1; i--) {
+      ctx.save();
+      ctx.translate(0, (depth * i) / steps);
+      ctx.beginPath();
+      frostFeatureSilhouette(ctx, feature, stageIndex);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  if (options.paper && frostSceneryUsesPaperShadow(feature)) {
+    paperShadowPass(ctx, () => paint(frostPaperPalette(palette, PAPER_DEEP_COLOR)),
       PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
-    paperShadowPass(ctx, () => frostPineShape(ctx, { far: PAPER_CONTACT_COLOR, shadow: PAPER_CONTACT_COLOR, snow: PAPER_CONTACT_COLOR }),
+    paperShadowPass(ctx, () => paint(frostPaperPalette(palette, PAPER_CONTACT_COLOR)),
       PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
   }
-  frostPineShape(ctx, palette);
+  paint(palette);
   if (options.paper) {
-    paperFinishPass(ctx, () => frostPineShape(ctx, { far: palette.far, shadow: palette.shadow, snow: palette.snow }),
+    paperFinishPass(ctx, () => {
+      frostFeatureSilhouette(ctx, feature, stageIndex);
+    },
       sharedPaperPatternFor(ctx, options.paperMaterial || 'cardstockClear'), {
-        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA, rim: false,
+        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA * (options.paperStrength ?? 1), rim: false,
       });
   }
   ctx.restore();
@@ -3110,6 +4153,704 @@ function drawFrostSceneryFeature(ctx, feature, options = {}) {
 function drawFrostScenery(ctx, camX, layerBaseY, options = {}) {
   for (const feature of frostSceneryPlacements(ctx, camX, layerBaseY, options)) {
     drawFrostSceneryFeature(ctx, feature, options);
+  }
+}
+
+// --- Frost aurora ----------------------------------------------------------
+//
+// Frost is painted as cut paper, so the aurora is translucent vellum laid over
+// the sky rather than an additive glow — the same material rule the rest of the
+// cabinet follows, and the reason it takes a grain pass but no drop shadow
+// (light casts nothing, which is also why a Frost pine is off the shadow list).
+//
+// THE RAYS ARE THE SILHOUETTE. A smooth arch with brightened columns inside it
+// reads, at any alpha that survives this pale sky, as a loaf of green bread. So
+// a curtain is built as two shapes:
+//
+//   1. a continuous lower BAND hugging the baseline — the crisp under-edge a
+//      real curtain has, and the only part solid all the way across;
+//   2. a COMB of near-parallel rays standing on that band, open sky between.
+//
+// Three ray shapes were tried and two are traps. Needles tapering to a point
+// read as grass or a crown; wide triangles read as a picket fence. A ray is a
+// COLUMN that narrows only slightly, and it ends by FADING, not by stopping.
+//
+// That last rule is why the heights are quantised. A canvas gradient bakes the
+// transform it was built under, so one gradient shared across rays of different
+// heights leaves every shorter ray stopping on a blunt, still-opaque cap — the
+// single most obvious tell that this is drawn geometry. A gradient per ray
+// fixes it and costs a few dozen gradients a frame, which this file already
+// warns is the expensive thing to do at device resolution. So ray heights snap
+// to a handful of steps and one gradient is built per step: every tip lands on
+// its own fade, and a curtain pays for FROST_AURORA_RAY_STEPS gradients rather
+// than one per ray. The steps are invisible — real curtains bunch anyway.
+//
+// Both shapes taper to nothing at the two ends through the sin(pi·f) envelope:
+// a curtain that stops on a vertical edge reads as a torn rectangle and gives
+// the wrap point away. And the whole thing sits high in the sky — placed near
+// the ridges it stops being weather in the upper atmosphere and becomes a green
+// cloud bank sitting on the hills.
+const FROST_AURORA_TOP = 6;
+// The lifted far ridge crests around y=130, and the curtain's blurred lower
+// edge has to stay off it: the moment the aurora touches the hills it stops
+// being sky and becomes a glow sitting on the snow.
+const FROST_AURORA_BOTTOM = 124;
+// Ray width as a fraction of its slot. Below roughly 0.6 the comb opens into
+// separate spikes; at 1 it closes back into the solid arch this shape exists to
+// avoid — and portrait's backing density fills the gaps in first.
+const FROST_AURORA_RAY_DUTY = 0.82;
+const FROST_AURORA_RAY_TAPER = 0.72;
+// Rays are field-aligned, so they splay gently away from the middle of the
+// curtain rather than standing parallel like a fence.
+const FROST_AURORA_RAY_SPLAY = 0.12;
+// Seven steps across fifteen rays: at five, enough rays shared a height that
+// the comb read as a repeating bar chart.
+const FROST_AURORA_RAY_STEPS = 7;
+const FROST_AURORA_RAY_FLOOR = 0.34;
+// The lower band, as a fraction of the curtain height.
+const FROST_AURORA_BAND = 0.26;
+// How hard the curtain is defocused, in authored pixels. The blur happens ONCE
+// inside the bake, so it is free at the blit however heavy it gets — and heavy
+// is the point: an aurora has no edge, and the comb's job at this radius is to
+// survive as vertical STRIATION rather than as countable rays.
+const FROST_AURORA_BLUR = 10;
+// A Gaussian conserves energy but this shape is mostly transparent gap, so the
+// blur spends a lot of it on sky and the curtain reads dimmer the harder it is
+// defocused. Give the alpha back what the radius took, or "softer" silently
+// also means "fainter" and the two decisions stop being separable.
+const FROST_AURORA_BLUR_LIFT = 0.032;
+const FROST_AURORA_STEPS = 18;
+// Per stage: how hard the whole pass is pushed. Frost 1 is a first hint, 3 is
+// the night the fortress is actually under.
+const FROST_AURORA_STAGE_GAIN = Object.freeze([0, 0.74, 1, 1.3]);
+const FROST_AURORA_STAGE_CURTAINS = Object.freeze([0, 2, 3, 3]);
+
+// `y` is a fraction of the aurora rectangle and `h` a fraction of the headroom
+// above that baseline, so portrait's much taller resolved sky stretches the
+// whole display and no curtain can ever reach past the top of the rectangle.
+const FROST_AURORA_CURTAINS = Object.freeze([
+  {
+    at: 0.05, y: 0.70, h: 0.94, w: 430, amp: 8, wl: 250, rays: 24,
+    color: '#6ed3a6', tip: '#9db2e8', alpha: 0.32, drift: 0.028, phase: 0,
+  },
+  {
+    at: 0.38, y: 0.86, h: 0.78, w: 360, amp: 6, wl: 210, rays: 20,
+    color: '#7cd8c2', tip: '#a89ae2', alpha: 0.27, drift: 0.042, phase: 1.7,
+  },
+  {
+    at: 0.70, y: 0.52, h: 0.9, w: 500, amp: 10, wl: 300, rays: 28,
+    color: '#5fc79a', tip: '#9aabe2', alpha: 0.2, drift: 0.018, phase: 3.1,
+  },
+]);
+
+// WHERE A THING CROSSING THE FROST SKY STARTS AND HOW HIGH IT GETS, in the
+// pack's own local space — the finish flypast today, anything else that goes
+// past tomorrow.
+//
+// It flies an ARC over the finish mast: in low over the left, cresting just
+// above the pole's finial, and out over the right edge. So the shape is pinned
+// to the POLE, not to the frame, and that is the whole trick — it is why this
+// composes itself in portrait instead of needing a second set of numbers.
+//
+// A frame-pinned arc cannot do that. The authored 0..232 sky is not the sky a
+// phone shows (a 393x852 handset is a 480x1041 logical frame whose sky runs from
+// 144 to a groundline at 765, through a 1.778x backdrop zoom), so an arc aimed
+// at the top of the picture climbs three times as far in portrait as it does in
+// landscape and leaves the flypast a speck over the HUD. Aimed at the mast, both
+// orientations fly the same picture: the pole is drawn through the world camera,
+// so it is already where the composition put it.
+//
+// START is a fraction of the way from the groundline up to that crest, so a low
+// crest gets a shallow arc and the team never begins above the height it is
+// climbing to — which is exactly what happened the first time this was measured
+// off the picture instead: in portrait the "half way up the frame" start sat
+// higher than the pole it was supposed to be climbing towards.
+const FLYPAST_START_UP = 0.45;
+
+/**
+ * The arc's two fixed heights, in the pack's local space: where it comes in and
+ * where it crests.
+ *
+ * `poleTopY` is the finial, already converted into local space by the caller.
+ * The clearance over it is a FRACTION OF THE POLE'S OWN DRAWN HEIGHT rather than
+ * a flat number, which is what makes one rule work in both orientations: the
+ * mast is drawn through the world camera, so in portrait it stands 3.5x tall
+ * against a 1.778x backdrop and a landscape-sized gap over it reads as a near
+ * miss. Proportional, it is about 28 local px in landscape and half as much
+ * again in portrait, where the picture has the room for it.
+ *
+ * `hudKeep` is the other end of that: the top of a landscape frame belongs to
+ * the GOAL/BONUS panel on the right, and a flypast cresting into it is a sleigh
+ * flying behind the readout. It clamps the crest down, and it is why the crest
+ * is never simply "as high as it likes".
+ */
+export function frostFlypastArc(context = null, poleTopY = null, {
+  clear = 0.18, clearMin = 18, hudKeep = 44, over = 0,
+} = {}) {
+  const band = context?.backgroundBand;
+  const top = Number.isFinite(Number(band?.top)) ? Number(band.top) : 0;
+  const pole = Number(poleTopY);
+  let apex;
+  if (Number.isFinite(pole)) {
+    apex = pole - Math.max(clearMin, (GROUND_Y - pole) * clear);
+  } else {
+    // No mast to clear (a preview, a card, a stage without a marker).
+    apex = top + (GROUND_Y - top) * 0.25;
+  }
+  // Never into the HUD, never so low the arc has nothing to do. `over` is the
+  // extra rise the flight takes AFTER the crest, so the clamp has to hold room
+  // for it too or the levelling-out is what lands in the readout.
+  apex = Math.max(top + hudKeep + Math.max(0, over), Math.min(apex, GROUND_Y - 40));
+  return { apex, start: GROUND_Y - (GROUND_Y - apex) * FLYPAST_START_UP };
+}
+
+// The aurora owns the top of the sky. Portrait resolves a much taller sky than
+// the authored frame, so take the rectangle from the composition bands where
+// they exist rather than lifting the landscape numbers by a fudge factor.
+function frostAuroraRect(context = null) {
+  const bands = context?.sceneryLayout?.bands;
+  const top = Number(bands?.celestial?.top);
+  const bottom = Number(bands?.upperCloud?.bottom);
+  if (Number.isFinite(top) && Number.isFinite(bottom) && bottom - top > 40) {
+    return { top, height: bottom - top };
+  }
+  return { top: FROST_AURORA_TOP, height: FROST_AURORA_BOTTOM - FROST_AURORA_TOP };
+}
+
+// A ray fades out in its OWN colour. Ramping to transparent white gains
+// luminance on the way down, so against a dark sky the tip brightens as it
+// thins and the column looks like it stopped rather than dissolved.
+function frostAuroraFade(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0)`;
+}
+
+// The span envelope: 1 in the middle, 0 at both ends.
+function frostAuroraEnvelope(f) {
+  return Math.pow(Math.sin(Math.PI * Math.max(0, Math.min(1, f))), 0.5);
+}
+
+// Local space: the curtain's own baseline is y = 0.
+function frostAuroraWaveY(f, k, amp, phase) {
+  return Math.sin(phase + f * k) * amp;
+}
+
+// Which height step this ray stands at, as a fraction of the curtain height.
+function frostAuroraRayStep(i, rays, phase) {
+  const f = (i + 0.5) / rays;
+  const raw = frostAuroraEnvelope(f)
+    * (0.66 + 0.34 * (0.5 + 0.5 * Math.sin(phase * 1.7 + i * 2.3)));
+  const step = Math.round(raw * (FROST_AURORA_RAY_STEPS - 1));
+  return step / (FROST_AURORA_RAY_STEPS - 1);
+}
+
+// The crisp under-edge, continuous across the whole span.
+function frostAuroraBandPath(ctx, w, h, amp, k, phase) {
+  ctx.beginPath();
+  for (let i = 0; i <= FROST_AURORA_STEPS; i++) {
+    const f = i / FROST_AURORA_STEPS;
+    const py = frostAuroraWaveY(f, k, amp, phase);
+    if (i === 0) ctx.moveTo(0, py); else ctx.lineTo(w * f, py);
+  }
+  for (let i = FROST_AURORA_STEPS; i >= 0; i--) {
+    const f = i / FROST_AURORA_STEPS;
+    ctx.lineTo(w * f,
+      frostAuroraWaveY(f, k, amp, phase) - h * FROST_AURORA_BAND * frostAuroraEnvelope(f));
+  }
+  ctx.closePath();
+}
+
+// One gradient per height step, built in the curtain's local space so each
+// ray's fade ends exactly at that ray's tip.
+function frostAuroraGradient(ctx, spec, height) {
+  const grad = ctx.createLinearGradient(0, spec.amp, 0, -height);
+  grad.addColorStop(0, spec.color);
+  grad.addColorStop(0.58, spec.color);
+  grad.addColorStop(0.86, spec.tip);
+  grad.addColorStop(1, frostAuroraFade(spec.tip));
+  return grad;
+}
+
+function frostAuroraRays(ctx, spec, h, k, phase) {
+  const { w, amp, rays } = spec;
+  const slot = w / rays;
+  const grads = new Array(FROST_AURORA_RAY_STEPS).fill(null);
+  for (let i = 0; i < rays; i++) {
+    const level = frostAuroraRayStep(i, rays, phase);
+    if (level <= 0) continue;
+    const rh = h * (FROST_AURORA_RAY_FLOOR + (1 - FROST_AURORA_RAY_FLOOR) * level);
+    const slot4 = Math.round(level * (FROST_AURORA_RAY_STEPS - 1));
+    if (!grads[slot4]) grads[slot4] = frostAuroraGradient(ctx, spec, rh);
+    const wobble = 0.78 + 0.22 * (0.5 + 0.5 * Math.sin(i * 1.27 + phase * 0.9));
+    const half = slot * FROST_AURORA_RAY_DUTY * 0.5 * wobble;
+    const tipHalf = half * FROST_AURORA_RAY_TAPER;
+    const slide = Math.sin(i * 0.83 + phase * 2.1) * slot * 0.18;
+    const cx = slot * (i + 0.5) + slide;
+    const f = Math.max(0, Math.min(1, cx / w));
+    const foot = frostAuroraWaveY(f, k, amp, phase);
+    const lean = (cx - w / 2) * FROST_AURORA_RAY_SPLAY * level;
+    ctx.fillStyle = grads[slot4];
+    ctx.beginPath();
+    ctx.moveTo(cx - half, foot);
+    ctx.lineTo(cx + lean - tipHalf, foot - rh);
+    ctx.lineTo(cx + lean + tipHalf, foot - rh);
+    ctx.lineTo(cx + half, foot);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+const frostAuroraSpriteCache = new Map();
+let frostAuroraCacheSS = 0;
+
+// A CURTAIN IS BAKED, NOT REPAINTED.
+//
+// Drawn live, this pass cost 7.9ms a frame against 0.06ms for the whole rest of
+// the Frost background — a hundred-fold, and the measurement said it is the
+// FILLS, not the gradients (24 gradients built from scratch measured 0.007ms).
+// Forty-odd translucent gradient-shaded paths is simply a lot of shaded area,
+// and portrait pays for it at its ladder ceiling.
+//
+// So each curtain is rasterised once into its own sprite and afterwards the
+// frame does three drawImage calls. What that costs is the per-ray shimmer: the
+// phase is frozen at the authored value, and the life comes from the two things
+// that are free at blit time — each curtain drifting at its own rate, and a slow
+// breathe on alpha. At this size and alpha the shimmer was never the thing that
+// read; the drift is.
+//
+// Baked at full opacity with the curtain's own alpha applied on the blit, so
+// stage gain never multiplies the number of sprites.
+// Bake at the density of the SURFACE being drawn into, not the device's.
+// bakeSS() is the right answer in the run, where the pack paints into a context
+// already scaled to the screen — but the gallery renders tiles at its own
+// resolution control, and a sprite baked at the device ratio and blitted into a
+// 3x tile is resampled soft. A bake-off judged on a softened curtain is a
+// bake-off about the wrong thing.
+function frostAuroraBakeScale(ctx) {
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const scale = m && Number.isFinite(m.a) && m.a > 0 ? m.a : bakeSS();
+  return Math.max(1, Math.min(6, Math.ceil(scale)));
+}
+
+function frostAuroraSprite(ctx, spec, h, options) {
+  const ss = frostAuroraBakeScale(ctx);
+  if (ss !== frostAuroraCacheSS) {
+    frostAuroraSpriteCache.clear();
+    frostAuroraCacheSS = ss;
+  }
+  const material = options.paper ? (options.paperMaterial || 'cardstockClear') : '';
+  const strength = Math.max(0, Math.min(1.25, Number(options.paperStrength) || 1));
+  const blur = Math.max(0, Number.isFinite(Number(options.blur))
+    ? Number(options.blur) : FROST_AURORA_BLUR);
+  const key = `${spec.color}|${spec.tip}|${spec.w}|${spec.rays}|${spec.amp}|${spec.wl}|${spec.phase}|${h.toFixed(2)}|${material}|${strength}|${blur}`;
+  let sprite = frostAuroraSpriteCache.get(key);
+  if (sprite !== undefined) return sprite;
+  sprite = null;
+  if (typeof document !== 'undefined') {
+    // The wave swings the baseline by +/- amp, and a Gaussian reaches about
+    // three radii, so the sprite is padded on all four sides by that much or the
+    // blur is sliced off square at its own edges — which is a harder line than
+    // the one it was there to remove.
+    const pad = 2 + Math.ceil(blur * 3);
+    const width = spec.w + pad * 2;
+    const height = h + spec.amp * 2 + pad * 2;
+    const baseY = height - spec.amp - pad;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(width * ss));
+    canvas.height = Math.max(1, Math.ceil(height * ss));
+    const g = canvas.getContext('2d');
+    if (g) {
+      if (typeof g.setTransform === 'function') g.setTransform(ss, 0, 0, ss, 0, 0);
+      else g.scale(ss, ss);
+      g.translate(pad, baseY);
+      // Canvas filters are not everywhere; where they are missing the curtain
+      // simply keeps its drawn edges rather than losing the pass.
+      let blurred = false;
+      if (blur > 0) {
+        try {
+          g.filter = `blur(${blur}px)`;
+          blurred = g.filter !== 'none' && g.filter !== '';
+        } catch { blurred = false; }
+      }
+      const k = (spec.w / spec.wl) * Math.PI * 2;
+      frostAuroraRays(g, spec, h, k, spec.phase);
+      const band = () => frostAuroraBandPath(g, spec.w, h, spec.amp, k, spec.phase);
+      g.fillStyle = frostAuroraGradient(g, spec, h * FROST_AURORA_BAND);
+      band();
+      g.fill();
+      if (options.paper) {
+        paperFinishPass(g, band, sharedPaperPatternFor(g, material),
+          { grainAlpha: PAPER_GRAIN_ALPHA * strength * 0.5, rim: false });
+      }
+      if (blurred) g.filter = 'none';
+      sprite = { canvas, width, height, baseY, originX: pad, blur: blurred ? blur : 0 };
+    }
+  }
+  frostAuroraSpriteCache.set(key, sprite);
+  return sprite;
+}
+
+// Where each curtain's INK actually lands, which is not where its sprite lands:
+// the sprite is padded by three sigma of blur on every side so the Gaussian is
+// not sliced off square, and almost all of that padding is empty. One sigma is
+// the honest edge, and it is what the geometry has to be judged against — the
+// sprite box would report the aurora sitting on the ridges when it is not.
+function frostAuroraBounds(rect, spec, blur) {
+  const baseY = rect.top + rect.height * spec.y;
+  const h = Math.max(8, (baseY - rect.top - blur) * spec.h);
+  return { baseY, h, top: baseY - h - spec.amp - blur, bottom: baseY + spec.amp + blur };
+}
+
+/**
+ * Paint the Frost aurora. `t` is the pack clock in seconds.
+ */
+export function drawFrostAurora(ctx, t, camX, options = {}) {
+  const stageIndex = Math.max(1, Math.min(3, Number(options.stageIndex) || 1));
+  const gain = (options.gain ?? FROST_AURORA_STAGE_GAIN[stageIndex]);
+  if (!(gain > 0)) return;
+  // Gallery candidates ride this seam — a different curtain TABLE through the
+  // one production painter — so a bake-off can never drift from what ships.
+  const specs = Array.isArray(options.specs) && options.specs.length
+    ? options.specs : FROST_AURORA_CURTAINS;
+  const count = Math.min(specs.length,
+    options.curtains ?? FROST_AURORA_STAGE_CURTAINS[stageIndex]);
+  const rect = frostAuroraRect(options.backgroundContext);
+  const blur = Math.max(0, Number.isFinite(Number(options.blur))
+    ? Number(options.blur) : FROST_AURORA_BLUR);
+  const clock = Number(t) || 0;
+  for (let i = 0; i < count; i++) {
+    const spec = specs[i];
+    // The blur spreads the curtain past its own geometry in every direction, so
+    // it is paid for out of the headroom rather than out of the frame: at this
+    // radius a curtain authored to fill the sky otherwise puts its softest and
+    // most visible edge up underneath the HUD.
+    const { baseY, h } = frostAuroraBounds(rect, spec, blur);
+    const sprite = frostAuroraSprite(ctx, spec, h, options);
+    if (!sprite) continue;
+    // Spread over the whole wrap cycle, not over the authored frame: three
+    // curtains authored at fractions of W travel as one clump and leave the
+    // rest of the sky empty.
+    const cycle = backgroundPaintCoverage(ctx).width + spec.w * 2;
+    const x = wrapIntoView(ctx, spec.at * cycle - camX * spec.drift * ZOOM, spec.w);
+    const breathe = 0.84 + 0.16 * (0.5 + 0.5 * Math.sin(clock * 0.21 + spec.phase));
+    const lift = 1 + sprite.blur * FROST_AURORA_BLUR_LIFT;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, spec.alpha * gain * breathe * lift);
+    // Blit on whole pixels: a fractional destination resamples the sprite and
+    // the curtain comes out softer than it was baked.
+    ctx.drawImage(sprite.canvas, Math.round(x - sprite.originX),
+      Math.round(baseY - sprite.baseY), sprite.width, sprite.height);
+    ctx.restore();
+  }
+}
+
+// --- Frost blizzard --------------------------------------------------------
+//
+// Snow in FRONT of everything, including the hero — that is the whole point of
+// running through it, and it is why this lives in post(), which the run calls
+// after the world band and the cast but before the HUD.
+//
+// THREE RULES, and the first two are about fairness rather than looks:
+//
+//  - the veil is a GRADIENT, heaviest in the sky and nearly gone by the
+//    groundline. A flat wash over the whole frame hides bear traps, and Frost
+//    is the cabinet where you are already sliding into things you meant to
+//    avoid. Reduced visibility has to cost atmosphere, not reads.
+//  - the near layer is the only one that moves fast, and it is thin. A dense
+//    foreground is the difference between weather and a dirty screen.
+//  - every layer is a SCROLLED TILE, not particles. Three pattern fills a frame
+//    regardless of how thick the snow gets, which is what lets the near layer be
+//    generous without the cost scaling with it.
+//
+// Each layer is baked once, at the density of the surface being drawn into, for
+// the same reason the aurora is: a tile baked at the device ratio and blitted
+// into a denser gallery tile is resampled to mush, and snow is the art in this
+// pack least able to survive that.
+const FROST_BLIZZARD_LAYERS = Object.freeze([
+  // tile, flakes, length, width, alpha, and how fast the layer answers the
+  // camera and the wind. Depth reads off all of them at once.
+  { tile: 128, n: 86, len: 2.6, wide: 0.7, alpha: 0.30, depth: 0.10, wind: 26, seed: 1 },
+  { tile: 168, n: 62, len: 6.5, wide: 1.1, alpha: 0.40, depth: 0.34, wind: 62, seed: 2 },
+  { tile: 240, n: 34, len: 15, wide: 1.9, alpha: 0.50, depth: 0.95, wind: 130, seed: 3 },
+]);
+// The wind blows across and slightly down; a streak lies along its own travel.
+const FROST_BLIZZARD_SLOPE = 0.42;
+const FROST_BLIZZARD_HAZE = '#e6f1fa';
+// How much of the frame the veil covers before it gives up: the lane and the
+// apron below it stay clear.
+const FROST_BLIZZARD_VEIL_FLOOR = (GROUND_Y - 34) / H;
+// HOW THE WEATHER ARRIVES: ONE RUNG PER CHECKPOINT.
+//
+// The blizzard is ONE STORM ACROSS THE WHOLE CABINET rather than a setting each
+// level carries. Act II opens on a clear day, the snow starts at the first
+// checkpoint of Frost 1, and every checkpoint after that — in this level and in
+// the two that follow — turns it up one rung, so the last checkpoint of Frost 3
+// stands in the worst of it and the closing straight is run inside a whiteout.
+//
+// THE CHECKPOINT IS THE RUNG because it is the one line the level already draws
+// across itself: it is where the run banks, where the battery comes back, and
+// on a ramping stage where the tempo steps. Hanging the weather off the
+// odometer instead means a death and a replay run the same stretch of road
+// under two different skies; hanging it off the checkpoints means the storm a
+// player sees at a given point is the storm every attempt sees there.
+//
+// Indexed by CHECKPOINTS CROSSED SINCE THE CABINET OPENED. With the standard two
+// per stage (layout.js DEFAULT_CHECKPOINTS) that is rung 0 on the Frost 1 start
+// line, rung 2 as Frost 2 opens, rung 4 as Frost 3 opens, and rung 6 at the last
+// checkpoint of the act.
+//
+// The steps taper rather than being even sixths: the arrival has to be a flurry
+// nobody can name the moment of (0.27 is around the gallery's "weather you
+// notice and never fight"), the middle of the act does the real climbing, and
+// the top two rungs are closer together because by then every further step is
+// bought against the trap read. The run eases between rungs over several
+// seconds — see blizzardTarget in run.js — so a crossing is never a cut.
+// THE CEILING IS 1.5, NOT 1. 1 was the strength the pass was BUILT at — the
+// point past which the veil was judged and the three streak layers were dialled
+// against the bear trap — and the act wanted somewhere worse than that to end
+// up. So the whole ladder was lifted by half again rather than the top rung
+// alone: an act that spends its last level above the old maximum has to climb
+// to it, or the step onto Frost 3 is the only weather anybody notices.
+//
+// Everything above 1 is the same three layers and the same gradient veil, which
+// is why it can go there at all: the veil still gives up by the lane (it is the
+// wash over the ground, not the snow in the air, that eats a trap), and the
+// layer alphas at 1.5 are 0.45 / 0.60 / 0.75 — thick, and still short of a
+// white screen. Check the trap read in the gallery's top card before raising it
+// any further.
+const FROST_BLIZZARD_MAX = 1.5;
+const FROST_BLIZZARD_LADDER = Object.freeze([0, 0.27, 0.45, 0.72, 1.02, 1.32, 1.5]);
+
+/**
+ * Blizzard strength at a point on the ladder. `f` is 0..1 across the CABINET —
+ * all three Frost levels, not one of them — so the rungs land on it at even
+ * spacing and everything between two rungs is a straight line.
+ */
+function frostBlizzardAt(f) {
+  const rungs = FROST_BLIZZARD_LADDER.length - 1;
+  const p = Math.max(0, Math.min(1, Number(f) || 0)) * rungs;
+  const i = Math.min(rungs - 1, Math.floor(p));
+  const a = FROST_BLIZZARD_LADDER[i];
+  return a + (FROST_BLIZZARD_LADDER[i + 1] - a) * (p - i);
+}
+
+/**
+ * Blizzard strength after `banked` checkpoints of stage `stageIndex`, where the
+ * stage has `perStage` of them. This is the live path: the run counts the lines
+ * it has crossed and reads its weather off here.
+ */
+export function frostBlizzardRung(stageIndex, banked, perStage = 2) {
+  const stage = Math.max(1, Math.min(3, Number(stageIndex) || 1));
+  const per = Math.max(1, Math.round(Number(perStage) || 0) || 1);
+  const rung = Math.max(0, Math.min(per, Math.round(Number(banked) || 0)));
+  return frostBlizzardAt(((stage - 1) * per + rung) / (per * 3));
+}
+
+/**
+ * The same ladder read continuously, for the runs and the pictures that have no
+ * checkpoints to count: a ONE-HIT or overtime attempt banks none, and a gallery
+ * tile or a stage preview is not a run at all. Progress the run has not
+ * published counts as 0 — the start line — so a static preview of Frost 1 is the
+ * clear day it opens on, not a squall.
+ */
+export function frostBlizzardRamp(stageIndex, progress) {
+  const stage = Math.max(1, Math.min(3, Number(stageIndex) || 1));
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  return frostBlizzardAt((stage - 1 + p) / 3);
+}
+
+const frostBlizzardTiles = new Map();
+let frostBlizzardTileSS = 0;
+
+// Deterministic placement: the same tile every session, so a flake pattern can
+// be judged once and stays judged.
+function frostBlizzardRandom(seed) {
+  let x = seed * 1013904223 + 1;
+  return () => {
+    x = (x * 1664525 + 1013904223) % 4294967296;
+    return x / 4294967296;
+  };
+}
+
+function frostBlizzardTile(ctx, layer, ss) {
+  if (ss !== frostBlizzardTileSS) {
+    frostBlizzardTiles.clear();
+    frostBlizzardTileSS = ss;
+  }
+  let pattern = frostBlizzardTiles.get(layer.seed);
+  if (pattern !== undefined) return pattern;
+  pattern = null;
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(layer.tile * ss));
+    canvas.height = Math.max(1, Math.round(layer.tile * ss));
+    const g = canvas.getContext('2d');
+    if (g) {
+      if (typeof g.setTransform === 'function') g.setTransform(ss, 0, 0, ss, 0, 0);
+      else g.scale(ss, ss);
+      g.strokeStyle = '#ffffff';
+      g.lineCap = 'round';
+      g.lineWidth = layer.wide;
+      const rnd = frostBlizzardRandom(layer.seed);
+      g.beginPath();
+      for (let i = 0; i < layer.n; i++) {
+        const x = rnd() * layer.tile;
+        const y = rnd() * layer.tile;
+        // A little length variation, or the layer reads as one stamped mark.
+        const len = layer.len * (0.6 + 0.8 * rnd());
+        g.moveTo(x, y);
+        g.lineTo(x - len, y + len * FROST_BLIZZARD_SLOPE);
+      }
+      g.stroke();
+      pattern = ctx.createPattern(canvas, 'repeat');
+    }
+  }
+  frostBlizzardTiles.set(layer.seed, pattern);
+  return pattern;
+}
+
+/**
+ * The near snow sheet: a translucent fold of hill in front of the ridges, with
+ * no hitbox and no scenery on it. Its crest sits just below the opaque near
+ * ridge so it adds a foreground plane without cutting across object feet.
+ *
+ * Split out of the pack's bg() for the bake-off that asked whether it belonged
+ * on the other side of the weather; it does not (see the call site), and the
+ * split is kept because a named painter is easier to read than eight lines
+ * inline in the middle of the ridge loop.
+ */
+export function drawFrostForegroundHill(ctx, camX, backgroundContext = null, options = {}) {
+  const foregroundY = sceneryRidgeBaseY(backgroundContext, 'near',
+    FROST_FOREGROUND_HILL_AMP, GROUND_Y)
+    - (backgroundContext?.portrait
+      ? FROST_SCENERY_LIFT : FROST_LANDSCAPE_SCENERY_LIFT)
+    + FROST_FOREGROUND_HILL_OFFSET;
+  ctx.save();
+  ctx.translate(0, backgroundY(backgroundContext, FROST_FOREGROUND_HILL_DEPTH));
+  ctx.globalAlpha = FROST_FOREGROUND_HILL_ALPHA;
+  parallaxHills(ctx, camX, options.color || FROST_FOREGROUND_HILL_COLOR, foregroundY,
+    FROST_FOREGROUND_HILL_AMP, FROST_FOREGROUND_HILL_WL,
+    FROST_FOREGROUND_HILL_DEPTH, {
+      paper: !!options.paper, paperMaterial: options.paperMaterial,
+      paperStrength: options.paperStrength, seamFree: true,
+    });
+  ctx.restore();
+}
+
+/**
+ * Paint the Frost blizzard over the finished frame. `strength` is 0..1.
+ */
+export function drawFrostBlizzard(ctx, t, camX, options = {}) {
+  const stageIndex = Math.max(1, Math.min(3, Number(options.stageIndex) || 1));
+  const raw = options.strength ?? frostBlizzardRamp(stageIndex, options.progress);
+  const strength = Math.max(0, Math.min(FROST_BLIZZARD_MAX, Number(raw) || 0));
+  if (strength <= 0) return;
+  const clock = Number(t) || 0;
+  // Gusts: the whole thing surges rather than falling at one rate, which is the
+  // difference between weather and a screensaver.
+  const gust = 0.78 + 0.22 * (0.5 + 0.5 * Math.sin(clock * 0.37)
+    * Math.sin(clock * 0.13 + 1.9));
+  const amount = strength * gust;
+
+  // The veil, heaviest overhead and gone by the lane — and in the colour of the
+  // light this stage is under. A daylight haze laid over a dusk sky is fog lit
+  // by a sun that has set.
+  const haze = options.light?.haze || FROST_BLIZZARD_HAZE;
+  const clear = frostAuroraFade(haze);
+  const veil = ctx.createLinearGradient(0, 0, 0, H);
+  veil.addColorStop(0, haze);
+  veil.addColorStop(FROST_BLIZZARD_VEIL_FLOOR * 0.55, haze);
+  veil.addColorStop(FROST_BLIZZARD_VEIL_FLOOR, clear);
+  veil.addColorStop(1, clear);
+  ctx.save();
+  ctx.globalAlpha = 0.34 * amount;
+  ctx.fillStyle = veil;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  // A PATTERN MUST BE FILLED AT ITS OWN SCALE.
+  //
+  // The tile is baked at the surface's density, and the context is already
+  // scaled by that same density — so filling through the live transform draws
+  // the pattern magnified by it a second time, and every pixel goes through
+  // bilinear resampling. Measured, that was 58ms a frame against 0.17ms for the
+  // entire rest of the Frost frame: full-screen fills are cheap here, a
+  // RESAMPLED full-screen fill is not. Undo the density for the fill and the
+  // tile lands one-for-one on the device grid, which is also the only way the
+  // streaks come out as crisp as they were drawn.
+  //
+  // The scroll offset is rounded in that same device space for the same reason:
+  // a fractional origin puts the whole sheet back on the slow path.
+  const ss = frostAuroraBakeScale(ctx);
+  ctx.save();
+  ctx.scale(1 / ss, 1 / ss);
+  for (const layer of FROST_BLIZZARD_LAYERS) {
+    const pattern = frostBlizzardTile(ctx, layer, ss);
+    if (!pattern) continue;
+    // The camera term is what makes it feel like running THROUGH the snow
+    // rather than standing in it; the wind term is what it does on its own.
+    const travel = camX * layer.depth * ZOOM + clock * layer.wind;
+    const span = layer.tile * ss;
+    const ox = -Math.round((travel * ss) % span);
+    const oy = Math.round((travel * FROST_BLIZZARD_SLOPE * ss) % span);
+    ctx.save();
+    ctx.globalAlpha = layer.alpha * amount;
+    ctx.translate(ox, oy);
+    ctx.fillStyle = pattern;
+    ctx.fillRect(-ox, -oy, W * ss, H * ss);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function frostSkyRibbonPath(ctx, x, y, width, height, tilt = 0) {
+  ctx.moveTo(x, y + height * 0.55);
+  ctx.quadraticCurveTo(x + width * 0.24, y - tilt, x + width * 0.52, y + height * 0.35);
+  ctx.quadraticCurveTo(x + width * 0.78, y + height * 0.72, x + width, y + height * 0.2);
+  ctx.lineTo(x + width, y + height * 0.75);
+  ctx.quadraticCurveTo(x + width * 0.74, y + height * 1.04, x + width * 0.48, y + height * 0.67);
+  ctx.quadraticCurveTo(x + width * 0.22, y + height * 0.34, x, y + height);
+}
+
+function drawFrostSky(ctx, camX, options = {}) {
+  const coverage = backgroundPaintCoverage(ctx);
+  const stageIndex = Math.max(1, Math.min(3, Number(options.stageIndex) || 1));
+  const strength = Math.max(0, Math.min(1.25, Number(options.paperStrength) || 1));
+  // The aurora is the furthest thing in the picture: the pale wisp ribbons
+  // below are weather, and weather passes in front of the light.
+  drawFrostAurora(ctx, options.t, camX, options);
+  const ribbons = stageIndex === 3
+    ? [
+      { at: 0.12, y: 42, w: 230, h: 15, tilt: 4, color: '#a2b4db', alpha: 0.18 },
+      { at: 0.56, y: 82, w: 270, h: 18, tilt: -4, color: '#8cc8d1', alpha: 0.16 },
+    ]
+    : [
+      { at: 0.08, y: 44, w: 220, h: 14, tilt: 4, color: '#8bc4d4', alpha: 0.15 },
+      { at: 0.52, y: 88, w: 250, h: 16, tilt: -4, color: '#a5b4d5', alpha: 0.14 },
+    ];
+  for (const ribbon of ribbons) {
+    const x = wrapIntoView(ctx, ribbon.at * 480 - camX * 0.045 * ZOOM, 40);
+    const path = () => {
+      ctx.beginPath();
+      frostSkyRibbonPath(ctx, x, ribbon.y, ribbon.w, ribbon.h, ribbon.tilt);
+      ctx.closePath();
+    };
+    ctx.save();
+    ctx.globalAlpha = ribbon.alpha;
+    if (options.paper) {
+      paperShadowPass(ctx, path, PAPER_SUBTLE_DEEP_OFFSET, PAPER_SUBTLE_DEEP_COLOR);
+      paperShadowPass(ctx, path, PAPER_SUBTLE_CONTACT_OFFSET, PAPER_SUBTLE_CONTACT_COLOR);
+    }
+    ctx.fillStyle = ribbon.color;
+    path();
+    ctx.fill();
+    if (options.paper) {
+      paperFinishPass(ctx, path,
+        sharedPaperPatternFor(ctx, options.paperMaterial || 'cardstockClear'), {
+          grainAlpha: PAPER_GRAIN_ALPHA * strength * 0.7, rim: false,
+        });
+    }
+    ctx.restore();
   }
 }
 
@@ -3373,15 +5114,12 @@ function desertSpeedLimitPlacements(ctx, camX, layerBaseY = GROUND_Y, options = 
     .map(({ index, x }) => {
       const sign = DESERT_ROAD_SIGNS[((index % DESERT_ROAD_SIGNS.length)
         + DESERT_ROAD_SIGNS.length) % DESERT_ROAD_SIGNS.length];
-      const cycle = ((Math.floor(index / DESERT_ROAD_SIGNS.length)
-        % (sign.kind === 'speed' ? DESERT_SPEED_LIMIT_VALUES.length
-          : DESERT_HIGHWAY_VALUES.length))
-        + (sign.kind === 'speed' ? DESERT_SPEED_LIMIT_VALUES.length
-          : DESERT_HIGHWAY_VALUES.length))
-        % (sign.kind === 'speed' ? DESERT_SPEED_LIMIT_VALUES.length
-          : DESERT_HIGHWAY_VALUES.length);
+      const cycle = sign.kind === 'highway'
+        ? ((Math.floor(index / DESERT_ROAD_SIGNS.length) % DESERT_HIGHWAY_VALUES.length)
+          + DESERT_HIGHWAY_VALUES.length) % DESERT_HIGHWAY_VALUES.length
+        : 0;
       const value = sign.kind === 'speed'
-        ? DESERT_SPEED_LIMIT_VALUES[cycle]
+        ? randomSpeedLimitValue(index, options.speedLimitValues)
         : sign.kind === 'highway' ? DESERT_HIGHWAY_VALUES[cycle] : sign.value;
       return {
         ...sign,
@@ -3584,8 +5322,7 @@ function satelliteDishHead(ctx, scanAngle, paint) {
   ctx.restore();
 }
 
-export function satelliteDishScanAngle(t = 0, index = 0, reducedMotion = false) {
-  if (reducedMotion) return 0;
+export function satelliteDishScanAngle(t = 0, index = 0) {
   const time = Number(t);
   if (!Number.isFinite(time)) return 0;
   // A restrained left-right sweep sells signal seeking without making the tiny
@@ -3598,7 +5335,6 @@ function satelliteDishFeedPoint(dish, options = {}) {
   const scanAngle = satelliteDishScanAngle(
     options.t,
     dish.index + Number(dish.variant || 0) * 0.75,
-    options.reducedMotion,
   );
   const cos = Math.cos(scanAngle);
   const sin = Math.sin(scanAngle);
@@ -3647,7 +5383,6 @@ function drawSatelliteDish(ctx, dish, options = {}) {
   const scanAngle = satelliteDishScanAngle(
     options.t,
     dish.index + Number(dish.variant || 0) * 0.75,
-    options.reducedMotion,
   );
   ctx.save();
   ctx.translate(dish.x, dish.baseY);
@@ -3733,8 +5468,7 @@ function windTurbineMast(ctx, color) {
   ctx.stroke();
 }
 
-export function windTurbineRotation(t = 0, index = 0, reducedMotion = false) {
-  if (reducedMotion) return 0;
+export function windTurbineRotation(t = 0, index = 0) {
   const time = Number(t);
   if (!Number.isFinite(time)) return 0;
   // A quick, readable three-blade turn. Slight phase offsets keep a distant
@@ -3770,7 +5504,7 @@ function drawWindTurbine(ctx, turbine, options = {}) {
   const paper = !!options.paper;
   const paperMaterial = options.paperMaterial || 'cardstockClear';
   const rotation = windTurbineRotation(options.t,
-    turbine.index + Number(turbine.variant || 0) * 0.7, options.reducedMotion);
+    turbine.index + Number(turbine.variant || 0) * 0.7);
   ctx.save();
   ctx.translate(turbine.x, turbine.baseY);
   const portraitHeightScale = options.portrait ? 1.18 : 1;
@@ -3927,14 +5661,37 @@ function drawRoadSign(ctx, sign, options = {}) {
   ctx.save();
   ctx.translate(sign.x, sign.baseY);
   ctx.scale(sign.scale, sign.scale);
+  const shape = sign.shape || (sign.kind === 'route' ? 'shield'
+    : sign.kind === 'caution' ? 'diamond' : 'rectangle');
+  const flatVector = shape === 'autobahn' || shape === 'triangle';
   const footY = desertSignLocalFootY(sign);
   // Keep the post's endpoint authoritative, then let the soil sit just below
   // it with a small overlap. That makes the dirt read as gathered around the
   // pole rather than as a separate mark shifted up its shaft.
   const contactY = footY + DESERT_SPEED_SIGN_CONTACT_DROP;
+  const roundedRect = (x, y, width, height, radius) => {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+  };
+  const autobahnFace = () => {
+    const inset = sign.w * 12.5 / 600;
+    const radius = sign.w * 19.2 / 600;
+    ctx.beginPath();
+    roundedRect(-sign.w / 2 + inset, sign.top + inset,
+      sign.w - inset * 2, sign.bottom - sign.top - inset * 2, radius);
+    ctx.closePath();
+  };
   const board = () => {
     ctx.beginPath();
-    if (sign.kind === 'route') {
+    if (shape === 'shield') {
       // A simple highway-shield silhouette: broad shoulders at the top and a
       // tapered lower point, still legible when it is a distant prop.
       ctx.moveTo(-sign.w * 0.44, sign.top + 2);
@@ -3944,22 +5701,79 @@ function drawRoadSign(ctx, sign, options = {}) {
       ctx.lineTo(0, sign.bottom);
       ctx.lineTo(-sign.w * 0.36, sign.bottom - 7);
       ctx.lineTo(-sign.w * 0.5, sign.top + 13);
-    } else if (sign.kind === 'caution') {
+    } else if (shape === 'triangle') {
+      // Upright warning triangle with tangent rounded corners. Each quadratic
+      // turn starts and ends along its neighboring edge, so the border is a
+      // smooth warning-sign silhouette rather than three softened kinks.
+      const height = sign.bottom - sign.top;
+      const tip = [0, sign.top + height * 0.06];
+      const right = [sign.w * 0.46, sign.bottom - height * 0.08];
+      const left = [-sign.w * 0.46, sign.bottom - height * 0.08];
+      const corner = Math.min(sign.w * 0.095, height * 0.11);
+      const toward = (a, b, distance) => {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const length = Math.hypot(dx, dy) || 1;
+        return [a[0] + dx / length * distance, a[1] + dy / length * distance];
+      };
+      const tipToRight = toward(tip, right, corner);
+      const rightToTip = toward(right, tip, corner);
+      const rightToLeft = toward(right, left, corner);
+      const leftToRight = toward(left, right, corner);
+      const leftToTip = toward(left, tip, corner);
+      const tipToLeft = toward(tip, left, corner);
+      ctx.moveTo(...tipToRight);
+      ctx.lineTo(...rightToTip);
+      ctx.quadraticCurveTo(...right, ...rightToLeft);
+      ctx.lineTo(...leftToRight);
+      ctx.quadraticCurveTo(...left, ...leftToTip);
+      ctx.lineTo(...tipToLeft);
+      ctx.quadraticCurveTo(...tip, ...tipToRight);
+    } else if (shape === 'diamond') {
       const mid = (sign.top + sign.bottom) / 2;
       ctx.moveTo(0, sign.top);
       ctx.lineTo(sign.w / 2, mid);
       ctx.lineTo(0, sign.bottom);
       ctx.lineTo(-sign.w / 2, mid);
+    } else if (shape === 'circle') {
+      const mid = (sign.top + sign.bottom) / 2;
+      ctx.arc(0, mid, Math.min(sign.w, sign.bottom - sign.top) * 0.5,
+        0, TAU_BG);
+    } else if (shape === 'arrow') {
+      const mid = (sign.top + sign.bottom) / 2;
+      const tip = sign.w * 0.5;
+      ctx.moveTo(-sign.w * 0.5, sign.top);
+      ctx.lineTo(sign.w * 0.22, sign.top);
+      ctx.lineTo(sign.w * 0.22, sign.top + 7);
+      ctx.lineTo(tip, mid);
+      ctx.lineTo(sign.w * 0.22, sign.bottom - 7);
+      ctx.lineTo(sign.w * 0.22, sign.bottom);
+      ctx.lineTo(-sign.w * 0.5, sign.bottom);
+    } else if (shape === 'milepost') {
+      const radius = Math.min(3.5, sign.w * 0.12);
+      ctx.moveTo(-sign.w / 2 + radius, sign.top);
+      ctx.lineTo(sign.w / 2 - radius, sign.top);
+      ctx.quadraticCurveTo(sign.w / 2, sign.top,
+        sign.w / 2, sign.top + radius);
+      ctx.lineTo(sign.w / 2, sign.bottom - radius);
+      ctx.quadraticCurveTo(sign.w / 2, sign.bottom,
+        sign.w / 2 - radius, sign.bottom);
+      ctx.lineTo(-sign.w / 2 + radius, sign.bottom);
+      ctx.quadraticCurveTo(-sign.w / 2, sign.bottom,
+        -sign.w / 2, sign.bottom - radius);
+      ctx.lineTo(-sign.w / 2, sign.top + radius);
+      ctx.quadraticCurveTo(-sign.w / 2, sign.top,
+        -sign.w / 2 + radius, sign.top);
+    } else if (shape === 'autobahn') {
+      // German Zeichen 330.1: the outer white panel and its blue face are
+      // separate shapes. The proportions below follow the public-domain
+      // StVO vector rather than approximating the rim with a thin stroke.
+      roundedRect(-sign.w / 2, sign.top, sign.w, sign.bottom - sign.top,
+        sign.w * 29.2 / 600);
     } else {
       ctx.rect(-sign.w / 2, sign.top, sign.w, sign.bottom - sign.top);
     }
     ctx.closePath();
-  };
-  const groundShadow = () => {
-    ctx.beginPath();
-    // Offset the soft shadow slightly down-right so it reads as contact with
-    // the dune, not as a dark oval bolted onto the bottom of the pole.
-    ctx.ellipse(2.5, contactY + 3.6, 11.5, 2.1, -0.08, 0, TAU_BG);
   };
   const groundCollar = () => {
     ctx.beginPath();
@@ -3989,6 +5803,33 @@ function drawRoadSign(ctx, sign, options = {}) {
     ctx.arc(-8.8, contactY + 2.0, 0.85, 0, TAU_BG);
     ctx.arc(8.3, contactY + 2.9, 0.65, 0, TAU_BG);
   };
+  const warningFormula = (centerY) => {
+    const formula = sign.warningFormula || 'mc²';
+    const desiredScale = Number(sign.warningFormulaScale) || 1.7;
+    const height = sign.bottom - sign.top;
+    const faceTop = sign.top + height * 0.06;
+    const faceBottom = sign.bottom - height * 0.08;
+    const progress = Math.max(0, Math.min(1,
+      (centerY - faceTop) / Math.max(1, faceBottom - faceTop)));
+    const halfTriangleWidth = sign.w * 0.46 * progress;
+    const borderWidth = sign.w * 0.08;
+    const sidePadding = sign.w * (Number(sign.warningFormulaPadding) || 0);
+    const availableWidth = Math.max(1,
+      halfTriangleWidth * 2 - borderWidth - sidePadding - 1.0);
+    const measuredWidth = textWidth(formula, desiredScale, 'bold');
+    const scale = measuredWidth > 0
+      ? Math.min(desiredScale, desiredScale * availableWidth / measuredWidth)
+      : desiredScale;
+    drawTextVectorCentered(
+      ctx,
+      formula,
+      0,
+      textYForMid(centerY, scale, 'bold'),
+      sign.ink || DESERT_SPEED_SIGN_INK,
+      scale,
+      'bold',
+    );
+  };
   const post = () => {
     // The placement owns the planted world-space foot. Convert it back into
     // this sign's local coordinates so a portrait lift or landscape drop can
@@ -3997,10 +5838,16 @@ function drawRoadSign(ctx, sign, options = {}) {
     // `rect` takes a height, so this must be the distance from the board's
     // bottom to the foot. Using `footY` directly leaves a gap whenever the
     // board bottom is above the local origin, which is every sign here.
-    ctx.rect(-1.3, sign.bottom, 2.6, desertSignPostHeight(sign));
+    // The rounded triangle's visible base is inset by its lower corner
+    // clearance, so begin the pole at that edge instead of leaving a gap down
+    // to the sign's nominal bounding-box bottom.
+    const postTop = shape === 'triangle'
+      ? sign.bottom - (sign.bottom - sign.top) * 0.08
+      : sign.bottom;
+    ctx.rect(-1.3, postTop, 2.6, desertSignLocalFootY(sign) - postTop);
     ctx.closePath();
   };
-  if (paper) {
+  if (paper && !flatVector) {
     paperShadowPass(ctx, post, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
     paperShadowPass(ctx, board, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
     paperShadowPass(ctx, post, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
@@ -4011,13 +5858,15 @@ function drawRoadSign(ctx, sign, options = {}) {
   // Put the contact shadow down first so the post and soil collar sit into it.
   // The collar is painted after the post below, hiding its final edge the way
   // loose dirt would gather around a driven roadside stake.
-  ctx.save();
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_SHADOW;
-  groundShadow();
-  ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = sign.trim;
+  // Offset the soft shadow slightly down-right so it reads as contact with
+  // the dune, not as a dark oval bolted onto the bottom of the pole.
+  drawSoftContactShadow(ctx, 2.5, contactY + 3.6, 11.5, 2.1, {
+    alpha: 0.72 * 0.22,
+    ink: '76,63,62',
+  });
+  // Roadside sign shafts use the same muted utility-pole ink as the nearby
+  // telegraph field; the warning border remains red on the board itself.
+  ctx.fillStyle = DESERT_TELEGRAPH_INK;
   post();
   ctx.fill();
   ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_SOIL;
@@ -4029,23 +5878,67 @@ function drawRoadSign(ctx, sign, options = {}) {
   ctx.fillStyle = DESERT_SPEED_SIGN_CONTACT_STONE;
   groundStones();
   ctx.fill();
-  ctx.fillStyle = sign.face;
-  board();
-  ctx.fill();
-  // A restrained top glint makes the board feel like painted metal/cardstock
-  // rather than a flat rectangle, while the paper pass still owns the grain.
-  if (sign.kind !== 'caution') {
+  if (shape === 'autobahn') {
+    ctx.fillStyle = sign.trim;
+    board();
+    ctx.fill();
+    ctx.fillStyle = sign.face;
+    autobahnFace();
+    ctx.fill();
+  } else {
+    ctx.fillStyle = sign.face;
+    board();
+    ctx.fill();
+  }
+  if (shape !== 'autobahn') {
+    ctx.strokeStyle = sign.trim;
+    ctx.lineWidth = shape === 'shield' ? 1.8
+      : shape === 'triangle' ? sign.w * 0.08 : 1.6;
+    ctx.lineJoin = shape === 'triangle' ? 'round' : 'miter';
+    ctx.lineCap = shape === 'triangle' ? 'round' : 'butt';
+    board();
+    ctx.stroke();
+  }
+  if (shape === 'autobahn') {
+    // Exact Zeichen 330.1 glyph geometry, normalized from the 601 x 601
+    // reference vector into this sign's local box. It is two upper roadway
+    // blades, one bridge deck with its two piers, and two lower carriageways.
+    const height = sign.bottom - sign.top;
+    const point = (x, y) => [
+      (x / 601.00134 - 0.5) * sign.w,
+      sign.top + y / 601.00159 * height,
+    ];
+    const polygon = (points) => {
+      ctx.beginPath();
+      points.forEach(([x, y], index) => {
+        const [px, py] = point(x, y);
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+      ctx.fill();
+    };
+    const rectangle = (x0, y0, x1, y1) => {
+      const [left, top] = point(x0, y0);
+      const [right, bottom] = point(x1, y1);
+      ctx.fillRect(left, top, right - left, bottom - top);
+    };
     ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(-sign.w / 2 + 4, sign.top + 3, sign.w - 8, 1.5);
+    ctx.fillStyle = sign.icon || sign.ink || '#ffffff';
+    polygon([[211.25, 219.229], [264.39, 65.742],
+      [291.485, 65.742], [285.576, 219.229]]);
+    polygon([[315.425, 219.229], [309.536, 65.742],
+      [336.626, 65.742], [389.77, 219.229]]);
+    rectangle(65.7425, 237.2953, 535.25875, 255.3166);
+    rectangle(115.4, 255.3166, 160.5475, 282.4566);
+    rectangle(440.459, 255.3166, 485.6, 282.4566);
+    polygon([[101.846, 535.273], [189.365, 282.457],
+      [283.14, 282.457], [273.413, 535.273]]);
+    polygon([[327.588, 535.273], [317.881, 282.457],
+      [411.636, 282.457], [499.155, 535.273]]);
     ctx.restore();
   }
-  ctx.strokeStyle = sign.trim;
-  ctx.lineWidth = sign.kind === 'route' ? 1.8 : 1.6;
-  board();
-  ctx.stroke();
-  if (paper) {
+  if (paper && !flatVector) {
     paperFinishPass(ctx, board, sharedPaperPatternFor(ctx, paperMaterial), {
       grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA,
       strokeStyle: PAPER_LANDMARK_RIM_COLOR,
@@ -4054,10 +5947,22 @@ function drawRoadSign(ctx, sign, options = {}) {
   }
   const ink = sign.ink || DESERT_SPEED_SIGN_INK;
   const mid = (sign.top + sign.bottom) / 2;
-  if (sign.kind === 'caution') {
-    drawRoadSignText(ctx, '!', 0, mid, 2.35, ink);
+  const triangleFaceMid = (sign.top + (sign.bottom - sign.top) * 0.06
+    + sign.bottom - (sign.bottom - sign.top) * 0.08) / 2;
+  if (shape === 'autobahn') {
+    // Symbol-only sign; the glyph is the complete message.
+  } else if (sign.kind === 'caution' && !sign.showText) {
+    warningFormula(triangleFaceMid + (sign.bottom - sign.top)
+      * ((Number(sign.warningFormulaOffset) || 0)
+        + (Number(sign.warningMarkOffset) || 0)));
+  } else if (shape === 'arrow') {
+    const textX = -sign.w * 0.12;
+    drawRoadSignText(ctx, sign.label, textX,
+      sign.top + (sign.bottom - sign.top) * 0.30, sign.labelCell, ink);
+    drawRoadSignText(ctx, sign.value, textX,
+      sign.bottom - (sign.bottom - sign.top) * 0.30, sign.valueCell, ink);
   } else {
-    const textX = sign.kind === 'exit' ? 4 : 0;
+    const textX = sign.kind === 'exit' ? 4 : sign.motif === 'motorway' ? sign.w * 0.13 : 0;
     drawRoadSignText(ctx, sign.label, textX,
       sign.top + (sign.bottom - sign.top) * 0.28, sign.labelCell, ink);
     drawRoadSignText(ctx, sign.value, textX,
@@ -4170,12 +6075,15 @@ export function drawSpeedSceneryItem(ctx, kind, options = {}) {
       ctx.restore();
       return;
     case 'road-sign': {
-      const source = DESERT_ROAD_SIGNS[2];
+      const source = options.sign
+        || (options.liveWarning
+          ? DESERT_ROAD_SIGNS.find((item) => item.kind === 'caution')
+          : DESERT_ROAD_SIGNS[2]);
       const sign = {
         ...source,
         x: 0,
         baseY: 0,
-        postFootY: source.scale * 33,
+        postFootY: (source.scale || 1) * (source.postFoot || 33),
       };
       ctx.save();
       ctx.globalAlpha = 0.92;
@@ -4251,18 +6159,19 @@ export function drawLevelSceneryItem(ctx, kind, options = {}) {
   }
 }
 
-// Dust devils: thin ochre columns wandering the middle distance.
+// Campfire smoke plumes billowing through the middle distance.
 //
 // Peter asked about tornadoes and these are the desert version of that idea,
 // deliberately. A tornado implies a STORM — dark base, heavy sky, something
 // arriving — and this cabinet is a clear orange sunset that would be arguing
 // with it. It also implies threat, which is the trap the vultures had: anything
 // that looks like weather coming for you is something the player expects to
-// matter. A dust devil is the opposite on both counts. It is small, dry,
-// harmless, and it is what actually happens on a hot flat afternoon.
+// matter. Smoke is quieter: it suggests a campfire hidden behind the near
+// ridge without adding a visible flame or another playable hazard.
 //
-// Ochre, never grey — grey is storm colour and would punch a hole in the
-// palette the same way a black bird would.
+// Use the same cool, outlined puff language as the Plumber volcano. The inked
+// silhouette gives each billow a readable edge against the sunset instead of
+// letting a stack of translucent blobs collapse into a dirt smear.
 //
 // They live on the MIDDLE range's parallax and are drawn behind the near ridge,
 // so they can never be mistaken for something standing in the lane.
@@ -4270,75 +6179,55 @@ export function drawLevelSceneryItem(ctx, kind, options = {}) {
 // stands on the middle distance and is hidden behind the near dunes — correct,
 // and what puts them out on the plain rather than in the lane — so everything
 // the player actually sees is the upper column. Cut at the height they were
-// first drawn (54) the entire devil sat below the near crest and the effect was
-// invisible on every frame.
-const DUST_DEVILS = [
-  // `lean` roughly halved. At 0.16 over a 172px column the top ended up some
-  // 27px downwind of the foot, and a pale streak at that angle stops reading as
-  // a column of dust and starts reading as a shaft of light. Near-upright with
-  // just enough tilt to say the air is moving.
-  { x: 90, h: 172, w: 12, rate: 0.55, drift: 5.5, plx: 0.19, lean: 0.08, alpha: 0.72 },
-  { x: 760, h: 132, w: 9, rate: 0.8, drift: 3.5, plx: 0.15, lean: -0.1, alpha: 0.6 },
+// first drawn (54) the entire plume sat below the near crest and the effect
+// was invisible on every frame.
+const DESERT_SMOKE_PLUMES = [
+  { x: 245, h: 172, w: 15, rate: 0.55, drift: 5.5, plx: 0.19, lean: 0.08, alpha: 0.70 },
 ];
 
-function drawDustDevils(ctx, t, camX, reduced, layerBaseY = GROUND_Y) {
+function drawCampfireSmoke(ctx, t, camX, layerBaseY = GROUND_Y) {
   // A wrap span far wider than the screen, so most of the time you are looking
-  // at one devil or none. At W + 220 both were on screen almost always, which
-  // turned a thing you notice into weather — and a plain with a dust devil on
-  // it every few seconds is not a still afternoon.
+  // at one plume or none. That keeps the smoke a background discovery rather
+  // than turning the country into a row of active fires.
   const span = backgroundPaintCoverage(ctx).width * 4;
   ctx.save();
-  // LIGHTER than the country behind it. The first cut used #c99a63, which is
-  // within a few points of the middle range's own #c0884c — a dust column the
-  // same value as the hills it stands on is invisible however well it is
-  // shaped. Dust catches the light; it reads pale against the ground and only
-  // gets subtle where it thins out against the bright sky, which is exactly
-  // where it should be disappearing anyway.
-  ctx.fillStyle = '#e9c894';
-  for (const d of DUST_DEVILS) {
+  for (const d of DESERT_SMOKE_PLUMES) {
     // Its OWN drift on top of the parallax, so it crosses the plain even when
-    // the camera is still — the cloud flock's trick. Frozen under reduced
-    // motion rather than removed: the column is still a thing standing there.
-    const wander = reduced ? 0 : t * d.drift;
+    // the camera is still.
+    const wander = t * d.drift;
     const view = backgroundPaintCoverage(ctx);
     const x = view.left - 110
       + (((d.x - camX * d.plx * ZOOM - wander) % span) + span) % span;
     if (outsideView(ctx, x, 60)) continue;
-    // Base sits on the middle range's ground line, not on the frame's — a
-    // column whose foot floats above the country is a smudge on the glass.
+    // The unseen fire sits on the middle range's ground line, not the frame's.
+    // The near ridge hides this lower portion and leaves the smoke to explain
+    // a campfire that the player never sees.
     const base = layerBaseY - 4;
-    // A STACK OF PUFFS, not a polygon. The first cut drew the funnel as one
-    // filled path and it read as a flat translucent slab leaning over the
-    // hills — hard edges, one flat alpha, and a taper too gradual to be a
-    // funnel at all. Dust has no outline. Overlapping ellipses that widen and
-    // thin out as they rise give the soft edge and the density falloff for
-    // free, which between them are most of what says "dust" rather than
-    // "shape".
-    // Dense enough that consecutive puffs OVERLAP everywhere. At 16 the
-    // spacing exceeded the radius down at the foot, where the column is
-    // narrowest, and the whole thing read as a string of beads rather than as
-    // dust. Per-puff alpha comes down as the count goes up so the accumulated
-    // density stays where it was.
-    const N = 34;
+    // Reuse the Plumber volcano's outlined, multi-lobed puff sprite. A fuller,
+    // lighter chain reads like one layered smoke signal: overlapping rising
+    // marks at an occasional location, not constant background weather.
+    const N = 6;
     for (let i = 0; i < N; i++) {
-      const u = i / (N - 1);
-      // The lean grows with the square of the height, so the column bends
-      // rather than tilting — and the waver is what says air instead of
-      // object. A dust devil that held its shape would be a traffic cone.
-      const wob = reduced ? 0 : Math.sin(t * d.rate * 1.7 + u * 4.2 + d.x) * u * 3.4;
-      const cx = x + d.lean * d.h * u * u + wob;
+      // Each puff has a staggered rise phase. It fades in behind the ridge,
+      // travels upward, then fades out before the phase wraps into a new puff
+      // at the hidden source — no suspended beads hovering in place.
+      const riseRate = 0.08 + d.rate * 0.01;
+      const risePhase = (t * riseRate + (i + 0.5) / N) % 1;
+      const u = 0.06 + risePhase * 0.88;
+      const drift = Math.sin(t * d.rate + i * 1.7 + d.x) * (1.5 + u * 5.5);
+      const sway = Math.sin(t * d.rate * 0.64 + i * 2.1 + d.x * 0.02) * 2.6;
+      const cx = x + d.lean * d.h * u * u + drift + sway;
       const cy = base - d.h * u;
-      const r = d.w * (0.44 + u * 0.9);
-      // Thinning out toward the top, where it is losing its grip on the dust.
-      ctx.globalAlpha = d.alpha * (1 - u * 0.72) * 0.34;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, r, r * 0.7, 0, 0, TAU_BG);
-      ctx.fill();
+      // Start slightly narrow behind the ridge, then broaden as the plume
+      // rises. This makes the smoke feel volumetric without becoming a solid
+      // column, while the volcano sprite supplies the dark outer contour and
+      // lighter upper cap.
+      const r = d.w * (0.52 + u * 0.42);
+      const fadeIn = Math.min(1, risePhase / 0.12);
+      const fadeOut = Math.min(1, (1 - risePhase) / 0.18);
+      const alpha = d.alpha * fadeIn * fadeOut * 0.26;
+      smokePuff(ctx, cx, cy, r, alpha, i + (d.x >= 700 ? 5 : 0));
     }
-    // No scuff at the foot any more. It was drawn when these sat in front of
-    // the middle range and their feet showed; behind it the foot is buried, and
-    // a scuff would be a smear of dust hanging on the hillside with nothing
-    // under it.
   }
   ctx.restore();
 }
@@ -4445,9 +6334,9 @@ const PLUMBER_APRON_STRATA = Object.freeze([
   { y: 32, h: 5, span: 156, width: 94, rate: 1.24, color: 'rgba(112, 196, 92, 0.22)' },
 ]);
 
-function drawPlumberApronStrata(ctx, camX, obstacles, overhangs, viewW, reduced = false) {
+function drawPlumberApronStrata(ctx, camX, obstacles, overhangs, viewW) {
   const runs = apronRuns(camX, obstacles, overhangs, viewW);
-  const travel = reduced ? 0 : camX;
+  const travel = camX;
   ctx.save();
   for (const band of PLUMBER_APRON_STRATA) {
     const y = GROUND_Y + band.y;
@@ -4502,9 +6391,9 @@ function drawPaperApronTexture(ctx, camX, obstacles, overhangs, viewW,
  * Each dash sits at the depth under its own middle, so a row tilts with the
  * climb rather than stepping down it.
  */
-function drawShelfTexture(ctx, camX, cab, shelves, reduced = false, viewW = W, material = null) {
+function drawShelfTexture(ctx, camX, cab, shelves, viewW = W, material = null) {
   if (!shelves || !shelves.length) return;
-  const travel = reduced ? 0 : camX;
+  const travel = camX;
   const spans = [];
   for (const sp of shelves) {
     const a = Math.max(0, sp.x - camX);
@@ -4544,6 +6433,7 @@ function drawShelfTexture(ctx, camX, cab, shelves, reduced = false, viewW = W, m
 
 function pixelPack(settings) {
   const requested = paperCutoutPreviewRequested(settings);
+  const speedLimitValues = new Map();
   const paperPreview = requested && ((settings.paperCabinet || 'plumber') === 'plumber'
     || !!settings.paperPreset);
   const paperPreset = paperPresetName(settings.paperPreset);
@@ -4611,12 +6501,12 @@ function pixelPack(settings) {
           // textured in a band with bare stripes either side. Measured: band
           // edges at logical x 140 and 400 of a 480-wide frame.
           drawPaperSurface(ctx, DEFAULT_BACKGROUND_COVERAGE,
-            'plumber-paper-sky-static', 'skySmooth', paperStrengths.sky);
+            'plumber-paper-sky-static', paperPreset, paperStrengths.sky);
         } else {
           // Keep lightweight renderer test doubles compatible; they do not
           // expose a real backing canvas or transform state.
           drawPaperSurface(ctx, backgroundCoverage(ctx),
-            'plumber-paper-sky', 'skySmooth', paperStrengths.sky);
+            'plumber-paper-sky', paperPreset, paperStrengths.sky);
         }
         ctx.restore();
       }
@@ -4642,7 +6532,7 @@ function pixelPack(settings) {
         ctx.save();
         ctx.translate(0, sceneryOffset + plumberLandscapeOffset
           + backgroundY(backgroundContext, 'far'));
-        drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion,
+        drawVolcano(ctx, t, camX, totalDist * 0.5,
           farBaseY - GROUND_Y, paperPreview, paperPreset);
         ctx.restore();
       }
@@ -4683,7 +6573,7 @@ function pixelPack(settings) {
             drawCloudBody(ctx, tint, paperPreview, paperPreset, paperStrengths.sky);
             ctx.restore();
           }
-          drawCloudPal(ctx, t, settings && settings.reducedMotion, backgroundContext,
+          drawCloudPal(ctx, t, backgroundContext,
             paperPreview, paperPreset, paperStrengths.sky);
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.82)';
@@ -4706,7 +6596,15 @@ function pixelPack(settings) {
         // brown/white: distance reads better, and it keeps the cap under the
         // bloom bright-pass. Pure white snow (#eef6ff, luma .96) sailed past
         // the smoothstep(0.8, 0.97) cutoff in glfx.js and glowed like neon.
-        parallaxHills(ctx, camX, cab.far, farBaseY, 96, 90, 0.15,
+        // WAVELENGTH 200, not the 90 this shipped at. The peaked profile is
+        // now five summits inside one period (PEAK_SUMMITS), and at pi*90 =
+        // 283px of period the biggest of them would be 108px wide and 96 tall
+        // — a spike, not a mountain. 200 puts the main summit's base at about
+        // 239px, the same slope the single cone had, and gives the smaller
+        // crests room to be different sizes rather than notches on one shape.
+        // It also means the 480px frame shows three quarters of one authored
+        // range instead of one and a half copies of the same triangle.
+        parallaxHills(ctx, camX, cab.far, farBaseY, 96, 200, 0.15,
           { peak: true, rock: '#5e6e7c', snow: '#b9c8d8', paper: paperPreview,
             paperMaterial: paperPreset, paperStrength: paperStrengths.scenery });
       } else {
@@ -4721,7 +6619,8 @@ function pixelPack(settings) {
       ctx.save();
       ctx.translate(0, sceneryOffset + plumberLandscapeOffset
         + backgroundY(backgroundContext, 'near'));
-      parallaxHills(ctx, camX, cab.hills, nearBaseY, nearAmp, 50, 0.35,
+      parallaxHills(ctx, camX, cab.hills, nearBaseY, nearAmp,
+        PLUMBER_NEAR_TREE_WL, PLUMBER_NEAR_TREE_FACTOR,
         cab.id === 'plumber'
           ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30', scale: PLUMBER_NEAR_TREE_SCALE }, paper: paperPreview,
             paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
@@ -4737,15 +6636,13 @@ function pixelPack(settings) {
     // see drawShelfTexture. Optional on a pack; only this one has ground
     // texture to carry.
     shelfTexture(ctx, camX, cab, shelves, viewW = W) {
-      drawShelfTexture(ctx, camX, cab, shelves, !!(settings && settings.reducedMotion), viewW,
-        paperPreview ? paperPreset : null);
+      drawShelfTexture(ctx, camX, cab, shelves, viewW, paperPreview ? paperPreset : null);
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t, drawW);
       if (cab.id === 'plumber') {
-        drawPlumberApronStrata(ctx, camX, obstacles, overhangs, drawW,
-          !!(settings && settings.reducedMotion));
+        drawPlumberApronStrata(ctx, camX, obstacles, overhangs, drawW);
         // Terrain routes, including floating islands, are painted afterward by
         // game/terrain.js. Terrain and route surfaces receive the same adapter
         // after this base pass, so the material stays continuous across joins.
@@ -4776,16 +6673,13 @@ function pixelPack(settings) {
 function faux3dPack(settings) {
   const paperPreview = !!(settings?.paperPreset
     && settings.paperCutout !== false && settings.paperCutout !== 'off');
+  const speedLimitValues = new Map();
   const paperPreset = paperPresetName(settings?.paperPreset);
   const paperStrengths = paperStrengthsOf(settings);
   return {
     name: 'faux3d',
     lightBg: paperPreview,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
-      // Read through at draw time rather than captured when the pack is built,
-      // so a mid-session toggle takes effect — the pixelPack idiom, not
-      // cardboardPack's.
-      const reduced = !!(settings && settings.reducedMotion);
       // SPEED ZONE only. faux3d also renders in THE SURGE's cycle, the hub
       // cabinet screens, the gallery and the social renderers, and none of
       // those are the desert.
@@ -4872,12 +6766,12 @@ function faux3dPack(settings) {
         drawSatelliteDishes(ctx, camX, farBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
           portrait: !!backgroundContext?.portrait,
-          t, reducedMotion: reduced,
+          t,
         });
         drawWindTurbines(ctx, camX, farBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
           portrait,
-          t, reducedMotion: reduced,
+          t,
         });
       }
       if (!desert && cab.id === 'surge') {
@@ -4901,22 +6795,19 @@ function faux3dPack(settings) {
       if (desert) {
         ctx.save();
         ctx.translate(0, backgroundY(backgroundContext, 'clouds'));
-        drawVultures(ctx, t, camX, reduced, backgroundContext);
+        drawVultures(ctx, t, camX, backgroundContext);
         ctx.restore();
       }
       if (desert) {
         // The middle range — the layer that makes the other two read as far
         // and near rather than as backdrop and foreground.
-        // Dust devils go BEHIND the middle range, not in front of it. Drawn
-        // after it, their feet stood on the frame's ground line and you could
-        // see the bottom of a column that is supposed to be miles away — which
-        // is exactly what gives a distant object away as a sticker. Behind, the
-        // middle hills cut the foot off and each devil rises out of the country
-        // rather than standing on top of it. The base still sits at the ground
-        // line; it is simply never visible, which is the point.
+        // Campfire smoke goes BEHIND the middle range, not in front of it. The
+        // hidden fire sits on the middle ground line, so the hills cut off the
+        // base and each plume rises out of the country rather than standing on
+        // top of it. The base is never visible, which keeps the fire implied.
         ctx.save();
         ctx.translate(0, backSceneryOffset + backgroundY(backgroundContext, 'middle'));
-        drawDustDevils(ctx, t, camX, reduced, middleBaseY);
+        drawCampfireSmoke(ctx, t, camX, middleBaseY);
         const m = DESERT_MID;
         drawTelegraphPoles(ctx, camX, middleBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
@@ -4960,6 +6851,7 @@ function faux3dPack(settings) {
           backgroundXOffset: backgroundContext?.backgroundXOffset,
           worldZoom: backgroundContext?.worldZoom,
           worldXOffset: backgroundContext?.worldXOffset,
+          speedLimitValues,
         });
       }
     },
@@ -5004,16 +6896,6 @@ function faux3dPack(settings) {
       g.addColorStop(0.5, 'rgba(0,0,0,0)');
       g.addColorStop(1, 'rgba(0,0,0,0.12)');
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    },
-    decorate(ctx, e, x, y) {
-      // fake drop shadow = instant pre-rendered look. Not on the boost pad:
-      // that one is a trench cut into the floor, and a bar of shadow under it
-      // puts it back in FRONT of the ground, which is the whole thing the
-      // sunken art is trying not to do.
-      if (e.def && !e.def.isBoost && (e.def.ground || e.alt < 20)) {
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(x + 2, GROUND_Y + 2, e.w, 3);
-      }
     },
   };
 }
@@ -5088,32 +6970,138 @@ function neonPack(settings) {
 function watercolorPack(settings) {
   const paperPreview = !!(settings?.paperPreset
     && settings.paperCutout !== false && settings.paperCutout !== 'off');
+  // post() is handed only (ctx, t) — no cabinet, no scene — but the blizzard is
+  // weather belonging to one cabinet and dialled by the scene. bg() always runs
+  // first in the same frame, so it leaves what post() needs here. Pack-local, so
+  // two packs alive at once (the run and a gallery tile) cannot cross wires.
+  let frostFrame = null;
   const paperPreset = paperPresetName(settings?.paperPreset);
+  const paperStrengths = paperStrengthsOf(settings);
   return {
     name: 'watercolor',
     lightBg: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
-      skyGrad(ctx, cab.sky[0], cab.sky[1]);
+      // Frost runs day to dusk across its three stages, and the light is ONE
+      // table: sky, both ridges, the foreground sheet, the lane and the snow
+      // haze all come out of it, because a dusk sky over a noon lane reads as a
+      // lit stage set rather than an evening.
+      const frostLight = cab.id === 'frost'
+        ? frostStageLight(backgroundContext?.stageIndex) : null;
+      const sky = frostLight ? frostLight.sky : cab.sky;
+      skyGrad(ctx, sky[0], sky[1]);
+      frostFrame = cab.id === 'frost'
+        ? {
+          camX,
+          stageIndex: backgroundContext?.stageIndex,
+          // How far through the level the run is, which is what makes the
+          // weather arrive rather than simply be on.
+          progress: backgroundContext?.progress,
+          strength: backgroundContext?.blizzard,
+          // ground() and weather() are handed no scene, so the light travels
+          // with the latch the same way the camera and the stage already do.
+          light: frostLight,
+        }
+        : null;
+      if (cab.id === 'frost') {
+        if (paperPreview) {
+          drawPaperSurface(ctx, backgroundPaintCoverage(ctx), `frost-paper-sky:${paperPreset}`,
+            paperPreset, paperStrengths.sky);
+        }
+        drawFrostSky(ctx, camX, {
+          paper: paperPreview, paperMaterial: paperPreset,
+          paperStrength: paperStrengths.sky,
+          stageIndex: backgroundContext?.stageIndex,
+          t,
+          backgroundContext,
+          // The scene may dial the aurora, including to nothing. The gallery
+          // bake-off rides this rather than a second copy of the painter.
+          gain: backgroundContext?.auroraGain,
+        });
+      }
       // blotchy hills with irregular edges
       for (const [color, yb, amp, wl, f, depth] of [
-        [cab.far, sceneryRidgeBaseY(backgroundContext, 'farLandmark', 66, GROUND_Y), 66, 130, 0.12, 'far'],
-        [cab.hills, sceneryRidgeBaseY(backgroundContext, 'near', 40, GROUND_Y), 40, 70, 0.3, 'near'],
+        [frostLight ? frostLight.far : cab.far,
+          sceneryRidgeBaseY(backgroundContext, 'farLandmark', 66, GROUND_Y), 66, 130, 0.12, 'far'],
+        [frostLight ? frostLight.hills : cab.hills,
+          sceneryRidgeBaseY(backgroundContext, 'near', 40, GROUND_Y), 40, 70, 0.3, 'near'],
       ]) {
+        const frostY = cab.id === 'frost'
+          ? yb - (backgroundContext?.portrait
+            ? FROST_SCENERY_LIFT : FROST_LANDSCAPE_SCENERY_LIFT)
+          : yb;
         ctx.save();
         ctx.translate(0, backgroundY(backgroundContext, depth));
-        ctx.globalAlpha = 0.7;
-        if (cab.id === 'frost' || cab.id === 'surge') {
-          drawFrostScenery(ctx, camX, yb, {
+        const frost = cab.id === 'frost';
+        ctx.globalAlpha = frost ? FROST_HILL_ALPHA : 0.7;
+        if (cab.id === 'surge') {
+          const hillAlpha = ctx.globalAlpha;
+          drawFrostScenery(ctx, camX, frostY, {
             layer: depth, paper: paperPreview, paperMaterial: paperPreset,
+            paperStrength: paperStrengths.scenery,
+            stageIndex: backgroundContext?.stageIndex,
+            portrait: backgroundContext?.portrait === true,
+            // The fortress windows blink on their own clock; nothing else on
+            // these ridges is animated.
+            t,
+            cab,
+            secondaryFeatures: null,
+          });
+          ctx.globalAlpha = hillAlpha;
+        }
+        const hillOptions = cab.id === 'frost'
+          ? {
+            paper: paperPreview, paperMaterial: paperPreset,
+            paperStrength: paperStrengths.scenery, seamFree: true,
+          }
+          : paperPreview
+            ? { paper: true, paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
+            : null;
+        parallaxHills(ctx, camX, color, frostY, amp, wl, f,
+          hillOptions);
+        if (frost) {
+          // Frost scenery belongs to this ridge, so let the ridge establish
+          // the support surface before placing the art. This keeps the full
+          // fortress/rock silhouette visible and leaves the pine trunk down
+          // to the snow line, while the following near sheet still naturally
+          // occludes far scenery where the two layers overlap.
+          ctx.globalAlpha = FROST_SCENERY_ALPHA;
+          drawFrostScenery(ctx, camX, frostY, {
+            layer: depth, paper: paperPreview, paperMaterial: paperPreset,
+            paperStrength: paperStrengths.scenery,
+            stageIndex: backgroundContext?.stageIndex,
+            portrait: backgroundContext?.portrait === true,
+            // The fortress windows blink on their own clock; nothing else on
+            // these ridges is animated.
+            t,
+            cab,
+            secondaryFeatures: undefined,
           });
         }
-        parallaxHills(ctx, camX, color, yb, amp, wl, f,
-          paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
-        ctx.globalAlpha = 0.4;
-        parallaxHills(ctx, camX + 13, color, yb + 4, amp, wl * 1.1, f,
-          paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
+        // The offset second wash is useful watercolor texture elsewhere, but
+        // on Frost it is a translucent duplicate ridge: its exposed edge
+        // crosses the fortress/rock feet and recreates the floating hard line.
+        // Frost gets one continuous opaque snow sheet instead.
+        if (!frost) {
+          ctx.globalAlpha = 0.4;
+          parallaxHills(ctx, camX + 13, color, frostY + 4, amp, wl * 1.1, f,
+            hillOptions);
+        }
         ctx.globalAlpha = 1;
         ctx.restore();
+      }
+      if (cab.id === 'frost') {
+        const hill = (surface) => drawFrostForegroundHill(surface, camX, backgroundContext, {
+          paper: paperPreview, paperMaterial: paperPreset,
+          paperStrength: paperStrengths.scenery,
+          color: frostLight.foreground,
+        });
+        // SETTLED — the near sheet lies UNDER the snow. Painting it over the
+        // weather was tried (the gallery ran the two orders side by side at both
+        // the Frost 3 opening and the ceiling): snow passing behind the near
+        // bank is a real parallax cue, and it is not worth what it costs, which
+        // is a translucent wash laid over the snow flattening the one thing in
+        // the frame that is supposed to have depth in it.
+        hill(ctx);
       }
       // The wash blobs are this cabinet's clouds, and they follow the same
       // rule as the Plumber flock: weather passes in front of the country, so
@@ -5132,9 +7120,26 @@ function watercolorPack(settings) {
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
+      // Snow is bright because of what is falling on it, so the lane goes down
+      // with the sky. Only the two colours are swapped — the cabinet itself is
+      // handed through untouched, because terrain and pits read it by identity.
+      const light = cab.id === 'frost' ? (frostFrame?.light || frostStageLight(1)) : null;
       ctx.globalAlpha = 0.85;
-      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t, drawW);
+      drawGapsAwareGround(ctx, camX, cab, obstacles,
+        light ? light.ground : cab.ground,
+        light ? light.groundDark : cab.groundDark, overhangs, t, drawW);
       ctx.globalAlpha = 1;
+    },
+    // WEATHER IS NOT A FRAME TREATMENT, so it does not live in post().
+    //
+    // post() paints into the backbuffer, and the hero does not: he is queued to
+    // a separate full-resolution overlay that composites ON TOP of that. Snow
+    // painted in post() is therefore snow BEHIND the player, which is the exact
+    // opposite of the point — you are supposed to be running through it. The run
+    // calls this hook on the overlay instead, after the hero and before the HUD.
+    weather(ctx, t) {
+      const snow = frostFrame;
+      if (snow) drawFrostBlizzard(ctx, t, snow.camX, snow);
     },
     post(ctx, t) {
       if (paperPreview) return;
@@ -5151,7 +7156,6 @@ function watercolorPack(settings) {
 }
 
 function vhsPack(settings) {
-  const reduced = settings && settings.reducedFlashing;
   return {
     name: 'vhs',
     dark: true,
@@ -5193,8 +7197,8 @@ function vhsPack(settings) {
       ctx.fillRect(1, 0, W, H);
       ctx.fillStyle = 'rgba(0,255,240,0.05)';
       ctx.fillRect(-1, 0, W, H);
-      // tracking wobble band (disabled under reduced flashing)
-      if (!reduced) {
+      // tracking wobble band
+      {
         const y = (t * 40) % (H + 30) - 15;
         ctx.fillStyle = 'rgba(255,255,255,0.06)';
         ctx.fillRect(0, y, W, 8);
@@ -5896,15 +7900,15 @@ const LCD_PHASES = 4;
 // against the real terrain constants so the two cannot drift apart.
 export const LCD_DEFAULT_ROAD_RISE = 11;
 
-function lcdSceneFrame(scene, reducedMotion) {
+function lcdSceneFrame(scene) {
   const stageIndex = Math.max(1, Math.min(3, Math.trunc(scene?.stageIndex) || 1));
-  const live = !reducedMotion && Number.isFinite(scene?.beat);
+  const live = Number.isFinite(scene?.beat);
   const beat = live ? Math.floor(scene.beat) : 0;
   const p = Number.isFinite(scene?.progress) ? Math.max(0, Math.min(1, scene.progress)) : 0;
   // ONE scan of the sixteen bins, not four. `spectrum` and `audio` ride the same
   // gate — see the note on each below — and asking twice per field meant this
   // ran four times a frame between bg() and drawLCDCity.
-  const heard = reducedMotion ? null : lcdHeardSpectrum(scene?.audio);
+  const heard = lcdHeardSpectrum(scene?.audio);
   return {
     stageIndex,
     live,
@@ -5912,27 +7916,22 @@ function lcdSceneFrame(scene, reducedMotion) {
     // WHERE IN THE BEAT WE ARE, 0 to 1. Everything else on this panel steps on
     // whole beats and wants nothing finer; the verb sign flashes three-quarters
     // on and a quarter off, which is a thing that happens INSIDE a beat and is
-    // the only reason this is here. Zero on a frozen panel, so a sign under
-    // reduced motion simply stands lit.
+    // the only reason this is here. A missing live beat uses phase zero.
     beatPhase: live && Number.isFinite(scene.beat) ? scene.beat - Math.floor(scene.beat) : 0,
     beat4: lcdMod(beat, 4),
     beatAbs: beat,
     bar: Math.floor(beat / 4),
     phrase: Math.floor(beat / 16),
     phase: Math.min(LCD_PHASES - 1, Math.floor(p * LCD_PHASES)),
-    // What the player is hearing, or null. NULL UNDER REDUCED MOTION, which is
-    // the whole accessibility contract for the reactive layer: a frozen panel
-    // must not be animated by the music behind the player's back. Also null in
-    // the hub, the gallery and the tests, where every painter falls back to the
-    // beat-driven behaviour it has always had — that fallback is not a
-    // degradation, it is the authored panel.
+    // What the player is hearing, or null when no analyser is available. The
+    // hub, gallery and tests use the deterministic beat-driven fallback, which
+    // is the authored panel rather than a degraded version of it.
     // ONE GATE FOR THE WHOLE REACTIVE LAYER. The vetted spectrum decides
     // whether there is an analyser here at all, and `audio` rides with it:
     // without a real one the deterministic fallback reports fixed constants,
     // which is not a quiet room, it is a permanent bias on every meter. No
     // analyser means the panel lights itself the authored way, exactly as it
-    // did before any of this — the same path the hub, the gallery and the
-    // tests take, and the same one reduced motion takes by choice.
+    // did before any of this — the same path the hub, gallery and tests take.
     spectrum: heard,
     audio: heard ? scene.audio : null,
     // THE STAGE IS OVER, or still in its live run. Rhythm 3 uses this one
@@ -5951,11 +7950,9 @@ function lcdSceneFrame(scene, reducedMotion) {
     // cabinet's name, and a tilting squiggle on a rooftop is not a thing a
     // player reads as "how you are doing" — the count is.
     //
-    // Zero and false under reduced motion for the same reason `audio` is null
-    // there: a frozen panel must not be animated behind the player's back.
-    streak: reducedMotion || !Number.isFinite(scene?.streak) ? 0
+    streak: !Number.isFinite(scene?.streak) ? 0
       : Math.max(0, Math.trunc(scene.streak)),
-    cheer: !reducedMotion && !!scene?.cheer,
+    cheer: !!scene?.cheer,
     // WHEN THE NEXT BARREL REACHES THE FOOT OF THE CHUTE, as an absolute beat,
     // or null. The second crack in "no gameplay reaches this painter" and it is
     // narrower than the first: not a position, not an event, one beat number
@@ -5968,20 +7965,15 @@ function lcdSceneFrame(scene, reducedMotion) {
     // whether or not a barrel was coming, which is precisely what made the
     // thing on the roof and the thing in the road read as unrelated.
     //
-    // Null under reduced motion, in the hub, in the gallery and in the tests,
-    // exactly like `form` — and there the chute falls back to the authored
-    // four-beat cycle it has always run, which is not a degradation, it is the
-    // panel as a picture rather than as a lane.
-    barrelBeat: reducedMotion || !Number.isFinite(scene?.barrelBeat) ? null
+    barrelBeat: !Number.isFinite(scene?.barrelBeat) ? null
       : scene.barrelBeat,
     // AND THE GRID THE GORILLA'S SWING IS PHASED TO — the snapped delivery
     // beat of the last real barrel, kept after it has landed so the stream
     // stays in step for the next one (see lcdSwingPhase). A caller that names a
     // barrel without a grid gets the barrel's own beat as the grid, which is
     // what the run would have handed over anyway.
-    barrelGrid: reducedMotion ? null
-      : Number.isFinite(scene?.barrelGrid) ? scene.barrelGrid
-        : Number.isFinite(scene?.barrelBeat) ? scene.barrelBeat : null,
+    barrelGrid: Number.isFinite(scene?.barrelGrid) ? scene.barrelGrid
+      : Number.isFinite(scene?.barrelBeat) ? scene.barrelBeat : null,
     // WHICH FACE THE GORILLA WEARS, or null for the authored smile. DEV ONLY:
     // no run sets it — the gallery's bake-off does, so the candidates can be
     // judged on the real panel by the real painter rather than in a copy of
@@ -6035,18 +8027,15 @@ function lcdSceneFrame(scene, reducedMotion) {
     // anchored to the frame the world starts moving, and never reset by a
     // death, so a retry arrives long past the assembly.
     //
-    // Absent under reduced motion, in the hub, in the gallery and in the tests,
-    // where the city is simply standing when the panel opens — the authored
-    // picture, and what every caller outside a run has always drawn.
-    intro: !reducedMotion && !!scene?.intro,
-    introBeat: reducedMotion || !Number.isFinite(scene?.intro?.beat) ? null
+    intro: !!scene?.intro,
+    introBeat: !Number.isFinite(scene?.intro?.beat) ? null
       : Math.floor(scene.intro.beat),
     // HOW MANY BEATS SINCE THE OMEN TOOK OFF, or null when this run never rolled
     // one — negative while it is still on the ground. The run's own monotonic
     // clock, for the reason the opening's is: the song's beat comes round every
     // loop, and a threat that flew past on every lap would be an advert. Only a
     // scene that authors `omen` reads it; see lcdPlaneCyc.
-    omenStep: !reducedMotion && Number.isFinite(scene?.omen) ? Math.floor(scene.omen) : null,
+    omenStep: Number.isFinite(scene?.omen) ? Math.floor(scene.omen) : null,
     // WHICH VERB THE SIGN IS SHOUTING, or null — `{ action, ink }`.
     //
     // The fourth and last crack in "no gameplay reaches this painter": one verb
@@ -6054,7 +8043,7 @@ function lcdSceneFrame(scene, reducedMotion) {
     // decides WHEN a verb is worth shouting about; the panel decides what a
     // shout looks like. Everything outside a run passes none and the share
     // price keeps its board.
-    verbCue: reducedMotion || !scene?.verbCue?.action ? null
+    verbCue: !scene?.verbCue?.action ? null
       : {
         action: String(scene.verbCue.action),
         // One colour or several: a slide answers a barrel and a drone on the
@@ -6113,8 +8102,8 @@ function lcdBandLevel(spec, band, bands, steps) {
 // present at a glance, never competing with a hazard. And it is cells, not a
 // curve: whole 2px blocks on the billboards' own grid.
 //
-// With no analyser (the hub, the gallery, a test, reduced motion) it falls
-// back to the authored LCD_EQ_LEVELS table walked by the beat, which is the
+// With no analyser (the hub, the gallery or a test) it falls back to the
+// authored LCD_EQ_LEVELS table walked by the beat, which is the
 // same still meter stage 2's rooftop banks have always shown.
 const LCD_EQ_BARS = 16;
 const LCD_EQ_CELL = 3;                    // 2px block + 1px gap, vertically
@@ -6324,7 +8313,7 @@ function lcdWindowGridLit(ctx, building, index, frame, bay) {
   // branches outright made all three stages the same city the moment music
   // played, which is the one thing this panel's variety cannot afford. And
   // `phase` raises the floor with or without an analyser, so the city wakes up
-  // in the hub and under reduced motion too.
+  // in the hub and in offline renders too.
   const floor = frame.windowLevels[index];
   if (frame.stageIndex === 1) {
     const row = lcdMod(frame.step + index, activeRows);
@@ -6916,7 +8905,7 @@ const LCD_BILLBOARD_ART = {
 // missed beat and dropping hard on a hit. Everything else about the trace is
 // authored — a fixed wobble so the line reads as a market rather than a ramp —
 // and the form only sets where the RIGHT-HAND end of it lands. Null form (the
-// hub, the gallery, reduced motion, any cabinet that is not a live run) draws
+// hub, the gallery, or any cabinet that is not a live run) draws
 // the flat mid-board trace, which is the authored sign it has always been.
 //
 // THE BOARD IS DRAWN AS A CHART, not as a shape that happens to slope. The
@@ -7153,25 +9142,23 @@ function lcdSignMark(ctx, action, mx, my, ink) {
  * The phase is the MUSIC's, not the opening clock's: the sign is lit against
  * the same beat the player is hearing and jumping on. Under reduced flashing it
  * stands lit — the sign carries something the player needs, so the fallback is
- * the message without the strobe, never no message — and under reduced motion
- * `beatPhase` is zero, which is the same thing.
+ * the message without the strobe, never no message.
  */
 const LCD_SIGN_DUTY = 0.75;
 // THE REAL BARREL'S RIM FLASHES ON THE SAME DUTY. A steady 2px rim on a 16px
 // barrel at the far end of a skyline is a thing you can miss; a rim that beats
 // with the song is a thing that catches the eye from the road. Same three
-// quarters on, same reason as the sign, and the same fallback: under reduced
-// flashing it stands lit for the whole journey.
-function lcdRimOn(frame, reducedFlashing) {
-  return reducedFlashing || frame.signOn;
+// quarters on, same reason as the sign.
+function lcdRimOn(frame) {
+  return frame.signOn;
 }
-function lcdVerbSign(ctx, building, cue, frame, reducedFlashing) {
+function lcdVerbSign(ctx, building, cue, frame) {
   const word = LCD_SIGN_WORD[cue.action];
   if (!word) return;
   const inks = Array.isArray(cue.ink) ? cue.ink : [cue.ink];
   if (!inks.length) return;
   const { cx, left, top } = lcdBoardFrame(ctx, building, LCD_BOARD_W, LCD_BOARD_H);
-  if (!reducedFlashing && !frame.signOn) return;
+  if (!frame.signOn) return;
 
   // The block of marks and the word under them, centred in the board.
   const markW = LCD_SIGN_MARK_W * 2;
@@ -7208,14 +9195,14 @@ function lcdVerbSign(ctx, building, cue, frame, reducedFlashing) {
   }
 }
 
-function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
+function lcdBillboard(ctx, building, artName, frame) {
   const art = LCD_BILLBOARD_ART[artName];
   if (!art) return;
   // A sign on a drum. `hit` is 1 on the frame a kit piece is actually heard
   // and decays from there, so the board's dark panel washes pale on the snare
   // and settles between hits — the one place the city answers a single sound
-  // rather than the beat grid. Reduced flashing keeps the sign printed.
-  const strike = !reducedFlashing && frame.strike;
+  // rather than the beat grid.
+  const strike = frame.strike;
   const [x, w, h] = building;
   const cx = Math.round(x + w / 2);
   const roof = GROUND_Y - h;
@@ -7322,8 +9309,7 @@ function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
 // The puffs are PIXEL blobs on the same 2px grid the billboards use — soft
 // ellipses floated like production smoke against a coarse-pixel skyline. The
 // cells are fixed; the beat gives them life: each puff drifts on its own cycle
-// and the higher ones come and go. Reduced motion (beat 0 forever) leaves a
-// composed still plume with every puff present.
+// and the higher ones come and go.
 const LCD_PUFFS = [
   ['.XX.',
    'XOOX',
@@ -7449,8 +9435,8 @@ function lcdPuffGrid(ctx, grid, x, y, alpha) {
 // An 11x6 coarse-pixel aeroplane that crosses the sky once every sixteen
 // bars, 14px per heard beat, flying INTO the cloud wind so the sky has two
 // speeds. The propeller is a two-cell blur alternating on the beat, and the
-// tail wears the panel's one red. Idle and reduced-motion frames sit at beat
-// 0, where the plane is still off-screen — a parked sky stays parked.
+// tail wears the panel's one red. Idle frames use beat 0, where the plane is
+// still off-screen — a parked sky stays parked.
 //
 // The ALTITUDE is scene data, because the one thing a flight lane has to clear
 // is whatever the scene put on its tallest roof. A NUMBER is a level crossing
@@ -8077,14 +10063,13 @@ function lcdVanishedBarrelCell(art, frame) {
   return since >= 0 && since < 16 ? since : -1;
 }
 
-function lcdBarrelBurst(ctx, bx, by, phase, reducedFlashing) {
+function lcdBarrelBurst(ctx, bx, by, phase) {
   const x = Math.round(bx), y = Math.round(by);
   // The staves go out in PRINT_SOFT, not the motion ghost. A ghost cell on this
   // panel means "a position this thing also occupies" — the off frames of a
   // cycle — and the wreck is not that: it is the one beat of debris, receding
   // but real, and at ghost alpha it was not there at all.
-  ctx.fillStyle = phase === 0
-    ? (reducedFlashing ? LCD_PRINT : LCD_WINDOW_ON) : LCD_PRINT_SOFT;
+  ctx.fillStyle = phase === 0 ? LCD_WINDOW_ON : LCD_PRINT_SOFT;
   for (const [cx, cy] of phase === 0 ? LCD_BURST_STAR : LCD_BURST_DEBRIS) {
     ctx.fillRect(x + cx * 2 - 1, y + cy * 2 - 1, 2, 2);
   }
@@ -8121,7 +10106,7 @@ const LCD_BEAM_REACH = 132;
  *     up the other is out flat. Lockstep is what a premiere looks like; this
  *     panel is a working city.
  */
-function lcdSearchlight(ctx, building, dx, n, frame, reducedFlashing) {
+function lcdSearchlight(ctx, building, dx, n, frame) {
   const [x, , h] = building;
   const roof = GROUND_Y - h;
   const sx = Math.round(x + dx);
@@ -8129,7 +10114,7 @@ function lcdSearchlight(ctx, building, dx, n, frame, reducedFlashing) {
   ctx.fillStyle = LCD_PRINT;
   ctx.fillRect(sx - 4, roof - 5, 8, 5);
   ctx.fillRect(sx - 1, roof - 8, 2, 3);
-  ctx.fillStyle = !reducedFlashing && frame.beat4 === 0 ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
+  ctx.fillStyle = frame.beat4 === 0 ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
   ctx.fillRect(sx - 2, roof - 10, 4, 3);
   const step = frame.bar * 4 + frame.beat4 + n * (LCD_BEAM_ANGLES.length / 2);
   const a = LCD_BEAM_ANGLES[lcdMod(step, LCD_BEAM_ANGLES.length)];
@@ -8433,7 +10418,7 @@ const LCD_RINGS = [
   ['...XXXXXXX...', '..X.......X..', '.X.........X.', 'X...........X'],
   ['....XXXXXXXXX....', '..XX.........XX..', '.X.............X.', 'X...............X'],
 ];
-function lcdTransmitter(ctx, building, frame, reducedFlashing) {
+function lcdTransmitter(ctx, building, frame) {
   const [x, w, h] = building;
   const cx = Math.round(x + w / 2);
   const roof = GROUND_Y - h;
@@ -8454,7 +10439,7 @@ function lcdTransmitter(ctx, building, frame, reducedFlashing) {
   ctx.fillStyle = LCD_PRINT;
   ctx.fillRect(cx - 1, top - 3, 2, 4);
   // The beacon, lit on the downbeat.
-  ctx.fillStyle = !reducedFlashing && frame.beat4 === 0 ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
+  ctx.fillStyle = frame.beat4 === 0 ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
   ctx.fillRect(cx - 2, top - 7, 4, 4);
   // PIXEL rings on the billboards' own 2px grid — authored arc blobs, not
   // stroked curves, so the broadcast wears the same resolution as the signs.
@@ -8467,7 +10452,7 @@ function lcdTransmitter(ctx, building, frame, reducedFlashing) {
     const reach = frame.antennaReach;
     const carried = i > frame.beat4 && i <= frame.beat4 + reach;
     ctx.fillStyle = i === frame.beat4
-      ? (reducedFlashing ? LCD_PRINT_SOFT : LCD_WINDOW_ON)
+      ? LCD_WINDOW_ON
       : carried ? 'rgba(80,85,92,0.3)' : LCD_MOTION_GHOST;
     const ox = cx - grid[0].length;
     const oy = cy - [9, 15, 21, 27][i];
@@ -9971,7 +11956,7 @@ export const LCD_GORILLA_TUFT_STYLES = [
  * is worth watching: the tower knows where its plumber is, the city knows
  * where the plane and the chute's live barrel are.
  */
-function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = false,
+function lcdRooftopGorilla(ctx, building, frame, burst = -1,
   mood = null, lookAt = null) {
   const [x, w, h] = building;
   const ink = LCD_GORILLA_INKS[frame.gorillaInk] || LCD_GORILLA_INKS[LCD_GORILLA_INK];
@@ -10020,8 +12005,7 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // acknowledge the runner: one arm stays planted while the other waves from
   // two stepped hand positions. There is deliberately no barrel on either
   // pose, and the normal throw ghosts are replaced by the two wave positions.
-  // It is still beat-stepped, so the greeting belongs to this panel's idiom
-  // and reduced motion settles on the first friendly frame.
+  // It is still beat-stepped, so the greeting belongs to this panel's idiom.
   const finale = frame.stageIndex === 3 && frame.finish;
   const wavePoses = [
     {
@@ -10218,13 +12202,13 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // (run.js updateBarrelArrivals), so he cannot cry wolf with it.
   if (!finale && burst >= 0) {
     lcdBarrelBurst(ctx, poses[LCD_BARREL_UP_BEAT].barrel[0],
-      poses[LCD_BARREL_UP_BEAT].barrel[1], burst, reducedFlashing);
+      poses[LCD_BARREL_UP_BEAT].barrel[1], burst);
   } else if (!finale && pose.barrel) {
     // Lit on the three hold beats of a real one and on nothing else. The swing
     // is phased so those three beats ARE poses 0, 1 and 2 (lcdSwingPhase), so
     // no test on the pose is needed here. Flashing, see lcdRimOn.
     gbcGorillaBarrel(ctx, pose.barrel[0], pose.barrel[1], false,
-      cued && lcdRimOn(frame, reducedFlashing), frame.barrelShape);
+      cued && lcdRimOn(frame), frame.barrelShape);
   }
   ctx.lineWidth = 1;
   ctx.lineCap = 'butt';
@@ -10532,7 +12516,7 @@ function lcdRunnerCells(ctx, rx, footY, mode, silhouette) {
 // tower is the only thing between the scene, which knows where the plane is,
 // and the gorilla, who is holding what it hits. `vanished` is the girder cell
 // that hit takes out of the chain — see lcdVanishedBarrelCell.
-function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, vanished = -1,
+function lcdGameWatch(ctx, spec, frame, burst = -1, vanished = -1,
   planeAt = null) {
   const [x, w, h] = spec;
   const grid = lcdGridFor(spec);
@@ -10947,7 +12931,7 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   const onHisGirder = leg && floors.length > 1 && leg.fy < floors[1];
   const planeNear = planeAt && Math.abs(planeAt[0] - Math.round(x + w / 2)) < 70;
   const watch = onHisGirder ? [leg.rx, leg.fy] : planeNear ? planeAt : null;
-  lcdRooftopGorilla(ctx, [x, w, h], frame, burst, reducedFlashing, leg?.mood || null, watch);
+  lcdRooftopGorilla(ctx, [x, w, h], frame, burst, leg?.mood || null, watch);
 }
 
 /**
@@ -10963,20 +12947,18 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
  */
 // Direct oracle for visual tooling and cache parity tests; no global-mode mutation.
 export function drawLCDPanelUncached(ctx, scene, settings = {}) {
-  const motion = !!settings.reducedMotion, flashing = !!settings.reducedFlashing;
   const sky = settings.skyMeter !== false;
-  const { frame } = prepareLCDPanel(scene, motion, flashing, sky);
-  paintLCDCity(ctx, frame, motion, flashing, sky, settings.backgroundContext || null);
+  const { frame } = prepareLCDPanel(scene, sky);
+  paintLCDCity(ctx, frame, sky, settings.backgroundContext || null);
 }
 
 export function drawLCDPanel(ctx, scene, settings = {}) {
   // `skyMeter` on: an authoring or audition caller wants the analyser in the sky.
-  drawLCDCity(ctx, scene, !!settings.reducedMotion, !!settings.reducedFlashing,
-    settings.skyMeter !== false, settings.backgroundContext || null);
+  drawLCDCity(ctx, scene, settings.skyMeter !== false, settings.backgroundContext || null);
 }
 
 /** The screen treatment on its own: the soft-light wash and the cell lattice. */
-export function lcdScreenFinish(ctx, t = 0, reducedFlashing = false) {
+export function lcdScreenFinish(ctx, t = 0) {
   ctx.globalCompositeOperation = 'soft-light';
   ctx.fillStyle = 'rgba(168,198,108,0.22)';
   ctx.fillRect(0, 0, W, H);
@@ -10986,10 +12968,8 @@ export function lcdScreenFinish(ctx, t = 0, reducedFlashing = false) {
     c.fillRect(2, 0, 1, 3);
     c.fillRect(0, 2, 3, 1);
   });
-  if (!reducedFlashing) {
-    ctx.fillStyle = `rgba(255,244,180,${0.008 + Math.sin(t * 6.3) * 0.008})`;
-    ctx.fillRect(0, 0, W, H);
-  }
+  ctx.fillStyle = `rgba(255,244,180,${0.008 + Math.sin(t * 6.3) * 0.008})`;
+  ctx.fillRect(0, 0, W, H);
 }
 
 // A building whose roof carries scene furniture — the gorilla, a billboard, the
@@ -11163,6 +13143,8 @@ export function clearPresentationCaches() {
   paperSurfaceCache.clear();
   plumberScenerySpriteCache.clear();
   plumberSceneryCacheSS = 0;
+  frostAuroraSpriteCache.clear();
+  frostAuroraCacheSS = 0;
   bakeCache.clear();
   cityBake = null;
   clearLCDPanelCache();
@@ -11172,8 +13154,8 @@ onPresentationChanged(clearPresentationCaches);
 
 // Resolve the exact existing cell/flash decisions once, shared by key and painter.
 // No new quantization and no retained references to mutable analyser/ink buffers.
-function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNeeded = false) {
-  const frame = lcdSceneFrame(scene, reducedMotion);
+function prepareLCDPanel(scene, skyMeter, keyNeeded = false) {
+  const frame = lcdSceneFrame(scene);
   const art = LCD_CITY_SCENES[frame.stageIndex];
   const bay = lcdClockBay(art);
   windowLevels.length = art.buildings.length;
@@ -11196,16 +13178,16 @@ function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNee
       Math.floor((GROUND_Y - LCD_EQ_TOP) / LCD_EQ_CELL));
   }
   frame.windowLevels = windowLevels; frame.roofLevels = roofLevels; frame.skyLevels = skyLevels;
-  frame.signOn = reducedFlashing || frame.beatPhase < LCD_SIGN_DUTY;
+  frame.signOn = frame.beatPhase < LCD_SIGN_DUTY;
   frame.strike = !!art.billboards?.some(([, name]) => name !== 'chart')
-    && !reducedFlashing && (frame.audio?.hit || 0) > 0.55;
+    && (frame.audio?.hit || 0) > 0.55;
   const heard = frame.audio ? frame.audio.level : null;
   frame.puffs = !art.smokestacks?.length || heard == null ? 4 : Math.max(3, Math.min(4, 3 + Math.round(heard)));
   frame.antennaReach = Number.isInteger(art.transmitter) && frame.audio
     ? Math.round((frame.audio.treble || 0) * 2.2) : 0;
   if (!keyNeeded) return { frame, supported: true };
   panelKey.length = 0;
-  panelKey.push(reducedMotion, reducedFlashing, skyMeter, !!frame.audio);
+  panelKey.push(skyMeter, !!frame.audio);
   let supported = true;
   for (const key in frame) {
     if (FRAME_SCALARS.has(key)) panelKey.push(frame[key]);
@@ -11221,10 +13203,9 @@ function prepareLCDPanel(scene, reducedMotion, reducedFlashing, skyMeter, keyNee
   return { frame, supported };
 }
 
-function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = false,
+function drawLCDCity(ctx, scene, skyMeter = false,
   backgroundContext = null) {
-  const { frame, supported } = prepareLCDPanel(scene, reducedMotion, reducedFlashing,
-    skyMeter, lcdPanelCacheEnabled);
+  const { frame, supported } = prepareLCDPanel(scene, skyMeter, lcdPanelCacheEnabled);
   const cv = ctx.canvas;
   const coverage = backgroundPaintCoverage(ctx);
   const shiftedCoverage = coverage.left !== 0 || coverage.right !== W;
@@ -11238,7 +13219,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   // those callers direct, and keep the operation recorder's real-surface fallback.
   if (shiftedCoverage || !lcdPanelCacheEnabled || !supported || ctx.globalAlpha !== 1
     || ctx.globalCompositeOperation !== 'source-over' || !cv?.width || !cv?.height) {
-    paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter, backgroundContext);
+    paintLCDCity(ctx, frame, skyMeter, backgroundContext);
     return;
   }
   let bake = lcdPanelBake;
@@ -11253,7 +13234,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     const made = sized ? { canvas: bake.c, ctx: bake.ctx } : lcdBakeSurface(cv.width, cv.height);
     if (!made) {
       clearLCDPanelCache();
-      paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter, backgroundContext);
+      paintLCDCity(ctx, frame, skyMeter, backgroundContext);
       return;
     }
     const started = efficiencyProfile.enabled ? performance.now() : 0;
@@ -11263,7 +13244,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     c.lineWidth = 1; c.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
-    paintLCDCity(c, frame, reducedMotion, reducedFlashing, skyMeter, backgroundContext);
+    paintLCDCity(c, frame, skyMeter, backgroundContext);
     bake = { c: made.canvas, ctx: made.ctx, owner: ctx, key: panelKey.slice() };
     lcdPanelBake = bake;
     efficiencyProfile.lcdBytes = cv.width * cv.height * 4;
@@ -11277,7 +13258,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   ctx.restore();
 }
 
-function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = false, backgroundContext = null) {
+function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null) {
   const isPortraitRhythm1 = !!(backgroundContext?.portrait && frame.stageIndex === 1);
   const art = isPortraitRhythm1 ? LCD_PORTRAIT_STAGE_1 : LCD_CITY_SCENES[frame.stageIndex];
   // Portrait rhythm-1 keeps its sparse two-building skyline and no portrait
@@ -11367,7 +13348,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
         // which carry the offbeat change. Reduced flashing keeps the roof
         // hardware but leaves it in a composed printed state.
         const capY = GROUND_Y - h - 5;
-        if (!reducedFlashing && (i + frame.beat4) % 2 === 0) {
+        if ((i + frame.beat4) % 2 === 0) {
           ctx.fillStyle = LCD_WINDOW_ON;
           const span = Math.max(1, w - 16);
           for (let lamp = 0; lamp < 3; lamp++) {
@@ -11400,7 +13381,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
     if (towerRise) ctx.save();
     if (towerRise) ctx.translate(0, towerRise);
     lcdGameWatch(ctx, art.gameWatch, frame,
-      lcdBurstPhase(art, frame), reducedFlashing,
+      lcdBurstPhase(art, frame),
       lcdVanishedBarrelCell(art, frame), lcdPlanePoint(art, frame, art.plane));
     if (towerRise) ctx.restore();
   }
@@ -11428,23 +13409,22 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
       // the rest of the run. There is no share price any more and no separate
       // celebration — see lcdComboBoard.
       if (artName !== 'chart') {
-        lcdBillboard(ctx, art.buildings[bi], artName, frame, reducedFlashing);
+        lcdBillboard(ctx, art.buildings[bi], artName, frame);
       } else if (frame.verbCue) {
-        lcdVerbSign(ctx, art.buildings[bi], frame.verbCue, frame, reducedFlashing);
+        lcdVerbSign(ctx, art.buildings[bi], frame.verbCue, frame);
       } else {
         lcdComboBoard(ctx, art.buildings[bi], frame);
       }
     });
   }
   (art.searchlights || []).forEach(([bi, dx], n) => {
-    onRoof(bi, () => lcdSearchlight(ctx, art.buildings[bi], dx, n, frame, reducedFlashing));
+    onRoof(bi, () => lcdSearchlight(ctx, art.buildings[bi], dx, n, frame));
   });
   if (art.washer) {
     onRoof(art.washer[0], () => lcdWasher(ctx, art.buildings[art.washer[0]], art.washer[1], frame));
   }
   if (Number.isInteger(art.transmitter)) {
-    onRoof(art.transmitter, () => lcdTransmitter(ctx, art.buildings[art.transmitter],
-      frame, reducedFlashing));
+    onRoof(art.transmitter, () => lcdTransmitter(ctx, art.buildings[art.transmitter], frame));
   }
   for (const [bi, dx] of art.smokestacks || []) {
     onRoof(bi, () => lcdSmokestack(ctx, art.buildings[bi], dx, frame));
@@ -11511,7 +13491,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
       // the same wood the ribbon's arrow is drawn in.
       const due = frame.barrelBeat != null ? Math.round(frame.barrelBeat - frame.beatAbs) : null;
       const live = due != null && due >= 1 && due <= LCD_CHUTE_BEATS
-        && lcdRimOn(frame, reducedFlashing);
+        && lcdRimOn(frame);
       gbcGorillaBarrel(ctx, dropX, chute[cue], false, live, frame.barrelShape, spinOf(cue));
       // He follows the live one all the way down and only glances at the rest:
       // a head that tracks every barrel he throws is a gorilla admiring his own
@@ -11523,8 +13503,7 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
       const gx = art.buildings[art.rooftopGorilla];
       if (planeAt && Math.abs(planeAt[0] - (gx[0] + gx[1] / 2)) < 70) watch = planeAt;
     }
-    lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame, -1, reducedFlashing,
-      null, watch);
+    lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame, -1, null, watch);
     if (gorillaRise) ctx.restore();
   }
   // The case is in the baked layer with the rest of the facade; only the hand
@@ -11542,8 +13521,6 @@ function paintLCDCity(ctx, frame, reducedMotion, reducedFlashing, skyMeter = fal
 }
 
 function lcdPack(settings) {
-  const reduced = settings && settings.reducedFlashing;
-  const reducedMotion = settings && settings.reducedMotion;
   return {
     name: 'lcd',
     // The screen treatment belongs to the scenery. The cast — hero, hazards,
@@ -11598,7 +13575,7 @@ function lcdPack(settings) {
         }
       }
       try {
-        drawLCDCity(ctx, scene, reducedMotion, reduced, false, backgroundContext);
+        drawLCDCity(ctx, scene, false, backgroundContext);
       } finally {
         if (shift) {
           if (previousCoverage === undefined) delete ctx.__mashBackgroundCoverage;
@@ -11883,11 +13860,9 @@ function lcdPack(settings) {
           c.fillRect(0, cell - line, cell, line);
         });
       }
-      if (!reduced) {
-        // A tiny reflective-screen shimmer, not a broad white flash.
-        ctx.fillStyle = `rgba(255,244,180,${0.008 + Math.sin(t * 6.3) * 0.008})`;
-        ctx.fillRect(0, 0, W, H);
-      }
+      // A tiny reflective-screen shimmer, not a broad white flash.
+      ctx.fillStyle = `rgba(255,244,180,${0.008 + Math.sin(t * 6.3) * 0.008})`;
+      ctx.fillRect(0, 0, W, H);
     },
     // No decorate. The old segment-ghost outline — a faint square trailing
     // every entity — read as a rendering bug beside the toaster and the
@@ -11897,7 +13872,6 @@ function lcdPack(settings) {
 }
 
 function cardboardPack(settings) {
-  const reducedMotion = settings && settings.reducedMotion;
   const paperPreview = !!(settings?.paperPreset
     && settings.paperCutout !== false && settings.paperCutout !== 'off');
   const paperPreset = paperPresetName(settings?.paperPreset);
@@ -11906,7 +13880,7 @@ function cardboardPack(settings) {
     lightBg: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
-      const wob = reducedMotion ? 0 : Math.sin(t * 2) * 1.5;
+      const wob = Math.sin(t * 2) * 1.5;
       const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', 56, GROUND_Y) + wob;
       const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', 34, GROUND_Y) - wob;
       // cardboard cutout hills with corrugation ticks
@@ -12099,9 +14073,8 @@ function doodlePack(settings) {
 }
 
 function surgePack(settings) {
-  // Cycles through the other packs with glitch cuts (crossfades under reduced flashing).
+  // Cycles through the other packs with glitch cuts.
   const packs = [pixelPack(settings), faux3dPack(settings), neonPack(settings), watercolorPack(settings), vhsPack(settings), lcdPack(settings), cardboardPack(settings), doodlePack(settings)];
-  const reduced = settings && settings.reducedFlashing;
   const period = 7; // seconds per style
   function pick(t) { return packs[Math.floor(t / period) % packs.length]; }
   return {
@@ -12135,7 +14108,7 @@ function surgePack(settings) {
       this._t = t;
       pick(t).post(ctx, t);
       const phase = (t % period) / period;
-      if (!reduced && phase > 0.96) {
+      if (phase > 0.96) {
         // glitch cut: horizontal slice offsets
         ctx.fillStyle = 'rgba(232,56,248,0.15)';
         for (let i = 0; i < 5; i++) ctx.fillRect(0, (i * 61 + t * 200) % H, W, 3);

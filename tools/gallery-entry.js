@@ -7,8 +7,10 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
-import { W, H } from '../src/engine/renderer.js';
-import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
+import {
+  W, H, setPresentationFrame, presentationFrame,
+} from '../src/engine/renderer.js';
+import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld, screenYFor } from '../src/engine/camera.js';
 // The game's cameras, read from the modules that own them so the zoom-levels
 // section can never quote a number the game has stopped using.
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
@@ -52,8 +54,20 @@ import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
   LCD_GORILLA_NOSTRIL_STYLES,
   lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem,
+  frostBlizzardRung, frostFlypastArc,
 } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
+import {
+  FROST_SLEIGH_CANDIDATES, FROST_SLEIGH_BY_ID, FROST_FLYPAST,
+  FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN, FROST_FLYPAST_SCALE,
+  FROST_FLYPAST_PALETTE, FROST_FLYPAST_DEPTH, FLYPAST_PALETTES, drawFrostFlypast,
+  FLYPAST_GLOWS, FROST_FLYPAST_GLOW, FROST_FLYPAST_CLEAR, flypastAt, flypastScaleFor,
+} from '../src/sprites/sleigh.js';
+import {
+  frameForViewport, PHONE_PORTRAIT, PORTRAIT_BACKGROUND_ZOOM,
+} from '../src/engine/frame.js';
+import { portraitHudLayout } from '../src/game/portrait-layout.js';
+import { resolveSceneryLayout, BACKGROUND_DEPTHS } from '../src/engine/scenery-layout.js';
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
 import {
@@ -69,7 +83,7 @@ import { STAGES } from '../src/data/stages.js';
 import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
 import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
 import {
-  FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX,
+  FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX, POLE_STANDOFF, POLE_H,
 } from '../src/game/finishMarker.js';
 import {
   PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT,
@@ -97,11 +111,15 @@ import {
 } from '../src/dev/hazard-candidates.js';
 import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
 import {
+  COUNTRYSIDE_HAZARD_CANDIDATES, drawCountrysideHazard,
+} from '../src/dev/countryside-hazard-candidates.js';
+import {
   SPRING_PAD_CANDIDATES, drawSpringPadCandidate,
 } from '../src/dev/spring-pad-candidates.js';
 import {
   WATER_TOWER_CANDIDATES, drawWaterTowerCandidate,
 } from '../src/dev/water-tower-candidates.js';
+import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
   ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
   PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES,
@@ -1842,6 +1860,7 @@ function propNominalSize(name) {
       if (style.bg) style.bg(ctx, t, t * 60, cab, 1000, scene);
       if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
       if (style.post) style.post(ctx, t);
+      if (style.weather) style.weather(ctx, t);
     }, { animated: true });
   }
 }
@@ -2193,6 +2212,7 @@ function propNominalSize(name) {
     if (pack.bg) pack.bg(ctx, t, t * 60, cab, 1000);
     if (pack.ground) pack.ground(ctx, t * 60, cab, props);
     if (pack.post) pack.post(ctx, t);
+    if (pack.weather) pack.weather(ctx, t);
   };
   // The food court wall: #241c30, the surface the light plate was built for.
   const hubBg = (ctx) => { ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, W, H); };
@@ -2280,6 +2300,74 @@ beginLab();
         ctx.font = '5px ui-monospace, monospace';
         ctx.textAlign = 'left';
         ctx.fillText('PLANTED · FAR MESA', 6, TH - 6);
+      }, { animated: false, hires: 6 });
+  }
+}
+// ------------------------------------- Speed Zone roadside-sign bake-off
+// Eleven gallery-only highway/street signs plus the current live warning sign.
+// The cards use the live Speed Zone
+// sign painter through drawSpeedSceneryItem(), so board edges, posts, planted
+// soil, typography, and paper treatment stay tied to the shipped source path.
+// K is now the picked live replacement for the former Route 66 slot; the other
+// candidate faces remain data-only and are not registered in the run. The live
+// warning card is selected from the production sign set rather than duplicated.
+{
+  const speed = CABINETS.find((cab) => cab.id === 'speed');
+  const grid = section('speed-sign-bakeoff', 'SPEED ZONE — highway/street sign bake-off',
+    'K SHIPS in the live Route 66 slot. The other ten roadside sign faces remain candidates; LIVE is the current mc² warning sign. '
+    + 'Same desert slice, baseline, scale ladder, and source-backed painter for every card; choose another only if the live Autobahn read loses out.');
+  const SW = 210, SH = 148, BASE = 110;
+  const sceneryBackdrop = (ctx) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, SH);
+    sky.addColorStop(0, speed.sky[0]);
+    sky.addColorStop(1, speed.sky[1]);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, SW, SH);
+    ctx.fillStyle = speed.far;
+    ctx.beginPath();
+    ctx.moveTo(0, 87);
+    ctx.quadraticCurveTo(30, 67, 62, 84);
+    ctx.quadraticCurveTo(102, 64, 141, 85);
+    ctx.quadraticCurveTo(178, 70, SW, 87);
+    ctx.lineTo(SW, SH); ctx.lineTo(0, SH); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = speed.hills;
+    ctx.beginPath();
+    ctx.moveTo(0, 106);
+    ctx.quadraticCurveTo(34, 84, 73, 104);
+    ctx.quadraticCurveTo(115, 83, 154, 105);
+    ctx.quadraticCurveTo(184, 91, SW, 106);
+    ctx.lineTo(SW, SH); ctx.lineTo(0, SH); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = speed.ground;
+    ctx.fillRect(0, 126, SW, SH - 126);
+    ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(0, 126.5); ctx.lineTo(SW, 126.5); ctx.stroke();
+  };
+  tile(grid, 'LIVE — mc² warning triangle',
+    'Current live caution sign: flat off-white triangle, muted terracotta border, and centered mc² formula.', SW, SH,
+    (ctx) => {
+      sceneryBackdrop(ctx);
+      ctx.save();
+      ctx.translate(SW / 2, BASE);
+      drawSpeedSceneryItem(ctx, 'road-sign', { liveWarning: true });
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,.58)';
+      ctx.font = '5px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('LIVE · SOURCE-BACKED · PLANTED', 6, SH - 6);
+    }, { animated: false, hires: 6 });
+  for (const candidate of SPEED_SIGN_CANDIDATES) {
+    tile(grid, `${candidate.letter} — ${candidate.name}`, candidate.note, SW, SH,
+      (ctx) => {
+        sceneryBackdrop(ctx);
+        ctx.save();
+        ctx.translate(SW / 2, BASE);
+        drawSpeedSceneryItem(ctx, 'road-sign', { sign: candidate });
+        ctx.restore();
+        ctx.fillStyle = 'rgba(255,255,255,.58)';
+        ctx.font = '5px ui-monospace, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('NEW · SOURCE-BACKED · PLANTED', 6, SH - 6);
       }, { animated: false, hires: 6 });
   }
 }
@@ -5273,10 +5361,11 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     ctx.save();
     applyWorld(ctx, WORLD_Z, 0);
     if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
-    drawPortal(ctx, { x: portalX, hero: 'gnash' }, 0, t, 1, true, {});
+    drawPortal(ctx, { x: portalX, hero: 'gnash' }, 0, t, 1, true);
     drawToon(ctx, 'lorenzo', pose('run', t), heroX, GROUND_Y, 24);
     ctx.restore();
     if (style.post) style.post(ctx, t);
+    if (style.weather) style.weather(ctx, t);
     ctx.restore();
   }
 
@@ -5338,7 +5427,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       if (since >= 0) portal[key === 'spend' ? 'spent' : 'wilt'] = since;
       ctx.save();
       ctx.translate(0, GY - GROUND_Y);
-      drawPortal(ctx, { ...portal, x: 62 }, 0, t, 1, true, {});
+      drawPortal(ctx, { ...portal, x: 62 }, 0, t, 1, true);
       ctx.restore();
       // The hero, arriving on the same clock: through the column on a spend,
       // over the top of it on a wilt.
@@ -5419,7 +5508,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     const raw = c < THROW_AT ? 0 : Math.min(1, (c - THROW_AT) / 0.18);
     return {
       t, thrown: raw * raw * (3 - 2 * raw), live: true, armed: c < THROW_AT,
-      reducedMotion: false, phase: c,
+      phase: c,
     };
   };
 
@@ -5511,7 +5600,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     return {
       c, ride, cling, running: c < RIDE_AT,
       thrown: raw * raw * (3 - 2 * raw), live: true, armed: c < RIDE_AT + RIDE_FOR,
-      t, reducedMotion: false,
+      t,
     };
   };
   for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'grumpos', 'mochi', 'chompo', 'raymn']) {
@@ -6450,7 +6539,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   const s = sectionEl('hero-chip-bakeoff', 'HUD — the hero in the left corner, bake-off',
     'OPEN — seven ways to fold the relay\'s current hero into the status pill, against the centre name '
     + 'badge that ships today. Every tile calls drawStatusPill() and drawHeroBadge() from hud.js at the '
-    + 'run\'s real coordinates; only the left corner and the centre are drawn, so the top progress line '
+    + 'run\'s real coordinates; only the left corner and the centre are drawn, so the progress line '
     + 'and the right-hand GOAL panels are absent rather than reimplemented. Three cells and no coins, '
     + 'which is the state in Peter\'s screenshot.');
   const sub = (text, note) => {
@@ -7389,6 +7478,665 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 //     measured across one the ground reads near-vertical, and a fraction of
 //     near-vertical is a hero lying down.
 // tests/shoe-slope.js pins the lean, the cap and the step cases.
+
+// --------------------------------------------- FROST — aurora borealis (lab)
+// The painter is live and shipping at the production day sky; what is OPEN is
+// how dark Frost's sky should be under it.
+//
+// An aurora is a night phenomenon and Frost is a daylight cabinet: pale blue
+// (#b8d8f0 -> #e0ecf8) with white-ish hills. Over that, the curtain can only
+// ever be a mint shimmer — legible, but it is reading as weather rather than as
+// light, and the rays lose most of their structure. Every card below is the
+// REAL frost bg() and ground() with one thing changed, the two sky stops, so
+// the comparison is about the sky and nothing else.
+//
+// The intensity column is the other half of the question: the aurora is already
+// dialled per stage (0.74 / 1 / 1.3), so a darker sky does not have to mean a
+// louder aurora — and `scene.auroraGain` can take it to zero on any stage
+// without removing the pass.
+{
+  const frost = CABINETS.find((cab) => cab.id === 'frost');
+  const grid = section('frost-aurora-bakeoff', 'FROST — aurora borealis: which sky?',
+    'OPEN — the aurora painter is live; the sky it hangs in is the open question. A is exactly what ships today. '
+    + 'B-E darken only the two sky stops, nothing else. The bottom row holds the intensity ladder and the OFF control, '
+    + 'so "darker sky" and "louder aurora" can be judged apart. Every card is the production bg() + ground() at one '
+    + 'authored frame, animated, so the drift and the ray shimmer are visible.');
+  const SKIES = [
+    ['A — LIVE production day', frost.sky, 3,
+      'What ships. The curtain reads as a mint cloud bank; the rays barely survive the value match.'],
+    ['B — late afternoon', ['#8fb6d8', '#d3dced'], 3,
+      'One step down. Enough separation for the rays to read, still unambiguously daytime.'],
+    ['C — dusk', ['#3f5f86', '#9db4cf'], 3,
+      'The first sky the aurora actually belongs in. Snow stays bright; the hero silhouette needs checking here.'],
+    ['D — polar night', ['#16243f', '#41648c'], 3,
+      'Full night. Strongest aurora, biggest change to the cabinet — HUD, coins and hazard reads all move with it.'],
+  ];
+  for (const [name, sky, stageIndex, note] of SKIES) {
+    const cab = { ...frost, sky };
+    const pack = getStylePack(cab.style, {});
+    tile(grid, name, note, W, H, (ctx, t) => {
+      const scene = { stageIndex };
+      pack.bg(ctx, t, t * 60, cab, 1000, scene, 0, scene);
+      pack.ground(ctx, t * 60, cab, []);
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+  }
+  const LADDER = [
+    ['OFF — no aurora', 0, 'The control. Frost exactly as it was before this pass existed.'],
+    ['frost-1 · gain 0.74', null, 'Stage 1: two curtains, the first hint of it.'],
+    ['frost-2 · gain 1.00', null, 'Stage 2: three curtains at full authored strength.'],
+    ['frost-3 · gain 1.30', null, 'Stage 3: the night the fortress is under.'],
+  ];
+  const pack = getStylePack(frost.style, {});
+  LADDER.forEach(([name, gain, note], i) => {
+    const stageIndex = Math.max(1, i);
+    tile(grid, name, note, W, H, (ctx, t) => {
+      const scene = gain === 0 ? { stageIndex, auroraGain: 0 } : { stageIndex };
+      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
+      pack.ground(ctx, t * 60, frost, []);
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+  });
+}
+
+// ------------------------------------------------ FROST blizzard ladder (lab)
+// Reduced visibility as weather, not as a difficulty setting.
+//
+// The two stand-ins on the lane are the whole argument. The tall mark is the
+// hero and the flat one is a bear trap at its real 16x8; if the veil ever takes
+// the flat one, the setting is too strong, whatever it does for atmosphere.
+// That is why the veil is a gradient that has given up by the groundline rather
+// than a wash over the frame — Frost is already the cabinet where you slide
+// into things you meant to avoid.
+{
+  const frost = CABINETS.find((cab) => cab.id === 'frost');
+  const grid = section('frost-blizzard-ladder', 'FROST — blizzard: how thick?',
+    'OPEN — the pass is live and climbs ONE RUNG PER CHECKPOINT across the whole act: clear until the first '
+    + 'checkpoint of Frost 1, then 0.27 / 0.45 / 0.72 / 1.02 / 1.32 / 1.50 at the six lines between there and the '
+    + 'last checkpoint of Frost 3, eased over a few seconds each so no crossing reads as a cut. The ceiling is 1.5, '
+    + 'half again past the strength the pass was dialled at, and the top two cards below are where that is judged. '
+    + '`scene.blizzard` overrides the lot anywhere. '
+    + 'The red bar is a hero and the dark bar is a bear trap at true size: the setting is wrong the moment the trap '
+    + 'stops reading. Animated, so the gusts and the camera-linked drift are visible.');
+  const LADDER = [
+    ['OFF', 0, 'Frost as it was. The control.'],
+    ['0.30 — drift', 0.3, 'Weather you notice and never fight. Roughly where Frost 1 starts snowing.'],
+    ['0.70', 0.7, 'The far ridge starts to go; the lane is untouched. Frost 2, second half.'],
+    ['1.00 — the old ceiling', 1, 'Full blizzard as the pass was first dialled. Frost 3 opens near here.'],
+    ['1.30', 1.3, 'Past the old maximum. The fortress is a suggestion.'],
+    ['1.50 — the ceiling', 1.5, 'The worst the act gets. Check the trap read HERE first.'],
+  ];
+  const marks = (ctx) => {
+    ctx.fillStyle = '#c4462f';
+    ctx.fillRect(120, GROUND_Y - 30, 14, 30);
+    ctx.fillStyle = '#2a2f3a';
+    ctx.fillRect(300, GROUND_Y - 8, 16, 8);
+  };
+  for (const [name, blizzard, note] of LADDER) {
+    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+    tile(grid, name, note, W, H, (ctx, t) => {
+      const scene = { stageIndex: 3, blizzard };
+      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
+      pack.ground(ctx, t * 60, frost, []);
+      marks(ctx);
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+  }
+  // And the ladder as the player meets it: the act's six checkpoints in order,
+  // each tile the sky that is held from that line to the next one. Frost 1 is
+  // the one worth staring at — the storm has to arrive without announcing
+  // itself, which is why its first two rungs are the shallowest.
+  const CLIMB = [
+    [1, 0, 'Frost 1, before its first checkpoint. The clear day the act opens on.'],
+    [1, 1, 'Frost 1, first checkpoint. The snow starts here and nobody sees it start.'],
+    [1, 2, 'Frost 1, second checkpoint. Where Frost 2 picks the storm up.'],
+    [2, 1, 'Frost 2, first checkpoint.'],
+    [2, 2, 'Frost 2, second checkpoint. Where Frost 3 opens.'],
+    [3, 1, 'Frost 3, first checkpoint.'],
+    [3, 2, 'Frost 3, last checkpoint. The worst the cabinet gets, and it is held to the tape.'],
+  ];
+  for (const [stageIndex, banked, note] of CLIMB) {
+    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+    const name = 'frost ' + stageIndex + ' · '
+      + (banked ? 'checkpoint ' + banked : 'start line');
+    tile(grid, name, note, W, H, (ctx, t) => {
+      const scene = { stageIndex, blizzard: frostBlizzardRung(stageIndex, banked, 2) };
+      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
+      pack.ground(ctx, t * 60, frost, []);
+      marks(ctx);
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+  }
+}
+
+// ------------------------------------ FROST sleigh in the sky (lab)
+// A REINDEER TEAM CROSSING THE ACT II SKY, AT THE END OF FROST 3.
+//
+// Frost is the cabinet where a sleigh can turn up without anybody having to
+// explain it, and a thing that crosses once and leaves is the cheapest set piece
+// in the game — no hitbox, no lane, no fairness question. What is open is how
+// much of the postcard to draw. One stag is weather; four and a sleigh is a
+// parade; the gold nose either joins the fortress windows or is a sticker on the
+// only cabinet with no stickers.
+//
+// THE MOMENT IS NOW FIXED, AND IT MOVED THE QUESTION. The flypast is armed the
+// instant the finish tape is in frame on frost-3 and has to be off the right of
+// the sky before the scene cuts — which means it is seen over a PARKED camera,
+// against the worst weather the cabinet has (the blizzard tops out at its last
+// checkpoint and is held to the tape), while the hero takes the pole and the
+// payoff chain runs. Three things the clear-sky cards never asked.
+//
+// So the sheets below are, in order:
+//   1. THE SILHOUETTE — clear sky, still the first question. Does it read.
+//   2. THE MOMENT — the same eight in the sky they will actually fly in.
+//   3. PORTRAIT — the same again in a real phone frame, which is a different
+//      picture and not a crop: the backdrop is drawn through a 1.778x zoom, so
+//      the phone shows 270 local px of a 480px sky, everything is 1.778x wider
+//      in rasterised ink, and the crossing is over in 2.7s instead of 3.8s.
+//
+// They all fly LEFT TO RIGHT at FROST_FLYPAST_SPEED, in the lane
+// frostFlypastLaneY resolves — the shipped flight, not a gallery one.
+{
+  const frost = CABINETS.find((cab) => cab.id === 'frost');
+  // Parked. The finish freezes the world and the hero runs across the screen, so
+  // the only thing moving in these pictures is the thing being judged — which is
+  // also the argument against the widest candidate and the argument for it.
+  const CAM = 3600;
+  // WHERE THE MAST STANDS, mirroring run.js: finishLineX() is
+  // max(VIEW_W - 72, PLAYER_X + 24) in world-view units and the pole is offset
+  // from the plunger, and applyWorld puts a world-view x at x * z on screen. The
+  // arc is aimed at it, so a card that guessed it would be flying a different
+  // path from the game.
+  const poleScreenXAt = (z) =>
+    Math.max(W - 72 * z, (PLAYER_X + 24) * z) + (PLUNGER_CX + POLE_STANDOFF) * z;
+  // And how high its finial is, which is the crest the arc is solved for.
+  const poleTopScreenYAt = (z) => screenYFor(GROUND_Y - POLE_H, z, 0, GROUND_Y);
+  const ARC = frostFlypastArc(null, poleTopScreenYAt(ZOOM_NORMAL), FROST_FLYPAST_CLEAR);
+  const POLE_X = poleScreenXAt(ZOOM_NORMAL);
+  const CROSS = (W + 2 * FROST_FLYPAST_SPAN) / FROST_FLYPAST_SPEED;
+  const LOOP = CROSS + 1.4;    // a beat of empty sky, so each pass reads as one event
+  // The shipped solver, so these cards fly the shipped path — see flypastAt.
+  const flight = (t, opts = {}) =>
+    flypastAt(t % LOOP, { left: 0, right: W, poleX: POLE_X, arc: ARC, ...opts });
+  // A still, for the sheets comparing two inks rather than watching a crossing:
+  // parked on the crest, over the mast, where the drawing is level.
+  const PARKED = flypastAt((POLE_X + FROST_FLYPAST_SPAN) / FROST_FLYPAST_SPEED,
+    { left: 0, right: W, poleX: POLE_X, arc: ARC });
+  // What the sky is doing at the tape: the ladder's top rung, held from frost-3's
+  // last checkpoint. A one-hit attempt banks no checkpoints and finishes under
+  // 1.02 instead, which is the second card in sheet 2.
+  const BANKED = frostBlizzardRung(3, 2, 2);
+  const ONE_HIT = frostBlizzardRung(3, 0, 2);
+
+  const grid = section('frost-sleigh', 'FROST — a sleigh across the sky',
+    'OPEN — a one-off flypast for the end of frost-3: it crosses, it is gone, it owns no hitbox. Judge SILHOUETTE first '
+    + '(does it read as reindeer, or as a bird), then WEIGHT (Frost mixes everything toward what is behind it, '
+    + 'and the sky is the furthest thing there is), then whether the warm accent belongs. '
+    + 'Clear sky and a scrolling world here — the moment itself is the next sheet. '
+    + 'Animated, and the last card is every candidate at true size.');
+  for (const cand of FROST_SLEIGH_CANDIDATES) {
+    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+    tile(grid, cand.name, cand.note, W, H, (ctx, t) => {
+      const scene = { stageIndex: 2, blizzard: 0 };
+      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
+      pack.ground(ctx, t * 60, frost, []);
+      const f = flight(t);
+      if (f) cand.draw(ctx, f.x, f.y, t % LOOP);
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+  }
+  // All eight in one sky, at the size they ship at and the spacing the eye gets.
+  {
+    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+    tile(grid, 'all eight · true size',
+      'The only card that settles the silhouette. Same sky, same height, no magnification — anything that needs the '
+      + 'gallery to be legible is already out.',
+      W, H, (ctx, t) => {
+        const scene = { stageIndex: 2, blizzard: 0 };
+        pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
+        pack.ground(ctx, t * 60, frost, []);
+        FROST_SLEIGH_CANDIDATES.forEach((cand, i) => {
+          cand.draw(ctx, 120 + (i % 2) * 210, 26 + Math.floor(i / 2) * 30, t);
+        });
+        if (pack.post) pack.post(ctx, t);
+        if (pack.weather) pack.weather(ctx, t);
+      }, { animated: true });
+  }
+
+  // --------------------------------------------------- 2. the moment itself
+  const moment = section('frost-sleigh-finish', 'FROST — the flypast at the tape',
+    'THE SHIPPED MOMENT: frost-3, camera parked at the finish, blizzard at the top of its ladder (' + BANKED.toFixed(2)
+    + ') and the aurora up. This is the card that decides it, because the sky it has to survive is not the one the '
+    + 'silhouettes were drawn against — the snow is between the player and it, and everything else in the frame '
+    + 'has stopped moving. Flies in over the left and out over the right, once, at the shipped speed.');
+  for (const cand of FROST_SLEIGH_CANDIDATES) {
+    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+    tile(moment, cand.name, cand.note.split('.')[0] + '.', W, H, (ctx, t) => {
+      const scene = { stageIndex: 3, blizzard: BANKED };
+      pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
+      pack.ground(ctx, CAM, frost, []);
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+      // Above the snow, which is where it ships — see FROST_FLYPAST_DEPTH.
+      const f = flight(t);
+      if (f) drawFrostFlypast(ctx, f.x, f.y, t % LOOP, { id: cand.id, tilt: f.tilt });
+    }, { animated: true });
+  }
+  {
+    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+    const cand = FROST_SLEIGH_BY_ID[FROST_FLYPAST];
+    tile(moment, 'shipped · one-hit weather',
+      'The same flypast on an attempt that banked no checkpoints, which finishes under ' + ONE_HIT.toFixed(2)
+      + ' instead of ' + BANKED.toFixed(2) + '. The flypast has to work at both ends of that, because the player chooses which.',
+      W, H, (ctx, t) => {
+        const scene = { stageIndex: 3, blizzard: ONE_HIT };
+        pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
+        pack.ground(ctx, CAM, frost, []);
+        if (pack.post) pack.post(ctx, t);
+        if (pack.weather) pack.weather(ctx, t);
+        const f = flight(t);
+        if (f) drawFrostFlypast(ctx, f.x, f.y, t % LOOP, { id: cand.id, tilt: f.tilt });
+      }, { animated: true });
+  }
+
+  // ------------------------------------------ 2b. how big, and how dark
+  // THE ONE THE BLIZZARD FORCED. At the authored size and ink the team is a
+  // smudge at the tape — measured on the real ending, the only parts that came
+  // through the snow were the lead's nose and the hat's bobble.
+  //
+  // Two levers, swept together because they trade against each other: SCALE is
+  // the thing being nearer (applied about the lead's nose, so the ink weights
+  // come up with it and the hairlines stop being hairlines), and the PALETTE is
+  // how dark the silhouette is against a sky the veil has already lifted. A
+  // small dark team and a big pale one are not the same picture and only one of
+  // them is a shadow crossing the sky.
+  //
+  // Read down a column for size at one darkness and across a row for darkness at
+  // one size. The shipped pair is marked. Anything past 'shadow' is the mistake
+  // the peaks made: a hard object in the furthest layer in the frame.
+  {
+    const SCALES = [1, 1.7, 2.1, 2.5];
+    const INKS = ['sky', 'dusk', 'shadow', 'night', 'pitch'];
+    const weight = section('frost-sleigh-weight', 'FROST — how big, and how dark',
+      'The shipped candidate (' + FROST_FLYPAST + ') at the tape under the full blizzard, swept across size and ink. '
+      + 'Size is the thing being NEARER — the transform is about the lead\'s nose, so the antlers and traces come up '
+      + 'off the sub-pixel floor with it rather than staying hairlines on a bigger animal. Ink goes DOWN toward a '
+      + 'shadow, never out toward black: the sky is the furthest layer in the frame and a hard object in it is the '
+      + 'mistake FROST_ATMOSPHERE exists to stop. Currently shipping ' + FROST_FLYPAST_SCALE + 'x / '
+      + FROST_FLYPAST_PALETTE + '. Parked mid-sky and still, so the only differences on this sheet are the two levers.');
+    for (const palette of INKS) {
+      for (const scale of SCALES) {
+        const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+        const shipped = scale === FROST_FLYPAST_SCALE && palette === FROST_FLYPAST_PALETTE;
+        tile(weight, palette + ' · ' + scale + 'x' + (shipped ? '  ← shipped' : ''),
+          'rung ink ' + FLYPAST_PALETTES[palette].ink + ' · worn '
+          + (FROST_SLEIGH_BY_ID[FROST_FLYPAST].softInk
+            ? FLYPAST_PALETTES[palette].inkSoft + ' (this one asks for the soft pair)'
+            : FLYPAST_PALETTES[palette].ink)
+          + ' · about ' + Math.round((FROST_SLEIGH_BY_ID[FROST_FLYPAST].span + 6) * scale) + 'px of sky',
+          W, H, (ctx, t) => {
+            const scene = { stageIndex: 3, blizzard: BANKED };
+            pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
+            pack.ground(ctx, CAM, frost, []);
+            // PARKED, and every card parked identically. These sixteen are one
+            // comparison, and a comparison whose subject is at a different point
+            // of its crossing on every card is sixteen pictures of nothing. The
+            // moment sheet above is where it flies.
+            if (pack.post) pack.post(ctx, t);
+            if (pack.weather) pack.weather(ctx, t);
+            drawFrostFlypast(ctx, PARKED.x, PARKED.y, 1.3, { scale, palette, tilt: PARKED.tilt });
+          });
+      }
+    }
+  }
+
+  // ------------------------------------------- 2c. the light it carries
+  // A DARK TEAM ON A PALE SKY IS A HOLE. Darkening it was what made it visible
+  // at all; a glow is what makes it a thing flying through weather rather than a
+  // shape cut out of the sky behind it — and at the tape it is the only reason
+  // the eye goes to that corner while a celebration runs in the other one.
+  //
+  // Warm or cold is the real question, and it is not a taste one: Act II has
+  // exactly one warm family (the fortress windows, the lead's nose, the hat's
+  // bobble) and a cold halo opens a second one on the cabinet's last screen.
+  // Both are here anyway, because it was asked.
+  //
+  // Each card is parked and still, at the shipped size, ink and depth.
+  {
+    const GLOWS = ['none', 'soft', 'warm', 'bright', 'moon'];
+    const glowSheet = section('frost-sleigh-glow', 'FROST — the light it carries',
+      'The shipped flypast at the tape with each halo. It is painted UNDER the silhouette and sized off the '
+      + 'candidate\'s own span, so a lone stag does not wear the four-and-a-sleigh\'s light. Currently shipping '
+      + FROST_FLYPAST_GLOW + '. The last card is the cold one — judge it against the fortress windows, not on '
+      + 'its own.');
+    for (const glow of GLOWS) {
+      const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+      const spec = FLYPAST_GLOWS[glow];
+      tile(glowSheet, glow + (glow === FROST_FLYPAST_GLOW ? '  ← shipped' : ''),
+        spec ? 'rgb(' + spec.color + ') at ' + spec.alpha : 'no light at all — the hole this sheet exists to close',
+        W, H, (ctx, t) => {
+          const scene = { stageIndex: 3, blizzard: BANKED };
+          pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
+          pack.ground(ctx, CAM, frost, []);
+          if (pack.post) pack.post(ctx, t);
+          if (pack.weather) pack.weather(ctx, t);
+          drawFrostFlypast(ctx, PARKED.x, PARKED.y, 1.3, { glow, tilt: PARKED.tilt });
+        });
+    }
+  }
+
+  // ------------------------------------------------------------ 3. portrait
+  // A REAL PHONE FRAME, BUILT THE WAY THE RUN BUILDS IT — frameForViewport, the
+  // HUD layout, the resolved scenery bands and the 1.778x background zoom around
+  // the authored groundline. Not a crop of the landscape card: in portrait the
+  // authored 0..232 sky is not the sky, and a flight authored to the frame would
+  // enter a third of the way in and leave a third of the way out.
+  //
+  // The one thing these cards fake is the ground: the run draws it through the
+  // world camera at 3.5x with a hero standing on it, and these draw it at
+  // authored scale on the right groundline, because the sky needs something to
+  // end against. Everything above that line — the entire question — is the
+  // shipped path.
+  {
+    const PH_W = 393, PH_H = 852;     // iPhone 15 Pro class, the frame every number below came off
+    const pFrame = frameForViewport({
+      mode: PHONE_PORTRAIT, viewportWidth: PH_W, viewportHeight: PH_H,
+      safeInsets: { top: 59, bottom: 34 },
+    });
+    const pHud = portraitHudLayout(pFrame);
+    const Z = PORTRAIT_BACKGROUND_ZOOM;
+    const SHIFT = pFrame.groundScreenY - GROUND_Y;
+    const FH = Math.round(pFrame.height);
+    const sceneryLayout = resolveSceneryLayout({
+      frame: pFrame, hud: pHud, groundY: GROUND_Y, backgroundZoom: Z,
+    });
+    const coverage = Object.freeze({
+      left: (0 - W / 2) / Z + W / 2,
+      right: (W - W / 2) / Z + W / 2,
+      width: W / Z,
+      lookahead: 96 / Z,
+    });
+    const band = Object.freeze({
+      top: GROUND_Y + (0 - SHIFT - GROUND_Y) / Z,
+      bottom: GROUND_Y + (FH - SHIFT - GROUND_Y) / Z,
+    });
+    // The same arc the run flies here, off this frame's own numbers: the exit is
+    // the top of what the phone actually shows (the band), and the mast is where
+    // the portrait camera's own zoom puts it.
+    const P_ZOOM = 3.5;                 // the portrait camera's resting magnification
+    const toLocalY = (screenY) => (screenY - SHIFT - GROUND_Y) / Z + GROUND_Y;
+    const pArc = frostFlypastArc({ backgroundBand: band },
+      toLocalY(SHIFT + screenYFor(GROUND_Y - POLE_H, P_ZOOM, 0, GROUND_Y)), FROST_FLYPAST_CLEAR);
+    const P_POLE_LOCAL = (poleScreenXAt(P_ZOOM) - W / 2) / Z + W / 2;
+    const P_CROSS = (coverage.right + 2 * FROST_FLYPAST_SPAN - coverage.left) / FROST_FLYPAST_SPEED;
+    const pFlight = (t) => flypastAt(t % LOOP,
+      { left: coverage.left, right: coverage.right, poleX: P_POLE_LOCAL, arc: pArc });
+    // What to put back after each portrait card — the page's own landscape frame.
+    const LANDSCAPE_FRAME = presentationFrame();
+    const pContext = (blizzard) => ({
+      portrait: true,
+      stageIndex: 3,
+      progress: 1,
+      blizzard,
+      roadGaps: [],
+      backgroundXOffset: 0,
+      worldZoom: 3.5,
+      cameraShiftY: 0,
+      frameShiftY: SHIFT,
+      cloudOffsetY: 0,
+      sunOffsetY: 0,
+      sceneryOffsetY: 0,
+      parallaxDepths: BACKGROUND_DEPTHS,
+      sceneryLayout,
+      backgroundZoom: Z,
+      groundAnchorRatio: 0.70,
+    });
+    const portrait = section('frost-sleigh-portrait', 'FROST — the flypast in portrait',
+      'The same moment in a real ' + PH_W + 'x' + PH_H + ' phone frame (' + W + 'x' + FH + ' logical), built through '
+      + 'frameForViewport and the resolved scenery bands. The sky runs from ' + Math.round(sceneryLayout.screenRect.top)
+      + ' to the groundline at ' + Math.round(pFrame.groundScreenY) + ', which is only ' + Math.round(sceneryLayout.localRect.height)
+      + 'px of PACK-LOCAL sky because the whole backdrop is drawn through a ' + Z.toFixed(3) + 'x zoom. '
+      + 'Three things change and none of them is the crop: the team is 1.778x wider in rasterised ink, so the hairline '
+      + 'strokes that vanish in the landscape cards (F and H most of all) are here; it covers 270 local px of window '
+      + 'instead of 480, so the crossing is over in ' + P_CROSS.toFixed(1) + 's against '
+      + CROSS.toFixed(1) + 's; and the ARC is solved against THIS frame\'s mast — it crests at local '
+      + pArc.apex.toFixed(0) + ' here against ' + ARC.apex.toFixed(0) + ' in landscape, because the pole is drawn '
+      + 'through the world camera and the portrait one puts it somewhere else. That is the whole reason the arc is '
+      + 'pinned to the pole and not to the picture: aimed at the top of the frame it would climb three times as far '
+      + 'here as it does in landscape. Judged at true size: this is bigger than the phone shows it.');
+    for (const cand of FROST_SLEIGH_CANDIDATES) {
+      const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
+      tile(portrait, cand.name, cand.name + ' — portrait, at the tape', W, FH, (ctx, t) => {
+        const scene = { stageIndex: 3, blizzard: BANKED };
+        const context = pContext(BANKED);
+        // THE FRAME IS PUBLISHED, NOT FAKED. The snow, the veil and the paper
+        // pass are full-FRAME painters that fill 0..H off the renderer's own
+        // export — at the landscape 270 they would cover the top quarter of this
+        // card and leave a hard seam straight through the flypast's lane. So the
+        // card sets the presentation frame it is drawing, exactly as a phone
+        // would, and puts it back afterwards. Safe here because the gallery
+        // never initialises the renderer's canvas, so nothing resizes.
+        setPresentationFrame(pFrame);
+        try {
+          // The run's own preamble: a base sky under the shifted backdrop, then
+          // the shift, then the zoom about the authored groundline.
+          const sky = ctx.createLinearGradient(0, SHIFT, 0, SHIFT + H);
+          sky.addColorStop(0, frost.sky[0]);
+          sky.addColorStop(1, frost.sky[1]);
+          ctx.fillStyle = sky;
+          ctx.fillRect(0, 0, W, FH);
+          ctx.save();
+          ctx.translate(0, SHIFT);
+          ctx.translate(W / 2, GROUND_Y);
+          ctx.scale(Z, Z);
+          ctx.translate(-W / 2, -GROUND_Y);
+          ctx.__mashBackgroundCoverage = coverage;
+          ctx.__mashBackgroundBand = band;
+          try {
+            pack.bg(ctx, t, CAM, frost, 1000, scene, 0, context);
+          } finally {
+            delete ctx.__mashBackgroundCoverage;
+            delete ctx.__mashBackgroundBand;
+          }
+          ctx.restore();
+          // The ground, at the groundline the frame actually puts it on but at
+          // AUTHORED scale — the run draws it through the world camera at 3.5x
+          // and stands a hero on it. It is here so the sky has something to end
+          // against; nothing below this line is being judged.
+          ctx.save();
+          ctx.translate(0, SHIFT);
+          pack.ground(ctx, CAM, frost, []);
+          ctx.restore();
+          if (pack.post) pack.post(ctx, t);
+          if (pack.weather) pack.weather(ctx, t);
+          // Above the snow and in SCREEN space, the way the run's overlay draws
+          // it: the point and the size both come off the backdrop transform
+          // rather than being drawn inside it.
+          const f = pFlight(t);
+          if (f) {
+            drawFrostFlypast(ctx, (f.x - W / 2) * Z + W / 2, SHIFT + GROUND_Y + (f.y - GROUND_Y) * Z,
+              t % LOOP, { id: cand.id, zoom: Z, tilt: f.tilt, scale: flypastScaleFor(true) });
+          }
+        } finally {
+          setPresentationFrame(LANDSCAPE_FRAME);
+        }
+      }, { animated: true, hires: 2 });
+    }
+  }
+}
+
+
+// ------------------------------- countryside hazard bake-off (lab only)
+// WHAT STANDS IN PLUMBER'S LANE INSTEAD OF A SAGUARO.
+//
+// The cactus is not Plumber's prop. It is in BASE_PATTERNS (data/cabinets.js),
+// which every cabinet inherits, and only Frost escapes it — ICE_PATTERNS clones
+// the base list and swaps cactus -> snowman so the shared spacing, tiers and
+// coins stay the source of truth. Plumber's turf is #3a9c48 under cottages,
+// timber fences and flowers, and a desert plant standing in it is the one thing
+// on screen that came from somewhere else. Speed, Crypt, Neon, Cardboard and
+// Corporate inherit the same prop and the same problem; this sheet settles
+// Plumber, and whatever wins is the template for a second remap later.
+//
+// THE CONSTRAINTS ARE NOT TASTE. The shipped painter's own note states them:
+// 13x12 with a 17x14 big brother, it STANDS UP (the floor hazards — popSpikes,
+// floorSaw — are the other half of Plumber's ground game and already ship), it
+// is breakable and action 'jump', and it is NOT GREEN, because the guide
+// teaches RED = AVOID and a green hazard vanishes into the exact ground it
+// spawns on.
+//
+// Both rows below draw the candidate at its REAL painted envelope — box * 4/3,
+// times PROP_TALL, the same overdraw drawWorldEntity gives the cactus (1.55 on
+// the small one, 1.4 on the big). Judging one of these at its hitbox would be
+// judging a drawing the game never paints.
+//
+// A is the control and is drawn through the REAL painter in sprites/props.js,
+// not a copy, so the thing being argued against is the thing actually shipping.
+//
+// Port a winner by copying one painter body out of dev/countryside-hazard-
+// candidates.js into sprites/props.js, plus four small entries: the OBSTACLES
+// def, a DEBRIS colour row, PROP_FRAMES, and the guide card in game/menus.js.
+// Then delete that file and this section — a settled bake-off leaves the
+// gallery.
+{
+  const secId = 'countryside-hazard-bakeoff';
+  const s = sectionEl(secId, 'PLUMBER — the standing hazard: what replaces the cactus',
+    'OPEN — six candidates for the 13x12 standing hazard on green countryside. A is the shipped '
+    + 'cactus, drawn through the production painter. The first row is the only one that decides '
+    + 'anything: a real crop of a plumber frame, real style pack, real scenery, with the candidate on '
+    + 'the ground beside Lorenzo at his in-run 24u. The question there is not "is it a nice drawing" '
+    + 'but "did this come from the same world as the cottage behind it". The second row is the same '
+    + 'painters enlarged, at both rungs, on a flat turf swatch — silhouette, ink weight and whether '
+    + 'the shape survives the 17x14 big brother. Nothing here is in any gameplay registry.');
+
+  const cab = CABINETS.find((c) => c.id === 'plumber') || CABINETS[0];
+  const pack = getStylePack(cab.style, {});
+  const SMALL = worldArtSize(13, 12, 'cactus');
+  const BIG = worldArtSize(17, 14, 'cactusBig');
+
+  // This sheet builds its own subhead/grid structure inside the section, so it
+  // takes sectionEl() rather than section(). A detached section (retired, or
+  // wrong page) still works: tile() refuses any grid that is not connected.
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+
+  // The control goes through the shipped painter, which takes an integer frame
+  // off the prop ring rather than seconds. 6 frames at 11fps is the cactus's
+  // own cadence and every candidate quantises to it, so no sway on this sheet
+  // can flatter itself with smoothness the game would never render.
+  const paint = (ctx, cand, w, h, t) => {
+    if (cand.shipped) PROP_PAINTERS[cand.id](ctx, w, h, Math.floor(t * 11) % 6);
+    else drawCountrysideHazard(ctx, cand.id, w, h, t);
+  };
+
+  // ------------------------------------------------ 1. in the lane, in the world
+  {
+    const grid = sub('1. In the lane, on a real plumber frame',
+      'The full frame width, cropped vertically, assembled the way run.js assembles a frame: bg() flat in screen space, then '
+      + 'ground() and everything world-space through applyWorld() at the run\'s own ZOOM. The camera '
+      + 'pans, so the cottages and fences go past exactly as they do in play. This is the honest read '
+      + 'and the smallest any of these is ever seen at.');
+    // FULL FRAME WIDTH, cropped vertically only. The scenery layer culls
+    // against the frame's own paint coverage, so a narrow tile does not show
+    // a narrow slice of the world — it shows a world with no cottages in it,
+    // which is the one thing this row exists to put behind the candidate.
+    // W, not VIEW_W: VIEW_W is the world width the camera SEES (480/ZOOM =
+    // 240), and using it as a pixel width gave a tile half a frame wide with
+    // the candidate standing just off the right edge of it.
+    const BW = W, BH = 104, FLOOR = 80;
+    for (const cand of COUNTRYSIDE_HAZARD_CANDIDATES) {
+      tile(grid, `${cand.letter} — ${cand.name}`,
+        `${cand.id} · ${SMALL.w}x${SMALL.h}u painted over a 13x12 box<br>${cand.note}`,
+        BW, BH, (ctx, t) => {
+          ctx.save();
+          ctx.beginPath(); ctx.rect(0, 0, BW, BH); ctx.clip();
+          ctx.translate(0, FLOOR - GROUND_Y);
+          const camX = t * 60;
+          if (pack.bg) pack.bg(ctx, t, camX, cab, 1000);
+          ctx.save();
+          applyWorld(ctx, WORLD_Z, 0);
+          if (pack.ground) pack.ground(ctx, camX, cab, []);
+          drawToon(ctx, 'lorenzo', pose('run', t), 62, GROUND_Y, 24);
+          // Bottom-anchored on the ground line and centred over its box, which
+          // is the one placement rule drawWorldEntity applies to every prop.
+          ctx.save();
+          ctx.translate(116 - (SMALL.w - 13) / 2, GROUND_Y - SMALL.h);
+          paint(ctx, cand, SMALL.w, SMALL.h, t);
+          ctx.restore();
+          ctx.restore();
+          if (pack.post) pack.post(ctx, t);
+          if (pack.weather) pack.weather(ctx, t);
+          ctx.restore();
+        }, { animated: true, hires: 6, wide: true });
+    }
+  }
+
+  // --------------------------------------- 2. silhouette, material, both rungs
+  {
+    const grid = sub('2. Both rungs and the silhouette, on flat turf',
+      'Left: the two live sizes side by side on the turf colour alone — 13x12 and the 17x14 big '
+      + 'brother, both at their painted envelope. A shape that only works at one of them has not '
+      + 'won anything, because the spawner deals both. Right: the same painter enlarged for ink '
+      + 'weight and material. The dashed rectangle is the HITBOX, not the art — everything standing '
+      + 'proud of it is overdraw the cactus already buys.');
+    const TW = 226, TH = 104, GY = 82;
+    const DX = 120, DY = 5, DW = 98, DH = 92;
+    for (const cand of COUNTRYSIDE_HAZARD_CANDIDATES) {
+      const ds = Math.min(DW / SMALL.w, DH / SMALL.h);
+      const dw = SMALL.w * ds, dh = SMALL.h * ds;
+      tile(grid, `${cand.letter} — ${cand.name}`,
+        `small ${SMALL.w}x${SMALL.h}u over 13x12 · big ${BIG.w}x${BIG.h}u over 17x14<br>${cand.note}`,
+        TW, TH, (ctx, t) => {
+          ctx.fillStyle = cab.sky?.[1] || '#a8e0f8'; ctx.fillRect(0, 0, TW, GY);
+          ctx.fillStyle = cab.ground || '#3a9c48'; ctx.fillRect(0, GY, TW, 4);
+          ctx.fillStyle = cab.groundDark || '#2a7038'; ctx.fillRect(0, GY + 4, TW, TH - GY - 4);
+
+          const rung = (x, size, boxW, boxH) => {
+            ctx.save();
+            ctx.translate(x - (size.w - boxW) / 2, GY - size.h);
+            paint(ctx, cand, size.w, size.h, t);
+            ctx.restore();
+            ctx.strokeStyle = 'rgba(20,16,12,.42)'; ctx.lineWidth = 0.45;
+            ctx.setLineDash([1.5, 1.5]);
+            ctx.strokeRect(x, GY - boxH, boxW, boxH);
+            ctx.setLineDash([]);
+          };
+          rung(14, SMALL, 13, 12);
+          rung(58, BIG, 17, 14);
+
+          ctx.strokeStyle = 'rgba(20,16,12,.2)'; ctx.lineWidth = 0.5;
+          ctx.beginPath(); ctx.moveTo(110, 8); ctx.lineTo(110, TH - 8); ctx.stroke();
+
+          ctx.save();
+          ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh));
+          paint(ctx, cand, dw, dh, t);
+          ctx.restore();
+
+          ctx.fillStyle = 'rgba(18,14,10,.66)';
+          ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+          ctx.fillText('13x12', 14, 6); ctx.fillText('17x14', 58, 6);
+          ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+        }, { animated: true, hires: 6, wide: true });
+    }
+  }
+}
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

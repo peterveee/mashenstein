@@ -107,8 +107,8 @@ From [jokes.js](../src/data/jokes.js#L93-L112):
 - "MY DOCTORATE IS IN STATISTICS. IT HAS NEVER ONCE HELPED."
 - "FOUR DECADES IN THIS SEAT. THE ERGONOMICS ARE ATROCIOUS."
 
-### Eggshell narration (corrupted/UNPLUGGED mode)
-Trigger: random ambient observation lines during corrupted-mode gameplay.
+### Eggshell narration (UNPLUGGED mode)
+Trigger: random ambient observation lines during UNPLUGGED gameplay.
 From [jokes.js](../src/data/jokes.js#L164-L172):
 - "HE JUMPS. HE DOES NOT. I AM NOT WATCHING."
 - "THE HERO TRIPS. MAGNIFICENTLY. I ASSUME."

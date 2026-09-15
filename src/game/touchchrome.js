@@ -21,11 +21,8 @@ import { specialMoveColor } from './draw.js';
 
 // The button lists a playable screen registers. `hasPower` false (the tutorial
 // before B-33P hands over the cannon) drops the USE disc and gives its band of
-// the right pillar to SLIDE, so the pillar still tiles. Portrait Lab opts into
-// a separate list that adds its held RWD control; shipped touch runs never see
-// that control.
-export function runChromeButtons({ hasPower = true, portraitLab = false } = {}) {
-  if (portraitLab) return hasPower ? chrome.runPortraitLab : chrome.runPortraitLabNoPower;
+// the right pillar to SLIDE, so the pillar still tiles.
+export function runChromeButtons({ hasPower = true } = {}) {
   return hasPower ? chrome.run : chrome.runNoPower;
 }
 export function hubChromeButtons() { return chrome.hub; }

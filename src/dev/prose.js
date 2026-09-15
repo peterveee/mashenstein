@@ -61,7 +61,7 @@ export class StageIntroState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const o = this.opener;
-    if (o.act) drawActBanner(ctx, o.text, { t: this.t, still: this.settings.reducedMotion });
+    if (o.act) drawActBanner(ctx, o.text, { t: this.t });
     else drawSpeech(ctx, { text: o.text, who: o.who });
     // Dev chrome last: the ACT card paints a full-screen scrim of its own, and
     // a caption drawn before it would be underneath.

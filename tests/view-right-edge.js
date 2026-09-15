@@ -18,7 +18,7 @@ installDom();
 
 const { RunState, ZOOM_NORMAL } = await import('../src/game/run.js');
 const { PLAYER_X } = await import('../src/game/player.js');
-const { PORTRAIT_LAB_DEFAULTS } = await import('../src/dev/portrait-lab.js');
+const { PORTRAIT_CONFIG } = await import('../src/engine/portrait-config.js');
 const { W } = await import('../src/engine/renderer.js');
 const { VIEW_W } = await import('../src/engine/camera.js');
 
@@ -46,8 +46,8 @@ const edgeFor = (camX, camZoom, worldXOffset) => {
 
 // ---- portrait: the edge is further on, by exactly the shift ---------------
 {
-  const zoom = PORTRAIT_LAB_DEFAULTS.worldZoom;
-  const offset = PORTRAIT_LAB_DEFAULTS.heroAnchorX - PLAYER_X;
+  const zoom = PORTRAIT_CONFIG.worldZoom;
+  const offset = PORTRAIT_CONFIG.heroAnchorX - PLAYER_X;
   assert.ok(offset < 0, 'portrait shifts the picture LEFT of the camera');
   const { dx } = edgeFor(0, zoom, offset);
   assert.ok(dx > W / zoom,

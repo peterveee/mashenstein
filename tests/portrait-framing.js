@@ -184,9 +184,9 @@ for (const [id, diameter] of Object.entries(PORTRAIT_CONTROL_DIAMETERS)) {
 assert.equal(portraitHitTest(controls, controls.controls.use.cx, controls.controls.use.cy).action,
   'ability', 'USE wins over its broad thumb zone');
 assert.equal(portraitHitTest(controls, controls.controls.rewind.cx, controls.controls.rewind.cy).action,
-  'left', 'Portrait Lab RWD control maps to the held rewind action');
+  'left', 'portrait preview RWD control maps to the held rewind action');
 assert.ok(controls.controls.rewind.cy - controls.controls.rewind.r >= controls.safe.top,
-  'Portrait Lab RWD control clears the top safe area');
+  'portrait preview RWD control clears the top safe area');
 // Measured from the PHYSICAL bottom edge: the discs deliberately sit on the
 // glass, inside the home-indicator inset, and only the authored gutter is left
 // below them.

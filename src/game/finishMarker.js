@@ -19,7 +19,6 @@
 //   thrown         0..1, smoothstepped, the lever's swing. 0 = untouched.
 //   live           the throw scored — a CLUNK throws the lever and lights nothing
 //   armed          the finish dash is running and the flip has not happened yet
-//   reducedMotion  freeze anything that only decorates
 //
 // The results card is NOT here. It is gameplay UI drawn unscaled by run.js over
 // whichever marker ships, and every candidate has to leave room for it in the
@@ -28,6 +27,7 @@
 
 import { drawProp, propFrames, propFps } from '../sprites/props.js';
 import { CLING_POLE_X } from '../sprites/toons.js';
+import { drawSoftContactShadow } from '../engine/shadows.js';
 
 // The pole's height is a gameplay constant, not a drawing one: at 80px
 // Lorenzo's 89px peak carried him clean off the top and into the HUD chips on a
@@ -207,9 +207,9 @@ function mast(ctx, fx, gy, { lit = true } = {}) {
 // clipped off at the hoist so the fine mast above can stand in their place —
 // the cloth starts at 0.2 of the art box and the shaft ends at 0.23, so there
 // is a clean seam to cut on that costs no cloth.
-function flagCloth(ctx, fx, gy, name, { t, reducedMotion }, flagT = 1) {
+function flagCloth(ctx, fx, gy, name, { t }, flagT = 1) {
   const top = gy - POLE_H - FLAG_ART * 0.06;
-  const frame = reducedMotion ? 0 : Math.floor(t * propFps(name)) % propFrames(name);
+  const frame = Math.floor(t * propFps(name)) % propFrames(name);
   // The cut has to clear the prop's OWN hardware, not just start where its
   // cloth does. flagWave draws a teal staff spanning 0.09–0.23 of the art box
   // and a gold finial disc spanning 0.07–0.25, and a seam at 0.2 left slivers
@@ -294,7 +294,7 @@ function boxSwitch(ctx, fx, gy, { thrown, live }) {
 // between the jaws as it closes. The point of it is that the mechanism is
 // OUTSIDE the housing — you can see the circuit being completed, where the box
 // hides the entire event inside a slot 10px wide.
-function knifeSwitch(ctx, fx, gy, { thrown, live, t, reducedMotion }) {
+function knifeSwitch(ctx, fx, gy, { thrown, live, t }) {
   const bx = fx + 5;
   // Backplate: slate, bevelled, standing on two feet so it reads as bolted to
   // the ground rather than floating on the lane.
@@ -339,14 +339,14 @@ function knifeSwitch(ctx, fx, gy, { thrown, live, t, reducedMotion }) {
   // steady band of light between the jaws once the circuit is made.
   if (thrown > 0.62) {
     const strike = Math.min(1, (thrown - 0.62) / 0.2);
-    const flick = reducedMotion ? 0.8 : 0.55 + 0.45 * Math.abs(Math.sin(t * 41));
+    const flick = 0.55 + 0.45 * Math.abs(Math.sin(t * 41));
     ctx.strokeStyle = `rgba(190,240,255,${(strike * flick * (live ? 1 : 0.5)).toFixed(3)})`;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.moveTo(pivX, pivY);
     for (let i = 1; i <= 4; i++) {
       const p = i / 4;
-      const jitter = reducedMotion ? 0 : (((i * 7 + Math.floor(t * 24)) % 5) - 2) * 1.1 * (1 - p);
+      const jitter = (((i * 7 + Math.floor(t * 24)) % 5) - 2) * 1.1 * (1 - p);
       ctx.lineTo(pivX + (jawX - pivX) * p + jitter, pivY + (jawY - pivY) * p + jitter);
     }
     ctx.stroke();
@@ -364,7 +364,7 @@ function knifeSwitch(ctx, fx, gy, { thrown, live, t, reducedMotion }) {
 // surge up the pole, the sparks, how hard the flag snaps out), which is the
 // right place for a grade to live: how much the payoff celebrates, not whether
 // the fiction resolves.
-function panelSwitch(ctx, fx, gy, { thrown, live, t, reducedMotion, noLever = false }) {
+function panelSwitch(ctx, fx, gy, { thrown, live, t, noLever = false }) {
   const bx = fx + 5, W = 30, H = 54;
   const top = gy - H;
   // SUNK, not stood on. Everything on this marker used to sit on the ground
@@ -372,13 +372,8 @@ function panelSwitch(ctx, fx, gy, { thrown, live, t, reducedMotion, noLever = fa
   // pooled at the foot is all it takes for the cabinet to be planted in the
   // world the hero is running through.
   const foot = gy + 3;
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = '#0b0b14';
-  ctx.beginPath();
-  ctx.ellipse(bx + W / 2, gy + 1, W * 0.62, 3.2, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawSoftContactShadow(ctx, bx + W / 2, gy + 1, W * 0.68, 3.8,
+    { alpha: 0.34, ink: '11,11,20' });
 
   // Carcass, with a lid that overhangs — a box whose top plane is the same
   // width as its front is a rectangle, and every real cabinet has a drip edge.
@@ -503,7 +498,7 @@ function panelSwitch(ctx, fx, gy, { thrown, live, t, reducedMotion, noLever = fa
   ctx.fill();
   // Idle needle drifts; the throw pins it hard right and it settles with a
   // single overshoot, which is what a meter slammed to full actually does.
-  const idle = reducedMotion ? 0.12 : 0.12 + 0.05 * Math.sin(t * 2.3);
+  const idle = 0.12 + 0.05 * Math.sin(t * 2.3);
   const settle = thrown >= 1 ? 1 + 0.05 * Math.sin(t * 12) * Math.max(0, 1 - (t % 4)) : thrown;
   const nd = idle + (0.95 - idle) * settle;
   const na = Math.PI + nd * Math.PI;
@@ -1049,13 +1044,8 @@ function plunger(ctx, fx, gy, { thrown, live }) {
   // runs three pixels under, with a shadow pooled around it and a lip of earth
   // pushed up at either side — the same treatment the cabinet gets, so the two
   // read as installed by the same hands.
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = '#0b0b14';
-  ctx.beginPath();
-  ctx.ellipse(cx, gy + 1, 15, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawSoftContactShadow(ctx, cx, gy + 1, 16, 3.5,
+    { alpha: 0.34, ink: '11,11,20' });
   // The post and its spring, drawn BEFORE the flange so the housing covers
   // them: at full travel the shaft has to disappear into the base, which is
   // where a plunger's stroke actually goes. Drawn after, the post sat on top of
@@ -1140,7 +1130,7 @@ function plunger(ctx, fx, gy, { thrown, live }) {
 // stand apart: without a mark travelling between them they are furniture that
 // happens to react at the same time.
 const BOX_X = 34;                   // the box's own left edge, relative to the pole
-function cable(ctx, fx, gy, { thrown, live, reducedMotion, boxId }) {
+function cable(ctx, fx, gy, { thrown, live, boxId }) {
   // Both ends are TUCKED: it leaves under the plunger's flange and arrives under
   // the box's gland, so neither end is a stroke stopping in mid-air against a
   // panel. It used to start 9px clear of the pole at flange height, which read
@@ -1237,16 +1227,14 @@ function cable(ctx, fx, gy, { thrown, live, reducedMotion, boxId }) {
   ctx.arc(hx, hy, 2.2, 0, Math.PI * 2);
   ctx.fill();
   // Two short legs of crackle off the head, redrawn each frame so it fizzes.
-  if (!reducedMotion) {
-    ctx.strokeStyle = 'rgba(190,240,255,0.8)';
-    ctx.lineWidth = 0.8;
-    for (let i = 0; i < 2; i++) {
-      const a = (Math.floor(run * 40) * 2.4 + i * 2.1) % (Math.PI * 2);
-      ctx.beginPath();
-      ctx.moveTo(hx, hy);
-      ctx.lineTo(hx + Math.cos(a) * 4, hy + Math.sin(a) * 4);
-      ctx.stroke();
-    }
+  ctx.strokeStyle = 'rgba(190,240,255,0.8)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 2; i++) {
+    const a = (Math.floor(run * 40) * 2.4 + i * 2.1) % (Math.PI * 2);
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx + Math.cos(a) * 4, hy + Math.sin(a) * 4);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -1272,7 +1260,7 @@ function cable(ctx, fx, gy, { thrown, live, reducedMotion, boxId }) {
 // which is the single most recognisable thing about a real moving-iron meter;
 // and there is glass over it, carrying one soft specular sweep that does not
 // move with the needle.
-function gaugeFace(ctx, cx, cy, r, { thrown, t, reducedMotion }) {
+function gaugeFace(ctx, cx, cy, r, { thrown, t }) {
   // Bezel: a steel ring with a lit upper-left quadrant, screwed down at the
   // corners of its own square rather than floating on the panel.
   ctx.fillStyle = '#42536a';
@@ -1325,7 +1313,7 @@ function gaugeFace(ctx, cx, cy, r, { thrown, t, reducedMotion }) {
 
   // Needle. Idle drifts; the throw pins it and it settles with one overshoot,
   // which is what a meter slammed to full actually does.
-  const idle = reducedMotion ? 0.1 : 0.1 + 0.04 * Math.sin(t * 2.3);
+  const idle = 0.1 + 0.04 * Math.sin(t * 2.3);
   const settle = thrown >= 1 ? 1 + 0.045 * Math.sin(t * 12) * Math.max(0, 1 - (t % 4)) : thrown;
   const nd = idle + (0.92 - idle) * settle;
   const a = at(nd);
@@ -1414,13 +1402,8 @@ function lampPair(ctx, x0, x1, y, done, r = 2.4) {
 // Shared furniture every carcass wants: the shadow it sits in, and the gland
 // the cable lands on.
 function boxShadow(ctx, cx, gy, w) {
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = '#0b0b14';
-  ctx.beginPath();
-  ctx.ellipse(cx, gy + 1, w * 0.62, 3.2, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawSoftContactShadow(ctx, cx, gy + 1, w * 0.68, 3.8,
+    { alpha: 0.34, ink: '11,11,20' });
 }
 // Where the cable actually lands on each carcass, as an offset from its left
 // edge. A box meets the cable at its own flank; the post has no flank down
@@ -1757,12 +1740,10 @@ export const BREAKER_BOX_VARIANTS = [
       // where it enters, the ground line broken by a lip of spoil either side
       // (the giveaway that something was dug rather than set down), and the base
       // flange bolted flat at grade with the concrete pad running on below.
+      drawSoftContactShadow(ctx, cx, gy + 1.5, 12, 3.8,
+        { alpha: 0.36, ink: '11,11,20' });
       ctx.save();
-      ctx.globalAlpha = 0.4;
       ctx.fillStyle = '#0b0b14';
-      ctx.beginPath();
-      ctx.ellipse(cx, gy + 1.5, 11, 3.4, 0, 0, Math.PI * 2);
-      ctx.fill();
       ctx.globalAlpha = 0.5;
       ctx.beginPath();                              // the socket: darker, tighter
       ctx.ellipse(cx, gy + 0.5, 6.5, 2.2, 0, 0, Math.PI * 2);

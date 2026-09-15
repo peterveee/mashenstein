@@ -240,7 +240,7 @@ export function paintRange(ctx, scene, { fromX, toX, scale, dx, dy }) {
     // because each tile is blitted at its own world offset.
     for (const e of scene.entities) {
       if (e.x + e.w < camX || e.x > camX + TILE) continue;
-      drawWorldEntity(sctx, e, camX, 0, style, { reducedMotion: true });
+      drawWorldEntity(sctx, e, camX, 0, style, {});
     }
 
     const cropW = Math.min(STEP, toX - x);

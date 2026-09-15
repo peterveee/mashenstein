@@ -19,8 +19,7 @@ save.load();
 // Drive the title for a simulated minute against a fake song clock, counting
 // the short-out cues. bpm comes from the real title bank so the rate this
 // asserts is the rate the player actually gets.
-function buzzesPerMinute(settings) {
-  save.settings.reducedFlashing = !!settings.reducedFlashing;
+function buzzesPerMinute() {
   const beatsPerSec = TITLE_THEME.bpm / 60;
   let beat = 0;
   const realBeat = Audio.songBeat.bind(Audio);
@@ -37,7 +36,7 @@ function buzzesPerMinute(settings) {
   return buzzes;
 }
 
-const buzzes = buzzesPerMinute({});
+const buzzes = buzzesPerMinute();
 // The old sign short-circuited twice every 5.4s — 22 cues a minute.
 assert(buzzes > 0, 'the sign still shorts out');
 assert(buzzes <= 16, `the cord fires well below the old 22-a-minute rate (${buzzes})`);
@@ -51,11 +50,9 @@ assert(buzzes <= 16, `the cord fires well below the old 22-a-minute rate (${buzz
 // a tic.
 assert(buzzes >= 2 && buzzes <= 8, `only some blocks are audible, unevenly spaced (${buzzes})`);
 
-assert(buzzesPerMinute({ reducedFlashing: true }) === 0, 'reduced flashing pins the sign lit and silent');
 
 // Without a song to lock to (no audio context yet, headless tests) it must
 // still stutter rather than freeze — on the fallback wall clock.
-save.settings.reducedFlashing = false;
 assert(Audio.songBeat() === null, 'no song, no beat clock');
 let fallbackBuzzes = 0;
 const realSfx = Audio.sfx.bind(Audio);

@@ -32,7 +32,7 @@ slot.stats.powerupsCollected = 31;
 slot.stats.appliancesFound = 12;
 slot.overtime.best = 7654;
 slot.overtime.bestRelay = 9;
-const save = { slot, settings: { reducedFlashing: false } };
+const save = { slot, settings: {} };
 
 let hero = 'lorenzo', returned = 0, opened = 0;
 const flow = {
@@ -120,7 +120,7 @@ const ctx = document.createElement('canvas').getContext('2d');
 room.draw(ctx);
 assert(true, 'the populated workshop renders safely');
 
-const blankSave = { slot: defaultSlot(), settings: { reducedFlashing: false } };
+const blankSave = { slot: defaultSlot(), settings: {} };
 const blankRoom = new TrophyRoomState({ save: blankSave, flow });
 blankRoom.enter(); blankRoom.draw(ctx);
 assert(blankRoom.defeatedBosses().length === 0, 'an empty management archive reveals no future boss trophies');

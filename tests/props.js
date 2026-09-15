@@ -22,9 +22,12 @@ assert(OBSTACLES.cactus && OBSTACLES.cactus.sprite === 'cactus', 'the ground haz
 assert(OBSTACLES.cactusBig && OBSTACLES.cactusBig.sprite === 'cactusBig', 'the big variant too');
 assert(OBSTACLES.snowman && OBSTACLES.snowman.sprite === 'snowman', 'ice levels have their own snowman hazard');
 assert(OBSTACLES.snowmanBig && OBSTACLES.snowmanBig.sprite === 'snowmanBig', 'the big snowman keeps the cactus variant split');
+assert(OBSTACLES.bearTrap && OBSTACLES.bearTrap.ground && OBSTACLES.bearTrap.bedded
+  && OBSTACLES.bearTrap.action === 'jump', 'Frost traps are buried ground hazards');
 assert(!OBSTACLES.shrub && !OBSTACLES.flames, 'no shrub or flames obstacle survives the renames');
 assert(typeof PROP_PAINTERS.cactus === 'function', 'cactus has a vector painter');
 assert(typeof PROP_PAINTERS.snowman === 'function', 'snowman has a vector painter');
+assert(typeof PROP_PAINTERS.bearTrap === 'function', 'bear trap has a vector painter');
 assert(PICKUPS.resident.sprite === 'resident' && typeof PROP_PAINTERS.resident === 'function',
   'residents use distinct friendly art instead of the zombie hazard sprite');
 assert(PICKUPS.appliance.w === 22 && PICKUPS.appliance.h === 18 && PICKUPS.appliance.bob,
@@ -51,7 +54,7 @@ assert(propDetailScale('snowman') === 2 && propDetailScale('snowmanBig') === 2,
 assert(propDetailScale('dustdevil') === 2,
   'Dust Devil keeps its small cartoon eyes at gameplay sizes');
 const refinedProps = [
-  'cactus', 'cactusBig', 'crate', 'qcrate', 'pipe', 'switch', 'zombieWalk', 'icicle',
+  'cactus', 'cactusBig', 'crate', 'qcrate', 'pipe', 'switch', 'zombieWalk', 'icicle', 'bearTrap',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'battery',
   'capShield', 'capMagnet', 'capStar', 'capAirJump', 'capSpeed', 'capLowGrav', 'capUnpeel', 'capRewind',
 ];
@@ -62,8 +65,10 @@ assert(pickupSprites.every((name) => propDetailScale(name) === 2),
   'every world pickup rasterizes at double internal detail');
 assert(propVisualScale('snowman') === 1.15 && propVisualScale('snowmanBig') === 1.15,
   'both snowmen draw larger without changing their hitboxes');
+assert(propTall('bearTrap') === 1.35,
+  'bear traps gain a readable jaw silhouette without changing their ground box');
 const selfOutlinedHazards = [
-  'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'crate', 'pipe', 'zombieWalk', 'icicle',
+  'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'crate', 'pipe', 'zombieWalk', 'icicle', 'bearTrap',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair',
 ];
 assert(selfOutlinedHazards.every((name) => !propHazardRim(name)) && propHazardRim('barrel'),
@@ -72,6 +77,8 @@ const frost = CABINETS.find((cabinet) => cabinet.id === 'frost');
 const frostTypes = frost.patterns.flatMap((pattern) => pattern.cells.map((cell) => cell.t));
 assert(frostTypes.includes('snowman') && frostTypes.includes('snowmanBig'),
   'Frost Fortress uses both snowman hazard sizes');
+assert(frostTypes.includes('bearTrap') && !frostTypes.includes('icicle'),
+  'Frost Fortress uses buried bear traps instead of falling icicles');
 assert(!frostTypes.includes('cactus') && !frostTypes.includes('cactusBig'),
   'Frost Fortress replaces every inherited cactus');
 const c0 = propSprite('crate', 12, 11, 0);

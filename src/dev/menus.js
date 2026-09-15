@@ -26,10 +26,11 @@ import { VISUALISER_NAMES, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegam
 import { GROUPS, byGroup } from '../../tools/lib/tunables.js';
 import { readOne, defaultOf, knows, changed, tuningAvailable } from './tunables.js';
 import { nudge, revertTuning, resyncRun } from './tune-store.js';
+import { devFinishStartPercent } from '../engine/dev-url.js';
 import { derived, TuneStrip } from './tune-strip.js';
 import { PAN_MAX } from '../engine/camera.js';
+import { resolveLayout } from '../game/layout.js';
 import { proseMenu } from './prose.js';
-import { PortraitLab, PORTRAIT_LAB_DEFAULTS } from './portrait-lab.js';
 
 const GOLD = '#f6d33c';
 const DIM = '#5a5a68';
@@ -114,6 +115,35 @@ function instantFail(dev, stage) {
 function stageActions(dev, stage) {
   const cab = CABINET_BY_ID[stage.cabinet];
   const scenario = { kind: 'stage', id: stage.id };
+  const lastCheckpointPercent = () => {
+    // Beat stages use five sixths as their final restore point; this mirrors
+    // RunState's beat-lane checkpoint rule rather than the ordinary two-thirds
+    // layout fallback.
+    if (cab?.mechanic === 'beat') return 5 / 6;
+    const checkpoints = resolveLayout(stage, cab)?.checkpoints || [];
+    return checkpoints.at(-1) ?? devFinishStartPercent(stage, 10);
+  };
+  const playFromFinish = (leadSeconds) => {
+    dev.close();
+    dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined, undefined,
+      true, false, false, 0, devFinishStartPercent(stage, leadSeconds), true);
+  };
+  const playFromLastCheckpoint = () => {
+    dev.close();
+    dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined, undefined,
+      true, false, false, 0, lastCheckpointPercent(), true);
+  };
+  const playLastMenu = () => ({
+    title: 'PLAY LAST',
+    items: [
+      { label: '5s', act: () => playFromFinish(5) },
+      { label: '10s', act: () => playFromFinish(10) },
+      { label: '15s', act: () => playFromFinish(15) },
+      { label: '30s', act: () => playFromFinish(30) },
+      { label: 'LAST CHECKPOINT', act: playFromLastCheckpoint },
+    ],
+  });
+  const playLast = () => playLastMenu();
   const playAsMenu = () => ({
     title: 'PLAY AS',
     items: HEROES.map((hero) => ({
@@ -128,6 +158,7 @@ function stageActions(dev, stage) {
     title: stage.id.toUpperCase(),
     items: [
       { label: 'PLAY', act: () => { dev.close(); dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined); } },
+      { label: 'PLAY LAST ▸', submenu: playLast },
       { label: 'PLAY AS ▸', submenu: playAsMenu },
       { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
       { label: 'RECORD BOT-PLAY (mp4)', act: () => watch(dev, scenario, { record: true }) },
@@ -162,134 +193,6 @@ function stagesMenu(dev) {
       submenu: () => cabinetStages(dev, cab),
     })),
   });
-  return { ...build(), rebuild: build };
-}
-
-// ---------------------------------------------------------------- portrait lab
-// The lab shares the authored cabinet/stage hierarchy, but its launcher has a
-// separate completion policy in main.js and never routes through ResultsState.
-function portraitZoomLabel(value) {
-  return Number(value).toFixed(3);
-}
-
-function signedPixels(value) {
-  const n = Math.round(Number(value) || 0);
-  return `${n >= 0 ? '+' : ''}${n} PX`;
-}
-
-function heroAnchorLabel(value) {
-  return `${Math.round(Number(value) || 0)} PX`;
-}
-
-function portraitAdjustMenu(dev, name, title, steps, format, resetValue) {
-  const build = () => {
-    const value = PortraitLab.config()[name];
-    return {
-      title,
-      items: [
-        { label: format(-steps.coarse), act: () => { PortraitLab.adjust(name, -steps.coarse); dev.refresh(); } },
-        { label: format(-steps.fine), act: () => { PortraitLab.adjust(name, -steps.fine); dev.refresh(); } },
-        { label: format(value), act: null },
-        { label: format(steps.fine), act: () => { PortraitLab.adjust(name, steps.fine); dev.refresh(); } },
-        { label: format(steps.coarse), act: () => { PortraitLab.adjust(name, steps.coarse); dev.refresh(); } },
-        { label: `RESET ${format(resetValue)}`, act: () => { PortraitLab.adjust(name, resetValue - value); dev.refresh(); } },
-      ],
-    };
-  };
-  return { ...build(), rebuild: build };
-}
-
-function portraitStageActions(dev, stage) {
-  const cab = CABINET_BY_ID[stage.cabinet];
-  const currentHero = () => dev.ctx.Flow.heroId?.() || dev.run()?.relay?.current || 'lorenzo';
-  const launch = (heroId) => {
-    if (!dev.ctx.save.slot) {
-      dev.say('SELECT A SAVE SLOT FIRST');
-      return;
-    }
-    dev.close();
-    dev.ctx.Flow.launchPortraitStage(cab, stage, {
-      heroId: heroId || currentHero(),
-      seed: dev.seedLock ?? undefined,
-      startPercent: PortraitLab.session().startPercent,
-      invulnerable: PortraitLab.session().invulnerable,
-      config: PortraitLab.config(),
-    });
-  };
-  const playAs = () => ({
-    title: 'PLAY AS',
-    items: HEROES.map((hero) => ({ label: hero.short, act: () => launch(hero.id) })),
-  });
-  const build = () => ({
-    title: `${stage.id.toUpperCase()} PORTRAIT`,
-    items: [
-      { label: 'PLAY PORTRAIT', act: () => launch(currentHero()) },
-      { label: 'PLAY AS ▸', submenu: playAs },
-      { label: `SEED: ${dev.seedLock == null ? 'AUTO' : dev.seedLock}`, act: null },
-      { label: `START AT: ${Math.round(PortraitLab.session().startPercent * 100)}%`, act: null },
-      { label: `INVULNERABLE: ${PortraitLab.session().invulnerable ? 'ON' : 'OFF'}`, act: null },
-    ],
-  });
-  return { ...build(), rebuild: build };
-}
-
-function portraitCabinetStages(dev, cab) {
-  const build = () => ({
-    title: cab.name.toUpperCase(),
-    items: stagesForCabinet(cab.id).map((stage) => ({
-      label: `${stage.id}  ${stage.mission.type}`,
-      submenu: () => portraitStageActions(dev, stage),
-    })),
-  });
-  return { ...build(), rebuild: build };
-}
-
-function portraitChooseStageMenu(dev) {
-  const current = dev.run()?.cabinet || CABINETS[0];
-  const build = () => ({
-    title: 'CHOOSE STAGE',
-    items: CABINETS.map((cab) => ({
-      label: `${cab.name}${cab.id === current.id ? '  (CURRENT)' : ''}`,
-      submenu: () => portraitCabinetStages(dev, cab),
-    })),
-  });
-  return { ...build(), rebuild: build };
-}
-
-function portraitStartMenu(dev) {
-  const build = () => ({
-    title: 'START AT',
-    items: [0, 25, 50, 75].map((pct) => ({
-      label: `${pct}%`,
-      act: () => { PortraitLab.setStartPercent(pct / 100); dev.refresh(); },
-    })),
-  });
-  return { ...build(), rebuild: build };
-}
-
-export function portraitLabMenu(dev) {
-  const build = () => {
-    const cfg = PortraitLab.config();
-    const session = PortraitLab.session();
-    const last = PortraitLab.last();
-    const items = [
-      { label: `WORLD ZOOM  ${portraitZoomLabel(cfg.worldZoom)} ▸`, submenu: () => portraitAdjustMenu(dev, 'worldZoom', 'WORLD ZOOM', { fine: 0.001, coarse: 0.01 }, portraitZoomLabel, PORTRAIT_LAB_DEFAULTS.worldZoom) },
-      { label: `CHARACTER X  ${heroAnchorLabel(cfg.heroAnchorX)} ▸`, submenu: () => portraitAdjustMenu(dev, 'heroAnchorX', 'CHARACTER X', { fine: 1, coarse: 4 }, heroAnchorLabel, PORTRAIT_LAB_DEFAULTS.heroAnchorX) },
-      { label: `BACKGROUND  ${Math.round(cfg.backgroundZoom * 100)}% ▸`, submenu: () => portraitAdjustMenu(dev, 'backgroundZoom', 'BACKGROUND', { fine: 0.01, coarse: 0.05 }, (n) => `${Math.round(n * 100)}%`, PORTRAIT_LAB_DEFAULTS.backgroundZoom) },
-      { label: `CLOUD Y  ${signedPixels(cfg.cloudOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'cloudOffsetY', 'CLOUD Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
-      { label: `SUN Y  ${signedPixels(cfg.sunOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'sunOffsetY', 'SUN Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
-      { label: `SCENERY Y  ${signedPixels(cfg.sceneryOffsetY)} ▸`, submenu: () => portraitAdjustMenu(dev, 'sceneryOffsetY', 'SCENERY Y', { fine: 1, coarse: 8 }, signedPixels, 0) },
-      { label: `GROUND LEVEL  ${Math.round(cfg.groundAnchorRatio * 100)}% ▸`, submenu: () => portraitAdjustMenu(dev, 'groundAnchorRatio', 'GROUND LEVEL', { fine: 0.005, coarse: 0.02 }, (n) => `${Math.round(Number(n) * 100)}%`, PORTRAIT_LAB_DEFAULTS.groundAnchorRatio) },
-      { label: `START AT  ${Math.round(session.startPercent * 100)}% ▸`, submenu: () => portraitStartMenu(dev) },
-      { label: `INVULNERABLE  ${session.invulnerable ? 'ON' : 'OFF'}`, act: () => { PortraitLab.setInvulnerable(!session.invulnerable); dev.refresh(); } },
-      { label: 'CHOOSE STAGE ▸', submenu: () => portraitChooseStageMenu(dev) },
-      { label: 'RESET REVIEW DEFAULTS', act: () => { PortraitLab.reset(); dev.refresh(); } },
-    ];
-    if (last?.stage?.id || last?.reason) {
-      items.push({ label: `LAST: ${last.stage?.id?.toUpperCase() || 'RUN'} — ${last.reason || 'EXIT'}`, act: null });
-    }
-    return { title: 'PORTRAIT LAB', items };
-  };
   return { ...build(), rebuild: build };
 }
 
@@ -801,7 +704,6 @@ export function rootMenu(dev) {
     title: 'DEV MENU',
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
-      { label: 'PORTRAIT LAB ▸', submenu: () => portraitLabMenu(dev) },
       // Keep the saved-song launcher in the first screenful. On a phone the
       // root menu has fewer visible rows, and this overlay deliberately has no
       // swipe-to-scroll gesture; a row below the fold is otherwise unreachable
@@ -826,7 +728,7 @@ export function rootMenu(dev) {
       } },
       { label: 'CREDITS', act: () => {
         dev.close();
-        setState(new CreditsState({ settings: dev.ctx.save.settings, onDone: () => dev.ctx.Flow.toHub() }));
+        setState(new CreditsState({ onDone: () => dev.ctx.Flow.toHub() }));
       } },
       { label: 'VISUALISERS ▸', submenu: () => visualisersMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
@@ -851,19 +753,19 @@ const ROW_TEXT_S = 1.5;
 // The breadcrumb is a heading, so it outranks the rows it sits above.
 const HEADER_TEXT_S = 1.85;
 const ROW_H = 21;
-// Portrait fill hands this overlay the whole phone (setDevPortraitFill). Rows
-// stay in logical units and the stretch makes them finger-sized for free: 17
-// units lands at ~42 CSS px on a 390-wide phone, which is the size a thumb
-// expects, and still leaves room for thirteen of them. Glyphs are the only
-// thing that has to fight the stretch.
-const PORTRAIT_ROW_H = 17;
+// Portrait fill hands this overlay the whole phone (setDevPortraitFill). The
+// gameplay frame can already be tall when the overlay opens, so a fixed
+// logical row would sometimes become only a handful of CSS pixels. These are
+// physical targets; menuLayout converts them through the current portrait
+// input scale so a row stays thumb-sized in both the 16:9 and tall-frame paths.
+const PORTRAIT_ROW_CSS = 56;
 const PORTRAIT_TEXT_S = 1.75;
 
 // The header is one button — the whole strip above the first row goes back —
 // sized like one rather than like the line of text it carries: a bar tall
 // enough for a heading and an arrow a thumb can hit without aiming.
 const HEADER_H = 22;
-const PORTRAIT_HEADER_H = 30;
+const PORTRAIT_HEADER_CSS = 56;
 // Arrow height as a fraction of the bar, in the square units the text transform
 // restores. Both orientations use it, so the arrow is always in proportion to
 // the header it sits in.
@@ -877,22 +779,30 @@ const FOOT_GAP = 6;
 // header band, then as many rows as fit above the footer.
 export function menuLayout() {
   const fill = !!screen.portraitFill;
+  // `inputScaleY` is the same logical-to-CSS mapping used by pointer hit
+  // testing. Deriving the logical surface height from it matters when the
+  // underlying presentation frame is already a tall phone frame: imported H
+  // is not a reliable 270px menu coordinate space in that case.
+  const cssPerLogicalY = fill
+    ? Math.max(0.001, Number(screen.inputScaleY) || Number(screen.cssH) / Math.max(1, H))
+    : 1;
+  const logicalH = fill ? screen.cssH / cssPerLogicalY : H;
   // Glyphs are drawn into a logical canvas that portrait then stretches
   // vertically, so they are pre-compressed by exactly that factor and come out
   // with normal proportions — the same trick the jukebox list uses.
-  const yScale = fill ? screen.cssH / (H * Math.max(0.001, screen.scale)) : 1;
+  const yScale = fill ? screen.cssH / (logicalH * Math.max(0.001, screen.scale)) : 1;
   // Portrait reaches the physical edges, so the notch and the home indicator
   // are the overlay's problem: the header drops below the island and the footer
   // lifts off the indicator. The pad applies either way, so the arrow is never
   // jammed against the glass edge on a flat-topped phone.
-  const headerH = fill ? PORTRAIT_HEADER_H : HEADER_H;
+  const headerH = fill ? PORTRAIT_HEADER_CSS / cssPerLogicalY : HEADER_H;
   const headerTop = (fill ? screen.safeTop : 0) + 4;
   const listTop = headerTop + headerH;
-  const footY = H - (fill ? screen.safeBottom : 0) - 16;
-  const rowH = fill ? PORTRAIT_ROW_H : ROW_H;
+  const footY = logicalH - (fill ? screen.safeBottom : 0) - 16;
+  const rowH = fill ? PORTRAIT_ROW_CSS / cssPerLogicalY : ROW_H;
   const maxRows = Math.max(1, Math.floor((footY - FOOT_GAP - listTop) / rowH));
   return {
-    fill, yScale, textS: fill ? PORTRAIT_TEXT_S : 1,
+    fill, yScale, logicalH, cssPerLogicalY, textS: fill ? PORTRAIT_TEXT_S : 1,
     rowTextS: ROW_TEXT_S, headerTextS: HEADER_TEXT_S,
     headerTop, crumbMid: headerTop + headerH / 2,
     listTop, rowH, maxRows, footY,

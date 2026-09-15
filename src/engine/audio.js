@@ -537,7 +537,18 @@ const SFX_TRIM = {
   // (-29.0), which has to stay the bigger event on this cabinet. Re-measure with
   // `node tools/render-cues.js girderBoing jump copterBonk`.
   girderBoing: 0.39,
-  crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+  crunch: 0.84,
+  // The trap owns its damage read; it must cut through the lane without
+  // borrowing the generic `hit` cue. The call site adds a small final lift.
+  // 1.7 rather than 1.0: as a clap the cue is DENSER than the spike it
+  // replaced but no louder, and a snap that fires under the song has to be the
+  // biggest impact on the cabinet — above `blockBreak` and `boxKick`, the two
+  // breaks a player goes out of their way to cause. Re-measure with
+  // `node tools/render-cues.js trapSnap blockBreak boxKick`. The last 0.8dB of
+  // it is paying for the pitch drop: the same amplitude down at 520Hz reads
+  // quieter than it did at 800, and the cue has to stay the same SIZE.
+  trapSnap: 1.7,
+  chomp: 0.84, tag: 0.9, perfect: 0.88,
   // SCENERY, and levelled as scenery. Untrimmed the crack peaked -11.3 dBFS —
   // hotter than 'crunch', a cue the player causes — which is the wrong way
   // round for something that happens on the skyline whatever the player does.
@@ -804,6 +815,14 @@ class AudioSys {
     this.cueGain = 1;
     // Where the cue being built starts on the audio clock, or null for "now" — see cueAt().
     this.cueStart = null;
+    // How many beats out the cue being built will SOUND — sfx({inBeats}), in beats
+    // rather than in seconds. It is ambient rather than an argument because the
+    // thing that needs it is buried: a coin's ladder is built by songKey() three
+    // calls down from the cue, and threading a lead through coinNotes, songLadder
+    // and every other keyed cue's helper is a parameter added to eight signatures
+    // so that one of them can use it. Zero means "now", which is what every cue
+    // fired rather than placed is.
+    this.cueBeatLead = 0;
     // The player's AUDIO SYNC offset in SECONDS — see heardLatencySec(). It lives on
     // the system rather than on the context so a context rebuild cannot lose it.
     this.syncOffsetSec = 0;
@@ -3863,7 +3882,11 @@ class AudioSys {
     // cueTimeInBeats. Cleared afterwards whatever the builder does, so an unscheduled
     // cue can never inherit a scheduled one's start.
     this.cueStart = Number.isFinite(opt.inBeats) ? this.cueTimeInBeats(opt.inBeats) : null;
-    try { this.buildCue(name, opt); } finally { this.cueStart = null; }
+    // The same placement in beats, for the builders that have to know WHERE the cue
+    // lands rather than when — songKey() and everything keyed off it. Cleared in the
+    // same breath as cueStart and for the same reason.
+    this.cueBeatLead = Number.isFinite(opt.inBeats) ? opt.inBeats : 0;
+    try { this.buildCue(name, opt); } finally { this.cueStart = null; this.cueBeatLead = 0; }
   }
 
   buildCue(name, opt) {
@@ -4001,6 +4024,50 @@ class AudioSys {
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;
+      // A bear trap closing: THE CLAP, with a machine inside it.
+      //
+      // The first pass was a hard jaw click, a steel bite and a low body, and it
+      // peaked hotter than anything near it (-4.8 dBFS) while still sounding
+      // timid. The number was never the problem — the SHAPE was. A 23dB crest
+      // factor is a spike with nothing behind it, so it read as a tick no matter
+      // how loud it was made, and turning it up only made the tick sharper.
+      //
+      // A hand clap is the model because a clap is the loudest thing a person
+      // can make with no body behind it, which is exactly this mechanism. Two
+      // things make one:
+      //   THE FLAM. Three micro-taps a few milliseconds apart. Palms never meet
+      //   flat, and that tiny smear is the whole difference between a clap and
+      //   a click. Evenly spaced they read as a machine gun, so the gaps widen.
+      //   THE PALMS. A broad mid band under it with an actual tail. This is the
+      //   energy the old cue had none of, and it is what makes the sound arrive
+      //   in the room rather than at the top of the mix.
+      // The jaw clack and the metal body stay underneath, quieter than before:
+      // the trap still has to be steel, but it is the clap that carries.
+      //
+      // PITCHED DOWN roughly a fifth from the first clap, tail included. High
+      // and bright read as a snare rimshot — a small hard thing — and this is a
+      // heavy sprung jaw. Dropping every band together keeps the clap's shape
+      // and changes only the size of the object making it; the tail bands go
+      // down furthest and last longest, because that is what a big metal thing
+      // does in cold air.
+      case 'trapSnap':
+        [[0, 0.82], [0.0045, 0.62], [0.0105, 0.42]].forEach(([when, g]) => {
+          this.noise(0.017, g, 'bandpass', 1150, when);
+        });
+        this.noise(0.14, 1.08, 'bandpass', 700, 0.002);    // the palms
+        this.noise(0.07, 0.62, 'bandpass', 1750, 0.001);   // the slap on top of them
+        this.noise(0.036, 0.3, 'highpass', 2900, 0.001);   // the crack off the top
+        // THE TAIL. Two bands decaying behind the transient, the bright one
+        // shorter than the dark one, which is how a real room lets go of a
+        // clap. Without it the cue stops dead at 100ms and the snap reads as
+        // something that happened rather than something that is ringing — the
+        // trap is a steel machine in the open air and it has to sound like it
+        // is still there a beat later.
+        this.noise(0.24, 0.42, 'bandpass', 1300, 0.012);
+        this.noise(0.46, 0.38, 'bandpass', 520, 0.016);
+        this.osc('square', 640, 200, 0.06, 0.13);          // the jaw: still a machine
+        this.osc('triangle', 140, 58, 0.22, 0.16, 0.008);  // metal body, ringing on
+        break;
       // The slide plow. See boxKick — a noisier, longer relative of 'crunch',
       // for the one break the player went out of their way to cause.
       case 'boxKick': this.boxKick(); break;
@@ -7474,11 +7541,31 @@ class AudioSys {
    * a human puts its tonic. `classes` is the scale, as semitones from that root,
    * ascending. Null when there is no song, so callers keep their own fallback.
    */
-  songKey() {
+  songKey(leadBeats = this.cueBeatLead) {
     if (!this.bank) return null;
     const plan = barPlan(this.bank);
     if (!plan?.length) return null;
-    const bar = plan[Math.floor(this.step / 16) % plan.length];
+    // WHICH BAR IS SOUNDING, not which bar is being buffered. `step` is the
+    // sequencer's write head and it runs a lookahead ahead of the ear, so at the
+    // seam between two sections it names a section the player has not heard yet:
+    // a coin grabbed on the last beat of E minor came out in B minor. songBeat()
+    // is the clock the playhead and the beat listeners already read — backed off
+    // by the outstanding lookahead and by the output latency — so a cue keyed off
+    // it is in the key the player is actually hearing.
+    //
+    // `leadBeats` carries that forward for a cue that is PLACED rather than fired.
+    // sfx({inBeats}) rings that many beats out, which on the last beat of a section
+    // is the NEXT section, and the cue has to be in the key of the bar it will
+    // sound in rather than the one it was asked for in.
+    //
+    // Falls back to `step` only when there is no clock to read at all.
+    const heard = this.songBeat();
+    const beat = (heard == null ? this.step / 4 : heard) + (leadBeats || 0);
+    // Positive modulo: the heard clock sits a hair BEFORE the downbeat for as long
+    // as the lookahead lasts, and a bare `%` turns that into plan[-1] — undefined,
+    // and a cue with no key for the first fraction of a second of every song.
+    const bars = plan.length;
+    const bar = plan[((Math.floor(beat / 4) % bars) + bars) % bars];
     // Memoised on the bank and the section, because the callers are cues: the
     // boost pad fires ten ticks in under a second and every one of them asks.
     // Scanning eight lanes of a section to answer the same question ten times

@@ -29,6 +29,14 @@ settings.enter();
 // actually matters is that DONE is last and the window follows the cursor.
 const N = settings.options().length;
 assert(N >= 2, `settings has options and a DONE row (${N})`);
+// THE RETIRED SWITCHES. Everyone gets the same game: the two accessibility
+// toggles and the two effect toggles are gone, and what they gated is simply
+// always on. A settings list is the one place a dead option can survive a
+// refactor and still look alive, so the menu is asserted against by name.
+for (const gone of [/REDUCED MOTION/, /REDUCED FLASHING/, /SCREEN SHAKE/, /GLOW EFFECTS/]) {
+  assert(!settings.options().some((option) => gone.test(option.label)),
+    `settings no longer exposes the retired ${String(gone).replace(/\//g, '').toLowerCase()} option`);
+}
 assert(/DONE|BACK/.test(settings.options()[N - 1].label),
   'the last row is the way out');
 assert(settings.visibleRows === 6 && settings.listStart === 0,

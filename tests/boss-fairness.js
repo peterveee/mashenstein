@@ -27,7 +27,7 @@ const { BossState } = await import('../src/game/boss.js');
 const { RunState, ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
 const { PLAYER_X } = await import('../src/game/player.js');
-const { PORTRAIT_LAB_DEFAULTS } = await import('../src/dev/portrait-lab.js');
+const { PORTRAIT_CONFIG } = await import('../src/engine/portrait-config.js');
 const { W } = await import('../src/engine/renderer.js');
 const { REACT_FLOOR } = await import('../src/game/spawner.js');
 const { bossDropNearLip, BOSS_DROP_MIN_AHEAD, BOSS_DROP_SPREAD } = await import('../src/game/boss.js');
@@ -47,7 +47,7 @@ const FRAMINGS = [
   ['desktop NORMAL', ZOOM_NORMAL],
   ['desktop CLOSE / tablet', ZOOM_CLOSE],
   ['phone landscape', ZOOM_PHONE],
-  ['phone portrait', PORTRAIT_LAB_DEFAULTS.worldZoom],
+  ['phone portrait', PORTRAIT_CONFIG.worldZoom],
 ];
 
 // ---------------------------------------------------------------- boss drops

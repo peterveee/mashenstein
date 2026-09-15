@@ -234,7 +234,8 @@ export const STAGES = [
   S('frost', 1,
     { type: 'reach', desc: 'CROSS THE ICE. THE ICE IS NOT YOUR FRIEND. IT TOLD US.' },
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
-    { act: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.' }),
+    { act: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.',
+      paperPreset: 'cardstockClear' }),
   // Act II/III pits, and which stages get NONE, on purpose: the blackout
   // stages (crypt-1/3 — a fatal hole inside a light radius is a wall, not a
   // read) and the escort stages (crypt-2, office-3 — the residents' pathing
@@ -243,13 +244,14 @@ export const STAGES = [
   S('frost', 2,
     { type: 'cords', n: 4, desc: 'RECOVER 4 CORD PIECES FROZEN IN THE FORTRESS.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.40, w: 56 }] }),
+    { pits: [{ at: 0.40, w: 56 }], paperPreset: 'cardstockClear' }),
   // The fuse run over holes, on ice — plumber-3's design graduated. Both sit
   // clear of the checkpoints (1/3, 2/3) and the finishing straight.
   S('frost', 3,
     { type: 'fuse', desc: 'CARRY THE FUSE ACROSS THE ICE. YES. THE SLIPPERY ICE.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.37, w: 60 }, { at: 0.74, w: 64 }] }),
+    { pits: [{ at: 0.37, w: 60 }, { at: 0.74, w: 64 }],
+      paperPreset: 'cardstockClear' }),
   S('crypt', 1,
     { type: 'blackout', desc: 'SURVIVE THE BLACKOUT. THE DARK IS BUDGETARY.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },

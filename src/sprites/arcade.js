@@ -746,14 +746,12 @@ export function drawCabinetScreen(ctx, x, y, w, h, pal, style, art) {
 // A locked cabinet is unplugged, not gone — the power is off but the thing is
 // still standing there with a charge in it somewhere, so every several seconds
 // it coughs. Bursts are short (~0.4s) and staggered by seed, the same
-// per-index-offset idiom the hub's ceiling lights flicker on. reducedFlashing
-// silences it outright: intermittent high-contrast noise is exactly what that
-// setting exists to suppress.
-export function deadScreenBurst(t, seed, reduced) {
+// per-index-offset idiom the hub's ceiling lights flicker on.
+export function deadScreenBurst(t, seed) {
   // A missing seed would make every term below NaN, and NaN loses the `> 0.42`
   // comparison — so the burst would read as permanently on, on every cabinet at
   // once, instead of never. Fail quiet rather than fail loud.
-  if (reduced || !Number.isFinite(seed)) return 0;
+  if (!Number.isFinite(seed)) return 0;
   const period = 6.5 + (seed % 5) * 1.3;
   const phase = (t + (seed % 97) * 0.41) % period;
   if (phase > 0.42) return 0;
@@ -783,8 +781,8 @@ export function drawScreenSweep(ctx, r, t, seed = 0) {
 // One live frame of that burst, painted over the dark well the shell already
 // drew. Not cached and not baked: the bands have to move, and at five rects a
 // frame for the handful of locked cabinets on screen there is nothing to save.
-export function drawDeadScreen(ctx, x, y, w, h, t, seed, reduced, style) {
-  const amt = deadScreenBurst(t, seed, reduced);
+export function drawDeadScreen(ctx, x, y, w, h, t, seed, style) {
+  const amt = deadScreenBurst(t, seed);
   if (amt <= 0) return 0;
   const r = cabinetScreenRect(x, y, w, h, style);
   // Deterministic noise stepped ~18x a second, so the bands snap between
@@ -855,7 +853,7 @@ export const DOOR_ICONS = {
     plain(c, ink, (p) => p.arc(s * 0.76, s * 0.24, s * 0.2, 0, Math.PI * 2));
     plain(c, back, (p) => p.arc(s * 0.76, s * 0.24, s * 0.09, 0, Math.PI * 2));
   },
-  // GARY'S LEGALLY DISTINCT PAWN SHOP: the pawnbroker's three balls. A price
+  // GARY'S LEGAL PAWN SHOP: the pawnbroker's three balls. A price
   // tag was the first try and collapsed into an unreadable dark diamond; three
   // circles survive any size, and they are the sign every pawn shop already has.
   pawn(c, s, ink) {
@@ -896,9 +894,8 @@ export const DOOR_ICONS = {
 
 // EXIT signs in a failing building do not glow steadily. Mostly on, with the
 // occasional stutter and a slow underlying buzz, on its own clock so it never
-// syncs with the ceiling lights. reducedFlashing pins it lit.
-export function signFlicker(t, reduced) {
-  if (reduced) return 1;
+// syncs with the ceiling lights.
+export function signFlicker(t) {
   const phase = t % 5.3;
   if (phase < 0.14) return phase < 0.07 ? 0.25 : 0.6;
   if (phase > 3.1 && phase < 3.18) return 0.45;
@@ -1004,10 +1001,10 @@ function paintDoor(ctx, w, h, pal, lit = 1) {
 
 // A service door. `pal` is {id, frame, door, sign, ink, icon, label?, variant?,
 // flicker?}. Painted directly rather than cached, for the same sharpness reason
-// as the cabinet — see paintInto(). `t` and `reduced` only matter for palettes
-// that flicker; everything else ignores them.
-export function drawDoor(ctx, x, y, w, h, pal, t = 0, reduced = false) {
-  const lit = pal.flicker ? signFlicker(t, reduced) : 1;
+// as the cabinet — see paintInto(). `t` only matters for palettes that
+// flicker; everything else ignores it.
+export function drawDoor(ctx, x, y, w, h, pal, t = 0) {
+  const lit = pal.flicker ? signFlicker(t) : 1;
   paintInto(ctx, x, y, w, h, (c, cw, ch, p) => paintDoor(c, cw, ch, p, lit), pal);
 }
 

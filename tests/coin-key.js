@@ -61,6 +61,43 @@ function songClasses(b) {
   assert(lo2 === 988 * 1.5 && hi2 === 1319 * 1.5, 'and `pitch` still scales it raw');
 }
 
+// The scheduler is ahead of the ear. A coin collected during the first section
+// must use the heard section's key even when the scheduler has already buffered
+// the next one.
+{
+  const oldSongBeat = Audio.songBeat;
+  const C2 = 65.40639132514966;
+  const D2 = 73.41619197935188;
+  Audio.bank = {
+    bpm: 120,
+    bass: [C2], lead: [C2 * 2],
+    sections: [
+      { bass: [C2], lead: [C2 * 2] },
+      { bass: [D2], lead: [D2 * 2] },
+    ],
+  };
+  Audio.step = 0; // the scheduler is still buffering section 0
+  Audio.songBeat = () => 8; // the listener is at section 1
+  const key = Audio.songKey();
+  assert(key && Math.abs(key.root - D2) < 1e-9,
+    'coin key follows the heard section instead of the scheduler look-ahead');
+  // A cue placed on the song (sfx's inBeats) is keyed on the bar it will
+  // SOUND in: a coin collected on the last beat of section 0 whose ping is
+  // scheduled a beat out rings in section 1, and takes its key from there.
+  Audio.songBeat = () => 7.5;
+  const now = Audio.songKey();
+  assert(now && Math.abs(now.root - C2) < 1e-9, 'a cue fired now, late in section 0, is keyed to section 0');
+  const ahead = Audio.songKey(1);
+  assert(ahead && Math.abs(ahead.root - D2) < 1e-9, 'the same cue placed a beat out is keyed to the section it rings in');
+  Audio.cueBeatLead = 1;
+  const built = Audio.songKey();
+  Audio.cueBeatLead = 0;
+  assert(built && Math.abs(built.root - D2) < 1e-9, 'and the lead of the cue being built is the default, so the coin ladder needs no plumbing');
+  Audio.songBeat = () => -0.2;
+  assert(!!Audio.songKey(), 'the heard clock a hair before the downbeat still yields a key');
+  Audio.songBeat = oldSongBeat;
+}
+
 // ---- across the whole song library ------------------------------------------
 // Section by section through the engine's own bar plan, which is the only way to
 // be sure the cue follows a modulation rather than pinning the first section's

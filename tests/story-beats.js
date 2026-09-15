@@ -43,23 +43,6 @@ function clearIntro(run) {
   run.update(TICK);
 }
 
-// Reduced motion suppresses the card's entry shake without changing its
-// reading budget. updateShake only samples the FX stream while a shake is
-// active, so the untouched first sample is an observable, deterministic proof
-// without exporting renderer internals just for a test.
-{
-  const { Rng } = await import('../src/engine/rng.js');
-  const previous = save.settings.reducedMotion;
-  save.settings.reducedMotion = true;
-  const run = makeRun(STAGE_BY_ID['frost-1']);
-  const expectedFirstFx = new Rng(12345).stream('fx').float();
-  run.update(TICK);
-  assert(run.fxRng.float() === expectedFirstFx, 'reduced motion suppresses the ACT-card entry shake');
-  assert(run.introFreeze > ACT_BANNER_TIME - 2 * TICK,
-    'reduced motion keeps the full ACT-card reading time');
-  save.settings.reducedMotion = previous;
-}
-
 // --- ACT announcement: banner text + 2s world freeze -----------------------
 {
   const run = makeRun(STAGE_BY_ID['frost-1']);

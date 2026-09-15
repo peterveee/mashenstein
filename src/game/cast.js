@@ -175,7 +175,7 @@ function portraitHeroTopRatio(heroId) {
   return Math.min(1.7, Math.max(1.28, measured + PORTRAIT_CAST_HERO_POSE_AIR));
 }
 
-// Public so the portrait lab and the focused regression can inspect the same
+// Public so preview tooling and the focused regression can inspect the same
 // contract the painter uses. Landscape deliberately retains its authored
 // geometry and does not need a second set of numbers.
 export function castLayout(hero = null) {
@@ -441,7 +441,6 @@ export class CastState {
     this.slotT = 0;
     this.actTok = Input.activity;
     Input.clearAll();
-    this.reduced = !!(this.o.realSettings && this.o.realSettings.reducedMotion);
   }
 
   exit() { Input.clearAll(); }
@@ -461,7 +460,7 @@ export class CastState {
         && Input.pointer.y >= layout.heroStageTop
         && Input.pointer.y <= H;
     }
-    const k = this.reduced ? 1 : Math.min(1, this.slotT / FADE_T);
+    const k = Math.min(1, this.slotT / FADE_T);
     const ease = 1 - (1 - k) * (1 - k);
     const cx = 108 + (1 - ease) * -26;
     const { feetOff } = this.poseFor(hero, false);
@@ -593,7 +592,7 @@ export class CastState {
       ctx.fillRect(x0 + i * layout.progressStep, layout.progressY,
         layout.progressW, layout.progressH);
     }
-    if (this.reduced || Math.floor(t * 1.6) % 2 === 0) {
+    if (Math.floor(t * 1.6) % 2 === 0) {
       drawTextCenteredForPresentation(ctx,
         Input.isTouchDevice() ? 'TAP TO RETURN' : 'PRESS ANY KEY TO RETURN',
         layout.center, textYForMid(layout.hintMid, layout.promptScale),
@@ -619,8 +618,6 @@ export class CastState {
       kind: 'run', grounded: true, time: t, menu: true,
       phase: (beat * CAST_GAIT_RATE) % 1,
     };
-    if (this.reduced) return { pose, feetOff: 0 };
-
     if (hero.id === 'lorenzo') {
       // Lorenzo's card demonstrates the actual wrench kit instead of the
       // curtain-call celebration: walk continuously, layer one readable
@@ -695,11 +692,11 @@ export class CastState {
     const t = this.t;
     // Slide/fade the panel in at the top of each slot.
     const intro = this.slotT < FADE_T;
-    const k = this.reduced ? 1 : Math.min(1, this.slotT / FADE_T);
+    const k = Math.min(1, this.slotT / FADE_T);
     let ease = 1 - (1 - k) * (1 - k);
     // The last hero fades out over the tail rather than being cut off.
     const left = this.slotLen() - this.slotT;
-    if (!this.reduced && this.isLast() && left < FADE_OUT_T) {
+    if (this.isLast() && left < FADE_OUT_T) {
       ease *= Math.max(0, left / FADE_OUT_T);
     }
 
@@ -815,7 +812,7 @@ export class CastState {
       ctx.fillStyle = i === this.i ? '#f6d33c' : i < this.i ? '#5a5a68' : '#2a2a3a';
       ctx.fillRect(x0 + i * dotW, H - 30, 5, 3);
     }
-    if (this.reduced || Math.floor(t * 1.6) % 2 === 0) {
+    if (Math.floor(t * 1.6) % 2 === 0) {
       // isTouchDevice(), not usingTouch: this screen can be arrived at cold from
       // the attract loop, and 'PRESS ANY KEY' on a phone names hardware it does
       // not have.

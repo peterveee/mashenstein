@@ -92,10 +92,10 @@ export class DemoBot {
    *
    * `airtimeFor` is the hero's arc in still air. This is the arc the lane is
    * actually running under right now, and the difference is what a power-up
-   * does: lowgrav stretches the flight by half again, and a `nojump` corruption
-   * cuts the launch to 0.6. Both move where he comes down by more than the
-   * width of a hole, so a bot that aims with the hero's paper airtime aims into
-   * the hole on exactly the runs where the lane is strangest.
+   * does: lowgrav stretches the flight by half again. That moves where he comes
+   * down by more than the width of a hole, so a bot that aims with the hero's
+   * paper airtime aims into the hole on exactly the runs where the lane is
+   * strangest.
    */
   arcSpan() {
     const f = this.flight();
@@ -834,11 +834,19 @@ export class DemoBot {
     const landingClear = !next || this.flightClear(threats, airtime, next);
     // The ordinary lane hazard: jump when it is a third of a second out. On a
     // beat cabinet the mark says when instead.
+    // A LATER ground hazard must not steal the jump window for a hole. This
+    // matters when a jump collects low-gravity in flight: the landing can move
+    // forward after this decision, so even a landing that looks safe on the
+    // current arc may arrive on the pit lip before `pitJump` gets a turn.
+    // Wait for the hole whenever the next jumpable object is beyond its near
+    // lip; the hole's own aim then owns the jump, and the later hazard gets its
+    // normal reaction after the landing.
     const laneJump = run.beatLock
       ? !!(cueDue && cue.chartAction === 'jump')
       : !!(next && next.act === 'jump' && next.enter < REACT_T
         && (this.clears(next) || next.enter <= LAST_T)
-        && (landingClear || next.enter <= LAST_T));
+        && (landingClear || next.enter <= LAST_T)
+        && (!hole || next.ob.x < hole.near));
 
     // AND THE JUMPS NOBODY ASKED FOR — a coin up in the air, the mission's
     // copter. These are the ones that used to kill the demo: the copter on
@@ -855,7 +863,14 @@ export class DemoBot {
     // drone with the button still on its way up. flightClear is that whole
     // argument — nothing may arrive between the take-off and a beat past the
     // landing — and it costs the demo a bonk it can take on the next pass.
-    const optional = !!(grab || chaseJump) && this.landingsSafe(px, holes)
+    // Optional air pickups are not worth consuming the only safe take-off
+    // window for a nearby pit. A speed capsule can lengthen the jump after it
+    // is collected, so the current arc is not enough evidence that the
+    // landing will remain before the lip. Leave a full half-arc of margin and
+    // let the pit answer own the next jump.
+    const optional = !!(grab || chaseJump)
+      && (!hole || hole.near - px > span * 1.5)
+      && this.landingsSafe(px, holes)
       && (!chaseJump || this.landsWell(px + span + sp * 0.35, holes))
       && this.flightClear(threats, airtime)
       && (!run.beatLock || !cue || px + span + HIT_FRONT + sp * LAND_SETTLE < cue.actionX);

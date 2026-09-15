@@ -10,7 +10,7 @@ const {
   BeatSpawner, validateBeatChart, actionApproachPx, beatEventId,
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
   LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV, OPENING_COIN_BEAT,
-  BOX_LEAD_BEATS, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, puntLeadSec, puntLeadRange,
+  BOX_LEAD_BEATS, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, boxLeadBeats, boxBurstBeats, puntLeadSec, puntLeadRange,
   unwrapBeat, coinRunOffsets, COIN_FILLS, MIN_COIN_BEATS,
   COIN_CLEAR_AFTER_JUMP,
 } = await import('../src/game/beatchart.js');
@@ -25,7 +25,7 @@ const { STAGES } = await import('../src/data/stages.js');
 const { save } = await import('../src/engine/save.js');
 const { HEROES, heroShoots } = await import('../src/data/heroes.js');
 const { OBSTACLES, DRONE_COLUMN_ALTS, makeDroneColumn } = await import('../src/game/entities.js');
-const { PLAYER_H, PLAYER_W, SLIDE_IN_T, jumpHeightFor }
+const { PLAYER_H, PLAYER_W, PLAYER_X, SLIDE_IN_T, jumpHeightFor }
   = await import('../src/game/player.js');
 const { PUNT, puntPower } = await import('../src/game/punt.js');
 
@@ -285,14 +285,24 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
     // loop would make the ability button part of the stage's baseline.
     assert(own.every((e) => (e.every ?? 1) >= 2),
       `rhythm-${id} keeps the box to at most every other loop`);
-    // The burst lands BOX_BURST_BEATS on with the box standing half a beat past
-    // that line, which is inside a hole cut there — so no authored chart cuts
-    // one, and the validator refuses a chart that does.
+    // The burst lands its fuse on with the box standing past that line, which
+    // is inside a hole cut there — so no authored chart cuts one, and the
+    // validator refuses a chart that does.
     assert(own.every((e) =>
-      chart.events[(e.slot + BOX_BURST_BEATS) % chart.loopBeats].action !== 'pit'),
+      chart.events[(e.slot + boxBurstBeats(e)) % chart.loopBeats].action !== 'pit'),
     `rhythm-${id} opens its box over road, not over a hole`);
   }
   assert(boxes.length === 3, 'every stage in the cabinet deals the box');
+  // THE FIRST STAGE KEEPS THE CABINET'S ORIGINAL BOX TIMING, and the others
+  // take the default: Peter moved rhythm-1's box out of its coin figure rather
+  // than the coins out of the box (15 Sep 2026).
+  assert(boxLeadBeats(beatCharts[1].events[7]) === 2.4 && boxBurstBeats(beatCharts[1].events[7]) === 2,
+    'rhythm-1 places its box 2.4 beats out on a two-beat fuse');
+  assert([2, 3].every((id) => beatCharts[id].events.filter((e) => e.type === 'cardBox')
+    .every((e) => boxLeadBeats(e) === BOX_LEAD_BEATS && boxBurstBeats(e) === BOX_BURST_BEATS)),
+  'rhythm-2 and rhythm-3 take the cabinet default');
+  assert(beatCharts[1].events[8].run === 2 && !beatCharts[1].events[8].lead && !beatCharts[1].events[9].run,
+    'and rhythm-1 plays "8, and, 9" into its first hole, as it was written');
 
   // THE FUSE IS LONG ENOUGH FOR THE SLOWEST GUN AND SHORT ENOUGH TO STAY A
   // FUSE. Flight time in beats is LEAD * speed / (speed + shot), which is why
@@ -313,10 +323,13 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
       // With a press at the late edge of the window on top. The beat cabinet
       // floors the round's speed (BOX_SHOT_MIN_SPEED, run.js useAbility) so
       // that Kiko's makes it too; the floor is the number under test here.
-      const flight = BOX_LEAD_BEATS * sp / (sp + Math.max(shot, BOX_SHOT_MIN_SPEED));
-      assert(flight + ON_BEAT_WINDOW < BOX_BURST_BEATS,
-        `${who}'s round reaches the box before it opens at ${sp}px/s, pressed late `
-        + `(${flight.toFixed(2)} + ${ON_BEAT_WINDOW} < ${BOX_BURST_BEATS})`);
+      // Every box in the book, since one chart places its own.
+      for (const box of boxes) {
+        const flight = boxLeadBeats(box) * sp / (sp + Math.max(shot, BOX_SHOT_MIN_SPEED));
+        assert(flight + ON_BEAT_WINDOW < boxBurstBeats(box),
+          `${who}'s round reaches the ${boxLeadBeats(box)}-beat box before it opens at ${sp}px/s, pressed late `
+          + `(${flight.toFixed(2)} + ${ON_BEAT_WINDOW} < ${boxBurstBeats(box)})`);
+      }
     }
   }
   // WHO IS DEALT ONE AT ALL, and the boundary is a range decision: a thrown
@@ -354,6 +367,44 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
   // happens behind him.
   assert(BOX_LEAD_BEATS > BOX_BURST_BEATS,
     `the box stands ${(BOX_LEAD_BEATS - BOX_BURST_BEATS).toFixed(1)} of a beat past the hero when it opens`);
+  assert(boxes.every((b) => boxLeadBeats(b) > boxBurstBeats(b)), 'and so does every box a chart places itself');
+  // RHYTHM-1'S BOX IS PAST THE ROCKET FIST'S ORDINARY FLIGHT. The fist parks
+  // 176px out at this lane's 208px/s and the box stands 2.4 beats (~240px)
+  // down the road, so on a beat stage the fist flies longer and reaches it —
+  // the lane asks with the lead in px, and every ranged hero is dealt the box.
+  {
+    save.load(); save.newSlot(0, 0);
+    const run = new RunState({ stage: STAGES.find((s) => s.id === 'rhythm-1'), save, seed: 7, skipRunIn: true, onEnd: () => {} });
+    run.enter();
+    const pxb = run.speed * 60 / run.laneBpm();
+    const far = 2.4 * pxb;
+    assert(['raymn', 'clara', 'grumpos', 'b33p', 'kiko', 'lorenzo', 'fernwick', 'rusty'].every((h) => run.heroReachesBox(h, far)),
+      `every ranged hero, the rocket fist included, reaches rhythm-1's box (${far.toFixed(0)}px)`);
+    assert(!run.heroReachesBox('gnash', 0), 'and a hero with no ranged weapon reaches nothing');
+    // The fist's own numbers: 0.42s parks it short of that box, 0.55 does not.
+    assert((run.speed + 210) * 0.42 < far - 12 && (run.speed + 210) * 0.55 >= far - 12,
+      'and it is the longer beat-stage flight that gets it there, not slack in the check');
+    // The flight itself: the fist thrown on this lane travels past the box's
+    // road before it turns for home.
+    run.relay.current = 'raymn';
+    run.player.abilityCd = 0;
+    run.useAbility();
+    const fist = run.projectiles.find((p) => p.type === 'fist');
+    const from = fist.x;
+    for (let i = 0; i < 90 && !fist.returning; i++) run.updateProjectiles(1 / 60, run.speed);
+    assert(fist && fist.x - from >= far - 12,
+      `the thrown fist gets to the box before it turns (${(fist.x - from).toFixed(0)}px of ${(far - 12).toFixed(0)})`);
+  }
+}
+{
+  let behindThrew = false;
+  try {
+    validateBeatChart({ loopBeats: 4, events: [
+      { slot: 0, action: 'ability', type: 'cardBox', boxLead: 1.2, boxBurst: 2 },
+      { slot: 1, action: 'coin' }, { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+    ] }, { bpm });
+  } catch { behindThrew = true; }
+  assert(behindThrew, 'the validator refuses a chart box that would open behind the hero');
 }
 let boxTypeThrew = false;
 try {
@@ -390,6 +441,15 @@ try {
   ] }, { bpm });
 } catch { boxThenPitThrew = true; }
 assert(!boxThenPitThrew, 'a hole a beat after the burst line is allowed');
+let boxCoinThrew = false;
+try {
+  validateBeatChart({ loopBeats: 4, events: [
+    { slot: 0, action: 'ability', type: 'cardBox' },
+    { slot: 1, action: 'coin', ...COIN_FILLS.eighth },
+    { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+  ] }, { bpm });
+} catch { boxCoinThrew = true; }
+assert(boxCoinThrew, 'the validator refuses a coin whose body overlaps a card box');
 let lureThrew = false;
 try {
   // A fill whose tail lands PAST the takeoff line, in the strip between the
@@ -788,8 +848,11 @@ assert(blockedObs.length === 0 && blockedPickups.every((p) => p.x + 8 <= 300),
     'a shooter gets the card box its chart slot promises');
   assert(box && box.actionBeat === 7,
     'and it carries the beat the SHOT is asked on, not the beat it stands on');
-  assert(box && Math.abs(box.x - (box.actionX + BOX_LEAD_BEATS * pxPerBeat)) < 1e-6,
-    `the box stands ${BOX_LEAD_BEATS} beats past the input, so its burst lands ahead of the hero`);
+  const lead1 = boxLeadBeats(beatCharts[1].events[7]);
+  assert(box && Math.abs(box.x - (box.actionX + lead1 * pxPerBeat)) < 1e-6,
+    `the box stands ${lead1} beats past the input (this chart's own lead), so its burst lands ahead of the hero`);
+  assert(box && box.burstBeats === boxBurstBeats(beatCharts[1].events[7]),
+    'and carries the fuse ceiling it was laid against');
   assert(armed.eventInstances.some((e) => e.chartAction === 'ability' && e.actionBeat === 7),
     'and the lane records the slot it laid, which is what the judge scores against');
 
@@ -854,6 +917,152 @@ Audio.songBeat = oldSongBeat;
   for (let i = 0; i < 40; i++) retryRun.update(1 / 60);
   assert(!retryRun.rhythmSyncPending && retryRun.distance > 0,
     'the retry resumes only after an atomic beat re-anchor');
+  Audio.songBeat = oldSongBeat;
+  Audio.sourceBank = oldSourceBank;
+}
+
+// ---- THE CADENCES ARE COUNTED OFF THE ROAD ----------------------------------
+// An `every` slot fires on one loop pass in N. A retry renumbers the road by
+// whole loops (the song has moved on; the camera moves with it — see below), so
+// the pass is counted from passOffset, which the run moves by the same loops:
+// a lane numbered from beat 32 with its origin moved by two loops lays exactly
+// what the lane numbered from beat 0 laid, box and thirty-second fill included.
+{
+  const lane = (beat, passOffset) => {
+    const obstacles = [], pickups = [];
+    const spawner = new BeatSpawner({ chart: beatCharts[1], bank: { bpm }, beatNow: () => beat,
+      playerWorldX: (x) => x + 56, lookaheadBeats: 16 });
+    spawner.passOffset = passOffset;
+    spawner.fill(0, speed, obstacles, pickups, () => 50);
+    return JSON.stringify({
+      obstacles: obstacles.filter((o) => o.chartAction).map((o) => [o.chartAction, o.type, +(o.x - 56).toFixed(6)]),
+      pickups: pickups.filter((p) => p.chartAction === 'coin').map((p) => [+(p.x - 56).toFixed(6), +(p.actionBeat - beat).toFixed(6)]),
+    });
+  };
+  // From a beat and a half in: past the song's own empty opening
+  // (OPENING_COIN_BEAT) and with the box's slot clear of the runway.
+  assert(lane(1.5, 0) === lane(33.5, 32), 'a lane renumbered by two loops lays the same road when its pass origin moves with it');
+  assert(lane(1.5, 0) !== lane(33.5, 0), 'and without the origin move the cadence would have re-phased (the control)');
+  assert(lane(1.5, 0).includes('"cardBox"'), 'the control lane carries the box, so the comparison is about something');
+}
+
+// ---- A RETRY IS THE SAME ROAD --------------------------------------------------
+// The song keeps playing through a death, and the road is cut from the song. A
+// retry therefore moves the camera by the beats the song has spent (reduced to
+// one chart loop) and re-anchors the lane there, so every bar, hole, coin and
+// box lands on the world x it had the first time — with the same subdivision
+// and the same cadence — while the song is simply further on. Checked on the
+// real RunState, on all three stages, for a death past a checkpoint and for a
+// death before the first one (which re-enters the stage from the top).
+{
+  const oldSourceBank = Audio.sourceBank;
+  const oldSongBeat = Audio.songBeat;
+  // Marks by the road they were cut for: a barrel rolls and a drone hovers,
+  // so the chart's own actionX is the key, and a scripted hole (which has
+  // none) by where it was cut.
+  const roadOf = (r, into) => {
+    for (const ob of r.obstacles) {
+      if (!ob.chartAction || !ob.live) continue;
+      into.set(`${ob.type}@${(ob.actionX ?? ob.x).toFixed(3)}`, { slot: ob.chartSlot ?? null, sub: +(((ob.actionBeat % 1) + 1) % 1).toFixed(6) });
+    }
+    for (const p of r.pickups) {
+      if (p.chartAction !== 'coin' || !p.live) continue;
+      into.set(`coin@${(p.actionX ?? p.x).toFixed(3)}`, { slot: p.chartSlot ?? null, sub: +(((p.actionBeat % 1) + 1) % 1).toFixed(6) });
+    }
+  };
+  const xOf = (key) => Number(key.split('@')[1]);
+  const compareRoad = (label, first, second, from, to) => {
+    const inWindow = (m) => [...m].filter(([k]) => xOf(k) >= from && xOf(k) <= to);
+    const a = inWindow(first), b = inWindow(second);
+    assert(a.length >= 12, `${label}: the compared road has something on it (${a.length} marks over ${(to - from).toFixed(0)}px)`);
+    const missing = a.filter(([k]) => !second.has(k)).map(([k]) => k);
+    const extra = b.filter(([k]) => !first.has(k)).map(([k]) => k);
+    assert(missing.length === 0 && extra.length === 0,
+      `${label}: the retry lays the same marks on the same road (window ${from.toFixed(0)}..${to.toFixed(0)}; missing ${missing.slice(0, 4).join(' ') || 'none'}; extra ${extra.slice(0, 4).join(' ') || 'none'})`);
+    const moved = a.filter(([k, v]) => second.has(k) && (second.get(k).slot !== v.slot || second.get(k).sub !== v.sub)).map(([k]) => k);
+    assert(moved.length === 0, `${label}: and each keeps its chart slot and subdivision (${moved.slice(0, 4).join(' ') || 'none'})`);
+  };
+  const stepFor = (run, advance, frames, into) => {
+    for (let i = 0; i < frames; i++) { advance(1 / 60); run.update(1 / 60); if (into) roadOf(run, into); }
+  };
+  for (const stage of STAGES.filter((s) => s.cabinet === 'rhythm')) {
+    // A DEATH PAST A CHECKPOINT restores the flag's snapshot.
+    {
+      save.load(); save.newSlot(0, 0);
+      const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+      run.enter();
+      Audio.sourceBank = run.cabinet.music;
+      const advance = installBeatClock(run, run.spawner.chart.loopBeats);
+      run.relay.current = 'clara'; // a shooter, so the boxes are part of the road
+      for (let i = 0; i < 60 * 40 && !run.snapshot; i++) stepFor(run, advance, 1);
+      assert(!!run.snapshot && Number.isFinite(run.snapshot.laneAnchor?.beatRaw),
+        `${stage.id}: the checkpoint banks where the road stood against the song`);
+      // After the flag: rhythm-3 steps its tempo there, and the road past it is
+      // laid at the stepped spacing.
+      const pxPerBeat = run.speed * 60 / run.laneBpm();
+      const flagX = run.camX;
+      const first = new Map();
+      stepFor(run, advance, 60 * 9, first);
+      run.dead = true; run.deadT = run.deadHold();
+      stepFor(run, advance, 1);
+      assert(!run.dead && run.rhythmSyncPending, `${stage.id}: the death restores into the settling hold`);
+      const parked = run.camX;
+      for (let i = 0; i < 60 * 3 && run.rhythmSyncPending; i++) stepFor(run, advance, 1);
+      assert(!run.rhythmSyncPending, `${stage.id}: and the hold releases`);
+      const shiftBeats = (run.camX - flagX) / pxPerBeat;
+      assert(shiftBeats > -run.spawner.chart.loopBeats && shiftBeats < 2 * run.spawner.chart.loopBeats,
+        `${stage.id}: the retry opens within a loop or so of the flag (${shiftBeats.toFixed(2)} beats)`);
+      assert(Math.abs(run.camX - parked) < pxPerBeat / 4,
+        `${stage.id}: the settled camera is a frame's error from where the hold parked it (${(run.camX - parked).toFixed(1)}px)`);
+      const beatRaw = Audio.songBeat();
+      const phase = ((beatRaw - run.snapshot.laneAnchor.beatRaw) % 16 + 16) % 16;
+      assert(Math.abs(((shiftBeats % 16) + 16) % 16 - phase) < 1e-6 || Math.abs(Math.abs(((shiftBeats % 16) + 16) % 16 - phase) - 16) < 1e-6,
+        `${stage.id}: the camera moved by exactly the song's phase past the flag`);
+      const second = new Map();
+      const respawnX = run.playerWorldX();
+      stepFor(run, advance, 60 * 9, second);
+      // Past the retry's action-free runway, and past the marks that were
+      // already in flight when the flag was crossed (laid up to the lane's
+      // lookahead ahead, at the tempo before a bpmRamp step).
+      const from = Math.max(respawnX + (laneRunwayBeats(run.spawner.chart) + 2) * pxPerBeat,
+        flagX + PLAYER_X + (run.spawner.lookaheadBeats + 2) * pxPerBeat);
+      const to = Math.min(Math.max(...[...first.keys()].map(xOf)), Math.max(...[...second.keys()].map(xOf)));
+      compareRoad(`${stage.id} checkpoint retry`, first, second, from, to);
+      assert(!run.dead && run.distance > respawnX - 100, `${stage.id}: and the retry is running`);
+    }
+    // A DEATH BEFORE THE FIRST CHECKPOINT re-enters the stage from the top.
+    {
+      save.load(); save.newSlot(0, 0);
+      const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+      const enter = run.enter.bind(run);
+      run.enter = () => { enter(); run.relay.current = 'clara'; };
+      run.enter();
+      Audio.sourceBank = run.cabinet.music;
+      const advance = installBeatClock(run, run.spawner.chart.loopBeats);
+      const pxPerBeat = run.speed * 60 / run.laneBpm();
+      const first = new Map();
+      stepFor(run, advance, 60 * 12, first);
+      assert(!run.snapshot && !!run.rhythmStartAnchor, `${stage.id}: no flag yet, and the stage banked its start`);
+      const gateX = run.rhythmOpeningGateX;
+      assert(Number.isFinite(gateX), `${stage.id}: the opening gate is banked as road`);
+      run.dead = true; run.deadT = run.deadHold();
+      stepFor(run, advance, 1);
+      assert(!run.dead && run.rhythmSyncPending, `${stage.id}: the top-of-stage death re-enters into the settling hold`);
+      for (let i = 0; i < 60 * 3 && run.rhythmSyncPending; i++) stepFor(run, advance, 1);
+      assert(!run.rhythmSyncPending, `${stage.id}: and the hold releases`);
+      const respawnX = run.playerWorldX();
+      const shiftBeats = (run.camX - run.rhythmStartAnchor.camX) / pxPerBeat;
+      assert(shiftBeats >= 0 && shiftBeats < 16, `${stage.id}: a retry from the top opens inside the first loop (${shiftBeats.toFixed(2)} beats)`);
+      const second = new Map();
+      stepFor(run, advance, 60 * 12, second);
+      const gate = run.rhythmOpeningGate();
+      assert(Math.abs(run.rhythmOpeningGateX - gateX) < 1e-6 && (gate == null || Number.isFinite(gate)),
+        `${stage.id}: the retry gates the same road the sign gated`);
+      const from = respawnX + (laneRunwayBeats(run.spawner.chart) + 2) * pxPerBeat;
+      const to = Math.min(Math.max(...[...first.keys()].map(xOf)), Math.max(...[...second.keys()].map(xOf)));
+      compareRoad(`${stage.id} top-of-stage retry`, first, second, from, to);
+    }
+  }
   Audio.songBeat = oldSongBeat;
   Audio.sourceBank = oldSourceBank;
 }
@@ -993,16 +1202,20 @@ Audio.songBeat = oldSongBeat;
 {
   const oldSourceBank = Audio.sourceBank;
   const oldSongBeat = Audio.songBeat;
-  const stage = STAGES.find((s) => s.id === 'rhythm-1');
-  const loopBeats = beatCharts[1].loopBeats;
 
-  for (const [hero, mod] of [['b33p', null], ['clara', 'serial'], ['kiko', 'force'], ['grumpos', null], ['raymn', null]]) {
+  // Every weapon on rhythm-1's 2.4-beat box, and the fist on a default-timed
+  // one too.
+  for (const [hero, mod, stageId] of [['b33p', null, 'rhythm-1'], ['clara', 'serial', 'rhythm-1'],
+    ['kiko', 'force', 'rhythm-1'], ['grumpos', null, 'rhythm-1'], ['raymn', null, 'rhythm-1'],
+    ['raymn', null, 'rhythm-3']]) {
     save.load(); save.newSlot(0, 0);
+    const stage = STAGES.find((s) => s.id === stageId);
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
     run.enter();
+    run.rhythmOpeningUntil = null;
     if (mod) run.modIds.push(mod);
     Audio.sourceBank = run.cabinet.music;
-    const advance = installBeatClock(run, loopBeats);
+    const advance = installBeatClock(run, run.spawner.chart.loopBeats);
     run.relay.current = hero;
     let box = null, fired = false, litAt = null, burstAt = null;
     for (let i = 0; i < 60 * 40; i++) {
@@ -1029,7 +1242,7 @@ Audio.songBeat = oldSongBeat;
     // the ceiling the press set, which is the line the chart's spacing was laid
     // against.
     assert(Number.isInteger(box.burstBeat) && box.burstBeat > box.actionBeat
-      && box.burstBeat <= box.actionBeat + BOX_BURST_BEATS,
+      && box.burstBeat <= box.actionBeat + (box.burstBeats ?? BOX_BURST_BEATS),
       `${who}'s box goes on a beat line inside the fuse (${box.burstBeat} for slot ${box.actionBeat})`);
     assert(burstAt != null && Math.abs(burstAt - box.burstBeat) < 0.06,
       `${who}'s box opens on that beat and not a frame's drift off it (${burstAt?.toFixed(2)})`);
@@ -1040,10 +1253,11 @@ Audio.songBeat = oldSongBeat;
   // box, and the beat they cannot play does not cost them the combo they built.
   for (const hero of ['lorenzo', 'rusty']) {
     save.load(); save.newSlot(0, 0);
+    const stage = STAGES.find((s) => s.id === 'rhythm-1');
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
     run.enter();
     Audio.sourceBank = run.cabinet.music;
-    const advance = installBeatClock(run, loopBeats);
+    const advance = installBeatClock(run, run.spawner.chart.loopBeats);
     run.relay.current = hero;
     let sawBox = false, broke = false;
     for (let i = 0; i < 60 * 12; i++) {
@@ -1058,6 +1272,18 @@ Audio.songBeat = oldSongBeat;
     }
     assert(!sawBox, `${hero} is never handed a box they cannot open`);
     assert(!broke, `and keeps their combo through the slot the chart wrote for someone else`);
+  }
+  {
+    save.load(); save.newSlot(0, 0);
+    const run = new RunState({ stage: STAGES.find((s) => s.id === 'rhythm-1'), save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+    run.enter();
+    run.rhythmOpeningUntil = null;
+    Audio.sourceBank = run.cabinet.music;
+    const advance = installBeatClock(run, run.spawner.chart.loopBeats);
+    run.relay.current = 'raymn';
+    for (let i = 0; i < 60 * 40; i++) { advance(1 / 60); run.update(1 / 60); }
+    assert(run.spawner.eventInstances.some((e) => e.chartAction === 'ability'),
+      'the rocket fist is dealt rhythm-1\'s box now that it flies far enough on a beat stage');
   }
   Audio.songBeat = oldSongBeat;
   Audio.sourceBank = oldSourceBank;

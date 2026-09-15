@@ -229,7 +229,7 @@ export function drawBeatGround(ctx, run, cam, viewW, opts = {}) {
   const currentBeat = beat + (run.spawner?.beatEpoch || 0);
   // REDUCED FLASHING KEEPS THE MARK AND DROPS THE SWELL. The mark is how the
   // stage is read, so it stays; what goes is the part that moves.
-  const swell = settings?.reducedFlashing ? 1 : beatSwell(currentBeat);
+  const swell = beatSwell(currentBeat);
 
   const gaps = gapSpans(run.obstacles);
   const cuts = (laneCuts || []).map((sp) => [sp.x, sp.x + sp.w]);

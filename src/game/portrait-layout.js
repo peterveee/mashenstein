@@ -4,6 +4,7 @@
 
 import { portraitGeometry, PORTRAIT_CHAT_CARD_MAX_CSS } from '../engine/portrait-geometry.js';
 import { cornerInsetAt } from '../engine/platform.js';
+import { PORTRAIT_CONFIG } from '../engine/portrait-config.js';
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
@@ -19,13 +20,10 @@ export const PORTRAIT_FLOATIE_HERO_HEIGHT = 24;
 // know how tall the drawn hero is: the chatter hangs above the standing hero's
 // crown, so it needs his drawn height.
 //
-// This MUST track the camera's resting zoom in src/dev/portrait-lab.js. It is
-// a literal rather than an import because portrait-layout is DOM-free HUD
-// geometry and has no business importing dev state — but that makes it a
-// second copy, and a stale one floats the chatter a hero-height off. It was
-// 3.75 while the camera came down to 3.5, which sat the cards higher and
-// emptier than they had been. If the resting zoom moves again, move this.
-export const PORTRAIT_FLOATIE_WORLD_ZOOM = 3.5;
+// Keep this HUD measurement tied to the approved camera calibration. The
+// chatter hangs above the standing hero's crown, so a stale zoom floats the
+// cards a hero-height off.
+export const PORTRAIT_FLOATIE_WORLD_ZOOM = PORTRAIT_CONFIG.worldZoom;
 export const PORTRAIT_CHAT_MAX_LINES = 3;
 export const PORTRAIT_CHAT_ROW = 11;
 export const PORTRAIT_CHAT_PADDING = 8;
@@ -158,8 +156,10 @@ export function portraitHudLayout(frame, options = {}) {
   const scale = Number.isFinite(frame?.scale) && frame.scale > 0 ? frame.scale : 1;
   const safe = frame?.safeRect || { left: 0, top: 0, right: 480, bottom: 270 };
   const rhythmStage = options?.rhythmStage === true;
+  const oneHit = options?.oneHit === true;
   const key = [frame?.revision ?? -1, scale, safe.left, safe.top, safe.right, safe.bottom,
-    frame?.height ?? -1, frame?.cornerRadiusCss ?? 0, rhythmStage ? 1 : 0].join('|');
+    frame?.height ?? -1, frame?.cornerRadiusCss ?? 0, rhythmStage ? 1 : 0,
+    oneHit ? 1 : 0].join('|');
   if (key === cachedKey && cachedLayout) return cachedLayout;
   const css = (px) => px / scale;
   const safeWidth = Number.isFinite(safe.width) ? safe.width : Math.max(0, safe.right - safe.left);
@@ -209,7 +209,11 @@ export function portraitHudLayout(frame, options = {}) {
   // below, making the two rows one readable column even when their words have
   // different widths.
   const rhythmH = css(40);
-  const firstObjectiveY = topHudBottom + gap;
+  // One-hit runs add the standing warning below the status pill. Reserve its
+  // row before laying out GOAL, otherwise the warning and the opening GOAL
+  // notice occupy the same portrait band.
+  const oneHitClearance = oneHit ? 16 * panelScale : 0;
+  const firstObjectiveY = topHudBottom + gap + oneHitClearance;
   const rhythmY = rhythmStage
     ? firstObjectiveY
     : firstObjectiveY + goalH + gap + bonusH + css(10);
@@ -249,8 +253,9 @@ export function portraitHudLayout(frame, options = {}) {
   // controls. It is deliberately reserved while empty so a line of dialogue
   // never pushes the ground or camera on the frame it appears.
   const chatterY = portrait.shelfTop + css(12);
-  // Kept as a public diagnostic anchor for the portrait lab. RunState refines
-  // this with its live camera zoom through portraitFloatieBaseY().
+  // Kept as a public diagnostic anchor for portrait layout regressions.
+  // RunState refines this with its live camera zoom through
+  // portraitFloatieBaseY().
   const floatieY = portraitFloatieBaseYFor(frame, {
     gameplayTop: sceneryTop,
     panelScale,

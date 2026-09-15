@@ -106,8 +106,15 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
   && bonusPanelFold({ beatLock: false, bonusT: 0 }) === 1,
 'ordinary stages retain their existing open-then-fold bonus clock');
 
-// Every banked checkpoint stays on the top timeline as a subtle notch contained
+// Every banked checkpoint stays on the timeline as a subtle notch contained
 // entirely within the line. Reaching the second must not replace the first.
+//
+// The line's OWN y is read back from the bar rather than written down here: it
+// has lived on both edges of the frame now (top until the bottom-edge move), and
+// the claim this guards is containment and horizontal placement, not which edge
+// the bar is on. The bar is the first rect drawHud paints, which is what makes
+// fills[0] it — and the bar must also end flush with the frame, or a notch
+// "inside the line" can still be off the picture.
 {
   const real = globalThis.document.createElement('canvas').getContext('2d');
   const fills = [];
@@ -120,10 +127,14 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
     set(t, k, v) { t[k] = v; return true; },
   });
   drawHud(ctx, mkRun(undefined, { distance: 75, checkpointMarkers: [25, 50], snapshot: { camX: 50 } }));
+  const [, barY, , barH] = fills[0].args;
+  assert(barY + barH === real.canvas.height,
+    `the world progress line is flush with the frame's bottom edge (${barY}+${barH} of ${real.canvas.height})`);
   const markers = fills.filter((f) => f.style === 'rgba(16,20,28,0.55)');
-  assert(markers.length === 2 && markers[0].args.join() === '120,0,1,3'
-    && markers[1].args.join() === '240,0,1,3',
-  `the timeline retains two one-pixel checkpoint notches inside its 3px line (${markers.map((m) => m.args).join(' / ') || 'missing'})`);
+  assert(markers.length === 2
+    && markers.every((m) => m.args[1] === barY && m.args[3] === barH && m.args[2] === 1)
+    && markers[0].args[0] === 120 && markers[1].args[0] === 240,
+  `the timeline retains two one-pixel checkpoint notches inside its ${barH}px line (${markers.map((m) => m.args).join(' / ') || 'missing'})`);
 }
 
 // The frame is a third-of-a-pixel hairline, so colour alone cannot carry
@@ -155,11 +166,14 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
 // Stage select shows per-stage and per-cabinet counts; it must render for every
 // cabinet across empty / partial / complete plug states without throwing.
 {
-  const { StageSelectState } = await import('../src/game/hub/index.js');
+  const { StageSelectState, CORRUPTED_MODIFIERS } = await import('../src/game/hub/index.js');
   const { CABINETS } = await import('../src/data/cabinets.js');
   const { stagesForCabinet } = await import('../src/data/stages.js');
   const { totalPlugs } = await import('../src/game/progress.js');
   const ctx = globalThis.document.createElement('canvas').getContext('2d');
+
+  assert(CORRUPTED_MODIFIERS.map((m) => m.id).join(',') === 'maxspeed,randomswap',
+    'corrupted mode offers only playable modifiers');
 
   const fill = (kind) => {
     const plugs = {};

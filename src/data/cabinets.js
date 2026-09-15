@@ -140,6 +140,7 @@ const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
   cells: pattern.cells.map((cell) => {
     if (cell.t === 'cactus') return { ...cell, t: 'snowman' };
     if (cell.t === 'cactusBig') return { ...cell, t: 'snowmanBig' };
+    if (cell.t === 'icicle') return { ...cell, t: 'bearTrap' };
     return cell;
   }),
 }));
@@ -526,7 +527,7 @@ export const CABINETS = [
   {
     id: 'frost', name: 'FROST FORTRESS', act: 2, style: 'watercolor',
     genre: 'ICE ADVENTURE', unlockPlugs: 12, speedBonus: 0.2,
-    mechanic: 'ice', // slidey landings + icicles + frozen switches
+    mechanic: 'ice', // slidey landings + buried bear traps + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',
     // Frozen till under the ice, not the default warm brown — the underside of
@@ -557,26 +558,35 @@ export const CABINETS = [
     music: FROST.bank,
     patterns: [
       ...ICE_PATTERNS,
-      P(0, [{ t: 'icicle', dx: 0 }]),
-      P(1, [{ t: 'icicle', dx: 0 }, { t: 'icicle', dx: 60 }]),
+      P(0, [{ t: 'bearTrap', dx: 0 }]),
+      P(1, [{ t: 'bearTrap', dx: 0 }, { t: 'bearTrap', dx: 60 }]),
       P(1, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 60 }]), // hit switch -> bridge
-      P(2, [{ t: 'icicle', dx: 0 }, { t: 'snowman', dx: 70 }, coinArc(120)]),
-      P(2, [{ t: 'gap', dx: 0, w: 64 }, { t: 'icicle', dx: 120 }]),
+      P(2, [{ t: 'bearTrap', dx: 0 }, { t: 'snowman', dx: 70 }, coinArc(120)]),
+      P(2, [{ t: 'gap', dx: 0, w: 64 }, { t: 'bearTrap', dx: 120 }]),
       // The heating is unplugged (see the taunt), so the campfire is the one
       // warm thing on the ice — same argument as Corporate's bin fire, and it
       // breaks up a lane that was 60% snowman-or-crate at stage 1.
       P(0, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
-      // Ice spikes and a ski gate: the floor read and the slide read, both of
-      // which this cabinet had none of (its whole slide game was one shared
-      // drone row).
+      // Ice spikes for the floor read, which this cabinet had none of.
       P(1, [{ t: 'popSpikes', dx: 0 }]),
-      P(1, [{ t: 'boomBarrier', dx: 0 }]),
-      P(2, [{ t: 'snowmanBig', dx: 0 }, { t: 'icicle', dx: 90 }]),
-      P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'snowman', dx: 120 }]),
+      // THE SKI GATE IS GONE FROM THE ICE. Both of Frost's boom barriers are
+      // bear traps now: the trap is this cabinet's own hazard, it snaps, it can
+      // be shot, and a striped gate borrowed from the road cabinets was the one
+      // thing in the bank that could have come from anywhere. The barrier still
+      // travels everywhere else (see tests/standing-hazards.js) — it just does
+      // not take a slot on the ice any more.
+      //
+      // The bare cell carries a coin arc rather than standing alone, because a
+      // lone tier-1 bear trap would be the tier-0 bare cell above wearing a
+      // different number: the spawner takes every pattern at or under the cap,
+      // so it would only have doubled that one's weight in the bank.
+      P(1, [{ t: 'bearTrap', dx: 0 }, coinArc(60)]),
+      P(2, [{ t: 'snowmanBig', dx: 0 }, { t: 'bearTrap', dx: 90 }]),
+      P(2, [{ t: 'bearTrap', dx: 0 }, { t: 'snowman', dx: 120 }]),
       // The switch's second shape — the frozen-switch mechanic lived in exactly
-      // ONE pattern game-wide before this. A wider hole and an icicle past the
+      // ONE pattern game-wide before this. A wider hole and a bear trap past the
       // far lip, so making the bridge is the start of the read, not the end.
-      P(2, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 72 }, { t: 'icicle', dx: 190 }]),
+      P(2, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 72 }, { t: 'bearTrap', dx: 190 }]),
     ],
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
   },

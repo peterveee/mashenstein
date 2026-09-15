@@ -7,14 +7,14 @@ import {
 } from '../src/engine/renderer.js';
 import { frameForViewport, cameraForFrame } from '../src/engine/frame.js';
 import { PortraitInputSurface, portraitTouchLayout } from '../src/engine/portrait-input.js';
-import { PORTRAIT_LAB_DEFAULTS } from '../src/dev/portrait-lab.js';
+import { PORTRAIT_CONFIG } from '../src/engine/portrait-config.js';
 import { drawLayoutDiagnostic, layoutDiagnosticEnabled, toggleLayoutDiagnostic } from '../src/game/layout-diagnostic.js';
 import { drawRunChrome } from '../src/game/touchchrome.js';
 
 const REFERENCE = typeof window !== 'undefined' ? window.__PORTRAIT_REFERENCE__ : '';
 const FRAME_MODE = 'phone-portrait';
 const CURRENT_ZOOM = 2.2;
-const CALIBRATION_ZOOM = PORTRAIT_LAB_DEFAULTS.worldZoom;
+const CALIBRATION_ZOOM = PORTRAIT_CONFIG.worldZoom;
 const TARGET_FACTOR = 1.0625;
 
 const SCENES = {
@@ -206,19 +206,19 @@ async function bootEmbed() {
   const chosen = choiceConfig(p);
   const previewConfig = {
     worldZoom: chosen.zoom,
-    heroAnchorX: numberParam(p, 'heroX', PORTRAIT_LAB_DEFAULTS.heroAnchorX),
-    backgroundZoom: numberParam(p, 'bgZoom', PORTRAIT_LAB_DEFAULTS.backgroundZoom),
-    cloudOffsetY: numberParam(p, 'cloudOffset', PORTRAIT_LAB_DEFAULTS.cloudOffsetY),
-    sunOffsetY: numberParam(p, 'sunOffset', PORTRAIT_LAB_DEFAULTS.sunOffsetY),
-    groundAnchorRatio: numberParam(p, 'ground', PORTRAIT_LAB_DEFAULTS.groundAnchorRatio),
-    sceneryOffsetY: numberParam(p, 'sceneryOffset', PORTRAIT_LAB_DEFAULTS.sceneryOffsetY),
+    heroAnchorX: numberParam(p, 'heroX', PORTRAIT_CONFIG.heroAnchorX),
+    backgroundZoom: numberParam(p, 'bgZoom', PORTRAIT_CONFIG.backgroundZoom),
+    cloudOffsetY: numberParam(p, 'cloudOffset', PORTRAIT_CONFIG.cloudOffsetY),
+    sunOffsetY: numberParam(p, 'sunOffset', PORTRAIT_CONFIG.sunOffsetY),
+    groundAnchorRatio: numberParam(p, 'ground', PORTRAIT_CONFIG.groundAnchorRatio),
+    sceneryOffsetY: numberParam(p, 'sceneryOffset', PORTRAIT_CONFIG.sceneryOffsetY),
   };
   const safe = safeForPreview(p);
-  // The lab default is only the DEFAULT request. A cabinet's authored
+  // The production default is only the DEFAULT request. A cabinet's authored
   // composition profile ships its own ground ratio (plumber is 0.715), and a
   // review pinned to 0.80 is reviewing a composition the game never draws, so
   // the ratio is a parameter here rather than a constant.
-  const groundAnchorRatio = numberParam(p, 'ground', PORTRAIT_LAB_DEFAULTS.groundAnchorRatio);
+  const groundAnchorRatio = numberParam(p, 'ground', PORTRAIT_CONFIG.groundAnchorRatio);
   let frame = frameForViewport({
     mode: chosen.choice.mode, viewportWidth: requested.width, viewportHeight: requested.height,
     safeInsets: safe, groundAnchorRatio, revision: 1,
@@ -243,7 +243,6 @@ async function bootEmbed() {
   save.slotIndex = 0;
   save.settings.muted = true;
   save.settings.volumes.master = 0;
-  save.settings.fancyFx = false;
   const stage = stages.STAGE_BY_ID[scene.stage];
   const cabinet = cabinets.CABINET_BY_ID[stage.cabinet];
 
@@ -254,8 +253,8 @@ async function bootEmbed() {
   let run = new runMod.RunState({
     stage, cabinet, seed: scene.seed, save, demo: true, devInvuln: true,
     devStartPercent: scene.startAt, skipRunIn: true, announceBench: false,
-    initialHeroId: 'lorenzo', portraitLabRun: chosen.choice.mode === FRAME_MODE,
-    portraitPreview: true, devPortraitLab: previewConfig,
+    initialHeroId: 'lorenzo', portraitPreview: true,
+    portraitConfig: previewConfig,
   });
   run.enter();
   // The one warm tick lets authored scripted pieces and the ordinary spawner
@@ -311,8 +310,8 @@ async function bootEmbed() {
   const render = () => {
     run.camZoom = chosen.zoom;
     run.prevCamZoom = chosen.zoom;
-    // The embedded review frame uses the same measured low/high fit as a live
-    // Portrait Lab run. Landscape and the comparison baseline keep their
+    // The embedded review frame uses the same measured low/high fit as the
+    // portrait preview. Landscape and the comparison baseline keep their
     // original zero-pan composition; portrait scenes carry the stable level
     // correction computed after the routes were authored.
     if (chosen.choice.mode === FRAME_MODE && run.portraitFrameFit) {
@@ -380,19 +379,19 @@ async function bootEmbed() {
     if (msg.action === 'step') { paused = true; run.update(1 / 60); }
     if (msg.action === 'background-zoom') {
       const next = Number(msg.value);
-      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, backgroundZoom: next });
+      if (Number.isFinite(next)) run.setPortraitPreviewConfig({ ...run.portraitConfig(), backgroundZoom: next });
     }
     if (msg.action === 'hero-anchor') {
       const next = Number(msg.value);
-      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, heroAnchorX: next });
+      if (Number.isFinite(next)) run.setPortraitPreviewConfig({ ...run.portraitConfig(), heroAnchorX: next });
     }
     if (msg.action === 'cloud-offset') {
       const next = Number(msg.value);
-      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, cloudOffsetY: next });
+      if (Number.isFinite(next)) run.setPortraitPreviewConfig({ ...run.portraitConfig(), cloudOffsetY: next });
     }
     if (msg.action === 'sun-offset') {
       const next = Number(msg.value);
-      if (Number.isFinite(next)) run.setDevPortraitLabConfig({ ...run.devPortraitLab, sunOffsetY: next });
+      if (Number.isFinite(next)) run.setPortraitPreviewConfig({ ...run.portraitConfig(), sunOffsetY: next });
     }
     render();
   });

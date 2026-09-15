@@ -54,13 +54,25 @@ assert(bushSamples.every((prop) => ridgeDelta(prop, portraitA.includes(prop) ? 0
 assert(houseSamples.length === 1 && houseSamples.every((prop) => ridgeDelta(prop, 4500) >= 29),
   'house landmarks sit well below the near-hill crest');
 
+const flowerCameraSamples = [-1200, -73.5, 0.25, 37.5, 4500, 10000];
+let flowersSeen = 0;
+for (const camX of flowerCameraSamples) {
+  const placements = __testing.plumberSceneryPlacements(ctx, camX, GROUND_Y);
+  const trees = __testing.plumberNearTreeCenters(ctx, camX);
+  const flowers = placements.filter((prop) => prop.kind === 'flower');
+  flowersSeen += flowers.length;
+  assert(flowers.every((prop) => !__testing.plumberFlowerOverlapsTree(trees, prop.x, prop.scale)),
+    `flowers keep clear of baked ridge trees at camera ${camX}`);
+}
+assert(flowersSeen > 0, 'flower accents remain after tree-clearance filtering');
+
 const wrapped = __testing.plumberSceneryPlacements(ctx, 122 / (0.35 * 2), GROUND_Y);
 assert(wrapped.length > 0 && wrapped.every((prop) => Number.isFinite(prop.baseY)),
   'scenery remains grounded after one complete placement-cell camera wrap');
 
 const plumber = CABINETS.find((cab) => cab.id === 'plumber');
 const speed = CABINETS.find((cab) => cab.id === 'speed');
-const pack = getStylePack('pixel', { paperCutout: false, reducedMotion: true });
+const pack = getStylePack('pixel', { paperCutout: false });
 assert(__testing.plumberLandscapeSceneryOffset({ portrait: false })
   === -__testing.PLUMBER_LANDSCAPE_SCENERY_LIFT
   && __testing.plumberLandscapeSceneryOffset({ portrait: true }) === 0,
@@ -69,9 +81,9 @@ pack.bg(ctx, 2, 0.25, plumber, 1000, null, 0, {
   cameraShiftY: 0,
   sceneryLayout: null,
 });
-assert(true, 'Plumber background draw path completes with scenery sprites in reduced motion');
+assert(true, 'Plumber background draw path completes with scenery sprites');
 
-const paperPack = getStylePack('pixel', { reducedMotion: false });
+const paperPack = getStylePack('pixel', {});
 paperPack.bg(ctx, 1.4, 2.5, plumber, 1000, null, 0, {});
 assert(true, 'Plumber paper scenery sprites bake and draw without a runtime error');
 paperPack.bg(ctx, 1.4, 3000, plumber, 1000, null, 0, {});

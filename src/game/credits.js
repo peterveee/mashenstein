@@ -361,7 +361,7 @@ function drawFlecks(ctx, t, s = FLECK_IS) {
 
 const wrapY = (v) => ((v % H) + H) % H;
 
-function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
+function drawSky(ctx, stars, dust, t, scroll, tune = {}) {
   ctx.fillStyle = '#05060f';
   ctx.fillRect(0, 0, W, H);
 
@@ -370,10 +370,8 @@ function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
   // allocation-free readout the jukebox visualisers use, and it degrades to a
   // deterministic fallback with no Web Audio at all.
   let pulse = 0, bass = 0;
-  if (!reduced) {
-    const a = Audio.musicAnalysis ? Audio.musicAnalysis() : null;
-    if (a) { pulse = a.beatPulse || 0; bass = a.bass || 0; }
-  }
+  const a = Audio.musicAnalysis ? Audio.musicAnalysis() : null;
+  if (a) { pulse = a.beatPulse || 0; bass = a.bass || 0; }
 
   const neb = (cx, cy, r, ink, alpha) => {
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -382,7 +380,7 @@ function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   };
-  const drift = reduced ? 0 : Math.sin(t * 0.06) * 26;
+  const drift = Math.sin(t * 0.06) * 26;
   neb(120 + drift, wrapY(60 - scroll * 0.02), 190, '#3a2a6e', 0.30 + bass * 0.12);
   neb(370 - drift, wrapY(200 - scroll * 0.03), 210, '#123a58', 0.26 + bass * 0.10);
 
@@ -404,7 +402,7 @@ function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
   ctx.fill();
   for (const s of stars) {
     const y = wrapY(s.y - scroll * s.depth * STAR_PARALLAX);
-    const tw = reduced ? 0.8 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.rate + s.phase));
+    const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.rate + s.phase));
     const boost = 1 + pulse * 0.45 * s.depth;
     ctx.fillStyle = withAlpha(s.ink, Math.min(1, (0.16 + s.depth * 0.34) * tw * boost));
     ctx.beginPath();
@@ -413,13 +411,8 @@ function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
   }
   ctx.restore();
 
-  // Motion is the whole point of a comet, so reduced motion simply gets none.
-  // The flecks are smaller, faster and far more frequent, which makes them the
-  // stronger of the two arguments for that setting, not the weaker.
-  if (!reduced) {
-    if (tune.comet !== false) drawComet(ctx, t);
-    if (tune.flecks !== null) drawFlecks(ctx, t, tune.flecks || FLECK_IS);
-  }
+  if (tune.comet !== false) drawComet(ctx, t);
+  if (tune.flecks !== null) drawFlecks(ctx, t, tune.flecks || FLECK_IS);
 
   // The scrim is what makes the crawl readable over all of the above. Without
   // it the brightest stars sit at the same value as DIM body text.
@@ -436,7 +429,7 @@ function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
 export function drawCreditsSky(ctx, opts = {}) {
   const stars = opts.stars || makeStars(STAR_COUNT);
   const dust = opts.dust === null ? [] : (opts.dust || makeDust(DUST_COUNT));
-  drawSky(ctx, stars, dust, opts.t || 0, (opts.t || 0) * SCROLL_SPEED, !!opts.reduced, opts.tune || {});
+  drawSky(ctx, stars, dust, opts.t || 0, (opts.t || 0) * SCROLL_SPEED, opts.tune || {});
 }
 export { makeStars, makeDust, STAR_COUNT, DUST_COUNT };
 
@@ -760,7 +753,7 @@ const SCRIPT = [
   {
     k: 'para',
     text: 'MASHENSTEIN, THE UNPLUGGENING, THE SOCKET, PLUGS, PRESENTATION ERROR, DOLORES\' REPAIR COUNTER, '
-      + 'and GARY\'S LEGALLY DISTINCT PAWN SHOP are trademarks of Circuit & Splice Interactive. All other '
+      + 'and GARY\'S LEGAL PAWN SHOP are trademarks of Circuit & Splice Interactive. All other '
       + 'trademarks are property of their respective, occasionally litigious, owners. Don K. Eggshell, PhD is a '
       + 'fictional character; any resemblance to a real egg, ape, or holder of a doctorate is coincidental and has '
       + 'already been disputed via form. No plumbers, hedgehogs, gods of war, or vacuum cleaners were harmed in the '
@@ -1147,9 +1140,7 @@ export class CreditsState {
   // visualiser's titles are up.
   static hidesFps = true;
 
-  // settings is optional: the sky only reads reducedMotion off it, and a caller
-  // that has no settings to hand still gets a (moving) starfield.
-  constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
+  constructor({ onDone }) { this.onDone = onDone; }
   enter() {
     this.t = 0;
     this.atRest = false;
@@ -1180,7 +1171,6 @@ export class CreditsState {
       .map((r) => (HANDOFF_SWAP_AT * (H + HANDOFF_H) + r.y) / SCROLL_SPEED
         - portalCueFlashAt(PORTAL_RELAY_CREDITS));
     this.scrubHeldT = 0;
-    this.reduced = !!this.settings.reducedMotion;
     this.stars = makeStars(STAR_COUNT);
     this.dust = makeDust(DUST_COUNT);
     // Whole form, whatever the song says. A theme may declare an intro and a loop for
@@ -1251,7 +1241,7 @@ export class CreditsState {
     const scrollY = H - this.t * SCROLL_SPEED;
     // Full-bleed: the sky covers the whole canvas, safe area included. Only the
     // things you must be able to READ get inset.
-    drawSky(ctx, this.stars, this.dust, this.t, this.t * SCROLL_SPEED, this.reduced);
+    drawSky(ctx, this.stars, this.dust, this.t, this.t * SCROLL_SPEED);
     for (const row of this.script.rows) {
       const y = scrollY + row.y;
       // Cull on the row's own extent. The 20u pad covers the few painters that

@@ -10,7 +10,7 @@
 // diff. animals.js imports nothing back, so there is no cycle.
 import {
   ANIMAL_PAINTERS, ANIMAL_NAMES, ANIMAL_FRAMES, ANIMAL_FPS, ANIMAL_TALL, ANIMAL_DETAIL,
-  ANIMAL_VISUAL,
+  ANIMAL_VISUAL, FINISH_DOG_PAINTERS,
 } from './animals.js';
 
 export const OUTLINE = 'rgba(26,16,40,0.34)';
@@ -265,15 +265,15 @@ const TROPHY_HANDLE_WEIGHT = 0.07;
 //
 // `hzPhase` is the whole convention: it turns a frame index into 0..TAU across
 // the ring, and everything downstream multiplies it by whole numbers only.
-const HZ_TAU = Math.PI * 2;
-const HZ_INK = '#171522';
+export const HZ_TAU = Math.PI * 2;
+export const HZ_INK = '#171522';
 // Outer, mid, core, edge-ink. Three nested tongues rather than a gradient: at
 // 13px a gradient is a beige smudge, and separate value steps still read.
 const HZ_FIRE = ['#f2621d', '#ffb02e', '#ffef9e', '#6d2410'];
 
-function hzPhase(frame, frames) { return ((frame % frames) + frames) % frames / frames * HZ_TAU; }
+export function hzPhase(frame, frames) { return ((frame % frames) + frames) % frames / frames * HZ_TAU; }
 
-function hzPath(ctx, fill, stroke, width, fn) {
+export function hzPath(ctx, fill, stroke, width, fn) {
   ctx.beginPath();
   fn(ctx);
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
@@ -291,11 +291,11 @@ function hzRR(c, x, y, w, h, r) {
   c.lineTo(x + q, y + h); c.quadraticCurveTo(x, y + h, x, y + h - q);
   c.lineTo(x, y + q); c.quadraticCurveTo(x, y, x + q, y); c.closePath();
 }
-function hzBox(ctx, x, y, w, h, r, fill, ink = HZ_INK, width = 0.6) {
+export function hzBox(ctx, x, y, w, h, r, fill, ink = HZ_INK, width = 0.6) {
   hzPath(ctx, fill, ink, width, (c) => hzRR(c, x, y, w, h, r));
 }
-function hzLine(ctx, color, width, fn) { hzPath(ctx, null, color, width, fn); }
-function hzDot(ctx, x, y, r, fill, ink = null, width = 0.5) {
+export function hzLine(ctx, color, width, fn) { hzPath(ctx, null, color, width, fn); }
+export function hzDot(ctx, x, y, r, fill, ink = null, width = 0.5) {
   hzPath(ctx, fill, ink, width, (c) => c.arc(x, y, Math.max(0.05, r), 0, HZ_TAU));
 }
 function hzTri(ctx, x, y, halfW, height, fill, ink = HZ_INK, width = 0.5) {
@@ -303,6 +303,159 @@ function hzTri(ctx, x, y, halfW, height, fill, ink = HZ_INK, width = 0.5) {
     c.moveTo(x - halfW, y); c.lineTo(x, y - height); c.lineTo(x + halfW, y); c.closePath();
   });
 }
+// ------------------------------------------------------------ the bear trap
+// One drawer, shared by the production painter above and by the gallery
+// bake-off in src/dev, so a candidate and the shipping trap cannot be drawn by
+// different code and then compared.
+//
+// A jaw is built FROM AN ANGLE rather than drawn once and rotated: the tip then
+// travels horizontally as the trap breathes or snaps, which is what a mouth
+// closing looks like. Rotating the finished jaw would shear the staircase off
+// the pixel grid every frame, and a staircase that is not square is a wobble.
+export const TRAP_IDLE_FRAMES = 8;
+// The snap, in order, and every entry a DIFFERENT pose: a held frame that
+// repeats the one before it is a shorter animation wearing a longer cache, and
+// the prop tests say so out loud. 88 degrees is an overshoot — the jaws pass
+// the resting angle and come back, which is the whole difference between a
+// mechanism firing and a shape changing. The last entry is where a sprung trap
+// stays for the rest of the lane.
+//
+// The jaws SHORTEN as they close, and that is not decoration. Closing on angle
+// alone drove the pair to near-vertical, where the whole object is a run of
+// one pixel: at true size a sprung trap simply vanished off the road, which is
+// the opposite of the point — the player has to be able to see what they spent
+// the round on. Dropping the rise with the angle lands it as a squat meshed
+// lump sitting on the full-width sill instead.
+export const TRAP_SNAP = Object.freeze([
+  { angle: 62, rise: 0.92, flash: false },
+  { angle: 70, rise: 0.72, flash: false },
+  { angle: 78, rise: 0.55, flash: true },
+  { angle: 68, rise: 0.60, flash: false },
+  { angle: 70, rise: 0.58, flash: false },
+]);
+export const TRAP_FRAMES = TRAP_IDLE_FRAMES + TRAP_SNAP.length;
+// How long the six snap frames take. Faster than the 8fps idle clock by a
+// factor of three: the snap has to arrive inside the same beat as the hit.
+export const TRAP_SNAP_T = 0.22;
+
+// The warning colour. RED is the one hue the Frost road does not otherwise
+// use, so it says STOP without the player having to learn it first — and it is
+// the DEEP red rather than the hot one because on pale blue snow a hot red is
+// almost pure hue with nothing holding it down. Deep keeps its contrast
+// against the steel it sits in instead of against the sky behind it.
+const TRAP_RED = '#b0271b';
+const TRAP_RED_INK = '#3d0f09';
+// The sliding glint is warmed to the same family, so the red reads as a system
+// running over the object rather than one dot stuck to it — at 16x8 a single
+// coloured pixel with nothing answering it reads as dirt.
+const TRAP_RED_GLINT = '#ff9a7a';
+
+// THE LIVE SHAPE, settled by round two of the bake-off: 45-degree straight
+// jaws, teeth cut as a square staircase, hinge disc, buried base bar, no paw,
+// plus the reference icon's hatched ratchet strut, a deep red hinge and a warm
+// glint to match it. The strut costs the V some symmetry and buys the one
+// thing the symmetric card could not say — that the trap is SET, not merely
+// open. Everything a painter would otherwise hard-code lives here.
+export const TRAP_SHAPE = Object.freeze({
+  angle: 45, teeth: 3, bar: 0.24, tip: 'point', weight: 0.024,
+  hingeY: 0.72, rise: 0.64, breathe: 2.2, ratchet: true,
+  glint: TRAP_RED_GLINT,
+  hinge: { face: TRAP_RED, eye: TRAP_RED_INK, r: 0.095 },
+});
+
+const TRAP_INK = '#202d39';
+const TRAP_STEEL = '#9db7c7';
+const TRAP_STEEL_HI = '#dcecf3';
+const trapLw = (w, k) => Math.max(0.12, w * k);
+
+function trapJaw(ctx, w, h, side, o) {
+  const { hx, hy, rise, run, tk, steel, teeth, tip, ink } = o;
+  const sx = (v) => hx + side * v;
+  hzPath(ctx, steel, ink, trapLw(w, o.weight), (c) => {
+    const dx = run / teeth, dy = rise / teeth;
+    let x = 0, y = hy;
+    c.moveTo(sx(0), hy);
+    for (let i = 0; i < teeth; i++) {
+      y -= dy; c.lineTo(sx(x), y);   // the tooth's face, pointing into the mouth
+      x += dx; c.lineTo(sx(x), y);   // the flat of the step
+    }
+    if (tip === 'point') {
+      c.lineTo(sx(x + tk * 0.62), y + tk * 0.46);
+      c.lineTo(sx(x), y + tk);
+    } else {
+      c.lineTo(sx(x), y + tk);
+    }
+    c.lineTo(sx(0), hy + tk);
+    c.closePath();
+  });
+}
+
+// The pair, plus the glint. Returns the hinge point and the jaw reach so the
+// caller can hang a hinge, a strut or a flash off the same geometry.
+export function trapJaws(ctx, w, h, frame, opts = {}) {
+  const deg = (opts.angle ?? 45) + Math.sin(hzPhase(frame, 8)) * (opts.breathe ?? 2.2);
+  const hx = w * 0.5;
+  const hy = h * (opts.hingeY ?? 0.72);
+  const rise = h * (opts.rise ?? 0.64);
+  const run = rise / Math.tan(deg * Math.PI / 180);
+  const o = {
+    hx, hy, rise, run,
+    tk: h * (opts.bar ?? 0.24),
+    steel: opts.steel ?? TRAP_STEEL,
+    ink: opts.ink ?? TRAP_INK,
+    teeth: opts.teeth ?? 3,
+    tip: opts.tip ?? 'point',
+    weight: opts.weight ?? 0.024,
+  };
+  trapJaw(ctx, w, h, -1, o);
+  trapJaw(ctx, w, h, 1, o);
+  // A glint sliding up one bar: the only mark that moves ACROSS frames rather
+  // than with them, so the object never looks paused. A shut trap has none.
+  const glint = opts.glint === undefined ? TRAP_STEEL_HI : opts.glint;
+  if (glint) {
+    const k = (((frame % 8) + 8) % 8) / 7;
+    hzLine(ctx, glint, trapLw(w, 0.014), (c) => {
+      c.moveTo(hx - run * k, hy - rise * k + h * 0.05);
+      c.lineTo(hx - run * (k + 0.16), hy - rise * (k + 0.16) + h * 0.05);
+    });
+  }
+  return { hx, hy, run, rise };
+}
+
+// Drawn last so both jaws tuck under it.
+export function trapHinge(ctx, w, h, hx, hy, opts = {}) {
+  const r = w * (opts.r ?? 0.085);
+  hzDot(ctx, hx, hy, r, opts.face ?? '#b7c9d4', TRAP_INK, trapLw(w, 0.02));
+  hzDot(ctx, hx, hy, r * 0.38, opts.eye ?? '#455b6b', null, 0);
+}
+
+// Most of the bar is under the ground line by design; what shows is a dark sill
+// that stops the jaws floating. A SPRUNG trap raises it: the closed jaws are a
+// small lump and nothing else, and a 16px bar of spent machinery lying in the
+// snow is what tells the player at a glance which traps they have already
+// dealt with — without it the object all but leaves the road.
+export function trapBaseBar(ctx, w, h, fill = '#455b6b', top = 0.79) {
+  hzBox(ctx, w * 0.03, h * top, w * 0.94, h * (1 - top), h * 0.05, fill, TRAP_INK, trapLw(w, 0.022));
+}
+
+// The reference icon's ratchet: a hatched strut down from the right jaw.
+export function trapRatchet(ctx, w, h, hx, hy, run, rise, steel = TRAP_STEEL) {
+  const x0 = hx + run * 0.55, y0 = hy - rise * 0.55;
+  const x1 = w * 0.94, y1 = h * 0.82;
+  hzPath(ctx, steel, TRAP_INK, trapLw(w, 0.02), (c) => {
+    c.moveTo(x0, y0); c.lineTo(x1, y1);
+    c.lineTo(x1 - w * 0.06, y1); c.lineTo(x0 - w * 0.06, y0);
+    c.closePath();
+  });
+  for (let i = 1; i < 4; i++) {
+    const t = i / 4;
+    hzLine(ctx, TRAP_INK, trapLw(w, 0.014), (c) => {
+      c.moveTo(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+      c.lineTo(x0 - w * 0.06 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+    });
+  }
+}
+
 // The warm pool a fire throws on the ground. Without it the flame floats: it is
 // the brightest thing in the tile and nothing else on screen acknowledges it.
 function hzGlow(ctx, x, y, rx, ry, color, alpha) {
@@ -427,8 +580,9 @@ const DRONE_EYE_FRAMES = 16;
 // its aliases take detail 3 — at its 22-unit box the detail-2 raster is
 // fractionally MAGNIFIED on the top density rung, which is the case the
 // pack dogs never hit and the whole reason the exception exists. Everything
-// else — painter, frames, gait rate, stature, overdraw, self-outline — is the
-// base dog's, read from the same tables so the two can never drift.
+// else — body painter, frames, gait rate, stature, overdraw, self-outline — is
+// the base dog's, read from the same tables so the two can never drift. The
+// finish painters add only the long tail requested for the showcase dog.
 const FINISH_DOG_ALIASES = {
   finishSnarler: 'dogSnarler', finishBruiser: 'dogBruiser', finishFeral: 'dogFeral',
 };
@@ -1278,7 +1432,7 @@ export function eggshellBalloonArt(ctx, w, h, o = {}) {
 
 export const PROP_PAINTERS = {
   ...ANIMAL_PAINTERS,
-  ...finishDogTable(ANIMAL_PAINTERS),
+  ...FINISH_DOG_PAINTERS,
   // --- ground hazards ---------------------------------------------------
   // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
   // bristling with pale spines. This slot cycled through shrub drawings and a
@@ -1352,11 +1506,9 @@ export const PROP_PAINTERS = {
   },
   cactusBig(ctx, w, h, frame = 0) { PROP_PAINTERS.cactus(ctx, w, h, frame); },
   // --- standing hazards, ported from the ten-family bake-off ------------
-  // These six came out of the hazard sheet in the gallery (see the section
-  // "Stationary hazards"). What changed on the way in is the ANIMATION, not the
-  // drawing: the gallery painters run on a wall clock and are free to have a
-  // safe window, and a shipped prop is rasterized into a fixed ring of frames
-  // and has to be dangerous in every one of them.
+  // The gallery-derived hazards below use the same fixed-ring animation rule as
+  // the Frost trap: a shipped prop is dangerous in every cached frame, rather
+  // than having a hidden safe window inside its animation.
   //
   // So each cycle here is authored on a normalized phase — `p` runs 0..TAU
   // across PROP_FRAMES — and every wobble inside it is an INTEGER multiple of
@@ -1377,10 +1529,52 @@ export const PROP_PAINTERS = {
   // runs past the bottom of the box and is cut flat by the ground line and the
   // plinth is gone, so the plate has no visible foot at all. The BURYING is
   // done by the RENDERER, not here (see BED_SINK and the `bedded` branch in
-  // draw.js): the art is seated 4px below the ground line and clipped at it,
+  // draw.js): the art is seated 2px below the ground line and clipped at it,
   // so only the top sliver of the plate face survives above the road — which
   // is why the chevron stripe rides directly under the top edge below, not
   // partway down the face where it was authored.
+  // THE FROST BEAR TRAP. Two straight jaws at 45 degrees meeting in a V, the
+  // teeth cut into the bar as a square staircase rather than spiked onto it, a
+  // hinge disc where they converge, and a base bar that buries under the road.
+  //
+  // The curved end-hinged clam this replaces died on the only test that counts:
+  // at 16x8 its two arcs merged into one grey lump. A staircase is still a
+  // staircase at two pixels a step, which is why the teeth ARE the jaw line
+  // here instead of decoration hung off it.
+  //
+  // FOURTEEN FRAMES, in two halves that mean different things:
+  //   0-7   the idle ring. The pair breathes about two degrees and a cold glint
+  //         runs one bar. Small on purpose: no frame may look safer to touch.
+  //   8-13  THE SNAP, played once when a shot springs the trap and then held on
+  //         13 forever. It is not on the fps clock — draw.js drives it from the
+  //         entity's own timer (TRAP_SNAP_T), because a snap that waits for the
+  //         next 8fps tick lands after the thing that caused it.
+  //
+  // The shape is under TRAP_SHAPE so a bake-off candidate can be made live by
+  // editing one literal instead of a painter.
+  bearTrap(ctx, w, h, frame = 0) {
+    const f = ((frame % TRAP_FRAMES) + TRAP_FRAMES) % TRAP_FRAMES;
+    const snap = f >= TRAP_IDLE_FRAMES ? TRAP_SNAP[f - TRAP_IDLE_FRAMES] : null;
+    trapBaseBar(ctx, w, h, snap ? '#3b4f5d' : '#455b6b', snap ? 0.63 : 0.79);
+    const g = trapJaws(ctx, w, h, f, snap
+      ? { ...TRAP_SHAPE, angle: snap.angle, breathe: 0, glint: null, rise: TRAP_SHAPE.rise * snap.rise }
+      : TRAP_SHAPE);
+    // The strut holds the jaws open; once they are shut it has let go, so it
+    // only draws on the idle ring. It is drawn before the hinge so both it and
+    // the jaws tuck under the disc.
+    if (!snap && TRAP_SHAPE.ratchet) trapRatchet(ctx, w, h, g.hx, g.hy, g.run, g.rise);
+    // A sprung trap has shut on nothing. The white bloom on the meshed teeth is
+    // the one frame the player is allowed to read as "that is over".
+    if (snap && snap.flash) {
+      hzDot(ctx, g.hx, g.hy - g.rise * 0.9, w * 0.11, 'rgba(244,253,255,.85)');
+    }
+    // A sprung trap has nothing left to warn anyone about: the red mark goes
+    // grey the moment it fires, which is how the lane says which traps are
+    // spent. The disc keeps its radius so it is the COLOUR that changed.
+    trapHinge(ctx, w, h, g.hx, g.hy, snap
+      ? { face: '#7d93a1', eye: '#2b3b47', r: TRAP_SHAPE.hinge.r }
+      : TRAP_SHAPE.hinge);
+  },
   popSpikes(ctx, w, h, frame = 0) {
     const f = ((frame % 8) + 8) % 8;
     const p = hzPhase(frame, 8);
@@ -1518,7 +1712,7 @@ export const PROP_PAINTERS = {
     ctx.rect(0, -h, w, slotY + h);
     ctx.clip();
     // Centred just below the slot with a big radius, so roughly the top half of
-    // the disc stands above the plate. The first pass sank it: 4px of white
+    // the disc stands above the plate. The first pass sank it: 2px of white
     // bump over a yellow-and-black plinth is a lump, not a blade.
     hzBlade(ctx, w * 0.5, slotY + h * 0.12, Math.min(w * 0.42, h * 0.62), (f / 8) * (HZ_TAU / 12), 12);
     ctx.restore();
@@ -2734,9 +2928,8 @@ export const PROP_PAINTERS = {
   // the wing works — a whole bird bouncing inside its own sprite fights the
   // entity bob that is already moving it.
   //
-  // Frame 0 is the neutral pose, identical to the old static art, because that
-  // is what reduced motion holds and what every off-lane caller (debris, the
-  // field guide, the gallery) draws.
+  // Frame 0 is the neutral pose, identical to the old static art, so every
+  // off-lane caller (debris, the field guide, the gallery) has a stable default.
   //
   // It faces LEFT. The hero runs left to right, so everything in the lane
   // travels right to left across the screen — a bird with its beak on the
@@ -4570,6 +4763,9 @@ export const PROP_FRAMES = {
   // frame boundary. The green cactus takes the red one's six, because it is a
   // skin of it and the two sway together in a row.
   popSpikes: 8, campfire: 8, fireBarrel: 8, brazier: 8, floorSaw: 8,
+  // Eight idle + six snap. Only the first eight are ever reached by the clock;
+  // the snap frames are addressed directly by a trap that has been sprung.
+  bearTrap: TRAP_FRAMES,
   boomBarrier: 8, pipe: 8,
   cactusGreen: 6,
   drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
@@ -4606,7 +4802,7 @@ const PROP_FPS = {
   // a machine breathing, not a machine cycling. The saw is the fastest thing in
   // the table: below ~20 the eight tooth-steps read as a wobble rather than a
   // spin, which is the same failure the rotors had at 11.
-  popSpikes: 9, campfire: 14, fireBarrel: 14, brazier: 12, floorSaw: 22,
+  popSpikes: 9, campfire: 14, fireBarrel: 14, brazier: 12, floorSaw: 22, bearTrap: 8,
   // The razor hurdle's cycle is only its beacon/current breathing — spike-plate slow.
   boomBarrier: 10, pipe: 4,
   drone: 24, shooterDrone: 24, droneEye: 12,
@@ -4635,13 +4831,16 @@ export const PROP_TALL = {
   //
   // The two fires take the most because a fire is mostly the part of it that is
   // not solid — 1.7 over a 13x13 barrel is 22px of art, of which the drum is 13.
-  popSpikes: 1.5, campfire: 1.3, fireBarrel: 1.7, brazier: 1.55, floorSaw: 1.45,
+  // The plate itself is fine at the shared scale, but its teeth need a little
+  // more sky above the road to survive a handset-sized glance. This is art
+  // only: the unchanged box still owns the collision.
+  popSpikes: 1.75, campfire: 1.3, fireBarrel: 1.7, brazier: 1.55, floorSaw: 1.45,
   // A sign is mostly post. 1.5 over the 13x9 box puts the board at head height
   // where a sign belongs, and leaves the box around the part you walk into.
   jumpSign: 1.5,
   downSign: 1.5,
   dogSign: 1.5,
-  cactusGreen: 1.55,
+  cactusGreen: 1.55, bearTrap: 1.35,
   // Speed ramp candidates over the unchanged 14x4 boostPad box. This is the
   // entire proposal for three of the four: the pad cannot get wider without
   // lying about where the boost starts, so everything it gains it gains
@@ -4677,10 +4876,10 @@ const PROP_DETAIL_SCALE = {
   // notches closed up into the black.
   dogSign: 3,
   cactus: 2, cactusBig: 2,
-  // Standing hazards. All six ship between 7 and 22px, which is exactly the
+  // Standing hazards. These ship between 7 and 22px, which is exactly the
   // range this table exists for: a spike's point, a barrel band and a spine are
   // all sub-pixel marks at single detail and survive as tone at double.
-  popSpikes: 2, campfire: 2, fireBarrel: 2, brazier: 2, floorSaw: 2, cactusGreen: 2,
+  popSpikes: 2, campfire: 2, fireBarrel: 2, brazier: 2, floorSaw: 2, bearTrap: 2, cactusGreen: 2,
   boomBarrier: 2,
   snowman: 2, snowmanBig: 2,
   crate: 2, qcrate: 2, pipe: 2, switch: 2,
@@ -4792,7 +4991,7 @@ const SELF_OUTLINED_PROPS = new Set([
   ...ANIMAL_NAMES,
   ...Object.keys(FINISH_DOG_ALIASES),
   'cactus', 'cactusBig', 'snowman', 'snowmanBig',
-  // The five standing hazards author heavy INK contours of their own. The
+  // Standing hazards author heavy INK contours of their own. The
   // shared rim outside those would ring a flame in dark paint, which is the one
   // thing fire must never have.
   //
@@ -4801,7 +5000,7 @@ const SELF_OUTLINED_PROPS = new Set([
   // the two-pass hazard rim is exactly the tool for that: it puts a dark inner
   // and a pulsing light outer edge around the silhouette, which is what buys
   // the separation the red cactus gets for free from being red.
-  'popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw',
+  'popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw', 'bearTrap',
   // The razor hurdle's rail and teeth carry their own heavy ink contour.
   'boomBarrier',
   'crate', 'pipe', 'zombieWalk', 'icicle',

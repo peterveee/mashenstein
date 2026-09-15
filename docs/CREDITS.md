@@ -284,7 +284,7 @@ It is not.
 
 ---
 
-*MASHENSTEIN, THE UNPLUGGENING, THE SOCKET, PLUGS, PRESENTATION ERROR, DOLORES' REPAIR COUNTER, and GARY'S LEGALLY DISTINCT PAWN SHOP are trademarks of Circuit & Splice Interactive. All other trademarks are property of their respective, occasionally litigious, owners. Don K. Eggshell, PhD is a fictional character; any resemblance to a real egg, ape, or holder of a doctorate is coincidental and has already been disputed via form. No plumbers, hedgehogs, gods of war, or vacuum cleaners were harmed in the making of this game. Several forms were harmed. One (1) form remains at large.*
+*MASHENSTEIN, THE UNPLUGGENING, THE SOCKET, PLUGS, PRESENTATION ERROR, DOLORES' REPAIR COUNTER, and GARY'S LEGAL PAWN SHOP are trademarks of Circuit & Splice Interactive. All other trademarks are property of their respective, occasionally litigious, owners. Don K. Eggshell, PhD is a fictional character; any resemblance to a real egg, ape, or holder of a doctorate is coincidental and has already been disputed via form. No plumbers, hedgehogs, gods of war, or vacuum cleaners were harmed in the making of this game. Several forms were harmed. One (1) form remains at large.*
 
 ```
 RATED E — FOR EVERYONE WHO CAN FILE A FORM IN TRIPLICATE

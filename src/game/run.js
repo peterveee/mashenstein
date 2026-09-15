@@ -27,7 +27,7 @@ import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle }
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
-import { OPENING_COIN_BEAT, BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, unwrapBeat } from './beatchart.js';
+import { OPENING_COIN_BEAT, BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, unwrapBeat, PIT_LANE_RUNWAY_BEATS } from './beatchart.js';
 import { drawBeatGround, ACTION_INK } from './beatground.js';
 import { Powerups, POWER_DEFS, randomPowerPickup, weightedPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
@@ -46,7 +46,8 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS }
+import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
+  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc }
   from '../engine/stylePacks/index.js';
 import { paperStrengthOf } from '../engine/paper-material.js';
 import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING } from './hud.js';
@@ -56,7 +57,11 @@ import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, AXE_THROW_AT, ARROW_ARC, ARROW_BOX_SPEED, RANGED_RELEASE_AT, caneScale } from '../sprites/toons.js';
 import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
-import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
+import {
+  drawFrostFlypast, FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN, FROST_FLYPAST_DEPTH,
+  FROST_FLYPAST_CLEAR, FROST_FLYPAST_LEAD, flypastAt, flypastScaleFor,
+} from '../sprites/sleigh.js';
+import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
@@ -64,7 +69,7 @@ import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
 import { beginStageArtWarmup, stepArtWarmup, artWarmupPending } from './art-warmup.js';
-import { PORTRAIT_LAB_DEFAULTS, validatePortraitConfig } from '../dev/portrait-lab.js';
+import { PORTRAIT_CONFIG, validatePortraitConfig } from '../engine/portrait-config.js';
 import {
   portraitHudLayout, portraitFloatieBaseY, portraitFloatieScale,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
@@ -78,6 +83,15 @@ import { drawLayoutDiagnostic, layoutDiagnosticEnabled, toggleLayoutDiagnostic }
 
 export { GROUND_Y };
 
+// Desktop mouse shortcuts are additive: the keyboard controls remain first so
+// the row still reads naturally for a keyboard player, while each mouse button
+// sits beside the matching action it already drives in input.js.
+const DESKTOP_CONTROL_ROWS = [
+  ['UP / SPACE / LEFT CLICK', 'JUMP'],
+  ['DOWN / RIGHT CLICK', 'SLIDE'],
+  ['X / SHIFT / MIDDLE CLICK', 'POWER'],
+];
+
 // PORTRAIT'S TOP TINT. A wash of the cabinet's own sky, darkened, heaviest at
 // the very top of the picture and thinning to nothing by the time the clouds
 // begin — the shading a tall frame wants at its top edge, and incidentally the
@@ -89,10 +103,6 @@ const PORTRAIT_SKY_CAP_DARKEN = 0.55;
 // How heavy the tint is at the very top, before it thins away.
 const PORTRAIT_SKY_CAP_ALPHA = 0.35;
 
-// The portrait lab's approved calibration is now the production phone
-// presentation. A lab run may still provide a per-session snapshot, but a
-// normal run never reads dev storage or changes these values at runtime.
-const PORTRAIT_PRODUCTION_CONFIG = validatePortraitConfig(PORTRAIT_LAB_DEFAULTS);
 // The hero's screen x at the resting zoom: 24.6% of the frame. The HUD/floatie
 // layer draws UNSCALED above the world, so anything that has to sit over the
 // hero up there anchors here rather than to the world-space PLAYER_X.
@@ -617,6 +627,25 @@ const RHYTHM_SIGN_BEATS_MIN = 2;
 // the two movements. A stage that never asks for one of them never shows it.
 const RHYTHM_SIGN_ORDER = ['slide', 'jump', 'ability'];
 const RHYTHM_DEATH_SYNC_SEC = 1;
+// HOW FAR A THROWN WEAPON REACHES, for the card box (heroReachesBox): the
+// speed it leaves at over the lane's, and the flight time it parks after (see
+// updateProjectiles' spentAt and the hang). A slug or an arrow is not here —
+// it flies until culled.
+const THROWN_REACH = Object.freeze({
+  fist: { add: 210, sec: 0.42, beatSec: 0.6 },
+  axe: { add: 220, sec: 0.55 },
+  wrench: { add: 210, sec: 0.55 },
+  toss: { add: 215, sec: 0.55 },
+});
+// THE FIST FLIES LONGER ON A BEAT STAGE. It parks at 0.42s everywhere else,
+// which at RHYTHM BANKRUPTCY's 208px/s is 176px — short of rhythm-1's box, 2.4
+// beats (~240px) down the road. Peter's call (15 Sep 2026): give it the flight
+// rather than take the box off him. 0.55 is a touch past the axe's 0.5, and
+// with the brake's tail the fist now stops around 275px out; the reach model
+// above says 0.6 (250px against a 230px lead), conservative the same way the
+// axe's 0.55 is against its 0.5.
+const FIST_PARK_SEC = 0.42;
+const FIST_PARK_SEC_BEAT = 0.55;
 // The retry hold is intentionally invisible to control, but a hero held in the
 // restored pose for that whole second reads like a stuck game. Let the hero
 // appear only for the final few frames, just before the lane is released.
@@ -1398,6 +1427,14 @@ const SMEAR_SPAN = 1;
 // motion. Without it that frame paints ghosts across half the screen.
 const SMEAR_MAX_PX = 14;
 
+// How long the Frost sky takes to agree with a checkpoint, as the time constant
+// of an exponential approach: about 4s to cover two thirds of a step and some
+// twelve to finish one. The checkpoints on a 90s stage stand thirty seconds
+// apart, so a step is comfortably done before the next one is due — and the
+// point of spending that long on it is that the player cannot name the moment
+// the weather changed, only notice later that it has.
+const BLIZZARD_EASE = 4;
+
 // Projectile readability pass. These are intentionally drawn as a separate
 // projectile treatment rather than folded into the weapon painters: collision,
 // spawn timing, and the authoritative projectile silhouette stay unchanged.
@@ -1624,6 +1661,22 @@ export function shooterMayFire(obX, heroWorldX) {
   const gap = obX - heroWorldX;
   return gap > SHOOTER_MIN_AHEAD && gap < SHOOTER_RANGE_AHEAD;
 }
+// HOW A HELD COIN CLOSES, in the hero's frame. See updateCoinMagnet: measured
+// against the world it would have to beat `speed`, which ramps past it, so all
+// of this is measured against HIM instead.
+//
+// An acceleration rather than a rate, because the grab should be legible. At a
+// flat speed a coin swerves in at the pace it started, which reads as one that
+// happened to drift into him; from rest it hangs at his shoulder for a beat —
+// pacing him, plainly caught, not yet gaining — and then comes in hard. The
+// hesitation is the part that says a field took hold of it.
+//
+// 900px/s^2 crosses the widest magnet's 130px in 0.54s, peaking near 480px/s,
+// and takes the closest grabs in about a sixth of a second. The cap is a
+// backstop for anything dragged further than a radius — a coin still held while
+// the hero changes road — rather than a speed the ordinary catch ever reaches.
+const MAGNET_ACCEL = 900;
+const MAGNET_PULL_MAX = 900;
 const finishLineX = () => Math.max(VIEW_W - 72, PLAYER_X + FINISH_MIN_RUNWAY);
 // FINISH_CLEAR — the clear lane in front of the marker — is defined in
 // layout.js and re-exported at the top of this file. An obstacle parked
@@ -1906,6 +1959,14 @@ export class RunState {
     this.unplugged = opts.difficulty === 5;
     this.startingPowerup = opts.startingPowerup || null;
     this.introDone = false; // constructor, not enter(): death-restarts must not replay the intro stall
+    // THE ROAD'S OWN BEAT NUMBERING, and it outlives a death. A beat stage's
+    // retry keeps the song playing and puts the SAME road back, moved to the
+    // beat the song has reached (see rhythmRespawnPlan) — so where the lane
+    // first stood against the song, and where the opening gate ended in world
+    // x, are facts about this attempt series and not about one enter().
+    this.rhythmStartAnchor = null;
+    this.rhythmOpeningGateX = null;
+    this.rhythmRespawn = null;
     // Same reasoning for the bench-upgrade toasts: enter() re-runs on every
     // death-restart, so announce them once per run and never again. A retry from
     // the results screen rebuilds the RunState, so it carries announceBench:false
@@ -1922,22 +1983,20 @@ export class RunState {
     // Dev Scenes can inspect the opening touch-controls card even after the
     // current save has completed the campaign's first stage.
     this.previewTouchControls = !!opts.previewTouchControls;
-    this.portraitLabRun = !!opts.portraitLabRun;
     this.portraitPreview = !!opts.portraitPreview;
     // All ordinary gameplay states use the approved frame-based portrait
     // presentation when the active viewport is a phone in portrait. The
     // explicit opt-out is useful for tooling/screens that embed a RunState.
     this.portraitGameplay = opts.portraitGameplay !== false;
-    this.devPortraitLab = opts.devPortraitLab ? validatePortraitConfig(opts.devPortraitLab) : null;
-    if (this.portraitLabRun && !this.devPortraitLab) this.portraitLabRun = false;
-    if (this.portraitLabRun) setRestingZoom(this.devPortraitLab.worldZoom);
+    this.portraitConfigOverride = opts.portraitConfig
+      ? validatePortraitConfig(opts.portraitConfig) : null;
     this.devHits = [];
     // Rewind: rolling snapshot buffer + capture timer. Capacity is fixed at
     // construction: free rewind gets the full 10s tape, the touch power-up
-    // only ever plays back 3s. Portrait Lab is an explicit dev surface, so it
-    // gets the full tape even when the host is a touch-only phone.
+    // only ever plays back 3s. Keyboard/desktop preview surfaces use the same
+    // ordinary capability check as shipped gameplay.
     this.rewindFrames = new RewindRing(this.beatLock ? 0
-      : (this.portraitLabRun || Input.rewindAvailable() ? REWIND_MAX_FRAMES : POWER_REWIND_FRAMES));
+      : (Input.rewindAvailable() ? REWIND_MAX_FRAMES : POWER_REWIND_FRAMES));
     this.rewindCaptureT = 0;
     this.rewinding = false;
     this.rewindCooldown = 0;
@@ -2005,6 +2064,12 @@ export class RunState {
     this.prevCamZoom = ZOOM;
     this.prevCamPan = 0;
     this.prevCamFloorY = GROUND_Y;
+    this.backgroundT = 0;
+    this.prevBackgroundT = 0;
+    // The presentation frame can change while this run is alive. Keep the
+    // last camera mode so a portrait fit never becomes the starting point for
+    // the ordinary landscape spring (or vice versa).
+    this.cameraPresentationMode = null;
     // Portrait route/viewport reflows are explicit state, not a one-frame
     // side effect of rewriting portraitFrameFitState. Keeping start/target
     // here prevents a high path from easing once and then snapping.
@@ -2016,7 +2081,7 @@ export class RunState {
   }
 
   portraitConfig() {
-    return this.devPortraitLab || PORTRAIT_PRODUCTION_CONFIG;
+    return this.portraitConfigOverride || PORTRAIT_CONFIG;
   }
 
   // The authored portrait composition for what is actually on screen: the
@@ -2028,26 +2093,25 @@ export class RunState {
   }
 
   /**
-   * Where the resting groundline sits in the safe frame.  The authored
-   * profile is the answer, EXCEPT while the dev lab slider has been moved off
-   * its default — the lab is a live review surface and has to win over
-   * authored data for as long as somebody is holding the control.
+   * Where the resting groundline sits in the safe frame. The authored profile
+   * is the production answer; a standalone preview may temporarily override
+   * it while reviewing a composition.
    */
   portraitGroundAnchorRatio() {
-    const lab = Number(this.portraitConfig().groundAnchorRatio);
-    const labMoved = Number.isFinite(lab)
-      && Math.abs(lab - PORTRAIT_LAB_DEFAULTS.groundAnchorRatio) > 1e-9;
-    if (labMoved) return lab;
+    const previewGround = Number(this.portraitConfig().groundAnchorRatio);
+    const previewMoved = this.portraitPreview && Number.isFinite(previewGround)
+      && Math.abs(previewGround - PORTRAIT_CONFIG.groundAnchorRatio) > 1e-9;
+    if (previewMoved) return previewGround;
     const authored = Number(this.compositionProfile().groundAnchorRatio);
     return Number.isFinite(authored) ? authored : PORTRAIT_HERO_GROUND_RATIO;
   }
 
-  // The standalone portrait review iframe is the one explicit adapter allowed
-  // to change its values live. A production lab run snapshots once at launch.
-  setDevPortraitLabConfig(raw) {
+  // The standalone preview iframe is the one explicit adapter allowed to
+  // change its values live. Shipped gameplay never calls this.
+  setPortraitPreviewConfig(raw) {
     if (!this.portraitPreview) return false;
-    this.devPortraitLab = validatePortraitConfig(raw);
-    if (this.portraitLabRun) setRestingZoom(this.devPortraitLab.worldZoom);
+    this.portraitConfigOverride = validatePortraitConfig(raw);
+    setRestingZoom(this.portraitConfigOverride.worldZoom);
     return true;
   }
 
@@ -2268,12 +2332,10 @@ export class RunState {
     return targetFeet - screenYFor(floor, this.camZoom, 0, GROUND_Y);
   }
 
-  // The lab is a controlled development run and may expose the held RWD
-  // control, so it needs the same continuous tape as keyboard play. Ordinary
-  // shipped touch still uses the normal rewind capability; rhythm stages keep
-  // their existing no-rewind rule.
+  // Rhythm stages keep their existing no-rewind rule; other runs use the
+  // normal input capability, including the standalone preview tools.
   rewindAvailableForRun() {
-    return !this.beatLock && (this.portraitLabRun || Input.rewindAvailable());
+    return !this.beatLock && Input.rewindAvailable();
   }
 
   /**
@@ -2502,6 +2564,32 @@ export class RunState {
    */
   sharesRoute(e) {
     return (e.route || null) === (this.route || null);
+  }
+
+  /**
+   * WHICH ROAD A THING IS STANDING ON — which is not always `route`.
+   *
+   * `route` means "my floor is this road", and obstacles laid by populateRoute
+   * carry it. A road's PICKUPS do not: spawnRoutePrizes lays them against the
+   * lane with the road's height folded into `alt` instead, which draws and
+   * collides identically (drawAtGround and entityGroundY agree either way) and
+   * is why nothing has ever had to care. `road` is the missing half of the
+   * answer — the tag those prizes carry so they can still say where they are.
+   *
+   * The magnet is the first caller that needs it, and it needs it in both
+   * directions: a hero ON a road must be able to hoover the coin run he came up
+   * there for, and a hero on the LANE must not be able to hoover it from
+   * underneath. Without this, `route` is null on both sides of that question and
+   * the answer comes out "same road" for the one case and "different road" for
+   * the other — precisely backwards.
+   */
+  entityRoad(e) {
+    return (e && (e.route || e.road)) || null;
+  }
+
+  /** Whether a thing is standing on the same road as the hero — see entityRoad. */
+  sharesRoad(e) {
+    return this.entityRoad(e) === (this.route || null);
   }
 
   /** Where the player's own feet rest right now. */
@@ -2827,11 +2915,15 @@ export class RunState {
   // single jumps (57px against 103px of headroom) still move neither.
   updateCamera(dt) {
     // Portrait is a presentation branch, not a second phone zoom tier. It is
-    // active only while the renderer has an actual portrait frame; rotating a
-    // lab run to landscape must immediately return to the ordinary camera.
+    // active only while the renderer has an actual portrait frame; rotating to
+    // landscape must immediately return to the ordinary camera.
     const portraitConfig = this.portraitConfig();
     const portraitActive = this.portraitGameplay && portraitConfig
       && isPhonePortraitPresentation();
+    const presentationMode = portraitActive ? PHONE_PORTRAIT : LANDSCAPE;
+    if (this.cameraPresentationMode !== presentationMode) {
+      this.resetCameraForPresentationMode(presentationMode, portraitConfig);
+    }
     if (portraitActive) {
       // Let the death animation finish without following the hero into a pit.
       if (this.dead) return;
@@ -3231,6 +3323,44 @@ export class RunState {
   }
 
   /**
+   * Rebase every presentation-dependent camera value at an orientation seam.
+   *
+   * The game loop is paused while the renderer settles a resize, so this is
+   * the first camera tick after the cover lifts. Resetting the previous
+   * interpolation values is important: captureRenderInterpolation() already
+   * ran before updateCamera(), and otherwise one frame would still blend from
+   * the old portrait pan (or the reverse). The world x stays continuous; only
+   * vertical framing and its springs are presentation state.
+   */
+  resetCameraForPresentationMode(mode, portraitConfig = this.portraitConfig()) {
+    const portrait = mode === PHONE_PORTRAIT;
+    if (portrait) {
+      setRestingZoom(portraitConfig?.worldZoom || ZOOM);
+      this.camZoom = portraitConfig?.worldZoom || ZOOM;
+      const fit = this.portraitFrameFit();
+      this.camPan = Number.isFinite(Number(fit?.pan)) ? fit.pan : 0;
+    } else {
+      // applyFraming also updates VIEW_W/VIEW_H and the camera module's live
+      // resting zoom, so the ordinary branch starts from the same tier it
+      // would use after a cold landscape entry.
+      this.camZoom = applyFraming(this.renderSettings || this.save?.settings);
+      this.camPan = 0;
+    }
+    this.camFloorY = GROUND_Y;
+    this.camFloorV = 0;
+    this.camFeetY = null;
+    this.camGuardNeed = undefined;
+    this.camGuardDwell = 0;
+    this.portraitFrameTransition = null;
+    this.portraitFrameFitState = null;
+    this.cameraPresentationMode = mode;
+    // Orientation changes are covered by the renderer's blackout. Make the
+    // first revealed frame internally coherent as well, with no cross-mode
+    // blend left in the render interpolation pair.
+    this.resetRenderInterpolation();
+  }
+
+  /**
    * One budget for the camera's own screen motion, spent by the anchor and the
    * crane together.
    *
@@ -3346,11 +3476,14 @@ export class RunState {
   // their bottom edge reads as planted rather than resting on a tangent.
   // `conformCam` opts a prop into following the terrain's ANGLE as well as its
   // height: pass the camera x and the draw is rotated about the centre of its
-  // footprint to the local slope. Seating alone leaves a wide flat prop lying
-  // level on a hill with daylight under one end, which is what the boost pad
-  // did — and a pad is a marking ON the floor, so it has to lie in the floor's
-  // plane the way paint would. It is opt-in because most props should NOT do
-  // this: a crate or a cactus stands upright on a slope, it does not lean.
+  // footprint to the local slope. Passing an object instead requests the
+  // surface sample without rotating the art. That is for buried hazards: the
+  // metal plate can be cut into the hillside while the spikes stay upright.
+  // Seating alone leaves a wide flat prop lying level on a hill with daylight
+  // under one end, which is what the boost pad did — and a pad is a marking ON
+  // the floor, so it has to lie in the floor's plane the way paint would. It is
+  // opt-in because most props should NOT do this: a crate or a cactus stands
+  // upright on a slope, it does not lean.
   //
   // A conforming prop seats on the ground under its CENTRE rather than on the
   // lowest point of its footprint. The lowest-point rule exists to stop a flat
@@ -3363,7 +3496,8 @@ export class RunState {
   // own shape — a slab on a hill still needs its lowest-point seating.
   drawAtGround(ctx, worldX, fn, footW = 0, sink = 0, conformCam = null, route = null) {
     const cx = worldX + footW / 2;
-    const conform = conformCam != null && footW > 0;
+    const conform = typeof conformCam === 'number' && footW > 0;
+    const sampleSurface = conform || (conformCam && typeof conformCam === 'object');
     const floorAt = route ? (x) => this.routeGroundY(x, route) : (x) => this.groundYAt(x);
     let gy = floorAt(cx);
     const over = footW * (4 / 3) / 2; // drawn half-width, centered on the box
@@ -3372,15 +3506,23 @@ export class RunState {
     }
     ctx.save();
     ctx.translate(0, gy - GROUND_Y + sink);
+    const angle = sampleSurface
+      ? Math.atan2(floorAt(cx + over) - floorAt(cx - over), over * 2) : 0;
     if (conform) {
-      const rise = this.groundYAt(cx + over) - this.groundYAt(cx - over);
-      const angle = Math.atan2(rise, over * 2);
       const sx = cx - conformCam;
       ctx.translate(sx, GROUND_Y);
       ctx.rotate(angle);
       ctx.translate(-sx, -GROUND_Y);
     }
-    fn();
+    // The callback can use this local surface line to bury upright art without
+    // inheriting the slope rotation. The line is deliberately offset by the
+    // same seating translation above, while BED_SINK remains the extra amount
+    // of plate that is allowed to disappear into it.
+    fn(sampleSurface ? {
+      angle,
+      centerX: cx - (typeof conformCam === 'number' ? conformCam : 0),
+      centerY: GROUND_Y + floorAt(cx) - gy,
+    } : null);
     ctx.restore();
   }
 
@@ -3390,6 +3532,7 @@ export class RunState {
     this.prevCamZoom = this.camZoom;
     this.prevCamPan = this.camPan;
     this.prevCamFloorY = this.camFloorY;
+    this.prevBackgroundT = this.backgroundT;
     this.prevTRun = this.tRun;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
@@ -3406,6 +3549,7 @@ export class RunState {
     this.prevCamZoom = this.camZoom;
     this.prevCamPan = this.camPan;
     this.prevCamFloorY = this.camFloorY;
+    this.prevBackgroundT = this.backgroundT;
     this.prevTRun = this.tRun;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
@@ -3429,7 +3573,7 @@ export class RunState {
       setPresentationMode(PHONE_PORTRAIT, { groundAnchorRatio: this.portraitGroundAnchorRatio() });
       // On landscape this is immediately resolved back to the ordinary device
       // tier by updateCamera/applyFraming. On a portrait phone it is the one
-      // approved close framing shared by lab and production runs.
+      // approved close production framing.
       if (isPhonePortraitPresentation()) setRestingZoom(portraitConfig.worldZoom);
       // The reserved status band is the page's background (see setPageChrome).
       // Hand it this cabinet's sky so the strip above the picture is the sky.
@@ -3470,8 +3614,7 @@ export class RunState {
     this.usedHeroes = new Set([this.relay.current]);
     this.exitSpoken = new Set();   // heroes who have already said their goodbye
     this.player = new Player(this.relay.current, this.modIds);
-    // NO JUMPING: the jump button is on strike; it provides a contractual minimum hop.
-    this.player.jumpScale = this.beatLock ? 1 : (this.corrupted.includes('nojump') ? 0.6 : 1);
+    this.player.jumpScale = 1;
     this.powerups = new Powerups(this.bench, this.modIds);
     this.powerups.shieldStack = HERO_BY_ID[this.relay.current].startShield;
 
@@ -3493,6 +3636,7 @@ export class RunState {
     // length the run drives the hero's position instead of the physics doing it.
     this.loop = null;
     this.tRun = 0;
+    this.backgroundT = 0;
     this.score = 0;
     this.coins = 0;
     this.coinCombo = 0;
@@ -3529,6 +3673,9 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     this.flip = null;           // graded at the plunger; null until contact
     this.flipCoins = null;      // the grade's coin payout, mid-transfer into the pill
+    this.flypast = null;        // the Frost sleigh crossing the sky; see armFlypast
+    this.flypastShot = null;    // where the background pass last put it, in screen space
+    this.flypastArmed = false;  // one sleigh per attempt, however the tape is reached
     // Off-screen entrance. Defaulted here to the resting anchor so a restart or
     // any early position read is safe; the opener below arms the actual run-in.
     this.introRunning = false;
@@ -3594,7 +3741,7 @@ export class RunState {
     this.introDone = true;
     this.introFreeze = act ? ACT_BANNER_TIME : 0;
     this.introText = act;
-    this.introT = 0; // banner animation clock (tRun is frozen during the freeze)
+    this.introT = 0; // banner/background startup clock (tRun is frozen during the freeze)
     this.introSkippable = !!act && seen;
     // The touch-control card, on the campaign's opening stage only, on touch only.
     // MANDATORY TRAINING teaches the control surface, but training is optional
@@ -3619,9 +3766,8 @@ export class RunState {
     // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
     // death-restart drops the hero straight onto the anchor), but independent of
     // the card's seen/done fade: it plays on every first entry, card or not. A
-    // card holds him out of frame first; then he runs in as it lifts. Reduced
-    // motion opts out — the hero simply starts planted at the anchor.
-    const runIn = opens && !this.save.settings.reducedMotion && !this.o.skipRunIn;
+    // card holds him out of frame first; then he runs in as it lifts.
+    const runIn = opens && !this.o.skipRunIn;
     this.introRunning = runIn;
     this.introRunX = runIn ? INTRO_RUN_START_X : PLAYER_X;
     // Authored intros can be spoken by a named cast member — including one who
@@ -3630,12 +3776,12 @@ export class RunState {
     // The opening bubble waits for the hero to reach the anchor — behind a card
     // or not — so its four seconds are four seconds of live running rather than
     // half-spent under a banner's scrim or over an empty entrance. On a run-in it
-    // is released by updateIntroRun; with the run-in off (reduced motion) it
-    // starts here, since there is no entrance to wait on.
+    // is released by updateIntroRun; when there is no entrance it starts here,
+    // since there is no run-in to wait on.
     const bubbleAfterEntrance = bubble && !act && runIn;
     this.introSpeech = (act || bubbleAfterEntrance) ? bubble : null;
     if (bubble && !act && !runIn) this.speech = bubble;
-    if (act && !this.save.settings.reducedMotion) shake(3, 0.3);
+    if (act) shake(3, 0.3);
     this.copter = null;         // chase mission / taunt flyby
     this.copterBonks = 0;       // bonks landed this run; the copter itself is transient
     this.copterPressure = COPTER_PRESSURE_START; // how low he is flying; see nudgeCopter
@@ -3730,7 +3876,7 @@ export class RunState {
         onPitAlign: (pit) => this.syncRhythmSetPieceGeometry(pit),
         // Read at the moment each box would be laid, off whoever is in the
         // lane then — never off the hero who started the stage.
-        canShoot: () => heroShoots(this.relay.current),
+        canShoot: (leadPx) => this.heroReachesBox(this.relay.current, leadPx),
         openingUntil: () => this.rhythmOpeningGate(),
         // ASKED, NEVER READ. The bank's bpm is what the song was written at;
         // this is what it is being played at right now (see beatBpmStep).
@@ -3974,6 +4120,16 @@ export class RunState {
     // dying at checkpoint two must not make checkpoint one disappear.
     this.checkpointMarkers = [];
     this.checkpointHit = [];
+    // HOW MANY LINES THIS STAGE DRAWS, kept because `checkpoints` is consumed as
+    // they are crossed (shift) — the count is what turns the remaining list back
+    // into "how many are behind the player", which is the Frost weather's rung.
+    this.checkpointCount = this.checkpoints.length;
+    // And the lines themselves, kept where nothing consumes them. The Frost
+    // weather counts the ones BEHIND THE PLAYER rather than the ones this
+    // attempt happened to cross: a storm is a property of the road, so the
+    // stretch after the second checkpoint has to look the same on the run that
+    // sailed through it and on the fourth retry that limped there.
+    this.checkpointsAt = this.checkpoints.slice();
     this.snapshot = null;
 
     // ?startAt=N — pre-fill the world so the camera doesn't start in empty space,
@@ -3999,6 +4155,9 @@ export class RunState {
         if (this.distance >= this.checkpoints[i]) this.checkpointHit[i] = true;
       }
     }
+    // Open on the sky this point of the road is owed, with no ease: a stage
+    // starts in the weather it inherits from the one before it.
+    this.blizzard = this.blizzardTarget();
 
     this.styleName = this.corrupted.length ? 'pixel' : this.cabinet.style;
     // The LCD pack's portrait grid is a presentation treatment, not a saved
@@ -4020,7 +4179,7 @@ export class RunState {
         const q = new URLSearchParams(window.location.search || '').get('paper');
         queryPaperOff = q === 'off' || q === '0';
         if (window.__MASH_BUILD__ && (q === 'cardstockSoft' || q === 'cardstockQuiet'
-          || q === 'cardstockClear')) {
+          || q === 'cardstockClear' || q === 'felt')) {
           queryPaperPreset = q;
         }
         if (window.__MASH_BUILD__) {
@@ -4175,15 +4334,21 @@ export class RunState {
     this.laneCallLastBeat = null;
     this.rhythmSyncT = rhythmRetry ? RHYTHM_DEATH_SYNC_SEC : 0;
     this.rhythmSyncPending = rhythmRetry;
+    // A retry from the top is the same road from the top — moved along by the
+    // beats the song has spent since the first attempt's lane was anchored, so
+    // the chart lands on the same world x it did the first time. Nothing on a
+    // fresh entry: the stage has no anchor until its first live frame.
+    this.parkRhythmRespawn(rhythmRetry ? this.rhythmStartAnchor : null);
     // The opening roll, solved once per stage on first use. It needs nothing
-    // reset: the slots are counted off the SONG's beat, and a retry re-anchors
-    // to a clock hundreds of beats past all of them. See rhythmVerbCue.
+    // reset: the slots are counted off the SONG's beat, and a retry starts at
+    // whatever chart position the continuing clock has reached. See
+    // rhythmVerbCue.
     this.rhythmSignRoll = null;
     this.rhythmSignPhase = null;
     // Undefined until it can be worked out, null once it is known there is no
     // gate (a retry, a stage with no sign). See rhythmOpeningGate.
     this.rhythmOpeningUntil = undefined;
-    this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
+    this.narrateT = this.unplugged ? 6 : 0;
     // The keyboard legend is a teaching aid, so it only runs while there is
     // something to teach: the campaign's opening stage, or a run with no stage
     // behind it (endless, where nothing came before it either). The bot needs
@@ -4248,9 +4413,7 @@ export class RunState {
     this.silentSkipArmed = false;
     // Leaving mid-armed-window must not strand the capture node; desktop's
     // boot-time node stays (same predicate as everywhere else in the feature).
-    // A lab run owns the capture node it enabled at entry; always release it
-    // on exit even though its touch host normally reports no rewind capability.
-    if (this.beatLock || this.portraitLabRun || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
+    if (this.beatLock || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
     // setContext already dropped the paused screen's borrowed key mapping.
     this.keepSongTempo(); Audio.setInvincible(false);
     // Nothing here changes the song — the results screen deliberately keeps playing it —
@@ -4380,17 +4543,16 @@ export class RunState {
         ? [...mainButtons, ...this.portraitPauseSyncButtons(mainButtons)] : mainButtons);
       Input.setChromeButtons([]); return;
     }
-    // Play controls are touch only: keyboard players have SPACE/DOWN/RIGHT/P/ESC,
+    // Play controls are touch only: keyboard players have UP/SPACE/DOWN/X/P/ESC,
     // and the corners hold HUD instead.
     if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); return; }
     // The portrait discs on the picture plus whatever margin this device has
-    // around it (touchchrome.js, the shared layout modules) — Portrait Lab
-    // adds its held RWD disc to the same registration path.
+    // around it (touchchrome.js, the shared layout modules).
     // PAUSE fires 'escape', which mirrors the Escape key exactly: pauses if
     // running, quits if already paused. The second half is unreachable from
     // here, since pausing swaps this set out for the plates above.
     Input.setButtons([]);
-    Input.setChromeButtons(runChromeButtons({ portraitLab: this.portraitLabRun }));
+    Input.setChromeButtons(runChromeButtons());
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
@@ -4680,10 +4842,50 @@ export class RunState {
    * the sign already down (cityIntroBeat is Infinity) and has no gate; the
    * hero who died inside the opening was shown the roll once.
    */
+  /**
+   * Whether this hero's weapon can reach a card box `leadPx` down the road.
+   *
+   * The lane asks per box (BeatSpawner.canShoot). A slug or an arrow flies
+   * until it is culled; a thrown weapon parks after a fixed flight time
+   * (updateProjectiles — the fist at 0.42s, the axe and its relatives at
+   * 0.55 of hover) and its reach is (lane + throw) times that time, from a
+   * muzzle 12px ahead of the hero. Against the cabinet's default lead every
+   * ranged hero reaches, and against rhythm-1's box, 2.4 beats out, the
+   * rocket fist reaches only because it flies longer on a beat stage
+   * (FIST_PARK_SEC_BEAT) — at its ordinary 0.42s it stopped fifty-odd px
+   * short, which is why Ray M'N was not dealt a box before 3 Sep 2026. The
+   * check stays, because a weapon that hangs in mid-air in front of a box it
+   * just opened is worse than a beat nobody owes.
+   */
+  heroReachesBox(heroId, leadPx = 0) {
+    if (!heroShoots(heroId)) return false;
+    const type = HERO_BY_ID[heroId]?.ability?.type;
+    const flight = THROWN_REACH[type];
+    if (!flight || !Number.isFinite(leadPx)) return true;
+    const sec = this.beatLock && flight.beatSec != null ? flight.beatSec : flight.sec;
+    return (this.speed + flight.add) * sec >= leadPx - 12;
+  }
+
   rhythmOpeningGate() {
     if (this.rhythmOpeningUntil !== undefined) return this.rhythmOpeningUntil;
     if (!this.beatLock) { this.rhythmOpeningUntil = null; return null; }
+    if (this.rhythmOpeningGateX != null) {
+      // BANKED AS ROAD. Once the first attempt knows where the gate ends in
+      // world x (noteRhythmOpeningGateX), that is the fact: a retry does not
+      // show the sign again but gates the same road, and a resync — which
+      // restarts the judge's numbering — reads the same road back under the
+      // new numbering rather than keeping a beat number that no longer means
+      // the same place. Not while a retry is settling, because until then the
+      // beat-to-road mapping is not the one the lane will lay by.
+      if (this.rhythmSyncPending) return null;
+      const now = this.rhythmBeatForJudging();
+      const pxPerBeat = this.speed * 60 / this.laneBpm();
+      if (!Number.isFinite(now) || !(pxPerBeat > 0)) return null;
+      this.rhythmOpeningUntil = now + (this.rhythmOpeningGateX - this.playerWorldX()) / pxPerBeat;
+      return this.rhythmOpeningUntil;
+    }
     if (this.cityIntroBeat != null && !Number.isFinite(this.cityIntroBeat)) {
+      // A retry whose first attempt never banked a gate has nothing to gate.
       this.rhythmOpeningUntil = null;
       return null;
     }
@@ -4692,7 +4894,22 @@ export class RunState {
     if (!sched || !Number.isFinite(now)) return null;
     const end = sched.from + sched.hold * sched.roll.length;
     this.rhythmOpeningUntil = now + (end - (this.cityIntroBeat ?? 0));
+    this.noteRhythmOpeningGateX();
     return this.rhythmOpeningUntil;
+  }
+
+  /**
+   * Where the opening gate ends ON THE ROAD, banked once the first attempt
+   * knows both the gate and the lane's start anchor. The gate is a song beat;
+   * the road it ends at is that beat measured from the first live frame, which
+   * is the frame the world started moving under the song.
+   */
+  noteRhythmOpeningGateX() {
+    const a = this.rhythmStartAnchor;
+    if (!a || this.rhythmOpeningGateX != null || !Number.isFinite(this.rhythmOpeningUntil)) return;
+    const pxPerBeat = this.speed * 60 / this.laneBpm();
+    if (!(pxPerBeat > 0) || !Number.isFinite(a.judgeBeat)) return;
+    this.rhythmOpeningGateX = a.camX + PLAYER_X + (this.rhythmOpeningUntil - a.judgeBeat) * pxPerBeat;
   }
 
   /**
@@ -4747,6 +4964,10 @@ export class RunState {
     if (!this.silentSkipArmed && !MusicDirector.pending) this.armSilentLaneSkip();
     if (this.finished) { Input.endFrame(); return; }
     this.captureRenderInterpolation();
+    // Scenery is presentation, not gameplay. Keep its clock alive through the
+    // ACT card, opening run-in, and finish-pad finale even when tRun is held
+    // back for gameplay timing. A real pause still freezes it with the scene.
+    if (!this.paused) this.backgroundT += dt;
     // The marker's own clock, advanced on EVERY path including the finale hold.
     // The cloth's frame index used to come off tRun, which deliberately stops
     // when the hold starts — so the flag froze mid-wave at the exact moment the
@@ -4852,6 +5073,10 @@ export class RunState {
       // screen when the tape arrived hung frozen in the sky beside the
       // celebration. startFinishRun set flyOff; this is what spends it.
       this.stepCopterExit(dt);
+      // Same reason as the three above: the finale runs no entity update, and a
+      // sleigh frozen in the sky over the celebration is worse than no sleigh.
+      // Its own clock carries it off the right of the picture.
+      if (this.flypast) this.flypast.t += dt;
       updateParticles(dt);
       for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
       if (this.finaleT <= 0) this.endRun(true);
@@ -4926,8 +5151,8 @@ export class RunState {
       }
       // The card owned the freeze; the moment it lifts, the run-in takes over
       // (see below) and the hero sprints in. Only when there is no run-in to
-      // wait on — reduced motion drops him straight onto the anchor — does the
-      // waiting bubble get the screen here instead of at the end of the entrance.
+      // wait on — the hero starts on the anchor — does the waiting bubble get
+      // the screen here instead of at the end of the entrance.
       // The zone card, when there is one, is between the two: it hands the
       // bubble on itself, so nothing is spoken underneath it.
       if (this.introFreeze <= 0 && this.introSpeech && !this.introRunning && !this.zoneCard) {
@@ -4946,8 +5171,8 @@ export class RunState {
     // until he arrives — gameplay is everything below this gate.
     if (this.introRunning) { this.updateIntroRun(dt); Input.endFrame(); return; }
     // A retry must not immediately refill from a possibly changing audio
-    // source.  Keep the world parked for a short settling window while the
-    // music plays on, then atomically re-anchor the chart to the heard beat.
+    // source. Keep the world parked for a short settling window while the
+    // music plays on, then atomically rebuild the chart at the heard beat.
     // rhythmBeatNow() also invalidates a lane if the expected bank disappears,
     // so a bank handoff during this wait cannot leak stale events into play.
     if (this.rhythmSyncPending) {
@@ -4958,8 +5183,11 @@ export class RunState {
         const pitch = this.powerups?.isInvincible?.() ? 1.08 : 1;
         Audio.setWarp(this.laneTempo(), pitch);
         this.rhythmSyncT = Math.max(0, this.rhythmSyncT - dt);
-        if (this.rhythmSyncT <= 0 && this.resetRhythmLane()) {
-          this.rhythmSyncPending = false;
+        if (this.rhythmSyncT <= 0) {
+          // The parked jump was a forecast of this beat; settle it on the beat
+          // actually heard, THEN anchor the lane at the settled camera.
+          this.settleRhythmRespawn(beat);
+          if (this.resetRhythmLane()) this.rhythmSyncPending = false;
         }
       }
       Input.endFrame(); return;
@@ -5232,7 +5460,7 @@ export class RunState {
     }
 
     // Player physics. (jumpScale survives hero swaps)
-    this.player.jumpScale = this.beatLock ? 1 : (this.corrupted.includes('nojump') ? 0.6 : 1);
+    this.player.jumpScale = 1;
     // On the ring the run owns the hero's position outright, so the integrator
     // stays out of it — one step of gravity would drag him off the circle. It
     // also means nothing can catch him on a road mid-lap: `player.y` is telling
@@ -5313,7 +5541,7 @@ export class RunState {
       const footfall = this.lastFootStep !== undefined && step !== this.lastFootStep;
       this.lastFootStep = step;
       const afoot = this.player.grounded && this.player.slideAmount <= 0.5 && sp > 1;
-      if (footfall && afoot && !this.save.settings.reducedMotion) {
+      if (footfall && afoot) {
         const r = () => this.fxRng.float();
         const gy = this.playerGroundY();
         const cx = this.camX + PLAYER_X + 6;
@@ -5352,7 +5580,7 @@ export class RunState {
       const sliding = this.player.grounded && this.player.slideAmount > 0.5;
       if (sliding && !this.wasSliding) Audio.sfx('slide');
       this.wasSliding = sliding;
-      if (sliding && !this.save.settings.reducedMotion) {
+      if (sliding) {
         this.slideDustT = (this.slideDustT || 0) - wdt;
         if (this.slideDustT <= 0) {
           this.slideDustT = 0.05;
@@ -5404,8 +5632,19 @@ export class RunState {
       this.clearPortalLane(this.portal.x);
     }
     this.checkCheckpoints();
+    // After the lines are counted, so a crossing is already in the target on the
+    // frame it happens.
+    this.blizzardStep(dt);
     this.collide();
     this.checkRhythmDrift();
+    // THE FIRST LIVE FILL IS WHERE THE ROAD MEETS THE SONG. The lane anchors
+    // itself on the first live frame (BeatSpawner.fill re-anchors a cursor that
+    // fell behind the clock), and that fill's beat and camera are the mapping
+    // every later retry from the top rebuilds — see rhythmRespawnPlan.
+    if (this.beatLock && !this.rhythmStartAnchor) {
+      this.rhythmStartAnchor = this.rhythmLaneAnchor();
+      this.noteRhythmOpeningGateX();
+    }
     // The lap closed this frame and its last coin has now been counted.
     if (this.loop && this.loop.done) this.endLoop();
 
@@ -5430,6 +5669,7 @@ export class RunState {
       if (this.portraitObjectiveNotice.t <= 0) this.portraitObjectiveNotice = null;
     }
     this.updateSpeech(dt);
+    if (this.flypast) this.flypast.t += dt;
 
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
@@ -5437,6 +5677,12 @@ export class RunState {
     // never let the player sail past it. Crossing always ends the attempt;
     // missions that are still incomplete fail here instead of leaving the
     // finish marker behind while the run continues indefinitely.
+    // THE SLEIGH GOES UP BEFORE THE TAPE DOES. Armed a couple of seconds of
+    // running short of the finish, so the hero and the flypast share the sky on
+    // the way in instead of the sleigh arriving as a thing that happens after
+    // the level. The run is still live and scrolling here; the flight is
+    // screen-space and does not care.
+    this.armFlypast(FROST_FLYPAST_LEAD * this.speed);
     if (!this.overtime && this.distance >= this.finishCameraX() && this.missionSatisfied()) {
       this.startFinishRun();
     } else if (!this.overtime && this.distance >= this.totalDist) {
@@ -5713,6 +5959,9 @@ export class RunState {
   // hero and what he fires stay alive. The level goes live (update falls through
   // past the introRunning gate) the instant he reaches the anchor.
   updateIntroRun(dt) {
+    // tRun deliberately stays at zero until the lane goes live, but scenery
+    // animation should already be alive during the walk-on.
+    this.introT += dt;
     // THE CITY WALKS ON WITH HIM. The world is parked but it is on screen and
     // the song is playing, so the entrance is the earliest honest place for the
     // skyline to start assembling — earlier than this is behind the act banner,
@@ -5807,6 +6056,9 @@ export class RunState {
     // LEAVES — off the right edge, climbing, the way he arrived. Nulling him
     // here made him blink out the frame the finish armed.
     if (this.copter) { this.copter.flyOff = true; this.copter.hitT = 0; }
+    // AND THE SLEIGH, if the approach did not already put it up — a checkpoint
+    // restore or a rescue can drop the hero past the lead distance entirely.
+    this.armFlypast(0);
     this.floaties = [];
     this.floatClear = 0;
   }
@@ -5835,6 +6087,7 @@ export class RunState {
     // screen. The final stretch remains live: hazards, pickups and attacks
     // use this moving world position just as they do during normal scrolling.
     this.finishPlayerX += sp * wdt;
+    if (this.flypast) this.flypast.t += wdt;
     this.updateCamera(wdt);
     this.updateEntities(wdt, sp);
     this.updateProjectiles(wdt, sp);
@@ -6311,7 +6564,6 @@ export class RunState {
   // the start of a stage, which is the same bargain the cone punt makes.
   plowBurst(ob, cx, cy) {
     shake(2.4, 0.16);
-    if (this.save.settings.reducedMotion) return;
     const r = () => this.fxRng.float();
     const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
     const colors = d.colors && d.colors.length ? d.colors : ['#c89858'];
@@ -6374,7 +6626,6 @@ export class RunState {
       : pr.type === 'shield' ? 0.9 : pr.type === 'chomp' ? 0.88 : 1.12;
     Audio.sfx(hero ? 'contact' : 'impact', { hero, pitch });
     shake(pr.type === 'axe' ? 1.6 : 1.1, 0.07);
-    if (this.save.settings.reducedMotion) return;
     const r = () => this.fxRng.float();
     burst(cx, cy, 9, 86, 0.32, '#fff8d0', 1.15, 80, r);
     burst(cx, cy, 7, 112, 0.26, '#f6d33c', 1, 100, r);
@@ -6382,13 +6633,12 @@ export class RunState {
 
   // The object comes apart into chunks of itself: they scatter from the centre,
   // tumble, then land on the ground it was standing on and skid to a stop.
-  // Reduced-motion keeps the dust puff but skips the flying debris.
+  // The dust puff and flying debris share the same break event.
   debris(ob, cx, cy) {
     const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
-    // The scatter plays either way: it describes the break, and reduced-motion
-    // is a setting about movement, not about hearing what you just hit.
+    // The scatter plays with the sound: it describes the break as well as the
+    // material that made it.
     Audio.sfx('debris', { mat: d.mat });
-    if (this.save.settings.reducedMotion) return;
     const r = () => this.fxRng.float();
     const bulk = Math.min(2, (ob.w * ob.h) / 140); // a stacked crate throws more than a switch
     shardBurst(cx, cy, Math.round((d.count || 9) * (0.7 + bulk * 0.3)), 78, 0.75, d.colors, {
@@ -6403,13 +6653,11 @@ export class RunState {
   // itself already happened in breakObstacle; this is the flourish on top.
   chompFlourish(cx, cy) {
     const PINK = '#f7bacc', BLUSH = '#ffd0e0';
-    if (!this.save.settings.reducedMotion) {
-      const r = () => this.fxRng.float();
-      burst(cx, cy, 6, 55, 0.5, PINK, 1.2, -20, r);   // negative grav: the kiss rises
-      burst(cx, cy, 4, 40, 0.6, BLUSH, 1, -30, r);
-      for (let i = 0; i < 3; i++) {                    // white sparkle flecks
-        spawn(cx + (r() - 0.5) * 16, cy - r() * 8, (r() - 0.5) * 24, -24 - r() * 30, 0.7, '#fff', 1.4, 46);
-      }
+    const r = () => this.fxRng.float();
+    burst(cx, cy, 6, 55, 0.5, PINK, 1.2, -20, r);   // negative grav: the kiss rises
+    burst(cx, cy, 4, 40, 0.6, BLUSH, 1, -30, r);
+    for (let i = 0; i < 3; i++) {                    // white sparkle flecks
+      spawn(cx + (r() - 0.5) * 16, cy - r() * 8, (r() - 0.5) * 24, -24 - r() * 30, 0.7, '#fff', 1.4, 46);
     }
     this.floatText(this.fxRng.pick(['MWAH. — DARLING', 'RETURNED WITH A NOTE. XOXO', 'WAKA, DARLING.', 'DEE-LIGHTFUL. THANK YOU.']), PINK);
   }
@@ -6418,7 +6666,7 @@ export class RunState {
   // real sprite into the mouth over the same half-second as the authored gape
   // and snap. Collision is still immediate; only its visible exit is delayed.
   startChompBite(ob) {
-    if (!ob || this.save.settings.reducedMotion) return;
+    if (!ob) return;
     const copy = { ...ob, live: true };
     if (this.chompBites.length < 8) {
       this.chompBites.push({ ob: copy, t: 0, duration: 0.42, spin: (this.fxRng.float() - 0.5) * 1.8 });
@@ -6502,9 +6750,7 @@ export class RunState {
     // the game, so none of this disturbs anything else.
     const step = JUGGLE_ARPEGGIO[Math.min(n - 1, JUGGLE_ARPEGGIO.length - 1)];
     Audio.sfx('popSmall', { pitch: Math.pow(2, step / 12), gain: 3.0 });
-    if (!this.save.settings.reducedMotion) {
-      burst(cx, cy, 5, 60, 0.24, '#f8a030', 1, 200, () => this.fxRng.float());
-    }
+    burst(cx, cy, 5, 60, 0.24, '#f8a030', 1, 200, () => this.fxRng.float());
   }
 
   /**
@@ -6586,7 +6832,7 @@ export class RunState {
         // if it never does — a relay swap mid-flight, a round that parks short
         // — and it is the number the chart's spacing was laid against: every
         // weapon in the cast arrives inside it (beatchart.js, BOX_BURST_BEATS).
-        ob.burstBeat = ob.actionBeat + BOX_BURST_BEATS;
+        ob.burstBeat = ob.actionBeat + (ob.burstBeats ?? BOX_BURST_BEATS);
         ob.fuseT = 0;
         return;
       }
@@ -6656,6 +6902,41 @@ export class RunState {
     }
     if (ob.def.isSwitch) this.openGates(ob.x);
   }
+
+  // A shot trap springs. It is NOT breakObstacle: nothing is removed, no debris
+  // is thrown and `broken` is not set, because the object is still there — the
+  // whole read is that the jaws you were going to jump are now shut and flat,
+  // and you can see that for the rest of the lane.
+  //
+  // The cue is the trap's own snap at the gain takeHit uses for it, so springing
+  // one deliberately and blundering into one sound like the same mechanism
+  // doing the same thing. The difference is who it closed on.
+  // THE TRAP FIRES ONCE, whatever set it off. `onto` says what it closed on:
+  // nothing (a shot) or the hero (he walked into it). Either way the jaws shut,
+  // the object stays put and it is spent — a sprung trap is skipped by the
+  // collision loop, so the same trap can never bite twice.
+  //
+  // A BITE IS QUIET HERE ON PURPOSE. takeHit already owns that moment: it fires
+  // `trapSnap` itself at the same gain, shakes, and throws the damage read. A
+  // second cue and a second shake on the same frame is the mechanism sounding
+  // like two mechanisms. What this adds to a bite is the picture — the jaws,
+  // which used to stay wide open around a hero they had just caught.
+  springTrap(ob, onto = 'nothing') {
+    if (ob.disarmed) return;
+    ob.disarmed = true;
+    ob.disarmT = 0;
+    if (onto === 'hero') return;
+    const cx = ob.x + ob.w / 2;
+    const cy = this.entityGroundY(ob) - ob.alt - ob.h / 2;
+    Audio.sfx('trapSnap', { gain: 1.12 });
+    shake(1.1, 0.09);
+    // Snow, not debris: the trap is intact. What flies is what it was lying in.
+    burst(cx, cy, 8, 70, 0.4, '#e6eef2', 1, 180, () => this.fxRng.float());
+    this.floatText('SPRUNG. IT BIT THE SNOW.', '#b8e0f8');
+  }
+
+  // The old name, kept because a shot is still the interesting way to spend one.
+  disarmTrap(ob) { this.springTrap(ob, 'nothing'); }
 
   openGates(x) {
     // Frozen switch: remove the next gap (a bridge slides in).
@@ -7000,7 +7281,7 @@ export class RunState {
     // names this hero's power and shows whether it is ready, so repeating it in
     // a bubble every swap is the same fact twice. The one-time firstAbility
     // tutor below still teaches the button once.
-    const btn = Input.usingTouch ? 'USE' : 'RIGHT/D';
+    const btn = Input.usingTouch ? 'USE' : 'X / SHIFT / MIDDLE CLICK';
     // The departing hero gets a parting shot. Only the first time each hero
     // tags out in a run: everyone gets their moment without a swap-heavy run
     // turning into a conversation you read instead of playing. (Only one voice
@@ -7035,6 +7316,97 @@ export class RunState {
     if (c.hitT > 0) c.hitT = Math.max(0, c.hitT - dt);
     if (c.shieldT > 0) c.shieldT = Math.max(0, c.shieldT - dt);
     if (c.dx > this.viewRightDx() + 40) this.copter = null;
+  }
+
+  /**
+   * The Frost sleigh, crossing what the player can actually SEE.
+   *
+   * Flown against the visible window rather than the authored 0..480, because
+   * those are not the same interval in portrait: the backdrop is drawn through a
+   * 1.778x zoom, so the phone shows local x 105..375 — 270px of a 480px picture
+   * — and a flight authored to the frame would enter a third of the way in and
+   * leave a third of the way out. `backgroundCoverage` is that window, already
+   * published for the pack's own tiled painters; landscape publishes none and
+   * takes the frame.
+   *
+   * One SPEED, so the crossing is simply shorter on a phone instead of the same
+   * seconds spent covering less sky, which is the same object moving visibly
+   * faster.
+   *
+   * The height is an ARC, not a lane: in half way up the picture, out over the
+   * top of the frame at the moment it is above the finish mast. Both ends come
+   * from the frame rather than from constants — see frostFlypastArc — and the
+   * aim point is read off the marker every frame, because the camera can still
+   * be carrying the pole in when this arms.
+   */
+  /**
+   * Put the Frost sleigh up, once, `lead` world px before the tape.
+   *
+   * ARMED ONCE PER ATTEMPT and tracked with its own flag rather than by testing
+   * `flypast`, because that field is null both before the flight and after it —
+   * so the fallback call in startFinishRun would launch a second sleigh across
+   * the celebration for anyone who reached the tape after the first had already
+   * gone. Frost 3 only, and never in overtime, which has no tape to fly to.
+   */
+  armFlypast(lead = 0) {
+    if (this.flypastArmed || this.overtime) return;
+    if (this.cabinet?.id !== 'frost' || this.stage?.index !== 3) return;
+    if (this.distance < this.finishCameraX() - Math.max(0, lead)) return;
+    this.flypastArmed = true;
+    this.flypast = { t: 0 };
+  }
+
+  placeFlypast(coverage, context, {
+    frameShift = 0, bgShift = 0, bgZoom = 1, xOffset = 0, band = null,
+    poleScreenX = null, poleTopScreenY = null,
+  } = {}) {
+    // The backdrop transform, solved backwards, so a screen point can be given
+    // to a flight that is computed in the pack's local space. Same expression
+    // portraitBackgroundBand solves the other way round; frameShift is only
+    // translated when positive, so it is clamped the same way.
+    const shift = Math.max(0, frameShift) + bgShift;
+    const toLocalY = (screenY) => (screenY - shift - GROUND_Y) / bgZoom + GROUND_Y;
+    // THE ARC IS AIMED AT THE POLE, and the target is converted INTO the
+    // backdrop's local space rather than the flight being solved in screen
+    // space: everything else about this flight — the window it enters from, the
+    // band it exits through — is already local, and portrait's backdrop zoom is
+    // the only difference between the two. Falls back to the right edge when
+    // there is no marker on screen, which is every caller that is not the
+    // finish.
+    const shot = flypastAt(this.flypast.t, {
+      left: coverage ? coverage.left : 0,
+      right: coverage ? coverage.right : W,
+      poleX: Number.isFinite(poleScreenX)
+        ? (poleScreenX - W / 2 - xOffset) / bgZoom + W / 2
+        : (coverage ? coverage.right : W),
+      arc: frostFlypastArc({ ...context, backgroundBand: band },
+        Number.isFinite(poleTopScreenY) ? toLocalY(poleTopScreenY) : null,
+        FROST_FLYPAST_CLEAR),
+    });
+    // Gone: over the mast and above the picture. Retired here rather than on the
+    // step because only this knows where the mast was, and a rotation mid-flight
+    // changes the answer.
+    if (!shot) {
+      this.flypast = null;
+      this.flypastShot = null;
+      return;
+    }
+    const { x: localX, y: localY, tilt } = shot;
+    // In landscape every input to this is 0/1 and it is the identity.
+    this.flypastShot = {
+      localX,
+      localY,
+      x: (localX - W / 2) * bgZoom + W / 2 + xOffset,
+      y: shift + GROUND_Y + (localY - GROUND_Y) * bgZoom,
+      zoom: bgZoom,
+      tilt,
+      // A PHONE, not a portrait frame: the sleigh is grown for the size of the
+      // glass it is being looked at on, and a phone turned sideways is the same
+      // glass. Read here rather than at the draw so the whole placement is one
+      // object and the overlay draws it without asking anything else.
+      phone: !!context?.portrait || Input.isTouchDevice(),
+      t: this.flypast.t,
+    };
   }
 
   // THE HIGHEST HE MAY FLY, in world alt, so his art stays clear of the HUD.
@@ -7500,6 +7872,10 @@ export class RunState {
     const wake = this.viewRightX() + WAKE_MARGIN;
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
+      // The snap runs on its own clock, not the prop ring's — see the frame
+      // choice in draw.js. It keeps counting past TRAP_SNAP_T harmlessly; the
+      // draw clamps to the last frame and holds it.
+      if (ob.disarmed) ob.disarmT += dt;
       const moving = !ob.route || ob.x <= wake;
       // Shamblers lurch rather than glide: each step surges then nearly stalls.
       // The surge never flips sign, so they only ever close on the player.
@@ -7528,8 +7904,7 @@ export class RunState {
       // as the cycle wraps to frame 0), and the cue leads with BARK_LEAD of
       // growl before its first bark — so the cue is fired BARK_LEAD ahead of
       // the wrap, caught as a threshold crossing on the cycle's own clock, and
-      // the RUFF lands as the mouth does. Reduced motion holds frame 0, so
-      // there is no crossing to catch and the plain timer fires it instead.
+      // the RUFF lands as the mouth does.
       //
       // FADES AS IT PASSES. Full voice while it closes on the hero; past him
       // the gain dies away over FINISH_DOG_FADE of road, so the dog recedes in
@@ -7561,7 +7936,7 @@ export class RunState {
         const tNext = (8 - ((this.tRun * fps + ob.bobPhase * 4) % 8)) / fps;
         const snap = ob.barkNext != null && ob.barkNext > BARK_LEAD && tNext <= BARK_LEAD;
         ob.barkNext = tNext;
-        if (ob.barkT <= 0 && fade > 0.04 && (snap || this.save.settings.reducedMotion)) {
+        if (ob.barkT <= 0 && fade > 0.04 && snap) {
           Audio.sfx('dogBark', { gain: fade, pitch: 0.94 + 0.12 * Math.abs(Math.sin(ob.x * 0.017)) });
           // Long enough to clear the volley the cue now fires — four barks,
           // measured at 1.09s end to end through render-cues — plus a breath.
@@ -7708,7 +8083,9 @@ export class RunState {
       // drawn. "None of those in these levels" means none.
       if (this.beatLock && BEAT_BANNED_POWERS.has(p.type)) { p.live = false; continue; }
       if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
-      if (p.def.appliance && !p.toss && p._baseAlt != null) {
+      // ...unless the magnet has hold of it: rewriting x from _baseX every
+      // frame would peg a captured appliance in place while it was being reeled in.
+      if (p.def.appliance && !p.toss && !p.magnetized && p._baseAlt != null) {
         const wt = this.tRun;
         p.alt = p._baseAlt + Math.sin(wt * 0.7 + p.bobPhase) * 6 + Math.sin(wt * 1.3 + p.bobPhase + 1.2) * 4;
         // No sideways drift on the beat lane: the toaster stands on a line
@@ -7741,7 +8118,12 @@ export class RunState {
     // the crossing was a set of platforms floating over ground you could stand
     // on. A thing is behind you when the whole of it is behind you.
     this.obstacles = this.obstacles.filter((ob) => ob.live !== false && ob.x + ob.w > this.camX - 80);
-    this.pickups = this.pickups.filter((p) => p.live && p.x > this.camX - 40);
+    // A coin the magnet holds is exempt from the near-edge sweep: it may well
+    // BE behind him — that is what being reeled in from behind looks like — and
+    // binning it here is exactly the bug updateCoinMagnet's latch undoes. The
+    // outer bound is only a leak stop; a held coin closes in well inside it.
+    this.pickups = this.pickups.filter((p) => p.live
+      && (p.x > this.camX - 40 || (p.magnetized && p.x > this.camX - 400)));
 
     // CHASE COPTER: he hangs OVER the hero and you bonk him from underneath.
     //
@@ -8366,11 +8748,9 @@ export class RunState {
         // not destroyed, and breaking it here would pay its coins twice and
         // leave debris hanging in the sky.
         ob.vy = -Math.abs(ob.vy) - 40;
-        if (!this.save.settings.reducedMotion) {
-          const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#b07840';
-          burst(ob.x + ob.w / 2, this.entityGroundY(ob) - ob.alt - ob.h / 2,
-            8, 90, 0.3, scuff, 1, 240, () => this.fxRng.float());
-        }
+        const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#b07840';
+        burst(ob.x + ob.w / 2, this.entityGroundY(ob) - ob.alt - ob.h / 2,
+          8, 90, 0.3, scuff, 1, 240, () => this.fxRng.float());
       }
     }
 
@@ -8496,7 +8876,8 @@ export class RunState {
         // height is a straight line drawn twice; lifting through the hang and
         // easing down into the catch makes the whole trip an ARC, so the return
         // leg is visibly a different path from the throw.
-        const spentAt = pr.type === 'fist' ? 0.42 : 0.5;
+        const spentAt = pr.type === 'fist'
+          ? (this.beatLock ? FIST_PARK_SEC_BEAT : FIST_PARK_SEC) : 0.5;
         if (!disposable && !pr.returning && pr.t > spentAt) {
           pr.hang = (pr.hang == null ? RETURN_HANG_T : pr.hang) - dt;
           pr.vx *= Math.max(0, 1 - dt * 8);          // brake, do not stop dead
@@ -8633,6 +9014,13 @@ export class RunState {
               continue;
             }
             if (ob.def.breakable === false) {
+              // A BEAR TRAP IS NOT BROKEN BY A SHOT, IT IS SPRUNG BY ONE. The
+              // round is spent exactly as it is on any other unbreakable thing
+              // — the trap stays standing, so a weapon that would carry on
+              // through would arrive at the next hazard having ignored a
+              // solid object — but the trap shuts on nothing and is harmless
+              // from here on.
+              if (ob.def.disarmable) this.springTrap(ob, 'nothing');
               if (pr.art === 'bamboo') { pr.live = false; break; }
               if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
               else pr.live = false;
@@ -8740,7 +9128,7 @@ export class RunState {
       Audio.setInvincible(on);
       Audio.sfx(on ? 'star' : 'starEnd');
     }
-    if (!on || this.save.settings.reducedMotion) return;
+    if (!on) return;
     if (this.fxRng.chance(0.6)) {
       const hue = Math.floor((this.tRun * 420 + this.fxRng.float() * 90) % 360);
       const gy = this.playerGroundY();
@@ -8764,20 +9152,86 @@ export class RunState {
     Audio.setInvincible(false);
   }
 
+  /**
+   * THE MAGNET IS A PROMISE: a coin it takes hold of is a coin you collect.
+   *
+   * The pull used to be a flat 220px/s in WORLD space, and the hero is faster
+   * than that — the lane ramps to 1.6x of 160 on its own, and a cabinet bonus,
+   * SPEED, a dash or overtime all go further past it. So a coin BEHIND him
+   * closed at (220 - speed), which is negative at ordinary full-pelt pace: it
+   * fell further behind every frame until the retirement sweep binned it 40px
+   * off the back of the camera. The magnet appeared to grab coins and then lose
+   * them, and worst in the case it exists for — a coin arc overhead is a nearly
+   * VERTICAL offset, so almost none of the 220 went into catching up while he
+   * ran out from under it.
+   *
+   * The fix is to express the pull in the HERO'S frame. A held coin carries his
+   * forward speed and closes on top of it, so the closing rate is MAGNET_PULL
+   * from any direction at any lane speed, and every capture is in his hand
+   * within radius/MAGNET_PULL — under two thirds of a second — no matter how
+   * fast the run has become. Outrunning the magnet is no longer expressible.
+   *
+   * And capture LATCHES. Re-testing the radius every frame let the same coin be
+   * grabbed, dropped and grabbed again as the gap breathed; once it is his it
+   * stays his, including through the power-up's clock running out on the way
+   * in. The retirement sweep in updateEntities honours the same latch, or the
+   * coin would simply be deleted out from under the promise instead.
+   *
+   * Capture is same-route only (a coin on the road overhead is not his) and
+   * skips anything still in flight from a toss, which owns its own arc.
+   */
   updateCoinMagnet(dt) {
     const hero = HERO_BY_ID[this.relay.current];
-    let radius = Math.max(hero.magnetRadius * (this.modIds.includes('bigmagnet') ? 2 : 1), this.powerups.magnetRadius());
-    if (radius <= 0) return;
-    const px = this.camX + PLAYER_X, py = this.groundYAt(px) - this.player.y - 8;
+    const radius = Math.max(hero.magnetRadius * (this.modIds.includes('bigmagnet') ? 2 : 1), this.powerups.magnetRadius());
+    const takesCapsules = !!(this.powerups.active.magnet && this.powerups.active.magnet.level >= 4);
+    // AIMED AT THE BOX THAT COLLECTS, not at an anchor of its own. Two things
+    // were wrong with `camX + PLAYER_X, groundYAt - y - 8`: the hero is not at
+    // PLAYER_X during the intro run or the finish dash (heroScreenX moves him,
+    // and on the way in he is BEHIND it, so the magnet dragged coins forward
+    // past him), and a point 8px over his feet is not where collide() looks —
+    // it uses the STANDING box even mid-slide, so that is what a coin has to
+    // be steered into. Centre to centre, so arriving is overlapping.
+    const pbox = this.playerBox();
+    const px = pbox.x + pbox.w / 2, py = pbox.y + pbox.h - PLAYER_H / 2;
+    // What he covered this frame: the magnet runs after the camera has already
+    // advanced, so this is what has to come back out of every measurement.
+    const carry = this.speed * this.rewindSpeedMul * dt;
     for (const p of this.pickups) {
-      if (!p.live || (!p.def.coin && !(this.powerups.active.magnet && this.powerups.active.magnet.level >= 4))) continue;
-      const dx = px - p.x, dy = py - (this.entityGroundY(p) - p.alt);
-      const d2 = dx * dx + dy * dy;
-      if (d2 < radius * radius) {
-        const d = Math.max(8, Math.sqrt(d2));
-        p.x += (dx / d) * 220 * dt;
-        p.alt -= (dy / d) * 220 * dt;
+      if (!p.live) continue;
+      if (!p.magnetized) {
+        if (radius <= 0 || p.toss || !this.sharesRoad(p)) continue;
+        if (!p.def.coin && !takesCapsules) continue;
       }
+      const cx = p.x + p.w / 2, cy = this.entityGroundY(p) - p.alt - p.h / 2;
+      const dy = cy - py;
+      if (!p.magnetized) {
+        if (Math.hypot(cx - px, dy) >= radius) continue;
+        p.magnetized = true;
+        p.magV = 0;
+      }
+      // THE CLOSE, WRITTEN IN THE HERO'S FRAME.
+      //
+      // (cx - px + carry) is the offset as it stood BEFORE he moved this frame.
+      // Shrink THAT by the coin's own closing speed and hang the result off
+      // where he is NOW, and his speed has cancelled out of the arithmetic: the
+      // offset falls by magV * dt every frame whatever the lane is doing, and
+      // lands at exactly zero rather than a stride past him. (Adding the carry
+      // as a separate shove and clamping the pull alone is the same sum with
+      // the clamp in the wrong place: the coin overshot by one frame of his
+      // travel, which at lane speed is wider than both boxes, so it rode just
+      // in front of his nose forever without ever touching him.)
+      //
+      // `magV` is the coin's speed TOWARDS him, and it starts at zero: on the
+      // frame it is caught it does nothing but keep station, which at lane speed
+      // is already a visible change of mind, and then it winds up.
+      p.magV = Math.min(MAGNET_PULL_MAX, (p.magV || 0) + MAGNET_ACCEL * dt);
+      const dx = cx - px + carry;
+      const d = Math.hypot(dx, dy);
+      const k = d > 0.0001 ? Math.max(0, 1 - (p.magV * dt) / d) : 0;
+      p.x = px + dx * k - p.w / 2;
+      // Ground sampled at the coin's NEW column: alt is measured from whatever
+      // is under it, and on a slope that is not the ground it just left.
+      p.alt = this.entityGroundY(p) - (py + dy * k) - p.h / 2;
     }
   }
 
@@ -9127,6 +9581,9 @@ export class RunState {
     // loops after every resync.
     this.beatJudgeConsumed.clear();
     this.rebeatSparedHoles(beat);
+    // The gate is a beat number in the numbering that just restarted; it is
+    // re-read off the road it was banked as (rhythmOpeningGate).
+    if (this.rhythmOpeningGateX != null) this.rhythmOpeningUntil = undefined;
     this.beatDriftLastRaw = beat;
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = beat;
@@ -9134,6 +9591,144 @@ export class RunState {
     this.beatDriftDebt = 0;
     this.beatDriftOverSteps = 0;
     return true;
+  }
+
+  /**
+   * WHERE THE LANE STANDS AGAINST THE SONG, right now: the raw heard beat, the
+   * spawner's own numbering of it, the judge's, the camera, and the cadence
+   * origin. A checkpoint banks one (makeSnapshot) and the stage start banks one
+   * (rhythmStartAnchor); they are what a retry rebuilds the same road from.
+   */
+  rhythmLaneAnchor() {
+    const sp = this.spawner;
+    if (!this.beatLock || !sp?.chart || !Number.isFinite(sp.fillRaw)) return null;
+    // Off the last fill, not off the clock and camera now: the marks stand
+    // where THAT beat and THAT camera put them (BeatSpawner.fill), and the two
+    // readings are a frame's scroll apart. The judge's numbering is carried
+    // across the same way, for the opening gate.
+    const rawNow = this.rhythmBeatNow();
+    const judgeNow = this.rhythmBeatForJudging();
+    return {
+      beatRaw: sp.fillRaw,
+      laneBeat: sp.fillBeat,
+      judgeBeat: Number.isFinite(judgeNow) && Number.isFinite(rawNow)
+        ? judgeNow - (rawNow - sp.fillRaw) : null,
+      camX: sp.fillX,
+      passOffset: sp.passOffset || 0,
+    };
+  }
+
+  /**
+   * THE BEAT-JUMP RESPAWN.
+   *
+   * On a beat stage the song does not stop for a death, and the road is cut
+   * from the song: every chart mark stands where the lane's beat-to-road
+   * mapping puts it. Restoring the camera to the flag and re-anchoring the
+   * lane on whatever beat the song had reached kept the music continuous but
+   * re-phased the whole chart against the world — the bars, the coins and the
+   * box all landed on different road than the first time through, and the
+   * set-piece holes re-snapped to a grid that had moved under them. A retry
+   * was a different level.
+   *
+   * Exact same world coordinates and an uninterrupted song cannot both hold
+   * once an arbitrary amount of music has gone by; the music is the one that
+   * stays. So the camera moves instead, by exactly the beats the song has
+   * spent since the anchor, reduced to one loop of the chart: the chart is
+   * periodic in the loop, so a whole number of loops changes nothing about
+   * where its marks stand and the remainder is the shift that puts the road
+   * back under the beat. Every mark then lands on the world x it had before,
+   * and the cadences are kept on the same road by moving the spawner's pass
+   * origin by the loops that were dropped (BeatSpawner.passOffset).
+   *
+   * The shift is forward by less than a loop, unless that lands the hero in
+   * the approach to a scripted hole or a ring — a checkpoint stands at least a
+   * second and a half short of one (stages.js) but a shift of up to a loop can
+   * eat that — in which case the same phase one loop back, or failing that one
+   * loop further on, is used instead (rhythmRespawnClear). The chart's own
+   * hazards need no such care: the lane lays nothing that asks an input inside
+   * its runway, wherever the retry opens.
+   *
+   * `near` is the settling call: the camera was parked on a forecast of the
+   * release beat (parkRhythmRespawn), and the settled shift is the
+   * representative of the same phase nearest the parked one, so the hero the
+   * player is already looking at moves by a frame's error rather than a loop.
+   */
+  rhythmRespawnPlan(anchor, beatRaw, near = null) {
+    const chart = this.spawner?.chart;
+    if (!anchor || !chart || !Number.isFinite(beatRaw) || !Number.isFinite(anchor.beatRaw)) return null;
+    const loop = chart.loopBeats;
+    const pxPerBeat = this.speed * 60 / this.laneBpm();
+    if (!(pxPerBeat > 0)) return null;
+    const delta = beatRaw - anchor.beatRaw;
+    const forward = ((delta % loop) + loop) % loop;
+    const plan = (shift) => ({
+      shift,
+      camX: anchor.camX + shift * pxPerBeat,
+      // The road at the anchor is renumbered from anchor.laneBeat to
+      // (beatRaw - shift), a whole number of loops apart by construction; the
+      // pass origin follows it. Rounded because the two are floats a loop's
+      // worth of arithmetic apart.
+      passOffset: Math.round((anchor.passOffset || 0) + (beatRaw - shift) - anchor.laneBeat),
+    });
+    if (near != null) return plan(forward + Math.round((near - forward) / loop) * loop);
+    for (const shift of [forward, forward - loop, forward + loop]) {
+      const p = plan(shift);
+      if (p.camX < 0) continue;
+      if (this.rhythmRespawnClear(p.camX, pxPerBeat)) return p;
+    }
+    return plan(forward);
+  }
+
+  /**
+   * Whether a retry may open with the camera here: not in a scripted hole, not
+   * in the runway before one (the lane's own action-free stretch, plus a beat
+   * for the grid the hole will snap to), not on the landing after it, and the
+   * same for the ring.
+   */
+  rhythmRespawnClear(camX, pxPerBeat) {
+    const playerX = camX + PLAYER_X;
+    const before = (PIT_LANE_RUNWAY_BEATS + 1) * pxPerBeat;
+    const after = pxPerBeat;
+    for (const pit of this.pitPlan || []) {
+      const x = pit._authoredX ?? pit.x;
+      if (!Number.isFinite(x)) continue;
+      if (playerX > x - before && playerX < x + pit.w + after) return false;
+    }
+    if (this.loopAt != null && playerX > this.loopAt - before
+      && playerX < this.loopAt + 8 * pxPerBeat) return false;
+    return true;
+  }
+
+  /**
+   * Park the retry's camera on the beat-jump forecast for the end of the
+   * settling hold (RHYTHM_DEATH_SYNC_SEC), so the world the player watches
+   * through the hold is the one control returns to. settleRhythmRespawn
+   * corrects it by the forecast's error on release. With no anchor, or no
+   * clock, the retry opens on the flag as it always did.
+   */
+  parkRhythmRespawn(anchor) {
+    this.rhythmRespawn = null;
+    if (!anchor || !this.beatLock) return;
+    this.rhythmRespawn = { anchor, shift: null };
+    const beatRaw = this.rhythmBeatNow();
+    if (!Number.isFinite(beatRaw)) return;
+    const plan = this.rhythmRespawnPlan(anchor, beatRaw + RHYTHM_DEATH_SYNC_SEC * this.laneBpm() / 60);
+    if (!plan) return;
+    this.camX = plan.camX;
+    this.distance = plan.camX;
+    this.spawner.passOffset = plan.passOffset;
+    this.rhythmRespawn.shift = plan.shift;
+  }
+
+  settleRhythmRespawn(beatRaw) {
+    const r = this.rhythmRespawn;
+    this.rhythmRespawn = null;
+    if (!r) return;
+    const plan = this.rhythmRespawnPlan(r.anchor, beatRaw, r.shift);
+    if (!plan) return;
+    this.camX = plan.camX;
+    this.distance = plan.camX;
+    this.spawner.passOffset = plan.passOffset;
   }
 
   invalidateRhythmLane() {
@@ -9251,10 +9846,12 @@ export class RunState {
       if (!ob.live || ob.setPiece || !Number.isFinite(ob.actionX)) continue;
       const n = Math.round(beat + (ob.actionX - px) / pxPerBeat);
       const slot = ((n % loop) + loop) % loop;
+      const event = chart?.events?.[slot];
       ob.actionBeat = n;
-      ob.chartSlot = slot;
-      const action = chart?.events?.[slot]?.action;
-      if (action !== 'jump' && action !== 'pit') this.beatJudgeConsumed.add(`judge:${n}:${slot}`);
+      ob.chartSlot = event?.slot ?? slot;
+      if (event?.action !== 'jump' && event?.action !== 'pit') {
+        this.beatJudgeConsumed.add(`judge:${n}:${ob.chartSlot}`);
+      }
     }
   }
 
@@ -9283,6 +9880,7 @@ export class RunState {
     if (crossing) return null;
     const slot = ((beat % chart.loopBeats) + chart.loopBeats) % chart.loopBeats;
     const event = chart.events[slot];
+    const eventSlot = event.slot ?? slot;
     if (!event) return null;
     // NOTHING BUT JUMPS IS OWED WHILE THE SIGN IS UP — the same gate the lane
     // laid against (rhythmOpeningGate), so a slot it left empty is not a miss.
@@ -9321,7 +9919,7 @@ export class RunState {
     // are laid differently; the scoreboard must not, or clearing a hole on the
     // beat would break the combo the bar beside it builds.
     const action = event.action === 'pit' ? 'jump' : event.action;
-    return { id: `judge:${beat}:${slot}`, beat, action };
+    return { id: `judge:${beat}:${eventSlot}`, beat, action };
   }
 
   /**
@@ -9534,12 +10132,9 @@ export class RunState {
   // once per heard beat and fires the cue — the only traffic that ever goes
   // from the city back to the run.
   //
-  // Silent under reduced motion for the same reason the panel is frozen
-  // there: a still picture must not be narrated by a bang. Silent on every
-  // other style pack too — nothing else has a plane in it.
+  // Silent on every other style pack too — nothing else has a plane in it.
   advanceCityAccident() {
-    if (!this.beatLock || this.styleName !== 'lcd'
-      || this.save.settings.reducedMotion) return;
+    if (!this.beatLock || this.styleName !== 'lcd') return;
     const beat = this.rhythmBeatNow();
     if (!Number.isFinite(beat)) { this.cityAccidentBeat = null; return; }
     const heard = Math.floor(beat);
@@ -10081,18 +10676,26 @@ export class RunState {
       // the coin run has no business out there. Identical for every other
       // route, where the two are the same number.
       const bodyW = is.bodyW ?? is.w;
+      // EVERY PRIZE LAID AGAINST THE ROAD IS TAGGED WITH IT. The alt already
+      // says where it is; `road` says what it is ON, which is the one thing a
+      // lane-relative alt cannot express — see entityRoad. Tagged at the two
+      // sites that do the folding and nowhere else: the low prize is on the
+      // lane, the mouth's divers are the lane's invitation into the hole, and
+      // the magnet capsule is deliberately kept on the lane floor by
+      // routePrizeAlt, so none of the three is on this road.
       if (is.prize === 'coins') {
         for (let x = is.x + inset; x <= is.x + bodyW - inset; x += COIN_GAP) {
           // Nothing strung over a break in the road. A coin you cannot reach
           // without leaving the road is a coin that punishes you for taking it.
           if (!roadAt(x, is)) continue;
           const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
-          this.pickups.push(makePickup('coin', x, alt));
+          this.pickups.push(Object.assign(makePickup('coin', x, alt), { road: is }));
         }
       } else if (is.prize) {
         const x = is.x + bodyW / 2;
         const alt = routePrizeAlt(is, x, is.prize);
-        this.pickups.push(makePickup(is.prize, x, alt));
+        const onRoad = PICKUPS[is.prize]?.power !== 'magnet';
+        this.pickups.push(Object.assign(makePickup(is.prize, x, alt), onRoad ? { road: is } : {}));
       }
       // The one big thing, two thirds of the way along, on top of whatever the
       // coin run pays. Placed late on purpose: a power-up sitting at the mouth
@@ -10100,7 +10703,8 @@ export class RunState {
       if (is.bonus) {
         const x = is.x + bodyW * 0.66;
         const alt = routePrizeAlt(is, x, is.bonus, 6);
-        this.pickups.push(makePickup(is.bonus, x, alt));
+        const onRoad = PICKUPS[is.bonus]?.power !== 'magnet';
+        this.pickups.push(Object.assign(makePickup(is.bonus, x, alt), onRoad ? { road: is } : {}));
       }
       // The road NOT taken. A fork is only a decision if the two sides are worth
       // different things — coins up and a power-up down means the answer depends
@@ -10806,7 +11410,9 @@ export class RunState {
       if (!route) continue;
       const x = stone.x + stone.w - approach;
       const alt = this.groundYAt(x) - this.routeGroundY(x, route) + COIN_FLOOR;
-      this.pickups.push(makePickup('coin', x, alt));
+      // On the stone, not in the hole under it — the same tag the road's own
+      // coin run carries, for the same reason.
+      this.pickups.push(Object.assign(makePickup('coin', x, alt), { road: route }));
     }
   }
 
@@ -10872,6 +11478,52 @@ export class RunState {
       this.signShown = true;
       return;
     }
+  }
+
+  /**
+   * THE FROST WEATHER, AS A NUMBER: how thick the blizzard should be standing
+   * where the run is standing.
+   *
+   * It climbs one rung per CHECKPOINT — the storm arrives at the first line of
+   * Frost 1, thickens at every line after it in that level and in the two that
+   * follow, and is at its worst from the last line of Frost 3 to the tape (the
+   * ladder itself, and why it is the checkpoints, lives with the painter in
+   * stylePacks). Counted off the checkpoints BEHIND the player rather than off a
+   * banked tally, so the same stretch of road is run under the same sky whether
+   * it is the first attempt or the fifth.
+   *
+   * A stage with no restore points at all — ONE-HIT, overtime — has no rungs to
+   * count, and falls back to reading the same ladder continuously off the
+   * odometer, which is also what every static preview of Frost gets.
+   */
+  blizzardTarget() {
+    if (this.cabinet.id !== 'frost') return 0;
+    const stageIndex = this.stage?.index ?? 1;
+    const lines = this.checkpointsAt || [];
+    if (!lines.length) {
+      const progress = Number.isFinite(this.totalDist) && this.totalDist > 0
+        ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0;
+      return frostBlizzardRamp(stageIndex, progress);
+    }
+    let banked = 0;
+    for (const at of lines) if (this.distance >= at) banked++;
+    return frostBlizzardRung(stageIndex, banked, lines.length);
+  }
+
+  /**
+   * Move the live weather toward that number. WEATHER DOES NOT STEP, IT
+   * THICKENS: the rung changes on one frame, and the sky takes the best part of
+   * a minute to finish agreeing with it, which is what keeps a checkpoint from
+   * reading as a lighting cue. An exponential approach rather than a fixed rate
+   * so it is the same shape whatever the size of the step.
+   *
+   * Real seconds, not world time: the storm is not part of the hit-jolt.
+   */
+  blizzardStep(dt) {
+    const target = this.blizzardTarget();
+    if (!Number.isFinite(this.blizzard)) { this.blizzard = target; return; }
+    this.blizzard += (target - this.blizzard)
+      * (1 - Math.exp(-Math.max(0, Number(dt) || 0) / BLIZZARD_EASE));
   }
 
   checkCheckpoints() {
@@ -10949,7 +11601,7 @@ export class RunState {
 
   makeSnapshot() {
     return {
-      camX: this.camX, tRun: this.tRun, score: this.score, coins: this.coins,
+      camX: this.camX, distance: this.distance, tRun: this.tRun, score: this.score, coins: this.coins,
       battery: this.maxBattery(),
       mission: JSON.parse(JSON.stringify(this.mission)),
       challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
@@ -10957,8 +11609,13 @@ export class RunState {
       // replays portals already passed or skips the ones still owed.
       relayState: {
         current: this.relay.current, next: this.relay.next, bag: this.relay.bag.slice(),
-        spawned: this.relay.spawned, elapsed: this.relay.elapsed,
+        used: [...this.relay.used], spawned: this.relay.spawned, elapsed: this.relay.elapsed,
+        portalTimer: this.relay.portalTimer, portalEvery: this.relay.portalEvery,
+        lastTagLine: this.relay.lastTagLine, lastTagLineT: this.relay.lastTagLineT,
+        tagT: this.relay.tagT, prev: this.relay.prev,
       },
+      usedHeroes: [...this.usedHeroes],
+      exitSpoken: [...this.exitSpoken],
       abilityCooldowns: { ...this.player.abilityCooldowns },
       // Keep movement state with the checkpoint. In particular, a checkpoint
       // can be crossed during the committed aerial slide, and restoring it at
@@ -10973,7 +11630,27 @@ export class RunState {
         landingSlideT: this.player.landingSlideT, slideKickT: this.player.slideKickT,
         standT: this.player.standT,
       },
-      spawnerX: this.spawner.nextX,
+      // A checkpoint is a deterministic branch point. The world entities are
+      // rebuilt on restore, so the cursors and RNG positions that produced
+      // them must travel with the checkpoint too. Otherwise the same road can
+      // receive a different pattern, gap spacing, or pickup after a death.
+      spawnerState: {
+        nextX: this.spawner.nextX,
+        lastPatternIdx: this.spawner.lastPatternIdx,
+        lastActionX: this.spawner.lastActionX,
+        lastActionKind: this.spawner.lastActionKind,
+        lastWasPunt: this.spawner.lastWasPunt,
+        usedOnce: this.spawner.usedOnce ? [...this.spawner.usedOnce] : null,
+      },
+      dripState: {
+        capsuleTimer: this.drip.capsuleTimer, batteryTimer: this.drip.batteryTimer,
+        lastPowerX: this.drip.lastPowerX, lastPowerType: this.drip.lastPowerType,
+      },
+      rngState: {
+        fx: this.fxRng.state, speech: this.speechRng.state,
+        relay: this.relay.rng.state, spawn: this.spawner.rng?.state ?? null,
+        drip: this.drip.rng.state,
+      },
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
       finishDogSpawned: this.finishDogSpawned, dogSignSpawned: this.dogSignSpawned,
       rewindCapSpawned: this.rewindCapSpawned,
@@ -11005,6 +11682,10 @@ export class RunState {
       // without the anchor drops a hero who checkpointed on a cloud back into a
       // frame still centred on the groundline two hundred pixels below him.
       camFloorY: this.camFloorY,
+      // Where this road stood against the song when the flag was crossed. A
+      // retry moves the camera by the beats the song spends between here and
+      // the respawn so the chart lands on the same world x — rhythmRespawnPlan.
+      laneAnchor: this.rhythmLaneAnchor(),
     };
   }
 
@@ -11014,7 +11695,12 @@ export class RunState {
     // holding the id of an obstacle that no longer exists would keep driving the
     // camera round a circle nothing is drawing.
     this.loop = null;
-    this.camX = s.camX; this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
+    this.camX = s.camX; this.distance = s.distance ?? s.camX;
+    // THE SONG HAS MOVED ON, SO THE ROAD MOVES WITH IT — first, so that every
+    // "ahead of him / behind him" below (the pits, the wall) reads the camera
+    // the retry actually opens on. See rhythmRespawnPlan.
+    if (this.beatLock) this.parkRhythmRespawn(s.laneAnchor);
+    this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
     this.battery = s.battery;
     this.mission = JSON.parse(JSON.stringify(s.mission));
     this.challenge = s.challenge ? JSON.parse(JSON.stringify(s.challenge)) : null;
@@ -11022,9 +11708,18 @@ export class RunState {
       this.relay.current = s.relayState.current;
       this.relay.next = s.relayState.next;
       this.relay.bag = s.relayState.bag.slice();
+      this.relay.used = new Set(s.relayState.used || this.relay.used);
       this.relay.spawned = s.relayState.spawned || 0;
       this.relay.elapsed = s.relayState.elapsed || 0;
+      if (s.relayState.portalTimer != null) this.relay.portalTimer = s.relayState.portalTimer;
+      if (s.relayState.portalEvery != null) this.relay.portalEvery = s.relayState.portalEvery;
+      this.relay.lastTagLine = s.relayState.lastTagLine ?? null;
+      this.relay.lastTagLineT = s.relayState.lastTagLineT ?? 0;
+      this.relay.tagT = s.relayState.tagT ?? Infinity;
+      this.relay.prev = s.relayState.prev ?? null;
     }
+    if (s.usedHeroes) this.usedHeroes = new Set(s.usedHeroes);
+    if (s.exitSpoken) this.exitSpoken = new Set(s.exitSpoken);
     this.player = new Player(this.relay.current, this.modIds);
     // A fresh Player starts at altitude 0, which means "on the floor" — so the
     // floor has to be the one the snapshot was taken on, or the hero is stood
@@ -11048,8 +11743,24 @@ export class RunState {
       this.player.landingSlideT = m.landingSlideT ?? 0; this.player.slideKickT = m.slideKickT ?? 0;
       this.player.standT = m.standT ?? 0;
     }
-    this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
-    this.spawner.lastActionX = s.camX;
+    const ss = s.spawnerState || {};
+    this.spawner.nextX = Math.max(ss.nextX ?? s.spawnerX ?? 0, s.camX + 400);
+    this.spawner.lastPatternIdx = ss.lastPatternIdx ?? this.spawner.lastPatternIdx;
+    this.spawner.lastActionX = ss.lastActionX ?? s.camX;
+    this.spawner.lastActionKind = ss.lastActionKind ?? this.spawner.lastActionKind;
+    this.spawner.lastWasPunt = ss.lastWasPunt ?? this.spawner.lastWasPunt;
+    if (ss.usedOnce) this.spawner.usedOnce = new Set(ss.usedOnce);
+    const ds = s.dripState || {};
+    this.drip.capsuleTimer = ds.capsuleTimer ?? this.drip.capsuleTimer;
+    this.drip.batteryTimer = ds.batteryTimer ?? this.drip.batteryTimer;
+    this.drip.lastPowerX = ds.lastPowerX ?? this.drip.lastPowerX;
+    this.drip.lastPowerType = ds.lastPowerType ?? this.drip.lastPowerType;
+    const rs = s.rngState || {};
+    if (rs.fx != null) this.fxRng.state = rs.fx;
+    if (rs.speech != null) this.speechRng.state = rs.speech;
+    if (rs.relay != null) this.relay.rng.state = rs.relay;
+    if (rs.spawn != null && this.spawner.rng) this.spawner.rng.state = rs.spawn;
+    if (rs.drip != null) this.drip.rng.state = rs.drip;
     this.obstacles = []; this.pickups = []; this.projectiles = []; this.chompBites = [];
     this.portal = null;
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
@@ -11100,11 +11811,18 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     this.flip = null;
     this.flipCoins = null;
+    this.flypast = null;
+    this.flypastShot = null;
+    this.flypastArmed = false;
     this.dead = false;
     this.pitDeath = null;
     this.player.iframes = 0.75;
     this.speechQueue = []; // pre-death banter does not survive the respawn
     this.speechWaitT = 0;
+    // The sky belongs to the road, so a restore arrives in the weather that
+    // stretch is owed — no ease. Easing here would have the storm let up for
+    // half a minute after every death, which is a reward for dying.
+    this.blizzard = this.blizzardTarget();
     clearParticles();
     this.resetRenderInterpolation();
     if (this.beatLock) {
@@ -11118,10 +11836,9 @@ export class RunState {
       // eats are held rather than judged.
       this.beatCombo = 0;
       this.rhythmCheer = 0;
-      // The song remains continuous through a checkpoint restore too.  Hold
+      // The song remains continuous through a checkpoint restore too. Hold
       // the restored world for the same settling window used by a full retry;
-      // the final reset below is based on the current heard beat, not the
-      // checkpoint's old phase.
+      // the lane re-anchors to the current heard beat when control returns.
       this.rhythmSyncT = RHYTHM_DEATH_SYNC_SEC;
       this.rhythmSyncPending = true;
     }
@@ -11771,6 +12488,10 @@ export class RunState {
         if (pbox.x > box.x + box.w) ob.landedOn = false;
         else continue;
       }
+      // A SPRUNG TRAP IS SCENERY. It has already shut on nothing, and running
+      // over the closed jaws is the reward for the round that shut them —
+      // checked before the overlap so the box is never consulted at all.
+      if (ob.disarmed) continue;
       if (!overlaps(pbox, box)) continue;
       if (this.player.rolling && ob.def.ground) {
         this.player.rollContactIds ||= new Set();
@@ -11953,11 +12674,9 @@ export class RunState {
           // the player is playing to and the contact is 87ms behind the beat by
           // construction. Firing it here as well would be the same kick twice.
           if (!ob.puntCued) Audio.sfx('punt', { heavy, pitch: heavy ? 0.95 : 1.1 });
-          if (!this.save.settings.reducedMotion) {
-            const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#e86020';
-            burst(ob.x + ob.w / 2, this.entityGroundY(ob) - ob.h * 0.3,
-              6, 70, 0.28, scuff, 1, 220, () => this.fxRng.float());
-          }
+          const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#e86020';
+          burst(ob.x + ob.w / 2, this.entityGroundY(ob) - ob.h * 0.3,
+            6, 70, 0.28, scuff, 1, 220, () => this.fxRng.float());
           // Heavier boot, heavier knock. Still under the crate plow's 1.6: the
           // barrel LEAVES, and a shake as big as a break would say it broke.
           shake(heavy ? 1.15 : 0.9, 0.07);
@@ -11975,6 +12694,12 @@ export class RunState {
       // This entity got him. It is spent as a kick target from here on — see
       // the slideKick note above.
       ob.hurtPlayer = true;
+      // A TRAP THAT CATCHES YOU HAS FIRED. Every contact that gets ignored —
+      // i-frames, a dash, an invincible hero — has already `continue`d out
+      // above, so reaching this line means the mechanism went off, and the
+      // jaws have to be seen to close on him. It is spent afterwards for the
+      // same reason a shot one is: it has nothing left to spring.
+      if (ob.def.disarmable) this.springTrap(ob, 'hero');
       // A banana peel takes his feet out from under him on top of the damage.
       // Everything above still had its say first — i-frames, the shield, the
       // slide plow, an ability's roll — so the peel is the LAST word rather than
@@ -12115,10 +12840,8 @@ export class RunState {
     // A few skins scatter where his heel went through it. The peel itself stays
     // — it is not breakable, and a peel that vanished on contact would teach
     // the player that running into it is how you clear it.
-    if (!this.save.settings.reducedMotion) {
-      burst(ob.x + ob.w / 2, this.entityGroundY(ob) - 2, 7, 60, 0.32, '#f6d33c', 1, 240,
-        () => this.fxRng.float());
-    }
+    burst(ob.x + ob.w / 2, this.entityGroundY(ob) - 2, 7, 60, 0.32, '#f6d33c', 1, 240,
+      () => this.fxRng.float());
   }
 
   takeHit(msg, isPit = false, src = null, pit = null) {
@@ -12259,6 +12982,12 @@ export class RunState {
       this.floatText('UNPEELABLE.', '#e8e8f0');
       return;
     }
+    // The trap owns the damage read. It still snaps into a shield, Ray M'N's
+    // reassembly or a crash-test hit, but ignored contacts above never fire it.
+    // The extra gain is intentional: this is the mechanism's close, dry snap,
+    // not the generic damage wash used by the rest of the lane.
+    const trapContact = !isPit && src === 'bearTrap';
+    if (trapContact) Audio.sfx('trapSnap', { gain: 1.12 });
     const absorb = this.powerups.absorbHit();
     sunShock(); // the level-1 sun gasps at any real impact (shielded or not)
     if (absorb.absorbed) {
@@ -12299,7 +13028,7 @@ export class RunState {
       this.bonusT = BONUS_HOLD;   // losing it is news too — say so before folding back
     }
     if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848', { solid: true });
-    Audio.sfx('hit');
+    if (!trapContact) Audio.sfx('hit');
     shake(5, 0.3);
     this.hitstop = this.beatLock ? 0 : 0.08;
     // playerWorldX, not camX + PLAYER_X: on the finish run the hero is the thing
@@ -12506,10 +13235,8 @@ export class RunState {
           Audio.sfx('crunch');
           Audio.sfx('die');
           shake(4, 0.24);
-          if (!this.save.settings.reducedMotion) {
-            burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 10, 60, 0.45,
-              '#b9c4d0', 1.4, 90, () => this.fxRng.float());
-          }
+          burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 10, 60, 0.45,
+            '#b9c4d0', 1.4, 90, () => this.fxRng.float());
           return;
         }
         // HE BREAKS THE SURFACE, he does not land on it. Zeroing the fall here
@@ -12527,10 +13254,8 @@ export class RunState {
         // Whatever he went into, coming back up. Colourless on purpose: eight
         // of the nine cabinets name no fill, and a burst that guessed orange
         // would be lying about the pit on all of them.
-        if (!this.save.settings.reducedMotion) {
-          burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 12, 70, 0.5,
-            '#8a8496', 1.5, 90, () => this.fxRng.float());
-        }
+        burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 12, 70, 0.5,
+          '#8a8496', 1.5, 90, () => this.fxRng.float());
       }
       return;
     }
@@ -12568,9 +13293,10 @@ export class RunState {
       } else if (this.snapshot && !this.oneHit) {
         this.restoreSnapshot(this.snapshot);
       } else if (!this.oneHit && !this.overtime) {
-        // restart stage from the top with a new seed
-        this.seed = (this.seed + 1) >>> 0;
-        this.o.seed = this.seed;
+        // Restart stage from the top with the same seed. A fresh RunState is
+        // where a new level seed is chosen; dying before the first checkpoint
+        // is still the same attempt and must not redraw its hazards, coins, or
+        // powerups.
         this.enter();
       } else {
         this.endRun(false);
@@ -12746,7 +13472,6 @@ export class RunState {
     // which every candidate holds to.
     drawFinishMarkerArt(ctx, fx, gy, {
       t, thrown: ease, live, armed: this.finishing && !flip,
-      reducedMotion: !!this.save.settings.reducedMotion,
     });
 
     // NOTHING marks where PERFECT starts, and that is the decision, not an
@@ -12795,6 +13520,13 @@ export class RunState {
     const pan = mix(Number.isFinite(this.prevCamPan) ? this.prevCamPan : this.camPan, this.camPan);
     const floorY = mix(Number.isFinite(this.prevCamFloorY) ? this.prevCamFloorY : this.camFloorY, this.camFloorY);
     const renderT = mix(Number.isFinite(this.prevTRun) ? this.prevTRun : this.tRun, this.tRun);
+    // The background clock is independent of gameplay time, so animated
+    // scenery does not restart when the opening run-in hands off to the lane
+    // or freeze when the hero lands on the finish pad.
+    const backgroundT = mix(
+      Number.isFinite(this.prevBackgroundT) ? this.prevBackgroundT : this.backgroundT,
+      this.backgroundT,
+    );
     const renderSettings = this.renderSettings || this.save.settings;
     // THIS IS THE HERO'S DRAWN COLUMN, and it is the one place that decides it.
     // heroScreenX() next door answers the same question for the hitbox, the
@@ -13037,6 +13769,19 @@ export class RunState {
     // arrive at the same final camera position without independent x/y rules.
     const backgroundContext = {
       portrait: portraitFrameActive,
+      // Background landmarks may vary by authored stage while remaining
+      // renderer-only scenery. The world geometry still comes from the stage
+      // layout; this is just a quiet identity hint for cabinet backdrops.
+      stageIndex: this.stage?.index ?? 1,
+      // How far through the level the run is. Weather that arrives over a level
+      // needs this; a pack that only paints scenery ignores it.
+      progress: Number.isFinite(this.totalDist) && this.totalDist > 0
+        ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0,
+      // And the weather itself, which on Frost is not a function of `progress`
+      // at all: it climbs a rung at every checkpoint and eases between them
+      // (blizzardTarget). The pack keeps its own odometer ramp for the pictures
+      // that are not a run.
+      blizzard: this.blizzard,
       // A backdrop landmark must not be allowed to stand over an open lane:
       // once the foreground ground pass cuts a gap away, a sign's post would
       // otherwise remain visible and read as floating. Pass only the compact
@@ -13054,9 +13799,9 @@ export class RunState {
       // layer-depth input there.
       cameraShiftY: portraitFrameActive ? bgShift : 0,
       frameShiftY: frameShift,
-      // Keep the portrait lab's three independent scenery controls available
-      // to the pack. In particular, a cloud/building clearance check must use
-      // the same scenery lift that moves the backdrop, not only LCD-local y.
+      // Keep the preview's three independent scenery controls available to the
+      // pack. In particular, a cloud/building clearance check must use the
+      // same scenery lift that moves the backdrop, not only LCD-local y.
       cloudOffsetY: portraitConfig?.cloudOffsetY ?? 0,
       sunOffsetY: portraitConfig?.sunOffsetY ?? 0,
       sceneryOffsetY: portraitConfig?.sceneryOffsetY ?? 0,
@@ -13079,13 +13824,50 @@ export class RunState {
       ? portraitBackgroundBand(frameShift, bgShift, bgZoom) : null;
     if (backgroundBand) ctx.__mashBackgroundBand = backgroundBand;
     try {
-      this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist,
+      this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
         backgroundScene, bgShift, backgroundContext);
     } finally {
       if (previousBackgroundCoverage === undefined) delete ctx.__mashBackgroundCoverage;
       else ctx.__mashBackgroundCoverage = previousBackgroundCoverage;
       if (previousBackgroundBand === undefined) delete ctx.__mashBackgroundBand;
       else ctx.__mashBackgroundBand = previousBackgroundBand;
+    }
+    // The flypast is PLACED here and drawn later. This is where the two things
+    // it needs are known — the visible window it crosses and the resolved band
+    // it flies in — but it ships in FRONT of the snow, which is the overlay, and
+    // the overlay is screen space. So this resolves the local point and hands
+    // the draw a screen one; see placeFlypast. Outside the try, so a throw in
+    // bg() still unwinds the published coverage first.
+    if (this.flypast) {
+      this.placeFlypast(backgroundCoverage, backgroundContext, {
+        frameShift, bgShift, bgZoom, xOffset: portraitXOffset,
+        band: backgroundBand,
+        // WHERE THE MAST WILL BE, not where it is. finishLineX() is the screen
+        // column the marker parks at; finishScreenX() only reaches it once the
+        // camera has stopped, and the flypast now goes up while the world is
+        // still scrolling — aimed at the live one, the crest slides down the sky
+        // as the tape comes in.
+        //
+        // Spelled out in terms of the RENDER zoom rather than called, because
+        // finishLineX() is a world-view column measured against VIEW_W, which is
+        // the RESTING zoom's frame. The two agree at rest and disagree for as
+        // long as a stage start has set one and not yet the other — which put
+        // the crest 350px off the right of a phone in exactly that window. One
+        // zoom, one answer.
+        poleScreenX: portraitXOffset
+          + Math.max(W - 72 * z, (PLAYER_X + 24) * z)
+          + (PLUNGER_CX + POLE_STANDOFF) * z,
+        poleTopScreenY: screenYFor(this.groundYAt(this.finishWorldX()) - POLE_H, z, pan, floorY),
+      });
+      // The other side of the switch: behind the weather is behind the pack's
+      // own paint, here, inside the transform that is still on the context.
+      if (FROST_FLYPAST_DEPTH !== 'front' && this.flypastShot) {
+        drawFrostFlypast(ctx, this.flypastShot.localX, this.flypastShot.localY,
+          this.flypastShot.t,
+          { tilt: this.flypastShot.tilt, scale: flypastScaleFor(this.flypastShot.phone) });
+      }
+    } else {
+      this.flypastShot = null;
     }
     ctx.restore();
 
@@ -13318,15 +14100,21 @@ export class RunState {
       if (!onScreen(ob)) continue;
       // The boost pad is a marking on the floor, so it lies in the floor's
       // plane and sinks a little further into it than a thing that merely
-      // rests there. Everything else keeps the old seating.
+      // rests there. Bedded floor hazards sample the same plane, but keep their
+      // teeth upright: drawWorldEntity uses the returned surface line to bury
+      // the lower plate without rotating the hazard away from vertical.
+      // Everything else keeps the old upright seating.
       // The loop's pad is the same kind of thing as the boost pad — a marking in
       // the floor rather than an object resting on it — so it takes the same
       // seating. It also takes the conform, which is what keeps the ring
       // standing square on a road that rolls.
       const boost = ob.def.isBoost;
+      const bedded = ob.def.bedded;
       const paint = () => this.drawAtGround(ctx, ob.x,
-        () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY),
-        ob.w, ob.def.ground && ob.alt === 0 ? (boost ? 2.5 : 1.5) : 0, boost ? cam : null,
+        (surface) => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings,
+          bedded ? { ...PRECULLED_ENTITY, beddedSurface: surface } : PRECULLED_ENTITY),
+        ob.w, ob.def.ground && ob.alt === 0 ? (boost ? 2.5 : 1.5) : 0,
+        boost ? cam : (bedded ? { surfaceOnly: true } : null),
         ob.route);
       if (smearing) {
         // Furthest first, so nearer ghosts paint over further ones and the real
@@ -13389,7 +14177,7 @@ export class RunState {
       // is the helper obstacles already use for exactly this reason; projectiles
       // simply never carried a route to hand it.
       const x = pr.x - cam, y = Math.round(this.entityGroundY(pr) - pr.alt - 4);
-      if (!renderSettings.reducedMotion && (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist')) {
+      if (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist') {
         drawGameplayProjectileTrail(ctx, pr, x, y);
       }
       if (pr.type === 'enemyShot') {
@@ -13472,7 +14260,7 @@ export class RunState {
     // hazards and the finish pole.
     const drawPortalRing = () => {
       if (this.finishing || !this.portal) return;
-      this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true, this.save.settings),
+      this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true),
         0, 0, null, this.stagedExitAt(this.portal.x));
     };
     if (!this.style.actorsAbovePost) drawPortalRing();
@@ -13525,7 +14313,7 @@ export class RunState {
         g.save();
         if (this.mirror) { g.translate(W, 0); g.scale(-1, 1); }
         applyWorld(g, z, pan, floorY, portraitXOffset);
-        this.drawAtGround(g, copterView.x, () => drawCopter(g, copterView, cam, renderT, true, this.save.settings.reducedMotion, songBeat, this.save.settings.reducedFlashing));
+        this.drawAtGround(g, copterView.x, () => drawCopter(g, copterView, cam, renderT, true, songBeat));
         g.restore();
       };
     }
@@ -13842,7 +14630,6 @@ export class RunState {
         drawActBanner(d, this.introText, {
           t: this.introT,
           alpha: Math.min(1, this.introFreeze / ACT_BANNER_FADE), // fade out over the last beat
-          still: this.save.settings.reducedMotion,
           // Drops away as soon as the skip is taken, so the hint never sits on
           // screen describing an input that has already been spent.
           skip: this.introSkippable && this.introFreeze > ACT_BANNER_FADE,
@@ -13875,6 +14662,29 @@ export class RunState {
     // Dropped rather than drawn if there is no overlay at all (headless): that
     // is the same nothing drawHeroSprite itself does on that path.
     if (heroLift) pushOverlayDraw(heroLift);
+    // WEATHER GOES ABOVE THE CAST. A pack's post() paints into the backbuffer,
+    // but the hero is queued to this overlay and composites on top of it — so
+    // snow painted in post() is snow behind the player. Anything a pack wants
+    // BETWEEN the player and the screen declares itself here instead, after the
+    // hero and before the HUD.
+    if (this.style.weather) {
+      const drawWeather = (d) => this.style.weather(d, renderT);
+      if (!pushOverlayDraw(drawWeather)) drawWeather(ctx);
+    }
+    // AND THE SLEIGH GOES ABOVE THE WEATHER. It is the one thing in the sky the
+    // player is meant to look at, it gets a single pass, and the tape is under
+    // the heaviest snow in the cabinet — three flake layers and a 34% veil.
+    // Behind all of that it was a smudge at any size. It stays under the HUD
+    // (drawFrame, below) because it is scenery, not a readout.
+    //
+    // Screen space here, so the point and the zoom both come off the placement
+    // the background pass resolved. Nothing else about the flight moves.
+    if (FROST_FLYPAST_DEPTH === 'front' && this.flypastShot) {
+      const shot = this.flypastShot;
+      const drawSleigh = (d) => drawFrostFlypast(d, shot.x, shot.y, shot.t,
+        { zoom: shot.zoom, tilt: shot.tilt, scale: flypastScaleFor(shot.phone) });
+      if (!pushOverlayDraw(drawSleigh)) drawSleigh(ctx);
+    }
     if (!pushOverlayDraw(drawFrame)) drawFrame(ctx);
     // The departing villain, now that the panels he climbs through are down.
     if (copterLift && copterOverHud && !pushOverlayDraw(copterLift)) copterLift(ctx);
@@ -13977,9 +14787,12 @@ export class RunState {
       heading(label, y);
       y += headingGap + 8;
       const lines = wrapText(value, innerW, scale, maxLines);
-      lines.forEach((line, i) => {
+      lines.forEach((line) => {
         drawText(ctx, line, innerX, y, color, scale);
-        y += 23 * scale + (i < lines.length - 1 ? 4 : 0);
+        // A line's own pitch, not a group's. At 23 per unit of scale a
+        // two-line mission was set at double leading and read as two separate
+        // statements with a blank line between them.
+        y += 15 * scale;
       });
       y += groupGap - 10;
     };
@@ -14000,13 +14813,15 @@ export class RunState {
       ...(this.rewindAvailableForRun() ? [['HOLD RWD', 'REWIND']] : []),
     ];
     const keyRows = [
-      ['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT / D', 'POWER'], ['LEFT / A', 'REWIND'],
+      ...DESKTOP_CONTROL_ROWS, ['LEFT / A', 'REWIND'],
     ];
     const rows = Input.usingTouch ? touchRows : (this.beatLock ? keyRows.slice(0, 3) : keyRows);
     const rowH = compact ? 30 : 36;
     const rowGap = compact ? 14 : 18;
-    const controlRows = [];
-    for (let i = 0; i < rows.length; i += 2) controlRows.push(rows.slice(i, i + 2));
+    // One action per line keeps the key-to-action relationship scan-friendly,
+    // especially once UP joins SPACE as a jump key. The old two-column layout
+    // made the eye jump across the card before it could read the next action.
+    const controlRows = rows.map((pair) => [pair]);
     // The controls group ends where the next group begins — the sync heading if
     // there is one, otherwise the plates. Measuring the block from its own
     // bottom keeps the gap under the last legend row equal to every other gap
@@ -14015,17 +14830,19 @@ export class RunState {
     const nextGroupTop = syncButtons.length
       ? syncButtons[0].y - headingGap - TEXT_INK_H * headingS - groupGap
       : buttons[0].y - groupGap;
-    const controlsTop = Math.max(y, nextGroupTop - controlsH);
+    // The slack between the read-out and the pinned lower groups is split
+    // evenly above and below the controls rather than all landing above them:
+    // bottom-anchoring the block left a hole under BONUS three times the size
+    // of every other gap on the card.
+    const controlsTop = Math.max(y, y + (nextGroupTop - controlsH - y) / 2);
     heading(Input.usingTouch ? 'TOUCH CONTROLS' : 'KEYBOARD CONTROLS', controlsTop);
     let rowY = controlsTop + headingGap;
     const legendScale = PORTRAIT_PAUSE_LEGEND_S;
-    const columnGap = compact ? 18 : 24;
-    const columnW = (innerW - columnGap) / 2;
     for (const row of controlRows) {
-      row.forEach((pair, column) => {
-        // Left-aligned in its column, on the same edge as the heading above it,
-        // rather than centred inside a column nothing else is centred in.
-        drawKeyLegend(ctx, [pair], innerX + (columnW + columnGap) * column,
+      row.forEach((pair) => {
+        // Left-aligned on the same edge as the heading above it, so every
+        // action starts from one predictable reading line.
+        drawKeyLegend(ctx, [pair], innerX,
           textYForMid(rowY + rowH / 2, legendScale),
           { scale: legendScale, actionInk: '#dbe9ff' });
       });
@@ -14070,7 +14887,6 @@ export class RunState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'PAUSED', W / 2, 28, '#fff', 2, 'title');
     const pHero = HERO_BY_ID[this.relay.current];
-    const pBtn = Input.usingTouch ? 'USE' : 'RIGHT/D';
     // Every key on this screen is painted by the same legend painter the HUD
     // strip uses, so the two agree on what a key looks like: green and bold,
     // with the thing it does beside it in a quieter ink. A wall of one colour
@@ -14134,33 +14950,22 @@ export class RunState {
     // and its three lines are the read-out a pause is for; the hero is standing
     // on the screen behind this one, so his name is a caption on something
     // already visible rather than news. It leads the controls instead: the
-    // power line under it is the one control that changes with the hero.
+    // power line under it is the one status that changes with the hero.
     drawTextCentered(ctx, pHero.name, W / 2, 132, '#48e0c8');
     // The power line reports state rather than teaching a control, so it keeps
-    // its gold — only the key in front of it joins the legend.
+    // its gold. The control legend below is the only place that names keys.
     const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
-    legend([[pBtn, `${pHero.ability.label}  ${cd}`, '#f6d33c']], 148);
+    drawTextCentered(ctx, `POWER: ${pHero.ability.label}  ${cd}`, W / 2, 148, '#f6d33c');
     // The touch line names the broad JUMP surface and the swipe fallbacks. The
     // visible rail can swap sides with the notch after rotation, so this copy
     // describes the action rather than a fixed left/right location.
-    legend(Input.usingTouch
+    const pauseControls = Input.usingTouch
       ? [['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['USE / SWIPE RIGHT', 'POWER']]
-      : [['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT/D', 'POWER']], 170,
-    { actionInk: '#c8c8d8' });
-    // Only keyboard needs telling, and only about the SHORTCUTS. Arrows-then-
-    // ENTER is how every list in the game works and the plate under the cursor
-    // is lit — printing "LEFT/RIGHT PICK  ENTER SELECT" over a highlighted
-    // button teaches nobody anything and cost the row half its width. The keys
-    // still work; they are just not news. P is listed as both halves of what it
-    // does — it is the key you pressed to get here and the key that undoes
-    // that, and naming only one of them makes the other look like a different
-    // key you have not found yet.
-    //
-    // Dimmer than the controls above: these work the menu, not the run.
-    if (!Input.usingTouch) {
-      legend([['P', 'PAUSE/RESUME'], ['ESC', 'QUIT']], 188,
-        { keyInk: 'rgba(116,201,71,0.65)', actionInk: '#8a8a98' });
-    }
+      : DESKTOP_CONTROL_ROWS;
+    pauseControls.forEach((pair, i) => legend([pair], 170 + i * 18,
+      { actionInk: '#c8c8d8' }));
+    // CONTINUE/BACK are already visible below, so a second P/ESC shortcut row
+    // would only compete with the third gameplay line for the same space.
     // CONTINUE leads in teal, the game's "this one" colour; EXIT sits back in
     // plain grey. Same plate, different weight — one of these ends the run.
     //

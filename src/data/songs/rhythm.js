@@ -9,7 +9,7 @@
 import { seq, chordSeq } from '../../engine/notes.js';
 import { COIN_FILLS } from '../../game/beatchart.js';
 
-const { eighth, sixteenth, thirtysecond, sixteenthIn, on134, on123, on13, on34 } = COIN_FILLS;
+const { eighth, eighthIn, sixteenth, thirtysecond, sixteenthIn, on134, on123, on13, on34 } = COIN_FILLS;
 
 // A SMALL ISLAND PLAYS A FIGURE, and it is written in sixteenths of its own
 // beat: `on134` is the one on 1, 3 and 4, `on123` the one on 1, 2 and 3, `on13`
@@ -207,15 +207,26 @@ export const beatCharts = {
       { slot: 6, action: 'jump', type: 'beatBar' },
       // THE CARD BOX IS TAUGHT HERE, in the calmest slot the cabinet owns: a
       // bar you jump on 6, then two empty beats, then the stage's first hole on
-      // 10.  Shoot on 7 and the box opens on 9 (BOX_BURST_BEATS), which leaves a
-      // whole beat of road between the explosion and the lip — so the lesson is
-      // never taught over the top of the other one.
+      // 10.  Shoot on 7 and the box opens on 9 at the latest (boxBurst), which
+      // leaves a whole beat of road between the explosion and the lip — so the
+      // lesson is never taught over the top of the other one.
+      //
+      // THIS BOX KEEPS THE CABINET'S ORIGINAL TIMING — 2.4 beats out, a
+      // two-beat fuse — rather than the 1.5 / 1 default the other two charts
+      // were re-authored around (beatchart.js, boxLeadBeats). At 1.5 its body
+      // stood at 8.5, on the second coin of the figure below, and Peter chose
+      // to move the box rather than the coins (15 Sep 2026). A box this far
+      // out is past the rocket fist's ordinary flight, so on a beat stage the
+      // fist flies longer (run.js FIST_PARK_SEC_BEAT) and Ray M'N keeps it.
       //
       // `every: 3` is the whole of "occasional".  Three passes of a 16-beat loop
       // at 124bpm is 23 seconds, so a 90-second stage deals about four of these;
       // and half the cast never sees one at all, since the lane only lays a box
       // for a hero who can answer it (BeatSpawner.canShoot).
-      { slot: 7, action: 'ability', type: 'cardBox', every: 3 },
+      { slot: 7, action: 'ability', type: 'cardBox', every: 3, boxLead: 2.4, boxBurst: 2 },
+      // "8, AND, 9" INTO THE HOLE — the figure the stage was written with. The
+      // box body stands at 9.4, past the last of them (the validator holds the
+      // two apart), and 9 is the single coin physics asks for before a hole.
       { slot: 8, action: 'coin', ...eighth }, { slot: 9, action: 'coin' },
       { slot: 10, action: 'pit' }, { slot: 11, action: 'coin', ...on134 },
       { slot: 12, action: 'pit' }, { slot: 13, action: 'coin', ...eighth },

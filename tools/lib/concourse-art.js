@@ -214,7 +214,7 @@ export function burstTime(seed, phase) {
 // the machine, its palette and its style pack are the subject of these stills,
 // and a character on the screen is a second thing to look at.
 export function paintConcourse(ctx, LW, LH, {
-  cab, locked = false, t = 1.4, ambient = null, reduced = false, poster = true,
+  cab, locked = false, t = 1.4, ambient = null, poster = true,
   groundAt = null, neighbours = 1, spacing = null, bare = false, showStar = true,
 }) {
   if (bare) poster = false;
@@ -344,7 +344,7 @@ export function paintConcourse(ctx, LW, LH, {
   if (scr) {
     drawScreenSweep(ctx, scr, t, pal.seed);
   } else {
-    burst = drawDeadScreen(ctx, cx - CAB.w / 2, cabY, CAB.w, CAB.h, t, pal.seed, reduced) || 0;
+    burst = drawDeadScreen(ctx, cx - CAB.w / 2, cabY, CAB.w, CAB.h, t, pal.seed) || 0;
   }
 
   // Bloom. A lit CRT is the brightest thing in a dark room; a dead one is only

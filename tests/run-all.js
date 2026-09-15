@@ -33,6 +33,9 @@ const suites = [
   'tests/beat-ground.js',
   'tests/lane-calls.js',
   'tests/pixel-background.js',
+  'tests/frost-aurora.js',
+  'tests/frost-weather.js',
+  'tests/object-shadows.js',
   'tests/plumber-scenery.js',
   'tests/paper-material.js',
   'tests/lcd-background.js',
@@ -330,6 +333,11 @@ const suites = [
   // they are is what they are NOT — not puntable, mostly not breakable — and
   // those facts live in absent registry keys that a tidy-up would supply.
   'tests/standing-hazards.js',
+  // The bear trap, which is the exception to the line above: a shot neither
+  // bounces off it nor breaks it, it SPRINGS it, and the trap then sits there
+  // harmless for the rest of the lane. Four files have to agree for that to be
+  // true and none of them has a reason to know about the others.
+  'tests/bear-trap.js',
   // The finish-line dog and its sign. Third in this little group for the same
   // reason as the two above: the dog's identity is `breakable: false` and the
   // sign's is `action: 'none'`, single registry lines holding up a jump-only
@@ -363,7 +371,6 @@ const suites = [
   'tests/tunnel-camera.js',
   'tests/portrait-framing.js',
   'tests/portrait-finish.js',
-  'tests/portrait-lab.js',
   'tests/portrait-layout.js',
   'tests/portrait-objective-notices.js',
   'tests/scenery-layout.js',
@@ -419,6 +426,10 @@ const suites = [
   // telegraph use. Directly after the loop suite because they share that ladder
   // and their claims are the same claim from two heights.
   'tests/coin-key.js',
+  // And the coin's other promise: what the magnet grabs, the hero gets. Next
+  // to coin-key because between them they cover the two ways a coin can let a
+  // player down — sounding wrong, and never arriving.
+  'tests/coin-magnet.js',
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',
   'tests/title-sign.js',
@@ -439,6 +450,7 @@ const suites = [
   'tests/view-right-edge.js',
   'tests/attract.js',
   'tests/dev-menu.js',
+  'tests/dev-url.js',
   'tests/cast.js',
   'tests/cast-portrait.js',
   'tests/mobile-lifecycle.js',

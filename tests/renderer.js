@@ -85,7 +85,7 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   glfx.resize(1600, 900);
   assert(good.calls.deletedFramebuffers === 2 && good.calls.deletedTextures === 3,
     'a real resize deletes the superseded bloom framebuffer pair and glow mask');
-  glfx.fx = 1; glfx.glow = 1;
+  glfx.glow = 1;
   const allocationsBeforeRender = good.calls.textureAllocations;
   const drawsBeforeBloom = good.calls.draws;
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
@@ -129,14 +129,9 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   const noGlowVignette = good.calls.uniforms.filter((u) => u.location === 'uApplyVignette').at(-1);
   assert(noGlowFx?.value === 0 && noGlowVignette?.value === 0,
     'disabled scene glow removes aberration and vignette from menu text');
-  glfx.glow = 1; glfx.fx = 0;
-  const drawsBeforeFxOff = good.calls.draws;
-  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
-  assert(good.calls.draws - drawsBeforeFxOff === 1,
-    'Glow Effects off skips the bright and both blur passes');
   // Adaptive-density tier gate: at a low render density the bloom passes are
-  // suppressed even with Glow Effects and scene glow both on.
-  glfx.fx = 1; glfx.glow = 1; glfx.setTierFx(false);
+  // suppressed even with scene glow on.
+  glfx.glow = 1; glfx.setTierFx(false);
   const drawsBeforeTierOff = good.calls.draws;
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
   assert(good.calls.draws - drawsBeforeTierOff === 1,
@@ -385,7 +380,7 @@ assert(Math.abs(desktopPortraitFrame.height / desktopPortraitFrame.width
   && desktopDom.documentElement.style.backgroundColor === '#000'
   && desktopDom.body.style.backgroundColor === '#000',
   'desktop portrait canvas is contained and centred with black letterbox bars');
-const portraitChromeXs = desktopRenderer.chrome.runPortraitLab
+const portraitChromeXs = desktopRenderer.chrome.run
   .filter((b) => b.r != null).map((b) => b.x);
 assert(portraitChromeXs.every((x) => x >= 75 && x <= 525),
   'desktop portrait touch chrome stays inside the contained canvas');

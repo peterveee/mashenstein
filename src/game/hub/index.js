@@ -1,5 +1,5 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
-// Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
+// Repair Bench, Gary's Legal Pawn Shop, arcade corner.
 import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
@@ -37,6 +37,7 @@ import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
+import { drawSoftContactShadow } from '../../engine/shadows.js';
 
 // Arcade Corner is the same Food Court composition, but its imaginary hardware has
 // four tiny channels and no patience for sustained synths. These song-local voices stay
@@ -301,13 +302,11 @@ function leaveArcadeCornerAudio() {
 }
 
 const CORRUPTED_MODIFIERS = [
-  { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP.' },
   { id: 'maxspeed', name: 'MAXIMUM SPEED', desc: 'EVERYTHING IS FASTER. NOTHING IS CALMER.' },
   // Display name only — the id stays 'randomswap', which is what saves and
   // run.js carry. 'SWAPS' was the hub's word for trading places on the
   // concourse; what this mod actually does is hand you more tags.
   { id: 'randomswap', name: 'RANDOM TAGS', desc: 'PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED.' },
-  { id: 'narration', name: 'INACCURATE LORE', desc: 'EGGSHELL DESCRIBES A DIFFERENT GAME.' },
 ];
 
 const BENCH_AFFORDABILITY_GAGS = [
@@ -873,9 +872,8 @@ function posterPalFor(station) {
 // index-based offset and period keep them from all guttering in lockstep —
 // see draw.js's fire licks for the same idiom) and dips to a brownout, not a
 // hard blackout, matching flickerAlpha's title-sign short-out in menus.js so
-// this doesn't read as a dropped frame. reducedFlashing pins every light lit.
-function lightFlicker(t, i, reduced) {
-  if (reduced) return 1;
+// this doesn't read as a dropped frame.
+function lightFlicker(t, i) {
   const period = 4.5 + (i % 4) * 0.9;
   const phase = (t + i * 1.87) % period;
   if (phase < 0.18) return phase < 0.09 ? 0.2 : 0.55;
@@ -1320,7 +1318,7 @@ export class HubState {
     // standing at it puts it in the same shape as Gary's unit next door — the
     // two staffed stations in the room both belong to somebody.
     st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 180;
-    st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 140;
+    st.push({ type: 'shop', x, label: "GARY'S LEGAL PAWN SHOP" }); x += 140;
     st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
     if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) {
@@ -2488,7 +2486,7 @@ export class HubState {
     fixtures.forEach((f, i) => {
       const lx = Math.round(f.x - cam);
       if (lx < -LIGHT_W - 60 || lx > layout.viewW + 60) return;
-      const flick = lightFlicker(this.t, i, this.save.settings.reducedFlashing);
+      const flick = lightFlicker(this.t, i);
       drawCeilingLight(ctx, lx, layout.lightY, f.k > 0 ? f.k * flick : 0, lx, layout.viewW);
     });
     // Light pooling: every lit machine throws its screen colour onto the tiles
@@ -2530,7 +2528,7 @@ export class HubState {
         } else {
           // Locked: the machine is unplugged rather than absent, so every few
           // seconds its dead screen crackles and throws a spark.
-          drawDeadScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, this.t, pal.seed, this.save.settings.reducedFlashing);
+          drawDeadScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, this.t, pal.seed);
         }
         // The corner badge used to be one gold star for `cleared` — every stage's
         // MISSION plug banked. That flag is doing two unrelated jobs: on six
@@ -2583,7 +2581,7 @@ export class HubState {
         const doorPal = s.type === 'shelf' && !s.unlocked
           ? DOOR_PALETTES.shelfLocked
           : DOOR_PALETTES[s.type];
-        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, this.save.settings.reducedFlashing);
+        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t);
       }
     }
     // NPC heroes
@@ -2598,8 +2596,9 @@ export class HubState {
       // Hop height and contact shadow both ride NPC_H, so scaling the cast
       // doesn't leave them hopping a token amount over a pinprick of shade.
       const hop = n.state === 'hop' ? Math.sin(Math.PI * (1 - n.timer / n.duration)) * NPC_H * 0.26 : 0;
-      ctx.fillStyle = 'rgba(4,3,9,0.28)';
-      ctx.beginPath(); ctx.ellipse(x, layout.floorY, NPC_H * (n.state === 'hop' ? 0.26 : 0.37), NPC_H * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+      drawSoftContactShadow(ctx, x, layout.floorY,
+        NPC_H * (n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
+        { alpha: 0.34, ink: '4,3,9' });
       drawToon(ctx, n.id, {
         kind: n.state === 'walk' ? 'run' : n.state === 'hop' ? 'jump' : 'idle',
         phase: (this.t * 1.25 + n.cycles * 0.17) % 1,
@@ -2639,10 +2638,9 @@ export class HubState {
         // Contact shadow in the cast's voice. Wider than the brush head on
         // purpose — the head is opaque and sits flat on its own shadow, so an
         // ellipse that only matched it would be a shadow nobody can see.
-        ctx.fillStyle = 'rgba(4,3,9,0.28)';
-        ctx.beginPath();
-        ctx.ellipse(ddX + DD_W * 0.42, layout.floorY + pass.depth, DD_W * 0.55, 2, 0, 0, Math.PI * 2);
-        ctx.fill();
+        drawSoftContactShadow(ctx, ddX + DD_W * 0.42,
+          layout.floorY + pass.depth, DD_W * 0.62, 2.4,
+          { alpha: 0.34, ink: '4,3,9' });
       }
       // Mirrored about its own box so the cord always trails the direction of
       // travel; the ceiling pass adds the vertical flip that turns it over.
@@ -2665,8 +2663,8 @@ export class HubState {
     // walk-up prompt uses, so all the "this is about you" chrome reads as one
     // voice.
     const pxs = Math.round(this.px - cam);
-    ctx.fillStyle = 'rgba(4,3,9,0.4)';
-    ctx.beginPath(); ctx.ellipse(pxs, layout.floorY, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+    drawSoftContactShadow(ctx, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
+      { alpha: 0.44, ink: '4,3,9' });
     drawToon(ctx, heroId, {
       kind: airborne ? 'jump' : moving ? 'run' : 'idle',
       // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
@@ -2852,7 +2850,7 @@ export class HubState {
       // line is the last place to spend a clause on a no-op.
       const legendText = Input.isTouchDevice()
         ? null
-        : 'LEFT/RIGHT WALK   SPACE JUMP   ENTER CONFIRM';
+        : 'LEFT/RIGHT WALK   ENTER CONFIRM';
       const legendLines = layout.portrait
         ? wrapText(legendText, W - 28, legendS, 2)
         : [legendText];
@@ -2889,6 +2887,11 @@ export class HubState {
       light: true,
       scale: PORTRAIT_SPEECH_S,
       centerX: Math.max(W * 0.3, Math.min(W * 0.7, (speakerX - cam) * layout.zoom)),
+      // `y` is the card's preferred FIRST ROW and `bottomY` the lowest its plate
+      // may end. placeSpeechCard only ever pulls a card up off bottomY, so the
+      // preference has to start below the screen for the bubble to settle on
+      // the speaker's head rather than on the shared HUD anchor near the top.
+      y: H,
       // A gap in the same CSS terms the rest of the portrait footer uses, so
       // the bubble floats the same distance off a head on every phone.
       bottomY: headTopY - 14 / presentationFrame().scale,
@@ -3371,7 +3374,7 @@ export class TrophyRoomState {
     ];
     lights.forEach(([center, strength], i) => {
       const x = center - LIGHT_W / 2;
-      const flick = lightFlicker(this.t, i + 11, this.save.settings.reducedFlashing);
+      const flick = lightFlicker(this.t, i + 11);
       drawCeilingLight(ctx, x, layout.portrait ? layout.camY : 0,
         strength * flick, x - camera, layout.viewW);
     });
@@ -3395,7 +3398,7 @@ export class TrophyRoomState {
     // room boundary rather than an interaction: walk into it (or tap it and
     // let tap-to-walk finish) and update() returns directly to the Food Court.
     drawDoor(ctx, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
-      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t, this.save.settings.reducedFlashing);
+      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t);
 
     const pose = poseFromPlayer(this.player, this.t);
     if (!this.moving && pose.kind === 'run') {
@@ -3412,7 +3415,7 @@ export class TrophyRoomState {
     // left is walking, which touch reads off the arrows and a keyboard reads
     // off this line.
     const hint = this.near(TROPHY_EXIT_X, 54) ? 'WALK LEFT: FOOD COURT'
-      : (Input.isTouchDevice() ? null : 'LEFT / RIGHT: WALK   SPACE: JUMP');
+      : (Input.isTouchDevice() ? null : 'LEFT / RIGHT: WALK');
     ctx.restore();
 
     // Match the food court's persistent bottom status row. Portrait has a deep
@@ -4175,7 +4178,7 @@ export class ShopState {
   draw(ctx) {
     ctx.fillStyle = '#100a14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, "GARY'S LEGALLY DISTINCT PAWN SHOP", W / 2, 14, '#f890b8', 1);
+    drawTextCentered(ctx, "GARY'S LEGAL PAWN SHOP", W / 2, 14, '#f890b8', 1);
     drawTextCentered(ctx, this.line, W / 2, 28, '#5a5a68');
     const slot = this.save.slot;
     drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2, 44, '#f6d33c');

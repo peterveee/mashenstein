@@ -27,9 +27,6 @@ export function defaultSettings() {
   return {
     volumes: { master: 1, music: 0.7, sfx: 0.9 },
     muted: false,
-    reducedMotion: false,
-    reducedFlashing: false,
-    screenShake: 1,
     showFps: false,
     assistSpeed: 100, // 80 | 90 | 100
     // Camera framing. false = NORMAL (the pulled-back 1.6), true = ZOOM IN (the
@@ -37,7 +34,6 @@ export function defaultSettings() {
     // closer framing, because on a screen that small the hero is what is at
     // risk of becoming unreadable. See ZOOM_NORMAL/ZOOM_CLOSE in game/run.js.
     zoomIn: false,
-    fancyFx: true,    // WebGL bloom/vignette (when available)
     // A WebGL canvas upload and a direct 2D blit can sustain very different
     // densities on the same device. Keep their learned ceilings separate so a
     // slow diagnostic run on one backend cannot soften the other. Values are a
@@ -114,6 +110,14 @@ function normalizeSettings(settings) {
   next.audioSyncAsked = !!next.audioSyncAsked;
   next.audioSyncReportedMs = Number.isFinite(next.audioSyncReportedMs)
     ? Math.round(next.audioSyncReportedMs) : null;
+  // RETIRED TOGGLES — everyone gets the same game. The two accessibility
+  // switches and the two effect switches are gone; the effects they gated are
+  // simply always on. Stripped from existing saves as well as fresh defaults so
+  // none of them can linger as ghost state.
+  delete next.reducedMotion;
+  delete next.reducedFlashing;
+  delete next.screenShake;
+  delete next.fancyFx;
   return { settings: next, densityHistoryMigrated: oldVersion < RENDER_DENSITY_VERSION };
 }
 

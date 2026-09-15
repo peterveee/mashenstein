@@ -77,7 +77,7 @@ A giant egg-shaped ape with a mustache, tiny science goggles, and a spiky shell.
 ### 2.3 NPCs
 
 **GARY (DECEASED)** — *"PHYSICAL JURISDICTION RETAINED."*
-Deceased pawn-shop clerk. Runs GARY'S LEGALLY DISTINCT PAWN SHOP from behind his counter in the food court. The only entity with real hands; resolves the plot by casually flipping a physical toggle switch in the finale. Deadpan office-drone jokes about being dead.
+Deceased pawn-shop clerk. Runs GARY'S LEGAL PAWN SHOP from behind his counter in the food court. The only entity with real hands; resolves the plot by casually flipping a physical toggle switch in the finale. Deadpan office-drone jokes about being dead.
 
 **DOLORES (ON BREAK)** — *"NEXT."*
 Food court counter staff, still on shift. Runs DOLORES' REPAIR COUNTER — her steam table, where power-up repairs are priced and portioned like lunch. Never acknowledges the arcade is dead; her shift has not ended. Calls NEXT to an empty concourse. The menu board reads NOW SERVING 0.
@@ -109,7 +109,7 @@ Four typewriter panels at 40 chars/sec, played once on a new file after difficul
 Side-scrolling walk-around returned to between every stage. Contains:
 - Nine arcade cabinets in a row (most dark, unlocked with plugs)
 - DOLORES' REPAIR COUNTER (steam table, power-up upgrades)
-- GARY'S LEGALLY DISTINCT PAWN SHOP (mod purchases)
+- GARY'S LEGAL PAWN SHOP (mod purchases)
 - ARCADE CORNER (replay breaker-box minigames)
 - TROPHY SHELF (toaster and death count display)
 - THE BACK ROOM (appears at 25 plugs — "YOU DID NOT SEE THIS DOOR")

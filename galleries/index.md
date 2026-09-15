@@ -23,18 +23,7 @@ history thins to one a week. Do not edit by hand.
 | 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | -- | Archive published build 414ae37 |
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
-| 2026-09-03 | `4174be0` | [2026-09-03-4174be0.html](2026-09-03-4174be0.html) | [bake-offs](2026-09-03-4174be0-lab.html) | Add new gallery entry for September 2026 and refactor related files |
-| 2026-09-04 | `7f614a7` | [2026-09-04-7f614a7.html](2026-09-04-7f614a7.html) | [bake-offs](2026-09-04-7f614a7-lab.html) | Implement audio sync calibration feature with comprehensive tests |
-| 2026-09-04 | `8957756` | [2026-09-04-8957756.html](2026-09-04-8957756.html) | [bake-offs](2026-09-04-8957756-lab.html) | Refactor HUD Objective Panel Logic and Bonus Placement |
-| 2026-09-04 | `6ecac0b` | [2026-09-04-6ecac0b.html](2026-09-04-6ecac0b.html) | [bake-offs](2026-09-04-6ecac0b-lab.html) | Add new Eggshell redesigns and associated HTML files |
-| 2026-09-04 | `6a295d3` | [2026-09-04-6a295d3.html](2026-09-04-6a295d3.html) | [bake-offs](2026-09-04-6a295d3-lab.html) | Add bonk sound effect candidates and rendering tool |
-| 2026-09-04 | `aa36e6c` | [2026-09-04-aa36e6c.html](2026-09-04-aa36e6c.html) | [bake-offs](2026-09-04-aa36e6c-lab.html) | Refactor HUD hero disc plate color and enhance girder ring mechanics |
-| 2026-09-04 | `f49f539` | [2026-09-04-f49f539.html](2026-09-04-f49f539.html) | [bake-offs](2026-09-04-f49f539-lab.html) | Refactor face contour handling and improve face crop rendering |
-| 2026-09-04 | `28b127f` | [2026-09-04-28b127f.html](2026-09-04-28b127f.html) | [bake-offs](2026-09-04-28b127f-lab.html) | feat: Add cape redesigns gallery and related assets |
-| 2026-09-05 | `a00af6f` | [2026-09-05-a00af6f.html](2026-09-05-a00af6f.html) | [bake-offs](2026-09-05-a00af6f-lab.html) | feat: Implement eggshell reaction animations and update render-loop functionality |
-| 2026-09-05 | `7924b36` | [2026-09-05-7924b36.html](2026-09-05-7924b36.html) | [bake-offs](2026-09-05-7924b36-lab.html) | Refactor touch controls layout and input handling |
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
-| 2026-09-07 | `6b94167` | [2026-09-07-6b94167.html](2026-09-07-6b94167.html) | [bake-offs](2026-09-07-6b94167-lab.html) | Add JMJR-4 test suites and validate playwright requirements |
 | 2026-09-08 | `b816b54` | [2026-09-08-b816b54.html](2026-09-08-b816b54.html) | [bake-offs](2026-09-08-b816b54-lab.html) | feat: rename 'duck' to 'slide' across the codebase |
 | 2026-09-09 | `413dbd5` | [2026-09-09-413dbd5.html](2026-09-09-413dbd5.html) | [bake-offs](2026-09-09-413dbd5-lab.html) | Refactor and enhance game assets and testing framework |
 | 2026-09-09 | `373d3d6` | [2026-09-09-373d3d6.html](2026-09-09-373d3d6.html) | [bake-offs](2026-09-09-373d3d6-lab.html) | Add new gallery HTML files for 2026-09-09 with large content |
@@ -42,3 +31,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-10 | `5450f08` | [2026-09-10-5450f08.html](2026-09-10-5450f08.html) | [bake-offs](2026-09-10-5450f08-lab.html) | Enhance Grumpos and axe mechanics; update gallery entries |
 | 2026-09-10 | `b2dab03` | [2026-09-10-b2dab03.html](2026-09-10-b2dab03.html) | [bake-offs](2026-09-10-b2dab03-lab.html) | Refactor portrait preview entry and add background zoom functionality |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
+| 2026-09-14 | `31e205b` | [2026-09-14-31e205b.html](2026-09-14-31e205b.html) | [bake-offs](2026-09-14-31e205b-lab.html) | Refactor title layout and pause menu for improved alignment and readability |

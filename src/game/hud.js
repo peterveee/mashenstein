@@ -40,37 +40,76 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // ---------------------------------------------------------------- layout
 // The frame's anchors. Everything else in this file is measured off these,
 // including the beat ribbon below, so they come first.
-// THE FRAME MARGIN. ONE NUMBER FOR EVERY EDGE — nothing on the HUD paints
-// closer than this to the side of the screen, on any side. It used to be three
-// numbers that had each drifted for their own local reason (8 at the sides, 7 at
-// the top once the hero disc arrived, 4 at the bottom), which is invisible one
-// corner at a time and unmistakable once you look at the frame as a whole.
+// THE FRAME MARGIN, and the number the other two are halves of. It used to be
+// three numbers that had each drifted for their own local reason (8 at the
+// sides, 7 at the top once the hero disc arrived, 4 at the bottom), which is
+// invisible one corner at a time and unmistakable once you look at the frame as
+// a whole. There are two now, and the second is stated as half the first rather
+// than typed, which is the difference between an asymmetry and a drift.
+//
+// SIDES get the whole number. The picture is 480 wide and 270 tall: a column of
+// margin costs nothing, a row of it is play field.
 //
 // It is a FLOOR, not a rule that every panel touches: a short panel centred on
 // its row's midline sits deeper than this, and should.
 const EDGE = 6;
-// THE BOTTOM EDGE TAKES HALF. The other three margins hold panels off a screen
-// edge the eye reads as the end of the picture; the bottom one holds them off
-// the ground the hero is running on, and every pixel it takes is play field
-// rather than frame. So the readouts down there sit tighter — a deliberate
+// THE HORIZONTAL EDGES TAKE HALF. The sides hold panels off a screen edge the
+// eye reads as the end of the picture; these two hold them off the sky and the
+// ground the hero is running on, and every pixel they take is play field rather
+// than frame. So the readouts on both of them sit tighter — a deliberate
 // asymmetry, stated once, not three numbers that drifted apart again.
-const EDGE_BOTTOM = EDGE / 2;
+//
+// The TOP used to be the full EDGE, and it was never 6 of clear air: the world
+// progress line owned the first 3 rows of it, so what the eye read was a bar,
+// then 3px of gap, then the pill. With the bar gone to the bottom edge (see
+// PROGRESS_H) the top group takes the band it vacated. Half, not EDGE minus the
+// bar's height: the bar is not up here any more, so its thickness has no say in
+// how deep this margin is — the two are the same 3 today and must not be tied
+// together by arithmetic that would move the pill if the line were re-thinned.
+//
+// That is the move rather than a nudge: everything on the HUD is now further
+// from the middle of the picture than it was, and the timeline sits under the
+// lane instead of over the sky.
+const EDGE_BOTTOM = EDGE / 2, EDGE_TOP = EDGE / 2;
 // The one thing it does NOT govern is the touch buttons below, which are
 // placed by what a thumb can reach, nor the world progress line, which is
-// deliberately flush with the top edge because it is a bar and not a panel.
+// deliberately flush with the bottom edge because it is a bar and not a panel —
+// the bottom row is measured off the bar's top (see PROGRESS_H) rather than off
+// H, so the panels keep this margin above it instead of sharing its pixels.
+
+// THE WORLD PROGRESS LINE, AND IT LIVES ON THE BOTTOM EDGE. Portrait has had
+// it there for a while (see PORTRAIT_TIMELINE_BOTTOM_CSS); landscape kept it
+// at the top, which is the far side of the picture from the hero. Reading it
+// cost a glance the whole height of the frame away from the one thing the
+// player has to watch, and it is a bar you check in passing — so it goes where
+// a passing glance already lands, just under the lane the hero runs on.
+//
+// Flush with the edge in both orientations: it is the fill and nothing else,
+// so an edge is the only place it can sit without a track to sit in.
+//
+// TWO, not three. It was 3 at the top, where the rows above it were sky; on the
+// bottom edge every row it takes is one the readouts standing on it do not get,
+// and the bar is a thing glanced at rather than read — its LENGTH carries all
+// of the meaning and its depth carries none. Two rows still reads as a line
+// with a colour at this scale, and hands the row back to the nameplate.
+const PROGRESS_H = 2;
+// H is a live renderer binding (portrait changes the logical frame height), so
+// this is a function, like bottomCy below.
+const progressY = () => H - PROGRESS_H;
 
 // The free-standing portrait disc, and the tallest thing in the top row — so it
 // is the disc, not the pill, that the row's inset is measured on. It lives up
 // here with the pill rather than down with the chip cuts because PILL_Y is
-// derived from it. Its own ceiling is what stops it growing: the world progress
-// line owns the top 3px of the frame, and at EDGE this already leaves 3.
+// derived from it. Its own ceiling is EDGE_TOP, and nothing else: the world
+// progress line used to own the top 3px of the frame and does not any more.
 // 9, not 11: the disc is the pill's twin now, not the tallest thing standing
 // beside it. At 11 it was 22px against the pill's 18, so PILL_Y carried a 2px
 // term to hang the two off one midline and the corner was 4px wider than its
 // own contents needed — 4px that came straight out of the beat ribbon's
 // clearance, since the strip and the pill share this row (see RIBBON_CORNER_GAP).
-// Matched to PILL_H the term falls to zero, both objects span EDGE..EDGE+18,
-// and the whole top row sits 2px higher and 4px shorter.
+// Matched to PILL_H the term falls to zero, both objects span
+// EDGE_TOP..EDGE_TOP + 18, and the whole top row sits 2px higher and 4px
+// shorter.
 const DISC_R = 9;               // PILL_H / 2, written out: PILL_H is declared below
 // The portrait disc uses the same backing as every other HUD panel. It has to
 // survive a small crop over bright or dark stage art while still leaving the
@@ -84,12 +123,13 @@ export const HERO_DISC_PLATE = UI_PANEL;
 // with both fixed there is nothing left for it to correct.
 export const HERO_DISC_RIM_W = 0.75;
 // EVERYTHING IN THE TOP ROW IS PLACED OFF PILL_CY (the objective panels take
-// HERO_CY, which is this), so this is the one line that moves the strip. The
-// pill is 4px shorter than the disc beside it and shares its midline, so its own
-// top inset comes out at EDGE + 2 — which is the floor doing its job, not a
-// second margin.
+// HERO_CY, which is this), so this is the one line that moves the strip — the
+// pill, the hero disc, GOAL and BONUS, the beat ribbon and its playhead, the
+// goal toast and the speech card's resting row all hang off it and moved with
+// it. EDGE_TOP vertically, EDGE across: the pill starts on the same left edge
+// the bottom-left gauges do, and it is only the DEPTH that is halved.
 const PILL_X = EDGE, PILL_H = 18;
-const PILL_Y = EDGE + Math.max(0, DISC_R * 2 - PILL_H) / 2;
+const PILL_Y = EDGE_TOP + Math.max(0, DISC_R * 2 - PILL_H) / 2;
 const PILL_CY = PILL_Y + PILL_H / 2, PILL_R = 6.5;
 
 // THE OBJECTIVE ROWS, top-right. Module-level because the fold-up bake-off in
@@ -771,7 +811,16 @@ const BOTTOM_ROW_H = 14;
 // frame height to match the phone aspect ratio. Keep this as a function so
 // bottom HUD readouts follow the current frame instead of the 270px landscape
 // import-time value.
-const bottomCy = () => H - EDGE_BOTTOM - BOTTOM_ROW_H / 2;
+// The bar owns the last PROGRESS_H rows, so the row's floor is the bar's top
+// edge and not the frame's: without that term the nameplate sat directly on
+// the fill with no air at all between the two.
+const bottomCy = () => H - PROGRESS_H - EDGE_BOTTOM - BOTTOM_ROW_H / 2;
+// The row's FLOOR, for the one panel down there that is taller than the row.
+// Centring a 24px legend on a midline drawn for 14px panels hung 5px of it off
+// the bottom of the frame — invisible while the last rows were empty, and a
+// panel lying across the progress bar now that they are not. A taller panel
+// shares the row by standing on the same line, not by straddling its middle.
+const bottomFloor = () => H - PROGRESS_H - EDGE_BOTTOM;
 
 // ---------------------------------------------------------------- bake-off
 // WHERE THE SECONDARY OBJECTIVE LIVES. The BONUS readout is the one row of the
@@ -2160,6 +2209,7 @@ function drawPortraitHud(ctx, run) {
   // slides up beneath the permanent status HUD and is clipped away.
   const layout = portraitHudLayout(frame, {
     rhythmStage,
+    oneHit: run?.oneHit === true,
   });
   const objectiveSlide = portraitObjectiveSlide(run?.tRun);
   // `layout` is expressed in logical canvas pixels.  The frame's scale is the
@@ -2312,9 +2362,11 @@ export function drawHud(ctx, run) {
   // now — see the gauge row below.) Taken from the pill rather than restated,
   // so moving the row's inset moves all of it.
   const HERO_CY = PILL_CY;
-  // Slim world progress line across the top: cornflower fills toward the right edge,
-  // the yellow tick is you. Reaching the end is the goal, so the end needs no
-  // icon of its own — the finish line is drawn in-world as you approach it.
+  // Slim world progress line along the BOTTOM: cornflower fills toward the right
+  // edge, the yellow tick is you. Reaching the end is the goal, so the end needs
+  // no icon of its own — the finish line is drawn in-world as you approach it.
+  // On the bottom edge it sits a short glance under the hero's own line rather
+  // than a frame-height away at the top (see PROGRESS_H).
   //
   // The bar also calls the approach now. A blinking FINISH AHEAD used to sit
   // centre-screen for about two seconds, in the same band as the dialog
@@ -2334,8 +2386,9 @@ export function drawHud(ctx, run) {
       : 0;
     // No track behind it, in either orientation: the bar is the fill (see the
     // portrait rail above).
+    const barY = progressY();
     ctx.fillStyle = mix('#6495ed', '#f6d33c', k);
-    ctx.fillRect(0, 0, W * frac, 3);
+    ctx.fillRect(0, barY, W * frac, PROGRESS_H);
     // Keep every banked checkpoint visible, not just the latest death snapshot.
     // These are deliberately only one quiet pixel wide and live entirely
     // inside the bar: a history of reference notches, not a second row of HUD.
@@ -2345,13 +2398,15 @@ export function drawHud(ctx, run) {
         if (!Number.isFinite(marker)) continue;
         const checkpointFrac = Math.max(0, Math.min(1, marker / run.totalDist));
         if (checkpointFrac > frac) continue;
-        ctx.fillRect(Math.round(W * checkpointFrac), 0, 1, 3);
+        ctx.fillRect(Math.round(W * checkpointFrac), barY, 1, PROGRESS_H);
       }
     }
     // Once the fill is gold the gold tick would vanish into it, so the tick
     // rides the other way, to white — it stays the brightest thing on the line.
+    // The head stays 3 WIDE while the bar thins: it is the one mark on the line
+    // that has to be findable at a glance, and width is what makes it findable.
     ctx.fillStyle = mix('#f6d33c', '#ffffff', k);
-    ctx.fillRect(Math.min(W - 3, W * frac) - 1, 0, 3, 3);
+    ctx.fillRect(Math.min(W - 3, W * frac) - 1, barY, 3, PROGRESS_H);
   }
 
   drawBeatRibbon(ctx, run);
@@ -2676,14 +2731,17 @@ export function drawHud(ctx, run) {
   // cut: chrome that vanishes between frames reads as a glitch.
   if (!Input.usingTouch && run.hintT > 0 && !run.beatLock) {
     const hero = HERO_BY_ID[run.relay.current];
-    const hints = [['SPC', 'JUMP'], ['DN', 'SLIDE'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
-    const S = 0.85, HP = 6, HH = 12;
-    const inner = keyLegendWidth(hints, S);
-    const hx = W - EDGE - (inner + HP * 2), hy = bottomCy() - HH / 2;
+    const gameplayHints = [['UP / SPACE / LEFT CLICK', 'JUMP'], ['DOWN / RIGHT CLICK', 'SLIDE'],
+      ['X / SHIFT / MIDDLE CLICK', hero.ability.label]];
+    const utilityHints = [['LEFT / A', 'REWIND'], ['P', 'PAUSE']];
+    const S = 0.85, HP = 6, HH = 24;
+    const inner = Math.max(keyLegendWidth(gameplayHints, S), keyLegendWidth(utilityHints, S));
+    const hx = W - EDGE - (inner + HP * 2), hy = bottomFloor() - HH;
     ctx.save();
     ctx.globalAlpha = Math.min(1, run.hintT / HINT_FADE);
     drawPanel(ctx, hx, hy, inner + HP * 2, HH, 4, undefined, PANEL);
-    drawKeyLegend(ctx, hints, hx + HP, textY(hy + HH / 2, S), { scale: S });
+    drawKeyLegend(ctx, gameplayHints, hx + HP, textY(hy + 6, S), { scale: S });
+    drawKeyLegend(ctx, utilityHints, hx + HP, textY(hy + 18, S), { scale: S });
     ctx.restore();
   }
 
@@ -2809,8 +2867,10 @@ function placeSpeechCard(baseY, cardX, cardW, cardH, avoid, bounds = null) {
   const top = baseY - panelInset;              // the PLATE's top; baseY is its first row
   if (cardX + cardW <= avoid.x0 || cardX >= avoid.x1) return bounded(baseY);
   if (top + cardH <= avoid.y0 || top >= avoid.y1) return bounded(baseY);
-  // The lowest the plate's top may sit: the bottom edge's own margin.
-  const topLimit = H - EDGE_BOTTOM - 5 - cardH;
+  // The lowest the plate's top may sit: the bottom edge's own margin, taken
+  // from the progress line's top rather than the frame's, like every other
+  // bottom-edge reading (see bottomFloor).
+  const topLimit = bottomFloor() - 5 - cardH;
   const cleared = avoid.y1 + SPEECH_CLEAR_GAP;
   return cleared <= topLimit ? bounded(cleared + panelInset) : bounded(baseY);
 }

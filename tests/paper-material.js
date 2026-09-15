@@ -6,7 +6,7 @@ globalThis.document = {
   createElement() {
     const canvas = { width: 0, height: 0, data: null };
     canvas.getContext = () => ({
-      save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+      save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, arc() {}, fill() {},
     });
     made++;
     return canvas;
@@ -57,11 +57,16 @@ const skyB = paperTextureSource('skySmooth');
 const soft = paperTextureSource('cardstockSoft');
 const quiet = paperTextureSource('cardstockQuiet');
 const clear = paperTextureSource('cardstockClear');
+const felt = paperTextureSource('felt');
 assert(skyA === skyB && skyA === soft && quiet !== soft,
   'identical approved recipes share one cached source; quiet stays separate');
 assert(clear !== soft && PAPER_MATERIALS.cardstockClear.darkStrength === 0.82
   && PAPER_MATERIALS.cardstockClear.lightStrength === 1,
   'clear candidate keeps the fibre recipe but lifts its dark impression subtly');
+assert(felt !== clear && PAPER_MATERIALS.felt.kind === 'felt'
+  && PAPER_MATERIALS.felt.strength === 1.05
+  && PAPER_MATERIALS.felt.darkStrength === 0.72,
+  'felt candidate uses a soft low-contrast wool-fibre recipe');
 assert(skyA.width === PAPER_TILE_SIZE && skyA.height === PAPER_TILE_SIZE,
   'material backing covers its full declared tile');
 const patternCtx = { createPattern(source, mode) { return { source, mode }; } };
@@ -120,6 +125,9 @@ const speedQuietSurfaces = styleModule.getStylePack('faux3d', {
 const cardboardPreview = styleModule.getStylePack('cardboard', {
   paperPreset: 'cardstockQuiet', paperCutout: true,
 });
+const plumberFelt = styleModule.getStylePack('pixel', {
+  paperCabinet: 'plumber', paperPreset: 'felt', paperCutout: true,
+});
 assert(frostWatercolor.paperSlab?.material?.id === 'cardstockSoft'
   && speedClear.paperSlab?.material?.id === 'cardstockClear'
   && plumberClear.paperSlab?.material?.id === 'cardstockClear'
@@ -130,8 +138,9 @@ assert(frostWatercolor.paperSlab?.material?.id === 'cardstockSoft'
   && speedSlow.paperSlab?.textureSpeed === 0.35
   && speedDefault.paperSlab?.textureSpeed === 0.5
   && speedQuietSurfaces.paperSlab?.groundStrength === 0.65
-  && cardboardPreview.paperSlab?.material?.id === 'cardstockQuiet',
-  'clear material is active by default and paper motion speed routes through both packs');
+  && cardboardPreview.paperSlab?.material?.id === 'cardstockQuiet'
+  && plumberFelt.paperSlab?.material?.id === 'felt',
+  'clear material is active by default, felt is review-only, and motion speed routes through both packs');
 const explicitlyOff = styleModule.getStylePack('pixel', {
   paperCabinet: 'frost', paperPreset: 'cardstockQuiet', paperCutout: false,
 });

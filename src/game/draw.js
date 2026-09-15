@@ -6,9 +6,11 @@ import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
 import { LOOP } from './loop.js';
+import { drawSoftContactShadow } from '../engine/shadows.js';
 import {
   eggshellCopterArt,
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
+  TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
   BATTERY_FOCUS,
   PORTAL_SPRITE, PORTAL_ART_W, PORTAL_ART_H,
@@ -68,20 +70,22 @@ export const CONTACT_SHADOW = {
   // fast into a long, very faint spread. So the ink is spent on a small core
   // and the width is nearly free: `a` can come down and the pool goes with it,
   // while the mark under the feet stays where the eye needs it.
-  a: 0.26,      // planted opacity at the core; the spread is a fraction of this
-  core: 0.30,   // the dense contact patch, as a fraction of the radius
-  coreA: 0.70,  // what is left at the edge of that patch
+  a: 0.34,      // planted opacity at the core; the spread is a fraction of this
+  core: 0.33,   // the dense contact patch, as a fraction of the radius
+  coreA: 0.76,  // what is left at the edge of that patch
   tail: 0.62,   // where the faint spread has almost gone
-  tailA: 0.16,  // ...and how little is left there
-  // Radii as a fraction of hero height. WIDER THAN THE HERO on purpose: at 0.30
-  // the pool was 14px across under an 18px figure, so a planted hero stood on
-  // top of his own shadow and nothing showed. It is also FLATTER than it is
-  // wide — a shadow lies on the ground plane, and the rounder it gets the more
-  // it stands up as an object of its own.
-  rx: 0.56,
-  ry: 0.105,
+  tailA: 0.20,  // ...and how little is left there
+  // Radii as a fraction of hero height. WIDER THAN THE HERO on purpose: the
+  // old radius left the planted mark too close to the feet to survive against
+  // busy road texture. These ratios are world-space, so the same mark grows
+  // with the hero under the portrait camera rather than becoming a fixed CSS
+  // blob. It is also FLATTER than it is wide — a shadow lies on the ground
+  // plane, and the rounder it gets the more it stands up as an object of its
+  // own.
+  rx: 0.64,
+  ry: 0.12,
   apex: 3.0,    // altitude, in hero heights, at which it reaches its smallest
-  far: 0.34,    // how much of its size is left at that apex
+  far: 0.40,    // how much of its size is left at that apex
   // AND IT GAINS A LITTLE DENSITY AS IT TIGHTENS. Physically backwards — a real
   // shadow softens and fades as its caster climbs away from the floor — but the
   // shadow is doing a job here, and the job is at its hardest at the top of a
@@ -89,7 +93,7 @@ export const CONTACT_SHADOW = {
   // third of its size. Concentrating the same ink into a smaller mark is also
   // the reading the eye will accept: it looks like a shadow drawing in, not
   // like one being turned up. Keep it modest; past ~1.5 it stops passing.
-  airGain: 1.3,
+  airGain: 1.22,
 };
 const CONTACT_SHADOW_SHIPPED = { ...CONTACT_SHADOW };
 // The bake-off's way in; no argument restores what ships.
@@ -351,13 +355,13 @@ const SPECIAL_FOLLOWER_CROWN = {
   kiko: 1.06,
 };
 
-function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, reducedMotion, alpha = 1) {
+function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, alpha = 1) {
   const ready = cooldown <= 0;
   const fill = ready ? 1 : Math.max(0, Math.min(1, 1 - cooldown / cooldownMax));
   const r = h * 0.09;
   const x = cx - h * 0.72;
   const crown = SPECIAL_FOLLOWER_CROWN[heroId] || 0.99;
-  const y = feetY - h * crown + (reducedMotion ? 0 : Math.sin(t * 4.5) * h * 0.025);
+  const y = feetY - h * crown + Math.sin(t * 4.5) * h * 0.025;
   const energy = specialMoveColor(fill, ready);
 
   c.save();
@@ -366,7 +370,7 @@ function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownM
   // multiplies inside the function instead of wrapping the call site — a
   // wrapped globalAlpha would be clobbered by the pulse ring's own `= 0.3`.
   c.globalAlpha = alpha;
-  if (ready && !reducedMotion) {
+  if (ready) {
     const pulse = 1 + 0.11 * (0.5 + 0.5 * Math.sin(t * 5.5));
     c.globalAlpha = 0.3 * alpha;
     c.strokeStyle = energy;
@@ -407,10 +411,10 @@ function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownM
 // Star power: a hue-cycling aura behind the hero plus rainbow afterimages.
 // `left` is the time remaining — under two seconds the whole thing strobes so
 // you can hear AND see the clock running out.
-function drawStarAura(c, cx, feetY, h, t, left, reduced) {
+function drawStarAura(c, cx, feetY, h, t, left) {
   const hue = (t * 420) % 360;
-  const pulse = reduced ? 0.85 : 0.7 + 0.3 * Math.sin(t * 18);
-  const fade = left < 2 ? (reduced ? 0.6 : 0.35 + 0.65 * (Math.floor(t * 10) % 2)) : 1;
+  const pulse = 0.7 + 0.3 * Math.sin(t * 18);
+  const fade = left < 2 ? 0.35 + 0.65 * (Math.floor(t * 10) % 2) : 1;
   const cy = feetY - h * 0.5;
   c.save();
   c.globalCompositeOperation = 'lighter';
@@ -422,17 +426,15 @@ function drawStarAura(c, cx, feetY, h, t, left, reduced) {
   c.fillStyle = grad;
   c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
   // sparkle ring: four points chasing around the hero
-  if (!reduced) {
-    for (let i = 0; i < 4; i++) {
-      const a = t * 3.4 + (i * Math.PI) / 2;
-      const px = cx + Math.cos(a) * h * 0.5;
-      const py = cy + Math.sin(a) * h * 0.42;
-      const s = (1.1 + 0.5 * Math.sin(t * 12 + i)) * fade;
-      c.fillStyle = `hsla(${(hue + i * 90) % 360},100%,80%,${0.9 * fade})`;
-      c.beginPath();
-      c.moveTo(px, py - s * 2); c.lineTo(px + s, py); c.lineTo(px, py + s * 2); c.lineTo(px - s, py);
-      c.closePath(); c.fill();
-    }
+  for (let i = 0; i < 4; i++) {
+    const a = t * 3.4 + (i * Math.PI) / 2;
+    const px = cx + Math.cos(a) * h * 0.5;
+    const py = cy + Math.sin(a) * h * 0.42;
+    const s = (1.1 + 0.5 * Math.sin(t * 12 + i)) * fade;
+    c.fillStyle = `hsla(${(hue + i * 90) % 360},100%,80%,${0.9 * fade})`;
+    c.beginPath();
+    c.moveTo(px, py - s * 2); c.lineTo(px + s, py); c.lineTo(px, py + s * 2); c.lineTo(px - s, py);
+    c.closePath(); c.fill();
   }
   c.restore();
   return fade;
@@ -497,7 +499,6 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;
-  const reducedMotion = !!(opts.settings && opts.settings.reducedMotion);
   // THE PRATFALL, and why it lives here rather than in a pose.
   //
   // Every hero in this game is a different rig — humanoid, ray, blob, pika,
@@ -518,19 +519,15 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // Backwards, and not all the way over: at a full quarter turn he is lying on
   // the floor and the whole silhouette stops reading as the hero. This is the
   // moment his heels went out, held long enough to be seen.
-  // Reduced motion keeps a lean rather than losing the beat entirely — the
-  // damage flash and the floatie are still saying what happened, and a hero
-  // who does not react at all to a hazard named after falling over is worse
-  // than a small one.
   const slipAngle = slipQ > 0
-    ? Math.sin(slipQ * Math.PI) * (reducedMotion ? 0.16 : 0.62)
+    ? Math.sin(slipQ * Math.PI) * 0.62
     : 0;
   const paintFigure = (c) => {
     let starFade = 1;
     // A boost variant paints the hero itself (ordering is the whole point of
     // the effect), so the ordinary draw below stands down when one is running.
     let boostPainted = false;
-    if (starLeft > 0) starFade = drawStarAura(c, cx, feetY, HERO_DRAW_H, t, starLeft, reducedMotion);
+    if (starLeft > 0) starFade = drawStarAura(c, cx, feetY, HERO_DRAW_H, t, starLeft);
     if (ghosts) {
       drawToon(c, heroId, pose, cx - 7, feetY, HERO_DRAW_H, { alpha: 0.35 });
       drawToon(c, heroId, pose, cx - 13, feetY, HERO_DRAW_H, { alpha: 0.35 });
@@ -538,7 +535,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     // Boost pad kick — whichever treatment game/boostFx.js currently ships.
     // The hero is painted BY the variant, because the difference between an
     // afterimage and a foreground streak is entirely what order they land in.
-    if (player.boostT > 0 && !reducedMotion) {
+    if (player.boostT > 0) {
       boostPainted = true;
       drawBoostFx(c, {
         x: cx, groundY: feetY, t, q: Math.min(1, player.boostT / 0.5), w: W, h: 270,
@@ -548,7 +545,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       });
     }
     // Afterimages: the hero smears like they are moving faster than they are.
-    if (starLeft > 0 && !reducedMotion) {
+    if (starLeft > 0) {
       for (let i = 1; i <= 2; i++) {
         drawToon(c, heroId, pose, cx - i * 5, feetY, HERO_DRAW_H, { alpha: 0.2 * starFade / i });
       }
@@ -565,11 +562,11 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     const orbAlpha = opts.specialOrbAlpha == null ? 1 : Math.max(0, Math.min(1, opts.specialOrbAlpha));
     if (opts.specialOrb !== false && orbAlpha > 0) {
       drawSpecialMoveFollower(c, heroId, cx, feetY, HERO_DRAW_H, t, player.abilityCd,
-        cooldownMax, reducedMotion, orbAlpha);
+        cooldownMax, orbAlpha);
     }
     // ...and the hero themself burns brighter, in time with the aura pulse.
     if (starLeft > 0) {
-      const pulse = reducedMotion ? 0.3 : 0.22 + 0.24 * Math.sin(t * 18);
+      const pulse = 0.22 + 0.24 * Math.sin(t * 18);
       c.save();
       c.globalCompositeOperation = 'lighter';
       drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H, { alpha: pulse * starFade });
@@ -593,7 +590,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       // the brightest frame and is gone twice as fast on the way out.
       const q = Math.min(1, player.tagFlashT / TAG_FLASH_TIME);
       drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H,
-        { alpha: q * q * (reducedMotion ? 0.3 : 0.62) });
+        { alpha: q * q * 0.62 });
       c.restore();
     }
     if (shield > 0) drawShieldOrb(c, heroId, cx, feetY, HERO_DRAW_H, t, shield);
@@ -602,8 +599,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       c.lineWidth = 2; c.beginPath(); c.arc(cx + 4, feetY - 12, 14, -1.2, 1.2); c.stroke(); c.lineWidth = 1;
     }
     if (player.powerPoseT > 0) {
-      const reduced = opts.settings && opts.settings.reducedMotion;
-      drawPowerPose(c, cx, feetY, player.powerType, reduced ? 0.8 : Math.min(1, player.powerPoseT * 5));
+      drawPowerPose(c, cx, feetY, player.powerType, Math.min(1, player.powerPoseT * 5));
     }
   };
   // No slip, no transform at all: the ordinary frame pays nothing for this.
@@ -667,17 +663,18 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 // after the ground, so an unclipped plate just paints its bottom on top of
 // the road band and reads as overlapping the road, not set into it.
 //
-// 4 was picked off a 2/4/6 sweep. At 4 the whole plate face, chevron stripe
-// included, is under the road: the saw is a half-buried blade, the spikes are
-// teeth rising from a low base — the same grammar as the boost pad's trench.
-// At 2 the plate is still a slab wearing a stripe; at 6 the teeth float free
-// of any base. The danger read the stripe carried moves to the teeth, the
-// shared rim pulse and the red ground tick.
+// 2 was picked off a 2/4/6 sweep. It leaves the plate visibly seated without
+// swallowing the teeth: the spikes have a readable base and the saw blade has
+// enough disc above its slot to read as a moving machine. The danger read the
+// stripe carried moves to the teeth and the shared rim pulse — not to a ground
+// tick, which a buried plate no longer paints. Keeping this one value shared
+// gives the bedded floor hazards the same seating treatment instead of making
+// one look sunk and another perched.
 //
 // Berms and dirt mounds were tried here and rejected: anything drawn around
 // the plate against the backdrop reads as a pit or as foliage, not as the
 // lane closing over it.
-const BED_SINK = 4;
+const BED_SINK = 2;
 
 export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOptions = {}) {
   const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
@@ -707,30 +704,36 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   if (e.kind === 'pickup' && e.def.appliance) y += Math.round(Math.sin(t * 2.4 + e.bobPhase) * 3);
 
   if (e.def && e.def.isGap) return; // drawn by ground renderer
+  const sprName = e.def ? e.def.sprite : null;
+  // Resolve vector art before the contact pass as well as before the final
+  // draw. Bedded props use the name to choose their material, so declaring it
+  // afterwards makes the first bear-trap frame crash instead of rendering.
+  const propName = (e.skin && hasProp(e.skin)) ? e.skin
+    : (hasProp(e.type) ? e.type : (hasProp(sprName) ? sprName : null));
   // The boost pad opts out: it is a hole in the floor, and a hole casts no
   // contact shadow and takes no red danger tick. That ellipse under it was the
   // one mark left saying "object sitting on the ground".
   //
-  // `bedded` props opt out of the ELLIPSE for the same reason and keep the tick,
-  // which they still need — they are lethal, the pad is not. Their painters run
-  // the plate past the bottom of the box for the ground line to cut, and the
-  // art sinks BED_SINK into the road band (see draw1's call below), so the
-  // ellipse would sit as a grey smear in front of a plate that is supposed to
-  // be set into the road.
+  // `bedded` props opt out of the ELLIPSE for the same reason, and out of the
+  // red tick as well. Their painters run the plate past the bottom of the box
+  // for the ground line to cut, and the art sinks BED_SINK into the road band
+  // (see draw1's call below), so either mark would sit as a smear in front of
+  // a plate that is supposed to be set into the road. Frost's trap is the one
+  // exception and takes a cold shadow, because it lies on the snow rather than
+  // being cut into it.
   if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost && !e.def.isLoop && !e.def.bedded) {
     if (e.def.splitFeet) {
       // An open hurdle has two contacts, not a plinth. A full-width shadow and
       // red road mark join its uprights into a false bottom rail.
-      ctx.fillStyle = 'rgba(8,6,12,0.28)';
       for (const px of [x + 2, x + e.w - 2]) {
-        ctx.beginPath(); ctx.ellipse(px, GROUND_Y - 1, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
+        drawSoftContactShadow(ctx, px, GROUND_Y - 1, 3.5, 2.4, { alpha: 0.34 });
       }
       ctx.fillStyle = 'rgba(224,72,72,0.32)';
       ctx.fillRect(x, GROUND_Y - 1, 4, 1);
       ctx.fillRect(x + e.w - 4, GROUND_Y - 1, 4, 1);
     } else {
-      ctx.fillStyle = 'rgba(8,6,12,0.28)';
-      ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
+      drawSoftContactShadow(ctx, x + e.w / 2, GROUND_Y - 1,
+        Math.max(5, e.w * 0.68), 2.4, { alpha: 0.34 });
       // The red road mark says AVOID, and the card box is the one ground prop
       // in the lane that is neither a hazard nor optional scenery — it is a
       // thing to shoot. It keeps its contact shadow (it is standing on the
@@ -742,8 +745,32 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
       }
     }
   } else if (e.kind === 'obstacle' && e.def.bedded) {
-    ctx.fillStyle = 'rgba(224,72,72,0.32)';
-    ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+    // A bedded plate has NO red tick. The tick is a mark on the lane floor,
+    // and these plates are cut into whatever surface they stand on: on the
+    // flat it was painted at GROUND_Y - 1, directly behind an opaque plate
+    // that is 4/3 wider than it, so it has never actually been visible — and
+    // on a sloped ridge the plate rides the hill while the lane line stays
+    // put, which is the whole of the red underline floating in the snow below
+    // the Frost spikes. The burial itself is the contact now: the road is
+    // clipped over the foot of the plate (see the bedded branch below draw1),
+    // which says "set into the ground" better than a bar ever did.
+    if (propName === 'bearTrap') {
+      // The Frost trap keeps a cold contact — it is a loose mechanism lying in
+      // snow rather than a plate cut into it, so the ground under it wants a
+      // little shading. Red was tried and rejected: a full-width warning tick
+      // under an already dark, outlined machine reads as a pink plinth against
+      // the translucent blue hills.
+      //
+      // It rides the SAME surface line the burial clip uses, not GROUND_Y, so
+      // the shadow stays welded to the trap wherever the hill goes.
+      const mark = renderOptions.beddedSurface;
+      ctx.save();
+      ctx.translate(x + e.w / 2, Number.isFinite(mark?.centerY) ? mark.centerY : GROUND_Y);
+      ctx.rotate(Number.isFinite(mark?.angle) ? mark.angle : 0);
+      drawSoftContactShadow(ctx, 0, -1,
+        Math.max(5, e.w * 0.58), 1.8, { alpha: 0.24, ink: '41,65,79' });
+      ctx.restore();
+    }
   }
   if (e.def && e.def.beatSync) {
     drawProp(ctx, 'beatBar', x, Math.round(GROUND_Y - e.h), e.w, e.h);
@@ -781,13 +808,10 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     ctx.imageSmoothingEnabled = false;
     return;
   }
-  const sprName = e.def ? e.def.sprite : null;
   // Vector art first, keyed by entity TYPE so !-crates, targets, pipes and
   // switches get their own look instead of borrowing another prop's sprite.
   // A per-instance skin overrides the type's own art (drones wear one of two
   // bodies). Everything else — hitbox, debris, behaviour — still keys on type.
-  const propName = (e.skin && hasProp(e.skin)) ? e.skin
-    : (hasProp(e.type) ? e.type : (hasProp(sprName) ? sprName : null));
   const spr = propName ? null : (sprName ? getSprite(sprName) : null);
   if (!propName && !spr) { ctx.fillStyle = '#f0f'; ctx.fillRect(x, y, e.w, e.h); return; }
 
@@ -800,17 +824,26 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   const bh = propName ? e.def.h : spr.height;
   const src = propName ? null : (danger ? (scaled2x(sprName) || spr) : spr);
   // Animated props cycle cached frames. bobPhase offsets each instance so a row
-  // of fires licks independently instead of flickering in lockstep; reduced
-  // motion holds frame 0. ~11fps is fast enough to read as fire and slow enough
-  // to stay a flicker rather than a strobe.
+  // of fires licks independently instead of flickering in lockstep. ~11fps is
+  // fast enough to read as fire and slow enough to stay a flicker rather than a
+  // strobe.
   const frameCount = propName ? propFrames(propName) : 1;
   // A boost pad chases faster the nearer the hero gets — up to 2.6x by the
   // time they are on it. It is the same eight frames either way, so the whole
   // reaction costs one multiply and no extra cache.
   const fps = propName ? propFps(propName) * (e.def && (e.def.isBoost || e.def.isLoop) ? 1 + 1.6 * (e.arm || 0) : 1) : 0;
-  const frame = frameCount > 1 && !settings.reducedMotion
-    ? Math.floor(t * fps + e.bobPhase * 4) % frameCount
-    : 0;
+  // THE BEAR TRAP DOES NOT RIDE THE CLOCK ALL THE WAY ROUND. Its last six
+  // frames are the SNAP, reached only by a trap a shot has sprung, and driven
+  // by that trap's own timer rather than by the 8fps ring: a snap that waits
+  // for the next tick lands after the thing that caused it, and the whole
+  // point of the mechanic is that the shot closed the jaws.
+  const trapSprung = propName === 'bearTrap' && e.disarmed;
+  const ringFrames = propName === 'bearTrap' ? TRAP_IDLE_FRAMES : frameCount;
+  const frame = trapSprung
+    ? TRAP_IDLE_FRAMES + Math.min(TRAP_SNAP.length - 1,
+      Math.floor(((e.disarmT || 0) / TRAP_SNAP_T) * TRAP_SNAP.length))
+    : ringFrames > 1
+      ? Math.floor(t * fps + e.bobPhase * 4) % ringFrames : 0;
   const rimDark = danger ? (propName ? null : tinted(sprName, '#101018')) : null;
   const rimLite = danger ? (propName ? null : tinted(sprName, '#f0f0f8')) : null;
   const prevSmooth = ctx.imageSmoothingEnabled;
@@ -858,17 +891,11 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     ctx.drawImage(propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src), ox, oy, w0, h0);
     ctx.imageSmoothingEnabled = prevSmooth;
   };
-  if (danger && !e.def.splitFeet && !e.columnRung) {
-    // anchors flyers to the lane and marks where falling hazards land
-    //
-    // ONE MARK PER COLUMN. A drone column is three entities sharing an X
-    // (makeDroneColumn), and this bar is drawn per entity — three coats of the
-    // same translucent smear stacked into a near-black bar under it, which read
-    // as a hazard of its own. Rung 0 draws for the whole stack; a lone drone
-    // has no `columnRung` at all and is unaffected.
-    ctx.fillStyle = 'rgba(8,8,16,0.4)';
-    ctx.fillRect(x, GROUND_Y - 2, e.w, 2);
-  }
+  // Do not paint a landing mark for airborne hazards. It is only decoration,
+  // but when the flyer is high, hidden by a frame edge, or momentarily between
+  // animation frames, that decoration becomes an orphaned ground shape. The
+  // obstacle's own box is what collide() judges; a shadow must never be the
+  // thing the player appears to hit.
   if (e.kind === 'pickup' && e.def.power && POWER_GLOW[e.type]) {
     // pulsing halo so power capsules read as prizes from across the screen
     const glow = glowSprite(POWER_GLOW[e.type], 10);
@@ -908,7 +935,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     // telegraph: hang from "ceiling" with a warning shimmer
     draw1(x, Math.round(GROUND_Y - e.alt - e.h));
     if (Math.floor(t * 8) % 2 === 0) { ctx.fillStyle = 'rgba(246,211,60,0.6)'; ctx.fillRect(x + 2, GROUND_Y - 3, 4, 3); }
-  } else if (e.def.shamble && !settings.reducedMotion) {
+  } else if (e.def.shamble) {
     // Shuffling gait: weight rocks side to side, the torso lists after it, and
     // the body lifts on each step. Pivot is the feet so they stay planted.
     // Art only — the hitbox never leaves e.x.
@@ -948,10 +975,27 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     // without the clip the sunk part just paints itself on top of the road
     // band and the plate reads as overlapping the road, not buried in it.
     // With it, the road genuinely swallows the bottom of the plate, which is
-    // the same picture the boost pad's trench draws for itself.
+    // the same picture the boost pad's trench draws for itself. On a slope the
+    // clip line follows the sampled surface, but the art itself stays upright:
+    // teeth emerge from the hill instead of leaning away with the plate.
     ctx.save();
+    const surface = renderOptions.beddedSurface;
+    // `x` is already screen/local space (`e.x - camX`), while the sampled
+    // surface's `centerX` is world space when drawAtGround is using its
+    // surface-only mode. Mixing those spaces makes the clip line pivot around
+    // a far-away world coordinate on a slope and can clip the entire plate,
+    // leaving only its red damage marker visible. The entity's local centre is
+    // the same sample point and stays in the correct space here.
+    const clipX = x + e.w / 2;
+    const clipY = Number.isFinite(surface?.centerY) ? surface.centerY : GROUND_Y;
+    const clipSlope = Number.isFinite(surface?.angle) ? Math.tan(surface.angle) : 0;
+    const clipL = x - 20, clipR = x + e.w + 20;
     ctx.beginPath();
-    ctx.rect(x - 20, GROUND_Y - 200, e.w + 40, 200);
+    ctx.moveTo(clipL, GROUND_Y - 200);
+    ctx.lineTo(clipR, GROUND_Y - 200);
+    ctx.lineTo(clipR, clipY + (clipR - clipX) * clipSlope);
+    ctx.lineTo(clipL, clipY + (clipL - clipX) * clipSlope);
+    ctx.closePath();
     ctx.clip();
     draw1(x, y + BED_SINK);
     ctx.restore();
@@ -961,10 +1005,9 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // The pad's payout, drawn over the pad itself: the trench fills with light
   // and throws a short bar forward along the floor. It reads as the pad DOING
   // something rather than as a particle burst that happens to be nearby, which
-  // is the difference between a confirmation and a decoration. Reduced motion
-  // keeps the fill and drops the throw.
-  if (e.def.isBoost && !settings.reducedMotion) drawBoostReaction(ctx, e, x, t, propName);
-  if (e.def.isLoop) drawLoopRing(ctx, e, x, t, settings);
+  // is the difference between a confirmation and a decoration.
+  if (e.def.isBoost) drawBoostReaction(ctx, e, x, t, propName);
+  if (e.def.isLoop) drawLoopRing(ctx, e, x, t);
   // A CARD BOX THAT HAS TAKEN ITS ROUND. Between the hit and the beat it is
   // owed to there is a fraction of a beat (see BOX_BURST_BEATS), and a box that
   // just stood there through it would read as a shot that missed. A GLOW, and
@@ -984,10 +1027,9 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     const cy = y + e.h / 2;
     const gr = 8 + ft * 4;
     ctx.imageSmoothingEnabled = true;
-    // Swelling with the fuse rather than flat, which is the direction the
-    // strobe used to carry. Reduced motion takes the middle of that range and
-    // holds it: the message is the box being lit, and that survives still.
-    ctx.globalAlpha = settings.reducedMotion ? 0.4 : Math.min(0.55, 0.3 + ft * 0.5);
+    // Swelling with the fuse rather than flat gives the lit box a readable
+    // direction instead of making it a static glow.
+    ctx.globalAlpha = Math.min(0.55, 0.3 + ft * 0.5);
     ctx.drawImage(glowSprite('rgba(248,144,184,0.75)', 9), cx - gr, cy - gr, gr * 2, gr * 2);
     ctx.globalAlpha = 1;
     ctx.imageSmoothingEnabled = false;
@@ -1091,7 +1133,7 @@ function drawBoostReaction(ctx, e, x, t, propName) {
 const LOOP_TRACK_SHADOW = '#2f4249';
 const LOOP_TRACK_BODY = '#49636b';
 
-function drawLoopRing(ctx, e, x, t, settings = {}) {
+function drawLoopRing(ctx, e, x, t) {
   const r = LOOP.r;
   // Centred on the line the hero VISUALLY travels, not on the pad's box. The
   // ride pins his sprite's left edge to the circle, so the middle of him — and
@@ -1148,10 +1190,8 @@ function drawLoopRing(ctx, e, x, t, settings = {}) {
     const ex = cx + Math.cos(a) * mid;
     const ey = cy + Math.sin(a) * mid;
     // Pooled shade first, wider than the haunch, so the road looks pressed on.
-    ctx.fillStyle = 'rgba(8,6,12,0.20)';
-    ctx.beginPath();
-    ctx.ellipse(ex + sign * 6, GROUND_Y - 0.5, 22, 3.5, 0, 0, Math.PI * 2);
-    ctx.fill();
+    drawSoftContactShadow(ctx, ex + sign * 6, GROUND_Y - 0.5, 24, 4,
+      { alpha: 0.24, ink: '8,6,12' });
     // The haunch: from the outer face of the track end, curving out and down to
     // die into the road a couple of dozen pixels away.
     ctx.fillStyle = '#6a4420';
@@ -1188,11 +1228,11 @@ function drawLoopRing(ctx, e, x, t, settings = {}) {
 
   // Chevrons chasing along the track's own face, at the pad's own rate — `arm`
   // drives both, so the ring winds up as the hero closes and falls away with the
-  // pad when the chance is missed. Reduced motion keeps them and stops them
-  // moving. On the band rather than floating inside it: they are markings on the
-  // road surface, and the pad at the bottom wears the same ones.
+  // pad when the chance is missed. On the band rather than floating inside it:
+  // they are markings on the road surface, and the pad at the bottom wears the
+  // same ones.
   const n = 12;
-  const chase = settings.reducedMotion ? 0 : t * (0.9 + 2.6 * arm);
+  const chase = t * (0.9 + 2.6 * arm);
   ctx.fillStyle = '#fff6d0';
   for (let i = 0; i < n; i++) {
     const a = chase + (i / n) * Math.PI * 2;
@@ -1256,7 +1296,7 @@ function drawLoopRing(ctx, e, x, t, settings = {}) {
 
   // Contact: the whole ring lights, once, and fades. It is the same beat the pad
   // plays in its trench, said at the scale of the thing the pad just handed you.
-  if (fired > 0 && !settings.reducedMotion) {
+  if (fired > 0) {
     const q = Math.max(0, Math.min(1, fired / 0.3));
     ctx.globalAlpha = q * 0.85;
     ctx.strokeStyle = '#fff6d0';
@@ -1267,7 +1307,7 @@ function drawLoopRing(ctx, e, x, t, settings = {}) {
   ctx.restore();
 }
 
-export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = false, settings = {}) {
+export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = false) {
   const x = smoothMotion ? portal.x - camX : Math.round(portal.x - camX);
   // The old art was three static ellipses, so drawPortal breathed it 2px on a
   // sine to give it any life at all. This art cuts its own edges every frame,
@@ -1280,23 +1320,18 @@ export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = fal
   // to the end so the last frame — a dark plinth, a slumped column — is what
   // rests on screen for the rest of the ride off the back of the frame.
   //
-  // Reduced motion gets the LAST frame of the strip rather than the first. The
-  // first frame of a spend is the discharge, and holding a white blowout static
-  // for half a second is exactly the thing the setting exists to prevent; the
-  // last frame is the state, which is the part carrying the information.
   const strip = portal.spent != null
     ? { name: PORTAL_SPENT_SPRITE, t: portal.spent / PORTAL_SPEND_TIME, n: PORTAL_SPEND_FRAMES }
     : portal.wilt != null
       ? { name: PORTAL_WILT_SPRITE, t: portal.wilt / PORTAL_WILT_TIME, n: PORTAL_WILT_FRAMES }
       : null;
   if (strip) {
-    const f = settings.reducedMotion ? strip.n - 1
-      : Math.min(strip.n - 1, Math.max(0, Math.floor(strip.t * strip.n)));
+    const f = Math.min(strip.n - 1, Math.max(0, Math.floor(strip.t * strip.n)));
     drawProp(ctx, strip.name, x - 1, top, PORTAL_ART_W, PORTAL_ART_H, f);
     // The floor glow goes out with the column. It is the portal's light on the
     // ground, so it cannot outlive the light.
     const lit = 1 - Math.min(1, strip.t);
-    if (lit > 0.02 && !settings.reducedMotion) {
+    if (lit > 0.02) {
       ctx.globalAlpha = lit;
       ctx.fillStyle = '#48e0c8';
       ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
@@ -1308,8 +1343,7 @@ export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = fal
     if (portal.spent == null) drawPortalFace(ctx, portal, x, top, zoom, lit);
     return;
   }
-  const frame = settings.reducedMotion ? 0
-    : Math.floor(t * propFps(PORTAL_SPRITE)) % propFrames(PORTAL_SPRITE);
+  const frame = Math.floor(t * propFps(PORTAL_SPRITE)) % propFrames(PORTAL_SPRITE);
   drawProp(ctx, PORTAL_SPRITE, x - 1, top, PORTAL_ART_W, PORTAL_ART_H, frame);
   ctx.fillStyle = '#48e0c8';
   ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
@@ -1364,8 +1398,7 @@ export const COPTER_SHIELD_T = 0.3;
 // was before, as long as it is kinda in sync that's all I want." A rotor is a
 // machine at speed, and a machine that surges is a machine with a fault. Being
 // locked to the beat is enough; it does not have to perform being locked to it.
-export function copterFrame(t, beatPhase, reducedMotion = false) {
-  if (reducedMotion) return 0;
+export function copterFrame(t, beatPhase) {
   const frames = propFrames('eggshellCopter');
   const turns = Number.isFinite(beatPhase) ? beatPhase : t * 2;
   return Math.floor(turns * frames * 2) % frames;
@@ -1415,22 +1448,18 @@ export function copterLamp(beat) {
 //
 // Otherwise they blink on the song, ice blue. `beat` is Audio.songBeat().
 const COPTER_LAMP_FLICKER = 5.5;   // stutters per second while he is knocked
-export function copterLamps(copter, beat, reducedFlashing = false) {
-  // Steady, and the colour still tells the story: reduced flashing takes away
-  // the blinking, not the state — a player who has asked for no flashing still
-  // has to be able to see that a shot was turned away.
+export function copterLamps(copter, beat) {
   if (copter.shieldT > 0) {
     const a = Math.min(1, copter.shieldT / COPTER_SHIELD_T);
-    return { lamp: reducedFlashing ? 1 : a, ink: 'field' };
+    return { lamp: a, ink: 'field' };
   }
   if (copter.hitT > 0) {
     const hit = Math.min(1, copter.hitT / COPTER_HIT_T);      // 1 at impact, 0 at the end
-    if (reducedFlashing) return { lamp: 0.7, ink: 'dead' };
     const age = (1 - hit) * COPTER_HIT_T;                      // seconds since contact
     const on = (age * COPTER_LAMP_FLICKER) % 1 < 0.5;
     return { lamp: (on ? 1 : 0.1) * (0.35 + 0.65 * hit), ink: 'dead' };
   }
-  return { lamp: reducedFlashing ? 0 : copterLamp(beat), ink: 'run' };
+  return { lamp: copterLamp(beat), ink: 'run' };
 }
 
 // `beat` is Audio.songBeat() — the absolute fractional beat, or null with no
@@ -1443,7 +1472,7 @@ export function copterLamps(copter, beat, reducedFlashing = false) {
 // relevant song bpm." Every level has a song, so every copter blinks in its
 // own tempo — and copterLamps above hands the bonk and the forcefield the
 // lamps when they want them.
-export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMotion = false, beat = null, reducedFlashing = false) {
+export function drawCopter(ctx, copter, camX, t, smoothMotion = false, beat = null) {
   // Rounding follows the smoothMotion rule on BOTH axes. y used to round
   // unconditionally, and his bob is ~34u/s, so at desktop scale he climbed
   // in 6px steps every other frame.
@@ -1454,8 +1483,8 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
   // the headroom the old blur line used to float in. The rotor turns in the
   // painter's frames, so there is no separate blur to draw.
   const beatPhase = Number.isFinite(beat) ? ((beat % 1) + 1) % 1 : null;
-  const frame = copterFrame(t, beatPhase, reducedMotion);
-  const { lamp, ink: lampInk } = copterLamps(copter, beat, reducedFlashing);
+  const frame = copterFrame(t, beatPhase);
+  const { lamp, ink: lampInk } = copterLamps(copter, beat);
   const B = COPTER_BOX;
   // HIS FACE IS LIVE, so he is drawn from the painter rather than the raster
   // cache: a cached sprite has one expression per frame index, and the whole
@@ -1481,10 +1510,10 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
     mood: copter.mood || 'flat',
     // A blink every few seconds, off a clock of his own so it never lands on
     // the beat with everything else. Two frames of shut eye is enough.
-    blink: reducedMotion ? 0 : (t % 3.4 < 0.11 ? 1 : 0),
+    blink: t % 3.4 < 0.11 ? 1 : 0,
     // A TWITCH EACH, ON THEIR OWN CLOCKS. Periods that share no factor, so the
     // two never land together; each is a short hop rather than a hold.
-    twitch: reducedMotion ? [0, 0] : [
+    twitch: [
       t % 5.3 < 0.22 ? 1 : 0,
       t % 3.9 < 0.18 ? 1 : 0,
     ],

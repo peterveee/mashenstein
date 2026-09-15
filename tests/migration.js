@@ -30,7 +30,11 @@ dom.store['mashenstein.v2'] = '{definitely not json';
 
 // Case 3: old v2 save missing new fields gets deep-defaulted.
 const { defaultSlot, Save } = await import('../src/engine/save.js');
-const partial = { version: 2, settings: {}, slots: [{ coins: 7 }, null, null] };
+const partial = {
+  version: 2,
+  settings: { reducedMotion: true, reducedFlashing: true },
+  slots: [{ coins: 7 }, null, null],
+};
 dom.store['mashenstein.v2'] = JSON.stringify(partial);
 {
   const s = new Save().load();
@@ -38,6 +42,8 @@ dom.store['mashenstein.v2'] = JSON.stringify(partial);
   assert(s.data.slots[0].bench && s.data.slots[0].bench.shield === 1, 'missing fields deep-defaulted');
   assert(s.data.settings.assistSpeed === 100, 'missing settings defaulted');
   assert(s.data.settings.showFps === false, 'FPS display defaults off for existing saves');
+  assert(!('reducedMotion' in s.data.settings), 'retired reduced motion setting is removed from existing saves');
+  assert(!('reducedFlashing' in s.data.settings), 'retired reduced flashing setting is removed from existing saves');
   assert(s.data.settings.renderDensityByBackend.webgl === 0
     && s.data.settings.renderDensityByBackend['2d'] === 0,
   'backend-specific render densities default to auto for existing saves');

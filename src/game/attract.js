@@ -145,9 +145,9 @@ export class AttractState {
       const mode = this.crash ? 'CRASH TEST' : this.piloted ? 'BOT' : 'MANUAL';
       const tally = this.crash ? `  HITS ${this.run.devHits.length}` : '';
       pushOverlayDraw((d) => {
-        // Opaque, not translucent: the run draws its own control legend in this
-        // same band, and a see-through strip lets the two collide.
-        d.fillStyle = '#0b0b14';
+        // Keep the run visible behind the dev strip. The dark tint preserves
+        // enough contrast for both lines without turning the whole band black.
+        d.fillStyle = 'rgba(11,11,20,0.72)';
         d.fillRect(0, H - 20, W, 20);
         drawTextCentered(d, `[DEV] ${name}  ${mode}${tally}`, W / 2, H - 16, '#f6d33c');
         drawTextCentered(d, 'TAB take over  [ ] speed  ` menu  ESC quit', W / 2, H - 8, '#5a5a68');

@@ -28,9 +28,9 @@ function recorder() {
     createRadialGradient() { return gradient; },
     fillRect(...args) { ops.push(['fillRect', ...args]); },
     beginPath() {},
-    rect() {},
+    rect() {}, quadraticCurveTo() {},
     arc() {}, ellipse() {}, moveTo() {}, lineTo() {}, closePath() {},
-    fill() {}, stroke() {},
+    fill() { ops.push(['fill', this.globalAlpha]); }, stroke() {},
     save() {}, restore() {},
     translate(...args) { ops.push(['translate', ...args]); },
     scale() {}, rotate() {}, clip() {}, drawImage() {},
@@ -39,6 +39,7 @@ function recorder() {
 }
 
 const plumber = CABINETS.find((cab) => cab.id === 'plumber');
+const frost = CABINETS.find((cab) => cab.id === 'frost');
 const pack = getStylePack('pixel', {});
 assert(__testing.paperCutoutPreviewRequested({}) === true,
   'Plumber paper treatment is enabled by default for this study');
@@ -125,11 +126,81 @@ assert(nearSurfaceFeatures.length > 0 && nearSurfaceFeatures.length <= 6
   'near-hill rocks and sage follow the exact ridge geometry and tangent');
 const frostFeatures = __testing.frostSceneryPlacements(
   ridgeProbe, 137, portraitNearBaseY, { layer: 'near' });
-assert(frostFeatures.length > 0
-  && frostFeatures.every((feature) => Math.abs(feature.baseY - (__testing.ridgeYAt(
+assert(frostFeatures.length >= 2
+  && frostFeatures.every((feature) => Math.abs(feature.crest - __testing.ridgeYAt(
     feature.x, 137, portraitNearBaseY, 40, 70, 0.3,
-    { coverageLeft: ridgeProbe.__mashBackgroundCoverage.left }) + 1)) < 1e-9),
-  'Frost pines use the exact near-ridge planting curve');
+    { coverageLeft: ridgeProbe.__mashBackgroundCoverage.left })) < 1e-9)
+  && __testing.FROST_SCENERY_EMBED === 0
+  && __testing.FROST_PINE_EMBED > 0
+  && __testing.FROST_PINE_EMBED <= 1.5,
+  'Frost near ridge carries multiple props on the exact curve with visible feet and lightly embedded trunks');
+assert(['pine', 'ice-rock', 'landmark', 'snowbank', 'glacier']
+  .every((kind) => !__testing.frostSceneryUsesPaperShadow({ kind })),
+  'no Frost ridge feature casts a separate paper drop shadow');
+// Aerial perspective, not a second palette: each layer's colours are mixed
+// toward what is behind it, and the palette's internal order has to survive it.
+{
+  const cab = frost;
+  const far = __testing.frostAtmosphericPalette('far', cab);
+  const near = __testing.frostAtmosphericPalette('near', cab);
+  const luma = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  };
+  assert(luma(far.landmark) > luma(near.landmark),
+    'the far ridge is hazed further toward its backdrop than the near one');
+  assert(luma(far.snow) > luma(far.shadow) && luma(near.snow) > luma(near.shadow),
+    'haze preserves the palette order — snow stays lighter than shadow');
+  assert(far.warm === near.warm,
+    'the lit window keeps its warm accent through the haze');
+}
+const frostPortraitFeatures = __testing.frostSceneryPlacements(
+  ridgeProbe, 137, portraitNearBaseY, { layer: 'near', portrait: true });
+const frostPortraitFarFeatures = __testing.frostSceneryPlacements(
+  ridgeProbe, 137, portraitNearBaseY, { layer: 'far', portrait: true });
+const frostLandscapeFarFeatures = __testing.frostSceneryPlacements(
+  ridgeProbe, 137, portraitNearBaseY, { layer: 'far', portrait: false });
+assert(frostPortraitFeatures.length > frostFeatures.length
+  && frostPortraitFarFeatures.length > frostLandscapeFarFeatures.length,
+  'Frost portrait adds a restrained third scenery slot per ridge period');
+const frostWideProbe = { __mashBackgroundCoverage: { left: 0, right: 2200, width: 2200 } };
+const frostNearKinds = new Set(__testing.frostSceneryPlacements(
+  frostWideProbe, 137, portraitNearBaseY, { layer: 'near' }).map((feature) => feature.kind));
+const frostFarKinds = new Set(__testing.frostSceneryPlacements(
+  frostWideProbe, 137, portraitNearBaseY, { layer: 'far' }).map((feature) => feature.kind));
+assert(frostNearKinds.has('pine') && frostNearKinds.has('ice-rock') && frostNearKinds.has('snowbank'),
+  'Frost near ridge uses pines, blue ice rocks and snowbanks instead of one repeated prop');
+assert(frostFarKinds.has('glacier') && frostFarKinds.has('landmark'),
+  'Frost far ridge carries glacier silhouettes and a stage landmark slot');
+const frostFortresses = __testing.frostSceneryPlacements(
+  frostWideProbe, 137, portraitNearBaseY, { layer: 'far' })
+  .filter((feature) => feature.kind === 'landmark');
+assert(frostFortresses.length > 0
+  && frostFortresses.every((feature) => Math.abs(feature.crest - __testing.ridgeYAt(
+    feature.x, 137, portraitNearBaseY, 66, 130, 0.12,
+    { coverageLeft: frostWideProbe.__mashBackgroundCoverage.left })) < 1e-9)
+  && __testing.FROST_SCENERY_EMBED === 0,
+  'Frost fortress landmarks use the exact ridge with visible feet');
+function frostPlacementSignature(ctx, camX, layer) {
+  return new Map(__testing.frostSceneryPlacements(
+    ctx, camX, portraitNearBaseY, { layer })
+    .map((feature) => [`${feature.tile}:${feature.slotIndex}`,
+      `${feature.kind}:${feature.localX}`]));
+}
+for (const [orientation, coverage] of [
+  ['landscape', { left: 0, right: 480, width: 480 }],
+  ['portrait', { left: 131.25, right: 611.25, width: 480 }],
+]) {
+  for (const [layer, wl, factor] of [['near', 70, 0.3], ['far', 130, 0.12]]) {
+    const period = Math.round(Math.PI * wl);
+    const wrapCamX = period / (factor * 2);
+    const before = frostPlacementSignature(coverage, wrapCamX - 0.1, layer);
+    const after = frostPlacementSignature(coverage, wrapCamX + 0.1, layer);
+    const common = [...before.keys()].filter((key) => after.has(key));
+    assert(common.length > 0 && common.every((key) => before.get(key) === after.get(key)),
+      `Frost ${layer} placements stay stable through a ${orientation} tile wrap`);
+  }
+}
 const cryptFeatures = __testing.cryptSceneryPlacements(
   ridgeProbe, 137, portraitNearBaseY, { layer: 'far' });
 const cryptKinds = new Set(cryptFeatures.map((feature) => feature.kind));
@@ -204,8 +275,8 @@ assert(__testing.windTurbineRotation(0, 0) !== __testing.windTurbineRotation(1, 
   'wind turbine rotors advance over time and vary by landmark phase');
 assert(__testing.satelliteDishScanAngle(0, 0) !== __testing.satelliteDishScanAngle(1, 0)
   && __testing.satelliteDishScanAngle(1, 2) !== __testing.satelliteDishScanAngle(1, 3)
-  && __testing.satelliteDishScanAngle(1, 0, true) === 0,
-  'satellite dish antennas sweep independently and freeze with reduced motion');
+  && __testing.satelliteDishScanAngle(1, 0) !== __testing.satelliteDishScanAngle(0, 0),
+  'satellite dish antennas sweep independently over time and landmark phase');
 const telegraphPoles = __testing.desertTelegraphPlacements(
   ridgeProbe, 137, portraitMiddleBaseY);
 assert(telegraphPoles.length >= 3
@@ -218,9 +289,15 @@ assert(telegraphPoles.some((pole) => pole.x < ridgeProbe.__mashBackgroundCoverag
   'telegraph wire endpoints stay alive beyond both portrait edges');
 const speedSigns = __testing.desertSpeedLimitPlacements(
   ridgeProbe, 137, 232 + 5 - __testing.DESERT_SCENERY_LIFT_PORTRAIT, { portrait: true });
+const landscapeSigns = __testing.desertSpeedLimitPlacements(
+  ridgeProbe, 137, 232 + 5, { portrait: false });
+const signBoardBottom = (sign) => sign.baseY + sign.bottom * sign.scale;
 assert(speedSigns.length > 0 && speedSigns.every((sign) => sign.baseY
   === 194 - __testing.DESERT_SPEED_SIGN_RAISE),
   'portrait road signs sit higher while keeping their lifted roadside contract');
+assert([...speedSigns, ...landscapeSigns].every((sign) => signBoardBottom(sign)
+  <= 232 - 24 - 6),
+  'every road sign board clears the tallest hero with a small margin');
 assert(speedSigns.every((sign) => Math.abs(sign.postFootY
   - (201 - 7 + sign.scale * 33)) < 1e-9),
   'portrait road sign posts reach their explicit planted roadside plane');
@@ -228,10 +305,32 @@ assert(speedSigns.every((sign) => Math.abs(__testing.desertSignPostHeight(sign)
   - ((sign.postFootY - sign.baseY) / sign.scale - sign.bottom)) < 1e-9),
   'portrait road sign shafts span continuously from board bottom to planted foot');
 const roadSignKinds = __testing.DESERT_ROAD_SIGNS.map((sign) => sign.kind);
+const liveAutobahn = __testing.DESERT_ROAD_SIGNS.find((sign) => sign.kind === 'route');
+const liveWarning = __testing.DESERT_ROAD_SIGNS.find((sign) => sign.kind === 'caution');
 assert(roadSignKinds.length === 5
   && ['speed', 'highway', 'route', 'caution', 'exit'].every((kind) => roadSignKinds.includes(kind))
-  && __testing.DESERT_ROAD_SIGNS[0].value === '93',
-  'speed zone uses five sparse classic signs with an irregular speed sign');
+  && /^\d+$/.test(__testing.DESERT_ROAD_SIGNS[0].value)
+  && Number(__testing.DESERT_ROAD_SIGNS[0].value) <= 99
+  && liveAutobahn?.shape === 'autobahn'
+  && liveAutobahn?.w === 32
+  && liveAutobahn?.top === -60
+  && liveAutobahn?.bottom === -12
+  && liveAutobahn?.bottom - liveAutobahn?.top === liveAutobahn?.w * 1.5
+  && liveAutobahn?.face === '#3f6571'
+  && liveAutobahn?.label === ''
+  && liveAutobahn?.value === ''
+  && liveWarning?.shape === 'triangle'
+  && liveWarning?.w === 44
+  && liveWarning?.top === -57
+  && liveWarning?.bottom === -18
+  && liveWarning?.warningFormula === 'mc²'
+  && liveWarning?.warningFormulaScale === 1.7
+  && liveWarning?.warningFormulaOffset === 0.14
+  && liveWarning?.warningFormulaPadding === 0.16
+  && liveWarning?.warningMarkOffset === 0
+  && liveWarning?.face === '#f1e8d5'
+  && liveWarning?.trim === '#a85f55',
+  'speed zone uses five sparse signs with Autobahn and warning triangle replacements');
 const variedSignProbe = {
   __mashBackgroundCoverage: { left: 0, right: 20000, width: 20000 },
 };
@@ -240,9 +339,11 @@ const variedSpeedValues = new Set(variedSigns
   .filter((sign) => sign.kind === 'speed').map((sign) => sign.value));
 const variedHighwayValues = new Set(variedSigns
   .filter((sign) => sign.kind === 'highway').map((sign) => sign.value));
-assert(['93', '103', 'πr²', '∞'].every((value) => variedSpeedValues.has(value))
+assert(variedSpeedValues.size > 0
+  && [...variedSpeedValues].every((value) => /^\d+$/.test(value)
+    && Number(value) >= 10 && Number(value) <= 99)
   && ['13', '404', 'πr²', '∞'].every((value) => variedHighwayValues.has(value)),
-  'speed and highway signs cycle through deterministic silly values');
+  'speed limits stay random and at or below 99 while highway signs keep their silly cycle');
 const signOverGap = __testing.desertSpeedLimitPlacements(
   ridgeProbe, 137, 232, {
     portrait: true,
@@ -281,7 +382,7 @@ const desktopSignOverGap = __testing.desertSpeedLimitPlacements(
 assert(!desktopSignOverGap.some((sign) => sign.index === desktopSigns[0].index),
   'road signs are culled over a live gap in the landscape transform too');
 
-for (const id of ['speed-1', 'speed-2', 'speed-3']) {
+for (const id of ['speed-1', 'speed-2', 'speed-3', 'frost-1', 'frost-2', 'frost-3']) {
   assert(STAGE_BY_ID[id].paperPreset === 'cardstockClear',
     `${id} opts into the shared cardstock material`);
 }
@@ -291,6 +392,16 @@ const speedPaperPack = getStylePack('faux3d', {
 assert(speedPaperPack.lightBg && speedPaperPack.paperSlab?.paper
   && speedPaperPack.paperSlab.material.id === 'cardstockClear',
   'speed faux-3D uses the paper background and shared terrain slab material');
+assert(!speedPaperPack.decorate,
+  'speed faux-3D does not add its own generic obstacle shadow');
+const frostPack = getStylePack('watercolor', {});
+const frostPaint = recorder();
+frostPaint.ctx.__mashBackgroundCoverage = { left: 0, right: 480, width: 480 };
+frostPack.bg(frostPaint.ctx, 12, 0, frost, 6000, null, 0);
+const foregroundHillPasses = frostPaint.ops.filter((op) =>
+  op[0] === 'fill' && Math.abs(op[1] - 0.22) < 1e-9);
+assert(foregroundHillPasses.length === 1,
+  'Frost adds one translucent foreground hill sheet, separate from the opaque ridges');
 function sunPosition(bgShift) {
   const { ctx, ops } = recorder();
   // Infinity skips the Plumber volcano; the first translate is still the sun,

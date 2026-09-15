@@ -251,9 +251,8 @@ export class BossState extends RunState {
     const songBeat = Audio.songBeat();
     const beatPhase = Number.isFinite(songBeat) ? ((songBeat % 1) + 1) % 1 : null;
     const frame = this.boss.sprite === 'eggshellCopter'
-      ? copterFrame(this.tRun, beatPhase, this.save.settings.reducedMotion)
-      : this.save.settings.reducedMotion ? 0
-        : Math.floor(this.tRun * propFps(this.boss.sprite)) % propFrames(this.boss.sprite);
+      ? copterFrame(this.tRun, beatPhase)
+      : Math.floor(this.tRun * propFps(this.boss.sprite)) % propFrames(this.boss.sprite);
     ctx.save();
     applyWorld(ctx, this.camZoom, this.camPan);
     // THE SAME MACHINE BLINKS THE SAME WAY HERE. His headlamps flash on the
@@ -263,7 +262,7 @@ export class BossState extends RunState {
     // (a canvas per value); he is drawn straight from the painter instead,
     // which is what the chase already does for a face that changes.
     if (this.boss.sprite === 'eggshellCopter') {
-      const lamp = this.save.settings.reducedFlashing ? 0 : copterLamp(songBeat);
+      const lamp = copterLamp(songBeat);
       ctx.save();
       ctx.translate(x - bossW / 2, y);
       eggshellCopterArt(ctx, bossW, bossH, frame, { lamp });

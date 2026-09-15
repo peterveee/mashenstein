@@ -77,8 +77,7 @@ function viewportOrientationInfo() {
 }
 
 // The touch chrome, recomputed every resize() by the shared portrait/landscape
-// layout modules: `run`, `runNoPower`, the dev-only `runPortraitLab` variants,
-// and `hub` are the button lists a screen hands to
+// layout modules: `run`, `runNoPower`, and `hub` are the button lists a screen hands to
 // Input.setChromeButtons (discs in viewport CSS px, plus the margin's zones),
 // `gen` ticks on every relayout so a screen knows to re-register, and `scale`
 // is CSS px per logical px for the painter. `mode` survives only for
@@ -88,7 +87,7 @@ function viewportOrientationInfo() {
 // are the same on every device now, which is the point of the layout.
 export const chrome = {
   mode: 'none', vw: 0, vh: 0, gen: 0,
-  run: [], runNoPower: [], runPortraitLab: [], runPortraitLabNoPower: [],
+  run: [], runNoPower: [],
   hub: [], split: 0, scale: 1, landscapeSide: null,
 };
 const CHROME_MIN_MARGIN = 72;
@@ -417,7 +416,7 @@ export function setDevPortraitFill(on) {
   if (typeof window !== 'undefined' && canvas) resize();
 }
 
-// Opt-in production presentation mode used by the dev Portrait Lab. Unlike
+// Opt-in production presentation mode used by portrait preview tooling. Unlike
 // setDevPortraitFill this keeps the world uniform: portrait derives a logical
 // height from the viewport aspect and follows orientation through resize().
 export function setPresentationMode(mode = LANDSCAPE, options = {}) {
@@ -1416,9 +1415,9 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
       viewportWidth: surface.width, viewportHeight: surface.height,
       safeInsets: safe, revision: getActiveFrame().revision, includeRewind: true,
     });
-    const controls = (hasPower, portraitLab = false) => {
+    const controls = (hasPower) => {
       const discs = Object.entries(layout.controls)
-        .filter(([id]) => (portraitLab || id !== 'rewind') && (hasPower || id !== 'use'))
+        .filter(([id]) => id !== 'rewind' && (hasPower || id !== 'use'))
         .map(([id, b]) => ({
           id: id === 'use' ? 'ability' : id,
           action: b.action, x: surface.x + b.cx, y: surface.y + b.cy, r: b.r,
@@ -1446,7 +1445,6 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
     });
     Object.assign(chrome, {
       run: controls(true), runNoPower: controls(false),
-      runPortraitLab: controls(true, true), runPortraitLabNoPower: controls(false, true),
       hub, split: surface.x + surface.width / 2, scale: screen.scale,
       landscapeSide: null,
     });
@@ -1457,8 +1455,6 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
       vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe,
       orientationAngle: orientation.angle, orientationType: orientation.type,
     }));
-    chrome.runPortraitLab = [];
-    chrome.runPortraitLabNoPower = [];
   }
   chrome.gen++;
   // The backing store was just reassigned (blank): force the next commit to

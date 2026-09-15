@@ -1,6 +1,6 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
-  initRenderer, beginRenderFrame, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
+  initRenderer, beginRenderFrame, bctx, blit, pushOverlayDraw,
   noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualiserFrame, setChromeOverlay,
   onPresentationRefresh, revealPresentationRefresh,
 } from './engine/renderer.js';
@@ -61,11 +61,9 @@ import {
   drawGameplayProfile, drawGameplayProfileWaiting,
 } from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
-import { portraitLabMenu } from './dev/menus.js';
-import { PortraitLab } from './dev/portrait-lab.js';
+import { devFinishStartPercent, devStageRoute } from './engine/dev-url.js';
 
 save.load();
-setShakeScale(save.settings.screenShake);
 // Resolve the camera framing before anything draws. RunState re-resolves every
 // frame, but menus, the hub and the tutorial all read the camera's resting zoom
 // straight off the module, so it has to be right from the first frame.
@@ -81,6 +79,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 // and jumps directly to a surface, skipping the title screen entirely.
 // Extra params depend on the target:
 //   ?goto=stage&cab=plumber&stage=plumber-1   — launch a specific stage
+//   ?goto=stage&stage=3-3                     — same, using cabinet/stage numbers
 //   ?goto=stage&cab=plumber&stage=plumber-1&seed=7   — ...on a known seed
 //   ?goto=stage&cab=plumber                   — stage select for that cabinet
 //   ?goto=hub&hero=lorenzo                     — start hub as a specific hero
@@ -125,8 +124,7 @@ function routeDevUrl(goto, p) {
     if (!params.has('finish')) return 0;
     const want = parseFloat(params.get('finish'));
     const lead = Number.isFinite(want) && want > 0 ? want : 5;
-    const dur = (stage && stage.durationSec) || 330;
-    return Math.max(0.01, Math.min(0.99, 1 - lead / dur));
+    return devFinishStartPercent(stage, lead);
   };
   const startAtFrom = (params, stage) => {
     const pct = parseFloat(params.get('startAt'));
@@ -192,7 +190,7 @@ function routeDevUrl(goto, p) {
       break;
     case 'settings':
       setState(new SettingsState({ save,
-        onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); },
+        onDone: () => Flow.toTitle(),
         onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)) }));
       break;
     case 'calibrate':
@@ -233,8 +231,9 @@ function routeDevUrl(goto, p) {
       setState(new FinaleState({ save, onDone: () => Flow.toTitle() }));
       break;
     case 'stage': {
-      const cabId = p.get('cab');
-      const stageId = p.get('stage');
+      // Canonical form remains `cab=plumber&stage=plumber-1`; compact form is
+      // `stage=3-3` (or `level=3-3`) and uses the cabinet registry's order.
+      const { cabId, stageId } = devStageRoute(p);
       if (!cabId) { Flow.toTitle(); break; }
       const cab = CABINET_BY_ID[cabId];
       if (!cab) { Flow.toTitle(); break; }
@@ -364,7 +363,7 @@ const Flow = {
 
   toSettings() {
     setState(new SettingsState({ save,
-      onDone: () => { setShakeScale(save.settings.screenShake); Flow.toExtras('settings'); },
+      onDone: () => Flow.toExtras('settings'),
       onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()) }));
   },
 
@@ -444,53 +443,6 @@ const Flow = {
     if (!cab || !stage) return;
     this.launchStage(cab, stage, [], undefined, undefined, false, true, false,
       0, 0, false, true);
-  },
-
-  // Portrait Lab owns its RunState and its exit policy. The visual config is
-  // copied at launch, so a second tab changing localStorage cannot move a live
-  // run underneath the player; the normal campaign path above stays untouched.
-  launchPortraitStage(cab, stage, options = {}) {
-    if (!save.slot) {
-      Dev.say('SELECT A SAVE SLOT FIRST');
-      Dev.openMenu(portraitLabMenu);
-      return null;
-    }
-    const heroId = options.heroId || Flow.heroId();
-    const seed = options.seed ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0);
-    const config = options.config || PortraitLab.config();
-    const run = new RunState({
-      stage, cabinet: cab, save,
-      seed,
-      difficulty: save.slot.difficulty,
-      corrupted: [],
-      initialHeroId: heroId,
-      devInvuln: !!options.invulnerable,
-      devStartPercent: options.startPercent || 0,
-      devPortraitLab: config,
-      portraitLabRun: true,
-      announceBench: false,
-      musicSong: this.gameSongFor(cab.id),
-      onEnd: (result) => {
-        Flow.lastTeam = result.team;
-        Flow.setHero(result.finalHero);
-        const reason = result.success ? 'FINISH' : result.reason === 'QUIT' ? 'QUIT' : 'FAIL';
-        // No ResultsState and no applyResult: this run is a review session,
-        // and the completed state remains behind the reopened dev menu.
-        run.exit();
-        Input.clearAll();
-        PortraitLab.returnToMenu(reason);
-        Dev.openMenu(portraitLabMenu);
-        Dev.say(`LAST: ${stage.id.toUpperCase()} — ${reason}`);
-      },
-    });
-    PortraitLab.launch({
-      run, cab, stage, heroId, seed,
-      startPercent: options.startPercent || 0,
-      invulnerable: !!options.invulnerable,
-    });
-    levelOpenCue();
-    setState(run);
-    return run;
   },
 
   startBoss(cabId, seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
@@ -724,7 +676,6 @@ function boot() {
     },
   });
   releaseBenchRenderer(benchDiag);
-  setFancyFx(save.settings.fancyFx);
   // A shade more ink on the cast on a handset, where the picture is four inches
   // wide — see PHONE_INK. Before buildAllSprites() and before any state can
   // draw, because the toon bakes are keyed on hero and size, not on ink.
@@ -733,9 +684,7 @@ function boot() {
   buildAllSprites();
 
   // Touch players do not need the continuously-running rewind capture during
-  // shipped gameplay. Portrait Lab enables its own full tape when the review
-  // run enters, so this boot-time seed can stay cheap on a phone while the lab
-  // still gets the explicit RWD control and recording it asks for.
+  // shipped gameplay, so this boot-time seed can stay cheap on a phone.
   // The game uses songAnalyser, not the desk display meters.
   Audio.setMixerMeteringEnabled(false);
   Audio.setCaptureEnabled(Input.rewindAvailable());
@@ -763,15 +712,13 @@ function boot() {
   // frozen exactly as it would behind the rotate card, and a tester who opened
   // the menu from that card reads it without turning the phone back.
   //
-  // A shutter in flight is admitted too, in dev builds only, because that menu
+  // A shutter in flight is admitted too, in dev builds only, because the menu
   // can launch a screen with the phone still upright: the transition needs
   // frames to land and a paused phone gives it none, so the pick would freeze
   // half-way, leaving the old screen current and the new one pending. The
-  // destination gets the deciding vote a moment later — publish() re-applies on
-  // the swap, and the loop below re-applies once the reveal ends. A shipped
-  // build has no such launcher and keeps the old behaviour untouched.
+  // destination gets the deciding vote a moment later — publish() re-applies
+  // on the swap, and the loop below re-applies once the reveal ends.
   const allowPortraitNow = () => Dev.open || (Dev.enabled && isTransitioning())
-    || PortraitLab.allowsPortrait(currentState())
     || portraitAllowedFor(currentState(), diagPortrait);
   Audio.setLifecyclePaused(lifecyclePolicy({
     ...platform,

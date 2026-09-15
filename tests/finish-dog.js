@@ -67,10 +67,16 @@ for (const skin of dog.skins) {
   assert(propFrames(skin) === 8, `${skin} gallops over the pack dogs' eight frames`);
   assert(propVisualScale(skin) > 1, `${skin} draws a little over its box, as the pack dogs do`);
 }
-// The aliases must be the SAME art as the pack dogs, not a fork of it.
+// The aliases keep the same bodies as the pack dogs, with the finish-only tail
+// pass used where needed so the larger set piece has a complete silhouette
+// without changing the lane encounters. Bruiser now carries that tail in both
+// appearances.
 const { ANIMAL_FRAMES, ANIMAL_FPS } = await import('../src/sprites/animals.js');
 assert(Object.keys(ANIMAL_FRAMES).every((n) => propFrames(n) === ANIMAL_FRAMES[n]),
   'the pack animals keep their own frame counts alongside the finish aliases');
+for (const skin of dog.skins) {
+  assert(!!propSprite(skin, dog.w, dog.h, 0), `${skin} rasterizes its finish-only silhouette`);
+}
 assert(propDetailScale('dogSnarler') === 2,
   'the PACK dogs stay at double detail — the exception is the finish dog alone');
 

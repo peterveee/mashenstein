@@ -338,9 +338,6 @@ for (const stage of [1, 2, 3]) {
   assert(beat0 !== beat1, `stage ${stage} switches cells between downbeat and backbeat`);
   assert(beat0 !== phrase, `stage ${stage} has a distinct phrase-change pose`);
 
-  const reduced0 = fingerprint(background(stage, 0, { reducedMotion: true }));
-  const reduced9 = fingerprint(background(stage, 9, { reducedMotion: true }, 91, 999));
-  assert(reduced0 === reduced9, `stage ${stage} reduced motion freezes a stable screen-fixed pose`);
 }
 
 const idleA = fingerprint(background(1, null, {}, 0, 0));
@@ -393,20 +390,16 @@ for (const stage of [1, 2, 3]) {
     `stage ${stage} active ghost segments stay clear of the lane`);
 }
 
-// The sky drifts on the heard beat and parks under reduced motion. A cloud is
-// the one stroked path in the cloud band of the sky (y 28..60 on stage 1 — the
-// band moved up twelve with the clouds themselves), so the x of every lineTo up
-// there is a clean probe of the drift.
+// The sky drifts on the heard beat. A cloud is the one stroked path in the
+// cloud band of the sky (y 28..60 on stage 1 — the band moved up twelve with
+// the clouds themselves), so the x of every lineTo up there is a clean probe
+// of the drift.
 const cloudWispXs = (ops) => ops
   .filter((op) => op[0] === 'lineTo' && op[2] >= 28 && op[2] < 60)
   .map((op) => op[1]);
 assert(cloudWispXs(background(1, 0)).length > 0
   && fingerprint(cloudWispXs(background(1, 0))) !== fingerprint(cloudWispXs(background(1, 8))),
 'clouds drift across the sky in quantized whole-pixel steps on the heard beat');
-assert(fingerprint(cloudWispXs(background(1, 8, { reducedMotion: true })))
-  === fingerprint(cloudWispXs(background(1, 0, { reducedMotion: true }))),
-'reduced motion parks the drifting sky');
-
 // Rhythm 2's clouds are background, not traffic. Each cloud is the panel's
 // unique closed ten-point path; all three must finish before the baked skyline
 // begins, which also necessarily puts them behind the later viaduct and train.
@@ -641,11 +634,6 @@ for (const stage of [1, 2, 3]) {
     .filter((op) => op[0] === 'fillRect' && op[1] === ACTIVE).length;
   assert(stageCells(1) !== stageCells(3),
     `stage ${stage}: the three cities still light differently with music playing`);
-  // The accessibility contract for the whole reactive layer, in one line: a
-  // frozen panel may not be animated by the music behind the player's back.
-  const frozenQuiet = fingerprint(background(stage, 4, { reducedMotion: true }, 0, 0, { audio: heard(0.2) }));
-  const frozenLoud = fingerprint(background(stage, 9, { reducedMotion: true }, 91, 999, { audio: heard(0.9) }));
-  assert(frozenQuiet === frozenLoud, `stage ${stage} reduced motion is deaf as well as still`);
   // THE SKY METER IS THE JUKEBOX'S, NOT THE GAME'S. Clipped behind the
   // skyline it never reads as a bar in a run — only as banding in the band
   // the plane and the clouds live in — so a stage draws none of it. The
@@ -878,7 +866,6 @@ function post(settings, t) {
   return ops;
 }
 const normalPost = post({}, 0.25);
-const reducedPost = post({ reducedFlashing: true }, 0.25);
 assert(LCD_SCREEN_GRID_CELL === 3, 'the landscape LCD lattice keeps its three-pixel cell pitch');
 assert(LCD_PORTRAIT_SCREEN_GRID_CELL === 6, 'the portrait LCD uses a coarser six-pixel lattice for readability');
 assert(lcdScreenGridCellSize({}) === 3, 'ordinary LCD callers keep the fine lattice');
@@ -897,17 +884,15 @@ assert(createdForPortraitGrid.some((element) => element.width === 6 && element.h
   'portrait LCD post bakes the coarse periodic grid tile');
 assert(!normalPost.some((op) => op[0] === 'fillRect' && op[1] === '#808080'),
 'the GBC screen treatment preserves hue instead of converting scenery to monochrome');
-assert(normalPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba(255,244,180,'))
-  && !reducedPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba(255,244,180,')),
-'reduced flashing removes the full-panel reflective shimmer');
+assert(normalPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba(255,244,180,')),
+'the panel carries its full-panel reflective shimmer');
 
 // GROUND_Y - h - 5 for each uncrowned stage-3 roof (heights 65, 53, 125, 134,
 // 71, 77 — the billboard's and the gorilla's roofs carry no cap).
 const stage3CapYs = new Set([162, 174, 102, 93, 156, 150]);
 const roofLamps = (settings) => background(3, 1, settings).filter((op) => op[0] === 'fillRect'
   && op[1] === ACTIVE && op[4] === 2 && op[5] === 2 && stage3CapYs.has(op[3]));
-assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length === 0,
-'reduced flashing keeps detailed roof hardware but suppresses its offbeat lamps');
+assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat lamps');
 
 // ---- the flight lane threads the gap --------------------------------------
 //
@@ -1248,9 +1233,9 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
       `and it walks down a cell a beat, top to bottom, twice a phrase (${ys.join(',')})`);
   }
   assert(solid(null, 5) === 1 && solid({ barrelBeat: 5 }, 5) === 1
-    && bigBarrels(background(3, 5, { reducedMotion: true }, 0, 0, { barrelBeat: 5 }))
+    && bigBarrels(background(3, 5, {}, 0, 0, { barrelBeat: 5 }))
       .filter((b) => b.cx === CHUTE_X && b.fill === WOOD).length === 1,
-    'with no lane, on the delivery beat and on a frozen panel alike');
+    'with no lane and on the delivery beat alike');
 
   // ---- ONE LIT BARREL, FROM HIS SCALP TO THE STREET -------------------------
   //
@@ -1312,8 +1297,6 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     'the rim is lit for the first three quarters of every beat of the journey');
   assert(rimsAt(0.8) === 0 && rimsAt(0.99) === 0,
     'and off for the last quarter, which is the flash');
-  assert(rimsAt(0.8, { reducedFlashing: true }) === 1,
-    'and simply lit under reduced flashing');
 }
 
 // ---- KONG WAVES AT THE FINISH ----------------------------------------------
@@ -1401,12 +1384,6 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     'the whole number, not part of it');
   assert(word({ streak: 8, cheer: true }) === word({ streak: 8 }),
     'and the word stays cream through it');
-  // A frozen panel is never cheered at, and is never told the count either.
-  assert(gold({ streak: 8, cheer: true }, { reducedMotion: true }) === 0,
-    'a frozen panel is never cheered at');
-  assert(fingerprint(face({ streak: 8 }, { reducedMotion: true }))
-    === fingerprint(face({ streak: 128 }, { reducedMotion: true })),
-    'reduced motion draws the same panel whatever the run is doing');
 }
 
 // ---- the KEY CHANGE banner ------------------------------------------------
@@ -1543,8 +1520,6 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   assert(!background(2, 40, {}, 0, 0, { omen: 10 }).find((op) => op[0] === 'fillRect'
     && op[1] === PANEL_LIT && op[5] === 11 && op[4] > 40 && op[3] < 100),
     'a panel with no plane flies nothing, roll or no roll');
-  const frozen = slabAt(TAKEOFF + 20, omenAt(TAKEOFF + 20, 10), { reducedMotion: true });
-  assert(!frozen || frozen[4] < 90, 'a frozen panel never shows it');
 }
 
 // ---- the sign that shouts a verb ------------------------------------------
@@ -1631,10 +1606,6 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
       && letters(sign('slide', ['#72d8f0'], 3 + phase)) === 0,
       `dark ${Math.round(phase * 100)}% of the way through a beat`);
   }
-  assert(marks(sign('slide', ['#72d8f0'], 3.9, { reducedFlashing: true }), '#72d8f0') > 0,
-    'reduced flashing keeps the message and drops the flash');
-  assert(marks(sign('slide', ['#72d8f0'], 0, { reducedMotion: true }), '#72d8f0') === 0,
-    'a frozen panel is never shouted at');
 }
 
 // ---- how low a window may light -------------------------------------------

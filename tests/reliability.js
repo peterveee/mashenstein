@@ -882,6 +882,69 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
   assert(snap.pitsDone && snap.pitsDone.length === pits.length, 'the snapshot records which pits are down');
 }
 
+// CHECKPOINT RETRIES KEEP THE SAME RANDOM FUTURE. A death restore rebuilds the
+// spawned window, so the checkpoint must include both the RNG positions and the
+// cursors/timers that decide what those streams produce next.
+{
+  const retryRun = makeRun();
+  retryRun.enter();
+  // Keep this probe on the spawner branch: hazard reactions deliberately add
+  // hitstop, which would make two otherwise identical wall-clock loops differ.
+  retryRun.collide = () => {};
+  for (let i = 0; i < 60 * 40 && !retryRun.snapshot; i++) retryRun.update(1 / 60);
+  assert(!!retryRun.snapshot, 'the deterministic retry case reaches a checkpoint');
+  const checkpoint = retryRun.snapshot;
+  const layoutOf = (r) => JSON.stringify({
+    obstacles: r.obstacles.filter((o) => o.live).map((o) => [o.type, o.x, o.alt, o.w]),
+    pickups: r.pickups.filter((p) => p.live).map((p) => [p.type, p.x, p.alt, p.w]),
+    relay: [r.relay.current, r.relay.next, ...r.relay.bag],
+    spawner: [r.spawner.nextX, r.spawner.lastPatternIdx, r.spawner.lastActionX,
+      r.spawner.lastActionKind, r.spawner.lastWasPunt, ...r.spawner.usedOnce],
+    drip: [r.drip.capsuleTimer, r.drip.batteryTimer, r.drip.lastPowerX, r.drip.lastPowerType],
+  });
+  for (let i = 0; i < 60 * 8; i++) retryRun.update(1 / 60);
+  const firstFuture = layoutOf(retryRun);
+  retryRun.dead = true;
+  retryRun.deadT = retryRun.deadHold();
+  retryRun.update(1 / 60);
+  assert(!retryRun.dead && retryRun.camX === checkpoint.camX,
+    'an actual death restores the checkpoint before the retry continues');
+  for (let i = 0; i < 60 * 8; i++) retryRun.update(1 / 60);
+  const secondFuture = layoutOf(retryRun);
+  assert(secondFuture === firstFuture,
+    'a checkpoint retry reproduces the same obstacles, pickups, and relay future');
+}
+
+// A DEATH BEFORE THE FIRST CHECKPOINT ALSO RESTARTS THE SAME ATTEMPT. It must
+// not take the ordinary fresh-level seed path just because there is no snapshot
+// yet; that is the case where the player sees the whole level change.
+{
+  const restarted = makeRun();
+  restarted.enter();
+  restarted.collide = () => {};
+  const seed = restarted.seed;
+  assert(!restarted.snapshot, 'the top-of-level retry starts without a checkpoint');
+  restarted.dead = true;
+  restarted.deadT = restarted.deadHold();
+  restarted.update(1 / 60);
+  assert(!restarted.dead && restarted.seed === seed && restarted.camX === 0,
+    'a death before the first checkpoint restarts with the same level seed');
+  const fresh = makeRun();
+  fresh.enter();
+  fresh.collide = () => {};
+  for (let i = 0; i < 60 * 8; i++) { restarted.update(1 / 60); fresh.update(1 / 60); }
+  const restartedFuture = JSON.stringify({
+    obstacles: restarted.obstacles.filter((o) => o.live).map((o) => [o.type, o.x, o.alt, o.w]),
+    pickups: restarted.pickups.filter((p) => p.live).map((p) => [p.type, p.x, p.alt, p.w]),
+  });
+  const freshFuture = JSON.stringify({
+    obstacles: fresh.obstacles.filter((o) => o.live).map((o) => [o.type, o.x, o.alt, o.w]),
+    pickups: fresh.pickups.filter((p) => p.live).map((p) => [p.type, p.x, p.alt, p.w]),
+  });
+  assert(restartedFuture === freshFuture,
+    'the top-of-level retry reproduces the same obstacles, coins, and powerups');
+}
+
 // NO COIN OVER A HOLE, AND NONE ON EITHER LIP.
 //
 // A pit's lips are the two places the player chooses nothing — the near one is
@@ -1056,6 +1119,34 @@ const topCrate = makeObstacle('crate', run.camX + PLAYER_X);
 run.obstacles = [topCrate]; run.player.grounded = false; run.player.y = topCrate.h - 1; run.player.vy = -120; run.player.iframes = 0;
 const topCells = run.battery; run.collide(); run.collide();
 assert(run.battery === topCells && topCrate.landedOn, 'landing on a crate is safe for the full contact');
+
+// The bear trap owns the mechanism read on an accepted contact. It must not
+// fall through to the generic damage cue, and ignored i-frame contacts must not
+// retrigger the snap.
+{
+  const trapRun = makeRun(); trapRun.enter();
+  const trap = makeObstacle('bearTrap', trapRun.camX + PLAYER_X);
+  trapRun.obstacles = [trap]; trapRun.player.grounded = true; trapRun.player.y = 0;
+  trapRun.player.iframes = 0;
+  const realSfx = Audio.sfx;
+  const cues = [];
+  Audio.sfx = function(name, ...args) {
+    cues.push({ name, args });
+    return realSfx.call(this, name, ...args);
+  };
+  trapRun.collide();
+  const firstSnapCount = cues.filter((cue) => cue.name === 'trapSnap').length;
+  assert(firstSnapCount === 1 && trapRun.battery === trapRun.maxBattery() - 1,
+    'bear trap contact plays one dedicated snap and deals its normal damage');
+  assert(cues[0]?.name === 'trapSnap' && (cues[0].args[0]?.gain || 0) > 1
+    && !cues.some((cue) => cue.name === 'hit'),
+  'bear trap uses the louder snap cue instead of stacking the generic hit');
+  trapRun.player.iframes = 1;
+  trapRun.collide();
+  assert(cues.filter((cue) => cue.name === 'trapSnap').length === firstSnapCount,
+    'bear trap snap does not retrigger during i-frames');
+  Audio.sfx = realSfx;
+}
 
 // Objective !-crates remain usable during the post-hit invulnerability window.
 run = makeRun(); run.enter();
@@ -1245,6 +1336,30 @@ assert(migratedSave.slot.mastery.raymn?.xp === 345 && !migratedSave.slot.mastery
   run.drawAtGround(ctx, wx, () => {});
   assert(Math.abs(ty - (terrainGroundY(run.cabinet, wx, GROUND_Y) - GROUND_Y)) < 1e-9,
     'width-less callers (portal, copter) keep single-point seating');
+
+  // Floor plates are part of the road surface rather than upright props. Their
+  // buried edge must rotate with the local slope, otherwise the plate reads as
+  // a flat shelf laid across the hill even though its seating point is correct.
+  let angle = null;
+  const conformCtx = {
+    save() {}, restore() {}, translate() {}, rotate(value) { angle = value; },
+  };
+  const conformOver = w * (4 / 3) / 2;
+  const expectedAngle = Math.atan2(
+    terrainGroundY(run.cabinet, cx + conformOver, GROUND_Y)
+      - terrainGroundY(run.cabinet, cx - conformOver, GROUND_Y),
+    conformOver * 2,
+  );
+  run.drawAtGround(conformCtx, wx, () => {}, w, sink, run.camX);
+  assert(angle !== null && Math.abs(angle - expectedAngle) < 1e-9,
+    'bedded floor art conforms to the local terrain angle');
+
+  let sampledSurface = null;
+  angle = null;
+  run.drawAtGround(conformCtx, wx, (surface) => { sampledSurface = surface; }, w, sink,
+    { surfaceOnly: true });
+  assert(angle === null && sampledSurface && Math.abs(sampledSurface.angle - expectedAngle) < 1e-9,
+    'bedded floor art samples the slope without rotating the spikes');
 }
 
 console.log(failed ? 'RELIABILITY: FAILED' : 'RELIABILITY: PASSED');

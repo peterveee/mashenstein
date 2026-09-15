@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, onPresentationChanged, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
+import { W, H, bakeSS, onPresentationChanged, screen, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -282,7 +282,6 @@ function titleParadeStateKey(state) {
     HERO_PARADE.join(','),
     state.frightStart,
     state.wispsDismissed ? 1 : 0,
-    state.save.settings.reducedFlashing ? 1 : 0,
     shooters, pokes, eaten, scatter, bombs, shots,
   ].join('|');
 }
@@ -506,8 +505,7 @@ function drawWispEyes(ctx, x, feetY, dir) {
   ctx.restore();
 }
 
-function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter, wispsDismissed) {
-  if (reduced) return;
+function drawMazeWispCameo(ctx, t, frightStart, eaten, scatter, wispsDismissed) {
   const frightActive = frightStart != null && t - frightStart < WISP_FRIGHT_T;
   // The last stretch blinks blue/white — the classic warning that fright is
   // about to wear off — on the same 8Hz clock the flicker uses elsewhere.
@@ -710,8 +708,7 @@ export function invaderPass(t) {
   return rawInvaderPass(t);
 }
 
-function drawFlyingToasters(ctx, t, reduced, singleOpening) {
-  if (reduced) return;
+function drawFlyingToasters(ctx, t, singleOpening) {
   const layout = titleLayout();
   const pass = titleToasterPass(t, singleOpening);
   if (!pass) return;
@@ -1145,7 +1142,7 @@ function drawRetainedTitleBase(ctx, skyMode) {
   ctx.drawImage(titleBaseCache.canvas, 0, 0, W, H);
 }
 
-function drawRetainedTitleStars(ctx, t, reduced) {
+function drawRetainedTitleStars(ctx, t) {
   // The old fallback was 26 logical-pixel squares. Three retained high-detail
   // layers provide varied size, colour temperature and gentle independent
   // twinkle without rebuilding radial gradients every frame.
@@ -1188,9 +1185,7 @@ function drawRetainedTitleStars(ctx, t, reduced) {
       }
       slot.key = key;
     }
-    const pulse = reduced
-      ? 0.78
-      : 0.76 + Math.sin(t * (0.55 + layer * 0.17) + layer * 2.1) * 0.14;
+    const pulse = 0.76 + Math.sin(t * (0.55 + layer * 0.17) + layer * 2.1) * 0.14;
     ctx.save();
     ctx.globalAlpha *= pulse;
     ctx.drawImage(slot.canvas, 0, 0, W, starBottom);
@@ -1230,7 +1225,7 @@ function drawRetainedMarquee(ctx, alpha) {
   ctx.restore();
 }
 
-function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots, profile, titleShooters) {
+function titleScene(ctx, t, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots, profile, titleShooters) {
   const layout = titleLayout();
   const activeShooters = titleShooters || new Set();
   // night sky over the last functioning food court
@@ -1239,13 +1234,13 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // hole for it. Reduced flashing freezes its clock instead of animating.
   // Without WebGL, the old hand-drawn sky stands in.
   const skyEnabled = profile?.sky !== false;
-  const gpuSky = setSkyFx(skyEnabled, reduced ? 0 : t);
+  const gpuSky = setSkyFx(skyEnabled, t);
   ctx.clearRect(0, 0, W, H);
   drawRetainedTitleBase(ctx, gpuSky ? 'gpu' : skyEnabled ? 'canvas' : 'none');
   if (skyEnabled && !gpuSky) {
-    drawRetainedTitleStars(ctx, t, reduced);
+    drawRetainedTitleStars(ctx, t);
   }
-  if (!reduced && !layout.portrait) drawInvader(ctx, t);
+  if (!layout.portrait) drawInvader(ctx, t);
 
   // The nine-cabinet row used to stand here. It was competing with the marquee,
   // the save-file panel and the hero parade for the same screen, and the title
@@ -1278,11 +1273,11 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
     const entryZoomExtra = HERO_ENTRY_ZOOM;
     // The cast still crosses the arcade, but each hero occasionally breaks into
     // a small personality beat. Cycles are offset so the parade stays readable.
-    const strikes = reduced || layout.portrait ? null : invaderStrikes(t, tapBombs);
+    const strikes = layout.portrait ? null : invaderStrikes(t, tapBombs);
     if (stable) {
       drawBolt(c, t, strikes);
       drawShots(c, t, shots);
-      drawMazeWispCameo(c, t, reduced, frightStart, eaten, scatter, wispsDismissed);
+      drawMazeWispCameo(c, t, frightStart, eaten, scatter, wispsDismissed);
     }
     for (let i = 0; i < HERO_PARADE.length; i++) {
       const hx = heroX(i, t);
@@ -1313,7 +1308,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       if (heroIsKnockedOut(i, t, tapBombs)) continue;
       const actionLength = 1.35;
       const beat = (t + i * 0.71) % 4.9;
-      const acting = !reduced && !entering && beat < actionLength;
+      const acting = !entering && beat < actionLength;
       const actionP = acting ? beat / actionLength : 0;
       const pose = {
         kind: 'run', grounded: true, time: t, menu: true,
@@ -1404,7 +1399,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // next fit — a constant strobe reads as broken rather than characterful.
   const logoW = textWidth('MASHENSTEIN', layout.logoScale, 'marquee');
   const seamK = layout.logoScale / 4;
-  drawRetainedMarquee(ctx, flickerAlpha(t, reduced));
+  drawRetainedMarquee(ctx, flickerAlpha(t));
 
   // A live power cord dangles off the logo, swinging, occasionally sparking.
   // The anchor tracks the measured width so the cord stays bolted to the last
@@ -1418,7 +1413,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // logoW edge floated it in the gap beside the letter, and starting it halfway
   // up the letterform read as a wire crossing the sign rather than leaving it.
   const ax = W / 2 + logoW / 2 - 5 * seamK, ay = layout.marqueeY + 24 * seamK;
-  const sway = reduced ? 0 : Math.sin(t * 1.15) * 9;
+  const sway = Math.sin(t * 1.15) * 9;
   // Stops above the cards so the plug swings in open air at any phase of the
   // swing. Its length is independent of the card row: centring the controls in
   // the open middle of the screen should not stretch the title artwork.
@@ -1441,7 +1436,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   ctx.fillStyle = '#8a8a98';
   ctx.fillRect(px2 - 2 * plugK, py2 + 8 * plugK, 1.6 * plugK, 3 * plugK);
   ctx.fillRect(px2 + 0.6 * plugK, py2 + 8 * plugK, 1.6 * plugK, 3 * plugK);
-  if (flickerDark(t, reduced)) {
+  if (flickerDark(t)) {
     // Zap: sparks plus the same cached radial glow the power capsules use. A
     // flat translucent rectangle read as a yellow card sitting behind the plug
     // — a radial falloff has no edge to mistake for a background.
@@ -1804,7 +1799,13 @@ function warningGlowSprite(text, scale) {
   const key = `${text}|${scale}`;
   let sprite = warningGlowSprites.get(key);
   if (sprite) return sprite;
-  const pad = 12;
+  // The halo's softness is a fraction of the TYPE, not a fixed pixel count. At
+  // a fixed 3-pixel blur the same sprite that reads as a glow around landscape
+  // ink turns into a solid slab behind the portrait card's much heavier
+  // glyphs — the blur no longer reaches past the letter it is meant to bloom
+  // off. The padding grows with it so the spread still has somewhere to go.
+  const blur = Math.max(3, Math.round(3 * scale));
+  const pad = Math.max(12, blur * 3);
   const w = Math.ceil(textWidth(text, scale, 'ui') + pad * 2);
   const h = Math.ceil(12 * scale + pad * 2);
   const canvas = document.createElement('canvas');
@@ -1815,7 +1816,7 @@ function warningGlowSprite(text, scale) {
   const pixels = ctx.getImageData(0, 0, w, h);
   const alpha = new Float32Array(w * h);
   for (let i = 0; i < alpha.length; i++) alpha[i] = pixels.data[i * 4 + 3];
-  const blurred = blurAlpha(blurAlpha(alpha, w, h, 3, true), w, h, 3, false);
+  const blurred = blurAlpha(blurAlpha(alpha, w, h, blur, true), w, h, blur, false);
   const glowPixels = ctx.createImageData(w, h);
   for (let i = 0; i < blurred.length; i++) {
     const a = Math.min(255, blurred[i] * 3.8);
@@ -1851,6 +1852,12 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
     ? (hasNote ? 82 : 48)
     : hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
+  // A boxed modal on a phone is still a box, but it cannot be a LANDSCAPE box:
+  // portrait sets every glyph 1.55x larger (PORTRAIT_MENU_TEXT_SCALE), so a
+  // 336-wide dialog was being asked to hold a row half as wide again as itself
+  // and the longest shift line ran straight out through the border. Give the
+  // card the phone's width bar a margin; drawModalList then fits its type to
+  // whatever that leaves.
   // Sized from the row count rather than pinned. The old fixed 92-unit box
   // wasn't tall enough for its own longest list — three files plus BACK
   // needed 102, so the last row was drawn below the box's bottom edge.
@@ -1859,7 +1866,7 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   // rows on touch — still centres instead of being pinned to the top and
   // hanging off the bottom.
   const y = Math.max(8, Math.round((H - h) / 2));
-  const defaultX = spaciousRows ? 72 : 88;
+  const defaultX = portrait ? 24 : spaciousRows ? 72 : 88;
   const widest = labels
     ? labels.reduce((m, label) => Math.max(m, textWidth(label, portrait ? 1.55 : 1.35)), 0) : 0;
   const w = labels ? Math.min(W - 32, widest + 42) : W - defaultX * 2;
@@ -1887,7 +1894,7 @@ function shaderHash21(x, y) {
 }
 
 // A tired neon sign: two fast blinks, then it holds steady until the next
-// short-out. reducedFlashing pins it fully lit.
+// short-out.
 //
 // The stutter runs on the SONG's clock, not a wall clock — one short-out on the
 // downbeat of every two-bar block, blinking on 32nds. A sign shorting out in
@@ -1905,8 +1912,7 @@ const FLICKER_DARK = 0.09;
 // Both the marquee and the plug read this one phase, so the spark lands on the
 // exact frames the lettering drops out and the two read as cause and effect.
 // On their own clocks they drifted, and the sign looked merely broken.
-function flickerDark(t, reduced) {
-  if (reduced) return false;
+function flickerDark(t) {
   const beat = Audio.songBeat();
   if (beat == null) {
     const phase = t % FLICKER_PERIOD;
@@ -1922,8 +1928,8 @@ function flickerDark(t, reduced) {
 // But 0.62 over ~8 frames was below the threshold of noticing — against the
 // bloom pass, which smears the dip further, the sign just looked lit. This is
 // the deepest brownout that still reads as a sag rather than a dropped frame.
-function flickerAlpha(t, reduced) {
-  return flickerDark(t, reduced) ? 0.45 : 1;
+function flickerAlpha(t) {
+  return flickerDark(t) ? 0.45 : 1;
 }
 // Which two-bar block we're in, off whichever clock flickerDark is using. The
 // audible short-out is gated per block, so it has to be counted on the same
@@ -2203,14 +2209,12 @@ export class TitleState {
   }
   update(dt) {
     this.t += dt;
-    if (!this.save.settings.reducedFlashing) {
-      for (const strike of invaderStrikes(this.t, this.tapBombs) || []) {
-        // The strike is present for the knockback window, so use its age to
-        // edge-trigger the sound on the first frame after contact.
-        if (strike.victim >= 0 && strike.kt >= 0 && strike.kt < dt + 0.02 && !this.hitBombs.has(strike.id)) {
-          this.hitBombs.add(strike.id);
-          Audio.sfx('boom');
-        }
+    for (const strike of invaderStrikes(this.t, this.tapBombs) || []) {
+      // The strike is present for the knockback window, so use its age to
+      // edge-trigger the sound on the first frame after contact.
+      if (strike.victim >= 0 && strike.kt >= 0 && strike.kt < dt + 0.02 && !this.hitBombs.has(strike.id)) {
+        this.hitBombs.add(strike.id);
+        Audio.sfx('boom');
       }
     }
     // A tap-bomb landing on a ghost instead acts exactly like tapping it —
@@ -2225,7 +2229,7 @@ export class TitleState {
     }
     const cometCycle = Math.floor(this.t / 6.5);
     const cometPhase = this.t - cometCycle * 6.5;
-    if (!this.save.settings.reducedFlashing && cometPhase >= 0.4 && this.lastCometCycle !== cometCycle && shaderHash21(cometCycle, 3) >= 0.55) {
+    if (cometPhase >= 0.4 && this.lastCometCycle !== cometCycle && shaderHash21(cometCycle, 3) >= 0.55) {
       this.lastCometCycle = cometCycle;
       Audio.sfx('comet');
     }
@@ -2239,7 +2243,7 @@ export class TitleState {
     // silence and every so often you actually hear it go. A sound tied 1:1 to a
     // repeating animation stops being ambience and turns into a metronome; the
     // hash keeps the gaps uneven, which reads as a fault rather than a rhythm.
-    const dark = flickerDark(this.t, this.save.settings.reducedFlashing);
+    const dark = flickerDark(this.t);
     const block = flickerBlock(this.t);
     if (dark && !this.wasDark && this.lastBuzzCycle !== block && shaderHash21(block, 11) >= 0.72) {
       this.lastBuzzCycle = block;
@@ -2409,7 +2413,7 @@ export class TitleState {
     // high-contrast text turns into a soft, shimmering fringe on WebGL.
     setSceneGlow(!(this.erase || this.extras));
     const profile = titleProfileOptions();
-    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile, this.titleShooters);
+    const cast = titleScene(ctx, this.t, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile, this.titleShooters);
     // The parade is always queued before the menu UI, including on touch. This
     // keeps the cards readable when a large character crosses their lower edge.
     // Modals are painted by the UI pass as the final surface over both layers.
@@ -2535,9 +2539,7 @@ export class TitleState {
       if (this.erase) this.drawEraseModal(d);
       else if (this.extras) this.drawExtrasModal(d);
     };
-    const foregroundToasters = (d) => drawFlyingToasters(
-      d, this.t, this.save.settings.reducedFlashing, this.singleToasterOpening,
-    );
+    const foregroundToasters = (d) => drawFlyingToasters(d, this.t, this.singleToasterOpening);
     // Modal lists are solid surfaces: toaster cameos sit behind them so they
     // never compete with destructive choices, cabinet grids, or their labels.
     if (profile.ui && (this.erase || this.extras) && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
@@ -2552,7 +2554,7 @@ export class TitleState {
   drawEraseModal(d) {
     let title = 'ERASE WHICH SHIFT?';
     let note = 'CHOOSE CAREFULLY';
-    let warningPulse = this.save.settings.reducedFlashing ? 0.7 : 0.5 + 0.5 * Math.sin(this.t * 3.2);
+    let warningPulse = 0.5 + 0.5 * Math.sin(this.t * 3.2);
     if (this.erase.step === 'confirm') {
       title = `ERASE SHIFT ${this.erase.slot + 1}?`;
       note = 'ALL PROGRESS IN THIS SHIFT WILL BE LOST';
@@ -2567,7 +2569,17 @@ export class TitleState {
     // Keep destructive-menu actions in the same compact keyboard hint format
     // used by the other menus, with the hint tucked against the right edge so
     // it never changes the left-aligned row geometry.
+    //
+    // Portrait parks it just under the card instead. Pinned to H - 12 it was a
+    // caption at the very bottom of a phone, most of a screen away from the
+    // dialog it belongs to, and at the landscape size to boot.
     const prompt = `${confirmVerb()}: CONFIRM   BACK`;
+    if (portraitMenuActive()) {
+      const g = modalListGeom(this.eraseChoices().length, true, this.erase.step === 'choose', true);
+      portraitMenuTextCentered(d, prompt, W / 2,
+        portraitMenuTextY(g.y + g.h + 30, 1.0), '#8a8a98', 1.0);
+      return;
+    }
     const promptScale = 0.9;
     drawText(d, prompt, W - 16 - textWidth(prompt, promptScale), H - 12, '#8a8a98', promptScale);
   }
@@ -2595,6 +2607,13 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   const modalTitleS = portrait ? (spaciousRows ? 1.95 : 1.8) : spaciousRows ? 1.75 : 1.5;
   const left = align === 'left';
   const textX = fullPortrait ? 28 : g.x + 24;
+  // How much room a line of type actually has inside this card: from the text
+  // column to the far padding. Every string on a portrait card is fitted to it,
+  // so a long shift summary or a FINAL WARNING title shrinks a little instead
+  // of crossing the border.
+  const textBudget = Math.max(1, g.x + g.w - 24 - textX);
+  const fit = (text, size, style = 'ui') => (portrait && !fullPortrait
+    ? portraitMenuFit(text, size, textBudget, style) : size);
   d.fillStyle = fullPortrait ? '#0b0b14' : 'rgba(2,3,10,0.78)';
   d.fillRect(0, 0, W, H);
   if (!fullPortrait) {
@@ -2608,34 +2627,40 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   if (left) {
     if (fullPortrait) portraitMenuText(d, title, textX,
       portraitMenuTextY(titleMid, titleFit, 'title'), '#f4f1fa', titleFit, 'title');
-    else if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', modalTitleS, 'title');
+    else if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', fit(title, modalTitleS, 'title'), 'title');
     else drawText(d, title, textX, g.y + 12, '#f4f1fa', modalTitleS, 'title');
   } else if (fullPortrait) {
     portraitMenuTextCentered(d, title, W / 2,
       portraitMenuTextY(titleMid, titleFit, 'title'), '#f4f1fa', titleFit, 'title');
   } else if (portrait) {
-    portraitMenuTextCentered(d, title, W / 2, g.y + 16, '#f4f1fa', modalTitleS, 'title');
+    portraitMenuTextCentered(d, title, W / 2, g.y + 16, '#f4f1fa', fit(title, modalTitleS, 'title'), 'title');
   } else {
     drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', modalTitleS, 'title');
   }
   if (note) {
     d.save();
-    const noteY = g.y + 30;
-    const noteScale = spaciousRows ? 1.35 : 1.2;
-    const glow = warningGlowSprite(note, noteScale);
+    // The warning's halo is built from the same string at the same rendered
+    // size and laid over the same baseline. It used to be built at the
+    // landscape scale and hung off the landscape row while portrait drew the
+    // words 18 units lower and half again as big — a smear beside the line
+    // rather than a glow behind it.
+    const noteSize = portrait ? fit(note, 1.1) : spaciousRows ? 1.35 : 1.2;
+    const noteY = portrait ? g.y + 48 : g.y + 30;
+    const glowScale = portrait ? portraitMenuScale(noteSize) : noteSize;
+    const glow = warningGlowSprite(note, glowScale);
     d.globalCompositeOperation = 'lighter';
     d.globalAlpha = 0.32 + warningPulse * 0.28;
     const glowX = left ? textX - glow.pad : W / 2 - glow.w / 2;
-    d.drawImage(glow.canvas, glowX, noteY - noteScale - glow.pad);
+    d.drawImage(glow.canvas, glowX, noteY - glowScale - glow.pad);
     d.globalCompositeOperation = 'source-over';
     d.globalAlpha = 1;
     if (left) {
-      if (portrait) portraitMenuText(d, note, textX, g.y + 48, '#ff727c', 1.1, 'ui');
-      else drawText(d, note, textX, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+      if (portrait) portraitMenuText(d, note, textX, noteY, '#ff727c', noteSize, 'ui');
+      else drawText(d, note, textX, noteY, '#ff727c', noteSize, 'ui');
     } else if (portrait) {
-      portraitMenuTextCentered(d, note, W / 2, g.y + 48, '#ff727c', 1.1, 'ui');
+      portraitMenuTextCentered(d, note, W / 2, noteY, '#ff727c', noteSize, 'ui');
     } else {
-      drawTextCentered(d, note, W / 2, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+      drawTextCentered(d, note, W / 2, noteY, '#ff727c', noteSize, 'ui');
     }
     d.restore();
   }
@@ -2644,7 +2669,7 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     const rowTop = g.firstY + i * g.rowH + (g.cancelGap && i === choices.length - 1 ? g.cancelGap : 0);
     const labelSize = fullPortrait
       ? portraitMenuFit(choice.label, modalTextS, W - 56, selected ? 'bold' : 'ui')
-      : modalTextS;
+      : fit(choice.label, modalTextS, selected ? 'bold' : 'ui');
     const textY = portrait
       ? portraitMenuTextY(rowTop + g.rowH / 2, labelSize, selected ? 'bold' : 'ui')
       : textYForMid(rowTop + g.rowH / 2);
@@ -2653,12 +2678,12 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     if (left) {
       if (portrait) portraitMenuText(d, choice.label, textX, textY,
         selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
-      else drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+      else drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
     } else if (portrait) {
       portraitMenuTextCentered(d, choice.label, W / 2, textY,
         selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
     } else {
-      drawTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+      drawTextCentered(d, choice.label, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
     }
   });
 }
@@ -3676,15 +3701,25 @@ function drawPortraitTubeParty(ctx, inner, shells) {
 // could do after a loss was the most expensive one to ask for. The retry rows
 // only appear on a loss: a clear ends on the curtain call, which is the flourish
 // this screen is built around, and it stands where these rows would.
-const RESULT_OPT_H = 14;
+// Match the landscape pause plates: result actions are also deliberate,
+// one-press decisions, so the compact row height made them feel too slight.
+const RESULT_OPT_H = 26;
+const RESULT_OPT_GAP = 4;
+// Retry actions are controls, not a full-width footer stripe. Give both the
+// same compact plate and centre that pair in the landscape tube.
+const RESULT_OPT_W = 240;
 // The rows stand in the curtain call's place and reach down over the prompt
 // line: they name their own actions, so there is nothing left to prompt for.
-const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2 - RESULT_OPT_H * 2;
+const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2
+  - RESULT_OPT_H * 2 - RESULT_OPT_GAP;
 // Portrait losses are a decision screen, not a ledger squeezed into the
 // landscape footprint. These are CSS-sized so the plates stay genuinely large
 // as the logical frame changes with the phone's aspect ratio.
 const PORTRAIT_FAIL_BUTTON_H_CSS = 84;
 const PORTRAIT_FAIL_BUTTON_GAP_CSS = 14;
+const PORTRAIT_RESULT_EDGE_MARGIN_CSS = 20;
+const PORTRAIT_RESULT_CONTENT_MARGIN_CSS = 20;
+const PORTRAIT_RESULT_CARD_TOP_CSS = 20;
 export class ResultsState {
   static portraitMode = 'frame';
 
@@ -3711,7 +3746,7 @@ export class ResultsState {
   // Fireworks over the celebration row, plus streamers tumbling down the
   // frame. Losses get neither — a quiet screen is part of the joke.
   updateParty(dt) {
-    if (!this.result.success || this.save.settings.reducedMotion) return;
+    if (!this.result.success) return;
     const portrait = isPhonePortraitPresentation();
     const portraitTube = portrait ? portraitResultTubeBox() : null;
     const portraitFrame = portrait ? presentationFrame() : null;
@@ -3791,11 +3826,12 @@ export class ResultsState {
       // Tap-to-select, tap-again-to-confirm, the same contract every hub list
       // makes — a phone has no arrow keys and the rows are the only way through.
       if (Input.pressed('pointer')) {
-        const options = isPhonePortraitPresentation() ? this.portraitOptions() : null;
-        const top = options ? options[0].y : RESULT_OPT_TOP;
-        const height = options ? options[0].h : RESULT_OPT_H;
-        const i = Math.floor((Input.pointer.y - top) / height);
-        if (i >= 0 && i < 2) {
+        const options = isPhonePortraitPresentation()
+          ? this.portraitOptions() : this.landscapeOptions();
+        const i = options.findIndex((option) =>
+          Input.pointer.x >= option.x && Input.pointer.x < option.x + option.w
+          && Input.pointer.y >= option.y && Input.pointer.y < option.y + option.h);
+        if (i >= 0) {
           if (this.idx === i) this.choose(i);
           else { this.idx = i; Audio.sfx('ui'); }
         }
@@ -3918,16 +3954,31 @@ export class ResultsState {
     if (this.retryable) {
       // Retry sits first and starts selected: it is what the player came to this
       // screen wanting, and confirm-on-arrival should be the cheap thing.
+      const options = this.landscapeOptions();
       ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
         const sel = i === this.idx;
-        const y = RESULT_OPT_TOP + i * RESULT_OPT_H;
-        if (sel) drawMenuRow(ctx, TUBE_INSET_X + 6, y + 1, W - (TUBE_INSET_X + 6) * 2, RESULT_OPT_H - 2);
-        drawTextCentered(ctx, label, W / 2,
-          textYForMid(y + RESULT_OPT_H / 2, 1), sel ? '#c9a0ff' : '#8a8a98', 1);
+        const b = options[i];
+        drawPanel(ctx, b.x, b.y, b.w, b.h, 5, 'rgba(11,11,20,0.68)', {
+          border: sel ? '#ffcf33' : 'rgba(255,255,255,0.30)', shadow: true,
+        });
+        if (sel) drawMenuRow(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 4,
+          'rgba(201,160,255,0.18)');
+        drawTextCentered(ctx, label, b.x + b.w / 2,
+          textYForMid(b.y + b.h / 2, 1), sel ? '#c9a0ff' : '#c8c8d8', 1);
       });
     } else {
       drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2, textYForMid(RESULT_FOOTER_MID, promptS), '#c8c8d8', promptS);
     }
+  }
+
+  landscapeOptions() {
+    const w = Math.min(RESULT_OPT_W, W - TUBE_INSET_X * 2 - 12);
+    const x = (W - w) / 2;
+    const y = RESULT_OPT_TOP;
+    return [
+      { x, y, w, h: RESULT_OPT_H },
+      { x, y: y + RESULT_OPT_H + RESULT_OPT_GAP, w, h: RESULT_OPT_H },
+    ];
   }
 
   portraitOptions() {
@@ -3936,8 +3987,8 @@ export class ResultsState {
     const css = (n) => n / frame.scale;
     const h = css(PORTRAIT_FAIL_BUTTON_H_CSS);
     const gap = css(PORTRAIT_FAIL_BUTTON_GAP_CSS);
-    const margin = css(12);
-    const y = safe.bottom - h * 2 - gap - css(16);
+    const margin = css(PORTRAIT_RESULT_EDGE_MARGIN_CSS);
+    const y = safe.bottom - h * 2 - gap - margin;
     return [
       { x: safe.left + margin, y, w: safe.width - margin * 2, h },
       { x: safe.left + margin, y: y + h + gap, w: safe.width - margin * 2, h },
@@ -4084,11 +4135,11 @@ export class ResultsState {
     const r = this.result;
     const rows = this.ledgerRows();
     const center = (safe.left + safe.right) / 2;
-    const margin = css(16);
+    const margin = css(PORTRAIT_RESULT_CONTENT_MARGIN_CSS);
     const contentW = Math.max(1, safe.width - margin * 2);
     const options = this.retryable ? this.portraitOptions() : null;
     const buttonTop = options?.[0]?.y ?? safe.bottom - css(96);
-    const copyTop = safe.top + css(24);
+    const copyTop = safe.top + css(PORTRAIT_RESULT_CARD_TOP_CSS + 16);
     const copyBottom = buttonTop - css(24);
     const title = r.failMsg || 'UNPLUGGED';
     // A failure headline should feel like a verdict. Keep it large and let a
@@ -4141,10 +4192,10 @@ export class ResultsState {
 
     ctx.fillStyle = '#07070c';
     ctx.fillRect(0, 0, W, H);
-    const panelX = safe.left + css(8);
-    const panelW = Math.max(1, safe.width - css(16));
-    const panelY = copyTop - css(14);
-    const panelH = Math.min(copyBottom - panelY, layout.height + css(28));
+    const panelX = safe.left + css(PORTRAIT_RESULT_EDGE_MARGIN_CSS);
+    const panelW = Math.max(1, safe.width - css(PORTRAIT_RESULT_EDGE_MARGIN_CSS * 2));
+    const panelY = safe.top + css(PORTRAIT_RESULT_CARD_TOP_CSS);
+    const panelH = Math.min(copyBottom - panelY, layout.height + css(36));
     drawPanel(ctx, panelX, panelY, panelW, panelH, 12, 'rgba(26,18,32,0.96)', {
       border: 'rgba(224,72,72,0.62)', shadow: true,
     });
@@ -4330,7 +4381,6 @@ export class FinaleState {
   // same two layers the results screen throws, at about half its rate: this one
   // has to sit under a sentence somebody is reading.
   updateParty(dt) {
-    if (this.save.settings.reducedMotion) return;
     this.streamerT -= dt;
     if (this.streamerT <= 0) {
       this.streamerT = 0.16 + Math.random() * 0.14;
@@ -4637,7 +4687,7 @@ export class FieldGuideState {
       const d = GUIDE_ICON_SIZES[key] || [12, 11];
       // Animated props (fire) keep flickering in the guide — a still frame of
       // something the player only ever sees moving is a worse likeness.
-      const frame = this.settings.reducedMotion ? 0 : Math.floor(this.t * 11);
+      const frame = Math.floor(this.t * 11);
       drawProp(ctx, key, cx - d[0] / 2, top(d[1]), d[0], d[1], frame);
       return;
     }
@@ -5462,9 +5512,9 @@ export class HowToPlayState {
     // which meant half of every row named hardware the reader does not have.
     // A phone gets the gestures, a keyboard gets the keys, nobody gets both.
     const touch = Input.isTouchDevice();
-    line('JUMP', touch ? 'TAP THE LEFT HALF. HOLD FOR HIGHER.' : 'SPACE / W / UP. HOLD FOR HIGHER.');
-    line('POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN. HOLD IT. KICKS CONES AND BARRELS.');
-    line('HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'RIGHT / D. X / SHIFT TOO.');
+    line('JUMP', touch ? 'TAP THE LEFT HALF. HOLD FOR HIGHER.' : 'SPACE / W / UP / LEFT CLICK. HOLD FOR HIGHER.');
+    line('POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.');
+    line('HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'X / SHIFT / MIDDLE CLICK.');
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
     // No control row of its own, deliberately: there is nothing to press.
     line('REWIND', touch ? 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.'
@@ -5674,10 +5724,6 @@ export class SettingsState {
       this.volumeOption('sfx', 'SFX VOLUME'),
       this.audioSyncOption(),
       this.audioSyncResetOption(),
-      { label: `REDUCED MOTION: ${s.reducedMotion ? 'ON' : 'OFF'}`, act: () => { s.reducedMotion = !s.reducedMotion; } },
-      { label: `REDUCED FLASHING: ${s.reducedFlashing ? 'ON' : 'OFF'}`, act: () => { s.reducedFlashing = !s.reducedFlashing; } },
-      { label: `SCREEN SHAKE: ${Math.round(s.screenShake * 100)}%`, act: () => { s.screenShake = s.screenShake >= 1 ? 0 : s.screenShake + 0.5; } },
-      { label: `GLOW EFFECTS: ${s.fancyFx ? 'ON' : 'OFF'}`, act: () => { s.fancyFx = !s.fancyFx; setFancyFx(s.fancyFx); } },
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
@@ -5712,7 +5758,6 @@ export class SettingsState {
   }
   resetToDefaults() {
     Object.assign(this.save.settings, defaultSettings());
-    setFancyFx(this.save.settings.fancyFx);
     Audio.setVolumes(this.save.settings.volumes);
     Audio.setMuted(this.save.settings.muted);
     // Zeroes AUDIO SYNC along with everything else. That is the right answer for a

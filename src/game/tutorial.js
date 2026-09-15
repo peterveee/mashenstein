@@ -55,6 +55,16 @@ import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 
 // ------------------------------------------------------------------ constants
 
+const tutorialJumpLegend = (touch) => touch
+  ? [['UP/SPC', 'JUMP']]
+  : [['UP / SPACE / LEFT CLICK', 'JUMP']];
+const tutorialMoveLegend = (touch) => touch
+  ? [['UP/SPC', 'JUMP'], ['DN', 'SLIDE']]
+  : [['UP / SPACE / LEFT CLICK', 'JUMP'], ['DOWN / RIGHT CLICK', 'SLIDE']];
+const tutorialPowerLegend = (touch) => touch
+  ? [['USE', 'LEMON CANNON']]
+  : [['X / SHIFT / MIDDLE CLICK', 'LEMON CANNON']];
+
 // The run proper moves at 160. This is gentler without being a crawl — the old
 // 70 was slow enough that the hero's legs crawled too, since the run cycle is
 // driven by world.speed (see player.update).
@@ -371,7 +381,7 @@ const STEPS = [
     id: 'jump',
     hero: 'lorenzo',
     label: 'JUMP',
-    legend: [['SPC', 'JUMP']],
+    legend: tutorialJumpLegend,
     // "HOLD", not "PRESS": every hero has a variable jump, so a flicked key
     // clamps to a 2px hop and eats the crate (player.update). Teaching the tap
     // first and the hold second taught the failure first.
@@ -381,7 +391,7 @@ const STEPS = [
     // it at all, the same one.
     brief: (touch) => (touch
       ? 'CRATES. TAP AND HOLD ANYWHERE TO JUMP. SWIPE DOWN TO SLIDE. I DID NOT WRITE SECTION ONE.'
-      : 'CRATES. HOLD SPACE TO JUMP. I DID NOT WRITE SECTION ONE.'),
+      : 'CRATES. HOLD UP, SPACE OR LEFT CLICK TO JUMP. I DID NOT WRITE SECTION ONE.'),
     again: (touch) => (touch
       ? 'YOU FLICKED IT. HOLD IT DOWN. THE CRATE COMES BACK.'
       : 'YOU TAPPED IT. HOLD IT DOWN. THE CRATE COMES BACK.'),
@@ -396,7 +406,7 @@ const STEPS = [
     id: 'stacks',
     hero: 'lorenzo',
     label: 'VARIABLE JUMP',
-    legend: [['SPC', 'JUMP']],
+    legend: tutorialJumpLegend,
     brief: () => 'THREE STACKS, EACH TALLER. HOLD LONGER FOR EACH. THE MANUAL CALLS THIS INTUITIVE.',
     again: () => 'TALLER THAN THE LAST ONE. HOLD LONGER. I AM NOT PAID FOR RETAKES.',
     // 91px apart — tight enough that the ladder reads as one shape but with
@@ -419,7 +429,7 @@ const STEPS = [
     id: 'coins',
     hero: 'lorenzo',
     label: 'COINS',
-    legend: [['SPC', 'JUMP']],
+    legend: tutorialJumpLegend,
     // The box's copy has three jobs and does them in this order: it BREAKS
     // OPEN, you break it from UNDERNEATH, and what falls out is usually coins
     // but not always. The old line said "the box is also coins", which taught a
@@ -465,10 +475,10 @@ const STEPS = [
     id: 'slide',
     hero: 'lorenzo',
     label: 'POWER SLIDE',
-    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
+    legend: tutorialMoveLegend,
     brief: (touch) => (touch
       ? 'POWER SLIDE. HOLD THE DOWN ARROW, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'
-      : 'POWER SLIDE. HOLD DOWN OR S, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'),
+      : 'POWER SLIDE. HOLD DOWN, S OR RIGHT CLICK, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'),
     // A late slide coasts in and eats the cone — the knock says INCOMPLETE and
     // this line says why: the kick is spent from the front of the slide.
     again: () => 'INCOMPLETE. SLIDE AT THE CONE, NOT BEFORE IT. THE BOOT EXPIRES.',
@@ -482,7 +492,7 @@ const STEPS = [
     id: 'shield',
     hero: 'lorenzo',
     label: 'SHIELD',
-    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
+    legend: tutorialMoveLegend,
     brief: () => 'SHIELD CAPSULE. TAKES ONE HIT FOR YOU. PROTECTIVE EQUIPMENT ARRIVES AFTER THE HAZARDS. THAT IS PROCUREMENT.',
     again: () => 'IT WENT PAST. I WILL REQUISITION ANOTHER. THAT IS A FORM. I HAVE ALREADY FILED IT.',
     setup(t) { t.pickups = [makePickup('capShield', t.spawnX(), 10)]; },
@@ -494,7 +504,7 @@ const STEPS = [
     id: 'toaster',
     hero: 'lorenzo',
     label: 'GOLDEN APPLIANCE',
-    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
+    legend: tutorialMoveLegend,
     brief: () => 'THAT IS A TOASTER. EVERY CABINET HAS ONE HIDDEN IN IT. IT IS OPTIONAL, SO IT IS NOT MY DEPARTMENT.',
     optional: true,
     done: (t) => t.sawToaster,
@@ -510,7 +520,7 @@ const STEPS = [
     hero: 'lorenzo',
     tagTo: 'kiko',
     label: 'PORTAL TAG',
-    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
+    legend: tutorialMoveLegend,
     brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED ONE ONCE. THERE WAS PAPERWORK.',
     again: () => 'OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.',
     setup(t) {
@@ -534,7 +544,8 @@ const STEPS = [
     hero: 'kiko',
     tagTo: 'b33p',
     label: 'DOUBLE JUMP',
-    legend: [['SPC', 'JUMP x2']],
+    legend: (touch) => touch ? [['UP/SPC', 'JUMP x2']]
+      : [['UP / SPACE / LEFT CLICK', 'JUMP x2']],
     // "AND NOT VERY HIGH" came out of the brief with Mochi: it described a
     // hero who FLOATS, and Kiko does not.
     brief: (touch) => (touch
@@ -567,10 +578,10 @@ const STEPS = [
     // epilogue as B-33P is not a shortcut, it is a different ending.
     tagTo: 'lorenzo',
     label: 'HERO POWER',
-    legend: (touch) => (touch ? [['USE', 'LEMON CANNON']] : [['RT/D', 'LEMON CANNON']]),
+    legend: tutorialPowerLegend,
     brief: (touch) => (touch
       ? 'EVERY HERO HAS A POWER. B-33P SHOOTS. TAP THE ATTACK BUTTON, OR SWIPE RIGHT. THE CANNON IS COMPANY PROPERTY.'
-      : 'EVERY HERO HAS A POWER. B-33P SHOOTS. PRESS RIGHT OR D. THE CANNON IS COMPANY PROPERTY.'),
+      : 'EVERY HERO HAS A POWER. B-33P SHOOTS. PRESS X, SHIFT OR MIDDLE CLICK. THE CANNON IS COMPANY PROPERTY.'),
     // The whole screen has been a JUMP surface since section one. The rail and
     // the swipe fallbacks are named by the opening touch card; the power is the
     // one control with its own disc, so it is the disc this brief names.
@@ -1174,11 +1185,9 @@ export class TutorialState {
     // apart.
     Audio.sfx('launch', { pitch: 1.15 });
     shake(0.9, 0.07);
-    if (!this.settings.reducedMotion) {
-      const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#e86020';
-      burst(ob.x + ob.w / 2, GROUND_Y - ob.h * 0.3, 6, 70, 0.28, scuff, 1, 220,
-        () => this.rng.float());
-    }
+    const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#e86020';
+    burst(ob.x + ob.w / 2, GROUND_Y - ob.h * 0.3, 6, 70, 0.28, scuff, 1, 220,
+      () => this.rng.float());
     return true;
   }
 
@@ -1189,7 +1198,6 @@ export class TutorialState {
     const cy = GROUND_Y - ob.alt - ob.h / 2;
     const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
     Audio.sfx('debris', { mat: d.mat });
-    if (this.settings.reducedMotion) return;
     const rand = () => this.rng.float();
     const bulk = Math.min(2, (ob.w * ob.h) / 140);
     shardBurst(cx, cy, Math.round((d.count || 9) * (0.7 + bulk * 0.3)), 78, 0.75, d.colors, {
@@ -1209,12 +1217,10 @@ export class TutorialState {
     const cy = GROUND_Y - ob.alt - ob.h / 2;
     Audio.sfx('blockBreak');
     shake(1.5, 0.13);
-    if (!this.settings.reducedMotion) {
-      const rand = () => this.rng.float();
-      burst(cx, cy, 14, 88, 0.55, '#f6d33c', 1.4, 190, rand);
-      burst(cx, cy, 8, 135, 0.3, '#fff8d0', 1, 40, rand);
-      burst(cx, cy, 6, 46, 0.7, '#a8791f', 1, 210, rand);
-    }
+    const rand = () => this.rng.float();
+    burst(cx, cy, 14, 88, 0.55, '#f6d33c', 1.4, 190, rand);
+    burst(cx, cy, 8, 135, 0.3, '#fff8d0', 1, 40, rand);
+    burst(cx, cy, 6, 46, 0.7, '#a8791f', 1, 210, rand);
     this.tossCoins(cx, ob.def.bonusCoins || 3, ob.alt + ob.h);
   }
 
@@ -1437,7 +1443,6 @@ export class TutorialState {
     this.sulkT = 0;
     this.waveT = 0;
     Audio.sfx('win');
-    if (this.settings.reducedMotion) return;
     // The opening pop: a double handful over each of them, thrown up so it
     // arrives on the way down rather than appearing overhead. Foil forgets the
     // throw within a beat, so this is an arc that turns into a flutter.
@@ -1457,7 +1462,7 @@ export class TutorialState {
   // The drip: while the step is open, paper keeps arriving from above the top
   // of the frame across the whole visible lane.
   updateParty(dt) {
-    if (this.partyT <= 0 || this.settings.reducedMotion) return;
+    if (this.partyT <= 0) return;
     this.partyAcc += dt;
     while (this.partyAcc >= 0.09) {
       this.partyAcc -= 0.09;
@@ -1983,10 +1988,8 @@ export class TutorialState {
         const iy = GROUND_Y - ob.alt - ob.h / 2;
         Audio.sfx('contact', { hero: 'b33p', pitch: 1.12 });
         shake(1.1, 0.07);
-        if (!this.settings.reducedMotion) {
-          const rand = () => this.rng.float();
-          burst(ix, iy, 9, 86, 0.32, '#fff8d0', 1.15, 80, rand);
-        }
+        const rand = () => this.rng.float();
+        burst(ix, iy, 9, 86, 0.32, '#fff8d0', 1.15, 80, rand);
         this.breakObstacle(ob);
         this.sawShotDown = true;
         pr.live = false;
@@ -2251,7 +2254,7 @@ export class TutorialState {
     for (const ob of this.retiredObstacles) {
       drawWorldEntity(ctx, ob, cam, renderT, TRAINING_PACK, this.settings);
     }
-    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, renderT, z, true, this.settings);
+    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, renderT, z, true);
     for (const pu of this.pickups) {
       if (pu.live) drawWorldEntity(ctx, pu, cam, renderT, TRAINING_PACK, this.settings);
     }
@@ -2261,7 +2264,7 @@ export class TutorialState {
     // Hit portals keep drawing: they are mid-collapse until retireAttempt moves
     // them into retiredPortals, and hiding them for those frames would put a
     // hole exactly where the discharge is.
-    if (this.portal) drawPortal(ctx, this.portal, cam, renderT, z, true, this.settings);
+    if (this.portal) drawPortal(ctx, this.portal, cam, renderT, z, true);
     for (const pr of this.pellets) {
       const x = pr.x - cam, y = Math.round(GROUND_Y - pr.alt - 4);
       ctx.fillStyle = '#f6d33c';

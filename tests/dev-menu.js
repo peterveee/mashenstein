@@ -53,6 +53,32 @@ const bundle = outputFiles[0].text;
 
   dom.key('Backquote'); frames(4);
   assert(dev.open, 'backquote opens the dev menu');
+  assert(!dev.top().items.some((item) => /PORTRAIT LAB/.test(item.label)),
+    'dev menu no longer exposes the retired portrait lab');
+  const stagesItem = dev.top().items.find((item) => item.label === 'STAGES ▸');
+  const stagesMenu = stagesItem && stagesItem.submenu(dev);
+  const plumberItem = stagesMenu && stagesMenu.items.find((item) => /PLUMBER PANIC/.test(item.label));
+  const plumberMenu = plumberItem && plumberItem.submenu(dev);
+  const firstStageItem = plumberMenu && plumberMenu.items.find((item) => /^plumber-1\b/.test(item.label));
+  const firstStageMenu = firstStageItem && firstStageItem.submenu(dev);
+  const playLastItem = firstStageMenu && firstStageMenu.items.find((item) => item.label === 'PLAY LAST ▸');
+  const playLastMenu = playLastItem && playLastItem.submenu(dev);
+  const lastTenItem = playLastMenu && playLastMenu.items.find((item) => item.label === '10s');
+  assert(!!playLastItem && !!playLastItem.submenu
+    && ['5s', '10s', '15s', '30s', 'LAST CHECKPOINT'].every((label) =>
+      playLastMenu.items.some((item) => item.label === label)),
+  'each stage offers 5/10/15/30-second and last-checkpoint finish starts');
+  if (lastTenItem) {
+    const launchStage = dev.ctx.Flow.launchStage;
+    let launchArgs = null;
+    dev.ctx.Flow.launchStage = (...args) => { launchArgs = args; };
+    lastTenItem.act();
+    dev.ctx.Flow.launchStage = launchStage;
+    assert(launchArgs && launchArgs[1]?.id === 'plumber-1'
+      && Math.abs(launchArgs[9] - 5 / 6) < 1e-12 && launchArgs[10] === true,
+    'the 10s option starts ten seconds before the stage finish and forces its mission');
+    dev.openMenu();
+  }
   assert(dev.top().items.some((item) => item.label === 'TROPHY ROOM' && item.act),
     'trophy room is a direct top-level dev-menu destination');
   const visualiserItem = dev.top().items.find((item) => item.label === 'VISUALISERS ▸');
@@ -250,7 +276,10 @@ const bundle = outputFiles[0].text;
 
   // A 390x844 phone: the canvas is stretched over the whole viewport, so the
   // painter pre-compresses its glyphs by that factor.
-  Object.assign(screen, { portraitFill: true, cssH: 844, scale: 390 / 480, safeTop: 12, safeBottom: 9 });
+  Object.assign(screen, {
+    portraitFill: true, cssH: 844, scale: 390 / 480,
+    inputScaleY: 844 / H, safeTop: 12, safeBottom: 9,
+  });
   const port = menuLayout();
   assert(port.fill && Math.abs(port.yScale - 844 / (H * (390 / 480))) < 1e-9,
     'portrait reports the vertical stretch its text has to cancel');
@@ -260,17 +289,27 @@ const bundle = outputFiles[0].text;
   assert(port.headerTextS > port.rowTextS, 'the portrait header outsizes its rows');
   assert(port.rowTextS === land.rowTextS,
     'menus and submenus share one row size in both orientations');
-  const headerPx = (port.listTop - port.headerTop) * (screen.cssH / H);
+  const headerPx = (port.listTop - port.headerTop) * screen.inputScaleY;
   assert(headerPx >= 44, `the back header is a button-sized target (${Math.round(headerPx)} CSS px)`);
   assert(port.listTop + port.maxRows * port.rowH <= port.footY,
     'every portrait row fits above the footer and the home indicator');
   // Logical units shrink; physical rows grow. A row has to stay thumb-sized in
   // the units a finger actually works in, and the page has to be worth filling.
-  const rowPx = port.rowH * (screen.cssH / H);
-  assert(rowPx >= 44, `a portrait row is thumb-sized (${Math.round(rowPx)} CSS px)`);
+  const rowPx = port.rowH * screen.inputScaleY;
+  assert(Math.abs(rowPx - 56) < 1e-9, `a portrait row is thumb-sized (${Math.round(rowPx)} CSS px)`);
   assert(port.maxRows > land.maxRows,
     'the filled portrait screen shows more rows than the landscape band');
-  Object.assign(screen, { portraitFill: false, cssH: H, scale: 1, safeTop: 0, safeBottom: 0 });
+  // A live portrait gameplay frame can already be tall (for example
+  // 1038 logical units at 390x844). The menu must not collapse its rows just
+  // because it no longer needs the non-uniform stretch correction.
+  Object.assign(screen, { inputScaleY: 844 / 1038 });
+  const tallPort = menuLayout();
+  assert(tallPort.logicalH > H && Math.abs(tallPort.rowH * screen.inputScaleY - 56) < 1e-9
+    && tallPort.maxRows >= 10,
+  'portrait rows stay thumb-sized on an already-tall logical frame');
+  Object.assign(screen, {
+    portraitFill: false, cssH: H, scale: 1, inputScaleY: 1, safeTop: 0, safeBottom: 0,
+  });
 }
 
 // ------------------------------------------------- tune mode claims its keys

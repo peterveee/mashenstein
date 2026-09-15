@@ -1,5 +1,5 @@
-// THE FIVE STANDING HAZARDS — pop-up spikes, campfire, burning barrel, brazier
-// and floor saw, ported out of the gallery's hazard bake-off.
+// THE SIX STANDING HAZARDS — pop-up spikes, campfire, burning barrel, brazier,
+// floor saw and bear trap, ported out of the gallery's hazard bake-off.
 //
 // What this suite pins is the contract they were chosen under, because every
 // clause of it is one word in a registry line and every one of them is the kind
@@ -33,8 +33,12 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-const HAZARDS = ['popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw'];
-// The two that a shot opens. Everything else in the list is inert.
+const HAZARDS = ['popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw', 'bearTrap'];
+// The two that a shot OPENS. Everything else here is inert to a weapon — with
+// one exception that is not a contradiction: the bear trap is `breakable:
+// false` and `disarmable: true`, so a shot springs it rather than breaking it.
+// That third state is pinned next door in tests/bear-trap.js; what this list
+// still says is that nothing in the group may quietly become destructible.
 const SHOOTABLE = new Set(['fireBarrel', 'brazier']);
 
 for (const id of HAZARDS) {
@@ -49,6 +53,8 @@ for (const id of HAZARDS) {
     `${id} is stationary: it does not roll, fall, shoot or slip`);
   assert(!!def.breakable === SHOOTABLE.has(id),
     `${id} is ${SHOOTABLE.has(id) ? 'breakable, so a shot opens it' : 'not breakable by anything'}`);
+  assert(!!def.disarmable === (id === 'bearTrap'),
+    `${id} ${id === 'bearTrap' ? 'is sprung by a shot instead of broken by one' : 'has no third state a shot can put it in'}`);
   // Art over an unchanged box, and the box is the part that can hurt you.
   assert(propTall(id) > 1, `${id} buys its presence upward, over an unchanged hitbox`);
   assert(def.h <= worstJumpApex(),
@@ -160,9 +166,15 @@ for (const id of HAZARDS) {
   assert(carries('speed', 'boomBarrier') && carries('neon', 'boomBarrier')
     && carries('plumber', 'boomBarrier'),
     'all three Act I cabinets deal the hurdle — the short jump recurs across themes');
-  assert(carries('frost', 'boomBarrier') && carries('rhythm', 'boomBarrier')
-    && carries('cardboard', 'boomBarrier') && carries('office', 'boomBarrier'),
-    'and the barrier travels on — ski gate, crossing gate, toll gate, car park');
+  assert(carries('rhythm', 'boomBarrier') && carries('cardboard', 'boomBarrier')
+    && carries('office', 'boomBarrier'),
+    'and the barrier travels on — crossing gate, toll gate, car park');
+  // FROST IS THE EXCEPTION, and deliberately so: the ice deals its own hazard
+  // instead. A striped gate on the snow was the one pattern in that bank that
+  // could have come from any cabinet, and the bear trap does the same short
+  // jump while being the thing this cabinet is about.
+  assert(!carries('frost', 'boomBarrier'),
+    'except on the ice, where both gates became bear traps');
 }
 
 // --- authored altitudes ----------------------------------------------------

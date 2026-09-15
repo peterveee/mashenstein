@@ -392,7 +392,6 @@ function webglStub() {
   r.initRenderer({ isIphone: true });
   assert(r.rendererBackend() === 'webgl', 'the bloom test runs on the WebGL backend');
   assert(r.rendererDiagnostics().bloomSuppressed === true, 'a pinned 1.5x density suppresses bloom');
-  r.setFancyFx(true);
   r.setSceneGlow(true);
   let draws = webgl.calls.draws;
   r.blit();

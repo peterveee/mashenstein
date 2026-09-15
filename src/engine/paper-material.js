@@ -40,8 +40,8 @@ export function paperTextureCameraX(camX, speed = PAPER_TEXTURE_SPEED_DEFAULT) {
   return (Number.isFinite(x) ? x : 0) * paperTextureSpeedOf(speed);
 }
 const REVISION = 'paper-quarter-step-v2';
-const profile = (id, strength = 1, darkStrength = 1, lightStrength = 1) => Object.freeze({
-  id, revision: REVISION, pressed: 0.25, strength, darkStrength, lightStrength,
+const profile = (id, strength = 1, darkStrength = 1, lightStrength = 1, kind = 'paper') => Object.freeze({
+  id, revision: REVISION, pressed: 0.25, strength, darkStrength, lightStrength, kind,
 });
 export const PAPER_MATERIALS = Object.freeze({
   skySmooth: profile('skySmooth'),
@@ -50,6 +50,10 @@ export const PAPER_MATERIALS = Object.freeze({
   // Review candidate: retain the selected fibre density and scale, but lift
   // the dark impression slightly so warm/pale game colours do not turn grey.
   cardstockClear: profile('cardstockClear', 1, 0.82, 1),
+  // Review-only material candidate. Felt keeps the same cut-out depth and
+  // palette, but swaps the long pressed-sheet fibres for a denser, softer
+  // wool field with shorter cross-grain strokes.
+  felt: profile('felt', 1.05, 0.72, 0.35, 'felt'),
 });
 const sourceCache = new Map();
 let patternCache = new WeakMap();
@@ -61,8 +65,55 @@ function materialOf(material) {
 // Exact seeded stroke recipe from fibre-study/quarter-step.html. Baking the
 // black/white pairs on transparency lets the same sheet work on every palette.
 // Source-over is associative; no neutral-grey overlay or cloudy noise is needed.
+function paintFeltFibres(ctx, m) {
+  let seed = 49631;
+  const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  // Felt needs a nap, not a scratched overlay. Keep the fibres short and
+  // rounded, and use mostly one-way low-contrast marks instead of the paired
+  // black/white pressed-paper strokes.
+  for (let i = 0; i < 50000; i++) {
+    const x = rand() * TILE_SIZE, y = rand() * TILE_SIZE;
+    const angle = rand() * Math.PI;
+    const length = 0.45 + rand() * 1.9;
+    const dx = Math.cos(angle) * length, dy = Math.sin(angle) * length;
+    const width = 0.55 + rand() * 0.9;
+    const a = (0.012 + rand() * 0.028) * m.strength;
+    for (const ox of [-TILE_SIZE, 0, TILE_SIZE]) for (const oy of [-TILE_SIZE, 0, TILE_SIZE]) {
+      if (x + ox < -8 || x + ox > TILE_SIZE + 8 || y + oy < -8 || y + oy > TILE_SIZE + 8) continue;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(0,0,0,${a * m.darkStrength})`;
+      ctx.beginPath(); ctx.moveTo(x + ox, y + oy); ctx.lineTo(x + ox + dx, y + oy + dy); ctx.stroke();
+    }
+  }
+  // Rounded nubs break up the directional marks into a soft, matte pile. They
+  // are deliberately sparse enough to leave the cabinet colours clean.
+  for (let i = 0; i < 12000; i++) {
+    const x = rand() * TILE_SIZE, y = rand() * TILE_SIZE;
+    const radius = 0.55 + rand() * 1.55;
+    const a = (0.012 + rand() * 0.028) * m.strength;
+    for (const ox of [-TILE_SIZE, 0, TILE_SIZE]) for (const oy of [-TILE_SIZE, 0, TILE_SIZE]) {
+      if (x + ox < -12 || x + ox > TILE_SIZE + 12 || y + oy < -12 || y + oy > TILE_SIZE + 12) continue;
+      ctx.fillStyle = `rgba(0,0,0,${a * m.darkStrength})`;
+      ctx.beginPath(); ctx.arc(x + ox, y + oy, radius, 0, Math.PI * 2); ctx.fill();
+      if (rand() < 0.28) {
+        ctx.fillStyle = `rgba(255,255,255,${a * m.lightStrength})`;
+        ctx.beginPath(); ctx.arc(x + ox - 0.35, y + oy - 0.35, radius * 0.55, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 export function paintPaperFibres(ctx, material = 'cardstockClear') {
   const m = materialOf(material);
+  if (m.kind === 'felt') {
+    paintFeltFibres(ctx, m);
+    return;
+  }
   let seed = 23571;
   const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
   ctx.save();

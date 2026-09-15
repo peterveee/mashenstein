@@ -28,7 +28,7 @@ import {
   isDefaultCompositionProfile, resolveCompositionProfile, setCompositionProfileOverride,
   validateCompositionProfile,
 } from '../src/engine/composition-profile.js';
-import { PORTRAIT_LAB_DEFAULTS } from '../src/dev/portrait-lab.js';
+import { PORTRAIT_CONFIG } from '../src/engine/portrait-config.js';
 import {
   drawLayoutDiagnostic, layoutDiagnosticEnabled, layoutDiagnosticSnapshot, toggleLayoutDiagnostic,
 } from '../src/game/layout-diagnostic.js';
@@ -122,11 +122,11 @@ async function bootEmbed() {
 
   const stage = stages.STAGE_BY_ID[stageId] || STAGES[0];
   const cabinet = cabinets.CABINET_BY_ID[stage.cabinet];
-  const zoom = PORTRAIT_LAB_DEFAULTS.worldZoom;
+  const zoom = PORTRAIT_CONFIG.worldZoom;
 
   let frame = frameForViewport({
     mode: PHONE_PORTRAIT, viewportWidth: view.width, viewportHeight: view.height,
-    safeInsets: safe, groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio, revision: 1,
+    safeInsets: safe, groundAnchorRatio: PORTRAIT_CONFIG.groundAnchorRatio, revision: 1,
   });
   setPresentationFrame(frame);
   cameraMod.setRestingZoom(zoom);
@@ -136,10 +136,9 @@ async function bootEmbed() {
   save.slotIndex = 0;
   save.settings.muted = true;
   save.settings.volumes.master = 0;
-  save.settings.fancyFx = false;
 
   initRenderer({ isDesktop: true }, { savedDensity: 1 });
-  setPresentationMode(PHONE_PORTRAIT, { groundAnchorRatio: PORTRAIT_LAB_DEFAULTS.groundAnchorRatio });
+  setPresentationMode(PHONE_PORTRAIT, { groundAnchorRatio: PORTRAIT_CONFIG.groundAnchorRatio });
   inputMod.Input.init();
   inputMod.Input.setContext('run');
   drawMod.buildAllSprites();
@@ -147,8 +146,8 @@ async function bootEmbed() {
   let run = new runMod.RunState({
     stage, cabinet, seed: 0x434f4d50, save, demo: true, devInvuln: true,
     devStartPercent: Number.isFinite(startAt) ? startAt : 0.2, skipRunIn: true,
-    announceBench: false, initialHeroId: 'lorenzo', portraitLabRun: true,
-    portraitPreview: true, devPortraitLab: { ...PORTRAIT_LAB_DEFAULTS },
+    announceBench: false, initialHeroId: 'lorenzo', portraitPreview: true,
+    portraitConfig: { ...PORTRAIT_CONFIG },
   });
   run.enter();
   run.update(1 / 60);

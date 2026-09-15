@@ -195,7 +195,8 @@ export const OBSTACLES = {
   bananaPeel: { w: 10, h: 6, sprite: 'bananaPeel', ground: true, breakable: false, action: 'jump', slip: true },
 
   // --- STANDING HAZARDS ------------------------------------------------
-  // Five props out of the gallery's hazard bake-off, chosen off that sheet.
+  // The gallery-derived props below, plus Frost's buried bear trap, chosen for
+  // silhouettes that can be read before the player reaches them.
   // What they have in common is what the sheet was testing: they do not
   // approach, they do not telegraph, and they are dangerous in every frame.
   // The lane already owned things that roll at you (barrel, chair, zombie) and
@@ -241,6 +242,15 @@ export const OBSTACLES = {
   brazier:    { w: 12, h: 14, sprite: 'brazier', ground: true, breakable: true, action: 'jump' },
   // The floor blade. Not breakable and not puntable for the obvious reason.
   floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
+  // A cold, spring-loaded floor trap. It is bedded like the spike plate and
+  // saw, so the snow swallows its base instead of leaving a prop sitting on
+  // top of the road. The jaws are always open: the jump is the answer in every
+  // frame, not a timing gamble hidden inside an animation.
+  // DISARMABLE, not breakable: a shot springs the trap rather than destroying
+  // it. The object stays on the road, shut on nothing, and stops hurting —
+  // which is a better reward than a puff of debris, because the player can see
+  // what they spent the round on for the rest of the lane.
+  bearTrap:   { w: 16, h: 8,  sprite: 'bearTrap', ground: true, breakable: false, disarmable: true, action: 'jump', bedded: true },
   // The razor hurdle (legacy id `boomBarrier`): a short, ground-standing jump.
   // Its full two-post silhouette is now the box — no harmless art-only legs and
   // no airborne slide strip. Nine pixels keeps it decisively below crates and
@@ -394,6 +404,10 @@ export function makeObstacle(type, worldX, opts = {}) {
     w: def.w, h: def.h * (def.stack ? n : 1),
     n, vx: def.vx || 0,
     live: true, broken: false,
+    // A sprung trap. Born on every obstacle rather than only on a disarmable
+    // one so nothing downstream has to ask the def before reading them, and so
+    // a pooled or replayed entity can never arrive carrying a stale snap.
+    disarmed: false, disarmT: 0,
     fallT: def.falls ? (def.telegraph || 0.7) : 0, fell: !def.falls,
     shootT: def.shoots ? 1.2 : 0,
     hp: opts.hp || 1,
@@ -509,7 +523,7 @@ export function makePickup(type, worldX, alt) {
   return {
     id: idCounter++, kind: 'pickup', type, def,
     x: worldX, alt: alt ?? 8, w: def.w, h: def.h,
-    live: true, vx: 0, vy: 0, magnetized: false,
+    live: true, vx: 0, vy: 0, magnetized: false, magV: 0,
     bobPhase: (worldX * 0.07) % (Math.PI * 2),
   };
 }

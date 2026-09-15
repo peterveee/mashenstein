@@ -207,7 +207,6 @@ export const glfx = {
     skyPasses: 0,
     bloomPasses: 0,
   },
-  fx: 1,     // GLOW FX setting: 1 on, 0 off
   glow: 0,   // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
   tierFx: 1, // adaptive-density gate: 0 suppresses bloom at low render density
   sky: 0,    // procedural starfield gate: 1 on the title screen only
@@ -384,13 +383,13 @@ export const glfx = {
     // through this final composite when WebGL is active, but they must not
     // inherit chromatic aberration or vignette: both are especially visible as
     // a moving coloured fringe on small, high-contrast glyphs.
-    const postFx = this.fx > 0 && this.glow > 0 && this.tierFx > 0 ? this.fx : 0;
+    const postFx = this.glow > 0 && this.tierFx > 0 ? 1 : 0;
     this.upload(this.texBack, backCanvas);
     // A null overlay means the frame queued no overlay draws (menus, most
     // frames): skip the full-size upload and bind the 1x1 transparent stand-in.
     const ovTex = overlayCanvas ? this.texOv : this.texOvBlank;
     if (overlayCanvas) this.upload(this.texOv, overlayCanvas);
-    const bloomEnabled = this.fx > 0 && this.glow > 0 && this.tierFx > 0;
+    const bloomEnabled = this.glow > 0 && this.tierFx > 0;
     const bloomTex = glowCanvas && bloomEnabled ? this.texGlow : this.texBack;
     if (glowCanvas && bloomEnabled) this.upload(this.texGlow, glowCanvas);
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };

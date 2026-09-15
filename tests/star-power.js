@@ -79,7 +79,6 @@ for (const hero of HEROES) {
   try {
     drawHeroSprite(ctx, player, hero.id, 1.25, 0, false, { flat: true, invincible: 6, settings: save.settings });
     drawHeroSprite(ctx, player, hero.id, 1.25, 0, false, { flat: true, invincible: 1, settings: save.settings }); // strobing tail
-    drawHeroSprite(ctx, player, hero.id, 1.25, 0, false, { flat: true, invincible: 6, settings: { reducedMotion: true } });
   } catch (e) { threw = e; }
   assert(!threw, `${hero.id} draws under star power${threw ? ` (${threw.message})` : ''}`);
 }

@@ -121,6 +121,12 @@ for (const viewport of phones) {
   assert.equal(layout.bonusRenderY, layout.bonusY,
     `${label} BONUS keeps its opening overlay row until the shared slide`);
 
+  const oneHit = portraitHudLayout(frame, { oneHit: true });
+  assert.ok(Math.abs(oneHit.goalY - layout.goalY - 16 * layout.panelScale) < 1e-9,
+    `${label} one-hit GOAL clears the standing warning row`);
+  assert.ok(oneHit.goalY >= oneHit.statusY + 34 * oneHit.panelScale + oneHit.gap,
+    `${label} one-hit GOAL starts below the warning and its gap`);
+
   const rhythm = portraitHudLayout(frame, { rhythmStage: true });
   assert.ok(rhythm.statusY + rhythm.statusH + rhythm.gap <= rhythm.rhythmY,
     `${label} rhythm rail sits below the permanent status HUD`);

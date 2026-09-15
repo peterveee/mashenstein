@@ -47,7 +47,7 @@ try {
           { ...base, audio: { spectrum: new Uint8Array(128).fill(180), hit: 0.1, level: 0.1, treble: 0.95 } },
           { ...base, audio: null }];
         api.setLCDPanelCacheEnabled(true);
-        for (const settings of [{ skyMeter: false }, { skyMeter: true }, { reducedMotion: true }, { reducedFlashing: true }]) {
+        for (const settings of [{ skyMeter: false }, { skyMeter: true }]) {
           for (const scene of cases) {
             api.drawLCDPanelUncached(direct, scene, settings);
             api.setEfficiencyProfile(true);

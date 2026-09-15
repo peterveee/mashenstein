@@ -108,7 +108,7 @@ A tagline rotates underneath — the arcade talking to itself:
 
 *The hub. Side-scrolling walk-around. Returned to between every stage.*
 
-Nine cabinets in a row, most of them dark. Then the service end: `DOLORES' REPAIR COUNTER`, `GARY'S LEGALLY DISTINCT PAWN SHOP`, `ARCADE CORNER`, `TROPHY SHELF`.
+Nine cabinets in a row, most of them dark. Then the service end: `DOLORES' REPAIR COUNTER`, `GARY'S LEGAL PAWN SHOP`, `ARCADE CORNER`, `TROPHY SHELF`.
 
 The first two are **counters**, not doors — the food court's original serving line, still standing, with the heat lamps still on because turning them off was never anybody's job. Dolores works the steam table (fuses and plugs portioned into the warming wells where the nachos went); Gary works the pawn till beside her, the same unit with a display case instead of a sneeze guard. The menu board hangs on the wall directly above Dolores, still pricing lunch in plugs, half of it struck through and re-priced in marker. Both staff stand at the open end of their counters and shuffle a few feet along the deck now and then, the way people who have been on shift a long time do.
 
@@ -545,18 +545,8 @@ Cleared cabinets also unlock **corrupted modifiers** — the game degrading on p
 
 | | |
 |---|---|
-| NO JUMPING | THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP. |
 | MAXIMUM SPEED | EVERYTHING IS FASTER. NOTHING IS CALMER. |
-| RANDOM SWAPS | PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED. |
-| INACCURATE LORE | EGGSHELL DESCRIBES A DIFFERENT GAME. |
-
-Under INACCURATE LORE, Eggshell commentates a game he is not watching:
-
-> HE JUMPS. HE DOES NOT. I AM NOT WATCHING.
-> THE HERO TRIPS. MAGNIFICENTLY. I ASSUME.
-> NOTHING IS HAPPENING. NOTHING HAS EVER HAPPENED.
-> A BARREL APPROACHES. OR A DUCK. MY NOTES ARE BAD.
-> THIS IS THE PART WHERE THEY LOSE. ANY MOMENT NOW.
+| RANDOM TAGS | PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED. |
 
 ---
 

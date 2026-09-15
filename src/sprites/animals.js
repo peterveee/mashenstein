@@ -262,7 +262,7 @@ const BREEDS = {
   // rather than a lope, which is what makes it read as the heavy one.
   dogBruiser: {
     coat: '#c08a4a', coatHi: '#d09b5c', coatLo: '#95622f', belly: '#ecd6b2', mark: '#6a4420',
-    ear: 'flop', tail: 'stub', ribs: 0, collar: 'spiked',
+    ear: 'flop', tail: 'long', ribs: 0, collar: 'spiked',
     // The ruff carries this one. On a neck already this thick a raised
     // scruff reads as bulk AND anger at once, which is more than a spine
     // ridge buys on a dog with barely any back to put one on. Fur runs
@@ -607,6 +607,22 @@ function quadruped(ctx, w, h, frame, P) {
       c.quadraticCurveTo(tb.x + w * 0.08, tb.y - h * 0.02 + wag, tb.x - w * 0.03, tb.y + h * 0.02);
       c.closePath();
     });
+  } else if (P.tail === 'long') {
+    // The finish dog is larger than the lane rigs but still rasterized inside
+    // its unchanged box. A straight extension gets clipped at the right edge,
+    // so the guard dog's tail makes one long, raised sweep and curls back over
+    // the croup. It reads as a tail at gameplay size without widening the art
+    // canvas or changing the collision footprint.
+    ink(ctx, P.coat, u, (c) => {
+      c.moveTo(tb.x - w * 0.035, tb.y + h * 0.065);
+      c.quadraticCurveTo(tb.x + w * 0.075, tb.y + h * 0.095 + wag,
+        w * 0.985, tb.y - h * 0.015 + wag);
+      c.quadraticCurveTo(w * 0.955, tb.y - h * 0.205 + wag * 1.35,
+        tb.x + w * 0.035, tb.y - h * 0.305 + wag * 1.45);
+      c.quadraticCurveTo(tb.x + w * 0.075, tb.y - h * 0.135 + wag,
+        tb.x - w * 0.015, tb.y + h * 0.005);
+      c.closePath();
+    });
   } else {
     // Bottlebrush. Built as a tapered CORE with fur spikes radiating off it,
     // not as one outline: the first two passes both tried to trace the whole
@@ -921,6 +937,17 @@ export const ANIMAL_PAINTERS = {
   dogBruiser: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogBruiser),
   dogFeral: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogFeral),
   catFury: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.catFury),
+};
+
+// The finish dog keeps the same three bodies, colours and gait as the lane
+// dogs. Only its showcase silhouette changes: all three finish skins get a
+// long tail so the larger guard reads as a complete dog when it arrives at the
+// tape. The aliases remain separate so the finish-only art never leaks into a
+// mid-lane encounter; Bruiser's long-tail rig is shared by both appearances.
+export const FINISH_DOG_PAINTERS = {
+  finishSnarler: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, { ...BREEDS.dogSnarler, tail: 'long' }),
+  finishBruiser: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, { ...BREEDS.dogBruiser, tail: 'long' }),
+  finishFeral: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, { ...BREEDS.dogFeral, tail: 'long' }),
 };
 
 export const ANIMAL_NAMES = Object.keys(ANIMAL_PAINTERS);
