@@ -3558,6 +3558,55 @@ class AudioSys {
     this.osc('triangle', 1568, 2350, 0.34, 0.26, 0.22); // resolves up, late
   }
 
+  // The food-court sliding doors. A small pneumatic shopfront door, not a blast
+  // door and not the boost above it: no transient, no body, nothing but moving
+  // air. One noise source through a bandpass that TRAVELS, because a fixed band
+  // is only hiss — it is the movement of the band that reads as a leaf going
+  // past. `rising` opens; the same gesture inverted shuts.
+  //
+  // Timed against the leaf, not chosen: DOOR_SWING_RATE walks a door through
+  // its whole travel in a little over 0.3s, so the cue lands as the door
+  // arrives rather than hissing at a doorway that stopped moving already.
+  doorWhoosh(rising) {
+    if (!this.ctx) return;
+    const t = this.cueAt();
+    const q = this.cueGain;
+    const dur = rising ? 0.34 : 0.32;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf; src.loop = true;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = 1.1;
+    bp.frequency.setValueAtTime(rising ? 420 : 1500, t);
+    bp.frequency.exponentialRampToValueAtTime(rising ? 1500 : 380, t + dur);
+    const g = this.ctx.createGain();
+    const peak = 0.17 * q;
+    // Weight goes where the leaf is quickest: a door leaves its seat fast and
+    // arrives slow, so the open peaks early and the close peaks late. Without
+    // that the two are one hiss played forwards and backwards, which is exactly
+    // what they sounded like.
+    const hold = dur * (rising ? 0.34 : 0.62);
+    // LINEAR attack, for the reason spelled out on the portal swoosh: an
+    // exponential ramp across a third of a second sits near silence for most of
+    // it and then jumps, which reads as a click on a swell.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + hold);
+    const rel = Math.min(0.03, (dur - hold) * 0.25);
+    g.gain.exponentialRampToValueAtTime(peak * 0.04, t + dur - rel);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
+    src.connect(bp); bp.connect(g);
+    g.connect(this.cueDest || this.sfxGain);
+    src.start(t); src.stop(t + dur + 0.02);
+    // A low bed under the band so the door has some size to it.
+    this.noise(dur * 0.9, 0.06, 'lowpass', rising ? 520 : 430, 0, 0.5);
+    // The one asymmetric detail, and the only thing that tells the two cues
+    // apart with your eyes shut: opening starts with the valve letting go,
+    // closing ends with the leaf meeting its seat. The seat is kept well down —
+    // it is the end of this gesture arriving, not a second hit.
+    if (rising) this.noise(0.04, 0.07, 'highpass', 3800);
+    else this.noise(0.07, 0.09, 'lowpass', 220, dur - 0.05);
+  }
+
   // The approach tick. Deliberately tiny — it fires several times as the hero
   // closes on a pad and the pads are common, so anything with a body would
   // become the loudest repeated thing in a run. Pitch rises with the arm, so
@@ -4212,6 +4261,8 @@ class AudioSys {
       case 'loopRun': this.loopRun(pitch, opt.swell, opt.when); break;
       case 'boostFall': this.boostFall(); break;
       case 'portal': this.portalSwoosh(opt.shape); break;
+      case 'doorOpen': this.doorWhoosh(true); break;
+      case 'doorClose': this.doorWhoosh(false); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;

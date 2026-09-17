@@ -43,7 +43,7 @@ import { drawWorldEntity } from '../draw.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
 import { drawSoftContactShadow } from '../../engine/shadows.js';
-import { drawFloorReflection, floorReflectionsOn } from '../../engine/reflections.js';
+import { beginFloorReflectionBand, addFloorReflection, endFloorReflectionBand } from '../../engine/reflections.js';
 import { GROUND_Y } from '../../engine/camera.js';
 import { LANDSCAPE_HEIGHT } from '../../engine/frame.js';
 
@@ -548,14 +548,36 @@ function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
   ctx.fillRect(0, wallY1, width, 6);
   ctx.fillStyle = '#1c1626';
   ctx.fillRect(0, wallY1 + 6, width, H - wallY1 - 6);
-  // Floored modulo, so a negative offset starts the run at or before the left
-  // edge instead of leaving an untiled sliver there.
-  const phase = ((worldOffsetX - FLOOR_TILE_PHASE) % 32 + 32) % 32;
+  // EVERY TILE IS IDENTIFIED BY ITS INTEGER INDEX IN THE WORLD, and its colour
+  // comes from that index and nothing else.
+  //
+  // It used to recover the index by flooring `(x + worldOffsetX - PHASE) / 32`,
+  // which looks right and is quietly unsound: x is built as `-phase + 32k` and
+  // phase IS that same quantity mod 32, so the terms cancel and the argument to
+  // Math.floor is exactly an integer in real arithmetic. In floating point it is
+  // not — it lands on -4.2e-17 one frame and 0.9999999999999998 the next — so
+  // Math.floor returned n or n-1 on the toss of a last bit and individual squares
+  // snapped between the two checker greys as the camera moved. Over one slow pan
+  // that is ~2900 colour flips on tiles that never went anywhere: the floor
+  // sparkles, worst wherever the most tiles are on screen, which is the wide end
+  // of the cabinet dive. Standing still it is invisible, because a still camera
+  // makes the same wrong choice every frame.
+  //
+  // `first` is the index of the tile at or before the left edge and `phase` its
+  // overhang, derived from each other rather than by a second modulo — so if
+  // `first` ever rounds down at an exact multiple of 32, `phase` becomes 32 and
+  // the k-th draw is still the (first + k)-th tile in the world. The parity can
+  // no longer disagree with itself.
+  const shift = worldOffsetX - FLOOR_TILE_PHASE;
+  const first = Math.floor(shift / 32);
+  const phase = shift - first * 32;
   for (let row = 0; row < 3; row++) {
-    for (let x = -phase; x < width; x += 32) {
-      ctx.fillStyle = (Math.floor((x + worldOffsetX - FLOOR_TILE_PHASE) / 32) + row) % 2 === 0
-        ? '#241c30'
-        : '#1c1626';
+    for (let k = 0; ; k++) {
+      const x = k * 32 - phase;
+      if (x >= width) break;
+      // JS keeps the sign on %, and -2 % 2 is -0, so this alternates correctly
+      // either side of world zero — which is where the Trophy Room draws.
+      ctx.fillStyle = (first + k + row) % 2 === 0 ? '#241c30' : '#1c1626';
       ctx.fillRect(Math.round(x), wallY1 + 10 + row * 22, 32, 22);
     }
   }
@@ -658,6 +680,22 @@ const STATION_R = 26, NPC_ATTEND_R = 30;
 // fast they swing — wider than STATION_R so the door is already open by the time
 // you reach it, rather than catching up after you cross the threshold.
 const DOOR_OPEN_R = 60, DOOR_SWING_RATE = 3.2;
+
+// One frame of a door's travel, plus the cue that goes with it. `was` is last
+// frame's target, and the whoosh fires on the frame the target FLIPS: the sound
+// starts when the leaf starts rather than when it arrives, and a door held open
+// by somebody loitering in front of it never re-triggers.
+//
+// `was` is null for the first frame in a room, which adopts whatever the target
+// already is without a cue. Without that, walking back in beside a door that
+// should already be open announced itself as though it had just opened — and
+// the hub's own spawn sits inside the EXIT door's radius, so it fired on
+// practically every arrival.
+function doorStep(open, target, was, dt) {
+  if (was !== null && target !== was) Audio.sfx(target ? 'doorOpen' : 'doorClose');
+  const d = target - open;
+  return open + Math.sign(d) * Math.min(Math.abs(d), DOOR_SWING_RATE * dt);
+}
 // How far to stop SHORT of somebody you tapped, and the number the talk radius
 // is derived from.
 //
@@ -1130,11 +1168,49 @@ const NPC_PORTRAIT_NAME_SCALE = 2.6;
 const NPC_PORTRAIT_CHIP_SCALE = 2.2;
 const NPC_PORTRAIT_CHIP_W = 82, NPC_PORTRAIT_CHIP_H = 40, NPC_PORTRAIT_CHIP_GAP = 12;
 const NPC_PORTRAIT_NAME_GAP = 18;
-// The portrait footer is one three-row composition. Keep the rows in CSS
-// pixels so the spacing stays the same on a phone and on a contained desktop
-// portrait surface. The first row is a replacement slot: it contains either a
-// station prompt or the focused hero's name plus SWAP chip.
+// The portrait footer is one three-row composition. Keep the rows in CSS pixels
+// so the spacing stays the same on a phone and on a contained desktop portrait
+// surface. The first row is a replacement slot: it contains either a station
+// prompt or the focused hero's name plus SWAP chip.
+//
+// STACKED UP FROM THE BOTTOM, not down from the floor line. Measured downward
+// these gaps put all three rows in the band immediately under the floor — which
+// is exactly where the floor reflections live — and left a hand's width of empty
+// tile below them, the amount varying by device and by whether the walk arrows
+// are up. Hung off the lowest line they may legally occupy, they sit as low as
+// they can on any phone and the floor above them stays clear, with no number to
+// retune per device.
+//
+// The gaps below are now the FLOOR, not the position: the two rows never rise
+// above the composition that shipped, so a frame too short to give them room
+// keeps it. The room name's row is not moved at all.
 export const HUB_PORTRAIT_FOOTER_GAPS_CSS = Object.freeze({ top: 48, middle: 86, bottom: 124 });
+// One rhythm for the pair, which is what the authored gaps already were
+// (48 -> 86 -> 124). They slide as one block instead of being respaced.
+const HUB_PORTRAIT_FOOTER_ROW_GAP_CSS = 38;
+// Air between the lowest moving row's ink and the top of the walk arrows.
+const HUB_PORTRAIT_FOOTER_ARROW_CLEAR_CSS = 12;
+// KEYBOARD/MOUSE PORTRAIT RECLAIMS THE BOTTOM OF THE FRAME.
+//
+// The authored gaps hang the footer off the FLOOR LINE, which is right for a
+// phone: the walk arrows own the bottom corners and the rows have to stay clear
+// of them. With no arrows up nothing is down there, and portrait puts the floor
+// line at 70% of a very tall frame — so the block sat just under the hero's feet
+// with a fifth of the picture empty below it, covering the one part of the room
+// that has the reflection in it.
+//
+// So when there are no controls to dodge, the block hangs off the BOTTOM instead
+// and the floor gets the space back. It slides as one piece: every gap inside the
+// footer is the one that shipped, and it only ever moves DOWN, so a frame too
+// short to give it room keeps the authored composition exactly.
+const HUB_PORTRAIT_FOOTER_EDGE_CSS = 26;
+// Where the transient movement legend sits with no arrows up — the lowest ink in
+// the stack, and therefore what the slide is measured from. draw() owns the row;
+// this is here because the geometry has to know which line is last.
+const HUB_PORTRAIT_LEGEND_EDGE_CSS = 104;
+// Portrait's footer type size, shared by the rows and by the row geometry, which
+// needs the ink height to keep a row's own glyphs off the edge it is hung from.
+export const HUB_PORTRAIT_STATUS_S = 2.1;
 
 // Where the two walk arrows land ON THE PICTURE, in logical units — or null
 // when they are not up (keyboard/mouse) or they sit out in a letterbox margin,
@@ -1165,12 +1241,49 @@ export function hubWalkArrowBox() {
 
 export function hubPortraitFooterRows(layout, frameScale = presentationFrame().scale) {
   const scale = Number.isFinite(frameScale) && frameScale > 0 ? frameScale : 1;
+  const css = (px) => px / scale;
   const floorY = (layout.floorY - layout.camY) * layout.zoom;
-  const row = (gapCss) => floorY + gapCss / scale;
+  const authored = (gapCss) => floorY + css(gapCss);
+  // Half the row's own glyph height, so a row hung off an edge keeps its ink
+  // inside the frame rather than its baseline.
+  const half = TEXT_INK_H * HUB_PORTRAIT_STATUS_S / 2;
+  const arrows = hubWalkArrowBox();
+  // RESOURCES is the row the pair hangs from: the lowest of the two that stay
+  // ABOVE the controls, sitting just clear of the arrows so it is not reading
+  // through them — the same collision the room name was moved to avoid. The
+  // prompt row keeps its authored gap above it; they are a pair and they move
+  // together.
+  //
+  // WITH NO ARROWS THIS CHANGES NOTHING. Keyboard and mouse have no button to
+  // crowd and no free tile to reclaim, and the authored composition is the one
+  // that shipped, so the fallback is that composition rather than a second
+  // guess at the bottom edge. The picture's own bottom is not a better anchor
+  // there: the room name is already the last line, and hanging the pair off the
+  // edge instead would move a layout nobody complained about.
+  const middle = arrows
+    ? Math.max(authored(HUB_PORTRAIT_FOOTER_GAPS_CSS.middle),
+      arrows.top - css(HUB_PORTRAIT_FOOTER_ARROW_CLEAR_CSS) - half)
+    : authored(HUB_PORTRAIT_FOOTER_GAPS_CSS.middle);
+  // ONE offset for the whole stack, and only where there is nothing at the bottom
+  // of the frame to collide with — see HUB_PORTRAIT_FOOTER_EDGE_CSS. Measured off
+  // the legend because with no arrows the legend is the lowest ink there is;
+  // hanging the room name off the edge instead would push the legend off it.
+  const frame = presentationFrame();
+  const frameH = frame.height > 0 ? frame.height : H;
+  const safeBottom = frame.safeRect && frame.safeRect.bottom > 0
+    ? Math.min(frameH, frame.safeRect.bottom) : frameH;
+  const shift = !arrows && !Input.isTouchDevice()
+    ? Math.max(0, (safeBottom - css(HUB_PORTRAIT_FOOTER_EDGE_CSS) - half)
+      - (frameH - css(HUB_PORTRAIT_LEGEND_EDGE_CSS)))
+    : 0;
   return {
-    top: row(HUB_PORTRAIT_FOOTER_GAPS_CSS.top),
-    middle: row(HUB_PORTRAIT_FOOTER_GAPS_CSS.middle),
-    bottom: row(HUB_PORTRAIT_FOOTER_GAPS_CSS.bottom),
+    top: middle - css(HUB_PORTRAIT_FOOTER_ROW_GAP_CSS) + shift,
+    middle: middle + shift,
+    // The room name is the bottom persistent line, held below the controls and
+    // off the bottom edge by draw()'s own clamp.
+    bottom: authored(HUB_PORTRAIT_FOOTER_GAPS_CSS.bottom) + shift,
+    // draw() adds this to the legend so the block stays one piece.
+    shift,
   };
 }
 // How far short of the back wall a hero has to stop.
@@ -1740,6 +1853,10 @@ export class HubState {
     this.lockedTrophyBump = false;
     this.exitDoorOpen = 0;
     this.trophyDoorOpen = 0;
+    // null, not 0: the first frame adopts whatever the doors should be doing
+    // without a cue. See doorStep().
+    this.exitDoorTarget = null;
+    this.trophyDoorTarget = null;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
     this.npcMenuIdx = 0;
@@ -1925,13 +2042,35 @@ export class HubState {
     return {
       ...base,
       zoom,
-      // What the zoom will BE when the push finishes. The camera needs it to aim.
+      // What the zoom will BE when the push finishes, and what it started from.
+      // The camera needs the first to aim; draw() needs both to know how far
+      // through the push it is — see `push` in draw().
       zoomFinal: base.zoom * (1 + gain),
+      zoomBase: base.zoom,
       viewW: W / zoom,
       camY,
+      // The WALL still follows the camera: it is fill, and a tall frame has to have
+      // wall in it wherever the top crop lands.
       wallY0: base.portrait ? camY : HUB_WALL_Y0,
-      lightY: base.portrait ? camY : HUB_LIGHT_Y,
-      ceilY: base.portrait ? camY + 4 : HUB_CEIL_Y,
+      // THE FIXTURES DO NOT. hubPresentation() derives lightY from camY so a tall
+      // portrait frame shows its tube on the first visible row — a framing rule
+      // written for a camera that holds still. The dive's camera does not hold
+      // still, and re-deriving it every frame welds the ceiling to the lens: the
+      // lights glide 164 world units DOWN the wall over the push while the room
+      // they are supposedly bolted to grows away from them.
+      //
+      // Worse, a beam is authored in world units against the landscape room — 48
+      // either side of the tube, dying at world y 168. Through the portrait push
+      // that is 762 logical pixels across a 393-wide frame, so a single fixture
+      // owns the whole screen, and lightFlicker's 90ms gutter — a detail you
+      // barely catch in a wide shot of the concourse — strobes the entire picture
+      // every few seconds.
+      //
+      // Pinned to the room's own value they behave the way the landscape room's
+      // always have: bolted to the world, sliding up and out through the top of
+      // the frame as the camera pushes past them, taking the gutter with them.
+      lightY: base.lightY,
+      ceilY: base.ceilY,
     };
   }
 
@@ -2242,11 +2381,11 @@ export class HubState {
     // Swing the boundary doors open as the hero nears them — never the locked
     // trophy door, which stays shut until there is something to unlock it.
     const exitDoorTarget = exitDoor && Math.abs(this.px - exitDoor.x) < DOOR_OPEN_R ? 1 : 0;
-    this.exitDoorOpen += Math.sign(exitDoorTarget - this.exitDoorOpen)
-      * Math.min(Math.abs(exitDoorTarget - this.exitDoorOpen), DOOR_SWING_RATE * dt);
+    this.exitDoorOpen = doorStep(this.exitDoorOpen, exitDoorTarget, this.exitDoorTarget, dt);
+    this.exitDoorTarget = exitDoorTarget;
     const trophyDoorTarget = trophyDoor && trophyDoor.unlocked && Math.abs(this.px - trophyDoor.x) < DOOR_OPEN_R ? 1 : 0;
-    this.trophyDoorOpen += Math.sign(trophyDoorTarget - this.trophyDoorOpen)
-      * Math.min(Math.abs(trophyDoorTarget - this.trophyDoorOpen), DOOR_SWING_RATE * dt);
+    this.trophyDoorOpen = doorStep(this.trophyDoorOpen, trophyDoorTarget, this.trophyDoorTarget, dt);
+    this.trophyDoorTarget = trophyDoorTarget;
     const gaitDx = Math.abs(this.px - gaitPrevPx);
     if (gaitDx > 0) {
       this.gaitPhase = (this.gaitPhase + gaitDx / (PLAYER_H * GAIT_DISTANCE_PER_CYCLE)) % 1;
@@ -2842,6 +2981,21 @@ export class HubState {
     // between fixtures only reached 0.88 and the whole concourse flattened out
     // into one evenly bright wash. 1.5x the pitch restores the old modulation at
     // the new density.
+    // HOW FAR THROUGH THE DIVE'S PUSH-IN THE CAMERA IS. 0 on the concourse, 1 with
+    // the machine filling the frame, and 0 whenever no dive is running.
+    //
+    // Everything in this room that GUTTERS is eased toward steady by it. The food
+    // court sputters because it is derelict, and that reads as atmosphere at the
+    // scale it was drawn for — a tube is a fifth of the frame's width, an EXIT
+    // sign a handful of pixels. The dive magnifies the room 1.75x in landscape
+    // and 2.5x on a phone without changing any of those cues, so the same gutter
+    // that was texture becomes the brightest event on screen, beside the one
+    // thing the shot is actually about. The lights and the signs hold their
+    // breath for the two seconds the camera is moving.
+    const push = layout.zoomFinal > layout.zoomBase
+      ? Math.max(0, Math.min(1, (layout.zoom - layout.zoomBase) / (layout.zoomFinal - layout.zoomBase)))
+      : 0;
+    const steadied = (v) => v + (1 - v) * push;
     const fixtures = this.ceilingFixtures();
     const pitch = fixtures.length > 1 ? fixtures[1].x - fixtures[0].x : BAY_W;
     const litXs = fixtures.map((f) => ({ x: f.x - cam, k: f.k }));
@@ -2925,7 +3079,7 @@ export class HubState {
     fixtures.forEach((f, i) => {
       const lx = Math.round(f.x - cam);
       if (lx < -LIGHT_W - 60 || lx > layout.viewW + 60) return;
-      const flick = lightFlicker(this.t, i);
+      const flick = steadied(lightFlicker(this.t, i));
       drawCeilingLight(ctx, lx, layout.lightY, f.k > 0 ? f.k * flick : 0, lx, layout.viewW);
     });
     // Light pooling: every lit machine throws its screen colour onto the tiles
@@ -2934,22 +3088,53 @@ export class HubState {
     // reason they read as pasted onto the scene rather than standing in it.
     for (const s of this.stations()) {
       if (s.type !== 'cabinet' || !s.unlocked) continue;
-      const x = Math.round(s.x - cam);
+      // NOT rounded, unlike the machine above it. A pool of light has no edge to
+      // keep crisp, and the dive's push-in makes one world unit worth six device
+      // pixels in portrait — so a rounded pool SNAPS across the tiles in six-pixel
+      // steps while the wall, the posters and the hero it is lit by all slide
+      // smoothly. See the same trap in the LCD packs: never round an animated
+      // position.
+      const x = s.x - cam;
       if (x < -80 || x > layout.viewW + 40) continue;
       const g = ctx.createLinearGradient(0, layout.floorY, 0, layout.floorY + 34);
       g.addColorStop(0, s.cab.sky[0]);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save();
-      ctx.globalAlpha = 0.24;
       ctx.fillStyle = g;
       // Splayed: a pool of light is wider the further it falls from its source.
-      ctx.beginPath();
-      ctx.moveTo(x - CAB_W * 0.5, layout.floorY);
-      ctx.lineTo(x + CAB_W * 0.5, layout.floorY);
-      ctx.lineTo(x + CAB_W * 0.85, layout.floorY + 34);
-      ctx.lineTo(x - CAB_W * 0.85, layout.floorY + 34);
-      ctx.closePath();
-      ctx.fill();
+      //
+      // NESTED SPLAYS rather than one wedge, the same fix drawCeilingLight
+      // already carries and for the same reason: a single polygon fades with
+      // DISTANCE but has a hard lateral edge. On the concourse that edge is 48
+      // world units inside a 480-wide view and nobody ever catches it. The
+      // cabinet dive magnifies the room 2.5x on the way in (a phone goes 2.5 to
+      // 6.25), and at that size the pool stops reading as light and starts
+      // reading as a sharp-sided slab of the machine's own blue lying on the
+      // tiles — worst on the plumber, whose sky is the palest of the nine.
+      //
+      // The shares sum to the old 0.24 straight down the core and taper off
+      // sideways. The concourse keeps the same light on the tiles under each
+      // machine and loses the edge around it — the pool reads a little wider and
+      // softer at every zoom, which is the trade, and the close-up gets an edge
+      // you cannot point at.
+      //
+      // FIVE of them, where the ceiling's beam gets away with three. Nested fills
+      // step by exactly one layer's alpha at each boundary, so the count is the
+      // softness: three left 8% ledges you could still count at dive zoom, five
+      // put them under 5% and the ramp closes up. Evenly spaced, because an even
+      // spacing at an even share is what makes the sum a straight ramp.
+      const POOL_STEPS = 5;
+      for (let i = 0; i < POOL_STEPS; i++) {
+        const spread = 1.75 - (1.75 - 0.5) * (i / (POOL_STEPS - 1));
+        ctx.globalAlpha = 0.24 / POOL_STEPS;
+        ctx.beginPath();
+        ctx.moveTo(x - CAB_W * 0.5 * spread, layout.floorY);
+        ctx.lineTo(x + CAB_W * 0.5 * spread, layout.floorY);
+        ctx.lineTo(x + CAB_W * 0.85 * spread, layout.floorY + 34);
+        ctx.lineTo(x - CAB_W * 0.85 * spread, layout.floorY + 34);
+        ctx.closePath();
+        ctx.fill();
+      }
       ctx.restore();
     }
     // stations
@@ -2960,7 +3145,21 @@ export class HubState {
     // lying in the pool rather than as a wash over it. Everything the loop draws
     // comes with it, the glass included — so mid-dive the reflected screen has
     // the hero running about inside it, which is the detail worth having.
-    const drawStations = (ctx) => {
+    // WHAT THE MIRROR CAN ACTUALLY SEE. The reflection is squashed by
+    // REFLECT_SQUASH and faded out over one reference height, so only the bottom
+    // PLAYER_H world units of anything in the room can ever appear in it —
+    // everything above that world line is masked away before it is composited.
+    // The row is drawn twice a frame, so the second pass skips the parts that
+    // sit above the line rather than building their paths to have them thrown
+    // away. This is culling, not a cache: the real row is untouched, so the two
+    // passes cannot drift into disagreeing about anything you can see.
+    const mirrorTopY = layout.floorY - PLAYER_H;
+    // Provably invisible in the mirror: the lowest point of this piece of art is
+    // still above the line. Asked rather than assumed, so that art moving down
+    // the chassis one day quietly stops being skipped instead of vanishing from
+    // the reflection.
+    const hiddenInMirror = (mirror, lowestY) => mirror && lowestY < mirrorTopY;
+    const drawStations = (ctx, mirror = false) => {
     for (const s of this.stations()) {
       const x = Math.round(s.x - cam);
       if (x < -80 || x > layout.viewW + 40) continue;
@@ -3001,7 +3200,11 @@ export class HubState {
         if (this.dive && this.dive.cab.id === s.cab.id) screenArt = this.dive.screenArt(screenArt, x);
         const scr = drawCabinetScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined, screenArt);
         if (scr) {
-          drawScreenSweep(ctx, scr, this.t, pal.seed);
+          // The rolling bright bar lives inside the glass, so it is skipped
+          // exactly when the whole glass is above the line. The glass itself
+          // always comes along — mid-dive the reflected screen keeps the hero
+          // running about inside it, which is the detail worth having.
+          if (!hiddenInMirror(mirror, scr.y + scr.h)) drawScreenSweep(ctx, scr, this.t, pal.seed);
         } else {
           // Locked: the machine is unplugged rather than absent, so every few
           // seconds its dead screen crackles and throws a spark.
@@ -3013,7 +3216,9 @@ export class HubState {
         // exactly what opens the boss. Worse, once the boss was beaten the flag
         // stayed true, so "a boss is waiting" and "nothing left here" drew
         // identically. Three states, three marks:
-        if (s.unlocked) {
+        // All three marks ride the top fifth of the chassis, the lowest of them
+        // the nine plug lights at 0.215 of CAB_H below CAB_Y.
+        if (s.unlocked && !hiddenInMirror(mirror, CAB_Y + CAB_H * 0.215 + CAB_W * 0.2)) {
           if (bossAvailable(slot, s.cab.id)) drawBossPip(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.06, CAB_W * 0.06, this.t);
           else if (slot.campaign.bossesDown[s.cab.id]) drawClearedStar(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.05, CAB_W * 0.115);
           // ...and the nine lights carry "how much is left", which is the
@@ -3042,7 +3247,11 @@ export class HubState {
         // sits within COUNTER_W of BOTH stations, so the pawn unit found her
         // too — drawing a second, unoccluded copy of her outside its own box and
         // never drawing Gary at all.
-        const staff = this.npcs().find((n) => n.station === s.type);
+        // The clerk is the most expensive thing in this loop — a whole toon —
+        // and the counter's own front panel stands between them and the floor,
+        // so what the mirror would get is a sliver of shoulder behind an opaque
+        // deck. Verified by eye against the live row before it was cut.
+        const staff = mirror ? null : this.npcs().find((n) => n.station === s.type);
         drawCounter(ctx, x - COUNTER_W / 2, CTR_Y, COUNTER_W, COUNTER_H, {
           t: this.t,
           variant: s.type === 'shop' ? 'pawn' : 'serving',
@@ -3060,28 +3269,30 @@ export class HubState {
           : DOOR_PALETTES[s.type];
         const doorOpen = s.type === 'exit' ? this.exitDoorOpen
           : s.type === 'shelf' ? this.trophyDoorOpen : 0;
-        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, doorOpen);
+        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, doorOpen,
+          { steady: push });
       }
     }
     };
-    // The machines in the floor, then the machines. Same floor line, squash and
-    // falloff as the hero's, so the two read as one wet floor rather than as two
-    // effects — and a cabinet is tall, so its mirror would run to the bottom of
-    // the frame if the falloff were not already cutting it.
-    //
-    // lift 0 — the machines are bolted to the floor, so their mirror starts at
-    // the floor line by definition; nothing needs to go looking for it.
-    // kind 'cabinets' — gated separately from the heroes, because whether a wall
-    // of mirrored machines is READABLE is its own question.
-    drawFloorReflection(ctx, {
-      draw: drawStations, height: CAB_H, anchorX: layout.viewW / 2, wide: layout.viewW, lift: 0,
-    }, layout.floorY, { kind: 'cabinets', track: false });
-    drawStations(ctx);
-    // Built once outside the crowd loop: the gate decides for the whole frame,
-    // and asking it per hero would also build a draw closure per hero for a
-    // feature that is off.
-    const reflectCast = floorReflectionsOn('hero');
-    // NPC heroes
+    // player walks — hoisted above the reflections, because the floor is painted
+    // in ONE pass and that pass needs every subject in the room before it can lay
+    // anything down. Nothing between here and the draws below touches state.
+    const heroId = this.avatarId();
+    const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
+    const airborne = this.jumpY > 0;
+    // NOT rounded. This is an animated position, and snapping it to a whole world
+    // unit quantises the hero's motion to one unit of screen travel — around 13
+    // device pixels at the concourse's portrait zoom. At a normal walk he covers
+    // two units a frame and the quantisation only shimmers; slowed down for a
+    // capture he covers half a unit a frame, so he stands still for a frame and
+    // then jumps 13px, which is what a stuttering walk looks like. drawToon paints
+    // vector shapes into this context rather than blitting a cached bitmap, so a
+    // fractional x costs nothing and antialiases correctly.
+    const pxs = this.px - cam;
+    // THE CROWD, gathered before anything is painted. Each entry carries the one
+    // pose object its figure and its mirror both draw from — two objects and the
+    // reflection would animate a frame of its own.
+    const crowd = [];
     for (const n of this.npcs()) {
       // Dolores already drew, inside her own counter (see the bench station
       // above). She is in this list so she can be walked up to and talked to;
@@ -3093,8 +3304,6 @@ export class HubState {
       // Hop height and contact shadow both ride NPC_H, so scaling the cast
       // doesn't leave them hopping a token amount over a pinprick of shade.
       const hop = n.state === 'hop' ? Math.sin(Math.PI * (1 - n.timer / n.duration)) * NPC_H * 0.26 : 0;
-      // Built once and drawn twice, same rule as the avatar below: one pose
-      // object, or the mirror animates a frame of its own.
       const npcPose = {
         kind: n.state === 'walk' ? 'run' : n.state === 'hop' ? 'jump' : 'idle',
         phase: (this.t * 1.25 + n.cycles * 0.17) % 1,
@@ -3106,27 +3315,19 @@ export class HubState {
         // Exempt, they stood at full daylight in front of a dead bay — the one
         // thing in the concourse the ceiling had no authority over.
       };
-      const drawNpc = (c) => drawToon(c, n.id, npcPose, x, layout.floorY - hop, NPC_H, { lit: castLit(x) });
-      // The crowd reflects too, or the avatar is the only figure in the room
-      // standing on a wet floor and the effect reads as a spotlight on him.
-      // `hop` is the lift: mid-hop the mirror separates from their feet, which
-      // is the whole reason a mirror is not a shadow.
-      // Shadow first, then the mirror, then the figure — the order the avatar
-      // already draws in, and the order the video was graded on.
-      drawSoftContactShadow(ctx, x, layout.floorY,
-        NPC_H * (n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
-        { alpha: 0.34, ink: '4,3,9' });
-      if (reflectCast) {
-        drawFloorReflection(ctx, { draw: drawNpc, height: NPC_H, anchorX: x, lift: hop },
-          layout.floorY, { kind: 'hero' });
-      }
-      drawNpc(ctx);
+      crowd.push({
+        n, x, hop,
+        draw: (c) => drawToon(c, n.id, npcPose, x, layout.floorY - hop, NPC_H, { lit: castLit(x) }),
+      });
     }
     // THE DUST DEVIL comes through occasionally, cleaning something (which
     // surface varies). ~9s of every ~48, unannounced, then gone. Nobody
-    // addresses this.
+    // addresses this — but the floor does: it is furniture standing on the floor,
+    // so it is wet like everything else in the room. The CEILING pass is not, and
+    // that is the whole rule — what stands on the floor reflects, what hangs on
+    // the wall or the ceiling does not.
     const ddCyc = (this.t + 39) % 48; // first visit ~9s after entering
-    if (ddCyc < 9) {
+    const dustDevil = ddCyc < 9 ? (() => {
       const pass = dustDevilPass(Math.floor((this.t + 39) / 48), act);
       const p = ddCyc / 9;
       // Screen-relative crossing — whenever it visits, you see it — but with a
@@ -3134,76 +3335,45 @@ export class HubState {
       // it works a square twice before moving on instead of gliding like a
       // cardboard cutout on a string.
       const travel = (layout.viewW + 60) * p + Math.sin(p * Math.PI * 7) * 16;
-      const ddX = Math.round(pass.dir > 0 ? travel - 40 : layout.viewW + 20 - travel);
+      const x = Math.round(pass.dir > 0 ? travel - 40 : layout.viewW + 20 - travel);
       // Brush head on a surface either way. Floor pass: the same line the cast
       // stands on. Ceiling pass: the line the light housings bolt to, which is
       // the only thing in the frame that says where the ceiling actually IS —
       // the top of the wall is a crop, not a plane, so hanging below it just
-      // reads as floating again. The vertical flip puts the head at ddY and
+      // reads as floating again. The vertical flip puts the head at y and
       // leaves the handle dangling.
-      const ddY = pass.onCeiling ? layout.ceilY - 4
-        : layout.floorY + pass.depth + DD_SIT - DD_H;
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
-      if (!pass.onCeiling) {
-        // Contact shadow in the cast's voice. Wider than the brush head on
-        // purpose — the head is opaque and sits flat on its own shadow, so an
-        // ellipse that only matched it would be a shadow nobody can see.
-        drawSoftContactShadow(ctx, ddX + DD_W * 0.42,
-          layout.floorY + pass.depth, DD_W * 0.62, 2.4,
-          { alpha: 0.34, ink: '4,3,9' });
-      }
-      // Mirrored about its own box so the cord always trails the direction of
-      // travel; the ceiling pass adds the vertical flip that turns it over.
-      if (pass.dir > 0 || pass.onCeiling) {
-        ctx.translate(ddX + DD_W / 2, ddY + DD_H / 2);
-        ctx.scale(pass.dir > 0 ? -1 : 1, pass.onCeiling ? -1 : 1);
-        ctx.translate(-(ddX + DD_W / 2), -(ddY + DD_H / 2));
-      }
-      drawProp(ctx, 'dustdevil', ddX, ddY, DD_W, DD_H);
-      ctx.restore();
-    }
-    // player walks
-    const heroId = this.avatarId();
-    const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
-    const airborne = this.jumpY > 0;
-    // Which one is you. Being 8 units taller than the crowd is not an answer to
-    // that question — in a concourse with three heroes loitering by the same
-    // door it is invisible. So the hero you are driving gets a marker over their
-    // head and a heavier contact shadow under their feet, in the same gold the
-    // walk-up prompt uses, so all the "this is about you" chrome reads as one
-    // voice.
-    // NOT rounded. This is an animated position, and snapping it to a whole world
-    // unit quantises the hero's motion to one unit of screen travel — around 13
-    // device pixels at the concourse's portrait zoom. At a normal walk he covers
-    // two units a frame and the quantisation only shimmers; slowed down for a
-    // capture he covers half a unit a frame, so he stands still for a frame and
-    // then jumps 13px, which is what a stuttering walk looks like. drawToon paints
-    // vector shapes into this context rather than blitting a cached bitmap, so a
-    // fractional x costs nothing and antialiases correctly.
-    const pxs = this.px - cam;
-    // Mid-dive the hero is not standing in the concourse any more, so this whole
+      const groundY = layout.floorY + pass.depth;
+      const y = pass.onCeiling ? layout.ceilY - 4 : groundY + DD_SIT - DD_H;
+      const alpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
+      return {
+        x, y, groundY, onCeiling: pass.onCeiling,
+        draw: (c) => {
+          c.save();
+          c.globalAlpha = alpha;
+          // Mirrored about its own box so the cord always trails the direction
+          // of travel; the ceiling pass adds the vertical flip that turns it
+          // over.
+          if (pass.dir > 0 || pass.onCeiling) {
+            c.translate(x + DD_W / 2, y + DD_H / 2);
+            c.scale(pass.dir > 0 ? -1 : 1, pass.onCeiling ? -1 : 1);
+            c.translate(-(x + DD_W / 2), -(y + DD_H / 2));
+          }
+          drawProp(c, 'dustdevil', x, y, DD_W, DD_H);
+          c.restore();
+        },
+      };
+    })() : null;
+    // Mid-dive the hero is not standing in the concourse any more, so his whole
     // slot hands over: the walk pose, the gold marker and the heavy contact
     // shadow all belong to a player who is driving, and for two seconds nobody
     // is. What the dive draws here is only the part of the leap still in FRONT
     // of the glass — everything past the plane is painted inside the screen.
-    if (this.dive) {
-      const drawDive = (c) => this.dive.drawOutside(c, Math.round(this.dive.cabX - cam), { lit: castLit(pxs) });
-      // No `lift`: the dive owns its own arc and never exposes a height, so this
-      // is the one subject whose mirror has to be FOUND rather than stated — the
-      // capture path's pixel scan, still available behind __mash_dev.reflectTrack.
-      drawFloorReflection(ctx, {
-        draw: drawDive, height: PLAYER_H, anchorX: Math.round(this.dive.cabX - cam),
-      }, layout.floorY, { kind: 'hero' });
-      drawDive(ctx);
-      ctx.restore();
-      return;
-    }
-    drawSoftContactShadow(ctx, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
-      { alpha: 0.44, ink: '4,3,9' });
+    const drawDive = this.dive
+      ? (c) => this.dive.drawOutside(c, Math.round(this.dive.cabX - cam), { lit: castLit(pxs) })
+      : null;
     // Built once and drawn twice: the reflection has to be the SAME pose object,
     // or the mirror would animate a frame of its own.
-    const heroPose = {
+    const heroPose = this.dive ? null : {
       kind: airborne ? 'jump' : moving ? 'run' : 'idle',
       // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
       //
@@ -3224,12 +3394,77 @@ export class HubState {
       // this continues so it lasts long enough to be seen.
       faceJoy: this.arrivedT > 0,
     };
-    const drawHero = (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
-    // this.jumpY IS the lift — how far off the floor he is, in world units. The
-    // mirror starts that far below the floor line, squashed, and thins with the
-    // distance, which is what makes the leap read.
-    drawFloorReflection(ctx, { draw: drawHero, height: PLAYER_H, anchorX: pxs, lift: this.jumpY },
-      layout.floorY, { kind: 'hero' });
+    const drawHero = this.dive ? null
+      : (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
+    // THE FLOOR, in one pass: the machines, then the crowd, then you — the same
+    // order they are painted for real, so a near mirror OCCLUDES the far one
+    // instead of adding to it. It goes down after the floor and its pools of
+    // light and before anything standing on it, so it reads as something lying in
+    // the pool rather than as a wash over it.
+    //
+    // PLAYER_H sizes the falloff for the whole room. The machines are far taller,
+    // and letting each subject set its own fade length is what made them read as
+    // a second effect laid over the same tiles.
+    const band = beginFloorReflectionBand(ctx, layout.floorY, { height: PLAYER_H });
+    if (band) {
+      // lift 0 — the machines are bolted to the floor, so their mirror starts at
+      // the floor line by definition and nothing needs to go looking for it.
+      addFloorReflection(band, {
+        draw: (c) => drawStations(c, true), height: CAB_H, anchorX: layout.viewW / 2,
+        wide: layout.viewW, lift: 0,
+      }, { track: false });
+      // `hop` is the lift: mid-hop a loiterer's mirror separates from their feet,
+      // which is the whole reason a mirror is not a shadow.
+      for (const e of crowd) {
+        addFloorReflection(band, { draw: e.draw, height: NPC_H, anchorX: e.x, lift: e.hop });
+      }
+      // The vacuum's 0..2 units of `depth` in front of the floor line stay well
+      // inside the skirting band the cast's own feet occupy, so it shares the
+      // room's floor rather than needing one of its own. Its fade in and out
+      // rides along: a prop half there has a mirror half there.
+      if (dustDevil && !dustDevil.onCeiling) {
+        addFloorReflection(band, { draw: dustDevil.draw, height: DD_H, anchorX: dustDevil.x + DD_W / 2, lift: 0 });
+      }
+      // this.jumpY IS the lift. The dive states no height at all: it owns its own
+      // arc, and it is the one subject whose mirror has to be found not stated.
+      if (drawDive) {
+        addFloorReflection(band, { draw: drawDive, height: PLAYER_H, anchorX: Math.round(this.dive.cabX - cam) });
+      } else {
+        addFloorReflection(band, { draw: drawHero, height: PLAYER_H, anchorX: pxs, lift: this.jumpY });
+      }
+      endFloorReflectionBand(band);
+    }
+    drawStations(ctx);
+    // NPC heroes
+    for (const e of crowd) {
+      drawSoftContactShadow(ctx, e.x, layout.floorY,
+        NPC_H * (e.n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
+        { alpha: 0.34, ink: '4,3,9' });
+      e.draw(ctx);
+    }
+    if (dustDevil) {
+      // Contact shadow in the cast's voice. Wider than the brush head on
+      // purpose — the head is opaque and sits flat on its own shadow, so an
+      // ellipse that only matched it would be a shadow nobody can see.
+      if (!dustDevil.onCeiling) {
+        drawSoftContactShadow(ctx, dustDevil.x + DD_W * 0.42, dustDevil.groundY,
+          DD_W * 0.62, 2.4, { alpha: 0.34, ink: '4,3,9' });
+      }
+      dustDevil.draw(ctx);
+    }
+    if (drawDive) {
+      drawDive(ctx);
+      ctx.restore();
+      return;
+    }
+    // Which one is you. Being 8 units taller than the crowd is not an answer to
+    // that question — in a concourse with three heroes loitering by the same
+    // door it is invisible. So the hero you are driving gets a marker over their
+    // head and a heavier contact shadow under their feet, in the same gold the
+    // walk-up prompt uses, so all the "this is about you" chrome reads as one
+    // voice.
+    drawSoftContactShadow(ctx, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
+      { alpha: 0.44, ink: '4,3,9' });
     drawHero(ctx);
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits
@@ -3310,33 +3545,36 @@ export class HubState {
     // positions.
     const frameScale = presentationFrame().scale;
     const footerOffset = (cssPx) => layout.portrait ? cssPx / frameScale : cssPx;
-    const statusS = layout.portrait ? 2.1 : HINT_S;
+    const statusS = layout.portrait ? HUB_PORTRAIT_STATUS_S : HINT_S;
     const legendS = layout.portrait ? 1.8 : HINT_S;
     const promptS = layout.portrait ? 2.2 : 1;
-    // Portrait's footer is measured upward from the floor rather than downward
-    // from the canvas edge. The controls own the glass at the bottom; the room
-    // owns the space immediately above them, so larger type stays separated and
-    // never collapses into a tiny status strip.
     const portraitFloorY = (layout.floorY - layout.camY) * layout.zoom;
-    const floorFooter = (cssGap) => portraitFloorY + footerOffset(cssGap);
+    // One read of the arrow box for the whole footer: the legend hangs off it,
+    // the room name is clamped below it, and hubPortraitFooterRows hangs the
+    // moving pair above it.
+    const arrows = hubWalkArrowBox();
     const footerRows = layout.portrait ? hubPortraitFooterRows(layout, frameScale) : null;
-    // The transient movement legend remains outside the three persistent rows.
-    // It fades after the first movement, so it cannot change the composition's
-    // fixed prompt/resources/location contract.
     const touchFooter = layout.portrait && Input.isTouchDevice();
     const statusY = layout.portrait
       ? textYForMid(footerRows.middle, statusS)
       : H - 11;
+    // The transient movement legend remains outside the three persistent rows —
+    // it fades after the first movement, so it cannot change the composition's
+    // fixed prompt/resources/location contract. Where the pair has moved down to
+    // the arrows it takes the next slot up that stack, because a line left at its
+    // old distance from the floor would sit alone in the middle of the tile the
+    // move was made to clear. Everywhere else it keeps its shipped position.
     const legendY = layout.portrait
-      ? (touchFooter
-        ? floorFooter(99)
-        : H - footerOffset(104))
+      ? (arrows
+        ? footerRows.top - footerOffset(HUB_PORTRAIT_FOOTER_ROW_GAP_CSS)
+        : touchFooter
+          ? portraitFloorY + footerOffset(99)
+          : H - footerOffset(HUB_PORTRAIT_LEGEND_EDGE_CSS) + footerRows.shift)
       : H - 48;
     // The room name is the bottom row, and in portrait the walk arrows live in
     // the lower corners — the label was reading straight through them. Drop it
     // BELOW the arrows when they are up, and only ever downward, so the
     // keyboard/mouse composition keeps its authored row.
-    const arrows = hubWalkArrowBox();
     const locationMid = layout.portrait
       ? (arrows
         ? Math.min(
@@ -3556,6 +3794,7 @@ const TROPHY_LEVEL_BOARD_GAP = 4;
 const TROPHY_LEVELS_W = TROPHY_LEVEL_BOARD_W * 3 + TROPHY_LEVEL_BOARD_GAP * 2;
 const TROPHY_LEVELS_CENTER = TROPHY_LEVELS_X + TROPHY_LEVELS_W / 2;
 const TROPHY_BOSSES_W = 150;
+const TROPHY_CASE_H = 94;
 const TROPHY_BOSSES_X = TROPHY_LEVELS_X + TROPHY_LEVELS_W
   + TROPHY_BOARD_GAP + TROPHY_BOSSES_W / 2;
 const TROPHY_BOARD_TITLE_SCALE = 1.38;
@@ -3643,6 +3882,7 @@ export class TrophyRoomState {
     this.walkHoldT = 0;
     this.moving = false;
     this.doorOpen = 0;
+    this.doorTarget = null;   // see doorStep(): no cue for the arrival frame
     this.player = new Player(this.heroId());
     this.player.grounded = true;
   }
@@ -3776,8 +4016,8 @@ export class TrophyRoomState {
     this.moving = !!move;
     this.player.update(dt, TROPHY_PLAYER_INPUT, { speed: move ? walkSpeed : 0 });
     const doorTarget = Math.abs(this.px - TROPHY_EXIT_X) < DOOR_OPEN_R ? 1 : 0;
-    this.doorOpen += Math.sign(doorTarget - this.doorOpen)
-      * Math.min(Math.abs(doorTarget - this.doorOpen), DOOR_SWING_RATE * dt);
+    this.doorOpen = doorStep(this.doorOpen, doorTarget, this.doorTarget, dt);
+    this.doorTarget = doorTarget;
   }
 
   drawLevelRecords(ctx, layout = trophyPresentation()) {
@@ -3839,7 +4079,7 @@ export class TrophyRoomState {
   drawBossCase(ctx, layout = trophyPresentation()) {
     const earned = this.defeatedBosses();
     const board = trophyBoardLayout(layout);
-    const w = TROPHY_BOSSES_W, h = 94, x0 = TROPHY_BOSSES_X - w / 2, y0 = board.y;
+    const w = TROPHY_BOSSES_W, h = TROPHY_CASE_H, x0 = TROPHY_BOSSES_X - w / 2, y0 = board.y;
     const title = 'MANAGEMENT ARCHIVE';
     drawTextCentered(ctx, title, TROPHY_BOSSES_X, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
     drawTrophyPanel(ctx, x0, y0, w, h, 5, '#100e16', '#73657c');
@@ -3950,24 +4190,59 @@ export class TrophyRoomState {
     ctx.translate(-camera, -layout.camY);
     this.drawRoom(ctx, camera, layout);
 
-    this.drawLevelRecords(ctx, layout);
-    this.drawBossCase(ctx, layout);
-    this.drawRecordsBoard(ctx, layout);
-
     // Visually this is the same EXIT service door used in the Food Court, so
     // the route reads consistently in both rooms. Mechanically it remains a
     // room boundary rather than an interaction: walk into it (or tap it and
     // let tap-to-walk finish) and update() returns directly to the Food Court.
-    drawDoor(ctx, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
+    const drawExitDoor = (c) => drawDoor(c, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
       TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t, this.doorOpen);
-
     const pose = poseFromPlayer(this.player, this.t);
     if (!this.moving && pose.kind === 'run') {
       pose.kind = 'idle';
       pose.headTurn = 0;
     }
     pose.facing = this.facing;
-    drawToon(ctx, this.player.heroId, pose, Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), TROPHY_PLAYER_H);
+    const drawAvatar = (c) => drawToon(c, this.player.heroId, pose,
+      Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), TROPHY_PLAYER_H);
+    // THE SAME FLOOR AS THE CONCOURSE, through the same painter: one pass, the
+    // near mirror occluding the far one, and one falloff for the room sized off
+    // its own reference figure. The gallery draws in WORLD space rather than
+    // camera space, which the band does not care about — it reads the transform
+    // it is handed — but it has no ceiling pools of light for the reflection to
+    // sit inside, so the wet floor has to carry itself here.
+    //
+    // Floor furniture: the service door, and you. The exhibits are WALL PANELS
+    // hung at board.y — this gallery has no floor-standing shelves at all — so
+    // by the room's rule they stay dry.
+    //
+    // THE ARCHIVE WAS TRIED WET AND TAKEN BACK OUT, which is worth recording
+    // because it is the one case the rule did not decide on its own. The case
+    // holding the trophies is around ninety units up a wall whose floor is at
+    // 212, so with its real height handed over as `lift` its mirror lands some
+    // sixty-five units below the floor line — off the bottom of the frame
+    // entirely in landscape, and in portrait a detached rectangle of panel
+    // lying in the middle of empty tile with nothing above it to be a mirror
+    // OF. It also fails the painter's own test: squashed to 0.72 and faded, the
+    // words ARCHIVE SEALED were still legible in it, upside down. A reflection
+    // you can read is a second sign, not a sheen.
+    // (work/local/reflect/trophy-portrait.png, if it is worth another look.)
+    const band = beginFloorReflectionBand(ctx, TROPHY_FLOOR_Y, { height: TROPHY_PLAYER_H });
+    if (band) {
+      addFloorReflection(band, {
+        draw: drawExitDoor, height: TROPHY_DOOR_H, anchorX: TROPHY_DOOR_W / 2, lift: 0,
+      });
+      addFloorReflection(band, {
+        draw: drawAvatar, height: TROPHY_PLAYER_H,
+        anchorX: Math.round(this.px), lift: this.player.y,
+      });
+      endFloorReflectionBand(band);
+    }
+
+    this.drawLevelRecords(ctx, layout);
+    this.drawBossCase(ctx, layout);
+    this.drawRecordsBoard(ctx, layout);
+    drawExitDoor(ctx);
+    drawAvatar(ctx);
     const headY = TROPHY_FLOOR_Y - this.player.y - toonInkTop(this.player.heroId) * TROPHY_PLAYER_H;
     drawPlayerMarker(ctx, this.px, headY - MARKER_GAP, MARKER_R);
 

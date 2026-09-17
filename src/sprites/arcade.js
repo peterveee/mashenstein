@@ -1244,8 +1244,22 @@ function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0, t = 0) {
 // that have one, and the sensor pulse on the 'slide' variant; everything else
 // ignores it. `openAmt` (0..1) slides that variant's leaf open — callers ease
 // it up from proximity, not a clock.
-export function drawDoor(ctx, x, y, w, h, pal, t = 0, openAmt = 0) {
-  const lit = pal.flicker ? signFlicker(t) : 1;
+/**
+ * opts.steady  0..1, how far to ease a flickering sign back toward full.
+ *
+ * A dying EXIT sign is atmosphere in a wide shot of the concourse and a strobe
+ * the moment something magnifies it. The cabinet dive does exactly that: it
+ * doubles the room on the way in, the sign is the brightest thing left beside
+ * the machine, and signFlicker drops it to a quarter twice every 5.3s — so for
+ * most of a 2.4-second shot the corner of the frame is blinking at the player
+ * while they are meant to be watching the glass. The dive feeds its own push-in
+ * through here, so the building stops sputtering exactly as fast as the camera
+ * closes in. 0 is the shipped flicker and every other caller gets it.
+ */
+export function drawDoor(ctx, x, y, w, h, pal, t = 0, openAmt = 0, { steady = 0 } = {}) {
+  const raw = pal.flicker ? signFlicker(t) : 1;
+  const ease = steady > 0 ? (steady > 1 ? 1 : steady) : 0;
+  const lit = raw + (1 - raw) * ease;
   paintInto(ctx, x, y, w, h, (c, cw, ch, p) => paintDoor(c, cw, ch, p, lit, openAmt, t), pal);
 }
 

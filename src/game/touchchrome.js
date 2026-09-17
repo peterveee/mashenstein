@@ -52,8 +52,34 @@ const PAUSE_GLASS = 'rgba(255,255,255,0.11)';
 const PAUSE_GLASS_PRESSED = 'rgba(255,255,255,0.19)';
 const PAUSE_INK = 'rgba(255,255,255,0.54)';
 const PAUSE_OUTLINE = 'rgba(18,24,46,0.28)';
-const WALK_INK = 'rgba(255,255,255,0.9)';
 const REWIND_INK = 'rgba(124,232,160,0.95)';
+
+// THE WHITE GLASS: a soft light disc with a slim, shadowed glyph and no rim.
+// One function, shared by the run's pause control and the food court's walk
+// arrows, because they are the same control set and two copies of these five
+// values would drift apart inside a week — the same argument that put the floor
+// painter in one module.
+//
+// Softness comes from drawRoundButton's feathered radial fill and from this
+// shadow, NOT from a blur. The chrome layer only repaints when its signature
+// changes (see commitChromeFrame), so a real ctx.filter blur here would in fact
+// be affordable — it is left out because the gradient already does the job, and
+// because a CSS backdrop-filter is no use: the chrome is its own canvas, so it
+// would blur the glyphs along with the disc.
+//
+// The arrows used to be a bare 90%-white triangle with the dark action glass
+// behind it, which on the concourse's dark floor read as a hole with a sticker
+// in it rather than as one of the game's controls.
+function glassWhiteStyle(held) {
+  return {
+    fill: held ? PAUSE_GLASS_PRESSED : PAUSE_GLASS,
+    ink: PAUSE_INK,
+    outline: PAUSE_OUTLINE,
+    shadowColor: 'rgba(0,0,0,0.24)',
+    shadowBlur: 0.24,
+    shadowOffsetY: 0.05,
+  };
+}
 
 function actionButtonStyle(held, ink, landscape, id) {
   return {
@@ -94,14 +120,11 @@ export function drawRunChrome(ctx, discs, state, isHeld = (action) => Input.held
     if (b.id === 'jump') drawRoundButton(ctx, { ...button, icon: 'up' }, actionButtonStyle(held, ACTION_INK.jump, landscape, 'jump'));
     else if (b.id === 'slide') drawRoundButton(ctx, { ...button, icon: 'down' }, actionButtonStyle(held, ACTION_INK.slide, landscape, 'slide'));
     else if (b.id === 'pause') drawRoundButton(ctx, { ...button, icon: 'pause' }, {
-      fill: landscape
-        ? (held ? PAUSE_GLASS_PRESSED : PAUSE_GLASS)
-        : (held ? GLASS_PAUSE_PRESSED : GLASS_PAUSE),
-      ink: PAUSE_INK,
-      outline: PAUSE_OUTLINE,
-      shadowColor: 'rgba(0,0,0,0.24)',
-      shadowBlur: 0.24,
-      shadowOffsetY: 0.05,
+      ...glassWhiteStyle(held),
+      // Portrait's pause sits on the picture rather than against a black
+      // margin, where even the white glass was more presence than a secondary
+      // control wants. It keeps its own barely-there tint.
+      ...(landscape ? null : { fill: held ? GLASS_PAUSE_PRESSED : GLASS_PAUSE }),
     });
     else if (b.id === 'rewind') drawRoundButton(ctx, { ...button, label: 'RWD' }, {
       fill, ink: REWIND_INK,
@@ -157,8 +180,8 @@ export function declareHubChrome() {
   for (const b of discs) sig += `|${b.id}${Input.held(b.action) ? '*' : ''}`;
   paintChrome(sig, (ctx) => {
     for (const b of discs) {
-      const fill = Input.held(b.action) ? GLASS_PRESSED : GLASS;
-      drawRoundButton(ctx, { ...box(b), icon: b.id === 'hubLeft' ? 'left' : 'right' }, { fill, ink: WALK_INK });
+      drawRoundButton(ctx, { ...box(b), icon: b.id === 'hubLeft' ? 'left' : 'right' },
+        glassWhiteStyle(Input.held(b.action)));
     }
   });
 }

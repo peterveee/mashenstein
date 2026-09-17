@@ -124,6 +124,10 @@ const GROUPS = [
       { cue: 'uiBad', what: 'a refusal — locked, unaffordable, not yet' },
       { cue: 'type', what: 'text arriving a letter at a time' },
       { cue: 'cash', what: 'a purchase going through in the shop' },
+      // The pair belongs together on the desk: they are levelled against each
+      // other, so auditioning either one alone tells you very little.
+      { cue: 'doorOpen', what: 'the EXIT / Trophy Room door letting you through' },
+      { cue: 'doorClose', what: 'the same door shutting once you walk off' },
     ],
   },
   {

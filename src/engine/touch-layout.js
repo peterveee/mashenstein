@@ -287,6 +287,23 @@ function hubList(fit) {
   // the inset 59, so it never qualifies — which is the whole point.
   const fits = (w, inset) => w >= inset + r * 2 + HUB_PILLAR_PAD;
   const y = fit.vh - fit.safe.bottom - HUB_PILLAR_PAD - r;
+  // AN UPRIGHT VIEWPORT IS NOT A LANDSCAPE PICTURE, and cy is a landscape
+  // coordinate: 240 of the authored 270. Scaled into a landscape picture that
+  // is letterboxed inside a portrait phone, that y lands more than half way UP
+  // the screen — which is where the food court's walk arrows were found
+  // floating in mid-air after turning the phone upright. It happens whenever a
+  // rotation settles before the screen has asked for its portrait frame, and
+  // nothing re-fits afterwards because the presentation mode only changes on a
+  // state transition, so the arrows stay there until you change screen.
+  //
+  // Upright, hang them off the BOTTOM OF THE VIEWPORT instead — the same line
+  // the pillar branch below already uses, and for the same reason: the margin
+  // under a letterboxed picture is a legitimate home for a control, and the
+  // bottom of the phone is where a thumb goes looking for one either way.
+  if (fit.vh > fit.vw) {
+    discs[0] = { ...discs[0], y };
+    discs[1] = { ...discs[1], y };
+  }
   if (m.left && fits(m.left, fit.safe.left)) {
     discs[0] = { ...discs[0], x: Math.max(m.left / 2, fit.safe.left + HUB_PILLAR_PAD + r), y };
   }

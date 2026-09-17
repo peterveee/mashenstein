@@ -202,4 +202,43 @@ if (renderer.chrome.gen !== genAfterSilentFlip) {
   process.exit(1);
 }
 
+// THE WALK ARROWS AFTER AN UPRIGHT ROTATION, wherever the frame happens to be.
+//
+// The food court's arrows fall back to the authored landscape coordinate (cy
+// 240 of 270) whenever they are not placed from the portrait control geometry.
+// Scaled into a landscape picture letterboxed inside an upright phone, that y
+// lands more than half way UP the screen — which is how they came to be found
+// floating in mid-air after a rotation that settled before the screen had asked
+// for its portrait frame. Nothing re-fits afterwards, because the presentation
+// mode only changes on a state transition, so they stay there until you change
+// screen. Upright, they belong at the bottom whichever frame is up.
+renderer.setPresentationMode('landscape');
+window.screen.orientation.angle = 0;
+window.screen.orientation.type = 'portrait-primary';
+window.orientation = 0;
+window.innerWidth = 390;
+window.innerHeight = 844;
+dom.fire('win:orientationchange');
+for (let i = 0; i < 40; i++) dom.frame();
+renderer.revealPresentationRefresh();
+for (let i = 0; i < 5; i++) { renderer.beginChromeFrame(); dom.frame(); }
+const uprightArrows = (renderer.chrome.hub || []).filter((b) => b.r != null);
+if (uprightArrows.length !== 2) {
+  console.error('FAIL: the food court declares two walk arrows upright');
+  process.exit(1);
+}
+if (!uprightArrows.every((b) => b.y > window.innerHeight * 0.75)) {
+  console.error('FAIL: upright walk arrows sit in the bottom quarter, not mid-air'
+    + ` (got ${uprightArrows.map((b) => `${b.id} y${Math.round(b.y)}`).join(', ')} of ${window.innerHeight})`);
+  process.exit(1);
+}
+// ...and the portrait frame itself still puts them on the picture's own corners.
+renderer.setPresentationMode('portrait');
+for (let i = 0; i < 5; i++) { renderer.beginChromeFrame(); dom.frame(); }
+const portraitArrows = (renderer.chrome.hub || []).filter((b) => b.r != null);
+if (!portraitArrows.every((b) => b.y > window.innerHeight * 0.75)) {
+  console.error('FAIL: portrait walk arrows sit in the bottom quarter');
+  process.exit(1);
+}
+
 console.log('ORIENTATION REFRESH: PASSED');

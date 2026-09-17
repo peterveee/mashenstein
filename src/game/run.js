@@ -1061,7 +1061,7 @@ const PAUSE_BUTTONS = [
   // EXIT, not BACK. On a pause screen BACK is genuinely ambiguous: back to the
   // game is exactly what CONTINUE does, and a player reading two plates that
   // both promise to return them somewhere has to guess which.
-  { id: 'resume', x: pausePlateX(0), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
+  { id: 'resume', x: pausePlateX(0), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'pause', label: 'RESUME' },
   { id: 'quit', x: pausePlateX(1), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'quit', label: 'EXIT' },
   { id: 'restart', x: pausePlateX(2), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'restart', label: 'RESTART' },
 ];
@@ -4591,7 +4591,7 @@ export class RunState {
     // Same ids, same actions, same order as the landscape row — pauseIdx
     // addresses this list by index either way, so the two must not drift.
     return [
-      { id: 'resume', x: innerX, y, w: width, h, action: 'pause', label: 'CONTINUE' },
+      { id: 'resume', x: innerX, y, w: width, h, action: 'pause', label: 'RESUME' },
       { id: 'quit', x: innerX + width + gap, y, w: width, h, action: 'quit', label: 'EXIT' },
       { id: 'restart', x: innerX + (width + gap) * 2, y, w: width, h, action: 'restart', label: 'RESTART' },
     ];
