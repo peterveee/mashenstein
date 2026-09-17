@@ -655,6 +655,44 @@ export const CABINETS = [
       // spawner's fairness would push it anyway — authored honestly rather than
       // left for fairGap to fix silently.
       P(2, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 120, w: 72 }, { t: 'bearTrap', dx: 330 }]),
+      // THREE MORE SHAPES, because two was not a mechanic, it was a decoration.
+      //
+      // The spawner picks flat over every pattern at or under the stage's tier
+      // cap, so a block's frequency is nothing but its share of the bank: two
+      // patterns out of twenty-seven is 7.4% of deals, which lands at about
+      // four blocks in a sixty-pattern run — and, far more to the point, means
+      // every encounter with the mechanic all run is one of two arrangements.
+      // The stage that has it worst is frost-1, where the tier cap leaves
+      // exactly ONE shape in eighteen.
+      //
+      // 120 IS FIXED IN ALL OF THEM. It is not a taste number: portrait shows
+      // 121px of lane ahead of the hero, and the payoff of this prop is
+      // watching the deck close the break in front of you. What varies is what
+      // stands AROUND the pair, never the pair itself.
+
+      // One for frost-1, which had a single shape. A coin arc runs into the
+      // block, so the hop that takes the top of the arc is the hop that bumps
+      // it — the pattern teaches the input by making it the obvious one, which
+      // is the only teaching this prop gets now the HIT! board is gone.
+      // The arc ends at 84 and the hole's clearance window opens at 110, so
+      // clearOfHoles leaves it exactly where it is authored.
+      P(1, [coinArc(0), { t: 'switch', dx: 110 }, { t: 'gap', dx: 230, w: 60 }]),
+
+      // A FOURTH SHAPE — a wider 88px break — was authored here and taken back
+      // out. Five block patterns in thirty put one in every six deals, which is
+      // a mechanic that stops being an event; and of the three it was the least
+      // NEW — the same two cells as the tier-1 shape with a bigger hole, where
+      // the other two each change what the player has to do to reach it. If the
+      // rate ever wants raising again, a wide break is the cheapest shape to
+      // bring back.
+      // SLIDE, THEN HOP. The drone's answer is a slide and the block's is a
+      // jump, which makes this the only shape where the mechanic arrives on the
+      // back of a different input — and a hero still flat on the deck from the
+      // slide has to get up for it. 150 is over a full fairness gap past the
+      // drone (the spawner budgets about 160 for slide-then-jump at this speed,
+      // and would push the hole out itself if this were tighter), so the two
+      // never collapse into one read.
+      P(2, [{ t: 'drone', dx: 0 }, { t: 'switch', dx: 150 }, { t: 'gap', dx: 270, w: 64 }]),
     ],
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
   },

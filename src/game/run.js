@@ -7299,6 +7299,11 @@ export class RunState {
     // other takes it with it.
     hole.bridged = true;
     hole.bridgeT = 0;
+    // And the deck going in, on the same frame the cubes start rising. Its own
+    // cue rather than a louder flick: the block firing and the crossing
+    // arriving are two events, and the player is about to run over the second
+    // one. It stands off the flick's transient by 20ms of its own accord.
+    Audio.sfx('bridgeLay');
     this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8');
   }
 

@@ -247,9 +247,16 @@ function bareRun(seed = 7) {
   for (let i = 0; i < 90; i++) { renderer.setPresentationFrame(portraitFrame); run.update(1 / 60); }
   const ahead = run.viewRightX() - run.playerWorldX();
   assert(Math.abs(run.camZoom - 3.5) < 0.01, `portrait really is at zoom 3.5 (${run.camZoom.toFixed(2)})`);
+  // THE SEPARATION, not the raw dx. Cell dx is measured from the PATTERN's
+  // origin and only the first two shapes happen to start with the block there —
+  // one leads in with a coin arc, another with a drone — so reading the gap's dx
+  // alone measures the wrong distance and passes patterns that put the hole
+  // half a screen past the thing that opens it. (It caught one: a wide-break
+  // shape authored at dx 168 with the block at 0.)
   const holeDx = Math.max(...frost.patterns
     .filter((p) => (p.cells || []).some((c) => c.t === 'switch'))
-    .map((p) => p.cells.find((c) => c.t === 'gap').dx));
+    .map((p) => p.cells.find((c) => c.t === 'gap').dx
+      - p.cells.find((c) => c.t === 'switch').dx));
   assert(holeDx <= ahead,
     `the hole is on screen when the switch is hit, in PORTRAIT (dx ${holeDx} <= ${ahead.toFixed(0)}px of lane)`);
   renderer.setPresentationFrame(defaultFrame());
@@ -266,7 +273,8 @@ function bareRun(seed = 7) {
   const sw = OBSTACLES.switch;
   const lip = Math.min(...frost.patterns
     .filter((p) => (p.cells || []).some((c) => c.t === 'switch'))
-    .map((p) => p.cells.find((c) => c.t === 'gap').dx));
+    .map((p) => p.cells.find((c) => c.t === 'gap').dx
+      - p.cells.find((c) => c.t === 'switch').dx));
   // The rule the authored-altitude block states (tests/standing-hazards.js): a
   // box is reachable when its BOTTOM is under the worst hero's head at apex.
   // The old constant here was 37, which is the worst APEX — the head is a
@@ -587,7 +595,8 @@ function bareRun(seed = 7) {
 // pattern's own spacing, which is why this pairing cannot be an author's job.
 const switchToHole = Math.min(...frost.patterns
   .filter((p) => (p.cells || []).some((c) => c.t === 'switch'))
-  .map((p) => p.cells.find((c) => c.t === 'gap').dx));
+  .map((p) => p.cells.find((c) => c.t === 'gap').dx
+    - p.cells.find((c) => c.t === 'switch').dx));
 assert(pitClearance(REACT_FLOOR, speed) >= switchToHole,
   `a scripted pit's clearance (${pitClearance(REACT_FLOOR, speed).toFixed(0)}px) still reaches as far as the`
   + ` ${switchToHole}px between a switch and its hole — the sweep can take one and leave the other`);

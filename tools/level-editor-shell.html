@@ -32,8 +32,9 @@
     letter-spacing: .06em;
   }
   .btn:hover { border-color: var(--dim); }
+  .btn[disabled] { opacity: .4; cursor: default; }
+  .btn[disabled]:hover { border-color: var(--line); }
   .btn.primary { background: var(--hot); color: #1a1710; border-color: var(--hot); font-weight: 700; }
-  .btn.primary[disabled] { opacity: .4; cursor: default; }
   .btn.ghost { background: transparent; }
   input[type=number], input[type=text], select {
     background: #120f18; color: var(--ink); border: 1px solid var(--line);

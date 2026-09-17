@@ -1071,7 +1071,50 @@ export function signFlicker(t) {
 // The leaf that fills the doorway. Most stations get a door; the two that have
 // something to show through the wall get something else, because at this size a
 // sign is a weak way to say "this is a shop" and a lit window is a strong one.
-function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0) {
+function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
+  if (pal.variant === 'slide') {
+    // EXIT and the Trophy Room: an automatic sliding door. The leaf keeps its
+    // full width and translates into the frame's right-hand pocket as
+    // `openAmt` rises, clipped to the frame so it visibly vanishes into the
+    // wall rather than just narrowing — the shape a real pocket door reads as.
+    // `icon: 'none'` already marks a door as unpowered (shelfLocked, and the
+    // same trick the back room uses), so the porthole and sensor stay dark
+    // there too rather than lighting up a door nothing has switched on.
+    const powered = pal.icon !== 'none';
+    const [lx, ly, lw, lh] = box('leaf');
+    const [fx, fy, fw, fh] = box('frame');
+    const slideX = lx + openAmt * lw * 0.92;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(fx, fy, fw, fh); ctx.clip();
+    shape(ctx, pal.door, u, (c) => rr(c, slideX, ly, lw, lh, w * 0.08));
+    plain(ctx, darken(pal.door, 0.3), (c) => c.rect(slideX + lw * 0.05, Y(0.87), lw * 0.9, h * 0.09));
+    // The porthole — a hint of the room behind it even mid-slide, the same
+    // reasoning the pawn shop's whole shopfront relies on, at door scale.
+    const winW = lw * 0.36, winH = h * 0.2, winX = slideX + lw * 0.5 - winW / 2, winY = Y(0.4);
+    plain(ctx, darken(pal.door, 0.55), (c) => rr(c, winX - w * 0.018, winY - w * 0.018, winW + w * 0.036, winH + w * 0.036, w * 0.025));
+    plain(ctx, powered ? darken(pal.sign, 0.45) : '#0c0a14', (c) => rr(c, winX, winY, winW, winH, w * 0.02));
+    if (powered) glassGloss(ctx, winX, winY, winW, winH, 0.16, w * 0.02);
+    ctx.restore();
+    // The header sensor: standby amber, flipping to green while it is holding
+    // the door for someone close enough to use it — the same read a real
+    // automatic door's lens gives, at a scale small enough to stay a detail.
+    if (powered) {
+      const sx = X(0.5), sy = box('well')[1] - h * 0.02;
+      plain(ctx, darken(pal.frame, 0.4), (c) => c.arc(sx, sy, w * 0.032, 0, Math.PI * 2));
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+      ctx.save();
+      ctx.globalAlpha = pulse * (1 - openAmt * 0.7);
+      plain(ctx, '#c8862c', (c) => c.arc(sx, sy, w * 0.017, 0, Math.PI * 2));
+      ctx.restore();
+      if (openAmt > 0.02) {
+        ctx.save();
+        ctx.globalAlpha = openAmt;
+        plain(ctx, '#48e070', (c) => c.arc(sx, sy, w * 0.017, 0, Math.PI * 2));
+        ctx.restore();
+      }
+    }
+    return;
+  }
   if (pal.variant === 'window') {
     // GARY'S: a shopfront, not a door. Warm interior light behind glass, a
     // counter across it, and glazing bars — so the pawn shop reads as somewhere
@@ -1102,25 +1145,16 @@ function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0) {
     return;
   }
   // The default leaf, standing open a crack — the sliver of black down its hinge
-  // side is the only thing that says "this opens". `openAmt` swings it further:
-  // the hinge (left edge, X(0.165)) stays put and the leaf's silhouette narrows
-  // toward it, the foreshortening a flat door reads as when it rotates away —
-  // the panel/knob detail is clipped to that narrowing rect rather than moved,
-  // so it simply rotates out of view instead of needing its own repositioning.
-  const [lx, ly, lw, lh] = box('leaf');
-  const openW = lw * (1 - openAmt * 0.82);
-  shape(ctx, pal.door, u, (c) => rr(c, lx, ly, openW, lh, w * 0.08));
-  ctx.save();
-  ctx.beginPath(); ctx.rect(lx, ly, openW, lh); ctx.clip();
+  // side is the only thing that says "this opens".
+  shape(ctx, pal.door, u, (c) => rr(c, ...box('leaf'), w * 0.08));
   plain(ctx, darken(pal.door, 0.45), (c) => c.rect(X(0.165), Y(0.34), w * 0.04, h * 0.66));
   plain(ctx, darken(pal.door, 0.22), (c) => { rr(c, X(0.25), Y(0.37), w * 0.38, h * 0.19, w * 0.05); rr(c, X(0.25), Y(0.62), w * 0.38, h * 0.23, w * 0.05); });
   plain(ctx, darken(pal.door, 0.5), (c) => c.arc(X(0.765), Y(0.612), w * 0.05, 0, Math.PI * 2));
   plain(ctx, '#c8c8d8', (c) => c.arc(X(0.765), Y(0.6), w * 0.047, 0, Math.PI * 2));
   plain(ctx, '#f2f2f8', (c) => c.arc(X(0.752), Y(0.588), w * 0.018, 0, Math.PI * 2));
-  ctx.restore();
 }
 
-function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0) {
+function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0, t = 0) {
   const u = olU(w);
   const X = (n) => w * n, Y = (n) => h * n;
   const B = DOOR_BOX;
@@ -1135,7 +1169,7 @@ function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0) {
   // The recess. Genuinely dark: a door you can see into is a doorway, and a
   // doorway is what makes these read as rooms rather than as vending machines.
   plain(ctx, '#080610', (c) => rr(c, ...box('well'), w * 0.09));
-  doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt);
+  doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt, t);
 
   // The sign: a bracket, a lit board, and the station's icon in the middle of
   // it. `lit` dims the whole lit assembly together — glass and legend — so a
@@ -1176,12 +1210,13 @@ function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0) {
 
 // A service door. `pal` is {id, frame, door, sign, ink, icon, label?, variant?,
 // flicker?}. Painted directly rather than cached, for the same sharpness reason
-// as the cabinet — see paintInto(). `t` only matters for palettes that
-// flicker; everything else ignores it. `openAmt` (0..1) swings the default
-// leaf open on its hinge — callers ease it up from proximity, not a clock.
+// as the cabinet — see paintInto(). `t` drives the sign flicker on palettes
+// that have one, and the sensor pulse on the 'slide' variant; everything else
+// ignores it. `openAmt` (0..1) slides that variant's leaf open — callers ease
+// it up from proximity, not a clock.
 export function drawDoor(ctx, x, y, w, h, pal, t = 0, openAmt = 0) {
   const lit = pal.flicker ? signFlicker(t) : 1;
-  paintInto(ctx, x, y, w, h, (c, cw, ch, p) => paintDoor(c, cw, ch, p, lit, openAmt), pal);
+  paintInto(ctx, x, y, w, h, (c, cw, ch, p) => paintDoor(c, cw, ch, p, lit, openAmt, t), pal);
 }
 
 // The food court's own doors. Keyed by HubState station type.
@@ -1190,15 +1225,20 @@ export const DOOR_PALETTES = {
   // a lit cabinet should not read darker than the wall behind it — at the old
   // values the service end of the concourse fell into a hole every time the
   // camera left the machines.
-  exit: { id: 'exit', frame: '#3c5346', door: '#2b4436', sign: '#48e070', ink: '#04140a', icon: 'arrow', label: 'EXIT', flicker: true },
+  // EXIT and the Trophy Room are the two boundary doors the hero actually
+  // walks through, which is what earns them the 'slide' variant — an
+  // automatic door with its own sensor and porthole — while the food court's
+  // other doors stay the plainer swinging default.
+  exit: { id: 'exit', frame: '#3c5346', door: '#2b4436', sign: '#48e070', ink: '#04140a', icon: 'arrow', label: 'EXIT', flicker: true, variant: 'slide' },
   bench: { id: 'bench', frame: '#5d7182', door: '#42576a', sign: '#48a8f0', ink: '#06121e', icon: 'wrench', variant: 'shutter' },
   shop: { id: 'shop', frame: '#7c5a7c', door: '#5d4460', sign: '#f890b8', ink: '#2a0c1c', icon: 'tag', variant: 'window', glow: '#f8c890' },
   arcade: { id: 'arcade', frame: '#46606b', door: '#334a55', sign: '#48e0c8', ink: '#04201c', icon: 'stick' },
-  shelf: { id: 'shelf', frame: '#6b6350', door: '#4e4733', sign: '#f6d33c', ink: '#241c04', icon: 'cup' },
+  shelf: { id: 'shelf', frame: '#6b6350', door: '#4e4733', sign: '#f6d33c', ink: '#241c04', icon: 'cup', variant: 'slide' },
   // Present from the start, but deliberately unpowered until the player has
   // something to exhibit. Keeping the same carcass makes its later activation
-  // read as this door coming online rather than a new door appearing.
-  shelfLocked: { id: 'shelfLocked', frame: '#403c34', door: '#302d27', sign: '#514b3d', ink: '#b0a895', icon: 'none', label: 'LOCKED' },
+  // read as this door coming online rather than a new door appearing —
+  // 'icon: none' is what keeps its porthole and sensor dark until then.
+  shelfLocked: { id: 'shelfLocked', frame: '#403c34', door: '#302d27', sign: '#514b3d', ink: '#b0a895', icon: 'none', label: 'LOCKED', variant: 'slide' },
   // Unmarked, unlit, and slightly ajar. The sign board is there; nothing is
   // written on it, and nothing behind it is switched on. This one stays dark on
   // purpose — it is the only door that is supposed to disappear.

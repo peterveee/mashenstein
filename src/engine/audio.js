@@ -581,8 +581,14 @@ export function setAttackTrim(value) {
   return true;
 }
 
+// A cue with no entry here is simply untrimmed — the lookup is `SFX_TRIM[name] ??
+// 1` — so the desk has to be able to CREATE one. It used to refuse an unknown
+// name as a typo guard, which meant every cue that had never been levelled (the
+// ones a pass left alone, and every cue added since) had a fader that moved
+// nothing and a Save that errored. The desk builds its list from real call
+// sites, so the guard was catching nothing and costing that.
 export function setSfxTrim(cue, value) {
-  if (!(cue in SFX_TRIM)) return false;
+  if (typeof cue !== 'string' || !cue || !Number.isFinite(value) || value <= 0) return false;
   SFX_TRIM[cue] = value;
   return true;
 }
@@ -628,7 +634,7 @@ export const SFX_TRIM = {
   // This lands it at -35.3, three under the hero, and six under `copterBonk`
   // (-29.0), which has to stay the bigger event on this cabinet. Re-measure with
   // `node tools/render-cues.js girderBoing jump copterBonk`.
-  girderBoing: 0.348,
+  girderBoing: 0.923,
   crunch: 1.058,
   // The trap owns its damage read; it must cut through the lane without
   // borrowing the generic `hit` cue. The call site adds a small final lift.
@@ -718,9 +724,10 @@ export const SFX_TRIM = {
   // 32dB of spread became 23.
   //
   // Everything below this line is a cue that had no trim at all before the pass.
-  switchFlick: 0.575, clickHard: 0.716, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
+  switchFlick: 0.638, clickHard: 0.716, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
   loopRun: 1.259, boostFall: 1.035, shoot: 1.622, checkpoint: 1.38, coin: 1,
   abilityReady: 1.012, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
+  bridgeLay: 2.265,
 };
 
 // The weapon cues used to ship as .wav assets fetched at runtime. They are now
@@ -4365,6 +4372,43 @@ class AudioSys {
         // over a low strike was two cues rather than one object.
         this.osc('triangle', 588 * pitch, 588 * pitch, 0.1, 0.46, w + 0.055);
         this.osc('triangle', 882 * pitch, 882 * pitch, 0.2, 0.43, w + 0.105);
+        break;
+      }
+      // THE DECK GOING IN — the ice cubes coming up out of the break, left to
+      // right, across the fifth of a second drawBridgeDecks takes to lay them
+      // (BRIDGE_LAY_T). The block's cue above says a mechanism fired; this is
+      // the thing the mechanism DID, and until now it happened in silence.
+      //
+      // A ROLL, NOT A CHORD. The art lays about nine cubes across a 60px break
+      // at 22ms apart — too fast to hear as nine events, and exactly right as
+      // one gesture with a grain to it: the sound a row of blocks makes
+      // arriving in order rather than together. Seven strikes at 23ms is that
+      // gesture with four fewer voices.
+      //
+      // GLASS, NOT WOOD, and it climbs. Each strike is a hard band up at 5kHz
+      // with a short bright triangle on it, and the pitch rises a little across
+      // the run so the ear follows the cubes travelling away from the player,
+      // which is the direction they actually arrive in.
+      //
+      // UNDER THE BLOCK, DELIBERATELY. switchFlick is a punch measured at -3.4
+      // peak; this sits a good ten under it, because the player hit the block
+      // and the crossing is what happens next — a deck as loud as the strike
+      // makes one confused noise out of two clear events. It also starts 20ms
+      // late so the two transients are never on the same millisecond.
+      case 'bridgeLay': {
+        const w = Math.max(0, opt.when || 0) + 0.02;
+        const n = 7;
+        for (let i = 0; i < n; i++) {
+          const at = w + i * 0.023;
+          const up = Math.pow(1.045, i);
+          this.noise(0.016, 0.2, 'bandpass', 5000 * up, at);
+          this.osc('triangle', 2100 * up * pitch, 1800 * up * pitch, 0.02, 0.1, at);
+        }
+        // The far lip taking the weight: one short low knock under the tail of
+        // the roll, which is what stops it reading as a sparkle.
+        this.osc('sine', 190 * pitch, 120 * pitch, 0.07, 0.16, w + n * 0.023);
+        // And the ice ringing for a moment after it has settled.
+        this.noise(0.13, 0.09, 'highpass', 7000, w + n * 0.023);
         break;
       }
       // The plunger bottoming out. A latch, not a beep: a hard tick of noise for

@@ -30,6 +30,7 @@ import {
 } from '../src/game/layout.js';
 import { GRAB_PX, grabAt, dropAt } from './lib/timeline-drag.js';
 import { buildScene, paintMap } from './lib/stage-preview.js';
+import { createLayoutHistory } from './lib/level-edit-history.js';
 
 // Where PLAY sends the browser — the game's own dev server, substituted at
 // bundle time by tools/level-editor.js.
@@ -52,7 +53,6 @@ const state = {
   stageId: STAGES[0].id,
   seed: 1234,
   sel: null,          // {kind:'section'|'pit'|'checkpoint'|'appliance'|'rewind', i}
-  dirty: false,
   message: null,      // {kind:'warn'|'err', lines:[]}
   openCabs: new Set([STAGES[0].cabinet]),
   previewScale: 0.5,  // px per world px on the map — see THE LEVEL, below
@@ -69,7 +69,10 @@ const resolved = () => resolveLayout(stage(), cabinet(), entry());
 // forecast is not, and the page says so rather than drawing a fiction.
 const isBeatCharted = (s) => /^rhythm-[123]$/.test(s.id) && CABINET_BY_ID[s.cabinet].mechanic === 'beat';
 
-const markDirty = () => { state.dirty = true; };
+// Every edit on the page already routes through markDirty, so that one call
+// is the whole seam the history needs: nothing has to remember to snapshot.
+const history = createLayoutHistory({ state, saved: STAGE_LAYOUTS });
+const markDirty = () => { history.touch(); };
 const round = (v, n = 3) => Math.round(v * 10 ** n) / 10 ** n;
 
 // --------------------------------------------------------- derived model ----
@@ -568,7 +571,7 @@ function header(m, warns) {
     el('h1', {}, 'MASHENSTEIN LEVEL EDITOR'),
     el('span', { class: 'badge' }, `${m.st.id}`),
     badge,
-    state.dirty ? el('span', { class: 'badge dirty' }, 'unsaved') : null,
+    history.dirty() ? el('span', { class: 'badge dirty' }, 'unsaved') : null,
     el('span', { class: 'grow' }),
     el('label', { class: 'field' }, 'seed',
       el('input', {
@@ -584,7 +587,17 @@ function header(m, warns) {
       onclick: () => window.open(
         `${GAME_URL}/?goto=stage&cab=${m.cab.id}&stage=${m.st.id}&seed=${state.seed}`, '_blank'),
     }, 'PLAY'),
-    el('button', { class: 'btn primary', disabled: !state.dirty, onclick: save }, 'SAVE'),
+    el('button', {
+      class: 'btn ghost', disabled: !history.canUndo(),
+      title: 'take back the last edit (⌘Z)',
+      onclick: () => { if (history.undo()) render(); },
+    }, 'UNDO'),
+    el('button', {
+      class: 'btn ghost', disabled: !history.stageDirty(),
+      title: `throw away every unsaved change to ${m.st.id} — itself undoable`,
+      onclick: () => { if (history.revertStage()) render(); },
+    }, 'REVERT STAGE'),
+    el('button', { class: 'btn primary', disabled: !history.dirty(), onclick: save }, 'SAVE'),
   );
 }
 
@@ -605,7 +618,11 @@ function leftRail() {
         `${cab.mechanic} · bag ${tiers.join('/')} · +${Math.round((cab.speedBonus || 0) * 100)}% speed`) : null,
       open ? stages.map((s) => el('div', {
         class: `stage${s.id === state.stageId ? ' sel' : ''}`,
-        onclick: () => { state.stageId = s.id; state.sel = null; state.message = null; render(); },
+        onclick: () => {
+          state.stageId = s.id; state.sel = null; state.message = null;
+          history.sync();
+          render();
+        },
       },
         el('span', {}, s.id),
         el('span', { class: 'tag' }, `${state.layouts[s.id].durationSec}s`))) : null));
@@ -1356,7 +1373,7 @@ async function save() {
     if (!body.ok) {
       state.message = { kind: 'err', lines: [`refused: ${body.errors[0]}`] };
     } else {
-      state.dirty = false;
+      history.markSaved();
       state.message = {
         kind: 'ok',
         lines: [body.changed ? 'saved — the next build reads it' : 'nothing changed'],
@@ -1376,6 +1393,32 @@ window.addEventListener('resize', () => render());
 // open in the next tab, and reaching for the mouse to commit an edit you have
 // already decided on is the friction that makes people stop tweaking.
 window.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); if (state.dirty) save(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); if (history.dirty()) save(); }
+  // ⌘Z, except inside a field where the browser's own undo is the better one.
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !isTextField(e.target)) {
+    e.preventDefault();
+    if (history.undo()) render();
+  }
 });
+
+// A gesture is ONE undo step. Both brackets close on the same rule — the hand
+// let go, or the field lost focus — so a slider dragged across fifty values and
+// a label typed one letter at a time each come back in a single press. Without
+// them every `oninput` would be its own step and ⌘Z would crawl.
+const isTextField = (n) => n && (n.tagName === 'TEXTAREA'
+  || (n.tagName === 'INPUT' && (n.type === 'text' || n.type === 'number')));
+
+window.addEventListener('pointerdown', () => history.begin(), true);
+window.addEventListener('pointerup', () => {
+  // A click that landed IN a field hands the bracket to the focus pair, which
+  // is the one that knows when the typing stopped.
+  if (!isTextField(document.activeElement)) history.end();
+}, true);
+window.addEventListener('focusin', (e) => { if (isTextField(e.target)) history.begin(); });
+window.addEventListener('focusout', (e) => { if (isTextField(e.target)) history.end(); });
+
+// The stack's `current` starts empty, and the first edit calls touch() AFTER it
+// has already mutated the draft — so without this the first ⌘Z would restore
+// the change it was meant to take back.
+history.reset();
 render();

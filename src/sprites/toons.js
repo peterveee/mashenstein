@@ -1378,7 +1378,10 @@ export const TOON_SPECS = {
     torsoWidth: 0.89,
     // end character editor proportions
   },
-  ramon: { rig: 'ray', limbStyle: 'float' },
+  // `stache` is the whole moustache: it seats his mouth at RAY_MOUTH_Y, tones
+  // the two marks so the mouth outranks it, and draws the thing on his lip.
+  // See the note above drawRamonStache for why each of those three is needed.
+  ramon: { rig: 'ray', limbStyle: 'float', stache: true },
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
   // cycle. Face streak and torso stripe are one marking and share the sign.
@@ -3783,8 +3786,34 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}, spec = null) {
     ctx.stroke();
   }
 }
+// Fit an upward-growing mouth into the skin it is allowed to have.
+//
+// `spec.openBand` is [top, bottom] in u, measured from the mouth line: how far
+// above it the mouth may reach (negative is above) and how far below. Without
+// one, nothing changes — the ellipse keeps its authored radii on its authored
+// centre, which is every face in the cast but Ramon in a moustache.
+//
+// With one, the ellipse is FITTED rather than clipped: it keeps its aspect,
+// shrinks only as far as the band forces, and is then seated against the top of
+// the band so it opens downward. A clamp would have squashed a gasp into a
+// letterbox; this keeps it a gasp and merely makes it a smaller one.
+function openEllipse(spec, u, cy, rx, ry) {
+  const band = spec && spec.openBand;
+  if (!band) return { cy, rx: rx * u, ry: ry * u };
+  const [top, bottom] = band;
+  const room = Math.max(0.012, bottom - top);
+  const k = Math.min(1, room / (ry * 2));
+  const fitRy = ry * k;
+  return { cy: cy + (top + fitRy) * u, rx: rx * k * u, ry: fitRy * u };
+}
+
 function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
-  ctx.strokeStyle = OUTLINE;
+  // THE MOUTH IS DRAWN IN THE CONTOUR INK. Every face in this game strokes its
+  // mouth with OUTLINE — rgba(26,16,40,0.32) — which measures 1.96:1 against
+  // Ramon's skin. It is a translucent edge, not a feature colour, and it works
+  // everywhere else because nothing else competes with it down there. See
+  // the moustache note beside drawRamonStache for where that assumption breaks.
+  ctx.strokeStyle = spec.mouthInk || OUTLINE;
   ctx.lineWidth = hair(0.55, ow * 0.4) * INK.face;
   ctx.beginPath();
   if (ex.death) {
@@ -3800,8 +3829,10 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     if (spec.mouth === 'grille') { ctx.stroke(); return; }
     ctx.stroke();
     const a = ex.death.shut;
+    // Same upward reach as the gasp, same fix. See openEllipse.
+    const g = openEllipse(spec, u, cy + 0.004 * u, 0.02 + 0.015 * a, 0.005 + 0.04 * a);
     outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) =>
-      c.ellipse(cx, cy + 0.004 * u, (0.02 + 0.015 * a) * u, (0.005 + 0.04 * a) * u, 0, 0, Math.PI * 2));
+      c.ellipse(cx, g.cy, g.rx, g.ry, 0, 0, Math.PI * 2));
     return;
   }
   if (ex.joy) {
@@ -3810,7 +3841,14 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     // tracks the descent, so the grin OPENS on the way down instead of arriving
     // at whoop size the frame the hero takes the grip.
     const amt = ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt) : 0;
-    const w = (0.065 + 0.02 * amt) * u, d = (0.038 + 0.037 * amt) * u;
+    // `joyScale` shrinks the whole grin about its own top edge. It exists for
+    // one reason: the grin is the LOWEST thing any face draws, reaching about
+    // 0.071u below the mouth centre at full cheer, so a face that seats its
+    // mouth lower than the default runs the grin off its own chin. Ramon is
+    // the only caller — see RAY_MOUTH_Y — and every other face leaves
+    // it unset, where it is exactly 1.
+    const js = Number(spec.joyScale) > 0 ? Number(spec.joyScale) : 1;
+    const w = (0.065 + 0.02 * amt) * u * js, d = (0.038 + 0.037 * amt) * u * js;
     ctx.stroke();
     outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) => {
       c.moveTo(cx - w, cy - 0.012 * u);
@@ -3843,7 +3881,18 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   }
   if (ex.surprise) {
     ctx.stroke();
-    outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    // THE GASP IS CENTRED ON THE MOUTH LINE, reaching 0.045u ABOVE it — the one
+    // mouth in the set that grows upward, and the reason a face with anything
+    // drawn just above the lip cannot simply seat its mouth and stop thinking.
+    // `openBand` is that face's answer: the strip of skin the open mouth is
+    // allowed to occupy, as [top, bottom] offsets in u from the line. The
+    // ellipse is fitted into it rather than clamped out of it, so the mouth
+    // opens DOWNWARD from under the moustache into the chin it actually has,
+    // which is also what a jaw does. Unset — every other face — it is centred
+    // exactly as before.
+    const g = openEllipse(spec, u, cy, 0.035, 0.045);
+    outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face,
+      (c) => c.ellipse(cx, g.cy, g.rx, g.ry, 0, 0, Math.PI * 2));
     return;
   } else if (ex.effort) {
     ctx.moveTo(cx - 0.05 * u, cy + 0.015 * u); ctx.lineTo(cx + 0.055 * u, cy - 0.005 * u);
@@ -14549,7 +14598,7 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
     // his own head painter — at absolute coordinates, same lighting rule as
     // the humanoid head: a translated frame lands the face in the ramp's
     // shadow end
-    drawRayHead(ctx, id, p, headPose, u, ow, -0.24 * u, -0.5 * u, lod, false);
+    drawRayHead(ctx, id, spec, p, headPose, u, ow, -0.24 * u, -0.5 * u, lod, false);
     ctx.restore();
     if (pose.grounded) slideDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
     return;
@@ -16213,10 +16262,134 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   ctx.restore(); // end squash-and-stretch
 }
 
+// ---------------------------------------------------- Ramon's moustache
+// SHIPPED 17 Sep 2026, after five rounds. The bake-off sections are gone from
+// the gallery; what they settled is here, and the reasoning is kept because
+// every number below is load-bearing on a face with no room to spare.
+//
+// THE FACE HAD TO MOVE FIRST. Normalised by each rig's own head radius, the
+// eleven humanoids carry 0.260 R of skin between the bottom of the eye and the
+// mouth line. Ramon carried 0.115 R — 44% of the cast's clearance — while
+// having MORE chin than they do, 0.529 R against 0.476 R. Two causes, neither a
+// style decision: drawEyes uses the same ABSOLUTE 0.065u eye for every rig and
+// the ray head is 0.17u in radius where a humanoid's is 0.21u, so his eyes are
+// 0.382 R against the cast's 0.310 R; and his mouth sat higher in R terms as
+// well. Everything he owned was jammed into his top half. RAY_MOUTH_Y is the
+// answer: +0.105u rather than the +0.080u he shipped with, which is cast parity
+// for the gap, taken entirely out of chin he was not using. It is a fix to his
+// face and applies with or without the moustache.
+//
+// THE RANKING WAS INVERTED BY CONSTRUCTION. Every face in this game strokes its
+// mouth with OUTLINE — rgba(26,16,40,0.32) — which measures 1.96:1 against
+// Ramon's skin. That works everywhere else because nothing else is drawn down
+// there to outrank it. A near-black moustache measures 5.96:1, so it was 3.1x
+// the contrast of the mouth, and an eye calls the darkest mark in a lower face
+// the mouth: it read the moustache as one and demoted the real mouth to a
+// crease. No amount of reshaping was going to fix that. STACHE_TONE and
+// MOUTH_INK_A put the mouth back on top at 3.51:1 over 2.48:1 — and the lighter
+// moustache is the more honest colour anyway, since his quiff is #f6d33c and a
+// blond's moustache is not near-black.
+//
+// AND IT HAS TO BE ON A LIP. Seated off the head centre it ended up 0.039u clear
+// of the mouth — 0.23 R of bare skin on a face with no nose to fill it — and a
+// mark floating in the middle of a face is free to be read as anything. STACHE
+// hangs off the MOUTH LINE, so it travels with the mouth wherever the mouth goes.
+//
+//   w     half-width of the pair. His head is 0.17u in radius.
+//   seat  how far ABOVE the mouth line the pair sits.
+//   th    thickness at the inner end, tapering to the tip. Mass is what reads
+//         as hair; a hairline reads as a second mouth.
+//   gap   the centre gap that makes this a Gable. He has no nose, so on the old
+//         floating seat this read as one; with a mouth directly beneath it, it
+//         reads as the moustache it is.
+//   tip   how far the tips rise above `seat`. Small on purpose: his eyes bottom
+//         out at +0.060u, and past about 0.02u of rise a tip is in one of them.
+//   arch  bow on the lobe between centre and tip.
+//   dip   how far the top edge drops at the CENTRE — the philtrum notch.
+//   tipW  squared-off tip width. Needle points are calligraphy; hair ends in
+//         a mass.
+//   flat  straight top edge along the lip, shaped only underneath.
+const STACHE = {
+  w: 0.066, seat: 0.029, th: 0.024, gap: 0.013, tip: 0.002, arch: 0.003,
+  dip: 0.008, tipW: 0.007, flat: true,
+};
+// Where the mouth sits below the head centre, and the chin it has to stay
+// inside. See the note above.
+const RAY_MOUTH_Y = 0.105, RAY_HEAD_R = 0.17;
+// How far below the mouth line the OPEN GRIN reaches at full cheer. drawMouth
+// builds its joy quadratic with the control at cy + d * 1.9, so the curve peaks
+// at about cy + d * 0.95 and d tops out at 0.075u. It is the lowest mark any
+// face in this game draws, and at the reseated mouth it no longer fits — hence
+// rayGrinScale.
+const RAY_GRIN_REACH = 0.0713;
+// Skin kept between the moustache's lower edge and an open mouth's top. Tiny:
+// a moustache RESTS on the lip, so the two touching is correct and the two
+// overlapping is not.
+const RAY_LIP_GAP = 0.004;
+// Skin kept inside the chin. Also tiny — the marks carry their own outlines, so
+// the inks meeting is the failure, not the shapes touching.
+const RAY_CHIN_MARGIN = 0.004;
+// How far the moustache ink is lightened toward white, as a multiple of the
+// brow's own lighten. See the ranking note above.
+const STACHE_TONE = 1.4;
+// Alpha for a mouth stroked in `p.e` instead of the contour ink. 0.55 lands at
+// 3.51:1 against his skin, comfortably ahead of the moustache's 2.48:1.
+const MOUTH_INK_A = 0.55;
+
+// SOLVED, NOT DIALLED — the same rule the humanoid mouth follows where it has
+// to clear an animal snout. The reseated mouth takes its grin down with it, and
+// the grin runs out of chin before anything else does; so rather than pairing
+// the seat with a hand-picked size that has to be re-tuned whenever the seat
+// moves, the size IS the clearance that is left.
+function rayGrinScale(mouthOffset) {
+  const room = RAY_HEAD_R - RAY_CHIN_MARGIN - mouthOffset;
+  return Math.max(0.6, Math.min(1, room / RAY_GRIN_REACH));
+}
+
+// Where the moustache's LOWER edge sits, in u below the head centre. The mouth
+// needs this and nothing else about it — derived from the same constants the
+// painter draws from, so the two cannot drift.
+const stacheBottom = (mouthOffset) => mouthOffset - STACHE.seat + STACHE.th * 0.5;
+
+// Two tapered lobes leaving a centre gap and running out to squared tips, the
+// whole thing hung off the mouth line.
+//
+// The stroke is the mark's OWN ink and not the contour, for two reasons. A 34%
+// outline round a shape this size is a large fraction of the shape — the first
+// cut came out as a blunt grey bar, heavier than the brows above it. And the
+// stroke doubles as the floor: hair() keeps it visible on the finished image,
+// so the mark cannot fall below a pixel and quietly stop existing in the lane.
+function drawRamonStache(ctx, p, u, cx, hy, lod, mouthOffset) {
+  // At LOD the face is down to eyes; this would be a smudge.
+  if (lod) return;
+  // The brows' own ink, lightened further. A moustache and a pair of eyebrows
+  // are the same material on the same face, so they cannot be two unrelated
+  // colours.
+  const ink = browInk(p.browCol || p.e, INK.browA,
+    INK.browL * (BROW_L_SCALE.ramon ?? 1) * STACHE_TONE);
+  const my = hy + (mouthOffset - STACHE.seat) * u;
+  const th = STACHE.th * u * 0.5;
+  const dip = STACHE.dip * u;
+  const tw = STACHE.tipW * u * 0.5;
+  outlined(ctx, ink, hair(0.34, 0.0035 * u) * INK.face, (c) => {
+    for (const sign of [-1, 1]) {
+      const ix = cx + sign * STACHE.gap * u;
+      const tx = cx + sign * STACHE.w * u, ty = my - STACHE.tip * u;
+      const midX = (ix + tx) / 2, midY = (my + ty) / 2;
+      c.moveTo(ix, my - th + dip);
+      if (STACHE.flat) c.lineTo(tx, ty - tw);
+      else c.quadraticCurveTo(midX, midY - th - STACHE.arch * u + dip * 0.5, tx, ty - tw);
+      c.lineTo(tx, ty + tw);
+      c.quadraticCurveTo(midX, midY + th * 0.6 - STACHE.arch * u, ix, my + th);
+      c.closePath();
+    }
+  }, ink);
+}
+
 // Ramon's head, drawn about (hx, hy): an oversized, windswept parody quiff.
 // Its broad silhouette is intentional — it must remain recognizable even in
 // the menu parade. Split out of drawRay so face crops can show the head alone.
-function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
+function drawRayHead(ctx, id, spec, p, pose, u, ow, hx, hy, lod, run) {
   const hairFlop = Math.sin((pose.time || 0) * (run ? 8 : 2.5)) * 0.025 * u;
   outlined(ctx, p.s, ow, (c) => c.arc(hx, hy, 0.17 * u, 0, Math.PI * 2));
   outlined(ctx, p.a, ow, (c) => {
@@ -16236,7 +16409,32 @@ function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
   ctx.save();
   ctx.translate(faceX, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1); ctx.translate(-faceX, 0);
   drawEyes(ctx, p, u, faceX, hy - 0.01 * u, lod, ex);
-  if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, faceX, hy + 0.08 * u, ow, ex);
+  // `spec.stache` is Ramon's alone. The rig is his alone too, but a candidate
+  // riding this painter through drawToon's spec seam may not want a moustache,
+  // so the mouth seat and the moustache both hang off the one flag.
+  const stache = !!(spec && spec.stache);
+  const mouthOffset = stache ? RAY_MOUTH_Y : 0.08;
+  if (!lod) {
+    // The strip the open mouths get. They are the ones that grow UPWARD off
+    // their line, so a moustache is something they can be drawn straight
+    // through: the band runs from just under its lower edge down to just inside
+    // the chin. No moustache, no band, and the gasp is drawn as it always was.
+    const openBand = stache ? [
+      stacheBottom(mouthOffset) + RAY_LIP_GAP - mouthOffset,
+      RAY_HEAD_R - RAY_CHIN_MARGIN - mouthOffset,
+    ] : null;
+    drawMouth(ctx, {
+      mouth: 'smirk',
+      joyScale: stache ? rayGrinScale(mouthOffset) : 1,
+      mouthInk: stache ? browInk(p.e, MOUTH_INK_A, 0) : null,
+      openBand,
+    }, p, u, faceX, hy + mouthOffset * u, ow, ex);
+  }
+  // Centred on the FACE, not on the smirk. The smirk runs from faceX out to
+  // +0.08u and is the only mouth on this head that is asymmetric — every other
+  // expression is centred, so hanging the moustache off the smirk would put it
+  // visibly off-centre the moment he is surprised or annoyed.
+  if (stache) drawRamonStache(ctx, p, u, faceX, hy, lod, mouthOffset);
   ctx.restore();
 }
 
@@ -16247,7 +16445,12 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'slide' && SLIDE_STYLE_DRAWS[pose.slideStyle]) {
     ctx.save();
     if (pose.slideStyle !== 'kick') slideStyleEntry(ctx, pose);
-    SLIDE_STYLE_DRAWS[pose.slideStyle](ctx, id, TOON_SPECS[id] || {}, p, pose, u, ow, lod);
+    // THE SPEC IT WAS HANDED, not the roster's. This re-read TOON_SPECS and
+    // threw away `spec`, so every dial a candidate rides the seam with — a
+    // costume, a moustache, a mouth seat — silently vanished the moment the
+    // hero slid. The humanoid dispatch passes `spec` and always has; this is
+    // the same bug tests/slide-kit.js exists to catch on worn kit, one rig over.
+    SLIDE_STYLE_DRAWS[pose.slideStyle](ctx, id, spec || TOON_SPECS[id] || {}, p, pose, u, ow, lod);
     ctx.restore();
     return;
   }
@@ -16318,7 +16521,7 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   // up at collar height and taper to a point — hung lower and blunt it reads
   // as a red sleeve reaching for the glove, and Ramon has no arms.
   ctx.fillStyle = p.m; ctx.beginPath(); ctx.moveTo(-0.14 * u, cy - 0.245 * u); ctx.quadraticCurveTo(-0.3 * u, cy - 0.225 * u + scarfLag, -0.37 * u, cy - 0.17 * u + scarfLag); ctx.lineTo(-0.14 * u, cy - 0.14 * u); ctx.fill();
-  drawRayHead(ctx, id, p, pose, u, ow, 0, cy - 0.35 * u, lod, run);
+  drawRayHead(ctx, id, spec, p, pose, u, ow, 0, cy - 0.35 * u, lod, run);
   // Floating gloves—hide the throwing glove until it returns.
   const handY = cy + (slide && enhancedMotion ? 0.085 : jump ? -0.11 : 0.02) * u;
   const handOut = slide && enhancedMotion ? 0.34 : 0.29;
@@ -17863,7 +18066,7 @@ function paintFace(ctx, heroId, spec, x, y, w, h, light = true, palette = null, 
       { portrait: true, portraitFit: forFit, ...(facePose || {}) });
   } else if (spec.rig === 'ray') {
     // ray has a real head on a floating body — crop to the head like a humanoid
-    drawRayHead(ctx, heroId, p, { kind: 'idle', time: 0, ...(facePose || {}) }, u, ow,
+    drawRayHead(ctx, heroId, spec, p, { kind: 'idle', time: 0, ...(facePose || {}) }, u, ow,
       hx, hy, false, false);
   } else {
     // blob/disc/pika: the body IS the face — draw the whole toon fitted.

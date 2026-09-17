@@ -2310,8 +2310,11 @@ export const PROP_PAINTERS = {
     const s = 1 - (1 - swing) * (1 - swing);   // leaves fast, arrives settled
     const lit = s >= 1;
     ctx.save();
-    // The bump: up and back down across the throw, art only.
-    ctx.translate(0, -h * 0.16 * (s > 0 ? Math.sin(s * Math.PI) * 0.9 : 0));
+    // NO BUMP HERE ANY MORE. The box's leap is a TRANSFORM, not a drawing, so
+    // it lives in drawWorldEntity (switchBonkLift) where it can run on the
+    // entity's own clock at 60fps. Inside the painter it was stuck on the
+    // four-frame throw ring — a two-pixel nudge in three steps, which read as
+    // the box twitching rather than being punched.
     // The shell: the crate family's construction — hairline frame, inset face,
     // four corner bolts — in the fortress's dark metal instead of pine.
     fineShape(ctx, '#1b2836', u, (c) => rr(c, w * 0.03, h * 0.04, w * 0.94, h * 0.92, w * 0.16));
@@ -4922,6 +4925,41 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // frames after it.
 export const SWITCH_THROW_FRAMES = 3;
 export const SWITCH_THROW_T = 0.2;
+
+// HOW THE BOX LEAPS WHEN IT IS BONKED.
+//
+// A coin block is punched from below and it goes somewhere: up hard, back down
+// under its own weight, and a small second hop as it settles. That second hop
+// is what makes it read as a struck OBJECT rather than a sprite sliding up a
+// track — it is the bit of the gesture that says the box has mass and the
+// ground took it back.
+//
+// BALLISTIC, not sinusoidal. Both hops are parabolas, so the box leaves fast,
+// hangs for a moment at the top and comes down accelerating, which is what
+// being hit looks like. A sine went up and down at the same speed and read as
+// a float.
+//
+// 7 PIXELS, against the two the first pass managed. The block's own box is 11
+// tall, so this is a leap of about two thirds of itself: unmissable in the
+// corner of the eye at lane size, which is the whole job — the player is
+// looking at the road ahead, not at the thing they just hit.
+//
+// Longer than the lever's own 0.2s on purpose. The face is done changing while
+// the box is still coming down, so the state settles first and the motion
+// finishes after it — the same order a real one would.
+export const SWITCH_BONK_T = 0.34;
+const BONK_RISE = 7;        // world px at the top of the first hop
+const BONK_SPLIT = 0.6;     // where the first hop lands and the second leaves
+const BONK_SECOND = 0.22;   // the second hop, as a share of the first
+
+export function switchBonkLift(t) {
+  const p = (t || 0) / SWITCH_BONK_T;
+  if (p <= 0 || p >= 1) return 0;
+  const hop = (u, h) => h * 4 * u * (1 - u);        // a parabola, apex at u=0.5
+  return p < BONK_SPLIT
+    ? hop(p / BONK_SPLIT, BONK_RISE)
+    : hop((p - BONK_SPLIT) / (1 - BONK_SPLIT), BONK_RISE * BONK_SECOND);
+}
 
 export const PROP_FRAMES = {
   // Half a rotor turn — the blade pair repeats every half turn — in twelve

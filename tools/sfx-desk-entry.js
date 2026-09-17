@@ -22,6 +22,11 @@ import { CONTACT_CUE, LAUNCH_CUE } from '../src/engine/weapon-sfx.js';
 import { HEROES } from '../src/data/heroes.js';
 import { resolveTrack, listTracks } from '../src/data/tracks.js';
 import { MIX } from '../src/data/mix.js';
+// When each cue was born, from the repository's own history — see
+// tools/sfx-birthdays.js. A levelling pass is also an archaeology session: the
+// cues that have never been touched since day one are exactly the ones nobody
+// has ever compared against anything.
+import { sfxBorn } from '../src/data/sfx-birthdays.js';
 
 // ---------------------------------------------------------------- the cues
 //
@@ -38,6 +43,7 @@ const GROUPS = [
     name: 'Hero & movement',
     cues: [
       { cue: 'jump', what: 'every jump, ground or air' },
+      { cue: 'jump2', what: 'the second jump of a double' },
       { cue: 'land', what: 'landing' },
       { cue: 'slide', what: 'going into a slide' },
       { cue: 'dash', what: 'a dash ability' },
@@ -55,8 +61,10 @@ const GROUPS = [
     name: 'Abilities',
     cues: [
       { cue: 'impact', what: 'a weapon connecting, for a hero with no baked cue' },
+      { cue: 'axe', what: "Grumpos' axe leaving his hand" },
       { cue: 'shield', what: 'a roll shield; a hit absorbed' },
       { cue: 'chomp', what: 'Chompo biting' },
+      { cue: 'waka', what: 'one bite of a chomp', opt: { pitch: 0.92 } },
       { cue: 'shoot', what: 'a shooter drone firing at you' },
       { cue: 'abilityReady', what: 'a cooldown coming back' },
       { cue: 'star', what: 'invincibility starting' },
@@ -68,6 +76,7 @@ const GROUPS = [
     cues: [
       { cue: 'popSmall', what: 'the ?-crate coin ladder', gain: 3.0, opt: { pitch: 1.12 } },
       { cue: 'switchFlick', what: 'the power block being hit' },
+      { cue: 'bridgeLay', what: 'the ice deck laying across the break' },
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
       { cue: 'blockBreak', what: 'a crate or ?-crate breaking' },
@@ -94,6 +103,45 @@ const GROUPS = [
       { cue: 'checkpoint', what: 'passing a checkpoint' },
       { cue: 'tag', what: 'the relay hand-off landing' },
       { cue: 'portal', what: 'the relay portal, going out', gain: 5.5 },
+    ],
+  },
+  // EVERYTHING THAT IS NOT IN THE LANE, which used to be nothing at all.
+  //
+  // This desk was built for levelling a run — a cue is only ever too loud or
+  // too quiet against the song you hear it over, and the song is playing in a
+  // stage. But half the sounds in this game are made while nothing is playing:
+  // a menu moving, a purchase, the title sign buzzing, a minigame ending. They
+  // are levelled against silence and against each other, which is a real
+  // comparison and one nobody could make here, because the rows did not exist.
+  //
+  // Set the song picker to 'no song' for these; the AUTO walk covers them like
+  // anything else.
+  {
+    name: 'UI & menus',
+    cues: [
+      { cue: 'ui', what: 'moving the cursor; any menu step' },
+      { cue: 'uiConfirm', what: 'confirming a choice' },
+      { cue: 'uiBad', what: 'a refusal — locked, unaffordable, not yet' },
+      { cue: 'type', what: 'text arriving a letter at a time' },
+      { cue: 'cash', what: 'a purchase going through in the shop' },
+    ],
+  },
+  {
+    name: 'Title, attract & celebration',
+    cues: [
+      { cue: 'comet', what: 'a comet crossing the title sky' },
+      { cue: 'neonBuzz', what: 'the title sign faulting' },
+      { cue: 'fizzUp', what: 'a firework shell going up' },
+      { cue: 'popBig', what: 'a big shell bursting' },
+      { cue: 'crackle', what: 'the crackle tail of a burst' },
+    ],
+  },
+  {
+    name: 'Flow & endings',
+    cues: [
+      { cue: 'win', what: 'a stage won' },
+      { cue: 'lose', what: 'a minigame lost' },
+      { cue: 'pacDeath', what: 'the tutorial death jingle' },
     ],
   },
 ];
@@ -308,6 +356,15 @@ function build() {
       const name = el('div', 'name');
       name.appendChild(el('span', 'cue', c.cue));
       name.appendChild(el('span', 'what', c.what));
+      // WHEN THE CUE WAS ADDED, in a column of its own rather than tucked under
+      // the name: it lines up down the group, so a family whose dates all read
+      // 2026-07-19 is visibly day-one furniture and the one row from last week
+      // is visibly the new arrival. That is the thing worth seeing at a glance
+      // in a levelling pass — the recent ones are where the outliers live.
+      const born = sfxBorn(c.cue);
+      const added = el('div', 'added', born || 'uncommitted');
+      added.title = born ? `first appeared in the repository on ${born}` : 'not committed yet';
+      if (!born) added.classList.add('new');
       const slider = document.createElement('input');
       slider.type = 'range';
       slider.min = '-24';
@@ -320,7 +377,7 @@ function build() {
       // tenths, and a mouse cannot reliably hit one.
       const val = el('div', 'val', `${db(live[row0.id]) >= 0 ? '+' : ''}${db(live[row0.id]).toFixed(1)} dB`);
       if (c.attack) row.classList.add('family');
-      row.append(play, name, slider, val);
+      row.append(play, name, added, slider, val);
       list.appendChild(row);
     }
     sec.appendChild(list);

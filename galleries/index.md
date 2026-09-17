@@ -24,8 +24,8 @@ history thins to one a week. Do not edit by hand.
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
-| 2026-09-10 | `b2dab03` | [2026-09-10-b2dab03.html](2026-09-10-b2dab03.html) | [bake-offs](2026-09-10-b2dab03-lab.html) | Refactor portrait preview entry and add background zoom functionality |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
 | 2026-09-14 | `31e205b` | [2026-09-14-31e205b.html](2026-09-14-31e205b.html) | [bake-offs](2026-09-14-31e205b-lab.html) | Refactor title layout and pause menu for improved alignment and readability |
 | 2026-09-15 | `08fc2a3` | [2026-09-15-08fc2a3.html](2026-09-15-08fc2a3.html) | [bake-offs](2026-09-15-08fc2a3-lab.html) | Add tests for dev URL handling, Frost aurora, weather mechanics, and object shadows |
 | 2026-09-16 | `8e79cc0` | [2026-09-16-8e79cc0.html](2026-09-16-8e79cc0.html) | [bake-offs](2026-09-16-8e79cc0-lab.html) | feat(attract): add initialHeroId for idle demo and dev modes |
+| 2026-09-17 | `32842c1` | [2026-09-17-32842c1.html](2026-09-17-32842c1.html) | [bake-offs](2026-09-17-32842c1-lab.html) | feat: add SFX desk for live audio mixing and level adjustment |

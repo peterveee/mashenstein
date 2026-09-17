@@ -80,6 +80,12 @@ function render(id, spec, pose) {
 const WORN = [
   'tail', 'back', 'bundle', 'gearBelt', 'straps', 'holster', 'quiverMount',
   'necklace', 'bracers', 'stick',
+  // Ramon's moustache, and the reason the loop below is no longer humanoid-only.
+  // The ray rig's slide dispatch re-read TOON_SPECS instead of passing the spec
+  // it had been handed, so it dropped not just this dial but ANY dial — the
+  // whole candidate seam, silently, in one pose. The humanoid dispatch has
+  // always passed `spec`; nothing asked whether the other rig did.
+  'stache',
 ];
 
 // Deliberate exceptions, by hero and dial, each with the reason. A garment the
@@ -118,10 +124,13 @@ const EXEMPT = {
   }
 }
 
+// BOTH PAINTED RIGS, not just the humanoid one. Scoping this loop to humanoids
+// was itself part of the bug: the ray rig has its own slide dispatch, made the
+// same class of mistake, and was not being asked.
 for (const hero of HEROES) {
   const id = hero.id;
   const base = TOON_SPECS[id];
-  if (!base || base.rig !== 'humanoid') continue;
+  if (!base || !['humanoid', 'ray'].includes(base.rig)) continue;
   for (const dial of WORN) {
     if (!Object.hasOwn(base, dial) || !base[dial]) continue;
     if ((EXEMPT[id] || []).includes(dial)) continue;

@@ -28,7 +28,7 @@ import { HERO_BY_ID } from '../src/data/heroes.js';
 import {
   PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE,
   PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
-  eggshellCopterArt,
+  eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T,
 } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
@@ -8425,6 +8425,13 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
+
+
+
+
+
+
+
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
 //
@@ -8490,6 +8497,10 @@ window.__gallery = {
   // magnifies to judge a drawing; sometimes the only honest answer is the raw
   // pixels at the run's own zoom.
   PROP_PAINTERS, drawProp,
+  // The frost block's LEAP is a transform in drawWorldEntity rather than part
+  // of its drawing, so no tile can show it: asking for the same curve the run
+  // asks for is the only honest way to see the bonk off the lane.
+  switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T,
   // drawThrownAxe rides along for the same reason: "how big is this thing
   // really, next to the others?" is a question about the flying weapons as a
   // family, and the axe is the biggest of them.

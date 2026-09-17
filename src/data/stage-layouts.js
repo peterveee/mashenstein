@@ -16,8 +16,8 @@ export const STAGE_LAYOUTS = {
   "plumber-1": {
     durationSec: 60,
     speedMult: 0.9,
-    appliance: { at: 0.86, high: false },
-    pits: null,
+    appliance: { at: 0.817, high: false },
+    pits: [{ at: 0.725, w: 24 }],
     rewindAt: null,
     checkpoints: [0.331, 0.666667],
     routes: { islands: [{ at: 0.07, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: "capShield" }, { at: 0.438, dwell: 4, steps: 4, rise: 29, step: 33, topPrize: "capMagnet" }], forks: [{ at: 0.58, dwell: 7.5, spring: true, sky: true, entry: 96, peak: 168, lip: 0.2, climb: 0.34, hold: 0.7, end: 48, gaps: [0.42, 0.6, 0.75], gapSec: 0.3, prize: "coins", lowPrize: "capSpeed" }], tunnels: [{ at: 0.18, dwell: 8, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88, hazards: ["crate", "barrel", "pipe", "drone"], prize: "coins", bonus: "capShield", lowPrize: "capSpeed" }] },
@@ -85,7 +85,7 @@ export const STAGE_LAYOUTS = {
     durationSec: 90,
     speedMult: 1,
     appliance: { at: 0.65, high: false },
-    pits: null,
+    pits: [{ at: 0.046, w: 56 }],
     rewindAt: null,
   },
   "frost-2": {

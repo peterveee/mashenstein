@@ -8,7 +8,7 @@ import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import {
   makeCabinetDive, DIVE_VARIANT_BY_ID, DEFAULT_DIVE_VARIANT, DEFAULT_DIVE_ZOOM, aimForZoom, EXIT_CUE,
-  DIVE_OUT_SMILE,
+  DIVE_OUT_SMILE, DIVE_LEAP_AT,
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
 import {
@@ -495,9 +495,141 @@ const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
 const PORTRAIT_HUB_FLOOR_RATIO = 0.70;
 const PORTRAIT_WALL_DRESS_DROP = 48;
 const PORTRAIT_POSTER_LIFT = 48;
+// __mash_dev.floorReflection: capture-only, and deliberately inert in the game —
+// Peter asked for this for a video and nowhere else.
+//
+// The flat-floor trick, not a ray trace: the subject drawn again mirrored about
+// the floor line. Because it is a true mirror rather than a shadow it separates
+// from his feet as he rises, which is what sells it during the leap, so nothing
+// here clamps it.
+//
+// RENDERED OFFSCREEN AT FULL OPACITY, then composited once. The first version
+// set globalAlpha on the live context and called drawToon straight into it,
+// which is wrong for a figure made of dozens of shapes: every part composites
+// against the ones behind it, so overlaps stack up and the silhouette breaks
+// into a pile of translucent blobs — the head, the cheeks and the hands all
+// readable as separate discs. One finished image at one uniform alpha has one
+// silhouette.
+//
+// Then softened, because a floor is not a mirror: blurred (scaled off the
+// capture's own resolution, so it looks the same at any density), foreshortened
+// against a floor drawn in perspective, and faded out steeply enough to die
+// inside the top third of its length. The test is that you cannot find his face
+// in it — it should read as a sheen carrying his colours.
+const REFLECT_SQUASH = 0.72;
+let REFLECT_CANVAS = null;
+function drawFloorReflection(ctx, floorY, height, anchorX, draw, { wide = 0 } = {}) {
+  const flag = typeof window !== 'undefined' && window.__mash_dev
+    ? window.__mash_dev.floorReflection : null;
+  if (!flag) return;
+  const alpha = typeof flag === 'number' ? flag : 0.14;
+  const m = ctx.getTransform();
+  const toDeviceY = (wy, wx) => m.b * wx + m.d * wy + m.f;
+  const toDeviceX = (wx, wy) => m.a * wx + m.c * wy + m.e;
+  // __mash_dev.reflectFalloff: how far down the floor it reaches, as a multiple
+  // of the mirrored figure's own height. 1 dies inside the top third; higher
+  // lets it run further before it goes.
+  const reach = typeof window !== 'undefined' && window.__mash_dev
+    && typeof window.__mash_dev.reflectFalloff === 'number' ? window.__mash_dev.reflectFalloff : 1;
+  const span = Math.abs(height * REFLECT_SQUASH * m.d) * reach;
+  const blur = Math.max(1, Math.round(height * Math.abs(m.d) * 0.025));
+  const pad = blur * 3;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  // `wide` spans the whole view instead of hugging one subject — what the row
+  // of machines needs, since there is no single anchor to sit around.
+  const halfW = wide ? wide : height;
+  for (const wx of [anchorX - halfW, anchorX + halfW]) {
+    // Down to 2.2x the figure's height, not just its own length: an AIRBORNE
+    // subject's mirror lands as far below the floor line as he is above it, so
+    // a box sized for someone standing clips the reflection away exactly when
+    // the leap makes it interesting.
+    for (const wy of [floorY - 1, floorY + height * 2.2]) {
+      const dx = toDeviceX(wx, wy), dy = toDeviceY(wy, wx);
+      x0 = Math.min(x0, dx); x1 = Math.max(x1, dx);
+      y0 = Math.min(y0, dy); y1 = Math.max(y1, dy);
+    }
+  }
+  const cw = ctx.canvas.width, chh = ctx.canvas.height;
+  x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
+  x1 = Math.min(cw, Math.ceil(x1 + pad)); y1 = Math.min(chh, Math.ceil(y1 + pad));
+  const w = x1 - x0, h = y1 - y0;
+  if (!(w > 0 && h > 0)) return;
+  if (!REFLECT_CANVAS) REFLECT_CANVAS = document.createElement('canvas');
+  const off = REFLECT_CANVAS;
+  if (off.width < w || off.height < h) { off.width = w; off.height = h; }
+  const o = off.getContext('2d');
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.clearRect(0, 0, off.width, off.height);
+  o.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
+  o.translate(0, floorY);
+  o.scale(1, -REFLECT_SQUASH);
+  o.translate(0, -floorY);
+  draw(o);
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  let fy = toDeviceY(floorY, anchorX) - y0;
+  // __mash_dev.reflectTrack: anchor the fade where the reflection actually
+  // STARTS rather than at the floor line. Pinned to the floor, the fade has
+  // already run out by the time an airborne hero's mirror lands, so the
+  // reflection disappears the moment he leaves the ground — fine if it is
+  // meant to read as a polished floor, wrong if it is meant to follow him up.
+  // Found by scanning the rendered reflection for its first painted row, so it
+  // works for the dive's own draw too, which never exposes a height.
+  const track = typeof window !== 'undefined' && window.__mash_dev
+    ? window.__mash_dev.reflectTrack : false;
+  // How much the distance from the floor costs it. Pinned to the floor line the
+  // fade has run out before an airborne hero's mirror even starts, so the
+  // reflection vanishes the instant he jumps — which is the one thing it must
+  // not do in a shot whose subject is a leap. Tracked, it starts where the
+  // reflection starts; dimming it by that same distance keeps the physics
+  // honest (a reflection thins as its subject leaves the surface) without
+  // letting it disappear.
+  let fade = 1;
+  if (track) {
+    try {
+      const px = o.getImageData(0, 0, off.width, Math.min(off.height, y1 - y0)).data;
+      const stride = off.width * 4;
+      outer: for (let ry = Math.max(0, Math.floor(fy)); ry < h; ry += 2) {
+        for (let rx = 0; rx < w; rx += 4) {
+          if (px[ry * stride + rx * 4 + 3] > 8) {
+            const gap = Math.max(0, ry - fy);
+            fade = 1 / (1 + (gap / Math.max(1, span)) * 1.7);
+            fy = ry;
+            break outer;
+          }
+        }
+      }
+    } catch (e) { /* tainted or unavailable: keep the floor anchor */ }
+  }
+  o.globalCompositeOperation = 'destination-out';
+  // Nothing above the floor line: a reflection cannot climb the wall.
+  if (fy > 0) { o.fillStyle = '#000'; o.fillRect(0, 0, off.width, fy); }
+  const g = o.createLinearGradient(0, fy, 0, fy + span);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.3, 'rgba(0,0,0,0.62)');
+  g.addColorStop(0.6, 'rgba(0,0,0,0.94)');
+  g.addColorStop(1, 'rgba(0,0,0,1)');
+  o.fillStyle = g;
+  o.fillRect(0, Math.max(0, fy), off.width, off.height - Math.max(0, fy));
+  o.globalCompositeOperation = 'source-over';
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha * fade;
+  ctx.filter = `blur(${blur}px)`;
+  ctx.drawImage(off, 0, 0, w, h, x0, y0, w, h);
+  ctx.restore();
+}
+
 function hubPresentation() {
   const portrait = isPhonePortraitPresentation();
-  const zoom = portrait ? HUB_PORTRAIT_ZOOM : HUB_ZOOM;
+  // __mash_dev.hubZoomMul: capture-only, same pattern as hideSpecialOrb — scales
+  // the room's own zoom so a tight shot is RENDERED tight rather than cropped
+  // out of a wide one and upscaled. The floor-pin arithmetic below is already
+  // written against `zoom`, so the floor line holds and the machine grows up
+  // from it; with __mash_dev.pinCamX set, camX stops clamping at 0 and the
+  // pinned station stays dead centre at any multiplier.
+  const zoomMul = typeof window !== 'undefined' && window.__mash_dev && window.__mash_dev.hubZoomMul
+    ? window.__mash_dev.hubZoomMul : 1;
+  const zoom = (portrait ? HUB_PORTRAIT_ZOOM : HUB_ZOOM) * zoomMul;
   const camY = portrait
     ? HUB_FLOOR_PIN_Y - (H * PORTRAIT_HUB_FLOOR_RATIO) / zoom
     : HUB_CAM_Y;
@@ -522,15 +654,28 @@ function hubPresentation() {
 // One floor treatment for both halves of the hub. The Food Court draws this in
 // camera space while the Trophy Room draws it across its whole world, but the
 // skirting, colours and tile dimensions stay identical.
+//
+// The grid is deliberately OFF phase. Cabinets stand at 96 + 88n, and 88 and 32
+// share a factor of 8 — so with the tiles in phase at world 0, machines 1, 5 and
+// 9 (x 96, 448, 800) have a tile boundary running exactly down their centre
+// line. Anywhere else on the floor that edge is just the checker; inside that
+// machine's own pool of light it bisects the pool symmetrically and reads as a
+// crease in the light rather than as floor. Cabinet centres fall on 0, 8, 16 and
+// 24 mod 32, so any phase that is not a multiple of 8 clears all nine at once,
+// and 4 is the furthest from every one of them.
+const FLOOR_TILE_PHASE = 4;
 function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
   const wallY1 = floorY - 2;
   ctx.fillStyle = '#38304a';
   ctx.fillRect(0, wallY1, width, 6);
   ctx.fillStyle = '#1c1626';
   ctx.fillRect(0, wallY1 + 6, width, H - wallY1 - 6);
+  // Floored modulo, so a negative offset starts the run at or before the left
+  // edge instead of leaving an untiled sliver there.
+  const phase = ((worldOffsetX - FLOOR_TILE_PHASE) % 32 + 32) % 32;
   for (let row = 0; row < 3; row++) {
-    for (let x = -(worldOffsetX % 32); x < width; x += 32) {
-      ctx.fillStyle = (Math.floor((x + worldOffsetX) / 32) + row) % 2 === 0
+    for (let x = -phase; x < width; x += 32) {
+      ctx.fillStyle = (Math.floor((x + worldOffsetX - FLOOR_TILE_PHASE) / 32) + row) % 2 === 0
         ? '#241c30'
         : '#1c1626';
       ctx.fillRect(Math.round(x), wallY1 + 10 + row * 22, 32, 22);
@@ -846,6 +991,18 @@ function cabinetScene(cab) {
 // stated once and derived from rather than restated.
 const SCREEN_WIN_FRAC = 0.2;   // window width, as a fraction of the scene canvas
 const SCREEN_WIN_TOP = 0.62;   // where the window's top edge sits on it
+// __mash_dev.screenWinTop: capture-only, the same pattern as the other hide/pin
+// flags. In portrait the renderer publishes a frame ~4x taller than the
+// authored one, so the level's ground line falls at about 0.19 of the scene
+// and a window pinned at 0.62 opens entirely BELOW it — the glass shows nothing
+// but ground (cabinetScreenGeometry says as much where it clamps). Lifting the
+// window puts the horizon, the sky and the cabinet's own hazards back on the
+// screen for a shot that is mostly THAT screen. Read through a function so the
+// art and the dive's foot geometry can never disagree about where the window is.
+function screenWinTop() {
+  const v = typeof window !== 'undefined' && window.__mash_dev ? window.__mash_dev.screenWinTop : null;
+  return typeof v === 'number' && v >= 0 && v <= 1 ? v : SCREEN_WIN_TOP;
+}
 
 // Where the attract window puts the level's own ground line, and how big one
 // run-world unit becomes, once a scene has been squeezed into a piece of glass
@@ -870,7 +1027,7 @@ export function cabinetScreenGeometry(glassW, glassH) {
   // picture to put anybody on — the attract screen is all ground.
   const groundAt = (frameH) => {
     const src = frameH / 2;
-    return (src * (GROUND_Y / frameH) - src * SCREEN_WIN_TOP) * perSrc;
+    return (src * (GROUND_Y / frameH) - src * screenWinTop()) * perSrc;
   };
   const raw = groundAt(H);
   // So when the window misses it, fall back to WHERE THE AUTHORED FRAME PUTS IT
@@ -922,7 +1079,7 @@ export function cabinetScreenArt(cab, t, seed = 0) {
   const pan = (cycle < 1 ? cycle : 2 - cycle) * span;
   // Framed on the ground line (GROUND_Y is 232 of 270, so 0.86 of the source)
   // with headroom above it for the flyers.
-  return (c, cw, ch) => c.drawImage(src, pan, src.height * SCREEN_WIN_TOP, winW, winW * (ch / cw), 0, 0, cw, ch);
+  return (c, cw, ch) => c.drawImage(src, pan, src.height * screenWinTop(), winW, winW * (ch / cw), 0, 0, cw, ch);
 }
 
 // cabinetPalette() mixes a dozen colours per call and the answer only depends
@@ -1773,7 +1930,15 @@ export class HubState {
     // a placement, not a rebuild. Nothing else in the hub reads her id.
     // Optional, as it is at every other call site: a flow that names no game song
     // simply has none, and the line below already falls back to the authored bank.
-    const musicSong = this.flow.gameSongFor?.('hub');
+    // __mash_dev.hubSong: capture-only, the same pattern as the other hooks —
+    // a {bank, mix, arrangement} the concourse plays instead of its own theme.
+    // All three together on purpose: an imported song's mix and arrangement live
+    // in its own module rather than in MIX/ARRANGEMENTS (see src/dev/desk-songs.js),
+    // so a bank passed on its own would play the notes with none of the balance.
+    // Nothing is imported for it — the capture hands the module in.
+    const devSong = typeof window !== 'undefined' && window.__mash_dev
+      ? window.__mash_dev.hubSong : null;
+    const musicSong = devSong || this.flow.gameSongFor?.('hub');
     const musicBank = musicSong?.bank || HUB_THEME;
     // Returning from the Trophy Room is not a new song. Re-banking here resets step,
     // nextTime and the song gap, which is why the Food Court used to restart at the
@@ -1851,7 +2016,15 @@ export class HubState {
     // tall frame is mostly floor and ceiling, the cabinet row is a thin band across
     // the middle, and a gentle push leaves the glass a postage stamp in the centre
     // of a lot of empty room. 3x is what makes the machine the picture.
-    const gain = base.portrait ? PORTRAIT_DIVE_ZOOM - 1 : shot.gain;
+    // __mash_dev.diveZoomGain: capture-only, same pattern as hideSpecialOrb —
+    // overrides the push-in's gain, including portrait's hardcoded one below.
+    // At 0 the dive stops moving the camera at all (aimForZoom(1) is 0, so the
+    // floor pin holds camY too), which is what a locked-off shot needs: the
+    // machine then sits in exactly one place from frame zero to the last frame,
+    // and a static crop centred on it is centred in all of them. The dive
+    // animation itself is untouched — only the camera's push.
+    const devGain = typeof window !== 'undefined' && window.__mash_dev ? window.__mash_dev.diveZoomGain : null;
+    const gain = devGain != null ? devGain : (base.portrait ? PORTRAIT_DIVE_ZOOM - 1 : shot.gain);
     // Derived HERE, from the gain actually being used, because portrait substitutes
     // its own and the shot does not know that. A variant's explicit aim still wins.
     const aim = shot.aimOverride ?? aimForZoom(1 + gain);
@@ -1900,6 +2073,12 @@ export class HubState {
       const L = this.layout();
       return this.dive.camX(viewW, W / L.zoomFinal);
     }
+    // __mash_dev.pinCamX: capture-only, same pattern as hideSpecialOrb — pins
+    // the (non-dive) camera to a fixed world x instead of following the
+    // player, so a recording can hold a station dead-centre through the whole
+    // walk-up rather than tracking px and drifting off it.
+    const pinCamX = typeof window !== 'undefined' && window.__mash_dev ? window.__mash_dev.pinCamX : null;
+    if (pinCamX != null) return Math.max(0, Math.min(this.width - viewW, pinCamX - viewW / 2));
     return Math.max(0, Math.min(this.width - viewW, this.px - viewW / 2));
   }
 
@@ -1984,7 +2163,11 @@ export class HubState {
         // Coming OUT ends in the room: he is already standing at the machine, so
         // there is nothing to hand over to and the player simply has the controls
         // back. Only the way IN opens anything.
-        if (!out) this.flow.openCabinet(cab);
+        // __mash_dev.hideCabinetAuto: capture-only, same pattern as
+        // hideSpecialOrb/hideFuse/hideNpcs — lets a recording hold on the hub
+        // past dive.done without the mission-select overlay auto-opening.
+        const hideCabinetAuto = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideCabinetAuto);
+        if (!out && !hideCabinetAuto) this.flow.openCabinet(cab);
       }
       Input.endFrame();
       return;
@@ -1994,7 +2177,14 @@ export class HubState {
     this.updateNpcs(dt);
     const st = this.stations();
     const directionHeld = Input.held('left') || Input.held('right');
-    const walkSpeed = heldWalkSpeed(HUB_WALK_SPEED, this.walkHoldT);
+    // __mash_dev.walkSpeed: capture-only, the same pattern as the other hooks.
+    // The concourse is 120 units a second and the spawn is only 56 units from
+    // the first machine, so a hero who sets off on the beat arrives a third of a
+    // beat early and then stands there. Scaling the walk lets the approach FILL
+    // the bars it is given — he is still walking on the frame the leap starts.
+    const walkScale = typeof window !== 'undefined' && window.__mash_dev
+      && typeof window.__mash_dev.walkSpeed === 'number' ? window.__mash_dev.walkSpeed : 1;
+    const walkSpeed = heldWalkSpeed(HUB_WALK_SPEED, this.walkHoldT) * walkScale;
     // Read before anything moves him: every route into the concourse floor —
     // keyboard, tap-to-walk, drag-steering — lands in this.px, so measuring the
     // frame's actual displacement catches all three without each having to
@@ -2003,8 +2193,18 @@ export class HubState {
     // them running on the spot.
     const gaitPrevPx = this.px;
     if (Input.pressed('jump') && this.jumpY === 0) {
+      // JUMPING INTO A MACHINE. The hop starts for real — its velocity, its cue —
+      // and the dive picks it up from the leap, so the first frames the player sees
+      // are the ordinary hub jump they asked for and the arc simply carries on into
+      // the glass. Pressing USE keeps its crouch; this route has already had one.
+      const jumpAt = nearestTo(st, this.px, STATION_R);
+      const intoCab = jumpAt && jumpAt.type === 'cabinet' && jumpAt.unlocked;
       this.jumpVy = HUB_JUMP_V;
       Audio.sfx('jump');
+      if (intoCab && this.startCabinetDive(jumpAt, 'in', { fromJump: true })) {
+        Input.endFrame();
+        return;
+      }
     }
     if (this.jumpY > 0 || this.jumpVy > 0) {
       this.jumpVy -= HUB_JUMP_GRAVITY * dt;
@@ -2365,7 +2565,7 @@ export class HubState {
   // Start the hero's leap into `st`. Returns false when the dive is switched
   // off or one is already running, in which case interact() falls through to
   // the old straight-to-stage-select path.
-  startCabinetDive(st, dir = 'in') {
+  startCabinetDive(st, dir = 'in', { fromJump = false } = {}) {
     if (!DIVE_ON_USE || this.dive) return !!this.dive;
     const glass = cabinetScreenRect(st.x - CAB_W / 2, CAB_Y, CAB_W, CAB_H);
     const g = cabinetScreenGeometry(glass.w, glass.h);
@@ -2374,6 +2574,9 @@ export class HubState {
       heroId: this.avatarId(),
       variant: this.diveVariant || SELECTED_DIVE_VARIANT,
       dir,
+      // Jumped into rather than walked into: skip the windup, because the hub's
+      // own hop has already launched and its jump cue has already played.
+      startAt: fromJump ? DIVE_LEAP_AT : 0,
       cabX: st.x, cabY: CAB_Y, cabW: CAB_W, cabH: CAB_H,
       floorY: HUB_FLOOR_PIN_Y, heroH: PLAYER_H,
       startX: this.px, facing: 1,
@@ -2484,6 +2687,10 @@ export class HubState {
   }
 
   npcs() {
+    // __mash_dev.hideNpcs empties the hub crowd for capture: the loitering
+    // owned heroes read as clutter in a solo-hero shot, and the same
+    // capture-only pattern as hideSpecialOrb/hideFuse applies here.
+    if (typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideNpcs)) return [];
     // Heroes loiter in the hub; DUST DEVIL cleans impossible things. The hero
     // the player is currently wearing stays out of the crowd -- one Lorenzo.
     const actors = this.npcActors || HEROES.map((h, i) => ({ id: h.id, x: 110 + i * 90 + (i % 3) * 22, facing: 1, state: 'idle' }));
@@ -2868,6 +3075,14 @@ export class HubState {
       ctx.restore();
     }
     // stations
+    //
+    // Wrapped so the row can be painted TWICE: once mirrored into the floor and
+    // once for real. The reflection goes in here, after the floor and its pools
+    // of light and before the machines themselves, so it reads as something
+    // lying in the pool rather than as a wash over it. Everything the loop draws
+    // comes with it, the glass included — so mid-dive the reflected screen has
+    // the hero running about inside it, which is the detail worth having.
+    const drawStations = (ctx) => {
     for (const s of this.stations()) {
       const x = Math.round(s.x - cam);
       if (x < -80 || x > layout.viewW + 40) continue;
@@ -2970,6 +3185,14 @@ export class HubState {
         drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, doorOpen);
       }
     }
+    };
+    // The machines in the floor, then the machines. Same floor line, squash,
+    // blur and falloff as the hero's, so the two read as one wet floor rather
+    // than as two effects — and a cabinet is tall, so its mirror would run to
+    // the bottom of the frame if the falloff were not already cutting it.
+    drawFloorReflection(ctx, layout.floorY, CAB_H, layout.viewW / 2, drawStations,
+      { wide: layout.viewW });
+    drawStations(ctx);
     // NPC heroes
     for (const n of this.npcs()) {
       // Dolores already drew, inside her own counter (see the bench station
@@ -3055,13 +3278,17 @@ export class HubState {
     // is. What the dive draws here is only the part of the leap still in FRONT
     // of the glass — everything past the plane is painted inside the screen.
     if (this.dive) {
-      this.dive.drawOutside(ctx, Math.round(this.dive.cabX - cam), { lit: castLit(pxs) });
+      const drawDive = (c) => this.dive.drawOutside(c, Math.round(this.dive.cabX - cam), { lit: castLit(pxs) });
+      drawFloorReflection(ctx, layout.floorY, PLAYER_H, Math.round(this.dive.cabX - cam), drawDive);
+      drawDive(ctx);
       ctx.restore();
       return;
     }
     drawSoftContactShadow(ctx, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
       { alpha: 0.44, ink: '4,3,9' });
-    drawToon(ctx, heroId, {
+    // Built once and drawn twice: the reflection has to be the SAME pose object,
+    // or the mirror would animate a frame of its own.
+    const heroPose = {
       kind: airborne ? 'jump' : moving ? 'run' : 'idle',
       // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
       //
@@ -3081,14 +3308,21 @@ export class HubState {
       // Just came back out of a machine — see the dive's own landing smile, which
       // this continues so it lasts long enough to be seen.
       faceJoy: this.arrivedT > 0,
-    }, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
+    };
+    const drawHero = (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
+    drawFloorReflection(ctx, layout.floorY, PLAYER_H, pxs, drawHero);
+    drawHero(ctx);
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits
     // in clear air over grumpos' helmet crest and pika's ears while hovering a
     // head-and-a-half above the ones who end at the nominal line. Measured, the
     // marker keeps the same sliver of air over every hero in the cast.
     const headY = layout.floorY - this.jumpY - toonInkTop(heroId) * PLAYER_H;
-    drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
+    // __mash_dev.hidePlayerMarker: capture-only, same pattern as hideSpecialOrb
+    // — the bouncing arrow over the avatar's head is a readout for whoever is
+    // holding the controls, and a recording has nobody holding them.
+    const hideMarker = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hidePlayerMarker);
+    if (!hideMarker) drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
     // the contextual prompt, the location name, a PLUGS/COINS/ACT readout and a
@@ -3109,6 +3343,11 @@ export class HubState {
     // TO LEAVE" directly above "TAP TO CLOSE" reads as two competing
     // instructions.
     if (this.poster) { this.drawPosterZoom(ctx); return; }
+    // __mash_dev.hideHubFooter: capture-only, same pattern as hideSpecialOrb —
+    // takes every piece of the hub's bottom-of-screen text off the picture
+    // (the contextual prompt/NPC prompt, the PLUGS/COINS/legend row, and the
+    // room name), since none of them answer a question a recording is asking.
+    const hideHubFooter = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideHubFooter);
     // Focus first, so this row names whatever confirm is actually pointed at. It
     // used to test the station first, which meant standing nose to nose with a
     // hero in front of a cabinet read out the CABINET's name and verb while the
@@ -3119,7 +3358,7 @@ export class HubState {
       // same rectangles are used by update() for touch hit-testing. Portrait
       // anchors the cluster directly below the focused hero; landscape keeps
       // its established footer row.
-      drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc),
+      if (!hideHubFooter) drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc),
         (this.focusNpc.x - cam) * layout.zoom, npcPromptAnchorY(layout));
     } else if (this.near) {
       // A locked cabinet gets no verb. "PRESS ENTER" on a machine that will
@@ -3197,7 +3436,7 @@ export class HubState {
     const drawFooterTextCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
     const coins = `COINS ${formatCoins(slot.coins)}`;
     const plugs = `PLUGS ${totalPlugs(slot)}/${MAX_PLUGS}`;
-    if (layout.portrait) {
+    if (!hideHubFooter && layout.portrait) {
       const plugsW = textWidth(plugs, statusS);
       const coinsW = textWidth(coins, statusS);
       const resourceGap = 14 * statusS;
@@ -3205,14 +3444,14 @@ export class HubState {
       drawFooterText(ctx, plugs, W / 2 - resourceW / 2, statusY, '#48e0c8', statusS);
       drawFooterText(ctx, coins, W / 2 + resourceW / 2 - coinsW, statusY, '#f6d33c', statusS);
       drawFooterTextCentered(ctx, 'THE LAST FUNCTIONING FOOD COURT', W / 2, promptLastY, '#3f8a80', statusS);
-    } else {
+    } else if (!hideHubFooter) {
       drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, statusY, '#3f8a80', statusS);
       const coinsW = textWidth(coins, statusS);
       drawText(ctx, coins, W - 8 - coinsW, statusY, '#f6d33c', statusS);
       drawText(ctx, plugs, W - 20 - coinsW - textWidth(plugs, statusS), statusY, '#48e0c8', statusS);
     }
 
-    if (promptText) {
+    if (promptText && !hideHubFooter) {
       const promptLines = layout.portrait
         ? wrapText(promptText, W - 32, promptS, 2)
         : [promptText];
@@ -3232,7 +3471,7 @@ export class HubState {
     // that genuinely has nothing to say after you have read it once. It takes
     // the slot above the prompt now that the location name has moved out of it.
     const legendA = this.hasMoved ? fadeOut(this.movedAt, 0.35, 0.5) : fadeOut(this.t, 7, 1);
-    if (legendA > 0 && !Input.isTouchDevice()) {
+    if (legendA > 0 && !Input.isTouchDevice() && !hideHubFooter) {
       ctx.save();
       ctx.globalAlpha = legendA;
       // The posters earn a clause here rather than a line of their own in

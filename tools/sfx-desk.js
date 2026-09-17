@@ -19,7 +19,7 @@
 // Ports: 8001 is the dev server and 8010 is the song mixer, so this takes 8020.
 import { createServer } from 'http';
 import { spawn } from 'child_process';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
@@ -57,6 +57,27 @@ function bundle() {
 // quietly unhook the family from it.
 const ok = (v) => Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 8;
 
+// EVERY CUE THE GAME ACTUALLY FIRES, read off the call sites rather than kept as
+// a list here. It is what lets a new cue be trimmed for the first time (the
+// table only holds cues somebody has levelled) without the desk also being able
+// to invent one: a name nobody calls is a typo, and a typo'd line in SFX_TRIM
+// trims nothing and looks exactly like a decision.
+function knownCues() {
+  const names = new Set();
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith('.js')) continue;
+      const text = readFileSync(full, 'utf8');
+      for (const m of text.matchAll(/sfx\(\s*'([a-zA-Z0-9_]+)'/g)) names.add(m[1]);
+      for (const m of text.matchAll(/case '([a-zA-Z0-9_]+)':/g)) names.add(m[1]);
+    }
+  };
+  walk(join(root, 'src'));
+  return names;
+}
+
 // One pass over the file for all three tables, so a Save is one write and a
 // half-applied save is not a state the desk can leave behind.
 function writeAll({ trims = {}, weapons = {}, attack = null }) {
@@ -72,16 +93,31 @@ function writeAll({ trims = {}, weapons = {}, attack = null }) {
     const end = src.indexOf('\n};', start) + 3;
     const block = src.slice(start, end);
     const re = new RegExp(`(?<![\\w.])${key}: (-?[\\d.]+)`);
-    if (!re.test(block)) {
-      refused.push(`${label}: ${block.includes(`${key}:`) ? 'not a plain number' : 'not in the table'}`);
+    const n = Number(Number(value).toFixed(3));
+    let next;
+    if (re.test(block)) {
+      next = block.replace(re, `${key}: ${n}`);
+    } else if (block.includes(`${key}:`)) {
+      // The value is an expression, not a literal — `contact: ATTACK_MASTER_TRIM`
+      // is shared by the whole weapon family on purpose, and flattening it here
+      // would quietly unhook them. That one has its own fader; refuse this door.
+      refused.push(`${label}: not a plain number`);
       return false;
+    } else {
+      // A CUE WITH NO ENTRY IS AN UNTRIMMED CUE, not an unknown one: the lookup
+      // in audio.js is `SFX_TRIM[name] ?? 1`, so a cue nobody has levelled yet
+      // simply is not in the table. Adding it is the whole point of moving its
+      // fader, so the line is written rather than the save refused.
+      next = `${block.slice(0, -3)}\n  ${key}: ${n},\n};`;
     }
-    src = src.slice(0, start) + block.replace(re, `${key}: ${Number(Number(value).toFixed(3))}`) + src.slice(end);
+    src = src.slice(0, start) + next + src.slice(end);
     return true;
   };
 
+  const known = knownCues();
   for (const [cue, value] of Object.entries(trims)) {
     if (!ok(value)) { refused.push(`${cue}: out of range`); continue; }
+    if (!known.has(cue)) { refused.push(`${cue}: nothing in the game fires it`); continue; }
     if (inBlock('export const SFX_TRIM = {', cue, value, cue)) written.push(cue);
   }
 

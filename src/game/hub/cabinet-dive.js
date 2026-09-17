@@ -77,6 +77,33 @@ const GAIT_DISTANCE_PER_CYCLE = 40 / 58;
 const RUNOFF_TAKEOFF = 0.62;
 const RUNOFF_JUMP_H = 1.15;
 
+// CAPTURE-ONLY PHASE OVERRIDES, read from the query at MODULE LOAD.
+//
+// Same intent as the __mash_dev.hideX flags, but it cannot be one of them: the
+// phase table is resolved once at import — PHASE_AT, DIVE_DURATION, the
+// out-clock seams and every cue time hang off it — so a flag set after boot
+// would arrive long after those constants were frozen. The query string is
+// there before the first module runs, which is early enough.
+//
+//   ?divephases=windup=0,set=0.6667
+//
+// Durations only, by phase name; anything not named keeps its shipped value,
+// and with no query at all this is inert. Cue times are all expressed as
+// AT.<phase>.t0 rather than as numbers, so they re-place themselves.
+function divePhaseOverrides() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  const raw = new URLSearchParams(window.location.search).get('divephases');
+  if (!raw) return null;
+  const out = {};
+  for (const part of raw.split(',')) {
+    const [name, value] = part.split('=');
+    const n = Number(value);
+    if (name && Number.isFinite(n) && n >= 0) out[name.trim()] = n;
+  }
+  return Object.keys(out).length ? out : null;
+}
+const PHASE_OVERRIDES = divePhaseOverrides();
+
 export const DIVE_PHASES = [
   { name: 'windup', dur: 0.35 },
   { name: 'leap', dur: 0.60 },
@@ -92,7 +119,8 @@ export const DIVE_PHASES = [
   // has time to establish. It is a swell, loudest about half a second in, and at
   // 0.18 the shutter arrived while it was still on its way up.
   { name: 'exit', dur: 0.38 },
-];
+].map((p) => (PHASE_OVERRIDES && PHASE_OVERRIDES[p.name] != null
+  ? { ...p, dur: PHASE_OVERRIDES[p.name] } : p));
 
 export const DIVE_DURATION = DIVE_PHASES.reduce((a, p) => a + p.dur, 0); // 2.40
 
@@ -149,6 +177,11 @@ function inToOut(m) {
 // The eleven samples the filmstrip reads. Placed ON the beats rather than on an
 // even grid — an evenly spaced strip spends four cells on the flight and none
 // on the crossing, which is the only frame anyone actually argues about.
+// When the leap itself begins, for callers that want to start there — the jump
+// route skips the windup entirely. Exported so the hub names the moment rather than
+// knowing the phase table.
+export const DIVE_LEAP_AT = AT.leap.t0;
+
 export const DIVE_KEYFRAMES = [
   { t: 0.00, label: 'stand' },
   { t: 0.20, label: 'crouch' },
@@ -289,7 +322,7 @@ class CabinetDive {
     cabX, cabY, cabW, cabH, style,
     floorY, heroH, startX, facing = 1,
     insideGroundY, insideUnit,
-    camStart = 0, zoomGain = 0.22, zoomOverride = null,
+    camStart = 0, zoomGain = 0.22, zoomOverride = null, startAt = 0,
     sfx = null, voiceSfx = null, voiceReverse = null, shake = null,
   }) {
     this.cab = cab;
@@ -345,12 +378,25 @@ class CabinetDive {
     this.groundInside = g.y + insideGroundY;
     this.feetCross = this.groundInside - this.crossH * 0.35;
 
-    this.t = 0;
+    // STARTING PART WAY IN, for the route that does not need the windup.
+    //
+    // Pressing USE is a standing start: the crouch is the anticipation that turns a
+    // stand into a decision, and without it the leap comes from nowhere. Pressing
+    // JUMP is not — the player has already done the anticipating, the hub has
+    // already launched its own hop and played its own jump cue, and a hero who
+    // crouches AFTER leaving the floor is playing the beat backwards.
+    //
+    // So that route starts the clock at the leap and the windup simply never
+    // happens. Cues before the start are marked as spent rather than fired, or the
+    // crouch's scuff would arrive under a hero already in the air.
+    this.t = startAt;
     this.done = false;
     // Its own length, because the two directions no longer share one.
     this.duration = this.dir === 'out' ? DIVE_OUT_DURATION : DIVE_DURATION;
     this.cueIdx = 0;
-    this.seek(0);
+    const table = this.dir === 'out' ? OUT_CUES : CUES;
+    while (this.cueIdx < table.length && table[this.cueIdx].t < startAt) this.cueIdx++;
+    this.seek(this.t);
   }
 
   phase() {
@@ -625,9 +671,18 @@ class CabinetDive {
     } else if (t >= AT.cross.t0 && t < AT.runoff.t0) {
       // Released once he is through. The hand comes off; the machine is his now.
       this.stickFwd = 1 - smooth(clamp01((t - AT.cross.t0) / 0.22));
-    } else if (t >= AT.runoff.t0) {
+    } else if (t >= AT.runoff.t0 && t < AT.exit.t0) {
       // ...and then all the way right, because now he is running.
       this.stick = 0.35 + 0.65 * easeOut(at(t, 'runoff') * 3);
+    } else if (t >= AT.exit.t0) {
+      // AND THE HAND COMES OFF. The paragraph above says the stick is "released
+      // to centre once he is gone" and it never was: `at()` saturates past its
+      // own phase, so the last frame of the run-off held all the way right for
+      // the whole of the exit and beyond. That is a machine nobody is playing
+      // sitting with its stick shoved over — visible for as long as the pause
+      // lasts. A sprung stick returns on its own, so it eases back rather than
+      // snapping on the frame he vanishes.
+      this.stick = 1 - smooth(clamp01((t - AT.exit.t0) / 0.18));
     }
 
     // ---- the jump button, 0..1
@@ -673,7 +728,17 @@ class CabinetDive {
   }
 
   update(dt) {
-    this.seek(this.t + dt);
+    // __mash_dev.holdDiveAt: capture-only, the same pattern as the hub's
+    // hideSpecialOrb/hideNpcs flags. The dive's clock stops at the given
+    // dive-relative time instead of running out to DIVE_DURATION, so `done`
+    // never fires: the dive keeps owning the screen, the hub's ordinary avatar
+    // never pops back in front of the machine, and the cabinet's own attract
+    // art carries on animating live. That turns the exit-phase beat into a hold
+    // of any length a cut needs, rather than a 0.38s window to hit.
+    const hold = typeof window !== 'undefined' && window.__mash_dev
+      ? window.__mash_dev.holdDiveAt : null;
+    const next = this.t + dt;
+    this.seek(hold != null && this.dir !== 'out' ? Math.min(next, hold) : next);
     this.fireCues();
   }
 

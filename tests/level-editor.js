@@ -23,6 +23,7 @@ import {
   renderStageLayouts, writeStageLayouts, snapshotStageLayouts, validateLayouts,
 } from '../tools/lib/stage-layouts-source.js';
 import { grabAt, dropAt, MIN_SPAN } from '../tools/lib/timeline-drag.js';
+import { createLayoutHistory } from '../tools/lib/level-edit-history.js';
 import { LOOP } from '../src/game/loop.js';
 
 let failures = 0;
@@ -389,6 +390,72 @@ function modelFor(id, over = undefined) {
   const ring = modelFor('speed-1', { ...STAGE_LAYOUTS['speed-1'], loopAt: 0.999 });
   ok(!buildScene(ring, null).entities.some((e) => e.type === 'loopPad'),
     'and a ring that would run past the tape is not planted');
+}
+
+// UNDO and REVERT: the session history. A draft is 27 stages and the editor
+// shows one, so the claims worth pinning are that a snapshot knows which stage
+// it belongs to, that "unsaved" is derived rather than remembered, and that a
+// revert is itself undoable.
+{
+  const saved = JSON.parse(JSON.stringify(STAGE_LAYOUTS));
+  const state = {
+    layouts: JSON.parse(JSON.stringify(STAGE_LAYOUTS)),
+    stageId: 'plumber-3',
+    sel: null,
+  };
+  const h = createLayoutHistory({ state, saved });
+  h.reset();
+
+  ok(!h.dirty() && !h.canUndo(), 'a fresh draft is clean and has nothing to take back');
+
+  state.layouts['plumber-3'].durationSec = 99;
+  h.touch();
+  ok(h.dirty() && h.stageDirty('plumber-3'), 'an edit shows up as unsaved');
+  ok(h.undo() && state.layouts['plumber-3'].durationSec !== 99,
+    'and ⌘Z puts the number back');
+  ok(!h.dirty(), 'a draft edited and then undone is clean again — the flag it replaced was not');
+
+  // The snapshot carries its stage: undoing takes you to the level you edited.
+  state.layouts['plumber-3'].durationSec = 42;
+  h.touch();
+  state.stageId = 'speed-1';
+  h.sync();
+  state.layouts['speed-1'].speedMult = 1.5;
+  h.touch();
+  h.undo();
+  ok(state.layouts['speed-1'].speedMult !== 1.5 && state.layouts['plumber-3'].durationSec === 42,
+    'undo takes back the last edit only, leaving the other stage alone');
+  h.undo();
+  ok(state.stageId === 'plumber-3' && state.layouts['plumber-3'].durationSec !== 42,
+    'and undoing an edit made on another stage goes back to that stage to do it');
+
+  // One gesture, one step: a slider dragged across fifty values.
+  h.begin();
+  for (let i = 1; i <= 50; i++) { state.layouts['plumber-3'].speedMult = 1 + i / 100; h.touch(); }
+  h.end();
+  ok(h.undo() && state.layouts['plumber-3'].speedMult === STAGE_LAYOUTS['plumber-3'].speedMult,
+    'a bracketed gesture is one undo step, not fifty');
+
+  // The baseline moves on a save and nowhere else.
+  state.layouts['plumber-3'].durationSec = 77;
+  h.touch();
+  h.markSaved();
+  ok(!h.dirty(), 'after a save the draft on disk is the clean one');
+  ok(!h.revertStage(), 'and a stage with nothing unsaved has nothing to revert');
+
+  state.layouts['plumber-3'].durationSec = 13;
+  state.layouts['plumber-3'].pits = null;
+  state.sel = { kind: 'pit', i: 3 };
+  h.touch();
+  ok(h.revertStage() && state.layouts['plumber-3'].durationSec === 77,
+    'REVERT takes the stage back to the last SAVED copy, not the file at boot');
+  ok(state.sel === null, 'and drops a selection that was an index into arrays it just replaced');
+  ok(h.undo() && state.layouts['plumber-3'].durationSec === 13,
+    'a revert is itself one undo step, which is why it needs no confirmation');
+
+  // A stage the draft has not touched is never rewritten by any of this.
+  ok(JSON.stringify(state.layouts['frost-1']) === JSON.stringify(STAGE_LAYOUTS['frost-1']),
+    'a stage nobody edited comes out of the session byte-identical');
 }
 
 console.log(failures ? 'LEVEL EDITOR: FAILED' : 'LEVEL EDITOR: PASSED');

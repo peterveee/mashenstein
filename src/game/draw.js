@@ -10,7 +10,7 @@ import { drawSoftContactShadow } from '../engine/shadows.js';
 import {
   eggshellCopterArt,
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
-  SWITCH_THROW_FRAMES, SWITCH_THROW_T,
+  SWITCH_THROW_FRAMES, SWITCH_THROW_T, switchBonkLift,
   TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
   BATTERY_FOCUS,
@@ -701,6 +701,13 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // The golden appliance gets a more pronounced hover so it reads as its own
   // thing — a deliberate prize, not scenery you run past.
   if (e.kind === 'pickup' && e.def.appliance) y += Math.round(Math.sin(t * 2.4 + e.bobPhase) * 3);
+
+  // THE BONK. Art only — the box's 12x11 hitbox never moves, so a hero cannot
+  // be hit by a block that has jumped, and one that is still in the air cannot
+  // be bumped a second time (the collision loop skips a thrown switch anyway).
+  // Rounded, like every other world y in here: a box travelling on fractional
+  // pixels resamples itself on the way up and arrives blurred.
+  if (e.def && e.def.isSwitch && e.thrown) y -= Math.round(switchBonkLift(e.thrownT));
 
   if (e.def && e.def.isGap) return; // drawn by ground renderer
   const sprName = e.def ? e.def.sprite : null;

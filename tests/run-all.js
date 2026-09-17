@@ -53,6 +53,12 @@ const suites = [
   'tests/settings-menu.js',
   'tests/calibrate.js',
   'tests/sound-test-menu.js',
+  // Its sibling on the tools side: every cue the engine can play has a row on
+  // the SFX desk and a date in the birthday record. Seventeen cues — every menu
+  // step, every fanfare, the title buzz, the ice deck — were unlistenable on
+  // the desk until this existed, because none of them are in the lane and so
+  // nobody ever missed them.
+  'tests/sfx-desk-coverage.js',
   'tests/visualisers.js',
   // The other end of the same pack: the presets driven by an imported file instead
   // of by the sequencer. song-analysis pins the engine mirror that render-video and

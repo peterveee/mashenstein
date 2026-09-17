@@ -50,6 +50,7 @@ import { CHOPIN3 } from './chopin3.js';
 import * as ENDING from './ending.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3_2 from './everything-is-looking-up-m3-2.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3 from './everything-is-looking-up-m3.js';
+import * as FOODCOURTTWEAK from './foodcourttweak.js';
 import * as MIN_NEW from './min-new.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
@@ -120,6 +121,7 @@ export const IMPORTED_BY_ID = {
   "ending": { bank: ENDING.bank, title: ENDING.title, group: "imported", writable: true },
   "everything-is-looking-up-m3-2": { bank: EVERYTHING_IS_LOOKING_UP_M3_2.bank, title: EVERYTHING_IS_LOOKING_UP_M3_2.title, group: "imported", writable: true },
   "everything-is-looking-up-m3": { bank: EVERYTHING_IS_LOOKING_UP_M3.bank, title: EVERYTHING_IS_LOOKING_UP_M3.title, group: "imported", writable: true },
+  "foodcourttweak": { bank: FOODCOURTTWEAK.bank, title: FOODCOURTTWEAK.title, group: "copy", writable: true },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
