@@ -544,10 +544,20 @@ function hubPresentation() {
 const FLOOR_TILE_PHASE = 4;
 function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
   const wallY1 = floorY - 2;
+  // THE TRIM STOPS AT THE FLOOR LINE. Same strip, same 6 units, but hung above
+  // the line instead of straddling it.
+  //
+  // It used to run to floorY + 4, and those four units are where every
+  // reflection begins: a mirror pivots on the floor line and squashes by 0.72,
+  // so a hero's 3-unit shoe lands inside them exactly. Painted at 60% over a
+  // strip three shades lighter than the tiles, the shoe simply vanished, and the
+  // mirror appeared to start at the ankle — the first thing dark enough to read
+  // was the trouser, four units down. The reflection was never wrong; it was
+  // landing on the one pale band in the room.
   ctx.fillStyle = '#38304a';
-  ctx.fillRect(0, wallY1, width, 6);
+  ctx.fillRect(0, floorY - 6, width, 6);
   ctx.fillStyle = '#1c1626';
-  ctx.fillRect(0, wallY1 + 6, width, H - wallY1 - 6);
+  ctx.fillRect(0, floorY, width, H - floorY);
   // EVERY TILE IS IDENTIFIED BY ITS INTEGER INDEX IN THE WORLD, and its colour
   // comes from that index and nothing else.
   //
@@ -614,6 +624,10 @@ const PORTRAIT_SPEECH_S = 1.9;
 // the concourse lighting stops reading on the cast at all; drop it and the hero
 // fades out crossing the unlit stretches.
 const CAST_LIT_FLOOR = 0.45;
+// How far below layout.floorY the cast's soles and their contour actually paint,
+// measured off a standing hero rather than guessed. The floor reflection pivots
+// here — see the band in draw().
+const REFLECT_SOLE_DROP = 1.5;
 // How lit the service end is with nothing banked at all. Not zero: the repair
 // counter and the pawn shop are act-1 furniture and you cannot use a room you
 // cannot see. It climbs from here to 1 as the plug count approaches the finale
@@ -750,12 +764,19 @@ const STAFF_GAZE_IN = 6, STAFF_GAZE_OUT = 2.6;
 // still read as a domestic toy once it shared a floor with the cast; Deep Clean
 // mode gets the full boss-sized escalation in boss.js.
 const DD_H = Math.round(NPC_H * 0.7), DD_W = Math.round(DD_H * 0.9);
-// How far the box sinks past the floor line so the BRUSH sits on it. Two things
-// stack: the painter ends the floor head at 0.96 of its box, and the cast's
-// contour overshoots feetY by ~2px at NPC_H. Pinning the box to the line left
-// the brush a few px clear of the floor the heroes stand on — not enough to
-// read as the ceiling gag, just enough to read as sloppy.
-const DD_SIT = Math.ceil(DD_H * 0.04) + 2;
+// How far the box sinks past the floor line so the BRUSH sits on it — measured,
+// not guessed, because the eye reads this against the cast standing next to it.
+// The painter's lowest ink is at 0.969 of the box (the floor head's contour, one
+// unit shy of the bottom edge), and the cast's soles and their contour land
+// 1.0–2.0 below feetY depending on the hero. So the box has to sink by the
+// difference: (1 - 0.969) * DD_H for the painter's own gap, plus ~1.5 to put the
+// brush on the same line the shoes are on.
+//
+// The old value was ceil(DD_H * 0.04) + 2, which is 1px too much on its own and
+// then had a 0..2 jitter stacked on top of it — the vacuum ended up 1 to 4 units
+// BELOW the floor every hero in the room stands on, and at a different depth on
+// each visit. It is furniture in the same room, so it stands where they stand.
+const DD_SIT = Math.round((1 - 0.969) * DD_H + 1.5);
 
 // Counter staff read as adults among mascots — a little over the player, well
 // under a cabinet. Dolores is the taller; Gary has never stood fully upright in
@@ -785,15 +806,14 @@ function dustDevilPass(visit, act) {
     // ceiling gag lands because it is the exception.
     onCeiling: act > 1 && (h >>> 3) % 3 === 0,
     dir: (h & 1) ? 1 : -1,           // which way it crosses
-    // px in front of the floor line. This was 0..10, which was the same
-    // mistake the counter staff made in the other axis: with no perspective in
-    // the scene, drawing a prop LOWER does not read as "nearer the camera", it
-    // reads as sunk into the floor — and on a 32px machine, 10px is a third of
-    // it below the line every hero's boots end on. Held to 0..2 so the brush
-    // stays inside the skirting band the cast's own feet occupy (the floor
-    // painter's 6px trim at floorY-2), which is as much jitter as a flat side
-    // view can carry.
-    depth: (h >>> 5) % 3,
+    // There used to be a per-visit `depth` here, 0..2px in front of the floor
+    // line. It was already down from 0..10 (with no perspective in the scene,
+    // drawing a prop LOWER does not read as "nearer the camera", it reads as
+    // sunk into the floor) and 0..2 was still 0..2 too many: a machine that
+    // stands on the same floor as the cast stands on it at ONE height, and any
+    // jitter there just reads as the level being wrong on some visits. It is
+    // also moot now that the vacuum always passes BEHIND the cast — there is no
+    // nearer-than-them depth left for it to occupy.
   };
 }
 
@@ -1188,6 +1208,25 @@ export const HUB_PORTRAIT_FOOTER_GAPS_CSS = Object.freeze({ top: 48, middle: 86,
 // One rhythm for the pair, which is what the authored gaps already were
 // (48 -> 86 -> 124). They slide as one block instead of being respaced.
 const HUB_PORTRAIT_FOOTER_ROW_GAP_CSS = 38;
+// LANDSCAPE'S ONE CONTEXTUAL ROW, MEASURED UP FROM THE BOTTOM EDGE.
+//
+// The station prompt ("RHYTHM BANKRUPTCY - PRESS ENTER") and the focused hero's
+// name plus SWAP chip are the same slot — you are never near a machine and nose
+// to nose with a hero at once, so one replaces the other. They were authored as
+// two separate rows, though, five units apart: the chip row sat high and the
+// prompt low, so walking from a cabinet to a hero moved the line that answers
+// "what am I standing next to" instead of just changing its words.
+//
+// One midline for both, and low. The whole band under the cast is floor, and
+// the floor carries the reflections — text parked in the middle of it reads as
+// a caption printed across the picture. Hung just clear of the resources row it
+// leaves that reflection open above it.
+//
+// A MIDLINE, not a baseline, because the two halves of this row measure
+// differently: the prompt is 5.95 units of ink and the chip is a 16-unit plate.
+// Only their centres can agree.
+const HUB_LANDSCAPE_PROMPT_EDGE = 22;
+function hubLandscapePromptMid() { return H - HUB_LANDSCAPE_PROMPT_EDGE; }
 // Air between the lowest moving row's ink and the top of the walk arrows.
 const HUB_PORTRAIT_FOOTER_ARROW_CLEAR_CSS = 12;
 // KEYBOARD/MOUSE PORTRAIT RECLAIMS THE BOTTOM OF THE FRAME.
@@ -1295,9 +1334,9 @@ const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 
 // One screen-space layout for name, drawing and hit-testing. Long names expand
 // leftward while the actions remain immediately beside them; centring the full
-// group on the focused NPC keeps the prompt attached to its character. The
-// landscape footer remains the compact fallback; portrait supplies a fixed
-// replacement-row y anchor shared with the station prompt.
+// group on the focused NPC keeps the prompt attached to its character. Both
+// orientations supply a replacement-row y anchor shared with the station
+// prompt — see hubLandscapePromptMid and hubPortraitFooterRows.
 function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2, anchorY = null) {
   const portrait = isPhonePortraitPresentation();
   const name = npc.name || HERO_BY_ID[npc.id].short;
@@ -1317,7 +1356,7 @@ function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2, anchorY =
     : 0;
   const totalW = nameW + chipsW;
   const x = Math.max(4, Math.min(W - totalW - 4, anchorX - totalW / 2));
-  const y = Number.isFinite(anchorY) ? anchorY : H - 39;
+  const y = Number.isFinite(anchorY) ? anchorY : hubLandscapePromptMid() - NPC_CHIP_H / 2;
   return {
     portrait,
     name,
@@ -1337,13 +1376,14 @@ function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2, anchorY =
 }
 
 function npcPromptAnchorY(layout) {
-  // The focused hero replaces the first footer row, rather than taking its own
+  // The focused hero replaces the contextual row, rather than taking its own
   // world-relative row. This keeps the resources and location rows stationary
   // when the chooser appears, and gives the prompt text and chooser one shared
-  // vertical slot.
+  // vertical slot. The chip plate is centred on that midline, so the anchor —
+  // which is the plate's TOP — is half a chip above it.
   return layout.portrait
     ? hubPortraitFooterRows(layout).top - NPC_PORTRAIT_CHIP_H / 2
-    : null;
+    : hubLandscapePromptMid() - NPC_CHIP_H / 2;
 }
 
 function drawNpcPrompt(ctx, npc, idx, opts, anchorX, anchorY = null) {
@@ -1530,9 +1570,12 @@ function drawPlayerMarker(ctx, cx, cy, r) {
 // The cabinet the player is arriving back OUT of, set by Flow.toHub() on the return
 // from a stage. Separate from PENDING_DIVE (the dev menu's way in) because they are
 // different events: one is a request to demonstrate, this is where you came from.
+// `won` rides along because the exit's face depends on it and nothing downstream
+// can work it out: the hub does not know how the stage went, and by the time the
+// dive plays the run is over and its result has been applied and discarded.
 let PENDING_OUT = null;
-export function queueCabinetDiveOut(cabId) {
-  PENDING_OUT = CABINET_BY_ID[cabId] ? cabId : null;
+export function queueCabinetDiveOut(cabId, won = true) {
+  PENDING_OUT = CABINET_BY_ID[cabId] ? { cabId, won: !!won } : null;
 }
 
 let PENDING_DIVE = null;
@@ -1965,7 +2008,7 @@ export class HubState {
     this.pendingOut = PENDING_OUT;
     PENDING_OUT = null;
     if (this.pendingOut) {
-      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === this.pendingOut);
+      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === this.pendingOut.cabId);
       // Stand him at the machine before the first frame is drawn, so the room opens
       // framed on the cabinet he is about to come out of rather than snapping to it.
       if (st) { this.px = st.x; this.facing = 1; }
@@ -2118,10 +2161,10 @@ export class HubState {
       return;
     }
     if (this.pendingOut) {
-      const cabId = this.pendingOut;
+      const { cabId, won } = this.pendingOut;
       this.pendingOut = null;
       const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === cabId);
-      if (st) this.startCabinetDive(st, 'out');
+      if (st) this.startCabinetDive(st, 'out', { won });
     }
     if (this.pendingDive) {
       const { cabId, variant } = this.pendingDive;
@@ -2161,6 +2204,7 @@ export class HubState {
       if (skippable && pressed && !this.dive.done) Audio.stopVoiceCues?.();
       if (this.dive.done || (skippable && pressed)) {
         const out = this.dive.dir === 'out';
+        const joy = this.dive.outJoy;
         const cab = this.dive.cab;
         this.dive = null;
         // THE SMILE HAS TO OUTLIVE THE DIVE. He lands pleased with himself about
@@ -2176,7 +2220,10 @@ export class HubState {
         // means what it says. The animation already wears the grin from his feet
         // touching to its last frame; storing the leftover instead would be a value
         // whose meaning quietly changed every time the exit was re-timed.
-        if (out) this.arrivedT = Math.max(0, ARRIVED_SMILE - DIVE_OUT_SMILE);
+        // Only if he was smiling in the first place — the carry-over exists to let
+        // the dive's own grin finish in the room, so with no grin there is nothing
+        // to carry and he walks out of a failed attempt with his ordinary face.
+        if (out && joy) this.arrivedT = Math.max(0, ARRIVED_SMILE - DIVE_OUT_SMILE);
         // Coming OUT ends in the room: he is already standing at the machine, so
         // there is nothing to hand over to and the player simply has the controls
         // back. Only the way IN opens anything.
@@ -2582,7 +2629,7 @@ export class HubState {
   // Start the hero's leap into `st`. Returns false when the dive is switched
   // off or one is already running, in which case interact() falls through to
   // the old straight-to-stage-select path.
-  startCabinetDive(st, dir = 'in', { fromJump = false } = {}) {
+  startCabinetDive(st, dir = 'in', { fromJump = false, won = true } = {}) {
     if (!DIVE_ON_USE || this.dive) return !!this.dive;
     const glass = cabinetScreenRect(st.x - CAB_W / 2, CAB_Y, CAB_W, CAB_H);
     const g = cabinetScreenGeometry(glass.w, glass.h);
@@ -2594,6 +2641,10 @@ export class HubState {
       // Jumped into rather than walked into: skip the windup, because the hub's
       // own hop has already launched and its jump cue has already played.
       startAt: fromJump ? DIVE_LEAP_AT : 0,
+      // He only grins on the way out if the stage was actually cleared — climbing
+      // out of a machine you just lost in pleased with yourself reads as a hero who
+      // did not notice. Ignored on the way in.
+      outJoy: won,
       cabX: st.x, cabY: CAB_Y, cabW: CAB_W, cabH: CAB_H,
       floorY: HUB_FLOOR_PIN_Y, heroH: PLAYER_H,
       startX: this.px, facing: 1,
@@ -3342,7 +3393,7 @@ export class HubState {
       // the top of the wall is a crop, not a plane, so hanging below it just
       // reads as floating again. The vertical flip puts the head at y and
       // leaves the handle dangling.
-      const groundY = layout.floorY + pass.depth;
+      const groundY = layout.floorY;
       const y = pass.onCeiling ? layout.ceilY - 4 : groundY + DD_SIT - DD_H;
       const alpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
       return {
@@ -3405,7 +3456,20 @@ export class HubState {
     // PLAYER_H sizes the falloff for the whole room. The machines are far taller,
     // and letting each subject set its own fade length is what made them read as
     // a second effect laid over the same tiles.
-    const band = beginFloorReflectionBand(ctx, layout.floorY, { height: PLAYER_H });
+    // PIVOT ON THE SOLE, NOT ON THE NOMINAL FLOOR LINE.
+    //
+    // The cast stands a whisker inside the floor: the sole and its contour sit
+    // about 1.5 units below layout.floorY, which is what makes a hero read as
+    // planted rather than perched on a line. A mirror pivoting on the line
+    // therefore folded the shoe back ONTO itself — the sole's reflection landed
+    // above the line, behind the real shoe that is drawn over the top of it, and
+    // all that survived below was about a pixel of the shoe's darkest part. The
+    // cast reflected from the ankle down, which is exactly how it looked.
+    //
+    // Pivoting on the surface the shoes actually touch costs the room nothing
+    // (every mirror moves down by a pixel and a half) and hands back the whole
+    // shoe, cream sole first, immediately under the foot that cast it.
+    const band = beginFloorReflectionBand(ctx, layout.floorY + REFLECT_SOLE_DROP, { height: PLAYER_H });
     if (band) {
       // lift 0 — the machines are bolted to the floor, so their mirror starts at
       // the floor line by definition and nothing needs to go looking for it.
@@ -3413,17 +3477,19 @@ export class HubState {
         draw: (c) => drawStations(c, true), height: CAB_H, anchorX: layout.viewW / 2,
         wide: layout.viewW, lift: 0,
       }, { track: false });
+      // The vacuum goes in BEFORE the cast, because it passes behind them — and
+      // in a mirror band the order IS the depth: whatever is added later is
+      // painted over whatever came before, so the crowd's reflections have to
+      // occlude the vacuum's exactly as the crowd itself occludes the vacuum.
+      // It shares the room's floor rather than needing one of its own, and its
+      // fade in and out rides along: a prop half there has a mirror half there.
+      if (dustDevil && !dustDevil.onCeiling) {
+        addFloorReflection(band, { draw: dustDevil.draw, height: DD_H, anchorX: dustDevil.x + DD_W / 2, lift: 0 });
+      }
       // `hop` is the lift: mid-hop a loiterer's mirror separates from their feet,
       // which is the whole reason a mirror is not a shadow.
       for (const e of crowd) {
         addFloorReflection(band, { draw: e.draw, height: NPC_H, anchorX: e.x, lift: e.hop });
-      }
-      // The vacuum's 0..2 units of `depth` in front of the floor line stay well
-      // inside the skirting band the cast's own feet occupy, so it shares the
-      // room's floor rather than needing one of its own. Its fade in and out
-      // rides along: a prop half there has a mirror half there.
-      if (dustDevil && !dustDevil.onCeiling) {
-        addFloorReflection(band, { draw: dustDevil.draw, height: DD_H, anchorX: dustDevil.x + DD_W / 2, lift: 0 });
       }
       // this.jumpY IS the lift. The dive states no height at all: it owns its own
       // arc, and it is the one subject whose mirror has to be found not stated.
@@ -3435,13 +3501,13 @@ export class HubState {
       endFloorReflectionBand(band);
     }
     drawStations(ctx);
-    // NPC heroes
-    for (const e of crowd) {
-      drawSoftContactShadow(ctx, e.x, layout.floorY,
-        NPC_H * (e.n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
-        { alpha: 0.34, ink: '4,3,9' });
-      e.draw(ctx);
-    }
+    // THE VACUUM GOES BEHIND THE WHOLE CAST — before the crowd, before you.
+    // It used to be drawn after the loiterers and before the hero, which made it
+    // cross in FRONT of everyone it passed and then duck behind the one person
+    // you happen to be driving: two different answers to the same question,
+    // decided by nothing the player can see. It is background business — the
+    // joke is that it is going about its work while the room ignores it — so it
+    // is always the thing behind.
     if (dustDevil) {
       // Contact shadow in the cast's voice. Wider than the brush head on
       // purpose — the head is opaque and sits flat on its own shadow, so an
@@ -3451,6 +3517,13 @@ export class HubState {
           DD_W * 0.62, 2.4, { alpha: 0.34, ink: '4,3,9' });
       }
       dustDevil.draw(ctx);
+    }
+    // NPC heroes
+    for (const e of crowd) {
+      drawSoftContactShadow(ctx, e.x, layout.floorY,
+        NPC_H * (e.n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
+        { alpha: 0.34, ink: '4,3,9' });
+      e.draw(ctx);
     }
     if (drawDive) {
       drawDive(ctx);
@@ -3541,8 +3614,9 @@ export class HubState {
     // chrome a proper reading band. Use three fixed row centers: the first is
     // a replacement slot for either the contextual prompt or the focused
     // hero/SWAP chooser, the second is resources, and the third is the room
-    // name. Landscape keeps the compact shipped strip and its existing
-    // positions.
+    // name. Landscape keeps its compact two-row strip: the same replacement
+    // slot on hubLandscapePromptMid, with resources and the room name sharing
+    // the line below it.
     const frameScale = presentationFrame().scale;
     const footerOffset = (cssPx) => layout.portrait ? cssPx / frameScale : cssPx;
     const statusS = layout.portrait ? HUB_PORTRAIT_STATUS_S : HINT_S;
@@ -3585,7 +3659,7 @@ export class HubState {
       : 0;
     const promptLastY = layout.portrait
       ? textYForMid(locationMid, statusS)
-      : H - 30;
+      : textYForMid(hubLandscapePromptMid(), promptS);
     const promptRowY = layout.portrait
       ? footerRows.top
       : promptLastY;

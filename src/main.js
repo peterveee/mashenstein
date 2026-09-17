@@ -356,8 +356,11 @@ const Flow = {
   // and finishing a boss. Backing out of stage select, the bench, the shop, the
   // arcade and the trophy room all return with nothing, because none of them put
   // the hero inside a machine and climbing out of one would be a lie.
-  toHub(cameo = true, fromCab = null) {
-    if (fromCab) queueCabinetDiveOut(fromCab);
+  // `won` is how the attempt went, and it decides one thing: whether he lands out
+  // of the machine smiling. Only the caller knows — the hub is handed a cabinet,
+  // not a result.
+  toHub(cameo = true, fromCab = null, won = true) {
+    if (fromCab) queueCabinetDiveOut(fromCab, won);
     const go = cameo ? setState : setStateNoCameo;
     go(new HubState({ save, flow: Flow }));
   },
@@ -453,7 +456,7 @@ const Flow = {
         const gains = applyResult(save, result);
         setStateNoCameo(new ResultsState({
           result, gains, save,
-          onDone: () => Flow.toHub(false, cab.id),
+          onDone: () => Flow.toHub(false, cab.id, !!result.success),
           // launchStage, not startStage: a retry has already read the briefing.
           // No seed passed either, so the next attempt is a fresh roll rather
           // than a replay of the pattern that just went wrong. announceBench:false
@@ -498,7 +501,7 @@ const Flow = {
           result, gains, save,
           onDone: () => {
             if (result.success && cabId === 'surge') Flow.startFinale();
-            else Flow.toHub(false, cabId);
+            else Flow.toHub(false, cabId, !!result.success);
           },
           onRetry: () => Flow.startBoss(cabId, undefined, initialHeroId, devInvuln, devAutoExit, devMaxTime),
         }));

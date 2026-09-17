@@ -323,6 +323,7 @@ class CabinetDive {
     floorY, heroH, startX, facing = 1,
     insideGroundY, insideUnit,
     camStart = 0, zoomGain = 0.22, zoomOverride = null, startAt = 0,
+    outJoy = true,
     sfx = null, voiceSfx = null, voiceReverse = null, shake = null,
   }) {
     this.cab = cab;
@@ -330,6 +331,11 @@ class CabinetDive {
     // 'in' is the leap into the screen; 'out' is the same shot run backwards —
     // see seek(). Nothing else in here branches on it.
     this.dir = dir === 'out' ? 'out' : 'in';
+    // WHETHER HE HAS ANYTHING TO SMILE ABOUT. The way out is the same animation
+    // whether the stage was cleared or lost, and only the caller knows which —
+    // see the landing in seek(). True by default, because every path that shows
+    // the dive for its own sake (the gallery, the dev menu) wants the full shot.
+    this.outJoy = outJoy !== false;
     this.v = variantOf(variant);
     this.cabX = cabX; this.cabY = cabY; this.cabW = cabW; this.cabH = cabH;
     this.style = style;
@@ -437,18 +443,19 @@ class CabinetDive {
       this.facing = this.inside ? -1 : 1;
       this.pose.facing = this.facing;
       this.pose.vy = this.vy;
-      // HE IS PLEASED TO BE BACK. From the moment his feet take the concourse
-      // floor, and not a frame before — the crossing is still something happening
-      // to him, and a hero grinning on his way through a pane of glass is one who
-      // knew it was coming.
+      // HE IS PLEASED TO BE BACK — IF THERE IS ANYTHING TO BE PLEASED ABOUT.
+      // From the moment his feet take the concourse floor, and not a frame before
+      // — the crossing is still something happening to him, and a hero grinning on
+      // his way through a pane of glass is one who knew it was coming.
       //
       // `faceJoy` and not `celebrate`: a face-only mood, so he keeps the landing
       // and settle the mirror gives him instead of breaking into a victory routine
-      // on a hub floor. The surprise is cleared in the same breath, or the two
-      // would be arguing over the same mouth.
+      // on a hub floor. The surprise is cleared in the same breath either way — it
+      // belongs to the flight, not to how the stage went — or the two would be
+      // arguing over the same mouth.
       if (t >= OUT_LAND) {
         this.pose.faceSurprised = false;
-        this.pose.faceJoy = true;
+        this.pose.faceJoy = this.outJoy;
       }
       this._outDeck(t);
       this.glint = ballGlint(this.stickFwd);
