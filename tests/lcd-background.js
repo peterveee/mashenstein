@@ -9,8 +9,7 @@ const { getStylePack, drawLCDPanel, LCD_PORTRAIT_CITY_SHIFT,
   lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
   LCD_DEFAULT_ROAD_RISE, LCD_SCREEN_GRID_CELL, LCD_PORTRAIT_SCREEN_GRID_CELL, lcdScreenGridCellSize,
   lcdPortraitGridLineY, LCD_ROAD_INK, LCD_CLOUD_CLEARANCE_BOTTOM, lcdBarrelStrikeAt,
-  lcdArtFor, lcdPortraitLift, lcdSkylineCrest,
-  LCD_SKY_CEILING } = await import('../src/engine/stylePacks/index.js');
+  lcdArtFor } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
@@ -1699,126 +1698,78 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
 }
 
 
-// ---- the portrait skyline grows into the sky it is given -------------------
+// ---- the phone gets its own three buildings --------------------------------
 //
-// A phone's sky is about twice the authored one, and what used to fill the
-// difference was a ghosted second skyline whose facades never arrived at 0.07
-// alpha — what a player saw was two columns of window dots per block, hanging
-// in mid-air like a VU meter. It is gone. The city itself is grown instead:
-// the whole sky stack (wisps, monorail, crossing) translates up to the beat
-// strip's lower edge and every building is scaled so the skyline stands up
-// into it, keeping each authored clearance as the difference it was tuned as.
+// A portrait frame shows 270 of this panel's 480 columns at 1.78x, so the
+// authored skyline arrives as a crowd of half-facades. rhythm-1 has had its own
+// sparse portrait scene for a while; these are the other two, cut to the same
+// shape — the combo board, the stage's own landmark, and one more for even
+// spacing — and the checks here are the clearances that cut cannot break.
 {
-  // The band a 430x932 phone resolves: ground at the authored line, 184 rows
-  // of sky above local 0, and the beat rail's lower edge partway down it.
-  const layout = {
-    localRect: { top: -184, bottom: GROUND_Y, height: 416 },
-    screenRect: { top: 67.5, bottom: 808, height: 740.5 },
-  };
-  const phone = { portrait: true, sceneryLayout: layout, skyCeilingScreenY: 121 };
-  // The line the authored sky hangs from is under the strip that actually
-  // draws, and over the wisps that hang from it. Out of that order and the
-  // lift either composes the phone's sky behind the beat plate or leaves a
-  // band of daylight above the city that nothing fills.
-  assert(LCD_SKY_CEILING >= BEAT_RIBBON_BOTTOM,
-    `the authored sky line sits under the beat strip (${LCD_SKY_CEILING} >= ${BEAT_RIBBON_BOTTOM})`);
-  assert([1, 2, 3].every((stageIndex) => lcdArtFor(stageIndex, null).clouds
-    .every(([, y]) => y >= LCD_SKY_CEILING)),
-  'and over every wisp the scenes hang from it');
-  const lift = lcdPortraitLift(phone);
-  assert(lcdPortraitLift({}) === 0 && lcdPortraitLift({ portrait: true }) === 0,
-    'landscape and context-free callers lift nothing');
-  assert(lift > 100, `a tall phone lifts the sky stack into its own sky (${lift})`);
-  for (const stageIndex of [2, 3]) {
-    assert(lcdArtFor(stageIndex, null) === lcdArtFor(stageIndex, {}),
+  const phone = { portrait: true };
+  const VISIBLE = [205, 474];       // the scene columns a phone actually shows
+  for (const stageIndex of [1, 2, 3]) {
+    const landscape = lcdArtFor(stageIndex, null);
+    const portrait = lcdArtFor(stageIndex, phone);
+    assert(landscape === lcdArtFor(stageIndex, {}),
       `stage ${stageIndex} hands landscape the authored scene itself`);
-    const authored = lcdArtFor(stageIndex, null);
-    const grown = lcdArtFor(stageIndex, phone);
-    assert(grown !== authored && grown.buildings.length === authored.buildings.length,
-      `stage ${stageIndex} paints a grown skyline on a phone, building for building`);
-    // ONE FACTOR. Every roof keeps the fraction of the sky it was authored at,
-    // which is what stops the stubs and the towers meeting in the middle.
-    const factors = grown.buildings.map((b, i) => b[2] / authored.buildings[i][2]);
-    const k = factors[0];
-    assert(factors.every((f) => Math.abs(f - k) < 0.02),
-      `stage ${stageIndex} scales the whole skyline by one factor (${k.toFixed(2)})`);
-    assert(k > 1.4, `stage ${stageIndex} actually grows the city (x${k.toFixed(2)})`);
-    // The sky stack is rigid: it moves as a whole or its clearances are gone.
-    assert(grown.clouds.every(([, y], i) => y === authored.clouds[i][1] - lift),
-      `stage ${stageIndex} carries its wisps up with the stack, not to new rows`);
-    if (authored.plane) {
-      assert(grown.plane.from === authored.plane.from - lift
-        && grown.plane.to === authored.plane.to - lift,
-      `stage ${stageIndex} flies its crossing at the same depth in the new sky`);
+    assert(portrait !== landscape && portrait.buildings.length <= 3,
+      `stage ${stageIndex} gives the phone its own sparse skyline (${portrait.buildings.length})`);
+    // Every facade inside the window the phone shows, and printed on the
+    // coarse grid that makes a 68px facade read as three windows.
+    for (const [x, w, , , grid] of portrait.buildings) {
+      assert(x >= VISIBLE[0] && x + w <= VISIBLE[1],
+        `stage ${stageIndex} keeps its facades inside the phone's window (${x}..${x + w})`);
+      assert(grid === 'portrait-grid',
+        `stage ${stageIndex} prints them on the portrait grid`);
     }
-    // THE CREST IS THE CONTRACT: roofs and the kit standing on them together.
-    // The grown city reaches exactly the line the stack was translated to and
-    // not a pixel past it, and the wisps still clear it.
-    const crest = lcdSkylineCrest(grown, stageIndex);
-    const authoredCrest = lcdSkylineCrest(authored, stageIndex);
-    assert(crest >= authoredCrest - lift,
-      `stage ${stageIndex} keeps its roof kit under the lifted crest line (${crest})`);
-    assert(crest <= authoredCrest - lift + 12,
-      `stage ${stageIndex} grows until it reaches that line, rather than stopping short`);
-    // The wisps keep the air they were authored with over the crest — which is
-    // what a rigid stack means, and is not the same as "above every roof": two
-    // of stage 3's sit in the column the gorilla is nowhere near.
-    const air = (art, at) => at - Math.max(...art.clouds.map(([, y]) => y)) - 13;
-    assert(Math.abs(air(grown, crest) - air(authored, authoredCrest)) <= 12,
-      `stage ${stageIndex} keeps the authored air between wisps and rooftops`);
+    // The wisps are above every roof, with the sky above them left open — the
+    // whole point of not growing the city into it.
+    const roof = Math.min(...portrait.buildings.map((b) => GROUND_Y - b[2]));
+    const cloudBottom = Math.max(...portrait.clouds.map(([, y]) => y)) + 13;
+    assert(cloudBottom <= roof,
+      `stage ${stageIndex} hangs its wisps over the rooftops (${cloudBottom} <= ${roof})`);
+    assert(roof >= 20,
+      `stage ${stageIndex} leaves the upper sky to the sky (roof ${roof})`);
   }
-  // THE RAIL IS STILL THE CEILING. Stage 2's service runs over the city, and
-  // the air the authored skyline leaves under its girder is the air the grown
-  // one keeps — the tallest roof is the one that proves it.
-  const authored2 = lcdArtFor(2, null);
-  const grown2 = lcdArtFor(2, phone);
-  const clearance = (art) => Math.min(...art.buildings
-    .map((b) => (GROUND_Y - b[2]) - (art.train.y + 12)));
-  assert(grown2.train.y === authored2.train.y - lift,
-    'the monorail rides up with the sky stack');
-  assert(clearance(grown2) >= clearance(authored2)
-    && clearance(grown2) <= clearance(authored2) + 2,
-  `the grown skyline keeps the authored air under the girder (${clearance(grown2)})`);
-  // AND THE MASONRY IS DRAWN UP THERE, not clipped at the authored frame. The
-  // facades live in a baked layer that was W x H and anchored at 0 — the one
-  // thing that can put a lit bank in the sky over a headless building.
-  const ops = backgroundWithContext(2, 8, phone);
-  const wash = ops.filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(60,63,69,0.07)');
-  assert(wash.some((op) => op[3] < 0),
-    'a grown facade is painted into the sky above the authored frame');
-  // AND THE KIT STANDS ON THE ROOF IT BELONGS TO. The bake this masonry lives
-  // in is blitted as one band; get that band wrong and the live-drawn banks
-  // keep their roofs while the facades lose their tops, which is precisely the
-  // lit meter hanging over nothing that this whole pass removed.
-  const roofs = new Set(grown2.buildings.map((b) => GROUND_Y - b[2]));
-  const banks = ops.filter((op) => op[0] === 'strokeRect' && op[5] === 37);
-  assert(banks.length > 0 && banks.every((op) => roofs.has(Math.round(op[3] + op[5] + 0.5))),
-    `every equalizer bank stands on a grown roof (${banks.length})`);
-  // THE CLEARANCE TABLE IS NOT ALLOWED TO BE A GUESS. Both pieces a plain roof
-  // wears are measured off the panel here: a bank's cabinet on stage 2 and an
-  // antenna's beacon on stage 3 must fit inside the reach the crest was solved
-  // with, or the grown city puts one of them through the monorail.
-  // A roof is spoken for when something named stands on it; the rest wear
-  // whatever their stage hangs on every plain roof, and those two are the
-  // pieces the crest is solved with.
-  const plainRoofs = (art) => art.buildings
-    .map((b, i) => (i === art.rooftopGorilla || i === art.transmitter
-      || (art.bareRoofs || []).includes(i)
-      || (art.billboards || []).some(([bi]) => bi === i) ? null : GROUND_Y - b[2]))
-    .filter((roof) => roof != null);
-  const stage2Roofs = new Set(plainRoofs(lcdArtFor(2, null)));
-  const cabinets = backgroundWithContext(2, 8, {})
-    .filter((op) => op[0] === 'strokeRect' && op[1] === 'rgba(80,85,92,0.48)' && op[5] > 8);
-  assert(cabinets.length > 0 && cabinets.every((op) => stage2Roofs.has(op[3] + op[5] + 0.5)
-    && op[5] + 3 <= 40),
-  `a bank stands on its own roof inside the reach the crest is solved with (${cabinets.length})`);
-  // The antenna's beacon block is the topmost cell it draws, 3 above its mast.
-  const stage3Roofs = plainRoofs(lcdArtFor(3, null));
-  const beacons = backgroundWithContext(3, 8, {})
-    .filter((op) => op[0] === 'fillRect' && op[4] === 5 && op[5] === 4)
-    .map((op) => Math.min(...stage3Roofs.map((roof) => roof - op[3]).filter((d) => d > 0)));
-  assert(beacons.length > 0 && beacons.every((reach) => reach <= 22),
-    `and an antenna fits its own (${Math.max(...beacons)} <= 22)`);
+  // rhythm-2: even gaps, the board first, the washer second, and the service
+  // still the ceiling it is in landscape.
+  const two = lcdArtFor(2, phone);
+  const gaps = two.buildings.slice(1)
+    .map(([x], i) => x - (two.buildings[i][0] + two.buildings[i][1]));
+  assert(gaps.every((gap) => gap === gaps[0]),
+    `rhythm-2 spaces its facades evenly (${gaps.join(', ')})`);
+  assert(two.billboards.length === 1 && two.billboards[0][0] === 0
+    && two.billboards[0][1] === 'chart' && two.washer[0] === 1,
+  'rhythm-2 opens on the combo board and puts the washer on the next roof');
+  const girder = two.train.y + 12;
+  const clear = Math.min(...two.buildings.map((b) => (GROUND_Y - b[2]) - girder));
+  assert(clear >= 10 && clear <= 14,
+    `rhythm-2 runs its service over every roof (${clear} clear)`);
+  assert(Math.max(...two.clouds.map(([, y]) => y)) + 13 <= two.train.y,
+    'and keeps the wisps above the cars');
+  // rhythm-3: Kong is the middle facade so his chute has a gap to fall down,
+  // and the crossing keeps the two pixels it clears his raised barrel by.
+  const three = lcdArtFor(3, phone);
+  assert(three.rooftopGorilla === 1 && three.buildings.length === 3,
+    'rhythm-3 stands Kong between the board and the mast');
+  const kong = three.buildings[three.rooftopGorilla];
+  const chuteGap = three.buildings[2][0] - (kong[0] + kong[1]);
+  assert(chuteGap >= 24,
+    `his chute has room to fall in (${chuteGap}px of gap)`);
+  const chute = lcdChuteScreenX(3, true);
+  assert(chute > kong[0] + kong[1] + LCD_PORTRAIT_CITY_SHIFT.x
+    && chute < three.buildings[2][0] + LCD_PORTRAIT_CITY_SHIFT.x,
+  `and the run is told where it actually is (${chute})`);
+  assert(lcdChuteScreenX(3) !== chute,
+    'which is not where the landscape panel puts it');
+  const barrelTop = GROUND_Y - kong[2] - 57;
+  const bannerBottom = three.plane.to + 12;
+  assert(bannerBottom === barrelTop - 2,
+    `the crossing clears his raised barrel by two (${bannerBottom} against ${barrelTop})`);
+  assert(three.plane.from - three.plane.to
+    === lcdArtFor(3, null).plane.from - lcdArtFor(3, null).plane.to,
+  'and both ends of the lane moved together');
 }
 
 if (failed) process.exit(1);

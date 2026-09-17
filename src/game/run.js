@@ -50,7 +50,7 @@ import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lc
   frostBlizzardRung, frostBlizzardRamp, frostFlypastArc }
   from '../engine/stylePacks/index.js';
 import { paperStrengthOf } from '../engine/paper-material.js';
-import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitSkyTop, portraitRhythmRail } from './hud.js';
+import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -5996,6 +5996,35 @@ export class RunState {
   }
   playerWorldX() { return this.camX + this.heroScreenX(); }
 
+  /** Whether this frame is being presented as a portrait phone frame. */
+  portraitFrame() {
+    return !!(this.portraitGameplay && isPhonePortraitPresentation());
+  }
+
+  /**
+   * A BACKDROP x AS THE WORLD'S OWN SCREEN x — the number the lane can be
+   * measured against.
+   *
+   * Landscape draws the panel at authored scale beside a world at the same
+   * scale, so the two are one number and this is the identity. Portrait draws
+   * them through DIFFERENT transforms: the backdrop is scaled about the
+   * panel's centre by the background zoom, and both layers are then moved by
+   * the presentation's hero anchor — the backdrop in its own local units,
+   * the world in world ones. So a backdrop x becomes a world-comparable x by
+   * going through the backdrop's transform and back out of the anchor, which
+   * the world's own `/ zoom` would otherwise never remove.
+   *
+   * Kong's barrel chute is the one thing that needs this: the run hands the
+   * lane a barrel timed to arrive at the foot of the chute, and on a phone the
+   * chute is a third of the panel from where the authored numbers put it.
+   */
+  panelScreenX(localX) {
+    if (!Number.isFinite(localX) || !this.portraitFrame()) return localX;
+    const zoom = Number(this.portraitConfig()?.backgroundZoom) || 1;
+    const anchor = this.portraitWorldXOffset() * (this.camZoom || ZOOM);
+    return zoom * (localX + anchor - W / 2) + W / 2 - anchor;
+  }
+
   /**
    * The hero's drawn box in the OVERLAY's coordinates — the unscaled 480x270
    * frame the floaties, the speech card and the HUD all live in.
@@ -8547,7 +8576,7 @@ export class RunState {
       // skyline moves this with it.
       const zoom = this.camZoom || ZOOM;
       const hasGorilla = this.beatLock && this.styleName === 'lcd'
-        && lcdChuteScreenX(this.stage?.index) != null;
+        && lcdChuteScreenX(this.stage?.index, this.portraitFrame()) != null;
       // Three components of unrelated periods, normalised to -1..1 so the two
       // ends below are the two ends: the path never visibly repeats, and the
       // far end is only reached when they line up.
@@ -10413,7 +10442,7 @@ export class RunState {
 
   updateBarrelArrivals(rawBeat) {
     const chuteX = this.beatLock && this.styleName === 'lcd'
-      ? lcdChuteScreenX(this.stage?.index) : null;
+      ? this.panelScreenX(lcdChuteScreenX(this.stage?.index, this.portraitFrame())) : null;
     if (chuteX == null || !Number.isFinite(rawBeat)) {
       // AND UNDO THE ARRIVAL ON THE WAY OUT. This used to null the latch and
       // leave artRise/artScale written on every barrel already in the air, so
@@ -14334,13 +14363,6 @@ export class RunState {
       sunOffsetY: portraitConfig?.sunOffsetY ?? 0,
       sceneryOffsetY: portraitConfig?.sceneryOffsetY ?? 0,
       parallaxDepths: BACKGROUND_DEPTHS,
-      // WHERE THE SKY REALLY STARTS. The scenery band's own top is under the
-      // status pill, but a rhythm stage's rail is painted across the band
-      // below it, and a backdrop that composes to the band top hangs its
-      // clouds behind that plate. One number, resolved by the layer that
-      // draws the plate (portraitSkyTop), so a pack can never be composing
-      // against a strip that has moved.
-      skyCeilingScreenY: portraitFrameActive ? portraitSkyTop(portraitHud, this) : null,
       sceneryLayout,
       backgroundZoom: bgZoom,
       groundAnchorRatio: portraitFrameActive ? this.portraitGroundAnchorRatio() : 0.70,

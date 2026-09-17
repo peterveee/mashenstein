@@ -407,24 +407,6 @@ export const BEAT_RIBBON_BOTTOM = PLAYHEAD_BOTTOM;
 /** Whether this run draws the permanent portrait rhythm rail under its pill. */
 export const portraitRhythmRail = (run) => /^rhythm-[123]$/.test(run?.stage?.id || '');
 
-/**
- * THE FIRST ROW OF SKY NOTHING PERMANENT IS PAINTED OVER, in screen px.
- *
- * The scenery band starts at the status pill's lower edge, and on most stages
- * that is also where the sky starts. A rhythm stage hangs its rail across the
- * next forty CSS pixels of it, though, and a backdrop composed to the band's
- * own top puts its clouds — and, in portrait, the roofs the city is grown to
- * reach — behind that plate. Backdrops are handed this instead of the band's
- * top so they compose against what is actually visible; see lcdPortraitCeiling.
- */
-export function portraitSkyTop(layout, run) {
-  const top = Number(layout?.sceneryTop);
-  if (!Number.isFinite(top)) return null;
-  if (!portraitRhythmRail(run)) return top;
-  const railY = Number(layout?.rhythmY), railH = Number(layout?.rhythmH);
-  return Number.isFinite(railY) && Number.isFinite(railH)
-    ? Math.max(top, railY + railH) : top;
-}
 // The row a speech card's first line sits on when nothing is pushing it down.
 //
 // IT IS THE BEAT STAGE'S ROW NOW, on every stage. This used to be a flat 46 —
