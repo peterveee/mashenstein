@@ -403,6 +403,28 @@ const PLAYHEAD_TOP = PILL_Y, PLAYHEAD_BOTTOM = PILL_Y + PILL_H;
 // The bottom of everything the strip draws, which the world keeps out from
 // under. The playhead is the lowest of it, so it is the playhead that sets it.
 export const BEAT_RIBBON_BOTTOM = PLAYHEAD_BOTTOM;
+
+/** Whether this run draws the permanent portrait rhythm rail under its pill. */
+export const portraitRhythmRail = (run) => /^rhythm-[123]$/.test(run?.stage?.id || '');
+
+/**
+ * THE FIRST ROW OF SKY NOTHING PERMANENT IS PAINTED OVER, in screen px.
+ *
+ * The scenery band starts at the status pill's lower edge, and on most stages
+ * that is also where the sky starts. A rhythm stage hangs its rail across the
+ * next forty CSS pixels of it, though, and a backdrop composed to the band's
+ * own top puts its clouds — and, in portrait, the roofs the city is grown to
+ * reach — behind that plate. Backdrops are handed this instead of the band's
+ * top so they compose against what is actually visible; see lcdPortraitCeiling.
+ */
+export function portraitSkyTop(layout, run) {
+  const top = Number(layout?.sceneryTop);
+  if (!Number.isFinite(top)) return null;
+  if (!portraitRhythmRail(run)) return top;
+  const railY = Number(layout?.rhythmY), railH = Number(layout?.rhythmH);
+  return Number.isFinite(railY) && Number.isFinite(railH)
+    ? Math.max(top, railY + railH) : top;
+}
 // The row a speech card's first line sits on when nothing is pushing it down.
 //
 // IT IS THE BEAT STAGE'S ROW NOW, on every stage. This used to be a flat 46 —
@@ -2203,7 +2225,7 @@ function drawPortraitNameStrip(ctx, layout, names, y, ink, centerX = null, align
  */
 function drawPortraitHud(ctx, run) {
   const frame = presentationFrame();
-  const rhythmStage = /^rhythm-[123]$/.test(run?.stage?.id || '');
+  const rhythmStage = portraitRhythmRail(run);
   // The objective panels are a startup read over the first scenery band. They
   // never participate in the camera floor: after five seconds the whole pair
   // slides up beneath the permanent status HUD and is clipped away.
@@ -2321,7 +2343,7 @@ function drawPortraitHud(ctx, run) {
   // status HUD. GOAL and BONUS follow it as temporary cards; the live markers
   // join the plate once the beat lane locks, but the rail never changes
   // position or width.
-  if (/^rhythm-[123]$/.test(run.stage?.id || '')) {
+  if (portraitRhythmRail(run)) {
     ctx.save();
     ctx.translate(0, layout.rhythmY);
     ctx.fillStyle = 'rgba(16,20,28,0.55)';

@@ -50,7 +50,7 @@ import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lc
   frostBlizzardRung, frostBlizzardRamp, frostFlypastArc }
   from '../engine/stylePacks/index.js';
 import { paperStrengthOf } from '../engine/paper-material.js';
-import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING } from './hud.js';
+import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitSkyTop, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -14272,8 +14272,16 @@ export class RunState {
       }
       : null;
     const presentation = presentationFrame();
+    // THE LAYOUT THE HUD ITSELF WILL DRAW WITH, options and all. Asked
+    // without them this resolved a rail row for a stage that has no rail,
+    // which is the row the backdrop's sky ceiling is measured from — and,
+    // since portraitHudLayout memoises on one key, the two calls also took
+    // turns evicting each other's answer every frame.
     const portraitHud = portraitFrameActive
-      ? portraitHudLayout(presentation) : null;
+      ? portraitHudLayout(presentation, {
+        rhythmStage: portraitRhythmRail(this),
+        oneHit: this.oneHit === true,
+      }) : null;
     const sceneryLayout = portraitFrameActive
       ? resolveSceneryLayout({
         frame: presentation,
@@ -14326,6 +14334,13 @@ export class RunState {
       sunOffsetY: portraitConfig?.sunOffsetY ?? 0,
       sceneryOffsetY: portraitConfig?.sceneryOffsetY ?? 0,
       parallaxDepths: BACKGROUND_DEPTHS,
+      // WHERE THE SKY REALLY STARTS. The scenery band's own top is under the
+      // status pill, but a rhythm stage's rail is painted across the band
+      // below it, and a backdrop that composes to the band top hangs its
+      // clouds behind that plate. One number, resolved by the layer that
+      // draws the plate (portraitSkyTop), so a pack can never be composing
+      // against a strip that has moved.
+      skyCeilingScreenY: portraitFrameActive ? portraitSkyTop(portraitHud, this) : null,
       sceneryLayout,
       backgroundZoom: bgZoom,
       groundAnchorRatio: portraitFrameActive ? this.portraitGroundAnchorRatio() : 0.70,

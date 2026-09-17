@@ -2361,16 +2361,31 @@ function lcdBakeSurface(w, h, reuse) {
     return { canvas, ctx };
   } catch { return null; }
 }
-function bakedCity(ctx, key, paint, slices = null) {
+//
+// `top` IS HOW FAR ABOVE THE AUTHORED FRAME THIS CITY REACHES, and it is not
+// an optimisation — it is the difference between a skyline and a row of
+// facades with their tops cut off. The surface was always W x H, which is
+// every pixel a 480x270 panel can hold and, in portrait, about two thirds of
+// the city: the lift grows the buildings up into sky that has negative local
+// y, and a bake anchored at 0 clipped exactly that part away. The banks and
+// masts that are drawn live stayed where they belonged, so the panel showed
+// meters floating over headless buildings.
+//
+// The band keeps the SAME device rows per logical row — the surface grows
+// with it rather than squeezing more city into the old one — so the blit is
+// still 1:1 and no pixel of this panel is resampled.
+function bakedCity(ctx, key, paint, slices = null, top = 0) {
   const cv = ctx.canvas;
   if (!cv || !cv.width || !cv.height) { paint(ctx); return; }
-  const sized = cityBake && cityBake.c.width === cv.width && cityBake.c.height === cv.height;
+  const band = Math.min(0, Math.floor(top));
+  const height = Math.round(cv.height * (H - band) / H);
+  const sized = cityBake && cityBake.c.width === cv.width && cityBake.c.height === height;
   if (!sized || cityBake.key !== key) {
-    const made = lcdBakeSurface(cv.width, cv.height, sized ? cityBake.c : null);
+    const made = lcdBakeSurface(cv.width, height, sized ? cityBake.c : null);
     if (!made) { cityBake = null; paint(ctx); return; }
-    made.ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    made.ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, -band * (cv.height / H));
     paint(made.ctx);
-    cityBake = { key, c: made.canvas };
+    cityBake = { key, c: made.canvas, top: band };
   }
   // ONE BLIT, unless the city is still arriving. `slices` is the assembly's
   // whole cost on this path: a list of {x, w, dy} column windows onto the SAME
@@ -2382,11 +2397,12 @@ function bakedCity(ctx, key, paint, slices = null) {
   // A column is safe to slice because this skyline is authored with air in it:
   // the structures sit ~12px apart, so a window one pixel proud of a facade on
   // each side carries its line art and nothing of its neighbour's.
-  if (!slices) { ctx.drawImage(cityBake.c, 0, 0, W, H); return; }
+  const baked = cityBake.top;
+  const bandH = H - baked;
+  if (!slices) { ctx.drawImage(cityBake.c, 0, baked, W, bandH); return; }
   const sx = cityBake.c.width / W;
-  const sy = cityBake.c.height / H;
   for (const { x, w, dy } of slices) {
-    ctx.drawImage(cityBake.c, x * sx, 0, w * sx, cityBake.c.height, x, dy, w, H);
+    ctx.drawImage(cityBake.c, x * sx, 0, w * sx, cityBake.c.height, x, baked + dy, w, bandH);
   }
 }
 
@@ -8735,6 +8751,88 @@ function lcdCloud(ctx, x, y, pose) {
   lcdStrokePath(ctx, (pose ? b : a).map(([px, py]) => [x + px, y + py]), true);
 }
 
+// ---- what stands on a roof ------------------------------------------------
+//
+// HOW FAR ABOVE ITS ROOF EACH BUILDING ACTUALLY REACHES. A skyline is not its
+// facades: it is the facades plus a bank, a mast, a board on legs or a gorilla
+// with a barrel over his head, and anything asking "is there room above the
+// city" has to mean that taller line. The portrait lift asks it of every scene
+// it grows (lcdLiftedScene), which is the whole reason it is written down once
+// here rather than half-derived at each caller.
+//
+// These are CLEARANCE numbers, read off the painters rather than computed by
+// them. A mast's outermost signal ring and a gorilla's raised barrel are a
+// hundred lines of pixel art apiece; a table that re-derived either would be a
+// second copy of the drawing, and the copy would be the one that went stale.
+// The two a plain roof wears — the bank and the antenna — are shared with
+// their painters outright, so those cannot drift at all; the four that belong
+// to one named roof each are the figures the authored scenes are measured in
+// (see the notes on LCD_CITY_SCENES, where every one of them is load-bearing
+// for the crossing's lane), and tests/lcd-background.js checks the composition
+// they produce.
+//
+// Only what is drawn UPWARD from a roof counts. The washer's cradle and the
+// barrel chute hang below one, and nothing in the sky can reach them.
+const LCD_EQ_BANK_H = 37;                 // the bank's cabinet — see lcdEqualizer
+const LCD_EQ_BANK_REACH = LCD_EQ_BANK_H + 3;
+const lcdAntennaH = (index) => 13 + (index % 3) * 3;
+const lcdAntennaReach = (index) => lcdAntennaH(index) + 3;   // + the beacon block
+const LCD_CROWN_REACH = 21;               // the tallest crown gbcBuildingLineArt draws
+const LCD_MAST_REACH = 56;                // the transmitter's outermost signal ring
+const LCD_PLUME_REACH = 55;               // the smokestack's top puff cell
+const LCD_GORILLA_REACH = 57;             // his raised barrel, at the top of the swing
+const LCD_LAMP_REACH = 10;                // a searchlight's housing; its beam is sky
+const LCD_BOARD_LEGS = 8;                 // the air a billboard stands on
+
+/** The height of the board on building `i`, or 0 where no sign stands there. */
+function lcdBoardHeight(art, i) {
+  const entry = (art.billboards || []).find(([bi]) => bi === i);
+  if (!entry) return 0;
+  const name = entry[1];
+  const sign = LCD_BILLBOARD_ART[name];
+  const first = sign?.frames?.[0];
+  return name === 'chart' ? LCD_BOARD_H : first ? first.length * 2 + 8 : 0;
+}
+
+/** How far above roof `i` this scene draws — 0 on a roof carrying nothing. */
+function lcdRoofReach(art, stageIndex, i) {
+  const board = lcdBoardHeight(art, i);
+  if (board > 0) return LCD_BOARD_LEGS + board;
+  if (i === art.transmitter) return LCD_MAST_REACH;
+  if (i === art.rooftopGorilla) return LCD_GORILLA_REACH;
+  let reach = 0;
+  if ((art.smokestacks || []).some(([bi]) => bi === i)) reach = Math.max(reach, LCD_PLUME_REACH);
+  if ((art.searchlights || []).some(([bi]) => bi === i)) reach = Math.max(reach, LCD_LAMP_REACH);
+  // A roof already spoken for carries one thing and skips its crown; a plain
+  // one wears whatever its stage hangs on every plain roof. Same test the
+  // painters use, so the table cannot disagree with the picture.
+  if (!lcdCrowned(art, i)) {
+    reach = Math.max(reach, LCD_STAGE_ROOF_KIT.has(stageIndex)
+      ? LCD_EQ_BANK_REACH : LCD_CROWN_REACH);
+    if (stageIndex === 3) reach = Math.max(reach, lcdAntennaReach(i));
+  }
+  return reach;
+}
+
+// The topmost ink this skyline puts in the sky, roofs and their kit together.
+// Memoised on the scene object: both the authored scenes and the derived
+// portrait ones are frozen and handed back by identity, so a scene's crest is
+// solved once for the life of the process.
+const lcdCrestCache = new WeakMap();
+export function lcdSkylineCrest(art, stageIndex) {
+  const hit = lcdCrestCache.get(art);
+  if (hit != null) return hit;
+  let crest = GROUND_Y;
+  for (let i = 0; i < art.buildings.length; i++) {
+    crest = Math.min(crest, GROUND_Y - art.buildings[i][2] - lcdRoofReach(art, stageIndex, i));
+  }
+  // The DONKEY KONG tower is a structure the buildings table does not hold,
+  // and the gorilla on top of it is the tallest thing on the stage that has one.
+  if (art.gameWatch) crest = Math.min(crest, GROUND_Y - art.gameWatch[2] - LCD_GORILLA_REACH);
+  lcdCrestCache.set(art, crest);
+  return crest;
+}
+
 // The cloud floor is not just a stage constant. Portrait rhythm-1 swaps in a
 // taller Kong tower and keeps the chart billboard on the neighbouring roof;
 // after the portrait city lift those are the first things a cloud can touch.
@@ -8794,66 +8892,149 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
   }
 }
 
-// Portrait gets more vertical room, not a vertically stretched landscape
-// panel. Add a distant, stepped skyline and a second cloud vocabulary into the
-// resolver's upper bands. The authored 480x270 city remains unchanged below;
-// these rows are deliberately simpler and lighter so they read as depth.
-function lcdPortraitCityExtension(ctx, frame, backgroundContext = null) {
-  const bands = backgroundContext?.sceneryLayout?.bands;
-  if (!bands) return;
-  const bandY = (name, fallback) => Number.isFinite(Number(bands[name]?.center))
-    ? Number(bands[name].center) : fallback;
-  const farBase = bandY('farLandmark', 0) + 18;
-  const middleBase = bandY('middle', 72) + 16;
-  const rows = [
-    { base: farBase, heights: [92, 116, 78, 104, 86, 120, 74, 98, 88, 110], alpha: 0.58 },
-    { base: middleBase, heights: [52, 68, 44, 62, 48, 72, 56, 64, 46, 70], alpha: 0.78 },
-  ];
-  ctx.save();
-  ctx.lineWidth = 1;
-  for (const [rowIndex, row] of rows.entries()) {
-    ctx.globalAlpha = row.alpha;
-    for (let i = 0, x = -8; x < W + 8; i++, x += 49) {
-      const w = 38 + (i % 3) * 4;
-      const h = row.heights[(i + frame.stageIndex + rowIndex) % row.heights.length];
-      const top = row.base - h;
-      ctx.fillStyle = LCD_FACADE_WASH;
-      ctx.fillRect(x, top, w, h);
-      ctx.strokeStyle = LCD_WALL_LINE;
-      ctx.beginPath();
-      ctx.moveTo(x + 0.5, top + 0.5);
-      ctx.lineTo(x + w - 0.5, top + 0.5);
-      ctx.stroke();
-      ctx.fillStyle = LCD_WINDOW_GHOST;
-      for (let wy = top + 10; wy < row.base - 5; wy += 12) {
-        ctx.fillRect(x + 8, wy, 4, 4);
-        if (w > 40) ctx.fillRect(x + w - 12, wy, 4, 4);
-      }
-    }
-    // A rooftop row is a line of separate authored blocks, not one stretched
-    // rectangle. The repeated gaps are important at phone scale.
-    ctx.globalAlpha = Math.min(1, row.alpha + 0.08);
-    ctx.strokeStyle = LCD_WALL_LINE;
-    ctx.beginPath();
-    for (let x = 0; x <= W; x += 24) {
-      ctx.moveTo(x + 0.5, row.base + 0.5);
-      ctx.lineTo(x + 12.5, row.base + 0.5);
-    }
-    ctx.stroke();
+// ---- the portrait sky -----------------------------------------------------
+//
+// PORTRAIT DOES NOT GET A DIFFERENT CITY. IT GETS THIS ONE, GROWN.
+//
+// A phone hands this panel about four hundred rows of sky where the authored
+// frame has two hundred, and for a long time the difference was filled with a
+// second, ghosted skyline drawn into the resolver's upper bands — washed
+// facades with two columns of window dots each. At 0.07 alpha the facade never
+// arrived and the dots did: the layer read as a pair of LED ladders and a row
+// of dashes hanging in mid-air, an instrument the cabinet does not contain.
+// Peter, looking at a phone: "why do we have the VU style meters in the sky in
+// level 3-2 and 3-3?" There was no answer that survived the question, so the
+// layer is gone and the real city grows into the room it was covering.
+//
+// THE SKY STACK IS RIGID AND THE BUILDINGS REACH FOR IT. Everything the panel
+// hangs above its skyline — the wisps, the monorail, the crossing — is one
+// authored arrangement measured against the beat strip's lower edge, and it
+// moves UP as a whole by the extra sky this phone has (`lift`). Nothing inside
+// that arrangement is re-chosen, because every clearance in it is a
+// DIFFERENCE and a difference only survives a rigid translate. What changes is
+// the ground half: each building's height is multiplied so the skyline stands
+// up into the translated stack instead of leaving a void under it.
+//
+// IT IS A SCALE AND NOT A SHOVE. Adding the lift to every height would put the
+// stubs and the towers within a few pixels of each other — a wall with a
+// serrated top rather than a skyline — so heights are multiplied by one factor,
+// which is the only transform that leaves every roof at the same FRACTION of
+// the sky it was authored at. The factor is whatever the tightest structure
+// allows: a roof plus the kit standing on it may not pass the crest line the
+// stack was translated to, and on a stage with a service the rail keeps the
+// authored air over the tallest roof as well. So the binding structure lands
+// exactly where a translate would have put it and every other one lands a
+// little lower, which is the honest way round — the city is the authored
+// composition at the taller sky's scale, and nothing new was drawn to fill it.
+// THE ROW THE AUTHORED SKY HANGS FROM. Every scene's wisps were composed just
+// under the beat strip — this is the line they were measured against, and the
+// lift's whole job is to put it where the phone's strip actually ends. It is a
+// number here rather than hud.js's BEAT_RIBBON_BOTTOM (21, and lower than this
+// by the few pixels of air the wisps were given) because that module imports
+// its way back to this one; tests/lcd-background.js holds the two in order.
+export const LCD_SKY_CEILING = 25.5;
+const LCD_SKY_CLEAR = 2;                  // air kept under the strip's lower edge
+const LCD_VIADUCT_DROP = 12;              // the girder, under the cars — lcdViaduct
+// A phone cannot ask for more than this much extra city, whatever its aspect
+// says, and it cannot ask for a building more than this many times its authored
+// height. Neither bound is reached by any shipping phone; they are here so a
+// preview at some absurd size draws a skyline rather than a column of masonry.
+const LCD_PORTRAIT_LIFT_MAX = 280;
+const LCD_PORTRAIT_GROWTH_MAX = 3.2;
+// Lifts are quantised to the window grid's own row pitch before they key the
+// derived scene, so a resize drag rebuilds a handful of skylines rather than one
+// per pixel, and a rebuilt city lands on the same rows as the one it replaced.
+const LCD_PORTRAIT_LIFT_STEP = LCD_ROW_PITCH;
+
+/**
+ * The first row of sky in SCENE space that nothing permanent is painted over,
+ * or null in landscape.
+ *
+ * The scenery rectangle begins under the status pill, but a rhythm stage hangs
+ * its beat rail across the next band of it, and clouds composed to the
+ * rectangle's own top sit behind that plate. The run publishes the rail's lower
+ * edge in screen space (`skyCeilingScreenY`); this maps it through the scenery
+ * layout the pack already receives, then out of the portrait city shift, so the
+ * answer is in the coordinates the scene is authored in.
+ */
+function lcdPortraitCeiling(context) {
+  const layout = context?.sceneryLayout;
+  if (!context?.portrait || !layout) return null;
+  const screen = layout.screenRect, local = layout.localRect;
+  if (!screen?.height || !local) return null;
+  const published = Number(context.skyCeilingScreenY);
+  const at = Number.isFinite(published) ? Math.max(screen.top, published) : screen.top;
+  const localY = local.top + (at - screen.top) * (local.height / screen.height);
+  return localY - LCD_PORTRAIT_CITY_SHIFT.y + LCD_SKY_CLEAR;
+}
+
+/** How far the whole sky stack moves up on this frame — 0 in landscape. */
+export function lcdPortraitLift(context) {
+  const ceiling = lcdPortraitCeiling(context);
+  if (ceiling == null) return 0;
+  const lift = Math.round((LCD_SKY_CEILING - ceiling) / LCD_PORTRAIT_LIFT_STEP)
+    * LCD_PORTRAIT_LIFT_STEP;
+  return Math.max(0, Math.min(LCD_PORTRAIT_LIFT_MAX, lift));
+}
+
+// One derived scene per (stage, lift). Bounded because the lift is quantised
+// and clamped, and dropped wholesale on a presentation change — the window-cell
+// cache hangs off these building arrays by identity, so a scene that will never
+// be asked for again should not keep its grid alive.
+const lcdLiftedScenes = new Map();
+function clearLCDLiftedScenes() { lcdLiftedScenes.clear(); }
+
+function lcdLiftedScene(stageIndex, art, lift) {
+  const key = `${stageIndex}|${lift}`;
+  const hit = lcdLiftedScenes.get(key);
+  if (hit) return hit;
+  // Where the topmost ink is allowed to stand once the stack has moved.
+  const crest = lcdSkylineCrest(art, stageIndex) - lift;
+  let k = LCD_PORTRAIT_GROWTH_MAX;
+  const fit = (h, headroom) => { if (h > 0) k = Math.min(k, headroom / h); };
+  for (let i = 0; i < art.buildings.length; i++) {
+    fit(art.buildings[i][2], GROUND_Y - crest - lcdRoofReach(art, stageIndex, i));
   }
-  // Clouds are placed by the same normalized bands as every other cabinet,
-  // with two rows in the upper sky so a tall portrait does not become one
-  // uninterrupted blue/green void above the city.
-  ctx.globalAlpha = 0.78;
-  const cloudBands = ['upperCloud', 'middleCloud', 'lowerCloud'];
-  for (let i = 0; i < cloudBands.length; i++) {
-    const band = bands[cloudBands[i]];
-    if (!band) continue;
-    const y = Number(band.top) + Math.min(8, Number(band.height) * 0.2);
-    lcdCloud(ctx, 38 + i * 154, y, (frame.bar + i) % 2);
-    if (i < 2) lcdCloud(ctx, 286 - i * 42, y + 9, (frame.bar + i + 1) % 2);
+  if (art.gameWatch) fit(art.gameWatch[2], GROUND_Y - crest - LCD_GORILLA_REACH);
+  if (art.train) {
+    // THE RAIL IS THE CEILING on the stage that has one (see scene 2), and that
+    // is a promise about every roof rather than about the tallest one. The air
+    // the authored skyline leaves under the girder is the air the grown one
+    // keeps, so the service still runs over a city instead of through it.
+    const girder0 = art.train.y + LCD_VIADUCT_DROP;
+    const clear = Math.min(...art.buildings.map((b) => GROUND_Y - b[2] - girder0));
+    const girder = girder0 - lift;
+    for (const b of art.buildings) fit(b[2], GROUND_Y - girder - clear);
+    if (art.gameWatch) fit(art.gameWatch[2], GROUND_Y - girder - clear);
   }
-  ctx.restore();
+  k = Math.max(1, k);
+  const grow = (h) => Math.round(h * k);
+  const scene = Object.freeze({
+    ...art,
+    buildings: Object.freeze(art.buildings.map((b) => [b[0], b[1], grow(b[2]), ...b.slice(3)])),
+    clouds: Object.freeze((art.clouds || []).map(([x, y]) => [x, y - lift])),
+    ...(art.gameWatch
+      ? { gameWatch: [art.gameWatch[0], art.gameWatch[1], grow(art.gameWatch[2])] } : {}),
+    ...(art.train ? { train: { ...art.train, y: art.train.y - lift } } : {}),
+    ...(art.plane
+      ? { plane: { ...art.plane, from: art.plane.from - lift, to: art.plane.to - lift } } : {}),
+  });
+  lcdLiftedScenes.set(key, scene);
+  return scene;
+}
+
+/**
+ * THE SCENE THIS FRAME IS ACTUALLY PAINTING, which is the one thing every
+ * painter, the window-cell cache and the panel key have to agree about.
+ *
+ * Landscape and every caller outside a run hand back the authored table by
+ * identity, so nothing about those paths changed.
+ */
+export function lcdArtFor(stageIndex, context) {
+  if (context?.portrait && stageIndex === 1) return LCD_PORTRAIT_STAGE_1;
+  const art = LCD_CITY_SCENES[stageIndex];
+  const lift = lcdPortraitLift(context);
+  return lift > 0 ? lcdLiftedScene(stageIndex, art, lift) : art;
 }
 
 // ---- the chase ----------------------------------------------------------
@@ -10246,9 +10427,11 @@ function lcdSearchlight(ctx, building, dx, n, frame) {
   for (let d = 6; d < LCD_BEAM_REACH; d += 4) {
     const bx = sx + ca * d;
     const by = roof - 9 + sa * d;
-    // The sky has a ceiling: the beat ribbon hangs across everything above 24,
-    // which is why the clouds sit at 27. A beam stops under it too.
-    if (by < 26) break;
+    // The sky has a ceiling: the beat strip hangs across everything above it,
+    // which is why the clouds sit just under it. A beam stops there too — and
+    // the ceiling is the frame's, not a number, because a phone's strip is
+    // nowhere near the authored one (see lcdPortraitCeiling).
+    if (by < frame.skyCeiling + 0.5) break;
     const spread = Math.max(3, Math.round(d / 9)) * 2;
     ctx.fillStyle = `rgba(232,238,176,${(0.62 - 0.5 * (d / LCD_BEAM_REACH)).toFixed(3)})`;
     ctx.fillRect(Math.round(bx - spread / 2), Math.round(by), spread, 4);
@@ -10329,7 +10512,7 @@ function lcdTrainLegs(spec) {
 // can draw and still have a rail on it.
 function lcdViaduct(ctx, art) {
   ctx.fillStyle = LCD_INK;
-  ctx.fillRect(0, art.train.y + 12, W, 1);
+  ctx.fillRect(0, art.train.y + LCD_VIADUCT_DROP, W, 1);
 }
 
 // ---- the service ---------------------------------------------------------
@@ -10666,7 +10849,7 @@ function lcdEqualizer(ctx, building, index, frame) {
   const bankW = cols * 5 - 2;
   const left = Math.round(x + w / 2 - bankW / 2);
   ctx.strokeStyle = LCD_PRINT_SOFT;
-  ctx.strokeRect(left - 2.5, top - 37.5, bankW + 5, 37);
+  ctx.strokeRect(left - 2.5, top - LCD_EQ_BANK_H - 0.5, bankW + 5, LCD_EQ_BANK_H);
   for (let col = 0; col < cols; col++) {
     const cx = left + col * 5;
     // This painter was always a meter; it just had no source. The authored
@@ -10688,7 +10871,7 @@ function lcdAntenna(ctx, building, index, frame) {
   const [x, w, h] = building;
   const cx = Math.round(x + w / 2);
   const top = GROUND_Y - h;
-  const tall = 13 + index % 3 * 3;
+  const tall = lcdAntennaH(index);
   ctx.strokeStyle = LCD_PRINT_SOFT;
   if (index % 3 === 0) {
     lcdStrokePath(ctx, [[cx - 5, top], [cx, top - tall], [cx + 5, top], [cx - 3, top - 5],
@@ -13070,8 +13253,9 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, vanished = -1,
 // Direct oracle for visual tooling and cache parity tests; no global-mode mutation.
 export function drawLCDPanelUncached(ctx, scene, settings = {}) {
   const sky = settings.skyMeter !== false;
-  const { frame } = prepareLCDPanel(scene, sky);
-  paintLCDCity(ctx, frame, sky, settings.backgroundContext || null);
+  const context = settings.backgroundContext || null;
+  const { frame, art } = prepareLCDPanel(scene, sky, false, context);
+  paintLCDCity(ctx, frame, sky, context, art);
 }
 
 export function drawLCDPanel(ctx, scene, settings = {}) {
@@ -13241,7 +13425,7 @@ const FRAME_SCALARS = new Set(`stageIndex live step beat4 beatAbs bar phrase pha
   streak cheer barrelBeat barrelGrid gorillaExpr gorillaNostrils gorillaBrow gorillaInk
   gorillaBuild gorillaPit gorillaTuft gorillaShock gorillaEar gorillaSpikes gorillaShoulder
   gorillaShoulderShape barrelCell barrelShape runnerOutline intro introBeat omenStep
-  maxRoadRise`.split(/\s+/));
+  maxRoadRise skyCeiling`.split(/\s+/));
 const FRAME_RESOLVED = new Set(['beatPhase', 'spectrum', 'audio', 'verbCue',
   'windowLevels', 'roofLevels', 'skyLevels', 'signOn', 'strike', 'puffs', 'antennaReach']);
 
@@ -13269,6 +13453,7 @@ export function clearPresentationCaches() {
   frostAuroraCacheSS = 0;
   bakeCache.clear();
   cityBake = null;
+  clearLCDLiftedScenes();
   clearLCDPanelCache();
 }
 
@@ -13276,9 +13461,16 @@ onPresentationChanged(clearPresentationCaches);
 
 // Resolve the exact existing cell/flash decisions once, shared by key and painter.
 // No new quantization and no retained references to mutable analyser/ink buffers.
-function prepareLCDPanel(scene, skyMeter, keyNeeded = false) {
+function prepareLCDPanel(scene, skyMeter, keyNeeded = false, backgroundContext = null) {
   const frame = lcdSceneFrame(scene);
-  const art = LCD_CITY_SCENES[frame.stageIndex];
+  // The SCENE BEING PAINTED, not the authored table: portrait grows the
+  // buildings, and a window level resolved against the landscape row count
+  // would light a grown facade to the wrong height. See lcdArtFor.
+  const art = lcdArtFor(frame.stageIndex, backgroundContext);
+  // Where the sky stops, in the scene's own coordinates — the beat strip's
+  // lower edge in landscape, and a phone's own on a phone. Painters that have
+  // to stop under it (the searchlights' beams) read it off the frame.
+  frame.skyCeiling = LCD_SKY_CEILING - lcdPortraitLift(backgroundContext);
   const bay = lcdClockBay(art);
   windowLevels.length = art.buildings.length;
   roofLevels.length = 0;
@@ -13307,7 +13499,7 @@ function prepareLCDPanel(scene, skyMeter, keyNeeded = false) {
   frame.puffs = !art.smokestacks?.length || heard == null ? 4 : Math.max(3, Math.min(4, 3 + Math.round(heard)));
   frame.antennaReach = Number.isInteger(art.transmitter) && frame.audio
     ? Math.round((frame.audio.treble || 0) * 2.2) : 0;
-  if (!keyNeeded) return { frame, supported: true };
+  if (!keyNeeded) return { frame, art, supported: true };
   panelKey.length = 0;
   panelKey.push(skyMeter, !!frame.audio);
   let supported = true;
@@ -13322,12 +13514,13 @@ function prepareLCDPanel(scene, skyMeter, keyNeeded = false) {
     panelKey.push(levels.length);
     for (const level of levels) panelKey.push(level);
   }
-  return { frame, supported };
+  return { frame, art, supported };
 }
 
 function drawLCDCity(ctx, scene, skyMeter = false,
   backgroundContext = null) {
-  const { frame, supported } = prepareLCDPanel(scene, skyMeter, lcdPanelCacheEnabled);
+  const { frame, art, supported } = prepareLCDPanel(scene, skyMeter, lcdPanelCacheEnabled,
+    backgroundContext);
   const cv = ctx.canvas;
   const coverage = backgroundPaintCoverage(ctx);
   const shiftedCoverage = coverage.left !== 0 || coverage.right !== W;
@@ -13341,7 +13534,7 @@ function drawLCDCity(ctx, scene, skyMeter = false,
   // those callers direct, and keep the operation recorder's real-surface fallback.
   if (shiftedCoverage || !lcdPanelCacheEnabled || !supported || ctx.globalAlpha !== 1
     || ctx.globalCompositeOperation !== 'source-over' || !cv?.width || !cv?.height) {
-    paintLCDCity(ctx, frame, skyMeter, backgroundContext);
+    paintLCDCity(ctx, frame, skyMeter, backgroundContext, art);
     return;
   }
   let bake = lcdPanelBake;
@@ -13356,7 +13549,7 @@ function drawLCDCity(ctx, scene, skyMeter = false,
     const made = sized ? { canvas: bake.c, ctx: bake.ctx } : lcdBakeSurface(cv.width, cv.height);
     if (!made) {
       clearLCDPanelCache();
-      paintLCDCity(ctx, frame, skyMeter, backgroundContext);
+      paintLCDCity(ctx, frame, skyMeter, backgroundContext, art);
       return;
     }
     const started = efficiencyProfile.enabled ? performance.now() : 0;
@@ -13366,7 +13559,7 @@ function drawLCDCity(ctx, scene, skyMeter = false,
     c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     c.lineWidth = 1; c.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
-    paintLCDCity(c, frame, skyMeter, backgroundContext);
+    paintLCDCity(c, frame, skyMeter, backgroundContext, art);
     bake = { c: made.canvas, ctx: made.ctx, owner: ctx, key: panelKey.slice() };
     lcdPanelBake = bake;
     efficiencyProfile.lcdBytes = cv.width * cv.height * 4;
@@ -13380,12 +13573,8 @@ function drawLCDCity(ctx, scene, skyMeter = false,
   ctx.restore();
 }
 
-function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null) {
-  const isPortraitRhythm1 = !!(backgroundContext?.portrait && frame.stageIndex === 1);
-  const art = isPortraitRhythm1 ? LCD_PORTRAIT_STAGE_1 : LCD_CITY_SCENES[frame.stageIndex];
-  // Portrait rhythm-1 keeps its sparse two-building skyline and no portrait
-  // extension, but its authored clouds and plane are part of the scene again.
-  const portraitSparseCity = isPortraitRhythm1;
+function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null,
+  art = lcdArtFor(frame.stageIndex, backgroundContext)) {
   const palette = LCD_GBC_PALETTES[frame.stageIndex];
   // The sky is painted HERE rather than by each caller, so the scene frame is
   // derived once per frame instead of once by bg() and again on the way in.
@@ -13406,7 +13595,6 @@ function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null) {
   ctx.fillRect(coverage.left - bleed, GROUND_Y,
     coverage.width + bleed * 2, H - GROUND_Y);
   ctx.lineWidth = 1;
-  if (!portraitSparseCity) lcdPortraitCityExtension(ctx, frame, backgroundContext);
   // RHYTHM 2'S CLOUDS ARE THE BACK OF THE CITY. This stage's elevated rail,
   // train, searchlight and roof traffic all cross their band, and painting the
   // clouds after those objects made the wisps cut across them. Put this one
@@ -13427,12 +13615,19 @@ function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null) {
   };
   // The facades, their line art and every unlit window, in one blit — or, while
   // the city is arriving, one column window per structure at its own offset.
-  bakedCity(ctx, `${frame.stageIndex}|${frame.phase}|${isPortraitRhythm1 ? 'portrait' : 'landscape'}`,
+  // The lift is in the key because it is in the masonry: a taller city is a
+  // different bake, and a rotation or a resize that changes it must not blit
+  // the skyline it drew for the frame before.
+  bakedCity(ctx, `${frame.stageIndex}|${frame.phase}|${frame.skyCeiling}`,
     (c) => paintLCDStaticCity(c, frame.stageIndex, art),
     arrive
       ? [...arrive.entries()].filter(([k]) => k !== 'gameWatch')
         .map(([, a]) => ({ x: a.x - 1, w: a.w + 3, dy: a.dy }))
-      : null);
+      : null,
+    // Masonry only: the crest is the highest ROOF plus what stands on it, and
+    // everything standing there is drawn live over this blit. Two pixels of
+    // margin for the line art's half-pixel rules.
+    lcdSkylineCrest(art, frame.stageIndex) - 2);
   // THE RAIL, IN FRONT OF THE SKYLINE, AS ONE PIECE, FROM BEAT ONE. It ran
   // behind the facades once, and a line seen only in the gaps between eight
   // buildings is eight short lines: it read as chopped, not as far. In front
