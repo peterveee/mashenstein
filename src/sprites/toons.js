@@ -3458,7 +3458,14 @@ function expressionFor(id, pose = {}, spec = null) {
     // Carried so downstream marks can be keyed to the hero, not just the mood —
     // BROW_L_SCALE is the one that needs it.
     id,
-    focus: pose.kind === 'run' || pose.kind === 'slide' || pose.roll || jf === 2,
+    focus: pose.kind === 'run' || pose.kind === 'slide' || pose.roll || jf === 2 || !!pose.faceGrim,
+    // THE OPPOSITE NUMBER TO `faceJoy`, and it exists because neutral is not it:
+    // half the cast wears `mouth: 'smile'` at rest, so a hero with nothing to be
+    // pleased about drops back to a resting face that is still grinning. `grim`
+    // is a face-only mood like joy — the determined brows (via `focus` above)
+    // over a mouth that has gone flat. Not a frown: he is not sad about it, he is
+    // taking it seriously.
+    grim: !!pose.faceGrim,
     surprise: !clinging && (jf === 0 || jf === 3 || !!pose.faceSurprised),
     // Startled brow: opt-in via pose.browRaise (a cameo can force it), or the
     // jump face rolled the startled variant; see the branch it unlocks in
@@ -3896,6 +3903,20 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     return;
   } else if (ex.effort) {
     ctx.moveTo(cx - 0.05 * u, cy + 0.015 * u); ctx.lineTo(cx + 0.055 * u, cy - 0.005 * u);
+  } else if (ex.grim && spec.mouth !== 'grille') {
+    // SERIOUS, NOT SAD. It overrides the resting mouth rather than joining the
+    // list below it, because the whole point is that a resting mouth is not
+    // neutral: `smile` and `smirk` are both authored as pleased.
+    //
+    // Barely a curve — the middle sits 0.006u ABOVE the ends, which is the
+    // smallest downturn that still reads as one at hub size. A true frown was
+    // tried and reads as sulking; dead flat reads as a face with the expression
+    // switched off. The corners are what does the work.
+    //
+    // B-33P is exempt for the same reason he is exempt from the death mouth: a
+    // speaker grille has no corners to pull down.
+    ctx.moveTo(cx - 0.046 * u, cy + 0.008 * u);
+    ctx.quadraticCurveTo(cx, cy + 0.002 * u, cx + 0.046 * u, cy + 0.008 * u);
   } else if (spec.mouth === 'smile') ctx.arc(cx, cy - 0.02 * u, 0.06 * u, 0.25 * Math.PI, 0.75 * Math.PI);
   else if (spec.mouth === 'smirk') { ctx.moveTo(cx, cy + 0.01 * u); ctx.quadraticCurveTo(cx + 0.05 * u, cy + 0.02 * u, cx + 0.08 * u, cy - 0.02 * u); }
   else if (spec.mouth === 'line') { ctx.moveTo(cx - 0.045 * u, cy); ctx.lineTo(cx + 0.045 * u, cy); }

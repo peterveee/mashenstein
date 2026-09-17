@@ -474,9 +474,10 @@ const DIVE_ZOOM_GAIN = DEFAULT_DIVE_ZOOM - 1;
 // Its own number rather than a scale on the landscape one: the two frames show
 // different amounts of room, so they do not want the same move.
 const PORTRAIT_DIVE_ZOOM = 2.5;
-// How long the hero wears the just-got-out-of-there grin, end to end, counting
-// the part the dive animation already covers.
-const ARRIVED_SMILE = 0.6;
+// How long the hero wears his just-got-out-of-there face — the grin on a clear,
+// the serious one on a loss — end to end, counting the part the dive animation
+// already covers.
+const ARRIVED_FACE = 0.6;
 // The engine cue shapes the dive is allowed to name. A table rather than a direct
 // lookup so a cue cannot reach an arbitrary export by string.
 const DIVE_SHAPES = { PORTAL_BREATH };
@@ -1906,6 +1907,7 @@ export class HubState {
     this.npcDwell = 0;
     this.greeted = false;     // has this hero already said hello, this approach
     this.arrivedT = 0;       // a beat of "I just got out of there" on the face
+    this.arrivedJoy = true;  // ...and whether that beat is pleased or serious
     this.hasMoved = false;   // the controls legend retires once you have walked
     this.movedAt = 0;
     // One standing patch per hero, spread the length of the concourse — see
@@ -2220,10 +2222,11 @@ export class HubState {
         // means what it says. The animation already wears the grin from his feet
         // touching to its last frame; storing the leftover instead would be a value
         // whose meaning quietly changed every time the exit was re-timed.
-        // Only if he was smiling in the first place — the carry-over exists to let
-        // the dive's own grin finish in the room, so with no grin there is nothing
-        // to carry and he walks out of a failed attempt with his ordinary face.
-        if (out && joy) this.arrivedT = Math.max(0, ARRIVED_SMILE - DIVE_OUT_SMILE);
+        // Whichever face he landed wearing, it gets the same beat in the room —
+        // the carry-over exists because the dive hands back a fifth of a second
+        // after the expression arrives, and an expression nobody sees may as well
+        // not be drawn. A loss carries the serious face out on the same clock.
+        if (out) { this.arrivedT = Math.max(0, ARRIVED_FACE - DIVE_OUT_SMILE); this.arrivedJoy = joy; }
         // Coming OUT ends in the room: he is already standing at the machine, so
         // there is nothing to hand over to and the player simply has the controls
         // back. Only the way IN opens anything.
@@ -3441,9 +3444,11 @@ export class HubState {
       grounded: !airborne,
       vy: this.jumpVy,
       facing: this.facing || 1,
-      // Just came back out of a machine — see the dive's own landing smile, which
-      // this continues so it lasts long enough to be seen.
-      faceJoy: this.arrivedT > 0,
+      // Just came back out of a machine — see the dive's own landing expression,
+      // which this continues so it lasts long enough to be seen. Which one it is
+      // depends on how the stage went: pleased for a clear, serious for a loss.
+      faceJoy: this.arrivedT > 0 && this.arrivedJoy,
+      faceGrim: this.arrivedT > 0 && !this.arrivedJoy,
     };
     const drawHero = this.dive ? null
       : (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });

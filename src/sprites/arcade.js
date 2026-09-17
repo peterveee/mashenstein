@@ -1160,14 +1160,46 @@ function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
     plain(ctx, lighten(pal.frame, 0.1), (c) => rr(c, X(0.15), Y(0.29), w * 0.7, h * 0.06, w * 0.02)); // roller box
     return;
   }
-  // The default leaf, standing open a crack — the sliver of black down its hinge
-  // side is the only thing that says "this opens".
-  shape(ctx, pal.door, u, (c) => rr(c, ...box('leaf'), w * 0.08));
-  plain(ctx, darken(pal.door, 0.45), (c) => c.rect(X(0.165), Y(0.34), w * 0.04, h * 0.66));
-  plain(ctx, darken(pal.door, 0.22), (c) => { rr(c, X(0.25), Y(0.37), w * 0.38, h * 0.19, w * 0.05); rr(c, X(0.25), Y(0.62), w * 0.38, h * 0.23, w * 0.05); });
-  plain(ctx, darken(pal.door, 0.5), (c) => c.arc(X(0.765), Y(0.612), w * 0.05, 0, Math.PI * 2));
-  plain(ctx, '#c8c8d8', (c) => c.arc(X(0.765), Y(0.6), w * 0.047, 0, Math.PI * 2));
-  plain(ctx, '#f2f2f8', (c) => c.arc(X(0.752), Y(0.588), w * 0.018, 0, Math.PI * 2));
+  // The default leaf: the Arcade Corner and the back room. These two sit in the
+  // middle of the concourse and nobody ever walks through them, so they stay
+  // HINGED — a door that slides itself open in a stretch of wall you cannot pass
+  // is making a promise the room does not keep, and the sensor over it would be
+  // watching for somebody who never arrives.
+  //
+  // Everything else is borrowed from the porthole pair either side of them: the
+  // same soft corners, the same two-ring window, the same band off the station's
+  // own sign colour. The wall should read as one set of doors with two
+  // mechanisms, rather than as two unrelated sets.
+  const powered = pal.icon !== 'none';
+  const [lx, ly, lw, lh] = box('leaf');
+  shape(ctx, pal.door, u, (c) => rr(c, lx, ly, lw, lh, w * 0.12));
+  // The hinge stile, and the crack of dark down it. On the sliding doors the
+  // giveaway is the pocket; here it is this, plus the two plates below — the
+  // cheapest way to say "swings" without animating anything.
+  plain(ctx, darken(pal.door, 0.45), (c) => c.rect(lx, ly + h * 0.02, w * 0.034, lh - h * 0.04));
+  // The band, carried at the same height as the sliding pair so the row lines up.
+  plain(ctx, mix(pal.door, pal.sign, powered ? 0.45 : 0.12), (c) => c.rect(lx, Y(0.73), lw, h * 0.07));
+  // Hinge plates last, and placed clear of the band above and below it. Drawn
+  // at the stile's own width rather than inside it — a hinge narrower than the
+  // stile it sits on is a grey speck at this size, which is what the first pass
+  // of these was.
+  plain(ctx, lighten(pal.frame, 0.34), (c) => {
+    rr(c, lx - w * 0.004, Y(0.38), w * 0.05, h * 0.055, w * 0.01);
+    rr(c, lx - w * 0.004, Y(0.87), w * 0.05, h * 0.055, w * 0.01);
+  });
+  // The window: same construction as the porthole, set a touch smaller and
+  // pushed off the hinge — a relative, not a copy.
+  const cx = lx + lw * 0.56, cy = Y(0.47), r = lw * 0.25;
+  plain(ctx, lighten(pal.frame, 0.42), (c) => c.arc(cx, cy, r + w * 0.022, 0, Math.PI * 2));
+  plain(ctx, darken(pal.frame, 0.25), (c) => c.arc(cx, cy, r + w * 0.008, 0, Math.PI * 2));
+  plain(ctx, powered ? darken(pal.sign, 0.5) : '#0b0912', (c) => c.arc(cx, cy, r, 0, Math.PI * 2));
+  glassGloss(ctx, cx - r, cy - r, r * 2, r * 2, 0.24, r);
+  // The knob, in the window ring's own metal rather than the old bare white —
+  // one material for every piece of hardware on the wall.
+  const kx = lx + lw * 0.86, ky = Y(0.612);
+  plain(ctx, darken(pal.frame, 0.4), (c) => c.arc(kx, ky + h * 0.004, w * 0.042, 0, Math.PI * 2));
+  plain(ctx, lighten(pal.frame, 0.42), (c) => c.arc(kx, ky, w * 0.04, 0, Math.PI * 2));
+  plain(ctx, lighten(pal.frame, 0.62), (c) => c.arc(kx - w * 0.013, ky - w * 0.012, w * 0.015, 0, Math.PI * 2));
 }
 
 function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0, t = 0) {

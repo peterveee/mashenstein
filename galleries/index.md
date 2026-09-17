@@ -30,3 +30,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-16 | `8e79cc0` | [2026-09-16-8e79cc0.html](2026-09-16-8e79cc0.html) | [bake-offs](2026-09-16-8e79cc0-lab.html) | feat(attract): add initialHeroId for idle demo and dev modes |
 | 2026-09-17 | `32842c1` | [2026-09-17-32842c1.html](2026-09-17-32842c1.html) | [bake-offs](2026-09-17-32842c1-lab.html) | feat: add SFX desk for live audio mixing and level adjustment |
 | 2026-09-18 | `b68be5b` | [2026-09-18-b68be5b.html](2026-09-18-b68be5b.html) | [bake-offs](2026-09-18-b68be5b-lab.html) | feat: add floor reflections rendering and desk management tools |
+| 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |

@@ -456,6 +456,12 @@ class CabinetDive {
       if (t >= OUT_LAND) {
         this.pose.faceSurprised = false;
         this.pose.faceJoy = this.outJoy;
+        // AND THE OTHER WAY ROUND IS NOT NOTHING. Dropping the grin is not enough
+        // on its own: most of the cast rests on `mouth: 'smile'`, so a hero who
+        // lost would land wearing the same pleased face he walked in with. `faceGrim`
+        // is the opposite number — brows down, mouth flat — so the exit says which
+        // way it went either way.
+        this.pose.faceGrim = !this.outJoy;
       }
       this._outDeck(t);
       this.glint = ballGlint(this.stickFwd);
