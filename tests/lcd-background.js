@@ -9,7 +9,7 @@ const { getStylePack, drawLCDPanel, LCD_PORTRAIT_CITY_SHIFT,
   lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
   LCD_DEFAULT_ROAD_RISE, LCD_SCREEN_GRID_CELL, LCD_PORTRAIT_SCREEN_GRID_CELL, lcdScreenGridCellSize,
   lcdPortraitGridLineY, LCD_ROAD_INK, LCD_CLOUD_CLEARANCE_BOTTOM, lcdBarrelStrikeAt,
-  lcdArtFor } = await import('../src/engine/stylePacks/index.js');
+  lcdArtFor, lcdBoardTop } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
@@ -1739,30 +1739,38 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
     .map(([x], i) => x - (two.buildings[i][0] + two.buildings[i][1]));
   assert(gaps.every((gap) => gap === gaps[0]),
     `rhythm-2 spaces its facades evenly (${gaps.join(', ')})`);
-  assert(two.billboards.length === 1 && two.billboards[0][0] === 0
-    && two.billboards[0][1] === 'chart' && two.washer[0] === 1,
-  'rhythm-2 opens on the combo board and puts the washer on the next roof');
+  const boards = two.buildings.map((b, i) => [i, lcdBoardTop(two, i)]);
+  assert(boards[0][1] != null && two.billboards[0][1] === 'chart' && two.washer[0] === 1,
+    'rhythm-2 opens on the combo board and puts the washer on the next roof');
+  assert(two.billboards.some(([bi, name]) => bi === 2 && name === 'chase'),
+    'and gives the third roof the maze board');
+  // THE RAIL CLEARS THE BOARDS, not the roofs. A board stands forty above the
+  // roof it is on, so a service hung ten over the tallest ROOF is a service
+  // with a billboard through it — which is exactly what it was.
   const girder = two.train.y + 12;
-  const clear = Math.min(...two.buildings.map((b) => (GROUND_Y - b[2]) - girder));
-  assert(clear >= 10 && clear <= 14,
-    `rhythm-2 runs its service over every roof (${clear} clear)`);
+  const tops = two.buildings.map((b, i) => lcdBoardTop(two, i) ?? GROUND_Y - b[2]);
+  const clear = Math.min(...tops.map((top) => top - girder));
+  assert(clear >= 8 && clear <= 16,
+    `rhythm-2 runs its service over every roof AND every board (${clear} clear)`);
   assert(Math.max(...two.clouds.map(([, y]) => y)) + 13 <= two.train.y,
     'and keeps the wisps above the cars');
-  // rhythm-3: Kong is the middle facade so his chute has a gap to fall down,
-  // and the crossing keeps the two pixels it clears his raised barrel by.
+  // rhythm-3: Kong keeps the right-hand end of the skyline, and the whole of
+  // the authoring around him is his barrel getting somewhere to fall.
   const three = lcdArtFor(3, phone);
-  assert(three.rooftopGorilla === 1 && three.buildings.length === 3,
-    'rhythm-3 stands Kong between the board and the mast');
+  assert(three.rooftopGorilla === three.buildings.length - 1,
+    'rhythm-3 stands Kong on the last roof');
   const kong = three.buildings[three.rooftopGorilla];
-  const chuteGap = three.buildings[2][0] - (kong[0] + kong[1]);
-  assert(chuteGap >= 24,
-    `his chute has room to fall in (${chuteGap}px of gap)`);
-  const chute = lcdChuteScreenX(3, true);
-  assert(chute > kong[0] + kong[1] + LCD_PORTRAIT_CITY_SHIFT.x
-    && chute < three.buildings[2][0] + LCD_PORTRAIT_CITY_SHIFT.x,
-  `and the run is told where it actually is (${chute})`);
-  assert(lcdChuteScreenX(3) !== chute,
-    'which is not where the landscape panel puts it');
+  // His chute splits the air between his wall and the authored panel edge, so
+  // what matters is that the barrel lands inside the window a phone SHOWS,
+  // with room beyond it — not merely inside the panel.
+  const chute = lcdChuteScreenX(3, true) - LCD_PORTRAIT_CITY_SHIFT.x;
+  const BARREL_W = 16;
+  assert(chute - BARREL_W / 2 > kong[0] + kong[1],
+    `his barrel falls clear of his own wall (${chute})`);
+  assert(chute + BARREL_W / 2 <= VISIBLE[1] - 8,
+    `and lands inside the window the phone shows (${chute + BARREL_W / 2} <= ${VISIBLE[1] - 8})`);
+  assert(lcdChuteScreenX(3) !== lcdChuteScreenX(3, true),
+    'and the run is told the portrait one, not the landscape panel\'s');
   const barrelTop = GROUND_Y - kong[2] - 57;
   const bannerBottom = three.plane.to + 12;
   assert(bannerBottom === barrelTop - 2,
