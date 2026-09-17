@@ -74,7 +74,7 @@ const BROW_W = 0.018, BROW_MIN = 0.38;
 const BROW_L = 0.3, BROW_A = 0.92;
 // Per-hero scale on the lighten, because BROW_L lightens toward WHITE and white
 // is not a neutral direction for a coloured ink. Most of the cast draws `p.e` as
-// a near-black (grumpos #17131a, dolores, raymn), where lightening only lowers
+// a near-black (grumpos #17131a, dolores, ramon), where lightening only lowers
 // the tone and the hue has nothing to lose. Gary's is #d83030 — he is a zombie
 // and his brows are meant to read as the same red as his pupils — and pushing
 // THAT toward white desaturates before it darkens: at the full 0.3 he lands on
@@ -762,7 +762,7 @@ const shoeFrame = (ax, ay, a0, b0, rx, ry, rot) => {
 };
 // The shape's ankle for this view, defaulting to the ellipse's own implicit one
 // (the leg ends a little behind and above the oval's centre) when unstated.
-// `centred` is for a shoe with no leg on it — Raymn's float free — where there
+// `centred` is for a shoe with no leg on it — Ramon's float free — where there
 // is no ankle to hang from and the shape should simply sit where the oval sat.
 const shoeAnkle = (S, front, centred) =>
   (centred ? null : (front ? S.frontAnkle : S.ankle)) || [0, 0];
@@ -1378,7 +1378,7 @@ export const TOON_SPECS = {
     torsoWidth: 0.89,
     // end character editor proportions
   },
-  raymn: { rig: 'ray', limbStyle: 'float' },
+  ramon: { rig: 'ray', limbStyle: 'float' },
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
   // cycle. Face streak and torso stripe are one marking and share the sign.
@@ -2562,7 +2562,7 @@ function gaitFoot(p, stride, lift) {
   return [Math.cos(th) * stride, -Math.max(0, -Math.sin(th)) * lift];
 }
 
-// Softer variant for Ray M'N's disconnected shoes. Squaring the lift curve
+// Softer variant for Ramon's disconnected shoes. Squaring the lift curve
 // gives it zero velocity at takeoff/landing, avoiding a visible pop.
 function floatingFoot(p, stride, lift) {
   const th = p * Math.PI * 2;
@@ -2611,7 +2611,7 @@ function locoFoot(p, stride, lift, L) {
 }
 
 // ---------------------------------------------------------------- faces
-const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9, clara: 2.7, rusty: 3.4 };
+const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, ramon: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9, clara: 2.7, rusty: 3.4 };
 
 // ------------------------------------------------------ victory routines
 // The results screen holds for a while, so a single looping wiggle reads as a
@@ -2621,7 +2621,7 @@ const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4
 // animation played nine times.
 const CELEBRATE_MOVE = {
   lorenzo: 'hop', gnash: 'spin', fernwick: 'spin', b33p: 'shimmy', mochi: 'hop',
-  chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'flex', dolores: 'hips',
+  chompo: 'spin', gary: 'bow', ramon: 'shimmy', grumpos: 'flex', dolores: 'hips',
   // Kiko does not celebrate, she stands down. `bow` is the only move in the set
   // that is a held posture rather than a wiggle, which is the whole reading:
   // everyone else is delighted and she is filing it.
@@ -2639,7 +2639,7 @@ const CELEBRATE_MOVE = {
 // leave the floor and the point is that she does not.
 // Clara sits near the top on purpose: the cliffhanger jump is her whole
 // passive, so her victory bounce actually leaves the floor.
-const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, clara: 0.12, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035, kiko: 0.04 };
+const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, clara: 0.12, lorenzo: 0.09, ramon: 0.07, grumpos: 0.03, b33p: 0.035, kiko: 0.04 };
 const CEL_CYCLE = 2.6, CEL_SIG = 0.6; // seconds per loop; fraction on the signature
 // One-switch rollback for the shipped celebration redesign. Callers normally
 // omit celebrateStyle and inherit this value; the gallery's before column asks
@@ -2820,7 +2820,7 @@ export const TITLE_PARADE_ACTIONS = Object.freeze({
   fernwick: 'longbow draw',
   b33p: 'cannon aim',
   mochi: 'float and squish',
-  raymn: 'rocket-fist toss',
+  ramon: 'rocket-fist toss',
   grumpos: 'menu flex',
   kiko: 'warning shot',
   clara: 'pistol draw',
@@ -2852,7 +2852,7 @@ export function titleParadeAction(id, time, progress) {
     feetLift = lift * 8 / 26;
   }
   if (id === 'chompo') { patch.menuAction = 'chomp'; feetLift = lift * 2 / 26; }
-  if (id === 'raymn') {
+  if (id === 'ramon') {
     patch.headless = p > 0.18 && p < 0.78;
     // Ray's detached glove orbits because this is a menu pose. It is a
     // rocket-fist toss, not a wave; the old unused `menuAction = wave` label
@@ -2961,7 +2961,7 @@ const CLING_TUCK = 0.6;
 // answer, applied in drawToon and read again inside each painter:
 //   squeeze  vertical stretch, as a fraction — the body elongates along the pole
 //   grab     0..1 of "limbs up and gathered at the top", whatever that rig's
-//            limbs happen to be (Mochi's nubs, Raymn's fins)
+//            limbs happen to be (Mochi's nubs, Ramon's fins)
 //   tilt     radians of lean, for the rigs that ride the pole side-on
 const CLING_RIG = {
   // Mochi is not here either. She has no ARMS, but she has hands — the two nubs
@@ -2974,7 +2974,7 @@ const CLING_RIG = {
   // hanging off his own jaw, which is the only cling in the cast that is also
   // a threat. Tilted, because a disc gripping with its mouth cannot be level.
   chompo: { squeeze: 0.06, grab: 0, tilt: -0.22 },
-  // Raymn is NOT here, and that is the point. His gloves float, but a floating
+  // Ramon is NOT here, and that is the point. His gloves float, but a floating
   // glove is still a hand: it can close on a pole exactly like the rest of the
   // cast's, and his body can hang off it in the same place, over the cap. He
   // therefore takes the humanoid grip — one hand out to the column, everything
@@ -3086,7 +3086,7 @@ function celebrateMotion(id, t, reworked = false, moveOverride = null) {
     m.peak = bite > 0.82 || satisfied > 0.7;
     return m;
   }
-  if (reworked && id === 'raymn') {
+  if (reworked && id === 'ramon') {
     // His detached gloves carry the whole routine: rise, high-five, separate,
     // then hold one clean victory fist. A tiny body lift lands on the impact.
     const impact = c >= 0.18 && c < 0.36
@@ -3283,7 +3283,7 @@ function deathFaceState(pose) {
 // reach it too: the rig dialect outlives the expression, and b33p's LED panels
 // die in their own language.
 const FACE_MOODS = {
-  gnash: 'cocky', rusty: 'cocky', raymn: 'cocky', fernwick: 'bright', b33p: 'robot',
+  gnash: 'cocky', rusty: 'cocky', ramon: 'cocky', fernwick: 'bright', b33p: 'robot',
   grumpos: 'gruff', lorenzo: 'worried',
 };
 const moodFor = (id) => FACE_MOODS[id] || 'soft';
@@ -3310,7 +3310,7 @@ function expressionFor(id, pose = {}, spec = null) {
   // bigFall), so without it the idle blink can shut his eyes on the one beat
   // they are meant to be wide open.
   const active = pose.kind === 'jump' || pose.kind === 'slide' || pose.kind === 'celebrate'
-    || pose.stomp || pose.roll || pose.float || !!pose.faceSurprised;
+    || pose.roll || pose.float || !!pose.faceSurprised;
   // The pole ride is the moment the stage is WON, and the face is the only part
   // of the hero that can say so — the body is busy holding on. It borrows the
   // JUMP pose to hang off, though, and an ordinary jump wears one of a handful
@@ -3341,15 +3341,14 @@ function expressionFor(id, pose = {}, spec = null) {
   // of a hop IS a fall. Only the geometry can — how far below the floor he left
   // he has got to — and RunState.updateFallFace is where that is measured.
   //
-  // A stomp is exempt and so is a float: both are descents the player ASKED
-  // for, and `effort` already owns the stomp's face.
-  const dropping = pose.kind === 'jump' && !pose.stomp && !pose.float && !clinging;
+  // A float is exempt: it is a descent the player ASKED for.
+  const dropping = pose.kind === 'jump' && !pose.float && !clinging;
   const falling = dropping && (pose.vy || 0) < -60;
   // Face-only moods let a running cameo react without switching its body into
   // a celebration animation. Production poses do not set these flags.
   // jumpFace 1 ("excited") also lands here — see the `jf` variant lookup below.
   const joy = pose.kind === 'celebrate' || !!pose.faceJoy || clinging
-    || (pose.kind === 'jump' && !pose.stomp && !clinging && !falling && (pose.jumpFace | 0) === 1);
+    || (pose.kind === 'jump' && !clinging && !falling && (pose.jumpFace | 0) === 1);
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
@@ -3430,9 +3429,9 @@ function expressionFor(id, pose = {}, spec = null) {
   // Which jump face: 0 surprised, 1 excited, 2 determined, 3 startled. (A 5th,
   // neutral, was cut for reading too close to determined.) The caller rolls
   // one per hop so the same jump doesn't always land on the same face — see
-  // run.js's rollJumpFace. Excluded on the ground, mid-stomp, and while
-  // clinging (the pole ride keeps its own joyful face below).
-  const jf = (pose.kind === 'jump' && !pose.stomp && !clinging) ? (pose.jumpFace | 0) : -1;
+  // run.js's rollJumpFace. Excluded on the ground and while clinging (the pole
+  // ride keeps its own joyful face below).
+  const jf = (pose.kind === 'jump' && !clinging) ? (pose.jumpFace | 0) : -1;
   return {
     // `brow` opts a face out of the shipped ink hairlines, and it has to come
     // from the SPEC to be usable: drawEyes gates on ex.brow, but the only thing
@@ -3484,7 +3483,7 @@ function expressionFor(id, pose = {}, spec = null) {
       : id === 'grumpos' && reworkedCelebration
         ? false
         : !!(cm && cm.peak && cm.move),
-    effort: !!(pose.stomp || pose.roll || pose.headless),
+    effort: !!(pose.roll || pose.headless),
     // Even Grumpos's scowl unclenches now and then: mid-run the face drops
     // to neutral for a couple of seconds out of every eight or so, seeded so
     // the lull lands at different beats per hero clock. Permanent anger reads
@@ -8555,8 +8554,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       footB = gaitFoot((pose.phase || 0) + 0.5, stride, lift);
     }
   } else if (jump) {
-    if (pose.stomp) { footF = [0.06 * u, hipY + legL * 0.95]; footB = [-0.06 * u, hipY + legL * 0.95]; kneeB = -1; }
-    else if (L) {
+    if (L) {
       // The shipped jump holds ONE symmetric pose for the whole arc, which at
       // any speed reads as a cut-out being lifted. Driven off the same
       // rise/apex/fall terms it gets three beats instead: rise puts the front
@@ -8721,9 +8719,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // to one root on the centre line at waist height — and with the lead knee
   // drawn up, that thigh read as leaving from the groin rather than a hip.
   // The same pelvis the run was tuned with (split, depth, the lowered root)
-  // now carries through the whole arc; only the symmetric air stomp keeps the
-  // centre root, since its feet are a front-on pair like the stand's.
-  const styledJump = !!L && jump && !pose.stomp;
+  // now carries through the whole arc.
+  const styledJump = !!L && jump;
   const styledPelvis = styledGait || styledJump;
   const hipSplit = styledPelvis ? hipSplitAmt * u : 0;
   // ---- NEAR-LEG SHIFT bake-off seam (9 Sep 2026) --------------------------
@@ -9511,7 +9508,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // flexHold pins the rep at the curl and never opens it. The spread half of
     // the cycle throws his fists a full body-width out to either side, which is
     // fine alone on a menu and impossible in a line-up: in the intro row it put
-    // one blade through raymn and the other off the side of the screen. The
+    // one blade through ramon and the other off the side of the screen. The
     // curl is the half that reads as flexing anyway — arms out straight is just
     // a man measuring a fish.
     const fx = ((pose.time || 0) * 0.8) % 1;
@@ -10029,7 +10026,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       elbF = -1; elbB = -1;
     }
     armsReachFront = true;
-  } else if (pose.headless || pose.stomp) {
+  } else if (pose.headless) {
     handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]); elbF = sideF;
     handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]); elbB = sideB;
   } else if (run) {
@@ -10132,7 +10129,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ({ hand: handB, elb: elbB } = gaitFarArm());
     }
   } else if (jump) {
-    if (L && !pose.stomp) {
+    if (L) {
       // Asymmetric and keyed to the arc, like the legs: the forward-side arm
       // drives up and the trailing one folds back as its counterweight.
       // Anchored off sideF/sideB rather than raw screen angles — signed the
@@ -10163,7 +10160,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         armYF + nearReach * (nearDown / nearLen),
       ];
       elbF = sideF;
-    } else if (enhancedMotion && !pose.stomp) {
+    } else if (enhancedMotion) {
       // Arms counter the legs on launch, float higher through the apex, then
       // widen for balance on descent instead of freezing in one cheer pose.
       handF = reach(shF, armY, [
@@ -10775,7 +10772,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // so the extension guard's reach arithmetic still stands; only where the
   // knee sits along the leg moves. Run and the styled jump only — the crouch
   // and stand solve their own segment against their own geometry.
-  const legBias = L && (styledGait || (jump && !pose.stomp)) ? L.thigh : 0.5;
+  const legBias = L && (styledGait || jump) ? L.thigh : 0.5;
   const thighSeg = legSeg * 2 * legBias;
   const shinSeg = legSeg * 2 - thighSeg;
 
@@ -14525,7 +14522,7 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   const fistLift = (stretch - 1) * 0.23 * u;
   const shX = hipX - 0.22 * u * stretch, shY = hipY - 0.23 * u * stretch;
   if (spec.rig === 'ray') {
-    // Ray M'n slides the way he does everything: in pieces. Same skeleton,
+    // Ramon slides the way he does everything: in pieces. Same skeleton,
     // no limbs — his shoes float where the feet go, his gloves where the
     // hands go, and the scarf streams off the recline.
     ctx.save();
@@ -16216,7 +16213,7 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   ctx.restore(); // end squash-and-stretch
 }
 
-// Raymn's head, drawn about (hx, hy): an oversized, windswept parody quiff.
+// Ramon's head, drawn about (hx, hy): an oversized, windswept parody quiff.
 // Its broad silhouette is intentional — it must remain recognizable even in
 // the menu parade. Split out of drawRay so face crops can show the head alone.
 function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
@@ -16271,7 +16268,7 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   const handLift = run ? Math.sin(ph) * 0.035 * u : jump ? (0.045 + 0.035 * airApex) * u : 0;
   // Floating shoes—no connecting legs.
   const shoeSpread = slide && enhancedMotion ? 0.165 : 0.13;
-  // Clinging: Raymn has no arms and no legs, so his grip is the gloves gathered
+  // Clinging: Ramon has no arms and no legs, so his grip is the gloves gathered
   // over the top of him and the shoes drawn up underneath — a swimmer's shape
   // with a pole through it. The body's own stretch and cant come from drawToon.
   const clingRay = clingAmount(pose);
@@ -16280,7 +16277,7 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   const backShoeX = -shoeSpread * clingSpread * u + footB[0], backShoeY = -0.04 * u + footB[1] - shoeLift;
   const frontShoeX = shoeSpread * clingSpread * u + footF[0], frontShoeY = -0.04 * u + footF[1] - shoeLift;
   // The one line of the humanoid limb spec that transfers to a rig with no
-  // legs. Raymn cannot fold a knee, split a pelvis or lengthen a thigh, but he
+  // legs. Ramon cannot fold a knee, split a pelvis or lengthen a thigh, but he
   // already tilts his shoes — so that tilt becomes a real heel-strike and
   // toe-off curve instead of a raw sine, which is the same read the rest of
   // the cast now gets from locoFoot's third return. The PATH stays
@@ -16303,7 +16300,7 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   const backTilt = -0.08 + (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0));
   const frontTilt = 0.08 + (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0));
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
-  // Raymn has no legs, so there is no endpoint to hang a shoe off: `centred`
+  // Ramon has no legs, so there is no endpoint to hang a shoe off: `centred`
   // sits a shaped shoe exactly where his floating oval sat, and a zero offset
   // leaves the oval itself byte-for-byte what it always was.
   paintShoe(ctx, spec, ow, lod, p.f, backShoeX, backShoeY, 0, 0,
@@ -16319,7 +16316,7 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   const scarfLag = run ? Math.sin(ph + 0.7) * 0.035 * u : 0;
   // Scarf tail: a pennant trailing back from the collar band. It has to stay
   // up at collar height and taper to a point — hung lower and blunt it reads
-  // as a red sleeve reaching for the glove, and Raymn has no arms.
+  // as a red sleeve reaching for the glove, and Ramon has no arms.
   ctx.fillStyle = p.m; ctx.beginPath(); ctx.moveTo(-0.14 * u, cy - 0.245 * u); ctx.quadraticCurveTo(-0.3 * u, cy - 0.225 * u + scarfLag, -0.37 * u, cy - 0.17 * u + scarfLag); ctx.lineTo(-0.14 * u, cy - 0.14 * u); ctx.fill();
   drawRayHead(ctx, id, p, pose, u, ow, 0, cy - 0.35 * u, lod, run);
   // Floating gloves—hide the throwing glove until it returns.
@@ -16420,7 +16417,7 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
 // two-pass outline — so the weapon stays the same object once it leaves the
 // hero instead of morphing into a generic projectile.
 export function drawRocketFist(ctx, x, y, t, returning = false, scale = 1) {
-  const p = pal('raymn');
+  const p = pal('ramon');
   const u = 40 * scale;
   const prevInkScale = inkScale;
   inkScale = drawScale(ctx);
@@ -17670,6 +17667,12 @@ export function drawRangedProjectile(ctx, kind, x, y, opts = {}) {
   inkScale = prevInkScale;
 }
 
+// The height below which the rig draws its simplified silhouette. Exported
+// because the cabinet dive crosses the glass at exactly this height: doing the
+// simplification under the impact flash is the difference between a hero who
+// gets smaller and a hero who visibly pops mid-flight.
+export const TOON_LOD_H = 16;
+
 // ---------------------------------------------------------------- API
 export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // `opts.spec` / `opts.pal` let a CANDIDATE — a character still being designed,
@@ -17685,15 +17688,15 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   const prevInkScale = inkScale;
   inkScale = drawScale(ctx);
   const ow = hair(0.3, contour(0.016 * h) * (spec.contourScale || 1)) * INK.body; // whisper-light contour
-  const lod = h < 16;
+  const lod = h < TOON_LOD_H;
   let sx = 1, sy = 1;
   if (!pose.grounded && pose.kind === 'jump') {
-    if (usesEnhancedLocomotion(pose) && !pose.stomp) {
+    if (usesEnhancedLocomotion(pose)) {
       const speed = Math.min(1, Math.abs(Number(pose.vy) || 0) / AIR_STRETCH_VY_REF);
       sy = 1 + AIR_STRETCH_Y * speed;
       sx = 1 - AIR_STRETCH_X * speed;
     } else {
-      const st = pose.stomp ? 0.25 : Math.min(0.18, Math.abs(pose.vy || 0) / 700);
+      const st = Math.min(0.18, Math.abs(pose.vy || 0) / 700);
       sy = 1 + st;
       sx = 1 - 0.6 * st;
     }
@@ -17720,7 +17723,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // The armless rigs cling with their whole body, so their version of the pose
   // is a scale and a tilt rather than a limb arrangement — applied here, where
   // the figure transform already lives, and read again inside each painter for
-  // the parts that are theirs (Mochi's nubs, Raymn's fins, Chompo's jaw).
+  // the parts that are theirs (Mochi's nubs, Ramon's fins, Chompo's jaw).
   const clingAmt = clingAmount(pose);
   const rigCling = clingAmt > 0 ? CLING_RIG[heroId] : null;
   if (rigCling) {
@@ -17748,7 +17751,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // The hill's own lean, on top of whatever the pose already asked for.
   const hillLean = slopeLean(pose, u);
   if (hillLean) ctx.rotate(hillLean);
-  // Chompo hangs off his own jaw and Raymn streams off the pole at an angle;
+  // Chompo hangs off his own jaw and Ramon streams off the pole at an angle;
   // both need the whole figure canted, and neither has a joint to do it with.
   if (rigCling && rigCling.tilt) ctx.rotate(rigCling.tilt * clingAmt);
   if (cm) {
@@ -17988,7 +17991,7 @@ const EFFECT_FALLBACK = {
   chompo:   { cx: -0.02, cy: -0.5, rx: 0.66, ry: 0.72 },
   gary:     { cx: 0, cy: -0.5, rx: 0.58, ry: 0.68 },
   dolores:  { cx: 0, cy: -0.5, rx: 0.6, ry: 0.7 },
-  raymn:    { cx: -0.02, cy: -0.5, rx: 0.7, ry: 0.78 },
+  ramon:    { cx: -0.02, cy: -0.5, rx: 0.7, ry: 0.78 },
   grumpos:  { cx: 0, cy: -0.62, rx: 0.72, ry: 0.94 },
   // Slim like Fernwick, but a shade wider and taller in the envelope: the buns
   // sit outboard of the skull and the skirt flares past the hips.
@@ -18003,7 +18006,6 @@ function effectPoses(heroId) {
     { kind: 'slide', phase: 0.5, time: 0.5, grounded: true, facing: 1 },
   );
   const special = {
-    lorenzo: { kind: 'jump', phase: 0.5, time: 0.2, grounded: false, facing: 1, stomp: true, vy: -240 },
     gnash: { kind: 'run', phase: 0.25, time: 0.25, grounded: true, facing: 1, lean: 0.26 },
     rusty: { kind: 'run', phase: 0.25, time: 0.25, grounded: true, facing: 1, menuAction: 'aim', actionTime: 0.3 * RANGED_RELEASE_AT.toss - 0.04 },
     fernwick: { kind: 'slide', phase: 0.5, time: 0.3, grounded: true, facing: 1, roll: true },
@@ -18122,7 +18124,7 @@ export function setFaceCrop({ min = CROP_MIN, max = CROP_MAX, pad = CROP_PAD } =
 // what sets the SCALE; it just no longer gets a vote on the centre.
 // (Peter, 4 Sep 2026, off a four-way bake-off: skull centre, features centre,
 // and features centre with one head size for the whole cast. The skull won —
-// the features line sat the face visibly low, and one head size undid Raymn's
+// the features line sat the face visibly low, and one head size undid Ramon's
 // smaller skull and Kiko's headScale, magnifying both.)
 //
 // Mochi and Chompo have no skull — they are a body with a face on it, drawn by
@@ -18249,10 +18251,6 @@ export function toonStandSprite(heroId, w, h) {
 }
 
 // Derive a draw pose from the shared Player controller.
-// Mirrors run.js useAbility()'s powerPoseT budget for 'eat' — the bite needs
-// a full gape/hold/snap (~0.4s via biteWave) to read as an actual bite rather
-// than a twitch, longer than the flat 0.3s every other ability flourish gets.
-const EAT_POWER_POSE_T = 0.5;
 // One kill switch for the production directional-face treatment. This affects
 // only ordinary grounded running; set to 0 to restore the previous front-facing
 // run faces without touching idle/menu/HUD/cast poses or gallery candidates.
@@ -18261,9 +18259,6 @@ export const RUN_HEAD_TURN = 12;
 export function poseFromPlayer(player, t) {
   const hero = player.hero || {};
   const firing = player.powerPoseT > 0;
-  const eating = firing && player.powerType === 'eat';
-  const flurrying = (player.spannerFlurryT || 0) > 0;
-  const smashing = (firing && player.powerType === 'stomp' && player.grounded) || flurrying;
   const airSlideKick = !!player.slideSlamming;
   const forcedSlide = player.rolling || player.compressT > 0;
   const recoveringSlide = player.grounded && (player.slideAmount || 0) > 0;
@@ -18281,7 +18276,7 @@ export function poseFromPlayer(player, t) {
   // THE FACE OF SOMEONE WHO DID NOT PLAN THIS. Not derived here — it is a
   // question about where the FLOOR is, and the floor is the run's to know. See
   // RunState.updateFallFace for what it is and what it deliberately excludes
-  // (a ramp going down under his feet, a hole he aimed at, a stomp).
+  // (a ramp going down under his feet, a hole he aimed at, a slide-kick).
   const fallFace = !!player.fallFace;
   // HOW BIG THE FALL IS DECIDES THE POSE, and how fast he is going is how the
   // pose finds out.
@@ -18321,7 +18316,7 @@ export function poseFromPlayer(player, t) {
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens
     // the mouth mid-cycle instead of from closed.
-    time: eating ? (EAT_POWER_POSE_T - player.powerPoseT) : t,
+    time: t,
     vy: player.vy,
     grounded: player.grounded,
     // Rolls and Mochi's compression remain immediate ability silhouettes.
@@ -18362,7 +18357,6 @@ export function poseFromPlayer(player, t) {
     cling: Math.max(0, Math.min(1, player.cling || 0)),
     clingRide: Math.max(0, Math.min(1, player.clingRide || 0)),
     float: !!player.floating,
-    stomp: !!player.stomping,
     // Which jump face — rolled once per hop by run.js's rollJumpFace and held
     // on the player for the whole hang time, since `kind` stays 'jump' for
     // every frame this pose is airborne. See expressionFor's `jf` lookup.
@@ -18386,13 +18380,16 @@ export function poseFromPlayer(player, t) {
     // 'axe' joined the aim list when Grumpos got a throw (9 Sep 2026). Before
     // that his ability set exactly one field on the sprite — `axeThrown` — and
     // the throw was a prop teleporting out of a running man.
-    menuAction: eating ? 'chomp'
-      : (firing && (player.powerType === 'shoot' || player.powerType === 'bow' || player.powerType === 'axe'
-        || player.powerType === 'wrench' || player.powerType === 'toss')) ? 'aim'
-        : smashing ? 'smash' : undefined,
+    // No 'smash' arm here any more: it was Lorenzo's stomp/smash, and the pipe
+    // wrench leaves his hand through the same 'aim' every other throw uses. The
+    // painter behind it still draws — effectPoses asks for it by name — so the
+    // swing is kept drawable even though nothing in a run selects it.
+    menuAction: (firing && (player.powerType === 'shoot' || player.powerType === 'bow' || player.powerType === 'axe'
+      || player.powerType === 'wrench' || player.powerType === 'toss')) ? 'aim'
+      : undefined,
     // The bow's handling is BOW_AIM_T long (reach, draw, lower, sling), so its
     // clock runs off that budget rather than the 0.3s every other aim gets.
-    actionTime: firing && !eating ? (player.powerType === 'bow' ? BOW_AIM_T : 0.3) - player.powerPoseT : 0,
+    actionTime: firing ? (player.powerType === 'bow' ? BOW_AIM_T : 0.3) - player.powerPoseT : 0,
     // ...and the belt loop is empty while his tool is in the air. run.js owns the
     // flag (it is true from the release until the return lands); without it the
     // wrench reappears on his hip the frame the throw's pose ends, which reads

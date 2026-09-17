@@ -66,7 +66,7 @@ const ROSTER_PROJECTILES = [
   { id: 'wrench', label: 'WRENCH', hero: 'lorenzo', kind: 'wrench', selected: 'hybrid-two' },
   { id: 'axe', label: 'AXE', hero: 'grumpos', kind: 'axe', selected: 'hybrid-two' },
   { id: 'b33p', label: 'B-33P LEMON', hero: 'b33p', kind: 'b33p', selected: 'echoes' },
-  { id: 'fist', label: 'RAY M’N FIST', hero: 'raymn', kind: 'fist', selected: 'echoes' },
+  { id: 'fist', label: 'RAMON FIST', hero: 'ramon', kind: 'fist', selected: 'echoes' },
   { id: 'kiko', label: 'KIKO', hero: 'kiko', kind: 'kiko', selected: 'orb-shadows' },
   { id: 'clara', label: 'CLARA ×2', hero: 'clara', kind: 'clara', selected: 'orb-shadows' },
 ];

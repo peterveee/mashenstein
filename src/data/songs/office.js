@@ -27,6 +27,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
+  master: 0.9,
   voice: {"kickVoice":"kickEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
     lead: { send: { delay: 0.28 } },

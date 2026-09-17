@@ -58,6 +58,12 @@ export const Dev = {
   stack: [],          // breadcrumb of {title, items, idx}
   timeScale: 1,
   stepOnce: false,
+  // Hide the hero's ability-readiness orb. For CAPTURE only: the orb is a
+  // readout for the person holding the controls, and a recording has nobody
+  // holding them. run.js reads this when it builds the hero draw options.
+  hideSpecialOrb: false,
+  // Hide the carried fuse. Also capture-only: the prop is placeholder art.
+  hideFuse: false,
   paused: false,
   seedLock: null,     // when set, every dev-launched run reuses this seed
   toast: null,

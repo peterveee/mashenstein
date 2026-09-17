@@ -68,7 +68,7 @@ const stage = {
 // never in the air at all. A projectile test that does not check the round
 // reached the thing is not testing anything, so `crossed` is asserted for all
 // three weapons rather than for the pellet alone.
-const THROWER = { axe: 'grumpos', fist: 'raymn' };
+const THROWER = { axe: 'grumpos', fist: 'ramon' };
 
 function shootAt(type, projectile) {
   const run = new RunState({ stage, save, seed: 12345, difficulty: 1, onEnd: () => {} });

@@ -1,0 +1,371 @@
+<!doctype html>
+<!--
+  mashenstein.com — the marketing site, as ONE page.
+
+  This file is the source. `node tools/build-site.js` assembles the deployable
+  copy in work/site/, and what comes out is a single self-contained index.html
+  — style.css, site.js and every drawing on the page, welded into one file.
+  Deploying is copying one file. It fetches exactly one thing from the network,
+  and only because the licence says so: the three Google faces the game itself
+  loads.
+
+  ZERO BITMAPS. There is no raster image on this page. The sign, the starfield
+  and the favicon are SVG the build measures out of the game's own text engine
+  and star field; the trailer's own INSERT COIN card is set as type rather than
+  fetched as a thumbnail. The slots the build fills are the comment markers
+  below — SKY, LOGO, CORD, CSS, JS — plus FAVICON_SVG. It asserts on every one,
+  so a renamed slot fails the build rather than shipping a page with a hole in
+  it. The one thing this costs is a link-preview image; see --og in
+  tools/build-site.js.
+
+  THE PLAY LINK LIVES IN ONE PLACE: the data-play-url attribute on <body>.
+  While it is empty every PLAY button renders as COMING SOON and refuses to be
+  clicked. Paste the URL in and they all become real links.
+
+  THE RELAY, NINE CABINETS and MANAGEMENT & STAFF are written and kept below,
+  but switched off in SECTIONS (tools/build-site.js). MANAGEMENT has no
+  pictures and can simply come back; the other two lost theirs to the
+  zero-bitmap rule — see the note above them.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MASHENSTEIN: THE UNPLUGGENING</title>
+<meta name="description" content="The arcade went dark at 11:58 PM. Eight parody heroes relay-run through nine dying cabinets to reach the last working socket. Everything in the game is drawn and played from code.">
+<meta name="theme-color" content="#04050e">
+<link rel="canonical" href="https://mashenstein.com/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MASHENSTEIN">
+<meta property="og:title" content="MASHENSTEIN: THE UNPLUGGENING">
+<meta property="og:description" content="The arcade went dark at 11:58 PM. Who is fixing it?">
+<meta property="og:url" content="https://mashenstein.com/">
+<meta property="og:image" content="https://mashenstein.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MASHENSTEIN: THE UNPLUGGENING">
+<meta name="twitter:description" content="The arcade went dark at 11:58 PM. Who is fixing it?">
+<meta name="twitter:image" content="https://mashenstein.com/og.png">
+
+<link rel="icon" href="FAVICON_SVG">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap">
+<!-- Hold the page until the three faces are in. This matters more here than it
+     usually would: the wordmark is SVG text positioned glyph by glyph at the
+     spacing the game MEASURED for Lilita One, so a fallback face does not just
+     look wrong, it lands in the wrong places. The class goes on from an inline
+     script so nothing is ever painted unstyled, and site.js takes it off — with
+     a timeout, so a CDN having a bad day costs a swap rather than the page. -->
+<script>document.documentElement.classList.add('fonts-pending');</script>
+<noscript><style>.fonts-pending body { opacity: 1 !important; }</style></noscript>
+<style>/*CSS*/</style>
+</head>
+
+<body data-play-url="">
+
+<a class="skip" href="#situation">Skip to the situation</a>
+
+<!-- The sky is the whole page's backdrop, fixed behind everything, so the
+     reading scrolls over it rather than off the end of it. Every band above it
+     is translucent. -->
+<!--SKY-->
+
+<!-- ───────────────────────────────────────────── the sign ─────────── -->
+<header class="marquee-bay">
+  <div class="sign">
+    <h1 class="sr-only">MASHENSTEIN: THE UNPLUGGENING</h1>
+    <!--
+      The sign is a MEASUREMENT of the game's, not a transcription: the build
+      runs the game's own text engine headless, reads back where every glyph and
+      every stitch lands in the logical 480-wide frame, and emits that as SVG.
+      The cord hangs off the anchor drawTextCentered actually measured, in the
+      same box, so it can never dangle in mid air. See tools/build-site.js.
+    -->
+    <div class="lockup">
+      <!--LOGO-->
+      <!--CORD-->
+    </div>
+
+    <p class="pitch">The arcade went dark at 11:58&nbsp;PM.<br>Who is fixing it?</p>
+
+    <!--
+      The trailer sits above the fold, as a facade: the iframe is only inserted
+      on the click, so an idle visit costs nothing and YouTube gets nothing
+      until somebody asks for it.
+    -->
+    <div class="tube">
+      <button class="tube-play" data-video="gLMW9TrAgKE" aria-label="Play the MASHENSTEIN trailer">
+        <span class="tube-card" aria-hidden="true">INSERT COIN</span>
+        <span class="tube-btn" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- No PLAY here, and no fine print: above the fold is the sign and the
+         trailer. The only button on the page is the one at the bottom, after
+         the reading, and the budget-cuts joke needs its setup first. -->
+  </div>
+</header>
+
+<main>
+
+<!-- ───────────────────────────────────────── the situation ─────────── -->
+<section id="situation" class="band">
+  <div class="wrap prose">
+    <p class="eyebrow">WHAT HAPPENED</p>
+
+    <p class="lede">Every cabinet was dreaming its little electric dream. Then the
+    lights went out in one clean tug, and they have not come back on.</p>
+
+    <p><strong>Don K. Eggshell, PhD</strong> — an egg-headed professor with a
+    wild silver mane, a pair of very small spectacles and forty consecutive
+    fiscal years of losing to heroes — has stopped losing. He walked to the wall
+    and pulled out the master power strip.</p>
+
+    <blockquote>“IF I CANNOT WIN… NOBODY PLAYS.”</blockquote>
+
+    <p>Nine cabinets are dying. There is exactly one working socket at the far
+    end of the building. Eight heroes are still inside with him, and all eight
+    would like a word.</p>
+
+    <p>Unfortunately, due to budget cuts, a cabinet can only render
+    <strong>one hero at a time</strong>.</p>
+
+    <p>So it is a relay. Run, jump, and do not stop. Reach a portal and keep
+    going as whoever comes out the other side.</p>
+
+    <p class="note">There is no art on disk and no audio on disk: every
+    character, prop, background, hazard, song and sound effect is drawn or
+    synthesized from code while you play.</p>
+  </div>
+</section>
+
+<!--
+  THE RELAY and NINE CABINETS below are switched off in SECTIONS
+  (tools/build-site.js) and their artwork has been removed: a hero comes out of
+  drawToon and a cabinet out of render-social.js, and both are canvas painters,
+  so neither could be inlined under the zero-bitmap rule. The writing is kept.
+  Turning one back on gives text-only cards until there is vector art for it.
+-->
+<!-- ───────────────────────────────────────────── the relay ─────────── -->
+<section id="relay" class="band" data-section="relay">
+  <div class="wrap">
+    <h2 class="head">THE RELAY</h2>
+    <p class="sub">Eight heroes share one render budget. You do not choose them.
+    The portal chooses them, usually at the worst moment available.</p>
+
+    <ol class="cast">
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>LORENZO <span>“WRENCHES” BRACCIANO</span></h3>
+          <p class="line">“STANDARD PLUMBING PROCEDURE.”</p>
+          <p class="bit">Produces increasingly inappropriate plumbing tools.</p>
+          <dl><dt>SKILL</dt><dd>HIGH JUMP</dd><dt>MOVE</dt><dd>PIPE WRENCH</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>RUSTY <span>FOCUS-TESTED</span></h3>
+          <p class="line">“ALREADY THERE. WAITING.”</p>
+          <p class="bit">Arrives too early and waits for reality to catch up.</p>
+          <dl><dt>SKILL</dt><dd>SPEED BOOST</dd><dt>MOVE</dt><dd>BAMBOO SHOOT</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>FERNWICK <span>HERO OF THYME</span></h3>
+          <p class="line">“THE RECEIPT FORETOLD THIS.”</p>
+          <p class="bit">Her sacred prophecy is printed on a faded supermarket receipt.</p>
+          <dl><dt>SKILL</dt><dd>STARTING SHIELD</dd><dt>MOVE</dt><dd>LONGBOW</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>UNIT B-33P <span>“BLASTBOT”</span></h3>
+          <p class="line">“LOW ON CYAN.”</p>
+          <p class="bit">Constantly reports low on cyan. Regardless of context.</p>
+          <dl><dt>SKILL</dt><dd>BATTERY EFFICIENT</dd><dt>MOVE</dt><dd>LEMON CANNON</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>CLARA VAULT <span>MALL RAIDER</span></h3>
+          <p class="line">“CHAPTER ONE: SHE ARRIVED.”</p>
+          <p class="bit">Narrates her own lunch. In the past tense.</p>
+          <dl><dt>SKILL</dt><dd>CLIFFHANGER</dd><dt>MOVE</dt><dd>PLOT HOLE</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>KIKO <span>JURISDICTION PENDING</span></h3>
+          <p class="line">“NOBODY REPORTED IT. I NOTICED.”</p>
+          <p class="bit">Maintains a case file on every object in this building.</p>
+          <dl><dt>SKILL</dt><dd>FOOT PURSUIT</dd><dt>MOVE</dt><dd>WARNING SHOT</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>RAY M’N <span>APPENDAGE-OPTIONAL</span></h3>
+          <p class="line">“LIMBS WERE OUT OF BUDGET.”</p>
+          <p class="bit">The insurance form requires a limb count. He keeps writing “OPTIONAL.”</p>
+          <dl><dt>SKILL</dt><dd>LOOSE ASSEMBLY</dd><dt>MOVE</dt><dd>ROCKET FIST</dd></dl>
+        </div>
+      </li>
+      <li class="hero">
+        <div class="hero-copy">
+          <h3>GRUMPOS <span>DAD OF BOY</span></h3>
+          <p class="line">“BOY.”</p>
+          <p class="bit">Throws his axe majestically. Occasionally fails to catch it.</p>
+          <dl><dt>SKILL</dt><dd>LEGENDARY PRESENCE</dd><dt>MOVE</dt><dd>RETURNING AXE</dd></dl>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────── the nine cabinets ───────── -->
+<section id="cabinets" class="band band-dark" data-section="cabinets">
+  <div class="wrap">
+    <h2 class="head">NINE CABINETS</h2>
+    <p class="sub">Three acts, nine machines, nine completely different-looking
+    games — because the arcade could not afford one art style either.</p>
+
+    <div class="cabs">
+      <figure class="cab"><figcaption><b>PLUMBER PANIC</b><span>ACT I · PLATFORMER · PIXELS</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>SPEED ZONE</b><span>ACT I · RACING · FAUX-3D</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>RHYTHM BANKRUPTCY</b><span>ACT I · RHYTHM · LCD HANDHELD</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>FROST FORTRESS</b><span>ACT II · ICE ADVENTURE · WATERCOLOUR</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>CRYPT SHIFT</b><span>ACT II · HORROR · WORN VHS</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>NEON BLASTERS</b><span>ACT II · SHMUP · NEON VECTOR</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>CARDBOARD KINGDOM</b><span>ACT III · FAKE-O-RAMA · CARDBOARD</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>CORPORATE KOMBAT</b><span>ACT III · OFFICE ACTION · BIRO DOODLE</span></figcaption></figure>
+      <figure class="cab"><figcaption><b>THE SURGE</b><span>ACT III · EVERYTHING AT ONCE</span></figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ──────────────────────────────────── management & staff ─────────── -->
+<section id="staff" class="band" data-section="staff">
+  <div class="wrap">
+    <h2 class="head">MANAGEMENT &amp; REMAINING STAFF</h2>
+    <p class="sub">The food court never closed. Nobody told it.</p>
+
+    <div class="staff">
+      <article class="card card-villain">
+        <p class="tag">THE MANAGEMENT</p>
+        <h3>DON K. EGGSHELL, PhD</h3>
+        <p class="line">“A GRIEVANCE INTENSIFIES.”</p>
+        <p>An egg-headed professor with a wild silver mane, a collar he can hide
+        behind and a doctorate in statistics that has never once helped. Forty
+        consecutive fiscal years of losing to heroes. Disputes damage by filing
+        forms. Commutes by clown copter, which he would like on record was a
+        deliberate aesthetic choice.</p>
+      </article>
+
+      <article class="card">
+        <p class="tag">PAWN COUNTER</p>
+        <h3>GARY (DECEASED)</h3>
+        <p class="line">“PHYSICAL JURISDICTION RETAINED.”</p>
+        <p>A deceased pawn-shop clerk with a detachable head, still working the
+        counter. The only entity left in the building with real hands. That
+        turns out to matter more than anyone expected.</p>
+      </article>
+
+      <article class="card">
+        <p class="tag">REPAIR COUNTER</p>
+        <h3>DOLORES</h3>
+        <p class="line">“NEXT.”</p>
+        <p>Still on shift. Portions out repairs off a steam table that used to
+        do nachos. She has not been relieved, the lunch rush is at noon, and the
+        board above her has read NOW SERVING 0 for some years now.</p>
+      </article>
+
+      <article class="card">
+        <p class="tag">FACILITIES</p>
+        <h3>DUST DEVIL 9000</h3>
+        <p class="line">“DEEP CLEAN ENGAGED.”</p>
+        <p>A haunted vacuum cleaner. Cleans the floor, then the ceiling, then
+        the inside of a CRT. Becomes a boss fight somewhere around the ceiling.
+        It is the only antagonist in the game with a conscience — it apologises
+        every time it hits you.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ────────────────────────────────────────── the fine print ───────── -->
+<section id="faq" class="band band-dark">
+  <div class="wrap">
+    <h2 class="head">THE FINE PRINT</h2>
+
+    <dl class="faq">
+      <dt>WHEN DOES IT COME OUT?</dt>
+      <dd>Soon. A form has been filed disputing that answer.</dd>
+
+      <dt>WHAT DO I NEED TO PLAY IT?</dt>
+      <dd>A browser, and the ability to tap a screen or press a button. It runs
+      in the tab you already have open, on a laptop, a phone or a tablet.</dd>
+
+      <dt>WHO DID THE MUSIC?</dt>
+      <dd>The game does, every time. Nine cabinets, nine soundtracks, zero audio
+      files — it is all played live by synthesizers with names like MRDR-3,
+      KLNG-8 and TNGR-2, which were also built for this.</dd>
+
+      <dt>HAVEN'T I SEEN THESE HEROES BEFORE?</dt>
+      <dd>No. You are thinking of somebody else. Every one of them was drawn and
+      written from scratch for this game. Gary has asked it be put on record that he
+      has never met the entities you are thinking of, that any resemblance is
+      coincidental, and that he considers the matter closed.</dd>
+
+      <dt>CAN I PLAY AS DON K. EGGSHELL, PhD?</dt>
+      <dd>He has asked. Repeatedly. In writing.</dd>
+
+      <dt>HOW LONG IS IT?</dt>
+      <dd>Twenty-seven stages, three boss fights and one wall socket. Longer if
+      you keep losing to the haunted vacuum cleaner, which is not a criticism —
+      it is genuinely quite good.</dd>
+    </dl>
+
+    <p class="taunt" data-taunt aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- ──────────────────────────────────────────── the socket ─────────── -->
+<section id="play" class="band band-socket">
+  <div class="wrap centred">
+    <p class="eyebrow">EIGHT HEROES. ONE SOCKET.</p>
+    <h2 class="head big">PLUG IT BACK IN.</h2>
+    <div class="cta">
+      <a class="btn btn-play" data-play href="#" role="button">PLAY</a>
+    </div>
+    <p class="rule">NO INSTALL. NO ACCOUNT. NO COIN SLOT — HE TOOK THAT TOO.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <p class="foot-mark">MASHENSTEIN<span>: THE UNPLUGGENING</span></p>
+    <nav class="foot-links">
+      <a href="https://www.instagram.com/mashenstein/" target="_blank" rel="noopener">INSTAGRAM</a>
+      <a href="https://youtu.be/gLMW9TrAgKE" target="_blank" rel="noopener">TRAILER</a>
+      <a href="mailto:mashensteingame@gmail.com">MASHENSTEINGAME@GMAIL.COM</a>
+    </nav>
+    <p class="foot-fine">Every drawing on this page came out of the game's own
+    painters. No stock art was harmed. The arcade regrets this outcome.</p>
+  </div>
+</footer>
+
+<!-- Gary peeks in over the bottom edge. He is not a picture of Gary: the build
+     runs the game's own drawToon into a recorder that writes SVG paths instead
+     of pixels, so this is the painter's output, in vector, with his name tag
+     finally lettered. See tools/lib/canvas-to-svg.js. -->
+<!--GARY-->
+
+<script>/*JS*/</script>
+</body>
+</html>

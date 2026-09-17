@@ -29,7 +29,7 @@ dom.store['mashenstein.v2'] = '{definitely not json';
 }
 
 // Case 3: old v2 save missing new fields gets deep-defaulted.
-const { defaultSlot, Save } = await import('../src/engine/save.js');
+const { defaultSlot, defaultSettings, Save } = await import('../src/engine/save.js');
 const partial = {
   version: 2,
   settings: { reducedMotion: true, reducedFlashing: true },
@@ -98,6 +98,21 @@ dom.store['mashenstein.v2'] = JSON.stringify({
   assert(s.data.settings.renderDensityByBackend.webgl === 2
     && s.data.settings.renderDensityByBackend['2d'] === 0,
   'the renderer migration clears stale 2D history but preserves WebGL history');
+}
+
+// Case 6: the hero rename keeps existing mastery and death history usable.
+const renamedSlot = defaultSlot();
+renamedSlot.mastery.raymn = { xp: 345, level: 2, equipped: ['head'] };
+renamedSlot.stats.deathsByHero.raymn = 4;
+dom.store['mashenstein.v2'] = JSON.stringify({
+  version: 2, settings: defaultSettings(), slots: [renamedSlot, null, null],
+});
+{
+  const s = new Save().load();
+  assert(s.data.slots[0].mastery.ramon?.xp === 345 && !s.data.slots[0].mastery.raymn,
+    'Raym\'n mastery migrates to Ramon');
+  assert(s.data.slots[0].stats.deathsByHero.ramon === 4 && !s.data.slots[0].stats.deathsByHero.raymn,
+    'Raym\'n death history migrates to Ramon');
 }
 
 console.log(failed ? 'MIGRATION: FAILED' : 'MIGRATION: PASSED');

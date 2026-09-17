@@ -356,6 +356,32 @@ export class Spawner {
         obs.push(ob);
         lastX = Math.max(lastX, x + ob.w);
       }
+      // A FROZEN SWITCH AND ITS HOLE ARE ONE THING.
+      //
+      // The switch does exactly one job — it bridges the break behind it (see
+      // openGates in run.js) — and every pattern that carries one carries that
+      // break in the same cell list, a jump's length further on. Nothing in the
+      // lane knew they were a pair, and that is not a theoretical gap: the
+      // sweeps that clear a lane all key on `def.action`, and a hole is
+      // `action: 'jump'` while a switch is `action: 'none'`. So a route's entry
+      // or exit window (clearRouteHazards), a scripted pit's clearance
+      // (spawnScriptedPits) or a portal's approach (clearPortalLane) would
+      // retire the hole and leave the switch standing over open ground —
+      // roughly one frost run in seven, measured through this very spawner.
+      //
+      // The link is by ID, never by reference: obstacles are copied field by
+      // field into the rewind ring (copyEntitiesInto), so a reference would
+      // survive a restore pointing at a snapshot's copy rather than at the hole
+      // in the lane. An id is the same number on both sides of a rewind.
+      for (let i = 0; i < obs.length; i++) {
+        if (!obs[i].def.isSwitch) continue;
+        for (let j = i + 1; j < obs.length; j++) {
+          if (!obs[j].def.isGap) continue;
+          obs[i].gateId = obs[j].id;
+          this.spawnGatedPrize(obs[j], picks, obs[i]);
+          break;
+        }
+      }
       // NO COIN OVER A HOLE, AND NONE ON EITHER LIP.
       //
       // Moved rather than trimmed: a run pushed past the landing is still the
@@ -403,6 +429,62 @@ export class Spawner {
       const fair = this.fairGap(speed, this.lastActionKind, 'slide', this.lastWasPunt);
       this.nextX = Math.max(lastX, this.lastActionX) + Math.max(roll, fair);
     }
+  }
+
+  /**
+   * THE PRIZE OVER THE HOLE, and it is there from the first frame the pattern
+   * is laid rather than handed out when the switch is hit.
+   *
+   * It is the lesson. A capsule hanging over a break you cannot land in says
+   * what no float text can: that thing is not for you unless you find the way
+   * to close the floor. Hitting the switch does not conjure a reward, it turns
+   * ground on under one that has been sitting there in plain sight — and a
+   * player who skips the switch runs past a prize they can see and cannot have,
+   * which is the only version of this that teaches anything.
+   *
+   * IT BREAKS THE NO-PICKUP-OVER-A-HOLE RULE ON PURPOSE. Everywhere else in
+   * this file a pickup near a break is a LURE — `clearOfHoles` moves coin runs
+   * off the lips, `sweepCoinsAroundHole` takes back the ones already laid, and
+   * clearOfHazards in run.js says a hole is in every band — and the argument is
+   * always that the player has no safe way to take it. Here there is one, it is
+   * eight pixels tall, it bobs, and it is standing sixty pixels back up the
+   * road. The lure is the point, and the switch is the answer to it.
+   *
+   * It is not reachable by jumping the hole: at frost speed the arc is already
+   * 39px up over the near third of the break and climbing, while this sits at
+   * coin height. Going for it without the bridge means coming down in the hole,
+   * which is the same answer the game gives for every other hole.
+   *
+   * Rolled from the cabinet's own capsule table on the SPAWNER's stream, so it
+   * is seeded with the rest of the lane and a replay deals the same prize.
+   * `gateId` ties it to the hole exactly as the switch is tied to it, because
+   * all three are one prop: if a lane sweep takes the break, the switch and the
+   * prize go with it (retireOrphanSwitches).
+   */
+  spawnGatedPrize(hole, pickups, block) {
+    const weights = this.cabinet?.capsuleWeights;
+    // No rewind from this source: the stage's one rewind capsule is scripted
+    // and placed by its own rule (spawnScriptedRewindMaybe), and a second way
+    // to win one would quietly double it.
+    const opts = { allowRewind: false };
+    const type = weights
+      ? weightedPowerPickup(this.rng, weights, null, opts)
+      : randomPowerPickup(this.rng, null, opts);
+    const w = PICKUPS[type]?.w || 8;
+    const p = makePickup(type, hole.x + hole.w / 2 - w / 2, COIN_FLOOR);
+    // Both ends of the tie: `gateId` is what run.js retires it by, `gated` is
+    // what marks it as a prize somebody still has to earn — the power ledger is
+    // told about it when the run picks it up out of the fill.
+    p.gateId = hole.id;
+    // AND THE BLOCK, which is the other half of the tie and the half that was
+    // missing. The hole alone is not what makes this prize obtainable — the
+    // thing that opens it is — so a prize that knows only its hole survives
+    // every sweep that takes the BLOCK and ends up hanging over a pit with
+    // nothing in the lane to explain it. Measured at about one lane in forty;
+    // seen by Peter on the first frost run after it shipped.
+    p.blockId = block ? block.id : null;
+    p.gated = true;
+    pickups.push(p);
   }
 
   // Coin formations. Every shape is anchored on the ground line at COIN_FLOOR
@@ -462,6 +544,135 @@ export class Spawner {
   }
 }
 
+// WHAT A PIECE DROPPED INTO A LIVE LANE HAS TO STAND CLEAR OF.
+//
+// Capsules, cells and mission pieces are not dealt by the pattern spawner: they
+// arrive on their own clocks and land in a lane that was filled seconds ago and
+// knows nothing about them. So a capsule could come down inside a cactus, or at
+// buzzbird altitude a few pixels from a buzzbird — the prize is there, the game
+// says take it, and the only line to it runs through the thing that hits you.
+// That is not a difficulty spike, it is a dead end; and where the boxes merely
+// touch, the prize is simply hidden behind another sprite.
+//
+// Nudge the piece DOWNSTREAM until it stands in the clear. Downstream, never
+// back, because upstream is ground the player has already been given to read.
+//
+// Two different clearances, because two different problems:
+//
+//   HAZARD_PAD is LANDING ROOM. It is not a fairness gap like Spawner.fairGap —
+//   you only have to be able to come down beside the piece and take it, not to
+//   be handed a fresh input window for it.
+//
+//   TOUCH_PAD is only "these two sprites do not share pixels". A boost pad or a
+//   breakable prize crate is a thing you WANT to be next to, so it buys no
+//   landing room at all; it just may not be drawn on top of the capsule.
+export const HAZARD_PAD = 30;
+export const TOUCH_PAD = 3;
+// Slack above a hazard's crown before it stops mattering.
+const BAND = 4;
+
+// HOW FAR A CLOSING HAZARD REACHES BACK UP ITS OWN LANE.
+//
+// Half the flyers and every rolling barrel move toward the player in world
+// space, and a capsule is dropped roughly a screen and a half ahead of him
+// (the drip's 540, a mission piece's 620) into a lane that then scrolls for a
+// couple of seconds before he arrives. A buzzbird closing at 28px/s crosses 84
+// of those pixels on the way — which is how a capsule placed a clean 30px clear
+// of one is inside it by the time anybody sees the pair.
+//
+// So a mover owns the strip it is going to sweep, not the box it is standing in,
+// and the piece is pushed past the FAR end of that strip. Past, rather than
+// short of it, is what makes the rule stable: everything here closes on the
+// player, so a piece downstream of a mover is a piece the mover is walking away
+// from, while one placed behind it gets run down.
+//
+// Three seconds is the long end of that wait (540px at the slowest stage speed),
+// and erring long here costs nothing but a few pixels of nudge.
+const APPROACH_T = 3;
+
+// The most negative world-space speed this obstacle can carry. Shamblers surge
+// and stall rather than glide (see the gait line in updateEntities), touching
+// 2.5x their nominal vx at the top of a step and nearly nothing at the bottom.
+// This is a DISTANCE over three seconds, so it is the mean of that gait — 1.6x
+// — and not the peak, which would credit a shambler with a sprint it only ever
+// manages for a few frames at a time.
+function closingSpeed(ob) {
+  const def = ob.def || {};
+  const air = def.airVx || 0;
+  const ground = (def.vx || 0) * (def.shamble ? 1.6 : 1);
+  const drift = def.airDrift ? def.airDrift.amp : 0;   // the wobble, either way
+  return Math.max(0, -Math.min(air, ground)) * APPROACH_T + drift;
+}
+
+/**
+ * Slide a box of width `w` at altitude `alt`, height `h`, out from under every
+ * obstacle it would land in, and return where it came to rest — or null when
+ * there is no clear spot left this side of `maxX`, which every caller treats
+ * the way it treats being past the wall: hold the piece and offer it again in a
+ * moment, rather than plant one that cannot be taken.
+ *
+ * Height is part of the test. A cord strung above a cactus is collected by the
+ * very jump that clears the cactus — a good beat, not an unfair one — so only
+ * obstacles that share the piece's band push it.
+ *
+ * A HOLE IS IN EVERY BAND, though. Height is what makes a cactus stop mattering
+ * to a cord above it, but a gap is not a thing you jump OVER on the way to the
+ * prize, it is the ground the prize is standing on not being there. A toaster
+ * hanging at alt 44 over a break is a lure toward a fatal hazard at any
+ * altitude, and the beat lane now cuts breaks all the way down a stage.
+ */
+export function clearOfHazards(x, w, alt, h, maxX, obstacles) {
+  if (!obstacles || !obstacles.length) return x > maxX ? null : x;
+  // A TUNNEL IS NOT A HOLE. `isGap` marks a break in the lane, and a tunnel
+  // mouth wears the same flag for collision's sake — but a tunnel has a ROAD in
+  // it (routes.js builds the floor), it is hundreds of pixels wide, and it is
+  // not jumped. signPits already declines to plant a JUMP sign in front of one
+  // for exactly that reason; a capsule hanging over one is a capsule over a
+  // road, and pushing it clear would walk it the whole length of the tunnel.
+  const inBand = (ob) => (ob.def.isGap && !ob.tunnel)
+    || (alt < ob.alt + ob.h + BAND && alt + h > ob.alt - BAND);
+  const threat = (ob) => !ob.def.isBoost && !ob.def.isTarget && !ob.def.isSwitch;
+  // Several passes: clearing one obstacle can walk the piece into the next.
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (const ob of obstacles) {
+      if (!ob.live || !inBand(ob)) continue;
+      const pad = threat(ob) ? HAZARD_PAD : TOUCH_PAD;
+      // The strip the thing owns: its box, grown backwards by wherever it is
+      // about to come from. A stationary prop grows by nothing at all.
+      const back = ob.x - closingSpeed(ob);
+      if (x < ob.x + ob.w + pad && x + w > back - pad) { x = ob.x + ob.w + pad; moved = true; }
+    }
+    if (!moved) break;
+  }
+  return x > maxX ? null : x;
+}
+
+/**
+ * The same non-overlap rule against things already lying in the lane that are
+ * not obstacles — coins, cells, a capsule from another source. Nothing here is
+ * a hazard, so nobody buys landing room: this is purely "do not draw one prize
+ * on top of another". TOUCH_PAD is small enough that a capsule still settles
+ * into the gap between two coins of an arc rather than being walked out the far
+ * end of it.
+ */
+export function clearOfPickups(x, w, alt, h, maxX, pickups) {
+  if (!pickups || !pickups.length) return x > maxX ? null : x;
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (const p of pickups) {
+      if (!p.live || p.magnetized) continue;
+      const pAlt = p.alt || 0, pH = p.h || 8;
+      if (alt >= pAlt + pH || alt + h <= pAlt) continue;
+      if (x < p.x + (p.w || 8) + TOUCH_PAD && x + w > p.x - TOUCH_PAD) {
+        x = p.x + (p.w || 8) + TOUCH_PAD; moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return x > maxX ? null : x;
+}
+
 // Two capsules must never share a screen. The timed drip is spaced out on its
 // own (12-18s apart is thousands of world px), but !-box prizes come from a
 // different clock entirely, and a prize landing on top of a drip capsule — or
@@ -474,6 +685,20 @@ export const POWER_MIN_GAP = 480;   // one screen of world px
 // Every drop the drip makes — capsule or cell — wears the same 8px box, so one
 // width covers both wall tests below.
 const DRIP_W = PICKUPS.battery.w;
+// Where each of the two rides. A capsule hangs at head height and a cell sits
+// low, and both numbers used to be typed at the push; they are named here
+// because the clearance test needs the same altitude the drop is made at, and
+// two literals that must agree are one that can drift.
+const DRIP_H = PICKUPS.battery.h;
+const DRIP_ALT = 34;
+const CELL_ALT = 10;
+// HOW FAR DOWNSTREAM A HELD DROP MAY BE NUDGED: to the far edge of the lane the
+// pattern spawner has actually laid (Spawner.fill's `lookahead`), and no
+// further. Past that edge is ground no pattern has been dealt onto yet, so a
+// capsule pushed out there is standing clear of nothing — the next fill can lay
+// a cactus straight through it, which is the bug this whole rule exists to fix.
+// Better to hold half a second and drop into a lane that is fully known.
+const DRIP_LOOKAHEAD = 480 + 200;
 
 export class DripSpawner {
   constructor(rng, benchLevels, { sections = null, totalDist = null, weights = null } = {}) {
@@ -510,12 +735,43 @@ export class DripSpawner {
   // Would a capsule placed here be at least a screen clear of the last one?
   canPlacePower(x) { return x >= this.lastPowerX + POWER_MIN_GAP; }
 
+  /**
+   * WHERE A DROP ACTUALLY COMES TO REST, having been slid out from under
+   * anything it would have landed in. null means there is no clear spot left
+   * inside the known lane, and the caller holds.
+   *
+   * Hazards first and prizes second, then round again: pushing a capsule clear
+   * of a cactus can walk it into the coin run on the far side, and pushing it
+   * clear of the coins can walk it back into the next cactus. Three rounds
+   * settles every lane the game deals; a lane that will not settle is one the
+   * hold was written for.
+   */
+  settle(x, alt, worldX, stopX, pickups, obstacles) {
+    const maxX = Math.min(stopX, worldX + DRIP_LOOKAHEAD) - DRIP_W;
+    for (let round = 0; round < 3; round++) {
+      const was = x;
+      x = clearOfHazards(x, DRIP_W, alt, DRIP_H, maxX, obstacles);
+      if (x == null) return null;
+      x = clearOfPickups(x, DRIP_W, alt, DRIP_H, maxX, pickups);
+      if (x == null || x === was) return x;
+    }
+    return x;
+  }
+
   // Where a capsule actually came to rest (tossed prizes travel before they
   // settle), so the next one measures from the thing the player will see.
+  //
+  // THE TYPE IS ALWAYS THE LAST ONE DEALT, though, even when the position is
+  // not. The two used to move together, and the x guard silently took the type
+  // with it: a prize tossed out of a crate the player had run back past never
+  // registered, so the next capsule was rolled against a type two capsules old
+  // and could deal the pair it was supposed to prevent. The ledger answers two
+  // different questions — how far away the last one is, and what it was — and
+  // only the first of them is about distance.
   notePower(x, type) {
+    this.lastPowerType = type;
     if (x <= this.lastPowerX) return;
     this.lastPowerX = x;
-    this.lastPowerType = type;
   }
 
   // `stopX` is the same wall Spawner.fill respects — the finish marker's clear
@@ -525,15 +781,18 @@ export class DripSpawner {
   // deleted the moment the finish armed. Holding rather than skipping matches
   // the crowding rule below, and both tests are made before the type is rolled
   // so a hold cannot disturb the seeded order of prizes.
-  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity, allowRewind = true, banned = null) {
+  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity, allowRewind = true, banned = null,
+         obstacles = null) {
     this.capsuleTimer -= dt;
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
-      const x = worldX + 480 + 60;
-      // Too close to a prize that just dropped: hold the capsule rather than
-      // skip it, and retry shortly — the world scrolls the gap open in about a
-      // second, so the drip keeps its cadence instead of losing a beat.
-      if (!this.canPlacePower(x) || x + DRIP_W > stopX) {
+      const x = this.settle(worldX + 480 + 60, DRIP_ALT, worldX, stopX, pickups, obstacles);
+      // Too close to a prize that just dropped, standing in a hazard with
+      // nowhere clear left before the wall, or past the wall itself: hold the
+      // capsule rather than skip it, and retry shortly — the world scrolls the
+      // gap open in about a second, so the drip keeps its cadence instead of
+      // losing a beat.
+      if (x == null || !this.canPlacePower(x)) {
         this.capsuleTimer = 0.5;
       } else {
         this.capsuleTimer = this.rearm('capsule', x);
@@ -545,17 +804,27 @@ export class DripSpawner {
         const type = weights
           ? weightedPowerPickup(this.rng, weights, this.lastPowerType, { allowRewind, banned })
           : randomPowerPickup(this.rng, this.lastPowerType, { allowRewind, banned });
-        pickups.push(makePickup(type, x, 34));
+        // MARKED AS THE DICE'S, not the author's. Everything else that lays a
+        // capsule — a fork's lowPrize, a gated prize over a hole, the scripted
+        // rewind — was put somewhere on purpose and stays put. This one was
+        // dealt, so it is the one that can give way when the lane turns out to
+        // want the spot (see withdrawCrowdedDrip).
+        pickups.push(Object.assign(makePickup(type, x, DRIP_ALT), { dripped: true }));
         this.notePower(x, type);
       }
     }
     if (!oneHit && this.batteryTimer <= 0) {
-      const x = worldX + 480 + 100;
-      if (x + DRIP_W > stopX) {
+      // A cell rides the same clearance rule as a capsule — it is the same 8px
+      // box dropped into the same live lane, and a health pickup standing in a
+      // barrel is the worse half of the bargain. It rides the rule even when
+      // the meter is full and nothing will be placed, so a held cell and a
+      // dropped one keep the same cadence.
+      const x = this.settle(worldX + 480 + 100, CELL_ALT, worldX, stopX, pickups, obstacles);
+      if (x == null) {
         this.batteryTimer = 0.5;
       } else {
         this.batteryTimer = this.rearm('battery', x);
-        if (!batteryFull) pickups.push(makePickup('battery', x, 10));
+        if (!batteryFull) pickups.push(makePickup('battery', x, CELL_ALT));
       }
     }
   }

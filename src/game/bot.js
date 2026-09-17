@@ -4,6 +4,7 @@
 // the bot from a human.
 import { Input } from '../engine/input.js';
 import { PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, VARIABLE_JUMP_CUT, jumpV } from './player.js';
+import { isOpenGap } from './entities.js';
 
 // A HOLE IS THE ONE MISTAKE THE BOT MAY NOT MAKE.
 //
@@ -347,7 +348,7 @@ export class DemoBot {
   holesAhead(px) {
     const out = [];
     for (const ob of this.run.obstacles) {
-      if (!ob.live || !ob.def.isGap || ob.tunnel || ob.crossing) continue;
+      if (!ob.live || !isOpenGap(ob) || ob.tunnel || ob.crossing) continue;
       if (ob.route && ob.route !== this.run.route) continue;
       // Both lips carried in the bot's own coordinate — the `px` at which his
       // centre crosses them — so nothing downstream has to remember the offset.
@@ -934,8 +935,7 @@ export class DemoBot {
     const slideWanted = run.beatLock
       ? this.chartSlideT > 0
       : !!(next && next.act === 'slide' && next.enter < SLIDE_T && run.player.grounded);
-    const stompWanted = run.bossCab && run.player.hero && run.player.hero.stomp && !run.player.grounded && run.player.vy < 60;
-    if (slideWanted || stompWanted) {
+    if (slideWanted) {
       if (!this.slideHold) { Input.press('slide'); this.slideHold = true; }
     } else if (this.slideHold) {
       Input.release('slide');

@@ -112,7 +112,11 @@ for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
 frames(40);
 globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
 frames(2);
-dom.key('Enter'); frames(40);
+dom.key('Enter'); frames(40);   // USE the cabinet: the hero dives into the screen
+// The dive is a ~2.2s animation, skippable after 0.45s by any press. Pressing
+// through it is what every returning player will do, and it keeps this suite
+// measuring the route rather than the cutscene.
+dom.key('Enter'); frames(40);   // skip the dive -> stage select
 dom.key('Enter'); frames(40);
 dom.key('Enter'); frames(30);
 dom.key('Enter'); frames(30);
@@ -315,6 +319,15 @@ if (magnetRoute) {
   magnetRoute.spawned = false;
   run.camX = magnetRoute.x - 100;
   run.spawnRoutePrizes();
+  // A prize that belongs to the LANE rather than to the road is held until the
+  // lane under it has been filled — a route is offered at its start and its
+  // prize can be most of a screen further along, where nothing has been laid
+  // yet (placeQueuedLanePrizes). So walk the camera up to it the way a run
+  // does, instead of expecting it on the frame the road arrived.
+  for (let i = 0; i < 40 && !run.pickups.some((p) => p.live && p.type === 'capMagnet'); i++) {
+    run.camX += 120;
+    run.spawnRoutePrizes();
+  }
   const magnet = run.pickups.find((p) => p.live && p.type === 'capMagnet'
     && p.x >= magnetRoute.x && p.x <= magnetRoute.x + magnetRoute.w);
   assert(!!magnet, 'the route magnet still spawns');
@@ -530,6 +543,13 @@ fork.spawned = false;
 run.pickups.length = 0;
 run.camX = fork.x - 100;
 run.spawnRoutePrizes();
+// The low road's prize stands on the LANE and waits for it — see the note on
+// the magnet above. The high road's coins are laid on the road itself and
+// arrive with it.
+for (let i = 0; i < 40 && !run.pickups.some((p) => p.live && p.type !== 'coin'); i++) {
+  run.camX += 120;
+  run.spawnRoutePrizes();
+}
 const high = run.pickups.filter((p) => p.live && p.alt > fork.rise * 0.5);
 const low = run.pickups.filter((p) => p.live && p.alt <= fork.rise * 0.5);
 assert(high.length > 0 && low.length > 0,

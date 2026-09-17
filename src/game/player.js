@@ -19,11 +19,11 @@ export const VARIABLE_JUMP_CUT = 60;
 // Terminal fall speed. A long drop stops accelerating before it outruns the
 // player's ability to place the landing.
 export const TERMINAL_VY = -520;
-// A stomp is a commitment: the descent is faster than gravity earned.
+// A committed descent is faster than gravity earned. Named for Lorenzo's
+// stomp, which is gone (17 Sep 2026) — the slide-kick is the only move that
+// asks for this drop now, and it kept its own state precisely so it never
+// inherited the stomp's obstacle-breaking contract.
 export const STOMP_GRAVITY_MULT = 2.2;
-// The ordinary slide-kick commits an aerial jump to the same decisive drop as
-// Lorenzo's stomp, but it is kept as its own state so it never inherits the
-// stomp's obstacle-breaking contract.
 export const SLIDE_SLAM_VY = -180;
 // Landing squash timer. toons.js drives the visual squash off this same
 // duration under the name SQUASH_T — they must agree or the squash outlives
@@ -169,6 +169,7 @@ export class Player {
   constructor(heroId, mods = []) {
     this.mods = mods;
     this.abilityCooldowns = Object.create(null);
+    this.abilityReadyCuedBy = Object.create(null);
     this.setHero(heroId);
     this.y = 0;           // height of feet above ground (positive = up)
     this.vy = 0;
@@ -207,9 +208,8 @@ export class Player {
     this.floating = false;
     this.iframes = 0;
     this.anim = 0;
-    this.stomping = false;
     // Down pressed during a real jump: fast descent now, ordinary slide-kick
-    // on contact. Separate from `stomping`, which belongs to Lorenzo's power.
+    // on contact.
     this.slideSlamming = false;
     // A tap must still produce a readable grounded kick after the landing.
     this.landingSlideT = 0;
@@ -232,9 +232,10 @@ export class Player {
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
-    this.spannerFlurryT = 0; // Lorenzo: repeated wrench swings while active
-    this.spannerFlurryHitIds = null; // obstacles already hit this flurry
-    this.spannerFlurryCd = 0; // deferred cooldown, applied when flurry ends
+    // True for the one frame the current hero's cooldown times out. A flag rather
+    // than a return value because three call sites in run.js drive this update,
+    // and all three want the same one cue.
+    this.abilityReadyEdge = false;
     this.fistThrown = false;
     this.axeThrown = false;
     this.wrenchThrown = false;   // Lorenzo's belt loop, empty while the tool is out
@@ -244,7 +245,6 @@ export class Player {
     this.stickParity = 0;
     this.headless = 0;    // Gary
     this.assemblyGraceUsed = 0;
-    this.hazardEaten = false; // Miss Chomp mastery
     this.grounded = true;
     // Airborne because something threw him, not because he jumped. See launch().
     this.launched = false;
@@ -278,7 +278,6 @@ export class Player {
   setHero(heroId) {
     this.heroId = heroId;
     this.hero = HERO_BY_ID[heroId];
-    this.stomping = false;
     this.slideSlamming = false;
     this.landingSlideT = 0;
     this.dashT = 0;
@@ -295,9 +294,6 @@ export class Player {
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
-    this.spannerFlurryT = 0;
-    this.spannerFlurryHitIds = null;
-    this.spannerFlurryCd = 0;
     this.fistThrown = false;
     this.axeThrown = false;
     this.wrenchThrown = false;   // Lorenzo's belt loop, empty while the tool is out
@@ -312,6 +308,14 @@ export class Player {
 
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
   set abilityCd(value) { this.abilityCooldowns[this.heroId] = Math.max(0, value); }
+
+  // Whether the ready cue has already been fired for the cooldown the current
+  // hero is serving. Per hero for the same reason the cooldown is: the bench
+  // recharges alongside you, and a single flag would let one hero's cue stand
+  // in for another's. Set when the cue is SCHEDULED, which is a little before
+  // the cooldown actually ends — see run.cueAbilityReady.
+  get abilityReadyCued() { return !!this.abilityReadyCuedBy[this.heroId]; }
+  set abilityReadyCued(value) { this.abilityReadyCuedBy[this.heroId] = !!value; }
 
   get gravity() { return gravityFor(this.hero); }
   get maxJumps() {
@@ -341,7 +345,7 @@ export class Player {
    */
   slidePressed() {
     if (this.grounded || this.launched || this.jumps <= 0 || this.slideSlamming
-      || this.stomping || this.rolling || this.compressT > 0
+      || this.rolling || this.compressT > 0
       || this.stumbleT > 0 || this.slipT > 0) return false;
     this.slideSlamming = true;
     this.floating = false;
@@ -444,7 +448,6 @@ export class Player {
     this.vy = vy;
     this.grounded = false;
     this.launched = true;
-    this.stomping = false;
     this.clearSlideState();
     this.standT = 0;
     this.sliding = false;
@@ -473,8 +476,20 @@ export class Player {
   update(dt, input, world) {
     this.anim += dt * (world ? world.speed / ANIM_SPEED_DIVISOR : 8);
     if (this.iframes > 0) this.iframes -= dt;
+    // The bench recharges alongside the hero you are holding, so the moment a
+    // cooldown reaches zero is recorded rather than announced here: only the
+    // CURRENT hero's edge is worth a sound, and only when time ran it down. A
+    // cooldown zeroed by hand — the tutorial does it in four places, a rewind
+    // restores one wholesale — is not a recharge and must stay silent.
+    //
+    // Cleared here rather than by whoever reads it, so the flag means "timed out
+    // on THIS frame" no matter which of the run's three update paths drives it.
+    this.abilityReadyEdge = false;
     for (const id of Object.keys(this.abilityCooldowns)) {
-      this.abilityCooldowns[id] = Math.max(0, this.abilityCooldowns[id] - dt);
+      const was = this.abilityCooldowns[id];
+      const now = Math.max(0, was - dt);
+      this.abilityCooldowns[id] = now;
+      if (was > 0 && now <= 0 && id === this.heroId) this.abilityReadyEdge = true;
     }
     if (this.dashT > 0) this.dashT -= dt;
     if (this.boostT > 0) this.boostT -= dt;
@@ -489,17 +504,6 @@ export class Player {
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.tagFlashT > 0) this.tagFlashT -= dt;
     if (this.powerPoseT > 0) this.powerPoseT -= dt;
-    // During Lorenzo's spanner flurry, keep the swing animation looping.
-    if (this.spannerFlurryT > 0 && this.powerPoseT <= 0) this.powerPoseT = 0.3;
-    if (this.spannerFlurryT > 0) this.spannerFlurryT -= dt;
-    if (this.spannerFlurryT <= 0 && this.spannerFlurryHitIds != null) {
-      // Flurry ended (timeout) — apply the deferred cooldown and clean up.
-      if (this.spannerFlurryCd > 0) {
-        this.abilityCd = this.spannerFlurryCd;
-        this.spannerFlurryCd = 0;
-      }
-      this.spannerFlurryHitIds = null;
-    }
     if (this.headless > 0) {
       this.headless -= dt;
       this.iframes = Math.max(this.iframes, 0.05);
@@ -527,7 +531,7 @@ export class Player {
 
     if (!this.grounded) {
       this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt
-        * ((this.stomping || this.slideSlamming) ? STOMP_GRAVITY_MULT : 1);
+        * (this.slideSlamming ? STOMP_GRAVITY_MULT : 1);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;
       if (this.y <= 0) {
@@ -537,9 +541,7 @@ export class Player {
         // Back on the ground: the next juggle costs a fresh jump.
         this.airJuggled = false;
         this.launched = false;
-        const wasStomp = this.stomping;
         const wasSlideSlam = this.slideSlamming;
-        this.stomping = false;
         this.slideSlamming = false;
         this.vy = 0;
         this.landedT = LANDED_T;
@@ -550,7 +552,7 @@ export class Player {
           this.sliding = this.slideWindow(holdSlide, dt) && this.rollT <= 0;
           this.updateSlideBlend(dt, this.sliding);
         }
-        return { landed: true, stompLand: wasStomp, slideKickLand: wasSlideSlam };
+        return { landed: true, slideKickLand: wasSlideSlam };
       }
       this.updateSlideBlend(dt, false);
     } else {
@@ -566,7 +568,7 @@ export class Player {
       }
       this.updateSlideBlend(dt, this.sliding);
     }
-    return { landed: false, stompLand: false, slideKickLand: false };
+    return { landed: false, slideKickLand: false };
   }
 
   // World-space hitbox (bottom at groundY - y).

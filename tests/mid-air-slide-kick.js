@@ -25,15 +25,15 @@ assert(p.slideSlamming && p.vy === SLIDE_SLAM_VY, 'the edge commits an immediate
 assert(p.hitH === PLAYER_H, 'the aerial pose keeps the standing collision height');
 const airPose = poseFromPlayer(p, 0);
 assert(airPose.airSlideKick && airPose.kind === 'slide' && !airPose.grounded,
-  'the aerial slide-kick has its own visual pose without becoming a stomp');
+  'the aerial slide-kick has its own visual pose');
 
 let landing = null;
 for (let i = 0; i < 120 && !landing; i++) {
   const result = p.update(1 / 60, idle, { speed: 160 });
   if (result.landed) landing = result;
 }
-assert(landing?.landed && landing.slideKickLand && !landing.stompLand,
-  'the slam reports a slide-kick landing, not a stomp landing');
+assert(landing?.landed && landing.slideKickLand,
+  'the slam reports a slide-kick landing');
 assert(p.grounded && p.sliding && p.slideAmount === 1 && p.slideKickT === SLIDE_KICK_T,
   'landing starts a full grounded kick even after Down is released');
 
@@ -78,12 +78,13 @@ run.player.vy = -100;
 assert(run.player.slidePressed(), 'the run uses the shared Player slide entry point');
 const crate = makeObstacle('crate', run.playerWorldX());
 run.obstacles = [crate];
-let stompBreaks = 0;
-run.stompBreak = () => { stompBreaks++; };
 const result = run.player.update(1 / 60, idle, { speed: run.speed });
 assert(result.landed && result.slideKickLand, 'run physics reaches the landing-kick state');
 run.collide();
-assert(!crate.live && stompBreaks === 0, 'landing kick breaks a crate without invoking stompBreak');
+// The kick breaks it on its own terms. This used to also assert that it did not
+// reach stompBreak — the whole point of keeping slideSlam as its own state — and
+// that function no longer exists to reach (17 Sep 2026, the stomp is gone).
+assert(!crate.live, 'landing kick breaks a crate');
 
 run.player.grounded = false; run.player.jumps = 1; run.player.y = 18; run.player.vy = -60;
 run.player.slidePressed();

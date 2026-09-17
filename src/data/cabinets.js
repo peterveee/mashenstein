@@ -80,10 +80,15 @@ const ANIMALS = {
   // The bruiser is the slow closer — the one you can out-think — and at -38 he
   // is milder than the barrel (-40) that already rolls through every cabinet's
   // tier-2 lane, so even Act I speeds read him comfortably. Speed gets him from
-  // stage 2; Neon meets him once, at tier 2, where a cabinet about shooting
-  // finally deals a ground target that shoots back by closing; Cardboard's is
-  // the kingdom's guard dog, and the one animal in Act III that is not on
-  // Corporate's payroll.
+  // stage 2; Neon meets him once, at tier 2; Cardboard's is the kingdom's guard
+  // dog, and the one animal in Act III that is not on Corporate's payroll.
+  //
+  // NONE OF THEM IS A TARGET. Neon's was described here as a shooting cabinet
+  // finally dealing a ground target that shoots back by closing, and it is not
+  // one any more: nothing alive in this game can be shot (see the `animal`
+  // note in game/entities.js). He is a closer you JUMP, on the cabinet that is
+  // otherwise about the cannon — which is a better use of the slot than one
+  // more thing to point it at.
   speed: [
     P(1, [{ t: 'dogBruiser', dx: 0 }]),
     P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(130)]),
@@ -603,7 +608,22 @@ export const CABINETS = [
       ...ICE_PATTERNS,
       P(0, [{ t: 'bearTrap', dx: 0 }]),
       P(1, [{ t: 'bearTrap', dx: 0 }, { t: 'bearTrap', dx: 60 }]),
-      P(1, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 60 }]), // hit switch -> bridge
+      // HIT THE SWITCH -> BRIDGE, and the hole is 120 past it rather than 60.
+      //
+      // 60 put the break inside the arc of the jump that reached the switch:
+      // you took off, touched it, and came down in the hole it had just closed
+      // for you. The two were one action, so the switch asked for nothing and
+      // decided nothing — it may as well have been a coin.
+      //
+      // 120 is the widest spacing that still fits PORTRAIT, which shows 121px
+      // of lane ahead of the hero (landscape has 159 on a phone and 241 on a
+      // desktop). That is the number this pattern is measured against, because
+      // the switch's whole payoff is watching the bridge close the hole in
+      // front of you — put the hole any further out and the phone never sees it
+      // happen. With the switch down at a hop (entities.js), the hop lands
+      // around 85 and the lip is at 120, so there is ground to stand on and a
+      // hole to read before anyone has to choose.
+      P(1, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 120, w: 60 }]),
       P(2, [{ t: 'bearTrap', dx: 0 }, { t: 'snowman', dx: 70 }, coinArc(120)]),
       P(2, [{ t: 'gap', dx: 0, w: 64 }, { t: 'bearTrap', dx: 120 }]),
       // The heating is unplugged (see the taunt), so the campfire is the one
@@ -629,7 +649,12 @@ export const CABINETS = [
       // The switch's second shape — the frozen-switch mechanic lived in exactly
       // ONE pattern game-wide before this. A wider hole and a bear trap past the
       // far lip, so making the bridge is the start of the read, not the end.
-      P(2, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 72 }, { t: 'bearTrap', dx: 190 }]),
+      // The trap moves out with the hole: 190 used to stand just past the far
+      // lip, and with the break now at 120..192 it would be ON it. 330 clears
+      // the landing by a pit's own clearance, which is also roughly where the
+      // spawner's fairness would push it anyway — authored honestly rather than
+      // left for fairGap to fix silently.
+      P(2, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 120, w: 72 }, { t: 'bearTrap', dx: 330 }]),
     ],
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
   },

@@ -235,7 +235,7 @@ export const GENRE_MOTIFS = {
 // ----------------------------------------------------------- the shell
 // Everything except the screen glass. Drawn back to front: the housings first,
 // then the furniture bolted onto them.
-function paintCabinet(ctx, w, h, pal) {
+function paintCabinet(ctx, w, h, pal, opts = {}) {
   const u = olU(w);
   const X = (n) => w * n, Y = (n) => h * n;
   const B = CABINET_BOX;
@@ -299,7 +299,7 @@ function paintCabinet(ctx, w, h, pal) {
   // One stick, two buttons and the coin slot — the shared deck, so the four
   // silhouettes differ in outline and nothing else. The coin door that used to
   // sit on the lower body is gone: its job moved up here.
-  deckControls(ctx, w, pal, Y(0.462), 0.9);
+  deckControls(ctx, w, pal, Y(0.462), 0.9, opts.stickLean, opts.buttonPress, opts.stickFwd, [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
   plain(ctx, pal.plate, (c) => c.rect(X(0.056), Y(0.925), w * 0.896, h * 0.056)); // kick plate
 }
 
@@ -324,7 +324,7 @@ const ROUNDED_BOX = {
   lower: { x0: 0.06, x1: 0.94, y0: 0.575, y1: 0.945 },
 };
 
-function paintRounded(ctx, w, h, pal) {
+function paintRounded(ctx, w, h, pal, opts = {}) {
   const u = olU(w), B = ROUNDED_BOX;
   const X = (n) => w * n, Y = (n) => h * n;
   const bx = (k) => [X(B[k].x0), Y(B[k].y0), X(B[k].x1 - B[k].x0), Y(B[k].y1 - B[k].y0)];
@@ -359,7 +359,7 @@ function paintRounded(ctx, w, h, pal) {
     c.closePath();
   });
   shape(ctx, pal.lipC, u, (c) => rr(c, ...bx('lip'), w * 0.06));
-  deckControls(ctx, w, pal, Y(0.462), 1);
+  deckControls(ctx, w, pal, Y(0.462), 1, opts.stickLean, opts.buttonPress, opts.stickFwd, [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
 }
 
 // --- chibi: big head, small body ------------------------------------------
@@ -382,7 +382,7 @@ const CHIBI_BOX = {
   lower: { x0: 0.1, x1: 0.9, y0: 0.73, y1: 0.945 },
 };
 
-function paintChibi(ctx, w, h, pal) {
+function paintChibi(ctx, w, h, pal, opts = {}) {
   const u = olU(w), B = CHIBI_BOX;
   const X = (n) => w * n, Y = (n) => h * n;
   const bx = (k) => [X(B[k].x0), Y(B[k].y0), X(B[k].x1 - B[k].x0), Y(B[k].y1 - B[k].y0)];
@@ -418,7 +418,7 @@ function paintChibi(ctx, w, h, pal) {
     c.closePath();
   });
   shape(ctx, pal.lipC, u, (c) => rr(c, ...bx('lip'), w * 0.07));
-  deckControls(ctx, w, pal, Y(0.6), 1.15);
+  deckControls(ctx, w, pal, Y(0.6), 1.15, opts.stickLean, opts.buttonPress, opts.stickFwd, [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
 }
 
 // --- candy: the curved Japanese cab ---------------------------------------
@@ -436,7 +436,7 @@ const CANDY_BOX = {
   lower: { x0: 0.08, x1: 0.92, y0: 0.675, y1: 0.945 },
 };
 
-function paintCandy(ctx, w, h, pal) {
+function paintCandy(ctx, w, h, pal, opts = {}) {
   const u = olU(w), B = CANDY_BOX;
   const X = (n) => w * n, Y = (n) => h * n;
   const bx = (k) => [X(B[k].x0), Y(B[k].y0), X(B[k].x1 - B[k].x0), Y(B[k].y1 - B[k].y0)];
@@ -496,7 +496,7 @@ function paintCandy(ctx, w, h, pal) {
     c.closePath();
   });
   shape(ctx, pal.lipC, u, (c) => rr(c, X(0.03), Y(B.lip.y0), w * 0.94, Y(B.lip.y1 - B.lip.y0), w * 0.08));
-  deckControls(ctx, w, pal, Y(0.552), 1.1);
+  deckControls(ctx, w, pal, Y(0.552), 1.1, opts.stickLean, opts.buttonPress, opts.stickFwd, [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
 }
 
 // Every silhouette, with the footprint it wants to be drawn at. Callers ask for
@@ -617,27 +617,148 @@ function marqueeArt(ctx, pal, gx, gy, gw, gh) {
 // Layout is the classic arcade one, left to right: stick, buttons, coin slot.
 // Every ball and button gets a contact shadow under it and a catch-light on it
 // — flat discs read as printed decals, lit spheres read as things you can push.
-function deckControls(ctx, w, pal, cy, k = 1) {
+//
+// `lean` is -1..1, how far the stick is pushed. It is a LEAN, not a redraw: an
+// arcade stick seen head-on is upright when centred and tilts left or right when
+// pushed, so a stick drawn permanently sideways would read as one somebody is
+// leaning on rather than one that moves.
+//
+// What actually says "this goes in four directions" at 48 pixels is not the stick —
+// it is the GATE, the dark plate the shaft comes through. A ball on a line is a
+// lollipop; a ball on a line through a plate is a control. So the plate is drawn
+// whenever there is room for it, and the cross scored into it is what makes the
+// four directions explicit without needing the stick to move at all.
+function deckControls(ctx, w, pal, cy, k = 1, lean = 0, press = 0, fwd = 0, band = null, glint = 0) {
   // Ball and button radii started at 0.07w / 0.045w — a 16%-of-panel-width ball
   // top, about double a real one, big enough that the deck competed with the
   // screen for attention. Now 0.036w / 0.023w: present, readable, and quiet
   // enough that the eye goes to the marquee and the screen first.
   const R = w * 0.036 * k;
   const jx = 0.2;
-  stroke(ctx, darken(pal.shade, 0.3), Math.max(0.6, w * 0.045 * k), (c) => {
-    c.moveTo(w * jx, cy + R * 0.2); c.lineTo(w * jx, cy + R * 2);
+  const baseX = w * jx;
+  const baseY = cy + R * 2;               // where the shaft meets the deck: the pivot
+  // THE GATE. A dark oval plate with a cross scored through it — the restrictor every
+  // four-way stick sits in. It is what makes the control read as directional; the
+  // ball alone never can at this size.
+  const gw = R * 1.5, gh = R * 0.62;
+  plain(ctx, darken(pal.shade, 0.55), (c) => c.ellipse(baseX, baseY, gw, gh, 0, 0, Math.PI * 2));
+  stroke(ctx, darken(pal.shade, 0.15), Math.max(0.35, w * 0.012 * k), (c) => {
+    c.moveTo(baseX - gw * 0.72, baseY); c.lineTo(baseX + gw * 0.72, baseY);
+    c.moveTo(baseX, baseY - gh * 0.72); c.lineTo(baseX, baseY + gh * 0.72);
   });
-  plain(ctx, darken(pal.knob, 0.5), (c) => c.arc(w * jx, cy + R * 0.22, R, 0, Math.PI * 2));
-  plain(ctx, pal.knob, (c) => c.arc(w * jx, cy, R, 0, Math.PI * 2));
-  plain(ctx, lighten(pal.knob, 0.5), (c) => c.ellipse(w * jx - R * 0.32, cy - R * 0.34, R * 0.42, R * 0.3, -0.5, 0, Math.PI * 2));
+  // The stick itself, pivoting at the plate. A real one tilts and also DIPS — the
+  // ball travels on an arc, not along a rail — so the top drops as it goes over.
+  //
+  // TWO AXES, because a four-way stick has two and the deck is claiming to be one.
+  // `lean` is left/right and reads as a tilt. `fwd` is AWAY FROM THE PLAYER, and a
+  // front view cannot show that as a tilt — pushed away, the ball rises a little,
+  // foreshortens, and shrinks. That is the whole trick: away is drawn as smaller and
+  // higher, and it reads instantly because it is what looking down a shaft does.
+  const push = Math.max(-1, Math.min(1, lean));
+  // Signed: +1 is pushed AWAY from the player, -1 is pulled TOWARD them. Both are
+  // the same projection problem and they are exact opposites of it — away rises,
+  // foreshortens and shrinks; toward drops, lengthens and grows. Drawing only the
+  // away half would leave the exit (which is a pull toward you) with nothing to say.
+  const depth = Math.max(-1, Math.min(1, fwd));
+  const tilt = push * 0.62;                       // radians at full push
+  // MORE THAN IS STRICTLY TRUE, on purpose. A correctly-projected push away from
+  // the viewer moves a 1.7px ball by a fraction of a pixel — geometrically right
+  // and completely invisible, which is the same as not drawing it. These are the
+  // honest ratios roughly doubled: the ball travels a full radius, foreshortens by
+  // nearly half, and changes size by a third, so the gesture reads at the size it
+  // is actually displayed rather than at the size it would need to be.
+  const len = R * 2 * (1 - 0.48 * depth);
+  const topX = baseX + Math.sin(tilt) * len;
+  const topY = baseY - Math.cos(tilt) * len - R * 1.15 * depth;
+  const ballR = R * (1 - 0.30 * depth);
+  const away = Math.max(0, depth);                // the catch-light only slides away
+  // A SHAFT, not a stalk. This was 0.045w — as wide as a third of the ball — which
+  // at cabinet size read as a lollipop on a post. A real ball-top sits on a thin
+  // chrome rod; thinner also lets the gate underneath stay visible when the stick is
+  // over, which is the part doing the "four directions" work.
+  stroke(ctx, darken(pal.shade, 0.3), Math.max(0.4, w * 0.026 * k), (c) => {
+    c.moveTo(topX, topY + ballR * 0.2); c.lineTo(baseX, baseY);
+  });
+  plain(ctx, darken(pal.knob, 0.5), (c) => c.arc(topX, topY + ballR * 0.22, ballR, 0, Math.PI * 2));
+  plain(ctx, pal.knob, (c) => c.arc(topX, topY, ballR, 0, Math.PI * 2));
+  // WHERE THE HIGHLIGHT SITS, which is not a fixed spot on the ball. The tube is
+  // overhead and it does not move, so what the reflection tracks is where the ball
+  // has got to under it: pushed away, more of the lit top cap turns into view and
+  // the highlight rides up over it (`away`); pushed right, the tube is now up and
+  // to the LEFT of the ball, so the highlight slides the other way across its
+  // face. That lateral term is the whole reason the lean does not also need a
+  // flash — a ball swinging sideways is a highlight travelling, and a travelling
+  // highlight is what the eye reads as a round thing moving under a fixed light.
+  const clx = topX - ballR * (0.32 + 0.16 * push), cly = topY - ballR * (0.34 + 0.18 * away);
+  plain(ctx, lighten(pal.knob, 0.5), (c) => c.ellipse(
+    clx, cly, ballR * 0.42, ballR * 0.3, -0.5, 0, Math.PI * 2));
+  // THE GLINT. Nothing about this cabinet moves and neither does the tube above
+  // it, so the reason a ball top flashes is the room: somebody walks past, the
+  // fluorescent flickers, and for a third of a second the specular lands square
+  // on the chrome. `glint` is 0..1 from the caller's clock (stickGlint) — the
+  // same arrangement as the rolling screen bar, because arcade.js has no clock.
+  //
+  // Two marks and no more. The catch-light already in place goes hot, which is
+  // what makes it read as THAT highlight brightening rather than as a second
+  // light arriving; and one thin streak crosses the ball on the highlight's own
+  // axis, because a round specular pop at a 2-unit radius is a dot, where a
+  // streak still reads as chrome. A four-point star was the other option and it
+  // reads as a pickup twinkling, which is a promise the deck cannot keep.
+  if (glint > 0 && pal.lit) {
+    const g = Math.max(0, Math.min(1, glint));
+    ctx.save();
+    ctx.globalAlpha = g;
+    plain(ctx, lighten(pal.knob, 0.86), (c) => c.ellipse(
+      clx, cly, ballR * 0.46, ballR * 0.34, -0.5, 0, Math.PI * 2));
+    ctx.globalAlpha = g * 0.92;
+    plain(ctx, '#ffffff', (c) => c.ellipse(
+      clx, cly, ballR * 0.2, ballR * 0.14, -0.5, 0, Math.PI * 2));
+    // Short and thin. It wants to bloom just past the silhouette — a specular on
+    // a sphere does, and one stopped dead at the edge reads as decal — but the
+    // first pass ran it to 1.15R at a fifth of the ball's width, which at any
+    // real zoom is a white bar lying across the ball rather than light on it.
+    ctx.globalAlpha = g * 0.62;
+    stroke(ctx, '#ffffff', Math.max(0.3, ballR * 0.15), (c) => {
+      const dx = Math.cos(-0.5) * ballR * 0.92, dy = Math.sin(-0.5) * ballR * 0.92;
+      c.moveTo(clx - dx, cly - dy); c.lineTo(clx + dx, cly + dy);
+    });
+    ctx.restore();
+  }
 
   // Two buttons, staggered like a real panel rather than sat in a row.
+  //
+  // `press` (0..1) pushes the FIRST one — the jump button. A pressed button is not a
+  // darker circle: it sits down into the deck, so it loses the gap between it and its
+  // own shadow and its catch-light shrinks toward the rim. Doing it any other way
+  // reads as the colour changing rather than as the thing moving.
   const br = w * 0.023 * k;
-  for (const [bx, dy] of [[0.38, 0.6], [0.5, 0.1]]) {
-    const by = cy + R * (0.4 + dy);
-    plain(ctx, darken(pal.shade, 0.45), (c) => c.arc(w * bx, by + br * 0.3, br, 0, Math.PI * 2));
-    plain(ctx, pal.button, (c) => c.arc(w * bx, by, br, 0, Math.PI * 2));
-    plain(ctx, lighten(pal.button, 0.6), (c) => c.arc(w * bx - br * 0.26, by - br * 0.28, br * 0.36, 0, Math.PI * 2));
+  const hit = Math.max(0, Math.min(1, press));
+  // The PAIR is placed against the deck band, not hung off `cy`. `cy` is the
+  // stick's pivot line and sits high in the band, so measuring the buttons from
+  // it left them with about a quarter of the slack above and three quarters
+  // below — the group read as pushed up against the deck's top edge.
+  //
+  // Centred in the band is the reference, then LIFTED off it by a tenth of the
+  // band. Dead centre is correct and reads flat: the deck is a surface tilted
+  // toward the player, so its far half is further away, and hardware sitting a
+  // little high on it is hardware sitting further back. Slightly more slack
+  // below than above is the perspective — it is the near part of the deck, and
+  // the near part of a tilted plane is the part you see most of. The stagger
+  // between the two caps is unchanged; only where the pair sits has moved.
+  const stag = R * 0.5;                                   // low cap below high cap
+  const lift = band ? (band[1] - band[0]) * 0.1 : 0;      // back into the deck
+  const mid = band ? (band[0] + band[1]) / 2 - lift : cy + R * 0.75;
+  for (const [bx, rel, isJump] of [[0.38, 0.5, true], [0.5, -0.5, false]]) {
+    const p = isJump ? hit : 0;
+    const drop = br * 0.55 * p;
+    const rest = mid + stag * rel;
+    const by = rest + drop;
+    // The shadow stays put and the cap comes down onto it.
+    plain(ctx, darken(pal.shade, 0.45), (c) => c.arc(w * bx, rest + br * 0.3, br, 0, Math.PI * 2));
+    plain(ctx, p > 0 ? darken(pal.button, 0.18 * p) : pal.button, (c) => c.arc(w * bx, by, br, 0, Math.PI * 2));
+    plain(ctx, lighten(pal.button, 0.6), (c) => c.ellipse(
+      w * bx - br * 0.26 * (1 - p * 0.4), by - br * 0.28 * (1 - p * 0.5),
+      br * 0.36 * (1 - p * 0.45), br * 0.36 * (1 - p * 0.55), 0, 0, Math.PI * 2));
   }
 
   // The coin slot: a dark mouth in a pale bezel — the inverse of the buttons,
@@ -689,19 +810,19 @@ function sideArt(ctx, pal, x, y, aw, ah) {
 // draw. Bilinear only samples 2x2 texels, so every edge came back softened.
 // Painting the paths directly lets them rasterize natively at whatever density
 // the backbuffer actually has — the same reason the heroes look crisp.
-function paintInto(ctx, x, y, w, h, paint, pal) {
+function paintInto(ctx, x, y, w, h, paint, pal, opts) {
   ctx.save();
   ctx.translate(x, y);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  paint(ctx, w, h, pal);
+  paint(ctx, w, h, pal, opts);
   ctx.restore();
 }
 
 // The cabinet body. `pal` is a cabinetPalette() / OVERTIME_PALETTE object;
 // `style` names one of CABINET_STYLES, defaulting to the active one.
-export function drawCabinetShell(ctx, x, y, w, h, pal, style) {
-  paintInto(ctx, x, y, w, h, cabinetStyle(style).paint, pal);
+export function drawCabinetShell(ctx, x, y, w, h, pal, style, opts) {
+  paintInto(ctx, x, y, w, h, cabinetStyle(style).paint, pal, opts);
 }
 
 // The attract screen: glass fill plus the genre motif. Takes the CABINET box
@@ -740,6 +861,51 @@ export function drawCabinetScreen(ctx, x, y, w, h, pal, style, art) {
     c.restore();
   });
   return r;
+}
+
+// How bright the glint on one cabinet's ball top is right now: 0 almost always,
+// else 0..1 for about a third of a second.
+//
+// Only lit machines ever get called with this. A locked cabinet has no working
+// tube over it — the hub only powers the fixture above a bay once its cabinet is
+// unlocked — so there is nothing up there for the chrome to catch, and a dark
+// machine flashing a highlight would be the one thing on it that contradicts
+// the dead marquee and the dead screen.
+//
+// VERY occasional, and never the whole row at once. Three things keep it that
+// way, and it needs all three: each cabinet has its OWN period (12–31s, from its
+// seed), its own starting offset, and — the part that matters most — it skips
+// most of its own turns. Period and offset alone make a metronome, so a machine
+// that glinted would glint again on a schedule you could count; the per-cycle
+// coin flip is what turns that into "now and then". One turn in five fires, so
+// any given stick catches the light about once every hundred seconds and the
+// concourse as a whole shows one somewhere every ten or so — measured, not
+// guessed: work/local/glint-probe.mjs counts them over three minutes. The first
+// tuning ran four times that often, which read as a row of machines twinkling.
+export function stickGlint(t, seed) {
+  // Same failure mode as deadScreenBurst: NaN would lose every comparison
+  // below, so an unseeded caller gets no glint rather than a permanent one.
+  if (!Number.isFinite(seed)) return 0;
+  const period = 12 + (seed % 9) * 2.4;
+  const ph = t + (seed % 89) * 1.13;
+  const cycle = Math.floor(ph / period);
+  const phase = ph - cycle * period;
+  const dur = 0.34;
+  if (phase > dur) return 0;
+  // Which turns fire is a hash of the cycle index, so it is stable — the same
+  // second of the same session always looks the same — without being periodic.
+  // It has to be a MIXING hash, not the one-round LCG the dead screen gets away
+  // with: cycle indices are small integers a few apart, and one round leaves
+  // their low bits correlated, which showed up as two of the nine cabinets never
+  // glinting at all across three minutes while others went twice a minute.
+  let n = ((cycle * 2654435761) ^ (seed * 40503)) >>> 0;
+  n = (n ^ (n >>> 15)) >>> 0; n = (n * 2246822519) >>> 0;
+  n = (n ^ (n >>> 13)) >>> 0; n = (n * 3266489917) >>> 0;
+  n = (n ^ (n >>> 16)) >>> 0;
+  if (n / 4294967296 > 0.2) return 0;
+  // Snaps on in a couple of frames, falls off over the rest. A symmetric
+  // envelope reads as a lamp fading up and down; a specular arrives.
+  return Math.min(1, phase * 34, (dur - phase) * 4.2);
 }
 
 // How hard a dead screen is crackling right now: 0 when quiet, else 0..1.
@@ -905,7 +1071,7 @@ export function signFlicker(t) {
 // The leaf that fills the doorway. Most stations get a door; the two that have
 // something to show through the wall get something else, because at this size a
 // sign is a weak way to say "this is a shop" and a lit window is a strong one.
-function doorLeaf(ctx, w, h, pal, box, X, Y, u) {
+function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0) {
   if (pal.variant === 'window') {
     // GARY'S: a shopfront, not a door. Warm interior light behind glass, a
     // counter across it, and glazing bars — so the pawn shop reads as somewhere
@@ -936,16 +1102,25 @@ function doorLeaf(ctx, w, h, pal, box, X, Y, u) {
     return;
   }
   // The default leaf, standing open a crack — the sliver of black down its hinge
-  // side is the only thing that says "this opens".
-  shape(ctx, pal.door, u, (c) => rr(c, ...box('leaf'), w * 0.08));
+  // side is the only thing that says "this opens". `openAmt` swings it further:
+  // the hinge (left edge, X(0.165)) stays put and the leaf's silhouette narrows
+  // toward it, the foreshortening a flat door reads as when it rotates away —
+  // the panel/knob detail is clipped to that narrowing rect rather than moved,
+  // so it simply rotates out of view instead of needing its own repositioning.
+  const [lx, ly, lw, lh] = box('leaf');
+  const openW = lw * (1 - openAmt * 0.82);
+  shape(ctx, pal.door, u, (c) => rr(c, lx, ly, openW, lh, w * 0.08));
+  ctx.save();
+  ctx.beginPath(); ctx.rect(lx, ly, openW, lh); ctx.clip();
   plain(ctx, darken(pal.door, 0.45), (c) => c.rect(X(0.165), Y(0.34), w * 0.04, h * 0.66));
   plain(ctx, darken(pal.door, 0.22), (c) => { rr(c, X(0.25), Y(0.37), w * 0.38, h * 0.19, w * 0.05); rr(c, X(0.25), Y(0.62), w * 0.38, h * 0.23, w * 0.05); });
   plain(ctx, darken(pal.door, 0.5), (c) => c.arc(X(0.765), Y(0.612), w * 0.05, 0, Math.PI * 2));
   plain(ctx, '#c8c8d8', (c) => c.arc(X(0.765), Y(0.6), w * 0.047, 0, Math.PI * 2));
   plain(ctx, '#f2f2f8', (c) => c.arc(X(0.752), Y(0.588), w * 0.018, 0, Math.PI * 2));
+  ctx.restore();
 }
 
-function paintDoor(ctx, w, h, pal, lit = 1) {
+function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0) {
   const u = olU(w);
   const X = (n) => w * n, Y = (n) => h * n;
   const B = DOOR_BOX;
@@ -960,7 +1135,7 @@ function paintDoor(ctx, w, h, pal, lit = 1) {
   // The recess. Genuinely dark: a door you can see into is a doorway, and a
   // doorway is what makes these read as rooms rather than as vending machines.
   plain(ctx, '#080610', (c) => rr(c, ...box('well'), w * 0.09));
-  doorLeaf(ctx, w, h, pal, box, X, Y, u);
+  doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt);
 
   // The sign: a bracket, a lit board, and the station's icon in the middle of
   // it. `lit` dims the whole lit assembly together — glass and legend — so a
@@ -1002,10 +1177,11 @@ function paintDoor(ctx, w, h, pal, lit = 1) {
 // A service door. `pal` is {id, frame, door, sign, ink, icon, label?, variant?,
 // flicker?}. Painted directly rather than cached, for the same sharpness reason
 // as the cabinet — see paintInto(). `t` only matters for palettes that
-// flicker; everything else ignores it.
-export function drawDoor(ctx, x, y, w, h, pal, t = 0) {
+// flicker; everything else ignores it. `openAmt` (0..1) swings the default
+// leaf open on its hinge — callers ease it up from proximity, not a clock.
+export function drawDoor(ctx, x, y, w, h, pal, t = 0, openAmt = 0) {
   const lit = pal.flicker ? signFlicker(t) : 1;
-  paintInto(ctx, x, y, w, h, (c, cw, ch, p) => paintDoor(c, cw, ch, p, lit), pal);
+  paintInto(ctx, x, y, w, h, (c, cw, ch, p) => paintDoor(c, cw, ch, p, lit, openAmt), pal);
 }
 
 // The food court's own doors. Keyed by HubState station type.

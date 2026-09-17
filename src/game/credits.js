@@ -563,7 +563,7 @@ const SCRIPT = [
   { k: 'castRole', face: 'b33p', role: 'Unit B-33P "Blastbot"', name: 'Grievance filed on his behalf' },
   { k: 'castRole', face: 'clara', role: 'Clara Vault, Mall Raider', name: 'Narration performed by herself' },
   { k: 'castRole', face: 'kiko', role: 'Kiko, Jurisdiction Pending', name: 'Warrant pending in this jurisdiction' },
-  { k: 'castRole', face: 'raymn', role: "Ray M'n, Appendage-Optional", name: 'Limbs insured separately' },
+  { k: 'castRole', face: 'ramon', role: 'Ramon, Appendage-Optional', name: 'Limbs insured separately' },
   { k: 'castRole', face: 'grumpos', role: 'Grumpos, Dad of Boy', name: '"BOY" performed with range' },
   { k: 'castRole', face: 'gary', role: 'Gary', name: 'Played by Gary (deceased)' },
   // The one-letter difference is the joke — the actor is emphatically not the

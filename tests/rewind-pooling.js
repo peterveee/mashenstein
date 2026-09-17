@@ -50,7 +50,11 @@ for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
 frames(40);
 globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
 frames(2);
-dom.key('Enter'); frames(40);
+dom.key('Enter'); frames(40);   // USE the cabinet: the hero dives into the screen
+// The dive is a ~2.2s animation, skippable after 0.45s by any press. Pressing
+// through it is what every returning player will do, and it keeps this suite
+// measuring the route rather than the cutscene.
+dom.key('Enter'); frames(40);   // skip the dive -> stage select
 dom.key('Enter'); frames(40);
 dom.key('Enter'); frames(30);
 dom.key('Enter'); frames(30);

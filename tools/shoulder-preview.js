@@ -11,7 +11,7 @@ const names = { gary: 'GARY', dolores: 'DOLORES', mochi: 'MOCHI', chompo: 'MISS 
 const notes = {
   fernwick: 'Fitted near-arm socket and gown shoulder join; the quiver sling follows the socket. Hand targets and far arm retained.',
   grumpos: 'Returning axe: the current pose removes the back-mounted axe; there is no separate throwing-arm gesture.',
-  raymn: 'Rocket fist: the current pose detaches the glove. There is no connected shoulder to alter.',
+  ramon: 'Rocket fist: the current pose detaches the glove. There is no connected shoulder to alter.',
   lorenzo: 'Ground attack: wrench smash. Switch attack to airborne to inspect the stomp.',
   gnash: 'Spin dash uses the current running lean; it is not a shooting pose.',
   rusty: 'Uses Rusty’s selected candidate rig and its existing cane draw/throw.',

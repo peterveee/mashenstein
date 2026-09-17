@@ -57,7 +57,7 @@ export function phoneDressing() {
 // bumps Grumpos from crypt to rhythm, where DAD OF BOY becomes BOY BAND.
 export const CABINET_STAR = {
   plumber: 'lorenzo', speed: 'rusty', neon: 'b33p', frost: 'fernwick',
-  crypt: 'clara', rhythm: 'grumpos', cardboard: 'raymn', office: 'kiko',
+  crypt: 'clara', rhythm: 'grumpos', cardboard: 'ramon', office: 'kiko',
   surge: 'gary',
 };
 
@@ -65,7 +65,7 @@ export const CABINET_STAR = {
 // have to survive being about 30 logical px wide, so the rule is hard — the
 // name as it appears on the cast list, and a second line of at most a dozen
 // characters. Every one of them is that hero's own running joke filed down to
-// a marquee: Fernwick is the HERO OF THYME, Ray M'n is APPENDAGE-OPTIONAL,
+// a marquee: Fernwick is the HERO OF THYME, Ramon is APPENDAGE-OPTIONAL,
 // Clara is the MALL RAIDER, Gary is LEGALLY DISTINCT. A poster promising
 // nothing is just a rectangle; a poster promising BATTERY LOW is a joke.
 const POSTER_COPY = {
@@ -75,7 +75,7 @@ const POSTER_COPY = {
   frost: ['FERNWICK', 'MOSTLY HERB'],
   crypt: ['CLARA', 'MALL RAIDER'],
   rhythm: ['GRUMPOS', 'BOY BAND'],
-  cardboard: ["RAY M'N", 'NO ELBOWS'],
+  cardboard: ['RAMON', 'NO ELBOWS'],
   office: ['KIKO', 'STILL ASKING'],
   surge: ['GARY', 'NOT A COPY'],
   overtime: ['OVERTIME', 'NOT APPROVED'],

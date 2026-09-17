@@ -2,7 +2,7 @@ import { TOON_SPECS } from '../src/sprites/toons.js';
 import { actionFor, actionOptions, actionPose } from '../tools/lib/character-editor-actions.js';
 
 const ok = (condition, message) => { if (!condition) throw new Error(message); };
-for (const [id, key] of [['lorenzo', 'wrench'], ['fernwick', 'bow'], ['b33p', 'shoot'], ['kiko', 'shoot'], ['clara', 'shoot'], ['grumpos', 'axe'], ['raymn', 'fist']]) {
+for (const [id, key] of [['lorenzo', 'wrench'], ['fernwick', 'bow'], ['b33p', 'shoot'], ['kiko', 'shoot'], ['clara', 'shoot'], ['grumpos', 'axe'], ['ramon', 'fist']]) {
   const action = actionFor(id, TOON_SPECS[id] || {}, key);
   ok(action?.key === key, `${id} has no ${key} attack action`);
   const before = actionPose({ kind: 'run', phase: 0, grounded: true }, action, .1);

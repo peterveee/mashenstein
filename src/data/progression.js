@@ -40,7 +40,7 @@ export const MODS = [
   { id: 'wide', name: 'EXTRA FULL OF AIR', hero: 'mochi', source: 'mastery', desc: 'FLOATS MORE SLOWLY BUT BECOMES WIDER WHILE FLOATING.' },
   { id: 'force', name: 'REASONABLE FORCE', hero: 'kiko', source: 'mastery', desc: 'THE WARNING SHOT IS WIDER BUT TRAVELS SLOWER.' },
   { id: 'serial', name: 'SERIALIZED', hero: 'clara', source: 'mastery', desc: 'THE SHOT IS FASTER BUT SMALLER. THE AUDIENCE GASPS.' },
-  { id: 'head', name: 'FREELANCE FIST', hero: 'raymn', source: 'mastery', desc: 'THE ROCKET FIST COLLECTS COINS BEFORE RETURNING.' },
+  { id: 'head', name: 'FREELANCE FIST', hero: 'ramon', source: 'mastery', desc: 'THE ROCKET FIST COLLECTS COINS BEFORE RETURNING.' },
   { id: 'ricochet', name: 'RICOCHET AXE', hero: 'grumpos', source: 'mastery', desc: 'THE AXE CAN HIT A SECOND TARGET BEFORE RETURNING.' },
 ];
 

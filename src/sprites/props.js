@@ -2264,11 +2264,93 @@ export const PROP_PAINTERS = {
       (c) => c.arc(x, collarY + h * 0.145, w * 0.042, 0, Math.PI * 2));
     fineShape(ctx, '#f6d33c', u, (c) => rr(c, w * 0.16, h * (0.42 - pressure * 0.07), w * 0.09, h * 0.075, w * 0.025));
   },
-  switch(ctx, w, h) {
+  // THE FROZEN SWITCH — an unbreakable POWER BLOCK hanging at hop height.
+  //
+  // It was a lever on a post for three rounds and it is a coin block now, which
+  // is a different claim about how a prop teaches itself. A lever has to be
+  // taught: it is one 8px machine among a cabinet full of 8px machines, so the
+  // stage had to put a HIT! board a run-up in front of the first one before
+  // anybody would believe the thing was for them rather than at them. A block
+  // hanging at hop height with a mark on its face was taught to this audience
+  // in 1985 — they hit it before they have finished reading it. That also
+  // settles the objection round 1 lost on: a switch bolted to nothing is not a
+  // thing anybody built, but nobody has ever asked what holds a ?-block up.
+  //
+  // THE SYMBOL IS A WINDOW, NOT A PRINT. Armed, it is a dead grey lens with the
+  // power glyph cut into it in gold and nothing behind it. Hit, the lamp inside
+  // comes up and the whole lens floods green with the glyph standing dark
+  // against it — so the bright part of the prop grows by ten times instead of
+  // changing hue, and the spill lands on the frame and on the snow. At twelve
+  // world px a recolour is a rumour; a light coming on is an event. It is also
+  // the one ON state on the sheet that still reads with the colour taken out,
+  // which matters because a third of the thing is green and green-blind is the
+  // one deficiency this cabinet's palette cannot route around.
+  //
+  // GREEN, and only here. The lamp is the single green in the frost cabinet —
+  // it is the reading nobody has to be taught (the machine is ON, the way every
+  // machine in the world says so), it is the hue frost's blues and the gold
+  // glyph both leave free, and it is the colour the cue arrives on: switchFlick
+  // closes its circuit at 55ms, which is the frame this comes up.
+  //
+  // NOT LOOT. The one risk a block carries that a lever never did is that a
+  // 12x11 box on this ice already means coins (qcrate, same box, bright gold
+  // all over). So this one is DARK all over with one bright mark — the inverse
+  // read — and it keeps the teal that says "this is for you" nowhere near the
+  // crate's warm frame.
+  //
+  // FRAME 0 IS ARMED AND NEVER ANIMATES. Frames 1..3 are the HIT, stepped by
+  // the entity's own clock (SWITCH_THROW_T) rather than the 8fps prop ring, so
+  // the lamp comes up on the frame the hop landed. Every one of those frames
+  // also HOPS: a struck block leaving the spot it hung in is half of what says
+  // "that was the hit" at lane size, and it costs nothing, because the BOX
+  // never moves — only the art inside it.
+  switch(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    fineShape(ctx, '#b8e0f8', u, (c) => rr(c, w * 0.1, h * 0.32, w * 0.8, h * 0.6, w * 0.16)); // frozen housing
-    stroke(ctx, '#e04848', Math.max(0.6, w * 0.14), (c) => { c.moveTo(w * 0.5, h * 0.6); c.lineTo(w * 0.76, h * 0.16); });
-    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.76, h * 0.16, w * 0.14, 0, Math.PI * 2));
+    const swing = frame <= 0 ? 0 : Math.min(1, frame / SWITCH_THROW_FRAMES);
+    const s = 1 - (1 - swing) * (1 - swing);   // leaves fast, arrives settled
+    const lit = s >= 1;
+    ctx.save();
+    // The bump: up and back down across the throw, art only.
+    ctx.translate(0, -h * 0.16 * (s > 0 ? Math.sin(s * Math.PI) * 0.9 : 0));
+    // The shell: the crate family's construction — hairline frame, inset face,
+    // four corner bolts — in the fortress's dark metal instead of pine.
+    fineShape(ctx, '#1b2836', u, (c) => rr(c, w * 0.03, h * 0.04, w * 0.94, h * 0.92, w * 0.16));
+    plain(ctx, '#22303f', (c) => rr(c, w * 0.09, h * 0.11, w * 0.82, h * 0.78, w * 0.12));
+    plain(ctx, '#3a4a5a', (c) => {
+      for (const [bx, by] of [[0.155, 0.17], [0.845, 0.17], [0.155, 0.83], [0.845, 0.83]])
+        c.arc(w * bx, h * by, w * 0.035, 0, Math.PI * 2);
+    });
+    const cx = w * 0.5, cy = h * 0.55, r = w * 0.3;
+    // The bezel the lens sits in, so the window is set into the block rather
+    // than printed on it.
+    plain(ctx, '#3a4a5a', (c) => c.arc(cx, cy, r * 1.16, 0, Math.PI * 2));
+    // The spill goes down FIRST, under the lens, so the glow belongs to the
+    // lamp instead of sitting on the block as a sticker.
+    if (lit) plain(ctx, 'rgba(92,224,125,0.28)', (c) => c.arc(cx, cy, r * 1.9, 0, Math.PI * 2));
+    plain(ctx, lit ? '#5ce07d' : '#131c26', (c) => c.arc(cx, cy, r, 0, Math.PI * 2));
+    if (lit) plain(ctx, '#c8ffd8', (c) => c.arc(cx - r * 0.3, cy - r * 0.3, r * 0.45, 0, Math.PI * 2));
+    // The glyph: a ring broken at the top with a bar standing in the break.
+    // Gold and engraved while the lens is dark, a silhouette once the lamp is
+    // behind it.
+    const glyph = lit ? '#131c26' : '#f6d33c';
+    // FINE, not bold. The first cut drew the glyph at 0.08w and it came out a
+    // fat sticker on a small machine — the symbol's whole character is that it
+    // is an engraved line. The floor is what keeps it from vanishing when the
+    // prop is rasterized down into the lane.
+    const lw = Math.max(0.5, w * 0.055);
+    // Round caps explicitly: props.js's stroke() does not set them, and a
+    // butt-capped ring at this size has two square bites taken out of its gap.
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const gr = r * 0.62, gap = 1.05;
+    stroke(ctx, glyph, lw, (c) => {
+      c.arc(cx, cy, gr, -Math.PI / 2 + gap / 2, -Math.PI / 2 - gap / 2 + Math.PI * 2);
+    });
+    stroke(ctx, glyph, lw, (c) => {
+      c.moveTo(cx, cy - gr * 1.28);
+      c.lineTo(cx, cy + gr * 0.12);
+    });
+    ctx.restore();
   },
   // THE BEAT BAR, and it is a STACK OF CHEVRONS because the answer to it is a
   // jump.
@@ -2305,7 +2387,7 @@ export const PROP_PAINTERS = {
     // looked like. A filled band takes the shared contour (shape/ol) the same
     // way every other prop in this file does, at the same weight.
     const rise = w * 0.46;
-    const band = Math.max(1.2, w * 0.26);
+    const band = Math.max(1.6, w * 0.34);
     // The stack spans the box EXACTLY: the top chevron's point is at y 0 and the
     // bottom one's trailing edge is at y h. So `beatSync` growing the box
     // spreads the three apart and lifts the point, and the lowest mark never
@@ -4833,6 +4915,14 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // Anything absent is static. Frames are rasterized and cached individually, so
 // an animated prop costs one canvas per frame per size and still draws with a
 // single drawImage — no per-frame vector work in the hot loop.
+// HOW LONG THE LEVER TAKES TO GO OVER, and in how many steps. Short — this is
+// the confirmation of an input, not a cutscene — and stepped by the entity's
+// own clock in drawWorldEntity rather than by the prop ring, so the swing
+// starts on the frame the hop landed. Frame 0 is the armed post; these are the
+// frames after it.
+export const SWITCH_THROW_FRAMES = 3;
+export const SWITCH_THROW_T = 0.2;
+
 export const PROP_FRAMES = {
   // Half a rotor turn — the blade pair repeats every half turn — in twelve
   // 15-degree steps. Four 45-degree steps strobed: the disc is a third of the
@@ -4851,6 +4941,11 @@ export const PROP_FRAMES = {
   // frame boundary. The green cactus takes the red one's six, because it is a
   // skin of it and the two sway together in a row.
   popSpikes: 8, campfire: 8, fireBarrel: 8, brazier: 8, floorSaw: 8,
+  // One armed post plus the throw. Only frame 0 is ever reached by the clock —
+  // drawWorldEntity pins the switch's ring to 1 — and the rest are addressed
+  // directly by a switch somebody has thrown, exactly as the trap's snap
+  // frames are.
+  switch: 1 + SWITCH_THROW_FRAMES,
   // Eight idle + six snap. Only the first eight are ever reached by the clock;
   // the snap frames are addressed directly by a trap that has been sprung.
   bearTrap: TRAP_FRAMES,

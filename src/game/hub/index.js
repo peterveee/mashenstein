@@ -1,14 +1,19 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legal Pawn Shop, arcade corner.
-import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame } from '../../engine/renderer.js';
+import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame, shake } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
-import { Audio } from '../../engine/audio.js';
+import { Audio, PORTAL_BREATH } from '../../engine/audio.js';
 import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
+import {
+  makeCabinetDive, DIVE_VARIANT_BY_ID, DEFAULT_DIVE_VARIANT, DEFAULT_DIVE_ZOOM, aimForZoom, EXIT_CUE,
+  DIVE_OUT_SMILE,
+} from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
 import {
-  cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
+  cabinetPalette, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
+  stickGlint,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
 } from '../../sprites/arcade.js';
 import {
@@ -38,6 +43,8 @@ import { drawWorldEntity } from '../draw.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
 import { drawSoftContactShadow } from '../../engine/shadows.js';
+import { GROUND_Y } from '../../engine/camera.js';
+import { LANDSCAPE_HEIGHT } from '../../engine/frame.js';
 
 // Arcade Corner is the same Food Court composition, but its imaginary hardware has
 // four tiny channels and no patience for sustained synths. These song-local voices stay
@@ -448,6 +455,30 @@ const HUB_CEIL_Y = Math.ceil(HUB_CAM_Y) + 4;
 // so nothing about walking up to them changes.
 const CAB_W = cabinetStyle().w, CAB_H = cabinetStyle().h;
 const CAB_Y = HUB_FLOOR_PIN_Y - CAB_H;
+// Whether pressing USE on a cabinet plays the dive or cuts straight to stage
+// select the way it always did. One word, in the same idiom as CABINET_STYLE:
+// this is two and a bit seconds you pay on EVERY cabinet you ever open, and the
+// moment it stops earning that it should be switchable off without a rewrite.
+const DIVE_ON_USE = true;
+// How far the camera pushes in over the leap, as a gain on the room's own zoom.
+//
+// DERIVED from DEFAULT_DIVE_ZOOM rather than written here. It was written here, as
+// 0.22, while the ladder's default said 1.75 — so the number the menu reported as
+// armed and the number the camera actually used disagreed, and picking "VARIANT'S
+// OWN" quietly gave you a 1.22 push that nothing in the UI named. One source of
+// truth: the ladder says what the shot is, this turns it into the gain the camera
+// takes.
+const DIVE_ZOOM_GAIN = DEFAULT_DIVE_ZOOM - 1;
+// What the push reaches in phone portrait, as a multiplier on that frame's own 2.5.
+// Its own number rather than a scale on the landscape one: the two frames show
+// different amounts of room, so they do not want the same move.
+const PORTRAIT_DIVE_ZOOM = 2.5;
+// How long the hero wears the just-got-out-of-there grin, end to end, counting
+// the part the dive animation already covers.
+const ARRIVED_SMILE = 0.6;
+// The engine cue shapes the dive is allowed to name. A table rather than a direct
+// lookup so a cue cannot reach an arbitrary export by string.
+const DIVE_SHAPES = { PORTAL_BREATH };
 // Leave one full cabinet pitch open before OVERTIME. This is a real bay, not
 // visual padding: stations() advances the world cursor by it, so camera bounds,
 // lighting, free floor, NPC homes and their far-wall clamp all grow with it.
@@ -600,6 +631,10 @@ const NPC_FOCUS_PAD = 8, NPC_CLEAR_HYST = 6;
 // round. It was 18 — under the width of two toons — which is why tapping a hero
 // parked the two sprites inside each other.
 const STATION_R = 26, NPC_ATTEND_R = 30;
+// How close the hero has to be before the exit/trophy doors swing open, and how
+// fast they swing — wider than STATION_R so the door is already open by the time
+// you reach it, rather than catching up after you cross the threshold.
+const DOOR_OPEN_R = 60, DOOR_SWING_RATE = 3.2;
 // How far to stop SHORT of somebody you tapped, and the number the talk radius
 // is derived from.
 //
@@ -804,17 +839,79 @@ function cabinetScene(cab) {
   return c;
 }
 
+// The attract window, hoisted out of cabinetScreenArt. These were two literals
+// buried in a drawImage call and a third — the ground line — living only in a
+// comment, which was fine while the screen was the only thing that read them.
+// The cabinet dive has to land a hero ON that ground line, so all three are now
+// stated once and derived from rather than restated.
+const SCREEN_WIN_FRAC = 0.2;   // window width, as a fraction of the scene canvas
+const SCREEN_WIN_TOP = 0.62;   // where the window's top edge sits on it
+
+// Where the attract window puts the level's own ground line, and how big one
+// run-world unit becomes, once a scene has been squeezed into a piece of glass
+// this size.
+//
+// Pure arithmetic on constants — it never touches a canvas — which is the point:
+// cabinetScene() returns null headless and on a pack that needs run state, and
+// the dive still has to know where to put the hero's feet. The picture can fail
+// to render; the geometry cannot.
+export function cabinetScreenGeometry(glassW, glassH) {
+  const srcW = W / 2, srcH = H / 2;
+  const winW = srcW * SCREEN_WIN_FRAC;
+  const winH = winW * (glassH / glassW);   // cabinetScreenArt's own aspect rule
+  const perSrc = glassH / winH;
+  // The run's groundline, mapped through the window onto the glass.
+  //
+  // Measured at BOTH frame heights, because they do not agree and only one of them
+  // is an answer. GROUND_Y is a fixed 232, so the fraction of the frame it sits at
+  // moves with H: at the authored 480x270 it is 0.86 and lands inside the window,
+  // while in phone portrait the frame is about 1200 tall, the groundline is at 0.19,
+  // and a window opening at 0.62 is entirely BELOW it. There is no horizon in that
+  // picture to put anybody on — the attract screen is all ground.
+  const groundAt = (frameH) => {
+    const src = frameH / 2;
+    return (src * (GROUND_Y / frameH) - src * SCREEN_WIN_TOP) * perSrc;
+  };
+  const raw = groundAt(H);
+  // So when the window misses it, fall back to WHERE THE AUTHORED FRAME PUTS IT
+  // rather than to a number somebody picked. This was clamped to 0.90 of the glass,
+  // which is not wrong so much as arbitrary — and being arbitrary it disagreed with
+  // landscape's own 0.963, so the same hero stood 6% higher up the same screen on a
+  // phone. The level's ground line is a property of the LEVEL; the phone's taller
+  // frame is a presentation decision and has no business moving it.
+  const fallback = groundAt(LANDSCAPE_HEIGHT);
+  return {
+    perSrc,
+    // CLAMPED INTO THE GLASS, and that is not defensive tidying — it is the
+    // portrait case. The renderer publishes a taller logical frame on a phone,
+    // so GROUND_Y is a SMALLER fraction of H there, and a window pinned at 0.62
+    // of the scene opens entirely BELOW the horizon: the attract screen is all
+    // ground, and the line itself is off the top of the glass. Unclamped this
+    // came back at -154 and the hero leapt to a point above the machine,
+    // hanging in the air over the posters.
+    //
+    // Still bounded, but only against nonsense: a window that misses the horizon
+    // gives the authored frame's answer, and anything that survives is kept as long
+    // as it is actually on the glass.
+    groundY: Math.min(glassH * 0.97, raw > 0 ? raw : fallback),
+    // Unclamped, for anyone who needs to know the window missed.
+    groundYRaw: raw,
+    // The scene canvas is half-scale, so a world unit is half a source pixel.
+    unit: perSrc * 0.5,
+  };
+}
+
 // The window panned across that scene. Crops to the band around the ground line
 // — the sky above it is mostly empty and at 22 units tall an empty screen reads
 // as a broken one — and wraps, so every cabinet loops its own attract forever.
-function cabinetScreenArt(cab, t, seed = 0) {
+export function cabinetScreenArt(cab, t, seed = 0) {
   const src = cabinetScene(cab);
   if (!src) return null;
   // A tight window: at 0.42 of the scene the hazards came out ~2px across on a
   // 34px screen — texture, but not readable as anything. 0.2 puts a cactus at a
   // legible 5px, which is what makes this read as a game rather than as a
   // gradient. Height follows the glass aspect so nothing is squashed.
-  const winW = src.width * 0.2;
+  const winW = src.width * SCREEN_WIN_FRAC;
   const span = src.width - winW;
   // Ping-pong rather than jump-cut: a hard wrap on a 33px screen reads as a
   // dropped frame, where a slow reverse just looks like the demo turning round.
@@ -825,7 +922,7 @@ function cabinetScreenArt(cab, t, seed = 0) {
   const pan = (cycle < 1 ? cycle : 2 - cycle) * span;
   // Framed on the ground line (GROUND_Y is 232 of 270, so 0.86 of the source)
   // with headroom above it for the flyers.
-  return (c, cw, ch) => c.drawImage(src, pan, src.height * 0.62, winW, winW * (ch / cw), 0, 0, cw, ch);
+  return (c, cw, ch) => c.drawImage(src, pan, src.height * SCREEN_WIN_TOP, winW, winW * (ch / cw), 0, 0, cw, ch);
 }
 
 // cabinetPalette() mixes a dozen colours per call and the answer only depends
@@ -1278,6 +1375,44 @@ function drawPlayerMarker(ctx, cx, cy, r) {
   ctx.restore();
 }
 
+// The dev menu's way in: queue a dive, re-enter the hub, watch it from a
+// standing start. Module-level rather than a Flow argument because the dev menu
+// is not allowed to reach into a live state, and re-entering the hub is what
+// makes it deterministic — you always get the full windup.
+// The cabinet the player is arriving back OUT of, set by Flow.toHub() on the return
+// from a stage. Separate from PENDING_DIVE (the dev menu's way in) because they are
+// different events: one is a request to demonstrate, this is where you came from.
+let PENDING_OUT = null;
+export function queueCabinetDiveOut(cabId) {
+  PENDING_OUT = CABINET_BY_ID[cabId] ? cabId : null;
+}
+
+let PENDING_DIVE = null;
+// STICKY. Picking a variant off the dev menu used to play it once and then fall back
+// to the default, so comparing "this one, at this cabinet, from a walk" meant going
+// through the menu for every single attempt — and you cannot judge a shot you have to
+// re-arm. The choice is module-level and survives leaving the hub, so once it is
+// picked every cabinet you walk up to plays it until you pick another.
+let SELECTED_DIVE_VARIANT = DEFAULT_DIVE_VARIANT;
+export function setCabinetDiveVariant(variant) {
+  if (DIVE_VARIANT_BY_ID[variant]) SELECTED_DIVE_VARIANT = variant;
+  return SELECTED_DIVE_VARIANT;
+}
+export function cabinetDiveVariant() { return SELECTED_DIVE_VARIANT; }
+// The push-in, as a multiplier on the room's zoom, armed the same sticky way the
+// variant is: picked once, kept until picked again. Null means "whatever the variant
+// asks for", which is how the shipped shot and HOP + BIG PUSH keep their own.
+let SELECTED_DIVE_ZOOM = null;
+export function setCabinetDiveZoom(mult) {
+  SELECTED_DIVE_ZOOM = mult > 0 ? mult : null;
+  return SELECTED_DIVE_ZOOM;
+}
+export function cabinetDiveZoom() { return SELECTED_DIVE_ZOOM; }
+export function queueCabinetDive(cabId = CABINETS[0].id, variant = SELECTED_DIVE_VARIANT) {
+  setCabinetDiveVariant(variant);
+  PENDING_DIVE = { cabId, variant: SELECTED_DIVE_VARIANT };
+}
+
 export class HubState {
   // The food court uses the same tall, uniform frame as phone gameplay. Its
   // own draw pass still chooses the tighter hub camera below, so landscape
@@ -1568,11 +1703,14 @@ export class HubState {
     // legs cycle with the hero instead of alongside them.
     this.gaitPhase = 0;
     this.lockedTrophyBump = false;
+    this.exitDoorOpen = 0;
+    this.trophyDoorOpen = 0;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
     this.npcMenuIdx = 0;
     this.npcDwell = 0;
     this.greeted = false;     // has this hero already said hello, this approach
+    this.arrivedT = 0;       // a beat of "I just got out of there" on the face
     this.hasMoved = false;   // the controls legend retires once you have walked
     this.movedAt = 0;
     // One standing patch per hero, spread the length of the concourse — see
@@ -1651,6 +1789,27 @@ export class HubState {
     // EXIT sign at the left of the concourse is itself a station — the whole
     // hub is its own control surface, so it needs no buttons of its own.
     Input.setButtons([]);
+    // Render the exit cue now, while nobody is listening. It is the entry's cue
+    // reversed, which means an offline render, which means it cannot be made on the
+    // frame it is wanted. Entering the concourse is minutes before any level ends.
+    Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
+    // The dev menu asks for a dive by queueing it and re-entering the hub. It
+    // is armed here but STARTED on the first update, because starting it now
+    // would run the windup underneath the incoming shutter and the leap would
+    // be half over by the time the iris opened.
+    this.pendingDive = PENDING_DIVE;
+    PENDING_DIVE = null;
+    // Arriving back out of a machine. Armed here and started on the first update for
+    // the same reason the dev queue is: the shutter is still closing over this frame,
+    // and a dive that began now would spend its opening beat underneath it.
+    this.pendingOut = PENDING_OUT;
+    PENDING_OUT = null;
+    if (this.pendingOut) {
+      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === this.pendingOut);
+      // Stand him at the machine before the first frame is drawn, so the room opens
+      // framed on the cabinet he is about to come out of rather than snapping to it.
+      if (st) { this.px = st.x; this.facing = 1; }
+    }
   }
   exit() {
     this.flow.hubPosition = { px: this.px, facing: this.facing || 1 };
@@ -1670,15 +1829,77 @@ export class HubState {
   }
 
   drawChromeWalkButtons() {
-    // A poster up is a modal: nothing behind it is a control.
-    if (!Input.usingTouch || this.poster) return;
+    // A poster up is a modal: nothing behind it is a control. Neither is a
+    // concourse you have already left through the front of a machine.
+    if (!Input.usingTouch || this.poster || this.dive) return;
     declareHubChrome();
+  }
+
+  // The room's presentation, plus whatever the dive is doing to it. Kept
+  // separate from hubPresentation() because a dozen other callers — the footer
+  // rows, the touch chrome, the tap hit-tests — want the room's own numbers and
+  // must not follow a camera that is walking into a cabinet.
+  //
+  // Pure: it reads only dive.camera(), itself a pure function of dive.t, so
+  // calling it twice in a frame is free and cannot disagree with itself.
+  layout() {
+    const base = hubPresentation();
+    if (!this.dive) return base;
+    const shot = this.dive.camera();
+    // PORTRAIT PUSHES HARDER, not softer. The half-gain here was a guess that the
+    // phone's 2.5 base made any push excessive; on the phone it is the opposite. The
+    // tall frame is mostly floor and ceiling, the cabinet row is a thin band across
+    // the middle, and a gentle push leaves the glass a postage stamp in the centre
+    // of a lot of empty room. 3x is what makes the machine the picture.
+    const gain = base.portrait ? PORTRAIT_DIVE_ZOOM - 1 : shot.gain;
+    // Derived HERE, from the gain actually being used, because portrait substitutes
+    // its own and the shot does not know that. A variant's explicit aim still wins.
+    const aim = shot.aimOverride ?? aimForZoom(1 + gain);
+    const zoom = base.zoom * (1 + gain * shot.amt);
+    // The SAME floor-pin arithmetic hubPresentation() uses, at the new zoom.
+    // That is what keeps the cabinet row standing still while the frame closes
+    // in on it — the push-in reads as a camera move, not as the room growing.
+    const pinned = base.portrait
+      ? HUB_FLOOR_PIN_Y - (H * PORTRAIT_HUB_FLOOR_RATIO) / zoom
+      : HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / zoom;
+    // A HARD push has to stop framing on the floor. The pin keeps the floor line
+    // where it was, which is exactly right up to about 2.5x and wrong after it: the
+    // floor holds, the machine grows, and the screen climbs out of the top of the
+    // picture. `aim` blends toward putting the GLASS in the middle instead. It is 0
+    // for every shot that does not ask, so the shipped framing is untouched.
+    const centred = shot.focusY - (H / 2) / zoom;
+    const camY = aim
+      ? pinned + (centred - pinned) * Math.min(1, aim * Math.min(1, shot.amt))
+      : pinned;
+    return {
+      ...base,
+      zoom,
+      // What the zoom will BE when the push finishes. The camera needs it to aim.
+      zoomFinal: base.zoom * (1 + gain),
+      viewW: W / zoom,
+      camY,
+      wallY0: base.portrait ? camY : HUB_WALL_Y0,
+      lightY: base.portrait ? camY : HUB_LIGHT_Y,
+      ceilY: base.portrait ? camY + 4 : HUB_CEIL_Y,
+    };
   }
 
   // Camera follows the player, clamped to the concourse — shared by update()
   // (to turn a tap's screen x back into world x) and draw() (to place it).
   camX() {
-    const { viewW } = hubPresentation();
+    const { viewW } = this.layout();
+    // The dive's camera is deliberately UNCLAMPED. It has to walk past the ends
+    // of the concourse to centre a machine standing at x 96 in a view that has
+    // just narrowed, and every fill in here spans the view rather than the
+    // world — the wall and floor are camera-space rects across [0, viewW], and
+    // drawFoodCourtFloor tiles correctly at a negative offset — so there is
+    // nothing behind the clamp to protect.
+    if (this.dive) {
+      // The view at the END of the push as well as the one right now, so the camera
+      // can aim at a fixed destination instead of a receding one — see camX().
+      const L = this.layout();
+      return this.dive.camX(viewW, W / L.zoomFinal);
+    }
     return Math.max(0, Math.min(this.width - viewW, this.px - viewW / 2));
   }
 
@@ -1696,6 +1917,74 @@ export class HubState {
       if (Input.pressed('pointer') || Input.pressed('confirm') || Input.pressed('back') || Input.pressed('jump')) {
         this.poster = null;
         Audio.sfx('ui');
+      }
+      Input.endFrame();
+      return;
+    }
+    if (this.pendingOut) {
+      const cabId = this.pendingOut;
+      this.pendingOut = null;
+      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === cabId);
+      if (st) this.startCabinetDive(st, 'out');
+    }
+    if (this.pendingDive) {
+      const { cabId, variant } = this.pendingDive;
+      this.pendingDive = null;
+      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === cabId);
+      if (st) {
+        this.px = st.x;
+        // Not an instance override: the module-level choice is what every later
+        // walk-up reads, and pinning it here would make the queued dive and the
+        // next one disagree.
+        setCabinetDiveVariant(variant);
+        this.startCabinetDive(st);
+      }
+    }
+    // A dive owns the frame, but NOT the way a poster does. A poster is a modal
+    // — the room stops because you left it. This is a cutscene happening IN the
+    // room, so the clock keeps running: the attract art goes on panning, the
+    // tubes go on rolling and the ceiling goes on guttering behind the leap.
+    // Only the player and the controls are suspended.
+    if (this.arrivedT > 0) this.arrivedT -= dt;
+    if (this.dive) {
+      this.t += dt;
+      this.updateNpcs(dt);
+      this.dive.update(dt);
+      // Skippable, but not on the frame you pressed USE — the press that opened
+      // the cabinet would eat its own animation. There is no reduced-motion
+      // setting in this game (everyone gets the same one), so this IS the
+      // answer for anyone who has seen it enough times.
+      const skippable = this.dive.t > 0.45;
+      const pressed = Input.pressed('confirm') || Input.pressed('pointer')
+        || Input.pressed('jump') || Input.pressed('back');
+      // A SKIP TAKES THE SOUND WITH IT. The dive's voice cues are a second or two
+      // long and the reversed one is queued ahead of its own landing, so pressing
+      // through the animation used to leave the swoop arriving over stage select
+      // for a leap nobody saw. Only on a skip — a dive that finishes has earned its
+      // own tail.
+      if (skippable && pressed && !this.dive.done) Audio.stopVoiceCues?.();
+      if (this.dive.done || (skippable && pressed)) {
+        const out = this.dive.dir === 'out';
+        const cab = this.dive.cab;
+        this.dive = null;
+        // THE SMILE HAS TO OUTLIVE THE DIVE. He lands pleased with himself about
+        // a fifth of a second before the animation hands back, and on the next
+        // frame the hub draws its ordinary walk pose over the top — a grin nobody
+        // could see. Carry it a beat into the room instead, where it reads as a
+        // hero arriving rather than as one frame of a face.
+        // Pleased, not triumphant: long enough to read as he straightens up, gone
+        // before the player has taken a step. Tuned down from 1.5s, where he stood
+        // grinning at nothing, which is a different character entirely.
+        //
+        // Set as the TOTAL and the dive's own share subtracted, so the number here
+        // means what it says. The animation already wears the grin from his feet
+        // touching to its last frame; storing the leftover instead would be a value
+        // whose meaning quietly changed every time the exit was re-timed.
+        if (out) this.arrivedT = Math.max(0, ARRIVED_SMILE - DIVE_OUT_SMILE);
+        // Coming OUT ends in the room: he is already standing at the machine, so
+        // there is nothing to hand over to and the player simply has the controls
+        // back. Only the way IN opens anything.
+        if (!out) this.flow.openCabinet(cab);
       }
       Input.endFrame();
       return;
@@ -1872,6 +2161,14 @@ export class HubState {
       ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
       : 0;
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
+    // Swing the boundary doors open as the hero nears them — never the locked
+    // trophy door, which stays shut until there is something to unlock it.
+    const exitDoorTarget = exitDoor && Math.abs(this.px - exitDoor.x) < DOOR_OPEN_R ? 1 : 0;
+    this.exitDoorOpen += Math.sign(exitDoorTarget - this.exitDoorOpen)
+      * Math.min(Math.abs(exitDoorTarget - this.exitDoorOpen), DOOR_SWING_RATE * dt);
+    const trophyDoorTarget = trophyDoor && trophyDoor.unlocked && Math.abs(this.px - trophyDoor.x) < DOOR_OPEN_R ? 1 : 0;
+    this.trophyDoorOpen += Math.sign(trophyDoorTarget - this.trophyDoorOpen)
+      * Math.min(Math.abs(trophyDoorTarget - this.trophyDoorOpen), DOOR_SWING_RATE * dt);
     const gaitDx = Math.abs(this.px - gaitPrevPx);
     if (gaitDx > 0) {
       this.gaitPhase = (this.gaitPhase + gaitDx / (PLAYER_H * GAIT_DISTANCE_PER_CYCLE)) % 1;
@@ -1989,7 +2286,11 @@ export class HubState {
     // answer it has to reach the counter behind them instead of being eaten.
     const chooser = !!this.focusNpc && npcMenuFor(this.focusNpc).length > 0;
     // Confirm follows the focus, so it always does what the chips say it will.
-    if (Input.pressed('confirm')) {
+    // Jump doubles as confirm for a station, matching the gamepad face button
+    // (jump and confirm are the same physical press there) — but only when
+    // there is no chooser on screen, since jump is also the avatar's own hop
+    // and must not steal a press the chooser chips are showing.
+    if (Input.pressed('confirm') || (Input.pressed('jump') && !chooser && near)) {
       if (chooser) this.chooseNpc(this.focusNpc);
       else if (near) this.interact(near);
     }
@@ -2046,6 +2347,10 @@ export class HubState {
         this.talk = { text: `NEEDS ${UNLOCKS[st.cab.id]} PLUGS. YOU HAVE ${totalPlugs(slot)}. THE MATH IS SINCERE.`, t: 3, who: null };
         return;
       }
+      // The hero goes in through the front of the machine; the dive calls
+      // openCabinet itself when he is through. The direct path below stays
+      // reachable so DIVE_ON_USE is one word rather than a rewrite.
+      if (this.startCabinetDive(st)) return;
       this.flow.openCabinet(st.cab);
     } else if (st.type === 'exit') this.flow.toTitle();
     else if (st.type === 'bench') this.flow.openBench();
@@ -2055,6 +2360,55 @@ export class HubState {
     else if (st.type === 'socket') this.flow.startFinale();
     else if (st.type === 'overtime') this.flow.startOvertime();
     else if (st.type === 'backroom') this.flow.startOvertime((Date.now() & 0xfffff) ^ 0xbac);
+  }
+
+  // Start the hero's leap into `st`. Returns false when the dive is switched
+  // off or one is already running, in which case interact() falls through to
+  // the old straight-to-stage-select path.
+  startCabinetDive(st, dir = 'in') {
+    if (!DIVE_ON_USE || this.dive) return !!this.dive;
+    const glass = cabinetScreenRect(st.x - CAB_W / 2, CAB_Y, CAB_W, CAB_H);
+    const g = cabinetScreenGeometry(glass.w, glass.h);
+    this.dive = makeCabinetDive({
+      cab: st.cab,
+      heroId: this.avatarId(),
+      variant: this.diveVariant || SELECTED_DIVE_VARIANT,
+      dir,
+      cabX: st.x, cabY: CAB_Y, cabW: CAB_W, cabH: CAB_H,
+      floorY: HUB_FLOOR_PIN_Y, heroH: PLAYER_H,
+      startX: this.px, facing: 1,
+      camStart: this.camX(),
+      insideGroundY: g.groundY, insideUnit: g.unit,
+      // An explicit pick from the menu beats the variant's own push; with none,
+      // the variant decides, and with neither, the room's shipped 0.22.
+      zoomGain: DIVE_ZOOM_GAIN,
+      zoomOverride: SELECTED_DIVE_ZOOM ? SELECTED_DIVE_ZOOM - 1 : null,
+      // A cue may name an engine shape rather than carry one: cabinet-dive.js does
+      // not import the audio engine (the gallery drives that file too), so the
+      // reference is resolved on this side, where the engine is already in hand.
+      sfx: (name, o) => Audio.sfx(name, o && o.shapeRef
+        ? { ...o, shapeRef: undefined, shape: DIVE_SHAPES[o.shapeRef] }
+        : o),
+      voiceSfx: (id, o) => Audio.voiceSfx(id, o),
+      voiceReverse: (id, o) => Audio.voiceSfxReverse(id, o),
+      shake,
+    });
+    // Park the simulated hero under the machine he dove into. The dive owns his
+    // drawn position from here, but exit() writes this.px into flow.hubPosition
+    // — so without this line, coming back out of stage select would drop him
+    // wherever he happened to be standing when he pressed USE.
+    this.px = st.x;
+    this.facing = 1;
+    this.walkTarget = null;
+    this.walkToNpc = null;
+    this.addressing = null;
+    this.addressTap = false;
+    this.talk = null;
+    this.dragging = false;
+    this.focusNpc = null;
+    this.near = null;
+    Input.setChromeButtons([]);
+    return true;
   }
 
   talkTo(npc) {
@@ -2367,7 +2721,7 @@ export class HubState {
   draw(ctx) {
     const slot = this.save.slot;
     const act = actForSlot(slot);
-    const layout = hubPresentation();
+    const layout = this.layout();
     const cam = this.camX();
     ctx.fillStyle = '#14101c';
     ctx.fillRect(0, 0, W, H);
@@ -2519,10 +2873,40 @@ export class HubState {
       if (x < -80 || x > layout.viewW + 40) continue;
       if (s.type === 'cabinet') {
         const pal = palFor(s.cab, s.unlocked);
-        drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal);
+        // Light BEFORE the machine, so the machine is standing in front of it. The
+        // dive's other two slots both draw over the cabinet; this is the only one
+        // that can make it a silhouette, which is the whole point of a flash from
+        // behind. Its tint is this cabinet's own screen colour.
+        if (this.dive && this.dive.cab.id === s.cab.id) {
+          this.dive.drawBehind(ctx, x, { tint: pal.screen, floorY: layout.floorY });
+        }
+        // The ball top catches the light above the bay every now and then — and
+        // only on an unlocked machine, because until one is unlocked the fixture
+        // over it is dead and there is no light up there to catch. Timed here
+        // rather than in the painter, same as the rolling screen bar: arcade.js
+        // draws one frame and knows nothing about the clock.
+        const dive = this.dive && this.dive.cab.id === s.cab.id ? this.dive : null;
+        // During a dive the ball has its own reasons to flash — the shove on the
+        // takeoff and the crossing flash — and they are placed on the dive's beats,
+        // not on the room's timer. The room's one keeps running underneath: taking
+        // the larger of the two means a dive can only ever add a glint, never eat
+        // one that was already on its way up.
+        const glint = Math.max(s.unlocked ? stickGlint(this.t, pal.seed) : 0, dive ? dive.glint : 0);
+        // The stick moves for the machine the hero is inside, and only that one.
+        drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined,
+          dive
+            ? { stickLean: dive.stick, stickFwd: dive.stickFwd, buttonPress: dive.button, glint }
+            : { glint });
         // The attract screen carries its own scanlines; the bright bar rolling
         // down it runs on the hub's clock, so it is drawn here, over them.
-        const scr = drawCabinetScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined, pal.lit ? cabinetScreenArt(s.cab, this.t, pal.seed) : null);
+        // The dive paints INSIDE the glass by wrapping the art callback, which
+        // means it lands under drawCabinetScreen's own clip, scanlines and
+        // gloss — a hero on a CRT, for free. `x` is the already-rounded
+        // camera-space centre, so the dive rebuilds the same rect the clip is
+        // using and the two can never drift by a rounding.
+        let screenArt = pal.lit ? cabinetScreenArt(s.cab, this.t, pal.seed) : null;
+        if (this.dive && this.dive.cab.id === s.cab.id) screenArt = this.dive.screenArt(screenArt, x);
+        const scr = drawCabinetScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined, screenArt);
         if (scr) {
           drawScreenSweep(ctx, scr, this.t, pal.seed);
         } else {
@@ -2581,7 +2965,9 @@ export class HubState {
         const doorPal = s.type === 'shelf' && !s.unlocked
           ? DOOR_PALETTES.shelfLocked
           : DOOR_PALETTES[s.type];
-        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t);
+        const doorOpen = s.type === 'exit' ? this.exitDoorOpen
+          : s.type === 'shelf' ? this.trophyDoorOpen : 0;
+        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, doorOpen);
       }
     }
     // NPC heroes
@@ -2663,6 +3049,16 @@ export class HubState {
     // walk-up prompt uses, so all the "this is about you" chrome reads as one
     // voice.
     const pxs = Math.round(this.px - cam);
+    // Mid-dive the hero is not standing in the concourse any more, so this whole
+    // slot hands over: the walk pose, the gold marker and the heavy contact
+    // shadow all belong to a player who is driving, and for two seconds nobody
+    // is. What the dive draws here is only the part of the leap still in FRONT
+    // of the glass — everything past the plane is painted inside the screen.
+    if (this.dive) {
+      this.dive.drawOutside(ctx, Math.round(this.dive.cabX - cam), { lit: castLit(pxs) });
+      ctx.restore();
+      return;
+    }
     drawSoftContactShadow(ctx, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
       { alpha: 0.44, ink: '4,3,9' });
     drawToon(ctx, heroId, {
@@ -2682,6 +3078,9 @@ export class HubState {
       grounded: !airborne,
       vy: this.jumpVy,
       facing: this.facing || 1,
+      // Just came back out of a machine — see the dive's own landing smile, which
+      // this continues so it lasts long enough to be seen.
+      faceJoy: this.arrivedT > 0,
     }, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits
@@ -3085,6 +3484,7 @@ export class TrophyRoomState {
     this.walkTarget = null;
     this.walkHoldT = 0;
     this.moving = false;
+    this.doorOpen = 0;
     this.player = new Player(this.heroId());
     this.player.grounded = true;
   }
@@ -3217,6 +3617,9 @@ export class TrophyRoomState {
       : 0;
     this.moving = !!move;
     this.player.update(dt, TROPHY_PLAYER_INPUT, { speed: move ? walkSpeed : 0 });
+    const doorTarget = Math.abs(this.px - TROPHY_EXIT_X) < DOOR_OPEN_R ? 1 : 0;
+    this.doorOpen += Math.sign(doorTarget - this.doorOpen)
+      * Math.min(Math.abs(doorTarget - this.doorOpen), DOOR_SWING_RATE * dt);
   }
 
   drawLevelRecords(ctx, layout = trophyPresentation()) {
@@ -3398,7 +3801,7 @@ export class TrophyRoomState {
     // room boundary rather than an interaction: walk into it (or tap it and
     // let tap-to-walk finish) and update() returns directly to the Food Court.
     drawDoor(ctx, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
-      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t);
+      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t, this.doorOpen);
 
     const pose = poseFromPlayer(this.player, this.t);
     if (!this.moving && pose.kind === 'run') {

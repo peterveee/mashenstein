@@ -54,7 +54,11 @@ assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.
 // and the concourse gets re-spaced whenever the art changes.
 globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
 frames(2);
-dom.key('Enter'); frames(40);
+dom.key('Enter'); frames(40);   // USE the cabinet: the hero dives into the screen
+// The dive is a ~2.2s animation, skippable after 0.45s by any press. Pressing
+// through it is what every returning player will do, and it keeps this suite
+// measuring the route rather than the cutscene.
+dom.key('Enter'); frames(40);   // skip the dive -> stage select
 // No breaker box in the doorway any more — cabinets open straight onto stages.
 assert(globalThis.window.__mash_state === 'StageSelectState', `cabinet opens to stage select (got ${globalThis.window.__mash_state})`);
 

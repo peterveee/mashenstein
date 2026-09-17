@@ -10,6 +10,7 @@ import { drawSoftContactShadow } from '../engine/shadows.js';
 import {
   eggshellCopterArt,
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
+  SWITCH_THROW_FRAMES, SWITCH_THROW_T,
   TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
   BATTERY_FOCUS,
@@ -349,7 +350,7 @@ const SPECIAL_FOLLOWER_CROWN = {
   lorenzo: 0.99, gnash: 1.08, fernwick: 1.05, b33p: 0.93,
   // Rusty's pointed ears stand a little proud of Gnash's quills.
   rusty: 1.1,
-  mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
+  mochi: 0.84, chompo: 0.86, ramon: 0.9, grumpos: 1.18,
   // Just above Fernwick's: same slim build, but the buns sit on top of the skull
   // and the orb has to clear them.
   kiko: 1.06,
@@ -455,8 +456,6 @@ export function drawPowerPose(c, cx, feetY, type, alpha = 1, scale = 1) {
     // The wrench now belongs to Lorenzo's hand and swing in drawHumanoid.
     // Leave impact feedback to the broken obstacle, shake and CLANG floatie;
     // a detached streak here was the yellow line that obscured the action.
-  } else if (type === 'eat') {
-    c.beginPath(); c.arc(10, -11, 9, -0.7, 0.7); c.stroke();
   } else if (type === 'compress') {
     c.strokeStyle = '#f8c0d8'; c.beginPath(); c.arc(0, -7, 11 + (1 - alpha) * 8, 0, Math.PI * 2); c.stroke();
   } else if (type === 'shoot') {
@@ -721,7 +720,8 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // a plate that is supposed to be set into the road. Frost's trap is the one
   // exception and takes a cold shadow, because it lies on the snow rather than
   // being cut into it.
-  if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost && !e.def.isLoop && !e.def.bedded) {
+  if (e.kind === 'obstacle' && e.def.ground
+    && !e.def.isBoost && !e.def.isLoop && !e.def.bedded) {
     if (e.def.splitFeet) {
       // An open hurdle has two contacts, not a plinth. A full-width shadow and
       // red road mark join its uprights into a false bottom rail.
@@ -838,12 +838,22 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // for the next tick lands after the thing that caused it, and the whole
   // point of the mechanic is that the shot closed the jaws.
   const trapSprung = propName === 'bearTrap' && e.disarmed;
-  const ringFrames = propName === 'bearTrap' ? TRAP_IDLE_FRAMES : frameCount;
+  // AND THE SWITCH DOES NOT RIDE IT AT ALL. Frame 0 is the armed block and it
+  // never animates — a machine that waves at you is a machine nobody has hit.
+  // The rest of the ring is the HIT, stepped by the entity's own clock the way
+  // the trap's snap is, so the lamp comes up on the frame the hop landed rather
+  // than on the next 8fps tick.
+  const switchThrown = propName === 'switch' && e.thrown;
+  const ringFrames = propName === 'bearTrap' ? TRAP_IDLE_FRAMES
+    : propName === 'switch' ? 1 : frameCount;
   const frame = trapSprung
     ? TRAP_IDLE_FRAMES + Math.min(TRAP_SNAP.length - 1,
       Math.floor(((e.disarmT || 0) / TRAP_SNAP_T) * TRAP_SNAP.length))
-    : ringFrames > 1
-      ? Math.floor(t * fps + e.bobPhase * 4) % ringFrames : 0;
+    : switchThrown
+      ? 1 + Math.min(SWITCH_THROW_FRAMES - 1,
+        Math.floor(((e.thrownT || 0) / SWITCH_THROW_T) * SWITCH_THROW_FRAMES))
+      : ringFrames > 1
+        ? Math.floor(t * fps + e.bobPhase * 4) % ringFrames : 0;
   const rimDark = danger ? (propName ? null : tinted(sprName, '#101018')) : null;
   const rimLite = danger ? (propName ? null : tinted(sprName, '#f0f0f8')) : null;
   const prevSmooth = ctx.imageSmoothingEnabled;
@@ -1159,7 +1169,7 @@ function drawLoopRing(ctx, e, x, t) {
   const T = 7;                 // how thick the track reads
   // A hair of daylight between the running line and the structure. `r` is where
   // the hero's feet are PLANTED, but a drawn boot is a few pixels of art around
-  // that point and some of the cast wear loose ones — Ray M'N's are detached
+  // that point and some of the cast wear loose ones — Ramon's are detached
   // ellipses that float. Butting the band straight up against `r` put those
   // through the rail. Clearance here rather than a nudge in the toon painter,
   // which is shared by the whole cast and would be a one-hero fix applied to

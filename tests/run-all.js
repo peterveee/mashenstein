@@ -20,6 +20,7 @@ const suites = [
   // And the file that system reads: schema, and the registry names a section
   // can quietly stop matching when an obstacle is renamed.
   'tests/stage-layouts.js',
+  'tests/capsule-clearance.js',
   // The tool that writes it: idempotent saves, the history snapshot, and the
   // shapes the validator refuses before they can reach a level.
   'tests/level-editor.js',
@@ -324,6 +325,10 @@ const suites = [
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
   'tests/breaker-bonus.js',
+  // RESTART on the pause screen. It is a seed promise more than a menu item —
+  // the plate says "this level again", and the only thing making that true is
+  // that enter() re-reads the run's own seed. Checked by replaying the road.
+  'tests/pause-restart.js',
   'tests/props.js',
   // The peel: a hazard defined by the escape hatches it does NOT have, which is
   // the kind of fact a later tidy-up quietly grants it. Beside the prop suites
@@ -338,6 +343,13 @@ const suites = [
   // harmless for the rest of the lane. Four files have to agree for that to be
   // true and none of them has a reason to know about the others.
   'tests/bear-trap.js',
+  // The other half of frost's kit, and the same shape of problem one file
+  // along: the frozen switch is only half a prop — it bridges the hole its
+  // pattern laid behind it — and the lane's sweeps key on `def.action`, which
+  // the pair answers two different ways. The link that keeps them together is
+  // written in the spawner and read in the run, so neither end can be tidied
+  // away alone.
+  'tests/frozen-switch.js',
   // The finish-line dog and its sign. Third in this little group for the same
   // reason as the two above: the dog's identity is `breakable: false` and the
   // sign's is `action: 'none'`, single registry lines holding up a jump-only

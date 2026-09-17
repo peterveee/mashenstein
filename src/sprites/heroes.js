@@ -341,10 +341,10 @@ grumpos.slide = [
 // the toon layer straps the sandals in leather on top.
 grumpos.pal = { s: '#ded9d2', a: '#c92f3b', e: '#17131a', m: '#352523', b: '#ded9d2', p: '#cfc8bd', f: '#d6d0c8', w: '#765238', g: '#d69224' };
 
-// Ray M'N is vector-drawn in play; these grids provide palette/fallback data.
-const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d85050', b: '#28a8a0', p: '#7048a8', f: '#f06038', w: '#f5f2e8' } };
+// Ramon is vector-drawn in play; these grids provide palette/fallback data.
+const ramon = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d85050', b: '#28a8a0', p: '#7048a8', f: '#f06038', w: '#f5f2e8' } };
 
-// Dolores never runs a stage, so like Ray M'n she borrows Gary's grids and
+// Dolores never runs a stage, so like Ramon she borrows Gary's grids and
 // brings only a palette — the toon layer is the only thing that ever draws her.
 // The uniform is institutional mint (b) under a cream apron (a): the two
 // colours a cafeteria has always been, and neither of them is a colour any
@@ -357,7 +357,7 @@ const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d
 // carry the outfit to the floor and the shoes are the only white below the apron.
 const dolores = { ...gary, pal: { s: '#e0a884', a: '#e4dccc', e: '#171126', m: '#8a4a52', b: '#6fa89c', p: '#b6a898', f: '#f2efe9', w: '#fff', hair: '#b4aac0' } };
 
-// Kiko brings a palette and nothing else, the same arrangement Ray M'n and
+// Kiko brings a palette and nothing else, the same arrangement Ramon and
 // Dolores are on. Worth saying plainly, because the note that used to sit in
 // hero-candidates.js said a new hero needs a pixel grid and that is not true:
 // buildSprite() (engine/sprites.js) is the only thing that turns a grid into a
@@ -385,7 +385,7 @@ const kiko = {
   },
 };
 
-// Clara Vault — palette only, like Kiko, Ray M'n and Dolores. Straight off the
+// Clara Vault — palette only, like Kiko, Ramon and Dolores. Straight off the
 // winning raider candidate (A3, two wisps): olive tank a whole hue away from
 // Lorenzo's teal, khaki trousers held a value above the boots, auburn hair,
 // brass hardware, leather in `w`. The pistol's steel and grip are the two keys
@@ -436,4 +436,4 @@ const rusty = {
   },
 };
 
-export const HERO_SPRITES = { lorenzo, gnash, rusty, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores, kiko, clara };
+export const HERO_SPRITES = { lorenzo, gnash, rusty, fernwick, b33p, mochi, chompo, gary, ramon, grumpos, dolores, kiko, clara };

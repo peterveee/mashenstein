@@ -16,12 +16,14 @@
     "levels": "node tools/level-editor.js",
     "characters": "node tools/character-editor.js",
     "gallery": "node tools/build-gallery.js",
+    "site": "node tools/build-site.js",
     "visualiser": "node tools/build-visualiser.js",
     "archive": "node tools/archive-release.js",
     "archive:gallery": "node tools/archive-gallery.js",
     "sim": "node tools/fairness-sim.js",
     "sim:economy": "node tools/economy-sim.js",
     "mixer": "node tools/mixer.js",
+    "sfx": "node tools/sfx-desk.js",
     "baseline": "node tools/make-baselines.js"
   },
   "devDependencies": {

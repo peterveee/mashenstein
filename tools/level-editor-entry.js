@@ -172,7 +172,7 @@ function forecast(m, seed) {
   for (let x = 0; x < m.totalDist; x += 480) {
     const sp = m.speedAt(x / m.totalDist);
     spawner.fill(x, sp, obstacles, pickups, () => 45, stopX);
-    drip.update(480 / sp, x, pickups, false, false, stopX, true, null);
+    drip.update(480 / sp, x, pickups, false, false, stopX, true, null, obstacles);
     clock += 480 / sp;
   }
   return { obstacles, pickups, seconds: clock };
@@ -200,7 +200,7 @@ function classify(type) {
 
 const GROUP_ORDER = ['animals', 'pits', 'standing', 'breakables', 'movers', 'flyers', 'threats', 'springs', 'pads', 'signs', 'other'];
 const GROUP_LABEL = {
-  animals: 'DOGS & CATS', pits: 'PITS', standing: 'STANDING HAZARDS',
+  animals: 'ANIMALS', pits: 'PITS', standing: 'STANDING HAZARDS',
   breakables: 'BREAKABLES', movers: 'MOVING', flyers: 'AIRBORNE',
   threats: 'SHOOTERS & FALLERS', springs: 'SPRINGS', pads: 'PADS',
   signs: 'SIGNS', other: 'OTHER',

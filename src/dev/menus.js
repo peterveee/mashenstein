@@ -21,6 +21,8 @@ import { AttractState } from '../game/attract.js';
 import { Recorder, recordingSupported } from './recorder.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
+import { queueCabinetDive, cabinetDiveVariant, cabinetDiveZoom, setCabinetDiveZoom } from '../game/hub/index.js';
+import { DIVE_VARIANTS, DIVE_ZOOMS } from '../game/hub/cabinet-dive.js';
 import { CreditsState } from '../game/credits.js';
 import { VISUALISER_NAMES, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } from '../engine/visualisers.js';
 import { GROUPS, byGroup } from '../../tools/lib/tunables.js';
@@ -267,6 +269,47 @@ function newFileMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
+// The cabinet-dive bake-off, one row per combination. Always re-enters the hub
+// rather than starting a dive in place: from a standing start you get the full
+// windup every time, so two variants are actually comparable.
+// The push-in ladder. Its own screen rather than more variant rows: the zoom is an
+// independent axis, so nine rungs times six variants is a menu nobody can read, and
+// two menus of nine and six is one you can.
+function cabinetDiveZoomMenu(dev) {
+  const { Flow } = dev.ctx;
+  const go = (fn) => () => { dev.close(); fn(); };
+  const mark = (on) => (on ? '\u2022 ' : '  ');
+  const build = () => ({
+    title: 'DIVE ZOOM',
+    items: [
+      {
+        label: `${mark(!cabinetDiveZoom())}VARIANT'S OWN`,
+        act: go(() => { setCabinetDiveZoom(null); queueCabinetDive(); Flow.toHub(); }),
+      },
+      ...DIVE_ZOOMS.map((z) => ({
+        label: `${mark(cabinetDiveZoom() === z)}${z.toFixed(2)}x`,
+        act: go(() => { setCabinetDiveZoom(z); queueCabinetDive(); Flow.toHub(); }),
+      })),
+    ],
+  });
+  return { ...build(), rebuild: build };
+}
+
+function cabinetDiveMenu(dev) {
+  const { Flow } = dev.ctx;
+  const go = (fn) => () => { dev.close(); fn(); };
+  const build = () => ({
+    title: 'CABINET DIVE',
+    // A tick on the one that is armed. The choice sticks from here on, so the menu
+    // has to say which one you are about to get when you walk up to a machine.
+    items: DIVE_VARIANTS.map((v) => ({
+      label: `${cabinetDiveVariant() === v.id ? '\u2022 ' : '  '}${v.label}`,
+      act: go(() => { queueCabinetDive(CABINETS[0].id, v.id); Flow.toHub(); }),
+    })).concat([{ label: 'ZOOM \u25b8', submenu: () => cabinetDiveZoomMenu(dev) }]),
+  });
+  return { ...build(), rebuild: build };
+}
+
 function scenesMenu(dev) {
   const { Flow, save } = dev.ctx;
   const go = (fn) => () => { dev.close(); fn(); };
@@ -282,6 +325,8 @@ function scenesMenu(dev) {
       { label: 'NEW FILE ▸', submenu: () => newFileMenu(dev) },
       { label: 'ARCADE', act: go(() => Flow.openArcade()) },
       { label: 'STAGE SELECT', act: go(() => Flow.openCabinet(CABINETS[0])) },
+      // Sits directly above STAGE SELECT because it is now what precedes it.
+      { label: 'CABINET DIVE ▸', submenu: () => cabinetDiveMenu(dev) },
       { label: 'RESULTS (fake S-rank)', act: () => instantClear(dev, STAGES[0]) },
       // The losing half of the same screen. Deliberately not STAGES[0]: the
       // shortfall line only has something to say on a counted mission, and

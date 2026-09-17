@@ -1,0 +1,636 @@
+/*
+  mashenstein.com
+
+  The palette is the game's, lifted from the code rather than eyeballed off a
+  screenshot: the marquee gold and its shadow and outline are the three colours
+  drawRetainedMarquee() paints the wordmark in, the subtitle blue is the one it
+  paints THE UNPLUGGENING in, and the bay behind everything is the install
+  gate's own radial (src/gate.js / build/template.html). The teal is the Home
+  Screen icon's. Three faces, the same three the game loads: Lilita One for
+  signage, Fredoka for everything readable, Permanent Marker for anything the
+  fiction says was written by hand on top of something printed.
+*/
+
+:root {
+  --ink:        #04050e;
+  --ink-2:      #0b0b18;
+  --bay:        #191a31;
+  --panel:      #15161f;
+  --panel-2:    #1b1c28;
+  --edge:       rgba(255, 255, 255, 0.10);
+  --edge-soft:  rgba(255, 255, 255, 0.055);
+
+  --gold:       #ffcf33;
+  --gold-deep:  #a8791f;
+  --gold-ink:   #2a1e05;
+  --blue:       #8fb0f5;
+  --teal:       #48e0c8;
+  --teal-deep:  #2aa9a7;
+
+  --paper:      #eceef5;
+  --mute:       #9aa2bd;
+  --faint:      #6b7290;
+
+  --sign:       'Lilita One', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  --body:       'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  --hand:       'Permanent Marker', 'Trebuchet MS', cursive;
+
+  --gutter:     16px;
+  --wrap:       1120px;
+  /* One measure for every band of reading on the page. Two columns set to
+     different widths do not just wrap differently — they start at different
+     left edges once they are centred, and the page reads as two pages. */
+  --measure:    68ch;
+}
+
+/* ─────────────────────────────────────────────────────────── basics ─── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+/* Fades in once the faces have landed — see the inline script in index.html
+   and the handler in site.js. */
+body { transition: opacity .3s ease; }
+.fonts-pending body { opacity: 0; }
+
+body {
+  margin: 0;
+  /* The shader's own top-of-sky colour, so anything the fixed SVG does not
+     cover — overscroll, a rubber-banding phone — is still sky. */
+  background: #07070f;
+  color: var(--paper);
+  font-family: var(--body);
+  font-weight: 400;
+  font-size: clamp(1rem, 0.95rem + 0.3vw, 1.125rem);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+img { max-width: 100%; height: auto; display: block; }
+
+a { color: var(--teal); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 99;
+  background: var(--gold); color: var(--gold-ink); padding: 10px 16px;
+  font-family: var(--sign); text-decoration: none; border-radius: 0 0 10px 0;
+}
+.skip:focus { left: 0; }
+
+:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+
+.wrap {
+  width: 100%; max-width: var(--wrap); margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.centred { text-align: center; }
+
+/* ────────────────────────────────────────────── the marquee bay ────── */
+/*
+   The sign, the tagline, the trailer and PLAY, all inside one screen. Every
+   block in here is sized against the VIEWPORT HEIGHT rather than given a fixed
+   size, because the thing that has to stay true is that a visitor sees the
+   trailer without scrolling — on a 13" laptop as much as on a desktop.
+*/
+
+.marquee-bay {
+  position: relative; isolation: isolate;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  /* No min-height. It used to be a full viewport so the sky had somewhere to
+     be; the sky is the whole page now, so forcing the bay taller than the sign,
+     the trailer and one line of fine print only opens a hole under them — a
+     screen's worth of it on a phone, where the content is short. */
+  padding: clamp(8px, 1.4svh, 22px) var(--gutter) clamp(36px, 7svh, 90px);
+}
+
+/* THE SKY IS THE PAGE, not a picture at the top of it. Fixed rather than
+   absolute: the 480x270 frame is sized to the WINDOW, so the reading scrolls
+   over a sky that stays put, and the field never has to stretch to the height
+   of the document. `slice` is what `cover` is on a background image — the frame
+   fills the viewport and overhangs rather than squashing, so stars stay round
+   at any window shape. Every band above it is translucent. */
+.sky {
+  position: fixed; inset: 0; width: 100%; height: 100%; z-index: -2;
+  pointer-events: none;
+}
+
+.sign {
+  position: relative; width: 100%; max-width: 860px; text-align: center;
+  display: flex; flex-direction: column; align-items: center;
+  gap: clamp(10px, 1.8svh, 20px);
+}
+
+/* ────────────────────────────────────────────────── the wordmark ───── */
+
+/* The logo plate and the cord share one box, and it is the game's own: 480
+   logical units wide by the 104 the marquee plate is tall, so the cord the
+   build emits lands on the letter it was measured against at any size. */
+.lockup {
+  position: relative; width: min(1240px, 94vw, 30svh * 4.615);
+  aspect-ratio: 480 / 104;
+}
+.lockup > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+/* The marquee's three inks, straight out of drawRetainedMarquee: warm cartoon
+   gold over its own shadow, with a dark outline baked into every glyph, and the
+   stitches that hold the parts together. The type is set per glyph at the x the
+   game's own textWidth measured, so nothing here is stretched to fit. */
+.wm       { font-family: var(--sign); font-weight: 400; }
+.sub      { font-family: var(--body); font-weight: 600; }
+.wm-shadow { fill: var(--gold-deep); }
+.wm-face   { fill: var(--gold); stroke: var(--gold-ink); stroke-width: 2; paint-order: stroke; stroke-linejoin: round; }
+.wm-seam   { stroke: rgba(42, 30, 5, .85); stroke-width: 1.4; fill: none; }
+.wm-sub    { fill: var(--blue); }
+
+/* The sign is wired to a supply that has seen better decades: two quick
+   stutters, then it holds steady for a few seconds. A constant strobe reads as
+   broken rather than characterful. */
+.logo { animation: flicker 6.2s steps(1, end) infinite; }
+@keyframes flicker {
+  0%, 84%, 100%   { opacity: 1 }
+  85%, 87%        { opacity: .34 }
+  86%, 88.5%      { opacity: 1 }
+  89%             { opacity: .5 }
+  90%             { opacity: 1 }
+}
+
+/* A live power cord dangles off the logo. It hangs straight down from the
+   corner of the sign and swings as ONE PIECE — anchoring the top and leaving
+   the bottom behind turns the cord into a permanent diagonal, which reads as a
+   mistake. The origin is the grommet, and the build writes it in. */
+.cord { overflow: visible; }
+.cord path   { stroke: #241c30; stroke-width: 2.4; fill: none; stroke-linecap: round; }
+.cord circle { fill: #241c30; }
+.cord .plug  { fill: #3a3a48; }
+.cord .prong { fill: #8a8a98; }
+.cord g { transform-box: view-box; animation: sway 5.4s ease-in-out infinite alternate; }
+@keyframes sway { from { transform: rotate(-3.2deg) } to { transform: rotate(3.2deg) } }
+
+.pitch {
+  margin: 0; max-width: 30ch;
+  color: var(--paper); font-size: clamp(1.2rem, .95rem + 1.15vw, 2rem);
+  line-height: 1.3; font-weight: 500;
+  text-shadow: 0 2px 14px rgba(0,0,0,.75);
+}
+
+/* ───────────────────────────────────────────────────── the tube ────── */
+
+/* Sized by HEIGHT, so the video is the block that gives way on a short window
+   and the sign and the button keep their places. */
+.tube {
+  position: relative; border-radius: 14px; overflow: hidden;
+  border: 1px solid var(--edge);
+  box-shadow: 0 24px 60px rgba(0,0,0,.6);
+  background: #000;
+  height: clamp(150px, 34svh, 380px); aspect-ratio: 16 / 9;
+  max-width: min(760px, 94vw);
+}
+.tube iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+.tube-play {
+  display: block; width: 100%; height: 100%; padding: 0; border: 0;
+  cursor: pointer; background: #000; position: relative; line-height: 0;
+  container-type: inline-size;
+}
+/* The trailer opens on its own INSERT COIN card — gold on black — so the facade
+   IS that card, set as type. A thumbnail would be a photograph of type, and a
+   bitmap on a page that has none. */
+.tube-card {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--sign); color: var(--gold); line-height: 1;
+  font-size: clamp(1.6rem, 7.2cqw, 5rem); letter-spacing: .02em;
+  transition: transform .4s ease, opacity .2s ease;
+  opacity: .92;
+}
+.tube-play:hover .tube-card { opacity: 1; transform: scale(1.03); }
+
+/* A solid gold disc disappeared into the thumbnail, which is the trailer's own
+   gold-on-black INSERT COIN card. Dark disc, gold ring, gold triangle: it reads
+   on this still and on any other one the video might get later. */
+.tube-btn {
+  position: absolute; inset: auto 14px 14px auto;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: rgba(11, 11, 20, .78);
+  border: 3px solid var(--gold);
+  box-shadow: 0 8px 26px rgba(0,0,0,.7);
+  transition: transform .18s ease;
+}
+.tube-btn::after {
+  content: ''; position: absolute; inset: 0; margin: auto;
+  width: 0; height: 0; margin-left: 22px;
+  border-left: 16px solid var(--gold);
+  border-block: 10px solid transparent;
+}
+.tube-play:hover .tube-btn { transform: scale(1.08); }
+
+/* ─────────────────────────────────────────────────────── buttons ───── */
+
+.cta {
+  display: flex; flex-wrap: wrap; gap: 14px; justify-content: center;
+}
+.band .cta { margin-top: clamp(20px, 3.4vh, 34px); }
+.band .rule { margin-top: clamp(16px, 2.6vh, 26px); }
+
+.btn {
+  --btn-bg: var(--gold);
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 56px; padding: 0 30px;
+  font-family: var(--sign); font-size: 1.22rem; letter-spacing: .06em;
+  color: var(--gold-ink); background: var(--btn-bg);
+  text-decoration: none; border: 0; border-radius: 13px;
+  box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 14px 30px rgba(0,0,0,.42);
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.btn:hover { filter: brightness(1.07); }
+.btn:active { transform: translateY(4px); box-shadow: 0 1px 0 rgba(0,0,0,.45), 0 8px 18px rgba(0,0,0,.4); }
+
+.btn-ghost {
+  --btn-bg: transparent;
+  color: var(--paper);
+  border: 2px solid var(--edge);
+  box-shadow: none;
+}
+.btn-ghost:hover { border-color: var(--teal); color: var(--teal); }
+.btn-ghost:active { transform: translateY(2px); box-shadow: none; }
+
+/* No link yet. Rather than a dead gold button that looks broken, the PLAY
+   control says what it is: unplugged, and honest about it. site.js turns this
+   off the moment body[data-play-url] has something in it. */
+.btn-play[data-soon] {
+  --btn-bg: #2b2c3c;
+  color: var(--faint); cursor: not-allowed;
+  box-shadow: inset 0 0 0 2px var(--edge-soft);
+}
+.btn-play[data-soon]:hover { filter: none; }
+.btn-play[data-soon]:active { transform: none; box-shadow: inset 0 0 0 2px var(--edge-soft); }
+.btn-play[data-soon]::after {
+  content: 'COMING SOON'; font-family: var(--body); font-weight: 600;
+  font-size: .68rem; letter-spacing: .14em; color: var(--gold);
+  background: rgba(255, 207, 51, .12); border-radius: 100px; padding: 3px 10px;
+}
+
+.rule {
+  margin: 0 auto;
+  font-family: var(--body); font-weight: 600;
+  font-size: clamp(.66rem, .6rem + .2vw, .78rem);
+  letter-spacing: .2em; color: var(--faint);
+}
+
+/* ───────────────────────────────────────────────────────── bands ───── */
+
+/* No background on any band: the sky runs behind the whole page uninterrupted,
+   and the sections are spacing rather than panels. The footer is the one
+   exception — it is the bottom of the page, and wants a floor. */
+.band { padding: clamp(40px, 6vh, 76px) 0; position: relative; }
+.band-dark { border-block: 1px solid var(--edge-soft); }
+
+/* No background here either. The gold floor-glow was standing in for a lit
+   socket, but over a starfield it read as a panel with a light behind it, and
+   the sky is a better thing to have under PLUG IT BACK IN than a gradient. */
+
+.head {
+  font-family: var(--sign); font-weight: 400;
+  font-size: clamp(1.85rem, 1.3rem + 2.4vw, 3.1rem);
+  line-height: 1.06; letter-spacing: .012em;
+  margin: 0 0 .5rem; color: var(--gold);
+}
+.head.big { font-size: clamp(2.3rem, 1.5rem + 4vw, 4.2rem); }
+
+.sub {
+  margin: 0 0 clamp(30px, 4.5vh, 52px);
+  max-width: 62ch; color: var(--mute);
+}
+.centred .sub { margin-inline: auto; }
+
+.eyebrow {
+  margin: 0 0 .9rem;
+  font-weight: 600; font-size: .76rem; letter-spacing: .22em;
+  color: var(--teal);
+}
+
+/* ────────────────────────────────────────────────── the situation ──── */
+
+#situation .wrap, #faq .wrap { max-width: var(--measure); }
+.prose { max-width: none; }
+.prose p, .faq dd, .faq dt, .sub, .foot-fine { text-shadow: 0 1px 10px rgba(4, 4, 12, .9); }
+.prose p { margin: 0 0 1.2em; }
+
+.lede {
+  font-size: clamp(1.28rem, 1.05rem + 1.1vw, 1.72rem);
+  line-height: 1.45; color: var(--paper); font-weight: 500;
+}
+
+.prose strong { color: var(--paper); font-weight: 600; }
+
+.prose blockquote {
+  margin: 1.8em 0; padding: 0 0 0 22px;
+  border-left: 4px solid var(--gold);
+  font-family: var(--sign); font-weight: 400;
+  font-size: clamp(1.3rem, 1rem + 1.4vw, 2rem);
+  line-height: 1.18; color: var(--gold);
+}
+
+.note {
+  margin-top: 2em; padding: 20px 22px;
+  background: var(--panel); border: 1px solid var(--edge-soft); border-radius: 14px;
+  color: var(--mute); font-size: .95em;
+}
+
+/* ────────────────────────────────────────────────────── the cast ───── */
+
+.cast {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: clamp(14px, 2vw, 22px);
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+.hero {
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--edge-soft); border-radius: 16px; overflow: hidden;
+  transition: border-color .18s ease, transform .18s ease;
+}
+.hero:hover { border-color: rgba(255, 207, 51, .38); transform: translateY(-3px); }
+
+/* One hero renders at a time, so each stands alone in his own pool of light —
+   the same cabinet spill the concourse art puts under a lit machine. */
+.hero-art {
+  position: relative; aspect-ratio: 4 / 5;
+  background:
+    radial-gradient(60% 46% at 50% 88%, rgba(72, 224, 200, .16), transparent 70%),
+    radial-gradient(90% 70% at 50% 18%, rgba(255, 255, 255, .05), transparent 70%),
+    linear-gradient(180deg, #1d1e2c, #101118);
+  display: grid; place-items: end center; padding: 10% 12% 6%;
+}
+.hero-art img { width: auto; max-height: 100%; object-fit: contain;
+                filter: drop-shadow(0 12px 16px rgba(0,0,0,.5)); }
+.hero-art::after {
+  content: ''; position: absolute; left: 18%; right: 18%; bottom: 5%; height: 10px;
+  background: radial-gradient(closest-side, rgba(0,0,0,.65), transparent);
+}
+
+.hero-copy { padding: 16px 18px 20px; display: flex; flex-direction: column; flex: 1; }
+
+.hero-copy h3 {
+  margin: 0; font-family: var(--sign); font-weight: 400;
+  font-size: 1.3rem; line-height: 1.1; color: var(--paper);
+}
+.hero-copy h3 span {
+  display: block; font-family: var(--body); font-weight: 600;
+  font-size: .64rem; letter-spacing: .16em; color: var(--teal); margin-top: 5px;
+}
+
+.hero .line {
+  margin: 12px 0 0; font-family: var(--sign); font-size: 1rem;
+  line-height: 1.25; color: var(--gold);
+}
+.hero .bit {
+  margin: 8px 0 16px; font-size: .88rem; line-height: 1.45; color: var(--mute);
+}
+
+.hero dl {
+  margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--edge-soft);
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  font-size: .72rem; letter-spacing: .06em;
+}
+.hero dt { color: var(--faint); font-weight: 600; }
+.hero dd { margin: 0; color: var(--paper); font-weight: 600; }
+
+/* ────────────────────────────────────────────────── the cabinets ───── */
+
+.cabs {
+  display: grid; gap: clamp(14px, 2vw, 22px);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.cab {
+  margin: 0; border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--edge-soft); background: #08080e;
+  transition: border-color .18s ease;
+}
+.cab:hover { border-color: rgba(72, 224, 200, .4); }
+/* The masters are 4:5 with the machine standing in the upper two thirds and a
+   lot of empty floor under it. A square crop biased upward puts the cabinet in
+   the middle of the tile without re-rendering anything. */
+.cab img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; object-position: 50% 38%; }
+
+.cab figcaption {
+  padding: 14px 16px 16px; background: var(--panel);
+  border-top: 1px solid var(--edge-soft);
+}
+.cab b {
+  display: block; font-family: var(--sign); font-weight: 400;
+  font-size: 1.1rem; line-height: 1.15; color: var(--gold);
+}
+.cab span {
+  display: block; margin-top: 5px;
+  font-size: .64rem; letter-spacing: .15em; color: var(--faint); font-weight: 600;
+}
+
+/* ───────────────────────────────────────────────────────── staff ───── */
+
+.staff {
+  display: grid; gap: clamp(14px, 2vw, 20px);
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+}
+
+.card {
+  padding: 24px 24px 26px;
+  background: var(--panel); border: 1px solid var(--edge-soft); border-radius: 16px;
+}
+.card .tag {
+  margin: 0 0 10px; font-size: .64rem; letter-spacing: .2em;
+  font-weight: 600; color: var(--teal);
+}
+.card h3 {
+  margin: 0; font-family: var(--sign); font-weight: 400;
+  font-size: 1.36rem; line-height: 1.12; color: var(--paper);
+}
+.card .line { margin: 10px 0 14px; font-family: var(--sign); color: var(--gold); font-size: 1rem; }
+.card p:last-child { margin: 0; color: var(--mute); font-size: .95rem; }
+
+.card-villain {
+  background: linear-gradient(170deg, #2a1420, var(--panel) 62%);
+  border-color: rgba(255, 207, 51, .22);
+}
+.card-villain .tag { color: var(--gold); }
+
+/* A grievance, scrawled on the wall in a hand that was clearly in a hurry. */
+.taunt {
+  margin: clamp(34px, 5vh, 54px) 0 0; text-align: center;
+  font-family: var(--hand); font-size: clamp(1.05rem, .9rem + .9vw, 1.55rem);
+  line-height: 1.3; color: rgba(255, 207, 51, .82);
+  transform: rotate(-1.1deg); min-height: 2.6em;
+}
+.taunt::before { content: '“'; }
+.taunt::after  { content: '”'; }
+.taunt:empty::before, .taunt:empty::after { content: ''; }
+
+/* ─────────────────────────────────────────────────── the fine print ── */
+
+/* The COLUMN is centred, not the type. A measure this narrow sitting against
+   the left edge of a 1120px wrap reads as a page that has slipped; centring the
+   whole band — heading, standfirst and list together — lines every one of them
+   up on the same edge, in the middle of the screen. */
+.faq { margin: 0; max-width: none; }
+.faq dt {
+  font-family: var(--sign); font-weight: 400;
+  font-size: clamp(1.02rem, .95rem + .35vw, 1.22rem);
+  color: var(--paper); margin-top: 1.9em;
+}
+.faq dt:first-of-type { margin-top: 0; }
+.faq dd { margin: .5em 0 0; color: var(--mute); }
+
+/* ──────────────────────────────────────────────────────── footer ───── */
+
+footer {
+  padding: clamp(18px, 2.4vh, 26px) 0 calc(clamp(16px, 2vh, 22px) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--edge-soft); background: rgba(4, 4, 10, .84);
+}
+.foot { display: grid; gap: 16px; justify-items: center; text-align: center; }
+
+.foot-mark {
+  margin: 0; font-family: var(--sign); font-size: 1.5rem; color: var(--gold);
+  letter-spacing: .02em;
+}
+.foot-mark span { color: var(--faint); font-size: .8rem; letter-spacing: .18em; }
+
+.foot-links {
+  display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: center;
+}
+.foot-links a {
+  color: var(--paper); text-decoration: none; font-weight: 600;
+  font-size: .76rem; letter-spacing: .14em;
+  border-bottom: 1px solid var(--edge); padding-bottom: 3px;
+}
+.foot-links a:hover { color: var(--teal); border-color: var(--teal); }
+
+.foot-fine { margin: 0; max-width: 56ch; color: var(--faint); font-size: .82rem; }
+
+/* ────────────────────────────────────────────────────────── gary ───── */
+
+/* He arrives from one of three places, picked at random each time by site.js,
+   which adds the entrance class and takes it off again when the animation ends.
+   Parked off-screen with no class on, so an entrance is the only thing that can
+   bring him in. Most of his cycle is him not being there — a character
+   permanently stuck to the corner of a page is furniture rather than a joke. */
+.gary {
+  position: fixed; bottom: 0; left: 0;
+  width: clamp(260px, 38vw, 620px); height: auto;
+  z-index: 3; pointer-events: none;
+  transform: translateY(150%);
+}
+
+/* Off entirely while the trailer plays — see site.js. */
+.trailer-live .gary { display: none; }
+
+/* The whole visit is 2.2 seconds and he is over the page for about 1.6 of
+   them: in by 0.33s with a bit of overshoot, one blink at 0.7s, out by 2.0s
+   without any. Long enough to register as a look, short enough that he never
+   sits on a line somebody is reading. The blink no longer free-runs on the
+   game's 3.688s idle cycle — over a visit this short that was a coin toss on
+   whether it happened at all — it is driven by this same animation, so it
+   lands in the same place every time. */
+.gary[class*="from-"] {
+  --gary-exit: cubic-bezier(.55, 0, .9, .25);
+  --gary-dur: 2.2s;
+  animation-duration: var(--gary-dur);
+  animation-timing-function: cubic-bezier(.34, 1.16, .64, 1);
+  animation-fill-mode: both;
+}
+
+/* Leaning in on the diagonal, the angle the trailer swings him in at. He is
+   drawn facing right, so at the left edge he is already looking into the page;
+   on the right he is mirrored so he still is. */
+/* WHICH DRAWING, not which mirror. He is recorded facing both ways, so the
+   entrances that want him looking left show the left-facing take rather than
+   flipping the right-facing one. The painter puts his name tag on the other
+   side of his chest when he turns, decides which arm is in front and resets the
+   hat and hair — a mirror got the tag's new side by luck and the rest wrong. */
+.gary .face-l { display: none; }
+.gary.from-br .face-r,
+.gary.from-right .face-r { display: none; }
+.gary.from-br .face-l,
+.gary.from-right .face-l { display: inline; }
+
+.gary.from-bl { left: 0; right: auto; transform-origin: 45% 100%; animation-name: peek-bl; }
+@keyframes peek-bl {
+  0%        { transform: translate(-9%, 100%) rotate(17deg) }
+  15%       { transform: translate(-9%, 36%) rotate(17deg) }
+  72%       { transform: translate(-9%, 36%) rotate(17deg); animation-timing-function: var(--gary-exit) }
+  90%, 100% { transform: translate(-9%, 100%) rotate(17deg) }
+}
+
+.gary.from-br { left: auto; right: 0; transform-origin: 55% 100%; animation-name: peek-br; }
+@keyframes peek-br {
+  0%        { transform: translate(9%, 100%) rotate(-17deg) }
+  15%       { transform: translate(9%, 36%) rotate(-17deg) }
+  72%       { transform: translate(9%, 36%) rotate(-17deg); animation-timing-function: var(--gary-exit) }
+  90%, 100% { transform: translate(9%, 100%) rotate(-17deg) }
+}
+
+/* Round the right-hand edge, almost horizontal — head first, the way you lean
+   round a doorframe rather than stand up behind something. Pivoting near his
+   own head (50% 30%) rather than at the element's edge is what keeps the head
+   on screen: rotating a 4:3 box 74 degrees about its corner swings most of it
+   into the next county, which is where he was. */
+.gary.from-right {
+  left: auto; right: 0; top: 30%; bottom: auto;
+  transform-origin: 50% 30%; animation-name: peek-r;
+}
+@keyframes peek-r {
+  0%        { transform: translate(84%, -8%) rotate(-74deg) }
+  15%       { transform: translate(4%, -8%) rotate(-74deg) }
+  72%       { transform: translate(4%, -8%) rotate(-74deg); animation-timing-function: var(--gary-exit) }
+  90%, 100% { transform: translate(84%, -8%) rotate(-74deg) }
+}
+
+/* THE BLINK IS THE GAME'S OWN, both frames of it. The build records him twice,
+   90ms apart across the edge of his blink window, and splices the second take's
+   eye block into the first — so this only has to swap which of the two is
+   showing. It runs off the peek's own clock: one blink per visit, 6% of 2.2s
+   which is 132ms, near as makes no difference to the 0.13s the game holds his
+   eyes shut for. */
+.eyes-shut { opacity: 0 }
+.gary[class*="from-"] .eyes-open { animation: blink-open var(--gary-dur) steps(1, end) both; }
+.gary[class*="from-"] .eyes-shut { animation: blink-shut var(--gary-dur) steps(1, end) both; }
+@keyframes blink-open { 0%, 30% { opacity: 1 } 30.01%, 36% { opacity: 0 } 36.01%, 100% { opacity: 1 } }
+@keyframes blink-shut { 0%, 30% { opacity: 0 } 30.01%, 36% { opacity: 1 } 36.01%, 100% { opacity: 0 } }
+
+/* The name tag: the game's body face, in the shirt's own ink. */
+.gary-tag {
+  font-family: var(--body); font-weight: 600; fill: #2b2b38;
+  text-anchor: middle; letter-spacing: 0;
+}
+
+
+/* ──────────────────────────────────────────────────── narrow view ──── */
+
+@media (max-width: 560px) {
+  .btn { width: 100%; max-width: 380px; }
+  /* Side by side on a narrow screen. The art cell drops its 4:5 ratio here —
+     keeping it makes the picture set the card's height and the copy overflows
+     the bottom of it — and the hero is sized by WIDTH instead. Sizing him by
+     height is what emptied these cards the first time: max-height: 100% against
+     a cell with no definite height resolves to nothing. */
+  .hero { flex-direction: row; align-items: stretch; }
+  .hero-art { flex: 0 0 38%; aspect-ratio: auto; padding: 14px 10px 10px; }
+  .hero-art img { width: 100%; height: auto; max-height: none; }
+  .hero-copy { padding: 16px 16px 18px; }
+  .hero dl { grid-template-columns: auto 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .logo, .cord g, .sky g { animation: none; }
+  .gary { display: none; }
+  .tube-card, .tube-btn, .hero, .btn { transition: none; }
+}

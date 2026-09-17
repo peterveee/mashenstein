@@ -6,11 +6,14 @@
 //
 //   the SPRING PAD    — the only way onto the high road, and it fires on contact
 //                       by design; refusing it is what jumping over it is for.
-//   a STOMP LANDING   — you came down on a crate with weight, and the weight goes
-//                       somewhere. It costs an ability press to set up.
-//   a STOMP THROUGH   — a stomping hero smashing a crate in mid-air rebounds off
-//                       it. Same press, same move, resolved in collide instead.
 //   a LOOP BAIL       — leaving the ring, a pixel of it.
+//
+// The list was longer. A STOMP LANDING (coming down on a crate with weight) and
+// a STOMP THROUGH (smashing one in mid-air) were both sanctioned rebounds paid
+// for by an ability press — and the stomp was deleted on 17 Sep 2026, so the
+// only launchers left are ones nobody presses a button for at all. That makes
+// this suite stricter than it was, not looser: every rebound it used to forgive
+// is now an unexplained launch.
 //
 // Anything else is the game jumping for you, and it has now been two different
 // bugs wearing the same face: invulnerability throwing the hero 38px out of a
@@ -59,8 +62,6 @@ const TICK = 1 / 60;
 {
   let unexplained = 0;
   let spring = 0;
-  let stompLanding = 0;
-  let stompThrough = 0;
   let bail = 0;
   const worst = [];
   for (const stage of STAGES.slice(0, 12)) {
@@ -76,28 +77,16 @@ const TICK = 1 / 60;
       run.springLaunch = (ob) => { cause = 'spring'; return origSpring(ob); };
       const origBail = run.bailLoop.bind(run);
       run.bailLoop = (...a) => { cause = 'bail'; return origBail(...a); };
-      const origStomp = run.stompBreak.bind(run);
-      // A relay tag-in passes {bounce:false} and must never be a launcher; only a
-      // landing's call may be.
-      run.stompBreak = (...a) => {
-        cause = (a[0] && a[0].bounce === false) ? 'tag-in' : 'stompLanding';
-        return origStomp(...a);
-      };
       let t = 0;
       while (!run.finished && !run.dead && t < 60 * 200) {
         cause = null;
         jumpedThisFrame = false;
-        // Stomping is an ability press already made; a rebound off whatever he
-        // smashes on the way down is that move finishing, wherever it resolves.
-        const wasStomping = run.player.stomping;
         const before = run.player.vy;
         bot.update(TICK);
         run.update(TICK);
         if (run.player.vy > 0 && run.player.vy > before + 0.01 && !jumpedThisFrame) {
           if (cause === 'spring') spring++;
-          else if (cause === 'stompLanding') stompLanding++;
           else if (cause === 'bail') bail++;
-          else if (wasStomping) stompThrough++;
           else {
             unexplained++;
             if (worst.length < 5) {
@@ -116,67 +105,38 @@ const TICK = 1 / 60;
     `every upward launch in the game is a sanctioned one (${unexplained} unexplained`
     + `${worst.length ? ': ' + worst.join(' | ') : ''})`);
   assert(spring > 0, `the spring pad is still a launcher, because it is meant to be (${spring})`);
-  console.log(`     (sanctioned: ${spring} spring, ${stompLanding} stomp landings, `
-    + `${stompThrough} stomp-throughs, ${bail} loop bails)`);
+  console.log(`     (sanctioned: ${spring} spring, ${bail} loop bails)`);
 }
 
-// ---- a portal tag-in clears the ground without throwing the hero off it ----------
-// The bug in the second screenshot. A stomp hero arriving at a portal has the space
-// around him cleared so he cannot materialise inside a barrel — and that used to
-// call the LANDING stomp, rebound and all, so he appeared already 22px in the air
-// with no button behind it.
+// ---- the portal tag-in rebound cannot happen, because the stomp is gone ---------
+// The bug in the second screenshot: a stomp hero arriving at a portal had the
+// space around him cleared so he could not materialise inside a barrel, and that
+// shared a function with the LANDING stomp — rebound and all — so he appeared
+// already 22px in the air with no button behind it.
 //
-// Driven through `doSwitch`, the real relay, and not through stompBreak itself.
-// Testing the function instead of the call site is what let the first version of
-// this suite pass with the bug restored: the whole defect is WHICH call the relay
-// makes, so a test that makes the call for it can never see it.
+// This suite used to drive the real relay until it tagged in a stomping hero and
+// assert the tag-in left him standing. On 10 Sep 2026 the pipe wrench replaced
+// Lorenzo's stomp and the case was kept as an assertion that it was GONE; on
+// 17 Sep 2026 `stompBreak`, `hero.stomp` and `player.stomping` were deleted
+// outright. There is no function left to share and no flag left to gate it, so
+// what remains is a guard against the whole shape coming back by accident.
 {
-  const { makeObstacle } = await import('../src/game/entities.js');
+  // Read the CAST, not a list written here: a hardcoded roster quietly passes
+  // the moment a hero is renamed, which is exactly when it should not.
+  const cast = Object.values(HERO_BY_ID);
+  assert(cast.length >= 8 && cast.every((h) => !('stomp' in h)),
+    `no hero in the cast carries a stomp flag (${cast.length} heroes)`);
   const run = new RunState({
     stage: STAGES[0], team: ['mochi', 'lorenzo'], save, seed: 7919,
     difficulty: 1, devInvuln: true, onEnd: () => {},
   });
   run.enter();
-  for (let i = 0; i < 60 * 10 && run.introRunning; i++) run.update(TICK);
-  // A breakable right where he stands is the trigger: the rebound only ever fired
-  // when the sweep actually found something to smash.
-  // Which hero the relay hands you is the relay's business, so switch until it
-  // produces a stomp hero and test THAT tag-in. The crate is laid fresh before
-  // each switch, because the rebound only fires when the sweep finds something.
-  //
-  // NO HERO STOMPS ANY MORE (10 Sep 2026): Lorenzo was the last one, and the
-  // pipe wrench replaced his stomp/smash. The rebound this suite was written
-  // against therefore cannot fire — `hero.stomp` gates it in run.js — so the
-  // case is asserted as GONE rather than deleted. If a stomping hero is ever
-  // added back, this flips to the original assertion and the bug it guards
-  // against is live again.
-  const anyStomps = ['mochi', 'lorenzo'].some((id) => HERO_BY_ID[id]?.stomp);
-  let taggedStomp = false;
-  for (let i = 0; i < (anyStomps ? 10 : 0) && !taggedStomp; i++) {
-    const c = makeObstacle('crate', run.camX + PLAYER_X, {});
-    run.obstacles.push(c);
-    run.player.y = 0;
-    run.player.vy = 0;
-    run.player.grounded = true;
-    run.doSwitch();
-    if (!HERO_BY_ID[run.relay.current].stomp) continue;
-    taggedStomp = true;
-    assert(!c.live, 'the tag-in still clears the crate he would have arrived inside');
-    assert(run.player.vy <= 0.01 && run.player.grounded,
-      `and leaves him standing on the ground (vy ${run.player.vy.toFixed(0)}, was 200 before)`);
-  }
-  assert(anyStomps ? taggedStomp : !taggedStomp,
-    anyStomps ? 'the relay tagged in a stomp hero, which is the case that bounced'
-      : 'no hero stomps any more, so the tag-in rebound cannot fire');
-
-  // The same sweep as a LANDING keeps its rebound: that one is the move working.
-  const crate2 = makeObstacle('crate', run.camX + PLAYER_X, {});
-  run.obstacles.push(crate2);
-  run.player.vy = 0;
-  run.player.grounded = true;
-  run.stompBreak();
-  assert(!crate2.live && run.player.vy > 0,
-    `a real stomp landing still bounces off what it broke (vy ${run.player.vy.toFixed(0)})`);
+  assert(typeof run.stompBreak === 'undefined',
+    'stompBreak is gone, so nothing can share the landing rebound with a tag-in');
+  assert(typeof run.player.stomping === 'undefined',
+    'the player carries no stomping state for a pose or a collide branch to read');
+  assert(typeof run.player.update(1 / 60, Input, { speed: 160 }).stompLand === 'undefined',
+    'and a landing no longer reports a stomp for anything to act on');
 }
 
 // ---- invulnerability makes the floor there, it does not launch him out of a hole --

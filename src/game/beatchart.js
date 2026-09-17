@@ -185,8 +185,15 @@ export const COIN_CLEAR_AFTER_JUMP = 1;
 // on a beat cabinet no round leaves slower than the floor: at 200px/s the
 // slowest flight is 0.81 of a beat at the fastest lane, and 0.81 plus
 // ON_BEAT_WINDOW is still inside the beat. Kiko's shot on these stages is a
-// touch quicker than it is anywhere else, which reads as her hurrying it,
-// and nothing about it that is hers — the size, the recharge — changes.
+// touch quicker than it is anywhere else, which reads as her hurrying it, and
+// the size of it is still hers.
+//
+// THE RECHARGE IS NO LONGER EXEMPT. It used to be named here as the half that
+// never moved; every hero's cooldown now snaps to the nearest sixteenth of the
+// song so the move comes back ON the grid, Kiko on these stages included. See
+// READY_GRID_BEATS and quantiseCooldown in run.js. The shift is at most half a
+// sixteenth in either direction — 60ms here — which is inside the flight
+// margins this paragraph is about and does not disturb them.
 //
 // BOX_LEAD_BEATS is then the DISTANCE. 1.5 against a 1-beat fuse leaves half
 // a beat — fifty px here — between the hero and the box when it goes, which is

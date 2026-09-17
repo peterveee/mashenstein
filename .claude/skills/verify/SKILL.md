@@ -128,7 +128,7 @@ builds (`npm run dev`). A save slot is auto-seeded if none exists.
 
 | Param | Values | Effect |
 |---|---|---|
-| `&hero=X` | `lorenzo`, `gnash`, `fernwick`, `b33p`, `mochi`, `chompo`, `raymn`, `grumpos` | Start as this hero |
+| `&hero=X` | `lorenzo`, `gnash`, `fernwick`, `b33p`, `mochi`, `chompo`, `ramon`, `grumpos` | Start as this hero |
 | `&invuln` | (flag) | God mode — never die |
 | `&autoexit` | (flag) | Skip results screen, return to title on end |
 | `&time=N` | seconds (e.g. `10`) | Auto-finish the run after N seconds |

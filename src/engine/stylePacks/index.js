@@ -260,6 +260,92 @@ export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false,
   }
 }
 
+// ----------------------------------------------------------- the ice bridge
+//
+// WHAT THE POWER BLOCK ACTUALLY BUILDS. The hole it answers used to simply stop
+// existing when the block was hit — the ground healed over and the tar went
+// with it — so the reward for finding the one prop on the ice you have to go
+// out of your way to hit was a stretch of road that looked like it had never
+// been broken. Nothing said a bridge had been built, because nothing was.
+//
+// So the break stays a break (isOpenGap in game/entities.js is what makes it
+// safe without making it vanish) and this fills it with ICE. Blocks, not
+// planks: the first cut was a slatted timber deck and it read as scaffolding
+// slung UNDER the road — the hero ran along the top of a hole with a lid on it,
+// visibly not touching the thing he was standing on. Ice cubes rising to road
+// level are the opposite claim. They are ground: their top face IS the lane,
+// they are the cabinet's own material, and a frozen fortress freezing a hole
+// shut needs no explaining.
+//
+// FLUSH WITH THE ROAD, and that is the whole geometry. The top of every cube
+// sits exactly on the surface the hero's feet are on, which on a frost lane is
+// not the flat line — the ground rises, so the lift over this break is handed
+// in the way drawPitFills takes it. Getting that wrong is what put the first
+// version a few pixels under the road with the hero floating over it.
+//
+// THEY COME UP LEFT TO RIGHT, in the hero's own direction of travel, and FAST —
+// a fifth of a second, the same clock as the block's own hop (SWITCH_THROW_T).
+// The movement is there so the eye catches WHAT happened, not so anybody waits
+// for it: by the time he looks up, the crossing is already there.
+export const BRIDGE_LAY_T = 0.2;
+const ICE_BLOCK_W = 7;             // world px per cube
+
+export function drawBridgeDecks(ctx, camX, obstacles, viewW = W, groundAt = null) {
+  const right = Math.max(0, Number.isFinite(viewW) ? viewW : W);
+  for (const ob of obstacles || []) {
+    if (!ob.live || !ob.def || !ob.def.isGap || !ob.bridged || ob.tunnel) continue;
+    const x = ob.x - camX;
+    if (x + ob.w < -8 || x > right + 8) continue;
+    const p = Math.min(1, (ob.bridgeT || 0) / BRIDGE_LAY_T);
+
+    // A cube at each lip overlaps the ground by a pixel, so the crossing is
+    // keyed into the road rather than wedged between two clean edges.
+    const x0 = x - 1, span = ob.w + 2;
+    const count = Math.max(2, Math.round(span / ICE_BLOCK_W));
+    const cw = span / count;
+    // THE FRONT RUNS PAST THE FAR LIP, and it has to. Each cube settles over
+    // the distance the front travels BEYOND it, so a front that stops exactly
+    // at the end of the span leaves the last cube — and to a lesser degree the
+    // one before it — frozen part-way through its drop, sitting a couple of
+    // pixels low for the rest of the run. Overshooting by a cube and a half is
+    // what lets every one of them arrive.
+    const front = p * (span + ICE_BLOCK_W * 1.5);
+    for (let i = 0; i < count; i++) {
+      const cx = x0 + i * cw;
+      const at = cx + cw / 2 - x0;
+      if (at > front) continue;   // the front has not reached this one yet
+      // How settled this cube is: 0 the instant it arrives, 1 once it is home.
+      const set = Math.min(1, (front - at) / (ICE_BLOCK_W * 1.5));
+      // THE TOP FACE IS THE ROAD, sampled per cube at that cube's own world x.
+      // Not the flat GROUND_Y: a frost lane has a terrain profile, so the road
+      // either side of a hole routinely stands a dozen pixels above the flat
+      // line, and a crossing laid on the flat line is a crossing the hero is
+      // visibly running above. Per cube rather than once per hole, so the ice
+      // follows a sloped lane instead of stepping off the lip.
+      const top = groundAt ? groundAt(camX + cx + cw / 2, ob.route) : GROUND_Y;
+      // It comes UP out of the hole and overshoots by a pixel, so the eye reads
+      // a thing being placed rather than a rectangle switching on.
+      const rise = (1 - set) * (1 - set) * 7 - (set < 1 ? (1 - set) * 1.2 : 0);
+      const y = top + rise;
+      // Depth varies per cube, keyed off world x so it does not shimmer as the
+      // camera moves: a crossing of identical bricks is a wall lying down.
+      const deep = 9 + ((Math.floor(ob.x + i * 7) % 3) * 2);
+      // The body, its lit top face, and the shadowed underside that stops the
+      // block reading as a flat card.
+      ctx.fillStyle = '#9fc4dd';
+      ctx.fillRect(cx, y + 2, cw - 0.6, deep);
+      ctx.fillStyle = '#dff0ff';
+      ctx.fillRect(cx, y, cw - 0.6, deep * 0.55);
+      ctx.fillStyle = '#f4fbff';
+      ctx.fillRect(cx, y, cw - 0.6, 1.4);
+      // One highlight down the left face of each cube: at this size it is the
+      // only thing that says these are solid lumps rather than one blue bar.
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(cx + 0.6, y + 1.6, 0.8, deep * 0.4);
+    }
+  }
+}
+
 // Hills render ONCE into a seamlessly-tiling strip (|sin| has period pi*wl),
 // then scroll as GPU texture blits instead of re-tracing a 60-segment path
 // on the CPU every frame.

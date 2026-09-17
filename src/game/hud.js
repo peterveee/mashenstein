@@ -2486,8 +2486,19 @@ export function drawHud(ctx, run) {
     // the left column reads as one edge top to bottom. The power-up names above
     // step in past their donuts; the nameplate is the flush one.
     const ax = PILL_X;
+    // DIM WHILE RECHARGING, lit when it is yours to spend. A STATE rather than a
+    // flash at the moment it returns: a flash is only information if you happen
+    // to be looking when it fires, and on this plate — bottom-left, read in the
+    // gaps between hazards — that is precisely what you are not doing. Dimmed,
+    // the plate answers whenever you glance at it, and coming back to full IS
+    // the flash for anyone who was watching.
+    //
+    // The pair is the one calibrate.js already uses for live-versus-inactive,
+    // not a bespoke fade: the same two inks mean the same thing on both screens.
+    const ready = run.player.abilityCd <= 0;
     drawPanel(ctx, ax, GAUGE_CY - LH / 2, lw, LH, 4, undefined, PANEL);
-    rawDrawText(ctx, label, ax + LP, textY(GAUGE_CY, 1), '#48e0c8', 1, 'bold');
+    rawDrawText(ctx, label, ax + LP, textY(GAUGE_CY, 1),
+      ready ? '#48e0c8' : '#5a5a68', 1, 'bold');
   }
 
   // Power-up timers sit in a single row on the shelf above the ability, each in
@@ -3019,14 +3030,113 @@ export function drawSpeech(ctx, speech, opts = {}) {
 // state it reads is passed in. That is what lets the dev prose browser preview
 // an act card cold, with no RunState behind it, and still be looking at the
 // exact card the stage puts up.
-const HEAD_S = 2; // the act number's type scale; the block height is measured off it
-// The skip hint's own line, low on the card and clear of the centred block.
-const SKIP_Y = 210;
+const HEAD_S = 2; // the smallest the act number is ever allowed to be
+// THE CARD IS SIZED FROM THE FRAME, not from a set of authored constants.
+//
+// It used to be a fixed layout: head at scale 2, subtitle at 1 wrapped to three
+// lines across 432 units, skip hint at y=210. Those numbers were chosen against
+// a 480x270 screen on a desktop monitor, and they are the wrong numbers
+// everywhere else. In portrait the 480-unit width maps to the SHORT edge of the
+// glass — about 0.8 css px per logical unit against landscape's 1.75 — so every
+// one of them was worth less than half as much physically, on a frame nearly
+// four times as tall: the card read as a stamp in the middle of an empty
+// canvas. And on a phone held landscape the same type is small too, because a
+// 480-unit line across 844 css px is a long measure to read at 14px.
+//
+// So both orientations now measure. The act number is FITTED to the frame's own
+// width — that slam is the card, and it should span it — and the subtitle takes
+// the largest scale that still seats every line inside the card's vertical
+// budget. A shorter measure means more lines, which is the trade this card
+// should always take: this is one sentence held on screen for three seconds,
+// not a paragraph, and there is nothing else on the canvas competing for the
+// room.
+const ACT_LAYOUT = {
+  landscape: {
+    headFill: 0.60,   // of the usable width; the cap below usually binds first
+    headMax: 5,
+    tailCap: 2.0,
+    tailMin: 1.0,
+    tailLines: 4,
+    measure: 0.80,    // of the usable width — a shorter line than the card is wide
+    budget: 0.78,     // of the frame height, head + subtitle + skip hint
+    margin: 48,
+  },
+  portrait: {
+    headFill: 0.88,
+    headMax: 14,
+    tailCap: 3.4,
+    tailMin: 1.8,
+    tailLines: 7,
+    measure: 0.92,
+    budget: 0.80,
+    margin: 24,
+  },
+};
+
+// The largest scale at or below `cap` that seats the whole string in `maxLines`
+// and keeps the finished block inside `budget`. wrapText drops an ellipsis on
+// its last line when it runs out of them, and a truncated act card is worse
+// than a slightly smaller one; so is one that runs off the bottom.
+function fitWrapped(text, maxWidth, cfg, headH, budget) {
+  let s = cfg.tailCap;
+  for (let guard = 0; guard < 40; guard++) {
+    const lines = text ? wrapText(text, maxWidth, s, cfg.tailLines) : [];
+    const blockH = headH + (lines.length ? 13 * s + 12 * s * lines.length : 0);
+    const fits = !lines.some((line) => line.endsWith('…'))
+      && blockH + 30 * Math.max(1, s * 0.8) <= budget;
+    if (fits || s <= cfg.tailMin) return { s, lines };
+    s = Math.max(cfg.tailMin, s - 0.1);
+  }
+  return { s, lines: wrapText(text, maxWidth, s, cfg.tailLines) };
+}
+
+// Everything the card's layout depends on, in one place, so the painter below
+// reads the same in both orientations.
+function actBannerMetrics(head, tail) {
+  const portrait = isPhonePortraitPresentation();
+  const cfg = portrait ? ACT_LAYOUT.portrait : ACT_LAYOUT.landscape;
+  const frame = presentationFrame();
+  const safe = frame && frame.safeRect ? frame.safeRect : null;
+  const left = safe && Number.isFinite(safe.left) ? safe.left : 0;
+  const right = safe && Number.isFinite(safe.right) ? safe.right : W;
+  const usable = Math.max(160, Math.min(W, right - left) - cfg.margin);
+  // Linear in the scale (neither face carries a fixed tracking), so one
+  // measurement at 1 gives the scale that fills the width.
+  const headUnit = textWidth(head, 1, 'title') || 1;
+  const headS = Math.max(HEAD_S,
+    Math.min(cfg.headMax, (usable * cfg.headFill) / headUnit));
+  const fit = fitWrapped(tail, usable * cfg.measure, cfg, 12 * headS, H * cfg.budget);
+  return {
+    headS,
+    tailS: fit.s,
+    gap: 13 * fit.s,
+    lines: fit.lines,
+    // The mistracked-tape dressing was authored against 270 rows and small
+    // type: at this size a 1.5px shiver is invisible, and four bars leave most
+    // of a tall frame bare.
+    jitter: fit.s,
+    slices: Math.max(4, Math.round(H / 150)),
+    sliceH: 1,
+    skipS: Math.max(1.2, fit.s * 0.8),
+  };
+}
+
 export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip = false } = {}) {
   const dot = text.indexOf('. ');
   const head = dot > 0 ? text.slice(0, dot) : text;
   const tail = dot > 0 ? text.slice(dot + 2) : '';
-  const jx = (i) => (still ? 0 : Math.round(Math.sin(t * 47 + i * 13) * 1.5));
+  const m = actBannerMetrics(head, tail);
+  // Chromatic ghosts under a white core: a memo shot through a bad signal. The
+  // split grows with the type or it vanishes under a big head — but only so
+  // far: carried all the way up in proportion it stops reading as a bad signal
+  // and starts reading as a hard drop shadow behind the letters.
+  const ghost = Math.max(1, Math.min(4, Math.round(m.headS * 0.4)));
+  // The shiver has to stay INSIDE the split. It rides the type size for the
+  // same reason the split does, but once its amplitude reaches the split the
+  // two ghosts cross the white core and cancel — a head that is simply solid
+  // white on the frames where the sine peaks.
+  const shiver = Math.min(1.5 * m.jitter, ghost * 0.7);
+  const jx = (i) => (still ? 0 : Math.round(Math.sin(t * 47 + i * 13) * shiver));
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = 'rgba(0,0,0,0.78)';
@@ -3041,33 +3151,42 @@ export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip
   // is centred and a longer subtitle grows in both directions.
   //
   // The internal spacing is the authored one, kept exactly: the head's glyph
-  // box is 12*scale tall, then a 13px gap, then 12px per tail line.
-  const tailLines = wrapText(tail, W - 48, 1, 3);
-  const HEAD_H = 12 * HEAD_S, GAP = 13, TAIL_H = 12;
+  // box is 12*scale tall, then a scaled gap, then 12*scale per tail line.
+  const tailLines = m.lines;
+  const HEAD_H = 12 * m.headS, GAP = m.gap, TAIL_H = 12 * m.tailS;
   const blockH = HEAD_H + (tailLines.length ? GAP + TAIL_H * tailLines.length : 0);
   const top = Math.round((H - blockH) / 2);
   // rawDrawTextCentered takes the glyph-box top, which sits 1*scale above the ink.
-  const headY = top + HEAD_S;
-  const tailY = top + HEAD_H + GAP + 1;
-  // Chromatic ghosts under a white core: a memo shot through a bad signal.
-  rawDrawTextCentered(ctx, head, W / 2 - 1 + jx(1), headY, '#c83030', HEAD_S, 'title');
-  rawDrawTextCentered(ctx, head, W / 2 + 1 - jx(2), headY, '#48e0c8', HEAD_S, 'title');
-  rawDrawTextCentered(ctx, head, W / 2, headY, '#fff', HEAD_S, 'title');
+  const headY = top + m.headS;
+  const tailY = top + HEAD_H + GAP + m.tailS;
+  rawDrawTextCentered(ctx, head, W / 2 - ghost + jx(1), headY, '#c83030', m.headS, 'title');
+  rawDrawTextCentered(ctx, head, W / 2 + ghost - jx(2), headY, '#48e0c8', m.headS, 'title');
+  rawDrawTextCentered(ctx, head, W / 2, headY, '#fff', m.headS, 'title');
   tailLines.forEach((line, i) =>
-    rawDrawTextCentered(ctx, line, W / 2, tailY + i * TAIL_H, '#c8c8d8'));
+    rawDrawTextCentered(ctx, line, W / 2, tailY + i * TAIL_H, '#c8c8d8', m.tailS));
   if (!still) {
     // Tracking slices: thin bars drifting like a mistracked tape.
     ctx.fillStyle = 'rgba(200,48,48,0.3)';
-    for (let i = 0; i < 4; i++) {
-      const y = (i * 67 + Math.floor(t * 140)) % H;
-      ctx.fillRect(jx(i) * 2, y, W, 1);
+    const step = H / m.slices;
+    for (let i = 0; i < m.slices; i++) {
+      const y = (i * step + Math.floor(t * 140)) % H;
+      ctx.fillRect(jx(i) * 2, y, W, m.sliceH);
     }
   }
   // Only drawn when the card can actually be skipped, which is the whole point:
   // an always-present hint would be a lie on the one playthrough where the card
   // is not skippable, and that is the playthrough where it is read.
   if (skip) {
-    rawDrawTextCentered(ctx, `${Input.confirmVerb()} TO SKIP`, W / 2, SKIP_Y, '#8a8a98');
+    // Hung off the block rather than nailed to a line of its own: the block is
+    // measured now, so the old fixed 210 is either sitting on the subtitle
+    // (landscape, once the type grew) or a third of the way down the card
+    // (portrait). Floored above the safe-area bottom so the home indicator
+    // never takes it.
+    const frame = presentationFrame();
+    const safeBottom = frame && frame.safeRect && Number.isFinite(frame.safeRect.bottom)
+      ? frame.safeRect.bottom : H;
+    const y = Math.min(safeBottom - 18 * m.skipS, top + blockH + 18 * m.skipS);
+    rawDrawTextCentered(ctx, `${Input.confirmVerb()} TO SKIP`, W / 2, y, '#8a8a98', m.skipS);
   }
   ctx.restore();
 }
@@ -3264,11 +3383,24 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // on the right and text rags leftward.
   const centered = isPhonePortraitPresentation();
   const centerX = centered ? portraitHudLayout(presentationFrame()).center : W / 2;
-  let floatX = centered ? centerX : (mirror ? W - heroX - 6 : heroX + 6);
-  let edgeX = centered ? centerX : (mirror ? W - heroX : heroX);
+  // A PINNED CARD IS A BLOCK, NOT A RAG. The ragged-left layout measures its
+  // wrap width from the anchor to the right edge — fine for a card welded to
+  // the hero, who holds one column all run, and wrong for one pinned in the
+  // world: the anchor slides across the screen as the road scrolls, so the
+  // available width changed every frame and the card re-wrapped and re-sized
+  // under the reader. One line became two and back again while they were
+  // trying to read it. Pinned cards therefore take the same fixed width the
+  // centred and short cards take, which depends on nothing that moves, and
+  // they centre on their pin so the panel is symmetrical about the spot the
+  // line is about.
+  const pinned = !centered && f.wx != null;
+  let floatX = centered ? centerX : pinned ? heroX : (mirror ? W - heroX - 6 : heroX + 6);
+  let edgeX = centered ? centerX : pinned ? heroX : (mirror ? W - heroX : heroX);
   const short = f.text.length <= 5;
   const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  const lines = wrapText(f.text, centered ? W - 32 * s : (short ? W - 32 * s : W - heroX - 8 * s), s, 2);
+  // Laid out in a fixed box rather than against the right edge.
+  const boxed = centered || short || pinned;
+  const lines = wrapText(f.text, boxed ? W - 32 * s : W - heroX - 8 * s, s, 2);
   // HOW HIGH A CARD MAY DRIFT. It was a flat 38, which was three of air under
   // a beat ribbon that ended at 40; the strip has moved to the top of the
   // screen and the number stayed, so the cards were stopping fourteen pixels
@@ -3281,7 +3413,7 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // light packs.
   const tw = Math.max(...lines.map((line) => textWidth(line, s)));
   const PADX = 5 * s;
-  let bx = centered || short
+  let bx = boxed
     ? floatX - tw / 2 - PADX
     : (mirror ? edgeX - tw - PADX : edgeX - PADX);
   // Clear of the finish marker. Floaties rise from the hero's column, and at
@@ -3293,6 +3425,13 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // share stays a straight edge.
   if (keepLeftOf != null && !centered) {
     const dx = Math.min(0, keepLeftOf - (bx + tw + PADX * 2));
+    bx += dx; floatX += dx; edgeX += dx;
+  }
+  // And a pinned card stays in the picture. It is anchored to a place in the
+  // world rather than to the hero, and the world scrolls: without this the card
+  // would walk off the left edge mid-sentence.
+  if (pinned) {
+    const dx = Math.max(4, Math.min(W - 4 - (tw + PADX * 2), bx)) - bx;
     bx += dx; floatX += dx; edgeX += dx;
   }
   // The crossing. A hero passing through the row has to share it with the cards
@@ -3316,7 +3455,7 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // its own card, by most of the 3 units of padding the card actually has.
   lines.forEach((line, i) => {
     const y = textY(topY + (i * LINE_H + LINE_H / 2) * s, s);
-    if (centered || short) rawDrawTextCentered(ctx, line, floatX, y, f.color, s);
+    if (boxed) rawDrawTextCentered(ctx, line, floatX, y, f.color, s);
     else rawDrawText(ctx, line, mirror ? edgeX - textWidth(line, s) : edgeX, y, f.color, s);
   });
   ctx.restore();

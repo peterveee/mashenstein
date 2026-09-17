@@ -87,7 +87,7 @@ export const TAG_LINES = {
   mochi: 'POYO.',
   clara: 'SUDDENLY: CLARA VAULT.',
   kiko: 'THIS IS A CRIME SCENE.',
-  raymn: 'HANDS OFF. LITERALLY.',
+  ramon: 'HANDS OFF. LITERALLY.',
   grumpos: 'BOY.',
 };
 
@@ -153,7 +153,7 @@ export const EXIT_LINES = {
     'I HAVE LEFT MY CARD WITH THE BARREL.',
     'I AM NOT LEAVING. I AM CANVASSING.',
   ],
-  raymn: [
+  ramon: [
     'HANDS OFF. LITERALLY. THEY ARE UNSECURED.',
     'MY HAND IS SELF-EMPLOYED. IT LEAVES WHEN IT WANTS.',
     'THE SHOES DID MOST OF THAT. I PROVIDED LEADERSHIP.',
@@ -202,6 +202,49 @@ export const COPTER_DEFLECT_SHORT = [
   'THE FIELD IS INSURED.',
   'RETURNED TO SENDER.',
   'NOT A VALID BONK.',
+];
+
+// AN ANIMAL, SHOT AT. Nothing alive in this game can be shot (see the `animal`
+// flag in game/entities.js), so every round that reaches one connects, is
+// spent, and changes nothing — and a shot that visibly connects and says
+// nothing is worse than one that misses. These are what it says instead.
+//
+// Same job as the copter's forcefield above, different register: the copter
+// answers in paperwork because he is an adjuster, and an animal does not answer
+// at all — the ARCADE observes that the attempt was noted and filed. Never a
+// scolding, and never the game explaining its own rule; the joke is the animal
+// being unbothered, which teaches the rule better than a sign would.
+//
+// One pool per species because the joke is their character, not the mechanic.
+// The dogs get the most lines: they are the ones a player meets over and over,
+// and the finish dog is the one they meet at their most desperate.
+//
+// Three angles, deliberately mixed. A pool that says "unimpressed" four ways
+// goes stale inside one stage: one line is that he has seen worse, one makes it
+// personal, one makes it a grudge, one is the flat refusal to react. HE, not
+// IT — the joke needs him to have an inner life to be unimpressed WITH.
+export const DOG_SHOT_SHORT = [
+  'HE HAS BEEN SHOT AT BEFORE.',
+  'NOW IT IS PERSONAL.',
+  'HE WILL REMEMBER THIS.',
+  'HE DID NOT FLINCH. HE NEVER FLINCHES.',
+];
+
+// The cat's whole characterisation is that she is the one you cannot
+// out-think — the fastest closer in the game and the smallest box. So she does
+// not escalate and she does not hold a grudge: she declines to participate.
+export const CAT_SHOT_SHORT = [
+  'THE CAT IS UNBOTHERED.',
+  'SHE DID NOT EVEN LOOK.',
+  'THE CAT WAS NOT LISTENING.',
+];
+
+// The buzzbird is a bird and not a drone, whatever the drones two rows above it
+// in the registry would have you assume. It has no opinion about any of this.
+export const BIRD_SHOT_SHORT = [
+  'THE BIRD KEPT FLYING.',
+  'NO EFFECT ON THE BIRD.',
+  'THE BIRD IS NOT PART OF THIS.',
 ];
 
 // Food-court hero chatter (drawn via drawSpeech, one line per visit, cycling
@@ -310,7 +353,7 @@ export const HUB_LINES = {
   // tournament that brought her here is MOTIVE and shows up once — it is not a
   // second joke engine.
   //
-  // The trap this pool has to stay out of is Gary and Ray M'n. All three sit in
+  // The trap this pool has to stay out of is Gary and Ramon. All three sit in
   // the bureaucratic register, so hers is kept to CRIMINAL procedure — warrant,
   // custody, evidence, scene, rights, suspect, canvass, prints, discharge —
   // words neither of them touches. Gary owns FORM in both senses already.
@@ -359,7 +402,7 @@ export const HUB_LINES = {
     'MY DEATH CERTIFICATE MISSPELLED MY NAME. HR SAYS I MAY STILL BE ALIVE.',
     'TECHNICALLY I NEVER CLOCKED OUT. LEGALLY THIS IS A GRAY AREA.',
   ],
-  raymn: [
+  ramon: [
     'THE LIMB INSPECTOR LEFT WITHOUT COMPLETING THE FORM.',
     'MY HAND IS SELF-EMPLOYED. WE HAVE A PROFESSIONAL ARRANGEMENT.',
     'THE SHOES DO MOST OF THE RUNNING. I PROVIDE LEADERSHIP.',

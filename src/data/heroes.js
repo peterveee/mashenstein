@@ -37,7 +37,7 @@ export const HEROES = [
     // drawHumanoid stops drawing it in his fist. It flies the AXE's return: out,
     // hover, home. The belt loop is empty the whole time it is away, which is
     // what stops him reading as a man with two wrenches.
-    ability: { type: 'wrench', cooldown: 2.4, label: 'PIPE WRENCH', callout: 'THROW' }, stomp: false,
+    ability: { type: 'wrench', cooldown: 2.4, label: 'PIPE WRENCH', callout: 'THROW' },
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     skillLabel: 'HIGH JUMP',
     skillDesc: 'JUMPS 12% HIGHER',
@@ -64,7 +64,7 @@ export const HEROES = [
     tagline: 'ALREADY THERE. WAITING.',
     speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.05, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'toss', cooldown: 3.2, label: 'BAMBOO SHOOT', callout: 'BAMBOO SHOOT' }, stomp: false,
+    ability: { type: 'toss', cooldown: 3.2, label: 'BAMBOO SHOOT', callout: 'BAMBOO SHOOT' },
     joke: 'ARRIVES TOO EARLY AND WAITS FOR REALITY TO CATCH UP.',
     skillLabel: 'SPEED BOOST',
     skillDesc: 'RUNS 15% FASTER',
@@ -84,11 +84,11 @@ export const HEROES = [
     // goes 0.18s in (BOW_REACH_T + the style's release). That is the skill of
     // her — the shot has to be called early — and 0.18 is where the calling
     // stays fair: it puts a target 160px out at 0.46s from the press, between
-    // Ray M'n's fist and Kiko's warning shot, where 0.30 had him a tenth of a
+    // Ramon's fist and Kiko's warning shot, where 0.30 had him a tenth of a
     // second slower than anything else in the cast. The cooldown runs from the
     // press: 2.4s, of which the handling is the first ~0.93s (she cannot fire
     // mid-sling), leaving ~1.5s with the bow on her back.
-    ability: { type: 'bow', cooldown: 2.4, label: 'LONGBOW', callout: 'DRAW' }, stomp: false,
+    ability: { type: 'bow', cooldown: 2.4, label: 'LONGBOW', callout: 'DRAW' },
     joke: 'HER SACRED PROPHECY IS PRINTED ON A FADED SUPERMARKET RECEIPT.',
     skillLabel: 'STARTING SHIELD',
     skillDesc: 'STARTS NEW LEVELS WITH A SHIELD',
@@ -103,7 +103,7 @@ export const HEROES = [
     tagline: 'LOW ON CYAN.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 0.9, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, slideIsRoll: false, variableJump: true,
-    ability: { type: 'shoot', cooldown: 1.8, cooldownMult: 0.75, label: 'LEMON CANNON', callout: 'SHOOT' }, stomp: false,
+    ability: { type: 'shoot', cooldown: 1.8, cooldownMult: 0.75, label: 'LEMON CANNON', callout: 'SHOOT' },
     joke: 'CONSTANTLY REPORTS LOW ON CYAN. REGARDLESS OF CONTEXT.',
     skillLabel: 'BATTERY EFFICIENT',
     skillDesc: 'POWER MOVE RECHARGES 25% FASTER',
@@ -136,7 +136,7 @@ export const HEROES = [
     // Clara carries TWO pistols, and `shotBurst: 2` is that fact as gameplay:
     // every trigger pull is a pair of slugs a short gap apart — the fastest
     // and smallest rounds of the three shooters — on a middle cooldown.
-    ability: { type: 'shoot', cooldown: 3.0, label: 'PLOT HOLE', callout: 'PLOT HOLE' }, stomp: false,
+    ability: { type: 'shoot', cooldown: 3.0, label: 'PLOT HOLE', callout: 'PLOT HOLE' },
     shotSpeed: 340, shotSize: 0.85, shotBurst: 2,
     joke: 'NARRATES HER OWN LUNCH. IN THE PAST TENSE.',
     skillLabel: 'CLIFFHANGER',
@@ -178,7 +178,7 @@ export const HEROES = [
     startShield: 0, magnetRadius: 0, variableJump: true,
     // Slower and fatter than B-33P's lemon, and on twice his cooldown — his
     // recharge is his whole skill, so the two shooters are not the same weapon.
-    ability: { type: 'shoot', cooldown: 3.5, label: 'WARNING SHOT', callout: 'WARNING SHOT' }, stomp: false,
+    ability: { type: 'shoot', cooldown: 3.5, label: 'WARNING SHOT', callout: 'WARNING SHOT' },
     shotSpeed: 170, shotSize: 1.5,
     joke: 'MAINTAINS A CASE FILE ON EVERY OBJECT IN THIS BUILDING.',
     skillLabel: 'FOOT PURSUIT',
@@ -192,11 +192,11 @@ export const HEROES = [
     ],
   },
   {
-    id: 'raymn', name: "RAY M'N, APPENDAGE-OPTIONAL", short: "RAY M'N",
+    id: 'ramon', name: 'RAMON, APPENDAGE-OPTIONAL', short: 'RAMON',
     tagline: 'LIMBS WERE OUT OF BUDGET.',
     speedMult: 0.95, scoreMult: 1.0, jumpMult: 1.04, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'fist', cooldown: 3, label: 'ROCKET FIST', callout: 'ROCKET FIST' }, stomp: false, assemblyGrace: true,
+    ability: { type: 'fist', cooldown: 3, label: 'ROCKET FIST', callout: 'ROCKET FIST' }, assemblyGrace: true,
     joke: 'THE INSURANCE FORM REQUIRES A LIMB COUNT. HE KEEPS WRITING "OPTIONAL."',
     skillLabel: 'LOOSE ASSEMBLY',
     skillDesc: 'SURVIVES ONE FATAL HIT',
@@ -211,7 +211,7 @@ export const HEROES = [
     tagline: 'BOY.',
     speedMult: 1.0, scoreMult: 1.2, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'axe', cooldown: 2.8, label: 'RETURNING AXE', callout: 'THROW AXE' }, stomp: false, heavy: true,
+    ability: { type: 'axe', cooldown: 2.8, label: 'RETURNING AXE', callout: 'THROW AXE' }, heavy: true,
     joke: 'THROWS HIS AXE MAJESTICALLY. OCCASIONALLY FAILS TO CATCH IT.',
     skillLabel: 'LEGENDARY PRESENCE',
     skillDesc: 'EARNS 20% MORE SCORE',
@@ -245,7 +245,7 @@ export const HERO_BY_ID = Object.fromEntries(HEROES.map((h) => [h.id, h]));
 // 208px/s) the fist stopped fifty-four px short, which would have had it
 // visibly hang in mid-air in front of a box it had just opened. The box now
 // stands 1.05 beats out (BOX_LEAD_BEATS, ~94px) and the fist's 176px covers it
-// with room, so Ray M'N is dealt the box like the other four.
+// with room, so Ramon is dealt the box like the other four.
 export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist', 'bow', 'wrench', 'toss']);
 
 /** Can this hero destroy something in front of them without touching it? */

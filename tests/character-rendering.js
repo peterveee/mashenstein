@@ -184,7 +184,7 @@ assert(FINISH_CELEBRATION_POSE.kind === 'celebrate' && FINISH_CELEBRATION_POSE.h
     { kind: 'run', grounded: true, vy: 0, gaitTune: { hold: 'garbage', skew: {}, lean: '1.5', holdAt: 1e9, stride: null } },
   ];
   // 'legacy' is the painter's rollback and must stay reachable; 'float' is
-  // Raymn's partial entry and must be SAFE on a rig it was never meant for,
+  // Ramon's partial entry and must be SAFE on a rig it was never meant for,
   // because limbStyle is a pose field and nothing stops a caller passing it.
   // snapWide is the gallery's before-column for the geometry rework: never on
   // a spec, so nothing else would ever draw it.
@@ -260,8 +260,8 @@ for (const hero of HEROES) {
 }
 assert(titleParadeAction('lorenzo', 0.4, 0.5).pose.menuAction === 'wave',
   'Lorenzo title beat uses the updated compact wave');
-assert(!titleParadeAction('raymn', 0.4, 0.5).pose.menuAction,
-  'Ray M\'N title beat is correctly documented as a rocket-fist toss, not a wave');
+assert(!titleParadeAction('ramon', 0.4, 0.5).pose.menuAction,
+  'Ramon title beat is correctly documented as a rocket-fist toss, not a wave');
 const titleAimStart = b33pTitleShotPose(0);
 const titleAimMid = b33pTitleShotPose(B33P_TITLE_WINDUP_T / 2);
 const titleAimFire = b33pTitleShotPose(B33P_TITLE_WINDUP_T);
@@ -409,17 +409,23 @@ for (const hero of HEROES) {
     `${hero.id} wears the full startled face during an unplanned fall`);
 }
 
+// LORENZO THROWS, he does not smash. This pair used to assert the stomp/smash:
+// a hand-registered 'smash' swing on the ground and a separate airborne stomp
+// pose. The pipe wrench replaced both (10 Sep 2026) and the stomp was deleted
+// outright (17 Sep 2026), so what it checks now is that his throw reaches the
+// same 'aim' every other thrown weapon in the cast uses — the whole point of
+// retiring the move was that one hero should not have a shape of his own.
 const lorenzo = new Player('lorenzo');
-lorenzo.powerType = 'stomp';
+lorenzo.powerType = 'wrench';
 lorenzo.powerPoseT = 0.2;
-const smash = poseFromPlayer(lorenzo, 0);
-assert(smash.menuAction === 'smash' && smash.actionTime > 0,
-  'grounded Lorenzo drives the hand-registered wrench-smash pose');
+const throwing = poseFromPlayer(lorenzo, 0);
+assert(throwing.menuAction === 'aim' && throwing.actionTime > 0,
+  'grounded Lorenzo drives the shared aim pose for the pipe wrench');
 lorenzo.grounded = false;
-lorenzo.stomping = true;
-const stomp = poseFromPlayer(lorenzo, 0);
-assert(stomp.stomp && stomp.menuAction !== 'smash',
-  'airborne Lorenzo keeps the separate stomp pose');
+const airThrow = poseFromPlayer(lorenzo, 0);
+assert(airThrow.menuAction === 'aim',
+  'and keeps it in the air — there is no second, airborne-only shape any more');
+assert(!('stomp' in airThrow), 'the pose carries no stomp field at all');
 
 const b33p = new Player('b33p');
 b33p.powerType = 'shoot';

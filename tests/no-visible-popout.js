@@ -105,7 +105,8 @@ for (const stageId of PLAY) {
     const excusedOb = (was) => {
       const ob = was.ref;
       if (ob.broken || ob.punted || ob.rolledOut) return true;
-      if (run.chompBites.some((b) => b.ob === ob)) return true;
+      // (Miss Chomp's bite used to excuse one here too. She is not playable and
+      // the eat ability is gone with her, so there is no such exit any more.)
       const px = run.playerWorldX();
       // Contact events: stomp, kick, walking a switch.
       return was.x < px + 90 && was.x + was.w > px - 60;

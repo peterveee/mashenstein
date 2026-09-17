@@ -72,7 +72,7 @@ export const OBSTACLES = {
   drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, artLift: 6, armored: true, action: 'slide', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
   // Buzzbirds use the shared gentle vertical hover, plus a modest world-space
   // approach toward the player. There is no independent side-to-side wobble.
-  buzzbird:   { w: 12, h: 7,  sprite: 'buzzbird', alt: 34, armored: false, action: 'none', bob: true, airVx: -28 },
+  buzzbird:   { w: 12, h: 7,  sprite: 'buzzbird', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28, animal: true },
   shooterDrone: { w: 12, h: 7, sprite: 'drone', alt: 44, armored: true, action: 'none', shoots: true, bob: true, airDrift: { amp: 5, speed: 0.62 } },
   target:     { w: 12, h: 11,  sprite: 'capStar', alt: 40, breakable: true, action: 'none', isTarget: true, bob: true },
   icicle:     { w: 8, h: 8,   sprite: 'icicle', alt: 70, falls: true, action: 'jump', telegraph: 0.7 },
@@ -123,10 +123,58 @@ export const OBSTACLES = {
   // `action: 'none'` because a loop is not something to be avoided — sailing
   // over the pad costs you the ride and the coins on it, and nothing else.
   loopPad:    { w: 18, h: 4,  sprite: 'boostPad', ground: true, isLoop: true, action: 'none' },
-  switch:     { w: 8, h: 8,   sprite: 'switch', alt: 46, breakable: true, action: 'none', isSwitch: true, bob: true },
+  // THE FROZEN SWITCH — hop into it and the break behind it is bridged (see
+  // openGates in run.js, and the pairing in Spawner.fill that ties the two
+  // together).
+  //
+  // 36 IS A DELIBERATE JUMP, AND 46 WAS A MAXIMUM ONE. This number has been
+  // wrong in both directions. At 46 it demanded a near-max jump from everybody,
+  // and a jump at frost speed travels 122 to 161px — which came down inside the
+  // very hole the switch was there to close, so going for it was a gamble with
+  // a fatal landing, and the input was indistinguishable from simply jumping
+  // the break. It was dropped to 26, and at 26 it costs a 33ms tap: the block
+  // is barely over a standing hero's head and hitting it is an accident rather
+  // than a decision.
+  //
+  // 36 is the middle that was missing. Measured across all eight heroes with
+  // the real jump maths (tests/frozen-switch.js walks the same model):
+  //
+  //   alt 26    33ms hold    lands 66px    a tap
+  //   alt 36    67ms hold    lands 85px    a press
+  //   alt 46    (was) a near-max jump landing in the hole
+  //
+  // 85px still lands 35px clear of the nearest lip a pattern authors (120), the
+  // hole is still on screen when the block is hit — including in PORTRAIT,
+  // which shows 121px of lane ahead and is the tightest frame this pair has to
+  // read in — and the worst hero's head reaches 50.9 at apex, so the bottom of
+  // the box at 36 leaves fifteen pixels of room for the short cast.
+  // IT IS A BLOCK AND IT FLOATS, which is a reversal of what stood here for
+  // three rounds: an 8x8 lever head on a post drawn through the `stand` path,
+  // because a switch bolted to nothing was not a thing anybody built. A COIN
+  // BLOCK is, though — the genre has been hanging them in mid-air since 1985
+  // and nobody has ever asked what holds one up. The post went with the lever,
+  // and `stand` went with the post; it was the only prop in the game that used
+  // it.
+  //
+  // 12x11 IS THE COIN BLOCK'S BOX, qcrate's exactly: four more pixels of width
+  // and three of height than the lever head it replaced, which is a third more
+  // prop to find and a third more room for the glyph.
+  //
+  // `bob` stays gone. A capsule bobs because it is a prize waiting to be taken;
+  // a machine does not, and the block has a bump of its own on the frames after
+  // it is hit (see the painter).
+  //
+  // AND A SHOT DOES NOT BREAK IT, IT THROWS IT — the bear trap's bargain one
+  // line down in this table. `breakable: false` keeps it hanging and
+  // `throwable` is what a round (or a hop) spends on it: the lens floods green,
+  // the bridge slides in, and the thing stays in the lane saying so for the
+  // rest of the run. A switch that vanishes when you hit it takes the evidence
+  // of what you just did with it. It is also the only way a hero who cannot
+  // reach the block still gets the bridge.
+  switch:     { w: 12, h: 11, sprite: 'switch', alt: 36, breakable: false, throwable: true, action: 'none', isSwitch: true },
   tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
-  beatBar:    { w: 8, h: 14,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },
+  beatBar:    { w: 10, h: 16,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },
   // THE CARD BOX — the beat cabinet's one prop you answer with the ability
   // button instead of with your feet, and the only entity in the game whose
   // destruction is QUANTIZED (see BOX_BURST_BEATS in game/beatchart.js).
@@ -173,7 +221,7 @@ export const OBSTACLES = {
   // hazard has a second answer — a crate is plowed, a cone is punted, a cactus
   // is shot or rolled past by Fernwick — and the peel has none of them:
   //
-  //   `breakable: false`  no weapon, stomp, roll or shockwave removes it. It is
+  //   `breakable: false`  no weapon and no roll removes it. It is
   //     a floppy bag of fruit skin: there is nothing in it to break, and no
   //     debris entry either, so it has no scatter to give. Making it breakable
   //     would have put the game's one jump-only hazard back in the pile that
@@ -217,7 +265,7 @@ export const OBSTACLES = {
   // Three of them are not breakable either. A fire and a saw have nothing in
   // them to break, and a spike plate is the floor. `breakable: false` also
   // means no debris entry is needed, and the peel's note above spells out the
-  // rest of what the flag turns off: no weapon, stomp, roll or shockwave.
+  // rest of what the flag turns off: no weapon and no roll.
   //
   // Every box is the SOLID part only. The flame over a barrel, the flame over a
   // brazier's bowl and the teeth over a spike plate are all art bought upward
@@ -280,10 +328,23 @@ export const OBSTACLES = {
   // punt — but a dog is a dog by being a dog, and the level editor groups its
   // palette off these flags rather than off a list it would have to be told to
   // update. A new animal declares it here and turns up there.
-  dogSnarler: { w: 16, h: 11, sprite: 'dogSnarler', ground: true, breakable: true, action: 'jump', vx: -62, animal: true },
-  dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: true, action: 'jump', vx: -38, animal: true },
-  dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: true, action: 'jump', vx: -68, animal: true },
-  catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: true, action: 'jump', vx: -78, animal: true },
+  //
+  // AND NOTHING ALIVE IS SHOT IN THIS GAME. The flag was declared and read
+  // nowhere for a long time; this is its job. Every animal is
+  // `breakable: false`, which is one word doing the whole thing — it is the key
+  // every destroying path in RunState already gates on, so the round, the dash,
+  // the roll bash, the shockwave and Miss Chomp's lunch all stop taking them at
+  // once, and a new animal is covered the day it is added. A shot still lands
+  // and is still spent; what it earns is a line rather than a body (see
+  // DOG_SHOT_SHORT and its neighbours in data/jokes.js). The jump is the answer
+  // to an animal, for every hero, gun or no gun.
+  //
+  // The machines are not covered and are not meant to be: the drones are
+  // property, and the barrels, crates and braziers are furniture.
+  dogSnarler: { w: 16, h: 11, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -62, animal: true },
+  dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: false, action: 'jump', vx: -38, animal: true },
+  dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
+  catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
 
   // The finish-line dog. Scripted, never dealt from a pattern bag — see
   // RunState.spawnFinishDog: on plumber stages one dog holds the tape, appears
@@ -334,6 +395,20 @@ export function isFloorPad(def) {
   return !!def && !!(def.isBoost || def.isSpring || def.isLoop);
 }
 
+// A HOLE YOU CAN STILL FALL INTO, which after the frozen switch is not the same
+// question as "is this a hole". A bridged break keeps its `isGap` def and stays
+// LIVE, because the pit is still there and still drawn — the ground is still
+// cut, the tar is still in it, and the deck the switch laid is a thing you can
+// see the hole through. What changed is only whether it is dangerous.
+//
+// So every DRAWING site still asks `def.isGap` and every GAMEPLAY site — the
+// fall, the bot's plan, the jump cue, the rhythm lane's hole list — asks this
+// instead. Taking the entity out of the world (the old `live = false`) answered
+// both at once and is why the fix used to be a floor appearing from nowhere.
+export function isOpenGap(ob) {
+  return !!ob && !!ob.def && !!ob.def.isGap && !ob.bridged;
+}
+
 export const DEBRIS = {
   cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6, mat: 'soft' },
   cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14, mat: 'soft' },
@@ -366,7 +441,7 @@ export const DEBRIS = {
   buzzbird:    { colors: ['#f0a860', '#d87830', '#f6d33c'], size: 2.2, grav: 190, mat: 'soft' },
   icicle:      { colors: ['#b8e0f8', '#fff', '#8ab8d8'], size: 2.6, mat: 'stone' },
   target:      { colors: ['#f6d33c', '#fff8d0'], size: 3, mat: 'metal' },
-  switch:      { colors: ['#48e0c8', '#f6d33c', '#3a4a5a'], size: 2.4, mat: 'metal' },
+  switch:      { colors: ['#5ce07d', '#f6d33c', '#3a4a5a'], size: 2.4, mat: 'metal' },
   paperwork:   { colors: ['#fff', '#e8e8f0'], size: 3, grav: 60, count: 10, mat: 'soft' },
   trafficCone: { colors: ['#e86020', '#f8a030', '#fff'], size: 2.8, mat: 'soft' },
   // The two shootable standing hazards. Both scatter METAL — a drum band and a
@@ -420,6 +495,10 @@ export function makeObstacle(type, worldX, opts = {}) {
     // one so nothing downstream has to ask the def before reading them, and so
     // a pooled or replayed entity can never arrive carrying a stale snap.
     disarmed: false, disarmT: 0,
+    // A thrown switch, on the same footing and for the same reason: the lever
+    // stays in the lane once it has been thrown, and the swing is driven by its
+    // own clock rather than by the prop ring.
+    thrown: false, thrownT: 0,
     fallT: def.falls ? (def.telegraph || 0.7) : 0, fell: !def.falls,
     shootT: def.shoots ? 1.2 : 0,
     hp: opts.hp || 1,
@@ -452,7 +531,7 @@ export function makeObstacle(type, worldX, opts = {}) {
 // WHERE THE TOP OF THE COLUMN LANDS IS THE WHOLE POINT, and it is 65.
 // Apex, as feet-height above the ground, is jumpMult x 57 (player.js jumpV):
 // 51 for B-33P at x0.90, 57 for a plain x1.00 — Grumpos included, now that
-// `heavy` is paid for in airtime rather than height — 59, 60, 61 for Ray M'n,
+// `heavy` is paid for in airtime rather than height — 59, 60, 61 for Ramon,
 // Gnash and Lorenzo, and 63 at Clara's x1.10.
 //
 // THREE RUNGS USED TO BE THE GATE AND CANNOT BE ANY MORE. At a top of 50 it

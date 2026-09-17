@@ -128,7 +128,7 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
     // fireball. The neighbours above are pixel marks on purpose (Mochi's
     // sparkle, Chompo's crumbs) and squares suit them; a ball of energy is the
     // one thing in this row that has to be a circle, so it is drawn as arcs
-    // like Ray M'n's rocket-fist trail beside it.
+    // like Ramon's rocket-fist trail beside it.
     ctx.fillStyle = '#8fe4ff';
     ctx.beginPath(); ctx.arc(x + 13, feetY - 18, 2.6, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#eafcff';
@@ -141,7 +141,7 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
     ctx.fillStyle = '#ffd27a';
     ctx.fillRect(x + 12, feetY - 18, 4, 1); ctx.fillRect(x + 14, feetY - 20, 1, 5);
     ctx.fillRect(x + 18, feetY - 16, 1, 1);
-  } else if (id === 'raymn') {
+  } else if (id === 'ramon') {
     ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(x + 14, feetY - 18, 5, -1.1, 0.8); ctx.stroke();
   } else if (id === 'grumpos') {
@@ -219,7 +219,7 @@ function titlePoseKey(id, pose, h) {
     // must not key the same as an explicit false or a cooled-down title toon
     // would serve a cached frame with the axe still on his back.
     pose.axeThrown ? 1 : 0, pose.axeReady === false ? 0 : 1,
-    pose.stomp ? 1 : 0, pose.roll ? 1 : 0,
+    pose.roll ? 1 : 0,
     pose.slideAmount == null ? '' : Math.round(Number(pose.slideAmount) * 8),
   ].join('|');
 }
@@ -1453,7 +1453,7 @@ function titleScene(ctx, t, poke, frightStart, eaten, scatter, wispsDismissed, t
 // Shuffled each time we enter the title so the cast doesn't always cross in the
 // same order. Mutated in place (Fisher-Yates) so every reader that indexes into
 // it — the parade draw, heroX, the invader strike — stays in agreement.
-const HERO_PARADE = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
+const HERO_PARADE = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
 export const TITLE_SHOOTER_COUNT = 3;
 
 // Every current title hero owns a ranged ability. The title keeps the
@@ -1495,7 +1495,7 @@ function titleShooterAction(id, time, progress) {
   };
   // Ray's glove is his launcher. Keep his established orbiting glove beat
   // while the other rigs use their shared aim pose and authored weapon prop.
-  if (id === 'raymn') pose.headless = progress > 0.18 && progress < 0.78;
+  if (id === 'ramon') pose.headless = progress > 0.18 && progress < 0.78;
   return { pose, feetLift: action.feetLift };
 }
 
@@ -3066,7 +3066,7 @@ export class IntroState {
       // box gets them to 78 — three times the original, on the one screen whose
       // entire job is introducing them. A row also says "a line-up" in a way a
       // block of four-by-two does not, which is what these two panels are about.
-      const heroes = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
+      const heroes = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
       // Pitch comes from the LIVE frame width, so the line-up spreads as the
       // frame opens instead of sitting at a fixed spacing inside a moving box.
       // 64 rather than 72, tuned when this row held chompo's flame trail and
@@ -3705,13 +3705,27 @@ function drawPortraitTubeParty(ctx, inner, shells) {
 // one-press decisions, so the compact row height made them feel too slight.
 const RESULT_OPT_H = 26;
 const RESULT_OPT_GAP = 4;
-// Retry actions are controls, not a full-width footer stripe. Give both the
-// same compact plate and centre that pair in the landscape tube.
-const RESULT_OPT_W = 240;
-// The rows stand in the curtain call's place and reach down over the prompt
-// line: they name their own actions, so there is nothing left to prompt for.
-const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2
-  - RESULT_OPT_H * 2 - RESULT_OPT_GAP;
+// The two ways out of a lost run, named once. Three draw paths render this pair
+// — landscape, portrait failure, portrait legacy — and a label edited in one of
+// them is a screen that disagrees with the other two.
+//
+// TRY AGAIN, not RUN IT AGAIN: shorter, and it says what the button does rather
+// than commenting on it. At scale 1 it measures 53.5 against the old 71.5, which
+// is what lets the pair sit side by side without shrinking the type.
+const RESULT_OPTIONS = ['TRY AGAIN', 'BACK TO THE FOOD COURT'];
+// SIDE BY SIDE in landscape, the same shape as the pause row, for the same
+// reason given there: these are the answers to one question, not a list. The row
+// takes the pause row's exact span (388 = 120*3 + 14*2) so the two screens line
+// up, split into two plates rather than three. The long label measures 131.5 at
+// scale 1 inside a 187-wide plate, so nothing has to shrink to fit.
+const RESULT_OPT_GAP_X = 14;
+const RESULT_OPT_ROW_W = 388;
+const RESULT_OPT_W = (RESULT_OPT_ROW_W - RESULT_OPT_GAP_X) / 2;
+// One row now, not two: the rows stand in the curtain call's place and reach
+// down over the prompt line, and they name their own actions, so there is
+// nothing left to prompt for. The height the second row used to take goes back
+// to the ledger above (see bodyFloor).
+const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2 - RESULT_OPT_H;
 // Portrait losses are a decision screen, not a ledger squeezed into the
 // landscape footprint. These are CSS-sized so the plates stay genuinely large
 // as the logical frame changes with the phone's aspect ratio.
@@ -3729,9 +3743,9 @@ export class ResultsState {
     // to the plain prompt rather than drawing a row that cannot fire.
     this.onRetry = onRetry || null;
   }
-  // Not on a quit. That button is labelled EXIT TO FOOD COURT and the player
-  // just pressed it, so offering them the choice again — with RUN IT AGAIN
-  // sitting under the cursor — argues with the thing they already decided.
+  // Not on a quit. The player just pressed EXIT, so offering them the choice
+  // again — with TRY AGAIN sitting under the cursor — argues with the thing they
+  // already decided.
   get retryable() { return !!this.onRetry && !this.result.success && this.result.reason !== 'QUIT'; }
   enter() {
     this.t = 0; this.shown = 0; this.idx = 0;
@@ -3955,7 +3969,7 @@ export class ResultsState {
       // Retry sits first and starts selected: it is what the player came to this
       // screen wanting, and confirm-on-arrival should be the cheap thing.
       const options = this.landscapeOptions();
-      ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
+      RESULT_OPTIONS.forEach((label, i) => {
         const sel = i === this.idx;
         const b = options[i];
         drawPanel(ctx, b.x, b.y, b.w, b.h, 5, 'rgba(11,11,20,0.68)', {
@@ -3972,12 +3986,13 @@ export class ResultsState {
   }
 
   landscapeOptions() {
-    const w = Math.min(RESULT_OPT_W, W - TUBE_INSET_X * 2 - 12);
-    const x = (W - w) / 2;
+    const rowW = Math.min(RESULT_OPT_ROW_W, W - TUBE_INSET_X * 2 - 12);
+    const w = (rowW - RESULT_OPT_GAP_X) / 2;
+    const x = (W - rowW) / 2;
     const y = RESULT_OPT_TOP;
     return [
       { x, y, w, h: RESULT_OPT_H },
-      { x, y: y + RESULT_OPT_H + RESULT_OPT_GAP, w, h: RESULT_OPT_H },
+      { x: x + w + RESULT_OPT_GAP_X, y, w, h: RESULT_OPT_H },
     ];
   }
 
@@ -4223,7 +4238,7 @@ export class ResultsState {
         ? 'TAP TO SELECT · TAP AGAIN TO CONFIRM'
         : `${confirmVerb()} TO CHOOSE · ARROWS TO MOVE`;
       drawTextCentered(ctx, hint, center, options[0].y - css(18), '#a8a0b0', 1.45, 'bold');
-      ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
+      RESULT_OPTIONS.forEach((label, i) => {
         const b = options[i];
         const sel = i === this.idx;
         const buttonLabelS = Math.min(2.65,
@@ -4282,7 +4297,7 @@ export class ResultsState {
         W / 2 + (i - (r.team.length - 1) / 2) * heroH * 1.35, y + heroH, heroH));
     }
     if (options) {
-      ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
+      RESULT_OPTIONS.forEach((label, i) => {
         const b = options[i];
         if (i === this.idx) drawMenuRow(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 8);
         drawTextCentered(ctx, label, b.x + b.w / 2, textYForMid(b.y + b.h / 2, 1.8),
@@ -4587,7 +4602,7 @@ const GUIDE_PAGES = [
       { s: 'target', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
       { s: 'cardBox', name: 'CARD BOX', desc: 'RHYTHM STAGES. SHOOT ON THE BEAT; IT OPENS ON THE NEXT ONE.' },
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
-      { s: 'switch', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
+      { s: 'switch', name: 'POWER BLOCK', desc: 'HOP INTO IT (OR SHOOT IT). A BRIDGE IS LAID OVER THE PIT BEHIND IT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
       { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.' },
       { s: 'eggshellCopter', name: 'CLOWN-COPTER', desc: 'FLIES AHEAD. WHEN IT DROPS IN, JUMP AND BONK IT. HIT MISSIONS.' },

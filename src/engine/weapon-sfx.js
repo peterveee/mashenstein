@@ -142,12 +142,12 @@ export const CUES = [
     osc(b, SR, { duration: 0.22, f0: 210, f1: 62, gain: 0.48, type: 'sine' });
     osc(b, SR, { start: 0.018, duration: 0.18, f0: 840, f1: 510, gain: 0.18, type: 'triangle' });
   }],
-  ['08-raymn-rocket-fist-launch.wav', 0.37, (b, SR) => {
+  ['08-ramon-rocket-fist-launch.wav', 0.37, (b, SR) => {
     noise(b, SR, { seed: 8, duration: 0.3, gain: 0.31, cutoff: 2400, mode: 'highpass', attack: 0.025 });
     osc(b, SR, { duration: 0.32, f0: 190, f1: 520, gain: 0.4, type: 'saw', tremolo: 24 });
     impulse(b, SR, 0.012, 0.26);
   }],
-  ['09-raymn-spring-fist.wav', 0.31, (b, SR) => {
+  ['09-ramon-spring-fist.wav', 0.31, (b, SR) => {
     osc(b, SR, { duration: 0.27, f0: 230, f1: 740, gain: 0.48, type: 'triangle', tremolo: 32 });
     osc(b, SR, { start: 0.16, duration: 0.13, f0: 980, f1: 420, gain: 0.22, type: 'sine' });
     impulse(b, SR, 0.018, 0.2);
@@ -272,7 +272,7 @@ export const CUES = [
     osc(b, SR, { duration: 0.24, f0: 225, f1: 72, gain: 0.36, type: 'triangle' });
     noise(b, SR, { seed: 27, duration: 0.07, gain: 0.18, cutoff: 2300, mode: 'highpass' });
   }],
-  ['28-contact-raymn-fist-impact.wav', 0.28, (b, SR) => {
+  ['28-contact-ramon-fist-impact.wav', 0.28, (b, SR) => {
     impulse(b, SR, 0.01, 0.48, 0.015);
     noise(b, SR, { seed: 28, duration: 0.16, gain: 0.4, cutoff: 720 });
     osc(b, SR, { duration: 0.24, f0: 175, f1: 45, gain: 0.52, type: 'sine' });
@@ -400,7 +400,7 @@ export const CONTACT_CUE = {
   b33p: '25-contact-b33p-orb-pop.wav',
   grumpos: '26-contact-grumpos-axe-chop.wav',
   lorenzo: '27-contact-lorenzo-wrench-hit.wav',
-  raymn: '28-contact-raymn-fist-impact.wav',
+  ramon: '28-contact-ramon-fist-impact.wav',
   fernwick: '29-contact-fernwick-shield-bonk.wav',
   chompo: '30-contact-miss-chomp-crunch.wav',
   kiko: '35-contact-kiko-ki-burst.wav',
@@ -409,7 +409,7 @@ export const CONTACT_CUE = {
 
 export const LAUNCH_CUE = {
   b33p: '01-b33p-laser-orb-pulse.wav',
-  raymn: '08-raymn-rocket-fist-launch.wav',
+  ramon: '08-ramon-rocket-fist-launch.wav',
   grumpos: '18-grumpos-axe-throw-ring.wav',
   // CRACK, chosen by ear. Surge measured louder and brighter, but the numbers
   // were only ever a proxy for "louder, with noise" — the pick is Peter's.

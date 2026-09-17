@@ -313,7 +313,7 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
     ['kiko + REASONABLE FORCE', 170 * 0.72],
     ['kiko', 170],
     ['grumpos (axe)', 220],
-    ['raymn (fist)', 210],
+    ['ramon (fist)', 210],
     ['b33p', 260],
     ['clara', 340],
     ['clara + SERIALIZED', 340 * 1.25],
@@ -341,7 +341,7 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
   // slot on 10 Sep 2026 with a thrown cane, so the whole roster is dealt one
   // now; Gnash's dash was the last hold-out. See RANGED_ABILITY_TYPES.
   for (const [id, can] of [['b33p', true], ['clara', true], ['kiko', true], ['grumpos', true],
-    ['raymn', true], ['lorenzo', true], ['rusty', true], ['fernwick', true], ['gnash', false]]) {
+    ['ramon', true], ['lorenzo', true], ['rusty', true], ['fernwick', true], ['gnash', false]]) {
     assert(heroShoots(id) === can,
       `${id} is ${can ? '' : 'not '}dealt a card box`);
   }
@@ -354,7 +354,7 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
     assert((sp + 220) * 0.55 >= lead,
       `the axe reaches the box it is thrown at (${((sp + 220) * 0.55).toFixed(0)} >= ${lead.toFixed(0)}px)`);
     // The rocket fist reaches it too now the box is a beat out, which is why
-    // Ray M'N is dealt one (RANGED_ABILITY_TYPES).
+    // Ramon is dealt one (RANGED_ABILITY_TYPES).
     assert((sp + 210) * 0.42 >= lead,
       `and so does the rocket fist (${((sp + 210) * 0.42).toFixed(0)} >= ${lead.toFixed(0)}px)`);
     // ...and the pipe wrench, which flies the axe's path 10px slower and parks
@@ -378,7 +378,7 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
     run.enter();
     const pxb = run.speed * 60 / run.laneBpm();
     const far = 2.4 * pxb;
-    assert(['raymn', 'clara', 'grumpos', 'b33p', 'kiko', 'lorenzo', 'fernwick', 'rusty'].every((h) => run.heroReachesBox(h, far)),
+    assert(['ramon', 'clara', 'grumpos', 'b33p', 'kiko', 'lorenzo', 'fernwick', 'rusty'].every((h) => run.heroReachesBox(h, far)),
       `every ranged hero, the rocket fist included, reaches rhythm-1's box (${far.toFixed(0)}px)`);
     assert(!run.heroReachesBox('gnash', 0), 'and a hero with no ranged weapon reaches nothing');
     // The fist's own numbers: 0.42s parks it short of that box, 0.55 does not.
@@ -386,7 +386,7 @@ assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would d
       'and it is the longer beat-stage flight that gets it there, not slack in the check');
     // The flight itself: the fist thrown on this lane travels past the box's
     // road before it turns for home.
-    run.relay.current = 'raymn';
+    run.relay.current = 'ramon';
     run.player.abilityCd = 0;
     run.useAbility();
     const fist = run.projectiles.find((p) => p.type === 'fist');
@@ -1206,8 +1206,8 @@ Audio.songBeat = oldSongBeat;
   // Every weapon on rhythm-1's 2.4-beat box, and the fist on a default-timed
   // one too.
   for (const [hero, mod, stageId] of [['b33p', null, 'rhythm-1'], ['clara', 'serial', 'rhythm-1'],
-    ['kiko', 'force', 'rhythm-1'], ['grumpos', null, 'rhythm-1'], ['raymn', null, 'rhythm-1'],
-    ['raymn', null, 'rhythm-3']]) {
+    ['kiko', 'force', 'rhythm-1'], ['grumpos', null, 'rhythm-1'], ['ramon', null, 'rhythm-1'],
+    ['ramon', null, 'rhythm-3']]) {
     save.load(); save.newSlot(0, 0);
     const stage = STAGES.find((s) => s.id === stageId);
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
@@ -1280,7 +1280,7 @@ Audio.songBeat = oldSongBeat;
     run.rhythmOpeningUntil = null;
     Audio.sourceBank = run.cabinet.music;
     const advance = installBeatClock(run, run.spawner.chart.loopBeats);
-    run.relay.current = 'raymn';
+    run.relay.current = 'ramon';
     for (let i = 0; i < 60 * 40; i++) { advance(1 / 60); run.update(1 / 60); }
     assert(run.spawner.eventInstances.some((e) => e.chartAction === 'ability'),
       'the rocket fist is dealt rhythm-1\'s box now that it flies far enough on a beat stage');

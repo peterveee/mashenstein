@@ -19,12 +19,12 @@ const SR = 44100;
 // candidates stay at their authored level for comparison.
 const GAINS = {
   '01-b33p-laser-orb-pulse.wav': 0.92 * 0.42,
-  '08-raymn-rocket-fist-launch.wav': 0.92 * 0.95,
+  '08-ramon-rocket-fist-launch.wav': 0.92 * 0.95,
   '18-grumpos-axe-throw-ring.wav': 0.92 * 0.82,
   '25-contact-b33p-orb-pop.wav': 0.45,
   '26-contact-grumpos-axe-chop.wav': 0.94,
   '27-contact-lorenzo-wrench-hit.wav': 0.95,
-  '28-contact-raymn-fist-impact.wav': 0.76,
+  '28-contact-ramon-fist-impact.wav': 0.76,
   '29-contact-fernwick-shield-bonk.wav': 0.98,
   '30-contact-miss-chomp-crunch.wav': 0.9,
 };

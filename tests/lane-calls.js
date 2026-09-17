@@ -63,6 +63,9 @@ assert(JSON.stringify(laneEntryBeats(rhythm, 'bass')) === '[32]',
 const announce = RunState.prototype.announceLaneEntries;
 const said = [];
 const run = {
+  // The card belongs to the beat cabinet and nowhere else, so the stub has to be
+  // standing in it before a single one of these can fire.
+  cabinet: { id: 'rhythm' },
   laneCallBank: null, laneCallBeats: null, laneCallLastBeat: null,
   floatText: (text, color) => said.push(`${text} ${color}`),
 };
@@ -101,6 +104,16 @@ said.length = 0;
 Audio.bank = { bpm: 120, lead: seq16([0]), sections: [{}], order: [0] };
 for (let b = 0; b <= 8; b += 0.25) { heard = b; announce.call(run); }
 assert(!said.length, 'a song whose bass never comes in never announces one');
+
+// AND NO OTHER CABINET EVER SAYS IT. Same song, same crossing, same clock — the only
+// thing that changed is which machine the hero is inside, and that is enough: off the
+// beat lane the song is scenery, and a card naming its parts is the game narrating.
+said.length = 0;
+Audio.bank = rhythm;
+const elsewhere = { ...run, cabinet: { id: 'speed' },
+  laneCallBank: null, laneCallBeats: null, laneCallLastBeat: null };
+for (const b of [31.6, 31.9, 32.1, 32.4]) { heard = b; announce.call(elsewhere); }
+assert(!said.length, 'the same bass entry on another cabinet says nothing');
 
 Audio.bank = oldBank;
 Audio.songBeat = oldSongBeat;

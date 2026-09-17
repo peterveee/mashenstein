@@ -229,16 +229,26 @@ for (let i = 1; i < capsules.length; i++) tightest = Math.min(tightest, capsules
 assert(capsules.length > 3, `the spacing sim actually produced capsules (${capsules.length})`);
 assert(tightest >= POWER_MIN_GAP,
   `no two capsules land within a screen (closest pair ${Math.round(tightest)}px, floor ${POWER_MIN_GAP})`);
-// Back-to-back repeats are rerolled ONCE (randomPowerPickup), so they happen
-// at p² rather than never — the overcharge path needs them to. Judged on the
-// long drip sample, not this handful: with no reroll a table this shape would
-// repeat itself about 17% of the time, with the reroll about 4%.
+// NO CAPSULE EVER FOLLOWS ITS OWN KIND. randomPowerPickup rerolls, and then —
+// if the table keeps insisting — picks flat from everything else on offer, so
+// this is a guarantee and not a probability. It used to be one reroll and a p²
+// tail, which on a table this shape left better than one capsule in six
+// repeating the one before it: often enough to be read as a pattern, which is
+// the one thing a random find must not look like.
+//
+// Judged on the long drip sample rather than the handful above, because a rule
+// that holds for four capsules holds for nothing. The shipped ladder has seven
+// kinds in it; a table down to two alternates instead, and beat-chart.js owns
+// that case.
 const capsuleRun = drops.filter((d) => d.def.power);
 let repeats = 0;
 for (let i = 1; i < capsuleRun.length; i++) if (capsuleRun[i].type === capsuleRun[i - 1].type) repeats++;
-const repeatRate = repeats / (capsuleRun.length - 1);
-assert(repeatRate > 0 && repeatRate < 0.08,
-  `back-to-back repeats are rare but possible (${(repeatRate * 100).toFixed(1)}% of ${capsuleRun.length})`);
+assert(capsuleRun.length > 500, `the repeat sample is long enough to mean something (${capsuleRun.length})`);
+assert(repeats === 0,
+  `no capsule follows its own kind (${repeats} back-to-back pairs in ${capsuleRun.length})`);
+// And the variety is real rather than a two-type see-saw dressed up as one.
+assert(new Set(capsuleRun.map((d) => d.type)).size >= 6,
+  'the shipped ladder still deals its whole spread');
 // A vetoed prize still pays out: the box gives coins instead of nothing.
 assert(gapRun.pickups.some((pk) => pk.type === 'coin'), 'a !-box denied its prize still drops coins');
 

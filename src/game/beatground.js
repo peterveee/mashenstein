@@ -29,6 +29,7 @@
 
 import { GROUND_Y } from '../engine/camera.js';
 import { LCD_ROAD_INK } from '../engine/stylePacks/index.js';
+import { isOpenGap } from './entities.js';
 
 // THE SAME GLYPHS AS THE RIBBON. SHAPE IS THE INPUT.
 //
@@ -66,8 +67,8 @@ import { LCD_ROAD_INK } from '../engine/stylePacks/index.js';
 const SINK = LCD_ROAD_INK + 1;
 // World px, and deliberately smaller than the hero (12 wide) — a marking the
 // runner passes over, not a sign he stands beside.
-const GLYPH_HALF_W = 3.6;
-const GLYPH_H = 5.5;
+const GLYPH_HALF_W = 4.5;
+const GLYPH_H = 7;
 // Thin enough to be an edge rather than a second shape. A heavier line at this
 // size stops reading as a border and starts eating the fill it is meant to
 // define, which is the whole failure mode of outlining something small.
@@ -148,7 +149,7 @@ export function beatSwell(beat) {
 function gapSpans(obstacles) {
   const out = [];
   for (const ob of obstacles || []) {
-    if (ob.live && ob.def && ob.def.isGap) out.push([ob.x, ob.x + ob.w]);
+    if (ob.live && isOpenGap(ob)) out.push([ob.x, ob.x + ob.w]);
   }
   return out;
 }

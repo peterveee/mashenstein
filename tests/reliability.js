@@ -54,13 +54,20 @@ assert(completions === 1, 'run completion callback is one-shot');
     'paused arrows navigate the pause plates');
   assert(Input.padAction(0) === 'confirm' && Input.padAction(12) === 'up' && Input.padAction(13) === 'down',
     'paused gamepad buttons use the same menu actions');
-  assert(Input.buttons.map((b) => `${b.id}:${b.action}`).join(',') === 'resume:pause,quit:escape',
-    'touch pause plates dispatch the same continue and exit actions');
+  // CONTINUE, EXIT, RESTART. The order is the assertion: RESTART is the only
+  // plate that destroys a run without confirming, so it sits at the far end,
+  // away from the thumb that just reached for CONTINUE.
+  assert(Input.buttons.map((b) => `${b.id}:${b.action}`).join(',') === 'resume:pause,quit:quit,restart:restart',
+    'touch pause plates dispatch the same continue, exit and restart actions');
 
   Input.press('down'); pausedRun.update(1 / 60);
   assert(pausedRun.pauseIdx === 1, 'pause selection moves to EXIT');
-  Input.press('up'); pausedRun.update(1 / 60);
-  assert(pausedRun.pauseIdx === 0, 'pause selection moves back to CONTINUE');
+  // A held action fires once, so each step is its own press and release —
+  // three plates means the cycle is worth walking all the way round.
+  Input.release('down'); Input.press('down'); pausedRun.update(1 / 60);
+  assert(pausedRun.pauseIdx === 2, 'pause selection moves on to RESTART');
+  Input.release('down'); Input.press('down'); pausedRun.update(1 / 60);
+  assert(pausedRun.pauseIdx === 0, 'the plates cycle back round to CONTINUE');
   Input.press('confirm'); pausedRun.update(1 / 60);
   assert(!pausedRun.paused && !Input.menuKeys, 'confirming CONTINUE restores run key meanings');
   assert(Input.actionForKey('ArrowUp') === 'jump' && Input.actionForKey('ArrowRight') === 'ability',
@@ -74,10 +81,20 @@ assert(completions === 1, 'run completion callback is one-shot');
   let quitResult = null;
   const quitRun = makeRun((result) => { quitResult = result; }); quitRun.enter();
   Input.press('escape'); quitRun.update(1 / 60);
+  // ONE step down: EXIT is the middle plate now, not the last one.
   Input.press('down'); quitRun.update(1 / 60);
   Input.press('confirm'); quitRun.update(1 / 60);
   assert(quitResult && !quitResult.success && quitResult.reason === 'QUIT',
     'confirming EXIT follows the normal quit result path');
+
+  // Escape is a reflex key, not a confirmation — hitting it again while
+  // already paused resumes the run instead of quitting it. Leaving has to go
+  // through the EXIT plate on purpose.
+  const escResumeRun = makeRun(); escResumeRun.enter();
+  Input.press('escape'); escResumeRun.update(1 / 60);
+  assert(escResumeRun.paused, 'first escape pauses the run');
+  Input.release('escape'); Input.press('escape'); escResumeRun.update(1 / 60);
+  assert(!escResumeRun.paused, 'a second escape resumes rather than quitting');
 
   const resetRun = makeRun(); resetRun.enter();
   Input.press('escape'); resetRun.update(1 / 60);
@@ -734,7 +751,13 @@ run = makeRun(); run.enter();
 run.relay.current = 'lorenzo'; run.player.setHero('lorenzo');
 run.player.grounded = false; run.player.vy = 0;
 run.player.update(1 / 60, { held: (a) => a === 'slide' }, { speed: 160 });
-assert(!run.player.stomping, 'Down no longer triggers Lorenzo air stomp');
+// Held Down mid-air is the universal slide-kick and nothing else. This used to
+// read `!run.player.stomping`, which stopped meaning anything the day the stomp
+// was deleted (17 Sep 2026) — an absent field is falsy, so it passed for free.
+// Asserting on the state that DOES exist keeps the check honest.
+assert(!('stomping' in run.player), 'there is no air-stomp state for Down to set');
+assert(!run.player.slideSlamming || run.player.slideSlamming === true,
+  'Down mid-air reaches the shared slide-kick, not a hero-specific move');
 
 // Gravity bypasses dash and power-up invulnerability — and a pit is fatal, so
 // what it bypasses them for is a death rather than a cell. Full battery on the
@@ -1056,16 +1079,16 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
   assert(shieldRun.powerups.shieldStack === 2,
     `and is not consumed by one either (${shieldRun.powerups.shieldStack})`);
 
-  // Ray M'N's reassembly grace goes the same way: it is a defence against a
+  // Ramon's reassembly grace goes the same way: it is a defence against a
   // fatal HIT, and a hole is not a hit.
   const rayRun = makeRun(); rayRun.enter();
-  rayRun.relay.current = 'raymn'; rayRun.player.setHero('raymn');
+  rayRun.relay.current = 'ramon'; rayRun.player.setHero('ramon');
   rayRun.player.grounded = true; rayRun.player.y = 0; rayRun.player.iframes = 0;
   rayRun.powerups.shieldStack = 0;
   rayRun.battery = 1;
   rayRun.obstacles = [makeObstacle('gap', rayRun.camX + PLAYER_X - 10)];
   rayRun.collide();
-  assert(rayRun.dead, "Ray M'N does not reassemble out of a pit");
+  assert(rayRun.dead, 'Ramon does not reassemble out of a pit');
 }
 
 // THE JUMP SIGN. Two failures, not one: one is a mistimed jump, two is a
@@ -1138,9 +1161,14 @@ assert(run.battery === topCells && topCrate.landedOn, 'landing on a crate is saf
   const firstSnapCount = cues.filter((cue) => cue.name === 'trapSnap').length;
   assert(firstSnapCount === 1 && trapRun.battery === trapRun.maxBattery() - 1,
     'bear trap contact plays one dedicated snap and deals its normal damage');
-  assert(cues[0]?.name === 'trapSnap' && (cues[0].args[0]?.gain || 0) > 1
+  // The claim is that the trap has a cue OF ITS OWN and does not stack the
+  // generic hit on top of it — not that the cue is above unity. It was written
+  // as `gain > 1` while the trap was the loudest thing in the cabinet; the
+  // firing gain has since come down (TRAP_SNAP_GAIN in run.js), and a test that
+  // pins a level nobody argued for turns every mix decision into a test edit.
+  assert(cues[0]?.name === 'trapSnap' && (cues[0].args[0]?.gain || 0) > 0
     && !cues.some((cue) => cue.name === 'hit'),
-  'bear trap uses the louder snap cue instead of stacking the generic hit');
+  'bear trap uses its own snap cue, at its own level, instead of stacking the generic hit');
   trapRun.player.iframes = 1;
   trapRun.collide();
   assert(cues.filter((cue) => cue.name === 'trapSnap').length === firstSnapCount,
@@ -1233,7 +1261,7 @@ if (ROSTER.chompo) {
 // Kiko fires a projectile too, and the assertion below already counts her —
 // the loop simply had not been given her id, so it expected four launches from
 // three heroes.
-for (const id of ['b33p', 'raymn', 'grumpos', 'kiko']) {
+for (const id of ['b33p', 'ramon', 'grumpos', 'kiko']) {
   run.relay.current = id;
   run.player.setHero(id);
   run.player.grounded = true;
@@ -1257,7 +1285,7 @@ assert(projectileContacts === 5, 'every reachable weapon contact family plays it
 assert(projectileImpacts === 0, 'weapon contacts no longer use the generic impact crash');
 // ...plus Fernwick's twang, which plays on RELEASE (the stepped flight above),
 // not on the press.
-assert(weaponLaunches === 5, 'B-33P, Ray M\'N, Grumpos, Kiko and Fernwick play distinct launch cues');
+assert(weaponLaunches === 5, 'B-33P, Ramon, Grumpos, Kiko and Fernwick play distinct launch cues');
 
 // Both shooters fire a `pellet`, so the thing that has to keep them apart is
 // contactHero — without it Kiko's warning shot would land with B-33P's orb pop.
@@ -1307,7 +1335,7 @@ const legacySlot = defaultSlot();
 legacySlot.mastery.gary = { xp: 345, level: 2, equipped: ['head'] };
 localStorage.setItem('mashenstein.v2', JSON.stringify({ version: 2, settings: defaultSettings(), slots: [legacySlot, null, null] }));
 const migratedSave = new Save(); migratedSave.load(); migratedSave.selectSlot(0);
-assert(migratedSave.slot.mastery.raymn?.xp === 345 && !migratedSave.slot.mastery.gary, "playable Gary mastery migrates to Ray M'N");
+assert(migratedSave.slot.mastery.ramon?.xp === 345 && !migratedSave.slot.mastery.gary, 'playable Gary mastery migrates to Ramon');
 
 // Rolling terrain seating: an obstacle's draw translate must seat it on the
 // LOWEST ground under its drawn footprint (the art is wider than the hitbox,

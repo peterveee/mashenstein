@@ -6,7 +6,7 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { Audio } = await import('../src/engine/audio.js');
+const { Audio, CUE_ONSET_LEAD, MAX_CUE_LEAD } = await import('../src/engine/audio.js');
 const { readFileSync } = await import('node:fs');
 const { fileURLToPath } = await import('node:url');
 const { join, dirname } = await import('node:path');
@@ -57,14 +57,24 @@ Audio.bpm = 120; Audio.tempo = 1; Audio.panicked = false;
 // what is HEARD lands on the note rather than the silent foot of its 8ms ramp.
 const LEAD = 0.008 * 0.9 - 0.002;
 const SCHED = 10.3 - LEAD;
+// A CUE WHOSE AUDIBLE EDGE IS NOT ITS RAMP gets its own lead, so its nodes start
+// earlier than the generic SCHED by exactly the table's margin. See
+// CUE_ONSET_LEAD: the boom's weight blooms 37ms after its ramp finishes, and
+// placing it on the generic lead put it that far behind the note it burst on.
+const schedFor = (name) => 10.3 - (CUE_ONSET_LEAD[name] ?? LEAD);
 assert(Math.abs(Audio.cueTimeInBeats(1) - SCHED) < 1e-9,
   'a beat ahead starts a beat from now, less the output latency and the perceptual lead');
 assert(Audio.cueTimeInBeats(1) < 10.3, 'the cue starts BEFORE its note, so the sound arrives on it');
 assert(Audio.cueTimeInBeats(0.1) === 10, 'a beat closer than the output latency clamps to now, not the past');
 assert(Audio.cueTimeInBeats(-3) === 10, 'a beat already heard clamps to now');
 assert(Audio.cueTimeInBeats(NaN) === 10, 'no beat means now');
-assert(Math.abs(Audio.cueLeadBeats() - (0.2 + LEAD + 0.1) * 2) < 1e-9,
-  'the lead a caller must give is latency plus the perceptual lead plus a tenth, in beats');
+// THE WIDEST lead in the sheet, not the generic one. This is the number a caller
+// uses to decide when to ask, and a caller that asked only the generic lead ahead
+// would hand the one cue with a wider lead a start time already in the past —
+// which clamps to now and plays late, the exact fault the table exists to fix.
+assert(Math.abs(Audio.cueLeadBeats() - (0.2 + MAX_CUE_LEAD + 0.1) * 2) < 1e-9,
+  'the lead a caller must give is latency plus the WIDEST cue lead plus a tenth, in beats');
+assert(MAX_CUE_LEAD >= LEAD, 'and the widest lead is never narrower than the generic one');
 assert(Audio.cueAt() === 10 && Audio.cueStart === null, 'outside a firing cueAt() is the live clock');
 
 // AUDIO SYNC. The player's offset stacks on what the browser reports, and every
@@ -77,7 +87,7 @@ assert(Audio.reportedLatencySec() === 0.2 && Math.abs(Audio.heardLatencySec() - 
   'a +50ms offset is added to the reported latency, and leaves the reported figure alone');
 assert(Math.abs(Audio.cueTimeInBeats(1) - (10.5 - 0.25 - LEAD)) < 1e-9,
   'a cue is brought forward by the offset too, so it still lands on its note');
-assert(Math.abs(Audio.cueLeadBeats() - (0.25 + LEAD + 0.1) * 2) < 1e-9,
+assert(Math.abs(Audio.cueLeadBeats() - (0.25 + MAX_CUE_LEAD + 0.1) * 2) < 1e-9,
   'and the lead a caller must give grows with it');
 Audio.setSyncOffset(-100);
 assert(Math.abs(Audio.heardLatencySec() - 0.1) < 1e-9, 'a negative offset leans the other way');
@@ -119,17 +129,29 @@ for (const name of names) {
   catch (e) { failed = true; console.error('FAIL: cue threw', name, e.message); continue; }
   if (!starts.length) { silent.push(name); continue; }
   const min = Math.min(...starts);
-  if (min < SCHED - 1e-9) early.push(`${name}@${min.toFixed(3)}`);
-  else if (min > SCHED + 1e-9) late.push(`${name}@${min.toFixed(3)}`);
+  const want = schedFor(name);
+  if (min < want - 1e-9) early.push(`${name}@${min.toFixed(3)}`);
+  else if (min > want + 1e-9) late.push(`${name}@${min.toFixed(3)}`);
   assert(Audio.cueStart === null, `${name} left no scheduled start behind`);
 }
 assert(early.length === 0, `no cue starts a node before its scheduled time: ${early.join(' ') || 'none'}`);
 // A volley or a spray holds its first shot back on purpose; a builder still on
 // the live clock would be a whole cue length out, not a few frames.
-const adrift = late.filter((s) => Number(s.split('@')[1]) > SCHED + 0.5);
+const adrift = late.filter((s) => Number(s.split('@')[1]) > schedFor(s.split('@')[0]) + 0.5);
 assert(adrift.length === 0, `every cue starts within half a second of its scheduled time: ${adrift.join(' ') || 'none'}`);
 console.log('cues that lead in late by design:', late.join(' ') || 'none');
 console.log('cues with no start on this stub:', silent.join(' ') || 'none');
+
+// The table is only worth having if it MOVES the cue it names. Asserted rather
+// than assumed, because a typo'd key would fail silently as "no entry, use the
+// generic lead" — which is the bug the table was added to fix, restored.
+for (const [name, lead] of Object.entries(CUE_ONSET_LEAD)) {
+  assert(lead > LEAD, `${name}'s own lead is wider than the generic one, or it need not be in the table`);
+  starts.length = 0;
+  Audio.sfx(name, { inBeats: 1 });
+  assert(starts.length > 0 && Math.abs(Math.min(...starts) - (10.3 - lead)) < 1e-9,
+    `${name} is placed by its own lead, not the generic one`);
+}
 
 // Unscheduled after scheduled: the start is not inherited.
 starts.length = 0;

@@ -1064,7 +1064,7 @@ export const JMJR4_DATA = {
    "mochi": "M OW1 CH IY0",
    "needlemouse": "N IY1 D AH0 L M AW2 S",
    "poyo": "P OY1 OW0",
-   "raymn": "R EY1 M AH0 N",
+   "ramon": "R AA0 M OW1 N",
    "thyme": "T AY1 M",
    "unpluggening": "AH0 N P L AH1 G AH0 N IH0 NG"
   },

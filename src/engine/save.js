@@ -87,6 +87,42 @@ function migrate(data) {
   return null;
 }
 
+function mergeRenamedMastery(oldValue, currentValue) {
+  if (!currentValue) return oldValue;
+  return {
+    ...oldValue,
+    ...currentValue,
+    xp: Math.max(Number(oldValue?.xp) || 0, Number(currentValue.xp) || 0),
+    level: Math.max(Number(oldValue?.level) || 0, Number(currentValue.level) || 0),
+    equipped: currentValue.equipped?.length ? currentValue.equipped : (oldValue?.equipped || []),
+  };
+}
+
+function migrateHeroIds(slot) {
+  let changed = false;
+  const mastery = slot.mastery;
+  if (mastery) {
+    if (mastery.raymn) {
+      mastery.ramon = mergeRenamedMastery(mastery.raymn, mastery.ramon);
+      delete mastery.raymn;
+      changed = true;
+    }
+    // Gary used to occupy this playable slot before the current hero was added.
+    if (mastery.gary) {
+      mastery.ramon = mergeRenamedMastery(mastery.gary, mastery.ramon);
+      delete mastery.gary;
+      changed = true;
+    }
+  }
+  const deaths = slot.stats?.deathsByHero;
+  if (deaths?.raymn !== undefined) {
+    deaths.ramon = (Number(deaths.ramon) || 0) + (Number(deaths.raymn) || 0);
+    delete deaths.raymn;
+    changed = true;
+  }
+  return changed;
+}
+
 function normalizeSettings(settings) {
   const defaults = defaultSettings();
   const oldVersion = Number(settings && settings.renderDensityVersion) || 0;
@@ -149,6 +185,7 @@ export class Save {
     const normalized = normalizeSettings(data.settings);
     data.settings = normalized.settings;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
+    let heroIdsMigrated = false;
     // Relay simplification: refund the retired PERFECT TAG WINDOW and RELAY
     // METER upgrades exactly once, then drop their bench entries.
     for (const s of data.slots) {
@@ -177,11 +214,10 @@ export class Save {
     for (const s of data.slots) {
       if (!s) continue;
       if (s.tutor) delete s.tutor.firstPassive;
-      if (s.mastery && s.mastery.gary && !s.mastery.raymn) s.mastery.raymn = s.mastery.gary;
-      if (s.mastery) delete s.mastery.gary;
+      heroIdsMigrated = migrateHeroIds(s) || heroIdsMigrated;
     }
     this.data = data;
-    if (normalized.densityHistoryMigrated) this.persist();
+    if (normalized.densityHistoryMigrated || heroIdsMigrated) this.persist();
     return this;
   }
 
@@ -203,6 +239,7 @@ export class Save {
     }
     data.settings = normalizeSettings(data.settings).settings;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
+    for (const s of data.slots) if (s) migrateHeroIds(s);
     this.data = data;
     this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
     this.persist();

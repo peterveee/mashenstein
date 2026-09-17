@@ -217,7 +217,7 @@ export const beatCharts = {
       // stood at 8.5, on the second coin of the figure below, and Peter chose
       // to move the box rather than the coins (15 Sep 2026). A box this far
       // out is past the rocket fist's ordinary flight, so on a beat stage the
-      // fist flies longer (run.js FIST_PARK_SEC_BEAT) and Ray M'N keeps it.
+      // fist flies longer (run.js FIST_PARK_SEC_BEAT) and Ramon keeps it.
       //
       // `every: 3` is the whole of "occasional".  Three passes of a 16-beat loop
       // at 124bpm is 23 seconds, so a 90-second stage deals about four of these;
@@ -382,7 +382,7 @@ export const beatCharts = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -1,
+  master: -7.9,
   masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }],
   layers: [{ key: "bass3", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead8", from: "lead3", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead12", from: "lead4", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead10", from: "lead", independent: true }, { key: "lead11", from: "lead", independent: true }, { key: "crash2", from: "crash", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","bass","bass3","lead10","lead","lead11","lead2","lead3","lead8","lead4","lead5","lead9","lead6","lead7","sweeps"],

@@ -9,7 +9,7 @@ let fade = 0;          // 0 = clear, 1 = fully covered
 let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
 let transitionStyle = 'shutter';
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
-const TRANSITION_HEROES = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
+const TRANSITION_HEROES = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
 // Null until the game knows who you are. The shutter used to open on a hero
 // from the very first transition — title, difficulty, the intro panels — which
 // spoiled a cast the intro is in the middle of introducing, and presented one of
@@ -52,11 +52,24 @@ function publish() {
   window.__mash_lifecycle?.apply?.();
 }
 
+// THE CAMEO'S OWN CLOCK, and the reason it needs one.
+//
+// The hero on the sticker used to take his `time` from the transition AMOUNT, which
+// is not a clock: it runs 0 -> 1 as the shutter closes and 1 -> 0 as it opens. So the
+// pose ran forwards for the cover and then BACKWARDS for the reveal — a hero who
+// waved, then un-waved — and sat still at the turnaround, which is the moment he is
+// biggest and most looked at.
+//
+// Seconds, accumulated, reset at the top of each transition so every cameo starts
+// from the same pose rather than from wherever the last one happened to stop.
+let cameoClock = 0;
+
 export function setState(next, ...args) {
   cameo = true;
   transitionStyle = 'shutter';
   pending = { next, args };
   fading = 1;
+  cameoClock = 0;
   if (!current) { firstState(next, args); }
 }
 
@@ -107,6 +120,7 @@ export function updateState(dt) {
   Input.pollGamepad();
   Input.resolveTouches();
   if (fading !== 0) {
+    cameoClock += dt;
     fade += fading * dt * TRANSITION_SPEED;
     if (fade >= 1 && pending) {
       fade = 1;
@@ -146,11 +160,24 @@ function drawTransition(ctx, amount) {
   const a = Math.max(0, Math.min(1, amount));
   const eased = a * a * (3 - 2 * a);
   const cx = W / 2, cy = H / 2;
-  // A tiny anticipation squash makes the bubble feel hand-animated rather
-  // than geometrically perfect. Radius 320 safely covers every corner.
+  // SIZED TO THE FRAME, not to a remembered one.
+  //
+  // These were 320 and 300, which do "safely cover every corner" of a 480x270
+  // picture and nothing else. H is a live binding: in phone portrait the renderer
+  // publishes a frame around 1200 units tall, so the sticker went on being a
+  // landscape-shaped 640x600 blob in the middle of it — it covered the width,
+  // stopped well short of the top and bottom, and the room stayed visible around a
+  // transition whose entire job is to cover the room.
+  //
+  // Expressed against the frame's own half-diagonal instead, which is the smallest
+  // radius that can reach a corner. The two ratios are the old numbers divided by
+  // the landscape half-diagonal (275.363), so at 480x270 this is the same sticker
+  // it has always been, to three decimal places — and at any other shape it is the
+  // sticker that shape needs.
+  const unit = Math.hypot(W, H) / 2;
   const pop = Math.sin(a * Math.PI) * 0.035;
-  const rx = Math.max(0.01, 320 * eased * (1 + pop));
-  const ry = Math.max(0.01, 300 * eased * (1 - pop));
+  const rx = Math.max(0.01, unit * 1.16210 * eased * (1 + pop));
+  const ry = Math.max(0.01, unit * 1.08947 * eased * (1 - pop));
   if (a <= 0.002) return;
 
   ctx.save();
@@ -160,7 +187,9 @@ function drawTransition(ctx, amount) {
     const th = i * Math.PI * 2 / scallops;
     const px = cx + Math.cos(th) * rx * 0.94;
     const py = cy + Math.sin(th) * ry * 0.94;
-    const pr = Math.max(2, 18 * eased);
+    // Scalloped to the same proportion, or a taller frame gets a bigger sticker
+    // with the same little bumps on it and the edge reads as plain.
+    const pr = Math.max(2, unit * 0.06537 * eased);
     ctx.fillStyle = i % 2 ? '#d8a4ef' : '#f2a6c8';
     ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
   }
@@ -171,16 +200,34 @@ function drawTransition(ctx, amount) {
   // hero gets a tiny personality pose, turning loading time into a roll call.
   if (cameo && transitionHero && a > 0.52) {
     const show = Math.min(1, (a - 0.52) / 0.2);
-    const bounce = Math.sin(show * Math.PI) * 5;
+    const bounce = Math.sin(show * Math.PI) * unit * 0.01816;
     const sy = 0.78 + show * 0.22;
-    const pose = { kind: 'idle', grounded: true, time: a * 2.5, menu: true };
+    // Real seconds, so the idle cycle runs at its authored rate and only ever
+    // forwards. `menu: true` is the flourish mode every non-gameplay caller uses.
+    const pose = { kind: 'idle', grounded: true, time: cameoClock, menu: true };
+    // A little life of its own on top of whatever the hero's own beat is doing: a
+    // slow breath, and a touch of weight shifting. Small on purpose — this is a
+    // loading screen, not a performance, and the pop-in bounce below is still the
+    // gesture that introduces him.
+    const breathe = Math.sin(cameoClock * 2.4) * unit * 0.0045;
+    const sway = Math.sin(cameoClock * 1.3) * 0.012;
+    pose.lean = sway;
     Object.assign(pose, transitionCameoAction(transitionHero));
-    drawToon(ctx, transitionHero, pose, cx, cy + 37 - bounce, 68 * sy, { alpha: show });
+    // The cameo belongs to the sticker, so it is measured in the same unit. Left at
+    // a flat 68 it was a correctly-sized hero on a landscape sticker and a doll lost
+    // in the middle of a portrait one.
+    drawToon(ctx, transitionHero, pose, cx, cy + unit * 0.13437 - bounce - breathe,
+      unit * 0.24695 * sy, { alpha: show });
     // Uneven sticker stars keep the cameo playful, not ceremonial.
     ctx.globalAlpha = show;
     ctx.fillStyle = '#f6d33c';
+    // Stars too: their offsets are where they sit ON the sticker, not where they sit
+    // in a 480x270 picture.
+    const u = unit / 275.363;
     for (const [sx, sy2, s] of [[-42, -27, 4], [43, -17, 3], [-38, 28, 3], [38, 30, 4]]) {
-      ctx.fillRect(cx + sx - s, cy + sy2 - 1, s * 2, 2); ctx.fillRect(cx + sx - 1, cy + sy2 - s, 2, s * 2);
+      const [ox, oy, r] = [sx * u, sy2 * u, Math.max(2, s * u)];
+      ctx.fillRect(cx + ox - r, cy + oy - 1, r * 2, 2);
+      ctx.fillRect(cx + ox - 1, cy + oy - r, 2, r * 2);
     }
   }
   ctx.restore();

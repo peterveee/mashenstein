@@ -40,11 +40,6 @@ All under `work/video/`, all 3840x2160, all reproducible — the seeds are fixed
 
 | take | what it is | shots |
 | --- | --- | --- |
-| `k-hub` | HUB — food court, fresh save, walking right | 2 |
-| `k-toaster` | SPEED-1 — bot play, seed 31 (jumps for the toaster) | 2 |
-| `k-frost1` | FROST-1 — bot play, Grumpos seed 51 | 3 |
-| `k-finish` | PLUMBER-1 — bot play, full stage: has the spring fork AND the finish | 1 |
-| `k-frost3` | FROST-3 — bot play, B-33P seed 53 | 1 |
 
 Recorded by `record-4k.sh` via `mark.mjs`, which logs when the set piece actually
 happens (`--mark=loop,bonk,portal,appliance,rewind,finish`) and can force one
@@ -58,37 +53,38 @@ happens (`--mark=loop,bonk,portal,appliance,rewind,finish`) and can force one
 | 1 | 0:00.24 | 1.50 | INSERT COIN | `insert.mp4` | 0s | — |
 | 2 | 0:03.15 | 1 | ACT I card | `card-act1a.png` | — | — |
 | 3 | 0:05.08 | 1 | EMERGENCY LIGHTING card | `card-act1b.png` | — | — |
-| 4 | 0:07.02 | 0.50 | FOOD COURT floor (half bar) | `k-hub` | 7.9s | 2400x1350 @700,350 |
-| 5 | 0:07.98 | 2 | plumber-1 Lorenzo (slide kick) | `work/video/p-lorenzo-20260915-225241.mp4` | 9.979032258064516s | — |
-| 6 | 0:11.85 | 1 | L5 LORENZO card | `say-lorenzo.png` | — | — |
-| 7 | 0:13.79 | 1 | PORTAL hero swap | `k-toaster` | 34.2s | wide (4K) |
-| 8 | 0:15.73 | 1 | RUSTY kicks the cone | `work/video/p-rusty-20260915-220954.mp4` | 4.9s | — |
-| 9 | 0:17.66 | 1.50 | speed-1 THE LOOP (zoom) | `work/video/k2-loop-20260915-210506.mp4` | 30.2s | 2560x1440 @0,470 |
-| 10 | 0:20.56 | 0.50 | FOOD COURT: the dark cabinets | `k-hub` | 4.6s | 2880x1620 @300,220 |
-| 11 | 0:21.53 | 1 | K4 KIKO card | `say-kiko.png` | — | — |
-| 12 | 0:23.47 | 1.50 | KIKO runs and kicks the barrel | `work/video/k2-kiko-20260915-210715.mp4` | 14.52s | 3100x1744 @0,416 |
-| 13 | 0:26.37 | 0.50 | EGGSHELL takes the hit (zoom) | `work/video/k2-kiko-20260915-210715.mp4` | 17.42s | 1700x956 @700,200 |
-| 14 | 0:27.34 | 1 | E1 EGGSHELL card | `say-eggshell.png` | — | — |
-| 15 | 0:29.27 | 2 | frost-1 Grumpos axe (zoom) | `k-frost1` | 1s | 2560x1440 @11,534 |
-| 16 | 0:33.15 | 1 | REWIND power-up | `work/video/p-rewind-20260915-223702.mp4` | 9.55s | — |
-| 17 | 0:35.08 | 0.75 | FERNWICK looses an arrow | `work/video/k2-fernbow-20260915-234820.mp4` | 14.45s | — |
-| 18 | 0:36.53 | 0.25 | roll speed | `work/video/k2-loop-20260915-210506.mp4` | 1s | — |
-| 19 | 0:37.02 | 0.25 | roll SPRING pad | `k-finish` | 30.95s | wide (4K) |
-| 20 | 0:37.50 | 0.25 | roll plumber | `work/video/k2-plumber1-20260915-210307.mp4` | 17.4s | — |
-| 21 | 0:37.98 | 0.25 | roll speed | `work/video/k2-loop-20260915-210506.mp4` | 18s | 1920x1080 @50,894 |
-| 22 | 0:38.47 | 0.25 | roll frost-1 | `k-frost1` | 2.5s | wide (4K) |
-| 23 | 0:38.95 | 0.25 | roll speed toaster | `k-toaster` | 25s | wide (4K) |
-| 24 | 0:39.44 | 0.25 | roll frost-3 Fernwick | `k-frost3` | 42s | wide (4K) |
-| 25 | 0:39.92 | 0.25 | roll frost-1 | `k-frost1` | 20s | wide (4K) |
-| 26 | 0:40.40 | 0.25 | roll rhythm (Kiko) | `work/video/k2-kiko-20260915-210715.mp4` | 5.3s | 3100x1744 @0,416 |
-| 27 | 0:40.89 | 1 | FINISH: LORENZO takes the flag | `work/video/p-fin-lorenzo-20260916-005742.mp4` | 4.15s | — |
-| 28 | 0:42.82 | 0.75 | pit gag (Clara goes under) | `work/video/p-pit-clara-20260916-004012.mp4` | 26.4s | 1700x956 @560,1204 |
-| 29 | 0:44.27 | 1.13 | FLOOR card | `card-floor.png` | — | — |
-| 30 | 0:46.45 | 1.87 | C3 Clara TO BE CONTINUED (push in, hold) | `claracard.mp4` | 0s | — |
-| 31 | 0:50.08 | 0.31 | SCREEN CLOSES on the card | `crtoff.mp4` | — | — |
-| 32 | 0:50.68 | 1.34 | GARY peeks, far left | `gary.mp4` | 0s | — |
-| 33 | 0:53.28 | 3 | TITLE + COMING SOON (held) | `titleclip.mp4` | 0s | — |
-| 34 | 0:59.09 | 0.25 | black tail | `black.png` | — | — |
+| 4 | 0:07.02 | 0.50 | FOOD COURT floor (half bar) | `work/video/k2-hub-20260916-094145.mp4` | 7.9s | 3070x1727 @420,300 |
+| 5 | 0:07.98 | 2 | plumber-1 Lorenzo (slide kick) | `work/video/p-lorenzo-20260915-225241.mp4` | 12.029032258064516s | 2382x1340 @280,620 |
+| 6 | 0:11.85 | 1 | L5 LORENZO card | `say-lorenzo.mp4` | 0s | — |
+| 7 | 0:13.79 | 1 | PORTAL hero swap (zoom) | `work/video/k3-toaster-20260916-114647.mp4` | 34.2s | 2880x1620 @0,380 |
+| 8 | 0:15.73 | 1 | RUSTY kicks the cone (zoom) | `work/video/p2-rusty-20260916-112537.mp4` | 3.92s | 3040x1710 @0,290 |
+| 9 | 0:17.66 | 1.50 | speed-1 THE LOOP (zoom) | `work/video/k4-loop-20260916-114824.mp4` | 30.18s | 3244x1822 @0,178 |
+| 10 | 0:20.56 | 0.50 | FOOD COURT: the dark cabinets | `work/video/k2-hub-20260916-094145.mp4` | 4.6s | 3626x2040 @107,0 |
+| 11 | 0:21.53 | 1 | K4 KIKO card | `say-kiko.mp4` | 0s | — |
+| 12 | 0:23.47 | 2 | KIKO kicks the barrel into EGGSHELL (follow) | `work/video/k8-kiko-20260916-115221.mp4` | 14.36s | 3100x1744 @0,416 |
+| 13 | 0:27.34 | 1 | E1 EGGSHELL card | `say-eggshell.mp4` | 0s | — |
+| 14 | 0:29.27 | 1 | frost-1 Grumpos axe (zoom) | `work/video/k2-frost1-20260916-115413.mp4` | 1s | 2560x1440 @11,534 |
+| 15 | 0:31.21 | 1 | frost-3 B-33P shoots the snowman | `work/video/k6-frost3-20260916-124401.mp4` | 9.3s | 3244x1822 @0,178 |
+| 16 | 0:33.15 | 1 | REWIND power-up | `work/video/p-rewind-20260915-223702.mp4` | 9.55s | 2809x1580 @0,580 |
+| 17 | 0:35.08 | 0.75 | FERNWICK looses an arrow (zoom) | `work/video/k3-fernbow-20260916-115645.mp4` | 14.15s | 2743x1543 @0,420 |
+| 18 | 0:36.53 | 0.25 | roll speed (Lorenzo) | `work/video/k4-loop-20260916-114824.mp4` | 41.6s | — |
+| 19 | 0:37.02 | 0.25 | roll SPRING pad (zoom) | `work/video/k3-finish-20260916-114952.mp4` | 30.95s | 3076x1730 @0,180 |
+| 20 | 0:37.50 | 0.25 | roll frost-1 | `work/video/k2-frost1-20260916-115413.mp4` | 2.5s | — |
+| 21 | 0:37.98 | 0.25 | roll speed booster | `work/video/k4-loop-20260916-114824.mp4` | 1.72s | 3040x1710 @0,290 |
+| 22 | 0:38.47 | 0.25 | roll plumber | `work/video/k3-plumber1-20260916-115751.mp4` | 18.95s | — |
+| 23 | 0:38.95 | 0.25 | roll speed toaster | `work/video/k3-toaster-20260916-114647.mp4` | 25s | — |
+| 24 | 0:39.44 | 0.25 | roll frost-3 Fernwick | `work/video/k6-frost3-20260916-124401.mp4` | 42s | 3244x1822 @0,178 |
+| 25 | 0:39.92 | 0.25 | roll frost-1 | `work/video/k2-frost1-20260916-115413.mp4` | 20s | — |
+| 26 | 0:40.40 | 0.25 | roll rhythm (Kiko) | `work/video/k8-kiko-20260916-115221.mp4` | 5.14s | 3100x1744 @0,416 |
+| 27 | 0:40.89 | 0.50 | FINISH: LORENZO reaches the pad | `work/video/p-fin-lorenzo-20260916-005742.mp4` | 4.15s | — |
+| 28 | 0:41.85 | 0.50 | FINISH: the flag goes up (zoom) | `work/video/p-fin-lorenzo-20260916-005742.mp4` | 5.12s | 2400x1350 @1440,450 |
+| 29 | 0:42.82 | 0.75 | pit gag (Clara goes under) | `work/video/p-pit-clara-20260916-004012.mp4` | 26.4s | 1700x956 @560,1204 |
+| 30 | 0:44.27 | 1.13 | FLOOR card | `card-floor.png` | — | — |
+| 31 | 0:46.45 | 1.87 | C3 Clara TO BE CONTINUED (push in, hold) | `claracard.mp4` | 0s | — |
+| 32 | 0:50.08 | 0.31 | SCREEN CLOSES on the card | `crtoff.mp4` | — | — |
+| 33 | 0:50.68 | 1.34 | GARY peeks, far left | `gary.mp4` | 0s | — |
+| 34 | 0:53.28 | 3 | TITLE + COMING SOON (held) | `titleclip.mp4` | 0s | — |
+| 35 | 0:59.09 | 0.25 | black tail | `black.png` | — | — |
 
 Total **59.57s**.
 

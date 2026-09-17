@@ -1,10 +1,12 @@
 // The rewind power-up (docs/mobile-rewind-powerup.md). The capsule is dealt on
-// EVERY device and banks one fixed 3-second rewind, fired by the touch RWD
-// button or KeyZ. This suite drives the touch case, where the mechanism is
+// EVERY device and banks one fixed 3-second rewind, spent automatically on the
+// next mistake. This suite drives the touch case, where the mechanism is
 // load-bearing rather than a convenience: with no free hold-Left rewind the
-// snapshot ring is small, records ONLY while a charge is armed, and the charge
-// is single-shot — consumed after the final restore, never refunded by the
-// snapshots it replays (which were recorded while armed and so still carry it).
+// snapshot ring is small (45 records, exactly the 3 seconds the capsule plays)
+// but it ROLLS ALL RUN, so a capsule collected one second before a hit still
+// rewinds the full three. The charge is single-shot — consumed after the final
+// restore, never refunded by the snapshots it replays (recorded while armed,
+// so they still carry it).
 // Desktop keeps the full 10s ring and constant recording, so only the firing
 // and single-shot halves apply there; tests/rewind-pooling.js pins that path.
 // Boots the real bundle on a simulated coarse-pointer device, the same route
@@ -54,7 +56,11 @@ for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
 frames(40);
 globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
 frames(2);
-dom.key('Enter'); frames(40);
+dom.key('Enter'); frames(40);   // USE the cabinet: the hero dives into the screen
+// The dive is a ~2.2s animation, skippable after 0.45s by any press. Pressing
+// through it is what every returning player will do, and it keeps this suite
+// measuring the route rather than the cutscene.
+dom.key('Enter'); frames(40);   // skip the dive -> stage select
 dom.key('Enter'); frames(40);
 dom.key('Enter'); frames(30);
 dom.key('Enter'); frames(30);
@@ -69,9 +75,8 @@ assert(true, 'reached a live run on a coarse-pointer device');
 
 // God mode, as in the pooling test: a death re-enters the state and resets the
 // ring, which would fail every assertion below for reasons that have nothing
-// to do with the power-up. The drip is also silenced so a lucky 6% capsule
-// cannot arm recording during the stretches that assert it is off — the drip
-// deals rewind on every device now, so this matters more than it used to.
+// to do with the power-up. The drip is silenced so a lucky 6% capsule cannot
+// bank a charge under an assertion that expects none.
 const realTakeHit = run.takeHit;
 run.takeHit = () => {};
 run.drip.capsuleTimer = 1e9;
@@ -91,23 +96,32 @@ const ring = run.rewindFrames;
 // feature is that a touch run never carries the big ring.
 assert(ring.capacity === 45, `the touch ring holds 3 seconds, not 10 (capacity ${ring.capacity})`);
 
-// --- no charge, no tape ------------------------------------------------------
+// --- the tape rolls without a charge ----------------------------------------
+// The whole point of the fix: recording must PRECEDE the mistake, so a tape
+// that only starts at collection makes the rewind's length depend on how long
+// ago the capsule was picked up.
 frames(300); // five seconds of ordinary play
-assert(ring.length === 0, `the ring stays empty through normal play (${ring.length})`);
+assert(ring.length === 45,
+  `the tape rolls through ordinary play with nothing banked (${ring.length})`);
 
 // --- the scripted spawn path -------------------------------------------------
 // This run is plumber-1, which scripts no capsule; point its stage copy at a
 // fraction just ahead and the spawner must deal exactly one capRewind.
-run.stage = { ...run.stage, rewindAt: Math.min(0.9, (run.distance / run.totalDist) + 0.02) };
+const scriptedAt = Math.min(0.9, (run.distance / run.totalDist) + 0.02);
+run.stage = { ...run.stage, rewindAt: scriptedAt };
+// resolveLayout ran in enter(), so the spawner is reading the LAYOUT's copy —
+// point that at the same fraction or the stage edit above is never consulted.
+run.layout = { ...run.layout, rewindAt: scriptedAt };
 for (let i = 0; i < 600 && !run.pickups.some((p) => p.type === 'capRewind'); i++) frames(1);
 assert(run.pickups.some((p) => p.type === 'capRewind'), 'a scripted rewindAt deals the capsule');
 assert(run.rewindCapSpawned === true, 'and marks itself spent so it deals exactly one');
 
-// --- arming rolls the tape ---------------------------------------------------
+// --- a fresh charge finds a FULL tape already waiting -------------------------
 settle();
 run.powerups.grab('rewind');
 frames(60);
-assert(ring.length > 0, `an armed charge starts recording (${ring.length})`);
+assert(ring.length === 45,
+  `a charge collected mid-run has its whole three seconds immediately (${ring.length})`);
 frames(300);
 assert(ring.length === 45, `and the tape caps at the 3-second window (${ring.length})`);
 
@@ -132,15 +146,16 @@ assert(!run.pickups.some((p) => p.live && p.type === 'capRewind'),
 // moment of finish — ride the ramp out before asking.
 frames(35);
 assert(run.rewindLockout > 0, 'the ordinary lockout backstops the finish');
-frames(120);
-assert(ring.length === 0, `the spent tape stays drained with no charge armed (${ring.length})`);
+frames(200);   // 45 records at 15/s is three seconds of play
+assert(ring.length === 45,
+  `the tape refills after a spend, ready for the next capsule (${ring.length})`);
 
 // --- it undoes a PIT, which nothing else in the game does --------------------
 settle();
 run.rewindUsed = false; // a fresh isolated charge for this second behaviour check
 run.powerups.grab('rewind');
-frames(90);   // roll enough tape to have somewhere to go back to
-assert(ring.length > 0, `tape rolling before the pit test (${ring.length})`);
+frames(90);
+assert(ring.length === 45, `tape rolling before the pit test (${ring.length})`);
 const beforePit = run.distance;
 realTakeHit.call(run, 'TEST PIT', true);   // isPit — normally unsurvivable
 assert(run.rewindPlayFrames > 0, 'a banked rewind fires on a fatal pit');
@@ -153,9 +168,9 @@ assert(!run.powerups.active.rewind, 'and it spends the charge like any other sav
 settle();
 run.rewindUsed = false; // persistence is tested independently from the spent examples
 run.powerups.grab('rewind');
-frames(120);
+frames(200);
 const armedLen = ring.length;
-assert(armedLen > 0, `a fresh capsule records again (${armedLen})`);
+assert(armedLen === 45, `a fresh capsule finds a full tape again (${armedLen})`);
 // Jump the power-up clock well beyond the old maximum arm duration. This
 // avoids advancing far enough to finish the level while still proving there
 // is no hidden timer attached to the charge.

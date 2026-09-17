@@ -95,7 +95,7 @@ assert(!html.includes('window.__MASH_DEV__=true') && !html.includes('__DEV_GATE_
   'production shell cannot bypass the iPhone installation gate');
 assert(!existsSync(join(root, 'dist/audio')),
   'no audio assets are shipped — weapon cues are synthesised in-engine, not fetched');
-assert(game.includes('contact-b33p-orb-pop') && game.includes('raymn-rocket-fist-launch'),
+assert(game.includes('contact-b33p-orb-pop') && game.includes('ramon-rocket-fist-launch'),
   'weapon cue recipes are bundled into the game bundle for procedural playback');
 
 const buildSource = readFileSync(join(root, 'build/build.js'), 'utf8');

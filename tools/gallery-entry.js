@@ -14,7 +14,8 @@ import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld, screenYFor } from '../src/engine/ca
 // The game's cameras, read from the modules that own them so the zoom-levels
 // section can never quote a number the game has stopped using.
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
-import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook } from '../src/game/hub/index.js';
+import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook, cabinetScreenGeometry, cabinetScreenArt } from '../src/game/hub/index.js';
+import { makeCabinetDive, DIVE_DURATION, DIVE_KEYFRAMES, DIVE_VARIANTS } from '../src/game/hub/cabinet-dive.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite, drawPellet } from '../src/engine/sprites.js';
 import {
@@ -31,7 +32,7 @@ import {
 } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
-  cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
+  cabinetPalette, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
 import {
@@ -798,7 +799,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     + 'on the Plumber Panic lane; these pose tiles stay focused on the hero bodies. Grumpos does lose '
     + 'the axe from his back while it is in flight and Lorenzo shows the grounded wrench-smash body action. '
     + 'Slide is the shipped POWER SLIDE on the humanoid rigs, per-hero garments and all; B-33P, Mochi, '
-    + 'Chompo and Ray M\'n keep their crouch, exactly as poseFromPlayer serves it.');
+    + 'Chompo and Ramon keep their crouch, exactly as poseFromPlayer serves it.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
   for (const id of ids) {
     for (const kind of ['idle', 'run', 'jump', 'slide', 'celebrate']) {
@@ -3484,7 +3485,7 @@ function followerChargeColor(fill, ready) {
 
 const FOLLOWER_CROWN = {
   lorenzo: 0.99, gnash: 1.08, fernwick: 1.05, b33p: 0.93,
-  mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
+  mochi: 0.84, chompo: 0.86, ramon: 0.9, grumpos: 1.18,
 };
 
 function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0 } = {}) {
@@ -3628,7 +3629,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       label: 'grounded cafeteria shape · fuller waist · shorter stance',
       spec: { torsoWidth: 1.04, taper: 1.08, legLength: 0.92 },
     },
-    raymn: {
+    ramon: {
       label: 'lanky floating hero · narrower, taller assembly',
       spec: { figureScaleX: 0.91, figureScaleY: 1.07 },
     },
@@ -3715,7 +3716,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     ['mochi', 'body · ears · face synchronized to two hops'],
     ['chompo', 'snack lunge · hard snap · satisfied bounce'],
     ['gary', 'steady shoulder · compact wave'],
-    ['raymn', 'floating-glove high-five · raised-fist finish'],
+    ['ramon', 'floating-glove high-five · raised-fist finish'],
     ['dolores', 'restrained clap · formal bow'],
     ['grumpos', 'overhead · horizontal biceps · front flex'],
     ['clara', 'arms out wide, clear of the head · two-step dance'],
@@ -3844,7 +3845,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     + 'Every pair is legacy on the left or above, styled on the right or below, at the same '
     + 'phase and the same size. Fernwick and Grumpos keep their SHIPPED leg swing and take the '
     + 'new foot and jump only — Grumpos because his skirt hem was cut to his shipped knee to the '
-    + '0.0001u and there is no room to move it. Raymn has no legs, so he takes the ankle roll '
+    + '0.0001u and there is no room to move it. Ramon has no legs, so he takes the ankle roll '
     + 'and nothing else. The bare-legged five carry the spec\'s cadence and feet on shipped leg '
     + 'BONES — see the thigh bake-off at the end of this section for why the geometry came back.');
 
@@ -4331,7 +4332,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     + 'multiplier moves a proportional width, while at 34u and 24u it is scaling the FLOOR, and '
     + 'those two sites draw an identical brow despite being different sizes. That is why the '
     + 'thinning reads much harder in the menus and the cast parade than it does in a run. '
-    + 'grumpos is `gruff`, gnash and raymn are `cocky`, the rest draw brows off `focus` while '
+    + 'grumpos is `gruff`, gnash and ramon are `cocky`, the rest draw brows off `focus` while '
     + 'running; fernwick (`bright`) and b33p (robot LEDs) draw none and are not shown.');
 
   // Width is settled at 0.018u, so this axis is now DARKNESS. `thin dark` is the
@@ -4360,14 +4361,14 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   // five below, of which gary is the one that matters most: his p.e is #d83030,
   // the only non-black brow ink in the cast, and the only one where lightening
   // costs hue as well as tone. See BROW_L_SCALE.
-  const IDS = ['grumpos', 'gary', 'gnash', 'raymn'];
+  const IDS = ['grumpos', 'gary', 'gnash', 'ramon'];
 
   // A frozen brow comparison has to dodge two separate suppressors at once, and
   // this section has now been caught by both. `relaxed` unclenches grumpos for
   // 2.2s of every 8.3 mid-run and drops his brows (the ink bake-off's 0.42 lands
   // inside it); and every hero blinks on their own seeded clock, which closes
   // the eyes and takes the brows with them. Swept at 0.25s across 2..7, the
-  // holes are 2.75 (gnash), 3 (gary) and 5 (raymn) — 4 is the phase furthest
+  // holes are 2.75 (gnash), 3 (gary) and 5 (ramon) — 4 is the phase furthest
   // from all of them, with a clean quarter-second either side.
   //
   // Note gary's HUD row is brow-less no matter what this is set to, and that is
@@ -5589,7 +5590,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     + '<br><br>And the MARKER wears the offset, not the hero. The mast stands one hero-reach right of the '
     + 'plunger, so he rides the whole way down already centred on the cap he is about to land on — where '
     + 'before, the two shared a centre line and he had to shuffle sideways between the ride and the '
-    + 'payoff. Mochi, Chompo and Raymn are the exception: no arms, so they hold the pole with their whole '
+    + 'payoff. Mochi, Chompo and Ramon are the exception: no arms, so they hold the pole with their whole '
     + 'body and step out to it, which is the only shuffle left in the sequence.');
 
   // The full finale on a loop: run in, catch, ride, land, payoff, hold.
@@ -5609,7 +5610,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       t,
     };
   };
-  for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'grumpos', 'mochi', 'chompo', 'raymn']) {
+  for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'grumpos', 'mochi', 'chompo', 'ramon']) {
     tile(grid, `${id} — the whole finale`,
       'Catch, ride, land, celebrate. Watch the hand against the mast and the feet against the cap.',
       CTW, CTH, (ctx, t) => {
@@ -5678,7 +5679,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // (see slideExtra). The slide painter (drawSlideKick + slideTorsoCapsule) lives
 // in toons.js; the tuck-roll and belly-dive painters stay there too, out of
 // the running. Still open, and why a lab section may return: the non-humanoid
-// rigs (B-33P, Mochi, Chompo, Ray M'n) keep the crouch and need their own
+// rigs (B-33P, Mochi, Chompo, Ramon) keep the crouch and need their own
 // treatment, and hero gear (Fernwick's shield, Gnash's tail) is not in the
 // slide yet.
 
@@ -6658,7 +6659,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   {
     const grid = sub('3. Every hero through the two cuts that carry a name',
       'NAMED is the only cut whose pill width answers to the hero, and RELAY is the only one that draws a '
-      + 'second face. The whole roster through both, at 5x: RAY M\'N is the widest name and B-33P the '
+      + 'second face. The whole roster through both, at 5x: RAMON is the widest name and B-33P the '
       + 'hardest crop.');
     const HW = 150, HH = 26;
     for (const hero of Object.keys(HERO_BY_ID)) {
@@ -7434,7 +7435,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 //   BOOT      lorenzo, clara       squared off, low cut, big below the ankle
 //   SLIPPER   grumpos, kiko, fernwick, dolores
 //   SNEAKER   gary
-//   OVAL      b33p, gnash, raymn, and the guest — unchanged, unset
+//   OVAL      b33p, gnash, ramon, and the guest — unchanged, unset
 //
 // Mochi and Chompo are not on the seam at all: the disc rig paints its own
 // high-heel pumps and the pika rig has no shoe.
@@ -8144,6 +8145,286 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
+// ------------------------------------------- cabinet dive bake-off (lab)
+// OPEN. The hero leaving the food court by going INTO a machine instead of the
+// screen cutting to stage select.
+//
+// Nothing here is a restaging. These tiles import the hub's own
+// src/game/hub/cabinet-dive.js and hand it gallery geometry instead of hub
+// geometry — the same module, the same drawToon call, the same
+// drawCabinetScreen clip with its scanlines and gloss laid over the hero. If a
+// tile and the game ever disagree, one of them is a copy, and the copy is the
+// one that is wrong.
+//
+// Two questions are open: which combination of the three ingredients to ship
+// (the hop is the backbone; pull and pixel layer over the same timeline), and
+// whether cabinetScreenGeometry actually finds the ground line on every style
+// pack or only on the ones whose horizon sits at GROUND_Y.
+{
+  const grid = section('cabinet-dive', 'Cabinet dive — the hero into the screen',
+    'OPEN — pressing USE on a cabinet currently cuts straight to stage select. This is the '
+    + 'two seconds that were missing: a crouch, a leap at the glass, a perspective shrink '
+    + 'across the plane, and a landing on the attract screen’s own ground line at eight '
+    + 'pixels tall. Driven by the hub’s real cabinet-dive.js at HUB_ZOOM, so this is the '
+    + 'size the concourse actually shows it. Five combinations; the hop is in all but the last.');
+
+  const CS = cabinetStyle();                     // the active silhouette, not a literal
+  const HERO = 'lorenzo';
+  const PLUMBER = CABINETS[0];
+  // The box is sized off the arc, not chosen: the apex is 0.62 of a 46u hero
+  // above the floor, and the machine is CS.h tall standing on it.
+  const BOX_W = 116, BOX_H = CS.h + 46 + 12;
+  const CAB_X = BOX_W / 2, FLOOR = BOX_H - 6, CAB_Y = FLOOR - CS.h;
+  const GLASS = cabinetScreenRect(CAB_X - CS.w / 2, CAB_Y, CS.w, CS.h);
+  const GEOM = cabinetScreenGeometry(GLASS.w, GLASS.h);
+
+  const build = (variant, cab = PLUMBER, heroId = HERO, dir = 'in') => makeCabinetDive({
+    cab, heroId, variant, dir,
+    cabX: CAB_X, cabY: CAB_Y, cabW: CS.w, cabH: CS.h,
+    floorY: FLOOR, heroH: 46, startX: CAB_X,
+    insideGroundY: GEOM.groundY, insideUnit: GEOM.unit,
+    // No sfx and no shake: a page with five of these looping should be silent
+    // and still. That the module takes them injected is what makes it possible.
+  });
+
+  // One complete machine with a dive playing through it. Both slots, in the
+  // hub's own order: shell, screen (art wrapped by the dive), sweep over the
+  // top, then whatever is still in front of the glass.
+  const frame = (ctx, dive, cab, t) => {
+    const pal = cabinetPalette(cab, true);
+    // Before the shell, in the hub's own order — the flash is light the machine
+    // stands in front of, and a tile that drew it after would be showing a
+    // different effect from the game.
+    dive.drawBehind(ctx, CAB_X, { tint: pal.screen, floorY: FLOOR });
+    // The DECK, same as the hub passes it. Left off until now, which meant these
+    // tiles showed the dive with a dead control panel — the stick that is supposed
+    // to be driving the hero through the glass sat centred through the whole leap.
+    // `glint` is the dive's own: the shove on the takeoff and the crossing flash.
+    drawCabinetShell(ctx, CAB_X - CS.w / 2, CAB_Y, CS.w, CS.h, pal, undefined,
+      { stickLean: dive.stick, stickFwd: dive.stickFwd, buttonPress: dive.button, glint: dive.glint });
+    const scr = drawCabinetScreen(ctx, CAB_X - CS.w / 2, CAB_Y, CS.w, CS.h, pal, undefined,
+      dive.screenArt(cabinetScreenArt(cab, t, pal.seed), CAB_X));
+    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+    dive.drawOutside(ctx, CAB_X, { lit: 0.9 });
+  };
+
+  // 1. The bake-off itself. One loop per combination, all on the same clock so
+  // they can be read against each other rather than in sequence.
+  const HOLD = 0.5;   // the beat the hub spends under the shutter before the cut
+  for (const v of DIVE_VARIANTS) {
+    const dive = build(v.id);
+    tile(grid, v.label, `${v.id} · hop ${v.hop} · pull ${v.pull} · pixel ${v.pixel}`,
+      BOX_W * HUB_ZOOM, BOX_H * HUB_ZOOM, (ctx, t) => {
+        const loop = t % (DIVE_DURATION + HOLD);
+        dive.seek(Math.min(loop, DIVE_DURATION));
+        ctx.save();
+        ctx.scale(HUB_ZOOM, HUB_ZOOM);
+        frame(ctx, dive, PLUMBER, t);
+        ctx.restore();
+      }, { animated: true, hires: 4 });
+  }
+
+  // 2. Key frames. NOT animated, and the tile that pays for seek() being pure:
+  // one dive instance, reseeked eleven times out of order, has to give eleven
+  // correct frames. A bad frame shows here and nowhere else — a loop at 60fps
+  // hides a single broken pose completely.
+  {
+    const dive = build('hop');
+    // TWO ROWS, sized to fit. A cell wide enough to read, times eleven, is a
+    // strip the page then presents at 3x — about 1800 real pixels, wider than
+    // the window, and the overflow is simply clipped. The frames that fell off
+    // the end were the ones inside the glass: the half of the animation this
+    // tile exists to show. Six and five, on two rows, keeps every frame on the
+    // page at a cell size worth looking at.
+    const CELL = 74, PAD = 8, PER_ROW = 6;
+    const S = CELL / BOX_W;
+    const ROW_H = Math.round(BOX_H * S) + 24;
+    const ROWS = Math.ceil(DIVE_KEYFRAMES.length / PER_ROW);
+    const stripW = PAD * 2 + CELL * PER_ROW;
+    const stripH = ROW_H * ROWS;
+    tile(grid, 'HOP — key frames', 'one instance, eleven seeks · the crossing is at 0.95',
+      stripW, stripH, (ctx) => {
+        DIVE_KEYFRAMES.forEach((kf, i) => {
+          dive.seek(kf.t);
+          const col = i % PER_ROW, row = Math.floor(i / PER_ROW);
+          const ox = PAD + col * CELL, oy = row * ROW_H;
+          ctx.save();
+          // Each cell is its own little stage, scaled to fit the cell rather
+          // than to HUB_ZOOM — the strip is for reading poses, and tile 1 above
+          // is what answers the size question honestly.
+          ctx.translate(ox, oy);
+          ctx.beginPath(); ctx.rect(0, 0, CELL, BOX_H * S); ctx.clip();
+          ctx.scale(S, S);
+          frame(ctx, dive, PLUMBER, kf.t);
+          ctx.restore();
+          ctx.fillStyle = kf.label === 'GLASS' ? '#ffd24a' : '#8a8a9e';
+          ctx.font = '8px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          const cx = ox + CELL / 2;
+          ctx.fillText(kf.label, cx, oy + BOX_H * S + 11);
+          ctx.fillText(kf.t.toFixed(2), cx, oy + BOX_H * S + 20);
+        });
+      }, { wide: true, hires: 4 });
+  }
+
+  // 3. The glass alone, blown up. A hero eight pixels tall is drawn by the rig's
+  // simplified LOD, and the only way to know whether that still reads as a
+  // person — rather than as a smudge running off a screen — is to look at it
+  // bigger than it will ever be shown.
+  {
+    const dive = build('hop');
+    const Z = 8;
+    tile(grid, 'inside the glass — 8x', `${GLASS.w.toFixed(1)}x${GLASS.h.toFixed(1)}u of glass · hero lands at ${GEOM.groundY.toFixed(1)}u`,
+      GLASS.w * Z, GLASS.h * Z, (ctx, t) => {
+        // Only the part that happens inside: crossing to gone.
+        const span = DIVE_DURATION - 0.95;
+        dive.seek(0.95 + (t % (span + 0.4)) % span);
+        ctx.save();
+        ctx.scale(Z, Z);
+        ctx.translate(-GLASS.x, -GLASS.y);
+        frame(ctx, dive, PLUMBER, t);
+        ctx.restore();
+      }, { animated: true, hires: 3 });
+  }
+
+  // 3b. IN AND OUT, side by side.
+  //
+  // The exit is not a second animation — it is this same module evaluated at
+  // DURATION - t, with facing, vy and the cue table flipped. Which means the only
+  // thing worth looking at is whether the mirror READS: a leap into a screen and a
+  // climb out of one are the same shape, but they are not the same event, and a
+  // reversal that looks like rewound footage is a failure even though the geometry
+  // is right. Both on one clock so the symmetry is judgeable rather than remembered.
+  {
+    const pair = [['IN \u2014 into the screen', 'in'], ['OUT \u2014 back to the concourse', 'out']];
+    for (const [label, dir] of pair) {
+      const dive = build('hop', PLUMBER, HERO, dir);
+      tile(grid, label, `dir ${dir} \u00b7 one module, ${dir === 'out' ? 'mirrored' : 'forward'}`,
+        BOX_W * HUB_ZOOM, BOX_H * HUB_ZOOM, (ctx, t) => {
+          const loop = t % (DIVE_DURATION + HOLD);
+          dive.seek(Math.min(loop, DIVE_DURATION));
+          ctx.save();
+          ctx.scale(HUB_ZOOM, HUB_ZOOM);
+          frame(ctx, dive, PLUMBER, t);
+          ctx.restore();
+        }, { animated: true, hires: 4 });
+    }
+  }
+
+  // 3c. The exit's own key frames. The entry's strip answers "is any frame broken";
+  // this one answers the question only the mirror raises — does he leave the glass
+  // facing the room, and land on the concourse rather than inside it.
+  {
+    const dive = build('hop', PLUMBER, HERO, 'out');
+    const CELL = 74, PAD = 8, PER_ROW = 6;
+    const S = CELL / BOX_W;
+    const ROW_H = Math.round(BOX_H * S) + 24;
+    const ROWS = Math.ceil(DIVE_KEYFRAMES.length / PER_ROW);
+    tile(grid, 'OUT \u2014 key frames', 'the mirror, seeked \u00b7 he must land in the ROOM',
+      PAD * 2 + CELL * PER_ROW, ROW_H * ROWS, (ctx) => {
+        DIVE_KEYFRAMES.forEach((kf, i) => {
+          // Same sample times, so the two strips line up beat for beat.
+          dive.seek(kf.t);
+          const col = i % PER_ROW, row = Math.floor(i / PER_ROW);
+          const ox = PAD + col * CELL, oy = row * ROW_H;
+          ctx.save();
+          ctx.translate(ox, oy);
+          ctx.beginPath(); ctx.rect(0, 0, CELL, BOX_H * S); ctx.clip();
+          ctx.scale(S, S);
+          frame(ctx, dive, PLUMBER, kf.t);
+          ctx.restore();
+          ctx.fillStyle = kf.label === 'GLASS' ? '#ffd24a' : '#8a8a9e';
+          ctx.font = '8px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(kf.t.toFixed(2), ox + CELL / 2, oy + BOX_H * S + 11);
+        });
+      }, { wide: true, hires: 4 });
+  }
+
+  // 3d. THE RUN AND THE JUMP, FRAME BY FRAME.
+  //
+  // The hero inside the glass is about eight pixels tall and the whole of his
+  // performance — the stride, the takeoff, the arc off the edge — happens in half a
+  // second at that size. A loop cannot be judged: it is over before the eye has
+  // settled, and the one thing worth knowing is whether a figure that small still
+  // reads as RUNNING rather than as a smudge sliding right.
+  //
+  // So: a fixed window over the part of the screen he crosses, magnified, sampled at
+  // 30fps. Fixed and not tracking, because a crop that follows him would hold him
+  // still in the middle of every cell and hide the very thing being judged.
+  {
+    const dive = build('hop');
+    // The stretch of the run-off, plus a beat either side of the takeoff.
+    const T0 = 1.52, FPS = 30, FRAMES = 16;
+    const COLS = 4;
+    // The right of the glass, where the running and the leaving happen, with the
+    // full height so the jump has somewhere to go.
+    const win = {
+      x: GLASS.x + GLASS.w * 0.34, y: GLASS.y,
+      w: GLASS.w * 0.66, h: GLASS.h,
+    };
+    const Z = 4.4;
+    const CW = Math.round(win.w * Z), CH = Math.round(win.h * Z);
+    const LABEL = 13;
+    const rows = Math.ceil(FRAMES / COLS);
+    tile(grid, 'inside the glass \u2014 run and jump',
+      `${Z}x \u00b7 30fps \u00b7 he is ${(24 * GEOM.unit).toFixed(1)}u tall here`,
+      COLS * CW + 8, rows * (CH + LABEL) + 8, (ctx) => {
+        for (let i = 0; i < FRAMES; i++) {
+          const t = T0 + i / FPS;
+          dive.seek(t);
+          const col = i % COLS, row = Math.floor(i / COLS);
+          const ox = 4 + col * CW, oy = 4 + row * (CH + LABEL);
+          ctx.save();
+          ctx.translate(ox, oy);
+          ctx.beginPath(); ctx.rect(0, 0, CW, CH); ctx.clip();
+          ctx.scale(Z, Z);
+          ctx.translate(-win.x, -win.y);
+          // The whole machine, so the glass edge that cuts him off is the real one.
+          frame(ctx, dive, PLUMBER, t);
+          ctx.restore();
+          // A hairline between cells, or sixteen near-identical crops read as one
+          // smeared image.
+          ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(ox + 0.5, oy + 0.5, CW - 1, CH - 1);
+          ctx.fillStyle = dive.runJump > 0 ? '#ffd24a' : '#8a8a9e';
+          ctx.font = '8px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${t.toFixed(2)}${dive.runJump > 0 ? ' \u2191' : ''}`,
+            ox + CW / 2, oy + CH + 10);
+        }
+      }, { wide: true, hires: 4 });
+  }
+
+  // 4. The risk, in one picture. cabinetScreenGeometry maps the run's GROUND_Y
+  // through the attract window onto the glass — which is right for every pack
+  // whose horizon IS GROUND_Y. If one draws its ground somewhere else, the hero
+  // floats or sinks in that cabinet and nowhere else. The magenta rule is where
+  // the dive thinks the ground is; if a pack's horizon is not on it, that is the
+  // bug, and it belongs to that pack rather than to the dive.
+  {
+    const Z = 5;
+    const PACKS = ['plumber', 'rhythm', 'frost', 'speed'];
+    for (const id of PACKS) {
+      const cab = CABINETS.find((c) => c.id === id);
+      if (!cab) continue;
+      const dive = build('hop', cab);
+      dive.seek(1.20);   // touchdown
+      tile(grid, `ground line — ${id}`, 'magenta rule = derived ground · t 1.20',
+        GLASS.w * Z, GLASS.h * Z, (ctx) => {
+          ctx.save();
+          ctx.scale(Z, Z);
+          ctx.translate(-GLASS.x, -GLASS.y);
+          frame(ctx, dive, cab, 1.20);
+          ctx.restore();
+          ctx.fillStyle = 'rgba(255,70,220,0.85)';
+          ctx.fillRect(0, GEOM.groundY * Z, GLASS.w * Z, 1);
+        }, { hires: 3 });
+    }
+  }
+}
+
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
 //
@@ -8204,6 +8485,11 @@ if (location.hash) requestAnimationFrame(() => {
 // its own height, so "how tall is this hero really?" needs a scratch canvas.
 window.__gallery = {
   tiles, paint, drawToon, TOON_SPECS, RUSTY_W3B, PANDA_PAL, HERO_DRAW_H, RANGED_RELEASE_POINT, drawRangedProjectile,
+  // The prop painters and the sprite draw, for the one question a tile cannot
+  // answer: what does this look like at the size the PLAYER gets it? A sheet
+  // magnifies to judge a drawing; sometimes the only honest answer is the raw
+  // pixels at the run's own zoom.
+  PROP_PAINTERS, drawProp,
   // drawThrownAxe rides along for the same reason: "how big is this thing
   // really, next to the others?" is a question about the flying weapons as a
   // family, and the axe is the biggest of them.

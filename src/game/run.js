@@ -26,7 +26,7 @@ import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JU
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
-import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
+import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole, clearOfHazards, POWER_MIN_GAP } from './spawner.js';
 import { OPENING_COIN_BEAT, BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, unwrapBeat, PIT_LANE_RUNWAY_BEATS } from './beatchart.js';
 import { drawBeatGround, ACTION_INK } from './beatground.js';
 import { Powerups, POWER_DEFS, randomPowerPickup, weightedPowerPickup } from './powerups.js';
@@ -38,15 +38,15 @@ import {
   BASE_SPEED, SPEED_RAMP_K, SPEED_RAMP_CAP, FINISH_CLEAR, resolveLayout,
 } from './layout.js';
 export { FINISH_CLEAR };
-import { entityBox, overlaps, makePickup, makeObstacle, isFloorPad, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
+import { entityBox, overlaps, makePickup, makeObstacle, isFloorPad, isOpenGap, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { PIT_FLOOR, PIT_APRON_DEPTH, fillSurface } from './pitFill.js';
 import { HERO_BY_ID, heroShoots } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
-import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
+import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
+import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
   frostBlizzardRung, frostBlizzardRamp, frostFlypastArc }
   from '../engine/stylePacks/index.js';
 import { paperStrengthOf } from '../engine/paper-material.js';
@@ -118,14 +118,18 @@ const FINALE_HOLD = 0.25;
 // him, which is the picture the whole marker exists to produce.
 const FINALE_TAIL = 1;
 // How long an ACT card holds the world still. It is a reading budget, not a
-// flourish: the cards run 56–76 characters over two lines, and at 2s — with the
-// last 0.3 of that spent fading out — the longest of them was off screen before
-// the second sentence had landed. Three of these exist in a whole campaign, so
-// the whole cost of being generous is six seconds across a playthrough.
+// flourish: the cards run 56–76 characters, and at 2s — with the last 0.3 of
+// that spent fading out — the longest of them was off screen before the second
+// sentence had landed. Three of these exist in a whole campaign, so the whole
+// cost of being generous is fifteen seconds across a playthrough.
 //
-// That budget is for a FIRST read. A replayer has read it, so they can cut it
-// short (see the skip below) — which is also why being generous here is cheap.
-export const ACT_BANNER_TIME = 4.0;
+// That budget is for a FIRST read, by the slowest reader who will ever see it.
+// A replayer has read it, so they can cut it short (see the skip below) — which
+// is also why being generous here is cheap. It went 4.0 -> 5.0 when the card
+// started sizing itself from the frame (hud.js): the same sentence now lands on
+// four lines in portrait rather than two, and three extra return sweeps is
+// three more chances to lose your place.
+export const ACT_BANNER_TIME = 5.0;
 // The card's fade-out, and the floor a skip drops the freeze to rather than 0.
 // Skipping to zero would start the run on the frame the finger came down, with
 // the card vanishing mid-pixel; skipping to the fade plays the same exit the
@@ -174,9 +178,17 @@ const CAM_FOOTROOM = 6;
 // This is in travel time rather than pixels so the warning is consistent as
 // the stage ramps and across cabinets with different base speeds.
 const TUNNEL_CAMERA_LOOKAHEAD_SEC = 1.35;
-// The preview is a suggestion, not a commitment to the lower route. Keep only
-// enough of the drop visible to explain that there is another path below.
-const TUNNEL_CAMERA_PREVIEW_MAX_DROP = 36;
+// The preview is a suggestion, not a commitment to the lower route — but it has
+// to show enough of the lower SURFACE to read what is standing on it, because
+// the drop is the only thing that puts that surface in shot at all. At pan 0
+// the frame bottom is ~19 world px under the lane (H - GROUND_Y over the
+// resting zoom), so a tunnel floor is off the bottom edge until the anchor
+// moves. The lookahead cannot help with that: 1.35s is already 216 world px at
+// base speed against 181px of runway ahead of the hero (VIEW_W - PLAYER_X), so
+// the pan starts BEFORE the mouth is on screen and is all but settled when it
+// arrives. Reading further ahead is the frame width's business. Reading DEEPER
+// is this number's, and 36 showed the mouth without showing the road.
+const TUNNEL_CAMERA_PREVIEW_MAX_DROP = 52;
 // Give an upper-path choice a short beat after the mouth before the camera
 // starts returning, so the lower option remains readable as the hero clears it.
 const TUNNEL_CAMERA_RETURN_DELAY_SEC = 0.35;
@@ -611,6 +623,22 @@ const RETURN_DROP_G = 340;
 // which is as slow as this can honestly go.
 const RETURN_CLOSE = 150;
 const RETURN_CLOSE_FIST = 140;
+// HOW LOUD A TRAP IS, in one place, because both ends of the same event fire it
+// (springTrap below, and takeHit when the jaws catch the hero) and they have to
+// agree or a bite is two mechanisms.
+//
+// This is a per-firing gain, NOT an edit to the cue: `trapSnap` itself is left
+// exactly as its author built it, so anything that borrows it later gets the
+// sound they levelled. It came down from 1.12 because the trap was the loudest
+// thing in the cabinet — measured -4.0 peak / -25.7 RMS against blockBreak's
+// -10.2/-30.7, and ringing for 400ms where the others are over in 250. At 0.72
+// it lands at -6.8/-28.4, between the two.
+//
+// AND THE CAUSE MAY NOT BE THE TRAP. Frost Fortress's mix dropped several dB
+// across lead, bass and clap in the working tree, so every cue in the game now
+// sits higher against that song than it did. If that mix is still being worked
+// on, put this back to 1.12 rather than compounding the two.
+const TRAP_SNAP_GAIN = 0.72;
 const ROUND_HOME_RANGE = 240;
 const RHYTHM_SIGN_FROM = 4;
 // ONE BAR EACH. Four beats is long enough to read a mark and a word off a sign
@@ -693,9 +721,14 @@ const BEAT_RESTORE_POINTS = Object.freeze([1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6]);
 // so the animation winds down in step with the tape-stop audio (~1.0s).
 const REWIND_COOLDOWN = 0.55;
 // The touch power-up rewind (docs/mobile-rewind-powerup.md): a capRewind
-// capsule arms a recording window, and tapping the REWIND button plays the
-// tape back a fixed length and consumes the charge. These size the ring on
-// devices with no free rewind — the tape only ever needs to hold this much.
+// capsule banks one fixed-length rewind, spent automatically on the next
+// mistake. These size the ring on devices with no free rewind — the tape only
+// ever needs to hold what the capsule plays back, and it holds ALL of it: the
+// tape rolls for the whole run there, armed or not. Recording only while a
+// charge was armed made the length depend on WHEN the capsule was collected —
+// a hit one second after picking it up rewound one second, not three — and a
+// rewind whose reach varies with something the player cannot see is not the
+// three seconds the capsule promises.
 const POWER_REWIND_SECONDS = 3;
 const POWER_REWIND_FRAMES = POWER_REWIND_SECONDS * REWIND_FPS;
 
@@ -857,6 +890,8 @@ export function floatBaseY() {
 // `gapBeats` is how long the lane has to have been out for its return to count as an
 // arrival. A bar is the shortest silence that reads as absence rather than as
 // phrasing — a bass resting for a beat and a half is still playing.
+//
+// And it only ever prints on the RHYTHM cabinet — see announceLaneEntries.
 const LANE_CALLS = {
   bass: { text: 'BASS!', color: '#f6d33c', gapBeats: 4 },
 };
@@ -882,20 +917,29 @@ function easeFloatClear(current, target, dt) {
 // fading below it. 13 keeps the top of the travel where it always was.
 const FLOAT_RISE = 13;
 
-// The paused screen's two ways out, as tappable plates. Wide and worded rather
+// The paused screen's ways out, as tappable plates. Wide and worded rather
 // than round and glyphed: these are read once and pressed once, which is the
-// opposite of the play controls, and CONTINUE/EXIT are not symbols anyone
-// shares. Laid out to match the pause copy above them — see drawPaused.
+// opposite of the play controls, and CONTINUE/EXIT/RESTART are not symbols
+// anyone shares. Laid out to match the pause copy above them — see drawPaused.
 //
 // SIDE BY SIDE, not stacked. Stacked they cost 58 of the screen's last 74
 // pixels, which squeezed every row above them into 12-pixel steps and put the
 // AUDIO SYNC row six pixels under the legend it had nothing to do with. One
-// row of two gives that band back to the copy, and the pair reads as what it
-// is: a choice between two answers to the same question, not a list.
+// row gives that band back to the copy, and the plates read as what they are:
+// the answers to one question, not a list.
+//
+// THREE of them since RESTART joined: the plate keeps the width the pair had
+// rather than the row keeping its span, because these are read once and
+// pressed once and a narrower plate buys nothing. The row simply uses more of
+// the 480, centred as it always was.
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
 const PAUSE_PLATE_W = 120, PAUSE_PLATE_GAP = 14;
 const PAUSE_PLATE_Y = 230;
-const PAUSE_PLATE_X = W / 2 - PAUSE_PLATE_W - PAUSE_PLATE_GAP / 2;
+const PAUSE_PLATE_N = 3;
+const PAUSE_PLATE_ROW_W = PAUSE_PLATE_W * PAUSE_PLATE_N
+  + PAUSE_PLATE_GAP * (PAUSE_PLATE_N - 1);
+const PAUSE_PLATE_X = W / 2 - PAUSE_PLATE_ROW_W / 2;
+const pausePlateX = (i) => PAUSE_PLATE_X + i * (PAUSE_PLATE_W + PAUSE_PLATE_GAP);
 // Portrait pause is a safe, readable card rather than a black sheet laid
 // against the phone's top and bottom edges. Keep this margin on the panel and
 // its plates together so the status/home-indicator areas have visible air.
@@ -938,6 +982,36 @@ const BOOST_MISS_TAIL = 0.18;
 // cliff; hit and it keeps going. One shape, two endings, and they are the
 // opposite of each other, which is the only reason either one is legible.
 const BOOST_HIT_TAIL = 0.34;
+// THE CARD BOX'S SHARE OF THE BLAST. 'boom' carries SFX_TRIM 0.36, a number set
+// so the title asteroid does not walk over the menu music — and the card box is
+// the opposite job: a percussive hit on a beat line, under a full song, that has
+// to be heard as clearly as the coin it is scored beside. Measured on the
+// renders, the cue's front 60ms above 500Hz sits 2.7dB under 'boxKick', the
+// game's other box-coming-apart sound, and the trim is most of why. This is a
+// per-firing gain rather than a change to the trim, because the asteroid and the
+// boss still want the quiet one.
+const CARD_BOX_BOOM_GAIN = 1.5;
+// AND THE CRACK ON TOP OF IT. Gain alone ran out: past about 2.6 the cue is
+// peaking at -3.5dBFS on a bus with no limiter on it (sfxGain goes straight to
+// master), and every dB of it is spent on the sub, which is the part of the
+// blast a laptop speaker does not reproduce and a song's own bass masks. So the
+// last of the loudness is bought spectrally instead. 'boxKick' is the game's
+// other box-coming-apart sound, broad rather than tonal — unlike 'blockBreak',
+// which would put a pitched crack in the song's key every few bars — and it
+// peaks 17ms in where the boom peaks at 54, so with the boom's own onset lead
+// (CUE_ONSET_LEAD) the two audible edges land together on the line. Measured:
+// the crack carries the box over the mix for a fraction of the headroom more
+// gain would cost.
+//
+// THE TWO MOVE IN OPPOSITE DIRECTIONS, which is the whole reason they are two
+// numbers. Levelled by ear over four passes, and what settled it was that the
+// boom's 1.7s of sub is what reads as "too loud" in a song — it is the rumble
+// under the bass, not the hit — while the crack is what is actually heard as
+// the box going. The window that leaves is narrow and was walked from both
+// ends: -31.4 below 200Hz is too much rumble and -35.5 has no bottom left.
+// This sits at -33.7, with the crack trimmed back to 0.65 so the weight is
+// heard as weight rather than as a second sound on top of the blast.
+const CARD_BOX_CRACK_GAIN = 0.65;
 // How long the pad flares after it pays out. Short: this is a confirmation,
 // not an effect — the hero is already gone by the time it fades.
 const BOOST_FLARE_T = 0.3;
@@ -958,12 +1032,38 @@ const BOOST_LEAN_T = 0.5;
 // before the thing it confirms has stopped happening is not a confirmation.
 const SPRING_FLARE_T = 0.5;
 
+// THE GRID THE SPECIAL MOVE LIVES ON, in beats. A sixteenth.
+//
+// One number, read in three places: the cooldown is snapped so it expires on it
+// (quantiseCooldown), the ready cue is placed on it, and the cue's two strikes
+// are spaced by it. A thirty-second would halve the snapping error and is the
+// other candidate, but it stops being a musical position and becomes a rounding
+// — at 124bpm a sixteenth is 121ms, which is both audibly ON the song and close
+// enough to the pair's auditioned 115ms spacing to cost nothing.
+const READY_GRID_BEATS = 0.25;
+
+// The plates, as a set: the pause screen's own controls, told apart from the
+// nudge plates that share Input.buttons with them.
+const PAUSE_PLATE_IDS = new Set(['resume', 'restart', 'quit']);
+
 const PAUSE_BUTTONS = [
-  // 'pause' toggles, so it resumes from here; 'escape' while already paused is
-  // the quit half of the Escape key's behaviour. Both actions already existed —
-  // the buttons just give a thumb somewhere to send them.
-  { id: 'resume', x: PAUSE_PLATE_X, y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
-  { id: 'quit', x: PAUSE_PLATE_X + PAUSE_PLATE_W + PAUSE_PLATE_GAP, y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
+  // 'pause' toggles, so it resumes from here. EXIT is its own 'quit' action:
+  // the Escape key while already paused resumes instead (see updateGame) —
+  // leaving a level is a plate you have to select, never a key you tap twice.
+  //
+  // RESTART sits LAST, furthest from the thumb that just reached for CONTINUE.
+  // It was in the middle — the middle answer in every sense, keeping the stage
+  // where CONTINUE keeps the attempt and EXIT keeps neither — but that argument
+  // is about meaning and this row is pressed with a thumb. RESTART is the only
+  // plate here that destroys a run with no confirmation, so it gets the corner,
+  // and the ordering costs nothing to anyone who reads before they press.
+  //
+  // EXIT, not BACK. On a pause screen BACK is genuinely ambiguous: back to the
+  // game is exactly what CONTINUE does, and a player reading two plates that
+  // both promise to return them somewhere has to guess which.
+  { id: 'resume', x: pausePlateX(0), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
+  { id: 'quit', x: pausePlateX(1), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'quit', label: 'EXIT' },
+  { id: 'restart', x: pausePlateX(2), y: PAUSE_PLATE_Y, w: PAUSE_PLATE_W, h: PAUSE_MENU_H, action: 'restart', label: 'RESTART' },
 ];
 
 // AUDIO SYNC, nudgeable from the pause screen of a beat stage.
@@ -980,18 +1080,22 @@ const PAUSE_BUTTONS = [
 const PAUSE_SYNC_Y = 206;
 const PAUSE_SYNC_H = 14;
 //
-// RESET hangs off the right end, outside the plate column and with a gap, so a
+// RESET hangs off the right end of the SYNC ROW, with a gap after +, so a
 // thumb aiming for + cannot find it: it is the one control on the row that
-// throws a measurement away. Zero is not "no correction" — the offset is added
+// throws a measurement away. Off the row rather than off the plates below,
+// which is where it used to be measured from — the plate row grew a third
+// plate and took RESET out to the screen's edge with it, stranding it beside
+// BACK with sixty pixels of nothing between it and the group it belongs to.
+// Zero is not "no correction" — the offset is added
 // to what the device reports (audio.js, heardLatencySec), so zero means "trust
 // the system's figure", which is what a player wants back the moment they
 // unplug the headphones they calibrated for.
 const PAUSE_SYNC_BUTTONS = [
   { id: 'syncDown', x: W / 2 - PAUSE_MENU_W / 2, y: PAUSE_SYNC_Y, w: 22, h: PAUSE_SYNC_H, action: 'syncDown', label: '-' },
   { id: 'syncUp', x: W / 2 + PAUSE_MENU_W / 2 - 22, y: PAUSE_SYNC_Y, w: 22, h: PAUSE_SYNC_H, action: 'syncUp', label: '+' },
-  // Right edge flush with BACK's, so the extra hangs off a line the eye
-  // already has rather than ending in mid-air.
-  { id: 'syncReset', x: PAUSE_PLATE_X + PAUSE_PLATE_W * 2 + PAUSE_PLATE_GAP - 44, y: PAUSE_SYNC_Y, w: 44, h: PAUSE_SYNC_H, action: 'syncReset', label: 'RESET' },
+  // Five pixels clear of +: near enough to read as part of this row, far
+  // enough that a thumb aiming for + cannot land on it.
+  { id: 'syncReset', x: W / 2 + PAUSE_MENU_W / 2 + 5, y: PAUSE_SYNC_Y, w: 44, h: PAUSE_SYNC_H, action: 'syncReset', label: 'RESET' },
 ];
 
 // Semitones above the root for each juggle in a chain — root, third, fifth,
@@ -1657,6 +1761,16 @@ const SHOOTER_MIN_AHEAD = 60;
  * point: tests/boss-fairness.js asserts the window is the same at every zoom,
  * and the only way to break that again is to put a view term back in here.
  */
+// WHICH POOL AN ANIMAL ANSWERS FROM. Keyed off the species rather than a flag
+// on the def, because the joke is their character: the dogs escalate, the cat
+// declines to participate, the bird has no opinion. The finish dog reads the
+// dog pool like the rest of them — he is a dog.
+function animalShotLines(type) {
+  if (type === 'catFury') return CAT_SHOT_SHORT;
+  if (type === 'buzzbird') return BIRD_SHOT_SHORT;
+  return DOG_SHOT_SHORT;
+}
+
 export function shooterMayFire(obX, heroWorldX) {
   const gap = obX - heroWorldX;
   return gap > SHOOTER_MIN_AHEAD && gap < SHOOTER_RANGE_AHEAD;
@@ -1719,6 +1833,15 @@ const DOG_SIGN_LEAD = 330;
 const DOG_SIGN_CLEAR = 26;
 const FINISH_DOG_LAUNCH_S = 2.0; // charge release, in seconds of road to the tape
 const FINISH_DOG_INTRO_S = 0.45; // how long it is seen WAITING at the post first
+// How long an animal stays quiet after being shot at, in seconds, before it is
+// willing to be unimpressed out loud again. See animalShrugOff.
+const ANIMAL_GAG_GAP = 1.2;
+// And how long the line stays up. Longer than the chatter budget allows (3.2s)
+// because this one is not chatter: it is pinned out of the hero's column, so
+// nothing is queued behind it, and it is read while the player is busy with the
+// last stretch of road, the tape and the plunger — the whole ending, during
+// which they are looking at the hero and not at the card.
+const ANIMAL_GAG_HOLD = 7;
 const FINISH_DOG_V0 = 0.5;
 const FINISH_DOG_ACCEL = 0.4;
 const FINISH_DOG_VMAX = 0.85;
@@ -1843,7 +1966,7 @@ const AXE_OWNER = { wrench: 'lorenzo', bamboo: 'rusty' };
 const axeOwner = (pr) => AXE_OWNER[pr.art] || 'grumpos';
 const CELEBRATE_DIP = {
   lorenzo: 0.043, gnash: 0.043, rusty: 0.043, fernwick: 0.043, b33p: 0.043, mochi: 0.010,
-  chompo: 0.043, gary: 0.067, dolores: 0.043, raymn: 0.024, grumpos: 0.058,
+  chompo: 0.043, gary: 0.067, dolores: 0.043, ramon: 0.024, grumpos: 0.058,
   kiko: 0.043,
 };
 // The controller underneath the frozen finish frame still derives a RUN pose,
@@ -1851,7 +1974,7 @@ const CELEBRATE_DIP = {
 // its snapshot must own the face angle as explicitly as it owns lean/squash.
 export const FINISH_CELEBRATION_POSE = Object.freeze({
   kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0, headTurn: 0,
-  sliding: false, slideAmount: 0, roll: false, float: false, stomp: false, cling: 0,
+  sliding: false, slideAmount: 0, roll: false, float: false, cling: 0,
 });
 // Seconds the payoff takes to run. It was 0.18 when the whole event was a lever
 // swinging through its arc. The marker's payoff is now a five-beat CHAIN — push,
@@ -2003,7 +2126,6 @@ export class RunState {
     this.rewindLockout = 0;
     this.rewindSpeedMul = 1;
     this.rewindPlayFrames = 0;    // capsule rewind: ticks of tape left to play
-    this.rewindArmedPrev = false; // edge detector for the armed window
     this.rewindFx = new TapeRewindEffect();
     this.beatCombo = 0;
     // WHAT THE SKYLINE'S SHARE PRICE IS TRACKING. Neutral at 0.5, a step up per
@@ -2735,8 +2857,7 @@ export class RunState {
           this.player.vy = 0;
           this.player.jumps = 0;
           this.player.grounded = true;
-          this.player.stomping = false;
-          if (this.player.slideSlamming) this.player.startLandingSlide();
+                if (this.player.slideSlamming) this.player.startLandingSlide();
           return true;
         }
       }
@@ -2824,7 +2945,6 @@ export class RunState {
     this.player.vy = 0;
     this.player.jumps = 0;
     this.player.grounded = true;
-    this.player.stomping = false;
     if (this.player.slideSlamming) this.player.startLandingSlide();
     // Reported rather than sounded here: player.update may ALSO have clamped the
     // hero onto the base ground this same frame (the island top is always above
@@ -2857,8 +2977,8 @@ export class RunState {
    * downhill on the plumber's hills and the ground falls ~14px across the arc;
    * without this subtraction that is a surprised face on every third jump.
    *
-   * A stomp and a float are exempt for the reason they always are: both are
-   * descents the player ASKED for.
+   * A slide-kick and a float are exempt for the reason they always are: both
+   * are descents the player ASKED for.
    */
   updateFallFace() {
     const p = this.player;
@@ -2875,7 +2995,7 @@ export class RunState {
     const laneDrop = this.groundYAt(x) - this.groundYAt(p.fallRefX);
     const depth = (feetY - p.fallRefY) - laneDrop;
     p.fallFace = depth > FALL_FACE_DEPTH && p.vy < 0
-      && !p.stomping && !p.slideSlamming && !p.floating;
+      && !p.slideSlamming && !p.floating;
   }
 
   /**
@@ -3690,7 +3810,6 @@ export class RunState {
     this.obstacles = [];
     this.pickups = [];
     this.projectiles = [];
-    this.chompBites = [];        // eaten obstacle snapshots flying into Chompo's mouth
     this.floaties = [];
     this.floatClear = 0;         // eased shift keeping the popup stack off the hero
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
@@ -4300,10 +4419,11 @@ export class RunState {
     this.rewindLockout = 0;
     this.rewindSpeedMul = 1;
     this.rewindPlayFrames = 0;
-    this.rewindArmedPrev = false;
-    // A retry can re-enter with the capture node still up from an armed window
-    // the death cut short. Desktop's boot-time node is never touched from here.
-    Audio.setCaptureEnabled(this.rewindAvailableForRun());
+    // The reversed-SFX recorder covers the same tape the ring does, so it is
+    // live for every run that can rewind at all — on touch that is the run's
+    // own lifetime (torn down on the way out, below); on desktop the boot-time
+    // node is already up and this is a no-op.
+    Audio.setCaptureEnabled(!this.beatLock);
     this.rewindFx = new TapeRewindEffect();
     this.beatCombo = 0;
     this.cityAccidentBeat = null;
@@ -4459,15 +4579,21 @@ export class RunState {
   portraitPauseButtons() {
     if (!isPhonePortraitPresentation()) return PAUSE_BUTTONS;
     const { innerX, innerW, panelTop, panelBottom } = this.portraitPauseFrame();
-    const gap = 16;
+    // Tighter than the pair's 16 now there are three of them: the gap is the
+    // one thing on this row that can give width back to the plates, and a
+    // thumb separates them by position rather than by the air between them.
+    const gap = 12;
     const h = PORTRAIT_PAUSE_BUTTON_H;
-    const width = Math.max(1, (innerW - gap) / 2);
+    const width = Math.max(1, (innerW - gap * 2) / 3);
     const y = Math.max(panelTop,
       Math.min(H - h - PORTRAIT_PAUSE_EDGE - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM,
         panelBottom - h - PORTRAIT_PAUSE_PANEL_PAD_BOTTOM));
+    // Same ids, same actions, same order as the landscape row — pauseIdx
+    // addresses this list by index either way, so the two must not drift.
     return [
       { id: 'resume', x: innerX, y, w: width, h, action: 'pause', label: 'CONTINUE' },
-      { id: 'quit', x: innerX + width + gap, y, w: width, h, action: 'escape', label: 'BACK' },
+      { id: 'quit', x: innerX + width + gap, y, w: width, h, action: 'quit', label: 'EXIT' },
+      { id: 'restart', x: innerX + (width + gap) * 2, y, w: width, h, action: 'restart', label: 'RESTART' },
     ];
   }
 
@@ -4535,9 +4661,9 @@ export class RunState {
     // these are the only controls on this screen a pointer can reach, and a
     // desktop player who paused with the mouse expects to leave the same way.
     if (this.paused) {
-      // The nudge plates go on the END of the list so PAUSE_BUTTONS keeps index
-      // 0 and 1: pauseIdx addresses Input.buttons directly, in updatePauseMenu
-      // and in drawPaused alike.
+      // The nudge plates go on the END of the list so PAUSE_BUTTONS keeps the
+      // low indices: pauseIdx addresses Input.buttons directly, in
+      // updatePauseMenu and in drawPaused alike.
       const mainButtons = this.portraitPauseButtons();
       Input.setButtons(this.beatLock
         ? [...mainButtons, ...this.portraitPauseSyncButtons(mainButtons)] : mainButtons);
@@ -4548,9 +4674,9 @@ export class RunState {
     if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); return; }
     // The portrait discs on the picture plus whatever margin this device has
     // around it (touchchrome.js, the shared layout modules).
-    // PAUSE fires 'escape', which mirrors the Escape key exactly: pauses if
-    // running, quits if already paused. The second half is unreachable from
-    // here, since pausing swaps this set out for the plates above.
+    // PAUSE fires 'escape', which mirrors the Escape key: pauses if running,
+    // resumes if already paused. That second half is unreachable from here
+    // anyway, since pausing swaps this set out for the plates above.
     Input.setButtons([]);
     Input.setChromeButtons(runChromeButtons());
   }
@@ -4572,7 +4698,11 @@ export class RunState {
   // two ways in cannot drift apart — the keyboard is choosing among the very
   // buttons that are on screen.
   updatePauseMenu() {
-    // Only the two full-width plates are arrowable. The nudge plates are a
+    // A tapped RESTART arrives here as its own action, the way the nudge
+    // plates do — the plate is the only thing that fires it, so there is no
+    // key to guard against.
+    if (Input.pressed('restart')) { Audio.sfx('uiConfirm'); this.restartStage(); return; }
+    // Only the full-width plates are arrowable. The nudge plates are a
     // control, not a destination — left/right work them from the keyboard and a
     // thumb presses them directly, so putting them in the up/down cycle would
     // only add two stops on the way to CONTINUE.
@@ -4591,12 +4721,38 @@ export class RunState {
     if (fwd) { this.pauseIdx = (this.pauseIdx + 1) % n; Audio.sfx('ui'); }
     if (!Input.pressed('confirm')) return;
     Audio.sfx('uiConfirm');
-    // Both plates already have an action that does exactly this from a tap —
-    // dispatch to the same two behaviours rather than a second copy of them.
-    if (PAUSE_BUTTONS[this.pauseIdx].action === 'escape') { this.endRun(false, 'QUIT'); return; }
+    // Every plate already has an action that does exactly this from a tap —
+    // dispatch to the same behaviours rather than a second copy of them.
+    const action = PAUSE_BUTTONS[this.pauseIdx].action;
+    if (action === 'quit') { this.endRun(false, 'QUIT'); return; }
+    if (action === 'restart') { this.restartStage(); return; }
     this.paused = false;
     this.pauseChanged();
     if (this.beatLock) this.resetRhythmLane();
+  }
+
+  /**
+   * RESTART — this stage from its first frame, on the seed it was launched
+   * with, so the road, the coins, the capsules and the hero relay come back
+   * exactly as they were. It is the path a death before the first checkpoint
+   * already takes (updateDead calls enter() for precisely this reason): the
+   * seed lives on the run's opts, and enter() re-reads it rather than rolling
+   * a new one. A retry from the RESULTS screen is the other thing — that one
+   * deliberately passes no seed and gets a fresh pattern.
+   *
+   * It is another attempt in the same series, not a new visit: the ACT card,
+   * the bench parade and the touch-control card are constructor state and stay
+   * behind, and the checkpoint snapshot is dropped by enter() so the next death
+   * cannot restore a checkpoint belonging to the attempt just abandoned. On a
+   * beat stage it takes the rhythm retry's beat-jump — the song plays on and
+   * the chart is re-anchored on the beat actually heard.
+   */
+  restartStage() {
+    // enter() clears `paused` itself, but the input scheme is still the pause
+    // screen's until pauseChanged swaps it back — setMenuKeys above all, which
+    // is what has the arrows meaning "next plate" rather than ability/slide.
+    this.enter();
+    this.pauseChanged();
   }
 
   /**
@@ -4853,7 +5009,7 @@ export class RunState {
    * ranged hero reaches, and against rhythm-1's box, 2.4 beats out, the
    * rocket fist reaches only because it flies longer on a beat stage
    * (FIST_PARK_SEC_BEAT) — at its ordinary 0.42s it stopped fifty-odd px
-   * short, which is why Ray M'N was not dealt a box before 3 Sep 2026. The
+   * short, which is why Ramon was not dealt a box before 3 Sep 2026. The
    * check stays, because a weapon that hangs in mid-air in front of a box it
    * just opened is worse than a beat nobody owes.
    */
@@ -5078,7 +5234,7 @@ export class RunState {
       // Its own clock carries it off the right of the picture.
       if (this.flypast) this.flypast.t += dt;
       updateParticles(dt);
-      for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
+      this.tickFloaties(dt);
       if (this.finaleT <= 0) this.endRun(true);
       Input.endFrame(); return;
     }
@@ -5103,8 +5259,9 @@ export class RunState {
     if (Input.pressed('debug')) this.debug = !this.debug;
     const wasPaused = this.paused;
     if (Input.pressed('escape')) {
-      if (this.paused) { this.endRun(false, 'QUIT'); Input.endFrame(); return; }
-      this.paused = true;
+      // Leaving a run is the EXIT plate's job, not a key you can hit twice by
+      // reflex — Escape while paused resumes instead of quitting.
+      this.paused = !this.paused;
     }
     if (Input.pressed('pause')) this.paused = !this.paused;
     // Pausing and resuming swap the whole input scheme (play controls <-> the
@@ -5466,10 +5623,11 @@ export class RunState {
     // also means nothing can catch him on a road mid-lap: `player.y` is telling
     // the truth about his height and a lie about what is holding him up.
     const riding = !!(this.loop && !this.loop.pending);
-    const res = riding ? { landed: false, stompLand: false } : this.player.update(wdt, Input, {
+    const res = riding ? { landed: false } : this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice',
       gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
     });
+    this.cueAbilityReady();
     const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
     if (this.routes.length) this.updateGirderRing(wdt);
     // AN AIRBORNE HERO FALLS IN WORLD SPACE, even where the floor is a slope.
@@ -5518,7 +5676,6 @@ export class RunState {
             0.3 + r() * 0.2, '#c8b898', 1.5 + r() * 1.1, 2.6);
         }
       }
-      if (res.stompLand) { shake(2, 0.15); this.stompBreak(); }
       if (res.slideKickLand || routeSlideKickLand) shake(1.6, 0.11);
     }
     // FOOTFALL DUST. This used to be one speck a frame at a tenth chance,
@@ -5596,7 +5753,6 @@ export class RunState {
     // Systems.
     this.relay.update(wdt);
     this.powerups.update(dt);
-    this.updateRewindArm();
     this.updateInvincibility(dt);
     this.updatePortal(wdt);
     this.updateEntities(wdt, sp);
@@ -5631,6 +5787,10 @@ export class RunState {
     if (this.portal && this.portal.spent == null && this.portal.wilt == null) {
       this.clearPortalLane(this.portal.x);
     }
+    // After every sweep above, because any of them can be the one that took the
+    // hole a switch was standing over.
+    this.retireOrphanSwitches();
+    this.notePatternPrizes();
     this.checkCheckpoints();
     // After the lines are counted, so a crossing is already in the target on the
     // frame it happens.
@@ -5649,8 +5809,7 @@ export class RunState {
     if (this.loop && this.loop.done) this.endLoop();
 
     if (this.coinComboT > 0) { this.coinComboT -= dt; if (this.coinComboT <= 0) this.coinCombo = 0; }
-    for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
-    this.floaties = this.floaties.filter((f) => f.t > 0);
+    this.tickFloaties(dt);
     // The popup stack getting out of the hero's way. Measured off his STANDING
     // box, so it is the road that moves the cards and never a jump — see
     // heroScreenRect. Eased rather than switched: on landscape the stack moves
@@ -5659,7 +5818,6 @@ export class RunState {
     // platform reads as a glitch. Same easing the camera uses for the same
     // reason.
     this.floatClear = easeFloatClear(this.floatClear, floatieShift(this.floaties, this.heroRestRect()), dt);
-    this.updateChompBites(dt);
     if (this.goalToasts.length) {
       this.goalToasts[0].t -= dt;
       if (this.goalToasts[0].t <= 0) this.goalToasts.shift();
@@ -5913,7 +6071,7 @@ export class RunState {
     const w = Math.max(1e-6, x1 - x0);
     let open = 0;
     for (const ob of this.obstacles) {
-      if (!ob.live || !ob.def.isGap || ob.tunnel) continue;
+      if (!isOpenGap(ob) || !ob.live || ob.tunnel) continue;
       if (!this.sharesRoute(ob)) continue;
       open += Math.max(0, Math.min(x1, ob.x + ob.w) - Math.max(x0, ob.x));
     }
@@ -5994,11 +6152,11 @@ export class RunState {
       Audio.sfx('land');
       if (res.slideKickLand) shake(1.6, 0.11);
     }
+    this.cueAbilityReady();
     // Keep whatever he fired alive and framed. The world is parked, so shots
     // travel on their own velocity only (scroll term 0); no collide() — there is
     // nothing on this apron to hit, and nothing may hit him.
     this.updateProjectiles(dt, 0);
-    this.updateChompBites(dt);
     this.updateCamera(dt);
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
@@ -6050,7 +6208,6 @@ export class RunState {
     this.obstacles = this.obstacles.filter((ob) => ob.x < finishX);
     this.pickups = this.pickups.filter((p) => p.x < finishX);
     this.projectiles = [];
-    this.chompBites = [];
     this.portal = null;
     // The copter is not content past the tape: he is the villain, and he
     // LEAVES — off the right edge, climbing, the way he arrived. Nulling him
@@ -6059,7 +6216,17 @@ export class RunState {
     // AND THE SLEIGH, if the approach did not already put it up — a checkpoint
     // restore or a rescue can drop the hero past the lead distance entirely.
     this.armFlypast(0);
-    this.floaties = [];
+    // TRANSIENT CHATTER GOES, A PUNCHLINE STAYS. Arming the finish used to
+    // empty the stack outright, which is right for PEW and PICKED UP A BATTERY
+    // — they describe a run that has just stopped being played — and wrong for
+    // the one line that is ABOUT the tape. The finish dog charges in the last
+    // stretch of road, so a player who shoots at him is very often shooting
+    // inside the second the finish arms, and the joke was being deleted on the
+    // frame it was written. Anything marked `keep` survives the arm and plays
+    // out on its own clock (see the tick in updateFinish); everything else goes
+    // as before. It still clears at the held frame — the ending chain gets the
+    // clean screen the flip's card is written onto.
+    this.floaties = this.floaties.filter((f) => f.keep);
     this.floatClear = 0;
   }
 
@@ -6069,7 +6236,6 @@ export class RunState {
     this.tRun += wdt;
     const sp = this.speed;
     this.powerups.update(dt);
-    this.updateRewindArm();
     this.updateInvincibility(dt);
     this.player.powerJumpBonus = this.powerups.bonusJumps();
     if (Input.pressed('jump') && this.player.jumpPressed(Audio)) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
@@ -6083,6 +6249,11 @@ export class RunState {
       Audio.sfx('land');
       if (res.slideKickLand) shake(1.6, 0.11);
     }
+    this.cueAbilityReady();
+    // A kept floatie still runs its own clock here, exactly as it would have in
+    // update() — that is the only thing making it a popup rather than a frozen
+    // card sitting on the finish run.
+    this.tickFloaties(dt);
     // The world and goal are stationary; the player alone runs across the
     // screen. The final stretch remains live: hazards, pickups and attacks
     // use this moving world position just as they do during normal scrolling.
@@ -6091,7 +6262,6 @@ export class RunState {
     this.updateCamera(wdt);
     this.updateEntities(wdt, sp);
     this.updateProjectiles(wdt, sp);
-    this.updateChompBites(dt);
     this.collide();
     if (this.dead) return;
     updateParticles(dt);
@@ -6141,7 +6311,13 @@ export class RunState {
       this.speech = null;
       this.speechQueue = [];
       this.speechWaitT = 0;
-      this.floaties = [];
+      // Same exception as the tape (see startFinishRun): the plunger is only a
+      // second or two after the dog, so clearing outright here took the joke
+      // off the screen on the jump that ends the stage — the one moment the
+      // player is least able to read anything. A kept card is pinned back down
+      // the road where it was said, nowhere near the pole or the flip's own
+      // verdict, so it costs the held frame nothing and times out by itself.
+      this.floaties = this.floaties.filter((f) => f.keep);
       this.floatClear = 0;
       this.resolveFlip();
       // The slide. resolveFlip has already graded the CATCH — it reads
@@ -6286,24 +6462,81 @@ export class RunState {
   }
 
   // ------------------------------------------------------------------ ability
-  powerTarget(type = HERO_BY_ID[this.relay.current].ability.type) {
-    const px = this.playerWorldX();
-    // Only ever something on the hero's OWN road. These are x-range searches,
-    // and x alone stopped being enough the day a second road ran under the
-    // first: a crate in a tunnel is within 46px of a hero on the lane above it
-    // and is no more his to stomp than one in another stage.
-    const mine = (ob) => ob.live && this.sharesRoute(ob);
-    if (type === 'stomp' && this.player.grounded) {
-      return this.obstacles
-        .filter((ob) => mine(ob) && ob.def.ground && ob.def.breakable && ob.x + ob.w >= px - 8 && ob.x <= px + 46)
-        .sort((a, b) => Math.abs(a.x - px) - Math.abs(b.x - px))[0] || null;
+  /**
+   * THE SIXTEENTH THE SPECIAL MOVE COMES BACK ON.
+   *
+   * Every cabinet plays a song, so there is always a grid — `Audio.songBeat()`
+   * is not rhythm-stage machinery, it reads wherever a bank is loaded. Snapping
+   * the cooldown to it makes the recharge part of the music everywhere rather
+   * than only where the floor is charted, and it is what lets the ready cue land
+   * exactly on a line instead of being held up until the next one.
+   *
+   * NEAREST, not up. Rounding up would make every ability strictly slower than
+   * its data says; nearest keeps the average honest and bounds the error at half
+   * a sixteenth — 60ms at the beat cabinet's 124bpm, under 2.5% of the shortest
+   * cooldown in the cast. Kiko included, on the rhythm stages, which is a
+   * deliberate reversal of the note in beatchart.js about her recharge.
+   *
+   * Returns the cooldown unchanged when there is no clock to snap to: a stage
+   * reached before its bank is live, or a test with no audio context at all.
+   */
+  quantiseCooldown(sec) {
+    if (!(sec > 0)) return sec;
+    const beat = Audio.songBeat();
+    if (!Number.isFinite(beat)) return sec;
+    const secPerBeat = 60 / (Audio.bpm * (Audio.tempo || 1));
+    if (!(secPerBeat > 0)) return sec;
+    // The song clock wraps at the loop boundary, so the beat NUMBER at expiry
+    // may be meaningless — the elapsed time this returns is not, which is why
+    // the snap is computed as a duration and never stored as an absolute beat.
+    const end = beat + sec / secPerBeat;
+    const out = (Math.round(end / READY_GRID_BEATS) * READY_GRID_BEATS - beat) * secPerBeat;
+    return out > 0 ? out : sec;
+  }
+
+  /**
+   * The special move has finished recharging — say so, once.
+   *
+   * The cooldown orb sits beside the hero and the USE disc is under a thumb, so
+   * on the run the readout is in two places you are not looking. The cue is the
+   * only reading you get without taking your eyes off the lane.
+   *
+   * FIRED EARLY, ON PURPOSE. Because quantiseCooldown put the ready moment on a
+   * sixteenth, the cue can be scheduled the moment the cooldown comes within the
+   * engine's own lead (`cueLeadSec` — output latency, perceptual lead and a
+   * frame's slack) and handed that remaining time as `inBeats`. It then lands ON
+   * the line rather than a frame and a buffer after it, and nothing is held up
+   * waiting for the next one. Firing on the zero crossing instead is late by
+   * exactly the amount this avoids.
+   *
+   * The edge is still watched, as the fallback for everything the early path
+   * cannot cover: no song clock, a frame long enough to step over the lead
+   * window, or a cooldown handed out by the tutorial rather than counted down.
+   */
+  cueAbilityReady() {
+    const p = this.player;
+    const secPerBeat = 60 / (Audio.bpm * (Audio.tempo || 1));
+    const cd = p.abilityCd;
+    if (!p.abilityReadyCued && cd > 0 && Number.isFinite(Audio.songBeat())
+        && cd <= Audio.cueLeadSec() && secPerBeat > 0) {
+      p.abilityReadyCued = true;
+      p.abilityReadyEdge = false;
+      Audio.sfx('abilityReady', {
+        inBeats: cd / secPerBeat,
+        // The two strikes are a sixteenth apart, so the second lands on the next
+        // line rather than near it. Off the clock the cue keeps its own spacing.
+        gap: READY_GRID_BEATS * secPerBeat,
+      });
+      return;
     }
-    if (type === 'eat') {
-      return this.obstacles
-        .filter((ob) => mine(ob) && ob.def.breakable && !ob.def.isGap && ob.x + ob.w >= px - 4 && ob.x <= px + 80)
-        .sort((a, b) => a.x - b.x)[0] || null;
-    }
-    return null;
+    if (!p.abilityReadyEdge) return;
+    // Consumed, not just read. player.update clears the flag at the top of each
+    // frame, but the ring lap skips that update entirely (`riding`, above) — and
+    // a flag nobody clears is a flag that fires every frame of the lap.
+    p.abilityReadyEdge = false;
+    if (p.abilityReadyCued) return;
+    p.abilityReadyCued = true;
+    Audio.sfx('abilityReady');
   }
 
   useAbility() {
@@ -6312,46 +6545,17 @@ export class RunState {
     const type = hero.ability.type;
     if (this.player.abilityCd > 0) return false;
     if (type === 'roll' && !this.player.grounded) return false;
-    // Lorenzo's grounded flurry defers the cooldown until the swings stop
-    // (on contact or timeout). Everything else starts the cooldown now.
-    if (!(type === 'stomp' && this.player.grounded)) {
-      this.player.abilityCd = hero.ability.cooldown * cdMult;
-    }
+    // Every hero starts the cooldown here, with no exceptions: the cast is all
+    // thrown and fired moves now, and Lorenzo's wrench leaves his hand like
+    // everyone else's. The one exception used to be his grounded spanner
+    // flurry, which deferred the cooldown until the swings stopped.
+    this.player.abilityCd = this.quantiseCooldown(hero.ability.cooldown * cdMult);
+    this.player.abilityReadyCued = false;
     this.player.powerType = type;
     // Eating needs the full gape/hold/snap bite cycle (~0.4s) to read as a
     // bite rather than a twitch — see poseFromPlayer's EAT_POWER_POSE_T.
-    this.player.powerPoseT = type === 'eat' ? 0.5 : type === 'bow' ? BOW_AIM_T : 0.3;
-    if (type === 'stomp') {
-      if (this.player.grounded) {
-        // Flurry: Lorenzo swings the spanner repeatedly until he connects,
-        // or for a short window. Cooldown starts when the flurry ends.
-        const px = this.playerWorldX();
-        const target = this.powerTarget(type);
-        this.player.spannerFlurryT = 1.75;
-        this.player.spannerFlurryHitIds = new Set();
-        this.player.spannerFlurryCd = hero.ability.cooldown * cdMult;
-        if (target) {
-          this.player.spannerFlurryHitIds.add(target.id);
-          this.projectileImpact({ type: 'spanner' }, target.x + target.w / 2,
-            this.entityGroundY(target) - target.alt - target.h / 2);
-          this.breakObstacle(target);
-          // Connected on the first swing — flurry ends, cooldown starts.
-          this.player.spannerFlurryT = 0;
-          this.player.spannerFlurryHitIds = null;
-          this.player.abilityCd = this.player.spannerFlurryCd;
-          this.player.spannerFlurryCd = 0;
-        }
-        this.player.powerPoseT = 0.3; // first swing starts immediately
-        Audio.sfx('crunch');
-        shake(2, 0.12);
-        this.floatText(target ? 'WRENCH SMASH' : 'WRENCH FLURRY', '#f6d33c');
-      } else {
-        this.player.clearSlideState();
-        this.player.stomping = true;
-        this.player.vy = Math.min(this.player.vy, -180);
-        Audio.sfx('dash');
-      }
-    } else if (type === 'dash') {
+    this.player.powerPoseT = type === 'bow' ? BOW_AIM_T : 0.3;
+    if (type === 'dash') {
       this.player.dashT = 0.4;
       Audio.sfx('dash');
       for (let i = 0; i < 5; i++) spawn(this.playerWorldX() - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
@@ -6407,21 +6611,6 @@ export class RunState {
       this.player.compressT = 1;
       Audio.sfx('power');
       this.floatText('PROBABLY NORMAL PHYSICS', '#ffb7c3');
-    } else if (type === 'eat') {
-      Audio.sfx('chomp');
-      const target = this.powerTarget(type);
-      if (target) {
-        this.startChompBite(target);
-        this.projectileImpact({ type: 'chomp' }, target.x + target.w / 2,
-          this.entityGroundY(target) - target.alt - target.h / 2);
-        this.breakObstacle(target, true);
-        this.floatText('MISS CHOMP ATE IT. POLITELY.', '#f6d33c');
-        this.chompFlourish(target.x + target.w / 2, this.entityGroundY(target) - target.alt - target.h / 2);
-      } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', '#f6d33c');
-      if (this.modIds.includes('eat') && !this.player.hazardEaten) {
-        this.player.hazardEaten = true;
-        this.player.abilityCd = 0;
-      }
     } else if (type === 'bow') {
       // NOTHING LEAVES ON THE PRESS. He reaches back for the bow and draws,
       // and the arrow goes at BOW_REACH_T + 0.15 — the round is queued with a
@@ -6438,7 +6627,7 @@ export class RunState {
         pierce: this.modIds.includes('bash') || this.modIds.includes('charge'), hitIds: new Set(),
       });
     } else if (type === 'fist') {
-      Audio.sfx('launch', { hero: 'raymn', pitch: 1 });
+      Audio.sfx('launch', { hero: 'ramon', pitch: 1 });
       this.player.fistThrown = true;
       this.projectiles.push({ type: 'fist', route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false, pierce: false, hitIds: new Set(), hover: false, hoverT: 0 });
     } else if (type === 'axe') {
@@ -6477,39 +6666,6 @@ export class RunState {
       this.projectiles.push({ type: 'axe', art: 'bamboo', caneParity: parity, route: this.route, x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + 215, t: 0, holdT: 0.3 * RANGED_RELEASE_AT.toss, live: true, returning: false, hits: 1, hitIds: new Set(), hover: false, hoverT: 0 });
     }
     return true;
-  }
-
-  /**
-   * Lorenzo stomp: break ground obstacles under/near him.
-   *
-   * THE BOUNCE IS THE LANDING'S, NOT THE SMASHING'S, which is the whole reason
-   * it is a parameter. Coming down on a crate and being thrown back off it is
-   * the stomp working — he arrived with weight and the weight went somewhere.
-   * The relay calls this for a different reason entirely: a hero tagging in at
-   * a portal has the space around him cleared so he does not materialise inside
-   * a barrel, and he is standing on the ground while it happens.
-   *
-   * Sharing one function meant sharing the rebound, so a tag-in next to any
-   * breakable threw the incoming hero 22px into the air on the frame he
-   * appeared — no button pressed, the full air pose, and no fall face on the
-   * way down because he was RISING. It reads exactly like the game jumping for
-   * you off the end of whatever you were standing on, and it is the only thing
-   * in the game that ever moved a hero nobody had asked to move.
-   */
-  stompBreak({ bounce = true } = {}) {
-    const px = this.camX + PLAYER_X;
-    let radius = 16;
-    if (this.modIds.includes('shockwave')) radius = 40;
-    for (const ob of this.obstacles) {
-      if (!ob.live || !ob.def.ground || !ob.def.breakable) continue;
-      if (Math.abs(ob.x + ob.w / 2 - px) < radius + ob.w / 2) {
-        this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
-          this.entityGroundY(ob) - ob.alt - ob.h / 2);
-        this.breakObstacle(ob);
-        if (this.modIds.includes('shockwave')) this.scatterCoins(ob.x);
-        if (bounce) { this.player.vy = 200; this.player.grounded = false; this.player.jumps = 1; }
-      }
-    }
   }
 
   scatterCoins(x) {
@@ -6619,11 +6775,11 @@ export class RunState {
   // material/debris sound separately.
   projectileImpact(pr, cx, cy) {
     const hero = pr.contactHero || (pr.type === 'axe' ? axeOwner(pr) : ({
-      pellet: 'b33p', axe: 'grumpos', fist: 'raymn', spanner: 'lorenzo',
-      shield: 'fernwick', arrow: 'fernwick', chomp: 'chompo',
+      pellet: 'b33p', axe: 'grumpos', fist: 'ramon', spanner: 'lorenzo',
+      shield: 'fernwick', arrow: 'fernwick',
     }[pr.type]));
     const pitch = pr.type === 'axe' ? 0.82 : pr.type === 'fist' ? 0.96
-      : pr.type === 'shield' ? 0.9 : pr.type === 'chomp' ? 0.88 : 1.12;
+      : pr.type === 'shield' ? 0.9 : 1.12;
     Audio.sfx(hero ? 'contact' : 'impact', { hero, pitch });
     shake(pr.type === 'axe' ? 1.6 : 1.1, 0.07);
     const r = () => this.fxRng.float();
@@ -6647,53 +6803,6 @@ export class RunState {
     if (d.spark) burst(cx, cy, 5, 110, 0.22, d.spark, 1, 30, r); // machines throw sparks too
   }
 
-  // Miss Chomp's signature send-off after a HAZARD BITE: a dainty pink kiss-poof
-  // that drifts up (her "thank-you note" made visible) plus a few white sparkle
-  // flecks and a short aside in her own pink voice. Purely cosmetic -- the bite
-  // itself already happened in breakObstacle; this is the flourish on top.
-  chompFlourish(cx, cy) {
-    const PINK = '#f7bacc', BLUSH = '#ffd0e0';
-    const r = () => this.fxRng.float();
-    burst(cx, cy, 6, 55, 0.5, PINK, 1.2, -20, r);   // negative grav: the kiss rises
-    burst(cx, cy, 4, 40, 0.6, BLUSH, 1, -30, r);
-    for (let i = 0; i < 3; i++) {                    // white sparkle flecks
-      spawn(cx + (r() - 0.5) * 16, cy - r() * 8, (r() - 0.5) * 24, -24 - r() * 30, 0.7, '#fff', 1.4, 46);
-    }
-    this.floatText(this.fxRng.pick(['MWAH. — DARLING', 'RETURNED WITH A NOTE. XOXO', 'WAKA, DARLING.', 'DEE-LIGHTFUL. THANK YOU.']), PINK);
-  }
-
-  // Keep a cosmetic snapshot after gameplay removes the hazard, then pull the
-  // real sprite into the mouth over the same half-second as the authored gape
-  // and snap. Collision is still immediate; only its visible exit is delayed.
-  startChompBite(ob) {
-    if (!ob) return;
-    const copy = { ...ob, live: true };
-    if (this.chompBites.length < 8) {
-      this.chompBites.push({ ob: copy, t: 0, duration: 0.42, spin: (this.fxRng.float() - 0.5) * 1.8 });
-    }
-    // Material-coloured crumbs make the direction readable even when the
-    // obstacle itself is tiny or the cabinet treatment is visually busy.
-    const fromX = ob.x + ob.w / 2;
-    const fromY = this.entityGroundY(ob) - ob.alt - ob.h / 2;
-    const mouthX = this.playerWorldX() + 9;
-    const mouthY = this.groundYAt(mouthX) - this.player.y - 11;
-    const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
-    const colors = d.colors && d.colors.length ? d.colors : ['#f6d33c'];
-    const travel = 0.4;
-    for (let i = 0; i < 5; i++) {
-      const jitterX = (this.fxRng.float() - 0.5) * Math.min(12, ob.w);
-      const jitterY = (this.fxRng.float() - 0.5) * Math.min(10, ob.h);
-      spawn(fromX + jitterX, fromY + jitterY,
-        (mouthX - fromX) / travel + (this.fxRng.float() - 0.5) * 12,
-        (mouthY - fromY) / travel - 12 - this.fxRng.float() * 10,
-        travel, colors[i % colors.length], Math.max(1.2, (d.size || 2) * 0.55), 28);
-    }
-  }
-
-  updateChompBites(dt) {
-    for (const bite of this.chompBites) bite.t += dt;
-    this.chompBites = this.chompBites.filter((bite) => bite.t < bite.duration);
-  }
 
   // Keepy-uppies. Touching a punted prop that is still airborne knocks it back
   // up instead of passing through it, which is what running into a thing you
@@ -6839,6 +6948,20 @@ export class RunState {
     }
   }
 
+  /**
+   * The card box's blast: the explosion, plus a crack riding its front edge.
+   *
+   * One call for both firing paths — placed on the clock (`inBeats`) when there
+   * is a beat lane to place it on, fired now when there is not — so the two
+   * layers can never drift apart between them. See CARD_BOX_BOOM_GAIN for why
+   * there are two.
+   */
+  cardBoxBlast(inBeats) {
+    const when = Number.isFinite(inBeats) ? { inBeats } : {};
+    Audio.sfx('boom', { ...when, gain: CARD_BOX_BOOM_GAIN });
+    Audio.sfx('boxKick', { ...when, gain: CARD_BOX_CRACK_GAIN });
+  }
+
   /** The card box opens, on the beat it was promised to. */
   burstCardBox(ob) {
     if (!ob.live) return;
@@ -6851,7 +6974,7 @@ export class RunState {
     // tonal ceramic crack for a hit you go out of your way to land, and here
     // a box goes off at the hero's face every few bars of a song.
     // Already on the clock when the fuse was lit on a beat lane (updateObstacles).
-    if (!ob.boomCued) Audio.sfx('boom');
+    if (!ob.boomCued) this.cardBoxBlast();
     shake(1.6, 0.14);
     // Gold over the card-coloured scatter breakObstacle throws, so the burst
     // reads as a payout rather than as one more prop coming apart.
@@ -6900,7 +7023,7 @@ export class RunState {
       this.mission.count++;
       this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
     }
-    if (ob.def.isSwitch) this.openGates(ob.x);
+    if (ob.def.isSwitch) this.openGates(ob);
   }
 
   // A shot trap springs. It is NOT breakObstacle: nothing is removed, no debris
@@ -6928,7 +7051,7 @@ export class RunState {
     if (onto === 'hero') return;
     const cx = ob.x + ob.w / 2;
     const cy = this.entityGroundY(ob) - ob.alt - ob.h / 2;
-    Audio.sfx('trapSnap', { gain: 1.12 });
+    Audio.sfx('trapSnap', { gain: TRAP_SNAP_GAIN });
     shake(1.1, 0.09);
     // Snow, not debris: the trap is intact. What flies is what it was lying in.
     burst(cx, cy, 8, 70, 0.4, '#e6eef2', 1, 180, () => this.fxRng.float());
@@ -6938,12 +7061,211 @@ export class RunState {
   // The old name, kept because a shot is still the interesting way to spend one.
   disarmTrap(ob) { this.springTrap(ob, 'nothing'); }
 
-  openGates(x) {
-    // Frozen switch: remove the next gap (a bridge slides in).
-    Audio.sfx('checkpoint');
+  // A SWITCH IS THROWN, NOT BROKEN — the trap's bargain above, for the one prop
+  // on the ice you are meant to go out of your way to touch.
+  //
+  // It used to be `breakable: true`, so hitting it deleted it: the reward for
+  // finding the thing was that the thing stopped existing. Everything the
+  // player did — the hop, the bridge sliding in, the capsule they can now
+  // reach — was over in the same frame, with nothing left in the lane to say it
+  // happened. The trap already solved this exact problem the other way round
+  // (see springTrap: the jaws shut and you can see they are shut for the rest
+  // of the lane), and a lever is even more obviously a thing that stays.
+  //
+  // So the post stands, the lever swings over, the lamp lights, and it runs off
+  // the back of the screen behind the player still saying ON. `thrown` is what
+  // spends it: the collision loop skips a thrown switch, so one post can never
+  // pay out twice, and the draw reads the same flag for the swing.
+  throwSwitch(ob) {
+    if (ob.thrown) return;
+    ob.thrown = true;
+    ob.thrownT = 0;
+    this.openGates(ob);
+  }
+
+  // THE HOLE A FROZEN SWITCH OWNS, and nothing else. `gateId` is written by
+  // the spawner when the pattern is laid (see the pairing block in
+  // Spawner.fill) and carried by id rather than by reference so it survives a
+  // rewind. Null when the hole is already gone — swept, or bridged.
+  gateOf(sw) {
+    const hole = this.gateRecord(sw.gateId);
+    return hole && hole.live ? hole : null;
+  }
+
+  // The same hole whether or not it is still open, which is the question the
+  // retire pass has to ask: a break that was BRIDGED is gone for the happiest
+  // of reasons and its prize is now standing on ground, while a break that was
+  // swept takes the whole prop with it.
+  gateRecord(id) {
+    if (id == null) return null;
+    for (const ob of this.obstacles) if (ob.id === id) return ob;
+    return null;
+  }
+
+  // A SWITCH WITHOUT ITS HOLE IS NOT A SWITCH.
+  //
+  // Every lane sweep in this file keys on `def.action`, and the pair a frost
+  // pattern lays down answers that question two different ways: the hole is
+  // `action: 'jump'` and the switch is `action: 'none'`. So the windows that
+  // clear a route's entry and exit, the clearance around a scripted pit and the
+  // portal's approach all took the hole and left the switch standing on solid
+  // ground, offering a bridge over nothing — about one frost run in seven.
+  //
+  // Retired here rather than taught to each sweep: there are four of them, they
+  // delete holes for four unrelated and correct reasons, and a fifth would
+  // arrive not knowing about this one. What they all have in common is that
+  // afterwards the hole is dead, which is the only thing this needs to see.
+  //
+  // Off screen only, by the rule `retireExit` states: nothing vanishes in plain
+  // view. In practice that costs nothing — every one of those sweeps runs on a
+  // stretch of lane hundreds of pixels beyond the frame, so the switch dies on
+  // the same frame its hole does and neither was ever seen.
+  // THE PRIZE GOES TOO. It is the third piece of the same prop (Spawner's
+  // spawnGatedPrize): a capsule hanging over the break, which without the break
+  // under it is just a free capsule lying in the road — the one thing the power
+  // drip's whole spacing ledger exists to prevent, handed out by a pattern.
+  //
+  // `bridged` is the exception, and it is why this reads the hole's RECORD
+  // rather than asking whether it is live: a hole the player closed is dead in
+  // exactly the same way as a hole a sweep deleted, and the prize on top of it
+  // is the entire point of having closed it.
+  retireOrphanSwitches() {
+    const viewRight = this.viewRightX();
+    const orphaned = (e) => {
+      if (e.gateId == null) return false;
+      const hole = this.gateRecord(e.gateId);
+      return !(hole && (hole.live || hole.bridged));
+    };
+    // AND THE PRIZE ASKS A SECOND QUESTION, because it is the only one of the
+    // three that is worth nothing on its own.
+    //
+    // A block and a hole each still read as themselves when the other is gone —
+    // a hole is a hole, a block is a box you can bump. A capsule hanging over an
+    // open break is a promise that something in the lane can be hit to reach
+    // it, and if the thing that opens it has been swept there is no such thing:
+    // it is a prize floating in mid-air over a pit, with nothing anywhere to say
+    // why. That is what Peter photographed, and it is about one lane in forty —
+    // a portal's column takes the block (`action: 'none'`, so it gets the narrow
+    // window) while the hole a hundred and twenty pixels on keeps its ground.
+    //
+    // `bridged` is the exemption, and it has to be, because the happy ending
+    // looks identical from here: the block is spent, the deck is laid, and the
+    // capsule is standing on ice waiting to be collected.
+    const unreachable = (p) => {
+      if (p.blockId == null) return false;
+      const hole = this.gateRecord(p.gateId);
+      if (hole && hole.bridged) return false;
+      const block = this.gateRecord(p.blockId);
+      return !(block && block.live);
+    };
     for (const ob of this.obstacles) {
-      if (ob.live && ob.def.isGap && ob.x > x) { ob.live = false; this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8'); break; }
+      if (!ob.live || !ob.def.isSwitch) continue;
+      if (ob.x <= viewRight || !orphaned(ob)) continue;
+      ob.live = false;
     }
+    for (const p of this.pickups) {
+      if (!p.live || !p.gated) continue;
+      // Off screen only, by the rule the rest of this pass keeps. It costs
+      // nothing in the swept case — the sweeps all run hundreds of pixels past
+      // the frame — and in the ordinary one it is what stops a capsule winking
+      // out ahead of a player who has simply chosen not to bump the block.
+      if (p.x <= viewRight) continue;
+      if (!orphaned(p) && !unreachable(p)) continue;
+      p.live = false;
+    }
+  }
+
+  // A gated prize joins the power ledger the moment the lane lays it, so the
+  // drip does not drop a second capsule beside one the player can already see.
+  // Read out of the fill rather than reported by the spawner, which knows
+  // nothing about the drip: the two are separate objects and only the run holds
+  // both. `ledgered` keeps it to once per prize — this runs every frame.
+  notePatternPrizes() {
+    for (const p of this.pickups) {
+      if (!p.live || !p.gated || p.ledgered) continue;
+      p.ledgered = true;
+      if (!p.def?.power) continue;
+      this.withdrawCrowdedDrip(p);
+      this.drip.notePower(p.x, p.type);
+    }
+  }
+
+  /**
+   * AND THE LEDGER ONLY WORKS ONE WAY ROUND, SO THIS IS THE OTHER WAY.
+   *
+   * Telling the drip about a gated prize stops the NEXT capsule landing beside
+   * it. It cannot stop the LAST one, and the ordering makes that the common
+   * case rather than the rare one: the drip drops a screen and a bit out (540)
+   * while the pattern lane fills further still (680), so a hole with a prize
+   * over it is regularly laid into ground the drip has already dealt onto. That
+   * is how a dripped capsule and a gated one ended up 334px apart on frost-2
+   * with the whole ledger working exactly as written.
+   *
+   * The prize does not move: it is the middle of the hole, and it is that hole's
+   * reward — the switch, the bridge and the capsule are one prop. So the DICE
+   * give way, which they can afford to and an author cannot. The capsule is
+   * withdrawn rather than shuffled, because the only clear ground left is out
+   * past the filled lane where nothing has been laid yet (DRIP_LOOKAHEAD), and
+   * the drip is re-armed short so the cadence loses a beat and not a capsule.
+   *
+   * ONLY WHILE IT IS STILL OFF SCREEN. A capsule the player can see is a capsule
+   * he is already running at, and taking it out from in front of him to tidy up
+   * a rule he cannot see is worse than the crowding it fixes. On screen, they
+   * both stand — the same line retireOrphanSwitches draws.
+   */
+  withdrawCrowdedDrip(prize) {
+    const viewRight = this.viewRightX();
+    for (const p of this.pickups) {
+      if (p === prize || !p.live || !p.dripped) continue;
+      if (p.x <= viewRight) continue;
+      if (Math.abs(p.x - prize.x) >= POWER_MIN_GAP) continue;
+      p.live = false;
+      this.drip.capsuleTimer = Math.min(this.drip.capsuleTimer, 0.5);
+    }
+  }
+
+  openGates(sw) {
+    // Frozen switch: its own hole is removed (a bridge slides in).
+    //
+    // ITS OWN, not "the next one ahead", which is what this used to take. A
+    // switch whose hole had been swept spent its bridge on the next break in
+    // the stage — one the player had never seen, often thousands of pixels
+    // away — and left THAT hole's switch with nothing to open in turn. One
+    // orphan quietly made the next one.
+    const hole = this.gateOf(sw)
+      // Nothing in the cabinets lays a switch without a hole, and a pattern
+      // that someday does still gets the old reading rather than a dud prop.
+      || (sw.gateId == null
+        ? this.obstacles.find((ob) => ob.live && ob.def.isGap && ob.x > sw.x)
+        : null);
+    if (!hole) return;
+    // The lever's own cue, not the checkpoint fanfare it used to borrow: this is
+    // a mechanism being thrown, and the circuit closing at the end of it is the
+    // same moment the lamp comes up green.
+    Audio.sfx('switchFlick');
+    // THE HOLE STAYS. A DECK GOES OVER IT.
+    //
+    // It used to be `hole.live = false`, which is a hole ceasing to exist: the
+    // ground healed over, the tar went with it, and the reward for finding the
+    // switch was a stretch of road that looked like it had never been broken.
+    // Nothing on screen said a bridge had been built, because nothing WAS —
+    // there was a gap, and then there was lane.
+    //
+    // So the break stays live and takes a deck instead: the ground is still
+    // cut, the pit is still full of whatever the cabinet fills one with, and
+    // the slats are laid across it fast enough to read as a mechanism firing
+    // (BRIDGE_LAY_T). You can see the hole between them for the rest of the
+    // run, which is the evidence the old version threw away — the same argument
+    // that keeps the switch itself standing after it is thrown.
+    //
+    // `bridged` is what makes it safe (isOpenGap in entities.js: every gameplay
+    // reading asks that, every drawing reading still asks isGap), and it is
+    // also the flag the retire pass reads to tell a hole the player CLOSED from
+    // one a sweep took away. One leaves a capsule standing over a bridge; the
+    // other takes it with it.
+    hole.bridged = true;
+    hole.bridgeT = 0;
+    this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8');
   }
 
   // ------------------------------------------------------------------ relay
@@ -7272,9 +7594,6 @@ export class RunState {
     this.score += 100;
     this.portalDischarge(this.portal ? this.portal.x : px);
     const hero = HERO_BY_ID[result.to];
-    // Clearing the space he arrives in, NOT stomping into it — see stompBreak.
-    // He is standing on the ground at this point and nobody pressed anything.
-    if (hero.stomp) this.stompBreak({ bounce: false });
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
     if (this.modIds.includes('tagspeed') && result.to === 'rusty') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
     // No per-swap button callout: the HUD's ability panel top-right already
@@ -7839,7 +8158,11 @@ export class RunState {
     for (const ob of this.obstacles) {
       if (!ob.live || !ob.def) continue;
       if (ob.def.isBoost) continue;
-      if (gapsOnly ? !ob.def.isGap : (ob.def.action === 'none' && !ob.def.isGap)) continue;
+      // A DECKED HOLE ASKS FOR NOTHING. It is not a gap to this pass any more
+      // than it is to the hero's feet — planning a jump over ground he can run
+      // across is how a bridge you paid for turns into a hazard you did not.
+      const gap = isOpenGap(ob);
+      if (gapsOnly ? !gap : (ob.def.action === 'none' && !gap)) continue;
       if (ob.x + ob.w < from || ob.x > to) continue;
       return false;
     }
@@ -7876,6 +8199,11 @@ export class RunState {
       // choice in draw.js. It keeps counting past TRAP_SNAP_T harmlessly; the
       // draw clamps to the last frame and holds it.
       if (ob.disarmed) ob.disarmT += dt;
+      if (ob.thrown) ob.thrownT += dt;
+      // The deck running out across a bridged break, on the same kind of clock
+      // as the switch's own swing and for the same reason: it has to land on
+      // the frame the hit happened, not on the next tick of the prop ring.
+      if (ob.bridged && ob.bridgeT < BRIDGE_LAY_T) ob.bridgeT = (ob.bridgeT || 0) + dt;
       const moving = !ob.route || ob.x <= wake;
       // Shamblers lurch rather than glide: each step surges then nearly stalls.
       // The surge never flips sign, so they only ever close on the player.
@@ -8032,7 +8360,7 @@ export class RunState {
       // hitbox the chart's approach was computed against (actionApproachPx),
       // and a 10 hardcoded here silently unpinned the two the moment the prop
       // grew.
-      if (ob.def.beatSync) ob.h = ob.def.h + Math.round(4 * Math.abs(Math.sin(beat * Math.PI)));
+      if (ob.def.beatSync) ob.h = ob.def.h + Math.round(8 * Math.abs(Math.sin(beat * Math.PI)));
       // A LIT CARD BOX, counting down to its line. `fuseT` is only the flash
       // the painter reads; the moment is owned by the beat clock, so a dropped
       // frame or a long audio stall cannot slide the burst off the grid.
@@ -8046,7 +8374,7 @@ export class RunState {
         // (lightCardBox) and a cue already on the clock cannot follow it.
         if (chartBeat != null && !ob.boomCued && chartBeat >= ob.burstBeat - Audio.cueLeadBeats()) {
           ob.boomCued = true;
-          Audio.sfx('boom', { inBeats: ob.burstBeat - chartBeat });
+          this.cardBoxBlast(ob.burstBeat - chartBeat);
         }
         if (chartBeat == null || chartBeat >= ob.burstBeat) { this.burstCardBox(ob); continue; }
       }
@@ -8102,8 +8430,17 @@ export class RunState {
         p.vx *= 0.9;
         if (p.vy < 40) {
           p.vy = 0; p.vx = 0; p.toss = false;
-          // A capsule that has come to rest is placed like one the drip laid.
-          if (!p.def.coin) this.pinPickupToBeat(p);
+          // A capsule that has come to rest is placed like one the drip laid:
+          // on the grid where there is one, and out from under whatever it
+          // bounced to a stop inside either way. A prize is thrown blind — the
+          // arc is dealt by the box, not aimed — so this is the only moment it
+          // can be asked to stand clear, and a capsule resting in a cactus is
+          // the same dead end a dripped one would have been.
+          if (!p.def.coin && !this.pinPickupToBeat(p)) {
+            const maxX = this.laneWallX() - p.w;
+            const at = this.clearOfHazards(p.x, p.w, p.alt, p.h, maxX);
+            if (at != null) { p.x = at; if (p._baseX != null) p._baseX = at; }
+          }
         }
       }
     }
@@ -8781,10 +9118,10 @@ export class RunState {
    * ordinary shot does not change.
    *
    * ALL FIVE FLYING ROUNDS — Clara's and B33P's pellet, Grumpos' axe, Rusty's
-   * bamboo cane, Ray M'N's fist and Fernwick's arrow. It was the pellet alone, and Grumpos'
+   * bamboo cane, Ramon's fist and Fernwick's arrow. It was the pellet alone, and Grumpos'
    * axe thrown off a jump flew over the box while the box, armed by the
    * press, went anyway: a bang with no cause. The instant abilities (spanner,
-   * shield, chomp) pick their target directly and never miss.
+   * shield) pick their target directly and never miss.
    *
    * WHAT IT WILL NOT DIVE ONTO: scenery. A returning thrown weapon parks on
    * anything unbreakable it touches, and a bar, a pipe or a saw plate between
@@ -8799,8 +9136,15 @@ export class RunState {
     for (const ob of this.obstacles) {
       if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
       if ((ob.route || null) !== (pr.route || null)) continue;   // its own road only
-      if (ob.def.breakable === false || ob.def.armored) continue;
-      if (!thrown && !pr.pierce && !(ob.def.ground || ob.def.isTarget)) continue;
+      // UNBREAKABLE SCENERY IS NOT A TARGET — but the POWER BLOCK is, and it
+      // is the one unbreakable thing in the game a round is meant to reach. A
+      // shot does not break it, it HITS it (`throwable`, see the collision
+      // below), and without this line the pellet flew past underneath at its
+      // own height and the block could only ever be answered with a hop: the
+      // hero who carries a gun is usually the one who cannot reach it.
+      if ((ob.def.breakable === false && !ob.def.throwable) || ob.def.armored) continue;
+      if (!thrown && !pr.pierce
+        && !(ob.def.ground || ob.def.isTarget || ob.def.isSwitch)) continue;
       if (pr.hitIds?.has(ob.id)) continue;
       if (ob.x + ob.w < pr.x || ob.x > pr.x + ROUND_HOME_RANGE) continue;
       if (!target || ob.x < target.x) target = ob;
@@ -8974,6 +9318,15 @@ export class RunState {
       // Projectile vs obstacles.
       if (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist') {
         for (const ob of this.obstacles) {
+          // A SPENT ROUND IS SPENT. The loop used to carry a dead pellet on
+          // through the rest of the list — every unbreakable case sets
+          // pr.live = false and then `continue`s — so one round could be
+          // stopped by two different things in the same frame. It never showed
+          // while the answer was a puff of debris; it showed the moment an
+          // animal ANSWERED, because two animals close together took one pellet
+          // and spoke a line each. Weapons that survive their hit (a returning
+          // axe, a piercing pellet) keep pr.live true and are unaffected.
+          if (!pr.live) break;
           if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
           // ...AND ONLY ON ITS OWN ROAD. Both boxes are now measured off their
           // own floors, but two roads can still put a crate and a shot at the
@@ -8983,13 +9336,24 @@ export class RunState {
           if ((ob.route || null) !== (pr.route || null)) continue;
           pr.hitIds ||= new Set();
           if (pr.hitIds.has(ob.id)) continue;
+          // WHAT A PLAIN ROUND IS ALLOWED TO TOUCH. A thrown weapon and a
+          // piercing shot hit everything; a pellet or an arrow hits what is on
+          // the ground, what is a target — and the POWER BLOCK, which is
+          // neither. Without it named here a shot flew into the block and
+          // pinged off it as if it were armoured scenery: the round was spent,
+          // the sparks landed, and the switch stayed off. It is the one
+          // unbreakable thing in the game a shot is supposed to operate, and it
+          // is the only way a hero who cannot reach it gets the bridge.
           const canHit = pr.type === 'axe' || pr.type === 'fist' || pr.pierce
             ? true
-            : (ob.def.ground || ob.def.isTarget) && !ob.def.armored;
+            : (ob.def.ground || ob.def.isTarget || ob.def.isSwitch) && !ob.def.armored;
           if (!canHit) {
-            // pellet pings off armored flyers
+            // pellet pings off armored flyers — and off the one LIVE flier,
+            // which has never been shootable either but until now said nothing
+            // about it. See animalShrugOff.
             if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && (pr.type === 'pellet' || pr.type === 'arrow')) {
               this.projectileImpact(pr, pr.x + 4, this.entityGroundY(pr) - pr.alt - 4);
+              this.animalShrugOff(ob);
               pr.live = false;
               break;
             }
@@ -9021,6 +9385,33 @@ export class RunState {
               // solid object — but the trap shuts on nothing and is harmless
               // from here on.
               if (ob.def.disarmable) this.springTrap(ob, 'nothing');
+              // AND A FROZEN SWITCH IS THROWN BY ONE. Same bargain, same line:
+              // the round is spent on a solid object, the object stays, and the
+              // mechanism it drives has gone off. It is the only way a hero who
+              // cannot reach the head still gets the bridge.
+              if (ob.def.throwable) this.throwSwitch(ob);
+              // AND AN ANIMAL IS NOT BROKEN BY A SHOT EITHER — it is
+              // unimpressed by one. NOTHING ALIVE IN THIS GAME CAN BE SHOT:
+              // every animal is breakable: false (see the note on the flag in
+              // entities.js), so a round that reaches one connects, is spent
+              // exactly as it is on any other unbreakable thing, and leaves a
+              // dog still closing. A shot that visibly connects and does
+              // nothing is worse than one that misses, so it earns a line
+              // instead of a body. Same fix as the copter's forcefield below,
+              // and for the same reason.
+              //
+              // The jump is the answer to an animal, for every hero. One that
+              // could be shot off the road would be a different, easier game
+              // for the heroes who carry a gun than for the ones who do not —
+              // which went double for the finish dog, the last beat of a
+              // plumber stage.
+              //
+              // ONE LINE PER SHOT, NOT PER ROUND: Clara fires a pair a few
+              // pixels apart and a fast hero can empty several into the charge,
+              // and a floatie each reads as the dog being told off repeatedly
+              // for the same pellet. The gap is a beat longer than the copter's
+              // shimmer because this one is a sentence, not a word.
+              this.animalShrugOff(ob);
               if (pr.art === 'bamboo') { pr.live = false; break; }
               if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
               else pr.live = false;
@@ -9113,7 +9504,7 @@ export class RunState {
       if (pr.type !== 'axe') continue;
       if (this.relay.current !== axeOwner(pr)) pr.live = false;
     }
-    if (this.relay.current !== 'raymn') {
+    if (this.relay.current !== 'ramon') {
       for (const pr of this.projectiles) { if (pr.type === 'fist') pr.live = false; }
     }
     this.projectiles = this.projectiles.filter((p) => p.live);
@@ -9395,28 +9786,11 @@ export class RunState {
   // Returns null when there is no clear spot left before the finish line, which the
   // caller treats the same way as being past it: skip this piece and offer the
   // next one later, rather than plant one that cannot be taken.
+  // The rule itself lives in spawner.js, where the capsule drip reaches it too
+  // (DripSpawner.settle) — a mission piece and a prize are the same box dropped
+  // into the same live lane, and one placement rule stated twice is two rules.
   clearOfHazards(x, w, alt, h, maxX) {
-    const PAD = 30;         // landing room either side, in world units
-    const BAND = 4;         // slack above a hazard's crown before it stops mattering
-    // A HOLE IS IN EVERY BAND. Height is what makes a cactus stop mattering to a
-    // cord strung above it — the jump that clears the one collects the other —
-    // but a gap is not a thing you jump OVER on the way to the prize, it is the
-    // ground the prize is standing on not being there. A toaster hanging at alt
-    // 44 over a break is a lure toward a fatal hazard at any altitude, and the
-    // beat lane now cuts breaks all the way down a stage.
-    const inBand = (ob) => ob.def.isGap
-      || (alt < ob.alt + ob.h + BAND && alt + h > ob.alt - BAND);
-    const threat = (ob) => ob.live && !ob.def.isBoost && !ob.def.isTarget && !ob.def.isSwitch;
-    // Several passes: clearing one hazard can walk the piece into the next.
-    for (let pass = 0; pass < 8; pass++) {
-      let moved = false;
-      for (const ob of this.obstacles) {
-        if (!threat(ob) || !inBand(ob)) continue;
-        if (x < ob.x + ob.w + PAD && x + w > ob.x - PAD) { x = ob.x + ob.w + PAD; moved = true; }
-      }
-      if (!moved) break;
-    }
-    return x > maxX ? null : x;
+    return clearOfHazards(x, w, alt, h, maxX, this.obstacles);
   }
 
   // The HUD no longer carries a standing plug tally, so the moment a plug comes
@@ -9497,7 +9871,7 @@ export class RunState {
   dripUpdate(dt, stopX) {
     const before = this.pickups.length;
     this.drip.update(dt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX,
-      !this.rewindUsed && !this.beatLock, this.beatLock ? BEAT_BANNED_POWERS : null);
+      !this.rewindUsed && !this.beatLock, this.beatLock ? BEAT_BANNED_POWERS : null, this.obstacles);
     for (let i = before; i < this.pickups.length; i++) this.pinPickupToBeat(this.pickups[i]);
   }
 
@@ -10695,7 +11069,8 @@ export class RunState {
         const x = is.x + bodyW / 2;
         const alt = routePrizeAlt(is, x, is.prize);
         const onRoad = PICKUPS[is.prize]?.power !== 'magnet';
-        this.pickups.push(Object.assign(makePickup(is.prize, x, alt), onRoad ? { road: is } : {}));
+        if (onRoad) this.pickups.push(Object.assign(makePickup(is.prize, x, alt), { road: is }));
+        else this.placeLanePrize(is.prize, x, alt);
       }
       // The one big thing, two thirds of the way along, on top of whatever the
       // coin run pays. Placed late on purpose: a power-up sitting at the mouth
@@ -10704,7 +11079,8 @@ export class RunState {
         const x = is.x + bodyW * 0.66;
         const alt = routePrizeAlt(is, x, is.bonus, 6);
         const onRoad = PICKUPS[is.bonus]?.power !== 'magnet';
-        this.pickups.push(Object.assign(makePickup(is.bonus, x, alt), onRoad ? { road: is } : {}));
+        if (onRoad) this.pickups.push(Object.assign(makePickup(is.bonus, x, alt), { road: is }));
+        else this.placeLanePrize(is.bonus, x, alt);
       }
       // The road NOT taken. A fork is only a decision if the two sides are worth
       // different things — coins up and a power-up down means the answer depends
@@ -10712,7 +11088,7 @@ export class RunState {
       // solved once and then stop being a choice. The low road is the base
       // ground, so its prize is an ordinary ground-level pickup.
       if (is.lowPrize) {
-        this.pickups.push(makePickup(is.lowPrize, is.x + bodyW / 2, COIN_FLOOR));
+        this.placeLanePrize(is.lowPrize, is.x + bodyW / 2, COIN_FLOOR);
       }
       // A tunnel mouth is drawn out of the same gap a PIT is drawn out of, and
       // from the lane the two are the same hole — one kills you and one is a
@@ -10730,6 +11106,12 @@ export class RunState {
         }
       }
     }
+    // AFTER the loop, not before it. A lane prize whose ground is already laid
+    // — a short island's is only a few pixels past its own start — should be
+    // down on the frame its road arrived, exactly as it used to be; draining
+    // first would make every one of them wait a frame for no reason. Only a
+    // prize genuinely out past the filled lane stays in the queue.
+    this.placeQueuedLanePrizes();
   }
 
   /**
@@ -11055,6 +11437,87 @@ export class RunState {
     }
   }
 
+  /**
+   * A ROUTE'S OWN PRIZE, TOLD TO THE SAME LEDGER EVERY OTHER CAPSULE REPORTS TO.
+   *
+   * A fork's `lowPrize` — and any capsule routePrizeAlt deliberately keeps down
+   * on the lane floor, which is every magnet — is standing on the ROAD THE DRIP
+   * IS ALSO DEALING ONTO, and it was the one capsule source that never said so.
+   * So the drip, measuring its screen of clearance from the last capsule IT
+   * knew about, would drop one five pixels from an authored fork prize: two
+   * capsules side by side, which is the exact picture POWER_MIN_GAP exists to
+   * prevent.
+   *
+   * The road's own prizes stay out of it: an island's topPrize is up a flight of
+   * steps and a tunnel's bonus is underground, and neither is a thing the lane
+   * can crowd or be crowded by. That is what the `road` tag already marks, so
+   * this is called at the two sites that decline to set it.
+   *
+   * An AUTHORED capsule is never moved or re-rolled — the author put it there,
+   * and on that road it is the payout the fork is a decision about. All it does
+   * is take its place in the ledger, so the dice give it room.
+   */
+  placeLanePrize(type, x, alt) {
+    // HELD UNTIL THE GROUND UNDER IT EXISTS.
+    //
+    // A route's prizes are laid the moment the route's START comes into view,
+    // and a fork is over a thousand pixels long — so its lane prize, which sits
+    // at the middle, is placed several hundred pixels beyond anything the
+    // pattern spawner has filled. Cleared against that lane it clears nothing,
+    // and then the fill lays a snowman straight through it.
+    //
+    // So the prize waits for its own x rather than its road's. The camera's
+    // right edge is a screen out and the fill runs 200px further still (see
+    // Spawner.fill's lookahead), so by the time x is within a screen the lane
+    // beneath it is laid and the clearance below has something to read. The
+    // authored position is untouched — only the moment it is honoured moves.
+    //
+    // THE LEDGER IS TOLD NOW, THOUGH, and that split is the whole point. Where
+    // the prize stands and when it is laid are different questions: the drip
+    // deals a screen ahead of the camera and would happily fill this spot
+    // during the wait — it did, and put a capsule 0px from a fork's own prize —
+    // so the reservation is made at the authored x the moment the road offers
+    // it, and only the placing waits for ground. A nudge of a few pixels at the
+    // far end does not move a 480px rule.
+    (this.lanePrizeQueue ||= []).push({ type, x, alt });
+    if (PICKUPS[type]?.power) this.drip.notePower(x, type);
+  }
+
+  // Drained every frame from spawnRoutePrizes. One placed per pass at most is
+  // not worth arranging for: a route has three prizes in it at the very most
+  // and they are hundreds of pixels apart.
+  placeQueuedLanePrizes() {
+    const q = this.lanePrizeQueue;
+    if (!q || !q.length) return;
+    this.lanePrizeQueue = q.filter((it) => {
+      if (it.x > this.camX + W) return true;          // not yet — hold it
+      // Behind the camera is a prize the player has already run past; it was
+      // never laid, so there is nothing to retire and nothing to place.
+      if (it.x + (PICKUPS[it.type]?.w || 8) > this.camX) this.layLanePrize(it.type, it.x, it.alt);
+      return false;
+    });
+  }
+
+  layLanePrize(type, x, alt) {
+    const def = PICKUPS[type];
+    // Standing clear, on the lane's own rule. The author chose WHICH road pays
+    // and WHAT it pays, and both survive a nudge of a few pixels; a capsule
+    // sitting inside the crate the spawner laid over it survives nothing. The
+    // wall is the finish approach, and a prize with nowhere clear left before it
+    // is dropped rather than planted somewhere it cannot be taken.
+    const maxX = this.laneWallX() - def.w;
+    const at = this.clearOfHazards(Math.min(x, maxX), def.w, alt, def.h, maxX);
+    if (at == null) return;
+    this.pickups.push(makePickup(type, at, alt));
+    // AND THE LEDGER IS CORRECTED TO WHERE IT ACTUALLY STANDS. The reservation
+    // above was made at the authored x, before the lane under it existed; the
+    // clearance has since moved it downstream, and 64px of nudge came straight
+    // out of the screen the next capsule was supposed to keep. notePower only
+    // ever advances, so this is the same "measure from the thing the player will
+    // see" it is written for.
+    if (def.power) this.drip.notePower(at, type);
+  }
+
   // The stage's scripted rewind capsule — the power-up's guaranteed
   // introduction, placed by rewindAt the way applianceAt places the toaster
   // (plumber-2 at 0.15 — early, before the run settles into a rhythm, the same
@@ -11070,7 +11533,14 @@ export class RunState {
     if (this.rewindCapSpawned || this.rewindUsed) return;
     const at = this.layout.rewindAt * this.totalDist;
     if (this.camX + W <= at) return;
-    const x = Math.min(at + W, this.laneWallX() - PICKUPS.capRewind.w);
+    // Standing clear of the lane, on the drip's rule (clearOfHazards): this one
+    // is SCRIPTED, so it is the one capsule in the game that cannot be re-rolled
+    // somewhere kinder — a rewind planted inside a cactus is the introduction
+    // the power-up gets, once, and then never again this run.
+    const maxX = this.laneWallX() - PICKUPS.capRewind.w;
+    const x = this.clearOfHazards(Math.min(at + W, maxX), PICKUPS.capRewind.w, 34,
+      PICKUPS.capRewind.h, maxX);
+    if (x == null) return;                   // no clear ground left — retry next frame
     if (!this.drip.canPlacePower(x)) return; // crowded — retry next frame
     this.rewindCapSpawned = true;
     this.pickups.push(makePickup('capRewind', x, 34));
@@ -11435,6 +11905,9 @@ export class RunState {
   // The sign is not an obstacle. It is `action: 'none'`, it breaks on contact
   // for nothing, and it is placed a clear run-up short of the lip so the thing
   // it is asking for is still available after you have read it.
+  // HOW FAR IN FRONT OF A SWITCH ITS SIGN STANDS.
+  //
+
   signPits() {
     // ONE failure, not two. Two was the cautious number — one is a mistimed
     // jump, two is a pattern — and it is the wrong one for a hazard this
@@ -11625,7 +12098,7 @@ export class RunState {
         grounded: this.player.grounded, launched: this.player.launched,
         sliding: this.player.sliding, slideAmount: this.player.slideAmount,
         slideDirection: this.player.slideDirection, slideHoldT: this.player.slideHoldT,
-        slideSpent: this.player.slideSpent, stomping: this.player.stomping,
+        slideSpent: this.player.slideSpent,
         slideSlamming: this.player.slideSlamming,
         landingSlideT: this.player.landingSlideT, slideKickT: this.player.slideKickT,
         standT: this.player.standT,
@@ -11738,7 +12211,7 @@ export class RunState {
       this.player.grounded = m.grounded !== false; this.player.launched = !!m.launched;
       this.player.sliding = !!m.sliding; this.player.slideAmount = m.slideAmount ?? 0;
       this.player.slideDirection = m.slideDirection ?? 0; this.player.slideHoldT = m.slideHoldT ?? 0;
-      this.player.slideSpent = !!m.slideSpent; this.player.stomping = !!m.stomping;
+      this.player.slideSpent = !!m.slideSpent;
       this.player.slideSlamming = !!m.slideSlamming;
       this.player.landingSlideT = m.landingSlideT ?? 0; this.player.slideKickT = m.slideKickT ?? 0;
       this.player.standT = m.standT ?? 0;
@@ -11761,7 +12234,7 @@ export class RunState {
     if (rs.relay != null) this.relay.rng.state = rs.relay;
     if (rs.spawn != null && this.spawner.rng) this.spawner.rng.state = rs.spawn;
     if (rs.drip != null) this.drip.rng.state = rs.drip;
-    this.obstacles = []; this.pickups = []; this.projectiles = []; this.chompBites = [];
+    this.obstacles = []; this.pickups = []; this.projectiles = [];
     this.portal = null;
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
     this.finishDogSpawned = !!s.finishDogSpawned;
@@ -11791,6 +12264,30 @@ export class RunState {
       pp.spawned = false;
       pp.passed = false;
     }
+    // AND EVERY ROAD STILL IN FRONT OF HIM IS FURNISHED AGAIN.
+    //
+    // The same one-shot, and the same two halves of it that the holes have: a
+    // route carries `populated` (its hazards) and `spawned` (its prizes and its
+    // dive coins), the restore empties the world of both, and neither flag is
+    // the spawner's to re-lay. A tunnel the player reached the mouth of before
+    // the flag came back as an empty tube — no crates, no bonus at the bottom,
+    // the coin dive gone — and a fork came back offering a choice between two
+    // roads that both paid nothing. Both are one-way: the routes themselves are
+    // built at enter() and survive, so what was lost was only ever the contents.
+    //
+    // Behind him it stays spent, for the reason the holes are: the roads he has
+    // already run do not restock as he leaves them. The far edge decides, not
+    // the near one — a tunnel is most of a screen long and its far half is
+    // still ahead of a hero standing in its mouth.
+    for (const route of this.routes) {
+      if (route.x + (route.w || 0) <= this.camX) continue;
+      route.populated = false;
+      route.spawned = false;
+    }
+    // Anything still waiting for its ground goes with them: the queue is a list
+    // of prizes not yet laid, and the roads that owed them are about to offer
+    // them again. Keeping it would lay each one twice.
+    this.lanePrizeQueue = null;
     // The ring is the same kind of one-shot and takes the same guard. It has
     // never been caught by this in practice — the loop sits at 0.55 and the
     // checkpoints at a third and two thirds, so the pad is never planted before
@@ -11845,25 +12342,6 @@ export class RunState {
   }
 
   // ------------------------------------------------------------------ rewind
-  // The armed/disarmed edge for the touch rewind capsule — the ONE place that
-  // handles grab and spend uniformly. Both effects are no-ops when the
-  // player has free rewind, so desktop's boot-time capture node and buttonless
-  // margin are never touched from here.
-  updateRewindArm() {
-    if (this.beatLock) return;
-    const armed = !!this.powerups.active.rewind;
-    if (armed === this.rewindArmedPrev) return;
-    this.rewindArmedPrev = armed;
-    if (this.rewindAvailableForRun()) return;
-    // The reversed-SFX recorder only exists while a charge is armed — that is
-    // the whole cost story of the power-up (docs/mobile-rewind-powerup.md).
-    Audio.setCaptureEnabled(armed);
-    // A window that closes leaves the ring holding a past that is about to go
-    // stale: dropping it means the next capsule can never splice this window's
-    // tape onto its own and teleport the player across the gap.
-    if (!armed) this.rewindFrames.reset();
-  }
-
   // Record a snapshot on the fixed cadence during normal forward play.
   // After recording, discard the oldest if the buffer is full.
   /**
@@ -11916,15 +12394,14 @@ export class RunState {
   }
 
   recordRewindFrame(dt) {
-    // Asked every frame rather than once per run so a pad paired mid-run starts
-    // recording. The ring allocates its records lazily, so a run that never
-    // captures never pays for one — there is nothing to tear down here.
-    // Without free rewind the tape rolls only while a capsule remains armed:
-    // recording must PRECEDE the mistake (a rewind rewinds the past), so
-    // "record on demand" necessarily means "record while armed". The charge
-    // no longer times out; this stays live until it fires or the level ends.
+    // The tape rolls for the whole run on EVERY device. Recording must precede
+    // the mistake — a rewind rewinds the past — so a tape that only starts when
+    // the capsule is collected is a rewind whose length is however long ago that
+    // was: collect it and clip a crate a second later and the "three second"
+    // rewind is one second. The ring is 45 records either way, so what this
+    // costs is the capture pass at 15Hz for the rest of a touch run, and what it
+    // buys is the capsule meaning the same thing wherever it is picked up.
     if (REWIND_DISABLED || this.beatLock) return;
-    if (!this.rewindAvailableForRun() && !this.powerups.active.rewind) return;
     this.rewindCaptureT += dt;
     if (this.rewindCaptureT < REWIND_STEP) return;
     this.rewindCaptureT -= REWIND_STEP;
@@ -11995,7 +12472,7 @@ export class RunState {
     ps.powerJumpBonus = p.powerJumpBonus; ps.sliding = p.sliding;
     ps.slideAmount = p.slideAmount; ps.slideDirection = p.slideDirection;
     ps.floating = p.floating; ps.iframes = p.iframes; ps.anim = p.anim;
-    ps.stomping = p.stomping; ps.slideSlamming = p.slideSlamming;
+    ps.slideSlamming = p.slideSlamming;
     ps.landingSlideT = p.landingSlideT; ps.slideKickT = p.slideKickT;
     ps.standT = p.standT; ps.slideHoldT = p.slideHoldT; ps.slideSpent = p.slideSpent;
     ps.dashT = p.dashT; ps.rollT = p.rollT;
@@ -12004,11 +12481,9 @@ export class RunState {
     ps.rollBashed = p.rollBashed; ps.rollDeflectUsed = p.rollDeflectUsed;
     ps.deflectFlashT = p.deflectFlashT;
     ps.powerPoseT = p.powerPoseT; ps.powerType = p.powerType;
-    ps.spannerFlurryT = p.spannerFlurryT; ps.spannerFlurryCd = p.spannerFlurryCd;
-    ps.spannerFlurryHitIds = copySetInto(p.spannerFlurryHitIds, ps.spannerFlurryHitIds);
     ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown; ps.wrenchThrown = p.wrenchThrown;
     ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
-    ps.hazardEaten = p.hazardEaten; ps.grounded = p.grounded;
+    ps.grounded = p.grounded;
     ps.slideT = p.slideT; ps.landedT = p.landedT;
     ps.fallRefX = p.fallRefX; ps.fallRefY = p.fallRefY; ps.fallFace = p.fallFace;
     ps.abilityCooldowns = assignInto(p.abilityCooldowns, ps.abilityCooldowns || {});
@@ -12040,8 +12515,6 @@ export class RunState {
     s.pickupCount = copyEntitiesInto(this.pickups, s.pickups, null);
     s.projectiles = s.projectiles || [];
     s.projectileCount = copyEntitiesInto(this.projectiles, s.projectiles, PROJECTILE_SETS);
-    s.chompBites = s.chompBites || [];
-    s.chompBiteCount = copyEntitiesInto(this.chompBites, s.chompBites, null, false);
     s.portal = this.portal ? assignInto(this.portal, s.portal || {}) : null;
     s.copter = this.copter ? assignInto(this.copter, s.copter || {}) : null;
 
@@ -12126,7 +12599,7 @@ export class RunState {
     p.powerJumpBonus = ps.powerJumpBonus; p.sliding = ps.sliding;
     p.slideAmount = ps.slideAmount; p.slideDirection = ps.slideDirection;
     p.floating = ps.floating; p.iframes = ps.iframes; p.anim = ps.anim;
-    p.stomping = !!ps.stomping; p.slideSlamming = !!ps.slideSlamming;
+    p.slideSlamming = !!ps.slideSlamming;
     p.landingSlideT = ps.landingSlideT || 0; p.slideKickT = ps.slideKickT || 0;
     p.standT = ps.standT || 0; p.slideHoldT = ps.slideHoldT || 0; p.slideSpent = !!ps.slideSpent;
     p.dashT = ps.dashT; p.rollT = ps.rollT;
@@ -12135,11 +12608,9 @@ export class RunState {
     p.rollBashed = ps.rollBashed; p.rollDeflectUsed = ps.rollDeflectUsed;
     p.deflectFlashT = ps.deflectFlashT;
     p.powerPoseT = ps.powerPoseT; p.powerType = ps.powerType;
-    p.spannerFlurryT = ps.spannerFlurryT; p.spannerFlurryCd = ps.spannerFlurryCd;
-    p.spannerFlurryHitIds = ps.spannerFlurryHitIds ? new Set(ps.spannerFlurryHitIds) : null;
     p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown; p.wrenchThrown = ps.wrenchThrown;
     p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
-    p.hazardEaten = ps.hazardEaten; p.grounded = ps.grounded;
+    p.grounded = ps.grounded;
     p.slideT = ps.slideT; p.landedT = ps.landedT;
     p.fallRefX = ps.fallRefX ?? this.playerWorldX();
     p.fallRefY = ps.fallRefY ?? (this.playerGroundY() - p.y);
@@ -12188,7 +12659,6 @@ export class RunState {
     // except that spent one-shot prevents the rewind from refunding itself.
     if (this.rewindUsed) this.pickups = this.pickups.filter((p) => p.type !== 'capRewind');
     this.projectiles = restoreEntities(s.projectiles, s.projectileCount, PROJECTILE_SETS);
-    this.chompBites = restoreEntities(s.chompBites, s.chompBiteCount, EMPTY_SETS);
     this.portal = s.portal ? { ...s.portal } : null;
     this.copter = s.copter ? { ...s.copter } : null;
 
@@ -12309,6 +12779,13 @@ export class RunState {
         // hero on a road a moment later. It is still a real gap to everything
         // else, which is what makes it carve the ground and telegraph itself.
         if (ob.tunnel) continue;
+        // AND A BRIDGED BREAK IS FLOOR. The hole is still here — still cut out
+        // of the ground, still full of whatever the cabinet fills a pit with,
+        // and you can see all of it between the slats — but there is a deck
+        // over it now and a deck is something you run across. This is the only
+        // line that has to change for that: the hole stays live, so everything
+        // that DRAWS it carries on drawing it.
+        if (ob.bridged) continue;
         // Pit: if player is over the gap at ground level, fall in.
         const over = pbox.x + pbox.w / 2 > ob.x && pbox.x + pbox.w / 2 < ob.x + ob.w;
         if (over && this.player.grounded && this.player.y <= 0) {
@@ -12492,6 +12969,10 @@ export class RunState {
       // over the closed jaws is the reward for the round that shut them —
       // checked before the overlap so the box is never consulted at all.
       if (ob.disarmed) continue;
+      // A THROWN SWITCH IS SCENERY TOO, for the same reason: it has paid out,
+      // the post is still standing because a lever does not vanish, and running
+      // back through it must not open a second gate.
+      if (ob.thrown) continue;
       if (!overlaps(pbox, box)) continue;
       if (this.player.rolling && ob.def.ground) {
         this.player.rollContactIds ||= new Set();
@@ -12550,37 +13031,11 @@ export class RunState {
         // Targets and switches are objectives, not hazards. Post-hit i-frames
         // must not make a !-crate temporarily unusable.
         if (ob.def.isTarget || ob.def.isSwitch) {
-          this.breakObstacle(ob);
+          if (ob.def.isSwitch) this.throwSwitch(ob);
+          else this.breakObstacle(ob);
           continue;
         }
         if ((this.player.dashT > 0 || this.powerups.isInvincible()) && ob.def.breakable) this.breakObstacle(ob);
-        continue;
-      }
-      // Stomping THROUGH a breakable is the move working, not a hit.
-      if (this.player.stomping && ob.def.breakable) {
-        this.breakObstacle(ob);
-        this.player.vy = 200; this.player.grounded = false; this.player.jumps = 1;
-        this.player.stomping = false;
-        shake(2, 0.15);
-        continue;
-      }
-      // Lorenzo's spanner flurry: auto-smash the first breakable that enters
-      // melee range, then stop swinging. Cooldown starts on contact.
-      if (this.player.spannerFlurryT > 0 && ob.def.breakable && ob.def.ground
-          && !ob.def.isGap && !this.player.spannerFlurryHitIds.has(ob.id)) {
-        this.player.spannerFlurryHitIds.add(ob.id);
-        this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
-          this.entityGroundY(ob) - ob.alt - ob.h / 2);
-        this.breakObstacle(ob);
-        this.player.spannerFlurryT = 0;
-        this.player.spannerFlurryHitIds = null;
-        if (this.player.spannerFlurryCd > 0) {
-          this.player.abilityCd = this.player.spannerFlurryCd;
-          this.player.spannerFlurryCd = 0;
-        }
-        Audio.sfx('crunch');
-        shake(2, 0.12);
-        this.floatText('WRENCH SMASH', '#f6d33c');
         continue;
       }
       // Fernwick mastery: one breakable ground hazard ends the finite roll in
@@ -12688,7 +13143,8 @@ export class RunState {
       // break-N-targets missions read as impossible to anyone without an
       // offensive ability equipped.)
       if (ob.def.isTarget || ob.def.isSwitch) {
-        this.breakObstacle(ob);
+        if (ob.def.isSwitch) this.throwSwitch(ob);
+        else this.breakObstacle(ob);
         continue;
       }
       // This entity got him. It is spent as a kick target from here on — see
@@ -12826,10 +13282,9 @@ export class RunState {
     // already handled everywhere stumbleT is (the loop ride's timer wind-down,
     // the rewind snapshot, `get speed`).
     this.player.stumbleT = Math.max(this.player.stumbleT, SLIP_T);
-    // He goes down, so he is not sliding, not stomping and not mid-kick. Left
+    // He goes down, so he is not sliding and not mid-kick. Left
     // set, any of the three fights the tumble for the same silhouette.
     this.player.sliding = false;
-    this.player.stomping = false;
     this.player.clearSlideState();
     this.player.slideDirection = -1;
     // The gag. A short slide whistle pitched down on top of the hit — the peel
@@ -12872,7 +13327,7 @@ export class RunState {
       this.player.grounded = false;
     }
     if (this.devInvuln) this.devHits.push({ type: src || (isPit ? 'pit' : 'hazard'), worldX: Math.floor(this.playerWorldX()) });
-    // A PIT IS FATAL, and it is fatal FIRST — above the shield, above Ray M'N's
+    // A PIT IS FATAL, and it is fatal FIRST — above the shield, above Ramon's
     // reassembly, above everything below this line that can turn a hit into a
     // survivable one. Falling is not damage arriving that a defence can be
     // spent on: it is the hero at the bottom of a hole, and no item in the game
@@ -12967,8 +13422,7 @@ export class RunState {
       this.player.slideAmount = 0;
       this.player.rollT = 0;
       this.player.compressT = 0;
-      this.player.stomping = false;
-      this.player.floating = false;
+        this.player.floating = false;
       // Zeroed rather than decremented so the HUD is not showing cells in hand
       // through the death. The restore hands the checkpoint's battery back.
       this.battery = 0;
@@ -12982,12 +13436,12 @@ export class RunState {
       this.floatText('UNPEELABLE.', '#e8e8f0');
       return;
     }
-    // The trap owns the damage read. It still snaps into a shield, Ray M'N's
+    // The trap owns the damage read. It still snaps into a shield, Ramon's
     // reassembly or a crash-test hit, but ignored contacts above never fire it.
     // The extra gain is intentional: this is the mechanism's close, dry snap,
     // not the generic damage wash used by the rest of the lane.
     const trapContact = !isPit && src === 'bearTrap';
-    if (trapContact) Audio.sfx('trapSnap', { gain: 1.12 });
+    if (trapContact) Audio.sfx('trapSnap', { gain: TRAP_SNAP_GAIN });
     const absorb = this.powerups.absorbHit();
     sunShock(); // the level-1 sun gasps at any real impact (shielded or not)
     if (absorb.absorbed) {
@@ -13005,7 +13459,7 @@ export class RunState {
       }
       return;
     }
-    // Ray M'N's loose assembly: the first fatal hit scatters and reforms him.
+    // Ramon's loose assembly: the first fatal hit scatters and reforms him.
     const hero = HERO_BY_ID[this.relay.current];
     const graceMax = 1;
     if (hero.assemblyGrace && this.player.assemblyGraceUsed < graceMax && (this.battery <= 1 || this.oneHit)) {
@@ -13013,7 +13467,7 @@ export class RunState {
       this.player.headless = 3;
       this.player.iframes = 3;
       Audio.sfx('plop');
-      this.floatText("RAY M'N SCATTERED. REASSEMBLY IS IN PROGRESS.", '#48e0c8');
+      this.floatText("RAMON SCATTERED. REASSEMBLY IS IN PROGRESS.", '#48e0c8');
       return;
     }
     // Crash test absorbs the consequence only. Everything below — sfx, shake,
@@ -13112,7 +13566,7 @@ export class RunState {
    * A death freezes the world and the player's own update stops running, so
    * whatever silhouette the hero happened to be in on the killing frame is the
    * one held for the entire death hold: a landing squash flattened mid-arrival,
-   * the tucked launch pose with air stretch on it, a slide, a roll, a stomp. The
+   * the tucked launch pose with air stretch on it, a slide, a roll. The
    * hero read as caught mid-move rather than as beaten, and the squash timer in
    * particular kept counting against a clock nothing was advancing.
    *
@@ -13132,12 +13586,10 @@ export class RunState {
     p.slideDirection = 0;
     p.slideHoldT = 0;
     p.slideSpent = false;
-    p.stomping = false;
     p.floating = false;
     p.rollT = 0;
     p.compressT = 0;
     p.powerPoseT = 0;
-    p.spannerFlurryT = 0;
     p.standT = 0;
     p.clearSlideState();
   }
@@ -13392,8 +13844,19 @@ export class RunState {
    * neither is a part arriving. That also means an entry at beat 0 never fires, which
    * is right — a bass that plays from the downbeat starts when the song does, and the
    * song starting is not news.
+   *
+   * RHYTHM CABINET ONLY. The card is the game agreeing with something the player
+   * is already being asked to feel — and only on the beat lane is that true. On
+   * every other cabinet the song is a backdrop, so BASS! there is the game
+   * narrating its own soundtrack over a stage that never asked the player to
+   * listen to it. Gated on the CABINET rather than on beatLock, because the
+   * overtime lap and the attract clip are still the rhythm cabinet and the card
+   * belongs to them too.
    */
   announceLaneEntries() {
+    if (this.cabinet?.id !== 'rhythm') {
+      this.laneCallBank = null; this.laneCallLastBeat = null; return;
+    }
     const bank = Audio.bank;
     if (!bank) { this.laneCallBank = null; this.laneCallLastBeat = null; return; }
     if (bank !== this.laneCallBank) {
@@ -13414,9 +13877,54 @@ export class RunState {
     }
   }
 
-  floatText(text, color, { solid = false, base = floatBaseY() } = {}) {
+  /**
+   * AN ANIMAL NOTICING IT HAS BEEN SHOT AT, AND CARRYING ON.
+   *
+   * Called from both halves of the projectile loop, because a round reaches an
+   * animal by two different routes: a ground animal is a thing the shot may hit
+   * and then finds unbreakable, and the bird is a FLIER, which pellets and
+   * arrows never get to hit at all — they ping off it a few pixels away. Both
+   * are the same event to the player (they shot at a living thing and nothing
+   * happened), so both say so.
+   *
+   * ONE LINE PER SHOT, NOT PER ROUND: Clara fires a pair a few pixels apart and
+   * a fast hero can empty several into one animal, and a floatie each reads as
+   * the dog being told off repeatedly for the same pellet. The gap is a beat
+   * longer than the copter's shimmer because this one is a sentence, not a word.
+   */
+  animalShrugOff(ob) {
+    if (!ob.def.animal) return;
+    if (ob.shotGagAt != null && this.tRun - ob.shotGagAt <= ANIMAL_GAG_GAP) return;
+    ob.shotGagAt = this.tRun;
+    this.floatText(this.fxRng.pick(animalShotLines(ob.type)), '#e8c49a',
+      { keep: true, hold: ANIMAL_GAG_HOLD, wx: this.playerWorldX() });
+  }
+
+  // THE POPUP STACK'S CLOCK, in one place because three loops were running it.
+  // A card's whole life is a slow rise and a timeout — except a PINNED one,
+  // which does not drift at all. It is anchored to a spot in the world, so
+  // holding its height as well is the same statement: it stands where it was
+  // said. It is also what keeps it out of the furniture. The rise is 13px a
+  // second and a pinned card lives seven of them, which was ninety pixels of
+  // climb — straight up into the top-left column, where the flip's BONUS plate
+  // is drawn in the overlay pass ABOVE the chatter, so the card spent its last
+  // seconds hidden behind it.
+  tickFloaties(dt) {
+    if (!this.floaties.length) return;
+    for (const f of this.floaties) {
+      f.t -= dt;
+      if (f.wx == null) f.y -= FLOAT_RISE * dt;
+    }
+    this.floaties = this.floaties.filter((f) => f.t > 0);
+  }
+
+  floatText(text, color, { solid = false, keep = false, hold = 0, wx = null, base = floatBaseY() } = {}) {
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
-    const readingTime = Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
+    // `hold` is for a line that is not run chatter and does not want the
+    // chatter budget: the cap above is there because ordinary popups queue
+    // behind each other over the hero's head, and a card that has been PINNED
+    // out of that column (see `wx`) is not in anyone's way.
+    const readingTime = hold || Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
     // Newest lands at the base; if a recent one is still near it, slot in below
     // so simultaneous popups (pickup + power name) never overprint. The gap is
     // a full panel height now that each floatie carries its own card.
@@ -13446,7 +13954,14 @@ export class RunState {
         if (f.y + 19 * (f.scale || 1) > y) y = f.y + 19 * (f.scale || 1);
       }
     }
-    this.floaties.push({ text, color, t: readingTime, y, solid, scale, pitch });
+    // A PINNED CARD STANDS WHERE IT WAS SAID. Every floatie rides the hero's
+    // own screen column, which is right for a running commentary on what he is
+    // doing and wrong for a remark about something he is leaving behind: the
+    // card tracked him all the way down the finish dash, so a line about the
+    // dog arrived at the flagpole still glued to his head. Given a world x it
+    // is drawn there instead and the hero simply runs out from under it — see
+    // the pinned branch in drawChatter.
+    this.floaties.push({ text, color, t: readingTime, y, solid, scale, pitch, keep, wx });
     if (this.floaties.length > 8) this.floaties.shift();
   }
 
@@ -14007,6 +14522,15 @@ export class RunState {
     // those paint over a shelf would bury it. See drawShelfTexture.
     this.style.shelfTexture?.(ctx, cam, this.cabinet, this.shelfBands(), visibleWorldW);
 
+    // THE ICE THE POWER BLOCKS BUILT. After the ground, the fills, the terrain
+    // and the routes — so the crossing sits in the finished hole — and before
+    // the actors, so the hero runs ON it. It is handed the same ground sampler
+    // the routes are drawn against, because the top face of the ice has to be
+    // the surface the hero's feet are on, and on a frost lane that is a terrain
+    // profile a dozen pixels above the flat line rather than GROUND_Y.
+    drawBridgeDecks(ctx, cam, this.obstacles, portraitRenderViewW ?? W,
+      (wx, route) => this.renderGroundY(wx, route));
+
     // THE CHART'S ASKS, PAINTED ON THE ROAD. After the routes so they lie on
     // whatever surface the lane actually has, before the actors so everything
     // standing on the road covers them — which is the whole difference between
@@ -14140,29 +14664,6 @@ export class RunState {
         }
       }
       paint();
-    }
-    for (const bite of this.chompBites) {
-      const ob = bite.ob;
-      const q = Math.max(0, Math.min(1, bite.t / bite.duration));
-      const e = q * q * (3 - 2 * q);
-      const fromX = ob.x - cam + ob.w / 2;
-      const terrainY = this.entityGroundY(ob);
-      const terrainDy = terrainY - GROUND_Y + (ob.def.ground && ob.alt === 0 ? 1.5 : 0);
-      const fromY = GROUND_Y + terrainDy - ob.alt - ob.h / 2;
-      const mouthWorldX = this.playerWorldX() + 9;
-      const mouthX = mouthWorldX - cam;
-      const mouthY = this.groundYAt(mouthWorldX) - this.player.y - 11;
-      const x = fromX + (mouthX - fromX) * e;
-      const y = fromY + (mouthY - fromY) * e - Math.sin(q * Math.PI) * 8;
-      const scale = Math.max(0.18, 1 - e * 0.82);
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(bite.spin * e);
-      ctx.scale(scale, scale);
-      ctx.translate(-fromX, -fromY);
-      ctx.translate(0, terrainDy);
-      drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings);
-      ctx.restore();
     }
     for (const pr of this.projectiles) {
       // Projectiles had no cull of any kind: a thrown axe that outran the
@@ -14383,7 +14884,15 @@ export class RunState {
     // exactly at "we know" and can never pop back — a death on the stretch
     // resets finishing through the checkpoint restore, which is the one path
     // where the question becomes real again and the orb should return.
-    const orbAlpha = this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
+    // __mash_dev.hideSpecialOrb takes the readiness orb off the picture. It
+    // exists for capture: the orb is a READOUT for the person holding the
+    // controls, and a recording has nobody holding them, so in promo footage it
+    // is a meter nobody can read answering a question nobody asked. draw.js
+    // already has the seam (opts.specialOrb) — the tutorial uses it for scenes
+    // before the player has a power — this just lets the dev layer ask for it.
+    const hideOrb = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideSpecialOrb);
+    const orbAlpha = hideOrb ? 0
+      : this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
     // THE JUMP GOES IN FRONT OF THE CHATTER.
     //
     // The popup stack rides the hero's own column and gets out of the way for
@@ -14405,7 +14914,13 @@ export class RunState {
     // underneath to be the thing that reads through.
     let heroLift = null;
     const liftHero = this.player.y > 0;
-    const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
+    // __mash_dev.hideFuse: no carried fuse in the hero's hand. Capture-only, and
+    // it has to be HERE rather than on `fuseHeld` — that field is set once at
+    // mission start and read elsewhere, but the draw asks the mission directly,
+    // so overriding the field from outside changed nothing on screen.
+    const hideFuse = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideFuse);
+    const carryFuse = !hideFuse && this.mission.type === 'fuse';
+    const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, carryFuse,
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, xOffset: portraitXOffset, specialOrbAlpha: orbAlpha,
         // THE CONTACT SHADOW (see CONTACT_SHADOW in draw.js). Every platform,
         // not just the phone it was asked for: separating the hero from the
@@ -14443,7 +14958,7 @@ export class RunState {
           ? FINISH_CELEBRATION_POSE
           : (this.loop && !this.loop.pending)
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
-              sliding: false, slideAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
+              sliding: false, slideAmount: 0, roll: false, float: false, cling: 0 }
             : undefined,
       // SAMPLED WHERE HE IS DRAWN, not where his slot starts. drawHeroSprite
       // centres the art in its 12px slot — `cx = screenX + HERO_CENTER_OFF` —
@@ -14574,12 +15089,16 @@ export class RunState {
       // is the EASED one — see updateRun.
       const floatShift = Math.round(this.floatClear);
       for (const f of this.floaties) {
+        // Pinned cards are placed in the WORLD and left there; everything else
+        // rides the hero. The stack's shift is his too — it exists to get the
+        // column out of his way when he jumps — so a pinned card ignores it.
+        const pinned = f.wx != null;
         drawFloatie(d, f, {
-          heroX,
+          heroX: pinned ? ((f.wx - cam) + portraitWorldXOffset) * z : heroX,
           mirror: this.mirror,
           alpha: Math.max(0, Math.min(1, f.t / 0.25)),
           keepLeftOf,
-          shiftY: floatShift,
+          shiftY: pinned ? 0 : floatShift,
           avoid: heroRect,
           scale: f.scale || (isPhonePortraitPresentation()
             ? portraitFloatieScale(presentationFrame(), portraitHudLayout(presentationFrame()).panelScale)
@@ -14746,7 +15265,7 @@ export class RunState {
   // bar or home indicator.
   drawPortraitPaused(ctx) {
     const { panelX, panelW, panelTop, panelH, innerX, innerW } = this.portraitPauseFrame();
-    const mainButtons = Input.buttons.filter((b) => b.id === 'resume' || b.id === 'quit');
+    const mainButtons = Input.buttons.filter((b) => PAUSE_PLATE_IDS.has(b.id));
     const buttons = mainButtons.length ? mainButtons : this.portraitPauseButtons();
     const syncButtons = this.beatLock
       ? Input.buttons.filter((b) => b.id === 'syncDown' || b.id === 'syncUp' || b.id === 'syncReset')
@@ -14861,6 +15380,13 @@ export class RunState {
     }
 
     const cursor = !Input.usingTouch;
+    // ONE SCALE FOR THE ROW, fitted to the longest label that has to sit in the
+    // narrowest plate. Three plates cannot hold CONTINUE at the pair's size, and
+    // scaling each label to its own plate would set the row in three sizes —
+    // which reads as three different kinds of control rather than one choice.
+    const labelPad = 14;
+    const labelScale = buttons.reduce((sc, b) => Math.min(sc,
+      (b.w - labelPad) / Math.max(1, textWidth(b.label, 1, 'bold'))), PORTRAIT_PAUSE_BUTTON_S);
     buttons.forEach((b, i) => {
       const go = b.id === 'resume';
       const sel = cursor && i === this.pauseIdx;
@@ -14868,13 +15394,13 @@ export class RunState {
         { border: sel ? '#ffcf33' : go ? 'rgba(72,224,200,0.75)' : 'rgba(255,255,255,0.28)', shadow: true });
       if (sel) drawMenuRow(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 6);
       drawTextCentered(ctx, b.label, b.x + b.w / 2,
-        textYForMid(b.y + b.h / 2, PORTRAIT_PAUSE_BUTTON_S),
-        go ? '#48e0c8' : '#c8c8d8', PORTRAIT_PAUSE_BUTTON_S, 'bold');
+        textYForMid(b.y + b.h / 2, labelScale),
+        go ? '#48e0c8' : '#c8c8d8', labelScale, 'bold');
     });
   }
 
   // The landscape pause screen: a status read-out over a dimmed run, then the
-  // two ways out. It uses the whole 270 — title near the top, plates near the
+  // ways out. It uses the whole 270 — title near the top, plates near the
   // bottom, and the read-out breathing between them. Every row is a fixed
   // height, so a legend you paused to look up is where it was last time whatever
   // the run above it happens to be doing.

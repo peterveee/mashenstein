@@ -38,7 +38,8 @@ import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGES, STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
-import { HubState, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
+import { EXIT_CUE } from './game/hub/cabinet-dive.js';
+import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
@@ -349,7 +350,13 @@ const Flow = {
 
   // cameo=false for the results hand-off: the run already ended on a cast
   // celebration, so neither shutter on the way out needs a hero in it.
-  toHub(cameo = true) {
+  // `fromCab` is the cabinet the player is coming back OUT of, and it is only ever
+  // passed by the paths that actually went into one: finishing or failing a stage,
+  // and finishing a boss. Backing out of stage select, the bench, the shop, the
+  // arcade and the trophy room all return with nothing, because none of them put
+  // the hero inside a machine and climbing out of one would be a lie.
+  toHub(cameo = true, fromCab = null) {
+    if (fromCab) queueCabinetDiveOut(fromCab);
     const go = cameo ? setState : setStateNoCameo;
     go(new HubState({ save, flow: Flow }));
   },
@@ -415,6 +422,12 @@ const Flow = {
   launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false, previewTouchControls = false) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
+    // The exit cue is an offline render and cannot be made on the frame it is
+    // wanted, so it is paid for here — at the start of the level whose end asks
+    // for it. This is the path the dev menu takes straight into a stage without
+    // ever entering the hub, which is why warming it in the hub alone left the
+    // first exit silent and every later one fine.
+    Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
     levelOpenCue();
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
     const flags = save.slot.campaign.storyFlags;
@@ -439,7 +452,7 @@ const Flow = {
         const gains = applyResult(save, result);
         setStateNoCameo(new ResultsState({
           result, gains, save,
-          onDone: () => Flow.toHub(false),
+          onDone: () => Flow.toHub(false, cab.id),
           // launchStage, not startStage: a retry has already read the briefing.
           // No seed passed either, so the next attempt is a fresh roll rather
           // than a replay of the pattern that just went wrong. announceBench:false
@@ -463,6 +476,8 @@ const Flow = {
 
   startBoss(cabId, seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
     levelOpenCue();
+    // The exit cue is an offline render; pay for it now, not when the level ends.
+    Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
     setState(new BossState({
       bossCab: cabId, save,
       seed: seedOverride ?? ((Date.now() ^ 0xb055) >>> 0),
@@ -482,7 +497,7 @@ const Flow = {
           result, gains, save,
           onDone: () => {
             if (result.success && cabId === 'surge') Flow.startFinale();
-            else Flow.toHub(false);
+            else Flow.toHub(false, cabId);
           },
           onRetry: () => Flow.startBoss(cabId, undefined, initialHeroId, devInvuln, devAutoExit, devMaxTime),
         }));
@@ -495,6 +510,8 @@ const Flow = {
   },
 
   startOvertime(seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
+    // The exit cue is an offline render; pay for it now, not when the level ends.
+    Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
     setState(new RunState({
       overtime: true, save,
       seed: seedOverride ?? dailySeed(),

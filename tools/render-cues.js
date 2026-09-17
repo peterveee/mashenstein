@@ -2,6 +2,23 @@
 //
 // Usage:  node tools/render-cues.js [name ...]     (default: the level-start candidates)
 //         node tools/render-cues.js --list
+//         node tools/render-cues.js voice:sweepUp          a song-engine preset AS a cue
+//         node tools/render-cues.js voice:sweepUp/0.6@0.85 ...at a length and a gain
+//         node tools/render-cues.js voice:sweepUp/0.6~0.5   ...in a room (reverb send)
+//         node tools/render-cues.js voice:sweepUp/0.6+0.5   ...with a delay (send)
+//         node tools/render-cues.js voice:sweepUp/0.6+0.5:0.22:0.5   ...time and feedback
+//         node tools/render-cues.js rev:dataRibbon/0.6            the SAME cue, backwards
+//
+// `~` is the reverb send, `+` the delay send, and `+amount:time:feedback` tunes the
+// line — both are the SFX-side effects on Audio, not the song's echo, so what you
+// hear here is what a cue fires in any cabinet.
+//
+// A `voice:` name renders through Audio.voiceSfx instead of Audio.sfx — the same
+// offline graph, the other door into it. The library's 484 presets are cues now, and a
+// cue you cannot audition is a cue nobody can level, so they come through the tool that
+// already answers rise, tail, loudest-at, peak and RMS for every hand-built one.
+// `/0.6` is the length in SECONDS, which is what voiceSfx takes: a preset's own `dur` is
+// in steps, and a cue whose length follows the tempo of whatever is playing is not a cue.
 //
 // tools/render-sfx.js also writes cue WAVs, but it is a hand-written REIMPLEMENTATION of
 // two specific cues — it mirrors AudioSys.osc() rather than calling it, which is fine for
@@ -48,7 +65,9 @@ const SHAPES = {
   clean:   { stretch: 1.8, thump: 0 },
   pass:    { stretch: 2.0, thump: 0, flash: 0.5, pan: 0.9, spread: 1.4 },
   relay:   { stretch: 2.2, thump: 0, flash: 0.6, pan: 0.9, overlap: 0.13, spread: 1.3 },
-  breath:  { stretch: 2.4, thump: 0, flash: 0, q: 0.5, spread: 1.5, pan: 0.6 },
+  // Named, not copied — the dive fires this one, so the sheet and the game have to
+  // read the same object. See PORTAL_BREATH in engine/audio.js.
+  breath:  'PORTAL_BREATH',
   siren:   { stretch: 2.0, thump: 0, flash: 0.4, q: 2.4, pan: 0.7, spread: 1.2 },
   vast:    { stretch: 2.6, thump: 0, flash: 0.5, pan: 1, wet: 2, spread: 1.4 },
   // `portal:wired` renders whatever the game is actually firing, read from the engine
@@ -137,8 +156,27 @@ async function main() {
     // `portal@3.5` is a gain, `portal:long` is a shape, and they compose:
     // `portal:epic@3.5` is that shape at the strength the game actually fires it.
     const [namePart, gainStr] = name.split('@');
-    const [cueName, shapeName] = namePart.split(':');
     const gain = gainStr ? Number(gainStr) : 1;
+    // `~amount` is the reverb send, and it works on a plain cue as well as on a
+    // preset now — boom in a room is a thing you have to hear to level.
+    const plain = /^([^~]+)(?:~([\d.]+)(?::([\d.]+))?)?$/.exec(namePart) || [];
+    const plainReverb = plain[2] ? Number(plain[2]) : 0;
+    const plainVerbDecay = plain[3] ? Number(plain[3]) : 1.5;   // `~amount:decay`
+    // `voice:<id>[/<seconds>]` is a preset, not a switch case — no shape table.
+    // `rev:` is the reversed form — the preset rendered and flipped, which is what
+    // the dive's exit fires. Auditioned here so the pair can be heard back to back.
+    const revMatch = /^rev:([^/~+]+)(?:\/([\d.]+))?$/.exec(namePart);
+    const revId = revMatch ? revMatch[1] : null;
+    const revSeconds = revMatch && revMatch[2] ? Number(revMatch[2]) : 1;
+    const voiceMatch = revMatch ? null : /^voice:([^/~+]+)(?:\/([\d.]+))?(?:~([\d.]+))?(?:\+([\d.]+)(?::([\d.]+))?(?::([\d.]+))?)?$/
+      .exec(namePart);
+    const voiceId = voiceMatch ? voiceMatch[1] : null;
+    const voiceSeconds = voiceMatch && voiceMatch[2] ? Number(voiceMatch[2]) : null;
+    const voiceReverb = voiceMatch && voiceMatch[3] ? Number(voiceMatch[3]) : plainReverb;
+    const voiceDelay = voiceMatch && voiceMatch[4] ? Number(voiceMatch[4]) : 0;
+    const voiceDelayTime = voiceMatch && voiceMatch[5] ? Number(voiceMatch[5]) : 0.135;
+    const voiceDelayFb = voiceMatch && voiceMatch[6] ? Number(voiceMatch[6]) : 0.42;
+    const [cueName, shapeName] = (voiceId || revId) ? [null, null] : (plain[1] || namePart).split(':');
     const shape = shapeName ? SHAPES[shapeName] : undefined;
     if (shapeName && shape === undefined) {
       console.error(`no shape "${shapeName}" — one of ${Object.keys(SHAPES).join(', ')}`);
@@ -149,7 +187,8 @@ async function main() {
     page.on('pageerror', (e) => errors.push(e.message));
     await page.setContent(`<!doctype html><meta charset="utf-8">`
       + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`, { waitUntil: 'load' });
-    const out = await page.evaluate(async ({ cue, gain: g, shape, seconds, sr }) => {
+    const out = await page.evaluate(async ({ cue, gain: g, shape, seconds, sr, voiceId, voiceSeconds, voiceReverb, plainVerbDecay, revId, revSeconds,
+      voiceDelay, voiceDelayTime, voiceDelayFb }) => {
       const Audio = window.__Audio;
       const ctx = new OfflineAudioContext(2, sr * seconds, sr);
       Audio.setCaptureEnabled(false);
@@ -177,7 +216,22 @@ async function main() {
       // it silently auditioned the bark at the swoosh's level.
       const useGain = cue === 'portal' && (shape === null || typeof shape === 'string') && g === 1
         ? window.__WIRED.gain : g;
-      Audio.sfx(cue, { gain: useGain, shape: useShape });
+      if (revId) {
+        // Render it, wait for it, then fire — the game warms this ahead of time and
+        // the tool has no reason to pretend otherwise.
+        await Audio._reversedVoiceBuffer(revId, revSeconds);
+        const rkey = `${revId}|${revSeconds.toFixed(2)}`;
+        Audio._revReady.set(rkey, await Audio._revBufs.get(rkey));
+        Audio.voiceSfxReverse(revId, {
+          gain: g, seconds: revSeconds, delay: 0.3, delayTime: 0.26, delayFeedback: 0.3,
+        });
+      } else if (voiceId) {
+        Audio.voiceSfx(voiceId, {
+          gain: g, seconds: voiceSeconds, reverb: voiceReverb,
+          delay: voiceDelay, delayTime: voiceDelayTime, delayFeedback: voiceDelayFb,
+        });
+      }
+      else Audio.sfx(cue, { gain: useGain, shape: useShape, reverb: voiceReverb, reverbDecay: plainVerbDecay });
       const buf = await ctx.startRendering();
       const L = Array.from(buf.getChannelData(0));
       const R = Array.from(buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0));
@@ -205,11 +259,12 @@ async function main() {
         if (i >= win && acc > best) { best = acc; bestAt = (i - win / 2) / sr; }
       }
       return { L, R, peak, tail: last / sr, rise, loudestAt: bestAt };
-    }, { cue: cueName, gain, shape, seconds: SECONDS, sr: SR });
+    }, { cue: cueName, gain, shape, seconds: SECONDS, sr: SR, voiceId, voiceSeconds, voiceReverb, plainVerbDecay, revId, revSeconds,
+      voiceDelay, voiceDelayTime, voiceDelayFb });
     await page.close();
     for (const e of errors) console.error(`${name}: ${e}`);
 
-    const file = join(outDir, `${name.replace(':', '-').replace('@', '-x')}.wav`);
+    const file = join(outDir, `${name.replace(/[:/]/g, '-').replace('~', '-v').replace('+', '-d').replace('@', '-x')}.wav`);
     const L = Float32Array.from(out.L);
     const R = Float32Array.from(out.R);
     writeFileSync(file, wavBuffer([L, R], 1));

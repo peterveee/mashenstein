@@ -1,5 +1,8 @@
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
+// Needed only to swap the context around an offline render — see
+// _reversedVoiceBuffer. The rack owns every other use of Tone in the engine.
+import * as Tone from 'tone';
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
 import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
@@ -13,7 +16,7 @@ import {
   clearNoteCacheState, invalidateNoteCacheState, MRDR_QUALITY,
 } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
-import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
+import { VOICES, VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
 import {
   applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
@@ -281,7 +284,17 @@ const BAR_PAN_SECONDS = 0.012;
 // everyday jump/coin/UI family while preserving their internal balance.
 // Weapon launch/contact assets get their own lower bus trim; regular SFX keep
 // their established level and balance.
-const ATTACK_MASTER_TRIM = 0.25;
+// The whole weapon family's level, in one number: every baked launch and contact
+// cue is normalised to the same peak (see weapon-sfx.js), so this is what decides
+// how loud a hero firing is against everything else in the lane.
+//
+// 0.354, up 3dB from the 0.25 it carried. The 17 Sep levelling pass held this
+// family by mistake — the measurement that said "contact is fine at -11.8" was
+// taken with no hero, which renders the PROCEDURAL fallback rather than a baked
+// cue, and the baked ones sit 2 to 8dB under that. Peter, playing it: the launch
+// effects are really quiet. They are: at 0.25 a wrench going out peaked -17.0
+// against a lane whose loud end is -6.5.
+export const ATTACK_MASTER_TRIM = 0.422;
 // How far into the 'portal' cue its flash lands — the rest of the cue is the
 // approach leading up to it and the exit falling away after.
 //
@@ -320,6 +333,28 @@ export const PORTAL_RELAY = {
  * heard, and the number that was right without one is too much with one.
  */
 export const PORTAL_RELAY_GAIN = 5.5;
+
+/**
+ * PORTAL BREATH — the swoosh with nothing struck in it.
+ *
+ * `thump: 0` and `flash: 0` take out both transients: the low knock in the middle of
+ * the seam and the bright flash on the crossing. What is left is only the air moving,
+ * stretched long and opened up (`q: 0.5` is a wide, airy filter rather than a whistly
+ * one; `spread: 1.5` sends the bands further apart). It does not announce anything —
+ * it is a door being open, not a door opening.
+ *
+ * That is exactly wrong for a level start, which is why the shipped `portal` keeps its
+ * knock, and exactly right for the end of the cabinet dive: by then the event has
+ * already happened, the hero is gone, and a second percussive hit under the shutter is
+ * one more thing arriving when nothing is arriving any more.
+ *
+ * Lived in tools/render-cues.js as a bare literal, auditionable and unusable. It is
+ * here for the same reason PORTAL_RELAY is: the tool names engine exports so a shape
+ * tuned in one place cannot drift out of the thing auditioning it.
+ */
+export const PORTAL_BREATH = {
+  stretch: 2.4, thump: 0, flash: 0, q: 0.5, spread: 1.5, pan: 0.6,
+};
 
 /**
  * The two halves, fired at the two moments that are actually knowable.
@@ -488,14 +523,71 @@ const CUE_ATTACK = 0.008;
 // brought forward — the press has already happened — which is the same reason
 // those cues cannot be placed at all. See cueTimeInBeats.
 //
-// The explosion is the one cue this under-serves: its own ramp is 12ms, so its
-// audible edge still sits about 4ms behind the note it bursts on. It is a
-// broad, diffuse sound where a few milliseconds do not read, and giving it its
-// own number would mean a table for one entry.
+// The explosion is the one cue this under-serves, and by far more than its own
+// 12ms ramp suggests — see CUE_ONSET_LEAD, which is the table this said was not
+// worth having.
 const CUE_PERCEPTUAL_LEAD = CUE_ATTACK * 0.9 - 0.002;
 
-const SFX_TRIM = {
-  blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
+// WHERE A CUE'S ONSET ACTUALLY IS, for the handful whose audible edge is not
+// their ramp. The lead above is derived from the ramp because for a bright
+// one-shot the two are the same fact: the sound arrives as the ramp finishes.
+//
+// 'boom' is not that. Its ramp reaches full in 12ms, but its WEIGHT is a sine
+// falling 125->22Hz under a lowpass sweeping 7200->420, and the ear does not
+// hear a blast at the top of the ramp — it hears it when the low body blooms.
+// Measured off the render (tools/render-cues.js prints it): every other percussive
+// cue in the sheet peaks 17ms in, and 'boom' peaks at 54ms. Placed with the
+// generic lead it is therefore ~37ms behind the note it was scheduled on,
+// sample-accurate and audibly late, which is 7% of a beat at the rhythm
+// cabinets' 124bpm and exactly what a card box going off on the grid sounds
+// like when it is not quite on it.
+//
+// The number is that gap plus the generic lead, i.e. where the ear puts the
+// sound rather than where the file starts. Cues absent from the table keep
+// CUE_PERCEPTUAL_LEAD, which is still right for all of them.
+export const CUE_ONSET_LEAD = {
+  boom: CUE_PERCEPTUAL_LEAD + 0.037,
+};
+
+export const MAX_CUE_LEAD = Math.max(CUE_PERCEPTUAL_LEAD, ...Object.values(CUE_ONSET_LEAD));
+
+// Exported ONLY so tools/sfx-desk.js can move a fader while the game is running:
+// the desk needs to hear a level change against a playing song, and the alternative
+// — rebuilding the bundle per nudge — is not a thing anybody can level against. The
+// game never writes it, and the desk's Save is what makes a change permanent by
+// rewriting the numbers below. `setSfxTrim` exists so a tool cannot typo a cue name
+// into the table and silently trim nothing.
+// The desk's other two levers, same bargain as setSfxTrim: live while the game
+// runs, written to source only by tools/sfx-desk.js on Save.
+//
+// A hero's weapon is TWO numbers — the family trim above, and this hero's own
+// place within the family — and the desk needs both, because "the launches are
+// quiet" and "Clara's pistol is quiet" are different complaints with different
+// fixes. WEAPON_AUDIO_GAIN is the second.
+export function setWeaponGain(kind, hero, value) {
+  const table = WEAPON_AUDIO_GAIN[kind];
+  if (!table || !(hero in table)) return false;
+  table[hero] = value;
+  return true;
+}
+
+// Moving the family means moving the three SFX_TRIM entries that were COMPUTED
+// from ATTACK_MASTER_TRIM when this module loaded — the constant itself is read
+// once and never again, so setting it alone would change nothing audible.
+export function setAttackTrim(value) {
+  SFX_TRIM.impact = value;
+  SFX_TRIM.contact = value;
+  SFX_TRIM.launch = 0.92 * value;
+  return true;
+}
+
+export function setSfxTrim(cue, value) {
+  if (!(cue in SFX_TRIM)) return false;
+  SFX_TRIM[cue] = value;
+  return true;
+}
+export const SFX_TRIM = {
+  blockBreak: 0.541, coinSpray: 0.822, hit: 0.785,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
   // it: the bark is the finish dog's whole threat, it is the loudest voice in
   // the last stretch by design and has to carry over the end-of-stage music,
@@ -517,7 +609,7 @@ const SFX_TRIM = {
   // It is a sound with its energy in the body rather than in the attack, which
   // is what a bark heard across a yard is, and it leaves 9dB more headroom for
   // the song underneath.
-  dogBark: 0.23,
+  dogBark: 0.295,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
   // playContact's fallback — gnash and mochi have no baked contact cue — and that path
@@ -526,8 +618,8 @@ const SFX_TRIM = {
   // dBFS: clipping on its own, before any music was under it. Matched to the live
   // path so the two ways into the same cue cannot disagree.
   impact: ATTACK_MASTER_TRIM,
-  contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
-  shield: 0.78, star: 0.72, win: 0.76, copterBonk: 1.0, power: 0.84, rewindPickup: 0.78,
+  contact: ATTACK_MASTER_TRIM, launch: 0.184 * ATTACK_MASTER_TRIM,
+  shield: 0.989, star: 1.109, win: 0.933, copterBonk: 0.804, power: 0.955, rewindPickup: 1.084,
   // Levelled against `jump`, which fires on the SAME frame — this is the floor
   // answering the hero, and a floor that answers louder than the hero is a
   // trampoline. On RMS rather than peak: the cue has a held body where the jump
@@ -536,8 +628,8 @@ const SFX_TRIM = {
   // This lands it at -35.3, three under the hero, and six under `copterBonk`
   // (-29.0), which has to stay the bigger event on this cabinet. Re-measure with
   // `node tools/render-cues.js girderBoing jump copterBonk`.
-  girderBoing: 0.39,
-  crunch: 0.84,
+  girderBoing: 0.348,
+  crunch: 1.058,
   // The trap owns its damage read; it must cut through the lane without
   // borrowing the generic `hit` cue. The call site adds a small final lift.
   // 1.7 rather than 1.0: as a clap the cue is DENSER than the spike it
@@ -547,15 +639,15 @@ const SFX_TRIM = {
   // `node tools/render-cues.js trapSnap blockBreak boxKick`. The last 0.8dB of
   // it is paying for the pitch drop: the same amplitude down at 520Hz reads
   // quieter than it did at 800, and the cue has to stay the same SIZE.
-  trapSnap: 1.7,
-  chomp: 0.84, tag: 0.9, perfect: 0.88,
+  trapSnap: 0.966,
+  chomp: 0.385, tag: 1.133, perfect: 1.318,
   // SCENERY, and levelled as scenery. Untrimmed the crack peaked -11.3 dBFS —
   // hotter than 'crunch', a cue the player causes — which is the wrong way
   // round for something that happens on the skyline whatever the player does.
   // 0.55 lands it at -16.5 peak / -38.9 RMS: the same peak as 'crunch' so the
   // crack still reads as an impact, and 6.6dB under it on RMS so the body of
   // the sound stays behind the song and the lane's own cues.
-  barrelBurst: 0.55,
+  barrelBurst: 1.096,
   // ONE TRIM FOR BOTH PROPS, and the 3dB between them is the cue's own doing
   // rather than a second number: the barrel's layers are longer and lower and
   // measure -7.1 dBFS peak untrimmed against the cone's -10.1. 0.45 lands them
@@ -564,7 +656,7 @@ const SFX_TRIM = {
   // ordering is the point: a barrel is the heavier thing and has to sound like
   // it, and letting the trim equalise them would have thrown away the only part
   // of the difference the player hears from across the lane.
-  punt: 0.45,
+  punt: 1.096,
   // Six noise layers plus the crash buffer sum far hotter than the two-layer
   // 'crunch' it replaces at the plow: untrimmed it peaked -6.7 dBFS, which is
   // over 'boom' and 3.5dB over 'blockBreak', and a break cue has no business
@@ -572,20 +664,20 @@ const SFX_TRIM = {
   // RMS — level with 'blockBreak', 6.4dB up on 'crunch', and running 0.48s
   // where 'crunch' runs 0.11. It reads as bigger because it IS longer and
   // broader, not because it is jumping the mix.
-  boxKick: 0.42,
+  boxKick: 0.501,
   // A latch clack plus a bell on inharmonic partials sums hotter at the strike
   // than the clean chime this replaced; trim it back into the coin/purchase
   // family instead of letting the clang jump the mix.
   cash: 0.7,
   // A tail layer, not an event: it should colour the break, never top it.
-  debris: 0.65,
+  debris: 1.841,
   // Fireworks. These layer UNDER 'ui' and 'coin' rather than replacing them,
   // so they are the body of the sound while those two carry the tone. First
   // pass was mixed as background texture and read as too faint.
-  fizzUp: 0.75, popSmall: 0.95, popBig: 0.9, crackle: 0.85,
+  fizzUp: 0.75, popSmall: 0.595, popBig: 0.9, crackle: 0.85,
   // The title asteroid's blast needs room for the music: heavy underneath,
   // but not a peak that dominates the menu.
-  boom: 0.36,
+  boom: 0.302,
   // Miss Chomp's coin bite. Measured against 'coin': it peaks ~5dB hotter at
   // the same nominal gain (the resonant lowpass), but the real problem was
   // sustain — it holds its peak where 'coin' is a fast-decaying blip, putting
@@ -598,11 +690,37 @@ const SFX_TRIM = {
   // a crawl you are reading, and at 0.5 it was announcing itself. Note this trim
   // scales the reverb too — every layer's envelope is trimmed before it reaches
   // the send — so lowering it here quiets the room by the same amount.
-  portal: 0.34,
+  portal: 0.417,
   // Eleven pulse-wave sweeps back to back is a lot of continuous energy next to
   // the one-shot blips it follows. Trimmed into the 'lose'/'uiBad' family so it
   // lands as a punchline rather than a level jump.
   pacDeath: 0.62,
+  // AND THEN JUMP CAME BACK DOWN, three under where that pass left it. It is the
+  // most frequent sound in the game by a wide margin — every hero makes it several
+  // times a lane, and a cue you hear two hundred times a run has to be quieter
+  // than one you hear twice, whatever the meter says. girderBoing moves with it,
+  // by exactly the same 3dB: it is levelled THREE UNDER the jump on purpose (the
+  // floor answering the hero, never louder than him), and a pair that is only
+  // correct relative to each other has to be moved as a pair.
+  // ------------------------------------------------- the levelling pass, 17 Sep 2026
+  // THE LANE HAD 32dB OF SPREAD IN IT. Measured cue by cue through the real graph
+  // (see work/local/sfx-inventory.html), the loudest thing a level could make was
+  // the ?-crate coin ladder at -2.5 dBFS and the quietest was falling debris at
+  // -35. Nothing chose that: each cue was levelled against its own neighbour on
+  // its own day, and the ends drifted apart. Peter's read, playing it: the loud
+  // ones startle and the quiet ones are not there at all.
+  //
+  // So the top half was squeezed toward the bed (0.55 of every dB above -16) and
+  // the bottom half was SHIFTED up bodily — a flat +2, and +5 for the two that sat
+  // below -28. Shifted rather than compressed on purpose: every relationship the
+  // comments in this table pin (girderBoing three under jump, dogBark well over
+  // hit) survives a shift untouched, where a squeeze would quietly close them.
+  // 32dB of spread became 23.
+  //
+  // Everything below this line is a cue that had no trim at all before the pass.
+  switchFlick: 0.575, clickHard: 0.716, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
+  loopRun: 1.259, boostFall: 1.035, shoot: 1.622, checkpoint: 1.38, coin: 1,
+  abilityReady: 1.012, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
 };
 
 // The weapon cues used to ship as .wav assets fetched at runtime. They are now
@@ -613,7 +731,7 @@ const SFX_TRIM = {
 // The cues share a peak ceiling (weapon-sfx normalises each to ~0.88), but
 // their timbres have different perceived loudness. These restrained trims bring
 // the family together without boosting any cue above its authored level.
-const WEAPON_AUDIO_GAIN = {
+export const WEAPON_AUDIO_GAIN = {
   // B-33P is intentionally much lower: the orb's bright upper partials read
   // louder than its waveform peak, especially on laptop and phone speakers.
   // Kiko sits between B-33P and the physical weapons. Her cues carry no
@@ -623,11 +741,11 @@ const WEAPON_AUDIO_GAIN = {
   // bright-reads-loud physics that has B-33P trimmed hardest, twice over — so
   // she starts between him and Kiko on launch, a touch under Kiko on the
   // ricochet zing.
-  contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9, kiko: 0.82, clara: 0.78 },
+  contact: { b33p: 0.45, grumpos: 0.794, lorenzo: 0.832, ramon: 0.708, fernwick: 0.75, chompo: 0.569, kiko: 0.624, clara: 0.582 },
   // lorenzo sits UNDER grumpos (0.82 -> 0.7): the wrench cue is the axe's pitched
   // up, and the same energy moved up the spectrum reads louder to the ear than
   // it measures — level it by its opposite number, not by its peak.
-  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78, clara: 0.62, fernwick: 0.8, lorenzo: 0.7 },
+  launch: { b33p: 0.427, ramon: 0.638, grumpos: 0.724, kiko: 0.376, clara: 0.327, fernwick: 0.7, lorenzo: 0.562 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
@@ -745,6 +863,18 @@ class AudioSys {
     // Preset-bench notes get their own gates so changing an audition never cuts a
     // song lane. They belong to this context just like the song gates do.
     this._benchGates = new Map();
+    // Set only for the duration of a voiceSfx() call — see _benchGate.
+    this._voiceSfxRoute = null;
+    this._voiceVerbs = new Map();
+    this._voiceVerbTaps = new Map();
+    this._voiceDelayTaps = new Map();
+    // Reversed cue buffers: the in-flight render promises, and the ones that landed.
+    this._revBufs = new Map();
+    this._revReady = new Map();
+    // Reversed cues currently scheduled or sounding — see stopVoiceCues.
+    this._liveVoiceCues = new Set();
+    // Set only for the duration of one sfx() call — see the note there.
+    this.cueDest = null;
     // Optional destination used by session-only audition surfaces (the standalone
     // MRDR-3 playground). Song lanes never set this, so the ordinary bench path keeps
     // its music/echo buses and the mixer remains untouched.
@@ -2467,7 +2597,7 @@ class AudioSys {
     if (sustain > atk) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
-    o.connect(g); g.connect(dest || this.sfxGain);
+    o.connect(g); g.connect(dest || this.cueDest || this.sfxGain);
     o.start(t); o.stop(t + dur + 0.02);
   }
 
@@ -2488,7 +2618,7 @@ class AudioSys {
     if (sustain > atk) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
-    src.connect(f); f.connect(g); g.connect(this.sfxGain);
+    src.connect(f); f.connect(g); g.connect(this.cueDest || this.sfxGain);
     src.start(t); src.stop(t + dur + 0.02);
   }
 
@@ -2510,7 +2640,7 @@ class AudioSys {
     g.gain.exponentialRampToValueAtTime(0.08 * q, t + 0.72);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
     g.gain.linearRampToValueAtTime(0, t + 1.55 - 0.005);
-    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.cueDest || this.sfxGain);
     // A quiet send into the arcade echo makes the blast occupy the room, while
     // the dry SFX path stays restrained enough not to jump over the title music.
     // 0.039 is the 0.14 this was tuned at, times the 0.28 the echo bus used to sit
@@ -2620,7 +2750,7 @@ class AudioSys {
     const buffer = this.launchBuffers[hero];
     if (!buffer) {
       if (hero === 'b33p') this.sfx('shoot', { pitch });
-      else if (hero === 'raymn') this.sfx('plop', { pitch });
+      else if (hero === 'ramon') this.sfx('plop', { pitch });
       else if (hero === 'grumpos') this.sfx('axe', { pitch });
       // Rusty has no baked launch yet (cast 10 Sep 2026): the axe's ring,
       // pitched up by the caller, until his own cane cue is rendered.
@@ -3845,12 +3975,13 @@ class AudioSys {
    * a late cue beats a dropped one. Callers that can know a beat is coming should
    * ask at least cueLeadBeats() ahead so this never has to clamp.
    */
-  cueTimeInBeats(beats) {
+  cueTimeInBeats(beats, name) {
     const now = this.ctx.currentTime;
     if (!Number.isFinite(beats)) return now;
     const secPerBeat = 60 / (this.bpm * this.tempo);
     const out = this.heardLatencySec();
-    return Math.max(now, now - out - CUE_PERCEPTUAL_LEAD + beats * secPerBeat);
+    const lead = CUE_ONSET_LEAD[name] ?? CUE_PERCEPTUAL_LEAD;
+    return Math.max(now, now - out - lead + beats * secPerBeat);
   }
 
   /**
@@ -3867,7 +3998,11 @@ class AudioSys {
   cueLeadSec(slack = 0.1) {
     if (!this.ctx) return 0;
     const out = this.heardLatencySec();
-    return out + CUE_PERCEPTUAL_LEAD + slack;
+    // The WIDEST lead in the sheet, not the generic one: this is the number a
+    // caller uses to decide when to ask, and asking a beat too late for the
+    // one cue that needs the most warning is how a placed cue clamps to `now`
+    // and plays late anyway.
+    return out + MAX_CUE_LEAD + slack;
   }
 
   sfx(name, opt = {}) {
@@ -3878,15 +4013,30 @@ class AudioSys {
     // in the credits and the thing that announces a level starting — which is otherwise
     // a choice between changing it for both or copying it into a second name.
     this.cueGain = (SFX_TRIM[name] ?? 1) * (opt.gain ?? 1);
+    // `opt.reverb` puts THIS FIRING in a room, without moving the cue.
+    //
+    // A hand-built cue's layers each connect themselves to sfxGain, so there is no
+    // one node a caller could tap afterwards. `cueDest` is the same trick `cueGain`
+    // already uses: a per-firing field the primitives read as they build. Set it and
+    // the cue's layers land on the reverb tap instead — dry to sfxGain as always,
+    // plus a send into the shared SFX-side room.
+    //
+    // Per firing, not per cue, because `boom` is also the fireworks and the barrel:
+    // the cabinet dive wants it in a cathedral and nothing else does.
+    this.cueDest = opt.reverb > 0
+      ? this._voiceVerbTap(opt.reverb, opt.reverbDecay ?? 1.5)
+      : null;
     // `opt.inBeats` places the cue on the song instead of firing it now — see
     // cueTimeInBeats. Cleared afterwards whatever the builder does, so an unscheduled
     // cue can never inherit a scheduled one's start.
-    this.cueStart = Number.isFinite(opt.inBeats) ? this.cueTimeInBeats(opt.inBeats) : null;
+    this.cueStart = Number.isFinite(opt.inBeats) ? this.cueTimeInBeats(opt.inBeats, name) : null;
     // The same placement in beats, for the builders that have to know WHERE the cue
     // lands rather than when — songKey() and everything keyed off it. Cleared in the
     // same breath as cueStart and for the same reason.
     this.cueBeatLead = Number.isFinite(opt.inBeats) ? opt.inBeats : 0;
-    try { this.buildCue(name, opt); } finally { this.cueStart = null; this.cueBeatLead = 0; }
+    try { this.buildCue(name, opt); } finally {
+      this.cueStart = null; this.cueBeatLead = 0; this.cueDest = null;
+    }
   }
 
   buildCue(name, opt) {
@@ -3945,6 +4095,40 @@ class AudioSys {
         break;
       }
       case 'power': [523, 659, 784, 1047].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.15, i * 0.07)); break;
+      // The special move has finished recharging. Deliberately NOT an arpeggio:
+      // the rising-square run belongs to the pickups (coin, power, star, win) and
+      // a cue built that way is heard as one. This is the interval alone, both
+      // notes struck together so it reads as one event rather than two, triangle
+      // rather than square so it carries over the mix without the bite.
+      //
+      // It fires unprompted, over the music, every few seconds, all game long, so
+      // it is levelled well under the move it announces — a notification, not an
+      // event. See tools/render-ready-auditions.js for the ten it was picked from.
+      // Levelled to stand ~8dB over a gameplay bed (measured against
+      // plumber-panic) rather than under the move it announces: auditioned dry it
+      // was comfortably loud and disappeared the moment the music came up, which
+      // is the trap every cue with no transient falls into.
+      //
+      // STRUCK TWICE, same pitch. Level and register both fight the music on its
+      // own ground, where a full mix wins; a repeat competes somewhere the music
+      // is not, by giving the cue a shape in TIME. Note that this reads 3dB
+      // quieter than the single strike on RMS and is more audible, not less — no
+      // level meter can see a repeat, so do not re-level this by the number.
+      //
+      // `opt.gap` is the spacing, defaulting to the 0.115s the pair was auditioned
+      // at. A rhythm stage passes its own sixteenth so both strikes land on the
+      // grid rather than near it — at the beat cabinet's 124bpm that is 0.121s,
+      // six milliseconds from the default, which is why the same cue can serve
+      // both. A beat cabinet far outside ~105-145bpm would want this clamped:
+      // stretched to a slow song's sixteenth the pair stops being one gesture.
+      case 'abilityReady': {
+        const gap = opt.gap ?? 0.115;
+        for (const w of [0, gap]) {
+          this.osc('triangle', 880, 880, 0.10, 0.072, w, null, 0.3);
+          this.osc('triangle', 1319, 1319, 0.10, 0.059, w, null, 0.3);
+        }
+        break;
+      }
       // A short time-snap for banking a rewind: three overlapping chirps run
       // backward, then one clean rising tone confirms that the pickup was a
       // benefit rather than damage. Kept under a quarter-second so it reads as
@@ -4126,6 +4310,63 @@ class AudioSys {
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
       case 'pacDeath': this.pacDeath(); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
+      // THE POWER BLOCK BEING STRUCK. It used to borrow 'checkpoint' — a rising
+      // triangle sweep, which is a fanfare for a place you reached, not a thing
+      // you hit — and then it was a LEVER: a notch, a travel, a stop. The prop
+      // is a BLOCK now and it is hit from below, so the front of the cue is a
+      // STRIKE and the back of it is the circuit closing, in the order the ear
+      // assembles them across the 0.2s the block takes to hop (SWITCH_THROW_T
+      // in sprites/props.js):
+      //
+      //   the strike     a 22ms tick of high noise — the plate being hit
+      //   the mass       a square drop with a sine under it, the block moving
+      //   the mechanism  a band of noise for whatever is inside it
+      //   the circuit    two triangles a fifth apart, landing at 55 and 105ms,
+      //                  which is the frame the lens floods green on
+      //
+      // The pair at the end is what makes it a REWARD rather than a clack: the
+      // lane already has the deck running out across the hole, and a mechanism
+      // that only clonks reads as something you broke.
+      //
+      // AND IT IS LOUD NOW, which reverses the note that used to stand here. It
+      // was levelled against the PAYOUTS it pays out in — tag, power, the
+      // checkpoint cue it replaced, all near -18 peak with an RMS around -34 —
+      // on the argument that this is a thing you went and did on purpose rather
+      // than something happening to you. That reasoning produced a cue nobody
+      // could hear: a 20ms tick with no body, 4dB under a crate breaking and
+      // 9dB under a trap shutting, arriving in a cabinet with a blizzard in it.
+      // It is levelled with the MECHANISMS it belongs to instead, and it
+      // carries body rather than only an edge — the RMS was the number that was
+      // wrong, not the peak.
+      case 'switchFlick': {
+        const w = Math.max(0, opt.when || 0);
+        // Measured, not guessed: -3.4 peak / -23.5 RMS through the real graph
+        // (tools/render-cues.js switchFlick), loudest at 17ms — the strike
+        // leads, the circuit answers. That is the loudest cue in the game, a
+        // little over the bear trap's -4.0/-25.7, and it is meant to be: the
+        // trap is something that happens to you wherever you happen to be, and
+        // this is the one prop on the stage you went and hit on purpose. The
+        // old lever cue sat at -11.3/-34.4 and was inaudible in a cabinet with
+        // a blizzard in it.
+        // THE STRIKE, built on the bear trap's clap (see 'trapSnap'): a two-tap
+        // flam and a broad low band under it, pitched down from the trap's
+        // because this is a block being punched rather than a jaw shutting.
+        [[0, 1.25], [0.005, 0.88]].forEach(([when, g]) => {
+          this.noise(0.016, g, 'bandpass', 900, w + when);
+        });
+        this.noise(0.11, 1.5, 'bandpass', 540, w + 0.002);
+        this.noise(0.03, 0.46, 'highpass', 2600, w + 0.001);
+        // THE MASS: the block's own jaw, and the metal body ringing on behind
+        // it — the trap's last two layers, an octave or so down.
+        this.osc('square', 180 * pitch, 70 * pitch, 0.07, 0.32, w);
+        this.osc('triangle', 110 * pitch, 48 * pitch, 0.2, 0.29, w + 0.006);
+        // THE CIRCUIT, down a fourth from where it sat when the cue was a
+        // lever's: the pair still has to read as a reward, and a bright fifth
+        // over a low strike was two cues rather than one object.
+        this.osc('triangle', 588 * pitch, 588 * pitch, 0.1, 0.46, w + 0.055);
+        this.osc('triangle', 882 * pitch, 882 * pitch, 0.2, 0.43, w + 0.105);
+        break;
+      }
       // The plunger bottoming out. A latch, not a beep: a hard tick of noise for
       // the contact faces meeting, a short woody knock under it for the mass
       // behind them, and one high pip that decays instantly so the cue has an
@@ -4381,15 +4622,26 @@ class AudioSys {
   /** The dry/wet gates used only by the preset library's bench. */
   _benchGate(key) {
     if (!this.ctx || !this.musicBus || !this.echoBus) return null;
-    let gate = this._benchGates.get(key);
+    // A voice fired as a SOUND EFFECT is the same note through a different door, and
+    // the door is the whole point: cues live on sfxGain, straight onto master, so a
+    // song's -19dB title trim cannot duck them and the visualisers do not dance to a
+    // UI beep. Its gates are cached under their own key, so turning one on never
+    // rebuilds the desk's — the two can be sounding at once.
+    //
+    // Per-call rather than through setPreviewOutput(), which is global and calls
+    // stopPreview(): routing a jump cue must not cut the note somebody is holding on
+    // the desk's keyboard.
+    const route = this._voiceSfxRoute;
+    const cacheKey = route ? `${key}|sfx` : key;
+    let gate = this._benchGates.get(cacheKey);
     if (gate) return gate;
-    const output = this._previewOutput;
+    const output = route || this._previewOutput;
     const dryDest = output?.dry || output?.input || this.musicBus;
     const wetDest = output?.wet || output?.input || this.echoBus;
     const dry = this.ctx.createGain(); dry.gain.value = 1; dry.connect(dryDest);
     const wet = this.ctx.createGain(); wet.gain.value = 1; wet.connect(wetDest);
     gate = { dry, wet };
-    this._benchGates.set(key, gate);
+    this._benchGates.set(cacheKey, gate);
     return gate;
   }
 
@@ -5977,6 +6229,352 @@ class AudioSys {
    * the bench's pattern player knows a note lasts one step of its rate before the note
    * sounds, and a held one would ring to the rack's 30-second safety stop instead.
    */
+  /**
+   * The room a voice cue can be put in, on the SFX side of the graph.
+   *
+   * NOT echoBus. That is the song's tempo-synced dotted-eighth delay and it returns
+   * through musicGain — a cue sent there would echo in time with whatever cabinet is
+   * playing and duck with the music fader. This is the portalVerbSend pattern instead
+   * (see it, a few hundred lines up): our own convolution reverb, filtered, returning
+   * to sfxGain beside the dry cue.
+   *
+   * The send is FILTERED, not the cue. The dry sound keeps its full top end while the
+   * tail loses it, which is what puts a room behind a sound rather than a blanket over
+   * it; the highpass keeps a sweep's bottom octave out of the tail, where it is mud.
+   *
+   * ONE reverb, many send levels. The convolver owns an impulse-response buffer and
+   * building one per amount would be real memory for no benefit, so the amount lives
+   * on a cached send gain keyed by its own value — which also means two cues at two
+   * amounts overlapping cannot rewrite each other's send.
+   */
+  _voiceVerbTap(amount, decay = 1.5) {
+    if (!this.ctx || !this.sfxGain) return null;
+    const vkey = decay.toFixed(2);
+    let room = this._voiceVerbs.get(vkey);
+    if (!room) {
+      // THE FILTERS FOLLOW THE ROOM. A small room is a send that keeps a sound in
+      // its place, so it is trimmed top and bottom hard; a big one is meant to be
+      // heard as a space, and trimming a cathedral the same way just makes a
+      // small room that lasts longer. So the band opens as the decay grows —
+      // measured on `boom`, the 260/4200 pair took the weight out of exactly the
+      // cue that most needed to sound enormous.
+      const big = Math.min(1, Math.max(0, (decay - 1.5) / 2.5));
+      const hp = this.ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 260 - 150 * big;
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 4200 + 3000 * big;
+      const verb = makeReverb(this.ctx, { decay, preDelay: 0.012 + 0.02 * big, wet: 1 });
+      hp.connect(lp); lp.connect(verb.input);
+      verb.output.connect(this.sfxGain);
+      room = { input: hp, verb };
+      this._voiceVerbs.set(vkey, room);
+    }
+    const key = `${amount.toFixed(2)}|${vkey}`;
+    let tap = this._voiceVerbTaps.get(key);
+    if (tap) return tap;
+    // The tap is the cue's dry path AND the reverb's feed, so the room hears the cue
+    // whatever the preset's own internal dry/wet split happens to be.
+    tap = this.ctx.createGain();
+    tap.gain.value = 1;
+    tap.connect(this.sfxGain);
+    const send = this.ctx.createGain();
+    send.gain.value = amount;
+    tap.connect(send);
+    send.connect(room.input);
+    this._voiceVerbTaps.set(key, tap);
+    return tap;
+  }
+
+  /**
+   * The other space a voice cue can be put in: a delay, on the SFX side.
+   *
+   * Same argument as _voiceVerbTap for why it is not `this.delay` — that line is
+   * tempo-synced to a dotted eighth and returns through musicGain, so a cue sent
+   * there would repeat in time with whichever cabinet is playing and go quiet when
+   * the music does. A sound effect's echo has to be the same echo everywhere.
+   *
+   * FIXED IN SECONDS, therefore, not in beats. And short: on a sweep, every repeat is
+   * another whole rising gesture, so a long time reads as three sweeps fighting
+   * rather than as one sweep in a space. The lowpass in the feedback path is what
+   * makes it recede instead of repeat — each pass loses top end, so the tail walks
+   * away from you.
+   *
+   * Cached per (amount, time, feedback), so overlapping cues at different settings
+   * cannot rewrite each other's line.
+   */
+  _voiceDelayTap(amount, time = 0.135, feedback = 0.42) {
+    if (!this.ctx || !this.sfxGain) return null;
+    const key = `${amount.toFixed(2)}|${time.toFixed(3)}|${feedback.toFixed(2)}`;
+    let tap = this._voiceDelayTaps.get(key);
+    if (tap) return tap;
+    // The tap is the cue's dry path AND the delay's feed, so the echo hears the cue
+    // whatever the preset's own dry/wet split happens to be.
+    tap = this.ctx.createGain();
+    tap.gain.value = 1;
+    tap.connect(this.sfxGain);
+    const send = this.ctx.createGain();
+    send.gain.value = amount;
+    const line = this.ctx.createDelay(1.0);
+    line.delayTime.value = Math.max(0.01, Math.min(0.9, time));
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 3200;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 220;
+    const fb = this.ctx.createGain();
+    // Hard ceiling on the feedback. A cue that can be fired twice in a second must
+    // not be able to build; anything at or over 1 here is a runaway that outlives
+    // the screen it belongs to.
+    fb.gain.value = Math.max(0, Math.min(0.85, feedback));
+    tap.connect(send);
+    send.connect(line);
+    line.connect(hp); hp.connect(lp);
+    lp.connect(fb); fb.connect(line);      // the recirculating leg
+    lp.connect(this.sfxGain);              // and the return
+    this._voiceDelayTaps.set(key, tap);
+    return tap;
+  }
+
+  /**
+   * The SAME cue, backwards.
+   *
+   * Not a descending preset standing in for a reversed ascending one — those are
+   * different sounds, and the ear knows. A reversed rise is a swell that arrives at
+   * a cliff: the attack is at the END, where the original's decay was, and the long
+   * tail leads INTO it instead of away. That is the sound of coming out of a place.
+   *
+   * There is no way to do it live. Web Audio has no negative playbackRate, and a
+   * cue's layers schedule themselves forward in time as they are built. So the
+   * preset is rendered ONCE into an OfflineAudioContext — the same trick
+   * tools/mixer-voice-editor.js measures levels with — the samples are flipped, and
+   * the result is cached as an AudioBuffer that plays like any other one-shot.
+   *
+   * Async, therefore, and that is the whole awkwardness: the first call cannot make
+   * a sound. `warmVoiceReverse` exists so the game can pay for it somewhere the
+   * player is not listening — the hub does it on entry, minutes before a level ends
+   * and the exit cue is wanted.
+   */
+  async _reversedVoiceBuffer(voiceId, seconds) {
+    const key = `${voiceId}|${seconds.toFixed(2)}`;
+    if (this._revBufs.has(key)) return this._revBufs.get(key);
+    const job = (async () => {
+      const OC = (typeof window !== 'undefined')
+        && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+      if (!OC || !this.ctx) return null;
+      const sr = this.ctx.sampleRate || 44100;
+      // A little longer than asked for, so a tail is not clipped into a click when
+      // it becomes the attack.
+      const len = Math.ceil(sr * (seconds + 0.6));
+      const octx = new OC(1, len, sr);
+      const voice = VOICES[voiceId];
+      if (!voice) return null;
+      const laneKey = voice.homeLane || 'bass';
+      const seam = seamFor(laneKey);
+      const live = Tone.getContext();
+      let rendering;
+      try {
+        const rack = new VoiceRack(octx, this.noiseBuf, this.crashBuf);
+        const dry = octx.createGain();
+        dry.connect(octx.destination);
+        const ok = rack.play(laneKey, voiceId, seam?.note ?? 110, {
+          time: 0, dur: seconds, gain: voiceGain(voice, laneKey), dry, wet: null, echo: false,
+        });
+        if (!ok) return null;
+        rendering = octx.startRendering();
+      } catch {
+        return null;
+      } finally {
+        // The synchronous window closes here, always — a throw between the swap and
+        // this would leave Tone pointed at a dead offline context and every later
+        // note silent. Same reason the voice editor does it.
+        Tone.setContext(live);
+      }
+      const rendered = await rendering;
+      const src = rendered.getChannelData(0);
+      // TRIMMED AT THE FRONT, and it has to be. The render is padded past the
+      // preset's own length so its tail is not clipped; reversed, that padding
+      // becomes dead air at the START, and dead air at the start of a cue you are
+      // scheduling BACKWARDS from its hit is dead air you have to schedule around.
+      // Cut it and the buffer's length is the cue's real length, which is the number
+      // `landAt` needs.
+      let last = src.length - 1;
+      while (last > 0 && Math.abs(src[last]) < 1e-4) last--;
+      const n = last + 1;
+      const out = this.ctx.createBuffer(1, n, sr);
+      const dst = out.getChannelData(0);
+      for (let i = 0; i < n; i++) dst[i] = src[n - 1 - i];
+      // PUBLISHED HERE, and only here.
+      //
+      // There were two caches: this one, holding the in-flight render, and the
+      // ready-to-play one that voiceSfxReverse checks. Only voiceSfxReverse ever
+      // wrote the second — so warming ahead of time did the whole expensive job,
+      // filed the result where nothing looked for it, and the first real firing
+      // still came up empty and silent. It then started a SECOND render whose
+      // `then` finally populated the ready map, which is exactly why the sound
+      // appeared from the second exit onward and never the first.
+      //
+      // Whoever renders it publishes it. There is no other way for the two to
+      // agree.
+      this._revReady.set(key, out);
+      return out;
+    })();
+    this._revBufs.set(key, job);
+    return job;
+  }
+
+  /**
+   * Cut every cue the cabinet dive has in the air, scheduled or sounding.
+   *
+   * Skipping the animation has to take the audio with it. The voice cues are the
+   * ones that matter: they run one to two seconds, and a reversed one is queued
+   * ahead of the moment it lands, so without this a press drops you on stage select
+   * with a swoop still arriving for an event that is no longer happening.
+   *
+   * Hand-built cues (the boom and its room) are deliberately LEFT to ring out. They
+   * are already sounding by the time a skip is allowed, they are tails rather than
+   * gestures, and cutting a reverb dead is a click — more noticeable than the thing
+   * it was trying to hide.
+   */
+  stopVoiceCues() {
+    this.stopPreview();
+    for (const src of this._liveVoiceCues) {
+      try { src.stop(); } catch { /* already finished */ }
+    }
+    this._liveVoiceCues.clear();
+  }
+
+  /** Render and cache a reversed cue ahead of needing it. Fire and forget. */
+  warmVoiceReverse(voiceId, seconds = 1) {
+    try { this._reversedVoiceBuffer(voiceId, seconds); } catch { /* never fatal */ }
+  }
+
+  /**
+   * Play the reversed cue. Returns false if it is not rendered yet — the caller
+   * decides whether that is worth a fallback; the dive plays its forward-facing
+   * partner cue either way, so a cold first exit is quieter, not silent.
+   */
+  voiceSfxReverse(voiceId, {
+    gain = 1, seconds = 1, at = 0.02, landAt = null, rate = 1,
+    reverb = 0, reverbDecay = 1.5, delay = 0, delayTime = 0.135, delayFeedback = 0.42,
+  } = {}) {
+    if (!this.ctx) return false;
+    const key = `${voiceId}|${seconds.toFixed(2)}`;
+    const ready = this._revReady.get(key);
+    if (!ready) {
+      // Not rendered yet: start it (it publishes itself when it lands) and say so.
+      this._reversedVoiceBuffer(voiceId, seconds).catch(() => {});
+      return false;
+    }
+    this.resumeAfterPanic();
+    const tap = delay > 0
+      ? this._voiceDelayTap(delay, delayTime, delayFeedback)
+      : (reverb > 0 ? this._voiceVerbTap(reverb, reverbDecay) : null);
+    const src = this.ctx.createBufferSource();
+    src.buffer = ready;
+    // TAPE SPEED. The exit plays this at the same factor its animation runs at, so
+    // the cue and the gesture stay the same length as each other — reversed AND
+    // sped up is still one coherent idea (it is what running the tape backwards
+    // faster does), where reversed at the original speed was a cue three times
+    // longer than the leap it was under. The pitch rises with it, which is what a
+    // faster whoosh should do.
+    const speed = rate > 0 ? rate : 1;
+    if (speed !== 1) src.playbackRate.value = speed;
+    const g = this.ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(tap || this.sfxGain);
+    // `landAt` SCHEDULES BACKWARDS FROM THE HIT, which is the only sane way to place
+    // a reversed cue. Its loud moment is at the END of the buffer — that is what
+    // reversing did — so "play it now" puts the impact a whole buffer-length late and
+    // no amount of nudging `at` fixes it without knowing how long the render came
+    // out. Give the moment instead and the cue works back to its own start.
+    //
+    // A cue longer than the time available starts now and lands late; that is worth
+    // knowing rather than hiding, so it returns the slip.
+    // Held so a SKIP can cut it. A reversed cue is scheduled as much as a second
+    // ahead of its own hit, so "stop the animation" has to mean "stop the sound
+    // queued for it" — otherwise pressing through the dive leaves a swoop arriving
+    // over a screen the dive is no longer on.
+    this._liveVoiceCues.add(src);
+    src.addEventListener('ended', () => this._liveVoiceCues.delete(src));
+    let t = this.ctx.currentTime + at;
+    let slip = 0;
+    if (landAt != null) {
+      // The length it will ACTUALLY take, not the buffer's own — a cue sped up
+      // finishes sooner and must start later to land on the same beat.
+      const want = this.ctx.currentTime + landAt - ready.duration / speed;
+      const floor = this.ctx.currentTime + 0.005;
+      slip = Math.max(0, floor - want);
+      t = Math.max(floor, want);
+    }
+    src.start(t);
+    return slip > 0 ? { late: slip } : true;
+  }
+
+  /**
+   * Fire one note of a SONG-ENGINE VOICE PRESET as a sound effect.
+   *
+   * The library is 484 measured, named, auditionable sounds — bells, stabs, sweeps,
+   * whole drum machines — and until now none of them could be a cue. Cues were 57
+   * hand-built cases in buildCue, and every new one meant writing oscillators by
+   * hand. This is the other door into the same rack: say `sweepUp` and get the Sweep
+   * Up, at the level it was measured at, without a song running.
+   *
+   * THREE THINGS MAKE IT AN EFFECT RATHER THAN A NOTE:
+   *
+   *  - It routes to sfxGain, not musicBus. A cue belongs on the master beside every
+   *    other cue: behind the SFX fader, in front of nothing, and out of the song
+   *    analyser so it cannot make the visualisers twitch. See _benchGate.
+   *  - It bypasses the mixer. `this.mixer = null` for the one synchronous call sends
+   *    the note down _benchGate instead of a channel strip, so a preset sounds as
+   *    ITSELF and not as whatever the loaded cabinet is doing to its tom lane.
+   *  - Its length is given in SECONDS. A preset's `dur` is in steps, which means a
+   *    cue would change length with the tempo of whatever happens to be playing —
+   *    the one thing a sound effect must never do. `seconds` solves back through
+   *    step = 15/bpm for the tempo that makes the preset's own duration come out at
+   *    the length asked for, so the cue is the same cue in every cabinet.
+   *
+   * Cheapest on `kind: 'drum'` presets (KLNG8), which build raw nodes per hit exactly
+   * as buildCue's own helpers do. A TNGR-2 preset needs its worklet warmed first and
+   * is silent on a non-secure origin; see warmWorkletLanes.
+   */
+  voiceSfx(voiceId, {
+    freq = null, gain = 1, seconds = null, lane = null, at = 0.02,
+    reverb = 0, reverbDecay = 1.5, delay = 0, delayTime = 0.135, delayFeedback = 0.42,
+  } = {}) {
+    if (!this.ctx) return false;
+    const voice = VOICES[voiceId];
+    if (!voice) return false;
+    const laneKey = lane || voice.homeLane || 'bass';
+    const seam = seamFor(laneKey);
+    if (!seam) return false;
+    const steps = voice.dur > 0 ? voice.dur : 1;
+    // A 16th step is 15/bpm seconds, so this is that solved for bpm. Clamped to a
+    // sane transport range: past the ends the preset's own envelopes stop being the
+    // thing you chose and the gate starts cutting them.
+    const bpm = seconds > 0
+      ? Math.max(20, Math.min(400, (steps * 15) / seconds))
+      : 120;
+    const bank = { bpm, [seam.voiceKey]: voiceId, [seam.durKey]: steps };
+    const wasMixer = this.mixer;
+    this.mixer = null;
+    // Delay wins if both are asked for: they are two answers to the same question
+    // and stacking them on one cue is mud, not depth.
+    const tap = delay > 0
+      ? this._voiceDelayTap(delay, delayTime, delayFeedback)
+      : (reverb > 0 ? this._voiceVerbTap(reverb, reverbDecay) : null);
+    const dest = tap || this.sfxGain;
+    this._voiceSfxRoute = { dry: dest, wet: dest };
+    // The SFX fader is the cue's own volume control, so the per-firing gain rides on
+    // top of the measured level rather than replacing it.
+    if (gain !== 1) bank[seam.gainKey] = voiceGain(voice, laneKey) * gain;
+    try {
+      return this.previewNote(laneKey, freq, { bank, at, hold: false });
+    } finally {
+      this.mixer = wasMixer;
+      this._voiceSfxRoute = null;
+    }
+  }
+
   previewNote(laneKey, freq, { bank = null, at = 0.02, hold = true } = {}) {
     this.resumeAfterPanic();
     const src = bank || this.bank;

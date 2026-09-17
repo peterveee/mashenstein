@@ -24,10 +24,10 @@ tracked because it says what each cue *is*, which the filenames only half tell y
 - [06 — Wrench clang](../../work/weapons/06-lorenzo-wrench-clang.wav)
 - [07 — Wrench thunk](../../work/weapons/07-lorenzo-wrench-thunk.wav)
 
-## Ray M'N — rocket fist
+## Ramon — rocket fist
 
-- [08 — Rocket-fist launch](../../work/weapons/08-raymn-rocket-fist-launch.wav)
-- [09 — Spring fist](../../work/weapons/09-raymn-spring-fist.wav)
+- [08 — Rocket-fist launch](../../work/weapons/08-ramon-rocket-fist-launch.wav)
+- [09 — Spring fist](../../work/weapons/09-ramon-spring-fist.wav)
 
 ## Gnash — spin dash
 
@@ -63,7 +63,7 @@ tracked because it says what each cue *is*, which the filenames only half tell y
 - [25 — B-33P laser-orb pop](../../work/weapons/25-contact-b33p-orb-pop.wav)
 - [26 — Grumpos axe chop](../../work/weapons/26-contact-grumpos-axe-chop.wav)
 - [27 — Lorenzo wrench hit](../../work/weapons/27-contact-lorenzo-wrench-hit.wav)
-- [28 — Ray M'N fist impact](../../work/weapons/28-contact-raymn-fist-impact.wav)
+- [28 — Ramon fist impact](../../work/weapons/28-contact-ramon-fist-impact.wav)
 - [29 — Fernwick shield bonk](../../work/weapons/29-contact-fernwick-shield-bonk.wav)
 - [30 — Miss Chomp contact crunch](../../work/weapons/30-contact-miss-chomp-crunch.wav)
 

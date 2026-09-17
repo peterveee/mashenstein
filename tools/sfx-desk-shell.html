@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MASHENSTEIN — SFX desk</title>
+<style>
+  :root {
+    --bg: #10161a; --panel: #171e23; --line: #263036; --ink: #e4ebe7;
+    --dim: #94a3a0; --faint: #6d7b79; --accent: #48e0c8; --gold: #f6d33c;
+    --hot: #f08a52; --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, sans-serif;
+    padding-bottom: 60px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--panel);
+    border-bottom: 1px solid var(--line); padding: 10px 16px;
+  }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  h1 {
+    font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 8px 0 0;
+  }
+  label { font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  select, button, input[type=number] {
+    background: #1e262c; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 3px; padding: 6px 9px; font: 13px/1 system-ui, sans-serif;
+  }
+  select:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  #auto { min-width: 74px; font-weight: 600; }
+  #auto.on { background: var(--hot); color: #16120e; border-color: var(--hot); }
+  #save { background: var(--accent); color: #0d1614; border-color: var(--accent); font-weight: 600; }
+  #save:disabled { background: #1e262c; color: var(--ink); border-color: var(--line); }
+  .readout { font: 12px/1.3 var(--mono); color: var(--dim); flex: 1 1 220px; min-width: 0; }
+  #dirty { color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  #status { color: var(--accent); }
+
+  main { padding: 14px 16px 0; max-width: 1000px; margin: 0 auto; }
+  h2 {
+    font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); margin: 24px 0 8px; padding-bottom: 7px; border-bottom: 1px solid var(--line);
+  }
+  .rows { display: flex; flex-direction: column; }
+  .row {
+    display: grid; grid-template-columns: 34px minmax(150px, 1fr) minmax(120px, 260px) 74px;
+    gap: 10px; align-items: center; padding: 5px 6px; border-radius: 3px;
+    border: 1px solid transparent;
+  }
+  .row:hover { background: #1a2227; }
+  .row.lit { background: #24333a; }
+  .row.walking { border-color: var(--hot); background: #23282a; }
+  .row.moved .val { color: var(--gold); }
+  .play { padding: 3px 0; font-size: 12px; }
+  .name { min-width: 0; }
+  .cue { font: 500 13px/1.3 var(--mono); display: block; }
+  .what { font-size: 12px; color: var(--dim); display: block; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font: 13px/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+
+  @media (max-width: 620px) {
+    .row { grid-template-columns: 30px 1fr 64px; }
+    .row input[type=range] { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <h1>SFX desk</h1>
+      <label for="song">Bed</label>
+      <select id="song"></select>
+      <button id="play" disabled>Play</button>
+      <button id="stop" disabled>Stop</button>
+      <label for="scope">Walk</label>
+      <select id="scope"></select>
+      <label for="every">Every</label>
+      <input id="every" type="number" min="0.5" max="10" step="0.5" value="2" style="width:64px">
+      <button id="auto">Auto</button>
+      <button id="reset">Reset</button>
+      <button id="save" disabled>Save</button>
+    </div>
+    <div class="bar" style="margin-top:8px">
+      <div class="readout">▸ <span id="nowplaying">no song</span></div>
+      <div class="readout"><span id="dirty">nothing moved</span></div>
+      <div class="readout"><span id="status"></span></div>
+    </div>
+  </header>
+  <main id="app"></main>
+  <script src="./sfx-desk-bundle.js"></script>
+</body>
+</html>

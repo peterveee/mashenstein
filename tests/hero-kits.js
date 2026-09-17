@@ -88,7 +88,7 @@ run.collide();
 assert(!crate.live && run.player.stumbleT > 0 && !run.player.rolling, 'Shield Bash breaks one ground hazard and ends in a stumble');
 
 // Every hero definition is now active and Tune-Up applies through shared cooldown setup.
-for (const id of ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos']) {
+for (const id of ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos']) {
   run.relay.current = id;
   run.player.setHero(id);
   assert(!!run.player.hero.ability, `${id} has an active power definition`);
@@ -173,8 +173,8 @@ let shotDrawError = null;
 try { run.draw(document.createElement('canvas').getContext('2d')); } catch (err) { shotDrawError = err; }
 assert(!shotDrawError, `the ki orb renders safely${shotDrawError ? ` (${shotDrawError.message})` : ''}`);
 
-selectHero('raymn'); run.useAbility();
-assert(run.projectiles.some((p) => p.type === 'fist'), "Ray M'N power throws his rocket fist");
+selectHero('ramon'); run.useAbility();
+assert(run.projectiles.some((p) => p.type === 'fist'), 'Ramon power throws his rocket fist');
 
 selectHero('grumpos'); run.useAbility();
 assert(run.projectiles.some((p) => p.type === 'axe'), 'Grumpos power throws his axe');

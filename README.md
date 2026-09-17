@@ -41,9 +41,18 @@ to Safari, iOS 26, alternate browsers, or in-app browsers; the game bundle is
 not requested until the Home Screen app is launched. iPad remains playable in
 Safari and fullscreen.
 
-Installed iPhones pause gameplay, input, rendering, and audio in portrait and
-show a rotate-to-landscape dialog. Every platform pauses those same systems
-while the page/app is hidden or the device is locked.
+Portrait is a supported way to play, not a state to be rotated out of. A screen
+opts in by declaring a static `portraitMode` (see `portraitAllowedFor` in
+`src/engine/lifecycle.js`), and the title, difficulty select, briefings,
+results, the hub, stage select, the trophy room, the field guide, the jukebox,
+How To Play, settings, the cast roll, calibration and gameplay itself — boss
+fights included, by inheritance — all have one. Screens that have not been
+given a portrait composition yet still pause and show the rotate card:
+the intro panels, the tutorial, minigames, the shop, the arcade corner, the
+bench, the credits, the finale and the attract demo.
+
+Every platform pauses gameplay, input, rendering and audio while the page/app
+is hidden or the device is locked.
 
 An installed copy keeps itself current. `dist/sw.js` fetches the page
 network-first with `cache: 'no-store'`, because a Home Screen launch will

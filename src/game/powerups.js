@@ -1,3 +1,5 @@
+import { PICKUPS } from './entities.js';
+
 // Active power-ups: persistent Bench level sets the base; grabbing a duplicate
 // in-run boosts +1 temporary level, capped at OVERCHARGED (bench max + 1).
 
@@ -22,18 +24,70 @@ export const POWER_DEFS = {
 // finds without crowding out the established staple capsules. Two staples
 // share the 52% tail since Slow-Mo and Score Star were retired — the reduced variety is the
 // point: nothing left in the common pool fights the player for control.
-// `avoid` is the type of the previous capsule in the world: one reroll if the
-// table lands on it again. Back-to-back duplicates read as the world repeating
-// itself rather than as a find, and the second one only ever buys a temporary
-// +1 level. A *single* reroll, so the odds stay close to the table (a repeat is
-// still possible at p², which is all the overcharge path needs).
+// `avoid` is the type of the previous capsule in the world, and the table is
+// NEVER allowed to land on it again. Back-to-back duplicates read as the world
+// repeating itself rather than as a find, and the second one only ever buys a
+// temporary +1 level.
+//
+// THIS USED TO BE ONE REROLL, which left a repeat at p² — and p is not small:
+// the two staples own a quarter of the table each, so better than one capsule
+// in six repeated the one before it. That is often enough to be noticed as a
+// pattern, which is the one thing a random find must never look like.
+//
+// The overcharge path (grab a type you already hold for a temporary +1) is not
+// lost with it. Only the IMMEDIATE neighbour is blocked, so a capsule two drops
+// later may still double a power that is still running — which is the same
+// stack from a find rather than from the table stuttering.
 export function randomPowerPickup(rng, avoid, allowRewind = true, banned = null) {
   const opts = typeof allowRewind === 'object'
     ? allowRewind
     : { allowRewind, banned };
-  const first = rollPowerPickup(rng, opts);
-  if (avoid && first === avoid) return rollPowerPickup(rng, opts);
-  return first;
+  return notAgain(rng, avoid, opts, () => rollPowerPickup(rng, opts));
+}
+
+// EVERY CAPSULE IN THE GAME, read off the pickup table rather than listed here,
+// so a new one joins the reroll's escape hatch by existing. A capsule is a
+// pickup that grants a power; nothing else in PICKUPS carries the field.
+const powerTypes = () => Object.keys(PICKUPS).filter((t) => PICKUPS[t].power);
+
+// The types this roll is actually allowed to produce right now — the same two
+// exclusions every roller applies (a beat stage's ban list, and rewind once it
+// has been spent), stated once so the escape hatch cannot disagree with the
+// table it is escaping from.
+function allowed({ allowRewind = true, banned = null } = {}) {
+  return powerTypes().filter((t) => !banned?.has(t) && !(t === 'capRewind' && !allowRewind));
+}
+
+/**
+ * Roll until the answer is not `avoid`, and then stop pretending.
+ *
+ * Four tries keeps the table's own proportions for all but a fraction of a
+ * percent of drops — a reroll is only reached when the roll repeats, so the
+ * shape the weights describe survives. What the tries buy on their own is odds,
+ * though, not a guarantee, and "rare" is not the thing that was asked for: the
+ * last line takes the repeat off the board for good by picking flat from
+ * everything else on offer. It can only return `avoid` when `avoid` is the one
+ * thing left that may drop at all, and then it is not a repeat, it is the table.
+ */
+function notAgain(rng, avoid, opts, roll, pool = null) {
+  let type = roll();
+  if (!avoid) return type;
+  const from = pool ? pool().filter((t) => !opts.banned?.has(t)
+    && !(t === 'capRewind' && opts.allowRewind === false)) : allowed(opts);
+  // TWO KINDS ON THE TABLE IS NOT ENOUGH TO BE STRICT WITH.
+  //
+  // A rhythm stage's table is AIR JUMP and SHIELD and nothing else (see
+  // cabinets.js capsuleWeights). "Never the same twice" there is not variety,
+  // it is a metronome: the two must alternate, every drop is knowable from the
+  // one before it, and the third-and-two-thirds the author wrote is flattened
+  // to an even split on the way. A repeat you cannot predict beats a sequence
+  // you can, so a table this thin keeps the single reroll it always had — the
+  // odds stay the author's, and a pair is possible but uncommon.
+  if (from.length < 3) return type === avoid ? roll() : type;
+  for (let tries = 0; type === avoid && tries < 4; tries++) type = roll();
+  if (type !== avoid) return type;
+  const others = from.filter((t) => t !== avoid);
+  return others.length ? rng.pick(others) : avoid;
 }
 
 // The section-curated twin of randomPowerPickup, for stage layouts that name
@@ -47,9 +101,12 @@ export function randomPowerPickup(rng, avoid, allowRewind = true, banned = null)
 // tests/layout-parity.js exists to forbid. So the ladder keeps the default and
 // this runs only where an author has asked for something else.
 export function weightedPowerPickup(rng, weights, avoid, opts = {}) {
-  const first = rollWeightedPickup(rng, weights, opts);
-  if (avoid && first === avoid) return rollWeightedPickup(rng, weights, opts);
-  return first;
+  // The author's table decides the escape hatch here, not the shipped ladder:
+  // a section that asked for three kinds of capsule gets one of the other two,
+  // never something it left out. A weight of 0 is a type left out.
+  const table = () => Object.keys(weights).filter((t) => weights[t] > 0);
+  const opts2 = { ...opts, banned: opts.banned };
+  return notAgain(rng, avoid, opts2, () => rollWeightedPickup(rng, weights, opts), table);
 }
 
 function rollWeightedPickup(rng, weights, { allowRewind = true, banned = null } = {}) {

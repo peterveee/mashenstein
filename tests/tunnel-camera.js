@@ -37,7 +37,7 @@ const dt = 1 / 60;
 const heroOffset = run.playerWorldX() - run.camX;
 const speed = run.speed;
 const LOOKAHEAD_SEC = 1.35;
-const PREVIEW_MAX_DROP = 36;
+const PREVIEW_MAX_DROP = 52;
 const RETURN_DELAY_SEC = 0.35;
 const UPPER_PATH_LIFT = 48;
 const placeHero = (x) => { run.camX = x - heroOffset; };
