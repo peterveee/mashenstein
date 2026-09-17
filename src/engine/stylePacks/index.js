@@ -7463,9 +7463,18 @@ const LCD_CELL_H = 5;                              // the fill inside a 2-cell b
 // ride the grid because a meter printed at the landscape pitch on a facade
 // printed at the portrait one reads as a second, finer building standing on
 // the first — the one scale break a zoomed-in city cannot hide.
+//
+// `chuteReach` is the same argument about a gap rather than a mark: how far
+// past his wall Kong's barrel falls when there is no neighbour to centre it
+// between (lcdChuteX). The BARREL does not scale — it is one sprite — so what
+// has to is the air beside it, or a drop authored against a 36px facade reads
+// as half as much room beside a 68px one. Peter, holding the landscape panel
+// up against the phone: "that's the spacing I want for Kong and his barrels,
+// proportional of course".
 const LCD_GRID = Object.freeze({
   unit: LCD_U, colPitch: LCD_COL_PITCH, rowPitch: LCD_ROW_PITCH,
   cellW: LCD_CELL_W, cellH: LCD_CELL_H, lineW: 1, bankCell: 3, bankPitch: 5,
+  chuteReach: 17,
 });
 // Portrait gets a larger, lower-density print grid. The authored landscape
 // grid remains three-pixel graph paper; these metrics are used only by the
@@ -7474,6 +7483,9 @@ const LCD_GRID = Object.freeze({
 const LCD_PORTRAIT_GRID = Object.freeze({
   unit: 4, colPitch: 20, rowPitch: 16, cellW: 12, cellH: 8, lineW: 2,
   bankCell: 4, bankPitch: 7,
+  // Nine of air beside a 36-wide facade is a quarter of its width; a quarter
+  // of 68 is seventeen, and eight of that is the barrel's own half-width.
+  chuteReach: 25,
 });
 const lcdGridFor = (building) => building?.[4] === 'portrait-grid'
   ? LCD_PORTRAIT_GRID : LCD_GRID;
@@ -8951,19 +8963,21 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
 // KONG STANDS AT THE RIGHT-HAND END, where the landscape scene puts him and
 // where Peter wants him, and the air to his right is the barrel's rather than
 // the panel's. The chute stands a fixed reach past his wall now (see
-// lcdChuteX), so the row is spaced on its own terms and not around a drop
-// zone: nineteen between facades, ten of margin at the left, and at the right
-// his wall at 436 with the chute at 453 — the barrel drawn 445..461 against a
-// window that ends at 473. Twelve of sky past the barrel instead of forty-six,
-// and that forty-six is what read as a hole in the skyline.
+// lcdChuteX), and that reach is his facade's own: seventeen of air beside a
+// 68px wall, the same quarter-of-a-width the landscape panel drops beside a
+// 36px one. The row is spaced to match rather than around it — seventeen
+// between facades, the leftmost nearly flush with the edge of what a phone
+// shows, and his wall at 426 with the chute at 451: the barrel drawn 443..459
+// against a window that ends at 473. The drop reads as one more gap in the
+// skyline, which is what it is.
 const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   ...LCD_CITY_SCENES[3],
   buildings: Object.freeze([
-    [214, LCD_PORTRAIT_FACADE_W, 210, 'relay', 'portrait-grid'],
-    [301, LCD_PORTRAIT_NARROW_W, 190, 'industrial', 'portrait-grid'],
-    [368, LCD_PORTRAIT_FACADE_W, 226, 'deco', 'portrait-grid'],
+    [208, LCD_PORTRAIT_FACADE_W, 210, 'relay', 'portrait-grid'],
+    [293, LCD_PORTRAIT_NARROW_W, 190, 'industrial', 'portrait-grid'],
+    [358, LCD_PORTRAIT_FACADE_W, 226, 'deco', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[224, -72], [324, -60], [424, -78]]),
+  clouds: Object.freeze([[220, -72], [320, -60], [420, -78]]),
   billboards: Object.freeze([[0, 'chart']]),
   rooftopGorilla: 2,
   transmitter: 1,
@@ -10212,25 +10226,19 @@ export function lcdChuteScreenX(stageIndex, portrait = false) {
  * wall. On the last building there is no neighbour and the old 15px gap is
  * assumed.
  */
-// How far past his wall the chute may stand when there is no neighbour to
-// centre it between. It is what the landscape scene's own air already resolves
-// to — 34 of gap, halved — so capping at it changes nothing there, and it
-// stops the barrel drifting out into the middle of a phone's wider margin
-// (Peter, on the portrait panel: "do we need that much space for the
-// barrels?"). Eight of air either side of a sixteen-wide barrel is the whole
-// requirement; the rest was just unclaimed sky.
-const LCD_CHUTE_REACH = 17;
 function lcdChuteX(art) {
-  const [gx, gw] = art.buildings[art.rooftopGorilla];
+  const building = art.buildings[art.rooftopGorilla];
+  const [gx, gw] = building;
   const next = art.buildings[art.rooftopGorilla + 1];
   // With a neighbour the chute splits the gap between the two facades. With
-  // NONE — the gorilla is the last building — it stands a barrel's width past
-  // his wall instead. The old fallback was a flat 15, which parked the barrel
-  // eight px off his brickwork however much room there actually was; halving
-  // the remaining air fixed that and then overshot the other way.
+  // NONE — the gorilla is the last building — it stands its facade's own reach
+  // past his wall instead (see chuteReach). The old fallback was a flat 15,
+  // which parked the barrel eight px off his brickwork however much room there
+  // actually was; halving the remaining air fixed that and then overshot the
+  // other way, walking the drop out into the middle of a phone's margin.
   const wall = gx + gw;
   const gap = next ? next[0] - wall : Math.max(0, W - wall);
-  return wall + Math.min(LCD_CHUTE_REACH, Math.round(gap / 2));
+  return wall + Math.min(lcdGridFor(building).chuteReach, Math.round(gap / 2));
 }
 
 /**
