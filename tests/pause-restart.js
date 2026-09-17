@@ -41,8 +41,8 @@ const stage = {
   durationSec: 60, applianceAt: 0.5, applianceHigh: false,
 };
 
-const makeRun = () => new RunState({
-  stage, save, seed: 4242, difficulty: 1, skipRunIn: true, onEnd() {},
+const makeRun = (onEnd = () => {}) => new RunState({
+  stage, save, seed: 4242, difficulty: 1, skipRunIn: true, onEnd,
 });
 
 // What the road put down, in the order it put it down. Obstacles and pickups
@@ -112,6 +112,57 @@ const diff = first.findIndex((v, i) => v !== second[i]);
 assert(diff === -1,
   diff === -1 ? 'the restarted stage is the identical road, obstacle for obstacle'
     : `entry ${diff} differs: ${first[diff]} vs ${second[diff]}`);
+
+// EVERY PLATE'S ACTION HAS TO BE READ BY SOMETHING.
+//
+// A plate is a hit box plus an action name, and a thumb pressing it does
+// nothing more than fire that name. Nothing in the button list says whether
+// anyone is listening for it, so renaming an action — which is exactly what
+// gave the EXIT plate 'quit' instead of 'escape' — can leave a plate that looks
+// live, highlights, and goes nowhere. Only the keyboard was safe, because the
+// confirm path dispatches on the action rather than pressing it.
+//
+// So press each plate's action the way a tap does and drive a real frame with
+// it: what is under test is the wiring from the name to the behaviour, and
+// there is no way to check that without going through update().
+function pausedRun(onEnd) {
+  const r = makeRun(onEnd);
+  r.enter();
+  r.collide = () => {};
+  r.paused = true;
+  r.pauseChanged();
+  return r;
+}
+
+function tapPlate(r, action) {
+  Input.clearAll();
+  Input.press(action);
+  r.update(1 / 60);
+  Input.clearAll();
+}
+
+{
+  let ended = null;
+  const r = pausedRun((result) => { ended = result; });
+  tapPlate(r, 'quit');
+  assert(!!ended, 'tapping EXIT ends the run');
+  assert(ended && ended.success === false && ended.reason === 'QUIT',
+    `EXIT ends it as a quit (${ended && ended.reason})`);
+}
+
+{
+  const r = pausedRun();
+  tapPlate(r, 'pause');
+  assert(!r.paused, 'tapping CONTINUE leaves the pause screen');
+}
+
+{
+  const r = pausedRun();
+  r.score = 999;
+  tapPlate(r, 'restart');
+  assert(!r.paused && r.score === 0 && r.tRun === 0,
+    'tapping RESTART starts the stage over');
+}
 
 console.log(failed ? 'PAUSE-RESTART: FAILED' : 'PAUSE-RESTART: PASSED');
 process.exit(failed ? 1 : 0);

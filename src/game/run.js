@@ -4698,9 +4698,14 @@ export class RunState {
   // two ways in cannot drift apart — the keyboard is choosing among the very
   // buttons that are on screen.
   updatePauseMenu() {
-    // A tapped RESTART arrives here as its own action, the way the nudge
-    // plates do — the plate is the only thing that fires it, so there is no
-    // key to guard against.
+    // A tapped EXIT or RESTART arrives here as its own action, the way the
+    // nudge plates do — the plate is the only thing that fires either, so there
+    // is no key to guard against. They have to be read HERE rather than left to
+    // the confirm dispatch below: 'quit' and 'restart' are bound to no key at
+    // all, so a plate whose action nothing reads is a plate that does nothing
+    // when a thumb presses it. ('pause', the CONTINUE plate's action, is the
+    // exception — updateGame reads it before we are ever called.)
+    if (Input.pressed('quit')) { Audio.sfx('uiConfirm'); this.endRun(false, 'QUIT'); return; }
     if (Input.pressed('restart')) { Audio.sfx('uiConfirm'); this.restartStage(); return; }
     // Only the full-width plates are arrowable. The nudge plates are a
     // control, not a destination — left/right work them from the keyboard and a
