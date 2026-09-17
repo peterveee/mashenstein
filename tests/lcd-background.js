@@ -1805,20 +1805,23 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
   const beyond = VISIBLE[1] - (chute + BARREL_W / 2);
   assert(beyond <= Math.max(...threeGaps),
     `with no more sky past it than the skyline's own gaps (${beyond} <= ${Math.max(...threeGaps)})`);
-  // AND IT FALLS THE SAME DISTANCE OFF HIS WALL IN BOTH ORIENTATIONS, which is
-  // a distance measured in his facade rather than in pixels: the barrel is one
-  // fixed sprite, so nine of air beside a 36px wall and seventeen beside a 68px
-  // one are the same picture, and a flat number is two different ones.
-  const airRatio = (art, portrait) => {
+  // AND IT FALLS CLOSE TO HIM IN BOTH PANELS, measured off his brickwork
+  // rather than off his facade: the barrel is one fixed sprite, so the
+  // distance that says whose barrel it is does not scale with the wall. Half a
+  // barrel of air clears the wall; a whole one is as far as it can go before
+  // it reads as a barrel somebody else dropped.
+  const airOff = (portrait) => {
+    const art = lcdArtFor(3, portrait ? phone : null);
     const g = art.buildings[art.rooftopGorilla];
     const x = lcdChuteScreenX(3, portrait) - (portrait ? LCD_PORTRAIT_CITY_SHIFT.x : 0);
-    return (x - BARREL_W / 2 - (g[0] + g[1])) / g[1];
+    return x - BARREL_W / 2 - (g[0] + g[1]);
   };
-  const landscapeAir = airRatio(lcdArtFor(3, null), false);
-  const portraitAir = airRatio(three, true);
-  assert(Math.abs(portraitAir - landscapeAir) < 0.04,
-    `and off it by the same share of his own wall as the landscape panel `
-    + `(${portraitAir.toFixed(2)} against ${landscapeAir.toFixed(2)})`);
+  for (const portrait of [false, true]) {
+    const air = airOff(portrait);
+    assert(air >= BARREL_W / 2 && air <= BARREL_W,
+      `${portrait ? 'the phone' : 'the panel'} drops it off his own wall `
+      + `(${air}px, between ${BARREL_W / 2} and ${BARREL_W})`);
+  }
   assert(lcdChuteScreenX(3) !== lcdChuteScreenX(3, true),
     'and the run is told the portrait one, not the landscape panel\'s');
   const barrelTop = GROUND_Y - kong[2] - 57;
