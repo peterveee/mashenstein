@@ -7464,13 +7464,12 @@ const LCD_CELL_H = 5;                              // the fill inside a 2-cell b
 // printed at the portrait one reads as a second, finer building standing on
 // the first — the one scale break a zoomed-in city cannot hide.
 //
-// `chuteReach` is the same argument about a gap rather than a mark: how far
-// past his wall Kong's barrel falls when there is no neighbour to centre it
-// between (lcdChuteX). The BARREL does not scale — it is one sprite — so what
-// has to is the air beside it, or a drop authored against a 36px facade reads
-// as half as much room beside a 68px one. Peter, holding the landscape panel
-// up against the phone: "that's the spacing I want for Kong and his barrels,
-// proportional of course".
+// `chuteReach` is how far past his wall Kong's barrel falls when there is no
+// neighbour to centre it between (lcdChuteX). It rides the grid because the
+// two panels draw their walls at different weights, but it stays near the
+// barrel's own width in both: the sprite does not scale, and the distance that
+// says the barrel is HIS is the one measured off his brickwork, not the one
+// measured in facades (Peter: "barrels closer to Kong's building").
 const LCD_GRID = Object.freeze({
   unit: LCD_U, colPitch: LCD_COL_PITCH, rowPitch: LCD_ROW_PITCH,
   cellW: LCD_CELL_W, cellH: LCD_CELL_H, lineW: 1, bankCell: 3, bankPitch: 5,
@@ -7483,9 +7482,13 @@ const LCD_GRID = Object.freeze({
 const LCD_PORTRAIT_GRID = Object.freeze({
   unit: 4, colPitch: 20, rowPitch: 16, cellW: 12, cellH: 8, lineW: 2,
   bankCell: 4, bankPitch: 7,
-  // Nine of air beside a 36-wide facade is a quarter of its width; a quarter
-  // of 68 is seventeen, and eight of that is the barrel's own half-width.
-  chuteReach: 25,
+  // TEN OF AIR, not a quarter of the facade. Scaling the gap with the wall it
+  // falls past was the obvious reading of "proportional" and it was wrong in
+  // the eye: the barrel is one fixed sprite, so what says "his" is the
+  // ABSOLUTE distance from his brickwork, and a wider facade beside the same
+  // barrel just reads as a barrel somebody else dropped. Two up from the
+  // landscape panel's nine, because the portrait wall is drawn heavier.
+  chuteReach: 18,
 });
 const lcdGridFor = (building) => building?.[4] === 'portrait-grid'
   ? LCD_PORTRAIT_GRID : LCD_GRID;
@@ -8944,12 +8947,14 @@ const LCD_PORTRAIT_NARROW_W = 2 * LCD_PORTRAIT_GRID.unit
 const LCD_PORTRAIT_STAGE_2 = Object.freeze({
   ...LCD_CITY_SCENES[2],
   skyTop: LCD_PORTRAIT_SKY_TOP,
+  // Twenty between facades, the same as rhythm-3's: two cities on one cabinet,
+  // seen through the same window, spaced alike.
   buildings: Object.freeze([
-    [221, LCD_PORTRAIT_FACADE_W, 200, 'deco', 'portrait-grid'],
-    [305, LCD_PORTRAIT_FACADE_W, 230, 'deco', 'portrait-grid'],
-    [389, LCD_PORTRAIT_FACADE_W, 210, 'music-hall', 'portrait-grid'],
+    [216, LCD_PORTRAIT_FACADE_W, 200, 'deco', 'portrait-grid'],
+    [304, LCD_PORTRAIT_FACADE_W, 230, 'deco', 'portrait-grid'],
+    [392, LCD_PORTRAIT_FACADE_W, 210, 'music-hall', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[232, -56], [330, -64], [418, -52]]),
+  clouds: Object.freeze([[228, -56], [330, -64], [420, -52]]),
   cloudSway: 24,
   // THE MAZE BOARD TAKES THE THIRD ROOF. It runs the attract screen of a game
   // this cabinet is old enough to remember, a cell per heard beat — the one
@@ -8973,23 +8978,21 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
 // KONG STANDS AT THE RIGHT-HAND END, where the landscape scene puts him and
 // where Peter wants him, and the air to his right is the barrel's rather than
 // the panel's. The chute stands a fixed reach past his wall now (see
-// lcdChuteX), and that reach is his facade's own: seventeen of air beside a
-// 68px wall, the same quarter-of-a-width the landscape panel drops beside a
-// 36px one. The row is spaced to match rather than around it — seventeen
-// between facades, the leftmost nearly flush with the edge of what a phone
-// shows, and his wall at 426 with the chute at 451: the barrel drawn 443..459
-// against a window that ends at 473. The drop reads as one more gap in the
-// skyline, which is what it is.
+// lcdChuteX), and it falls CLOSE to him: ten of air, near enough that the
+// barrel reads as leaving his hands rather than as passing by. That is ten
+// the skyline gets to keep, so the row is spaced on what is left — twenty
+// between facades against seventeen — with his wall at 434, the chute at 452
+// and the barrel drawn 444..460 inside a window that ends at 473.
 const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   ...LCD_CITY_SCENES[3],
   skyTop: LCD_PORTRAIT_SKY_TOP,
   buildings: Object.freeze([
-    [208, LCD_PORTRAIT_FACADE_W, 192, 'relay', 'portrait-grid'],
-    [293, LCD_PORTRAIT_NARROW_W, 172, 'industrial', 'portrait-grid'],
+    [210, LCD_PORTRAIT_FACADE_W, 192, 'relay', 'portrait-grid'],
+    [298, LCD_PORTRAIT_NARROW_W, 172, 'industrial', 'portrait-grid'],
     // 208 is rhythm-1's own Kong tower, to the pixel: see below.
-    [358, LCD_PORTRAIT_FACADE_W, 208, 'deco', 'portrait-grid'],
+    [366, LCD_PORTRAIT_FACADE_W, 208, 'deco', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[220, -54], [320, -42], [420, -60]]),
+  clouds: Object.freeze([[222, -54], [322, -42], [422, -60]]),
   billboards: Object.freeze([[0, 'chart']]),
   rooftopGorilla: 2,
   transmitter: 1,
