@@ -8870,18 +8870,34 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
 // maze attract board on 2, the relay mast on 3 — and it is there because two
 // facades in a 270px window is a gap with bookends.
 //
-// NOT AS TALL AS THEY COULD BE. The roofs sit where rhythm-1's do, around a
-// fifth of the way down the panel, and everything above them is sky: the
-// wisps, and on rhythm-2 the service. A phone has sky to spare and the answer
-// to that is not a taller city — it is the city this cabinet draws, at the size
-// a phone can read it, with room over it. Peter: "not so tall, I want space for
-// clouds — look at 3-1".
+// TALL ENOUGH TO BE A CITY, WITH THE SKY STILL THE SKY. The roofs started at
+// rhythm-1's own band and came up twenty-eight from there (Peter: "all the
+// buildings could be a bit taller, can we go a bit higher with all") — and the
+// whole sky stack came up the same twenty-eight, rigidly, because the wisps
+// and the service are measured against the skyline rather than against the
+// frame. What that spends is the empty band at the top of the panel, which is
+// the only thing on a phone nobody is looking at; what it keeps is a cloud
+// band with air above and below it, on every portrait aspect.
 //
 // EVEN SPACING, ON THE GRID. 68px is three portrait-grid columns, the same
 // three-window read rhythm-1's combo facade has; 48 is two. The x's are the
 // visible window (scene 205..474 after the portrait city shift) divided up
 // with equal gaps — except beside Kong, where the gap is the chute's and is
 // twice the rest for the reason the landscape scene gives at `barrelDrop`.
+// THE HIGHEST ROW A PORTRAIT SCENE MAY DRAW ON, and it is measured rather
+// than judged. A phone paints its beat rail across the top of the scenery
+// band, so what is left is not the frame's sky but the sky under that plate —
+// and how much that is depends on the shape of the phone. The first free row,
+// in this panel's own coordinates, on the frames worth supporting:
+//
+//   430x932  -141     414x896  -133     768x1024 (4:3)  -160
+//   393x852  -121     360x740   -89     834x1194        -210
+//
+// The 360x740 Android is the tightest of them and therefore the one every
+// scene is authored against; this keeps nine rows of air under even that.
+// Nothing in a portrait scene — a wisp, a board, the service, the crossing —
+// may cross this line, and tests/lcd-background.js holds all three to it.
+export const LCD_PORTRAIT_SKY_TOP = -80;
 const LCD_PORTRAIT_FACADE_W = LCD_PORTRAIT_COMBO_W;                      // 68: three windows
 const LCD_PORTRAIT_NARROW_W = 2 * LCD_PORTRAIT_GRID.unit
   + 2 * LCD_PORTRAIT_GRID.colPitch;                                      // 48: two
@@ -8894,16 +8910,16 @@ const LCD_PORTRAIT_NARROW_W = 2 * LCD_PORTRAIT_GRID.unit
 // above the roof it is on, which is forty, and on this skyline that is the
 // highest thing there is. The city did not come down for it: the SERVICE WENT
 // UP, which is what a rail over a city does and what Peter asked for. The
-// girder is measured off the board (lcdBoardTop: 30 for the combo's) and the
-// wisps off the cars — girder 20, cars 8..20, nothing in the sky below them.
+// girder is measured off the board (lcdBoardTop: 2 for the combo's) and the
+// wisps off the cars — girder -8, cars -20..-8, nothing in the sky below them.
 const LCD_PORTRAIT_STAGE_2 = Object.freeze({
   ...LCD_CITY_SCENES[2],
   buildings: Object.freeze([
-    [221, LCD_PORTRAIT_FACADE_W, 162, 'deco', 'portrait-grid'],
-    [305, LCD_PORTRAIT_FACADE_W, 186, 'deco', 'portrait-grid'],
-    [389, LCD_PORTRAIT_FACADE_W, 150, 'music-hall', 'portrait-grid'],
+    [221, LCD_PORTRAIT_FACADE_W, 190, 'deco', 'portrait-grid'],
+    [305, LCD_PORTRAIT_FACADE_W, 214, 'deco', 'portrait-grid'],
+    [389, LCD_PORTRAIT_FACADE_W, 178, 'music-hall', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[232, -14], [330, -22], [418, -10]]),
+  clouds: Object.freeze([[232, -42], [330, -50], [418, -38]]),
   cloudSway: 24,
   // THE MAZE BOARD TAKES THE THIRD ROOF. It runs the attract screen of a game
   // this cabinet is old enough to remember, a cell per heard beat — the one
@@ -8919,7 +8935,7 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
   // On the maze board's roof, outboard of its legs, exactly as the landscape
   // scene stands its second lamp on the board's own building.
   searchlights: Object.freeze([[2, 10]]),
-  train: Object.freeze({ ...LCD_CITY_SCENES[2].train, y: 8 }),
+  train: Object.freeze({ ...LCD_CITY_SCENES[2].train, y: -20 }),
 });
 
 // RHYTHM-3: the combo board, the relay mast, and Kong on the last roof.
@@ -8935,11 +8951,11 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
 const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   ...LCD_CITY_SCENES[3],
   buildings: Object.freeze([
-    [211, LCD_PORTRAIT_FACADE_W, 170, 'relay', 'portrait-grid'],
-    [295, LCD_PORTRAIT_NARROW_W, 138, 'industrial', 'portrait-grid'],
-    [359, LCD_PORTRAIT_FACADE_W, 186, 'deco', 'portrait-grid'],
+    [211, LCD_PORTRAIT_FACADE_W, 198, 'relay', 'portrait-grid'],
+    [295, LCD_PORTRAIT_NARROW_W, 166, 'industrial', 'portrait-grid'],
+    [359, LCD_PORTRAIT_FACADE_W, 214, 'deco', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[220, -34], [320, -22], [420, -40]]),
+  clouds: Object.freeze([[220, -62], [320, -50], [420, -68]]),
   billboards: Object.freeze([[0, 'chart']]),
   rooftopGorilla: 2,
   transmitter: 1,
@@ -8950,7 +8966,7 @@ const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   // in landscape. Both ends move together; the climb itself is done by x 200,
   // well left of anything a phone shows, so what crosses the visible panel is
   // the levelled-off lane at `to`.
-  plane: Object.freeze({ ...LCD_CITY_SCENES[3].plane, from: -1, to: -25 }),
+  plane: Object.freeze({ ...LCD_CITY_SCENES[3].plane, from: -29, to: -53 }),
 });
 
 // The phone's scene per stage, or null for a stage that has none.

@@ -9,7 +9,7 @@ const { getStylePack, drawLCDPanel, LCD_PORTRAIT_CITY_SHIFT,
   lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
   LCD_DEFAULT_ROAD_RISE, LCD_SCREEN_GRID_CELL, LCD_PORTRAIT_SCREEN_GRID_CELL, lcdScreenGridCellSize,
   lcdPortraitGridLineY, LCD_ROAD_INK, LCD_CLOUD_CLEARANCE_BOTTOM, lcdBarrelStrikeAt,
-  lcdArtFor, lcdBoardTop } = await import('../src/engine/stylePacks/index.js');
+  lcdArtFor, lcdBoardTop, LCD_PORTRAIT_SKY_TOP } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
@@ -1729,8 +1729,27 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
     const cloudBottom = Math.max(...portrait.clouds.map(([, y]) => y)) + 13;
     assert(cloudBottom <= roof,
       `stage ${stageIndex} hangs its wisps over the rooftops (${cloudBottom} <= ${roof})`);
-    assert(roof >= 20,
-      `stage ${stageIndex} leaves the upper sky to the sky (roof ${roof})`);
+    // NOTHING CROSSES THE LINE THE SMALLEST PHONE DRAWS. Everything a scene
+    // hangs over its skyline is measured here, not just the wisps: a board
+    // stands forty over its roof, the service rides above the boards, the
+    // crossing above that, and Kong's raised barrel fifty-seven over his own
+    // roof. Any one of them through the beat rail is the picture's top edge
+    // painted behind a plate on the phone that has the least sky.
+    const above = [
+      ...portrait.clouds.map(([, y]) => y),
+      ...portrait.buildings.map((b, i) => lcdBoardTop(portrait, i)),
+      portrait.train ? portrait.train.y : null,
+      portrait.plane ? Math.min(portrait.plane.from, portrait.plane.to) : null,
+      Number.isInteger(portrait.rooftopGorilla)
+        ? GROUND_Y - portrait.buildings[portrait.rooftopGorilla][2] - 57 : null,
+      Number.isInteger(portrait.transmitter)
+        ? GROUND_Y - portrait.buildings[portrait.transmitter][2] - 56 : null,
+      portrait.gameWatch ? GROUND_Y - portrait.gameWatch[2] - 57 : null,
+    ].filter((y) => y != null);
+    const highest = Math.min(...above);
+    assert(highest >= LCD_PORTRAIT_SKY_TOP,
+      `stage ${stageIndex} stays under the smallest phone's beat rail `
+      + `(${highest} >= ${LCD_PORTRAIT_SKY_TOP})`);
   }
   // rhythm-2: even gaps, the board first, the washer second, and the service
   // still the ceiling it is in landscape.
