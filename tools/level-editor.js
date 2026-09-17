@@ -31,7 +31,10 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = process.env.MASH_LEVELS_HOST || '127.0.0.1';
-const PORT = parseInt(process.env.MASH_LEVELS_PORT || '8020', 10);
+// 8021, not 8020: the SFX desk was already there, and two tools that cannot
+// run at the same time is not a port policy. The slots are laid out in
+// tools/desk.js, which is the one place that knows them all.
+const PORT = parseInt(process.env.MASH_LEVELS_PORT || '8021', 10);
 // Where PLAY sends you: the game's own dev server (build/dev.js), which is a
 // separate process on its own port. The editor does not host the game.
 const GAME_URL = process.env.MASH_GAME_URL || 'http://localhost:8001';

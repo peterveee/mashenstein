@@ -2113,12 +2113,16 @@ function drawPortraitActionShelf(ctx, run, layout) {
   // on one shared baseline. The labels are on the game HUD rather than the
   // chrome canvas so they remain part of the same portrait layout contract.
   const powerups = Object.entries(run.powerups?.active || {})
-    .map(([id]) => POWER_DEFS[id]?.name)
-    .filter(Boolean)
+    .map(([id, active]) => ({ id, active, def: POWER_DEFS[id] }))
+    .filter(({ def }) => def)
     .slice(0, 2)
-    .map((name) => String(name).toUpperCase());
+    .map(({ id, active, def }) => ({
+      active,
+      color: def.color,
+      name: `${def.name}${active.level > run.powerups.levelOf(id) ? '+' : ''}`.toUpperCase(),
+    }));
   if (powerups.length) {
-    drawPortraitNameStrip(ctx, layout, powerups, layout.actionY, '#f6c945', null, 'left');
+    drawPortraitPowerupStrip(ctx, layout, powerups);
   }
   const lowerLabels = [
     ['jump', 'JUMP', ACTION_INK.jump],
@@ -2136,6 +2140,47 @@ function drawPortraitActionShelf(ctx, run, layout) {
     drawPortraitNameStrip(ctx, layout, [String(label).toUpperCase()],
       layout.powerLabelY, ink, centerX);
   }
+}
+
+function drawPortraitPowerupStrip(ctx, layout, powerups) {
+  const pad = 6;
+  const gap = 4;
+  const ringOuter = 4;
+  const ringInner = 2.2;
+  const ringGap = 4;
+  const available = Math.max(1, layout.right - layout.left);
+  let s = layout.actionLabelScale || 1.8;
+  const itemWidth = (powerup) => {
+    const text = textWidth(powerup.name, 0.95, 'bold');
+    return pad * 2 + ringOuter * 2 + ringGap + text;
+  };
+  const groupWidth = (scale) => powerups.reduce((total, powerup, i) =>
+    total + itemWidth(powerup) * scale + (i ? gap * scale : 0), 0);
+  const naturalWidth = groupWidth(s);
+  if (naturalWidth > available) s *= available / naturalWidth;
+  const totalWidth = groupWidth(s);
+  ctx.save();
+  ctx.translate(layout.left, layout.actionY);
+  ctx.scale(s, s);
+  let px = 0;
+  for (const [i, powerup] of powerups.entries()) {
+    const w = itemWidth(powerup);
+    const persistent = !!powerup.active.persistent;
+    const blink = !persistent && Number(powerup.active.t) < 1.5
+      && Math.floor(Number(powerup.active.t) * 6) % 2 === 0;
+    const frac = persistent ? 1 : Math.max(0, Math.min(1,
+      Number(powerup.active.t) / Math.max(0.001, Number(powerup.active.t0))));
+    if (!blink) {
+      drawPanel(ctx, px, -7, w, 14, 4, undefined, PANEL);
+      drawRingGauge(ctx, px + pad + ringOuter, 0, ringOuter, ringInner, frac, powerup.color);
+      rawDrawText(ctx, powerup.name,
+        px + pad + ringOuter * 2 + ringGap, textY(0, 0.95, 'bold'),
+        powerup.color, 0.95, 'bold');
+    }
+    px += w + (i < powerups.length - 1 ? gap : 0);
+  }
+  ctx.restore();
+  return totalWidth;
 }
 
 function drawPortraitObjectiveNotice(ctx, run, layout, s) {

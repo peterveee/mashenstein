@@ -21,9 +21,12 @@ const suites = [
   // can quietly stop matching when an obstacle is renamed.
   'tests/stage-layouts.js',
   'tests/capsule-clearance.js',
-  // The tool that writes it: idempotent saves, the history snapshot, and the
-  // shapes the validator refuses before they can reach a level.
+  // The tool that writes it: idempotent saves, the history snapshot, the
+  // session's own undo, and the shapes the validator refuses before they can
+  // reach a level.
   'tests/level-editor.js',
+  // The launcher's port map, against the tools it claims to know.
+  'tests/desk.js',
   'tests/story-beats.js',
   'tests/tutorial.js',
   'tests/hero-kits.js',

@@ -1,6 +1,6 @@
 # LEVEL EDITOR — stage layouts as source of truth
 
-> **BUILT.** `npm run levels` opens it on `127.0.0.1:8020`; run `npm run dev`
+> **BUILT.** `npm run levels` opens it on `127.0.0.1:8021`; run `npm run dev`
 > in another shell for the PLAY button to have a game to open. This document is
 > the plan it was built from, kept because it explains the reasoning; where the
 > two disagree the code wins. See `docs/level-editor.md` for how to use it.
@@ -202,7 +202,7 @@ flag rather than a hand-written list.
 
 | File | Role |
 | --- | --- |
-| `tools/level-editor.js` | node server on `127.0.0.1:8020` (`MASH_LEVELS_HOST/PORT`), `npm run levels`. Bundles the entry per request so `src/` edits land on refresh. Routes: page, `POST /save`, history/revert, `--baseline` to run the migration. |
+| `tools/level-editor.js` | node server on `127.0.0.1:8021` (`MASH_LEVELS_HOST/PORT`), `npm run levels`. Bundles the entry per request so `src/` edits land on refresh. Routes: page, `POST /save`, history/revert, `--baseline` to run the migration. |
 | `tools/level-editor-entry.js` | the browser app; imports only DOM-free game modules |
 | `tools/level-editor-shell.html` | shell with the usual `/*__BUNDLE__*/` substitution |
 | `tools/lib/stage-layouts-source.js` | `writeStageLayouts`, `snapshotStageLayouts`, `validateLayouts` — shared by server and tests |

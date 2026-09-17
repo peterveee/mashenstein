@@ -251,7 +251,12 @@ export function drawLayoutDiagnostic(ctx, run, frame = presentationFrame(), opti
       + ` screen ${window.screen?.height ?? '?'}`,
     ]),
   ];
-  const rw = 224, rh = readout.length * 12 + 6;
+  // Width MEASURED, not assumed: the plate exists so the readout stays legible
+  // over any cabinet, and a line that overruns it is printed on bare sky. The
+  // viewport line ("client 874 inner 874 vv 874 screen 874") is 38 characters
+  // and overflowed the old fixed 224.
+  const rw = Math.max(224, ...readout.map((line) => ctx.measureText(line).width)) + 10;
+  const rh = readout.length * 12 + 6;
   const rx = Math.max(4, cssWidth - rw - 6);
   const ry = 4;
   ctx.fillStyle = 'rgba(8,10,20,0.9)';

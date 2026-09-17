@@ -1,12 +1,13 @@
 # THE LEVEL EDITOR
 
 ```
-npm run levels      # the editor, on http://127.0.0.1:8020
+npm run levels      # the editor, on http://127.0.0.1:8021
 npm run dev         # the game, on :8001 — the PLAY button opens this
 ```
 
-Both, in two shells. The editor does not host the game and the game does not
-know about the editor; PLAY is a link between them.
+Both, in two shells — or `npm run desk` and click them, which is the same two
+processes started for you (see `docs/the-desk.md`). The editor does not host the
+game and the game does not know about the editor; PLAY is a link between them.
 
 ## What it edits
 
@@ -18,6 +19,9 @@ Missions, challenges, act cards and intro dialog stay hand-written in
 
 Saving validates first, snapshots the old file into `work/level-history/`, and
 writes atomically. A save that changes nothing writes nothing.
+
+Nothing reaches that file until you press SAVE. Everything below is a draft, and
+taking a draft back is its own section.
 
 ## The timeline
 
@@ -165,6 +169,34 @@ node tools/capture-layout-baseline.js
 ```
 
 and say so in the commit. Never re-record to make a red suite green.
+
+## Taking an edit back
+
+Three different sizes of mistake, three different undos.
+
+| | What it takes back | Where |
+| --- | --- | --- |
+| **UNDO** (⌘Z) | the last edit | top bar |
+| **REVERT STAGE** | every unsaved change to the stage on screen | top bar |
+| a history snapshot | a whole save you wish you had not made | `work/level-history/` |
+
+**UNDO** is per gesture, not per event: a slider dragged across fifty values is
+one press, and so is a label typed one letter at a time. A snapshot remembers
+WHICH stage it came from, so undoing an edit you made on `plumber-1` while
+looking at `speed-2` takes you back to `plumber-1` to undo it, and opens its
+cabinet in the rail. It drops the selection on the way, because a selection is
+an index into arrays the undo has just replaced.
+
+**REVERT STAGE** goes back to the last SAVED copy of the stage on screen — not
+to the file as it was when the editor booted, and never to another stage. It is
+itself a single UNDO step, which is why it does not stop to ask.
+
+Neither survives a reload: the draft lives in the page. What survives is what
+you saved, and `work/level-history/` has the copy each save replaced.
+
+`tools/lib/level-edit-history.js` owns both, on `tools/mixer-undo.js`'s stack —
+the mixer's voice editor needed the same "one gesture, one step" rule first.
+`tests/level-editor.js` holds them.
 
 ## If the file gets into a state
 

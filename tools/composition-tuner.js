@@ -28,8 +28,10 @@ import {
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = process.env.MASH_COMPOSITION_HOST || '127.0.0.1';
 // Not 8001 (the game's dev server) and not 8010 (Peter's mixer desk): this
-// tool gets its own slot so starting it can never take either down.
-const PORT = parseInt(process.env.MASH_COMPOSITION_PORT || '8030', 10);
+// tool gets its own slot so starting it can never take either down. 8031
+// rather than 8030 for the same reason — that one is the character editor's.
+// The whole map is in tools/desk.js.
+const PORT = parseInt(process.env.MASH_COMPOSITION_PORT || '8031', 10);
 const HISTORY_DIR = join(root, 'work/composition-history');
 const SHOT_DIR = join(root, 'work/local/composition');
 

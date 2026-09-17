@@ -7219,7 +7219,7 @@ export class RunState {
       if (!p.live || !p.gated || p.ledgered) continue;
       p.ledgered = true;
       if (!p.def?.power) continue;
-      this.withdrawCrowdedDrip(p);
+      if (!this.makeRoomForGatedPrize(p)) continue;   // it gave way instead
       this.drip.notePower(p.x, p.type);
     }
   }
@@ -7228,34 +7228,59 @@ export class RunState {
    * AND THE LEDGER ONLY WORKS ONE WAY ROUND, SO THIS IS THE OTHER WAY.
    *
    * Telling the drip about a gated prize stops the NEXT capsule landing beside
-   * it. It cannot stop the LAST one, and the ordering makes that the common
-   * case rather than the rare one: the drip drops a screen and a bit out (540)
-   * while the pattern lane fills further still (680), so a hole with a prize
-   * over it is regularly laid into ground the drip has already dealt onto. That
-   * is how a dripped capsule and a gated one ended up 334px apart on frost-2
-   * with the whole ledger working exactly as written.
+   * it. It cannot stop the one already there, and the ordering makes that the
+   * common case rather than the rare one: the drip drops a screen and a bit out
+   * (540) while the pattern lane fills further still (680), so a hole with a
+   * prize over it is regularly laid into ground another source has already
+   * spoken for. That is how a gated capsule ended up 334px from a dripped one
+   * and 226px from a fork's own prize, with the ledger working exactly as
+   * written.
    *
-   * The prize does not move: it is the middle of the hole, and it is that hole's
-   * reward — the switch, the bridge and the capsule are one prop. So the DICE
-   * give way, which they can afford to and an author cannot. The capsule is
-   * withdrawn rather than shuffled, because the only clear ground left is out
-   * past the filled lane where nothing has been laid yet (DRIP_LOOKAHEAD), and
-   * the drip is re-armed short so the cadence loses a beat and not a capsule.
+   * SOMETHING HAS TO GIVE, AND WHICH ONE IS THE WHOLE ANSWER:
    *
-   * ONLY WHILE IT IS STILL OFF SCREEN. A capsule the player can see is a capsule
-   * he is already running at, and taking it out from in front of him to tidy up
-   * a rule he cannot see is worse than the crowding it fixes. On screen, they
-   * both stand — the same line retireOrphanSwitches draws.
+   *   A DRIPPED capsule gives way, because it is the only one here the dice
+   *   chose the position of. It is withdrawn rather than shuffled — the one
+   *   clear spot left is out past the filled lane where nothing has been laid
+   *   yet (DRIP_LOOKAHEAD) — and the drip re-arms short, so the cadence loses a
+   *   beat and not a capsule.
+   *
+   *   OTHERWISE THE PRIZE DOES. A fork's lane prize is on the road it is a
+   *   decision about and cannot move a screen without becoming a different
+   *   decision; the gated prize's x is only wherever the pattern happened to lay
+   *   a hole. The switch and its bridge stay either way — the hole still
+   *   closes, which is the half of that prop that changes the lane.
+   *
+   * ONLY WHILE IT IS STILL OFF SCREEN, either way. A capsule the player can see
+   * is one he is already running at, and taking it out from in front of him to
+   * tidy a rule he cannot see is worse than the crowding. On screen they both
+   * stand — the same line retireOrphanSwitches draws.
+   *
+   * Returns false when the prize was the one that gave way, so the caller does
+   * not go on to book a spot in the ledger for something it just retired.
    */
-  withdrawCrowdedDrip(prize) {
+  makeRoomForGatedPrize(prize) {
     const viewRight = this.viewRightX();
+    const crowds = (x) => Math.abs(x - prize.x) < POWER_MIN_GAP;
+    let blocked = false;
     for (const p of this.pickups) {
-      if (p === prize || !p.live || !p.dripped) continue;
-      if (p.x <= viewRight) continue;
-      if (Math.abs(p.x - prize.x) >= POWER_MIN_GAP) continue;
-      p.live = false;
-      this.drip.capsuleTimer = Math.min(this.drip.capsuleTimer, 0.5);
+      if (p === prize || !p.live || !p.def?.power || !crowds(p.x)) continue;
+      if (p.dripped && p.x > viewRight) {
+        p.live = false;
+        this.drip.capsuleTimer = Math.min(this.drip.capsuleTimer, 0.5);
+        continue;
+      }
+      blocked = true;
     }
+    // A lane prize whose spot is booked but whose ground has not arrived yet is
+    // not in `pickups` at all, and it is exactly the case that bites: the fork
+    // reserves at its own start and the fill lays the hole seconds later. The
+    // queue is read for the same reason the ledger is written that early.
+    for (const it of this.lanePrizeQueue || []) {
+      if (PICKUPS[it.type]?.power && crowds(it.x)) blocked = true;
+    }
+    if (!blocked || prize.x <= viewRight) return true;
+    prize.live = false;
+    return false;
   }
 
   openGates(sw) {
@@ -11553,8 +11578,9 @@ export class RunState {
     // clearance has since moved it downstream, and 64px of nudge came straight
     // out of the screen the next capsule was supposed to keep. notePower only
     // ever advances, so this is the same "measure from the thing the player will
-    // see" it is written for.
-    if (def.power) this.drip.notePower(at, type);
+    // see" it is written for — and it moves the POSITION only, because the kind
+    // was banked when the spot was reserved and the table has dealt since.
+    if (def.power) this.drip.notePowerMoved(at);
   }
 
   // The stage's scripted rewind capsule — the power-up's guaranteed
@@ -12152,6 +12178,12 @@ export class RunState {
         lastActionX: this.spawner.lastActionX,
         lastActionKind: this.spawner.lastActionKind,
         lastWasPunt: this.spawner.lastWasPunt,
+        // Where the lane is in its own PHRASE — how many patterns are left in
+        // the burst being laid (Spawner.nextGap). It is a cursor like the ones
+        // above it and travels for the same reason: without it a retry resumes
+        // mid-rest where the first attempt was mid-burst, and the same road
+        // comes back with different spacing.
+        phraseLeft: this.spawner.phraseLeft,
         usedOnce: this.spawner.usedOnce ? [...this.spawner.usedOnce] : null,
       },
       dripState: {
@@ -12261,6 +12293,7 @@ export class RunState {
     this.spawner.lastActionX = ss.lastActionX ?? s.camX;
     this.spawner.lastActionKind = ss.lastActionKind ?? this.spawner.lastActionKind;
     this.spawner.lastWasPunt = ss.lastWasPunt ?? this.spawner.lastWasPunt;
+    this.spawner.phraseLeft = ss.phraseLeft ?? this.spawner.phraseLeft;
     if (ss.usedOnce) this.spawner.usedOnce = new Set(ss.usedOnce);
     const ds = s.dripState || {};
     this.drip.capsuleTimer = ds.capsuleTimer ?? this.drip.capsuleTimer;
@@ -12562,6 +12595,7 @@ export class RunState {
     s.spawnerLastPatternIdx = this.spawner.lastPatternIdx;
     s.spawnerLastActionX = this.spawner.lastActionX;
     s.spawnerLastActionKind = this.spawner.lastActionKind;
+    s.spawnerPhraseLeft = this.spawner.phraseLeft;
     // Which once-per-run patterns are spent. Without this a rewind past the
     // banana peel hands its slot back and the run can show a second one, which
     // is the one thing "at most one per level" is not allowed to do. Through
@@ -12706,6 +12740,7 @@ export class RunState {
     this.spawner.lastPatternIdx = s.spawnerLastPatternIdx;
     this.spawner.lastActionX = s.spawnerLastActionX;
     this.spawner.lastActionKind = s.spawnerLastActionKind;
+    this.spawner.phraseLeft = s.spawnerPhraseLeft;
     this.spawner.usedOnce = copySetInto(s.spawnerUsedOnce, this.spawner.usedOnce) || new Set();
     this.drip.capsuleTimer = s.dripCapsuleTimer;
     this.drip.batteryTimer = s.dripBatteryTimer;

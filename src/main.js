@@ -25,6 +25,7 @@ import { Audio, PORTAL_RELAY, PORTAL_RELAY_GAIN } from './engine/audio.js';
  */
 const levelOpenCue = () => Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY });
 import { save } from './engine/save.js';
+import { floorReflectionStats, resetFloorReflectionStats } from './engine/reflections.js';
 import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
@@ -1107,6 +1108,11 @@ function boot() {
   // The audio engine, for a verification script measuring cue timing against the
   // song from outside the bundle — the same reason __mash_cur is there.
   window.__mash_audio = Audio;
+  // Floor reflections, for the same kind of script: how many subjects a frame
+  // mirrored and over how many device pixels. A bench that cannot see the crowd
+  // was reflected is pricing an empty room, so it gets to read the number rather
+  // than assume it.
+  window.__mash_reflections = { stats: floorReflectionStats, reset: resetFloorReflectionStats };
 
   // Fire session duration on tab close. sendBeacon guarantees delivery.
   window.addEventListener('beforeunload', () => sendSessionEnd());

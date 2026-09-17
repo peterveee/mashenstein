@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MASHENSTEIN — THE DESK</title>
+<style>
+  :root {
+    --bg: #14121a; --panel: #1d1a26; --panel2: #252131; --line: #362f47;
+    --ink: #e8e4f0; --dim: #9990ac; --dimmer: #6d6580;
+    --hot: #f6d33c; --hazard: #e04848; --live: #7ce8a0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px; padding: 10px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0;
+  }
+  header h1 { font-size: 13px; margin: 0; letter-spacing: .12em; color: var(--hot); }
+  header .sub { color: var(--dimmer); }
+  main { padding: 14px; display: grid; gap: 10px; max-width: 860px; }
+
+  .tool {
+    display: grid; grid-template-columns: 10px 1fr auto; gap: 12px; align-items: start;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 11px 13px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dimmer); margin-top: 5px; }
+  .tool.live .dot { background: var(--live); box-shadow: 0 0 7px rgba(124,232,160,.6); }
+  .name { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .name b { font-size: 12px; letter-spacing: .08em; font-weight: 700; }
+  .name a { color: var(--hot); text-decoration: none; }
+  .name a:hover { text-decoration: underline; }
+  .port { color: var(--dimmer); }
+  .tag {
+    font-size: 10px; letter-spacing: .06em; padding: 1px 6px; border-radius: 9px;
+    border: 1px solid var(--line); color: var(--dim);
+  }
+  .tag.adopted { border-color: #5a4a2a; color: var(--hot); }
+  .blurb { color: var(--dim); margin-top: 3px; }
+  .log {
+    margin-top: 6px; color: var(--dimmer); font-size: 11px; white-space: pre-wrap;
+    border-left: 2px solid var(--line); padding-left: 8px; max-height: 68px; overflow: hidden;
+  }
+  .acts { display: flex; gap: 6px; }
+  button {
+    background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+    padding: 5px 11px; border-radius: 3px; cursor: pointer; font: inherit; letter-spacing: .06em;
+  }
+  button:hover { border-color: var(--dim); }
+  button[disabled] { opacity: .35; cursor: default; }
+  button[disabled]:hover { border-color: var(--line); }
+  button.go { background: var(--hot); color: #1a1710; border-color: var(--hot); font-weight: 700; }
+  footer { padding: 4px 14px 24px; color: var(--dimmer); max-width: 860px; }
+  footer code { color: var(--dim); }
+  .err { color: var(--hazard); padding: 0 14px; min-height: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MASHENSTEIN — THE DESK</h1>
+  <span class="sub">every tool, and the port it lives on</span>
+</header>
+<div class="err" id="err"></div>
+<main id="list"></main>
+<footer>
+  A tool started here stops when this desk stops. One that was already running
+  was started by somebody else — it is linked, never stopped.
+  Bookmark <code>/mixer</code>, <code>/levels</code>, <code>/sfx</code> to go straight in,
+  cold or warm. The direct ports still work exactly as they always did, and every
+  tool still runs standalone from its own npm script.
+</footer>
+<script>
+const list = document.getElementById('list');
+const errBox = document.getElementById('err');
+let busy = null;
+
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined && v !== false) n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : String(k));
+  return n;
+};
+
+async function act(kind, id) {
+  busy = id;
+  errBox.textContent = '';
+  draw(last);
+  try {
+    const res = await fetch(`/api/${kind}/${id}`, { method: 'POST' });
+    const body = await res.json();
+    if (!body.ok) errBox.textContent = body.error;
+  } catch (e) { errBox.textContent = e.message; }
+  busy = null;
+  await refresh();
+}
+
+let last = [];
+function draw(tools) {
+  list.replaceChildren(...tools.map((t) => el('div', { class: `tool${t.live ? ' live' : ''}`, 'data-tool': t.id },
+    el('div', { class: 'dot' }),
+    el('div', {},
+      el('div', { class: 'name' },
+        el('b', {}, t.live ? el('a', { href: `http://${location.hostname}:${t.port}/`, target: '_blank' }, t.label) : t.label),
+        el('span', { class: 'port' }, `:${t.port}`),
+        t.live && !t.mine ? el('span', { class: 'tag adopted' }, 'already running — not mine to stop') : null,
+        t.mine ? el('span', { class: 'tag' }, `pid ${t.pid}`) : null),
+      el('div', { class: 'blurb' }, t.blurb),
+      t.log.length && !t.live ? el('div', { class: 'log' }, t.log.join('\n')) : null),
+    el('div', { class: 'acts' },
+      t.live
+        ? el('button', { class: 'go', onclick: () => window.open(`http://${location.hostname}:${t.port}/`, '_blank') }, 'OPEN')
+        : el('button', { class: 'go', disabled: busy === t.id, onclick: () => act('start', t.id) }, busy === t.id ? '…' : 'START'),
+      el('button', {
+        disabled: !t.mine || busy === t.id,
+        title: t.live && !t.mine ? 'started outside this desk — stop it where you started it' : `stop ${t.label}`,
+        onclick: () => act('stop', t.id),
+      }, 'STOP')))));
+}
+
+async function refresh() {
+  try {
+    const { tools } = await (await fetch('/api/status')).json();
+    last = tools;
+    draw(tools);
+  } catch (e) { errBox.textContent = `the desk stopped answering: ${e.message}`; }
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

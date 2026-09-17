@@ -73,6 +73,18 @@ const isBeatCharted = (s) => /^rhythm-[123]$/.test(s.id) && CABINET_BY_ID[s.cabi
 // is the whole seam the history needs: nothing has to remember to snapshot.
 const history = createLayoutHistory({ state, saved: STAGE_LAYOUTS });
 const markDirty = () => { history.touch(); };
+
+// Undo can land on a stage in a cabinet the rail has collapsed — the header
+// would name a level the list does not show, and the next edit would go
+// somewhere you cannot see. Opening it is the rest of "take you to what you
+// took back".
+function takeBack() {
+  if (!history.undo()) return false;
+  state.openCabs.add(stage().cabinet);
+  state.message = null;
+  render();
+  return true;
+}
 const round = (v, n = 3) => Math.round(v * 10 ** n) / 10 ** n;
 
 // --------------------------------------------------------- derived model ----
@@ -590,7 +602,7 @@ function header(m, warns) {
     el('button', {
       class: 'btn ghost', disabled: !history.canUndo(),
       title: 'take back the last edit (⌘Z)',
-      onclick: () => { if (history.undo()) render(); },
+      onclick: takeBack,
     }, 'UNDO'),
     el('button', {
       class: 'btn ghost', disabled: !history.stageDirty(),
@@ -1397,7 +1409,7 @@ window.addEventListener('keydown', (e) => {
   // ⌘Z, except inside a field where the browser's own undo is the better one.
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !isTextField(e.target)) {
     e.preventDefault();
-    if (history.undo()) render();
+    takeBack();
   }
 });
 

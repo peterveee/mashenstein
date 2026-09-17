@@ -54,7 +54,7 @@ for (const stage of STAGES.filter((s) => s.index >= 1)) {
       // laid hundreds of pixels beyond the right edge and the lane keeps moving
       // underneath it: it can be withdrawn again before anybody sees it (a
       // dripped capsule gives way to a gated prize the fill lays afterwards —
-      // withdrawCrowdedDrip), and a capsule that was never on screen is not a
+      // makeRoomForGatedPrize), and a capsule that was never on screen is not a
       // capsule the player was shown two of. The frame it crosses the edge is
       // the first frame the complaint could be made, so that is where it counts.
       const edge = run.viewRightX();

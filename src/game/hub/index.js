@@ -43,6 +43,7 @@ import { drawWorldEntity } from '../draw.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
 import { drawSoftContactShadow } from '../../engine/shadows.js';
+import { drawFloorReflection, floorReflectionsOn } from '../../engine/reflections.js';
 import { GROUND_Y } from '../../engine/camera.js';
 import { LANDSCAPE_HEIGHT } from '../../engine/frame.js';
 
@@ -495,129 +496,6 @@ const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
 const PORTRAIT_HUB_FLOOR_RATIO = 0.70;
 const PORTRAIT_WALL_DRESS_DROP = 48;
 const PORTRAIT_POSTER_LIFT = 48;
-// __mash_dev.floorReflection: capture-only, and deliberately inert in the game —
-// Peter asked for this for a video and nowhere else.
-//
-// The flat-floor trick, not a ray trace: the subject drawn again mirrored about
-// the floor line. Because it is a true mirror rather than a shadow it separates
-// from his feet as he rises, which is what sells it during the leap, so nothing
-// here clamps it.
-//
-// RENDERED OFFSCREEN AT FULL OPACITY, then composited once. The first version
-// set globalAlpha on the live context and called drawToon straight into it,
-// which is wrong for a figure made of dozens of shapes: every part composites
-// against the ones behind it, so overlaps stack up and the silhouette breaks
-// into a pile of translucent blobs — the head, the cheeks and the hands all
-// readable as separate discs. One finished image at one uniform alpha has one
-// silhouette.
-//
-// Then softened, because a floor is not a mirror: blurred (scaled off the
-// capture's own resolution, so it looks the same at any density), foreshortened
-// against a floor drawn in perspective, and faded out steeply enough to die
-// inside the top third of its length. The test is that you cannot find his face
-// in it — it should read as a sheen carrying his colours.
-const REFLECT_SQUASH = 0.72;
-let REFLECT_CANVAS = null;
-function drawFloorReflection(ctx, floorY, height, anchorX, draw, { wide = 0 } = {}) {
-  const flag = typeof window !== 'undefined' && window.__mash_dev
-    ? window.__mash_dev.floorReflection : null;
-  if (!flag) return;
-  const alpha = typeof flag === 'number' ? flag : 0.14;
-  const m = ctx.getTransform();
-  const toDeviceY = (wy, wx) => m.b * wx + m.d * wy + m.f;
-  const toDeviceX = (wx, wy) => m.a * wx + m.c * wy + m.e;
-  // __mash_dev.reflectFalloff: how far down the floor it reaches, as a multiple
-  // of the mirrored figure's own height. 1 dies inside the top third; higher
-  // lets it run further before it goes.
-  const reach = typeof window !== 'undefined' && window.__mash_dev
-    && typeof window.__mash_dev.reflectFalloff === 'number' ? window.__mash_dev.reflectFalloff : 1;
-  const span = Math.abs(height * REFLECT_SQUASH * m.d) * reach;
-  const blur = Math.max(1, Math.round(height * Math.abs(m.d) * 0.025));
-  const pad = blur * 3;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  // `wide` spans the whole view instead of hugging one subject — what the row
-  // of machines needs, since there is no single anchor to sit around.
-  const halfW = wide ? wide : height;
-  for (const wx of [anchorX - halfW, anchorX + halfW]) {
-    // Down to 2.2x the figure's height, not just its own length: an AIRBORNE
-    // subject's mirror lands as far below the floor line as he is above it, so
-    // a box sized for someone standing clips the reflection away exactly when
-    // the leap makes it interesting.
-    for (const wy of [floorY - 1, floorY + height * 2.2]) {
-      const dx = toDeviceX(wx, wy), dy = toDeviceY(wy, wx);
-      x0 = Math.min(x0, dx); x1 = Math.max(x1, dx);
-      y0 = Math.min(y0, dy); y1 = Math.max(y1, dy);
-    }
-  }
-  const cw = ctx.canvas.width, chh = ctx.canvas.height;
-  x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
-  x1 = Math.min(cw, Math.ceil(x1 + pad)); y1 = Math.min(chh, Math.ceil(y1 + pad));
-  const w = x1 - x0, h = y1 - y0;
-  if (!(w > 0 && h > 0)) return;
-  if (!REFLECT_CANVAS) REFLECT_CANVAS = document.createElement('canvas');
-  const off = REFLECT_CANVAS;
-  if (off.width < w || off.height < h) { off.width = w; off.height = h; }
-  const o = off.getContext('2d');
-  o.setTransform(1, 0, 0, 1, 0, 0);
-  o.clearRect(0, 0, off.width, off.height);
-  o.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
-  o.translate(0, floorY);
-  o.scale(1, -REFLECT_SQUASH);
-  o.translate(0, -floorY);
-  draw(o);
-  o.setTransform(1, 0, 0, 1, 0, 0);
-  let fy = toDeviceY(floorY, anchorX) - y0;
-  // __mash_dev.reflectTrack: anchor the fade where the reflection actually
-  // STARTS rather than at the floor line. Pinned to the floor, the fade has
-  // already run out by the time an airborne hero's mirror lands, so the
-  // reflection disappears the moment he leaves the ground — fine if it is
-  // meant to read as a polished floor, wrong if it is meant to follow him up.
-  // Found by scanning the rendered reflection for its first painted row, so it
-  // works for the dive's own draw too, which never exposes a height.
-  const track = typeof window !== 'undefined' && window.__mash_dev
-    ? window.__mash_dev.reflectTrack : false;
-  // How much the distance from the floor costs it. Pinned to the floor line the
-  // fade has run out before an airborne hero's mirror even starts, so the
-  // reflection vanishes the instant he jumps — which is the one thing it must
-  // not do in a shot whose subject is a leap. Tracked, it starts where the
-  // reflection starts; dimming it by that same distance keeps the physics
-  // honest (a reflection thins as its subject leaves the surface) without
-  // letting it disappear.
-  let fade = 1;
-  if (track) {
-    try {
-      const px = o.getImageData(0, 0, off.width, Math.min(off.height, y1 - y0)).data;
-      const stride = off.width * 4;
-      outer: for (let ry = Math.max(0, Math.floor(fy)); ry < h; ry += 2) {
-        for (let rx = 0; rx < w; rx += 4) {
-          if (px[ry * stride + rx * 4 + 3] > 8) {
-            const gap = Math.max(0, ry - fy);
-            fade = 1 / (1 + (gap / Math.max(1, span)) * 1.7);
-            fy = ry;
-            break outer;
-          }
-        }
-      }
-    } catch (e) { /* tainted or unavailable: keep the floor anchor */ }
-  }
-  o.globalCompositeOperation = 'destination-out';
-  // Nothing above the floor line: a reflection cannot climb the wall.
-  if (fy > 0) { o.fillStyle = '#000'; o.fillRect(0, 0, off.width, fy); }
-  const g = o.createLinearGradient(0, fy, 0, fy + span);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(0.3, 'rgba(0,0,0,0.62)');
-  g.addColorStop(0.6, 'rgba(0,0,0,0.94)');
-  g.addColorStop(1, 'rgba(0,0,0,1)');
-  o.fillStyle = g;
-  o.fillRect(0, Math.max(0, fy), off.width, off.height - Math.max(0, fy));
-  o.globalCompositeOperation = 'source-over';
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = alpha * fade;
-  ctx.filter = `blur(${blur}px)`;
-  ctx.drawImage(off, 0, 0, w, h, x0, y0, w, h);
-  ctx.restore();
-}
 
 function hubPresentation() {
   const portrait = isPhonePortraitPresentation();
@@ -3186,13 +3064,23 @@ export class HubState {
       }
     }
     };
-    // The machines in the floor, then the machines. Same floor line, squash,
-    // blur and falloff as the hero's, so the two read as one wet floor rather
-    // than as two effects — and a cabinet is tall, so its mirror would run to
-    // the bottom of the frame if the falloff were not already cutting it.
-    drawFloorReflection(ctx, layout.floorY, CAB_H, layout.viewW / 2, drawStations,
-      { wide: layout.viewW });
+    // The machines in the floor, then the machines. Same floor line, squash and
+    // falloff as the hero's, so the two read as one wet floor rather than as two
+    // effects — and a cabinet is tall, so its mirror would run to the bottom of
+    // the frame if the falloff were not already cutting it.
+    //
+    // lift 0 — the machines are bolted to the floor, so their mirror starts at
+    // the floor line by definition; nothing needs to go looking for it.
+    // kind 'cabinets' — gated separately from the heroes, because whether a wall
+    // of mirrored machines is READABLE is its own question.
+    drawFloorReflection(ctx, {
+      draw: drawStations, height: CAB_H, anchorX: layout.viewW / 2, wide: layout.viewW, lift: 0,
+    }, layout.floorY, { kind: 'cabinets', track: false });
     drawStations(ctx);
+    // Built once outside the crowd loop: the gate decides for the whole frame,
+    // and asking it per hero would also build a draw closure per hero for a
+    // feature that is off.
+    const reflectCast = floorReflectionsOn('hero');
     // NPC heroes
     for (const n of this.npcs()) {
       // Dolores already drew, inside her own counter (see the bench station
@@ -3205,10 +3093,9 @@ export class HubState {
       // Hop height and contact shadow both ride NPC_H, so scaling the cast
       // doesn't leave them hopping a token amount over a pinprick of shade.
       const hop = n.state === 'hop' ? Math.sin(Math.PI * (1 - n.timer / n.duration)) * NPC_H * 0.26 : 0;
-      drawSoftContactShadow(ctx, x, layout.floorY,
-        NPC_H * (n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
-        { alpha: 0.34, ink: '4,3,9' });
-      drawToon(ctx, n.id, {
+      // Built once and drawn twice, same rule as the avatar below: one pose
+      // object, or the mirror animates a frame of its own.
+      const npcPose = {
         kind: n.state === 'walk' ? 'run' : n.state === 'hop' ? 'jump' : 'idle',
         phase: (this.t * 1.25 + n.cycles * 0.17) % 1,
         time: this.t + n.cycles * 0.41,
@@ -3218,7 +3105,22 @@ export class HubState {
         // Lit by the bay they are standing in, same as the wall behind them.
         // Exempt, they stood at full daylight in front of a dead bay — the one
         // thing in the concourse the ceiling had no authority over.
-      }, x, layout.floorY - hop, NPC_H, { lit: castLit(x) });
+      };
+      const drawNpc = (c) => drawToon(c, n.id, npcPose, x, layout.floorY - hop, NPC_H, { lit: castLit(x) });
+      // The crowd reflects too, or the avatar is the only figure in the room
+      // standing on a wet floor and the effect reads as a spotlight on him.
+      // `hop` is the lift: mid-hop the mirror separates from their feet, which
+      // is the whole reason a mirror is not a shadow.
+      // Shadow first, then the mirror, then the figure — the order the avatar
+      // already draws in, and the order the video was graded on.
+      drawSoftContactShadow(ctx, x, layout.floorY,
+        NPC_H * (n.state === 'hop' ? 0.30 : 0.42), NPC_H * 0.12,
+        { alpha: 0.34, ink: '4,3,9' });
+      if (reflectCast) {
+        drawFloorReflection(ctx, { draw: drawNpc, height: NPC_H, anchorX: x, lift: hop },
+          layout.floorY, { kind: 'hero' });
+      }
+      drawNpc(ctx);
     }
     // THE DUST DEVIL comes through occasionally, cleaning something (which
     // surface varies). ~9s of every ~48, unannounced, then gone. Nobody
@@ -3271,7 +3173,15 @@ export class HubState {
     // head and a heavier contact shadow under their feet, in the same gold the
     // walk-up prompt uses, so all the "this is about you" chrome reads as one
     // voice.
-    const pxs = Math.round(this.px - cam);
+    // NOT rounded. This is an animated position, and snapping it to a whole world
+    // unit quantises the hero's motion to one unit of screen travel — around 13
+    // device pixels at the concourse's portrait zoom. At a normal walk he covers
+    // two units a frame and the quantisation only shimmers; slowed down for a
+    // capture he covers half a unit a frame, so he stands still for a frame and
+    // then jumps 13px, which is what a stuttering walk looks like. drawToon paints
+    // vector shapes into this context rather than blitting a cached bitmap, so a
+    // fractional x costs nothing and antialiases correctly.
+    const pxs = this.px - cam;
     // Mid-dive the hero is not standing in the concourse any more, so this whole
     // slot hands over: the walk pose, the gold marker and the heavy contact
     // shadow all belong to a player who is driving, and for two seconds nobody
@@ -3279,7 +3189,12 @@ export class HubState {
     // of the glass — everything past the plane is painted inside the screen.
     if (this.dive) {
       const drawDive = (c) => this.dive.drawOutside(c, Math.round(this.dive.cabX - cam), { lit: castLit(pxs) });
-      drawFloorReflection(ctx, layout.floorY, PLAYER_H, Math.round(this.dive.cabX - cam), drawDive);
+      // No `lift`: the dive owns its own arc and never exposes a height, so this
+      // is the one subject whose mirror has to be FOUND rather than stated — the
+      // capture path's pixel scan, still available behind __mash_dev.reflectTrack.
+      drawFloorReflection(ctx, {
+        draw: drawDive, height: PLAYER_H, anchorX: Math.round(this.dive.cabX - cam),
+      }, layout.floorY, { kind: 'hero' });
       drawDive(ctx);
       ctx.restore();
       return;
@@ -3310,7 +3225,11 @@ export class HubState {
       faceJoy: this.arrivedT > 0,
     };
     const drawHero = (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
-    drawFloorReflection(ctx, layout.floorY, PLAYER_H, pxs, drawHero);
+    // this.jumpY IS the lift — how far off the floor he is, in world units. The
+    // mirror starts that far below the floor line, squashed, and thins with the
+    // distance, which is what makes the leap read.
+    drawFloorReflection(ctx, { draw: drawHero, height: PLAYER_H, anchorX: pxs, lift: this.jumpY },
+      layout.floorY, { kind: 'hero' });
     drawHero(ctx);
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits

@@ -177,12 +177,15 @@ function clearOfHoles(x0, w, holes, clear) {
 let nextFormationId = 1;
 
 export class Spawner {
-  constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0, sections = null, totalDist = null }) {
+  constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0, sections = null, totalDist = null, cadence = 'phrased' }) {
     this.cabinet = cabinet;
     this.rng = rng;
     this.tierMax = tierMax;
     this.react = react;
     this.iceSlide = iceSlide;      // extra px of gap for slidey landings
+    // 'phrased' is the lane's rhythm machine (see nextGap); 'flat' is the pixel
+    // roll it replaced, kept only so the two can be measured against each other.
+    this.cadence = cadence;
     // The stage's layout sections, or null — and null is a CONTRACT rather
     // than a shrug: with no sections every path below runs the code it always
     // ran and draws the same rng in the same order, which is what lets
@@ -195,6 +198,11 @@ export class Spawner {
     this.sections = sections && totalDist ? sections : null;
     this.totalDist = totalDist;
     this.sectionBags = this.sections ? new Map() : null;
+    // The cadence machine's one piece of state: how many more patterns belong
+    // to the burst being laid. Zero means the next gap is a rest. Starting at
+    // zero opens every stage with a rest, which is the right way in — the first
+    // thing past the start line should be a stretch of road.
+    this.phraseLeft = 0;
     this.nextX = 0;
     this.lastPatternIdx = -1;
     this.lastActionX = -9999;
@@ -235,6 +243,64 @@ export class Spawner {
     // second, which is the cone's arc to within a rounding error.
     if (prevPunt) t += (prevPunt === true ? PUNT_CLEARANCE_T : prevPunt);
     return speed * t + this.iceSlide;
+  }
+
+  /**
+   * HOW FAR TO THE NEXT PATTERN — the lane's RHYTHM, as opposed to its fairness.
+   *
+   * THE COMPLAINT, and it was measurable. The old line was
+   *
+   *     const roll = this.rng.range(90, 220) / density;
+   *     nextX = ... + Math.max(roll, fair);
+   *
+   * — a variation knob written in PIXELS, competing with a floor written in
+   * seconds × speed. `fair` is reaction time plus the worst airtime plus a
+   * slide's extra, which at frost's 192px/s comes to 189px: the top of the
+   * roll's own range. So `Math.max` returned the floor almost every time, the
+   * random number never got a say, and the median gap in the lane WAS the
+   * floor — 63% of frost's gaps and 64% of cardboard's sat on it, against 36%
+   * on the two slowest cabinets. The faster the stage, the more metronomic it
+   * got, which is exactly backwards.
+   *
+   * TWO CHANGES, and they fix different halves of it:
+   *
+   * 1. THE VARIATION IS A MULTIPLE OF THE FLOOR, not a pixel range. Whatever
+   *    the speed, a gap is now expressed in the only unit the player feels —
+   *    how many reaction-runways long it is — so the tail survives at 152px/s
+   *    and at 232.
+   *
+   * 2. THE LANE IS PHRASED. Even with a wide scatter, random spacing is still
+   *    just noise: "three quick jumps and then a run" is a RHYTHM, and rhythm
+   *    is structure, not variance. So the spacing runs as bursts — a few
+   *    patterns hard up against the floor, which is where the tight cadence
+   *    belongs — and then a REST of about two to three runways with nothing in
+   *    it. The rest is the part the old lane never had at all.
+   *
+   * The floor is untouched: every gap still goes through `Math.max(.., fair)`
+   * at the call site, so both changes can only ever make the lane LOOSER than
+   * the fairness sim's invariant, never tighter. Density divides the result
+   * exactly as it divided the roll, and for the same reason.
+   *
+   * `cadence: 'flat'` restores the old pixel roll. It is here to be measured
+   * against while the pair is judged, and comes out with the answer.
+   */
+  nextGap(fairSlide, fairJump, density) {
+    if (this.cadence === 'flat') return this.rng.range(90, 220) / density;
+    if (this.phraseLeft > 0) {
+      // Inside a burst: the JUMP floor, with a hair of jitter so a run of them
+      // is not literally identical. Anything wider here and the burst stops
+      // reading as one figure — which is what the first cut of this did, at
+      // the slide budget, and it came out as the same metronome half a step
+      // slower.
+      this.phraseLeft--;
+      return fairJump * this.rng.range(1, 1.12) / density;
+    }
+    // The rest, and then a new burst is armed. Measured in the WORST-case
+    // runway, because a rest has to feel like open road whatever comes out of
+    // it next: two to three of them is a second and a half to three seconds of
+    // running with nothing to answer.
+    this.phraseLeft = this.rng.int(2, 5);
+    return fairSlide * this.rng.range(1.9, 3.1) / density;
   }
 
   // ONCE-PER-RUN PATTERNS. `once: true` on a pattern means the lane may show it
@@ -425,9 +491,19 @@ export class Spawner {
       // below means a dense section can only ever spend the slack the roll had
       // to give, and never the reaction runway underneath it.
       const density = this.sectionFor(this.nextX)?.density ?? 1;
-      const roll = this.rng.range(90, 220) / density;
-      const fair = this.fairGap(speed, this.lastActionKind, 'slide', this.lastWasPunt);
-      this.nextX = Math.max(lastX, this.lastActionX) + Math.max(roll, fair);
+      // TWO FLOORS, because they are two different promises. The SLIDE budget is
+      // the worst case — the next pattern might open with a drone — and it is
+      // what a rest is measured in. The JUMP budget is what a tight run of
+      // jumps actually costs, and it is 22% shorter at this cabinet's speed.
+      //
+      // A burst may spend the shorter one because the per-CELL fairness rule
+      // above re-enforces the true floor anyway: if the next pattern does open
+      // with a slide, its first cell is pushed out to the slide gap on the way
+      // in. Nothing can land tighter than it is allowed to; what changes is
+      // that a run of jumps is no longer paced by a slide that never came.
+      const fairSlide = this.fairGap(speed, this.lastActionKind, 'slide', this.lastWasPunt);
+      const fairJump = this.fairGap(speed, this.lastActionKind, 'jump', this.lastWasPunt);
+      this.nextX = Math.max(lastX, this.lastActionX) + this.nextGap(fairSlide, fairJump, density);
     }
   }
 
@@ -772,6 +848,17 @@ export class DripSpawner {
     this.lastPowerType = type;
     if (x <= this.lastPowerX) return;
     this.lastPowerX = x;
+  }
+
+  // A capsule ALREADY IN THE LEDGER that turned out to stand a little further
+  // on than it was booked for — a lane prize nudged clear of a hazard after its
+  // spot was reserved (layLanePrize). Position only, and deliberately so: the
+  // type was recorded when the spot was taken, and something newer may have
+  // been dealt in between. Re-asserting the kind here put an older capsule back
+  // at the head of the ledger and let the next roll deal the pair the whole
+  // rule exists to prevent — two shields, 494px apart, on frost-3.
+  notePowerMoved(x) {
+    if (x > this.lastPowerX) this.lastPowerX = x;
   }
 
   // `stopX` is the same wall Spawner.fill respects — the finish marker's clear

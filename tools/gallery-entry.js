@@ -120,6 +120,9 @@ import {
 import {
   WATER_TOWER_CANDIDATES, drawWaterTowerCandidate,
 } from '../src/dev/water-tower-candidates.js';
+import {
+  DOOR_CANDIDATES, doorCandidatePalette,
+} from '../src/dev/door-candidates.js';
 import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
   ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
@@ -8422,6 +8425,88 @@ function frameStrip(grid, name, label, note, w, h, cell) {
           ctx.fillRect(0, GEOM.groundY * Z, GLASS.w * Z, 1);
         }, { hires: 3 });
     }
+  }
+}
+
+// ------------------------------------------- food court — sliding door bake-off
+// The two doors the hero actually walks through (EXIT and the Trophy Room) now
+// slide open on approach. The question here is only what they should LOOK like
+// while they do it — the aperture, the travel and the walk-up behaviour are the
+// same under every candidate, and the wall slab and sign board are the shipped
+// ones in every tile.
+//
+// Every row is judged on the whole gesture, not the closed pose: SHUT, HALF and
+// OPEN are the same door at three points of one travel, and LIVE runs it. A
+// door that reads well shut and turns into a black hole halfway is not a door
+// this room can use, and only the halfway column shows that.
+{
+  const DW = 44, DH = 84, GAP = 20, M = 12;
+  const TW = M * 2 + DW * 4 + GAP * 3, TH = DH + 28;
+  const FLOOR = TH - 18;
+  const POSES = ['SHUT', 'HALF', 'OPEN', 'LIVE'];
+
+  // The concourse the doors are set into: skirting, tiled floor and a flat
+  // wall, lifted straight off drawFoodCourtFloor so nothing is being judged
+  // against a backdrop the food court does not have.
+  const concourse = (ctx) => {
+    ctx.fillStyle = '#241d31';
+    ctx.fillRect(0, 0, TW, FLOOR);
+    ctx.fillStyle = '#38304a';
+    ctx.fillRect(0, FLOOR, TW, 6);
+    ctx.fillStyle = '#1c1626';
+    ctx.fillRect(0, FLOOR + 6, TW, TH - FLOOR - 6);
+    for (let x = 0; x < TW; x += 32) {
+      ctx.fillStyle = (x / 32) % 2 === 0 ? '#241c30' : '#1c1626';
+      ctx.fillRect(x, FLOOR + 10, 32, TH - FLOOR - 10);
+    }
+  };
+
+  const grid = section('door-bakeoff', 'FOOD COURT — sliding door bake-off',
+    'SETTLED 18 Sep 2026 — E, the PORTHOLE, ships: round window, chrome ring, sign-coloured band. A mall door, not a facility door. A is now the same painter, so the control row and E read alike.');
+  for (const candidate of DOOR_CANDIDATES) {
+    const pal = doorCandidatePalette(candidate.id, DOOR_PALETTES.exit);
+    tile(grid, `${candidate.letter} — ${candidate.name}`, candidate.note, TW, TH,
+      (ctx, t) => {
+        concourse(ctx);
+        const live = 0.5 - 0.5 * Math.cos(t * 1.1);
+        [0, 0.5, 1, live].forEach((open, i) => {
+          drawDoor(ctx, M + i * (DW + GAP), FLOOR - DH, DW, DH, pal, t, open);
+        });
+        ctx.fillStyle = 'rgba(255,255,255,.42)';
+        ctx.font = '5px ui-monospace, monospace';
+        POSES.forEach((label, i) => ctx.fillText(label, M + i * (DW + GAP) + 1, TH - 4));
+      }, { animated: true, wide: true, hires: 6 });
+  }
+}
+
+// -------------------------------- food court — door candidates, other palettes
+// The cast-wide check. A door painter serves more than the one colourway it is
+// designed against: the same shape has to survive the Trophy Room's gold, and
+// it has to go properly dead for LOCKED — which is the palette that carries
+// `icon: 'none'`, the flag every candidate reads to know it has no power. A
+// candidate that lights its porthole while the sign says LOCKED has broken the
+// one promise that door makes.
+{
+  const DW = 44, DH = 84, GAP = 14, M = 10;
+  const TW = M * 2 + DW * 2 + GAP, TH = DH + 22;
+  const FLOOR = TH - 14;
+
+  const grid = section('door-bakeoff-palettes', 'FOOD COURT — door candidates in the other palettes',
+    'SETTLED 18 Sep 2026 — the cast-wide check behind E. Each candidate in the Trophy Room gold (half open) and in LOCKED (shut). LOCKED stays dark because the player cannot use that door yet, not because the building has no power.');
+  for (const candidate of DOOR_CANDIDATES) {
+    const gold = doorCandidatePalette(candidate.id, DOOR_PALETTES.shelf);
+    const locked = doorCandidatePalette(candidate.id, DOOR_PALETTES.shelfLocked);
+    tile(grid, `${candidate.letter} — ${candidate.name}`, 'TROPHY gold, half open · LOCKED, shut', TW, TH,
+      (ctx, t) => {
+        ctx.fillStyle = '#241d31';
+        ctx.fillRect(0, 0, TW, FLOOR);
+        ctx.fillStyle = '#38304a';
+        ctx.fillRect(0, FLOOR, TW, 4);
+        ctx.fillStyle = '#1c1626';
+        ctx.fillRect(0, FLOOR + 4, TW, TH - FLOOR - 4);
+        drawDoor(ctx, M, FLOOR - DH, DW, DH, gold, t, 0.5);
+        drawDoor(ctx, M + DW + GAP, FLOOR - DH, DW, DH, locked, t, 0);
+      }, { animated: true, hires: 6 });
   }
 }
 
