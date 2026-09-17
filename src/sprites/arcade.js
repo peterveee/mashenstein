@@ -1110,7 +1110,14 @@ function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
     plain(ctx, darken(pal.frame, 0.25), (c) => c.arc(cx, cy, r + w * 0.009, 0, Math.PI * 2));
     plain(ctx, powered ? darken(pal.sign, 0.5) : '#0b0912', (c) => c.arc(cx, cy, r, 0, Math.PI * 2));
     glassGloss(ctx, cx - r, cy - r, r * 2, r * 2, 0.24, r);
-    plain(ctx, lighten(pal.frame, 0.34), (c) => rr(c, slideX + lw * 0.85, Y(0.56), w * 0.024, h * 0.15, w * 0.012));
+    // The pull: a hand-sized grip, not a full-height bar. It sits in the gap
+    // between the porthole and the band, which is the only place on this leaf
+    // that reads as somewhere you would actually put a hand — and at that
+    // length it gives the door a sense of scale instead of competing with the
+    // window for the eye. A hair of shadow behind it lifts it off the face.
+    const gripX = slideX + lw * 0.85, gripY = Y(0.622), gripH = h * 0.075;
+    plain(ctx, darken(pal.door, 0.4), (c) => rr(c, gripX - w * 0.006, gripY + h * 0.006, w * 0.028, gripH, w * 0.014));
+    plain(ctx, lighten(pal.frame, 0.34), (c) => rr(c, gripX, gripY, w * 0.028, gripH, w * 0.014));
     ctx.restore();
     // The header sensor in its housing: standby amber, green while it is holding
     // the door for someone close enough to walk through.
