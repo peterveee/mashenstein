@@ -1788,6 +1788,15 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
     `his barrel falls clear of his own wall (${chute})`);
   assert(chute + BARREL_W / 2 <= VISIBLE[1] - 8,
     `and lands inside the window the phone shows (${chute + BARREL_W / 2} <= ${VISIBLE[1] - 8})`);
+  // AND THE DROP ZONE IS NOT A HOLE IN THE SKYLINE. The chute used to sit
+  // halfway out into whatever margin was left, which put more sky past the
+  // barrel than there was between any two facades — a gap that read as a
+  // missing building rather than as somewhere a barrel falls.
+  const threeGaps = three.buildings.slice(1)
+    .map(([x], i) => x - (three.buildings[i][0] + three.buildings[i][1]));
+  const beyond = VISIBLE[1] - (chute + BARREL_W / 2);
+  assert(beyond <= Math.max(...threeGaps),
+    `with no more sky past it than the skyline's own gaps (${beyond} <= ${Math.max(...threeGaps)})`);
   assert(lcdChuteScreenX(3) !== lcdChuteScreenX(3, true),
     'and the run is told the portrait one, not the landscape panel\'s');
   const barrelTop = GROUND_Y - kong[2] - 57;
