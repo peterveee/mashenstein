@@ -8879,6 +8879,14 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
 // the only thing on a phone nobody is looking at; what it keeps is a cloud
 // band with air above and below it, on every portrait aspect.
 //
+// rhythm-3 then went up again on its own (Peter: "lift 3-3 also"), and it is
+// the one that had room to: rhythm-2 hangs a service and a board over its
+// roofs and runs out of sky first, while stage 3's tallest thing is a gorilla.
+// Its wisps now sit two rows under the line the smallest phone draws, which is
+// as far as this scene can go without one — see LCD_PORTRAIT_SKY_TOP. The
+// short middle facade came up further than the other two: at sixty-six it was
+// a dip in the middle of the row rather than a step between its neighbours.
+//
 // EVEN SPACING, ON THE GRID. 68px is three portrait-grid columns, the same
 // three-window read rhythm-1's combo facade has; 48 is two. The x's are the
 // visible window (scene 205..474 after the portrait city shift) divided up
@@ -8951,11 +8959,11 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
 const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   ...LCD_CITY_SCENES[3],
   buildings: Object.freeze([
-    [214, LCD_PORTRAIT_FACADE_W, 198, 'relay', 'portrait-grid'],
-    [301, LCD_PORTRAIT_NARROW_W, 166, 'industrial', 'portrait-grid'],
-    [368, LCD_PORTRAIT_FACADE_W, 214, 'deco', 'portrait-grid'],
+    [214, LCD_PORTRAIT_FACADE_W, 210, 'relay', 'portrait-grid'],
+    [301, LCD_PORTRAIT_NARROW_W, 190, 'industrial', 'portrait-grid'],
+    [368, LCD_PORTRAIT_FACADE_W, 226, 'deco', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[224, -62], [324, -50], [424, -68]]),
+  clouds: Object.freeze([[224, -72], [324, -60], [424, -78]]),
   billboards: Object.freeze([[0, 'chart']]),
   rooftopGorilla: 2,
   transmitter: 1,
@@ -8966,7 +8974,7 @@ const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   // in landscape. Both ends move together; the climb itself is done by x 200,
   // well left of anything a phone shows, so what crosses the visible panel is
   // the levelled-off lane at `to`.
-  plane: Object.freeze({ ...LCD_CITY_SCENES[3].plane, from: -29, to: -53 }),
+  plane: Object.freeze({ ...LCD_CITY_SCENES[3].plane, from: -41, to: -65 }),
 });
 
 // The phone's scene per stage, or null for a stage that has none.
