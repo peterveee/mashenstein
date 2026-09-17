@@ -8785,19 +8785,33 @@ function lcdBakedTop(art) {
 // Derive the tightest ceiling from the scene actually being painted so a new
 // building, billboard size, or portrait lift cannot leave the old cloud band
 // sitting on a roof.
+/**
+ * THE TOP EDGE OF THE BOARD STANDING ON BUILDING `i`, or null where none does.
+ *
+ * A billboard is the tallest thing this city puts on a roof that is not alive,
+ * so it is what the two clearances above the skyline are actually measured
+ * against: the cloud band here, and — on the stage with a service — the height
+ * a scene has to hang its monorail at. Solved from the sign's own art rather
+ * than written down, so a taller board moves the things that must clear it.
+ */
+export function lcdBoardTop(art, i) {
+  const entry = (art?.billboards || []).find(([bi]) => bi === i);
+  const building = entry && art.buildings?.[i];
+  if (!building) return null;
+  const sign = LCD_BILLBOARD_ART[entry[1]];
+  const frame = sign?.frames?.[0];
+  const ph = entry[1] === 'chart' ? LCD_BOARD_H : frame ? frame.length * 2 + 8 : 0;
+  return ph > 0 ? GROUND_Y - building[2] - LCD_BOARD_LEGS - ph : null;
+}
+
 function lcdCloudClearanceBottom(art, stageIndex) {
   let bottom = LCD_CLOUD_CLEARANCE_BOTTOM[stageIndex] ?? H;
   const roofOf = (building) => GROUND_Y - building[2];
   for (const building of art.buildings || []) bottom = Math.min(bottom, roofOf(building));
   if (art.gameWatch) bottom = Math.min(bottom, roofOf(art.gameWatch));
-  for (const [bi, name] of art.billboards || []) {
-    const building = art.buildings?.[bi];
-    if (!building) continue;
-    const sign = LCD_BILLBOARD_ART[name];
-    const frame = sign?.frames?.[0];
-    const ph = name === 'chart' ? LCD_BOARD_H
-      : frame ? frame.length * 2 + 8 : 0;
-    if (ph > 0) bottom = Math.min(bottom, roofOf(building) - 8 - ph);
+  for (let i = 0; i < (art.buildings?.length || 0); i++) {
+    const top = lcdBoardTop(art, i);
+    if (top != null) bottom = Math.min(bottom, top);
   }
   return bottom - LCD_CLOUD_CLEAR_GAP;
 }
@@ -8852,9 +8866,9 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
 // WHAT SURVIVES THE CUT is what the stage is about. The combo board opens
 // every one of them, on the roof nearest the hero, because it is the thing
 // answering to the run. Then the stage's own landmark: the window washer on
-// rhythm-2, Kong on rhythm-3. The third is even spacing rather than a third
-// idea — a plain roof with a meter and a lamp on 2, the relay mast on 3 — and
-// it is there because two facades in a 270px window is a gap with bookends.
+// rhythm-2, Kong on rhythm-3. The third is the panel's other picture — the
+// maze attract board on 2, the relay mast on 3 — and it is there because two
+// facades in a 270px window is a gap with bookends.
 //
 // NOT AS TALL AS THEY COULD BE. The roofs sit where rhythm-1's do, around a
 // fifth of the way down the panel, and everything above them is sky: the
@@ -8872,10 +8886,16 @@ const LCD_PORTRAIT_FACADE_W = LCD_PORTRAIT_COMBO_W;                      // 68: 
 const LCD_PORTRAIT_NARROW_W = 2 * LCD_PORTRAIT_GRID.unit
   + 2 * LCD_PORTRAIT_GRID.colPitch;                                      // 48: two
 
-// RHYTHM-2: the combo board, the window washer, and a lit meter under the
-// service. The rail stays the ceiling it is in landscape — ten clear over the
-// tallest roof — and the wisps stay above the rail, so the three-layer sky the
-// stage was composed with survives the move at a phone's scale.
+// RHYTHM-2: the combo board, the window washer, and the maze board.
+//
+// THE RAIL IS THE CEILING, AND A ROOF IS NOT THE THING IT HAS TO CLEAR. The
+// service was hung ten over the tallest ROOF here and the combo board went
+// straight through it — a board stands eight of leg and thirty-two of panel
+// above the roof it is on, which is forty, and on this skyline that is the
+// highest thing there is. The city did not come down for it: the SERVICE WENT
+// UP, which is what a rail over a city does and what Peter asked for. The
+// girder is measured off the board (lcdBoardTop: 30 for the combo's) and the
+// wisps off the cars — girder 20, cars 8..20, nothing in the sky below them.
 const LCD_PORTRAIT_STAGE_2 = Object.freeze({
   ...LCD_CITY_SCENES[2],
   buildings: Object.freeze([
@@ -8883,45 +8903,46 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
     [305, LCD_PORTRAIT_FACADE_W, 186, 'deco', 'portrait-grid'],
     [389, LCD_PORTRAIT_FACADE_W, 150, 'music-hall', 'portrait-grid'],
   ]),
-  // Above the cars (24..36) with three rows to spare, and nothing above them
-  // but sky. They sway in place rather than crossing, as they do in landscape.
-  clouds: Object.freeze([[232, 0], [330, -8], [418, 6]]),
+  clouds: Object.freeze([[232, -14], [330, -22], [418, -10]]),
   cloudSway: 24,
-  billboards: Object.freeze([[0, 'chart']]),
+  // THE MAZE BOARD TAKES THE THIRD ROOF. It runs the attract screen of a game
+  // this cabinet is old enough to remember, a cell per heard beat — the one
+  // other picture on this panel that keeps the tempo, and worth more on a
+  // phone than the meter cabinet that stood here (Peter: "make the third
+  // building the Pac-Man billboard"). Its board is 22 tall against the combo's
+  // 32, so it is comfortably under the rail on a roof eight lower.
+  billboards: Object.freeze([[0, 'chart'], [2, 'chase']]),
   // The washer's roof carries the man on the cradle and nothing else — the
   // same reason it is bare in landscape.
   bareRoofs: Object.freeze([1]),
   washer: Object.freeze([1, 34]),
-  // Inboard of its own meter, so the beam leans across the panel rather than
-  // up its own bank. See lcdSearchlight.
-  searchlights: Object.freeze([[2, 12]]),
-  // The girder rules 36, the cars ride 24..36, and the tallest roof on this
-  // skyline is the washer's at 46.
-  train: Object.freeze({ ...LCD_CITY_SCENES[2].train, y: 24 }),
+  // On the maze board's roof, outboard of its legs, exactly as the landscape
+  // scene stands its second lamp on the board's own building.
+  searchlights: Object.freeze([[2, 10]]),
+  train: Object.freeze({ ...LCD_CITY_SCENES[2].train, y: 8 }),
 });
 
-// RHYTHM-3: the combo board, Kong, and the relay mast he throws past.
+// RHYTHM-3: the combo board, the relay mast, and Kong on the last roof.
 //
-// KONG IS THE MIDDLE BUILDING, and that is the barrel's doing rather than the
-// skyline's. The chute falls in the gap to his RIGHT (lcdChuteX), and in
-// landscape he is the last facade so that gap is the panel's own edge — on a
-// phone the panel's edge is off screen, so a barrel authored to fall there
-// would drop down the outside of the frame. With the mast beyond him the chute
-// splits a real gap in the middle of the picture: the barrel leaves his hand,
-// comes down between two buildings, and arrives in the road the player is
-// running on, which is the whole of the gag and all of it now on screen.
+// KONG STANDS AT THE RIGHT-HAND END, where the landscape scene puts him and
+// where Peter wants him, and the whole of the authoring below is his barrel
+// getting room to fall. The chute splits the gap to his RIGHT (lcdChuteX), and
+// with no neighbour that gap is the authored panel's own edge at 480 — which
+// on a phone is off screen. So his wall stops at 427: the chute lands at 454,
+// the barrel is drawn 446..462, and the visible window ends at 473. It falls
+// down the right-hand side of the picture with a barrel's width of air beyond
+// it, instead of down the outside of the frame.
 const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   ...LCD_CITY_SCENES[3],
   buildings: Object.freeze([
-    [219, LCD_PORTRAIT_FACADE_W, 170, 'relay', 'portrait-grid'],
-    [303, LCD_PORTRAIT_FACADE_W, 186, 'deco', 'portrait-grid'],
-    // Thirty of air beside Kong for the chute, against sixteen elsewhere.
-    [401, LCD_PORTRAIT_NARROW_W, 138, 'industrial', 'portrait-grid'],
+    [211, LCD_PORTRAIT_FACADE_W, 170, 'relay', 'portrait-grid'],
+    [295, LCD_PORTRAIT_NARROW_W, 138, 'industrial', 'portrait-grid'],
+    [359, LCD_PORTRAIT_FACADE_W, 186, 'deco', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[228, -34], [316, -22], [412, -40]]),
+  clouds: Object.freeze([[220, -34], [320, -22], [420, -40]]),
   billboards: Object.freeze([[0, 'chart']]),
-  rooftopGorilla: 1,
-  transmitter: 2,
+  rooftopGorilla: 2,
+  transmitter: 1,
   smokestacks: Object.freeze([]),
   // THE CROSSING KEEPS ITS CLEARANCE, which is a difference and not a height:
   // Kong's portrait roof is 46, so his raised barrel tops out at -11, and the
@@ -9301,17 +9322,20 @@ const LCD_BOARD_W = Math.max(...Object.values(LCD_SIGN_WORD).map(lcdSignWordW))
 const LCD_BOARD_H = Math.max(7 * 2, LCD_SIGN_MARK_H * 2)
   + LCD_SIGN_GAP + 7 + (LCD_SIGN_PAD + 1) * 2;
 
+/** How much air a board stands on over its roof — see lcdBoardFrame. */
+const LCD_BOARD_LEGS = 8;
+
 /** The hardware every board on this roof stands on: legs, brace, panel, rim. */
 function lcdBoardFrame(ctx, building, pw, ph) {
   const [x, w, h] = building;
   const cx = Math.round(x + w / 2);
   const roof = GROUND_Y - h;
-  const left = cx - Math.round(pw / 2), top = roof - 8 - ph;
+  const left = cx - Math.round(pw / 2), top = roof - LCD_BOARD_LEGS - ph;
   ctx.fillStyle = LCD_PRINT;
   // ONE PIXEL A LEG, like every line on the wall, with the brace run leg to
   // leg so the three pieces are one frame and not a table.
-  ctx.fillRect(cx - 8, roof - 8, 1, 8);
-  ctx.fillRect(cx + 7, roof - 8, 1, 8);
+  ctx.fillRect(cx - 8, roof - LCD_BOARD_LEGS, 1, LCD_BOARD_LEGS);
+  ctx.fillRect(cx + 7, roof - LCD_BOARD_LEGS, 1, LCD_BOARD_LEGS);
   ctx.fillRect(cx - 8, roof - 4, 16, 1);
   ctx.fillRect(left, top, pw, ph);
   ctx.strokeStyle = 'rgba(220,228,154,0.45)';
