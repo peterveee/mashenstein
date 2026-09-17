@@ -8779,6 +8779,10 @@ function lcdCloud(ctx, x, y, pose) {
 // The crown is the one thing the bake puts ABOVE a roof (gbcBuildingLineArt:
 // parapets, stacks, pediments, the tallest of them 21), so a roof plus that is
 // the whole of what has to fit.
+// Where a searchlight's beam stops in the authored panel: under the beat
+// strip's band, which is also why the landscape clouds sit at 27. A scene with
+// its own sky (the portrait ones) names its own in `skyTop`.
+const LCD_BEAM_CEILING = 26;
 const LCD_CROWN_REACH = 21;
 // The bank's cabinet: six cells of meter and a pixel of air top and bottom.
 const LCD_EQ_BANK_ROWS = 6;
@@ -8891,13 +8895,13 @@ function lcdCloudLayer(ctx, art, frame, backgroundContext = null) {
 // the only thing on a phone nobody is looking at; what it keeps is a cloud
 // band with air above and below it, on every portrait aspect.
 //
-// rhythm-3 then went up again on its own (Peter: "lift 3-3 also"), and it is
-// the one that had room to: rhythm-2 hangs a service and a board over its
-// roofs and runs out of sky first, while stage 3's tallest thing is a gorilla.
-// Its wisps now sit two rows under the line the smallest phone draws, which is
-// as far as this scene can go without one — see LCD_PORTRAIT_SKY_TOP. The
-// short middle facade came up further than the other two: at sixty-six it was
-// a dip in the middle of the row rather than a step between its neighbours.
+// AND THE TWO KONGS STAND AT THE SAME HEIGHT. Peter, with rhythm-1 on a phone:
+// "here's the building level for 1-1 with Kong — can we do the same in 3-3".
+// rhythm-1's tower is 208 tall, so rhythm-3's gorilla facade is 208 too, and
+// the rest of its skyline steps down from him exactly as it did. A player
+// meeting the same ape on two stages of one cabinet should meet him at the
+// same place in the frame; that is a fact about the cabinet rather than about
+// either scene, which is why the number is quoted rather than re-chosen.
 //
 // EVEN SPACING, ON THE GRID. 68px is three portrait-grid columns, the same
 // three-window read rhythm-1's combo facade has; 48 is two. The x's are the
@@ -8924,22 +8928,28 @@ const LCD_PORTRAIT_NARROW_W = 2 * LCD_PORTRAIT_GRID.unit
 
 // RHYTHM-2: the combo board, the window washer, and the maze board.
 //
-// THE RAIL IS THE CEILING, AND A ROOF IS NOT THE THING IT HAS TO CLEAR. The
-// service was hung ten over the tallest ROOF here and the combo board went
-// straight through it — a board stands eight of leg and thirty-two of panel
-// above the roof it is on, which is forty, and on this skyline that is the
-// highest thing there is. The city did not come down for it: the SERVICE WENT
-// UP, which is what a rail over a city does and what Peter asked for. The
-// girder is measured off the board (lcdBoardTop: 2 for the combo's) and the
-// wisps off the cars — girder -8, cars -20..-8, nothing in the sky below them.
+// THE RAIL IS THE CEILING, AND A ROOF IS NOT THE THING IT HAS TO CLEAR. A
+// board stands eight of leg and thirty-two of panel above its roof, and on
+// this skyline that is the highest thing there is, so the girder is measured
+// off the BOARD (lcdBoardTop) and never off the masonry.
+//
+// AND THE SERVICE RUNS AT KONG'S LEVEL. Peter: "3-2 can have the monorail at
+// Kong's level, and bring up the building under that". The other two stages of
+// this cabinet put a gorilla at the top of the picture — his roof at 24, his
+// raised barrel at -33 — so this one puts its cars in that same band, -30 to
+// -18, and the city comes up underneath until every roof and board is ten
+// clear of the girder. Ten is the clearance a phone can afford: at this zoom
+// it is a clean band of sky between the rail and the city, where the same ten
+// in landscape is the last of the air.
 const LCD_PORTRAIT_STAGE_2 = Object.freeze({
   ...LCD_CITY_SCENES[2],
+  skyTop: LCD_PORTRAIT_SKY_TOP,
   buildings: Object.freeze([
-    [221, LCD_PORTRAIT_FACADE_W, 190, 'deco', 'portrait-grid'],
-    [305, LCD_PORTRAIT_FACADE_W, 214, 'deco', 'portrait-grid'],
-    [389, LCD_PORTRAIT_FACADE_W, 178, 'music-hall', 'portrait-grid'],
+    [221, LCD_PORTRAIT_FACADE_W, 200, 'deco', 'portrait-grid'],
+    [305, LCD_PORTRAIT_FACADE_W, 230, 'deco', 'portrait-grid'],
+    [389, LCD_PORTRAIT_FACADE_W, 210, 'music-hall', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[232, -42], [330, -50], [418, -38]]),
+  clouds: Object.freeze([[232, -56], [330, -64], [418, -52]]),
   cloudSway: 24,
   // THE MAZE BOARD TAKES THE THIRD ROOF. It runs the attract screen of a game
   // this cabinet is old enough to remember, a cell per heard beat — the one
@@ -8955,7 +8965,7 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
   // On the maze board's roof, outboard of its legs, exactly as the landscape
   // scene stands its second lamp on the board's own building.
   searchlights: Object.freeze([[2, 10]]),
-  train: Object.freeze({ ...LCD_CITY_SCENES[2].train, y: -20 }),
+  train: Object.freeze({ ...LCD_CITY_SCENES[2].train, y: -30 }),
 });
 
 // RHYTHM-3: the combo board, the relay mast, and Kong on the last roof.
@@ -8972,12 +8982,14 @@ const LCD_PORTRAIT_STAGE_2 = Object.freeze({
 // skyline, which is what it is.
 const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   ...LCD_CITY_SCENES[3],
+  skyTop: LCD_PORTRAIT_SKY_TOP,
   buildings: Object.freeze([
-    [208, LCD_PORTRAIT_FACADE_W, 210, 'relay', 'portrait-grid'],
-    [293, LCD_PORTRAIT_NARROW_W, 190, 'industrial', 'portrait-grid'],
-    [358, LCD_PORTRAIT_FACADE_W, 226, 'deco', 'portrait-grid'],
+    [208, LCD_PORTRAIT_FACADE_W, 192, 'relay', 'portrait-grid'],
+    [293, LCD_PORTRAIT_NARROW_W, 172, 'industrial', 'portrait-grid'],
+    // 208 is rhythm-1's own Kong tower, to the pixel: see below.
+    [358, LCD_PORTRAIT_FACADE_W, 208, 'deco', 'portrait-grid'],
   ]),
-  clouds: Object.freeze([[220, -72], [320, -60], [420, -78]]),
+  clouds: Object.freeze([[220, -54], [320, -42], [420, -60]]),
   billboards: Object.freeze([[0, 'chart']]),
   rooftopGorilla: 2,
   transmitter: 1,
@@ -8988,7 +9000,7 @@ const LCD_PORTRAIT_STAGE_3 = Object.freeze({
   // in landscape. Both ends move together; the climb itself is done by x 200,
   // well left of anything a phone shows, so what crosses the visible panel is
   // the levelled-off lane at `to`.
-  plane: Object.freeze({ ...LCD_CITY_SCENES[3].plane, from: -41, to: -65 }),
+  plane: Object.freeze({ ...LCD_CITY_SCENES[3].plane, from: -23, to: -47 }),
 });
 
 // The phone's scene per stage, or null for a stage that has none.
@@ -10392,7 +10404,7 @@ const LCD_BEAM_REACH = 132;
  *     up the other is out flat. Lockstep is what a premiere looks like; this
  *     panel is a working city.
  */
-function lcdSearchlight(ctx, building, dx, n, frame) {
+function lcdSearchlight(ctx, building, dx, n, frame, ceiling = LCD_BEAM_CEILING) {
   const [x, , h] = building;
   const roof = GROUND_Y - h;
   const sx = Math.round(x + dx);
@@ -10410,9 +10422,12 @@ function lcdSearchlight(ctx, building, dx, n, frame) {
   for (let d = 6; d < LCD_BEAM_REACH; d += 4) {
     const bx = sx + ca * d;
     const by = roof - 9 + sa * d;
-    // The sky has a ceiling: the beat ribbon hangs across everything above 24,
-    // which is why the clouds sit at 27. A beam stops under it too.
-    if (by < 26) break;
+    // The sky has a ceiling — the beat strip hangs across everything above it,
+    // which is why the clouds sit just under — and a beam stops there too. It
+    // is the SCENE's ceiling rather than a number: a phone's strip is nowhere
+    // near the authored one, and a lamp on a roof that has been raised past a
+    // landscape ceiling would otherwise throw no beam at all.
+    if (by < ceiling) break;
     const spread = Math.max(3, Math.round(d / 9)) * 2;
     ctx.fillStyle = `rgba(232,238,176,${(0.62 - 0.5 * (d / LCD_BEAM_REACH)).toFixed(3)})`;
     ctx.fillRect(Math.round(bx - spread / 2), Math.round(by), spread, 4);
@@ -13719,7 +13734,7 @@ function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null,
     });
   }
   (art.searchlights || []).forEach(([bi, dx], n) => {
-    onRoof(bi, () => lcdSearchlight(ctx, art.buildings[bi], dx, n, frame));
+    onRoof(bi, () => lcdSearchlight(ctx, art.buildings[bi], dx, n, frame, art.skyTop ?? LCD_BEAM_CEILING));
   });
   if (art.washer) {
     onRoof(art.washer[0], () => lcdWasher(ctx, art.buildings[art.washer[0]], art.washer[1], frame));

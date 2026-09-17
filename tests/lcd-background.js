@@ -1773,6 +1773,14 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
     `rhythm-2 runs its service over every roof AND every board (${clear} clear)`);
   assert(Math.max(...two.clouds.map(([, y]) => y)) + 13 <= two.train.y,
     'and keeps the wisps above the cars');
+  // THE TWO KONGS STAND AT THE SAME HEIGHT. A player meets the same ape on two
+  // stages of this cabinet, and he should meet him at the same place in the
+  // frame; rhythm-1 carries him on its game-watch tower and rhythm-3 on a
+  // facade, so nothing but this keeps the two in step.
+  const oneKong = lcdArtFor(1, phone);
+  const threeKong = lcdArtFor(3, phone);
+  assert(oneKong.gameWatch[2] === threeKong.buildings[threeKong.rooftopGorilla][2],
+    `Kong stands at one height across the cabinet (${oneKong.gameWatch[2]})`);
   // rhythm-3: Kong keeps the right-hand end of the skyline, and the whole of
   // the authoring around him is his barrel getting somewhere to fall.
   const three = lcdArtFor(3, phone);
