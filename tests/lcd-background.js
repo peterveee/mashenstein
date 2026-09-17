@@ -1797,6 +1797,20 @@ assert(roofLamps({}).length > 0, 'the detailed roof hardware lights its offbeat 
   const beyond = VISIBLE[1] - (chute + BARREL_W / 2);
   assert(beyond <= Math.max(...threeGaps),
     `with no more sky past it than the skyline's own gaps (${beyond} <= ${Math.max(...threeGaps)})`);
+  // AND IT FALLS THE SAME DISTANCE OFF HIS WALL IN BOTH ORIENTATIONS, which is
+  // a distance measured in his facade rather than in pixels: the barrel is one
+  // fixed sprite, so nine of air beside a 36px wall and seventeen beside a 68px
+  // one are the same picture, and a flat number is two different ones.
+  const airRatio = (art, portrait) => {
+    const g = art.buildings[art.rooftopGorilla];
+    const x = lcdChuteScreenX(3, portrait) - (portrait ? LCD_PORTRAIT_CITY_SHIFT.x : 0);
+    return (x - BARREL_W / 2 - (g[0] + g[1])) / g[1];
+  };
+  const landscapeAir = airRatio(lcdArtFor(3, null), false);
+  const portraitAir = airRatio(three, true);
+  assert(Math.abs(portraitAir - landscapeAir) < 0.04,
+    `and off it by the same share of his own wall as the landscape panel `
+    + `(${portraitAir.toFixed(2)} against ${landscapeAir.toFixed(2)})`);
   assert(lcdChuteScreenX(3) !== lcdChuteScreenX(3, true),
     'and the run is told the portrait one, not the landscape panel\'s');
   const barrelTop = GROUND_Y - kong[2] - 57;
