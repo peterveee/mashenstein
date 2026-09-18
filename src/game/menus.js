@@ -5914,7 +5914,7 @@ export class SoundTestState {
         ctx.fillRect(band.textX + i * 6, this.barsBase - hgt, 4, hgt);
       }
     }
-    menuTextCentered(Input.isTouchDevice() ? 'TAP: PLAY/STOP   DRAG: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
+    menuTextCentered(`${confirmVerb()}: PLAY/STOP`,
       W / 2, this.hintY, '#5a5a68');
     ctx.restore();
   }
@@ -5973,8 +5973,7 @@ export class SoundTestState {
         ctx.fillRect(titleX + i * 7, this.barsBase - hgt, 5, hgt);
       }
     }
-    portraitMenuTextCentered(ctx,
-      Input.isTouchDevice() ? 'TAP: PLAY/STOP   SWIPE: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
+    portraitMenuTextCentered(ctx, `${confirmVerb()}: PLAY/STOP`,
       W / 2, portraitMenuTextY(this.hintY, 1.0), '#5a5a68', 1.0);
     ctx.restore();
   }
@@ -6079,16 +6078,15 @@ export class SoundTestState {
 // longer has to guess from which invisible half it landed in"). A tap anywhere
 // on the picture jumps; slide and power have discs and gestures.
 //
-// The wording matches the tutorial's, which teaches these same three verbs
-// under the same names (game/tutorial.js): the DOWN ARROW and the ATTACK
-// BUTTON, never a colour or a shape, because the discs carry glyphs and a
-// player cannot look one up.
+// The slide row names the gesture only. Its disc is on the glass wearing a
+// down arrow, and a reference screen that also spells out "hold the down
+// arrow" is describing a button the player is already looking at.
 const CONTROL_ROWS = (touch) => [
   ['JUMP', touch
     ? 'TAP ANYWHERE. HOLD FOR HIGHER.'
     : 'SPACE / W / UP / LEFT CLICK. HOLD FOR HIGHER.'],
   ['POWER SLIDE', touch
-    ? 'HOLD THE DOWN ARROW, OR SWIPE DOWN. KICKS CONES AND BARRELS.'
+    ? 'SWIPE DOWN. KICKS CONES AND BARRELS.'
     : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.'],
   ['HERO POWER', touch
     ? 'THE ATTACK BUTTON, OR SWIPE RIGHT.'
@@ -6202,6 +6200,92 @@ const SETTINGS_ROW = 23;
 const SETTINGS_VISIBLE_ROWS = 6;
 const SETTINGS_BACK_TOP = 216;
 const SETTINGS_BACK_H = 25;
+
+// RESET ALL TO DEFAULTS, as two things to aim at.
+//
+// It used to be a question with a line of instructions under it — "TAP:
+// CONFIRM   BACK" — which is a caption asking you to work out where to put
+// your thumb. The answer to a yes/no question is two buttons, and the tap
+// zones are the buttons rather than halves of the card, so a thumb landing on
+// the question itself does nothing at all. Same geometry feeds the hit-test
+// and the paint, so what a finger finds is what is on the glass.
+function settingsConfirmLayout() {
+  const portrait = portraitMenuActive();
+  if (!portrait) {
+    const w = W - 120;
+    const h = 104;
+    const x = (W - w) / 2;
+    const y = Math.round((H - h) / 2);
+    const bw = 110;
+    const bh = 32;
+    const gap = 20;
+    const by = y + h - bh - 16;
+    return {
+      portrait, x, y, w, h,
+      yes: { x: W / 2 - gap / 2 - bw, y: by, w: bw, h: bh },
+      no: { x: W / 2 + gap / 2, y: by, w: bw, h: bh },
+    };
+  }
+  const w = Math.min(W - screen.safeLeft - screen.safeRight - 32, 440);
+  const x = (W - w) / 2;
+  const h = 268;
+  const y = portraitMenuSafeTop()
+    + (portraitMenuSafeBottom() - portraitMenuSafeTop() - h) / 2;
+  const pad = 22;
+  const gap = 20;
+  const bw = (w - pad * 2 - gap) / 2;
+  const bh = 78;
+  const by = y + h - bh - 28;
+  return {
+    portrait, x, y, w, h,
+    yes: { x: x + pad, y: by, w: bw, h: bh },
+    no: { x: x + pad + bw + gap, y: by, w: bw, h: bh },
+  };
+}
+
+function drawSettingsConfirmButton(ctx, r, label, ink, portrait) {
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  platePath(ctx, r.x, r.y, r.w, r.h, portrait ? 10 : 5);
+  ctx.fill();
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = portrait ? 2 : 1;
+  platePath(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, portrait ? 10 : 5);
+  ctx.stroke();
+  const mid = r.y + r.h / 2;
+  if (portrait) {
+    const s = portraitMenuFit(label, 2.2, r.w - 20, 'bold');
+    portraitMenuTextCentered(ctx, label, r.x + r.w / 2,
+      portraitMenuTextY(mid, s, 'bold'), ink, s, 'bold');
+  } else {
+    drawTextCentered(ctx, label, r.x + r.w / 2, textYForMid(mid, 1.5, 'bold'), ink, 1.5, 'bold');
+  }
+}
+
+function drawSettingsConfirm(ctx) {
+  const g = settingsConfirmLayout();
+  // The list behind this was reading straight through the old 85%-opaque card,
+  // so the question sat on top of whichever setting happened to be under it.
+  ctx.fillStyle = 'rgba(2,3,10,0.78)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b0b14';
+  platePath(ctx, g.x, g.y, g.w, g.h, g.portrait ? 12 : 5);
+  ctx.fill();
+  ctx.strokeStyle = '#e04848';
+  ctx.lineWidth = g.portrait ? 2 : 1;
+  platePath(ctx, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, g.portrait ? 12 : 5);
+  ctx.stroke();
+  const title = 'RESET ALL TO DEFAULTS?';
+  if (g.portrait) {
+    const s = portraitMenuFit(title, 2.1, g.w - 36, 'title');
+    portraitMenuTextCentered(ctx, title, W / 2,
+      portraitMenuTextY(g.y + 76, s, 'title'), '#e04848', s, 'title');
+  } else {
+    const s = Math.min(1.6, (g.w - 28) / Math.max(1, textWidth(title, 1, 'title')));
+    drawTextCentered(ctx, title, W / 2, textYForMid(g.y + 32, s, 'title'), '#e04848', s, 'title');
+  }
+  drawSettingsConfirmButton(ctx, g.yes, 'YES', '#e04848', g.portrait);
+  drawSettingsConfirmButton(ctx, g.no, 'NO', '#c8c8d8', g.portrait);
+}
 
 export class SettingsState {
   static portraitMode = 'frame';
@@ -6359,8 +6443,14 @@ export class SettingsState {
     this.layout();
     const opts = this.options();
     if (this.confirming) {
-      if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); this.resetToDefaults(); }
-      if (Input.pressed('back') || Input.pressed('slide')) { this.confirming = false; Audio.sfx('ui'); }
+      const g = settingsConfirmLayout();
+      const p = Input.pointer;
+      const hit = (r) => Input.pressed('pointer')
+        && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+      if (Input.pressed('confirm') || hit(g.yes)) { Audio.sfx('uiConfirm'); this.resetToDefaults(); }
+      else if (Input.pressed('back') || Input.pressed('slide') || hit(g.no)) {
+        this.confirming = false; Audio.sfx('ui');
+      }
       Input.endFrame();
       return;
     }
@@ -6465,14 +6555,7 @@ export class SettingsState {
       drawText(ctx, `BUILT: ${buildStamp}`, 4, 4, '#55647a', 0.75);
       ctx.restore();
     }
-    if (this.confirming) {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(40, 90, W - 80, 60);
-      ctx.strokeStyle = '#e04848';
-      ctx.strokeRect(40.5, 90.5, W - 81, 60);
-      drawTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2, 108, '#e04848', 1.5);
-      drawTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK`, W / 2, 132, '#8a8a98');
-    }
+    if (this.confirming) drawSettingsConfirm(ctx);
   }
 
   drawPortrait(ctx) {
@@ -6541,20 +6624,6 @@ export class SettingsState {
       Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE',
       W / 2, portraitMenuTextY(portraitMenuSafeBottom(18), 1.3), '#5a5a68', 1.3);
 
-    if (this.confirming) {
-      const mw = W - 64;
-      const mh = 150;
-      const my = Math.round((H - mh) / 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.90)';
-      ctx.fillRect(32, my, mw, mh);
-      ctx.strokeStyle = '#e04848';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(32.5, my + 0.5, mw - 1, mh - 1);
-      const confirmS = portraitMenuFit('RESET ALL TO DEFAULTS?', 1.9, mw - 24, 'title');
-      portraitMenuTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2,
-        portraitMenuTextY(my + 47, confirmS, 'title'), '#e04848', confirmS, 'title');
-      portraitMenuTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK`, W / 2,
-        portraitMenuTextY(my + 101, 1.3), '#8a8a98', 1.3);
-    }
+    if (this.confirming) drawSettingsConfirm(ctx);
   }
 }
