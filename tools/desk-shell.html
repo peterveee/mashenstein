@@ -23,7 +23,8 @@
   }
   header h1 { font-size: 13px; margin: 0; letter-spacing: .12em; color: var(--hot); }
   header .sub { color: var(--dimmer); }
-  main { padding: 14px; display: grid; gap: 10px; max-width: 860px; }
+  main { padding: 14px; max-width: 860px; }
+  #list, #galleries { display: grid; gap: 10px; }
 
   .tool {
     display: grid; grid-template-columns: 10px 1fr auto; gap: 12px; align-items: start;
@@ -47,6 +48,8 @@
     border-left: 2px solid var(--line); padding-left: 8px; max-height: 68px; overflow: hidden;
   }
   .acts { display: flex; gap: 6px; }
+  h2.section { font-size: 11px; letter-spacing: .14em; color: var(--dimmer); margin: 18px 0 -2px; }
+  h2.section:first-of-type { margin-top: 0; }
   button {
     background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
     padding: 5px 11px; border-radius: 3px; cursor: pointer; font: inherit; letter-spacing: .06em;
@@ -66,16 +69,25 @@
   <span class="sub">every tool, and the port it lives on</span>
 </header>
 <div class="err" id="err"></div>
-<main id="list"></main>
+<main>
+  <h2 class="section">TOOLS</h2>
+  <div id="list"></div>
+  <h2 class="section">GALLERIES</h2>
+  <div id="galleries"></div>
+</main>
 <footer>
   A tool started here stops when this desk stops. One that was already running
   was started by somebody else — it is linked, never stopped.
   Bookmark <code>/mixer</code>, <code>/levels</code>, <code>/sfx</code> to go straight in,
   cold or warm. The direct ports still work exactly as they always did, and every
   tool still runs standalone from its own npm script.
+  A gallery's RUN button does the same npm command by hand would — the screen
+  gallery starts THE GAME first if it is cold, and the asset gallery renders
+  then archives in one press. OPEN appears once one exists on disk.
 </footer>
 <script>
 const list = document.getElementById('list');
+const galleriesEl = document.getElementById('galleries');
 const errBox = document.getElementById('err');
 let busy = null;
 
@@ -126,11 +138,47 @@ function draw(tools) {
       }, 'STOP')))));
 }
 
+async function runAction(id) {
+  busy = id;
+  errBox.textContent = '';
+  drawActions(lastActions);
+  try {
+    const res = await fetch(`/api/run/${id}`, { method: 'POST' });
+    const body = await res.json();
+    if (!body.ok) errBox.textContent = body.error;
+  } catch (e) { errBox.textContent = e.message; }
+  busy = null;
+  await refresh();
+}
+
+let lastActions = [];
+function drawActions(actions) {
+  galleriesEl.replaceChildren(...actions.map((a) => el('div', { class: `tool${a.running ? ' live' : ''}`, 'data-tool': a.id },
+    el('div', { class: 'dot' }),
+    el('div', {},
+      el('div', { class: 'name' },
+        el('b', {}, a.label),
+        a.running ? el('span', { class: 'tag adopted' }, 'running…')
+          : a.code === 0 ? el('span', { class: 'tag' }, 'last run: ok')
+          : a.code != null ? el('span', { class: 'tag' }, `last run: failed (${a.code})`)
+          : null),
+      el('div', { class: 'blurb' }, a.blurb),
+      a.log.length ? el('div', { class: 'log' }, a.log.join('\n')) : null),
+    el('div', { class: 'acts' },
+      el('button', { class: 'go', disabled: a.running || busy === a.id, onclick: () => runAction(a.id) },
+        a.running ? '…' : 'RUN'),
+      a.openPath
+        ? el('button', { onclick: () => window.open(a.openPath, '_blank') }, 'OPEN')
+        : null))));
+}
+
 async function refresh() {
   try {
-    const { tools } = await (await fetch('/api/status')).json();
+    const { tools, actions } = await (await fetch('/api/status')).json();
     last = tools;
     draw(tools);
+    lastActions = actions;
+    drawActions(actions);
   } catch (e) { errBox.textContent = `the desk stopped answering: ${e.message}`; }
 }
 

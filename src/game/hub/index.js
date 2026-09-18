@@ -13,7 +13,7 @@ import {
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
 import {
-  cabinetPalette, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
+  cabinetPalette, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
   stickGlint,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
 } from '../../sprites/arcade.js';
@@ -462,6 +462,7 @@ const CAB_Y = HUB_FLOOR_PIN_Y - CAB_H;
 // this is two and a bit seconds you pay on EVERY cabinet you ever open, and the
 // moment it stops earning that it should be switchable off without a rewrite.
 const DIVE_ON_USE = true;
+const OVERTIME_CAB = { id: 'overtime' };
 // How far the camera pushes in over the leap, as a gain on the room's own zoom.
 //
 // DERIVED from DEFAULT_DIVE_ZOOM rather than written here. It was written here, as
@@ -544,8 +545,15 @@ function hubPresentation() {
 // 24 mod 32, so any phase that is not a multiple of 8 clears all nine at once,
 // and 4 is the furthest from every one of them.
 const FLOOR_TILE_PHASE = 4;
-function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
-  const wallY1 = floorY - 2;
+// `unit` scales the floor's own furniture — trim depth, tile size, row pitch —
+// without touching where the floor LINE sits. The Trophy Room needs it because
+// it is authored a factor of HUB_ZOOM larger than the concourse and drawn
+// through a correspondingly smaller camera, so these hub-scale numbers would
+// otherwise come out a third too small in there and the two rooms' floors would
+// not read as the same floor.
+function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0, unit = 1) {
+  const wallY1 = floorY - 2 * unit;
+  const tile = 32 * unit;
   // THE TRIM STOPS AT THE FLOOR LINE. Same strip, same 6 units, but hung above
   // the line instead of straddling it.
   //
@@ -557,7 +565,7 @@ function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
   // was the trouser, four units down. The reflection was never wrong; it was
   // landing on the one pale band in the room.
   ctx.fillStyle = '#38304a';
-  ctx.fillRect(0, floorY - 6, width, 6);
+  ctx.fillRect(0, floorY - 6 * unit, width, 6 * unit);
   ctx.fillStyle = '#1c1626';
   ctx.fillRect(0, floorY, width, H - floorY);
   // EVERY TILE IS IDENTIFIED BY ITS INTEGER INDEX IN THE WORLD, and its colour
@@ -581,16 +589,16 @@ function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
   // the k-th draw is still the (first + k)-th tile in the world. The parity can
   // no longer disagree with itself.
   const shift = worldOffsetX - FLOOR_TILE_PHASE;
-  const first = Math.floor(shift / 32);
-  const phase = shift - first * 32;
+  const first = Math.floor(shift / tile);
+  const phase = shift - first * tile;
   for (let row = 0; row < 3; row++) {
     for (let k = 0; ; k++) {
-      const x = k * 32 - phase;
+      const x = k * tile - phase;
       if (x >= width) break;
       // JS keeps the sign on %, and -2 % 2 is -0, so this alternates correctly
       // either side of world zero — which is where the Trophy Room draws.
       ctx.fillStyle = (first + k + row) % 2 === 0 ? '#241c30' : '#1c1626';
-      ctx.fillRect(Math.round(x), wallY1 + 10 + row * 22, 32, 22);
+      ctx.fillRect(Math.round(x), wallY1 + 10 * unit + row * 22 * unit, tile, 22 * unit);
     }
   }
 }
@@ -1593,7 +1601,7 @@ function drawPlayerMarker(ctx, cx, cy, r) {
 // dive plays the run is over and its result has been applied and discarded.
 let PENDING_OUT = null;
 export function queueCabinetDiveOut(cabId, won = true) {
-  PENDING_OUT = CABINET_BY_ID[cabId] ? { cabId, won: !!won } : null;
+  PENDING_OUT = (CABINET_BY_ID[cabId] || cabId === OVERTIME_CAB.id) ? { cabId, won: !!won } : null;
 }
 
 let PENDING_DIVE = null;
@@ -1678,7 +1686,7 @@ export class HubState {
       // it in the station cursor rather than adding it to the tail: the whole
       // concourse (including NPC distribution) then knows the space is usable.
       x += OVERTIME_EMPTY_BAY;
-      st.push({ type: 'overtime', x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' }); x += 88;
+      st.push({ type: 'overtime', cab: OVERTIME_CAB, x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' }); x += 88;
     }
     // The Trophy Room is the right-hand boundary, mirroring EXIT.
     // There is no decorative tail beyond it: the last walkable player position
@@ -1899,6 +1907,7 @@ export class HubState {
     // the intro — the shutter stays a plain sticker.
     setTransitionHero(this.avatarId());
     const returning = this.flow.hubPosition;
+    this.showMovementLegend = !returning;
     this.px = this.px ?? returning?.px ?? 40;
     this.facing = this.facing ?? returning?.facing ?? 1;
     this.jumpY = 0;
@@ -1920,6 +1929,18 @@ export class HubState {
     this.trophyDoorTarget = null;
     this.doorWalk = null;
     this.departed = false;   // see the door walk: true once he is through one
+    // A queued cabinet dive owns this arrival. Consume it before deciding whether
+    // to walk through the hub door, otherwise that walk can delay the dive.
+    this.pendingDive = PENDING_DIVE;
+    PENDING_DIVE = null;
+    this.pendingOut = PENDING_OUT;
+    PENDING_OUT = null;
+    if (this.pendingOut) {
+      const st = this.stations().find((x) => x.cab?.id === this.pendingOut.cabId);
+      // Stand him at the machine before the first frame is drawn, so the room opens
+      // framed on the cabinet he is about to come out of rather than snapping to it.
+      if (st) { this.px = st.x; this.facing = 1; }
+    }
     // WALK HIM IN. You can only reach the concourse through one of its doors,
     // so arriving should look like coming through one rather than appearing in
     // front of it. Which door is not a guess: a return trip restores the exact
@@ -1944,6 +1965,12 @@ export class HubState {
         });
         this.px = rest;
         this.facing = inward;
+        // The door OPENS to let him out, and that wants saying at the moment it
+        // starts. The arrival used to fire nothing here and only cue the shut,
+        // so the single sound you heard arrived after he was already stood in
+        // the room with the door closed behind him — a door announcing itself
+        // one whole beat after the event.
+        Audio.sfx(kind === 'swing' ? 'doorSwingOpen' : 'doorOpen');
       }
     }
     this.dragging = false;   // press-and-hold is steering the walk target live
@@ -2043,23 +2070,6 @@ export class HubState {
     // reversed, which means an offline render, which means it cannot be made on the
     // frame it is wanted. Entering the concourse is minutes before any level ends.
     Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
-    // The dev menu asks for a dive by queueing it and re-entering the hub. It
-    // is armed here but STARTED on the first update, because starting it now
-    // would run the windup underneath the incoming shutter and the leap would
-    // be half over by the time the iris opened.
-    this.pendingDive = PENDING_DIVE;
-    PENDING_DIVE = null;
-    // Arriving back out of a machine. Armed here and started on the first update for
-    // the same reason the dev queue is: the shutter is still closing over this frame,
-    // and a dive that began now would spend its opening beat underneath it.
-    this.pendingOut = PENDING_OUT;
-    PENDING_OUT = null;
-    if (this.pendingOut) {
-      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === this.pendingOut.cabId);
-      // Stand him at the machine before the first frame is drawn, so the room opens
-      // framed on the cabinet he is about to come out of rather than snapping to it.
-      if (st) { this.px = st.x; this.facing = 1; }
-    }
   }
   exit() {
     this.flow.hubPosition = { px: this.px, facing: this.facing || 1 };
@@ -2210,13 +2220,13 @@ export class HubState {
     if (this.pendingOut) {
       const { cabId, won } = this.pendingOut;
       this.pendingOut = null;
-      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === cabId);
+      const st = this.stations().find((x) => x.cab?.id === cabId);
       if (st) this.startCabinetDive(st, 'out', { won });
     }
     if (this.pendingDive) {
       const { cabId, variant } = this.pendingDive;
       this.pendingDive = null;
-      const st = this.stations().find((x) => x.type === 'cabinet' && x.cab.id === cabId);
+      const st = this.stations().find((x) => x.cab?.id === cabId);
       if (st) {
         this.px = st.x;
         // Not an instance override: the module-level choice is what every later
@@ -2266,7 +2276,7 @@ export class HubState {
       const was = this.doorWalk.state().phase;
       this.doorWalk.update(dt);
       if (this.doorWalk.state().phase !== was && this.doorWalk.state().phase === 'shut') {
-        Audio.sfx('doorClose');
+        Audio.sfx(this.doorWalk.kind === 'swing' ? 'doorSwingShut' : 'doorClose');
       }
       if (this.doorWalk.done) {
         const done = this.doorWalk.onDone;
@@ -2313,6 +2323,11 @@ export class HubState {
         const joy = this.dive.outJoy;
         const cab = this.dive.cab;
         this.dive = null;
+        // startCabinetDive cleared the chrome buttons for the dive's duration, and
+        // the periodic refresh below only re-fires on a geometry or input-mode
+        // change — neither of which a dive causes — so without this the walk
+        // arrows stayed empty for good once one had played.
+        this.setChromeWalkButtons();
         // THE SMILE HAS TO OUTLIVE THE DIVE. He lands pleased with himself about
         // a fifth of a second before the animation hands back, and on the next
         // frame the hub draws its ordinary walk pose over the top — a grin nobody
@@ -2338,7 +2353,10 @@ export class HubState {
         // hideSpecialOrb/hideFuse/hideNpcs — lets a recording hold on the hub
         // past dive.done without the mission-select overlay auto-opening.
         const hideCabinetAuto = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideCabinetAuto);
-        if (!out && !hideCabinetAuto) this.flow.openCabinet(cab);
+        if (!out && !hideCabinetAuto) {
+          if (cab.id === OVERTIME_CAB.id) this.flow.startOvertime(undefined, undefined, false, false, 0, 0, cab.id);
+          else this.flow.openCabinet(cab);
+        }
       }
       Input.endFrame();
       return;
@@ -2369,7 +2387,8 @@ export class HubState {
       // are the ordinary hub jump they asked for and the arc simply carries on into
       // the glass. Pressing USE keeps its crouch; this route has already had one.
       const jumpAt = nearestTo(st, this.px, STATION_R);
-      const intoCab = jumpAt && jumpAt.type === 'cabinet' && jumpAt.unlocked;
+      const intoCab = jumpAt && (jumpAt.type === 'overtime'
+        || jumpAt.type === 'cabinet' && jumpAt.unlocked);
       this.jumpVy = HUB_JUMP_V;
       Audio.sfx('jump');
       if (intoCab && this.startCabinetDive(jumpAt, 'in', { fromJump: true })) {
@@ -2727,8 +2746,9 @@ export class HubState {
     });
     // A hinged door has to get out of his way, and that is the only door here
     // that makes a noise of its own on the way open — the sliding pair were
-    // opened by proximity long before he got here.
-    if (kind === 'swing') Audio.sfx('doorOpen');
+    // opened by proximity long before he got here. Its own cue, too: a spring,
+    // where the sliding pair are pneumatic.
+    if (kind === 'swing') Audio.sfx('doorSwingOpen');
     return true;
   }
 
@@ -2762,7 +2782,10 @@ export class HubState {
       this.facing = -1;
       this.startDoorWalk(st, 'slide', () => this.flow.openTrophyRoom());
     } else if (st.type === 'socket') this.flow.startFinale();
-    else if (st.type === 'overtime') this.flow.startOvertime();
+    else if (st.type === 'overtime') {
+      if (this.startCabinetDive(st)) return;
+      this.flow.startOvertime();
+    }
     else if (st.type === 'backroom') {
       const seed = (Date.now() & 0xfffff) ^ 0xbac;
       this.startDoorWalk(st, 'swing', () => this.flow.startOvertime(seed));
@@ -3435,8 +3458,17 @@ export class HubState {
         ctx.fillRect(x - 6, 146, 4, 8); ctx.fillRect(x + 2, 146, 4, 8);
       } else if (s.type === 'overtime') {
         // Nominally a cabinet, so it gets the cabinet: same machine, violet
-        // chassis, and a screen showing nothing at all.
-        drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, OVERTIME_PALETTE);
+        // chassis, and a screen permanently full of static.
+        const pal = OVERTIME_PALETTE;
+        const dive = this.dive && this.dive.cab.id === s.cab.id ? this.dive : null;
+        if (dive) dive.drawBehind(ctx, x, { tint: pal.screen, floorY: layout.floorY });
+        drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined,
+          dive
+            ? { stickLean: dive.stick, stickFwd: dive.stickFwd, buttonPress: dive.button, glint: dive.glint }
+            : undefined);
+        if (dive) drawCabinetScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined,
+          dive.screenArt(deadScreenArt(this.t, pal.seed, pal.screenStatic), x));
+        else drawDeadScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, this.t, pal.seed, undefined, pal.screenStatic);
       } else if (s.type === 'bench' || s.type === 'shop') {
         // The two counters, each handed its own staff member as the `server` so
         // the counter can paint them at the right depth — behind its front, in
@@ -3552,12 +3584,17 @@ export class HubState {
       // leaves the handle dangling.
       const groundY = layout.floorY;
       const y = pass.onCeiling ? layout.ceilY - 4 : groundY + DD_SIT - DD_H;
-      const alpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
+      // It used to fade in and out at the ends of its cycle, which is a strange
+      // thing to ask of a vacuum cleaner: solid objects do not develop. And it
+      // was never needed — the traverse above already starts it a clear 40 units
+      // off the left edge and runs it 20 past the right, so it enters and leaves
+      // the way anything else crossing a room does. The fade only ever made it
+      // materialise partway in, because the scrub can carry it back on screen
+      // while it was still translucent.
       return {
         x, y, groundY, onCeiling: pass.onCeiling,
         draw: (c) => {
           c.save();
-          c.globalAlpha = alpha;
           // Mirrored about its own box so the cord always trails the direction
           // of travel; the ceiling pass adds the vertical flip that turns it
           // over.
@@ -3582,10 +3619,14 @@ export class HubState {
     // Built once and drawn twice: the reflection has to be the SAME pose object,
     // or the mirror would animate a frame of its own.
     const heroPose = this.dive ? null : {
-      // A door walk is walking, whatever the controls say. `moving` reads held
-      // input and a live walk target, and the sequence has neither — so he slid
-      // through the doorway in his idle pose, feet planted.
-      kind: walkState ? 'run' : airborne ? 'jump' : moving ? 'run' : 'idle',
+      // A door walk is walking, whatever the controls say: `moving` reads held
+      // input and a live walk target, and the sequence has neither, so without
+      // this he slid through the doorway in his idle pose with his feet
+      // planted. But only WHILE it is walking him — an arrival that has reached
+      // its mark is standing there waiting for the door to finish shutting, and
+      // holding the run pose froze him mid-stride for that whole beat.
+      kind: walkState ? (walkState.walking ? 'run' : 'idle')
+        : airborne ? 'jump' : moving ? 'run' : 'idle',
       // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
       //
       // Deliberately NOT the rig's reduced-amplitude `walk` cycle, though a
@@ -3814,7 +3855,14 @@ export class HubState {
         const verb = this.near.type === 'exit' ? 'WALK THROUGH TO EXIT'
           : this.near.type === 'shelf' ? 'WALK THROUGH TO ENTER'
             : (touch ? 'TAP TO ENTER' : 'PRESS ENTER');
-        promptText = `${this.near.label} - ${verb}`;
+        // The wink only fits landscape's single wide row. Portrait wraps the
+        // full sentence to two lines, and the second one runs into the
+        // PLUGS/COINS row fixed just below it — drop the parenthetical there
+        // rather than move that row for one label.
+        const label = layout.portrait && this.near.type === 'backroom' ? 'THE BACK ROOM'
+          : layout.portrait && this.near.type === 'overtime' ? 'OVERTIME CABINET'
+            : this.near.label;
+        promptText = `${label} - ${verb}`;
       }
     }
     // Portrait has enough floor below the cast to give the hub's descriptive
@@ -3909,7 +3957,7 @@ export class HubState {
     // that genuinely has nothing to say after you have read it once. It takes
     // the slot above the prompt now that the location name has moved out of it.
     const legendA = this.hasMoved ? fadeOut(this.movedAt, 0.35, 0.5) : fadeOut(this.t, 7, 1);
-    if (legendA > 0 && !Input.isTouchDevice() && !hideHubFooter) {
+    if (this.showMovementLegend && legendA > 0 && !Input.isTouchDevice() && !hideHubFooter) {
       ctx.save();
       ctx.globalAlpha = legendA;
       // The posters earn a clause here rather than a line of their own in
@@ -4104,8 +4152,15 @@ function trophyBoardLayout(layout = trophyPresentation()) {
 
 function trophyPresentation() {
   const portrait = isPhonePortraitPresentation();
-  // Trophy coordinates are already at the Food Court's landscape visual
-  // scale, so portrait magnification is the ratio between the two room zooms.
+  // Trophy coordinates are authored a factor of HUB_ZOOM larger than the Food
+  // Court's, so rendering them at 1 put the room on screen a third bigger than
+  // the concourse — measured on the hero's own silhouette, 1.333x, which is
+  // HUB_ZOOM exactly. The comment that used to sit here claimed the two already
+  // matched; they did not.
+  //
+  // Dividing it back out is the whole fix: one lever, applied to the room
+  // rather than to its several dozen constants, and the hero, the door, the
+  // boards and the floor tiles all come back to the size they are next door.
   const zoom = portrait ? HUB_PORTRAIT_ZOOM / HUB_ZOOM : 1;
   const camY = portrait
     ? TROPHY_FLOOR_Y - (H * PORTRAIT_HUB_FLOOR_RATIO) / zoom
@@ -4172,6 +4227,7 @@ export class TrophyRoomState {
       kind: 'slide', doorX: TROPHY_EXIT_X, type: 'exit', toX: this.px,
       speed: TROPHY_MOVE_SPEED, gaitCycle: TROPHY_PLAYER_H * GAIT_DISTANCE_PER_CYCLE,
     });
+    Audio.sfx('doorOpen');   // see the concourse's copy: the open needs cueing too
     this.player.grounded = true;
   }
 
@@ -4510,7 +4566,12 @@ export class TrophyRoomState {
       drawCeilingLight(ctx, x, layout.portrait ? layout.camY : 0,
         strength * flick, x - camera, layout.viewW);
     });
-    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W);
+    // HUB_ZOOM / layout.zoom, not a constant: this room is authored a factor of
+    // HUB_ZOOM larger than the concourse AND viewed through a correspondingly
+    // smaller camera, so a painter written in the concourse's units needs both
+    // factors to come out the size it does next door. As a ratio it also stays
+    // right in portrait, where this room's zoom is a different number again.
+    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W, 0, HUB_ZOOM / layout.zoom);
   }
 
   draw(ctx) {
@@ -4535,7 +4596,10 @@ export class TrophyRoomState {
       pose.headTurn = 0;
     }
     pose.facing = walkState ? walkState.facing : this.facing;
-    if (walkState) { pose.kind = 'run'; pose.phase = walkState.gait; }
+    if (walkState) {
+      pose.kind = walkState.walking ? 'run' : 'idle';   // see the concourse's copy
+      pose.phase = walkState.gait;
+    }
     const avatarX = Math.round(walkState ? walkState.px : this.px);
     const paintAvatar = (c) => drawToon(c, this.player.heroId, pose,
       avatarX, Math.round(TROPHY_FLOOR_Y - this.player.y), TROPHY_PLAYER_H);
@@ -4600,12 +4664,6 @@ export class TrophyRoomState {
     const headY = TROPHY_FLOOR_Y - this.player.y - toonInkTop(this.player.heroId) * TROPHY_PLAYER_H;
     if (!walkState && !this.departed) drawPlayerMarker(ctx, this.px, headY - MARKER_GAP, MARKER_R);
 
-    // The room is exhibits and a door now — the practice lane, its podium and
-    // its target are gone, and so are the verbs that only they had. What is
-    // left is walking, which touch reads off the arrows and a keyboard reads
-    // off this line.
-    const hint = this.near(TROPHY_EXIT_X, 54) ? 'WALK LEFT: FOOD COURT'
-      : (Input.isTouchDevice() ? null : 'LEFT / RIGHT: WALK');
     ctx.restore();
 
     // Match the food court's persistent bottom status row. Portrait has a deep
@@ -4616,23 +4674,10 @@ export class TrophyRoomState {
     const footerY = layout.portrait ? H - 34 : H - 11;
     const footerText = layout.portrait ? drawTextVector : drawText;
     const footerCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
-    const titleW = textWidth(roomTitle, roomTitleScale, 'bold');
     if (layout.portrait) {
-      // Portrait has no second thing on this row — the hint sits well above it
-      // and the walk arrows hold the corners — so the room name centres like
-      // every other portrait footer row instead of hanging off the left edge.
       footerCentered(ctx, roomTitle, W / 2, footerY, '#f6d33c', roomTitleScale, 'bold');
-      if (hint) {
-        const hintLines = wrapText(hint, W - 32, 1.75, 2, 'bold');
-        hintLines.forEach((line, i) => footerCentered(ctx, line, W / 2,
-          H - 82 + i * 18, '#c8c8d8', 1.75, 'bold'));
-      }
     } else {
       footerText(ctx, roomTitle, 12, footerY, '#f6d33c', roomTitleScale, 'bold');
-      if (hint) {
-        const hintScale = Math.min(0.95, (W - 32 - titleW) / Math.max(1, textWidth(hint, 1, 'bold')));
-        footerText(ctx, hint, W - 8 - textWidth(hint, hintScale, 'bold'), footerY, '#c8c8d8', hintScale, 'bold');
-      }
     }
     this.drawChromeWalkButtons();
   }
@@ -4708,6 +4753,10 @@ function touchListMenu(state, opts) {
 }
 
 function listIndexAt(state, count, y) {
+  if (state.portraitBackIndex != null && state.portraitBackY != null
+    && Math.abs(y - state.portraitBackY) <= (state.portraitBackH || 0) / 2) {
+    return state.portraitBackIndex;
+  }
   const scrollCount = count - (state.fixedLastRow ? 1 : 0);
   const visible = Math.min(scrollCount, state.visibleRows || scrollCount);
   const localI = Math.floor((y - state.listY) / state.rowH);
@@ -4829,6 +4878,17 @@ const PORTRAIT_STAGE_ROW_MIN = 72;
 const PORTRAIT_STAGE_ROW_MAX = 154;
 const PORTRAIT_STAGE_PIP = 22;
 const PORTRAIT_STAGE_FOOTER_LAST_MID_CSS = 38;
+const PORTRAIT_BENCH_SIDE_MARGIN_CSS = 22;
+const PORTRAIT_BENCH_TITLE_TOP_CSS = 34;
+const PORTRAIT_BENCH_COINS_TOP_CSS = 84;
+const PORTRAIT_BENCH_LIST_TOP_CSS = 188;
+const PORTRAIT_BENCH_LIST_BOTTOM_CSS = 278;
+const PORTRAIT_BENCH_ROW_MIN_CSS = 70;
+const PORTRAIT_BENCH_ROW_MAX_CSS = 150;
+const PORTRAIT_BENCH_DOLORES_EDGE_CSS = 110;
+const PORTRAIT_BENCH_BACK_EDGE_CSS = 62;
+const PORTRAIT_BENCH_BACK_H_CSS = 34;
+const PORTRAIT_BENCH_HINT_EDGE_CSS = 24;
 
 export class StageSelectState {
   static portraitMode = 'frame';
@@ -5068,9 +5128,16 @@ export class StageSelectState {
 
     const columnHeaderScale = 1.65;
     const columnHeaderY = textYForMid(this.listY - css(18), columnHeaderScale, 'bold');
-    drawTextCentered(ctx, 'PLUGS', plugX + PORTRAIT_STAGE_PIP / 2,
-      columnHeaderY, '#b0a8bc', columnHeaderScale, 'bold');
-    drawTextCentered(ctx, 'RANK', rankCx, columnHeaderY, '#b0a8bc', columnHeaderScale, 'bold');
+    // The pip stack and rank letter are narrow data columns, but their header
+    // words are wider than that. PLUGS stays put over its pip column; RANK is
+    // the one with room to spare on its right, so it takes all the separation.
+    const plugsHeaderCx = plugX + PORTRAIT_STAGE_PIP / 2;
+    const rankHeaderHalfW = textWidth('RANK', columnHeaderScale, 'bold') / 2;
+    const headerGap = css(20);
+    const rankHeaderCx = Math.min(infoRight - rankHeaderHalfW - css(4),
+      Math.max(rankCx, plugsHeaderCx + textWidth('PLUGS', columnHeaderScale, 'bold') / 2 + headerGap + rankHeaderHalfW));
+    drawTextCentered(ctx, 'PLUGS', plugsHeaderCx, columnHeaderY, '#b0a8bc', columnHeaderScale, 'bold');
+    drawTextCentered(ctx, 'RANK', rankHeaderCx, columnHeaderY, '#b0a8bc', columnHeaderScale, 'bold');
 
     opts.forEach((o, i) => {
       const rowTop = this.listY + i * this.rowH;
@@ -5135,8 +5202,52 @@ export class StageSelectState {
 
 
 export class BenchState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 82; this.listBottom = 202; this.rowH = MENU_ROW_MAX; this.notice = ''; this.soldOutKey = ''; this.soldOutNotice = ''; this.t = 0; this.annoyedT = 0; this.madStyle = 0; this.enterT = 0; }
-  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; fitRows(this, this.options().length); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
+  static portraitMode = 'frame';
+
+  constructor({ save, flow }) {
+    this.save = save;
+    this.flow = flow;
+    this.listY = 82;
+    this.listBottom = 202;
+    this.rowH = MENU_ROW_MAX;
+    this.layoutKey = '';
+    this.notice = '';
+    this.soldOutKey = '';
+    this.soldOutNotice = '';
+    this.t = 0;
+    this.annoyedT = 0;
+    this.madStyle = 0;
+    this.enterT = 0;
+  }
+  syncLayout() {
+    const frame = presentationFrame();
+    const portrait = isPhonePortraitPresentation();
+    const opts = this.options();
+    const key = `${portrait ? 'portrait' : 'landscape'}:${frame.revision}:${opts.length}`;
+    if (key === this.layoutKey) return;
+    if (portrait) {
+      const css = (n) => n / frame.scale;
+      const safe = frame.safeRect;
+      const productCount = opts.filter((o) => !o.back).length;
+      this.listY = safe.top + css(PORTRAIT_BENCH_LIST_TOP_CSS);
+      this.listBottom = safe.bottom - css(PORTRAIT_BENCH_LIST_BOTTOM_CSS);
+      this.rowH = Math.max(css(PORTRAIT_BENCH_ROW_MIN_CSS),
+        Math.min(css(PORTRAIT_BENCH_ROW_MAX_CSS),
+          (this.listBottom - this.listY) / Math.max(1, productCount)));
+      this.portraitBackIndex = opts.length - 1;
+      this.portraitBackY = safe.bottom - css(PORTRAIT_BENCH_BACK_EDGE_CSS);
+      this.portraitBackH = css(PORTRAIT_BENCH_BACK_H_CSS);
+    } else {
+      this.listY = 82;
+      this.listBottom = 202;
+      this.rowH = MENU_ROW_MAX;
+      this.portraitBackIndex = null;
+      this.portraitBackY = null;
+      this.portraitBackH = null;
+    }
+    this.layoutKey = key;
+  }
+  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; this.layoutKey = ''; this.syncLayout(); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
   exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
   options() {
     const slot = this.save.slot;
@@ -5162,6 +5273,7 @@ export class BenchState {
     return opts;
   }
   update(dt) {
+    this.syncLayout();
     this.t += dt;
     this.enterT += dt;
     if (this.annoyedT > 0) this.annoyedT = Math.max(0, this.annoyedT - dt);
@@ -5197,6 +5309,11 @@ export class BenchState {
     Input.endFrame();
   }
   draw(ctx) {
+    this.syncLayout();
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     // Dolores works the counter in person. Standing her on the right — an idle
@@ -5318,6 +5435,143 @@ export class BenchState {
       drawMenuHint(ctx, 'BUY', labelX);
       ctx.restore();
     }
+  }
+
+  drawPortrait(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(PORTRAIT_BENCH_SIDE_MARGIN_CSS);
+    const contentLeft = safe.left + margin;
+    const contentRight = safe.right - margin;
+    const contentWidth = Math.max(css(180), contentRight - contentLeft);
+    const opts = this.options();
+    const slot = this.save.slot;
+    const titleScale = Math.min(4.5, contentWidth / Math.max(1, textWidth("DOLORES' REPAIR COUNTER", 1, 'title')));
+    const coinsText = `COINS: ${formatCoins(slot.coins)}`;
+    const coinsScale = Math.min(2.4, contentWidth / Math.max(1, textWidth(coinsText, 1, 'bold')));
+    const detailScale = 2.25;
+    const rowX = safe.left + css(10);
+    const rowRight = safe.right - css(10);
+    const detailRight = contentRight - css(8);
+    const detailWidth = Math.max(css(150), detailRight - contentLeft);
+    const longestLabel = opts
+      .filter((o) => !o.back)
+      .map((o) => o.u.name)
+      .reduce((longest, label) => textWidth(label, 1, 'bold') > textWidth(longest, 1, 'bold') ? label : longest, '');
+    const priceReserve = textWidth('4,000   TIER 3', detailScale, 'bold') + css(14);
+    const labelScale = Math.min(3.4,
+      (detailRight - contentLeft - priceReserve) / Math.max(1, textWidth(longestLabel, 1, 'bold')));
+
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+
+    // Keep the attendant's entrance and reaction animation identical to the
+    // landscape counter, but give her the quiet lower third of the portrait.
+    const doleCx = Math.min(safe.right - css(82), center + css(92));
+    const doleFeet = safe.bottom - css(PORTRAIT_BENCH_DOLORES_EDGE_CSS);
+    const doleH = Math.min(180, Math.max(150, contentWidth * 0.42));
+    const ENTER_DUR = 3.0;
+    const ent = Math.min(1, this.enterT / ENTER_DUR);
+    const eased = 1 - Math.pow(1 - ent, 1.7);
+    const startX = W + 120;
+    const doleX = Math.round(startX + (doleCx - startX) * eased);
+    const walking = ent < 1;
+    const HIPS_CYCLE = 17.0, HIPS_RISE = 0.6, HIPS_HOLD = 3.0, HIPS_FALL = 0.7;
+    const hp = (this.t + 12.0) % HIPS_CYCLE;
+    let periodicHips = hp < HIPS_RISE ? hp / HIPS_RISE
+      : hp < HIPS_RISE + HIPS_HOLD ? 1
+      : hp < HIPS_RISE + HIPS_HOLD + HIPS_FALL ? 1 - (hp - HIPS_RISE - HIPS_HOLD) / HIPS_FALL
+      : 0;
+    periodicHips = periodicHips * periodicHips * (3 - 2 * periodicHips);
+    let reactHips = 0;
+    if (this.annoyedT > 0) {
+      const e = BENCH_REACT_DUR - this.annoyedT;
+      reactHips = e < 0.2 ? e / 0.2 : this.annoyedT < 0.3 ? this.annoyedT / 0.3 : 1;
+      reactHips = reactHips * reactHips * (3 - 2 * reactHips);
+    }
+    const hipsAmt = Math.max(periodicHips, reactHips);
+    const pose = walking
+      ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: true, hipsAmt, annoyed: reactHips, madStyle: this.madStyle };
+    ctx.fillStyle = 'rgba(4,3,9,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(doleX, doleFeet + 1, doleH * (walking ? 0.16 : 0.2), doleH * 0.055, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawToon(ctx, 'dolores', pose, doleX, doleFeet, doleH);
+
+    drawTextVectorCentered(ctx, "DOLORES' REPAIR COUNTER", center,
+      textYForMid(safe.top + css(PORTRAIT_BENCH_TITLE_TOP_CSS), titleScale, 'title'),
+      '#f6d33c', titleScale, 'title');
+    drawTextVectorCentered(ctx, coinsText, center,
+      textYForMid(safe.top + css(PORTRAIT_BENCH_COINS_TOP_CSS), coinsScale, 'bold'),
+      '#f6d33c', coinsScale, 'bold');
+
+    opts.forEach((o, i) => {
+      const rowTop = this.listY + i * this.rowH;
+      const selected = i === this.idx;
+      if (o.back) {
+        const backY = this.portraitBackY;
+        const backH = this.portraitBackH;
+        if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
+        drawTextVector(ctx, 'BACK', contentLeft,
+          textYForMid(backY, 1.25, 'bold'),
+          selected ? '#f6d33c' : '#c8c8d8', 1.25, 'bold');
+        return;
+      }
+      if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
+      const labelY = textYForMid(rowTop + this.rowH * 0.23, labelScale, 'bold');
+      const c = selected ? '#f6d33c' : '#c8c8d8';
+      drawTextVector(ctx, o.u.name, contentLeft, labelY, c, labelScale, 'bold');
+      const price = o.maxed || o.cost === undefined
+        ? `SOLD OUT   TIER ${o.targetTier}`
+        : `${formatCoins(o.baseCost)}   TIER ${o.targetTier}`;
+      drawTextVector(ctx, price, detailRight - textWidth(price, detailScale, 'bold'), labelY,
+        o.maxed || o.cost === undefined ? '#e04848'
+          : slot.coins >= o.cost ? '#f6d33c' : '#5a5a68', detailScale, 'bold');
+      const current = o.u.currentDesc && o.u.currentDesc[o.lvl - o.baseLevel];
+      const next = !o.maxed && o.u.desc[o.lvl - o.baseLevel];
+      const details = [];
+      if (current) details.push(`CURRENT: ${current}`);
+      if (next) details.push(`NEXT: ${next}`);
+      if (o.maxed) {
+        const soldOutKey = `${o.u.id}:${o.lvl}`;
+        if (this.soldOutKey !== soldOutKey) {
+          this.soldOutKey = soldOutKey;
+          this.soldOutNotice = benchGag(BENCH_SOLD_OUT_NOTICES, { TIER: o.targetTier });
+        }
+        details.push(`NOTICE: ${this.soldOutNotice}`);
+      }
+      const lines = wrapText(details.join('  '), detailWidth, detailScale, 3);
+      const detailStart = lines.length > 2 ? 0.46 : 0.55;
+      const detailGap = lines.length > 2 ? 0.19 : 0.23;
+      lines.slice(0, 3).forEach((line, lineI) => drawTextVector(ctx, line, contentLeft,
+        textYForMid(rowTop + this.rowH * (detailStart + lineI * detailGap), detailScale),
+        selected ? '#c8c8d8' : '#8a8492', detailScale));
+    });
+
+    if (this.notice) {
+      const faceW = 24, faceH = 24, gap = 9, pad = 10, lineH = 25, noticeScale = 1.9;
+      const noticeLines = wrapText(this.notice, contentWidth - faceW - gap - pad * 2, noticeScale, 3);
+      const noticeTextW = Math.max(...noticeLines.map((line) => textWidth(line, noticeScale)));
+      const noticeW = Math.min(contentWidth, pad * 2 + faceW + gap + noticeTextW);
+      const noticeH = Math.max(faceH + pad * 2, noticeLines.length * lineH + pad * 2);
+      const noticeX = center - noticeW / 2;
+      const noticeY = safe.top + css(112);
+      drawPanel(ctx, noticeX, noticeY, noticeW, noticeH, 5, undefined,
+        { border: 'rgba(246,211,60,0.35)', shadow: true });
+      const face = toonFaceSprite('dolores', faceW, faceH);
+      if (face) ctx.drawImage(face, noticeX + pad, noticeY + Math.round((noticeH - faceH) / 2), faceW, faceH);
+      const textTop = noticeY + Math.round((noticeH - noticeLines.length * lineH) / 2) + 2;
+      noticeLines.forEach((line, lineIndex) => drawTextVector(ctx, line,
+        noticeX + pad + faceW + gap, textTop + lineIndex * lineH, '#f6d33c', noticeScale));
+    }
+
+    const hint = Input.isTouchDevice() ? 'TAP SELECT   TAP AGAIN BUY' : 'UP / DOWN: SELECT   ENTER: BUY';
+    drawTextVectorCentered(ctx, hint, center,
+      textYForMid(safe.bottom - css(PORTRAIT_BENCH_HINT_EDGE_CSS), 1.45, 'bold'),
+      '#8a8492', 1.45, 'bold');
   }
 }
 

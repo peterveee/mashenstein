@@ -8,7 +8,8 @@ const { setState, updateState } = await import('../src/engine/states.js');
 const { RunState, FINISH_CLEAR, PIT_SURFACE_Y } = await import('../src/game/run.js');
 const { BossState } = await import('../src/game/boss.js');
 const { MinigameState } = await import('../src/game/minigames/index.js');
-const { HubState } = await import('../src/game/hub/index.js');
+const { HubState, queueCabinetDiveOut } = await import('../src/game/hub/index.js');
+const { OVERTIME_PALETTE, deadScreenArt, drawDeadScreen } = await import('../src/sprites/arcade.js');
 const { TitleState, SettingsState } = await import('../src/game/menus.js');
 const { makeObstacle, makePickup, PICKUPS } = await import('../src/game/entities.js');
 const { Spawner, DripSpawner } = await import('../src/game/spawner.js');
@@ -527,6 +528,8 @@ const oldHub = new HubState({ save, flow: hubFlow });
 oldHub.px = 438; oldHub.facing = -1; oldHub.exit();
 const returnedHub = new HubState({ save, flow: hubFlow }); returnedHub.enter();
 assert(returnedHub.px === 438 && returnedHub.facing === -1, 'food-court position and facing survive a state round trip');
+assert(returnedHub.showMovementLegend === false,
+  'returning to the food court does not replay the movement legend');
 assert(Input.context === 'hub' && Input.actionForKey('Space') === 'jump',
   'Space maps to jump in the food court');
 assert(Input.actionForKey('ArrowUp') === 'up' && Input.actionForKey('ArrowDown') === 'down',
@@ -686,6 +689,8 @@ const walkExitHub = new HubState({
   flow: { hubPosition: null, toTitle: () => { foodCourtWalkExits++; } },
 });
 walkExitHub.enter();
+assert(walkExitHub.showMovementLegend === true,
+  'a fresh left-side food-court entry shows the movement legend once');
 walkExitHub.px = 24;
 Input.press('left'); walkExitHub.update(0.1); Input.release('left'); Input.endFrame();
 // Staged, not cut: he walks through the door before the flow call fires, so the
@@ -750,6 +755,56 @@ const overtimeHomes = overtimeHub.npcHomes();
 assert(overtimeHomes.every((x) => x >= 90 && x <= overtimeHub.npcFarX() && overtimeHub.canLoiter(x)),
   'expanded food-court NPC homes follow the longer concourse and remain on free floor');
 overtimeHub.exit();
+
+const overtimeStaticCtx = document.createElement('canvas').getContext('2d');
+const overtimeStaticLevels = [0, 1, 10].map((t) => drawDeadScreen(
+  overtimeStaticCtx, 0, 0, 48, 72, t, OVERTIME_PALETTE.seed, undefined, OVERTIME_PALETTE.screenStatic,
+));
+assert(overtimeStaticLevels.every((level) => level === OVERTIME_PALETTE.screenStatic),
+  'the OVERTIME cabinet screen stays continuously static');
+
+const overtimeInsideStaticBands = [0, 1, 10].map((t) => {
+  const bands = [];
+  deadScreenArt(t, OVERTIME_PALETTE.seed, OVERTIME_PALETTE.screenStatic)({
+    globalAlpha: 1,
+    fillStyle: '',
+    save() {}, restore() {},
+    fillRect(x, y, w, h) { if (this.fillStyle !== '#e8f0ff') bands.push([x, y, w, h]); },
+  }, 48, 72);
+  return bands.length;
+});
+assert(overtimeInsideStaticBands.every((count) => count === 5),
+  'the OVERTIME dive keeps moving static behind the player');
+
+let overtimeStarts = 0;
+let overtimeReturnCab = null;
+const overtimeDiveHub = new HubState({
+  save: { slot: overtimeSlot },
+  flow: {
+    hubPosition: null,
+    startOvertime: (...args) => { overtimeStarts++; overtimeReturnCab = args[6]; },
+  },
+});
+overtimeDiveHub.enter();
+const overtimeDiveStation = overtimeDiveHub.stations().find((s) => s.type === 'overtime');
+overtimeDiveHub.doorWalk = null;
+Input.clearAll();
+overtimeDiveHub.interact(overtimeDiveStation);
+assert(overtimeDiveHub.dive?.dir === 'in' && overtimeDiveHub.dive?.cab.id === 'overtime',
+  'using the OVERTIME cabinet starts the dive in');
+for (let i = 0; i < 180 && overtimeStarts === 0; i++) overtimeDiveHub.update(1 / 60);
+assert(overtimeStarts === 1 && overtimeReturnCab === 'overtime',
+  'the OVERTIME dive starts the run with a return source');
+overtimeDiveHub.exit();
+
+Input.clearAll();
+queueCabinetDiveOut('overtime', false);
+const overtimeReturnHub = new HubState({ save: { slot: overtimeSlot }, flow: { hubPosition: null } });
+overtimeReturnHub.enter();
+overtimeReturnHub.update(1 / 60);
+assert(overtimeReturnHub.dive?.dir === 'out' && overtimeReturnHub.dive?.cab.id === 'overtime',
+  'an OVERTIME result starts the dive out at the OVERTIME cabinet');
+overtimeReturnHub.exit();
 
 run = makeRun(); run.enter();
 run.relay.current = 'lorenzo'; run.player.setHero('lorenzo');

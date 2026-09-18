@@ -16,6 +16,7 @@
     "levels": "node tools/level-editor.js",
     "characters": "node tools/character-editor.js",
     "gallery": "node tools/build-gallery.js",
+    "gallery:screens": "node tools/build-screens-gallery.js",
     "site": "node tools/build-site.js",
     "visualiser": "node tools/build-visualiser.js",
     "archive": "node tools/archive-release.js",

@@ -353,7 +353,7 @@ const Flow = {
   // celebration, so neither shutter on the way out needs a hero in it.
   // `fromCab` is the cabinet the player is coming back OUT of, and it is only ever
   // passed by the paths that actually went into one: finishing or failing a stage,
-  // and finishing a boss. Backing out of stage select, the bench, the shop, the
+  // a boss, or cabinet-launched OVERTIME. Backing out of stage select, the bench, the shop, the
   // arcade and the trophy room all return with nothing, because none of them put
   // the hero inside a machine and climbing out of one would be a lie.
   // `won` is how the attempt went, and it decides one thing: whether he lands out
@@ -513,7 +513,7 @@ const Flow = {
     setState(new FinaleState({ save, onDone: () => Flow.toHub() }));
   },
 
-  startOvertime(seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
+  startOvertime(seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, fromCab = null) {
     // The exit cue is an offline render; pay for it now, not when the level ends.
     Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
     setState(new RunState({
@@ -536,7 +536,7 @@ const Flow = {
         Flow.lastTeam = result.team;
         Flow.setHero(result.finalHero);
         const gains = applyResult(save, result);
-        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false) }));
+        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false, fromCab, !!result.success) }));
       },
     }));
   },

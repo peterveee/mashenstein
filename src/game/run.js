@@ -13975,7 +13975,7 @@ export class RunState {
     if (ob.shotGagAt != null && this.tRun - ob.shotGagAt <= ANIMAL_GAG_GAP) return;
     ob.shotGagAt = this.tRun;
     this.floatText(this.fxRng.pick(animalShotLines(ob.type)), '#e8c49a',
-      { keep: true, hold: ANIMAL_GAG_HOLD, wx: this.playerWorldX() });
+      { keep: true, hold: ANIMAL_GAG_HOLD, wx: ob.type === 'finishDog' ? this.playerWorldX() : null });
   }
 
   // THE POPUP STACK'S CLOCK, in one place because three loops were running it.

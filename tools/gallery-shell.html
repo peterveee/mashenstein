@@ -110,6 +110,12 @@
   <div class="pages">
     <a id="page-main" href="gallery.html">Asset gallery</a>
     <a id="page-lab" href="gallery-lab.html">Lab &amp; bake-offs</a>
+    <!-- Not part of this bundle -- a sibling tool (build-screens-gallery.js)
+         screenshots the real running game instead of isolated drawables, and
+         writes straight to galleries/screens.html rather than dist/. The
+         relative path resolves correctly both here (dist/) and once archived
+         (galleries/<date>-<sha>.html), one level up either way. -->
+    <a id="page-screens" href="../galleries/screens.html">Screen gallery</a>
   </div>
   <div class="controls">
     <label>screen scale

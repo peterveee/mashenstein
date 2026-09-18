@@ -72,7 +72,7 @@ export function defaultSlot() {
     mods: { found: [], equipped: [], slots: 2 },
     tutor: {},        // one-time teaching prompts already shown
     hub: { roomsOpen: 1, manualsFound: [], npcSeen: {} },
-    overtime: { best: 0, bestRelay: 0, seedBests: {} },
+    overtime: { best: 0, bestRelay: 0, bestTime: 0, seedBests: {} },
     stats: {
       runs: 0, tags: 0, perfectTags: 0, deaths: 0, coinsEarned: 0,
       distanceTraveled: 0, powerupsCollected: 0, appliancesFound: 0,

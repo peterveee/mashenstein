@@ -61,7 +61,7 @@ import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 // arrangement — see bpmOf.
 import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
-import { totalPlugs, MAX_PLUGS, formatCoins, nextStage, stageUnlocked } from './progress.js';
+import { totalPlugs, MAX_PLUGS, formatCoins, formatRunTime, nextStage, stageUnlocked } from './progress.js';
 import {
   portraitMenuActive, portraitMenuScale, portraitMenuText, portraitMenuTextCentered,
   portraitMenuTextY, portraitMenuFit, portraitMenuWrap,
@@ -2665,7 +2665,11 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     d.restore();
   }
   choices.forEach((choice, i) => {
-    const selected = i === idx;
+    // Touch activates a row on the same tap that would otherwise just move
+    // this cursor (updateExtras/updateErase), so idx sits on row 0 before
+    // anything has been chosen. Keyboard/controller get to see it as a
+    // resting cursor; touch doesn't, same gate as the title cards.
+    const selected = i === idx && !titleTouch();
     const rowTop = g.firstY + i * g.rowH + (g.cancelGap && i === choices.length - 1 ? g.cancelGap : 0);
     const labelSize = fullPortrait
       ? portraitMenuFit(choice.label, modalTextS, W - 56, selected ? 'bold' : 'ui')
@@ -3439,6 +3443,9 @@ const RESULT_HERO_H = 32;
 // rig lifts a hero by up to ~0.2h off its feet, so the clearance above has to
 // survive that too.
 const RESULT_HERO_H_MIN = 18;
+// An overtime curtain call caps at this many heroes regardless of how long the
+// baton has been running — see ResultsState.celebrateTeam.
+const RESULT_CELEBRATE_MAX = 4;
 // The prompt's ink sits on this line at every size, so growing it for a thumb
 // moves its edges, never its middle.
 const RESULT_FOOTER_MID = H - 27;
@@ -3747,6 +3754,23 @@ export class ResultsState {
   // again — with TRY AGAIN sitting under the cursor — argues with the thing they
   // already decided.
   get retryable() { return !!this.onRetry && !this.result.success && this.result.reason !== 'QUIT'; }
+  // Overtime never sets result.success — it only ever ends in a death — so a
+  // beaten time record is the one way a loss screen still gets the party. Gated
+  // on newBestTime, which applyResult only sets for an on-record run: the back
+  // room's seed is a fresh roll every entry, the same reason it never writes
+  // slot.overtime.bestTime, so it never earns the curtain call either.
+  get celebrating() { return this.result.success || (this.result.overtime && this.result.newBestTime); }
+  // Who takes the bow. A real clear's team is a handful of relay tags at most,
+  // so it prints whole. An overtime run can drag the same baton through the
+  // entire cast before it ends, and nobody needs to watch all eight line up —
+  // just whoever was actually running it home.
+  get celebrateTeam() {
+    const r = this.result;
+    if (!r.team || !r.team.length) return [];
+    if (r.success) return r.team;
+    if (this.celebrating) return r.team.slice(-RESULT_CELEBRATE_MAX);
+    return [];
+  }
   enter() {
     this.t = 0; this.shown = 0; this.idx = 0;
     this.shells = [];       // rising mortars; they burst at the top of their arc
@@ -3755,12 +3779,13 @@ export class ResultsState {
     this.lastBurst = null;
     clearParticles();
     Input.setMenuButtons();
-    Audio.sfx(this.result.success ? 'win' : 'lose');
+    Audio.sfx(this.celebrating ? 'win' : 'lose');
   }
   // Fireworks over the celebration row, plus streamers tumbling down the
-  // frame. Losses get neither — a quiet screen is part of the joke.
+  // frame. Losses get neither — a quiet screen is part of the joke — unless
+  // the loss just beat the overtime clock, which earns the same party a clear does.
   updateParty(dt) {
-    if (!this.result.success) return;
+    if (!this.celebrating) return;
     const portrait = isPhonePortraitPresentation();
     const portraitTube = portrait ? portraitResultTubeBox() : null;
     const portraitFrame = portrait ? presentationFrame() : null;
@@ -3868,6 +3893,8 @@ export class ResultsState {
     const rows = [];
     const line = (t, c) => { if (String(t).trim()) rows.push([t, c || '#c8c8d8']); };
     line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
+    if (r.overtime) line(`TIME SURVIVED: ${formatRunTime(r.time)}`, '#48e0c8');
+    if (r.newBestTime) line(`NEW RECORD! PREVIOUS: ${formatRunTime(r.prevBestTime)}`, '#f6d33c');
     if (r.newBestScore) line(r.success ? 'NEW BEST SCORE ON THIS STAGE!' : 'STILL A NEW BEST SCORE ON THIS STAGE.', r.success ? '#f6d33c' : '#8a8a98');
     if (r.stage) {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
@@ -3950,7 +3977,8 @@ export class ResultsState {
     let y = RESULT_BODY_TOP;
     for (const [t, c] of rows) { drawTextCentered(ctx, t, W / 2, y, c, bodyS); y += RESULT_ROW_H * bodyS; }
 
-    if (r.success && r.team && r.team.length) {
+    const team = this.celebrateTeam;
+    if (team.length) {
       // The curtain call stands on a fixed floor and takes whatever height the
       // ledger left it, down to a floor of its own: it is the flourish, and the
       // rows above it and the prompt below it are the content. Shrinking beats
@@ -3961,9 +3989,9 @@ export class ResultsState {
       // Only one hero is ever inside a level at a time, but the cast all exist
       // together OUTSIDE the cabinets (the food court, the hub), so a curtain
       // call after the stage clears is the one moment they can share a frame.
-      r.team.forEach((id, i) => drawToon(ctx, id,
+      team.forEach((id, i) => drawToon(ctx, id,
         { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
-        W / 2 + (i - (r.team.length - 1) / 2) * heroH * 1.5, heroFeet, heroH));
+        W / 2 + (i - (team.length - 1) / 2) * heroH * 1.5, heroFeet, heroH));
     }
     if (this.retryable) {
       // Retry sits first and starts selected: it is what the player came to this
@@ -4012,12 +4040,14 @@ export class ResultsState {
 
   drawPortrait(ctx) {
     const r = this.result;
-    if (r.success && r.team?.length) {
+    // The tube is the curtain call, so anything with heroes to frame gets it —
+    // a real clear, or an overtime death that just beat the clock.
+    if (this.celebrateTeam.length) {
       this.drawPortraitSuccess(ctx);
       return;
     }
     // Keep the loss/retry card's existing two-button contract. The portrait
-    // CRT is the success curtain call, where it has a team to frame.
+    // CRT is the curtain call, where it has a team to frame.
     if (!r.success) this.drawPortraitFailure(ctx);
     else this.drawPortraitLegacy(ctx);
   }
@@ -4028,7 +4058,10 @@ export class ResultsState {
     const css = (n) => n / frame.scale;
     const r = this.result;
     const rows = this.ledgerRows();
-    const title = r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE';
+    // This tube also frames an overtime death that beat the clock, which
+    // never sets result.success — the headline still has to tell that apart
+    // from a real clear.
+    const title = r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED');
     const center = (safe.left + safe.right) / 2;
     const margin = css(18);
     const textWidthLimit = Math.max(css(210), safe.width - margin * 2);
@@ -4098,7 +4131,7 @@ export class ResultsState {
     ctx.fillStyle = '#07070c';
     ctx.fillRect(0, 0, W, H);
     let y = bodyTop;
-    drawTextCentered(ctx, title, center, y, '#48c848', titleS, 'title');
+    drawTextCentered(ctx, title, center, y, r.success ? '#48c848' : '#ff6b6b', titleS, 'title');
     y += 11.5 * titleS + titleGap;
     if (textLayout.detailLines.length) {
       textLayout.detailLines.forEach((line, i) => {
@@ -4123,7 +4156,8 @@ export class ResultsState {
     const heroFeet = inner.y + inner.h - css(18);
     const heroRoom = Math.max(css(50), heroFeet - inner.y - css(18));
     const pitchK = 1.15;
-    const widthK = r.team.length === 1 ? 1.05 : (r.team.length - 1) * pitchK + 1.05;
+    const team = this.celebrateTeam;
+    const widthK = team.length === 1 ? 1.05 : (team.length - 1) * pitchK + 1.05;
     const heroH = Math.min(heroRoom * 0.88,
       (inner.w - css(24)) / Math.max(1, widthK));
     // The landscape curtain call lets confetti spill over the glass, but the
@@ -4133,9 +4167,9 @@ export class ResultsState {
     ctx.save();
     portraitResultTubePath(ctx, inner);
     ctx.clip();
-    r.team.forEach((id, i) => drawToon(ctx, id,
+    team.forEach((id, i) => drawToon(ctx, id,
       { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
-      center + (i - (r.team.length - 1) / 2) * heroH * pitchK,
+      center + (i - (team.length - 1) / 2) * heroH * pitchK,
       heroFeet, heroH));
     ctx.restore();
 

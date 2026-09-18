@@ -20,6 +20,18 @@ export function formatPlaytime(sec) {
   return `${h}:${String(m).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
 }
 
+// M:SS.mmm for a single run's clock — overtime has no hour to spare, unlike
+// the cumulative slot.playtimeSec formatPlaytime reads. Millisecond precision
+// because tRun is an accumulated float, not a once-a-second tick, and a
+// beaten record is exactly the moment that resolution is worth showing.
+export function formatRunTime(sec) {
+  const totalMs = Math.max(0, Math.round((sec || 0) * 1000));
+  const m = Math.floor(totalMs / 60000);
+  const s = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return `${m}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+}
+
 // [heroId, deathCount] for whoever has died the most, or null with no deaths yet.
 export function clumsiestHero(slot) {
   const entries = Object.entries(slot.stats.deathsByHero || {});
@@ -116,6 +128,9 @@ export function applyResult(save, result) {
     if (!result.offRecord) {
       slot.overtime.best = Math.max(slot.overtime.best, result.score);
       slot.overtime.bestRelay = Math.max(slot.overtime.bestRelay, result.bestCombo);
+      result.newBestTime = (result.time || 0) > slot.overtime.bestTime;
+      result.prevBestTime = slot.overtime.bestTime;
+      slot.overtime.bestTime = Math.max(slot.overtime.bestTime, result.time || 0);
     }
     gains.coins += Math.floor(result.score / 100);
   } else if (result.stage) {

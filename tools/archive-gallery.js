@@ -164,6 +164,11 @@ const md = [
   'seven days, so an iteration in flight keeps all of its steps while older',
   'history thins to one a week. Do not edit by hand.',
   '',
+  'For the actual running game instead of isolated drawables, see',
+  '[screens.html](screens.html) -- every UI screen and cabinet, portrait and',
+  'landscape side by side. It is a live snapshot, regenerated on demand with',
+  '`npm run gallery:screens`, not one entry per commit.',
+  '',
   '| Date | Commit | Gallery | Lab | Change |',
   '| --- | --- | --- | --- | --- |',
   ...rows.map((r) => `| ${r.date} | \`${r.commit}\` | [${r.file}](${r.file}) | `

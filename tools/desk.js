@@ -20,8 +20,8 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -64,6 +64,38 @@ const TOOLS = [
   },
 ];
 const TOOL_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
+
+// Galleries are not servers -- they are a script that runs once, writes into
+// galleries/, and exits. So they get a different shape than TOOLS: no port,
+// no live/dead, just RUN and a log. `needsTool` is started first (and waited
+// on) when it is not already up, the way THE GAME has to be for a screenshot.
+const ACTIONS = [
+  {
+    id: 'screens', label: 'REFRESH SCREEN GALLERY',
+    blurb: 'drives the real game and screenshots every UI screen and cabinet, landscape + portrait, into galleries/screens.html.',
+    needsTool: 'game',
+    steps: [['node', ['tools/build-screens-gallery.js']]],
+    openPath: () => (existsSync(join(root, 'galleries/screens.html')) ? '/galleries/screens.html' : null),
+  },
+  {
+    id: 'assetgallery', label: 'REFRESH ASSET GALLERY',
+    blurb: 'renders every drawable (backgrounds, heroes, props, cabinets…) via the real draw functions, then archives a dated snapshot into galleries/ and rewrites the index.',
+    steps: [['node', ['tools/build-gallery.js']], ['node', ['tools/archive-gallery.js']]],
+    openPath: () => latestAssetGalleryHref(),
+  },
+];
+const ACTION_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
+
+// The index is rebuilt from disk on every archive run (see archive-gallery.js),
+// so the newest asset gallery is always its last row -- no separate bookkeeping.
+function latestAssetGalleryHref() {
+  const indexPath = join(root, 'galleries/index.md');
+  if (!existsSync(indexPath)) return null;
+  const rows = readFileSync(indexPath, 'utf8').split('\n').filter((l) => /^\| \d{4}-\d{2}-\d{2}/.test(l));
+  const last = rows[rows.length - 1];
+  const m = last && last.match(/\[([^\]]+\.html)\]\(([^)]+)\)/);
+  return m ? `/galleries/${m[2]}` : null;
+}
 
 // --------------------------------------------------------------- children ----
 
@@ -157,6 +189,79 @@ async function waitLive(tool, ms = 30000) {
   return false;
 }
 
+// ------------------------------------------------------------------ actions --
+
+// One run at a time per action, remembered after it exits so a finished RUN
+// reads as done/failed rather than snapping back to idle.
+const runs = new Map(); // id -> { running, code, log }
+
+function runLog(state) {
+  return (buf) => {
+    for (const line of String(buf).split('\n')) if (line.trim()) state.log.push(line);
+    while (state.log.length > LOG_KEEP) state.log.shift();
+  };
+}
+
+async function runAction(action) {
+  const existing = runs.get(action.id);
+  if (existing?.running) return existing;
+  const state = existing ?? { running: false, code: null, log: [] };
+  state.running = true;
+  state.code = null;
+  state.log = [];
+  state.keep = runLog(state);
+  runs.set(action.id, state);
+  console.log(`  running ${action.id}`);
+  (async () => {
+    if (action.needsTool) {
+      const tool = TOOL_BY_ID[action.needsTool];
+      if (!(await probe(tool.port))) {
+        state.keep(`— ${tool.label} is not up, starting it first —`);
+        start(tool);
+        if (!(await waitLive(tool))) {
+          state.keep(`— ${tool.label} did not come up on ${tool.port} —`);
+          state.code = 1;
+          state.running = false;
+          return;
+        }
+      }
+    }
+    for (const [cmd, args] of action.steps) {
+      state.keep(`$ ${cmd} ${args.join(' ')}`);
+      const code = await new Promise((res) => {
+        const child = spawn(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.on('data', state.keep);
+        child.stderr.on('data', state.keep);
+        child.on('exit', (c) => res(c ?? 1));
+        child.on('error', (err) => { state.keep(`— could not start: ${err.message} —`); res(1); });
+      });
+      if (code !== 0) {
+        state.keep(`— exited ${code} —`);
+        state.code = code;
+        state.running = false;
+        return;
+      }
+    }
+    state.code = 0;
+    state.running = false;
+    console.log(`  ${action.id} done`);
+  })();
+  return state;
+}
+
+function actionStatus(action) {
+  const state = runs.get(action.id);
+  return {
+    id: action.id,
+    label: action.label,
+    blurb: action.blurb,
+    running: !!state?.running,
+    code: state?.code ?? null,
+    log: state?.log.slice(-8) ?? [],
+    openPath: action.openPath(),
+  };
+}
+
 // ------------------------------------------------------------------ serve ----
 
 const json = (res, code, body) => {
@@ -183,7 +288,37 @@ async function handle(req, res) {
   }
 
   if (url.pathname === '/api/status') {
-    return json(res, 200, { tools: await Promise.all(TOOLS.map(statusOf)) });
+    return json(res, 200, {
+      tools: await Promise.all(TOOLS.map(statusOf)),
+      actions: ACTIONS.map(actionStatus),
+    });
+  }
+
+  if (url.pathname.startsWith('/galleries/') && req.method === 'GET') {
+    // Serves the tracked galleries/ directory only -- resolve and check the
+    // result still starts with that directory before ever touching disk, so
+    // a `..` in the URL cannot walk this out into the rest of the repo.
+    const safeRoot = join(root, 'galleries') + sep;
+    const filePath = resolve(root, `.${url.pathname}`);
+    if (!filePath.startsWith(safeRoot)) { res.writeHead(403); return res.end('forbidden'); }
+    try {
+      const buf = readFileSync(filePath);
+      const type = filePath.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+      res.writeHead(200, { 'Content-Type': type });
+      return res.end(buf);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('not found');
+    }
+  }
+
+  const run = /^\/api\/run\/([a-z]+)$/.exec(url.pathname);
+  if (run && req.method === 'POST') {
+    const action = ACTION_BY_ID[run[1]];
+    if (!action) return json(res, 404, { ok: false, error: 'no such action' });
+    const alreadyRunning = !!runs.get(action.id)?.running;
+    runAction(action); // fire-and-forget; /api/status polls its progress
+    return json(res, 200, { ok: true, alreadyRunning });
   }
 
   const act = /^\/api\/(start|stop)\/([a-z]+)$/.exec(url.pathname);
