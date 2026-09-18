@@ -45,6 +45,12 @@ const GUIDE_ICON_SIZES = {
   bananaPeel: [10, 6],
   dogBruiser: [17, 12], dogSnarler: [19, 13], dogFeral: [20, 16], catFury: [14, 12],
   finishSnarler: [26, 18], dogSign: [17, 18],
+  // The four that spent a while in the lane before they were in the guide.
+  // Same rule as the standing hazards above: def box, height times PROP_TALL.
+  // The spring is the exception to "box times PROP_TALL": 2.5 over a 16x6 box
+  // is a 15px column, and a 15px column in an 18px row lands on the two rows
+  // under it. The guide wants the shape, not the stature.
+  bearTrap: [16, 11], boomBarrier: [16, 9], trafficCone: [10, 13], springPad: [14, 9],
 };
 import {
   DIFFICULTIES, INTRO_BEATS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
@@ -5091,9 +5097,11 @@ const GUIDE_PAGES = [
       { s: 'crate', name: 'CRATE', desc: 'WOOD. SOMETIMES STACKED. JUMP OR SMASH IT.' },
       { s: '_pipe', name: 'HYDRAULIC BOLLARD', desc: 'SEALED. UNBREAKABLE. JUMP IT.' },
       { s: 'barrel', name: 'BARREL', desc: 'ROLLS AT YOU. JUMP IT.' },
-      { s: 'chair', name: 'OFFICE CHAIR', desc: 'ALSO ROLLS AT YOU. FASTER. JUMP IT.' },
+      // Not "faster": the chair rolls at -34 and the barrel at -40 (OBSTACLES).
+      // It is the SMALLER one, which is the read that actually distinguishes
+      // them at a glance and the one the line now makes.
+      { s: 'chair', name: 'OFFICE CHAIR', desc: 'ALSO ROLLS AT YOU. SMALLER, A TOUCH SLOWER. JUMP IT.' },
       { s: '_gap', name: 'PIT', desc: 'A HOLE WHERE FLOOR SHOULD BE. JUMP IT.' },
-      { s: 'tombstone', name: 'TOMBSTONE', desc: 'JUMP IT. RESPECTFULLY.' },
       { s: 'zombieWalk', name: 'ZOMBIE', desc: 'SHAMBLES TOWARD YOU. JUMP IT.' },
       // The one hazard in the game whose ONLY answer is the jump: nothing
       // breaks it, a boot meets the floor, and sliding into it still slips.
@@ -5105,6 +5113,16 @@ const GUIDE_PAGES = [
     rows: [
       { s: 'popSpikes', name: 'SPIKE PLATE', desc: 'IN THE FLOOR. JUMP IT. NOTHING BREAKS IT.' },
       { s: 'floorSaw', name: 'FLOOR SAW', desc: 'ALSO IN THE FLOOR. ALSO UNBREAKABLE. JUMP IT.' },
+      // Disarmable, not breakable (OBSTACLES.bearTrap): a shot springs it and
+      // it stays on the road, shut and harmless — which is the fact the line
+      // has to carry, because "shoot it" everywhere else means "destroy it".
+      { s: 'bearTrap', name: 'BEAR TRAP', desc: 'JUMP IT, OR SHOOT IT SHUT. IT STAYS EITHER WAY.' },
+      { s: 'trafficCone', name: 'TRAFFIC CONE', desc: 'JUMP IT, OR SLIDE AND KICK IT AWAY.' },
+      { s: 'boomBarrier', name: 'RAZOR HURDLE', desc: 'A LOW BAR. SHOTS SPARK OFF IT. JUMP IT.' },
+      // Moved off the ground-floor page, which had eleven rows and was drawing
+      // the last of them into the footer — the very crowding the split above
+      // was made to fix. A tombstone does not move; this is its page.
+      { s: 'tombstone', name: 'TOMBSTONE', desc: 'JUMP IT. RESPECTFULLY.' },
       { s: 'campfire', name: 'CAMPFIRE', desc: 'IT JUST SITS THERE BURNING. JUMP IT.' },
       { s: 'fireBarrel', name: 'BURNING BARREL', desc: 'STANDS STILL. SHOOT IT OR JUMP IT. NO KICKING.' },
       { s: 'brazier', name: 'BRAZIER', desc: 'LIGHTS THE CRYPT. SHOOT IT OR JUMP IT. NO KICKING.' },
@@ -5129,7 +5147,9 @@ const GUIDE_PAGES = [
   {
     title: 'HAZARDS: AIRBORNE + WEIRD', color: '#e04848', hint: 'RED = AVOID. SLIDE UNDER OR DODGE THESE.',
     rows: [
-      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. SLIDE; FERNWICK CAN SHIELD-ROLL.' },
+      // No shield roll: Fernwick's was replaced by the LONGBOW on 6 Sep 2026
+      // (data/heroes.js). The slide is the answer for the whole cast.
+      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. SLIDE UNDER IT.' },
       { s: 'drone', name: 'SHOOTER DRONE', desc: 'STAYS HIGH. DODGE ITS SHOTS INSTEAD.' },
       { s: '_shot', name: 'ENEMY SHOT', desc: 'RED MEANS DODGE. YELLOW MEANS ABOUT TO FIRE.' },
       { s: 'buzzbird', name: 'BUZZBIRD', desc: 'MID-AIR MENACE. DO NOT JUMP INTO IT.' },
@@ -5144,12 +5164,13 @@ const GUIDE_PAGES = [
     rows: [
       { s: '_qcrate', name: '!-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
       { s: 'target', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
-      { s: 'cardBox', name: 'CARD BOX', desc: 'RHYTHM STAGES. SHOOT ON THE BEAT; IT OPENS ON THE NEXT ONE.' },
+      { s: 'cardBox', name: 'CARD BOX', desc: 'RHYTHM STAGES. SHOOT ON THE BEAT. OPENS ON THE NEXT.' },
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
-      { s: 'switch', name: 'POWER BLOCK', desc: 'HOP INTO IT (OR SHOOT IT). A BRIDGE IS LAID OVER THE PIT BEHIND IT.' },
+      { s: 'switch', name: 'POWER BLOCK', desc: 'HOP INTO IT, OR SHOOT IT. BRIDGES THE PIT BEHIND IT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
+      { s: 'springPad', name: 'SPRING PAD', desc: 'RUN OVER IT. IT THROWS YOU UP TO THE FLOOR ABOVE.' },
       { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.' },
-      { s: 'eggshellCopter', name: 'CLOWN-COPTER', desc: 'FLIES AHEAD. WHEN IT DROPS IN, JUMP AND BONK IT. HIT MISSIONS.' },
+      { s: 'eggshellCopter', name: 'CLOWN-COPTER', desc: 'FLIES AHEAD. WHEN IT DROPS IN, JUMP AND BONK IT.' },
     ],
   },
   // All eight capsules live on one page. They come from the same drip table and
@@ -5232,7 +5253,9 @@ export class FieldGuideState {
       return;
     }
     if (key === '_portal') {
-      const h = 22, pw = portalArtWidth(h);
+      // 16, down from 22. A 22px column in an 18px row hung over the two rows
+      // under it, and this page gained a row when the spring pad joined it.
+      const h = 16, pw = portalArtWidth(h);
       const f = Math.floor(this.t * propFps(PORTAL_SPRITE)) % propFrames(PORTAL_SPRITE);
       drawProp(ctx, PORTAL_SPRITE, cx - pw / 2, top(h), pw, h, f);
       return;
@@ -5266,11 +5289,17 @@ export class FieldGuideState {
     drawTextCentered(ctx, p.title, W / 2, 36, p.color, 1);
     drawTextCentered(ctx, p.hint, W / 2, 48, '#5a5a68');
     const rh = p.rows.length > 9 ? 18 : p.rows.length > 8 ? 20 : 22; // long pages tighten up a touch
+    // Both text columns are fitted to the room they have: a description long
+    // enough to overrun used to be drawn straight off the right-hand edge.
+    const NAME_X = 70;
+    const DESC_X = 190;
     p.rows.forEach((r, i) => {
       const y = 62 + i * rh;
       this.drawIcon(ctx, r.s, 44, y + 9);
-      drawText(ctx, r.name, 70, y + 6, p.color);
-      drawText(ctx, r.desc, 190, y + 6, '#c8c8d8');
+      const nameFit = Math.min(1, (DESC_X - NAME_X - 8) / Math.max(1, textWidth(r.name, 1)));
+      drawText(ctx, r.name, NAME_X, y + 6, p.color, nameFit);
+      const descFit = Math.min(1, (W - DESC_X - 10) / Math.max(1, textWidth(r.desc, 1)));
+      drawText(ctx, r.desc, DESC_X, y + 6, '#c8c8d8', descFit);
     });
     // Touch pages by tapping the left/right thirds of the screen (see update());
     // the arrow-key hint means nothing there, so it's swapped for the gesture,
@@ -6038,6 +6067,29 @@ export class SoundTestState {
   }
 }
 
+// THE CONTROL ROWS, written once. They were written twice — landscape and
+// portrait each carried their own copy of the same strings — and the touch half
+// of both copies went stale together: it still named a LEFT HALF and a RIGHT
+// HALF, which is a scheme the input layer retired (see input.js, "a phone no
+// longer has to guess from which invisible half it landed in"). A tap anywhere
+// on the picture jumps; slide and power have discs and gestures.
+//
+// The wording matches the tutorial's, which teaches these same three verbs
+// under the same names (game/tutorial.js): the DOWN ARROW and the ATTACK
+// BUTTON, never a colour or a shape, because the discs carry glyphs and a
+// player cannot look one up.
+const CONTROL_ROWS = (touch) => [
+  ['JUMP', touch
+    ? 'TAP ANYWHERE. HOLD FOR HIGHER.'
+    : 'SPACE / W / UP / LEFT CLICK. HOLD FOR HIGHER.'],
+  ['POWER SLIDE', touch
+    ? 'HOLD THE DOWN ARROW, OR SWIPE DOWN. KICKS CONES AND BARRELS.'
+    : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.'],
+  ['HERO POWER', touch
+    ? 'THE ATTACK BUTTON, OR SWIPE RIGHT.'
+    : 'X / SHIFT / MIDDLE CLICK.'],
+];
+
 export class HowToPlayState {
   static portraitMode = 'frame';
 
@@ -6063,18 +6115,22 @@ export class HowToPlayState {
     drawTextCentered(ctx, 'HOW TO PLAY', W / 2, 22, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.', W / 2, 44, '#8a8a98');
     let y = 64;
+    // The description column is FITTED to the room it has rather than trusted
+    // to be short enough. A row written to fit at 480 wide is a row that runs
+    // off the edge the moment someone lengthens it, and these rows get edited
+    // every time a control changes — which is how the touch scheme went stale
+    // in the first place.
+    const DESC_X = 170;
     const line = (a, b, c) => {
       drawText(ctx, a, 46, y, c || '#f6d33c');
-      drawText(ctx, b, 170, y, '#c8c8d8');
+      const fit = Math.min(1, (W - DESC_X - 10) / Math.max(1, textWidth(b, 1)));
+      drawText(ctx, b, DESC_X, y, '#c8c8d8', fit);
       y += 15;
     };
     // The three control rows used to carry both schemes either side of a dash,
     // which meant half of every row named hardware the reader does not have.
     // A phone gets the gestures, a keyboard gets the keys, nobody gets both.
-    const touch = Input.isTouchDevice();
-    line('JUMP', touch ? 'TAP THE LEFT HALF. HOLD FOR HIGHER.' : 'SPACE / W / UP / LEFT CLICK. HOLD FOR HIGHER.');
-    line('POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.');
-    line('HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'X / SHIFT / MIDDLE CLICK.');
+    for (const [label, desc] of CONTROL_ROWS(Input.isTouchDevice())) line(label, desc);
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
     y += 4;
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
@@ -6095,11 +6151,8 @@ export class HowToPlayState {
     portraitMenuTextCentered(ctx, 'HOW TO PLAY', W / 2,
       portraitMenuTextY(titleMid, 2.35, 'title'), '#fff', 2.35, 'title');
 
-    const touch = Input.isTouchDevice();
     const rows = [
-      ['JUMP', touch ? 'TAP THE LEFT HALF. HOLD FOR HIGHER.' : 'SPACE / W / UP / LEFT CLICK. HOLD FOR HIGHER.', '#f6d33c'],
-      ['POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.', '#f6d33c'],
-      ['HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'X / SHIFT / MIDDLE CLICK.', '#f6d33c'],
+      ...CONTROL_ROWS(Input.isTouchDevice()).map(([label, desc]) => [label, desc, '#f6d33c']),
       ['PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8'],
       ['MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8'],
       ['CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8'],
@@ -6215,14 +6268,18 @@ export class SettingsState {
   /**
    * AUDIO SYNC, in milliseconds, signed.
    *
-   * The row names the system figure it sits ON TOP OF, because the number by
-   * itself reads as the whole correction and is not: zero here means "the
-   * ~168 ms this device admits to, and nothing more". Naming both is what
-   * stops RESET looking like it is about to set 168.
+   * ONE ROW, ONE SCREEN. There used to be two rows here — this one and a RESET
+   * AUDIO SYNC beside it — which put half of one feature on the settings list
+   * and half of it behind a CONFIRM, and made this row spell out
+   * "ON TOP OF SYSTEM ~168" purely so the reset beside it could not be misread
+   * as about to SET 168. RESET now lives on the AUDIO SYNC screen next to SET,
+   * where the screen's own copy explains what both of them mean, and the row is
+   * free to just name the figure.
    *
-   * Left and right nudge it by ten; CONFIRM opens the tap test, which is the only
-   * way in on a touchscreen — a phone has no left and right, and a phone is
-   * exactly the device that needs this row.
+   * Left and right still nudge it by ten for a player already on the list;
+   * CONFIRM opens the screen, which is the only way in on a touchscreen — a
+   * phone has no left and right, and a phone is exactly the device that needs
+   * this row.
    */
   audioSyncOption() {
     const s = this.save.settings;
@@ -6231,39 +6288,12 @@ export class SettingsState {
       Audio.setSyncOffset(s.audioSyncMs);
     };
     const ms = clampAudioSyncMs(s.audioSyncMs);
-    const reported = Math.round(Audio.reportedLatencySec() * 1000);
     return {
-      label: `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS ON TOP OF SYSTEM ~${reported}`,
-      portraitTitle: 'SET AUDIO SYNC',
-      portraitSubtitle: `${ms > 0 ? '+' : ''}${ms} MS ON TOP OF SYSTEM ~${reported}`,
+      label: `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS`,
+      portraitTitle: 'AUDIO SYNC',
+      portraitSubtitle: `${ms > 0 ? '+' : ''}${ms} MS`,
       act: () => { if (this.onCalibrate) this.onCalibrate(); else adjust(1); },
       adjust,
-    };
-  }
-  /**
-   * The way back to the browser's own figure, without tapping sixteen clicks.
-   *
-   * AUDIO SYNC is an offset ON TOP of what the device reports (audio.js,
-   * heardLatencySec), so zero is not "no correction at all" — it is "trust the
-   * system's number", which is the right answer on a wired output and the
-   * answer a player wants back the moment they unplug the bluetooth headphones
-   * they calibrated for. The row names the figure it is handing back to, and
-   * refuses when it is already in force rather than pretending to act.
-   */
-  audioSyncResetOption() {
-    const s = this.save.settings;
-    const reported = Math.round(Audio.reportedLatencySec() * 1000);
-    const ms = clampAudioSyncMs(s.audioSyncMs);
-    return {
-      label: `RESET AUDIO SYNC (SYSTEM ~${reported} MS ALONE)`,
-      portraitTitle: 'RESET AUDIO SYNC',
-      portraitSubtitle: `SYSTEM ~${reported} MS ALONE`,
-      act: () => {
-        if (ms === 0) { Audio.sfx('uiBad'); return; }
-        s.audioSyncMs = 0;
-        Audio.setSyncOffset(0);
-        this.save.persist();
-      },
     };
   }
   options() {
@@ -6277,7 +6307,6 @@ export class SettingsState {
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
       this.audioSyncOption(),
-      this.audioSyncResetOption(),
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },

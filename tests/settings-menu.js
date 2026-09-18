@@ -96,7 +96,12 @@ const mutedBeforeSwipe = save.settings.muted;
 touchDown(swipeY);
 touchMove(swipeY - touchSettings.rowH * 3);
 touchUp();
-assert(touchSettings.listStart === 3, 'an upward swipe reveals later settings');
+// Three rows' worth of travel, or as far as the list can actually go: the
+// assertion is about the swipe scrolling, not about how many settings there
+// happen to be this week.
+const swipeTarget = Math.min(3, touchSettings.maxListStart());
+assert(swipeTarget > 0 && touchSettings.listStart === swipeTarget,
+  'an upward swipe reveals later settings');
 assert(save.settings.muted === mutedBeforeSwipe, 'a swipe does not change a setting');
 
 const doneY = touchSettings.doneY + touchSettings.doneH / 2;
@@ -125,16 +130,16 @@ assert(save.settings.audioSyncMs === -100, 'and at the bottom');
 syncRow().adjust(10);
 assert(save.settings.audioSyncMs === 0, 'back to nothing');
 
-// And the way back out of a measurement, for the player who calibrated on
-// bluetooth and has since plugged a cable in: zero means "use the figure the
-// system reports", which is what the reset row hands back.
-const resetRow = () => settings.options().find((o) => /^RESET AUDIO SYNC/.test(o.label));
-assert(!!resetRow(), 'settings offers a reset row that names the system figure');
+// ONE ROW, NOT TWO. There used to be a RESET AUDIO SYNC row on the list beside
+// this one, which put half of one feature on the settings list and half of it
+// behind a CONFIRM. RESET now lives on the AUDIO SYNC screen next to SET (see
+// tests/calibrate.js), where the screen's copy can say what each of them means.
+assert(settings.options().every((o) => !/^RESET AUDIO SYNC/.test(o.label)),
+  'the separate reset row is gone: the feature is one row and one screen');
 syncRow().adjust(18);
 assert(save.settings.audioSyncMs === 180, 'with a measured offset in force');
-resetRow().act();
-assert(save.settings.audioSyncMs === 0, 'reset drops back to the system offset');
-assert(Audio.syncOffsetSec === 0, 'and the audio clock hears about it at once');
+syncRow().adjust(-18);
+assert(save.settings.audioSyncMs === 0, 'and the list can still walk it back by hand');
 
 let calibrated = 0;
 const withCal = new SettingsState({ save, onDone() {}, onCalibrate: () => { calibrated++; } });

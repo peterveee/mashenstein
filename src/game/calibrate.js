@@ -28,10 +28,10 @@ import { W, H } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { clampAudioSyncMs } from '../engine/save.js';
-import { drawText, drawTextCentered, textWidth, drawMenuRow, textYForMid } from '../engine/sprites.js';
+import { drawTextCentered, textWidth, drawMenuRow, textYForMid, wrapText } from '../engine/sprites.js';
 import {
   portraitMenuActive, portraitMenuFit, portraitMenuSafeBottom, portraitMenuSafeTop,
-  portraitMenuText, portraitMenuTextCentered, portraitMenuTextY,
+  portraitMenuScale, portraitMenuTextCentered, portraitMenuTextY, portraitMenuWrap,
 } from '../engine/portrait-menu.js';
 
 // 120 BPM: half a second a click. Fast enough that sixteen of them is eight
@@ -137,13 +137,72 @@ export function calibrationResult(residualsSec) {
   };
 }
 
-const ROW_H = 24;
-// Below the deepest the reading can push: the two optional warning lines are
-// drawn at 126 and 142/156, so the rows clear them without the list jumping
-// position between a steady result and an unsteady one.
-const RESULT_ROWS_Y = 172;
-
 function signed(ms) { return `${ms > 0 ? '+' : ''}${Math.round(ms)}`; }
+
+// ---- the copy, written once ------------------------------------------------
+//
+// It used to be written twice: seven hand-broken lines for landscape and six
+// shorter ones for portrait, each with its own wording and its own break
+// points. Two copies is two places to edit and two places to drift, and a
+// paragraph broken by hand for a 480px frame breaks in the wrong place at
+// every other width. One source now, wrapped at draw time to whatever width
+// the orientation actually has.
+//
+// Short sentences, front-loaded: this screen is read once, on a phone, by
+// somebody who has just discovered their headphones are lying to them.
+const READY_HEADLINE = 'TAP ALONG WITH THE CLICKS';
+// How long it takes, and what to have on your head. The count-in is NOT
+// explained here: the run screen counts it off in place (COUNT-IN, then
+// n / 12), which teaches it better than a line of small print read beforehand
+// and keeps this screen to two facts.
+const READY_STEPS = [
+  `${CAL_COUNT} CLICKS, ABOUT ${Math.round(CAL_COUNT * 60 / CAL_BPM)} SECONDS.`,
+  'WEAR YOUR USUAL HEADPHONES.',
+];
+const READY_WHY = 'WIRELESS HEADPHONES PLAY SOUND LATE. THIS FINDS OUT HOW LATE,'
+  + ' SO THE RHYTHM STAGES STAY IN TIME.';
+const SHORT_WHY = 'TAP ON EVERY CLICK, EVEN THE EASY ONES.';
+const UNSTEADY_WHY = 'THE TAPS WERE SCATTERED. A RETRY WILL BE MORE ACCURATE.';
+const CABLE_WHY = 'THAT IS A BIG DELAY. A CABLE WILL ALWAYS FEEL TIGHTER.';
+
+// ---- the button row --------------------------------------------------------
+//
+// SET / RESET / BACK while the screen is waiting, APPLY / RETRY / BACK once it
+// has a reading. RESET used to be a second row on the settings list, one line
+// under this feature's other half; it belongs beside SET, where the screen's
+// own copy is there to say what each of them does to the figure.
+//
+// buttonBoxes() is the ONE geometry: the painter, the keyboard cursor and the
+// pointer hit-test all read it, so none of the three can believe in a button
+// the other two do not have. Laid out across rather than down in both
+// orientations — three short words fit a 480-wide frame either way up, and a
+// row of buttons at the foot of the screen is what a phone expects.
+const BUTTON = {
+  landscape: { h: 26, gap: 12, scale: 1.25, pad: 22, minW: 84, margin: 40, bottom: 20 },
+  portrait: { h: 62, gap: 14, scale: 1.8, pad: 26, minW: 118, margin: 26, bottom: 34 },
+};
+// An unselected button still gets a plate — see drawButtons.
+const BUTTON_PLATE = 'rgba(201,160,255,0.06)';
+
+// ---- the copy block --------------------------------------------------------
+//
+// Type sizes and spacing, per orientation. Only these differ: the strings, the
+// order and the colours are shared, and drawPanel solves the spacing against
+// the room the frame actually has rather than trusting these to fit.
+//
+// `top` is measured down from the title, `clear` is the air kept above the
+// button row, `line` is the natural line pitch and `tight` the floor it may be
+// squeezed to. `gap` is the extra lead before a new idea starts.
+const PANEL = {
+  landscape: {
+    top: 24, clear: 14, margin: 56, line: 17, tight: 13, gap: 10,
+    head: 1.5, step: 1.22, why: 1.12, status: 1.2, big: 2.2, notice: 1.12,
+  },
+  portrait: {
+    top: 64, clear: 30, margin: 44, line: 44, tight: 34, gap: 28,
+    head: 2.3, step: 1.9, why: 1.65, status: 1.7, big: 3.0, notice: 1.6,
+  },
+};
 
 export class CalibrateState {
   static portraitMode = 'frame';
@@ -157,6 +216,9 @@ export class CalibrateState {
     this.phase = 'ready';
     this.t = 0;
     this.notice = null;
+    // A notice is normally something that went wrong, so it is drawn in the
+    // warning colour. RESET's confirmation is the one that is not.
+    this.noticeOk = false;
     this.handle = null;
     this.clicks = [];
     this.taps = [];
@@ -178,15 +240,61 @@ export class CalibrateState {
     Input.setMenuButtons();
   }
 
-  layout() {
-    if (!portraitMenuActive()) {
-      this.resultRowsY = RESULT_ROWS_Y;
-      this.rowH = ROW_H;
-      return;
+  /**
+   * The buttons this phase offers, in the order they are drawn.
+   *
+   * `resultRows` is kept as the result phase's own list because that is what
+   * the reading's shape decides: a run too short to trust has nothing to APPLY.
+   */
+  resultRows() {
+    return this.result?.enough ? ['APPLY', 'RETRY', 'BACK'] : ['RETRY', 'BACK'];
+  }
+
+  buttonRows() {
+    if (this.phase === 'ready') return ['SET', 'RESET', 'BACK'];
+    // A run in progress gets a BACK of its own. It used to have only the words
+    // BACK TO STOP along the bottom, which is a key on a desk and nothing at
+    // all on a phone — and a phone is the device this whole screen exists for.
+    // Eight seconds is a long time to be stuck in a test you have decided
+    // against.
+    if (this.phase === 'tapping') return ['BACK'];
+    return this.resultRows();
+  }
+
+  /**
+   * Where each button sits, in logical pixels. The single source of that: a
+   * cursor, a finger and a painter that each worked it out for themselves is
+   * how a tap lands one row off the thing it looks like it hit.
+   */
+  buttonBoxes() {
+    const rows = this.buttonRows();
+    const portrait = portraitMenuActive();
+    const m = portrait ? BUTTON.portrait : BUTTON.landscape;
+    const label = (text) => (portrait
+      ? textWidth(text, portraitMenuScale(m.scale))
+      : textWidth(text, m.scale));
+    let widths = rows.map((text) => Math.max(m.minW, Math.round(label(text) + m.pad * 2)));
+    const span = () => widths.reduce((a, b) => a + b, 0) + m.gap * (rows.length - 1);
+    const maxSpan = W - m.margin;
+    // Narrow every button by the same factor rather than truncating one of
+    // them: three buttons that no longer line up read as three different
+    // controls, and the words here are all short enough to survive the squeeze.
+    if (span() > maxSpan) {
+      const k = (maxSpan - m.gap * (rows.length - 1)) / widths.reduce((a, b) => a + b, 0);
+      widths = widths.map((w) => Math.floor(w * k));
     }
-    const rows = this.resultRows ? this.resultRows().length : 2;
-    this.rowH = 72;
-    this.resultRowsY = portraitMenuSafeBottom(42) - rows * this.rowH;
+    const y = Math.round((portrait ? portraitMenuSafeBottom(m.bottom) : H - m.bottom) - m.h);
+    let x = Math.round((W - span()) / 2);
+    return rows.map((text, i) => {
+      const box = { label: text, x, y, w: widths[i], h: m.h, scale: m.scale };
+      x += widths[i] + m.gap;
+      return box;
+    });
+  }
+
+  layout() {
+    this.boxes = this.buttonBoxes();
+    if (this.idx >= this.boxes.length) this.idx = this.boxes.length - 1;
   }
 
   exit() {
@@ -205,6 +313,7 @@ export class CalibrateState {
 
   start() {
     Audio.ensure();
+    this.noticeOk = false;
     if (!Audio.ctx) { this.notice = 'NO AUDIO YET. TAP AGAIN.'; return; }
     if (!this.audible()) { this.notice = 'UNMUTE AND RAISE SFX VOLUME TO CALIBRATE.'; return; }
     this.notice = null;
@@ -250,14 +359,34 @@ export class CalibrateState {
       Input.endFrame();
       return;
     }
-    if (this.phase === 'ready') this.updateReady();
-    else if (this.phase === 'tapping') this.updateTapping(dt);
-    else this.updateResult();
+    if (this.phase === 'tapping') this.updateTapping(dt);
+    else this.updateButtons();
     Input.endFrame();
   }
 
-  updateReady() {
-    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) this.start();
+  /**
+   * One cursor for both the ready screen and the result screen, because they
+   * are one screen with two things to say. Left/right walks the row it is
+   * drawn as; up/down is kept alive because a d-pad player will reach for it.
+   */
+  updateButtons() {
+    const boxes = this.boxes || this.buttonBoxes();
+    const n = boxes.length;
+    if (Input.pressed('right') || Input.pressed('down')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('left') || Input.pressed('up')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('pointer')) {
+      const { x, y } = Input.pointer;
+      const hit = boxes.findIndex((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
+      // A first tap moves the cursor, a second one commits: the same two-step
+      // the result rows have always used, kept so a fat-fingered tap on the
+      // wrong button is recoverable rather than immediately acted on.
+      if (hit >= 0) {
+        if (this.idx === hit) { this.choose(boxes[hit].label); return; }
+        this.idx = hit;
+        Audio.sfx('ui');
+      }
+    }
+    if (Input.pressed('confirm') || Input.pressed('jump')) this.choose(boxes[this.idx].label);
   }
 
   updateTapping(dt) {
@@ -270,11 +399,28 @@ export class CalibrateState {
       if (this.stalled > 0.5) {
         this.cancelRun();
         this.phase = 'ready';
+        this.idx = 0;
+        this.noticeOk = false;
         this.notice = 'AUDIO PAUSED. TRY AGAIN.';
       }
     } else {
       this.stalled = 0;
       this.lastCtxTime = now;
+    }
+    // The BACK button, before anything else this frame does with the press.
+    // One tap commits rather than the cursor's usual two: during a run every
+    // tap is also a measurement, so a "select it first" step would ask the
+    // player to poke the thing twice while the clicks carry on without them.
+    // It sits under the lane, clear of where the tapping thumb lives.
+    if (Input.pressed('pointer')) {
+      const { x, y } = Input.pointer;
+      const back = (this.boxes || this.buttonBoxes())[0];
+      if (back && x >= back.x && x < back.x + back.w && y >= back.y && y < back.y + back.h) {
+        this.cancelRun();
+        Audio.sfx('ui');
+        this.onDone(false);
+        return;
+      }
     }
     const tap = this.tapThisFrame();
     if (tap != null) this.taps.push(tap);
@@ -287,26 +433,26 @@ export class CalibrateState {
     }
   }
 
-  resultRows() {
-    return this.result?.enough ? ['APPLY', 'RETRY', 'CANCEL'] : ['RETRY', 'CANCEL'];
-  }
-
-  updateResult() {
-    const rows = this.resultRows();
-    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % rows.length; Audio.sfx('ui'); }
-    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + rows.length - 1) % rows.length; Audio.sfx('ui'); }
-    if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - this.resultRowsY) / this.rowH);
-      if (i >= 0 && i < rows.length) {
-        if (this.idx === i) { this.choose(rows[i]); return; }
-        this.idx = i;
-        Audio.sfx('ui');
-      }
-    }
-    if (Input.pressed('confirm') || Input.pressed('jump')) this.choose(rows[this.idx]);
-  }
-
   choose(row) {
+    if (row === 'SET') { this.idx = 0; this.start(); return; }
+    // RESET hands the clock back to the browser's own figure. AUDIO SYNC is an
+    // offset ON TOP of what the device reports (audio.js, heardLatencySec), so
+    // zero is not "no correction at all" — it is "trust the system's number",
+    // which is the right answer on a wired output and the answer a player wants
+    // back the moment they unplug the headphones they measured for. It refuses
+    // when it is already in force rather than pretending to act, and it stays
+    // on this screen: the status block above the buttons is the confirmation.
+    if (row === 'RESET') {
+      const s = this.save.settings;
+      if (clampAudioSyncMs(s.audioSyncMs) === 0) { Audio.sfx('uiBad'); return; }
+      s.audioSyncMs = 0;
+      Audio.setSyncOffset(0);
+      this.save.persist();
+      Audio.sfx('uiConfirm');
+      this.noticeOk = true;
+      this.notice = 'AUDIO SYNC RESET. THE SYSTEM FIGURE STANDS ALONE.';
+      return;
+    }
     if (row === 'APPLY') {
       const s = this.save.settings;
       s.audioSyncMs = this.result.suggestedMs;
@@ -324,100 +470,191 @@ export class CalibrateState {
   }
 
   draw(ctx) {
-    if (portraitMenuActive()) {
-      this.drawPortrait(ctx);
+    const portrait = portraitMenuActive();
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    const safeTop = portrait ? portraitMenuSafeTop() : 0;
+    const safeBottom = portrait ? portraitMenuSafeBottom() : H;
+    const titleMid = portrait ? safeTop + 34 : 26;
+    const titleS = portrait
+      ? portraitMenuFit('AUDIO SYNC', 4.2, W - 24, 'title')
+      : Math.min(2.8, (W - 32) / Math.max(1, textWidth('AUDIO SYNC', 1, 'title')));
+    this.centred(ctx, 'AUDIO SYNC', W / 2, titleMid, '#fff', titleS, 'title');
+    if (this.phase === 'tapping') {
+      if (portrait) this.drawTappingPortrait(ctx, safeTop, safeBottom);
+      else this.drawTapping(ctx);
       return;
     }
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
-    const titleS = Math.min(2.8, (W - 32) / Math.max(1, textWidth('AUDIO SYNC', 1, 'title')));
-    drawTextCentered(ctx, 'AUDIO SYNC', W / 2, 22, '#fff', titleS, 'title');
-    if (this.phase === 'ready') this.drawReady(ctx);
-    else if (this.phase === 'tapping') this.drawTapping(ctx);
-    else this.drawResult(ctx);
+    this.drawPanel(ctx, portrait, titleMid);
   }
 
-  drawReady(ctx) {
-    const lines = [
-      ['TAP ON EVERY CLICK.', '#f6d33c', 1.5],
-      [`${CAL_COUNT} CLICKS. THE FIRST ${CAL_COUNT_IN} ARE A COUNT-IN AND DO NOT COUNT.`, '#c8c8d8', 1.25],
-      ['USE THE HEADPHONES OR SPEAKERS YOU WILL PLAY WITH.', '#c8c8d8', 1.25],
-      ['', '#c8c8d8', 1.25],
-      ['WIRELESS HEADPHONES DELIVER SOUND LATE AND DO NOT ALWAYS', '#8a8a98', 1.18],
-      ['ADMIT HOW LATE. THIS MEASURES IT SO THE RHYTHM STAGES CAN', '#8a8a98', 1.18],
-      ['PUT THE MUSIC WHERE YOUR EARS THINK IT IS.', '#8a8a98', 1.18],
-    ];
-    let y = 64;
-    for (const [text, color, size] of lines) {
-      if (text) {
-        const fitted = Math.min(size, (W - 28) / Math.max(1, textWidth(text, 1)));
-        drawTextCentered(ctx, text, W / 2, y, color, fitted);
-      }
-      y += 18;
+  /**
+   * One line centred on `midX`, in whichever type system this orientation uses.
+   * The x is a parameter and not W / 2: the button row centres each label on
+   * its own plate, and a shared helper that assumed the screen's middle drew
+   * all three of them on top of each other.
+   */
+  centred(ctx, text, midX, midY, color, size, style = 'ui') {
+    if (portraitMenuActive()) {
+      portraitMenuTextCentered(ctx, text, midX,
+        portraitMenuTextY(midY, size, style), color, size, style);
+    } else {
+      drawTextCentered(ctx, text, midX, textYForMid(midY, size, style), color, size, style);
     }
+  }
+
+  /** The widest this orientation lets a string be, at `size`. */
+  fit(text, size, maxWidth, style = 'ui') {
+    return portraitMenuActive()
+      ? portraitMenuFit(text, size, maxWidth, style)
+      : Math.min(size, maxWidth / Math.max(1, textWidth(text, 1, style)));
+  }
+
+  /**
+   * THE READY AND RESULT SCREENS ARE ONE SCREEN with two things to say, so one
+   * method says both. It builds a stack of centred lines — headline, the two
+   * steps, the paragraph that explains why anyone should care, the two status
+   * figures — and hands it to a flow that fits it between the title and the
+   * button row.
+   *
+   * Every paragraph is wrapped HERE, at the width the frame actually has,
+   * rather than broken by hand at authoring time. The old screen carried two
+   * sets of hand-broken lines, one per orientation, and a hand break is only
+   * ever right at the one width it was measured on.
+   */
+  panelLines(portrait) {
+    const S = portrait ? PANEL.portrait : PANEL.landscape;
+    const out = [];
+    const push = (text, color, size, lead = 0, style = 'ui') =>
+      out.push({ text, color, size, style, lead });
+    const para = (text, color, size, lead) => {
+      const width = W - S.margin;
+      // A generous cap, not a tight one: wrapText ELLIPSISES whatever will not
+      // fit in the lines it is given, so a cap set to what landscape happens to
+      // need silently truncates the same sentence in portrait, where the column
+      // is half as wide. drawPanel tightens the pitch to fit; nothing is cut.
+      const wrapped = portrait
+        ? portraitMenuWrap(text, width, size, 12)
+        : wrapText(text, width, size, 12);
+      wrapped.forEach((l, i) => push(l, color, size, i === 0 ? lead : 0));
+    };
+
+    if (this.phase === 'ready') {
+      push(READY_HEADLINE, '#f6d33c', S.head);
+      for (const step of READY_STEPS) para(step, '#c8c8d8', S.step, S.gap);
+      para(READY_WHY, '#8a8a98', S.why, S.gap);
+    } else if (!this.result.enough) {
+      push('NOT ENOUGH TAPS', '#d84828', S.head);
+      push(`${this.result.count} OF ${SCORED} CLICKS ANSWERED`, '#c8c8d8', S.step, S.gap);
+      para(SHORT_WHY, '#8a8a98', S.why, S.gap);
+    } else {
+      const r = this.result;
+      // The device's own figure is NOT repeated here: the readout above the
+      // buttons already states it, and two lines both opening "DEVICE SAYS"
+      // read as two different devices rather than as one fact stated once.
+      push(`YOUR TAPS WERE ${signed(r.medianMs)} MS LATE`, '#c8c8d8', S.step);
+      push(`NEW AUDIO SYNC: ${signed(r.suggestedMs)} MS`, '#48e0c8', S.big, S.gap, 'title');
+      if (r.unsteady) para(UNSTEADY_WHY, '#f6d33c', S.why, S.gap);
+      // A cable is the real fix on a desktop, where one is plausible. On a
+      // phone it is not advice, it is a shrug, so it is not offered there.
+      if (!Input.isTouchDevice() && r.suggestedMs > CAL_LARGE_MS) {
+        para(CABLE_WHY, '#8a8a98', S.why, S.gap);
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * THE READOUT: what is in force right now. It sits directly above the button
+   * row rather than at the end of the prose, because it is the thing SET and
+   * RESET each act on — putting it next to them is what makes pressing one of
+   * them feel like moving a number rather than triggering an event. It also
+   * gives the bottom of a tall phone something to hold, instead of a screen of
+   * text and then a long fall to the buttons.
+   *
+   * Two lines and not one: the stored figure is an offset ON TOP of whatever
+   * the device already admits to, and a single number reads as the whole
+   * correction. Naming the device's figure beside it is what stops RESET
+   * looking like it is about to set 32.
+   */
+  statusLines(portrait) {
+    const S = portrait ? PANEL.portrait : PANEL.landscape;
     const reported = Math.round(Audio.reportedLatencySec() * 1000);
-    const device = `THIS DEVICE REPORTS ~${reported} MS`;
-    drawTextCentered(ctx, device, W / 2, y + 8, '#5a5a68', 1.2);
     const ms = clampAudioSyncMs(this.save.settings.audioSyncMs);
-    const current = `CURRENT AUDIO SYNC: ${signed(ms)} MS ON TOP OF THAT`;
-    drawTextCentered(ctx, current, W / 2, y + 29, ms ? '#48e0c8' : '#5a5a68', 1.2);
-    if (this.notice) drawTextCentered(ctx, this.notice, W / 2, H - 38, '#d84828', 1.15);
-    const footer = `${Input.confirmVerb()}: START   BACK: CANCEL`;
-    drawTextCentered(ctx, footer, W / 2, textYForMid(H - 16, 1.2), '#8a8a98', 1.2);
-  }
-
-  drawPortrait(ctx) {
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
-    const safeTop = portraitMenuSafeTop();
-    const safeBottom = portraitMenuSafeBottom();
-    const titleMid = safeTop + 34;
-    const titleS = portraitMenuFit('AUDIO SYNC', 4.2, W - 24, 'title');
-    portraitMenuTextCentered(ctx, 'AUDIO SYNC', W / 2,
-      portraitMenuTextY(titleMid, titleS, 'title'), '#fff', titleS, 'title');
-
-    if (this.phase === 'ready') this.drawReadyPortrait(ctx, safeTop, safeBottom);
-    else if (this.phase === 'tapping') this.drawTappingPortrait(ctx, safeTop, safeBottom);
-    else this.drawResultPortrait(ctx, safeTop, safeBottom);
-  }
-
-  drawReadyPortrait(ctx, safeTop, safeBottom) {
-    const lines = [
-      ['TAP ON EVERY CLICK.', '#f6d33c', 2.3],
-      [`${CAL_COUNT} CLICKS. FIRST ${CAL_COUNT_IN} ARE COUNT-IN.`, '#c8c8d8', 1.95],
-      ['USE THE HEADPHONES OR SPEAKERS YOU WILL PLAY WITH.', '#c8c8d8', 1.95],
-      ['', '#c8c8d8', 1.95],
-      ['WIRELESS HEADPHONES DELIVER SOUND LATE.', '#8a8a98', 1.75],
-      ['THIS MEASURES IT FOR THE RHYTHM STAGES.', '#8a8a98', 1.75],
+    const out = [
+      { text: `DEVICE SAYS ~${reported} MS`, color: '#5a5a68', size: S.status, style: 'ui', lead: 0 },
+      {
+        text: ms ? `AUDIO SYNC ADDS ${signed(ms)} MS` : 'AUDIO SYNC ADDS NOTHING',
+        color: ms ? '#48e0c8' : '#5a5a68', size: S.status, style: 'ui', lead: 0,
+      },
     ];
-    let y = safeTop + 150;
-    for (const [text, color, size] of lines) {
-      if (text) {
-        const fitted = portraitMenuFit(text, size, W - 28);
-        portraitMenuTextCentered(ctx, text, W / 2,
-          portraitMenuTextY(y, fitted), color, fitted);
-      }
-      y += 62;
-    }
-    const reported = Math.round(Audio.reportedLatencySec() * 1000);
-    const device = `THIS DEVICE REPORTS ~${reported} MS`;
-    const currentMs = clampAudioSyncMs(this.save.settings.audioSyncMs);
-    const current = `CURRENT AUDIO SYNC: ${signed(currentMs)} MS ON TOP OF THAT`;
-    portraitMenuTextCentered(ctx, device, W / 2,
-      portraitMenuTextY(y + 22, 1.7), '#5a5a68', 1.7);
-    const currentS = portraitMenuFit(current, 1.7, W - 24);
-    portraitMenuTextCentered(ctx, current, W / 2,
-      portraitMenuTextY(y + 58, currentS), currentMs ? '#48e0c8' : '#5a5a68', currentS);
     if (this.notice) {
-      const noticeS = portraitMenuFit(this.notice, 1.6, W - 24);
-      portraitMenuTextCentered(ctx, this.notice, W / 2,
-        portraitMenuTextY(safeBottom - 76, noticeS), '#d84828', noticeS);
+      const width = W - S.margin;
+      const wrapped = portrait
+        ? portraitMenuWrap(this.notice, width, S.notice, 12)
+        : wrapText(this.notice, width, S.notice, 12);
+      wrapped.forEach((l, i) => out.push({
+        text: l, color: this.noticeOk ? '#48c848' : '#d84828',
+        size: S.notice, style: 'ui', lead: i === 0 ? S.gap : 0,
+      }));
     }
-    const footer = `${Input.confirmVerb()}: START   BACK: CANCEL`;
-    const footerS = portraitMenuFit(footer, 1.7, W - 24);
-    portraitMenuTextCentered(ctx, `${Input.confirmVerb()}: START   BACK: CANCEL`, W / 2,
-      portraitMenuTextY(safeBottom - 18, footerS), '#8a8a98', footerS);
+    return out;
   }
+
+  /** Draw a measured stack of centred lines downward from `y`. Returns the end. */
+  drawStack(ctx, rows, y, line, margin, k = 1) {
+    for (const r of rows) {
+      y += r.lead * k;
+      const size = this.fit(r.text, r.size, W - margin, r.style);
+      this.centred(ctx, r.text, W / 2, y + line * k / 2, r.color, size, r.style);
+      y += line * k;
+    }
+    return y;
+  }
+
+  drawPanel(ctx, portrait, titleMid) {
+    const S = portrait ? PANEL.portrait : PANEL.landscape;
+    const rows = this.panelLines(portrait);
+    const status = this.statusLines(portrait);
+    const buttonTop = this.boxes?.[0]?.y ?? H;
+    const statusH = status.reduce((h, r) => h + S.line + r.lead, 0);
+    const top = titleMid + S.top;
+    const bottom = buttonTop - S.clear * 2 - statusH;
+    // THE STACK IS FITTED, NOT ASSUMED. How many lines there are depends on the
+    // phase, on whether the reading was unsteady, on whether there is a notice
+    // and on how wide the frame wrapped the paragraphs — so the spacing is
+    // solved for the room that is actually left rather than hard-coded and
+    // hoped for. Nothing is ever dropped: it tightens to the floor and, if even
+    // that will not fit, overruns knowingly rather than hiding a line.
+    const natural = rows.reduce((h, r) => h + S.line + r.lead, 0);
+    const room = Math.max(1, bottom - top);
+    const k = natural > room ? Math.max(S.tight / S.line, room / natural) : 1;
+    // TOP-ALIGNED, NOT CENTRED. Centring splits the leftover room evenly, and
+    // on a tall phone that is half a screen of nothing between the title and
+    // the first line — which reads as a page that failed to load rather than as
+    // breathing space. The slack belongs at the bottom, above the buttons,
+    // where it is just the end of the text.
+    this.drawStack(ctx, rows, top, S.line, S.margin, k);
+    this.drawStack(ctx, status, buttonTop - S.clear - statusH, S.line, S.margin);
+    this.drawButtons(ctx);
+  }
+
+  /**
+   * SET / RESET / BACK, or APPLY / RETRY / BACK. Every button gets a plate, not
+   * just the selected one: three words floating on the background read as a
+   * caption, and a caption is not a thing anybody taps.
+   */
+  drawButtons(ctx) {
+    const boxes = this.boxes || this.buttonBoxes();
+    boxes.forEach((b, i) => {
+      const on = i === this.idx;
+      drawMenuRow(ctx, b.x, b.y, b.w, b.h, 3, on ? undefined : BUTTON_PLATE);
+      const size = this.fit(b.label, b.scale, b.w - 16);
+      this.centred(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, on ? '#fff' : '#8a8a98', size);
+    });
+  }
+
 
   drawTappingPortrait(ctx, safeTop, safeBottom) {
     const now = Audio.ctx?.currentTime ?? 0;
@@ -429,7 +666,7 @@ export class CalibrateState {
     const title = 'TAP ON EVERY CLICK';
     const titleS = portraitMenuFit(title, 2.25, W - 24);
     portraitMenuTextCentered(ctx, title, W / 2,
-      portraitMenuTextY(safeTop + 104, titleS), '#f6d33c', titleS);
+      portraitMenuTextY(laneY - 96, titleS), '#f6d33c', titleS);
 
     ctx.fillStyle = '#1c1c2a';
     ctx.fillRect(x0, laneY - 2, x1 - x0, 4);
@@ -472,72 +709,9 @@ export class CalibrateState {
     const counting = this.clicks.length - upcoming <= CAL_COUNT_IN;
     portraitMenuTextCentered(ctx, counting ? 'COUNT-IN' : 'KEEP TAPPING', W / 2,
       portraitMenuTextY(laneY + 104, 1.65), '#5a5a68', 1.65);
-    const footer = 'BACK: CANCEL';
-    portraitMenuTextCentered(ctx, 'BACK: CANCEL', W / 2,
-      portraitMenuTextY(safeBottom - 18, portraitMenuFit(footer, 1.7, W - 24)), '#5a5a68',
-      portraitMenuFit(footer, 1.7, W - 24));
+    this.drawButtons(ctx);
   }
 
-  drawResultPortrait(ctx, safeTop, safeBottom) {
-    const r = this.result;
-    const reported = Math.round(this.reportedSec * 1000);
-    let y = safeTop + 116;
-    if (!r.enough) {
-      const heading = 'NOT ENOUGH TAPS.';
-      portraitMenuTextCentered(ctx, heading, W / 2,
-        portraitMenuTextY(y, 2.2), '#d84828', 2.2);
-      const detail = `${r.count} OF ${SCORED} CLICKS ANSWERED. TAP ON EVERY ONE.`;
-      const detailS = portraitMenuFit(detail, 1.65, W - 24);
-      portraitMenuTextCentered(ctx, detail, W / 2,
-        portraitMenuTextY(y + 38, detailS), '#c8c8d8', detailS);
-    } else {
-      portraitMenuTextCentered(ctx, `DEVICE REPORTS ~${reported} MS`, W / 2,
-        portraitMenuTextY(y, 1.7), '#8a8a98', 1.7);
-      const measured = `MEASURED EXTRA ${signed(r.medianMs)} MS`;
-      portraitMenuTextCentered(ctx, measured, W / 2,
-        portraitMenuTextY(y + 42, 1.7), '#c8c8d8', 1.7);
-      const fresh = `NEW AUDIO SYNC: ${signed(r.suggestedMs)} MS`;
-      const freshS = portraitMenuFit(fresh, 2.8, W - 24, 'title');
-      portraitMenuTextCentered(ctx, fresh, W / 2,
-        portraitMenuTextY(y + 84, freshS, 'title'), '#48e0c8', freshS, 'title');
-      y += 148;
-      if (r.unsteady) {
-        const warning = 'UNSTEADY. TAPS SCATTERED — CONSIDER A RETRY.';
-        const warningS = portraitMenuFit(warning, 1.55, W - 22);
-        portraitMenuTextCentered(ctx, warning, W / 2,
-          portraitMenuTextY(y, warningS), '#f6d33c', warningS);
-        y += 38;
-      }
-      if (!Input.isTouchDevice() && r.suggestedMs > CAL_LARGE_MS) {
-        const cable = 'LARGE OFFSET. WIRED HEADPHONES FEEL TIGHTER.';
-        const cableS = portraitMenuFit(cable, 1.4, W - 22);
-        portraitMenuTextCentered(ctx, cable, W / 2,
-          portraitMenuTextY(y, cableS), '#8a8a98', cableS);
-      }
-    }
-    const rows = this.resultRows();
-    rows.forEach((label, i) => {
-      const rowY = this.resultRowsY + i * this.rowH;
-      const rowW = Math.min(W - 32, Math.max(190, textWidth(label, portraitMenuScale(1.8)) + 52));
-      if (i === this.idx) drawMenuRow(ctx, W / 2 - rowW / 2, rowY, rowW, this.rowH - 4);
-      const color = i === this.idx ? '#fff' : '#8a8a98';
-      const labelS = portraitMenuFit(label, 1.8, rowW - 28);
-      portraitMenuText(ctx, label, W / 2 - rowW / 2 + 14,
-        portraitMenuTextY(rowY + (this.rowH - 4) / 2, labelS), color, labelS);
-    });
-    const footer = 'TAP A ROW   BACK: CANCEL';
-    const footerS = portraitMenuFit(footer, 1.7, W - 22);
-    portraitMenuTextCentered(ctx, footer, W / 2,
-      portraitMenuTextY(safeBottom - 18, footerS), '#5a5a68', footerS);
-  }
-
-  /**
-   * A lane the clicks travel down, because the sound itself is the thing that
-   * is late. On the output this screen exists to correct, a click heard is
-   * already a fifth of a second stale; the tick crossing the marker is the only
-   * feedback that is honest about WHEN, and after a tap the mark showing how
-   * far off it landed is the only feedback that is honest about how far.
-   */
   drawTapping(ctx) {
     const now = Audio.ctx?.currentTime ?? 0;
     const x0 = 40;
@@ -594,51 +768,7 @@ export class CalibrateState {
     const upcoming = this.clicks.filter((c) => c + this.reportedSec > now).length;
     const counting = this.clicks.length - upcoming <= CAL_COUNT_IN;
     drawTextCentered(ctx, counting ? 'COUNT-IN' : 'KEEP TAPPING', W / 2, laneY + 48, '#5a5a68', 1.1);
-    drawTextCentered(ctx, 'BACK: CANCEL', W / 2, textYForMid(H - 16, 1.2), '#5a5a68', 1.2);
+    this.drawButtons(ctx);
   }
 
-  drawResult(ctx) {
-    const r = this.result;
-    const reported = Math.round(this.reportedSec * 1000);
-    let y = 64;
-    if (!r.enough) {
-      drawTextCentered(ctx, 'NOT ENOUGH TAPS.', W / 2, y, '#d84828', 1.5);
-      const detail = `${r.count} OF ${SCORED} CLICKS ANSWERED. TAP ON EVERY ONE.`;
-      const detailS = Math.min(1.25, (W - 24) / Math.max(1, textWidth(detail, 1)));
-      drawTextCentered(ctx, detail, W / 2, y + 22, '#c8c8d8', detailS);
-    } else {
-      drawTextCentered(ctx, `DEVICE REPORTS ~${reported} MS`, W / 2, y, '#8a8a98', 1.25);
-      drawTextCentered(ctx, `MEASURED EXTRA ${signed(r.medianMs)} MS`, W / 2, y + 22, '#c8c8d8', 1.25);
-      const fresh = `NEW AUDIO SYNC: ${signed(r.suggestedMs)} MS`;
-      const freshS = Math.min(2.35, (W - 24) / Math.max(1, textWidth(fresh, 1, 'title')));
-      drawTextCentered(ctx, fresh, W / 2, y + 48, '#48e0c8', freshS, 'title');
-      y += 72;
-      if (r.unsteady) {
-        const warning = 'UNSTEADY. THE TAPS WERE SCATTERED — CONSIDER A RETRY.';
-        const warningS = Math.min(1.15, (W - 20) / Math.max(1, textWidth(warning, 1)));
-        drawTextCentered(ctx, warning, W / 2, y, '#f6d33c', warningS);
-        y += 20;
-      }
-      // A cable is the real fix on a desktop, where one is plausible. On a
-      // phone it is not advice, it is a shrug, so it is not offered there.
-      if (!Input.isTouchDevice() && r.suggestedMs > CAL_LARGE_MS) {
-        const cableA = 'LARGE OFFSET. WIRED HEADPHONES OR SPEAKERS';
-        const cableB = 'WILL ALWAYS FEEL TIGHTER THAN A CORRECTION.';
-        const cableS = Math.min(1.1, (W - 20) / Math.max(1, textWidth(cableA, 1)));
-        drawTextCentered(ctx, cableA, W / 2, y, '#8a8a98', cableS);
-        drawTextCentered(ctx, cableB, W / 2, y + 18, '#8a8a98',
-          Math.min(cableS, (W - 20) / Math.max(1, textWidth(cableB, 1))));
-      }
-    }
-    const rows = this.resultRows();
-    rows.forEach((label, i) => {
-      const rowY = RESULT_ROWS_Y + i * ROW_H;
-      const labelS = Math.min(1.25, (W - 96) / Math.max(1, textWidth(label, 1)));
-      const w = Math.max(112, textWidth(label, labelS) + 34);
-      if (i === this.idx) drawMenuRow(ctx, W / 2 - w / 2, rowY, w, ROW_H - 2);
-      const color = i === this.idx ? '#fff' : '#8a8a98';
-      drawText(ctx, label, W / 2 - w / 2 + 17,
-        textYForMid(rowY + (ROW_H - 2) / 2, labelS), color, labelS);
-    });
-  }
 }

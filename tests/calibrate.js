@@ -215,9 +215,55 @@ cal3.result = calibrationResult([0.1, 0.1, 0.1]);
 cal3.phase = 'result';
 cal3.reportedSec = REPORTED;
 assert(!cal3.resultRows().includes('APPLY'),
-  'a run with too few taps offers only RETRY and CANCEL');
+  'a run with too few taps offers only RETRY and BACK');
 cal3.draw(drawCtx);
 cal3.exit();
+
+// ---- one screen, three buttons ---------------------------------------------
+//
+// SET / RESET / BACK while the screen waits, APPLY / RETRY / BACK once it has a
+// reading. RESET used to be a second row on the settings list; it lives here
+// now, beside the SET it is the opposite of, where the status block above the
+// buttons says what each of them does to the figure.
+const cal4 = new CalibrateState({ save, onDone: (a) => { done = a; } });
+cal4.enter();
+cal4.layout();
+assert(cal4.buttonRows().join('/') === 'SET/RESET/BACK',
+  'the waiting screen offers all three');
+const boxes = cal4.buttonBoxes();
+assert(boxes.length === 3 && boxes.every((b) => b.w > 0 && b.h > 0),
+  'and every one of them has somewhere to be tapped');
+assert(boxes.every((b, i) => i === 0 || b.x >= boxes[i - 1].x + boxes[i - 1].w),
+  'laid out across without overlapping, so a tap cannot hit two');
+
+// RESET zeroes the offset and STAYS, because the status block is the receipt.
+save.settings.audioSyncMs = 180;
+Audio.setSyncOffset(180);
+persisted = 0;
+done = null;
+cal4.choose('RESET');
+assert(save.settings.audioSyncMs === 0 && Audio.syncOffsetSec === 0,
+  'RESET hands the clock back to the figure the system reports');
+assert(persisted === 1 && done === null && cal4.phase === 'ready',
+  'and saves on the spot without leaving the screen');
+assert(cal4.noticeOk === true && /RESET/.test(cal4.notice || ''),
+  'the screen says so, in the colour of something that went right');
+
+// And it refuses rather than pretending to act when there is nothing to undo.
+persisted = 0;
+cal4.choose('RESET');
+assert(persisted === 0, 'a second RESET with nothing in force writes nothing');
+
+// SET is the way into the tap test; BACK is the way out of the screen.
+cal4.choose('SET');
+assert(cal4.phase === 'tapping', 'SET starts the run');
+cal4.cancelRun();
+cal4.phase = 'ready';
+done = null;
+cal4.choose('BACK');
+assert(done === false, 'BACK leaves without applying anything');
+cal4.draw(drawCtx);
+cal4.exit();
 
 // ---- the briefing offer ----------------------------------------------------
 
