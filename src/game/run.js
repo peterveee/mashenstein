@@ -7667,7 +7667,7 @@ export class RunState {
     // names this hero's power and shows whether it is ready, so repeating it in
     // a bubble every swap is the same fact twice. The one-time firstAbility
     // tutor below still teaches the button once.
-    const btn = Input.usingTouch ? 'USE' : 'X / SHIFT / MIDDLE CLICK';
+    const btn = Input.usingTouch ? 'ATTACK' : 'X / SHIFT / MIDDLE CLICK';
     // The departing hero gets a parting shot. Only the first time each hero
     // tags out in a run: everyone gets their moment without a swap-heavy run
     // turning into a conversation you read instead of playing. (Only one voice
@@ -15414,7 +15414,7 @@ export class RunState {
     y += groupGap;
 
     const touchRows = [
-      ['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['SWIPE RIGHT', 'POWER'],
+      ['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['ATTACK / SWIPE RIGHT', 'POWER'],
       ...(this.rewindAvailableForRun() ? [['HOLD RWD', 'REWIND']] : []),
     ];
     const keyRows = [
@@ -15572,7 +15572,7 @@ export class RunState {
     // visible rail can swap sides with the notch after rotation, so this copy
     // describes the action rather than a fixed left/right location.
     const pauseControls = Input.usingTouch
-      ? [['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['USE / SWIPE RIGHT', 'POWER']]
+      ? [['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['ATTACK / SWIPE RIGHT', 'POWER']]
       : DESKTOP_CONTROL_ROWS;
     pauseControls.forEach((pair, i) => legend([pair], 170 + i * 18,
       { actionInk: '#c8c8d8' }));

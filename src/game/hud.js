@@ -2126,7 +2126,7 @@ function drawPortraitActionShelf(ctx, run, layout) {
   }
   const lowerLabels = [
     ['jump', 'JUMP', ACTION_INK.jump],
-    ['use', hero?.ability?.label || 'USE', '#48e0c8'],
+    ['use', hero?.ability?.label || 'ATTACK', '#48e0c8'],
     ['slide', 'SLIDE', ACTION_INK.slide],
   ];
   const frameScale = Number(layout.scale) > 0 ? Number(layout.scale) : 1;

@@ -62,7 +62,7 @@ const tutorialMoveLegend = (touch) => touch
   ? [['UP/SPC', 'JUMP'], ['DN', 'SLIDE']]
   : [['UP / SPACE / LEFT CLICK', 'JUMP'], ['DOWN / RIGHT CLICK', 'SLIDE']];
 const tutorialPowerLegend = (touch) => touch
-  ? [['USE', 'LEMON CANNON']]
+  ? [['ATTACK', 'LEMON CANNON']]
   : [['X / SHIFT / MIDDLE CLICK', 'LEMON CANNON']];
 
 // The run proper moves at 160. This is gentler without being a crawl — the old
