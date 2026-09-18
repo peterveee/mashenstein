@@ -54,20 +54,21 @@ function spyIntro() {
   assert(done === 1, 'completion callback fires only once');
 }
 
-// --- Optional skip and Back exits cleanly ---------------------------------
+// --- A tap advances the beat; only Back exits outright ---------------------
 {
   Input.clearAll();
-  const calls = spyIntro();
-  let skipped = 0;
-  const state = new IntroState({ onDone: () => { skipped++; } });
+  let done = 0;
+  const state = new IntroState({ onDone: () => { done++; } });
   state.enter();
+  const startBeat = state.beatIndex;
   Input.press('confirm');
   state.update(TICK);
   Input.clearAll();
-  assert(skipped === 1, 'confirm can skip the film');
-  assert(calls.at(-1)?.[0] === 'crowd-stop', 'skip stops crowd audio safely');
+  assert(done === 0, 'confirm does not skip the film');
+  assert(state.beatIndex === startBeat + 1, 'confirm advances to the next beat instead');
 
   Input.clearAll();
+  const calls = spyIntro();
   let backed = 0;
   const backState = new IntroState({ onDone: () => { backed++; } });
   backState.enter();
@@ -75,6 +76,25 @@ function spyIntro() {
   backState.update(TICK);
   Input.clearAll();
   assert(backed === 1, 'Back exits the film');
+  assert(calls.at(-1)?.[0] === 'crowd-stop', 'Back stops crowd audio safely');
+}
+
+// --- Tapping through every beat reaches the close prompt, then closes -----
+{
+  Input.clearAll();
+  let done = 0;
+  const state = new IntroState({ onDone: () => { done++; } });
+  state.enter();
+  for (let i = 0; i < INTRO_BEATS.length; i++) {
+    Input.press('confirm');
+    state.update(TICK);
+    Input.clearAll();
+  }
+  assert(done === 0 && state.awaitingClose, 'tapping through every beat reaches the close prompt without exiting');
+  Input.press('confirm');
+  state.update(TICK);
+  Input.clearAll();
+  assert(done === 1, 'one more tap closes it once every beat has played');
 }
 
 process.exit(failed ? 1 : 0);

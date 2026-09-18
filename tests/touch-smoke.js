@@ -33,7 +33,9 @@ const frames = (n, dt = 16.7) => { for (let i = 0; i < n; i++) dom.frame(dt); };
 frames(5);
 dom.key('Enter'); frames(30);   // title -> difficulty
 dom.key('Enter'); frames(30);   // difficulty -> intro
-for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
+// Tap advances one beat at a time (11 beats, then a close tap) rather than
+// exiting on the first press — give it enough taps to walk all the way out.
+for (let i = 0; i < 14; i++) { dom.key('Enter'); frames(12); }
 frames(40);
 assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.window.__mash_state})`);
 
