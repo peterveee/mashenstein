@@ -1856,7 +1856,7 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
     ? (spaciousRows ? 74 : 56)
     : spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
   const headH = portrait
-    ? (hasNote ? 82 : 48)
+    ? (hasNote ? 100 : 48)
     : hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
   // A boxed modal on a phone is still a box, but it cannot be a LANDSCAPE box:
@@ -2652,7 +2652,7 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     // words 18 units lower and half again as big — a smear beside the line
     // rather than a glow behind it.
     const noteSize = portrait ? fit(note, spaciousRows ? 1.45 : 1.1) : spaciousRows ? 1.35 : 1.2;
-    const noteY = portrait ? g.y + 48 : g.y + 30;
+    const noteY = portrait ? g.y + 66 : g.y + 30;
     const glowScale = portrait ? portraitMenuScale(noteSize) : noteSize;
     const glow = warningGlowSprite(note, glowScale);
     d.globalCompositeOperation = 'lighter';
