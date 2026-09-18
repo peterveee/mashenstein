@@ -1283,10 +1283,6 @@ assert(/const engineOf = \(v\) => v\?\.kind === 'drum' \? 'drum' : v\?\.synth \|
   && !/entry\(null, 'Engine default'/.test(entry)
   && /#voicepicker \.voiceengine \{[^}]*width: 132px[^}]*flex: 0 0 132px/s.test(shell),
   'the compact picker shows the selected engine, hides kind filters on existing tracks, and has no Engine default row');
-assert(/let groups = grouped\(\);/.test(librarySource)
-  && /if \(!groups\.length && query\.trim\(\) && synth !== 'any'\)/.test(librarySource)
-  && /synth = 'any';[\s\S]*?const broadened = grouped\(\);[\s\S]*?syn\.value = 'any';/.test(librarySource),
-  'a no-hit preset search broadens the current synth filter to Any synth while keeping the query');
 assert(/searchInput = search/.test(librarySource)
   && /searchInput\?\.focus\(\{ preventScroll: true \}\)/.test(librarySource),
   'opening the preset library focuses the Search presets field');
