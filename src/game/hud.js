@@ -3387,6 +3387,49 @@ const HAZARD_BORDER = { border: 'rgba(224,72,72,0.55)', shadow: true };
 // The dim is deeper than the 0.35 it replaces but lighter than the pause
 // screen's 0.6 — the hero's death pop launches them up through this frame and
 // is worth still being able to watch.
+// THE CARD IS SIZED FROM THE FRAME, for the same reason the act banner is.
+// The 480 logical units of width map to the SHORT edge of the glass in
+// portrait — about 0.8 css px each against landscape's 1.75 — so type authored
+// at scale 1 against a 480x270 desktop screen comes out at under half the
+// physical size on a phone held upright, on a frame nearly four times as tall.
+// The death message is the one string the player is guaranteed to want to read
+// from wherever they are holding the phone, and it was the smallest thing on
+// the canvas.
+//
+// So portrait fits: the largest scale that still seats the whole message inside
+// the frame's usable width, capped so a two-word death ('UNPLUGGED') does not
+// become a poster. Landscape keeps the authored scale of 1 — that layout was
+// judged on the screen it was drawn for.
+const FAIL_LAYOUT = {
+  landscape: { cap: 1, min: 1, fill: 0.72, maxLines: 2, margin: 72 },
+  portrait: { cap: 2.8, min: 1.6, fill: 0.88, maxLines: 4, margin: 28 },
+};
+
+// The largest scale at or below `cap` whose wrap seats every line inside
+// `usable`. wrapText ellipsises its last line when it runs out of them, and a
+// truncated death message is worse than a slightly smaller one.
+function failBannerMetrics(text) {
+  const cfg = isPhonePortraitPresentation() ? FAIL_LAYOUT.portrait : FAIL_LAYOUT.landscape;
+  const frame = presentationFrame();
+  const safe = frame && frame.safeRect ? frame.safeRect : null;
+  const left = safe && Number.isFinite(safe.left) ? safe.left : 0;
+  const right = safe && Number.isFinite(safe.right) ? safe.right : W;
+  const usable = Math.max(160, Math.min(W, right - left) - cfg.margin);
+  let s = cfg.cap;
+  let lines = wrapText(text, usable, s, cfg.maxLines);
+  for (let guard = 0; guard < 40 && s > cfg.min; guard++) {
+    const fits = !lines.some((line) => line.endsWith('\u2026'))
+      && Math.max(...lines.map((line) => textWidth(line, s))) <= usable
+      && lines.length * LINE_H * s + 8 * s <= H * 0.6;
+    if (fits) break;
+    s = Math.max(cfg.min, s - 0.1);
+    lines = wrapText(text, usable, s, cfg.maxLines);
+  }
+  // One line that still overruns at the floor is better centred than clipped:
+  // the width below is measured, so the card simply grows past the margin.
+  return { s, lines };
+}
+
 export function drawFailBanner(ctx, text) {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -3397,17 +3440,20 @@ export function drawFailBanner(ctx, text) {
   //
   // Centred on the canvas from the card's own height, so a message that wraps
   // to two lines grows in both directions instead of hanging off a fixed top.
-  const PADX = 10;
-  const lines = wrapText(text, W - 72, 1, 2);
-  const tw = Math.max(...lines.map((line) => textWidth(line)));
-  const bw = tw + PADX * 2, bh = lines.length * 10 + 8;
+  // Every one of those measurements rides the fitted scale, so the padding and
+  // the corner stay in proportion to the lettering instead of shrinking to a
+  // hairline around big portrait type.
+  const { s, lines } = failBannerMetrics(text);
+  const PADX = 10 * s;
+  const tw = Math.max(...lines.map((line) => textWidth(line, s)));
+  const bw = tw + PADX * 2, bh = lines.length * LINE_H * s + 8 * s;
   const by = Math.round((H - bh) / 2);
-  drawPanel(ctx, Math.round(W / 2 - bw / 2), by, bw, bh, 5, HAZARD_PANEL, HAZARD_BORDER);
+  drawPanel(ctx, Math.round(W / 2 - bw / 2), by, bw, bh, 5 * s, HAZARD_PANEL, HAZARD_BORDER);
   // Through textY, like every other panel in this file: the glyph box is 12
   // units tall but the ink only occupies the middle 6 of it, so centring the
   // box leaves the lettering sitting visibly high on its own card.
   lines.forEach((line, i) =>
-    rawDrawTextCentered(ctx, line, W / 2, textY(by + 4 + i * LINE_H + LINE_H / 2), '#e04848'));
+    rawDrawTextCentered(ctx, line, W / 2, textY(by + (4 + i * LINE_H + LINE_H / 2) * s, s), '#e04848', s));
   ctx.restore();
 }
 

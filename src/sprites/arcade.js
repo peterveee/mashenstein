@@ -1161,32 +1161,56 @@ function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
     return;
   }
   // The default leaf: the Arcade Corner and the back room. These two sit in the
-  // middle of the concourse and nobody ever walks through them, so they stay
-  // HINGED — a door that slides itself open in a stretch of wall you cannot pass
-  // is making a promise the room does not keep, and the sensor over it would be
-  // watching for somebody who never arrives.
+  // middle of the concourse and are not boundaries you cross, so they are
+  // HINGED rather than automatic — no pocket, no sensor watching for somebody
+  // who mostly never arrives.
   //
   // Everything else is borrowed from the porthole pair either side of them: the
   // same soft corners, the same two-ring window, the same band off the station's
   // own sign colour. The wall should read as one set of doors with two
   // mechanisms, rather than as two unrelated sets.
+  //
+  // `openAmt` swings it INWARD. There is no third dimension to rotate a leaf
+  // in, so it foreshortens instead: the face keeps its height and loses width
+  // toward the hinge, which is what a door turning away from you actually does
+  // to its own silhouette. At 0 the clip is the leaf's own box and every stroke
+  // below lands exactly where it did before anything could open, so a door
+  // nobody is walking through is untouched by any of this.
   const powered = pal.icon !== 'none';
   const [lx, ly, lw, lh] = box('leaf');
+  // THE FACE IS SQUEEZED, NOT CUT. Clipping the leaf to a narrowing rectangle
+  // was the first attempt and it read as a sliding door: the face kept its own
+  // proportions right up to the cut, so all the eye saw was a door leaving to
+  // the left. A door that TURNS does three things a door that slides does not,
+  // and it needs all three to read at 44px:
+  //
+  //  - its face compresses toward the hinge, so the round porthole goes
+  //    elliptical — that ellipse is the single strongest rotation cue here;
+  //  - its free edge is further away than its hinge edge, so the silhouette is
+  //    a trapezoid rather than a rectangle;
+  //  - the face turns away from the light, so it darkens as it goes.
+  const openW = Math.max(lw * 0.06, lw * (1 - openAmt * 0.88));
+  const inset = lh * openAmt * 0.13;
+  const trapezoid = (c) => {
+    c.moveTo(lx, ly);
+    c.lineTo(lx + openW, ly + inset);
+    c.lineTo(lx + openW, ly + lh - inset);
+    c.lineTo(lx, ly + lh);
+    c.closePath();
+  };
+  ctx.save();
+  // Clip first, in unsqueezed space, so the trapezoid stays the silhouette...
+  ctx.beginPath(); trapezoid(ctx); ctx.clip();
+  // ...then squeeze everything drawn into it horizontally about the hinge. Every
+  // stroke below is written at its closed-door position and gets foreshortened
+  // for free, which is also why the porthole needs no special case to become an
+  // ellipse.
+  ctx.translate(lx, 0);
+  ctx.scale(openW / lw, 1);
+  ctx.translate(-lx, 0);
   shape(ctx, pal.door, u, (c) => rr(c, lx, ly, lw, lh, w * 0.12));
-  // The hinge stile, and the crack of dark down it. On the sliding doors the
-  // giveaway is the pocket; here it is this, plus the two plates below — the
-  // cheapest way to say "swings" without animating anything.
-  plain(ctx, darken(pal.door, 0.45), (c) => c.rect(lx, ly + h * 0.02, w * 0.034, lh - h * 0.04));
   // The band, carried at the same height as the sliding pair so the row lines up.
   plain(ctx, mix(pal.door, pal.sign, powered ? 0.45 : 0.12), (c) => c.rect(lx, Y(0.73), lw, h * 0.07));
-  // Hinge plates last, and placed clear of the band above and below it. Drawn
-  // at the stile's own width rather than inside it — a hinge narrower than the
-  // stile it sits on is a grey speck at this size, which is what the first pass
-  // of these was.
-  plain(ctx, lighten(pal.frame, 0.34), (c) => {
-    rr(c, lx - w * 0.004, Y(0.38), w * 0.05, h * 0.055, w * 0.01);
-    rr(c, lx - w * 0.004, Y(0.87), w * 0.05, h * 0.055, w * 0.01);
-  });
   // The window: same construction as the porthole, set a touch smaller and
   // pushed off the hinge — a relative, not a copy.
   const cx = lx + lw * 0.56, cy = Y(0.47), r = lw * 0.25;
@@ -1200,6 +1224,42 @@ function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
   plain(ctx, darken(pal.frame, 0.4), (c) => c.arc(kx, ky + h * 0.004, w * 0.042, 0, Math.PI * 2));
   plain(ctx, lighten(pal.frame, 0.42), (c) => c.arc(kx, ky, w * 0.04, 0, Math.PI * 2));
   plain(ctx, lighten(pal.frame, 0.62), (c) => c.arc(kx - w * 0.013, ky - w * 0.012, w * 0.015, 0, Math.PI * 2));
+  ctx.restore();
+  if (openAmt > 0.02) {
+    // INWARD, and this is what says so. A door swinging OUT brings its free
+    // edge toward you: that edge catches the light, and the leaf starts to
+    // cover the wall around its own frame. A door swinging IN sends that edge
+    // away into an unlit room, so the face has to fall off into shadow ACROSS
+    // itself — brightest still at the hinge, which has barely moved, darkest at
+    // the free edge, which is now deepest into the dark.
+    //
+    // A flat wash over the whole face was the first attempt and it read as
+    // swinging out, because an evenly dimmed door is just a dimmer door facing
+    // you. The gradient is the entire difference.
+    const g = ctx.createLinearGradient(lx, 0, lx + openW, 0);
+    g.addColorStop(0, `rgba(11,9,18,${Math.min(0.3, openAmt * 0.3)})`);
+    g.addColorStop(1, `rgba(11,9,18,${Math.min(0.82, openAmt * 0.85)})`);
+    plain(ctx, g, trapezoid);
+    // The leaf's own edge, seen as it turns — and DARK, because on an inward
+    // swing that edge is inside the doorway looking away from every light in
+    // the concourse. Lit, it read as the near edge of a door opening outward.
+    plain(ctx, darken(pal.door, 0.62), (c) => {
+      c.moveTo(lx + openW, ly + inset);
+      c.lineTo(lx + openW + w * 0.018, ly + inset * 1.5);
+      c.lineTo(lx + openW + w * 0.018, ly + lh - inset * 1.5);
+      c.lineTo(lx + openW, ly + lh - inset);
+      c.closePath();
+    });
+  }
+  // The hinge stile and its plates stay put, because the hinge does. Outside the
+  // clip for exactly that reason — they are the part of the door that is not
+  // going anywhere, and watching them swing away with the face was the tell that
+  // the first version of this was a wipe.
+  plain(ctx, darken(pal.door, 0.45), (c) => c.rect(lx, ly + h * 0.02, w * 0.034, lh - h * 0.04));
+  plain(ctx, lighten(pal.frame, 0.34), (c) => {
+    rr(c, lx - w * 0.004, Y(0.38), w * 0.05, h * 0.055, w * 0.01);
+    rr(c, lx - w * 0.004, Y(0.87), w * 0.05, h * 0.055, w * 0.01);
+  });
 }
 
 function paintDoor(ctx, w, h, pal, lit = 1, openAmt = 0, t = 0) {

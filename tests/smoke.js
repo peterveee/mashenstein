@@ -36,7 +36,14 @@ dom.key('Enter'); frames(30); // through transition into difficulty
 // Difficulty: pick BREEZY.
 dom.key('Enter'); frames(30);
 // Intro: 4 panels x (finish text + advance)
-for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
+// Press through the intro until the hub actually arrives, rather than a fixed
+// nine times. The spare presses used to land IN the hub, where the spawn sits
+// inside the EXIT door's use radius — so they quit to the title, and whether
+// the test ended up in the hub came down to how many presses were left over.
+for (let i = 0; i < 12 && globalThis.window.__mash_state !== 'HubState'; i++) {
+  dom.key('Enter');
+  frames(12);
+}
 frames(40);
 
 // Should now be in the hub. Save should have a slot.

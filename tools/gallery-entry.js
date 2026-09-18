@@ -123,6 +123,7 @@ import {
 import {
   DOOR_CANDIDATES, doorCandidatePalette,
 } from '../src/dev/door-candidates.js';
+import { makeDoorWalk, openingEdge, WALK_DIR } from '../src/dev/door-walk-preview.js';
 import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
   ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
@@ -170,6 +171,13 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // Lab sections that have been retired from the chooser remain in source for
 // reference, but are intentionally omitted from the rendered gallery.
 const HIDDEN_GALLERY_SECTIONS = new Set([
+  // SETTLED 18 Sep 2026: the PORTHOLE won on Peter's call and is in the game —
+  // arcade.js paints it for the two sliding boundary doors, and the swinging
+  // pair mid-concourse were restyled to match it. Both sheets stay in source as
+  // the record of the seven; src/dev/door-candidates.js goes when nobody wants
+  // to see the losers again.
+  'door-bakeoff',
+  'door-bakeoff-palettes',
   // SETTLED 15 Sep 2026: the THISTLE won and is in the game — props.js
   // paints it, OBSTACLES registers it, and PLUMBER_PATTERNS deals it on
   // tiers 0 and 1 with the cactus kept at tier 2. The sheet stays in source
@@ -8476,6 +8484,110 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         ctx.font = '5px ui-monospace, monospace';
         POSES.forEach((label, i) => ctx.fillText(label, M + i * (DW + GAP) + 1, TH - 4));
       }, { animated: true, wide: true, hires: 6 });
+  }
+}
+
+// ------------------------------ food court — walking through a door (shipped)
+// The staged exit the hub and the Trophy Room both play. src/game/hub/door-walk.js
+// is the sequence itself; this draws the real thing rather than a copy of it.
+//
+// TWO RULES it is judged against. He never changes size — he keeps his stride
+// and his scale and walks BEHIND the door, which eats him. And it is one
+// continuous motion from wherever he already is: the sequence places him
+// nowhere, so its length depends on how far he had left to walk, which is why
+// there is no fixed phase table to print here.
+{
+  const DW = 44, DH = 84, HERO = 'lorenzo';
+  const HH = 46;                       // PLAYER_H — what the hub actually draws
+  const TW = 168, TH = DH + 30, FLOOR = TH - 16;
+  const DOOR_X = TW / 2 - DW / 2, DOOR_Y = FLOOR - DH;
+  const GEOM = { lx: DOOR_X + DW * 0.165, lw: DW * 0.67, wx: DOOR_X + DW * 0.12, ww: DW * 0.76 };
+  const SPEED = 120;                   // HUB_WALK_SPEED
+  const START = 58;                    // roughly a walk-up's worth of concourse
+
+  const ROWS = [
+    { kind: 'slide', type: 'exit', pal: DOOR_PALETTES.exit, title: 'sliding — EXIT',
+      note: 'open before he arrives; he follows the leaf into its pocket and it covers him' },
+    { kind: 'swing', type: 'arcade', pal: DOOR_PALETTES.arcade, title: 'hinged — ARCADE CORNER',
+      note: 'swings inward out of his way while he walks; the far jamb takes him' },
+  ];
+
+  const concourse = (ctx) => {
+    ctx.fillStyle = '#241d31'; ctx.fillRect(0, 0, TW, FLOOR);
+    ctx.fillStyle = '#38304a'; ctx.fillRect(0, FLOOR, TW, 5);
+    ctx.fillStyle = '#1c1626'; ctx.fillRect(0, FLOOR + 5, TW, TH - FLOOR - 5);
+  };
+
+  // A real sequence, built the way the hub builds it, so the preview cannot
+  // drift from the game.
+  const walkFor = (row) => makeDoorWalk({
+    kind: row.kind, type: row.type, doorX: DOOR_X + DW / 2,
+    fromX: DOOR_X + DW / 2 - WALK_DIR[row.type] * START,
+    speed: SPEED,
+  });
+
+  const frameAt = (row, walk, t, clock, ctx) => {
+    walk.t = t;
+    const s = walk.state();
+    concourse(ctx);
+    // Door first, hero over it — the order the concourse paints in, since he
+    // walks along the FRONT of the wall. What hides him is the clip.
+    drawDoor(ctx, DOOR_X, DOOR_Y, DW, DH, row.pal, clock, s.doorOpen);
+    if (s.walking) {
+      const edge = openingEdge(row.kind, s.doorOpen, s.dir, GEOM);
+      const far = TW * 2;
+      ctx.save();
+      ctx.beginPath();
+      if (s.dir < 0) ctx.rect(edge, -far, far * 2, far * 2);
+      else ctx.rect(edge - far * 2, -far, far * 2, far * 2);
+      ctx.clip();
+      drawToon(ctx, HERO, pose('run', clock, { phase: s.gait, facing: s.facing }),
+        s.px, FLOOR, HH);
+      ctx.restore();
+    }
+    return s;
+  };
+
+  for (const row of ROWS) {
+    const probe = walkFor(row);
+    const dur = probe.duration;
+    const grid = section(`door-walk-${row.kind}`,
+      `FOOD COURT — walking through a door: ${row.title}`,
+      `${dur.toFixed(2)}s from ${START} units out. ${row.note}. He never changes size, and never restarts his walk.`);
+
+    tile(grid, 'looping', `${dur.toFixed(2)}s, then a beat before it repeats`, TW, TH,
+      (ctx, t) => {
+        const walk = walkFor(row);
+        const loop = dur + 0.5;
+        const s = frameAt(row, walk, Math.min(t % loop, dur), t, ctx);
+        ctx.fillStyle = 'rgba(255,255,255,.5)';
+        ctx.font = '5px ui-monospace, monospace';
+        ctx.fillText(`${s.phase}  ${Math.min(t % loop, dur).toFixed(2)}s`, 4, TH - 4);
+      }, { animated: true, hires: 5 });
+
+    tile(grid, 'quarter speed', 'for judging where the door takes him', TW, TH,
+      (ctx, t) => {
+        const loop = (dur + 0.5) * 4;
+        frameAt(row, walkFor(row), Math.min((t % loop) / 4, dur), t, ctx);
+      }, { animated: true, hires: 5 });
+
+    const N = 6, COL = 124, SW = COL * N;
+    tile(grid, 'filmstrip', 'evenly spaced across the whole sequence', SW, TH,
+      (ctx) => {
+        for (let i = 0; i < N; i++) {
+          const t = (i / (N - 1)) * dur;
+          ctx.save();
+          ctx.beginPath(); ctx.rect(i * COL, 0, COL, TH); ctx.clip();
+          ctx.translate(i * COL + (COL - TW) / 2, 0);
+          const s = frameAt(row, walkFor(row), t, 1.5, ctx);
+          ctx.restore();
+          ctx.fillStyle = 'rgba(255,255,255,.14)';
+          if (i) ctx.fillRect(i * COL, 0, 1, TH);
+          ctx.fillStyle = 'rgba(255,240,150,.85)';
+          ctx.font = '5px ui-monospace, monospace';
+          ctx.fillText(`${t.toFixed(2)}  ${s.phase}`, i * COL + 4, TH - 4);
+        }
+      }, { wide: true, hires: 5 });
   }
 }
 

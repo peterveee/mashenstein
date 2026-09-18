@@ -31,3 +31,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-17 | `32842c1` | [2026-09-17-32842c1.html](2026-09-17-32842c1.html) | [bake-offs](2026-09-17-32842c1-lab.html) | feat: add SFX desk for live audio mixing and level adjustment |
 | 2026-09-18 | `b68be5b` | [2026-09-18-b68be5b.html](2026-09-18-b68be5b.html) | [bake-offs](2026-09-18-b68be5b-lab.html) | feat: add floor reflections rendering and desk management tools |
 | 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |
+| 2026-09-18 | `5cc650c` | [2026-09-18-5cc650c.html](2026-09-18-5cc650c.html) | [bake-offs](2026-09-18-5cc650c-lab.html) | feat: add new lab HTML file and enhance cabinet dive mechanics with facial expressions |

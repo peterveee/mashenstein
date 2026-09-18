@@ -45,6 +45,8 @@ const flow = {
 
 const hub = new HubState({ save, flow });
 hub.interact({ type: 'shelf' });
+// Walking into the Trophy Room is staged now; run the sequence out.
+for (let i = 0; i < 90 && opened === 0; i++) hub.update(1 / 30);
 assert(opened === 1, 'the food-court trophy shelf opens the workshop instead of dialogue');
 
 const room = new TrophyRoomState({ save, flow });
@@ -137,11 +139,13 @@ Input.pointer.y = 108;
 Input.press('pointer');
 clickExitRoom.update(1 / 60);
 Input.endFrame();
+for (let i = 0; i < 90 && returned === 0; i++) clickExitRoom.update(1 / 30);
 assert(returned === 1, 'tapping the trophy-room exit sign returns to the food court immediately');
 Input.release('pointer'); Input.endFrame();
 
 room.px = 34;
 Input.press('left'); room.update(0.1); Input.release('left'); Input.endFrame();
+for (let i = 0; i < 90 && returned === 1; i++) room.update(1 / 30);
 assert(returned === 2, 'walking through the trophy-room exit door returns to the food court');
 room.exit();
 Input.clearAll();

@@ -2069,6 +2069,9 @@ export class RunState {
     this.stage = opts.stage || null;
     this.cabinet = opts.cabinet || (this.stage ? CABINET_BY_ID[this.stage.cabinet] : CABINETS[0]);
     this.overtime = !!opts.overtime;
+    // Set when this overtime run came in on a hand-picked seed (the back room,
+    // a dev seed-lock) rather than the day's. See Flow.startOvertime.
+    this.offRecord = !!opts.offRecord;
     // Rhythm campaign stages own a fixed beat lane.  Overtime and boss runs
     // intentionally retain the ordinary distance-driven game.
     // BossState assigns `bossCab` immediately after this constructor runs, so
@@ -13862,7 +13865,8 @@ export class RunState {
     }
     const result = {
       success, reason,
-      stage: this.stage, overtime: this.overtime, corrupted: this.corrupted,
+      stage: this.stage, overtime: this.overtime, offRecord: this.offRecord,
+      corrupted: this.corrupted,
       score: Math.floor(this.score), coins: this.coins,
       damageTaken: this.damageTaken,
       bestCombo: 0,

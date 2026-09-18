@@ -519,6 +519,15 @@ const Flow = {
     setState(new RunState({
       overtime: true, save,
       seed: seedOverride ?? dailySeed(),
+      // THE OVERTIME RECORD BELONGS TO THE DAILY.
+      //
+      // Two doors open this mode: the OVERTIME CABINET (post-ending, no seed
+      // override, so everyone runs the same layout that UTC day) and THE BACK
+      // ROOM (from 25 plugs, a fresh random seed every entry). Only the first
+      // is a fair comparison with itself day to day, so only the first writes
+      // slot.overtime.best. A seed override — the back room's, or a dev
+      // seed-lock — means this run is off the record; it still pays coins.
+      offRecord: seedOverride != null,
       difficulty: save.slot.difficulty,
       initialHeroId: initialHeroId || Flow.heroId(),
       devInvuln, devAutoExit, devMaxTime, devStartPercent,

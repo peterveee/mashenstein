@@ -71,7 +71,9 @@ export const SFX_BIRTHDAYS = {
   trapSnap: '2026-09-15',   // 08fc2a3
   abilityReady: '2026-09-17',   // 32842c1
   switchFlick: '2026-09-17',   // 32842c1
-  bridgeLay: null,
+  bridgeLay: '2026-09-18',   // cc4fb74
+  doorClose: '2026-09-18',   // 215696c
+  doorOpen: '2026-09-18',   // 215696c
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

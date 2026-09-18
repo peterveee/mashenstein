@@ -109,8 +109,14 @@ export function applyResult(save, result) {
   if (result.applianceGot) slot.stats.appliancesFound++;
 
   if (result.overtime) {
-    slot.overtime.best = Math.max(slot.overtime.best, result.score);
-    slot.overtime.bestRelay = Math.max(slot.overtime.bestRelay, result.bestCombo);
+    // An off-record run (the back room's random seed, a dev seed-lock) is paid
+    // for but not remembered: the hub's OVERTIME RECORD is the daily cabinet's
+    // number, and a lucky one-off layout must not be sitting in it when the
+    // cabinet finally opens after the ending.
+    if (!result.offRecord) {
+      slot.overtime.best = Math.max(slot.overtime.best, result.score);
+      slot.overtime.bestRelay = Math.max(slot.overtime.bestRelay, result.bestCombo);
+    }
     gains.coins += Math.floor(result.score / 100);
   } else if (result.stage) {
     const id = result.stage.id;

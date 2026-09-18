@@ -688,6 +688,9 @@ const walkExitHub = new HubState({
 walkExitHub.enter();
 walkExitHub.px = 24;
 Input.press('left'); walkExitHub.update(0.1); Input.release('left'); Input.endFrame();
+// Staged, not cut: he walks through the door before the flow call fires, so the
+// assertion is about where the walk ENDS rather than about the frame it started.
+for (let i = 0; i < 90 && foodCourtWalkExits === 0; i++) walkExitHub.update(1 / 30);
 assert(foodCourtWalkExits === 1,
   'walking through the Food Court EXIT returns to the title without an interaction');
 walkExitHub.exit();
@@ -725,6 +728,7 @@ assert(farTrophyStations[0].x === 22 && walkTrophyHub.width - farTrophyDoor.x ==
   'the Food Court boundary door frames sit flush with the left and right room edges');
 walkTrophyHub.px = farTrophyDoor.x - 4;
 Input.press('right'); walkTrophyHub.update(0.1); Input.release('right'); Input.endFrame();
+for (let i = 0; i < 90 && trophyRoomWalkEntries === 0; i++) walkTrophyHub.update(1 / 30);
 assert(trophyRoomWalkEntries === 1,
   'walking through the far Food Court door enters the Trophy Room without an interaction');
 walkTrophyHub.exit();

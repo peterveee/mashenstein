@@ -6,6 +6,7 @@ import { Audio, PORTAL_BREATH } from '../../engine/audio.js';
 import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
+import { makeDoorWalk, makeDoorEntry, openingEdge, WALK_DIR } from './door-walk.js';
 import {
   makeCabinetDive, DIVE_VARIANT_BY_ID, DEFAULT_DIVE_VARIANT, DEFAULT_DIVE_ZOOM, aimForZoom, EXIT_CUE,
   DIVE_OUT_SMILE, DIVE_LEAP_AT,
@@ -694,7 +695,23 @@ const STATION_R = 26, NPC_ATTEND_R = 30;
 // How close the hero has to be before the exit/trophy doors swing open, and how
 // fast they swing — wider than STATION_R so the door is already open by the time
 // you reach it, rather than catching up after you cross the threshold.
-const DOOR_OPEN_R = 60, DOOR_SWING_RATE = 3.2;
+// Deliberately shorter than the 60 this started at, which opened the door from
+// most of a bay away and — worse — re-opened it on the hero the moment he
+// finished walking IN through it, since he arrives a few strides clear of the
+// doorway and that was still inside the old radius.
+//
+// Sized to sit a couple of units INSIDE the arrival stand-off below, which is
+// the whole specification: he should come to rest in front of a shut door, and
+// the first step he takes toward it should open it. Wider and it hangs open
+// over a hero who is only standing there; narrower and he has to walk right up
+// to the frame before it notices him, which is not what an automatic door is.
+const DOOR_OPEN_R = 44, DOOR_SWING_RATE = 3.2;
+// Where an arriving hero comes to rest, measured from the doorway he stepped
+// out of. A boundary door puts him into the room proper, clear of its own
+// sensor. A hinged one is a fixture he was only ever visiting, so he simply
+// ends up standing in front of it — walking him on across the concourse read
+// as him leaving for somewhere else.
+const ENTRY_STAND_OFF = { slide: 46, swing: 0 };
 
 // One frame of a door's travel, plus the cue that goes with it. `was` is last
 // frame's target, and the whoosh fires on the frame the target FLIPS: the sound
@@ -1901,6 +1918,34 @@ export class HubState {
     // without a cue. See doorStep().
     this.exitDoorTarget = null;
     this.trophyDoorTarget = null;
+    this.doorWalk = null;
+    this.departed = false;   // see the door walk: true once he is through one
+    // WALK HIM IN. You can only reach the concourse through one of its doors,
+    // so arriving should look like coming through one rather than appearing in
+    // front of it. Which door is not a guess: a return trip restores the exact
+    // position he left from, which is the doorway he left by, and a fresh
+    // arrival from the title comes in off the street through the EXIT.
+    if (!this.dive && !this.pendingDive && !this.pendingOut) {
+      const doors = this.stations().filter((s) => WALK_DIR[s.type] !== undefined);
+      const came = returning
+        ? doors.find((s) => Math.abs(s.x - this.px) < 12)
+        : doors.find((s) => s.type === 'exit');
+      if (came) {
+        const inward = -WALK_DIR[came.type];
+        const kind = came.type === 'exit' || came.type === 'shelf' ? 'slide' : 'swing';
+        const rest = came.x + inward * ENTRY_STAND_OFF[kind];
+        this.doorWalk = makeDoorEntry({
+          kind,
+          doorX: came.x,
+          toX: rest,
+          type: came.type,
+          speed: HUB_WALK_SPEED,
+          gaitCycle: PLAYER_H * GAIT_DISTANCE_PER_CYCLE,
+        });
+        this.px = rest;
+        this.facing = inward;
+      }
+    }
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
     this.npcMenuIdx = 0;
@@ -2187,6 +2232,65 @@ export class HubState {
     // tubes go on rolling and the ceiling goes on guttering behind the leap.
     // Only the player and the controls are suspended.
     if (this.arrivedT > 0) this.arrivedT -= dt;
+    // A door walk owns the frame on the same terms as a dive: the room keeps
+    // running behind it — attract art, tubes, ceiling, crowd — and only the
+    // player and the controls are suspended. It is a cutscene happening IN the
+    // room, not a modal over it.
+    //
+    // Unskippable, unlike the dive, and for a reason: at a shade over a second
+    // there is nothing to sit through, and a skip would have to decide what a
+    // half-played walk leaves behind — a door caught half shut, a hero halfway
+    // into a wall. The dive earns its skip by being twice as long.
+    if (this.doorWalk && this.doorWalk.mode === 'out' && (Input.pressed('confirm')
+      || Input.pressed('jump') || Input.pressed('back') || Input.pressed('pointer')
+      || Input.held('left') || Input.held('right'))) {
+      // ARRIVING IS SKIPPABLE, and the press that skipped it still counts. A
+      // player already walking as the room fades up should not have the
+      // controls held off them for the better part of a second, and falling
+      // through rather than returning means their input lands on this frame
+      // rather than being eaten by the animation that swallowed it.
+      //
+      // It does NOT move him. enter() already put this.px where the arrival was
+      // heading — the sequence's own position is just what gets drawn — so
+      // assigning toX here overwrote whoever had set a position since, which is
+      // how a skipped arrival used to teleport him back to the door.
+      this.doorWalk = null;
+    }
+    if (this.doorWalk) {
+      this.t += dt;
+      this.updateNpcs(dt);
+      // The cues ride the PHASE CHANGES, which is the only place they can live
+      // now: proximity is what normally opens and shuts these doors, and the
+      // sequence has taken the door away from proximity for its duration. A
+      // hinged door gets its first whoosh ever here — nothing used to open it.
+      const was = this.doorWalk.state().phase;
+      this.doorWalk.update(dt);
+      if (this.doorWalk.state().phase !== was && this.doorWalk.state().phase === 'shut') {
+        Audio.sfx('doorClose');
+      }
+      if (this.doorWalk.done) {
+        const done = this.doorWalk.onDone;
+        const leaving = this.doorWalk.mode !== 'out';
+        // HE HAS LEFT. Clearing the sequence is not the same as him being gone:
+        // the walk never wrote back to this.px, so the moment doorWalk is null
+        // the ordinary draw puts him back on the spot he set off from — and the
+        // handover takes a frame or two, so he flashed back into the concourse
+        // in front of a shut door every single time.
+        if (leaving) this.departed = true;
+        // AND THE DOOR STAYS SHUT. Proximity is what normally drives these two,
+        // and it still thinks the hero is stood in the sensor — so the frame
+        // the sequence let go, the door sprang back open behind him and the
+        // transition cut on an open doorway. Hand proximity the shut door the
+        // sequence just finished, target included, or it re-opens it and fires
+        // a cue for the privilege.
+        if (this.doorWalk.type === 'exit') { this.exitDoorOpen = 0; this.exitDoorTarget = 0; }
+        if (this.doorWalk.type === 'shelf') { this.trophyDoorOpen = 0; this.trophyDoorTarget = 0; }
+        this.doorWalk = null;
+        if (done) done();
+      }
+      Input.endFrame();
+      return;
+    }
     if (this.dive) {
       this.t += dt;
       this.updateNpcs(dt);
@@ -2449,7 +2553,7 @@ export class HubState {
       this.gaitPhase = this.gaitPhase < 0.25 || this.gaitPhase >= 0.75 ? 0 : 0.5;
     }
     if (walkingThroughExit && exitDoor && this.px <= exitDoor.x) {
-      this.flow.toTitle();
+      this.startDoorWalk(exitDoor, 'slide', () => this.flow.toTitle());
       Input.endFrame();
       return;
     }
@@ -2473,7 +2577,7 @@ export class HubState {
       // Face back into the concourse so leaving the Trophy Room never points
       // the hero straight back through the boundary they just used.
       this.facing = -1;
-      this.flow.openTrophyRoom();
+      this.startDoorWalk(trophyDoor, 'slide', () => this.flow.openTrophyRoom());
       Input.endFrame();
       return;
     }
@@ -2601,6 +2705,33 @@ export class HubState {
     Input.endFrame();
   }
 
+  // Stage a walk through a door instead of cutting on the frame he reaches it.
+  // The sequence owns the hero from here until it hands back, which is why the
+  // walk target and any held input are dropped: a queued destination that
+  // survived the animation would have him set off again the moment he landed in
+  // the next room.
+  startDoorWalk(st, kind, onDone) {
+    this.walkTarget = null;
+    this.walkToNpc = null;
+    this.doorWalk = makeDoorWalk({
+      kind, doorX: st.x, type: st.type, onDone,
+      // From where he IS, at the speed he was already walking. See door-walk.js:
+      // the sequence places him nowhere, it only keeps him going.
+      fromX: this.px,
+      speed: HUB_WALK_SPEED,
+      gaitCycle: PLAYER_H * GAIT_DISTANCE_PER_CYCLE,
+      // Whatever the sensor had already managed, so a door caught mid-open
+      // finishes opening instead of snapping.
+      openFrom: st.type === 'exit' ? this.exitDoorOpen
+        : st.type === 'shelf' ? this.trophyDoorOpen : 1,
+    });
+    // A hinged door has to get out of his way, and that is the only door here
+    // that makes a noise of its own on the way open — the sliding pair were
+    // opened by proximity long before he got here.
+    if (kind === 'swing') Audio.sfx('doorOpen');
+    return true;
+  }
+
   interact(st) {
     const slot = this.save.slot;
     if (st.type === 'shelf' && !trophyRoomUnlocked(slot)) {
@@ -2619,14 +2750,23 @@ export class HubState {
       // reachable so DIVE_ON_USE is one word rather than a rewrite.
       if (this.startCabinetDive(st)) return;
       this.flow.openCabinet(st.cab);
-    } else if (st.type === 'exit') this.flow.toTitle();
+    // The four doors the hero actually goes THROUGH walk him through them; see
+    // startDoorWalk. The counters either side (bench, shop) are served across
+    // rather than entered, and the socket and OVERTIME are not doors at all, so
+    // those still open on the spot.
+    } else if (st.type === 'exit') this.startDoorWalk(st, 'slide', () => this.flow.toTitle());
     else if (st.type === 'bench') this.flow.openBench();
     else if (st.type === 'shop') this.flow.openShop();
-    else if (st.type === 'arcade') this.flow.openArcade();
-    else if (st.type === 'shelf') { this.facing = -1; this.flow.openTrophyRoom(); }
-    else if (st.type === 'socket') this.flow.startFinale();
+    else if (st.type === 'arcade') this.startDoorWalk(st, 'swing', () => this.flow.openArcade());
+    else if (st.type === 'shelf') {
+      this.facing = -1;
+      this.startDoorWalk(st, 'slide', () => this.flow.openTrophyRoom());
+    } else if (st.type === 'socket') this.flow.startFinale();
     else if (st.type === 'overtime') this.flow.startOvertime();
-    else if (st.type === 'backroom') this.flow.startOvertime((Date.now() & 0xfffff) ^ 0xbac);
+    else if (st.type === 'backroom') {
+      const seed = (Date.now() & 0xfffff) ^ 0xbac;
+      this.startDoorWalk(st, 'swing', () => this.flow.startOvertime(seed));
+    }
   }
 
   // Start the hero's leap into `st`. Returns false when the dive is switched
@@ -3177,9 +3317,16 @@ export class HubState {
       // softness: three left 8% ledges you could still count at dive zoom, five
       // put them under 5% and the ramp closes up. Evenly spaced, because an even
       // spacing at an even share is what makes the sum a straight ramp.
+      // HOW FAR THE OUTERMOST SPLAY REACHES, as a multiple of the shipped pool.
+      // 1.75 was the first pass and it bled toward the neighbouring machines —
+      // the light stopped belonging to any one cabinet, and the floor read busy
+      // with nine of them on it. 1.25 keeps the pool under the machine that
+      // casts it and still has no edge you can point at. Peter's pick, 18 Sep
+      // 2026, against 1.75 and against the single hard polygon.
+      const POOL_OUTER = 1.25;
       const POOL_STEPS = 5;
       for (let i = 0; i < POOL_STEPS; i++) {
-        const spread = 1.75 - (1.75 - 0.5) * (i / (POOL_STEPS - 1));
+        const spread = POOL_OUTER - (POOL_OUTER - 0.5) * (i / (POOL_STEPS - 1));
         ctx.globalAlpha = 0.24 / POOL_STEPS;
         ctx.beginPath();
         ctx.moveTo(x - CAB_W * 0.5 * spread, layout.floorY);
@@ -3321,7 +3468,12 @@ export class HubState {
         const doorPal = s.type === 'shelf' && !s.unlocked
           ? DOOR_PALETTES.shelfLocked
           : DOOR_PALETTES[s.type];
-        const doorOpen = s.type === 'exit' ? this.exitDoorOpen
+        // While a walk is running, that door's opening is the SEQUENCE's, not
+        // proximity's — the two disagree the moment the sequence starts shutting
+        // it with the hero still stood inside the sensor radius.
+        const walk = this.doorWalk;
+        const doorOpen = walk && walk.type === s.type ? walk.state().doorOpen
+          : s.type === 'exit' ? this.exitDoorOpen
           : s.type === 'shelf' ? this.trophyDoorOpen : 0;
         drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, doorOpen,
           { steady: push });
@@ -3342,7 +3494,9 @@ export class HubState {
     // then jumps 13px, which is what a stuttering walk looks like. drawToon paints
     // vector shapes into this context rather than blitting a cached bitmap, so a
     // fractional x costs nothing and antialiases correctly.
-    const pxs = this.px - cam;
+    // During a door walk the sequence owns where he is; see door-walk.js.
+    const walkState = this.doorWalk ? this.doorWalk.state() : null;
+    const pxs = (walkState ? walkState.px : this.px) - cam;
     // THE CROWD, gathered before anything is painted. Each entry carries the one
     // pose object its figure and its mirror both draw from — two objects and the
     // reflection would animate a frame of its own.
@@ -3428,7 +3582,10 @@ export class HubState {
     // Built once and drawn twice: the reflection has to be the SAME pose object,
     // or the mirror would animate a frame of its own.
     const heroPose = this.dive ? null : {
-      kind: airborne ? 'jump' : moving ? 'run' : 'idle',
+      // A door walk is walking, whatever the controls say. `moving` reads held
+      // input and a live walk target, and the sequence has neither — so he slid
+      // through the doorway in his idle pose, feet planted.
+      kind: walkState ? 'run' : airborne ? 'jump' : moving ? 'run' : 'idle',
       // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
       //
       // Deliberately NOT the rig's reduced-amplitude `walk` cycle, though a
@@ -3439,19 +3596,56 @@ export class HubState {
       // would merely spin the legs faster to compensate — so it is available if
       // the concourse ever wants a gentler gait, but the full stride is what
       // matches the trophy room, and that is the one to match.
-      phase: this.gaitPhase,
+      phase: walkState ? walkState.gait : this.gaitPhase,
       time: this.t,
       grounded: !airborne,
       vy: this.jumpVy,
-      facing: this.facing || 1,
+      facing: walkState ? walkState.facing : (this.facing || 1),
       // Just came back out of a machine — see the dive's own landing expression,
       // which this continues so it lasts long enough to be seen. Which one it is
       // depends on how the stage went: pleased for a clear, serious for a loss.
       faceJoy: this.arrivedT > 0 && this.arrivedJoy,
       faceGrim: this.arrivedT > 0 && !this.arrivedJoy,
     };
-    const drawHero = this.dive ? null
-      : (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
+    const paintHero = (c) => drawToon(c, heroId, heroPose, pxs, layout.floorY - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
+    // WHAT HIDES HIM ON THE WAY THROUGH. Clipping to the near side of the open
+    // door's inner edge is the same picture as drawing him underneath the leaf,
+    // and it does not need the door painter split apart to get at the draw
+    // order. Bounded in x only, so the reflection pass — which flips in y — can
+    // share it untouched.
+    const clipToDoorway = (c, paint) => {
+      const left = this.doorWalk.doorX - cam - DOOR_W / 2;
+      const edge = openingEdge(this.doorWalk.kind, walkState.doorOpen, walkState.roomSide, {
+        lx: left + DOOR_W * 0.165, lw: DOOR_W * 0.67,
+        wx: left + DOOR_W * 0.12, ww: DOOR_W * 0.76,
+      });
+      const far = layout.viewW + DOOR_W * 2;
+      c.save();
+      c.beginPath();
+      if (walkState.roomSide > 0) c.rect(edge, -far, far * 2, far * 2);
+      else c.rect(edge - far * 2, -far, far * 2, far * 2);
+      c.clip();
+      paint(c);
+      c.restore();
+    };
+    // Always a function: it is called unconditionally further down, and both
+    // the reflection pass and the figure share it. "Nothing to draw" is a
+    // no-op, never a null — handing that call site a null killed the frame the
+    // instant the hero went behind the door.
+    const nothing = () => {};
+    // "Stopped walking" means two opposite things depending on which way he was
+    // going through the door. On the way OUT it means the door has him and he
+    // should not be drawn at all. On the way IN it means he has ARRIVED — he is
+    // stood in the room with the door shutting behind him, and hiding him there
+    // made him vanish for the tail of his own entrance and pop back when the
+    // sequence let go.
+    const arriving = !!this.doorWalk && this.doorWalk.mode === 'out';
+    const standing = walkState && !walkState.walking;
+    const drawHero = this.dive ? nothing
+      : this.departed ? nothing
+      : standing && !arriving ? nothing
+      : walkState && walkState.walking ? (c) => clipToDoorway(c, paintHero)
+      : paintHero;
     // THE FLOOR, in one pass: the machines, then the crowd, then you — the same
     // order they are painted for real, so a near mirror OCCLUDES the far one
     // instead of adding to it. It goes down after the floor and its pools of
@@ -3541,8 +3735,14 @@ export class HubState {
     // head and a heavier contact shadow under their feet, in the same gold the
     // walk-up prompt uses, so all the "this is about you" chrome reads as one
     // voice.
-    drawSoftContactShadow(ctx, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
-      { alpha: 0.44, ink: '4,3,9' });
+    // The shadow goes through the same clip as the hero, so it is taken by the
+    // doorway at the same moment he is rather than staying behind on the
+    // concourse as a stain where somebody used to be.
+    if (!this.departed && (!walkState || walkState.walking || arriving)) {
+      const shadow = (c) => drawSoftContactShadow(c, pxs, layout.floorY, PLAYER_H * 0.46, PLAYER_H * 0.13,
+        { alpha: 0.44, ink: '4,3,9' });
+      if (walkState) clipToDoorway(ctx, shadow); else shadow(ctx);
+    }
     drawHero(ctx);
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits
@@ -3554,7 +3754,9 @@ export class HubState {
     // — the bouncing arrow over the avatar's head is a readout for whoever is
     // holding the controls, and a recording has nobody holding them.
     const hideMarker = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hidePlayerMarker);
-    if (!hideMarker) drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
+    // Not during a door walk: the marker answers "which one of these is me",
+    // and while the sequence has the controls there is nothing to answer.
+    if (!hideMarker && !this.departed && (!walkState || (arriving && standing))) drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
     // the contextual prompt, the location name, a PLUGS/COINS/ACT readout and a
@@ -3962,7 +4164,14 @@ export class TrophyRoomState {
     this.moving = false;
     this.doorOpen = 0;
     this.doorTarget = null;   // see doorStep(): no cue for the arrival frame
+    this.departed = false;
     this.player = new Player(this.heroId());
+    // He comes OUT of the door he just came through, rather than standing
+    // beside it already. Same sequence as the concourse, mirrored.
+    this.doorWalk = makeDoorEntry({
+      kind: 'slide', doorX: TROPHY_EXIT_X, type: 'exit', toX: this.px,
+      speed: TROPHY_MOVE_SPEED, gaitCycle: TROPHY_PLAYER_H * GAIT_DISTANCE_PER_CYCLE,
+    });
     this.player.grounded = true;
   }
 
@@ -4037,6 +4246,16 @@ export class TrophyRoomState {
     }));
   }
 
+  // The door out is at the left wall and he leaves leftward, so this is the
+  // concourse's slide walk with the room's own geometry.
+  startExitWalk() {
+    this.walkTarget = null;
+    this.doorWalk = makeDoorWalk({
+      kind: 'slide', doorX: TROPHY_EXIT_X, type: 'exit',
+      fromX: this.px, speed: TROPHY_MOVE_SPEED,
+    });
+  }
+
   near(x, r = 34) { return Math.abs(this.px - x) <= r; }
 
   camX() {
@@ -4047,6 +4266,35 @@ export class TrophyRoomState {
   update(dt) {
     this.t += dt;
     if (chromeGeo.gen !== this.chromeGen || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
+
+    // The same staged exit the concourse uses, so the door out of this room and
+    // the door into it behave alike. See hub/door-walk.js.
+    if (this.doorWalk && this.doorWalk.mode === 'out' && (Input.pressed('confirm')
+      || Input.pressed('jump') || Input.pressed('back') || Input.pressed('pointer')
+      || Input.held('left') || Input.held('right'))) {
+      this.doorWalk = null;   // see the concourse's copy: skipping never moves him
+    }
+    if (this.doorWalk) {
+      const was = this.doorWalk.state().phase;
+      this.doorWalk.update(dt);
+      if (this.doorWalk.state().phase !== was
+        && this.doorWalk.state().phase === 'shut') Audio.sfx('doorClose');
+      if (this.doorWalk.done) {
+        const leaving = this.doorWalk.mode !== 'out';
+        this.doorWalk = null;
+        if (leaving) {
+          // Hand proximity the shut door the sequence just finished. It still
+          // believes he is stood in the sensor, so without this it re-opened
+          // the door behind him for the frames before the room handed over.
+          this.doorOpen = 0;
+          this.doorTarget = 0;
+          this.departed = true;
+          this.flow.toHub();
+        }
+      }
+      Input.endFrame?.();
+      return;
+    }
 
     if (Input.pressed('back')) { this.flow.toHub(); return; }
 
@@ -4066,7 +4314,7 @@ export class TrophyRoomState {
       // a long press or when the hero was still across the gallery.
       const onExit = x >= 0 && x <= TROPHY_DOOR_W + 6
         && y >= TROPHY_FLOOR_Y - TROPHY_DOOR_H - 6 && y <= TROPHY_FLOOR_Y + 6;
-      if (onExit) { this.flow.toHub(); return; }
+      if (onExit) { this.startExitWalk(); return; }
       if (x < TROPHY_DOOR_W + 6) this.walkTarget = TROPHY_EXIT_X;
       else this.walkTarget = Math.max(68, Math.min(TROPHY_WORLD_W - 30, x));
     }
@@ -4085,7 +4333,7 @@ export class TrophyRoomState {
     if (move) {
       this.facing = move;
       this.px = Math.max(22, Math.min(TROPHY_WORLD_W - 30, this.px + move * walkSpeed * dt));
-      if (this.px <= TROPHY_EXIT_X) { this.flow.toHub(); return; }
+      if (this.px <= TROPHY_EXIT_X) { this.startExitWalk(); return; }
     } else this.facing = 1;
 
     const steeringHeld = Input.held('pointer') && this.walkTarget != null;
@@ -4094,7 +4342,11 @@ export class TrophyRoomState {
       : 0;
     this.moving = !!move;
     this.player.update(dt, TROPHY_PLAYER_INPUT, { speed: move ? walkSpeed : 0 });
-    const doorTarget = Math.abs(this.px - TROPHY_EXIT_X) < DOOR_OPEN_R ? 1 : 0;
+    // The Trophy Room is drawn at HUB_ZOOM, so every distance in it is that
+    // much bigger — including the one the hero spawns at. An unscaled radius
+    // put its sensor proportionally nearer the frame than the concourse's, so
+    // the same step that opened a door out there did nothing in here.
+    const doorTarget = Math.abs(this.px - TROPHY_EXIT_X) < DOOR_OPEN_R * HUB_ZOOM ? 1 : 0;
     this.doorOpen = doorStep(this.doorOpen, doorTarget, this.doorTarget, dt);
     this.doorTarget = doorTarget;
   }
@@ -4273,16 +4525,39 @@ export class TrophyRoomState {
     // the route reads consistently in both rooms. Mechanically it remains a
     // room boundary rather than an interaction: walk into it (or tap it and
     // let tap-to-walk finish) and update() returns directly to the Food Court.
+    const walkState = this.doorWalk ? this.doorWalk.state() : null;
     const drawExitDoor = (c) => drawDoor(c, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
-      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t, this.doorOpen);
+      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t,
+      walkState ? walkState.doorOpen : this.doorOpen);
     const pose = poseFromPlayer(this.player, this.t);
     if (!this.moving && pose.kind === 'run') {
       pose.kind = 'idle';
       pose.headTurn = 0;
     }
-    pose.facing = this.facing;
-    const drawAvatar = (c) => drawToon(c, this.player.heroId, pose,
-      Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), TROPHY_PLAYER_H);
+    pose.facing = walkState ? walkState.facing : this.facing;
+    if (walkState) { pose.kind = 'run'; pose.phase = walkState.gait; }
+    const avatarX = Math.round(walkState ? walkState.px : this.px);
+    const paintAvatar = (c) => drawToon(c, this.player.heroId, pose,
+      avatarX, Math.round(TROPHY_FLOOR_Y - this.player.y), TROPHY_PLAYER_H);
+    // Clipped behind the parked leaf on the way out, exactly as in the
+    // concourse; bounded in x only so the reflection can share it.
+    const arriving = !!this.doorWalk && this.doorWalk.mode === 'out';
+    const drawAvatar = this.departed ? () => {}
+      : !walkState ? paintAvatar
+      : !walkState.walking ? (arriving ? paintAvatar : () => {})
+      : (c) => {
+        const edge = openingEdge('slide', walkState.doorOpen, walkState.roomSide, {
+          lx: TROPHY_DOOR_W * 0.165, lw: TROPHY_DOOR_W * 0.67,
+          wx: TROPHY_DOOR_W * 0.12, ww: TROPHY_DOOR_W * 0.76,
+        });
+        const far = TROPHY_WORLD_W;
+        c.save();
+        c.beginPath();
+        c.rect(edge, -far, far * 2, far * 2);
+        c.clip();
+        paintAvatar(c);
+        c.restore();
+      };
     // THE SAME FLOOR AS THE CONCOURSE, through the same painter: one pass, the
     // near mirror occluding the far one, and one falloff for the room sized off
     // its own reference figure. The gallery draws in WORLD space rather than
@@ -4323,7 +4598,7 @@ export class TrophyRoomState {
     drawExitDoor(ctx);
     drawAvatar(ctx);
     const headY = TROPHY_FLOOR_Y - this.player.y - toonInkTop(this.player.heroId) * TROPHY_PLAYER_H;
-    drawPlayerMarker(ctx, this.px, headY - MARKER_GAP, MARKER_R);
+    if (!walkState && !this.departed) drawPlayerMarker(ctx, this.px, headY - MARKER_GAP, MARKER_R);
 
     // The room is exhibits and a door now — the practice lane, its podium and
     // its target are gone, and so are the verbs that only they had. What is

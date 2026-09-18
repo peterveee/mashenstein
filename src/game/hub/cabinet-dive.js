@@ -104,6 +104,31 @@ function divePhaseOverrides() {
 }
 const PHASE_OVERRIDES = divePhaseOverrides();
 
+// CAPTURE-ONLY OUT-SPEED OVERRIDE, read from the query at MODULE LOAD.
+//
+// Same reason as the phase overrides above and not a __mash_dev flag for the same
+// reason: OUT_SEAM_T and DIVE_OUT_DURATION are solved from these two speeds at
+// import, so a flag set after boot would arrive after the numbers it wants to
+// change. Used to sweep the exit's release without rebuilding.
+//
+//   ?diveoutspeed=1.35            the leap out
+//   ?diveoutspeed=inside=1.2,leap=1.35
+function diveOutSpeedOverrides() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  const raw = new URLSearchParams(window.location.search).get('diveoutspeed');
+  if (!raw) return null;
+  const bare = Number(raw);
+  if (Number.isFinite(bare) && bare > 0) return { leap: bare };
+  const out = {};
+  for (const part of raw.split(',')) {
+    const [name, value] = part.split('=');
+    const n = Number(value);
+    if (name && Number.isFinite(n) && n > 0) out[name.trim()] = n;
+  }
+  return Object.keys(out).length ? out : null;
+}
+const OUT_SPEED_OVERRIDES = diveOutSpeedOverrides();
+
 export const DIVE_PHASES = [
   { name: 'windup', dur: 0.35 },
   { name: 'leap', dur: 0.60 },
@@ -142,8 +167,15 @@ export const DIVE_DURATION = DIVE_PHASES.reduce((a, p) => a + p.dur, 0); // 2.40
 // factor. Everything downstream — the camera, the cue times, `done` — goes through
 // outToIn/inToOut rather than multiplying by a rate, so there is one place that
 // knows how the two clocks relate.
-export const OUT_SPEED_INSIDE = 1.45;   // the run and the jump on the screen
-export const OUT_SPEED_LEAP = 1.9;      // through the glass and into the room
+export const OUT_SPEED_INSIDE = OUT_SPEED_OVERRIDES?.inside ?? 1.45;   // the run and the jump on the screen
+// 1.35 rather than 1.9. At 1.9 the leap out was the quickest thing in the dive and
+// the camera had 0.57s to get off the machine, which is not a release, it is a snap:
+// with OUT_PUSH_HOLD keeping the glass until the crossing, the whole pull-back had to
+// happen inside half a second. 1.35 buys the release 0.81s and costs the leap itself
+// a quarter of a second it can afford — he is already through the glass and on his
+// way down, and the thing that reads as "quick exit" is the hold breaking, not the
+// last frames of the arc.
+export const OUT_SPEED_LEAP = OUT_SPEED_OVERRIDES?.leap ?? 1.35;      // through the glass and into the room
 // Kept as the name the cue rate uses: the leap is the part a cue plays under.
 export const OUT_SPEED = OUT_SPEED_LEAP;
 
@@ -224,6 +256,10 @@ export const DIVE_VARIANTS = [
   // to before.
   { id: 'hop-zoom', label: 'HOP + BIG PUSH', hop: 1, pull: 0, pixel: 0, zoom: 2.2 },
 ];
+// A variant may also carry the camera's two timings — `pushSpan` (when the push-in
+// arrives) and `outHold` (how long the exit keeps the machine) — on the same terms
+// as `zoom` and `aim`: absent means the shipped PUSH_SPAN / OUT_PUSH_HOLD, so none
+// of the variants above is affected by their existing.
 // The push-in ladder, as a MULTIPLIER on the room's own zoom: 1 is no push at all,
 // 3 takes the concourse's 1.3 to 3.9 and the machine fills the frame. Offered as a
 // menu of its own rather than as more variants, because it is an independent axis —
@@ -232,6 +268,45 @@ export const DIVE_ZOOMS = [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 // 1.75 is the chosen rung: the concourse's 1.3 goes to 2.28, which is enough for
 // the glass to be worth looking into without the room disappearing.
 export const DEFAULT_DIVE_ZOOM = 1.75;
+
+// WHEN THE PUSH ARRIVES, as a fraction of the dive. A variant may carry its own as
+// `pushSpan`.
+//
+// Not a shape: the curve is the same smootherstep it always was, and this is only
+// how much of the dive it is spread over. At the old 0.86 the push never actually
+// arrived — 0.75 of gain over 2.06s averages 0.36 octaves of magnification a
+// second, which is under the rate at which a camera move reads as a move at all,
+// and it was still creeping when the shutter came.
+//
+// 0.62 lands it at 1.49s. The camera then travels through every beat that has
+// motion in it — windup, leap, crossing, landing, set — and goes still exactly when
+// the hero starts running off inside the glass, so the hold is the flare and the
+// run-off rather than dead air. Measured in portrait, the glass moment goes from
+// x4.15 to x5.37 of the room's 2.5.
+//
+// Earlier than this trades a moving camera for a still one. At 0.48 the move is over
+// before the landing plays, and in landscape — where the full push is 1.75x and the
+// machine never takes the frame — the last four beats are then one repeated still.
+export const PUSH_SPAN = 0.62;
+
+// HOW LONG THE WAY OUT KEEPS THE MACHINE, as a fraction of the exit. A variant may
+// carry its own as `outHold`.
+//
+// The exit used to have no camera of its own: outToIn() runs the entry clock
+// backwards and camera() read the shared curve off it, so the pull-back was the
+// push-in reversed. That put the camera in retreat during the one stretch the
+// two-speed out clock exists to protect — OUT_SPEED_INSIDE runs the part inside the
+// screen slower than the leap precisely so that small figure's run and jump can be
+// READ, and backing off the machine from 0.45s (x6.12 down to x4.59 by the crossing,
+// portrait) spends that legibility as fast as the clock buys it.
+//
+// So the release is its own curve on its own clock: hold the machine through the run,
+// the jump and the crossing, then open the room up as he lands.
+//
+// The mirrored curve is gone rather than kept behind a flag — nothing reads the
+// entry's span on the way out now, and the two ends want opposite shapes, which is
+// the whole reason one shared curve could not serve them.
+export const OUT_PUSH_HOLD = 0.60;
 
 // How hard the camera re-aims at the glass, derived from how hard it is pushing.
 //
@@ -268,6 +343,9 @@ const lerp = (a, b, u) => a + (b - a) * u;
 const smooth = (u) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
 const easeOut = (u) => 1 - (1 - clamp01(u)) ** 2;
 const easeIn = (u) => clamp01(u) ** 2;
+// The camera's curve: zero velocity AND zero acceleration at both ends, so a push
+// can begin, pass through the crossing and stop without a seam anywhere in it.
+const smoother = (u) => { const x = clamp01(u); return x * x * x * (x * (x * 6 - 15) + 10); };
 // WHERE THE GLINT IS, rather than when it happens.
 //
 // The first cut placed two pops by hand, on the takeoff and on the crossing, and
@@ -793,14 +871,20 @@ class CabinetDive {
     // zero velocity AND zero acceleration at both ends, so the move begins, passes
     // through the crossing and settles without a seam anywhere in it.
     //
-    // It still reaches most of its distance by the impact — smootherstep is past
-    // 0.85 at the crossing's share of the run — so the framing at the moment that
-    // matters is what it was; only the getting there changed.
-    // Mirrored for the way out, so the camera pulls BACK off the machine on the
-    // same curve it pushed in on.
-    const clock = this.dir === 'out' ? outToIn(this.t) : this.t;
-    const u = clamp01(clock / (DIVE_DURATION * 0.86));
-    const push = u * u * u * (u * (u * 6 - 15) + 10);   // smootherstep
+    // THE WAY OUT IS NOT THE WAY IN REVERSED. It was, once — the clock already runs
+    // backwards through outToIn(), so reading one curve off it came for free — and
+    // that is exactly what made the exit un-tunable: going in wants to reach the big
+    // framing early and sit in it, coming out wants to keep it and then let go, and
+    // those are opposite ends of one curve. See PUSH_SPAN and OUT_PUSH_HOLD.
+    const v = this.v;
+    let push;
+    if (this.dir === 'out') {
+      const hold = clamp01(v.outHold ?? OUT_PUSH_HOLD);
+      const tail = Math.max(0.01, 1 - hold) * DIVE_OUT_DURATION;
+      push = 1 - smoother((this.t - hold * DIVE_OUT_DURATION) / tail);
+    } else {
+      push = smoother(this.t / (DIVE_DURATION * (v.pushSpan ?? PUSH_SPAN)));
+    }
     return {
       amt: push,
       focusX: this.glassCx,

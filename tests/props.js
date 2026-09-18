@@ -105,7 +105,15 @@ for (const name of Object.keys(PROP_FRAMES)) {
   assert(propRimPair(name, 13, 12, '#fff', 'x', 0) !== propRimPair(name, 13, 12, '#fff', 'x', 1), `${name}: hazard rims animate`);
   const seen = new Set();
   for (let f = 0; f < n; f++) seen.add(trace(name, f));
-  const distinct = name === 'qcrate' ? Math.ceil(n / 2) : n;
+  // Props whose frame count is deliberately coarser than their drawing count.
+  // qcrate's stem swings on a slow 36-frame arc, so adjacent frames round to
+  // the same trace. The switch's four frames are TIMING slots rather than
+  // drawings: the painter has exactly two poses — armed and lit — because the
+  // struck block's hop runs as a transform in drawWorldEntity
+  // (switchBonkLift), not as art inside the raster. Both poses must still be
+  // reached, which is what a floor of 2 pins.
+  const MIN_POSES = { qcrate: Math.ceil(n / 2), switch: 2 };
+  const distinct = MIN_POSES[name] ?? n;
   assert(seen.size >= distinct, `${name}: draws enough distinct poses across its ${n} frames`);
 }
 
