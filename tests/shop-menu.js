@@ -11,7 +11,7 @@ const { HUB_THEME } = await import('../src/data/cabinets.js');
 const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
 const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
 const { setPresentationFrame } = await import('../src/engine/renderer.js');
-const { BenchState, ShopState } = await import('../src/game/hub/index.js');
+const { BenchState, ShopState, StageSelectState } = await import('../src/game/hub/index.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -30,6 +30,8 @@ benchLayout.enter();
 assert(shop.listY === benchLayout.listY && shop.listBottom === benchLayout.listBottom,
   'landscape counters share list anchors');
 assert(benchLayout.notice.length > 0, 'Dolores opens with a persistent counter message');
+assert(StageSelectState.portraitMode === 'frame',
+  'Stage Select advertises its dedicated portrait layout to the screen gallery');
 // `sourceBank`, not `bank`: setBank keeps what it was HANDED, and publishes the bank
 // the sequencer reads through applyMix — which returns a merged copy as soon as the
 // song has a saved mix, so identity against the theme object only ever held while the

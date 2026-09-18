@@ -4938,6 +4938,7 @@ function drawLandscapeCounterChat(ctx, text, speaker, ink, border) {
     x + pad + faceW + gap, textTop + lineIndex * LANDSCAPE_COUNTER_CHAT_LINE_H, ink, MENU_NOTE_S));
 }
 export class StageSelectState {
+  static portraitMode = 'frame';
 
   constructor({ save, cab, flow }) {
     this.save = save;
