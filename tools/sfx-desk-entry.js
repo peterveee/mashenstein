@@ -128,6 +128,10 @@ const GROUPS = [
       // other, so auditioning either one alone tells you very little.
       { cue: 'doorOpen', what: 'the EXIT / Trophy Room door letting you through' },
       { cue: 'doorClose', what: 'the same door shutting once you walk off' },
+      // The hinged pair (Arcade Corner, back room). Four candidates behind
+      // `shape` while the look is being chosen — see doorSwing in audio.js.
+      { cue: 'doorSwingOpen', what: 'a hinged door opening — creak', opt: { shape: { style: 'creak' } } },
+      { cue: 'doorSwingShut', what: 'a hinged door shutting — creak', opt: { shape: { style: 'creak' } } },
     ],
   },
   {

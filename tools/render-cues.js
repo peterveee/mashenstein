@@ -52,6 +52,14 @@ const DEFAULTS = ['portal', 'comet', 'star', 'checkpoint', 'fizzUp', 'dash', 'bo
 // spread is how far the bands travel, wet is how much room. 1 is the cue as authored.
 const SHAPES = {
   now:     {},
+
+  // The hinged doors' four candidates (`doorSwingOpen:creak` and friends). These
+  // pick a whole sound design rather than tweaking one, so they carry a name
+  // the cue switches on rather than a bag of parameters.
+  creak:   { style: 'creak' },
+  latch:   { style: 'latch' },
+  spring:  { style: 'spring' },
+  clack:   { style: 'clack' },
   long:    { stretch: 1.8 },
   longer:  { stretch: 2.6 },
   whistle: { stretch: 1.8, q: 2.2 },

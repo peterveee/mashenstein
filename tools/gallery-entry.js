@@ -8534,11 +8534,13 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     // walks along the FRONT of the wall. What hides him is the clip.
     drawDoor(ctx, DOOR_X, DOOR_Y, DW, DH, row.pal, clock, s.doorOpen);
     if (s.walking) {
-      const edge = openingEdge(row.kind, s.doorOpen, s.dir, GEOM);
+      // roomSide, not travel direction — openingEdge keys off which side of the
+      // doorway the room is on, so the same rule serves leaving and arriving.
+      const edge = openingEdge(row.kind, s.doorOpen, s.roomSide, GEOM);
       const far = TW * 2;
       ctx.save();
       ctx.beginPath();
-      if (s.dir < 0) ctx.rect(edge, -far, far * 2, far * 2);
+      if (s.roomSide > 0) ctx.rect(edge, -far, far * 2, far * 2);
       else ctx.rect(edge - far * 2, -far, far * 2, far * 2);
       ctx.clip();
       drawToon(ctx, HERO, pose('run', clock, { phase: s.gait, facing: s.facing }),

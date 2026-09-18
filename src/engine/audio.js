@@ -3607,6 +3607,119 @@ class AudioSys {
     else this.noise(0.07, 0.09, 'lowpass', 220, dur - 0.05);
   }
 
+  // THE HINGED DOORS — the Arcade Corner and the back room. Deliberately NOT the
+  // sliding pair's whoosh: those are powered and pneumatic, these are a leaf on
+  // a pin that somebody has to push. Moving air is the wrong idea entirely; what
+  // a hinged door gives you is FRICTION and a LATCH.
+  //
+  // Four candidates behind `shape`, so they can be auditioned against each other
+  // without four pairs of cues in the sheet:
+  //   creak  — old timber. Stick-slip friction, the pitch walking as it goes.
+  //   latch  — an office door. Handle mechanism, body, and a firm catch.
+  //   spring — a sprung shop door. A damped metallic ring, slightly detuned.
+  //   clack  — minimal, cartoon. A knock and nothing else.
+  doorSwing(opening, shape) {
+    if (!this.ctx) return;
+    const style = (shape && shape.style) || 'creak';
+    const t = this.cueAt();
+    // Per-style trim, measured rather than guessed: rendered flat, these four
+    // landed between -33 and -46 dB RMS, and in an audition the loudest wins on
+    // volume alone whatever its character. These bring all four to about -41,
+    // where the sliding pair already sits — see the level note on doorWhoosh.
+    // Each style keeps its own open/shut asymmetry, because a door really is
+    // louder shutting than opening.
+    const q = this.cueGain * ({ creak: 1.32, latch: 1.14, spring: 0.42, clack: 0.72 }[style] ?? 1);
+    const dest = this.cueDest || this.sfxGain;
+
+    if (style === 'creak') {
+      // Stick-slip: a creak is not a glide, it is a rapid series of catches, and
+      // stepping the pitch in jittered increments is what separates it from a
+      // slide whistle. The bandpass is narrow and fixed — the roughness lives in
+      // the frequency steps, not in the filter.
+      const dur = opening ? 0.42 : 0.34;
+      const f0 = opening ? 170 : 290;
+      const f1 = opening ? 320 : 150;
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f0, t);
+      const steps = 7;
+      for (let i = 1; i <= steps; i++) {
+        const k = i / steps;
+        // Alternating over- and undershoot: the catch, then the slip.
+        const jitter = i % 2 ? 1.07 : 0.94;
+        o.frequency.linearRampToValueAtTime(Math.max(40, (f0 + (f1 - f0) * k) * jitter), t + dur * k);
+      }
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.Q.value = 5.5; bp.frequency.value = opening ? 880 : 720;
+      const g = this.ctx.createGain();
+      const peak = 0.075 * q;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(peak * 0.5, t + dur * 0.7);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
+      o.connect(bp); bp.connect(g); g.connect(dest);
+      o.start(t); o.stop(t + dur + 0.02);
+      this.noise(dur * 0.8, 0.035 * q / this.cueGain, 'bandpass', opening ? 1500 : 1200, 0, 0.5);
+      // Timber meeting its frame. Only on the way shut — an opening door ends in
+      // mid-air, and giving it a stop was the tell that this was one sound
+      // played backwards.
+      if (!opening) {
+        const k = q / this.cueGain;
+        this.noise(0.05, 0.10 * k, 'lowpass', 260, dur - 0.04);
+        this.osc('triangle', 150, 82, 0.09, 0.09 * k, dur - 0.04);
+      }
+      return;
+    }
+
+    if (style === 'latch') {
+      // The mechanism first, then the leaf. A handle is two ticks, not one: the
+      // lever and the bolt, a few milliseconds apart.
+      const k = q / this.cueGain;
+      if (opening) {
+        this.noise(0.028, 0.10 * k, 'highpass', 5200);
+        this.osc('square', 2300, 1950, 0.03, 0.045 * k, 0.022);
+        this.noise(0.26, 0.05 * k, 'lowpass', 540, 0.05, 0.45);
+      } else {
+        this.noise(0.24, 0.05 * k, 'lowpass', 480, 0, 0.45);
+        // The catch. Bright and short over a low body, which is what a latch
+        // actually is — a small hard click inside a big soft thump.
+        this.noise(0.045, 0.15 * k, 'bandpass', 2700, 0.2);
+        this.osc('triangle', 176, 88, 0.11 * k, 0.11, 0.2);
+      }
+      return;
+    }
+
+    if (style === 'spring') {
+      // A closer's spring rings, and rings slightly out of tune with itself —
+      // two triangles a few cents apart beat against each other, which is the
+      // whole character. One would just be a tone.
+      const dur = opening ? 0.34 : 0.30;
+      const base = opening ? 470 : 560;
+      const end = opening ? 560 : 430;
+      const k = q / this.cueGain;
+      this.noise(0.022, 0.07 * k, 'highpass', 4200);
+      this.osc('triangle', base, end, dur, 0.075 * k, 0, null, 0.12);
+      this.osc('triangle', base * 1.013, end * 1.013, dur, 0.055 * k, 0.004, null, 0.12);
+      this.noise(dur * 0.7, 0.03 * k, 'bandpass', 1800, 0.02, 0.3);
+      if (!opening) {
+        this.noise(0.04, 0.12 * k, 'bandpass', 2400, dur - 0.05);
+        this.osc('triangle', 160, 85, 0.09, 0.10 * k, dur - 0.05);
+      }
+      return;
+    }
+
+    // clack — the minimal one. A knock, and on the way shut the second knock of
+    // a leaf settling into its frame.
+    const k = q / this.cueGain;
+    this.noise(0.05, 0.11 * k, 'lowpass', opening ? 950 : 820);
+    this.osc('triangle', opening ? 158 : 138, opening ? 112 : 92, 0.09, 0.10 * k);
+    if (!opening) {
+      this.noise(0.04, 0.09 * k, 'lowpass', 520, 0.075);
+      this.osc('triangle', 120, 76, 0.08, 0.075 * k, 0.075);
+    }
+  }
+
   // The approach tick. Deliberately tiny — it fires several times as the hero
   // closes on a pad and the pads are common, so anything with a body would
   // become the loudest repeated thing in a run. Pitch rises with the arm, so
@@ -4263,6 +4376,8 @@ class AudioSys {
       case 'portal': this.portalSwoosh(opt.shape); break;
       case 'doorOpen': this.doorWhoosh(true); break;
       case 'doorClose': this.doorWhoosh(false); break;
+      case 'doorSwingOpen': this.doorSwing(true, opt.shape); break;
+      case 'doorSwingShut': this.doorSwing(false, opt.shape); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;

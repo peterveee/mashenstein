@@ -32,3 +32,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-18 | `b68be5b` | [2026-09-18-b68be5b.html](2026-09-18-b68be5b.html) | [bake-offs](2026-09-18-b68be5b-lab.html) | feat: add floor reflections rendering and desk management tools |
 | 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |
 | 2026-09-18 | `5cc650c` | [2026-09-18-5cc650c.html](2026-09-18-5cc650c.html) | [bake-offs](2026-09-18-5cc650c-lab.html) | feat: add new lab HTML file and enhance cabinet dive mechanics with facial expressions |
+| 2026-09-18 | `51a5883` | [2026-09-18-51a5883.html](2026-09-18-51a5883.html) | [bake-offs](2026-09-18-51a5883-lab.html) | Add door-walk sequence implementation and gallery HTML files |

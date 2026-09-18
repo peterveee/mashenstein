@@ -114,7 +114,7 @@ export function cabinetPalette(cab, unlocked = true) {
 // The OVERTIME machine: the same cabinet, running something that should not be
 // running. Violet chassis, a marquee that is only ever half-lit, dead screen.
 export const OVERTIME_PALETTE = {
-  id: 'overtime', lit: true, motif: null,
+  id: 'overtime', lit: true, motif: null, seed: idSeed('overtime'), screenStatic: 0.65,
   body: '#4a2a6a', shade: '#2e1846', deck: '#5c3a80', lipC: '#22103a',
   hood: '#5a3480', glass: '#8858c8', well: '#0b0b14', plate: '#100c18',
   knob: '#e04848', button: '#8858c8', screen: '#150a22', ink: '#8858c8',
@@ -944,34 +944,47 @@ export function drawScreenSweep(ctx, r, t, seed = 0) {
   ctx.fillRect(r.x, r.y + step * (r.h / 4), r.w, Math.max(0.5, r.h * 0.05));
 }
 
-// One live frame of that burst, painted over the dark well the shell already
-// drew. Not cached and not baked: the bands have to move, and at five rects a
-// frame for the handful of locked cabinets on screen there is nothing to save.
-export function drawDeadScreen(ctx, x, y, w, h, t, seed, style) {
-  const amt = deadScreenBurst(t, seed);
-  if (amt <= 0) return 0;
-  const r = cabinetScreenRect(x, y, w, h, style);
+// One live frame of a dead screen, painted over the dark well the shell already
+// drew. `amount` normally comes from the intermittent burst clock, but a cabinet
+// can supply a fixed value for continuous static. Not cached and not baked: the
+// bands have to move, and at five rects a frame there is nothing to save.
+function drawDeadScreenBands(ctx, x, y, w, h, t, seed, amount) {
   // Deterministic noise stepped ~18x a second, so the bands snap between
   // positions like real static instead of sliding smoothly down the glass.
   let n = (Math.floor(t * 18) * 2654435761 + seed * 40503) >>> 0;
   const rnd = () => ((n = (n * 1664525 + 1013904223) >>> 0) / 4294967296);
   ctx.save();
-  ctx.globalAlpha = amt * 0.5;
+  ctx.globalAlpha = amount * 0.5;
   for (let i = 0; i < 5; i++) {
-    const by = r.y + rnd() * r.h;
-    const bh = Math.max(0.7, rnd() * r.h * 0.16);
+    const by = y + rnd() * h;
+    const bh = Math.max(0.7, rnd() * h * 0.16);
     ctx.fillStyle = rnd() > 0.72 ? '#c8d0e0' : '#464e60';
-    ctx.fillRect(r.x, by, r.w, Math.min(bh, r.y + r.h - by));
+    ctx.fillRect(x, by, w, Math.min(bh, y + h - by));
   }
   // The spark: one bright pop at the height of the burst. This is the bit that
   // reads at a glance from across the concourse — the bands alone are too low
   // contrast to catch the eye at 24px wide.
-  if (amt > 0.65) {
-    ctx.globalAlpha = amt;
+  if (amount > 0.65) {
+    ctx.globalAlpha = amount;
     ctx.fillStyle = '#e8f0ff';
-    ctx.fillRect(r.x + rnd() * (r.w - 2), r.y + rnd() * (r.h - 1), 2, 1);
+    ctx.fillRect(x + rnd() * (w - 2), y + rnd() * (h - 1), 2, 1);
   }
   ctx.restore();
+}
+
+// The static can also be the picture UNDER a cabinet dive. The dive owns the
+// tube clip, scanlines and glass; this only supplies the moving phosphor bands.
+export function deadScreenArt(t, seed, amount = deadScreenBurst(t, seed)) {
+  return (ctx, w, h) => {
+    if (amount > 0) drawDeadScreenBands(ctx, 0, 0, w, h, t, seed, amount);
+  };
+}
+
+export function drawDeadScreen(ctx, x, y, w, h, t, seed, style, amount = deadScreenBurst(t, seed)) {
+  const amt = amount;
+  if (amt <= 0) return 0;
+  const r = cabinetScreenRect(x, y, w, h, style);
+  drawDeadScreenBands(ctx, r.x, r.y, r.w, r.h, t, seed, amt);
   // The same tube the live screens have. Only worth drawing during a burst —
   // on the black well of a quiet dead screen there is nothing for the lines to
   // darken, so they would cost a loop and show nothing.
