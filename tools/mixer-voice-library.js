@@ -17,9 +17,6 @@
 
 import { VOICES, VOICE_CATEGORIES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
 import { isVoiceUsed } from '../src/data/voices-used.js';
-import { deskNoteNameHz } from './mixer-note-names.js';
-import { synthDisplayName, synthShortName, synthChoiceLabel, synthStyleName } from './lib/synth-display.js';
-import { createCustomSelect } from './lib/custom-select.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -87,12 +84,6 @@ export function foldIcon(dir = 'right') {
  */
 const BENCH_LANES = {
   Kick: 'kick', Snare: 'snare', Hats: 'hats', Clap: 'clap', Tom: 'tom', Crash: 'crash', Perc: 'hats',
-  // The three that live on `rim` or `tom` rather than on a lane of their own. Every Rim
-  // preset is measured on `rim` and so are ten of the twelve Blips, so both bench on the
-  // dry `hats` stand-in for the same reason Perc does; every Sweep is measured on `tom`.
-  // A kit category missing from this table falls to `bass`, where a drum has no note key
-  // and does not sound at all — which is why tests/bench.js checks the table is total.
-  Rim: 'hats', Blip: 'hats', Sweep: 'tom',
 };
 export const benchLane = (voice) => {
   // Drum entries carry their measured home lane, while pitched entries fall through
@@ -130,17 +121,9 @@ export function benchRoot(voice) {
  * level the preset will actually play at. That is also what makes two presets
  * comparable here — both arrive scaled to the same lane target, so the one that sounds
  * louder is the one that is louder.
- *
- * `gateSteps` is the one thing a caller may say about LENGTH, and only the pattern
- * player says it: a figure's note lasts one step of its rate, in sixteenths, which is
- * exactly the unit a lane's `…Dur` key is written in. Absent — a key press, the Hit
- * button — the preset's own `dur` stands, as it always did.
  */
-export function benchBank(id, bpm, gateSteps = null) {
-  const seam = seamFor(benchLane(VOICES[id]));
-  const bank = { bpm: bpm || 120, [seam.voiceKey]: id };
-  if (gateSteps > 0) bank[seam.durKey] = gateSteps;
-  return bank;
+export function benchBank(id, bpm) {
+  return { bpm: bpm || 120, [seamFor(benchLane(VOICES[id])).voiceKey]: id };
 }
 
 // ---- when a bench note is allowed to sound ----------------------------------
@@ -176,24 +159,8 @@ let benchLastId = null; // ...for which preset, since a different preset is a di
  * can observe the desk without its strips — but a throw inside `scheduleStep` that left
  * `mixer` null would silently take every channel strip out of the song itself, which is
  * the kind of failure you would chase for an hour before suspecting the keyboard.
- *
- * ---- a finger, or a machine ------------------------------------------------
- *
- * A preview is HELD by default: it sounds until `releasePreviewNote` ends it, which is
- * what a key press is and what lets a pad be listened to under your finger. A note the
- * pattern player schedules has no finger, and it already knows the note's length — so
- * `gateSteps` gives it one, in sixteenths, and the note takes the ordinary sequencer
- * gate instead. Without it a sustaining patch under a figure never stops: each step
- * opens another note that rings to the rack's 30-second safety stop, and eight notes a
- * bar at a slow release is a chord of every note the figure has played.
- *
- * `hold: false` on its own — no `gateSteps` — is the third case: one note, of the
- * preset's OWN length, which is what the Hit button means by "sound it once". Nothing
- * is coming to release it, and the safety stop is not a note length.
  */
-export function benchPlay(Audio, id, freq, {
-  at = 0.02, bpm = 120, gateSteps = null, hold = !(gateSteps > 0),
-} = {}) {
+export function benchPlay(Audio, id, freq, { at = 0.02, bpm = 120 } = {}) {
   const voice = VOICES[id];
   if (!Audio?.ctx || !voice) return false;
   const lane = benchLane(voice);
@@ -211,9 +178,7 @@ export function benchPlay(Audio, id, freq, {
   const was = Audio.mixer;
   Audio.mixer = null;
   try {
-    return Audio.previewNote(lane, freq, {
-      bank: benchBank(id, bpm, gateSteps), at: t - now, hold,
-    });
+    return Audio.previewNote(lane, freq, { bank: benchBank(id, bpm), at: t - now });
   } finally {
     Audio.mixer = was;
   }
@@ -389,44 +354,6 @@ export const PATTERNS = [
 const PATTERN_BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
 const RATE_BY_ID = Object.fromEntries(PATTERN_RATES.map((r) => [r.id, r]));
 
-export const PATTERN_GATE = Object.freeze({ min: 50, max: 150, step: 1, default: 80 });
-
-/** Compact gate pot shared by both keyboard-attached autoplay surfaces. */
-export function createGatePot(value = PATTERN_GATE.default, onInput = () => {}) {
-  const label = document.createElement('label');
-  label.className = 'autogate';
-  const caption = document.createElement('span');
-  caption.className = 'autogate-label'; caption.textContent = 'GATE';
-  const knob = document.createElement('span');
-  knob.className = 'autogate-knob';
-  const readout = document.createElement('span');
-  readout.className = 'autogate-value';
-  const input = document.createElement('input');
-  input.type = 'range'; input.className = 'autogate-input';
-  input.min = String(PATTERN_GATE.min); input.max = String(PATTERN_GATE.max);
-  input.step = String(PATTERN_GATE.step);
-
-  const clampGate = (raw) => Math.max(PATTERN_GATE.min,
-    Math.min(PATTERN_GATE.max, Number(raw) || PATTERN_GATE.default));
-  const paint = (raw, emit = false) => {
-    const next = clampGate(raw);
-    input.value = String(next);
-    readout.textContent = `${Math.round(next)}%`;
-    const turn = (next - PATTERN_GATE.min) / (PATTERN_GATE.max - PATTERN_GATE.min);
-    knob.style.setProperty('--gate-angle', `${turn * 290}deg`);
-    if (emit) onInput(next);
-  };
-  input.addEventListener('input', () => paint(input.value, true));
-  input.addEventListener('dblclick', () => paint(PATTERN_GATE.default, true));
-  input.setAttribute('aria-label', 'Autoplay gate percent');
-  input.title = 'Autoplay note length as a percentage of the selected interval'
-    + ' · double-click to reset to 80%';
-  knob.append(readout, input);
-  label.append(caption, knob);
-  paint(value);
-  return { label, input, set: (next) => paint(next) };
-}
-
 /**
  * The pattern player: a lookahead scheduler over the bench.
  *
@@ -442,7 +369,7 @@ export function createGatePot(value = PATTERN_GATE.default, onInput = () => {}) 
  */
 export function createPatternPlayer({
   Audio, bpm, root, sync = () => null, scale = () => null, onStep = () => {},
-  adjustSlowRate = true, gate = PATTERN_GATE.default,
+  adjustSlowRate = true,
 }) {
   // How far ahead notes are queued, and how often the queue is topped up.
   //
@@ -461,8 +388,6 @@ export function createPatternPlayer({
   // than indexed — the rates are ordered slowest-first for the dropdown, and a default
   // that moves whenever a rate is added to the list is a default nobody chose.
   let rate = RATE_BY_ID['8'];
-  let gatePercent = Math.max(PATTERN_GATE.min, Math.min(PATTERN_GATE.max,
-    Number(gate) || PATTERN_GATE.default));
   let next = 0;                 // ctx time of the next cell step
   let ix = 0;                   // which step of the cell
   // A native select can briefly take the page's event loop while its menu is open.
@@ -524,12 +449,7 @@ export function createPatternPlayer({
         const steps = scale()?.steps || null;
         for (const semi of hit) {
           const n = snapToScale(semi, steps);
-          // Gate is a percentage of the selected interval. At the default 80%, a 1/8
-          // interval (two sixteenths) therefore holds for 1.6 sixteenths; above 100%
-          // deliberately overlaps the following step. See benchPlay.
-          benchPlay(Audio, voiceId, base * 2 ** (n / 12), {
-            at, bpm: bpm(), gateSteps: rate.steps * gatePercent / 100,
-          });
+          benchPlay(Audio, voiceId, base * 2 ** (n / 12), { at, bpm: bpm() });
         }
         onStep(ix % pattern.cell.length);
       }
@@ -605,7 +525,6 @@ export function createPatternPlayer({
     get voice() { return voiceId; },
     get pattern() { return pattern; },
     get rate() { return rate; },
-    get gate() { return gatePercent; },
     /**
      * Choose a figure — and, for a progression, give it room.
      *
@@ -624,19 +543,12 @@ export function createPatternPlayer({
       if (adjustSlowRate && pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
     },
     setRate: (id) => { rate = RATE_BY_ID[id] || rate; },
-    setGate: (percent) => {
-      const next = Number(percent);
-      gatePercent = Number.isFinite(next)
-        ? Math.max(PATTERN_GATE.min, Math.min(PATTERN_GATE.max, next))
-        : gatePercent;
-    },
     /** Audition choices are transient and must not masquerade as song state. */
     reset() {
       stop();
       voiceId = null;
       pattern = PATTERNS[0];
       rate = RATE_BY_ID['8'];
-      gatePercent = PATTERN_GATE.default;
     },
   };
 }
@@ -776,7 +688,12 @@ export function createVoiceLibrary({
 
   // What that root is, as a note. `A2` says more than `+0` does — and on a drum it says
   // the thing worth knowing, which is where the preset is actually being struck.
-  const noteLabel = (freq) => deskNoteNameHz(freq) || '—';
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  function noteLabel(freq) {
+    if (!(freq > 0)) return '—';
+    const midi = Math.round(12 * Math.log2(freq / 440) + 69);
+    return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
+  }
 
   const KINDS = [
     { id: 'all', label: 'All', keep: () => true },
@@ -803,11 +720,11 @@ export function createVoiceLibrary({
   // you were looking at. It also makes the catalogue legible as a whole — that there are
   // twenty-one FM presets and five DuoSynths is a fact about the library.
   //
-  // Drum presets have no Tone class: they are the rack's own constructions. They answer
-  // with their kind, because "drum" is the same KIND of answer as "FMSynth" — it is what
-  // the thing is built out of.
+  // Noise and drum presets have no Tone class: they are the rack's own constructions.
+  // They answer with their kind, because "noise" is the same KIND of answer as
+  // "FMSynth" — it is what the thing is built out of.
   const synthOf = (v) => v.synth || v.kind;
-  // `WNDR-9` is thirteen characters in a 150px column beside a preset name that
+  // `MembraneSynth` is thirteen characters in a 150px column beside a preset name that
   // also wants reading. The suffix is on every one of them and carries nothing.
   //
   // Except on Tone's base class, which is called `Synth` outright — stripping there
@@ -818,11 +735,10 @@ export function createVoiceLibrary({
   // `noise` and `drum` are written the way the data writes them and would otherwise be
   // the only lower-case entries in a column of FM, Mono and Membrane. The raw name stays
   // the option's value — this touches what is read, not what is filtered on.
-  const familyName = synthDisplayName;
-  // Both live in tools/lib/synth-display.js now: the rule above is presentation, and the
-  // filter here is not the only chooser that needs it — the lane's engine picker and the
-  // editor's ENGINE select draw the same pair, and three copies is three house styles.
-  const shortSynth = synthShortName;
+  const shortSynth = (name) => {
+    const s = name.replace(/Synth$/, '') || name;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
   const synthLabel = (v) => shortSynth(synthOf(v));
 
   /** Every synth the catalogue actually uses, commonest first, with its tally. */
@@ -831,8 +747,7 @@ export function createVoiceLibrary({
     for (const v of Object.values(VOICES)) {
       if (v.kind === 'engine' || v.songLocal || v.draft) continue;
       const s = synthOf(v);
-      const family = familyName(s);
-      n[family] = (n[family] || 0) + 1;
+      n[s] = (n[s] || 0) + 1;
     }
     return Object.entries(n).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -857,9 +772,8 @@ export function createVoiceLibrary({
     // The synth is searchable as well as filterable: typing "fm" should find the FM
     // presets, which is what anyone who knows the catalogue would expect it to do.
     const hit = (v) => !q
-      || `${v.label} ${v.category} ${v.note || ''} ${shortSynth(synthOf(v))}`
-        .toLowerCase().includes(q);
-    const bySynth = (v) => synth === 'any' || familyName(synthOf(v)) === synth;
+      || `${v.label} ${v.category} ${v.note || ''} ${synthOf(v)}`.toLowerCase().includes(q);
+    const bySynth = (v) => synth === 'any' || synthOf(v) === synth;
     return VOICE_CATEGORIES
       .map((c) => [c, Object.values(VOICES).filter((v) => v.category === c
         && v.kind !== 'engine' && !v.songLocal && !v.draft && keep(v) && keepSource(v)
@@ -958,28 +872,23 @@ export function createVoiceLibrary({
     // What it is built from, as a filter. A dropdown rather than more chips: there are
     // nine of them and they are names rather than a spectrum, so a row of nine buttons
     // would be a row of nine buttons. Counted, because the tally is half the answer —
-    // "MonoSynth (15)" tells you the catalogue leans on it before you click.
-    // The desk's own dropdown rather than the OS one, for the reason the lane's engine
-    // picker uses it: the style belongs in a column of its own, and six opaque codes in
-    // a system popup is a memory test in a window that cannot be themed.
-    //
-    // The tally rides with the NAME rather than with the style. It is a fact about this
-    // catalogue, not about the engine, and hanging it off the description would put a
-    // number in the middle of the column the eye runs down.
-    const syn = createCustomSelect({
-      label: 'Synth family',
-      title: 'Show only presets built from one engine family — or the rack’s own noise'
-        + ' and drum constructions.'
-        + '\n\nAn FM bell and a CRLS-1 bell want completely different edits.',
-      idPrefix: 'voicelib-synth',
-      options: [['any', 'Any synth'],
-        ...synthsPresent().map(([name, n]) => [name, `${synthShortName(name)} (${n})`,
-          synthStyleName(name)])],
-      value: synth,
-      fieldClass: 'deskselect',
-    });
-    syn.classList.add('vlsynth');
-    syn.addEventListener('input', () => { synth = syn.value; drawList(); });
+    // "MetalSynth (15)" tells you the catalogue leans on it before you click.
+    const syn = document.createElement('select');
+    syn.className = 'fxsel vlsynth';
+    const anyOpt = document.createElement('option');
+    anyOpt.value = 'any'; anyOpt.textContent = 'Any synth';
+    syn.append(anyOpt);
+    for (const [name, n] of synthsPresent()) {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = `${shortSynth(name)} (${n})`;
+      if (name === synth) o.selected = true;
+      syn.append(o);
+    }
+    syn.title = 'Show only presets built from one Tone class — or the rack’s own noise'
+      + ' and drum constructions, which are not Tone classes at all.'
+      + '\n\nAn FM bell and a subtractive bell want completely different edits.';
+    syn.onchange = () => { synth = syn.value; drawList(); };
 
     const close = document.createElement('button');
     close.className = 'vlclose popclose';
@@ -997,22 +906,7 @@ export function createVoiceLibrary({
 
     function drawList() {
       results.textContent = '';
-      let groups = grouped();
-      // Searching for a sound should not strand the user inside the synth that happened
-      // to be selected for the previous preset. If the query has no hit there but does
-      // have one under the remaining library filters, broaden to Any synth and keep the
-      // query intact. The dropdown changes with it, so the widened search is visible.
-      if (!groups.length && query.trim() && synth !== 'any') {
-        const previousSynth = synth;
-        synth = 'any';
-        const broadened = grouped();
-        if (broadened.length) {
-          syn.value = 'any';
-          groups = broadened;
-        } else {
-          synth = previousSynth;
-        }
-      }
+      const groups = grouped();
       if (!groups.length) {
         const none = document.createElement('div');
         none.className = 'fxgroup voicesearch-none';
@@ -1055,7 +949,7 @@ export function createVoiceLibrary({
           k.className = 'vkind';
           k.textContent = synthLabel(v);
           btn.title = `${v.label}${v.note ? ` — ${v.note}` : ''}`
-            + `\n\nBuilt from: ${synthChoiceLabel(synthOf(v))}`
+            + `\n\nBuilt from: ${synthOf(v)}`
             + (v.user
               ? '\n\nClick to edit your preset.'
               : '\n\nLibrary preset — click to duplicate it before editing.')
@@ -1206,11 +1100,7 @@ export function createVoiceLibrary({
     once.disabled = !picked;
     once.onclick = () => {
       const id = editing?.() || heard || picked;
-      // ONCE, so the note has an end: no finger is coming to lift, and a held note on a
-      // sustaining preset would sit at its sustain level until the rack's 30-second
-      // safety stop. `hold: false` with no gate gives it the preset's own length, which
-      // is the note the sequencer would play.
-      benchPlay(Audio, id, shiftedRoot(), { bpm: bpm(), hold: false });
+      benchPlay(Audio, id, shiftedRoot(), { bpm: bpm() });
     };
 
     const play = document.createElement('button');
@@ -1264,9 +1154,7 @@ export function createVoiceLibrary({
       + ' while it plays';
     rate.onchange = () => player.setRate(rate.value);
 
-    const gate = createGatePot(player.gate, (percent) => player.setGate(percent));
-
-    bar.append(what, oct, once, play, pat, rate, gate.label);
+    bar.append(what, oct, once, play, pat, rate);
     return bar;
   }
 

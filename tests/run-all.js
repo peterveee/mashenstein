@@ -28,6 +28,7 @@ const suites = [
   // The launcher's port map, against the tools it claims to know.
   'tests/desk.js',
   'tests/story-beats.js',
+  'tests/intro-sequence.js',
   'tests/tutorial.js',
   'tests/hero-kits.js',
   'tests/mid-air-slide-kick.js',

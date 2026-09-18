@@ -13,6 +13,9 @@ import {
 } from '../engine/sprites.js';
 import { drawToon, toonInkTop } from '../sprites/toons.js';
 import { HEROES } from '../data/heroes.js';
+import {
+  beginFloorReflectionBand, addFloorReflection, endFloorReflectionBand,
+} from '../engine/reflections.js';
 
 const SLOT_T = 16.0;       // seconds per hero; gives players time to read the full card
 const FADE_T = 0.45;       // slide/fade in at the start of each slot
@@ -75,7 +78,8 @@ const PORTRAIT_CAST_TOP_CSS = 52;
 const PORTRAIT_CAST_COPY_GAP_CSS = 48;
 const PORTRAIT_CAST_FOOTER_BOTTOM_CSS = 10;
 const PORTRAIT_CAST_PROGRESS_TO_PROMPT_CSS = 22;
-const PORTRAIT_CAST_FLOOR_TO_PROGRESS_CSS = 34;
+const PORTRAIT_CAST_FLOOR_TO_PROGRESS_CSS = 68;
+const PORTRAIT_CAST_REFLECTION_GAP_CSS = 20;
 const PORTRAIT_CAST_RULE_H = 32;
 const PORTRAIT_CAST_LINE_GAP = 15;
 const PORTRAIT_CAST_SECTION_GAP = 22;
@@ -210,10 +214,11 @@ export function castLayout(hero = null) {
     - portraitLogicalCss(PORTRAIT_CAST_PROGRESS_TO_PROMPT_CSS, frame);
   const progressY = progressMid - progressH / 2;
   const floorY = progressY - portraitLogicalCss(PORTRAIT_CAST_FLOOR_TO_PROGRESS_CSS, frame);
-  // The floor is the line the toon is actually standing on. The footer below
-  // it is deliberately separate, so the progress marks and return prompt do
-  // not float above the figure as they did in the first portrait pass.
-  const heroFeetY = floorY;
+  // Leave a visible strip between the cast and the floor. The reflection line
+  // remains below the feet so the mirrored pose reads as a reflection rather
+  // than a dark shape folded directly into the shoes.
+  const reflectionGap = portraitLogicalCss(PORTRAIT_CAST_REFLECTION_GAP_CSS, frame);
+  const heroFeetY = floorY - reflectionGap;
   const heroTopRatio = hero ? portraitHeroTopRatio(hero.id) : 1.46;
   const desiredHeroH = Math.max(PORTRAIT_CAST_HERO_MIN,
     Math.min(PORTRAIT_CAST_HERO_MAX, H * PORTRAIT_CAST_HERO_TARGET));
@@ -252,6 +257,7 @@ export function castLayout(hero = null) {
     separatorX: center - Math.min(150, width * 0.42) / 2,
     heroFeetY,
     floorY,
+    reflectionGap,
     heroH,
     heroTopReach,
     heroTile,
@@ -341,6 +347,18 @@ function paintCastPose(ctx, heroId, pose, cx, feetY, heroH = 104) {
     drawToon(ctx, heroId, pose, cx - 10 * motionScale, feetY, heroH, { alpha: 0.28 });
   }
   drawToon(ctx, heroId, pose, cx, feetY, heroH);
+}
+
+function drawCastReflection(ctx, heroId, pose, cx, feetY, heroH, floorY) {
+  const band = beginFloorReflectionBand(ctx, floorY, { height: heroH });
+  if (!band) return;
+  addFloorReflection(band, {
+    draw: (reflectionCtx) => paintCastPose(reflectionCtx, heroId, pose, cx, feetY, heroH),
+    height: heroH,
+    anchorX: cx,
+    lift: Math.max(0, floorY - feetY),
+  }, { track: false });
+  endFloorReflectionBand(band);
 }
 
 // The gallery's CRT filter is intentionally applied to the hero tile rather
@@ -549,6 +567,11 @@ export class CastState {
     ctx.ellipse(layout.center, layout.floorY + 1, Math.min(76, W * 0.22), 8, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    const { pose, feetOff } = this.poseFor(hero, false);
+    drawCastReflection(ctx, hero.id, pose,
+      layout.center + (1 - ease) * -72,
+      layout.heroFeetY - feetOff, layout.heroH, layout.floorY);
+
     // --- dossier copy ------------------------------------------------------
     // Keep the dossier outline and its heading fixed. The dossier has no
     // fill or shadow, so the spotlight remains visible behind the copy.
@@ -600,7 +623,6 @@ export class CastState {
     }
 
     // --- the hero: one large, sharp performance at the foot of the phone ---
-    const { pose, feetOff } = this.poseFor(hero, false);
     ctx.save();
     ctx.globalAlpha = ease;
     drawCastHero(ctx, hero.id, pose,
@@ -747,10 +769,13 @@ export class CastState {
     ctx.ellipse(hx, FLOOR_Y, 26, 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    const { pose, feetOff } = this.poseFor(hero, intro);
+    drawCastReflection(ctx, hero.id, pose, hx + (1 - ease) * -26,
+      FLOOR_Y - feetOff, 104, FLOOR_Y);
+
     drawTextCentered(ctx, 'MEET THE CAST', W / 2, 14, '#48e0c8');
 
     // --- the hero ----------------------------------------------------------
-    const { pose, feetOff } = this.poseFor(hero, intro);
     ctx.save();
     ctx.globalAlpha = ease;
     drawCastHero(ctx, hero.id, pose, hx + (1 - ease) * -26, FLOOR_Y - feetOff);

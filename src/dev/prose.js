@@ -1,10 +1,10 @@
 // Every authored text screen in the game, browsable without playing it.
 //
 // The prose is spread across four unrelated places — jokes.js writes the intro
-// panels and the finale, briefings.js writes the pre-stage memos, and stages.js
+// film and the finale, briefings.js writes the pre-stage memos, and stages.js
 // hides an opening line on nine of its twenty-seven entries — and each one is
 // reached by a different route in the real game. The briefings need a stage
-// launch, the intro panels need a NEW save file, the finale needs a cleared
+// launch, the intro film needs a NEW save file, the finale needs a cleared
 // campaign, and the stage intros need all of that AND the first four seconds of
 // the run. Reading the campaign's copy end to end meant playing the campaign.
 //
@@ -76,7 +76,7 @@ export class StageIntroState {
 function proseBeats(dev) {
   const { save } = dev.ctx;
   const beats = [{
-    label: 'INTRO PANELS (4)',
+    label: 'INTRO FILM (11 BEATS)',
     open: (next) => new IntroState({ onDone: next }),
   }];
   for (const stage of STAGES) {
@@ -141,7 +141,7 @@ export function proseMenu(dev) {
       title: 'STORY TEXT',
       items: [
         { label: `READ EVERYTHING IN ORDER (${beats.length})`, act: () => { dev.close(); walk(dev, beats, 0); } },
-        { label: 'INTRO PANELS (4)', act: () => one(dev, beats[0]) },
+        { label: 'INTRO FILM (11 BEATS)', act: () => one(dev, beats[0]) },
         { label: 'BRIEFINGS ▸', submenu: () => beatListMenu(dev, 'BRIEFINGS', 'briefing') },
         { label: 'STAGE INTROS ▸', submenu: () => beatListMenu(dev, 'STAGE INTROS', 'intro') },
         { label: 'FINALE (9 BEATS + CODA)', act: () => one(dev, beats[beats.length - 1]) },

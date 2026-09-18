@@ -625,7 +625,7 @@ export const SFX_TRIM = {
   // path so the two ways into the same cue cannot disagree.
   impact: ATTACK_MASTER_TRIM,
   contact: ATTACK_MASTER_TRIM, launch: 0.184 * ATTACK_MASTER_TRIM,
-  shield: 0.989, star: 1.109, win: 0.933, copterBonk: 0.804, power: 0.955, rewindPickup: 1.084,
+  shield: 0.989, star: 1.109, win: 0.933, copterBonk: 0.804, power: 0.955, powerDown: 0.8, rewindPickup: 1.084,
   // Levelled against `jump`, which fires on the SAME frame — this is the floor
   // answering the hero, and a floor that answers louder than the hero is a
   // trampoline. On RMS rather than peak: the cue has a held body where the jump
@@ -680,7 +680,7 @@ export const SFX_TRIM = {
   // Fireworks. These layer UNDER 'ui' and 'coin' rather than replacing them,
   // so they are the body of the sound while those two carry the tone. First
   // pass was mixed as background texture and read as too faint.
-  fizzUp: 0.75, popSmall: 0.595, popBig: 0.9, crackle: 0.85,
+  fizzUp: 0.75, popSmall: 0.595, popBig: 0.9, crackle: 0.85, static: 0.72, crowdCheer: 0.65,
   // The title asteroid's blast needs room for the music: heavy underneath,
   // but not a peak that dominates the menu.
   boom: 0.302,
@@ -726,8 +726,9 @@ export const SFX_TRIM = {
   // Everything below this line is a cue that had no trim at all before the pass.
   switchFlick: 0.638, clickHard: 0.716, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
   loopRun: 1.259, boostFall: 1.035, shoot: 1.622, checkpoint: 1.38, coin: 1,
-  abilityReady: 1.012, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
+  abilityReady: 0.881, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
   bridgeLay: 2.265,
+  axe: 1.202,
 };
 
 // The weapon cues used to ship as .wav assets fetched at runtime. They are now
@@ -3344,6 +3345,122 @@ class AudioSys {
     return pulseTable(this.ctx, duty, { harmonics, sine: true });
   }
 
+  powerDown() {
+    if (!this.ctx) return;
+    const t0 = this.cueAt();
+    const q = this.cueGain;
+    const dest = this.cueDest || this.sfxGain;
+    const main = this.ctx.createOscillator();
+    const lowpass = this.ctx.createBiquadFilter();
+    const mainGain = this.ctx.createGain();
+    main.type = 'sawtooth';
+    main.frequency.setValueAtTime(120, t0);
+    main.frequency.exponentialRampToValueAtTime(10, t0 + 1.5);
+    lowpass.type = 'lowpass';
+    lowpass.Q.value = 0.7;
+    lowpass.frequency.setValueAtTime(400, t0);
+    lowpass.frequency.exponentialRampToValueAtTime(40, t0 + 1.5);
+    mainGain.gain.setValueAtTime(0.5 * q, t0);
+    mainGain.gain.linearRampToValueAtTime(0.3 * q, t0 + 0.1);
+    mainGain.gain.exponentialRampToValueAtTime(0.0001 * q, t0 + 1.5);
+    mainGain.gain.linearRampToValueAtTime(0, t0 + 1.55);
+    main.connect(lowpass);
+    lowpass.connect(mainGain);
+    mainGain.connect(dest);
+    main.start(t0);
+    main.stop(t0 + 1.6);
+    this.noise(0.045, 0.12, 'highpass', 5200);
+
+    for (let i = 0; i < 4; i++) {
+      const machineTime = t0 + 0.12 + i * 0.12;
+      const crt = this.ctx.createOscillator();
+      const crtGain = this.ctx.createGain();
+      crt.type = 'triangle';
+      crt.frequency.setValueAtTime(4000 + i * 300, machineTime);
+      crt.frequency.exponentialRampToValueAtTime(80, machineTime + 0.6);
+      crtGain.gain.setValueAtTime(0.0001, machineTime);
+      crtGain.gain.exponentialRampToValueAtTime(0.12 * q, machineTime + 0.008);
+      crtGain.gain.exponentialRampToValueAtTime(0.0001 * q, machineTime + 0.6);
+      crtGain.gain.linearRampToValueAtTime(0, machineTime + 0.65);
+      crt.connect(crtGain);
+      crtGain.connect(dest);
+      crt.start(machineTime);
+      crt.stop(machineTime + 0.7);
+    }
+  }
+
+  startCrowdCheer(opt = {}) {
+    this.resumeAfterPanic();
+    if (!this.ctx) return;
+    if (this.crowdCheerState) this.stopCrowdCheer();
+    this.cueGain = (SFX_TRIM.crowdCheer ?? 1) * (opt.gain ?? 1);
+    this.cueDest = opt.reverb > 0
+      ? this._voiceVerbTap(opt.reverb, opt.reverbDecay ?? 1.5)
+      : null;
+    try { this.crowdCheer(true); } finally {
+      this.cueGain = 1;
+      this.cueDest = null;
+    }
+  }
+
+  stopCrowdCheer() {
+    const state = this.crowdCheerState;
+    if (!state || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    state.master.gain.cancelScheduledValues(t);
+    state.master.gain.setTargetAtTime(0.0001, t, 0.45);
+    state.master.gain.linearRampToValueAtTime(0, t + 1.8);
+    for (const source of state.sources) {
+      try { source.stop(t + 1.85); } catch {}
+    }
+    this.crowdCheerState = null;
+  }
+
+  crowdCheer(persistent = false) {
+    if (!this.ctx || !this.noiseBuf) return;
+    const t0 = this.cueAt();
+    const duration = 10;
+    const peak = 0.34 * this.cueGain;
+    const master = this.ctx.createGain();
+    const tone = this.ctx.createBiquadFilter();
+    master.gain.setValueAtTime(0.0001, t0);
+    master.gain.linearRampToValueAtTime(peak, t0 + 2.2);
+    master.gain.setValueAtTime(peak, t0 + 7);
+    if (!persistent) {
+      master.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      master.gain.linearRampToValueAtTime(0, t0 + duration + 0.02 - 0.005);
+    }
+    tone.type = 'lowpass';
+    tone.Q.value = 0.6;
+    tone.frequency.setValueAtTime(5200, t0);
+    tone.frequency.exponentialRampToValueAtTime(650, t0 + duration);
+    master.connect(tone);
+    tone.connect(this.cueDest || this.sfxGain);
+
+    const sources = [];
+    [420, 540, 680, 820].forEach((base, i) => {
+      const start = t0 + [0, 0.045, 0.09, 0.135][i];
+      const source = this.ctx.createBufferSource();
+      const filter = this.ctx.createBiquadFilter();
+      const voiceGain = this.ctx.createGain();
+      source.buffer = this.noiseBuf;
+      source.loop = true;
+      filter.type = 'bandpass';
+      filter.Q.value = 1.5;
+      filter.frequency.setValueAtTime(base, start);
+      filter.frequency.linearRampToValueAtTime(base + 200, t0 + 2.25);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(1, base - 100), t0 + duration);
+      voiceGain.gain.setValueAtTime(0.2, start);
+      source.connect(filter);
+      filter.connect(voiceGain);
+      voiceGain.connect(master);
+      source.start(start);
+      if (persistent) sources.push(source);
+      else source.stop(t0 + duration + 0.04);
+    });
+    if (persistent) this.crowdCheerState = { master, sources };
+  }
+
   // The arcade death jingle: eleven rapid downward sweeps that each start and
   // end lower than the last, then a two-tone drop where the sprite blinks out.
   //
@@ -4109,7 +4226,9 @@ class AudioSys {
     // `opt.inBeats` places the cue on the song instead of firing it now — see
     // cueTimeInBeats. Cleared afterwards whatever the builder does, so an unscheduled
     // cue can never inherit a scheduled one's start.
-    this.cueStart = Number.isFinite(opt.inBeats) ? this.cueTimeInBeats(opt.inBeats, name) : null;
+    this.cueStart = Number.isFinite(opt.inSeconds)
+      ? this.ctx.currentTime + Math.max(0, opt.inSeconds)
+      : Number.isFinite(opt.inBeats) ? this.cueTimeInBeats(opt.inBeats, name) : null;
     // The same placement in beats, for the builders that have to know WHERE the cue
     // lands rather than when — songKey() and everything keyed off it. Cleared in the
     // same breath as cueStart and for the same reason.
@@ -4175,6 +4294,7 @@ class AudioSys {
         break;
       }
       case 'power': [523, 659, 784, 1047].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.15, i * 0.07)); break;
+      case 'powerDown': this.powerDown(); break;
       // The special move has finished recharging. Deliberately NOT an arpeggio:
       // the rising-square run belongs to the pickups (coin, power, star, win) and
       // a cue built that way is heard as one. This is the interval alone, both
@@ -4391,6 +4511,7 @@ class AudioSys {
         this.noise(0.06, 0.10, 'lowpass', 520, 0.25);
         break;
       case 'win': [523, 659, 784, 1047, 1319].forEach((f, i) => this.osc('square', f, f, 0.11, 0.14, i * 0.09)); break;
+      case 'crowdCheer': this.crowdCheer(); break;
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
       case 'pacDeath': this.pacDeath(); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
@@ -4608,6 +4729,12 @@ class AudioSys {
       case 'crackle':
         this.noise(0.08, 0.2, 'highpass', 1800);
         for (let i = 1; i < 6; i++) this.noise(0.04, 0.1, 'highpass', 3200, 0.05 + i * 0.055);
+        break;
+      case 'static':
+        this.noise(0.22, 0.2, 'highpass', 3000, 0, 0.38);
+        this.noise(0.18, 0.13, 'bandpass', 6200, 0.01, 0.36);
+        this.osc('sawtooth', 330, 180, 0.22, 0.045, 0, null, 0.45);
+        this.osc('square', 880, 520, 0.12, 0.022, 0.015, null, 0.34);
         break;
       case 'plop': this.osc('sine', 300, 120, 0.15, 0.2); break;
       case 'type': this.osc('square', 800, 800, 0.02, 0.05); break;

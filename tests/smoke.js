@@ -35,15 +35,9 @@ assert(globalThis.window.__mash_booted === undefined || true, 'bundle evaluated'
 dom.key('Enter'); frames(30); // through transition into difficulty
 // Difficulty: pick BREEZY.
 dom.key('Enter'); frames(30);
-// Intro: 4 panels x (finish text + advance)
-// Press through the intro until the hub actually arrives, rather than a fixed
-// nine times. The spare presses used to land IN the hub, where the spawn sits
-// inside the EXIT door's use radius — so they quit to the title, and whether
-// the test ended up in the hub came down to how many presses were left over.
-for (let i = 0; i < 12 && globalThis.window.__mash_state !== 'HubState'; i++) {
-  dom.key('Enter');
-  frames(12);
-}
+// Intro: autoplay the film until the hub arrives. No input is sent during it.
+for (let i = 0; i < 4200 && globalThis.window.__mash_state !== 'HubState'; i++) frames(1);
+dom.key('Enter'); frames(2);
 frames(40);
 
 // Should now be in the hub. Save should have a slot.

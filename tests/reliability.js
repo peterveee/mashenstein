@@ -8,7 +8,7 @@ const { setState, updateState } = await import('../src/engine/states.js');
 const { RunState, FINISH_CLEAR, PIT_SURFACE_Y } = await import('../src/game/run.js');
 const { BossState } = await import('../src/game/boss.js');
 const { MinigameState } = await import('../src/game/minigames/index.js');
-const { HubState, queueCabinetDiveOut } = await import('../src/game/hub/index.js');
+const { heroIdFor, HubState, queueCabinetDiveOut } = await import('../src/game/hub/index.js');
 const { OVERTIME_PALETTE, deadScreenArt, drawDeadScreen } = await import('../src/sprites/arcade.js');
 const { TitleState, SettingsState } = await import('../src/game/menus.js');
 const { makeObstacle, makePickup, PICKUPS } = await import('../src/game/entities.js');
@@ -527,6 +527,16 @@ const hubFlow = { hubPosition: null };
 const oldHub = new HubState({ save, flow: hubFlow });
 oldHub.px = 438; oldHub.facing = -1; oldHub.exit();
 const returnedHub = new HubState({ save, flow: hubFlow }); returnedHub.enter();
+const couponSave = { slot: defaultSlot() };
+couponSave.slot.mods.equipped = ['coupon'];
+const couponHub = new HubState({
+  save: couponSave,
+  flow: { hubPosition: null, hubAvatar: 'lorenzo', lastTeam: ['lorenzo'] },
+});
+assert(couponHub.avatarId() === 'lorenzo',
+  'the coupon discount never turns the Food Court avatar into Gary');
+assert(heroIdFor({ hubAvatar: 'gary', lastTeam: ['rusty'] }) === 'rusty',
+  'an invalid staff hub avatar falls back to the playable team lead');
 assert(returnedHub.px === 438 && returnedHub.facing === -1, 'food-court position and facing survive a state round trip');
 assert(returnedHub.showMovementLegend === false,
   'returning to the food court does not replay the movement legend');

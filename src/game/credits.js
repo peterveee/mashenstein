@@ -28,15 +28,15 @@ const DIM = '#98a0b8';
 const FG = '#c8c8d8';
 const WHITE = '#ffffff';
 
-const CX = W / 2;
 // Hardcoded, not read from the clock. A copyright line states the year of the
 // work, not the year the player happens to be sitting in — deriving it from
 // Date would silently relabel the game every January.
 const CREDITS_YEAR = 2026;
 const BODY_W = W - 64;
-// Slow enough to read a role/name pair per second, fast enough that the whole
-// joke doesn't outstay the track it's borrowed. SKIP is always one tap away.
+// Landscape's compact crawl. Portrait uses a faster companion speed below so
+// its larger type and deliberate pair spacing do not turn the roll into a wait.
 const SCROLL_SPEED = 30;
+const PORTRAIT_SCROLL_SPEED = 96;
 // Guards the same confirm/tap press that opened this screen from the dev menu
 // from also being read as "skip" on the first frame.
 // The relay swoosh, under the megamix rather than over it: this is one credit block
@@ -66,7 +66,7 @@ const SCRUB_RATE = 7;
 // The corner legends, parked on the bottom edge. A 0.6 line is ~7u of ink, so
 // this leaves roughly two units of air under it.
 const HINT_SCALE = 0.6;
-const HINT_Y = H - 9;
+function hintY() { return H - 9; }
 // Watchdog for a scrub action that never gets released. Generous on purpose:
 // a full-speed scrub crosses the entire crawl in about twenty seconds, so
 // nothing a real finger does comes near this.
@@ -849,10 +849,67 @@ function isPhone() {
 // Applies to the legal block AND every one-line aside. They are all the same
 // register of text and were all reported as small on a phone, so they move
 // together rather than the paragraph alone getting the fix.
-const BODY_SCALE_PHONE = 1;
+const BODY_SCALE_PHONE = 1.3;
 const BODY_SCALE_WIDE = 0.85;
-function bodyScale() { return isPhone() ? BODY_SCALE_PHONE : BODY_SCALE_WIDE; }
+function bodyScale() { return isPhone() || portraitCredits() ? BODY_SCALE_PHONE : BODY_SCALE_WIDE; }
 const noteRowH = (s) => Math.round(12 * (s / BODY_SCALE_WIDE));
+
+function portraitCredits() { return H > 400; }
+function creditsCenter() { return safeBox().cx; }
+
+const PORTRAIT_SCALES = {
+  title: 2.6,
+  title2: 1.95,
+  sub: 1.5,
+  header: 2,
+  role: 1.35,
+  handoff: 1.5,
+  wall: 1.25,
+};
+const PORTRAIT_NAME_OFFSET = 20;
+const PORTRAIT_PAIR_GAP = 14;
+const PORTRAIT_SECTION_GAP = 10;
+
+function scrollSpeed() { return portraitCredits() ? PORTRAIT_SCROLL_SPEED : SCROLL_SPEED; }
+function handoffHeight() { return portraitCredits() ? 64 : HANDOFF_H; }
+function handoffArtScale() { return portraitCredits() ? 1.25 : 1; }
+
+function roleScale(role, name) {
+  const desired = portraitCredits() ? PORTRAIT_SCALES.role : 0.85;
+  const gap = portraitCredits() ? 8 : 6;
+  const available = Math.max(100, safeBox().width - gap * 2);
+  return Math.min(desired, available / (textWidth(role, 1) + textWidth(name, 1)));
+}
+
+function portraitLineScale(text, max = 1.65, target = safeBox().width - 16) {
+  return Math.min(max, fillScale(text, Math.max(100, target), 'ui'));
+}
+
+function centeredScale(text, kind, fallback, style = 'ui') {
+  const desired = rowScale(kind, fallback);
+  return portraitCredits()
+    ? Math.min(desired, fillScale(text, Math.max(100, safeBox().width - 16), style))
+    : desired;
+}
+
+function drawCreditPair(ctx, role, name, y, cx, cast = false) {
+  if (portraitCredits()) {
+    const box = safeBox();
+    const target = cast ? box.width - FACE_BOX - 24 : box.width - 16;
+    const pairCx = cast ? (box.x0 + FACE_BOX + 16 + box.x1) / 2 : cx;
+    drawTextCentered(ctx, role, pairCx, y, FG, portraitLineScale(role, 1.45, target));
+    drawTextCentered(ctx, name, pairCx, y + PORTRAIT_NAME_OFFSET, WHITE, portraitLineScale(name, 1.7, target));
+    return;
+  }
+  const gap = 6;
+  const s = roleScale(role, name);
+  drawText(ctx, role, cx - gap - textWidth(role, s), y, FG, s);
+  drawText(ctx, name, cx + gap, y, WHITE, s);
+}
+
+function rowScale(kind, fallback) {
+  return portraitCredits() ? PORTRAIT_SCALES[kind] : fallback;
+}
 
 function layoutCredits() {
   const rows = [];
@@ -865,18 +922,18 @@ function layoutCredits() {
   for (const item of SCRIPT) {
     switch (item.k) {
       case 'gap': y += item.px; break;
-      case 'title': push(item, 26); break;
-      case 'title2': push(item, 18); break;
-      case 'sub': push(item, 15); break;
+      case 'title': push(item, portraitCredits() ? 31 : 26); break;
+      case 'title2': push(item, portraitCredits() ? 21 : 18); break;
+      case 'sub': push(item, portraitCredits() ? 18 + PORTRAIT_SECTION_GAP : 15); break;
       case 'note': {
         const s = item.scale || bodyScale();
         push({ ...item, scale: s }, noteRowH(s));
         break;
       }
-      case 'header': push(item, 18); break;
-      case 'role': push(item, 13); break;
+      case 'header': push(item, portraitCredits() ? 22 + PORTRAIT_SECTION_GAP : 18); break;
+      case 'role': push(item, portraitCredits() ? PORTRAIT_NAME_OFFSET + 16 + PORTRAIT_PAIR_GAP : 13); break;
       // Tall enough that an 18u portrait clears its neighbours' lettering.
-      case 'castRole': push(item, 21); break;
+      case 'castRole': push(item, portraitCredits() ? PORTRAIT_NAME_OFFSET + 20 + PORTRAIT_PAIR_GAP : 21); break;
       case 'mark': push(item, item.h + 7); break;
       // Measured against the reachable width, not the 480-unit design box, so
       // the banner truly spans the screen it is on rather than a nominal one.
@@ -886,7 +943,8 @@ function layoutCredits() {
         break;
       }
       case 'wall':
-        push(item, Math.ceil(HR_WALL.length / HR_WALL_COLS) * HR_WALL_ROW_H);
+        push(item, Math.ceil(HR_WALL.length / HR_WALL_COLS)
+          * Math.round(HR_WALL_ROW_H * rowScale('wall', HR_WALL_SCALE) / HR_WALL_SCALE));
         break;
       case 'memorial': push(item, 62); break;
       case 'rated': push(item, RATED_BOX_H + 8); break;
@@ -902,7 +960,7 @@ function layoutCredits() {
       // about a row other than itself.
       case 'handoff': {
         const artY = y;
-        push({ k: 'handoffArt', from: item.from, to: item.to }, HANDOFF_H);
+        push({ k: 'handoffArt', from: item.from, to: item.to }, handoffHeight());
         // One line, not two stacked. Both halves of the exchange share a
         // baseline and split around a gap the width of the portal above them,
         // so the reply reads as an answer across the portal rather than as a
@@ -912,7 +970,7 @@ function layoutCredits() {
           a: `"${item.lineA}"`,
           b: `"${item.lineB}"`,
           artDY: artY - y,
-        }, 16);
+        }, portraitCredits() ? 19 : 16);
         break;
       }
       // The densest block in the crawl, and the one that suffers most on a
@@ -980,7 +1038,9 @@ const RATED_LINE_1 = 'FOR EVERYONE WHO CAN FILE A FORM IN TRIPLICATE';
 const RATED_LINE_2 = 'Mild Cartoon Violence · Comic Bureaucracy · Sustained Appliance Peril';
 
 function drawRatedBox(ctx, cx, y) {
-  const s1 = 0.75, s2 = 0.7;
+  const descTarget = Math.max(100, safeBox().width - RATED_BOX_W - 10);
+  const s1 = portraitCredits() ? Math.min(1, fillScale(RATED_LINE_1, descTarget, 'ui')) : 0.75;
+  const s2 = portraitCredits() ? Math.min(0.9, fillScale(RATED_LINE_2, descTarget, 'ui')) : 0.7;
   const textW = Math.max(textWidth(RATED_LINE_1, s1), textWidth(RATED_LINE_2, s2));
   const x = Math.round(cx - (RATED_BOX_W + 10 + textW) / 2);
   const top = Math.round(y);
@@ -1007,16 +1067,20 @@ function drawRatedBox(ctx, cx, y) {
 }
 
 function drawRow(ctx, row, y, t) {
+  const cx = creditsCenter();
   switch (row.k) {
-    case 'title': drawTextCentered(ctx, row.text, CX, y, WHITE, 1.8, 'title'); break;
-    case 'title2': drawTextCentered(ctx, row.text, CX, y, GOLD, 1.2, 'title'); break;
-    case 'sub': drawTextCentered(ctx, row.text, CX, y, row.color || FG, 1); break;
-    case 'note': drawTextCentered(ctx, row.text, CX, y, row.color || DIM, row.scale || 0.85); break;
-    case 'header': drawTextCentered(ctx, row.text, CX, y, row.color || CYAN, 1.3, 'title'); break;
+    case 'title': drawTextCentered(ctx, row.text, cx, y, WHITE, centeredScale(row.text, 'title', 1.8, 'title'), 'title'); break;
+    case 'title2': drawTextCentered(ctx, row.text, cx, y, GOLD, centeredScale(row.text, 'title2', 1.2, 'title'), 'title'); break;
+    case 'sub': drawTextCentered(ctx, row.text, cx, y, row.color || FG, centeredScale(row.text, 'sub', 1)); break;
+    case 'note': {
+      const s = row.scale || 0.85;
+      const fitted = portraitCredits() ? Math.min(s, fillScale(row.text, Math.max(100, safeBox().width - 16), 'ui')) : s;
+      drawTextCentered(ctx, row.text, cx, y, row.color || DIM, fitted);
+      break;
+    }
+    case 'header': drawTextCentered(ctx, row.text, cx, y, row.color || CYAN, centeredScale(row.text, 'header', 1.3, 'title'), 'title'); break;
     case 'role': {
-      const gap = 6;
-      drawText(ctx, row.role, CX - gap - textWidth(row.role, 0.85), y, FG, 0.85);
-      drawText(ctx, row.name, CX + gap, y, WHITE, 0.85);
+      drawCreditPair(ctx, row.role, row.name, y, cx);
       break;
     }
     // The whole exchange on one baseline: the outgoing hero's line comes to rest
@@ -1027,12 +1091,12 @@ function drawRow(ctx, row, y, t) {
     // left to right, and the reply is never on screen before anyone is there to
     // have said it.
     case 'handoffDuo': {
-      const s = 0.85;
+      const s = rowScale('handoff', 0.85);
       const artY = y + (row.artDY || 0);
-      const p = Math.max(0, Math.min(1, (H - artY) / (H + HANDOFF_H)));
+      const p = Math.max(0, Math.min(1, (H - artY) / (H + handoffHeight())));
       const fade = (from) => Math.max(0, Math.min(1, (p - from) / 0.10));
       // The same box the art row hands the painter, so the two read one staging.
-      const left = handoffRunLeft({ progress: p, x: 0, y: artY, w: W, h: HANDOFF_H });
+      const left = handoffRunLeft({ progress: p, x: 0, y: artY, w: W, h: handoffHeight() });
 
       const aAlpha = fade(HANDOFF_LINE_A_AT);
       if (aAlpha > 0) {
@@ -1041,13 +1105,13 @@ function drawRow(ctx, row, y, t) {
         ctx.globalAlpha = aAlpha;
         // Trails the outgoing hero in from the left and lands in its slot on the
         // frame the portal takes them — the words catch up as the runner stops.
-        drawText(ctx, row.a, Math.max(6, CX - HANDOFF_GAP - w - HANDOFF_LINE_CARRY * left.a), y, OUTGOING_INK, s);
+        drawText(ctx, row.a, Math.max(6, cx - HANDOFF_GAP - w - HANDOFF_LINE_CARRY * left.a), y, OUTGOING_INK, s);
         ctx.restore();
       }
       const bAlpha = fade(HANDOFF_LINE_B_AT);
       if (bAlpha > 0) {
         const w = textWidth(row.b, s);
-        const bx = Math.min(CX + HANDOFF_GAP, W - 6 - w);
+        const bx = Math.min(cx + HANDOFF_GAP, safeBox().x1 - 6 - w);
         // The reply comes out of the portal on the incoming hero's heels and is
         // still catching up with itself as they run off, so it settles late —
         // which is the half of the exchange that has the time to be watched.
@@ -1060,7 +1124,7 @@ function drawRow(ctx, row, y, t) {
         // somewhere inside the gap the two halves keep.
         ctx.save();
         ctx.globalAlpha = bAlpha;
-        drawText(ctx, row.b, bx - Math.max(0, bx - CX) * left.b, y, INCOMING_INK, s);
+        drawText(ctx, row.b, bx - Math.max(0, bx - cx) * left.b, y, INCOMING_INK, s);
         ctx.restore();
       }
       break;
@@ -1074,35 +1138,36 @@ function drawRow(ctx, row, y, t) {
     // out exactly as it crosses, so you always catch the entire beat instead
     // of whatever frame the loop happened to be on when it scrolled in.
     case 'handoffArt': {
-      const progress = Math.max(0, Math.min(1, (H - y) / (H + HANDOFF_H)));
+      const progress = Math.max(0, Math.min(1, (H - y) / (H + handoffHeight())));
       // `crossing` is how long that progress takes in seconds, which is what the
       // portal's spend strip is cut against — the block owns the number because
       // it owns both terms of it.
       drawHandoff(ctx, {
-        from: row.from, to: row.to, t, progress, x: 0, y, w: W, h: HANDOFF_H,
-        crossing: (H + HANDOFF_H) / SCROLL_SPEED,
+        from: row.from, to: row.to, t, progress, x: 0, y, w: W, h: handoffHeight(),
+        artScale: handoffArtScale(),
+        crossing: (H + handoffHeight()) / scrollSpeed(),
       });
       break;
     }
     case 'castRole': {
-      const gap = 6;
-      drawText(ctx, row.role, CX - gap - textWidth(row.role, 0.85), y, FG, 0.85);
-      drawText(ctx, row.name, CX + gap, y, WHITE, 0.85);
+      drawCreditPair(ctx, row.role, row.name, y, cx, true);
       // Every cast row is a toon portrait now. The prop-portrait branch that
       // used to live here served only Eggshell and the Dust Devil, both since
       // cut from this list; it went with them rather than sitting unexercised.
-      drawToonFace(ctx, row.face, FACE_X, y + ROW_INK_MID - FACE_BOX / 2, FACE_BOX, FACE_BOX);
+      const faceX = portraitCredits() ? safeBox().x0 + 4 : FACE_X;
+      const faceY = portraitCredits() ? y + 4 : y + ROW_INK_MID - FACE_BOX / 2;
+      drawToonFace(ctx, row.face, faceX, faceY, FACE_BOX, FACE_BOX);
       break;
     }
     // A department/studio mark on its own card. These ship around 13x8 in the
     // field guide and read as a stray squiggle at anything near that size here,
     // so a mark gets to be the biggest thing on its own line.
-    case 'mark': drawProp(ctx, row.prop, CX - row.w / 2, y + 2, row.w, row.h); break;
+    case 'mark': drawProp(ctx, row.prop, cx - row.w / 2, y + 2, row.w, row.h); break;
     case 'memorial': {
       // He is not posed heroically and he is not winking at the camera. He is
       // standing at his counter, as he has been the whole game.
       const pose = { kind: 'idle', grounded: true, time: t, menu: true };
-      drawToon(ctx, 'gary', pose, CX, y + 58, 54);
+      drawToon(ctx, 'gary', pose, cx, y + 58, 54);
       break;
     }
     // Centred on the reachable box rather than on W/2: on a phone whose notch
@@ -1123,17 +1188,20 @@ function drawRow(ctx, row, y, t) {
         // right of each column; centred, the block reads as three columns of
         // names rather than one badly justified paragraph.
         const cx = box.x0 + inset + (col + 0.5) * colW;
-        drawTextCentered(ctx, n, cx, y + line * HR_WALL_ROW_H, FG, HR_WALL_SCALE);
+        const rowH = Math.round(HR_WALL_ROW_H * rowScale('wall', HR_WALL_SCALE) / HR_WALL_SCALE);
+        drawTextCentered(ctx, n, cx, y + line * rowH, FG, rowScale('wall', HR_WALL_SCALE));
       });
       break;
     }
-    case 'rated': drawRatedBox(ctx, CX, y); break;
-    case 'socket': drawSocket(ctx, CX, y + 17, t); break;
+    case 'rated': drawRatedBox(ctx, cx, y); break;
+    case 'socket': drawSocket(ctx, cx, y + 17, t); break;
     default: break;
   }
 }
 
 export class CreditsState {
+  static portraitMode = 'frame';
+
   // Read by the FPS readout in main.js. A credit roll is the one screen whose
   // whole job is to be looked at, and a diagnostic parked over it is in the
   // shot — the same reasoning that already stands the readout down while the
@@ -1141,11 +1209,33 @@ export class CreditsState {
   static hidesFps = true;
 
   constructor({ onDone }) { this.onDone = onDone; }
+  layoutSignature() {
+    const box = safeBox();
+    return `${screen.frameRevision}|${H}|${box.x0}|${box.x1}|${portraitCredits()}`;
+  }
+  rebuildLayout(preserveProgress = false) {
+    const oldRestT = this.restT;
+    const progress = preserveProgress && oldRestT > 0
+      ? Math.max(0, Math.min(1, this.t / oldRestT)) : 0;
+    this.script = layoutCredits();
+    this.restT = Math.max(0, (H + this.script.lastY - REST_Y) / scrollSpeed());
+    if (preserveProgress) {
+      this.t = Math.min(this.restT, this.restT * progress);
+      this.atRest = this.t >= this.restT;
+    }
+    this.swapTs = this.script.rows
+      .filter((r) => r.k === 'handoffArt')
+      .map((r) => (HANDOFF_SWAP_AT * (H + handoffHeight()) + r.y) / scrollSpeed()
+        - portalCueFlashAt(PORTAL_RELAY_CREDITS));
+    this.layoutSignatureValue = this.layoutSignature();
+  }
+  syncLayout() {
+    if (this.layoutSignatureValue !== this.layoutSignature()) this.rebuildLayout(true);
+  }
   enter() {
     this.t = 0;
     this.atRest = false;
-    this.script = layoutCredits();
-    this.restT = Math.max(0, (H + this.script.lastY - REST_Y) / SCROLL_SPEED);
+    this.rebuildLayout();
     // The instant each hand-off block hits the swap, in crawl-clock seconds.
     //
     // Fired from the clock rather than from the painter on purpose: drawRow()
@@ -1166,10 +1256,6 @@ export class CreditsState {
     // in, not 0.20s. Each swap has ~4.8s of runway and the four of them are tens of
     // seconds apart, so there is nothing for a lead that long to collide with. See
     // portalCueFlashAt and PORTAL_RELAY_CREDITS.
-    this.swapTs = this.script.rows
-      .filter((r) => r.k === 'handoffArt')
-      .map((r) => (HANDOFF_SWAP_AT * (H + HANDOFF_H) + r.y) / SCROLL_SPEED
-        - portalCueFlashAt(PORTAL_RELAY_CREDITS));
     this.scrubHeldT = 0;
     this.stars = makeStars(STAR_COUNT);
     this.dust = makeDust(DUST_COUNT);
@@ -1196,6 +1282,7 @@ export class CreditsState {
     Input.clearAll(); // and never leak a held arrow out into the next screen
   }
   update(dt) {
+    this.syncLayout();
     // Hold an arrow to scrub. Forward runs at 1+SCRUB_RATE, back at
     // 1-SCRUB_RATE, so rewind is a touch slower than fast-forward — the crawl
     // is being read, and overshooting backwards past the thing you wanted is
@@ -1238,10 +1325,11 @@ export class CreditsState {
     Input.endFrame();
   }
   draw(ctx) {
-    const scrollY = H - this.t * SCROLL_SPEED;
+    this.syncLayout();
+    const scrollY = H - this.t * scrollSpeed();
     // Full-bleed: the sky covers the whole canvas, safe area included. Only the
     // things you must be able to READ get inset.
-    drawSky(ctx, this.stars, this.dust, this.t, this.t * SCROLL_SPEED);
+    drawSky(ctx, this.stars, this.dust, this.t, this.t * scrollSpeed());
     for (const row of this.script.rows) {
       const y = scrollY + row.y;
       // Cull on the row's own extent. The 20u pad covers the few painters that
@@ -1262,7 +1350,7 @@ export class CreditsState {
     // legend stays available without competing with the crawl. (The mobile
     // legibility floor that governs the wall of names deliberately does not
     // apply here — this is a persistent hint you read once, not a credit.)
-    const s = HINT_SCALE;
+    const s = portraitCredits() ? 0.8 : HINT_SCALE;
     // "TAP TO BACK" is not a sentence — touch and keyboard need different words
     // for the same idea, so they get their own pair rather than sharing a verb.
     const touch = Input.isTouchDevice();
@@ -1271,10 +1359,10 @@ export class CreditsState {
       : `${Input.confirmVerb()} / ESC: ${this.atRest ? 'BACK' : 'SKIP'}`;
     // Anchored to the reachable box, and lifted clear of a home indicator.
     const box = safeBox();
-    const hintY = HINT_Y - box.bottom;
+    const hintYPos = hintY() - box.bottom;
     if (!touch) {
-      drawText(ctx, '← → HOLD TO SCRUB', box.x0 + 2, hintY, this.scrubbing ? GOLD : DIM, s, 'ui', UI_PLATE);
+      drawText(ctx, '← → HOLD TO SCRUB', box.x0 + 2, hintYPos, this.scrubbing ? GOLD : DIM, s, 'ui', UI_PLATE);
     }
-    drawText(ctx, exit, box.x1 - 2 - textWidth(exit, s), hintY, DIM, s, 'ui', UI_PLATE);
+    drawText(ctx, exit, box.x1 - 2 - textWidth(exit, s), hintYPos, DIM, s, 'ui', UI_PLATE);
   }
 }

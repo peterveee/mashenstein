@@ -39,8 +39,10 @@ for (const hero of CAST_HEROES.filter((candidate) => candidate.id !== 'chompo'))
     `${hero.short} copy panel sits above the performance stage`);
   assert.ok(layout.copyBottom < layout.heroStageTop,
     `${hero.short} copy stays above the hero`);
-  assert.equal(layout.heroFeetY, layout.floorY,
-    `${hero.short} walks on the portrait floor line`);
+  assert.ok(layout.heroFeetY < layout.floorY,
+    `${hero.short} stands above the portrait reflection line`);
+  assert.ok(layout.reflectionGap >= 10,
+    `${hero.short} leaves enough floor to see the reflection`);
   assert.ok(layout.progressY > layout.floorY,
     `${hero.short} indicators sit below the floor`);
   assert.ok(layout.hintMid > layout.progressY,

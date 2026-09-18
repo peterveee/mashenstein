@@ -32,6 +32,9 @@ export const SFX_BIRTHDAYS = {
   perfect: '2026-07-19',   // 04c9246
   plop: '2026-07-19',   // 04c9246
   power: '2026-07-19',   // 04c9246
+  powerDown: null,
+  static: null,
+  crowdCheer: null,
   shield: '2026-07-19',   // 04c9246
   shoot: '2026-07-19',   // 04c9246
   star: '2026-07-19',   // 659b55e

@@ -418,5 +418,17 @@ export function handoffRunLeft(opts) {
 
 export function drawHandoff(ctx, opts) {
   const v = HANDOFF_BY_ID[opts.variant || HANDOFF_VARIANT] || HANDOFF_BY_ID.pair;
+  const scale = Number(opts.artScale) || 1;
+  if (scale === 1) {
+    v.draw(ctx, opts);
+    return;
+  }
+  const cx = opts.x + opts.w / 2;
+  const floorY = opts.y + opts.h - 6;
+  ctx.save();
+  ctx.translate(cx, floorY);
+  ctx.scale(scale, scale);
+  ctx.translate(-cx, -floorY);
   v.draw(ctx, opts);
+  ctx.restore();
 }

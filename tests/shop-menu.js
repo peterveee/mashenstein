@@ -11,7 +11,7 @@ const { HUB_THEME } = await import('../src/data/cabinets.js');
 const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
 const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
 const { setPresentationFrame } = await import('../src/engine/renderer.js');
-const { BenchState, ShopState, StageSelectState } = await import('../src/game/hub/index.js');
+const { ArcadeState, BenchState, ShopState, StageSelectState } = await import('../src/game/hub/index.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -27,8 +27,9 @@ const shop = new ShopState({ save, flow: { toHub: () => { returned++; } } });
 shop.enter();
 const benchLayout = new BenchState({ save, flow: { toHub() {} } });
 benchLayout.enter();
-assert(shop.listY === benchLayout.listY && shop.listBottom === benchLayout.listBottom,
-  'landscape counters share list anchors');
+assert(shop.listY === benchLayout.listY && shop.listBottom < benchLayout.listBottom,
+  'landscape Gary uses a shorter list box than Dolores');
+assert(shop.rowH < benchLayout.rowH, 'landscape Gary leaves a deeper description band');
 assert(benchLayout.notice.length > 0, 'Dolores opens with a persistent counter message');
 assert(StageSelectState.portraitMode === 'frame',
   'Stage Select advertises its dedicated portrait layout to the screen gallery');
@@ -61,6 +62,44 @@ assert(portraitShop.visibleRows === 4, 'portrait Gary keeps a four-row scroll wi
 portraitBench.draw(document.createElement('canvas').getContext('2d'));
 portraitShop.draw(document.createElement('canvas').getContext('2d'));
 assert(true, 'both portrait counter templates render safely');
+const maxedBenchSlot = defaultSlot();
+maxedBenchSlot.bench.shield = 3;
+const maxedBench = new BenchState({
+  save: { slot: maxedBenchSlot, persist() {} },
+  flow: { toHub() {} },
+});
+maxedBench.enter();
+assert(maxedBench.options()[0].maxed, 'portrait Dolores exposes the sold-out price state after purchase');
+Input.press('confirm');
+maxedBench.update(1 / 60);
+Input.release('confirm');
+assert(maxedBench.notice.length > 0, 'portrait Dolores records the sold-out notice after purchase attempt');
+maxedBench.draw(document.createElement('canvas').getContext('2d'));
+assert(true, 'portrait Dolores renders the sold-out notice without text layout errors');
+// Two maxed rows once fought over one shared notice field and re-rolled a new
+// gag every frame, which read as flickering text. Each row keeps its own
+// cached gag now, so repeated draws must not change either notice.
+maxedBenchSlot.bench.magnet = 3;
+maxedBench.layoutKey = '';
+const maxedCtx = document.createElement('canvas').getContext('2d');
+const noticeBefore = [0, 1].map((i) => maxedBench.soldOutNoticeFor(maxedBench.options()[i]));
+maxedBench.draw(maxedCtx);
+maxedBench.draw(maxedCtx);
+const noticeAfter = [0, 1].map((i) => maxedBench.soldOutNoticeFor(maxedBench.options()[i]));
+assert(noticeBefore[0] === noticeAfter[0] && noticeBefore[1] === noticeAfter[1],
+  'sold-out notices stay fixed across repeated draws');
+const portraitArcade = new ArcadeState({ save, flow: { toHub() {} } });
+portraitArcade.enter();
+const oldArcadeTop = portraitFrame.safeRect.top + 210 / portraitFrame.scale;
+const oldArcadeBottom = portraitFrame.safeRect.bottom - 112 / portraitFrame.scale;
+const arcadeBand = portraitArcade.listBottom - portraitArcade.listY;
+assert(ArcadeState.portraitMode === 'frame', 'Arcade advertises its dedicated portrait layout');
+assert(portraitArcade.listY < oldArcadeTop && portraitArcade.listBottom > oldArcadeBottom,
+  'portrait Arcade uses more of the safe frame than its compact layout');
+assert(Math.abs(arcadeBand - portraitArcade.rowH * portraitArcade.options().length) < 0.01,
+  'portrait Arcade rows fill the available menu band');
+portraitArcade.draw(document.createElement('canvas').getContext('2d'));
+assert(true, 'portrait Arcade renders safely');
 setPresentationFrame(defaultFrame());
 
 function down() {

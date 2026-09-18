@@ -453,6 +453,20 @@ export const INTRO_PANELS = [
   { text: 'EIGHT HEROES. ONE SOCKET. A RELAY BEGINS. THIS IS THE MOST IMPORTANT CRISIS IN HISTORY. EVERYONE AGREES.' },
 ];
 
+export const INTRO_BEATS = [
+  { panel: 0, duration: 4.5, text: 'THE ARCADE. 11:58 PM. EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM.' },
+  { panel: 0, duration: 3.5, text: 'THE MACHINES HUM. EVERY SCREEN HAS ITS LITTLE ELECTRIC DREAM.' },
+  { panel: 1, duration: 4, text: 'DON K. EGGSHELL, PHD, ARRIVES WITH A MASTER PLAN.' },
+  { panel: 1, duration: 3, text: 'IF HE CANNOT WIN... NOBODY PLAYS.' },
+  { panel: 1, duration: 2.5, text: 'HE REACHES FOR THE MASTER POWER STRIP. PRIORITIES.' },
+  { panel: 2, duration: 1, text: 'THE MASTER STRIP HESITATES.' },
+  { panel: 2, duration: 5, text: 'THE MASTER STRIP CLICKS OFF. THE SCREENS GO DARK.' },
+  { panel: 2, duration: 2.5, text: 'THE STATIC CONTINUES BRIEFLY, AS IF THE ARCADE HAS AN APPEAL.' },
+  { panel: 3, duration: 6, text: 'THE HEROES ARRIVE. ONE AT A TIME, FOR BUDGET REASONS.' },
+  { panel: 4, duration: 5, text: 'THE HEROES ACCEPT THIS WITH GRACE. AND ONE FORM COMPLAINT.' },
+  { panel: 4, duration: 3, text: 'ONE SOCKET. A RELAY BEGINS. EVERYONE AGREES.' },
+];
+
 export const FINALE_BEATS = [
   'THE HEROES REACH THE SOCKET.',
   'EGGSHELL BLOCKS IT WITH HIS ENTIRE BODY. HE BEGINS HIS ULTIMATE MONOLOGUE. IT AUTOSCROLLS.',

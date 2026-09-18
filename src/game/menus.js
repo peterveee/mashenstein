@@ -47,12 +47,12 @@ const GUIDE_ICON_SIZES = {
   finishSnarler: [26, 18], dogSign: [17, 18],
 };
 import {
-  DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
+  DIFFICULTIES, INTRO_BEATS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
   FINALE_THANKS_TITLE, FINALE_THANKS, FINALE_SIGNOFF,
 } from '../data/jokes.js';
 import { HEROES } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
-import { cabinetPalette, deadScreenBurst, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep } from '../sprites/arcade.js';
+import { cabinetPalette, cabinetScreenRect, deadScreenBurst, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
@@ -2784,13 +2784,13 @@ function cascadeDone(t, n) { return t >= Math.max(0, n - 1) * CASCADE_STAGGER + 
 // Long enough to have landed every line of anything this game sets.
 const CASCADE_ALL = 99;
 
-function drawCascade(ctx, block, top, band, color, t) {
+function drawCascade(ctx, block, top, band, color, t, opacity = 1) {
   const y0 = top + Math.max(0, (band - block.height) / 2);
   ctx.save();
   block.lines.forEach((line, i) => {
     const { alpha, dy } = cascadeAt(t, i);
     if (alpha <= 0) return;
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = opacity * alpha;
     drawTextCentered(ctx, line.text, W / 2, y0 + (i * TYPE_LINE_H + dy) * block.scale, color, block.scale);
   });
   ctx.restore();
@@ -3005,6 +3005,7 @@ export class DifficultyState {
 // line-up spreads as it opens because its pitch is derived from the live width.
 const INTRO_FRAME_W = [404, 250, 404, 470, 470];
 const INTRO_FRAME_Y = 30.5, INTRO_FRAME_H = 120;
+const INTRO_POWER_DOWN_DELAY = 1;
 // The caption strip: under the picture frame, above the panel counter.
 const INTRO_TEXT_TOP = INTRO_FRAME_Y + INTRO_FRAME_H + 6;
 const INTRO_TEXT_BOTTOM = H - 28;
@@ -3021,6 +3022,19 @@ function drawEggshellCopterAt(ctx, x, y, size, frame, face, time = 0) {
   ctx.translate(x + driftX, y + driftY);
   eggshellCopterArt(ctx, size, size, frame, { face });
   ctx.restore();
+}
+
+function introEggshellPosition(time, center, span, top, height, size) {
+  const p = clamp(time / 12, 0, 1);
+  let offset;
+  if (p < 0.35) offset = -span * 0.5 + (p / 0.35) * span * 0.45;
+  else if (p < 0.72) offset = -span * 0.05 + Math.sin((p - 0.35) / 0.37 * Math.PI) * span * 0.08;
+  else offset = -span * 0.05 + ((p - 0.72) / 0.28) * span * 0.48;
+  const lift = p > 0.72 ? ((p - 0.72) / 0.28) * height * 0.08 : 0;
+  return {
+    x: center + offset - size / 2,
+    y: top + (height - size) / 2 + Math.sin(time * 1.7) * 3 - lift,
+  };
 }
 
 function eggshellCopterFrame(time) {
@@ -3081,50 +3095,159 @@ export class IntroState {
 
   constructor({ onDone }) { this.onDone = onDone; }
   enter() {
-    this.panel = 0; this.reveal = 0; this.t = 0; this.panelT = 0;
+    this.panel = -1; this.beatIndex = -1; this.beatT = 0; this.reveal = 0;
+    this.t = 0; this.panelT = 0; this.finished = false; this.awaitingClose = false;
     this.frameW = INTRO_FRAME_W[0]; this.blocks = []; this.blockKey = null;
-    this.staticMotion = CABINETS.map(() => ({ phase: Math.random() * 7, rate: 1.6 + Math.random() * 0.8 }));
+    this.staticMotion = CABINETS.map(() => ({ phase: Math.random() * 7, rate: 0.9 + Math.random() * 0.4 }));
+    this.staticBurstActive = CABINETS.map(() => false);
+    this.heroPopPlayed = Array(8).fill(false);
     Input.setMenuButtons();
+    this.startBeat(0);
   }
-  // Laid out once per panel and kept: the wrap is measured type, and measuring
-  // it every frame to draw a growing prefix of it is both wasteful and how the
-  // lines used to shuffle mid-typewriter.
+  startBeat(index) {
+    const beat = INTRO_BEATS[index];
+    if (!beat) {
+      this.awaitingClose = true;
+      return;
+    }
+    const panelChanged = beat.panel !== this.panel;
+    this.beatIndex = index;
+    this.beatT = 0;
+    this.reveal = 0;
+    if (!panelChanged) return;
+    this.panel = beat.panel;
+    this.panelT = 0;
+    this.staticBurstActive.fill(false);
+    if (this.panel === 2) Audio.sfx('powerDown', { inSeconds: INTRO_POWER_DOWN_DELAY });
+    else if (this.panel === 4) Audio.startCrowdCheer({ reverb: 0.85, reverbDecay: 6 });
+    else if (this.panel > 0) Audio.sfx('ui');
+  }
+  finish() {
+    if (this.finished) return;
+    this.finished = true;
+    Audio.stopCrowdCheer();
+    this.onDone();
+  }
+  // Layout is cached per beat and presentation revision. A subtitle must never
+  // reflow underneath itself while it fades in or out.
   block(i) {
     const portrait = isPhonePortraitPresentation();
     const key = portrait ? `portrait:${presentationFrame().revision}` : 'landscape';
     if (this.blockKey !== key) { this.blocks = []; this.blockKey = key; }
     if (!this.blocks[i]) {
+      const text = INTRO_BEATS[i].text;
       this.blocks[i] = portrait
-        ? portraitIntroBlock(INTRO_PANELS[i].text)
-        : fitProse(INTRO_PANELS[i].text, W - 56, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP);
+        ? portraitIntroBlock(text)
+        : fitProse(text, W - 56, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP);
     }
     return this.blocks[i];
+  }
+  subtitleReveal() {
+    return Math.min(CASCADE_ALL, this.beatT / 0.42 * CASCADE_ALL);
+  }
+  subtitleOpacity() {
+    if (this.awaitingClose) return 1;
+    const duration = INTRO_BEATS[this.beatIndex]?.duration ?? 1;
+    const fadeIn = Math.min(1, this.beatT / 0.18);
+    const fadeOut = Math.min(1, Math.max(0, (duration - this.beatT) / 0.35));
+    return Math.min(fadeIn, fadeOut);
   }
   staticBurstAmount(i, seed) {
     const motion = this.staticMotion?.[i] || { phase: 0, rate: 2 };
     return deadScreenBurst(this.t * motion.rate + motion.phase, seed);
   }
+  updateStaticAudio() {
+    if (this.panel !== 2) {
+      this.staticBurstActive.fill(false);
+      return;
+    }
+    for (let i = 0; i < 6; i++) {
+      const seed = cabinetPalette(CABINETS[i], false).seed;
+      const dead = this.panelT >= INTRO_POWER_DOWN_DELAY + 0.12 + i * 0.12;
+      const active = dead && this.staticBurstAmount(i, seed) > 0;
+      if (active && !this.staticBurstActive[i]) Audio.sfx('static', { gain: 0.34 });
+      this.staticBurstActive[i] = active;
+    }
+  }
+  updateHeroEntranceAudio() {
+    if (this.panel !== 3) {
+      this.heroPopPlayed.fill(false);
+      return;
+    }
+    for (let i = 0; i < this.heroPopPlayed.length; i++) {
+      const appearsAt = 0.3 + i * 0.25;
+      if (this.panelT >= appearsAt && !this.heroPopPlayed[i]) {
+        this.heroPopPlayed[i] = true;
+        Audio.sfx('popSmall', { pitch: 1 + i * 0.035, gain: 0.75 });
+      }
+    }
+  }
   update(dt) {
-    this.t += dt;
-    this.panelT += dt;
+    if (this.finished) { Input.endFrame(); return; }
+    if (Input.pressed('back')) {
+      this.finish();
+      Input.endFrame();
+      return;
+    }
+    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
+      this.finish();
+      Input.endFrame();
+      return;
+    }
+    if (this.awaitingClose) {
+      this.t += Math.max(0, dt);
+      this.panelT += Math.max(0, dt);
+      Input.endFrame();
+      return;
+    }
+    let remaining = Math.max(0, dt);
+    while (remaining > 0 && !this.finished) {
+      const beat = INTRO_BEATS[this.beatIndex];
+      const step = Math.min(remaining, Math.max(0, beat.duration - this.beatT));
+      this.t += step;
+      this.beatT += step;
+      this.panelT += step;
+      remaining -= step;
+      if (this.beatT >= beat.duration - 0.000001) this.startBeat(this.beatIndex + 1);
+    }
     // Eased toward the target rather than snapped: the panels are read at a
-    // click each, so a hard cut in frame width reads as a layout glitch where a
-    // half-second open reads as the scene making room.
+    // beat boundary, so a hard cut in frame width reads as a layout glitch where
+    // a half-second open reads as the scene making room.
     const want = INTRO_FRAME_W[Math.min(this.panel, INTRO_FRAME_W.length - 1)];
     this.frameW += (want - this.frameW) * Math.min(1, dt * 6);
-    if (this.panel >= INTRO_PANELS.length) { Input.endFrame(); return; }
-    this.reveal += dt;
-    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
-      // First input lands the caption, second turns the page — unchanged, the
-      // cascade is just quick enough that the first one is rarely needed.
-      if (!cascadeDone(this.reveal, this.block(this.panel).lines.length)) this.reveal = CASCADE_ALL;
-      else { this.panel++; this.reveal = 0; this.panelT = 0; Audio.sfx('ui'); if (this.panel >= INTRO_PANELS.length) { this.onDone(); } }
+    if (!this.finished) {
+      this.updateStaticAudio();
+      this.updateHeroEntranceAudio();
     }
-    if (Input.pressed('back')) this.onDone();
     Input.endFrame();
   }
+  drawPowerDownCabinet(ctx, x, y, w, h, i) {
+    const cabinet = CABINETS[i];
+    const shutdownAt = INTRO_POWER_DOWN_DELAY + 0.12 + i * 0.12;
+    if (this.panelT < shutdownAt) {
+      const pal = cabinetPalette(cabinet);
+      drawCabinetShell(ctx, x, y, w, h, pal);
+      const screen = drawCabinetScreen(ctx, x, y, w, h, pal);
+      if (screen) drawScreenSweep(ctx, screen, this.t + i * 1.3, i * 977);
+      return;
+    }
+    const offPal = cabinetPalette(cabinet, false);
+    drawCabinetShell(ctx, x, y, w, h, offPal);
+    const elapsed = this.panelT - shutdownAt;
+    const flash = elapsed < 0.12 ? 1 - elapsed / 0.12 : 0;
+    drawDeadScreen(ctx, x, y, w, h, this.t, offPal.seed, null,
+      Math.max(this.staticBurstAmount(i, offPal.seed), flash));
+    if (flash > 0) {
+      const screen = cabinetScreenRect(x, y, w, h, null);
+      ctx.save();
+      ctx.globalAlpha = flash * 0.78;
+      ctx.fillStyle = '#f4f6ff';
+      ctx.fillRect(screen.x, screen.y, screen.w, screen.h);
+      ctx.restore();
+    }
+  }
   drawPortrait(ctx) {
-    const block = this.block(this.panel);
+    const block = this.block(this.beatIndex);
     const { center, artLeft, artW, artTop, artBottom, textTop, textBottom, safe } = block;
     const artH = Math.max(1, artBottom - artTop);
     ctx.fillStyle = '#0b0b14';
@@ -3155,8 +3278,8 @@ export class IntroState {
     }
     if (this.panel === 1) {
       const copterSize = Math.min(artW * 0.78, artH * 0.84);
-      const copterY = artTop + (artH - copterSize) / 2;
-      drawEggshellCopterAt(ctx, center - copterSize / 2, copterY,
+      const copter = introEggshellPosition(this.panelT, center, artW, artTop, artH, copterSize);
+      drawEggshellCopterAt(ctx, copter.x, copter.y,
         copterSize, eggshellCopterFrame(this.t), introEggshellFace(this.t), this.t);
     }
     if (this.panel === 2) {
@@ -3167,15 +3290,11 @@ export class IntroState {
       const cabinetH = Math.min((artH - gapY) / 2 - 4, cellW * 82 / 46);
       const cabinetW = cellW;
       for (let i = 0; i < 6; i++) {
-        const cab = CABINETS[i];
         const row = Math.floor(i / columns);
         const column = i % columns;
         const x = artLeft + column * (cabinetW + gapX);
         const bottom = artBottom - 6 - (1 - row) * (cabinetH + gapY);
-        const offPal = cabinetPalette(cab, false);
-        drawCabinetShell(ctx, x, bottom - cabinetH, cabinetW, cabinetH, offPal);
-        drawDeadScreen(ctx, x, bottom - cabinetH, cabinetW, cabinetH,
-          this.t, offPal.seed, null, this.staticBurstAmount(i, offPal.seed));
+        this.drawPowerDownCabinet(ctx, x, bottom - cabinetH, cabinetW, cabinetH, i);
       }
     }
     if (this.panel === 3 || this.panel === 4) {
@@ -3188,7 +3307,8 @@ export class IntroState {
       const castTop = artTop + Math.max(0, (artH - castH) / 2);
       const rollCall = this.panel === 3;
       heroes.forEach((h, i) => {
-        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - (0.2 + i * 0.13)) / 0.28)) : 1;
+        const start = rollCall ? 0.3 + i * 0.25 : 0;
+        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - start) / 0.22)) : 1;
         if (a <= 0) return;
         const ease = 1 - Math.pow(1 - a, 3);
         const scale = ease + Math.sin(a * Math.PI) * 0.14;
@@ -3209,25 +3329,28 @@ export class IntroState {
     }
 
     const y0 = textTop + Math.max(0, (textBottom - textTop - block.height) / 2);
+    const opacity = this.subtitleOpacity();
     block.lines.forEach((line, i) => {
-      const { alpha, dy } = cascadeAt(this.reveal, i);
+      const { alpha, dy } = cascadeAt(this.subtitleReveal(), i);
       if (alpha <= 0) return;
       ctx.save();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = opacity * alpha;
       const mid = y0 + i * block.lineH + block.lineH / 2
         + dy * portraitMenuScale(block.scale);
       portraitMenuTextCentered(ctx, line, center, portraitMenuTextY(mid, block.scale),
         '#e8e8f0', block.scale);
       ctx.restore();
     });
-    const prompt = `${this.panel + 1}/${INTRO_PANELS.length}  (${confirmVerb()})`;
-    const promptScale = portraitMenuFit(prompt, 1.55, block.width, 'bold');
-    portraitMenuTextCentered(ctx, prompt, center,
-      portraitMenuTextY(safe.bottom - block.css(28), promptScale, 'bold'),
-      '#8a8492', promptScale, 'bold');
+    if (this.awaitingClose) {
+      const prompt = 'TAP OR PRESS ENTER TO CLOSE';
+      const promptScale = portraitMenuFit(prompt, 1.55, block.width, 'bold');
+      portraitMenuTextCentered(ctx, prompt, center,
+        portraitMenuTextY(safe.bottom - block.css(28), promptScale, 'bold'),
+        '#8a8492', promptScale, 'bold');
+    }
   }
   draw(ctx) {
-    if (this.panel >= INTRO_PANELS.length) return;
+    if (this.finished || this.beatIndex < 0) return;
     if (isPhonePortraitPresentation()) {
       this.drawPortrait(ctx);
       return;
@@ -3240,8 +3363,9 @@ export class IntroState {
     ctx.strokeRect(W / 2 - fw / 2, INTRO_FRAME_Y, fw, INTRO_FRAME_H);
     if (this.panel === 1) {
       const copterSize = 92;
-      const copterY = INTRO_FRAME_Y + (INTRO_FRAME_H - copterSize) / 2;
-      drawEggshellCopterAt(ctx, W / 2 - copterSize / 2, copterY,
+      const copter = introEggshellPosition(this.panelT, W / 2, 240,
+        INTRO_FRAME_Y, INTRO_FRAME_H, copterSize);
+      drawEggshellCopterAt(ctx, copter.x, copter.y,
         copterSize, eggshellCopterFrame(this.t), introEggshellFace(this.t), this.t);
     }
     if (this.panel === 0) {
@@ -3265,12 +3389,8 @@ export class IntroState {
     if (this.panel === 2) {
       const CW = 46, CH = 82, BOT = 146;
       for (let i = 0; i < 6; i++) {
-        const cab = CABINETS[i];
         const cx = W / 2 + (i - 2.5) * 68;
-        const offPal = cabinetPalette(cab, false);
-        drawCabinetShell(ctx, cx - CW / 2, BOT - CH, CW, CH, offPal);
-        drawDeadScreen(ctx, cx - CW / 2, BOT - CH, CW, CH,
-          this.t, offPal.seed, null, this.staticBurstAmount(i, offPal.seed));
+        this.drawPowerDownCabinet(ctx, cx - CW / 2, BOT - CH, CW, CH, i);
       }
     }
     if (this.panel === 3 || this.panel === 4) {
@@ -3316,7 +3436,8 @@ export class IntroState {
         // in on its own short ease with a bulge past full size at the midpoint
         // and a rise from below, so the landing reads as weight rather than a
         // fade. Anyone whose turn has not come yet simply is not drawn.
-        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - (0.2 + i * 0.13)) / 0.28)) : 1;
+        const start = rollCall ? 0.3 + i * 0.25 : 0;
+        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - start) / 0.22)) : 1;
         if (a <= 0) return;
         const ease = 1 - Math.pow(1 - a, 3);
         const scale = ease + Math.sin(a * Math.PI) * 0.14;
@@ -3337,11 +3458,12 @@ export class IntroState {
     // The caption fills the strip under the frame instead of sitting at a fixed
     // scale 1 on two hard-wrapped lines: this is the first prose a new file ever
     // shows, and on a phone that was a 12px caption under a 120-unit picture.
-    const block = this.block(this.panel);
-    drawCascade(ctx, block, INTRO_TEXT_TOP, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP, '#e8e8f0', this.reveal);
-    const promptS = Input.isTouchDevice() ? 1.25 : 1;
-    drawTextCentered(ctx, `${this.panel + 1}/${INTRO_PANELS.length}  (${confirmVerb()})`,
-      W / 2, textYForMid(H - 16, promptS), '#5a5a68', promptS);
+    const block = this.block(this.beatIndex);
+    drawCascade(ctx, block, INTRO_TEXT_TOP, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP,
+      '#e8e8f0', this.subtitleReveal(), this.subtitleOpacity());
+    if (this.awaitingClose) {
+      drawTextCentered(ctx, 'TAP OR PRESS ENTER TO CLOSE', W / 2, H - 16, '#8a8492', 1);
+    }
   }
 }
 
@@ -5953,20 +6075,11 @@ export class HowToPlayState {
     line('POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.');
     line('HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'X / SHIFT / MIDDLE CLICK.');
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
-    // No control row of its own, deliberately: there is nothing to press.
-    line('REWIND', touch ? 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.'
-      : 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF. (HOLD LEFT / A TO SCRUB ANY TIME.)', '#48e0c8');
     y += 4;
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
     line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
     line('TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8');
     line('PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8');
-    // The last two rows are the only ones that name a way OUT of something, and
-    // a phone has none of the keys they used to name: the breaker box carries a
-    // SKIP button, and pause is a button that opens plates you press.
-    line('BREAKER BOX', `WIN IT: BONUS POWERUP. ${touch ? 'TAP SKIP' : 'ESC OR SKIP'} TO BAIL OUT.`, '#f890b8');
-    y += 4;
-    line('PAUSE / MUTE', touch ? 'THE PAUSE BUTTON. EXIT TO FOOD COURT QUITS.' : 'P OR ESC / M. ESC AGAIN QUITS.');
     drawTextCentered(ctx, 'JUMP RED HAZARDS. SLIDE UNDER DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2, H - 16, '#5a5a68');
   }
@@ -5980,50 +6093,48 @@ export class HowToPlayState {
     const titleMid = safeTop + 34;
     portraitMenuTextCentered(ctx, 'HOW TO PLAY', W / 2,
       portraitMenuTextY(titleMid, 2.35, 'title'), '#fff', 2.35, 'title');
-    const subtitle = 'ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.';
-    const subtitleS = portraitMenuFit(subtitle, 1.05, W - 44);
-    portraitMenuTextCentered(ctx, subtitle, W / 2,
-      portraitMenuTextY(titleMid + 36, subtitleS), '#8a8a98', subtitleS);
 
-    // Portrait turns each compact landscape row into a readable two-column
-    // lookup. Long explanations wrap within their column instead of running
-    // under the right edge of the phone.
+    const touch = Input.isTouchDevice();
     const rows = [
-      ['JUMP', 'TAP THE LEFT HALF. HOLD FOR HIGHER.', '#f6d33c'],
-      ['POWER SLIDE', 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.', '#f6d33c'],
-      ['HERO POWER', 'THE USE DISC, OR SWIPE RIGHT.', '#f6d33c'],
+      ['JUMP', touch ? 'TAP THE LEFT HALF. HOLD FOR HIGHER.' : 'SPACE / W / UP / LEFT CLICK. HOLD FOR HIGHER.', '#f6d33c'],
+      ['POWER SLIDE', touch ? 'TAP THE RIGHT HALF AND HOLD, OR SWIPE DOWN. KICKS CONES AND BARRELS.' : 'S / DOWN / RIGHT CLICK. HOLD IT. KICKS CONES AND BARRELS.', '#f6d33c'],
+      ['HERO POWER', touch ? 'THE USE DISC, OR SWIPE RIGHT.' : 'X / SHIFT / MIDDLE CLICK.', '#f6d33c'],
       ['PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8'],
-      ['REWIND', 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.', '#48e0c8'],
       ['MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8'],
       ['CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8'],
       ['TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8'],
       ['PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8'],
-      ['BREAKER BOX', 'WIN IT: BONUS POWERUP. TAP SKIP TO BAIL OUT.', '#f890b8'],
-      ['PAUSE / MUTE', 'THE PAUSE BUTTON. EXIT TO FOOD COURT QUITS.', '#f890b8'],
     ];
-    const labelX = 28;
-    const descX = 154;
-    const descW = W - descX - 22;
-    const rowH = 62;
-    let rowTop = titleMid + 70;
+    const contentX = 28;
+    const contentW = W - contentX * 2;
+    const rowH = 80;
+    const sectionGap = 34;
+    const sectionHeaderS = 1.5;
+    const labelSBase = 1.35;
+    const descriptionS = 1.4;
+    const sectionNames = new Map([[0, 'CONTROLS'], [4, 'STAGE GOALS']]);
+    let rowTop = titleMid + 52;
     rows.forEach(([label, description, color], i) => {
-      if (i === 5 || i === 9) rowTop += 14;
-      const rowMid = rowTop + rowH / 2;
-      const labelS = portraitMenuFit(label, 1.05, descX - labelX - 14, 'bold');
-      portraitMenuText(ctx, label, labelX,
-        portraitMenuTextY(rowMid, labelS, 'bold'), color, labelS, 'bold');
-      const lines = portraitMenuWrap(description, descW, 1.0, 2);
-      const lineGap = 15;
-      const firstMid = rowMid - (lines.length - 1) * lineGap / 2;
+      if (sectionNames.has(i)) {
+        if (i > 0) rowTop += sectionGap;
+        portraitMenuText(ctx, sectionNames.get(i), contentX,
+          portraitMenuTextY(rowTop - 11, sectionHeaderS, 'bold'), '#8a8492', sectionHeaderS, 'bold');
+      }
+      const labelS = portraitMenuFit(label, labelSBase, contentW, 'bold');
+      portraitMenuText(ctx, label, contentX,
+        portraitMenuTextY(rowTop + 19, labelS, 'bold'), color, labelS, 'bold');
+      const lines = portraitMenuWrap(description, contentW, descriptionS, 3);
+      const lineGap = 20;
+      const firstMid = rowTop + 56 - (lines.length - 1) * lineGap / 2;
       lines.forEach((line, j) => {
-        portraitMenuText(ctx, line, descX,
-          portraitMenuTextY(firstMid + j * lineGap, 1.0), '#c8c8d8');
+        portraitMenuText(ctx, line, contentX,
+          portraitMenuTextY(firstMid + j * lineGap, descriptionS), '#c8c8d8', descriptionS);
       });
       rowTop += rowH;
     });
 
     portraitMenuTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2,
-      portraitMenuTextY(safeBottom - 16, 1.05), '#5a5a68', 1.05);
+      portraitMenuTextY(safeBottom - 16, 1.2), '#5a5a68', 1.2);
   }
 }
 

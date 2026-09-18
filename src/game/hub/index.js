@@ -881,7 +881,8 @@ function benchVisualHit(station, worldX, worldY, dolores, layout = hubPresentati
 }
 
 export function heroIdFor(flow) {
-  return (flow && flow.hubAvatar) || (flow && flow.lastTeam && flow.lastTeam[0]) || 'lorenzo';
+  const candidates = [flow && flow.hubAvatar, flow && flow.lastTeam && flow.lastTeam[0], 'lorenzo'];
+  return candidates.find((id) => HEROES.some((hero) => hero.id === id)) || 'lorenzo';
 }
 
 // What is actually playing on a cabinet's screen: a slice of that cabinet's own
@@ -2858,15 +2859,9 @@ export class HubState {
     Audio.sfx('ui');
   }
 
-  // Whoever the player is currently wearing. Gary shows up on the coupon mod;
-  // otherwise it's the last team's lead, and Lorenzo before there is one.
+  // Whoever the player is currently wearing. Counter staff are never playable;
+  // cosmetic shop mods must not replace the active hero.
   avatarId() {
-    const slot = this.save.slot;
-    if (slot.mods.equipped.includes('coupon')) return 'gary';
-    // Flow.heroId() is the single source: a hub swap, else whoever finished the
-    // last run, else Lorenzo. Gary is deliberately NOT pushed through it — the
-    // coupon mod is a hub costume, and Relay ignores an initialHeroId that is not
-    // in HEROES anyway, so a Gary run would just draw at random.
     return heroIdFor(this.flow);
   }
 
@@ -4819,7 +4814,8 @@ function fitRows(state, count) {
   state.listCount = count;
   const fixed = state.fixedLastRow ? 1 : 0;
   const shown = Math.min(count - fixed, state.visibleRows || count) + fixed;
-  state.rowH = Math.max(MENU_ROW_MIN, Math.min(MENU_ROW_MAX, ((state.listBottom || MENU_LIST_BOTTOM) - state.listY) / shown));
+  const rowMin = state.rowMin || MENU_ROW_MIN;
+  state.rowH = Math.max(rowMin, Math.min(MENU_ROW_MAX, ((state.listBottom || MENU_LIST_BOTTOM) - state.listY) / shown));
   keepSelectionVisible(state, count);
 }
 function keepSelectionVisible(state, count) {
@@ -4888,9 +4884,12 @@ const LANDSCAPE_COUNTER_CHAT_MAX_W = 300;
 const LANDSCAPE_COUNTER_CHAT_FACE_W = 14, LANDSCAPE_COUNTER_CHAT_FACE_H = 14;
 const LANDSCAPE_COUNTER_CHAT_GAP = 5, LANDSCAPE_COUNTER_CHAT_PAD = 6;
 const LANDSCAPE_COUNTER_CHAT_LINE_H = 13;
-const LANDSCAPE_COUNTER_COINS_Y = 62;
+const LANDSCAPE_COUNTER_FOOTER_Y = H - 13;
+const LANDSCAPE_COUNTER_FOOTER_RIGHT = W - 12;
 const LANDSCAPE_COUNTER_LIST_TOP = 82;
 const LANDSCAPE_COUNTER_LIST_BOTTOM = 222;
+const LANDSCAPE_SHOP_LIST_BOTTOM = 202;
+const LANDSCAPE_SHOP_ROW_MIN = 16;
 const LANDSCAPE_COUNTER_LIST_LEFT = 18;
 const LANDSCAPE_COUNTER_LIST_RIGHT = 314;
 const LANDSCAPE_COUNTER_LIST_CENTER = (LANDSCAPE_COUNTER_LIST_LEFT + LANDSCAPE_COUNTER_LIST_RIGHT) / 2;
@@ -4899,12 +4898,13 @@ const LANDSCAPE_COUNTER_PRICE_X = 300;
 const PORTRAIT_COUNTER_TITLE_MAX_S = 4.5;
 const PORTRAIT_COUNTER_SIDE_MARGIN_CSS = 22;
 const PORTRAIT_COUNTER_TITLE_TOP_CSS = 34;
-const PORTRAIT_COUNTER_COINS_TOP_CSS = 84;
-const PORTRAIT_CHAT_TOP_CSS = 112;
+const PORTRAIT_COUNTER_STATUS_BOTTOM_CSS = 62;
+const PORTRAIT_COUNTER_BACK_SCALE = 1.15;
+const PORTRAIT_CHAT_TOP_CSS = 84;
 const PORTRAIT_CHAT_SCALE = 2.4;
 const PORTRAIT_CHAT_FACE_W = 24, PORTRAIT_CHAT_FACE_H = 24;
 const PORTRAIT_CHAT_GAP = 9, PORTRAIT_CHAT_PAD = 10, PORTRAIT_CHAT_LINE_H = 31;
-const PORTRAIT_COUNTER_LIST_TOP_CSS = 188;
+const PORTRAIT_COUNTER_LIST_TOP_CSS = 160;
 const PORTRAIT_COUNTER_LIST_BOTTOM_CSS = 278;
 const PORTRAIT_COUNTER_ROW_MIN_CSS = 70;
 const PORTRAIT_COUNTER_ROW_MAX_CSS = 150;
@@ -4913,6 +4913,14 @@ const PORTRAIT_COUNTER_STAFF_GAP_CSS = 18;
 const PORTRAIT_COUNTER_VISIBLE_ROWS = 4;
 const PORTRAIT_COUNTER_BACK_H_CSS = 34;
 const PORTRAIT_COUNTER_HINT_EDGE_CSS = 24;
+const PORTRAIT_ARCADE_LIST_TOP_CSS = 164;
+const PORTRAIT_ARCADE_LIST_BOTTOM_CSS = 76;
+const PORTRAIT_ARCADE_ROW_MIN_CSS = 86;
+const PORTRAIT_ARCADE_HINT_EDGE_CSS = 24;
+const PORTRAIT_ARCADE_SIDE_MARGIN_CSS = 28;
+const PORTRAIT_ARCADE_ROW_PAD_CSS = 22;
+const LANDSCAPE_ARCADE_ROW_EDGE = 42;
+const LANDSCAPE_ARCADE_ROW_PAD = 18;
 function counterTitleScale(contentWidth) {
   return Math.min(PORTRAIT_COUNTER_TITLE_MAX_S, contentWidth / Math.max(
     textWidth(COUNTER_TITLE_DOLORES, 1, 'title'),
@@ -5259,8 +5267,9 @@ export class BenchState {
     this.rowH = MENU_ROW_MAX;
     this.layoutKey = '';
     this.notice = BENCH_DEFAULT_CHAT;
-    this.soldOutKey = '';
-    this.soldOutNotice = '';
+    // Keyed per row, not a single scalar: portrait shows every sold-out row's
+    // notice at once, and a shared cache thrashed between rows each frame.
+    this.soldOutNotices = new Map();
     this.t = 0;
     this.annoyedT = 0;
     this.madStyle = 0;
@@ -5296,6 +5305,17 @@ export class BenchState {
       this.portraitBackH = null;
     }
     this.layoutKey = key;
+  }
+  // Cached per row so portrait's simultaneous sold-out rows each keep their
+  // own gag instead of fighting over one shared field every frame.
+  soldOutNoticeFor(o) {
+    const key = `${o.u.id}:${o.lvl}`;
+    let notice = this.soldOutNotices.get(key);
+    if (!notice) {
+      notice = benchGag(BENCH_SOLD_OUT_NOTICES, { TIER: o.targetTier });
+      this.soldOutNotices.set(key, notice);
+    }
+    return notice;
   }
   enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; this.notice = BENCH_DEFAULT_CHAT; this.layoutKey = ''; this.syncLayout(); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
   exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
@@ -5422,7 +5442,8 @@ export class BenchState {
     const glossMaxW = 280;
     const coinsText = `COINS: ${formatCoins(this.save.slot.coins)}`;
     drawLandscapeCounterChat(ctx, this.notice || BENCH_DEFAULT_CHAT, 'dolores', '#f6d33c', 'rgba(246,211,60,0.35)');
-    drawTextCentered(ctx, coinsText, W / 2, LANDSCAPE_COUNTER_COINS_Y, '#f6d33c');
+    drawText(ctx, coinsText,
+      LANDSCAPE_COUNTER_FOOTER_RIGHT - textWidth(coinsText), LANDSCAPE_COUNTER_FOOTER_Y, '#f6d33c');
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
@@ -5451,12 +5472,7 @@ export class BenchState {
         if (current) drawTextCentered(ctx, `CURRENT: ${o.u.name} TIER ${o.lvl} (ACTIVE)`, menuCx, H - 58, '#8a8a98', MENU_NOTE_S);
         if (next) drawTextCentered(ctx, `NEXT: ${next}`, menuCx, H - 44, '#c8c8d8', MENU_NOTE_S);
         if (o.maxed) {
-          const soldOutKey = `${o.u.id}:${o.lvl}`;
-          if (this.soldOutKey !== soldOutKey) {
-            this.soldOutKey = soldOutKey;
-            this.soldOutNotice = benchGag(BENCH_SOLD_OUT_NOTICES, { TIER: o.targetTier });
-          }
-          wrapText(`NOTICE: ${this.soldOutNotice}`, glossMaxW, MENU_NOTE_S, 2)
+          wrapText(`NOTICE: ${this.soldOutNoticeFor(o)}`, glossMaxW, MENU_NOTE_S, 2)
             .forEach((line, k) => drawTextCentered(ctx, line, menuCx, H - 44 + k * 14, '#c8c8d8', MENU_NOTE_S));
         }
       }
@@ -5497,9 +5513,15 @@ export class BenchState {
       .filter((o) => !o.back)
       .map((o) => o.u.name)
       .reduce((longest, label) => textWidth(label, 1, 'bold') > textWidth(longest, 1, 'bold') ? label : longest, '');
-    const priceReserve = textWidth('4,000   TIER 3', detailScale, 'bold') + css(14);
+    const priceReserve = opts
+      .filter((o) => !o.back)
+      .map((o) => o.maxed || o.cost === undefined
+        ? `SOLD OUT   TIER ${o.targetTier}`
+        : `${formatCoins(o.baseCost)}   TIER ${o.targetTier}`)
+      .reduce((widest, price) => Math.max(widest, textWidth(price, detailScale, 'bold')), 0) + css(14);
     const labelScale = Math.min(3.4,
       (detailRight - contentLeft - priceReserve) / Math.max(1, textWidth(longestLabel, 1, 'bold')));
+    const backScale = Math.min(3.8, labelScale * PORTRAIT_COUNTER_BACK_SCALE);
 
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
@@ -5541,8 +5563,8 @@ export class BenchState {
     drawTextVectorCentered(ctx, COUNTER_TITLE_DOLORES, center,
       textYForMid(safe.top + css(PORTRAIT_COUNTER_TITLE_TOP_CSS), titleScale, 'title'),
       '#f6d33c', titleScale, 'title');
-    drawTextVectorCentered(ctx, coinsText, center,
-      textYForMid(safe.top + css(PORTRAIT_COUNTER_COINS_TOP_CSS), coinsScale, 'bold'),
+    drawTextVector(ctx, coinsText, detailRight - textWidth(coinsText, coinsScale, 'bold'),
+      textYForMid(safe.bottom - css(PORTRAIT_COUNTER_STATUS_BOTTOM_CSS), coinsScale, 'bold'),
       '#f6d33c', coinsScale, 'bold');
 
     opts.forEach((o, i) => {
@@ -5553,8 +5575,8 @@ export class BenchState {
         const backH = this.portraitBackH;
         if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
         drawTextVector(ctx, 'BACK', contentLeft,
-          textYForMid(backY, labelScale, 'bold'),
-          selected ? '#f6d33c' : '#c8c8d8', labelScale, 'bold');
+          textYForMid(backY, backScale, 'bold'),
+          selected ? '#f6d33c' : '#c8c8d8', backScale, 'bold');
         return;
       }
       if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
@@ -5569,23 +5591,25 @@ export class BenchState {
           : slot.coins >= o.cost ? '#f6d33c' : '#5a5a68', detailScale, 'bold');
       const current = o.u.currentDesc && o.u.currentDesc[o.lvl - o.baseLevel];
       const next = !o.maxed && o.u.desc[o.lvl - o.baseLevel];
+      const rowDetailScale = o.maxed ? 2.1 : detailScale;
+      let lines;
       const details = [];
       if (current) details.push(`CURRENT: ${current}`);
       if (next) details.push(`NEXT: ${next}`);
       if (o.maxed) {
-        const soldOutKey = `${o.u.id}:${o.lvl}`;
-        if (this.soldOutKey !== soldOutKey) {
-          this.soldOutKey = soldOutKey;
-          this.soldOutNotice = benchGag(BENCH_SOLD_OUT_NOTICES, { TIER: o.targetTier });
-        }
-        details.push(`NOTICE: ${this.soldOutNotice}`);
+        const currentLines = current
+          ? wrapText(`CURRENT: ${current}`, detailWidth, rowDetailScale, 2)
+          : [];
+        const noticeLines = wrapText(`NOTICE: ${this.soldOutNoticeFor(o)}`, detailWidth, rowDetailScale, 2);
+        lines = [...currentLines, ...noticeLines].slice(0, 4);
+      } else {
+        lines = wrapText(details.join('  '), detailWidth, rowDetailScale, 3);
       }
-      const lines = wrapText(details.join('  '), detailWidth, detailScale, 3);
-      const detailStart = lines.length > 2 ? 0.46 : 0.55;
-      const detailGap = lines.length > 2 ? 0.19 : 0.23;
-      lines.slice(0, 3).forEach((line, lineI) => drawTextVector(ctx, line, contentLeft,
-        textYForMid(rowTop + this.rowH * (detailStart + lineI * detailGap), detailScale),
-        selected ? '#c8c8d8' : '#8a8492', detailScale));
+      const detailStart = o.maxed ? 0.36 : lines.length > 2 ? 0.46 : 0.55;
+      const detailGap = o.maxed ? 0.17 : lines.length > 2 ? 0.19 : 0.23;
+      lines.slice(0, o.maxed ? 4 : 3).forEach((line, lineI) => drawTextVector(ctx, line, contentLeft,
+        textYForMid(rowTop + this.rowH * (detailStart + lineI * detailGap), rowDetailScale),
+        selected ? '#c8c8d8' : '#8a8492', rowDetailScale));
     });
 
     if (this.notice || BENCH_DEFAULT_CHAT) {
@@ -5626,6 +5650,7 @@ export class ShopState {
     this.rowH = MENU_ROW_MAX;
     this.visibleRows = 7;
     this.fixedLastRow = true;
+    this.rowMin = LANDSCAPE_SHOP_ROW_MIN;
     this.listStart = 0;
     this.layoutKey = '';
     this.enterT = 0;
@@ -5657,7 +5682,7 @@ export class ShopState {
       this.portraitBackH = css(PORTRAIT_COUNTER_BACK_H_CSS);
     } else {
       this.listY = LANDSCAPE_COUNTER_LIST_TOP;
-      this.listBottom = LANDSCAPE_COUNTER_LIST_BOTTOM;
+      this.listBottom = LANDSCAPE_SHOP_LIST_BOTTOM;
       this.rowH = MENU_ROW_MAX;
       this.visibleRows = 7;
       this.portraitBackIndex = null;
@@ -5751,8 +5776,9 @@ export class ShopState {
       '#f890b8', LANDSCAPE_COUNTER_TITLE_S, 'title');
     drawLandscapeCounterChat(ctx, this.line, 'gary', '#f890b8', 'rgba(248,144,184,0.35)');
     const slot = this.save.slot;
-    drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2,
-      LANDSCAPE_COUNTER_COINS_Y, '#f6d33c');
+    const coinsText = `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`;
+    drawText(ctx, coinsText,
+      LANDSCAPE_COUNTER_FOOTER_RIGHT - textWidth(coinsText), LANDSCAPE_COUNTER_FOOTER_Y, '#f6d33c');
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
@@ -5773,7 +5799,10 @@ export class ShopState {
         drawText(ctx, price, priceX - textWidth(price, MENU_ROW_S), y,
           slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
       }
-      if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', LANDSCAPE_COUNTER_LIST_CENTER, H - 28, '#8a8492', MENU_NOTE_S);
+      if (sel) drawText(ctx,
+        fitText(o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.',
+          LANDSCAPE_COUNTER_LIST_RIGHT - LANDSCAPE_COUNTER_LABEL_X, MENU_NOTE_S),
+        LANDSCAPE_COUNTER_LABEL_X, H - 28, '#8a8492', MENU_NOTE_S);
     });
     drawListScrollbar(ctx, this, opts.length, LANDSCAPE_COUNTER_LIST_RIGHT + 16);
     drawMenuHint(ctx, 'BUY/EQUIP');
@@ -5806,6 +5835,7 @@ export class ShopState {
     const priceReserve = textWidth('EQUIPPED', detailScale, 'bold') + css(14);
     const labelScale = Math.min(3.3,
       (detailRight - contentLeft - priceReserve) / Math.max(1, textWidth(longestLabel, 1, 'bold')));
+    const backScale = Math.min(3.8, labelScale * PORTRAIT_COUNTER_BACK_SCALE);
     const garyCx = Math.min(safe.right - css(82), center + css(92));
     const garyFeet = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS);
     const garyH = Math.min(180, Math.max(150, contentWidth * 0.42));
@@ -5817,8 +5847,8 @@ export class ShopState {
     drawTextVectorCentered(ctx, title, center,
       textYForMid(safe.top + css(PORTRAIT_COUNTER_TITLE_TOP_CSS), titleScale, 'title'),
       '#f890b8', titleScale, 'title');
-    drawTextVectorCentered(ctx, coinsText, center,
-      textYForMid(safe.top + css(PORTRAIT_COUNTER_COINS_TOP_CSS), coinsScale, 'bold'),
+    drawTextVector(ctx, coinsText, detailRight - textWidth(coinsText, coinsScale, 'bold'),
+      textYForMid(safe.bottom - css(PORTRAIT_COUNTER_STATUS_BOTTOM_CSS), coinsScale, 'bold'),
       '#f6d33c', coinsScale, 'bold');
 
     const chatScale = PORTRAIT_CHAT_SCALE;
@@ -5846,8 +5876,8 @@ export class ShopState {
         const backH = this.portraitBackH;
         if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
         drawTextVector(ctx, 'BACK', contentLeft,
-          textYForMid(backY, labelScale, 'bold'),
-          selected ? '#f6d33c' : '#c8c8d8', labelScale, 'bold');
+          textYForMid(backY, backScale, 'bold'),
+          selected ? '#f6d33c' : '#c8c8d8', backScale, 'bold');
         return;
       }
       const rowTop = this.listY + listVisualRow(this, i) * this.rowH;
@@ -5885,7 +5915,7 @@ export class ArcadeState {
     this.idx = 0;
     this.layoutKey = '';
     this.syncLayout();
-    fitRows(this, this.options().length);
+    if (!isPhonePortraitPresentation()) fitRows(this, this.options().length);
     const musicSong = this.flow.gameSongFor?.('hub');
     // A selected Arcade Theme alternate is authoritative. With no selected alternate,
     // use the saved editable file as the default Arcade presentation while keeping the
@@ -5971,11 +6001,11 @@ export class ArcadeState {
     if (portrait) {
       const css = (n) => n / frame.scale;
       const safe = frame.safeRect;
-      this.listY = safe.top + css(210);
-      this.listBottom = safe.bottom - css(112);
+      this.listY = safe.top + css(PORTRAIT_ARCADE_LIST_TOP_CSS);
+      this.listBottom = safe.bottom - css(PORTRAIT_ARCADE_LIST_BOTTOM_CSS);
       this.visibleRows = opts.length;
-      this.rowH = Math.max(css(88), Math.min(css(158),
-        (this.listBottom - this.listY) / Math.max(1, this.visibleRows)));
+      this.rowH = Math.max(css(PORTRAIT_ARCADE_ROW_MIN_CSS),
+        (this.listBottom - this.listY) / Math.max(1, this.visibleRows));
       this.listCount = opts.length;
     } else {
       this.listY = 60;
@@ -5990,10 +6020,15 @@ export class ArcadeState {
     const frame = presentationFrame();
     const safe = frame.safeRect;
     const css = (n) => n / frame.scale;
-    const margin = css(18);
+    const margin = css(PORTRAIT_ARCADE_SIDE_MARGIN_CSS);
     const left = safe.left + margin;
+    const rowRight = safe.right - margin;
+    const textLeft = left + css(PORTRAIT_ARCADE_ROW_PAD_CSS);
+    const costRight = rowRight - css(PORTRAIT_ARCADE_ROW_PAD_CSS);
     const width = Math.max(css(180), safe.width - margin * 2);
     const center = (safe.left + safe.right) / 2;
+    const labelRight = costRight - css(28);
+    const labelWidth = Math.max(css(120), labelRight - textLeft);
     const title = 'ARCADE CORNER';
     const titleS = Math.min(3.4, width / Math.max(1, textWidth(title, 1, 'title')));
     const info = `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`;
@@ -6020,23 +6055,23 @@ export class ArcadeState {
       if (selected) drawMenuRow(ctx, left, rowY + 2, rowW, this.rowH - 4, 7);
       const label = o.back ? 'BACK' : o.none ? 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.' : MINIGAME_NAMES[o.game];
       const color = o.none ? '#8a8492' : selected ? '#f6d33c' : '#c8c8d8';
-      const labelS = Math.min(o.none ? 1.55 : 2.15,
-        (rowW - css(34)) / Math.max(1, textWidth(label, 1, 'bold')));
-      const lines = o.none ? wrapText(label, rowW - css(34), labelS, 2, 'bold') : [label];
+      const labelS = Math.min(o.none ? 1.9 : 3.5,
+        labelWidth / Math.max(1, textWidth(label, 1, 'bold')));
+      const lines = o.none ? wrapText(label, labelWidth, labelS, 2, 'bold') : [label];
       const lineH = 11 * labelS;
       const firstMid = rowY + this.rowH / 2 - (lines.length - 1) * lineH / 2;
-      lines.forEach((line, lineIndex) => drawTextVectorCentered(ctx, line, center,
+      lines.forEach((line, lineIndex) => drawTextVector(ctx, line, textLeft,
         textYForMid(firstMid + lineIndex * lineH, labelS, 'bold'), color, labelS, 'bold'));
       if (o.game != null) {
         const cost = `${ARCADE_PLAY_COST}`;
-        drawTextVector(ctx, cost, safe.right - margin - textWidth(cost, 1.5, 'bold'),
-          textYForMid(rowY + this.rowH / 2, 1.5, 'bold'), broke ? '#5a5a68' : '#f6d33c', 1.5, 'bold');
+        drawTextVector(ctx, cost, costRight - textWidth(cost, labelS, 'bold'),
+          textYForMid(rowY + this.rowH / 2, labelS, 'bold'), broke ? '#5a5a68' : '#f6d33c', labelS, 'bold');
       }
     });
     const hint = touch ? 'TAP SELECT   TAP AGAIN RETURN' : 'UP / DOWN SELECT   ENTER PLAY';
     const hintS = Math.min(1.35, width / Math.max(1, textWidth(hint, 1, 'bold')));
     drawTextVectorCentered(ctx, hint, center,
-      textYForMid(safe.bottom - css(28), hintS, 'bold'), '#8a8492', hintS, 'bold');
+      textYForMid(safe.bottom - css(PORTRAIT_ARCADE_HINT_EDGE_CSS), hintS, 'bold'), '#8a8492', hintS, 'bold');
   }
   draw(ctx) {
     this.syncLayout();
@@ -6052,18 +6087,25 @@ export class ArcadeState {
     const broke = this.save.slot.coins < ARCADE_PLAY_COST;
     const opts = this.options();
     fitRows(this, opts.length);
+    const rowX = LANDSCAPE_ARCADE_ROW_EDGE;
+    const rowRight = W - LANDSCAPE_ARCADE_ROW_EDGE;
+    const textX = rowX + LANDSCAPE_ARCADE_ROW_PAD;
+    const costRight = rowRight - LANDSCAPE_ARCADE_ROW_PAD;
     opts.forEach((o, i) => {
       const sel = i === this.idx;
-      if (sel) drawSelRow(ctx, this, i, 40);
+      if (sel) drawMenuRow(ctx, rowX, this.listY + i * this.rowH + 1,
+        rowRight - rowX, this.rowH - 2);
       const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back || o.none) {
         const label = o.back ? 'BACK' : 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.';
-        drawText(ctx, label, 40, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S);
+        drawText(ctx, label, textX, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S);
         return;
       }
       const c = broke ? '#5a5a68' : sel ? '#f6d33c' : '#c8c8d8';
-      drawText(ctx, MINIGAME_NAMES[o.game], 40, y, c, MENU_ROW_S);
-      drawText(ctx, `${ARCADE_PLAY_COST}`, W - 76, y, broke ? '#5a5a68' : '#f6d33c', MENU_ROW_S);
+      const cost = `${ARCADE_PLAY_COST}`;
+      drawText(ctx, MINIGAME_NAMES[o.game], textX, y, c, MENU_ROW_S);
+      drawText(ctx, cost, costRight - textWidth(cost, MENU_ROW_S), y,
+        broke ? '#5a5a68' : '#f6d33c', MENU_ROW_S);
     });
     if (!touch && broke) drawTextCentered(ctx, 'THE COIN SLOT IS UNMOVED BY YOUR POVERTY.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     drawMenuHint(ctx, 'PLAY');

@@ -28,7 +28,7 @@ export const MODS = [
   { id: 'cape', name: 'LEGALLY DISTINCT CAPE', desc: 'ONE EXTRA AIR-JUMP FOR EVERYONE.', source: 'shop', price: 1500 },
   { id: 'osha', name: 'OSHA COMPLIANCE BINDER', desc: 'CHECKPOINTS RESTORE +1 CELL. RANKS DISPLAY A SMALL DISAPPOINTED ASTERISK.', source: 'shop', price: 900 },
   { id: 'crayon', name: "EGGSHELL'S CRAYON", desc: 'SCORE POPUPS ONE RANK MORE ENTHUSIASTIC. ACTUAL SCORE -5%. WE ARE BEING HONEST WITH YOU.', source: 'shop', price: 400 },
-  { id: 'coupon', name: 'HAUNTED COUPON', desc: 'PAWN SHOP PRICES -25%. GARY\'S HEAD FOLLOWS YOU IN THE FOOD COURT.', source: 'shop', price: 600 },
+  { id: 'coupon', name: 'HAUNTED COUPON', desc: 'PAWN SHOP PRICES -25%. GARY STAYS BEHIND THE COUNTER.', source: 'shop', price: 600 },
   { id: 'thirdslot', name: 'A THIRD POCKET', desc: 'EQUIP A THIRD MOD. THE POCKET WAS THERE ALL ALONG.', source: 'shop', price: 2500 },
   { id: 'secondbite', name: 'SECOND BITE', hero: 'lorenzo', source: 'mastery', desc: 'THE WRENCH BREAKS A SECOND HAZARD BEFORE IT COMES HOME.' },
   { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'rusty', source: 'mastery', desc: 'RUSTY GAINS STACKING SPEED AFTER EVERY TAG.' },

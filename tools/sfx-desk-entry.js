@@ -97,6 +97,7 @@ const GROUPS = [
       { cue: 'coin', what: 'a coin, mid-combo', opt: { combo: 4 } },
       { cue: 'coinSpray', what: 'a burst of coins', opt: { count: 6 } },
       { cue: 'power', what: 'a capsule collected' },
+      { cue: 'powerDown', what: 'the arcade power going out' },
       { cue: 'rewindPickup', what: 'the rewind capsule' },
       { cue: 'win', what: 'a cord piece or mission item' },
       { cue: 'perfect', what: 'a perfect flip or beat hit' },
@@ -143,6 +144,8 @@ const GROUPS = [
       { cue: 'fizzUp', what: 'a firework shell going up' },
       { cue: 'popBig', what: 'a big shell bursting' },
       { cue: 'crackle', what: 'the crackle tail of a burst' },
+      { cue: 'static', what: 'an unplugged arcade screen fizzing' },
+      { cue: 'crowdCheer', what: 'the cast getting a crowd reaction' },
     ],
   },
   {

@@ -220,7 +220,7 @@ function bossesMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
-// The new-file opening — difficulty select, then the intro panels — is
+// The new-file opening — difficulty select, then the intro film — is
 // otherwise reachable only by starting a genuine new save, which makes it the
 // hardest sequence in the game to iterate on.
 //
@@ -254,7 +254,7 @@ function newFileMenu(dev) {
       { label: 'REPLAY OPENING (keeps save)', act: () => newFileSequence(dev, { wipe: false }) },
       { label: `FRESH SLOT ${save.slotIndex + 1} — ERASES IT`, act: () => newFileSequence(dev, { wipe: true }) },
       { label: 'DIFFICULTY SELECT only', act: go(() => setState(new DifficultyState({ save, onDone: () => Flow.toHub() }))) },
-      { label: 'INTRO PANELS only', act: go(() => setState(new IntroState({ onDone: () => Flow.toHub() }))) },
+      { label: 'INTRO FILM only', act: go(() => setState(new IntroState({ onDone: () => Flow.toHub() }))) },
       {
         label: 'REARM INTRO (clear sawIntro)',
         act: () => {
