@@ -4889,6 +4889,17 @@ const PORTRAIT_BENCH_DOLORES_EDGE_CSS = 110;
 const PORTRAIT_BENCH_BACK_EDGE_CSS = 62;
 const PORTRAIT_BENCH_BACK_H_CSS = 34;
 const PORTRAIT_BENCH_HINT_EDGE_CSS = 24;
+const PORTRAIT_SHOP_SIDE_MARGIN_CSS = 22;
+const PORTRAIT_SHOP_TITLE_TOP_CSS = 34;
+const PORTRAIT_SHOP_COINS_TOP_CSS = 84;
+const PORTRAIT_SHOP_CHAT_TOP_CSS = 112;
+const PORTRAIT_SHOP_LIST_TOP_CSS = 230;
+const PORTRAIT_SHOP_LIST_BOTTOM_CSS = 278;
+const PORTRAIT_SHOP_ROW_MIN_CSS = 70;
+const PORTRAIT_SHOP_ROW_MAX_CSS = 150;
+const PORTRAIT_SHOP_STAFF_EDGE_CSS = 110;
+const PORTRAIT_SHOP_BACK_H_CSS = 34;
+const PORTRAIT_SHOP_HINT_EDGE_CSS = 24;
 
 export class StageSelectState {
   static portraitMode = 'frame';
@@ -5235,7 +5246,7 @@ export class BenchState {
         Math.min(css(PORTRAIT_BENCH_ROW_MAX_CSS),
           (this.listBottom - this.listY) / Math.max(1, productCount)));
       this.portraitBackIndex = opts.length - 1;
-      this.portraitBackY = safe.bottom - css(PORTRAIT_BENCH_BACK_EDGE_CSS);
+      this.portraitBackY = safe.bottom - css(PORTRAIT_BENCH_DOLORES_EDGE_CSS);
       this.portraitBackH = css(PORTRAIT_BENCH_BACK_H_CSS);
     } else {
       this.listY = 82;
@@ -5516,8 +5527,8 @@ export class BenchState {
         const backH = this.portraitBackH;
         if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
         drawTextVector(ctx, 'BACK', contentLeft,
-          textYForMid(backY, 1.25, 'bold'),
-          selected ? '#f6d33c' : '#c8c8d8', 1.25, 'bold');
+          textYForMid(backY, labelScale, 'bold'),
+          selected ? '#f6d33c' : '#c8c8d8', labelScale, 'bold');
         return;
       }
       if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
@@ -5576,8 +5587,63 @@ export class BenchState {
 }
 
 export class ShopState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 58; this.rowH = MENU_ROW_MAX; this.visibleRows = 7; this.fixedLastRow = true; this.listStart = 0; }
-  enter() { this.idx = 0; this.listStart = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
+  static portraitMode = 'frame';
+
+  constructor({ save, flow }) {
+    this.save = save;
+    this.flow = flow;
+    this.listY = 58;
+    this.listBottom = 216;
+    this.rowH = MENU_ROW_MAX;
+    this.visibleRows = 7;
+    this.fixedLastRow = true;
+    this.listStart = 0;
+    this.layoutKey = '';
+    this.enterT = 0;
+    this.t = 0;
+  }
+  syncLayout() {
+    const frame = presentationFrame();
+    const portrait = isPhonePortraitPresentation();
+    const opts = this.options();
+    const key = `${portrait ? 'portrait' : 'landscape'}:${frame.revision}:${opts.length}`;
+    if (key === this.layoutKey) return;
+    if (portrait) {
+      const css = (n) => n / frame.scale;
+      const safe = frame.safeRect;
+      const productCount = Math.max(1, opts.length - 1);
+      this.visibleRows = Math.min(5, productCount);
+      this.listY = safe.top + css(PORTRAIT_SHOP_LIST_TOP_CSS);
+      this.listBottom = safe.bottom - css(PORTRAIT_SHOP_LIST_BOTTOM_CSS);
+      this.rowH = Math.max(css(PORTRAIT_SHOP_ROW_MIN_CSS),
+        Math.min(css(PORTRAIT_SHOP_ROW_MAX_CSS),
+          (this.listBottom - this.listY) / this.visibleRows));
+      this.portraitBackIndex = opts.length - 1;
+      this.portraitBackY = safe.bottom - css(PORTRAIT_SHOP_STAFF_EDGE_CSS);
+      this.portraitBackH = css(PORTRAIT_SHOP_BACK_H_CSS);
+    } else {
+      this.listY = 58;
+      this.listBottom = 216;
+      this.rowH = MENU_ROW_MAX;
+      this.visibleRows = 7;
+      this.portraitBackIndex = null;
+      this.portraitBackY = null;
+      this.portraitBackH = null;
+    }
+    this.layoutKey = key;
+  }
+  enter() {
+    this.idx = 0;
+    this.listStart = 0;
+    this.enterT = 0;
+    this.t = 0;
+    this.layoutKey = '';
+    this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)];
+    this.syncLayout();
+    if (!isPhonePortraitPresentation()) fitRows(this, this.options().length);
+    Audio.setBank(COUNTER_DANCE_MIX_THEME);
+    Input.setMenuButtons();
+  }
   exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
   options() {
     const slot = this.save.slot;
@@ -5597,6 +5663,9 @@ export class ShopState {
     return opts;
   }
   update(dt) {
+    this.t += dt;
+    this.enterT += dt;
+    this.syncLayout();
     const sel = listMenu(this, this.options());
     if (sel) {
       if (sel.back) return this.flow.toHub();
@@ -5619,9 +5688,31 @@ export class ShopState {
     if (Input.pressed('back')) this.flow.toHub();
     Input.endFrame();
   }
+  drawGary(ctx, cx, feet, height) {
+    const ENTER_DUR = 3.0;
+    const ent = Math.min(1, this.enterT / ENTER_DUR);
+    const eased = 1 - Math.pow(1 - ent, 1.7);
+    const startX = W + 120;
+    const x = Math.round(startX + (cx - startX) * eased);
+    const walking = ent < 1;
+    const pose = walking
+      ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: true };
+    ctx.fillStyle = 'rgba(4,3,9,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(x, feet + 1, height * (walking ? 0.16 : 0.2), height * 0.055, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawToon(ctx, 'gary', pose, x, feet, height);
+  }
   draw(ctx) {
+    this.syncLayout();
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#100a14';
     ctx.fillRect(0, 0, W, H);
+    this.drawGary(ctx, 410, 234, 138);
     drawTextCentered(ctx, "GARY'S LEGAL PAWN SHOP", W / 2, 14, '#f890b8', 1);
     drawTextCentered(ctx, this.line, W / 2, 28, '#5a5a68');
     const slot = this.save.slot;
@@ -5644,6 +5735,101 @@ export class ShopState {
     });
     drawListScrollbar(ctx, this, opts.length);
     drawMenuHint(ctx, 'BUY/EQUIP');
+  }
+
+  drawPortrait(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(PORTRAIT_SHOP_SIDE_MARGIN_CSS);
+    const contentLeft = safe.left + margin;
+    const contentRight = safe.right - margin;
+    const contentWidth = Math.max(css(180), contentRight - contentLeft);
+    const opts = this.options();
+    const slot = this.save.slot;
+    const title = "GARY'S LEGAL PAWN SHOP";
+    const titleScale = Math.min(4.5, contentWidth / Math.max(1, textWidth(title, 1, 'title')));
+    const coinsText = `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`;
+    const coinsScale = Math.min(2.1, contentWidth / Math.max(1, textWidth(coinsText, 1, 'bold')));
+    const detailScale = 2.15;
+    const rowX = safe.left + css(10);
+    const rowRight = safe.right - css(10);
+    const detailRight = contentRight - css(8);
+    const detailWidth = Math.max(css(150), detailRight - contentLeft);
+    const longestLabel = opts
+      .filter((o) => !o.back)
+      .map((o) => `${o.equipped ? '[E] ' : ''}${o.m.name}`)
+      .reduce((longest, label) => textWidth(label, 1, 'bold') > textWidth(longest, 1, 'bold') ? label : longest, '');
+    const priceReserve = textWidth('EQUIPPED', detailScale, 'bold') + css(14);
+    const labelScale = Math.min(3.3,
+      (detailRight - contentLeft - priceReserve) / Math.max(1, textWidth(longestLabel, 1, 'bold')));
+    const garyCx = Math.min(safe.right - css(82), center + css(92));
+    const garyFeet = safe.bottom - css(PORTRAIT_SHOP_STAFF_EDGE_CSS);
+    const garyH = Math.min(180, Math.max(150, contentWidth * 0.42));
+
+    ctx.fillStyle = '#100a14';
+    ctx.fillRect(0, 0, W, H);
+    this.drawGary(ctx, garyCx, garyFeet, garyH);
+
+    drawTextVectorCentered(ctx, title, center,
+      textYForMid(safe.top + css(PORTRAIT_SHOP_TITLE_TOP_CSS), titleScale, 'title'),
+      '#f890b8', titleScale, 'title');
+    drawTextVectorCentered(ctx, coinsText, center,
+      textYForMid(safe.top + css(PORTRAIT_SHOP_COINS_TOP_CSS), coinsScale, 'bold'),
+      '#f6d33c', coinsScale, 'bold');
+
+    const chatScale = 1.9;
+    const faceW = 24, faceH = 24, gap = 9, pad = 10, lineH = 25;
+    const chatLines = wrapText(this.line, contentWidth - faceW - gap - pad * 2, chatScale, 3);
+    const chatTextW = Math.max(...chatLines.map((line) => textWidth(line, chatScale)));
+    const chatW = Math.min(contentWidth, pad * 2 + faceW + gap + chatTextW);
+    const chatH = Math.max(faceH + pad * 2, chatLines.length * lineH + pad * 2);
+    const chatX = center - chatW / 2;
+    const chatY = safe.top + css(PORTRAIT_SHOP_CHAT_TOP_CSS);
+    drawPanel(ctx, chatX, chatY, chatW, chatH, 5, undefined,
+      { border: 'rgba(248,144,184,0.35)', shadow: true });
+    const face = toonFaceSprite('gary', faceW, faceH);
+    if (face) ctx.drawImage(face, chatX + pad, chatY + Math.round((chatH - faceH) / 2), faceW, faceH);
+    const chatTextTop = chatY + Math.round((chatH - chatLines.length * lineH) / 2) + 2;
+    chatLines.forEach((line, lineIndex) => drawTextVector(ctx, line,
+      chatX + pad + faceW + gap, chatTextTop + lineIndex * lineH, '#f890b8', chatScale));
+
+    opts.forEach((o, i) => {
+      if (!o.back && (i < this.listStart || i >= this.listStart + this.visibleRows)) return;
+      const selected = i === this.idx;
+      if (o.back) {
+        const backY = this.portraitBackY;
+        const backH = this.portraitBackH;
+        if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
+        drawTextVector(ctx, 'BACK', contentLeft,
+          textYForMid(backY, labelScale, 'bold'),
+          selected ? '#f6d33c' : '#c8c8d8', labelScale, 'bold');
+        return;
+      }
+      const rowTop = this.listY + listVisualRow(this, i) * this.rowH;
+      if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
+      const labelY = textYForMid(rowTop + this.rowH * 0.23, labelScale, 'bold');
+      const label = `${o.equipped ? '[E] ' : ''}${o.m.name}`;
+      const c = o.equipped ? '#48e0c8' : selected ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
+      drawTextVector(ctx, label, contentLeft, labelY, c, labelScale, 'bold');
+      const status = o.equipped ? 'EQUIPPED' : o.owned ? 'OWNED' : formatCoins(o.price);
+      const statusColor = o.equipped ? '#48e0c8' : o.owned ? '#8a8492' : slot.coins >= o.price ? '#f6d33c' : '#5a5a68';
+      drawTextVector(ctx, status, detailRight - textWidth(status, detailScale, 'bold'), labelY,
+        statusColor, detailScale, 'bold');
+      const lines = wrapText(o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', detailWidth, detailScale, 2);
+      const detailStart = lines.length > 1 ? 0.52 : 0.59;
+      const detailGap = lines.length > 1 ? 0.25 : 0;
+      lines.slice(0, 2).forEach((line, lineI) => drawTextVector(ctx, line, contentLeft,
+        textYForMid(rowTop + this.rowH * (detailStart + lineI * detailGap), detailScale),
+        selected ? '#c8c8d8' : '#8a8492', detailScale));
+    });
+    drawListScrollbar(ctx, this, opts.length);
+
+    const hint = Input.isTouchDevice() ? 'TAP SELECT   TAP AGAIN BUY / EQUIP' : 'UP / DOWN: SELECT   ENTER: BUY / EQUIP';
+    drawTextVectorCentered(ctx, hint, center,
+      textYForMid(safe.bottom - css(PORTRAIT_SHOP_HINT_EDGE_CSS), 1.35, 'bold'),
+      '#8a8492', 1.35, 'bold');
   }
 }
 
