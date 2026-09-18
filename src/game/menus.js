@@ -20,7 +20,7 @@ import {
   drawRangedProjectile, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
 } from '../sprites/toons.js';
 import {
-  drawProp, hasProp, glowSprite, propFrames, propFps, propSprite, PORTAL_SPRITE, portalArtWidth,
+  drawProp, eggshellCopterArt, hasProp, glowSprite, propFrames, propFps, propSprite, PORTAL_SPRITE, portalArtWidth,
 } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 import { readPlatform } from '../engine/platform.js';
@@ -52,7 +52,7 @@ import {
 } from '../data/jokes.js';
 import { HEROES } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
-import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
+import { cabinetPalette, deadScreenBurst, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
@@ -1834,10 +1834,11 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   const portrait = portraitMenuActive();
   const fullPortrait = portrait && !!labels;
   if (fullPortrait) {
-    const firstY = portraitMenuSafeTop() + 92;
+    const firstTextMid = portraitMenuSafeTop() + 163;
     const footerY = portraitMenuSafeBottom(22);
     const rowH = Math.max(56, Math.min(86,
-      (footerY - firstY - 38) / Math.max(1, count)));
+      (footerY - firstTextMid - 38) / Math.max(1, count)));
+    const firstY = firstTextMid - rowH / 2;
     return {
       x: 0, y: 0, w: W, h: H, rowH, firstY, cancelGap: 0,
     };
@@ -1846,7 +1847,7 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   // old landscape strip. Give its rows a thumb-sized pitch and let the box
   // use the generous portrait height; the same geometry feeds modalRowAt().
   const rowH = portrait
-    ? (spaciousRows ? 62 : 56)
+    ? (spaciousRows ? 74 : 56)
     : spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
   const headH = portrait
     ? (hasNote ? 82 : 48)
@@ -2577,7 +2578,7 @@ export class TitleState {
     if (portraitMenuActive()) {
       const g = modalListGeom(this.eraseChoices().length, true, this.erase.step === 'choose', true);
       portraitMenuTextCentered(d, prompt, W / 2,
-        portraitMenuTextY(g.y + g.h + 30, 1.0), '#8a8a98', 1.0);
+        portraitMenuTextY(g.y + g.h + 30, 1.3), '#8a8a98', 1.3);
       return;
     }
     const promptScale = 0.9;
@@ -2591,7 +2592,7 @@ export class TitleState {
     if (portraitMenuActive()) {
       portraitMenuTextCentered(d,
         Input.isTouchDevice() ? 'TAP: CHOOSE   BACK: EXIT' : 'ARROWS: CHOOSE   ENTER: CONFIRM',
-        W / 2, portraitMenuTextY(portraitMenuSafeBottom(22), 1.0), '#5a5a68', 1.0);
+        W / 2, portraitMenuTextY(portraitMenuSafeBottom(22), 1.3), '#5a5a68', 1.3);
     }
   }
 }
@@ -2603,8 +2604,8 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows, fitWidth ? choices.map((choice) => choice.label) : null);
   const portrait = portraitMenuActive();
   const fullPortrait = portrait && fitWidth;
-  const modalTextS = portrait ? (spaciousRows ? 1.45 : 1.35) : spaciousRows ? 1.55 : 1.35;
-  const modalTitleS = portrait ? (spaciousRows ? 1.95 : 1.8) : spaciousRows ? 1.75 : 1.5;
+  const modalTextS = fullPortrait ? 1.8 : portrait ? (spaciousRows ? 1.8 : 1.35) : spaciousRows ? 1.55 : 1.35;
+  const modalTitleS = fullPortrait ? 3.1 : portrait ? (spaciousRows ? 2.8 : 1.8) : spaciousRows ? 1.75 : 1.5;
   const left = align === 'left';
   const textX = fullPortrait ? 28 : g.x + 24;
   // How much room a line of type actually has inside this card: from the text
@@ -2644,7 +2645,7 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     // landscape scale and hung off the landscape row while portrait drew the
     // words 18 units lower and half again as big — a smear beside the line
     // rather than a glow behind it.
-    const noteSize = portrait ? fit(note, 1.1) : spaciousRows ? 1.35 : 1.2;
+    const noteSize = portrait ? fit(note, spaciousRows ? 1.45 : 1.1) : spaciousRows ? 1.35 : 1.2;
     const noteY = portrait ? g.y + 48 : g.y + 30;
     const glowScale = portrait ? portraitMenuScale(noteSize) : noteSize;
     const glow = warningGlowSprite(note, glowScale);
@@ -3002,21 +3003,106 @@ export class DifficultyState {
 // cabinets, one villain, then eight heroes shoulder to shoulder. Animating
 // between them turns the widest panel's arrival into a reveal, and the hero
 // line-up spreads as it opens because its pitch is derived from the live width.
-const INTRO_FRAME_W = [404, 250, 470, 470];
+const INTRO_FRAME_W = [404, 250, 404, 470, 470];
 const INTRO_FRAME_Y = 30.5, INTRO_FRAME_H = 120;
 // The caption strip: under the picture frame, above the panel counter.
 const INTRO_TEXT_TOP = INTRO_FRAME_Y + INTRO_FRAME_H + 6;
 const INTRO_TEXT_BOTTOM = H - 28;
+const PORTRAIT_INTRO_SIDE_MARGIN_CSS = 16;
+const PORTRAIT_INTRO_ART_TOP_CSS = 18;
+const PORTRAIT_INTRO_TEXT_TOP_RATIO = 0.57;
+const PORTRAIT_INTRO_TEXT_BOTTOM_CSS = 70;
+const PORTRAIT_INTRO_ART_GAP_CSS = 18;
+
+function drawEggshellCopterAt(ctx, x, y, size, frame, face, time = 0) {
+  const driftX = Math.sin(time * 1.2) * size * 0.055;
+  const driftY = Math.sin(time * 1.7) * size * 0.04;
+  ctx.save();
+  ctx.translate(x + driftX, y + driftY);
+  eggshellCopterArt(ctx, size, size, frame, { face });
+  ctx.restore();
+}
+
+function eggshellCopterFrame(time) {
+  const beat = Audio.songBeat?.();
+  return beat == null ? Math.floor(time * 12) : Math.floor(beat * 24);
+}
+
+function portraitIntroBlock(text) {
+  const frame = presentationFrame();
+  const safe = frame.safeRect;
+  const css = (n) => n / frame.scale;
+  const width = Math.max(css(180), safe.width - css(PORTRAIT_INTRO_SIDE_MARGIN_CSS * 2));
+  const textTop = safe.top + safe.height * PORTRAIT_INTRO_TEXT_TOP_RATIO;
+  const textBottom = safe.bottom - css(PORTRAIT_INTRO_TEXT_BOTTOM_CSS);
+  const scales = [2.7, 2.45, 2.2, 1.95, 1.7];
+  let scale = scales[scales.length - 1];
+  let lines = portraitMenuWrap(text, width, scale, 12);
+  let lineH = 11 * portraitMenuScale(scale);
+  for (const candidate of scales) {
+    const candidateLines = portraitMenuWrap(text, width, candidate, 12);
+    const candidateLineH = 11 * portraitMenuScale(candidate);
+    scale = candidate;
+    lines = candidateLines;
+    lineH = candidateLineH;
+    if (candidateLines.length * candidateLineH <= textBottom - textTop) break;
+  }
+  return {
+    lines,
+    scale,
+    lineH,
+    height: lines.length * lineH,
+    center: (safe.left + safe.right) / 2,
+    width,
+    artLeft: safe.left + css(PORTRAIT_INTRO_SIDE_MARGIN_CSS),
+    artW: width,
+    artTop: safe.top + css(PORTRAIT_INTRO_ART_TOP_CSS),
+    artBottom: textTop - css(PORTRAIT_INTRO_ART_GAP_CSS),
+    textTop,
+    textBottom,
+    safe,
+    css,
+  };
+}
+
+function introEggshellFace(t) {
+  const phase = t % 4.8;
+  const mood = phase < 1.6 ? 'flat' : phase < 3.2 ? 'smirk' : 'really';
+  return {
+    look: Math.sin(t * 0.9) * 0.55,
+    mood,
+    blink: t % 3.7 > 3.54 ? 1 : 0,
+    twitch: [Math.sin(t * 3.1) * 0.35, Math.sin(t * 3.7 + 0.8) * 0.35],
+  };
+}
 
 export class IntroState {
+  static portraitMode = 'frame';
+
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.panel = 0; this.reveal = 0; this.t = 0; this.panelT = 0; this.frameW = INTRO_FRAME_W[0]; this.blocks = []; Input.setMenuButtons(); }
+  enter() {
+    this.panel = 0; this.reveal = 0; this.t = 0; this.panelT = 0;
+    this.frameW = INTRO_FRAME_W[0]; this.blocks = []; this.blockKey = null;
+    this.staticMotion = CABINETS.map(() => ({ phase: Math.random() * 7, rate: 1.6 + Math.random() * 0.8 }));
+    Input.setMenuButtons();
+  }
   // Laid out once per panel and kept: the wrap is measured type, and measuring
   // it every frame to draw a growing prefix of it is both wasteful and how the
   // lines used to shuffle mid-typewriter.
   block(i) {
-    if (!this.blocks[i]) this.blocks[i] = fitProse(INTRO_PANELS[i].text, W - 56, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP);
+    const portrait = isPhonePortraitPresentation();
+    const key = portrait ? `portrait:${presentationFrame().revision}` : 'landscape';
+    if (this.blockKey !== key) { this.blocks = []; this.blockKey = key; }
+    if (!this.blocks[i]) {
+      this.blocks[i] = portrait
+        ? portraitIntroBlock(INTRO_PANELS[i].text)
+        : fitProse(INTRO_PANELS[i].text, W - 56, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP);
+    }
     return this.blocks[i];
+  }
+  staticBurstAmount(i, seed) {
+    const motion = this.staticMotion?.[i] || { phase: 0, rate: 2 };
+    return deadScreenBurst(this.t * motion.rate + motion.phase, seed);
   }
   update(dt) {
     this.t += dt;
@@ -3037,15 +3123,127 @@ export class IntroState {
     if (Input.pressed('back')) this.onDone();
     Input.endFrame();
   }
+  drawPortrait(ctx) {
+    const block = this.block(this.panel);
+    const { center, artLeft, artW, artTop, artBottom, textTop, textBottom, safe } = block;
+    const artH = Math.max(1, artBottom - artTop);
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#171322';
+    ctx.fillRect(artLeft, artTop, artW, artH);
+    ctx.strokeStyle = '#30303f';
+    ctx.strokeRect(artLeft, artTop, artW, artH);
+
+    if (this.panel === 0) {
+      const columns = 3;
+      const gapX = 12;
+      const gapY = 12;
+      const cellW = (artW - gapX * (columns - 1)) / columns;
+      const cabinetH = Math.min((artH - gapY) / 2 - 4, cellW * 82 / 46);
+      const cabinetW = cellW;
+      for (let i = 0; i < 6; i++) {
+        const cab = CABINETS[i];
+        const row = Math.floor(i / columns);
+        const column = i % columns;
+        const x = artLeft + column * (cabinetW + gapX);
+        const bottom = artBottom - 6 - (1 - row) * (cabinetH + gapY);
+        const pal = cabinetPalette(cab);
+        drawCabinetShell(ctx, x, bottom - cabinetH, cabinetW, cabinetH, pal);
+        const scr = drawCabinetScreen(ctx, x, bottom - cabinetH, cabinetW, cabinetH, pal);
+        if (scr) drawScreenSweep(ctx, scr, this.t + i * 1.3, i * 977);
+      }
+    }
+    if (this.panel === 1) {
+      const copterSize = Math.min(artW * 0.78, artH * 0.84);
+      const copterY = artTop + (artH - copterSize) / 2;
+      drawEggshellCopterAt(ctx, center - copterSize / 2, copterY,
+        copterSize, eggshellCopterFrame(this.t), introEggshellFace(this.t), this.t);
+    }
+    if (this.panel === 2) {
+      const columns = 3;
+      const gapX = 12;
+      const gapY = 12;
+      const cellW = (artW - gapX * (columns - 1)) / columns;
+      const cabinetH = Math.min((artH - gapY) / 2 - 4, cellW * 82 / 46);
+      const cabinetW = cellW;
+      for (let i = 0; i < 6; i++) {
+        const cab = CABINETS[i];
+        const row = Math.floor(i / columns);
+        const column = i % columns;
+        const x = artLeft + column * (cabinetW + gapX);
+        const bottom = artBottom - 6 - (1 - row) * (cabinetH + gapY);
+        const offPal = cabinetPalette(cab, false);
+        drawCabinetShell(ctx, x, bottom - cabinetH, cabinetW, cabinetH, offPal);
+        drawDeadScreen(ctx, x, bottom - cabinetH, cabinetW, cabinetH,
+          this.t, offPal.seed, null, this.staticBurstAmount(i, offPal.seed));
+      }
+    }
+    if (this.panel === 3 || this.panel === 4) {
+      const heroes = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
+      const columns = 4;
+      const gapY = 96;
+      const heroH = Math.min(132, (artH - gapY) / 2, artW / 4.15);
+      const pitch = (artW - heroH * 0.7) / (columns - 1);
+      const castH = heroH * 2 + gapY;
+      const castTop = artTop + Math.max(0, (artH - castH) / 2);
+      const rollCall = this.panel === 3;
+      heroes.forEach((h, i) => {
+        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - (0.2 + i * 0.13)) / 0.28)) : 1;
+        if (a <= 0) return;
+        const ease = 1 - Math.pow(1 - a, 3);
+        const scale = ease + Math.sin(a * Math.PI) * 0.14;
+        const pose = { kind: 'idle', phase: (this.panelT * 0.55 + i * 0.21) % 1, time: this.panelT + i * 0.8, grounded: true };
+        if (!rollCall) {
+          pose.menu = true;
+          pose.kind = 'celebrate';
+          pose.phase = 0;
+          pose.time = this.panelT + i * 0.35;
+        }
+        const row = Math.floor(i / columns);
+        const column = i % columns;
+        const rowX = artLeft + heroH * 0.35;
+        const feet = castTop + (row + 1) * heroH + row * gapY + (1 - ease) * 13;
+        drawToon(ctx, h, pose, rowX + column * pitch, feet,
+          heroH * scale, { alpha: ease });
+      });
+    }
+
+    const y0 = textTop + Math.max(0, (textBottom - textTop - block.height) / 2);
+    block.lines.forEach((line, i) => {
+      const { alpha, dy } = cascadeAt(this.reveal, i);
+      if (alpha <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const mid = y0 + i * block.lineH + block.lineH / 2
+        + dy * portraitMenuScale(block.scale);
+      portraitMenuTextCentered(ctx, line, center, portraitMenuTextY(mid, block.scale),
+        '#e8e8f0', block.scale);
+      ctx.restore();
+    });
+    const prompt = `${this.panel + 1}/${INTRO_PANELS.length}  (${confirmVerb()})`;
+    const promptScale = portraitMenuFit(prompt, 1.55, block.width, 'bold');
+    portraitMenuTextCentered(ctx, prompt, center,
+      portraitMenuTextY(safe.bottom - block.css(28), promptScale, 'bold'),
+      '#8a8492', promptScale, 'bold');
+  }
   draw(ctx) {
     if (this.panel >= INTRO_PANELS.length) return;
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     // panel art: minimal pixel scenes
     ctx.strokeStyle = '#30303f';
     const fw = this.frameW;
     ctx.strokeRect(W / 2 - fw / 2, INTRO_FRAME_Y, fw, INTRO_FRAME_H);
-    if (this.panel === 1) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
+    if (this.panel === 1) {
+      const copterSize = 92;
+      const copterY = INTRO_FRAME_Y + (INTRO_FRAME_H - copterSize) / 2;
+      drawEggshellCopterAt(ctx, W / 2 - copterSize / 2, copterY,
+        copterSize, eggshellCopterFrame(this.t), introEggshellFace(this.t), this.t);
+    }
     if (this.panel === 0) {
       // The real cabinets, from the real palettes. These were six hardcoded
       // rectangles in colours hand-copied off CABINETS — so the opening shot of
@@ -3064,7 +3262,18 @@ export class IntroState {
         if (scr) drawScreenSweep(ctx, scr, this.t + i * 1.3, i * 977);
       }
     }
-    if (this.panel === 2 || this.panel === 3) {
+    if (this.panel === 2) {
+      const CW = 46, CH = 82, BOT = 146;
+      for (let i = 0; i < 6; i++) {
+        const cab = CABINETS[i];
+        const cx = W / 2 + (i - 2.5) * 68;
+        const offPal = cabinetPalette(cab, false);
+        drawCabinetShell(ctx, cx - CW / 2, BOT - CH, CW, CH, offPal);
+        drawDeadScreen(ctx, cx - CW / 2, BOT - CH, CW, CH,
+          this.t, offPal.seed, null, this.staticBurstAmount(i, offPal.seed));
+      }
+    }
+    if (this.panel === 3 || this.panel === 4) {
       // One row of eight, filling the widened frame. They were 24 units tall in
       // a single row, then 44 in two rows of four; a single row across the wider
       // box gets them to 78 — three times the original, on the one screen whose
@@ -3100,7 +3309,7 @@ export class IntroState {
       // Panel 4 is the same eight people a beat later — replaying their entrance
       // there would say they had just arrived again, and turn a one-off flourish
       // into a tic you sit through twice.
-      const rollCall = this.panel === 2;
+      const rollCall = this.panel === 3;
       heroes.forEach((h, i) => {
         // They arrive one at a time, left to right, over about a second — a
         // roll call rather than a group photo that was always there. Each pops
@@ -4347,6 +4556,7 @@ export class ResultsState {
 // Where the beats that carry art (Eggshell, the vacuum, the OVERTIME card)
 // leave off, and where the beat counter starts.
 const FINALE_ART_BOTTOM = 108;
+const FINALE_ART_TOP = 24;
 const FINALE_TEXT_BOTTOM = H - 30;
 // The strip the closing beat holds back for HR's fine print, and how long the
 // ending gets to sit on its own before the disclaimer lands on it. Long enough
@@ -4369,6 +4579,63 @@ const CURTAIN_SIGNOFF_DELAY = 1.1;
 // A player arrives here mid-mash, having just skipped the coda. Hold the button
 // off long enough that the bow is seen rather than clicked through blind.
 const CURTAIN_LOCK = 0.7;
+const PORTRAIT_FINALE_SIDE_MARGIN_CSS = 16;
+const PORTRAIT_FINALE_ART_TOP_CSS = 18;
+const PORTRAIT_FINALE_ART_BOTTOM_RATIO = 0.64;
+const PORTRAIT_FINALE_ART_GAP_CSS = 18;
+const PORTRAIT_FINALE_TEXT_BOTTOM_CSS = 70;
+const PORTRAIT_FINALE_CODA_BOTTOM_CSS = 108;
+
+function finalePortraitBlock(text, { art = false, last = false } = {}) {
+  const frame = presentationFrame();
+  const safe = frame.safeRect;
+  const css = (n) => n / frame.scale;
+  const margin = css(PORTRAIT_FINALE_SIDE_MARGIN_CSS);
+  const width = Math.max(css(180), safe.width - margin * 2);
+  const artTop = safe.top + css(PORTRAIT_FINALE_ART_TOP_CSS);
+  const artBottom = art
+    ? safe.top + safe.height * PORTRAIT_FINALE_ART_BOTTOM_RATIO
+    : artTop;
+  const textTop = art ? artBottom + css(PORTRAIT_FINALE_ART_GAP_CSS) : safe.top + css(120);
+  const textBottom = safe.bottom - css(last ? PORTRAIT_FINALE_CODA_BOTTOM_CSS : PORTRAIT_FINALE_TEXT_BOTTOM_CSS);
+  const scales = [2.8, 2.5, 2.2, 1.95, 1.7];
+  let scale = scales[scales.length - 1];
+  let lines = typeLines(text, width, portraitMenuScale(scale), 0, 5);
+  let lineH = 11 * portraitMenuScale(scale);
+  for (const candidate of scales) {
+    const candidateLines = typeLines(text, width, portraitMenuScale(candidate), 0, 5);
+    const candidateLineH = 11 * portraitMenuScale(candidate);
+    scale = candidate;
+    lines = candidateLines;
+    lineH = candidateLineH;
+    if (candidateLines.length * candidateLineH <= textBottom - textTop) break;
+  }
+  return {
+    lines,
+    scale,
+    lineH,
+    height: lines.length * lineH,
+    center: (safe.left + safe.right) / 2,
+    width,
+    artLeft: safe.left + margin,
+    artW: width,
+    artTop,
+    artBottom,
+    textTop,
+    textBottom,
+    safe,
+    css,
+  };
+}
+
+function finaleEggshellFace(t) {
+  return {
+    look: Math.sin(t * 0.8) * 0.45,
+    mood: 'roll',
+    blink: t % 3.8 > 3.62 ? 1 : 0,
+    twitch: [Math.sin(t * 2.7) * 0.25, Math.sin(t * 3.4 + 0.7) * 0.25],
+  };
+}
 
 // THE ONE SCREEN THAT STILL TYPES A LETTER AT A TIME.
 //
@@ -4385,9 +4652,12 @@ const CURTAIN_LOCK = 0.7;
 // sits on FINALE_CODA_DELAY before it starts typing at all. If this ever gets
 // unified with drawCascade for consistency's sake, that is what it costs.
 export class FinaleState {
+  static portraitMode = 'frame';
+
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
   enter() {
     this.beat = 0; this.chars = 0; this.blocks = [];
+    this.blockKey = null;
     this.codaT = 0; this.codaChars = 0; this.coda = null;
     this.t = 0;
     this.curtainT = 0; this.bowT = 0;
@@ -4408,9 +4678,14 @@ export class FinaleState {
   }
   // One layout per beat, kept — see IntroState.block.
   block(i) {
+    const portrait = isPhonePortraitPresentation();
+    const key = portrait ? `portrait:${presentationFrame().revision}` : 'landscape';
+    if (this.blockKey !== key) { this.blocks = []; this.blockKey = key; }
     if (!this.blocks[i]) {
       const { top, bottom } = this.layout(i);
-      this.blocks[i] = fitProse(FINALE_BEATS[i], W - 56, bottom - top, TYPE_STEPS, i === LAST_BEAT ? 1 : Infinity);
+      this.blocks[i] = portrait
+        ? finalePortraitBlock(FINALE_BEATS[i], { art: this.layout(i).art, last: i === LAST_BEAT })
+        : fitProse(FINALE_BEATS[i], W - 56, bottom - top, TYPE_STEPS, i === LAST_BEAT ? 1 : Infinity);
     }
     return this.blocks[i];
   }
@@ -4536,12 +4811,124 @@ export class FinaleState {
         CURTAIN_SIGNOFF_BAND, '#8a8a98', Math.floor(this.signoffChars));
     }
   }
+  drawPortraitCurtain(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const center = (safe.left + safe.right) / 2;
+    const margin = css(PORTRAIT_FINALE_SIDE_MARGIN_CSS);
+    const width = Math.max(css(180), safe.width - margin * 2);
+    const titleS = portraitMenuFit(FINALE_THANKS_TITLE, 3.2, width, 'title');
+    const artTop = safe.top + css(84);
+    const artBottom = safe.top + safe.height * 0.54;
+    const artH = artBottom - artTop;
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawParticles(ctx);
+    portraitMenuTextCentered(ctx, FINALE_THANKS_TITLE, center,
+      portraitMenuTextY(safe.top + css(42), titleS, 'title'), '#f6d33c', titleS, 'title');
+
+    const columns = 4;
+    const gapY = css(96);
+    const heroH = Math.min(css(136), (artH - gapY) / 2, width / 4.15);
+    const pitch = (width - heroH * 0.7) / (columns - 1);
+    const castH = heroH * 2 + gapY;
+    const castTop = artTop + Math.max(0, (artH - castH) / 2);
+    HEROES.forEach((hero, i) => {
+      const row = Math.floor(i / columns);
+      const column = i % columns;
+      const rowX = safe.left + margin + heroH * 0.35;
+      const feet = castTop + (row + 1) * heroH + row * gapY;
+      drawToon(ctx, hero.id,
+        { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
+        rowX + column * pitch, feet, heroH);
+    });
+
+    const thanksScale = 1.65;
+    const thanksLines = typeLines(FINALE_THANKS, width, portraitMenuScale(thanksScale), 0, 4);
+    const thanksLineH = 11 * portraitMenuScale(thanksScale);
+    const thanksTop = artBottom + css(20);
+    thanksLines.forEach((line, i) => {
+      const shown = line.text.slice(0, Math.max(0, Math.floor(this.chars) - line.from));
+      if (shown) portraitMenuTextCentered(ctx, shown, center,
+        portraitMenuTextY(thanksTop + i * thanksLineH, thanksScale), '#e8e8f0', thanksScale);
+    });
+    if (this.signoffChars > 0) {
+      const signoffScale = 1.25;
+      const signoffLines = typeLines(FINALE_SIGNOFF, width, portraitMenuScale(signoffScale), 0, 2);
+      const signoffLineH = 11 * portraitMenuScale(signoffScale);
+      const signoffTop = safe.bottom - css(78) - (signoffLines.length - 1) * signoffLineH;
+      signoffLines.forEach((line, i) => {
+        const shown = line.text.slice(0, Math.max(0, Math.floor(this.signoffChars) - line.from));
+        if (shown) portraitMenuTextCentered(ctx, shown, center,
+          portraitMenuTextY(signoffTop + i * signoffLineH, signoffScale), '#8a8a98', signoffScale);
+      });
+    }
+    portraitMenuTextCentered(ctx, `${this.beat + 1}/${CURTAIN + 1}`, center,
+      portraitMenuTextY(safe.bottom - css(24), 1.25), '#8a8492', 1.25);
+  }
+  drawPortrait(ctx) {
+    if (this.beat === CURTAIN) {
+      this.drawPortraitCurtain(ctx);
+      return;
+    }
+    const block = this.block(this.beat);
+    const { center, artLeft, artW, artTop, artBottom, textTop, textBottom, safe } = block;
+    const artH = Math.max(1, artBottom - artTop);
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    if (block.art && this.beat >= 1 && this.beat <= 5) {
+      const copterSize = Math.min(artW * 0.8, artH * 0.86);
+      const copterY = artTop + (artH - copterSize) / 2;
+      drawEggshellCopterAt(ctx, center - copterSize / 2, copterY,
+        copterSize, eggshellCopterFrame(this.t), finaleEggshellFace(this.t), this.t);
+    } else if (this.beat === 6) {
+      const propSize = Math.min(artW * 0.58, artH * 0.82);
+      drawProp(ctx, 'dustdevil', center - propSize / 2, artBottom - propSize,
+        propSize, propSize, Math.floor(this.t * 8));
+    } else if (this.beat === LAST_BEAT) {
+      const title = 'OVERTIME UNLOCKED';
+      const titleS = portraitMenuFit(title, 2.8, artW, 'title');
+      portraitMenuTextCentered(ctx, title, center,
+        portraitMenuTextY(artTop + artH * 0.5, titleS, 'title'), '#8858c8', titleS, 'title');
+    }
+
+    const y0 = textTop + Math.max(0, (textBottom - textTop - block.height) / 2);
+    block.lines.forEach((line, i) => {
+      const shown = line.text.slice(0, Math.max(0, Math.floor(this.chars) - line.from));
+      if (!shown) return;
+      portraitMenuTextCentered(ctx, shown, center,
+        portraitMenuTextY(y0 + i * block.lineH, block.scale), '#e8e8f0', block.scale);
+    });
+    if (this.beat === LAST_BEAT && this.codaChars > 0) {
+      const codaScale = 1.35;
+      const codaLines = typeLines(FINALE_CODA, block.width, portraitMenuScale(codaScale), 0, 2);
+      const codaLineH = 11 * portraitMenuScale(codaScale);
+      const codaTop = safe.bottom - block.css(68) - (codaLines.length - 1) * codaLineH;
+      codaLines.forEach((line, i) => {
+        const shown = line.text.slice(0, Math.max(0, Math.floor(this.codaChars) - line.from));
+        if (shown) portraitMenuTextCentered(ctx, shown, center,
+          portraitMenuTextY(codaTop + i * codaLineH, codaScale), '#8a8a98', codaScale);
+      });
+    }
+    portraitMenuTextCentered(ctx, `${this.beat + 1}/${CURTAIN + 1}`, center,
+      portraitMenuTextY(safe.bottom - block.css(24), 1.25), '#5a5a68', 1.25);
+  }
   draw(ctx) {
     if (this.beat > CURTAIN) return;
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     if (this.beat === CURTAIN) { this.drawCurtain(ctx); this.drawCounter(ctx); return; }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    if (this.beat >= 1 && this.beat <= 5) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
+    if (this.beat >= 1 && this.beat <= 5) {
+      const copterSize = 76;
+      const copterY = FINALE_ART_TOP + (FINALE_ART_BOTTOM - FINALE_ART_TOP - copterSize) / 2;
+      drawEggshellCopterAt(ctx, W / 2 - copterSize / 2, copterY,
+        copterSize, eggshellCopterFrame(this.t), finaleEggshellFace(this.t), this.t);
+    }
     if (this.beat === 6) drawProp(ctx, 'dustdevil', W / 2 - 20, 60, 40, 44);
     if (this.beat === LAST_BEAT) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2, 'title');
     // The ending is one sentence on a black screen and it used to be set at the
@@ -5675,17 +6062,18 @@ export class SettingsState {
     // The portrait frame is roughly four times as tall as the landscape one.
     // Use that room for a denser full-page list: the type stays large while
     // the extra height goes toward showing more settings at once.
-    this.listY = Math.max(safeTop + 52, 118);
     this.doneH = 60;
     const count = this.listCount();
     const footerY = safeBottom - 18;
     this.doneY = footerY - 18 - this.doneH;
     const listBottom = this.doneY - 12;
+    const firstTextMid = safeTop + 163;
     // Fit the complete settings list on a tall phone where possible. Smaller
     // portrait windows keep scrolling, but the minimum pitch stays large
     // enough for a clearly tappable row with the enlarged type.
-    this.rowH = Math.max(54, Math.min(66,
-      (listBottom - this.listY) / Math.max(1, Math.min(count, 13))));
+    this.rowH = Math.max(54, Math.min(90,
+      (listBottom - firstTextMid) / Math.max(1, Math.min(count, 13) - 0.5)));
+    this.listY = firstTextMid - this.rowH / 2;
     this.visibleRows = Math.max(1, Math.min(count,
       Math.floor((listBottom - this.listY) / this.rowH)));
   }
@@ -5734,6 +6122,8 @@ export class SettingsState {
     const reported = Math.round(Audio.reportedLatencySec() * 1000);
     return {
       label: `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS ON TOP OF SYSTEM ~${reported}`,
+      portraitTitle: 'SET AUDIO SYNC',
+      portraitSubtitle: `${ms > 0 ? '+' : ''}${ms} MS ON TOP OF SYSTEM ~${reported}`,
       act: () => { if (this.onCalibrate) this.onCalibrate(); else adjust(1); },
       adjust,
     };
@@ -5754,6 +6144,8 @@ export class SettingsState {
     const ms = clampAudioSyncMs(s.audioSyncMs);
     return {
       label: `RESET AUDIO SYNC (SYSTEM ~${reported} MS ALONE)`,
+      portraitTitle: 'RESET AUDIO SYNC',
+      portraitSubtitle: `SYSTEM ~${reported} MS ALONE`,
       act: () => {
         if (ms === 0) { Audio.sfx('uiBad'); return; }
         s.audioSyncMs = 0;
@@ -5895,7 +6287,6 @@ export class SettingsState {
     const doneIndex = opts.length - 1;
     const band = leftBand(opts.slice(0, doneIndex).map((o) => o.label), LEFT_MENU_ITEM_S);
     drawText(ctx, 'SETTINGS', band.textX, 30, '#fff', 2, 'title');
-    drawText(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', band.textX, 52, '#5a5a68');
     opts.slice(0, doneIndex).forEach((o, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
@@ -5945,16 +6336,12 @@ export class SettingsState {
     const opts = this.options();
     const doneIndex = opts.length - 1;
     const labels = opts.slice(0, doneIndex).map((o) => o.label);
-    const itemS = 1.4;
+    const itemS = 1.8;
     const band = leftBand(labels, portraitMenuScale(itemS));
     const titleX = band.textX;
     const titleMid = portraitMenuSafeTop() + 34;
     portraitMenuText(ctx, 'SETTINGS', titleX,
-      portraitMenuTextY(titleMid, 2.35, 'title'), '#fff', 2.35, 'title');
-    const subtitle = 'ALL OF THESE DO EXACTLY WHAT THEY SAY.';
-    const subtitleS = portraitMenuFit(subtitle, 1.05, W - titleX - 18);
-    portraitMenuText(ctx, subtitle, titleX,
-      portraitMenuTextY(titleMid + 34, subtitleS), '#5a5a68', subtitleS);
+      portraitMenuTextY(titleMid, 3.1, 'title'), '#fff', 3.1, 'title');
 
     labels.forEach((_, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
@@ -5962,7 +6349,26 @@ export class SettingsState {
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
       const selected = i === this.idx;
       if (selected) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2, 5);
-      const size = portraitMenuFit(o.label, itemS, W - titleX - 28);
+      const maxWidth = W - titleX - 28;
+      if (o.portraitTitle) {
+        const titleStyle = selected ? 'bold' : 'ui';
+        const titleSize = portraitMenuFit(o.portraitTitle, itemS, maxWidth, titleStyle);
+        const subtitleSize = portraitMenuFit(o.portraitSubtitle, 1.5, maxWidth);
+        const titleInk = TEXT_INK_H * portraitMenuScale(titleSize);
+        const subtitleInk = TEXT_INK_H * portraitMenuScale(subtitleSize);
+        const blockGap = 12;
+        const titleMid = rowTop + this.rowH / 2
+          - (titleInk + blockGap + subtitleInk) / 2 + titleInk / 2;
+        const subtitleMid = titleMid + titleInk / 2 + blockGap + subtitleInk / 2;
+        portraitMenuText(ctx, o.portraitTitle, titleX,
+          portraitMenuTextY(titleMid, titleSize, titleStyle),
+          selected ? '#c9a0ff' : '#c8c8d8', titleSize, titleStyle);
+        portraitMenuText(ctx, o.portraitSubtitle, titleX,
+          portraitMenuTextY(subtitleMid, subtitleSize),
+          selected ? '#b8a7c9' : '#9292a3', subtitleSize);
+        return;
+      }
+      const size = portraitMenuFit(o.label, itemS, maxWidth);
       portraitMenuText(ctx, o.label, titleX,
         portraitMenuTextY(rowTop + this.rowH / 2, size),
         selected ? '#c9a0ff' : '#c8c8d8', size);
@@ -5987,7 +6393,7 @@ export class SettingsState {
       doneSelected ? '#c9a0ff' : '#c8c8d8', backSize);
     portraitMenuTextCentered(ctx,
       Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE',
-      W / 2, portraitMenuTextY(portraitMenuSafeBottom(18), 1.0), '#5a5a68', 1.0);
+      W / 2, portraitMenuTextY(portraitMenuSafeBottom(18), 1.3), '#5a5a68', 1.3);
 
     if (this.confirming) {
       const mw = W - 64;
@@ -5998,11 +6404,11 @@ export class SettingsState {
       ctx.strokeStyle = '#e04848';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(32.5, my + 0.5, mw - 1, mh - 1);
-      const confirmS = portraitMenuFit('RESET ALL TO DEFAULTS?', 1.55, mw - 24, 'title');
+      const confirmS = portraitMenuFit('RESET ALL TO DEFAULTS?', 1.9, mw - 24, 'title');
       portraitMenuTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2,
         portraitMenuTextY(my + 47, confirmS, 'title'), '#e04848', confirmS, 'title');
       portraitMenuTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK`, W / 2,
-        portraitMenuTextY(my + 101, 1.05), '#8a8a98', 1.05);
+        portraitMenuTextY(my + 101, 1.3), '#8a8a98', 1.3);
     }
   }
 }

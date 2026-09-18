@@ -4830,7 +4830,7 @@ function keepSelectionVisible(state, count) {
   if (state.idx < state.listStart) state.listStart = state.idx;
   else if (state.idx >= state.listStart + state.visibleRows) state.listStart = state.idx - state.visibleRows + 1;
 }
-function drawListScrollbar(ctx, state, count) {
+function drawListScrollbar(ctx, state, count, rightEdge = W) {
   const scrollCount = count - (state.fixedLastRow ? 1 : 0);
   if (!state.visibleRows || scrollCount <= state.visibleRows) return;
   const trackY = state.listY + 2;
@@ -4838,8 +4838,8 @@ function drawListScrollbar(ctx, state, count) {
   const thumbH = Math.max(12, trackH * state.visibleRows / scrollCount);
   const maxStart = scrollCount - state.visibleRows;
   const thumbY = trackY + (trackH - thumbH) * (state.listStart || 0) / maxStart;
-  ctx.fillStyle = '#281d2d'; ctx.fillRect(W - 12, trackY, 3, trackH);
-  ctx.fillStyle = '#8a7a94'; ctx.fillRect(W - 12, thumbY, 3, thumbH);
+  ctx.fillStyle = '#281d2d'; ctx.fillRect(rightEdge - 12, trackY, 3, trackH);
+  ctx.fillStyle = '#8a7a94'; ctx.fillRect(rightEdge - 12, thumbY, 3, thumbH);
 }
 // The status strip along the bottom of every hub menu. Nudged up from scale 1
 // because on a phone the canvas is barely 2x its 480x270 design size, and a
@@ -4898,8 +4898,12 @@ const PORTRAIT_SHOP_LIST_BOTTOM_CSS = 278;
 const PORTRAIT_SHOP_ROW_MIN_CSS = 70;
 const PORTRAIT_SHOP_ROW_MAX_CSS = 150;
 const PORTRAIT_SHOP_STAFF_EDGE_CSS = 110;
+const PORTRAIT_SHOP_GARY_GAP_CSS = 18;
+const PORTRAIT_SHOP_VISIBLE_ROWS = 4;
 const PORTRAIT_SHOP_BACK_H_CSS = 34;
 const PORTRAIT_SHOP_HINT_EDGE_CSS = 24;
+const LANDSCAPE_SHOP_LIST_RIGHT = 330;
+const LANDSCAPE_SHOP_LIST_HOVER_RIGHT = 314;
 
 export class StageSelectState {
   static portraitMode = 'frame';
@@ -5612,9 +5616,14 @@ export class ShopState {
       const css = (n) => n / frame.scale;
       const safe = frame.safeRect;
       const productCount = Math.max(1, opts.length - 1);
-      this.visibleRows = Math.min(5, productCount);
+      this.visibleRows = Math.min(PORTRAIT_SHOP_VISIBLE_ROWS, productCount);
       this.listY = safe.top + css(PORTRAIT_SHOP_LIST_TOP_CSS);
-      this.listBottom = safe.bottom - css(PORTRAIT_SHOP_LIST_BOTTOM_CSS);
+      const contentWidth = Math.max(css(180), safe.width - css(PORTRAIT_SHOP_SIDE_MARGIN_CSS * 2));
+      const garyH = Math.min(180, Math.max(150, contentWidth * 0.42));
+      const garyFeet = safe.bottom - css(PORTRAIT_SHOP_STAFF_EDGE_CSS);
+      const garyTop = garyFeet - garyH;
+      const nominalBottom = safe.bottom - css(PORTRAIT_SHOP_LIST_BOTTOM_CSS);
+      this.listBottom = Math.min(nominalBottom, garyTop - css(PORTRAIT_SHOP_GARY_GAP_CSS));
       this.rowH = Math.max(css(PORTRAIT_SHOP_ROW_MIN_CSS),
         Math.min(css(PORTRAIT_SHOP_ROW_MAX_CSS),
           (this.listBottom - this.listY) / this.visibleRows));
@@ -5722,18 +5731,19 @@ export class ShopState {
     opts.forEach((o, i) => {
       if (!o.back && (i < this.listStart || i >= this.listStart + this.visibleRows)) return;
       const sel = i === this.idx;
-      if (sel) drawSelRow(ctx, this, i, 30);
+      if (sel) drawMenuRow(ctx, 18, this.listY + listVisualRow(this, i) * this.rowH + 1,
+        LANDSCAPE_SHOP_LIST_HOVER_RIGHT - 18, this.rowH - 2);
       const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back) { drawText(ctx, 'BACK', 30, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
       // Names are measured against the price column rather than trusted to fit:
       // a size up, the longest mod name reached the coins it costs.
-      const priceX = W - 76;
+      const priceX = LANDSCAPE_SHOP_LIST_HOVER_RIGHT - 42;
       drawText(ctx, fitText(`${o.equipped ? '[E] ' : ''}${o.m.name}`, priceX - 36, MENU_ROW_S), 30, y, c, MENU_ROW_S);
       if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, priceX, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
-      if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
+      if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', LANDSCAPE_SHOP_LIST_RIGHT / 2, H - 28, '#8a8492', MENU_NOTE_S);
     });
-    drawListScrollbar(ctx, this, opts.length);
+    drawListScrollbar(ctx, this, opts.length, LANDSCAPE_SHOP_LIST_RIGHT);
     drawMenuHint(ctx, 'BUY/EQUIP');
   }
 
@@ -5755,7 +5765,7 @@ export class ShopState {
     const detailScale = 2.15;
     const rowX = safe.left + css(10);
     const rowRight = safe.right - css(10);
-    const detailRight = contentRight - css(8);
+    const detailRight = contentRight - css(26);
     const detailWidth = Math.max(css(150), detailRight - contentLeft);
     const longestLabel = opts
       .filter((o) => !o.back)
@@ -5779,8 +5789,8 @@ export class ShopState {
       textYForMid(safe.top + css(PORTRAIT_SHOP_COINS_TOP_CSS), coinsScale, 'bold'),
       '#f6d33c', coinsScale, 'bold');
 
-    const chatScale = 1.9;
-    const faceW = 24, faceH = 24, gap = 9, pad = 10, lineH = 25;
+    const chatScale = 2.4;
+    const faceW = 24, faceH = 24, gap = 9, pad = 10, lineH = 31;
     const chatLines = wrapText(this.line, contentWidth - faceW - gap - pad * 2, chatScale, 3);
     const chatTextW = Math.max(...chatLines.map((line) => textWidth(line, chatScale)));
     const chatW = Math.min(contentWidth, pad * 2 + faceW + gap + chatTextW);
@@ -5808,7 +5818,8 @@ export class ShopState {
         return;
       }
       const rowTop = this.listY + listVisualRow(this, i) * this.rowH;
-      if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
+      if (selected) drawMenuRow(ctx, rowX, rowTop + 1,
+        rowRight - rowX - css(18), this.rowH - 2, 5);
       const labelY = textYForMid(rowTop + this.rowH * 0.23, labelScale, 'bold');
       const label = `${o.equipped ? '[E] ' : ''}${o.m.name}`;
       const c = o.equipped ? '#48e0c8' : selected ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
@@ -5824,7 +5835,7 @@ export class ShopState {
         textYForMid(rowTop + this.rowH * (detailStart + lineI * detailGap), detailScale),
         selected ? '#c8c8d8' : '#8a8492', detailScale));
     });
-    drawListScrollbar(ctx, this, opts.length);
+    drawListScrollbar(ctx, this, opts.length, safe.right);
 
     const hint = Input.isTouchDevice() ? 'TAP SELECT   TAP AGAIN BUY / EQUIP' : 'UP / DOWN: SELECT   ENTER: BUY / EQUIP';
     drawTextVectorCentered(ctx, hint, center,
@@ -5834,9 +5845,13 @@ export class ShopState {
 }
 
 export class ArcadeState {
+  static portraitMode = 'frame';
+
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = MENU_ROW_MAX; }
   enter() {
     this.idx = 0;
+    this.layoutKey = '';
+    this.syncLayout();
     fitRows(this, this.options().length);
     const musicSong = this.flow.gameSongFor?.('hub');
     // A selected Arcade Theme alternate is authoritative. With no selected alternate,
@@ -5904,6 +5919,7 @@ export class ArcadeState {
     return opts;
   }
   update(dt) {
+    this.syncLayout();
     const sel = listMenu(this, this.options());
     if (sel) {
       if (sel.back || sel.none) return this.flow.toHub();
@@ -5913,7 +5929,88 @@ export class ArcadeState {
     if (Input.pressed('back')) this.flow.toHub();
     Input.endFrame();
   }
+  syncLayout() {
+    const portrait = isPhonePortraitPresentation();
+    const frame = presentationFrame();
+    const opts = this.options();
+    const key = `${portrait ? 'portrait' : 'landscape'}:${frame.revision}:${opts.length}`;
+    if (key === this.layoutKey) return;
+    if (portrait) {
+      const css = (n) => n / frame.scale;
+      const safe = frame.safeRect;
+      this.listY = safe.top + css(210);
+      this.listBottom = safe.bottom - css(112);
+      this.visibleRows = opts.length;
+      this.rowH = Math.max(css(88), Math.min(css(158),
+        (this.listBottom - this.listY) / Math.max(1, this.visibleRows)));
+      this.listCount = opts.length;
+    } else {
+      this.listY = 60;
+      this.listBottom = MENU_LIST_BOTTOM;
+      this.rowH = MENU_ROW_MAX;
+      this.visibleRows = undefined;
+      this.listCount = opts.length;
+    }
+    this.layoutKey = key;
+  }
+  drawPortrait(ctx) {
+    const frame = presentationFrame();
+    const safe = frame.safeRect;
+    const css = (n) => n / frame.scale;
+    const margin = css(18);
+    const left = safe.left + margin;
+    const width = Math.max(css(180), safe.width - margin * 2);
+    const center = (safe.left + safe.right) / 2;
+    const title = 'ARCADE CORNER';
+    const titleS = Math.min(3.4, width / Math.max(1, textWidth(title, 1, 'title')));
+    const info = `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`;
+    const infoS = Math.min(1.7, width / Math.max(1, textWidth(info, 1)));
+    const touch = Input.isTouchDevice();
+    const broke = this.save.slot.coins < ARCADE_PLAY_COST;
+    const opts = this.options();
+    const rowW = width;
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawTextVectorCentered(ctx, title, center,
+      textYForMid(safe.top + css(42), titleS, 'title'), '#48e0c8', titleS, 'title');
+    drawTextVectorCentered(ctx, info, center,
+      textYForMid(safe.top + css(92), infoS), '#c8c8d8', infoS);
+    if (touch) {
+      const note = 'THE ARCADE CABINETS REQUIRE A KEYBOARD.';
+      const noteS = Math.min(1.6, width / Math.max(1, textWidth(note, 1, 'bold')));
+      drawTextVectorCentered(ctx, note, center,
+        textYForMid(safe.top + css(140), noteS, 'bold'), '#f6d33c', noteS, 'bold');
+    }
+    opts.forEach((o, i) => {
+      const rowY = this.listY + i * this.rowH;
+      const selected = i === this.idx;
+      if (selected) drawMenuRow(ctx, left, rowY + 2, rowW, this.rowH - 4, 7);
+      const label = o.back ? 'BACK' : o.none ? 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.' : MINIGAME_NAMES[o.game];
+      const color = o.none ? '#8a8492' : selected ? '#f6d33c' : '#c8c8d8';
+      const labelS = Math.min(o.none ? 1.55 : 2.15,
+        (rowW - css(34)) / Math.max(1, textWidth(label, 1, 'bold')));
+      const lines = o.none ? wrapText(label, rowW - css(34), labelS, 2, 'bold') : [label];
+      const lineH = 11 * labelS;
+      const firstMid = rowY + this.rowH / 2 - (lines.length - 1) * lineH / 2;
+      lines.forEach((line, lineIndex) => drawTextVectorCentered(ctx, line, center,
+        textYForMid(firstMid + lineIndex * lineH, labelS, 'bold'), color, labelS, 'bold'));
+      if (o.game != null) {
+        const cost = `${ARCADE_PLAY_COST}`;
+        drawTextVector(ctx, cost, safe.right - margin - textWidth(cost, 1.5, 'bold'),
+          textYForMid(rowY + this.rowH / 2, 1.5, 'bold'), broke ? '#5a5a68' : '#f6d33c', 1.5, 'bold');
+      }
+    });
+    const hint = touch ? 'TAP SELECT   TAP AGAIN RETURN' : 'UP / DOWN SELECT   ENTER PLAY';
+    const hintS = Math.min(1.35, width / Math.max(1, textWidth(hint, 1, 'bold')));
+    drawTextVectorCentered(ctx, hint, center,
+      textYForMid(safe.bottom - css(28), hintS, 'bold'), '#8a8492', hintS, 'bold');
+  }
   draw(ctx) {
+    this.syncLayout();
+    if (isPhonePortraitPresentation()) {
+      this.drawPortrait(ctx);
+      return;
+    }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'ARCADE CORNER', W / 2, 16, '#48e0c8', 2, 'title');

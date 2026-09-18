@@ -30,15 +30,15 @@ assert(detectPlatform({ ua: ANDROID, screenW: 800, screenH: 1280 }).isAndroidTab
 assert(detectPlatform({ ua: ANDROID }).allowed, 'Android browser is allowed');
 assert(detectPlatform({ ua: DESKTOP }).allowed, 'desktop browser is allowed');
 
-assert(lifecyclePolicy({ isIphone: true, standalone: true, portrait: true }).paused,
-  'installed iPhone portrait pauses');
+assert(!lifecyclePolicy({ isIphone: true, standalone: true, portrait: true }).paused,
+  'installed iPhone portrait keeps running');
 assert(!lifecyclePolicy({ isIphone: true, standalone: true, portrait: true, allowPortrait: true }).paused,
   'approved portrait surface keeps an installed iPhone running');
 const devPortrait = lifecyclePolicy({
   isIphone: true, standalone: false, devBrowserBypass: true, portrait: true,
 });
-assert(devPortrait.paused && devPortrait.showPortraitOverlay,
-  'dev-bypassed browser iPhone follows installed portrait policy');
+assert(!devPortrait.paused && !devPortrait.showPortraitOverlay,
+  'dev-bypassed browser iPhone keeps portrait running');
 assert(!lifecyclePolicy({
   isIphone: true, standalone: false, devBrowserBypass: true, portrait: false,
 }).paused, 'dev-bypassed browser iPhone runs in landscape');
@@ -52,8 +52,8 @@ assert(!lifecyclePolicy({
 }).paused, 'dev Android phone keeps portrait screens running');
 assert(!lifecyclePolicy({ isIpad: true, standalone: true, portrait: true }).paused,
   'iPad portrait keeps running');
-assert(lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true }).paused,
-  'installed Android phone portrait pauses');
+assert(!lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true }).paused,
+  'installed Android phone portrait keeps running');
 assert(!lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true, allowPortrait: true }).paused,
   'approved portrait surface keeps an installed Android phone running');
 assert(!lifecyclePolicy({ isAndroidTablet: true, standalone: true, portrait: true }).paused,
@@ -187,26 +187,19 @@ win.innerWidth = 390;
 win.innerHeight = 844;
 lifecycle.apply();
 
-// Five taps on TURN THE ARCADE SIDEWAYS open the dev menu, which then holds the
-// screen in portrait in place of this card (see main.js allowPortraitNow).
+// Portrait is now a live phone presentation, so the old rotate-card heading is
+// never an active dev-menu gesture.
 for (let i = 0; i < 4; i++) portraitTitle.fire('click');
-assert(devMenuOpens === 0, 'the rotate heading does not open the dev menu before five taps');
+assert(devMenuOpens === 0, 'the hidden rotate heading does not open the dev menu');
 portraitTitle.fire('click');
-assert(devMenuOpens === 1, 'five heading taps open the dev menu');
-// A part-finished gesture does not carry across a rotation and back.
-lifecycle.setOverlay(false);
-lifecycle.setOverlay(true);
-for (let i = 0; i < 4; i++) portraitTitle.fire('click');
-assert(devMenuOpens === 1, 'a freshly shown card starts the five-tap count over');
-portraitTitle.fire('click');
-assert(devMenuOpens === 2, 'the count completes on the new card');
+assert(devMenuOpens === 0, 'portrait heading taps remain inert without the rotate card');
 
 for (let i = 0; i < 4; i++) lorenzoIcon.fire('click');
 assert(jukeboxOpens === 0, 'portrait Lorenzo icon does not open jukebox before five taps');
 lorenzoIcon.fire('click');
-assert(jukeboxOpens === 1, 'five portrait Lorenzo-icon clicks open the jukebox transition');
+assert(jukeboxOpens === 0, 'portrait Lorenzo icon stays inert without the rotate card');
 assert(overlay.hidden && calls.at(-1) === 'loop:resume',
-  'portrait jukebox hand-off hides the lock screen and resumes the transition loop');
+  'portrait remains live without a rotate-card hand-off');
 jukeboxActive = false;
 portraitQuery.matches = false;
 win.innerWidth = 844;
@@ -330,16 +323,16 @@ assert(calls.at(-1) === 'loop:pause' && overlay.hidden, 'rotation while hidden c
 doc.activeElement = priorFocus;
 doc.hidden = false;
 doc.fire('visibilitychange');
-assert(calls.at(-1) === 'loop:pause' && !overlay.hidden && shell.inert,
-  'foregrounding in portrait stays paused and shows dialog');
-assert(priorFocus.blurred === 1 && heading.focused === 0,
-  'portrait overlay clears focus without focusing its heading');
+assert(calls.at(-1) === 'loop:resume' && overlay.hidden && !shell.inert,
+  'foregrounding in portrait resumes without showing a dialog');
+assert(priorFocus.blurred === 0 && heading.focused === 0,
+  'portrait foregrounding leaves focus untouched without an overlay');
 
 portraitQuery.matches = false;
 portraitQuery.fire('change');
 assert(calls.at(-1) === 'loop:resume' && overlay.hidden && !shell.inert,
-  'landscape transition resumes and removes dialog');
-assert(priorFocus.focused === 1, 'landscape restores the prior focus target');
+  'landscape transition keeps the live shell running');
+assert(priorFocus.focused === 0, 'landscape transition does not restore overlay focus');
 win.fire('pagehide');
 assert(calls.at(-1) === 'loop:pause', 'pagehide pauses even before visibility catches up');
 win.fire('pageshow');

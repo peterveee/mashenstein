@@ -149,8 +149,8 @@ renderer.setPresentationFrame(portraitFrame);
 const portraitSettings = new SettingsState({ save, onDone() {} });
 portraitSettings.enter();
 assert(portraitSettings.visibleRows === portraitSettings.listCount()
-  && portraitSettings.rowH >= 54 && portraitSettings.rowH <= 66,
-  'portrait settings use the available height to show the complete list at a readable pitch');
+  && portraitSettings.rowH >= 54 && portraitSettings.rowH <= 90,
+  'portrait settings use the available height to show the complete list with generous rows');
 portraitSettings.draw(document.createElement('canvas').getContext('2d'));
 renderer.setPresentationFrame(defaultFrame());
 

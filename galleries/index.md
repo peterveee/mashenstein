@@ -15,6 +15,11 @@ It keeps the last snapshot of each week plus every snapshot from the last
 seven days, so an iteration in flight keeps all of its steps while older
 history thins to one a week. Do not edit by hand.
 
+For the actual running game instead of isolated drawables, see
+[screens.html](screens.html) -- every UI screen and cabinet, portrait and
+landscape side by side. It is a live snapshot, regenerated on demand with
+`npm run gallery:screens`, not one entry per commit.
+
 | Date | Commit | Gallery | Lab | Change |
 | --- | --- | --- | --- | --- |
 | 2026-07-26 | `716e8e8` | [2026-07-26-716e8e8.html](2026-07-26-716e8e8.html) | -- | Add offline MIDI export and rendering tools |
@@ -33,3 +38,5 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |
 | 2026-09-18 | `5cc650c` | [2026-09-18-5cc650c.html](2026-09-18-5cc650c.html) | [bake-offs](2026-09-18-5cc650c-lab.html) | feat: add new lab HTML file and enhance cabinet dive mechanics with facial expressions |
 | 2026-09-18 | `51a5883` | [2026-09-18-51a5883.html](2026-09-18-51a5883.html) | [bake-offs](2026-09-18-51a5883-lab.html) | Add door-walk sequence implementation and gallery HTML files |
+| 2026-09-18 | `352235a` | [2026-09-18-352235a.html](2026-09-18-352235a.html) | [bake-offs](2026-09-18-352235a-lab.html) | Enhance ShopState for Portrait Mode |
+| screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

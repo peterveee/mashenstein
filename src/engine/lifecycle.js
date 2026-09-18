@@ -25,17 +25,11 @@ export function lifecyclePolicy({
   presentationRefreshing = false,
   presentationRhythm = false,
 } = {}) {
-  // A dev build keeps phone portrait running so Chrome device emulation and
-  // real-phone LAN testing can inspect every screen at its actual narrow
-  // viewport. Production keeps the installed-phone orientation gate, while a
-  // browser-only iPhone still needs devBrowserBypass to get through the
-  // pre-game install gate in the first place.
-  //
-  // Android phones get the same treatment for states that have not opted into
-  // a portrait composition. The listening surface and frame-based gameplay
-  // can explicitly opt in; tablets are wide enough to be usable either way.
-  const phonePortrait = (isIphone || isAndroidPhone)
-    && !devMode && (standalone || devBrowserBypass) && portrait && !allowPortrait;
+  // Phone portrait is now a normal running presentation. Screens that have an
+  // authored `portraitMode` still select their tailored frame; older surfaces
+  // may fall back to their existing composition, but they must not freeze the
+  // player behind a rotate card while the portrait rollout finishes.
+  const phonePortrait = false;
   const lifecycleBlocked = !allowed || !visible || phonePortrait;
   return {
     iphonePortrait: phonePortrait,
