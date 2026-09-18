@@ -9,6 +9,8 @@ const { defaultSlot } = await import('../src/engine/save.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { HUB_THEME } = await import('../src/data/cabinets.js');
 const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
+const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
+const { setPresentationFrame } = await import('../src/engine/renderer.js');
 const { BenchState, ShopState } = await import('../src/game/hub/index.js');
 
 let failed = false;
@@ -23,6 +25,11 @@ const save = { slot, persist() {} };
 let returned = 0;
 const shop = new ShopState({ save, flow: { toHub: () => { returned++; } } });
 shop.enter();
+const benchLayout = new BenchState({ save, flow: { toHub() {} } });
+benchLayout.enter();
+assert(shop.listY === benchLayout.listY && shop.listBottom === benchLayout.listBottom,
+  'landscape counters share list anchors');
+assert(benchLayout.notice.length > 0, 'Dolores opens with a persistent counter message');
 // `sourceBank`, not `bank`: setBank keeps what it was HANDED, and publishes the bank
 // the sequencer reads through applyMix — which returns a merged copy as soon as the
 // song has a saved mix, so identity against the theme object only ever held while the
@@ -34,6 +41,25 @@ assert(Audio.sourceBank === COUNTER_DANCE_MIX_THEME,
 assert(shop.options().length === 15, 'the fullest shop contains fifteen rows');
 assert(shop.visibleRows === 7 && shop.fixedLastRow && shop.listStart === 0,
   'the shop opens with seven scrolling items and a fixed final row');
+
+const portraitFrame = frameForViewport({
+  mode: 'phone-portrait', viewportWidth: 390, viewportHeight: 844, revision: 9,
+});
+setPresentationFrame(portraitFrame);
+const portraitBench = new BenchState({ save, flow: { toHub() {} } });
+const portraitShop = new ShopState({ save, flow: { toHub() {} } });
+portraitBench.enter();
+portraitShop.enter();
+assert(portraitBench.listY === portraitShop.listY && portraitBench.listBottom === portraitShop.listBottom,
+  'portrait counters share list anchors');
+assert(portraitBench.portraitBackY === portraitShop.portraitBackY
+  && portraitBench.portraitBackH === portraitShop.portraitBackH,
+  'portrait counters share the staff back-row anchor');
+assert(portraitShop.visibleRows === 4, 'portrait Gary keeps a four-row scroll window');
+portraitBench.draw(document.createElement('canvas').getContext('2d'));
+portraitShop.draw(document.createElement('canvas').getContext('2d'));
+assert(true, 'both portrait counter templates render safely');
+setPresentationFrame(defaultFrame());
 
 function down() {
   Input.press('down'); shop.update(1 / 60); Input.release('down'); Input.endFrame();

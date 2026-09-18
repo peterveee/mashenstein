@@ -16,6 +16,7 @@ const {
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   B33P_TITLE_WINDUP_T, b33pTitleShotPose, FACE_CONTOUR, FACE_CROP, roundHalfAt,
+  garyIdleExpression,
 } = await import('../src/sprites/toons.js');
 const { initRenderer, blit, bctx, screen, pendingOverlayDrawCount } = await import('../src/engine/renderer.js');
 const { save } = await import('../src/engine/save.js');
@@ -161,6 +162,16 @@ assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and slide default to the im
 assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');
 assert(FINISH_CELEBRATION_POSE.kind === 'celebrate' && FINISH_CELEBRATION_POSE.headTurn === 0,
   'the flag-pole celebration clears the inherited run face angle');
+{
+  const beats = Array.from({ length: 560 }, (_, i) => garyIdleExpression(i / 10));
+  assert(beats.some((beat) => beat.glanceX !== 0) && beats.some((beat) => beat.glanceY !== 0),
+    "Gary's idle routine moves his eyes horizontally and vertically");
+  assert(beats.some((beat) => beat.browRaise) && beats.some((beat) => beat.calling),
+    "Gary's idle routine includes a mild brow lift and occasional speech beat");
+  assert(beats.every((beat) => Math.abs(beat.glanceX) <= 0.034
+    && Math.abs(beat.glanceY) <= 0.02 && beat.browEase >= 0 && beat.browEase <= 1),
+  "Gary's idle expression stays within a restrained range");
+}
 
 // The limb styles are ONE painter shared by seven heroes plus a pose-level
 // override, so the failure mode is not "the run looks wrong" — it is one hero,

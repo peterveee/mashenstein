@@ -2615,6 +2615,20 @@ function locoFoot(p, stride, lift, L) {
 
 // ---------------------------------------------------------------- faces
 const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, ramon: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9, clara: 2.7, rusty: 3.4 };
+export function garyIdleExpression(time, seed = FACE_SEED.gary) {
+  const t = Number(time) || 0;
+  const phase = (t + seed * 1.7) % 5.6;
+  const slot = Math.floor((t + seed * 1.7) / 5.6) % 7;
+  const ease = phase < 1.1 ? Math.min(1, Math.min(phase, 1.1 - phase) / 0.22) : 0;
+  if (phase >= 1.1) return { glanceX: 0, glanceY: 0, browRaise: false, calling: false, browEase: 1 };
+  return {
+    glanceX: slot === 0 ? 0.034 * ease : slot === 2 ? -0.034 * ease : 0,
+    glanceY: slot === 3 ? 0.02 * ease : 0,
+    browRaise: slot === 4,
+    calling: slot === 5,
+    browEase: slot === 4 || slot === 5 ? ease : 1,
+  };
+}
 
 // ------------------------------------------------------ victory routines
 // The results screen holds for a while, so a single looping wiggle reads as a
@@ -3384,7 +3398,7 @@ function expressionFor(id, pose = {}, spec = null) {
   // half-way through a glance down the empty line. The two hard-cut beats (the
   // call and the brow-raise) drop out entirely once the gaze has taken over,
   // since neither has a partial state to fade through.
-  let calling = false, glanceX = 0, glanceY = 0, hmph = false, browEase = 1;
+  let calling = false, glanceX = 0, glanceY = 0, hmph = false, browEase = 1, browRaiseIdle = false;
   const gazeAmt = Math.max(0, Math.min(1, +pose.gazeAmt || 0));
   if (id === 'dolores' && !active && !joy && !pose.annoyed) {
     const cyc = 4.4, ph = (t + seed) % cyc, win = 0.9;
@@ -3401,6 +3415,18 @@ function expressionFor(id, pose = {}, spec = null) {
       else if (slotN === 5) { hmph = true; browEase = ease; } // a brow-raise at nothing
       // slots 1 & 6: a plain rest face, so the beats never crowd each other.
     }
+  }
+  // Gary's idle life is quieter than Dolores's counter glare, but a frozen
+  // face still makes him look like a cutout. Let him check the shop, glance
+  // down at the till, lift a brow, and occasionally speak without using her
+  // annoyed or hmph dialect.
+  if (id === 'gary' && !active && !joy && !pose.annoyed) {
+    const idle = garyIdleExpression(t, seed);
+    glanceX = idle.glanceX;
+    glanceY = idle.glanceY;
+    browRaiseIdle = idle.browRaise;
+    calling = idle.calling;
+    browEase = idle.browEase;
   }
   // AIRBORNE THE EYES LOOK WHERE THE BODY IS GOING. The jump already rolls a
   // face — the startled one among them — but whichever it rolls is then held
@@ -3470,7 +3496,7 @@ function expressionFor(id, pose = {}, spec = null) {
     // Startled brow: opt-in via pose.browRaise (a cameo can force it), or the
     // jump face rolled the startled variant; see the branch it unlocks in
     // drawEyes for why the surprise face needed its own shape.
-    browRaise: !!pose.browRaise || jf === 3,
+    browRaise: !!pose.browRaise || jf === 3 || browRaiseIdle,
     joy,
     cheer,
     // The narrowest window in the routine: a hit of the BIG move, held. The

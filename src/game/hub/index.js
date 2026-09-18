@@ -367,6 +367,7 @@ const BENCH_SOLD_OUT_NOTICES = [
   'TIER [TIER] UNAVAILABLE. THE HEATED HOLDING CABINET IS EMPTY.',
   'THIS ITEM IS NO LONGER IN SERVICE. ADJUST YOUR EXPECTATIONS ACCORDINGLY.',
 ];
+const BENCH_DEFAULT_CHAT = 'THE COUNTER IS OPEN. TRY NOT TO BREAK ANYTHING.';
 
 // How long Dolores' SOLD-OUT reaction holds — the glare and the hands-on-hips
 // snap share this clock so they land and release together.
@@ -4878,35 +4879,65 @@ const PORTRAIT_STAGE_ROW_MIN = 72;
 const PORTRAIT_STAGE_ROW_MAX = 154;
 const PORTRAIT_STAGE_PIP = 22;
 const PORTRAIT_STAGE_FOOTER_LAST_MID_CSS = 38;
-const PORTRAIT_BENCH_SIDE_MARGIN_CSS = 22;
-const PORTRAIT_BENCH_TITLE_TOP_CSS = 34;
-const PORTRAIT_BENCH_COINS_TOP_CSS = 84;
-const PORTRAIT_BENCH_LIST_TOP_CSS = 188;
-const PORTRAIT_BENCH_LIST_BOTTOM_CSS = 278;
-const PORTRAIT_BENCH_ROW_MIN_CSS = 70;
-const PORTRAIT_BENCH_ROW_MAX_CSS = 150;
-const PORTRAIT_BENCH_DOLORES_EDGE_CSS = 110;
-const PORTRAIT_BENCH_BACK_EDGE_CSS = 62;
-const PORTRAIT_BENCH_BACK_H_CSS = 34;
-const PORTRAIT_BENCH_HINT_EDGE_CSS = 24;
-const PORTRAIT_SHOP_SIDE_MARGIN_CSS = 22;
-const PORTRAIT_SHOP_TITLE_TOP_CSS = 34;
-const PORTRAIT_SHOP_COINS_TOP_CSS = 84;
-const PORTRAIT_SHOP_CHAT_TOP_CSS = 112;
-const PORTRAIT_SHOP_LIST_TOP_CSS = 230;
-const PORTRAIT_SHOP_LIST_BOTTOM_CSS = 278;
-const PORTRAIT_SHOP_ROW_MIN_CSS = 70;
-const PORTRAIT_SHOP_ROW_MAX_CSS = 150;
-const PORTRAIT_SHOP_STAFF_EDGE_CSS = 110;
-const PORTRAIT_SHOP_GARY_GAP_CSS = 18;
-const PORTRAIT_SHOP_VISIBLE_ROWS = 4;
-const PORTRAIT_SHOP_BACK_H_CSS = 34;
-const PORTRAIT_SHOP_HINT_EDGE_CSS = 24;
-const LANDSCAPE_SHOP_LIST_RIGHT = 330;
-const LANDSCAPE_SHOP_LIST_HOVER_RIGHT = 314;
-
+const COUNTER_TITLE_DOLORES = "DOLORES' REPAIR COUNTER";
+const COUNTER_TITLE_GARY = "GARY'S LEGAL PAWN SHOP";
+const LANDSCAPE_COUNTER_TITLE_Y = 8;
+const LANDSCAPE_COUNTER_TITLE_S = 2;
+const LANDSCAPE_COUNTER_CHAT_Y = 28;
+const LANDSCAPE_COUNTER_CHAT_MAX_W = 300;
+const LANDSCAPE_COUNTER_CHAT_FACE_W = 14, LANDSCAPE_COUNTER_CHAT_FACE_H = 14;
+const LANDSCAPE_COUNTER_CHAT_GAP = 5, LANDSCAPE_COUNTER_CHAT_PAD = 6;
+const LANDSCAPE_COUNTER_CHAT_LINE_H = 13;
+const LANDSCAPE_COUNTER_COINS_Y = 62;
+const LANDSCAPE_COUNTER_LIST_TOP = 82;
+const LANDSCAPE_COUNTER_LIST_BOTTOM = 222;
+const LANDSCAPE_COUNTER_LIST_LEFT = 18;
+const LANDSCAPE_COUNTER_LIST_RIGHT = 314;
+const LANDSCAPE_COUNTER_LIST_CENTER = (LANDSCAPE_COUNTER_LIST_LEFT + LANDSCAPE_COUNTER_LIST_RIGHT) / 2;
+const LANDSCAPE_COUNTER_LABEL_X = 30;
+const LANDSCAPE_COUNTER_PRICE_X = 300;
+const PORTRAIT_COUNTER_TITLE_MAX_S = 4.5;
+const PORTRAIT_COUNTER_SIDE_MARGIN_CSS = 22;
+const PORTRAIT_COUNTER_TITLE_TOP_CSS = 34;
+const PORTRAIT_COUNTER_COINS_TOP_CSS = 84;
+const PORTRAIT_CHAT_TOP_CSS = 112;
+const PORTRAIT_CHAT_SCALE = 2.4;
+const PORTRAIT_CHAT_FACE_W = 24, PORTRAIT_CHAT_FACE_H = 24;
+const PORTRAIT_CHAT_GAP = 9, PORTRAIT_CHAT_PAD = 10, PORTRAIT_CHAT_LINE_H = 31;
+const PORTRAIT_COUNTER_LIST_TOP_CSS = 188;
+const PORTRAIT_COUNTER_LIST_BOTTOM_CSS = 278;
+const PORTRAIT_COUNTER_ROW_MIN_CSS = 70;
+const PORTRAIT_COUNTER_ROW_MAX_CSS = 150;
+const PORTRAIT_COUNTER_STAFF_EDGE_CSS = 110;
+const PORTRAIT_COUNTER_STAFF_GAP_CSS = 18;
+const PORTRAIT_COUNTER_VISIBLE_ROWS = 4;
+const PORTRAIT_COUNTER_BACK_H_CSS = 34;
+const PORTRAIT_COUNTER_HINT_EDGE_CSS = 24;
+function counterTitleScale(contentWidth) {
+  return Math.min(PORTRAIT_COUNTER_TITLE_MAX_S, contentWidth / Math.max(
+    textWidth(COUNTER_TITLE_DOLORES, 1, 'title'),
+    textWidth(COUNTER_TITLE_GARY, 1, 'title'),
+  ));
+}
+function drawLandscapeCounterChat(ctx, text, speaker, ink, border) {
+  const faceW = LANDSCAPE_COUNTER_CHAT_FACE_W;
+  const faceH = LANDSCAPE_COUNTER_CHAT_FACE_H;
+  const gap = LANDSCAPE_COUNTER_CHAT_GAP;
+  const pad = LANDSCAPE_COUNTER_CHAT_PAD;
+  const lines = wrapText(text, LANDSCAPE_COUNTER_CHAT_MAX_W, MENU_NOTE_S, 2);
+  const textW = Math.max(...lines.map((line) => textWidth(line, MENU_NOTE_S)));
+  const width = Math.min(W - 48, pad * 2 + faceW + gap + textW);
+  const height = Math.max(faceH + pad * 2, lines.length * LANDSCAPE_COUNTER_CHAT_LINE_H + pad * 2);
+  const x = Math.round((W - width) / 2);
+  const y = LANDSCAPE_COUNTER_CHAT_Y;
+  drawPanel(ctx, x, y, width, height, 4, undefined, { border, shadow: true });
+  const face = toonFaceSprite(speaker, faceW, faceH);
+  if (face) ctx.drawImage(face, x + pad, y + Math.round((height - faceH) / 2), faceW, faceH);
+  const textTop = y + Math.round((height - lines.length * LANDSCAPE_COUNTER_CHAT_LINE_H) / 2) + 2;
+  lines.forEach((line, lineIndex) => drawText(ctx, line,
+    x + pad + faceW + gap, textTop + lineIndex * LANDSCAPE_COUNTER_CHAT_LINE_H, ink, MENU_NOTE_S));
+}
 export class StageSelectState {
-  static portraitMode = 'frame';
 
   constructor({ save, cab, flow }) {
     this.save = save;
@@ -5222,11 +5253,11 @@ export class BenchState {
   constructor({ save, flow }) {
     this.save = save;
     this.flow = flow;
-    this.listY = 82;
-    this.listBottom = 202;
+    this.listY = LANDSCAPE_COUNTER_LIST_TOP;
+    this.listBottom = LANDSCAPE_COUNTER_LIST_BOTTOM;
     this.rowH = MENU_ROW_MAX;
     this.layoutKey = '';
-    this.notice = '';
+    this.notice = BENCH_DEFAULT_CHAT;
     this.soldOutKey = '';
     this.soldOutNotice = '';
     this.t = 0;
@@ -5244,17 +5275,20 @@ export class BenchState {
       const css = (n) => n / frame.scale;
       const safe = frame.safeRect;
       const productCount = opts.filter((o) => !o.back).length;
-      this.listY = safe.top + css(PORTRAIT_BENCH_LIST_TOP_CSS);
-      this.listBottom = safe.bottom - css(PORTRAIT_BENCH_LIST_BOTTOM_CSS);
-      this.rowH = Math.max(css(PORTRAIT_BENCH_ROW_MIN_CSS),
-        Math.min(css(PORTRAIT_BENCH_ROW_MAX_CSS),
+      this.listY = safe.top + css(PORTRAIT_COUNTER_LIST_TOP_CSS);
+      const staffH = Math.min(180, Math.max(150, Math.max(css(180), safe.width - css(PORTRAIT_COUNTER_SIDE_MARGIN_CSS * 2)) * 0.42));
+      const staffTop = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS) - staffH;
+      this.listBottom = Math.min(safe.bottom - css(PORTRAIT_COUNTER_LIST_BOTTOM_CSS),
+        staffTop - css(PORTRAIT_COUNTER_STAFF_GAP_CSS));
+      this.rowH = Math.max(css(PORTRAIT_COUNTER_ROW_MIN_CSS),
+        Math.min(css(PORTRAIT_COUNTER_ROW_MAX_CSS),
           (this.listBottom - this.listY) / Math.max(1, productCount)));
       this.portraitBackIndex = opts.length - 1;
-      this.portraitBackY = safe.bottom - css(PORTRAIT_BENCH_DOLORES_EDGE_CSS);
-      this.portraitBackH = css(PORTRAIT_BENCH_BACK_H_CSS);
+      this.portraitBackY = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS);
+      this.portraitBackH = css(PORTRAIT_COUNTER_BACK_H_CSS);
     } else {
-      this.listY = 82;
-      this.listBottom = 202;
+      this.listY = LANDSCAPE_COUNTER_LIST_TOP;
+      this.listBottom = LANDSCAPE_COUNTER_LIST_BOTTOM;
       this.rowH = MENU_ROW_MAX;
       this.portraitBackIndex = null;
       this.portraitBackY = null;
@@ -5262,7 +5296,7 @@ export class BenchState {
     }
     this.layoutKey = key;
   }
-  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; this.layoutKey = ''; this.syncLayout(); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
+  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; this.notice = BENCH_DEFAULT_CHAT; this.layoutKey = ''; this.syncLayout(); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
   exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
   options() {
     const slot = this.save.slot;
@@ -5377,10 +5411,17 @@ export class BenchState {
     drawToon(ctx, 'dolores', pose, doleX, doleFeet, doleH);
     // The overhead sign still spans the whole station; the list, its glosses and
     // the price column all sit in the left column, clear of Dolores.
-    drawTextCentered(ctx, "DOLORES' REPAIR COUNTER", W / 2, 8, '#f6d33c', 2, 'title');
-    const menuCx = 180, labelX = 40, rightX = 322, boxL = 26, boxR = 336, glossMaxW = 320;
+    drawTextCentered(ctx, COUNTER_TITLE_DOLORES, W / 2, LANDSCAPE_COUNTER_TITLE_Y,
+      '#f6d33c', LANDSCAPE_COUNTER_TITLE_S, 'title');
+    const menuCx = LANDSCAPE_COUNTER_LIST_CENTER;
+    const labelX = LANDSCAPE_COUNTER_LABEL_X;
+    const rightX = LANDSCAPE_COUNTER_PRICE_X;
+    const boxL = LANDSCAPE_COUNTER_LIST_LEFT;
+    const boxR = LANDSCAPE_COUNTER_LIST_RIGHT;
+    const glossMaxW = 280;
     const coinsText = `COINS: ${formatCoins(this.save.slot.coins)}`;
-    drawTextCentered(ctx, coinsText, doleCx, H - 13, '#f6d33c'); // centred under Dolores
+    drawLandscapeCounterChat(ctx, this.notice || BENCH_DEFAULT_CHAT, 'dolores', '#f6d33c', 'rgba(246,211,60,0.35)');
+    drawTextCentered(ctx, coinsText, W / 2, LANDSCAPE_COUNTER_COINS_Y, '#f6d33c');
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
@@ -5419,26 +5460,6 @@ export class BenchState {
         }
       }
     });
-    if (this.notice) {
-      const faceW = 14, faceH = 14, gap = 5, pad = 6, lineH = 13;
-      const textMaxW = 300;
-      const noticeLines = wrapText(this.notice, textMaxW, MENU_NOTE_S, 3);
-      const noticeTextW = Math.max(...noticeLines.map((line) => textWidth(line, MENU_NOTE_S)));
-      const noticeW = Math.min(W - 48, pad * 2 + faceW + gap + noticeTextW);
-      const noticeX = Math.round((W - noticeW) / 2);
-      // Height tracks the wrapped line count instead of a fixed two-line box, so
-      // a one-line receipt sits in a snug plate and a three-line surcharge spiel
-      // gets the room it needs — the plate is always the size of what it holds.
-      const noticeH = Math.max(faceH + pad * 2, noticeLines.length * lineH + pad * 2);
-      const noticeY = 28;
-      drawPanel(ctx, noticeX, noticeY, noticeW, noticeH, 4, undefined, { border: 'rgba(246,211,60,0.35)', shadow: true });
-      const face = toonFaceSprite('dolores', faceW, faceH);
-      if (face) ctx.drawImage(face, noticeX + pad, noticeY + Math.round((noticeH - faceH) / 2), faceW, faceH);
-      const textTop = noticeY + Math.round((noticeH - noticeLines.length * lineH) / 2) + 2;
-      noticeLines.forEach((line, lineIndex) => {
-        drawText(ctx, line, noticeX + pad + faceW + gap, textTop + lineIndex * lineH, '#f6d33c', MENU_NOTE_S);
-      });
-    }
     // The control legend lines up under the menu labels (x = labelX) and fades
     // away once Dolores has arrived — it's onboarding, not permanent chrome, so
     // it clears out and leaves the settled counter clean.
@@ -5457,13 +5478,13 @@ export class BenchState {
     const safe = frame.safeRect;
     const css = (n) => n / frame.scale;
     const center = (safe.left + safe.right) / 2;
-    const margin = css(PORTRAIT_BENCH_SIDE_MARGIN_CSS);
+    const margin = css(PORTRAIT_COUNTER_SIDE_MARGIN_CSS);
     const contentLeft = safe.left + margin;
     const contentRight = safe.right - margin;
     const contentWidth = Math.max(css(180), contentRight - contentLeft);
     const opts = this.options();
     const slot = this.save.slot;
-    const titleScale = Math.min(4.5, contentWidth / Math.max(1, textWidth("DOLORES' REPAIR COUNTER", 1, 'title')));
+    const titleScale = counterTitleScale(contentWidth);
     const coinsText = `COINS: ${formatCoins(slot.coins)}`;
     const coinsScale = Math.min(2.4, contentWidth / Math.max(1, textWidth(coinsText, 1, 'bold')));
     const detailScale = 2.25;
@@ -5485,7 +5506,7 @@ export class BenchState {
     // Keep the attendant's entrance and reaction animation identical to the
     // landscape counter, but give her the quiet lower third of the portrait.
     const doleCx = Math.min(safe.right - css(82), center + css(92));
-    const doleFeet = safe.bottom - css(PORTRAIT_BENCH_DOLORES_EDGE_CSS);
+    const doleFeet = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS);
     const doleH = Math.min(180, Math.max(150, contentWidth * 0.42));
     const ENTER_DUR = 3.0;
     const ent = Math.min(1, this.enterT / ENTER_DUR);
@@ -5516,11 +5537,11 @@ export class BenchState {
     ctx.fill();
     drawToon(ctx, 'dolores', pose, doleX, doleFeet, doleH);
 
-    drawTextVectorCentered(ctx, "DOLORES' REPAIR COUNTER", center,
-      textYForMid(safe.top + css(PORTRAIT_BENCH_TITLE_TOP_CSS), titleScale, 'title'),
+    drawTextVectorCentered(ctx, COUNTER_TITLE_DOLORES, center,
+      textYForMid(safe.top + css(PORTRAIT_COUNTER_TITLE_TOP_CSS), titleScale, 'title'),
       '#f6d33c', titleScale, 'title');
     drawTextVectorCentered(ctx, coinsText, center,
-      textYForMid(safe.top + css(PORTRAIT_BENCH_COINS_TOP_CSS), coinsScale, 'bold'),
+      textYForMid(safe.top + css(PORTRAIT_COUNTER_COINS_TOP_CSS), coinsScale, 'bold'),
       '#f6d33c', coinsScale, 'bold');
 
     opts.forEach((o, i) => {
@@ -5566,14 +5587,17 @@ export class BenchState {
         selected ? '#c8c8d8' : '#8a8492', detailScale));
     });
 
-    if (this.notice) {
-      const faceW = 24, faceH = 24, gap = 9, pad = 10, lineH = 25, noticeScale = 1.9;
-      const noticeLines = wrapText(this.notice, contentWidth - faceW - gap - pad * 2, noticeScale, 3);
+    if (this.notice || BENCH_DEFAULT_CHAT) {
+      const faceW = PORTRAIT_CHAT_FACE_W, faceH = PORTRAIT_CHAT_FACE_H;
+      const gap = PORTRAIT_CHAT_GAP, pad = PORTRAIT_CHAT_PAD;
+      const lineH = PORTRAIT_CHAT_LINE_H, noticeScale = PORTRAIT_CHAT_SCALE;
+      const noticeLines = wrapText(this.notice || BENCH_DEFAULT_CHAT,
+        contentWidth - faceW - gap - pad * 2, noticeScale, 2);
       const noticeTextW = Math.max(...noticeLines.map((line) => textWidth(line, noticeScale)));
       const noticeW = Math.min(contentWidth, pad * 2 + faceW + gap + noticeTextW);
       const noticeH = Math.max(faceH + pad * 2, noticeLines.length * lineH + pad * 2);
       const noticeX = center - noticeW / 2;
-      const noticeY = safe.top + css(112);
+      const noticeY = safe.top + css(PORTRAIT_CHAT_TOP_CSS);
       drawPanel(ctx, noticeX, noticeY, noticeW, noticeH, 5, undefined,
         { border: 'rgba(246,211,60,0.35)', shadow: true });
       const face = toonFaceSprite('dolores', faceW, faceH);
@@ -5585,7 +5609,7 @@ export class BenchState {
 
     const hint = Input.isTouchDevice() ? 'TAP SELECT   TAP AGAIN BUY' : 'UP / DOWN: SELECT   ENTER: BUY';
     drawTextVectorCentered(ctx, hint, center,
-      textYForMid(safe.bottom - css(PORTRAIT_BENCH_HINT_EDGE_CSS), 1.45, 'bold'),
+      textYForMid(safe.bottom - css(PORTRAIT_COUNTER_HINT_EDGE_CSS), 1.45, 'bold'),
       '#8a8492', 1.45, 'bold');
   }
 }
@@ -5596,8 +5620,8 @@ export class ShopState {
   constructor({ save, flow }) {
     this.save = save;
     this.flow = flow;
-    this.listY = 58;
-    this.listBottom = 216;
+    this.listY = LANDSCAPE_COUNTER_LIST_TOP;
+    this.listBottom = LANDSCAPE_COUNTER_LIST_BOTTOM;
     this.rowH = MENU_ROW_MAX;
     this.visibleRows = 7;
     this.fixedLastRow = true;
@@ -5616,23 +5640,23 @@ export class ShopState {
       const css = (n) => n / frame.scale;
       const safe = frame.safeRect;
       const productCount = Math.max(1, opts.length - 1);
-      this.visibleRows = Math.min(PORTRAIT_SHOP_VISIBLE_ROWS, productCount);
-      this.listY = safe.top + css(PORTRAIT_SHOP_LIST_TOP_CSS);
-      const contentWidth = Math.max(css(180), safe.width - css(PORTRAIT_SHOP_SIDE_MARGIN_CSS * 2));
+      this.visibleRows = Math.min(PORTRAIT_COUNTER_VISIBLE_ROWS, productCount);
+      this.listY = safe.top + css(PORTRAIT_COUNTER_LIST_TOP_CSS);
+      const contentWidth = Math.max(css(180), safe.width - css(PORTRAIT_COUNTER_SIDE_MARGIN_CSS * 2));
       const garyH = Math.min(180, Math.max(150, contentWidth * 0.42));
-      const garyFeet = safe.bottom - css(PORTRAIT_SHOP_STAFF_EDGE_CSS);
+      const garyFeet = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS);
       const garyTop = garyFeet - garyH;
-      const nominalBottom = safe.bottom - css(PORTRAIT_SHOP_LIST_BOTTOM_CSS);
-      this.listBottom = Math.min(nominalBottom, garyTop - css(PORTRAIT_SHOP_GARY_GAP_CSS));
-      this.rowH = Math.max(css(PORTRAIT_SHOP_ROW_MIN_CSS),
-        Math.min(css(PORTRAIT_SHOP_ROW_MAX_CSS),
+      const nominalBottom = safe.bottom - css(PORTRAIT_COUNTER_LIST_BOTTOM_CSS);
+      this.listBottom = Math.min(nominalBottom, garyTop - css(PORTRAIT_COUNTER_STAFF_GAP_CSS));
+      this.rowH = Math.max(css(PORTRAIT_COUNTER_ROW_MIN_CSS),
+        Math.min(css(PORTRAIT_COUNTER_ROW_MAX_CSS),
           (this.listBottom - this.listY) / this.visibleRows));
       this.portraitBackIndex = opts.length - 1;
-      this.portraitBackY = safe.bottom - css(PORTRAIT_SHOP_STAFF_EDGE_CSS);
-      this.portraitBackH = css(PORTRAIT_SHOP_BACK_H_CSS);
+      this.portraitBackY = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS);
+      this.portraitBackH = css(PORTRAIT_COUNTER_BACK_H_CSS);
     } else {
-      this.listY = 58;
-      this.listBottom = 216;
+      this.listY = LANDSCAPE_COUNTER_LIST_TOP;
+      this.listBottom = LANDSCAPE_COUNTER_LIST_BOTTOM;
       this.rowH = MENU_ROW_MAX;
       this.visibleRows = 7;
       this.portraitBackIndex = null;
@@ -5706,7 +5730,7 @@ export class ShopState {
     const walking = ent < 1;
     const pose = walking
       ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
-      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: true };
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, menu: true };
     ctx.fillStyle = 'rgba(4,3,9,0.32)';
     ctx.beginPath();
     ctx.ellipse(x, feet + 1, height * (walking ? 0.16 : 0.2), height * 0.055, 0, 0, Math.PI * 2);
@@ -5722,28 +5746,35 @@ export class ShopState {
     ctx.fillStyle = '#100a14';
     ctx.fillRect(0, 0, W, H);
     this.drawGary(ctx, 410, 234, 138);
-    drawTextCentered(ctx, "GARY'S LEGAL PAWN SHOP", W / 2, 14, '#f890b8', 1);
-    drawTextCentered(ctx, this.line, W / 2, 28, '#5a5a68');
+    drawTextCentered(ctx, COUNTER_TITLE_GARY, W / 2, LANDSCAPE_COUNTER_TITLE_Y,
+      '#f890b8', LANDSCAPE_COUNTER_TITLE_S, 'title');
+    drawLandscapeCounterChat(ctx, this.line, 'gary', '#f890b8', 'rgba(248,144,184,0.35)');
     const slot = this.save.slot;
-    drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2, 44, '#f6d33c');
+    drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2,
+      LANDSCAPE_COUNTER_COINS_Y, '#f6d33c');
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
       if (!o.back && (i < this.listStart || i >= this.listStart + this.visibleRows)) return;
       const sel = i === this.idx;
-      if (sel) drawMenuRow(ctx, 18, this.listY + listVisualRow(this, i) * this.rowH + 1,
-        LANDSCAPE_SHOP_LIST_HOVER_RIGHT - 18, this.rowH - 2);
+      if (sel) drawMenuRow(ctx, LANDSCAPE_COUNTER_LIST_LEFT,
+        this.listY + listVisualRow(this, i) * this.rowH + 1,
+        LANDSCAPE_COUNTER_LIST_RIGHT - LANDSCAPE_COUNTER_LIST_LEFT, this.rowH - 2);
       const y = rowTextY(this, i, MENU_ROW_S);
-      if (o.back) { drawText(ctx, 'BACK', 30, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
+      if (o.back) { drawText(ctx, 'BACK', LANDSCAPE_COUNTER_LABEL_X, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
       // Names are measured against the price column rather than trusted to fit:
       // a size up, the longest mod name reached the coins it costs.
-      const priceX = LANDSCAPE_SHOP_LIST_HOVER_RIGHT - 42;
-      drawText(ctx, fitText(`${o.equipped ? '[E] ' : ''}${o.m.name}`, priceX - 36, MENU_ROW_S), 30, y, c, MENU_ROW_S);
-      if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, priceX, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
-      if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', LANDSCAPE_SHOP_LIST_RIGHT / 2, H - 28, '#8a8492', MENU_NOTE_S);
+      const priceX = LANDSCAPE_COUNTER_PRICE_X;
+      drawText(ctx, fitText(`${o.equipped ? '[E] ' : ''}${o.m.name}`, priceX - LANDSCAPE_COUNTER_LABEL_X - 36, MENU_ROW_S), LANDSCAPE_COUNTER_LABEL_X, y, c, MENU_ROW_S);
+      if (!o.owned) {
+        const price = `${formatCoins(o.price)}`;
+        drawText(ctx, price, priceX - textWidth(price, MENU_ROW_S), y,
+          slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
+      }
+      if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', LANDSCAPE_COUNTER_LIST_CENTER, H - 28, '#8a8492', MENU_NOTE_S);
     });
-    drawListScrollbar(ctx, this, opts.length, LANDSCAPE_SHOP_LIST_RIGHT);
+    drawListScrollbar(ctx, this, opts.length, LANDSCAPE_COUNTER_LIST_RIGHT + 16);
     drawMenuHint(ctx, 'BUY/EQUIP');
   }
 
@@ -5752,20 +5783,20 @@ export class ShopState {
     const safe = frame.safeRect;
     const css = (n) => n / frame.scale;
     const center = (safe.left + safe.right) / 2;
-    const margin = css(PORTRAIT_SHOP_SIDE_MARGIN_CSS);
+    const margin = css(PORTRAIT_COUNTER_SIDE_MARGIN_CSS);
     const contentLeft = safe.left + margin;
     const contentRight = safe.right - margin;
     const contentWidth = Math.max(css(180), contentRight - contentLeft);
     const opts = this.options();
     const slot = this.save.slot;
-    const title = "GARY'S LEGAL PAWN SHOP";
-    const titleScale = Math.min(4.5, contentWidth / Math.max(1, textWidth(title, 1, 'title')));
+    const title = COUNTER_TITLE_GARY;
+    const titleScale = counterTitleScale(contentWidth);
     const coinsText = `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`;
     const coinsScale = Math.min(2.1, contentWidth / Math.max(1, textWidth(coinsText, 1, 'bold')));
     const detailScale = 2.15;
     const rowX = safe.left + css(10);
     const rowRight = safe.right - css(10);
-    const detailRight = contentRight - css(26);
+    const detailRight = contentRight - css(8);
     const detailWidth = Math.max(css(150), detailRight - contentLeft);
     const longestLabel = opts
       .filter((o) => !o.back)
@@ -5775,7 +5806,7 @@ export class ShopState {
     const labelScale = Math.min(3.3,
       (detailRight - contentLeft - priceReserve) / Math.max(1, textWidth(longestLabel, 1, 'bold')));
     const garyCx = Math.min(safe.right - css(82), center + css(92));
-    const garyFeet = safe.bottom - css(PORTRAIT_SHOP_STAFF_EDGE_CSS);
+    const garyFeet = safe.bottom - css(PORTRAIT_COUNTER_STAFF_EDGE_CSS);
     const garyH = Math.min(180, Math.max(150, contentWidth * 0.42));
 
     ctx.fillStyle = '#100a14';
@@ -5783,20 +5814,21 @@ export class ShopState {
     this.drawGary(ctx, garyCx, garyFeet, garyH);
 
     drawTextVectorCentered(ctx, title, center,
-      textYForMid(safe.top + css(PORTRAIT_SHOP_TITLE_TOP_CSS), titleScale, 'title'),
+      textYForMid(safe.top + css(PORTRAIT_COUNTER_TITLE_TOP_CSS), titleScale, 'title'),
       '#f890b8', titleScale, 'title');
     drawTextVectorCentered(ctx, coinsText, center,
-      textYForMid(safe.top + css(PORTRAIT_SHOP_COINS_TOP_CSS), coinsScale, 'bold'),
+      textYForMid(safe.top + css(PORTRAIT_COUNTER_COINS_TOP_CSS), coinsScale, 'bold'),
       '#f6d33c', coinsScale, 'bold');
 
-    const chatScale = 2.4;
-    const faceW = 24, faceH = 24, gap = 9, pad = 10, lineH = 31;
-    const chatLines = wrapText(this.line, contentWidth - faceW - gap - pad * 2, chatScale, 3);
+    const chatScale = PORTRAIT_CHAT_SCALE;
+    const faceW = PORTRAIT_CHAT_FACE_W, faceH = PORTRAIT_CHAT_FACE_H;
+    const gap = PORTRAIT_CHAT_GAP, pad = PORTRAIT_CHAT_PAD, lineH = PORTRAIT_CHAT_LINE_H;
+    const chatLines = wrapText(this.line, contentWidth - faceW - gap - pad * 2, chatScale, 2);
     const chatTextW = Math.max(...chatLines.map((line) => textWidth(line, chatScale)));
     const chatW = Math.min(contentWidth, pad * 2 + faceW + gap + chatTextW);
     const chatH = Math.max(faceH + pad * 2, chatLines.length * lineH + pad * 2);
     const chatX = center - chatW / 2;
-    const chatY = safe.top + css(PORTRAIT_SHOP_CHAT_TOP_CSS);
+    const chatY = safe.top + css(PORTRAIT_CHAT_TOP_CSS);
     drawPanel(ctx, chatX, chatY, chatW, chatH, 5, undefined,
       { border: 'rgba(248,144,184,0.35)', shadow: true });
     const face = toonFaceSprite('gary', faceW, faceH);
@@ -5839,7 +5871,7 @@ export class ShopState {
 
     const hint = Input.isTouchDevice() ? 'TAP SELECT   TAP AGAIN BUY / EQUIP' : 'UP / DOWN: SELECT   ENTER: BUY / EQUIP';
     drawTextVectorCentered(ctx, hint, center,
-      textYForMid(safe.bottom - css(PORTRAIT_SHOP_HINT_EDGE_CSS), 1.35, 'bold'),
+      textYForMid(safe.bottom - css(PORTRAIT_COUNTER_HINT_EDGE_CSS), 1.35, 'bold'),
       '#8a8492', 1.35, 'bold');
   }
 }
