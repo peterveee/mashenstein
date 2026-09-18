@@ -3190,7 +3190,8 @@ export class IntroState {
       return;
     }
     if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
-      this.finish();
+      if (this.awaitingClose) this.finish();
+      else this.startBeat(this.beatIndex + 1);
       Input.endFrame();
       return;
     }
