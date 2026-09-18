@@ -46,7 +46,8 @@ function frames(n, dt = 16.7) { for (let i = 0; i < n; i++) dom.frame(dt); }
 frames(5);
 dom.key('Enter'); frames(30);
 dom.key('Enter'); frames(30);
-for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
+// Tap advances one beat at a time (11 beats, then a close tap), not exit-on-first-press.
+for (let i = 0; i < 14; i++) { dom.key('Enter'); frames(12); }
 frames(40);
 globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
 frames(2);
