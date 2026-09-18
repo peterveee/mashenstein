@@ -2580,7 +2580,10 @@ export class TitleState {
     // Portrait parks it just under the card instead. Pinned to H - 12 it was a
     // caption at the very bottom of a phone, most of a screen away from the
     // dialog it belongs to, and at the landscape size to boot.
-    const prompt = `${confirmVerb()}: CONFIRM   BACK`;
+    // Every step here already shows a cancel row in the list itself (BACK, NO
+    // KEEP IT, NO GO BACK) — this hint is only for the row-select verb, not a
+    // second announcement that backing out is possible.
+    const prompt = `${confirmVerb()}: CONFIRM`;
     if (portraitMenuActive()) {
       const g = modalListGeom(this.eraseChoices().length, true, this.erase.step === 'choose', true);
       portraitMenuTextCentered(d, prompt, W / 2,
@@ -2596,8 +2599,10 @@ export class TitleState {
       align: 'left', fitWidth: true,
     });
     if (portraitMenuActive()) {
+      // The list ends with its own BACK row, in full view — a second line
+      // spelling that out again is the thing this screen is trying not to be.
       portraitMenuTextCentered(d,
-        Input.isTouchDevice() ? 'TAP: CHOOSE   BACK: EXIT' : 'ARROWS: CHOOSE   ENTER: CONFIRM',
+        Input.isTouchDevice() ? 'TAP: CHOOSE' : 'ARROWS: CHOOSE   ENTER: CONFIRM',
         W / 2, portraitMenuTextY(portraitMenuSafeBottom(22), 1.3), '#5a5a68', 1.3);
     }
   }
