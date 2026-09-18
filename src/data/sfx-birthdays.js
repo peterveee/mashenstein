@@ -74,8 +74,8 @@ export const SFX_BIRTHDAYS = {
   bridgeLay: '2026-09-18',   // cc4fb74
   doorClose: '2026-09-18',   // 215696c
   doorOpen: '2026-09-18',   // 215696c
-  doorSwingOpen: null,
-  doorSwingShut: null,
+  doorSwingOpen: '2026-09-18',   // 0ea7197
+  doorSwingShut: '2026-09-18',   // 0ea7197
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

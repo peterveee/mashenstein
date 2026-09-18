@@ -97,7 +97,12 @@ export function makeDoorEntry({
         // The room is the side he is walking TOWARD on the way in, which is the
         // opposite of the way out — see the clip note on openingEdge().
         roomSide: dir,
-        phase: t < walkStart ? 'open' : t <= walkStart + walkDur ? 'walk' : 'shut',
+        // The phase follows the DOOR, not the hero. It used to flip to 'shut'
+        // when he finished walking to his mark, but the leaf starts closing at
+        // clearT — the moment he is out of the doorway — and he then keeps
+        // walking several strides further into the room. So the shut cue landed
+        // most of half a second after the door had visibly finished shutting.
+        phase: t < walkStart ? 'open' : t < clearT ? 'walk' : 'shut',
         gait: ((Math.abs(px - startX) / gaitCycle) % 1 + 1) % 1,
       };
     },
