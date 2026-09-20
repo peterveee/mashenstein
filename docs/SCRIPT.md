@@ -76,7 +76,7 @@ A tagline rotates underneath — the arcade talking to itself:
 | `rollcall` | EIGHT HEROES. ONE SOCKET.<br>A RELAY BEGINS. | The seven cross the doorway on sixteenths behind him; the whole cast accelerates across the cabinet-free runway. | 3.64s |
 | `lineup` | *(no caption)* | The first cabinet crosses into frame and Lorenzo runs at it flat out; no static lineup forms. | 1.82s |
 | `dive` | *(no caption)* | Lorenzo leaps on the downbeat, crosses into the first PLUMBER PANIC screen and runs visibly inside while the others keep coming. | 1.82s |
-| `wide` | HISTORY WILL RECORD WHAT HAPPENS NEXT.<br>PROBABLY INCORRECTLY. | The first four brake as he leaves the floor and skid to a stop short of the machine; the three nearest him are on screen for the jump, eased down to a jog while he is in the air, and sprint past the glass one after another the moment it has him — the first while the fourth of the others is still skidding — and stop on the far side. Grumpos, Clara and B-33P celebrate; the rest watch. The frame is already centred on the cabinet and only zooms out. | 3.64s |
+| `wide` | HISTORY WILL RECORD WHAT HAPPENS NEXT.<br>PROBABLY INCORRECTLY. | The first four brake as he leaves the floor and skid to a stop short of the machine; the three slow ones, well back when he jumps, sprint flat out from that frame and race past the glass one after another the moment his run inside the screen is over, stopping on the far side. Grumpos, Clara and B-33P celebrate; the rest watch. The frame is already centred on the cabinet and only zooms out. | 3.64s |
 
 The load-bearing joke remains the relay rule: **only one hero can play at a time**. The How-To-Play screen restates it flatly as `ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.`
 

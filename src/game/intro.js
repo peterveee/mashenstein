@@ -153,13 +153,13 @@ const ROCKER_Y = STRIP_Y + STRIP_H * 0.5;
 // well before it, the way a room does.
 const ROOM_X0 = -620, ROOM_X1 = 2000;
 
-// Door order. The first three out are the ones that end up PAST the machine:
-// they are nearest him when he jumps, ease down while he is in the air, and
-// sprint past once he is in (Clara stops nearest the glass, Grumpos on the far
-// right). The last four out pull up short of it (Rusty beside the glass, Kiko
-// on the far left). The marks are on FOLLOWER_PATHS by this index, so the
-// line-up is set HERE.
-const HERO_IDS = ['lorenzo', 'clara', 'ramon', 'grumpos', 'rusty', 'fernwick', 'b33p', 'kiko'];
+// Door order. The first four out are the chase — they arrive with him and pull
+// up short of the machine (Rusty beside the glass, Kiko on the far left). The
+// last three are the slow ones, overtaken early and well back when he jumps;
+// from that frame they sprint flat out, reach the glass only after he is off
+// its screen, and go past to the far side (Clara nearest, Grumpos far right).
+// The marks are on FOLLOWER_PATHS by this index, so the line-up is set HERE.
+const HERO_IDS = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'kiko', 'clara', 'ramon', 'grumpos'];
 // The hub's own NPC/player height, not a number of our own. The dive solves its
 // arc, its crossing height and its whole perspective budget off heroH, so a film
 // hero even two units short of the hub's makes the leap into the glass a
@@ -818,60 +818,67 @@ const LORENZO_V1 = 2 * (LORENZO_LAUNCH_X - DOOR_START_X) / LORENZO_RUN_DUR - LOR
 // pegs rather than as a group of people who happened to stop where they stopped.
 // THE FINISH. The first four out of the door pull up SHORT of the machine —
 // they see him leave the floor and brake on that frame, each for their own
-// length of skid. The last three are ON SCREEN for the jump: they have eased
-// right down behind him and are jogging while he is in the air, and the moment
-// the glass takes him they BURST, sprint past the screen one after another and
-// skid to a stop on the far side. Nobody crosses in front of the picture while
-// he is in flight; three people cross it, fast, in the second after.
+// length of skid. The last three are the slow ones: overtaken early, a bay or
+// more back when he jumps, and on THAT frame they go — flat out, a sprint
+// nothing in the run touched — and reach the glass only once his run inside
+// the screen is over. Three people crossing the picture at full tilt, in the
+// second after he has left it.
 //
-// Every runner is a chain of velocity segments — ramp, ease, hold, burst — with
-// one skid at the end, and the mark is the authored thing: v1 is solved so that
-// the whole chain lands on it. Per-hero `react`, `skid`, `ease`, `burst` and
-// `late` keep the seven from doing any of it in unison.
+// Every runner is a chain of velocity segments with one skid at the end. A
+// segment's speeds are factors of v1, the run speed, except 'v0' (their start)
+// and 'S' (the authored sprint) — and the mark is the authored thing: v1 is
+// solved so the whole chain lands on it.
 const NEAR_SKID = BEAT * 1.6;                          // a near runner's stop, before `skid` scales it
-const FAR_BURST = BEAT;                                // how long the sprint past the glass builds
-const FAR_SKID = BEAT * 1.4;                           // and the stop after it, before `skid` scales it
+const FAR_BURST = BEAT * 1.5;                          // how long the sprint takes to build
+const FAR_SKID = BEAT * 1.2;                           // and the stop after it, before `skid` scales it
+// When the far three may start crossing the picture: half a second after his
+// jump INSIDE the screen — the in-screen leap is the last thing to read there.
+const FAR_CROSS_OK = DIVE_AT + DIVE_REL('runoff') + PHASE_AT.runoff.dur * 0.55 + 0.5;
+const FAR_PEAK_AT = SCREEN_REVEAL_AT - BAR * 0.5;      // where their opening dash tops out
+const FAR_SETTLE = FAR_CROSS_OK + BEAT * 1.5;          // base halt for the far three; `late` spreads them
 const FOLLOWER_PATHS = [
-  // The far three, first out. ease: the fraction of their sprint they are down
-  // to when he jumps — a walk, because they then have to hold it behind the
-  // machine until his run inside the screen has finished, and nobody crosses
-  // the picture while he is in it. go: how long after THAT each launches.
-  // burst: the fraction of the sprint they go past at.
-  { x0: 20, v0: 138, wave: 'far', mark: 1000, ease: 0.20, go: 0.00, burst: 1.15, skid: 1.00, late: 0.00 },
-  { x0: 6, v0: 142, wave: 'far', mark: 1040, ease: 0.20, go: 0.22, burst: 1.22, skid: 0.85, late: 0.18 },
-  { x0: -8, v0: 132, wave: 'far', mark: 1080, ease: 0.22, go: 0.42, burst: 1.30, skid: 1.15, late: 0.40 },
-  // The near four, last out. react: how late they see him leave the floor.
-  { x0: -18, v0: 132, wave: 'near', mark: 878, react: 0.00, skid: 1.00 },
-  { x0: -30, v0: 128, wave: 'near', mark: 848, react: 0.09, skid: 0.80 },
-  { x0: -44, v0: 122, wave: 'near', mark: 818, react: 0.04, skid: 1.30 },
-  { x0: -58, v0: 114, wave: 'near', mark: 788, react: 0.13, skid: 1.75 },
+  // The near four. react: how late they see him leave the floor.
+  { x0: 20, v0: 132, wave: 'near', mark: 894, react: 0.00, skid: 1.00 },
+  { x0: 6, v0: 128, wave: 'near', mark: 859, react: 0.09, skid: 0.80 },
+  { x0: -8, v0: 122, wave: 'near', mark: 823, react: 0.04, skid: 1.30 },
+  { x0: -22, v0: 114, wave: 'near', mark: 788, react: 0.13, skid: 1.75 },
+  // The far three: last out and QUICK — a dash to catch the pack, then they
+  // ease off (`ease` of their dash) and are overtaken, then from the takeoff
+  // they sprint. go: how long after the takeoff each launches. sprint: the
+  // speed they cross at, in world units a second — beyond anything in the run.
+  { x0: -34, v0: 112, wave: 'far', mark: 988, ease: 0.45, go: 0.06, sprint: 236, skid: 1.00, late: 0.00 },
+  { x0: -48, v0: 108, wave: 'far', mark: 1032, ease: 0.42, go: 0.28, sprint: 250, skid: 0.85, late: 0.35 },
+  { x0: -62, v0: 110, wave: 'far', mark: 1076, ease: 0.48, go: 0.52, sprint: 262, skid: 1.15, late: 0.70 },
 ].map((p, i, all) => {
   const t0 = GROUP_RUN_T + i * FOLLOWER_STAGGER;
   const near = p.wave === 'near';
   const rank = all.slice(0, i).filter((q) => q.wave === p.wave).length;
-  // The chain, as [duration, speed-in factor, speed-out factor] on v1 — every
-  // segment's distance is linear in v1, which is what makes the mark solvable.
-  const brakeAt = near ? DIVE_AT + p.react : DIVE_END + p.go + FAR_BURST;
-  const settle = near ? brakeAt + NEAR_SKID * p.skid : brakeAt + FAR_SKID * p.skid + p.late;
+  const brakeAt = near ? DIVE_AT + p.react : FAR_SETTLE + p.late - FAR_SKID * p.skid;
+  const settle = near ? brakeAt + NEAR_SKID * p.skid : FAR_SETTLE + p.late;
   const brake = settle - brakeAt;
+  const goAt = DIVE_AT + p.go;
   const chain = near
-    ? [[brakeAt - t0, null, 1]]
-    : [[SCREEN_REVEAL_AT - t0, null, 1], [DIVE_AT - SCREEN_REVEAL_AT, 1, p.ease],
-      [DIVE_END + p.go - DIVE_AT, p.ease, p.ease], [FAR_BURST, p.ease, p.burst]];
-  const vOut = near ? 1 : p.burst;                   // the factor the skid starts from
-  // distance = v0·d0/2 + v1·( d0/2 + Σ d·(a+b)/2 + brake·vOut/2 )
-  let coef = chain[0][0] / 2 + brake * vOut / 2;
-  for (const [d, fa, fb] of chain.slice(1)) coef += d * (fa + fb) / 2;
-  const v1 = (p.mark - p.x0 - chain[0][0] * p.v0 / 2) / coef;
-  // Now lay the segments out in time with their speeds and start positions.
+    ? [[brakeAt - t0, 'v0', 1]]
+    : [[FAR_PEAK_AT - t0, 'v0', 1], [goAt - FAR_PEAK_AT, 1, p.ease],
+      [FAR_BURST, p.ease, 'S'], [brakeAt - goAt - FAR_BURST, 'S', 'S']];
+  const vBrakeF = near ? 1 : 'S';
+  // distance = const + v1·coef, then v1 = (mark - x0 - const) / coef
+  const parts = (f) => (f === 'v0' ? [p.v0, 0] : f === 'S' ? [p.sprint, 0] : [0, f]);
+  let c0 = 0, c1 = 0;
+  for (const [d, fa, fb] of chain) {
+    const [ka, va] = parts(fa), [kb, vb] = parts(fb);
+    c0 += d * (ka + kb) / 2; c1 += d * (va + vb) / 2;
+  }
+  { const [kb, vb] = parts(vBrakeF); c0 += brake * kb / 2; c1 += brake * vb / 2; }
+  const v1 = (p.mark - p.x0 - c0) / c1;
+  const spd = (f) => (f === 'v0' ? p.v0 : f === 'S' ? p.sprint : f * v1);
   const segs = [];
   let t = t0, x = p.x0;
-  chain.forEach(([d, fa, fb], k) => {
-    const vA = k === 0 ? p.v0 : v1 * fa, vB = v1 * fb;
-    segs.push({ t0: t, t1: t + d, x0: x, vA, vB });
-    x = rampPosition(x, vA, vB, d, 1); t += d;
-  });
-  const vBrake = v1 * vOut;
+  for (const [d, fa, fb] of chain) {
+    segs.push({ t0: t, t1: t + d, x0: x, vA: spd(fa), vB: spd(fb) });
+    x = rampPosition(x, spd(fa), spd(fb), d, 1); t += d;
+  }
+  const vBrake = spd(vBrakeF);
   return {
     ...p, t0, rank, v1, vBrake, segs, brakeAt, brake, settle,
     runEnd: segs[0].t1, atBrake: x,
@@ -2065,7 +2072,7 @@ export const IntroFilm = {
   LORENZO_REVEAL_T, LORENZO_RUN_T, LORENZO_IDLE_T, GROUP_RUN_T,
   LORENZO_V0, LORENZO_V1, LORENZO_LAUNCH_X, FOLLOWER_PATHS,
   GATHER_ARRIVE, GATHER_BRAKE, HERO_PAN_START_T, PULL_OUT_SEC, BAR, BEAT, SIXTEENTH,
-  NEAR_SKID, FAR_BURST, FAR_SKID,
+  NEAR_SKID, FAR_BURST, FAR_SKID, FAR_SETTLE, FAR_CROSS_OK,
   FOLLOWER_STAGGER,
   HERO_IDS, CAB_CX, BAY, FLOOR_Y, STRIP_CX, SOCKET_CX, POSTER_XS, bayXsIn,
   heroHopAt, HERO_HOPS,

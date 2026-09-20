@@ -432,15 +432,15 @@ function fingerprint(t) {
   const paths = IntroFilm.FOLLOWER_PATHS;
   const near = paths.filter((p) => p.wave === 'near'), far = paths.filter((p) => p.wave === 'far');
   assert(near.length === 4 && far.length === 3, 'the first four pull up short, the last three carry past');
-  // The far three are ON SCREEN for the jump, down to a jog while he is in the
-  // air, and sprint the moment the glass has him.
-  assert(far.every((p) => IntroFilm.heroSpeedAt(IntroFilm.DIVE_AT + 0.3, paths.indexOf(p) + 1) < p.v1 * 0.65),
-    'the far three have eased right down while he is in the air');
-  assert(far.every((p) => p.vBrake > p.v1),
-    'and sprint past faster than they ever ran');
-  assert(far.filter((p) => IntroFilm.heroPosAt(IntroFilm.DIVE_AT, paths.indexOf(p) + 1).x
-    > IntroFilm.cameraAt(IntroFilm.DIVE_AT, gate).x - gate.w / (2 * IntroFilm.cameraAt(IntroFilm.DIVE_AT, gate).zoom)).length >= 2,
-  'at least two of them are in the frame he jumps out of');
+  // The far three are the slow ones: overtaken early, a bay or more back when
+  // he jumps, and from that frame they SPRINT — faster than anything in the run
+  // — so that they cross the picture only once he has left it.
+  const takeoffCam = IntroFilm.cameraAt(IntroFilm.DIVE_AT, gate);
+  const takeoffEdge = takeoffCam.x - gate.w / (2 * takeoffCam.zoom);
+  assert(far.every((p) => IntroFilm.heroPosAt(IntroFilm.DIVE_AT, paths.indexOf(p) + 1).x < takeoffEdge - 60),
+    'the far three are well back, out of the frame he jumps from');
+  assert(far.every((p) => p.vBrake > p.v1 * 1.6 && p.vBrake > IntroFilm.LORENZO_V1),
+    'and sprint past faster than anyone ran, Lorenzo included');
   // Each wave pulls up inside a quarter of a beat of its base, but NOT on one
   // frame: a shared frame read as a cue firing, and the marks are uneven for
   // the same reason.
@@ -468,8 +468,8 @@ function fingerprint(t) {
   const nearHalts = near.map((p) => p.settle).sort((a, b) => a - b);
   // NOBODY CROSSES THE PICTURE WHILE HE IS IN IT. The first crossing waits for
   // his run inside the screen to finish, not merely for the glass to take him.
-  assert(glassCrossings[0] >= IntroFilm.DIVE_END,
-    `no one passes the machine until Lorenzo is off its screen (${(glassCrossings[0] - IntroFilm.DIVE_END).toFixed(2)}s after)`);
+  assert(glassCrossings[0] >= IntroFilm.FAR_CROSS_OK,
+    `no one passes the machine until half a second after his jump inside it (${(glassCrossings[0] - IntroFilm.FAR_CROSS_OK).toFixed(2)}s after)`);
   void nearHalts;
   assert(glassCrossings[2] - glassCrossings[0] > 0.3 && new Set(glassCrossings.map((t) => t.toFixed(2))).size === 3,
     `the three go past one at a time, not as a wave (${(glassCrossings[2] - glassCrossings[0]).toFixed(2)}s apart)`);
