@@ -38,3 +38,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-28 | `48bef85` | [2026-07-28-48bef85.html](2026-07-28-48bef85.html) | Enhance mixer functionality and UI |
 | 2026-08-14 | `414ae37` | [2026-08-14-414ae37.html](2026-08-14-414ae37.html) | Add converging forks: a high road that rejoins the lane |
 | 2026-09-05 | `f7d5dae` | [2026-09-05-f7d5dae.html](2026-09-05-f7d5dae.html) | test: clear hitstop when the routes test places the hero |
+| 2026-09-19 | `0862cd5` | [2026-09-19-0862cd5.html](2026-09-19-0862cd5.html) | Give the erase modal's title and warning line room in portrait |

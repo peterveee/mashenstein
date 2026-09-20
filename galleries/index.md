@@ -34,10 +34,11 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-15 | `08fc2a3` | [2026-09-15-08fc2a3.html](2026-09-15-08fc2a3.html) | [bake-offs](2026-09-15-08fc2a3-lab.html) | Add tests for dev URL handling, Frost aurora, weather mechanics, and object shadows |
 | 2026-09-16 | `8e79cc0` | [2026-09-16-8e79cc0.html](2026-09-16-8e79cc0.html) | [bake-offs](2026-09-16-8e79cc0-lab.html) | feat(attract): add initialHeroId for idle demo and dev modes |
 | 2026-09-17 | `32842c1` | [2026-09-17-32842c1.html](2026-09-17-32842c1.html) | [bake-offs](2026-09-17-32842c1-lab.html) | feat: add SFX desk for live audio mixing and level adjustment |
-| 2026-09-18 | `b68be5b` | [2026-09-18-b68be5b.html](2026-09-18-b68be5b.html) | [bake-offs](2026-09-18-b68be5b-lab.html) | feat: add floor reflections rendering and desk management tools |
-| 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |
 | 2026-09-18 | `5cc650c` | [2026-09-18-5cc650c.html](2026-09-18-5cc650c.html) | [bake-offs](2026-09-18-5cc650c-lab.html) | feat: add new lab HTML file and enhance cabinet dive mechanics with facial expressions |
+| 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |
+| 2026-09-18 | `b68be5b` | [2026-09-18-b68be5b.html](2026-09-18-b68be5b.html) | [bake-offs](2026-09-18-b68be5b-lab.html) | feat: add floor reflections rendering and desk management tools |
 | 2026-09-18 | `51a5883` | [2026-09-18-51a5883.html](2026-09-18-51a5883.html) | [bake-offs](2026-09-18-51a5883-lab.html) | Add door-walk sequence implementation and gallery HTML files |
 | 2026-09-18 | `352235a` | [2026-09-18-352235a.html](2026-09-18-352235a.html) | [bake-offs](2026-09-18-352235a-lab.html) | Enhance ShopState for Portrait Mode |
 | 2026-09-19 | `cef82df` | [2026-09-19-cef82df.html](2026-09-19-cef82df.html) | [bake-offs](2026-09-19-cef82df-lab.html) | Settings reset asks with YES/NO buttons; trim three stale touch hints |
+| 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |
