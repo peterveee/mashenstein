@@ -18,9 +18,11 @@ import { Audio } from '../engine/audio.js';
 import { drawTextCentered } from '../engine/sprites.js';
 import { setState } from '../engine/states.js';
 import { STAGES } from '../data/stages.js';
+import { INTRO_FILM } from '../data/jokes.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
 import { drawSpeech, drawActBanner } from '../game/hud.js';
-import { BriefingState, IntroState, FinaleState } from '../game/menus.js';
+import { BriefingState, FinaleState } from '../game/menus.js';
+import { IntroState } from '../game/intro.js';
 
 // What a stage opens with, in the order the run plays it. Most have one of
 // these; plumber-1 has both, and the other eighteen stages have neither.
@@ -76,7 +78,7 @@ export class StageIntroState {
 function proseBeats(dev) {
   const { save } = dev.ctx;
   const beats = [{
-    label: 'INTRO FILM (11 BEATS)',
+    label: `INTRO FILM (${INTRO_FILM.shots.length} SHOTS, ${INTRO_FILM.duration.toFixed(0)}s)`,
     open: (next) => new IntroState({ onDone: next }),
   }];
   for (const stage of STAGES) {

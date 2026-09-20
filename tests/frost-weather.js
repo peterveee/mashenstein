@@ -289,5 +289,48 @@ function assert(cond, msg) {
   }
 }
 
+// --- the snow is already falling when the stage comes up ---------------------
+//
+// The blizzard has exactly two motion terms: the camera, and the clock it is
+// handed. Through the ACT card, the touch card and the opening run-in the world
+// is parked AND tRun is held at zero — so a weather clock taken off the run
+// clock leaves Frost 2 and 3 (which open part-way up the ladder) sitting under
+// a sheet of snow nailed to the screen. Weather is scenery: it rides the
+// scenery clock, which is alive from the first frame and still freezes on a
+// real pause.
+{
+  const { RunState } = await import('../src/game/run.js');
+  const { save } = await import('../src/engine/save.js');
+  save.load();
+  save.newSlot(0, 0);
+
+  for (const index of [2, 3]) {
+    const run = new RunState({
+      stage: {
+        id: `frost-${index}`, cabinet: 'frost', index,
+        mission: { type: 'reach', desc: 'TEST' },
+        challenge: { type: 'coins', n: 9999, desc: 'TEST' },
+        durationSec: 40, applianceAt: 0.5, applianceHigh: false,
+      },
+      team: ['lorenzo', 'rusty', 'clara'],
+      save, seed: 1234, difficulty: 1, devInvuln: true, onEnd: () => {},
+    });
+    run.enter();
+
+    assert(__testing.frostBlizzardRung(index, 0) > 0,
+      `Frost ${index} opens with weather already on it`);
+
+    const clocks = [];
+    run.style.weather = (_ctx, t) => { clocks.push(t); };
+    const ctx = globalThis.document.createElement('canvas').getContext('2d');
+    for (let i = 0; i < 12; i++) { run.update(1 / 60); run.drawFrame(ctx, 0); }
+
+    assert(run.tRun === 0 && run.introRunning,
+      `Frost ${index}: the lane is still held back over these frames`);
+    assert(clocks.length >= 2 && clocks[clocks.length - 1] > clocks[0],
+      `Frost ${index}: the snow is falling before the lane goes live`);
+  }
+}
+
 console.log(failed ? 'FROST WEATHER: FAILED' : 'FROST WEATHER: PASSED');
 process.exit(failed ? 1 : 0);

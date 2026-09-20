@@ -93,16 +93,39 @@ Becomes the Act II boss. The only antagonist with a conscience — apologizes fo
 
 ## 3. STORY STRUCTURE
 
-**Runtime shape:** 4 intro panels → 3 acts / 9 cabinets / 27 stages → 3 bosses → 9 finale beats.
+**Runtime shape:** a 32.20s opening film → 3 acts / 9 cabinets / 27 stages → 3 bosses → 9 finale beats.
 
-### 3.1 Cold Open (Intro Panels)
+### 3.1 Cold Open (The Opening Film)
 
-Four typewriter panels at 40 chars/sec, played once on a new file after difficulty select:
+Eleven shots, 32.20s, played once on a new file after difficulty select. It is a
+film, not a slideshow: one continuous arcade — the hub's own room, drawn by the
+hub's own painters — that a camera moves through. `INTRO_SHOTS` in
+`src/data/jokes.js` carries the script, the shot lengths, the camera boxes and
+the cue sheet; `src/game/intro.js` is the projector.
 
-1. "THE ARCADE. 11:58 PM. EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM."
-2. Eggshell unplugs the master power strip. "IF I CANNOT WIN... NOBODY PLAYS."
-3. "DUE TO BUDGET CUTS, THE ARCADE CAN ONLY RENDER ONE HERO AT A TIME."
-4. "EIGHT HEROES. ONE SOCKET. A RELAY BEGINS."
+| # | shot | the picture | the line |
+|---|---|---|---|
+| 1 | `row` | slow truck along six lit machines | THE ARCADE. 11:58 PM.<br>CABINETS DREAMING ELECTRIC DREAMS. |
+| 2 | `arrival` | the clown-copter flies in; camera cranes to meet it | DON K. EGGSHELL, PHD.<br>FORTY YEARS OF DEFEAT BY PLUMBERS.<br>NEVER ON TOP. |
+| 3 | `threat` | lock-off on his face | IF HE CANNOT WIN... NOBODY PLAYS. |
+| 4 | `reach` | tilt down onto the master strip; his claw takes the rocker | HIS VACUUM IS ALSO CHARGING. PRIORITIES. |
+| 5 | `socket` | hard cut to the separate far-right terminal before the row dies; the full bank empties last-to-first | MCGFN-1. THE SOCKET HAS NOT RECEIVED THE MEMO. |
+| 6 | `dark` | after the socket empties, six screens die left to right, then near-silence | THE ARCADE GOES DARK.<br>EGGSHELL TAKES THE CREDIT. |
+| 7 | `doors` | the black centre-parting service door opens from the middle to reveal Lorenzo already idle; he holds the line, starts running, then the others enter closely behind and the whole cast accelerates | DUE TO BUDGET CUTS, ONLY ONE HERO CAN PLAY AT A TIME. |
+| 8 | `rollcall` | a wide runway view keeps the runners moving together for a sustained run | EIGHT HEROES. ONE SOCKET.<br>A RELAY BEGINS. |
+| 9 | `lineup` | the relay continues in motion with a long clear gap before the first cabinet | *(no caption; the relay line continues from the previous shot)* |
+| 10 | `dive` | Lorenzo runs beyond the marks and dives into the first PLUMBER PANIC cabinet; the action carries the beat without another caption | *(no caption)* |
+| 11 | `wide` | observers keep moving around the fully live PLUMBER PANIC cabinet while the camera stays with it | HISTORY WILL RECORD WHAT HAPPENS NEXT.<br>PROBABLY INCORRECTLY. |
+
+**The music cut is the spine.** It opens on the title nocturne at 56bpm, kills
+the music dead on the rocker (shot 4 → 5) for the terminal and dark inserts, and
+slams THE SURGE in at 132 on shot 7's first frame, where the door goes.
+
+**Seconds are authoritative; the music follows.** The action pass stores explicit
+shot seconds and resolves them once at module load. The runtime never reads the
+song clock, so a muted phone, a headless test and a video render all play the
+identical 32.20-second film and cut on the identical frame. Alternate opening
+themes remain a separate audition pass.
 
 ### 3.2 The Hub — The Last Functioning Food Court
 

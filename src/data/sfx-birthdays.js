@@ -32,9 +32,6 @@ export const SFX_BIRTHDAYS = {
   perfect: '2026-07-19',   // 04c9246
   plop: '2026-07-19',   // 04c9246
   power: '2026-07-19',   // 04c9246
-  powerDown: null,
-  static: null,
-  crowdCheer: null,
   shield: '2026-07-19',   // 04c9246
   shoot: '2026-07-19',   // 04c9246
   star: '2026-07-19',   // 659b55e
@@ -79,6 +76,11 @@ export const SFX_BIRTHDAYS = {
   doorOpen: '2026-09-18',   // 215696c
   doorSwingOpen: '2026-09-18',   // 0ea7197
   doorSwingShut: '2026-09-18',   // 0ea7197
+  crowdCheer: '2026-09-19',   // 1363b15
+  powerDown: '2026-09-19',   // 1363b15
+  static: '2026-09-19',   // 1363b15
+  socketDrop: null,
+  stripThrow: null,
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

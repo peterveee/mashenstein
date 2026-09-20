@@ -5,15 +5,16 @@ import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import {
-  VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, smooth, setVisualiserViewport,
+  VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, setVisualiserViewport,
 } from '../engine/visualisers.js';
+import { smooth } from '../engine/ease.js';
 import { defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
 import {
   drawTextForPresentation as drawText,
   drawTextCenteredForPresentation as drawTextCentered,
   textWidth, getSprite, wrapText, platePath, drawPanel, drawMenuRow, onGameFontsChanged,
-  textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawPellet,
+  textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawPellet, BACK_BUTTON_PLATE,
 } from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
@@ -23,6 +24,10 @@ import {
   drawProp, eggshellCopterArt, hasProp, glowSprite, propFrames, propFps, propSprite, PORTAL_SPRITE, portalArtWidth,
 } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
+import {
+  TYPE_STEPS, TYPE_LINE_H, typeLines, fitProse, drawProse,
+  CASCADE_ALL, cascadeAt, cascadeDone, drawCascade,
+} from '../engine/prose.js';
 import { readPlatform } from '../engine/platform.js';
 import { framingIsChosen } from './run.js';
 
@@ -53,7 +58,7 @@ const GUIDE_ICON_SIZES = {
   bearTrap: [16, 11], boomBarrier: [16, 9], trafficCone: [10, 13], springPad: [14, 9],
 };
 import {
-  DIFFICULTIES, INTRO_BEATS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
+  DIFFICULTIES, FINALE_BEATS, FINALE_CODA, RANK_LINES,
   FINALE_THANKS_TITLE, FINALE_THANKS, FINALE_SIGNOFF,
 } from '../data/jokes.js';
 import { HEROES } from '../data/heroes.js';
@@ -1853,10 +1858,10 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   // old landscape strip. Give its rows a thumb-sized pitch and let the box
   // use the generous portrait height; the same geometry feeds modalRowAt().
   const rowH = portrait
-    ? (spaciousRows ? 74 : 56)
+    ? (spaciousRows ? 132 : 56)
     : spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
   const headH = portrait
-    ? (hasNote ? 100 : 48)
+    ? (spaciousRows ? 172 : hasNote ? 100 : 48)
     : hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
   // A boxed modal on a phone is still a box, but it cannot be a LANDSCAPE box:
@@ -2569,29 +2574,13 @@ export class TitleState {
       title = `FINAL WARNING: ERASE SHIFT ${this.erase.slot + 1}?`;
       note = 'THIS CANNOT BE UNDONE.';
     }
+    // Every step here already shows a cancel row in the list itself (BACK, NO
+    // KEEP IT, NO GO BACK), so the choices themselves say what confirming and
+    // backing out do — no separate hint line needed underneath.
     drawModalList(d, this.eraseChoices(), this.erase.idx, {
       title, note, accent: '#e05a62', titleColor: '#ff727c', gapBeforeLast: this.erase.step === 'choose',
       spaciousRows: true, warningPulse, align: 'left',
     });
-    // Keep destructive-menu actions in the same compact keyboard hint format
-    // used by the other menus, with the hint tucked against the right edge so
-    // it never changes the left-aligned row geometry.
-    //
-    // Portrait parks it just under the card instead. Pinned to H - 12 it was a
-    // caption at the very bottom of a phone, most of a screen away from the
-    // dialog it belongs to, and at the landscape size to boot.
-    // Every step here already shows a cancel row in the list itself (BACK, NO
-    // KEEP IT, NO GO BACK) — this hint is only for the row-select verb, not a
-    // second announcement that backing out is possible.
-    const prompt = `${confirmVerb()}: CONFIRM`;
-    if (portraitMenuActive()) {
-      const g = modalListGeom(this.eraseChoices().length, true, this.erase.step === 'choose', true);
-      portraitMenuTextCentered(d, prompt, W / 2,
-        portraitMenuTextY(g.y + g.h + 30, 1.3), '#8a8a98', 1.3);
-      return;
-    }
-    const promptScale = 0.9;
-    drawText(d, prompt, W - 16 - textWidth(prompt, promptScale), H - 12, '#8a8a98', promptScale);
   }
   drawExtrasModal(d) {
     drawModalList(d, this.extrasChoices(), this.extras.idx, {
@@ -2611,12 +2600,25 @@ export class TitleState {
 // The title's two modal lists, drawn one way. Geometry comes from
 // modalListGeom, which the tap hit-test reads too, so the rows a finger finds
 // are exactly the rows on screen at whatever size the device asked for.
+//
+// Wraps at the largest size that needs no ellipsis, shrinking toward minSize
+// only if even two lines can't hold the string at full size. A title that
+// merely fits one line still comes back as a single line at startSize — this
+// only kicks in once the text is long enough to need the second one.
+const TITLE_WRAP_LINE_H = 1.6;
+function wrapTitleToFit(text, maxWidth, startSize, minSize, style) {
+  for (let size = startSize; size > minSize; size -= 0.1) {
+    const lines = portraitMenuWrap(text, maxWidth, size, 2, style);
+    if (lines.length < 2 || !lines[lines.length - 1].endsWith('…')) return { lines, size };
+  }
+  return { lines: portraitMenuWrap(text, maxWidth, minSize, 2, style), size: minSize };
+}
 function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBeforeLast = false, spaciousRows = false, warningPulse = 0, align = 'center', fitWidth = false }) {
   const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows, fitWidth ? choices.map((choice) => choice.label) : null);
   const portrait = portraitMenuActive();
   const fullPortrait = portrait && fitWidth;
-  const modalTextS = fullPortrait ? 1.8 : portrait ? (spaciousRows ? 1.8 : 1.35) : spaciousRows ? 1.55 : 1.35;
-  const modalTitleS = fullPortrait ? 3.1 : portrait ? (spaciousRows ? 2.8 : 1.8) : spaciousRows ? 1.75 : 1.5;
+  const modalTextS = fullPortrait ? 1.8 : portrait ? (spaciousRows ? 2.3 : 1.35) : spaciousRows ? 1.55 : 1.35;
+  const modalTitleS = fullPortrait ? 3.1 : portrait ? (spaciousRows ? 3.6 : 1.8) : spaciousRows ? 1.75 : 1.5;
   const left = align === 'left';
   const textX = fullPortrait ? 28 : g.x + 24;
   // How much room a line of type actually has inside this card: from the text
@@ -2636,10 +2638,20 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   }
   const titleMid = fullPortrait ? portraitMenuSafeTop() + 34 : g.y + 16;
   const titleFit = fullPortrait ? portraitMenuFit(title, modalTitleS, W - 48, 'title') : modalTitleS;
+  // A long title (FINAL WARNING: ERASE SHIFT 3?) shrunk to fit one line read
+  // smaller than the plain option rows under it — the one piece of type that
+  // most needs to dominate the card ended up the runt of it. Wrapping instead,
+  // no smaller than the rows themselves, keeps it the biggest thing on the card.
+  const titleWrap = portrait && !fullPortrait && spaciousRows
+    ? wrapTitleToFit(title, textBudget, modalTitleS, modalTextS, 'title') : null;
   if (left) {
     if (fullPortrait) portraitMenuText(d, title, textX,
       portraitMenuTextY(titleMid, titleFit, 'title'), '#f4f1fa', titleFit, 'title');
-    else if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', fit(title, modalTitleS, 'title'), 'title');
+    else if (titleWrap) {
+      const titleLineH = TEXT_INK_H * titleWrap.size * TITLE_WRAP_LINE_H;
+      titleWrap.lines.forEach((line, i) => portraitMenuText(d, line, textX,
+        g.y + 16 + i * titleLineH, '#f4f1fa', titleWrap.size, 'title'));
+    } else if (portrait) portraitMenuText(d, title, textX, g.y + 16, '#f4f1fa', fit(title, modalTitleS, 'title'), 'title');
     else drawText(d, title, textX, g.y + 12, '#f4f1fa', modalTitleS, 'title');
   } else if (fullPortrait) {
     portraitMenuTextCentered(d, title, W / 2,
@@ -2656,8 +2668,9 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     // landscape scale and hung off the landscape row while portrait drew the
     // words 18 units lower and half again as big — a smear beside the line
     // rather than a glow behind it.
-    const noteSize = portrait ? fit(note, spaciousRows ? 1.45 : 1.1) : spaciousRows ? 1.35 : 1.2;
-    const noteY = portrait ? g.y + 66 : g.y + 30;
+    const noteSize = portrait ? fit(note, spaciousRows ? 1.85 : 1.1) : spaciousRows ? 1.35 : 1.2;
+    const titleWrapExtra = titleWrap && titleWrap.lines.length > 1 ? TEXT_INK_H * titleWrap.size * TITLE_WRAP_LINE_H : 0;
+    const noteY = portrait ? (spaciousRows ? g.y + 86 + titleWrapExtra : g.y + 66) : g.y + 30;
     const glowScale = portrait ? portraitMenuScale(noteSize) : noteSize;
     const glow = warningGlowSprite(note, glowScale);
     d.globalCompositeOperation = 'lighter';
@@ -2689,8 +2702,10 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     const textY = portrait
       ? portraitMenuTextY(rowTop + g.rowH / 2, labelSize, selected ? 'bold' : 'ui')
       : textYForMid(rowTop + g.rowH / 2);
-    if (selected) drawMenuRow(d, fullPortrait ? 18 : g.x + 7, rowTop + 1,
-      fullPortrait ? W - 36 : g.w - 14, g.rowH - 2);
+    // The cancel row is the one way out of the list, so it keeps a faint plate
+    // even at rest — every other row only lights up under the cursor.
+    if (selected || choice.cancel) drawMenuRow(d, fullPortrait ? 18 : g.x + 7, rowTop + 1,
+      fullPortrait ? W - 36 : g.w - 14, g.rowH - 2, 3, selected ? undefined : BACK_BUTTON_PLATE);
     if (left) {
       if (portrait) portraitMenuText(d, choice.label, textX, textY,
         selected ? '#c9a0ff' : '#d3d9e5', labelSize, selected ? 'bold' : 'ui');
@@ -2722,89 +2737,6 @@ function leftBand(labels, scale = 1) {
   const w = Math.min(W - 40, widest + 44);
   const x = (W - w) / 2;
   return { x, w, textX: x + 20 };
-}
-
-// PROSE THAT SIZES ITSELF TO THE ROOM IT HAS.
-//
-// A phone shows this 480x270 canvas at about 1.5 CSS px per unit, so a fixed
-// scale 1 is caption-sized in a hand — and the screens that read this way (the
-// briefing, the intro, the finale) spend most of their height on black. So:
-// pick the largest step whose wrapped block fits the band, and centre it there.
-const TYPE_STEPS = [2, 1.75, 1.5, 1.25, 1];
-const TYPE_LINE_H = 11; // per unit of scale
-
-// Wrapped lines carrying the character offset each starts at, so a typewriter
-// reveals into a layout that never reflows underneath itself. Wrapping the
-// PARTIAL string every frame — what these screens used to do — walked every
-// line below down the screen as the one above filled in.
-function typeLines(text, maxW, scale, from = 0, maxLines = 12) {
-  return wrapText(text, maxW, scale, maxLines).map((t) => {
-    const line = { text: t, from };
-    from += t.length + 1; // the wrap ate exactly one space
-    return line;
-  });
-}
-
-// `maxLines` is for the lines that turn on their last word. Fitting by height
-// alone, the finale's closer took the biggest step that merely FIT the band and
-// wrapped to "...THE POWER STRIP DOES / NOT." — a greedy break that strands the
-// punchline on a line of its own and reads as a bug rather than as timing.
-// Capping the line count makes it step down until the sentence holds together.
-function fitProse(text, maxW, band, steps = TYPE_STEPS, maxLines = Infinity) {
-  let block = null;
-  for (const scale of steps) {
-    const lines = typeLines(text, maxW, scale);
-    block = { lines, scale, height: lines.length * TYPE_LINE_H * scale };
-    if (block.height <= band && lines.length <= maxLines) break;
-  }
-  return block;
-}
-
-// `budget` characters of a fitProse block, centred in [top, top + band].
-// budget null shows the whole thing. For a block of prose, prefer the cascade
-// below — a per-character crawl only reads as delivery when the unit is one
-// sentence, which on these screens means the finale and nothing else.
-function drawProse(ctx, block, top, band, color, budget = null) {
-  const y0 = top + Math.max(0, (band - block.height) / 2);
-  block.lines.forEach((line, i) => {
-    const shown = budget == null ? line.text : line.text.slice(0, Math.max(0, budget - line.from));
-    if (shown) drawTextCentered(ctx, shown, W / 2, y0 + i * TYPE_LINE_H * block.scale, color, block.scale);
-  });
-}
-
-// A PARAGRAPH ARRIVES A LINE AT A TIME, NOT A LETTER AT A TIME.
-//
-// Nobody reads a block while it assembles — the eye wants the whole shape — so
-// a character crawl across eight lines is not delivery, it is a wait, on
-// screens that are read before every stage and again on every retry. And a
-// centred line drawn half-finished walks sideways as it fills, which at these
-// sizes was the loudest movement on the screen.
-//
-// So each line fades and drops the last of its rise into place a beat behind
-// the one above: the whole memo is standing in well under a second, every line
-// is readable the instant it appears, and the fiction is right — a memo comes
-// out of a machine a line at a time.
-const CASCADE_STAGGER = 0.07;
-const CASCADE_FADE = 0.14;
-const CASCADE_RISE = 2.5; // units of the block's own scale
-function cascadeAt(t, i) {
-  const k = Math.max(0, Math.min(1, (t - i * CASCADE_STAGGER) / CASCADE_FADE));
-  return { alpha: k, dy: (1 - k) * (1 - k) * CASCADE_RISE };
-}
-function cascadeDone(t, n) { return t >= Math.max(0, n - 1) * CASCADE_STAGGER + CASCADE_FADE; }
-// Long enough to have landed every line of anything this game sets.
-const CASCADE_ALL = 99;
-
-function drawCascade(ctx, block, top, band, color, t, opacity = 1) {
-  const y0 = top + Math.max(0, (band - block.height) / 2);
-  ctx.save();
-  block.lines.forEach((line, i) => {
-    const { alpha, dy } = cascadeAt(t, i);
-    if (alpha <= 0) return;
-    ctx.globalAlpha = opacity * alpha;
-    drawTextCentered(ctx, line.text, W / 2, y0 + (i * TYPE_LINE_H + dy) * block.scale, color, block.scale);
-  });
-  ctx.restore();
 }
 
 // Difficulty rows are a name over a one-line gloss, and the pair is what the
@@ -2874,8 +2806,9 @@ function drawDifficultyPortrait(ctx, state, layout) {
   layout.rows.forEach(({ d, y, h }, i) => {
     const selected = i === state.idx;
     const danger = d.id === 5;
-    if (selected) drawMenuRow(ctx, layout.x, y, layout.w, h, 8,
-      'rgba(201,160,255,0.12)');
+    const isBack = d.id === 0;
+    if (selected || isBack) drawMenuRow(ctx, layout.x, y, layout.w, h, 8,
+      selected ? 'rgba(201,160,255,0.12)' : BACK_BUTTON_PLATE);
     const nameS = portraitMenuFit(d.name, 2.35, layout.w - 40, 'bold');
     const glossS = portraitMenuFit(d.desc, 1.55, layout.w - 40, 'ui');
     const nameH = TEXT_INK_H * portraitMenuScale(nameS);
@@ -2984,7 +2917,9 @@ export class DifficultyState {
       const label = d.name;
       const color = danger ? '#e04848' : sel ? '#c9a0ff' : '#c8c8d8';
       const rowTop = DIFF_TOP + i * DIFF_ROW + (i === DIFFICULTIES.length ? DIFF_BACK_GAP : 0);
-      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2, 3, 'rgba(201,160,255,0.055)');
+      const isBack = d.id === 0;
+      if (sel || isBack) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2, 3,
+        sel ? 'rgba(201,160,255,0.055)' : BACK_BUTTON_PLATE);
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
       const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - DIFF_GLOSS_DY / 2;
@@ -3005,476 +2940,6 @@ export class DifficultyState {
       // still work too; the words are the touch affordance, not a replacement.
       drawTextCentered(ctx, 'YES', W / 2 - 100, 150, '#e04848', 1.25, 'bold');
       drawTextCentered(ctx, 'NO — WISDOM', W / 2 + 100, 150, '#c8c8d8', 1.25, 'bold');
-    }
-  }
-}
-
-// How wide each panel's frame wants to be. The frame is not decoration — it is
-// the stage each panel plays on, and they need different amounts of room: six
-// cabinets, one villain, then eight heroes shoulder to shoulder. Animating
-// between them turns the widest panel's arrival into a reveal, and the hero
-// line-up spreads as it opens because its pitch is derived from the live width.
-const INTRO_FRAME_W = [404, 250, 404, 470, 470];
-const INTRO_FRAME_Y = 30.5, INTRO_FRAME_H = 120;
-const INTRO_POWER_DOWN_DELAY = 1;
-// The caption strip: under the picture frame, above the panel counter.
-const INTRO_TEXT_TOP = INTRO_FRAME_Y + INTRO_FRAME_H + 6;
-const INTRO_TEXT_BOTTOM = H - 28;
-const PORTRAIT_INTRO_SIDE_MARGIN_CSS = 16;
-const PORTRAIT_INTRO_ART_TOP_CSS = 18;
-const PORTRAIT_INTRO_TEXT_TOP_RATIO = 0.57;
-const PORTRAIT_INTRO_TEXT_BOTTOM_CSS = 70;
-const PORTRAIT_INTRO_ART_GAP_CSS = 18;
-
-function drawEggshellCopterAt(ctx, x, y, size, frame, face, time = 0) {
-  const driftX = Math.sin(time * 1.2) * size * 0.055;
-  const driftY = Math.sin(time * 1.7) * size * 0.04;
-  ctx.save();
-  ctx.translate(x + driftX, y + driftY);
-  eggshellCopterArt(ctx, size, size, frame, { face });
-  ctx.restore();
-}
-
-function introEggshellPosition(time, center, span, top, height, size) {
-  const p = clamp(time / 12, 0, 1);
-  let offset;
-  if (p < 0.35) offset = -span * 0.5 + (p / 0.35) * span * 0.45;
-  else if (p < 0.72) offset = -span * 0.05 + Math.sin((p - 0.35) / 0.37 * Math.PI) * span * 0.08;
-  else offset = -span * 0.05 + ((p - 0.72) / 0.28) * span * 0.48;
-  const lift = p > 0.72 ? ((p - 0.72) / 0.28) * height * 0.08 : 0;
-  return {
-    x: center + offset - size / 2,
-    y: top + (height - size) / 2 + Math.sin(time * 1.7) * 3 - lift,
-  };
-}
-
-function eggshellCopterFrame(time) {
-  const beat = Audio.songBeat?.();
-  return beat == null ? Math.floor(time * 12) : Math.floor(beat * 24);
-}
-
-function portraitIntroBlock(text) {
-  const frame = presentationFrame();
-  const safe = frame.safeRect;
-  const css = (n) => n / frame.scale;
-  const width = Math.max(css(180), safe.width - css(PORTRAIT_INTRO_SIDE_MARGIN_CSS * 2));
-  const textTop = safe.top + safe.height * PORTRAIT_INTRO_TEXT_TOP_RATIO;
-  const textBottom = safe.bottom - css(PORTRAIT_INTRO_TEXT_BOTTOM_CSS);
-  const scales = [2.7, 2.45, 2.2, 1.95, 1.7];
-  let scale = scales[scales.length - 1];
-  let lines = portraitMenuWrap(text, width, scale, 12);
-  let lineH = 11 * portraitMenuScale(scale);
-  for (const candidate of scales) {
-    const candidateLines = portraitMenuWrap(text, width, candidate, 12);
-    const candidateLineH = 11 * portraitMenuScale(candidate);
-    scale = candidate;
-    lines = candidateLines;
-    lineH = candidateLineH;
-    if (candidateLines.length * candidateLineH <= textBottom - textTop) break;
-  }
-  return {
-    lines,
-    scale,
-    lineH,
-    height: lines.length * lineH,
-    center: (safe.left + safe.right) / 2,
-    width,
-    artLeft: safe.left + css(PORTRAIT_INTRO_SIDE_MARGIN_CSS),
-    artW: width,
-    artTop: safe.top + css(PORTRAIT_INTRO_ART_TOP_CSS),
-    artBottom: textTop - css(PORTRAIT_INTRO_ART_GAP_CSS),
-    textTop,
-    textBottom,
-    safe,
-    css,
-  };
-}
-
-function introEggshellFace(t) {
-  const phase = t % 4.8;
-  const mood = phase < 1.6 ? 'flat' : phase < 3.2 ? 'smirk' : 'really';
-  return {
-    look: Math.sin(t * 0.9) * 0.55,
-    mood,
-    blink: t % 3.7 > 3.54 ? 1 : 0,
-    twitch: [Math.sin(t * 3.1) * 0.35, Math.sin(t * 3.7 + 0.8) * 0.35],
-  };
-}
-
-export class IntroState {
-  static portraitMode = 'frame';
-
-  constructor({ onDone }) { this.onDone = onDone; }
-  enter() {
-    this.panel = -1; this.beatIndex = -1; this.beatT = 0; this.reveal = 0;
-    this.t = 0; this.panelT = 0; this.finished = false; this.awaitingClose = false;
-    this.frameW = INTRO_FRAME_W[0]; this.blocks = []; this.blockKey = null;
-    this.staticMotion = CABINETS.map(() => ({ phase: Math.random() * 7, rate: 0.9 + Math.random() * 0.4 }));
-    this.staticBurstActive = CABINETS.map(() => false);
-    this.heroPopPlayed = Array(8).fill(false);
-    Input.setMenuButtons();
-    this.startBeat(0);
-  }
-  startBeat(index) {
-    const beat = INTRO_BEATS[index];
-    if (!beat) {
-      this.awaitingClose = true;
-      return;
-    }
-    const panelChanged = beat.panel !== this.panel;
-    this.beatIndex = index;
-    this.beatT = 0;
-    this.reveal = 0;
-    if (!panelChanged) return;
-    this.panel = beat.panel;
-    this.panelT = 0;
-    this.staticBurstActive.fill(false);
-    if (this.panel === 2) Audio.sfx('powerDown', { inSeconds: INTRO_POWER_DOWN_DELAY });
-    else if (this.panel === 4) Audio.startCrowdCheer({ reverb: 0.85, reverbDecay: 6 });
-    else if (this.panel > 0) Audio.sfx('ui');
-  }
-  finish() {
-    if (this.finished) return;
-    this.finished = true;
-    Audio.stopCrowdCheer();
-    this.onDone();
-  }
-  // Layout is cached per beat and presentation revision. A subtitle must never
-  // reflow underneath itself while it fades in or out.
-  block(i) {
-    const portrait = isPhonePortraitPresentation();
-    const key = portrait ? `portrait:${presentationFrame().revision}` : 'landscape';
-    if (this.blockKey !== key) { this.blocks = []; this.blockKey = key; }
-    if (!this.blocks[i]) {
-      const text = INTRO_BEATS[i].text;
-      this.blocks[i] = portrait
-        ? portraitIntroBlock(text)
-        : fitProse(text, W - 56, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP);
-    }
-    return this.blocks[i];
-  }
-  subtitleReveal() {
-    return Math.min(CASCADE_ALL, this.beatT / 0.42 * CASCADE_ALL);
-  }
-  subtitleOpacity() {
-    if (this.awaitingClose) return 1;
-    const duration = INTRO_BEATS[this.beatIndex]?.duration ?? 1;
-    const fadeIn = Math.min(1, this.beatT / 0.18);
-    const fadeOut = Math.min(1, Math.max(0, (duration - this.beatT) / 0.35));
-    return Math.min(fadeIn, fadeOut);
-  }
-  staticBurstAmount(i, seed) {
-    const motion = this.staticMotion?.[i] || { phase: 0, rate: 2 };
-    return deadScreenBurst(this.t * motion.rate + motion.phase, seed);
-  }
-  updateStaticAudio() {
-    if (this.panel !== 2) {
-      this.staticBurstActive.fill(false);
-      return;
-    }
-    for (let i = 0; i < 6; i++) {
-      const seed = cabinetPalette(CABINETS[i], false).seed;
-      const dead = this.panelT >= INTRO_POWER_DOWN_DELAY + 0.12 + i * 0.12;
-      const active = dead && this.staticBurstAmount(i, seed) > 0;
-      if (active && !this.staticBurstActive[i]) Audio.sfx('static', { gain: 0.34 });
-      this.staticBurstActive[i] = active;
-    }
-  }
-  updateHeroEntranceAudio() {
-    if (this.panel !== 3) {
-      this.heroPopPlayed.fill(false);
-      return;
-    }
-    for (let i = 0; i < this.heroPopPlayed.length; i++) {
-      const appearsAt = 0.3 + i * 0.25;
-      if (this.panelT >= appearsAt && !this.heroPopPlayed[i]) {
-        this.heroPopPlayed[i] = true;
-        Audio.sfx('popSmall', { pitch: 1 + i * 0.035, gain: 0.75 });
-      }
-    }
-  }
-  update(dt) {
-    if (this.finished) { Input.endFrame(); return; }
-    if (Input.pressed('back')) {
-      this.finish();
-      Input.endFrame();
-      return;
-    }
-    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
-      if (this.awaitingClose) this.finish();
-      else this.startBeat(this.beatIndex + 1);
-      Input.endFrame();
-      return;
-    }
-    if (this.awaitingClose) {
-      this.t += Math.max(0, dt);
-      this.panelT += Math.max(0, dt);
-      Input.endFrame();
-      return;
-    }
-    let remaining = Math.max(0, dt);
-    while (remaining > 0 && !this.finished) {
-      const beat = INTRO_BEATS[this.beatIndex];
-      const step = Math.min(remaining, Math.max(0, beat.duration - this.beatT));
-      this.t += step;
-      this.beatT += step;
-      this.panelT += step;
-      remaining -= step;
-      if (this.beatT >= beat.duration - 0.000001) this.startBeat(this.beatIndex + 1);
-    }
-    // Eased toward the target rather than snapped: the panels are read at a
-    // beat boundary, so a hard cut in frame width reads as a layout glitch where
-    // a half-second open reads as the scene making room.
-    const want = INTRO_FRAME_W[Math.min(this.panel, INTRO_FRAME_W.length - 1)];
-    this.frameW += (want - this.frameW) * Math.min(1, dt * 6);
-    if (!this.finished) {
-      this.updateStaticAudio();
-      this.updateHeroEntranceAudio();
-    }
-    Input.endFrame();
-  }
-  drawPowerDownCabinet(ctx, x, y, w, h, i) {
-    const cabinet = CABINETS[i];
-    const shutdownAt = INTRO_POWER_DOWN_DELAY + 0.12 + i * 0.12;
-    if (this.panelT < shutdownAt) {
-      const pal = cabinetPalette(cabinet);
-      drawCabinetShell(ctx, x, y, w, h, pal);
-      const screen = drawCabinetScreen(ctx, x, y, w, h, pal);
-      if (screen) drawScreenSweep(ctx, screen, this.t + i * 1.3, i * 977);
-      return;
-    }
-    const offPal = cabinetPalette(cabinet, false);
-    drawCabinetShell(ctx, x, y, w, h, offPal);
-    const elapsed = this.panelT - shutdownAt;
-    const flash = elapsed < 0.12 ? 1 - elapsed / 0.12 : 0;
-    drawDeadScreen(ctx, x, y, w, h, this.t, offPal.seed, null,
-      Math.max(this.staticBurstAmount(i, offPal.seed), flash));
-    if (flash > 0) {
-      const screen = cabinetScreenRect(x, y, w, h, null);
-      ctx.save();
-      ctx.globalAlpha = flash * 0.78;
-      ctx.fillStyle = '#f4f6ff';
-      ctx.fillRect(screen.x, screen.y, screen.w, screen.h);
-      ctx.restore();
-    }
-  }
-  drawPortrait(ctx) {
-    const block = this.block(this.beatIndex);
-    const { center, artLeft, artW, artTop, artBottom, textTop, textBottom, safe } = block;
-    const artH = Math.max(1, artBottom - artTop);
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#171322';
-    ctx.fillRect(artLeft, artTop, artW, artH);
-    ctx.strokeStyle = '#30303f';
-    ctx.strokeRect(artLeft, artTop, artW, artH);
-
-    if (this.panel === 0) {
-      const columns = 3;
-      const gapX = 12;
-      const gapY = 12;
-      const cellW = (artW - gapX * (columns - 1)) / columns;
-      const cabinetH = Math.min((artH - gapY) / 2 - 4, cellW * 82 / 46);
-      const cabinetW = cellW;
-      for (let i = 0; i < 6; i++) {
-        const cab = CABINETS[i];
-        const row = Math.floor(i / columns);
-        const column = i % columns;
-        const x = artLeft + column * (cabinetW + gapX);
-        const bottom = artBottom - 6 - (1 - row) * (cabinetH + gapY);
-        const pal = cabinetPalette(cab);
-        drawCabinetShell(ctx, x, bottom - cabinetH, cabinetW, cabinetH, pal);
-        const scr = drawCabinetScreen(ctx, x, bottom - cabinetH, cabinetW, cabinetH, pal);
-        if (scr) drawScreenSweep(ctx, scr, this.t + i * 1.3, i * 977);
-      }
-    }
-    if (this.panel === 1) {
-      const copterSize = Math.min(artW * 0.78, artH * 0.84);
-      const copter = introEggshellPosition(this.panelT, center, artW, artTop, artH, copterSize);
-      drawEggshellCopterAt(ctx, copter.x, copter.y,
-        copterSize, eggshellCopterFrame(this.t), introEggshellFace(this.t), this.t);
-    }
-    if (this.panel === 2) {
-      const columns = 3;
-      const gapX = 12;
-      const gapY = 12;
-      const cellW = (artW - gapX * (columns - 1)) / columns;
-      const cabinetH = Math.min((artH - gapY) / 2 - 4, cellW * 82 / 46);
-      const cabinetW = cellW;
-      for (let i = 0; i < 6; i++) {
-        const row = Math.floor(i / columns);
-        const column = i % columns;
-        const x = artLeft + column * (cabinetW + gapX);
-        const bottom = artBottom - 6 - (1 - row) * (cabinetH + gapY);
-        this.drawPowerDownCabinet(ctx, x, bottom - cabinetH, cabinetW, cabinetH, i);
-      }
-    }
-    if (this.panel === 3 || this.panel === 4) {
-      const heroes = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
-      const columns = 4;
-      const gapY = 96;
-      const heroH = Math.min(132, (artH - gapY) / 2, artW / 4.15);
-      const pitch = (artW - heroH * 0.7) / (columns - 1);
-      const castH = heroH * 2 + gapY;
-      const castTop = artTop + Math.max(0, (artH - castH) / 2);
-      const rollCall = this.panel === 3;
-      heroes.forEach((h, i) => {
-        const start = rollCall ? 0.3 + i * 0.25 : 0;
-        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - start) / 0.22)) : 1;
-        if (a <= 0) return;
-        const ease = 1 - Math.pow(1 - a, 3);
-        const scale = ease + Math.sin(a * Math.PI) * 0.14;
-        const pose = { kind: 'idle', phase: (this.panelT * 0.55 + i * 0.21) % 1, time: this.panelT + i * 0.8, grounded: true };
-        if (!rollCall) {
-          pose.menu = true;
-          pose.kind = 'celebrate';
-          pose.phase = 0;
-          pose.time = this.panelT + i * 0.35;
-        }
-        const row = Math.floor(i / columns);
-        const column = i % columns;
-        const rowX = artLeft + heroH * 0.35;
-        const feet = castTop + (row + 1) * heroH + row * gapY + (1 - ease) * 13;
-        drawToon(ctx, h, pose, rowX + column * pitch, feet,
-          heroH * scale, { alpha: ease });
-      });
-    }
-
-    const y0 = textTop + Math.max(0, (textBottom - textTop - block.height) / 2);
-    const opacity = this.subtitleOpacity();
-    block.lines.forEach((line, i) => {
-      const { alpha, dy } = cascadeAt(this.subtitleReveal(), i);
-      if (alpha <= 0) return;
-      ctx.save();
-      ctx.globalAlpha = opacity * alpha;
-      const mid = y0 + i * block.lineH + block.lineH / 2
-        + dy * portraitMenuScale(block.scale);
-      portraitMenuTextCentered(ctx, line, center, portraitMenuTextY(mid, block.scale),
-        '#e8e8f0', block.scale);
-      ctx.restore();
-    });
-    if (this.awaitingClose) {
-      const prompt = 'TAP OR PRESS ENTER TO CLOSE';
-      const promptScale = portraitMenuFit(prompt, 1.55, block.width, 'bold');
-      portraitMenuTextCentered(ctx, prompt, center,
-        portraitMenuTextY(safe.bottom - block.css(28), promptScale, 'bold'),
-        '#8a8492', promptScale, 'bold');
-    }
-  }
-  draw(ctx) {
-    if (this.finished || this.beatIndex < 0) return;
-    if (isPhonePortraitPresentation()) {
-      this.drawPortrait(ctx);
-      return;
-    }
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
-    // panel art: minimal pixel scenes
-    ctx.strokeStyle = '#30303f';
-    const fw = this.frameW;
-    ctx.strokeRect(W / 2 - fw / 2, INTRO_FRAME_Y, fw, INTRO_FRAME_H);
-    if (this.panel === 1) {
-      const copterSize = 92;
-      const copter = introEggshellPosition(this.panelT, W / 2, 240,
-        INTRO_FRAME_Y, INTRO_FRAME_H, copterSize);
-      drawEggshellCopterAt(ctx, copter.x, copter.y,
-        copterSize, eggshellCopterFrame(this.t), introEggshellFace(this.t), this.t);
-    }
-    if (this.panel === 0) {
-      // The real cabinets, from the real palettes. These were six hardcoded
-      // rectangles in colours hand-copied off CABINETS — so the opening shot of
-      // the arcade showed machines that existed nowhere else in the game, and
-      // drifted further every time the cabinet art changed. Same painters the
-      // food court stands them up with, so this shot can never go stale again.
-      const CW = 46, CH = 82, BOT = 146;
-      for (let i = 0; i < 6; i++) {
-        const cab = CABINETS[i];
-        const cx = W / 2 + (i - 2.5) * 68;
-        const pal = cabinetPalette(cab);
-        drawCabinetShell(ctx, cx - CW / 2, BOT - CH, CW, CH, pal);
-        // "EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM" — so they are lit,
-        // each rolling its own attract on its own clock.
-        const scr = drawCabinetScreen(ctx, cx - CW / 2, BOT - CH, CW, CH, pal);
-        if (scr) drawScreenSweep(ctx, scr, this.t + i * 1.3, i * 977);
-      }
-    }
-    if (this.panel === 2) {
-      const CW = 46, CH = 82, BOT = 146;
-      for (let i = 0; i < 6; i++) {
-        const cx = W / 2 + (i - 2.5) * 68;
-        this.drawPowerDownCabinet(ctx, cx - CW / 2, BOT - CH, CW, CH, i);
-      }
-    }
-    if (this.panel === 3 || this.panel === 4) {
-      // One row of eight, filling the widened frame. They were 24 units tall in
-      // a single row, then 44 in two rows of four; a single row across the wider
-      // box gets them to 78 — three times the original, on the one screen whose
-      // entire job is introducing them. A row also says "a line-up" in a way a
-      // block of four-by-two does not, which is what these two panels are about.
-      const heroes = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
-      // Pitch comes from the LIVE frame width, so the line-up spreads as the
-      // frame opens instead of sitting at a fixed spacing inside a moving box.
-      // 64 rather than 72, tuned when this row held chompo's flame trail and
-      // mochi's ears — both far wider than 0.6x their height, so the pair that
-      // touched was not the pair the pitch maths predicted. Both have since
-      // left the row (Clara is no wider than the humanoids around her), so 64
-      // is now margin rather than necessity; kept, because eight units off
-      // every hero costs nothing visible.
-      //
-      // The 72 is the END INSET, and it is a silhouette measurement, not half a
-      // hero box: it is the room the outermost hero's actual ink needs inside
-      // the frame. At 46 grumpos — right end, bearded, armed, and the widest
-      // hero from anchor to fingertip — hung a blade off the side of the SCREEN.
-      // ROW_X leans the whole line 4px left of centre for the other half of the
-      // same problem: he reaches further right of his anchor than lorenzo does
-      // left of his, so centring the ANCHORS leaves the INK off-centre by
-      // exactly that difference, and the overflow all lands on grumpos.
-      //
-      // Height and inset are one dial, not two. Insetting alone buys end margin
-      // by squeezing the middle — at 68 tall the room that clears grumpos is the
-      // same room mochi and chompo were using. Taking four units off the heroes
-      // pays for both ends at once: every silhouette narrows, so the ends pull in
-      // AND the pairs that touch get further apart. This lands ~10px of daylight
-      // at each end of the frame with the middle gaps no tighter than they were.
-      const HH = 64, PITCH = (fw - 72) / (heroes.length - 1), ROW_X = W / 2 - 4;
-      // The roll call plays ONCE, on panel 3, where the cast is being introduced.
-      // Panel 4 is the same eight people a beat later — replaying their entrance
-      // there would say they had just arrived again, and turn a one-off flourish
-      // into a tic you sit through twice.
-      const rollCall = this.panel === 3;
-      heroes.forEach((h, i) => {
-        // They arrive one at a time, left to right, over about a second — a
-        // roll call rather than a group photo that was always there. Each pops
-        // in on its own short ease with a bulge past full size at the midpoint
-        // and a rise from below, so the landing reads as weight rather than a
-        // fade. Anyone whose turn has not come yet simply is not drawn.
-        const start = rollCall ? 0.3 + i * 0.25 : 0;
-        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - start) / 0.22)) : 1;
-        if (a <= 0) return;
-        const ease = 1 - Math.pow(1 - a, 3);
-        const scale = ease + Math.sin(a * Math.PI) * 0.14;
-        // On the relay panel the assembled cast now uses the same approved
-        // celebration routines as the results screen and cast-roll spotlight.
-        // Their clocks are staggered by the same 0.35s used by the curtain call,
-        // so the row reads as a crowd rather than one synchronized metronome.
-        const pose = { kind: 'idle', phase: (this.panelT * 0.55 + i * 0.21) % 1, time: this.panelT + i * 0.8, grounded: true };
-        if (!rollCall) {
-          pose.menu = true;
-          pose.kind = 'celebrate';
-          pose.phase = 0;
-          pose.time = this.panelT + i * 0.35;
-        }
-        drawToon(ctx, h, pose, ROW_X + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
-      });
-    }
-    // The caption fills the strip under the frame instead of sitting at a fixed
-    // scale 1 on two hard-wrapped lines: this is the first prose a new file ever
-    // shows, and on a phone that was a 12px caption under a 120-unit picture.
-    const block = this.block(this.beatIndex);
-    drawCascade(ctx, block, INTRO_TEXT_TOP, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP,
-      '#e8e8f0', this.subtitleReveal(), this.subtitleOpacity());
-    if (this.awaitingClose) {
-      drawTextCentered(ctx, 'TAP OR PRESS ENTER TO CLOSE', W / 2, H - 16, '#8a8492', 1);
     }
   }
 }
@@ -4771,6 +4236,29 @@ function finaleEggshellFace(t) {
   };
 }
 
+// The villain hovering, with the small idle drift that stops a parked sprite
+// reading as a pause. These two used to be shared with the opening film; the
+// film now flies him across a room on its own camera and keeps its own copy.
+function drawEggshellCopterAt(ctx, x, y, size, frame, face, time = 0) {
+  const driftX = Math.sin(time * 1.2) * size * 0.055;
+  const driftY = Math.sin(time * 1.7) * size * 0.04;
+  ctx.save();
+  ctx.translate(x + driftX, y + driftY);
+  eggshellCopterArt(ctx, size, size, frame, { face });
+  ctx.restore();
+}
+
+// The rotor on the SONG, here, and on film time in the opening — and that
+// difference is the point. The finale is a music cue: the copter is bonked on a
+// beat, so its blades turning with the track is the same decision as the bonk
+// landing on it. The film has no music for a third of its length and has to
+// draw the same frame twice for a gallery shot, so it runs its rotor off its
+// own clock instead.
+function eggshellCopterFrame(time) {
+  const beat = Audio.songBeat?.();
+  return beat == null ? Math.floor(time * 12) : Math.floor(beat * 24);
+}
+
 // THE ONE SCREEN THAT STILL TYPES A LETTER AT A TIME.
 //
 // The intro and the briefing gave the character crawl up for the line cascade
@@ -5315,7 +4803,7 @@ export class FieldGuideState {
     // ESC — a key it does not have — until it tapped something.
     if (Input.isTouchDevice()) {
       drawTextCentered(ctx, `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`, W / 2, H - 14, '#5a5a68');
-      drawText(ctx, 'BACK', W - 50, H - 18, '#f6d33c');
+      drawText(ctx, 'BACK', W - 50, H - 18, '#f6d33c', 1, 'ui', BACK_BUTTON_PLATE);
     } else {
       drawTextCentered(ctx, `< PREV   PAGE ${this.page + 1}/${GUIDE_PAGES.length}   NEXT >   ESC: BACK`, W / 2, H - 14, '#5a5a68');
     }
@@ -5368,7 +4856,7 @@ export class FieldGuideState {
       `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`,
       W / 2, portraitMenuTextY(footerMid, 1.0), '#5a5a68', 1.0);
     portraitMenuText(ctx, 'BACK', W - 58,
-      portraitMenuTextY(footerMid, 1.0), '#f6d33c', 1.0);
+      portraitMenuTextY(footerMid, 1.0), '#f6d33c', 1.0, 'ui', BACK_BUTTON_PLATE);
   }
 }
 
@@ -5381,6 +4869,10 @@ export const JUKEBOX = [
 // mixing desk has retuned it, else the tempo it was written at. Read through the same
 // seam the engine reads, so the list cannot disagree with what you are hearing.
 const jukeboxBpm = (tr) => Math.round(bpmOf(tr.bank, trackIdOf(tr.bank)));
+// The underlying name still carries its parenthetical theme/genre tag — the
+// megamix's frozen composition matches sections against that full string, so
+// it can't change there. The jukebox only ever shows the bare title.
+const jukeboxTitle = (tr) => tr.name.replace(/\s*\([^)]*\)\s*$/, '');
 // Match Settings' finger-sized scrolling list. BACK stays fixed below the
 // window so a long catalogue never shrinks the rows or pushes the exit target
 // off-screen.
@@ -5388,9 +4880,23 @@ const JUKEBOX_TITLE_TOP = 12;
 const JUKEBOX_STATUS_TOP = 39;
 const JUKEBOX_BARS_BASE = 63;   // the level meter stands on this line
 const JUKEBOX_TOP = 68;
-const JUKEBOX_ROW = 23;
+// Five rows of 27 rather than six of 23: a track name is the whole content of
+// this list, so the row is sized to carry it at a readable weight instead of
+// packing one more title into the same band.
+const JUKEBOX_ROW = 27;
 const JUKEBOX_ROW_MIN = 16;
-const JUKEBOX_VISIBLE_ROWS = 6;
+const JUKEBOX_VISIBLE_ROWS = 5;
+// The rows' own type, bigger than the shared menu item: see JUKEBOX_ROW.
+const JUKEBOX_ITEM_S = 1.45;
+// The same decision on a phone, where the row is already thumb-sized and the
+// old 1.35 left a title floating in the middle of a mostly empty plate.
+const PORTRAIT_JUKEBOX_ITEM_S = 1.8;
+// The selected row is the full width of the list, inset from both edges, with
+// the right inset wide enough to clear the scrollbar. A highlight sized to the
+// longest title instead started mid-row and stopped short of the text on it.
+const JUKEBOX_ROW_X = 16;
+const JUKEBOX_ROW_INSET_R = 30;
+const JUKEBOX_TEXT_X = JUKEBOX_ROW_X + 14;
 const JUKEBOX_BACK_TOP = 216;
 const JUKEBOX_BACK_H = 25;
 const JUKEBOX_LIST_GAP = 10;    // list bottom -> BACK row
@@ -5623,18 +5129,20 @@ export class SoundTestState {
       const safeTop = portraitMenuSafeTop();
       const safeBottom = portraitMenuSafeBottom();
       const footerY = safeBottom - 22;
-      const itemCount = Math.min(this.tracks.length, 10);
+      // Nine, not ten: the tenth row bought one more title at the cost of
+      // pitch on every row above it, and the list scrolls either way.
+      const itemCount = Math.min(this.tracks.length, 9);
       this.titleY = safeTop + 34;
       this.statusY = safeTop + 70;
       this.barsBase = safeTop + 99;
       this.listY = safeTop + 118;
       this.visibleRows = Math.max(1, itemCount);
       // Reserve a compact footer shelf first, then let up to ten album rows
-      // take the rest of the phone. The two-line title/BPM stack still has
-      // room to breathe, but no longer leaves a large unused lower band.
+      // take the rest of the phone, sized with room to breathe rather than
+      // leaving a large unused lower band.
       this.backH = 60;
       this.backY = footerY - 18 - this.backH;
-      this.rowH = Math.max(56, Math.min(96,
+      this.rowH = Math.max(56, Math.min(108,
         (this.backY - this.listY - 12) / this.visibleRows));
       this.hintY = footerY;
       return;
@@ -5654,6 +5162,11 @@ export class SoundTestState {
     this.listY = JUKEBOX_TOP + drop;
     this.backY = JUKEBOX_BACK_TOP - lift;
     this.backH = JUKEBOX_BACK_H;
+    // The portrait branch above raises this to fit up to ten album rows on a
+    // phone; landscape scrolls a fixed six instead, so it has to put the count
+    // back or a screen that was ever in portrait keeps portrait's row count
+    // and crushes the list into the fixed BACK row below it.
+    this.visibleRows = JUKEBOX_VISIBLE_ROWS;
     // Rows give up whatever the header gained and the footer kept, never
     // growing past the finger-sized height every other list uses.
     this.rowH = Math.min(JUKEBOX_ROW, Math.max(JUKEBOX_ROW_MIN,
@@ -5857,39 +5370,31 @@ export class SoundTestState {
     };
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    const band = leftBand(this.tracks.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`), itemScale);
-    menuText('SOUND TEST', band.textX, this.titleY, '#fff', 2, 'title');
-    const status = this.playing >= 0 ? `NOW PLAYING: ${this.tracks[this.playing].name}` : 'STOPPED';
-    menuText(status, band.textX, this.statusY, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
+    const rowX = JUKEBOX_ROW_X;
+    const rowW = W - JUKEBOX_ROW_X - JUKEBOX_ROW_INSET_R;
+    const textX = JUKEBOX_TEXT_X;
+    menuText('SOUND TEST', textX, this.titleY, '#fff', 2, 'title');
+    const status = this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
+    menuText(status, textX, this.statusY, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
     this.tracks.forEach((tr, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
       const on = i === this.playing;
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
-      if (sel) {
-        const highlightY = rowTop + 1;
-        const highlightH = this.rowH - 2;
-        drawMenuRow(ctx, band.x, highlightY, band.w, highlightH);
-      }
+      if (sel) drawMenuRow(ctx, rowX, rowTop + 1, rowW, this.rowH - 2);
       const rowMid = rowTop + this.rowH / 2;
       if (screen.portraitFill) {
-        const lineGap = itemScale * 2.6;
         // The glyphs are vertically compressed in the logical canvas and
         // expanded by the portrait CSS fill. Account for that once when
         // choosing the baseline, otherwise the ink lands high in the plate.
-        const inkScale = itemScale / textYScale;
-        const titleY = textYForMid(rowMid - lineGap / 2, inkScale);
-        const bpmY = textYForMid(rowMid + lineGap / 2, inkScale);
-        // Both lines share one left margin so the stack reads as a column.
-        const titleX = band.textX + 6;
-        menuText(`${this.trackCounter(i)} ${tr.name}`, titleX, titleY,
-          on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
-        menuText(`(${jukeboxBpm(tr)} BPM)`, titleX, bpmY,
-          on ? '#48e0c8' : sel ? '#c9a0ff' : '#8b8ba0', LEFT_MENU_ITEM_S);
+        const inkScale = itemScale * (JUKEBOX_ITEM_S / LEFT_MENU_ITEM_S) / textYScale;
+        const titleY = textYForMid(rowMid, inkScale);
+        menuText(`${this.trackCounter(i)} ${jukeboxTitle(tr)}`, textX, titleY,
+          on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
       } else {
-        const textY = textYForMid(rowMid);
-        menuText(`${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`, band.textX,
-          textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+        const textY = textYForMid(rowMid, JUKEBOX_ITEM_S);
+        menuText(`${this.trackCounter(i)} ${jukeboxTitle(tr)}  (${jukeboxBpm(tr)} BPM)`, textX,
+          textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
       }
     });
     if (this.tracks.length > this.visibleRows) {
@@ -5903,15 +5408,16 @@ export class SoundTestState {
       ctx.fillRect(W - 18, thumbY, 4, thumbH);
     }
     const backSelected = this.idx === this.tracks.length;
-    if (backSelected) drawMenuRow(ctx, band.x, this.backY + 1, band.w, this.backH - 2);
-    const backTextY = textYForMid(this.backY + this.backH / 2);
-    menuText('BACK', band.textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+    drawMenuRow(ctx, rowX, this.backY + 1, rowW, this.backH - 2, 3,
+      backSelected ? undefined : BACK_BUTTON_PLATE);
+    const backTextY = textYForMid(this.backY + this.backH / 2, JUKEBOX_ITEM_S);
+    menuText('BACK', textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
         const hgt = 2 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 7;
         ctx.fillStyle = '#48e0c8';
-        ctx.fillRect(band.textX + i * 6, this.barsBase - hgt, 4, hgt);
+        ctx.fillRect(textX + i * 6, this.barsBase - hgt, 4, hgt);
       }
     }
     menuTextCentered(`${confirmVerb()}: PLAY/STOP`,
@@ -5928,28 +5434,28 @@ export class SoundTestState {
     const titleS = portraitMenuFit('SOUND TEST', 2.35, W - 56, 'title');
     portraitMenuText(ctx, 'SOUND TEST', titleX,
       portraitMenuTextY(this.titleY, titleS, 'title'), '#fff', titleS, 'title');
-    const status = this.playing >= 0 ? `NOW PLAYING: ${this.tracks[this.playing].name}` : 'STOPPED';
-    const statusS = portraitMenuFit(status, 1.0, W - titleX - 28);
+    const status = this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
+    const statusS = portraitMenuFit(status, 1.2, W - titleX - 28);
     portraitMenuText(ctx, status, titleX,
       portraitMenuTextY(this.statusY, statusS), this.playing >= 0 ? '#48e0c8' : '#5a5a68', statusS);
 
-    const labels = this.tracks.map((tr, i) => `${this.trackCounter(i)} ${tr.name}`);
-    const band = leftBand(labels, portraitMenuScale(1.35));
+    // One band for every row and for BACK: the highlight is the row, edge to
+    // edge inside the list's own margins. It used to be a centred band sized to
+    // the longest title, which began after the track number and stopped short
+    // of the title it was highlighting.
+    const rowX = 18;
+    const rowW = W - 36;
     this.tracks.forEach((tr, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const selected = i === this.idx;
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
-      if (selected) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2, 5);
+      if (selected) drawMenuRow(ctx, rowX, rowTop + 2, rowW, this.rowH - 4, 8);
       const rowMid = rowTop + this.rowH / 2;
-      const label = `${this.trackCounter(i)} ${tr.name}`;
-      const labelS = portraitMenuFit(label, 1.35, W - titleX - 30);
-      const bpmText = `(${jukeboxBpm(tr)} BPM)`;
-      const bpmS = portraitMenuFit(bpmText, 1.05, W - titleX - 30);
+      const label = `${this.trackCounter(i)} ${jukeboxTitle(tr)}`;
+      const labelS = portraitMenuFit(label, PORTRAIT_JUKEBOX_ITEM_S, W - titleX - 34);
       const labelColor = this.playing === i ? '#48e0c8' : selected ? '#c9a0ff' : '#c8c8d8';
       portraitMenuText(ctx, label, titleX,
-        portraitMenuTextY(rowMid - 14, labelS), labelColor, labelS);
-      portraitMenuText(ctx, bpmText, titleX,
-        portraitMenuTextY(rowMid + 16, bpmS), this.playing === i ? '#48e0c8' : selected ? '#c9a0ff' : '#8b8ba0', bpmS);
+        portraitMenuTextY(rowMid, labelS), labelColor, labelS);
     });
     if (this.tracks.length > this.visibleRows) {
       const trackY = this.listY + 6;
@@ -5962,8 +5468,9 @@ export class SoundTestState {
       ctx.fillRect(W - 16, thumbY, 7, thumbH);
     }
     const backSelected = this.idx === this.tracks.length;
-    if (backSelected) drawMenuRow(ctx, 18, this.backY + 1, W - 36, this.backH - 2, 5);
-    const backS = portraitMenuFit('BACK', 1.18, W - titleX - 30);
+    drawMenuRow(ctx, rowX, this.backY + 2, rowW, this.backH - 4, 8,
+      backSelected ? undefined : BACK_BUTTON_PLATE);
+    const backS = portraitMenuFit('BACK', PORTRAIT_JUKEBOX_ITEM_S, W - titleX - 34);
     portraitMenuText(ctx, 'BACK', titleX,
       portraitMenuTextY(this.backY + this.backH / 2, backS), backSelected ? '#c9a0ff' : '#c8c8d8', backS);
     if (this.playing >= 0) {
@@ -6035,7 +5542,7 @@ export class SoundTestState {
         > (visualiserFrame.right - visualiserFrame.left) * 1.35;
       const labelScale = portraitLabels ? 1.05 : 0.82;
       const labelInset = portraitLabels ? 10 : 24;
-      const trackLabel = this.tracks[this.playing]?.name || 'NOW PLAYING';
+      const trackLabel = (this.tracks[this.playing] && jukeboxTitle(this.tracks[this.playing])) || 'NOW PLAYING';
       const visualLabel = this.visualiser.label || this.visualiser.name;
       const safeLeft = visualiserFrame.left + labelInset + screen.safeLeft;
       const safeRight = visualiserFrame.right - labelInset - screen.safeRight;
@@ -6542,7 +6049,8 @@ export class SettingsState {
       ctx.fillRect(W - 18, thumbY, 4, thumbH);
     }
     const doneSelected = this.idx === doneIndex;
-    if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2);
+    drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2, 3,
+      doneSelected ? undefined : BACK_BUTTON_PLATE);
     const doneTextY = textYForMid(this.doneY + this.doneH / 2);
     drawText(ctx, 'BACK', band.textX, doneTextY, doneSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
@@ -6615,7 +6123,8 @@ export class SettingsState {
     }
 
     const doneSelected = this.idx === doneIndex;
-    if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2, 5);
+    drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2, 5,
+      doneSelected ? undefined : BACK_BUTTON_PLATE);
     const backSize = portraitMenuFit('BACK', itemS, W - titleX - 28);
     portraitMenuText(ctx, 'BACK', titleX,
       portraitMenuTextY(this.doneY + this.doneH / 2, backSize),

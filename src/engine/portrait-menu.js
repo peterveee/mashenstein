@@ -25,15 +25,15 @@ function snapToBacking(value, density) {
   return Math.round(value * d) / d;
 }
 
-export function portraitMenuText(ctx, text, x, y, color, size = 1, style = 'ui') {
+export function portraitMenuText(ctx, text, x, y, color, size = 1, style = 'ui', plate = null) {
   drawTextForPresentation(ctx, text, snapToBacking(x, screen.dpx), snapToBacking(y, screen.dpy),
-    color, portraitMenuScale(size), style);
+    color, portraitMenuScale(size), style, plate);
 }
 
-export function portraitMenuTextCentered(ctx, text, x, y, color, size = 1, style = 'ui') {
+export function portraitMenuTextCentered(ctx, text, x, y, color, size = 1, style = 'ui', plate = null) {
   const scale = portraitMenuScale(size);
   drawTextCenteredForPresentation(ctx, text, x, snapToBacking(y, screen.dpy),
-    color, scale, style);
+    color, scale, style, plate);
 }
 
 export function portraitMenuTextY(midY, size = 1, style = 'ui') {

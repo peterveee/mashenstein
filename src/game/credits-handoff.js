@@ -14,14 +14,12 @@ import {
   PORTAL_SPENT_SPRITE, PORTAL_SPEND_FRAMES, PORTAL_SPEND_TIME,
 } from '../sprites/props.js';
 import { drawToon } from '../sprites/toons.js';
+import { clamp01, lerp, smooth } from '../engine/ease.js';
 
 const TOON_H = 34;
 // How far outside the box a runner starts and finishes. Comfortably wider than
 // a toon, so neither hero is ever visible standing still at the frame edge.
 const ENTER_X = 46;
-const lerp = (a, b, k) => a + (b - a) * k;
-const smooth = (k) => k * k * (3 - 2 * k);
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 // One shared gait so a hero's stride never changes meaning between variants —
 // only their staging is under test here, not their run cycle.

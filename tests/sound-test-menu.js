@@ -29,8 +29,8 @@ const sound = new SoundTestState({ onDone: () => { returned++; } });
 assert(SoundTestState.portraitMode === 'frame' && portraitAllowedFor(sound),
   'the jukebox declares its frame-based portrait presentation');
 sound.enter();
-assert(sound.visibleRows === 6 && sound.rowH === 23 && sound.listStart === 0,
-  'sound test opens with six finger-sized scrolling rows');
+assert(sound.visibleRows === 5 && sound.rowH === 27 && sound.listStart === 0,
+  'sound test opens with five scrolling rows, sized for a readable track name');
 assert(sound.trackCounter(0) === '1.' && sound.trackCounter(13) === '14.',
   'every jukebox row has a simple track number');
 assert(JUKEBOX.length === 14 && JUKEBOX[2].bank === COUNTER_DANCE_MIX_THEME,
@@ -132,7 +132,7 @@ function down() {
   Input.press('down'); keyboard.update(1 / 60); Input.release('down'); Input.endFrame();
 }
 for (let i = 0; i < 14; i++) down();
-assert(keyboard.idx === 14 && keyboard.listStart === 8,
+assert(keyboard.idx === 14 && keyboard.listStart === 9,
   'keyboard navigation reaches fixed BACK while scrolling to the final page');
 Input.press('confirm'); keyboard.update(1 / 60); Input.release('confirm'); Input.endFrame();
 assert(keyboardReturned === 1, 'keyboard confirmation activates fixed BACK');
@@ -156,7 +156,7 @@ const portraitFrame = frameForViewport({
 renderer.setPresentationFrame(portraitFrame);
 const portrait = new SoundTestState({ onDone: () => {}, initialTrack: 0, startVisualiser: true });
 portrait.enter();
-assert(renderer.H === portraitFrame.height && portrait.visibleRows === 10 && portrait.rowH >= 60
+assert(renderer.H === portraitFrame.height && portrait.visibleRows === 9 && portrait.rowH >= 60
   && portrait.visualiser?.viewportH === 270,
   'portrait sound test fills the frame with denser rows; the visualiser keeps its fixed 480x270 field for the renderer to cover-crop');
 portrait.draw(document.createElement('canvas').getContext('2d'));

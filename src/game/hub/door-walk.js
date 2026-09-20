@@ -189,11 +189,12 @@ export function makeDoorWalk({
 // translates its leaf by 0.92 of its width, the swing foreshortens toward its
 // hinge, and both of those numbers live over there.
 //
-// The two doors hide him behind different things. A POCKET DOOR parks its leaf
+// The doors hide him behind different things. A POCKET DOOR parks its leaf
 // clear of the opening, inside the wall, and walking behind that parked leaf is
 // what a pocket is for. A HINGED DOOR keeps its leaf across the hinge half of
 // its own aperture, so there is nothing to hide behind on that side — the far
-// jamb is what takes him.
+// jamb is what takes him. A centre-parting door exposes the middle first, so
+// the threshold follows the inner edge of the leaf nearest the entrant.
 //
 // It keys off ROOM SIDE, never off which way the hero happens to be walking.
 // The same doorway hides him on the same side whether he is leaving through it
@@ -201,6 +202,15 @@ export function makeDoorWalk({
 // clip off that put the arriving hero on the wrong side of his own door.
 export function openingEdge(kind, openAmt, roomSide, geom, slideDir = -roomSide) {
   const { lx, lw, wx, ww } = geom;
+  if (kind === 'split') {
+    // A centre-parting door exposes the middle first. For an entrant from the
+    // left, the right edge of the left leaf is the visible threshold; for an
+    // exit on the other side, mirror that edge. At zero opening the full
+    // aperture remains opaque, and at one the panels have cleared the opening.
+    return roomSide < 0
+      ? lx + openAmt * lw * 0.96
+      : lx + lw - openAmt * lw * 0.96;
+  }
   if (kind === 'slide') {
     const slideX = lx + slideDir * openAmt * lw * 0.92;
     return slideDir < 0 ? slideX + lw : slideX;

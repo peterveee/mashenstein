@@ -11,7 +11,7 @@ let transitionStyle = 'shutter';
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
 const TRANSITION_HEROES = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
 // Null until the game knows who you are. The shutter used to open on a hero
-// from the very first transition — title, difficulty, the intro panels — which
+// from the very first transition — title, difficulty, the opening film — which
 // spoiled a cast the intro is in the middle of introducing, and presented one of
 // them as "yours" before you had any. No hero, no cameo; the sticker just closes
 // and opens.

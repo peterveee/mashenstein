@@ -262,10 +262,22 @@ assert(phoneDom.chromeCanvas.width === 1704,
 
 let phoneNow = 1;
 phoneRenderer.noteRendererFrame(phoneNow);
+// A second of slow presents. noteRendererFrame runs on the PRESENT callback,
+// after draw() and blit() have painted and inside the same rAF turn, so a rung
+// change must not resize anything here: assigning canvas.width/height clears
+// the backing store, which would wipe the finished frame and hand the
+// compositor an empty canvas — one pure-black flash, with the DOM touch chrome
+// still drawn over it. The rung is chosen now and the surface follows at the
+// top of the next frame, where a full repaint immediately covers the clear.
 for (let i = 0; i < 55; i++) {
   phoneNow += 25;
   phoneRenderer.noteRendererFrame(phoneNow);
 }
+assert(phoneRenderer.rendererDiagnostics().rung === 3 && phoneDom.canvas.width === 1440,
+  'a rung chosen on the present leaves the painted surface alone');
+phoneRenderer.beginRenderFrame();
+assert(phoneDom.canvas.width === 1200 && phoneDom.canvas.style.width === '699px',
+  'the next frame resizes the backing store before it paints, at the same CSS fit');
 phoneDiag = phoneRenderer.rendererDiagnostics();
 assert(phoneDiag.rung === 3 && phoneDiag.density === 2.5,
   'a sustained second below 52 FPS steps a phone down one rung to 2.5x');
@@ -355,8 +367,10 @@ let deskNow = 1;
 desktopRenderer.noteRendererFrame(deskNow);
 for (let i = 0; i < 55; i++) {
   deskNow += 25;
+  desktopRenderer.beginRenderFrame();
   desktopRenderer.noteRendererFrame(deskNow);
 }
+desktopRenderer.beginRenderFrame();
 desktopDiag = desktopRenderer.rendererDiagnostics();
 assert(desktopDiag.rung === 1 && desktopDiag.density === 4,
   'desktop still steps down off native under sustained slowness');

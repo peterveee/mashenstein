@@ -186,19 +186,35 @@ export function textWidth(str, scale = 1, style = 'ui') {
 }
 
 export function wrapText(str, maxWidth, scale = 1, maxLines = 2, style = 'ui') {
-  const words = String(str).split(/\s+/);
+  // A newline is an authored line break. Keep it distinct from ordinary
+  // whitespace so captions and briefing copy can choose a readable sentence
+  // shape without depending on the current viewport width.
+  const words = String(str).split(/(\r?\n)|\s+/).filter((word) => word !== undefined && word !== '');
   const lines = [];
   let line = '';
+  let hasAuthoredBreak = false;
   for (const word of words) {
+    if (/^\r?\n$/.test(word)) {
+      hasAuthoredBreak = true;
+      lines.push(line);
+      line = '';
+      if (lines.length >= maxLines) break;
+      continue;
+    }
     const next = line ? `${line} ${word}` : word;
     if (line && textWidth(next, scale, style) > maxWidth) { lines.push(line); line = word; }
     else line = next;
     if (lines.length === maxLines - 1) break;
   }
   if (line && lines.length < maxLines) {
+    // Authored line breaks are already represented in `lines`. Re-counting
+    // those lines as whitespace words loses the newline tokens and starts the
+    // final line one word too early (for example, rendering `DEFEAT.` twice).
+    // Keep the current authored line intact; the word-count fallback below is
+    // only for ordinary greedy wrapping where no explicit break was supplied.
     const consumed = lines.join(' ').split(/\s+/).filter(Boolean).length;
     const rest = words.slice(consumed).join(' ');
-    let last = rest;
+    let last = hasAuthoredBreak ? line : rest;
     while (last.length > 1 && textWidth(last, scale, style) > maxWidth) last = `${last.slice(0, -2).trim()}…`;
     lines.push(last);
   }
@@ -591,6 +607,13 @@ export function textYForMid(midY, scale = 1, style = 'ui') {
 // One painter rather than a colour each screen re-picks: a highlight that shows
 // up on some lists and not others reads as those lists not being navigable.
 export const MENU_ROW_HILITE = 'rgba(201,160,255,0.15)';
+// A faint plate that stays visible whether or not the row is selected — the
+// mark of an EXIT control among rows that otherwise only light up under the
+// cursor. First authored for calibrate.js's SET/RESET/BACK row; every other
+// screen's BACK/cancel row now draws this behind itself too, unconditionally,
+// so leaving a menu always looks like pressing a button rather than picking
+// an item off a list.
+export const BACK_BUTTON_PLATE = 'rgba(201,160,255,0.06)';
 export function drawMenuRow(ctx, x, y, w, h, r = 3, fill = MENU_ROW_HILITE) {
   ctx.fillStyle = fill;
   platePath(ctx, x, y, w, h, r);

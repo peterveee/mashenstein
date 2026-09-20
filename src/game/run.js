@@ -15273,7 +15273,14 @@ export class RunState {
     // BETWEEN the player and the screen declares itself here instead, after the
     // hero and before the HUD.
     if (this.style.weather) {
-      const drawWeather = (d) => this.style.weather(d, renderT);
+      // Weather runs on the SCENERY clock, not the run clock. renderT comes off
+      // tRun, which is held at zero through the ACT card and the opening run-in
+      // — and the blizzard's only other motion term is camX, which is parked
+      // for exactly as long. Frost 1 opens at strength 0 so it never showed,
+      // but Frost 2 and 3 open mid-ladder and the stage came up under a sheet
+      // of snow nailed to the screen. backgroundT is alive from the first frame
+      // and still freezes on a real pause, which is what this wants.
+      const drawWeather = (d) => this.style.weather(d, backgroundT);
       if (!pushOverlayDraw(drawWeather)) drawWeather(ctx);
     }
     // AND THE SLEIGH GOES ABOVE THE WEATHER. It is the one thing in the sky the

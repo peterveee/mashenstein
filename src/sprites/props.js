@@ -1430,6 +1430,40 @@ export function eggshellBalloonArt(ctx, w, h, o = {}) {
   ctx.restore();
 }
 
+// THE MASTER STRIP'S LAYOUT, shared with whoever runs cables into it.
+//
+// Eight sockets with SIX plugs in them, because there are six machines in the
+// arcade, and the two empties are what say "power strip" rather than "moulded
+// prop". Peter picked this arrangement — the gap in the middle of the run — off
+// the plug bake-off on 20 Sep, with the bar stretched so the switch and its
+// pilot lamp no longer share the left sixth with the first socket.
+//
+// Everything is a fraction of the box the painter is given, so the film's 72x10
+// and any other size lay out the same.
+// TEN SOCKETS, filling the bar right out to the end. The first cut stopped the
+// row short to give the trunk cable its own stretch of moulding, which left a
+// blank slab of grey doing nothing — Peter, 20 Sep: "put more empty plugs on
+// the right end to fill in the space". The gangway now runs from the switch bay
+// to the outlet, and the two spares at the far end are what a strip this long
+// always has going spare.
+const STRIP_BAY_END = 0.202;                      // the switch bay's right edge
+const STRIP_PITCH = 0.0762;
+export const STRIP_SOCKET_CX = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => STRIP_BAY_END + 0.048 + i * STRIP_PITCH);
+// Which sockets carry a plug: six, because there are six machines. The pair in
+// the middle of the run and the pair at the far end are left open.
+export const STRIP_PLUGGED = [0, 1, 4, 5, 6, 7];
+const STRIP_SOCKET_W = 0.062, STRIP_SOCKET_TOP = 0.36, STRIP_SOCKET_BOT = 0.72;
+// The plug body. It is a hair wider than the hole so the hole cannot show, and
+// it stands only a little above the bar's top face: Peter, 20 Sep, "smaller
+// plugs that don't extend past the top of the strip so much".
+const STRIP_PLUG_W = 0.0655, STRIP_PLUG_TOP = 0.17, STRIP_PLUG_BOT = 0.78;
+
+// Where a plug's cord leaves it, for a caller drawing the run back to a
+// machine. `i` indexes STRIP_PLUGGED, and the point is in the painter's own box.
+export function powerStripCordAt(w, h, i) {
+  return [w * STRIP_SOCKET_CX[STRIP_PLUGGED[i]], h * (STRIP_PLUG_TOP + 0.03)];
+}
+
 export const PROP_PAINTERS = {
   ...ANIMAL_PAINTERS,
   ...FINISH_DOG_PAINTERS,
@@ -3475,6 +3509,95 @@ export const PROP_PAINTERS = {
 
     ctx.restore();
   },
+  // THE MASTER STRIP. A six-gang bar lying on the floor with a big red rocker at
+  // one end, and it is the object the whole game is about: the opening film
+  // spends its climax on a tilt down onto this, and the finale's closer is the
+  // reveal that it was plugged into itself the entire time.
+  //
+  // Frame 0 is LIVE — rocker down, neon lamp burning. Frame 1 is DEAD. Two
+  // frames rather than an `on` parameter because that is what the prop cache
+  // keys on (name|WxH|frame), so the two states cost one bake each and the
+  // switch is free at the call site.
+  //
+  // Drawn along its length in the box it is given, so the caller sizes it in
+  // world units and never has to know the gang count.
+  powerStrip(ctx, w, h, frame = 0) {
+    const live = frame === 0;
+    const u = Math.max(w, h);
+    const ink = 'rgba(22,14,34,0.55)';
+    const line = Math.max(0.3, h * 0.05);
+    // Body. Deliberately a flat dark grey and not a colour: everything else at
+    // this end of the room — the yellow terminal, the red rocker, the orange
+    // cords — is louder than it on purpose, so the eye lands on the switch.
+    ctx.beginPath(); rr(ctx, 0, h * 0.24, w, h * 0.62, h * 0.16);
+    ctx.fillStyle = '#3b3746'; ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = line; ctx.stroke();
+    // A lighter top face so the bar reads as lying down rather than standing up.
+    ctx.beginPath(); rr(ctx, w * 0.015, h * 0.26, w * 0.97, h * 0.2, h * 0.09);
+    ctx.fillStyle = '#4a4557'; ctx.fill();
+
+    // THE ROCKER, with a clear margin of bar on both sides of it. Down and lit,
+    // or up and dead — the tilt is the only thing that changes shape, and it is
+    // the frame the film's climax lands on.
+    const rx = w * 0.035, rw = w * 0.105;
+    ctx.beginPath(); rr(ctx, rx, h * 0.3, rw, h * 0.46, h * 0.08);
+    ctx.fillStyle = live ? '#c8302c' : '#7a2b30'; ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = line; ctx.stroke();
+    // A highlight on the half of the rocker that is standing proud. Flipping
+    // which half catches the light is what reads as "thrown" at a glance,
+    // before the colour change registers.
+    ctx.fillStyle = live ? 'rgba(255,214,206,0.5)' : 'rgba(255,255,255,0.12)';
+    ctx.fillRect(rx + rw * 0.18, h * (live ? 0.34 : 0.56), rw * 0.64, h * 0.16);
+
+    // The neon pilot lamp beside the switch, in the bay rather than shoulder to
+    // shoulder with the first socket. On a strip this is the one part that is
+    // genuinely emissive, so it gets a bloom ring rather than a dot — and when
+    // it goes out, it goes out completely.
+    if (live) {
+      const lx = w * 0.19, ly = h * 0.53;
+      ctx.beginPath(); ctx.arc(lx, ly, u * 0.028, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,170,90,0.35)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(lx, ly, u * 0.014, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd08a'; ctx.fill();
+    }
+
+    // THE EMPTY SOCKETS. A dark recess with two pin slots, and at the sizes
+    // this ships at the slots are what say "socket" rather than "vent", so they
+    // are drawn even when they are barely a pixel.
+    for (let i = 0; i < STRIP_SOCKET_CX.length; i++) {
+      if (STRIP_PLUGGED.includes(i)) continue;
+      const cx = STRIP_SOCKET_CX[i];
+      ctx.beginPath();
+      rr(ctx, w * cx - w * STRIP_SOCKET_W / 2, h * STRIP_SOCKET_TOP,
+        w * STRIP_SOCKET_W, h * (STRIP_SOCKET_BOT - STRIP_SOCKET_TOP), h * 0.07);
+      ctx.fillStyle = '#211d2c'; ctx.fill();
+      ctx.fillStyle = '#100d18';
+      ctx.fillRect(w * cx - w * 0.018, h * 0.44, w * 0.011, h * 0.2);
+      ctx.fillRect(w * cx + w * 0.007, h * 0.44, w * 0.011, h * 0.2);
+    }
+
+    // AND THE PLUGS. A plug covers its socket completely — a body sitting above
+    // an open recess reads as a block standing next to a hole, which is the
+    // opposite of plugged in. The seat shadow under each one is what sells it
+    // as inserted rather than balanced on top.
+    for (const i of STRIP_PLUGGED) {
+      const cx = STRIP_SOCKET_CX[i], bw = w * STRIP_PLUG_W, x = w * cx - bw / 2;
+      const top = h * STRIP_PLUG_TOP, bot = h * STRIP_PLUG_BOT;
+      ctx.fillStyle = 'rgba(12,8,18,0.45)';
+      ctx.fillRect(x - w * 0.004, h * (STRIP_SOCKET_TOP - 0.02), bw + w * 0.008, h * 0.06);
+      ctx.beginPath(); rr(ctx, x, top, bw, bot - top, h * 0.07);
+      ctx.fillStyle = '#2a2634'; ctx.fill();
+      ctx.strokeStyle = ink; ctx.lineWidth = line; ctx.stroke();
+      ctx.beginPath(); rr(ctx, x + bw * 0.16, top + h * 0.03, bw * 0.68, h * 0.055, h * 0.02);
+      ctx.fillStyle = '#3c3747'; ctx.fill();
+    }
+
+    // The moulded feed leaving the right end. Just a stub: the cable itself is
+    // drawn by whoever placed the strip, because its curve depends on where the
+    // other end is and that is never the same twice.
+    ctx.beginPath(); rr(ctx, w * 0.975, h * 0.44, w * 0.045, h * 0.2, h * 0.07);
+    ctx.fillStyle = '#2c2838'; ctx.fill();
+  },
   cord(ctx, w, h) {
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
@@ -3611,7 +3734,7 @@ export const PROP_PAINTERS = {
     ctx.restore();
   },
 
-  // The bust: the portrait every taunt card shows, the intro panel, the relic.
+  // The bust: the portrait every taunt card shows, the opening film, the relic.
   eggshell(ctx, w, h) {
     ctx.save();
     ctx.scale(w / EG_APE_W, h / EG_APE_H);
@@ -4968,6 +5091,8 @@ export const PROP_FRAMES = {
   eggshellCopter: 12,
   ...ANIMAL_FRAMES,
   ...finishDogTable(ANIMAL_FRAMES),
+  // Live and dead. Not an animation — the film cuts between them on one frame.
+  powerStrip: 2,
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
   // The thistle takes the cactus's six: it replaces it in the lane, so the two
   // must sway on the same ring or a mixed pattern reads as two clocks.
@@ -5121,6 +5246,9 @@ const PROP_DETAIL_SCALE = {
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
   capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRewind: 2,
   appliance: 2, cord: 2, resident: 2, dustdevil: 2,
+  // Six sockets and two pin slots each inside a bar that ships around 56 units
+  // wide and 9 tall. The slots are what stop the gangs reading as louvres.
+  powerStrip: 3,
   // Plug-row icons. These ship at 5-10px, which is the range this table exists
   // for: the painter gets a 2x box before supersampling, so a rim band, a
   // toaster slot and a hairline contour survive as tone instead of snapping

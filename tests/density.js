@@ -13,15 +13,32 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
+// One whole frame, in the order main.js runs it: beginRenderFrame at the top
+// (which applies any rung the controller queued last frame, before anything is
+// painted), then noteRendererFrame on the present. Driving only the present
+// half would let a queued rung sit unapplied forever, so `density` — which
+// reads the surface actually in use, not the rung the controller has chosen —
+// would never move.
+function tick(r, clk, dt) {
+  clk.t += dt;
+  r.beginRenderFrame();
+  r.noteRendererFrame(clk.t);
+}
+
 // Feed n frames spaced dt ms apart. The first call after a reset only primes
 // the clock (no measured interval), so feed a couple extra when a count matters.
 function feed(r, clk, n, dt) {
-  for (let i = 0; i < n; i++) { clk.t += dt; r.noteRendererFrame(clk.t); }
+  for (let i = 0; i < n; i++) tick(r, clk, dt);
 }
 
 // Feed dt-spaced frames until pred() holds (returns true) or max frames pass.
+// One more frame after the predicate: the rung it saw is queued, and the
+// surface only follows at the top of the frame after it.
 function feedUntil(r, clk, dt, pred, max = 5000) {
-  for (let i = 0; i < max; i++) { clk.t += dt; r.noteRendererFrame(clk.t); if (pred()) return true; }
+  for (let i = 0; i < max; i++) {
+    tick(r, clk, dt);
+    if (pred()) { r.beginRenderFrame(); return true; }
+  }
   return false;
 }
 
@@ -165,7 +182,8 @@ function webglStub() {
   const seen = new Set();
   r.noteRendererFrame(clk.t);          // prime
   // 15 frames is one emergency drop's worth; more would trigger a second drop.
-  for (let i = 0; i < 15; i++) { clk.t += 40; r.noteRendererFrame(clk.t); seen.add(r.rendererDiagnostics().density); }
+  for (let i = 0; i < 15; i++) { tick(r, clk, 40); seen.add(r.rendererDiagnostics().density); }
+  r.beginRenderFrame();                // the frame that applies the drop
   const d = r.rendererDiagnostics();
   assert(d.density === 2 && d.rung === 4, 'a half-second of >33ms frames drops two rungs to 2x');
   assert(!seen.has(2.5), 'the emergency drop skips the intermediate 2.5x rung (single adjustment)');
@@ -205,7 +223,7 @@ function webglStub() {
   // re-detected and reverted, so the drop is transient. Detect that it occurs
   // at all rather than sampling a fixed endpoint.
   let droppedAgain = false;
-  for (let i = 0; i < 1200; i++) { clk.t += 35; r.noteRendererFrame(clk.t); if (r.rendererDiagnostics().rung > 2) droppedAgain = true; }
+  for (let i = 0; i < 1200; i++) { tick(r, clk, 35); if (r.rendererDiagnostics().rung > 2) droppedAgain = true; }
   assert(droppedAgain, 'once the suspension lapses a real stall drops again');
   assert(r.rendererDiagnostics().frozen === true,
     'a second futile drop freezes adaptation so a CPU-bound device stops churning');

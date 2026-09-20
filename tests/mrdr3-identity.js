@@ -351,7 +351,11 @@ assert(!read('tools/lib/mix-source.js').includes('mrdrComparison'),
   // on the next note, the output re-points when the gate has moved, and only lanes
   // nothing has played for a while are actually released.
   {
-    const from = voices.indexOf('  dispose() {');
+    // Anchored on the NAME rather than on `dispose() {`, which stopped matching the day
+    // dispose took an argument — and a source probe that silently finds nothing passes
+    // every assertion it was written to make fail.
+    const from = voices.search(/^ {2}dispose\(/m);
+    assert(from >= 0, 'VoiceRack.dispose is where this test thinks it is');
     const body = from < 0 ? '' : voices.slice(from, voices.indexOf('\n  }\n', from));
     assert(/releaseTngr2Context\(this\.ctx\)/.test(body),
       'TNGR-2 releases its lanes when the rack is disposed');

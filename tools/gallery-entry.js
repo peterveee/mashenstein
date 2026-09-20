@@ -14,7 +14,7 @@ import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld, screenYFor } from '../src/engine/ca
 // The game's cameras, read from the modules that own them so the zoom-levels
 // section can never quote a number the game has stopped using.
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
-import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook, cabinetScreenGeometry, cabinetScreenArt } from '../src/game/hub/index.js';
+import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook, cabinetScreenGeometry, cabinetScreenArt, drawHubSocket } from '../src/game/hub/index.js';
 import { makeCabinetDive, DIVE_DURATION, DIVE_KEYFRAMES, DIVE_VARIANTS } from '../src/game/hub/cabinet-dive.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite, drawPellet } from '../src/engine/sprites.js';
@@ -32,7 +32,7 @@ import {
 } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
-  cabinetPalette, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
+  cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
 import {
@@ -123,6 +123,8 @@ import {
 import {
   DOOR_CANDIDATES, doorCandidatePalette,
 } from '../src/dev/door-candidates.js';
+import { MCGFN_CANDIDATES, drawMcgfnCandidate } from '../src/dev/mcgfn-candidates.js';
+import { drawMcgfnPlate } from '../src/sprites/mcgfn.js';
 import { makeDoorWalk, openingEdge, WALK_DIR } from '../src/dev/door-walk-preview.js';
 import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
@@ -1575,6 +1577,64 @@ function propNominalSize(name) {
   }
 }
 
+// -------------------------------------------------- MCGFN-1 socket bake-off
+// The production socket is the control: a yellow hole in the wall. The studies
+// beside it answer a different question — how can one central receptacle own a
+// campaign's many plugs without becoming a wall of literal holes? Every row is
+// the same object at 0, 27, 54 and 81 collected plugs, so the progression read
+// can be judged as part of the design rather than added after the silhouette.
+{
+  const HORIZONTAL_W = 96, HORIZONTAL_H = 96;
+  const VERTICAL_W = 72, VERTICAL_H = 112;
+  const GAP = 6, M = 8;
+  const STATES = [0, 27, 54, 81];
+  const grid = section('mcgfn-bakeoff', 'MCGFN-1 socket bake-off',
+    'The current yellow socket is the control. Candidate master terminals keep one final-cord receptacle and summarize the collected plugs with a compact progress display.');
+  const panel = (ctx, x, y, panelW, panelH, labelText, fill = '#1a1e24') => {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, panelW, panelH);
+    ctx.strokeStyle = '#3d454b';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(x + 0.5, y + 0.5, panelW - 1, panelH - 1);
+    ctx.fillStyle = '#aeb2ae';
+    ctx.font = '5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelText, x + panelW / 2, y + panelH + 9);
+  };
+  const drawControl = (ctx, x, y, panelW, panelH) => {
+    const scale = 1.3;
+    ctx.save();
+    ctx.translate(x + panelW / 2 - 22 * scale, y + 18);
+    ctx.scale(scale, scale);
+    drawHubSocket(ctx, 22, 0);
+    ctx.restore();
+    ctx.fillStyle = '#f6d33c';
+    ctx.font = '5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CONTROL', x + panelW / 2, y + panelH - 10);
+  };
+  for (const study of [{ id: 'control', name: 'A - current socket', note: 'yellow wall socket control' },
+    { id: 'shipped', name: 'SHIPPED - the film\u2019s plate', note: 'src/sprites/mcgfn.js, the painter intro.js actually calls' },
+    ...MCGFN_CANDIDATES]) {
+    const panelW = study.id === 'yellowCoreVertical' ? VERTICAL_W : HORIZONTAL_W;
+    const panelH = study.id === 'yellowCoreVertical' ? VERTICAL_H : HORIZONTAL_H;
+    const tileW = M * 2 + panelW * 4 + GAP * 3;
+    const tileH = panelH + 28;
+    tile(grid, study.name, study.note, tileW, tileH, (ctx, t) => {
+      ctx.fillStyle = '#111419';
+      ctx.fillRect(0, 0, tileW, tileH);
+      STATES.forEach((count, i) => {
+        const x = M + i * (panelW + GAP);
+        panel(ctx, x, 0, panelW, panelH, `${count} COLLECTED`);
+        if (study.id === 'control') drawControl(ctx, x, 0, panelW, panelH);
+        else if (study.id === 'shipped') drawMcgfnPlate(ctx, x + 5, 20, panelW - 10, (panelW - 10) * 32 / 49, count / 81);
+        else drawMcgfnCandidate(ctx, study.id, x + 5, 6, panelW - 10, panelH - 22, count / 81, t);
+      });
+    }, { animated: study.id !== 'control', wide: true, hires: 5 });
+  }
+}
+
 // ------------------------------------------------------- 3b. cabinet posters
 // The one-sheet that hangs over each machine, next to the machines themselves.
 // Every sheet is drawn by the hub's own drawPoster at the hub's own sizes, so
@@ -2264,6 +2324,57 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
+// ------------------------------------------------ cabinet power-state mockup
+// One cabinet, three power states, at a larger comparison size. This is a lab
+// study rather than a production asset: the brownout deliberately tests the
+// read of "the cabinet is trying to come back" before that treatment moves
+// into the hub painter.
+{
+  const cab = CABINETS.find((candidate) => candidate.id === 'plumber') || CABINETS[0];
+  const grid = section('cabinet-power-states', 'FOOD COURT - cabinet power states',
+    'Same cabinet, same silhouette: locked, partially powered, and restored. The middle treatment is the open art question.');
+  const CW = 64, CH = 136;
+  const stateTile = (name, sub, draw) => tile(grid, name, sub, CW + 10, CH + 10,
+    (ctx, t) => {
+      ctx.fillStyle = '#12121c';
+      ctx.fillRect(0, 0, CW + 10, CH + 10);
+      draw(ctx, t);
+    }, { animated: true, hires: 4 });
+
+  stateTile('LOCKED', 'dead - no identity', (ctx, t) => {
+    const pal = cabinetPalette(cab, false);
+    drawCabinetShell(ctx, 5, 5, CW, CH, pal);
+    const scr = drawCabinetScreen(ctx, 5, 5, CW, CH, pal);
+    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+  });
+
+  stateTile('BROWNOUT', 'partial power - identity flickers', (ctx, t) => {
+    const pal = cabinetPalette(cab, true);
+    const level = cabinetBrownoutAlpha(t, pal.seed);
+    ctx.save();
+    ctx.globalAlpha = level;
+    drawCabinetShell(ctx, 5, 5, CW, CH, pal);
+    const scr = drawCabinetScreen(ctx, 5, 5, CW, CH, pal);
+    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+    ctx.restore();
+
+    if (scr) drawCabinetSignalInterference(ctx, scr, t, pal.seed);
+
+    // A single failing fluorescent line makes the power loss legible even when
+    // the animation is paused on a dim frame.
+    ctx.fillStyle = `rgba(246,211,60,${(0.05 + phase * 0.08).toFixed(3)})`;
+    ctx.fillRect(11, 7, CW - 12, 1);
+    ctx.fillStyle = `rgba(8,7,16,${(0.16 - phase * 0.08).toFixed(3)})`;
+    ctx.fillRect(11, 48 + phase * 18, CW - 12, 3);
+  });
+
+  stateTile('RESTORED', 'stable power - fully alive', (ctx, t) => {
+    const pal = cabinetPalette(cab, true);
+    drawCabinetShell(ctx, 5, 5, CW, CH, pal);
+    const scr = drawCabinetScreen(ctx, 5, 5, CW, CH, pal);
+    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+  });
+}
 // ---------------------------------------- Speed Zone water-tower bake-off
 // Ten gallery-only silhouettes, including the live production painter as A.
 // The cards show the tower against a quiet far-mesa slice at the same planted
@@ -8487,6 +8598,62 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
+// ---------------------------------------- intro entrance opening mockups
+{
+  const DW = 44, DH = 84, GAP = 12, M = 10;
+  const TW = M * 2 + DW * 4 + GAP * 3, TH = DH + 30;
+  const FLOOR = TH - 18;
+  const BASE = {
+    ...DOOR_PALETTES.service,
+    id: 'intro-opening',
+    frame: '#2a2d34', door: '#111419', sign: '#1b2026', ink: '#101317',
+    icon: 'none', variant: 'slide', slideDir: -1,
+  };
+  const STUDIES = [
+    { id: 'control', title: 'A — dark porthole slide', note: 'the service slide, drained almost to black' },
+    { id: 'bipart', title: 'B — split shadow slide', note: 'two quiet leaves, still unmistakably automatic' },
+    { id: 'glass', title: 'C — smoked glass', note: 'a dark pane that catches only a trace of the room' },
+    { id: 'threshold', title: 'D — plain threshold', note: 'matte slabs and a seam, with the least visual information' },
+  ];
+  const concourse = (ctx) => {
+    ctx.fillStyle = '#171a21';
+    ctx.fillRect(0, 0, TW, FLOOR);
+    for (let x = 14; x < TW; x += 42) {
+      ctx.fillStyle = '#0d1016';
+      ctx.fillRect(x, 5, 24, 3);
+      ctx.fillStyle = 'rgba(182, 192, 207, 0.18)';
+      ctx.fillRect(x + 3, 8, 18, 1);
+    }
+    ctx.fillStyle = '#30343d';
+    ctx.fillRect(0, FLOOR, TW, 5);
+    ctx.fillStyle = '#1b1e26';
+    ctx.fillRect(0, FLOOR + 5, TW, TH - FLOOR - 5);
+    for (let x = 0; x < TW; x += 32) {
+      ctx.fillStyle = (x / 32) % 2 === 0 ? '#20242c' : '#181b22';
+      ctx.fillRect(x, FLOOR + 10, 32, TH - FLOOR - 10);
+    }
+  };
+
+  const grid = section('intro-door-mockups', 'INTRO — entrance opening mockups',
+    'Gallery-only studies for the hidden entrance area. All four use the same dark room, floor and overhead lights; only the opening language changes.');
+  for (const study of STUDIES) {
+    const pal = doorCandidatePalette(study.id, BASE);
+    tile(grid, study.title, study.note, TW, TH,
+      (ctx, t) => {
+        concourse(ctx);
+        const live = 0.5 - 0.5 * Math.cos(t * 1.1);
+        [0, 0.5, 1, live].forEach((open, i) => {
+          drawDoor(ctx, M + i * (DW + GAP), FLOOR - DH, DW, DH, pal, t, open);
+        });
+        ctx.fillStyle = 'rgba(255,255,255,.42)';
+        ctx.font = '5px ui-monospace, monospace';
+        ['SHUT', 'HALF', 'OPEN', 'LIVE'].forEach((label, i) => {
+          ctx.fillText(label, M + i * (DW + GAP) + 1, TH - 4);
+        });
+      }, { animated: true, wide: true, hires: 6 });
+  }
+}
+
 // ------------------------------ food court — walking through a door (shipped)
 // The staged exit the hub and the Trophy Room both play. src/game/hub/door-walk.js
 // is the sequence itself; this draws the real thing rather than a copy of it.
@@ -8623,11 +8790,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       }, { animated: true, hires: 6 });
   }
 }
-
-
-
-
-
 
 
 

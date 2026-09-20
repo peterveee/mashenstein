@@ -211,12 +211,11 @@ Trigger: stage briefing screen shown before a stage starts, memo/letterhead
 style, multiple stacked panels per stage ([briefings.js](../src/data/briefings.js#L8-L67)).
 E.g. stage `plumber-1`: "INTERRUPTION BY DON K. EGGSHELL, PHD: 'MY IQ IS 300 AND YOURS IS A HIGH SCORE. I HAVE SYSTEMATICALLY DISCONNECTED THE PRIMARY POWER GRID...'"; stage `plumber-2`: "NOTIFICATION FROM INTERNAL MAINTENANCE: DUST DEVIL 9000 IS CURRENTLY OPERATIONAL..."
 
-### Opening story panels
-Trigger: shown once on a new save / game start ([jokes.js](../src/data/jokes.js#L389-L404)):
-1. "THE ARCADE. 11:58 PM. EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM."
-2. "DON K. EGGSHELL, PHD, UNPLUGS THE MASTER POWER STRIP. 'IF I CANNOT WIN... NOBODY PLAYS.' HIS VACUUM IS ALSO CHARGING. PRIORITIES."
-3. "DUE TO BUDGET CUTS, THE ARCADE CAN ONLY RENDER ONE HERO AT A TIME. THE HEROES ACCEPT THIS WITH GRACE. AND ONE FORM COMPLAINT."
-4. "EIGHT HEROES. ONE SOCKET. A RELAY BEGINS. THIS IS THE MOST IMPORTANT CRISIS IN HISTORY. EVERYONE AGREES."
+### Opening story film
+Trigger: shown once on a new save / game start. The opening is now an eleven-shot,
+32.20-second film authored in [`INTRO_SHOTS`](../src/data/jokes.js) and projected
+by [`src/game/intro.js`](../src/game/intro.js). See [`docs/SCRIPT.md`](SCRIPT.md)
+for the current captions and shot sheet.
 
 ---
 

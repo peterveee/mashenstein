@@ -273,6 +273,25 @@ const PREVIEW_STEP = 1;
 // `_cutBenchGates`: short enough to read as a stop, long enough not to click.
 const BENCH_FADE = 0.015;
 
+/**
+ * The same, for a SONG that is being stopped or replaced. See `setBank`.
+ *
+ * The bench had this argument first and the song path did not, which is backwards: the
+ * bench is a panel you open, and `setBank` is what every screen change in the game goes
+ * through. A song was torn down in three steps that all landed on the same `now` — the
+ * voice rack disposed, the lane gates slammed to zero and disconnected, and songTrim
+ * itself stepped to 0.0001 — and every one of those is a jump from wherever the waveform
+ * had got to straight to silence. Leaving the Food Court mid-phrase clicked because a
+ * dozen lanes were cut mid-cycle at once.
+ *
+ * Twelve milliseconds, the same number VoiceRack uses for STOP_FADE and for the same
+ * reason: under a frame, so the music still reads as having stopped the instant the
+ * screen changed, and over a cycle of anything above 80Hz, so the waveform is walked to
+ * zero rather than cut off. It is spent inside `gap`'s half second, so nothing about
+ * when the next song starts moves.
+ */
+const SONG_FADE = 0.012;
+
 // How long an arrangement's per-bar PAN takes to travel, and how far ahead of the note
 // it starts so that it arrives on it. A pan stepped under a note that is still ringing
 // is a discontinuity in both channels at once, which is a click; twelve milliseconds is
@@ -724,7 +743,7 @@ export const SFX_TRIM = {
   // 32dB of spread became 23.
   //
   // Everything below this line is a cue that had no trim at all before the pass.
-  switchFlick: 0.638, clickHard: 0.716, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
+  switchFlick: 0.638, clickHard: 0.716, socketDrop: 0.62, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
   loopRun: 1.259, boostFall: 1.035, shoot: 1.622, checkpoint: 1.38, coin: 1,
   abilityReady: 0.881, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
   bridgeLay: 2.265,
@@ -4622,6 +4641,53 @@ class AudioSys {
         this.osc('sine', 1650 * pitch, 1650 * pitch, 0.022, 0.12, w);
         break;
       }
+      // A plug leaving the terminal: a bright contact snap, a short plastic
+      // body, and a descending little circuit chirp. The intro fires this in a
+      // rapid reverse cascade so the sound follows the last-filled cell first.
+      case 'socketDrop': {
+        const w = Math.max(0, opt.when || 0);
+        this.noise(0.014, 0.42, 'highpass', 3600, w);
+        this.noise(0.035, 0.30, 'bandpass', 900, w + 0.002);
+        this.osc('square', 520 * pitch, 190 * pitch, 0.06, 0.105, w + 0.001);
+        this.osc('triangle', 1180 * pitch, 620 * pitch, 0.075, 0.075, w + 0.006);
+        break;
+      }
+      // THE MASTER SWITCH GOING OFF. The one throw the whole game hangs on: a
+      // mechanical pincer putting a floor strip's rocker over, in an arcade
+      // that is about to stop existing.
+      //
+      // Its own cue rather than a louder 'clickHard', which is two other
+      // things as well (the run's finish plunger) and is built as an EDGE — a
+      // 20ms tick, a short square and a 1650Hz pip. Under a camera that has
+      // spent three seconds falling down his arm onto this object, an edge with
+      // no mass reads as a mouse click, not as a decision.
+      //
+      // Darker and heavier than 'switchFlick', which is the reward cue for a
+      // block you punched and answers itself with a bright circuit tone. This
+      // one is the opposite event: nothing good happens next, so there is no
+      // answer, and the bottom falls out of it instead. `powerDown` is already
+      // scheduled a beat behind and has the whole sweep — this only has to be
+      // the hand on the bar.
+      //
+      // ONE GESTURE. Every layer lands inside sixteen milliseconds, because the
+      // rocker is a single stroke and the shot's own note says two ticks read
+      // as a fumble.
+      case 'stripThrow': {
+        const w = Math.max(0, opt.when || 0);
+        // The contacts parting: a dull spit of an arc, not a spark.
+        this.noise(0.012, 0.42, 'highpass', 5200, w);
+        // The plastic seating over — the loudest part, and low for its size.
+        this.noise(0.02, 1.35, 'bandpass', 420 * pitch, w + 0.004);
+        this.noise(0.09, 0.9, 'bandpass', 300 * pitch, w + 0.006);
+        // THE MASS. A strip is a long object lying on a hard floor, so the body
+        // goes lower and rings longer than a wall switch has any right to.
+        this.osc('square', 150 * pitch, 60 * pitch, 0.08, 0.34, w + 0.002);
+        this.osc('triangle', 90 * pitch, 38 * pitch, 0.22, 0.3, w + 0.008);
+        // One edge on top so it still reads at lane volume in a wide shot, dull
+        // enough that it belongs to the same object as everything under it.
+        this.noise(0.014, 0.3, 'highpass', 2200, w + 0.002);
+        break;
+      }
       case 'boom': this.explosion(); break;
       // THE BOOT CONNECTING. A punt had no sound at all until this: the call
       // site asked for 'launch' without naming a hero, and playLaunch keys its
@@ -4911,27 +4977,60 @@ class AudioSys {
   /**
    * Stop every note this song still has sounding. The other half of setBank's mute.
    *
-   * Silent by construction rather than by ramp: the trim is being slammed to 0.0001
-   * in the same call, at the same `now`, so there is nothing audible left for a
-   * disconnect to click on. What is left ringing after this is only what is already
-   * past the strips — the reverb and echo returns, which decay on their own with
-   * nothing left feeding them.
+   * `fade` is seconds, and it buys the same thing `_cutBenchGates` buys: the gates walk
+   * to zero instead of being set to it. This used to argue that the ramp was unnecessary
+   * because "the trim is being slammed to 0.0001 in the same call, at the same `now`, so
+   * there is nothing audible left for a disconnect to click on" — which is a sound
+   * argument about the DISCONNECT and no argument at all about the slam. Two
+   * simultaneous steps to silence are not quieter than one. Both ramp now; see SONG_FADE.
+   *
+   * The bookkeeping stays synchronous whatever `fade` is — the maps are cleared and the
+   * pan offsets handed back before this returns — and only the `disconnect()` waits. That
+   * split is load-bearing: a gate still in `_laneGates` when the next bank builds its own
+   * is the failure described in VoiceRack.dispose, where an AW lane stays wired to a gate
+   * that reaches nothing. Nothing can find these gates again; they are merely still
+   * carrying their last few milliseconds of signal.
+   *
+   * What is left ringing after this is only what is already past the strips — the reverb
+   * and echo returns, which decay on their own with nothing left feeding them.
    */
-  _cutLaneGates() {
-    for (const gate of this._laneGates.values()) {
-      gate.dry.gain.value = 0;
-      gate.wet.gain.value = 0;
-      try { gate.dry.disconnect(); } catch { /* already gone */ }
-      try { gate.wet.disconnect(); } catch { /* already gone */ }
-    }
-    this._laneGates.clear();
+  _cutLaneGates(fade = 0) {
+    const gates = [...this._laneGates.values()];
+    const now = this.ctx?.currentTime ?? 0;
+    const drop = (param) => {
+      try {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(param.value, now);
+        param.linearRampToValueAtTime(0, now + fade);
+      } catch { param.value = 0; }
+    };
     // The trims feed the gates, so cutting a gate already silences them — but they
     // hold a reference to a node this song is finished with, and the next song's
-    // pools must not find one.
-    for (const bus of this._barGainBuses.values()) {
-      try { bus.dry.disconnect(); } catch { /* already gone */ }
-      try { bus.wet.disconnect(); } catch { /* already gone */ }
+    // pools must not find one. Taken down WITH the gates rather than before them:
+    // disconnecting a trim is the same edge one node earlier, and doing it at `now`
+    // would empty the gate the ramp above is still walking down.
+    const buses = [...this._barGainBuses.values()];
+    const cut = () => {
+      for (const gate of gates) {
+        try { gate.dry.disconnect(); } catch { /* already gone */ }
+        try { gate.wet.disconnect(); } catch { /* already gone */ }
+      }
+      for (const bus of buses) {
+        try { bus.dry.disconnect(); } catch { /* already gone */ }
+        try { bus.wet.disconnect(); } catch { /* already gone */ }
+      }
+    };
+    for (const gate of gates) {
+      if (fade > 0) { drop(gate.dry.gain); drop(gate.wet.gain); } else {
+        gate.dry.gain.value = 0;
+        gate.wet.gain.value = 0;
+      }
     }
+    // An offline render has no wall clock to wait on and has to stay sample-exact, so it
+    // takes the old path whole: `fade` is zero there and the graph comes apart at once.
+    if (fade > 0) setTimeout(cut, Math.ceil(fade * 1000) + 5);
+    else cut();
+    this._laneGates.clear();
     this._barGainBuses.clear();
     // The pan offsets are not nodes to disconnect but a number written on somebody
     // else's panner, so they have to be TAKEN BACK rather than dropped: a strip left
@@ -4944,17 +5043,18 @@ class AudioSys {
   }
 
   /**
-   * The same for the audition bench — but FADED, where the lane version slams.
+   * The same for the audition bench. This one had the argument first; `_cutLaneGates`
+   * now makes it too.
    *
-   * `_cutLaneGates` can be instant because the master trim is going to zero in the same
-   * call: there is nothing audible for it to click on. Nothing covers this one. It runs
-   * when a preview is stopped — a preset picked while the last one is still ringing, a
-   * panel closed mid-note — and a gain set to zero under a sounding note is a step from
-   * wherever the waveform happened to be to silence, which is exactly the click the ear
-   * is best at hearing.
+   * It runs when a preview is stopped — a preset picked while the last one is still
+   * ringing, a panel closed mid-note — and a gain set to zero under a sounding note is a
+   * step from wherever the waveform happened to be to silence, which is exactly the click
+   * the ear is best at hearing.
    *
    * Fifteen milliseconds, then the disconnect, which is soon enough to still read as
-   * "stopped" and long enough that there is no edge in it.
+   * "stopped" and long enough that there is no edge in it. The bench keeps its own number
+   * rather than sharing SONG_FADE: a preset is a thing you audition, and being a shade
+   * slower than a song change is the right side to err on.
    */
   _cutBenchGates() {
     const gates = [...this._benchGates.values()];
@@ -5034,18 +5134,22 @@ class AudioSys {
     // drawing. Setting it BEFORE applyMix is load-bearing — restoring it afterwards
     // changes the flag but not the bank the scheduler has already received.
     this.arrangement = arrangementOverride;
+    // Everything below that takes the old song apart does it over SONG_FADE rather than
+    // at a stroke. Zero offline: a render has no wall clock for the deferred half to wait
+    // on, and has to stay sample-exact besides, so it keeps the behaviour it always had.
+    const fade = this.offline ? 0 : SONG_FADE;
     // The voice rack is per song: a new bank, or the same bank with a different voice
     // chosen on the desk, wants its own synths. Nothing outlives this call, so
     // auditioning voices cannot silt the graph up with the ones you rejected. Safe to
     // do here because setBank already opens the new song after a clean half-second
     // gap — there is no tail to cut off.
-    if (this.voices) { this.voices.dispose(); this.voices = null; }
+    if (this.voices) { this.voices.dispose({ fade }); this.voices = null; }
     // And the same for the notes the rack does NOT play: the hand-written voices are
     // plain source nodes with their own stop times, and a drawn length, a sweep or a
     // crash can be longer than the gap this call opens. Only when a song was actually
     // sounding — at the top of an offline render there is nothing to cut, and cutting
     // there would put a node change into a render that has to stay sample-exact.
-    if (this.bank) this._cutLaneGates();
+    if (this.bank) this._cutLaneGates(fade);
     bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
     const nextBpm = bank?.bpm || this.bpm;
@@ -5058,15 +5162,48 @@ class AudioSys {
     this.pendingStartDelay = bank ? startGap : 0;
     if (this.songTrim) {
       const now = this.ctx.currentTime;
-      this.songTrim.gain.cancelScheduledValues(now);
+      // Down over SONG_FADE, not at `now`. The lane gates above cover what is still
+      // being PLAYED; this covers everything already past the strips — the reverb and
+      // echo returns, which are ringing at whatever level the last bar left them and
+      // have nothing else between them and the speakers.
+      //
+      // ANCHORED WITH setValueAtTime, NOT WITH cancelAndHoldAtTime.
+      //
+      // Both express the same intention — start the ramp from wherever the trim
+      // actually IS — and `cancelAndHoldAtTime` reads like the one meant for the job.
+      // It does not work here. songTrim is under a `setTargetAtTime` from the moment a
+      // song opens (see the other branch below), and a linear ramp scheduled after
+      // cancelAndHold on a param in that state does not ramp at all in Chromium: the
+      // gain arrives at the target immediately and the fade is silently a step again.
+      // Measured on the node itself with a probe tone — 12ms asked for, 0.33ms
+      // delivered, and a 200ms ramp came out at 0.17ms, so it is the hold and not the
+      // length. The explicit anchor gives 11.83ms of the 12 asked for.
+      //
+      // `g.value` is the CURRENT computed value, so writing it at `now` pins the curve
+      // to where the ear last heard it — which is the whole reason cancelAndHold looked
+      // right. This is the same shape `_cutBenchGates` and VoiceRack's `_fadeAndDispose`
+      // already use, and they were right to.
+      const down = () => {
+        const g = this.songTrim.gain;
+        if (!(fade > 0)) {
+          g.cancelScheduledValues(now);
+          g.setValueAtTime(0.0001, now);
+          return;
+        }
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(g.value, now);
+        g.linearRampToValueAtTime(0.0001, now + fade);
+      };
       if (bank) {
         // Mute any notes left in the old lookahead window, then open the new
-        // bank after a clean gap.
-        this.songTrim.gain.setValueAtTime(0.0001, now);
+        // bank after a clean gap. The fade is spent inside that gap — `startGap` is half
+        // a second and SONG_FADE is twelve milliseconds — so the new downbeat does not
+        // move by so much as a sample.
+        down();
         this.songTrim.gain.setTargetAtTime(this.musicTrim, now + startGap, 0.01);
         this.nextTime = now + startGap;
       } else {
-        this.songTrim.gain.setValueAtTime(0.0001, now);
+        down();
       }
       if (bank && countInBeats) this._scheduleCountIn(countInBeats, now + countInLead, nextBpm);
     }

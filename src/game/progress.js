@@ -79,6 +79,10 @@ export function stagePlayed(slot, stage) {
   return (slot.campaign.plugs[stage.id] || []).some(Boolean);
 }
 
+export function cabinetStarted(slot, cabId) {
+  return STAGES.some((stage) => stage.cabinet === cabId && stagePlayed(slot, stage));
+}
+
 // Mission, challenge and toaster all banked — there is nothing left to earn on
 // this stage. The ACT card uses it as the point where an establishing beat has
 // stopped establishing anything.

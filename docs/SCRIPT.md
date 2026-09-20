@@ -5,7 +5,7 @@
 **Voice rule, stated in [jokes.js](src/data/jokes.js):** *absolute deadpan sincerity. Jokes never replace usable information.* Everything is uppercase in-game.
 
 **Cast:** eight heroes + Eggshell + Gary + Dolores + the Dust Devil.
-**Runtime shape:** 4 intro panels → 3 acts / 9 cabinets / 27 stages (each opening on a briefing screen) → 3 bosses → 9 finale beats.
+**Runtime shape:** 10-shot, 33.13-second opening film → 3 acts / 9 cabinets / 27 stages (each opening on a briefing screen) → 3 bosses → 9 finale beats.
 
 ---
 
@@ -61,25 +61,24 @@ A tagline rotates underneath — the arcade talking to itself:
 
 ## ACT ZERO — THE INTRO
 
-*Four panels. Typewriter, 40 chars/sec. Plays once, on a new file, after difficulty select.*
+*A 33.13-second, ten-shot opening film. It plays once on a new file after difficulty select. Captions cascade by line over the moving picture; all staging is driven by the film clock so the sequence can be seeked and recorded deterministically.*
 
-**PANEL 1** — *six colored cabinet fronts, all lit*
+*The hero section runs on THE SURGE's own grid. The music cuts in on the door shot, and from there every beat of the entrance lands on a bar line: the launch on bar two, the target cabinet crossing into frame on bar four, the takeoff on bar five, the glass crossing a beat and a half later, and the pack pulling up together on the 'and' of two in bar six. The camera through the run is welded to Lorenzo, so the room streams past at the pace he is actually running.*
 
-> THE ARCADE. 11:58 PM. EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM.
+| Shot | Caption | Principal action | Duration |
+|---|---|---|---:|
+| `row` | THE ARCADE. 11:58 PM.<br>CABINETS DREAMING ELECTRIC DREAMS. | Slow truck across six live attract screens. | 6.40s |
+| `arrival` | DON K. EGGSHELL, PHD.<br>FORTY YEARS OF DEFEAT BY PLUMBERS.<br>NEVER ON TOP. | Hard cut to Eggshell's separate room; he flies into position under a downward light. | 2.50s |
+| `threat` | IF HE CANNOT WIN...<br>NOBODY PLAYS. | Lock off on the grievance. | 2.00s |
+| `socket` | *(no caption)* | Eggshell descends into frame over the floor board and the terminal, reaches down and physically throws the rocker; the bank then empties from last to first. No cabinet is visible. | 5.00s |
+| `dark` | THE ARCADE GOES DARK.<br>EGGSHELL TAKES THE CREDIT. | After the socket empties, the cabinet screens fail left to right, then hold in static; the terminal is out of frame. | 4.50s |
+| `doors` | DUE TO BUDGET CUTS,<br>ONLY ONE HERO CAN PLAY AT A TIME. | Black centre-parting service door opens from the middle to reveal Lorenzo already idle; he holds the line and launches on the next downbeat. | 1.82s |
+| `rollcall` | EIGHT HEROES. ONE SOCKET.<br>A RELAY BEGINS. | The seven cross the doorway on sixteenths behind him; the whole cast accelerates across the cabinet-free runway. | 3.64s |
+| `lineup` | *(no caption)* | The first cabinet crosses into frame and Lorenzo runs at it flat out; no static lineup forms. | 1.82s |
+| `dive` | *(no caption)* | Lorenzo leaps on the downbeat, crosses into the first PLUMBER PANIC screen and runs visibly inside while the others keep coming. | 1.82s |
+| `wide` | HISTORY WILL RECORD WHAT HAPPENS NEXT.<br>PROBABLY INCORRECTLY. | The first four brake as he leaves the floor and skid to a stop short of the machine; the three nearest him are on screen for the jump, eased down to a jog while he is in the air, and sprint past the glass one after another the moment it has him — the first while the fourth of the others is still skidding — and stop on the far side. Grumpos, Clara and B-33P celebrate; the rest watch. The frame is already centred on the cabinet and only zooms out. | 3.64s |
 
-**PANEL 2** — *Eggshell*
-
-> DON K. EGGSHELL, PHD, UNPLUGS THE MASTER POWER STRIP. "IF I CANNOT WIN... NOBODY PLAYS." HIS VACUUM IS ALSO CHARGING. PRIORITIES.
-
-**PANEL 3** — *all eight heroes, idling*
-
-> DUE TO BUDGET CUTS, THE ARCADE CAN ONLY RENDER ONE HERO AT A TIME. THE HEROES ACCEPT THIS WITH GRACE. AND ONE FORM COMPLAINT.
-
-**PANEL 4** — *all eight heroes*
-
-> EIGHT HEROES. ONE SOCKET. A RELAY BEGINS. THIS IS THE MOST IMPORTANT CRISIS IN HISTORY. EVERYONE AGREES.
-
-> **The load-bearing joke.** Panel 3 is the entire design justified as a budget constraint. One hero renders at a time — so the game is a *relay*, not a party. Every mechanic descends from this: portals, tag lines, the Relay Blast. The How-To-Play screen restates it flatly: `ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.`
+The load-bearing joke remains the relay rule: **only one hero can play at a time**. The How-To-Play screen restates it flatly as `ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.`
 
 **DIFFICULTY SELECT** *(precedes the intro)*
 
@@ -433,7 +432,7 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 
 > IT STOPS TO EMPTY ITS BAG. IT IS VISIBLY ASHAMED. IT APOLOGIZES VIA LED.
 
-> **Note:** this is the same vacuum that has been quietly mopping the food court since Act I, and the same one that was charging in intro panel 2 — "HIS VACUUM IS ALSO CHARGING. PRIORITIES." It is the only antagonist in the game with a conscience.
+> **Note:** this is the same vacuum that has been quietly mopping the food court since Act I. It is the only antagonist in the game with a conscience. (It no longer appears in the opening film; that shot is now the switch and the terminal alone.)
 
 ---
 
@@ -619,4 +618,4 @@ The narrative gaps from the previous draft, and where this draft answers them:
 
 6. **The 40-year grudge was stated once and never dramatized.** It now anchors the 1-1 briefing (`...LOST TO ENTITIES IN OVERALLS FOR FORTY CONSECUTIVE YEARS. THIS IS NOT A FAIR FIGHT. THIS IS A GRIEVANCE.`), three new taunts (`LOSING TO PLUMBERS SINCE 1986`, the statistics doctorate, the clown-copter ergonomics), and recurring forty-year paperwork throughout the memos — groundwork that beat 6's `SO THIS IS THE WARMTH I NEVER GOT` can finally land on.
 
-**Still open:** the finale beats and intro panels are unchanged, so Gary's switch-flip remains a deadpan anticlimax by design; and the briefing memos are the only place the heroes' names appear in Act III outside their own barks.
+**Still open:** the finale beats are unchanged, so Gary's switch-flip remains a deadpan anticlimax by design; and the briefing memos are the only place the heroes' names appear in Act III outside their own barks.

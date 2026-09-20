@@ -111,6 +111,38 @@ export function cabinetPalette(cab, unlocked = true) {
   };
 }
 
+export function cabinetBrownoutAlpha(t, seed) {
+  const phase = (Math.sin(t * 2.45 + seed * 0.01) + 1) / 2;
+  return 0.34 + phase * 0.22;
+}
+
+export function drawCabinetSignalInterference(ctx, scr, t, seed) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(scr.x, scr.y, scr.w, scr.h);
+  ctx.clip();
+  const roll = (t * 4.5) % (scr.h + 8);
+  for (let i = 0; i < 4; i++) {
+    const y = scr.y + ((roll + i * 9) % (scr.h + 8)) - 4;
+    ctx.fillStyle = i % 2
+      ? 'rgba(8,7,16,0.17)'
+      : 'rgba(246,211,60,0.11)';
+    ctx.fillRect(scr.x, y, scr.w, 1.5);
+  }
+  const noiseFrame = Math.floor(t * 10);
+  for (let i = 0; i < 28; i++) {
+    const noiseSeed = i * 43 + noiseFrame * 19 + seed;
+    const x = scr.x + ((noiseSeed * 0.73) % scr.w + scr.w) % scr.w;
+    const y = scr.y + ((noiseSeed * 0.41) % scr.h + scr.h) % scr.h;
+    const width = 0.45 + (((noiseSeed % 4) + 4) % 4) * 0.35;
+    ctx.fillStyle = i % 4 === 0
+      ? 'rgba(246,211,60,0.24)'
+      : 'rgba(235,235,245,0.18)';
+    ctx.fillRect(x, y, Math.min(width, scr.x + scr.w - x), 0.7);
+  }
+  ctx.restore();
+}
+
 // The OVERTIME machine: the same cabinet, running something that should not be
 // running. Violet chassis, a marquee that is only ever half-lit, dead screen.
 export const OVERTIME_PALETTE = {
@@ -1085,6 +1117,45 @@ export function signFlicker(t) {
 // something to show through the wall get something else, because at this size a
 // sign is a weak way to say "this is a shop" and a lit window is a strong one.
 function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
+  if (pal.variant === 'split') {
+    // The opening-film service door is a centre-parting pair: two leaves meet
+    // on a visible seam, then retract left and right together. It must read as
+    // a doorway opening from the middle, not as the standard pocket door
+    // sliding away on one side.
+    const powered = pal.icon !== 'none';
+    const [lx, ly, lw, lh] = box('leaf');
+    const [fx, fy, fw, fh] = box('frame');
+    const half = lw * 0.5;
+    const travel = openAmt * half * 0.96;
+    const leftX = lx - travel;
+    const rightX = lx + half + travel;
+    const panelW = half + w * 0.004;
+    const drawPanel = (px) => {
+      shape(ctx, pal.door, u, (c) => rr(c, px, ly, panelW, lh, w * 0.075));
+      plain(ctx, mix(pal.door, pal.sign, powered ? 0.45 : 0.12),
+        (c) => c.rect(px, Y(0.73), panelW, h * 0.07));
+      const cx = px + panelW * 0.5, cy = Y(0.49), r = panelW * 0.25;
+      plain(ctx, lighten(pal.frame, 0.42), (c) => c.arc(cx, cy, r + w * 0.015, 0, Math.PI * 2));
+      plain(ctx, darken(pal.frame, 0.25), (c) => c.arc(cx, cy, r + w * 0.006, 0, Math.PI * 2));
+      plain(ctx, powered ? darken(pal.sign, 0.5) : '#0b0912', (c) => c.arc(cx, cy, r, 0, Math.PI * 2));
+      glassGloss(ctx, cx - r, cy - r, r * 2, r * 2, 0.20, r);
+    };
+    ctx.save();
+    ctx.beginPath(); ctx.rect(fx, fy, fw, fh); ctx.clip();
+    // The recess and centre seam stay visible between the two leaves as they
+    // part, which gives the eye a clear expanding line of light.
+    plain(ctx, '#080610', (c) => c.rect(lx + half - w * 0.012, ly, w * 0.024, lh));
+    drawPanel(leftX);
+    drawPanel(rightX);
+    ctx.restore();
+    const sx = X(0.5), sy = box('well')[1] - h * 0.022;
+    plain(ctx, darken(pal.frame, 0.4), (c) => c.arc(sx, sy, w * 0.034, 0, Math.PI * 2));
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    plain(ctx, '#d5a13b', (c) => c.arc(sx, sy, w * 0.018, 0, Math.PI * 2));
+    ctx.restore();
+    return;
+  }
   if (pal.variant === 'slide') {
     // EXIT and the Trophy Room: an automatic sliding door, won out of the door
     // bake-off as the PORTHOLE. Its whole language is round — a big chrome-ringed
@@ -1394,6 +1465,15 @@ export const DOOR_PALETTES = {
   // written on it, and nothing behind it is switched on. This one stays dark on
   // purpose — it is the only door that is supposed to disappear.
   backroom: { id: 'backroom', frame: '#332e3a', door: '#221d29', sign: '#302a38', ink: '#302a38', icon: 'none' },
+  // The staff door the cast comes through in the opening film. An automatic
+  // door like EXIT — same slide, same retract toward the wall — but with the
+  // sign board blanked the way backroom blanks it: this is the way IN to a
+  // building that is closed, and a lit EXIT over it would be answering a
+  // question nobody asked.
+  // The intro staff entrance is a centre-parting service door. It opens from
+  // the seam so the cast is revealed together, with no one-sided pocket-door
+  // sweep competing with the first runner.
+  service: { id: 'service', frame: '#3a3f4a', door: '#2a2e38', sign: '#2f333d', ink: '#2f333d', icon: 'none', variant: 'split' },
 };
 
 // ------------------------------------------------------------ serving line

@@ -233,10 +233,12 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
 // stay reachable from a blank save: every cabinet's first stage is open, and
 // every later one is opened by the row above it and nothing else.
 {
-  const { stageUnlocked, prevStage } = await import('../src/game/progress.js');
+  const { cabinetStarted, stageUnlocked, prevStage } = await import('../src/game/progress.js');
   const { CABINETS } = await import('../src/data/cabinets.js');
   const { stagesForCabinet } = await import('../src/data/stages.js');
   const blank = { campaign: { plugs: {} } };
+
+  assert(!cabinetStarted(blank, CABINETS[0].id), 'a blank cabinet has not started');
 
   for (const cab of CABINETS) {
     const [first] = stagesForCabinet(cab.id);
@@ -251,6 +253,7 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
   // toaster grabbed on a failed run still moves you forward.
   const s2 = STAGES.find((s) => s.id === 'plumber-2'), s3 = STAGES.find((s) => s.id === 'plumber-3');
   const toasterOnly = { campaign: { plugs: { 'plumber-1': [false, false, true] } } };
+  assert(cabinetStarted(toasterOnly, 'plumber'), 'any banked plug starts a cabinet');
   assert(stageUnlocked(toasterOnly, s2), 'a toaster-only plug on stage 1 opens stage 2');
   assert(!stageUnlocked(toasterOnly, s3), 'stage 2 does not open until stage 2 itself is plugged');
 

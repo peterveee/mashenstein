@@ -48,7 +48,7 @@ results, the hub, stage select, the trophy room, the field guide, the jukebox,
 How To Play, settings, the cast roll, calibration and gameplay itself — boss
 fights included, by inheritance — all have one. Screens that have not been
 given a portrait composition yet still pause and show the rotate card:
-the intro panels, the tutorial, minigames, the shop, the arcade corner, the
+the tutorial, minigames, the shop, the arcade corner, the
 bench, the credits, the finale and the attract demo.
 
 Every platform pauses gameplay, input, rendering and audio while the page/app

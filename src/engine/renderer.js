@@ -561,6 +561,18 @@ let adaptationEnabled = false;
 let savedSeedDensity = 0;  // persisted settled density, seeds the first guess
 let savedNative = false;   // this backend previously proved the native rung
 let onSettle = null;       // called with the settled density value to persist it
+// A rung change resizes the surface, and assigning canvas.width/height clears
+// it. The controller runs on the PRESENT callback — after draw() and blit()
+// have painted, inside the same rAF turn, before the browser composites — so
+// resizing there wipes the finished frame and the compositor shows an empty
+// canvas: one pure-black flash with the DOM chrome still over it, most often on
+// a phone where the surface is heavy enough for the ladder to move at all.
+// Nothing repaints until the next frame, so the flash is unavoidable from here.
+// Queue the rebuild instead and let beginRenderFrame run it at the TOP of the
+// next frame, where the clear is immediately followed by a full repaint in the
+// same turn. Rotation and viewport rebuilds do not need this — those go through
+// the presentation-refresh cover, which is what the cover is for.
+let densityResizePending = false;
 // controller counters
 let lastPresentedAt = 0, lastFrameNow = 0;
 let slowFor = 0, fastFor = 0, emergencyFor = 0;
@@ -853,6 +865,7 @@ export function initRenderer(platform = {}, persistence = {}) {
   ladder = [1];
   nativeDensity = 1;
   adaptationEnabled = false;
+  densityResizePending = false;   // a rung queued against the old ladder
   arrivedAt = 0;
   lastFrameNow = 0;
   lastSettleValue = null;
@@ -1434,7 +1447,7 @@ function dropRungs(n, now) {
   densityCooldown = ADJUST_COOLDOWN_MS;
   resetAdaptiveSamples();
   resetSettle();
-  resize();
+  densityResizePending = true;
 }
 
 // Climb one rung toward native. Never arms a guard and never touches strikes —
@@ -1446,7 +1459,7 @@ function climbRung(now) {
   densityCooldown = ADJUST_COOLDOWN_MS;
   resetAdaptiveSamples();
   resetSettle();
-  resize();
+  densityResizePending = true;
 }
 
 // Judge whether the drop that armed this guard actually helped. If frame time
@@ -1475,7 +1488,7 @@ function resolveGuard(now) {
   if (capReverts >= CAP_REVERTS_TO_FREEZE) frozen = true;
   resetAdaptiveSamples();
   resetSettle();
-  resize();
+  densityResizePending = true;
 }
 
 // Presentation-only quality controller. Simulation stays fixed at 60 Hz. A
@@ -1734,6 +1747,10 @@ export function pendingOverlayDrawCount() { return overlayDraws.length; }
 // once and installs the logical transform directly on it, eliminating the old
 // backbuffer -> display drawImage of every pixel on every frame.
 export function beginRenderFrame() {
+  // A rung the controller chose on the last present, applied here so the clear
+  // it costs is paid by a frame that is about to be repainted anyway. Ahead of
+  // the backend check: WebGL resizes its drawing buffer, which clears it too.
+  if (densityResizePending) { densityResizePending = false; resize(); }
   if (backend !== '2d' || !dctx) return;
   profileTimed('displayMs', () => {
     dctx.setTransform(1, 0, 0, 1, 0, 0);

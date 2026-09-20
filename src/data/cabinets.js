@@ -908,6 +908,16 @@ export const HUB_THEME = HUB.bank;
 // but leaves percussion out entirely and lets each tone dissolve into echo.
 export const TITLE_THEME = TITLE.bank;
 
+// THE SURGE, named as a theme as well as a stage, because the opening film ends
+// on it. The title nocturne is 56bpm and the arcade is asleep under it; the
+// moment the rocker is thrown the film cuts the music dead, holds three seconds
+// of static, and drops this in at 132 as the heroes come through the door.
+//
+// Surge rather than the finale on purpose: FINALE_THEME is spent on the actual
+// ending, and burning it thirty seconds into a new file costs the game its
+// biggest card. This one is also, helpfully, the electricity joke.
+export const SURGE_THEME = SURGE.bank;
+
 // The finale: surge's remix engine reworks the food-court song into a house
 // cut on the way out the door. Same Am7-Em7-Gmaj7-Dmaj bed as HUB_THEME, but
 // rebuilt as an actual house arrangement — four-on-the-floor kick, offbeat

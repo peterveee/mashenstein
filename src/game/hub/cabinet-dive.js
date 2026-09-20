@@ -48,6 +48,7 @@
 import { cabinetScreenRect } from '../../sprites/arcade.js';
 import { drawToon, TOON_LOD_H } from '../../sprites/toons.js';
 import { drawSoftContactShadow } from '../../engine/shadows.js';
+import { clamp01, lerp, smooth, smoother, easeIn, easeOut } from '../../engine/ease.js';
 
 // The run's own numbers, so the hero inside the glass is the size and speed the
 // cabinet's actual game would draw him at rather than a guess that looks close.
@@ -328,7 +329,6 @@ function variantOf(v) {
   return v;
 }
 
-const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 // A hex colour at an alpha, for the flare's gradients. Takes the cabinet's own
 // screen colour rather than a constant, so each machine flashes its own light.
 function withAlpha(hex, a) {
@@ -339,13 +339,6 @@ function withAlpha(hex, a) {
   if (n.some((v) => !Number.isFinite(v))) return `rgba(207,233,255,${a.toFixed(3)})`;
   return `rgba(${n[0]},${n[1]},${n[2]},${a.toFixed(3)})`;
 }
-const lerp = (a, b, u) => a + (b - a) * u;
-const smooth = (u) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
-const easeOut = (u) => 1 - (1 - clamp01(u)) ** 2;
-const easeIn = (u) => clamp01(u) ** 2;
-// The camera's curve: zero velocity AND zero acceleration at both ends, so a push
-// can begin, pass through the crossing and stop without a seam anywhere in it.
-const smoother = (u) => { const x = clamp01(u); return x * x * x * (x * (x * 6 - 15) + 10); };
 // WHERE THE GLINT IS, rather than when it happens.
 //
 // The first cut placed two pops by hand, on the takeoff and on the crossing, and
@@ -401,6 +394,7 @@ class CabinetDive {
     floorY, heroH, startX, facing = 1,
     insideGroundY, insideUnit,
     camStart = 0, zoomGain = 0.22, zoomOverride = null, startAt = 0,
+    introEntry = null,
     outJoy = true,
     sfx = null, voiceSfx = null, voiceReverse = null, shake = null,
   }) {
@@ -440,6 +434,9 @@ class CabinetDive {
     this.glassCx = g.x + g.w / 2;
     this.insideGroundY = insideGroundY;
     this.insideUnit = insideUnit;
+    // An optional film-only entry trajectory. Normal hub use leaves this null
+    // and keeps the authored windup/leap/set phases untouched.
+    this.introEntry = introEntry;
 
     // How small he ends up, and therefore how much perspective there is to
     // spend. The inside height is the run's own hero height scaled by whatever
@@ -545,12 +542,83 @@ class CabinetDive {
       this.glint = ballGlint(this.stickFwd);
       return;
     }
-    this._seekIn(t);
+    if (this.introEntry) this._seekIntro(t);
+    else this._seekIn(t);
     // Derived from the deck rather than set inside it, so the flash cannot drift
     // out of step with the stick it is supposed to be coming off — and so the
     // exit, whose deck is written forwards rather than mirrored, gets the same
     // rule for free instead of a second copy of it.
     this.glint = ballGlint(this.stickFwd);
+  }
+
+  // The intro starts with a running forward jump already in progress. Reusing
+  // the hub's leap art is valuable, but feeding a distant `startX` to the normal
+  // phase table would still snap the hero to `cabX` on its first leap frame.
+  // This adapter maps the film's short flight onto the shared visual phases and
+  // then supplies its own monotonic outside-to-inside position and screen run.
+  _seekIntro(t) {
+    const e = this.introEntry;
+    const total = e.flight + e.run;
+    const flightU = clamp01(t / Math.max(0.001, e.flight));
+    const mapped = t <= e.flight
+      ? lerp(AT.leap.t0, AT.cross.t0, easeOut(flightU))
+      : lerp(AT.cross.t0, AT.exit.t1, clamp01((t - e.flight) / Math.max(0.001, e.run)));
+    this._seekIn(mapped);
+    this.introClock = t;
+
+    // The visible flight begins where Lorenzo is running, not at the cabinet.
+    const crossed = t >= e.flight - 1e-6;
+    this.inside = crossed;
+    this.depth = this.dCross * easeIn(flightU);
+    this.h = lerp(this.heroH, this.insideH, this.depth);
+    this.x = t < e.flight
+      ? lerp(e.startX, this.glassCx, easeOut(flightU))
+      : this.glassCx;
+
+    if (!crossed) {
+      const u = flightU;
+      this.feetY = lerp(this.floorY, this.feetCross, easeIn(u) * 0.5 + easeOut(u) * 0.5)
+        - this.arcH * 4 * u * (1 - u);
+      const epx = 1 / 120;
+      const a = this._introFeetAt(Math.max(0, t - epx));
+      const b = this._introFeetAt(Math.min(e.flight, t + epx));
+      this.vy = -(b - a) / (2 * epx);
+      this.pose = {
+        kind: 'jump', grounded: false, vy: this.vy, squash: 0,
+        lean: 0.16 * easeOut(u), facing: this.facing, time: t,
+        phase: this.gaitPhase(0), menu: false, faceSurprised: true,
+      };
+    } else {
+      const runU = clamp01((t - e.flight) / Math.max(0.001, e.run));
+      this.runX = this.glass.w * 0.96 * runU;
+      this.runJump = 0;
+      this.feetY = this.groundInside;
+      this.vy = 0;
+      this.pose = {
+        kind: 'run', grounded: true, vy: 0, squash: 0, lean: 0,
+        facing: this.facing, time: t, phase: this.gaitPhase(t), menu: false,
+        faceSurprised: false,
+      };
+    }
+
+    // Keep the screen response short and tied to the actual film crossing.
+    this.bulge = this.v.pull * (!crossed ? flightU * flightU : 1 - clamp01((t - e.flight) / 0.22));
+    this.flash = crossed ? 0.55 * (1 - clamp01((t - e.flight) / 0.22)) ** 1.6 : 0;
+    this.flare = !crossed
+      ? 0.35 * easeIn(clamp01((flightU - 0.72) / 0.28))
+      : 1 - easeIn(clamp01((t - e.flight) / 0.55));
+    this.shatter = this.v.pixel * (!crossed ? clamp01((flightU - 0.78) / 0.22) : 0);
+    this.stick = 0;
+    this.stickFwd = !crossed ? smooth(flightU * 1.8) : 0;
+    this.button = !crossed ? clamp01(1 - Math.abs(flightU - 0.62) * 3) : 0;
+    this.done = t >= total;
+  }
+
+  _introFeetAt(t) {
+    const e = this.introEntry;
+    const u = clamp01(t / Math.max(0.001, e.flight));
+    return lerp(this.floorY, this.feetCross, easeIn(u) * 0.5 + easeOut(u) * 0.5)
+      - this.arcH * 4 * u * (1 - u);
   }
 
   // THE DECK ON THE WAY OUT, on the OUT clock — not mirrored.

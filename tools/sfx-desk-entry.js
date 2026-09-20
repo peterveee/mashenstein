@@ -76,6 +76,8 @@ const GROUPS = [
     cues: [
       { cue: 'popSmall', what: 'the ?-crate coin ladder', gain: 3.0, opt: { pitch: 1.12 } },
       { cue: 'switchFlick', what: 'the power block being hit' },
+      { cue: 'stripThrow', what: 'the master strip being thrown off, in the opening film' },
+      { cue: 'socketDrop', what: 'one plug leaving the MCGFN-1 bank, in the opening film' },
       { cue: 'bridgeLay', what: 'the ice deck laying across the break' },
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },

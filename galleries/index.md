@@ -39,4 +39,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-18 | `5cc650c` | [2026-09-18-5cc650c.html](2026-09-18-5cc650c.html) | [bake-offs](2026-09-18-5cc650c-lab.html) | feat: add new lab HTML file and enhance cabinet dive mechanics with facial expressions |
 | 2026-09-18 | `51a5883` | [2026-09-18-51a5883.html](2026-09-18-51a5883.html) | [bake-offs](2026-09-18-51a5883-lab.html) | Add door-walk sequence implementation and gallery HTML files |
 | 2026-09-18 | `352235a` | [2026-09-18-352235a.html](2026-09-18-352235a.html) | [bake-offs](2026-09-18-352235a-lab.html) | Enhance ShopState for Portrait Mode |
+| 2026-09-19 | `cef82df` | [2026-09-19-cef82df.html](2026-09-19-cef82df.html) | [bake-offs](2026-09-19-cef82df-lab.html) | Settings reset asks with YES/NO buttons; trim three stale touch hints |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

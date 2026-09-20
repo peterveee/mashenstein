@@ -3,7 +3,7 @@
 import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame, shake } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio, PORTAL_BREATH } from '../../engine/audio.js';
-import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H, BACK_BUTTON_PLATE } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { makeDoorWalk, makeDoorEntry, openingEdge, WALK_DIR } from './door-walk.js';
@@ -13,7 +13,7 @@ import {
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
 import {
-  cabinetPalette, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
+  cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawDeadScreen, drawScreenSweep,
   stickGlint,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
 } from '../../sprites/arcade.js';
@@ -32,7 +32,7 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetUnlocked, cabinetStarted, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
 import { MusicDirector } from '../../engine/music-director.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
@@ -246,11 +246,31 @@ export const ARCADE_FOOD_COURT_VARIANTS = {
 // door and puts the already-muffled remainder in a longer, slightly wet room. The first
 // low-pass is important: the reverb must not be allowed to regenerate a bright room from
 // an otherwise filtered signal. The last one damps the return as well as the direct path.
+//
+// Two of those four are not fixed. The door is the only opening the song comes through,
+// so it is the source, and walking away from it into the gallery is walking away from a
+// speaker: less direct sound against the same room, and less top the further the air has
+// to carry it. So the reverb's wet rises with distance and the LAST low-pass — the one
+// after the reverb, which damps the tail along with the direct path — closes.
+//
+// The high-pass and the FIRST low-pass stay put, because those two are the wall, and the
+// wall does not move when he does. Keeping the pre-reverb cutoff fixed is also what stops
+// the reverb regenerating a bright room from an already-filtered signal.
+//
+// See setTrophyRoomDepth. The chain is installed at its near-door values and driven from
+// the hero's distance from the exit door from the first frame onwards.
+const TROPHY_ROOM_WET_NEAR = 0.34;
+const TROPHY_ROOM_WET_FAR = 0.72;
+// Near the door he hears as much top as the wall lets past — above the wall's own 1450
+// this barely does anything, which is the point. At the far wall it is well below it and
+// is then the thing you are hearing.
+const TROPHY_ROOM_AIR_NEAR = 2600;
+const TROPHY_ROOM_AIR_FAR = 760;
 const TROPHY_ROOM_TREATMENT = [
   { id: 'filter', params: { type: 'highpass', frequency: 180, Q: 0.7 } },
   { id: 'filter', params: { type: 'lowpass', frequency: 1450, Q: 0.7 } },
-  { id: 'reverb', params: { decay: 2.8, preDelay: 0.035, wet: 0.5 } },
-  { id: 'filter', params: { type: 'lowpass', frequency: 1800, Q: 0.7 } },
+  { id: 'reverb', params: { decay: 2.8, preDelay: 0.035, wet: TROPHY_ROOM_WET_NEAR } },
+  { id: 'filter', params: { type: 'lowpass', frequency: TROPHY_ROOM_AIR_NEAR, Q: 0.7 } },
 ];
 const TROPHY_ROOM_TREAT_SECONDS = 0.18;
 // Gary's counter uses the ordinary unprocessed counter mix. Arcade gets only a gentle
@@ -285,12 +305,65 @@ function leaveWholeMixTreatment(seconds) {
   else setTimeout(clear, Math.ceil(seconds * 1000) + 20);
 }
 
+// The two links in the treatment chain above that distance moves: the reverb, and the
+// low-pass AFTER it. Held for as long as the room owns the leg rather than looked up
+// each frame, so a chain the room does not own — the arcade corner's, or none at all —
+// can never be written to by mistake.
+let trophyReverb = null;
+let trophyAir = null;
+let trophyDepth = null;
+
 function enterTrophyRoomAudio() {
   enterWholeMixTreatment(TROPHY_ROOM_TREATMENT, TROPHY_ROOM_TREAT_SECONDS);
+  const chain = Audio.mixer?.treatment || [];
+  const reverbAt = chain.findIndex((l) => l?.def?.id === 'reverb');
+  trophyReverb = reverbAt < 0 ? null : chain[reverbAt];
+  // The air is specifically the low-pass downstream of the reverb. Found by walking
+  // past it rather than by index, so re-ordering the chain cannot silently hand this
+  // the wall's filter instead.
+  trophyAir = reverbAt < 0 ? null
+    : chain.slice(reverbAt + 1).find((l) => l?.def?.id === 'filter') || null;
+  trophyDepth = null;
 }
 
 function leaveTrophyRoomAudio() {
+  trophyReverb = null;
+  trophyAir = null;
+  trophyDepth = null;
   leaveWholeMixTreatment(TROPHY_ROOM_TREAT_SECONDS);
+}
+
+/**
+ * How far away the Food Court sounds, from how far into the gallery the hero has walked.
+ * `px` is his world x; the exit door is the source and the far wall is the end of the
+ * range. Two things move, on two curves, because they are two different physics:
+ *
+ * The REVERB is weighted towards the door, because that is where a direct-to-room ratio
+ * actually changes: the direct path drops off fastest in the first few strides away from
+ * an opening. Wet is a plain gain pair inside makeReverb, not an AudioParam, so it is
+ * written straight.
+ *
+ * The AIR closes steadily instead — top is lost per unit of distance, not per doubling
+ * of it, so a front-loaded curve would leave the whole far half, where every exhibit is,
+ * sounding identical. It interpolates by OCTAVES, for the reason rampParam gives about
+ * log sweeps: linear hertz spends the whole walk somewhere you cannot hear.
+ *
+ * Both are safe to write at frame rate because it is a walk that moves them, and the
+ * whole thing is skipped below a sub-pixel step, so a hero standing at an exhibit writes
+ * nothing at all.
+ */
+function setTrophyRoomDepth(px) {
+  if (!trophyReverb && !trophyAir) return;
+  const span = Math.max(1, (TROPHY_WORLD_W - 30) - TROPHY_EXIT_X);
+  const f = Math.max(0, Math.min(1, (px - TROPHY_EXIT_X) / span));
+  if (trophyDepth != null && Math.abs(f - trophyDepth) < 0.0015) return;
+  trophyDepth = f;
+  trophyReverb?.set({
+    wet: TROPHY_ROOM_WET_NEAR + (TROPHY_ROOM_WET_FAR - TROPHY_ROOM_WET_NEAR) * (f ** 0.6),
+  });
+  trophyAir?.set({
+    frequency: TROPHY_ROOM_AIR_NEAR * ((TROPHY_ROOM_AIR_FAR / TROPHY_ROOM_AIR_NEAR) ** f),
+  });
 }
 
 // The Food Court is the one room every route returns to, and its first notes include
@@ -501,6 +574,60 @@ const PORTRAIT_HUB_FLOOR_RATIO = 0.70;
 const PORTRAIT_WALL_DRESS_DROP = 48;
 const PORTRAIT_POSTER_LIFT = 48;
 
+// Not a door and not a cabinet: THE SOCKET is a hole in the wall, and the whole
+// joke is that it looks like one. Exported because the opening film ends on it —
+// "EIGHT HEROES. ONE SOCKET" is this object, and a second hand-drawn copy of it
+// in the intro would be the one prop in the game that the prologue and the hub
+// disagreed about.
+export const SOCKET_W = 44, SOCKET_H = 62, SOCKET_TOP = 130;
+export function drawHubSocket(ctx, cx, topY = SOCKET_TOP) {
+  ctx.fillStyle = '#f6d33c';
+  ctx.fillRect(cx - SOCKET_W / 2, topY, SOCKET_W, SOCKET_H);
+  ctx.fillStyle = '#0b0b14';
+  ctx.fillRect(cx - 6, topY + 16, 4, 8);
+  ctx.fillRect(cx + 2, topY + 16, 4, 8);
+}
+
+// THE ROOM, for anyone who has to draw it and is not the hub.
+//
+// The opening film is set in this arcade — the same floor, the same wall band,
+// the same machines at the same height — because thirty seconds after watching
+// it go dark the player walks into it. A room the player then fails to
+// recognise is worse than no room at all, and the way that failure happens is
+// somebody retyping 212 in another file and the two drifting one refactor
+// later. So the numbers leave here as one frozen object rather than as nine
+// loose exports: a second copy of the contract is the thing being prevented.
+//
+// CAB_W/CAB_H come from cabinetStyle(), so switching the silhouette moves the
+// film's cabinets with the hub's, which is the whole point.
+// Where a poster hangs and how it was hung. Both derived from the cabinet's own
+// x so they are stable frame to frame, and both shared between the wall loop in
+// draw(), the tap test in update(), and the blown-up read — a tilt that changed
+// between the wall and the zoom would read as a different poster, and a hit box
+// that disagreed with either would be the kind of miss nobody can explain.
+const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
+
+export const HUB_ROOM = Object.freeze({
+  floorY: HUB_FLOOR_PIN_Y,
+  wallY0: HUB_WALL_Y0,
+  wallY1: HUB_WALL_Y1,
+  cabW: CAB_W,
+  cabH: CAB_H,
+  cabY: CAB_Y,
+  doorW: DOOR_W,
+  doorH: DOOR_H,
+  doorY: DOOR_Y,
+  // What one cabinet-to-cabinet step is on the concourse. The film stands six
+  // machines on this pitch so the row reads as the hub's row.
+  bayPitch: OVERTIME_EMPTY_BAY,
+  // Where a one-sheet hangs. The film hangs its own blank posters on the same
+  // line for the same reason it borrows the pitch: a poster at a different
+  // height is the tell that the prologue's arcade is not the hub's arcade.
+  posterTopY: POSTER_TOP_Y,
+  posterW: POSTER_W,
+  posterH: POSTER_H,
+});
+
 function hubPresentation() {
   const portrait = isPhonePortraitPresentation();
   // __mash_dev.hubZoomMul: capture-only, same pattern as hideSpecialOrb — scales
@@ -552,7 +679,7 @@ const FLOOR_TILE_PHASE = 4;
 // through a correspondingly smaller camera, so these hub-scale numbers would
 // otherwise come out a third too small in there and the two rooms' floors would
 // not read as the same floor.
-function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0, unit = 1) {
+export function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0, unit = 1) {
   const wallY1 = floorY - 2 * unit;
   const tile = 32 * unit;
   // THE TRIM STOPS AT THE FLOOR LINE. Same strip, same 6 units, but hung above
@@ -638,7 +765,7 @@ const CAST_LIT_FLOOR = 0.45;
 // How far below layout.floorY the cast's soles and their contour actually paint,
 // measured off a standing hero rather than guessed. The floor reflection pivots
 // here — see the band in draw().
-const REFLECT_SOLE_DROP = 1.5;
+export const REFLECT_SOLE_DROP = 1.5;
 // How lit the service end is with nothing banked at all. Not zero: the repair
 // counter and the pawn shop are act-1 furniture and you cannot use a room you
 // cannot see. It climbs from here to 1 as the plug count approaches the finale
@@ -1049,12 +1176,6 @@ export function cabinetScreenArt(cab, t, seed = 0) {
 // cabinetPalette() mixes a dozen colours per call and the answer only depends
 // on the cabinet and whether it is unlocked, so each one is built once.
 const CAB_PALETTES = new Map();
-// Where a poster hangs and how it was hung. Both derived from the cabinet's own
-// x so they are stable frame to frame, and both shared between the wall loop in
-// draw(), the tap test in update(), and the blown-up read — a tilt that changed
-// between the wall and the zoom would read as a different poster, and a hit box
-// that disagreed with either would be the kind of miss nobody can explain.
-const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
 // The post-game machine is deliberately blank, but the poster above it is not:
 // give drawPoster an OVERTIME motif without changing the cabinet palette (and
 // therefore without putting art on the machine's dead screen).
@@ -1091,7 +1212,7 @@ function posterPalFor(station) {
 // see draw.js's fire licks for the same idiom) and dips to a brownout, not a
 // hard blackout, matching flickerAlpha's title-sign short-out in menus.js so
 // this doesn't read as a dropped frame.
-function lightFlicker(t, i) {
+export function lightFlicker(t, i) {
   const period = 4.5 + (i % 4) * 0.9;
   const phase = (t + i * 1.87) % period;
   if (phase < 0.18) return phase < 0.09 ? 0.2 : 0.55;
@@ -1114,8 +1235,8 @@ function lightFlicker(t, i) {
 //      are standing directly under them, and every other fixture is seen at an
 //      angle. The lean is what makes eight fixtures read as a room rather than
 //      as eight copies of one sprite.
-const LIGHT_W = 26;
-function drawCeilingLight(ctx, x, y, lit, viewX = x, viewWidth = HUB_VIEW_W) {
+export const LIGHT_W = 26;
+export function drawCeilingLight(ctx, x, y, lit, viewX = x, viewWidth = HUB_VIEW_W) {
   // Housing first: a dark bracket the tube hangs in, drawn whether or not the
   // tube works. A dead light is still a fixture.
   ctx.fillStyle = '#232030';
@@ -1651,7 +1772,7 @@ export class HubState {
     let x = 96;
     for (const cab of CABINETS) {
       const unlocked = cabinetUnlocked(slot, cab.id);
-      st.push({ type: 'cabinet', cab, x, unlocked, label: cab.name });
+      st.push({ type: 'cabinet', cab, x, unlocked, started: cabinetStarted(slot, cab.id), label: cab.name });
       // 88 apart rather than the original 64. The viewport is 369 units wide,
       // so this frames about four machines at a time instead of six crowding
       // each other — room to look at each one, without the stretch of bare wall
@@ -3310,6 +3431,7 @@ export class HubState {
       const x = s.x - cam;
       if (x < -80 || x > layout.viewW + 40) continue;
       const g = ctx.createLinearGradient(0, layout.floorY, 0, layout.floorY + 34);
+      const poolPower = s.started ? 1 : cabinetBrownoutAlpha(this.t, palFor(s.cab, true).seed);
       g.addColorStop(0, s.cab.sky[0]);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save();
@@ -3346,7 +3468,7 @@ export class HubState {
       const POOL_STEPS = 5;
       for (let i = 0; i < POOL_STEPS; i++) {
         const spread = POOL_OUTER - (POOL_OUTER - 0.5) * (i / (POOL_STEPS - 1));
-        ctx.globalAlpha = 0.24 / POOL_STEPS;
+        ctx.globalAlpha = (0.24 * poolPower) / POOL_STEPS;
         ctx.beginPath();
         ctx.moveTo(x - CAB_W * 0.5 * spread, layout.floorY);
         ctx.lineTo(x + CAB_W * 0.5 * spread, layout.floorY);
@@ -3385,6 +3507,7 @@ export class HubState {
       if (x < -80 || x > layout.viewW + 40) continue;
       if (s.type === 'cabinet') {
         const pal = palFor(s.cab, s.unlocked);
+        const brownout = s.unlocked && !s.started;
         // Light BEFORE the machine, so the machine is standing in front of it. The
         // dive's other two slots both draw over the cabinet; this is the only one
         // that can make it a silhouette, which is the whole point of a flash from
@@ -3405,6 +3528,8 @@ export class HubState {
         // one that was already on its way up.
         const glint = Math.max(s.unlocked ? stickGlint(this.t, pal.seed) : 0, dive ? dive.glint : 0);
         // The stick moves for the machine the hero is inside, and only that one.
+        ctx.save();
+        ctx.globalAlpha = brownout ? cabinetBrownoutAlpha(this.t, pal.seed) : 1;
         drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined,
           dive
             ? { stickLean: dive.stick, stickFwd: dive.stickFwd, buttonPress: dive.button, glint }
@@ -3430,6 +3555,10 @@ export class HubState {
           // seconds its dead screen crackles and throws a spark.
           drawDeadScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, this.t, pal.seed);
         }
+        ctx.restore();
+        if (brownout && scr && !hiddenInMirror(mirror, scr.y + scr.h)) {
+          drawCabinetSignalInterference(ctx, scr, this.t, pal.seed);
+        }
         // The corner badge used to be one gold star for `cleared` — every stage's
         // MISSION plug banked. That flag is doing two unrelated jobs: on six
         // cabinets it means "missions done", and on neon/rhythm/surge it is
@@ -3446,12 +3575,7 @@ export class HubState {
           drawPlugLights(ctx, slot, s.cab.id, x, CAB_Y + CAB_H * 0.215, CAB_W);
         }
       } else if (s.type === 'socket') {
-        // Not a door and not a cabinet: THE SOCKET is a hole in the wall, and
-        // the whole joke is that it looks like one.
-        ctx.fillStyle = '#f6d33c';
-        ctx.fillRect(x - 22, 130, 44, 62);
-        ctx.fillStyle = '#0b0b14';
-        ctx.fillRect(x - 6, 146, 4, 8); ctx.fillRect(x + 2, 146, 4, 8);
+        drawHubSocket(ctx, x);
       } else if (s.type === 'overtime') {
         // Nominally a cabinet, so it gets the cabinet: same machine, violet
         // chassis, and a screen permanently full of static.
@@ -4225,6 +4349,9 @@ export class TrophyRoomState {
     });
     Audio.sfx('doorOpen');   // see the concourse's copy: the open needs cueing too
     this.player.grounded = true;
+    // He is standing in the doorway, so the room starts at its driest rather than
+    // arriving at one depth and sliding to another on the first frame.
+    setTrophyRoomDepth(this.audioDepth());
   }
 
   exit() {
@@ -4310,6 +4437,12 @@ export class TrophyRoomState {
 
   near(x, r = 34) { return Math.abs(this.px - x) <= r; }
 
+  // Where he is for the room's ears. During a door sequence the walk owns his position,
+  // so the reverb follows the same x the drawing does rather than his parked mark.
+  audioDepth() {
+    return this.doorWalk ? this.doorWalk.state().px : this.px;
+  }
+
   camX() {
     const { viewW } = trophyPresentation();
     return Math.max(0, Math.min(TROPHY_WORLD_W - viewW, this.px - viewW * 0.42));
@@ -4329,6 +4462,7 @@ export class TrophyRoomState {
     if (this.doorWalk) {
       const was = this.doorWalk.state().phase;
       this.doorWalk.update(dt);
+      setTrophyRoomDepth(this.audioDepth());   // the walk owns his x; see audioDepth
       if (this.doorWalk.state().phase !== was
         && this.doorWalk.state().phase === 'shut') Audio.sfx('doorClose');
       if (this.doorWalk.done) {
@@ -4401,6 +4535,7 @@ export class TrophyRoomState {
     const doorTarget = Math.abs(this.px - TROPHY_EXIT_X) < DOOR_OPEN_R * HUB_ZOOM ? 1 : 0;
     this.doorOpen = doorStep(this.doorOpen, doorTarget, this.doorTarget, dt);
     this.doorTarget = doorTarget;
+    setTrophyRoomDepth(this.audioDepth());
   }
 
   drawLevelRecords(ctx, layout = trophyPresentation()) {
@@ -4562,12 +4697,23 @@ export class TrophyRoomState {
       drawCeilingLight(ctx, x, layout.portrait ? layout.camY : 0,
         strength * flick, x - camera, layout.viewW);
     });
-    // HUB_ZOOM / layout.zoom, not a constant: this room is authored a factor of
-    // HUB_ZOOM larger than the concourse AND viewed through a correspondingly
-    // smaller camera, so a painter written in the concourse's units needs both
-    // factors to come out the size it does next door. As a ratio it also stays
-    // right in portrait, where this room's zoom is a different number again.
-    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W, 0, HUB_ZOOM / layout.zoom);
+    // HUB_ZOOM, flat. This room is authored a factor of HUB_ZOOM larger than the
+    // concourse, so a painter written in the concourse's units is multiplied by
+    // exactly that to come out the right size in trophy world units — and there
+    // the job ends. The room's own camera scales the result afterwards, the same
+    // camera that scales everything else in here.
+    //
+    // It used to divide by `layout.zoom` as well, on the reasoning that the room
+    // is "viewed through a correspondingly smaller camera" and the ratio would
+    // therefore stay right in portrait. It does not, and the two halves of that
+    // sentence are the reason: dividing by the camera CANCELS the camera, so the
+    // tiles came out at a fixed 32 * HUB_ZOOM screen pixels whatever the zoom
+    // was, while the Food Court's scaled with its own. In landscape the trophy
+    // zoom is 1 and the two agreed by luck; in portrait the concourse is at
+    // HUB_PORTRAIT_ZOOM (2.5) and this room at 2.5/1.3, so the trophy tiles were
+    // 41.6px against the food court's 80 — the floor next door drawn not quite
+    // half size, along with the skirting and the row pitch that share `unit`.
+    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W, 0, HUB_ZOOM);
   }
 
   draw(ctx) {
@@ -5089,7 +5235,12 @@ export class StageSelectState {
     const descY = (y) => y + DESC_DY;
     this.options().forEach((o, i) => {
       const sel = i === this.idx;
+      // BACK keeps a faint plate at rest too — the one row here that exits
+      // rather than picks something, so it reads as a button among rows that
+      // otherwise only light up under the cursor.
       if (sel) drawSelRow(ctx, this, i, 40);
+      else if (o.kind === 'back') drawMenuRow(ctx, 40 - 12,
+        this.listY + listVisualRow(this, i) * this.rowH + 1, W - (40 - 12) * 2, this.rowH - 2, 3, BACK_BUTTON_PLATE);
       const y = rowTextY(this, i, ROW_S, DESC_DY, DESC_S);
       const c = sel ? '#f6d33c' : '#c8c8d8';
       if (o.kind === 'stage') {
@@ -5198,6 +5349,7 @@ export class StageSelectState {
       const rowTop = this.listY + i * this.rowH;
       const selected = i === this.idx;
       if (selected) drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5);
+      else if (o.kind === 'back') drawMenuRow(ctx, rowX, rowTop + 1, rowRight - rowX, this.rowH - 2, 5, BACK_BUTTON_PLATE);
       const labelY = textYForMid(rowTop + labelMidOffset, labelScale);
       const c = selected ? '#f6d33c' : '#c8c8d8';
       if (o.kind === 'stage') {
@@ -5449,6 +5601,7 @@ export class BenchState {
     opts.forEach((o, i) => {
       const sel = i === this.idx;
       if (sel) drawMenuRow(ctx, boxL, this.listY + listVisualRow(this, i) * this.rowH + 1, boxR - boxL, this.rowH - 2);
+      else if (o.back) drawMenuRow(ctx, boxL, this.listY + listVisualRow(this, i) * this.rowH + 1, boxR - boxL, this.rowH - 2, 3, BACK_BUTTON_PLATE);
       const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back) { drawText(ctx, 'BACK', labelX, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = sel ? '#f6d33c' : '#c8c8d8';
@@ -5573,7 +5726,8 @@ export class BenchState {
       if (o.back) {
         const backY = this.portraitBackY;
         const backH = this.portraitBackH;
-        if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
+        drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4,
+          selected ? undefined : BACK_BUTTON_PLATE);
         drawTextVector(ctx, 'BACK', contentLeft,
           textYForMid(backY, backScale, 'bold'),
           selected ? '#f6d33c' : '#c8c8d8', backScale, 'bold');
@@ -5787,6 +5941,9 @@ export class ShopState {
       if (sel) drawMenuRow(ctx, LANDSCAPE_COUNTER_LIST_LEFT,
         this.listY + listVisualRow(this, i) * this.rowH + 1,
         LANDSCAPE_COUNTER_LIST_RIGHT - LANDSCAPE_COUNTER_LIST_LEFT, this.rowH - 2);
+      else if (o.back) drawMenuRow(ctx, LANDSCAPE_COUNTER_LIST_LEFT,
+        this.listY + listVisualRow(this, i) * this.rowH + 1,
+        LANDSCAPE_COUNTER_LIST_RIGHT - LANDSCAPE_COUNTER_LIST_LEFT, this.rowH - 2, 3, BACK_BUTTON_PLATE);
       const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back) { drawText(ctx, 'BACK', LANDSCAPE_COUNTER_LABEL_X, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
@@ -5874,7 +6031,8 @@ export class ShopState {
       if (o.back) {
         const backY = this.portraitBackY;
         const backH = this.portraitBackH;
-        if (selected) drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4);
+        drawMenuRow(ctx, rowX, backY - backH / 2, css(108), backH, 4,
+          selected ? undefined : BACK_BUTTON_PLATE);
         drawTextVector(ctx, 'BACK', contentLeft,
           textYForMid(backY, backScale, 'bold'),
           selected ? '#f6d33c' : '#c8c8d8', backScale, 'bold');
@@ -6053,6 +6211,7 @@ export class ArcadeState {
       const rowY = this.listY + i * this.rowH;
       const selected = i === this.idx;
       if (selected) drawMenuRow(ctx, left, rowY + 2, rowW, this.rowH - 4, 7);
+      else if (o.back) drawMenuRow(ctx, left, rowY + 2, rowW, this.rowH - 4, 7, BACK_BUTTON_PLATE);
       const label = o.back ? 'BACK' : o.none ? 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.' : MINIGAME_NAMES[o.game];
       const color = o.none ? '#8a8492' : selected ? '#f6d33c' : '#c8c8d8';
       const labelS = Math.min(o.none ? 1.9 : 3.5,
@@ -6095,6 +6254,8 @@ export class ArcadeState {
       const sel = i === this.idx;
       if (sel) drawMenuRow(ctx, rowX, this.listY + i * this.rowH + 1,
         rowRight - rowX, this.rowH - 2);
+      else if (o.back) drawMenuRow(ctx, rowX, this.listY + i * this.rowH + 1,
+        rowRight - rowX, this.rowH - 2, 3, BACK_BUTTON_PLATE);
       const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back || o.none) {
         const label = o.back ? 'BACK' : 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.';

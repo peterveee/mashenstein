@@ -445,27 +445,395 @@ export const HUB_LINES = {
   ],
 };
 
-export const INTRO_PANELS = [
-  { text: 'THE ARCADE. 11:58 PM. EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM.' },
-  { text: 'DON K. EGGSHELL, PHD, UNPLUGS THE MASTER POWER STRIP. "IF I CANNOT WIN... NOBODY PLAYS." HIS VACUUM IS ALSO CHARGING. PRIORITIES.' },
-  { text: 'THE MASTER STRIP CLICKS OFF. THE SCREENS GO DARK. THE STATIC CONTINUES BRIEFLY, AS IF THE ARCADE HAS AN APPEAL.' },
-  { text: 'DUE TO BUDGET CUTS, THE ARCADE CAN ONLY RENDER ONE HERO AT A TIME. THE HEROES ACCEPT THIS WITH GRACE. AND ONE FORM COMPLAINT.' },
-  { text: 'EIGHT HEROES. ONE SOCKET. A RELAY BEGINS. THIS IS THE MOST IMPORTANT CRISIS IN HISTORY. EVERYONE AGREES.' },
+// THE OPENING FILM. Not panels: one arcade, one camera, eleven shots.
+//
+// ------------------------------------------------------------------ the clock
+//
+// SECONDS ARE AUTHORITATIVE; THE MUSIC IS NOT. Older notes describe shot lengths
+// in beats, but this action pass stores explicit seconds and INTRO_FILM resolves
+// them once, at module load. The runtime reads nothing else: it never asks
+// Audio.songBeat() what time it is.
+//
+// That is deliberate and it is the whole reason this degrades correctly. A muted
+// phone, a headless test, ?goto=intro opened before any bank has loaded, and a
+// video render at a fixed 1/60 step all play exactly the same 32.20 seconds and
+// cut on exactly the same frame. Driving the picture off the heard beat would
+// make all four of those different films, and would make the determinism
+// fingerprint in tests/intro-sequence.js impossible to write.
+//
+// The music is aligned to the film, not the other way round: the bank swap is
+// scheduled so THE SURGE's downbeat lands on the doors shot's first frame. See IntroState
+// in src/game/intro.js.
+//
+// ----------------------------------------------------------------- the camera
+//
+// `cam.from` / `cam.to` are RECTANGLES OF ARCADE, not zoom numbers — a centre in
+// world units and the span the shot wants covered. The camera solves its own
+// magnification from whatever picture gate it is handed, which is the entire
+// reconciliation with portrait: the gate changes shape, the shot does not. One
+// `from` and no `to` is a lock-off.
+//
+// `portrait` overrides the box for the framings that do not survive a tall
+// window. Absent means the landscape box is used unchanged, which is true of
+// three of the eleven.
+//
+// ------------------------------------------------------------------- the cues
+//
+// `cues[].at` is seconds into THIS shot. Each is asked for at least
+// Audio.cueLeadSec() early and handed the remaining distance as `inBeats`, so
+// the output latency cancels and the sound lands on the frame the picture does —
+// on a laptop and on a Bluetooth speaker alike. One-shots only: the sustained
+// beds (the crowd, the per-cabinet static) are edge-triggered from the film and
+// live in intro.js, because a bed is not an event and does not want placing.
+// THE HERO SECTION RUNS ON THE MUSIC'S OWN GRID.
+//
+// THE SURGE is 132bpm and its downbeat is the door cut, so a bar is 1.8181…s.
+// Every beat of the entrance lands on a bar line rather than near one: the
+// launch, the cabinet reveal, the takeoff, the glass crossing and the gather.
+// Authored as multiples of the bar rather than as decimals, because a film
+// choreographed to a tempo and a film that happens to be about the same length
+// are different films, and the whole difference is in these numbers.
+//
+// The pre-door shots are untouched and still sum to 18.00, which is what makes
+// the door cut the downbeat in the first place.
+const SURGE_BEAT = 60 / 132;
+const SURGE_BAR = SURGE_BEAT * 4;
+
+export const INTRO_SHOTS = [
+  {
+    id: 'row',
+    // The floor is the subject here too, so this one pins its ground line
+    // rather than letting the box's own height decide where it lands.
+    pinFloor: true,
+    // Longer, and travelling no further for it, so the truck across the rank is
+    // a slow look rather than a sweep — 28 units a second instead of 45. The
+    // opening shot has to establish a whole room and carry the film's second
+    // longest line; at 4.00s it was doing both in a hurry.
+    seconds: 6.40,
+    // Start on the left side of the lit rank and truck right across it. Six
+    // machines, six different attract loops, six sweep bars out of phase, and
+    // nothing else in frame moving.
+    // In tight on the machines rather than on the room they stand in. The old
+    // 560 box covered 217 units of a 170-unit room, so a third of the frame was
+    // ceiling void and the cabinets sat in a band across the middle. At 380 the
+    // frame crops the posters and the tubes at the top edge — you see the beams
+    // coming down out of shot, which reads as a ceiling continuing rather than
+    // as the picture having run out — and the truck covers more ground per
+    // second because the frame it crosses is narrower.
+    cam: {
+      from: { cx: 1090, cy: 155, w: 380 },
+      to:   { cx: 1270, cy: 155, w: 380 },
+      ease: 'linear',
+    },
+    // A phone takes the same truck across a narrower slice: at the landscape 440
+    // the 3:2 gate would cover three hundred world units of a room a hundred and
+    // seventy tall, and the machines would sit in a band of ceiling.
+    portrait: {
+      from: { cx: 1110, cy: 155, w: 250 },
+      to:   { cx: 1280, cy: 155, w: 250 },
+      ease: 'linear',
+    },
+    cues: [{ at: 0.20, name: 'neonBuzz', gain: 0.35 }],
+  },
+  {
+    id: 'arrival',
+    seconds: 2.50,
+    // WHY HE IS DOING THIS, STATED BEFORE HE DOES IT.
+    //
+    // The forty years are canon everywhere else in the game — the 1-1 briefing,
+    // three of the taunts, the cast list — and the intro was the one place that
+    // skipped them, so the next shot's "IF HE CANNOT WIN... NOBODY PLAYS" was
+    // arriving as a whim rather than as the end of a grievance. He is not a man
+    // with a plan; he is a man with a record.
+    // He flies in over the marquees from the right; the camera cranes up and
+    // pushes in to MEET him rather than waiting on him to cross a locked frame.
+    cam: {
+      from: { cx: 1678, cy: 138, w: 300 },
+      to:   { cx: 1734, cy: 122, w: 210 },
+      ease: 'smooth',
+    },
+    cues: [{ at: 0.00, name: 'comet', gain: 0.5 }],
+  },
+  {
+    id: 'threat',
+    seconds: 2.00,
+    // The one lock-off in the film: his face, eighty units of room, no move at
+    // all. A punchline needs the camera to shut up. Two beats rather than three
+    // because the line is thirty-three characters — a punch is short.
+    cam: { from: { cx: 1736, cy: 114, w: 118 } },
+    cues: [],
+  },
+  {
+    id: 'socket',
+    // The whole cause, in one shot. The close insert on the rocker is gone: a
+    // cutaway to a switch is a cutaway to a prop, and it took the villain out of
+    // his own decisive moment. He flies into this frame instead, drops, and
+    // SITS ON the bar — the tub's weight throws the rocker — with the terminal
+    // already on screen, so the man, the rocker, the board and the bank the
+    // power is leaving are one continuous piece of geography rather than four
+    // shots asking to be assembled. (Switch bake-off option F, 20 Sep 2026.)
+    seconds: 5.00,
+    // No caption. IF HE CANNOT WIN... NOBODY PLAYS is the last thing read before
+    // the arcade goes, and the picture from here to the brownout is the answer
+    // to it. A line about the socket's name arriving between the two put an
+    // explanation where the consequence should be.
+    // A slow push from his arrival onto the board and the plate. One move, no
+    // cut: the throw happens inside it.
+    // TIGHTER, because the bar and the terminal now sit close enough together
+    // for one frame to hold both without standing back. The push lands on the
+    // switch at 260 units of arcade rather than 330 — the closest the film ever
+    // gets to anything that is not a face.
+    cam: {
+      from: { cx: 1796, cy: 142, w: 380 },
+      to:   { cx: 1804, cy: 166, w: 260 },
+      ease: 'smooth',
+    },
+    portrait: {
+      from: { cx: 1796, cy: 148, w: 280 },
+      to:   { cx: 1804, cy: 166, w: 210 },
+      ease: 'smooth',
+    },
+    cues: [
+      // THE HULL HITS THE BAR, then the rocker goes under it. Two events, one
+      // gesture: the comic boink of the tub landing (the chase's own bonk cue,
+      // held back so it sits under the switch) and the throw itself on the
+      // frame the room loses power. The old note stands — a separate contact
+      // tick before the throw would read as a fumble — which is why the landing
+      // is a hair ahead and not a beat.
+      { at: 3.47, name: 'copterBonk', gain: 0.55 },
+      { at: 3.50, name: 'stripThrow', gain: 0.95 },
+      // Then sixteen quick mechanical pulls, reverse order with the visual bank.
+      ...Array.from({ length: 16 }, (_, i) => ({
+        at: 3.66 + i * 0.03,
+        name: 'socketDrop',
+        pitch: 0.90 + (i % 4) * 0.035,
+        gain: 0.72,
+      })),
+    ],
+  },
+  {
+    id: 'dark',
+    // The floor is the subject here too, so this one pins its ground line
+    // rather than letting the box's own height decide where it lands.
+    pinFloor: true,
+    seconds: 4.50,
+    // The terminal has already emptied. Now the callback the film has been
+    // holding since its own first line reaches the row: the cabinets were
+    // dreaming their little electric dream, and this is the line that turns
+    // that off. The static not having noticed is the joke and the picture.
+    // Cut wide — the whole row, the widest the film ever is. Six screens die
+    // left to right over 0.72s, each flashing white then falling to static, and
+    // the ceiling tubes go with them. Then three seconds of near-silence with
+    // only the intermittent coughs of the dead glass.
+    // The cabinet bank runs from x=940 to x=1380; centre the brownout on its
+    // midpoint rather than leaving the row biased toward the old socket side.
+    cam:      { from: { cx: 1160, cy: 146, w: 620 } },
+    portrait: { from: { cx: 1160, cy: 158, w: 410 } },
+    cues: [
+      { at: 0.10, name: 'powerDown' },
+      { at: 1.30, name: 'crackle', gain: 0.5 },
+    ],
+  },
+  {
+    id: 'doors',
+    // One bar. The leaves finish opening 0.42s in and Lorenzo holds the budget
+    // line until the downbeat of bar two, which is the frame he launches on.
+    seconds: SURGE_BAR,
+    // THE SURGE's downbeat is this shot's first frame. The black centre-parting
+    // service door opens fully, revealing Lorenzo already in an idle pose. He
+    // holds the budget line for a beat, then starts; the other seven enter just
+    // after his first steps rather than waiting for the next shot boundary.
+    //
+    // This first box stays on the door. The following boxes carry the runway.
+    // From here to the end the framing belongs to HERO_CAMERA in intro.js: one
+    // continuous move welded to Lorenzo, which a per-shot box cannot express.
+    // These stay only so a caption-only shot still resolves a usable zoom.
+    cam:      { from: { cx: 120, cy: 170, w: 390 } },
+    portrait: { from: { cx: 125, cy: 168, w: 310 } },
+    cues: [
+      { at: 0.00, name: 'doorOpen' },
+      { at: 0.00, name: 'boom', reverb: 0.6, reverbDecay: 2 },
+    ],
+  },
+  {
+    id: 'rollcall',
+    // Two bars: the seven cross on sixteenths, the pack strings out, and the
+    // first machine arrives on the downbeat of bar four.
+    seconds: SURGE_BAR * 2,
+    // A wide runway view keeps the whole group running at once. Their lanes are
+    // spaced across the floor, with the cabinet bank still held at a distance.
+    cam: {
+      from: { cx: 200, cy: 170, w: 400 },
+      to:   { cx: 420, cy: 168, w: 470 },
+      ease: 'easeOut',
+    },
+    portrait: {
+      from: { cx: 200, cy: 168, w: 320 },
+      to:   { cx: 420, cy: 166, w: 380 },
+      ease: 'easeOut',
+    },
+    cues: [],
+  },
+  {
+    id: 'lineup',
+    // One bar: the target is in frame and growing, and Lorenzo is at his fastest
+    // through it. The takeoff is this shot's last frame.
+    seconds: SURGE_BAR,
+    // Said once, in the rollcall. Held over a second shot it stopped reading as
+    // a line and started reading as a subtitle that had got stuck — and the
+    // reveal and the run into the jump carry themselves.
+    // Nobody forms a static lineup. The camera stays wide on the runners and
+    // leaves a clean runway before the first cabinet.
+    cam:      { from: { cx: 740, cy: 162, w: 500 } },
+    portrait: { from: { cx: 740, cy: 160, w: 410 } },
+    cues: [],
+  },
+  {
+    id: 'dive',
+    // One bar, and every event in it is on a beat: takeoff on the downbeat, the
+    // glass crossing on the 'and' of two, the screen run-off ending by four.
+    seconds: SURGE_BAR,
+    // The jump and screen run carry the joke visually; leave this beat clean
+    // after the shorter relay caption has had room to read.
+    // The line breaks. One of them runs the length of the dead row and goes
+    // INTO a machine — the relay starting on screen rather than being promised,
+    // and the same leap the hub plays when the player picks a cabinet. The
+    // camera goes with him and ends tight on the glass he vanishes through,
+    // which is also the first thing the game proper will draw.
+    cam:      { from: { cx: 852, cy: 158, w: 470 }, to: { cx: 900, cy: 158, w: 420 }, ease: 'smooth' },
+    portrait: { from: { cx: 852, cy: 158, w: 400 }, to: { cx: 900, cy: 158, w: 320 }, ease: 'smooth' },
+    // No cues here. The leap is the shared cabinet dive, and its sounds are
+    // lifted straight off that animation's own phase table in intro.js so they
+    // cannot drift out of step with the picture. A second hand-placed set would
+    // be a slightly-wrong copy of them.
+    cues: [],
+  },
+  {
+    id: 'wide',
+    // Two bars: the pack arrives on the 'and' of two, the reactions ripple, and
+    // the camera finishes easing out over a held composition.
+    seconds: SURGE_BAR * 2,
+    // Stay with the first PLUMBER PANIC cabinet: the observers react on both
+    // sides, the target keeps its breathing gap, and the final image has a
+    // readable subject instead of turning into a room map.
+    //
+    // Hold on the target cabinet and the moving reaction group. The electrical
+    // terminal is a separate destination and is deliberately outside this shot;
+    // there is no closing pull-back.
+    cam:      { from: { cx: 937, cy: 158, w: 370 } },
+    portrait: { from: { cx: 941, cy: 158, w: 330 } },
+    cues: [
+      { at: 0.10, name: 'fizzUp' },
+      { at: 0.20, name: 'coin' },
+      { at: 1.55, name: 'crackle', gain: 0.4 },
+    ],
+  },
 ];
 
-export const INTRO_BEATS = [
-  { panel: 0, duration: 4.5, text: 'THE ARCADE. 11:58 PM. EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM.' },
-  { panel: 0, duration: 3.5, text: 'THE MACHINES HUM. EVERY SCREEN HAS ITS LITTLE ELECTRIC DREAM.' },
-  { panel: 1, duration: 4, text: 'DON K. EGGSHELL, PHD, ARRIVES WITH A MASTER PLAN.' },
-  { panel: 1, duration: 3, text: 'IF HE CANNOT WIN... NOBODY PLAYS.' },
-  { panel: 1, duration: 2.5, text: 'HE REACHES FOR THE MASTER POWER STRIP. PRIORITIES.' },
-  { panel: 2, duration: 1, text: 'THE MASTER STRIP HESITATES.' },
-  { panel: 2, duration: 5, text: 'THE MASTER STRIP CLICKS OFF. THE SCREENS GO DARK.' },
-  { panel: 2, duration: 2.5, text: 'THE STATIC CONTINUES BRIEFLY, AS IF THE ARCADE HAS AN APPEAL.' },
-  { panel: 3, duration: 6, text: 'THE HEROES ARRIVE. ONE AT A TIME, FOR BUDGET REASONS.' },
-  { panel: 4, duration: 5, text: 'THE HEROES ACCEPT THIS WITH GRACE. AND ONE FORM COMPLAINT.' },
-  { panel: 4, duration: 3, text: 'ONE SOCKET. A RELAY BEGINS. EVERYONE AGREES.' },
+// Resolved ONCE, here, so nothing downstream ever divides by a bpm. `seconds`
+// is authoritative for the action blocking pass; the beat fallback keeps older
+// callers and historical shot data readable while the film is being retimed.
+// THE SCRIPT IS NOT THE SHOT LIST.
+//
+// Captions used to hang off the shots and take their length from them, which
+// tied how long a line is readable to how long a camera move happens to take.
+// That is backwards, and it showed in both directions: the budget-cut line got
+// 1.8 seconds and the relay line twice that for no reason either could give,
+// and the switch beat — five and a half seconds of the villain's whole motive
+// playing out — had nothing on screen at all, because the shot it lives in does
+// not want a caption of its own.
+//
+// So the script is its own timeline. `at` and `sec` are absolute film seconds,
+// they may span a cut or sit inside one shot, and a gap between two of them is
+// as deliberate as a line. The projector still knows nothing about which line is
+// over which picture; it just reads a different list.
+export const INTRO_CAPTIONS = [
+  // ANCHORED TO A SHOT, NEVER TO A NUMBER. These used to carry absolute film
+  // seconds, and when the shot table was retimed on 20 Sep the pictures moved
+  // and the lines did not: every caption ended up about 1.7s late and finished
+  // inside the FOLLOWING shot, which is how the door came to open on a lit
+  // Lorenzo while "THE ARCADE GOES DARK" was still on screen. Each line now
+  // names the shot it belongs to and an offset into it, so retiming a shot
+  // moves its caption with the picture. (The same rule the entrance blocking
+  // already follows: derive, do not retype.)
+  //
+  // ONLY A START IS AUTHORED. Each line runs until the next one begins, and the
+  // last runs to the final frame, so the band can never be empty and two lines
+  // can never overlap — both were possible while every line carried its own
+  // typed length. What a line needs is READING TIME, so the anchors are chosen
+  // to keep every one of them at or under about 14 characters a second.
+  //
+  // The \n breaks are authored: these lines have a shape, and letting the
+  // wrapper find its own would break them wherever the measure happened to run
+  // out.
+  { shot: 'row', in: 0.80, text: 'THE ARCADE. 11:58 PM.\nCABINETS DREAMING ELECTRIC DREAMS.' },
+  // He flies in and holds his mark: the name lands over the arrival and the
+  // lock-off on his face, and hands over exactly as the switch shot opens.
+  // Half a beat before he enters, so three lines of name have the reading time
+  // the arrival and the lock-off together can afford.
+  { shot: 'arrival', in: -0.50, text: 'DON K. EGGSHELL, PHD.\nFORTY YEARS OF DEFEAT BY PLUMBERS.\nNEVER ON TOP.' },
+  // His grievance, over the whole of the switch shot — still on screen while
+  // he drops onto the bar and the arcade goes out under him.
+  { shot: 'socket', in: 0, text: 'IF HE CANNOT WIN...\nNOBODY PLAYS.' },
+  // The consequence, over the brownout, and off before the doors part.
+  { shot: 'dark', in: 0, text: 'THE ARCADE GOES DARK.\nEGGSHELL TAKES THE CREDIT.' },
+  // The two entrance lines, each given its own run of picture.
+  { shot: 'doors', in: 0, text: 'DUE TO BUDGET CUTS,\nONLY ONE HERO CAN PLAY AT A TIME.' },
+  // The last line holds from the moment the pack settles to the final frame,
+  // across the dive and the pull-out. It comes in just inside the line-up so
+  // the two entrance lines get about the same run of picture each.
+  { shot: 'lineup', in: 0.90, text: 'EIGHT HEROES. ONE SOCKET.\nA RELAY BEGINS.' },
+  // THE CLOSER IS NOT ON THE TIMELINE. It belongs to the close prompt, and it
+  // used to be authored to end with the film — so it faded out on the last frame
+  // and then snapped back at full strength underneath the prompt, which read as
+  // the same line arriving twice.
+  { withPrompt: true, at: Infinity, sec: 0, text: 'HISTORY WILL RECORD WHAT HAPPENS NEXT.\nPROBABLY INCORRECTLY.' },
 ];
+
+export const INTRO_FILM = (() => {
+  let t = 0;
+  const shots = INTRO_SHOTS.map((s) => {
+    const sec = Number.isFinite(s.seconds) ? s.seconds : s.beats * 60 / s.bpm;
+    const out = Object.freeze({ ...s, sec, t0: t, t1: t + sec });
+    t += sec;
+    return out;
+  });
+  const at = (id) => {
+    const shot = shots.find((s) => s.id === id);
+    if (!shot) throw new Error(`INTRO_FILM: no shot '${id}'`);
+    return shot.t0;
+  };
+  return Object.freeze({
+    shots: Object.freeze(shots),
+    // Captions resolve against the shots they name — `shot` + `in` — and each
+    // one ENDS where the next begins, the last at the final frame. Nothing here
+    // is a typed duration, so retiming a shot moves its line with the picture
+    // and cannot open a hole in the band or overlap the line after it. A
+    // caption with no shot keeps its own absolute `at`: that is the closer,
+    // which belongs to the prompt rather than to the timeline.
+    captions: (() => {
+      const timed = INTRO_CAPTIONS.filter((c) => !c.withPrompt)
+        .map((c) => ({ ...c, at: c.shot ? at(c.shot) + (c.in || 0) : c.at }))
+        .sort((a, b) => a.at - b.at);
+      const resolved = timed.map((c, i) => {
+        const t1 = i + 1 < timed.length ? timed[i + 1].at : t;
+        return Object.freeze({ ...c, sec: t1 - c.at, t1 });
+      });
+      const rest = INTRO_CAPTIONS.filter((c) => c.withPrompt)
+        .map((c) => Object.freeze({ ...c, t1: c.at + c.sec }));
+      return Object.freeze([...resolved, ...rest]);
+    })(),
+    duration: t,                    // 32.20
+    // The two moments the rest of the film hangs off, named rather than indexed:
+    // the frame the rocker clicks and the title theme dies, and the frame THE
+    // SURGE's downbeat lands. Both are shot boundaries by construction, so
+    // retuning a shot length moves them and nothing else has to be touched.
+    cutAt: at('socket') + 3.50,     // 12.00 — physical rocker contact, in shot
+    socketAt: at('socket') + 3.66,  // 12.16 — the bank starts emptying after it
+    cabinetCutAt: at('dark') + 0.10,// 13.60 — socket is visibly off first
+    slamAt: at('doors'),             // 18.00 — continuous hero sequence begins
+  });
+})();
 
 export const FINALE_BEATS = [
   'THE HEROES REACH THE SOCKET.',
@@ -499,8 +867,9 @@ export const FINALE_CODA = 'HR HAS APPROVED NOTHING THAT HAPPENS FROM HERE ON.';
 // Two sentences, and it took two false thirds to get there. A middle sentence
 // about the arcade being closed argued with the campaign the player just won;
 // one about the cabinets dreaming again leaned on a phrase that is on screen
-// exactly once, in intro panel 1, which plays on new-file only and skips. The
-// ending has no room to reference something most players never read. Thanks,
+// exactly once, in the opening film's first shot, which plays on new-file only
+// and skips. The ending has no room to reference something most players never
+// read. Thanks,
 // then an invitation, and nothing that has to be remembered to land.
 export const FINALE_THANKS_TITLE = 'THANK YOU FOR PLAYING';
 export const FINALE_THANKS = 'THE ENTIRE CAST THANKS YOU FOR YOUR PATRONAGE. YOU ARE WELCOME HERE ANY NIGHT.';

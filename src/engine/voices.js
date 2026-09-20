@@ -7817,12 +7817,33 @@ export class VoiceRack {
     }
   }
 
-  dispose() {
+  /**
+   * `fade` is seconds, and it is the difference between a rack that is FINISHED and a
+   * rack that is still sounding.
+   *
+   * With no fade this is what it always was: every pool disposed where it stands, which
+   * is right for a context being torn down or a rack whose notes have all rung out. The
+   * moment something is still sounding through it — `Audio.setBank` changing song under
+   * a held chord, which is every screen change in the game — disposing a Tone synth pulls
+   * its nodes out from under a signal that was still moving, once per pool, all on the
+   * same sample. That is the click `stopPreview` already avoids for one pool at a time;
+   * see `_fadeAndDispose`, which this simply reuses for all of them.
+   *
+   * Only the POOLS wait. Everything below is bookkeeping, or a message rather than a
+   * teardown, and stays where it is — a rack half torn down is far worse than a click.
+   */
+  dispose({ fade = 0 } = {}) {
+    const fading = fade > 0 && typeof this.ctx?.startRendering !== 'function';
     for (const [timer, pool] of this._retired) { clearTimeout(timer); this._disposePool(pool); }
     this._retired.clear();
     for (const pool of this._retiredOffline) this._disposePool(pool);
     this._retiredOffline.length = 0;
-    for (const pool of this.pools.values()) this._disposePool(pool);
+    // Drained BEFORE the live pools are handed to `_fadeAndDispose`, which books its own
+    // timers straight back into `_retired`: walking that map afterwards would find the
+    // pools that are already fading and dispose them mid-fade, which is the click again.
+    for (const pool of this.pools.values()) {
+      if (fading) this._fadeAndDispose(pool); else this._disposePool(pool);
+    }
     this.pools.clear();
     this._monoGroups.clear();
     this._activePreviews.clear();
@@ -7875,19 +7896,37 @@ export class VoiceRack {
     if (this.ctx) {
       try { releaseTngr2Context(this.ctx); } catch { /* context already gone */ }
       try {
-        mrdr3PanicAll(this.ctx, { at: 0 });
+        // STAMPED AT THE END OF THE FADE, not at frame 0. A panic drops every sounding
+        // group where it stands (`groups[i].active = false` in dsp.js) — it is a kill,
+        // not a release — so applying it at frame 0 cuts every held MRDR-3 note mid-cycle
+        // at full level, which is the one click a worklet lane can contribute to a song
+        // change. Twelve milliseconds later it lands under a songTrim that has already
+        // walked to silence, and nothing is heard. Safe to post ahead: the queue's
+        // survivors are decided by BOOKING order rather than frame order (see the panic
+        // branch's `seq > e.seq`), so the next song's notes still come through.
+        mrdr3PanicAll(this.ctx, { at: fading ? this.ctx.currentTime + fade : 0 });
         releaseIdleMrdr3Lanes(this.ctx, { idleSeconds: MRDR3_LANE_IDLE_SECONDS });
       } catch { /* ditto */ }
     }
     this._liveNotes = [];
-    for (const stage of this._mrdrLaneStages.values()) {
-      this._retireMrdrChorus(stage, Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0);
-      for (const node of [stage.input, stage.direct, stage.output]) {
-        try { node?.disconnect(); } catch { /* context may already be gone */ }
-      }
-      stage.disposed = true;
-    }
+    // The stages are marked and forgotten NOW; their nodes come apart after the fade.
+    // Same split as `Audio._cutLaneGates`, and for the same reason on both halves: a
+    // stage still in the book is one the next rack could find, and a stage disconnected
+    // at `now` empties the path the panic above is deliberately waiting to land on —
+    // which would put back exactly the click that delaying the panic removes.
+    const stages = [...this._mrdrLaneStages.values()];
     this._mrdrLaneStages.clear();
+    const dropStages = () => {
+      for (const stage of stages) {
+        this._retireMrdrChorus(stage, Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0);
+        for (const node of [stage.input, stage.direct, stage.output]) {
+          try { node?.disconnect(); } catch { /* context may already be gone */ }
+        }
+      }
+    };
+    for (const stage of stages) stage.disposed = true;
+    if (fading) setTimeout(dropStages, Math.ceil(fade * 1000) + 5);
+    else dropStages();
     // The glide origins. The nodes they point at belong to the dying context; keeping
     // the map would glide the next song's first note from the last song's last one.
     if (this._last) this._last.clear();

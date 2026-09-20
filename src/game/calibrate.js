@@ -28,7 +28,7 @@ import { W, H } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { clampAudioSyncMs } from '../engine/save.js';
-import { drawTextCentered, textWidth, drawMenuRow, textYForMid, wrapText } from '../engine/sprites.js';
+import { drawTextCentered, textWidth, drawMenuRow, textYForMid, wrapText, BACK_BUTTON_PLATE } from '../engine/sprites.js';
 import {
   portraitMenuActive, portraitMenuFit, portraitMenuSafeBottom, portraitMenuSafeTop,
   portraitMenuScale, portraitMenuTextCentered, portraitMenuTextY, portraitMenuWrap,
@@ -181,9 +181,6 @@ const BUTTON = {
   landscape: { h: 26, gap: 12, scale: 1.25, pad: 22, minW: 84, margin: 40, bottom: 20 },
   portrait: { h: 62, gap: 14, scale: 1.8, pad: 26, minW: 118, margin: 26, bottom: 34 },
 };
-// An unselected button still gets a plate — see drawButtons.
-const BUTTON_PLATE = 'rgba(201,160,255,0.06)';
-
 // ---- the copy block --------------------------------------------------------
 //
 // Type sizes and spacing, per orientation. Only these differ: the strings, the
@@ -649,7 +646,7 @@ export class CalibrateState {
     const boxes = this.boxes || this.buttonBoxes();
     boxes.forEach((b, i) => {
       const on = i === this.idx;
-      drawMenuRow(ctx, b.x, b.y, b.w, b.h, 3, on ? undefined : BUTTON_PLATE);
+      drawMenuRow(ctx, b.x, b.y, b.w, b.h, 3, on ? undefined : BACK_BUTTON_PLATE);
       const size = this.fit(b.label, b.scale, b.w - 16);
       this.centred(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, on ? '#fff' : '#8a8a98', size);
     });

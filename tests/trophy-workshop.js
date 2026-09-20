@@ -178,11 +178,53 @@ assert(trophyTreatmentIds === 'filter>filter>reverb>filter'
   && trophyTreatment.list[1]?.params?.type === 'lowpass'
   && trophyTreatment.list[1]?.params?.frequency === 1450
   && trophyTreatment.list[3]?.params?.type === 'lowpass'
-  && trophyTreatment.list[3]?.params?.frequency === 1800
   && treatmentCalls.some((c) => c.type === 'ramp' && c.wet === 1)
   && treatmentCalls.some((c) => c.type === 'ramp' && c.wet === 0)
   && treatmentCalls.some((c) => c.type === 'clear'),
   'entering applies a muffled pre/post-reverb treatment and exiting removes it');
+
+// The song arrives through the exit door, so distance from that door is what the room
+// sounds like: driest and brightest in the doorway, wettest and dullest at the far wall.
+// The wall's own two filters do not move — only the low-pass downstream of the reverb.
+const wetWrites = [], airWrites = [], wallWrites = [];
+const fakeReverb = { def: { id: 'reverb' }, set: (p) => wetWrites.push(p.wet) };
+const fakeAir = { def: { id: 'filter' }, set: (p) => airWrites.push(p.frequency) };
+const fakeWall = { def: { id: 'filter' }, set: (p) => wallWrites.push(p.frequency) };
+Audio.mixer.treatment = [fakeWall, fakeWall, fakeReverb, fakeAir];
+const depthRoom = new TrophyRoomState({ save: blankSave, flow });
+depthRoom.enter();
+const doorwayWet = wetWrites.at(-1), doorwayAir = airWrites.at(-1);
+assert(doorwayWet === trophyTreatment.list[2].params.wet
+  && doorwayAir === trophyTreatment.list[3].params.frequency,
+  'the room arrives at the chain\'s own values, with him still standing in the doorway');
+depthRoom.doorWalk = null;   // skip the entrance walk; drive the position directly
+depthRoom.px = 90;
+depthRoom.update(1 / 60);
+const nearWet = wetWrites.at(-1), nearAir = airWrites.at(-1);
+depthRoom.px = 900;
+depthRoom.update(1 / 60);
+const farWet = wetWrites.at(-1), farAir = airWrites.at(-1);
+assert(nearWet > doorwayWet && farWet > nearWet && farWet <= 1,
+  'reverb rises with distance from the door, and stays a legal wet');
+assert(nearAir < doorwayAir && farAir < nearAir && farAir > 20,
+  'the air closes with distance from the door, and stays a legal cutoff');
+// Distant has to be audibly duller than the wall alone, or the sweep does nothing: the
+// far cutoff must sit well under the fixed pre-reverb low-pass.
+assert(farAir < trophyTreatment.list[1].params.frequency * 0.75,
+  'at the far wall the air is the filter you hear, not the wall');
+assert(doorwayAir > trophyTreatment.list[1].params.frequency,
+  'in the doorway the air is open past the wall, so he hears all the wall lets through');
+assert(wallWrites.length === 0, 'the wall\'s own filters are never touched by distance');
+// A hero standing at an exhibit must not be rewriting the graph every frame.
+const settled = wetWrites.length + airWrites.length;
+depthRoom.update(1 / 60);
+assert(wetWrites.length + airWrites.length === settled, 'standing still writes nothing');
+depthRoom.exit();
+depthRoom.px = 90;
+depthRoom.update(1 / 60);
+assert(wetWrites.length + airWrites.length === settled,
+  'the room lets go of the chain when it hands the leg back');
+
 Audio.ctx = null;
 Audio.mixer = null;
 
