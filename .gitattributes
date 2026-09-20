@@ -1,0 +1,15 @@
+# galleries/index.md and releases/index.md are generated tables, not prose.
+# Their archive tools rewrite the whole file from what is on disk, so two
+# machines archiving independently always collide on the last row -- and a
+# textual merge cannot tell a row that was ADDED from one that was PRUNED, nor
+# prefer a resolved commit subject over "(commit not in history)".
+#
+# merge=union is the wrong reflex here: it keeps both sides of a changed row and
+# the table grows duplicates. tools/merge-index-table.js merges the rows as a
+# three-way set keyed by commit instead.
+#
+# The driver is registered per clone by `npm run setup`. Without it git falls
+# back to the normal text merge, which is exactly today's behaviour -- so a
+# fresh clone is never worse off, only noisier.
+galleries/index.md merge=index-table
+releases/index.md  merge=index-table

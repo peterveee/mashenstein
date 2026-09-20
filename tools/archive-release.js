@@ -24,6 +24,25 @@ function gitTry(...args) {
   }
 }
 
+const PLACEHOLDER = '(commit not in history)';
+
+// A subject already recorded in the index is better evidence than anything this
+// clone can work out when the commit is unreachable -- a shallow CI clone or a
+// history rewrite must not silently blank a row that a fuller clone had already
+// resolved. Remembering what the table said keeps the regeneration monotonic.
+function recordedSubjects(indexPath) {
+  const seen = new Map();
+  if (!existsSync(indexPath)) return seen;
+  for (const line of readFileSync(indexPath, 'utf8').split('\n')) {
+    if (!line.startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    const commit = (cells[1] || '').replace(/`/g, '');
+    const subject = (cells[cells.length - 1] || '').trim();
+    if (commit && subject && subject !== PLACEHOLDER) seen.set(commit, subject);
+  }
+  return seen;
+}
+
 const built = join(root, 'dist/index.html');
 const builtGame = join(root, 'dist/game.js');
 if (!existsSync(built) || !existsSync(builtGame)) {
@@ -45,6 +64,7 @@ writeFileSync(join(releases, name), html.replace('</body>', `${embedded}</body>`
 
 // Rebuild the index from whatever is on disk, so a hand-deleted or
 // hand-added archive stays consistent without a separate bookkeeping file.
+const recorded = recordedSubjects(join(releases, 'index.md'));
 const rows = readdirSync(releases)
   .filter((f) => f.endsWith('.html'))
   .map((file) => {
@@ -58,7 +78,8 @@ const rows = readdirSync(releases)
       when: Number(gitTry('show', '-s', '--format=%ct', commit))
         || Date.parse(file.slice(0, 10)) / 1000,
       date: file.slice(0, 10),
-      subject: gitTry('show', '-s', '--format=%s', commit) || '(commit not in history)',
+      subject: gitTry('show', '-s', '--format=%s', commit)
+        || recorded.get(commit) || PLACEHOLDER,
     };
   })
   .sort((a, b) => a.when - b.when);
