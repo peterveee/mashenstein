@@ -55,6 +55,16 @@ dom.key('Enter'); frames(30);
 // Tap advances one beat at a time (11 beats, then a close tap), not exit-on-first-press.
 for (let i = 0; i < 14; i++) { dom.key('Enter'); frames(12); }
 frames(40);
+// A NEW FILE NOW OPENS STRAIGHT INTO 1-1 rather than the concourse. These
+// suites want the hub and their own walk from it, so leave that first run by
+// its own EXIT — which is how a player reaches the concourse the first time —
+// and settle the transition before pressing anything.
+globalThis.window.__mash_cur.endRun(false, 'QUIT');
+for (let i = 0; i < 600 && globalThis.window.__mash_state !== 'ResultsState'; i++) frames(1);
+dom.key('Enter'); frames(30);
+dom.key('Enter'); frames(30);
+for (let i = 0; i < 600 && globalThis.window.__mash_state !== 'HubState'; i++) frames(1);
+frames(90);
 globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
 frames(2);
 dom.key('Enter'); frames(40);   // USE the cabinet: the hero dives into the screen

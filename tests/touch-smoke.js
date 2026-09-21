@@ -37,7 +37,31 @@ dom.key('Enter'); frames(30);   // difficulty -> intro
 // exiting on the first press — give it enough taps to walk all the way out.
 for (let i = 0; i < 14; i++) { dom.key('Enter'); frames(12); }
 frames(40);
+// A new file opens straight into 1-1 — no hub, no briefing.
+assert(globalThis.window.__mash_state === 'RunState', `new file opens straight into the stage (got ${globalThis.window.__mash_state})`);
+
+// THE TOUCH CARD STILL PLAYS. The film's route drops the ACT announcement, not
+// the one thing on a phone that says the glass itself is the buttons — they are
+// two separate beats and only the first is redundant after the film.
+assert(globalThis.window.__mash_cur.zoneCard === true,
+  'the touch-control card is shown on the opening stage');
+assert(globalThis.window.__mash_cur.introText === null,
+  'and the ACT I card is not');
+// Tap through it, the way the card asks.
+for (let i = 0; i < 40 && globalThis.window.__mash_cur.zoneCard; i++) { dom.key('Enter'); frames(12); }
+assert(globalThis.window.__mash_cur.zoneCard === false, 'and a tap dismisses it into the run');
+
+// Leave that run by its own EXIT, which is how a player first reaches the
+// concourse, and carry on checking the cabinet route from there.
+globalThis.window.__mash_cur.endRun(false, 'QUIT');
+for (let i = 0; i < 600 && globalThis.window.__mash_state !== 'ResultsState'; i++) frames(1);
+dom.key('Enter'); frames(30);
+dom.key('Enter'); frames(30);
+for (let i = 0; i < 600 && globalThis.window.__mash_state !== 'HubState'; i++) frames(1);
 assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.window.__mash_state})`);
+// Let the concourse finish arriving: reached this way it is mid-transition,
+// and a press during that is swallowed.
+frames(90);
 
 // Stand on the first cabinet and interact — see tests/smoke.js for why this
 // reads the station list instead of walking for a fixed number of frames.

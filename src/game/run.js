@@ -2109,6 +2109,11 @@ export class RunState {
     // Dev Scenes can inspect the opening touch-controls card even after the
     // current save has completed the campaign's first stage.
     this.previewTouchControls = !!opts.previewTouchControls;
+    // Straight off the opening film. The act card announces the act the player
+    // is entering, and the film has just spent half a minute doing exactly that
+    // — so on this one route it would be the same beat twice, in text, between
+    // the player and the first thing they get to do.
+    this.skipActCard = !!opts.skipActCard;
     this.portraitPreview = !!opts.portraitPreview;
     // All ordinary gameplay states use the approved frame-based portrait
     // presentation when the active viewport is a phone in portrait. The
@@ -3859,7 +3864,12 @@ export class RunState {
     // there, so it needs no guard of its own here.
     const seen = !!(opens && stagePlayed(slot, this.stage));
     const done = !!(opens && stageAllPlugs(slot, this.stage));
-    const act = opens && !done && !this.previewTouchControls ? this.stage.act : null;
+    // A FRESH OPENING OF THE STAGE, which is the gate BOTH establishing beats
+    // hang off. Kept as its own name because they are otherwise unrelated: one
+    // announces the act, the other teaches the glass, and the route off the
+    // opening film wants the second without the first.
+    const opening = opens && !done && !this.previewTouchControls;
+    const act = opening && !this.skipActCard ? this.stage.act : null;
     this.introDone = true;
     this.introFreeze = act ? ACT_BANNER_TIME : 0;
     this.introText = act;
@@ -3871,15 +3881,20 @@ export class RunState {
     // plumber-1 has never been told that the glass itself is the buttons, and
     // the two discs in the corners actively suggest otherwise.
     //
-    // It rides in the beat after the ACT card and before the hero runs in:
-    // nothing is moving yet, so reading it costs no run, and it is the last
-    // thing on screen before the first obstacle. Acts II and III carry a card
-    // of their own and are not where anyone learns to play, so this is pinned
-    // to the first stage. It retires on the same terms that card does — a stage
-    // with every plug banked is being replayed by someone who demonstrably
-    // knows where to put their thumb.
+    // It rides in the beat after the ACT card, where there is one, and before
+    // the hero runs in: nothing is moving yet, so reading it costs no run, and
+    // it is the last thing on screen before the first obstacle. It holds the
+    // run on its own clock rather than on the banner's, so it plays whether or
+    // not the card ahead of it did — which is what the route off the opening
+    // film needs: that route drops the ACT announcement, not the one thing on
+    // a phone that says the glass is the buttons.
+    //
+    // Acts II and III carry a card of their own and are not where anyone learns
+    // to play, so this is pinned to the first stage. It retires on the same
+    // terms the act card does — a stage with every plug banked is being
+    // replayed by someone who demonstrably knows where to put their thumb.
     this.zoneCard = this.previewTouchControls
-      || (!!act && this.stage.id === 'plumber-1' && Input.isTouchDevice());
+      || (opening && this.stage.id === 'plumber-1' && Input.isTouchDevice());
     this.zoneCardT = 0;
     // Queue this stage's artwork. Normally the briefing has already started it
     // and most of it is built by now; a dev launch that skips the briefing

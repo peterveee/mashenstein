@@ -518,7 +518,7 @@ const HUB_CAM_Y = HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM;
 // housing there still left the part players read as "the light" visibly lower.
 const HUB_WALL_Y0 = 40;
 const HUB_WALL_Y1 = HUB_FLOOR_PIN_Y - 2;            // top of the skirting trim
-const HUB_LIGHT_Y = HUB_CAM_Y;
+export const HUB_LIGHT_Y = HUB_CAM_Y;
 // Ceiling-crawling props need the housing's lower edge rather than the clipped
 // tube line, so keep their attachment point separate from the light position.
 const HUB_CEIL_Y = Math.ceil(HUB_CAM_Y) + 4;

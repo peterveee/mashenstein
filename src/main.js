@@ -327,11 +327,26 @@ const Flow = {
     onSlotChosen: (i, isNew) => {
       Flow.hubPosition = null;
       if (isNew) {
-        setState(new DifficultyState({ save, onStart: () => save.newSlot(i, Date.now()), onCancel: () => { save.eraseSlot(i); Flow.toTitle(); }, onDone: () => setState(new IntroState({ onDone: () => {
-          save.slot.campaign.storyFlags.sawIntro = true;
-          save.persist();
-          Flow.toHub();
-        } })) }));
+        setState(new DifficultyState({ save, onStart: () => save.newSlot(i, Date.now()), onCancel: () => { save.eraseSlot(i); Flow.toTitle(); }, onDone: () => setState(new IntroState({
+          // The film is the opening of a new save, not an item in a gallery: it
+          // hands straight into 1-1. Not via the hub — which would drop the
+          // player in the concourse to find the first machine themselves — and
+          // not via the briefing either: the film has just spent half a minute
+          // establishing the place and the stakes, and an act card and a
+          // manifest immediately after it are the same information again, in
+          // text, between the player and the first thing they get to do. The
+          // stage teaches itself from the inside; STAGES[0] is the one the run
+          // already knows to put its instructions on.
+          continues: true,
+          onDone: () => {
+            save.slot.campaign.storyFlags.sawIntro = true;
+            save.persist();
+            const stage = STAGES[0];
+            const cab = CABINET_BY_ID[stage.cabinet];
+            if (cab) Flow.launchStage(cab, stage, [], undefined, undefined, true, false, false, 0, 0, false, false, true);
+            else Flow.toHub();
+          },
+        })) }));
       } else {
         save.selectSlot(i);
         Flow.toHub();
@@ -424,7 +439,7 @@ const Flow = {
 
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
-  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false, previewTouchControls = false) {
+  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false, previewTouchControls = false, skipActCard = false) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
     // The exit cue is an offline render and cannot be made on the frame it is
@@ -446,6 +461,7 @@ const Flow = {
       initialHeroId,
       devInvuln, devAutoExit, devMaxTime, devStartPercent, devForceMission,
       previewTouchControls,
+      skipActCard,
       musicSong: this.gameSongFor(cab.id),
       // The bench-upgrade parade is a once-per-visit thing; a retry has already
       // seen it (same as the briefing it also skips).

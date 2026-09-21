@@ -16,7 +16,7 @@ const { SURGE_THEME, TITLE_THEME } = await import('../src/data/cabinets.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { Input } = await import('../src/engine/input.js');
 const { wrapText } = await import('../src/engine/sprites.js');
-const { HUB_ROOM } = await import('../src/game/hub/index.js');
+const { HUB_ROOM, HUB_LIGHT_Y } = await import('../src/game/hub/index.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -357,6 +357,17 @@ function fingerprint(t) {
   // machine and none anywhere else. Continuing the rhythm over bare runway is
   // wallpaper by another route, and the wall beside the last cabinet stays clean
   // — no conduit, no loose wire, and no poster for a machine that is not there.
+  // AND THE FIXTURES HANG ABOVE THEM. drawCeilingLight paints its housing at
+  // y-4 and its tube to y+4, so a light hung on the ceiling CLAMP line sat
+  // inside the posters' own band and was painted over their top edge. Same
+  // clearance as the concourse, because it is the concourse's own line.
+  const lightBottom = IntroFilm.LIGHT_Y + 4;
+  assert(lightBottom < HUB_ROOM.posterTopY,
+    `the ceiling tubes clear the posters (${lightBottom} vs ${HUB_ROOM.posterTopY})`);
+  assert(IntroFilm.LIGHT_Y - 4 >= HUB_ROOM.wallY0,
+    'and their housings hang off the wall, not out of the ceiling void');
+  assert(HUB_ROOM.posterTopY - lightBottom === HUB_ROOM.posterTopY - (Math.round(HUB_LIGHT_Y) + 4),
+    'at the hub\'s own clearance, not a number of the film\'s own');
   assert(IntroFilm.POSTER_XS.length === IntroFilm.CAB_CX.length
     && IntroFilm.POSTER_XS.every((x, i) => x === IntroFilm.CAB_CX[i]),
   'there is one poster per machine and not one more');

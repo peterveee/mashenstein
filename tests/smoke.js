@@ -35,19 +35,35 @@ assert(globalThis.window.__mash_booted === undefined || true, 'bundle evaluated'
 dom.key('Enter'); frames(30); // through transition into difficulty
 // Difficulty: pick BREEZY.
 dom.key('Enter'); frames(30);
-// Intro: autoplay the film until the hub arrives. No input is sent during it.
-for (let i = 0; i < 4200 && globalThis.window.__mash_state !== 'HubState'; i++) frames(1);
-dom.key('Enter'); frames(2);
-frames(40);
+// Intro: autoplay the film, then one press on its CONTINUE prompt. No input is
+// sent during it.
+for (let i = 0; i < 4200 && globalThis.window.__mash_state !== 'IntroState'; i++) frames(1);
+for (let i = 0; i < 4200 && !globalThis.window.__mash_cur.awaitingClose; i++) frames(1);
+dom.key('Enter'); frames(40);
 
-// Should now be in the hub. Save should have a slot.
+// A NEW FILE GOES STRAIGHT INTO 1-1. Not the hub, and not the briefing: the
+// film has just established the place and the stakes, and the stage teaches
+// itself from the inside. The concourse is where the player comes back to.
+assert(globalThis.window.__mash_state === 'RunState', `new file opens straight into the stage (got ${globalThis.window.__mash_state})`);
+
+// Save should have a slot.
 const raw = dom.store['mashenstein.v2'];
 assert(raw, 'save file written');
 const data = JSON.parse(raw);
 assert(data.version === 2, 'save schema v2');
 assert(data.slots[0] && data.slots[0].difficulty === 1, 'slot created with difficulty 1');
 
+// Leave that run by its own EXIT, which is how a player reaches the concourse
+// for the first time, and carry on checking the cabinet route from there.
+globalThis.window.__mash_cur.endRun(false, 'QUIT');
+for (let i = 0; i < 600 && globalThis.window.__mash_state !== 'ResultsState'; i++) frames(1);
+dom.key('Enter'); frames(30);
+dom.key('Enter'); frames(30);
+for (let i = 0; i < 600 && globalThis.window.__mash_state !== 'HubState'; i++) frames(1);
 assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.window.__mash_state})`);
+// Let the concourse finish arriving before walking: reached this way it is
+// mid-transition, and a press during that is swallowed.
+frames(90);
 
 // Stand on the first cabinet and interact. Its position is read from the live
 // station list rather than reached by walking for a fixed number of frames —

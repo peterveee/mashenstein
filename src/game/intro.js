@@ -50,6 +50,7 @@ import { drawWallBase, drawPoster } from '../sprites/backwall.js';
 import {
   HUB_ROOM, drawFoodCourtFloor, drawCeilingLight, lightFlicker, LIGHT_W,
   SOCKET_TOP, cabinetScreenArt, cabinetScreenGeometry, posterLook, REFLECT_SOLE_DROP,
+  HUB_LIGHT_Y,
 } from './hub/index.js';
 import { openingEdge } from './hub/door-walk.js';
 import {
@@ -78,6 +79,14 @@ const BAY = HUB_ROOM.bayPitch;                     // 88
 // is on screen") and this camera moves — a derived ceiling would slide up and
 // down the wall as the film pushed in.
 const CEIL_Y = 74;
+// WHERE THE FIXTURES HANG, which is NOT the same line as the ceiling the camera
+// clamps against. drawCeilingLight paints its housing at y-4 and its tube down
+// to y+4, so hanging them on CEIL_Y put the whole fixture at 70..78 — inside
+// the posters' own band (61..115) and painted over their top edge, because the
+// lights are drawn after them. The concourse hangs its at HUB_LIGHT_Y, which
+// leaves eight units of wall between the tube and the top of a one-sheet; this
+// is that same line, taken from the hub rather than retyped.
+const LIGHT_Y = Math.round(HUB_LIGHT_Y);
 
 // Six machines on the hub's own pitch, and the first one far enough right that
 // the service door has a wall to stand in.
@@ -1187,7 +1196,7 @@ function drawRoom(ctx, t, view, lit, straightLight = false) {
     const lightViewX = straightLight
       ? lightViewW * 0.5 - LIGHT_W * 0.5
       : x - view.x0;
-    drawCeilingLight(ctx, x, CEIL_Y, tubes * lightFlicker(t, i), lightViewX, lightViewW);
+    drawCeilingLight(ctx, x, LIGHT_Y, tubes * lightFlicker(t, i), lightViewX, lightViewW);
   }
   // drawFoodCourtFloor fills from x=0 in whatever space it is called in, and
   // reads its offset argument ONLY for the tile phase — the hub calls it in
@@ -1612,7 +1621,15 @@ function drawHeroes(ctx, t, view) {
 export class IntroState {
   static portraitMode = 'frame';
 
-  constructor({ onDone }) { this.onDone = onDone; }
+  // `continues` is the difference between the film ENDING and the film being
+  // the first thing in a new save. On the new-file route the next thing the
+  // player sees is Act I and then 1-1, so the prompt promises that; from the
+  // staff menu and the extras replay there is nothing after it, and a prompt
+  // that says CONTINUE over a return to a menu is a small lie.
+  constructor({ onDone, continues = false }) {
+    this.onDone = onDone;
+    this.continues = continues;
+  }
 
   enter() {
     this.t = 0;
@@ -2024,8 +2041,9 @@ export class IntroState {
     }
 
     if (this.awaitingClose) {
+      const verb = this.continues ? 'CONTINUE' : 'CLOSE';
       drawTextCentered(ctx,
-        Input.isTouchDevice() ? 'TAP TO CLOSE' : 'PRESS ENTER OR CLICK TO CLOSE',
+        Input.isTouchDevice() ? `TAP TO ${verb}` : `PRESS ENTER OR CLICK TO ${verb}`,
         W / 2, gate.promptY, '#8a8492', 1);
     }
   }
@@ -2074,7 +2092,7 @@ export const IntroFilm = {
   GATHER_ARRIVE, GATHER_BRAKE, HERO_PAN_START_T, PULL_OUT_SEC, BAR, BEAT, SIXTEENTH,
   NEAR_SKID, FAR_BURST, FAR_SKID, FAR_SETTLE, FAR_CROSS_OK,
   FOLLOWER_STAGGER,
-  HERO_IDS, CAB_CX, BAY, FLOOR_Y, STRIP_CX, SOCKET_CX, POSTER_XS, bayXsIn,
+  HERO_IDS, CAB_CX, BAY, FLOOR_Y, LIGHT_Y, STRIP_CX, SOCKET_CX, POSTER_XS, bayXsIn,
   heroHopAt, HERO_HOPS,
   SCREEN_REVEAL_AT, SCREEN_VISIBLE_AT,
   cutAt: INTRO_FILM.cutAt, cabinetCutAt: CABINET_CUT_AT,
