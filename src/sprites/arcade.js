@@ -1117,45 +1117,6 @@ export function signFlicker(t) {
 // something to show through the wall get something else, because at this size a
 // sign is a weak way to say "this is a shop" and a lit window is a strong one.
 function doorLeaf(ctx, w, h, pal, box, X, Y, u, openAmt = 0, t = 0) {
-  if (pal.variant === 'split') {
-    // The opening-film service door is a centre-parting pair: two leaves meet
-    // on a visible seam, then retract left and right together. It must read as
-    // a doorway opening from the middle, not as the standard pocket door
-    // sliding away on one side.
-    const powered = pal.icon !== 'none';
-    const [lx, ly, lw, lh] = box('leaf');
-    const [fx, fy, fw, fh] = box('frame');
-    const half = lw * 0.5;
-    const travel = openAmt * half * 0.96;
-    const leftX = lx - travel;
-    const rightX = lx + half + travel;
-    const panelW = half + w * 0.004;
-    const drawPanel = (px) => {
-      shape(ctx, pal.door, u, (c) => rr(c, px, ly, panelW, lh, w * 0.075));
-      plain(ctx, mix(pal.door, pal.sign, powered ? 0.45 : 0.12),
-        (c) => c.rect(px, Y(0.73), panelW, h * 0.07));
-      const cx = px + panelW * 0.5, cy = Y(0.49), r = panelW * 0.25;
-      plain(ctx, lighten(pal.frame, 0.42), (c) => c.arc(cx, cy, r + w * 0.015, 0, Math.PI * 2));
-      plain(ctx, darken(pal.frame, 0.25), (c) => c.arc(cx, cy, r + w * 0.006, 0, Math.PI * 2));
-      plain(ctx, powered ? darken(pal.sign, 0.5) : '#0b0912', (c) => c.arc(cx, cy, r, 0, Math.PI * 2));
-      glassGloss(ctx, cx - r, cy - r, r * 2, r * 2, 0.20, r);
-    };
-    ctx.save();
-    ctx.beginPath(); ctx.rect(fx, fy, fw, fh); ctx.clip();
-    // The recess and centre seam stay visible between the two leaves as they
-    // part, which gives the eye a clear expanding line of light.
-    plain(ctx, '#080610', (c) => c.rect(lx + half - w * 0.012, ly, w * 0.024, lh));
-    drawPanel(leftX);
-    drawPanel(rightX);
-    ctx.restore();
-    const sx = X(0.5), sy = box('well')[1] - h * 0.022;
-    plain(ctx, darken(pal.frame, 0.4), (c) => c.arc(sx, sy, w * 0.034, 0, Math.PI * 2));
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-    plain(ctx, '#d5a13b', (c) => c.arc(sx, sy, w * 0.018, 0, Math.PI * 2));
-    ctx.restore();
-    return;
-  }
   if (pal.variant === 'slide') {
     // EXIT and the Trophy Room: an automatic sliding door, won out of the door
     // bake-off as the PORTHOLE. Its whole language is round — a big chrome-ringed
@@ -1470,10 +1431,7 @@ export const DOOR_PALETTES = {
   // sign board blanked the way backroom blanks it: this is the way IN to a
   // building that is closed, and a lit EXIT over it would be answering a
   // question nobody asked.
-  // The intro staff entrance is a centre-parting service door. It opens from
-  // the seam so the cast is revealed together, with no one-sided pocket-door
-  // sweep competing with the first runner.
-  service: { id: 'service', frame: '#3a3f4a', door: '#2a2e38', sign: '#2f333d', ink: '#2f333d', icon: 'none', variant: 'split' },
+  service: { id: 'service', frame: '#3a3f4a', door: '#2a2e38', sign: '#2f333d', ink: '#2f333d', icon: 'none', variant: 'slide', slideDir: -1 },
 };
 
 // ------------------------------------------------------------ serving line
