@@ -1,0 +1,20 @@
+{
+  // Opening this folder starts THE DESK on :8000 — the port map and launcher.
+  // It adopts anything already answering and exits with a message if a desk is
+  // already up, so opening a second window costs nothing.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "desk",
+      "type": "shell",
+      "command": "npm run desk",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "group": "tools"
+      },
+      "problemMatcher": [],
+      "runOptions": { "runOn": "folderOpen" }
+    }
+  ]
+}

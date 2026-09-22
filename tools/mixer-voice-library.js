@@ -122,8 +122,17 @@ export function benchRoot(voice) {
  * comparable here — both arrive scaled to the same lane target, so the one that sounds
  * louder is the one that is louder.
  */
-export function benchBank(id, bpm) {
-  return { bpm: bpm || 120, [seamFor(benchLane(VOICES[id])).voiceKey]: id };
+export function benchBank(id, bpm, dur = 0) {
+  const seam = seamFor(benchLane(VOICES[id]));
+  const bank = { bpm: bpm || 120, [seam.voiceKey]: id };
+  // A gated note says its length in the BANK rather than on the step it lands on.
+  // `soloBank` strips every per-step length on the way through — a preview happens at
+  // no step of the song, so a drawn length has nothing to be the length of — but the
+  // bank's own `durKey` survives, and it already beats the preset's `dur` for the same
+  // reason a dialled-in song's does: it is the more specific thing somebody has said.
+  // Zero means nobody has, and the preset's own length stands.
+  if (dur > 0) bank[seam.durKey] = dur;
+  return bank;
 }
 
 // ---- when a bench note is allowed to sound ----------------------------------
@@ -160,7 +169,7 @@ let benchLastId = null; // ...for which preset, since a different preset is a di
  * `mixer` null would silently take every channel strip out of the song itself, which is
  * the kind of failure you would chase for an hour before suspecting the keyboard.
  */
-export function benchPlay(Audio, id, freq, { at = 0.02, bpm = 120 } = {}) {
+export function benchPlay(Audio, id, freq, { at = 0.02, bpm = 120, dur = 0 } = {}) {
   const voice = VOICES[id];
   if (!Audio?.ctx || !voice) return false;
   const lane = benchLane(voice);
@@ -178,7 +187,7 @@ export function benchPlay(Audio, id, freq, { at = 0.02, bpm = 120 } = {}) {
   const was = Audio.mixer;
   Audio.mixer = null;
   try {
-    return Audio.previewNote(lane, freq, { bank: benchBank(id, bpm), at: t - now });
+    return Audio.previewNote(lane, freq, { bank: benchBank(id, bpm, dur), at: t - now });
   } finally {
     Audio.mixer = was;
   }
@@ -283,6 +292,25 @@ export const PATTERN_RATES = [
   { id: '16', label: '1/16', steps: 1 },
 ];
 
+// How much of its step a figure's note actually sounds for, as a percentage.
+//
+// A RATE and a GATE are two different questions and a bench needs both. The rate says
+// how often a note starts; the gate says how long it lasts once it has. At 100% each
+// note runs the whole step and the line is legato; at 30% it stops well short and the
+// same figure is detached, which is most of what tells a plucked preset from a pad.
+// Auditioning at one fixed length answers neither question honestly: a release that
+// sounds tight under a staccato arp is the release you never heard.
+//
+// It replaces the preset's own `dur` for the pattern player's notes ONLY. The keyboard
+// goes through benchPlay without one, so the preset exactly as written is always a
+// keypress away and the pot cannot quietly become the thing you are judging.
+//
+// The floor is 5 rather than 0 because a zero-length note is not a short note, it is a
+// click with a pot position behind it — a control that appears to have broken the
+// instrument at one end of its travel. 30 is the default because that is where the
+// knob's arc was drawn: see `.autogate-knob` in tools/mrdr3-shell.html.
+export const PATTERN_GATE = { min: 5, max: 100, step: 5, default: 30 };
+
 // A major triad on a scale degree, as semitones from the root. Written as a helper
 // rather than typed out three times: a progression is degrees, and the arithmetic
 // between a degree and the three notes that sound is not the interesting part.
@@ -354,6 +382,80 @@ export const PATTERNS = [
 const PATTERN_BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
 const RATE_BY_ID = Object.fromEntries(PATTERN_RATES.map((r) => [r.id, r]));
 
+// The arc the knob is painted with, from `.autogate-knob`: 290 degrees of travel
+// starting at 215. Named here because the pot has to put the pointer where the
+// stylesheet expects it, and two numbers that must agree are worth one place to read.
+const GATE_SWEEP = 290;
+
+/**
+ * GATE, as a knob.
+ *
+ * A knob rather than the number box its neighbours use, because gate is the one
+ * control on the strip you set by EAR: you hold it while the figure runs and stop
+ * where the line starts sounding right, which is a drag, not a value you know in
+ * advance and type. The range input underneath is the whole control — it carries the
+ * keyboard, the arrow keys and the drag for free, and is laid transparently over the
+ * face so what you actually grab is the knob. Styling a native range to look like a
+ * knob is the other way round and loses all three.
+ *
+ * Percent of the step, shown as such. The arc is mapped over the full 0-100 rather
+ * than over the pot's own travel, so the paint and the number mean the same thing and
+ * a short gate looks short.
+ */
+export function createGatePot(value = PATTERN_GATE.default, onChange = () => {}) {
+  const wrap = document.createElement('div');
+  wrap.className = 'autogate';
+  const caption = document.createElement('span');
+  caption.className = 'autogate-label'; caption.textContent = 'GATE';
+
+  const knob = document.createElement('div');
+  knob.className = 'autogate-knob';
+  const readout = document.createElement('span');
+  readout.className = 'autogate-value';
+
+  const input = document.createElement('input');
+  input.type = 'range'; input.className = 'autogate-input';
+  input.min = String(PATTERN_GATE.min);
+  input.max = String(PATTERN_GATE.max);
+  input.step = String(PATTERN_GATE.step);
+  // The caption is a sibling span rather than a wrapping <label>, so the knob needs to
+  // say what it is itself: with the input at zero opacity there is nothing else for a
+  // screen reader to read, and "slider, 30" is not a control anyone can use.
+  input.setAttribute('aria-label', 'Gate length, percent of the step');
+  input.title = 'How much of each step a figure\u2019s note sounds for';
+
+  const clamp = (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return PATTERN_GATE.default;
+    return Math.max(PATTERN_GATE.min, Math.min(PATTERN_GATE.max, v));
+  };
+
+  let current = clamp(value);
+  function paint() {
+    input.value = String(current);
+    readout.textContent = `${Math.round(current)}%`;
+    knob.style.setProperty('--gate-angle', `${(current / 100) * GATE_SWEEP}deg`);
+  }
+  input.addEventListener('input', () => {
+    current = clamp(input.value);
+    paint();
+    onChange(current);
+  });
+  paint();
+
+  knob.append(readout, input);
+  wrap.append(caption, knob);
+  // `label` because that is what every other control on this strip hands back — see
+  // controlLabel in tools/mrdr3-performance.js. The caller appends one thing and does
+  // not have to know which of them is a knob.
+  return {
+    label: wrap,
+    input,
+    get value() { return current; },
+    set(next) { current = clamp(next); paint(); },
+  };
+}
+
 /**
  * The pattern player: a lookahead scheduler over the bench.
  *
@@ -388,6 +490,8 @@ export function createPatternPlayer({
   // than indexed — the rates are ordered slowest-first for the dropdown, and a default
   // that moves whenever a rate is added to the list is a default nobody chose.
   let rate = RATE_BY_ID['8'];
+  // How much of its step a note holds for. See PATTERN_GATE.
+  let gate = PATTERN_GATE.default;
   let next = 0;                 // ctx time of the next cell step
   let ix = 0;                   // which step of the cell
   // A native select can briefly take the page's event loop while its menu is open.
@@ -427,6 +531,11 @@ export function createPatternPlayer({
     // including its warp multiplier, which the readout does not carry.
     const clock = sync();
     const step = (clock ? clock.spb : (60 / Math.max(20, bpm())) / 4) * rate.steps;
+    // The gate in the same units the preset's `dur` is in — sixteenths — so it is the
+    // fraction of THIS rate's step rather than a fixed length that happens to fit one
+    // of them. Slowing the figure down lengthens its notes, which is what a musician
+    // dragging the rate expects and the only reading under which 100% means legato.
+    const dur = (rate.steps * gate) / 100;
     while (next < horizon) {
       // A step that has fallen behind — a backgrounded tab, or the desk busy repainting
       // — is dragged up to now rather than played at its original time, which by then
@@ -449,7 +558,7 @@ export function createPatternPlayer({
         const steps = scale()?.steps || null;
         for (const semi of hit) {
           const n = snapToScale(semi, steps);
-          benchPlay(Audio, voiceId, base * 2 ** (n / 12), { at, bpm: bpm() });
+          benchPlay(Audio, voiceId, base * 2 ** (n / 12), { at, bpm: bpm(), dur });
         }
         onStep(ix % pattern.cell.length);
       }
@@ -543,12 +652,28 @@ export function createPatternPlayer({
       if (adjustSlowRate && pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
     },
     setRate: (id) => { rate = RATE_BY_ID[id] || rate; },
+    get gate() { return gate; },
+    /**
+     * How long each note of the figure holds, as a percentage of its step.
+     *
+     * Takes effect on the next note SCHEDULED rather than on the next note heard:
+     * there is a lookahead's worth already queued at whatever the gate was, and
+     * shortening those would mean reaching back into notes the rack has accepted.
+     * Sixty milliseconds is under one step at any musical tempo, so the pot still
+     * feels live under the hand.
+     */
+    setGate: (percent) => {
+      const n = Number(percent);
+      if (!Number.isFinite(n)) return;
+      gate = Math.max(PATTERN_GATE.min, Math.min(PATTERN_GATE.max, n));
+    },
     /** Audition choices are transient and must not masquerade as song state. */
     reset() {
       stop();
       voiceId = null;
       pattern = PATTERNS[0];
       rate = RATE_BY_ID['8'];
+      gate = PATTERN_GATE.default;
     },
   };
 }

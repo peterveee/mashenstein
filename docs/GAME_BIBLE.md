@@ -148,7 +148,7 @@ Unplayed heroes loiter in the concourse, wandering and hopping. Press DOWN to ta
 | I | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | — |
 | II | FROST FORTRESS | watercolor | Ice Adventure | 3 | Clown-Copter (end of Act II) |
 | II | CRYPT SHIFT | VHS | Horror | 3 | — |
-| II | NEON BLASTERS | neon vector | SHMUP | 3 | — |
+| II | TERMINAL VELOCITY | neon vector | SHMUP | 3 | — |
 | III | CARDBOARD KINGDOM | cardboard | Fake-o-rama | 3 | Eggshell & The Power Strip (end of Act III) |
 | III | CORPORATE KOMBAT | doodle | Office Action | 3 | — |
 | III | THE SURGE | mashup | Everything | 3 | — |
@@ -295,7 +295,7 @@ Choosing UNPLUGGED prompts: "ARE YOU SURE? (WE ARE NOT.) ENTER: YES / ESC: WISDO
 | 5 | RHYTHM BANKRUPTCY |
 | 12 | FROST FORTRESS (Act II) |
 | 16 | CRYPT SHIFT |
-| 20 | NEON BLASTERS |
+| 20 | TERMINAL VELOCITY |
 | 25 | THE BACK ROOM appears |
 | 28 | CARDBOARD KINGDOM (Act III) |
 | 34 | CORPORATE KOMBAT |
@@ -374,7 +374,7 @@ Each cabinet has a distinct visual identity — palette, ground/enemy art, sky c
 |---|---|---|---|
 | PLUMBER PANIC | pixel | Green ground, blue sky | !-crates, pipes, cacti |
 | SPEED ZONE | faux-3D | Orange/warm ground | Boost pads, traffic cones, road gaps |
-| NEON BLASTERS | neon vector | Dark navy/purple | Drones, shooters, targets, pellet trails |
+| TERMINAL VELOCITY | neon vector | Dark navy/purple | Drones, shooters, targets, pellet trails |
 | FROST FORTRESS | watercolor | Pale blue/white | Snowmen, icicles, frozen switches, slide physics |
 | CRYPT SHIFT | VHS | Dark purple/grey | Tombstones, zombies, darkness radius |
 | RHYTHM BANKRUPTCY | LCD handheld | Olive/muted green | Beat-synced bars, on-beat bonus |
@@ -409,7 +409,7 @@ Each cabinet has a fully authored step-sequenced song with its own BPM, instrume
 |---|---|---|
 | PLUMBER PANIC | 112 | A-F-C-G loop with melodic variations, building chord stabs |
 | SPEED ZONE | 128 | E minor lap that modulates I→IV→V like gear changes |
-| NEON BLASTERS | 120 | Sawtooth lead, driving percussion |
+| TERMINAL VELOCITY | 120 | Sawtooth lead, driving percussion |
 | FROST FORTRESS | 100 | Triangle lead, sparse, spacious |
 | CRYPT SHIFT | 90 | Triangle lead, sparse kick, dark |
 | RHYTHM BANKRUPTCY | 124 | Dense percussion, on-beat accents |

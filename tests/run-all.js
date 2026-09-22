@@ -74,7 +74,6 @@ const suites = [
   'tests/beat-detect.js',
   'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
-  'tests/megamix.js',
   'tests/mix.js',
   'tests/mixer-layout.js',
   // The desk's watchdog decides whether to reduce its own drawing. Beside the layout
@@ -398,6 +397,9 @@ const suites = [
   'tests/scenery-layout.js',
   'tests/composition-profile.js',
   'tests/background-wrap.js',
+  // Neon 1's backdrop is not there when the stage opens; it assembles as the
+  // run goes. The schedule is art, the four claims under it are not.
+  'tests/neon-city-arrival.js',
   'tests/routes.js',
   // The set piece built out of them: four jumps over a spiked break on three
   // island stones. Beside the routes suite because the stones ARE routes — what
@@ -625,7 +627,7 @@ for (const s of suites) {
 // most important thing to find out about — and it is the reason this group is not
 // simply "the fast ones".
 const soundSuites = [
-  'tests/sound-test-menu.js', 'tests/visualisers.js', 'tests/megamix.js', 'tests/mix.js',
+  'tests/sound-test-menu.js', 'tests/visualisers.js', 'tests/mix.js',
   'tests/song-analysis.js', 'tests/beat-detect.js', 'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',

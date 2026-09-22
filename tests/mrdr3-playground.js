@@ -4,11 +4,11 @@ import { VOICES } from '../src/data/voices.js';
 import { offeredByEngine } from '../src/data/voices-in-play.js';
 import { encodePatch, decodePatch } from '../tools/mrdr3-patch.js';
 import { posToDb as faderPosToDb, dbToPos as faderDbToPos } from '../tools/mrdr3-master-meter.js';
-import { benchLane } from '../tools/mixer-voice-library.js';
+import { benchLane, benchBank, PATTERN_GATE, createGatePot } from '../tools/mixer-voice-library.js';
 import { keyGeometry } from '../tools/mixer-synth-keyboard.js';
 import { deskNoteName, deskNoteNameHz } from '../tools/mixer-note-names.js';
 import { noteName as engineNoteName, n } from '../src/engine/notes.js';
-import { voiceGain } from '../src/data/voices.js';
+import { voiceGain, seamFor } from '../src/data/voices.js';
 
 const ok = (message) => console.log(`ok: ${message}`);
 const mrdr = offeredByEngine('MRDR-3');
@@ -437,3 +437,47 @@ assert(/headExtra = null,/.test(full) && /const extra = headExtra\?\.\(\);/.test
   && !/headExtra/.test(mixerEntry),
   'the title bar takes one extra control, and only the playground passes one');
 ok('the standalone toolbar carries the desk master fader and its stereo VU pair');
+
+// ---- GATE -------------------------------------------------------------------
+//
+// The gate is spread over three files — a range in the library, a knob built from it,
+// and a pattern player that turns a percentage into a note length — and the seam
+// between them is imports. That is exactly what broke last time: the panel imported
+// two names the library had never exported, so the playground did not build at all.
+// So the contract is asserted rather than assumed, in both directions.
+const voiceLibrary = readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8');
+for (const name of ['PATTERN_GATE', 'createGatePot']) {
+  assert(new RegExp(`export (const|function) ${name}\\b`).test(voiceLibrary),
+    `the library exports ${name}, which the performance panel imports`);
+  assert(performance.includes(name), `the performance panel still uses ${name}`);
+}
+assert(/setGate: \(percent\)/.test(voiceLibrary) && /patternPlayer\.setGate\(/.test(standalone),
+  'the pattern player has the setGate the standalone calls on it');
+// Imported rather than only matched: a name the module system hands over is proof the
+// build will find it, which a regex over the source is not.
+assert.equal(typeof createGatePot, 'function');
+
+assert.equal(PATTERN_GATE.default, 30);
+// A zero-length note is a click, not a short note: a pot that appears to break the
+// instrument at one end of its travel is a pot with a bug in it.
+assert(PATTERN_GATE.min > 0 && PATTERN_GATE.max === 100);
+
+// The knob's arc and its number have to agree, and the arc is painted by the
+// stylesheet: 290 degrees of travel, with the default drawn at 87. Two files, one
+// number — if either moves alone the pot lies about where it is set.
+assert(/--gate-angle: 87deg/.test(mrdrShell) && /var\(--line\) 0 290deg/.test(mrdrShell),
+  'the stylesheet still draws a 290-degree track with the default at 87');
+assert(/const GATE_SWEEP = 290;/.test(voiceLibrary));
+assert.equal((PATTERN_GATE.default / 100) * 290, 87);
+
+// A gated note states its length in the bank, because soloBank strips per-step ones.
+// Ungated, the key says nothing at all: the preset's own `dur` has to survive, or the
+// keyboard would audition the gate instead of the preset.
+const gateSeam = seamFor(benchLane(VOICES.engSquare));
+assert.equal(benchBank('engSquare', 120)[gateSeam.durKey], undefined);
+// 100% at 1/8 is two sixteenths — the whole step, which is what legato means here.
+assert.equal(benchBank('engSquare', 120, (2 * 100) / 100)[gateSeam.durKey], 2);
+assert.equal(benchBank('engSquare', 120, (2 * PATTERN_GATE.default) / 100)[gateSeam.durKey], 0.6);
+assert(/benchBank\(id, bpm, dur\)/.test(voiceLibrary),
+  'benchPlay hands the length it was given to the bank it builds');
+ok('GATE spans the library, the knob and the bench with one number and one contract');

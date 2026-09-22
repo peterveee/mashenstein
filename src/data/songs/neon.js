@@ -1,4 +1,4 @@
-// NEON BLASTERS — one song: what it plays, how it is arranged, how it sounds.
+// TERMINAL VELOCITY — one song: what it plays, how it is arranged, how it sounds.
 //
 // Frozen from the counterPair factory it used to be built by, so this song is
 // now its own: editing it changes nothing else.
@@ -9,7 +9,7 @@
 import { seq, chordSeq } from '../../engine/notes.js';
 
 export const id = "neon";
-export const title = "NEON BLASTERS";
+export const title = "TERMINAL VELOCITY";
 export const slug = "neon-panic";
 export const group = "cabinet";
 

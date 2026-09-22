@@ -490,7 +490,7 @@ const SCRIPT = [
   { k: 'sub', text: 'CABINET DESIGN', color: PINK },
   { k: 'role', role: 'PLUMBER PANIC', name: 'Ilse Novotny' },
   { k: 'role', role: 'SPEED ZONE', name: 'Trent Okafor' },
-  { k: 'role', role: 'NEON BLASTERS', name: 'Priya Wexler' },
+  { k: 'role', role: 'TERMINAL VELOCITY', name: 'Priya Wexler' },
   { k: 'role', role: 'FROST FORTRESS', name: 'Gunnar Alstad' },
   { k: 'role', role: 'CRYPT SHIFT', name: 'Ekaterina Voss' },
   { k: 'role', role: 'RHYTHM BANKRUPTCY', name: 'Marlon deSouza' },

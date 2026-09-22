@@ -11,6 +11,17 @@
 // change them: dragging the bands on a real level is the only way to judge
 // them, and the tuner is what writes this file.
 export const COMPOSITION_PROFILES = {
+  neon: {
+    bands: {
+      celestial: [0.02, 0.24],
+      upperCloud: [0.02, 0.30],
+      middleCloud: [0.16, 0.50],
+      lowerCloud: [0.30, 0.64],
+      farLandmark: [0.50, 0.67],
+      middle: [0.35, 0.59],
+      near: [0.20, 0.45],
+    },
+  },
   plumber: {
     bands: {
       celestial: [0.00, 0.05],

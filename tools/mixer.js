@@ -878,7 +878,7 @@ const server = createServer(async (req, res) => {
     //
     // The desk saves one song at a time and a save writes over what was there. That is
     // the right rule for mixing and the wrong one for the moment you have a version of
-    // NEON BLASTERS you like without being ready to say it is NEON BLASTERS. So an
+    // TERMINAL VELOCITY you like without being ready to say it is TERMINAL VELOCITY. So an
     // alternate is a whole song file of its own: the parent's music copied verbatim,
     // the desk's current mix and arrangement on top, filed under its own name in
     // src/data/imported and listed under its own heading. It renders, exports and

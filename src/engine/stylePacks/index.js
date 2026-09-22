@@ -25,6 +25,7 @@ import { drawTextVectorCentered, pixelGlyph, textYForMid, textWidth } from '../s
 // gap by not drawing; the fill is the other half of that bargain.
 import { drawPitFill } from '../../game/pitFill.js';
 import { terrainGroundY } from '../../game/terrain.js';
+
 import {
   PAPER_MATERIALS,
   PAPER_TEXTURE_BLEND,
@@ -1922,6 +1923,10 @@ function outsideView(ctx, x, margin) {
 // view in portrait.
 export const __testing = {
   wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
+  // The solid spans of a frame, so a ground bake-off in src/dev can lay its
+  // candidate texture over exactly the runs the shipping painter does — a card
+  // that draws its own idea of where the holes are is comparing two things.
+  apronRuns,
   backgroundPaintBand,
   sceneryBandPointY, desertThermals, ridgeYAt, ridgeTangentAngle,
   plumberSceneryPlacements, plumberSceneryClusterForCell, plumberNearTreeCenters,
@@ -7038,54 +7043,1011 @@ function faux3dPack(settings) {
   };
 }
 
+// ---------------------------------------------------------------- NEON city
+//
+// TERMINAL VELOCITY' BACKDROP IS A STACK, AND ON STAGE 1 IT ARRIVES.
+//
+// What this replaced was three layers: a 40-dot starfield at 0.05, ONE row of
+// eight wireframe blocks at 0.25, and six flat rules on the horizon. Two of
+// those barely moved, and one parallax layer is not parallax — it is a sheet
+// the lane slides across. Six layers came out of the gallery bake-off (see
+// git history for the four cities it was chosen from): stars, haze, a
+// silhouette mass, two wireframe rows at different rates, and the smog that
+// keeps the base of the city out of the player's way.
+//
+// THE FLYER BAND IS WHY THE SMOG EXISTS. Drones sit at world alt 13 and targets
+// at 40, and the camera doubles world units on the way to the frame, so
+// everything the player must read lives between screen y 130 and the groundline
+// at 232 — exactly where a skyline's base wants to be. The veil is a gradient of
+// the sky's own lower stop painted IN FRONT of the city: the towers keep their
+// bright tops, the lane keeps a quiet field for a lit drone to be read against.
+const NEON_CYAN = '#38d8f8';
+const NEON_MAGENTA = '#e838f8';
+const NEON_AMBER = '#f6d33c';
+const NEON_LAMP = '#ff5a7a';
+// A target's crown, in screen px. Bright ink below this line competes with the
+// thing that is about to hit you.
+//
+// IT IS A RATIO OF TWO CAMERAS, not a constant and not the world zoom alone.
+// A target sits at world alt 40 and is 11 tall, and the world is magnified by
+// the run's ZOOM on the way to the frame — but this painter does not draw in
+// world space, it draws in the BACKDROP's, which portrait scales by its own
+// backgroundZoom about the same groundline. So the hazard's height in the
+// coordinates this veil is painted in is the world zoom OVER the background
+// zoom. In landscape that is ZOOM / 1, and on a phone 3.5 / 1.78 — which lands
+// within a couple of pixels of the same place, and is the reason the first cut
+// (a bare `51 * ZOOM`) covered nearly the whole portrait picture.
+const NEON_TARGET_TOP_WORLD = 51;
+function neonFlyerBandTop(context = null) {
+  const world = Number(context?.worldZoom);
+  const backdrop = Number(context?.backgroundZoom);
+  const ratio = Number.isFinite(world) && world > 0 && Number.isFinite(backdrop) && backdrop > 0
+    ? world / backdrop : ZOOM;
+  return GROUND_Y - NEON_TARGET_TOP_WORLD * ratio;
+}
+
+// WHERE A ROW OF TOWERS SITS, AND HOW TALL IT IS — from the band the
+// composition tuner owns (npm run composition), not from a number in here.
+//
+// Every scenery band is a normalised pair inside the scenery rectangle, and for
+// a ridge (see sceneryRidgeBaseY) it is where the crest lives. A skyline is not
+// a ridge: its buildings STAND ON THE LANE and vary in height, so the band is
+// read as the row's ROOFLINE ENVELOPE — the tallest roof in the row touches the
+// band's top, the shortest touches its bottom, and every foot stays on the
+// groundline. Dragging a band's top therefore changes how tall that row is;
+// dragging the pair moves the whole row's skyline up or down. Both of the
+// tuner's handles mean something, which is the test of a good mapping.
+//
+// Landscape publishes no layout, so it gets the authored numbers untouched and
+// this whole path is inert there — the same contract every other pack has.
+function neonRowRoofs(context, bandName, minH, maxH) {
+  const band = context?.sceneryLayout?.bands?.[bandName];
+  if (!band || !Number.isFinite(Number(band.top)) || !Number.isFinite(Number(band.bottom))) {
+    return { minH, maxH };
+  }
+  // A roof below the lane is not a building. Clamped rather than rejected so a
+  // band dragged to the floor reads as a squat row instead of vanishing.
+  const tall = Math.max(8, GROUND_Y - Number(band.top));
+  const short = Math.max(6, Math.min(tall - 2, GROUND_Y - Number(band.bottom)));
+  return { minH: short, maxH: tall };
+}
+
+// THE STARFIELD IS THREE BANDS NOW, one per depth layer, and they are the
+// tuner's own UPPER / MIDDLE / LOWER CLOUD (Peter, 22 Sep). It used to take the
+// whole scenery rectangle as a single field on the grounds that stars are a
+// field rather than a composed element — which is true of one layer and false
+// of three. The three drift at different rates and pulse on different clocks,
+// so they were already reading as depth; giving each one a band is what lets
+// that depth be COMPOSED, which on a tall phone is the difference between a
+// sky with distance in it and a sky with an even sprinkle over all of it.
+//
+// A cabinet with no clouds in it is exactly where those three handles were
+// going spare, and the tuner already draws and labels them.
+//
+// The celestial band is still the moon's — it is the one the tuner labels
+// SUN / MOON, and sharing it would mean dragging the moon to move the stars.
+const NEON_STAR_BANDS = Object.freeze(['upperCloud', 'middleCloud', 'lowerCloud']);
+// Which band the comets ride. They are drawn with the stars because that is
+// what one is — a star, leaving — so they take a star band rather than a
+// fourth of their own.
+const NEON_COMET_BAND = 'middleCloud';
+
+/**
+ * The band a star layer fills, in local px. `name` is a tuner band; with no
+ * layout (landscape, the gallery, a poster) it falls back to the whole scenery
+ * rectangle, which is what every layer used to get.
+ */
+function neonStarBandFor(context, name = null) {
+  const rect = context?.sceneryLayout?.localRect;
+  const named = name ? context?.sceneryLayout?.bands?.[name] : null;
+  const src = (named && Number.isFinite(Number(named.top))
+    && Number.isFinite(Number(named.bottom))) ? named : rect;
+  const top = Number(src?.top);
+  const bottom = Number(src?.bottom);
+  if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom - top < 24) return null;
+  // Stop above the smog whatever the band says: a star inside the hazard band
+  // is a star nobody sees and one more thing drawn under the veil. A band
+  // dragged into it is clamped rather than dropped, so the handle still moves.
+  return { top, bottom: Math.max(top + 24, Math.min(bottom, neonFlyerBandTop(context) - 10)) };
+}
+
+// Deterministic per-index noise. Every layer is generated rather than authored,
+// so the city has to come back the same on every run — a replay, a retry and a
+// checkpoint restore all have to show the same skyline.
+function neonHash(i) {
+  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// A NEON LINE IS TWO STROKES: a wide, faint one for the light the tube throws,
+// and a thin bright one for the glass. Cheaper than a shadowBlur, and the same
+// idea as the prop bloom — light around the art, not a halo on a box.
+function neonTube(ctx, color, width, glow, draw) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = color;
+  if (glow > 0) {
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * glow;
+    ctx.lineWidth = width * 4;
+    ctx.beginPath(); draw(ctx); ctx.stroke();
+    ctx.globalAlpha = a;
+  }
+  ctx.lineWidth = width;
+  ctx.beginPath(); draw(ctx); ctx.stroke();
+}
+
+function neonRectPath(x, y, w, h) {
+  return (c) => c.rect(Math.round(x) + 0.5, Math.round(y) + 0.5, w, h);
+}
+
+// THE ROAD IS MOTION, NOT SURFACE — the answer the ground bake-off settled on.
+//
+// What was here before was one texture: parallel diagonals every 40 world px
+// raking a constant -20. They never converged and never moved relative to each
+// other, so the whole apron slid sideways as a single sheet — wallpaper, on the
+// cabinet named after speed.
+//
+// NINETEEN WORLD PIXELS is why nothing more structural could replace it. The
+// frame is 270 tall, the groundline is 232, and the lane is drawn through the
+// run's camera — so the apron below the lit edge is 38 SCREEN px and, at the
+// landscape zoom, about 19 WORLD px before it falls off the bottom. A
+// vanishing-point floor, a perspective checker, a reflected skyline: none of
+// them have the depth to be what they are. A grid drawn properly (fanning off a
+// vanishing point, with transverse rungs) was tried and read as the same sheet
+// with more lines in it.
+//
+// So the surface is gone and what crosses it is motion blur, at THREE RATES —
+// the slowest a little faster than the lane, the fastest passing it outright.
+// Length and brightness scale with rate, because that is how a streak says how
+// fast it is going. There is no grid to notice, so there is nothing to notice
+// repeating.
+//
+// Everything here is DIM. Drones sit at world alt 13 and targets at 40, and the
+// one thing this road is allowed to spend brightness on is its 1px cyan edge —
+// a bright apron would put light under the hazards the player has to read.
+// RELATIVE TO THE LANE, which is the number that decides how frantic the road
+// is — not the cabinet's speed, which the streaks inherit either way.
+//
+// The first cut was 1.35 / 2.1 / 3.2 and it was too much: at Neon's opening 208
+// world px/s the fastest streak crossed at 666, and the apron read as a panic
+// rather than as speed. It is worth knowing WHY that felt like such a jump. The
+// diagonals it replaced sat at exactly 1.0 — they were part of the road surface
+// and moved with it — so anything over 1 was new, and three times over 1 was a
+// different cabinet.
+//
+// The slowest is under 1 on purpose. A streak the lane overtakes reads as
+// further away, which is the only parallax this 19px strip can hold; the other
+// two still pass, so the road keeps the thing the bake-off picked it for.
+const NEON_STREAK_RATES = [0.85, 1.2, 1.75];
+// One alpha per rate, paired with the line above, because the two dials that
+// decide how loud this road is are speed and ink and they want to be nudged
+// independently. Brightness rises with rate — a streak going faster is closer,
+// and a road where the slow ones were as bright as the fast ones read as one
+// flat sheet of dashes rather than three planes.
+//
+// These are DIM on purpose and they were dimmed again after the first cut.
+// Drones sit at world alt 13 and targets at 40; the only thing this cabinet's
+// road is allowed to spend real brightness on is its 1px cyan edge, and an
+// apron that competes with the hazards is an apron the player has to look past.
+const NEON_STREAK_ALPHA = [0.16, 0.30, 0.44];
+// THE BAND IS A FIXED DEPTH, NOT THE WHOLE APRON, and portrait is why.
+//
+// Landscape's apron is the 19 world px the 2x camera leaves under the lane, and
+// it is all road. Portrait's is not: the lane sits three quarters of the way
+// down a 1041-tall frame, so its skirt is about 230 world px — twelve times as
+// deep. Filling that is a wall of blur; every other layer in the cabinet is
+// reading as one thing and the road is reading as twelve. So the streaks get
+// the SAME DEPTH in both orientations and the rest of the portrait apron stays
+// the slab's own black, which is what the road is over anyway: a viaduct with
+// nothing under it.
+//
+// 19 = (270 - GROUND_Y) / ZOOM — the landscape frame, written out because H is
+// presentation-dependent and is 1041 by the time portrait asks.
+const NEON_STREAK_BAND = 19;
+// World px SQUARED of band per streak. An area rather than a count or a pitch,
+// so portrait — which shows barely half the runway at 3.5x — gets the same
+// density over its narrower view instead of the same number of streaks.
+const NEON_STREAK_AREA = 244;
+// Where the band starts giving out, as a fraction of it. Without this the
+// streaks would stop on a ruled line across the portrait apron, which is a
+// harder edge than anything else the cabinet draws down there.
+//
+// It applies ONLY where the band is actually cut short. In landscape the band
+// IS the whole visible apron, so there is no edge to hide and fading would just
+// thin the road toward the bottom of the frame for nothing — so landscape fills
+// to the last pixel and portrait gets the falloff.
+const NEON_STREAK_FADE_FROM = 0.55;
+export function drawNeonSpeedStreaks(ctx, { camX = 0, viewW = W / ZOOM, zoom = ZOOM } = {}) {
+  // The wrap span runs past the right edge so a streak enters from off-picture
+  // rather than appearing at it.
+  const span = Math.max(80, viewW) + 120;
+  // How much of the apron the live camera actually shows. A streak seeded below
+  // that line is a streak nobody sees, and it would quietly thin the road every
+  // time the game zoomed in — so the band is clamped to it as well as to its
+  // own depth.
+  const z = Number.isFinite(zoom) && zoom > 0 ? zoom : ZOOM;
+  const apron = (H - GROUND_Y) / z;
+  const band = Math.max(6, Math.min(apron, NEON_STREAK_BAND));
+  // Only a band that stops short of the apron has an edge worth hiding.
+  const clipped = apron > NEON_STREAK_BAND + 0.5;
+  const count = Math.max(9, Math.round((span * band) / NEON_STREAK_AREA));
+  for (let r = 0; r < NEON_STREAK_RATES.length; r++) {
+    const rate = NEON_STREAK_RATES[r];
+    // The fastest rate is the magenta one: the thing overtaking you is the
+    // thing that gets the second tube.
+    const ink = r === 2 ? '232,56,248' : '56,216,248';
+    const alpha = NEON_STREAK_ALPHA[r];
+    const len = 10 + r * 16;
+    for (let i = r; i < count; i += NEON_STREAK_RATES.length) {
+      const u = neonHash(i * 3 + 11);
+      const y = GROUND_Y + 2 + u * (band - 3);
+      const fade = !clipped || u <= NEON_STREAK_FADE_FROM
+        ? 1
+        : 1 - (u - NEON_STREAK_FADE_FROM) / (1 - NEON_STREAK_FADE_FROM);
+      if (fade <= 0.02) continue;
+      ctx.fillStyle = `rgba(${ink},${(alpha * fade).toFixed(3)})`;
+      const x = span - ((camX * rate + neonHash(i) * span) % span);
+      ctx.fillRect(x, Math.round(y), len + neonHash(i * 5) * 14, 1);
+    }
+  }
+}
+
+// Layer 1: THE SAME STARFIELD THE TITLE SCREEN HAS, which is a different thing
+// from a scatter of one-pixel dots.
+//
+// drawRetainedTitleStars is the recipe: every star is a soft radial glow rather
+// than a rect, sizes and colour temperatures vary (warm, cool and neutral
+// cores), the brightest one in thirteen gets a cross flare, and the field is
+// split into LAYERS that each breathe on their own slow clock. That is what
+// makes the title's sky look deep instead of speckled.
+//
+// It is also why the title BAKES it: ninety radial gradients a frame is not a
+// thing a runner can pay for. So each layer is drawn once into a retained
+// canvas and blitted twice per frame at a wrap offset, which gives the field
+// something the title's cannot have — its own parallax. Three layers at three
+// rates, and the stars behind the city move slower than the stars in front of
+// it.
+const NEON_STAR_LAYERS = 3;
+const NEON_STAR_COUNT = 96;
+const neonStarSheets = [];
+
+// BAKED ONCE, AT A CANONICAL SIZE. The height this is asked for comes from the
+// scenery rectangle, and a rectangle is allowed to move — a resize, an
+// orientation change, a tuner drag. Keying the bake on the exact height means a
+// pixel of movement rebuilds ninety radial gradients inside a frame, which is a
+// stutter you would feel and never find. So the sheet is baked at one height
+// and the blit scales it: drawImage is doing that work anyway.
+const NEON_STAR_SHEET_H = 160;
+
+function neonStarSheet(layer, w, h, ss) {
+  const slot = neonStarSheets[layer] || (neonStarSheets[layer] = {});
+  const key = `${w}|${h}|${ss}`;
+  if (slot.key === key) return slot;
+  if (!slot.canvas || slot.w !== w || slot.h !== h || slot.ss !== ss) {
+    slot.canvas = document.createElement('canvas');
+    slot.canvas.width = Math.max(1, Math.round(w * ss));
+    slot.canvas.height = Math.max(1, Math.round(h * ss));
+    slot.ctx = slot.canvas.getContext('2d');
+    slot.w = w;
+    slot.h = h;
+    slot.ss = ss;
+  }
+  const x = slot.ctx;
+  if (!x) return slot;
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.clearRect(0, 0, slot.canvas.width, slot.canvas.height);
+  x.setTransform(ss, 0, 0, ss, 0, 0);
+  for (let i = layer; i < NEON_STAR_COUNT; i += NEON_STAR_LAYERS) {
+    const sx = 2 + neonHash(i * 3 + 7) * (w - 4);
+    const sy = 2 + neonHash(i * 5 + 19) * (h - 4);
+    const bright = i % 13 === 0;
+    const radius = bright
+      ? 1.05 + neonHash(i + 7) * 0.65
+      : 0.35 + neonHash(i + 11) * 0.55;
+    const spread = radius * (bright ? 4.1 : 3.0);
+    // Temperature, not hue. Saturated cores were tried first — the cabinet's own
+    // magenta on one star in nine — and a bright magenta point at this size
+    // reads as a planet, or worse as something collectable, sitting beside the
+    // moon. A star is white with a lean in it.
+    const warm = i % 9 === 0;
+    const cool = i % 5 === 0;
+    const core = warm ? '236,206,255' : cool ? '196,228,255' : '226,232,255';
+    const star = x.createRadialGradient(sx, sy, 0, sx, sy, spread);
+    star.addColorStop(0, `rgba(${core},0.98)`);
+    star.addColorStop(0.22, `rgba(${core},0.72)`);
+    star.addColorStop(1, `rgba(${core},0)`);
+    x.fillStyle = star;
+    x.fillRect(sx - spread, sy - spread, spread * 2, spread * 2);
+    if (bright) {
+      x.fillStyle = `rgba(${core},0.66)`;
+      x.fillRect(sx - radius * 2.8, sy - 0.18, radius * 5.6, 0.36);
+      x.fillRect(sx - 0.18, sy - radius * 2.8, 0.36, radius * 5.6);
+    }
+  }
+  slot.key = key;
+  return slot;
+}
+
+function neonStarfield(ctx, shift, t, { top = 4, bottom = 150, context = null } = {}) {
+  const band = backgroundPaintBand(ctx);
+  const lo = Number.isFinite(band.top) ? Math.min(top, band.top + 4) : top;
+  const hi = Number.isFinite(band.bottom) ? Math.max(bottom, Math.min(band.bottom, GROUND_Y - 82)) : bottom;
+  // One frame wide. At the slowest layer's rate that is a repeat every sixteen
+  // thousand world px — about one per level, and never in view twice.
+  const sheetW = W;
+  const ss = 2;
+  for (let layer = 0; layer < NEON_STAR_LAYERS; layer++) {
+    const slot = neonStarSheet(layer, sheetW, NEON_STAR_SHEET_H, ss);
+    if (!slot.canvas) continue;
+    // An authored band wins over the visible sky — the tuner owns where this
+    // layer sits. With no layout every layer resolves to the same rectangle,
+    // which is exactly the single field this used to be.
+    const authored = neonStarBandFor(context, NEON_STAR_BANDS[layer]);
+    const from = authored ? authored.top : lo;
+    const to = authored ? authored.bottom : hi;
+    const h = Math.max(24, to - from);
+    // Each layer at its own rate, so the field has depth of its own rather
+    // than sliding as one sheet. SLOW: stars are the furthest thing in the
+    // picture and the eye reads distance as stillness — at the first rates the
+    // field drifted like a near layer and gave the sky a current.
+    const rate = 0.5 + layer * 0.3;
+    const off = ((shift * rate) % sheetW + sheetW) % sheetW;
+    // The breath, straight off the title: three clocks, none of them in step.
+    const pulse = 0.76 + Math.sin(t * (0.55 + layer * 0.17) + layer * 2.1) * 0.14;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.imageSmoothingEnabled = true;
+    // TWO BLITS, never more. Starting a sheet-width to the left of the view put
+    // a whole extra copy off screen on every layer — nine large alpha blits a
+    // frame instead of six, for nothing.
+    const cov = backgroundPaintCoverage(ctx);
+    // NOT ROUNDED. The sheet is baked at twice the frame's density, so a
+    // fractional x resamples into a smooth slide; rounded, a field this slow
+    // sits still for several frames and then jumps a whole pixel, which is the
+    // one motion artefact a starfield cannot afford.
+    for (let x = cov.left - off; x < cov.right; x += sheetW) {
+      ctx.drawImage(slot.canvas, x, from, sheetW, h);
+    }
+    ctx.restore();
+  }
+}
+
+// A COMET, THREE TIMES A LEVEL, and it is on the ODOMETER rather than on the
+// clock. Authored against progress, a crossing happens at the same place in the
+// level on every run — three per stage whatever the speed tier, whatever the
+// hero, and identical on a replay. Authored against time it would be three per
+// stage only for a player who runs it in the expected minute, and none at all
+// for anyone who dies twice on the way.
+//
+// They are placed off the phrase boundaries on purpose: a comet arriving on the
+// same beat as a checkpoint reads as a reward for the checkpoint.
+const NEON_COMET_AT = [0.19, 0.52, 0.81];
+// How much of the level one crossing occupies. At Neon's opening speed the
+// stage is about ninety seconds, so this is a little under five seconds in the
+// sky — long enough to be seen by someone watching the lane, short enough that
+// it is gone before it becomes scenery.
+const NEON_COMET_SPAN = 0.052;
+
+/**
+ * The comet in flight at this progress, or null. `u` runs 0..1 across the
+ * crossing. Exported for the gallery sheet and tests/neon-city-arrival.js: how
+ * many there are and where they fall is a thing to hold still.
+ */
+export function neonCometAt(progress) {
+  const p = Number(progress);
+  if (!Number.isFinite(p)) return null;
+  for (let i = 0; i < NEON_COMET_AT.length; i++) {
+    const u = (p - NEON_COMET_AT[i]) / NEON_COMET_SPAN;
+    if (u >= 0 && u <= 1) return { index: i, u };
+  }
+  return null;
+}
+
+function neonComet(ctx, context) {
+  const flight = neonCometAt(context?.progress);
+  if (!flight) return;
+  const { index, u } = flight;
+  const cov = backgroundPaintCoverage(ctx);
+  const band = neonStarBandFor(context, NEON_COMET_BAND);
+  const top = band ? band.top + 6 : 10;
+  const bottom = band ? Math.min(band.bottom, top + 96) : 104;
+  // Right to left and downward: the lane travels right, so a comet crossing
+  // against it reads as something moving of its own accord rather than as one
+  // more thing the camera is passing.
+  const y0 = top + neonHash(index * 7 + 2) * (bottom - top) * 0.45;
+  const y1 = y0 + 26 + neonHash(index * 11 + 5) * 38;
+  const x0 = cov.right + 40;
+  const x1 = cov.left - 40;
+  // Eased so it arrives already travelling and leaves still travelling; a comet
+  // that accelerates from rest at the edge of the picture is a rocket.
+  const x = x0 + (x1 - x0) * u;
+  const y = y0 + (y1 - y0) * u;
+  // In and out at the ends of the crossing. Nothing in this sky is allowed to
+  // pop, least of all the only thing in it that moves on its own.
+  const fade = Math.min(1, Math.min(u, 1 - u) / 0.14);
+  if (fade <= 0) return;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const tail = 74 + neonHash(index * 3 + 1) * 40;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  // The tail, as a tapering wedge behind the head — a stroke cannot taper, and
+  // a tail of even width is a scratch on the glass.
+  const tx = x - ux * tail;
+  const ty = y - uy * tail;
+  const half = 2.1;
+  ctx.beginPath();
+  ctx.moveTo(x + uy * half, y - ux * half);
+  ctx.lineTo(x - uy * half, y + ux * half);
+  ctx.lineTo(tx, ty);
+  ctx.closePath();
+  const trail = ctx.createLinearGradient(x, y, tx, ty);
+  trail.addColorStop(0, 'rgba(226,240,255,0.85)');
+  trail.addColorStop(0.35, 'rgba(160,210,255,0.35)');
+  trail.addColorStop(1, 'rgba(120,180,255,0)');
+  ctx.fillStyle = trail;
+  ctx.fill();
+  // The head: a small bloom and a hard core, so it survives the phone resample
+  // as something rather than as a smudge.
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, 10);
+  glow.addColorStop(0, 'rgba(236,246,255,0.95)');
+  glow.addColorStop(0.35, 'rgba(160,210,255,0.42)');
+  glow.addColorStop(1, 'rgba(120,180,255,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 10, y - 10, 20, 20);
+  ctx.fillStyle = '#eef6ff';
+  ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+  ctx.restore();
+}
+
+// Layer 2. The glow the city throws up into its own smog. Anchored rather than
+// scrolled: haze has no parallax, and giving it some is what makes a backdrop
+// feel painted on a moving wall.
+function neonHorizonHaze(ctx, { color = NEON_MAGENTA, height = 84, alpha = 0.18 } = {}) {
+  const cov = backgroundPaintCoverage(ctx);
+  const g = ctx.createLinearGradient(0, GROUND_Y - height, 0, GROUND_Y);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, color);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = g;
+  ctx.fillRect(cov.left, GROUND_Y - height, cov.width, height);
+  ctx.globalAlpha = 1;
+}
+
+// Layer 3. Filled blocks, no linework: the back of the city is a mass, and the
+// eye reads mass before it reads edges. One lit rule along each roof is all the
+// neon it gets — that far away the tubes have merged.
+function neonFarMass(ctx, shift, {
+  seed = 2, span = 38, count = 20, minH = 46, maxH = 92, wMin = 14, wMax = 30,
+  fill = '#221862', crown = NEON_CYAN, crownAlpha = 0.4, alpha = 1,
+} = {}) {
+  for (let i = 0; i < count; i++) {
+    const r = neonHash(seed + i);
+    const x = wrapIntoView(ctx, i * span - shift, 70);
+    const w = wMin + neonHash(seed + i + 41) * (wMax - wMin);
+    const h = minH + r * (maxH - minH);
+    const top = GROUND_Y - h;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = fill;
+    // DOWN TO THE FRAME BOTTOM, not to GROUND_Y. Everywhere but a hole this
+    // extra band is under the road and costs nothing; in a hole it is the
+    // difference between seeing the city through the break and seeing a flat
+    // edge at exactly road height, which reads as more ground.
+    ctx.fillRect(Math.round(x), Math.round(top), Math.round(w), H - Math.round(top));
+    ctx.globalAlpha = alpha * crownAlpha;
+    ctx.fillStyle = crown;
+    ctx.fillRect(Math.round(x), Math.round(top), Math.round(w), 1);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Layers 4 and 5. A wireframe block with a window lattice and, on the tall ones,
+// a mast with an aviation lamp. The lattice is the point: it is what turns a row
+// of rectangles into a city. Two rows of these at 0.15 and 0.3 are the depth.
+function neonWireRow(ctx, shift, t, {
+  seed = 7, span = 78, count = 10, minH = 60, maxH = 132, w = 34,
+  stroke = 1, glow = 0.14, alpha = 1, windows = true, masts = true,
+} = {}) {
+  if (alpha <= 0) return;
+  for (let i = 0; i < count; i++) {
+    const r = neonHash(seed + i);
+    const x = Math.round(wrapIntoView(ctx, i * span - shift, 90));
+    const bw = Math.round(w * (0.7 + neonHash(seed + i + 17) * 0.6));
+    const h = minH + r * (maxH - minH);
+    const top = Math.round(GROUND_Y - h);
+    const ink = i % 2 ? NEON_CYAN : NEON_MAGENTA;
+    ctx.globalAlpha = alpha;
+    // See neonFarMass: the tower is drawn to the bottom of the frame so a pit
+    // shows its body rather than its footing. `h` stays the ABOVE-ROAD height,
+    // because that is what the mast test and the tuner bands are about.
+    neonTube(ctx, ink, stroke, glow, neonRectPath(x, top, bw, H - top));
+    // Floor plates. Spaced by the building rather than by a constant, so a row
+    // of towers does not band together into one horizontal stripe.
+    const step = 7 + Math.round(neonHash(seed + i + 5) * 5);
+    ctx.globalAlpha = alpha * 0.28;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let y = top + step; y < H - 2; y += step) {
+      ctx.moveTo(x + 0.5, y + 0.5);
+      ctx.lineTo(x + bw + 0.5, y + 0.5);
+    }
+    ctx.stroke();
+    if (windows) {
+      // Lit cells on their own slow clock. A window that never changes is a
+      // texture; one that changes every frame is a fault.
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.fillStyle = NEON_AMBER;
+      for (let k = 0; k < 7; k++) {
+        const wr = neonHash(seed * 3 + i * 13 + k);
+        if (wr > 0.55) continue;
+        if (Math.sin(t * 0.55 + wr * 90 + i) <= -0.2) continue;
+        const wy = top + step + Math.floor(wr * 9) * step;
+        if (wy > H - 6) continue;
+        ctx.fillRect(x + 3 + Math.floor(neonHash(i * 7 + k) * (bw - 7)), wy + 2, 2, 2);
+      }
+    }
+    if (masts && h > maxH * 0.78) {
+      ctx.globalAlpha = alpha;
+      neonTube(ctx, ink, stroke, glow * 0.6, (c) => {
+        c.moveTo(x + bw / 2 + 0.5, top + 0.5);
+        c.lineTo(x + bw / 2 + 0.5, top - 12.5);
+      });
+      ctx.globalAlpha = alpha * (Math.sin(t * 2.2 + i) > 0 ? 1 : 0.2);
+      ctx.fillStyle = NEON_LAMP;
+      ctx.fillRect(x + bw / 2 - 1, top - 15, 2, 2);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Layer 6. The smog, in front of the city and behind everything the player
+// plays with. See the header: this is what buys the hazard band back.
+function neonBandVeil(ctx, cab, { alpha = 0.72, top = null, context = null } = {}) {
+  const cov = backgroundPaintCoverage(ctx);
+  const from = Number.isFinite(top) ? top : neonFlyerBandTop(context) - 24;
+  const tint = cab && cab.sky ? cab.sky[1] : '#1a1048';
+  // The gradient is keyed to GROUND_Y — that is where the smog is thickest —
+  // but it is PAINTED to the bottom of the frame, holding its final colour.
+  // Stopping it at the road put a brightness step across every hole at exactly
+  // road height, which is the one horizontal a pit must not have.
+  const g = ctx.createLinearGradient(0, from, 0, GROUND_Y);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.55, tint);
+  g.addColorStop(1, tint);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = g;
+  ctx.fillRect(cov.left, from, cov.width, H - from);
+  ctx.globalAlpha = 1;
+}
+
+// THE MOON, top right, and it is a SIGN rather than an astronomical body.
+//
+// Everything else back here is drawn in tube, so a photographic moon would be
+// the one object in the cabinet that came from a different world. This is a
+// crescent of glass with the city's own light in it: a faint disc for the dark
+// limb, a bright tube crescent, and a bloom.
+//
+// IT DOES NOT WRAP AND IT DOES NOT SCROLL, and the two go together. A moon
+// that came round again every few seconds would be a lamp on a conveyor, so it
+// does not wrap — and the moment it does not wrap, any parallax factor at all
+// walks it off the side of the picture and never brings it back. The first cut
+// gave it 0.012 "so it is not welded to the glass"; a third of the way into
+// Neon 1 the moon had left the frame. Celestial depth is 0 for exactly this
+// reason, which is also what the desert sun does.
+//
+// Its band is the one the tuner labels SUN / MOON, so its height on a phone is
+// authored rather than hardcoded.
+const NEON_MOON_RADIUS = 10;
+// How far in from the right edge of the PICTURE, not of the authored frame:
+// portrait shifts the backdrop sideways, and a moon inset from x=480 would
+// sit a long way inside the corner it is supposed to own.
+// Both numbers are set by the HUD, not by taste: the bonus pill owns the top
+// right corner of the frame, and a moon tucked into the corner proper sits
+// behind it with its halo washing the text. It hangs just clear, below and
+// inboard of the pill.
+const NEON_MOON_X_INSET = 58;
+const NEON_MOON_LANDSCAPE_Y = 48;
+
+function neonMoonCenter(ctx, context) {
+  // backgroundCoverage, NOT backgroundPaintCoverage: the paint coverage is
+  // padded by the lookahead so tiling painters draw past both edges, and an
+  // object inset from THAT edge hangs off the side of the picture. The desert
+  // sun anchors off the same unpadded interval, for the same reason.
+  const cov = backgroundCoverage(ctx);
+  return {
+    x: cov.right - NEON_MOON_X_INSET,
+    // The band is where the moon may sit; the point helper keeps the whole
+    // disc inside it rather than centring a 42px object on a 20px band.
+    y: sceneryBandPointY(context, 'celestial', NEON_MOON_LANDSCAPE_Y, NEON_MOON_RADIUS + 4),
+  };
+}
+
+// A PHASE IS ONE NUMBER, and the shape falls out of it.
+//
+// The lit face of a moon is bounded by two curves: the limb — a semicircle,
+// always — and the terminator, which is the day/night line seen at an angle,
+// and therefore an ELLIPSE with the same height as the moon and a width that
+// depends on where the sun is. That width, signed, IS the phase: at -1 the
+// ellipse hugs the right limb and nothing is lit; at 0 it is a straight line
+// and exactly half is; at +1 it is the left limb and the moon is full.
+//
+// This replaced a crescent built from two circular arcs. Two circles can draw
+// one crescent, and the first cut drew a good one, but they cannot walk it to
+// full — the second circle has to leave the disc for that, and the shape comes
+// apart on the way. An ellipse does the whole lunation with one parameter.
+const NEON_MOON_NEW = -0.62;   // the crescent Neon 1 opens on
+
+function neonMoonLit(cx, cy, r, k) {
+  const wide = Math.abs(k) * r;
+  return (c) => {
+    // The lit limb: the right half of the disc, always.
+    c.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false);
+    // The terminator, back to the top horn. Which WAY it bulges is the whole
+    // phase: right of centre while the moon is a crescent, left of it once it
+    // is past half. Canvas sweeps from PI/2 to -PI/2 through PI unless told
+    // otherwise, so the counterclockwise flag is what picks the near side —
+    // and with it the wrong way round the moon wanes across the act instead of
+    // waxing, which is how this was caught.
+    c.ellipse(cx, cy, wide, r, 0, Math.PI / 2, -Math.PI / 2, k < 0);
+    c.closePath();
+  };
+}
+
+// HOW FULL THE MOON IS, 0..1, across the first TWO stages.
+//
+// Neon 1 opens on a new moon and Neon 2 finishes under a full one — half a
+// lunation per stage — and the moon is never seen to go backwards. Filling it
+// inside a single stage was the other option and it makes each stage a whole
+// month, so Neon 2 would have to open on the crescent it just finished filling.
+//
+// Neon 3 is already full when it starts, because Neon 3 is the eclipse: see
+// neonMoonEclipse. The act is one night that goes wrong at the end of it.
+//
+// Exported for the gallery sheet and tests/neon-city-arrival.js.
+export function neonMoonPhase(stageIndex, progress) {
+  const stage = Number(stageIndex);
+  const p = Number(progress);
+  const index = Number.isFinite(stage) ? Math.max(1, Math.min(3, stage)) : 1;
+  // A picture that is not a run — a poster, an attract shot, the gallery's
+  // production tiles — hands no progress and gets the stage's opening sky.
+  const within = Number.isFinite(p) ? Math.max(0, Math.min(1, p)) : 0;
+  return Math.max(0, Math.min(1, (index - 1 + within) / 2));
+}
+
+// THE ECLIPSE, 0..1, and it belongs to Neon 3 alone.
+//
+// The act's last stage runs the umbra across a moon that is already full: it
+// arrives from the leading edge and lands dead centre at the tape, so totality
+// is the frame the player finishes on — and the stage that ends with something
+// angry and airborne gets a sky that has visibly gone wrong.
+//
+// It is NOT a shadow in the sense of a light switch. The umbra is lit by every
+// sunrise on Earth at once, which is why an eclipsed moon goes copper instead
+// of black, and why the eclipsed part here is painted rather than cut away.
+export function neonMoonEclipse(stageIndex, progress) {
+  if (Number(stageIndex) !== 3) return 0;
+  const p = Number(progress);
+  if (!Number.isFinite(p)) return 0;
+  return Math.max(0, Math.min(1, p));
+}
+
+// THE UMBRA, and it is not a hole punched in the moon.
+//
+// An eclipsed moon goes COPPER rather than black, because the only light
+// reaching it is bent round the Earth's edge — it is lit by every sunrise on
+// the planet at once. So the shadow here darkens and then puts the red back:
+// one pass to take the moonlight out, a second to give it the colour it gets
+// instead. Its edge is soft, because the Earth has an atmosphere.
+// A PARTIAL ECLIPSE, and it stops where it stops. The umbra's deepest reach is
+// a shadow centred half a radius off the moon's own centre, which leaves a lit
+// limb down the trailing edge for the whole of Neon 3 — the moon is bitten, not
+// put out. Totality was the first cut and it takes the moon off the board: the
+// one cold light in the frame goes copper and the top right corner of the
+// picture empties.
+const NEON_ECLIPSE_DEEPEST = 0.5;
+
+function neonMoonUmbra(ctx, cx, cy, r, e) {
+  const R = r * 1.34;
+  // The shadow arrives from the leading edge and settles at its deepest at the
+  // tape: at e = 0 it is clear of the disc, at e = 1 it has taken the bite it
+  // is going to take.
+  const deepest = cx - r * NEON_ECLIPSE_DEEPEST;
+  const clear = cx - (R + r * 1.05);
+  const ux = clear + (deepest - clear) * e;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 0.5, 0, Math.PI * 2);
+  ctx.clip();
+  const dark = ctx.createRadialGradient(ux, cy, R * 0.55, ux, cy, R);
+  dark.addColorStop(0, 'rgba(14,6,26,0.94)');
+  dark.addColorStop(0.72, 'rgba(14,6,26,0.86)');
+  dark.addColorStop(1, 'rgba(14,6,26,0)');
+  ctx.fillStyle = dark;
+  ctx.fillRect(ux - R, cy - R, R * 2, R * 2);
+  // And the sunrise light that gets there anyway.
+  ctx.globalCompositeOperation = 'lighter';
+  const copper = ctx.createRadialGradient(ux, cy, R * 0.2, ux, cy, R);
+  copper.addColorStop(0, 'rgba(168,52,34,0.50)');
+  copper.addColorStop(0.7, 'rgba(120,30,28,0.34)');
+  copper.addColorStop(1, 'rgba(120,30,28,0)');
+  ctx.fillStyle = copper;
+  ctx.fillRect(ux - R, cy - R, R * 2, R * 2);
+  ctx.restore();
+}
+
+function neonMoon(ctx, t, context) {
+  const { x: cx, y } = neonMoonCenter(ctx, context);
+  const r = NEON_MOON_RADIUS;
+  const phase = neonMoonPhase(context?.stageIndex, context?.progress);
+  const eclipse = neonMoonEclipse(context?.stageIndex, context?.progress);
+  const k = NEON_MOON_NEW + phase * (1 - NEON_MOON_NEW);
+  // TWO CLOCKS, and only one of them touches the moon itself.
+  //
+  // The flicker is the tube's, held to a hair: the moon is the one steady thing
+  // on screen and a blinking moon reads as a fault rather than as a sign.
+  const flicker = 0.93 + 0.07 * Math.sin(t * 1.3) * Math.sin(t * 0.41);
+  // The pulse is the HALO's, and it is a slow breath — seven seconds in and
+  // out, a quarter either side. It is on the light the moon throws and never on
+  // the disc: swell the body and the moon reads as coming toward you, swell
+  // only what it lights and it reads as glowing.
+  const breath = Math.sin(t * 0.9);
+  const pulse = 1 + 0.26 * breath;
+  const reach = 3.1 * (1 + 0.09 * breath);
+  ctx.save();
+  // The light it throws, and it throws more of it as it fills — the halo is
+  // the only part of this that the player reads without looking up.
+  const halo = ctx.createRadialGradient(cx, y, r * 0.5, cx, y, r * reach);
+  // The light goes OUT as the umbra lands, and what is left of it goes copper.
+  // A sky that keeps its cold moonlight through an eclipse is a sky with two
+  // moons in it, one of them invisible.
+  // 0.62 of what it was: the moon kept reading as foreground because its halo
+  // was the brightest soft light in the frame. Distance is value, not size.
+  const lit = (0.124 + 0.10 * phase) * flicker * pulse * (1 - eclipse * 0.42);
+  const core = eclipse > 0 ? `rgba(${Math.round(180 + 40 * eclipse)},${
+    Math.round(240 - 80 * eclipse)},${Math.round(255 - 110 * eclipse)},${lit.toFixed(3)})`
+    : `rgba(180,240,255,${lit.toFixed(3)})`;
+  halo.addColorStop(0, core);
+  halo.addColorStop(0.45, `rgba(${Math.round(120 + 100 * eclipse)},${
+    Math.round(190 - 120 * eclipse)},${Math.round(255 - 190 * eclipse)},${(lit * 0.34).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(120,190,255,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(cx - r * reach, y - r * reach, r * reach * 2, r * reach * 2);
+  // The dark limb: the sphere the lit face is part of. Barely above the sky,
+  // because a filled moon at this size competes with a target.
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = '#2b2266';
+  ctx.beginPath();
+  ctx.arc(cx, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  // The lit face: filled soft, then bent in glass.
+  const face = neonMoonLit(cx, y, r, k);
+  ctx.globalAlpha = 0.34 * flicker;
+  ctx.fillStyle = '#7fd8f8';
+  ctx.beginPath(); face(ctx); ctx.fill();
+  // The glass goes down with the light. The umbra clips at the limb, so half
+  // the stroke width always survives outside it — left at full strength that
+  // leaves a bright white ring round a copper moon, which is the one thing an
+  // eclipse does not look like.
+  ctx.globalAlpha = 0.72 * flicker * (1 - eclipse * 0.4);
+  neonTube(ctx, '#d8f8ff', 1.1, 0.22, face);
+  ctx.globalAlpha = 1;
+  if (eclipse > 0) neonMoonUmbra(ctx, cx, y, r, eclipse);
+  // Craters LAST, and darker than the lit face rather than lighter than the
+  // dark limb: for two stages of three this moon is mostly lit, so that is the
+  // half they have to read on. On the thin crescent they fall in shadow and
+  // disappear, which is what a crater on an unlit limb does anyway. Drawn
+  // before the phase they would need drawing twice, and a full moon would come
+  // out a blank lamp.
+  ctx.globalAlpha = 0.26;
+  ctx.fillStyle = '#35508c';
+  for (const [dx, dy, cr] of [[-0.38, -0.3, 1.9], [-0.1, 0.44, 1.3], [0.33, -0.5, 1.4]]) {
+    ctx.beginPath();
+    ctx.arc(cx + r * dx, y + r * dy, cr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// THE TRAINS ARE NOT DRAWN HERE ANY MORE.
+//
+// This file used to carry two bespoke painters: a train that swept past on a
+// raised rail, and a last train that drove in and parked beside the tape. Both
+// are gone, and what replaced them is one mechanism in src/game/terrain.js —
+// see trainArrival(). Every neon train is an ISLAND ROUTE that flies in from
+// behind the player, overtakes him in the air, brakes and lands on its own
+// berth, so the pass and the thing he boards are the same train at two moments.
+//
+// That came out of Peter asking to jump onto one while it was moving. Routes
+// are static world geometry and there is no moving collision in this engine, so
+// a sliding roof is a roof nobody can land on; a FLYING train that sets down
+// gives the same beat with the landing doing the work. It also deleted a whole
+// scheduling table — an overtake had to be timed against stage progress so it
+// did not collide with a train section, while an arrival is timed off the
+// camera's distance to the berth and cannot clash with anything by construction.
+const NEON_TRAIN_H = 34;
+const NEON_RAIL_RISE = 33;
+
+// THE CITY ARRIVES ON STAGE 1, and this table is the schedule.
+//
+// Neon 1 opens on an empty sky — stars, haze and a veil with nothing behind it
+// to veil — and assembles itself as the run goes: the mass at the back first,
+// then the far wireframe row, then the near one. By the time the player is two
+// thirds of the way through they are running past the whole six-layer city.
+//
+// It is scoped to the FIRST stage. Neon 2 and 3 open finished: the arrival is
+// the cabinet introducing itself, and a cabinet that re-introduces itself every
+// stage is a cabinet with a loading screen.
+//
+// `at` is stage progress (distance / totalDist) and `over` is how much progress
+// the fade takes. They are smoothstepped, so no layer ever snaps on — the whole
+// point is that nobody can name the frame a row of towers appeared.
+const NEON_CITY_ARRIVALS = [
+  { key: 'farMass', at: 0.17, over: 0.13 },
+  { key: 'midWire', at: 0.38, over: 0.14 },
+  { key: 'nearWire', at: 0.60, over: 0.14 },
+];
+
+// How far in each of the three city layers is, 0..1. Exported for the gallery
+// sheet and tests/neon-city-arrival.js, so neither can quote a schedule the
+// cabinet has stopped using.
+export function neonCityReveal(stageIndex, progress) {
+  const full = { farMass: 1, midWire: 1, nearWire: 1 };
+  if (Number(stageIndex) !== 1) return full;
+  const p = Number(progress);
+  if (!Number.isFinite(p)) return full;
+  const out = {};
+  for (const { key, at, over } of NEON_CITY_ARRIVALS) {
+    const u = Math.max(0, Math.min(1, (p - at) / over));
+    out[key] = u * u * (3 - 2 * u);
+  }
+  return out;
+}
+
 function neonPack(settings) {
+  // What bg() leaves for ground(); see the note at the latch below.
+  let neonFrame = null;
   return {
     name: 'neon',
     dark: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
-      const coverage = backgroundPaintCoverage(ctx);
+      // ground() is handed no scene and no context, and the overtake is a STAGE
+      // event — so the frame's progress travels to the lane pass exactly the way
+      // frost's weather does: bg() always runs first in the same frame and
+      // leaves what ground() needs here. Pack-local, so a run and a gallery tile
+      // alive at once cannot cross wires.
+      neonFrame = {
+        stageIndex: backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1,
+        progress: backgroundContext?.progress ?? scene?.progress,
+        totalDist,
+      };
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
-      // starfield
-      ctx.fillStyle = '#8888c8';
-      for (let i = 0; i < 40; i++) {
-        const sx = ((i * 97 - camX * 0.05 * ZOOM) % coverage.width + coverage.width) % coverage.width + coverage.left;
-        const sy = (i * 61) % (GROUND_Y - 60) + backgroundY(backgroundContext, 'stars');
-        ctx.fillRect(Math.round(sx), sy, 1, 1);
+      // Six layers, back to front, each at its own fraction of the camera. The
+      // factor is scaled by ZOOM because the camera magnifies the FOREGROUND:
+      // a parallax factor that is not scaled by the same amount leaves the
+      // backdrop effectively frozen. See neonCityReveal for the stage-1 ramp.
+      const reveal = neonCityReveal(
+        backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1,
+        backgroundContext?.progress ?? scene?.progress,
+      );
+      const layer = (depth, f, draw) => {
+        ctx.save();
+        ctx.translate(0, backgroundY(backgroundContext, depth));
+        draw(camX * f * ZOOM);
+        ctx.restore();
+      };
+      // Each row's height range comes from the band the composition tuner
+      // owns — see neonRowRoofs. The numbers below are the LANDSCAPE
+      // composition and the fallback for anything with no layout.
+      const farRoofs = neonRowRoofs(backgroundContext, 'farLandmark', 46, 92);
+      const midRoofs = neonRowRoofs(backgroundContext, 'middle', 58, 112);
+      const nearRoofs = neonRowRoofs(backgroundContext, 'near', 84, 158);
+      layer('stars', 0.014, (shift) => {
+        neonStarfield(ctx, shift, t, { context: backgroundContext });
+        // Three a level, on the odometer. Drawn with the stars because that is
+        // what it is — one of them, leaving.
+        neonComet(ctx, backgroundContext);
+      });
+      layer('celestial', 0, () => neonMoon(ctx, t, backgroundContext));
+      layer('far', 0.02, () => neonHorizonHaze(ctx));
+      if (reveal.farMass > 0) {
+        layer('far', 0.07, (shift) => neonFarMass(ctx, shift, {
+          minH: farRoofs.minH, maxH: farRoofs.maxH, alpha: reveal.farMass,
+        }));
       }
-      // wireframe skyline
-      ctx.save();
-      ctx.translate(0, backgroundY(backgroundContext, 'middle'));
-      ctx.strokeStyle = '#e838f8';
-      for (let i = 0; i < 8; i++) {
-        const bx = wrapIntoView(ctx, i * 90 - camX * 0.25 * ZOOM, 50);
-        const bh = 40 + (i * 53) % 70;
-        ctx.strokeRect(Math.round(bx) + 0.5, GROUND_Y - bh + 0.5, 36, bh);
-        ctx.strokeStyle = i % 2 ? '#38d8f8' : '#e838f8';
+      if (reveal.midWire > 0) {
+        layer('middle', 0.15, (shift) => neonWireRow(ctx, shift, t, {
+          seed: 7, span: 74, count: 9, minH: midRoofs.minH, maxH: midRoofs.maxH, w: 26,
+          stroke: 1, glow: 0.1, alpha: 0.46 * reveal.midWire,
+        }));
       }
-      // horizon grid
-      ctx.strokeStyle = 'rgba(56,216,248,0.4)';
-      for (let i = 0; i < 6; i++) {
-        const y = GROUND_Y - 4 - i * 3;
-        ctx.beginPath(); ctx.moveTo(coverage.left, y); ctx.lineTo(coverage.right, y); ctx.stroke();
+      if (reveal.nearWire > 0) {
+        layer('near', 0.3, (shift) => neonWireRow(ctx, shift, t, {
+          seed: 23, span: 132, count: 7, minH: nearRoofs.minH, maxH: nearRoofs.maxH, w: 42,
+          stroke: 1.2, glow: 0.18, alpha: reveal.nearWire,
+        }));
       }
-      ctx.restore();
+      // In front of the city, behind everything the player plays with.
+      layer('near', 0, () => neonBandVeil(ctx, cab, { context: backgroundContext }));
     },
-    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null,
+      world = null) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
-      ctx.fillStyle = '#0c0c20';
-      ctx.fillRect(0, GROUND_Y, drawW, H - GROUND_Y);
-      ctx.strokeStyle = '#38d8f8';
-      ctx.beginPath(); ctx.moveTo(0, GROUND_Y + 0.5); ctx.lineTo(drawW, GROUND_Y + 0.5); ctx.stroke();
-      for (let x = -(camX % 40); x < drawW; x += 40) {
-        ctx.strokeStyle = 'rgba(56,216,248,0.35)';
-        ctx.beginPath(); ctx.moveTo(x, GROUND_Y); ctx.lineTo(x - 20, H); ctx.stroke();
+      // A HOLE IS DRAWN BY NOT DRAWING, and this pack was the one place in the
+      // game still doing it the other way: it laid the road clean across the
+      // frame and then painted `#000` over the break. That is a black rectangle
+      // rather than a hole — you cannot see the city through it, and the cut
+      // has no edges, so the one thing a pit has to say (there is nothing here)
+      // is said by a colour that belongs to nothing else on screen.
+      //
+      // apronRuns() is what every other pack uses for this; it hands back the
+      // spans that still have ground in them. The road, its lit surface and its
+      // grid are now painted per run, and each cut face gets a vertical in the
+      // lane's own cyan — so the hole is bounded by the same line the surface
+      // is, which is what makes it read as a piece of this road with a piece
+      // missing.
+      const runs = apronRuns(camX, obstacles, overhangs, drawW);
+      for (const [a, b] of runs) {
+        if (b <= a) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(a, GROUND_Y, b - a, H - GROUND_Y);
+        ctx.clip();
+        ctx.fillStyle = '#0c0c20';
+        ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
+        // The streaks, clipped to the run so they stop at the cut instead of
+        // flying through the empty air below it. `viewW` and not `drawW`: the
+        // lane pass is inside the world transform, so the span the player can
+        // actually see is the camera's world width — drawW is the 480 of the
+        // authored FRAME and seeding against it halves the density.
+        drawNeonSpeedStreaks(ctx, { camX, viewW, zoom: world?.worldZoom });
+        ctx.restore();
+        // THE LIT SURFACE AND THE TWO CUT FACES, and the corner where they meet
+        // is the whole reason this is written the long way round.
+        //
+        // The run's edges are camera-derived and fractional (114.07, not 114).
+        // A 1px fillRect at a fractional x is spread across two columns at
+        // partial alpha, so the vertical came out dimmer and half a pixel wide
+        // while the horizontal beside it was crisp — and the join read as a
+        // notch with the surface line overshooting into thin air. Snapping ONLY
+        // the drawn edges fixes it: the apron body and its clip stay on the
+        // exact fractional span, so nothing about the hole's position moves,
+        // and the lines land on whole pixels where a corner can actually close.
+        const ea = Math.round(a);
+        const eb = Math.round(b);
+        ctx.fillStyle = '#38d8f8';
+        ctx.fillRect(ea, GROUND_Y, eb - ea, 1);
+        // The face fades DOWN rather than sitting at one flat alpha. At a
+        // constant 0.55 the corner was a bright pixel meeting a dim one, which
+        // is a join you can see; starting at the surface's own brightness makes
+        // the two one mark, and the falloff is the light going away down the
+        // cut — which is what the inside of a hole does anyway.
+        const face = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+        face.addColorStop(0, 'rgba(56,216,248,1)');
+        face.addColorStop(0.35, 'rgba(56,216,248,0.5)');
+        face.addColorStop(1, 'rgba(56,216,248,0.22)');
+        ctx.fillStyle = face;
+        // Below the surface line, not through it, so the corner pixel is the
+        // horizontal's and the two never double up into a brighter dot.
+        //
+        // A FACE MEANS A HOLE, and apronRuns ends a run for two different
+        // reasons: because the road stops, and because the DRAW WINDOW stops.
+        // Painting one at both ends of every run put a lit cyan wall down the
+        // left edge of the landscape picture and both edges of the portrait
+        // one — the frame boundary dressed as a pit. A boundary sitting on the
+        // window edge gets the surface and no face; only a real cut gets both.
+        if (a > 0.5) ctx.fillRect(ea, GROUND_Y + 1, 1, H - GROUND_Y - 1);
+        if (b < drawW - 0.5) ctx.fillRect(eb - 1, GROUND_Y + 1, 1, H - GROUND_Y - 1);
       }
-      for (const ob of obstacles || []) {
-        if (ob.live && ob.def && ob.def.isGap) {
-          ctx.fillStyle = '#000';
-          ctx.fillRect(ob.x - camX, GROUND_Y, ob.w, H - GROUND_Y);
-        }
-      }
+      // Whatever the cabinet names at the bottom of its holes, after the road
+      // so the fill is not painted over by the apron either side of it.
+      drawPitFills(ctx, camX, cab, obstacles, t, false, null, drawW, '#0c0c20');
     },
     post(ctx, t) {
       ctx.fillStyle = 'rgba(56,16,88,0.1)';

@@ -305,8 +305,6 @@ window.__init = (cfg) => {
         hx.save();
         hx.globalAlpha = Math.min(1, clipFrame / 8);
         drawTextCentered(hx, cab.name, outW / 2, by + band * 0.16, '#f6d33c', nameS, 'title');
-        const gs = nameS * 0.42;
-        drawTextCentered(hx, cab.genre, outW / 2, by + band * 0.52, 'rgba(200,200,216,0.78)', gs);
         hx.restore();
 
         // Nine pips, one per cabinet: which machine this is, and that there are

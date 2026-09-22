@@ -197,7 +197,7 @@ const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
 export const CABINETS = [
   {
     id: 'plumber', name: 'PLUMBER PANIC', act: 1, style: 'pixel',
-    genre: 'PLATFORMER', unlockPlugs: 0,
+    unlockPlugs: 0,
     mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
@@ -429,7 +429,7 @@ export const CABINETS = [
   },
   {
     id: 'speed', name: 'SPEED ZONE', act: 1, style: 'faux3d',
-    genre: 'RACING', unlockPlugs: 2, speedBonus: 0.125,
+    unlockPlugs: 2, speedBonus: 0.125,
     mechanic: 'boost',
     // Keep the sky and road in sun-baked clay, then cool the depth cues: the
     // far mesas carry a dusty sage/blue-gray, while the near hills stay warm
@@ -506,7 +506,7 @@ export const CABINETS = [
   },
   {
     id: 'rhythm', name: 'RHYTHM BANKRUPTCY', act: 1, style: 'lcd',
-    genre: 'RHYTHM', unlockPlugs: 5, speedBonus: 0.3,
+    unlockPlugs: 5, speedBonus: 0.3,
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
     // What a capsule on this lane can be. The beat ban (run.js) strikes every
     // timing power from the shipped ladder, and the ladder's substitute for a
@@ -574,7 +574,7 @@ export const CABINETS = [
   },
   {
     id: 'frost', name: 'FROST FORTRESS', act: 2, style: 'watercolor',
-    genre: 'ICE ADVENTURE', unlockPlugs: 12, speedBonus: 0.2,
+    unlockPlugs: 12, speedBonus: 0.2,
     mechanic: 'ice', // slidey landings + buried bear traps + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',
@@ -698,7 +698,7 @@ export const CABINETS = [
   },
   {
     id: 'crypt', name: 'CRYPT SHIFT', act: 2, style: 'vhs',
-    genre: 'HORROR', unlockPlugs: 16, speedBonus: 0.25,
+    unlockPlugs: 16, speedBonus: 0.25,
     mechanic: 'darkness', // light radius; cursed shortcuts
     sky: ['#181020', '#281830'], ground: '#3a3048', groundDark: '#281c30',
     far: '#302040', hills: '#282038',
@@ -753,11 +753,17 @@ export const CABINETS = [
     taunt: 'THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE.',
   },
   {
-    id: 'neon', name: 'NEON BLASTERS', act: 2, style: 'neon',
-    genre: 'SHMUP', unlockPlugs: 20, speedBonus: 0.3,
+    id: 'neon', name: 'TERMINAL VELOCITY', act: 2, style: 'neon',
+    unlockPlugs: 20, speedBonus: 0.3,
     mechanic: 'pellets',
     sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
     far: '#302868', hills: '#282050',
+    // NOTHING AT THE BOTTOM, because the road is a viaduct over a city and the
+    // city is the fill. Tar (the default) put an opaque mass across the break
+    // that hid the one thing worth seeing through it, and even 'void' crumbles
+    // grit off the edges, which this road — a lit cyan rule, one pixel — has
+    // no material to shed. The cut faces either side are what says fatal here.
+    pitFill: 'none',
     music: NEON.bank,
     patterns: [
       // Tier-0 BASE stays filtered out — no cactus-and-crate opener here; the
@@ -799,7 +805,7 @@ export const CABINETS = [
   },
   {
     id: 'cardboard', name: 'CARDBOARD KINGDOM', act: 3, style: 'cardboard',
-    genre: 'FAKE-O-RAMA', unlockPlugs: 28, speedBonus: 0.25,
+    unlockPlugs: 28, speedBonus: 0.25,
     mechanic: 'collapse', // scenery collapses behind; fake perspective props
     sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#9a7848',
     far: '#b89058', hills: '#a88448',
@@ -845,7 +851,7 @@ export const CABINETS = [
   },
   {
     id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'doodle',
-    genre: 'OFFICE ACTION', unlockPlugs: 34, speedBonus: 0.3,
+    unlockPlugs: 34, speedBonus: 0.3,
     mechanic: 'meetings', // printers, chairs, paperwork
     sky: ['#e8e8f0', '#f4f4f8'], ground: '#b0b0c0', groundDark: '#8a8a98',
     far: '#c8c8d8', hills: '#b8b8c8',
@@ -881,7 +887,7 @@ export const CABINETS = [
   },
   {
     id: 'surge', name: 'THE SURGE', act: 3, style: 'surge',
-    genre: 'EVERYTHING', unlockPlugs: 40, speedBonus: 0.35,
+    unlockPlugs: 40, speedBonus: 0.35,
     mechanic: 'remix', // segments sample other cabinets
     sky: ['#181828', '#282838'], ground: '#484858', groundDark: '#303040',
     far: '#404050', hills: '#383848',

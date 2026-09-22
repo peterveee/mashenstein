@@ -95,7 +95,7 @@ const CABINETS = [
   { id: 'rhythm', name: 'RHYTHM BANKRUPTCY' },
   { id: 'frost', name: 'FROST FORTRESS' },
   { id: 'crypt', name: 'CRYPT SHIFT' },
-  { id: 'neon', name: 'NEON BLASTERS' },
+  { id: 'neon', name: 'TERMINAL VELOCITY' },
   { id: 'cardboard', name: 'CARDBOARD KINGDOM' },
   { id: 'office', name: 'CORPORATE KOMBAT' },
   { id: 'surge', name: 'THE SURGE' },

@@ -173,6 +173,16 @@ export function layoutDiagnosticSnapshot(run, frame = presentationFrame(), optio
   if (run?.style?.name === 'lcd' && scenery) {
     intervals.push([scenery.screenRect.top + scenery.screenRect.height * 0.09, scenery.screenRect.bottom]);
   }
+  // Neon's city is the same shape of claim. Its three bands are ROOFLINE
+  // envelopes — the buildings stand on the lane and carry on down from the
+  // band — so the bands alone read as a third of the sky being empty when the
+  // picture is solid towers. Count from the highest roofline to the floor.
+  if (run?.style?.name === 'neon' && scenery) {
+    const roofs = ['near', 'middle', 'farLandmark']
+      .map((name) => Number(scenery.screenBands?.[name]?.top))
+      .filter((n) => Number.isFinite(n));
+    if (roofs.length) intervals.push([Math.min(...roofs), scenery.screenRect.bottom]);
+  }
   const largestSkyGapPercent = unionGapPercent(sceneryRect, intervals);
   return Object.freeze({ frame: f, hud, scenery, lines, ranges, largestSkyGapPercent,
     highPath: state.highPath === true, pan: number(run?.camPan), zoom: number(run?.camZoom),

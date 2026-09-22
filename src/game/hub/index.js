@@ -518,7 +518,7 @@ const HUB_CAM_Y = HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM;
 // housing there still left the part players read as "the light" visibly lower.
 const HUB_WALL_Y0 = 40;
 const HUB_WALL_Y1 = HUB_FLOOR_PIN_Y - 2;            // top of the skirting trim
-const HUB_LIGHT_Y = HUB_CAM_Y;
+export const HUB_LIGHT_Y = HUB_CAM_Y;
 // Ceiling-crawling props need the housing's lower edge rather than the clipped
 // tube line, so keep their attachment point separate from the light position.
 const HUB_CEIL_Y = Math.ceil(HUB_CAM_Y) + 4;
@@ -600,6 +600,13 @@ export function drawHubSocket(ctx, cx, topY = SOCKET_TOP) {
 //
 // CAB_W/CAB_H come from cabinetStyle(), so switching the silhouette moves the
 // film's cabinets with the hub's, which is the whole point.
+// Where a poster hangs and how it was hung. Both derived from the cabinet's own
+// x so they are stable frame to frame, and both shared between the wall loop in
+// draw(), the tap test in update(), and the blown-up read — a tilt that changed
+// between the wall and the zoom would read as a different poster, and a hit box
+// that disagreed with either would be the kind of miss nobody can explain.
+const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
+
 export const HUB_ROOM = Object.freeze({
   floorY: HUB_FLOOR_PIN_Y,
   wallY0: HUB_WALL_Y0,
@@ -613,6 +620,12 @@ export const HUB_ROOM = Object.freeze({
   // What one cabinet-to-cabinet step is on the concourse. The film stands six
   // machines on this pitch so the row reads as the hub's row.
   bayPitch: OVERTIME_EMPTY_BAY,
+  // Where a one-sheet hangs. The film hangs its own blank posters on the same
+  // line for the same reason it borrows the pitch: a poster at a different
+  // height is the tell that the prologue's arcade is not the hub's arcade.
+  posterTopY: POSTER_TOP_Y,
+  posterW: POSTER_W,
+  posterH: POSTER_H,
 });
 
 function hubPresentation() {
@@ -752,7 +765,7 @@ const CAST_LIT_FLOOR = 0.45;
 // How far below layout.floorY the cast's soles and their contour actually paint,
 // measured off a standing hero rather than guessed. The floor reflection pivots
 // here — see the band in draw().
-const REFLECT_SOLE_DROP = 1.5;
+export const REFLECT_SOLE_DROP = 1.5;
 // How lit the service end is with nothing banked at all. Not zero: the repair
 // counter and the pawn shop are act-1 furniture and you cannot use a room you
 // cannot see. It climbs from here to 1 as the plug count approaches the finale
@@ -1163,12 +1176,6 @@ export function cabinetScreenArt(cab, t, seed = 0) {
 // cabinetPalette() mixes a dozen colours per call and the answer only depends
 // on the cabinet and whether it is unlocked, so each one is built once.
 const CAB_PALETTES = new Map();
-// Where a poster hangs and how it was hung. Both derived from the cabinet's own
-// x so they are stable frame to frame, and both shared between the wall loop in
-// draw(), the tap test in update(), and the blown-up read — a tilt that changed
-// between the wall and the zoom would read as a different poster, and a hit box
-// that disagreed with either would be the kind of miss nobody can explain.
-const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
 // The post-game machine is deliberately blank, but the poster above it is not:
 // give drawPoster an OVERTIME motif without changing the cabinet palette (and
 // therefore without putting art on the machine's dead screen).
@@ -5004,9 +5011,11 @@ const ROW_S = 1.4, DESC_S = 1.1, PIP = 13;
 // at a fixed pitch: three stages plus BACK get a generous 48 — which on a phone
 // is a tap target around a centimetre tall, since listMenu hit-tests the whole
 // pitch and not just the glyphs — and the fully loaded six-row case (boss and
-// corrupted mode both unlocked) tightens to 30 rather than running off the
+// corrupted mode both unlocked) tightens to 32 rather than running off the
 // bottom of the panel.
-const LIST_TOP = 74, LIST_BOTTOM = 250, ROW_MIN = 28, ROW_MAX = 48;
+// LIST_TOP took back the band the style caption used to sit in (22 Sep 2026):
+// the PLUGS/RANK headers now sit where that line was, one gap under the title.
+const LIST_TOP = 58, LIST_BOTTOM = 250, ROW_MIN = 28, ROW_MAX = 48;
 const PORTRAIT_STAGE_SIDE_MARGIN_CSS = 22;
 const PORTRAIT_STAGE_LIST_TOP_CSS = 175;
 const PORTRAIT_STAGE_LIST_BOTTOM_CSS = 105;
@@ -5207,7 +5216,10 @@ export class StageSelectState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, this.cab.name, W / 2, 20, '#f6d33c', 2, 'title');
-    drawTextCentered(ctx, `${this.cab.genre} CABINET - STYLE: ${this.cab.style.toUpperCase()}`, W / 2, 44, '#8a8a98', DESC_S);
+    // The genre tag and the style caption are both gone (22 Sep 2026): the
+    // cabinets are their own thing, and a label like SHMUP or STYLE: PIXEL was
+    // describing them as the games they pastiche rather than as themselves.
+    // The screen behind the name already shows what the style looks like.
     const slot = this.save.slot;
     // Plugs are one-time per stage, so a running count tells you what is still
     // out there — a cleared cabinet reads 9/9 and never moves again.

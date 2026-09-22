@@ -92,6 +92,27 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // hop. The road rises over every crossing whatever is in it (see
   // CROSSING_ROAD_RISE), so the break has real depth on screen.
   pits: opts.pits || null,
+  // WHERE THE TRAINS ARE, for the cabinets whose lane is a train roof.
+  //
+  // `trains: [{at, cars}]`, `at` a fraction of stage distance like applianceAt
+  // and naming where that train's TAIL begins. One entry is one train; a run of
+  // them is authored as consecutive entries with air between, and that air is
+  // the leap from the back of one to the nose of the next.
+  //
+  // WHAT A TRAIN COSTS, because it is not what you would guess. A car is 96
+  // world px and a six-car set with its two tapers is 635 — which at neon's
+  // opening speed of 208 px/s is THREE SECONDS. A 90-second stage is 19,656
+  // world px, so one standard train is 3% of it. A train section that reads as
+  // a section rather than a blink wants three or four of them.
+  //
+  // NOTHING READS THIS YET. The painters exist (src/dev/neon-tron-train.js) and
+  // the gallery draws every beat of it, but the lane does not: a train roof is
+  // a ground treatment plus a boarding rise plus a camera pan, and none of the
+  // three is built. This field is the authored level design sitting in the repo
+  // ahead of the implementation, so the plan and the pictures cannot drift, and
+  // so whoever builds the terrain has the placements rather than a paragraph.
+  // The gallery's stage-plan tiles read THIS, not their own copy of it.
+  trains: opts.trains || null,
   // Scripted rewind capsule, a fraction of stage distance like applianceAt.
   // The power-up's guaranteed introduction on every device — the drip can
   // also deal one anywhere, but only the dice say when.
@@ -262,13 +283,40 @@ export const STAGES = [
   S('crypt', 3,
     { type: 'blackout', desc: 'SURVIVE A LONGER BLACKOUT. THE BUDGET GOT WORSE.' },
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' }),
+  // THE TRAINS OPEN THE CABINET. Three of them back to back from the start
+  // line, which is where they have to be if the arrival cut scene is going to
+  // make sense: you watch a train pull in, you are on it, and the stage begins.
+  // Put the same section half way through and the cut scene is a flashback.
+  //
+  // Three sets is 2,205 world px — about eleven seconds, an eighth of the
+  // stage. That is the difference between a section and the three-second blink
+  // one train would have been. It also means the player meets both sizes of
+  // jump in the first ten seconds: the coupler gaps inside a set, and the two
+  // leaps between them.
+  //
+  // Everything after 0.12 is ordinary Neon: the cabinet's own pattern bag deals
+  // the drones, targets and buzzbirds exactly as it does today, and the two
+  // scripted pits below are the holes this stage guarantees. Both sit just past
+  // a checkpoint, which is the rule every pit on this page obeys.
   S('neon', 1,
     { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
     { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
-    { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.' }),
+    { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.',
+      trains: [{ at: 0.000, cars: 6 }, { at: 0.040, cars: 6 }, { at: 0.080, cars: 6 }],
+      pits: [{ at: 0.37, w: 52 }, { at: 0.71, w: 56 }] }),
+  // ONE TRAIN, MID-STAGE, and deliberately less than Neon 1 had. The opening
+  // cabinet spends its trains teaching the idea; this stage is mostly ground,
+  // and the single set at 0.46 is the callback — long enough to board, cross a
+  // couple of couplers and come off the nose, with no leap in it at all.
+  //
+  // It sits between the checkpoints on purpose. A train section straddling one
+  // would mean a death sending the player back to a boarding they have already
+  // done, which is an errand rather than a setback.
   S('neon', 2,
     { type: 'cords', n: 4, desc: 'RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { trains: [{ at: 0.46, cars: 6 }],
+      pits: [{ at: 0.36, w: 52 }, { at: 0.70, w: 56 }] }),
   // Neon has no routes and no loop, so the only geometry these two dodge is the
   // finishing straight — 0.70 is well clear of it. Both sit a couple of seconds
   // past a checkpoint, which is where the replay budget wants them.

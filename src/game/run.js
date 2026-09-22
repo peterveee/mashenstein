@@ -11113,6 +11113,23 @@ export class RunState {
   }
 
   spawnRoutePrizes() {
+    // HOW HIGH a `bonusHigh` capsule floats over the road, measured from the
+    // road's surface, and every part of it is read off the game rather than
+    // chosen by eye — see routes.js `bonusHigh`.
+    //
+    // It has to clear a STANDING hero, or it is not a jump: PLAYER_H is 14, so
+    // anything at or under that is collected by walking past it. And it has to
+    // be inside the WEAKEST jump in the cast, or it is a reward for picking the
+    // right hero. A capsule's bottom at `lift` is touched when the hero's head
+    // gets there, so the climb he actually owes is `lift - PLAYER_H`.
+    //
+    // Measured heights (jumpHeightFor, src/game/player.js): Kiko 48.4, B-33P
+    // 51.2, Fernwick and Grumpos 56.9, Ramon 59.2, Rusty 59.7, Lorenzo 61.4,
+    // Clara 62.6. At a 40px lift the climb owed is 26 — a little over half of
+    // the lowest in the game, so all eight make it with room to spare and none
+    // of them has to hit the apex to the frame. `extra` is measured from
+    // COIN_FLOOR, which is where routePrizeAlt starts counting.
+    const BONUS_HIGH_LIFT = 40;
     // MAGNET IS A UTILITY PICKUP, NOT A ROUTE GATE. It is meant to make the
     // coins already in the hero's lane easier to collect, so putting it on a
     // raised route turns the useful reward into a distant optional detour --
@@ -11139,8 +11156,36 @@ export class RunState {
       // lane, the mouth's divers are the lane's invitation into the hole, and
       // the magnet capsule is deliberately kept on the lane floor by
       // routePrizeAlt, so none of the three is on this road.
+      // A ROAD MAY SET ITS OWN COIN PITCH — see routes.js `coinGap`.
+      const coinGap = is.coinGap || COIN_GAP;
+      // THE WAY UP, laid before the run on top so the approach reads first.
+      // A quarter-sine rather than a ramp: it leaves the lane flat, turns up
+      // under the taper and arrives level with the roof, which is the shape the
+      // jump itself makes. The ones still out over the lane are NOT tagged with
+      // the road — a hero running past underneath is meant to get those.
+      let runFrom = is.x + inset;
+      if (is.boardArc) {
+        const n = 6;
+        const mid = is.x + bodyW / 2;
+        const roofAlt = this.groundYAt(mid) - this.routeGroundY(mid, is) + COIN_FLOOR;
+        const span = Math.min(78, bodyW * 0.34);
+        const start = is.x - span * 0.42;
+        for (let i = 0; i < n; i++) {
+          const f = i / (n - 1);
+          const x = start + f * span;
+          const alt = COIN_FLOOR + (roofAlt - COIN_FLOOR) * Math.sin(f * Math.PI / 2);
+          const coin = makePickup('coin', x, alt);
+          if (x >= is.x) coin.road = is;
+          this.pickups.push(coin);
+        }
+        // The run on top starts where the climb finishes, a full pitch clear of
+        // it. Overlapping, the last two of the arc and the first two of the run
+        // sit in the same hand's width at two different heights, and the shape
+        // the arc exists to draw is lost in the clutter.
+        runFrom = Math.max(runFrom, start + span + coinGap);
+      }
       if (is.prize === 'coins') {
-        for (let x = is.x + inset; x <= is.x + bodyW - inset; x += COIN_GAP) {
+        for (let x = runFrom; x <= is.x + bodyW - inset; x += coinGap) {
           // Nothing strung over a break in the road. A coin you cannot reach
           // without leaving the road is a coin that punishes you for taking it.
           if (!roadAt(x, is)) continue;
@@ -11158,8 +11203,12 @@ export class RunState {
       // coin run pays. Placed late on purpose: a power-up sitting at the mouth
       // pays out before the road has asked anything of you.
       if (is.bonus) {
-        const x = is.x + bodyW * 0.66;
-        const alt = routePrizeAlt(is, x, is.bonus, 6);
+        // OVER THE MIDDLE and high, or two thirds along and within reach: the
+        // road says which. Both are ON the road — a capsule in the air directly
+        // above it is still the road's, which is what keeps it out of the lane's
+        // capsule spacing and lets a hero up there magnet it.
+        const x = is.x + bodyW * (is.bonusHigh ? 0.5 : 0.66);
+        const alt = routePrizeAlt(is, x, is.bonus, is.bonusHigh ? BONUS_HIGH_LIFT - COIN_FLOOR : 6);
         const onRoad = PICKUPS[is.bonus]?.power !== 'magnet';
         if (onRoad) this.pickups.push(Object.assign(makePickup(is.bonus, x, alt), { road: is }));
         else this.placeLanePrize(is.bonus, x, alt);
@@ -14615,7 +14664,7 @@ export class RunState {
       }
       drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), visibleWorldW,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
-          bottomY: bottomWorldY, hillDepth,
+          bottomY: bottomWorldY, hillDepth, t: this.tRun,
           paperSlab: this.style.paperSlab });
     }
     // The pack's ground texture over a staged exit, which has to be laid HERE:

@@ -2,7 +2,8 @@
 // modest so obstacle spacing and jump timing remain familiar.
 import { W } from '../engine/renderer.js';
 import { roadAt, routeRise, tunnelRoofEnd, tunnelOpenings } from '../game/routes.js';
-import { PLAYER_H } from '../game/player.js';
+import { PLAYER_H, PLAYER_X, PLAYER_SPRITE_W } from '../game/player.js';
+import { drawTronTrain, drawTronSpeedStreaks, tronConsistLength, TRON_PALETTE, TRON_BOARD_GAP } from '../sprites/train.js';
 import {
   PAPER_TEXTURE_BLEND,
   paperPatternFor,
@@ -159,6 +160,12 @@ export function maxTerrainHeight(cabinet) {
  * who does not jump passes below the island rather than being blocked by it.
  */
 export const ISLAND_THICKNESS = 9;
+// A train's carriage, and how far the hull hangs below the roof the hero runs
+// on. 96 is the uniform car the whole design is built out of; 34 is the height
+// that put a train one pixel past MAX_ISLAND_RISE, which is why it is boarded
+// by a step rather than a jump.
+const TRAIN_CAR_W = 96;
+const TRAIN_H = 34;
 
 // ---------------------------------------------------------------- bake-off seam
 /**
@@ -329,7 +336,16 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
   // otherwise an attached shadow can pop in a few pixels after its silhouette.
   const shadowMargin = opts.paperSlab?.paper ? 12 : 0;
   for (const r of routes) {
-    const sx = r.x - camX;
+    // AN ARRIVING TRAIN IS NOWHERE NEAR ITS BERTH, and this cull is why the
+    // first cut of the flight was invisible: the whole approach happens while
+    // the berth is between 120 and 1200 world px ahead, which is off the right
+    // of a 240px view, so the route was skipped every frame of it and the
+    // train simply appeared, already parked. Culling has to be done against
+    // where the thing is DRAWN, not where it lives.
+    const isTrain = cabinet?.id === 'neon' && r.kind === 'island' && (r.rise || 0) >= 24;
+    const air = isTrain ? trainArrival(camX, r) : null;
+    if (air?.hidden) continue;
+    const sx = r.x - camX + (air ? air.dx : 0);
     if (sx > right + shadowMargin || sx + r.w < -shadowMargin) continue;
     // Walked in columns rather than drawn as a rect, because a road is not
     // level: it holds its entry height, climbs, holds again and then eases back
@@ -379,6 +395,22 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // would be dirt at its mouth and weather at its peak, and a single verdict
     // for the whole span would have to be wrong at one end of it.
     const asCloud = (wx) => (r.cloud ? cloudMix(groundAt(wx) - topInside(wx, r), cloudFrom, cloudTo) : 0);
+    // A TRAIN IS AN ISLAND, AND NEON'S ISLANDS ARE TRAINS.
+    //
+    // The routes system already had every part of a train roof — a flat slab
+    // with a real collision floor, a stack exemption so several can sit close
+    // enough to leap between, and a step whose rise is exempt from the jump
+    // cap so it can be boarded — so Neon's train sections are authored as
+    // ISLAND ROUTES (see src/data/stage-layouts.js) and this is the one place
+    // that knows they are not made of earth.
+    //
+    // The low step is left as it is: it is the platform stair the player runs
+    // up, not part of the train, and drawing it as a one-car train would be a
+    // carriage the length of a stride.
+    if (isTrain) {
+      drawTrainRoute(ctx, camX, r, topInside, from, to, air, opts.t ?? 0);
+      continue;
+    }
     drawSlab(ctx, camX, cabinet, r, topInside, from, to, asCloud, null, opts.paperSlab);
     if (r.cloud) drawCloudRoad(ctx, camX, r, topInside, groundAt, from, to, cloudFrom, cloudTo, opts.paperSlab);
   }
@@ -406,6 +438,266 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
  * are rounded on an island (it is an object) and left square on a road (it is
  * a stretch of ground that happens to be up here).
  */
+/**
+ * One train, drawn along an island route. The route's span decides how many
+ * cars it carries — uniform 96px cars between two tapers — so a longer island
+ * is a longer train and nothing has to be kept in step by hand.
+ *
+ * `topAt` is the route's own surface, which is flat for an island, and it is
+ * where the ROOF goes: the hero runs on it, so the hull hangs BELOW it and the
+ * rail line sits a carriage's height down.
+ */
+// ------------------------------------------------------------ the arrival
+//
+// A FLYING BULLET TRAIN, and it is the answer to a real constraint rather than
+// a flourish. Peter wanted to jump onto a train while it was moving; routes are
+// static world geometry and this engine has no moving collision, so a roof that
+// slides is a roof you cannot land on. His call: "if we can't jump on them
+// moving then perhaps they should go back to being in the air and land.. so a
+// flying bullet train (why not?)".
+//
+// That solves it completely, and it collapses two things into one. The train
+// enters BEHIND the camera in the air, overtakes the player, decelerates and
+// sets down on its own berth — so the pass and the boardable train are the same
+// object seen at two moments. Everything the player sees moving is the train he
+// is about to stand on, which is a better beat than a train that went past and
+// one that was always there.
+//
+// IT IS TIMED OFF THE CAMERA, not off stage progress, because the berth is a
+// world x and the only thing that matters is how far the player still is from
+// it. That also makes it free for any stage to author a train anywhere without
+// a schedule to keep in sync.
+//
+// THE COLLISION IS ALWAYS AT THE BERTH. The island exists from the moment the
+// lane is built, airborne hull or not — but the landing finishes a full screen
+// and a half before the player arrives, so there is no frame where he can reach
+// a roof that is not under the art. Widening TRAIN_FLIGHT_SETTLE is what keeps
+// that true if the flight is ever made longer.
+// THE NUMBERS ARE SET BY WHAT IS ON SCREEN, which at this camera is 240 world
+// px — and a six-car set is 576, so the train is never in frame whole. Every
+// one of these is chosen so the part you DO see is the part worth seeing:
+//
+//   BACK exceeds LEAD by more than a train's length, so at u=0 the whole hull
+//   is off the left edge. Short of that it pops into existence already across
+//   the picture, which is the one thing an entrance cannot do.
+//
+//   DOWN is early, so the wheels touch while the train is still crossing in
+//   front of the player rather than out past the right edge where the berth
+//   is. It lands in view and then brakes away to its stop, which is what an
+//   arriving train does anyway.
+//
+//   SETTLE is small so the berth is on screen by the time it is standing
+//   there, and still a full screen clear of the player — he cannot reach a
+//   roof that is not yet under him.
+const TRAIN_FLIGHT_LEAD = 1200;    // camera distance at which the flight starts
+const TRAIN_FLIGHT_SETTLE = 120;   // ...and by which it is standing on its berth
+const TRAIN_FLIGHT_BACK = 2000;    // how far short of the berth it enters
+const TRAIN_FLIGHT_AIR = 82;       // cruising height above the rail
+// A GHOST TRAIN (Peter, 22 Sep): translucent while it is flying, solid by the
+// time the wheels are down. It says the thing the physics already says — an
+// airborne train is not something you can stand on yet — and it says it in the
+// one language a side-on picture has for "not here yet". It also takes the
+// sting out of the moment the hull sweeps over the lane: a solid six-car set
+// crossing the frame at head height is a near miss, a faint one is weather.
+//
+// Keyed to LIFT rather than to the clock, so the fade and the descent are the
+// same gesture and it cannot be solid in the air on a stage with a different
+// approach. drawTronTrain composes against the current globalAlpha — its glow
+// passes multiply by it rather than setting it — so this is all it takes.
+const TRAIN_GHOST_ALPHA = 0.34;    // how faint it is at cruising height
+const TRAIN_FLIGHT_DOWN = 0.82;    // how far through the flight the wheels touch
+// The x curve's exponent. A hard ease-out (2.4) spent nearly all the travel in
+// the first fifth, so the train crossed the picture in a few frames and then
+// sat off the right edge for the rest of the approach — the flight existed and
+// nobody could see it. 1.6 keeps it moving across the frame for most of the
+// window and still brakes visibly into the berth.
+const TRAIN_FLIGHT_EASE = 1.6;
+// ---- AND THEN IT LEAVES ----
+//
+// Peter, 23 Sep: "a train slowly start a take off after we are past it and then
+// quickly overtake us completely (it is never to be seen again)."
+//
+// Measured from the camera being past the train's NOSE, because that is the
+// moment the player has finished with it — he has run its whole length and
+// stepped off the front. The wait is a beat of it just sitting there so the
+// departure reads as a decision rather than as the train being yanked off.
+//
+// The curve is the arrival's inverted: a CUBE, so the first half of the window
+// moves it almost nothing and the last quarter throws it across the frame.
+// Slow take-off, then gone — and gone for good, because once the window is
+// spent the route stops being drawn at all.
+const TRAIN_DEPART_WAIT = 70;      // camera px past the nose before it stirs
+const TRAIN_DEPART_SPAN = 820;     // ...and how much it spends leaving
+const TRAIN_DEPART_DIST = 2050;    // how far it travels in that time
+const TRAIN_DEPART_DOORS = 0.22;   // doors are shut this far into the window
+// ---- THE DESCENT MAY NOT START UNTIL THE TAIL IS PAST THE HERO ----
+//
+// Peter, 22 Sep: "make sure the trains don't overlap the hero, ie their rear
+// lands to the front of them so they don't collide while running."
+//
+// The hull's underside sits `2 + lift` above the lane (drawTronCar skirts 3px
+// short of its rail, and the rail lands a pixel over GROUND_Y), and a standing
+// hero is PLAYER_H tall at PLAYER_X. So any frame where the tail is still
+// behind him and lift has fallen under about twelve is a frame with a train
+// through his chest. Cruising altitude is 82, which clears even a jumping hero
+// — the tallest apex in the cast is 62.6 and his head adds 14 — so the whole
+// problem is the descent, and the fix is to refuse to begin it early.
+//
+// SOLVED FROM THE CURVE, not typed in. The tail's path is a fixed function of
+// the four flight constants, so the moment it clears is a constant too — and
+// deriving it means a later change to LEAD, BACK, SETTLE or EASE cannot
+// silently put the train back through the hero. The margin past the sprite is
+// there so the nose does not shave him.
+const TRAIN_CLEAR_X = PLAYER_X + PLAYER_SPRITE_W + 10;
+
+/** The tail's screen x at `u`, in world px from the camera's left edge. */
+function trainTailAt(u) {
+  const ease = 1 - (1 - u) ** TRAIN_FLIGHT_EASE;
+  return (TRAIN_FLIGHT_LEAD - u * (TRAIN_FLIGHT_LEAD - TRAIN_FLIGHT_SETTLE))
+    - TRAIN_FLIGHT_BACK * (1 - ease);
+}
+
+// The first moment the tail is clear of the hero's column. Scanned rather than
+// solved in closed form because the curve has an exponent in it and this runs
+// once at module load.
+const TRAIN_FLIGHT_CLEAR_U = (() => {
+  for (let i = 1; i <= 400; i++) {
+    const u = i / 400;
+    if (trainTailAt(u) >= TRAIN_CLEAR_X) return u;
+  }
+  // Nothing cleared — keep it in the air for the whole approach rather than
+  // dropping it on him.
+  return 1;
+})();
+
+/**
+ * Where a train is on its way in, or null once it is simply standing there.
+ * `hidden` is the stretch before the flight begins — it must not be drawn
+ * parked in mid-air ahead of the player while it waits for its cue.
+ */
+function trainArrival(camX, r) {
+  const d = r.x - camX;
+  if (d >= TRAIN_FLIGHT_LEAD) return { hidden: true };
+  if (d <= TRAIN_FLIGHT_SETTLE) {
+    // Past the nose? Then it is leaving. See TRAIN_DEPART_WAIT.
+    const past = camX - (r.x + r.w) - TRAIN_DEPART_WAIT;
+    if (past <= 0) return null;                       // standing, doors open
+    const v = past / TRAIN_DEPART_SPAN;
+    if (v >= 1) return { hidden: true };              // never seen again
+    const shut = Math.min(1, v / TRAIN_DEPART_DOORS);
+    return {
+      dx: TRAIN_DEPART_DIST * v * v * v,
+      // It takes OFF as it goes — the same machine that flew in. Rising on the
+      // same cube as the run keeps the two halves one gesture.
+      lift: TRAIN_FLIGHT_AIR * Math.min(1, v * v * 1.6),
+      open: 1 - shut * shut * (3 - 2 * shut),
+      u: v,
+      leaving: true,
+    };
+  }
+  const u = (TRAIN_FLIGHT_LEAD - d) / (TRAIN_FLIGHT_LEAD - TRAIN_FLIGHT_SETTLE);
+  // Ease OUT in x: it arrives fast and brakes into the berth. Over the window
+  // the camera covers 1080 and the train covers 2000, so it gains 920 — nearly
+  // four screens of relative motion, which is what makes it read as an overtake
+  // rather than as something drifting into place.
+  const ease = 1 - (1 - u) ** TRAIN_FLIGHT_EASE;
+  // Cruise until the tail is past the hero, then descend. It is down well
+  // before it stops: a train that lands on the frame it halts has not landed,
+  // it has arrived, and the eye needs to see it rolling on the rail to believe
+  // either.
+  const span = Math.max(1e-6, TRAIN_FLIGHT_DOWN - TRAIN_FLIGHT_CLEAR_U);
+  const fall = Math.max(0, Math.min(1, (u - TRAIN_FLIGHT_CLEAR_U) / span));
+  // THE DOORS OPEN WHEN IT LANDS (Peter, 23 Sep: "when it lands can we see the
+  // doors opening?"). They start the moment the wheels touch and are fully back
+  // by the time it stops, so the opening runs through the brake rather than
+  // after it — which is the order a train arriving at a platform does it in,
+  // and it means the player sees the light come out of the doorway while the
+  // train is still rolling past him.
+  const openU = Math.max(0, Math.min(1, (u - TRAIN_FLIGHT_DOWN) / (1 - TRAIN_FLIGHT_DOWN)));
+  return {
+    dx: -TRAIN_FLIGHT_BACK * (1 - ease),
+    lift: TRAIN_FLIGHT_AIR * (1 - fall * fall * (3 - 2 * fall)),
+    open: openU * openU * (3 - 2 * openU),
+    u,
+  };
+}
+
+/**
+ * HOW FAST IT IS GOING, 0..1, from the flight curves themselves rather than
+ * from a second set of numbers that could disagree with them. Differentiating
+ * the eased positions is what makes one rule serve both the arrival and the
+ * departure — and what guarantees the streaks are absent exactly while it
+ * stands, which no hand-written window could promise.
+ */
+function trainRush(air) {
+  const u = Math.max(0, Math.min(1, air.u));
+  if (air.leaving) return Math.min(1, 3 * u * u * (TRAIN_DEPART_DIST / TRAIN_DEPART_SPAN) / 3);
+  const slope = TRAIN_FLIGHT_EASE * (1 - u) ** (TRAIN_FLIGHT_EASE - 1);
+  return Math.min(1, slope * (TRAIN_FLIGHT_BACK / (TRAIN_FLIGHT_LEAD - TRAIN_FLIGHT_SETTLE)) / 3);
+}
+
+function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0) {
+  const roofY = topAt(r.x + r.w / 2, r);
+  const cars = Math.max(2, Math.round(r.w / TRAIN_CAR_W));
+  const consist = [{ kind: 'tail' },
+    ...Array(Math.max(0, cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }];
+  // The painter walks from a left edge at its own natural lengths, so scale the
+  // context rather than stretch the art: a 3% difference between the route's
+  // width and the consist's is not worth a seam at the nose.
+  const natural = tronConsistLength(consist, TRON_BOARD_GAP);
+  const k = r.w / natural;
+  const dx = air ? air.dx : 0;
+  const lift = air ? air.lift : 0;
+  // SPEED LINES, from the train's own painter (Peter, 23 Sep: "where are the
+  // speed lines for the train as it rushes past?"). The old ones were nine
+  // hand-placed 1px dashes at the skirt, where the road covers them, and they
+  // stopped the moment it began to descend — so the fastest part of the pass
+  // had none at all.
+  //
+  // DRAWN BEFORE THE CLIP, because a trail's whole job is to be behind the
+  // thing: the clip box is the hull's own span and would have cut every streak
+  // off at the tail.
+  //
+  // Tied to SPEED rather than to height — how much ground it covers per unit of
+  // window, which peaks on the way in, is zero while it stands, and peaks again
+  // on the way out. One rule, and the streaks cannot be on while it is parked.
+  const rush = air ? trainRush(air) : 0;
+  if (rush > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.7, rush);
+    const trail = (r.x - camX) + dx;
+    drawTronSpeedStreaks(ctx, trail - 170, trail - 5, roofY - lift + TRAIN_H * 0.45, t, {
+      palette: TRON_PALETTE.neon, count: 14, speed: 520, band: TRAIN_H * 0.85, glow: false,
+    });
+    ctx.restore();
+  }
+  ctx.save();
+  // The clip keeps a standing train inside its own berth. An arriving one is
+  // nowhere near it yet, so while it is flying the box travels with it — and
+  // opens upward by the cruising height, or the hull would be sliced off at
+  // rail level for the whole approach.
+  // `from`/`to` are already in DRAWN space — drawRoutes culls and measures
+  // against the arrival offset — so the box only has to open UPWARD by the
+  // cruising height, or the hull is sliced off at rail level all the way in.
+  ctx.beginPath();
+  ctx.rect(from - 2, roofY - 4 - (air ? TRAIN_FLIGHT_AIR : 0),
+    (to - from) + 4, TRAIN_H + 14 + (air ? TRAIN_FLIGHT_AIR : 0));
+  ctx.clip();
+  // Solidifies as it comes down: full ghost at cruising height, opaque the
+  // moment it is on the rail. `lift` is already smoothstepped, so this is too.
+  if (air) ctx.globalAlpha *= 1 - (lift / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA);
+  ctx.translate(r.x - camX + dx, roofY - lift);
+  ctx.scale(k, 1);
+  drawTronTrain(ctx, 0, TRAIN_H, {
+    consist, h: TRAIN_H, palette: TRON_PALETTE.neon, glow: false, lit: 0.9,
+    gap: TRON_BOARD_GAP,
+    // Shut in the air, opening as it lands, and standing open ever after — a
+    // train the player has already walked past does not close up behind him.
+    open: air ? air.open : 1,
+  });
+  ctx.restore();
+}
+
 function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null, paperSlab = null) {
   const soil = soilOf(cabinet);
   const island = r.kind === 'island';

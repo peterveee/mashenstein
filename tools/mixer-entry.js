@@ -17890,7 +17890,7 @@ const SONG_GROUPS = [
   ['Themes', 'theme'],
   ['Cabinets', 'cabinet'],
   // Next to the songs they are alternates of, because that is the comparison anybody
-  // opening one is making: this version of NEON BLASTERS against the shipped one.
+  // opening one is making: this version of TERMINAL VELOCITY against the shipped one.
   ['Alternate Game Songs', 'alternate'],
   ['Shop auditions', 'audition'],
   ['Scratch songs', 'scratch'],

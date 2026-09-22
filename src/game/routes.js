@@ -564,6 +564,31 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // See RunState.markCrossingStones — it goes on after the sweeps, and it
       // needs a number this file does not have.
       prize: d.prize === null ? null : (d.prize || 'coins'),
+      // HOW FAR APART the coin run on top is laid, when the default pitch is
+      // wrong for the road. A train roof is 576px of flat, and at the lane's
+      // own COIN_GAP that is forty coins in a row — a stripe of gold you hold
+      // right through, which pays for the climb but says nothing about it.
+      // Sparser, the roof reads as a place you are running along rather than a
+      // conveyor. Null keeps the lane's pitch.
+      coinGap: Number.isFinite(d.coinGap) ? d.coinGap : null,
+      // A CURVE OF COINS UP THE BACK EDGE, from lane height onto the roof.
+      // Same job as the diving run into a tunnel mouth and the same idiom
+      // inverted: it is the only thing on the approach that says this slab is
+      // something you get ON rather than something you run past.
+      boardArc: !!d.boardArc,
+      // THE BONUS HANGS HIGH OVER THE MIDDLE of the road, out of reach of a
+      // hero standing on it. On the roof it was paid for by the climb and then
+      // simply collected; up here the roof is only where the jump STARTS from,
+      // which is the thing that makes a train worth being on.
+      //
+      // It was briefly hung past the nose instead, to be caught on the way off.
+      // Peter, 22 Sep: "I don't want to jump off the train front to get a
+      // reward. The reward should be placed in the middle of the train and
+      // require the user to jump FROM the roof of the train to reach it. (For
+      // as many characters as possible)" — so it is over the middle, and the
+      // height is set by the jump table rather than by eye. See
+      // BONUS_HIGH_LIFT in run.js.
+      bonusHigh: !!d.bonusHigh,
       lowPrize: d.lowPrize || null,
       // WHO ASKED FOR THIS ROAD: the authored entry — in cabinets.js, or in a
       // stage's own routes override — that this ribbon was built from. The run

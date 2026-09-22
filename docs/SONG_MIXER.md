@@ -1830,8 +1830,8 @@ Two things worth knowing:
 ### Alternates
 
 Save writes over the song. That is right while you are mixing one and wrong at the
-moment you have a version of NEON BLASTERS you like *without* being ready to say it is
-NEON BLASTERS. A [copy](#copies) is the move when you want a snapshot and no claim; an
+moment you have a version of TERMINAL VELOCITY you like *without* being ready to say it is
+TERMINAL VELOCITY. A [copy](#copies) is the move when you want a snapshot and no claim; an
 alternate is the move when the claim is the point.
 
 **Song Desk → Save as alternate…** is the other move. Name it, and the desk writes a
@@ -1847,7 +1847,7 @@ for a stage. The alternate's bank, mix, arrangement and select treatment carry f
 the stage list through Start and into the game loop; ordinary builds keep the shipped
 cabinet music.
 
-Later, if it turns out to be the one: open it and press **Save over NEON BLASTERS…**,
+Later, if it turns out to be the one: open it and press **Save over TERMINAL VELOCITY…**,
 which is the only button on the desk that writes a file other than the one you are on.
 It saves the alternate first — so what gets written is what you were listening to —
 then writes that alternate's mix, arrangement and cabinet screen into the parent's

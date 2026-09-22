@@ -7,88 +7,67 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
-import {
-  W, H, setPresentationFrame, presentationFrame,
-} from '../src/engine/renderer.js';
-import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld, screenYFor } from '../src/engine/camera.js';
+import { W, H } from '../src/engine/renderer.js';
+import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
 // The game's cameras, read from the modules that own them so the zoom-levels
 // section can never quote a number the game has stopped using.
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
-import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook, cabinetScreenGeometry, cabinetScreenArt, drawHubSocket } from '../src/game/hub/index.js';
-import { makeCabinetDive, DIVE_DURATION, DIVE_KEYFRAMES, DIVE_VARIANTS } from '../src/game/hub/cabinet-dive.js';
+import {
+  HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook, cabinetScreenGeometry, cabinetScreenArt,
+  drawHubSocket,
+} from '../src/game/hub/index.js';
+import {
+  makeCabinetDive, DIVE_DURATION, DIVE_KEYFRAMES, DIVE_VARIANTS,
+} from '../src/game/hub/cabinet-dive.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite, drawPellet } from '../src/engine/sprites.js';
 import {
-  buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, drawPortal,
-  HERO_DRAW_W, HERO_DRAW_H,
+  buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, drawPortal, HERO_DRAW_W,
+  HERO_DRAW_H,
 } from '../src/game/draw.js';
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
 import { PUNT, HEAVY_PUNT, puntPower, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import {
-  PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE,
-  PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
+  PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite,
+  PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
   eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T,
 } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
-  cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawScreenSweep,
-  drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
+  cabinetPalette, cabinetScreenRect, cabinetStyle, drawCabinetShell, drawCabinetScreen,
+  drawScreenSweep, drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
+import { WALL_BASE, drawPoster, POSTER_W, POSTER_H, CABINET_STAR } from '../src/sprites/backwall.js';
 import {
-  WALL_BASE, drawPoster, POSTER_W, POSTER_H, CABINET_STAR,
-} from '../src/sprites/backwall.js';
-import {
-  TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim, caneScale,
-  setContour, setInkScale, setInkDensity,
-  ACTIVE_CELEBRATION_STYLE,
-  DEATH_FACE_TIMING, DEATH_EYE_STYLES,
-  TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
-  b33pTitleShotPose,
-  poseFromPlayer,
-  drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC,
-  drawThrownAxe, drawRocketFist,
-  AXE_THROW_AT,
+  TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim, caneScale, setContour,
+  setInkScale, setInkDensity, ACTIVE_CELEBRATION_STYLE, DEATH_FACE_TIMING, DEATH_EYE_STYLES,
+  TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction, b33pTitleShotPose,
+  poseFromPlayer, drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT,
+  BOW_AIM_T, BOW_REACH_T, ARROW_ARC, drawThrownAxe, drawRocketFist, AXE_THROW_AT,
 } from '../src/sprites/toons.js';
 import { HERO_SPRITES } from '../src/sprites/heroes.js';
 import {
-  getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
-  LCD_GORILLA_NOSTRIL_STYLES,
+  getStylePack, neonCityReveal, neonMoonPhase, neonMoonEclipse,
+  LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_NOSTRIL_STYLES,
   lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem,
-  frostBlizzardRung, frostFlypastArc,
 } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
-import {
-  FROST_SLEIGH_CANDIDATES, FROST_SLEIGH_BY_ID, FROST_FLYPAST,
-  FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN, FROST_FLYPAST_SCALE,
-  FROST_FLYPAST_PALETTE, FROST_FLYPAST_DEPTH, FLYPAST_PALETTES, drawFrostFlypast,
-  FLYPAST_GLOWS, FROST_FLYPAST_GLOW, FROST_FLYPAST_CLEAR, flypastAt, flypastScaleFor,
-} from '../src/sprites/sleigh.js';
-import {
-  frameForViewport, PHONE_PORTRAIT, PORTRAIT_BACKGROUND_ZOOM,
-} from '../src/engine/frame.js';
-import { portraitHudLayout } from '../src/game/portrait-layout.js';
-import { resolveSceneryLayout, BACKGROUND_DEPTHS } from '../src/engine/scenery-layout.js';
+
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
+import { drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W, PLUG_FRAME_COLORS } from '../src/game/plugs.js';
 import {
-  drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W, PLUG_FRAME_COLORS,
-} from '../src/game/plugs.js';
-import {
-  drawFloatie, drawSpeech, drawActBanner, drawFailBanner,
-  drawStatusPill, drawHeroBadge, HERO_CHIP_CUTS, HERO_REVEAL_CUTS,
-  drawObjectivePanel, bonusPlacement, bonusPanelFold, BONUS_SLOTS,
-  OBJ_RIGHT, OBJ_ROW_Y, OBJ_ROW2_Y,
+  drawFloatie, drawSpeech, drawActBanner, drawFailBanner, drawStatusPill, drawHeroBadge,
+  HERO_CHIP_CUTS, HERO_REVEAL_CUTS, drawObjectivePanel, bonusPlacement, bonusPanelFold,
+  BONUS_SLOTS, OBJ_RIGHT, OBJ_ROW_Y, OBJ_ROW2_Y,
 } from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
 import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
 import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
+import { FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX } from '../src/game/finishMarker.js';
 import {
-  FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX, POLE_STANDOFF, POLE_H,
-} from '../src/game/finishMarker.js';
-import {
-  PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT,
-  jumpV, gravityFor, jumpHeightFor, airtimeFor,
+  PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT, jumpV, gravityFor, jumpHeightFor, airtimeFor,
   Player, SLIDE_KICK_T, STAND_AFTER_PLOW_T,
 } from '../src/game/player.js';
 import { drawBambooShoot } from '../src/engine/sprites.js';
@@ -98,49 +77,71 @@ import { drawBambooShoot } from '../src/engine/sprites.js';
 // reference for — which is the one thing a gallery may never be.
 import { buildRoutes, routeRise } from '../src/game/routes.js';
 import {
-  drawRoutes, drawSubsoil, drawTerrain, tunnelOverhangs, terrainGroundY, soilOf, ISLAND_THICKNESS,
+  drawRoutes, drawSubsoil, drawTerrain, tunnelOverhangs, terrainGroundY, soilOf,
+  ISLAND_THICKNESS,
 } from '../src/game/terrain.js';
-import {
-  OBSTACLE_CANDIDATES, drawObstacleCandidate,
-} from '../src/dev/obstacle-candidates.js';
+import { OBSTACLE_CANDIDATES, drawObstacleCandidate } from '../src/dev/obstacle-candidates.js';
 import {
   ANIMAL_OBSTACLE_CANDIDATES, DOG_OBSTACLE_VARIATIONS, drawAnimalObstacle,
 } from '../src/dev/animal-obstacle-candidates.js';
 import { BANANA_CANDIDATES, drawBananaCandidate } from '../src/dev/banana-candidates.js';
-import {
-  HAZARD_CANDIDATES, HAZARD_FAMILIES, drawHazardCandidate,
-} from '../src/dev/hazard-candidates.js';
+import { HAZARD_CANDIDATES, HAZARD_FAMILIES, drawHazardCandidate } from '../src/dev/hazard-candidates.js';
 import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
 import {
   COUNTRYSIDE_HAZARD_CANDIDATES, drawCountrysideHazard,
 } from '../src/dev/countryside-hazard-candidates.js';
-import {
-  SPRING_PAD_CANDIDATES, drawSpringPadCandidate,
-} from '../src/dev/spring-pad-candidates.js';
-import {
-  WATER_TOWER_CANDIDATES, drawWaterTowerCandidate,
-} from '../src/dev/water-tower-candidates.js';
-import {
-  DOOR_CANDIDATES, doorCandidatePalette,
-} from '../src/dev/door-candidates.js';
+import { SPRING_PAD_CANDIDATES, drawSpringPadCandidate } from '../src/dev/spring-pad-candidates.js';
+import { WATER_TOWER_CANDIDATES, drawWaterTowerCandidate } from '../src/dev/water-tower-candidates.js';
+import { doorCandidatePalette } from '../src/dev/door-candidates.js';
 import { MCGFN_CANDIDATES, drawMcgfnCandidate } from '../src/dev/mcgfn-candidates.js';
+import {
+  NEON_BG_CANDIDATES, drawNeonCandidate, NEON_LIVE_LAYER_COUNT,
+} from '../src/dev/neon-scenery-candidates.js';
+import {
+  SPACE_CABINET_CANDIDATES, drawSpaceCandidate,
+  PORTRAIT_FRAME_VARIANTS, drawPortraitFrameVariant,
+  CORRIDOR_LADDER, drawCorridorRung,
+  CEILING_RULES, drawCeilingRule,
+} from '../src/dev/space-cabinet-candidates.js';
+import {
+  NEON_GROUND_CANDIDATES, drawNeonGroundCandidate, drawNeonGroundStrip, NEON_GROUND_VISIBLE,
+} from '../src/dev/neon-ground-candidates.js';
+import {
+  drawNeonTrainGround, drawNeonRoofFurniture, neonTrainConsist, NEON_CARRIAGES,
+  drawNeonCatenary, drawNeonPantograph, drawNeonParallelTrain, NEON_APRON_SHIPPED,
+  drawNeonPlatform, drawNeonBoardingSteps, drawNeonBoardingSpring, NEON_PLATFORM_DROP,
+  drawNeonTrainSideOn, drawNeonSteps, drawNeonCab, NEON_CARRIAGE_HEIGHT,
+} from '../src/dev/neon-train-foreground.js';
+// THE SHIPPED PAINTER, NOT THE DEV COPY. These names used to come from
+// src/dev/neon-tron-train.js, which was the bake-off's own file — so every
+// train in this gallery, including the lab sheets, was drawing a painter the
+// game had stopped using. The dev file stays in source as the record of the
+// bake-off; it is not what anybody should be looking at. Same rule as the
+// MCGFN-1 plate: one painter serves the game and the gallery, and neither
+// retypes the other.
+import {
+  drawTronTrain, drawTronCar, drawTronSpeedStreaks, drawTronRoofView, tronConsistLength,
+  tronTrainRun, tronFlatRoof, TRON_PALETTE, TRON_SPEC_CONSIST, TRON_TRAIN,
+  TRON_TAPER_SHOULDER, TRON_BOARD_GAP,
+} from '../src/sprites/train.js';
 import { drawMcgfnPlate } from '../src/sprites/mcgfn.js';
-import { makeDoorWalk, openingEdge, WALK_DIR } from '../src/dev/door-walk-preview.js';
+
 import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
-  ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
-  PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES,
-  PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES,
-  PANDA_SETTLED, RUSTY_BROW_CANDIDATES,
-  RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES,
-  RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES,
-  RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_T1, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES,
-  RUSTY_W3B, PANDA_PAL,
+  ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES,
+  PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES,
+  PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, PANDA_SETTLED, RUSTY_BROW_CANDIDATES,
+  RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES,
+  RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_T1,
+  RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL,
 } from '../src/dev/hero-candidates.js';
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
-import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_STUBBLE_TONES, EGGSHELL_MOUTHS, EGGSHELL_OUTFITS, EGGSHELL_CAPES } from '../src/dev/eggshell-redesigns.js';
+import {
+  EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_STUBBLE_TONES,
+  EGGSHELL_MOUTHS, EGGSHELL_OUTFITS, EGGSHELL_CAPES,
+} from '../src/dev/eggshell-redesigns.js';
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
 import { proFaceWith, PRO_STACHE_SIZE, proMouthPartWith } from '../src/sprites/props.js';
 import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
@@ -173,13 +174,12 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // Lab sections that have been retired from the chooser remain in source for
 // reference, but are intentionally omitted from the rendered gallery.
 const HIDDEN_GALLERY_SECTIONS = new Set([
-  // SETTLED 18 Sep 2026: the PORTHOLE won on Peter's call and is in the game —
-  // arcade.js paints it for the two sliding boundary doors, and the swinging
-  // pair mid-concourse were restyled to match it. Both sheets stay in source as
-  // the record of the seven; src/dev/door-candidates.js goes when nobody wants
-  // to see the losers again.
-  'door-bakeoff',
-  'door-bakeoff-palettes',
+  // SETTLED 22 Sep 2026: GRID CITY at six layers won and is in the game —
+  // neonPack.bg() paints it, and on Neon 1 it ARRIVES rather than opening
+  // finished (see the arrival sheet below, and neonCityReveal). The sheet stays
+  // in source as the record of the four cities; src/dev/neon-scenery-candidates.js
+  // goes when nobody wants to see the losers again.
+  'neon-parallax-bakeoff',
   // SETTLED 15 Sep 2026: the THISTLE won and is in the game — props.js
   // paints it, OBSTACLES registers it, and PLUMBER_PATTERNS deals it on
   // tiers 0 and 1 with the cactus kept at tier 2. The sheet stays in source
@@ -405,7 +405,8 @@ function beginLab() {
 // scene at half size. Tiles that scale the context by WORLD_Z themselves are
 // already in frame pixels and must NOT set this.
 function tile(grid, name, sub, w, h, draw,
-  { animated = false, wide = false, hires = true, pixel = false, world = false } = {}) {
+  { animated = false, wide = false, hires = true, pixel = false, world = false,
+    displayScale = null } = {}) {
   // A RETIRED SECTION COSTS NOTHING. section() returns a DETACHED grid for
   // anything in HIDDEN_GALLERY_SECTIONS, but everything below still ran: the
   // canvas was created, its backing store allocated (a hires:6 tile is millions
@@ -443,7 +444,7 @@ function tile(grid, name, sub, w, h, draw,
     // that reaches this line is inside a connected grid (see the isConnected
     // guard above), so the observer is guaranteed to report on it.
     card, canvas, ctx, draw, animated, visible: false, painted: false,
-    w: logicalW, h: logicalH, name, hires, world, renderScale: rs,
+    w: logicalW, h: logicalH, name, hires, world, renderScale: rs, displayScale,
   };
   tiles.push(entry);
 
@@ -1560,7 +1561,7 @@ function propNominalSize(name) {
     const pal = cabinetPalette(cab, unlocked);
     // The first cabinet has no unlock threshold at all, so UNLOCKS has no entry
     // for it — say "free" rather than "undefined plugs".
-    tile(grid, cab.id + (unlocked ? '' : ' (locked)'), unlocked ? cab.genre : `${UNLOCKS[cab.id] ?? 0} plugs`,
+    tile(grid, cab.id + (unlocked ? '' : ' (locked)'), unlocked ? cab.name : `${UNLOCKS[cab.id] ?? 0} plugs`,
       CW + 8, CH + 8, (ctx, t) => {
         drawCabinetShell(ctx, 4, 4, CW, CH, pal);
         const scr = drawCabinetScreen(ctx, 4, 4, CW, CH, pal);
@@ -2317,6 +2318,99 @@ function propNominalSize(name) {
     hubBg, (ctx) => drawSpeech(ctx, { text: 'I OWN THIS CONCOURSE. ALLEGEDLY.', who: 'eggshell' }, { light: true }));
 }
 
+// ------------------------------------------- TERMINAL VELOCITY — the train
+//
+// THE SHIPPED TRAIN, from the painter the game runs: src/sprites/train.js.
+// Neon 1 and Neon 2 author their trains as ISLAND ROUTES and drawRoutes asks
+// this same file to paint them, so nothing here is a mock-up and nothing here
+// is retyped — the rule that keeps a plate honest (see the MCGFN-1 note) holds
+// for this one too.
+//
+// The bake-off that produced it is gone; the painter stayed.
+{
+  const grid = section('neon-train', 'TERMINAL VELOCITY — the train',
+    'The SHIPPED painter, on the cabinet\'s own night. A set is uniform cars between two tapers, '
+    + 'because a high-speed train is streamlined at BOTH ends and the two tapers facing each other '
+    + 'across a gap are what frame the leap from one train to the next. Drawn on a dark plate on '
+    + 'purpose: every line here is a glow, and a glow judged on white is not judged at all.');
+
+  const P = TRON_PALETTE.neon;
+  const H = 34;                         // NEON_TRAIN_H — a carriage, in world px
+  const LEN = tronConsistLength(TRON_TRAIN, TRON_BOARD_GAP);
+  // The night the train is actually seen against, so the bloom has something to
+  // bloom into.
+  const night = (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#0a0a2a');
+    g.addColorStop(1, '#1a1048');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  };
+  // The rail, drawn the way the lane draws it: one lit line, nothing else.
+  const rail = (ctx, y, w) => {
+    ctx.fillStyle = P.line;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(0, y, w, 1);
+    ctx.globalAlpha = 1;
+  };
+
+  tile(grid, 'the whole set', `six cars, ${Math.round(LEN)} world px — tail, four, cab`,
+    LEN + 16, H + 22, (ctx) => {
+      night(ctx, LEN + 16, H + 22);
+      rail(ctx, H + 10, LEN + 16);
+      drawTronTrain(ctx, 8, H + 10, {
+        consist: TRON_TRAIN, h: H, palette: P, glow: false, lit: 0.9, gap: TRON_BOARD_GAP,
+      });
+    }, { world: true, wide: true });
+
+  tile(grid, 'a carriage', 'both couplers, both doors, the cabin row',
+    96 + TRON_BOARD_GAP * 2 + 40, H + 22, (ctx) => {
+      const w = 96 + TRON_BOARD_GAP * 2 + 40;
+      night(ctx, w, H + 22);
+      rail(ctx, H + 10, w);
+      drawTronTrain(ctx, -76, H + 10, {
+        consist: [{ kind: 'car' }, { kind: 'car' }, { kind: 'car' }],
+        h: H, palette: P, glow: false, lit: 0.9, gap: TRON_BOARD_GAP,
+      });
+    }, { world: true });
+
+  for (const [kind, label, note] of [
+    ['engine', 'the cab', 'nose low and long; the windscreen stays TUBE cyan — glass you see through, not a room'],
+    ['tail', 'the tail', 'the nose mirrored: a set that runs both ways has a driver at each end'],
+  ]) {
+    tile(grid, label, note, 118 + 40, H + 22, (ctx) => {
+      night(ctx, 158, H + 22);
+      rail(ctx, H + 10, 158);
+      drawTronCar(ctx, { kind }, 20, H + 10, H, { palette: P, glow: false, lit: 0.9 });
+    }, { world: true });
+  }
+
+  // THE GHOST. Every train flies in and lands (trainArrival, src/game/terrain.js)
+  // and is translucent until the wheels are down, so the fade is part of the
+  // art rather than a transition over it. The rungs are the alpha the run
+  // actually uses at cruising height, half way down, and standing.
+  for (const [a, label] of [[0.34, 'cruising'], [0.67, 'coming down'], [1, 'landed']]) {
+    tile(grid, `ghost — ${label}`, `alpha ${a}`, 96 + 40, H + 22, (ctx) => {
+      const w = 96 + 40;
+      night(ctx, w, H + 22);
+      rail(ctx, H + 10, w);
+      ctx.globalAlpha = a;
+      drawTronCar(ctx, { kind: 'car' }, 20, H + 10, H, { palette: P, glow: false, lit: 0.9 });
+      ctx.globalAlpha = 1;
+    }, { world: true });
+  }
+
+  // What the player actually spends the section looking at: the roof IS the
+  // lane, so the side of the train is never in shot while you are on it.
+  tile(grid, 'on the roof', 'the lane pass — deck, joins, cabin row cut off by the frame',
+    240, 26, (ctx) => {
+      night(ctx, 240, 26);
+      drawTronRoofView(ctx, 0, 240, 4, {
+        apron: 19, carLen: 96, phase: 20, gaps: [], palette: P, glow: false, lit: 0.9,
+      });
+    }, { world: true, wide: true });
+}
+
 // ==================================================================
 // LAB & BAKE-OFFS — dev-only comparisons, rendered onto their OWN page
 // (dist/gallery-lab.html). These render real code paths but decide or
@@ -2324,57 +2418,6 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
-// ------------------------------------------------ cabinet power-state mockup
-// One cabinet, three power states, at a larger comparison size. This is a lab
-// study rather than a production asset: the brownout deliberately tests the
-// read of "the cabinet is trying to come back" before that treatment moves
-// into the hub painter.
-{
-  const cab = CABINETS.find((candidate) => candidate.id === 'plumber') || CABINETS[0];
-  const grid = section('cabinet-power-states', 'FOOD COURT - cabinet power states',
-    'Same cabinet, same silhouette: locked, partially powered, and restored. The middle treatment is the open art question.');
-  const CW = 64, CH = 136;
-  const stateTile = (name, sub, draw) => tile(grid, name, sub, CW + 10, CH + 10,
-    (ctx, t) => {
-      ctx.fillStyle = '#12121c';
-      ctx.fillRect(0, 0, CW + 10, CH + 10);
-      draw(ctx, t);
-    }, { animated: true, hires: 4 });
-
-  stateTile('LOCKED', 'dead - no identity', (ctx, t) => {
-    const pal = cabinetPalette(cab, false);
-    drawCabinetShell(ctx, 5, 5, CW, CH, pal);
-    const scr = drawCabinetScreen(ctx, 5, 5, CW, CH, pal);
-    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
-  });
-
-  stateTile('BROWNOUT', 'partial power - identity flickers', (ctx, t) => {
-    const pal = cabinetPalette(cab, true);
-    const level = cabinetBrownoutAlpha(t, pal.seed);
-    ctx.save();
-    ctx.globalAlpha = level;
-    drawCabinetShell(ctx, 5, 5, CW, CH, pal);
-    const scr = drawCabinetScreen(ctx, 5, 5, CW, CH, pal);
-    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
-    ctx.restore();
-
-    if (scr) drawCabinetSignalInterference(ctx, scr, t, pal.seed);
-
-    // A single failing fluorescent line makes the power loss legible even when
-    // the animation is paused on a dim frame.
-    ctx.fillStyle = `rgba(246,211,60,${(0.05 + phase * 0.08).toFixed(3)})`;
-    ctx.fillRect(11, 7, CW - 12, 1);
-    ctx.fillStyle = `rgba(8,7,16,${(0.16 - phase * 0.08).toFixed(3)})`;
-    ctx.fillRect(11, 48 + phase * 18, CW - 12, 3);
-  });
-
-  stateTile('RESTORED', 'stable power - fully alive', (ctx, t) => {
-    const pal = cabinetPalette(cab, true);
-    drawCabinetShell(ctx, 5, 5, CW, CH, pal);
-    const scr = drawCabinetScreen(ctx, 5, 5, CW, CH, pal);
-    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
-  });
-}
 // ---------------------------------------- Speed Zone water-tower bake-off
 // Ten gallery-only silhouettes, including the live production painter as A.
 // The cards show the tower against a quiet far-mesa slice at the same planted
@@ -7608,498 +7651,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 //     near-vertical is a hero lying down.
 // tests/shoe-slope.js pins the lean, the cap and the step cases.
 
-// --------------------------------------------- FROST — aurora borealis (lab)
-// The painter is live and shipping at the production day sky; what is OPEN is
-// how dark Frost's sky should be under it.
-//
-// An aurora is a night phenomenon and Frost is a daylight cabinet: pale blue
-// (#b8d8f0 -> #e0ecf8) with white-ish hills. Over that, the curtain can only
-// ever be a mint shimmer — legible, but it is reading as weather rather than as
-// light, and the rays lose most of their structure. Every card below is the
-// REAL frost bg() and ground() with one thing changed, the two sky stops, so
-// the comparison is about the sky and nothing else.
-//
-// The intensity column is the other half of the question: the aurora is already
-// dialled per stage (0.74 / 1 / 1.3), so a darker sky does not have to mean a
-// louder aurora — and `scene.auroraGain` can take it to zero on any stage
-// without removing the pass.
-{
-  const frost = CABINETS.find((cab) => cab.id === 'frost');
-  const grid = section('frost-aurora-bakeoff', 'FROST — aurora borealis: which sky?',
-    'OPEN — the aurora painter is live; the sky it hangs in is the open question. A is exactly what ships today. '
-    + 'B-E darken only the two sky stops, nothing else. The bottom row holds the intensity ladder and the OFF control, '
-    + 'so "darker sky" and "louder aurora" can be judged apart. Every card is the production bg() + ground() at one '
-    + 'authored frame, animated, so the drift and the ray shimmer are visible.');
-  const SKIES = [
-    ['A — LIVE production day', frost.sky, 3,
-      'What ships. The curtain reads as a mint cloud bank; the rays barely survive the value match.'],
-    ['B — late afternoon', ['#8fb6d8', '#d3dced'], 3,
-      'One step down. Enough separation for the rays to read, still unambiguously daytime.'],
-    ['C — dusk', ['#3f5f86', '#9db4cf'], 3,
-      'The first sky the aurora actually belongs in. Snow stays bright; the hero silhouette needs checking here.'],
-    ['D — polar night', ['#16243f', '#41648c'], 3,
-      'Full night. Strongest aurora, biggest change to the cabinet — HUD, coins and hazard reads all move with it.'],
-  ];
-  for (const [name, sky, stageIndex, note] of SKIES) {
-    const cab = { ...frost, sky };
-    const pack = getStylePack(cab.style, {});
-    tile(grid, name, note, W, H, (ctx, t) => {
-      const scene = { stageIndex };
-      pack.bg(ctx, t, t * 60, cab, 1000, scene, 0, scene);
-      pack.ground(ctx, t * 60, cab, []);
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-    }, { animated: true });
-  }
-  const LADDER = [
-    ['OFF — no aurora', 0, 'The control. Frost exactly as it was before this pass existed.'],
-    ['frost-1 · gain 0.74', null, 'Stage 1: two curtains, the first hint of it.'],
-    ['frost-2 · gain 1.00', null, 'Stage 2: three curtains at full authored strength.'],
-    ['frost-3 · gain 1.30', null, 'Stage 3: the night the fortress is under.'],
-  ];
-  const pack = getStylePack(frost.style, {});
-  LADDER.forEach(([name, gain, note], i) => {
-    const stageIndex = Math.max(1, i);
-    tile(grid, name, note, W, H, (ctx, t) => {
-      const scene = gain === 0 ? { stageIndex, auroraGain: 0 } : { stageIndex };
-      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
-      pack.ground(ctx, t * 60, frost, []);
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-    }, { animated: true });
-  });
-}
-
-// ------------------------------------------------ FROST blizzard ladder (lab)
-// Reduced visibility as weather, not as a difficulty setting.
-//
-// The two stand-ins on the lane are the whole argument. The tall mark is the
-// hero and the flat one is a bear trap at its real 16x8; if the veil ever takes
-// the flat one, the setting is too strong, whatever it does for atmosphere.
-// That is why the veil is a gradient that has given up by the groundline rather
-// than a wash over the frame — Frost is already the cabinet where you slide
-// into things you meant to avoid.
-{
-  const frost = CABINETS.find((cab) => cab.id === 'frost');
-  const grid = section('frost-blizzard-ladder', 'FROST — blizzard: how thick?',
-    'OPEN — the pass is live and climbs ONE RUNG PER CHECKPOINT across the whole act: clear until the first '
-    + 'checkpoint of Frost 1, then 0.27 / 0.45 / 0.72 / 1.02 / 1.32 / 1.50 at the six lines between there and the '
-    + 'last checkpoint of Frost 3, eased over a few seconds each so no crossing reads as a cut. The ceiling is 1.5, '
-    + 'half again past the strength the pass was dialled at, and the top two cards below are where that is judged. '
-    + '`scene.blizzard` overrides the lot anywhere. '
-    + 'The red bar is a hero and the dark bar is a bear trap at true size: the setting is wrong the moment the trap '
-    + 'stops reading. Animated, so the gusts and the camera-linked drift are visible.');
-  const LADDER = [
-    ['OFF', 0, 'Frost as it was. The control.'],
-    ['0.30 — drift', 0.3, 'Weather you notice and never fight. Roughly where Frost 1 starts snowing.'],
-    ['0.70', 0.7, 'The far ridge starts to go; the lane is untouched. Frost 2, second half.'],
-    ['1.00 — the old ceiling', 1, 'Full blizzard as the pass was first dialled. Frost 3 opens near here.'],
-    ['1.30', 1.3, 'Past the old maximum. The fortress is a suggestion.'],
-    ['1.50 — the ceiling', 1.5, 'The worst the act gets. Check the trap read HERE first.'],
-  ];
-  const marks = (ctx) => {
-    ctx.fillStyle = '#c4462f';
-    ctx.fillRect(120, GROUND_Y - 30, 14, 30);
-    ctx.fillStyle = '#2a2f3a';
-    ctx.fillRect(300, GROUND_Y - 8, 16, 8);
-  };
-  for (const [name, blizzard, note] of LADDER) {
-    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-    tile(grid, name, note, W, H, (ctx, t) => {
-      const scene = { stageIndex: 3, blizzard };
-      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
-      pack.ground(ctx, t * 60, frost, []);
-      marks(ctx);
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-    }, { animated: true });
-  }
-  // And the ladder as the player meets it: the act's six checkpoints in order,
-  // each tile the sky that is held from that line to the next one. Frost 1 is
-  // the one worth staring at — the storm has to arrive without announcing
-  // itself, which is why its first two rungs are the shallowest.
-  const CLIMB = [
-    [1, 0, 'Frost 1, before its first checkpoint. The clear day the act opens on.'],
-    [1, 1, 'Frost 1, first checkpoint. The snow starts here and nobody sees it start.'],
-    [1, 2, 'Frost 1, second checkpoint. Where Frost 2 picks the storm up.'],
-    [2, 1, 'Frost 2, first checkpoint.'],
-    [2, 2, 'Frost 2, second checkpoint. Where Frost 3 opens.'],
-    [3, 1, 'Frost 3, first checkpoint.'],
-    [3, 2, 'Frost 3, last checkpoint. The worst the cabinet gets, and it is held to the tape.'],
-  ];
-  for (const [stageIndex, banked, note] of CLIMB) {
-    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-    const name = 'frost ' + stageIndex + ' · '
-      + (banked ? 'checkpoint ' + banked : 'start line');
-    tile(grid, name, note, W, H, (ctx, t) => {
-      const scene = { stageIndex, blizzard: frostBlizzardRung(stageIndex, banked, 2) };
-      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
-      pack.ground(ctx, t * 60, frost, []);
-      marks(ctx);
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-    }, { animated: true });
-  }
-}
-
-// ------------------------------------ FROST sleigh in the sky (lab)
-// A REINDEER TEAM CROSSING THE ACT II SKY, AT THE END OF FROST 3.
-//
-// Frost is the cabinet where a sleigh can turn up without anybody having to
-// explain it, and a thing that crosses once and leaves is the cheapest set piece
-// in the game — no hitbox, no lane, no fairness question. What is open is how
-// much of the postcard to draw. One stag is weather; four and a sleigh is a
-// parade; the gold nose either joins the fortress windows or is a sticker on the
-// only cabinet with no stickers.
-//
-// THE MOMENT IS NOW FIXED, AND IT MOVED THE QUESTION. The flypast is armed the
-// instant the finish tape is in frame on frost-3 and has to be off the right of
-// the sky before the scene cuts — which means it is seen over a PARKED camera,
-// against the worst weather the cabinet has (the blizzard tops out at its last
-// checkpoint and is held to the tape), while the hero takes the pole and the
-// payoff chain runs. Three things the clear-sky cards never asked.
-//
-// So the sheets below are, in order:
-//   1. THE SILHOUETTE — clear sky, still the first question. Does it read.
-//   2. THE MOMENT — the same eight in the sky they will actually fly in.
-//   3. PORTRAIT — the same again in a real phone frame, which is a different
-//      picture and not a crop: the backdrop is drawn through a 1.778x zoom, so
-//      the phone shows 270 local px of a 480px sky, everything is 1.778x wider
-//      in rasterised ink, and the crossing is over in 2.7s instead of 3.8s.
-//
-// They all fly LEFT TO RIGHT at FROST_FLYPAST_SPEED, in the lane
-// frostFlypastLaneY resolves — the shipped flight, not a gallery one.
-{
-  const frost = CABINETS.find((cab) => cab.id === 'frost');
-  // Parked. The finish freezes the world and the hero runs across the screen, so
-  // the only thing moving in these pictures is the thing being judged — which is
-  // also the argument against the widest candidate and the argument for it.
-  const CAM = 3600;
-  // WHERE THE MAST STANDS, mirroring run.js: finishLineX() is
-  // max(VIEW_W - 72, PLAYER_X + 24) in world-view units and the pole is offset
-  // from the plunger, and applyWorld puts a world-view x at x * z on screen. The
-  // arc is aimed at it, so a card that guessed it would be flying a different
-  // path from the game.
-  const poleScreenXAt = (z) =>
-    Math.max(W - 72 * z, (PLAYER_X + 24) * z) + (PLUNGER_CX + POLE_STANDOFF) * z;
-  // And how high its finial is, which is the crest the arc is solved for.
-  const poleTopScreenYAt = (z) => screenYFor(GROUND_Y - POLE_H, z, 0, GROUND_Y);
-  const ARC = frostFlypastArc(null, poleTopScreenYAt(ZOOM_NORMAL), FROST_FLYPAST_CLEAR);
-  const POLE_X = poleScreenXAt(ZOOM_NORMAL);
-  const CROSS = (W + 2 * FROST_FLYPAST_SPAN) / FROST_FLYPAST_SPEED;
-  const LOOP = CROSS + 1.4;    // a beat of empty sky, so each pass reads as one event
-  // The shipped solver, so these cards fly the shipped path — see flypastAt.
-  const flight = (t, opts = {}) =>
-    flypastAt(t % LOOP, { left: 0, right: W, poleX: POLE_X, arc: ARC, ...opts });
-  // A still, for the sheets comparing two inks rather than watching a crossing:
-  // parked on the crest, over the mast, where the drawing is level.
-  const PARKED = flypastAt((POLE_X + FROST_FLYPAST_SPAN) / FROST_FLYPAST_SPEED,
-    { left: 0, right: W, poleX: POLE_X, arc: ARC });
-  // What the sky is doing at the tape: the ladder's top rung, held from frost-3's
-  // last checkpoint. A one-hit attempt banks no checkpoints and finishes under
-  // 1.02 instead, which is the second card in sheet 2.
-  const BANKED = frostBlizzardRung(3, 2, 2);
-  const ONE_HIT = frostBlizzardRung(3, 0, 2);
-
-  const grid = section('frost-sleigh', 'FROST — a sleigh across the sky',
-    'OPEN — a one-off flypast for the end of frost-3: it crosses, it is gone, it owns no hitbox. Judge SILHOUETTE first '
-    + '(does it read as reindeer, or as a bird), then WEIGHT (Frost mixes everything toward what is behind it, '
-    + 'and the sky is the furthest thing there is), then whether the warm accent belongs. '
-    + 'Clear sky and a scrolling world here — the moment itself is the next sheet. '
-    + 'Animated, and the last card is every candidate at true size.');
-  for (const cand of FROST_SLEIGH_CANDIDATES) {
-    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-    tile(grid, cand.name, cand.note, W, H, (ctx, t) => {
-      const scene = { stageIndex: 2, blizzard: 0 };
-      pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
-      pack.ground(ctx, t * 60, frost, []);
-      const f = flight(t);
-      if (f) cand.draw(ctx, f.x, f.y, t % LOOP);
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-    }, { animated: true });
-  }
-  // All eight in one sky, at the size they ship at and the spacing the eye gets.
-  {
-    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-    tile(grid, 'all eight · true size',
-      'The only card that settles the silhouette. Same sky, same height, no magnification — anything that needs the '
-      + 'gallery to be legible is already out.',
-      W, H, (ctx, t) => {
-        const scene = { stageIndex: 2, blizzard: 0 };
-        pack.bg(ctx, t, t * 60, frost, 1000, scene, 0, scene);
-        pack.ground(ctx, t * 60, frost, []);
-        FROST_SLEIGH_CANDIDATES.forEach((cand, i) => {
-          cand.draw(ctx, 120 + (i % 2) * 210, 26 + Math.floor(i / 2) * 30, t);
-        });
-        if (pack.post) pack.post(ctx, t);
-        if (pack.weather) pack.weather(ctx, t);
-      }, { animated: true });
-  }
-
-  // --------------------------------------------------- 2. the moment itself
-  const moment = section('frost-sleigh-finish', 'FROST — the flypast at the tape',
-    'THE SHIPPED MOMENT: frost-3, camera parked at the finish, blizzard at the top of its ladder (' + BANKED.toFixed(2)
-    + ') and the aurora up. This is the card that decides it, because the sky it has to survive is not the one the '
-    + 'silhouettes were drawn against — the snow is between the player and it, and everything else in the frame '
-    + 'has stopped moving. Flies in over the left and out over the right, once, at the shipped speed.');
-  for (const cand of FROST_SLEIGH_CANDIDATES) {
-    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-    tile(moment, cand.name, cand.note.split('.')[0] + '.', W, H, (ctx, t) => {
-      const scene = { stageIndex: 3, blizzard: BANKED };
-      pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
-      pack.ground(ctx, CAM, frost, []);
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-      // Above the snow, which is where it ships — see FROST_FLYPAST_DEPTH.
-      const f = flight(t);
-      if (f) drawFrostFlypast(ctx, f.x, f.y, t % LOOP, { id: cand.id, tilt: f.tilt });
-    }, { animated: true });
-  }
-  {
-    const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-    const cand = FROST_SLEIGH_BY_ID[FROST_FLYPAST];
-    tile(moment, 'shipped · one-hit weather',
-      'The same flypast on an attempt that banked no checkpoints, which finishes under ' + ONE_HIT.toFixed(2)
-      + ' instead of ' + BANKED.toFixed(2) + '. The flypast has to work at both ends of that, because the player chooses which.',
-      W, H, (ctx, t) => {
-        const scene = { stageIndex: 3, blizzard: ONE_HIT };
-        pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
-        pack.ground(ctx, CAM, frost, []);
-        if (pack.post) pack.post(ctx, t);
-        if (pack.weather) pack.weather(ctx, t);
-        const f = flight(t);
-        if (f) drawFrostFlypast(ctx, f.x, f.y, t % LOOP, { id: cand.id, tilt: f.tilt });
-      }, { animated: true });
-  }
-
-  // ------------------------------------------ 2b. how big, and how dark
-  // THE ONE THE BLIZZARD FORCED. At the authored size and ink the team is a
-  // smudge at the tape — measured on the real ending, the only parts that came
-  // through the snow were the lead's nose and the hat's bobble.
-  //
-  // Two levers, swept together because they trade against each other: SCALE is
-  // the thing being nearer (applied about the lead's nose, so the ink weights
-  // come up with it and the hairlines stop being hairlines), and the PALETTE is
-  // how dark the silhouette is against a sky the veil has already lifted. A
-  // small dark team and a big pale one are not the same picture and only one of
-  // them is a shadow crossing the sky.
-  //
-  // Read down a column for size at one darkness and across a row for darkness at
-  // one size. The shipped pair is marked. Anything past 'shadow' is the mistake
-  // the peaks made: a hard object in the furthest layer in the frame.
-  {
-    const SCALES = [1, 1.7, 2.1, 2.5];
-    const INKS = ['sky', 'dusk', 'shadow', 'night', 'pitch'];
-    const weight = section('frost-sleigh-weight', 'FROST — how big, and how dark',
-      'The shipped candidate (' + FROST_FLYPAST + ') at the tape under the full blizzard, swept across size and ink. '
-      + 'Size is the thing being NEARER — the transform is about the lead\'s nose, so the antlers and traces come up '
-      + 'off the sub-pixel floor with it rather than staying hairlines on a bigger animal. Ink goes DOWN toward a '
-      + 'shadow, never out toward black: the sky is the furthest layer in the frame and a hard object in it is the '
-      + 'mistake FROST_ATMOSPHERE exists to stop. Currently shipping ' + FROST_FLYPAST_SCALE + 'x / '
-      + FROST_FLYPAST_PALETTE + '. Parked mid-sky and still, so the only differences on this sheet are the two levers.');
-    for (const palette of INKS) {
-      for (const scale of SCALES) {
-        const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-        const shipped = scale === FROST_FLYPAST_SCALE && palette === FROST_FLYPAST_PALETTE;
-        tile(weight, palette + ' · ' + scale + 'x' + (shipped ? '  ← shipped' : ''),
-          'rung ink ' + FLYPAST_PALETTES[palette].ink + ' · worn '
-          + (FROST_SLEIGH_BY_ID[FROST_FLYPAST].softInk
-            ? FLYPAST_PALETTES[palette].inkSoft + ' (this one asks for the soft pair)'
-            : FLYPAST_PALETTES[palette].ink)
-          + ' · about ' + Math.round((FROST_SLEIGH_BY_ID[FROST_FLYPAST].span + 6) * scale) + 'px of sky',
-          W, H, (ctx, t) => {
-            const scene = { stageIndex: 3, blizzard: BANKED };
-            pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
-            pack.ground(ctx, CAM, frost, []);
-            // PARKED, and every card parked identically. These sixteen are one
-            // comparison, and a comparison whose subject is at a different point
-            // of its crossing on every card is sixteen pictures of nothing. The
-            // moment sheet above is where it flies.
-            if (pack.post) pack.post(ctx, t);
-            if (pack.weather) pack.weather(ctx, t);
-            drawFrostFlypast(ctx, PARKED.x, PARKED.y, 1.3, { scale, palette, tilt: PARKED.tilt });
-          });
-      }
-    }
-  }
-
-  // ------------------------------------------- 2c. the light it carries
-  // A DARK TEAM ON A PALE SKY IS A HOLE. Darkening it was what made it visible
-  // at all; a glow is what makes it a thing flying through weather rather than a
-  // shape cut out of the sky behind it — and at the tape it is the only reason
-  // the eye goes to that corner while a celebration runs in the other one.
-  //
-  // Warm or cold is the real question, and it is not a taste one: Act II has
-  // exactly one warm family (the fortress windows, the lead's nose, the hat's
-  // bobble) and a cold halo opens a second one on the cabinet's last screen.
-  // Both are here anyway, because it was asked.
-  //
-  // Each card is parked and still, at the shipped size, ink and depth.
-  {
-    const GLOWS = ['none', 'soft', 'warm', 'bright', 'moon'];
-    const glowSheet = section('frost-sleigh-glow', 'FROST — the light it carries',
-      'The shipped flypast at the tape with each halo. It is painted UNDER the silhouette and sized off the '
-      + 'candidate\'s own span, so a lone stag does not wear the four-and-a-sleigh\'s light. Currently shipping '
-      + FROST_FLYPAST_GLOW + '. The last card is the cold one — judge it against the fortress windows, not on '
-      + 'its own.');
-    for (const glow of GLOWS) {
-      const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-      const spec = FLYPAST_GLOWS[glow];
-      tile(glowSheet, glow + (glow === FROST_FLYPAST_GLOW ? '  ← shipped' : ''),
-        spec ? 'rgb(' + spec.color + ') at ' + spec.alpha : 'no light at all — the hole this sheet exists to close',
-        W, H, (ctx, t) => {
-          const scene = { stageIndex: 3, blizzard: BANKED };
-          pack.bg(ctx, t, CAM, frost, 1000, scene, 0, scene);
-          pack.ground(ctx, CAM, frost, []);
-          if (pack.post) pack.post(ctx, t);
-          if (pack.weather) pack.weather(ctx, t);
-          drawFrostFlypast(ctx, PARKED.x, PARKED.y, 1.3, { glow, tilt: PARKED.tilt });
-        });
-    }
-  }
-
-  // ------------------------------------------------------------ 3. portrait
-  // A REAL PHONE FRAME, BUILT THE WAY THE RUN BUILDS IT — frameForViewport, the
-  // HUD layout, the resolved scenery bands and the 1.778x background zoom around
-  // the authored groundline. Not a crop of the landscape card: in portrait the
-  // authored 0..232 sky is not the sky, and a flight authored to the frame would
-  // enter a third of the way in and leave a third of the way out.
-  //
-  // The one thing these cards fake is the ground: the run draws it through the
-  // world camera at 3.5x with a hero standing on it, and these draw it at
-  // authored scale on the right groundline, because the sky needs something to
-  // end against. Everything above that line — the entire question — is the
-  // shipped path.
-  {
-    const PH_W = 393, PH_H = 852;     // iPhone 15 Pro class, the frame every number below came off
-    const pFrame = frameForViewport({
-      mode: PHONE_PORTRAIT, viewportWidth: PH_W, viewportHeight: PH_H,
-      safeInsets: { top: 59, bottom: 34 },
-    });
-    const pHud = portraitHudLayout(pFrame);
-    const Z = PORTRAIT_BACKGROUND_ZOOM;
-    const SHIFT = pFrame.groundScreenY - GROUND_Y;
-    const FH = Math.round(pFrame.height);
-    const sceneryLayout = resolveSceneryLayout({
-      frame: pFrame, hud: pHud, groundY: GROUND_Y, backgroundZoom: Z,
-    });
-    const coverage = Object.freeze({
-      left: (0 - W / 2) / Z + W / 2,
-      right: (W - W / 2) / Z + W / 2,
-      width: W / Z,
-      lookahead: 96 / Z,
-    });
-    const band = Object.freeze({
-      top: GROUND_Y + (0 - SHIFT - GROUND_Y) / Z,
-      bottom: GROUND_Y + (FH - SHIFT - GROUND_Y) / Z,
-    });
-    // The same arc the run flies here, off this frame's own numbers: the exit is
-    // the top of what the phone actually shows (the band), and the mast is where
-    // the portrait camera's own zoom puts it.
-    const P_ZOOM = 3.5;                 // the portrait camera's resting magnification
-    const toLocalY = (screenY) => (screenY - SHIFT - GROUND_Y) / Z + GROUND_Y;
-    const pArc = frostFlypastArc({ backgroundBand: band },
-      toLocalY(SHIFT + screenYFor(GROUND_Y - POLE_H, P_ZOOM, 0, GROUND_Y)), FROST_FLYPAST_CLEAR);
-    const P_POLE_LOCAL = (poleScreenXAt(P_ZOOM) - W / 2) / Z + W / 2;
-    const P_CROSS = (coverage.right + 2 * FROST_FLYPAST_SPAN - coverage.left) / FROST_FLYPAST_SPEED;
-    const pFlight = (t) => flypastAt(t % LOOP,
-      { left: coverage.left, right: coverage.right, poleX: P_POLE_LOCAL, arc: pArc });
-    // What to put back after each portrait card — the page's own landscape frame.
-    const LANDSCAPE_FRAME = presentationFrame();
-    const pContext = (blizzard) => ({
-      portrait: true,
-      stageIndex: 3,
-      progress: 1,
-      blizzard,
-      roadGaps: [],
-      backgroundXOffset: 0,
-      worldZoom: 3.5,
-      cameraShiftY: 0,
-      frameShiftY: SHIFT,
-      cloudOffsetY: 0,
-      sunOffsetY: 0,
-      sceneryOffsetY: 0,
-      parallaxDepths: BACKGROUND_DEPTHS,
-      sceneryLayout,
-      backgroundZoom: Z,
-      groundAnchorRatio: 0.70,
-    });
-    const portrait = section('frost-sleigh-portrait', 'FROST — the flypast in portrait',
-      'The same moment in a real ' + PH_W + 'x' + PH_H + ' phone frame (' + W + 'x' + FH + ' logical), built through '
-      + 'frameForViewport and the resolved scenery bands. The sky runs from ' + Math.round(sceneryLayout.screenRect.top)
-      + ' to the groundline at ' + Math.round(pFrame.groundScreenY) + ', which is only ' + Math.round(sceneryLayout.localRect.height)
-      + 'px of PACK-LOCAL sky because the whole backdrop is drawn through a ' + Z.toFixed(3) + 'x zoom. '
-      + 'Three things change and none of them is the crop: the team is 1.778x wider in rasterised ink, so the hairline '
-      + 'strokes that vanish in the landscape cards (F and H most of all) are here; it covers 270 local px of window '
-      + 'instead of 480, so the crossing is over in ' + P_CROSS.toFixed(1) + 's against '
-      + CROSS.toFixed(1) + 's; and the ARC is solved against THIS frame\'s mast — it crests at local '
-      + pArc.apex.toFixed(0) + ' here against ' + ARC.apex.toFixed(0) + ' in landscape, because the pole is drawn '
-      + 'through the world camera and the portrait one puts it somewhere else. That is the whole reason the arc is '
-      + 'pinned to the pole and not to the picture: aimed at the top of the frame it would climb three times as far '
-      + 'here as it does in landscape. Judged at true size: this is bigger than the phone shows it.');
-    for (const cand of FROST_SLEIGH_CANDIDATES) {
-      const pack = getStylePack(frost.style, { paperPreset: 'cardstockClear' });
-      tile(portrait, cand.name, cand.name + ' — portrait, at the tape', W, FH, (ctx, t) => {
-        const scene = { stageIndex: 3, blizzard: BANKED };
-        const context = pContext(BANKED);
-        // THE FRAME IS PUBLISHED, NOT FAKED. The snow, the veil and the paper
-        // pass are full-FRAME painters that fill 0..H off the renderer's own
-        // export — at the landscape 270 they would cover the top quarter of this
-        // card and leave a hard seam straight through the flypast's lane. So the
-        // card sets the presentation frame it is drawing, exactly as a phone
-        // would, and puts it back afterwards. Safe here because the gallery
-        // never initialises the renderer's canvas, so nothing resizes.
-        setPresentationFrame(pFrame);
-        try {
-          // The run's own preamble: a base sky under the shifted backdrop, then
-          // the shift, then the zoom about the authored groundline.
-          const sky = ctx.createLinearGradient(0, SHIFT, 0, SHIFT + H);
-          sky.addColorStop(0, frost.sky[0]);
-          sky.addColorStop(1, frost.sky[1]);
-          ctx.fillStyle = sky;
-          ctx.fillRect(0, 0, W, FH);
-          ctx.save();
-          ctx.translate(0, SHIFT);
-          ctx.translate(W / 2, GROUND_Y);
-          ctx.scale(Z, Z);
-          ctx.translate(-W / 2, -GROUND_Y);
-          ctx.__mashBackgroundCoverage = coverage;
-          ctx.__mashBackgroundBand = band;
-          try {
-            pack.bg(ctx, t, CAM, frost, 1000, scene, 0, context);
-          } finally {
-            delete ctx.__mashBackgroundCoverage;
-            delete ctx.__mashBackgroundBand;
-          }
-          ctx.restore();
-          // The ground, at the groundline the frame actually puts it on but at
-          // AUTHORED scale — the run draws it through the world camera at 3.5x
-          // and stands a hero on it. It is here so the sky has something to end
-          // against; nothing below this line is being judged.
-          ctx.save();
-          ctx.translate(0, SHIFT);
-          pack.ground(ctx, CAM, frost, []);
-          ctx.restore();
-          if (pack.post) pack.post(ctx, t);
-          if (pack.weather) pack.weather(ctx, t);
-          // Above the snow and in SCREEN space, the way the run's overlay draws
-          // it: the point and the size both come off the backdrop transform
-          // rather than being drawn inside it.
-          const f = pFlight(t);
-          if (f) {
-            drawFrostFlypast(ctx, (f.x - W / 2) * Z + W / 2, SHIFT + GROUND_Y + (f.y - GROUND_Y) * Z,
-              t % LOOP, { id: cand.id, zoom: Z, tilt: f.tilt, scale: flypastScaleFor(true) });
-          }
-        } finally {
-          setPresentationFrame(LANDSCAPE_FRAME);
-        }
-      }, { animated: true, hires: 2 });
-    }
-  }
-}
-
-
 // ------------------------------- countryside hazard bake-off (lab only)
 // WHAT STANDS IN PLUMBER'S LANE INSTEAD OF A SAGUARO.
 //
@@ -8547,57 +8098,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ------------------------------------------- food court — sliding door bake-off
-// The two doors the hero actually walks through (EXIT and the Trophy Room) now
-// slide open on approach. The question here is only what they should LOOK like
-// while they do it — the aperture, the travel and the walk-up behaviour are the
-// same under every candidate, and the wall slab and sign board are the shipped
-// ones in every tile.
-//
-// Every row is judged on the whole gesture, not the closed pose: SHUT, HALF and
-// OPEN are the same door at three points of one travel, and LIVE runs it. A
-// door that reads well shut and turns into a black hole halfway is not a door
-// this room can use, and only the halfway column shows that.
-{
-  const DW = 44, DH = 84, GAP = 20, M = 12;
-  const TW = M * 2 + DW * 4 + GAP * 3, TH = DH + 28;
-  const FLOOR = TH - 18;
-  const POSES = ['SHUT', 'HALF', 'OPEN', 'LIVE'];
-
-  // The concourse the doors are set into: skirting, tiled floor and a flat
-  // wall, lifted straight off drawFoodCourtFloor so nothing is being judged
-  // against a backdrop the food court does not have.
-  const concourse = (ctx) => {
-    ctx.fillStyle = '#241d31';
-    ctx.fillRect(0, 0, TW, FLOOR);
-    ctx.fillStyle = '#38304a';
-    ctx.fillRect(0, FLOOR, TW, 6);
-    ctx.fillStyle = '#1c1626';
-    ctx.fillRect(0, FLOOR + 6, TW, TH - FLOOR - 6);
-    for (let x = 0; x < TW; x += 32) {
-      ctx.fillStyle = (x / 32) % 2 === 0 ? '#241c30' : '#1c1626';
-      ctx.fillRect(x, FLOOR + 10, 32, TH - FLOOR - 10);
-    }
-  };
-
-  const grid = section('door-bakeoff', 'FOOD COURT — sliding door bake-off',
-    'SETTLED 18 Sep 2026 — E, the PORTHOLE, ships: round window, chrome ring, sign-coloured band. A mall door, not a facility door. A is now the same painter, so the control row and E read alike.');
-  for (const candidate of DOOR_CANDIDATES) {
-    const pal = doorCandidatePalette(candidate.id, DOOR_PALETTES.exit);
-    tile(grid, `${candidate.letter} — ${candidate.name}`, candidate.note, TW, TH,
-      (ctx, t) => {
-        concourse(ctx);
-        const live = 0.5 - 0.5 * Math.cos(t * 1.1);
-        [0, 0.5, 1, live].forEach((open, i) => {
-          drawDoor(ctx, M + i * (DW + GAP), FLOOR - DH, DW, DH, pal, t, open);
-        });
-        ctx.fillStyle = 'rgba(255,255,255,.42)';
-        ctx.font = '5px ui-monospace, monospace';
-        POSES.forEach((label, i) => ctx.fillText(label, M + i * (DW + GAP) + 1, TH - 4));
-      }, { animated: true, wide: true, hires: 6 });
-  }
-}
-
 // ---------------------------------------- intro entrance opening mockups
 {
   const DW = 44, DH = 84, GAP = 12, M = 10;
@@ -8654,144 +8154,1176 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ------------------------------ food court — walking through a door (shipped)
-// The staged exit the hub and the Trophy Room both play. src/game/hub/door-walk.js
-// is the sequence itself; this draws the real thing rather than a copy of it.
+// ------------------------------------------- NEON — how deep is the city? (lab)
+// OPEN. Neon Blasters has the thinnest backdrop in the game: a starfield at
+// 0.05, ONE row of eight wireframe blocks at 0.25, and six flat rules on the
+// horizon. Three layers, two of which barely move — so the cabinet reads as a
+// lane sliding across a printed sheet rather than as a city the player is
+// travelling through.
 //
-// TWO RULES it is judged against. He never changes size — he keeps his stride
-// and his scale and walks BEHIND the door, which eats him. And it is one
-// continuous motion from wherever he already is: the sequence places him
-// nowhere, so its length depends on how far he had left to walk, which is why
-// there is no fixed phase table to print here.
+// Two questions, and they are separable, which is why there are two rows here.
+// WHAT is back there: four cities, each a complete backdrop with its own sky.
+// HOW MUCH of it: the same city drawn at 2, 4, 6 and all 7 of its layers, so
+// "add more parallax" can be answered with a number instead of a feeling.
+//
+// THE FLYER BAND IS THE JUDGE. Drones sit at world alt 13 and targets at 40,
+// and the camera doubles world units on the way to the frame, so everything the
+// player must read lives between screen y 130 and the groundline at 232 — the
+// lower two fifths of the picture, which is exactly where a skyline wants to
+// be. Every card carries a real drone, a real target and B33P on his real mark,
+// through the run's own camera. A backdrop that eats them has lost, however
+// good the sky is.
 {
-  const DW = 44, DH = 84, HERO = 'lorenzo';
-  const HH = 46;                       // PLAYER_H — what the hub actually draws
-  const TW = 168, TH = DH + 30, FLOOR = TH - 16;
-  const DOOR_X = TW / 2 - DW / 2, DOOR_Y = FLOOR - DH;
-  const GEOM = { lx: DOOR_X + DW * 0.165, lw: DW * 0.67, wx: DOOR_X + DW * 0.12, ww: DW * 0.76 };
-  const SPEED = 120;                   // HUB_WALK_SPEED
-  const START = 58;                    // roughly a walk-up's worth of concourse
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-parallax-bakeoff', 'TERMINAL VELOCITY — how deep is the city?',
+    'OPEN — the backdrop is 3 layers today (stars 0.05, one wireframe row 0.25, six static horizon rules) '
+    + 'and it is the flattest in the game. A is exactly what ships. B–E are complete replacements, each an '
+    + 'ordered stack of layers with its own scroll factor; the sky stops move with them where the option '
+    + 'calls for it. The second row is the depth ladder: ONE candidate at 2, 4, 6 and 7 layers, which is '
+    + 'the "how much parallax" question on its own. Every card carries a real drone (alt 13), a real target '
+    + '(alt 40) and B33P on his mark, drawn through the run\'s camera — bright ink is kept above screen y '
+    + '130 and anything inside the hazard band is silhouette or dim line. Animated: half of what depth does '
+    + 'is only visible moving.');
 
-  const ROWS = [
-    { kind: 'slide', type: 'exit', pal: DOOR_PALETTES.exit, title: 'sliding — EXIT',
-      note: 'open before he arrives; he follows the leaf into its pocket and it covers him' },
-    { kind: 'swing', type: 'arcade', pal: DOOR_PALETTES.arcade, title: 'hinged — ARCADE CORNER',
-      note: 'swings inward out of his way while he walks; the far jamb takes him' },
+  // The lane furniture, identical on every card. The two hazards are re-seated
+  // in front of the camera each frame rather than left at a fixed world x, so
+  // the city scrolls past at speed while the things being read stay where the
+  // player would be reading them.
+  const drone = makeObstacle('drone', 0);
+  const target = makeObstacle('target', 0);
+  function lane(ctx, camX, t) {
+    drone.x = camX + 150;
+    target.x = camX + 205;
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+    drawWorldEntity(ctx, drone, camX, t, pack, {});
+    drawWorldEntity(ctx, target, camX, t, pack, {});
+    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+    ctx.restore();
+  }
+
+  tile(grid, 'A — LIVE production', `what ships · ${NEON_LIVE_LAYER_COUNT} layers · 0.05 / 0.25 / static`,
+    W, H, (ctx, t) => {
+      const camX = t * 60;
+      pack.bg(ctx, t, camX, neon, 1000, null, 0, null);
+      lane(ctx, camX, t);
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+
+  for (const cand of NEON_BG_CANDIDATES) {
+    const factors = cand.layers.map((l) => l.f).join(' / ');
+    tile(grid, `${cand.letter} — ${cand.name}`,
+      `${cand.note}<br>${cand.layers.length} layers · ${factors}`, W, H, (ctx, t) => {
+        const camX = t * 60;
+        drawNeonCandidate(ctx, cand, { camX, t, cab: neon });
+        lane(ctx, camX, t);
+        if (pack.post) pack.post(ctx, t);
+      }, { animated: true });
+  }
+
+  // The ladder. GRID CITY carries it because it is the option that invents
+  // nothing — it is the cabinet's own wireframe city given a stack — so a rung
+  // here is a depth reading rather than a vote for a different subject.
+  const ladderCand = NEON_BG_CANDIDATES[0];
+  const RUNGS = [
+    [2, 'Sky and nothing in it. Roughly the depth the cabinet has now, drawn in the new palette.'],
+    [4, 'A mass at the back and one wireframe row in front of it. This is where it stops being a sheet.'],
+    [6, 'The second wireframe row, at twice the first one\'s rate, and the smog that keeps the hazard band quiet.'],
+    [ladderCand.layers.length, 'Everything: the floor that converges and the rigging in front, which is the only layer that passes FASTER than the lane.'],
   ];
+  for (const [layers, note] of RUNGS) {
+    const stack = ladderCand.layers.slice(0, layers);
+    const factors = stack.map((l) => `${l.name} ${l.f}`).join(' · ');
+    tile(grid, `ladder · ${layers} layers`, `${note}<br>${factors}`, W, H, (ctx, t) => {
+      const camX = t * 60;
+      drawNeonCandidate(ctx, ladderCand, { camX, t, cab: neon, layers });
+      lane(ctx, camX, t);
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+  }
+}
 
-  const concourse = (ctx) => {
-    ctx.fillStyle = '#241d31'; ctx.fillRect(0, 0, TW, FLOOR);
-    ctx.fillStyle = '#38304a'; ctx.fillRect(0, FLOOR, TW, 5);
-    ctx.fillStyle = '#1c1626'; ctx.fillRect(0, FLOOR + 5, TW, TH - FLOOR - 5);
-  };
+// ------------------------------------------- NEON 1 — the city arrives (lab)
+// THE SIX-LAYER CITY IS IN THE GAME. What this sheet holds is the one thing a
+// still frame of it cannot show: on Neon 1 it is not there when the stage
+// opens.
+//
+// The cabinet starts on two layers — stars, haze, and a veil with nothing
+// behind it to veil — and assembles itself as the run goes. The mass at the
+// back arrives first, then the far wireframe row, then the near one, each
+// smoothstepped over about an eighth of the level so nobody can name the frame
+// a row of towers appeared. By roughly three quarters through, the player is
+// running past the whole thing.
+//
+// Every tile is the REAL pack.bg() with one number changed — the stage progress
+// the run would have handed it — so the sheet cannot drift from the schedule
+// the cabinet uses. The last tile is Neon 2, which opens finished: the arrival
+// is the cabinet introducing itself, and a cabinet that re-introduces itself
+// every stage is a cabinet with a loading screen.
+{
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-city-arrival', 'TERMINAL VELOCITY — the city arrives',
+    'SHIPPED 22 Sep 2026 — six layers (stars 0.03, haze 0.02, silhouette mass 0.07, wireframe rows at '
+    + '0.15 and 0.3, and the smog that keeps the hazard band quiet), and on stage 1 they arrive one at a '
+    + 'time: the mass at 0.17 of the level, the far row at 0.38, the near row at 0.60, each faded in over '
+    + 'about an eighth of the run. Each tile is the production bg() + ground() at one authored progress, '
+    + 'animated. Every card carries a real drone (world alt 13), a real target (alt 40) and B33P on his '
+    + 'mark through the run\'s own camera — the reason the smog exists is that the band between screen y '
+    + '130 and the groundline belongs to them. The moon keeps its own clock: it waxes over the first TWO '
+    + 'stages — half a lunation each, never seen to go backwards — so Neon 1 opens on a new moon and Neon '
+    + '2 finishes under a full one. Neon 3 is already full when it starts, because Neon 3 is the PARTIAL '
+    + 'ECLIPSE: the umbra arrives from the leading edge and settles at its deepest at the tape, taking a '
+    + 'bite and no more. An eclipsed moon goes copper rather than black — it is lit by every sunrise on '
+    + 'Earth at once — so the shadow takes the moonlight out and puts that colour back. The starfield is '
+    + 'the title screen\'s, baked: soft glowing points, varied size and temperature, a cross flare on the '
+    + 'brightest, three layers each breathing on their own clock and each at its own parallax rate. '
+    + 'Its height is the band the tuner labels SUN / MOON; '
+    + 'the three city rows take FAR LANDMARK, MIDDLE SCENERY and NEAR SCENERY, read as rooflines.');
 
-  // A real sequence, built the way the hub builds it, so the preview cannot
-  // drift from the game.
-  const walkFor = (row) => makeDoorWalk({
-    kind: row.kind, type: row.type, doorX: DOOR_X + DW / 2,
-    fromX: DOOR_X + DW / 2 - WALK_DIR[row.type] * START,
-    speed: SPEED,
-  });
+  const drone = makeObstacle('drone', 0);
+  const target = makeObstacle('target', 0);
+  function lane(ctx, camX, t) {
+    drone.x = camX + 150;
+    target.x = camX + 205;
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+    drawWorldEntity(ctx, drone, camX, t, pack, {});
+    drawWorldEntity(ctx, target, camX, t, pack, {});
+    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+    ctx.restore();
+  }
 
-  const frameAt = (row, walk, t, clock, ctx) => {
-    walk.t = t;
-    const s = walk.state();
-    concourse(ctx);
-    // Door first, hero over it — the order the concourse paints in, since he
-    // walks along the FRONT of the wall. What hides him is the clip.
-    drawDoor(ctx, DOOR_X, DOOR_Y, DW, DH, row.pal, clock, s.doorOpen);
-    if (s.walking) {
-      // roomSide, not travel direction — openingEdge keys off which side of the
-      // doorway the room is on, so the same rule serves leaving and arriving.
-      const edge = openingEdge(row.kind, s.doorOpen, s.roomSide, GEOM);
-      const far = TW * 2;
+  const STOPS = [
+    [1, 0, 'The start line. Two layers: stars and haze over an empty sky, and a new moon.'],
+    [1, 0.17, 'The mass at the back begins. Nothing has an edge yet.'],
+    [1, 0.3, 'The far city is in. Still one moving layer behind the lane.'],
+    [1, 0.45, 'The first wireframe row, half in. Two rates now separate.'],
+    [1, 0.6, 'The near row starts. This is the busiest moment of the ramp.'],
+    [1, 0.8, 'Finished, and held to the tape. The whole six-layer city.'],
+    [2, 0.1, 'NEON 2 at its start line — every later stage opens finished.'],
+    [2, 0.9, 'NEON 2 near the tape: the full moon the first two stages have been walking toward.'],
+    [3, 0.35, 'NEON 3. The umbra arrives from the leading edge.'],
+    [3, 0.7, 'Deepening. The light goes out of the halo and what is left of it goes copper.'],
+    [3, 1, 'NEON 3 at the tape: the deepest the bite gets. A lit limb survives — this is a PARTIAL '
+      + 'eclipse, and totality took the one cold light out of the frame entirely.'],
+  ];
+  for (const [stageIndex, progress, note] of STOPS) {
+    const pct = `${Math.round(progress * 100)}% through`;
+    const layers = neonCityReveal(stageIndex, progress);
+    const eclipse = neonMoonEclipse(stageIndex, progress);
+    const dial = `${['farMass', 'midWire', 'nearWire']
+      .map((k) => `${k} ${layers[k].toFixed(2)}`).join(' · ')} · moon ${
+      (neonMoonPhase(stageIndex, progress) * 100).toFixed(0)}%${
+      eclipse > 0 ? ` · eclipse ${(eclipse * 100).toFixed(0)}%` : ''}`;
+    tile(grid, `neon ${stageIndex} · ${pct}`, `${note}<br>${dial}`, W, H, (ctx, t) => {
+      const camX = t * 60;
+      const scene = { stageIndex, progress };
+      pack.bg(ctx, t, camX, neon, 1000, scene, 0, scene);
+      lane(ctx, camX, t);
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+  }
+}
+
+// ------------------------------------------ NEON — the train foreground (lab)
+// THE HANDOFF, DRAWN. docs/NEON_TRAIN_CARRIAGE_HANDOFF.md proposes replacing
+// Neon's lane with the roofs of a moving train; this is that proposal against
+// the six-layer city, so the two can be judged as one picture rather than as a
+// document and a screenshot.
+//
+// The roof IS the groundline. Every carriage top is GROUND_Y, exactly where the
+// lane already is, so the hero's mark, the physics, the spawner's fairness
+// contracts and every hitbox are untouched — what changes is what the player is
+// told they are standing on. The gaps are the run's OWN gap obstacles, dressed:
+// the train explains the level, it does not author it. Nothing here is wired
+// into the neon pack.
+//
+// WHAT THE CAMERA GIVES YOU DOWN THERE is the constraint the whole mock is
+// built around, and it is worth knowing before judging the art: the frame is
+// 270 tall, the groundline is 232, and the lane is drawn through the run's 2x
+// camera — so the visible skirt below a roof is NINETEEN WORLD PIXELS. A
+// carriage cannot be drawn as a carriage. It is a deck, a window strip and a
+// skirt, and the only place the side of a train is ever really seen is through
+// a gap. That is why the gaps carry the detail.
+{
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-train-foreground', 'TERMINAL VELOCITY — the train as the lane (mock-up)',
+    'MOCK-UP of docs/NEON_TRAIN_CARRIAGE_HANDOFF.md, over the shipped six-layer city. Carriage roofs sit '
+    + 'AT the existing groundline, so nothing about the run changes; the coupler gaps are the stage\'s own '
+    + 'gap obstacles with a train drawn around them. Carriage lengths are the handoff\'s SECONDS resolved '
+    + `against Neon's opening speed of 208 world px/s — long ${NEON_CARRIAGES.long.len}px (1.05s), standard `
+    + `${NEON_CARRIAGES.standard.len}px (0.7s), short ${NEON_CARRIAGES.short.len}px (0.35s), cargo `
+    + `${NEON_CARRIAGES.cargo.len}px. At the late-stage ramp cap the same carriage is worth 0.62 of that `
+    + 'time, which is the fairness check the handoff asks for before any of this is real. B33P is on his '
+    + 'real mark through the run\'s own camera; the gap is the shipped 56px one. '
+    + 'YOU ARE ON THE ROOF, SO YOU CANNOT SEE THE TRAIN — the first cut drew a carriage SIDE into the 19 '
+    + 'world px below the lane and it read as a lit fence, because from up here there are no windows, no '
+    + 'livery and no wheels to see. So the train is told by the four things a roof CAN show: the deck in '
+    + 'perspective, the gangway hoods at every join, the overhead line with a pantograph reaching up to '
+    + 'it, and a whole train — cab and all — crossing the middle distance. The only honest sight of a '
+    + 'carriage\'s side is the end walls at a coupler gap, which is why the gaps carry the detail.');
+
+  // THE NARROW PIT. The cabinets author pits between 52 and 68 world px and the
+  // default obstacle gap is 56; 52 is the narrowest the game actually uses, and
+  // a coupler is the one gap in the game with a physical reason to be tight.
+  const GAP_W = 52;
+  // The mock's furniture is a LOOK, not a hitbox: these are obstacles in the
+  // game and would be dealt by the spawner. Placed here only to answer "does a
+  // vent read as a jump and a gantry as a slide, on a roof, at this size?".
+  function trainScene(ctx, t, {
+    camX, gaps = [], furniture = [], hero = 'run', heroX = PLAYER_X, drone = null,
+    pantograph = null, viaduct = true, overhead = true, apron = NEON_APRON_SHIPPED,
+    lengthScale = 1, platform = null, steps = null, spring = null, finish = null,
+    trainFrom = null,
+  }) {
+    const obstacles = gaps.map((x) => ({ live: true, x, w: GAP_W, def: { isGap: true } }));
+    const scene = { stageIndex: 2, progress: 0.5 };
+    pack.bg(ctx, t, camX, neon, 1000, scene, 0, scene);
+    // The train you are NOT on, in the city's own coordinates — screen space,
+    // like the rest of the backdrop.
+    if (viaduct) drawNeonParallelTrain(ctx, camX, t);
+    ctx.save();
+    // A deeper apron is a CAMERA change, not a paint one: the lane has to sit
+    // higher in the frame for there to be more train below it. Passing a raised
+    // floor to applyWorld is exactly what moving GROUND_Y would do.
+    const floorY = GROUND_Y - Math.max(0, apron - NEON_APRON_SHIPPED) * WORLD_Z;
+    applyWorld(ctx, WORLD_Z, 0, floorY);
+    // The overhead goes down FIRST: a catenary mast stands beside the track, so
+    // the train passes in front of its foot. Painted after the roof it was a
+    // black bar straight down the middle of the picture.
+    if (overhead) drawNeonCatenary(ctx, camX, t);
+    // A station is a span of PLATFORM instead of train. Clipping the consist to
+    // a world range is what lets one tile hold both.
+    if (trainFrom !== null) {
       ctx.save();
       ctx.beginPath();
-      if (s.roomSide > 0) ctx.rect(edge, -far, far * 2, far * 2);
-      else ctx.rect(edge - far * 2, -far, far * 2, far * 2);
+      ctx.rect(trainFrom - camX, GROUND_Y - 120, 4000, 200);
       ctx.clip();
-      drawToon(ctx, HERO, pose('run', clock, { phase: s.gait, facing: s.facing }),
-        s.px, FLOOR, HH);
-      ctx.restore();
     }
-    return s;
+    // The hole and the end walls come from the old ground painter (they are
+    // the level's own gaps, dressed); the hull slice over the solid spans is
+    // the Tron train's roof view, so the lane matches the opening shot.
+    drawNeonTrainGround(ctx, camX, neon, obstacles, [], t, VIEW_W, apron, lengthScale);
+    drawTronRoofView(ctx, -20, VIEW_W + 20, GROUND_Y, {
+      apron, carLen: Math.round(96 * lengthScale), phase: -camX % Math.round(96 * lengthScale),
+      gaps: obstacles.map((ob) => ({ x: ob.x - camX, w: ob.w })),
+      palette: TRON_PALETTE.neon, glow: false,
+    });
+    for (const ob of obstacles) {
+      // Re-lay the lips over the slice: they are the telegraph and go on top.
+      void ob;
+    }
+    if (trainFrom !== null) ctx.restore();
+    if (platform) {
+      drawNeonPlatform(ctx, camX, camX + platform[0], camX + platform[1], { t });
+    }
+    if (steps !== null) drawNeonBoardingSteps(ctx, camX, camX + steps);
+    if (spring !== null) drawNeonBoardingSpring(ctx, camX, camX + spring);
+    if (finish !== null) {
+      // THE SHIPPED TAPE, drawn by the shipped painter. The whole point of the
+      // ending is that it is the same one every cabinet has.
+      const marker = FINISH_MARKER_BY_ID.plunger;
+      marker.draw(ctx, camX + finish - camX, GROUND_Y + NEON_PLATFORM_DROP,
+        { t, thrown: 0, live: true, armed: true, phase: 0 });
+    }
+    if (pantograph !== null) drawNeonPantograph(ctx, camX, camX + pantograph);
+    for (const [kind, x] of furniture) drawNeonRoofFurniture(ctx, camX, kind, x);
+    if (drone !== null) {
+      const flier = makeObstacle('drone', camX + drone);
+      drawWorldEntity(ctx, flier, camX, t, pack, {});
+    }
+    drawToon(ctx, 'b33p', pose(hero, t), heroX, GROUND_Y, HERO_DRAW_H);
+    ctx.restore();
+    if (pack.post) pack.post(ctx, t);
+  }
+
+  // EVERYTHING IS PLACED RELATIVE TO camX, because the camera shows VIEW_W =
+  // 240 world px and the first cut authored gaps at world 300 — off the right
+  // of every frame it was supposed to be the subject of.
+  const SHOTS = [
+    {
+      name: 'the rest — a long roof',
+      note: 'No gap, no roof event, 1.05s of running. Deck in perspective, a gangway hood at the join, the '
+        + 'contact wire overhead and a train on the viaduct behind — everything that says TRAIN here is '
+        + 'something you could actually see from on top of one.',
+      camX: 40, gaps: [], drone: 150,
+    },
+    {
+      name: 'the read — a coupler ahead',
+      note: 'The gap as the player first sees it: bright lip on the take-off side, the coupler in the hole, '
+        + 'the rails flying past below, and a broad landing roof beyond it. This is the frame the whole '
+        + 'proposal stands or falls on.',
+      camX: 40, gaps: [190],
+    },
+    {
+      name: 'the jump',
+      note: 'Over the coupler. The hole is a hole in SOMETHING — end walls, buffers, sleepers at 1.7x the '
+        + 'lane\'s own rate — rather than a black rectangle.',
+      camX: 148, gaps: [190], hero: 'jump', heroX: PLAYER_X + 4,
+    },
+    {
+      name: 'the landing',
+      note: 'The frame after. The handoff forbids a roof hazard on the landing side, so this is the one '
+        + 'span in the phrase that is guaranteed to be empty.',
+      camX: 210, gaps: [190],
+    },
+    {
+      name: 'short car into a gap',
+      note: 'The short service carriage as the gap setup — a visually shorter car makes the next coupler '
+        + 'feel intentional. The rule it is fighting: a LONG car should normally precede a gap, so this is '
+        + 'a later-stage move, never the first one.',
+      camX: 566, gaps: [720],
+    },
+    {
+      name: 'joins — one in view (the handoff\'s lengths)',
+      note: 'The vertical at a join now runs the full depth of the carriage, which is what says one thing '
+        + 'ended and another began. But a long car is 218 world px and the camera shows 240, so you meet '
+        + 'ONE of these at a time and the rest of the frame is a single unbroken side.',
+      camX: 96, gaps: [],
+    },
+    {
+      name: 'joins — three in view (cars at 45%)',
+      note: 'The same painter with every carriage shortened to 45% of its authored length. The rhythm reads '
+        + 'immediately — but the handoff sets those lengths in SECONDS of runway, so this is a pacing '
+        + 'decision, not a paint one: shorter cars mean a join every 0.45s and a gap that arrives sooner.',
+      camX: 96, gaps: [], lengthScale: 0.45,
+    },
+    {
+      name: 'the pantograph',
+      note: 'The arm off the roof to the contact wire, with the spark where it touches. Nothing else in '
+        + 'this game happens under a wire, so this one prop does more than the whole carriage under it.',
+      camX: 40, pantograph: 120, gaps: [],
+    },
+    {
+      name: 'the train you are not on',
+      note: 'A whole one on the viaduct — four coaches, a raked cab, a headlight down the line. The '
+        + 'quickest way to tell a player what they are standing on is to show them one of it from the '
+        + 'outside. It crosses on its own clock, so the depth reads with the camera parked.',
+      camX: 40, gaps: [], overhead: false,
+    },
+    {
+      name: 'no overhead, no viaduct',
+      note: 'THE CONTROL: the same roof with the wire and the far train taken away. This is the card that '
+        + 'says how much of the read is the deck and how much is the furniture around it.',
+      camX: 40, gaps: [190], overhead: false, viaduct: false,
+    },
+    {
+      name: 'roof furniture — vent and hatch',
+      note: 'A low vent as a jump read and a flush hatch as a thing you run over. Both are obstacle ART '
+        + 'here, not boxes: on a roof, at this size, does the vent read as something to clear?',
+      camX: 40, furniture: [['vent', 160], ['hatch', 220]], gaps: [],
+    },
+    {
+      name: 'roof furniture — signal gantry',
+      note: 'The slide read. Legs outside the lane, and the only part at hero height is the bar — the '
+        + 'approach has to show that clearance well before it arrives.',
+      camX: 40, furniture: [['gantry', 180]], gaps: [],
+    },
+    {
+      name: 'the cargo car',
+      note: 'A different silhouette on the same route: ribbed flank instead of glass, playable top still '
+        + 'aligned to the roof line. The handoff is explicit that its bulk explains a jump — it never '
+        + 'becomes a second floor.',
+      camX: 470, gaps: [],
+    },
+  ];
+  for (const shot of SHOTS) {
+    tile(grid, shot.name, shot.note, W, H, (ctx, t) => trainScene(ctx, t, shot),
+      { animated: true });
+  }
+
+  // ---- THE OPENING: THE WHOLE TRAIN, THEN THE PAN -------------------------
+  //
+  // The camera fact that fought every other part of this finally pays out here.
+  // The lane is at GROUND_Y with 19 world px below it — but a HUNDRED AND
+  // SIXTEEN above. So the stage opens with the lane on the PLATFORM: the train
+  // is then above the lane rather than below it, and its whole side is in frame
+  // with room to spare — roof, glass, doors, underframe, bogies, wheels.
+  //
+  // The hero walks the platform, climbs, and the camera pans up by the
+  // carriage's own height so the roof becomes the lane for the rest of the
+  // stage. One pan, at the start, held to the tape. Everything the roof view
+  // cannot say gets said in the first four seconds, by showing it.
+  const RAIL_DROP = 4;          // platform lip to rail head
+  // THE TRON SHINKANSEN IS THE TRAIN NOW (Peter, 22 Sep). The side-on and cab
+  // painters in neon-train-foreground.js stay in source as the record of the
+  // concept it replaced, and nothing on the sheet draws them any more.
+  const TRON_LONG = [
+    { kind: 'car' }, { kind: 'car' }, { kind: 'car' }, { kind: 'car' }, { kind: 'car' }, { kind: 'engine' },
+  ];
+  function openingScene(ctx, t, {
+    camX, pan = 0, hero = 'run', heroX = PLAYER_X, steps = null, stepRise = NEON_CARRIAGE_HEIGHT,
+    cab = null, finish = null, trainFrom = -400, trainTo = 900, spring = null,
+    stepsDown = false, consist = TRON_LONG, trainX = null, noseRun = false, streaks = false,
+  }) {
+    const scene = { stageIndex: 1, progress: 0.02 };
+    pack.bg(ctx, t, camX, neon, 1000, scene, 0, scene);
+    ctx.save();
+    // The pan IS the boarding: at 0 the lane is the platform, at 1 the roof has
+    // become the lane. applyWorld's floor is where a crane would put it.
+    const floorY = GROUND_Y + pan * NEON_CARRIAGE_HEIGHT * WORLD_Z;
+    applyWorld(ctx, WORLD_Z, 0, floorY);
+    drawNeonCatenary(ctx, camX, t, { wireY: GROUND_Y - NEON_CARRIAGE_HEIGHT - 42 });
+    // THE TRAIN GOES DOWN FIRST AND THE PLATFORM OVER IT. In a side view the
+    // platform and the train occupy the same x, so the only thing that says
+    // which is nearer is the draw order — and the platform IS nearer, which is
+    // why you cannot see a train's wheels while standing on one. Drawn the
+    // other way round the hero stood in the middle of the carriage side.
+    // Tail at `trainX` if given, else parked so the nose sits at `trainTo`.
+    const tail = trainX !== null ? trainX : trainTo - tronConsistLength(consist);
+    if (streaks) {
+      drawTronSpeedStreaks(ctx, -20, VIEW_W + 20, GROUND_Y + RAIL_DROP + 1, t, {
+        palette: TRON_PALETTE.neon, glow: false, band: 6, count: 12, speed: 180,
+      });
+    }
+    drawTronTrain(ctx, tail - camX, GROUND_Y + RAIL_DROP, {
+      consist, h: NEON_CARRIAGE_HEIGHT, palette: TRON_PALETTE.neon, glow: false, t,
+    });
+    void cab; void trainFrom;
+    drawNeonPlatform(ctx, camX, camX - 400, camX + 900, { drop: 0, t });
+    if (steps !== null) {
+      drawNeonSteps(ctx, camX, camX + steps, {
+        rise: stepRise, treads: 7, run: 8, descend: stepsDown,
+      });
+    }
+    if (spring !== null) drawNeonBoardingSpring(ctx, camX, camX + spring, { drop: 0 });
+    if (noseRun) {
+      // THE LANE DOWN THE NOSE. Drawn as a dotted guide because it is terrain,
+      // not paint: the taper is a curve and the lane would follow it, which is
+      // a routes question (the game already has rising and falling road) rather
+      // than something a painter decides.
+      const nose = trainTo - camX;
+      const top = GROUND_Y - NEON_CARRIAGE_HEIGHT + RAIL_DROP;
+      ctx.fillStyle = 'rgba(246,211,60,0.75)';
+      for (let i = 0; i <= 18; i++) {
+        const u = i / 18;
+        const lx = nose - 52 + u * 52;
+        const ly = top + (u * u * 0.82 + u * 0.18) * (NEON_CARRIAGE_HEIGHT - RAIL_DROP);
+        ctx.fillRect(Math.round(lx), Math.round(ly), 2, 2);
+      }
+    }
+    if (finish !== null) {
+      FINISH_MARKER_BY_ID.plunger.draw(ctx, finish, GROUND_Y,
+        { t, thrown: 0, live: true, armed: true, phase: 0 });
+    }
+    // On the nose run the hero is ON the taper, so his feet come off the SAME
+    // curve the guide is drawn from rather than a number that happens to look
+    // right — which is what the terrain would do.
+    let heroY = GROUND_Y;
+    if (noseRun) {
+      const nose = trainTo - camX;
+      const u = Math.max(0, Math.min(1, (heroX - (nose - 52)) / 52));
+      heroY = (GROUND_Y - NEON_CARRIAGE_HEIGHT + RAIL_DROP)
+        + (u * u * 0.82 + u * 0.18) * (NEON_CARRIAGE_HEIGHT - RAIL_DROP);
+    }
+    drawToon(ctx, 'b33p', pose(hero, t), heroX, heroY, HERO_DRAW_H);
+    ctx.restore();
+    if (pack.post) pack.post(ctx, t);
+  }
+
+  const OPENING = [
+    {
+      name: 'the opening shot — the whole train',
+      note: 'The stage starts on the platform, so the train is ABOVE the lane and the frame has room for '
+        + 'all of it: roof, window row, doors, underframe, bogies, wheels. This is the shot that sells the '
+        + 'next ninety seconds, and it is free — the camera already has 116 world px of headroom.',
+      camX: 40, steps: 182, trainTo: 208, heroX: PLAYER_X - 14,
+    },
+    {
+      name: 'the climb — SETTLED: steps board the player',
+      note: 'Seven treads with a handrail, 34 world px of rise — the carriage\'s own height. Ordinary '
+        + 'running up ordinary steps; nothing is taken off the player. Chosen over the spring pad on '
+        + '22 Sep: the pad cost no new mechanic, but the train being boarded is STANDING at a platform, '
+        + 'and a spring that fires you onto a stationary train is a stunt where a staircase is a station. '
+        + 'Steps are also the vocabulary wanted elsewhere — a lane that has to gain height in a cabinet '
+        + 'with no hills in it — so this is where they get proved.',
+      camX: 150, steps: 66, trainTo: 208, hero: 'run', heroX: PLAYER_X + 6, pan: 0.4,
+    },
+    {
+      name: 'after the pan — the roof is the lane',
+      note: 'The camera has panned up by the carriage height and holds there to the tape. From here the '
+        + 'roof view takes over, and every tile below this one is what the rest of the stage looks like.',
+      camX: 300, pan: 1, hero: 'run', trainTo: 1400,
+    },
+    {
+      name: 'the pan down — the nose comes into view',
+      note: 'NO STEPS AT THIS END. The camera starts panning back down a carriage-length before the front, '
+        + 'so the nose rises into frame while the player is still running the roof — they get the whole '
+        + 'shape before they are standing on it. The pan is the same 34px move as the opening, run in '
+        + 'reverse.',
+      camX: -34, pan: 0.55, trainTo: 126, hero: 'run', heroX: PLAYER_X + 30,
+      consist: TRON_SPEC_CONSIST,
+    },
+    {
+      name: 'down the nose — the shape is the ramp',
+      note: 'THE ENDING, and it needs no furniture at all: the nose is ALREADY a ramp. The taper that makes '
+        + 'the train look fast is a curve from roof height down to the platform, so the player simply runs '
+        + 'down it — no steps, no spring, nothing to learn. The plunger stands on the platform beyond, drawn '
+        + 'by its own shipped painter, and they jump it with full control as on every other cabinet. The '
+        + 'dotted line is the lane the terrain would follow; it is a mock note, not art.',
+      camX: 30, finish: 216, trainTo: 126, hero: 'run', heroX: 96,
+      consist: TRON_SPEC_CONSIST, noseRun: true,
+    },
+  ];
+  for (const shot of OPENING) {
+    tile(grid, shot.name, shot.note, W, H, (ctx, t) => openingScene(ctx, t, shot),
+      { animated: true, wide: true });
+  }
+
+  // ---- TRON SHINKANSEN: the spec'd train -----------------------------------
+  //
+  // Peter's spec, 22 Sep: a minimalist vector bullet train — matte slate hull
+  // with a crisp cyan stroke, a dead-straight row of small rounded windows
+  // glowing steadily, clean circuit lines on the lower hull, glowing hubs for
+  // wheels, no couplers. The first tile is the spec as written: blank charcoal,
+  // centred, engine plus two cars, light streams underneath. The rest put the
+  // same painter into the framings above, over the shipped city, in the
+  // cabinet's own cyan — which is the adjustment "for our purposes".
+  const tronSpecTile = (name, note, { palette, glow, h = 44, wheels = false }) => {
+    tile(grid, name, note, W, H, (ctx, t) => {
+      ctx.fillStyle = palette.bg;
+      ctx.fillRect(0, 0, W, H);
+      const len = tronConsistLength(TRON_SPEC_CONSIST);
+      const x = (W - len) / 2;
+      const railY = H / 2 + h / 2;
+      drawTronSpeedStreaks(ctx, 0, W, railY + 8, t, { palette, glow });
+      drawTronTrain(ctx, x, railY, { h, palette, glow, t, wheels });
+    }, { animated: true, wide: true });
   };
+  tronSpecTile('TRON SHINKANSEN — with the spec\'s hubs, for comparison',
+    'The spec offered "simple glowing hubs" for wheels. This is the only tile that draws them. A '
+    + 'Shinkansen skirts its bogies and a Tron machine rides light; hubs under a hull this clean read as a '
+    + 'toy. Everywhere else the hull skirts to a hair above the rail and a soft line of light underneath '
+    + 'is the cushion it floats on.',
+    { palette: TRON_PALETTE.spec, glow: true, wheels: true });
+  tronSpecTile('TRON SHINKANSEN — the spec, as written',
+    'Blank charcoal, centred, one engine and two cars, light streams underneath. shadowBlur glow, '
+    + '#00f0ff on #1e222b, exactly as specified — the design judged clean before it is put anywhere.',
+    { palette: TRON_PALETTE.spec, glow: true });
+  tronSpecTile('TRON SHINKANSEN — the run\'s glow, the cabinet\'s cyan',
+    'The same painter with two adjustments a port would make: the glow is the shipped two-stroke trick '
+    + 'instead of shadowBlur (which the run cannot afford per frame), and the ink is the cabinet\'s '
+    + '#38d8f8 on its own dark. This is what it would actually ship as; the tile above is the target.',
+    { palette: TRON_PALETTE.neon, glow: false });
 
-  for (const row of ROWS) {
-    const probe = walkFor(row);
-    const dur = probe.duration;
-    const grid = section(`door-walk-${row.kind}`,
-      `FOOD COURT — walking through a door: ${row.title}`,
-      `${dur.toFixed(2)}s from ${START} units out. ${row.note}. He never changes size, and never restarts his walk.`);
+  // ---- SEVERAL TRAINS, NOT ONE --------------------------------------------
+  //
+  // Peter's conceit, 22 Sep, and it settles more than it looks like it does:
+  // THE HERO IS FAST ENOUGH TO LEAVE ONE TRAIN AND CATCH ANOTHER, three or four
+  // times a level.
+  //
+  //   - The train stops being absurd. Six cars is a train; the ninety it would
+  //     take to cover a stage is a conveyor belt with windows on it.
+  //   - THE CARRIAGES CAN ALL BE THE SAME LENGTH, which is what a real train
+  //     looks like. The varying lengths were only ever buying rhythm, and the
+  //     rhythm now comes from the transitions instead — which is a better place
+  //     for it, because a transition is an event and a shorter carriage is not.
+  //   - The taper earns its keep three or four times a level instead of once at
+  //     the tape. A high-speed set is streamlined at BOTH ends because it runs
+  //     both ways, so every train has a tail as well as a nose — and two tapers
+  //     facing each other across the jump is what makes the beat read.
+  //
+  // THE JUMP IS MEASURED FLAT-TO-FLAT, not tip to tip. The nose starts falling
+  // at 0.46 of the engine, so the runnable roof ends there; the hero leaps from
+  // that edge, over the tail taper and the air, and lands PART WAY UP the next
+  // nose — which is a ramp, the same one the ending uses. That is what keeps
+  // the effective gap inside the band the cabinets already author (52 to 68)
+  // while the thing on screen looks like a forty-pixel leap between two trains.
+  const TRAIN_LEN = tronConsistLength(TRON_TRAIN);
+  function runScene(ctx, t, {
+    camX, pan = 1, hero = 'run', heroX = PLAYER_X, heroY = null, trains = 3,
+    runFrom = -200, gap = 150, streaks = false, arc = null, platform = false, finish = null,
+  }) {
+    const scene = { stageIndex: 2, progress: 0.4 };
+    pack.bg(ctx, t, camX, neon, 1000, scene, 0, scene);
+    ctx.save();
+    // NO CAMERA SHIFT HERE. These tiles place the hero's feet explicitly — on a
+    // roof, on a taper, on the platform — so the camera stays at the authored
+    // groundline and the y is the thing that moves. Shifting BOTH is how the
+    // train ended up a carriage above his head and then off the top of frame.
+    void pan;
+    const floorY = GROUND_Y;
+    applyWorld(ctx, WORLD_Z, 0, floorY);
+    drawNeonCatenary(ctx, camX, t, { wireY: GROUND_Y - NEON_CARRIAGE_HEIGHT - 42 });
+    const railY = GROUND_Y + RAIL_DROP;
+    if (streaks) {
+      drawTronSpeedStreaks(ctx, -20, VIEW_W + 20, railY + 1, t, {
+        palette: TRON_PALETTE.neon, glow: false, band: 6, count: 12, speed: 180,
+      });
+    }
+    for (const train of tronTrainRun(runFrom, trains, { gap })) {
+      drawTronTrain(ctx, train.x - camX, railY, {
+        consist: train.consist, h: NEON_CARRIAGE_HEIGHT,
+        palette: TRON_PALETTE.neon, glow: false, t,
+      });
+    }
+    if (platform) drawNeonPlatform(ctx, camX, camX - 400, camX + 900, { drop: 0, t });
+    if (finish !== null) {
+      FINISH_MARKER_BY_ID.plunger.draw(ctx, finish, GROUND_Y,
+        { t, thrown: 0, live: true, armed: true, phase: 0 });
+    }
+    if (arc) {
+      // The leap, as a guide: from the end of one flat roof to the landing
+      // point on the next taper. A mock note, not art.
+      ctx.fillStyle = 'rgba(246,211,60,0.8)';
+      for (let i = 0; i <= 20; i++) {
+        const u = i / 20;
+        const ax = arc[0] + (arc[2] - arc[0]) * u;
+        const ay = arc[1] + (arc[3] - arc[1]) * u - Math.sin(u * Math.PI) * 26;
+        ctx.fillRect(Math.round(ax - camX), Math.round(ay), 2, 2);
+      }
+    }
+    const hy = heroY === null ? GROUND_Y - NEON_CARRIAGE_HEIGHT + RAIL_DROP : heroY;
+    drawToon(ctx, 'b33p', pose(hero, t), heroX, hy, HERO_DRAW_H);
+    ctx.restore();
+    if (pack.post) pack.post(ctx, t);
+  }
 
-    tile(grid, 'looping', `${dur.toFixed(2)}s, then a beat before it repeats`, TW, TH,
-      (ctx, t) => {
-        const walk = walkFor(row);
-        const loop = dur + 0.5;
-        const s = frameAt(row, walk, Math.min(t % loop, dur), t, ctx);
-        ctx.fillStyle = 'rgba(255,255,255,.5)';
-        ctx.font = '5px ui-monospace, monospace';
-        ctx.fillText(`${s.phase}  ${Math.min(t % loop, dur).toFixed(2)}s`, 4, TH - 4);
-      }, { animated: true, hires: 5 });
+  {
+    const shoulder = Math.round(118 * TRON_TAPER_SHOULDER);
+    const trains = tronTrainRun(-200, 3, { gap: 150 });
+    // The jump: off the engine's flat roof, onto the next train's tail taper.
+    const takeoff = trains[0].x + TRAIN_LEN - 118 + shoulder;
+    const landing = trains[1].x + 34;
+    const RUN = [
+      {
+        name: 'one whole train — uniform cars, tapered both ends',
+        note: `Six cars, all ${96}px, a nose at the front and the same taper mirrored at the back. `
+          + `${TRAIN_LEN} world px end to end — about ${(TRAIN_LEN / 208).toFixed(1)}s at Neon's opening `
+          + 'speed. A train you could believe in, rather than one that has to last ninety seconds.',
+        camX: trains[0].x + 120, trains: 1, runFrom: trains[0].x, heroX: PLAYER_X,
+      },
+      {
+        name: 'the transition — two tapers and the air between them',
+        note: 'The beat the whole conceit buys. The runnable roof ENDS where the nose starts to fall '
+          + `(${TRON_TAPER_SHOULDER} of the engine); the hero leaps from that edge, over the taper and the `
+          + 'gap, and lands part way up the next train\'s tail — which is a ramp he runs up onto the next '
+          + 'roof. Measured flat-to-flat that is an ordinary gap; on screen it is a leap between trains.',
+        camX: takeoff - 70, trains: 3, hero: 'jump', heroX: PLAYER_X + 6, streaks: true,
+        arc: [takeoff, GROUND_Y - NEON_CARRIAGE_HEIGHT + RAIL_DROP, landing, GROUND_Y - 12],
+      },
+      {
+        name: 'the gap, from the tail side',
+        note: 'The same transition a moment later, framed on the landing. The tail taper does the work the '
+          + 'steps used to: nothing to learn, and the shape tells you where the roof starts again.',
+        camX: landing - 130, trains: 3, hero: 'run', heroX: PLAYER_X + 40,
+        heroY: GROUND_Y - 16, streaks: true,
+      },
+    ];
+    for (const shot of RUN) {
+      tile(grid, shot.name, shot.note, W, H, (ctx, t) => runScene(ctx, t, shot),
+        { animated: true, wide: true });
+    }
 
-    tile(grid, 'quarter speed', 'for judging where the door takes him', TW, TH,
-      (ctx, t) => {
-        const loop = (dur + 0.5) * 4;
-        frameAt(row, walkFor(row), Math.min((t % loop) / 4, dur), t, ctx);
-      }, { animated: true, hires: 5 });
+    // The level as a strip: three trains, two transitions, platform at each end.
+    tile(grid, 'the stage, as laid',
+      `Three trains of six, ${TRAIN_LEN}px each, ${150}px of air between them. The platform boards you onto `
+      + 'the first and the last one\'s nose runs you down to the tape. Coupler gaps inside a train are the '
+      + 'small beat; the train-to-train leap is the big one — two sizes of jump, and the player can tell '
+      + 'them apart before they arrive because one is framed by tapers.',
+      W, 116, (ctx) => {
+        const total = 3 * TRAIN_LEN + 2 * 150 + 240;
+        const k = W / total;
+        ctx.fillStyle = '#0a0722';
+        ctx.fillRect(0, 0, W, 116);
+        // Platforms either end.
+        ctx.fillStyle = '#241c58';
+        ctx.fillRect(0, 54, 120 * k, 16);
+        ctx.fillRect(W - 120 * k, 54, 120 * k, 16);
+        ctx.fillStyle = '#f6d33c';
+        ctx.fillRect(0, 54, 120 * k, 1);
+        ctx.fillRect(W - 120 * k, 54, 120 * k, 1);
+        tronTrainRun(120, 3, { gap: 150 }).forEach((train, i) => {
+          const x = train.x * k;
+          ctx.fillStyle = '#16123a';
+          ctx.fillRect(x, 48, train.len * k, 22);
+          ctx.fillStyle = '#38d8f8';
+          ctx.fillRect(x, 47, train.len * k, 1);
+          ctx.fillRect(x, 60, train.len * k, 1);
+          // The coupler gaps inside it.
+          ctx.fillStyle = '#0a0722';
+          for (let c = 1; c < 6; c++) {
+            ctx.fillRect(x + (c * (train.len / 6)) * k, 48, Math.max(1, 3 * k), 22);
+          }
+          ctx.fillStyle = '#9fd8c0';
+          ctx.font = '7px monospace';
+          ctx.fillText(`train ${i + 1}`, x + 4, 82);
+        });
+        ctx.fillStyle = '#f6d33c';
+        ctx.font = '7px monospace';
+        ctx.fillText('LEAP', (120 + TRAIN_LEN + 50) * k, 42);
+        ctx.fillText('LEAP', (120 + 2 * TRAIN_LEN + 150 + 50) * k, 42);
+        ctx.fillStyle = '#9fd8c0';
+        ctx.fillText('board', 6, 42);
+        ctx.fillText('nose down to the tape', W - 118, 42);
+      }, { hires: 3, wide: true });
+  }
 
-    const N = 6, COL = 124, SW = COL * N;
-    tile(grid, 'filmstrip', 'evenly spaced across the whole sequence', SW, TH,
-      (ctx) => {
-        for (let i = 0; i < N; i++) {
-          const t = (i / (N - 1)) * dur;
-          ctx.save();
-          ctx.beginPath(); ctx.rect(i * COL, 0, COL, TH); ctx.clip();
-          ctx.translate(i * COL + (COL - TW) / 2, 0);
-          const s = frameAt(row, walkFor(row), t, 1.5, ctx);
-          ctx.restore();
-          ctx.fillStyle = 'rgba(255,255,255,.14)';
-          if (i) ctx.fillRect(i * COL, 0, 1, TH);
-          ctx.fillStyle = 'rgba(255,240,150,.85)';
-          ctx.font = '5px ui-monospace, monospace';
-          ctx.fillText(`${t.toFixed(2)}  ${s.phase}`, i * COL + 4, TH - 4);
-        }
-      }, { wide: true, hires: 5 });
+  // ---- THE STAGE PLANS ----------------------------------------------------
+  //
+  // AUTHORED IN src/data/stages.js AND READ FROM THERE. Every bar below comes
+  // out of the stage's own `trains` and `pits`, so the plan cannot drift from
+  // the level the way a hand-drawn diagram would — change the data and these
+  // tiles change with it.
+  //
+  // Drawn at true scale, because the arithmetic is the decision and it is not
+  // what you would guess: Neon's stages are 90 seconds, which at the cabinet's
+  // opening speed of 208 px/s is 19,656 world px. A six-car train is 635 px.
+  // THREE SECONDS. One train is 3% of a stage; a section that reads as a
+  // section wants three or four.
+  {
+    const SPEED = 208;
+    const CAR = 96;
+    const TRAIN_PX = tronConsistLength(TRON_TRAIN);
+    const secs = (px) => (px / SPEED).toFixed(1);
+
+    function planTile(stageId, name, note) {
+      const stage = STAGES.find((x) => x.id === stageId);
+      const total = stage.durationSec * SPEED;
+      tile(grid, name, `${note}<br>read from stages.js · ${stage.durationSec}s · ${Math.round(total)} world px`,
+        W, 132, (ctx) => {
+          const k = W / total;
+          ctx.fillStyle = '#0a0722';
+          ctx.fillRect(0, 0, W, 132);
+          ctx.fillStyle = '#1a1442';
+          ctx.fillRect(0, 56, W, 18);
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = '#38d8f8';
+          ctx.fillRect(0, 55, W, 1);
+          ctx.globalAlpha = 1;
+          // Checkpoints, which are what every pit on this page is placed against.
+          ctx.fillStyle = 'rgba(159,216,192,0.45)';
+          for (const f of [1 / 3, 2 / 3]) {
+            ctx.fillRect(Math.round(W * f), 50, 1, 30);
+            ctx.font = '6px monospace';
+            ctx.fillText('checkpoint', Math.round(W * f) + 2, 104);
+          }
+          // The trains, to scale, with their cars and the air between them.
+          for (const train of stage.trains || []) {
+            const px = tronConsistLength([{ kind: 'tail' },
+              ...Array(Math.max(0, train.cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }]);
+            const x = train.at * W;
+            const w = px * k;
+            ctx.fillStyle = '#16123a';
+            ctx.fillRect(x, 50, w, 30);
+            ctx.fillStyle = '#38d8f8';
+            ctx.fillRect(x, 49, w, 1);
+            ctx.fillRect(x, 79, w, 1);
+            ctx.fillStyle = '#0a0722';
+            for (let c = 1; c < train.cars; c++) {
+              ctx.fillRect(x + c * CAR * k, 50, Math.max(0.6, 3 * k), 30);
+            }
+          }
+          // The leaps: the air between consecutive trains.
+          const trains = stage.trains || [];
+          for (let i = 1; i < trains.length; i++) {
+            const prev = trains[i - 1];
+            const px = tronConsistLength([{ kind: 'tail' },
+              ...Array(Math.max(0, prev.cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }]);
+            const gx = prev.at * W + px * k;
+            const gw = trains[i].at * W - gx;
+            ctx.fillStyle = '#f6d33c';
+            ctx.fillRect(gx, 50, Math.max(1, gw), 2);
+            ctx.fillRect(gx, 78, Math.max(1, gw), 2);
+          }
+          // The scripted pits.
+          for (const pit of stage.pits || []) {
+            const x = pit.at * W;
+            ctx.fillStyle = '#05040f';
+            ctx.fillRect(x, 56, Math.max(1.5, (pit.w || 56) * k), 18);
+            ctx.fillStyle = '#e838f8';
+            ctx.fillRect(x, 74, Math.max(1.5, (pit.w || 56) * k), 2);
+            ctx.font = '6px monospace';
+            ctx.fillText('pit', x - 2, 92);
+          }
+          ctx.fillStyle = '#9fd8c0';
+          ctx.font = '7px monospace';
+          ctx.fillText('0s', 2, 122);
+          ctx.fillText(`${stage.durationSec}s`, W - 22, 122);
+          if ((stage.trains || []).length) {
+            const first = stage.trains[0];
+            const last = stage.trains[stage.trains.length - 1];
+            const lastPx = tronConsistLength([{ kind: 'tail' },
+              ...Array(Math.max(0, last.cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }]);
+            const span = (last.at * total + lastPx) - first.at * total;
+            ctx.fillStyle = '#f6d33c';
+            ctx.fillText(`${stage.trains.length} train${stage.trains.length > 1 ? 's' : ''} · ${secs(span)}s`,
+              first.at * W + 2, 44);
+          }
+        }, { hires: 3, wide: true });
+    }
+
+    planTile('neon-1', 'NEON 1 — the trains open the cabinet',
+      'Three six-car sets back to back FROM THE START LINE, which is where they have to be if the arrival '
+      + 'cut scene is going to make sense: you watch a train pull in, you are on it, the stage begins. The '
+      + 'same section half way through and the cut scene is a flashback. Eleven seconds, an eighth of the '
+      + 'stage — and both sizes of jump met inside the first ten: the couplers inside a set, the two leaps '
+      + '(amber) between them. Everything after is ordinary Neon, the pattern bag dealing drones and '
+      + 'targets as it does today, with two guaranteed pits just past the checkpoints.');
+    planTile('neon-2', 'NEON 2 — one train, mid-stage',
+      'Deliberately LESS than Neon 1. The opening cabinet spends its trains teaching the idea; this stage '
+      + 'is mostly ground and the single set at 0.46 is the callback — board, cross a couple of couplers, '
+      + 'off the nose, no leap in it at all. It sits BETWEEN the checkpoints on purpose: a section '
+      + 'straddling one would send a death back to a boarding already done, which is an errand rather than '
+      + 'a setback.');
+    planTile('neon-3', 'NEON 3 — no trains authored yet',
+      'Undecided, and the bar shows the stage as it stands: two pits and the cabinet\'s own patterns. The '
+      + 'three shapes worth weighing are a full-stage rake (most of the level, and a different game), a '
+      + 'long rake handing the finish to the train, or Neon 2\'s shape with the handoff\'s rival train '
+      + 'added — which needs no new terrain at all. Nothing is authored until you pick.');
+  }
+
+  // ---- THE OVERTAKE -------------------------------------------------------
+  //
+  // Peter, 22 Sep: a train OVERTAKES the player and is boarded further on while
+  // it is STOPPED. Two things fall out of that, and both are better than what
+  // they replace.
+  //
+  // It answers the question the boarding tiles quietly dodged — why is this
+  // train sitting still? Because it is at a station, and the player is catching
+  // it. A moving train you step onto at speed is a stunt; a stopped one you
+  // sprint for is a commute, which is funnier and much easier to make fair.
+  //
+  // And it buys the spectacle for free. A train that passes you at speed is the
+  // only way this cabinet ever gets to SHOW how fast the thing is — from on top
+  // of one you cannot tell, and the viaduct train is too far away to feel. It
+  // goes past at a speed the lane cannot match, which also plants the idea that
+  // catching the next one is worth doing.
+  {
+    const OVERTAKE = [
+      {
+        name: 'the overtake — it passes you',
+        note: 'On foot on the platform, a whole train goes past faster than the lane runs. The streaks are '
+          + 'under the hull, not the camera: the player is stationary in frame and the train is not, which '
+          + 'is the only moment in the cabinet that can say how fast it is.',
+        camX: 40, trains: 1, runFrom: -60, gap: 150, streaks: true, platform: true,
+        heroX: PLAYER_X - 10, heroY: GROUND_Y,
+      },
+      {
+        name: 'caught it — stopped at the next platform',
+        note: 'The same train, standing. This is what makes the boarding fair AND explains it: it is not a '
+          + 'stunt, it is a train at a station and the player got there. The steps (or the spring) go here, '
+          + 'and the leap between trains earlier in the stage is the version with no platform under it.',
+        camX: 40, trains: 1, runFrom: -260, gap: 150, platform: true,
+        heroX: PLAYER_X - 10, heroY: GROUND_Y,
+      },
+    ];
+    for (const shot of OVERTAKE) {
+      tile(grid, shot.name, shot.note, W, H, (ctx, t) => runScene(ctx, t, shot),
+        { animated: true, wide: true });
+    }
+  }
+
+  // ---- A CUT SCENE BEFORE THE LEVEL ---------------------------------------
+  //
+  // Peter's idea, 22 Sep: a short scene of the train arriving and pulling away
+  // before the stage starts — and, more than that, the suggestion that levels
+  // could have brief intro "cuts" in general to set a premise.
+  //
+  // THE MACHINERY ALREADY EXISTS. src/game/intro.js is a projector, not a film:
+  // the shots, their lengths, the camera boxes and the cue sheet are DATA
+  // (INTRO_FILM.shots), and shotAt(t) just picks the shot the clock is in. A
+  // per-stage cut would be another list of shots through the same projector,
+  // which is why this is three storyboard frames rather than a new system —
+  // what is being decided here is whether the beat is worth the seconds, not
+  // how to build it.
+  //
+  // Three shots, about four seconds: the platform empty, the train arriving,
+  // the hero aboard as it pulls away — then the stage starts and the player has
+  // the controls. It answers "why am I on a train" without a line of dialogue.
+  const CUT = [
+    {
+      name: 'cut 1 — the platform, empty',
+      note: 'Wide on an empty platform under the canopy. Establishes where the hero is standing before '
+        + 'anything happens — the one shot the stage itself can never spare the time for.',
+      camX: 40, trainX: -900, heroX: PLAYER_X - 20, hero: 'run',
+    },
+    {
+      name: 'cut 2 — the train arrives',
+      note: 'The nose enters from the right and runs down the frame. Streaks under the hull carry the '
+        + 'speed; the platform lamps catch the roof as it passes. At this length it is a beat, not a film.',
+      camX: 40, trainX: -120, heroX: PLAYER_X - 20, hero: 'run', streaks: true,
+    },
+    {
+      name: 'cut 3 — aboard, and away',
+      note: 'The hero on the roof as it pulls out, camera already panned up to the lane the stage plays '
+        + 'on. The last frame of the cut IS the first frame of the level, which is what keeps a cut from '
+        + 'feeling like a door slamming between two different games.',
+      camX: 300, trainX: -260, pan: 1, hero: 'run', streaks: true,
+    },
+  ];
+  for (const shot of CUT) {
+    tile(grid, shot.name, shot.note, W, H, (ctx, t) => openingScene(ctx, t, shot),
+      { animated: true, wide: true });
+  }
+
+  // ---- BOARDING AND ARRIVING ----------------------------------------------
+  //
+  // SETTLED 22 Sep 2026: THE STEPS BOARD THE PLAYER, on Peter's call. The
+  // spring pad lost — it cost no new mechanic, which was its whole argument,
+  // but the overtake took the argument away: the train the player boards is
+  // STANDING at a platform, and a spring that launches you onto a stationary
+  // train is a stunt where a staircase is a station. Steps are also the thing
+  // Peter wants as general vocabulary, so the one place they are certain to be
+  // used is the place to prove them.
+  //
+  // This block's four tiles are gone with it. Everything they showed is now
+  // shown better upstream: the opening block boards the player and pans, the
+  // overtake block explains why the train is standing there, and the nose runs
+  // them down to the tape at the other end. drawNeonBoardingSpring stays in
+  // src/dev/neon-train-foreground.js as the record of the option that lost.
+
+  // THE PHRASE, as the handoff writes it: long roof -> readable edge -> jump ->
+  // clean landing -> short roof -> long roof. Four frames of one run, so the
+  // cadence can be read as a sequence rather than as four unrelated pictures.
+  const PHRASE = [
+    [60, 'long roof — nothing to do but look at the city'],
+    [180, 'the edge arrives, with the whole long car spent reading it'],
+    [298, 'the jump, and the landing roof is already legible'],
+    [420, 'clean landing, then a short car sets the next coupler up'],
+  ];
+  for (const [camX, note] of PHRASE) {
+    tile(grid, `the phrase · camX ${camX}`, note, W, H, (ctx, t) => trainScene(ctx, t, {
+      camX, gaps: [340, 620], hero: camX === 298 ? 'jump' : 'run',
+    }), { animated: true, wide: true });
+  }
+
+  // And the consist as DATA, because half the argument is the rhythm and you
+  // cannot see rhythm in a still.
+  {
+    const gaps = [{ x: 340, w: GAP_W }, { x: 620, w: GAP_W }];
+    const rows = neonTrainConsist(0, 900, gaps)
+      .map((car) => `${car.kind.name} ${Math.round(car.x1 - car.x0)}px`
+        + `${car.endsAtGap ? ' → COUPLER GAP' : ''}`);
+    tile(grid, 'the consist, as laid', rows.join('<br>'), W, 120, (ctx) => {
+      ctx.fillStyle = '#0a0722';
+      ctx.fillRect(0, 0, W, 120);
+      // A strip map of the same 900px of level the tiles above are cut from.
+      const scale = W / 900;
+      for (const car of neonTrainConsist(0, 900, gaps)) {
+        ctx.fillStyle = car.kind.id === 'cargo' ? '#241c58' : '#1d1748';
+        ctx.fillRect(car.x0 * scale, 40, (car.x1 - car.x0) * scale - 1, 28);
+        ctx.fillStyle = '#38d8f8';
+        ctx.fillRect(car.x0 * scale, 39, (car.x1 - car.x0) * scale - 1, 1);
+      }
+      for (const gap of gaps) {
+        ctx.fillStyle = '#05040f';
+        ctx.fillRect(gap.x * scale, 40, gap.w * scale, 28);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(gap.x * scale, 38, 1, 3);
+      }
+      ctx.fillStyle = '#9fd8c0';
+      ctx.font = '8px monospace';
+      ctx.fillText('900 world px of Neon, two coupler gaps', 6, 84);
+    }, { hires: 3, wide: true });
   }
 }
 
-// -------------------------------- food court — door candidates, other palettes
-// The cast-wide check. A door painter serves more than the one colourway it is
-// designed against: the same shape has to survive the Trophy Room's gold, and
-// it has to go properly dead for LOCKED — which is the palette that carries
-// `icon: 'none'`, the flag every candidate reads to know it has no power. A
-// candidate that lights its porthole while the sign says LOCKED has broken the
-// one promise that door makes.
+// ------------------------------------------- SPACE / GRAVITY cabinet mock-ups (lab)
+// docs/ALTERNATE_CABINET_THEMES.md proposes GRAVITY GRID — a station where
+// magnetic gates transfer the hero between floor and ceiling — as the
+// replacement for one of the later cabinets. Four complete frames here: the
+// GRID as the document describes it, and three other ways a space cabinet
+// could be. Each is a whole picture — sky, layered backdrop, lane — with B33P
+// on his real mark through the run's camera, so what is being compared is a
+// cabinet and not a sky. Hazards are looks, not hitboxes; coins and the drone
+// are the real entities. Nothing is wired into a pack.
 {
-  const DW = 44, DH = 84, GAP = 14, M = 10;
-  const TW = M * 2 + DW * 2 + GAP, TH = DH + 22;
-  const FLOOR = TH - 14;
-
-  const grid = section('door-bakeoff-palettes', 'FOOD COURT — door candidates in the other palettes',
-    'SETTLED 18 Sep 2026 — the cast-wide check behind E. Each candidate in the Trophy Room gold (half open) and in LOCKED (shut). LOCKED stays dark because the player cannot use that door yet, not because the building has no power.');
-  for (const candidate of DOOR_CANDIDATES) {
-    const gold = doorCandidatePalette(candidate.id, DOOR_PALETTES.shelf);
-    const locked = doorCandidatePalette(candidate.id, DOOR_PALETTES.shelfLocked);
-    tile(grid, `${candidate.letter} — ${candidate.name}`, 'TROPHY gold, half open · LOCKED, shut', TW, TH,
-      (ctx, t) => {
-        ctx.fillStyle = '#241d31';
-        ctx.fillRect(0, 0, TW, FLOOR);
-        ctx.fillStyle = '#38304a';
-        ctx.fillRect(0, FLOOR, TW, 4);
-        ctx.fillStyle = '#1c1626';
-        ctx.fillRect(0, FLOOR + 4, TW, TH - FLOOR - 4);
-        drawDoor(ctx, M, FLOOR - DH, DW, DH, gold, t, 0.5);
-        drawDoor(ctx, M + DW + GAP, FLOOR - DH, DW, DH, locked, t, 0);
-      }, { animated: true, hires: 6 });
+  const pack = getStylePack('neon', {});
+  const grid = section('space-cabinet-bakeoff', 'SPACE CABINET — four mock-ups',
+    'OPEN — docs/ALTERNATE_CABINET_THEMES.md names GRAVITY GRID as the strongest replacement for a late '
+    + 'cabinet. A is that document drawn: floor and ceiling both lane, a polarity gate, a second B33P on '
+    + 'the ceiling. B, C and D are three other space cabinets — low-G lunar surface, the outside of a '
+    + 'starship, the inside of a spinning ring — none of which needs a new verb. Every card is a complete '
+    + 'frame with B33P on his real mark through the run\'s camera, coins and the drone are the real '
+    + 'entities; every other hazard is a look. Animated: the backdrops scroll at their layer rates.');
+  for (const cand of SPACE_CABINET_CANDIDATES) {
+    // The portrait check is a different SHAPE — a 480x1041 handset frame, not
+    // the 480x270 landscape one — and it paints itself rather than going
+    // through drawSpaceCandidate's landscape camera.
+    if (cand.portrait) {
+      // displayScale 0.82 = 393pt / 480 logical: the size a real handset gives
+      // this frame. Not `wide`, so it sits as one tall card in the grid rather
+      // than a full-width band.
+      tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 1041,
+        (ctx, t) => cand.draw(ctx, t), { animated: true, hires: 3, displayScale: 0.82 });
+      continue;
+    }
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, W, H, (ctx, t) => {
+      drawSpaceCandidate(ctx, cand, { camX: t * 60, t, pack });
+    }, { animated: true });
   }
 }
 
+// ------------------------------------------ NEON — what is the road made of? (lab)
+// SETTLED 22 Sep 2026 on E (STREAK). Normally the section would come out with
+// the verdict; this one stays up because Peter asked for it in case he changes
+// his mind, so card E is wired to the REAL painter — a settled sheet that keeps
+// its own copy of a shipped painter starts lying the first time the shipped one
+// is touched.
+//
+// THE APRON IS NINETEEN WORLD PIXELS, and that is the whole of this question.
+// The frame is 270 tall, the groundline is 232, and the lane is drawn through
+// the run's 2x camera — so everything below the lit edge gets 38 screen px and
+// about 19 world px before it falls off the bottom of the picture. Every
+// instinct about what a neon road should be (a vanishing-point floor, a
+// perspective checker, a reflected skyline) wants more depth than that.
+//
+// What shipped in that strip was one texture: parallel diagonals every 40px,
+// raking a constant -20. They never converged and never moved relative to each
+// other, so the whole apron slid sideways as one sheet — which is why it read
+// as wallpaper on the cabinet named after speed.
+//
+// Every card is the REAL neon backdrop with the REAL frame around the road —
+// apronRuns for the solid spans, the 1px cyan edge, the two cut faces at 55%,
+// the cabinet's pitFill of 'none'. Only the texture inside a run changes, so
+// the cards differ in exactly one thing. The gaps are authored at a fixed world
+// pitch rather than pinned to the camera, so they SCROLL THROUGH: a pit on this
+// cabinet is told entirely by its two cut faces, and a texture that swallows
+// them has lost whatever else it does.
+{
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  // The cabinet's opening rate. t * 60 would be a third of it, and a third of
+  // the speed is a different question — half of what is being judged here only
+  // exists at the rate the player actually meets this road.
+  const NEON_SPEED = 208;
+  const GAP_PITCH = 300;
+  const GAP_W = 56;
+  const grid = section('neon-ground-bakeoff', 'TERMINAL VELOCITY — what is the road made of?',
+    'SETTLED 22 Sep 2026 on E — kept up by request in case the verdict changes, so E draws through the '
+    + 'REAL neonPack.ground() painter rather than a copy of it. The apron under the lane is 19 WORLD PX '
+    + 'deep, which ruled out every perspective answer and left texture and motion. A is what shipped until '
+    + 'now: parallel diagonals at a constant rake, sliding sideways as one sheet. B keeps that idea and '
+    + 'fixes the drawing (a fan off a vanishing point, plus the transverse rungs a grid needs) and reads as '
+    + 'the same sheet with more lines in it. C–H are replacements, each betting on a different cue — a '
+    + 'board, a railbed, pure motion blur, falling data, a wave through a mesh, a wet reflection. Judged in '
+    + 'this order: does it say SPEED at the cabinet\'s real 208 world px/s; does it stay dim enough to leave '
+    + 'the hazard band (drone alt 13, target alt 40) alone; and does the CUT FACE of a pit still read as '
+    + 'fatal. Gaps are authored at a fixed world pitch so they scroll through rather than sitting still. '
+    + 'ANIMATED — a still frame of this sheet tells you almost nothing.');
 
+  const drone = makeObstacle('drone', 0);
+  const target = makeObstacle('target', 0);
+  // The holes, re-seated each frame so a tile that has been open for a minute
+  // still has pits in front of the camera instead of having run out of level.
+  function gapsAt(camX) {
+    const first = Math.floor((camX - GAP_PITCH) / GAP_PITCH);
+    const out = [];
+    for (let k = first; k * GAP_PITCH < camX + W + GAP_PITCH; k++) {
+      out.push({ live: true, x: k * GAP_PITCH, w: GAP_W, def: { isGap: true } });
+    }
+    return out;
+  }
+
+  for (const cand of NEON_GROUND_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, W, H, (ctx, t) => {
+      const camX = t * NEON_SPEED;
+      pack.bg(ctx, t, camX, neon, 1000, null, 0, null);
+      drone.x = camX + 118;
+      target.x = camX + 168;
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      drawNeonGroundCandidate(ctx, cand, {
+        camX, cab: neon, obstacles: gapsAt(camX), t, drawW: VIEW_W,
+      });
+      drawWorldEntity(ctx, drone, camX, t, pack, {});
+      drawWorldEntity(ctx, target, camX, t, pack, {});
+      drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+  }
+
+  // THE STRIP ON ITS OWN. A full-frame card shows whether an idea works in the
+  // picture; it is too small to show whether the idea is DRAWN well, because
+  // the thing being drawn is nineteen pixels tall with a hero standing on it.
+  // These are the same painters with the lane furniture taken away and the
+  // magnification turned up — the contact sheet for the texture itself.
+  for (const cand of NEON_GROUND_CANDIDATES) {
+    tile(grid, `${cand.letter} · strip`, `${NEON_GROUND_VISIBLE} world px, magnified — the texture alone`,
+      W, NEON_GROUND_VISIBLE + 1, (ctx, t) => {
+        drawNeonGroundStrip(ctx, cand, { camX: t * NEON_SPEED, t, w: W });
+      }, { animated: true, wide: true, hires: 4 });
+  }
+}
+
+// ------------------------------------------- SPACE CABINET — how tall can the corridor be? (lab)
+// The corridor is 108 world px because the camera is at zoom 2, not because
+// anything physical says so: the frame pins the groundline at y232, so the
+// world visible above the floor is 232/zoom. Pull back and the corridor grows,
+// with no distortion anywhere — the alternative, scaling Y more than X, would
+// make the cast a different shape in one cabinet and is not on the table.
+//
+// The ladder's job is the COST. Every rung buys height by shrinking everything
+// on screen, and only the legibility half of that trade can be judged by
+// looking at it.
+{
+  const grid = section('space-corridor-height', 'SPACE CABINET — how tall can the corridor be?',
+    'OPEN — the corridor\'s height is a CAMERA setting, not a physical one. The frame shows 232/zoom world px '
+    + 'above the floor, so zoom 2 allows 108 and zoom 1.6 allows 137, with no stretching and no distortion. '
+    + 'Every rung is the same world, the same 94px windows and the same hero; only the camera moves. The arc is '
+    + 'the CURRENT jump (BASE_JUMP_V 320 at 0.65g, apex 88, head 112) — red where his head goes through the '
+    + 'ceiling, green where it clears — because the real question is whether a taller corridor removes the need '
+    + 'to cut the launch. It does, from 120 up. 1.6 is ZOOM_NORMAL and 2 is ZOOM_CLOSE, so the middle rung is a '
+    + 'setting rather than new machinery. Read the amber line for what it costs: the hero drops from 48 screen '
+    + 'px to 34 across the ladder.');
+  for (const rung of CORRIDOR_LADDER) {
+    tile(grid, rung.name, rung.note, W, H, (ctx, t) => drawCorridorRung(ctx, rung, t), { animated: true });
+  }
+}
+
+// ------------------------------------------- SPACE CABINET — can you take the ceiling early? (lab)
+// A DOUBLE JUMP REACHES THE CEILING AND NO CORRIDOR CAN BE BUILT TALL ENOUGH
+// TO STOP IT. Kiko ships with maxJumps 2, the cape adds one to anyone and the
+// AIR JUMP capsule adds more; at 0.65g a double puts a head at 160-190 world
+// px against a corridor of at most 157. So either the extras are banned in
+// this cabinet, or the ceiling stops being a wall.
+//
+// These cards are the second answer. The cost of it is not clearance, it is
+// CERTAINTY: the gate being the only crossing is what lets a level author know
+// which surface the player is on at every x, and that is what makes a
+// two-surface chart writable at all. The first two cards buy that back by
+// making the ceiling landable ONLY in a gate's column; the third gives it up.
+{
+  const grid = section('space-ceiling-rule', 'SPACE CABINET — can you take the ceiling early?',
+    'OPEN — a double jump reaches the ceiling at every corridor height, so the ceiling has to become either a '
+    + 'landing or an authored hazard. All three cards are the recommended rung (zoom 1.6, corridor 137) and the '
+    + 'same double jump: BASE_JUMP_V 320 then a second launch at the apex scaled by AIR_JUMP_SCALE 0.85, head '
+    + 'at 175 world px. GREEN means he lands, RED means he meets it. The question these settle is not whether he '
+    + 'gets up there — he does — but whether the level author still knows which surface he is on afterwards.');
+  for (const v of CEILING_RULES) {
+    tile(grid, v.name, v.note, W, H, (ctx, t) => drawCeilingRule(ctx, v, t), { animated: true });
+  }
+}
+
+// ------------------------------------------- SPACE CABINET — filling the portrait frame (lab)
+// PORTRAIT HAS FRAME TO SPARE AND THE CORRIDOR DOES NOT USE IT. A phone gets a
+// 480x1041 logical frame — 137 x 297 world px at 3.5 zoom — against landscape's
+// 240 x 135. The corridor is 108 world px of that, and the floor anchor stays
+// where every other portrait stage puts it, so what is left is 110 world px
+// above the ceiling and 79 below the floor with nothing in them.
+//
+// Six treatments and two combinations. The rule they are judged by: anything
+// added up there must be VIEW or GAMEPLAY, never texture, and no moving bright
+// ink near the lane.
+{
+  const grid = section('space-portrait-frame', 'SPACE CABINET — filling the portrait frame',
+    'OPEN — 110 world px above the ceiling and 79 below the floor that landscape never has to fill. The floor '
+    + 'anchor does not move: it matches every other portrait stage, so nothing here re-centres the picture. Each '
+    + 'card is a real 480x1041 handset frame shown at 0.82 CSS px per logical px — the size a 393pt phone '
+    + 'actually gives it. Panes are in WORLD units (94px), so a window is the same window it is in landscape.');
+  for (const v of PORTRAIT_FRAME_VARIANTS) {
+    tile(grid, `${v.letter} — ${v.name}`, v.note, 480, 1041,
+      (ctx, t) => drawPortraitFrameVariant(ctx, v, t),
+      { animated: true, hires: 3, displayScale: 0.82 });
+  }
+}
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
@@ -8917,7 +9449,16 @@ small.textContent =
 // the screen scale. Everything else is already in frame pixels.
 function applyZoom() {
   for (const t of tiles) {
-    const s = zoom * (t.world ? WORLD_Z : 1);
+    // A PORTRAIT TILE IS ALREADY A WHOLE HANDSET. Its logical box is the
+    // 480x1041 phone frame, so following the screen-scale control put it on
+    // screen at 1440x3123 — a card three thousand pixels tall that you scroll
+    // THROUGH rather than look at, which reads as a blank card because any one
+    // screenful of it is a slice of sky.
+    //
+    // So it pins its own display scale instead. `displayScale` is CSS px per
+    // logical px, and 0.82 is what a 393pt handset actually gives the 480px
+    // frame — the real presentation size, which is the only honest one.
+    const s = t.displayScale != null ? t.displayScale : zoom * (t.world ? WORLD_Z : 1);
     t.canvas.style.width = (t.w * s) + 'px';
     t.canvas.style.height = (t.h * s) + 'px';
   }

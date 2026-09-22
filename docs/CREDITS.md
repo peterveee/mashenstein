@@ -51,7 +51,7 @@ Design Lead, Mode Five *(Against Recommendation)* — **Parminder Josh** *(again
 **Cabinet Design**
 PLUMBER PANIC — **Ilse Novotny**
 SPEED ZONE — **Trent Okafor**
-NEON BLASTERS — **Priya Wexler**
+TERMINAL VELOCITY — **Priya Wexler**
 FROST FORTRESS — **Gunnar Alstad**
 CRYPT SHIFT — **Ekaterina Voss**
 RHYTHM BANKRUPTCY — **Marlon deSouza**

@@ -178,7 +178,7 @@ export const GENRE_MOTIFS = {
       }
     }
   },
-  // NEON BLASTERS: a ship and its shots.
+  // TERMINAL VELOCITY: a ship and its shots.
   neon(c, w, h, ink) {
     plain(c, ink, (p) => {
       p.moveTo(w * 0.1, h * 0.14); p.lineTo(w * 0.54, h * 0.5);
