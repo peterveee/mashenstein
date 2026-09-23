@@ -162,5 +162,53 @@ for (const id of NEON_STAGES) {
   assert(Math.max(...ats) >= 0.9, `${id} ends on a train, not beside one`);
 }
 
+// THE ROOF IS A CEILING FROM UNDERNEATH. A hero who does not board runs into
+// the car, and the jump he presses in there has to do almost nothing — but
+// "almost nothing" is derived from the geometry, not typed in, so this pins
+// the two ends of it: he gets a real hop, and he cannot reach the roof with it.
+// If he could, the roof would not be worth jumping onto from outside, which is
+// the whole train section.
+const { neonTrainHeadroom } = await import('../src/game/terrain.js');
+const { Player, PLAYER_H } = await import('../src/game/player.js');
+
+const HELD = { held: (k) => k === 'jump', pressed: () => false };
+function apexWith(ceiling) {
+  const pl = new Player('b33p');
+  pl.grounded = true;
+  pl.jumpPressed({ sfx() {} });
+  let top = 0;
+  for (let i = 0; i < 400; i++) {
+    pl.update(1 / 120, HELD, { speed: 208, ice: false, gravityScale: 1, ceiling });
+    top = Math.max(top, pl.y);
+    if (i > 5 && pl.grounded) break;
+  }
+  return top;
+}
+
+const { HERO_DRAW_H } = await import('../src/game/draw.js');
+const head = neonTrainHeadroom({ rise: 33 });
+assert(head > 2, `there is room for a hop inside a car (${head}px)`);
+// Measured against the DRAWN hero, not the hitbox — the hitbox version let his
+// head and cap come out through the roof while his legs were at the windows.
+assert(head + HERO_DRAW_H < 33, 'and the head you can SEE stops short of the roof');
+const free = apexWith(null);
+const capped = apexWith(head);
+assert(free > 40, `a jump outside is a jump (${free.toFixed(1)}px)`);
+assert(Math.abs(capped - head) < 0.01, `inside, it stops dead at the ceiling (${capped.toFixed(1)}px)`);
+assert(capped < free * 0.25, 'which is a thump, not a jump');
+// EVERY HERO, by what he really reaches (Peter, 23 Sep: Grumpos's head came out
+// through the roof). Standing on the car floor at the top of his hop, the tallest
+// point of his drawing must stay under the roofline.
+const { HERO_REACH, heroReach } = await import('../src/game/draw.js');
+const { HEROES } = await import('../src/data/heroes.js');
+const { TRAIN_FLOOR_LIFT } = await import('../src/game/terrain.js');
+for (const h of HEROES) {
+  const top = TRAIN_FLOOR_LIFT + neonTrainHeadroom({ rise: 33 }, h.id) + heroReach(h.id);
+  assert(h.id in HERO_REACH, `${h.id} has a measured reach`);
+  assert(top <= 33, `${h.id}'s head stays under the roof at the top of his hop (${top}px of 33)`);
+}
+// A road with no roof must not cap anything — this is neon's rule, not a rule.
+assert(neonTrainHeadroom({ rise: 0 }) === 0, 'a road with no rise leaves no headroom to speak of');
+
 console.log(failed ? 'NEON CITY ARRIVAL: FAILED' : 'NEON CITY ARRIVAL: PASSED');
 if (failed) process.exit(1);

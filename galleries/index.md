@@ -30,7 +30,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
-| 2026-09-16 | `8e79cc0` | [2026-09-16-8e79cc0.html](2026-09-16-8e79cc0.html) | [bake-offs](2026-09-16-8e79cc0-lab.html) | feat(attract): add initialHeroId for idle demo and dev modes |
 | 2026-09-17 | `32842c1` | [2026-09-17-32842c1.html](2026-09-17-32842c1.html) | [bake-offs](2026-09-17-32842c1-lab.html) | feat: add SFX desk for live audio mixing and level adjustment |
 | 2026-09-18 | `b68be5b` | [2026-09-18-b68be5b.html](2026-09-18-b68be5b.html) | [bake-offs](2026-09-18-b68be5b-lab.html) | feat: add floor reflections rendering and desk management tools |
 | 2026-09-18 | `b0cedf6` | [2026-09-18-b0cedf6.html](2026-09-18-b0cedf6.html) | [bake-offs](2026-09-18-b0cedf6-lab.html) | feat: enhance cabinet dive mechanics and reflection handling |
@@ -40,4 +39,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-19 | `cef82df` | [2026-09-19-cef82df.html](2026-09-19-cef82df.html) | [bake-offs](2026-09-19-cef82df-lab.html) | Settings reset asks with YES/NO buttons; trim three stale touch hints |
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | 2026-09-22 | `b9c3169` | [2026-09-22-b9c3169.html](2026-09-22-b9c3169.html) | [bake-offs](2026-09-22-b9c3169-lab.html) | Refactor HUB_LIGHT_Y and REFLECT_SOLE_DROP to remove export and streamline code; add proposed mechanic ideas for Crypt Shift and Neon Blasters. |
+| 2026-09-23 | `eb03b14` | [2026-09-23-eb03b14.html](2026-09-23-eb03b14.html) | [bake-offs](2026-09-23-eb03b14-lab.html) | Add tests for neon city arrival and moon phases |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

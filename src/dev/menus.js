@@ -34,6 +34,7 @@ import { derived, TuneStrip } from './tune-strip.js';
 import { PAN_MAX } from '../engine/camera.js';
 import { resolveLayout } from '../game/layout.js';
 import { proseMenu } from './prose.js';
+import { GravityRunState } from './gravity/state.js';
 
 const GOLD = '#f6d33c';
 const DIM = '#5a5a68';
@@ -750,6 +751,12 @@ export function rootMenu(dev) {
     title: 'DEV MENU',
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
+      { label: 'GRAVITY GRID — PLAYTEST', act: () => {
+        dev.close();
+        setState(new GravityRunState({ save: dev.ctx.save, initialHeroId: dev.ctx.Flow.heroId(), difficulty: dev.ctx.save.slot.difficulty,
+          seed: dev.seedLock ?? undefined,
+          onEnd: () => dev.ctx.Flow.toHub() }));
+      } },
       // Keep the saved-song launcher in the first screenful. On a phone the
       // root menu has fewer visible rows, and this overlay deliberately has no
       // swipe-to-scroll gesture; a row below the fold is otherwise unreachable

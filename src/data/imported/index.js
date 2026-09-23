@@ -60,6 +60,27 @@ import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
 import * as ROSSINI_BARBER_OF_SEVILLE_OVERTURE from './rossini-barber-of-seville-overture.js';
 import * as S_N_C_SPECIAL_STAGE from './s-n-c-special-stage.js';
+import * as SESERAGI_V1_OWN_MOTIF from './seseragi-v1-own-motif.js';
+import * as SESERAGI_V10_THREE_PEWS from './seseragi-v10-three-pews.js';
+import * as SESERAGI_V11_BASS_UP from './seseragi-v11-bass-up.js';
+import * as SESERAGI_V12_PLUCK_UP from './seseragi-v12-pluck-up.js';
+import * as SESERAGI_V13_MEGA_SAW from './seseragi-v13-mega-saw.js';
+import * as SESERAGI_V14_CHIME_LEADS from './seseragi-v14-chime-leads.js';
+import * as SESERAGI_V15_SQUARE_PLUCK from './seseragi-v15-square-pluck.js';
+import * as SESERAGI_V16_HALF_TIME_DRUMS from './seseragi-v16-half-time-drums.js';
+import * as SESERAGI_V17_UNPAIRED from './seseragi-v17-unpaired.js';
+import * as SESERAGI_V2_BRIGHT from './seseragi-v2-bright.js';
+import * as SESERAGI_V3_DARK from './seseragi-v3-dark.js';
+import * as SESERAGI_V4_SHIBUYA from './seseragi-v4-shibuya.js';
+import * as SESERAGI_V5_SHIBUYA_MINOR from './seseragi-v5-shibuya-minor.js';
+import * as SESERAGI_V6_SHIBUYA_LIFT from './seseragi-v6-shibuya-lift.js';
+import * as SESERAGI_V7_SHIBUYA_MAJOR_LIFT from './seseragi-v7-shibuya-major-lift.js';
+import * as SESERAGI_V8A_LIFT_F_MAJOR from './seseragi-v8a-lift-f-major.js';
+import * as SESERAGI_V8B_LIFT_A_MAJOR from './seseragi-v8b-lift-a-major.js';
+import * as SESERAGI_V8C_LIFT_BB_MAJOR from './seseragi-v8c-lift-bb-major.js';
+import * as SESERAGI_V8D_LIFT_D_TO_A from './seseragi-v8d-lift-d-to-a.js';
+import * as SESERAGI_V8E_LIFT_NO_TRANSPOSE from './seseragi-v8e-lift-no-transpose.js';
+import * as SESERAGI_V9_SYNDRUM from './seseragi-v9-syndrum.js';
 import * as SHOP_80BPM from './shop-80bpm.js';
 import * as SHOP_CHORDS from './shop-chords.js';
 import * as SHOPPING_FULL from './shopping-full.js';
@@ -131,6 +152,27 @@ export const IMPORTED_BY_ID = {
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
   "rossini-barber-of-seville-overture": { bank: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.bank, title: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.title, group: "imported", writable: true },
   "s-n-c-special-stage": { bank: S_N_C_SPECIAL_STAGE.bank, title: S_N_C_SPECIAL_STAGE.title, group: "copy", writable: true },
+  "seseragi-v1-own-motif": { bank: SESERAGI_V1_OWN_MOTIF.bank, title: SESERAGI_V1_OWN_MOTIF.title, group: "imported", writable: true },
+  "seseragi-v10-three-pews": { bank: SESERAGI_V10_THREE_PEWS.bank, title: SESERAGI_V10_THREE_PEWS.title, group: "imported", writable: true },
+  "seseragi-v11-bass-up": { bank: SESERAGI_V11_BASS_UP.bank, title: SESERAGI_V11_BASS_UP.title, group: "imported", writable: true },
+  "seseragi-v12-pluck-up": { bank: SESERAGI_V12_PLUCK_UP.bank, title: SESERAGI_V12_PLUCK_UP.title, group: "imported", writable: true },
+  "seseragi-v13-mega-saw": { bank: SESERAGI_V13_MEGA_SAW.bank, title: SESERAGI_V13_MEGA_SAW.title, group: "imported", writable: true },
+  "seseragi-v14-chime-leads": { bank: SESERAGI_V14_CHIME_LEADS.bank, title: SESERAGI_V14_CHIME_LEADS.title, group: "imported", writable: true },
+  "seseragi-v15-square-pluck": { bank: SESERAGI_V15_SQUARE_PLUCK.bank, title: SESERAGI_V15_SQUARE_PLUCK.title, group: "imported", writable: true },
+  "seseragi-v16-half-time-drums": { bank: SESERAGI_V16_HALF_TIME_DRUMS.bank, title: SESERAGI_V16_HALF_TIME_DRUMS.title, group: "imported", writable: true },
+  "seseragi-v17-unpaired": { bank: SESERAGI_V17_UNPAIRED.bank, title: SESERAGI_V17_UNPAIRED.title, group: "imported", writable: true },
+  "seseragi-v2-bright": { bank: SESERAGI_V2_BRIGHT.bank, title: SESERAGI_V2_BRIGHT.title, group: "imported", writable: true },
+  "seseragi-v3-dark": { bank: SESERAGI_V3_DARK.bank, title: SESERAGI_V3_DARK.title, group: "imported", writable: true },
+  "seseragi-v4-shibuya": { bank: SESERAGI_V4_SHIBUYA.bank, title: SESERAGI_V4_SHIBUYA.title, group: "imported", writable: true },
+  "seseragi-v5-shibuya-minor": { bank: SESERAGI_V5_SHIBUYA_MINOR.bank, title: SESERAGI_V5_SHIBUYA_MINOR.title, group: "imported", writable: true },
+  "seseragi-v6-shibuya-lift": { bank: SESERAGI_V6_SHIBUYA_LIFT.bank, title: SESERAGI_V6_SHIBUYA_LIFT.title, group: "imported", writable: true },
+  "seseragi-v7-shibuya-major-lift": { bank: SESERAGI_V7_SHIBUYA_MAJOR_LIFT.bank, title: SESERAGI_V7_SHIBUYA_MAJOR_LIFT.title, group: "imported", writable: true },
+  "seseragi-v8a-lift-f-major": { bank: SESERAGI_V8A_LIFT_F_MAJOR.bank, title: SESERAGI_V8A_LIFT_F_MAJOR.title, group: "imported", writable: true },
+  "seseragi-v8b-lift-a-major": { bank: SESERAGI_V8B_LIFT_A_MAJOR.bank, title: SESERAGI_V8B_LIFT_A_MAJOR.title, group: "imported", writable: true },
+  "seseragi-v8c-lift-bb-major": { bank: SESERAGI_V8C_LIFT_BB_MAJOR.bank, title: SESERAGI_V8C_LIFT_BB_MAJOR.title, group: "imported", writable: true },
+  "seseragi-v8d-lift-d-to-a": { bank: SESERAGI_V8D_LIFT_D_TO_A.bank, title: SESERAGI_V8D_LIFT_D_TO_A.title, group: "imported", writable: true },
+  "seseragi-v8e-lift-no-transpose": { bank: SESERAGI_V8E_LIFT_NO_TRANSPOSE.bank, title: SESERAGI_V8E_LIFT_NO_TRANSPOSE.title, group: "imported", writable: true },
+  "seseragi-v9-syndrum": { bank: SESERAGI_V9_SYNDRUM.bank, title: SESERAGI_V9_SYNDRUM.title, group: "imported", writable: true },
   "shop-80bpm": { bank: SHOP_80BPM.bank, title: SHOP_80BPM.title, group: "imported", writable: true },
   "shop-chords": { bank: SHOP_CHORDS.bank, title: SHOP_CHORDS.title, group: "copy", writable: true },
   "shopping-full": { bank: SHOPPING_FULL.bank, title: SHOPPING_FULL.title, group: "copy", writable: true },

@@ -1037,20 +1037,48 @@ export function insertSilence(draft, at, count, keys = LANE_KEYS) {
  */
 export function copyLaneBars(bank, draft, from, to, lane) {
   const [a, b] = range(draft, from, to);
-  const sections = sectionsOf(bank, draft);
   const bars = [];
   const lengths = [];
+  // At the DRAFT'S OWN GRID, through `readBarLane`. This read sixteen steps a bar
+  // whatever the grid was, so on a 1/32 song a copy, a paste and a drag onto another
+  // track all kept every other note and lost the 32nds between them (Peter, 23 Sep).
   for (let i = a; i <= b; i++) {
-    const bar = draft.plan[i];
-    const sec = bar.sec != null ? resolveSection({ ...bank, sections }, bar.sec) : null;
-    const read = (key) => {
-      const arr = sec?.[key] ?? bank[key];
-      return Array.from({ length: 16 }, (_, j) => clone(arr?.[bar.half * 16 + j] ?? null));
-    };
-    bars.push(read(lane));
-    lengths.push(read(lenKey(lane)));
+    bars.push(readBarLane(bank, draft, i, lane).map(clone));
+    lengths.push(readBarLane(bank, draft, i, lenKey(lane)).map(clone));
   }
   return { lane, bars, lengths };
+}
+
+/**
+ * A lane clip made ready for a draft: the draft promoted to a grid that can hold the
+ * clip, and every bar of the clip spread onto that grid.
+ *
+ * A clip carries its own grid — each bar is as long as the grid it was copied at — and
+ * the destination may be coarser or finer. Coarser: the draft is promoted first, the
+ * way `pasteLaneTrack` always did, or 32nds pasted into a 16th song fold to 16ths.
+ * Finer: each copied step lands on every stride'th slot and the slots between are
+ * rests, or a 16th bar written into a 32nd lane fills only its first half. LENGTHS
+ * need no scaling on the way — they are in sixteenths whatever the grid (the
+ * scheduler multiplies them by seconds-per-sixteenth) — only their slot moves.
+ */
+export function fitLaneClip(draft, clip) {
+  const gridOf = (bar) => (RESOLUTIONS.includes(bar?.length) ? bar.length : LEGACY_RESOLUTION);
+  const current = resolutionOf(null, draft);
+  const grid = promoteResolution(current, ...(clip?.bars || []).map(gridOf));
+  const out = grid !== current ? { ...copy(draft), resolution: grid } : draft;
+  const spread = (bar, rest) => {
+    const from = gridOf(bar);
+    if (from === grid) return bar.map(clone);
+    const stride = grid / from;
+    return Array.from({ length: grid }, (_, i) => (i % stride ? rest : clone(bar[i / stride] ?? rest)));
+  };
+  const bars = (clip?.bars || []).map((bar) => spread(bar, bar.some((v) => typeof v === 'boolean') ? false : null));
+  const lengths = (clip?.bars || []).map((bar, i) => {
+    const len = clip.lengths?.[i];
+    return Array.isArray(len) && len.length === bar.length
+      ? spread(len, null) : new Array(grid).fill(null);
+  });
+  return { draft: out, bars, lengths, grid };
 }
 
 /**
@@ -1090,15 +1118,14 @@ export function pasteLaneTrack(bank, draft, at, lane, clip) {
   if (!bank || !draft || !lane || !clip?.bars?.length) return draft;
   const start = Math.max(0, Math.floor(at));
   const count = Math.min(clip.bars.length, Math.max(0, draft.plan.length - start));
-  // A clip's bars were copied at some grid and must be pasted at one that can hold them.
-  const clipGrid = promoteResolution(...clip.bars.map((bar) => (
-    RESOLUTIONS.includes(bar.length) ? bar.length : LEGACY_RESOLUTION)));
-  const pasteAt = promoteResolution(resolutionOf(null, draft), clipGrid);
-  let out = pasteAt !== resolutionOf(null, draft)
-    ? { ...copy(draft), resolution: pasteAt } : draft;
+  // A clip's bars were copied at some grid and must be pasted at one that can hold
+  // them — and spread onto it when the song's grid is the finer one.
+  const fitted = fitLaneClip(draft, clip);
+  let out = fitted.draft;
   for (let i = 0; i < count; i++) {
     const bar = start + i;
-    out = writeBarNotesShared(bank, out, bar, lane, clip.bars[i], clip.lengths?.[i] || null);
+    out = writeBarNotesShared(bank, out, bar, lane, fitted.bars[i],
+      clip.lengths?.[i] ? fitted.lengths[i] : null);
     const edit = clip.edits?.[i] || {};
     out = setLanesOff(out, bar, bar, [lane], !!edit.off);
     out = setLanesDeleted(out, bar, bar, [lane], !!edit.delete);
@@ -1124,7 +1151,7 @@ export function moveLaneBars(bank, draft, from, to, sourceLane, targetLane, targ
   if (!count || (sourceLane === targetLane && start === from)) return copy(draft);
   let out = copy(draft);
   if (!shouldCopy) {
-    const rest = Array.from({ length: 16 }, () => null);
+    const rest = Array.from({ length: resolutionOf(null, draft) }, () => null);
     for (let i = from; i <= to; i++) out = writeBarNotes(bank, out, i, sourceLane, rest, rest);
   }
   for (let i = 0; i < count; i++) {

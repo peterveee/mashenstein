@@ -10,12 +10,14 @@
 // keep in step by hand.
 import { CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
 import { SHOP_THEME_BY_ID, COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
+import { bank as GRAVITY_THEME } from './songs/gravity.js';
 import { MEGAMIX_THEME } from './megamix.js';
 
 // Friendly aliases for the named themes plus the in-game shop theme. "shop"
 // resolves to COUNTER_DANCE_MIX_THEME — the approved bank both counters actually
 // play — rather than one of the parked audition candidates.
 const ALIASES = {
+  gravity: { bank: GRAVITY_THEME, slug: 'gravity-grid', title: 'POLARITY DRIVE', group: 'cabinet' },
   hub: { bank: HUB_THEME, slug: 'food-court', title: 'THE FOOD COURT' },
   title: { bank: TITLE_THEME, slug: 'title-theme', title: 'EMPTY ARCADE' },
   finale: { bank: FINALE_THEME, slug: 'finale-theme', title: 'ONE MORE SWITCH' },

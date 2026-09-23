@@ -7551,6 +7551,7 @@ function neonFarMass(ctx, shift, {
 function neonWireRow(ctx, shift, t, {
   seed = 7, span = 78, count = 10, minH = 60, maxH = 132, w = 34,
   stroke = 1, glow = 0.14, alpha = 1, windows = true, masts = true,
+  inkA = NEON_MAGENTA, inkB = NEON_CYAN, lit = NEON_AMBER, lamp = NEON_LAMP,
 } = {}) {
   if (alpha <= 0) return;
   for (let i = 0; i < count; i++) {
@@ -7559,7 +7560,7 @@ function neonWireRow(ctx, shift, t, {
     const bw = Math.round(w * (0.7 + neonHash(seed + i + 17) * 0.6));
     const h = minH + r * (maxH - minH);
     const top = Math.round(GROUND_Y - h);
-    const ink = i % 2 ? NEON_CYAN : NEON_MAGENTA;
+    const ink = i % 2 ? inkB : inkA;
     ctx.globalAlpha = alpha;
     // See neonFarMass: the tower is drawn to the bottom of the frame so a pit
     // shows its body rather than its footing. `h` stays the ABOVE-ROAD height,
@@ -7581,7 +7582,7 @@ function neonWireRow(ctx, shift, t, {
       // Lit cells on their own slow clock. A window that never changes is a
       // texture; one that changes every frame is a fault.
       ctx.globalAlpha = alpha * 0.85;
-      ctx.fillStyle = NEON_AMBER;
+      ctx.fillStyle = lit;
       for (let k = 0; k < 7; k++) {
         const wr = neonHash(seed * 3 + i * 13 + k);
         if (wr > 0.55) continue;
@@ -7598,7 +7599,7 @@ function neonWireRow(ctx, shift, t, {
         c.lineTo(x + bw / 2 + 0.5, top - 12.5);
       });
       ctx.globalAlpha = alpha * (Math.sin(t * 2.2 + i) > 0 ? 1 : 0.2);
-      ctx.fillStyle = NEON_LAMP;
+      ctx.fillStyle = lamp;
       ctx.fillRect(x + bw / 2 - 1, top - 15, 2, 2);
     }
   }
@@ -7607,10 +7608,10 @@ function neonWireRow(ctx, shift, t, {
 
 // Layer 6. The smog, in front of the city and behind everything the player
 // plays with. See the header: this is what buys the hazard band back.
-function neonBandVeil(ctx, cab, { alpha = 0.72, top = null, context = null } = {}) {
+function neonBandVeil(ctx, cab, { alpha = 0.72, top = null, context = null, tint = null } = {}) {
   const cov = backgroundPaintCoverage(ctx);
   const from = Number.isFinite(top) ? top : neonFlyerBandTop(context) - 24;
-  const tint = cab && cab.sky ? cab.sky[1] : '#1a1048';
+  tint = tint || (cab && cab.sky ? cab.sky[1] : '#1a1048');
   // The gradient is keyed to GROUND_Y — that is where the smog is thickest —
   // but it is PAINTED to the bottom of the frame, holding its final colour.
   // Stopping it at the road put a brightness step across every hole at exactly
@@ -7927,7 +7928,15 @@ function neonPack(settings) {
         progress: backgroundContext?.progress ?? scene?.progress,
         totalDist,
       };
-      skyGrad(ctx, cab.sky[0], cab.sky[1]);
+      // THE MOOD SEAM. An optional palette-and-hooks object that repaints the same
+      // city in another light — the bake-off for a MAJOR-KEY opening that the song's
+      // turn to minor would convert into this night (src/dev/neon-mood-candidates.js).
+      // Absent, every value below falls back to exactly what ships, so a run that
+      // never sets one paints the night it always has.
+      const mood = backgroundContext?.neonMood ?? scene?.neonMood ?? null;
+      const sky = mood?.sky || cab.sky;
+      skyGrad(ctx, sky[0], sky[1]);
+      if (mood?.skyExtra) mood.skyExtra(ctx, t, camX, backgroundContext);
       // Six layers, back to front, each at its own fraction of the camera. The
       // factor is scaled by ZOOM because the camera magnifies the FOREGROUND:
       // a parallax factor that is not scaled by the same amount leaves the
@@ -7948,33 +7957,38 @@ function neonPack(settings) {
       const farRoofs = neonRowRoofs(backgroundContext, 'farLandmark', 46, 92);
       const midRoofs = neonRowRoofs(backgroundContext, 'middle', 58, 112);
       const nearRoofs = neonRowRoofs(backgroundContext, 'near', 84, 158);
-      layer('stars', 0.014, (shift) => {
-        neonStarfield(ctx, shift, t, { context: backgroundContext });
-        // Three a level, on the odometer. Drawn with the stars because that is
-        // what it is — one of them, leaving.
-        neonComet(ctx, backgroundContext);
-      });
-      layer('celestial', 0, () => neonMoon(ctx, t, backgroundContext));
-      layer('far', 0.02, () => neonHorizonHaze(ctx));
+      const starAlpha = mood?.stars ?? 1;
+      if (starAlpha > 0) {
+        layer('stars', 0.014, (shift) => {
+          ctx.globalAlpha = starAlpha;
+          neonStarfield(ctx, shift, t, { context: backgroundContext });
+          // Three a level, on the odometer. Drawn with the stars because that is
+          // what it is — one of them, leaving.
+          neonComet(ctx, backgroundContext);
+          ctx.globalAlpha = 1;
+        });
+      }
+      if (mood?.moon !== false) layer('celestial', 0, () => neonMoon(ctx, t, backgroundContext));
+      layer('far', 0.02, () => neonHorizonHaze(ctx, mood?.haze || {}));
       if (reveal.farMass > 0) {
         layer('far', 0.07, (shift) => neonFarMass(ctx, shift, {
-          minH: farRoofs.minH, maxH: farRoofs.maxH, alpha: reveal.farMass,
+          minH: farRoofs.minH, maxH: farRoofs.maxH, alpha: reveal.farMass, ...(mood?.mass || {}),
         }));
       }
       if (reveal.midWire > 0) {
         layer('middle', 0.15, (shift) => neonWireRow(ctx, shift, t, {
           seed: 7, span: 74, count: 9, minH: midRoofs.minH, maxH: midRoofs.maxH, w: 26,
-          stroke: 1, glow: 0.1, alpha: 0.46 * reveal.midWire,
+          stroke: 1, glow: 0.1, alpha: 0.46 * reveal.midWire, ...(mood?.wire || {}),
         }));
       }
       if (reveal.nearWire > 0) {
         layer('near', 0.3, (shift) => neonWireRow(ctx, shift, t, {
           seed: 23, span: 132, count: 7, minH: nearRoofs.minH, maxH: nearRoofs.maxH, w: 42,
-          stroke: 1.2, glow: 0.18, alpha: reveal.nearWire,
+          stroke: 1.2, glow: 0.18, alpha: reveal.nearWire, ...(mood?.wire || {}),
         }));
       }
       // In front of the city, behind everything the player plays with.
-      layer('near', 0, () => neonBandVeil(ctx, cab, { context: backgroundContext }));
+      layer('near', 0, () => neonBandVeil(ctx, cab, { context: backgroundContext, ...(mood?.veil || {}) }));
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null,
       world = null) {

@@ -4298,6 +4298,141 @@ const USER_TONE = {
     },
     starter: false,
     vibrato: { depth: 0.03 } },
+  // ---- WUB: twelve dubstep wobbles (23 Sep 2026) --------------------------------
+  // Neither synth's LFO can follow the song tempo (MRDR-3's is Hz only; TNGR-2 dropped
+  // its sync), so each rate is written for 140 BPM, dubstep's home tempo, and the label
+  // says which note value it lands on there. At another tempo: rate × bpm / 140.
+  // 1/2 = 1.167 Hz · 1/4 = 2.333 · 1/8 = 4.667 · 1/8T = 7 · 1/16 = 9.333.
+  // MRDR-3 ones wobble the FILTER (the classic wub); TNGR-2 ones sweep a vowel or
+  // dark-to-air WAVETABLE (the talking "yoi").
+  wubClassic: { label: 'WUB Classic 1/8', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
+    note: 'The textbook wub: saw plus a square an octave down through a resonant 24 dB '
+      + 'lowpass that a sine LFO opens and shuts on the eighth note at 140.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.004, decay: 0.3, sustain: 0.9, release: 0.12, unison: 2, spread: 10 },
+      osc2: { type: 'square', ratio: 0.5, gain: 0.55, attack: 0.004, decay: 0.3, sustain: 0.9, release: 0.12 },
+      lfo: { type: 'sine', rate: 4.667, depth: 0.75, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 420, Q: 6, track: 0.3 } },
+    drive: 0.3, shape: 'soft', mode: 'mono', portamento: 0.03, starter: false },
+  wubSlow: { label: 'WUB Slow 1/4', category: 'Bass', synth: 'MRDR-3', dur: 2.4,
+    note: 'The big lazy quarter-note wobble: two detuned saws and a sine sub, heavy '
+      + 'resonance, the filter breathing once a beat.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.7, attack: 0.005, decay: 0.4, sustain: 0.9, release: 0.15, unison: 2, spread: 14 },
+      osc2: { type: 'sawtooth', ratio: 1, detune: -9, gain: 0.5, attack: 0.005, decay: 0.4, sustain: 0.9, release: 0.15 },
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.6, attack: 0.005, decay: 0.4, sustain: 1, release: 0.15 },
+      lfo: { type: 'sine', rate: 2.333, depth: 0.8, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 380, Q: 8, track: 0.2 } },
+    drive: 0.25, shape: 'soft', mode: 'mono', portamento: 0.04, starter: false },
+  wubTriplet: { label: 'WUB Triplet 1/8T', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
+    note: 'The rolling triplet wub — three wobbles to the beat, the one that makes a drop '
+      + 'lurch. Square and saw, driven.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.7, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
+      osc2: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
+      lfo: { type: 'sine', rate: 7, depth: 0.95, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 420, Q: 7, track: 0.3 } },
+    drive: 0.4, shape: 'soft', mode: 'mono', portamento: 0.02, starter: false },
+  wubStutter: { label: 'WUB Stutter 1/16', category: 'Bass', synth: 'MRDR-3', dur: 1.6,
+    note: 'A SQUARE LFO on the sixteenth: the filter slams between shut and open, so the '
+      + 'bass chops like a gate with a mouth.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.002, decay: 0.3, sustain: 0.9, release: 0.08, unison: 2, spread: 12 },
+      osc2: { type: 'pulse', width: 0.3, ratio: 0.5, gain: 0.5, attack: 0.002, decay: 0.3, sustain: 0.9, release: 0.08 },
+      lfo: { type: 'square', rate: 9.333, depth: 0.7, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 520, Q: 5, track: 0.3 } },
+    drive: 0.35, shape: 'soft', mode: 'mono', portamento: 0.02, starter: false },
+  wubHalf: { label: 'WUB Half 1/2', category: 'Bass', synth: 'MRDR-3', dur: 3,
+    note: 'One slow triangle swell every two beats with the resonance right up — the '
+      + 'half-time breakdown wobble that whistles at the top.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.01, decay: 0.5, sustain: 0.95, release: 0.2, unison: 3, spread: 16, stereo: 0.4 },
+      osc2: { type: 'sine', ratio: 0.5, gain: 0.55, attack: 0.01, decay: 0.5, sustain: 1, release: 0.2 },
+      lfo: { type: 'triangle', rate: 1.167, depth: 0.85, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 340, Q: 10, track: 0.2 } },
+    drive: 0.2, shape: 'soft', mode: 'mono', portamento: 0.05, starter: false },
+  wubReese: { label: 'WUB Reese Roll', category: 'Bass', synth: 'MRDR-3', dur: 2.4,
+    note: 'A Reese — wide detuned saws beating against each other — under a gentle '
+      + 'half-note filter roll. The DnB cousin of the wub; darker and more menacing.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.7, attack: 0.01, decay: 0.5, sustain: 0.95, release: 0.2, unison: 3, spread: 25, stereo: 0.5 },
+      osc2: { type: 'sawtooth', ratio: 1, detune: -14, gain: 0.6, attack: 0.01, decay: 0.5, sustain: 0.95, release: 0.2 },
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.5, attack: 0.01, decay: 0.5, sustain: 1, release: 0.2 },
+      lfo: { type: 'sine', rate: 1.167, depth: 0.5, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 650, Q: 2.5, track: 0.3 } },
+    drive: 0.3, shape: 'soft', mode: 'mono', portamento: 0.06, starter: false },
+  wubFmGrowl: { label: 'WUB FM Growl', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
+    note: 'FM grit in the saw and a folding drive after it, wobbled on the eighth: '
+      + 'the snarling mid-range growl rather than the round sub wub.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1,
+        fm: { ratio: 1, index: 3, attack: 0.005, decay: 0.8 } },
+      osc2: { type: 'sine', ratio: 0.5, gain: 0.5, attack: 0.003, decay: 0.3, sustain: 1, release: 0.1 },
+      lfo: { type: 'sine', rate: 4.667, depth: 0.65, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 700, Q: 5, track: 0.4 } },
+    drive: 0.5, shape: 'fold', tone: { freq: 6000 }, mode: 'mono', portamento: 0.03, starter: false },
+  wubSyncScreech: { label: 'WUB Sync Screech', category: 'Bass', synth: 'MRDR-3', dur: 1.6,
+    note: 'Hard-synced saws — the tearing, vocal edge — through a brighter triplet wobble. '
+      + 'Sits higher than the others: the lead wub of a drop.',
+    sync: '1+2',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.6, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
+      osc2: { type: 'sawtooth', ratio: 2.5, gain: 0.7, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
+      osc3: { type: 'square', ratio: 0.5, gain: 0.45, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
+      lfo: { type: 'sine', rate: 7, depth: 0.9, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 750, Q: 6, track: 0.5 } },
+    drive: 0.35, shape: 'soft', mode: 'mono', portamento: 0.02, starter: false },
+  wubRobot: { label: 'WUB Robot Talk', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
+    note: 'Sample-and-hold on the sixteenth: the filter jumps to a new random place every '
+      + 'step, so the bass jabbers like a robot rather than swinging.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.002, decay: 0.3, sustain: 0.9, release: 0.1, unison: 2, spread: 10 },
+      osc2: { type: 'square', ratio: 0.5, gain: 0.5, attack: 0.002, decay: 0.3, sustain: 0.9, release: 0.1 },
+      lfo: { type: 'samplehold', rate: 9.333, depth: 0.7, target: 'filter' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 600, Q: 7, track: 0.3 } },
+    drive: 0.3, shape: 'soft', mode: 'mono', portamento: 0.015, starter: false },
+  wubYoi: { label: 'WUB Yoi Talker', category: 'Bass', synth: 'TNGR-2', dur: 1.8,
+    note: 'The talking "yoi-yoi": the LFO walks a vowel table A-E-I-O-U on the eighth, '
+      + 'with a saw an octave down for weight. A mouth, not a filter.',
+    mode: 'mono', portamento: 0.03,
+    tngr2: {
+      oscA: { table: 'vowelAEIOU', position: 0.2, lfoAmount: 0.9, level: 0.85, unison: 2, spread: 9 },
+      oscB: { table: 'sawForm', position: 0.3, level: 0.4, interval: -12 },
+      amp: { attack: 0.004, decay: 0.3, sustain: 0.9, release: 0.12 },
+      filter: { type: 'lowpass', cutoff: 3200, resonance: 4 },
+      lfo1: { shape: 'sine', rate: 4.667 } },
+    starter: false },
+  wubGlassYoi: { label: 'WUB Glass Yowl', category: 'Bass', synth: 'TNGR-2', dur: 2.4,
+    note: 'A slower, glassier vowel yowl on the quarter note, triangle LFO, with a '
+      + 'spectral-PWM sub churning underneath.',
+    mode: 'mono', portamento: 0.05,
+    tngr2: {
+      oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 },
+      oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 },
+      amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 },
+      filter: { type: 'lowpass', cutoff: 2800, resonance: 5 },
+      lfo1: { shape: 'triangle', rate: 2.333 } },
+    starter: false },
+  wubDarkAir: { label: 'WUB Dark To Air', category: 'Bass', synth: 'TNGR-2', dur: 1.8,
+    note: 'A saw-shaped LFO drags the dark-to-air table from murk to fizz and snaps back, '
+      + 'eighth notes: the lopsided "wub-wub" that opens and slams shut.',
+    mode: 'mono', portamento: 0.02,
+    tngr2: {
+      oscA: { table: 'darkToAir', position: 0.05, lfoAmount: 0.95, level: 0.85, unison: 2, spread: 8 },
+      oscB: { table: 'basic', position: 0, level: 0.5, interval: -12 },
+      amp: { attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
+      filter: { type: 'lowpass', cutoff: 2400, resonance: 6 },
+      lfo1: { shape: 'saw', rate: 4.667 } },
+    starter: false },
 };
 const USER_DRUM = {
   vl1Pi2: { label: 'VL-1 Pi 2', category: 'Blip', homeLane: 'rim', dur: 0.5,
@@ -4531,6 +4666,10 @@ const LEVELS = {
   sintone: 0.04505, roundBass: 0.075557, squareMono: 0.043368,
   celeste2: 0.034436, thickSquareGlide: 0.115047, memoryOrgan2: 0.035899,
   testSIMPLESQR: 0.161945, simpleStrings: 0.0321, vl1Pi2: 0.03509,
+  wubClassic: 0.146325, wubSlow: 0.158085, wubTriplet: 0.177047,
+  wubStutter: 0.153209, wubHalf: 0.132292, wubReese: 0.150754,
+  wubFmGrowl: 0.136044, wubSyncScreech: 0.141686, wubRobot: 0.156574,
+  wubYoi: 0.021647, wubGlassYoi: 0.030233, wubDarkAir: 0.030875,
   fatKick: 0.035113, bigClap: 0.038429, snareTap: 0.042884, blipZap: 0.100808,
   simple808StyleHat: 0.03422, gbSnare: 0.096045, bigRoomClap: 0.018317,
   gameBoySnare: 0.086707, dataRibbon: 0.084953, sweepUp: 0.367341,
@@ -4671,9 +4810,12 @@ const PEAKS = {
   sawtoothTone2: 0.5903, sintone: 0.686, roundBass: 1.183, squareMono: 0.7338,
   celeste2: 0.2067, thickSquareGlide: 1.1343, memoryOrgan2: 0.2616,
   testSIMPLESQR: 0.4192, simpleStrings: 0.3617, vl1Pi2: 0.6659, fatKick: 0.9364,
-  bigClap: 0.5198, snareTap: 0.9184, blipZap: 0.7, simple808StyleHat: 0.9604,
-  gbSnare: 1.3179, bigRoomClap: 0.354, gameBoySnare: 1.1273, dataRibbon: 0.9326,
-  sweepUp: 5.391, stSnareCrisp: 0.4825, stRoundMono: 1.183, stFmKeys: 0.2185,
+  wubClassic: 0.7, wubSlow: 0.7, wubTriplet: 0.7, wubStutter: 0.7, wubHalf: 0.7,
+  wubReese: 0.7, wubFmGrowl: 0.9317, wubSyncScreech: 0.7, wubRobot: 0.7,
+  wubYoi: 0.2944, wubGlassYoi: 0.6171, wubDarkAir: 0.4369, bigClap: 0.5198,
+  snareTap: 0.9184, blipZap: 0.7, simple808StyleHat: 0.9604, gbSnare: 1.3179,
+  bigRoomClap: 0.354, gameBoySnare: 1.1273, dataRibbon: 0.9326, sweepUp: 5.391,
+  stSnareCrisp: 0.4825, stRoundMono: 1.183, stFmKeys: 0.2185,
   stMonoBright: 0.8807, stSnareBrush: 0.8658, stSubSine: 0.6891,
   stReedOrgan: 0.4084, stVibratoLead: 1.3321, stSnareRim: 0.5209,
   stClave: 0.2031, stTpBassGuitar: 0.7916, stClav: 0.2594, stSynthPluck: 1.1918,

@@ -64,6 +64,7 @@ import {
   drawGameplayProfile, drawGameplayProfileWaiting,
 } from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
+import { GravityRunState } from './dev/gravity/state.js';
 import { devFinishStartPercent, devStageRoute } from './engine/dev-url.js';
 
 save.load();
@@ -92,7 +93,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //
 // Recognised goto values:
 //   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  calibrate  cast
-//   attract  intro  finale  soundtest  stage  boss  overtime
+//   attract  intro  finale  soundtest  stage  gravity  boss  overtime
 function routeDevUrl(goto, p) {
   // So Flow.toTitle() is skipped. The last line of boot() guards on this flag.
   window.__mash_routed = true;
@@ -248,6 +249,10 @@ function routeDevUrl(goto, p) {
     // — the same catch SCENES ▸ FINALE has always had.
     case 'finale':
       setState(new FinaleState({ save, onDone: () => Flow.toTitle() }));
+      break;
+    case 'gravity':
+      setState(new GravityRunState({ save, initialHeroId: heroFrom(p) || Flow.heroId(), difficulty: save.slot.difficulty,
+        onEnd: () => Flow.toHub() }));
       break;
     case 'stage': {
       // Canonical form remains `cab=plumber&stage=plumber-1`; compact form is

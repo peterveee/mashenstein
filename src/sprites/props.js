@@ -13,6 +13,8 @@ import {
   ANIMAL_VISUAL, FINISH_DOG_PAINTERS,
 } from './animals.js';
 
+import { GRAVITY_PAINTERS } from './gravity.js';
+
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
 // ------------------------------------------------------------- helpers
@@ -1465,6 +1467,7 @@ export function powerStripCordAt(w, h, i) {
 }
 
 export const PROP_PAINTERS = {
+  ...GRAVITY_PAINTERS,
   ...ANIMAL_PAINTERS,
   ...FINISH_DOG_PAINTERS,
   // --- ground hazards ---------------------------------------------------
@@ -5167,6 +5170,7 @@ const PROP_FPS = {
 // the art gains stature without touching the hitbox (hazards already render
 // 1.33x their box — bigger art is generous, never unfair).
 export const PROP_TALL = {
+  oxygenRack: 1.25,
   ...ANIMAL_TALL,
   ...finishDogTable(ANIMAL_TALL),
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
@@ -5215,6 +5219,7 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // Their painters receive at least a 2x box before supersampling; the world draw
 // size and gameplay hitbox do not change.
 const PROP_DETAIL_SCALE = {
+  magCargo: 2, oxygenRack: 2, serviceLaser: 2,
   // The villain's goggles are 1u lenses on a 24u portrait; the copter's blades
   // are 1u lines. Neither survives single detail.
   eggshell: 2, eggshellFace: 3, eggshellCopter: 2, eggshellBalloon: 2,

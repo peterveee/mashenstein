@@ -322,6 +322,44 @@ let importSeq = 0;
 export const freshImport = (path) => import(`${pathToFileURL(path).href}?v=${++importSeq}`);
 
 /**
+ * Register any song file this process has never heard of.
+ *
+ * The registry is filled once, when the server starts (tools/lib/tracks.js imports the
+ * generated index). The PAGE is rebuilt per request and rescans the folder, so a song
+ * written there by anything other than this server — a generator script, a hand copy —
+ * shows in the picker straight away while every route here still answers "no song
+ * called …": SESERAGI v16, made by work/local/_seseragi-v16.mjs, could be opened and
+ * played but not saved as a copy or an alternate until the desk was restarted.
+ *
+ * Only files not already registered are read, so a song the desk holds is never swapped
+ * for its on-disk version behind its back. A file that will not load is skipped: the
+ * route that wanted it then says it does not exist, which is what it said before.
+ */
+async function adoptUnregisteredSongs() {
+  for (const dir of SONG_DIRS) {
+    let files;
+    try { files = readdirSync(join(ROOT, dir)); } catch { continue; }
+    for (const file of files) {
+      if (!file.endsWith('.js') || file === 'index.js') continue;
+      const id = file.slice(0, -3);
+      if (resolveTrack(id)) continue;
+      try {
+        const mod = await freshImport(join(ROOT, dir, file));
+        if (!mod?.bank) continue;
+        registerTrack({
+          id, bank: mod.bank, title: mod.title, slug: mod.slug || id,
+          group: mod.group || (dir === SCRATCH_DIR ? 'scratch' : 'imported'),
+          writable: true, alternateOf: mod.alternateOf || null,
+        });
+        console.log(`registered ${dir}/${file} (it was added after the desk started)`);
+      } catch (err) {
+        console.error(`could not load ${dir}/${file}: ${err.message || err}`);
+      }
+    }
+  }
+}
+
+/**
  * Read one exported desk-state field directly from every authoritative song file.
  *
  * Re-importing mix.js is not enough now that it imports songs/index.js: Node may give
@@ -695,6 +733,7 @@ export function newScratchName(root = ROOT, resolver = resolveTrack) {
 
 const server = createServer(async (req, res) => {
   try {
+    if (req.method === 'POST') await adoptUnregisteredSongs();
     // Create a source-backed scratch song. It is registered immediately for this
     // mixer tab, indexed beside MIDI imports, and deliberately kept out of the
     // game's src/data/songs catalogue.

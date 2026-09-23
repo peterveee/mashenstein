@@ -125,6 +125,11 @@ import {
   TRON_TAPER_SHOULDER, TRON_BOARD_GAP,
 } from '../src/sprites/train.js';
 import { drawMcgfnPlate } from '../src/sprites/mcgfn.js';
+import { NEON_MOOD_CANDIDATES, drawNeonStrike, strikeWipeRadius } from '../src/dev/neon-mood-candidates.js';
+import {
+  KANA_FACES, KANA_FLOATIES, ensureKanaFonts, kanaText, drawBladeSigns, drawKanaFloatie, drawLedBoard,
+  drawAnnouncement,
+} from '../src/dev/neon-kana-candidates.js';
 
 import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
@@ -8327,6 +8332,170 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       if (pack.post) pack.post(ctx, t);
     }, { animated: true });
   }
+}
+
+// ------------------------------------------ NEON — the major-key opening (bake-off)
+// The new theme opens on the JR jingle in a MAJOR key and turns MINOR at bar 15.
+// What would the first level look like before the turn, if the night city that
+// ships is what it turns INTO? Four candidates, each on the shipped painter through
+// its `neonMood` seam (src/dev/neon-mood-candidates.js) — same towers, same
+// parallax, only the light — and each with a strike tile: a neon bolt lands on the
+// skyline and the night spreads out from where it hit.
+{
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-mood-bakeoff', 'TERMINAL VELOCITY — the major-key opening (bake-off)',
+    'BAKE-OFF, 23 Sep 2026. The SESERAGI theme opens bright and turns minor at bar 15; these are four '
+    + 'candidates for the background BEFORE the turn, with the shipped night as the one it turns INTO. '
+    + 'Each candidate repaints the same city through the neon pack\'s mood seam — sky, a sun / clouds / '
+    + 'aurora hook, and the tube inks — so the conversion reads as the same place going dark rather than '
+    + 'a cut. The STRIKE tiles loop every six seconds: 2.4 s of the bright city, then a neon bolt lands on '
+    + 'the skyline, a white flash, and the night spreads out from the point of impact. A drone, a target '
+    + 'and B33P are on every card, because the hazard band was drawn for a dark sky.');
+
+  const drone = makeObstacle('drone', 0);
+  const target = makeObstacle('target', 0);
+  function lane(ctx, camX, t) {
+    drone.x = camX + 150;
+    target.x = camX + 205;
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+    drawWorldEntity(ctx, drone, camX, t, pack, {});
+    drawWorldEntity(ctx, target, camX, t, pack, {});
+    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+    ctx.restore();
+  }
+  const scene = (mood) => (mood ? { stageIndex: 1, neonMood: mood } : { stageIndex: 1 });
+
+  tile(grid, 'the real one — the night', 'What ships, and what every candidate converts into.', W, H, (ctx, t) => {
+    const camX = t * 60;
+    pack.bg(ctx, t, camX, neon, 1000, scene(null), 0, scene(null));
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  // Where the bolt lands: a near-row rooftop, left of centre so the spread has the
+  // whole frame to cross.
+  const SX = W * 0.44;
+  const SY = H * 0.43;
+  const CYCLE = 6;
+  const AT = 2.4;
+  const STRIKE = 1.4;
+  for (const c of NEON_MOOD_CANDIDATES) {
+    tile(grid, `${c.name} — before the turn`, c.note, W, H, (ctx, t) => {
+      const camX = t * 60;
+      pack.bg(ctx, t, camX, neon, 1000, scene(c.mood), 0, scene(c.mood));
+      lane(ctx, camX, t);
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+    tile(grid, `${c.name} — the strike`, 'Loops every 6 s: bright, bolt, flash, the night spreading from the hit.', W, H, (ctx, t) => {
+      const camX = t * 60;
+      const local = t % CYCLE;
+      const u = (local - AT) / STRIKE;
+      pack.bg(ctx, t, camX, neon, 1000, scene(c.mood), 0, scene(c.mood));
+      if (u >= 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(SX, SY, strikeWipeRadius(u), 0, Math.PI * 2);
+        ctx.clip();
+        pack.bg(ctx, t, camX, neon, 1000, scene(null), 0, scene(null));
+        ctx.restore();
+      }
+      lane(ctx, camX, t);
+      if (pack.post) pack.post(ctx, t);
+      drawNeonStrike(ctx, u, SX, SY, Math.floor(t / CYCLE) + 1);
+    }, { animated: true });
+  }
+}
+
+// ------------------------------------------ NEON — Japanese in the level (bake-off)
+// Simple hiragana phrases, the kind the game already says in English, in four
+// places they could live — and the face question under all of them, because the
+// game's own fonts have no kana. See src/dev/neon-kana-candidates.js.
+{
+  ensureKanaFonts();
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-kana-bakeoff', 'TERMINAL VELOCITY — Japanese in the level (bake-off)',
+    'BAKE-OFF, 23 Sep 2026. Four places simple hiragana phrases could live, over the real neon '
+    + 'scene: A) blade signs on the towers — scenery only, nothing to read mid-jump; B) the game\'s '
+    + 'pop-up cards in Japanese with the English in small type under them; C) the train\'s destination '
+    + 'board, つぎは しぶや, scrolling on the cab; D) the platform announcement as a speech card, once, '
+    + 'when the train arrives. The last tile is the FACE question: Fredoka and Lilita One have no kana, '
+    + 'so today Japanese falls back to the device\'s system font; M PLUS Rounded 1c partners Fredoka, '
+    + 'Dela Gothic One partners Lilita One, DotGothic16 is the LED pixel face. The candidate faces load '
+    + 'from Google Fonts here — shipping one means bundling a subset with the game\'s own.');
+
+  const drone = makeObstacle('drone', 0);
+  function scene(ctx, t, { heroOnRoof = false } = {}) {
+    const camX = t * 60;
+    pack.bg(ctx, t, camX, neon, 1000, { stageIndex: 1 }, 0, { stageIndex: 1 });
+    return camX;
+  }
+  function lane(ctx, camX, t, { drone: withDrone = true, heroY = GROUND_Y } = {}) {
+    drone.x = camX + 170;
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+    if (withDrone) drawWorldEntity(ctx, drone, camX, t, pack, {});
+    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, heroY, HERO_DRAW_H);
+    ctx.restore();
+  }
+
+  tile(grid, 'A · blade signs', 'いそげ · しぶや · がんばれ · やまのて — hung off the towers, drifting with the near row. '
+    + 'M PLUS Rounded 1c, one sign in four catching a flicker.', W, H, (ctx, t) => {
+    const camX = scene(ctx, t);
+    drawBladeSigns(ctx, t, camX, 'rounded');
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  tile(grid, 'B · floaties', 'The pop-up cards, a new one every two seconds: やった！ すごい！ あぶない！ いそげ！ おかえり — '
+    + 'kana first, English under it.', W, H, (ctx, t) => {
+    const camX = scene(ctx, t);
+    lane(ctx, camX, t);
+    const f = KANA_FLOATIES[Math.floor(t / 2) % KANA_FLOATIES.length];
+    const rise = (t % 2) * 6;
+    drawKanaFloatie(ctx, t, PLAYER_X * WORLD_Z + 12, GROUND_Y - 118 - rise, f, 'rounded');
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  tile(grid, 'C · destination board', 'つぎは しぶや · NEXT · SHIBUYA, scrolling amber on the cab of a standing train, in DotGothic16 '
+    + 'under an LED mesh. The hero is on the roof.', W, H, (ctx, t) => {
+    const camX = scene(ctx, t);
+    lane(ctx, camX, t, { drone: false, heroY: GROUND_Y - 33 });
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    const tailX = 12;
+    const roofY = GROUND_Y - 33;
+    // Drawn before the hero would be ideal; for the mock it goes under a redrawn hero.
+    drawTronTrain(ctx, tailX, roofY + 34, { consist: TRON_TRAIN, h: 34, palette: TRON_PALETTE.neon,
+      glow: false, lit: 0.9, gap: TRON_BOARD_GAP });
+    drawLedBoard(ctx, t, tailX + 132, roofY + 3, 64, 7, 'dot');
+    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, roofY, HERO_DRAW_H);
+    ctx.restore();
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  tile(grid, 'D · platform announcement', 'まもなく でんしゃが まいります — a speech card with the JR chime where a portrait goes, '
+    + 'once, as the train arrives.', W, H, (ctx, t) => {
+    const camX = scene(ctx, t);
+    lane(ctx, camX, t);
+    drawAnnouncement(ctx, t, 'rounded');
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  tile(grid, 'the face question', 'The same three phrases in each candidate face. The top row is what the game draws TODAY: '
+    + 'Fredoka has no kana, so this is the device\'s own fallback.', W, H, (ctx) => {
+    ctx.fillStyle = '#0c0a22';
+    ctx.fillRect(0, 0, W, H);
+    KANA_FACES.forEach((f, i) => {
+      const y = 44 + i * 60;
+      kanaText(ctx, f.name.toUpperCase(), 16, y - 26, 8, 'system', { color: 'rgba(168,230,255,0.8)', align: 'left' });
+      kanaText(ctx, 'やった！ いそげ！ つぎは しぶや', 16, y, 21, f.id, { color: '#ffffff', align: 'left', glow: '#e838f8' });
+    });
+  }, { animated: true });   // repaints, so a face whose kana arrive late still shows up
 }
 
 // ------------------------------------------ NEON — the train foreground (lab)

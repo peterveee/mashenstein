@@ -3,7 +3,8 @@
 import { W } from '../engine/renderer.js';
 import { roadAt, routeRise, tunnelRoofEnd, tunnelOpenings } from '../game/routes.js';
 import { PLAYER_H, PLAYER_X, PLAYER_SPRITE_W } from '../game/player.js';
-import { drawTronTrain, drawTronSpeedStreaks, tronConsistLength, TRON_PALETTE, TRON_BOARD_GAP } from '../sprites/train.js';
+import { HERO_DRAW_H, heroReach } from './draw.js';
+import { drawTronTrain, drawTronTrainShell, drawTronSpeedStreaks, tronConsistLength, tronCarApertures, TRON_PALETTE, TRON_BOARD_GAP } from '../sprites/train.js';
 import {
   PAPER_TEXTURE_BLEND,
   paperPatternFor,
@@ -636,11 +637,133 @@ function trainRush(air) {
   return Math.min(1, slope * (TRAIN_FLIGHT_BACK / (TRAIN_FLIGHT_LEAD - TRAIN_FLIGHT_SETTLE)) / 3);
 }
 
+/** The consist a route's width buys, so every pass over it agrees. */
+function trainConsistFor(r) {
+  const cars = Math.max(2, Math.round(r.w / TRAIN_CAR_W));
+  return [{ kind: 'tail' },
+    ...Array(Math.max(0, cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }];
+}
+
+/**
+ * THE TRAIN THE HERO IS STANDING INSIDE, or null.
+ *
+ * A hero who does not jump onto the roof runs straight into the car, and this
+ * is what says so. Only a STANDING train counts: one still flying in has no
+ * inside to be in, and one that has left is not there at all.
+ */
+export function neonTrainAround(cabinet, routes, camX, worldX, y = 0) {
+  if (cabinet?.id !== 'neon') return null;
+  for (const r of routes || []) {
+    if (r.kind !== 'island' || (r.rise || 0) < 24) continue;
+    // IN THROUGH THE FIRST DOOR, not at the tip of the tail. The first cut
+    // used the whole route span, so the moment the hero reached the rounded
+    // tail he was "inside" — capped at the ceiling while still in the open,
+    // which also made the train impossible to BOARD, since the jump onto the
+    // roof is taken from exactly there (Peter, 23 Sep).
+    const [from, to] = neonTrainInterior(r);
+    if (worldX < from || worldX > to) continue;
+    // And only if his feet are BELOW THE ROOF. A hero whose feet are above it
+    // is going over the train or landing on it, and flipping him inside would
+    // drag him down through the roof. One whose feet are below it is in the
+    // doorway whatever he is doing — including in the air: the first cut only
+    // counted him once he was within his hop of the floor, so a hero who jumped
+    // AT the rear door was "outside", drawn in front of the car with no shell
+    // and no ceiling, and Grumpos's head went up through the roof (Peter,
+    // 23 Sep). Now the lintel stops him; the player eases him down to it.
+    if (y >= (r.rise || 0) - 1) continue;
+    if (trainArrival(camX, r)) continue;         // arriving, or gone
+    return r;
+  }
+  return null;
+}
+
+/**
+ * WHERE THE INSIDE IS, in world x: from a little way into the first doorway
+ * to the end of the nose. The door is read off the car's own aperture geometry
+ * (tronCarApertures), scaled the same way the route scales the consist, so the
+ * moment he counts as inside is the moment he is standing in the hole the
+ * shell leaves for him — which is what makes the step in seamless.
+ */
+export function neonTrainInterior(r) {
+  const consist = trainConsistFor(r);
+  const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
+  const first = tronCarApertures(consist[0], 0, TRAIN_H, TRAIN_H);
+  // OUT THROUGH THE FRONT CAR'S DOOR, not the tip of the nose (Peter, 23 Sep:
+  // "he also needs to emerge/exit from the first door — he is running through
+  // the nose"). Running to the tip left him hidden in the driver's cab and then
+  // popping out of solid bodywork. Leaving by the cab's own door makes the exit
+  // the mirror of the entry: in by a door at the back, out by a door at the
+  // front, and the nose he then runs past is outside him, as the tail was.
+  const engineAt = tronConsistLength(consist.slice(0, -1), TRON_BOARD_GAP) + TRON_BOARD_GAP;
+  const last = tronCarApertures(consist[consist.length - 1], engineAt, TRAIN_H, TRAIN_H);
+  const from = r.x + (first.doorX + DOOR_STEP_IN) * k;
+  const to = r.x + (last.doorX + DOOR_W_OF(last) - DOOR_STEP_IN) * k;
+  return [from, to];
+}
+// The doorway's width, read off the aperture itself rather than restated.
+const DOOR_W_OF = (a) => a.openW + a.leafW;
+// How far through the first doorway he has to be before he is in. A third of
+// the way leaves most of his 12px sprite inside a 20px opening at the flip.
+const DOOR_STEP_IN = 7;
+
+/**
+ * HOW HIGH HE MAY GET INSIDE ONE, in world px above the lane.
+ *
+ * Peter, 23 Sep: the jump should do almost nothing in there, "depending on
+ * roof position vs height of hero" — so the number is DERIVED rather than
+ * authored. The roof is the route's own rise; the car's underside sits
+ * TRAIN_CEILING_INSET below it (the hull's own thickness); and the hero is
+ * HERO_DRAW_H tall — the height he is DRAWN, not his 14px hitbox.
+ *
+ * The first cut used the hitbox, and the sprite is nearly twice that: he hopped
+ * 17px and his head and cap came clean out through the roof while his legs ran
+ * past the windows. What bonks on a ceiling is the head you can see. On a
+ * rise-33 car that leaves a 7px hop — his cap meets the roofline at the top of
+ * it, which is the bonk.
+ */
+const TRAIN_CEILING_INSET = 2;
+// THE CAR HAS A FLOOR, a step up off the lane (Peter, 23 Sep: "his face should
+// be a little higher if we lift his feet to be on the floor of the train"). It
+// puts his face in the middle of a window instead of peering over the sill,
+// and it tucks his soles up behind the hull instead of along the rail. It is a
+// DRAWN lift — the run eases it in as he steps through the rear door and out
+// again at the front — so it costs his headroom exactly what it lifts him.
+export const TRAIN_FLOOR_LIFT = 3;
+export function neonTrainHeadroom(r, heroId = null) {
+  // Per hero, off what he really reaches (HERO_REACH), not the nominal draw
+  // height: Grumpos and Ramon reach 30px, which on a rise-33 car standing on the
+  // 3px floor leaves them no hop at all — a jump in there is the thump alone.
+  const reach = heroId ? heroReach(heroId) : HERO_DRAW_H;
+  return Math.max(0, (r.rise || 0) - reach - TRAIN_CEILING_INSET - TRAIN_FLOOR_LIFT);
+}
+
+/**
+ * THE SHELL OVER THE HERO — the second half of the run-through. Called after
+ * the entities are drawn, for the one car he is in; see drawTronCarShell.
+ */
+export function drawNeonTrainShell(ctx, camX, r, topAt) {
+  const roofY = topAt(r.x + r.w / 2, r);
+  const consist = trainConsistFor(r);
+  const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x - camX - 2, roofY - 4, r.w + 4, TRAIN_H + 20);
+  ctx.clip();
+  ctx.translate(r.x - camX, roofY);
+  ctx.scale(k, 1);
+  drawTronTrainShell(ctx, 0, TRAIN_H, {
+    consist, h: TRAIN_H, palette: TRON_PALETTE.neon, glow: false,
+    gap: TRON_BOARD_GAP, open: 1,
+    // The neon lane's own inks (the pack's ground pass): the apron under the
+    // line and the line itself, so the skirt that hides his soles is road.
+    skirt: { apron: '#0c0c20', line: '#38d8f8', depth: 4 },
+  });
+  ctx.restore();
+}
+
 function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0) {
   const roofY = topAt(r.x + r.w / 2, r);
-  const cars = Math.max(2, Math.round(r.w / TRAIN_CAR_W));
-  const consist = [{ kind: 'tail' },
-    ...Array(Math.max(0, cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }];
+  const consist = trainConsistFor(r);
   // The painter walks from a left edge at its own natural lengths, so scale the
   // context rather than stretch the art: a 3% difference between the route's
   // width and the consist's is not worth a seam at the nose.

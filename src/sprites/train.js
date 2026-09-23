@@ -90,13 +90,96 @@ const CORNER = 4;         // roof/underframe corner radius on a passenger car
 // and symmetrical, and symmetry is the one thing that stops a side-on vehicle
 // saying which way it is pointing. One door, at the back, is also what the
 // player's eye needs: it is the end he arrives at.
-const DOOR_W = 17;        // a single leaf, and it slides
+const DOOR_W = 20;        // a single leaf, and it slides
 const DOOR_INSET = 11;    // from the car's rear end
 const DOOR_CLEAR = 7;     // hull between the door and the nearest window
+// THE WINDOW ROW. Bigger than it was, and the reason is the hero: he is 14 px
+// tall and these used to be 6x5, so a figure behind the glass was a smudge
+// between two pillars. At 12x11 a window is a window — you can see who is in
+// it — which is what the run-through needs and what Peter asked for a while
+// back anyway ("less frequent and taller windows ... to make them seem like
+// windows vs lights").
+const WIN_W = 12;
+const WIN_H = 11;
+const WIN_PITCH = 18;
+
+/**
+ * WHERE THE HOLES ARE. The apertures a car has — its window row and, once it
+ * is open, its doorway — in the caller's own space.
+ *
+ * This exists so the two painters cannot drift. `drawTronCar` paints the car;
+ * `drawTronCarShell` paints the same car as a SHELL with these punched out, so
+ * a hero drawn between the two shows through the glass. Two functions drawing
+ * one car from two copies of the geometry is exactly the bug that ends with a
+ * window in a different place depending on which pass you are looking at.
+ */
+export function tronCarApertures(car, x, railY, h, open = 0) {
+  const len = car.len || DEFAULT_LEN[car.kind] || DEFAULT_LEN.car;
+  const top = railY - h;
+  const bottom = railY - 3;
+  const right = x + len;
+  const engine = car.kind === 'engine';
+  const tail = car.kind === 'tail';
+  const doorX = tail ? x + len * (1 - TRON_TAPER_SHOULDER) + 5 : x + DOOR_INSET;
+  // DOWN TO THE FLOOR. The sill used to stop a few pixels short of the lane,
+  // which is fine as livery and wrong as a doorway — the hero's feet were
+  // below the opening he is supposed to walk through.
+  const doorTop = top + h * 0.11;
+  const doorBot = bottom;
+  const openW = DOOR_W * Math.max(0, Math.min(1, open));
+  const wy = top + h * 0.26;
+  const rowEnd = engine ? x + (right - x) * 0.46 - 4 : right - 8;
+  const rowStart = doorX + DOOR_W + DOOR_CLEAR;
+  const n = Math.max(0, Math.floor((rowEnd - rowStart - WIN_W) / WIN_PITCH) + 1);
+  const rowW = n > 0 ? (n - 1) * WIN_PITCH + WIN_W : 0;
+  const left = rowStart + (rowEnd - rowStart - rowW) / 2;
+  const windows = [];
+  for (let i = 0; i < n; i++) windows.push({ x: left + i * WIN_PITCH, y: wy, w: WIN_W, h: WIN_H });
+  // THE DRIVER'S WINDOW, as four points, on a cab only. It lives here with the
+  // other apertures because the shell has to leave it open too — painted over,
+  // the cab went blind the moment the hero stepped inside and only got its
+  // windscreen back when he stepped out (Peter, 23 Sep).
+  let windscreen = null;
+  if (engine || tail) {
+    const dir = engine ? 1 : -1;
+    const sx = x + len * 0.5;
+    const wTop = wy - 2.5;
+    const wBot = wy + 5 + 2.5;
+    windscreen = { dir, sx, wTop, wBot, pts: [
+      [sx, wTop + 1.5], [sx + dir * 27, wTop], [sx + dir * 22, wBot], [sx + dir * 1.5, wBot],
+    ] };
+  }
+  return {
+    len, top, bottom, right, engine, tail, taper: engine || tail,
+    doorX, doorTop, doorBot, doorH: doorBot - doorTop, openW, leafW: DOOR_W - openW,
+    windows, wy, windscreen,
+  };
+}
+
+// The windscreen quad as a path, appended — same reason as roundRectPath.
+function windscreenPath(c, ws) {
+  const [a, b, d, e] = ws.pts;
+  c.moveTo(a[0], a[1]);
+  c.lineTo(b[0], b[1]);
+  c.lineTo(d[0], d[1]);
+  c.lineTo(e[0], e[1]);
+  c.closePath();
+}
 
 function roundRect(ctx, x, y, w, h, r) {
-  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
+  roundRectPath(ctx, x, y, w, h, r);
+}
+
+// The same rectangle APPENDED to the current path rather than starting one.
+// roundRect's own beginPath is right for a shape drawn on its own and wrong for
+// a compound path: the car shell builds hull + windows + doorway into ONE path
+// for an even-odd clip, and with roundRect every window silently threw away
+// everything before it. The clip came out as the doorway alone — the one place
+// that was meant to be a hole — so the hull painted only where the hero was
+// supposed to show through, and nowhere else.
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.moveTo(x + rad, y);
   ctx.lineTo(x + w - rad, y);
   ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
@@ -310,15 +393,12 @@ export function drawTronCar(ctx, car, x, railY, h, {
   // The rear of a car is its LEFT end, since the set faces right. On a tail
   // that end is the taper, so the door stands just inside the shoulder where
   // the body is full height again.
-  const doorX = tail ? x + len * (1 - TRON_TAPER_SHOULDER) + 5 : x + DOOR_INSET;
-  const doorTop = top + h * 0.15;
-  const doorBot = bottom - 1.5;
-  const doorH = doorBot - doorTop;
+  const parts = tronCarApertures(car, x, railY, h, open);
+  const { doorX, doorTop, doorBot, doorH } = parts;
   // AND IT SLIDES. `open` is 0 shut, 1 fully back; the leaf retracts into the
   // wall behind it (a pocket door) rather than travelling along the outside,
   // which at this size would just be a rectangle sitting on the livery.
-  const openW = DOOR_W * Math.max(0, Math.min(1, open));
-  const leafW = DOOR_W - openW;
+  const { openW, leafW } = parts;
   // The doorway itself: dark, and once it is open the cabin light falls out of
   // it. That spill is the whole reason the doors open at all — it is the only
   // moment this train says there is somebody inside.
@@ -367,27 +447,19 @@ export function drawTronCar(ctx, car, x, railY, h, {
   // WINDOWS: a perfectly straight row, small rounded rectangles, steady glow.
   // On the engine the row stops where the roof starts to fall, and one longer
   // pane at the shoulder is the driver's windscreen.
-  const WW = 6;
-  const WH = 5;
-  const PITCH = 11;
-  const wy = top + h * 0.28;
-  // CLEAR OF THE DOORS at both ends (Peter, 22 Sep: "make sure there is
-  // distance between the doors and the nearest window"). A cab's own door is
-  // on its flat end, so the taper limit still owns the other side.
+  const WW = WIN_W;
+  const WH = WIN_H;
+  const wy = parts.wy;
   // Clear of the ONE door, which is always at the rear (Peter, 22 Sep: "make
   // sure there is distance between the doors and the nearest window"). The far
   // end is now free, so a car's glass runs almost its whole length — which is
-  // what a high-speed set actually looks like.
-  const rowEnd = engine ? x + (right - x) * 0.46 - 4 : right - 8;
-  const rowStart = doorX + DOOR_W + DOOR_CLEAR;
-  const n = Math.max(0, Math.floor((rowEnd - rowStart - WW) / PITCH) + 1);
-  const rowW = n > 0 ? (n - 1) * PITCH + WW : 0;
-  const left = rowStart + (rowEnd - rowStart - rowW) / 2;
+  // what a high-speed set actually looks like. Where they land is
+  // tronCarApertures' answer, so the shell pass punches holes in exactly the
+  // panes this fills.
   const cabin = palette.cabin || palette.glass;
   ctx.globalAlpha = lit;
-  for (let i = 0; i < n; i++) {
-    const wx = left + i * PITCH;
-    glowFill(ctx, cabin, glow, (c) => roundRect(c, wx, wy, WW, WH, 1.6));
+  for (const w of parts.windows) {
+    glowFill(ctx, cabin, glow, (c) => roundRect(c, w.x, w.y, w.w, w.h, 2));
   }
   if (taper) {
     // THE DRIVER'S WINDOW. It was a flat slab of the tube colour — the single
@@ -399,17 +471,9 @@ export function drawTronCar(ctx, car, x, railY, h, {
     // the top where the sky is on it, a crisp lit frame around the whole
     // aperture, and one diagonal catch-light across it. The catch-light is what
     // sells it as a curved surface — a flat pane has no reason to have one.
-    const dir = engine ? 1 : -1;
-    const sx = x + (right - x) * 0.5;
-    const wTop = wy - 2.5;
-    const wBot = wy + WH + 2.5;
-    const pane = (c) => {
-      c.moveTo(sx, wTop + 1.5);
-      c.lineTo(sx + dir * 27, wTop);          // up into the shoulder
-      c.lineTo(sx + dir * 22, wBot);          // raked back along the nose
-      c.lineTo(sx + dir * 1.5, wBot);
-      c.closePath();
-    };
+    const { dir, sx, wTop, wBot } = parts.windscreen;
+    // Up into the shoulder, then raked back along the nose — tronCarApertures.
+    const pane = (c) => windscreenPath(c, parts.windscreen);
     const g = ctx.createLinearGradient(0, wTop, 0, wBot);
     g.addColorStop(0, whiteHot(palette.glass, 0.5));
     g.addColorStop(0.45, palette.glass);
@@ -510,8 +574,137 @@ function drawTronGangway(ctx, x, w, railY, h, { palette }) {
   // is no longer sky; it does not need explaining twice.
   const top = railY - h;
   const bottom = railY - 3;
+  // DOWN TO THE FLOOR. It was a sleeve hung in the middle of the gap, and once
+  // the hero could run THROUGH the train that was a hole at every coupler: his
+  // legs showed under it, and between two cars he was simply outside again.
+  //
+  // AND NEARLY TO THE ROOF, and it has to LOOK like a gangway (Peter, 23 Sep:
+  // "it seems shorter than he is... they can be a bit more obvious, like
+  // connectors between train cars would be"). In the hull's own ink it vanished
+  // against the car ends either side, so a figure passing through read as a man
+  // walking through a wall. So: a shade DARKER than the bodywork, a hair inset
+  // from the roofline so the cars still read as two.
+  //
+  // CONCERTINA RIBS, horizontal, "like those concertina things some buses
+  // have". A single vertical pleat read as a pillar; stacked horizontal folds
+  // read as a flexible joint at a glance, which is the one thing a connector
+  // has to say.
+  const gTop = top + h * 0.05;
+  ctx.fillStyle = palette.bg;
+  ctx.fillRect(x - 2, gTop, w + 4, bottom - gTop);
+  ctx.strokeStyle = palette.dim;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let y = gTop + 0.5; y <= bottom; y += 3) {
+    ctx.moveTo(x - 1, Math.round(y) + 0.5);
+    ctx.lineTo(x + w + 1, Math.round(y) + 0.5);
+  }
+  ctx.stroke();
+}
+
+/**
+ * THE CAR AS A SHELL: the same hull, with its windows and its open doorway
+ * left as holes.
+ *
+ * This is the second half of the run-through. The car is painted normally
+ * first (warm cabin light and all), the hero is drawn, and then this goes over
+ * the top — so between the windows he is behind the bodywork, and AT a window
+ * he shows through, silhouetted against the lit interior already painted
+ * behind him. No separate "outlined window" style is needed: a hole in the
+ * shell is the outline.
+ *
+ * The holes are cut with an EVEN-ODD clip rather than by compositing, because
+ * `destination-out` would punch through the city and the sky behind the train
+ * as well, and a window you can see the moon through is not a window.
+ */
+export function drawTronCarShell(ctx, car, x, railY, h, {
+  palette = TRON_PALETTE.spec, glow = false, open = 0, skirt = null,
+} = {}) {
+  const p = tronCarApertures(car, x, railY, h, open);
+  const { top, bottom, right, engine, tail, taper } = p;
+  // Path-APPENDING throughout — see roundRectPath.
+  const hull = (c) => {
+    if (!taper) return roundRectPath(c, x, top, p.len, bottom - top, CORNER);
+    if (engine) return nosePath(c, x, right, top, bottom, h);
+    c.save();
+    c.translate(x + right, 0);
+    c.scale(-1, 1);
+    nosePath(c, x, right, top, bottom, h);
+    c.restore();
+    return undefined;
+  };
+  ctx.save();
+  ctx.beginPath();
+  hull(ctx);
+  for (const w of p.windows) roundRectPath(ctx, w.x, w.y, w.w, w.h, 2);
+  // The doorway only counts as a hole once it is actually open; a shut door is
+  // bodywork like any other.
+  if (p.openW > 0.6) {
+    roundRectPath(ctx, p.doorX + p.leafW, p.doorTop, p.openW, p.doorH, 2);
+  }
+  if (p.windscreen) windscreenPath(ctx, p.windscreen);
+  ctx.clip('evenodd');
+  // THE WHOLE CAR, through the holes. The first version repainted only the hull
+  // and its outline, so everything else the car carries — the livery under the
+  // windows, the door frame, the cab's trim — vanished the moment he stepped in
+  // (Peter, 23 Sep). Painting the real car here means the shell cannot be a
+  // different drawing from the car it covers; the clip is the only difference.
+  drawTronCar(ctx, car, x, railY, h, { palette, glow, open, lit: 0.9 });
+  ctx.restore();
+  // THE SKIRT. The hull stops 2px above the lane (it clears the rail), and the
+  // hero's feet do not — so inside a car his shoes poked out under the body
+  // the whole way along. This closes that strip down to the rail light, which
+  // is where the lane's own line is, so the line itself stays visible.
+  const sx0 = x + (tail ? 6 : 1);
+  const sw = p.len - (tail ? 6 : 1) - (engine ? 6 : 1);
   ctx.fillStyle = palette.hull;
-  ctx.fillRect(x - 2, top + h * 0.30, w + 4, (bottom - h * 0.14) - (top + h * 0.30));
+  ctx.fillRect(sx0, bottom, sw, Math.max(0, railY - 1 - bottom));
+  // ...and THROUGH the lane line to just below it. His soles sit on the line
+  // and a pixel under it, so stopping above the line still left a pair of shoes
+  // walking along under the train. Below the line it is the lane's own apron
+  // ink, and the line is laid back over the top, so from outside nothing about
+  // the road changes — it just has nobody's feet in it.
+  if (skirt) {
+    ctx.fillStyle = skirt.apron;
+    ctx.fillRect(sx0, railY - 1, sw, skirt.depth);
+    ctx.fillStyle = skirt.line;
+    ctx.fillRect(sx0, railY - 1, sw, 1);
+  }
+  // The frames go on AFTER the clip is dropped, so each aperture keeps its lit
+  // edge over whatever is showing through it.
+  for (const w of p.windows) {
+    glowStroke(ctx, palette.line, 0.7, glow, (c) => roundRect(c, w.x, w.y, w.w, w.h, 2));
+  }
+}
+
+/** The consist as a shell — see drawTronCarShell. */
+export function drawTronTrainShell(ctx, x, railY, {
+  consist = TRON_SPEC_CONSIST, h = 34, palette = TRON_PALETTE.spec, glow = false,
+  gap = GAP, open = 0, skirt = null,
+} = {}) {
+  const lenOf = (car) => car.len || DEFAULT_LEN[car.kind] || DEFAULT_LEN.car;
+  // The couplers are part of the shell too — see drawTronGangway. Without them
+  // he stepped back OUTSIDE between every pair of cars.
+  let gx = x;
+  for (let i = 0; i < consist.length - 1; i++) {
+    gx += lenOf(consist[i]);
+    drawTronGangway(ctx, gx, gap, railY, h, { palette });
+    // ...and the skirt under the coupler, same reason as a car's.
+    ctx.fillStyle = palette.hull;
+    ctx.fillRect(gx - 2, railY - 3, gap + 4, 2);
+    if (skirt) {
+      ctx.fillStyle = skirt.apron;
+      ctx.fillRect(gx - 2, railY - 1, gap + 4, skirt.depth);
+      ctx.fillStyle = skirt.line;
+      ctx.fillRect(gx - 2, railY - 1, gap + 4, 1);
+    }
+    gx += gap;
+  }
+  let cx = x;
+  for (const car of consist) {
+    drawTronCarShell(ctx, car, cx, railY, h, { palette, glow, open, skirt });
+    cx += lenOf(car) + gap;
+  }
 }
 
 /**

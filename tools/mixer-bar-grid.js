@@ -1541,10 +1541,20 @@ export function createBarGrid({
     // rows to draw — `rowWindow` falls back to a base-height estimate there. Ignoring it leaves
     // the last good window standing until the panel is really on screen again.
     if (!sizeWatch) {
+      // The rows are rendered on the next frame, not inside the callback: they are the
+      // content of the box being observed, and a DOM write made inside a ResizeObserver
+      // callback is what Chrome reports as "ResizeObserver loop completed with
+      // undelivered notifications". One frame late is invisible; the loop error is not.
+      let queued = 0;
       sizeWatch = new ResizeObserver(([entry]) => {
         if (!(entry?.target?.clientHeight > 0)) return;
         if (resizeDeferred) { resizeDirty = true; return; }
-        renderRows(ctx());
+        if (queued) return;
+        queued = requestAnimationFrame(() => {
+          queued = 0;
+          if (resizeDeferred) { resizeDirty = true; return; }
+          renderRows(ctx());
+        });
       });
     }
     sizeWatch.disconnect();

@@ -23,7 +23,7 @@ import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
   gainBars, panBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
-  copyLaneArrangement, copyLaneTrack, pasteLaneTrack,
+  copyLaneArrangement, copyLaneTrack, pasteLaneTrack, moveLaneBars, fitLaneClip,
   compactSections, patternStarts, barCount, setTempo, setSwing, setBarNoteFx, setBarEffects,
   renderArpToNotes, readBarLane,
   DRUM_LANES,
@@ -573,6 +573,36 @@ assert(silentInsert.plan[2].delete.includes('bass') && silentInsert.plan[3].dele
 const laneClip = copyLaneBars(plumber, base, 0, 1, 'bass');
 assert(laneClip.bars.length === 2 && laneClip.bars[0].length === 16,
   'track-region copy captures one instrument without copying the whole song');
+
+// 32nd NOTES SURVIVE COPY, MOVE AND PASTE (Peter, 23 Sep: "if I have 32nd notes and
+// paste or drag I don't end up with 32nd notes"). The lane clip read sixteen steps a
+// bar whatever the grid, so every note on an odd 1/32 slot was dropped on the way.
+{
+  const fine = { ...structuredClone(base), resolution: 32 };
+  const run = Array.from({ length: 32 }, (_, i) => 220 + i);          // a note on every 32nd
+  const lens = Array.from({ length: 32 }, () => 0.5);                 // each a 32nd long
+  const written = writeBarNotes(plumber, fine, 0, 'lead', run, lens);
+  const clip32 = copyLaneBars(plumber, written, 0, 0, 'lead');
+  assert(clip32.bars[0].length === 32 && clip32.bars[0].every((v, i) => v === 220 + i),
+    'copying a bar on a 1/32 grid keeps all thirty-two notes, not every other one');
+  assert(clip32.lengths[0].every((v) => v === 0.5), 'and their 32nd lengths');
+  const moved = moveLaneBars(plumber, written, 0, 0, 'lead', 'bass', 2);
+  const landed = readBarLane(plumber, moved, 2, 'bass');
+  assert(landed.length === 32 && landed.every((v, i) => v === 220 + i),
+    'dragging those bars onto another track lands every 32nd');
+  assert(readBarLane(plumber, moved, 0, 'lead').every((v) => v == null),
+    'and clears every 32nd it moved away from');
+  // Across grids: a 1/32 clip pasted into a 1/16 song promotes the song; a 1/16 clip
+  // pasted into a 1/32 song spreads onto every other slot.
+  const into16 = fitLaneClip(base, clip32);
+  assert(into16.grid === 32 && into16.draft.resolution === 32 && into16.bars[0].every((v, i) => v === 220 + i),
+    'a 1/32 clip pasted into a 1/16 song promotes the song rather than folding the notes');
+  const clip16 = { bars: [Array.from({ length: 16 }, (_, i) => 330 + i)], lengths: [new Array(16).fill(1)] };
+  const into32 = fitLaneClip(fine, clip16);
+  assert(into32.bars[0].length === 32 && into32.bars[0].every((v, i) => (i % 2 ? v == null : v === 330 + i / 2))
+    && into32.lengths[0].every((v, i) => (i % 2 ? v == null : v === 1)),
+    'a 1/16 clip pasted into a 1/32 song lands on every other slot, lengths unscaled');
+}
 
 // A full-track clip carries the lane's resolved notes and lengths as well as its
 // lane-scoped arrangement decisions. Pasting onto a fresh key is the pure half of the

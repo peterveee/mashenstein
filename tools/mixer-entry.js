@@ -14,7 +14,7 @@ import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
 import {
   ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps, SWING_MAX, SWING_STRAIGHT,
-  bpmOf, swingOf, loopOf,
+  bpmOf, swingOf, loopOf, resolutionOf,
 } from '../src/data/arrangements.js';
 // The two exports the desk used to ask a server for. Both run here now — the WAV
 // through the game's engine in a hidden iframe, the MIDI straight out of the bank —
@@ -54,7 +54,7 @@ import { midiBuffer } from './lib/render-midi-bank.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, setChokePartner, chokePartner, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, panBars, copyBars, pasteBars,
-  insertSilence, copyLaneBars, copyLaneTrack, pasteLaneTrack, moveLaneBars, duplicateLaneContent, writeBarNotes, writeBarNotesShared, patternStarts,
+  insertSilence, copyLaneBars, fitLaneClip, copyLaneTrack, pasteLaneTrack, moveLaneBars, duplicateLaneContent, writeBarNotes, writeBarNotesShared, patternStarts,
   barCount, removeLanes, setTempo, setSwing, setSongLoop, setBarNoteFx, setBarEffects,
   renderArpToNotes,
   readBarLane, DRUM_LANES,
@@ -11529,18 +11529,21 @@ const laneHasBarFlag = (draft, from, to, field, lane) => {
   return true;
 };
 const pasteLane = (draft, from, lane, clip) => {
-  let out = draft;
-  for (let i = 0; i < clip.bars.length; i++) {
+  // Onto a grid that can hold the clip, each bar spread to it — see fitLaneClip. A
+  // 1/32 clip pasted as sixteen steps a bar kept every other note.
+  const fitted = fitLaneClip(draft, clip);
+  let out = fitted.draft;
+  for (let i = 0; i < fitted.bars.length; i++) {
     // The lengths go with the notes. A clip copied before this existed has none, and
-    // sixteen nulls is the right thing to write for it: the destination's own lengths
+    // a bar of nulls is the right thing to write for it: the destination's own lengths
     // belonged to the notes being replaced.
-    const lengths = clip.lengths?.[i] || new Array(16).fill(null);
+    const lengths = fitted.lengths[i];
     // Converted to the DESTINATION's shape, never written as copied. A clip is a lane's
     // values as they were, and the three shapes are not interchangeable — see
     // `laneShape`, which exists because pasting a bassline onto `chords` wrote bare
     // numbers into a lane `scheduleStep` calls `.forEach` on.
     out = writeBarNotes(editBank(), out, from + i, lane,
-      clip.bars[i].map((v) => laneShape(lane, v)), laneShapeLengths(lane, lengths));
+      fitted.bars[i].map((v) => laneShape(lane, v)), laneShapeLengths(lane, lengths));
   }
   return out;
 };
@@ -11578,7 +11581,8 @@ const pasteLaneMessage = (draft, from, laneLabel, clip) => {
  */
 function clearLaneBars(laneKey, from, to, what, { shared = false } = {}) {
   const rest = PERCUSSION_LANES.includes(baseLane(laneKey)) ? false : null;
-  const slots = arrDraftOf().resolution === 32 ? 32 : 16;
+  // The draft's own grid, whichever it is — 1/48 and 1/96 are grids too.
+  const slots = resolutionOf(null, arrDraftOf());
   const empty = Array.from({ length: slots }, () => rest);
   // Cleared means cleared: the lengths of notes that are gone go with them, or the
   // next note drawn on one of these steps inherits the length of whatever used to be
@@ -16355,7 +16359,7 @@ function recRegion() {
 /** The take, made on first use. Reading is the desk's business; the buffer is not. */
 function ensureTake() {
   if (recTake) return recTake;
-  const slots = arrDraftOf()?.resolution === 32 ? 32 : 16;
+  const slots = resolutionOf(null, arrDraftOf());
   recTake = createTake({
     // Through the delta chain and then the bank, against the bank as it is WRITTEN —
     // the read half of the write this will go out through. `viewBank()` here would

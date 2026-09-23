@@ -3,6 +3,10 @@
 // Action classes drive fairness: 'jump' | 'slide' | 'none' (avoidable by running).
 
 export const OBSTACLES = {
+  // Gravity Grid uses the standard crate / standing-hazard / drone footprints.
+  magCargo: { w: 12, h: 11, sprite: 'magCargo', ground: true, breakable: true, action: 'jump' },
+  oxygenRack: { w: 13, h: 14, sprite: 'oxygenRack', ground: true, armored: true, action: 'jump' },
+  serviceLaser: { w: 12, h: 7, sprite: 'serviceLaser', alt: 13, artLift: 6, armored: true, action: 'slide' },
   // `skins`: three reds to one green, so a green one is an occasional visitor
   // rather than half the desert. Skin is picked off the spawn position (see
   // makeObstacle), so the mix is stable per instance and identical on a replay.

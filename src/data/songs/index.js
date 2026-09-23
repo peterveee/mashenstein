@@ -24,6 +24,7 @@ import * as COUPON_CAROUSEL_GARY from './coupon-carousel-gary.js';
 import * as CRYPT from './crypt.js';
 import * as FINALE from './finale.js';
 import * as FROST from './frost.js';
+import * as GRAVITY from './gravity.js';
 import * as HUB from './hub.js';
 import * as MEGAMIX from './megamix.js';
 import * as NEON from './neon.js';
@@ -60,6 +61,7 @@ export const SONGS = {
   "crypt": CRYPT,
   "finale": FINALE,
   "frost": FROST,
+  "gravity": GRAVITY,
   "hub": HUB,
   "megamix": MEGAMIX,
   "neon": NEON,

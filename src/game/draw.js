@@ -36,6 +36,19 @@ import { PLAYER_X, SLIP_T } from './player.js';
 
 export const HERO_DRAW_W = 18;
 export const HERO_DRAW_H = 24;
+// HOW HIGH EACH HERO REALLY REACHES above his feet when drawn at HERO_DRAW_H, in
+// px — the tallest point of the run cycle, head or kit. HERO_DRAW_H is the scale
+// the toon is drawn AT, not the height it comes out: Grumpos's crown and axe reach
+// 30px, and a train ceiling worked out from 24 let his head out through the roof
+// (Peter, 23 Sep). Measured off a 10x headless render of every frame of run, jump
+// and idle — work/local/_hero-heights.mjs — and rounded UP to the half pixel.
+// A hero missing from here is assumed 2px over the draw height; the train shell
+// also clips at the roofline, so a stale number costs a hop, never a head.
+export const HERO_REACH = {
+  lorenzo: 25.5, rusty: 25, fernwick: 23.5, b33p: 28, clara: 25.5, kiko: 23.5,
+  ramon: 30, grumpos: 30,
+};
+export const heroReach = (id) => HERO_REACH[id] ?? HERO_DRAW_H + 2;
 // A hero's screen x is the LEFT EDGE of his 12px collision slot; his drawing is
 // centred half a slot further on. Anything lining the hero up with a fixed
 // point in the world has to add this or it aims the wrong part of him at it —
@@ -624,7 +637,29 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       drawContactShadow(c, cx, Math.round(opts.groundY ?? GROUND_Y), HERO_DRAW_H,
         player.y, opts.contactShadow);
     }
-    if (!blink) paintBody(c);
+    if (!blink) {
+      const transform = player.drawTransform?.();
+      if (transform) {
+        c.save();
+        c.translate(cx, feetY - HERO_DRAW_H / 2);
+        c.rotate(transform.angle || 0);
+        c.scale(1, transform.flipY ? -1 : 1);
+        c.translate(-cx, -(feetY - HERO_DRAW_H / 2));
+        paintBody(c);
+        c.restore();
+        if (transform.arrivalFlash > 0) {
+          const q = transform.arrivalFlash, cy = feetY - HERO_DRAW_H / 2;
+          c.fillStyle = `rgba(196,255,224,${q * 0.9})`;
+          c.beginPath(); c.arc(cx, cy, 15 * q, 0, Math.PI * 2); c.fill();
+          c.strokeStyle = '#b2f989'; c.lineWidth = 1;
+          for (let i = 0; i < 14; i++) {
+            const a = i * 2.399, r = (1 - q) * 20;
+            c.beginPath(); c.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+            c.lineTo(cx + Math.cos(a) * (r + 5), cy + Math.sin(a) * (r + 5)); c.stroke();
+          }
+        }
+      } else paintBody(c);
+    }
   };
   if (opts.flat) paint(ctx);
   else {
@@ -676,6 +711,16 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 const BED_SINK = 2;
 
 export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOptions = {}) {
+  // Ceiling-mounted props use the exact same art-scale, animation and danger
+  // treatment as floor props. Only their supporting surface is reflected.
+  if (e.gravityCeiling != null) {
+    ctx.save();
+    ctx.translate(0, 2 * GROUND_Y - e.gravityCeiling);
+    ctx.scale(1, -1);
+    drawWorldEntity(ctx, { ...e, alt: e.gravityCeiling - e.alt - e.h, gravityCeiling: null }, camX, t, style, settings, renderOptions);
+    ctx.restore();
+    return;
+  }
   const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
   const x = smoothMotion ? e.x - camX : Math.round(e.x - camX);
   // The loop pad's ring stands a radius clear of its box on both sides, so it is

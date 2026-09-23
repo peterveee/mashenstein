@@ -432,8 +432,16 @@ function eqGraphPanel({ params, apply }) {
 
   // The card is a fixed width in the rack and a fluid one in the Bar Effects sheet,
   // so the curve is redrawn off the box rather than off a number written down here.
+  // Drawn on the NEXT frame, not inside the callback: `draw` resizes the canvas, which
+  // changes the box being observed, and a resize made inside a ResizeObserver callback
+  // is the loop Chrome reports as "ResizeObserver loop completed with undelivered
+  // notifications" — which the desk's error strip then shows as if it were a crash.
   if (typeof ResizeObserver === 'function') {
-    new ResizeObserver(() => draw()).observe(canvas);
+    let queued = 0;
+    new ResizeObserver(() => {
+      if (queued) return;
+      queued = requestAnimationFrame(() => { queued = 0; draw(); });
+    }).observe(canvas);
   }
   registerEqGraph({ canvas, draw });
   requestAnimationFrame(refresh);

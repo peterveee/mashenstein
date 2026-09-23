@@ -63,7 +63,7 @@ import {
 } from '../sprites/sleigh.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, drawNeonTrainShell, TRAIN_FLOOR_LIFT } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -3684,6 +3684,8 @@ export class RunState {
     this.prevPitDx = this.pitDeath ? this.pitDeath.dx : 0;
   }
 
+  createPlayer(heroId, mods) { return new Player(heroId, mods); }
+
   enter() {
     // `introDone` is true on the second and later enter() calls made by a
     // death-restart.  The first stage entry already has its opening card/run-in
@@ -3719,7 +3721,7 @@ export class RunState {
     // fallbacks, so a stage nobody has edited answers exactly as it always did.
     // Null for the runs that have no stage to lay out — overtime and bosses,
     // which keep their own arithmetic below.
-    this.layout = resolveLayout(this.stage, this.cabinet);
+    this.layout = resolveLayout(this.stage, this.cabinet, this.o.layout);
     this.seed = o.seed ?? ((Math.floor(performance.now()) ^ 0x5eed) >>> 0);
     this.rng = new Rng(this.seed);
     this.fxRng = this.rng.stream('fx');
@@ -3741,7 +3743,7 @@ export class RunState {
     if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 10;
     this.usedHeroes = new Set([this.relay.current]);
     this.exitSpoken = new Set();   // heroes who have already said their goodbye
-    this.player = new Player(this.relay.current, this.modIds);
+    this.player = this.createPlayer(this.relay.current, this.modIds);
     this.player.jumpScale = 1;
     this.powerups = new Powerups(this.bench, this.modIds);
     this.powerups.shieldStack = HERO_BY_ID[this.relay.current].startShield;
@@ -5646,9 +5648,21 @@ export class RunState {
     // also means nothing can catch him on a road mid-lap: `player.y` is telling
     // the truth about his height and a lie about what is holding him up.
     const riding = !!(this.loop && !this.loop.pending);
+    // INSIDE A TRAIN THERE IS A ROOF. Only while he is on the LANE — a hero who
+    // boarded is standing ON that roof and the sky is his limit again.
+    this.insideTrain = this.route ? null
+      : neonTrainAround(this.cabinet, this.routes, this.camX, this.playerWorldX(), this.player.y);
+    // The step up onto the car floor, and back down out of the front door.
+    // Eased over a few frames so it reads as a step rather than a pop.
+    const floorTarget = this.insideTrain ? TRAIN_FLOOR_LIFT : 0;
+    this.trainFloorLift = (this.trainFloorLift || 0)
+      + (floorTarget - (this.trainFloorLift || 0)) * Math.min(1, wdt * 16);
     const res = riding ? { landed: false } : this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice',
       gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
+      // The hero DRAWN — the relay's current one — not player.heroId, which is
+      // whoever started the run and stays so through every tag.
+      ceiling: this.insideTrain ? neonTrainHeadroom(this.insideTrain, this.relay.current) : null,
     });
     this.cueAbilityReady();
     const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
@@ -9242,6 +9256,22 @@ export class RunState {
   updateProjectiles(dt, sp) {
     for (const pr of this.projectiles) {
       if (!pr.live) continue;
+      // A SHOT FIRED INSIDE A TRAIN STAYS IN THE TRAIN (Peter, 23 Sep: "if we
+      // shoot our weapon it should not go past the end of train"). Tagged the
+      // first frame it is seen rather than at each of the seven places a hero
+      // throws something, so a new weapon cannot forget to opt in. It dies at
+      // the nose — the carriage's end wall — and until then the shell over the
+      // hero hides it too, bar a glimpse through a window, which is what firing
+      // down a corridor looks like from outside.
+      if (pr.type !== 'enemyShot' && pr.train === undefined) {
+        const tr = this.insideTrain;
+        pr.train = tr && pr.x >= tr.x && pr.x <= tr.x + tr.w ? tr : null;
+      }
+      // ...at the front car's door, where the passenger space ends — the same
+      // line the hero himself steps out at (neonTrainInterior). The cab beyond
+      // it is bodywork, and a shot still in there when he left would be the one
+      // thing visible through a train he is no longer inside.
+      if (pr.train && pr.x > neonTrainInterior(pr.train)[1]) { pr.live = false; continue; }
       if (pr.type === 'axe' || pr.type === 'fist') {
         if (pr.holdT > 0) {
           // Still in his fist. It dies with the pose if the hero is swapped or
@@ -11326,6 +11356,32 @@ export class RunState {
       // has not gone by. Bounded by the obstacle list, which is culled, and by
       // the handful of routes a stage carries.
       if (is.x > this.camX + W + 200 || is.x + is.w < this.camX - 100) continue;
+      // NOTHING ON THE LANE THROUGH A STANDING TRAIN (Peter, 23 Sep: "dont put
+      // any coins/obstacles in front of the stopped train since we won't be
+      // able to get them"). A hero who does not board runs INSIDE it, where
+      // the shell hides the lane and the roof caps his jump — so a coin there
+      // is one he cannot see, and a hazard there is one he cannot clear. That
+      // second one is not a missed pickup, it is an unavoidable hit.
+      //
+      // Swept from the door he steps in at to a reaction runway past the door
+      // he steps out of, since coming out of a doorway into a crate is the
+      // same ambush one frame later. Holes are left alone — a pit is the level,
+      // not clutter — and so is anything on a ROAD (the roof run, the board arc
+      // up the tail, the capsule over the middle), which is what the train is
+      // there to pay out.
+      if (this.cabinet.id === 'neon' && is.kind === 'island' && (is.rise || 0) >= 24) {
+        const [inFrom, inTo] = neonTrainInterior(is);
+        const clearTo = inTo + this.spawner.react * this.speed;
+        const inLane = (x, w = 0) => x + w >= inFrom && x <= clearTo;
+        for (const ob of this.obstacles) {
+          if (!ob.live || ob.route || ob.def?.isGap || !inLane(ob.x, ob.w)) continue;
+          retireExit(ob);
+        }
+        for (const pk of this.pickups) {
+          if (!pk.live || pk.road || pk.route || !inLane(pk.x)) continue;
+          if (pk.x > viewRight) pk.live = false;
+        }
+      }
       // Where the hero lands off the end, and the first moment they could act on
       // whatever is waiting there. A fork has already converged by the time its
       // span closes, so there is no fall and no exit window to clear — the hero
@@ -12331,7 +12387,7 @@ export class RunState {
     }
     if (s.usedHeroes) this.usedHeroes = new Set(s.usedHeroes);
     if (s.exitSpoken) this.exitSpoken = new Set(s.exitSpoken);
-    this.player = new Player(this.relay.current, this.modIds);
+    this.player = this.createPlayer(this.relay.current, this.modIds);
     // A fresh Player starts at altitude 0, which means "on the floor" — so the
     // floor has to be the one the snapshot was taken on, or the hero is stood
     // on the base ground while the run still believes he is on a slab.
@@ -13897,6 +13953,59 @@ export class RunState {
     }
   }
 
+  /**
+   * THE CAR HE IS INSIDE, PAINTED OVER HIM.
+   *
+   * The second half of the run-through. The train is already on screen from
+   * the routes pass, warm windows and all; the hero draws; then this lays the
+   * same car back down as a SHELL with its windows and open doorway punched
+   * out, so between the panes he is behind the bodywork and at a pane he shows
+   * through, lit from behind by the interior that is already there.
+   *
+   * IT IS PAINTED INSIDE THE HERO'S OWN OVERLAY CALLBACK, not queued beside
+   * it. The hero does not paint into the world context at all — he goes to the
+   * full-resolution overlay — and the first cut enqueued the shell right after
+   * him. That held until he left the ground: an airborne hero is DEFERRED to
+   * the end of the frame so he rides over the popup cards (`liftHero`), which
+   * put him after the shell, painted over the train in plain view. Which is to
+   * say the effect failed exactly when anyone tried the ceiling. Chained into
+   * his callback, the shell follows him wherever the queue puts him.
+   */
+  /**
+   * NOTHING OF HIM SHOWS ABOVE THE ROOF while he is inside. The shell hides him
+   * behind the bodywork, but above the car there is no bodywork — only sky — so
+   * a head taller than the cabin came straight out through the top (Grumpos,
+   * Peter 23 Sep). The ceiling is per hero now (neonTrainHeadroom), and this is
+   * the guarantee behind it: whatever a pose, a squash or a future hero does, the
+   * part of him over the car's own span is cut at its roofline.
+   *
+   * Leaves the clip on `c` for the caller to restore; the transform is put back.
+   */
+  clipAboveTrainRoof(c, cam, z, pan, floorY, xOffset) {
+    const r = this.insideTrain;
+    if (!r) return;
+    const keep = c.getTransform();
+    if (this.mirror) { c.translate(W, 0); c.scale(-1, 1); }
+    applyWorld(c, z, pan, floorY, xOffset);
+    const roofY = this.renderGroundY(r.x + r.w / 2, r);
+    const BIG = 100000;
+    c.beginPath();
+    c.rect(-BIG, -BIG, BIG * 2, BIG * 2);
+    c.rect(r.x - cam, -BIG, r.w, roofY + BIG);
+    c.clip('evenodd');
+    c.setTransform(keep);
+  }
+
+  paintTrainShell(c, cam, z, pan, floorY, xOffset) {
+    const r = this.insideTrain;
+    if (!r) return;
+    c.save();
+    if (this.mirror) { c.translate(W, 0); c.scale(-1, 1); }
+    applyWorld(c, z, pan, floorY, xOffset);
+    drawNeonTrainShell(c, cam, r, (wx, rr) => this.renderGroundY(wx, rr));
+    c.restore();
+  }
+
   gravityForDeath() { return 600; }
 
   // DROP THE PITCH, KEEP THE TEMPO. `Audio.setDetune(1)` resets both at once,
@@ -15041,8 +15150,14 @@ export class RunState {
     // already has the seam (opts.specialOrb) — the tutorial uses it for scenes
     // before the player has a power — this just lets the dev layer ask for it.
     const hideOrb = typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideSpecialOrb);
+    // ...and INSIDE A TRAIN (Peter, 23 Sep). The orb floats over his shoulder in
+    // front of everything, so inside a car it hung on the bodywork outside the
+    // man it belongs to — the one piece of him still drawn on the near side of
+    // the hull. Faded with the same step that lifts him onto the car floor, so
+    // it goes as he steps in and comes back as he steps out.
+    const inTrain = Math.min(1, (this.trainFloorLift || 0) / TRAIN_FLOOR_LIFT);
     const orbAlpha = hideOrb ? 0
-      : this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
+      : (this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1) * (1 - inTrain);
     // THE JUMP GOES IN FRONT OF THE CHATTER.
     //
     // The popup stack rides the hero's own column and gets out of the way for
@@ -15086,7 +15201,18 @@ export class RunState {
         contactShadow: this.style.heroShadow === false ? 0 : this.groundUnderHero(),
         // Airborne, the sprite hands its overlay pass back instead of queueing
         // it, and this frame's chatter push below decides where it goes.
-        queueOverlay: liftHero ? (fn) => { heroLift = fn; } : undefined,
+        // The train shell rides IN THE HERO'S OWN CALLBACK — see paintTrainShell.
+        queueOverlay: (fn) => {
+          const paint = this.insideTrain ? (c) => {
+            c.save();
+            this.clipAboveTrainRoof(c, cam, z, pan, floorY, portraitXOffset);
+            fn(c);
+            c.restore();
+            this.paintTrainShell(c, cam, z, pan, floorY, portraitXOffset);
+          } : fn;
+          if (liftHero) heroLift = paint;
+          else pushOverlayDraw(paint);
+        },
         // Every field the LAST live frame left behind has to be cleared, not
         // just the kind. He arrives here mid-landing — squash from hitting the
         // cap, lean from the run, and whatever slide state the slide left — and
@@ -15118,7 +15244,7 @@ export class RunState {
       // height, and signed, so he sank into the climbs and floated over the
       // descents. Invisible for as long as the cast wore ellipses and obvious
       // the moment real soles had to meet a line.
-      groundY: this.heroRenderGroundY(cam + heroArtX, this.route),
+      groundY: this.heroRenderGroundY(cam + heroArtX, this.route) - (this.trainFloorLift || 0),
         // How the terrain rises or falls either side of the hero, so a floor
         // effect can lie IN the floor instead of on a level line through it.
         // On a slab this comes out flat, which is correct — the island is a

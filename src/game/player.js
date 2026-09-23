@@ -165,6 +165,10 @@ export function airtimeFor(hero) {
   return (2 * jumpV(hero)) / gravityFor(hero);
 }
 
+// How fast a hero who came in under a train's lintel mid-air is brought down to
+// the ceiling, in px/s: about 8px a frame, a drop rather than a teleport.
+const CEILING_PULL = 480;
+
 export class Player {
   constructor(heroId, mods = []) {
     this.mods = mods;
@@ -534,6 +538,26 @@ export class Player {
         * (this.slideSlamming ? STOMP_GRAVITY_MULT : 1);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;
+      // A CEILING, when the world has one. Only Neon has: a hero who does not
+      // jump onto a train runs INTO it, and the roof he failed to board is now
+      // over his head. `world.ceiling` is his maximum altitude in that car —
+      // derived from the roof's own rise and his own height, so the hop he gets
+      // is whatever the geometry actually leaves him (see neonTrainHeadroom).
+      //
+      // It is a CAP, not a cancel: the jump still happens, it just runs out of
+      // room. That is what makes it read as a thump rather than as a dead
+      // button, and it is the whole of the feedback — no cue, because the
+      // animation through the windows is the thing worth watching.
+      const ceiling = world?.ceiling;
+      if (Number.isFinite(ceiling) && this.y > ceiling) {
+        // Rising INTO it this frame: stop dead, which is the bonk. Already above
+        // it — he jumped at the doorway and came in under the lintel mid-air —
+        // is pulled down to it over a few frames rather than teleported, the
+        // shell and the roof clip hiding whatever of him is up in the bodywork.
+        if (this.y - this.vy * dt <= ceiling + 0.01) this.y = ceiling;
+        else this.y = Math.max(ceiling, this.y - CEILING_PULL * dt);
+        if (this.vy > 0) this.vy = 0;
+      }
       if (this.y <= 0) {
         this.y = 0;
         this.grounded = true;
