@@ -35,6 +35,10 @@ const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { bank: rhythmBank } = await import('../src/data/songs/rhythm.js');
+// The engine's own beat clock, restored for every non-beat run: a rhythm run replaces it,
+// and left in place it leaked into every stage swept after — surge-3's demo fell down a
+// hole only when the rhythm stages had run first (24 Sep 2026).
+const REAL_SONG_BEAT = Audio.songBeat;
 
 let failed = false;
 function assert(cond, msg) {
@@ -62,7 +66,7 @@ function play(stage, team) {
   const beat = cab.mechanic === 'beat';
   let t = 0;
   Audio.sourceBank = beat ? cab.music : null;
-  if (beat) Audio.songBeat = () => (t * rhythmBank.bpm) / 60;
+  Audio.songBeat = !beat ? REAL_SONG_BEAT : () => (t * rhythmBank.bpm) / 60;
   let result = null;
   const run = new RunState({
     stage, team, save, seed: 1337, difficulty: 1, onEnd: (r) => { result = r; },
@@ -148,7 +152,7 @@ function playDemo(stage, seed, phase) {
   const beat = cab.mechanic === 'beat';
   let t = 0;
   Audio.sourceBank = beat ? cab.music : null;
-  if (beat) Audio.songBeat = () => ((t + phase) * rhythmBank.bpm) / 60;
+  Audio.songBeat = !beat ? REAL_SONG_BEAT : () => ((t + phase) * rhythmBank.bpm) / 60;
   let result = null;
   const run = new RunState({
     stage, save: demoSave(), seed, difficulty: 1, demo: true, onEnd: (r) => { result = r; },

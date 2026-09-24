@@ -2085,6 +2085,10 @@ const GIRDER_RING_NORM = (() => {
   return Math.sin(GIRDER_RING_W * t) * Math.exp(-t / GIRDER_RING_DECAY);
 })();
 
+// What the power slide breaks by kicking through it: boxes, soft snowmen, and brittle ice
+// crystals (Peter, 24 Sep). Not tombstones.
+const SLIDE_PLOWABLE = new Set(['crate', 'qcrate', 'snowman', 'snowmanBig', 'iceCrystals']);
+
 export class RunState {
   // The lifecycle admits this frame-based screen on a phone in portrait. The
   // active renderer still falls back to landscape when the viewport is wide.
@@ -13484,7 +13488,9 @@ export class RunState {
       // would beggar the jump. It spends the timed slide window to do it, so
       // it is a commit rather than free invincibility — airborne or
       // half-risen contact still hurts like it always did.
-      if (sliding && !ob.hurtPlayer && (ob.type === 'crate' || ob.type === 'qcrate')) {
+      // Snowmen too (Peter, 24 Sep): soft, and kicked apart into snow like a box into
+      // splinters.
+      if (sliding && !ob.hurtPlayer && SLIDE_PLOWABLE.has(ob.type)) {
         // The front leg does the breaking. Until now the box simply died on
         // contact and the hero slid through it with his leg still tucked —
         // the plow read as the crate giving up rather than as him hitting it.
@@ -15724,7 +15730,7 @@ export class RunState {
       // rather than with the sky so the pack's post pass, the HUD and every
       // other overlay are underneath it: whatever gradient is left on screen
       // over this band is then not ours by construction. Ships off.
-      drawHud(d, this);
+      if (!this.captureCleanPlate) drawHud(d, this);
       if (this.introFreeze > 0 && this.introText) {
         drawActBanner(d, this.introText, {
           t: this.introT,

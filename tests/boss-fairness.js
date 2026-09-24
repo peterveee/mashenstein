@@ -170,7 +170,10 @@ if (!shooterStage) {
 } else {
   let total = 0;
   for (const zoomIn of [false, true]) {
-    const gaps = firingGaps(shooterStage, zoomIn, 4242);
+    // Several seeds: a stage deals only a shot or two to a bot that clears printers by
+    // shooting or punting them, so one seed could be a run with none (24 Sep 2026, the
+    // day printers became puntable).
+    const gaps = [4242, 101, 202, 303].flatMap((seed) => firingGaps(shooterStage, zoomIn, seed));
     total += gaps.length;
     if (!gaps.length) continue;
     const worst = Math.max(...gaps);

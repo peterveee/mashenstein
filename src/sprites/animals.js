@@ -1139,12 +1139,22 @@ function rattlesnake(ctx, w, h, frame = 0) {
 // the only line left is the outside of the whole bird — no seam where the neck meets
 // the breast. The neck's root is wide and sunk into the chest, and it tapers to the head.
 const GOOSE = {
-  body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: 'rgba(74,70,64,0.9)', beak: '#f08a2c',
+  body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: 'rgba(52,44,40,0.62)', beak: '#f08a2c',
   beakDark: '#c4611a', leg: '#f08a2c', legDark: '#c4611a',
 };
 const GOOSE_FRAMES = 10;
+// ONE LINE, EVERYWHERE (Peter, 24 Sep: "finer more consistent outlines (inc. beak)"):
+// every contour on the bird — silhouette, wings, beak, feet — is this width in the
+// one ink. About 0.4 of a pixel in the lane, the weight of the other animals' contour.
+// The silhouette is stroked at twice it and filled over, so its visible outer half matches.
+const GOOSE_LINE = 0.42;
 // Beak tip to tail, and wing tip to feet, in the drawing's own units.
 const GOOSE_SPAN = { left: 16.4, right: 9.8, top: 17.2 };
+// Room in front of the bird inside its box for the HONK lines past the beak (Peter, 24
+// Sep) — on the beak side only, so the widening stays under the widest prop's scale, which
+// the render cull is derived from (BASE_CULL_MARGIN). The box is widened to match
+// (ANIMAL_VISUAL), so the goose draws the same size; it sits a hair behind the box centre.
+const GOOSE_PAD = 5.5;
 function gooseStroke(ctx, color, lw, path) {
   ctx.beginPath(); path(ctx);
   ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
@@ -1159,7 +1169,7 @@ function goose(ctx, w, h, frame = 0) {
   const P = GOOSE;
   const u = ((frame % GOOSE_FRAMES) / GOOSE_FRAMES) * TAU;   // one stride per ring
   const bob = Math.abs(Math.sin(u)) * 0.8;
-  const s = Math.min(w / (GOOSE_SPAN.left + GOOSE_SPAN.right), h / GOOSE_SPAN.top);
+  const s = Math.min(w / (GOOSE_SPAN.left + GOOSE_SPAN.right + GOOSE_PAD), h / GOOSE_SPAN.top);
   ctx.save();
   ctx.translate(w - GOOSE_SPAN.right * s, h);
   ctx.scale(s, s);
@@ -1169,7 +1179,7 @@ function goose(ctx, w, h, frame = 0) {
     const fx = -0.5 + Math.cos(k) * 2.8 + (side ? 1.4 : -1.2);
     const lift = Math.max(0, Math.sin(k)) * 1.7;
     gooseStroke(ctx, side ? P.leg : P.legDark, 0.7, (c) => { c.moveTo(side ? 0.8 : -0.6, -5.4 - bob); c.lineTo(fx, -0.8 - lift); });
-    gooseInk(ctx, side ? P.leg : P.legDark, 0.3, (c) => { c.moveTo(fx + 0.6, -0.9 - lift); c.lineTo(fx - 2.2, -0.5 - lift); c.lineTo(fx + 0.4, 0.1 - lift); c.closePath(); }, P.beakDark);
+    gooseInk(ctx, side ? P.leg : P.legDark, GOOSE_LINE, (c) => { c.moveTo(fx + 0.6, -0.9 - lift); c.lineTo(fx - 2.2, -0.5 - lift); c.lineTo(fx + 0.4, 0.1 - lift); c.closePath(); });
   }
   ctx.translate(0, -6.2 - bob);
   const flap = Math.sin(u + 1);
@@ -1181,7 +1191,7 @@ function goose(ctx, w, h, frame = 0) {
     c.lineTo(tx + 1.6, ty + 1.4); c.lineTo(tx - 0.2, ty + 1.8); c.lineTo(tx + 1, ty + 3.2); c.lineTo(tx - 1, ty + 3.2);
     c.quadraticCurveTo(3, -1, 3.6, -1.2); c.closePath();
   };
-  gooseInk(ctx, P.wingShade, 0.45, wing(flap, true));
+  gooseInk(ctx, P.wingShade, GOOSE_LINE, wing(flap, true));
   const nb = Math.sin(u * 2) * 0.5;
   const body = (c) => {
     c.moveTo(-4.2, -2.4); c.quadraticCurveTo(-5.8, 2.8, 0.8, 3); c.quadraticCurveTo(5.8, 3, 7.2, -1);
@@ -1210,7 +1220,7 @@ function goose(ctx, w, h, frame = 0) {
     ctx.save();
     ctx.translate(-12.9, -2.35 + nb);
     ctx.rotate(rot);
-    gooseInk(ctx, P.beak, 0.35, path, P.beakDark);
+    gooseInk(ctx, P.beak, GOOSE_LINE, path);
     ctx.restore();
   };
   // Lower mandible first, so the upper one's edge lies over it when shut.
@@ -1223,8 +1233,26 @@ function goose(ctx, w, h, frame = 0) {
     c.moveTo(1.6, -1.05); c.quadraticCurveTo(-1.6, -1.05, -4.2, 0.05);
     c.lineTo(-3.6, 0.2); c.lineTo(1.6, 0.2); c.closePath();
   });
+  // HONK: three short strokes fanning out from the beak tip as it snaps open, longer the
+  // wider it gapes, like the cartoon marks a shout gets. Same ink and line as the bird.
+  if (gape > 0.25) {
+    const k = (gape - 0.25) / 0.75;
+    ctx.save();
+    ctx.translate(-16.4, -2.3 + nb);
+    ctx.strokeStyle = P.ink; ctx.lineWidth = GOOSE_LINE * 1.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    // Three separate dashes, not a chevron: each starts well clear of the beak tip.
+    for (const a of [-0.75, 0, 0.75]) {
+      const r0 = 1.8 + 0.4 * k, r1 = r0 + 1.2 + 1.6 * k;
+      const ang = Math.PI + a;
+      ctx.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0);
+      ctx.lineTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
   // One silhouette: every outline first, then every fill over it.
-  for (const part of [body, neck, head]) gooseStroke(ctx, P.ink, 1.1, part);
+  for (const part of [body, neck, head]) gooseStroke(ctx, P.ink, GOOSE_LINE * 2, part);
   for (const part of [body, neck, head]) gooseFill(ctx, P.body, part);
   ctx.save(); ctx.beginPath(); body(ctx); ctx.clip();
   gooseFill(ctx, P.bodyShade, (c) => c.ellipse(1.6, 2.8, 7.4, 2.2, 0, 0, TAU));
@@ -1237,8 +1265,7 @@ function goose(ctx, w, h, frame = 0) {
   });
   ctx.restore();
   gooseFill(ctx, '#1a1816', (c) => c.arc(-11.4, -3 + nb, 0.45, 0, TAU));
-  gooseStroke(ctx, P.ink, 0.5, (c) => { c.moveTo(-12.4, -4.4 + nb); c.lineTo(-10.4, -3.8 + nb); });
-  gooseInk(ctx, P.body, 0.45, wing(flap * 0.8, false));
+  gooseInk(ctx, P.body, GOOSE_LINE, wing(flap * 0.8, false));
   ctx.restore();
 }
 
@@ -1338,5 +1365,6 @@ export const ANIMAL_VISUAL = {
   dogSnarler: 1.16, dogBruiser: 1.16, dogFeral: 1.16, catFury: 1.24,
   // Drawn at its box: its box already takes in the strike.
   rattlesnake: 1,
-  goose: 1.1,
+  // 1.1 for the bird, times the room its honk lines need (GOOSE_PAD): same size on screen.
+  goose: 1.1 * (16.4 + 9.8 + 5.5) / (16.4 + 9.8),
 };

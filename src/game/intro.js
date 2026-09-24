@@ -2027,7 +2027,7 @@ export class IntroState {
     // The caption, outside the clip and unscaled: it is type on the print, not
     // something in the room, and it is the one thing on screen that must be
     // exactly as legible in a wide shot as in a close-up.
-    if (!ACTION_ONLY_PREVIEW) {
+    if (!ACTION_ONLY_PREVIEW && !this.captureCleanPlate) {
       // The script runs on its own clock, so a line may sit inside one shot,
       // span a cut, or simply not be there — the reveal, the jump and the glass
       // are all deliberately clean.

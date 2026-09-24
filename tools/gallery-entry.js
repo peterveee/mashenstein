@@ -2582,6 +2582,95 @@ function propNominalSize(name) {
 // audit a still-open art question rather than document a shipped asset.
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
+// ---------------------------------------------------------------- new level scenery
+// EVERYTHING ADDED TO THE LEVELS ON 24 SEP 2026, as the game draws it (Peter: "add all
+// new in game scenery to the gallery"). Each scenery card is the cabinet's real backdrop
+// at the stage and camera position where the item stands, held still so its own
+// animation plays; each obstacle card is the real entity in its cabinet's lane beside the
+// hero. docs/LEVEL_SCENERY.md says where and how often each one appears.
+{
+  const grid = section('new-level-scenery', 'New level scenery (24 Sep 2026)',
+    'Everything added to the first six cabinets\' levels on 24 Sep, drawn by the game\'s own painters at the stage '
+    + 'and point where it appears. See docs/LEVEL_SCENERY.md for where and how often.');
+  const TD = 10000;
+  const scenery = (name, note, cabId, stageIndex, camX, extra = {}) => {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    const pack = getStylePack(cab.style, {});
+    tile(grid, name, note, W, H, (ctx, t) => {
+      const bc = { stageIndex, progress: camX / TD, ...extra };
+      pack.bg(ctx, t, camX, cab, TD, bc, 0, bc);
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, cab, [], [], t * 60, VIEW_W);
+      drawToon(ctx, extra.heroId || 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+  };
+  // Obstacles: the real entity, with the run's own clocks cycled so a strike or a swing
+  // plays over and over rather than once.
+  const obstacle = (name, note, cabId, type, tick = null) => {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    const pack = getStylePack(cab.style, {});
+    tile(grid, name, note, W, H, (ctx, t) => {
+      const camX = 2000;
+      const bc = { stageIndex: 2, progress: 0.3 };
+      pack.bg(ctx, t, camX, cab, Infinity, bc, 0, bc);
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, cab, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      const e = makeObstacle(type, camX + PLAYER_X + 70);
+      if (tick) tick(e, t);
+      drawWorldEntity(ctx, e, camX, t, pack, {});
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+  };
+  // PLUMBER PANIC
+  scenery('PLUMBER 1 · barn and silo', 'Near the start of plumber-1: rooster weathervane, hoist rope, hens on the slope.', 'plumber', 1, 700);
+  scenery('PLUMBER 1 · patchwork fields', 'Rise into the country from behind the near hills between 70% and 80% of plumber-1.', 'plumber', 1, 8600);
+  scenery('PLUMBER 2 · hot-air balloons', 'Two cross plumber-2, at about 22% and 66%; the burner flares.', 'plumber', 2, 2200);
+  scenery('PLUMBER 3 · windmill on a hilltop', 'A third of the way into plumber-3, smaller and planted on a mound.', 'plumber', 3, 3500);
+  scenery('PLUMBER · sheep and sheepdog', 'Every plumber stage, on about one near hilltop in seventeen.', 'plumber', 1, 7050);
+  obstacle('PLUMBER · goose (obstacle)', 'Charges at you honking: jump it. Plumber 2 and 3.', 'plumber', 'goose');
+  obstacle('PLUMBER · rake (obstacle)', 'Tines up; tread on it and the handle swings up into your face. Jump it.', 'plumber', 'rake',
+    (e, t) => { e.swingT = t % 1.6; });
+  // SPEED ZONE
+  scenery('SPEED 1 · oil pumpjacks', 'Speed-1\'s landmark, about 45% in: two rigs nodding out of step.', 'speed', 1, 4500);
+  scenery('SPEED 2 · SMILE! speed camera', 'Speed-2, near the start: SMILE!, the flash as you pass, then your mugshot (loops here).', 'speed', 2, 420);
+  scenery('SPEED 3 · jet through the sound barrier', 'Speed-3, from about 45%: vapour cone, shock ring, contrail.', 'speed', 3, 4500 + 520);
+  scenery('SPEED · coyote, dust devil, tumbleweeds', 'On every speed stage, more than once.', 'speed', 3, 7000);
+  obstacle('SPEED · rattlesnake (obstacle)', 'Coiled in the road; strikes half a second before you reach it. Jump it.', 'speed', 'rattlesnake',
+    (e, t) => { e.strikeT = t % 1.6; });
+  // FROST FORTRESS
+  scenery('FROST 1 · gondola', 'Near the start of frost-1: comes down out of the sky and into the hills.', 'frost', 1, 400);
+  scenery('FROST 2 · reindeer herd', 'Gallops across the far snowfield between 78% and 95% of frost-2.', 'frost', 2, 8600);
+  obstacle('FROST · ice crystal cluster (obstacle)', 'The snowman\'s box and jump, in ice; shatters when broken.', 'frost', 'iceCrystals');
+  // TERMINAL VELOCITY
+  scenery('NEON 1 · Mt Fuji in the paper golden hour', 'Neon-1\'s daytime only, fading out before the city has arrived.', 'neon', 1, 200,
+    { neonMood: NEON_GOLDEN_MOOD, progress: 0.01 });
+  scenery('NEON 2/3 · Tokyo Tower', 'Behind the far city at the midpoint of neon-2 and neon-3.', 'neon', 2, 5000,
+    { neonMood: neonNightMood(1), progress: 0.5 });
+  for (const [type, label] of [['pandaBarrier', 'panda'], ['frogBarrier', 'frog'], ['monkeyBarrier', 'monkey in a hard hat']]) {
+    const cab = CABINETS.find((c) => c.id === 'neon');
+    const pack = getStylePack('neon', {});
+    tile(grid, `NEON · road-works ${label} (obstacle)`, 'In the cactus\'s place on the neon lane.', W, H, (ctx, t) => {
+      const camX = 2000;
+      const bc = { stageIndex: 2, neonMood: neonNightMood(1), progress: 0.3 };
+      pack.bg(ctx, t, camX, cab, Infinity, bc, 0, bc);
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, cab, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      drawWorldEntity(ctx, makeObstacle(type, camX + PLAYER_X + 70), camX, t, pack, {});
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+  }
+}
+
 beginLab();
 // ---------------------------------------- Speed Zone water-tower bake-off
 // Ten gallery-only silhouettes, including the live production painter as A.

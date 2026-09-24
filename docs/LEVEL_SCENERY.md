@@ -283,3 +283,14 @@ it. The trains that actually run come from `stage-layouts.js` `routes.islands`.
 - **Obstacle banks** are in `src/data/cabinets.js`: `patterns`, `BASE_PATTERNS`, `ANIMALS`, `swaps`. Boxes and motion flags are in `src/game/entities.js`. Frame counts and rates are in `PROP_FRAMES` / `PROP_FPS` (`src/sprites/props.js`) and `ANIMAL_FRAMES` / `ANIMAL_FPS` (`src/sprites/animals.js`).
 - **Pinned stage events** are in `src/data/stage-layouts.js`: pits, crossings, routes, trains, loop, finish dog.
 - **To re-measure obstacle counts,** run `node tests/lib/capture-ledger.js <stage> <seed>` for seeds 101 202 303 404 and average the `['o', type, …]` spawns. Keep the output under `work/local/`.
+
+## What the slide kick does
+
+Settled 24 Sep 2026. A timed power slide into an obstacle does one of three things;
+anything not listed hurts. Nothing alive can be kicked.
+
+| Kick | Obstacles | Code |
+| --- | --- | --- |
+| Breaks it | crate, !-crate, snowman, big snowman, ice crystals | `SLIDE_PLOWABLE` (run.js) |
+| Punts it | traffic cone, barrel (heavy), road-works panda / frog / monkey, office chair, printer, cardboard monster | `punt` on the def (entities.js) |
+| Nothing — you take the hit | everything else, including every animal, the rake, cacti and thistles, tombstones, fire, floor traps and blades, the pipe, razor hurdle and beat bar | — |

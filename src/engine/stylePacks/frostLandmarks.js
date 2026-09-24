@@ -152,12 +152,14 @@ const HERD = [
   // [offset behind the leader, stride phase, size]
   [0, 0.0, 1.0], [24, 0.35, 0.92], [44, 0.7, 1.06], [66, 0.15, 0.88], [86, 0.55, 0.96],
 ];
-function drawDeer(ctx, x, y, s, phase) {
+function drawDeer(ctx, x, y, s, phase, tilt = 0) {
   // `phase` 0..1 through a gallop: gathered (legs under) to extended (legs flung out).
   const ext = 0.5 - 0.5 * Math.cos(phase * TAU);
-  const lift = Math.sin(phase * TAU) * 1.2;
+  // A small hop at the gathered part of the stride only: the hooves stay on the snow.
+  const lift = Math.max(0, Math.sin(phase * TAU)) * 0.45;
   ctx.save();
   ctx.translate(x, y - lift * s);
+  ctx.rotate(tilt);
   ctx.scale(s, s);
   // Legs: far pair first, darker.
   const legs = (dx, spread, color) => line(ctx, color, 1.1, (c) => {
@@ -197,11 +199,23 @@ export function drawFrostReindeer(ctx, t, k, view, crest) {
   const from = view.left - 30, to = view.left + view.width + 30 + HERD[HERD.length - 1][0];
   const lead = from + (to - from) * k;
   ctx.save();
+  // ON the snow, and BEHIND it (Peter, 24 Sep: "landing properly on top of the hills and
+  // disappearing behind rocks"): each deer stands on the crest tilted to its slope, hooves
+  // sunk a pixel in, and the herd is clipped to the sky side of the crest, so going over
+  // the brow they drop out of sight behind it. Rocks and fortresses on this ridge are
+  // drawn after the herd, so it passes behind those too.
+  ctx.beginPath();
+  ctx.moveTo(view.left - 40, -200);
+  ctx.lineTo(view.left + view.width + 40, -200);
+  for (let x = view.left + view.width + 40; x >= view.left - 40; x -= 2) ctx.lineTo(x, crest(x) + 1.2);
+  ctx.closePath();
+  ctx.clip();
   for (let i = HERD.length - 1; i >= 0; i--) {
     const [behind, ph, s] = HERD[i];
     const x = lead - behind;
     if (x < view.left - 30 || x > view.left + view.width + 30) continue;
-    drawDeer(ctx, x, crest(x) + 1.5, 0.95 * s, (t * 2.2 + ph) % 1);
+    const tilt = Math.atan2(crest(x + 5) - crest(x - 5), 10) * 0.8;
+    drawDeer(ctx, x, crest(x) + 1.2, 0.95 * s, (t * 2.2 + ph) % 1, tilt);
   }
   ctx.restore();
 }

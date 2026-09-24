@@ -16,9 +16,13 @@ export const OBSTACLES = {
   // Tokyo's road-works animals: the neon lane's cactus (the cabinet's `swaps`), in the
   // cactus's box and answered the same way — jumped, or broken. The panda is the
   // regular; the frog and the monkey in his hard hat are the occasional ones.
-  pandaBarrier: { w: 13, h: 12, sprite: 'pandaBarrier', ground: true, breakable: true, action: 'jump' },
-  frogBarrier: { w: 13, h: 12, sprite: 'frogBarrier', ground: true, breakable: true, action: 'jump' },
-  monkeyBarrier: { w: 13, h: 12, sprite: 'monkeyBarrier', ground: true, breakable: true, action: 'jump' },
+  // KICKABLE (Peter, 24 Sep): the road-works animals are hollow plastic like the cone,
+  // so a timed slide punts them clear — as it does the chair, the printer and the
+  // cardboard monster. Not the rake: sliding into it is how you get the handle in the face.
+  // Nothing alive is kickable (see `animal`).
+  pandaBarrier: { w: 13, h: 12, sprite: 'pandaBarrier', ground: true, breakable: true, action: 'jump', punt: true, puntLabel: 'PANDA' },
+  frogBarrier: { w: 13, h: 12, sprite: 'frogBarrier', ground: true, breakable: true, action: 'jump', punt: true, puntLabel: 'FROG' },
+  monkeyBarrier: { w: 13, h: 12, sprite: 'monkeyBarrier', ground: true, breakable: true, action: 'jump', punt: true, puntLabel: 'MONKEY' },
   // PLUMBER'S STANDING HAZARD. Same box, same flags and same PROP_TALL as the
   // cactus it stands in for, so the swap in PLUMBER_PATTERNS is a change of
   // plant and nothing else: identical jump, identical spacing, identical
@@ -211,9 +215,9 @@ export const OBSTACLES = {
   // "shoot this" is the paint (see the cardBox painter: pink target ring, in
   // the beat lane's own colour and the ribbon's own ability glyph).
   cardBox:    { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'none', beatShoot: true, pushover: true },
-  cardboardMonster: { w: 12, h: 9, sprite: 'cardboardMonster', ground: true, breakable: true, action: 'jump' },
-  chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
-  printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
+  cardboardMonster: { w: 12, h: 9, sprite: 'cardboardMonster', ground: true, breakable: true, action: 'jump', punt: true, puntLabel: 'BOX MONSTER' },
+  chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true, punt: true, puntLabel: 'CHAIR' },
+  printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true, punt: true, puntLabel: 'PRINTER' },
   paperwork:  { w: 8, h: 6,   sprite: null, alt: 13, armored: false, action: 'slide', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
   // `punt`: light enough that a boot sends it somewhere rather than through a
   // debris cloud. It stays `action: 'jump'` — jumping is still the answer the

@@ -1124,6 +1124,7 @@ function boot() {
       benchFrame(now);
     },
   });
+  if (Dev.enabled) window.__mash_render_loop = loop;
   if (benchRequested) startBench();
   if (titleProfileRequested) {
     startTitleProfile({ restorePin: benchDiag?.titleProfileRenderer ? null : undefined });

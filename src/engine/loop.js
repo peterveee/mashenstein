@@ -178,6 +178,14 @@ export function startLoop({ update, draw, present }) {
   }
   schedule();
   return {
+    // Offline capture advances one exact simulation tick and paints one frame.
+    // The loop must be paused so browser scheduling cannot insert extra ticks.
+    stepOffline() {
+      if (running || stopped) throw new Error('Pause the loop before offline capture');
+      update(TICK);
+      draw(0);
+      if (present) present(performance.now());
+    },
     pause() {
       if (!running || stopped) return;
       running = false;
