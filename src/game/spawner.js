@@ -566,9 +566,13 @@ export class Spawner {
     // and placed by its own rule (spawnScriptedRewindMaybe), and a second way
     // to win one would quietly double it.
     const opts = { allowRewind: false };
+    // AND NOT THE SAME KIND AS THE LAST CAPSULE DEALT. The drip keeps that ledger and
+    // the run hands it in (`lastPowerType`); rolled blind, a gated prize could repeat
+    // the capsule a screen behind it — two magnets 727px apart on frost-2.
+    const avoid = this.lastPowerType ? this.lastPowerType() : null;
     const type = weights
-      ? weightedPowerPickup(this.rng, weights, null, opts)
-      : randomPowerPickup(this.rng, null, opts);
+      ? weightedPowerPickup(this.rng, weights, avoid, opts)
+      : randomPowerPickup(this.rng, avoid, opts);
     const w = PICKUPS[type]?.w || 8;
     const p = makePickup(type, hole.x + hole.w / 2 - w / 2, COIN_FLOOR);
     // Both ends of the tie: `gateId` is what run.js retires it by, `gated` is

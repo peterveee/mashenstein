@@ -279,8 +279,15 @@ for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS
 // The trims that stop the songs clipping. These are measured values (see the peak
 // apportionment in the handoff notes); if they move, the render is expected to move
 // with them — but they should never quietly vanish.
-assert(MIX.shop?.lanes?.kick?.gain === -6 && MIX.shop?.lanes?.hats?.gain === -6,
-  'shop keeps the kick and hats trim that takes it under full scale');
+// The shop's pair were a flat -6 until Peter remixed the song on the desk (commit
+// 77ae44b, 23 Sep 2026): new drum voices, a multiband compressor on the master, and the
+// kick and hats brought up to +0.6 with their own EQ. Pinned to that mix now — the point
+// is still that the pair keep an explicit setting rather than quietly falling back to
+// the lane default.
+assert(MIX.shop?.lanes?.kick?.gain === 0.6 && MIX.shop?.lanes?.hats?.gain === 0.6,
+  'shop keeps the desk\'s kick and hats levels');
+assert((MIX.shop?.masterEffects || []).some((fx) => fx.id === 'mbCompN'),
+  'and the master compressor that holds the remixed song under full scale');
 assert(MIX.finale?.lanes?.kick?.gain === -2, 'finale keeps its kick trim');
 
 // ---- the serialiser --------------------------------------------------------

@@ -97,9 +97,14 @@ function play(stage, zoomIn, seed) {
   return tally;
 }
 
+// ENOUGH KICKS TO MEAN SOMETHING. Eight seeds is plenty where the lane deals barrels
+// freely, but speed-2's bank gave five kicks a framing once the rattlesnake joined it
+// (24 Sep 2026), and at five one kick is twenty points of "rate". So a sweep keeps
+// dealing seeds until it has MIN_KICKS, up to MAX_SEEDS.
+const MIN_KICKS = 20, MAX_SEEDS = 32;
 function sweep(stage, zoomIn) {
   const out = { kicks: 0, hits: 0, altMin: Infinity, altMax: -Infinity };
-  for (let s = 1; s <= 8; s++) {
+  for (let s = 1; s <= MAX_SEEDS && (s <= 8 || out.kicks < MIN_KICKS); s++) {
     const r = play(stage, zoomIn, s * 101);
     out.kicks += r.kicks; out.hits += r.hits;
     out.altMin = Math.min(out.altMin, r.altMin);
@@ -134,7 +139,12 @@ for (const stage of CHASES) {
   const rate = (r) => (r.kicks ? r.hits / r.kicks : 0);
   assert(near.kicks > 4 && far.kicks > 4, `${stage.id}: the sweep actually kicked barrels `
     + `(${near.kicks} / ${far.kicks})`);
-  assert(Math.abs(rate(near) - rate(far)) <= 0.1,
+  // Two standard errors of the difference between the two rates, never tighter than
+  // the tenth this always allowed. At twenty-odd kicks a side that is about a quarter —
+  // still nowhere near the 6%-against-55% gap this test was written to catch.
+  const se = Math.sqrt(rate(near) * (1 - rate(near)) / Math.max(1, near.kicks)
+    + rate(far) * (1 - rate(far)) / Math.max(1, far.kicks));
+  assert(Math.abs(rate(near) - rate(far)) <= Math.max(0.1, 2 * se),
     `${stage.id}: the same perfect kick connects at the same rate `
     + `(${(100 * rate(near)).toFixed(0)}% vs ${(100 * rate(far)).toFixed(0)}%)`);
 }

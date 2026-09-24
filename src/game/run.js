@@ -4083,6 +4083,9 @@ export class RunState {
       totalDist: this.totalDist,
       weights: this.cabinet?.capsuleWeights || null,
     });
+    // The pattern lane's gated prizes roll against the drip's last kind (see
+    // Spawner.spawnGatedPrize), so a prize over a hole never repeats the capsule before it.
+    this.spawner.lastPowerType = () => this.drip.lastPowerType;
 
     // ---- raised routes: islands and forks ----------------------------------
     //
