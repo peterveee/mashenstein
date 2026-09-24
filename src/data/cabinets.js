@@ -799,8 +799,15 @@ export const CABINETS = [
       buzzbird: ['drone'],
     },
     // No invincibility on these stages (Peter, 24 Sep): UNPEELABLE, and the legacy
-    // star capsule that can still arrive through old data.
-    bannedPowers: ['capUnpeel', 'capStar'],
+    // star capsule that can still arrive through old data. And NO SPEED-UP (Peter,
+    // 24 Sep: "the music is already very fast") — out of the drip, the crates and a
+    // bought starting power alike.
+    bannedPowers: ['capUnpeel', 'capStar', 'capSpeed'],
+    // ITS OWN CAPSULE TABLE, because the shipped ladder deals shield or magnet half
+    // the time and with speed and unpeel gone that rose to nearer two thirds — Peter,
+    // 24 Sep: "I don't notice much variety". Four of the kinds are near-even here so
+    // a run meets all of them; rewind stays a rarer find.
+    capsuleWeights: { capShield: 22, capMagnet: 22, capAirJump: 22, capLowGrav: 20, capRewind: 14 },
     music: NEON.bank,
     patterns: [
       // Tier-0 BASE stays filtered out — no cactus-and-crate opener here; the

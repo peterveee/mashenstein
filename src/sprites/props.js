@@ -1548,7 +1548,14 @@ const RAKE_PAL = {
   metalLight: '#c6ccd2', star: '#fff3b0', starEdge: '#f2b33c',
 };
 // Tines left of the pivot, handle's length right of it, and the swing's reach up.
-const RAKE_SPAN = { left: 12, right: 21, top: 27, handle: 20 };
+// THE HANDLE REACHES EVERY FACE (Peter, 24 Sep: "make the handle of the rake longer so
+// it will hit all heroes in the face — currently a little short even for Lorenzo").
+// At 20 the tip topped out about 16 world px up, under Lorenzo's chin; the tallest
+// heroes reach 30 (HERO_REACH), with their faces at about 24. 31 puts the tip there.
+// The box grew with it (PROP_VISUAL_SCALE / PROP_TALL below), sized so the drawing's
+// scale is unchanged at 0.82 — the tines and the head are the same size they were;
+// only the handle is longer.
+const RAKE_SPAN = { left: 12, right: 33, top: 38, handle: 31 };
 export const RAKE_FRAMES = 15;          // frame 0 lying still, then the swing
 export const RAKE_SWING_T = 0.9;        // up (0.12s), quiver, topple back
 // Seconds before a grounded hero would reach it that the run sets it off, so the handle
@@ -5514,7 +5521,9 @@ export const PROP_TALL = {
   cactusGreen: 1.55, bearTrap: 1.35,
   pandaBarrier: 1.5, frogBarrier: 1.5, monkeyBarrier: 1.5,
   // The rake's box is the tines and the lying handle; its art stands up to meet you.
-  rake: 2.6,
+  // With PROP_VISUAL_SCALE's 1.38 this is a 37x31 drawing over the 20x7 box: wide
+  // enough for the longer handle lying flat, tall enough for it standing up.
+  rake: 2.45,
   // Speed ramp candidates over the unchanged 14x4 boostPad box. This is the
   // entire proposal for three of the four: the pad cannot get wider without
   // lying about where the boost starts, so everything it gains it gains
@@ -5652,6 +5661,9 @@ const PROP_VISUAL_SCALE = {
   battery: 1.15,
   snowman: 1.15, snowmanBig: 1.15,
   drone: 1.35, shooterDrone: 1.35, buzzbird: 1.35, droneEye: 1.35,
+  // A longer handle lying out behind the tines (see RAKE_SPAN). Hazard overdraw,
+  // so generous is the safe direction — and the handle is not what you hit.
+  rake: 1.38,
 };
 export function propVisualScale(name) { return PROP_VISUAL_SCALE[name] || 1; }
 // The largest any prop's art is scaled up from its box. Culling needs it: an
@@ -5682,6 +5694,13 @@ const SELF_OUTLINED_PROPS = new Set([
   'popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw', 'bearTrap',
   // The razor hurdle's rail and teeth carry their own heavy ink contour.
   'boomBarrier',
+  // So does the rake (Peter, 24 Sep: "the rake appears to be shadowed? why?"). It is
+  // LINE ART — a thin handle and a row of thin teeth — and the rim is two copies of
+  // the silhouette nudged a pixel apart. Around a solid shape that is an outline;
+  // around a line it is a second, fainter rake drawn above the first, which is the
+  // shadow he saw. The longer handle made it longer. Its own brown and steel inks
+  // already part it from the grass.
+  'rake',
   'crate', 'pipe', 'zombieWalk', 'icicle',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'trafficCone',
   // The peel is drawn flat, with a whisper of warm contour and no dark one at

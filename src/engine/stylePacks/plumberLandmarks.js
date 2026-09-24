@@ -1041,7 +1041,7 @@ function ploughAndGulls(ctx, t, L) {
  * redraw needs the pack's own scenery placements, so it is not in here).
  *
  * `alpha` 0..1 fades the whole piece (the bands are clipped so they never double up).
- * opts.grow 0..1 ramps the land's HEIGHT up from its foot (1, the default, is full relief).
+ * opts.heightAt(band, x) 0..1: a height field over the picture — the land ramps up across it.
  * opts.view = { left, width } of the picture in the ctx's coordinates (default 0..W).
  * Ink extent: the full view width, y from nearTop - 40 to nearTop + 96.
  */
@@ -1058,66 +1058,140 @@ export function drawPlumberPatchwork(ctx, t, camX, seat, paper = true, alpha = 1
     }
     ctx.globalAlpha *= Math.min(1, alpha);
     const fading = alpha < 1;
-    clipAbove(ctx, seat.near, xl, xr, 0);
-    ctx.translate(0, top);
-    // opts.grow 0..1: THE LAND SWELLS UP, IT DOES NOT RIDE UP. The quilt is scaled in
-    // height about its FOOT — the deepest point of the near crest across the view, so
-    // the bottom of the fields never lifts off whatever it sits behind — and the crests
-    // climb out of the near hills from flat to full relief. Translating the whole piece
-    // instead (the first cut) read as the farmland arriving on a lift.
-    const grow = Number.isFinite(opts.grow) ? Math.max(0, Math.min(1, opts.grow)) : 1;
-    if (grow < 1) {
-      if (!(grow > 0.004)) { ctx.restore(); return; }
-      let foot = -Infinity;
-      for (let x = xl; x <= xr; x += 2) foot = Math.max(foot, seat.near(x) - top);
-      ctx.translate(0, foot);
-      ctx.scale(1, grow);
-      ctx.translate(0, -foot);
-    }
     const offOf = (f) => ((camX * f * ZOOM % PATCH_P) + PATCH_P) % PATCH_P;
-    PATCH_LAYERS.forEach((L, li) => {
+    // One band into `g`, in the piece's local coordinates (y 0 = the near summit line).
+    // `shadows` lays the sliding cloud shadows over it — they belong on top of both
+    // bands, so they ride with whichever band is painted last.
+    const paintBand = (g, li, shadows) => {
+      if (li < 0) { paintShadows(g); return; }
+      const L = PATCH_LAYERS[li];
       const off = offOf(L.f);
-      ctx.save();
+      g.save();
       if (fading && li === 0) {
         // Faded, the back band must not show through the front one.
         const L1 = PATCH_LAYERS[1], off1 = offOf(L1.f);
-        ctx.beginPath();
-        ctx.moveTo(xl, -400);
-        ctx.lineTo(xr, -400);
-        for (let x = xr; x >= xl; x -= 3) ctx.lineTo(x, layerCrest(L1, x + off1));
-        ctx.closePath();
-        ctx.clip();
+        g.beginPath();
+        g.moveTo(xl, -400);
+        g.lineTo(xr, -400);
+        for (let x = xr; x >= xl; x -= 3) g.lineTo(x, layerCrest(L1, x + off1));
+        g.closePath();
+        g.clip();
       }
       for (let n = Math.floor((xl + off) / PATCH_P) - 1; n <= Math.floor((xr + off) / PATCH_P) + 1; n++) {
         const x0 = -off + n * PATCH_P;
         if (x0 > xr || x0 + PATCH_P < xl) continue;
-        ctx.save();
-        ctx.translate(x0, 0);
-        if (fading) { ctx.beginPath(); ctx.rect(0, -400, PATCH_P, 800); ctx.clip(); }
-        baked(ctx, 'patch' + li, -2, L.base - 26, PATCH_P + 4, PATCH_BOT - (L.base - 26), (g) => {
-          g.save();
-          g.beginPath(); g.rect(-2, L.base - 40, PATCH_P + 4, 300); g.clip();
-          patchLayerTile(g, L, li === 0);
-          g.restore();
+        g.save();
+        g.translate(x0, 0);
+        if (fading) { g.beginPath(); g.rect(0, -400, PATCH_P, 800); g.clip(); }
+        baked(g, 'patch' + li, -2, L.base - 26, PATCH_P + 4, PATCH_BOT - (L.base - 26), (b) => {
+          b.save();
+          b.beginPath(); b.rect(-2, L.base - 40, PATCH_P + 4, 300); b.clip();
+          patchLayerTile(b, L, li === 0);
+          b.restore();
         });
-        if (li === 1) ploughAndGulls(ctx, t, L);
-        ctx.restore();
+        if (li === 1) ploughAndGulls(g, t, L);
+        g.restore();
       }
-      ctx.restore();
-    });
-    // Cloud shadows sliding over both bands on the wind.
-    const off0 = offOf(0.18);
-    ctx.beginPath();
-    ctx.moveTo(xl, PATCH_BOT + 10);
-    for (let x = xl; x <= xr; x += 4) ctx.lineTo(x, layerCrest(PATCH_LAYERS[0], x + off0));
-    ctx.lineTo(xr, PATCH_BOT + 10);
-    ctx.closePath();
-    ctx.clip();
-    const span = Math.max(720, view.width + 240);
-    for (const [base, w, h, y, sp] of [[60, 80, 10, -4, 9], [330, 100, 12, 8, 7], [560, 70, 9, -8, 11]]) {
-      const cx = view.left + ((base + t * sp - camX * 0.21 * ZOOM) % span + span) % span - 120;
-      flat(ctx, PATCH.shadow, (c) => { c.ellipse(cx, y, w * 0.5, h * 0.5, 0, 0, TAU); c.moveTo(cx + w * 0.6, y + 2); c.ellipse(cx + w * 0.3, y + 2, w * 0.3, h * 0.4, 0, 0, TAU); });
+      g.restore();
+      if (shadows) paintShadows(g);
+    };
+    // Cloud shadows sliding over both bands on the wind, confined to the land below the
+    // back band's crest.
+    const paintShadows = (g) => {
+      const off0 = offOf(0.18);
+      g.save();
+      g.beginPath();
+      g.moveTo(xl, PATCH_BOT + 10);
+      for (let x = xl; x <= xr; x += 4) g.lineTo(x, layerCrest(PATCH_LAYERS[0], x + off0));
+      g.lineTo(xr, PATCH_BOT + 10);
+      g.closePath();
+      g.clip();
+      const span = Math.max(720, view.width + 240);
+      for (const [base, w, h, y, sp] of [[60, 80, 10, -4, 9], [330, 100, 12, 8, 7], [560, 70, 9, -8, 11]]) {
+        const cx = view.left + ((base + t * sp - camX * 0.21 * ZOOM) % span + span) % span - 120;
+        flat(g, PATCH.shadow, (c) => { c.ellipse(cx, y, w * 0.5, h * 0.5, 0, 0, TAU); c.moveTo(cx + w * 0.6, y + 2); c.ellipse(cx + w * 0.3, y + 2, w * 0.3, h * 0.4, 0, 0, TAU); });
+      }
+      g.restore();
+    };
+
+    clipAbove(ctx, seat.near, xl, xr, 0);
+    ctx.translate(0, top);
+
+    // opts.heightAt(li, x) -> 0..1: THE LAND ITSELF RAMPS UP. A height field over the
+    // picture, one per band and anchored in that band's own parallax plane, so it is
+    // geography rather than animation: a field never changes height while you watch it,
+    // you just travel onto higher ground and the quilt comes up over the near hills.
+    // Each band is painted whole into a scratch canvas and put back in thin vertical
+    // strips, each scaled in height about the FOOT — the deepest point of the near crest
+    // across the view — so the base of the land never lifts off what it sits behind.
+    const heightAt = typeof opts.heightAt === 'function' ? opts.heightAt : null;
+    let ramped = false;
+    if (heightAt) {
+      for (let x = xl; x <= xr && !ramped; x += 8) {
+        if (heightAt(0, x) < 1 || heightAt(1, x) < 1) ramped = true;
+      }
+    }
+    // No real canvas (the headless test harness hands the pack a stub with no
+    // transform and no document): the ramp cannot be composited, so paint flat.
+    const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+    if (!ramped || !m || typeof document === 'undefined') {
+      paintBand(ctx, 0, false);
+      paintBand(ctx, 1, true);
+      return;
+    }
+    let foot = -Infinity;
+    for (let x = xl; x <= xr; x += 2) foot = Math.max(foot, seat.near(x) - top);
+    const Y0 = -70, Y1 = PATCH_BOT + 20;         // the piece's full ink, local
+    const sx = Math.hypot(m.a, m.b), sy = Math.hypot(m.c, m.d);
+    const cw = Math.max(1, Math.ceil((xr - xl) * sx)), ch = Math.max(1, Math.ceil((Y1 - Y0) * sy));
+    const STRIP = 3;
+    // Three passes: the back band, the front band, then the cloud shadows on their own —
+    // at the BACK band's height, because the back crest is their outline. Riding with
+    // the front band, which stands taller on the slope, they came loose into the sky.
+    const PASSES = [[0, 0], [1, 1], [-1, 0]];     // [what to paint, whose height]
+    for (let pi = 0; pi < PASSES.length; pi++) {
+      const [li, hk] = PASSES[pi];
+      const cv = patchScratch(pi, cw, ch);
+      if (!cv) return;
+      const g = cv.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, cw, ch);
+      g.setTransform(sx, 0, 0, sy, -xl * sx, -Y0 * sy);
+      paintBand(g, li, false);
+      // Back into the picture. Full-height runs go back in one piece; only the slope
+      // itself is cut into strips.
+      let runX = null;
+      const flush = (x) => {
+        if (runX == null) return;
+        const a = Math.round((runX - xl) * sx), b = Math.round((x - xl) * sx);
+        if (b > a) ctx.drawImage(cv, a, 0, b - a, ch, xl + a / sx, Y0, (b - a) / sx, Y1 - Y0);
+        runX = null;
+      };
+      // Strips abut EXACTLY, on whole device pixels. An overlap to hide seams doubled
+      // every semi-transparent pixel it covered (the cloud shadows), which drew a fine
+      // hatching down the slope; aligned strips have neither seams nor doubling.
+      const step = Math.max(1, Math.round(STRIP * sx));   // device px per strip
+      for (let px = 0; px < cw; px += step) {
+        const w = Math.min(step, cw - px);
+        const x = xl + px / sx, wl = w / sx;
+        const k = heightAt(hk, x + wl / 2);
+        if (k >= 1) { if (runX == null) runX = x; continue; }
+        flush(x);
+        if (!(k > 0.004)) continue;
+        ctx.drawImage(cv, px, 0, w, ch, x, foot + (Y0 - foot) * k, wl, (Y1 - Y0) * k);
+      }
+      flush(xl + cw / sx);
     }
   });
   ctx.restore();
+}
+// One scratch canvas per band, reused frame to frame while the ramp is on screen.
+const patchScratches = [];
+function patchScratch(li, w, h) {
+  if (typeof document === 'undefined') return null;
+  let cv = patchScratches[li];
+  if (!cv) { cv = document.createElement('canvas'); patchScratches[li] = cv; }
+  if (cv.width !== w) cv.width = w;
+  if (cv.height !== h) cv.height = h;
+  return cv;
 }

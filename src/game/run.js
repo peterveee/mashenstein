@@ -4567,6 +4567,9 @@ export class RunState {
         || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star'].includes(this.startingPowerup)))
       || (this.cabinet?.bannedPowers?.length
         && (this.cabinet.bannedPowers.includes(this.startingPowerup)
+          // The ban lists CAPSULES (capSpeed) and a starting power is a POWER
+          // (speed), so match through the capsule's own power field.
+          || this.cabinet.bannedPowers.some((c) => PICKUPS[c]?.power === this.startingPowerup)
           || (this.cabinet.bannedPowers.includes('capUnpeel') && ['unpeel', 'star'].includes(this.startingPowerup))));
     if (bannedStartingPower) this.startingPowerup = null;
     if (this.startingPowerup) {
@@ -11426,12 +11429,24 @@ export class RunState {
         // the arc exists to draw is lost in the clutter.
         runFrom = Math.max(runFrom, start + span + coinGap);
       }
+      // A BATTERY ON THE ROOF (Peter, 24 Sep: "put some batteries on top of some of
+      // the trains"). A third of the way along, well before the bonus over the
+      // middle and clear of the sign, sitting in the coin run in place of the coin
+      // at that spot. Not in one-hit play, where the drip never deals a cell either.
+      let cellX = null;
+      if (is.battery && !this.oneHit) {
+        cellX = is.x + bodyW * 0.3;
+        if (underSign(cellX)) cellX = sign.x0 - 30;
+        const alt = this.groundYAt(cellX) - this.routeGroundY(cellX, is) + COIN_FLOOR;
+        this.pickups.push(Object.assign(makePickup('battery', cellX, alt), { road: is }));
+      }
       if (is.prize === 'coins') {
         for (let x = runFrom; x <= is.x + bodyW - inset; x += coinGap) {
           // Nothing strung over a break in the road. A coin you cannot reach
           // without leaving the road is a coin that punishes you for taking it.
           if (!roadAt(x, is)) continue;
           if (underSign(x)) continue;
+          if (cellX != null && Math.abs(x - cellX) < coinGap * 0.6) continue;
           const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
           this.pickups.push(Object.assign(makePickup('coin', x, alt), { road: is }));
         }
@@ -14774,6 +14789,10 @@ export class RunState {
       stageIndex: this.stage?.index ?? 1,
       // Who is running: the speed camera's mugshot is of them.
       heroId: this.relay?.current || this.player?.heroId || 'lorenzo',
+      // And where they stand across the picture, 0 at its left edge and 1 at its right,
+      // so the speed camera can fire as they pass it (desertTrapLatch). A fraction
+      // rather than an x because portrait shifts and zooms the backdrop.
+      heroFrac: (this.heroScreenX() * z + (Number(portraitXOffset) || 0)) / W,
       // How far through the level the run is. Weather that arrives over a level
       // needs this; a pack that only paints scenery ignores it.
       progress: Number.isFinite(this.totalDist) && this.totalDist > 0

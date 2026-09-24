@@ -496,6 +496,8 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // One power-up somewhere along it, on top of whatever `prize` pays.
       // A road with real hazards on it has earned more than a coin run.
       bonus: d.bonus || null,
+      // A health cell on the road as well (neon trains). See the island prizes in run.js.
+      battery: !!d.battery,
       // The tallest thing about the road, unsigned — the height a hero has to
       // fall when one stops dead under him.
       rise: Math.abs(peak),

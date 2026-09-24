@@ -1140,7 +1140,7 @@ function rattlesnake(ctx, w, h, frame = 0) {
 // the breast. The neck's root is wide and sunk into the chest, and it tapers to the head.
 const GOOSE = {
   body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: 'rgba(74,70,64,0.9)', beak: '#f08a2c',
-  beakDark: '#c4611a', mouth: '#8a2a1e', leg: '#f08a2c', legDark: '#c4611a',
+  beakDark: '#c4611a', leg: '#f08a2c', legDark: '#c4611a',
 };
 const GOOSE_FRAMES = 10;
 // Beak tip to tail, and wing tip to feet, in the drawing's own units.
@@ -1197,6 +1197,32 @@ function goose(ctx, w, h, frame = 0) {
     c.closePath();
   };
   const head = (c) => c.ellipse(-11.2, -2.5 + nb, 2.2, 1.7, -0.1, 0, TAU);
+  // THE BEAK, drawn BEFORE the silhouette so it grows out of the head (Peter, 24 Sep:
+  // "its beak is not attached cleanly and there is some red thing in its mouth, just
+  // want to see the beak quacking/snapping"). Two mandibles on ONE hinge at the face,
+  // their roots sunk well inside the head: the head's own outline and fill then cover
+  // the join, so the only seam is the face's edge. No mouth fill — open, you see
+  // through; shut, the two halves meet. It SNAPS: fully closed, then wide, twice a
+  // stride, quick on the open and quicker on the shut.
+  const snap = Math.max(0, Math.sin(u * 2));
+  const gape = snap ** 0.55;
+  const beakAt = (rot, path) => {
+    ctx.save();
+    ctx.translate(-12.9, -2.35 + nb);
+    ctx.rotate(rot);
+    gooseInk(ctx, P.beak, 0.35, path, P.beakDark);
+    ctx.restore();
+  };
+  // Lower mandible first, so the upper one's edge lies over it when shut.
+  beakAt(-gape * 0.42, (c) => {
+    c.moveTo(1.6, 0.05); c.lineTo(-3.6, 0.1);
+    c.quadraticCurveTo(-3.4, 0.75, -2.4, 0.95);
+    c.lineTo(1.6, 1.2); c.closePath();
+  });
+  beakAt(gape * 0.3, (c) => {
+    c.moveTo(1.6, -1.05); c.quadraticCurveTo(-1.6, -1.05, -4.2, 0.05);
+    c.lineTo(-3.6, 0.2); c.lineTo(1.6, 0.2); c.closePath();
+  });
   // One silhouette: every outline first, then every fill over it.
   for (const part of [body, neck, head]) gooseStroke(ctx, P.ink, 1.1, part);
   for (const part of [body, neck, head]) gooseFill(ctx, P.body, part);
@@ -1210,10 +1236,6 @@ function goose(ctx, w, h, frame = 0) {
     c.lineTo(-2.6, 0.6); c.bezierCurveTo(-5.6, -1.6, -7.6, -2.2 + nb, -10.8, -2 + nb); c.closePath();
   });
   ctx.restore();
-  const gape = 0.5 + Math.abs(Math.sin(u)) * 0.8;
-  gooseFill(ctx, P.mouth, (c) => { c.moveTo(-12.6, -2.6 + nb); c.lineTo(-15.4, -2.8 - gape * 0.4 + nb); c.lineTo(-15.2, -1 + gape * 0.5 + nb); c.closePath(); });
-  gooseInk(ctx, P.beak, 0.35, (c) => { c.moveTo(-12.4, -3.3 + nb); c.lineTo(-15.8, -2.9 - gape * 0.5 + nb); c.lineTo(-12.4, -2.1 + nb); c.closePath(); }, P.beakDark);
-  gooseInk(ctx, P.beak, 0.35, (c) => { c.moveTo(-12.4, -2 + nb); c.lineTo(-15.4, -1 + gape * 0.6 + nb); c.lineTo(-12.2, -1.3 + nb); c.closePath(); }, P.beakDark);
   gooseFill(ctx, '#1a1816', (c) => c.arc(-11.4, -3 + nb, 0.45, 0, TAU));
   gooseStroke(ctx, P.ink, 0.5, (c) => { c.moveTo(-12.4, -4.4 + nb); c.lineTo(-10.4, -3.8 + nb); });
   gooseInk(ctx, P.body, 0.45, wing(flap * 0.8, false));

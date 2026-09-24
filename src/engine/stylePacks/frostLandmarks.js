@@ -42,7 +42,15 @@ function line(ctx, color, lw, path) {
 // Cabins ride down one cable and up the other, evenly spaced, each on its own sway.
 const LIFT = {
   span: 460,                      // px from where the cable meets the hill back to where it leaves the frame
-  topY: -46,                      // where it leaves (above the frame)
+  // HOW HIGH THE LINE LEAVES, measured UP FROM THE RIDGE'S PEAK — not a screen y.
+  // It used to be `topY: -46`, which is just above the frame in landscape. Portrait
+  // lifts the far layer about 200px and shows a far taller sky, so the same -46 sat
+  // BELOW the ridge's own peaks: the cable fell 37px over 460 (5 degrees against
+  // landscape's 27), ran into the hills to its left and was clipped away, leaving one
+  // flat scrap in a valley. Hung off the peak it keeps landscape to the pixel (the far
+  // ridge peaks at y130 there, so 130 - 176 = -46) and in portrait it climbs out of
+  // the top of the picture at the same angle, clearing the ridges it crosses.
+  rise: 176,
   sag: 12,
   towers: [90, 185, 290],         // px back up the line from the hill
   cabins: 6,
@@ -52,22 +60,26 @@ const LIFT = {
 };
 export const FROST_LIFT_AT_PX = 700;   // world px into frost-1 where the line meets the hill mid-picture
 // The cable's y at screen x: from (x0 - span, topY) down to (x0, y0), sagging between.
-function liftCableY(x0, y0, x, drop = 0) {
+function liftCableY(x0, y0, topY, x, drop = 0) {
   const u = (x - (x0 - LIFT.span)) / LIFT.span;      // 0 at the top, 1 at the hill
-  return LIFT.topY + (y0 - LIFT.topY) * u + LIFT.sag * Math.sin(Math.PI * u) + drop;
+  return topY + (y0 - topY) * u + LIFT.sag * Math.sin(Math.PI * u) + drop;
 }
 /**
  * The gondola line. x0 is where the cable meets the far ridge (it disappears into the
  * hill there); the line reaches back up and to the left, out of the top of the frame.
  * Ink runs from x0 - LIFT.span to about x0 + 10.
  */
-export function drawFrostChairLift(ctx, t, x0, crest) {
+export function drawFrostChairLift(ctx, t, x0, crest, peak) {
   const y0 = crest(x0) + 8;                         // it goes INTO the slope
+  // `peak` is the far ridge's highest y in these coordinates. Without it (an old
+  // caller) the landscape constant stands.
+  const topY = Number.isFinite(peak) ? peak - LIFT.rise : -46;
+  const skyTop = Math.min(-200, topY - 60);
   ctx.save();
   // Everything on the sky side of the crest: where the line meets the hill it is gone.
   ctx.beginPath();
-  ctx.moveTo(x0 - LIFT.span - 20, -200);
-  ctx.lineTo(x0 + 40, -200);
+  ctx.moveTo(x0 - LIFT.span - 20, skyTop);
+  ctx.lineTo(x0 + 40, skyTop);
   for (let x = x0 + 40; x >= x0 - LIFT.span - 20; x -= 3) ctx.lineTo(x, crest(x) + 1);
   ctx.closePath();
   ctx.clip();
@@ -75,7 +87,7 @@ export function drawFrostChairLift(ctx, t, x0, crest) {
   for (const back of LIFT.towers) {
     const x = x0 - back;
     const foot = crest(x) + 2;
-    const top = liftCableY(x0, y0, x) - 1.5;
+    const top = liftCableY(x0, y0, topY, x) - 1.5;
     if (foot - top < 10) continue;
     const spread = Math.min(6, (foot - top) * 0.12);
     line(ctx, LIFT.tower, 1.1, (c) => { c.moveTo(x - spread, foot); c.lineTo(x - 0.8, top + 3); c.moveTo(x + spread, foot); c.lineTo(x + 0.8, top + 3); });
@@ -97,8 +109,8 @@ export function drawFrostChairLift(ctx, t, x0, crest) {
   const x1 = x0 - LIFT.span - 10;
   for (const drop of [0, 3.5]) {
     line(ctx, LIFT.cable, 0.7, (c) => {
-      c.moveTo(x1, liftCableY(x0, y0, x1, drop));
-      for (let x = x1 + 8; x <= x0 + 30; x += 8) c.lineTo(x, liftCableY(x0, y0, x, drop));
+      c.moveTo(x1, liftCableY(x0, y0, topY, x1, drop));
+      for (let x = x1 + 8; x <= x0 + 30; x += 8) c.lineTo(x, liftCableY(x0, y0, topY, x, drop));
     });
   }
   // Cabins: down the near cable toward the hill, up the far one out of it.
@@ -109,8 +121,10 @@ export function drawFrostChairLift(ctx, t, x0, crest) {
     if (u < 0) u += 1;
     const x = x0 - LIFT.span + u * (LIFT.span + 24);
     const drop = down ? 0 : 3.5;
-    const cy = liftCableY(x0, y0, x, drop);
-    if (cy < -30) continue;
+    const cy = liftCableY(x0, y0, topY, x, drop);
+    // Up where the line leaves the picture there is nothing to see — in both
+    // orientations, which is why this is relative to the line and not a screen y.
+    if (cy < topY + 16) continue;
     const swing = Math.sin(t * 1.3 + i) * 0.6;
     line(ctx, LIFT.cable, 0.5, (c) => { c.moveTo(x, cy); c.lineTo(x + swing, cy + 5); });
     const bx = x + swing, by = cy + 5;

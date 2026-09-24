@@ -129,7 +129,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.65, high: false },
     pits: [{ at: 0.37, w: 52 }, { at: 0.71, w: 56 }],
     rewindAt: null,
-    routes: { islands: [{ at: 0.1, dwell: 2.769, stack: "neon1-a", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.3, dwell: 2.769, stack: "neon1-b", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.55, dwell: 2.769, stack: "neon1-c", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.8, dwell: 2.769, stack: "neon1-d", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.967, endsAtFinish: true, dwell: 2.769, stack: "neon1-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }] },
+    routes: { islands: [{ at: 0.1, dwell: 2.769, stack: "neon1-a", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.3, dwell: 2.769, stack: "neon1-b", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true, battery: true }, { at: 0.55, dwell: 2.769, stack: "neon1-c", rise: 33, coinGap: 46, boardArc: true, bonus: "capLowGrav", bonusHigh: true }, { at: 0.8, dwell: 2.769, stack: "neon1-d", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true, battery: true }, { at: 0.967, endsAtFinish: true, dwell: 2.769, stack: "neon1-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true }] },
   },
   "neon-2": {
     durationSec: 90,
@@ -137,7 +137,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.75, high: true },
     pits: [{ at: 0.36, w: 52 }, { at: 0.7, w: 56 }],
     rewindAt: null,
-    routes: { islands: [{ at: 0.46, dwell: 2.769, stack: "neon2-train", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.94, dwell: 2.769, stack: "neon2-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }] },
+    routes: { islands: [{ at: 0.46, dwell: 2.769, stack: "neon2-train", rise: 33, coinGap: 46, boardArc: true, bonus: "capLowGrav", bonusHigh: true, battery: true }, { at: 0.94, dwell: 2.769, stack: "neon2-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true }] },
   },
   "neon-3": {
     durationSec: 90,

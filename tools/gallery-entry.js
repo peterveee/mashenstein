@@ -8583,6 +8583,32 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     }, { animated: true, world: true, wide: true });
 }
 
+// ------------------------------------------ NEON — the golden hour in paper (lab)
+// Peter, 24 Sep: "could we try the paper aesthetic on it? perhaps on the sun's rays as
+// well for more dramatic change when we go to neon". SHIPS: paper. The light-ray version
+// stays drawable (`paper: false` on the mood) and is kept here beside it.
+{
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-golden-paper', 'TERMINAL VELOCITY — the golden hour in paper (lab)',
+    'LAB, 24 Sep 2026. Neon-1\'s golden hour as cut paper (ships) against the light-ray version it replaced: '
+    + 'a grained sky, the sun\'s rays as card strips with a drop shadow and a white cut edge, and Mt Fuji in '
+    + 'layered sheets — so the strike into neon changes the material, not only the light.');
+  for (const [name, mood] of [['SHIPS · paper', NEON_GOLDEN_MOOD], ['was · light rays', { ...NEON_GOLDEN_MOOD, paper: false }]]) {
+    tile(grid, `${name} — golden hour`, 'The opening seconds of neon-1, before the city arrives.', W, H, (ctx, t) => {
+      const camX = t * 60;
+      const bc = { stageIndex: 1, neonMood: mood, progress: 0.01 };
+      pack.bg(ctx, t, camX, neon, 1000, bc, 0, bc);
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+  }
+}
+
 // ------------------------------------------ NEON — what stands in the road (bake-off)
 // Peter, 24 Sep: the cactus is "totally wrong" for Tokyo. Tokyo's own road-works
 // animals, each in the cactus's 13x12 box. See src/dev/neon-street-candidates.js.

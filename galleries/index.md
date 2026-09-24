@@ -42,4 +42,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-23 | `eb03b14` | [2026-09-23-eb03b14.html](2026-09-23-eb03b14.html) | [bake-offs](2026-09-23-eb03b14-lab.html) | Add tests for neon city arrival and moon phases |
 | 2026-09-23 | `77ae44b` | [2026-09-23-77ae44b.html](2026-09-23-77ae44b.html) | [bake-offs](2026-09-23-77ae44b-lab.html) | Add neon-themed candidates and gravity mechanics for enhanced gameplay experience |
 | 2026-09-24 | `3bce133` | [2026-09-24-3bce133.html](2026-09-24-3bce133.html) | [bake-offs](2026-09-24-3bce133-lab.html) | Update mix.js assertions for remixed song settings |
+| 2026-09-24 | `4aaa009` | [2026-09-24-4aaa009.html](2026-09-24-4aaa009.html) | [bake-offs](2026-09-24-4aaa009-lab.html) | Update LEVEL_SCENERY.md to clarify patchwork fields animation; enhance drone column spacing in entities.js and spawner.js for improved gameplay dynamics. |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

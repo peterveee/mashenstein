@@ -6598,11 +6598,14 @@ const PLUMBER_BARN_AT_PX = 700;          // world px: near the start of plumber-
 const PLUMBER_MILL_AT = 0.35;            // fraction of plumber-3 (the volcano owns 0.5)
 const PLUMBER_BALLOONS_AT = [0.22, 0.66];  // fractions of plumber-2
 const PLUMBER_BALLOON_FACTOR = 0.1;      // they drift across slower than the far range
-// Plumber-1's patchwork GROWS into the country over this span: its height ramps up from
-// flat to full relief out of the near hills, among the scenery that is already there
-// (Peter, 24 Sep: not a fade — and not a lift either; the land swells, it does not ride
-// up). See opts.grow on drawPlumberPatchwork.
-const PLUMBER_FIELDS_IN = [0.7, 0.8];
+// Plumber-1's patchwork is LAND THAT RAMPS UP. Neither a fade, nor a lift, nor a grow
+// (Peter, 24 Sep — all three tried): nothing animates. The fields are a slope in the
+// country itself, anchored in each band's own parallax plane, and they become visible
+// because the run travels onto higher ground. The slope's toe enters at the picture's
+// right edge at PLUMBER_FIELDS_AT of the stage and the land reaches full relief
+// PLUMBER_FIELDS_RAMP screen px behind it.
+const PLUMBER_FIELDS_AT = 0.7;
+const PLUMBER_FIELDS_RAMP = 320;
 let plumberNearSummitPx = null;
 function plumberNearSummit(period) {
   if (plumberNearSummitPx != null) return plumberNearSummitPx;
@@ -6857,13 +6860,22 @@ function pixelPack(settings) {
       const nearTop = nearBaseY - nearAmp + nearShift;
       const plumberStage = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
       const plumberProgress = backgroundContext?.progress;
-      if (cab.id === 'plumber' && plumberStage === 1 && Number.isFinite(plumberProgress)) {
-        const [a0, a1] = PLUMBER_FIELDS_IN;
-        const k = Math.max(0, Math.min(1, (plumberProgress - a0) / (a1 - a0)));
-        if (k > 0) {
-          const up = k * k * (3 - 2 * k);
+      if (cab.id === 'plumber' && plumberStage === 1 && Number.isFinite(plumberProgress)
+        && totalDist > 0) {
+        const view = backgroundPaintCoverage(ctx);
+        const viewR = view.left + view.width;
+        // How far each band has scrolled since the toe sat at the right edge: world px
+        // travelled since PLUMBER_FIELDS_AT, times that band's own parallax.
+        const since = (plumberProgress - PLUMBER_FIELDS_AT) * totalDist;
+        const BAND_F = [0.18, 0.24];
+        if (since * BAND_F[0] * ZOOM > -20) {
+          const heightAt = (band, x) => {
+            const k = (x - viewR + since * BAND_F[band] * ZOOM) / PLUMBER_FIELDS_RAMP;
+            const c = Math.max(0, Math.min(1, k));
+            return c * c * (3 - 2 * c);
+          };
           drawPlumberPatchwork(ctx, t, camX, { near: nearCrest, far: nearCrest }, paperPreview, 1,
-            { view: backgroundPaintCoverage(ctx), nearTop, grow: up });
+            { view, nearTop, heightAt });
         }
       }
       ctx.save();
@@ -6997,7 +7009,19 @@ function desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile)
   }
   return xs;
 }
-function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo') {
+// THE SPEED CAMERA FIRES AS THE HERO PASSES IT (Peter, 24 Sep: "show SMILE first, then the
+// flash and then the snapshot... while hero is on screen"). A latch, not a loop: SMILE!
+// until the camera pole comes level with the hero, the flash on that frame, and the
+// snapshot held while the board scrolls away. Moving back ahead of the pole (a rewind)
+// re-arms it. Only a run passes `heroX`; the gallery keeps the camera's own loop.
+const DESERT_TRAP_POLE_DX = -44;     // the camera pole, from the lot's centre
+const DESERT_TRAP_FIRE_LEAD = 100;   // px ahead of the hero the pole is when it fires: early enough that the snapshot holds ~2s on screen
+// PORTRAIT IS NARROW AND QUICK (Peter, 24 Sep: "doesn't really fire in portrait, it needs
+// to be very quick"): the board crosses a narrow picture in a moment, so there it fires
+// as soon as the whole board is in view, and the gag plays at DESERT_TRAP_PORTRAIT_PACE.
+const DESERT_TRAP_PORTRAIT_PACE = 2.2;
+const desertTrapLatch = { firedAt: null };
+function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false) {
   const view = backgroundPaintCoverage(ctx);
   const nearP = Math.max(16, Math.round(Math.PI * DESERT_RIDGE.wl));
   const midP = Math.max(16, Math.round(Math.PI * DESERT_MID.wl));
@@ -7047,7 +7071,20 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
   }
   if (landmark === 'speedTrap') {
     const x = desertLayerX(view, camX, nearF, trapTile * nearP + summit0 * nearP);
-    if (!outsideView(ctx, x, 100)) drawDesertSpeedTrap(ctx, t, x, seat, heroId);   // ink x-90..x+75
+    let since;
+    if (Number.isFinite(heroFrac)) {
+      const heroX = view.left + heroFrac * view.width;
+      // Landscape: the pole a little ahead of the hero. Portrait: the moment the whole
+      // board (and its car) is on screen, whichever comes first.
+      const fireAt = portrait
+        ? Math.max(heroX + DESERT_TRAP_FIRE_LEAD, view.left + view.width - 75 + DESERT_TRAP_POLE_DX)
+        : heroX + DESERT_TRAP_FIRE_LEAD;
+      if (x + DESERT_TRAP_POLE_DX > fireAt) desertTrapLatch.firedAt = null;
+      else if (desertTrapLatch.firedAt == null || desertTrapLatch.firedAt > t) desertTrapLatch.firedAt = t;
+      since = desertTrapLatch.firedAt == null ? null
+        : (t - desertTrapLatch.firedAt) * (portrait ? DESERT_TRAP_PORTRAIT_PACE : 1);
+    }
+    if (!outsideView(ctx, x, 100)) drawDesertSpeedTrap(ctx, t, x, seat, heroId, since);   // ink x-90..x+75
   }
   // Coyotes: on about half the bare summits, never next to the speed trap.
   {
@@ -7261,7 +7298,11 @@ function faux3dPack(settings) {
           near: (x) => ridgeYAt(x, camX, nearBaseY, DESERT_RIDGE.amp, DESERT_RIDGE.wl, DESERT_RIDGE.factor,
             { dunes: true, coverageLeft: backgroundPaintCoverage(ctx).left })
             + sceneryOffset + backgroundY(backgroundContext, 'near'),
-        }, 104 + backgroundY(backgroundContext, 'clouds'), backgroundContext?.heroId);
+        // The jet's altitude: 104 in landscape; in portrait, up in the tall sky on the
+        // layout's top cloud band (Peter, 24 Sep: "up relatively high in portrait").
+        }, (portrait ? sceneryBandY(backgroundContext, 'upperCloud', 104) : 104)
+          + backgroundY(backgroundContext, 'clouds'), backgroundContext?.heroId,
+        Number.isFinite(backgroundContext?.heroFrac) ? backgroundContext.heroFrac : null, portrait);
         // Roadside signs are a very-near background plane: they sit above the
         // road shoulder, in front of the near dunes, but still behind every
         // gameplay actor and obstacle drawn after the background pass.
@@ -8347,7 +8388,16 @@ export function neonCityReveal(stageIndex, progress) {
 // little faster than they did and each one breathes on its own slow cycle, so the
 // fan is visibly alive without strobing.
 const goldenGradients = new WeakMap();
+// THE GOLDEN HOUR IS CUT PAPER (Peter, 24 Sep: "could we try the paper aesthetic on it?
+// perhaps on the sun's rays as well for more dramatic change when we go to neon"). The day
+// is made of card — a grained sky, the rays as paper strips with a drop shadow and a white
+// cut edge, a paper sun, and Fuji in layered sheets — so the strike's switch to neon tube
+// and glow is a change of MATERIAL, not only of light. `mood.paper === false` draws the
+// old light-ray look (the gallery keeps both to compare).
+const NEON_GOLDEN_PAPER_MATERIAL = 'cardstockClear';
 function neonGoldenSky(ctx, t, camX = 0, context = null) {
+  const paper = context?.neonMood?.paper !== false;
+  if (paper) return neonGoldenPaperSky(ctx, t, context);
   const cov = backgroundCoverage(ctx);
   const x = cov.left + cov.width * 0.2;
   const y = GROUND_Y + 6;
@@ -8389,7 +8439,55 @@ function neonGoldenSky(ctx, t, camX = 0, context = null) {
   ctx.fillStyle = grads.bloom;
   ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
   ctx.restore();
-  neonFuji(ctx, cov, context?.progress);
+  neonFuji(ctx, cov, context?.progress, false);
+}
+
+function neonGoldenPaperSky(ctx, t, context) {
+  const cov = backgroundCoverage(ctx);
+  const x = cov.left + cov.width * 0.2;
+  const y = GROUND_Y + 6;
+  const reach = Math.max(cov.width, 480) * 1.2;
+  // The sheet of sky itself, grained — one cached blit.
+  drawPaperSurface(ctx, cov, 'neon-golden-paper-sky', NEON_GOLDEN_PAPER_MATERIAL, 0.8);
+  // The rays: alternate strips of two creams, cut from card, turning slowly round the
+  // sun. Each colour is one path so its shadow and grain are one pass.
+  const turn = t * 0.07;
+  const RAYS = 24;
+  const strips = [new Path2D(), new Path2D()];
+  for (let i = 0; i < RAYS; i++) {
+    const a = turn + (i / RAYS) * Math.PI * 2;
+    const breathe = 1 + 0.35 * Math.sin(t * 0.35 + i * 1.7);
+    const halfA = (i % 2 ? 0.022 : 0.045) * breathe;
+    const q = strips[i % 2];
+    q.moveTo(x + Math.cos(a) * 30, y + Math.sin(a) * 30);
+    q.lineTo(x + Math.cos(a - halfA) * reach, y + Math.sin(a - halfA) * reach);
+    q.lineTo(x + Math.cos(a + halfA) * reach, y + Math.sin(a + halfA) * reach);
+    q.closePath();
+  }
+  const pattern = sharedPaperPatternFor(ctx, NEON_GOLDEN_PAPER_MATERIAL);
+  ctx.save();
+  ctx.globalAlpha *= 0.62;
+  for (const [q, fill] of [[strips[0], '#ffe6b8'], [strips[1], '#fff2d6']]) {
+    drawPaperShape(ctx, q, fill, {
+      pattern, deep: PAPER_DEEP_OFFSET, contact: PAPER_CONTACT_OFFSET,
+      deepColor: 'rgba(120,52,40,0.16)', contactColor: 'rgba(90,40,30,0.08)',
+    });
+  }
+  ctx.restore();
+  // The sun: a paper disc on the horizon with a paper halo ring behind it.
+  const halo = new Path2D();
+  halo.arc(x, y, 38, 0, Math.PI * 2);
+  drawPaperShape(ctx, halo, 'rgba(255,214,150,0.7)', {
+    pattern, deep: PAPER_SUBTLE_DEEP_OFFSET, contact: PAPER_SUBTLE_CONTACT_OFFSET,
+    deepColor: 'rgba(120,52,40,0.12)',
+  });
+  const disc = new Path2D();
+  disc.arc(x, y, 26, 0, Math.PI * 2);
+  drawPaperShape(ctx, disc, '#ffe28a', {
+    pattern, deep: PAPER_DEEP_OFFSET, contact: PAPER_CONTACT_OFFSET,
+    deepColor: 'rgba(140,60,30,0.2)',
+  });
+  neonFuji(ctx, cov, context?.progress, true);
 }
 
 // MOUNT FUJI behind the city in neon-1's golden hour, and only then (Peter, 24 Sep, from
@@ -8405,8 +8503,12 @@ function neonGoldenSky(ctx, t, camX = 0, context = null) {
 // stage, gone before the near row finishes arriving (NEON_CITY_ARRIVALS, full by ~0.27).
 // No progress — a gallery card — is the start of the stage.
 const NEON_FUJI = {
-  at: 0.62, scale: 0.78, rock: '#3a2f6e', rockAlpha: 0.55, snow: '#f0f4ff', snowAlpha: 0.55,
+  at: 0.62, scale: 0.78, alpha: 0.74,
   fade: [0.03, 0.2],
+  // Rock: the face turned to the low sun on the left, the far face in shade.
+  rockLit: '#6a5292', rockShade: '#3a2d68', gully: 'rgba(28,20,58,0.35)', rim: '#ffcf9a',
+  // Snow: warm where the golden light catches it, cool blue-lilac in shade.
+  snowLit: '#fff3e8', snowShade: '#b3b6e6', snowStreak: 'rgba(150,140,210,0.45)',
 };
 export function neonFujiAlpha(progress) {
   const [a, b] = NEON_FUJI.fade;
@@ -8414,26 +8516,159 @@ export function neonFujiAlpha(progress) {
   const k = Math.max(0, Math.min(1, (p - a) / (b - a)));
   return 1 - k * k * (3 - 2 * k);
 }
-function neonFuji(ctx, cov, progress) {
+// THE MOUNTAIN, drawn once into a canvas and blitted: its layers overlap, and faded as
+// one image it stays one translucent mountain rather than a stack of see-through sheets.
+// Local space: summit centre at x 0, the groundline at y 0, all in scale-k units.
+//
+// The shape is Fuji's: CONCAVE flanks — steep under the summit, flattening out into the
+// long skirt — and a flat crater rim with a notch or two. The snow is what makes it
+// read: a cap down to about 40% of the height that runs on down the gullies in long
+// fingers of unequal length, a few pale ridge streaks inside it, warm on the sunlit face
+// and blue in shade, with a thin gold rim where the low sun catches the left edge.
+const fujiCache = new Map();
+function neonFujiArt(k, paper = false) {
+  const SS = bakeSS();
+  const key = `${k}|${SS}|${paper ? 'paper' : 'flat'}`;
+  if (fujiCache.has(key)) return fujiCache.get(key);
+  let art = null;
+  if (typeof document !== 'undefined') {
+    const F = NEON_FUJI;
+    const Hh = 162 * k, half = 365 * k, cap = 34 * k;
+    const pad = 4;
+    const cw = half * 2 + pad * 2, ch = Hh + pad * 2;
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(cw * SS); c.height = Math.ceil(ch * SS);
+    const g = c.getContext('2d');
+    g.scale(SS, SS);
+    g.translate(cw / 2, Hh + pad);
+    // A sheet: flat fill, or — paper on — a card cutout with its drop shadow, grain
+    // and white cut edge. `lift` scales the drop, so a sheet laid on the mountain
+    // sits close to it and the mountain on the sky sits further off.
+    const pattern = paper ? sharedPaperPatternFor(g, NEON_GOLDEN_PAPER_MATERIAL) : null;
+    const sheet = (pathFn, fill, lift = 1, rim = true) => {
+      const q = new Path2D(); pathFn(q);
+      if (!paper) { g.fillStyle = fill; g.fill(q); return; }
+      drawPaperShape(g, q, fill, {
+        pattern, rim,
+        deep: { x: PAPER_DEEP_OFFSET.x * lift * 0.5, y: PAPER_DEEP_OFFSET.y * lift * 0.5 },
+        contact: PAPER_CONTACT_OFFSET,
+        deepColor: 'rgba(60,30,50,0.22)', contactColor: 'rgba(40,20,40,0.1)',
+      });
+    };
+    const rimPts = [[-cap, -Hh + 1.2 * k], [-cap * 0.55, -Hh - 0.6 * k], [-cap * 0.2, -Hh + 0.9 * k],
+      [cap * 0.15, -Hh - 0.3 * k], [cap * 0.6, -Hh + 1.1 * k], [cap, -Hh + 0.8 * k]];
+    const flank = (side) => {
+      // Shoulder to foot, bowing in: steep first, flat last.
+      const sx = side * cap, fx = side * half;
+      return { sx, fx, cx: side * (cap + (half - cap) * 0.22), cy: -Hh * 0.2 };
+    };
+    const L = flank(-1), R = flank(1);
+    const outline = (q) => {
+      q.moveTo(L.fx, 0);
+      q.quadraticCurveTo(L.cx, L.cy, L.sx, -Hh + 1.2 * k);
+      for (const [x, y] of rimPts.slice(1)) q.lineTo(x, y);
+      q.quadraticCurveTo(R.cx, R.cy, R.fx, 0);
+      q.closePath();
+    };
+    // Rock, shade then the lit face: the terminator runs from just left of the summit to
+    // a little right of centre at the foot.
+    sheet(outline, F.rockShade, 1.6);
+    g.save();
+    g.beginPath(); outline(g); g.clip();
+    const lit = (q) => { q.moveTo(-half - 4, 4); q.lineTo(-cap * 0.25, -Hh - 4); q.lineTo(half * 0.14, 4); q.closePath(); };
+    sheet(lit, F.rockLit, 0.5, false);
+    // Gullies: faint darker lines raked down the flanks, following their curve.
+    g.strokeStyle = F.gully; g.lineWidth = 0.7 * k; g.lineCap = 'round';
+    for (const u of [-0.8, -0.62, -0.45, -0.3, -0.16, 0.05, 0.2, 0.36, 0.52, 0.7, 0.86]) {
+      const topX = u * cap * 1.6, footX = u * half * 0.95;
+      g.beginPath();
+      g.moveTo(topX, -Hh * 0.62);
+      g.quadraticCurveTo(topX + (footX - topX) * 0.35, -Hh * 0.25, footX, -Hh * 0.02);
+      g.stroke();
+    }
+    // The snowcap: a line at about 40% down, with fingers running on down the gullies.
+    // The line itself sags and lifts across the mountain, and the tongues below it are
+    // BROAD and uneven — [centre across the cap, length as a share of the height, width]
+    // — full near the line and rounding off at the tip, not hanging teeth.
+    const lineY = -Hh * 0.7;
+    const fingers = [[-0.92, 0.06, 9], [-0.74, 0.16, 12], [-0.55, 0.09, 8], [-0.4, 0.21, 13],
+      [-0.22, 0.12, 9], [-0.06, 0.25, 14], [0.1, 0.1, 8], [0.26, 0.19, 12], [0.44, 0.08, 9],
+      [0.58, 0.15, 11], [0.76, 0.07, 8], [0.9, 0.12, 10]];
+    const W = cap + (half - cap) * 0.36;
+    const snowEdge = (x) => {
+      let d = 0;
+      for (const [fu, len, wid] of fingers) {
+        const t = 1 - Math.abs(x - fu * W) / (wid * k);
+        // Elliptical: full near the line, ROUNDED at the tip.
+        if (t > 0) d = Math.max(d, len * Hh * Math.sqrt(1 - (1 - t) * (1 - t)));
+      }
+      // Ragged, not ruled: the line wanders on three scales.
+      const j = Math.sin(x * 0.07 / k + 0.4) * 3.2 + Math.sin(x * 0.55 / k) * 1.1
+        + Math.sin(x * 1.9 / k + 1.3) * 0.5;
+      return lineY + d + j * k;
+    };
+    const snow = (q) => {
+      q.moveTo(-half, -Hh - 6);
+      q.lineTo(half, -Hh - 6);
+      for (let x = W + 8 * k; x >= -W - 8 * k; x -= 1) q.lineTo(x, snowEdge(x));
+      q.closePath();
+    };
+    // Broken snow streaks running on down the gullies below the longest tongues.
+    const streaks = (q) => {
+      for (const [fu, len, wid] of fingers) {
+        if (len < 0.12) continue;
+        // A long thin trail on down the gully, drifting outward with the slope, in two
+        // broken pieces.
+        const x0 = fu * W, y0 = lineY + len * Hh - 1.5 * k;
+        for (const [from, to, w] of [[0, 9, 1.3], [12, 19, 0.9]]) {
+          const ya = y0 + from * k, yb = y0 + to * k;
+          const xa = x0 + fu * from * 0.9 * k, xb = x0 + fu * to * 0.9 * k;
+          q.moveTo(xa - w * k, ya); q.lineTo(xa + w * k, ya);
+          q.lineTo(xb + 0.2 * k, yb); q.lineTo(xb - 0.2 * k, yb); q.closePath();
+        }
+      }
+    };
+    sheet((q) => { snow(q); streaks(q); }, F.snowShade, 1);
+    g.save();
+    g.beginPath(); lit(g); g.clip();
+    sheet((q) => { snow(q); streaks(q); }, F.snowLit, 0, false);
+    g.restore();
+    // Ridge streaks inside the snow, and a shadow under the lip of the crater.
+    g.save();
+    g.beginPath(); snow(g); g.clip();
+    g.strokeStyle = F.snowStreak; g.lineWidth = 0.8 * k;
+    for (const [fu, len] of fingers) {
+      const x = fu * W * 0.55;
+      g.beginPath();
+      g.moveTo(x * 0.6, -Hh + 3 * k);
+      g.quadraticCurveTo(x * 0.9, lineY * 0.8, fu * W, lineY + len * Hh * 0.7);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(120,110,190,0.35)';
+    g.beginPath(); g.ellipse(0, -Hh + 2.2 * k, cap * 0.8, 2.2 * k, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+    g.restore();
+    // The low sun's gold along the lit edge of the upper flank.
+    g.save();
+    g.beginPath(); outline(g); g.clip();
+    g.strokeStyle = F.rim; g.lineWidth = 1.6 * k; g.globalAlpha = 0.7;
+    g.beginPath(); g.moveTo(L.sx, -Hh + 1.2 * k); g.quadraticCurveTo(L.cx, L.cy, L.fx, 0);
+    g.stroke();
+    g.restore();
+    art = { canvas: c, w: cw, h: ch, pad };
+  }
+  fujiCache.set(key, art);
+  return art;
+}
+function neonFuji(ctx, cov, progress, paper = false) {
   const fade = neonFujiAlpha(progress);
   if (fade <= 0) return;
+  const art = neonFujiArt(NEON_FUJI.scale, paper);
+  if (!art) return;
   const cx = cov.left + cov.width * NEON_FUJI.at;
-  const k = NEON_FUJI.scale;
-  const base = GROUND_Y;
-  const peak = base - 162 * k;
-  const half = 365 * k;
-  const cap = 34 * k;
   ctx.save();
-  ctx.globalAlpha *= NEON_FUJI.rockAlpha * fade;
-  ctx.fillStyle = NEON_FUJI.rock;
-  ctx.beginPath();
-  ctx.moveTo(cx - half, base); ctx.lineTo(cx - cap, peak); ctx.lineTo(cx + cap, peak); ctx.lineTo(cx + half, base);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = NEON_FUJI.snow;
-  ctx.beginPath();
-  ctx.moveTo(cx - cap, peak); ctx.lineTo(cx + cap, peak); ctx.lineTo(cx + 62 * k, peak + 32 * k);
-  for (let i = 0; i <= 6; i++) ctx.lineTo(cx + (62 - i * 20.6) * k, peak + (32 + (i % 2 ? 8 : 0)) * k);
-  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha *= (paper ? 0.9 : NEON_FUJI.alpha) * fade;
+  ctx.drawImage(art.canvas, cx - art.w / 2, GROUND_Y - art.h + art.pad, art.w, art.h);
   ctx.restore();
 }
 
@@ -8826,7 +9061,9 @@ function watercolorPack(settings) {
           const stage = backgroundContext?.stageIndex ?? 1;
           if (stage === 1 && Number.isFinite(totalDist) && totalDist > 0) {
             const x = frostLiftX(viewCenterX(ctx), camX, FROST_LIFT_AT_PX);
-            if (!outsideView(ctx, x - 230, 260)) drawFrostChairLift(ctx, t, x, crest);
+            // The ridge's own peak, so the line is hung off the HILLS rather than off a
+            // screen y — see LIFT.rise.
+            if (!outsideView(ctx, x - 230, 260)) drawFrostChairLift(ctx, t, x, crest, frostY - amp);
           }
           const progress = backgroundContext?.progress;
           if (stage === 2 && Number.isFinite(progress)) {

@@ -587,13 +587,15 @@ const CAM = { cam: '#8b949b', camLit: '#d9dfe3', camDark: '#4a5157' };
 /**
  * The speed trap that ships: SMILE! YOU'RE ON SPEED CAMERA, the camera flash, the
  * mugshot with GOTCHA! and the $1987 fine, the patrol car behind the board — on a graded
- * lot on a NEAR-dune summit. 3 s cycle: flash at 0.5 s, mugshot until the cycle ends.
+ * lot on a NEAR-dune summit. With `since` (seconds since the camera fired, or null for
+ * not yet) it plays ONCE: SMILE! until the flash, then the snapshot held. Without it
+ * (the gallery) it loops every 3 s: flash at 0.5 s, mugshot until the cycle ends.
  * x: the lot's centre (put it on a summit). Solid ink spans x-58 .. x+57 and up to ~43 px
  * above the crest (the board's lamps); the berm spills ~26 px further each side, cut by
  * the crest. Glows: the flash reaches ~30 px round the camera head (to x-85, ~66 px up)
  * for a third of a second, the light bar's ~20 px past the car (to x+60).
  */
-export function drawDesertSpeedTrap(ctx, t, x, seat, heroId = 'lorenzo') {
+export function drawDesertSpeedTrap(ctx, t, x, seat, heroId = 'lorenzo', since = undefined) {
   ctx.save();
   const pal = { ...haze(TRAP, 165, 0.05), ...haze(CAM, 165, 0.05) };
   const y0 = seat.near(x) - 0.3;
@@ -601,7 +603,10 @@ export function drawDesertSpeedTrap(ctx, t, x, seat, heroId = 'lorenzo') {
   ctx.translate(x, y0);
   gravelPad(ctx, haze(GRAVEL, 170, 0.05), 52);
   const P = 3.0;
-  const u = fract(t / P) * P;
+  // Triggered: 0.5 is the flash, so `since` maps onto the loop's own timeline and is
+  // held on its last frame; not yet fired sits in the SMILE! stretch before it.
+  const u = since === undefined ? fract(t / P) * P
+    : since === null ? 0.25 : Math.min(P - 0.01, 0.5 + since);
   const burst = u > 0.5 && u < 0.85 ? 1 - (u - 0.5) / 0.35 : 0;
   const shot = smooth(0.62, 0.95, u);
   const bx0 = -44, by0 = -37, bx1 = 33, by1 = -6;

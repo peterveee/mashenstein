@@ -106,7 +106,7 @@ export async function openRenderer({ headless = true } = {}) {
 
   async function render(bank, {
     repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement, warp,
-    songLoop = false, fineLaneSkip = true, rearrangement = null,
+    songLoop = false, fineLaneSkip = true, rearrangement = null, range = null,
   } = {}) {
     const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
@@ -165,11 +165,17 @@ export async function openRenderer({ headless = true } = {}) {
     // The way in once, then `repeat` passes of the loop — rather than `repeat` passes of
     // the whole form. A song with markers but no region falls back to the form from its
     // start bar, which is what it sounds like.
-    const steps = loop
+    const formSteps = loop
       ? (loop.loop
         ? loop.loop.start - loop.start + repeat * (loop.loop.end - loop.loop.start)
         : (arrangedFormSteps || blocks * 32) - loop.start)
       : arrangedFormSteps * repeat;
+    const startStep = range && Number.isFinite(range.startStep)
+      ? Math.max(0, Math.min(arrangedFormSteps, range.startStep)) : null;
+    const endStep = startStep != null && Number.isFinite(range.endStep)
+      ? Math.max(startStep, Math.min(arrangedFormSteps, range.endStep)) : null;
+    const ranged = startStep != null && endStep > startStep;
+    const steps = ranged ? endStep - startStep : formSteps;
 
     // A fresh page per render: Audio is a singleton and ensure() binds one context
     // for its lifetime, so contexts cannot be swapped in place. Re-evaluating the
@@ -208,7 +214,7 @@ export async function openRenderer({ headless = true } = {}) {
     const args = {
       bank: forPage, blocks, tail, seed, sampleRate: SR, mix, trackId: id,
       ...(steps ? { steps } : {}),
-      ...(loop ? { loop } : {}),
+      ...(ranged ? { startStep } : loop ? { loop } : {}),
       ...(arrangement !== undefined ? { arrangement } : {}),
       ...(rearrangement ? { rearrangement } : {}),
       // Normalised here so the page never has to guess: a warp is always both
