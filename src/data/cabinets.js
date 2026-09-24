@@ -816,8 +816,9 @@ export const CABINETS = [
       P(0, [{ t: 'buzzbird', dx: 0 }]),
       P(0, [{ t: 'drone', dx: 0 }, coinLine(60)]),
       // STACKED DRONES, two and three deep (Peter, 24 Sep: "more stacked drones in
-      // this level, like in the rhythm levels"). The beat lanes' columns
-      // (makeDroneColumn), short of the full four: a slide always clears them.
+      // this level, like in the rhythm levels"). The beat lanes' columns, spaced
+      // wider (LANE_DRONE_COLUMN_ALTS): a slide always clears them, and three deep
+      // only the highest jumpers and a double jump go over.
       P(0, [{ t: 'drone', dx: 0, column: 2 }]),
       P(1, [{ t: 'drone', dx: 0, column: 3 }]),
       P(1, [{ t: 'drone', dx: 0, column: 2 }, coinLine(60)]),

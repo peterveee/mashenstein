@@ -16,7 +16,7 @@
 import { GROUND_Y } from '../camera.js';
 import { plain, rr, drawProp } from '../../sprites/props.js';
 import { drawTextVectorCentered, textYForMid } from '../sprites.js';
-import { toonFaceSprite } from '../../sprites/toons.js';
+import { drawToon } from '../../sprites/toons.js';
 
 const TAU = Math.PI * 2;
 const SKY_TOP = '#f08048';
@@ -458,9 +458,56 @@ function trapCamera(ctx, pal, x, top, flash, aim) {
 // mid-stride — purple cap, moustache, teal shirt, eyes like saucers — with the ghosts
 // of where he was a moment ago smeared out behind him and speed streaks through them.
 // Bold shapes throughout: the whole print is about 40 px wide at game size.
+// EVERY HERO'S MUGSHOT (Peter, 24 Sep: "can the mugshot be created for all heroes?").
+// The hero's own figure — rig, costume, colours — caught mid-sprint and framed from the
+// waist up, drawn by the same painter the lane uses and baked ONCE per hero into a small
+// canvas, so the photo costs a blit a frame. PORTRAIT_H is the figure's full height in
+// the photo's units; the frame shows its top half.
+const PORTRAIT_W = 34, PORTRAIT_H = 44, PORTRAIT_SS = 6;
+const portraitCache = new Map();
+function heroPortrait(heroId) {
+  if (portraitCache.has(heroId)) return portraitCache.get(heroId);
+  let c = null;
+  if (typeof document !== 'undefined') {
+    try {
+      c = document.createElement('canvas');
+      c.width = PORTRAIT_W * PORTRAIT_SS; c.height = (PORTRAIT_H * 0.62) * PORTRAIT_SS;
+      const g = c.getContext('2d');
+      g.scale(PORTRAIT_SS, PORTRAIT_SS);
+      // Mid-stride, leaning into it: the run cycle's reach, facing right toward the camera.
+      drawToon(g, heroId, {
+        kind: 'run', phase: 0.3, time: 0.3, vy: 0, grounded: true, squash: 0, lean: 0.25,
+        roll: false, float: false, stomp: false, headless: false, facing: 1,
+      }, PORTRAIT_W / 2 - 3, PORTRAIT_H - 2, PORTRAIT_H - 8);
+    } catch { c = null; }
+  }
+  portraitCache.set(heroId, c);
+  return c;
+}
+function drawHeroPortrait(ctx, heroId, cx, cy, h) {
+  const art = heroPortrait(heroId);
+  if (!art) return false;
+  const k = h / (PORTRAIT_H * 0.62);
+  const w = PORTRAIT_W * k;
+  for (const [dx, a] of [[-7.5, 0.16], [-4, 0.3], [0, 1]]) {
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.translate(cx + dx, cy);
+    ctx.rotate(0.08);
+    ctx.drawImage(art, -w / 2, -h * 0.5, w, h);
+    ctx.restore();
+  }
+  // Sweat flying off the back of the head.
+  for (const [dx, dy, r] of [[-5.5, -9, 0.8], [-7, -6, 0.6]]) {
+    fillPath(ctx, '#7fc4ec', (c) => { c.arc(cx + dx, cy + dy, r, 0, TAU); });
+    fillPath(ctx, '#ffffff', circle(cx + dx + 0.2, cy + dy - 0.2, r * 0.35));
+  }
+  return true;
+}
+
 // WHOEVER IS RUNNING (Peter, 24 Sep: "show the relevant hero, not just lorenzo"): Lorenzo
-// keeps the hand-drawn startled portrait below; anyone else is their own face, from the
-// cached HUD face sprite, smeared by the same speed.
+// keeps the hand-drawn startled portrait below; every other hero is their own figure
+// (heroPortrait), smeared by the same speed.
 function mugshotPhoto(ctx, x, y, w, h, heroId = 'lorenzo') {
   fillPath(ctx, '#d6dde0', box(x, y, w, h));
   fillPath(ctx, '#c3ccd0', box(x, y + h * 0.62, w, h * 0.38));
@@ -474,24 +521,7 @@ function mugshotPhoto(ctx, x, y, w, h, heroId = 'lorenzo') {
   strokePath(ctx, rgba('#ffffff', 0.85), 0.7, (c) => {
     for (const [dy, len] of [[-4.5, 9], [-1, 13], [2.5, 10], [6.5, 12], [10, 8]]) { c.moveTo(cx - 6.5, cy + dy); c.lineTo(cx - 6.5 - len, cy + dy); }
   });
-  if (heroId !== 'lorenzo') {
-    const face = toonFaceSprite(heroId, 24, 24);
-    if (face) {
-      const S = 19;
-      for (const [dx, a] of [[-7.5, 0.16], [-4, 0.3], [0, 1]]) {
-        ctx.save();
-        ctx.globalAlpha *= a;
-        ctx.translate(cx + dx, cy + 3);
-        ctx.rotate(0.12);
-        ctx.drawImage(face, -S / 2, -S / 2 - 1, S, S);
-        ctx.restore();
-      }
-      for (const [dx, dy, r] of [[-9, -4, 0.8], [-10.2, -0.6, 0.6]]) {
-        fillPath(ctx, '#7fc4ec', (c) => { c.arc(cx + dx, cy + dy, r, 0, TAU); });
-        fillPath(ctx, '#ffffff', circle(cx + dx + 0.2, cy + dy - 0.2, r * 0.35));
-      }
-    }
-  } else {
+  if (heroId === 'lorenzo' || !drawHeroPortrait(ctx, heroId, x + w * 0.52, y + h * 0.5, h * 1.02)) {
     for (const [dx, a] of [[-7.5, 0.16], [-4, 0.3]]) {
       ctx.save();
       ctx.globalAlpha *= a;

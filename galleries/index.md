@@ -41,4 +41,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-22 | `b9c3169` | [2026-09-22-b9c3169.html](2026-09-22-b9c3169.html) | [bake-offs](2026-09-22-b9c3169-lab.html) | Refactor HUB_LIGHT_Y and REFLECT_SOLE_DROP to remove export and streamline code; add proposed mechanic ideas for Crypt Shift and Neon Blasters. |
 | 2026-09-23 | `eb03b14` | [2026-09-23-eb03b14.html](2026-09-23-eb03b14.html) | [bake-offs](2026-09-23-eb03b14-lab.html) | Add tests for neon city arrival and moon phases |
 | 2026-09-23 | `77ae44b` | [2026-09-23-77ae44b.html](2026-09-23-77ae44b.html) | [bake-offs](2026-09-23-77ae44b-lab.html) | Add neon-themed candidates and gravity mechanics for enhanced gameplay experience |
+| 2026-09-24 | `3bce133` | [2026-09-24-3bce133.html](2026-09-24-3bce133.html) | [bake-offs](2026-09-24-3bce133-lab.html) | Update mix.js assertions for remixed song settings |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

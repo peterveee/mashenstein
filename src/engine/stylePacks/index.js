@@ -6598,11 +6598,11 @@ const PLUMBER_BARN_AT_PX = 700;          // world px: near the start of plumber-
 const PLUMBER_MILL_AT = 0.35;            // fraction of plumber-3 (the volcano owns 0.5)
 const PLUMBER_BALLOONS_AT = [0.22, 0.66];  // fractions of plumber-2
 const PLUMBER_BALLOON_FACTOR = 0.1;      // they drift across slower than the far range
-// Plumber-1's patchwork RISES into the country over this span — up from behind the near
-// hills, among the scenery that is already there (Peter, 24 Sep: not a fade) — by
-// PLUMBER_FIELDS_RISE px.
+// Plumber-1's patchwork GROWS into the country over this span: its height ramps up from
+// flat to full relief out of the near hills, among the scenery that is already there
+// (Peter, 24 Sep: not a fade — and not a lift either; the land swells, it does not ride
+// up). See opts.grow on drawPlumberPatchwork.
 const PLUMBER_FIELDS_IN = [0.7, 0.8];
-const PLUMBER_FIELDS_RISE = 60;
 let plumberNearSummitPx = null;
 function plumberNearSummit(period) {
   if (plumberNearSummitPx != null) return plumberNearSummitPx;
@@ -6863,7 +6863,7 @@ function pixelPack(settings) {
         if (k > 0) {
           const up = k * k * (3 - 2 * k);
           drawPlumberPatchwork(ctx, t, camX, { near: nearCrest, far: nearCrest }, paperPreview, 1,
-            { view: backgroundPaintCoverage(ctx), nearTop: nearTop + (1 - up) * PLUMBER_FIELDS_RISE });
+            { view: backgroundPaintCoverage(ctx), nearTop, grow: up });
         }
       }
       ctx.save();

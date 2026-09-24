@@ -605,6 +605,21 @@ export function makeObstacle(type, worldX, opts = {}) {
 // room between them.
 export const DRONE_COLUMN_ALTS = Object.freeze([13, 29, 45, 61]);
 
+// THE LANE'S COLUMN, spaced wider (Peter, 24 Sep: "the spacing of the drones can be
+// increased - heroes can't jump between them so makes sliding more unavoidable..
+// doesn't have to be avoidable for all though if they have height or double jump").
+// An ordinary lane deals two or three rungs (the spawner's `column`), never the
+// beat charts' four, and at a 20px pitch:
+//  - TWO tops out at 40, under every jump in the cast — a thicker drone, still
+//    jumpable by anyone.
+//  - THREE tops out at 60, which is the slide for nearly everybody. Over it:
+//    Clara (apex 62.7) and a double jump — Kiko's, or an air-jump capsule.
+//    Lorenzo (61.6) clears it only on a perfectly timed jump; Rusty (59.9) and
+//    Ramon (59.3) come up short, and the plain-1.00 heroes miss by three.
+// The gaps stay under the airborne hero's 14px: 13 of sky between bodies, which
+// reads as three drones rather than one machine, and still is not a door.
+export const LANE_DRONE_COLUMN_ALTS = Object.freeze([13, 33, 53]);
+
 /**
  * A stack of drones at one world X — four boxes rather than one tall one, so
  * the hitboxes stay honest through the gaps instead of claiming the air.
@@ -628,8 +643,8 @@ export const DRONE_COLUMN_ALTS = Object.freeze([13, 29, 45, 61]);
  * (validateBeatChart): 52 against B-33P's 51 is a wall for one hero by less
  * than a pixel, which is not a height anybody should be able to author.
  */
-export function makeDroneColumn(worldX, rungs = DRONE_COLUMN_ALTS.length) {
-  return DRONE_COLUMN_ALTS.slice(0, rungs).map((alt, i) => {
+export function makeDroneColumn(worldX, rungs = DRONE_COLUMN_ALTS.length, alts = DRONE_COLUMN_ALTS) {
+  return alts.slice(0, rungs).map((alt, i) => {
     const ob = makeObstacle('drone', worldX);
     ob.alt = alt;
     // Which rung this is, and the only thing anything downstream asks about it:

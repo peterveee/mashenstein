@@ -1041,6 +1041,7 @@ function ploughAndGulls(ctx, t, L) {
  * redraw needs the pack's own scenery placements, so it is not in here).
  *
  * `alpha` 0..1 fades the whole piece (the bands are clipped so they never double up).
+ * opts.grow 0..1 ramps the land's HEIGHT up from its foot (1, the default, is full relief).
  * opts.view = { left, width } of the picture in the ctx's coordinates (default 0..W).
  * Ink extent: the full view width, y from nearTop - 40 to nearTop + 96.
  */
@@ -1059,6 +1060,20 @@ export function drawPlumberPatchwork(ctx, t, camX, seat, paper = true, alpha = 1
     const fading = alpha < 1;
     clipAbove(ctx, seat.near, xl, xr, 0);
     ctx.translate(0, top);
+    // opts.grow 0..1: THE LAND SWELLS UP, IT DOES NOT RIDE UP. The quilt is scaled in
+    // height about its FOOT — the deepest point of the near crest across the view, so
+    // the bottom of the fields never lifts off whatever it sits behind — and the crests
+    // climb out of the near hills from flat to full relief. Translating the whole piece
+    // instead (the first cut) read as the farmland arriving on a lift.
+    const grow = Number.isFinite(opts.grow) ? Math.max(0, Math.min(1, opts.grow)) : 1;
+    if (grow < 1) {
+      if (!(grow > 0.004)) { ctx.restore(); return; }
+      let foot = -Infinity;
+      for (let x = xl; x <= xr; x += 2) foot = Math.max(foot, seat.near(x) - top);
+      ctx.translate(0, foot);
+      ctx.scale(1, grow);
+      ctx.translate(0, -foot);
+    }
     const offOf = (f) => ((camX * f * ZOOM % PATCH_P) + PATCH_P) % PATCH_P;
     PATCH_LAYERS.forEach((L, li) => {
       const off = offOf(L.f);
