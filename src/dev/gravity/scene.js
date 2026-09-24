@@ -4,17 +4,65 @@ const hash = n => ((Math.sin(n * 78.233 + 12.9) * 43758.5453) % 1 + 1) % 1;
 function line(c, x, y, xx, yy, ink, width = 1) { c.strokeStyle = ink; c.lineWidth = width; c.beginPath(); c.moveTo(x, y); c.lineTo(xx, yy); c.stroke(); }
 function label(c, text, x, y, size = 4, color = cyan) { c.fillStyle = color; c.font = `bold ${size}px monospace`; c.fillText(text, x, y); }
 function panel(c, x, y, w, h, color, radius = 2) { c.fillStyle = color; c.beginPath(); c.roundRect(x, y, w, h, radius); c.fill(); }
-function planet(c, x, y, t) {
+function planet(c, x, y) {
   c.save(); c.translate(x, y); c.rotate(-0.32);
-  const ry = 5.5 + Math.sin(t / 18 * Math.PI * 2) * 0.5;
-  for (let i = 0; i < 8; i++) { c.strokeStyle = i === 4 ? '#090d1a' : ['#77786f', '#b5ad8e', '#545f6a'][i % 3]; c.lineWidth = 0.8; c.beginPath(); c.ellipse(0, 0, 17 + i * 1.1, ry + i * 0.27, 0, 0, Math.PI * 2); c.stroke(); }
-  const gr = c.createRadialGradient(-3, -3, 0, 0, 0, 9); gr.addColorStop(0, '#e3d5b0'); gr.addColorStop(0.7, '#b0a58a'); gr.addColorStop(1, '#47495e');
-  c.fillStyle = gr; c.beginPath(); c.arc(0, 0, 9, 0, Math.PI * 2); c.fill();
-  c.save(); c.beginPath(); c.arc(0, 0, 9, 0, Math.PI * 2); c.clip();
-  for (let b = -6; b < 8; b += 3) line(c, -9, b, 9, b + 1, '#807d7470', 1.2);
-  for (let i = 0; i < 2; i++) { const phase = t / 31 * Math.PI * 2 + i * Math.PI; if (Math.cos(phase) > 0) { c.fillStyle = '#ebd9b0'; c.beginPath(); c.ellipse(Math.sin(phase) * 7, i ? 3 : -3, 1.9 * Math.cos(phase), 0.6, 0, 0, Math.PI * 2); c.fill(); } }
-  c.restore();
-  for (let i = 0; i < 8; i++) { c.strokeStyle = i === 4 ? '#111626' : ['#8f9081', '#d0c7a5', '#687382'][i % 3]; c.lineWidth = 0.75; c.beginPath(); c.ellipse(0, 0, 17 + i * 1.1, ry + i * 0.27, 0, 0, Math.PI); c.stroke(); }
+  // Filled, concentric annuli share one projected plane. Paint the near
+  // half over the globe; the far half is naturally hidden behind it.
+  function ring(inner, outer, ink, front) {
+    c.fillStyle = ink; c.beginPath();
+    c.ellipse(0, 0, outer, outer * 0.34, 0, 0, front ? Math.PI : Math.PI * 2);
+    c.ellipse(0, 0, inner, inner * 0.34, 0, front ? Math.PI : Math.PI * 2, 0, true);
+    c.closePath(); c.fill('evenodd');
+  }
+  function rings(front) {
+    ring(12.4, 15.3, front ? '#8b887d' : '#62666a', front);
+    ring(15.3, 19.7, front ? '#c2b89c' : '#978f7d', front);
+    // One narrow division, rather than black gaps between every ring.
+    ring(20.2, 23, front ? '#99998b' : '#646b70', front);
+    for (const r of [16.1, 17.6, 18.8, 21.4, 22.5]) ring(r, r + 0.13, '#dfd3b844', front);
+  }
+  rings(false);
+  c.save(); c.beginPath(); c.ellipse(0, 0, 10.2, 9.2, 0, 0, Math.PI * 2); c.clip();
+  c.fillStyle = '#b9aa86'; c.fillRect(-11, -10, 22, 20);
+  for (const [yy, ink, w] of [[-6,'#e0c99e',1.1],[-3.8,'#cbb88e',1.8],[-1.3,'#a89270',1.2],[1,'#cfba91',2.2],[4,'#a49071',1.3],[6.4,'#c2ad85',1]]) {
+    c.strokeStyle = ink; c.lineWidth = w; c.beginPath(); c.moveTo(-11, yy);
+    c.bezierCurveTo(-4, yy + 0.7, 4, yy + 0.7, 11, yy); c.stroke();
+  }
+  const light = c.createRadialGradient(-4, -4, 1, -2, -2, 13);
+  light.addColorStop(0, '#fff2cd66'); light.addColorStop(0.48, '#fff2cd0a');
+  light.addColorStop(0.8, '#252d3d70'); light.addColorStop(1, '#111c30dc');
+  c.fillStyle = light; c.fillRect(-11, -10, 22, 20);
+  // The rings cast a restrained equatorial shadow on the globe.
+  c.strokeStyle = '#28303b44'; c.lineWidth = 0.65;
+  c.beginPath(); c.ellipse(0, -0.5, 15.3, 5.2, 0, 0, Math.PI); c.stroke();
+  c.restore(); rings(true); c.restore();
+}
+function asteroids(c, width, t) {
+  // One short fly-by every 7–9 seconds, with quiet sky between visits.
+  // Time-derived variation remains deterministic through pause and rewind.
+  const cycle = 8.5, event = Math.floor(t / cycle);
+  const age = t - event * cycle - (1.1 + hash(event + 601) * 2);
+  const duration = 1.05 + hash(event + 617) * 0.45;
+  if (age < 0 || age > duration) return;
+  const u = age / duration, span = Math.max(60, width - 60);
+  const x = span + 28 - u * (span + 56);
+  const y = -106 + hash(event + 631) * 40 + u * 23;
+  const size = 1.3 + hash(event + 647) * 1.4;
+  c.save();
+  const trail = c.createLinearGradient(x, y, x + 23, y - 6);
+  trail.addColorStop(0, '#b4bfc47a'); trail.addColorStop(1, '#a8c6de00');
+  c.strokeStyle = trail; c.lineWidth = 1.1; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(x, y); c.lineTo(x + 23, y - 6); c.stroke();
+  c.translate(x, y); c.rotate(age * 3.6 + event);
+  c.beginPath();
+  for (let i = 0; i < 7; i++) {
+    const a = i * Math.PI * 2 / 7, r = size * (0.72 + hash(i + event * 7) * 0.35);
+    if (i) c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    else c.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  c.closePath(); c.fillStyle = '#8b929b'; c.fill();
+  c.strokeStyle = '#c0c3bd'; c.lineWidth = 0.35; c.stroke();
+  c.fillStyle = '#454e5b'; c.beginPath(); c.ellipse(size * 0.2, 0, size * 0.32, size * 0.22, 0.4, 0, Math.PI * 2); c.fill();
   c.restore();
 }
 function vista(c, cam, width, t) {
@@ -24,8 +72,8 @@ function vista(c, cam, width, t) {
   // the traverse to progress so pausing does not send it out of composition.
   const progress = Math.max(0, Math.min(1, cam / L.length));
   const visibleWidth = Math.max(60, width - 60);
-  planet(c, visibleWidth * (0.82 - 0.5 * progress), -103 + progress * 3, t);
-  for (let i = 0; i < 3; i++) { const x = ((i * 113 + t * 1.3 - cam * 0.02) % 390 + 390) % 390; line(c, x, -88 + i * 17, x - 13, -93 + i * 17, '#b3e7ff40', 0.6); }
+  planet(c, visibleWidth * (0.82 - 0.5 * progress), -103 + progress * 3);
+  asteroids(c, width, t);
   for (const [f, base, amp, ink] of [[0.03,-24,23,'#293441'],[0.065,-21,19,'#3d4651'],[0.12,-9,15,'#626875']]) {
     c.beginPath(); c.moveTo(-60, 5);
     const shift = cam * f;
@@ -61,8 +109,12 @@ function gate(c, g, cam, t, top, bottom, hint) {
   c.beginPath(); c.rect(x - 8, -133, 16, 129); c.clip();
   c.strokeStyle = green; c.lineWidth = 1.8;
   c.lineJoin = 'round'; c.lineCap = 'round';
+  const chevronAlpha = c.globalAlpha;
   for (let i = 0; i < 8; i++) {
     const y = -8 - ((i * 16 + t * dir * -23) % 126 + 126) % 126;
+    const height = Math.max(0, Math.min(1, (-y - 4) / 129));
+    const strength = g.lane ? height : 1 - height;
+    c.globalAlpha = chevronAlpha * (0.06 + 0.94 * strength);
     c.beginPath(); c.moveTo(x - 5, y - dir * 3);
     c.lineTo(x, y + dir * 2); c.lineTo(x + 5, y - dir * 3); c.stroke();
   }
@@ -88,10 +140,10 @@ export function drawGravityRoom(c, { cam, view, top, bottom, time, gates = GATES
     c.strokeStyle='#c9925160';c.lineWidth=1;c.beginPath();c.moveTo(x,20);c.quadraticCurveTo(x+24,48,x+48,20);c.stroke();
   }
   // Rounded windows sit inside a solid hull, clear of both running rails.
-  const start = Math.floor(cam / 97.5) - 1;
+  const start = Math.floor(cam / 102) - 1;
   const panes = [];
-  for (let i = start; i * 97.5 < cam + view + 98; i++) panes.push(i * 97.5 - cam + 1.75);
-  const paneTop = -123, paneHeight = 109, radius = 7.5;
+  for (let i = start; i * 102 < cam + view + 102; i++) panes.push(i * 102 - cam + 4);
+  const paneTop = -127, paneHeight = 117, radius = 7.5;
   c.save(); c.beginPath();
   for (const x of panes) c.roundRect(x, paneTop, 94, paneHeight, radius);
   c.clip(); vista(c, cam, view, m.time); c.restore();
@@ -101,7 +153,7 @@ export function drawGravityRoom(c, { cam, view, top, bottom, time, gates = GATES
     for (const dx of [17,29]) {
       c.fillStyle = dx === 17 ? '#ccefff0b' : '#ccefff06'; c.beginPath();
       c.moveTo(x + dx, paneTop); c.lineTo(x + dx + 8, paneTop);
-      c.lineTo(x + dx - 25, -14); c.lineTo(x + dx - 33, -14); c.fill();
+      c.lineTo(x + dx - 25, -10); c.lineTo(x + dx - 33, -10); c.fill();
     }
     c.restore();
     c.strokeStyle = '#304f60'; c.lineWidth = 3.2;

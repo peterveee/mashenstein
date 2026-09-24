@@ -30,8 +30,12 @@ const at = (p) => neonCityReveal(1, p);
 assert(KEYS.every((k) => at(0)[k] === 0),
   'neon 1 opens on an empty sky — no city layer is up at the start line');
 
-assert(KEYS.every((k) => at(0.1)[k] === 0),
-  'and it stays empty for a while: nothing has arrived a tenth of the way in');
+// Since SESERAGI turns minor about a tenth of the way in (24 Sep), the city starts
+// arriving just before that — so the empty stretch is the first twentieth.
+assert(KEYS.every((k) => at(0.05)[k] === 0),
+  'and it stays empty for a while: nothing has arrived a twentieth of the way in');
+assert(KEYS.every((k) => at(0.28)[k] === 1),
+  'and it is all up before the first train the hero can stand on (0.30)');
 
 assert(KEYS.every((k) => at(0.85)[k] === 1),
   'the whole city is up by 85% — it finishes before the tape, not at it');
@@ -209,6 +213,86 @@ for (const h of HEROES) {
 }
 // A road with no roof must not cap anything — this is neon's rule, not a rule.
 assert(neonTrainHeadroom({ rise: 0 }) === 0, 'a road with no rise leaves no headroom to speak of');
+
+// ---- the day, the strike and the night (docs/NEON_LEVELS_PLAN.md) ----------------
+{
+  const M = await import('../src/engine/stylePacks/neonMoods.js');
+  const TURN = M.NEON_MINOR_TURN_BEAT;
+  assert(TURN === 56, 'the strike waits for bar 15 of the song, beat 56');
+  assert(!M.neonStartsTurned(1, 12) && M.neonStartsTurned(1, 70),
+    'neon-1 starts golden before the turn, and at night if the song is already past it');
+  assert(M.neonStartsTurned(2, 0) && M.neonStartsTurned(3, 0),
+    'neon-2 and neon-3 start at night whatever the song is doing');
+  // Walk the beat up through the turn a frame at a time.
+  let st = { turned: false, thundered: false };
+  let prev = 50;
+  let strikes = 0;
+  let thunderAt = null;
+  for (let b = 50; b <= 60; b += 0.05) {
+    const r = M.neonTurnStep(st, { beat: b, prevBeat: prev, seconds: 0 });
+    if (r.thunderIn != null) thunderAt = b + r.thunderIn;
+    if (r.strike) strikes++;
+    st = { turned: r.turned, thundered: r.thundered };
+    prev = b;
+  }
+  assert(strikes === 1 && st.turned, 'the turn strikes once, and the attempt stays turned');
+  assert(thunderAt != null && Math.abs(thunderAt - TURN) < 1e-9,
+    'the thunder is put on the clock to land exactly on the turn\'s downbeat');
+  // The loop coming round hands back a smaller beat; that must not strike again.
+  const wrapped = M.neonTurnStep({ turned: false, thundered: false }, { beat: 40, prevBeat: 320, seconds: 0 });
+  assert(!wrapped.strike, 'a loop wrap is not a crossing');
+  const jumped = M.neonTurnStep({ turned: false, thundered: false }, { beat: 58, prevBeat: 44, seconds: 0 });
+  assert(jumped.strike, 'a long frame or a pause that jumps the turn still strikes');
+  // A night already turned still strikes, on bar 15 and on bar 45 (beat 176).
+  assert(M.NEON_STRIKE_BEATS.includes(TURN) && M.NEON_STRIKE_BEATS.includes(176),
+    'the strikes are the minor turn and bar 45');
+  {
+    let ns = { placed: null };
+    let p = 40;
+    const hits = [];
+    const thunders = [];
+    for (let b = 40; b <= 200; b += 0.05) {
+      const r = M.neonNightStrikeStep(ns, { beat: b, prevBeat: p });
+      if (r.thunderIn != null) thunders.push(b + r.thunderIn);
+      if (r.strike) hits.push([Math.round(b), r.thundered]);
+      ns = { placed: r.placed };
+      p = b;
+    }
+    assert(hits.length === 2 && hits[0][0] === 56 && hits[1][0] === 176 && hits.every((h) => h[1]),
+      'the night strikes on bar 15 and bar 45, each with its thunder already placed');
+    assert(thunders.length === 2 && Math.abs(thunders[0] - 56) < 1e-9 && Math.abs(thunders[1] - 176) < 1e-9,
+      'each night strike\'s thunder is placed to land on its downbeat');
+    assert(!M.neonNightStrikeStep({ placed: null }, { beat: 40, prevBeat: 320 }).strike,
+      'a loop wrap is not a night strike either');
+    const late = M.neonNightStrikeStep({ placed: null }, { beat: 56.2, prevBeat: 55.5 });
+    assert(late.strike && !late.thundered, 'a strike whose thunder was never placed fires its own');
+  }
+  assert(M.neonAuroraStrength(1, 0.3) === 0 && M.neonAuroraStrength(1, 0.45) === 1
+    && M.neonAuroraStrength(1, 0.37) > 0 && M.neonAuroraStrength(1, 0.37) < 1,
+    'neon-1\'s aurora comes up just after the first train the hero can stand on');
+  assert(M.neonAuroraStrength(2, 0) === 1 && M.neonAuroraStrength(3, 0) === 1,
+    'and is up from the start of neon-2 and neon-3');
+}
+// ---- the destination board sits on bodywork, never over glass ---------------------
+{
+  const { tronCarApertures } = await import('../src/sprites/train.js');
+  // The tail and the cab have ONE window forward of their doors, and keep it: the
+  // board is the middle cars' — a car with nothing but a board is a blind car.
+  for (const kind of ['tail', 'engine']) {
+    const p = tronCarApertures({ kind, board: true }, 0, 34, 34);
+    assert(!p.board && p.windows.length === 1, `the ${kind} keeps its one window and carries no board`);
+  }
+  for (const kind of ['car']) {
+    const plain = tronCarApertures({ kind }, 0, 34, 34);
+    const boarded = tronCarApertures({ kind, board: true }, 0, 34, 34);
+    const b = boarded.board;
+    assert(b && b.w >= 16, `the ${kind} carries a board wide enough to scroll (${b?.w?.toFixed(1)}px)`);
+    assert(boarded.windows.length === plain.windows.length - 1,
+      `the ${kind} gives up the one window forward of its door for it`);
+    const overlaps = boarded.windows.some((w) => b.x < w.x + w.w && w.x < b.x + b.w);
+    assert(!overlaps && b.x >= boarded.doorX + 20, `and the ${kind}'s board touches no window and no door`);
+  }
+}
 
 console.log(failed ? 'NEON CITY ARRIVAL: FAILED' : 'NEON CITY ARRIVAL: PASSED');
 if (failed) process.exit(1);

@@ -2798,11 +2798,9 @@ const TAP_KEYS = (v) => ({
  * "Common" used to mean every row here appeared on every panel, which is only honest
  * while every row reaches every path. Two groups do not:
  *
- *   KEY MODE and GLIDE      `play` reads `v.mode` after it has already dispatched noise,
- *                          drum, KNDO-5 and WNDR-9 away, and `portamento` is
- *                          a Tone constructor option on paths that build no Tone
- *                          objects at all. Gated on `isPooled`, except KLNG-8's
- *                          per-lane MONO choke, which is drawn on the drum panel.
+ *   KEY MODE and GLIDE      every pitched synth, one rule on all of them (see
+ *                          `_perNoteKeyMode` in voices.js); never a drum, except
+ *                          KLNG-8's per-lane MONO choke, drawn on the drum panel.
  *   LENGTH · FIXED LENGTH  the note itself, which a one-shot is never handed — see
  *   TRANSPOSE · FINE       `isOneShot` for the dispatch line that proves it. Gated on
  *   VIB DEPTH · VIB RATE   that, which leaves a drum's Note card holding TRIM, TUNE
@@ -3001,12 +2999,11 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // note is still gated. The same overlap that hands LEGATO its envelope is the overlap
   // that gives MONO a pitch to come from.
   //
-  // Both are absent, not greyed, on the paths that cannot honour them — a drum has no
-  // pool to hold one instance of and no Tone synth to carry a portamento. MRDR-3 is
-  // the one NATIVE path where they work: `_playLayer` keeps a glide origin per
-  // (lane, voice) and chokes the note still ringing, which is exactly what the pills
-  // promise. See `isPooled`.
-  ...(isPooled(voice) || isMrdrVoice(voice) || voice?.synth === 'TNGR-2' || voice?.synth === 'JMJR-4' ? [
+  // Every pitched synth draws both and honours both the same way — the pooled classes,
+  // MRDR-3 on either backend, TNGR-2, JMJR-4, and KNDO-5 and WNDR-9 through
+  // `_perNoteKeyMode`. Absent on a drum, which has no pitch to slide.
+  ...(isPooled(voice) || isMrdrVoice(voice) || voice?.synth === 'TNGR-2' || voice?.synth === 'JMJR-4'
+    || synthFamily(voice?.synth) === KNDO5 || synthFamily(voice?.synth) === WNDR9 ? [
     // KEY MODE, not VOICING: the Tone oscillator cards already spend VOICING on
     // single/fat/am/fm, which is a different question from how many notes sound at once.
     pick('$mode', 'KEY MODE', KEY_MODES, 'poly', jmjr4Singing, {

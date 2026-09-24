@@ -16,6 +16,7 @@ import {
   keyLegendWidth, drawKeyLegend, platePath, UI_PANEL, UI_PLATE, drawRoundButton,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
+import { KANA_FACE, KANA_WEIGHT } from '../engine/kana.js';
 import { drawProp, drawHudBattery, hudBatteryW } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
@@ -3003,12 +3004,26 @@ export function drawSpeech(ctx, speech, opts = {}) {
     // Three lines, not two: Eggshell's longest grievances need the room.
     const textOpts = opts.textScale == null ? opts : { ...opts, scale: s };
     const lines = speechPageLines(speech, textOpts);
-    const tw = Math.max(...lines.map((line) => textWidth(line, s)));
+    // A line in JAPANESE over the English, when the card carries one — the neon
+    // cabinet's platform announcement (まもなく でんしゃが まいります). Drawn in the kana
+    // face (engine/kana.js), since the game's own font has no kana; the English under
+    // it is the card's ordinary text, so it reads for everyone.
+    const kana = speech.kana || null;
+    const kanaPx = 10 * s;
+    const kanaRow = kana ? 13 * s : 0;
+    let kanaW = 0;
+    if (kana) {
+      ctx.save();
+      ctx.font = `${KANA_WEIGHT} ${kanaPx}px ${KANA_FACE}`;
+      kanaW = ctx.measureText(kana).width;
+      ctx.restore();
+    }
+    const tw = Math.max(kanaW, ...lines.map((line) => textWidth(line, s)));
     // Measured before it is placed: the card can only get out of the hero's way
     // once it knows how tall it is.
     const cardW = fixedCardWidth ? Number(opts.cardWidth) : tw + 12 * s;
     const cardH = fixedCardHeight
-      ? Number(opts.cardHeight) : 8 * s + lines.length * SPEECH_ROW * s;
+      ? Number(opts.cardHeight) : 8 * s + lines.length * SPEECH_ROW * s + kanaRow;
     const cardX = fixedCardWidth ? centerX - cardW / 2 : centerX - tw / 2 - 6 * s;
     const y = placeSpeechCard(baseY, cardX, cardW, cardH, opts.avoid, opts);
     const panelTop = y - panelInset;
@@ -3017,8 +3032,17 @@ export function drawSpeech(ctx, speech, opts = {}) {
     // of top padding put the first ROW at y; the ink then has to be centred on
     // that row rather than having its 12-unit glyph box hung off the top of it,
     // which sat every tutorial line high on its own plate.
-    const textTop = fixedCardHeight
-      ? panelTop + (cardH - lines.length * SPEECH_ROW * s) / 2 : y;
+    const textTop = (fixedCardHeight
+      ? panelTop + (cardH - lines.length * SPEECH_ROW * s - kanaRow) / 2 : y) + kanaRow;
+    if (kana) {
+      ctx.save();
+      ctx.font = `${KANA_WEIGHT} ${kanaPx}px ${KANA_FACE}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = light ? '#1a1028' : '#ffffff';
+      ctx.fillText(kana, centerX, textTop - kanaRow / 2 + s);
+      ctx.restore();
+    }
     lines.forEach((line, i) =>
       rawDrawTextCentered(ctx, line, centerX,
         textY(textTop + (i * SPEECH_ROW + SPEECH_ROW / 2) * s, s), ink, s));

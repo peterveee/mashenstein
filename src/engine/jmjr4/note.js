@@ -170,7 +170,10 @@ export function buildJmjr4Note(ctx, {
     oscs: handle.oscs,
     sources: ending ? [...handle.sources, ...ending.sources] : handle.sources,
     end: dur != null ? at + Math.max(0.05, dur) + rel + 0.05 : at + hold,
-    release(t) { handle.release(t, rel); if (ending) ending.stop(t + rel + 0.02); },
+    // `fade` is the rack's, when it is not a note-off but a MONO choke or a LEGATO
+    // crossfade: a cycle and a half, or 15 ms. It used to be dropped, so the note being
+    // replaced rang out its whole release under the one replacing it.
+    release(t, fade = rel) { handle.release(t, fade); if (ending) ending.stop(t + fade + 0.02); },
     /*
      * Stop every source of this note at `t` — through the HANDLES, never by walking the raw
      * list. A note's sources are not all booked to the same end any more: the aspiration

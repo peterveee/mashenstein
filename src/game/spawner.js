@@ -1,6 +1,6 @@
 // Seeded pattern spawner with COMPUTED fairness. DOM-free so the headless
 // fairness sim can import it directly.
-import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from './entities.js';
+import { OBSTACLES, PICKUPS, makeObstacle, makePickup, makeDroneColumn } from './entities.js';
 import { PUNT, HEAVY_PUNT } from './punt.js';
 import { GRAVITY, BASE_JUMP_V } from './player.js';
 import { randomPowerPickup, weightedPowerPickup } from './powerups.js';
@@ -386,8 +386,17 @@ export class Spawner {
       // run placed on the way past would be measured against a hole that is not
       // there yet.
       const coinCells = [];
-      for (const cell of pat.cells) {
-        if (cell.t === 'coins') { coinCells.push(cell); continue; }
+      for (const rawCell of pat.cells) {
+        if (rawCell.t === 'coins') { coinCells.push(rawCell); continue; }
+        // A cabinet may SWAP a shared obstacle for one of its own, some of the time —
+        // `swaps: { cactus: ['cactus', 'trafficCone', ...] }`, picked off the spawn x
+        // so a replay is identical. A real swap, not a costume: the cone is kicked,
+        // with its own box, spacing and debris (Peter, 24 Sep: "can we not kick the
+        // traffic cones? we should be able to wherever they appear").
+        const swapList = this.cabinet?.swaps?.[rawCell.t];
+        const cell = swapList
+          ? { ...rawCell, t: swapList[Math.abs(Math.round((baseX + rawCell.dx) * 0.13)) % swapList.length] }
+          : rawCell;
         const def = OBSTACLES[cell.t];
         if (!def) continue;
         let x = baseX + cell.dx;
@@ -401,7 +410,21 @@ export class Spawner {
           this.lastActionKind = def.action;
           this.lastWasPunt = puntClearanceT(def);
         }
-        const ob = makeObstacle(cell.t, x, { n: cell.n });
+        // A DRONE COLUMN — `column: 2` or `3` on a drone cell — is the beat lanes'
+        // stack (makeDroneColumn) dealt into an ordinary lane: rungs at one x, the
+        // bottom one at the drone's own slide altitude. Short of the full four it
+        // leaves the jump open to most of the cast, so it thickens the air without
+        // walling the road (Peter, 24 Sep: "not necessarily blocking the entire
+        // path, just 2 or 3 deep").
+        if (cell.t === 'drone' && cell.column > 1) {
+          const rungs = makeDroneColumn(x, cell.column);
+          obs.push(...rungs);
+          lastX = Math.max(lastX, x + rungs[0].w);
+          continue;
+        }
+        // A cabinet may dress a shared obstacle in its own bodies — same box, same
+        // behaviour — through `skins` (see the neon cabinet's cone).
+        const ob = makeObstacle(cell.t, x, { n: cell.n, skins: this.cabinet?.skins?.[cell.t] });
         if (cell.t === 'gap') ob.w = cellW;
         // Altitude. A def's `alt` is its home; a cell's `y` may override it,
         // but ONLY for `action: 'none'` flyers — targets, prize crates, the

@@ -1466,6 +1466,104 @@ export function powerStripCordAt(w, h, i) {
   return [w * STRIP_SOCKET_CX[STRIP_PLUGGED[i]], h * (STRIP_PLUG_TOP + 0.03)];
 }
 
+// THE ROAD-WORKS ANIMALS' SHARED BODY (pandaBarrier, frogBarrier, monkeyBarrier in the
+// table below): a hazard foot striped yellow and black, a squat rounded post with a
+// belly, and a round head with the animal's ears — or a frog's eyes — behind it. Every
+// mark carries the one dark ink, at the weights the bake-off approved.
+const ROADWORKS_INK = '#1a1028';
+function roadworksShape(ctx, fill, path, line = 0.9) {
+  ctx.beginPath();
+  path(ctx);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = line;
+  ctx.strokeStyle = ROADWORKS_INK;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+const roadworksOval = (x, y, rx, ry) => (c) => c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+// Draws the foot, the post and the head, `ears(cx, cy, s)` going down just before the
+// head so they sit behind it; returns the head's centre and size for the face.
+function roadworksAnimal(ctx, w, h, { body, belly, ears }) {
+  const foot = h * 0.18;
+  const fx = w * 0.06, fy = h - foot, fw = w * 0.88;
+  roadworksShape(ctx, '#f6d33c', (c) => rr(c, fx, fy, fw, foot, 1));
+  ctx.save();
+  ctx.beginPath(); rr(ctx, fx, fy, fw, foot, 1); ctx.clip();
+  ctx.fillStyle = ROADWORKS_INK;
+  for (let x = fx - foot; x < fx + fw; x += 3.2) {
+    ctx.beginPath();
+    ctx.moveTo(x, fy + foot); ctx.lineTo(x + 1.4, fy + foot);
+    ctx.lineTo(x + 1.4 + foot, fy); ctx.lineTo(x + foot, fy);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  roadworksShape(ctx, body, (c) => rr(c, w * 0.2, h * 0.5, w * 0.6, h * 0.34, w * 0.14));
+  roadworksShape(ctx, belly, roadworksOval(w * 0.5, h * 0.68, w * 0.18, h * 0.12), 0.6);
+  const cx = w * 0.5, cy = h * 0.34, s = w * 0.9;
+  ears(cx, cy, s);
+  roadworksShape(ctx, body, roadworksOval(cx, cy, s * 0.46, s * 0.36));
+  return { cx, cy, s };
+}
+// Two dot eyes, blushing cheeks and a small smile.
+function roadworksFace(ctx, cx, cy, s, cheeks, eyeGap) {
+  ctx.fillStyle = ROADWORKS_INK;
+  for (const dx of [-eyeGap, eyeGap]) {
+    ctx.beginPath(); ctx.arc(cx + dx * s, cy - 0.04 * s, 0.07 * s, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.save();
+  ctx.fillStyle = cheeks;
+  ctx.globalAlpha *= 0.8;
+  for (const dx of [-0.36, 0.36]) {
+    ctx.beginPath(); ctx.ellipse(cx + dx * s, cy + 0.1 * s, 0.08 * s, 0.05 * s, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+  ctx.strokeStyle = ROADWORKS_INK;
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 0.06 * s, 0.12 * s, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+}
+// A yellow construction helmet sat on the head, `rise` of the head's size above its
+// centre, with a white shine up the dome.
+function roadworksHardHat(ctx, cx, cy, s, rise) {
+  const y = cy - rise * s;
+  ctx.beginPath();
+  ctx.ellipse(cx, y, 0.36 * s, 0.22 * s, 0, Math.PI, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#f6d33c';
+  ctx.fill();
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = ROADWORKS_INK;
+  ctx.stroke();
+  roadworksShape(ctx, '#f6d33c', (c) => rr(c, cx - 0.44 * s, y - 0.02 * s, 0.88 * s, 0.07 * s, 0.03 * s), 0.7);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillRect(cx - 0.04 * s, y - 0.19 * s, 0.08 * s, 0.15 * s);
+}
+
+// THE RAKE's shape and timing (the painter is PROP_PAINTERS.rake). Its swing runs on the
+// entity's own clock — see RAKE_SWING_T and the frame choice in game/draw.js.
+const RAKE_PAL = {
+  wood: '#c1935a', woodShade: '#946a3a', ink: '#4a3218', metal: '#8e979f', metalDark: '#5e666e',
+  metalLight: '#c6ccd2', star: '#fff3b0', starEdge: '#f2b33c',
+};
+// Tines left of the pivot, handle's length right of it, and the swing's reach up.
+const RAKE_SPAN = { left: 12, right: 21, top: 27, handle: 20 };
+export const RAKE_FRAMES = 15;          // frame 0 lying still, then the swing
+export const RAKE_SWING_T = 0.9;        // up (0.12s), quiver, topple back
+// Seconds before a grounded hero would reach it that the run sets it off, so the handle
+// is up as his face arrives.
+export const RAKE_SWING_LEAD = 0.12;
+// Up past vertical toward the hero (1.95 rad from lying flat behind), a damped quiver,
+// then back down.
+export function rakeSwingAngle(u) {
+  if (u < 0) return 0;
+  if (u < 0.12) return (u / 0.12) * 1.95;
+  if (u < 0.6) return 1.85 + Math.exp(-(u - 0.12) * 7) * Math.sin((u - 0.12) * 30) * 0.18;
+  if (u < 0.9) return 1.85 * (1 - ((u - 0.6) / 0.3) ** 2);
+  return 0;
+}
+
 export const PROP_PAINTERS = {
   ...GRAVITY_PAINTERS,
   ...ANIMAL_PAINTERS,
@@ -2117,6 +2215,81 @@ export const PROP_PAINTERS = {
     plain(ctx, '#91b9d2', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.035, 0, 0, Math.PI * 2));
   },
   snowmanBig(ctx, w, h, frame = 0) { PROP_PAINTERS.snowman(ctx, w, h, frame); },
+  // THE ICE CRYSTAL CLUSTER — Frost's second standing hazard (Peter, 24 Sep, from the
+  // frost ideas bake-off, src/dev/frost-ideas.js). Five hexagonal spikes grown out of a
+  // snow drift, each cut into a lit face toward the low sun and a cold one away from it,
+  // with a ridge line down the middle — facets are what make ice read as ice rather than
+  // as blue glass. Breakable, and it shatters, like the snowman does into snow.
+  iceCrystals(ctx, w, h) {
+    const u = Math.max(w, h);
+    const edge = 'rgba(38,78,118,0.55)';
+    const lw = Math.max(0.35, u * 0.022);
+    // [centre x, height, half-width, lean] as fractions of the box, back row first.
+    const spikes = [
+      [0.30, 0.62, 0.10, -0.10], [0.72, 0.58, 0.10, 0.10],
+      [0.18, 0.44, 0.09, -0.16], [0.52, 0.96, 0.13, 0.02], [0.82, 0.40, 0.09, 0.16],
+    ];
+    const foot = h * 0.9;
+    spikes.forEach(([cx, ht, hw, lean], i) => {
+      const back = i < 2;
+      const x = cx * w, half = hw * w;
+      const tipX = x + lean * w, tipY = h - ht * h;
+      const shoulderY = tipY + half * 1.3;
+      const sx = lean * w * 0.8;
+      const outline = (c) => {
+        c.moveTo(x - half, foot);
+        c.lineTo(x - half * 0.9 + sx, shoulderY);
+        c.lineTo(tipX, tipY);
+        c.lineTo(x + half * 0.9 + sx, shoulderY);
+        c.lineTo(x + half, foot);
+        c.closePath();
+      };
+      // The cold face first (the whole spike), then the lit half over it.
+      ctx.beginPath(); outline(ctx);
+      ctx.fillStyle = back ? '#8cc0e2' : '#a6d6f2';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x - half, foot);
+      ctx.lineTo(x - half * 0.9 + sx, shoulderY);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(x + sx * 0.5, foot);
+      ctx.closePath();
+      ctx.fillStyle = back ? '#c4e4f6' : '#e4f6ff';
+      ctx.fill();
+      // A white streak down the lit face, then the ridge and the contour.
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(x - half * 0.55 + sx * 0.6, foot - h * 0.08);
+      ctx.lineTo(x - half * 0.5 + sx * 0.9, shoulderY + h * 0.03);
+      ctx.lineTo(x - half * 0.3 + sx * 0.9, shoulderY + h * 0.05);
+      ctx.lineTo(x - half * 0.3 + sx * 0.6, foot - h * 0.08);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(70,120,160,0.5)';
+      ctx.lineWidth = lw * 0.7;
+      ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(x + sx * 0.5, foot); ctx.stroke();
+      ctx.beginPath(); outline(ctx);
+      ctx.strokeStyle = edge; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke();
+    });
+    // The drift they grow out of, over their feet.
+    ctx.beginPath();
+    ctx.moveTo(w * 0.02, h);
+    ctx.quadraticCurveTo(w * 0.1, h * 0.82, w * 0.3, h * 0.86);
+    ctx.quadraticCurveTo(w * 0.5, h * 0.8, w * 0.7, h * 0.86);
+    ctx.quadraticCurveTo(w * 0.92, h * 0.83, w * 0.98, h);
+    ctx.closePath();
+    ctx.fillStyle = '#f4faff';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(70,98,126,0.35)'; ctx.lineWidth = lw; ctx.stroke();
+    // Two glints on the tall spike.
+    ctx.fillStyle = '#ffffff';
+    for (const [gx, gy, r] of [[0.5, 0.12, 0.05], [0.34, 0.5, 0.035]]) {
+      const cx = gx * w, cy = gy * h, k = r * u;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - k); ctx.lineTo(cx + k * 0.25, cy - k * 0.25); ctx.lineTo(cx + k, cy);
+      ctx.lineTo(cx + k * 0.25, cy + k * 0.25); ctx.lineTo(cx, cy + k); ctx.lineTo(cx - k * 0.25, cy + k * 0.25);
+      ctx.lineTo(cx - k, cy); ctx.lineTo(cx - k * 0.25, cy - k * 0.25); ctx.closePath(); ctx.fill();
+    }
+  },
   crate(ctx, w, h) {
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
@@ -2790,6 +2963,149 @@ export const PROP_PAINTERS = {
     plain(ctx, '#fff', (c) => rr(c, w * 0.24, h * 0.02, w * 0.52, h * 0.34, w * 0.04)); // paper
     plain(ctx, '#e04848', (c) => rr(c, w * 0.14, h * 0.52, w * 0.24, h * 0.14, h * 0.06));
     plain(ctx, '#48e0c8', (c) => c.arc(w * 0.74, h * 0.6, w * 0.08, 0, Math.PI * 2));
+  },
+  // THE ROAD-WORKS ANIMALS — the neon cabinet's road hazards, in the cactus's place on
+  // its lane (the cabinet's `swaps`) and in the cactus's own 13x12 box. Tokyo fences its
+  // road works off with cheerful plastic animals on a yellow-and-black hazard foot; the
+  // panda is the regular, the frog and the monkey in his hard hat turn up now and then.
+  // All three were picked from the street-hazard bake-off (src/dev/neon-street-
+  // candidates.js: the panda on 24 Sep, then A1 and B3) and share one body — see
+  // roadworksAnimal above the table.
+  pandaBarrier(ctx, w, h) {
+    const white = '#f6f6f2';
+    const { cx, cy, s } = roadworksAnimal(ctx, w, h, {
+      body: white, belly: '#e2e2de',
+      ears: (x, y, k) => {
+        for (const dx of [-0.34, 0.34]) roadworksShape(ctx, '#2a2a30', roadworksOval(x + dx * k, y - 0.26 * k, 0.12 * k, 0.12 * k));
+      },
+    });
+    // Eye patches, eyes, nose.
+    ctx.fillStyle = '#2a2a30';
+    for (const dx of [-0.17, 0.17]) {
+      ctx.beginPath(); ctx.ellipse(cx + dx * s, cy - 0.02 * s, 0.1 * s, 0.08 * s, dx * 2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#ffffff';
+    for (const dx of [-0.17, 0.17]) {
+      ctx.beginPath(); ctx.arc(cx + dx * s, cy - 0.03 * s, 0.03 * s, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = ROADWORKS_INK;
+    ctx.beginPath(); ctx.ellipse(cx, cy + 0.1 * s, 0.05 * s, 0.035 * s, 0, 0, Math.PI * 2); ctx.fill();
+  },
+  // A1, the frog — kaeru, which also means "return home (safely)", the reason road
+  // works all over Japan put one out. Its "ears" are its eyes, bulging on top of the head.
+  frogBarrier(ctx, w, h) {
+    const green = '#48b84a';
+    const { cx, cy, s } = roadworksAnimal(ctx, w, h, {
+      body: green, belly: '#e8f8c8',
+      ears: (x, y, k) => {
+        for (const dx of [-0.24, 0.24]) {
+          roadworksShape(ctx, green, roadworksOval(x + dx * k, y - 0.3 * k, 0.15 * k, 0.13 * k));
+          roadworksShape(ctx, '#ffffff', roadworksOval(x + dx * k, y - 0.31 * k, 0.09 * k, 0.08 * k), 0.5);
+          ctx.fillStyle = ROADWORKS_INK;
+          ctx.beginPath(); ctx.arc(x + dx * k, y - 0.3 * k, 0.045 * k, 0, Math.PI * 2); ctx.fill();
+        }
+      },
+    });
+    // The wide frog grin, and pink cheeks.
+    ctx.strokeStyle = ROADWORKS_INK;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 0.02 * s, 0.26 * s, 0.12 * Math.PI, 0.88 * Math.PI);
+    ctx.stroke();
+    ctx.save();
+    ctx.fillStyle = '#ff8fb0';
+    ctx.globalAlpha *= 0.8;
+    for (const dx of [-0.32, 0.32]) {
+      ctx.beginPath(); ctx.ellipse(cx + dx * s, cy + 0.08 * s, 0.07 * s, 0.045 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  },
+  // B3, the monkey — saru — in a hard hat: the site foreman. Brown, with a pale face
+  // mask and round ears.
+  monkeyBarrier(ctx, w, h) {
+    const brown = '#a8642e', mask = '#f6d2a8';
+    const { cx, cy, s } = roadworksAnimal(ctx, w, h, {
+      body: brown, belly: mask,
+      ears: (x, y, k) => {
+        for (const dx of [-0.46, 0.46]) {
+          roadworksShape(ctx, brown, roadworksOval(x + dx * k, y, 0.14 * k, 0.14 * k));
+          roadworksShape(ctx, mask, roadworksOval(x + dx * k, y, 0.08 * k, 0.08 * k), 0.4);
+        }
+      },
+    });
+    roadworksShape(ctx, mask, roadworksOval(cx, cy + 0.03 * s, 0.32 * s, 0.25 * s), 0.6);
+    roadworksFace(ctx, cx, cy, s, '#ff7a8a', 0.14);
+    roadworksHardHat(ctx, cx, cy, s, 0.26);
+  },
+  // THE RAKE — Plumber Panic's slapstick hazard (Peter, 24 Sep, from the countryside
+  // ideas bake-off). A garden rake lying in the grass with its tines up on the side the
+  // hero comes from and its handle stretched away behind. Tread on it and the handle
+  // swings up and over INTO HIS FACE — THWACK — quivers, and topples back. Frame 0 is
+  // the rake lying still; the rest are the swing, stepped from the run's own clock
+  // (`swingT`, fired when a grounded hero is about to step on it) so the smack lands
+  // on the frame it happened. A jumping hero never sets it off.
+  rake(ctx, w, h, frame = 0) {
+    const P = RAKE_PAL;
+    const f = frame % RAKE_FRAMES;
+    const u = f === 0 ? -1 : ((f - 0.5) / (RAKE_FRAMES - 1)) * RAKE_SWING_T;
+    const a = rakeSwingAngle(u);
+    // The drawing's own units: tines centred on x 0, handle lying out to +x.
+    const s = Math.min(w / (RAKE_SPAN.left + RAKE_SPAN.right), h / RAKE_SPAN.top);
+    ctx.save();
+    ctx.translate(RAKE_SPAN.left * s, h);
+    ctx.scale(s, s);
+    const L = RAKE_SPAN.handle;
+    const py = -1.4;
+    const ex = Math.cos(a) * L, ey = py - Math.sin(a) * L;
+    const line = (color, lw, path) => {
+      ctx.beginPath(); path(ctx);
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+    };
+    const body = (fill, edge, lw, path) => {
+      ctx.beginPath(); path(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      if (edge) { ctx.strokeStyle = edge; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke(); }
+    };
+    // The handle, pivoting on the head.
+    {
+      const nx = -(ey - py), ny = ex, nl = Math.hypot(nx, ny) || 1;
+      const ox = (nx / nl) * 0.8, oy = (ny / nl) * 0.8;
+      body(P.wood, P.ink, 0.5, (c) => {
+        c.moveTo(ox, py + oy); c.lineTo(ex + ox, ey + oy); c.lineTo(ex - ox, ey - oy); c.lineTo(-ox, py - oy); c.closePath();
+      });
+      line(P.woodShade, 0.4, (c) => { c.moveTo(Math.cos(a) * 2, py + 0.2 - Math.sin(a) * 2); c.lineTo(ex, ey + 0.3); });
+    }
+    // The head: a steel bar with its teeth pointing up.
+    body(P.metal, P.metalDark, 0.4, (c) => rr(c, -4.8, -2.2, 9.6, 1.6, 0.5));
+    body(P.metalLight, null, 0, (c) => c.rect(-4.4, -2.1, 8.8, 0.5));
+    for (let i = 0; i < 7; i++) {
+      const tx = -4.2 + i * 1.4;
+      body(P.metal, P.metalDark, 0.25, (c) => { c.moveTo(tx - 0.45, -2); c.lineTo(tx, -5.4); c.lineTo(tx + 0.45, -2); c.closePath(); });
+    }
+    body(P.metalDark, null, 0, (c) => rr(c, -1, -2.6, 2, 1.2, 0.3));
+    // THWACK at the top of the swing, on the hero's side of the handle's end.
+    if (u > 0.08 && u < 0.34) {
+      const k = (u - 0.08) / 0.26;
+      ctx.save();
+      ctx.globalAlpha *= 1 - k * 0.6;
+      const sr = 3.4 + k * 2.4;
+      body(P.star, P.starEdge, 0.45, (c) => {
+        for (let i = 0; i < 16; i++) {
+          const aa = (i / 16) * Math.PI * 2 + 0.2, r = i % 2 ? sr * 0.45 : sr;
+          const px = ex - 2.5 + Math.cos(aa) * r, py2 = ey + 1.5 + Math.sin(aa) * r;
+          if (i) c.lineTo(px, py2); else c.moveTo(px, py2);
+        }
+        c.closePath();
+      });
+      ctx.restore();
+    }
+    // Wobble ticks either side of the handle while it quivers upright.
+    if (u > 0.12 && u < 0.62) {
+      for (const side of [-1, 1]) {
+        line('rgba(255,255,255,0.85)', 0.45, (c) => c.arc(0, py, L * 0.92, -a - 0.12 * side - 0.05, -a - 0.12 * side + 0.05));
+      }
+    }
+    ctx.restore();
   },
   // A bright orange traffic cone with two white reflective bands. Small
   // footprint (10×13) so it reads easily in clusters; the Speed Zone cabinet's
@@ -5092,6 +5408,7 @@ export const PROP_FRAMES = {
   // 15-degree steps. Four 45-degree steps strobed: the disc is a third of the
   // hero's height and every frame was a different drawing.
   eggshellCopter: 12,
+  rake: RAKE_FRAMES,
   ...ANIMAL_FRAMES,
   ...finishDogTable(ANIMAL_FRAMES),
   // Live and dead. Not an animation — the film cuts between them on one frame.
@@ -5144,6 +5461,7 @@ const PROP_FPS = {
   // The copter's rotor is normally driven off the song's beat (draw.js
   // copterFrame); this is the rate the strip runs at when no song is playing.
   eggshellCopter: 24,
+  rake: 1,
   ...ANIMAL_FPS,
   ...finishDogTable(ANIMAL_FPS),
   qcrate: 12, appliance: 24, buzzbird: 16,
@@ -5173,7 +5491,7 @@ export const PROP_TALL = {
   oxygenRack: 1.25,
   ...ANIMAL_TALL,
   ...finishDogTable(ANIMAL_TALL),
-  cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
+  cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4, iceCrystals: 1.5,
   // IDENTICAL to the cactus by design. A pattern swap that also changed the
   // overdraw would be a different jump wearing the same tier.
   thistle: 1.55, thistleBig: 1.4,
@@ -5194,6 +5512,9 @@ export const PROP_TALL = {
   downSign: 1.5,
   dogSign: 1.5,
   cactusGreen: 1.55, bearTrap: 1.35,
+  pandaBarrier: 1.5, frogBarrier: 1.5, monkeyBarrier: 1.5,
+  // The rake's box is the tines and the lying handle; its art stands up to meet you.
+  rake: 2.6,
   // Speed ramp candidates over the unchanged 14x4 boostPad box. This is the
   // entire proposal for three of the four: the pad cannot get wider without
   // lying about where the boost starts, so everything it gains it gains
@@ -5234,8 +5555,9 @@ const PROP_DETAIL_SCALE = {
   // range this table exists for: a spike's point, a barrel band and a spine are
   // all sub-pixel marks at single detail and survive as tone at double.
   popSpikes: 2, campfire: 2, fireBarrel: 2, brazier: 2, floorSaw: 2, bearTrap: 2, cactusGreen: 2,
+  pandaBarrier: 2, frogBarrier: 2, monkeyBarrier: 2,
   boomBarrier: 2,
-  snowman: 2, snowmanBig: 2,
+  snowman: 2, snowmanBig: 2, iceCrystals: 2,
   crate: 2, qcrate: 2, pipe: 2, switch: 2,
   zombieWalk: 2, icicle: 2,
   buzzbird: 2, drone: 2, shooterDrone: 2, droneEye: 2,
@@ -5347,7 +5669,7 @@ export function maxPropVisualScale() {
 const SELF_OUTLINED_PROPS = new Set([
   ...ANIMAL_NAMES,
   ...Object.keys(FINISH_DOG_ALIASES),
-  'cactus', 'cactusBig', 'snowman', 'snowmanBig',
+  'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'iceCrystals',
   // Standing hazards author heavy INK contours of their own. The
   // shared rim outside those would ring a flame in dark paint, which is the one
   // thing fire must never have.
@@ -5537,8 +5859,21 @@ export function propRimPair(name, w, h, color, axis, frame = 0) {
   return c;
 }
 
+// GLOW CAN BE SWITCHED OFF, scene-wide, for as long as a run asks: neon-1's golden
+// hour (Peter, 23 Sep: "we have a glow effect on LOTS of objects in this level, can
+// we turn this off until the lightning strike"). Off hands back an empty sprite, so
+// every caller's drawImage simply paints nothing. The run turns it back on when it
+// leaves, so no menu can inherit a day that was never theirs.
+let glowSpritesOn = true;
+let noGlow = null;
+export function setGlowSprites(on) { glowSpritesOn = !!on; }
+
 // Soft radial glow (for power capsules and other shiny things) — cached.
 export function glowSprite(color, r = 16) {
+  if (!glowSpritesOn) {
+    if (!noGlow) { noGlow = document.createElement('canvas'); noGlow.width = noGlow.height = 1; }
+    return noGlow;
+  }
   const key = `glow|${color}|${r}`;
   const hit = cacheGet(key);
   if (hit) return hit;

@@ -24,7 +24,18 @@ import { drawTextVectorCentered, pixelGlyph, textYForMid, textWidth } from '../s
 // What lies at the bottom of a hole, when the cabinet names one. A pack draws a
 // gap by not drawing; the fill is the other half of that bargain.
 import { drawPitFill } from '../../game/pitFill.js';
+import { neonBladeSign, NEON_SIGN_WORDS, NEON_BACK_SIGN_WORDS } from '../kana.js';
 import { terrainGroundY } from '../../game/terrain.js';
+import {
+  drawDesertPumpjacks, drawDesertSpeedTrap, drawDesertJet, drawDesertCoyote,
+  drawDesertDustDevil, drawDesertTumbleweed,
+} from './desertLandmarks.js';
+import {
+  drawPlumberBarn, drawPlumberWindmill, drawPlumberBalloon, drawPlumberSheep, drawPlumberPatchwork,
+} from './plumberLandmarks.js';
+import {
+  drawFrostChairLift, frostLiftX, FROST_LIFT_AT_PX, drawFrostReindeer, FROST_HERD_WINDOW,
+} from './frostLandmarks.js';
 
 import {
   PAPER_MATERIALS,
@@ -6574,6 +6585,70 @@ function drawShelfTexture(ctx, camX, cab, shelves, viewW = W, material = null) {
   ctx.restore();
 }
 
+// PLUMBER PANIC'S LANDMARKS AND FLOCKS (Peter, 24 Sep 2026, from the countryside ideas
+// bake-off; the art is stylePacks/plumberLandmarks.js).
+//
+// A DIFFERENT PLACE EACH LEVEL: plumber-1 passes the barn and silo near the start and
+// comes out into patchwork fields near the end; plumber-2 has two hot-air balloons drift
+// over; plumber-3 has the windmill on a hilltop halfway. The barn and the mill are pinned
+// to a point in the stage the way the volcano is, and stand on the near ridge's summit
+// nearest that point. THE SHEEP AND THEIR DOG ARE ON EVERY STAGE, a flock on about one
+// near summit in seventeen, never on the barn's or the mill's.
+const PLUMBER_BARN_AT_PX = 700;          // world px: near the start of plumber-1
+const PLUMBER_MILL_AT = 0.35;            // fraction of plumber-3 (the volcano owns 0.5)
+const PLUMBER_BALLOONS_AT = [0.22, 0.66];  // fractions of plumber-2
+const PLUMBER_BALLOON_FACTOR = 0.1;      // they drift across slower than the far range
+// Plumber-1's patchwork RISES into the country over this span — up from behind the near
+// hills, among the scenery that is already there (Peter, 24 Sep: not a fade) — by
+// PLUMBER_FIELDS_RISE px.
+const PLUMBER_FIELDS_IN = [0.7, 0.8];
+const PLUMBER_FIELDS_RISE = 60;
+let plumberNearSummitPx = null;
+function plumberNearSummit(period) {
+  if (plumberNearSummitPx != null) return plumberNearSummitPx;
+  let best = 0, bestY = Infinity;
+  for (let px = 0; px < period; px += 0.5) {
+    const y = ridgeProfile(px, 0, 34, PLUMBER_NEAR_TREE_WL, period, false, false, false);
+    if (y < bestY) { bestY = y; best = px; }
+  }
+  plumberNearSummitPx = best;
+  return best;
+}
+// `near(x)` is the near crest's y at screen x in the current coordinates; `nearTop` the
+// highest the crest reaches.
+function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, nearTop, paper, hill) {
+  const view = backgroundPaintCoverage(ctx);
+  const P = PLUMBER_NEAR_TREE_PERIOD;
+  const f = PLUMBER_NEAR_TREE_FACTOR * ZOOM;
+  const summit = plumberNearSummit(P);
+  const summitX = (k) => view.left - camX * f + k * P + summit;
+  // The summit tile that arrives mid-picture when the camera reaches atCam.
+  const tileAt = (atCam) => Math.round((atCam * f + W / 2 - summit) / P);
+  const staged = Number.isFinite(totalDist) && totalDist > 0;
+  const seat = { near, far: near };
+  let landmarkTile = null;
+  if (stageIndex === 1) {
+    const k = tileAt(PLUMBER_BARN_AT_PX);
+    landmarkTile = k;
+    const x = summitX(k);
+    if (!outsideView(ctx, x, 60)) drawPlumberBarn(ctx, t, x, seat, paper);
+  } else if (stageIndex === 3 && staged) {
+    const k = tileAt(totalDist * PLUMBER_MILL_AT);
+    landmarkTile = k;
+    const x = summitX(k);
+    if (!outsideView(ctx, x, 40)) drawPlumberWindmill(ctx, t, x, seat, paper, hill);
+  }
+  // The flock: every sixth-ish summit, chosen by hash, clear of the landmark's.
+  const first = Math.floor((camX * f - 100) / P) - 1;
+  for (let k = first; k <= first + Math.ceil((view.width + 200) / P) + 2; k++) {
+    if (landmarkTile != null && Math.abs(k - landmarkTile) <= 2) continue;
+    if (((k % 10) + 10) % 10 !== 3 || hashUnit(k * 7.31 + 2) > 0.6) continue;
+    const x = summitX(k);
+    if (!outsideView(ctx, x, 80)) drawPlumberSheep(ctx, t, x, seat, paper);
+  }
+}
+function hashUnit(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+
 function pixelPack(settings) {
   const requested = paperCutoutPreviewRequested(settings);
   const speedLimitValues = new Map();
@@ -6624,6 +6699,21 @@ function pixelPack(settings) {
         // fillRect costs nothing; coming up short costs the sky.
         ctx.fillRect(coverage.left - W, -PAN_MAX,
           coverage.width + W * 2, H + PAN_MAX * 2);
+        // AND THE WHOLE CANVAS, IN THE BASE FRAME.
+        //
+        // PAN_MAX of headroom is only enough for the crane. On a sky road the
+        // backdrop also takes climb * BG_FOLLOW, so bgShift runs past PAN_MAX
+        // and the shifted fill above stops short of the top of the screen.
+        // run.js skips its own sky prefill for the paper study, and the fibre
+        // sheet below IS pinned to the base frame — so that strip showed the
+        // fibre over bare canvas, which reads as TV static. A flat colour has
+        // no seam to worry about, so pin it where the fibre is pinned.
+        if (typeof ctx.setTransform === 'function' && ctx.canvas) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+          ctx.restore();
+        }
       } else skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber' && paperPreview) {
         // The fibre belongs to the sheet of sky, not to the camera move. Draw
@@ -6759,6 +6849,23 @@ function pixelPack(settings) {
         parallaxHills(ctx, camX, cab.far, farBaseY, 60, 90, 0.15);
       }
       ctx.restore();
+      // The near crest in these (untranslated) coordinates, for the countryside pieces.
+      const nearShift = sceneryOffset + plumberLandscapeOffset + backgroundY(backgroundContext, 'near');
+      const nearLeft = backgroundPaintCoverage(ctx).left;
+      const nearCrest = (x) => ridgeYAt(x, camX, nearBaseY, nearAmp, PLUMBER_NEAR_TREE_WL,
+        PLUMBER_NEAR_TREE_FACTOR, { coverageLeft: nearLeft }) + nearShift;
+      const nearTop = nearBaseY - nearAmp + nearShift;
+      const plumberStage = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
+      const plumberProgress = backgroundContext?.progress;
+      if (cab.id === 'plumber' && plumberStage === 1 && Number.isFinite(plumberProgress)) {
+        const [a0, a1] = PLUMBER_FIELDS_IN;
+        const k = Math.max(0, Math.min(1, (plumberProgress - a0) / (a1 - a0)));
+        if (k > 0) {
+          const up = k * k * (3 - 2 * k);
+          drawPlumberPatchwork(ctx, t, camX, { near: nearCrest, far: nearCrest }, paperPreview, 1,
+            { view: backgroundPaintCoverage(ctx), nearTop: nearTop + (1 - up) * PLUMBER_FIELDS_RISE });
+        }
+      }
       ctx.save();
       ctx.translate(0, sceneryOffset + plumberLandscapeOffset
         + backgroundY(backgroundContext, 'near'));
@@ -6773,6 +6880,19 @@ function pixelPack(settings) {
           paperStrengths.scenery);
       }
       ctx.restore();
+      if (cab.id === 'plumber') {
+        drawPlumberLife(ctx, t, camX, totalDist, plumberStage, plumberProgress,
+          nearCrest, nearTop, paperPreview, cab.hills);
+        // Plumber-2's two balloons, each crossing once, slower than the far range.
+        if (plumberStage === 2 && Number.isFinite(totalDist) && totalDist > 0) {
+          PLUMBER_BALLOONS_AT.forEach((at, i) => {
+            const x = viewCenterX(ctx) + (totalDist * at - camX) * PLUMBER_BALLOON_FACTOR * ZOOM;
+            if (outsideView(ctx, x, 30)) return;
+            const y = backgroundY(backgroundContext, 'clouds') + (i ? 58 : 44) + Math.sin(t * 0.4 + i * 2) * 4;
+            drawPlumberBalloon(ctx, t, x, y, { paper: paperPreview, phase: i * 3.7, variant: i });
+          });
+        }
+      }
       paintClouds();
     },
     // The texture over a staged exit, laid AFTER the terrain and the routes —
@@ -6811,6 +6931,152 @@ function pixelPack(settings) {
     },
     post() {},
   };
+}
+
+// SPEED ZONE'S LANDMARKS AND WILDLIFE (Peter, 24 Sep 2026, from the desert ideas
+// bake-off; the art is stylePacks/desertLandmarks.js).
+//
+// ONE LANDMARK A LEVEL, so the three stages are three places: speed-1 has the oil field,
+// speed-2 the villain's speed-trap billboard, speed-3 the jet going supersonic overhead.
+// Each is pinned to one point in its stage the way the butte is, and seated on the
+// summit of the range it stands on nearest that point, so it moves with that range and
+// never slides over the dunes under it.
+//
+// THE WILDLIFE IS EVERYWHERE, more than once a stage: a coyote on a bare near summit,
+// dust devils wandering the middle dunes, tumbleweeds bowling along the near crest on
+// the wind. Each is an infinite row in its range's own space — a coyote per chosen
+// tile, a tumbleweed every DESERT_WEED_SPACING px drifting right at DESERT_WEED_WIND —
+// so nothing ever pops in or out: an item is on screen exactly when its spot is.
+const DESERT_LANDMARK_BY_STAGE = { 1: 'pumpjacks', 2: 'speedTrap', 3: 'jet' };
+const DESERT_LANDMARK_AT = 0.45;      // fraction of the stage the landmark arrives at
+// ...except the speed trap, which is pinned to a DISTANCE: speed-2 is the chase stage and
+// Eggshell flies in two bars after the start, and Peter wants the police car seen before
+// he does (24 Sep). 320 world px puts the billboard on the right of the opening frame and
+// mid-picture about two seconds in.
+const DESERT_TRAP_AT_PX = 320;
+const DESERT_JET_PASS = 1600;         // world px of the run the jet's pass lasts
+const DESERT_WEED_SPACING = 640;      // near-layer px between tumbleweed slots
+const DESERT_WEED_WIND = 26;          // near-layer px/s the wind rolls them to the right
+const DESERT_PUMP_AT = 0.49;          // between DESERT_DUNES[0] and [2], so both rigs sit on summits
+const desertHash = (i) => {
+  const v = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return v - Math.floor(v);
+};
+// Screen x of a point at layer-space position L on a range scrolling at `factor`: the
+// same origin parallaxHills lays its first tile from (the coverage's left edge).
+function desertLayerX(view, camX, factor, L) {
+  return view.left - camX * factor * ZOOM + L;
+}
+// The index of the tile whose summit `at` arrives mid-picture when the camera reaches
+// atCam, optionally restricted to tiles where `keep(k)`.
+function desertTileAt(atCam, factor, period, at, keep = () => true) {
+  const k0 = Math.round((atCam * factor * ZOOM + W / 2 - at * period) / period);
+  for (let d = 0; d < 6; d++) {
+    if (keep(k0 + d)) return k0 + d;
+    if (keep(k0 - d)) return k0 - d;
+  }
+  return k0;
+}
+// Screen x of everything in the desert backdrop that moves on its own — the campfire
+// plumes, the horizon's dishes and turbines, and the coyotes — so a dust devil can keep
+// its distance. The plume and coyote rules are their painters' own, repeated here.
+function desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile) {
+  const xs = [];
+  const span = view.width * 4;
+  for (const d of DESERT_SMOKE_PLUMES) {
+    xs.push(view.left - 110 + (((d.x - camX * d.plx * ZOOM - t * d.drift) % span) + span) % span);
+  }
+  for (const p of desertHorizonPropPlacements(ctx, camX, GROUND_Y)) {
+    if (p.kind !== 'water') xs.push(p.x);
+  }
+  const travel = camX * nearF * ZOOM;
+  for (let k = Math.floor((travel - 60) / nearP); k <= Math.ceil((travel + view.width + 60) / nearP); k++) {
+    if (!bare(k) || desertHash(k + 3) > 0.5) continue;
+    if (trapTile != null && Math.abs(k - trapTile) <= 3) continue;
+    xs.push(desertLayerX(view, camX, nearF, k * nearP + summit0 * nearP));
+  }
+  return xs;
+}
+function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo') {
+  const view = backgroundPaintCoverage(ctx);
+  const nearP = Math.max(16, Math.round(Math.PI * DESERT_RIDGE.wl));
+  const midP = Math.max(16, Math.round(Math.PI * DESERT_MID.wl));
+  const nearF = DESERT_RIDGE.factor, midF = DESERT_MID.factor;
+  const summit0 = DESERT_DUNES[0].at;
+  // The pack leaves every third near summit-0 bare (desertCactusPlacements): the
+  // near-dune items stand only there, so none of them is planted through a saguaro.
+  const bare = (k) => ((k % 3) + 3) % 3 === 2;
+  const landmark = Number.isFinite(totalDist) && totalDist > 0
+    ? DESERT_LANDMARK_BY_STAGE[stageIndex] : null;
+  const atCam = !landmark ? 0 : landmark === 'speedTrap' ? DESERT_TRAP_AT_PX : totalDist * DESERT_LANDMARK_AT;
+  // Not held to a bare summit: pinned near the start, the nearest bare one can be a whole
+  // tile past the opening frame. The lot's berm covers a saguaro on its summit.
+  const trapTile = landmark === 'speedTrap' ? desertTileAt(atCam, nearF, nearP, summit0) : null;
+
+  if (landmark === 'pumpjacks') {
+    const k = desertTileAt(atCam, midF, midP, DESERT_PUMP_AT);
+    const x = desertLayerX(view, camX, midF, k * midP + DESERT_PUMP_AT * midP);
+    if (!outsideView(ctx, x, 300)) drawDesertPumpjacks(ctx, t, x, seat);
+  }
+  // Dust devils: on fewer than half the middle tiles, wandering a little, and kept clear
+  // of everything else that moves back here (Peter, 24 Sep: "less dust devils and make
+  // sure they are not near the smoke... not near other moving objects"). The oil field
+  // shares their range, so a devil on its tiles is simply not dealt; the smoke, the
+  // horizon's dishes and turbines and the coyotes scroll at other rates, so a devil
+  // that one of them passes fades out and back rather than popping.
+  {
+    const travel = camX * midF * ZOOM;
+    const pumpTile = landmark === 'pumpjacks' ? desertTileAt(atCam, midF, midP, DESERT_PUMP_AT) : null;
+    const busy = desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile);
+    for (let k = Math.floor((travel - 120) / midP); k <= Math.ceil((travel + view.width + 120) / midP); k++) {
+      if (desertHash(k + 7) > 0.42) continue;
+      if (pumpTile != null && Math.abs(k - pumpTile) <= 1) continue;
+      const L = k * midP + 0.33 * midP + 30 * Math.sin(t * 0.15 + k);
+      const x = desertLayerX(view, camX, midF, L);
+      if (outsideView(ctx, x, 60)) continue;
+      let near = Infinity;
+      // Measured from the middle of its lean (it tilts ~45px right at the top).
+      for (const bx of busy) near = Math.min(near, Math.abs(bx - (x + 20)));
+      const clear = Math.max(0, Math.min(1, (near - 110) / 60));
+      if (clear <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha *= clear * clear * (3 - 2 * clear);
+      drawDesertDustDevil(ctx, t, x, seat);
+      ctx.restore();
+    }
+  }
+  if (landmark === 'speedTrap') {
+    const x = desertLayerX(view, camX, nearF, trapTile * nearP + summit0 * nearP);
+    if (!outsideView(ctx, x, 100)) drawDesertSpeedTrap(ctx, t, x, seat, heroId);   // ink x-90..x+75
+  }
+  // Coyotes: on about half the bare summits, never next to the speed trap.
+  {
+    const travel = camX * nearF * ZOOM;
+    for (let k = Math.floor((travel - 60) / nearP); k <= Math.ceil((travel + view.width + 60) / nearP); k++) {
+      if (!bare(k) || desertHash(k + 3) > 0.5) continue;
+      if (trapTile != null && Math.abs(k - trapTile) <= 3) continue;
+      const x = desertLayerX(view, camX, nearF, k * nearP + summit0 * nearP);
+      if (!outsideView(ctx, x, 40)) drawDesertCoyote(ctx, t, x, seat);
+    }
+  }
+  // Tumbleweeds: a slot every DESERT_WEED_SPACING, three in five filled, all rolling
+  // right on the wind.
+  {
+    const travel = camX * nearF * ZOOM;
+    const drift = DESERT_WEED_WIND * t;
+    for (let k = Math.floor((travel - drift - 40) / DESERT_WEED_SPACING);
+      k <= Math.ceil((travel - drift + view.width + 40) / DESERT_WEED_SPACING); k++) {
+      if (desertHash(k + 13) > 0.6) continue;
+      const L = k * DESERT_WEED_SPACING + drift;
+      const x = desertLayerX(view, camX, nearF, L);
+      if (outsideView(ctx, x, 30)) continue;
+      drawDesertTumbleweed(ctx, t, x, seat, Math.floor(desertHash(k + 29) * 3), L);
+    }
+  }
+  if (landmark === 'jet') {
+    const k = (camX - atCam) / DESERT_JET_PASS;
+    if (k >= 0 && k < 1) drawDesertJet(ctx, k, view.left - 40, view.right + 40, jetY);
+  }
 }
 
 function faux3dPack(settings) {
@@ -6982,6 +7248,20 @@ function faux3dPack(settings) {
           { dunes: true, paper: paperPreview, paperMaterial: paperPreset,
             paperStrength: paperStrengths.scenery });
         ctx.restore();
+        // The stage's landmark and the desert's wildlife, after the near dunes (the
+        // painters clip themselves behind every nearer crest) and before the roadside
+        // signs, which stand in front of everything back here.
+        drawDesertLife(ctx, t, camX, totalDist, backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1, {
+          far: (x) => ridgeYAt(x, camX, farBaseY, farAmp, DESERT_FAR.wl, DESERT_FAR.factor,
+            { mesa: true, coverageLeft: backgroundPaintCoverage(ctx).left })
+            + backSceneryOffset + backgroundY(backgroundContext, 'far'),
+          mid: (x) => ridgeYAt(x, camX, middleBaseY, DESERT_MID.amp, DESERT_MID.wl, DESERT_MID.factor,
+            { dunes: true, coverageLeft: backgroundPaintCoverage(ctx).left })
+            + backSceneryOffset + backgroundY(backgroundContext, 'middle'),
+          near: (x) => ridgeYAt(x, camX, nearBaseY, DESERT_RIDGE.amp, DESERT_RIDGE.wl, DESERT_RIDGE.factor,
+            { dunes: true, coverageLeft: backgroundPaintCoverage(ctx).left })
+            + sceneryOffset + backgroundY(backgroundContext, 'near'),
+        }, 104 + backgroundY(backgroundContext, 'clouds'), backgroundContext?.heroId);
         // Roadside signs are a very-near background plane: they sit above the
         // road shoulder, in front of the near dunes, but still behind every
         // gameplay actor and obstacle drawn after the background pass.
@@ -7162,10 +7442,15 @@ function neonHash(i) {
 // A NEON LINE IS TWO STROKES: a wide, faint one for the light the tube throws,
 // and a thin bright one for the glass. Cheaper than a shadowBlur, and the same
 // idea as the prop bloom — light around the art, not a halo on a box.
+// The tubes' halo, scene-wide — off in neon-1's golden hour (see setGlowSprites).
+let neonGlowScale = 1;
+export function setNeonGlow(k) { neonGlowScale = Math.max(0, Math.min(1, Number(k) || 0)); }
+
 function neonTube(ctx, color, width, glow, draw) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = color;
+  glow *= neonGlowScale;
   if (glow > 0) {
     const a = ctx.globalAlpha;
     ctx.globalAlpha = a * glow;
@@ -7175,6 +7460,81 @@ function neonTube(ctx, color, width, glow, draw) {
   }
   ctx.lineWidth = width;
   ctx.beginPath(); draw(ctx); ctx.stroke();
+}
+
+// TOKYO TOWER, on neon-2 and neon-3 (Peter, 24 Sep, from the Tokyo ideas bake-off). One
+// landmark a level, pinned to a point in it the way the desert's butte is: it stands
+// behind the far city, crosses the skyline slowly at a far layer's rate, and holds the
+// picture for about half the stage. Drawn as the city's own tubes — orange-and-white
+// lattice legs braced in X panels, the two observation decks lit, the antenna's lamp
+// blinking — and its height comes from the far row's roofline so a portrait crane
+// keeps it standing over that skyline.
+const NEON_TOWER_AT = 0.5;          // where in the stage it is centred (fraction of totalDist)
+const NEON_TOWER_FACTOR = 0.05;     // parallax, below the far mass's 0.07
+const NEON_TOWER_ORANGE = '#ff6a3c';
+const NEON_TOWER_WHITE = '#fff0e6';
+function neonTokyoTower(ctx, t, camX, atCam, height) {
+  const cx = viewCenterX(ctx) + (atCam - camX) * NEON_TOWER_FACTOR * ZOOM;
+  const foot = height * 0.2;
+  if (outsideView(ctx, cx, foot + 12)) return;
+  const base = GROUND_Y;
+  const top = base - height;
+  const antenna = height * 0.2;
+  const trunkTop = top + antenna;               // where the lattice ends and the mast begins
+  const halfAt = (y) => {
+    // Legs flare out toward the ground: a steep taper high up, splaying at the foot.
+    const k = (base - y) / (base - trunkTop);   // 0 at the ground, 1 at the mast
+    return 2 + (foot - 2) * Math.pow(1 - k, 2.2);
+  };
+  const deck1 = base - (base - trunkTop) * 0.42;
+  const deck2 = base - (base - trunkTop) * 0.78;
+  ctx.save();
+  // The legs.
+  neonTube(ctx, NEON_TOWER_ORANGE, 1.2, 0.3, (c) => {
+    for (const side of [-1, 1]) {
+      c.moveTo(cx + side * halfAt(base), base);
+      for (let y = base; y >= trunkTop; y -= 4) c.lineTo(cx + side * halfAt(y), y);
+      c.lineTo(cx + side * halfAt(trunkTop), trunkTop);
+    }
+  });
+  // X-bracing between the legs, in panels that shorten as the tower narrows; the
+  // panels alternate orange and white, as the real paint does in bands.
+  const panels = [];
+  for (let y = base, h = height * 0.075; y > trunkTop + 3; y -= h, h = Math.max(4, h * 0.9)) panels.push([y, Math.max(trunkTop, y - h)]);
+  panels.forEach(([y0, y1], i) => {
+    const color = Math.floor(i / 2) % 2 ? NEON_TOWER_WHITE : NEON_TOWER_ORANGE;
+    neonTube(ctx, color, 0.6, 0.18, (c) => {
+      const a = halfAt(y0), b = halfAt(y1);
+      c.moveTo(cx - a, y0); c.lineTo(cx + b, y1);
+      c.moveTo(cx + a, y0); c.lineTo(cx - b, y1);
+      c.moveTo(cx - b, y1); c.lineTo(cx + b, y1);
+    });
+  });
+  // The arch between the feet.
+  neonTube(ctx, NEON_TOWER_ORANGE, 0.8, 0.2, (c) => {
+    c.moveTo(cx - foot * 0.7, base); c.quadraticCurveTo(cx, base - foot * 0.9, cx + foot * 0.7, base);
+  });
+  // The two observation decks: a lit band of windows in a white frame.
+  for (const [y, w, h] of [[deck1, halfAt(deck1) + 5, 6], [deck2, halfAt(deck2) + 3, 4]]) {
+    ctx.fillStyle = 'rgba(20,16,40,0.9)';
+    ctx.fillRect(cx - w, y - h, w * 2, h);
+    ctx.fillStyle = '#ffd58a';
+    for (let x = cx - w + 1.5; x < cx + w - 1.5; x += 2.5) ctx.fillRect(x, y - h + 1.5, 1.4, h - 3);
+    neonTube(ctx, NEON_TOWER_WHITE, 0.7, 0.3, (c) => c.rect(cx - w, y - h, w * 2, h));
+  }
+  // The mast, in bands, and its lamp: a slow blink, bright on and a long dark.
+  neonTube(ctx, NEON_TOWER_WHITE, 1, 0.25, (c) => { c.moveTo(cx, trunkTop); c.lineTo(cx, top); });
+  for (let i = 0; i < 3; i++) {
+    const y = trunkTop - (i + 0.5) * antenna / 3;
+    neonTube(ctx, NEON_TOWER_ORANGE, 1.6, 0.15, (c) => { c.moveTo(cx, y - 2); c.lineTo(cx, y + 2); });
+  }
+  if ((t % 1.6) < 0.5) {
+    ctx.fillStyle = '#ff3b3b';
+    ctx.beginPath(); ctx.arc(cx, top, 1.4, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha *= 0.35 * neonGlowScale;
+    ctx.beginPath(); ctx.arc(cx, top, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function neonRectPath(x, y, w, h) {
@@ -7258,7 +7618,12 @@ const NEON_STREAK_AREA = 244;
 // thin the road toward the bottom of the frame for nothing — so landscape fills
 // to the last pixel and portrait gets the falloff.
 const NEON_STREAK_FADE_FROM = 0.55;
-export function drawNeonSpeedStreaks(ctx, { camX = 0, viewW = W / ZOOM, zoom = ZOOM } = {}) {
+// IN THE DAY the road is paint, not light (Peter, 24 Sep: "the ground markings pre
+// transition should be different colours too... or perhaps they are not as animated
+// yet"): warm white and gold dashes, at half the rate and dimmer, so the road is calm
+// until the strike — and then it lights up magenta and cyan and gets its speed back.
+const NEON_DAY_STREAK_INK = ['255,246,224', '255,236,200', '255,207,90'];
+export function drawNeonSpeedStreaks(ctx, { camX = 0, viewW = W / ZOOM, zoom = ZOOM, day = false } = {}) {
   // The wrap span runs past the right edge so a streak enters from off-picture
   // rather than appearing at it.
   const span = Math.max(80, viewW) + 120;
@@ -7273,11 +7638,11 @@ export function drawNeonSpeedStreaks(ctx, { camX = 0, viewW = W / ZOOM, zoom = Z
   const clipped = apron > NEON_STREAK_BAND + 0.5;
   const count = Math.max(9, Math.round((span * band) / NEON_STREAK_AREA));
   for (let r = 0; r < NEON_STREAK_RATES.length; r++) {
-    const rate = NEON_STREAK_RATES[r];
+    const rate = NEON_STREAK_RATES[r] * (day ? 0.5 : 1);
     // The fastest rate is the magenta one: the thing overtaking you is the
     // thing that gets the second tube.
-    const ink = r === 2 ? '232,56,248' : '56,216,248';
-    const alpha = NEON_STREAK_ALPHA[r];
+    const ink = day ? NEON_DAY_STREAK_INK[r] : (r === 2 ? '232,56,248' : '56,216,248');
+    const alpha = NEON_STREAK_ALPHA[r] * (day ? 0.8 : 1);
     const len = 10 + r * 16;
     for (let i = r; i < count; i += NEON_STREAK_RATES.length) {
       const u = neonHash(i * 3 + 11);
@@ -7552,11 +7917,17 @@ function neonWireRow(ctx, shift, t, {
   seed = 7, span = 78, count = 10, minH = 60, maxH = 132, w = 34,
   stroke = 1, glow = 0.14, alpha = 1, windows = true, masts = true,
   inkA = NEON_MAGENTA, inkB = NEON_CYAN, lit = NEON_AMBER, lamp = NEON_LAMP,
+  onTower = null,
 } = {}) {
   if (alpha <= 0) return;
+  // The row repeats every `period` of shift; which repeat a tower is in is what makes
+  // it a particular building along the street rather than tower i of every block —
+  // see neonBladeSigns, which hangs a sign on one building in every other repeat.
+  const period = backgroundPaintCoverage(ctx).width + 90 * 2;
   for (let i = 0; i < count; i++) {
     const r = neonHash(seed + i);
-    const x = Math.round(wrapIntoView(ctx, i * span - shift, 90));
+    const raw = i * span - shift;
+    const x = Math.round(wrapIntoView(ctx, raw, 90));
     const bw = Math.round(w * (0.7 + neonHash(seed + i + 17) * 0.6));
     const h = minH + r * (maxH - minH);
     const top = Math.round(GROUND_Y - h);
@@ -7602,8 +7973,50 @@ function neonWireRow(ctx, shift, t, {
       ctx.fillStyle = lamp;
       ctx.fillRect(x + bw / 2 - 1, top - 15, 2, 2);
     }
+    if (onTower) {
+      ctx.globalAlpha = 1;
+      onTower({ x, top, bw, i, block: Math.floor(raw / period), ink });
+    }
   }
   ctx.globalAlpha = 1;
+}
+
+// BLADE SIGNS, hung off SOME of the near towers (Peter, 23 Sep: "on SOME buildings
+// (not all though) and no more than one on screen at a time ideally... spread them
+// right out"). One building in every SECOND repeat of the row carries one. A repeat is
+// the whole painted width plus its margins, so two signs are always more than a full
+// screen apart — in portrait too, whose repeat is its own narrower width.
+//
+// Scenery only: it sits behind the smog veil with the city and asks nothing of the
+// player. The words rotate — いそげ (hurry), しぶや (Shibuya), がんばれ (you can do
+// it), やまのて (Yamanote) — by which block it is. `lit` below 1 is the golden hour:
+// signs are on in the day but their tubes are pale against the sun.
+//
+// THE BACK ROW carries them too, smaller and dimmer, saying what a street's shop signs
+// say — see NEON_BACK_SIGN_WORDS. AT MOST ONE OF EACH ON SCREEN (Peter, 24 Sep: "one
+// front and one back at any given point... don't want 3 at once"): each row hangs its
+// sign on the SAME building in every repeat of the row, so two signs in one row are
+// always exactly one repeat apart — and a repeat is the whole painted width plus its
+// margins, wider than any screen. Every repeat, rather than every other, so there is
+// nearly always one of each in view; only the word changes from one to the next.
+function neonBladeSigns(ctx, {
+  lit = 1, words = NEON_SIGN_WORDS, scale = 1, dim = 1, tower = 3,
+} = {}) {
+  return ({ x, top, bw, i, block, ink }) => {
+    if (i !== tower) return;
+    const word = words[((block % words.length) + words.length) % words.length];
+    const sign = neonBladeSign(word, ink);
+    if (!sign) return;
+    ctx.globalAlpha = lit * dim;
+    // Off the tower's right shoulder, a little down from the roof, on a bracket.
+    const sx = x + bw + 3 * scale;
+    const sy = top + 10 * scale;
+    ctx.fillStyle = ink;
+    ctx.fillRect(x + bw, sy + 4 * scale, 3 * scale, 1);
+    const pad = sign.pad * scale;
+    ctx.drawImage(sign.canvas, sx - pad, sy - pad, sign.w * scale, sign.h * scale);
+    ctx.globalAlpha = 1;
+  };
 }
 
 // Layer 6. The smog, in front of the city and behind everything the player
@@ -7889,10 +8302,16 @@ const NEON_RAIL_RISE = 33;
 // `at` is stage progress (distance / totalDist) and `over` is how much progress
 // the fade takes. They are smoothstepped, so no layer ever snaps on — the whole
 // point is that nobody can name the frame a row of towers appeared.
+//
+// SOONER AND QUICKER since the song turns early (Peter, 24 Sep: "it can start just
+// before the transition and proceed a bit quicker so that it is mostly done by the
+// time we get onto the first train"). The minor turn lands about a tenth of the way
+// in, and the first train that stands for the hero is at 0.30 — so the back mass
+// starts just ahead of the turn and the near row is up by 0.27.
 const NEON_CITY_ARRIVALS = [
-  { key: 'farMass', at: 0.17, over: 0.13 },
-  { key: 'midWire', at: 0.38, over: 0.14 },
-  { key: 'nearWire', at: 0.60, over: 0.14 },
+  { key: 'farMass', at: 0.07, over: 0.08 },
+  { key: 'midWire', at: 0.12, over: 0.08 },
+  { key: 'nearWire', at: 0.19, over: 0.08 },
 ];
 
 // How far in each of the three city layers is, 0..1. Exported for the gallery
@@ -7911,6 +8330,212 @@ export function neonCityReveal(stageIndex, progress) {
   return out;
 }
 
+// ------------------------------------------------------------ NEON MOODS
+// The same city in another light, through the bg() mood seam below. neon-1 opens in
+// GOLDEN HOUR and turns to NIGHT when the song does; the night later grows an AURORA.
+// The when is src/engine/stylePacks/neonMoods.js; this is the what. Approved in the
+// neon-mood bake-off, 23 Sep 2026, with the rays taken all the way round.
+
+// Golden hour's sun: low on the left, just over the far skyline, with its rays
+// radiating the WHOLE circle (Peter: "sun rays to extend ALL the way around") and
+// turning about once a minute so the sky breathes without flickering. One path, one
+// radial fade, drawn additively: every ray is lightest at the sun and gone well
+// before it could wash out the hazard band.
+// SUNSET: the disc's centre sits a touch BELOW the horizon line (Peter, 23 Sep: "can
+// the center of the sun be at the horizon (or even slightly lower) it IS sunset"), so
+// the far city cuts through it and only the top of it is ever whole. The rays turn a
+// little faster than they did and each one breathes on its own slow cycle, so the
+// fan is visibly alive without strobing.
+const goldenGradients = new WeakMap();
+function neonGoldenSky(ctx, t, camX = 0, context = null) {
+  const cov = backgroundCoverage(ctx);
+  const x = cov.left + cov.width * 0.2;
+  const y = GROUND_Y + 6;
+  const reach = Math.max(cov.width, 480) * 1.2;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const turn = t * 0.07;          // a full turn in about ninety seconds (Peter, 24 Sep: slower)
+  ctx.beginPath();
+  const RAYS = 24;
+  for (let i = 0; i < RAYS; i++) {
+    const a = turn + (i / RAYS) * Math.PI * 2;
+    const breathe = 1 + 0.35 * Math.sin(t * 0.35 + i * 1.7);
+    const half = (i % 2 ? 0.022 : 0.045) * breathe;
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a - half) * reach, y + Math.sin(a - half) * reach);
+    ctx.lineTo(x + Math.cos(a + half) * reach, y + Math.sin(a + half) * reach);
+    ctx.closePath();
+  }
+  // The two gradients are built once per context and sun position, not per frame —
+  // `addColorStop` showed in the gameplay profile (docs/NEON_AUDIO_HANDOVER.md §3).
+  const r = 26;
+  const key = `${Math.round(x)}|${Math.round(y)}|${Math.round(reach)}`;
+  let grads = goldenGradients.get(ctx);
+  if (!grads || grads.key !== key) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, reach * 0.7);
+    g.addColorStop(0, 'rgba(255,240,192,0.34)');
+    g.addColorStop(0.35, 'rgba(255,224,160,0.12)');
+    g.addColorStop(1, 'rgba(255,224,160,0)');
+    const bloom = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+    bloom.addColorStop(0, 'rgba(255,250,210,1)');
+    bloom.addColorStop(0.25, 'rgba(255,200,120,0.4)');
+    bloom.addColorStop(1, 'rgba(255,200,120,0)');
+    grads = { key, g, bloom };
+    goldenGradients.set(ctx, grads);
+  }
+  ctx.fillStyle = grads.g;
+  ctx.fill();
+  // The disc and its bloom.
+  ctx.fillStyle = grads.bloom;
+  ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
+  ctx.restore();
+  neonFuji(ctx, cov, context?.progress);
+}
+
+// MOUNT FUJI behind the city in neon-1's golden hour, and only then (Peter, 24 Sep, from
+// the Tokyo ideas bake-off: "a bit smaller and only in the day part of level 1", and "make
+// sure fuji is at ground level"). It is part of the golden mood's sky, so the strike that
+// turns the day to night takes it with the sun. At infinity like the sun: pinned to the
+// picture, not the camera, right of the sun so the rays fan out beside it. Its foot is on
+// the groundline — the haze and the city bury it, as they bury every tower's — and it is
+// the bake-off's mountain extended to the ground at 0.78 scale, which still lifts the
+// snowcap clear of the tallest far roofs. The cap's ragged lower edge is what says Fuji.
+// AND THE RUN LEAVES IT BEHIND (Peter, 24 Sep: "we are going away from it so ideally it
+// should be faded before the buildings fully appear"): it fades over `fade` of the
+// stage, gone before the near row finishes arriving (NEON_CITY_ARRIVALS, full by ~0.27).
+// No progress — a gallery card — is the start of the stage.
+const NEON_FUJI = {
+  at: 0.62, scale: 0.78, rock: '#3a2f6e', rockAlpha: 0.55, snow: '#f0f4ff', snowAlpha: 0.55,
+  fade: [0.03, 0.2],
+};
+export function neonFujiAlpha(progress) {
+  const [a, b] = NEON_FUJI.fade;
+  const p = Number.isFinite(progress) ? progress : 0;
+  const k = Math.max(0, Math.min(1, (p - a) / (b - a)));
+  return 1 - k * k * (3 - 2 * k);
+}
+function neonFuji(ctx, cov, progress) {
+  const fade = neonFujiAlpha(progress);
+  if (fade <= 0) return;
+  const cx = cov.left + cov.width * NEON_FUJI.at;
+  const k = NEON_FUJI.scale;
+  const base = GROUND_Y;
+  const peak = base - 162 * k;
+  const half = 365 * k;
+  const cap = 34 * k;
+  ctx.save();
+  ctx.globalAlpha *= NEON_FUJI.rockAlpha * fade;
+  ctx.fillStyle = NEON_FUJI.rock;
+  ctx.beginPath();
+  ctx.moveTo(cx - half, base); ctx.lineTo(cx - cap, peak); ctx.lineTo(cx + cap, peak); ctx.lineTo(cx + half, base);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = NEON_FUJI.snow;
+  ctx.beginPath();
+  ctx.moveTo(cx - cap, peak); ctx.lineTo(cx + cap, peak); ctx.lineTo(cx + 62 * k, peak + 32 * k);
+  for (let i = 0; i <= 6; i++) ctx.lineTo(cx + (62 - i * 20.6) * k, peak + (32 + (i % 2 ? 8 : 0)) * k);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+export const NEON_GOLDEN_MOOD = Object.freeze({
+  id: 'golden',
+  sky: ['#ff9a6b', '#ffe0a0'],
+  skyExtra: neonGoldenSky,
+  skyLayer: 'far',
+  stars: 0,
+  moon: false,
+  haze: { color: '#fff0c0', alpha: 0.35 },
+  mass: { fill: '#b8606e', crown: '#fff4c0', crownAlpha: 0.8 },
+  wire: { inkA: '#ffffff', inkB: '#ffcf5a', lit: '#ffffff', lamp: '#ff5a7a' },
+  veil: { tint: '#ffc08a', alpha: 0.5 },
+  signs: 0.45,
+});
+
+// THE AURORA: three additive curtains — mint, ice, violet — rippling on slow sines.
+// Painted to a small offscreen canvas at ~15fps and blitted each frame: it is soft,
+// it moves slowly, and five hundred gradient columns a frame is not a price the
+// background pays for a sky.
+// TALL, reaching the top of the frame (Peter, 23 Sep: "should reach the moon — even
+// the top of the screen"). A real curtain is brightest along its LOWER edge and fades
+// as it climbs, so each band is anchored at its base and rises the full height of the
+// sky; the base ripples, and the height breathes, on their own slow sines.
+// [colour, base as a fraction of H, alpha, height as a fraction of H]
+// Bases lifted clear of the skyline (Peter, 24 Sep: "can the bottom of the borealis
+// also move up?"): the curtains hang in the upper sky and stop well above the towers.
+const AURORA_BANDS = [
+  ['#3bf5c8', 0.27, 0.2, 0.85],
+  ['#7ab8ff', 0.33, 0.13, 0.95],
+  ['#b07cff', 0.22, 0.1, 0.75],
+];
+// The canvas reaches this far ABOVE the frame, for portrait's taller sky.
+const AURORA_ABOVE = 0.6;
+let auroraCanvas = null;
+let auroraKey = '';
+function neonAurora(ctx, t, strength) {
+  if (!(strength > 0) || typeof document === 'undefined') return;
+  const cov = backgroundPaintCoverage(ctx);
+  const top = -H * AURORA_ABOVE;
+  const w = Math.ceil(cov.width / 2);
+  const h = Math.ceil((H - top) / 2);
+  const frame = Math.floor(t * 15);
+  const key = `${w}x${h}|${frame}`;
+  if (key !== auroraKey) {
+    if (!auroraCanvas || auroraCanvas.width !== w || auroraCanvas.height !== h) {
+      auroraCanvas = document.createElement('canvas');
+      auroraCanvas.width = w;
+      auroraCanvas.height = h;
+    }
+    const g = auroraCanvas.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, w, h);
+    g.scale(0.5, 0.5);
+    g.translate(0, -top);
+    g.globalCompositeOperation = 'lighter';
+    const tt = frame / 15;
+    for (const [col, fb, alpha, fh] of AURORA_BANDS) {
+      // Unit gradient: bright at the base (y 1), gone at the top (y 0).
+      const grad = g.createLinearGradient(0, 0, 0, 1);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.72, col);
+      grad.addColorStop(0.9, col);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.globalAlpha = alpha;
+      for (let x = 0; x < cov.width; x += 4) {
+        const wx = x + cov.left;
+        const base = H * fb + Math.sin(wx * 0.018 + tt * 0.35 + fb * 9) * 16 + Math.sin(wx * 0.05 + tt * 0.2) * 6;
+        const ch = H * fh * (0.8 + 0.2 * Math.sin(wx * 0.021 + tt * 0.45 + fh * 5));
+        g.save();
+        g.translate(x, base - ch);
+        g.scale(1, ch);
+        g.fillRect(0, 0, 4, 1);
+        g.restore();
+      }
+    }
+    auroraKey = key;
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = Math.min(1, strength);
+  ctx.drawImage(auroraCanvas, cov.left, top, cov.width, h * 2);
+  ctx.restore();
+}
+
+// Night is the night that ships — its own sky, moon, inks and smog — plus the aurora
+// at whatever strength the level has reached. At nothing, it is no mood at all, and
+// the pack paints exactly what it always has.
+const nightMoods = new Map();
+export function neonNightMood(aurora = 0) {
+  const k = Math.round(Math.max(0, Math.min(1, aurora)) * 40) / 40;
+  if (k <= 0) return null;
+  let m = nightMoods.get(k);
+  if (!m) {
+    m = Object.freeze({ id: 'night', skyExtra: (ctx, t) => neonAurora(ctx, t, k) });
+    nightMoods.set(k, m);
+  }
+  return m;
+}
+
 function neonPack(settings) {
   // What bg() leaves for ground(); see the note at the latch below.
   let neonFrame = null;
@@ -7927,16 +8552,16 @@ function neonPack(settings) {
         stageIndex: backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1,
         progress: backgroundContext?.progress ?? scene?.progress,
         totalDist,
+        // The road is painted in the day's colours while the city is (see ground).
+        day: (backgroundContext?.neonMood ?? scene?.neonMood)?.id === 'golden',
       };
       // THE MOOD SEAM. An optional palette-and-hooks object that repaints the same
-      // city in another light — the bake-off for a MAJOR-KEY opening that the song's
-      // turn to minor would convert into this night (src/dev/neon-mood-candidates.js).
-      // Absent, every value below falls back to exactly what ships, so a run that
-      // never sets one paints the night it always has.
+      // city in another light: neon-1's golden hour, and the aurora over the night
+      // (NEON MOODS, above). Absent, every value below falls back to the plain night,
+      // which is what a gallery card or a run that never sets one paints.
       const mood = backgroundContext?.neonMood ?? scene?.neonMood ?? null;
       const sky = mood?.sky || cab.sky;
       skyGrad(ctx, sky[0], sky[1]);
-      if (mood?.skyExtra) mood.skyExtra(ctx, t, camX, backgroundContext);
       // Six layers, back to front, each at its own fraction of the camera. The
       // factor is scaled by ZOOM because the camera magnifies the FOREGROUND:
       // a parallax factor that is not scaled by the same amount leaves the
@@ -7957,6 +8582,13 @@ function neonPack(settings) {
       const farRoofs = neonRowRoofs(backgroundContext, 'farLandmark', 46, 92);
       const midRoofs = neonRowRoofs(backgroundContext, 'middle', 58, 112);
       const nearRoofs = neonRowRoofs(backgroundContext, 'near', 84, 158);
+      // The mood's sky — golden hour's sun, the night's aurora — rides the celestial
+      // band like the moon, so a portrait crane moves it with the sky it is in.
+      // The golden sun sits ON the horizon, so it rides the far city's band ('far');
+      // the aurora is sky and rides the moon's ('celestial').
+      if (mood?.skyExtra) {
+        layer(mood.skyLayer || 'celestial', 0, () => mood.skyExtra(ctx, t, camX, backgroundContext));
+      }
       const starAlpha = mood?.stars ?? 1;
       if (starAlpha > 0) {
         layer('stars', 0.014, (shift) => {
@@ -7970,6 +8602,11 @@ function neonPack(settings) {
       }
       if (mood?.moon !== false) layer('celestial', 0, () => neonMoon(ctx, t, backgroundContext));
       layer('far', 0.02, () => neonHorizonHaze(ctx, mood?.haze || {}));
+      // Tokyo Tower behind the far city on neon-2 and neon-3 (see neonTokyoTower).
+      // Overtime runs have no midpoint (totalDist is Infinity), so no tower.
+      if (neonFrame.stageIndex >= 2 && Number.isFinite(totalDist) && totalDist > 0) {
+        layer('far', 0, () => neonTokyoTower(ctx, t, camX, totalDist * NEON_TOWER_AT, farRoofs.maxH * 1.9));
+      }
       if (reveal.farMass > 0) {
         layer('far', 0.07, (shift) => neonFarMass(ctx, shift, {
           minH: farRoofs.minH, maxH: farRoofs.maxH, alpha: reveal.farMass, ...(mood?.mass || {}),
@@ -7979,12 +8616,16 @@ function neonPack(settings) {
         layer('middle', 0.15, (shift) => neonWireRow(ctx, shift, t, {
           seed: 7, span: 74, count: 9, minH: midRoofs.minH, maxH: midRoofs.maxH, w: 26,
           stroke: 1, glow: 0.1, alpha: 0.46 * reveal.midWire, ...(mood?.wire || {}),
+          onTower: reveal.midWire >= 1 ? neonBladeSigns(ctx, {
+            lit: mood?.signs ?? 1, words: NEON_BACK_SIGN_WORDS, scale: 0.72, dim: 0.62, tower: 6,
+          }) : null,
         }));
       }
       if (reveal.nearWire > 0) {
         layer('near', 0.3, (shift) => neonWireRow(ctx, shift, t, {
           seed: 23, span: 132, count: 7, minH: nearRoofs.minH, maxH: nearRoofs.maxH, w: 42,
           stroke: 1.2, glow: 0.18, alpha: reveal.nearWire, ...(mood?.wire || {}),
+          onTower: reveal.nearWire >= 1 ? neonBladeSigns(ctx, { lit: mood?.signs ?? 1 }) : null,
         }));
       }
       // In front of the city, behind everything the player plays with.
@@ -8020,7 +8661,7 @@ function neonPack(settings) {
         // lane pass is inside the world transform, so the span the player can
         // actually see is the camera's world width — drawW is the 480 of the
         // authored FRAME and seeding against it halves the density.
-        drawNeonSpeedStreaks(ctx, { camX, viewW, zoom: world?.worldZoom });
+        drawNeonSpeedStreaks(ctx, { camX, viewW, zoom: world?.worldZoom, day: !!neonFrame?.day });
         ctx.restore();
         // THE LIT SURFACE AND THE TWO CUT FACES, and the corner where they meet
         // is the whole reason this is written the long way round.
@@ -8035,7 +8676,8 @@ function neonPack(settings) {
         // and the lines land on whole pixels where a corner can actually close.
         const ea = Math.round(a);
         const eb = Math.round(b);
-        ctx.fillStyle = '#38d8f8';
+        // The lane's edge: the cyan tube at night, a pale painted line by day.
+        ctx.fillStyle = neonFrame?.day ? '#fff0c8' : '#38d8f8';
         ctx.fillRect(ea, GROUND_Y, eb - ea, 1);
         // The face fades DOWN rather than sitting at one flat alpha. At a
         // constant 0.55 the corner was a bright pixel meeting a dim one, which
@@ -8172,6 +8814,27 @@ function watercolorPack(settings) {
             : null;
         parallaxHills(ctx, camX, color, frostY, amp, wl, f,
           hillOptions);
+        // The stage landmarks on the far ridge (stylePacks/frostLandmarks.js): the chair
+        // lift over frost-1, the reindeer herd near the end of frost-2. After the ridge
+        // and BEFORE its rocks and fortresses, which stand in front of a lift tower
+        // rather than behind it (Peter, 24 Sep: a tower drawn over a spire read as
+        // floating); the near hills still bury the feet of all of them.
+        if (frost && depth === 'far') {
+          ctx.globalAlpha = 1;
+          const view = backgroundPaintCoverage(ctx);
+          const crest = (x) => ridgeYAt(x, camX, frostY, amp, wl, f, { coverageLeft: view.left });
+          const stage = backgroundContext?.stageIndex ?? 1;
+          if (stage === 1 && Number.isFinite(totalDist) && totalDist > 0) {
+            const x = frostLiftX(viewCenterX(ctx), camX, FROST_LIFT_AT_PX);
+            if (!outsideView(ctx, x - 230, 260)) drawFrostChairLift(ctx, t, x, crest);
+          }
+          const progress = backgroundContext?.progress;
+          if (stage === 2 && Number.isFinite(progress)) {
+            const [a0, a1] = FROST_HERD_WINDOW;
+            const k = (progress - a0) / (a1 - a0);
+            if (k > 0 && k < 1) drawFrostReindeer(ctx, t, k, view, crest);
+          }
+        }
         if (frost) {
           // Frost scenery belongs to this ridge, so let the ridge establish
           // the support surface before placing the art. This keeps the full

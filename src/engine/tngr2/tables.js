@@ -100,28 +100,33 @@ export const spectrumOffset = (familyIndex, frame) =>
   (familyIndex * TNGR2_FRAMES + frame) * HARMONICS;
 
 /**
- * Expand one family into its mip pyramid.
+ * THE EXPANSION ITSELF, as a function that closes over NOTHING: its data comes in as
+ * arguments and it touches only built-ins (Math, Float32Array). That is what lets the
+ * very same code run in the main thread (buildFamily) and in the background worker
+ * (tngr2FamilyWorkerSource, which carries it across as source text) — so a family
+ * built off the main thread is bit-for-bit the family built on it, by construction
+ * rather than by a second copy that could drift. tests/tngr2-tables.js runs the worker
+ * source from a MINIFIED bundle to keep it honest.
+ *
+ * `spectra` is one family's slice: `frames` x `harmonics`, frame-major.
  *
  * Direct summation rather than an inverse FFT: a level only sums the harmonics it keeps,
- * so the whole pyramid for a frame costs about 1.3 harmonic-samples per base sample, and
- * a family lands in a few milliseconds. An FFT would be faster and much harder to read,
- * and this runs once per family per process.
+ * so the whole pyramid for a frame costs about 1.3 harmonic-samples per base sample. An
+ * FFT would be faster and much harder to read, and this runs once per family per page.
  *
  * Normalisation is FAMILY-WIDE, per §6.1: every frame is divided by the same number, so
  * moving POSITION through a family is a change of timbre and not a change of level. A
  * per-frame normalisation would turn every table sweep into a compressor.
  */
-export function buildFamily(id) {
-  const familyIndex = TNGR2_TABLE_IDS.indexOf(id);
-  if (familyIndex < 0) throw new Error(`unknown TNGR-2 family: ${id}`);
-  const spectra = tngr2Spectra();
+export function expandFamilySpectra(spectra, frames, harmonics, mipLevels, baseSamples) {
   const levels = [];
-  for (let level = 0; level < TNGR2_MIP_LEVELS; level++) {
-    const length = mipLength(level);
-    const keep = mipHarmonics(level);
-    const frames = [];
-    for (let frame = 0; frame < TNGR2_FRAMES; frame++) {
-      const base = spectrumOffset(familyIndex, frame);
+  for (let level = 0; level < mipLevels; level++) {
+    // mipLength and mipHarmonics, written out: this function may not reach outside.
+    const length = Math.max(64, baseSamples >> level);
+    const keep = Math.max(1, harmonics >> level);
+    const out = [];
+    for (let frame = 0; frame < frames; frame++) {
+      const base = frame * harmonics;
       // One extra sample, holding a copy of sample 0: the wrap point. Interpolating
       // between the last sample and the first is then an ordinary read of a neighbour
       // rather than a modulo in the inner loop. §6.1 allows exactly this.
@@ -132,14 +137,14 @@ export function buildFamily(id) {
         // The same tiny phase walk the native path applies, so a family keeps the
         // character it was authored and measured with rather than collapsing to the
         // cosine-phase version of itself.
-        const phase = (frame / (TNGR2_FRAMES - 1) * 0.7 + n * 0.013) * Math.PI;
+        const phase = (frame / (frames - 1) * 0.7 + n * 0.013) * Math.PI;
         for (let i = 0; i < length; i++) {
           table[i] += amp * Math.sin((i / length) * n * 2 * Math.PI + phase);
         }
       }
-      frames.push(table);
+      out.push(table);
     }
-    levels.push(frames);
+    levels.push(out);
   }
   // Family-wide peak, measured across every frame of the base level — the level that
   // holds the most energy — and applied to the whole pyramid.
@@ -148,12 +153,27 @@ export function buildFamily(id) {
     for (let i = 0; i < table.length; i++) peak = Math.max(peak, Math.abs(table[i]));
   }
   const gain = peak > 0 ? 0.98 / peak : 1;
-  for (const frames of levels) {
-    for (const table of frames) {
+  for (const out of levels) {
+    for (const table of out) {
       for (let i = 0; i < table.length; i++) table[i] *= gain;
       table[table.length - 1] = table[0];
     }
   }
+  return { levels, gain };
+}
+
+/** One family's spectra, as the slice expandFamilySpectra reads. */
+function familySpectra(familyIndex) {
+  const at = spectrumOffset(familyIndex, 0);
+  return tngr2Spectra().subarray(at, at + TNGR2_FRAMES * HARMONICS);
+}
+
+/** Expand one family into its mip pyramid, here, now. */
+export function buildFamily(id) {
+  const familyIndex = TNGR2_TABLE_IDS.indexOf(id);
+  if (familyIndex < 0) throw new Error(`unknown TNGR-2 family: ${id}`);
+  const { levels, gain } = expandFamilySpectra(familySpectra(familyIndex), TNGR2_FRAMES, HARMONICS,
+    TNGR2_MIP_LEVELS, TNGR2_BASE_SAMPLES);
   return { id, levels, frames: TNGR2_FRAMES, gain };
 }
 
@@ -164,6 +184,135 @@ export function tngr2Family(id) {
   let family = built.get(id);
   if (!family) { family = buildFamily(id); built.set(id, family); }
   return family;
+}
+
+// ---- THE BACKGROUND WORKER --------------------------------------------------------
+//
+// Expanding a family is 40-240 ms of pure arithmetic, and a song like SESERAGI (seven
+// TNGR-2 lanes) needs ~700 ms of it. On the main thread that is a stall wherever it
+// lands — the cabinet screen, a stage's start, a second of title frames. In a worker it
+// is nobody's frame: the families are built on another core and handed back as
+// transferred buffers, so receiving one costs the main thread a few views.
+//
+// Blob-sourced like the worklets (src/engine/tngr2/worklet.js), from
+// expandFamilySpectra's own source, so there is no second file to ship or keep in step.
+// Where there is no Worker (Node, a locked-down page) warmTngr2Families falls back to
+// its idle slices, exactly as before.
+
+/** The worker's source text: expandFamilySpectra, and a message loop around it. */
+export function tngr2FamilyWorkerSource() {
+  return `const expand = ${expandFamilySpectra.toString()};
+self.onmessage = (event) => {
+  const { id, spectra, frames, harmonics, mipLevels, baseSamples } = event.data;
+  try {
+    const result = expand(spectra, frames, harmonics, mipLevels, baseSamples);
+    // One buffer per mip level, frames end to end, so the reply is seven transfers
+    // rather than two hundred.
+    const flat = result.levels.map((level) => {
+      const length = level[0].length;
+      const buffer = new Float32Array(length * level.length);
+      level.forEach((table, k) => buffer.set(table, k * length));
+      return buffer;
+    });
+    self.postMessage({ id, gain: result.gain, flat }, flat.map((b) => b.buffer));
+  } catch (error) {
+    self.postMessage({ id, error: String((error && error.message) || error) });
+  }
+};`;
+}
+
+let familyWorker = null;          // null: not tried yet; false: unavailable
+let workerUrl = null;
+let idleTimer = null;
+const inWorker = new Map();       // id -> { promise, resolve }
+
+/** Whether families can be built off the main thread on this page. */
+export function tngr2WorkerAvailable() {
+  return !!ensureFamilyWorker();
+}
+
+function ensureFamilyWorker() {
+  if (familyWorker !== null) return familyWorker || null;
+  if (typeof Worker !== 'function' || typeof Blob !== 'function'
+    || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    familyWorker = false;
+    return null;
+  }
+  try {
+    workerUrl = URL.createObjectURL(new Blob([tngr2FamilyWorkerSource()], { type: 'application/javascript' }));
+    familyWorker = new Worker(workerUrl);
+  } catch {
+    familyWorker = false;
+    return null;
+  }
+  familyWorker.onmessage = (event) => receiveFamily(event.data);
+  // A worker that cannot run (a CSP that refuses blob: workers, say) fails here rather
+  // than at construction. Everything it was asked for is built the old way instead,
+  // and the worker is not tried again.
+  familyWorker.onerror = () => {
+    const waiting = [...inWorker.keys()];
+    shutFamilyWorker(false);
+    for (const id of waiting) settle(id, safeFamily(id));
+  };
+  return familyWorker;
+}
+
+function shutFamilyWorker(retryLater = true) {
+  if (familyWorker) familyWorker.terminate();
+  if (workerUrl) URL.revokeObjectURL(workerUrl);
+  familyWorker = retryLater ? null : false;
+  workerUrl = null;
+}
+
+const safeFamily = (id) => { try { return tngr2Family(id); } catch { return null; } };
+
+function settle(id, family) {
+  const job = inWorker.get(id);
+  inWorker.delete(id);
+  if (job) job.resolve(family);
+  // An idle worker is let go after a few seconds; the next warm makes a new one.
+  if (!inWorker.size) {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { if (!inWorker.size) shutFamilyWorker(true); }, 5000);
+  }
+}
+
+function receiveFamily({ id, gain, flat, error }) {
+  if (error || !flat) { settle(id, safeFamily(id)); return; }
+  // The main thread may have built it meanwhile (a stage that could not wait): the
+  // memo wins, so every caller keeps holding the same object.
+  if (!built.has(id)) {
+    const levels = flat.map((buffer, level) => {
+      const length = Math.max(64, TNGR2_BASE_SAMPLES >> level) + 1;
+      const frames = [];
+      for (let k = 0; k < TNGR2_FRAMES; k++) frames.push(buffer.subarray(k * length, (k + 1) * length));
+      return frames;
+    });
+    built.set(id, { id, levels, frames: TNGR2_FRAMES, gain });
+  }
+  settle(id, built.get(id));
+}
+
+/** Ask the worker for one family; resolves with it (or null if it cannot be built). */
+function familyFromWorker(id) {
+  if (built.has(id)) return Promise.resolve(built.get(id));
+  const running = inWorker.get(id);
+  if (running) return running.promise;
+  const familyIndex = TNGR2_TABLE_IDS.indexOf(id);
+  if (familyIndex < 0) return Promise.resolve(null);
+  const worker = ensureFamilyWorker();
+  if (!worker) return Promise.resolve(safeFamily(id));
+  clearTimeout(idleTimer);
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  inWorker.set(id, { promise, resolve });
+  // A copy, so its buffer can be transferred without taking the shared spectra with it.
+  const spectra = familySpectra(familyIndex).slice();
+  worker.postMessage({
+    id, spectra, frames: TNGR2_FRAMES, harmonics: HARMONICS,
+    mipLevels: TNGR2_MIP_LEVELS, baseSamples: TNGR2_BASE_SAMPLES,
+  }, [spectra.buffer]);
+  return promise;
 }
 
 /**
@@ -198,9 +347,12 @@ export function tngr2Family(id) {
  * thrown: this is a warm-up, and a warm-up that can fail the screen that starts it is
  * worse than one that quietly warms nothing.
  */
-export function warmTngr2Families(ids = [], { idle = true } = {}) {
+export function warmTngr2Families(ids = [], { idle = true, worker = false } = {}) {
   const wanted = [...new Set(ids)].filter((id) => id && !built.has(id));
   if (!wanted.length) return Promise.resolve([]);
+  // Off the main thread when this page can, and nothing blocks at all; see
+  // tngr2FamilyWorkerSource. Without a worker, the idle slices below.
+  if (worker && ensureFamilyWorker()) return Promise.all(wanted.map(familyFromWorker));
   // Through tngr2Family, not buildFamily: another caller may have expanded this one
   // between the ask and the slice, and the memo is the whole point.
   const one = (id) => { try { return tngr2Family(id); } catch { return null; } };

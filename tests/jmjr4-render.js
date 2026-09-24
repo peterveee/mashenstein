@@ -67,8 +67,26 @@ Object.assign(VOICES, {
     jmjr4: { voice: 'announcer', line: 'doo', unison: 1, amp: { attack: 0.005, decay: 0.2, sustain: 1, release: 0.1 } } },
   jmjrTestLegato: { id: 'jmjrTestLegato', label: 'test legato', category: 'Lead', synth: 'JMJR-4', dur: 0.5, mode: 'legato', portamento: 0.06,
     jmjr4: { voice: 'robot', line: 'daa laa- laa mmm', unison: 1, morphTo: 'M', morph: 40, morphTime: 0.2 } },
+  // KEY MODE and GLIDE: one sustained vowel, so a glide is the only thing that differs
+  jmjrTestMono: { id: 'jmjrTestMono', label: 'test mono', category: 'Lead', synth: 'JMJR-4', dur: 0.5, mode: 'mono', portamento: 0.3,
+    jmjr4: { voice: 'announcer', line: 'aah', unison: 1, jitter: 0, flutter: 0, amp: { attack: 0.15, decay: 0.1, sustain: 1, release: 0.05 } } },
   jmjrTestRefused: { id: 'jmjrTestRefused', label: 'refused', category: 'Pad', synth: 'JMJR-4', dur: 1, jmjr4: { voice: 'nobody' } },
 });
+VOICES.jmjrTestMonoNoGlide = { ...VOICES.jmjrTestMono, id: 'jmjrTestMonoNoGlide', portamento: 0 };
+VOICES.jmjrTestMonoLegato = { ...VOICES.jmjrTestMono, id: 'jmjrTestMonoLegato', mode: 'legato' };
+// Keyboard ops in order: { on: hz, at } holds a key, { off: hz } lets it go. Returns the
+// render and the rack's gate record for the lane.
+window.__keys = async ({ voice, ops, seconds = 1.5, rate = 48000 }) => {
+  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
+  const rack = new VoiceRack(ctx);
+  const dry = ctx.createGain(); dry.connect(ctx.destination);
+  for (const o of ops) {
+    if (o.off) rack._releasePreview('lead|' + o.off.toFixed(2));
+    else rack.play('lead', voice, o.on, { time: o.at, dur: o.dur ?? 2, gain: 0.5, dry, wet: null, echo: false, step: 0, preview: !o.song, hold: !o.song });
+  }
+  const r = await ctx.startRendering();
+  return Array.from(r.getChannelData(0));
+};
 window.__ids = () => Object.values(VOICES).filter((v) => v.synth === 'JMJR-4').map((v) => v.id);
 window.__speakSeconds = () => VOICES.jmjrTestSpeak.jmjr4.phraseIr.words.map((w) => w.total_seconds);
 window.__render = async ({ rate, seconds, plays, release }) => {
@@ -140,6 +158,33 @@ try {
     const plays = [110, 123.47, 130.81, 146.83].map((hz, i) => ({ voice: 'jmjrTestLegato', hz, at: 0.05 + i * 0.4, dur: 0.38, step: i }));
     const r = await render({ rate: 48000, seconds: 2.2, plays });
     assert(r.played.every(Boolean) && r.bad === 0 && r.rms > 1e-4, 'a legato line of four steps plays through');
+  }
+
+  // ---- MONO glides; LEGATO only when the key before is still down ----
+  {
+    const diff = (a, b, t0, t1) => { let s = 0, n = 0; for (let i = Math.floor(t0 * 48000); i < Math.floor(t1 * 48000); i++) { s += (a[i] - b[i]) ** 2; n++; } return Math.sqrt(s / n); };
+    const keys = (voice, ops) => page.evaluate((x) => window.__keys(x), { voice, ops });
+    // overlapping keys: MONO with a glide must differ from MONO without, during the glide
+    const overlap = [{ on: 110, at: 0.05 }, { on: 220, at: 0.5 }];
+    const g = await keys('jmjrTestMono', overlap);
+    const n = await keys('jmjrTestMonoNoGlide', overlap);
+    assert(diff(g, n, 0.05, 0.45) < 1e-6, 'mono: the first note is the same with or without GLIDE');
+    assert(diff(g, n, 0.52, 0.75) > 1e-3, `mono: GLIDE bends the second of two overlapping keys (${diff(g, n, 0.52, 0.75).toExponential(1)})`);
+    // the same from the sequencer: a note still gated when the next arrives
+    const seq = [{ on: 110, at: 0.05, dur: 0.6, song: true }, { on: 220, at: 0.5, dur: 0.5, song: true }];
+    const gs = await keys('jmjrTestMono', seq);
+    const ns = await keys('jmjrTestMonoNoGlide', seq);
+    assert(diff(gs, ns, 0.52, 0.75) > 1e-3, 'mono: GLIDE bends an overlapping sequenced note');
+    // key up, pause, key down: a fresh note in every mode — no glide, no legato
+    const apart = [{ on: 110, at: 0.05 }, { off: 110 }, { on: 220, at: 0.6 }];
+    const lg = await keys('jmjrTestMonoLegato', apart);
+    const ng = await keys('jmjrTestMonoNoGlide', apart);
+    const mg = await keys('jmjrTestMono', apart);
+    assert(diff(lg, ng, 0.6, 1.2) < 1e-6, 'legato: a key pressed after the last was let go starts fresh');
+    assert(diff(mg, ng, 0.6, 1.2) < 1e-6, 'mono: a key pressed after the last was let go does not glide');
+    // and legato with the key still down IS legato: no second attack, a glide in
+    const lo = await keys('jmjrTestMonoLegato', overlap);
+    assert(diff(lo, g, 0.5, 0.75) > 1e-3, 'legato with the key still down differs from a retriggered mono note');
   }
 
   // ---- held from the keyboard, then let go through the generic native record ----

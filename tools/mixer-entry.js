@@ -2079,6 +2079,8 @@ function loadTrack(id) {
   pianoRollTimeSelection = null;
   pianoRollLoopRange = null;
   applyLoop(0);
+  // The timeline was drawn above, before the park moved to bar 1 of this song.
+  if (!playing) drawParkedPosition();
   renderRearrangeList();
   // The new song's key, straight away if the panel is up. The analysis cache misses on
   // the new bank by identity; the sync rebuilds it when the transport is parked.
@@ -7629,6 +7631,7 @@ function returnToSong() {
   Audio.step = 0;
   parkedAt = 0;
   applyLoop(0);
+  drawParkedPosition();
   toast('Returned to the normal song');
 }
 
@@ -8158,6 +8161,26 @@ function buildTimeline() {
   const barDigits = String(Math.max(1, plan.length)).length;
   $('barnow').style.width = `${barDigits * 2 + 1}ch`;
   $('barnow').textContent = `1/${plan.length}`;
+  if (!playing) drawParkedPosition();
+}
+
+/**
+ * Put a stopped transport's playhead and readouts where `parkedAt` says it is.
+ *
+ * The playhead's left edge is a PERCENT of the song, so an edit that changes the song's
+ * length moves it onto a different bar unless it is drawn again. Repeating bars 3-6 with
+ * the playhead parked on bar 30 left it over bar 31, while the readouts beside it were
+ * reset to 0:00 and bar 1 — three answers to where you are, none of them where Play would
+ * start. Playing needs none of this: the frame loop redraws all three every frame.
+ */
+function drawParkedPosition() {
+  const { spb, totalSteps, loopSecs } = songShape();
+  // A deletion can leave the parked step past the end of the song. Clamped here rather
+  // than only drawn clamped, so Play starts from the bar the playhead is shown on.
+  parkedAt = clamp(parkedAt, 0, Math.max(0, totalSteps - 1));
+  $('playhead').style.left = `${(parkedAt / Math.max(1, totalSteps)) * 100}%`;
+  $('tnow').textContent = `${fmtTime(parkedAt * spb)}/${fmtTime(loopSecs)}`;
+  $('barnow').textContent = `${Math.floor(parkedAt / 16) + 1}/${totalSteps / 16}`;
 }
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -19252,12 +19275,14 @@ const rememberedPasses = () => clampPasses(Number(localStorage.getItem(RENDER_PA
  */
 async function askRenderPasses(what) {
   const bars = barCount(arrDraftOf());
-  const L = arrFor(trackId)?.loop;
+  const L = renderArrangement(trackId)?.loop;
   const from = L?.fromBar, to = L?.toBar, at = L?.startBar ?? 1;
   const looped = from != null && to != null;
   const shape = looped
     ? `Bars ${at}–${from - 1} play once, then bars ${from}–${to} repeat, then the echo rings out.`
-    : `This song has no loop markers, so its whole ${bars}-bar form plays this many times.`;
+    : !formLoopOn && arrFor(trackId)?.loop
+      ? `Game Loop is off, so the whole ${bars}-bar form plays from bar 1 this many times.`
+      : `This song has no loop markers, so its whole ${bars}-bar form plays this many times.`;
   // Prose first, then the field — the shape #askbody is styled for. The sentence has to
   // come before the number because it is what makes the number mean anything.
   const ok = await ask(what,
@@ -19271,6 +19296,18 @@ async function askRenderPasses(what) {
   localStorage.setItem(RENDER_PASSES_KEY, String(passes));
   return passes;
 }
+/**
+ * The arrangement a render is given: a copy of the live draft, minus the loop markers
+ * while Game Loop is off. The switch says "Whole Song", so the file is the whole song —
+ * bar 1 to the last bar, the pass count times over — rather than the way in once and
+ * the loop repeated. The markers stay on the song; only this copy goes without them.
+ */
+function renderArrangement(id) {
+  const arrangement = structuredClone(arrFor(id) ?? null);
+  if (arrangement && !formLoopOn) delete arrangement.loop;
+  return arrangement;
+}
+
 async function renderJob(btn, route, working, describe, passes = rememberedPasses()) {
   if (rendering) { toast('A bounce is already running'); return; }
   rendering = true;
@@ -19295,7 +19332,7 @@ async function renderJob(btn, route, working, describe, passes = rememberedPasse
         // itself rather than be dropped: a song whose arrangement you have just undone
         // has to render as composed, not as it was before the undo.
         body: JSON.stringify({
-          trackId, mix: mixFor(trackId), arrangement: arrFor(trackId) ?? null,
+          trackId, mix: mixFor(trackId), arrangement: renderArrangement(trackId),
           repeat: passes,
         }),
       });
@@ -20552,7 +20589,7 @@ $('renderwav').onclick = async () => {
   if (!source) { toast('That song has no bank to render'); return; }
   const bank = structuredClone(source);
   const mix = structuredClone(mixFor(id));
-  const arrangement = structuredClone(arrFor(id) ?? null);
+  const arrangement = renderArrangement(id);
 
   // Bouncing while the song plays costs about three quarters again as long — the
   // live context and the offline one are competing for the same audio thread, and

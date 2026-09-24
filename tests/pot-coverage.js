@@ -125,9 +125,11 @@ const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'KNDO-5' && s !== 'WNDR-9'
 const CASES = [
   { name: 'drum', voice: { kind: 'drum', noise: {}, osc: {}, taps: [0, 0.01] },
     methods: ['_playDrum'], oneShot: true },
-  { name: 'KNDO-5', voice: { synth: 'KNDO-5', filter: {} }, methods: ['_playGame'] },
+  // KEY MODE and GLIDE are read one call out, in the helper both native per-note paths
+  // share with each other.
+  { name: 'KNDO-5', voice: { synth: 'KNDO-5', filter: {} }, methods: ['_playGame', '_perNoteKeyMode'] },
   { name: 'WNDR-9', voice: { synth: 'WNDR-9', additive: {} },
-    methods: ['_playAdditive'] },
+    methods: ['_playAdditive', '_perNoteKeyMode'] },
   // No tap array: `_playLayer` has no tap loop, so there is no Taps card to gate into
   // existence and a tap array here would only describe a panel that does not exist.
   { name: 'MRDR-3', voice: { synth: 'MRDR-3', layer: {} },

@@ -243,7 +243,7 @@ assert(Number.isFinite(PLAYER_X) && PLAYER_X > 0, 'the ride has a fixed screen c
       if (!Array.isArray(b.bass)) continue;
       // The same lanes and the same arithmetic Audio.songKey uses.
       const freqs = [];
-      for (const lane of ['bass', 'lead', 'chords', 'arp', 'pad', 'lead2', 'lead3', 'bass2']) {
+      for (const lane of Object.keys(b).filter((k) => /^(bass|lead|leadHarm|chords|arp|pad)\d*$/.test(k))) {
         const s = b[lane];
         if (!Array.isArray(s)) continue;
         for (const v of s) {
@@ -260,6 +260,8 @@ assert(Number.isFinite(PLAYER_X) && PLAYER_X > 0, 'the ride has a fixed screen c
       if (rootF == null) rootF = Math.min(...freqs);
       const classes = [...new Set(freqs.map(
         (f) => ((Math.round(12 * Math.log2(f / rootF)) % 12) + 12) % 12))].sort((x, y) => x - y);
+      // Fewer than four notes is no key, and the climb falls back to its own figure.
+      if (classes.length < 4) continue;
       const semisOf = (i) => classes[i % classes.length] + 12 * Math.floor(i / classes.length);
       const span = Math.pow(2, semisOf(11) / 12);
       let r = rootF;

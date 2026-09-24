@@ -34,6 +34,11 @@ import { fileURLToPath } from 'url';
 import { renderTngr2, frameAt, TNGR2_DEFAULT_ENV } from '../src/engine/tngr2/dsp.js';
 import { packTngr2Tables } from '../src/engine/tngr2/tables.js';
 import { VoiceRack } from '../src/engine/voices.js';
+import { VOICES as CATALOGUE } from '../src/data/voices.js';
+import { compileMrdr3, mrdr3Colours } from '../src/engine/mrdr3/compile.js';
+import { renderMrdr3, frameAt as mrdrFrame } from '../src/engine/mrdr3/dsp.js';
+import { mrdr3Tables } from '../src/engine/mrdr3/tables.js';
+import { mrdr3NoiseSet } from '../src/engine/mrdr3/noise.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -130,6 +135,54 @@ const heard = (data, from, to, rate = RATE) =>
   }
 }
 
+// ---- MRDR-3 AW, browserless ---------------------------------------------------
+//
+// The same question on the other worklet: the rack's own note-off, rendered by the core
+// string the worklet runs. A hand-back is a note-on with `regate: false`, which the core
+// answers by moving the pitch of the note already sounding.
+{
+  const tables = mrdr3Tables();
+  const noise = mrdr3NoiseSet(RATE, mrdr3Colours(CATALOGUE));
+  for (const mode of ['legato', 'mono', 'poly']) {
+    const { patch } = compileMrdr3({
+      id: 'heldAw', synth: 'MRDR-3', mode,
+      layer: { osc1: { type: 'sawtooth', ratio: 1, detune: 0, gain: 0.6, attack: 0.01, decay: 0.2, sustain: 0.8, release: 0.3 } },
+    });
+    for (const lift of KEYS) {
+      const posted = [];
+      const rack = Object.create(VoiceRack.prototype);
+      rack.ctx = { currentTime: 0, sampleRate: RATE };
+      rack._heldNative = new Map();
+      rack._activePreviews = new Map();
+      const lane = {
+        nextEventId: 0,
+        ctx: { sampleRate: RATE },
+        node: { port: { postMessage: (m) => posted.push(m) } },
+      };
+      // The lines `_playMrdr3Aw` writes when a key goes down.
+      const press = (name, at) => {
+        rack.ctx.currentTime = at;
+        const eventId = (lane.nextEventId += 1);
+        const fingers = mode !== 'poly' ? rack._laneFingers('mrdr3', 'lead') : null;
+        posted.push({ type: 'noteOn', frame: mrdrFrame(at, RATE), hz: [HZ[name]], velocity: 1, eventId, durFrames: mrdrFrame(30, RATE) });
+        rack._heldNative.set(`lead|${HZ[name].toFixed(2)}`, { mrdr3: { lane, eventId, fingers }, at });
+        if (fingers) fingers.fingers.push({ key: `lead|${HZ[name].toFixed(2)}`, hz: HZ[name] });
+      };
+      press('C', 0.05); press('D', 0.20); press('E', 0.35);
+      rack.ctx.currentTime = 0.5;
+      rack.releasePreview('lead', HZ[lift]);
+      const data = renderMrdr3({
+        events: posted.slice().sort((a, b) => a.frame - b.frame),
+        seconds: 2, sampleRate: RATE, channels: 2, patch, tables, noise,
+      }).channels[0];
+      assert(heard(data, 0.42, 0.49) === (mode === 'poly' ? 'CDE' : 'E'),
+        `MRDR-3 AW ${mode}: three keys down sound ${mode === 'poly' ? 'as three notes' : 'as the last one pressed'}`);
+      assert(heard(data, 0.62, 0.95) === expected(mode, lift),
+        `MRDR-3 AW ${mode}: letting go of ${lift} leaves ${expected(mode, lift)} sounding`);
+    }
+  }
+}
+
 // ---- the pooled Tone classes and MRDR-3, in Chromium ------------------------
 //
 // Rendered rather than inspected, and offline rather than live: the note-off has to be
@@ -155,6 +208,13 @@ const PRESETS = {
       modulationEnvelope: { attack: 0.2, decay: 0.1, sustain: 0.8, release: 0.4 },
     },
   },
+  // The per-note native paths that share `_perNoteKeyMode`, and JMJR-4's own.
+  'KNDO-5': { synth: 'KNDO-5', waveform: 'square', attack: 0.01, release: 0.4 },
+  'WNDR-9': { synth: 'WNDR-9', additive: { bars: [0, 0, 1], attack: 0.01, decay: 0.2, sustain: 0.8, release: 0.4 } },
+  // A short release: JMJR-4's phrase gate lets go on a LINE, which a 0.4 s tail keeps
+  // above the detector's floor well into the window that asks what is left.
+  'JMJR-4': { synth: 'JMJR-4', jmjr4: { voice: 'announcer', line: 'ooh', unison: 1, jitter: 0, flutter: 0,
+    amp: { attack: 0.01, decay: 0.2, sustain: 0.8, release: 0.1 } } },
   // The native path, which is a graph per note rather than an instrument per slot.
   'MRDR-3': {
     synth: 'MRDR-3',

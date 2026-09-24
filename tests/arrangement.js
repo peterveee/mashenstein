@@ -1121,16 +1121,21 @@ assert(arrangementIssues(plumber, fromArranged, LANE_KEYS).length > 0,
 
 // The seven bare-loop cabinets are the awkward case: their bars point at no section
 // at all, so the first note edit has to give the others one to point at.
-const neon = banks.neon;
-assert(neon && !neon.sections?.length, 'neon is one of the bare two-bar cabinets');
+// Whichever cabinet is still one: neon was, until SESERAGI (which has sections)
+// became its song on 23 Sep 2026. Named rather than hard-wired so the next song to
+// grow sections does not break a test about songs that have none.
+const bareId = ['crypt', 'cardboard', 'office', 'surge', 'frost', 'rhythm']
+  .find((id) => banks[id] && !banks[id].sections?.length);
+const neon = banks[bareId];
+assert(neon && !neon.sections?.length, `${bareId} is one of the bare two-bar cabinets`);
 const neonEdit = writeBarNotes(neon, draftOf(neon, null), 1, 'lead', new Array(16).fill(NEW));
 const neonEntry = entryOf(neon, neonEdit);
 assert(neonEntry.sections.length === 2 && !Object.keys(neonEntry.sections[0]).length,
   'editing one bar of a sectionless song gives the OTHER bars an identity section to point at');
 assert(neonEntry.order.length === 2 && neonEntry.order[0].s !== neonEntry.order[1].s,
   'so the two bars are written as two different sections, not both as 0');
-survivesSave(neon, 'neon', neonEdit, 'a bare two-bar cabinet with one bar edited');
-const neonApplied = applyArrangement(neon, 'neon', { neon: neonEntry });
+survivesSave(neon, bareId, neonEdit, 'a bare two-bar cabinet with one bar edited');
+const neonApplied = applyArrangement(neon, bareId, { [bareId]: neonEntry });
 assert(resolveSection(neonApplied, 0) && !Object.keys(resolveSection(neonApplied, 0)).length,
   'and the untouched bar resolves to a section that changes nothing about the bank');
 assert(entryOf(neon, compactSections(neon, draftOf(neon, neonEntry))) !== null

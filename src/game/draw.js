@@ -7,11 +7,12 @@ import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
 import { LOOP } from './loop.js';
 import { drawSoftContactShadow } from '../engine/shadows.js';
+import { SNAKE_IDLE_FRAMES, SNAKE_STRIKE_FRAMES, SNAKE_STRIKE_T } from '../sprites/animals.js';
 import {
   eggshellCopterArt,
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
   SWITCH_THROW_FRAMES, SWITCH_THROW_T, switchBonkLift,
-  TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T,
+  TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T, RAKE_FRAMES, RAKE_SWING_T,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
   BATTERY_FOCUS,
   PORTAL_SPRITE, PORTAL_ART_W, PORTAL_ART_H,
@@ -896,9 +897,21 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // the trap's snap is, so the lamp comes up on the frame the hop landed rather
   // than on the next 8fps tick.
   const switchThrown = propName === 'switch' && e.thrown;
+  // THE RATTLESNAKE'S STRIKE AND THE RAKE'S SWING are the same kind of event: fired by
+  // the run as the hero arrives (strikeT / swingT) and stepped from that clock, so the
+  // head is out — or the handle up — on the frame it happened. Otherwise the snake
+  // idles on its ring and the rake lies still.
+  const snakeStriking = propName === 'rattlesnake' && e.strikeT != null && e.strikeT < SNAKE_STRIKE_T;
+  const rakeSwinging = propName === 'rake' && e.swingT != null && e.swingT < RAKE_SWING_T;
   const ringFrames = propName === 'bearTrap' ? TRAP_IDLE_FRAMES
-    : propName === 'switch' ? 1 : frameCount;
-  const frame = trapSprung
+    : propName === 'rattlesnake' ? SNAKE_IDLE_FRAMES
+    : propName === 'switch' || propName === 'rake' ? 1 : frameCount;
+  const frame = snakeStriking
+    ? SNAKE_IDLE_FRAMES + Math.min(SNAKE_STRIKE_FRAMES - 1,
+      Math.floor((e.strikeT / SNAKE_STRIKE_T) * SNAKE_STRIKE_FRAMES))
+    : rakeSwinging
+      ? 1 + Math.min(RAKE_FRAMES - 2, Math.floor((e.swingT / RAKE_SWING_T) * (RAKE_FRAMES - 1)))
+      : trapSprung
     ? TRAP_IDLE_FRAMES + Math.min(TRAP_SNAP.length - 1,
       Math.floor(((e.disarmT || 0) / TRAP_SNAP_T) * TRAP_SNAP.length))
     : switchThrown

@@ -1,5 +1,59 @@
 # TERMINAL VELOCITY — the neon levels, re-lit
 
+> **BUILT, 24 Sep 2026.** Everything below is in the game. Where the build differs from
+> the plan, the "As built" list says so; the plan is kept underneath as the reasoning.
+>
+> **As built**
+> - **The song:** SESERAGI v17 is `src/data/songs/neon.js` (TERMINAL VELOCITY). The
+>   old song is `src/data/imported/terminal-velocity-original.js`, desk-only. The
+>   arrangement was rebuilt with one section per bar pair, so the desk shows no
+>   near-blank half-bars. The stage-select treatment loops the major intro (Peter set it
+>   to bars 3–6), and the level starts from bar 9, so the minor turn at bar 15 comes a
+>   few seconds into neon-1. The strike waits for `NEON_MINOR_TURN_BEAT` (56) in
+>   `src/engine/stylePacks/neonMoods.js`.
+> - **Golden hour:** the sun's centre sits just BELOW the horizon, in the far city's
+>   band, with 24 rays round the full circle that turn and breathe. The scene glow
+>   (bloom) is OFF until the strike.
+> - **No train lands before the turn.** A train whose flight begins before it only
+>   flies past overhead, in the Yamanote's daylight livery (silver, yellow-green
+>   stripe; `TRON_PALETTE.day`). Its route is taken out of the run: no roof, no coins.
+>   Trains after the turn fly in and land as before, in the neon livery.
+> - **The strike** lands front and centre on the skyline; the thunder cue (`thunder`,
+>   levelled 2 dB over `boom`) is placed on the song clock to land on the downbeat.
+> - **The aurora** is on the night mood (`neonNightMood`), from halfway through neon-1
+>   and from the start of neon-2 and neon-3.
+> - **Japanese:** blade signs on one near tower in every other repeat of the row (never
+>   two on screen); the destination board replaces the window forward of each MIDDLE
+>   car's door (the tail and cab keep their only window); the announcement card is
+>   said once an attempt, on the first train to stand on screen. M PLUS Rounded 1c and
+>   DotGothic16 are loaded as `text=` subsets when a neon stage starts
+>   (`src/engine/kana.js`).
+> - **Gallery:** production section `neon-sky`; the two bake-off sections are retired.
+>
+> **Later on 24 Sep (the night session):**
+> - **The strike** is two brief night flickers a beat before the turn, then a bolt that
+>   crawls across the whole sky, drops onto the skyline, re-strikes four times and glows
+>   for 2.4 s (`neonStrikeLight`). The thunder is 5 s long, levelled 7 dB over `boom`.
+> - **The city build-up** starts just before the turn (0.07) and is done by 0.27, ahead
+>   of the first standable train (0.30). **The aurora** comes up at 0.35. Its curtains
+>   hang high and reach the top of the frame.
+> - **Golden hour:** the sun sits just below the horizon, and its rays turn slowly
+>   (~90 s a turn). All glow is off until the strike: bloom, object halos, tube glow.
+>   The road is warm, calm paint.
+> - **Trains:** a flat daylight livery with white streaks for fly-pasts. **The nose is
+>   a slope:** the roof follows the painted curve down to the lane. **The station sign**
+>   is an LED strip on poles on the platform just past the nose, clear over a hero on
+>   the lane. It names the next stop on the clockwise loop, one stop per train:
+>   ごたんだ → めぐろ → えびす → しぶや → はらじゅく → よよぎ → **しんじゅく**, the last
+>   train. The per-car boards are gone.
+> - **Signs:** at most one front and one back sign on screen. The back row carries
+>   えき, らーめん, すみません, おちゃ, まつり, こんにちは, 24じかん.
+> - **Road hazards:** every cactus on neon is swapped for the **panda road-works
+>   barrier**, and one in four for a kickable **traffic cone** (cabinet `swaps`). The
+>   bake-off for the other animals is in the gallery lab (`neon-street-bakeoff`).
+> - **No invincibility** on the neon stages (cabinet `bannedPowers`).
+> - **Audio:** see docs/NEON_AUDIO_HANDOVER.md.
+
 Plan, 23 Sep 2026. Nothing here is built yet. The looks come from two lab bake-offs
 in the gallery (`neon-mood-bakeoff`, `neon-kana-bakeoff`). Their candidates live in
 `src/dev/neon-mood-candidates.js` and `src/dev/neon-kana-candidates.js`.

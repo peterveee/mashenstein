@@ -1,5 +1,5 @@
 // Animals: the four quadruped hazards — three dogs and a cat — that run at the
-// hero and have to be jumped.
+// hero and have to be jumped, and the rattlesnake that waits for him coiled in the road.
 //
 // Deliberately self-contained. It imports nothing from sprites/props.js, which
 // is the module that REGISTERS these painters: props.js spreads the five tables
@@ -929,6 +929,297 @@ function hindLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade, near = fa
   paw(ctx, u, w, P, f.x, f.y, Math.atan2(f.y - hock.y, f.x - hock.x), col, shade, edge, ew);
 }
 
+// --------------------------------------------------------------- rattlesnake
+// SPEED ZONE's rattlesnake (Peter, 24 Sep: "lets add the animated rattlesnake as a new
+// obstacle", from the desert ideas bake-off, src/dev/speed-ideas.js). It does not
+// close like the dogs: it sits coiled in the road, rattle buzzing, and STRIKES AS YOU
+// ARRIVE ("should attack just before we get to him, not after") — the run starts its
+// strike clock (`strikeT`) when the hero is a beat away, so the head is out at full
+// reach just before he gets there. Its box takes in the strike: the answer is the jump.
+//
+// Drawn from the bake-off's world-unit drawing (coil centred on x 0.7, feet on y 0,
+// strike reaching x -18.5), scaled into the box with the coil at the right and the
+// strike's reach at the left. Frames 0..SNAKE_IDLE_FRAMES-1 are the idle ring (sway,
+// rattle, tongue); the rest are the strike, picked from `strikeT` in draw.js the way the
+// bear trap's snap is, so it lands on the frame it happened rather than the next tick.
+const SNAKE = {
+  body: '#c9a56b', bodyLit: '#ead08f', belly: '#efe0b4', dark: '#7a5534', diamond: '#6b4a2e',
+  edge: '#f4e6bf', head: '#b08a58', eye: '#1a1210', tongue: '#d8323a', rattle: '#d9c9a0', rattleDark: '#9c8a68',
+};
+export const SNAKE_IDLE_FRAMES = 12;
+const SNAKE_FPS = 12;                 // the idle ring: one second
+export const SNAKE_STRIKE_FRAMES = 12;
+export const SNAKE_STRIKE_T = 0.85;   // coil (0.2s), strike out (0.1s), hold, recoil
+// Seconds from the trigger to full reach: the run fires the strike this long before
+// the hero would reach the snake, so it is out as he arrives.
+// 0.5, not the 0.3 that put full reach on the very frame he arrived: Peter, 24 Sep, "attack
+// a little bit earlier so it reads" — it is out and held for a beat before he gets there.
+export const SNAKE_STRIKE_LEAD = 0.5;
+const SNAKE_FRAMES = SNAKE_IDLE_FRAMES + SNAKE_STRIKE_FRAMES;
+// The drawing's extent in its own units: strike tip to coil back, rattle to feet.
+const SNAKE_SPAN = { left: 18.9, right: 8.9, top: 15.6 };
+const snakeSmooth = (e0, e1, v) => { const k = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return k * k * (3 - 2 * k); };
+const snakeLerp = (a, b, k) => a + (b - a) * k;
+function snakeStroke(ctx, color, width, path, cap = 'round') {
+  ctx.beginPath(); path(ctx);
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = cap; ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+function snakeFill(ctx, color, path) { ctx.beginPath(); path(ctx); ctx.fillStyle = color; ctx.fill(); }
+function snakeInk(ctx, color, path, lw) {
+  ctx.beginPath(); path(ctx);
+  ctx.fillStyle = color; ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.stroke();
+}
+const snakeOval = (x, y, rx, ry) => (c) => c.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), 0, 0, TAU);
+const snakeCircle = (x, y, r) => (c) => c.arc(x, y, Math.max(0.01, r), 0, TAU);
+function snakePoly(pts) {
+  return (c) => { c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.closePath(); };
+}
+function snakeBez(pts, k, c) {
+  const m = 1 - k;
+  return m * m * m * pts[0][c] + 3 * m * m * k * pts[1][c] + 3 * m * k * k * pts[2][c] + k * k * k * pts[3][c];
+}
+
+function rattlesnake(ctx, w, h, frame = 0) {
+  const P = SNAKE;
+  const f = frame % SNAKE_FRAMES;
+  const idle = f < SNAKE_IDLE_FRAMES;
+  // Idle: one second of sway and tongue. Strike: `u` seconds into SNAKE_STRIKE_T.
+  const t = idle ? f / SNAKE_FPS : 0;
+  const u = idle ? -1 : ((f - SNAKE_IDLE_FRAMES + 0.5) / SNAKE_STRIKE_FRAMES) * SNAKE_STRIKE_T;
+  const loop = TAU;
+  // Strike: 0 at rest, 1 at full reach — coil back, out fast, a beat held, slower back.
+  const strike = idle ? 0 : u < 0.2 ? 0 : u < 0.3 ? snakeSmooth(0.2, 0.3, u)
+    : u < 0.48 ? 1 : 1 - snakeSmooth(0.48, 0.85, u);
+  // The crouch before it: the neck draws back into a tighter S.
+  const wind = idle ? 0 : snakeSmooth(0, 0.16, u) * (1 - snakeSmooth(0.2, 0.26, u));
+  const sway = Math.sin(t * loop) * 0.5 * (1 - strike);
+  const s = Math.min(w / (SNAKE_SPAN.left + SNAKE_SPAN.right), h / SNAKE_SPAN.top);
+  ctx.save();
+  ctx.translate(w - SNAKE_SPAN.right * s, h);
+  ctx.scale(s, s);
+
+  // The coil is a TUBE laid in three rings: each ring is the body's thickness stroked
+  // round an ellipse, shaded under and lit on top along its front arc. Bottom ring
+  // first — each one above rests on the back of the one below.
+  const rings = [
+    { cx: 0.7, cy: -2.3, rx: 7.3, ry: 2.05, th: 3.1 },
+    { cx: 0.25, cy: -5.0, rx: 5.5, ry: 1.7, th: 2.9 },
+    { cx: -0.2, cy: -7.3, rx: 3.6, ry: 1.3, th: 2.7 },
+  ];
+  for (let i = 0; i < rings.length; i++) {
+    const { cx, cy, rx, ry, th } = rings[i];
+    snakeStroke(ctx, 'rgba(26,16,40,0.42)', th + 0.62, snakeOval(cx, cy, rx, ry));
+    snakeStroke(ctx, P.body, th, snakeOval(cx, cy, rx, ry));
+    snakeStroke(ctx, P.dark, th * 0.34, (c) => c.ellipse(cx, cy + th * 0.3, rx, ry, 0, 0.08 * Math.PI, 0.92 * Math.PI), 'butt');
+    snakeStroke(ctx, P.bodyLit, th * 0.3, (c) => c.ellipse(cx, cy - th * 0.26, rx, ry, 0, 0.1 * Math.PI, 0.9 * Math.PI), 'butt');
+    snakeStroke(ctx, P.bodyLit, th * 0.24, (c) => c.ellipse(cx, cy - th * 0.22, rx, ry, 0, 1.12 * Math.PI, 1.88 * Math.PI), 'butt');
+    // Diamond saddles along the front, cream-edged, narrowing as the ring turns away.
+    const n = 5 - i;
+    for (let k = 0; k < n; k++) {
+      const a = Math.PI * (0.1 + (k + 0.5) * (0.8 / n)) + (i % 2 ? 0.08 : -0.04);
+      const dx = cx + Math.cos(a) * rx;
+      const dy = cy + Math.sin(a) * ry - th * 0.04;
+      const sq = 0.45 + 0.55 * Math.sin(a);
+      const d = th * 0.36;
+      snakeFill(ctx, P.edge, snakePoly([dx - d * 1.4 * sq, dy, dx, dy - d * 1.05, dx + d * 1.4 * sq, dy, dx, dy + d * 1.05]));
+      snakeFill(ctx, P.diamond, snakePoly([dx - d * 0.95 * sq, dy, dx, dy - d * 0.7, dx + d * 0.95 * sq, dy, dx, dy + d * 0.7]));
+    }
+  }
+
+  // The rattle, rising out of the back of the coil and buzzing: three ghost positions
+  // and a pair of motion ticks, because a blur is what a rattle looks like.
+  const buzz = Math.sin(f * 2.6) * 0.8;
+  ctx.save();
+  ctx.translate(5.2, -7.4);
+  const a0 = ctx.globalAlpha;
+  for (let k = 2; k >= 0; k--) {
+    const off = (k - 1) * 0.9 + buzz * (k === 1 ? 0.6 : 0.2);
+    ctx.globalAlpha = a0 * (k === 1 ? 1 : 0.35);
+    ctx.save();
+    ctx.rotate(0.35 + off * 0.12);
+    for (let r = 0; r < 4; r++) {
+      snakeInk(ctx, r % 2 ? P.rattle : P.rattleDark, snakeOval(0, -1.2 - r * 1.35, 1.25 - r * 0.14, 0.78), 0.22);
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = a0;
+  snakeStroke(ctx, 'rgba(255,244,216,0.7)', 0.35, (c) => {
+    c.moveTo(2.4, -5.8); c.quadraticCurveTo(3.4, -4.8, 2.6, -3.6);
+    c.moveTo(3.6, -6.6); c.quadraticCurveTo(4.8, -5.2, 3.8, -3.8);
+  });
+  ctx.restore();
+
+  // Neck and head: an S that springs straight when it strikes, drawn twice (outline
+  // under fill) so it joins the coil as one body.
+  const rest = [[-1.2, -8.2], [1.6 + wind * 0.8, -11.5], [-2.2 + sway - wind * 1.2, -13.6], [-4.2 + sway - wind * 0.6, -13.9]];
+  const hit = [[-1.5, -8.2], [-5, -10.2], [-9.5, -10.9], [-13.8, -10.6]];
+  const pts = rest.map((p, i) => [snakeLerp(p[0], hit[i][0], strike), snakeLerp(p[1], hit[i][1], strike)]);
+  const neck = (c) => {
+    c.moveTo(pts[0][0], pts[0][1]);
+    c.bezierCurveTo(pts[1][0], pts[1][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1]);
+  };
+  snakeStroke(ctx, 'rgba(26,16,40,0.4)', 3.3, neck);
+  snakeStroke(ctx, P.body, 2.6, neck);
+  snakeStroke(ctx, P.belly, 0.9, (c) => {
+    c.moveTo(pts[0][0] - 0.4, pts[0][1] + 0.6);
+    c.bezierCurveTo(pts[1][0] - 0.6, pts[1][1] + 0.9, pts[2][0], pts[2][1] + 1, pts[3][0] + 0.4, pts[3][1] + 1);
+  });
+  for (const k of [0.35, 0.62]) {
+    const bx = snakeBez(pts, k, 0), by = snakeBez(pts, k, 1);
+    snakeFill(ctx, P.diamond, snakePoly([bx - 0.8, by - 0.6, bx, by - 1.3, bx + 0.8, by - 0.6, bx, by + 0.1]));
+  }
+
+  // The head: a pit viper's arrowhead — broad jaw hinge behind the eye, narrow snout —
+  // with the jaws opening as it strikes.
+  const [hx, hy] = pts[3];
+  const gape = snakeSmooth(0.2, 1, strike) * 0.6;
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(-0.1 + strike * 0.2);
+  ctx.save();
+  ctx.translate(1.6, 0.6);
+  ctx.rotate(-gape);
+  snakeInk(ctx, P.belly, snakePoly([0.4, -0.4, -5.2, -0.1, -5.0, 0.55, 0.2, 0.9]), 0.26);
+  ctx.restore();
+  if (gape > 0.05) {
+    snakeFill(ctx, '#e0707a', snakePoly([1.8, 0.3, -3.6, 0.3, -3.5 + gape * 1.6, 0.4 + gape * 4.6]));
+    snakeFill(ctx, '#fffaf0', snakePoly([-3.0, 0.2, -2.55, 0.2, -2.85, 1.7]));
+    snakeFill(ctx, '#fffaf0', snakePoly([-1.7, 0.2, -1.25, 0.2, -1.55, 1.45]));
+  }
+  snakeInk(ctx, P.head, (c) => {
+    c.moveTo(2.4, 0.9);
+    c.quadraticCurveTo(2.9, -1.2, 1.6, -2.3);
+    c.quadraticCurveTo(-0.6, -2.7, -2.2, -2.1);
+    c.quadraticCurveTo(-3.8, -1.5, -4.3, -0.4);
+    c.quadraticCurveTo(-4.4, 0.4, -3.6, 0.45);
+    c.lineTo(1.6, 1.2);
+    c.closePath();
+  }, 0.3);
+  snakeFill(ctx, P.bodyLit, (c) => { c.moveTo(1.8, -1.8); c.quadraticCurveTo(-0.8, -2.5, -3.4, -1.1); c.quadraticCurveTo(-0.8, -1.7, 1.9, -1.1); c.closePath(); });
+  snakeFill(ctx, P.diamond, (c) => { c.moveTo(2.2, -0.6); c.quadraticCurveTo(0.2, -1.2, -1.4, -0.7); c.quadraticCurveTo(0.4, -0.5, 2.3, 0.2); c.closePath(); });
+  snakeStroke(ctx, P.edge, 0.34, (c) => { c.moveTo(-2.2, -0.25); c.quadraticCurveTo(0, 0.1, 2.2, 0.75); });
+  // Heavy brow over the eye — the scowl is most of the menace.
+  snakeFill(ctx, P.dark, snakePoly([-3.2, -1.75, -1.0, -2.25, -1.3, -1.55]));
+  snakeFill(ctx, P.eye, snakeCircle(-2.0, -1.2, 0.58));
+  snakeFill(ctx, '#f2c14a', snakeCircle(-2.0, -1.2, 0.3));
+  snakeFill(ctx, P.eye, (c) => c.ellipse(-2.0, -1.2, 0.1, 0.27, 0, 0, TAU));
+  snakeFill(ctx, '#ffffff', snakeCircle(-2.2, -1.38, 0.12));
+  snakeFill(ctx, '#2a1a12', snakeCircle(-3.75, -0.5, 0.2));
+  // The tongue flicks while it is idle, three times a cycle, in two bursts.
+  const flick = !idle ? 0 : Math.max(0, Math.sin(t * loop * 3)) * ((t * 2) % 1 < 0.45 ? 1 : 0);
+  if (flick > 0.1) {
+    snakeStroke(ctx, P.tongue, 0.32, (c) => {
+      c.moveTo(-3.6, 0.2); c.lineTo(-3.6 - flick * 2.2, 0.3);
+      c.lineTo(-4.3 - flick * 2.4, -0.3); c.moveTo(-3.6 - flick * 2.2, 0.3); c.lineTo(-4.3 - flick * 2.4, 0.8);
+    });
+  }
+  ctx.restore();
+  // Strike streaks behind the lunging head.
+  if (strike > 0.2 && strike < 0.999) {
+    snakeStroke(ctx, `rgba(255,244,216,${(0.6 * strike).toFixed(3)})`, 0.35, (c) => {
+      c.moveTo(hx + 3, hy - 2.2); c.lineTo(hx + 7.5, hy - 2.6);
+      c.moveTo(hx + 3.4, hy + 1); c.lineTo(hx + 7, hy + 1.2);
+    });
+  }
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------- the goose
+// PLUMBER PANIC's farmyard goose (Peter, 24 Sep, from the countryside ideas bake-off,
+// src/dev/plumber-ideas.js): she has decided the lane is hers and comes at the hero flat
+// out — neck stretched low, beak wide open honking, wings half up and beating, orange
+// feet paddling. A closer like the dogs, between the bruiser and the snarler for pace.
+//
+// THE NECK GROWS OUT OF THE CHEST (Peter: "draw the neck better of the goose so it
+// attaches better to the body"). Body, neck and head are ONE silhouette: all three are
+// stroked in ink first, then all three filled, so the fills cover every inner edge and
+// the only line left is the outside of the whole bird — no seam where the neck meets
+// the breast. The neck's root is wide and sunk into the chest, and it tapers to the head.
+const GOOSE = {
+  body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: 'rgba(74,70,64,0.9)', beak: '#f08a2c',
+  beakDark: '#c4611a', mouth: '#8a2a1e', leg: '#f08a2c', legDark: '#c4611a',
+};
+const GOOSE_FRAMES = 10;
+// Beak tip to tail, and wing tip to feet, in the drawing's own units.
+const GOOSE_SPAN = { left: 16.4, right: 9.8, top: 17.2 };
+function gooseStroke(ctx, color, lw, path) {
+  ctx.beginPath(); path(ctx);
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+}
+function gooseFill(ctx, color, path) { ctx.beginPath(); path(ctx); ctx.fillStyle = color; ctx.fill(); }
+function gooseInk(ctx, fill, lw, path, color = GOOSE.ink) {
+  ctx.beginPath(); path(ctx);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+}
+function goose(ctx, w, h, frame = 0) {
+  const P = GOOSE;
+  const u = ((frame % GOOSE_FRAMES) / GOOSE_FRAMES) * TAU;   // one stride per ring
+  const bob = Math.abs(Math.sin(u)) * 0.8;
+  const s = Math.min(w / (GOOSE_SPAN.left + GOOSE_SPAN.right), h / GOOSE_SPAN.top);
+  ctx.save();
+  ctx.translate(w - GOOSE_SPAN.right * s, h);
+  ctx.scale(s, s);
+  // Legs and feet, paddling: the far one darker.
+  for (const side of [0, 1]) {
+    const k = u + side * Math.PI;
+    const fx = -0.5 + Math.cos(k) * 2.8 + (side ? 1.4 : -1.2);
+    const lift = Math.max(0, Math.sin(k)) * 1.7;
+    gooseStroke(ctx, side ? P.leg : P.legDark, 0.7, (c) => { c.moveTo(side ? 0.8 : -0.6, -5.4 - bob); c.lineTo(fx, -0.8 - lift); });
+    gooseInk(ctx, side ? P.leg : P.legDark, 0.3, (c) => { c.moveTo(fx + 0.6, -0.9 - lift); c.lineTo(fx - 2.2, -0.5 - lift); c.lineTo(fx + 0.4, 0.1 - lift); c.closePath(); }, P.beakDark);
+  }
+  ctx.translate(0, -6.2 - bob);
+  const flap = Math.sin(u + 1);
+  const wing = (lift, far) => (c) => {
+    const a = -0.9 - lift * 0.5 - (far ? 0.25 : 0);
+    const tx = 1 + Math.cos(a) * 8, ty = -2 + Math.sin(a) * 8;
+    c.moveTo(-2, -2.2);
+    c.quadraticCurveTo(tx - 4, ty - 1.5, tx, ty);
+    c.lineTo(tx + 1.6, ty + 1.4); c.lineTo(tx - 0.2, ty + 1.8); c.lineTo(tx + 1, ty + 3.2); c.lineTo(tx - 1, ty + 3.2);
+    c.quadraticCurveTo(3, -1, 3.6, -1.2); c.closePath();
+  };
+  gooseInk(ctx, P.wingShade, 0.45, wing(flap, true));
+  const nb = Math.sin(u * 2) * 0.5;
+  const body = (c) => {
+    c.moveTo(-4.2, -2.4); c.quadraticCurveTo(-5.8, 2.8, 0.8, 3); c.quadraticCurveTo(5.8, 3, 7.2, -1);
+    c.lineTo(9.2, -4.8); c.lineTo(6.4, -3.6); c.quadraticCurveTo(2, -4.4, -4.2, -2.4); c.closePath();
+  };
+  // Wide at the root — its top edge leaves the back, its underside leaves the breast —
+  // and tapering to the head, with a slight S on the underside.
+  const neck = (c) => {
+    c.moveTo(-0.6, -3.8);
+    c.bezierCurveTo(-4.2, -4.9, -6.4, -4.8 + nb, -10.2, -3.8 + nb);
+    c.lineTo(-10.6, -1.3 + nb);
+    c.bezierCurveTo(-7.4, -1.6 + nb, -5.8, -0.4, -3.2, 1.8);
+    c.closePath();
+  };
+  const head = (c) => c.ellipse(-11.2, -2.5 + nb, 2.2, 1.7, -0.1, 0, TAU);
+  // One silhouette: every outline first, then every fill over it.
+  for (const part of [body, neck, head]) gooseStroke(ctx, P.ink, 1.1, part);
+  for (const part of [body, neck, head]) gooseFill(ctx, P.body, part);
+  ctx.save(); ctx.beginPath(); body(ctx); ctx.clip();
+  gooseFill(ctx, P.bodyShade, (c) => c.ellipse(1.6, 2.8, 7.4, 2.2, 0, 0, TAU));
+  ctx.restore();
+  // The neck's own shadow along its underside, running into the breast shade.
+  ctx.save(); ctx.beginPath(); neck(ctx); ctx.clip();
+  gooseFill(ctx, P.bodyShade, (c) => {
+    c.moveTo(-10.8, -1.2 + nb); c.bezierCurveTo(-7.4, -1.4 + nb, -5.8, -0.2, -3.2, 2.2);
+    c.lineTo(-2.6, 0.6); c.bezierCurveTo(-5.6, -1.6, -7.6, -2.2 + nb, -10.8, -2 + nb); c.closePath();
+  });
+  ctx.restore();
+  const gape = 0.5 + Math.abs(Math.sin(u)) * 0.8;
+  gooseFill(ctx, P.mouth, (c) => { c.moveTo(-12.6, -2.6 + nb); c.lineTo(-15.4, -2.8 - gape * 0.4 + nb); c.lineTo(-15.2, -1 + gape * 0.5 + nb); c.closePath(); });
+  gooseInk(ctx, P.beak, 0.35, (c) => { c.moveTo(-12.4, -3.3 + nb); c.lineTo(-15.8, -2.9 - gape * 0.5 + nb); c.lineTo(-12.4, -2.1 + nb); c.closePath(); }, P.beakDark);
+  gooseInk(ctx, P.beak, 0.35, (c) => { c.moveTo(-12.4, -2 + nb); c.lineTo(-15.4, -1 + gape * 0.6 + nb); c.lineTo(-12.2, -1.3 + nb); c.closePath(); }, P.beakDark);
+  gooseFill(ctx, '#1a1816', (c) => c.arc(-11.4, -3 + nb, 0.45, 0, TAU));
+  gooseStroke(ctx, P.ink, 0.5, (c) => { c.moveTo(-12.4, -4.4 + nb); c.lineTo(-10.4, -3.8 + nb); });
+  gooseInk(ctx, P.body, 0.45, wing(flap * 0.8, false));
+  ctx.restore();
+}
+
 // ------------------------------------------------------------------- exports
 // The five tables sprites/props.js spreads into its own. Keeping them together
 // at the bottom is what makes the registration one line each over there.
@@ -937,6 +1228,8 @@ export const ANIMAL_PAINTERS = {
   dogBruiser: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogBruiser),
   dogFeral: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogFeral),
   catFury: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.catFury),
+  rattlesnake,
+  goose,
 };
 
 // The finish dog keeps the same three bodies, colours and gait as the lane
@@ -954,6 +1247,8 @@ export const ANIMAL_NAMES = Object.keys(ANIMAL_PAINTERS);
 
 export const ANIMAL_FRAMES = {
   dogSnarler: FRAMES, dogBruiser: FRAMES, dogFeral: FRAMES, catFury: FRAMES,
+  rattlesnake: SNAKE_FRAMES,
+  goose: GOOSE_FRAMES,
 };
 
 // A gallop outruns a rotor. The bruiser's short legs cycle FASTER than the
@@ -961,6 +1256,8 @@ export const ANIMAL_FRAMES = {
 // short-strided animal keeping up has to take more steps to do it.
 export const ANIMAL_FPS = {
   dogSnarler: 16, dogBruiser: 18, dogFeral: 15, catFury: 20,
+  rattlesnake: SNAKE_FPS,
+  goose: 22,
 };
 
 // Art height as a multiple of the collision box. The two with fur standing up
@@ -968,6 +1265,9 @@ export const ANIMAL_FPS = {
 // point of it is that it is low.
 export const ANIMAL_TALL = {
   dogSnarler: 1.05, dogBruiser: 1.0, dogFeral: 1.15, catFury: 1.12,
+  // The snake's neck and rattle stand over a box kept at the height of its coil.
+  rattlesnake: 1.25,
+  goose: 1.35,
 };
 
 // Supersampling. This is NOT the only multiplier: rasterize() applies its own
@@ -995,7 +1295,10 @@ export const ANIMAL_TALL = {
 // If ZOOM_PHONE (game/run.js) or the density ladder moves, re-derive against
 // that 286px worst case rather than adjusting this by eye.
 export const ANIMAL_DETAIL = {
-  dogSnarler: 2, dogBruiser: 2, dogFeral: 2, catFury: 2,
+  dogSnarler: 2, dogBruiser: 2, dogFeral: 2, catFury: 2, goose: 2,
+  // One, not two: the snake's ring is 24 frames, and at two it would hold four times
+  // the pixels of a dog's eight for a drawing that is mostly flat tone.
+  rattlesnake: 1,
 };
 
 // World-only visual size, on top of the standard 4/3 hazard overdraw. Same
@@ -1011,4 +1314,7 @@ export const ANIMAL_DETAIL = {
 // is the one that most needs to be seen coming.
 export const ANIMAL_VISUAL = {
   dogSnarler: 1.16, dogBruiser: 1.16, dogFeral: 1.16, catFury: 1.24,
+  // Drawn at its box: its box already takes in the strike.
+  rattlesnake: 1,
+  goose: 1.1,
 };

@@ -294,5 +294,54 @@ assert(quietest > 0.02, `no family has a silent frame at the base level (quietes
   await pending;
 }
 
+// ---- the background worker builds the SAME families ------------------------------
+// Families are built off the main thread by a Blob worker whose source is
+// expandFamilySpectra's own text (tngr2FamilyWorkerSource). Two ways that can go wrong,
+// both checked here without a browser: the worker's tables differ from the main
+// thread's, or the function reaches outside itself — which works unminified and dies
+// with a ReferenceError the day the production build renames a module-level name. So
+// the source is run in a stand-in worker scope twice: as this module produces it, and
+// out of a MINIFIED bundle of the module, the way the shipped game produces it.
+{
+  const { tngr2FamilyWorkerSource, buildFamily: build, TNGR2_FRAMES: FRAMES,
+    TNGR2_MIP_LEVELS: LEVELS, TNGR2_BASE_SAMPLES: BASE } = await import('../src/engine/tngr2/tables.js');
+  const { TNGR2_TABLE_IDS: IDS, HARMONICS: H } = await import('../src/engine/tngr2/families.js');
+  const runWorker = (source, id) => {
+    let reply = null;
+    const self = { postMessage: (msg) => { reply = msg; } };
+    new Function('self', source)(self);
+    const at = IDS.indexOf(id) * FRAMES * H;
+    self.onmessage({ data: { id, spectra: tngr2Spectra().slice(at, at + FRAMES * H),
+      frames: FRAMES, harmonics: H, mipLevels: LEVELS, baseSamples: BASE } });
+    return reply;
+  };
+  const sameAsMain = (reply, id) => {
+    if (!reply || reply.error) return false;
+    const main = build(id);
+    if (reply.gain !== main.gain || reply.flat.length !== main.levels.length) return false;
+    return main.levels.every((frames, level) => {
+      const len = frames[0].length;
+      return frames.every((t, k) => t.every((v, i) => v === reply.flat[level][k * len + i]));
+    });
+  };
+  for (const id of ['alloy', 'vowelAEIOU']) {
+    assert(sameAsMain(runWorker(tngr2FamilyWorkerSource(), id), id),
+      `the worker builds ${id} bit-for-bit as the main thread does`);
+  }
+  const esbuild = (await import('esbuild')).default;
+  const bundled = await esbuild.build({
+    stdin: { contents: "import { tngr2FamilyWorkerSource } from './src/engine/tngr2/tables.js'; globalThis.__src = tngr2FamilyWorkerSource();",
+      resolveDir: new URL('..', import.meta.url).pathname, loader: 'js' },
+    bundle: true, format: 'iife', minify: true, write: false, logLevel: 'silent',
+  });
+  new Function(bundled.outputFiles[0].text)();
+  const minified = globalThis.__src;
+  assert(typeof minified === 'string' && minified.length > 100, 'a minified build still produces the worker source');
+  let minReply = null;
+  try { minReply = runWorker(minified, 'alloy'); } catch (e) { minReply = { error: e.message }; }
+  assert(sameAsMain(minReply, 'alloy'),
+    `and that MINIFIED source runs on its own and builds the same tables${minReply?.error ? ` (${minReply.error})` : ''}`);
+}
+
 console.log(failed ? `\nTNGR-2 TABLES: ${failed} FAILED` : '\nTNGR-2 TABLES: PASSED');
 process.exit(failed ? 1 : 0);

@@ -1130,7 +1130,17 @@ const server = createServer(async (req, res) => {
         // end of the song is the one this exists for, because the bars can be deleted
         // from under it long after it was set and nothing else would ever say so.
         const track = resolveTrack(id);
-        const arrBad = track?.bank ? arrangementIssues(track.bank, arrangement) : [];
+        // Checked against the MUSIC ON DISK, not the bank this process loaded when it
+        // started: a song whose music was rewritten while the desk was running (the
+        // neon cabinet's, replaced by SESERAGI on 23 Sep) was checked against the old
+        // one, and every section the new music has and the old did not was refused as
+        // "points at section 34, and there are 34".
+        let checkBank = track?.bank || null;
+        const onDisk = writableSongPath(ROOT, id);
+        if (onDisk) {
+          try { checkBank = (await freshImport(onDisk)).bank || checkBank; } catch { /* keep the loaded one */ }
+        }
+        const arrBad = checkBank ? arrangementIssues(checkBank, arrangement) : [];
         if (arrBad.length) {
           res.writeHead(422, { 'content-type': 'text/plain' });
           res.end(`"${id}" arrangement:\n  ${arrBad.join('\n  ')}`);
@@ -1142,7 +1152,7 @@ const server = createServer(async (req, res) => {
         if (snap) snaps.push(snap);
         writeSongFile(ROOT, id, {
           mix,
-          arrangement: normaliseArrangementResolution(track?.bank, compactArrangement(track?.bank, arrangement)),
+          arrangement: normaliseArrangementResolution(checkBank, compactArrangement(checkBank, arrangement)),
           variants,
           m8trx,
         });

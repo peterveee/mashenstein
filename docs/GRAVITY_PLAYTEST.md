@@ -41,7 +41,7 @@ supersampled detail. Ceiling props reflect that same rendering pipeline.
   later approaches. Counts survive automatic restarts and checkpoint restores.
 - The somersault uses a smoothstep turn, with the facing snap under the arrival burst.
 - The lunar window wall, rails and gate pylons scroll together at world speed.
-  Windows have rounded frames inset 14 world px from both rails. Saturn drifts
+  Windows have rounded frames inset 10 world px from both rails, with 8px between panes. Saturn drifts
   slowly right-to-left with level progress. Joined, round-ended chevrons sit
   over glass shading that is strongest on the left and fades rightward.
 
@@ -91,3 +91,8 @@ sine whistle, FM telemetry bells, an airy sine/triangle pad, and a half-time
 reactor pulse. It retains V2 harmony corrections and the full 32-bar form.
 Reference: `work/auditions/gravity/polarity-drive-v3.wav`. Earlier versions
 remain in the audition folder for comparison.
+
+Saturn uses filled rings in one projected plane, with the near half in front
+of the shaded globe. Occasional rotating asteroids cross the sky in brief
+fly-bys (roughly eight seconds apart), clipped behind the window frames.
+Their timing is deterministic and they are background decoration only.

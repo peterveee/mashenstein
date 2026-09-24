@@ -927,7 +927,7 @@ Tngr2Voice.prototype.rebind = function rebind(patch, tables, core) {
  * The regate flag is the whole difference between MONO and LEGATO: mono restarts the
  * envelopes on every new note, legato leaves them alone and only moves the pitch — §7.1.
  */
-Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, core, fade) {
+Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, core, fade, glide) {
   var target = Math.max(1e-6, Number(note.hz) || 0);
   var from = Math.max(1e-6, this.hz);
   this.hz = target;
@@ -935,7 +935,8 @@ Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, c
   // Only when the lane has actually been given a different patch — which never happens
   // inside a render, so a bounce is sample-for-sample what it was.
   if (regate && this.patch !== patch) this.rebind(patch, tables, core);
-  var samples = Math.round(patch.glide * this.rate);
+  // glide:false is MONO restriking a note that was already let go — see apply().
+  var samples = glide === false ? 0 : Math.round(patch.glide * this.rate);
   if (samples > 0 && Math.abs(Math.log2(target / from)) > 1e-9) {
     // One multiply per source per sample, which is an exponential — a glide that is
     // linear in PITCH rather than in hertz, so it sounds even across an octave.
@@ -1447,7 +1448,24 @@ Tngr2Core.prototype.apply = function apply(event, frame) {
     var mode = patch.mode;
     var held = this.lastVoice;
     var sounding = held && held.active;
-    if (mode !== 'poly' && sounding) {
+    // FINGERED, the rule every other synth's MONO and LEGATO keep: a note glides from, or
+    // takes over the envelope of, a note that is still GATED. A voice ringing out its
+    // release is still 'active', but its key is up — gliding out of it is a note after a
+    // rest sliding in from the one before, and LEGATO onto it inherited the release, so
+    // the new note faded out as it began. A note-off ends the gate here.
+    var gated = sounding && held.env.stage !== TNGR2_STAGE_RELEASE;
+    if (mode === 'mono' && sounding && !gated && event.regate !== false) {
+      // MONO still cuts the tail it replaces — the choke every mono path has — and
+      // strikes the new note at its own pitch.
+      held.retarget(event, patch, true, this.tables, this, this.stealFade, false);
+      held.eventId = event.eventId;
+      held.age = ++this.age;
+      if (event.releaseAtStart) this.releaseVoice(held);
+      return;
+    }
+    // A hand-back is a key coming up, and letting go never STARTS a note.
+    if (event.regate === false && !sounding) return;
+    if (mode !== 'poly' && (gated || (event.regate === false && sounding))) {
       // MONO re-gates the envelopes, LEGATO does not — the note is taken over rather than
       // struck again, which is the whole of the difference (§7.1).
       //

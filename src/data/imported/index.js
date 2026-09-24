@@ -98,6 +98,7 @@ import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
 import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as SUPER_MARIO_WORLD from './super-mario-world.js';
+import * as TERMINAL_VELOCITY_ORIGINAL from './terminal-velocity-original.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
@@ -190,6 +191,7 @@ export const IMPORTED_BY_ID = {
   "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "super-mario-world": { bank: SUPER_MARIO_WORLD.bank, title: SUPER_MARIO_WORLD.title, group: "copy", writable: true },
+  "terminal-velocity-original": { bank: TERMINAL_VELOCITY_ORIGINAL.bank, title: TERMINAL_VELOCITY_ORIGINAL.title, group: "imported", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },

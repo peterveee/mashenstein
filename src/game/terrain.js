@@ -4,7 +4,9 @@ import { W } from '../engine/renderer.js';
 import { roadAt, routeRise, tunnelRoofEnd, tunnelOpenings } from '../game/routes.js';
 import { PLAYER_H, PLAYER_X, PLAYER_SPRITE_W } from '../game/player.js';
 import { HERO_DRAW_H, heroReach } from './draw.js';
-import { drawTronTrain, drawTronTrainShell, drawTronSpeedStreaks, tronConsistLength, tronCarApertures, TRON_PALETTE, TRON_BOARD_GAP } from '../sprites/train.js';
+import { STAGE_LAYOUTS } from '../data/stage-layouts.js';
+import { NEON_STATIONS } from '../engine/kana.js';
+import { drawTronTrain, drawTronTrainShell, drawTronSpeedStreaks, tronConsistLength, tronCarApertures, TRON_PALETTE, TRON_BOARD_GAP, TRON_TAPER_SHOULDER, drawTronStationSign, STATION_SIGN_LIFT } from '../sprites/train.js';
 import {
   PAPER_TEXTURE_BLEND,
   paperPatternFor,
@@ -347,7 +349,10 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     const air = isTrain ? trainArrival(camX, r) : null;
     if (air?.hidden) continue;
     const sx = r.x - camX + (air ? air.dx : 0);
-    if (sx > right + shadowMargin || sx + r.w < -shadowMargin) continue;
+    // A train's station sign stands past its nose, so the train stays in the pass
+    // until the sign has gone off the left too.
+    const tail = isTrain ? NEON_SIGN_GAP + NEON_SIGN_W : 0;
+    if (sx > right + shadowMargin || sx + r.w + tail < -shadowMargin) continue;
     // Walked in columns rather than drawn as a rect, because a road is not
     // level: it holds its entry height, climbs, holds again and then eases back
     // down to meet the ground, and every one of those changes is something the
@@ -491,6 +496,7 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
 //   there, and still a full screen clear of the player — he cannot reach a
 //   roof that is not yet under him.
 const TRAIN_FLIGHT_LEAD = 1200;    // camera distance at which the flight starts
+export const TRAIN_FLIGHT_LEAD_PX = TRAIN_FLIGHT_LEAD;
 const TRAIN_FLIGHT_SETTLE = 120;   // ...and by which it is standing on its berth
 const TRAIN_FLIGHT_BACK = 2000;    // how far short of the berth it enters
 const TRAIN_FLIGHT_AIR = 82;       // cruising height above the rail
@@ -576,7 +582,7 @@ const TRAIN_FLIGHT_CLEAR_U = (() => {
  * `hidden` is the stretch before the flight begins — it must not be drawn
  * parked in mid-air ahead of the player while it waits for its cue.
  */
-function trainArrival(camX, r) {
+export function trainArrival(camX, r) {
   const d = r.x - camX;
   if (d >= TRAIN_FLIGHT_LEAD) return { hidden: true };
   if (d <= TRAIN_FLIGHT_SETTLE) {
@@ -637,11 +643,162 @@ function trainRush(air) {
   return Math.min(1, slope * (TRAIN_FLIGHT_BACK / (TRAIN_FLIGHT_LEAD - TRAIN_FLIGHT_SETTLE)) / 3);
 }
 
+/**
+ * A TRAIN THAT ONLY FLIES PAST (Peter, 23 Sep: "we should NOT have a train land until
+ * AFTER we have gone to the minor key... until then they should only fly past").
+ *
+ * Its route has been taken out of the run (run.js, updateNeonSky) — no roof, no coins —
+ * and this is all that is left of it: the same train at cruising height, coming from
+ * behind the hero, overtaking him and carrying on off the right of the screen without
+ * ever coming down. Linear rather than eased: it is not arriving anywhere, so it has
+ * nothing to brake for. Over the window the camera covers LEAD + EXIT and the train
+ * covers GAIN more, which is the overtake.
+ */
+const TRAIN_FLYPAST_EXIT = 1500;
+const TRAIN_FLYPAST_GAIN = 5200;
+export function trainFlypast(camX, r) {
+  const d = r.x - camX;
+  if (d >= TRAIN_FLIGHT_LEAD) return { hidden: true };
+  const p = (TRAIN_FLIGHT_LEAD - d) / (TRAIN_FLIGHT_LEAD + TRAIN_FLYPAST_EXIT);
+  if (p >= 1) return { hidden: true, gone: true };
+  return {
+    dx: -TRAIN_FLIGHT_BACK + TRAIN_FLYPAST_GAIN * p,
+    // A long shallow bow over the city, not a level line: it reads as flying.
+    lift: TRAIN_FLIGHT_AIR + Math.sin(p * Math.PI) * 14,
+    open: 0,
+    u: 0.5,          // mid-flight speed, for the streaks
+    alpha: 0.85,
+  };
+}
+
+/** Draw a fly-past; false once it has gone for good. */
+export function drawNeonFlypast(ctx, camX, r, topAt, t = 0, palette = TRON_PALETTE.neon) {
+  const air = trainFlypast(camX, r);
+  if (air.gone) return false;
+  if (air.hidden) return true;
+  const from = r.x - camX + air.dx;
+  drawTrainRoute(ctx, camX, r, topAt, from, from + r.w, air, t, palette);
+  return true;
+}
+
+/**
+ * THE NOSE IS A SLOPE (Peter, 24 Sep: "when we walk off the train front we should
+ * move down the front curve of it"). A train is an island, and an island is flat to
+ * its last pixel and then stops — so the hero ran out past the drawn nose and fell off
+ * a cliff edge in mid-air. This gives each neon train's route a DESCENT over the cab's
+ * taper: flat to the shoulder where the nose starts to fall, then easing down to the
+ * lane at the tip, on the route's own `hold`/`end` profile (routeRise). The roof the
+ * hero stands on and the one that is drawn now end in the same place.
+ */
+//
+// THE DRAWN CURVE, EXACTLY (Peter, 24 Sep: "its a bit early"). The first cut eased
+// down from the shoulder on a smoothstep, which falls away sooner than the painted
+// nose does — the painted one stays nearly flat for a long way and then turns down
+// hard — so the hero sank into the roof. This samples the painter's own bezier
+// (nosePath in src/sprites/train.js: shoulder at 0.46 of the cab, control points at
+// 0.42/0.12 back from the tip, tip at 0.74 of the hull height) into a table, and the
+// floor is read off that. At the tip he steps the last few pixels down to the lane.
+const NOSE_SAMPLES = 48;
+function noseBezier(u, p0, p1, p2, p3) {
+  const v = 1 - u;
+  return v * v * v * p0 + 3 * v * v * u * p1 + 3 * v * u * u * p2 + u * u * u * p3;
+}
+export function shapeNeonTrainNoses(cabinet, routes, stageId = null) {
+  if (cabinet?.id !== 'neon') return;
+  // Which stop each train names: the trains of every neon stage, in order, walk the
+  // outer loop and the last of them says Shinjuku (kana.js NEON_STATIONS).
+  const trains = (routes || []).filter((q) => q.kind === 'island' && (q.rise || 0) >= 24)
+    .sort((a, b) => a.x - b.x);
+  const before = neonTrainsBefore(stageId);
+  const total = neonTrainsBefore(null);
+  trains.forEach((q, i) => {
+    const n = NEON_STATIONS.length - total + before + i;
+    q.station = NEON_STATIONS[Math.max(0, Math.min(NEON_STATIONS.length - 1, n))];
+  });
+  for (const r of routes || []) {
+    if (r.kind !== 'island' || (r.rise || 0) < 24) continue;
+    const consist = trainConsistFor(r);
+    const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
+    const cabLen = tronCarApertures(consist[consist.length - 1], 0, TRAIN_H, TRAIN_H).len;
+    // The cab's painted span, in world x: it ends at the route's end.
+    const right = r.x + r.w;
+    const left = right - cabLen * k;
+    const shoulder = left + (right - left) * 0.46;
+    const xs = [shoulder, right - (right - shoulder) * 0.42, right - (right - shoulder) * 0.12, right];
+    const ys = [0, TRAIN_H * 0.02, TRAIN_H * 0.34, TRAIN_H * 0.74];   // down from the roof
+    const pts = [];
+    for (let i = 0; i <= NOSE_SAMPLES; i++) {
+      const u = i / NOSE_SAMPLES;
+      pts.push([noseBezier(u, ...xs), noseBezier(u, ...ys)]);
+    }
+    r.nose = { from: shoulder, to: right, pts };
+  }
+}
+
+/** How far below the flat roof the nose's surface is at world x (0 before it). */
+export function neonNoseDrop(r, x) {
+  const n = r?.nose;
+  if (!n || x <= n.from) return 0;
+  const p = n.pts;
+  if (x >= n.to) return p[p.length - 1][1];
+  for (let i = 1; i < p.length; i++) {
+    if (p[i][0] >= x) {
+      const [x0, y0] = p[i - 1];
+      const [x1, y1] = p[i];
+      return y0 + (y1 - y0) * ((x - x0) / Math.max(1e-6, x1 - x0));
+    }
+  }
+  return p[p.length - 1][1];
+}
+
+/**
+ * The station sign's span in WORLD x for a neon train route, or null — so the run can
+ * keep the train's prizes out from under it (Peter, 24 Sep: "avoid anything above or
+ * below the sign and shift any power ups to before or after it").
+ */
+// Past the nose, on the platform: a stride clear of the tip, and as long as a car's
+// window row. Its bottom clears the tallest hero standing on the lane (30px, see
+// HERO_REACH) with room to spare, so he runs underneath it.
+const NEON_SIGN_GAP = 16;
+const NEON_SIGN_W = 80;
+const NEON_SIGN_LIFT = 36;
+// How far past a train's nose its sign reaches.
+export const NEON_SIGN_REACH = NEON_SIGN_GAP + NEON_SIGN_W;
+export function neonStationSignSpan(r) {
+  if (r?.kind !== 'island' || (r.rise || 0) < 24) return null;
+  const x0 = r.x + r.w + NEON_SIGN_GAP;
+  return { x0, x1: x0 + NEON_SIGN_W };
+}
+
+/** How many neon trains the stages BEFORE `stageId` carry (all of them for null). */
+function neonTrainsBefore(stageId) {
+  let n = 0;
+  for (const id of ['neon-1', 'neon-2', 'neon-3']) {
+    if (id === stageId) break;
+    n += (STAGE_LAYOUTS[id]?.routes?.islands || []).filter((q) => (q.rise || 0) >= 24).length;
+  }
+  return n;
+}
+
 /** The consist a route's width buys, so every pass over it agrees. */
 function trainConsistFor(r) {
   const cars = Math.max(2, Math.round(r.w / TRAIN_CAR_W));
+  // The destination board is on the PLATFORM now, in front of the middle car
+  // (neonPlatformBoard), so every car keeps its whole row of windows.
   return [{ kind: 'tail' },
     ...Array(Math.max(0, cars - 2)).fill({ kind: 'car' }), { kind: 'engine' }];
+}
+
+/**
+ * Where the station sign stands, in the consist's own (unscaled) space: over the
+ * middle car, inset from both of its ends.
+ */
+function neonPlatformBoard(consist) {
+  const mid = Math.floor(consist.length / 2);
+  const lenOf = (car) => tronCarApertures(car, 0, TRAIN_H, TRAIN_H).len;
+  let x = 0;
+  for (let i = 0; i < mid; i++) x += lenOf(consist[i]) + TRON_BOARD_GAP;
+  return { x: x + 8, w: lenOf(consist[mid]) - 16 };
 }
 
 /**
@@ -741,7 +898,7 @@ export function neonTrainHeadroom(r, heroId = null) {
  * THE SHELL OVER THE HERO — the second half of the run-through. Called after
  * the entities are drawn, for the one car he is in; see drawTronCarShell.
  */
-export function drawNeonTrainShell(ctx, camX, r, topAt) {
+export function drawNeonTrainShell(ctx, camX, r, topAt, t = 0) {
   const roofY = topAt(r.x + r.w / 2, r);
   const consist = trainConsistFor(r);
   const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
@@ -753,7 +910,7 @@ export function drawNeonTrainShell(ctx, camX, r, topAt) {
   ctx.scale(k, 1);
   drawTronTrainShell(ctx, 0, TRAIN_H, {
     consist, h: TRAIN_H, palette: TRON_PALETTE.neon, glow: false,
-    gap: TRON_BOARD_GAP, open: 1,
+    gap: TRON_BOARD_GAP, open: 1, t,
     // The neon lane's own inks (the pack's ground pass): the apron under the
     // line and the line itself, so the skirt that hides his soles is road.
     skirt: { apron: '#0c0c20', line: '#38d8f8', depth: 4 },
@@ -761,7 +918,7 @@ export function drawNeonTrainShell(ctx, camX, r, topAt) {
   ctx.restore();
 }
 
-function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0) {
+function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palette = TRON_PALETTE.neon) {
   const roofY = topAt(r.x + r.w / 2, r);
   const consist = trainConsistFor(r);
   // The painter walks from a left edge at its own natural lengths, so scale the
@@ -790,7 +947,7 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0) {
     ctx.globalAlpha = Math.min(0.7, rush);
     const trail = (r.x - camX) + dx;
     drawTronSpeedStreaks(ctx, trail - 170, trail - 5, roofY - lift + TRAIN_H * 0.45, t, {
-      palette: TRON_PALETTE.neon, count: 14, speed: 520, band: TRAIN_H * 0.85, glow: false,
+      palette, count: 14, speed: 520, band: TRAIN_H * 0.85, glow: false,
     });
     ctx.restore();
   }
@@ -808,17 +965,26 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0) {
   ctx.clip();
   // Solidifies as it comes down: full ghost at cruising height, opaque the
   // moment it is on the rail. `lift` is already smoothstepped, so this is too.
-  if (air) ctx.globalAlpha *= 1 - (lift / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA);
+  if (air) ctx.globalAlpha *= air.alpha ?? (1 - (lift / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA));
   ctx.translate(r.x - camX + dx, roofY - lift);
   ctx.scale(k, 1);
   drawTronTrain(ctx, 0, TRAIN_H, {
-    consist, h: TRAIN_H, palette: TRON_PALETTE.neon, glow: false, lit: 0.9,
-    gap: TRON_BOARD_GAP,
+    consist, h: TRAIN_H, palette, glow: false, lit: 0.9,
+    gap: TRON_BOARD_GAP, t,
     // Shut in the air, opening as it lands, and standing open ever after — a
     // train the player has already walked past does not close up behind him.
     open: air ? air.open : 1,
   });
   ctx.restore();
+  // THE STATION SIGN, on the platform just past the nose (neonStationSignSpan): there
+  // once the train has landed, and still there while it leaves. Drawn with the route,
+  // so behind the hero, who runs by under it after stepping off the train.
+  if (!air || air.leaving) {
+    const span = neonStationSignSpan(r);
+    const lane = roofY + TRAIN_H;
+    drawTronStationSign(ctx, span.x0 - camX, span.x1 - span.x0, lane, lane, t, 0.9,
+      { lift: NEON_SIGN_LIFT, station: r.station || null });
+  }
 }
 
 function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null, paperSlab = null) {

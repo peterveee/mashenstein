@@ -278,6 +278,7 @@ const suites = [
   // falls back to — lives only here. Every path that can sound a held note is in it,
   // because each of them had a different half of it wrong.
   'tests/held-keys.js',
+  'tests/key-mode-render.js',
   'tests/lfo.js',
   'tests/osc-sync.js',
   // And the half of that claim pot-coverage cannot make. It agrees at ROOT-key
@@ -550,6 +551,7 @@ const browserSuites = new Set([
   'tests/lcd-cache-browser.js',
   'tests/mixer-metering.js',
   'tests/held-keys.js',
+  'tests/key-mode-render.js',
   'tests/tngr2-audio.js',
   'tests/tngr2-jit-bounce.js',
   'tests/tngr2-worklet-proof.js',
@@ -638,7 +640,7 @@ const soundSuites = [
   'tests/arrangement.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/song-processing.js',
-  'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
+  'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
   'tests/tngr2-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
   'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js',

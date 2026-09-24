@@ -361,9 +361,8 @@ export function tunnelSweepOpenings(r) {
   return out;
 }
 
-export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = [] }) {
+export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = [], finishEndX = null }) {
   const mk = (kind) => (d) => {
-    const x = d.at * totalDist;
     // THE CHAMBER and THE SPAN are two lengths now, and only for a tunnel.
     // `dwell` has always authored the chamber — the corridor with the hazards
     // and the prize in it — so it keeps meaning exactly that, and the staged
@@ -372,6 +371,13 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
     // and rescaled here, which is what makes the floor under the chamber
     // itself byte-identical to what it was before the shelf existed.
     const bodyW = (d.dwell ?? 0.7) * speed;
+    // `endsAtFinish` ENDS the road at `finishEndX` (the run works it out from the
+    // finish framing) instead of starting it at `at`: a fraction of the stage
+    // drifts against a fixed-pixel finish as the speed setting changes, and
+    // neon-1's last train has to be standing at the tape.
+    const x = d.endsAtFinish && Number.isFinite(finishEndX)
+      ? finishEndX - bodyW
+      : d.at * totalDist;
     const down = kind === 'tunnel';
     // Nothing to stage on a shallow one: a chamber no deeper than the shelf
     // would "climb" to a ledge it is already standing on. `exitShelf: false`

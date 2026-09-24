@@ -247,6 +247,13 @@ export const BIRD_SHOT_SHORT = [
   'THE BIRD IS NOT PART OF THIS.',
 ];
 
+// The rattlesnake does not move and does not care. It answers the only way it has.
+export const SNAKE_SHOT_SHORT = [
+  'THE SNAKE RATTLED LOUDER.',
+  'IT IS A SNAKE. IT HAS NO OPINION ON THIS.',
+  'THE RATTLING CONTINUES.',
+];
+
 // Food-court hero chatter (drawn via drawSpeech, one line per visit, cycling
 // in order). Beyond the file-level deadpan rule, each pool follows:
 //   - One running bit per hero, set by docs/CAST.md's summary of them. Every new

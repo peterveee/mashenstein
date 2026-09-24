@@ -13,6 +13,12 @@ export const OBSTACLES = {
   // Purely cosmetic — same box, same debris, same jump.
   cactus:      { w: 13, h: 12, sprite: 'cactus', ground: true, breakable: true, action: 'jump', skins: ['cactus', 'cactus', 'cactusGreen', 'cactus'] },
   cactusBig:   { w: 17, h: 14, sprite: 'cactusBig', ground: true, breakable: true, action: 'jump' },
+  // Tokyo's road-works animals: the neon lane's cactus (the cabinet's `swaps`), in the
+  // cactus's box and answered the same way — jumped, or broken. The panda is the
+  // regular; the frog and the monkey in his hard hat are the occasional ones.
+  pandaBarrier: { w: 13, h: 12, sprite: 'pandaBarrier', ground: true, breakable: true, action: 'jump' },
+  frogBarrier: { w: 13, h: 12, sprite: 'frogBarrier', ground: true, breakable: true, action: 'jump' },
+  monkeyBarrier: { w: 13, h: 12, sprite: 'monkeyBarrier', ground: true, breakable: true, action: 'jump' },
   // PLUMBER'S STANDING HAZARD. Same box, same flags and same PROP_TALL as the
   // cactus it stands in for, so the swap in PLUMBER_PATTERNS is a change of
   // plant and nothing else: identical jump, identical spacing, identical
@@ -21,6 +27,8 @@ export const OBSTACLES = {
   thistleBig:  { w: 17, h: 14, sprite: 'thistleBig', ground: true, breakable: true, action: 'jump' },
   snowman:     { w: 13, h: 12, sprite: 'snowman', ground: true, breakable: true, action: 'jump' },
   snowmanBig:  { w: 17, h: 14, sprite: 'snowmanBig', ground: true, breakable: true, action: 'jump' },
+  // Frost's ice crystal cluster: the snowman's box and answer — jumped, or shattered.
+  iceCrystals: { w: 13, h: 12, sprite: 'iceCrystals', ground: true, breakable: true, action: 'jump' },
   crate:      { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'jump', stack: true },
   // KICKABLE, and heavily — see `punt` on trafficCone below for the contract,
   // and HEAVY_PUNT in punt.js for why a barrel does not fly like a cone. The
@@ -309,6 +317,11 @@ export const OBSTACLES = {
   // which is a better reward than a puff of debris, because the player can see
   // what they spent the round on for the rest of the lane.
   bearTrap:   { w: 16, h: 8,  sprite: 'bearTrap', ground: true, breakable: false, disarmable: true, action: 'jump', bedded: true },
+  // PLUMBER's rake: tines up in the grass and the handle lying behind. Jump it; step on it
+  // and the handle comes up into your face (its swing is the run's `swingT`).
+  rake:       { w: 20, h: 7,  sprite: 'rake', ground: true, breakable: true, action: 'jump' },
+  // PLUMBER's farmyard goose: a closer, between the bruiser and the snarler for pace.
+  goose:      { w: 16, h: 11, sprite: 'goose', ground: true, breakable: false, action: 'jump', vx: -50, animal: true },
   // The razor hurdle (legacy id `boomBarrier`): a short, ground-standing jump.
   // Its full two-post silhouette is now the box — no harmless art-only legs and
   // no airborne slide strip. Nine pixels keeps it decisively below crates and
@@ -347,6 +360,11 @@ export const OBSTACLES = {
   // property, and the barrels, crates and braziers are furniture.
   dogSnarler: { w: 16, h: 11, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -62, animal: true },
   dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: false, action: 'jump', vx: -38, animal: true },
+  // SPEED ZONE's rattlesnake: it does not close, it waits coiled in the road and
+  // strikes once as the hero arrives (the run's strikeT; SNAKE_STRIKE_LEAD). The box is
+  // the coil AND the strike's reach, so it is one jump; alive, so like every animal it
+  // shrugs off a shot.
+  rattlesnake: { w: 18, h: 10, sprite: 'rattlesnake', ground: true, breakable: false, action: 'jump', animal: true },
   dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
   catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
 
@@ -416,6 +434,11 @@ export function isOpenGap(ob) {
 export const DEBRIS = {
   cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6, mat: 'soft' },
   cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14, mat: 'soft' },
+  pandaBarrier: { colors: ['#f6f6f2', '#2a2a30', '#f6d33c'], size: 2.6, mat: 'soft' },
+  rake: { colors: ['#c1935a', '#8e979f', '#946a3a'], size: 2.4, mat: 'wood' },
+  goose: { colors: ['#f4f1ea', '#f08a2c', '#c9c1b2'], size: 2.6, count: 12, mat: 'soft' },
+  frogBarrier: { colors: ['#48b84a', '#e8f8c8', '#f6d33c'], size: 2.6, mat: 'soft' },
+  monkeyBarrier: { colors: ['#a8642e', '#f6d2a8', '#f6d33c'], size: 2.6, mat: 'soft' },
   // The head, the stalk and the spine fan — the three things the eye was
   // actually tracking. Debris off a thistle must not be the cactus's reds:
   // the magenta is the whole reason this prop was picked out of the bake-off,
@@ -424,6 +447,7 @@ export const DEBRIS = {
   thistleBig:  { colors: ['#c03a86', '#39521f', '#efe4f4'], size: 3.2, count: 14, mat: 'soft' },
   snowman:     { colors: ['#eaf6ff', '#b9d9ee', '#d84848'], size: 2.6, mat: 'soft' },
   snowmanBig:  { colors: ['#eaf6ff', '#b9d9ee', '#d84848'], size: 3.2, count: 14, mat: 'soft' },
+  iceCrystals: { colors: ['#e4f6ff', '#a6d6f2', '#ffffff'], size: 2.4, count: 14, mat: 'stone' },
   crate:       { colors: ['#c89858', '#8a6432', '#5a4020'], size: 3, mat: 'wood' },
   qcrate:      { colors: ['#f6d33c', '#c89858', '#8a6432'], size: 3, mat: 'gold' },
   barrel:      { colors: ['#b07840', '#7a4c22', '#d09858'], size: 3.2, mat: 'wood' },
@@ -458,6 +482,7 @@ export const DEBRIS = {
   // the scatter reads as pieces of the thing that just left.
   dogSnarler: { colors: ['#3a3446', '#26212f', '#b07840'], size: 2.4, count: 12, mat: 'soft' },
   dogBruiser: { colors: ['#c08a4a', '#95622f', '#ecd6b2'], size: 2.8, count: 12, mat: 'soft' },
+  rattlesnake: { colors: ['#c9a56b', '#6b4a2e', '#efe0b4'], size: 2.6, count: 10, mat: 'soft' },
   dogFeral:   { colors: ['#6a6a74', '#45454f', '#a09a94'], size: 2.4, count: 13, mat: 'soft' },
   catFury:    { colors: ['#332f3f', '#201d2a', '#8a86a0'], size: 2.2, count: 10, mat: 'soft' },
 };
@@ -513,7 +538,10 @@ export function makeObstacle(type, worldX, opts = {}) {
     // mixed patrol instead of one sticker repeated. Derived from the spawn
     // position exactly as bobPhase is, so it is stable per instance and
     // identical on a replay rather than rolled from a live RNG.
-    skin: def.skins ? def.skins[Math.abs(Math.round(worldX * 0.13)) % def.skins.length] : null,
+    skin: (() => {
+      const list = opts.skins || def.skins;
+      return list ? list[Math.abs(Math.round(worldX * 0.13)) % list.length] : null;
+    })(),
     // How far the ART rides above the box, if the type asks for any. Copied onto
     // the instance rather than read off the def at paint time because it is a
     // per-entity number in draw.js — a set piece may want to lift one body

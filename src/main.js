@@ -35,6 +35,7 @@ import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
+import { tngr2WorkerAvailable } from './engine/tngr2/tables.js';
 import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGES, STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
@@ -761,6 +762,30 @@ function boot() {
   // latencyHint is an AudioContext constructor argument — see phone-audio.js, and
   // note that this line and the one above it are both "before ensure()" fixtures.
   applyPhoneAudioProfile(Audio, platform);
+  // EVERY CABINET SONG'S TNGR-2 TABLES, built while nobody is waiting on them (see
+  // Audio.warmSongTables) — the neon cabinet's song alone asks ~700 ms of them. In a
+  // BACKGROUND WORKER, so it costs the main thread nothing and can start at once: by
+  // the time anyone reaches a cabinet its tables are waiting. Memoised, so the cabinet
+  // screen's and the stage's own warms simply find the work done.
+  //
+  // Without a worker (a page that cannot start one) it falls back to idle slices, and
+  // those are 40-70 ms tasks — nothing on a menu, a dropped frame in a run — so that
+  // path goes one cabinet at a time and waits out any stage it finds itself in.
+  {
+    const offThread = tngr2WorkerAvailable();
+    const pending = Object.values(CABINET_BY_ID).filter((cab) => cab?.music);
+    const next = () => {
+      if (!pending.length) return;
+      if (!offThread && typeof window !== 'undefined' && window.__mash_state === 'RunState') {
+        setTimeout(next, 2000);
+        return;
+      }
+      const cab = pending.shift();
+      Promise.resolve(Audio.warmSongTables?.(cab.music, undefined, { worker: true }))
+        .finally(() => setTimeout(next, offThread ? 0 : 50));
+    };
+    setTimeout(next, offThread ? 500 : 3000);
+  }
   // Prime Web Audio before the title state is installed. Browsers/builds that
   // permit autoplay now begin the menu theme immediately; stricter browsers
   // leave the context suspended and the first gesture resumes this same

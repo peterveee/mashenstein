@@ -79,8 +79,9 @@ export const SFX_BIRTHDAYS = {
   crowdCheer: '2026-09-19',   // 1363b15
   powerDown: '2026-09-19',   // 1363b15
   static: '2026-09-19',   // 1363b15
-  socketDrop: null,
-  stripThrow: null,
+  socketDrop: '2026-09-20',   // 72b9fca
+  stripThrow: '2026-09-20',   // 72b9fca
+  thunder: null,
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

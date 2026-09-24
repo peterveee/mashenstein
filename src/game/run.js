@@ -22,6 +22,8 @@ import {
   textWidth, wrapText, drawPanel, drawMenuRow, textYForMid,
   drawKeyLegend, keyLegendWidth, drawPellet, TEXT_INK_H,
 } from '../engine/sprites.js';
+import { SNAKE_STRIKE_LEAD } from '../sprites/animals.js';
+import { RAKE_SWING_LEAD } from '../sprites/props.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
@@ -45,10 +47,17 @@ import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
-import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
+import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
-  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc }
+  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow }
   from '../engine/stylePacks/index.js';
+import {
+  neonStartsTurned, neonTurnStep, neonNightStrikeStep, neonAuroraStrength, neonOpensGolden, drawNeonBolt,
+  neonStrikeFlash, neonStrikeRadius, NEON_STRIKE_SECONDS, neonPreFlicker,
+} from '../engine/stylePacks/neonMoods.js';
+import { ensureKanaFonts, NEON_ANNOUNCE_KANA } from '../engine/kana.js';
+import { TRON_PALETTE } from '../sprites/train.js';
+import { setGlowSprites } from '../sprites/props.js';
 import { paperStrengthOf } from '../engine/paper-material.js';
 import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
@@ -63,7 +72,7 @@ import {
 } from '../sprites/sleigh.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, drawNeonTrainShell, TRAIN_FLOOR_LIFT } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, drawNeonTrainShell, TRAIN_FLOOR_LIFT, trainArrival, drawNeonFlypast, TRAIN_FLIGHT_LEAD_PX, shapeNeonTrainNoses, neonNoseDrop, neonStationSignSpan, NEON_SIGN_REACH } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -551,6 +560,19 @@ const REWIND_DISABLED = typeof window !== 'undefined'
 const BEAT_BANNED_POWERS = new Set([
   'capSpeed', 'capLowGrav', 'capRewind', 'capMagnet', 'capUnpeel', 'capStar',
 ]);
+// The capsules a CABINET bans on every stage, beat or not (`bannedPowers` in its
+// data) — the neon cabinet's invincibility (Peter, 24 Sep). Merged with the beat
+// ban into the one set every spawner and the lane sweep consult.
+const bannedPowersCache = new WeakMap();
+function bannedPowersFor(cabinet, beatLock) {
+  const own = cabinet?.bannedPowers;
+  if (!own?.length) return beatLock ? BEAT_BANNED_POWERS : null;
+  const key = beatLock ? 'beat' : 'free';
+  let byMode = bannedPowersCache.get(cabinet);
+  if (!byMode) { byMode = {}; bannedPowersCache.set(cabinet, byMode); }
+  if (!byMode[key]) byMode[key] = new Set([...(beatLock ? BEAT_BANNED_POWERS : []), ...own]);
+  return byMode[key];
+}
 
 // Bake the lazy art a hero pays for on first draw — the face sprite at every
 // size the HUD, the portal and the speech card ask for, and one full figure
@@ -1768,6 +1790,7 @@ const SHOOTER_MIN_AHEAD = 60;
 function animalShotLines(type) {
   if (type === 'catFury') return CAT_SHOT_SHORT;
   if (type === 'buzzbird') return BIRD_SHOT_SHORT;
+  if (type === 'rattlesnake') return SNAKE_SHOT_SHORT;
   return DOG_SHOT_SHORT;
 }
 
@@ -1792,6 +1815,10 @@ export function shooterMayFire(obX, heroWorldX) {
 const MAGNET_ACCEL = 900;
 const MAGNET_PULL_MAX = 900;
 const finishLineX = () => Math.max(VIEW_W - 72, PLAYER_X + FINISH_MIN_RUNWAY);
+// finishRoadEndX: how far past the last train's nose the hero is when the dash begins,
+// and the gap between its station sign and the tape.
+const FINISH_TRAIN_OFF_NOSE = 24;
+const FINISH_TRAIN_SIGN_CLEAR = 12;
 // FINISH_CLEAR — the clear lane in front of the marker — is defined in
 // layout.js and re-exported at the top of this file. An obstacle parked
 // against the pole is a hazard wearing the goal as camouflage, a coin behind
@@ -2479,7 +2506,12 @@ export class RunState {
    */
   routeGroundY(worldX, route) {
     if (!route) return this.groundYAt(worldX);
-    if (route.kind === 'island') return route.topY;
+    // An island is flat at its own top — except a neon train, whose roof falls away
+    // down the curve of its nose (shapeNeonTrainNoses): the same top, less however
+    // much of its rise the profile has given back at this x.
+    if (route.kind === 'island') {
+      return route.nose ? route.topY + neonNoseDrop(route, worldX) : route.topY;
+    }
     return this.groundYAt(worldX) - this.routeRise(worldX, route);
   }
 
@@ -2586,6 +2618,12 @@ export class RunState {
    * than an offset from the rolling ground beneath it.
    */
   routeExitDrop(worldX, r) {
+    // A train's nose has already brought him down to the lane by its tip, so the
+    // step off is the few pixels the profile had left — read at the last column,
+    // not the flat top the rest of an island is.
+    if (r.kind === 'island' && r.nose) {
+      return this.groundYAt(worldX) - this.routeGroundY(r.x + r.w - 0.001, r);
+    }
     if (r.kind === 'island') return this.groundYAt(worldX) - r.topY;
     return this.routeRise(r.x + r.w - 0.001, r);
   }
@@ -3765,6 +3803,12 @@ export class RunState {
     // The loop-de-loop ride, while one is happening. See game/loop.js: for its
     // length the run drives the hero's position instead of the physics doing it.
     this.loop = null;
+    // Neon's day and night, per ATTEMPT (updateNeonSky). Null until the first frame,
+    // which is when the song's beat is known: an attempt that starts after the song
+    // has turned minor starts at night.
+    this.neonSky = null;
+    this.neonFlypasts = [];
+    if (this.cabinet?.id === 'neon') ensureKanaFonts();
     this.tRun = 0;
     this.backgroundT = 0;
     this.score = 0;
@@ -4126,6 +4170,7 @@ export class RunState {
         speed: this.baseSpeed(),
         groundYAt: (wx) => this.groundYAt(wx),
         crossings: this.crossings,
+        finishEndX: this.finishRoadEndX(),
       });
     // THE ONE STRETCH WHERE THE LANE IS NOT THE GROUND.
     //
@@ -4136,6 +4181,7 @@ export class RunState {
     // — a crate, a coin, a portal — is standing on the lane's REMEMBERED height
     // and therefore on nothing, which is a prop hanging in mid-air over a
     // hillside. Cached because every entity dealt asks the question.
+    shapeNeonTrainNoses(this.cabinet, this.routes, this.stage?.id ?? null);
     this.stagedExits = this.routes.filter((r) => r.kind === 'tunnel' && r.shelf != null);
     // The portrait frame keeps one fixed gameplay scale, so establish the
     // level's vertical envelope before the first frame. updateCamera rechecks
@@ -4364,6 +4410,11 @@ export class RunState {
     // band simply arrives. When nothing was playing it (a dev ?stage= URL, a retry from
     // the results screen) it falls back to exactly the setBank this line used to be.
     const musicSong = this.o.musicSong;
+    // The song's TNGR-2 wavetables, BEFORE the song is handed over — see
+    // Audio.warmSongTables. Free when boot's idle warm or the cabinet screen got there
+    // first; otherwise (a dev URL straight into a stage) the ~700 ms it costs lands
+    // here, ahead of the song's first note, instead of inside its start gap.
+    Audio.warmSongTables?.(musicSong?.bank || this.cabinet.music, musicSong ? musicSong.mix : undefined);
     MusicDirector.enterStage(musicSong?.bank || this.cabinet.music, {
       mixOverride: musicSong?.mix,
       arrangementOverride: musicSong?.arrangement,
@@ -4508,9 +4559,12 @@ export class RunState {
     this.setButtons();
     this.resetRenderInterpolation();
     // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
-    const bannedStartingPower = this.beatLock &&
+    const bannedStartingPower = (this.beatLock &&
       (BEAT_BANNED_POWERS.has(this.startingPowerup)
-        || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star'].includes(this.startingPowerup));
+        || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star'].includes(this.startingPowerup)))
+      || (this.cabinet?.bannedPowers?.length
+        && (this.cabinet.bannedPowers.includes(this.startingPowerup)
+          || (this.cabinet.bannedPowers.includes('capUnpeel') && ['unpeel', 'star'].includes(this.startingPowerup))));
     if (bannedStartingPower) this.startingPowerup = null;
     if (this.startingPowerup) {
       const id = this.startingPowerup;
@@ -4538,6 +4592,7 @@ export class RunState {
   }
 
   exit() {
+    setGlowSprites(true); setNeonGlow(1);
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
     Input.setDoubleTapTarget?.(null);
     if (this.portraitGameplay) {
@@ -4772,6 +4827,116 @@ export class RunState {
    * beat stage it takes the rhythm retry's beat-jump — the song plays on and
    * the chart is re-anchored on the beat actually heard.
    */
+  /**
+   * NEON'S DAY AND NIGHT (docs/NEON_LEVELS_PLAN.md). neon-1 opens at golden hour and
+   * turns to night on the bar the song turns minor, with a lightning strike; neon-2 and
+   * -3 open on the night. The aurora comes up halfway through neon-1 and is up from the
+   * start of the others. The WHEN is src/engine/stylePacks/neonMoods.js; this keeps its
+   * state for the attempt and puts the thunder on the song clock.
+   *
+   * Also the platform announcement: once an attempt, the first time a train is standing
+   * on screen — まもなく でんしゃが まいります, "a train is now approaching".
+   */
+  updateNeonSky(dt) {
+    if (this.cabinet?.id !== 'neon') return;
+    const stageIndex = this.stage?.index ?? 1;
+    const beat = Audio.songBeat();
+    if (!this.neonSky) {
+      this.neonSky = {
+        turned: neonStartsTurned(stageIndex, beat), thundered: false,
+        prevBeat: beat, t: 0, strikeT: null, strikeFrom: null, placed: null, announced: false,
+      };
+    }
+    const sky = this.neonSky;
+    sky.t += dt;
+    if (sky.strikeT != null) {
+      sky.strikeT += dt;
+      if (sky.strikeT > NEON_STRIKE_SECONDS) sky.strikeT = null;
+    }
+    if (sky.preT != null) sky.preT += dt;
+    if (sky.turned) {
+      // Every later strike (bar 15 on each pass round, bar 45): the bolt and the
+      // flash over a night that stays night.
+      const step = neonNightStrikeStep(sky, { beat, prevBeat: sky.prevBeat });
+      if (step.thunderIn != null) {
+        Audio.sfx('thunder', { inBeats: step.thunderIn });
+        sky.preT = 0;
+      }
+      if (step.strike) {
+        if (!step.thundered) Audio.sfx('thunder');
+        sky.strikeT = 0;
+        sky.strikeFrom = null;
+      }
+      sky.placed = step.placed;
+    } else {
+      const step = neonTurnStep(sky, { beat, prevBeat: sky.prevBeat, seconds: sky.t });
+      if (step.thunderIn != null) {
+        Audio.sfx('thunder', { inBeats: step.thunderIn });
+        sky.preT = 0;         // the warning flickers count from here (neonPreFlicker)
+      }
+      if (step.strike) {
+        // Placed a beat early when the clock allowed; fired now when it did not (no
+        // song, or a frame long enough to jump the whole window).
+        if (!step.thundered) Audio.sfx('thunder');
+        sky.strikeT = 0;
+        sky.strikeFrom = NEON_GOLDEN_MOOD;
+      }
+      sky.turned = step.turned;
+      sky.thundered = step.thundered;
+    }
+    sky.prevBeat = beat;
+    // NO TRAIN LANDS BEFORE THE TURN. The moment a train's flight would begin, it is
+    // decided: after the turn it flies in and lands as ever; before it, its route
+    // comes OUT of the run — no roof to board, no coins on it, nothing on the lane
+    // cleared for it — and the train only flies past overhead, in daylight livery.
+    // Decided once, at the start of its flight, so a train is never half-landed when
+    // the song turns under it.
+    if (this.routes?.length) {
+      for (const r of [...this.routes]) {
+        if (r.kind !== 'island' || (r.rise || 0) < 24 || r.fate) continue;
+        if (r.x - this.camX >= TRAIN_FLIGHT_LEAD_PX) continue;
+        r.fate = sky.turned ? 'land' : 'flypast';
+        if (r.fate === 'flypast') {
+          this.routes.splice(this.routes.indexOf(r), 1);
+          (this.neonFlypasts ||= []).push(r);
+        }
+      }
+    }
+    if (!sky.announced && this.routes?.length) {
+      for (const r of this.routes) {
+        if (r.kind !== 'island' || (r.rise || 0) < 24) continue;
+        const onScreen = r.x - this.camX < W * 0.9 && r.x + r.w - this.camX > PLAYER_X + 40;
+        if (onScreen && !trainArrival(this.camX, r)) {
+          sky.announced = true;
+          this.say({ text: 'A TRAIN IS NOW APPROACHING.', kana: NEON_ANNOUNCE_KANA, t: 3.4, who: null });
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * The neon background's mood this frame, and the strike's progress if one is
+   * happening: { from, to, u } — `from` is the day being struck, `to` the night.
+   */
+  neonMoodNow(progress) {
+    const sky = this.neonSky;
+    const stageIndex = this.stage?.index ?? 1;
+    const night = neonNightMood(neonAuroraStrength(stageIndex, progress));
+    if (!sky) return { mood: neonOpensGolden(stageIndex) ? NEON_GOLDEN_MOOD : night };
+    if (!sky.turned) {
+      // A warning flicker shows the night for a frame or two, under a pale flash.
+      const flicker = neonPreFlicker(sky.preT);
+      return flicker ? { mood: night, preFlash: flicker.flash } : { mood: NEON_GOLDEN_MOOD };
+    }
+    if (sky.strikeT != null) {
+      return { mood: night, strike: { from: sky.strikeFrom, s: sky.strikeT } };
+    }
+    // A later strike's warning flickers are a pale flash over the night.
+    const flicker = neonPreFlicker(sky.preT);
+    return flicker ? { mood: night, preFlash: flicker.flash } : { mood: night };
+  }
+
   restartStage() {
     // enter() clears `paused` itself, but the input scheme is still the pause
     // screen's until pauseChanged swaps it back — setMenuKeys above all, which
@@ -5149,6 +5314,7 @@ export class RunState {
     // ACT card, opening run-in, and finish-pad finale even when tRun is held
     // back for gameplay timing. A real pause still freezes it with the scene.
     if (!this.paused) this.backgroundT += dt;
+    if (!this.paused) this.updateNeonSky(dt);
     // The marker's own clock, advanced on EVERY path including the finale hold.
     // The cloth's frame index used to come off tRun, which deliberately stops
     // when the hold starts — so the flag froze mid-wave at the exact moment the
@@ -5297,7 +5463,14 @@ export class RunState {
     // Scene bloom brightens anything above ~0.8 luma. On paper-white packs
     // that is the WHOLE background, so the bloom clips it to pure white and
     // erases the linework. Those packs opt out.
-    setSceneGlow(!this.paused && !this.dead && !this.style.lightBg);
+    // Neon-1's golden hour has NO GLOW (Peter, 23 Sep: "turn this off until the
+    // lightning strike"): the bloom is what makes a tube a neon tube at night, and in
+    // daylight it only fogs everything. It comes on with the strike.
+    const neonDay = this.cabinet?.id === 'neon' && this.neonSky && !this.neonSky.turned;
+    setSceneGlow(!this.paused && !this.dead && !this.style.lightBg && !neonDay);
+    // ...and every object's own halo, and the city's tube bloom, with it.
+    setGlowSprites(!neonDay);
+    setNeonGlow(neonDay ? 0 : 1);
     if (this.paused) {
       // No tap-anywhere-to-resume. It existed because touch had no resume
       // button; now CONTINUE and EXIT are both on screen, and a stray tap that
@@ -5982,6 +6155,23 @@ export class RunState {
 
   finishWorldX() { return this.totalDist + PLAYER_X; }
   finishCameraX() { return this.finishWorldX() - finishLineX(); }
+  /**
+   * WHERE A ROAD THAT `endsAtFinish` ENDS — neon-1's last train (Peter, 24 Sep: "position
+   * the final train in level 1 so the sign is still visible and scrolling when we jump
+   * on the finish line"). Its sign stands just past the nose, so the nose goes as late
+   * as two things allow:
+   *  - the hero is OFF it when the finish dash begins. The dash runs no roads and no
+   *    train interior (updateFinish), so a hero still on the roof or in the car at
+   *    finishCameraX would stay up there, or stay inside, all the way to the pole.
+   *  - the sign is clear of the tape, on the narrow frames where the first bound
+   *    would put it through the finish marker.
+   * The camera stops at finishCameraX, so the train is standing, doors open, with its
+   * sign in frame and scrolling through the whole finale.
+   */
+  finishRoadEndX() {
+    return Math.min(this.finishCameraX() + PLAYER_X - FINISH_TRAIN_OFF_NOSE,
+      this.finishWorldX() - NEON_SIGN_REACH - FINISH_TRAIN_SIGN_CLEAR);
+  }
   // Where the tape sits on screen. finishLineX() exactly when the finish run
   // arms, and nearer than that when the objective was only met after the camera
   // had already carried the pole part of the way in — a late rescue is allowed
@@ -6817,7 +7007,7 @@ export class RunState {
   // quiet: a screen-clear can pop several boxes on one frame, and one 'power'
   // sting per box stacks into noise.
   tossPrize(x, alt, quiet) {
-    const opts = { allowRewind: !this.rewindUsed && !this.beatLock, banned: this.beatLock ? BEAT_BANNED_POWERS : null };
+    const opts = { allowRewind: !this.rewindUsed && !this.beatLock, banned: bannedPowersFor(this.cabinet, this.beatLock) };
     const weights = this.cabinet?.capsuleWeights;
     const type = weights
       ? weightedPowerPickup(this.fxRng, weights, this.drip.lastPowerType, opts)
@@ -8295,6 +8485,19 @@ export class RunState {
       // choice in draw.js. It keeps counting past TRAP_SNAP_T harmlessly; the
       // draw clamps to the last frame and holds it.
       if (ob.disarmed) ob.disarmT += dt;
+      // The rattlesnake strikes and the rake swings AS THE HERO ARRIVES (Peter, 24 Sep:
+      // "should attack just before we get to him, not after"), each once. Fired when the
+      // hero is that event's lead time away, so the head is out — or the handle up — as
+      // he gets there. The rake only for a hero on the ground: jump it and it never goes.
+      if (ob.type === 'rattlesnake' || ob.type === 'rake') {
+        const clock = ob.type === 'rattlesnake' ? 'strikeT' : 'swingT';
+        if (ob[clock] != null) ob[clock] += dt;
+        else if (ob.type === 'rattlesnake' || this.player.grounded) {
+          const lead = ob.type === 'rattlesnake' ? SNAKE_STRIKE_LEAD : RAKE_SWING_LEAD;
+          const gap = ob.x - (this.playerWorldX() + PLAYER_W / 2);
+          if (gap > -ob.w && gap <= Math.max(1, sp) * lead) ob[clock] = 0;
+        }
+      }
       if (ob.thrown) ob.thrownT += dt;
       // The deck running out across a bridged break, on the same kind of clock
       // as the switch's own swing and for the same reason: it has to land on
@@ -8505,7 +8708,8 @@ export class RunState {
       // whatever path produced a banned capsule on a rhythm stage — the drip,
       // a prize toss, a stair, a stale pool — it dies here before it is ever
       // drawn. "None of those in these levels" means none.
-      if (this.beatLock && BEAT_BANNED_POWERS.has(p.type)) { p.live = false; continue; }
+      const banned = bannedPowersFor(this.cabinet, this.beatLock);
+      if (banned && banned.has(p.type)) { p.live = false; continue; }
       if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
       // ...unless the magnet has hold of it: rewriting x from _baseX every
       // frame would peg a captured appliance in place while it was being reeled in.
@@ -9983,7 +10187,7 @@ export class RunState {
   dripUpdate(dt, stopX) {
     const before = this.pickups.length;
     this.drip.update(dt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX,
-      !this.rewindUsed && !this.beatLock, this.beatLock ? BEAT_BANNED_POWERS : null, this.obstacles);
+      !this.rewindUsed && !this.beatLock, bannedPowersFor(this.cabinet, this.beatLock), this.obstacles);
     for (let i = before; i < this.pickups.length; i++) this.pinPickupToBeat(this.pickups[i]);
   }
 
@@ -11188,6 +11392,11 @@ export class RunState {
       // routePrizeAlt, so none of the three is on this road.
       // A ROAD MAY SET ITS OWN COIN PITCH — see routes.js `coinGap`.
       const coinGap = is.coinGap || COIN_GAP;
+      // A neon train's STATION SIGN stands over its middle car; nothing the train
+      // pays out goes above or below it (Peter, 24 Sep), so the roof run steps over
+      // its span and the capsule moves off it — see neonStationSignSpan.
+      const sign = this.cabinet?.id === 'neon' ? neonStationSignSpan(is) : null;
+      const underSign = (x) => !!sign && x > sign.x0 - 10 && x < sign.x1 + 10;
       // THE WAY UP, laid before the run on top so the approach reads first.
       // A quarter-sine rather than a ramp: it leaves the lane flat, turns up
       // under the taper and arrives level with the roof, which is the shape the
@@ -11219,6 +11428,7 @@ export class RunState {
           // Nothing strung over a break in the road. A coin you cannot reach
           // without leaving the road is a coin that punishes you for taking it.
           if (!roadAt(x, is)) continue;
+          if (underSign(x)) continue;
           const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
           this.pickups.push(Object.assign(makePickup('coin', x, alt), { road: is }));
         }
@@ -11237,7 +11447,10 @@ export class RunState {
         // road says which. Both are ON the road — a capsule in the air directly
         // above it is still the road's, which is what keeps it out of the lane's
         // capsule spacing and lets a hero up there magnet it.
-        const x = is.x + bodyW * (is.bonusHigh ? 0.5 : 0.66);
+        let x = is.x + bodyW * (is.bonusHigh ? 0.5 : 0.66);
+        // Off the sign: just before it, still over the roof and still a jump
+        // from it — so the capsule comes first and the sign after.
+        if (underSign(x)) x = sign.x0 - 22;
         const alt = routePrizeAlt(is, x, is.bonus, is.bonusHigh ? BONUS_HIGH_LIFT - COIN_FLOOR : 6);
         const onRoad = PICKUPS[is.bonus]?.power !== 'magnet';
         if (onRoad) this.pickups.push(Object.assign(makePickup(is.bonus, x, alt), { road: is }));
@@ -11371,7 +11584,10 @@ export class RunState {
       // there to pay out.
       if (this.cabinet.id === 'neon' && is.kind === 'island' && (is.rise || 0) >= 24) {
         const [inFrom, inTo] = neonTrainInterior(is);
-        const clearTo = inTo + this.spawner.react * this.speed;
+        // ...and on to the far end of the station sign past the nose: nothing laid
+        // above or below it either (Peter, 24 Sep).
+        const signSpan = neonStationSignSpan(is);
+        const clearTo = Math.max(inTo + this.spawner.react * this.speed, signSpan ? signSpan.x1 + 12 : 0);
         const inLane = (x, w = 0) => x + w >= inFrom && x <= clearTo;
         for (const ob of this.obstacles) {
           if (!ob.live || ob.route || ob.def?.isGap || !inLane(ob.x, ob.w)) continue;
@@ -13387,6 +13603,12 @@ export class RunState {
       || ['rewind', 'speed', 'lowgrav', 'magnet', 'unpeel', 'star'].includes(p.def?.power))) {
       return;
     }
+    // ...and a cabinet's own ban (the neon cabinet's invincibility), by the same test.
+    const cabBan = this.cabinet?.bannedPowers;
+    if (cabBan?.length && (cabBan.includes(p.type)
+      || (cabBan.includes('capUnpeel') && ['unpeel', 'star'].includes(p.def?.power)))) {
+      return;
+    }
     const hero = HERO_BY_ID[this.relay.current];
     const pickMult = (hero.pickupBonus || 1);
     if (p.def.coin) {
@@ -14002,7 +14224,7 @@ export class RunState {
     c.save();
     if (this.mirror) { c.translate(W, 0); c.scale(-1, 1); }
     applyWorld(c, z, pan, floorY, xOffset);
-    drawNeonTrainShell(c, cam, r, (wx, rr) => this.renderGroundY(wx, rr));
+    drawNeonTrainShell(c, cam, r, (wx, rr) => this.renderGroundY(wx, rr), this.backgroundT);
     c.restore();
   }
 
@@ -14547,6 +14769,8 @@ export class RunState {
       // renderer-only scenery. The world geometry still comes from the stage
       // layout; this is just a quiet identity hint for cabinet backdrops.
       stageIndex: this.stage?.index ?? 1,
+      // Who is running: the speed camera's mugshot is of them.
+      heroId: this.relay?.current || this.player?.heroId || 'lorenzo',
       // How far through the level the run is. Weather that arrives over a level
       // needs this; a pack that only paints scenery ignores it.
       progress: Number.isFinite(this.totalDist) && this.totalDist > 0
@@ -14598,8 +14822,56 @@ export class RunState {
       ? portraitBackgroundBand(frameShift, bgShift, bgZoom) : null;
     if (backgroundBand) ctx.__mashBackgroundBand = backgroundBand;
     try {
-      this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
-        backgroundScene, bgShift, backgroundContext);
+      const neon = this.cabinet?.id === 'neon' ? this.neonMoodNow(backgroundContext.progress) : null;
+      if (neon?.strike) {
+        // THE STRIKE. The day is painted, then the night over it through a circle
+        // spreading from where the bolt lands — the city converting outward from the
+        // hit rather than all at once — then the bolt and its flash on top. Two
+        // backgrounds for a second and a half, on the turn only.
+        const cov = ctx.__mashBackgroundCoverage || { left: 0, width: W };
+        // FRONT AND CENTRE (Peter, 23 Sep): the bolt lands in the middle of the
+        // frame, on the skyline, where nobody can miss it.
+        const hitX = cov.left + cov.width * 0.5;
+        const hitY = GROUND_Y - 70;
+        const s = neon.strike.s;
+        // A strike on a night already turned has no day under it: no circle, one paint.
+        const from = neon.strike.from;
+        const radius = from ? neonStrikeRadius(s, cov.width * 1.4) : Infinity;
+        if (radius < cov.width * 1.4 - 0.5) {
+          this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
+            backgroundScene, bgShift, { ...backgroundContext, neonMood: from });
+        }
+        ctx.save();
+        if (from) {
+          ctx.beginPath();
+          ctx.arc(hitX, hitY, radius, 0, Math.PI * 2);
+          ctx.clip();
+        }
+        this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
+          backgroundScene, bgShift, { ...backgroundContext, neonMood: neon.mood });
+        ctx.restore();
+        drawNeonBolt(ctx, s, hitX, hitY, 7, { left: cov.left - 20, right: cov.left + cov.width + 20, top: GROUND_Y * 0.24 });
+        const flash = neonStrikeFlash(s);
+        if (flash > 0) {
+          ctx.save();
+          ctx.globalAlpha = flash * 0.8;
+          ctx.fillStyle = '#eafcff';
+          ctx.fillRect(cov.left - 40, -40, cov.width + 80, H + 80);
+          ctx.restore();
+        }
+      } else {
+        if (neon) backgroundContext.neonMood = neon.mood;
+        this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
+          backgroundScene, bgShift, backgroundContext);
+        if (neon?.preFlash) {
+          const cov = ctx.__mashBackgroundCoverage || { left: 0, width: W };
+          ctx.save();
+          ctx.globalAlpha = neon.preFlash;
+          ctx.fillStyle = '#eafcff';
+          ctx.fillRect(cov.left - 40, -40, cov.width + 80, H + 80);
+          ctx.restore();
+        }
+      }
     } finally {
       if (previousBackgroundCoverage === undefined) delete ctx.__mashBackgroundCoverage;
       else ctx.__mashBackgroundCoverage = previousBackgroundCoverage;
@@ -14773,8 +15045,18 @@ export class RunState {
       }
       drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), visibleWorldW,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
-          bottomY: bottomWorldY, hillDepth, t: this.tRun,
+          // Scenery time, not run time: tRun stops for the finish-pad hold, and the
+          // station sign's LED strip froze on the one frame the player stops to look
+          // at it (Peter, 24 Sep).
+          bottomY: bottomWorldY, hillDepth, t: this.backgroundT,
           paperSlab: this.style.paperSlab });
+      // The trains that only fly past (updateNeonSky): daylight livery until the
+      // song turns, the neon one after.
+      if (this.neonFlypasts?.length) {
+        const palette = this.neonSky?.turned ? TRON_PALETTE.neon : TRON_PALETTE.day;
+        this.neonFlypasts = this.neonFlypasts.filter((r) => drawNeonFlypast(ctx, cam, r,
+          (wx, rr) => this.renderGroundY(wx, rr), this.tRun, palette));
+      }
     }
     // The pack's ground texture over a staged exit, which has to be laid HERE:
     // the ground pass runs before the terrain and the routes, and the hillside

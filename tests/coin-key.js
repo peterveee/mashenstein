@@ -39,9 +39,11 @@ const FLIP_PITCHES = Array.from({ length: 10 }, (_, i) => 1 + 0.05 * i);
 const MENU_PITCHES = [0.9, 1.05, 1.25];
 const ALL_PITCHES = [...COMBO_PITCHES, ...FLIP_PITCHES, ...MENU_PITCHES];
 
+const MELODIC_LANE = /^(bass|lead|leadHarm|chords|arp|pad)\d*$/;
 function songClasses(b) {
   const set = new Set();
-  for (const lane of MELODIC) {
+  // The same lanes Audio.songKey reads: every melodic lane, added layers included.
+  for (const lane of Object.keys(b).filter((k) => MELODIC_LANE.test(k))) {
     const seq = b[lane];
     if (!Array.isArray(seq)) continue;
     for (const v of seq) {
@@ -68,12 +70,15 @@ function songClasses(b) {
   const oldSongBeat = Audio.songBeat;
   const C2 = 65.40639132514966;
   const D2 = 73.41619197935188;
+  // Four notes a section: fewer is no key at all (see Audio.songKey), and this is
+  // about which section's key, not whether there is one.
+  const scale = (root) => [root * 2, root * 2 * 2 ** (2 / 12), root * 2 * 2 ** (4 / 12), root * 2 * 2 ** (7 / 12)];
   Audio.bank = {
     bpm: 120,
-    bass: [C2], lead: [C2 * 2],
+    bass: [C2], lead: scale(C2),
     sections: [
-      { bass: [C2], lead: [C2 * 2] },
-      { bass: [D2], lead: [D2 * 2] },
+      { bass: [C2], lead: scale(C2) },
+      { bass: [D2], lead: scale(D2) },
     ],
   };
   Audio.step = 0; // the scheduler is still buffering section 0

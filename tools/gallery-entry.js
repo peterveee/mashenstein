@@ -48,7 +48,7 @@ import {
 } from '../src/sprites/toons.js';
 import { HERO_SPRITES } from '../src/sprites/heroes.js';
 import {
-  getStylePack, neonCityReveal, neonMoonPhase, neonMoonEclipse,
+  getStylePack, neonCityReveal, neonMoonPhase, neonMoonEclipse, NEON_GOLDEN_MOOD, neonNightMood,
   LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_NOSTRIL_STYLES,
   lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem,
 } from '../src/engine/stylePacks/index.js';
@@ -122,14 +122,22 @@ import {
 import {
   drawTronTrain, drawTronCar, drawTronSpeedStreaks, drawTronRoofView, tronConsistLength,
   tronTrainRun, tronFlatRoof, TRON_PALETTE, TRON_SPEC_CONSIST, TRON_TRAIN,
-  TRON_TAPER_SHOULDER, TRON_BOARD_GAP,
+  TRON_TAPER_SHOULDER, TRON_BOARD_GAP, drawTronPlatformBoard, drawTronLedStrip, drawTronStationSign,
 } from '../src/sprites/train.js';
 import { drawMcgfnPlate } from '../src/sprites/mcgfn.js';
-import { NEON_MOOD_CANDIDATES, drawNeonStrike, strikeWipeRadius } from '../src/dev/neon-mood-candidates.js';
 import {
-  KANA_FACES, KANA_FLOATIES, ensureKanaFonts, kanaText, drawBladeSigns, drawKanaFloatie, drawLedBoard,
-  drawAnnouncement,
-} from '../src/dev/neon-kana-candidates.js';
+  drawNeonBolt, neonStrikeFlash, neonStrikeRadius, NEON_MINOR_TURN_BEAT,
+} from '../src/engine/stylePacks/neonMoods.js';
+import { ensureKanaFonts, NEON_ANNOUNCE_KANA } from '../src/engine/kana.js';
+import { drawIdeaScene, drawIdeaCloseUp } from '../src/dev/idea-scene.js';
+import { PLUMBER_IDEAS } from '../src/dev/plumber-ideas.js';
+import { SPEED_IDEAS } from '../src/dev/speed-ideas.js';
+import { RHYTHM_IDEAS } from '../src/dev/rhythm-ideas.js';
+import { SPEED_SIGN_GAGS } from '../src/dev/speed-sign-gags.js';
+import { GOOSE_CANDIDATES } from '../src/dev/goose-candidates.js';
+import { NEON_STREET_CANDIDATES } from '../src/dev/neon-street-candidates.js';
+import { NEON_JAPAN_IDEAS } from '../src/dev/neon-japan-ideas.js';
+import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
 
 import { SPEED_SIGN_CANDIDATES } from '../src/dev/speed-sign-candidates.js';
 import {
@@ -2414,6 +2422,158 @@ function propNominalSize(name) {
         apron: 19, carLen: 96, phase: 20, gaps: [], palette: P, glow: false, lit: 0.9,
       });
     }, { world: true, wide: true });
+}
+
+// ------------------------------------------- TERMINAL VELOCITY — day, strike and night
+//
+// SHIPPED 23 Sep 2026 (docs/NEON_LEVELS_PLAN.md), from the bake-offs that were here.
+// neon-1 opens at golden hour and a lightning strike turns it to night on the bar the
+// song turns minor; the aurora comes up halfway through neon-1 and is up from the start
+// of neon-2 and -3. Blade signs hang off a few towers, the trains carry a destination
+// board, and a train's first arrival is announced. Everything on these cards is the
+// painter the game runs — the moods are the neon pack's own (NEON_GOLDEN_MOOD,
+// neonNightMood), the strike is src/engine/stylePacks/neonMoods.js.
+{
+  ensureKanaFonts();
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-sky', 'TERMINAL VELOCITY — day, strike and night',
+    `neon-1 opens at GOLDEN HOUR, rays all the way round, and turns to NIGHT on the bar the song `
+    + `turns minor (beat ${NEON_MINOR_TURN_BEAT}, bar 15): a neon bolt lands on the skyline and the night `
+    + 'spreads out from the hit. The AURORA comes up halfway through neon-1 and is up from the first '
+    + 'frame of neon-2 and neon-3. A few towers carry a vertical sign — never two on screen; the '
+    + 'middle cars carry a scrolling destination board; the first train to stand on screen is announced.');
+
+  const drone = makeObstacle('drone', 0);
+  const target = makeObstacle('target', 0);
+  function lane(ctx, camX, t) {
+    drone.x = camX + 150;
+    target.x = camX + 205;
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+    drawWorldEntity(ctx, drone, camX, t, pack, {});
+    drawWorldEntity(ctx, target, camX, t, pack, {});
+    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+    ctx.restore();
+  }
+  // The city fully built (progress 1), in a given mood.
+  const ctxFor = (mood, stageIndex = 1) => ({ stageIndex, progress: 1, neonMood: mood });
+  const paint = (ctx, t, camX, mood) => {
+    const c = ctxFor(mood);
+    pack.bg(ctx, t, camX, neon, 1000, c, 0, c);
+  };
+
+  tile(grid, 'neon-1 opens — golden hour', 'A low sun on the left with rays the whole way round, turning '
+    + 'about once a minute; white-and-gold tubes, pale lit signs.', W, H, (ctx, t) => {
+    const camX = t * 60;
+    paint(ctx, t, camX, NEON_GOLDEN_MOOD);
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  // The strike, on a six-second loop: 2.4 s of the day, then the bolt at the point
+  // the run uses (centre, 70 above the lane) and the night spreading from it.
+  const CYCLE = 6;
+  const AT = 2.4;
+  tile(grid, 'the strike', 'On the minor turn: the bolt, a flash, and the night spreading from the hit. '
+    + 'Loops every six seconds here; once a level in the game, with its thunder on the downbeat.', W, H, (ctx, t) => {
+    const camX = t * 60;
+    const u = (t % CYCLE) - AT;          // seconds into the strike
+    paint(ctx, t, camX, NEON_GOLDEN_MOOD);
+    const hitX = W * 0.5;
+    const hitY = GROUND_Y - 70;
+    if (u >= 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hitX, hitY, neonStrikeRadius(u, W * 1.4), 0, Math.PI * 2);
+      ctx.clip();
+      paint(ctx, t, camX, null);
+      ctx.restore();
+      drawNeonBolt(ctx, u, hitX, hitY, 7, { left: -20, right: W + 20, top: GROUND_Y * 0.24 });
+      const flash = neonStrikeFlash(u);
+      if (flash > 0) {
+        ctx.save();
+        ctx.globalAlpha = flash * 0.8;
+        ctx.fillStyle = '#eafcff';
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
+    }
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  tile(grid, 'the night, with the aurora', 'The night that ships, with three curtains — mint, ice, violet — '
+    + 'rippling over it. neon-1 from halfway; neon-2 and neon-3 throughout.', W, H, (ctx, t) => {
+    const camX = t * 60;
+    paint(ctx, t, camX, neonNightMood(1));
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  // Faster, so the signs come round: one building in every other repeat of the near
+  // row carries one, so they are more than a screen apart by construction.
+  tile(grid, 'blade signs', 'いそげ · しぶや · がんばれ · やまのて off a few near towers — never two on screen. '
+    + 'Scrolled fast here so they come round.', W, H, (ctx, t) => {
+    const camX = t * 260;
+    paint(ctx, t, camX, neonNightMood(1));
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+  }, { animated: true });
+
+  tile(grid, 'the station sign', 'NEXT STOP on two poles on the platform just past the nose, clear over a hero on '
+    + 'the lane, who runs by under it after stepping off. Each standing train names the next stop on the '
+    + 'clockwise loop, the last of them SHINJUKU.', 330, 70, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 70);
+      g.addColorStop(0, '#0a0a2a');
+      g.addColorStop(1, '#1a1048');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 330, 70);
+      ctx.fillStyle = TRON_PALETTE.neon.line;
+      ctx.fillRect(0, 60, 330, 1);
+      drawTronTrain(ctx, -200, 60, {
+        consist: [{ kind: 'tail' }, { kind: 'car' }, { kind: 'engine' }],
+        h: 34, palette: TRON_PALETTE.neon, glow: false, lit: 0.9, gap: TRON_BOARD_GAP, t,
+      });
+      const nose = -200 + 118 + TRON_BOARD_GAP + 96 + TRON_BOARD_GAP + 118;
+      drawTronStationSign(ctx, nose + 16, 80, 60, 60, t, 0.9,
+        { lift: 36, station: { kana: 'しんじゅく', en: 'SHINJUKU' } });
+      drawToon(ctx, 'b33p', pose('run', t), nose + 50, 60, HERO_DRAW_H);
+    }, { animated: true, world: true, wide: true });
+
+  tile(grid, 'the daylight train', 'Before the song turns minor no train lands: each one flies past overhead '
+    + 'in the Yamanote\'s real livery — silver body, yellow-green stripe — and carries on. The neon livery '
+    + 'comes with the night.', 330, 60, (ctx, t) => {
+    const g = ctx.createLinearGradient(0, 0, 0, 60);
+    g.addColorStop(0, '#ff9a6b');
+    g.addColorStop(1, '#ffe0a0');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 330, 60);
+    ctx.globalAlpha = 0.85;
+    drawTronTrain(ctx, -60, 50, {
+      consist: [{ kind: 'car', board: true }, { kind: 'car', board: true }, { kind: 'car', board: true },
+        { kind: 'engine', board: true }],
+      h: 34, palette: TRON_PALETTE.day, glow: false, lit: 0.9, gap: TRON_BOARD_GAP, t,
+    });
+    ctx.globalAlpha = 1;
+  }, { animated: true, world: true, wide: true });
+
+  tile(grid, 'the announcement', 'Once an attempt, when the first train stands on screen: the kana in M PLUS '
+    + 'Rounded, the English in the game\'s own face.', W, H, (ctx, t) => {
+    const camX = t * 60;
+    paint(ctx, t, camX, neonNightMood(1));
+    lane(ctx, camX, t);
+    if (pack.post) pack.post(ctx, t);
+    // After the pack's post pass, which is the world's and would otherwise paint over it.
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.shadowBlur = 0;
+    ctx.filter = 'none';
+    drawSpeech(ctx, { text: 'A TRAIN IS NOW APPROACHING.', kana: NEON_ANNOUNCE_KANA, who: null });
+    ctx.restore();
+  }, { animated: true });
 }
 
 // ==================================================================
@@ -8334,168 +8494,296 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ------------------------------------------ NEON — the major-key opening (bake-off)
-// The new theme opens on the JR jingle in a MAJOR key and turns MINOR at bar 15.
-// What would the first level look like before the turn, if the night city that
-// ships is what it turns INTO? Four candidates, each on the shipped painter through
-// its `neonMood` seam (src/dev/neon-mood-candidates.js) — same towers, same
-// parallax, only the light — and each with a strike tile: a neon bolt lands on the
-// skyline and the night spreads out from where it hit.
+// ------------------------------------------ NEON — where the station sign goes (bake-off)
+// Peter, 24 Sep: "lets go with Low strip, but can we mock up the others in the gallery
+// also for comparison". The same standing train, the same hero on the middle car's
+// roof, and the next-stop sign in three places. A is what ships.
+{
+  const grid = section('neon-destination-bakeoff', 'TERMINAL VELOCITY — where the station sign goes (bake-off)',
+    'BAKE-OFF, 24 Sep 2026. つぎは しぶや · NEXT STOP: SHIBUYA in four places, over the same standing train with a '
+    + 'hero on the middle car\'s roof. E SHIPS: past the nose, lower. D — on poles over the roof. A — a low stand on the platform edge: long, readable, and it can only '
+    + 'cover his shins. B — along the middle car\'s roofline: just as long, but his feet are on top of it. C — a '
+    + 'hanging platform sign over the train: the most like a real station, and exactly where his head is.');
+  const W0 = 330;
+  const H0 = 110;
+  const RAIL = 100;
+  const TOP = RAIL - 34;
+  const MID_X = -60 + 118 + TRON_BOARD_GAP;     // the middle car's left edge
+  const scene = (ctx, t) => {
+    const g = ctx.createLinearGradient(0, 0, 0, H0);
+    g.addColorStop(0, '#0a0a2a');
+    g.addColorStop(1, '#1a1048');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W0, H0);
+    ctx.fillStyle = TRON_PALETTE.neon.line;
+    ctx.fillRect(0, RAIL, W0, 1);
+    drawTronTrain(ctx, -60, RAIL, {
+      consist: [{ kind: 'tail' }, { kind: 'car' }, { kind: 'engine' }],
+      h: 34, palette: TRON_PALETTE.neon, glow: false, lit: 0.9, gap: TRON_BOARD_GAP, t,
+    });
+  };
+  const hero = (ctx, t) => drawToon(ctx, 'b33p', pose('run', t), MID_X + 36, TOP, HERO_DRAW_H);
+  tile(grid, 'E · past the nose, lower (SHIPS)', 'On the platform just past the nose, on poles, clear over a hero '
+    + 'on the lane — he runs by under it after stepping off.', W0, H0, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, H0);
+      g.addColorStop(0, '#0a0a2a');
+      g.addColorStop(1, '#1a1048');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W0, H0);
+      ctx.fillStyle = TRON_PALETTE.neon.line;
+      ctx.fillRect(0, RAIL, W0, 1);
+      drawTronTrain(ctx, -200, RAIL, {
+        consist: [{ kind: 'tail' }, { kind: 'car' }, { kind: 'engine' }],
+        h: 34, palette: TRON_PALETTE.neon, glow: false, lit: 0.9, gap: TRON_BOARD_GAP, t,
+      });
+      const nose = -200 + 118 + TRON_BOARD_GAP + 96 + TRON_BOARD_GAP + 118;
+      drawTronStationSign(ctx, nose + 16, 80, RAIL, RAIL, t, 0.9, { lift: 36 });
+      drawToon(ctx, 'b33p', pose('run', t), nose + 50, RAIL, HERO_DRAW_H);
+    }, { animated: true, world: true, wide: true });
+  tile(grid, 'D · on poles over the roof', 'Two poles from the platform, behind the train; the sign clears a '
+    + 'hero standing on the roof, and one who jumps passes in front of it. Works in portrait: it belongs to the train, '
+    + 'not to the sky.', W0, H0, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, H0);
+      g.addColorStop(0, '#0a0a2a');
+      g.addColorStop(1, '#1a1048');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W0, H0);
+      ctx.fillStyle = TRON_PALETTE.neon.line;
+      ctx.fillRect(0, RAIL, W0, 1);
+      drawTronStationSign(ctx, MID_X + 8, 80, RAIL, TOP, t);
+      drawTronTrain(ctx, -60, RAIL, {
+        consist: [{ kind: 'tail' }, { kind: 'car' }, { kind: 'engine' }],
+        h: 34, palette: TRON_PALETTE.neon, glow: false, lit: 0.9, gap: TRON_BOARD_GAP, t,
+      });
+      hero(ctx, t);
+    }, { animated: true, world: true, wide: true });
+  tile(grid, 'A · low platform strip', 'On two short legs at the platform edge, top ~12px off the rail.',
+    W0, H0, (ctx, t) => {
+      scene(ctx, t);
+      hero(ctx, t);
+      drawTronPlatformBoard(ctx, MID_X + 8, RAIL, 80, t);
+    }, { animated: true, world: true, wide: true });
+  tile(grid, 'B · along the roofline', 'Mounted on the middle car\'s roof edge, on brackets. His feet walk along it.',
+    W0, H0, (ctx, t) => {
+      scene(ctx, t);
+      ctx.fillStyle = '#20243a';
+      for (const bx of [MID_X + 14, MID_X + 80]) ctx.fillRect(bx, TOP - 2, 2, 3);
+      drawTronLedStrip(ctx, { x: MID_X + 8, y: TOP - 9, w: 80, h: 7 }, t);
+      hero(ctx, t);
+    }, { animated: true, world: true, wide: true });
+  tile(grid, 'C · hanging platform sign', 'Hung on two cables from the station canopy above the train — where a hero '
+    + 'on the roof holds his head.', W0, H0, (ctx, t) => {
+      scene(ctx, t);
+      const sy = TOP - 30;
+      ctx.fillStyle = '#20243a';
+      ctx.fillRect(0, 0, W0, 4);                       // the canopy's edge
+      for (const cx of [MID_X + 18, MID_X + 72]) ctx.fillRect(cx, 4, 1, sy - 4);
+      drawTronLedStrip(ctx, { x: MID_X + 8, y: sy, w: 80, h: 8 }, t);
+      hero(ctx, t);
+    }, { animated: true, world: true, wide: true });
+}
+
+// ------------------------------------------ NEON — what stands in the road (bake-off)
+// Peter, 24 Sep: the cactus is "totally wrong" for Tokyo. Tokyo's own road-works
+// animals, each in the cactus's 13x12 box. See src/dev/neon-street-candidates.js.
+// The panda, A1 and B3 ship (props.js pandaBarrier / frogBarrier / monkeyBarrier); the
+// section stays with every option on it until Peter retires it ("keep them all there
+// for now", 24 Sep).
 {
   const neon = CABINETS.find((cab) => cab.id === 'neon');
   const pack = getStylePack('neon', {});
-  const grid = section('neon-mood-bakeoff', 'TERMINAL VELOCITY — the major-key opening (bake-off)',
-    'BAKE-OFF, 23 Sep 2026. The SESERAGI theme opens bright and turns minor at bar 15; these are four '
-    + 'candidates for the background BEFORE the turn, with the shipped night as the one it turns INTO. '
-    + 'Each candidate repaints the same city through the neon pack\'s mood seam — sky, a sun / clouds / '
-    + 'aurora hook, and the tube inks — so the conversion reads as the same place going dark rather than '
-    + 'a cut. The STRIKE tiles loop every six seconds: 2.4 s of the bright city, then a neon bolt lands on '
-    + 'the skyline, a white flash, and the night spreads out from the point of impact. A drone, a target '
-    + 'and B33P are on every card, because the hazard band was drawn for a dark sky.');
-
-  const drone = makeObstacle('drone', 0);
-  const target = makeObstacle('target', 0);
-  function lane(ctx, camX, t) {
-    drone.x = camX + 150;
-    target.x = camX + 205;
+  const grid = section('neon-street-bakeoff', 'TERMINAL VELOCITY — what stands in the road (bake-off)',
+    'BAKE-OFF, 24 Sep 2026. Candidates to replace the cactus on the neon lane — same 13x12 box, same jump. Each has '
+    + 'a card IN THE LANE at the game\'s real scale, on the night it will mostly be seen against, beside the hero; '
+    + 'and a close-up. SHIPS: the panda, A1 and B3 — the neon lane\'s cactus is now a panda, crate, cone, frog or '
+    + 'monkey. For reference, the first two cards are the old cactus and the traffic cone.');
+  const BOX_W = 13;
+  const BOX_H = 12;
+  const REF = [
+    { id: 'cactus', name: 'was · the cactus', note: 'What the neon lane had before (from the shared base patterns).',
+      paint: (ctx, w, h) => drawProp(ctx, 'cactus', 0, 0, w, h), size: 1.4 },
+    { id: 'cone', name: 'now · the traffic cone', note: 'One of the neon lane\'s cactus swaps — kickable, like every cone.',
+      paint: (ctx, w, h) => drawProp(ctx, 'trafficCone', 0, 0, w, h), size: 1.3 },
+  ];
+  const drawAt = (ctx, c, cx, groundY, t, scale = 1) => {
+    const h = BOX_H * c.size * scale;
+    const w = BOX_W * Math.min(1.25, c.size) * scale;
     ctx.save();
-    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
-    drawWorldEntity(ctx, drone, camX, t, pack, {});
-    drawWorldEntity(ctx, target, camX, t, pack, {});
-    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+    ctx.translate(cx - w / 2, groundY - h);
+    c.paint(ctx, w, h, t);
     ctx.restore();
-  }
-  const scene = (mood) => (mood ? { stageIndex: 1, neonMood: mood } : { stageIndex: 1 });
-
-  tile(grid, 'the real one — the night', 'What ships, and what every candidate converts into.', W, H, (ctx, t) => {
-    const camX = t * 60;
-    pack.bg(ctx, t, camX, neon, 1000, scene(null), 0, scene(null));
-    lane(ctx, camX, t);
-    if (pack.post) pack.post(ctx, t);
-  }, { animated: true });
-
-  // Where the bolt lands: a near-row rooftop, left of centre so the spread has the
-  // whole frame to cross.
-  const SX = W * 0.44;
-  const SY = H * 0.43;
-  const CYCLE = 6;
-  const AT = 2.4;
-  const STRIKE = 1.4;
-  for (const c of NEON_MOOD_CANDIDATES) {
-    tile(grid, `${c.name} — before the turn`, c.note, W, H, (ctx, t) => {
+  };
+  for (const c of [...REF, ...NEON_STREET_CANDIDATES]) {
+    tile(grid, `${c.name} — in the lane`, c.note, W, H, (ctx, t) => {
       const camX = t * 60;
-      pack.bg(ctx, t, camX, neon, 1000, scene(c.mood), 0, scene(c.mood));
-      lane(ctx, camX, t);
+      pack.bg(ctx, t, camX, neon, 1000, { stageIndex: 2, neonMood: neonNightMood(1) }, 0,
+        { stageIndex: 2, neonMood: neonNightMood(1) });
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      drawAt(ctx, c, PLAYER_X + 70, GROUND_Y, t);
+      ctx.restore();
       if (pack.post) pack.post(ctx, t);
     }, { animated: true });
-    tile(grid, `${c.name} — the strike`, 'Loops every 6 s: bright, bolt, flash, the night spreading from the hit.', W, H, (ctx, t) => {
-      const camX = t * 60;
-      const local = t % CYCLE;
-      const u = (local - AT) / STRIKE;
-      pack.bg(ctx, t, camX, neon, 1000, scene(c.mood), 0, scene(c.mood));
-      if (u >= 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(SX, SY, strikeWipeRadius(u), 0, Math.PI * 2);
-        ctx.clip();
-        pack.bg(ctx, t, camX, neon, 1000, scene(null), 0, scene(null));
-        ctx.restore();
-      }
-      lane(ctx, camX, t);
-      if (pack.post) pack.post(ctx, t);
-      drawNeonStrike(ctx, u, SX, SY, Math.floor(t / CYCLE) + 1);
+    tile(grid, `${c.name} — close up`, 'Six times over, on the neon dark.', 150, 110, (ctx, t) => {
+      ctx.fillStyle = '#12102a';
+      ctx.fillRect(0, 0, 150, 110);
+      ctx.fillStyle = '#38d8f8';
+      ctx.fillRect(0, 100, 150, 1);
+      drawAt(ctx, c, 75, 100, t, 6);
     }, { animated: true });
   }
 }
 
-// ------------------------------------------ NEON — Japanese in the level (bake-off)
-// Simple hiragana phrases, the kind the game already says in English, in four
-// places they could live — and the face question under all of them, because the
-// game's own fonts have no kana. See src/dev/neon-kana-candidates.js.
+// ------------------------------------------ ACT I — more ideas (lab, ideas)
+// IDEAS BAKE-OFF, 24 Sep 2026: Peter asked for more background items, lane items and
+// "more animated background items" for the first three cabinets — rhythm's lane items
+// music-related, its background kept inside the LCD panel's own rules. Painters live in
+// src/dev/{plumber,speed,rhythm}-ideas.js; the scene they are drawn into is
+// src/dev/idea-scene.js, shared with the work/local ideas harness so review and gallery
+// show the same picture. Nothing here is wired into the game.
 {
-  ensureKanaFonts();
+  const WHERE = { bg: 'scenery', lane: 'in the lane', air: 'in the air' };
+  const ideaSheet = (id, title, blurb, cabId, ideas, ref, sceneOpts = {}) => {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    const pack = getStylePack(cab.style, {});
+    const grid = section(id, title, blurb);
+    tile(grid, `now · the ${ref}, for scale`, 'The shipped scene with one of the cabinet\'s own hazards in the lane.',
+      W, H, (ctx, t) => drawIdeaScene(ctx, t, cab, pack, null, { ref, ...sceneOpts }), { animated: true });
+    for (const idea of ideas) {
+      tile(grid, `${idea.name} — ${WHERE[idea.place]}`, idea.note, W, H,
+        (ctx, t) => drawIdeaScene(ctx, t, cab, pack, idea, sceneOpts), { animated: true });
+      if (idea.place === 'bg') continue;
+      tile(grid, `${idea.name} — close up`, `${idea.zoom ?? 5} times over.`, 200, 160,
+        (ctx, t) => drawIdeaCloseUp(ctx, t, cab, pack, idea, 200, 160), { animated: true });
+    }
+  };
+  // Round 2 (24 Sep): Peter turned the first round down as "super Mario ish" and asked
+  // for things that belong in the country the hero is running through instead.
+  ideaSheet('plumber-ideas', 'PLUMBER PANIC — countryside ideas (bake-off)',
+    'IDEAS, 24 Sep 2026. Countryside for the green hills: background items (animated, in the paper-cutout finish), '
+    + 'lane hazards and flyers, drawn into the shipped scene with the hero for scale. Lane and air ideas also get a close-up.',
+    'plumber', PLUMBER_IDEAS, 'thistle');
+  // Peter, 24 Sep: "mock up more detailed geese please for a bakeoff". The first card is
+  // the goose that ships on plumber (sprites/animals.js).
+  ideaSheet('goose-bakeoff', 'PLUMBER PANIC — the goose, in more detail (bake-off)',
+    'BAKE-OFF, 24 Sep 2026. The charging goose that ships on the plumber lane is the first card; the others are '
+    + 'more detailed alternatives at the same size, each in the lane with the hero and in close-up.',
+    'plumber', GOOSE_CANDIDATES, 'thistle');
+  ideaSheet('speed-ideas', 'SPEED ZONE — more ideas (bake-off)',
+    'IDEAS, 24 Sep 2026. Background items (all animated), lane hazards and flyers for the desert highway, drawn into '
+    + 'the shipped sunset scene with the hero for scale. Lane and air ideas also get a close-up.',
+    'speed', SPEED_IDEAS, 'trafficCone', { totalDist: Infinity });
+  // Peter, 24 Sep: the speed trap ships as it is ("ship as is and create a bake off with
+  // alternative gags") — the first card is the shipped one, the rest are the gags.
+  ideaSheet('speed-sign-gags', 'SPEED ZONE — the speed-trap sign: alternative gags (bake-off)',
+    'BAKE-OFF, 24 Sep 2026. The roadside billboard, speed camera and police car ship on speed-2 as the first card; '
+    + 'the others are alternative gags for the same spot, all in the villain\'s voice (he invented speed in 1987 and '
+    + 'nobody thanked him).',
+    'speed', SPEED_SIGN_GAGS, 'trafficCone', { totalDist: Infinity });
+  ideaSheet('rhythm-ideas', 'RHYTHM BANKRUPTCY — more ideas (bake-off)',
+    'IDEAS, 24 Sep 2026. LCD background furniture that steps on the beat with Game & Watch ghost segments, and '
+    + 'music-themed lane hazards that move on the beat, drawn into the stage-1 panel with the hero for scale. Several '
+    + 'background ideas are rival proposals for the same roof (building 5, the burger board) — they are alternatives, '
+    + 'not a set. Lane and air ideas also get a close-up.',
+    'rhythm', RHYTHM_IDEAS, 'beatBar');
+}
+
+// ------------------------------------------ NEON — more of Tokyo (lab, ideas)
+// IDEAS BAKE-OFF, 24 Sep 2026: Peter asked for "a bunch of ideas" for more Tokyo on
+// the neon levels. Each is a sketch painter in src/dev/neon-japan-ideas.js, drawn into
+// the real neon scene with the hero for scale: scenery over the city, hazards in the
+// lane, flyers at a drone's height. Nothing here is wired into the game.
+{
   const neon = CABINETS.find((cab) => cab.id === 'neon');
   const pack = getStylePack('neon', {});
-  const grid = section('neon-kana-bakeoff', 'TERMINAL VELOCITY — Japanese in the level (bake-off)',
-    'BAKE-OFF, 23 Sep 2026. Four places simple hiragana phrases could live, over the real neon '
-    + 'scene: A) blade signs on the towers — scenery only, nothing to read mid-jump; B) the game\'s '
-    + 'pop-up cards in Japanese with the English in small type under them; C) the train\'s destination '
-    + 'board, つぎは しぶや, scrolling on the cab; D) the platform announcement as a speech card, once, '
-    + 'when the train arrives. The last tile is the FACE question: Fredoka and Lilita One have no kana, '
-    + 'so today Japanese falls back to the device\'s system font; M PLUS Rounded 1c partners Fredoka, '
-    + 'Dela Gothic One partners Lilita One, DotGothic16 is the LED pixel face. The candidate faces load '
-    + 'from Google Fonts here — shipping one means bundling a subset with the game\'s own.');
-
-  const drone = makeObstacle('drone', 0);
-  function scene(ctx, t, { heroOnRoof = false } = {}) {
-    const camX = t * 60;
-    pack.bg(ctx, t, camX, neon, 1000, { stageIndex: 1 }, 0, { stageIndex: 1 });
-    return camX;
+  const grid = section('neon-japan-ideas', 'TERMINAL VELOCITY — more of Tokyo (ideas bake-off)',
+    'IDEAS, 24 Sep 2026. Background items, lane obstacles and flyers that would make the neon levels read more '
+    + 'Japanese. Quick sketches at the game\'s real size, in the shipped neon scene with the hero — judge the idea, '
+    + 'not the finish. Obstacles and flyers also get a close-up.');
+  const sceneFor = (idea, t, camX) => {
+    const base = idea.mood === 'golden' ? NEON_GOLDEN_MOOD : neonNightMood(1);
+    const mood = idea.depth === 'sky'
+      ? { ...base, skyLayer: 'far', skyExtra: (c, tt, cx, bc) => { base.skyExtra?.(c, tt, cx, bc); idea.paint(c, tt, cx); } }
+      : base;
+    const scene = { stageIndex: 2, neonMood: mood };
+    return scene;
+  };
+  for (const idea of NEON_JAPAN_IDEAS) {
+    const where = { bg: 'scenery', lane: 'in the lane', air: 'in the air' }[idea.place];
+    tile(grid, `${idea.name} — ${where}`, idea.note, W, H, (ctx, t) => {
+      const camX = t * 60;
+      const scene = sceneFor(idea, t, camX);
+      pack.bg(ctx, t, camX, neon, 1000, scene, 0, scene);
+      if (idea.place === 'bg' && idea.depth !== 'sky') idea.paint(ctx, t, camX);
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      if (idea.place === 'lane') idea.paint(ctx, t, PLAYER_X + 70, GROUND_Y);
+      if (idea.place === 'air') idea.paint(ctx, t, PLAYER_X + 80, GROUND_Y - 20);
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+    }, { animated: true });
+    if (idea.place === 'bg') continue;
+    tile(grid, `${idea.name} — close up`, `${idea.zoom ?? 5} times over, on the neon dark.`, 200, 160, (ctx, t) => {
+      ctx.fillStyle = '#12102a';
+      ctx.fillRect(0, 0, 200, 160);
+      ctx.fillStyle = '#38d8f8';
+      ctx.fillRect(0, 150, 200, 1);
+      ctx.save();
+      ctx.translate(100, 150);
+      ctx.scale(idea.zoom ?? 5, idea.zoom ?? 5);
+      idea.paint(ctx, t, idea.cx ?? 0, idea.place === 'air' ? -16 : 0);
+      ctx.restore();
+    }, { animated: true });
   }
-  function lane(ctx, camX, t, { drone: withDrone = true, heroY = GROUND_Y } = {}) {
-    drone.x = camX + 170;
-    ctx.save();
-    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-    pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
-    if (withDrone) drawWorldEntity(ctx, drone, camX, t, pack, {});
-    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, heroY, HERO_DRAW_H);
-    ctx.restore();
+}
+
+// ------------------------------------------ FROST — more of the fortress (lab, ideas)
+// IDEAS BAKE-OFF, 24 Sep 2026, the frost companion to the Tokyo sheet above. Painters
+// in src/dev/frost-ideas.js, drawn into the shipped watercolor frost-2 scene.
+{
+  const frost = CABINETS.find((cab) => cab.id === 'frost');
+  const pack = getStylePack('watercolor', {});
+  const grid = section('frost-ideas', 'FROST FORTRESS — more of the fortress (ideas bake-off)',
+    'IDEAS, 24 Sep 2026. Background items, lane obstacles and flyers for the frost levels. Quick sketches at '
+    + 'the game\'s real size in the frost-2 scene with the hero — judge the idea, not the finish. For scale, the '
+    + 'first card is today\'s snowman. Obstacles and flyers also get a close-up.');
+  const scene = { stageIndex: 1 };
+  const REF = { id: 'snowman', place: 'lane', name: 'now · the snowman',
+    note: 'What frost\'s lane has today, for scale (13x12, breakable).',
+    paint: (ctx, t, x, g) => drawProp(ctx, 'snowman', x - 7, g - 14, 14, 14) };
+  for (const idea of [REF, ...FROST_IDEAS]) {
+    const where = { bg: 'scenery', lane: 'in the lane', air: 'in the air' }[idea.place];
+    tile(grid, `${idea.name} — ${where}`, idea.note, W, H, (ctx, t) => {
+      const camX = t * 60;
+      pack.bg(ctx, t, camX, frost, 1000, scene, 0, scene);
+      if (idea.place === 'bg') idea.paint(ctx, t, camX);
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, frost, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      if (idea.place === 'lane') idea.paint(ctx, t, PLAYER_X + 70, GROUND_Y);
+      if (idea.place === 'air') idea.paint(ctx, t, PLAYER_X + 80, GROUND_Y - 20);
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+      if (pack.weather) pack.weather(ctx, t);
+    }, { animated: true });
+    if (idea.place === 'bg' || idea === REF) continue;
+    tile(grid, `${idea.name} — close up`, `${idea.zoom ?? 5} times over, on snow.`, 200, 160, (ctx, t) => {
+      ctx.fillStyle = '#dcecf8';
+      ctx.fillRect(0, 0, 200, 160);
+      ctx.fillStyle = '#f4faff';
+      ctx.fillRect(0, 150, 200, 10);
+      ctx.save();
+      ctx.translate(100, 150);
+      ctx.scale(idea.zoom ?? 5, idea.zoom ?? 5);
+      idea.paint(ctx, t, idea.cx ?? 0, idea.place === 'air' ? -16 : 0);
+      ctx.restore();
+    }, { animated: true });
   }
-
-  tile(grid, 'A · blade signs', 'いそげ · しぶや · がんばれ · やまのて — hung off the towers, drifting with the near row. '
-    + 'M PLUS Rounded 1c, one sign in four catching a flicker.', W, H, (ctx, t) => {
-    const camX = scene(ctx, t);
-    drawBladeSigns(ctx, t, camX, 'rounded');
-    lane(ctx, camX, t);
-    if (pack.post) pack.post(ctx, t);
-  }, { animated: true });
-
-  tile(grid, 'B · floaties', 'The pop-up cards, a new one every two seconds: やった！ すごい！ あぶない！ いそげ！ おかえり — '
-    + 'kana first, English under it.', W, H, (ctx, t) => {
-    const camX = scene(ctx, t);
-    lane(ctx, camX, t);
-    const f = KANA_FLOATIES[Math.floor(t / 2) % KANA_FLOATIES.length];
-    const rise = (t % 2) * 6;
-    drawKanaFloatie(ctx, t, PLAYER_X * WORLD_Z + 12, GROUND_Y - 118 - rise, f, 'rounded');
-    if (pack.post) pack.post(ctx, t);
-  }, { animated: true });
-
-  tile(grid, 'C · destination board', 'つぎは しぶや · NEXT · SHIBUYA, scrolling amber on the cab of a standing train, in DotGothic16 '
-    + 'under an LED mesh. The hero is on the roof.', W, H, (ctx, t) => {
-    const camX = scene(ctx, t);
-    lane(ctx, camX, t, { drone: false, heroY: GROUND_Y - 33 });
-    ctx.save();
-    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-    const tailX = 12;
-    const roofY = GROUND_Y - 33;
-    // Drawn before the hero would be ideal; for the mock it goes under a redrawn hero.
-    drawTronTrain(ctx, tailX, roofY + 34, { consist: TRON_TRAIN, h: 34, palette: TRON_PALETTE.neon,
-      glow: false, lit: 0.9, gap: TRON_BOARD_GAP });
-    drawLedBoard(ctx, t, tailX + 132, roofY + 3, 64, 7, 'dot');
-    drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, roofY, HERO_DRAW_H);
-    ctx.restore();
-    if (pack.post) pack.post(ctx, t);
-  }, { animated: true });
-
-  tile(grid, 'D · platform announcement', 'まもなく でんしゃが まいります — a speech card with the JR chime where a portrait goes, '
-    + 'once, as the train arrives.', W, H, (ctx, t) => {
-    const camX = scene(ctx, t);
-    lane(ctx, camX, t);
-    drawAnnouncement(ctx, t, 'rounded');
-    if (pack.post) pack.post(ctx, t);
-  }, { animated: true });
-
-  tile(grid, 'the face question', 'The same three phrases in each candidate face. The top row is what the game draws TODAY: '
-    + 'Fredoka has no kana, so this is the device\'s own fallback.', W, H, (ctx) => {
-    ctx.fillStyle = '#0c0a22';
-    ctx.fillRect(0, 0, W, H);
-    KANA_FACES.forEach((f, i) => {
-      const y = 44 + i * 60;
-      kanaText(ctx, f.name.toUpperCase(), 16, y - 26, 8, 'system', { color: 'rgba(168,230,255,0.8)', align: 'left' });
-      kanaText(ctx, 'やった！ いそげ！ つぎは しぶや', 16, y, 21, f.id, { color: '#ffffff', align: 'left', glow: '#e838f8' });
-    });
-  }, { animated: true });   // repaints, so a face whose kana arrive late still shows up
 }
 
 // ------------------------------------------ NEON — the train foreground (lab)

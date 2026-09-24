@@ -23,6 +23,8 @@
 // switches to the wide-faint-plus-thin-bright pass the neon pack already uses
 // everywhere. The run always passes false.
 
+import { neonBoardStrip } from '../engine/kana.js';
+
 export const TRON_PALETTE = Object.freeze({
   // The spec, verbatim.
   spec: Object.freeze({
@@ -49,6 +51,20 @@ export const TRON_PALETTE = Object.freeze({
     // that there is an INSIDE, lit, with people in it. The windscreen stays
     // cyan: that is glass you see through, not a room.
     cabin: '#ffce7a',
+  }),
+  // DAYLIGHT (Peter, 23 Sep: "recolor the train for non-neon daylight colours until
+  // after the minor key transition"). The Yamanote as it really runs in the sun: a
+  // silver-white body, the line's yellow-green stripe, tinted glass, no tubes. Worn by
+  // the trains that fly over neon-1's golden hour; the neon livery comes with the night.
+  day: Object.freeze({
+    bg: '#5b6470', hull: '#e6eaee', line: '#80c241', glass: '#34506c', dim: 'rgba(128,194,65,0.35)',
+    cabin: '#fff3d6',
+    // PAINT, NOT LIGHT (Peter, 23 Sep: "the day time train still glows"): no halo on
+    // any line or pane — a livery in the sun is flat colour.
+    flat: true,
+    // Its speed streaks are white, not the livery's green, which vanished against the
+    // golden sky (Peter, 24 Sep): a white rush over a warm sky is what reads as wind.
+    streak: '#ffffff',
   }),
 });
 
@@ -135,6 +151,17 @@ export function tronCarApertures(car, x, railY, h, open = 0) {
   const left = rowStart + (rowEnd - rowStart - rowW) / 2;
   const windows = [];
   for (let i = 0; i < n; i++) windows.push({ x: left + i * WIN_PITCH, y: wy, w: WIN_W, h: WIN_H });
+  // THE DESTINATION BOARD (Peter, 23 Sep: "i love the destination board on the train,
+  // but it overlaps the windows"). Where a real E235 carries its side display: in the
+  // solid panel just forward of the door. The first window gives up its place, so the
+  // board sits on bodywork at window height and touches no glass — and because this
+  // is the aperture list, the shell loses that hole too and cannot disagree.
+  let board = null;
+  if (car.board && windows.length >= 2) {
+    const first = windows.shift();
+    const x0 = Math.max(doorX + DOOR_W + 3, first.x - 3);
+    board = { x: x0, y: wy + 2, w: windows[0].x - 4 - x0, h: 7 };
+  }
   // THE DRIVER'S WINDOW, as four points, on a cab only. It lives here with the
   // other apertures because the shell has to leave it open too — painted over,
   // the cab went blind the moment the hero stepped inside and only got its
@@ -152,8 +179,80 @@ export function tronCarApertures(car, x, railY, h, open = 0) {
   return {
     len, top, bottom, right, engine, tail, taper: engine || tail,
     doorX, doorTop, doorBot, doorH: doorBot - doorTop, openW, leafW: DOOR_W - openW,
-    windows, wy, windscreen,
+    windows, wy, windscreen, board,
   };
+}
+
+/**
+ * The destination board: つぎは しぶや · NEXT · SHIBUYA scrolling in amber dots on a
+ * black plate. The strip is baked once (kana.js) and a window of it slides past; the
+ * dot mesh over the top is what makes a smooth face read as LEDs.
+ */
+function drawTronBoard(ctx, b, t, lit, station = null) {
+  ctx.save();
+  ctx.globalAlpha = lit;
+  ctx.fillStyle = '#0a0806';
+  ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = 'rgba(255,190,90,0.35)';
+  ctx.lineWidth = 0.6;
+  ctx.strokeRect(b.x + 0.3, b.y + 0.3, b.w - 0.6, b.h - 0.6);
+  const strip = neonBoardStrip(b.h - 1, station);
+  if (strip) {
+    ctx.beginPath();
+    ctx.rect(b.x + 1, b.y + 0.5, b.w - 2, b.h - 1);
+    ctx.clip();
+    const off = ((t * 14) % strip.w + strip.w) % strip.w;
+    for (let k = 0; k < 3; k++) {
+      ctx.drawImage(strip.canvas, b.x + 1 - off + k * strip.w, b.y + 0.5, strip.w, strip.h);
+    }
+    ctx.fillStyle = 'rgba(10,8,6,0.5)';
+    for (let y = b.y; y < b.y + b.h; y += 1.5) ctx.fillRect(b.x, y, b.w, 0.45);
+  }
+  ctx.restore();
+}
+
+/**
+ * THE STATION SIGN: an LED strip on two poles from the platform. Its sign's BOTTOM
+ * sits `lift` above `baseY`. The run stands it on the platform just past the train's
+ * nose (Peter, 24 Sep: "what if the sign for the next station is AFTER the nose of the
+ * train.. then it can be lower"), where the hero runs by underneath it after leaving
+ * the train, drawn behind him. `station` names the stop (kana.js NEON_STATIONS).
+ */
+export const STATION_SIGN_LIFT = 38;      // the over-the-roof mock's lift, in px
+export function drawTronStationSign(ctx, x, w, railY, baseY, t = 0, lit = 0.9,
+  { lift = STATION_SIGN_LIFT, station = null } = {}) {
+  const h = 9;
+  const y = baseY - lift - h;
+  ctx.save();
+  ctx.fillStyle = '#2a2f48';
+  for (const px of [x + 5, x + w - 7]) ctx.fillRect(px, y + h - 1, 2, railY - (y + h - 1));
+  ctx.fillRect(x + 2, y - 2, w - 4, 2);          // the head rail the strip hangs on
+  ctx.restore();
+  drawTronBoard(ctx, { x, y, w, h }, t, lit, station);
+}
+
+/** The scrolling LED strip itself, for mock-ups that place it somewhere else. */
+export function drawTronLedStrip(ctx, rect, t = 0, lit = 0.9) { drawTronBoard(ctx, rect, t, lit); }
+
+/**
+ * THE PLATFORM BOARD (Peter, 24 Sep: "a stand that was in front of the middle car
+ * that we could hopefully see NEXT STOP SHIBUYA since it would be long enough... we
+ * could make the sign very low"). A long LED strip on two short legs, standing on
+ * the platform edge in front of a car, low enough — its top is ~12px off the rail —
+ * that the most it can ever cover of a hero is his shins. Long enough to hold the
+ * whole of つぎは しぶや and most of its English at once; it still scrolls.
+ * `x` is the strip's left edge and `w` its length, in the train's own space.
+ */
+export function drawTronPlatformBoard(ctx, x, railY, w, t = 0, lit = 0.9) {
+  const h = 8;
+  const y = railY - 12;
+  ctx.save();
+  // The legs, down to the platform.
+  ctx.fillStyle = '#20243a';
+  ctx.fillRect(x + 6, y + h, 2, railY - (y + h));
+  ctx.fillRect(x + w - 8, y + h, 2, railY - (y + h));
+  ctx.restore();
+  drawTronBoard(ctx, { x, y, w, h }, t, lit);
 }
 
 // The windscreen quad as a path, appended — same reason as roundRectPath.
@@ -255,10 +354,24 @@ function whiteHot(color, amt = GLOW_CORE_WHITE) {
 // because the bloom was adding more light than the pane itself carried.
 const GLOW_BLEED = Object.freeze([[3, 0.07], [1.4, 0.12]]);
 
+// Set while a FLAT palette (the daylight livery) is being painted: every line and
+// pane is drawn plain, with no halo, bleed or white-hot core.
+let paintFlat = false;
+const withPalette = (palette, fn) => {
+  const was = paintFlat;
+  paintFlat = !!palette?.flat;
+  try { return fn(); } finally { paintFlat = was; }
+};
+
 function glowStroke(ctx, color, width, glow, draw) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = color;
+  if (paintFlat) {
+    ctx.lineWidth = width;
+    ctx.beginPath(); draw(ctx); ctx.stroke();
+    return;
+  }
   if (glow) {
     ctx.save();
     ctx.shadowColor = color;
@@ -286,6 +399,10 @@ function glowStroke(ctx, color, width, glow, draw) {
 
 function glowFill(ctx, color, glow, draw) {
   ctx.fillStyle = color;
+  if (paintFlat) {
+    ctx.beginPath(); draw(ctx); ctx.fill();
+    return;
+  }
   if (glow) {
     ctx.save();
     ctx.shadowColor = color;
@@ -351,7 +468,7 @@ function nosePath(ctx, x, right, top, bottom, h) {
  * rail (where the hubs sit), `h` the hull height above it. Returns the car's
  * length so the consist painter can walk forward.
  */
-export function drawTronCar(ctx, car, x, railY, h, {
+function drawTronCarRaw(ctx, car, x, railY, h, {
   palette = TRON_PALETTE.spec, glow = true, lit = 0.9, t = 0, wheels = false, open = 0,
 } = {}) {
   const len = car.len || DEFAULT_LEN[car.kind] || DEFAULT_LEN.car;
@@ -461,6 +578,7 @@ export function drawTronCar(ctx, car, x, railY, h, {
   for (const w of parts.windows) {
     glowFill(ctx, cabin, glow, (c) => roundRect(c, w.x, w.y, w.w, w.h, 2));
   }
+  if (parts.board) drawTronBoard(ctx, parts.board, t, lit);
   if (taper) {
     // THE DRIVER'S WINDOW. It was a flat slab of the tube colour — the single
     // brightest, flattest shape on the train, and the one place a hard fill is
@@ -617,8 +735,8 @@ function drawTronGangway(ctx, x, w, railY, h, { palette }) {
  * `destination-out` would punch through the city and the sky behind the train
  * as well, and a window you can see the moon through is not a window.
  */
-export function drawTronCarShell(ctx, car, x, railY, h, {
-  palette = TRON_PALETTE.spec, glow = false, open = 0, skirt = null,
+function drawTronCarShellRaw(ctx, car, x, railY, h, {
+  palette = TRON_PALETTE.spec, glow = false, open = 0, skirt = null, t = 0,
 } = {}) {
   const p = tronCarApertures(car, x, railY, h, open);
   const { top, bottom, right, engine, tail, taper } = p;
@@ -649,7 +767,7 @@ export function drawTronCarShell(ctx, car, x, railY, h, {
   // windows, the door frame, the cab's trim — vanished the moment he stepped in
   // (Peter, 23 Sep). Painting the real car here means the shell cannot be a
   // different drawing from the car it covers; the clip is the only difference.
-  drawTronCar(ctx, car, x, railY, h, { palette, glow, open, lit: 0.9 });
+  drawTronCar(ctx, car, x, railY, h, { palette, glow, open, lit: 0.9, t });
   ctx.restore();
   // THE SKIRT. The hull stops 2px above the lane (it clears the rail), and the
   // hero's feet do not — so inside a car his shoes poked out under the body
@@ -678,9 +796,9 @@ export function drawTronCarShell(ctx, car, x, railY, h, {
 }
 
 /** The consist as a shell — see drawTronCarShell. */
-export function drawTronTrainShell(ctx, x, railY, {
+function drawTronTrainShellRaw(ctx, x, railY, {
   consist = TRON_SPEC_CONSIST, h = 34, palette = TRON_PALETTE.spec, glow = false,
-  gap = GAP, open = 0, skirt = null,
+  gap = GAP, open = 0, skirt = null, t = 0,
 } = {}) {
   const lenOf = (car) => car.len || DEFAULT_LEN[car.kind] || DEFAULT_LEN.car;
   // The couplers are part of the shell too — see drawTronGangway. Without them
@@ -702,7 +820,7 @@ export function drawTronTrainShell(ctx, x, railY, {
   }
   let cx = x;
   for (const car of consist) {
-    drawTronCarShell(ctx, car, cx, railY, h, { palette, glow, open, skirt });
+    drawTronCarShell(ctx, car, cx, railY, h, { palette, glow, open, skirt, t });
     cx += lenOf(car) + gap;
   }
 }
@@ -712,7 +830,7 @@ export function drawTronTrainShell(ctx, x, railY, {
  * is the front of the train, so the spec's [car, car, engine] puts the nose on
  * the right.
  */
-export function drawTronTrain(ctx, x, railY, {
+function drawTronTrainRaw(ctx, x, railY, {
   consist = TRON_SPEC_CONSIST, h = 34, palette = TRON_PALETTE.spec, glow = true, lit = 0.9, t = 0,
   wheels = false, gap = GAP, open = 0,
 } = {}) {
@@ -810,7 +928,7 @@ export function drawTronRoofView(ctx, x0, x1, roofY, {
  * speed the spec asks for. Deterministic per index so the field is the same
  * on every frame of a given `t`.
  */
-export function drawTronSpeedStreaks(ctx, x0, x1, y, t, {
+function drawTronSpeedStreaksRaw(ctx, x0, x1, y, t, {
   palette = TRON_PALETTE.spec, count = 18, speed = 260, band = 22, glow = true,
 } = {}) {
   const span = x1 - x0;
@@ -823,7 +941,7 @@ export function drawTronSpeedStreaks(ctx, x0, x1, y, t, {
     const raw = (x1 - ((t * speed * (0.7 + s * 0.6)) + i * (span / count))) ;
     const sx = x0 + ((((raw - x0) % span) + span) % span);
     ctx.globalAlpha = 0.25 + s * 0.55;
-    glowStroke(ctx, palette.line, 1, glow, (c) => {
+    glowStroke(ctx, palette.streak || palette.line, 1, glow, (c) => {
       c.moveTo(sx, sy);
       c.lineTo(sx + len, sy);
     });
@@ -861,4 +979,21 @@ export function tronTrainRun(x, count, { consist = TRON_TRAIN, gap = 150 } = {})
   const out = [];
   for (let i = 0; i < count; i++) out.push({ x: x + i * (len + gap), len, consist });
   return out;
+}
+
+// The public painters, each painting under its palette's FLAT flag (see withPalette).
+export function drawTronCar(ctx, car, x, railY, h, opts = {}) {
+  return withPalette(opts.palette || TRON_PALETTE.spec, () => drawTronCarRaw(ctx, car, x, railY, h, opts));
+}
+export function drawTronCarShell(ctx, car, x, railY, h, opts = {}) {
+  return withPalette(opts.palette || TRON_PALETTE.spec, () => drawTronCarShellRaw(ctx, car, x, railY, h, opts));
+}
+export function drawTronTrainShell(ctx, x, railY, opts = {}) {
+  return withPalette(opts.palette || TRON_PALETTE.spec, () => drawTronTrainShellRaw(ctx, x, railY, opts));
+}
+export function drawTronTrain(ctx, x, railY, opts = {}) {
+  return withPalette(opts.palette || TRON_PALETTE.spec, () => drawTronTrainRaw(ctx, x, railY, opts));
+}
+export function drawTronSpeedStreaks(ctx, x0, x1, y, t, opts = {}) {
+  return withPalette(opts.palette || TRON_PALETTE.spec, () => drawTronSpeedStreaksRaw(ctx, x0, x1, y, t, opts));
 }

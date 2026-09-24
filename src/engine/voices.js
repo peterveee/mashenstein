@@ -1960,10 +1960,50 @@ const cancelToneEnvelopes = (synth, t) => {
   };
   cancel(synth?.envelope);
   cancel(synth?.filterEnvelope);
+  // The FM and AM classes' modulator has an envelope of its own, released with the note.
+  cancel(synth?.modulationEnvelope);
   cancel(synth?.voice0?.envelope);
   cancel(synth?.voice0?.filterEnvelope);
   cancel(synth?.voice1?.envelope);
   cancel(synth?.voice1?.filterEnvelope);
+  // ...and the oscillators. Tone's release books `oscillator.stop(end + release)` beside
+  // the envelope's fall, and a source marked stopped ignores every later stop — so the
+  // note taken over died at the OLD note's release however long the new one was drawn.
+  // `start` on a source RUNNING at `t` is Tone's restart, which clears the booked stop and
+  // leaves the phase alone; on one stopped by then it would start a fresh one, so it asks.
+  for (const src of [synth?.oscillator, synth?.modulation, synth?.voice0?.oscillator, synth?.voice1?.oscillator]) {
+    try {
+      if (src?._state?.getValueAtTime?.(t) === 'started') src.start(t);
+    } catch { /* ignore */ }
+  }
+};
+
+/**
+ * Take a param to silence over `fade`, starting from whatever its automation has it at
+ * `time` — which is the one value this code cannot know. A RAMP cannot say that: after
+ * `cancelAndHoldAtTime` on a param with no ramp in progress nothing is inserted at `time`,
+ * so the ramp began at the last event BEFORE it — the note's own onset — and a MONO choke
+ * faded the old note across its whole sustain. A target curve starts from the value it
+ * finds, so it needs no anchor.
+ */
+const fadeParamOut = (param, time, fade) => {
+  if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(time);
+  else { param.cancelScheduledValues(time); param.setValueAtTime(param.value, time); }
+  param.setTargetAtTime(0, time, Math.max(0.0005, fade / 7));
+  param.setValueAtTime(0, time + Math.max(0.001, fade));
+};
+
+/**
+ * Where a glided pitch is at `time`, from the plan the note wrote down: from, to, and the
+ * span of the exponential between them. What the pitch's own param holds, said as data,
+ * because the param cannot be asked about its own future.
+ */
+const pitchAt = (plan, time) => {
+  if (!plan) return null;
+  const { from, to, t0, t1 } = plan;
+  if (!(t1 > t0) || time >= t1) return to;
+  if (time <= t0) return from;
+  return from * Math.pow(to / from, (time - t0) / (t1 - t0));
 };
 
 /**
@@ -2692,9 +2732,15 @@ export class VoiceRack {
    * so a note-off can ask the question without having to take the lane key apart again.
    */
   _tngr2Fingers(laneKey) {
-    this._tngr2Held ||= new Map();
-    let host = this._tngr2Held.get(laneKey);
-    if (!host) { host = { fingers: [] }; this._tngr2Held.set(laneKey, host); }
+    return this._laneFingers('tngr2', laneKey);
+  }
+
+  /** The same, for any worklet synth: one finger list per (engine, lane). */
+  _laneFingers(engine, laneKey) {
+    this._laneHeld ||= new Map();
+    const key = `${engine}|${laneKey}`;
+    let host = this._laneHeld.get(key);
+    if (!host) { host = { fingers: [] }; this._laneHeld.set(key, host); }
     return host;
   }
 
@@ -3241,7 +3287,10 @@ export class VoiceRack {
       // same key `_releasePreview` looks under, or a swept keyboard leaves a note sounding.
       const noteKey = `${laneKey}|${notes[0].toFixed(2)}`;
       this._releasePreview(noteKey);
-      this._heldNative.set(noteKey, { mrdr3: { lane, eventId }, at: time });
+      // ONE INSTRUMENT, SEVERAL FINGERS, as on TNGR-2 — see `fingerDown`.
+      const fingers = (v?.mode || keyMode(v)) !== 'poly' ? this._laneFingers('mrdr3', laneKey) : null;
+      this._heldNative.set(noteKey, { mrdr3: { lane, eventId, fingers }, at: time });
+      if (fingers) fingerDown(fingers, noteKey, hzs[hzs.length - 1]);
     }
     return true;
   }
@@ -3344,10 +3393,16 @@ export class VoiceRack {
   }
 
   _playGame(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, hold = preview }) {
-    const notes = Array.isArray(freq) ? freq : [freq];
     const attack = Math.max(0.001, v.attack ?? 0.01);
     const release = Math.max(0, v.release ?? 0.015);
     const shift = VoiceRack.pitchShift(v) * detune;
+    // KEY MODE and GLIDE — see `_perNoteKeyMode`.
+    const km = this._perNoteKeyMode(v, {
+      all: Array.isArray(freq) ? freq : [freq], laneKey, preview, hold, time, dur, shift,
+    });
+    if (!km) return true;
+    const { notes } = km;
+    const rec = { at: time, freq: 0, outs: [], pitchSets: [], envelopes: [], gates: [], sources: [], gateUntil: 0, gateKey: null, stopAt: 0 };
     // The note starts AMOUNT semitones away and arrives at its written pitch, rather than
     // starting on it and leaving. That direction is the whole of why this is usable on a
     // melody lane: a voice that walks off its own note can only ever be a sound effect,
@@ -3585,7 +3640,7 @@ export class VoiceRack {
         pitch = o.frequency; det = o.detune;
         into(o);
       }
-      pitch.setValueAtTime(f * shift, t);
+      this._glideIn(pitch, f * shift, t, km);
       // The bend, in cents on `.detune` — the note sits at its written pitch and the
       // envelope moves it, rather than the note being written away from itself and
       // ramped back. Arrives BY note-off however long it asks for: `centsEnv` clamps its
@@ -3658,8 +3713,17 @@ export class VoiceRack {
           this._heldNative.set(noteKey, {
             at: t,
             params: [{ param: g.gain, e: { release } }], sources: [o],
+            ...(km.mono ? { glideKey: km.glideKey } : {}),
           });
+        rec.gateKey = noteKey;
       }
+      rec.freq = f * shift;
+      rec.outs.push(g);
+      rec.pitchSets.push({ pitches: [pitch], ratio: 1 });
+      rec.envelopes.push({ param: g.gain, e: { release } });
+      rec.sources.push(o);
+      rec.gateUntil = Math.max(rec.gateUntil, end);
+      rec.stopAt = Math.max(rec.stopAt, off + 0.01);
       // The source is already wired into `g` by the branch above — through the bandpass
       // for noise, directly for an oscillator, and through the tone filter when the
       // preset has one. Connecting it again here would put raw unfiltered noise beside
@@ -3680,6 +3744,7 @@ export class VoiceRack {
     });
     // A chord of nothing but rests built no oscillators, so there is nothing to wobble.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); }
+    this._perNoteKeyModeEnd(km, hold, rec);
     return true;
   }
 
@@ -5206,7 +5271,13 @@ export class VoiceRack {
     // So legato is not a retarget of the old note but a new one that CONTINUES it: the old
     // gate closes in a short crossfade, the new note skips its onset consonant and its
     // attack and starts at its sustain level, and the pitch glides in from where the old
-    // one was. Mono cuts the old note in a cycle and a half, as the layer path does.
+    // one was. Mono cuts the old note in a cycle and a half, as the layer path does, and
+    // strikes the new one in full — its consonant and its attack — gliding in from the old
+    // pitch all the same: the layer path's MONO, a retriggered glide.
+    //
+    // `gateUntil` is the gate and nothing else. A held key's gate is booked HOLD_SECONDS
+    // ahead and closed by its key coming up (`_releasePreview`), so a note played after
+    // the key before it was let go is a fresh note, not a legato one.
     this._jmjr4Last ||= new Map();
     const prev = mono ? this._jmjr4Last.get(lineKey) : null;
     const sounding = !!prev && prev.gateUntil > time;
@@ -5252,6 +5323,7 @@ export class VoiceRack {
     const sources = [];
     let lastOff = time;
     let lastFreq = 0;
+    let gateKey = null;
     const velocity = Math.min(1, gain);
     notes.forEach((f, n) => {
       const noteDur = Array.isArray(dur) ? (dur[n] ?? dur[0]) : dur;
@@ -5260,7 +5332,7 @@ export class VoiceRack {
       const part = buildJmjr4Note(ctx, {
         data, at: time, hz: base, dur: hold ? null : noteDur, velocity, syl, patch, variants, dest: stackIn,
         flutterSource,
-        glideFrom: legato && glide > 0 ? prev.freq : null,
+        glideFrom: sounding && glide > 0 ? prev.freq : null,
         glideTime: glide,
         onsetSilent: tied || legato,
         noAttack: legato,
@@ -5285,14 +5357,33 @@ export class VoiceRack {
           stopSources: (t) => part.stopSources(t),
           shared: sharedMods,
           live: [],
+          jmjr4Line: mono ? lineKey : null,
         });
+        gateKey = noteKey;
       }
     });
+    // The note's record: what the next note-on reads, and what a key coming up reads to
+    // close the gate or hand the note back — the same shape `_last` keeps for MRDR-3, so
+    // `_releasePreview` says it once for both. The keys still down come across from the
+    // note before, because in MONO and LEGATO they are all holding this one.
+    const record = {
+      parts, freq: lastFreq, gateUntil: 0, gateKey, glide,
+      fingers: mono ? (prev?.fingers || []) : [],
+      pitchSets: parts.flatMap((part) => part.oscs.map((o) => ({ pitches: [o.frequency], ratio: o.jmjr4Ratio ?? 1 }))),
+      // What note.js wrote on those pitches: the glide in from the note before, else the
+      // BEND scoop, else the note's own pitch.
+      pitchPlan: sounding && glide > 0
+        ? { from: prev.freq, to: lastFreq, t0: time, t1: time + glide }
+        : ((patch.bend || 0) !== 0 && (patch.bendTime || 0) > 0
+          ? { from: lastFreq * Math.pow(2, patch.bend / 12), to: lastFreq, t0: time, t1: time + patch.bendTime }
+          : { from: lastFreq, to: lastFreq, t0: time, t1: time }),
+    };
+    if (mono && gateKey) fingerDown(record, gateKey, lastFreq);
     const modOff = hold ? time + HOLD_SECONDS : lastOff + 0.05;
     for (const m of sharedMods.oscs) { m.start(time); m.stop(modOff); }
 
-    const gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
-    this._jmjr4Last.set(lineKey, { parts, freq: lastFreq, gateUntil });
+    record.gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
+    this._jmjr4Last.set(lineKey, record);
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
     return true;
   }
@@ -5431,9 +5522,16 @@ export class VoiceRack {
     const ratios = Array.isArray(a.ratios) && a.ratios.length ? a.ratios : DRAWBAR_RATIOS;
     const count = Math.min(a.count ?? bars.length, bars.length, ratios.length);
     const wave = nativeWave(a.type, 'sine');
-    const notes = Array.isArray(freq) ? freq : [freq];
     const hum = v.humanize || {};
     const shift = VoiceRack.pitchShift(v) * detune;
+    // KEY MODE and GLIDE — see `_perNoteKeyMode`. A LEGATO note taken over does not strike
+    // the percussion register again, which is the single-trigger organ it is modelled on.
+    const km = this._perNoteKeyMode(v, {
+      all: Array.isArray(freq) ? freq : [freq], laneKey, preview, hold, time, dur, shift,
+    });
+    if (!km) return true;
+    const { notes } = km;
+    const rec = { at: time, freq: 0, outs: [], pitchSets: [], envelopes: [], gates: [], sources: [], gateUntil: 0, gateKey: null, stopAt: 0 };
     const stretch = a.stretch ?? 0;
     const damp = a.damp ?? 0;
     const p = a.pitch;
@@ -5553,6 +5651,7 @@ export class VoiceRack {
         if (echo && wet && a.echo !== false) out.connect(wet);
       }
       const stackIn = driveInto(out);
+      rec.outs.push(out);
       // The percussion register is always dry, so it needs a bus of its own — built only
       // if a preset actually pulls it. See below for why it is kept out of the echo; it
       // stays out of the CHORUS with it, and for the same reason. The pip is the dry stab
@@ -5568,6 +5667,7 @@ export class VoiceRack {
         if (!perc) {
           perc = ctx.createGain();
           perc.gain.value = gain * fade;
+          rec.outs.push(perc);
           perc.connect(dry);
           percIn = driveInto(perc);
         }
@@ -5605,7 +5705,9 @@ export class VoiceRack {
           if (!(partial > 0) || partial >= nyquist) continue;
           const o = ctx.createOscillator();
           o.type = wave;
-          o.frequency.setValueAtTime(partial, t);
+          this._glideIn(o.frequency, partial, t, km, partial / base);
+          rec.pitchSets.push({ pitches: [o.frequency], ratio: partial / base });
+          rec.sources.push(o);
           // The whole registration bends together, each partial keeping its ratio — which
           // is what `organSwoop` is, and what stops a glide sounding like a chord sliding
           // apart.
@@ -5636,6 +5738,8 @@ export class VoiceRack {
           const off = gateAdsr(g.gain, t, stackHolds ? t + HOLD_SECONDS : end,
             level, shape, stackHolds, partial);
           if (stackHolds) { heldParams.push({ param: g.gain, e: shape }); heldSources.push(o); }
+          rec.envelopes.push({ param: g.gain, e: shape });
+          rec.stopAt = Math.max(rec.stopAt, off + 0.01);
           if (vibCents) vibCents.connect(o.detune);
           o.connect(g); g.connect(stackIn);
           o.start(t); o.stop(off + 0.01);
@@ -5647,8 +5751,12 @@ export class VoiceRack {
           sharedMods.holds += 1;
           this._heldNative.set(noteKey, {
             at: t, params: heldParams, sources: heldSources, shared: sharedMods,
+            ...(km.mono ? { glideKey: km.glideKey } : {}),
           });
+          rec.gateKey = noteKey;
         }
+        rec.freq = base;
+        rec.gateUntil = Math.max(rec.gateUntil, end);
 
         // Hammond percussion: one louder partial struck on the key attack and gone long
         // before the note is. Its decay is in SECONDS rather than a fraction of the note,
@@ -5661,7 +5769,7 @@ export class VoiceRack {
           if (pf > 0 && pf < nyquist) {
             const o = ctx.createOscillator();
             o.type = wave;
-            o.frequency.setValueAtTime(pf, t);
+            this._glideIn(o.frequency, pf, t, km, pf / base);
             const g = ctx.createGain();
             // The strike falls across its OWN length — stated, now that `decay: 0` no
             // longer means "as long as the note". Passing the span twice looks odd and
@@ -5680,6 +5788,7 @@ export class VoiceRack {
     // Started once the last partial has said when it ends. An LFO left running past the
     // note it belongs to is a node nothing disposes.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); sharedMods.oscs.push(lfo); }
+    this._perNoteKeyModeEnd(km, hold, rec);
     return true;
   }
 
@@ -5730,6 +5839,75 @@ export class VoiceRack {
    * Like every native path: one-shot nodes, never pooled, nothing memoised by voice id
    * — which is exactly why live edits are audible on the next note.
    */
+  /**
+   * KEY MODE and GLIDE for a path that builds a native graph per note — KNDO-5 and
+   * WNDR-9 — said the way `_playLayer` says it, on the same record in `_last`, so a
+   * LEGATO note-on, a MONO choke and a key coming up (`_releasePreview`) are one piece of
+   * code for all three. The rules, once more:
+   *
+   *   · MONO and LEGATO play the LAST tone of a chord.
+   *   · FINGERED: a note glides only from a note still GATED — its drawn length not yet
+   *     over, or its key still down. A key coming up ends the gate.
+   *   · MONO strikes every note in full, gliding in from the one it chokes.
+   *   · LEGATO takes a gated note over: no new attack, the pitch moves, the note now ends
+   *     where this one does. A note after a gap is a fresh note.
+   *
+   * Returns null when LEGATO took the note over and there is nothing to build; otherwise
+   * the notes to build and where they glide from, to hand back to `_perNoteKeyModeEnd`.
+   */
+  _perNoteKeyMode(v, { all, laneKey, preview, hold, time, dur, shift }) {
+    const mode = v.mode === 'legato' || v.mode === 'mono' ? v.mode : keyMode(v);
+    const mono = mode !== 'poly';
+    const notes = mono ? all.filter((f) => f > 0).slice(-1) : all;
+    const glideKey = `${laneKey}|${v.id}${preview ? '|p' : ''}`;
+    this._last ||= new Map();
+    const prev = mono ? this._last.get(glideKey) : null;
+    const overlap = !!prev && (prev.gateUntil > time || prev.gateKey != null);
+    const glide = v.portamento > 0 ? glideTime(v) : 0;
+    if (mode === 'legato' && overlap && notes.length) {
+      const f = notes[0];
+      const di = all.lastIndexOf(f);
+      const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
+      const base = f * shift;
+      this._retargetLayerLegato(prev, base, time, noteDur, v, hold);
+      if (hold) {
+        const key = `${laneKey}|${f.toFixed(2)}`;
+        this._rekeyHeldNote(prev, key);
+        prev.glide = glide;
+        fingerDown(prev, key, base);
+      }
+      return null;
+    }
+    // The choke, as `_playLayer` fades it: a cycle and a half of the note being cut.
+    if (mode === 'mono' && prev && prev.stopAt > time) {
+      const fade = Math.min(0.03, Math.max(0.005, prev.freq > 0 ? 1.5 / prev.freq : 0),
+        Math.max(0.001, prev.stopAt - time));
+      for (const o of prev.outs || []) fadeParamOut(o.gain, time, fade);
+    }
+    return { mono, notes, glideKey, prev, glide, glideFrom: overlap && glide > 0 ? prev.freq : null };
+  }
+
+  /** Write down the note just built, for the next note-on and the next key-up to read. */
+  _perNoteKeyModeEnd(km, hold, rec) {
+    if (!km.mono || !(rec.freq > 0)) return;
+    const record = {
+      ...rec, fingers: km.prev?.fingers || [], glide: km.glide,
+      pitchPlan: km.glideFrom
+        ? { from: km.glideFrom, to: rec.freq, t0: rec.at, t1: rec.at + Math.max(0.001, km.glide) }
+        : { from: rec.freq, to: rec.freq, t0: rec.at, t1: rec.at },
+    };
+    if (hold && rec.gateKey) fingerDown(record, rec.gateKey, rec.freq);
+    this._last.set(km.glideKey, record);
+  }
+
+  /** Start a pitch where the glide comes from and slide it to where the note is. */
+  _glideIn(param, target, t, km, ratio = 1) {
+    if (km?.glideFrom) {
+      param.setValueAtTime(Math.max(1, km.glideFrom * ratio), t);
+      pitchRamp(param, target, t, Math.max(0.001, km.glide));
+    } else param.setValueAtTime(target, t);
+  }
+
   _retargetLayerLegato(prev, base, time, dur, v, hold = false) {
     const stopAt = time + Math.max(0.001, dur || 0.001);
     const releaseValues = (prev.envelopes || [])
@@ -5758,14 +5936,19 @@ export class VoiceRack {
     }
     // Cancel the old note's release, hold its current level, and release the same gate
     // at the new note's end. This is the envelope distinction between LEGATO and MONO.
+    //
+    // The release is a target curve from the level held, not a ramp: a ramp after
+    // `cancelAndHoldAtTime` starts at the last event before `time` when no ramp was in
+    // progress there — the old note's onset, or the end of its decay — so the note taken
+    // over faded out across its whole length instead of holding. See `fadeParamOut`.
     for (const { param, e } of prev.envelopes || []) {
       try {
         if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(time);
         else { param.cancelScheduledValues(time); param.setValueAtTime(param.value, time); }
         const envelopeRelease = Math.max(0, e?.release ?? 0.015);
         const off = stopAt + envelopeRelease;
-        if (envelopeRelease > 0) param.exponentialRampToValueAtTime(1e-4, off);
-        param.linearRampToValueAtTime(0, off + 0.005);
+        param.setTargetAtTime(0, stopAt, Math.max(0.0005, envelopeRelease / 7));
+        param.setValueAtTime(0, off + 0.005);
       } catch { /* the old graph may already have ended */ }
     }
     // A THROUGH layer has no amp envelope of its own, but it still carries a short
@@ -5802,17 +5985,26 @@ export class VoiceRack {
    * what stops a detuned stack sliding apart on the way.
    */
   _retargetLayerPitch(record, base, time, glide = 0) {
+    // Where the pitch IS at `time`, anchored before the glide leaves it. Without the anchor
+    // the ramp ran from the last event before `time` — the old note's own onset — so the
+    // slide into the next note began the moment the note BEFORE it did.
+    const from = pitchAt(record.pitchPlan, time) ?? record.freq;
     for (const { pitches, ratio } of record.pitchSets || []) {
       const target = base * ratio;
       for (const pitch of pitches) {
         try {
           if (pitch.cancelAndHoldAtTime) pitch.cancelAndHoldAtTime(time);
           else pitch.cancelScheduledValues(time);
-          if (glide > 0) pitchRamp(pitch, target, time, Math.max(0.001, glide));
-          else pitch.setValueAtTime(target, time);
+          if (glide > 0 && from > 0) {
+            pitch.setValueAtTime(Math.max(1, from * ratio), time);
+            pitchRamp(pitch, target, time, Math.max(0.001, glide));
+          } else pitch.setValueAtTime(target, time);
         } catch { /* the old graph may already have ended */ }
       }
     }
+    record.pitchPlan = glide > 0 && from > 0
+      ? { from, to: base, t0: time, t1: time + Math.max(0.001, glide) }
+      : { from: base, to: base, t0: time, t1: time };
     record.freq = base;
   }
 
@@ -6096,9 +6288,8 @@ export class VoiceRack {
         // the future gain to the present one steps a note still climbing its attack up or
         // down before the fade, which is the click. Holding takes the value the
         // automation would have reached, which is what "cut the note still ringing" means.
-        if (o.gain.cancelAndHoldAtTime) o.gain.cancelAndHoldAtTime(time);
-        else { o.gain.cancelScheduledValues(time); o.gain.setValueAtTime(o.gain.value, time); }
-        o.gain.linearRampToValueAtTime(0, time + fade);
+        // And a target curve rather than a ramp out of it — see `fadeParamOut`.
+        fadeParamOut(o.gain, time, fade);
       }
     }
 
@@ -6790,6 +6981,9 @@ export class VoiceRack {
         // keys still down when this note was struck are still down after it. Carried
         // across, or the fall-back would only ever find the note it was leaving.
         fingers: prev?.fingers || [], glide: glideTime(v),
+        pitchPlan: glideFrom
+          ? { from: glideFrom, to: lastBase, t0: time, t1: time + Math.max(0.001, glideTime(v)) }
+          : { from: lastBase, to: lastBase, t0: time, t1: time },
       };
       if (hold && gateKey) fingerDown(record, gateKey, lastBase);
       this._last.set(glideKey, record);
@@ -7567,7 +7761,7 @@ export class VoiceRack {
     // is still down, and a stop that left one set would hand the next key a glide out of a
     // note this call has just silenced. The pooled slots go with their pools above; the
     // native records outlive them, so they are said here.
-    for (const record of this._last?.values() || []) {
+    for (const record of [...(this._last?.values() || []), ...(this._jmjr4Last?.values() || [])]) {
       record.gateKey = null;
       record.gateUntil = Math.min(record.gateUntil, now);
       record.fingers = [];
@@ -7575,7 +7769,7 @@ export class VoiceRack {
     // ...and the keys down on a TNGR-2 lane, which are kept per lane rather than on a
     // record. A stop that left one behind would hand the next key's note-off a finger
     // that is not on the keyboard any more.
-    for (const host of this._tngr2Held?.values() || []) host.fingers = [];
+    for (const host of this._laneHeld?.values() || []) host.fingers = [];
     // The gated notes end by themselves and are fading with the pools above; what goes
     // here is only the RECORD of them, so a stopped bench cannot leave a later edit
     // walking filters on nodes already on their way out.
@@ -7693,8 +7887,19 @@ export class VoiceRack {
     // stopping a source. Before the TNGR-2 branch because both read `held.<engine>` and a
     // held record only ever carries one of them.
     if (held?.mrdr3) {
-      mrdr3NoteOff(held.mrdr3.lane, { at: releaseAt, eventId: held.mrdr3.eventId });
+      const { lane, fingers } = held.mrdr3;
       this._heldNative.delete(noteKey);
+      // ONE INSTRUMENT, SEVERAL FINGERS — the TNGR-2 branch below, said for MRDR-3 AW.
+      const { next, wasOwner } = fingerUp(fingers, noteKey);
+      if (next) {
+        if (!wasOwner) return true;
+        const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);
+        mrdr3NoteOn(lane, { at: releaseAt, hz: next.hz, durSeconds: HOLD_SECONDS, eventId, regate: false });
+        const back = this._heldNative.get(next.key);
+        if (back?.mrdr3) back.mrdr3.eventId = eventId;
+        return true;
+      }
+      mrdr3NoteOff(lane, { at: releaseAt, eventId: held.mrdr3.eventId });
       return true;
     }
     if (held?.tngr2) {
@@ -7741,8 +7946,10 @@ export class VoiceRack {
       return;
     }
     if (held) {
-      // The same close, on the native path's own record of the gate.
-      const record = held.glideKey ? this._last?.get(held.glideKey) : null;
+      // The same close, on the native path's own record of the gate — MRDR-3's, or
+      // JMJR-4's, which keeps one of the same shape per syllable line.
+      const record = held.glideKey ? this._last?.get(held.glideKey)
+        : (held.jmjr4Line ? this._jmjr4Last?.get(held.jmjr4Line) : null);
       if (record && record.gateKey === noteKey) {
         // ONE INSTRUMENT, SEVERAL FINGERS, said on this path too — see `fingerDown`. The
         // key that is SPEAKING is coming up while others are still down, so the note is
@@ -7847,7 +8054,7 @@ export class VoiceRack {
     this.pools.clear();
     this._monoGroups.clear();
     this._activePreviews.clear();
-    this._tngr2Held?.clear();
+    this._laneHeld?.clear();
     for (const active of this._cachedPlayback) {
       try { active.src.stop(); } catch { /* already stopped */ }
       try { active.src.disconnect(); } catch { /* context may already be gone */ }

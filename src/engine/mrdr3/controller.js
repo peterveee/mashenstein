@@ -160,7 +160,7 @@ export const mrdr3LaneNow = (ctx, laneKey) => stateFor(ctx).lanes.get(laneKey) |
  * they reach the same drive shaper; sending one message per tone and reconstructing
  * simultaneity in the processor would be a different instrument.
  */
-export function mrdr3NoteOn(lane, { at, hz, durSeconds, velocity = 1, eventId }) {
+export function mrdr3NoteOn(lane, { at, hz, durSeconds, velocity = 1, eventId, regate }) {
   if (!lane) return false;
   const rate = lane.ctx.sampleRate;
   const hzs = Array.isArray(hz) ? hz.filter((n) => n > 0) : (hz > 0 ? [hz] : []);
@@ -170,6 +170,8 @@ export function mrdr3NoteOn(lane, { at, hz, durSeconds, velocity = 1, eventId })
     : frameAt(durSeconds, rate);
   lane.node.port.postMessage({
     type: 'noteOn', frame: frameAt(at, rate), eventId, hz: hzs, durFrames: durs, velocity,
+    // false: a key coming up handing the note back — see Mrdr3Core.applyDue
+    ...(regate === false ? { regate: false } : {}),
   });
   lane.lastNoteAt = at;
   return true;

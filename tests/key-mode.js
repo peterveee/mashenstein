@@ -82,8 +82,9 @@ assert(source.includes('const base = f * shift * ensembleVary((v.humanize || {})
 assert(source.includes('const fingerDown = (host, key, hz) => {')
   && source.includes('const fingerUp = (host, key) => {'),
   'the rack has ONE vocabulary for the keys still down on one instrument');
-assert((source.match(/fingerDown\(/g) || []).length === 4,
-  'and all three paths keep it: pooled, MRDR-3 native, TNGR-2 lane');
+assert((source.match(/fingerDown\(/g) || []).length === 8,
+  'and every path keeps it: pooled, MRDR-3 native (legato and record), TNGR-2 lane, '
+  + 'MRDR-3 AW lane, JMJR-4, and the KNDO-5/WNDR-9 helper (legato and record)');
 assert(source.includes('const { next, wasOwner } = fingerUp(slot, noteKey);')
   && source.includes('const { next } = fingerUp(record, noteKey);')
   && source.includes('const { next, wasOwner } = fingerUp(fingers, noteKey);'),

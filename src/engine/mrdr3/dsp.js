@@ -329,10 +329,14 @@ function Mrdr3Layer(rate) {
   this.makeup = 1;
 }
 
-Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDelays) {
+Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDelays, glide) {
   this.spec = spec;
   this.active = true;
   this.hz = hz * spec.ratio;
+  // The pitch the envelopes were drawn for. A LEGATO note moves 'hz' under a note that is
+  // still sounding, and a release drawn again at the new pitch would move the gate floor
+  // under an attack that has already been rendered.
+  this.envHz = this.hz;
   var count = spec.unison < 1 ? 1 : (spec.unison > MRDR3_MAX_UNISON ? MRDR3_MAX_UNISON : spec.unison);
   this.count = count;
   // 1/sqrt(count) so a stack arrives at the level one voice did — the same normalisation
@@ -354,6 +358,14 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
     // draws voice 0's stagger from the same table as the rest.
     v.from = frame + (entryDelays ? entryDelays[u] * rate : 0);
     v.lastCents = NaN;
+    // GLIDE from the note before, in this layer's own ratio so a stack arrives together.
+    if (glide && glide.frames > 0 && glide.from > 0) {
+      v.glideFrom = glide.from * spec.ratio;
+      v.glideStart = frame;
+      v.glideUntil = frame + glide.frames;
+    } else {
+      v.glideUntil = -1;
+    }
     // Stereo placement, equal power, symmetric about the centre — and SKIPPED ENTIRELY at
     // zero width or one voice, which is not an optimisation but the sound.
     //
@@ -452,20 +464,59 @@ Mrdr3Layer.prototype.release = function (frame, rate) {
   if (!this.active || !this.spec) return;
   var at = frame > this.startFrame ? frame : this.startFrame;
   if (at >= this.endFrame) return;
+  this.redraw(at, rate);
+};
+
+/** Draw every envelope again for a note that ends at 'at'. See release() and retarget(). */
+Mrdr3Layer.prototype.redraw = function (at, rate) {
   this.endFrame = at;
   var spec = this.spec;
+  var hz = this.envHz;
   var seconds = (at - this.startFrame) / rate;
   this.off = spec.through
     ? mrdr3WriteGate(this.gain, this.startFrame, at, spec.gain, rate)
-    : mrdr3WriteEnvelope(this.gain, this.startFrame, seconds, spec.gain, spec.env, this.hz, rate);
+    : mrdr3WriteEnvelope(this.gain, this.startFrame, seconds, spec.gain, spec.env, hz, rate);
   if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, this.startFrame, seconds, spec, rate);
   if (this.fmOn) {
-    mrdr3WriteEnvelope(this.fmParam, this.startFrame, seconds, 1, spec.fmEnv, this.hz, rate);
+    mrdr3WriteEnvelope(this.fmParam, this.startFrame, seconds, 1, spec.fmEnv, hz, rate);
   }
   if (this.stages) {
     mrdr3WriteEnvelope(this.filterEnv, this.startFrame, seconds, 1, spec.filterEnvShape,
-      this.hz, rate);
+      hz, rate);
   }
+};
+
+/**
+ * LEGATO: the note still sounding becomes the next one. The pitch moves — gliding from
+ * wherever it stands now, over 'glideFrames' — and the envelopes are drawn again for the
+ * note's new end, which leaves every event before it where it was: they are drawn from
+ * the note's own start, so the sustain simply carries on. A layer whose own 'len' has
+ * already run out is not brought back.
+ */
+Mrdr3Layer.prototype.retarget = function (hz, frame, glideFrames, noteEnd, rate) {
+  if (!this.active || !this.spec) return;
+  var target = hz * this.spec.ratio;
+  for (var u = 0; u < this.count; u++) {
+    var uv = this.unison[u];
+    var now = this.hz;
+    if (frame < uv.glideUntil) {
+      now = uv.glideFrom * Math.pow(this.hz / uv.glideFrom,
+        (frame - uv.glideStart) / (uv.glideUntil - uv.glideStart));
+    }
+    if (glideFrames > 0 && now > 0) {
+      uv.glideFrom = now;
+      uv.glideStart = frame;
+      uv.glideUntil = frame + glideFrames;
+    } else {
+      uv.glideUntil = -1;
+    }
+    uv.lastCents = NaN;
+  }
+  this.hz = target;
+  if (noteEnd === undefined || this.endFrame <= frame) return;
+  var span = (noteEnd - this.startFrame) * (this.spec.len > 0 ? this.spec.len : 1);
+  var end = this.startFrame + (span > 1 ? span : 1);
+  this.redraw(end > frame ? end : frame, rate);
 };
 
 // ---- one sounding chord tone -----------------------------------------------------------
@@ -557,9 +608,14 @@ Mrdr3Tone.prototype.release = function (frame, rate) {
   if (!this.active || !this.patch) return;
   var at = frame > this.startFrame ? frame : this.startFrame;
   if (at >= this.endFrame) return;
+  this.redraw(at, rate);
+  for (var i = 0; i < this.used; i++) this.layers[i].release(at, rate);
+};
+
+/** The global VCA and filter envelopes drawn again for a note that ends at 'at'. */
+Mrdr3Tone.prototype.redraw = function (at, rate) {
   this.endFrame = at;
   var seconds = (at - this.startFrame) / rate;
-  for (var i = 0; i < this.used; i++) this.layers[i].release(at, rate);
   if (this.hasVca) {
     mrdr3WriteEnvelope(this.vca, this.startFrame, seconds, 1, this.patch.vca, this.hz, rate);
   }
@@ -567,6 +623,17 @@ Mrdr3Tone.prototype.release = function (frame, rate) {
     mrdr3WriteEnvelope(this.filterEnv, this.startFrame, seconds, 1,
       this.patch.filterEnvShape, this.hz, rate);
   }
+};
+
+/**
+ * LEGATO, for the whole tone: every layer to the new pitch, and the note's end moved to
+ * 'noteEnd' (undefined leaves every envelope alone — a key handing the note back). 'hz'
+ * stays the pitch the tone's own envelopes and key follow were drawn for, as natively.
+ */
+Mrdr3Tone.prototype.retarget = function (hz, frame, glideFrames, noteEnd, rate) {
+  if (!this.active || !this.patch) return;
+  for (var i = 0; i < this.used; i++) this.layers[i].retarget(hz, frame, glideFrames, noteEnd, rate);
+  if (noteEnd !== undefined && this.endFrame > frame) this.redraw(noteEnd > frame ? noteEnd : frame, rate);
 };
 
 // ---- the note group's shared modulators (§5.1) -------------------------------------
@@ -815,6 +882,10 @@ function Mrdr3Group(rate, maxTones) {
   this.active = false;
   this.age = 0;
   this.released = false;
+  // A MONO choke: a straight fade to silence from chokeAt to chokeEnd, in frames, on top
+  // of whatever the envelopes are doing. -1 is none.
+  this.chokeAt = -1;
+  this.chokeEnd = -1;
   // The shared modulators. Four vibrato voices because MAX_UNISON is four and voice u
   // takes vibrato u in every layer at once.
   this.vibPhase = new Float64Array(4);
@@ -863,6 +934,8 @@ Mrdr3Group.prototype.start = function (patch, event, frame, rate, noise, glide) 
   this.gain = event.velocity === undefined ? 1 : event.velocity;
   this.active = true;
   this.released = false;
+  this.chokeAt = -1;
+  this.chokeEnd = -1;
   var hzs = event.hz && event.hz.length !== undefined ? event.hz : [event.hz];
   var durs = event.durFrames && event.durFrames.length !== undefined
     ? event.durFrames : [event.durFrames];
@@ -925,6 +998,39 @@ Mrdr3Group.prototype.release = function (frame, rate) {
     if (this.tones[i].active) this.tones[i].release(frame, rate);
   }
   return true;
+};
+
+/**
+ * Take this group over for a new note without striking it: LEGATO, or a key coming up
+ * and handing the note back to one still down ('regate: false', which leaves the note's
+ * end alone because a held note has none). The new event id is the one whose note-off
+ * ends it now.
+ */
+Mrdr3Group.prototype.retarget = function (event, frame, rate, glideFrames, keepEnd) {
+  var hzs = event.hz && event.hz.length !== undefined ? event.hz : [event.hz];
+  var durs = event.durFrames && event.durFrames.length !== undefined
+    ? event.durFrames : [event.durFrames];
+  var hz = hzs[hzs.length - 1];
+  var dur = durs[durs.length - 1] === undefined ? durs[0] : durs[durs.length - 1];
+  var end = keepEnd ? undefined : frame + (dur > 0 ? dur : rate * 0.25);
+  this.eventId = event.eventId | 0;
+  for (var i = 0; i < this.tones.length; i++) {
+    if (this.tones[i].active) this.tones[i].retarget(hz, frame, glideFrames, end, rate);
+  }
+};
+
+/**
+ * MONO's choke: cut this group over 'frames', as the native path cuts the note a new one
+ * replaces — a cycle and a half of it, not its own release. Released too, so a note-off
+ * for it later is the no-op it should be and the stealer sees it as let go.
+ */
+Mrdr3Group.prototype.choke = function (frame, frames) {
+  if (!this.active) return;
+  this.released = true;
+  var end = frame + (frames > 1 ? frames : 1);
+  if (this.chokeAt >= 0 && this.chokeEnd <= end) return;
+  this.chokeAt = frame;
+  this.chokeEnd = end;
 };
 
 // ---- the core ---------------------------------------------------------------------------
@@ -1078,6 +1184,12 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       for (var k = 0; k < this.groups.length; k++) {
         if (this.groups[k].active && this.groups[k].eventId === (e.eventId | 0)) {
           this.groups[k].release(frame, this.rate);
+          // A KEY COMING UP ENDS THE GATE. A held note is booked for thirty seconds, and
+          // without this every note played after it — seconds after the key came up —
+          // glided out of it, and LEGATO took over a note that was already let go.
+          if (this.last.group === this.groups[k] && this.last.gateUntil > frame) {
+            this.last.gateUntil = frame;
+          }
         }
       }
       continue;
@@ -1091,14 +1203,39 @@ Mrdr3Core.prototype.applyDue = function (frame) {
     // ungated origin is not "the last note" but "the last note EVER", and a preset glided
     // in from whatever the lane played bars of rest ago is the second one.
     var glide = null;
+    // A key coming up, handing the note back to one still down: the pitch moves and the
+    // envelopes stay where they are, in MONO as in LEGATO. Letting go never STARTS a note.
+    var owner = this.last.group && this.last.group.active && !this.last.group.released
+      ? this.last.group : null;
+    if (e.regate === false) {
+      if (owner) {
+        owner.retarget(e, frame, this.rate, p.glideSeconds * this.rate, true);
+        this.last.hz = e.hz && e.hz.length !== undefined ? e.hz[e.hz.length - 1] : e.hz;
+      }
+      continue;
+    }
+    if (p.mono && p.legato && owner && this.last.gateUntil > frame) {
+      // LEGATO: the note still gated is taken over rather than struck again — no attack,
+      // the pitch glides in, and the note now ends where this one does.
+      owner.retarget(e, frame, this.rate, p.glideSeconds * this.rate, false);
+      var lh = e.hz && e.hz.length !== undefined ? e.hz[e.hz.length - 1] : e.hz;
+      var ld = e.durFrames && e.durFrames.length !== undefined
+        ? e.durFrames[e.durFrames.length - 1] : e.durFrames;
+      this.last.hz = lh;
+      this.last.gateUntil = frame + (ld > 0 ? ld : 0);
+      continue;
+    }
     if (p.mono) {
       var gated = this.last.gateUntil > frame;
       if (gated && p.glideSeconds > 0) glide = { from: this.last.hz, frames: p.glideSeconds * this.rate };
-      // THE CHOKE: a hardware mono synth cuts the note still ringing. Released rather
-      // than stopped dead, so its own release fades it under the note replacing it —
-      // which is what stops the two arriving as one click.
-      if (gated && this.last.group && this.last.group.active) {
-        this.last.group.release(frame, this.rate);
+      // THE CHOKE: a hardware mono synth cuts the note still ringing — its release tail
+      // too, as the native path does — over a cycle and a half of it (5 to 30 ms): long
+      // enough not to click, short enough that the note it replaces is gone rather than
+      // ringing its whole release under the new one.
+      if (!p.legato && this.last.group && this.last.group.active) {
+        var cyc = this.last.hz > 0 ? 1.5 / this.last.hz : 0;
+        var fadeSecs = cyc > 0.03 ? 0.03 : (cyc < 0.005 ? 0.005 : cyc);
+        this.last.group.choke(frame, fadeSecs * this.rate);
       }
     }
     var slot = this.claim();
@@ -1430,6 +1567,11 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
       }
 
       if (!groupSounding) { grp.active = false; continue; }
+      if (grp.chokeAt >= 0 && f >= grp.chokeAt) {
+        if (f >= grp.chokeEnd) { grp.active = false; continue; }
+        var ck = 1 - (f - grp.chokeAt) / (grp.chokeEnd - grp.chokeAt);
+        groupL *= ck; groupR *= ck;
+      }
       // ---- the group's own output chain ----------------------------------------
       //
       // Order is the native path's, and it is most of why DRIVE sounds like playing

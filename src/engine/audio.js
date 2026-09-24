@@ -613,6 +613,10 @@ export function setSfxTrim(cue, value) {
 }
 export const SFX_TRIM = {
   blockBreak: 0.541, coinSpray: 0.822, hit: 0.785,
+  // Levelled against 'boom', its opposite number, and deliberately far over it — the
+  // biggest thing heard in the game, once a level (Peter: "giant LONG boom"). Held to
+  // a -6 dBFS peak so it stays whole over the music rather than clipping into it.
+  thunder: 0.47,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
   // it: the bark is the finish dog's whole threat, it is the loudest voice in
   // the last stretch by design and has to carry over the end-of-stage music,
@@ -4689,6 +4693,28 @@ class AudioSys {
         break;
       }
       case 'boom': this.explosion(); break;
+      // NEON-1's LIGHTNING, on the bar the song turns minor (placed on the song clock
+      // with inBeats — see run.js). Three layers, in the order the ear takes them: a
+      // bright CRACK, an electric ZAP falling through the band (it is a neon bolt, so
+      // it buzzes), then the long low ROLL the city shakes to. The roll is what makes
+      // it thunder rather than a snare; the zap is what makes it this cabinet's.
+      // GIANT AND LONG (Peter, 23 Sep: "a giant LONG boom sound when the lightning
+      // hits"): the explosion's own body under the crack, a sub that falls for two
+      // seconds, and the roll arriving in four waves over five — thunder rolls because
+      // it reaches you from further and further along the bolt, so each wave is later,
+      // lower and quieter than the one before.
+      case 'thunder':
+        this.noise(0.18, 0.42, 'highpass', 2600);               // the crack
+        this.osc('sawtooth', 2200, 180, 0.26, 0.1);              // the neon zap
+        this.osc('square', 1100, 90, 0.2, 0.06, 0.01);           // ...an octave under it
+        this.explosion();                                        // the body of the boom
+        this.osc('sine', 62, 26, 2.4, 0.5, 0.02);                // the sub, falling
+        this.noise(2.8, 0.36, 'lowpass', 170, 0.08);             // the roll...
+        this.noise(2.4, 0.28, 'lowpass', 230, 0.9);
+        this.noise(2.8, 0.22, 'lowpass', 140, 1.8);
+        this.noise(3.2, 0.15, 'lowpass', 105, 2.9);              // ...dying away
+        this.noise(1.8, 0.12, 'bandpass', 420, 0.3);             // the rumble's grain
+        break;
       // THE BOOT CONNECTING. A punt had no sound at all until this: the call
       // site asked for 'launch' without naming a hero, and playLaunch keys its
       // buffer off exactly that — so it looked up `undefined`, missed all three
@@ -6415,6 +6441,40 @@ class AudioSys {
    */
   canHostTngr2() {
     return !this.offline && canHostTngr2(this.ctx);
+  }
+
+  /**
+   * Build a SONG'S TNGR-2 wavetables before it is playing — from its bank and mix
+   * alone, with no context and no lanes.
+   *
+   * The tables are memoised for the life of the page, so this only ever costs the first
+   * time a timbre is met — but that first time is expensive. SESERAGI (the neon song,
+   * 24 Sep 2026) plays seven TNGR-2 lanes, and expanding their families measured
+   * ~700 ms of main thread (buildFamily, work/local/_rt-profile.mjs): paid inside the
+   * cabinet screen's warm, or inside a stage's enter() while its song was starting,
+   * which is the glitch entering the cabinet and the ragged start from the dev menu.
+   *
+   * `worker: true` builds them in a background worker (tngr2/tables.js), costing the
+   * main thread nothing — boot's warm of every cabinet song. Where no worker can run it
+   * falls back to `idle`.
+   * `idle: true` spreads the families over idle callbacks, one per slice.
+   * `idle: false` does them now — for a stage about to start, BEFORE its song is handed
+   * the clock rather than inside its start gap.
+   */
+  warmSongTables(bank, mix = undefined, { idle = false, worker = false } = {}) {
+    if (!bank) return Promise.resolve([]);
+    if (typeof AudioWorkletNode === 'undefined') return Promise.resolve([]);
+    if (typeof globalThis !== 'undefined' && globalThis.isSecureContext === false) return Promise.resolve([]);
+    const entry = mix !== undefined ? mix : MIX[trackIdOf(bank)];
+    const voices = [];
+    for (const vp of Object.values(entry?.voiceParams || {})) if (vp?.synth === 'TNGR-2') voices.push(vp);
+    for (const id of Object.values(entry?.voice || {})) if (VOICES[id]?.synth === 'TNGR-2') voices.push(VOICES[id]);
+    for (const [k, id] of Object.entries(bank)) {
+      if (k.endsWith('Voice') && typeof id === 'string' && VOICES[id]?.synth === 'TNGR-2') voices.push(VOICES[id]);
+    }
+    const ids = [];
+    for (const v of voices) { try { ids.push(...tngr2FamiliesOfVoice(v)); } catch { /* a bad patch warms nothing */ } }
+    return ids.length ? warmTngr2Families([...ids, 'basic'], { idle: idle || worker, worker }) : Promise.resolve([]);
   }
 
   warmWorkletLanes() {
@@ -8567,7 +8627,15 @@ class AudioSys {
     // Lane values are frequencies; a rest is 0 or null. The melodic lanes only —
     // percussion is written at C1 as a trigger and would drag a phantom root in.
     const freqs = [];
-    for (const lane of ['bass', 'lead', 'chords', 'arp', 'pad', 'lead2', 'lead3', 'bass2']) {
+    // Every MELODIC lane, layers included. A fixed list of eight read SESERAGI (the
+    // neon song, 23 Sep 2026) as nearly empty: its tune lives in added layers —
+    // lead4 to lead9 — so a section could come back as a single pitch class and a
+    // coin run climbed in octaves, to 67 kHz. A layer is named after the lane it was
+    // made from plus a number, so the family is the name without its digits. The
+    // twinkle lane stays out: it is sparkle over the top, not the harmony.
+    const MELODIC = /^(bass|lead|leadHarm|chords|arp|pad)\d*$/;
+    const lanes = Object.keys(b).filter((k) => MELODIC.test(k));
+    for (const lane of lanes) {
       const seqn = b[lane];
       if (!Array.isArray(seqn)) continue;
       for (const v of seqn) {
@@ -8588,6 +8656,14 @@ class AudioSys {
     if (root == null) root = Math.min(...freqs);
     const semisFrom = (f) => Math.round(12 * Math.log2(f / root));
     const classes = [...new Set(freqs.map((f) => ((semisFrom(f) % 12) + 12) % 12))].sort((x, y) => x - y);
+    // A handful of notes is not a key. A ladder built on two or three climbs in
+    // fifths and octaves — a coin run leaping out of hearing — so a section that
+    // sparse has no key, and the cue falls back to its own pair, as it does over a
+    // section with no tune. Four is the fewest that still lets a run STEP up.
+    if (classes.length < 4) {
+      this._songKeyMemo = { bank: this.bank, sec: secIdx, key: null };
+      return null;
+    }
     const key = { root, classes };
     this._songKeyMemo = { bank: this.bank, sec: secIdx, key };
     return key;

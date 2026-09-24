@@ -407,6 +407,13 @@ export const CABINETS = [
       // only, which is late enough that most of a first run never met them.
       P(1, [{ t: 'barrel', dx: 0 }, coinArc(90)]),
       P(1, [{ t: 'pipe', dx: 0 }]),
+      // The countryside picks (Peter, 24 Sep, from the plumber ideas bake-off): the
+      // farmyard GOOSE, a closer like the dogs, and the RAKE whose handle comes up into
+      // the face of a hero who steps on it. Each alone, with room to read it.
+      P(0, [{ t: 'rake', dx: 0 }, coinArc(60)]),
+      P(1, [{ t: 'goose', dx: 0 }]),
+      P(1, [{ t: 'rake', dx: 0 }]),
+      P(2, [{ t: 'goose', dx: 0 }, coinArc(130)]),
       // Spread from Speed: the drum fire, unbootable and already burning, so
       // Plumber's floor game is not the only thing here that refuses the punt.
       P(1, [{ t: 'fireBarrel', dx: 0 }]),
@@ -501,6 +508,12 @@ export const CABINETS = [
       // quick hop rather than another crate-sized jump (see OBSTACLES.boomBarrier).
       P(1, [{ t: 'boomBarrier', dx: 0 }]),
       P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'trafficCone', dx: 110 }]),
+      // The rattlesnake (Peter, 24 Sep, from the desert ideas bake-off): coiled in the
+      // road, striking on its own clock. Alone first, then behind a cone with the time
+      // to read it that a strike needs. The tier-0 one puts it on speed-1 as well.
+      P(0, [{ t: 'rattlesnake', dx: 0 }, coinArc(80)]),
+      P(1, [{ t: 'rattlesnake', dx: 0 }]),
+      P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'rattlesnake', dx: 100 }, coinArc(100)]),
     ],
     taunt: 'I INVENTED SPEED. IN 1987. NO ONE THANKED ME.',
   },
@@ -632,6 +645,12 @@ export const CABINETS = [
       P(0, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
       // Ice spikes for the floor read, which this cabinet had none of.
       P(1, [{ t: 'popSpikes', dx: 0 }]),
+      // The ice crystal cluster (Peter, 24 Sep, from the frost ideas bake-off): the
+      // snowman's box and jump, in the cabinet's other material. Alone at tier 0,
+      // then after a snowman, where it is the second of two different standing reads.
+      P(0, [{ t: 'iceCrystals', dx: 0 }]),
+      P(1, [{ t: 'iceCrystals', dx: 0 }, coinArc(70)]),
+      P(2, [{ t: 'snowman', dx: 0 }, { t: 'iceCrystals', dx: 80 }]),
       // THE SKI GATE IS GONE FROM THE ICE. Both of Frost's boom barriers are
       // bear traps now: the trap is this cabinet's own hazard, it snaps, it can
       // be shot, and a striped gate borrowed from the road cabinets was the one
@@ -764,6 +783,24 @@ export const CABINETS = [
     // grit off the edges, which this road — a lit cyan rule, one pixel — has
     // no material to shed. The cut faces either side are what says fatal here.
     pitFill: 'none',
+    // NO CACTUS ON A TOKYO STREET (Peter, 24 Sep). Each is SWAPPED for a real obstacle,
+    // picked off the spawn x one slot in ten: the road-works PANDA barrier four times
+    // (the street-hazard bake-off's pick, src/dev/neon-street-candidates.js); a crate and a
+    // traffic cone twice each — the cone kickable, like every cone in the game; and the
+    // bake-off's FROG (A1) and hard-hatted MONKEY (B3) once each, so they stay a
+    // surprise rather than a pattern. Neighbouring slots differ, so two cactus cells in
+    // one pattern rarely come out the same. The big cactus is a panda or a crate.
+    swaps: {
+      cactus: ['pandaBarrier', 'crate', 'pandaBarrier', 'trafficCone', 'frogBarrier',
+        'pandaBarrier', 'crate', 'pandaBarrier', 'trafficCone', 'monkeyBarrier'],
+      cactusBig: ['pandaBarrier', 'crate'],
+      // NO BIRDS OVER TOKYO (Peter, 24 Sep: "replace the birds with drones"). Every
+      // buzzbird the shared rows and this cabinet's own deal is a drone instead.
+      buzzbird: ['drone'],
+    },
+    // No invincibility on these stages (Peter, 24 Sep): UNPEELABLE, and the legacy
+    // star capsule that can still arrive through old data.
+    bannedPowers: ['capUnpeel', 'capStar'],
     music: NEON.bank,
     patterns: [
       // Tier-0 BASE stays filtered out — no cactus-and-crate opener here; the
@@ -778,6 +815,13 @@ export const CABINETS = [
       P(0, [{ t: 'target', dx: 0 }, coinArc(40)]),
       P(0, [{ t: 'buzzbird', dx: 0 }]),
       P(0, [{ t: 'drone', dx: 0 }, coinLine(60)]),
+      // STACKED DRONES, two and three deep (Peter, 24 Sep: "more stacked drones in
+      // this level, like in the rhythm levels"). The beat lanes' columns
+      // (makeDroneColumn), short of the full four: a slide always clears them.
+      P(0, [{ t: 'drone', dx: 0, column: 2 }]),
+      P(1, [{ t: 'drone', dx: 0, column: 3 }]),
+      P(1, [{ t: 'drone', dx: 0, column: 2 }, coinLine(60)]),
+      P(2, [{ t: 'drone', dx: 0, column: 2 }, { t: 'drone', dx: 110, column: 3 }]),
       // Two targets far enough apart to be two shots, not one composite — this
       // pair used to sit at tier 1 with dx 30, which was one decision wearing
       // two sprites. Demoted respaced: it feeds neon-1's 5-target mission.
