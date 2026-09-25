@@ -578,7 +578,7 @@ function flashBulb(ctx, t, camX) {
 
 export const SPEED_SIGN_GAGS = [
   { id: 'ships', place: 'bg', name: 'SHIPS · SMILE! speed camera', paint: shipped,
-    note: 'SHIPS (Peter, 24 Sep 2026). The board says SMILE! YOU\'RE ON SPEED CAMERA; the camera on its pole fires, the face flares white, and the board becomes a lineup mugshot of whoever just went through — smeared across the photo by their own speed — with GOTCHA! and a $1987 fine slammed on. The patrol car behind the board lights up the moment the shutter fires. Drawn by the production painter (drawDesertSpeedTrap).' },
+    note: 'SHIPS (Peter, 24 Sep 2026). The board says SMILE! YOU\'RE ON SPEED CAMERA; the camera on its pole fires, the face flares white, and the board becomes a lineup mugshot of whoever just went through — smeared across the photo by their own speed — with GOTCHA! and a $1986 fine slammed on. The patrol car behind the board lights up the moment the shutter fires. Drawn by the production painter (drawDesertSpeedTrap).' },
   { id: 'was', place: 'bg', name: 'was · I invented speed', paint: wasBoast,
     note: 'The first shipped version: the villain\'s portrait and his boast on a floodlit billboard, a patrol car hiding behind it with only its nose, the officer\'s shades and a radar gun showing, and a YOUR SPEED sign that always reads over (drawDesertSpeedTrapBoast).' },
   { id: 'eyes', place: 'bg', name: 'The eyes follow you — SPEED™', paint: watchingEyes,

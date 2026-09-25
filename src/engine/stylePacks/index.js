@@ -30,12 +30,23 @@ import {
   drawDesertPumpjacks, drawDesertSpeedTrap, drawDesertJet, drawDesertCoyote,
   drawDesertDustDevil, drawDesertTumbleweed,
 } from './desertLandmarks.js';
+import { drawDesertHorizonProp, isDesertHorizonProp } from './desertHorizonProps.js';
 import {
   drawPlumberBarn, drawPlumberWindmill, drawPlumberBalloon, drawPlumberSheep, drawPlumberPatchwork,
 } from './plumberLandmarks.js';
 import {
+  PLUMBER_BUSH_TYPES, PLUMBER_BUSH_LAYERS, plumberBushSeed, paintPlumberBushLayer,
+  blitPlumberBushSprite, drawPlumberRobinHedge, plumberRobinShowT,
+} from './plumberBushes.js';
+import {
+  PLUMBER_HOUSE_TYPES, PLUMBER_HOUSE_BODIES, paintPlumberHouseBody, drawPlumberHouseLive,
+} from './plumberHouses.js';
+import {
   drawFrostChairLift, frostLiftX, FROST_LIFT_AT_PX, drawFrostReindeer, FROST_HERD_WINDOW,
 } from './frostLandmarks.js';
+import { drawFrostWildlife } from './frostWildlife.js';
+import { frostFortressShape } from './frostFortresses.js';
+import { FROST_COMBINED_SCENERY_FINISH } from './frostSceneryFinish.js';
 
 import {
   PAPER_MATERIALS,
@@ -236,9 +247,12 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
 // draw their ground some other way — the checkered road, the neon grid — can
 // call it without also inheriting drawGapsAwareGround's idea of what a road is.
 export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false,
-  liftOf = null, viewW = W, groundFill = null) {
+  liftOf = null, viewW = W, groundFill = null, hard = null) {
   if (!cab) return;
   const right = Math.max(0, Number.isFinite(viewW) ? viewW : W);
+  // `hard` is what only the caller knows and only the hard fills read (see
+  // game/pitFillHard.js): `beat`, the song clock the piston bed fires on, and
+  // `paperSlab`, the pack's paper finish the gear works wear.
   // TAR EVERYWHERE, until a cabinet says otherwise. An empty break is a
   // legitimate picture and it is the wrong DEFAULT: a pit is fatal now, and the
   // one thing every hole has to do is look like it will kill you. `pitFill` is
@@ -267,8 +281,13 @@ export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false,
     // that draws a floor can reach up behind a raised lip instead of leaving a
     // seam of sky under it. Only the run knows (the rise is its own), so it is
     // handed in rather than looked up.
+    // A spike bed or gear works also takes which design this pit wears, keyed
+    // off its world x (and its stones, when it is a crossing).
+    const env = (id === 'spikes' || id === 'gears')
+      ? { seed: ob.x, cab: cab.id, crossing: ob.crossing || null, beat: hard?.beat, paperSlab: hard?.paperSlab }
+      : null;
     drawPitFill(ctx, id, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013,
-      liftOf ? liftOf(ob) : 0, groundFill);
+      liftOf ? liftOf(ob) : 0, groundFill, env);
   }
 }
 
@@ -1107,20 +1126,24 @@ const PLUMBER_NEAR_TREE_WL = 50;
 const PLUMBER_NEAR_TREE_FACTOR = 0.35;
 const PLUMBER_NEAR_TREE_PERIOD = Math.max(16, Math.round(Math.PI * PLUMBER_NEAR_TREE_WL));
 const PLUMBER_SCENERY_SPRITE_PAD = 3;
+// Bushes and houses are not in this table: their boxes live with their art in
+// plumberBushes.js (PLUMBER_BUSH_LAYERS) and plumberHouses.js (PLUMBER_HOUSE_BODIES),
+// baked here under the kinds 'bush:<layer>' and 'house:<type>'.
 const PLUMBER_SCENERY_SPRITE_DIMENSIONS = Object.freeze({
-  flower: [20, 12], grass: [14, 9], bush: [22, 11], fence: [34, 16],
-  house: [30, 29],
+  flower: [20, 12], grass: [14, 9], fence: [34, 16],
 });
 // Houses are landmarks, not scenery wallpaper. One reserved slot every 48
 // placement cells gives a one-to-two-house level at the current stage lengths,
-// while keeping the exact cell deterministic across cameras and wraps.
+// while keeping the exact cell deterministic across cameras and wraps. At ZOOM 2 a
+// landscape stage (52-58 cells) meets only band 0's house (cell 28); portrait (ZOOM
+// 3.5, 91-101 cells) also meets band 1's (cell 70, stepped off 69 to clear a flock;
+// see plumberHouseCellForBand).
 const PLUMBER_SCENERY_HOUSE_BLOCK = 48;
 const PLUMBER_SCENERY_HOUSE_START = 12;
 const PLUMBER_SCENERY_PALETTE = Object.freeze({
   stem: '#4f8650', leaf: '#6d9c55', petal: '#eee4bf', petalPink: '#cf8d9c',
-  pollen: '#bd9546', bush: '#4d8e54', bushLight: '#70a15b',
-  timber: '#c9b78b', timberShade: '#a18b65', house: '#d0c39f', roof: '#ad7969',
-  roofCool: '#7e959a', window: '#697970',
+  pollen: '#bd9546',
+  timber: '#c9b78b', timberShade: '#a18b65',
 });
 const plumberScenerySpriteCache = new Map();
 let plumberSceneryCacheSS = 0;
@@ -1132,17 +1155,86 @@ function plumberSceneryHash(value) {
   return ((x ^ (x >>> 14)) >>> 0);
 }
 
+// A house never stands in a sheep flock. The flock (drawPlumberLife: one on every summit
+// tile plumberFlockTile() picks) spreads ~72 px either side of its summit, dog included,
+// and a house ~30 px, both in the same near-ridge plane (x = cell * SPACING against
+// k * PERIOD + summit, whatever the zoom or camera). So a band's hashed house cell steps
+// RIGHT a cell at a time until no flock tile lies within PLUMBER_HOUSE_FLOCK_CLEAR of
+// it. Checked against every tile the flock rule allows, so the landmark exclusion (which
+// only removes flocks) cannot matter: clear on every stage, in every orientation. Today
+// this moves band 1's house 69 -> 70 (and band 6's, 314 -> 315, past any stage);
+// band 0's (cell 28) is already clear.
+const PLUMBER_HOUSE_FLOCK_CLEAR = 110;
+const plumberHouseCellCache = new Map();
+function plumberHouseCellForBand(band) {
+  const cached = plumberHouseCellCache.get(band);
+  if (cached !== undefined) return cached;
+  const base = band * PLUMBER_SCENERY_HOUSE_BLOCK + PLUMBER_SCENERY_HOUSE_START
+    + (plumberSceneryHash(band * 37 + 211) % 17);
+  const P = PLUMBER_NEAR_TREE_PERIOD;
+  const summit = plumberNearSummit(P);
+  const clearOfFlocks = (cell) => {
+    const x = cell * PLUMBER_SCENERY_SPACING;
+    for (let k = Math.floor((x - summit - PLUMBER_HOUSE_FLOCK_CLEAR) / P);
+      k <= Math.ceil((x - summit + PLUMBER_HOUSE_FLOCK_CLEAR) / P); k++) {
+      if (plumberFlockTile(k) && Math.abs(k * P + summit - x) < PLUMBER_HOUSE_FLOCK_CLEAR) return false;
+    }
+    return true;
+  };
+  let cell = base;
+  for (let d = 0; d < 8; d++) if (clearOfFlocks(base + d)) { cell = base + d; break; }
+  if (plumberHouseCellCache.size > 64) plumberHouseCellCache.clear();
+  plumberHouseCellCache.set(band, cell);
+  return cell;
+}
+
 function plumberSceneryClusterForCell(cell) {
   const houseBand = Math.floor(cell / PLUMBER_SCENERY_HOUSE_BLOCK);
-  const houseCell = houseBand * PLUMBER_SCENERY_HOUSE_BLOCK
-    + PLUMBER_SCENERY_HOUSE_START
-    + (plumberSceneryHash(houseBand * 37 + 211) % 17);
-  if (cell === houseCell) return 'house';
+  if (cell === plumberHouseCellForBand(houseBand)) return 'house';
   const slot = plumberSceneryHash(cell) % 100;
   if (slot < 22) return 'flowers';
   if (slot < 27) return 'fence';
   if (slot < 37) return 'bush';
   return null;
+}
+
+// Which of the four shipped houses (plumberHouses.js: rose, pink, farm, hut) stands
+// in house cell `cell` on plumber stage `stage`. Every stage starts at camera 0, so
+// the house cells are the same on all three; the stage offsets the cycle so each
+// stage's first house differs, and each later band steps it on (+3, i.e. back one),
+// so consecutive houses always differ. Landscape sees band 0 only: plumber-1 rose,
+// plumber-2 pink, plumber-3 farm. Portrait adds band 1: plumber-1 hut, plumber-2
+// rose, plumber-3 pink — so the hut is the one house seen only in portrait.
+function plumberHouseTypeFor(cell, stage = 1) {
+  const band = Math.floor(cell / PLUMBER_SCENERY_HOUSE_BLOCK);
+  const s = Math.max(1, Math.round(Number(stage) || 1));
+  const n = PLUMBER_HOUSE_TYPES.length;
+  return PLUMBER_HOUSE_TYPES[(((s - 1 + 3 * band) % n) + n) % n];
+}
+
+// Which of the three shipped bushes (plumberBushes.js: hedgerow, gorse, robin) a
+// bush-bearing cell plants. The 'bush' and 'fence' clusters carry exactly one bush
+// (a house brings its own garden), so bushes are counted cell by cell within each
+// house band (PLUMBER_SCENERY_HOUSE_BLOCK cells) and take the types in rotation from
+// a hashed start, stepping forwards or backwards per band. So the mix is an even
+// third each, consecutive bushes always differ inside a band, and only a band
+// boundary can repeat one (1 in 3).
+const PLUMBER_BUSH_CLUSTERS = new Set(['bush', 'fence']);
+const plumberBushTypeCache = new Map();
+function plumberBushTypeForCell(cell) {
+  const cached = plumberBushTypeCache.get(cell);
+  if (cached) return cached;
+  const band = Math.floor(cell / PLUMBER_SCENERY_HOUSE_BLOCK);
+  let ordinal = 0;
+  for (let c = band * PLUMBER_SCENERY_HOUSE_BLOCK; c < cell; c++) {
+    if (PLUMBER_BUSH_CLUSTERS.has(plumberSceneryClusterForCell(c))) ordinal++;
+  }
+  const bandHash = plumberSceneryHash(band * 53 + 907);
+  const step = bandHash & 1 ? 1 : 2;
+  const type = PLUMBER_BUSH_TYPES[(bandHash % 3 + ordinal * step) % 3];
+  if (plumberBushTypeCache.size > 512) plumberBushTypeCache.clear();
+  plumberBushTypeCache.set(cell, type);
+  return type;
 }
 
 function plumberNearTreeCenters(ctx, camX) {
@@ -1201,13 +1293,22 @@ function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength
   const cached = plumberScenerySpriteCache.get(key);
   if (cached) return cached;
   if (typeof document === 'undefined') return null;
-  const dimensions = PLUMBER_SCENERY_SPRITE_DIMENSIONS[kind];
+  // 'bush:<layer>' — a layer of one of the shipped bushes (plumberBushes.js),
+  // painted with its base centre at the origin in the box's own units.
+  const bushLayer = typeof kind === 'string' && kind.startsWith('bush:') ? kind.slice(5) : null;
+  const bushBox = bushLayer ? PLUMBER_BUSH_LAYERS[bushLayer] : null;
+  // 'house:<type>' — one shipped house's static body (plumberHouses.js), baked over
+  // its own box [x0, y0, w, h] in local units; the sprite carries x0/y0 to seat it.
+  const houseType = typeof kind === 'string' && kind.startsWith('house:') ? kind.slice(6) : null;
+  const houseBox = houseType ? PLUMBER_HOUSE_BODIES[houseType] : null;
+  const dimensions = bushBox ? [bushBox.width, bushBox.height]
+    : houseBox ? [houseBox[2], houseBox[3]] : PLUMBER_SCENERY_SPRITE_DIMENSIONS[kind];
   if (!dimensions) return null;
   const [width, height] = dimensions;
   // A few paper passes extend beyond the nominal silhouette. Keep a small
   // logical pad in the source canvas so a rim/shadow cannot be clipped; the
   // draw path below subtracts that pad when recovering the attached baseline.
-  const pad = PLUMBER_SCENERY_SPRITE_PAD;
+  const pad = bushBox ? bushBox.pad : houseBox ? 0 : PLUMBER_SCENERY_SPRITE_PAD;
   try {
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil((width + pad * 2) * SS);
@@ -1224,7 +1325,10 @@ function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength
       g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     }, color);
 
-    if (kind === 'flower') {
+    if (bushLayer) {
+      g.translate(width * 0.5, height);
+      paintPlumberBushLayer(g, bushLayer, plumberBushSeed(variant), { grained: !!paper });
+    } else if (kind === 'flower') {
       g.lineCap = 'round'; g.strokeStyle = p.stem; g.lineWidth = 0.8;
       for (const [x, top] of [[4, 6], [10, 3.5], [16, 5.2]]) {
         g.beginPath(); g.moveTo(x, height); g.lineTo(x + (x % 3) - 1, top + 2); g.stroke();
@@ -1244,14 +1348,6 @@ function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength
         g.fillStyle = c; g.beginPath(); g.moveTo(x, height); g.lineTo(x + lean, 1);
         g.lineTo(x + 2.2, height); g.closePath(); g.fill();
       }
-    } else if (kind === 'bush') {
-      const body = () => {
-        g.beginPath(); g.moveTo(1, height); g.lineTo(1, 7);
-        g.arc(5, 7, 4, Math.PI, Math.PI * 2); g.arc(11, 5.5, 5.5, Math.PI, Math.PI * 2);
-        g.arc(17, 7, 4.5, Math.PI, Math.PI * 2); g.lineTo(21, height); g.closePath();
-      };
-      fill(body, p.bush); fill(() => { g.beginPath(); g.arc(11, 5.8, 3.5, Math.PI, Math.PI * 2); g.closePath(); }, p.bushLight, { rim: false });
-      if (variant % 3 === 1) { petal(6, 5.1, 0.8, 0.55, p.petalPink); petal(17, 6, 0.75, 0.5, p.petal); }
     } else if (kind === 'fence') {
       g.fillStyle = p.timberShade;
       g.beginPath(); g.moveTo(2, 6); g.lineTo(31, 4.5); g.lineTo(31, 6.5); g.lineTo(2, 8); g.closePath(); g.fill();
@@ -1260,14 +1356,12 @@ function plumberScenerySprite(kind, variant, paper, paperMaterial, paperStrength
         fill(() => { g.beginPath(); g.moveTo(x - 1 + lean, height); g.lineTo(x - 0.75, 2.5); g.lineTo(x + 1.35, 2.8); g.lineTo(x + 1 + lean, height); g.closePath(); }, p.timber, { rim: false });
         plumberSceneryRect(g, x + 0.7, 3.3, 0.6, 11, p.timberShade, false, paperMaterial, paperStrength);
       }
-    } else if (kind === 'house') {
-      plumberSceneryRect(g, 4, 12, 22, 17, p.house, paper, paperMaterial, paperStrength);
-      fill(() => { g.beginPath(); g.moveTo(2, 13); g.lineTo(15, 2); g.lineTo(28, 13); g.closePath(); }, variant % 2 ? p.roofCool : p.roof);
-      plumberSceneryRect(g, 20.5, 5, 3, 7, p.roof, paper, paperMaterial, paperStrength);
-      petal(15, 18, 2.5, 2.5, p.window); g.strokeStyle = p.house; g.lineWidth = 0.8; g.beginPath(); g.arc(15, 18, 3.1, 0, Math.PI * 2); g.stroke();
-      plumberSceneryRect(g, 7, 22, 4, 7, p.timberShade, false, paperMaterial, paperStrength);
+    } else if (houseBox) {
+      g.translate(-houseBox[0], -houseBox[1]);
+      paintPlumberHouseBody(g, houseType, !!paper);
     }
     const sprite = { canvas, width: width + pad * 2, height: height + pad * 2, pad };
+    if (houseBox) { sprite.x0 = houseBox[0]; sprite.y0 = houseBox[1]; }
     plumberScenerySpriteCache.set(key, sprite);
     return sprite;
   } catch {
@@ -1288,7 +1382,9 @@ function plumberSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y) {
     if (kind === 'flower' && plumberFlowerOverlapsTree(treeCenters, x, scale)) return;
     const crest = ridgeYAt(x, camX, layerBaseY, 34, PLUMBER_NEAR_TREE_WL,
       PLUMBER_NEAR_TREE_FACTOR, { coverageLeft: view.left });
-    placements.push({ cell, kind, x, baseY: crest + 1 + baseOffset, scale, variant });
+    const prop = { cell, kind, x, baseY: crest + 1 + baseOffset, scale, variant };
+    if (kind === 'bush') prop.bush = plumberBushTypeForCell(cell);
+    placements.push(prop);
   };
   for (let cell = first; cell <= last; cell++) {
     const cluster = plumberSceneryClusterForCell(cell);
@@ -1302,13 +1398,45 @@ function plumberSceneryPlacements(ctx, camX, layerBaseY = GROUND_Y) {
     } else if (cluster === 'bush') {
       add(cell, anchorX, 'bush', 0, 0.9, variant, 12); if (variant === 1) add(cell, anchorX, 'flower', -10, 0.62, 2, 5);
     } else if (cluster === 'house') {
-      add(cell, anchorX, 'house', 0, 0.86, variant, 28); add(cell, anchorX, 'bush', 17, 0.72, variant, 15); add(cell, anchorX, 'fence', -20, 0.55, variant, 18);
+      // The house brings its own garden (lawn, fence, planting): no separate bush or
+      // fence. It stands at full scale, its foot 29px into the hill face.
+      add(cell, anchorX, 'house', 0, 1, variant, 28);
     }
   }
   return placements;
 }
 
-function drawPlumberScenery(ctx, camX, layerBaseY, paper, paperMaterial, paperStrength) {
+// One shipped bush (plumberBushes.js) in bush units, its base centre at the origin.
+// Hedgerow and gorse are one baked blit; the robin hedge is two baked sheets and a
+// baked bird composed per frame at time `t` (`seed` keeps each robin on its own clock).
+function drawPlumberBush(ctx, type, variant, t, seed, paper, paperMaterial, paperStrength) {
+  const sprite = (layer) => plumberScenerySprite(`bush:${layer}`, variant, paper, paperMaterial, paperStrength);
+  if (type === 'robin') {
+    const back = sprite('robinBack'); const front = sprite('robinFront');
+    if (!back || !front) return false;
+    drawPlumberRobinHedge(ctx, t, seed, back, front,
+      plumberScenerySprite('bush:robinBird', 0, paper, paperMaterial, paperStrength));
+    return true;
+  }
+  const body = sprite(type);
+  if (!body) return false;
+  blitPlumberBushSprite(ctx, body);
+  return true;
+}
+
+// One shipped house (plumberHouses.js) in local units, its foot centre at the origin:
+// the baked body, then its moving parts (smoke, washing, gate, dog, hens, lamb) live.
+function drawPlumberHouse(ctx, type, t, paper, paperMaterial, paperStrength) {
+  const body = plumberScenerySprite(`house:${type}`, 0, paper, paperMaterial, paperStrength);
+  if (!body) return false;
+  ctx.drawImage(body.canvas, body.x0, body.y0, body.width, body.height);
+  drawPlumberHouseLive(ctx, type, t, !!paper);
+  return true;
+}
+
+// `t` animates the robin hedges and the houses; `stage` (the plumber stage index)
+// picks which house stands in each house cell (plumberHouseTypeFor).
+function drawPlumberScenery(ctx, camX, layerBaseY, paper, paperMaterial, paperStrength, t = 0, stage = 1) {
   const coverage = backgroundPaintCoverage(ctx);
   const clipToRidge = (prop, width) => {
     const left = prop.x - width * 0.5 - 2;
@@ -1323,13 +1451,44 @@ function drawPlumberScenery(ctx, camX, layerBaseY, paper, paperMaterial, paperSt
     ctx.lineTo(right, H + HILL_UNDERFILL); ctx.lineTo(left, H + HILL_UNDERFILL); ctx.closePath();
     ctx.clip();
   };
+  // The bake-off seam (src/dev/plumber-bush-candidates.js, plumber-house-candidates.js):
+  // a harness may set ctx.__mashPlumberSceneryOverride(ctx, prop, t, stage). It is
+  // called for each bush and house in that prop's own frame (origin at its foot, scaled,
+  // a bush already crest-clipped); returning true skips the shipped painter. Unset in game.
+  const override = typeof ctx.__mashPlumberSceneryOverride === 'function'
+    ? ctx.__mashPlumberSceneryOverride : null;
   for (const prop of plumberSceneryPlacements(ctx, camX, layerBaseY)) {
+    if (prop.kind === 'bush') {
+      const box = PLUMBER_BUSH_LAYERS.hedgerow;
+      ctx.save();
+      clipToRidge(prop, (box.width + box.pad * 2) * prop.scale);
+      ctx.translate(prop.x, prop.baseY);
+      ctx.scale(prop.scale, prop.scale);
+      if (!(override && override(ctx, prop, t, stage))) {
+        drawPlumberBush(ctx, prop.bush, prop.variant, t, prop.cell * 7 + 3,
+          paper, paperMaterial, paperStrength);
+      }
+      ctx.restore();
+      continue;
+    }
+    if (prop.kind === 'house') {
+      // Not clipped to the crest: the roof and chimney stand up over the ridge line.
+      ctx.save();
+      ctx.translate(prop.x, prop.baseY);
+      ctx.scale(prop.scale, prop.scale);
+      if (!(override && override(ctx, prop, t, stage))) {
+        drawPlumberHouse(ctx, plumberHouseTypeFor(prop.cell, stage), t,
+          paper, paperMaterial, paperStrength);
+      }
+      ctx.restore();
+      continue;
+    }
     const sprite = plumberScenerySprite(prop.kind, prop.variant, paper, paperMaterial, paperStrength);
     if (!sprite) continue;
     const width = sprite.width * prop.scale; const height = sprite.height * prop.scale;
     const pad = sprite.pad * prop.scale;
     const x = prop.x; const baseY = prop.baseY;
-    const embedded = prop.kind === 'fence' || prop.kind === 'bush' || prop.kind === 'house';
+    const embedded = prop.kind === 'fence';
     if (embedded) ctx.save();
     if (embedded) clipToRidge(prop, width);
     ctx.drawImage(sprite.canvas, x - width * 0.5, baseY - height + pad, width, height);
@@ -1940,7 +2099,8 @@ export const __testing = {
   apronRuns,
   backgroundPaintBand,
   sceneryBandPointY, desertThermals, ridgeYAt, ridgeTangentAngle,
-  plumberSceneryPlacements, plumberSceneryClusterForCell, plumberNearTreeCenters,
+  plumberSceneryPlacements, plumberSceneryClusterForCell, plumberNearTreeCenters, plumberBushTypeForCell,
+  plumberHouseTypeFor,
   plumberFlowerOverlapsTree,
   plumberLandscapeSceneryOffset,
   get PLUMBER_LANDSCAPE_SCENERY_LIFT() { return PLUMBER_LANDSCAPE_SCENERY_LIFT; },
@@ -1985,7 +2145,7 @@ export const __testing = {
   get FROST_AURORA_CURTAINS() { return FROST_AURORA_CURTAINS; },
   get FROST_AURORA_STAGE_GAIN() { return FROST_AURORA_STAGE_GAIN; },
   get FROST_AURORA_STAGE_CURTAINS() { return FROST_AURORA_STAGE_CURTAINS; },
-  desertWaterTowerPlacements, desertSatelliteDishPlacements,
+  desertWaterTowerPlacements, desertLandmarkPropPlacements,
   desertWindTurbinePlacements, desertTelegraphPlacements,
   desertSpeedLimitPlacements,
   desertSignPostHeight,
@@ -2033,8 +2193,14 @@ function skyGrad(ctx, c0, c1) {
   // can never show through as a vertical seam at the phone edge. Landscape's
   // identity path remains the same rectangle.
   const bleed = coverage.left !== 0 || coverage.right !== W ? W : 0;
-  ctx.fillRect(coverage.left - bleed, -PAN_MAX,
-    coverage.width + bleed * 2, GROUND_Y + PAN_MAX);
+  // AND A WHOLE FRAME MORE ABOVE THAT. On the sky road in portrait the backdrop is carried
+  // further down than PAN_MAX (the frame fit's groundline shift plus the road's climb),
+  // and the strip it opened showed run.js's fallback sky — the CABINET's colours, which
+  // on Frost are the day's: a pale band over frost-3's dusk (Peter, 25 Sep 2026: "jumping
+  // too high on the upper level shows incomplete picture on the edge"). The extra rows
+  // are flat sky in this pack's own top colour, so there is no seam to see.
+  ctx.fillRect(coverage.left - bleed, -PAN_MAX - H,
+    coverage.width + bleed * 2, GROUND_Y + PAN_MAX + H);
 }
 
 // Full-screen textures (scanlines, dot lattices) as tiny repeating patterns:
@@ -2790,10 +2956,12 @@ const DESERT_RIDGE = { amp: 52, wl: 150, factor: 0.35 };
 const DESERT_MID_SURFACE = 'desert-mid-surface';
 
 // Sparse infrastructure gives the horizon a journey without turning it into
-// a row of props. The six-mesa cycle keeps the first and last slots blank:
-// one lower-mesa water tower, two high-mesa satellite dish clusters, and one
-// high-mesa wind-farm slot fill the four later positions. All share the same
-// screen coverage and parallax travel as the mesa caps they stand on.
+// a row of props. A stage only travels slots 0–3 of the six-mesa cycle (the wind
+// farm lands at ≈91–100%), so every stage used to show the same four. Now slot 0
+// holds a landmark of that stage's own (DESERT_HORIZON_STAGE_PROPS), slot 1 is the
+// BIG EAR telescope that replaced the three-dish cluster, slot 2 the lower-mesa
+// water tower (the radio mast instead on speed-2), slot 3 the wind farm. All share
+// the same screen coverage and parallax travel as the mesa caps they stand on.
 const DESERT_HORIZON_PROP_SPACING = DESERT_FAR_PERIOD;
 const DESERT_HORIZON_PROP_SLOTS = 6;
 const DESERT_HIGH_MESA_PHASE = Math.round(DESERT_FAR_PERIOD * 0.5);
@@ -2877,6 +3045,10 @@ function randomSpeedLimitValue(index, cache = DESERT_SPEED_LIMIT_RANDOM_VALUES) 
   if (!cache.has(index)) cache.set(index, String(10 + Math.floor(Math.random() * 90)));
   return cache.get(index);
 }
+// Except on the speed-trap stage (Peter, 25 Sep): sign 0 is the only SPEED LIMIT
+// the hero passes before the camera — it starts left of the trap's lot and scrolls
+// faster — and it always reads 67.
+const DESERT_TRAP_SPEED_LIMIT = '67';
 const DESERT_ROAD_SIGNS = Object.freeze([
   {
     kind: 'speed', w: 62, top: -58, bottom: -26,
@@ -4232,7 +4404,29 @@ function drawFrostSceneryFeature(ctx, feature, options = {}) {
   const palette = options.layer === 'far'
     ? { ...hazed, far: hazed.far }
     : { ...hazed, far: hazed.near };
+  // Gallery seam (the rocks-and-fortresses bake-off, src/dev/frost-rock-fortress-
+  // candidates.js): a study may swap a kind's painter AND its silhouette, so the skirt,
+  // the paper shadow and the grain follow the new shape. It paints from the same hazed
+  // palette keys, which is what lets the paper passes flatten it. The game passes none.
+  // The fortresses themselves come the same way (frostFortresses.js): the redrawn set, a
+  // Crystal Citadel every fifth site, and frost-2's original ruin (null: the painter below)
+  // alternating with its redrawn one.
+  // A study naming a kind with null asks for the shipped painter (a bake-off's "as it was").
+  const studyShapes = options.sceneryStudy?.shapes;
+  const alt = studyShapes && feature.kind in studyShapes ? studyShapes[feature.kind]
+    : (feature.kind === 'landmark' ? frostFortressShape(stageIndex, feature.tile) : null);
+  const footDepth = feature.foot > 0.5 ? feature.foot / Math.max(0.1, Number(feature.scale) || 1) : 0;
+  const silhouette = (c) => (alt
+    ? alt.silhouette(c, feature, stageIndex, footDepth) : frostFeatureSilhouette(c, feature, stageIndex));
   const paint = (paintPalette) => {
+    if (alt) {
+      alt.paint(ctx, paintPalette, stageIndex, {
+        feature, t: options.t,
+        depth: feature.foot > 0.5 ? feature.foot / Math.max(0.1, Number(feature.scale) || 1) : 0,
+        seed: (Number(feature.tile) || 0) * 3 + (Number(feature.slotIndex) || 0),
+      });
+      return;
+    }
     switch (feature.kind) {
       case 'glacier': frostGlacierShape(ctx, paintPalette); break;
       case 'ice-rock': frostIceRockShape(ctx, paintPalette); break;
@@ -4268,7 +4462,9 @@ function drawFrostSceneryFeature(ctx, feature, options = {}) {
   // and the skirt is only ever the strip between the art and the snow.
   // And it takes no skirt either — the sweep exists to close the gap between a
   // foot and the snow, and this shape has already gone past both.
-  const skirt = (!massif && feature.foot > 0.5) ? frostFeatureSkirt(feature.kind) : null;
+  // A shape that draws its own foot to the snow (`ownFoot`, frostFortresses.js) takes no
+  // skirt: stepped copies of a leaning outline come out as a sawtooth edge.
+  const skirt = (!massif && feature.foot > 0.5 && !alt?.ownFoot) ? frostFeatureSkirt(feature.kind) : null;
   if (skirt) {
     const scale = Math.max(0.1, Number(feature.scale) || 1);
     const depth = feature.foot / scale;
@@ -4280,7 +4476,7 @@ function drawFrostSceneryFeature(ctx, feature, options = {}) {
       ctx.save();
       ctx.translate(0, (depth * i) / steps);
       ctx.beginPath();
-      frostFeatureSilhouette(ctx, feature, stageIndex);
+      silhouette(ctx);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
@@ -4293,9 +4489,12 @@ function drawFrostSceneryFeature(ctx, feature, options = {}) {
       PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
   }
   paint(palette);
+  // The selected snow finish shares this same planted, clipped feature frame.
+  // Gallery cards can substitute an earlier study for comparison.
+  if (!alt) options.sceneryStudy?.feature?.(ctx, feature, palette, stageIndex);
   if (options.paper) {
     paperFinishPass(ctx, () => {
-      frostFeatureSilhouette(ctx, feature, stageIndex);
+      silhouette(ctx);
     },
       sharedPaperPatternFor(ctx, options.paperMaterial || 'cardstockClear'), {
         grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA * (options.paperStrength ?? 1), rim: false,
@@ -4983,7 +5182,11 @@ function drawFrostSky(ctx, camX, options = {}) {
       { at: 0.52, y: 88, w: 250, h: 16, tilt: -4, color: '#a5b4d5', alpha: 0.14 },
     ];
   for (const ribbon of ribbons) {
-    const x = wrapIntoView(ctx, ribbon.at * 480 - camX * 0.045 * ZOOM, 40);
+    // The ribbon hangs RIGHT of x, so it may only wrap once all of it is off the
+    // left edge: the margin is its own width (plus the paper shadow). A 40 px margin
+    // on a 220 px ribbon jumped it to the far side with most of it still on screen —
+    // a band across the sky that vanished in one frame (Peter, 25 Sep).
+    const x = wrapIntoView(ctx, ribbon.at * 480 - camX * 0.045 * ZOOM, ribbon.w + 6);
     const path = () => {
       ctx.beginPath();
       frostSkyRibbonPath(ctx, x, ribbon.y, ribbon.w, ribbon.h, ribbon.tilt);
@@ -5144,13 +5347,24 @@ function desertFarAmplitude(options = {}) {
   return options.portrait ? DESERT_FAR_PORTRAIT_AMP : DESERT_FAR.amp;
 }
 
-function desertHorizonPropKind(index) {
+// What stands on each slot of the six-mesa cycle. Slots 0–3 are what a stage
+// actually passes; 4 and 5 only come round in overtime. Per stage, slot 0 is that
+// level's own landmark and speed-2 swaps its water tower for the radio mast — the
+// mast appears once in the cabinet ("also D once").
+const DESERT_HORIZON_SLOT_PROPS = Object.freeze([null, 'big-ear', 'water', 'wind', 'big-ear', null]);
+const DESERT_HORIZON_STAGE_PROPS = Object.freeze({
+  1: Object.freeze({ 0: 'wind-pump' }),
+  2: Object.freeze({ 0: 'lookout', 2: 'mast' }),
+  3: Object.freeze({ 0: 'launch-pad' }),
+});
+// The mast replaces the water tower, so it stands where the tower did.
+const DESERT_LOWER_MESA_PROPS = new Set(['water', 'mast']);
+
+function desertHorizonPropKind(index, stageIndex = 1) {
   const slot = ((index % DESERT_HORIZON_PROP_SLOTS)
     + DESERT_HORIZON_PROP_SLOTS) % DESERT_HORIZON_PROP_SLOTS;
-  if (slot === 0 || slot === 5) return null;
-  if (slot === 2) return 'water';
-  if (slot === 3) return 'wind';
-  return 'dish';
+  const stage = DESERT_HORIZON_STAGE_PROPS[Number(stageIndex)] || DESERT_HORIZON_STAGE_PROPS[1];
+  return stage[slot] ?? DESERT_HORIZON_SLOT_PROPS[slot];
 }
 
 function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
@@ -5161,18 +5375,16 @@ function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options =
   return periodicDesertXs(ctx, camX, DESERT_FAR.factor,
     DESERT_HORIZON_PROP_SPACING, highPhase, DESERT_HORIZON_PROP_CULL_MARGIN)
     .flatMap(({ index, x }) => {
-      const kind = desertHorizonPropKind(index);
+      const kind = desertHorizonPropKind(index, options.stageIndex);
       if (!kind) return [];
       const slot = ((index % DESERT_HORIZON_PROP_SLOTS)
         + DESERT_HORIZON_PROP_SLOTS) % DESERT_HORIZON_PROP_SLOTS;
-      const propPhase = kind === 'water' ? lowerPhase : highPhase;
+      const propPhase = DESERT_LOWER_MESA_PROPS.has(kind) ? lowerPhase : highPhase;
       // A rare wind slot is a tiny three-turbine farm rather than a lone
-      // stick. The high-mesa dish slots use the same readable three-shape
-      // grouping as the mockup. All anchors stay on the same broad cap, but
-      // each base is still sampled at its own x so the contract remains
-      // correct if the cap is ever narrowed.
-      const offsets = kind === 'wind' ? [-42, 0, 42]
-        : kind === 'dish' ? [-24, 0, 24] : [0];
+      // stick. Every other slot is one prop on the cap's centre. All anchors
+      // stay on the same broad cap, but each base is still sampled at its own
+      // x so the contract remains correct if the cap is ever narrowed.
+      const offsets = kind === 'wind' ? [-42, 0, 42] : [0];
       return offsets.map((offset, variant) => {
         const propX = x + propPhase - highPhase + offset;
         if (outsideView(ctx, propX, 120)) return null;
@@ -5186,8 +5398,8 @@ function desertHorizonPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options =
             DESERT_FAR.wl, DESERT_FAR.factor,
             { mesa: true, coverageLeft: view.left }) + 2,
           scale: kind === 'water' ? 0.92
-            : kind === 'dish' ? (variant === 1 ? 0.86 : 0.68)
-            : (variant === 1 ? 0.82 : 0.72),
+            : kind === 'wind' ? (variant === 1 ? 0.82 : 0.72)
+            : 1,
         };
       }).filter(Boolean);
     });
@@ -5199,10 +5411,11 @@ function desertWaterTowerPlacements(ctx, camX, layerBaseY = GROUND_Y, options = 
     .map(({ kind, slot, ...tower }) => tower);
 }
 
-function desertSatelliteDishPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+// The single-prop horizon landmarks (desertHorizonProps.js): the big ear, mast,
+// wind pump, launch pad and lookout.
+function desertLandmarkPropPlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
   return desertHorizonPropPlacements(ctx, camX, layerBaseY, options)
-    .filter((prop) => prop.kind === 'dish')
-    .map(({ kind, slot, ...dish }) => dish);
+    .filter((prop) => isDesertHorizonProp(prop.kind));
 }
 
 function desertWindTurbinePlacements(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
@@ -5273,7 +5486,8 @@ function desertSpeedLimitPlacements(ctx, camX, layerBaseY = GROUND_Y, options = 
           + DESERT_HIGHWAY_VALUES.length) % DESERT_HIGHWAY_VALUES.length
         : 0;
       const value = sign.kind === 'speed'
-        ? randomSpeedLimitValue(index, options.speedLimitValues)
+        ? (options.speedTrap && index === 0 ? DESERT_TRAP_SPEED_LIMIT
+          : randomSpeedLimitValue(index, options.speedLimitValues))
         : sign.kind === 'highway' ? DESERT_HIGHWAY_VALUES[cycle] : sign.value;
       return {
         ...sign,
@@ -5591,15 +5805,38 @@ function drawSatelliteDish(ctx, dish, options = {}) {
   ctx.restore();
 }
 
-function drawSatelliteDishes(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
-  ctx.save();
-  ctx.globalAlpha = 0.74;
-  const dishes = desertSatelliteDishPlacements(ctx, camX, layerBaseY, options);
-  drawSatelliteSignalLinks(ctx, dishes, options);
-  for (const dish of dishes) {
-    drawSatelliteDish(ctx, dish, options);
+// The mesa-top landmarks that replaced the satellite-dish cluster (24 Sep 2026).
+// `options.skyOffset` is the far layer's translate, so each prop samples its haze
+// at the screen height it actually stands at.
+function drawDesertLandmarkProps(ctx, camX, layerBaseY = GROUND_Y, options = {}) {
+  const view = backgroundPaintCoverage(ctx);
+  const amp = desertFarAmplitude(options);
+  const seat = (x) => ridgeYAt(x, camX, layerBaseY, amp, DESERT_FAR.wl, DESERT_FAR.factor,
+    { mesa: true, coverageLeft: view.left }) + 2;
+  for (const prop of desertLandmarkPropPlacements(ctx, camX, layerBaseY, options)) {
+    // A review harness may paint its own candidate in this slot (returning true skips
+    // the shipped prop). Only the lab gallery sets it; the game never does.
+    if (ctx.__mashDesertHorizonOverride?.(ctx, prop, { ...options, seat, view })) continue;
+    drawDesertHorizonProp(ctx, prop.kind, {
+      t: options.t, x: prop.x, baseY: prop.baseY, seat,
+      skyY: prop.baseY + (options.skyOffset || 0) - 24,
+      portrait: !!options.portrait,
+      launch: prop.kind === 'launch-pad' ? desertRocketLaunchClock(prop.x, view) : null,
+    });
   }
-  ctx.restore();
+}
+
+// THE ROCKET LAUNCHES (Peter, 24 Sep: "can the rocket take off?"). Its clock is the
+// pad's own travel across the screen, not the wall clock: ignition as the pad
+// passes DESERT_ROCKET_LAUNCH_AT of the picture, then one second of launch per
+// DESERT_ROCKET_SCROLL px it has scrolled since. So a rewind, a retry or a paused
+// frame shows the rocket exactly where it was for that camera, and at the stage's
+// opening the pad is on screen for a moment before it goes. The scroll rate is the
+// far layer's at speed-3's cruising pace; a boost just hurries the climb along.
+const DESERT_ROCKET_LAUNCH_AT = 0.62;
+const DESERT_ROCKET_SCROLL = 38;
+function desertRocketLaunchClock(padX, view) {
+  return (view.left + view.width * DESERT_ROCKET_LAUNCH_AT - padX) / DESERT_ROCKET_SCROLL;
 }
 
 function windTurbineMast(ctx, color) {
@@ -6268,13 +6505,39 @@ export function drawLevelSceneryItem(ctx, kind, options = {}) {
     const height = sprite.height * scale;
     ctx.drawImage(sprite.canvas, -width * 0.5, -height, width, height);
   };
+  // A shipped bush standing on y = 0: options.bush names the type (hedgerow, gorse,
+  // robin), else the variant picks one. The robin hedge is caught with its bird up.
+  const drawPlumberBushItem = () => {
+    const variant = Number.isFinite(Number(options.variant)) ? Number(options.variant) : 1;
+    const type = PLUMBER_BUSH_TYPES.includes(options.bush)
+      ? options.bush : PLUMBER_BUSH_TYPES[((variant % 3) + 3) % 3];
+    const seed = 3;
+    ctx.save();
+    ctx.scale(scale, scale);
+    drawPlumberBush(ctx, type, variant, plumberRobinShowT(seed), seed, false, 'scenery', 1);
+    ctx.restore();
+  };
   switch (kind) {
     case 'plumber-flower':
       drawPlumberSprite('flower');
       return;
-    case 'plumber-house':
-      drawPlumberSprite('house');
+    case 'plumber-bush':
+      drawPlumberBushItem();
       return;
+    case 'plumber-house': {
+      // A shipped house (plumberHouses.js) standing on y = 0: options.house names the
+      // type (rose, pink, farm, hut), else the variant picks one; options.t its moment.
+      const variant = Number.isFinite(Number(options.variant)) ? Number(options.variant) : 0;
+      const n = PLUMBER_HOUSE_TYPES.length;
+      const type = PLUMBER_HOUSE_TYPES.includes(options.house)
+        ? options.house : PLUMBER_HOUSE_TYPES[((variant % n) + n) % n];
+      ctx.save();
+      ctx.scale(scale, scale);
+      drawPlumberHouse(ctx, type, Number.isFinite(Number(options.t)) ? Number(options.t) : 2.9,
+        false, 'scenery', 1);
+      ctx.restore();
+      return;
+    }
     case 'plumber-cluster': {
       ctx.save();
       ctx.translate(-18, 0);
@@ -6282,7 +6545,7 @@ export function drawLevelSceneryItem(ctx, kind, options = {}) {
       ctx.restore();
       ctx.save();
       ctx.translate(14, 0);
-      drawPlumberSprite('bush');
+      drawPlumberBushItem();
       ctx.restore();
       ctx.save();
       ctx.translate(0, -2);
@@ -6291,7 +6554,9 @@ export function drawLevelSceneryItem(ctx, kind, options = {}) {
       return;
     }
     case 'frost-pine':
-      drawFrostSceneryFeature(ctx, { x: 0, baseY: 0, scale }, { layer: options.layer || 'near' });
+      drawFrostSceneryFeature(ctx, { kind: 'pine', x: 0, baseY: 0, scale }, {
+        layer: options.layer || 'near', sceneryStudy: FROST_COMBINED_SCENERY_FINISH,
+      });
       return;
     case 'crypt-dead-tree':
       drawCryptSceneryFeature(ctx, { x: 0, baseY: 0, scale, kind: 'dead-tree' }, { layer: options.layer || 'near' });
@@ -6645,12 +6910,18 @@ function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, ne
   const first = Math.floor((camX * f - 100) / P) - 1;
   for (let k = first; k <= first + Math.ceil((view.width + 200) / P) + 2; k++) {
     if (landmarkTile != null && Math.abs(k - landmarkTile) <= 2) continue;
-    if (((k % 10) + 10) % 10 !== 3 || hashUnit(k * 7.31 + 2) > 0.6) continue;
+    if (!plumberFlockTile(k)) continue;
     const x = summitX(k);
     if (!outsideView(ctx, x, 80)) drawPlumberSheep(ctx, t, x, seat, paper);
   }
 }
 function hashUnit(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+// Whether near summit tile `k` may carry a flock: every tenth tile, 60% of those by hash.
+// drawPlumberLife further skips any within 2 tiles of the stage's barn or mill. The
+// houses read this too (plumberHouseCellForBand), to stand clear of every flock.
+function plumberFlockTile(k) {
+  return ((k % 10) + 10) % 10 === 3 && hashUnit(k * 7.31 + 2) <= 0.6;
+}
 
 function pixelPack(settings) {
   const requested = paperCutoutPreviewRequested(settings);
@@ -6889,7 +7160,7 @@ function pixelPack(settings) {
           : null);
       if (cab.id === 'plumber') {
         drawPlumberScenery(ctx, camX, nearBaseY, paperPreview, paperPreset,
-          paperStrengths.scenery);
+          paperStrengths.scenery, t, plumberStage);
       }
       ctx.restore();
       if (cab.id === 'plumber') {
@@ -6989,10 +7260,58 @@ function desertTileAt(atCam, factor, period, at, keep = () => true) {
   }
   return k0;
 }
+// THE COYOTES PERFORM (Peter, 24 Sep 2026, from the coyote bake-off). A stage passes
+// two coyote summits (near tiles 11 and 14, at about 63% and 81% of a 60 s lap), so
+// each stage's pair is a mix, dealt by the summit's order in the stage: speed-1 howls
+// then yawns, speed-2 sings with a pup then howls, speed-3 yawns then sings. Past the
+// pattern (an overtime run) the pair repeats. The shows are the painter's own
+// (desertLandmarks.js drawDesertCoyote `mode`).
+const DESERT_COYOTE_SHOWS = { 1: ['howl', 'yawn'], 2: ['chorus', 'howl'], 3: ['yawn', 'chorus'] };
+// SPEED-3'S WINKER IS AT THE FINISH (Peter, 25 Sep 2026: "The winking coyote needs to be
+// near the finish line in level 2-3"). It is not one of the hashed coyotes — the last of
+// those comes at about 81% — but its own, seated as near the tape as it can get in the
+// frame the camera parks on. Not held to a bare summit: bare ones can be 770 px apart
+// and portrait's picture is 270 wide, so the finish frame often has none. It takes the
+// nearest spot DESERT_WINK_CLEAR from every saguaro instead (they stand on the other
+// dunes' summits), which is sometimes a valley. Hashed coyotes within a tile of it
+// stand down, so the finish has one.
+// The run says where (`finish`: the parked camera, and the tape's fraction across the
+// picture, the heroFrac convention, since portrait shifts and zooms the backdrop).
+function desertFinishWinkL(view, finish, nearP, nearF, portrait) {
+  const frac = finish.frac - (portrait ? 0 : DESERT_WINK_BEHIND);
+  const target = frac * view.width + finish.camX * nearF * ZOOM;
+  const saguaros = [];
+  const k0 = Math.floor(target / nearP);
+  for (let k = k0 - 2; k <= k0 + 2; k++) {
+    for (let i = 0; i < DESERT_DUNES.length; i++) {
+      if ((((k + i) % 3) + 3) % 3 !== 2) saguaros.push((k + DESERT_DUNES[i].at) * nearP);
+    }
+  }
+  for (let d = 0; d <= nearP; d++) {
+    for (const L of [target - d, target + d]) {
+      if (saguaros.every((c) => Math.abs(L - c) >= DESERT_WINK_CLEAR)) return { k: Math.floor(L / nearP), L };
+    }
+  }
+  return null;
+}
+// Ledge half-width (26) plus a saguaro's arms and a little air.
+const DESERT_WINK_CLEAR = 44;
+// Landscape aims a little behind the tape, or the ledge sits right behind the pole
+// and the hero celebrating at it. Portrait needs none: heroFrac's mapping already
+// lands it ~40 px left of the pole there, and it has no room to spare on that side.
+const DESERT_WINK_BEHIND = 0.14;
+// A show starts as its ledge comes into view (the howl keeps its own loop), so it is
+// never caught half over; the latch is keyed per summit and re-arms like the speed
+// trap's — moving back ahead of the line, or time running backwards (a rewind or a new
+// run), starts it again. Portrait crosses its narrow picture in about 2.3 s against
+// 4.2 s, so there the show plays DESERT_COYOTE_PORTRAIT_PACE times faster.
+const DESERT_COYOTE_ENTRY = 25;          // px inside the visible right edge
+const DESERT_COYOTE_PORTRAIT_PACE = 1.5;
+const desertCoyoteLatch = new Map();
 // Screen x of everything in the desert backdrop that moves on its own — the campfire
 // plumes, the horizon's dishes and turbines, and the coyotes — so a dust devil can keep
 // its distance. The plume and coyote rules are their painters' own, repeated here.
-function desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile) {
+function desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile, wink = null) {
   const xs = [];
   const span = view.width * 4;
   for (const d of DESERT_SMOKE_PLUMES) {
@@ -7005,8 +7324,10 @@ function desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile)
   for (let k = Math.floor((travel - 60) / nearP); k <= Math.ceil((travel + view.width + 60) / nearP); k++) {
     if (!bare(k) || desertHash(k + 3) > 0.5) continue;
     if (trapTile != null && Math.abs(k - trapTile) <= 3) continue;
+    if (wink && Math.abs(k - wink.k) <= 1) continue;
     xs.push(desertLayerX(view, camX, nearF, k * nearP + summit0 * nearP));
   }
+  if (wink) xs.push(desertLayerX(view, camX, nearF, wink.L));
   return xs;
 }
 // THE SPEED CAMERA FIRES AS THE HERO PASSES IT (Peter, 24 Sep: "show SMILE first, then the
@@ -7020,8 +7341,15 @@ const DESERT_TRAP_FIRE_LEAD = 100;   // px ahead of the hero the pole is when it
 // to be very quick"): the board crosses a narrow picture in a moment, so there it fires
 // as soon as the whole board is in view, and the gag plays at DESERT_TRAP_PORTRAIT_PACE.
 const DESERT_TRAP_PORTRAIT_PACE = 2.2;
-const desertTrapLatch = { firedAt: null };
-function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false) {
+const desertTrapLatch = { firedAt: null, pending: false };
+export const desertSpeedTrapStage = (stageIndex) => DESERT_LANDMARK_BY_STAGE[stageIndex] === 'speedTrap';
+// True once per camera fire, for the run to play the shutter (cameraClick).
+export function takeDesertTrapShutter() {
+  const p = desertTrapLatch.pending;
+  desertTrapLatch.pending = false;
+  return p;
+}
+function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false, finish = null, finishPadT = null) {
   const view = backgroundPaintCoverage(ctx);
   const nearP = Math.max(16, Math.round(Math.PI * DESERT_RIDGE.wl));
   const midP = Math.max(16, Math.round(Math.PI * DESERT_MID.wl));
@@ -7036,6 +7364,7 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
   // Not held to a bare summit: pinned near the start, the nearest bare one can be a whole
   // tile past the opening frame. The lot's berm covers a saguaro on its summit.
   const trapTile = landmark === 'speedTrap' ? desertTileAt(atCam, nearF, nearP, summit0) : null;
+  const wink = stageIndex === 3 && finish ? desertFinishWinkL(view, finish, nearP, nearF, portrait) : null;
 
   if (landmark === 'pumpjacks') {
     const k = desertTileAt(atCam, midF, midP, DESERT_PUMP_AT);
@@ -7051,7 +7380,7 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
   {
     const travel = camX * midF * ZOOM;
     const pumpTile = landmark === 'pumpjacks' ? desertTileAt(atCam, midF, midP, DESERT_PUMP_AT) : null;
-    const busy = desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile);
+    const busy = desertBusyXs(ctx, t, camX, view, nearP, nearF, summit0, bare, trapTile, wink);
     for (let k = Math.floor((travel - 120) / midP); k <= Math.ceil((travel + view.width + 120) / midP); k++) {
       if (desertHash(k + 7) > 0.42) continue;
       if (pumpTile != null && Math.abs(k - pumpTile) <= 1) continue;
@@ -7080,7 +7409,10 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
         ? Math.max(heroX + DESERT_TRAP_FIRE_LEAD, view.left + view.width - 75 + DESERT_TRAP_POLE_DX)
         : heroX + DESERT_TRAP_FIRE_LEAD;
       if (x + DESERT_TRAP_POLE_DX > fireAt) desertTrapLatch.firedAt = null;
-      else if (desertTrapLatch.firedAt == null || desertTrapLatch.firedAt > t) desertTrapLatch.firedAt = t;
+      else if (desertTrapLatch.firedAt == null || desertTrapLatch.firedAt > t) {
+        desertTrapLatch.firedAt = t;
+        desertTrapLatch.pending = true;
+      }
       since = desertTrapLatch.firedAt == null ? null
         : (t - desertTrapLatch.firedAt) * (portrait ? DESERT_TRAP_PORTRAIT_PACE : 1);
     }
@@ -7089,11 +7421,59 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
   // Coyotes: on about half the bare summits, never next to the speed trap.
   {
     const travel = camX * nearF * ZOOM;
+    const isCoyote = (k) => bare(k) && desertHash(k + 3) <= 0.5
+      && !(trapTile != null && Math.abs(k - trapTile) <= 3)
+      && !(wink && Math.abs(k - wink.k) <= 1);
+    const shows = DESERT_COYOTE_SHOWS[stageIndex] || ['howl'];
+    const seen = backgroundCoverage(ctx);
+    const entry = seen.right - DESERT_COYOTE_ENTRY;
+    // Its show starts as its ledge comes into view, latched like the others'.
+    if (wink) {
+      const x = desertLayerX(view, camX, nearF, wink.L);
+      let since = null;
+      if (Number.isFinite(heroFrac)) {
+        const key = `wink:${stageIndex}`;
+        if (x > entry) desertCoyoteLatch.delete(key);
+        else {
+          if (!desertCoyoteLatch.has(key) || desertCoyoteLatch.get(key) > t) desertCoyoteLatch.set(key, t);
+          since = t - desertCoyoteLatch.get(key);
+        }
+      }
+      // It saves the wink for the finish pad (desertLandmarks.js 'winkWait'): until the
+      // hero lands on it, it only blinks. A picture with no run (the gallery) keeps the
+      // looped show.
+      if (!outsideView(ctx, x, 40)) {
+        drawDesertCoyote(ctx, t, x, seat, 1, Number.isFinite(heroFrac)
+          ? { mode: 'winkWait', since: finishPadT, pace: 1 }
+          : { mode: 'wink', since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1 });
+      }
+    }
     for (let k = Math.floor((travel - 60) / nearP); k <= Math.ceil((travel + view.width + 60) / nearP); k++) {
-      if (!bare(k) || desertHash(k + 3) > 0.5) continue;
-      if (trapTile != null && Math.abs(k - trapTile) <= 3) continue;
+      if (!isCoyote(k)) continue;
       const x = desertLayerX(view, camX, nearF, k * nearP + summit0 * nearP);
-      if (!outsideView(ctx, x, 40)) drawDesertCoyote(ctx, t, x, seat);
+      // Half of them howl the other way (Peter, 24 Sep). Hashed on the summit AND the
+      // stage, since every stage passes the same summits.
+      const facing = desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
+      let order = 0;
+      for (let j = Math.max(0, k - 600); j < k; j++) if (isCoyote(j)) order++;
+      const mode = shows[order % shows.length];
+      // Only a run passes heroFrac; the gallery loops every show on its clock.
+      let since = null;
+      if (mode !== 'howl' && Number.isFinite(heroFrac)) {
+        const key = stageIndex * 1e6 + k;
+        if (x > entry) desertCoyoteLatch.delete(key);
+        else {
+          if (!desertCoyoteLatch.has(key) || desertCoyoteLatch.get(key) > t) {
+            if (desertCoyoteLatch.size > 32) desertCoyoteLatch.clear();
+            desertCoyoteLatch.set(key, t);
+          }
+          since = t - desertCoyoteLatch.get(key);
+        }
+      }
+      if (!outsideView(ctx, x, 40)) {
+        drawDesertCoyote(ctx, t, x, seat, facing,
+          { mode, since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1 });
+      }
     }
   }
   // Tumbleweeds: a slot every DESERT_WEED_SPACING, three in five filled, all rolling
@@ -7205,18 +7585,22 @@ function faux3dPack(settings) {
         // Paint distant infrastructure before the mesa. The mesa then naturally
         // covers each last foot pixel, so towers, dishes, and turbines are
         // embedded in the crest rather than ending on top of its outline.
+        const horizonStage = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
         drawWaterTowers(ctx, camX, farBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
           portrait: !!backgroundContext?.portrait,
+          stageIndex: horizonStage,
         });
-        drawSatelliteDishes(ctx, camX, farBaseY, {
-          paper: paperPreview, paperMaterial: paperPreset,
+        drawDesertLandmarkProps(ctx, camX, farBaseY, {
           portrait: !!backgroundContext?.portrait,
+          stageIndex: horizonStage,
+          skyOffset: backSceneryOffset + backgroundY(backgroundContext, 'far'),
           t,
         });
         drawWindTurbines(ctx, camX, farBaseY, {
           paper: paperPreview, paperMaterial: paperPreset,
           portrait,
+          stageIndex: horizonStage,
           t,
         });
       }
@@ -7302,7 +7686,9 @@ function faux3dPack(settings) {
         // layout's top cloud band (Peter, 24 Sep: "up relatively high in portrait").
         }, (portrait ? sceneryBandY(backgroundContext, 'upperCloud', 104) : 104)
           + backgroundY(backgroundContext, 'clouds'), backgroundContext?.heroId,
-        Number.isFinite(backgroundContext?.heroFrac) ? backgroundContext.heroFrac : null, portrait);
+        Number.isFinite(backgroundContext?.heroFrac) ? backgroundContext.heroFrac : null, portrait,
+        backgroundContext?.finish || null,
+        Number.isFinite(backgroundContext?.finishPadT) ? backgroundContext.finishPadT : null);
         // Roadside signs are a very-near background plane: they sit above the
         // road shoulder, in front of the near dunes, but still behind every
         // gameplay actor and obstacle drawn after the background pass.
@@ -7316,6 +7702,8 @@ function faux3dPack(settings) {
           worldZoom: backgroundContext?.worldZoom,
           worldXOffset: backgroundContext?.worldXOffset,
           speedLimitValues,
+          speedTrap: Number.isFinite(totalDist) && totalDist > 0
+            && DESERT_LANDMARK_BY_STAGE[backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1] === 'speedTrap',
         });
       }
     },
@@ -7514,7 +7902,7 @@ const NEON_TOWER_AT = 0.5;          // where in the stage it is centred (fractio
 const NEON_TOWER_FACTOR = 0.05;     // parallax, below the far mass's 0.07
 const NEON_TOWER_ORANGE = '#ff6a3c';
 const NEON_TOWER_WHITE = '#fff0e6';
-function neonTokyoTower(ctx, t, camX, atCam, height) {
+function neonTokyoTower(ctx, t, camX, atCam, height, flare = 0) {
   const cx = viewCenterX(ctx) + (atCam - camX) * NEON_TOWER_FACTOR * ZOOM;
   const foot = height * 0.2;
   if (outsideView(ctx, cx, foot + 12)) return;
@@ -7574,6 +7962,26 @@ function neonTokyoTower(ctx, t, camX, atCam, height) {
     ctx.beginPath(); ctx.arc(cx, top, 1.4, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha *= 0.35 * neonGlowScale;
     ctx.beginPath(); ctx.arc(cx, top, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  // STRUCK (the storm bolt lands on its antenna when it is in view): the legs and the
+  // mast run white-hot, dying back with the strokes. `flare` is the bolt's brightness.
+  if (flare > 0) {
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'lighter';
+    const frame = (c) => {
+      for (const side of [-1, 1]) {
+        c.moveTo(cx + side * halfAt(base), base);
+        for (let y = base; y >= trunkTop; y -= 4) c.lineTo(cx + side * halfAt(y), y);
+        c.lineTo(cx + side * halfAt(trunkTop), trunkTop);
+      }
+      c.moveTo(cx, trunkTop); c.lineTo(cx, top);
+    };
+    for (const [width, color, a] of [[6, '#8cf0ff', 0.3], [2.6, '#ffffff', 0.55], [1.1, '#ffffff', 1]]) {
+      ctx.globalAlpha = a * flare;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath(); frame(ctx); ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -7954,11 +8362,47 @@ function neonFarMass(ctx, shift, {
 // Layers 4 and 5. A wireframe block with a window lattice and, on the tall ones,
 // a mast with an aviation lamp. The lattice is the point: it is what turns a row
 // of rectangles into a city. Two rows of these at 0.15 and 0.3 are the depth.
+// The two wire rows' layout, shared by the painter below and neonWireTowers, so a
+// storm bolt aimed at a tower and the tower the pack paints are the same building.
+const NEON_WIRE_ROWS = {
+  middle: { factor: 0.15, seed: 7, span: 74, count: 9, w: 26, roofs: [58, 112] },
+  near: { factor: 0.3, seed: 23, span: 132, count: 7, w: 42, roofs: [84, 158] },
+};
+/**
+ * Where a wire row's towers stand right now, in background px (the row's parallax
+ * offset included): each tower's box, whether it carries a mast, and its tip — the
+ * mast's lamp, or the roof. `i` and `block` name a building for as long as it is on
+ * screen (see neonWireRow). Asked by the storm bolt's spire bake-off.
+ */
+export function neonWireTowers(ctx, camX, context, rowName = 'middle') {
+  const row = NEON_WIRE_ROWS[rowName];
+  const { minH, maxH } = neonRowRoofs(context, rowName, row.roofs[0], row.roofs[1]);
+  const shift = camX * row.factor * ZOOM;
+  const period = backgroundPaintCoverage(ctx).width + 90 * 2;
+  const dy = backgroundY(context, rowName);
+  const lower = rowName === 'near' ? context?.neonLowTower : null;
+  const out = [];
+  for (let i = 0; i < row.count; i++) {
+    const raw = i * row.span - shift;
+    const x = Math.round(wrapIntoView(ctx, raw, 90));
+    const bw = Math.round(row.w * (0.7 + neonHash(row.seed + i + 17) * 0.6));
+    const h = lower && lower.i === i && lower.block === Math.floor(raw / period)
+      ? lower.h : minH + neonHash(row.seed + i) * (maxH - minH);
+    const top = Math.round(GROUND_Y - h) + dy;
+    const mast = h > maxH * 0.78;
+    out.push({
+      i, block: Math.floor(raw / period), x, bw, top, mast, ink: i % 2 ? NEON_CYAN : NEON_MAGENTA,
+      tipX: x + bw / 2, tipY: mast ? top - 14 : top,
+    });
+  }
+  return out;
+}
+
 function neonWireRow(ctx, shift, t, {
   seed = 7, span = 78, count = 10, minH = 60, maxH = 132, w = 34,
   stroke = 1, glow = 0.14, alpha = 1, windows = true, masts = true,
   inkA = NEON_MAGENTA, inkB = NEON_CYAN, lit = NEON_AMBER, lamp = NEON_LAMP,
-  onTower = null,
+  onTower = null, lower = null,
 } = {}) {
   if (alpha <= 0) return;
   // The row repeats every `period` of shift; which repeat a tower is in is what makes
@@ -7970,7 +8414,10 @@ function neonWireRow(ctx, shift, t, {
     const raw = i * span - shift;
     const x = Math.round(wrapIntoView(ctx, raw, 90));
     const bw = Math.round(w * (0.7 + neonHash(seed + i + 17) * 0.6));
-    const h = minH + r * (maxH - minH);
+    // `lower` stands one building of the row lower than its hash says: the storm
+    // bolt's sign building in bake-off L, so the strike has sky to fall through.
+    const h = lower && lower.i === i && lower.block === Math.floor(raw / period)
+      ? lower.h : minH + r * (maxH - minH);
     const top = Math.round(GROUND_Y - h);
     const ink = i % 2 ? inkB : inkA;
     ctx.globalAlpha = alpha;
@@ -8041,23 +8488,173 @@ function neonWireRow(ctx, shift, t, {
 // margins, wider than any screen. Every repeat, rather than every other, so there is
 // nearly always one of each in view; only the word changes from one to the next.
 function neonBladeSigns(ctx, {
-  lit = 1, words = NEON_SIGN_WORDS, scale = 1, dim = 1, tower = 3,
+  lit = 1, words = NEON_SIGN_WORDS, scale = 1, dim = 1, tower = 3, blown = null, stood = null,
+  faulty = null, t = 0,
 } = {}) {
+  const cov = backgroundCoverage(ctx);
   return ({ x, top, bw, i, block, ink }) => {
     if (i !== tower) return;
+    // THE STRUCK TOWER CARRIES THE STREET'S SIGN while it is about (`stood`), so the
+    // row's own stays dark then — at most one front sign on screen. Decided while a
+    // sign is out of the picture and held while it is in, so none ever blinks out.
+    if (stood !== null) {
+      const inView = x + bw + 30 > cov.left && x < cov.right;
+      if (!inView) neonSignStoodDown.set(block, !!stood);
+      else if (!neonSignStoodDown.has(block)) neonSignStoodDown.set(block, false);
+      if (neonSignStoodDown.size > 64) neonSignStoodDown.clear();
+      if (neonSignStoodDown.get(block)) return;
+    }
     const word = words[((block % words.length) + words.length) % words.length];
-    const sign = neonBladeSign(word, ink);
-    if (!sign) return;
-    ctx.globalAlpha = lit * dim;
-    // Off the tower's right shoulder, a little down from the roof, on a bracket.
-    const sx = x + bw + 3 * scale;
-    const sy = top + 10 * scale;
-    ctx.fillStyle = ink;
-    ctx.fillRect(x + bw, sy + 4 * scale, 3 * scale, 1);
-    const pad = sign.pad * scale;
-    ctx.drawImage(sign.canvas, sx - pad, sy - pad, sign.w * scale, sign.h * scale);
-    ctx.globalAlpha = 1;
+    const phase = blown && blown.block === block ? neonSignBlowout(blown.s, block)
+      : block === faulty ? neonSignFlicker(t, block) : null;
+    neonPaintBladeSign(ctx, { x, top, bw, ink, word, lit, dim, scale, phase });
   };
+}
+const neonSignStoodDown = new Map();
+// THE FAULTY TUBE (Peter, 25 Sep 2026: "could the occasional building sign flicker?
+// rare - one per level perhaps"). One front sign a stage — the one on the street when
+// the camera is NEON_FAULTY_AT of the way in, which is hashed per stage — has a tube on
+// its way out: lit, and every couple of seconds, not every time, it stutters to dark
+// glass for half a second and catches again.
+function neonFaultySignBlock(ctx, context, totalDist) {
+  if (!Number.isFinite(totalDist) || totalDist <= 0) return null;
+  const at = 0.3 + 0.4 * neonHash((context?.stageIndex ?? 1) * 7 + 3);
+  const tw = neonWireTowers(ctx, totalDist * at, context, 'near').find((w) => w.i === 3);
+  return tw ? tw.block : null;
+}
+function neonSignFlicker(t, block) {
+  const w = Math.floor(t / 2.2);
+  if (neonHash(block * 13 + w) > 0.6) return null;
+  if (t - w * 2.2 > 0.55) return null;
+  return { lit: neonHash(block * 29 + Math.floor(t * 16)) > 0.5 ? 0.85 : 0.06, over: 0 };
+}
+// One blade sign off a tower's right shoulder, a little down from the roof, on a
+// bracket — lit, or part-way through blowing out (`phase`, neonSignBlowout).
+function neonPaintBladeSign(ctx, { x, top, bw, ink, word, lit = 1, dim = 1, scale = 1, phase = null }) {
+  const sign = neonBladeSign(word, ink);
+  if (!sign) return;
+  const sx = x + bw + 3 * scale;
+  const sy = top + 10 * scale;
+  const pad = sign.pad * scale;
+  const paint = (canvas, alpha) => {
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(canvas, sx - pad, sy - pad, sign.w * scale, sign.h * scale);
+  };
+  ctx.globalAlpha = lit * dim;
+  ctx.fillStyle = ink;
+  ctx.fillRect(x + bw, sy + 4 * scale, 3 * scale, 1);
+  // THE SIGN BLOWS OUT: this building took the strike. It overloads white-hot,
+  // stutters, and dies — and stays dead while it scrolls away.
+  if (!phase) paint(sign.canvas, lit * dim);
+  else {
+    const dead = neonBladeSign(word, ink, { dead: true });
+    if (dead) paint(dead.canvas, dim);
+    if (phase.lit > 0) paint(sign.canvas, phase.lit * lit * dim);
+    if (phase.over > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      paint(sign.canvas, phase.over);
+      paint(sign.canvas, phase.over);
+      ctx.restore();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// THE STRUCK TOWER (storm-bolt bake-off L, SHIPPED 25 Sep 2026). Peter: "Should the
+// lightning be striking the ground or something? It just seems like it's overlaid",
+// "What if we struck a larger building with a sign and the sign could blow out", "Might
+// it work a bit better if the building was lower?" — then "We can also do 1 and 2 just
+// in case… there is a second lighting strike later". Ahead of each strike the run PLACES
+// a low sign tower in the near row (context.neonStruck: its layer position L, planned
+// while it is out of the picture so that it arrives mid-picture on the strike beat, then
+// held), the bolt lands on its roof, and its sign blows (neonSignBlowout, from
+// `since`, the seconds since the strike began). The run's fallbacks, when it is not in
+// view: the Tokyo Tower, then the nearest middle-row mast (neonPickMast).
+const NEON_STRUCK_HEIGHT = 0.22;   // of the near row's roof range: 100 px of landscape's 84..158
+const NEON_STRUCK_W = 40;
+export const neonStruckX = (L, camX) => Math.round(L - camX * NEON_WIRE_ROWS.near.factor * ZOOM);
+/**
+ * The L that puts the struck tower's roof `frac` of the way across the picture with the
+ * camera at camX. Right of centre, because it keeps scrolling left for the whole strike.
+ */
+export function neonStruckPlanL(ctx, camX, frac = 0.5) {
+  const c = backgroundCoverage(ctx);
+  return c.left + c.width * frac - NEON_STRUCK_W / 2 + camX * NEON_WIRE_ROWS.near.factor * ZOOM;
+}
+export function neonStruckTower(ctx, camX, context) {
+  const st = context?.neonStruck;
+  if (!st || !Number.isFinite(st.L)) return null;
+  const row = NEON_WIRE_ROWS.near;
+  const { minH, maxH } = neonRowRoofs(context, 'near', row.roofs[0], row.roofs[1]);
+  const h = minH + NEON_STRUCK_HEIGHT * (maxH - minH);
+  const x = neonStruckX(st.L, camX);
+  const top = Math.round(GROUND_Y - h) + backgroundY(context, 'near');
+  const cov = backgroundCoverage(ctx);
+  return {
+    x, top, bw: NEON_STRUCK_W, mast: false, ink: NEON_CYAN, tipX: x + NEON_STRUCK_W / 2, tipY: top,
+    word: NEON_SIGN_WORDS[(st.n || 0) % NEON_SIGN_WORDS.length], since: st.since,
+    inView: x + NEON_STRUCK_W > cov.left + 8 && x < cov.right - 8,
+  };
+}
+function drawNeonStruckTower(ctx, t, tw, { alpha = 1, lit = 1, ink = tw.ink } = {}) {
+  if (alpha <= 0 || outsideView(ctx, tw.x + tw.bw / 2, tw.bw + 40)) return;
+  ctx.globalAlpha = alpha;
+  neonTube(ctx, ink, 1.2, 0.18, neonRectPath(tw.x, tw.top, tw.bw, H - tw.top));
+  ctx.globalAlpha = alpha * 0.28;
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let y = tw.top + 9; y < H - 2; y += 9) { ctx.moveTo(tw.x + 0.5, y + 0.5); ctx.lineTo(tw.x + tw.bw + 0.5, y + 0.5); }
+  ctx.stroke();
+  const phase = tw.since != null ? neonSignBlowout(tw.since, 7) : null;
+  neonPaintBladeSign(ctx, { x: tw.x, top: tw.top, bw: tw.bw, ink, word: tw.word, lit, dim: alpha, phase });
+  ctx.globalAlpha = 1;
+}
+/** The middle-row mast nearest x (else the nearest roof), named so it can be followed. */
+export function neonPickMast(ctx, camX, context, x) {
+  // Not a row that has not arrived yet (neon-1's city assembles; neonCityReveal).
+  if (neonCityReveal(context?.stageIndex ?? 1, context?.progress).midWire < 0.6) return null;
+  const towers = neonWireTowers(ctx, camX, context, 'middle');
+  const masts = towers.filter((t) => t.mast && Math.abs(t.tipX - x) < 130);
+  const pool = masts.length ? masts : towers;
+  let best = pool[0];
+  for (const t of pool) if (Math.abs(t.tipX - x) < Math.abs(best.tipX - x)) best = t;
+  return best ? { i: best.i, block: best.block } : null;
+}
+export function neonTowerNow(ctx, camX, context, pick) {
+  if (!pick) return null;
+  const towers = neonWireTowers(ctx, camX, context, 'middle');
+  return towers.find((t) => t.i === pick.i && t.block === pick.block) || towers.find((t) => t.i === pick.i) || null;
+}
+/**
+ * The Tokyo Tower's antenna tip in background px, and whether it is in the picture —
+ * on neon-2 and -3 the storm strikes it when it is (Peter, 25 Sep: "If Tokyo tower is
+ * on screen can we strike it?"). Null where there is no tower.
+ */
+export function neonTokyoTowerTip(ctx, camX, context, totalDist) {
+  if ((context?.stageIndex ?? 1) < 2 || !Number.isFinite(totalDist) || totalDist <= 0) return null;
+  const farRoofs = neonRowRoofs(context, 'farLandmark', 46, 92);
+  const height = farRoofs.maxH * 1.9;
+  const cx = viewCenterX(ctx) + (totalDist * NEON_TOWER_AT - camX) * NEON_TOWER_FACTOR * ZOOM;
+  const cov = backgroundCoverage(ctx);
+  return {
+    tipX: cx, tipY: GROUND_Y - height + backgroundY(context, 'far'),
+    inView: cx > cov.left + 24 && cx < cov.right - 24,
+  };
+}
+// How lit a blown sign is at `s` seconds into the strike: whole until the bolt lands,
+// an overload flash, a stutter that dies, then dark with the odd weak buzz.
+function neonSignBlowout(s, block) {
+  if (s < 0.16) return null;
+  if (s < 0.34) return { lit: 1, over: 1 - (s - 0.16) / 0.18 * 0.4 };
+  const q = Math.floor(s * 18);
+  const coin = neonHash(block * 31 + q);
+  if (s < 1.3) {
+    const odds = 0.75 * (1 - (s - 0.34) / 0.96);
+    return { lit: coin < odds ? 0.35 + 0.65 * odds : 0, over: 0 };
+  }
+  return { lit: coin < 0.03 ? 0.25 : 0, over: 0 };
 }
 
 // Layer 6. The smog, in front of the city and behind everything the player
@@ -8160,8 +8757,8 @@ function neonMoonLit(cx, cy, r, k) {
 // inside a single stage was the other option and it makes each stage a whole
 // month, so Neon 2 would have to open on the crescent it just finished filling.
 //
-// Neon 3 is already full when it starts, because Neon 3 is the eclipse: see
-// neonMoonEclipse. The act is one night that goes wrong at the end of it.
+// Neon 3 is already full when it starts, and stays full: it used to be the
+// eclipse (see neonMoonEclipse, retired 25 Sep 2026).
 //
 // Exported for the gallery sheet and tests/neon-city-arrival.js.
 export function neonMoonPhase(stageIndex, progress) {
@@ -8174,21 +8771,14 @@ export function neonMoonPhase(stageIndex, progress) {
   return Math.max(0, Math.min(1, (index - 1 + within) / 2));
 }
 
-// THE ECLIPSE, 0..1, and it belongs to Neon 3 alone.
-//
-// The act's last stage runs the umbra across a moon that is already full: it
-// arrives from the leading edge and lands dead centre at the tape, so totality
-// is the frame the player finishes on — and the stage that ends with something
-// angry and airborne gets a sky that has visibly gone wrong.
-//
-// It is NOT a shadow in the sense of a light switch. The umbra is lit by every
-// sunrise on Earth at once, which is why an eclipsed moon goes copper instead
-// of black, and why the eclipsed part here is painted rather than cut away.
-export function neonMoonEclipse(stageIndex, progress) {
-  if (Number(stageIndex) !== 3) return 0;
-  const p = Number(progress);
-  if (!Number.isFinite(p)) return 0;
-  return Math.max(0, Math.min(1, p));
+// THE ECLIPSE, 0..1 — RETIRED 25 Sep 2026 (Peter: "can we lose the lunar eclipse
+// from the 3rd terminal velocity level"). It used to run the umbra across Neon
+// 3's full moon from the leading edge to dead centre at the tape. Every stage now
+// answers 0, so Neon 3 finishes under a clear full moon. neonMoonUmbra and
+// NEON_ECLIPSE_DEEPEST stay drawable: put `return clamp(progress)` back for
+// stage 3 to restore it.
+export function neonMoonEclipse(stageIndex, progress) { // eslint-disable-line no-unused-vars
+  return 0;
 }
 
 // THE UMBRA, and it is not a hole punched in the moon.
@@ -8840,7 +9430,8 @@ function neonPack(settings) {
       // Tokyo Tower behind the far city on neon-2 and neon-3 (see neonTokyoTower).
       // Overtime runs have no midpoint (totalDist is Infinity), so no tower.
       if (neonFrame.stageIndex >= 2 && Number.isFinite(totalDist) && totalDist > 0) {
-        layer('far', 0, () => neonTokyoTower(ctx, t, camX, totalDist * NEON_TOWER_AT, farRoofs.maxH * 1.9));
+        layer('far', 0, () => neonTokyoTower(ctx, t, camX, totalDist * NEON_TOWER_AT, farRoofs.maxH * 1.9,
+          backgroundContext?.neonTokyoFlare || 0));
       }
       if (reveal.farMass > 0) {
         layer('far', 0.07, (shift) => neonFarMass(ctx, shift, {
@@ -8848,20 +9439,37 @@ function neonPack(settings) {
         }));
       }
       if (reveal.midWire > 0) {
-        layer('middle', 0.15, (shift) => neonWireRow(ctx, shift, t, {
-          seed: 7, span: 74, count: 9, minH: midRoofs.minH, maxH: midRoofs.maxH, w: 26,
+        const row = NEON_WIRE_ROWS.middle;
+        layer('middle', row.factor, (shift) => neonWireRow(ctx, shift, t, {
+          seed: row.seed, span: row.span, count: row.count, minH: midRoofs.minH, maxH: midRoofs.maxH, w: row.w,
           stroke: 1, glow: 0.1, alpha: 0.46 * reveal.midWire, ...(mood?.wire || {}),
           onTower: reveal.midWire >= 1 ? neonBladeSigns(ctx, {
             lit: mood?.signs ?? 1, words: NEON_BACK_SIGN_WORDS, scale: 0.72, dim: 0.62, tower: 6,
           }) : null,
         }));
       }
+      // A bolt that strikes INTO the city (the storm-bolt bake-off's depth mock-up) is
+      // painted here, between the rows, so the near row and the smog stand in front.
+      if (typeof backgroundContext?.neonBehindNear === 'function') backgroundContext.neonBehindNear(ctx);
       if (reveal.nearWire > 0) {
-        layer('near', 0.3, (shift) => neonWireRow(ctx, shift, t, {
-          seed: 23, span: 132, count: 7, minH: nearRoofs.minH, maxH: nearRoofs.maxH, w: 42,
+        const row = NEON_WIRE_ROWS.near;
+        layer('near', row.factor, (shift) => neonWireRow(ctx, shift, t, {
+          seed: row.seed, span: row.span, count: row.count, minH: nearRoofs.minH, maxH: nearRoofs.maxH, w: row.w,
           stroke: 1.2, glow: 0.18, alpha: reveal.nearWire, ...(mood?.wire || {}),
-          onTower: reveal.nearWire >= 1 ? neonBladeSigns(ctx, { lit: mood?.signs ?? 1 }) : null,
+          lower: backgroundContext?.neonLowTower || null,
+          onTower: reveal.nearWire >= 1 ? neonBladeSigns(ctx, {
+            lit: mood?.signs ?? 1, blown: backgroundContext?.neonSignBlown || null,
+            faulty: neonFaultySignBlock(ctx, backgroundContext, totalDist), t,
+            stood: backgroundContext && 'neonStruck' in backgroundContext ? !!backgroundContext.neonStruck : null,
+          }) : null,
         }));
+      }
+      // The struck tower stands whether or not the near row has arrived: on neon-1 the
+      // first strike (the turn, a tenth of the way in) comes before the city does, so
+      // it is the first building up, and the one the storm finds.
+      const struck = neonStruckTower(ctx, camX, backgroundContext);
+      if (struck) {
+        drawNeonStruckTower(ctx, t, struck, { lit: mood?.signs ?? 1, ink: mood?.wire?.inkB || struck.ink });
       }
       // In front of the city, behind everything the player plays with.
       layer('near', 0, () => neonBandVeil(ctx, cab, { context: backgroundContext, ...(mood?.veil || {}) }));
@@ -8978,6 +9586,10 @@ function watercolorPack(settings) {
       // lit stage set rather than an evening.
       const frostLight = cab.id === 'frost'
         ? frostStageLight(backgroundContext?.stageIndex) : null;
+      const frostSceneryFinish = cab.id === 'frost'
+        ? (backgroundContext?.frostSceneryStudy === undefined
+          ? FROST_COMBINED_SCENERY_FINISH : backgroundContext.frostSceneryStudy)
+        : null;
       const sky = frostLight ? frostLight.sky : cab.sky;
       skyGrad(ctx, sky[0], sky[1]);
       frostFrame = cab.id === 'frost'
@@ -9047,8 +9659,41 @@ function watercolorPack(settings) {
           : paperPreview
             ? { paper: true, paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
             : null;
+        // Gallery seam (src/dev/frost-landmark-ideas.js): a bake-off's candidate landmark,
+        // in the slot the lift and the herd use, on either ridge — `behind` before the
+        // ridge is laid (a peak it hides the foot of), `on` after it (something standing
+        // on its crest, in front of the ridge and behind that ridge's rocks). The game
+        // never passes one.
+        const landmarkStudy = frost ? backgroundContext?.frostLandmarkStudy : null;
+        const studyFrame = landmarkStudy && ((when) => {
+          const view = backgroundPaintCoverage(ctx);
+          return {
+            when, t, camX, depth, view, factor: f, light: frostLight, color,
+            crest: (x) => ridgeYAt(x, camX, frostY, amp, wl, f, { coverageLeft: view.left }),
+            peak: frostY - amp,
+            // What this ridge carries (rocks, fortresses, pines), in these coordinates.
+            scenery: () => frostSceneryPlacements(ctx, camX, frostY, {
+              layer: depth, stageIndex: backgroundContext?.stageIndex,
+              portrait: backgroundContext?.portrait === true,
+            }),
+          };
+        });
+        if (landmarkStudy) {
+          const a = ctx.globalAlpha; ctx.globalAlpha = 1;
+          landmarkStudy(ctx, studyFrame('behind'));
+          ctx.globalAlpha = a;
+        }
         parallaxHills(ctx, camX, color, frostY, amp, wl, f,
           hillOptions);
+        if (frost) {
+          const coverage = backgroundPaintCoverage(ctx);
+          frostSceneryFinish?.hill?.(ctx, {
+            camX, baseY: frostY, amp, wl, factor: f, layer: depth,
+            color, coverage, travel: camX * f * ZOOM,
+            ridgeY: (x) => ridgeYAt(x, camX, frostY, amp, wl, f,
+              { coverageLeft: coverage.left }),
+          });
+        }
         // The stage landmarks on the far ridge (stylePacks/frostLandmarks.js): the chair
         // lift over frost-1, the reindeer herd near the end of frost-2. After the ridge
         // and BEFORE its rocks and fortresses, which stand in front of a lift tower
@@ -9069,8 +9714,46 @@ function watercolorPack(settings) {
           if (stage === 2 && Number.isFinite(progress)) {
             const [a0, a1] = FROST_HERD_WINDOW;
             const k = (progress - a0) / (a1 - a0);
-            if (k > 0 && k < 1) drawFrostReindeer(ctx, t, k, view, crest);
+            if (k > 0 && k < 1) {
+              // The rocks and fortresses this ridge carries, as x-spans on the crest:
+              // the herd passes behind them, and they end AT the snow line, so the
+              // herd is cut there rather than a sunk hoof's depth below it.
+              const hides = frostSceneryPlacements(ctx, camX, frostY, {
+                layer: depth, stageIndex: stage, portrait: backgroundContext?.portrait === true,
+              })
+                .filter((f) => f.kind !== 'pine' && Array.isArray(f.surface) && f.surface.length > 1)
+                .map((f) => [f.x + f.surface[0].dx, f.x + f.surface[f.surface.length - 1].dx]);
+              drawFrostReindeer(ctx, t, k, view, crest, hides);
+            }
           }
+        }
+        if (landmarkStudy) {
+          ctx.globalAlpha = 1;
+          landmarkStudy(ctx, studyFrame('on'));
+        } else if (frost && depth === 'near') {
+          // The near ridge's wildlife and hill dwellings (frostWildlife.js): the fox,
+          // polar bears, wolves, igloo, cabin and sled, each pinned to a point in its
+          // stage, in the same slot — after the ridge, before its rocks and pines.
+          ctx.globalAlpha = 1;
+          const view = backgroundPaintCoverage(ctx);
+          drawFrostWildlife(ctx, {
+            t, camX, depth, view, color, light: frostLight, totalDist,
+            stageIndex: backgroundContext?.stageIndex ?? 1,
+            portrait: backgroundContext?.portrait === true,
+            run: Number.isFinite(backgroundContext?.heroFrac),
+            crest: (x) => ridgeYAt(x, camX, frostY, amp, wl, f, { coverageLeft: view.left }),
+            scenery: () => frostSceneryPlacements(ctx, camX, frostY, {
+              layer: depth, stageIndex: backgroundContext?.stageIndex,
+              portrait: backgroundContext?.portrait === true,
+            }),
+            // The same ridge at another camera: an item's spot is settled once, from the
+            // picture it passes mid-screen in, and then never moves.
+            crestAt: (cam) => (x) => ridgeYAt(x, cam, frostY, amp, wl, f, { coverageLeft: view.left }),
+            sceneryAt: (cam) => frostSceneryPlacements(ctx, cam, frostY, {
+              layer: depth, stageIndex: backgroundContext?.stageIndex,
+              portrait: backgroundContext?.portrait === true,
+            }),
+          });
         }
         if (frost) {
           // Frost scenery belongs to this ridge, so let the ridge establish
@@ -9088,6 +9771,7 @@ function watercolorPack(settings) {
             // these ridges is animated.
             t,
             cab,
+            sceneryStudy: frostSceneryFinish,
             secondaryFeatures: undefined,
           });
         }

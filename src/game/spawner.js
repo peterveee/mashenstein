@@ -177,8 +177,10 @@ function clearOfHoles(x0, w, holes, clear) {
 let nextFormationId = 1;
 
 export class Spawner {
-  constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0, sections = null, totalDist = null, cadence = 'phrased' }) {
+  constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0, sections = null, totalDist = null, cadence = 'phrased', boostFreeUntil = -Infinity }) {
     this.cabinet = cabinet;
+    // No pattern carrying a speed ramp is dealt before this world x.
+    this.boostFreeUntil = boostFreeUntil;
     this.rng = rng;
     this.tierMax = tierMax;
     this.react = react;
@@ -206,6 +208,8 @@ export class Spawner {
     this.nextX = 0;
     this.lastPatternIdx = -1;
     this.lastActionX = -9999;
+    // Where each spaced swap type last went down (see the cabinet's `swapSpacing`).
+    this.lastSwapX = new Map();
     this.lastActionKind = 'none';
     // Whether the last action cell was something a slide can punt. Kept apart
     // from `lastActionKind` because it is not an action CLASS — a cone is
@@ -348,8 +352,10 @@ export class Spawner {
     const bank = section ? this.sectionBank(section) : this.cabinet.patterns;
     const tierMax = section && section.tierCap != null
       ? Math.min(this.tierMax, section.tierCap) : this.tierMax;
+    const boostFree = this.nextX < this.boostFreeUntil;
     const pats = bank.filter((p) => p.tier <= tierMax
-      && !(p.once && this.usedOnce.has(p.onceGroup || p)));
+      && !(p.once && this.usedOnce.has(p.onceGroup || p))
+      && !(boostFree && p.cells.some((c) => OBSTACLES[c.t]?.isBoost)));
     if (!pats.length) return null;
     let idx = this.rng.int(0, pats.length - 1);
     if (idx === this.lastPatternIdx && pats.length > 1) idx = (idx + 1) % pats.length;
@@ -394,9 +400,23 @@ export class Spawner {
         // with its own box, spacing and debris (Peter, 24 Sep: "can we not kick the
         // traffic cones? we should be able to wherever they appear").
         const swapList = this.cabinet?.swaps?.[rawCell.t];
-        const cell = swapList
+        let cell = swapList
           ? { ...rawCell, t: swapList[Math.abs(Math.round((baseX + rawCell.dx) * 0.13)) % swapList.length] }
           : rawCell;
+        // SPACED SWAPS: a cabinet may say some swap types must not recur within `gap`
+        // world px of their last one (`swapSpacing: { types, gap, fallback }`). One that
+        // would comes down as a fallback instead, picked off the same x so a replay is
+        // identical.
+        const spacing = swapList ? this.cabinet?.swapSpacing : null;
+        if (spacing && spacing.types.includes(cell.t)) {
+          const at = baseX + rawCell.dx;
+          const last = this.lastSwapX.get(cell.t);
+          if (last != null && at - last < spacing.gap) {
+            cell = { ...rawCell, t: spacing.fallback[Math.abs(Math.round(at * 0.29)) % spacing.fallback.length] };
+          } else {
+            this.lastSwapX.set(cell.t, at);
+          }
+        }
         const def = OBSTACLES[cell.t];
         if (!def) continue;
         let x = baseX + cell.dx;

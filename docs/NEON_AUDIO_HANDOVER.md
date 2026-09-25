@@ -268,3 +268,129 @@ Queries used: `goto=stage&cab=neon&stage=neon-1&hero=lorenzo&invuln` (and `neon-
 - Playwright's fake clock doesn't drive the AudioContext, so song-timed events such as
   the minor-turn strike fire early in fake-clock captures.
 - A table warm-up that uses idle time must still refuse to run inside a stage.
+
+## 25 Sep follow-up: "breaking up again, esp. neon-1"
+
+Peter's report, 24 Sep ~23:30: the audio was breaking up again in the neon levels,
+mostly neon-1. Since the 24 Sep work the song has gained lanes (lead11–13, `kick2` with
+a 6.8 s reverb, `crash2`), and the machine was rendering the feature reel at the time:
+ffmpeg on ~8 cores and a 4K headless Chromium, load average 16.
+
+Scripts and raw output: `work/local/neon-audio-0925/`.
+
+### Last night's fixes: none regressed
+
+- The code is intact. `warmSongTables` still runs before `enterStage`, `warmWorkletLanes`
+  after it, and the boot warm still goes through the worker.
+- `tests/tngr2-tables.js` and `tests/silent-lane-skip.js` pass.
+- On an idle Mac, headed, 95 s of neon-1: **0 underruns, audio clock 1.000, 0 late
+  notes**. The same at a retina window (1512×900 @2×).
+
+### One new stall, now fixed: the golden paper sky
+
+The neon-1 golden sky arrived at 16:15 on 24 Sep. Its paper texture (`cardstockClear`)
+was built on the sky's first frame, **after** the song had started. That made one
+234–259 ms frame (`paintPaperFibres` 100 ms, plus `inkBounds`, which dates from July).
+
+| neon-1 start | Before | After |
+| --- | --- | --- |
+| Lowest scheduler queue, dev-menu start (×3) | 47–79 ms | 189–219 ms |
+| Under an 11-core synthetic load: late notes | **1** (queue −27 ms) | 0 (queue 140–217 ms) |
+| Longest frame after the song starts | 234–259 ms | 66 ms |
+
+A late note at the start of neon-1 on a busy machine is exactly "glitchy, especially #1".
+
+**The fix** (not committed):
+- **`RunState.enter`** (src/game/run.js) builds the stage's paper sheet (`paperPreset`,
+  else `cardstockClear`) next to `warmSongTables`, before the song is handed over.
+- **Boot** (src/main.js) builds the three shipped materials (`cardstockClear`,
+  `cardstockSoft`, `skySmooth`) on the title screen, one per 250 ms.
+  - It is **abandoned** once a run begins.
+  - A first version waited out the run instead, and so built them on the results screen
+    with the song playing (108–117 ms frames). That was caught and removed.
+  - The cost on the title: 2 frames of ~108 ms around 3 s, with 0 late notes and a
+    lowest queue of 208 ms.
+- Tests pass: dev-menu, loop, phone-audio, paper-material, rewind-powerup,
+  rewind-pooling, art-warmup.
+
+### Is the song too heavy? No: it has more real-time headroom than rhythm
+
+- **Ballast test** (`rt-probe.mjs --ballast=f`): an AudioWorklet burns a fraction `f` of
+  every render quantum on the game's own audio thread, and the level runs headed for its
+  whole length.
+
+  | Ballast | neon-1 | rhythm-1 |
+  | --- | --- | --- |
+  | 50% | 0 underruns | 0 underruns |
+  | 65% | breaks up in bursts at the densest bars (~43 s, 51–55 s, 65–70 s, 77 s on) | breaks up continuously from 40 s |
+  | 80% | breaks up throughout | breaks up throughout |
+
+  So at its peak the neon song leaves roughly a third of the audio thread free.
+- **Under an 11-core synthetic load**, neon-1 and rhythm-1 both had 0 underruns. macOS
+  keeps the audio thread's priority. What the load hurt was the MAIN thread's scheduling,
+  which is the stall fixed above.
+- **Offline, last night's mix vs tonight's** (`windows.mjs`): tonight is ~10–25% heavier
+  per 8-bar window. The heaviest window is bars 67–82, ~0.52 cores offline, where ~0.14
+  is the renderer's floor.
+
+### What does not cost
+
+- **Muted and empty bars are never rendered.**
+  - An `off:` bar nulls the lane before the sequencer reads it, and an empty step
+    schedules nothing, so no voice is built.
+  - A lane the level mix mutes is skipped outright once the run's handover lands
+    (`setSilentLaneSkip`).
+  - An idle TNGR-2 lane zero-fills its quantum natively (`Tngr2Core.process`
+    fast path).
+- **Effects** (`fx-bench.mjs`): isolated, the song's own params, one page, median of 7.
+  The bare-vs-bare control reads 0.00. Figures are % of one core.
+
+  | Effect | Playing | Lane idle |
+  | --- | --- | --- |
+  | **kick2 reverb, decay 6.8** | **1.63** | 0.65 — the 6.8 s tail, then off |
+  | same reverb at decay 3.0 / 2.0 | 1.05 / 0.91 | 0.25 / 0.19 |
+  | mbCompN (master) | 0.83 | 0.14 |
+  | exciter (lead, lead7) | 0.70 each | 0.07 |
+  | l7 (lead13) | 0.57 | 0.37 |
+  | autopanner (lead3, hats3, lead13) | 0.33 each | 0.33 |
+  | widener, chorus, chandelay ×2, pingpong, doubler, compressor ×3 | 0.19–0.30 each | 0.03–0.29 |
+
+  - **All the song's effects together are ~7.5% of a core.**
+  - The long reverb is the single dearest effect, and it is still under 2%. It switches
+    itself off 6.8 s after `kick2` stops. Shortening it saves ~0.6–0.7% while `kick2`
+    plays. **It is not the problem.**
+  - The LFO-driven effects (chorus, autopanners, widener, ping-pong, channel delays, l7,
+    doubler) keep running when their lane is idle, ~2.3% of a core together.
+
+### The heaviest voices
+
+Leave-one-out over bars 67–74 (`loo.mjs`, median of 7, with a FULL-again control). The
+harness noise is about ±6% of a core, so only these stand clear:
+
+| Lane | Voice | Share of a core |
+| --- | --- | --- |
+| lead5 | JMJR-4 *Ooh Opens* (brass stabs voiced as a choir) | **~13%**: the dearest single part, in every run on both nights |
+| lead8 | CRLS-1 *warmPad* (doubles lead5's notes) | ~7% |
+| chords2 | TNGR-2 *Burnt Horizon* | ~4–7% |
+
+Everything else is inside the noise. lead12 is also `jmjrOohOpens` but has no notes, so
+it costs nothing.
+
+**If a lever is wanted:** lead5's voice is the one that matters (fewer unison voices, or
+a cheaper voice for the stabs). No effect is worth removing for CPU.
+
+### What was left, and why
+
+- **Most likely cause of what Peter heard:** the new neon-1 start stall (fixed). What
+  made it audible was the machine being flat out on the reel render.
+  - The song itself is inside budget with room to spare.
+  - Nothing in the song or the engine glitched on an idle or loaded machine once the
+    stall was gone.
+- **Not done: the bigger desktop buffer** (`latencyHint: 'balanced'`, 10 ms instead of
+  5.3 ms). It is still the lever for a busy machine, and still a feel change that needs
+  Peter's ear. Under load both buffer sizes gave 0 underruns.
+- **The offline leave-one-out is noisy.** A render per page lands on whichever core it
+  lands on: identical renders ranged 460–740 ms/s. Trust `fx-bench.mjs` (one page) and
+  the ballast test, and read the lane ranking only for its top three.
+- **The earlier 'breaking up' was not clipping.** Tonight's mix peaks at +0.1 dB on 2
+  samples in the whole song, where last night's peaked at +0.7 dB on 15.

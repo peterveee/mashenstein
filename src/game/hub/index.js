@@ -1059,8 +1059,14 @@ function cabinetScene(cab) {
     }
     const obstacles = [];
     const seen = new Set();
-    for (const t of types) {
-      if (seen.has(t) || !OBSTACLES[t]) continue;
+    for (const raw of types) {
+      // The same rule, one step on: a cabinet that SWAPS a shared obstacle for its
+      // own (`swaps` in data/cabinets.js — Terminal Velocity has no cactus at all)
+      // must show what its lane lays, not the pattern's placeholder. Take the swap
+      // list's first entry the screen does not already show.
+      const swapList = cab.swaps?.[raw];
+      const t = swapList ? swapList.find((s) => !seen.has(s) && OBSTACLES[s]) : raw;
+      if (!t || seen.has(t) || !OBSTACLES[t]) continue;
       seen.add(t);
       obstacles.push(makeObstacle(t, 90 + obstacles.length * 120));
       if (obstacles.length >= 4) break;

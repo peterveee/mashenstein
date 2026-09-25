@@ -8,7 +8,7 @@
     "build": "node build/build.js",
     "dev": "node build/dev.js",
     "composition": "node tools/composition-tuner.js",
-  "devs": "MASH_DEV_TLS=1 node build/dev.js",
+    "devs": "MASH_DEV_TLS=1 node build/dev.js",
     "dev:once": "node build/build.js --watch",
     "setup": "git config core.hooksPath .githooks && git config merge.index-table.name 'archive index tables' && git config merge.index-table.driver 'node tools/merge-index-table.js %O %A %B'",
     "test": "node tests/run-all.js",
@@ -17,6 +17,7 @@
     "levels": "node tools/level-editor.js",
     "characters": "node tools/character-editor.js",
     "gallery": "node tools/build-gallery.js",
+    "gallery:prune": "node tools/gallery-prune.js",
     "gallery:screens": "node tools/build-screens-gallery.js",
     "site": "node tools/build-site.js",
     "visualiser": "node tools/build-visualiser.js",
@@ -30,6 +31,7 @@
     "baseline": "node tools/make-baselines.js"
   },
   "devDependencies": {
+    "acorn": "^8.18.0",
     "esbuild": "^0.28.1",
     "playwright": "^1.61.1"
   },

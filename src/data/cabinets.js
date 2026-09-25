@@ -784,19 +784,26 @@ export const CABINETS = [
     // no material to shed. The cut faces either side are what says fatal here.
     pitFill: 'none',
     // NO CACTUS ON A TOKYO STREET (Peter, 24 Sep). Each is SWAPPED for a real obstacle,
-    // picked off the spawn x one slot in ten: the road-works PANDA barrier four times
-    // (the street-hazard bake-off's pick, src/dev/neon-street-candidates.js); a crate and a
-    // traffic cone twice each — the cone kickable, like every cone in the game; and the
-    // bake-off's FROG (A1) and hard-hatted MONKEY (B3) once each, so they stay a
-    // surprise rather than a pattern. Neighbouring slots differ, so two cactus cells in
-    // one pattern rarely come out the same. The big cactus is a panda or a crate.
+    // picked off the spawn x one slot in ten. FEWER ANIMALS, NEVER TWO ALIKE CLOSE (Peter,
+    // 24 Sep, later): the road-works PANDA, FROG and hard-hatted MONKEY (the street-hazard
+    // bake-off's picks, src/dev/neon-street-candidates.js) take four slots in ten between
+    // them (the panda two); the rest are crates, spike plates and cones (kickable). And
+    // `swapSpacing` below keeps each animal at least three screens from the last of its
+    // own kind — one that would come sooner is a crate or a spike plate instead.
     swaps: {
-      cactus: ['pandaBarrier', 'crate', 'pandaBarrier', 'trafficCone', 'frogBarrier',
-        'pandaBarrier', 'crate', 'pandaBarrier', 'trafficCone', 'monkeyBarrier'],
-      cactusBig: ['pandaBarrier', 'crate'],
-      // NO BIRDS OVER TOKYO (Peter, 24 Sep: "replace the birds with drones"). Every
-      // buzzbird the shared rows and this cabinet's own deal is a drone instead.
-      buzzbird: ['drone'],
+      cactus: ['crate', 'pandaBarrier', 'popSpikes', 'trafficCone', 'frogBarrier',
+        'pandaBarrier', 'popSpikes', 'monkeyBarrier', 'trafficCone', 'crate'],
+      cactusBig: ['crate', 'popSpikes'],
+      // NO BIRDS OVER TOKYO (Peter, 24 Sep: "replace the birds with drones"). A bird
+      // flies over the lane and asks nothing; a drone is a slide — so turning every one
+      // made half the level drones. Now half of them are drones and half a floating
+      // target, which is what a bird's slot was: something up there to shoot.
+      buzzbird: ['drone', 'target'],
+    },
+    swapSpacing: {
+      types: ['pandaBarrier', 'frogBarrier', 'monkeyBarrier'],
+      gap: 900,                        // world px: three screens at the desktop zoom
+      fallback: ['crate', 'popSpikes'],
     },
     // No invincibility on these stages (Peter, 24 Sep): UNPEELABLE, and the legacy
     // star capsule that can still arrive through old data. And NO SPEED-UP (Peter,
@@ -821,15 +828,17 @@ export const CABINETS = [
       P(0, [{ t: 'drone', dx: 0 }]),
       P(0, [{ t: 'target', dx: 0 }, coinArc(40)]),
       P(0, [{ t: 'buzzbird', dx: 0 }]),
-      P(0, [{ t: 'drone', dx: 0 }, coinLine(60)]),
+      // A target, not a second lone drone: the air is still the point, without every
+      // other tier-0 deal being a slide.
+      P(0, [{ t: 'target', dx: 0 }, coinLine(60)]),
       // STACKED DRONES, two and three deep (Peter, 24 Sep: "more stacked drones in
       // this level, like in the rhythm levels"). The beat lanes' columns, spaced
       // wider (LANE_DRONE_COLUMN_ALTS): a slide always clears them, and three deep
       // only the highest jumpers and a double jump go over.
+      // One column pattern a tier and no double (Peter, 24 Sep: "there still seem to be a
+      // huge number of drones"): drones had become half of every level's hazards.
       P(0, [{ t: 'drone', dx: 0, column: 2 }]),
       P(1, [{ t: 'drone', dx: 0, column: 3 }]),
-      P(1, [{ t: 'drone', dx: 0, column: 2 }, coinLine(60)]),
-      P(2, [{ t: 'drone', dx: 0, column: 2 }, { t: 'drone', dx: 110, column: 3 }]),
       // Two targets far enough apart to be two shots, not one composite — this
       // pair used to sit at tier 1 with dx 30, which was one decision wearing
       // two sprites. Demoted respaced: it feeds neon-1's 5-target mission.
@@ -846,7 +855,7 @@ export const CABINETS = [
       // under this sky as much as any lane's.
       P(1, [{ t: 'floorSaw', dx: 0 }]),
       P(1, [{ t: 'fireBarrel', dx: 0 }, coinArc(70)]),
-      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'drone', dx: 110 }]),
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'crate', dx: 110 }]),
       // Was a cactus behind the shooter — the one desert prop in the bag's own
       // rows. The drum fire keeps the ground threat and drops the sagebrush.
       P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'fireBarrel', dx: 130 }]),

@@ -617,6 +617,8 @@ export const SFX_TRIM = {
   // biggest thing heard in the game, once a level (Peter: "giant LONG boom"). Held to
   // a -6 dBFS peak so it stays whole over the music rather than clipping into it.
   thunder: 0.47,
+  // A shutter over the song: a small, crisp mechanism, well under the strike cues.
+  cameraClick: 1.479,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
   // it: the bark is the finish dog's whole threat, it is the loudest voice in
   // the last stretch by design and has to carry over the end-of-stage music,
@@ -4566,6 +4568,19 @@ class AudioSys {
       // It is levelled with the MECHANISMS it belongs to instead, and it
       // carries body rather than only an edge — the RMS was the number that was
       // wrong, not the peak.
+      // THE SPEED CAMERA'S SHUTTER on speed-2 (Peter, 24 Sep: "shouldn't there be a click
+      // effect when we get our picture taken"). A compact camera's two-part clack — the
+      // mirror up, the curtain down — then the flash capacitor's rising whine behind it.
+      case 'cameraClick': {
+        const w = Math.max(0, opt.when || 0);
+        this.noise(0.012, 1.0, 'bandpass', 3200, w);             // the mirror
+        this.noise(0.02, 0.7, 'bandpass', 1500, w + 0.002);
+        this.noise(0.014, 0.9, 'bandpass', 2600, w + 0.048);     // the curtain
+        this.noise(0.03, 0.45, 'bandpass', 900, w + 0.05);
+        this.osc('square', 1400, 900, 0.018, 0.05, w + 0.001);   // the body's tick
+        this.osc('sine', 2400, 5200, 0.55, 0.05, w + 0.09);      // flash recharging
+        break;
+      }
       case 'switchFlick': {
         const w = Math.max(0, opt.when || 0);
         // Measured, not guessed: -3.4 peak / -23.5 RMS through the real graph

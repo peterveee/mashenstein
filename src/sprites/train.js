@@ -58,7 +58,9 @@ export const TRON_PALETTE = Object.freeze({
   // the trains that fly over neon-1's golden hour; the neon livery comes with the night.
   day: Object.freeze({
     bg: '#5b6470', hull: '#e6eaee', line: '#80c241', glass: '#34506c', dim: 'rgba(128,194,65,0.35)',
-    cabin: '#fff3d6',
+    // Daylight glass, not a lit cabin (Peter, 24 Sep: "in day mode, the windows shouldn't
+    // be yellow"): the pale blue of a sky reflected in a window.
+    cabin: '#b4cadb',
     // PAINT, NOT LIGHT (Peter, 23 Sep: "the day time train still glows"): no halo on
     // any line or pane — a livery in the sun is flat colour.
     flat: true,
@@ -212,21 +214,90 @@ function drawTronBoard(ctx, b, t, lit, station = null) {
 }
 
 /**
- * THE STATION SIGN: an LED strip on two poles from the platform. Its sign's BOTTOM
- * sits `lift` above `baseY`. The run stands it on the platform just past the train's
- * nose (Peter, 24 Sep: "what if the sign for the next station is AFTER the nose of the
- * train.. then it can be lower"), where the hero runs by underneath it after leaving
- * the train, drawn behind him. `station` names the stop (kana.js NEON_STATIONS).
+ * THE STATION SIGN. Its sign's BOTTOM sits `lift` above `baseY`. The run stands it just
+ * past the train's nose (Peter, 24 Sep: "what if the sign for the next station is AFTER
+ * the nose of the train.. then it can be lower"), where the hero runs by underneath it
+ * after leaving the train, drawn behind him. `station` names the stop (kana.js
+ * NEON_STATIONS).
+ *
+ * IT FLIES (Peter, 24 Sep, from the hover-sign bake-off: "F chevron thrust is perfect and
+ * fits with the neon theme best of all"). No poles and nothing overhead: a thruster pod
+ * under each end pours cyan chevrons that fade as they fall. It bobs, the thrust answers
+ * the bob (the chevrons reach further as it sinks and has to be caught), and the thrust
+ * lights the platform under it. `poles: true` draws the old stand, kept for the gallery.
  */
 export const STATION_SIGN_LIFT = 38;      // the over-the-roof mock's lift, in px
+// Big enough to SEE at play scale (Peter, 24 Sep: "the signs are meant to be bobbing up
+// and down, no?") — 1.3px was there but invisible. Still slow: a float, not a shake.
+const SIGN_BOB = 3;                       // px either way
+const SIGN_BOB_RATE = 2.2;                // rad/s
 export function drawTronStationSign(ctx, x, w, railY, baseY, t = 0, lit = 0.9,
-  { lift = STATION_SIGN_LIFT, station = null } = {}) {
+  { lift = STATION_SIGN_LIFT, station = null, poles = false } = {}) {
   const h = 9;
-  const y = baseY - lift - h;
+  if (poles) {
+    const y = baseY - lift - h;
+    ctx.save();
+    ctx.fillStyle = '#2a2f48';
+    for (const px of [x + 5, x + w - 7]) ctx.fillRect(px, y + h - 1, 2, railY - (y + h - 1));
+    ctx.fillRect(x + 2, y - 2, w - 4, 2);          // the head rail the strip hangs on
+    ctx.restore();
+    drawTronBoard(ctx, { x, y, w, h }, t, lit, station);
+    return;
+  }
+  const s = Math.sin(t * SIGN_BOB_RATE);
+  const y = baseY - lift - h + s * SIGN_BOB;
+  const thrust = 1 + 0.2 * s;
+  const line = TRON_PALETTE.neon.line;
+  const hull = TRON_PALETTE.neon.hull;
+  const jets = [x + 11, x + w - 11];
   ctx.save();
-  ctx.fillStyle = '#2a2f48';
-  for (const px of [x + 5, x + w - 7]) ctx.fillRect(px, y + h - 1, 2, railY - (y + h - 1));
-  ctx.fillRect(x + 2, y - 2, w - 4, 2);          // the head rail the strip hangs on
+  // The light the thrust lands on the platform, brighter as the sign sinks.
+  ctx.globalCompositeOperation = 'lighter';
+  for (const jx of jets) {
+    ctx.save();
+    ctx.translate(jx, railY);
+    ctx.scale(1, 0.22);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 13);
+    g.addColorStop(0, `rgba(56,216,248,${(0.32 * thrust * lit).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(56,216,248,${(0.12 * thrust * lit).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(56,216,248,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  for (const [i, jx] of jets.entries()) {
+    // The pod: a small dark nacelle edged in the hull's tube, a flared bell under it.
+    const top = y + h + 1;
+    ctx.fillStyle = hull;
+    ctx.beginPath(); roundRectPath(ctx, jx - 3, top, 6, 4, 1.6); ctx.fill();
+    glowStroke(ctx, line, 0.5, false, (c) => roundRectPath(c, jx - 3, top, 6, 4, 1.6));
+    ctx.fillStyle = '#2a2f48';
+    ctx.beginPath();
+    ctx.moveTo(jx - 1.8, top + 4); ctx.lineTo(jx + 1.8, top + 4);
+    ctx.lineTo(jx + 2.5, top + 5.4); ctx.lineTo(jx - 2.5, top + 5.4);
+    ctx.closePath(); ctx.fill();
+    // The thrust: four chevrons falling out of the bell, fading as they go.
+    const a = ctx.globalAlpha;
+    const len = 13 * thrust;
+    for (let k = 0; k < 4; k++) {
+      const q = ((t * 2.6 + k / 4 + i * 0.5) % 1 + 1) % 1;
+      const cy = top + 6.2 + 1 + q * len;
+      const hw = 6.5 * (0.5 - q * 0.15);
+      ctx.globalAlpha = a * lit * (1 - q) * (1 - q);
+      glowStroke(ctx, line, 0.8, false, (c) => {
+        c.moveTo(jx - hw, cy); c.lineTo(jx, cy + hw * 0.7); c.lineTo(jx + hw, cy);
+      });
+    }
+    ctx.globalAlpha = a;
+  }
+  // The case: the strip in a dark housing edged in cyan, so without its poles it still
+  // reads as a made thing and not a floating decal.
+  ctx.fillStyle = hull;
+  ctx.beginPath(); roundRectPath(ctx, x - 2, y - 2, w + 4, h + 4, 2); ctx.fill();
+  glowStroke(ctx, line, 0.7, false, (c) => roundRectPath(c, x - 2, y - 2, w + 4, h + 4, 2));
   ctx.restore();
   drawTronBoard(ctx, { x, y, w, h }, t, lit, station);
 }

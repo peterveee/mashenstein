@@ -92,9 +92,11 @@ const make = (w, h) => {
  * blitted: a shadowBlur per glyph per frame is not something the background can afford.
  * Returns { canvas, w, h } in background px.
  */
-export function neonBladeSign(word, ink) {
+// `dead`: the same sign with its tubes blown (the storm bolt's sign blow-out, a
+// bake-off mock-up) — dark glass, no light, the glyphs still just legible.
+export function neonBladeSign(word, ink, { dead = false } = {}) {
   if (typeof document === 'undefined') return null;
-  const key = `sign|${word}|${ink}|${version}`;
+  const key = `sign|${word}|${ink}|${dead ? 'dead|' : ''}${version}`;
   let hit = cache.get(key);
   if (hit) return hit;
   const chars = [...word];
@@ -107,15 +109,15 @@ export function neonBladeSign(word, ink) {
   g.fillStyle = 'rgba(8,6,24,0.9)';
   g.fillRect(0, 0, w, h);
   g.shadowColor = ink;
-  g.shadowBlur = 4;
-  g.strokeStyle = ink;
+  g.shadowBlur = dead ? 0 : 4;
+  g.strokeStyle = dead ? '#3c3458' : ink;
   g.lineWidth = 1;
   g.strokeRect(0.5, 0.5, w - 1, h - 1);
   g.font = `${KANA_WEIGHT} ${px}px ${KANA_FACE}`;
   g.textAlign = 'center';
   g.textBaseline = 'alphabetic';
-  g.fillStyle = '#ffffff';
-  g.shadowBlur = px * 0.6;
+  g.fillStyle = dead ? '#3a3350' : '#ffffff';
+  g.shadowBlur = dead ? 0 : px * 0.6;
   chars.forEach((ch, k) => {
     const y = 6 + (k + 1) * (px + 2) - 2;
     // Vertical text stands the long-vowel mark up (らーめん): turned a quarter round

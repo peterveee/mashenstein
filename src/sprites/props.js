@@ -1571,6 +1571,27 @@ export function rakeSwingAngle(u) {
   return 0;
 }
 
+// THE GOLDEN TOASTER'S CASING — chrome, settled 25 Sep 2026 in the toaster
+// finish bake-off (the toned-down shiny gold). It is the painter's default, so
+// every golden toaster — lane, title flypast, tutorial — wears it. The flat gold
+// it replaced is kept as candidate A in src/dev/toaster-finish-candidates.js.
+export const GOLD_TOASTER_FINISH = {
+  id: 'gold', back: '#8a5a08', side: '#f0c030', top: '#ffec8a',
+  edge: 'rgba(150,98,10,0.6)', glint: '#ffffff',
+  chrome: [[0, '#ffe890'], [0.4, '#fbd044'], [0.5, '#dca42a'], [0.54, '#c48c1e'],
+    [0.62, '#e8b232'], [1, '#f8cc48']],
+};
+
+// The replay toaster's casing: the same chrome as the gold one, in steel, with
+// the rim, lever, slot and gleam that the gold casing keeps warm gone cool.
+export const SILVER_TOASTER_FINISH = {
+  id: 'silver', back: '#687a91', side: '#bdcad8', top: '#f4f8fe',
+  edge: 'rgba(84,100,122,0.55)', lever: '#4c5563', slot: '#262b33', glint: '#ffffff',
+  // The broad face's reflection, top to bottom: sky, horizon, ground.
+  chrome: [[0, '#f6f9fd'], [0.4, '#d6dfea'], [0.5, '#a9b6c6'], [0.54, '#8e9cb0'],
+    [0.62, '#b4c0ce'], [1, '#d8e0ea']],
+};
+
 export const PROP_PAINTERS = {
   ...GRAVITY_PAINTERS,
   ...ANIMAL_PAINTERS,
@@ -2691,117 +2712,75 @@ export const PROP_PAINTERS = {
   // with; a couple of degrees off vertical reads as something somebody stuck
   // there in a hurry, which is what this is.
   // BEWARE OF DOG, planted a screen before the finish on the stages that have
-  // a dog (see RunState.spawnFinishDog). Same board, post and tilt as jumpSign
-  // — they are the same object in the world's vocabulary and should not be two
-  // different objects on the eye — and the same contract in play: `sign`, so
-  // running through it breaks it for nothing.
+  // a dog (see RunState.spawnFinishDog). Same post and box as jumpSign, and the
+  // same contract in play: `sign`, so running through it breaks it for nothing.
   //
-  // A PICTOGRAM, not words. jumpSign spends its whole board on four hand-cut
-  // letters because the pixel font dies at this size, and JUMP is four
-  // characters; BEWARE OF DOG is eleven, which is three times the word on the
-  // same 13x9 board. There is no version of that which is readable. A dog's
-  // head in silhouette is what an actual warning sign uses for the same
-  // reason, it survives being 7 screen pixels tall, and it says the one thing
-  // the player needs to know without depending on their reading English.
+  // THE BITTEN DISC (Peter, 24 Sep 2026: "yes to the paw sign with the bite for
+  // the beware of dog" — the dogs bake-off, src/dev/dog-candidates.js, sign E).
+  // It replaced a red board with a cream panel and a dog's head punched out in
+  // dark, which at lane size read as a dark blot on a pale square.
   //
-  // RED board, not the jump sign's yellow. Yellow is this game's "here is a
-  // thing you do"; the guide teaches RED = AVOID, and every other red mark in
-  // the lane is a hazard. The dog is the only hazard the level announces
-  // ahead of time, so the announcement should be wearing the hazard colour.
+  // A PICTOGRAM, not words: BEWARE OF DOG is eleven characters on a 13x9 box,
+  // and no version of that is readable. A PAW PRINT is — a heel pad and four
+  // toes are the most legible dog mark there is at 7 screen pixels — and a
+  // semicircle BITTEN out of the disc's edge, tooth marks left in it, says dog
+  // with the silhouette alone before the paw is even resolved.
+  //
+  // RED, not the jump sign's yellow: the guide teaches RED = AVOID, and the dog
+  // is the only hazard the level announces ahead of time.
+  //
+  // Everything inside 0..w x 0..h — a painter has no canvas outside its own box
+  // (see the note on jumpSign). The disc's top sits a hair under y 0.
   dogSign(ctx, w, h) {
     const u = Math.max(w, h);
-    // Everything inside 0..h — see the note on jumpSign: a painter has no
-    // canvas outside its own box, and that sign lost its ascenders to exactly
-    // this before it was caught.
-    const tilt = -0.035;
+    const TAU = Math.PI * 2;
+    const ink = 'rgba(26,16,40,0.55)', lw = u * 0.02;
+    const R = w * 0.41, cy = R + h * 0.025, cx = w / 2;
+    // The post, from the disc's centre down into the road.
     const postX = w * 0.455, postW = w * 0.085;
-    // A SQUARER board than its two siblings. Theirs are long and low because
-    // they carry a word; this one carries a head, and a head in a letterbox is
-    // a head drawn small with cream either side of it. Narrower and taller
-    // gives the pictogram a cell it can nearly fill, which is the whole
-    // difference between a dog and a dark smudge at world size.
-    const bw = w * 0.62, bh = h * 0.5;
-    const bx = postX + postW / 2 - bw / 2, by = h * 0.03;
-    const cy = by + bh / 2;
-    shape(ctx, '#7a5230', u, (c) => rr(c, postX, by + bh * 0.6, postW, h - by - bh * 0.6, postW * 0.3));
-    plain(ctx, 'rgba(40,24,12,0.35)', (c) => rr(c, postX + postW * 0.58, by + bh * 0.7, postW * 0.42, h - by - bh * 0.72, postW * 0.2));
+    ctx.beginPath(); ctx.rect(postX, cy, postW, h - cy);
+    ctx.fillStyle = '#7a5230'; ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.stroke();
+    plain(ctx, 'rgba(40,24,12,0.35)', (c) => c.rect(postX + postW * 0.58, cy, postW * 0.42, h - cy));
+    // The disc, and a white enamel ring just inside its edge.
+    const disc = (c) => { c.moveTo(cx + R, cy); c.arc(cx, cy, R, 0, TAU); };
+    ctx.beginPath(); disc(ctx);
+    ctx.fillStyle = '#d83828'; ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.stroke();
     ctx.save();
-    ctx.translate(postX + postW / 2, cy);
-    ctx.rotate(tilt);
-    const lx = bx - (postX + postW / 2), ly = by - cy;
-    shape(ctx, '#d83828', u, (c) => rr(c, lx, ly, bw, bh, bh * 0.16));
-    // The pale panel the head sits on. A dark silhouette needs something light
-    // behind it or it merges with the board's own contour at world size.
-    const px = lx + bw * 0.11, py = ly + bh * 0.12;
-    const pw = bw * 0.78, ph = bh * 0.7;
-    plain(ctx, '#f6e4c8', (c) => rr(c, px, py, pw, ph, bh * 0.08));
-    plain(ctx, 'rgba(40,10,6,0.3)', (c) => rr(c, lx + bw * 0.05, ly + bh * 0.86, bw * 0.9, bh * 0.1, bh * 0.04));
-
-    // The head, facing LEFT — the way the dog actually arrives, so the sign
-    // and the animal agree. Authored in unit coordinates across the panel so
-    // the drawing is a SHAPE rather than a pile of magic numbers, and so it
-    // fills whatever cell the board gives it.
-    //
-    // One closed path, not a head plus a muzzle plus ears: at this size any
-    // gap between two parts closes into a blot, and a single silhouette stays
-    // legible all the way down. Everything in the outline is doing
-    // identification work — two pricked ears, a long snout and an open jaw are
-    // the whole difference between "dog", "bear" and "unreadable" — and the
-    // marks punched back OUT of it (eye, fangs, nostril) are what stop it
-    // being a black blob once there is room for them. They only survive
-    // because this sign rasterizes at triple detail; at double they filled in.
-    const X = (t) => px + ((t + 1) / 2) * pw;
-    const Y = (t) => py + ((t + 1) / 2) * ph;
-    plain(ctx, '#241a14', (c) => {
-      c.moveTo(X(-0.98), Y(0.02));            // nose
-      c.lineTo(X(-0.88), Y(-0.26));           // bridge of the snout
-      c.quadraticCurveTo(X(-0.54), Y(-0.44), X(-0.24), Y(-0.46)); // brow
-      // The ears: two clean triangles with one notch dropped between them.
-      // An earlier pass sculpted them with extra points at the base and the
-      // rake, which at this size stopped reading as ears at all and became a
-      // row of spikes — a small silhouette wants fewer corners, not more.
-      c.lineTo(X(-0.18), Y(-0.54));
-      c.lineTo(X(-0.05), Y(-1));              // front ear, tip
-      c.lineTo(X(0.14), Y(-0.56));
-      c.lineTo(X(0.24), Y(-0.44));            // the notch between them
-      c.lineTo(X(0.31), Y(-0.60));
-      c.lineTo(X(0.46), Y(-0.92));            // back ear, tip
-      c.lineTo(X(0.68), Y(-0.42));
-      c.lineTo(X(0.76), Y(-0.26));            // back of the skull
-      c.quadraticCurveTo(X(0.94), Y(0.12), X(0.86), Y(0.64)); // nape into the chest
-      c.lineTo(X(0.3), Y(0.88));
-      c.quadraticCurveTo(X(-0.12), Y(0.82), X(-0.36), Y(0.52)); // throat to the chin
-      // The open jaw: a wedge bitten out of the muzzle. A closed mouth reads
-      // as a pet, and this sign is not about a pet.
-      c.lineTo(X(-0.99), Y(0.74));
-      c.lineTo(X(-0.74), Y(0.30));
-      c.lineTo(X(-0.99), Y(0.24));
+    ctx.beginPath(); disc(ctx); ctx.clip();
+    ctx.strokeStyle = '#fbf3e4'; ctx.lineWidth = u * 0.03;
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.83, 0, TAU); ctx.stroke();
+    ctx.restore();
+    // The paw: a heel pad and four toes, in the ring's white.
+    const s = R * 0.62;
+    plain(ctx, '#fbf3e4', (c) => {
+      c.moveTo(cx + s * 0.62, cy + s * 0.42);
+      c.bezierCurveTo(cx + s * 0.62, cy - s * 0.16, cx - s * 0.62, cy - s * 0.16, cx - s * 0.62, cy + s * 0.42);
+      c.bezierCurveTo(cx - s * 0.6, cy + s * 0.9, cx + s * 0.6, cy + s * 0.9, cx + s * 0.62, cy + s * 0.42);
+    });
+    for (const [dx, dy, r] of [[-0.72, -0.34, 0.24], [-0.26, -0.72, 0.26], [0.26, -0.72, 0.26], [0.72, -0.34, 0.24]]) {
+      plain(ctx, '#fbf3e4', (c) => c.ellipse(cx + dx * s, cy + dy * s, r * s * 0.86, r * s * 1.1, dx * 0.4, 0, TAU));
+    }
+    // THE BITE: a toothed circle erased out of the upper right, its edge inked
+    // where it crosses the disc so the bite wears the sign's own line.
+    const bx = cx + R * 0.78, by = cy - R * 0.62, br = R * 0.36;
+    const bite = (c) => {
+      for (let i = 0; i <= 18; i++) {
+        const a = (i / 18) * TAU, rr2 = br * (i % 2 ? 0.8 : 1.0);
+        const x = bx + Math.cos(a) * rr2, y = by + Math.sin(a) * rr2;
+        if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      }
       c.closePath();
-    });
-    // Everything below is punched back out in the panel's own cream, so the
-    // marks are holes in the silhouette rather than a second colour on top of
-    // it — a paler ink would grey the whole head down at world size.
-    const cut = '#f6e4c8';
-    // The eye: one notch, angled. It turns a black shape into a face and it is
-    // the cheapest mark on the board.
-    plain(ctx, cut, (c) => {
-      c.ellipse(X(-0.34), Y(-0.18), pw * 0.052, ph * 0.048, -0.3, 0, Math.PI * 2);
-    });
-    // Two fangs in the gape — upper and lower, offset so they read as a bite
-    // rather than as a gap in the paint.
-    plain(ctx, cut, (c) => {
-      c.moveTo(X(-0.90), Y(0.34)); c.lineTo(X(-0.78), Y(0.33)); c.lineTo(X(-0.845), Y(0.50)); c.closePath();
-      c.moveTo(X(-0.95), Y(0.66)); c.lineTo(X(-0.85), Y(0.65)); c.lineTo(X(-0.90), Y(0.50)); c.closePath();
-    });
-    // The nostril, and the crease where the muzzle wrinkles back off the
-    // teeth. Two marks, and between them they are the snarl.
-    plain(ctx, cut, (c) => {
-      c.ellipse(X(-0.90), Y(-0.06), pw * 0.026, ph * 0.026, 0, 0, Math.PI * 2);
-    });
-    stroke(ctx, cut, Math.max(0.18, pw * 0.022), (c) => {
-      c.moveTo(X(-0.72), Y(-0.16));
-      c.quadraticCurveTo(X(-0.62), Y(-0.05), X(-0.50), Y(-0.02));
-    });
+    };
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); bite(ctx); ctx.fillStyle = '#000'; ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); disc(ctx); ctx.clip();
+    ctx.strokeStyle = ink; ctx.lineWidth = u * 0.04;
+    ctx.beginPath(); bite(ctx); ctx.stroke();
     ctx.restore();
   },
 
@@ -3654,6 +3633,7 @@ export const PROP_PAINTERS = {
     });
   },
   appliance(ctx, w, h, frame = 0, finish = null) {
+    finish = finish || GOLD_TOASTER_FINISH;
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
       ctx.beginPath(); pathFn(ctx);
@@ -3736,7 +3716,7 @@ export const PROP_PAINTERS = {
       c.lineTo(w * 0.16, h * 0.36);
       c.closePath();
     });
-    fineShape(finish?.side || '#f4c934', (c) => {
+    const sidePath = (c) => {
       c.moveTo(w * 0.31, h * 0.39);
       c.lineTo(w * 0.74, h * 0.35);
       c.quadraticCurveTo(w * 0.8, h * 0.34, w * 0.8, h * 0.41);
@@ -3746,7 +3726,59 @@ export const PROP_PAINTERS = {
       c.quadraticCurveTo(w * 0.32, h * 0.92, w * 0.32, h * 0.88);
       c.lineTo(w * 0.31, h * 0.39);
       c.closePath();
-    });
+    };
+    fineShape(finish?.side || '#f4c934', sidePath);
+    // CHROME. A mirror finish is what it reflects: bright sky over the upper
+    // face, a hard dark horizon just below the middle, lighter ground under it,
+    // and two fixed specular streaks across the part the wing leaves bare. All
+    // of it is fixed to the casing — the toaster never turns, so nothing here
+    // is allowed to flash on a clock (see the glint rule for the ball tops).
+    if (finish?.chrome) {
+      ctx.save();
+      ctx.beginPath(); sidePath(ctx); ctx.clip();
+      // tests/props.js traces painters on a recorder that returns no gradient.
+      const g = ctx.createLinearGradient(0, h * 0.35, 0, h * 0.92);
+      if (g) {
+        for (const [at, col] of finish.chrome) g.addColorStop(at, col);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(w * 0.35, h * 0.3); ctx.lineTo(w * 0.4, h * 0.3);
+      ctx.lineTo(w * 0.33, h * 0.95); ctx.lineTo(w * 0.28, h * 0.95);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(w * 0.44, h * 0.3); ctx.lineTo(w * 0.46, h * 0.3);
+      ctx.lineTo(w * 0.39, h * 0.95); ctx.lineTo(w * 0.37, h * 0.95);
+      ctx.closePath(); ctx.fill();
+      // The travelling glint (applianceSheenSprite): a soft white band at `pos`
+      // across the face, as bright as `a`. It sits under the wing, which is
+      // painted after it.
+      if (finish.sheen && finish.sheen.a > 0) {
+        // Across the part of the face the wing leaves bare (authored 0.3..0.58).
+        const cx = w * (0.3 + 0.28 * (finish.sheen.pos + 1) / 2);
+        const half = w * 0.07;
+        const band = ctx.createLinearGradient(cx - half, 0, cx + half, 0);
+        if (band) {
+          band.addColorStop(0, 'rgba(255,255,255,0)');
+          band.addColorStop(0.5, `rgba(255,255,255,${0.9 * finish.sheen.a})`);
+          band.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = band;
+          ctx.beginPath();
+          ctx.moveTo(cx - half + w * 0.04, h * 0.3); ctx.lineTo(cx + half + w * 0.04, h * 0.3);
+          ctx.lineTo(cx + half - w * 0.04, h * 0.95); ctx.lineTo(cx - half - w * 0.04, h * 0.95);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      ctx.beginPath(); sidePath(ctx);
+      ctx.strokeStyle = 'rgba(55,35,12,0.22)';
+      ctx.lineWidth = Math.max(0.24, u * 0.015);
+      ctx.stroke();
+    }
     fineShape(finish?.top || '#ffe16a', (c) => {
       c.moveTo(w * 0.17, h * 0.36);
       c.lineTo(w * 0.31, h * 0.28);
@@ -3759,7 +3791,7 @@ export const PROP_PAINTERS = {
       c.quadraticCurveTo(w * 0.32, h * 0.4, w * 0.3, h * 0.38);
       c.closePath();
     });
-    stroke(ctx, 'rgba(178,124,22,0.55)', Math.max(0.2, u * 0.011), (c) => {
+    stroke(ctx, finish?.edge || 'rgba(178,124,22,0.55)', Math.max(0.2, u * 0.011), (c) => {
       c.moveTo(w * 0.35, h * 0.39);
       c.lineTo(w * 0.77, h * 0.36);
     });
@@ -3767,19 +3799,19 @@ export const PROP_PAINTERS = {
     // The ejector lives on the narrow side plane. Its thumb rises as the
     // independent toast cycle opens, making the mechanism legible without the
     // old floating knob.
-    stroke(ctx, '#6e4518', Math.max(0.26, u * 0.014), (c) => {
+    stroke(ctx, finish?.lever || '#6e4518', Math.max(0.26, u * 0.014), (c) => {
       c.moveTo(w * 0.235, h * 0.49);
       c.lineTo(w * 0.235, h * 0.74);
     });
     const sliderY = h * (0.67 - toastOpen * 0.13);
-    fineShape('#4a2b12', (c) => rr(c, w * 0.19, sliderY, w * 0.09, h * 0.07, w * 0.022));
+    fineShape(finish?.slot || '#4a2b12', (c) => rr(c, w * 0.19, sliderY, w * 0.09, h * 0.07, w * 0.022));
 
     // A very small travelling gleam keeps the collectible feeling prized
     // without competing with the toast or feather animation.
     const glimmer = Math.max(0, Math.sin(toastPhase * 2 - 0.45));
     ctx.save();
     ctx.globalAlpha = 0.22 + glimmer * 0.62;
-    plain(ctx, '#fff8c8', (c) => star(c, w * 0.67, h * 0.56, w * (0.012 + glimmer * 0.014), w * 0.005, 4));
+    plain(ctx, finish?.glint || '#fff8c8', (c) => star(c, w * 0.67, h * 0.56, w * (0.012 + glimmer * 0.014), w * 0.005, 4));
     ctx.restore();
 
     // Clip the full square slice at the slot line: at the bottom of its slow
@@ -3806,7 +3838,7 @@ export const PROP_PAINTERS = {
     ctx.translate(w * 0.5, h * 0.325);
     ctx.rotate(-0.07);
     ctx.translate(-w * 0.5, -h * 0.325);
-    plain(ctx, '#4a2b12', (c) => rr(c, w * 0.36, h * 0.309, w * 0.28, h * 0.036, h * 0.016));
+    plain(ctx, finish?.slot || '#4a2b12', (c) => rr(c, w * 0.36, h * 0.309, w * 0.28, h * 0.036, h * 0.016));
     ctx.restore();
 
     // Large foreground wing wraps across the side. Separate feather tips make
@@ -3833,7 +3865,28 @@ export const PROP_PAINTERS = {
     });
     ctx.restore();
 
+    // At the glint's peak the band throws a star off the face's top edge, over the
+    // wing and out past the silhouette — the part of a glint that reads at lane size.
+    if (finish.sheen && finish.sheen.a > 0.35) {
+      const k = (finish.sheen.a - 0.35) / 0.65;
+      const cx = w * (0.3 + 0.28 * (finish.sheen.pos + 1) / 2) + w * 0.03;
+      ctx.save();
+      ctx.globalAlpha = 0.3 * k;
+      plain(ctx, '#ffffff', (c) => c.arc(cx, h * 0.3, w * 0.09 * k, 0, Math.PI * 2));
+      ctx.globalAlpha = k;
+      plain(ctx, '#ffffff', (c) => star(c, cx, h * 0.3, w * (0.07 + 0.13 * k), w * 0.014, 4));
+      ctx.restore();
+    }
+
     ctx.restore();
+  },
+  // THE SILVER TOASTER. What a stage offers in the gold one's place once its
+  // TOASTER plug is banked: the same appliance and the same animation, so it
+  // reads as "the toaster again", in a finish that says it is not the plug.
+  // Every warm mark goes cool with the casing — a brown slot or a gold rim
+  // left on steel reads as a gold toaster badly lit.
+  applianceSilver(ctx, w, h, frame = 0) {
+    PROP_PAINTERS.appliance(ctx, w, h, frame, SILVER_TOASTER_FINISH);
   },
   // THE MASTER STRIP. A six-gang bar lying on the floor with a big red rocker at
   // one end, and it is the object the whole game is about: the opening film
@@ -5420,7 +5473,7 @@ export const PROP_FRAMES = {
   ...finishDogTable(ANIMAL_FRAMES),
   // Live and dead. Not an animation — the film cuts between them on one frame.
   powerStrip: 2,
-  cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
+  cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96, applianceSilver: 96,
   // The thistle takes the cactus's six: it replaces it in the lane, so the two
   // must sway on the same ring or a mixed pattern reads as two clocks.
   thistle: 6, thistleBig: 6,
@@ -5471,7 +5524,7 @@ const PROP_FPS = {
   rake: 1,
   ...ANIMAL_FPS,
   ...finishDogTable(ANIMAL_FPS),
-  qcrate: 12, appliance: 24, buzzbird: 16,
+  qcrate: 12, appliance: 24, applianceSilver: 24, buzzbird: 16,
   // Fire is fast or it looks like jelly; the spike plate is slow because it is
   // a machine breathing, not a machine cycling. The saw is the fastest thing in
   // the table: below ~20 the eight tooth-steps read as a wobble rather than a
@@ -5581,7 +5634,7 @@ const PROP_DETAIL_SCALE = {
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
   capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRewind: 2,
-  appliance: 2, cord: 2, resident: 2, dustdevil: 2,
+  appliance: 2, applianceSilver: 2, cord: 2, resident: 2, dustdevil: 2,
   // Six sockets and two pin slots each inside a bar that ships around 56 units
   // wide and 9 tall. The slots are what stop the gangs reading as louvres.
   powerStrip: 3,
@@ -5826,6 +5879,34 @@ export function rasterize(key, w, h, paintFn) {
   paintFn(x, w, h);
   cacheSet(key, c);
   return c;
+}
+
+// THE SILVER TOASTER'S GLINT. The casing's chrome is fixed to it, but the toaster
+// hovers, and as it rises and falls the reflected highlight slides across its face:
+// `pos` (-1..1) is where the band is, `a` how bright — the caller makes `a` a narrow
+// lobe around the specular angle, so it flares twice a hover, once each way, and
+// never on a clock. Painted fresh into one reused canvas while it shows, since the
+// band has no fixed set of positions to cache; otherwise the cached sprite serves.
+let sheenCanvas = null;
+export function applianceSheenSprite(w, h, frame, sheen) {
+  if (typeof document === 'undefined') return null;
+  const f = frame % propFrames('applianceSilver');
+  const detail = propDetailScale('applianceSilver');
+  const rw = w * detail, rh = h * detail;
+  if (!sheenCanvas) sheenCanvas = document.createElement('canvas');
+  const cw = Math.max(1, Math.round(rw * SS)), ch = Math.max(1, Math.round(rh * SS));
+  if (sheenCanvas.width !== cw || sheenCanvas.height !== ch) {
+    sheenCanvas.width = cw; sheenCanvas.height = ch;
+  }
+  const x = sheenCanvas.getContext('2d');
+  if (!x) return null;
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.clearRect(0, 0, cw, ch);
+  x.scale(SS, SS);
+  x.lineJoin = 'round';
+  x.lineCap = 'round';
+  PROP_PAINTERS.appliance(x, rw, rh, f, { ...SILVER_TOASTER_FINISH, sheen });
+  return sheenCanvas;
 }
 
 // Cached vector prop rasterized at SS x its logical size.

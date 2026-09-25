@@ -27,6 +27,8 @@ const suites = [
   'tests/level-editor.js',
   // The launcher's port map, against the tools it claims to know.
   'tests/desk.js',
+  // Every visible lab section has a date, and file order stays old to new.
+  'tests/gallery-section-order.js',
   'tests/story-beats.js',
   'tests/intro-sequence.js',
   'tests/tutorial.js',
@@ -465,6 +467,7 @@ const suites = [
   'tests/title-weapons.js',
   'tests/minigames.js',
   'tests/plug-tally.js',
+  'tests/silver-toaster.js',
   'tests/boss.js',
   // The boss's drops and the lane's shooters used to be placed off VIEW_W,
   // which made the same fight a different fight at each zoom — the bug

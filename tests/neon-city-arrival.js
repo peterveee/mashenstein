@@ -107,24 +107,12 @@ for (const stageIndex of [1, 2]) {
 assert(neonMoonPhase(2, undefined) === neonMoonPhase(2, 0),
   'with no progress to read, a stage shows the phase it opens on');
 
-// THE ECLIPSE belongs to neon 3 alone, and it is PARTIAL — the shadow takes a
-// bite and stops. What is pinned here is the ownership and the direction; how
-// deep the bite goes is art and lives in NEON_ECLIPSE_DEEPEST.
-for (const stageIndex of [1, 2]) {
-  assert([0, 0.5, 1].every((p) => neonMoonEclipse(stageIndex, p) === 0),
+// THE ECLIPSE is retired (25 Sep 2026): no stage eclipses, so neon 3 finishes
+// under a clear full moon.
+for (const stageIndex of [1, 2, 3]) {
+  assert([0, 0.5, 1, undefined].every((p) => neonMoonEclipse(stageIndex, p) === 0),
     `neon ${stageIndex} never eclipses`);
 }
-assert(neonMoonEclipse(3, 0) === 0, 'neon 3 opens with the moon clear of the shadow');
-assert(neonMoonEclipse(3, 1) === 1, 'and reaches its deepest at the tape');
-let lastEclipse = -1;
-for (let i = 0; i <= 20; i++) {
-  const e = neonMoonEclipse(3, i / 20);
-  if (e < lastEclipse - 1e-9) assert(false, `the shadow retreated at ${i / 20}`);
-  lastEclipse = e;
-}
-assert(lastEclipse === 1, 'the shadow only ever advances');
-assert(neonMoonEclipse(3, undefined) === 0,
-  'a picture with no progress shows no eclipse');
 
 // THE TRAINS FLY IN AND LAND, and there is no schedule left to pin. An
 // overtake used to be a window in stage progress — it had to dodge the train

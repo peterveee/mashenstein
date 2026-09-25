@@ -15,10 +15,13 @@
 // never mirrored at draw time (drawWorldEntity in game/draw.js draws the raster
 // as-is), so the orientation has to be baked into the art.
 //
-// The four are built on ONE rig — the same skeleton, gait solver and head
-// assembly — parameterised per breed. Four hand-drawn quadrupeds would drift
-// apart the first time the run cycle was retimed; one rig with four parameter
-// blocks means a fix to how a hock breaks is a fix to all of them.
+// THE DOGS MOVED OUT (24 Sep 2026). The three dogs and the finish guard are drawn
+// by sprites/dogs.js — the dogs bake-off's B, CLEAN LINE: one silhouette, one fine
+// line, a keyed rotary gallop — and spread into the tables below from there. The
+// quadruped rig here now draws the CAT alone; its dog breed blocks went with them
+// (the old dogs are kept for the gallery in src/dev/dogs-was.js).
+
+import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS } from './dogs.js';
 
 // --------------------------------------------------------------- primitives
 // Same ink as every other prop, so an animal standing beside a crate is drawn
@@ -239,60 +242,7 @@ function footAt(p, cx, ground, reach, lift) {
 // travel and hind hocks break FORWARD; because the art faces left, that comes
 // out as the signs below.
 const BREEDS = {
-  // ---- the lean one. Cropped ears, whip tail, all reach and no bulk: the
-  // silhouette is a wedge pointed at the hero. Reads fastest of the three at
-  // gameplay size because the legs are thin enough to see daylight between.
-  dogSnarler: {
-    coat: '#3a3446', coatHi: '#4a4258', coatLo: '#26212f', belly: '#a87a4c', mark: '#b07840',
-    ear: 'crop', tail: 'whip', ribs: 0, collar: 'spiked',
-    // Short coat: what a doberman raises is a narrow, sharp ridge, not a
-    // mane. Many fine spikes rather than few long ones is the whole
-    // difference, and it keeps the lean wedge this breed is built on.
-    pelt: 'short', hackle: '#4e465e',
-    fur: { spine: 0.62, ruff: 0.72, rump: 0.34 },
-    leg: 0.44, chest: 0.33, arch: 0.02, tuck: 0.075,
-    shoulderX: 0.430, hipX: 0.800, headX: 0.290, headR: 0.128, headY: 0.365,
-    muzzle: 0.115, jawDrop: 0.55, neck: 0.26,
-    reach: 0.105, lift: 0.105, bob: 0.042, flex: 0.026,
-    boneUp: 0.036, boneLo: 0.024, paw: 0.030, haunch: 0.105,
-    teeth: 1.0, eye: '#f6d33c',
-  },
-  // ---- the bruiser. Low, wide, front-heavy: a head and a chest with a dog
-  // attached behind. Short legs mean short reach, so the gait is a busy chop
-  // rather than a lope, which is what makes it read as the heavy one.
-  dogBruiser: {
-    coat: '#c08a4a', coatHi: '#d09b5c', coatLo: '#95622f', belly: '#ecd6b2', mark: '#6a4420',
-    ear: 'flop', tail: 'long', ribs: 0, collar: 'spiked',
-    // The ruff carries this one. On a neck already this thick a raised
-    // scruff reads as bulk AND anger at once, which is more than a spine
-    // ridge buys on a dog with barely any back to put one on. Fur runs
-    // DARKER here — on a light coat a lighter fur has nothing to read against.
-    pelt: 'short', hackle: '#8a5526',
-    fur: { spine: 0.55, ruff: 0.95, rump: 0.30 },
-    leg: 0.33, chest: 0.42, arch: -0.015, tuck: 0.028,
-    shoulderX: 0.430, hipX: 0.815, headX: 0.272, headR: 0.150, headY: 0.320,
-    muzzle: 0.070, jawDrop: 0.70, neck: 0.15,
-    reach: 0.072, lift: 0.070, bob: 0.028, flex: 0.015,
-    boneUp: 0.050, boneLo: 0.034, paw: 0.040, haunch: 0.125,
-    teeth: 1.45, eye: '#e04848',
-  },
-  // ---- the feral one. Tall, gaunt, hackles up the whole spine and ribs
-  // showing. The only dog drawn with its back ARCHED, which with the raised
-  // hackles is most of why it reads as the dangerous one rather than merely
-  // the big one.
-  dogFeral: {
-    coat: '#6a6a74', coatHi: '#7c7c86', coatLo: '#45454f', belly: '#a09a94', mark: '#2e2e36',
-    ear: 'prick', tail: 'brush', ribs: 1, collar: 'none',
-    // The shaggy one: fewer, longer, clumpier spikes on every edge.
-    pelt: 'shaggy', hackle: '#4a4a56',
-    fur: { spine: 1.15, ruff: 1.05, rump: 0.85 },
-    leg: 0.48, chest: 0.31, arch: 0.030, tuck: 0.095,
-    shoulderX: 0.440, hipX: 0.805, headX: 0.305, headR: 0.126, headY: 0.360,
-    muzzle: 0.130, jawDrop: 0.62, neck: 0.30,
-    reach: 0.112, lift: 0.120, bob: 0.048, flex: 0.032,
-    boneUp: 0.034, boneLo: 0.022, paw: 0.029, haunch: 0.100,
-    teeth: 1.15, eye: '#f0f0f8',
-  },
+  // (The three dog breeds lived here until 24 Sep 2026: see sprites/dogs.js.)
   // ---- the cat. Not a small dog: the spine ARCHES hard at the middle rather
   // than at the withers, the tail bottlebrushes straight up, the ears go FLAT
   // to the skull and the fur stands the length of the back. Those four are the
@@ -1273,9 +1223,8 @@ function goose(ctx, w, h, frame = 0) {
 // The five tables sprites/props.js spreads into its own. Keeping them together
 // at the bottom is what makes the registration one line each over there.
 export const ANIMAL_PAINTERS = {
-  dogSnarler: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogSnarler),
-  dogBruiser: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogBruiser),
-  dogFeral: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.dogFeral),
+  // The three dogs are sprites/dogs.js (the dogs bake-off's B, shipped 24 Sep 2026).
+  ...DOG_PAINTERS,
   catFury: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.catFury),
   rattlesnake,
   goose,
@@ -1285,12 +1234,9 @@ export const ANIMAL_PAINTERS = {
 // dogs. Only its showcase silhouette changes: all three finish skins get a
 // long tail so the larger guard reads as a complete dog when it arrives at the
 // tape. The aliases remain separate so the finish-only art never leaks into a
-// mid-lane encounter; Bruiser's long-tail rig is shared by both appearances.
-export const FINISH_DOG_PAINTERS = {
-  finishSnarler: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, { ...BREEDS.dogSnarler, tail: 'long' }),
-  finishBruiser: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, { ...BREEDS.dogBruiser, tail: 'long' }),
-  finishFeral: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, { ...BREEDS.dogFeral, tail: 'long' }),
-};
+// mid-lane encounter. Painted by sprites/dogs.js, re-exported here so props.js
+// keeps its one import line.
+export const FINISH_DOG_PAINTERS = DOG_FINISH_PAINTERS;
 
 export const ANIMAL_NAMES = Object.keys(ANIMAL_PAINTERS);
 

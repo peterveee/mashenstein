@@ -36,6 +36,7 @@ import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
 import { tngr2WorkerAvailable } from './engine/tngr2/tables.js';
+import { paperTextureSource } from './engine/paper-material.js';
 import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGES, STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
@@ -785,6 +786,26 @@ function boot() {
         .finally(() => setTimeout(next, offThread ? 0 : 50));
     };
     setTimeout(next, offThread ? 500 : 3000);
+  }
+  // THE PAPER FIBRE SHEETS, likewise ahead of need. Each material is ~100 ms of
+  // strokes on the main thread (paintPaperFibres), built the first time anything draws
+  // with it and cached for the page. neon-1's golden sky (cardstockClear) paid it on
+  // its first frame — AFTER the song had started — and the scheduler's queue fell from
+  // ~230 ms to ~50 (25 Sep 2026, work/local/neon-audio-0925). One material per slice
+  // on the title, and ABANDONED once a run has begun: waiting it out only moved the
+  // cost onto the results screen, with the song still playing. RunState.enter warms the
+  // material a stage needs first, so a dev-URL start is covered without this.
+  {
+    // The three shipped play draws with (stage presets and the neon sky, terrain, the
+    // plumber sky); `felt` and `cardstockQuiet` are only reached through a dev ?paper=.
+    const materials = ['cardstockClear', 'cardstockSoft', 'skySmooth'];
+    const next = () => {
+      if (!materials.length) return;
+      if (typeof window !== 'undefined' && window.__mash_state === 'RunState') return;
+      paperTextureSource(materials.shift());
+      setTimeout(next, 250);
+    };
+    setTimeout(next, 1500);
   }
   // Prime Web Audio before the title state is installed. Browsers/builds that
   // permit autoplay now begin the menu theme immediately; stricter browsers

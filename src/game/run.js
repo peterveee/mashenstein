@@ -49,16 +49,18 @@ import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
-  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow }
+  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow, takeDesertTrapShutter, desertSpeedTrapStage,
+  neonStruckX, neonStruckPlanL, neonStruckTower, neonPickMast, neonTowerNow, neonTokyoTowerTip }
   from '../engine/stylePacks/index.js';
 import {
   neonStartsTurned, neonTurnStep, neonNightStrikeStep, neonAuroraStrength, neonOpensGolden, drawNeonBolt,
-  neonStrikeFlash, neonStrikeRadius, NEON_STRIKE_SECONDS, neonPreFlicker,
+  neonStrikeFlash, neonStrikeRadius, NEON_STRIKE_SECONDS, neonPreFlicker, NEON_STRIKE_BEATS, neonStrikeLight,
+  neonTowerFlare, neonSignSparks,
 } from '../engine/stylePacks/neonMoods.js';
 import { ensureKanaFonts, NEON_ANNOUNCE_KANA } from '../engine/kana.js';
 import { TRON_PALETTE } from '../sprites/train.js';
 import { setGlowSprites } from '../sprites/props.js';
-import { paperStrengthOf } from '../engine/paper-material.js';
+import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js';
 import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
@@ -529,6 +531,18 @@ function rollJumpFace(rng, avoid) {
 }
 // Rewind: hold Left Arrow / A to reverse time, up to 10 seconds at ~30 fps.
 // Snapshots capture the full world state; popping them restores it.
+// What the silver toaster pays. It stands in for a gold one whose plug and
+// bank bonus are already spent, so this is the whole of its reward.
+const SILVER_TOASTER_COINS = 50;
+
+// How many beats ahead of a storm strike its tower is planned (updateNeonStruck): six
+// seconds at 150 bpm, long enough for it to scroll in from out of the picture.
+const NEON_STRUCK_LEAD_BEATS = 16;
+// Where the storm's sky bolt runs in landscape: along the top edge on the turn, above
+// the frame on a night strike (see the strike in draw).
+const NEON_CRAWLER_TURN_TOP = 8;
+const NEON_CRAWLER_NIGHT_TOP = -34;
+
 const REWIND_SECONDS = 10;
 // 15, not 30. Capturing costs a full pass over the live world, so the rate is
 // the single biggest lever on what recording costs — and the coarser reverse
@@ -1004,6 +1018,14 @@ const BOOST_MISS_TAIL = 0.18;
 // cliff; hit and it keeps going. One shape, two endings, and they are the
 // opposite of each other, which is the only reason either one is legible.
 const BOOST_HIT_TAIL = 0.34;
+// THE SPEED CAMERA GETS A QUIET ROAD (Peter, 25 Sep: a ramp near the camera talks over
+// its click). The stage pins ONE ramp in the opening, passed before the 67 sign, and no
+// other ramp is dealt until every ramp's ticks and whoosh are clear of the shutter.
+// Measured (lane camX): landscape passes the sign at 490 and fires at 562; portrait
+// fires early, at 207, as soon as the board is in view, so the pinned ramp pays out at
+// about camX 35 and its whoosh has ended before then.
+const TRAP_RAMP_X = 100;
+const TRAP_RAMP_FREE_UNTIL = 800;
 // THE CARD BOX'S SHARE OF THE BLAST. 'boom' carries SFX_TRIM 0.36, a number set
 // so the title asteroid does not walk over the menu music — and the card box is
 // the opposite job: a percussive hit on a beat line, under a full song, that has
@@ -2088,6 +2110,9 @@ const GIRDER_RING_NORM = (() => {
 // What the power slide breaks by kicking through it: boxes, soft snowmen, and brittle ice
 // crystals (Peter, 24 Sep). Not tombstones.
 const SLIDE_PLOWABLE = new Set(['crate', 'qcrate', 'snowman', 'snowmanBig', 'iceCrystals']);
+
+// World px the neon fly-past trains cruise higher in portrait.
+const NEON_FLYPAST_PORTRAIT_LIFT = 7;
 
 export class RunState {
   // The lifecycle admits this frame-based screen on a phone in portrait. The
@@ -3811,6 +3836,8 @@ export class RunState {
     // which is when the song's beat is known: an attempt that starts after the song
     // has turned minor starts at night.
     this.neonSky = null;
+    // The tower the next storm strike lands on (updateNeonStruck).
+    this.neonStruck = null;
     this.neonFlypasts = [];
     if (this.cabinet?.id === 'neon') ensureKanaFonts();
     this.tRun = 0;
@@ -4035,6 +4062,7 @@ export class RunState {
     this.pitPlan = [];
     this.crossings = [];
     const rhythmChart = this.beatLock ? this.cabinet.beatCharts?.[this.stage?.index] : null;
+    const speedTrap = !this.overtime && this.cabinet.style === 'faux3d' && desertSpeedTrapStage(this.stage?.index);
     if (this.beatLock && rhythmChart) {
       this.spawner = new BeatSpawner({
         bank: this.cabinet.music,
@@ -4079,9 +4107,11 @@ export class RunState {
         iceSlide: this.cabinet.mechanic === 'ice' ? 14 : 0,
         sections: this.layout?.sections || null,
         totalDist: this.totalDist,
+        boostFreeUntil: speedTrap ? TRAP_RAMP_FREE_UNTIL : -Infinity,
       });
     }
     this.spawner.nextX = 300;
+    if (speedTrap) this.obstacles.push(makeObstacle('boostPad', TRAP_RAMP_X));
     this.drip = new DripSpawner(this.rng.stream('drip'), this.bench, {
       sections: this.layout?.sections || null,
       totalDist: this.totalDist,
@@ -4215,6 +4245,11 @@ export class RunState {
     this.rhythmBonusT = this.beatLock && this.challenge ? RHYTHM_BONUS_TIME : 0;
     this.applianceSpawned = false;
     this.applianceGot = false;
+    this.silverGot = false;
+    // A stage whose TOASTER plug is already banked offers the SILVER toaster in
+    // the gold one's place: same spot, same flight, coins only.
+    this.applianceType = this.stage && (this.save.slot.campaign.plugs[this.stage.id] || [])[2]
+      ? 'applianceSilver' : 'appliance';
     this.finishDogSpawned = false;
     this.dogSignSpawned = false;
     // WHETHER THIS STAGE HAS A DOG AT ALL. Rolled once, here, from its own
@@ -4422,6 +4457,10 @@ export class RunState {
     // first; otherwise (a dev URL straight into a stage) the ~700 ms it costs lands
     // here, ahead of the song's first note, instead of inside its start gap.
     Audio.warmSongTables?.(musicSong?.bank || this.cabinet.music, musicSong ? musicSong.mix : undefined);
+    // The stage's paper sheet, for the same reason: ~100 ms the first time it is drawn,
+    // which on neon-1 was the golden sky's first frame, after the song had started. Free
+    // when boot's title-screen warm got there (see main.js).
+    paperTextureSource(this.stage?.paperPreset || 'cardstockClear');
     MusicDirector.enterStage(musicSong?.bank || this.cabinet.music, {
       mixOverride: musicSong?.mix,
       arrangementOverride: musicSong?.arrangement,
@@ -4847,6 +4886,138 @@ export class RunState {
    * Also the platform announcement: once an attempt, the first time a train is standing
    * on screen — まもなく でんしゃが まいります, "a train is now approaching".
    */
+  /**
+   * THE STRUCK TOWER, planned (storm-bolt bake-off L; the tower and its sign are the
+   * pack's, stylePacks/index.js neonStruckTower). NEON_STRUCK_LEAD_BEATS before each
+   * strike beat a plan opens; while the tower is out of the picture the draw keeps
+   * re-aiming it (neonStruckFor) from the camera's measured speed and the seconds left
+   * on the song clock, so it scrolls in to stand mid-picture on the beat, and once it
+   * enters it is held. `since` counts from the strike so its sign stays blown as it
+   * leaves. A strike with no plan (an attempt begun inside the lead) falls back.
+   */
+  updateNeonStruck(dt, beat, strikeNow) {
+    const moved = Number.isFinite(this.neonStruckCamPrev) ? (this.camX - this.neonStruckCamPrev) / Math.max(dt, 1e-3) : 0;
+    this.neonStruckCamPrev = this.camX;
+    this.neonCamVel = Number.isFinite(this.neonCamVel)
+      ? this.neonCamVel + (moved - this.neonCamVel) * Math.min(1, dt * 2) : moved;
+    let p = this.neonStruck;
+    if (p?.gone) this.neonStruck = p = null;
+    if (strikeNow) {
+      if (this.neonSky) this.neonSky.target = null;
+      if (p && p.since == null) p.since = 0;
+    } else if (p && p.since != null) p.since += dt;
+    if (!p && Number.isFinite(beat)) {
+      const at = NEON_STRIKE_BEATS.find((b) => b > beat && b - beat <= NEON_STRUCK_LEAD_BEATS);
+      if (at != null) {
+        this.neonStruckCount = (this.neonStruckCount || 0) + 1;
+        this.neonStruck = p = { beat: at, L: null, frozen: false, tokyo: null, since: null, gone: false, n: this.neonStruckCount, secs: 0 };
+      }
+    }
+    if (p && p.since == null) {
+      // A beat that has run past the plan without a strike (a pause, a long frame, a
+      // retry's jump) drops it; the next strike plans its own.
+      if (Number.isFinite(beat) && beat > p.beat + 1) { this.neonStruck = null; return; }
+      const spb = 60 / ((Audio.bpm || 150) * (Audio.tempo || 1));
+      p.secs = Number.isFinite(beat) ? Math.max(0, (p.beat - beat) * spb) : 0;
+    }
+  }
+
+  /** The struck tower for this frame's backdrop, re-aimed while it is out of view. */
+  neonStruckFor(ctx, cam, context) {
+    const p = this.neonStruck;
+    if (!p) return null;
+    const cov = ctx.__mashBackgroundCoverage || { left: 0, width: W };
+    const right = cov.left + cov.width;
+    if (!p.frozen) {
+      const camPred = cam + (this.neonCamVel || 0) * p.secs;
+      // The Tokyo Tower takes the strike instead when it will be in the picture.
+      if (p.tokyo == null) p.tokyo = !!neonTokyoTowerTip(ctx, camPred, context, this.totalDist)?.inView;
+      if (p.tokyo) return null;
+      // Right of centre: it scrolls left for the whole strike, and portrait's street
+      // crosses its narrow picture in about a second and a half.
+      let L = neonStruckPlanL(ctx, camPred, this.portraitFrame() ? 0.72 : 0.6);
+      if (neonStruckX(L, cam) <= right + 40) {
+        L = Math.max(L, right + 40 - neonStruckX(0, cam));
+        p.frozen = true;
+      }
+      p.L = L;
+    }
+    if (p.tokyo) return null;
+    if (p.since != null && p.since > NEON_STRIKE_SECONDS
+      && (neonStruckX(p.L, cam) + 80 < cov.left || p.since > 20)) p.gone = true;
+    return { L: p.L, n: p.n, since: p.since };
+  }
+
+  /**
+   * What the bolt lands on, chosen as it strikes and held for the strike: the Tokyo
+   * Tower if it is in view, else the struck sign tower if it made it into view, else the
+   * middle row's nearest mast (Peter, 25 Sep: "We can also do 1 and 2 just in case").
+   */
+  neonStrikeTarget(ctx, cam, context, hitX) {
+    const sky = this.neonSky;
+    if (!sky) return null;
+    if (!sky.target) {
+      const tokyo = neonTokyoTowerTip(ctx, cam, context, this.totalDist);
+      const struck = neonStruckTower(ctx, cam, context);
+      sky.target = tokyo?.inView ? { kind: 'tokyo' }
+        : struck?.inView ? { kind: 'sign' }
+          : { kind: 'mast', pick: neonPickMast(ctx, cam, context, hitX) };
+    }
+    const k = sky.target.kind;
+    if (k === 'tokyo') {
+      const tip = neonTokyoTowerTip(ctx, cam, context, this.totalDist);
+      return tip ? { kind: k, tipX: tip.tipX, tipY: tip.tipY } : null;
+    }
+    const tower = k === 'sign' ? neonStruckTower(ctx, cam, context) : neonTowerNow(ctx, cam, context, sky.target.pick);
+    return tower ? { kind: k, tower, tipX: tower.tipX, tipY: tower.tipY } : null;
+  }
+
+  /**
+   * SPARKS OFF THE BACK OF A LANDING TRAIN (Peter, 25 Sep: "can we have sparks at the
+   * back of the train as it lands on the ground?"). Steel on the rail: a burst off the
+   * rear wheels on the frame they touch, then a stream for as long as it is braking
+   * into the berth, thinning as it slows. Thrown BACK and up — the train is running
+   * right, so the grind leaves it to the left — with real weight, so each spark arcs
+   * and drops rather than hanging.
+   *
+   * Keyed to the arrival curve rather than a clock: the wheels are down from the frame
+   * `lift` reaches zero, and `u` runs to 1 as it stops, so the stream's strength is
+   * simply how much of the brake is left. That brake is SHORT — about 0.3 s at run
+   * speed — so the touchdown burst carries the effect and the sparks live long enough
+   * (up to ~0.8 s) for the shower to hang there after the train has stopped.
+   * FINE AND FEW (Peter, 25 Sep: "much finer sparks please and less of them"): specks
+   * at the particle floor's radius, a burst of 14 and a thin stream. Only a train that LANDS sparks — a flypast
+   * never touches the rail, and a departing one lifts straight off it.
+   */
+  updateTrainLandingSparks(dt) {
+    if (!this.routes?.length || !(dt > 0)) return;
+    const r01 = () => this.fxRng.float();
+    const COLORS = ['#fff6c8', '#ffd24a', '#ff9a30'];
+    const spark = (x, y, k) => {
+      spawn(x + r01() * 4, y - r01() * 1.5,
+        -60 - r01() * 200 * (0.5 + k), -50 - r01() * 150 * (0.4 + k),
+        0.35 + r01() * 0.45, COLORS[Math.floor(r01() * COLORS.length)], 0.5 + r01() * 0.3, 420);
+    };
+    for (const r of this.routes) {
+      if (r.fate !== 'land') continue;
+      const air = trainArrival(this.camX, r);
+      if (!air || air.hidden || air.leaving || air.lift > 0.01 || air.u >= 1) continue;
+      // The rear bogie: a few px in from the tail, on the rail a pixel over the lane.
+      const x = r.x + air.dx + 8;
+      const y = terrainGroundY(this.cabinet, x) - 1;
+      if (r.sparkFromU == null) {
+        // The wheels have just touched: the one big hit.
+        r.sparkFromU = air.u;
+        for (let i = 0; i < 14; i++) spark(x, y, 1);
+        r.sparkCarry = 0;
+      }
+      // What is left of the brake, 1 at touchdown to 0 at the stop.
+      const k = 1 - (air.u - r.sparkFromU) / Math.max(1e-6, 1 - r.sparkFromU);
+      r.sparkCarry = (r.sparkCarry || 0) + dt * 110 * k;
+      while (r.sparkCarry >= 1) { r.sparkCarry -= 1; spark(x, y, k); }
+    }
+  }
+
   updateNeonSky(dt) {
     if (this.cabinet?.id !== 'neon') return;
     const stageIndex = this.stage?.index ?? 1;
@@ -4894,6 +5065,7 @@ export class RunState {
       sky.turned = step.turned;
       sky.thundered = step.thundered;
     }
+    this.updateNeonStruck(dt, beat, sky.strikeT === 0);
     sky.prevBeat = beat;
     // NO TRAIN LANDS BEFORE THE TURN. The moment a train's flight would begin, it is
     // decided: after the turn it flies in and lands as ever; before it, its route
@@ -4912,6 +5084,7 @@ export class RunState {
         }
       }
     }
+    this.updateTrainLandingSparks(dt);
     if (!sky.announced && this.routes?.length) {
       for (const r of this.routes) {
         if (r.kind !== 'island' || (r.rise || 0) < 24) continue;
@@ -7694,7 +7867,7 @@ export class RunState {
       // A coin arc diving into a tunnel mouth and a coin row up on a sky road
       // both fail it, and both used to be swept by a portal they pass under.
       if (p.alt + p.h < -4 || p.alt > PORTAL_H + 4) continue;
-      if (p.type === 'appliance') {
+      if (p.def.appliance) {
         p.x = colEnd;
         if (p._baseX != null) p._baseX = p.x;
       } else {
@@ -11826,8 +11999,14 @@ export class RunState {
         const underSlab = ob.x + ob.w >= is.x && ob.x <= exitFrom && headroom < needs;
         const inEntry = entryFrom != null && ob.def.action !== 'none'
           && ob.x + ob.w >= entryFrom && ob.x <= is.x;
-        if (underSlab) ob.live = false;
-        else if (inExit || inEntry) retireExit(ob);
+        // A MOVER takes the on-screen guard here too. A static prop is judged
+        // once, where it was laid, a screen ahead; a goose, dog, barrel or
+        // zombie walks INTO the slot under a low slab — behind the hero after
+        // he has jumped it, or mid-picture in portrait — and deleting it there
+        // is the pop Peter saw (24 Sep). The slab rule is only meant to settle
+        // the lane before it scrolls in.
+        if (underSlab && !ob.def.vx) ob.live = false;
+        else if (underSlab || inExit || inEntry) retireExit(ob);
       }
     }
   }
@@ -11846,15 +12025,16 @@ export class RunState {
       // the tape entirely — where the draw gate refuses to paint it. It is a
       // bonus rather than a mission piece, so unlike spawnObjective it takes the
       // full clear lane rather than squeezing into the last slot before the pole.
-      const maxX = this.laneWallX() - PICKUPS.appliance.w;
-      const x = this.clearOfHazards(Math.min(at + W, maxX), PICKUPS.appliance.w, alt, PICKUPS.appliance.h, maxX);
+      const def = PICKUPS[this.applianceType];
+      const maxX = this.laneWallX() - def.w;
+      const x = this.clearOfHazards(Math.min(at + W, maxX), def.w, alt, def.h, maxX);
       // No legal spot this frame — a hazard is sitting on the last one. Try
       // again next frame rather than write the stage's only appliance off: the
       // blocker is usually a shambler walking out of the way. `applianceSpawned`
       // is set only on success, so the "one per stage" rule still holds.
       if (x == null) return;
       this.applianceSpawned = true;
-      const p = makePickup('appliance', x, alt);
+      const p = makePickup(this.applianceType, x, alt);
       p._baseAlt = alt;
       p._baseX = p.x;
       this.pinPickupToBeat(p);
@@ -12556,7 +12736,7 @@ export class RunState {
         relay: this.relay.rng.state, spawn: this.spawner.rng?.state ?? null,
         drip: this.drip.rng.state,
       },
-      applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
+      applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot, silverGot: this.silverGot,
       finishDogSpawned: this.finishDogSpawned, dogSignSpawned: this.dogSignSpawned,
       rewindCapSpawned: this.rewindCapSpawned,
       // Whether the run's one loop has been stood up yet. It is a one-shot, and
@@ -12669,7 +12849,7 @@ export class RunState {
     if (rs.drip != null) this.drip.rng.state = rs.drip;
     this.obstacles = []; this.pickups = []; this.projectiles = [];
     this.portal = null;
-    this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
+    this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot; this.silverGot = s.silverGot;
     this.finishDogSpawned = !!s.finishDogSpawned;
     this.dogSignSpawned = !!s.dogSignSpawned;
     this.rewindCapSpawned = this.rewindUsed || !!s.rewindCapSpawned;
@@ -12980,7 +13160,7 @@ export class RunState {
     // progress — which is worth more than the allocation it costs at 15 Hz.
     s.mission = JSON.parse(JSON.stringify(this.mission));
     s.challenge = this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null;
-    s.applianceSpawned = this.applianceSpawned; s.applianceGot = this.applianceGot;
+    s.applianceSpawned = this.applianceSpawned; s.applianceGot = this.applianceGot; s.silverGot = this.silverGot;
     s.finishDogSpawned = this.finishDogSpawned;
     s.dogSignSpawned = this.dogSignSpawned;
     s.rewindCapSpawned = this.rewindCapSpawned;
@@ -13119,7 +13299,7 @@ export class RunState {
     // Mission / challenge
     this.mission = JSON.parse(JSON.stringify(s.mission));
     this.challenge = s.challenge ? JSON.parse(JSON.stringify(s.challenge)) : null;
-    this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
+    this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot; this.silverGot = s.silverGot;
     this.finishDogSpawned = !!s.finishDogSpawned;
     this.dogSignSpawned = !!s.dogSignSpawned;
     this.rewindCapSpawned = this.rewindUsed || !!s.rewindCapSpawned;
@@ -13678,6 +13858,13 @@ export class RunState {
       if (p.def.power === 'rewind') {
         this.floatText('REWIND ARMED: YOUR NEXT MISTAKE UNDOES ITSELF', '#7ce8a0');
       } else if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
+    } else if (p.def.silver) {
+      // Coins and nothing else: the plug it stands in for is already banked,
+      // so no plug sting, no objective toast, no score.
+      this.silverGot = true;
+      Audio.sfx('coinSpray', { count: SILVER_TOASTER_COINS, inBeats: this.pickupLineInBeats(p) });
+      this.coins += SILVER_TOASTER_COINS;
+      this.floatText(`+${SILVER_TOASTER_COINS} COINS`, '#bdcad8');
     } else if (p.def.appliance) {
       this.applianceGot = true;
       Audio.sfx('win', { inBeats: this.pickupLineInBeats(p) });
@@ -14291,6 +14478,7 @@ export class RunState {
       bestCombo: 0,
       challengeDone: this.challenge ? (!this.challenge.failed && (this.challenge.type === 'noDamage' ? this.damageTaken === 0 : this.challenge.count >= this.challenge.n)) : false,
       applianceGot: this.applianceGot,
+      silverGot: this.silverGot,
       team: [...this.usedHeroes],
       // Who was actually holding the baton at the end. `team` is a Set in
       // insertion order, so team[0] is who STARTED — the food court wants the
@@ -14799,6 +14987,15 @@ export class RunState {
       // so the speed camera can fire as they pass it (desertTrapLatch). A fraction
       // rather than an x because portrait shifts and zooms the backdrop.
       heroFrac: (this.heroScreenX() * z + (Number(portraitXOffset) || 0)) / W,
+      // Seconds since the hero landed on the finish pad (null before): speed-3's
+      // finish coyote saves its wink for it (desertLandmarks.js, 'winkWait').
+      finishPadT: this.flip ? this.flip.t : null,
+      // And where the tape will stand in the frame the camera parks on, with that
+      // camera: speed-3 seats its winking coyote by it (desertFinishWinkL).
+      finish: this.overtime || !Number.isFinite(this.totalDist) ? null : {
+        camX: this.finishCameraX(),
+        frac: (finishLineX() * z + (Number(portraitXOffset) || 0)) / W,
+      },
       // How far through the level the run is. Weather that arrives over a level
       // needs this; a pack that only paints scenery ignores it.
       progress: Number.isFinite(this.totalDist) && this.totalDist > 0
@@ -14851,6 +15048,7 @@ export class RunState {
     if (backgroundBand) ctx.__mashBackgroundBand = backgroundBand;
     try {
       const neon = this.cabinet?.id === 'neon' ? this.neonMoodNow(backgroundContext.progress) : null;
+      if (this.cabinet?.id === 'neon') backgroundContext.neonStruck = this.neonStruckFor(ctx, cam, backgroundContext);
       if (neon?.strike) {
         // THE STRIKE. The day is painted, then the night over it through a circle
         // spreading from where the bolt lands — the city converting outward from the
@@ -14859,13 +15057,43 @@ export class RunState {
         const cov = ctx.__mashBackgroundCoverage || { left: 0, width: W };
         // FRONT AND CENTRE (Peter, 23 Sep): the bolt lands in the middle of the
         // frame, on the skyline, where nobody can miss it.
-        const hitX = cov.left + cov.width * 0.5;
-        const hitY = GROUND_Y - 70;
+        let hitX = cov.left + cov.width * 0.5;
+        // On the skyline in landscape; in portrait's tall sky that is far too low (Peter,
+        // 24 Sep: "striking VERY low in portrait"), so there it lands two fifths of the
+        // way down the visible band instead, and the crawler starts near the band's top.
+        const band = ctx.__mashBackgroundBand;
+        const tall = this.portraitFrame() && band && Number.isFinite(band.top);
+        let hitY = tall ? band.top + (GROUND_Y - band.top) * 0.4 : GROUND_Y - 70;
+        // THE CRAWLER'S HEIGHT, in landscape (bolt bake-off M and N; Peter, 25 Sep: "M
+        // works best for the day to night scene… perhaps use that there and N when it's
+        // night"). The turn runs it along the very top edge, under the HUD, so the sweep
+        // across the sky is kept and the strike falls the whole sky; a night strike puts
+        // it above the frame, and the strike drops in from out of the picture. Portrait's
+        // tall sky has room for both, and keeps its own.
+        let boltTop = tall ? band.top + (GROUND_Y - band.top) * 0.08
+          : neon.strike.from ? NEON_CRAWLER_TURN_TOP : NEON_CRAWLER_NIGHT_TOP;
         const s = neon.strike.s;
+        // IT HITS SOMETHING (neonStrikeTarget): the old centre is only where it looks.
+        const target = this.neonStrikeTarget(ctx, cam, backgroundContext, hitX);
+        if (target) {
+          hitX = target.tipX;
+          hitY = target.tipY;
+          // A tall target (the Tokyo Tower's antenna) can reach portrait's crawler; lift
+          // it so there is still a strike to see falling onto it.
+          if (tall) boltTop = Math.max(band.top + 6, Math.min(boltTop, hitY - 40));
+        }
+        const landed = s >= 0.16 ? (neonStrikeLight(s)?.bolt ?? 0) : 0;
+        backgroundContext.neonTokyoFlare = target?.kind === 'tokyo' ? landed : 0;
         // A strike on a night already turned has no day under it: no circle, one paint.
         const from = neon.strike.from;
-        const radius = from ? neonStrikeRadius(s, cov.width * 1.4) : Infinity;
-        if (radius < cov.width * 1.4 - 0.5) {
+        // The night spreads until it has covered the whole picture FROM THE HIT. The
+        // bolt lands on a building now, which in portrait's tall sky can be near the
+        // top — a reach sized for a centre hit left the far corners unpainted.
+        const bandTop = Number.isFinite(band?.top) ? band.top : 0;
+        const reach = Math.max(...[cov.left, cov.left + cov.width].flatMap((cx) =>
+          [bandTop, H].map((cy) => Math.hypot(cx - hitX, cy - hitY)))) + 8;
+        const radius = from ? neonStrikeRadius(s, reach) : Infinity;
+        if (radius < reach - 0.5) {
           this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
             backgroundScene, bgShift, { ...backgroundContext, neonMood: from });
         }
@@ -14878,7 +15106,9 @@ export class RunState {
         this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
           backgroundScene, bgShift, { ...backgroundContext, neonMood: neon.mood });
         ctx.restore();
-        drawNeonBolt(ctx, s, hitX, hitY, 7, { left: cov.left - 20, right: cov.left + cov.width + 20, top: GROUND_Y * 0.24 });
+        drawNeonBolt(ctx, s, hitX, hitY, 7, { left: cov.left - 20, right: cov.left + cov.width + 20, top: boltTop, thin: true });
+        if (target?.tower) neonTowerFlare(ctx, s, target.tower, 7);
+        if (target?.kind === 'sign') neonSignSparks(ctx, s, target.tower);
         const flash = neonStrikeFlash(s);
         if (flash > 0) {
           ctx.save();
@@ -14903,7 +15133,9 @@ export class RunState {
     } finally {
       if (previousBackgroundCoverage === undefined) delete ctx.__mashBackgroundCoverage;
       else ctx.__mashBackgroundCoverage = previousBackgroundCoverage;
-      if (previousBackgroundBand === undefined) delete ctx.__mashBackgroundBand;
+      // The speed camera fired in this frame's backdrop: its shutter.
+    if (takeDesertTrapShutter() && !this.demo) Audio.sfx('cameraClick');
+    if (previousBackgroundBand === undefined) delete ctx.__mashBackgroundBand;
       else ctx.__mashBackgroundBand = previousBackgroundBand;
     }
     // The flypast is PLACED here and drawn later. This is where the two things
@@ -15049,7 +15281,10 @@ export class RunState {
     if (!this.style.ownPitFills) {
       drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true,
         (ob) => riseHeight(ob.x + ob.w / 2), portraitRenderViewW ?? W,
-        this.cabinet.groundDark);
+        this.cabinet.groundDark,
+        // The piston spike bed fires on the song's beat; the gear works wear
+        // the pack's paper finish where it has one (game/pitFillHard.js).
+        { beat: Audio.songBeat(), paperSlab: this.style.paperSlab });
     }
     if (!this.bossCab) {
       drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
@@ -15082,8 +15317,10 @@ export class RunState {
       // song turns, the neon one after.
       if (this.neonFlypasts?.length) {
         const palette = this.neonSky?.turned ? TRON_PALETTE.neon : TRON_PALETTE.day;
+        // Higher in portrait (Peter, 24 Sep), where the sky over the lane is much taller.
+        const flyLift = this.portraitFrame() ? NEON_FLYPAST_PORTRAIT_LIFT : 0;
         this.neonFlypasts = this.neonFlypasts.filter((r) => drawNeonFlypast(ctx, cam, r,
-          (wx, rr) => this.renderGroundY(wx, rr), this.tRun, palette));
+          (wx, rr) => this.renderGroundY(wx, rr), this.tRun, palette, flyLift));
       }
     }
     // The pack's ground texture over a staged exit, which has to be laid HERE:
@@ -15328,10 +15565,28 @@ export class RunState {
     // post() that came out as part of the screen's limited scenery palette,
     // which this pack reserves for backplate art. Same rule as the hero, the
     // hazards and the finish pole.
+    //
+    // Seated across its FOOTPRINT, not at one point. With no footprint the
+    // seat was sampled at portal.x alone — the left edge of a plinth that is
+    // drawn 14 wide from x-1 — so on a plumber downslope the right end of the
+    // plate hung up to 2.3 world units (5px landscape, 8px portrait) off the
+    // road. 12 is the pass-through box's width; drawAtGround widens it by 4/3
+    // to x-2..x+14, which covers the art, and seats on the lowest ground under
+    // it. On the flat every sample agrees, so nothing moves there.
+    //
+    // And sunk the ground-sitter's 1.5, like the crates beside it, on every lane
+    // (Peter, 25 Sep: "sink slightly everywhere"). On a ROLLING lane it is also
+    // what plants it at all: the surface is drawTerrain's 2px stroke centred on
+    // the ground line, and plumber's stroke is a shade off the hills behind it,
+    // so the grass you see starts a unit BELOW the line — a plate seated on the
+    // line hovered a unit over it everywhere, slope or not.
+    //
+    // Art only: the tag box is still boxed off laneSurfaceY(portal.x).
+    const portalSink = 1.5;
     const drawPortalRing = () => {
       if (this.finishing || !this.portal) return;
       this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true),
-        0, 0, null, this.stagedExitAt(this.portal.x));
+        12, portalSink, null, this.stagedExitAt(this.portal.x));
     };
     if (!this.style.actorsAbovePost) drawPortalRing();
     // THE VILLAIN IS CAST TOO. The chase copter is the thing you are meant to

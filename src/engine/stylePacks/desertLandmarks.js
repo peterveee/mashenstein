@@ -401,7 +401,7 @@ export function drawDesertSpeedTrapBoast(ctx, t, x, seat) {
 // The speed trap Peter picked from the sign-gag bake-off (24 Sep 2026): the board says
 // SMILE! YOU'RE ON SPEED CAMERA; the camera on its pole fires, the face flares white and
 // the board becomes a lineup mugshot of whoever just went through — smeared across the
-// photo by their own speed — with GOTCHA! and a $1987 fine stamped on. The patrol car
+// photo by their own speed — with GOTCHA! and a $1986 fine stamped on. The patrol car
 // behind the board lights up the moment the shutter fires. Only lettering that reads at
 // game size is kept.
 function trapCruiser(ctx, t, pal, lights) {
@@ -586,7 +586,7 @@ const trapText = (ctx, str, x, midY, scale, color) =>
 const CAM = { cam: '#8b949b', camLit: '#d9dfe3', camDark: '#4a5157' };
 /**
  * The speed trap that ships: SMILE! YOU'RE ON SPEED CAMERA, the camera flash, the
- * mugshot with GOTCHA! and the $1987 fine, the patrol car behind the board — on a graded
+ * mugshot with GOTCHA! and the $1986 fine, the patrol car behind the board — on a graded
  * lot on a NEAR-dune summit. With `since` (seconds since the camera fired, or null for
  * not yet) it plays ONCE: SMILE! until the flash, then the snapshot held. Without it
  * (the gallery) it loops every 3 s: flash at 0.5 s, mugshot until the cycle ends.
@@ -668,7 +668,7 @@ export function drawDesertSpeedTrap(ctx, t, x, seat, heroId = 'lorenzo', since =
       ctx.globalAlpha *= slam;
       strokePath(ctx, pal.red, 0.9, box(-12.5, -5.6, 25, 11.2, 1.2));
       trapText(ctx, 'FINE', 0, -2.1, 0.5, pal.red);
-      trapText(ctx, '$1987', 0, 2.3, 0.72, pal.red);
+      trapText(ctx, '$1986', 0, 2.3, 0.72, pal.red);
       ctx.restore();
     }
     ctx.restore();
@@ -809,8 +809,18 @@ const COYOTE = {
  * A coyote on a sandstone ledge, howling every 5 s, seated on the NEAR dunes.
  * x: the ledge's centre (a summit suits it). Ink spans about x-26 .. x+25 and ~40 px
  * above the crest; the song rings drift a further ~15 px up and right.
+ * facing: 1 howls to the right (at the sun), -1 to the left. Only the animal turns —
+ * the ledge keeps its sun-lit face, and the rings go the way the muzzle points.
+ *
+ * mode (the coyote bake-off, Peter 24 Sep 2026): 'howl' (the default, above), 'yawn'
+ * (a yawn, down on the ledge to doze, back up, then a howl, alternating), 'chorus' (a
+ * pup on the ledge too, yipping then howling with it) or 'wink' (a coyote sat square to
+ * the camera from the start — it never turns — that cocks a brow and winks). The last
+ * three run a performance clock: looped on t, or — when the caller passes `since`,
+ * the seconds since this ledge came into view — started from there, `pace` times
+ * faster (portrait crosses a narrow picture quickly). See drawCoyotePerformance.
  */
-export function drawDesertCoyote(ctx, t, x, seat) {
+export function drawDesertCoyote(ctx, t, x, seat, facing = 1, { mode = 'howl', since = null, pace = 1 } = {}) {
   ctx.save();
   const P = haze(COYOTE, 160, 0.04);
   const rock = haze({ body: NEAR_ROCK, lit: NEAR_ROCK_LIT, dark: NEAR_ROCK_DARK, band: ROCK }, 170, 0.04);
@@ -828,13 +838,19 @@ export function drawDesertCoyote(ctx, t, x, seat) {
   fillPath(ctx, rgba(rock.dark, 0.75), poly([-26, 14, -24, -3, -19, -9, -16, -8, -20, 0, -21, 14]));
   fillPath(ctx, rgba(rock.dark, 0.5), poly([17, -9.6, 22, -4, 25, 14, 20, 14, 19, -3]));
   ctx.restore();
-  // ---- the coyote, sitting on the ledge facing the sun (right)
+  if (mode !== 'howl' && COYOTE_SHOWS[mode]) {
+    drawCoyotePerformance(ctx, t, P, facing < 0 ? -1 : 1, mode, since, pace);
+    ctx.restore();
+    return;
+  }
+  // ---- the coyote, sitting on the ledge facing the sun (right) or away from it
   const cyc = fract(t / 5);
   const up = cyc < 0.5 ? 0 : cyc < 0.58 ? smooth(0.5, 0.58, cyc) : cyc < 0.88 ? 1 : 1 - smooth(0.88, 0.98, cyc);
   const howl = cyc > 0.58 && cyc < 0.88 ? 1 : 0;
+  const dir = facing < 0 ? -1 : 1;
   ctx.save();
-  ctx.translate(-3, -12.2);
-  ctx.scale(1.5, 1.5);
+  ctx.translate(-3 * dir, -12.2);
+  ctx.scale(1.5 * dir, 1.5);
   // Tail, bushy, curled round the front of the paws, tip twitching.
   const tw = Math.sin(t * 2.2) * 0.5;
   fillPath(ctx, P.fur, (c) => { c.moveTo(-6, -1.6); c.quadraticCurveTo(-8.6, 0.4, -4.6, 0.6); c.quadraticCurveTo(1, 0.9, 5.4 + tw, -0.4); c.quadraticCurveTo(1.4, -1.4, -2.8, -1.8); c.closePath(); });
@@ -898,6 +914,365 @@ export function drawDesertCoyote(ctx, t, x, seat) {
   }
   ctx.restore();
   ctx.restore();
+}
+
+// ------------------------------------------------------------ the coyote's performances
+// The coyote bake-off (src/dev/coyote-candidates.js, 24 Sep 2026): Peter picked the
+// yawn, the chorus with a pup, and a wink — from a coyote that is ALREADY square to
+// the camera ("no turning from profile to facing the camera, anywhere… nothing else
+// does this"). Everything here is the howler's own construction generalised into a
+// pose: the same tail, haunch, torso, chest, legs, head, ears, muzzle and song rings
+// at lie 0, in coyote space (origin on the ledge top under the haunch, muzzle toward
+// +x, drawn at 1.5). Each show is a clock u (s) -> a pose, and ends where it began.
+const COYOTE_MOUTH = '#5a2a24';
+const COYOTE_TONGUE = '#c86a6a';
+const COYOTE_SONG = '#fff4dc';
+const COYOTE_SPARK = '#fffbea';
+const COYOTE_HEAD_SIT = [2.6, -12.6];
+const COYOTE_HEAD_LIE = [9.0, -3.2];
+function coyoteRest(t) {
+  return {
+    lie: 0, heave: 0, lean: 0, tw: Math.sin(t * 2.2) * 0.5,
+    head: {
+      rot: Math.sin(t * 0.8) * 0.12, jaw: 0, eye: 'open', earBack: 0, lids: 0,
+      flick: fract(t * 0.43) < 0.06 ? 0.3 : 0, tongue: 0,
+    },
+    rings: 0, ringDir: 0, ringRate: 1.2, ringSize: 1, marks: [],
+  };
+}
+// The howl on a clock: head up at `from`, the song from `from`+0.3 to `to`, down after.
+function coyoteHowlAt(p, u, t, from, to, rate = 6) {
+  const up = smooth(from, from + 0.3, u) * (1 - smooth(to, to + 0.4, u));
+  const howl = u > from + 0.3 && u < to;
+  p.head.rot = -up * 0.95 + p.head.rot * (1 - up);
+  p.head.jaw = howl ? 0.35 + Math.sin(t * rate) * 0.08 : 0;
+  p.head.eye = howl ? 'shut' : 'open';
+  p.heave = howl ? Math.sin(t * 9) * 0.25 : 0;
+  p.rings = howl ? 1 : up > 0.5 ? 0.4 : 0;
+  p.ringDir = -up * 0.95 - 0.1;
+  return p;
+}
+// Sitting (lie 0 — the howler's body exactly) morphing to lying along the ledge.
+const COYOTE_TORSO = [[-6.4, -4, -5.4, -10, 0.8, -13.2, 4.4, -10.4, 4.6, -5, 2.8, -1, -3, -0.4],
+  [-6.6, -3.2, -3, -6.8, 4.4, -6.6, 8.0, -4.8, 8.6, -2.0, 6.6, -0.3, -3, -0.2]];
+const COYOTE_CHEST = [[4.4, -10.4, 5, -5.6, 3.2, -1.2, 1.8, -1.2, 3.2, -6, 2.4, -10.6],
+  [8.0, -4.8, 8.8, -2.4, 6.8, -0.5, 5.4, -0.5, 7.0, -2.6, 6.4, -5.2]];
+const COYOTE_BACKLIT = [[-5.6, -7.2, -3.6, -11.4, 0.8, -13.2, 1.4, -12.4, -3, -10.6, -5.2, -6.2],
+  [-6, -5, -2, -7.2, 4.4, -6.6, 4.6, -5.9, -2, -6.4, -5.8, -4.3]];
+const lerpPts = ([a, b], k) => a.map((v, i) => lerp(v, b[i], k));
+function coyoteCurve(ctx, color, Q, h) {
+  fillPath(ctx, color, (c) => { c.moveTo(Q[0] + h, Q[1]); c.quadraticCurveTo(Q[2] + h, Q[3], Q[4], Q[5]); c.lineTo(Q[6], Q[7]); c.quadraticCurveTo(Q[8], Q[9], Q[10], Q[11]); c.closePath(); });
+}
+function coyoteSideBody(ctx, P, pose) {
+  const k = pose.lie, h = pose.heave, tw = pose.tw;
+  fillPath(ctx, P.fur, (c) => { c.moveTo(-6, -1.6); c.quadraticCurveTo(-8.6, 0.4, -4.6, 0.6); c.quadraticCurveTo(1, 0.9, 5.4 + tw, -0.4); c.quadraticCurveTo(1.4, -1.4, -2.8, -1.8); c.closePath(); });
+  fillPath(ctx, P.tip, (c) => { c.moveTo(3.6 + tw * 0.6, 0.6); c.quadraticCurveTo(5.4 + tw, 0.2, 5.4 + tw, -0.4); c.quadraticCurveTo(4.2, -0.9, 3.2, -0.6); c.closePath(); });
+  fillPath(ctx, P.fur, oval(-3, lerp(-3.6, -2.8, k), lerp(4.6, 4.8, k), lerp(3.8, 3.0, k)));
+  fillPath(ctx, P.furDark, (c) => { c.ellipse(-3.6, lerp(-2.6, -2.1, k), 3.6, lerp(2.6, 2.0, k), 0, 0.4 * Math.PI, 1.3 * Math.PI); c.closePath(); });
+  const T = lerpPts(COYOTE_TORSO, k);
+  fillPath(ctx, P.fur, (c) => { c.moveTo(T[0], T[1]); c.quadraticCurveTo(T[2], T[3], T[4], T[5]); c.lineTo(T[6] + h, T[7]); c.quadraticCurveTo(T[8] + h, T[9], T[10], T[11]); c.lineTo(T[12], T[13]); c.closePath(); });
+  coyoteCurve(ctx, P.cream, lerpPts(COYOTE_CHEST, k), h);
+  coyoteCurve(ctx, P.furLit, lerpPts(COYOTE_BACKLIT, k), 0);
+  // Front legs: straight down sitting, laid forward along the ledge lying.
+  for (const lx of [1.6, 3.2]) {
+    ctx.save();
+    ctx.translate(lerp(lx, lx + 3.6, k), lerp(-8, -1.9, k));
+    ctx.rotate(lerp(0, -Math.PI / 2, k));
+    fillPath(ctx, lx > 2 ? P.fur : P.furDark, box(-0.7, 0, 1.4, lerp(8, 6.6, k), 0.5));
+    ctx.restore();
+    fillPath(ctx, P.cream, oval(lerp(lx + 0.2, lx + 10.3, k), lerp(-0.3, -0.55, k), lerp(1, 1.15, k), 0.5));
+  }
+}
+// The howler's head, with ears laid back, a jaw that can open to a yawn and a tongue.
+function coyoteSideHead(ctx, P, h) {
+  ctx.rotate(h.rot);
+  fillPath(ctx, P.fur, oval(0.6, -1.3, 2.6, 2.2, -0.1));
+  for (const [ex, rot0, dark] of [[-0.6, -0.25 - h.flick, true], [0.9, 0.05, false]]) {
+    const rot = rot0 - h.earBack * 0.95, L = 1 - h.earBack * 0.25;
+    fillPath(ctx, dark ? P.furDark : P.fur, (c) => { c.moveTo(ex - 1.1, -2.6); c.lineTo(ex + Math.sin(rot) * 3.4 * L, -2.6 - Math.cos(rot) * 3.6 * L); c.lineTo(ex + 1.1, -2.8); c.closePath(); });
+    if (!dark) fillPath(ctx, P.ear, (c) => { c.moveTo(ex - 0.5, -2.9); c.lineTo(ex + Math.sin(rot) * 2.6 * L, -2.8 - Math.cos(rot) * 2.8 * L); c.lineTo(ex + 0.5, -3); c.closePath(); });
+  }
+  const jaw = h.jaw;
+  if (jaw > 0.05) {
+    const jx = 2.2 + Math.cos(jaw) * 4.1 - Math.sin(jaw) * 0.55, jy = -0.8 + Math.sin(jaw) * 4.1 + Math.cos(jaw) * 0.55;
+    fillPath(ctx, COYOTE_MOUTH, poly([2.3, -0.3, 6.8, -0.6, jx, jy]));
+  }
+  ctx.save();
+  ctx.translate(2.2, -0.8);
+  ctx.rotate(jaw);
+  if (h.tongue > 0.02) fillPath(ctx, COYOTE_TONGUE, oval(2.6, -0.25, 1.7 * h.tongue, 0.45, -0.1));
+  fillPath(ctx, P.cream, poly([0, 0.1, 4.3, 0.2, 4.1, 1.0, 0, 1.4]));
+  ctx.restore();
+  fillPath(ctx, P.fur, poly([1.6, -2.8, 6.9, -1.35, 7.0, -0.25, 2.0, 0.35]));
+  fillPath(ctx, P.furLit, poly([1.6, -2.8, 6.9, -1.35, 6.7, -1.0, 1.8, -2.2]));
+  fillPath(ctx, P.nose, circle(6.9, -0.95, 0.6));
+  if (h.eye === 'shut') {
+    strokePath(ctx, P.eye, 0.35, (c) => { c.moveTo(1.2, -2.2); c.lineTo(2.4, -1.8); });
+  } else {
+    fillPath(ctx, P.eye, circle(1.9, -1.9, 0.42));
+    fillPath(ctx, '#f6d98a', circle(2.05, -2.0, 0.14));
+    if (h.lids > 0.05) fillPath(ctx, P.fur, (c) => { c.ellipse(1.9, -1.9, 0.6, 0.6, 0, Math.PI, Math.PI + Math.PI * h.lids); c.lineTo(1.9, -1.9); c.closePath(); });
+  }
+}
+function coyoteRings(ctx, t, pose, anchor) {
+  if (pose.rings <= 0) return;
+  const dirA = pose.ringDir, S = pose.ringSize;
+  const mx = anchor[0] + Math.cos(dirA) * 7.4, my = anchor[1] + Math.sin(dirA) * 7.4 - 1;
+  for (let k = 0; k < 3; k++) {
+    const ph = fract(t * pose.ringRate + k / 3);
+    const a = 0.75 * (1 - ph) * pose.rings;
+    strokePath(ctx, rgba(COYOTE_SONG, a), 0.45, (c) => c.arc(mx + Math.cos(dirA) * ph * 9 * S, my + Math.sin(dirA) * ph * 9 * S, (1.2 + ph * 4.4) * S, dirA - 0.75, dirA + 0.75));
+  }
+}
+function coyoteStar(ctx, x, y, R, rot, a) {
+  if (R <= 0.02 || a <= 0.01) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, R * 1.5);
+  g.addColorStop(0, rgba('#ffffff', 0.55 * a));
+  g.addColorStop(1, rgba('#fff4d0', 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, R * 1.5, 0, TAU); ctx.fill();
+  fillPath(ctx, rgba(COYOTE_SPARK, a), (c) => {
+    for (let i = 0; i < 8; i++) {
+      const ang = rot + (i * Math.PI) / 4, r = i % 2 === 0 ? R : R * 0.22;
+      if (i === 0) c.moveTo(x + Math.cos(ang) * r, y + Math.sin(ang) * r);
+      else c.lineTo(x + Math.cos(ang) * r, y + Math.sin(ang) * r);
+    }
+    c.closePath();
+  });
+}
+function coyoteZ(ctx, x, y, s, a, dir) {
+  if (a <= 0.01) return;
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(dir * s, s);   // un-mirrored: a Z reads as a Z both ways
+  const z = (c) => { c.moveTo(-1, -1); c.lineTo(1, -1); c.lineTo(-1, 1); c.lineTo(1, 1); };
+  strokePath(ctx, rgba(COYOTE_SPARK, a * 0.9), 1.05, z);
+  strokePath(ctx, rgba(COYOTE.tip, a), 0.45, z);
+  ctx.restore();
+}
+// One side-on animal: fig = { ox, oy, s, dir, headScale } places coyote space on the
+// ledge (the howler's own: -3·dir, -12.2, 1.5).
+function coyoteSideFigure(ctx, t, P, pose, fig) {
+  ctx.save();
+  ctx.translate(fig.ox, fig.oy);
+  ctx.scale(fig.s * fig.dir, fig.s);
+  if (pose.lean) { ctx.translate(-3, 0); ctx.rotate(pose.lean); ctx.translate(3, 0); }
+  coyoteSideBody(ctx, P, pose);
+  const anchor = [lerp(COYOTE_HEAD_SIT[0], COYOTE_HEAD_LIE[0], pose.lie), lerp(COYOTE_HEAD_SIT[1], COYOTE_HEAD_LIE[1], pose.lie)];
+  ctx.save();
+  ctx.translate(anchor[0], anchor[1]);
+  if (fig.headScale) ctx.scale(fig.headScale, fig.headScale);
+  coyoteSideHead(ctx, P, pose.head);
+  ctx.restore();
+  coyoteRings(ctx, t, pose, anchor);
+  for (const m of pose.marks) coyoteZ(ctx, m.x, m.y, m.s, m.a, fig.dir);
+  ctx.restore();
+}
+
+// YAWN AND SETTLE, then the howl: a jaw-cracking yawn (head back, tongue curled, ears
+// flat), down on the ledge chin on paws with Z's, back up, and a howl at 8.2–9.9.
+function coyoteYawnShow(u, t, dir) {
+  const p = coyoteRest(t);
+  const h = p.head;
+  if (u >= 7.8) return [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, coyoteHowlAt(p, u, t, 8.2, 9.9)]];
+  const yawn = smooth(0.8, 1.3, u) * (1 - smooth(2.2, 2.5, u));
+  h.rot = lerp(h.rot, -0.5, yawn);
+  h.jaw = yawn * (1.05 + (yawn > 0.95 ? Math.sin(t * 16) * 0.03 : 0));
+  h.eye = yawn > 0.25 ? 'shut' : 'open';
+  h.earBack = 0.75 * yawn;
+  h.tongue = yawn;
+  p.heave = 0.5 * yawn;
+  p.lean = -0.05 * yawn;
+  const lie = smooth(2.6, 3.4, u) * (1 - smooth(6.4, 7.1, u));
+  p.lie = lie;
+  if (lie > 0) {
+    h.rot = lerp(h.rot, 0.12, lie);
+    if (u > 3.0 && u < 6.3) h.eye = 'shut';
+    else if (u >= 6.3 && u < 6.7) h.lids = 0.6;
+    p.heave += Math.sin(t * 2.4) * 0.3 * lie;
+    h.flick = u > 5.1 && u < 5.25 ? 0.5 : 0;
+    p.tw = lerp(p.tw, Math.sin(t * 0.9) * 0.3, lie);
+  }
+  const ax = lerp(COYOTE_HEAD_SIT[0], COYOTE_HEAD_LIE[0], lie), ay = lerp(COYOTE_HEAD_SIT[1], COYOTE_HEAD_LIE[1], lie);
+  for (let i = 0; i < 4; i++) {
+    const age = (u - 3.5 - i * 0.8) / 1.7;
+    if (age <= 0 || age >= 1 || u > 6.4) continue;
+    p.marks.push({ x: ax + 2 + age * 3.5 + Math.sin(age * 5 + i) * 0.6, y: ay - 4.5 - age * 8,
+      s: 0.9 + age * 0.7, a: Math.min(1, age * 5) * (1 - smooth(0.65, 1, age)) });
+  }
+  return [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, p]];
+}
+// CHORUS: a sandier pup in front of the adult, both side-on and facing the same way.
+// The adult howls; the pup yips three times, finds the note, and they hold it together
+// in two sizes of ring. After, the adult bows its head to nose the pup's ear and the
+// pup looks up. Nobody turns round.
+function coyoteChorusShow(u, t, dir) {
+  const A = coyoteHowlAt(coyoteRest(t), u, t, 0.8, 3.4);
+  const B = coyoteRest(t + 1.3);
+  const upB = smooth(1.6, 1.8, u) * (1 - smooth(3.4, 3.8, u));
+  const yipT = u - 1.8;
+  const yip = yipT > 0 && yipT < 0.75 ? Math.max(0, Math.sin((yipT / 0.25) * Math.PI)) : 0;
+  const howlB = u > 2.55 && u < 3.4;
+  B.head.rot = -upB * (howlB ? 1.05 : 0.7) + B.head.rot * (1 - upB);
+  B.head.jaw = howlB ? 0.4 + Math.sin(t * 7.3) * 0.08 : yip * 0.45;
+  B.head.eye = howlB ? 'shut' : 'open';
+  B.rings = howlB ? 1 : yip > 0.3 ? 0.8 : 0;
+  B.ringDir = B.head.rot - 0.1;
+  B.ringRate = 1.9;
+  B.ringSize = 0.62;
+  const after = smooth(3.9, 4.3, u) * (1 - smooth(5.2, 5.6, u));
+  A.head.rot = lerp(A.head.rot, 0.62, after);
+  if (after > 0.8) A.head.eye = 'shut';
+  B.head.rot = lerp(B.head.rot, -0.4, after);
+  B.tw += Math.sin(t * 8) * 0.9 * after;
+  return [
+    [{ ox: -6 * dir, oy: -12.2, s: 1.5, dir }, A],
+    [{ ox: 9.5 * dir, oy: -11.9, s: 1.1, dir, headScale: 1.12, pup: true }, B],
+  ];
+}
+
+// THE WINKER: a coyote sat square to the camera — haunches either side, cream bib,
+// both forelegs, the tail out along the ledge — from the moment it is on screen. It
+// cocks a brow, winks slowly with a star twinkle off the shut eye and a toothy grin,
+// then a glint off the teeth. The face is built from big flat shapes (a pale mask,
+// dark eyes, the nose the darkest mark) so the wink survives game scale.
+function coyoteFrontHead(ctx, P, h) {
+  for (const s of [-1, 1]) {
+    fillPath(ctx, s < 0 ? P.furDark : P.fur, poly([s * 2.9, -0.8, s * (3.5 - h.flick * s), -6.4, s * 0.7, -2.7]));
+    fillPath(ctx, P.ear, poly([s * 2.4, -1.4, lerp(s * 2.4, s * 3.5, 0.72), lerp(-1.4, -6.4, 0.72), s * 1.1, -2.6]));
+  }
+  fillPath(ctx, P.fur, oval(0, -0.9, 2.8, 2.2));
+  for (const s of [-1, 1]) {
+    const lift = (s > 0 ? h.wink * 0.35 : 0) + h.grin * 0.25;
+    fillPath(ctx, P.fur, poly([s * 1.2, -2.2, s * 3.0, -0.9, s * 3.25, 1.3 - lift, s * 1.0, 3.0]));
+    fillPath(ctx, P.furLit, poly([s * 2.3, 0.1 - lift, s * 3.1, 1.2 - lift, s * 1.6, 2.1 - lift * 0.5]));
+  }
+  fillPath(ctx, P.furLit, oval(0, -2.1, 1.7, 0.75));
+  fillPath(ctx, P.cream, (c) => { c.moveTo(-1.45, -0.9); c.quadraticCurveTo(-1.35, 2.6, 0, 3.35); c.quadraticCurveTo(1.35, 2.6, 1.45, -0.9); c.closePath(); });
+  fillPath(ctx, P.furLit, poly([-0.5, -2.6, 0.5, -2.6, 0.32, 0.6, -0.32, 0.6]));
+  const g = h.grin;
+  if (g > 0.03) {
+    const w = 0.75 + g * 0.95, yM = 2.05, drop = 0.35 + g * 0.8, cu = g * 0.5;
+    const mouth = (c) => { c.moveTo(-w, yM - cu); c.quadraticCurveTo(0, yM + drop * 1.3, w, yM - cu); c.quadraticCurveTo(0, yM + drop * 0.3, -w, yM - cu); c.closePath(); };
+    fillPath(ctx, COYOTE_MOUTH, mouth);
+    if (g > 0.4) {
+      ctx.save();
+      ctx.beginPath(); mouth(ctx); ctx.clip();
+      fillPath(ctx, '#fffaf0', (c) => { c.moveTo(-w, yM - cu); c.quadraticCurveTo(0, yM + drop * 0.3, w, yM - cu); c.lineTo(w, yM - cu + 0.55); c.quadraticCurveTo(0, yM + drop * 0.75, -w, yM - cu + 0.55); c.closePath(); });
+      ctx.restore();
+    }
+  } else {
+    strokePath(ctx, P.furDark, 0.3, (c) => { c.moveTo(0, 1.9); c.lineTo(0, 2.35); c.moveTo(-0.6, 2.5); c.quadraticCurveTo(0, 2.72, 0.6, 2.5); });
+  }
+  fillPath(ctx, P.nose, oval(0, 1.45, 0.8, 0.55));
+  fillPath(ctx, rgba('#ffffff', 0.35), oval(-0.25, 1.27, 0.26, 0.13));
+  const eyeY = -1.0;
+  for (const s of [-1, 1]) {
+    const ex = s * 1.35;
+    const wink = s > 0 ? h.wink : 0;
+    fillPath(ctx, P.cream, oval(ex, eyeY, 0.85, 0.7, s * -0.25));
+    if (wink > 0.6) {
+      strokePath(ctx, P.eye, 0.55, (c) => { c.moveTo(ex - 0.8, eyeY + 0.25); c.quadraticCurveTo(ex, eyeY - 0.75, ex + 0.8, eyeY + 0.25); });
+      continue;
+    }
+    fillPath(ctx, P.eye, oval(ex, eyeY + 0.05, 0.52, 0.58));
+    fillPath(ctx, '#f6d98a', circle(ex + 0.18, eyeY - 0.12, 0.16));
+    const lid = Math.max(wink / 0.6, h.blink);
+    if (lid > 0.02) {
+      ctx.save();
+      ctx.beginPath(); oval(ex, eyeY, 0.95, 0.8, s * -0.25)(ctx); ctx.clip();
+      const ly = eyeY - 1.0 + 1.8 * Math.min(1, lid);
+      fillPath(ctx, P.fur, box(ex - 1.2, eyeY - 1.0, 2.4, ly - eyeY + 1.0 + 0.05));
+      strokePath(ctx, P.eye, 0.3, (c) => { c.moveTo(ex - 1, ly); c.lineTo(ex + 1, ly); });
+      ctx.restore();
+    }
+  }
+  if (h.brow > 0.03) {
+    const b = h.brow;
+    strokePath(ctx, P.furDark, 0.5, (c) => { c.moveTo(-2.25, eyeY - 1.05 - b * 0.5); c.quadraticCurveTo(-1.4, eyeY - 1.55 - b * 0.9, -0.55, eyeY - 1.2 - b * 0.35); });
+  }
+}
+const COYOTE_FRONT_HEAD = [0, -15.2];
+const COYOTE_FRONT_S = 1.14;
+function coyoteWinkShow(ctx, t, P, u, idleBlink = null) {
+  const brow = smooth(0.4, 0.7, u) * (1 - smooth(2.8, 3.1, u));
+  const wink = smooth(0.8, 1.15, u) * (1 - smooth(2.3, 2.45, u));
+  const grin = (0.3 * smooth(0.4, 0.7, u) + 0.7 * smooth(1.1, 1.3, u)) * (1 - smooth(3.0, 3.3, u));
+  const tilt = 0.16 * smooth(1.0, 1.3, u) * (1 - smooth(2.2, 2.5, u));
+  const blink = idleBlink != null ? idleBlink
+    : u > 4.6 && u < 4.75 ? Math.sin(((u - 4.6) / 0.15) * Math.PI) : 0;
+  const wag = Math.sin(t * 10) * 0.9 * smooth(1.2, 1.4, u) * (1 - smooth(2.5, 2.8, u));
+  const flick = fract(t * 0.43) < 0.06 ? 0.3 : 0;
+  ctx.save();
+  ctx.translate(0, -12.2);
+  ctx.scale(1.5, 1.5);
+  // Tail out along the ledge to the shade side, tip twitching.
+  const tw = Math.sin(t * 2.2) * 0.5 + wag;
+  fillPath(ctx, P.fur, (c) => { c.moveTo(-3.4, -2.4); c.quadraticCurveTo(-7.4, -2.2, -9.4 + tw * 0.4, -0.9 + tw * 0.3); c.quadraticCurveTo(-7.8, 0.2, -3.4, -0.2); c.closePath(); });
+  fillPath(ctx, P.tip, (c) => { c.moveTo(-8.0 + tw * 0.3, -1.6); c.quadraticCurveTo(-9.4 + tw * 0.4, -1.4 + tw * 0.3, -9.4 + tw * 0.4, -0.9 + tw * 0.3); c.quadraticCurveTo(-8.6, -0.3, -7.6, -0.4); c.closePath(); });
+  // Haunches either side, then the torso rising to the neck, lit on the sun side.
+  for (const s of [-1, 1]) {
+    fillPath(ctx, P.fur, oval(s * 3.2, -2.9, 2.5, 2.9));
+    fillPath(ctx, P.cream, oval(s * 4.3, -0.35, 1.1, 0.45));
+  }
+  fillPath(ctx, P.furDark, (c) => { c.ellipse(-3.2, -2.9, 2.5, 2.9, 0, 0.5 * Math.PI, 1.4 * Math.PI); c.closePath(); });
+  fillPath(ctx, P.fur, (c) => { c.moveTo(-4.1, -1.6); c.quadraticCurveTo(-4.4, -9, -2.2, -12.8); c.lineTo(2.2, -12.8); c.quadraticCurveTo(4.4, -9, 4.1, -1.6); c.closePath(); });
+  fillPath(ctx, P.furLit, (c) => { c.moveTo(2.2, -12.8); c.quadraticCurveTo(4.4, -9, 4.1, -1.6); c.lineTo(3.3, -1.8); c.quadraticCurveTo(3.5, -8.6, 1.5, -12.2); c.closePath(); });
+  fillPath(ctx, P.cream, (c) => { c.moveTo(-1.8, -11.8); c.quadraticCurveTo(-2.5, -6, -1.3, -2.2); c.lineTo(1.3, -2.2); c.quadraticCurveTo(2.5, -6, 1.8, -11.8); c.closePath(); });
+  for (const s of [-1, 1]) {
+    fillPath(ctx, s < 0 ? P.furDark : P.fur, box(s * 1.05 - 0.7, -8, 1.4, 8, 0.5));
+    fillPath(ctx, P.cream, oval(s * 1.1, -0.3, 1, 0.5));
+  }
+  ctx.save();
+  ctx.translate(COYOTE_FRONT_HEAD[0], COYOTE_FRONT_HEAD[1]);
+  ctx.rotate(tilt);
+  ctx.scale(COYOTE_FRONT_S, COYOTE_FRONT_S);
+  coyoteFrontHead(ctx, P, { brow, wink, grin, blink, flick });
+  ctx.restore();
+  // The twinkle off the shut eye the instant it closes; a glint off the teeth later.
+  const [hx, hy] = COYOTE_FRONT_HEAD;
+  const k = (u - 1.13) / 0.8;
+  if (k > 0 && k < 1) {
+    coyoteStar(ctx, hx + 4.0 * COYOTE_FRONT_S, hy + (-1.0 - 1.4) * COYOTE_FRONT_S,
+      (k < 0.14 ? k / 0.14 : 1 - ((k - 0.14) / 0.86) * 0.55) * 3.6, k * 1.4, k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3);
+  }
+  const gk = (u - 2.5) / 0.45;
+  if (gk > 0 && gk < 1) coyoteStar(ctx, hx + 0.9, hy + 2.6, 1.5 * Math.sin(gk * Math.PI), gk * 2, 1);
+  ctx.restore();
+}
+
+// loop: the show's period on t; start: where a latched show begins (its first move
+// comes a beat later).
+const COYOTE_SHOWS = {
+  yawn: { loop: 10.4, start: 0.55 },
+  chorus: { loop: 6, start: 0.5 },
+  wink: { loop: 6, start: 0.2 },
+  winkWait: { loop: 6, start: 0.2 },
+};
+// THE WINK WAITS FOR THE FINISH (Peter, 25 Sep 2026: "the winking coyote doesn't wink
+// until after we have jumped on the finish pad?.. he can blink before then"). The finish
+// coyote on speed-3 sits square to the camera blinking — both eyes, every few seconds —
+// and `since` here is the seconds since the finish pad, null until then: from it, the
+// brow, the wink and the grin play once, and it goes back to blinking.
+const COYOTE_IDLE_U = 5.5;           // a moment of the wink show with nothing moving
+function coyoteIdleBlink(t) {
+  const k = (t % 3.3) / 0.16;
+  return k < 1 ? Math.sin(k * Math.PI) : 0;
+}
+function drawCoyotePerformance(ctx, t, P, dir, mode, since, pace) {
+  const show = COYOTE_SHOWS[mode];
+  if (mode === 'winkWait') {
+    const u = since == null ? Infinity : show.start + Math.max(0, since) * pace;
+    if (u < COYOTE_IDLE_U) coyoteWinkShow(ctx, t, P, u);
+    else coyoteWinkShow(ctx, t, P, COYOTE_IDLE_U, coyoteIdleBlink(t));
+    return;
+  }
+  const clock = since == null ? t : show.start + Math.max(0, since) * pace;
+  const u = fract(clock / show.loop) * show.loop;
+  if (mode === 'wink') { coyoteWinkShow(ctx, t, P, u); return; }
+  const cast = mode === 'yawn' ? coyoteYawnShow(u, t, dir) : coyoteChorusShow(u, t, dir);
+  const pup = cast.length > 1 ? Object.fromEntries(Object.entries(P).map(([key, v]) => [key,
+    key === 'nose' || key === 'eye' || key === 'tip' ? v : mix(v, '#f0d2a4', 0.14)])) : null;
+  for (const [fig, pose] of cast) coyoteSideFigure(ctx, t, fig.pup ? pup : P, pose, fig);
 }
 
 // ================================================================== the dust devil

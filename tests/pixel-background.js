@@ -228,14 +228,14 @@ assert(waterTowers.length > 0
     tower.x, 137, portraitFarBaseY, portraitFarAmp, 230, 0.12,
     { mesa: true, coverageLeft: ridgeProbe.__mashBackgroundCoverage.left }) + 2)) < 1e-9),
   'portrait water towers repeat on the exact far-mesa crest');
-const satelliteDishes = __testing.desertSatelliteDishPlacements(
+const landmarkProps = __testing.desertLandmarkPropPlacements(
   { __mashBackgroundCoverage: { left: 73, right: 2273, width: 2200 } },
   137, portraitFarBaseY, { portrait: true });
-assert(satelliteDishes.length > 0
-  && satelliteDishes.every((dish) => Math.abs(dish.baseY - __testing.ridgeYAt(
-    dish.x, 137, portraitFarBaseY, portraitFarAmp, 230, 0.12,
+assert(landmarkProps.length > 0
+  && landmarkProps.every((prop) => Math.abs(prop.baseY - __testing.ridgeYAt(
+    prop.x, 137, portraitFarBaseY, portraitFarAmp, 230, 0.12,
     { mesa: true, coverageLeft: 73 }) - 2) < 1e-9),
-  'portrait satellite dishes repeat on the exact far-mesa crest');
+  'portrait horizon landmarks repeat on the exact far-mesa crest');
 const wideHorizonProbe = { __mashBackgroundCoverage: { left: 73, right: 3573, width: 3500 } };
 const wideWaterTowers = __testing.desertWaterTowerPlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true });
@@ -245,31 +245,38 @@ const windSlotCounts = new Map();
 for (const turbine of windTurbines) {
   windSlotCounts.set(turbine.index, (windSlotCounts.get(turbine.index) || 0) + 1);
 }
-assert(wideWaterTowers.length < __testing.desertSatelliteDishPlacements(
+assert(wideWaterTowers.length < __testing.desertLandmarkPropPlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true }).length,
-  'water towers are less frequent than satellite dishes on the horizon');
+  'water towers are less frequent than the mesa-top landmarks on the horizon');
 assert(windTurbines.length > 1
   && [...windSlotCounts.values()].every((count) => count === 3)
   && windTurbines.every((turbine) => Math.abs(turbine.baseY - __testing.ridgeYAt(
     turbine.x, 137, portraitFarBaseY, portraitFarAmp, 230, 0.12,
     { mesa: true, coverageLeft: wideHorizonProbe.__mashBackgroundCoverage.left }) - 2) < 1e-9),
   'occasional portrait wind turbines repeat on the exact far-mesa crest');
-const highMesaDishes = __testing.desertSatelliteDishPlacements(
+const highMesaProps = __testing.desertLandmarkPropPlacements(
   wideHorizonProbe, 137, portraitFarBaseY, { portrait: true });
-const dishSlotCounts = new Map();
-for (const dish of highMesaDishes) {
-  dishSlotCounts.set(dish.index, (dishSlotCounts.get(dish.index) || 0) + 1);
+const landmarkSlotCounts = new Map();
+for (const prop of highMesaProps) {
+  landmarkSlotCounts.set(prop.index, (landmarkSlotCounts.get(prop.index) || 0) + 1);
 }
-assert(wideWaterTowers.length > 0 && highMesaDishes.length > 0
+assert(wideWaterTowers.length > 0 && highMesaProps.length > 0
   && Math.min(...wideWaterTowers.map((tower) => tower.baseY))
-    > Math.max(...highMesaDishes.map((dish) => dish.baseY)),
-  'water towers sit on lower mesas while satellite dishes sit on higher mesas');
-assert([...dishSlotCounts.values()].every((count) => count === 3),
-  'satellite dish slots use a readable three-dish cluster');
-const horizonKinds = Array.from({ length: 6 }, (_, index) =>
-  __testing.desertHorizonPropKind(index));
-assert(horizonKinds[0] === null && horizonKinds[5] === null,
-  'the horizon cycle leaves the first and last mesa slots blank');
+    > Math.max(...highMesaProps.map((prop) => prop.baseY)),
+  'water towers sit on lower mesas while the landmarks sit on higher mesas');
+assert([...landmarkSlotCounts.values()].every((count) => count === 1),
+  'each landmark slot holds one prop, not a cluster');
+// A stage travels slots 0–3 of the cycle. The big ear is on every stage, slot 0 is
+// each stage's own landmark, and the radio mast appears exactly once.
+const stageKinds = [1, 2, 3].map((stage) => Array.from({ length: 6 }, (_, index) =>
+  __testing.desertHorizonPropKind(index, stage)));
+assert(stageKinds.every((kinds) => kinds[1] === 'big-ear' && kinds[3] === 'wind' && kinds[5] === null),
+  'every speed stage passes the big ear and the wind farm; the last slot stays blank');
+assert(new Set(stageKinds.map((kinds) => kinds[0])).size === 3
+  && stageKinds.every((kinds) => kinds[0] && kinds[0] !== 'big-ear'),
+  'each speed stage opens on a landmark of its own');
+assert(stageKinds.flatMap((kinds) => kinds.slice(0, 4)).filter((kind) => kind === 'mast').length === 1,
+  'the radio mast appears once across the three stages');
 assert(__testing.windTurbineRotation(0, 0) !== __testing.windTurbineRotation(1, 0)
   && __testing.windTurbineRotation(1, 2) !== __testing.windTurbineRotation(1, 3),
   'wind turbine rotors advance over time and vary by landmark phase');
@@ -395,6 +402,22 @@ assert(speedPaperPack.lightBg && speedPaperPack.paperSlab?.paper
 assert(!speedPaperPack.decorate,
   'speed faux-3D does not add its own generic obstacle shadow');
 const frostPack = getStylePack('watercolor', {});
+function frostFinishMarks(backgroundContext) {
+  const { ctx } = recorder();
+  const marks = [];
+  ctx.__mashBackgroundCoverage = { left: 0, right: 480, width: 480 };
+  ctx.stroke = () => marks.push(ctx.strokeStyle);
+  ctx.fill = () => marks.push(ctx.fillStyle);
+  frostPack.bg(ctx, 12, 780, frost, 6000, backgroundContext, 0, backgroundContext);
+  return marks;
+}
+const shippedFrostMarks = frostFinishMarks({ stageIndex: 2 });
+const previousFrostMarks = frostFinishMarks({ stageIndex: 2, frostSceneryStudy: null });
+assert(shippedFrostMarks.includes('rgba(239,247,251,0.40)')
+  && shippedFrostMarks.includes('rgba(248,252,255,0.88)')
+  && !previousFrostMarks.includes('rgba(239,247,251,0.40)')
+  && !previousFrostMarks.includes('rgba(248,252,255,0.88)'),
+  'Frost ships E hill seams and deep snow while the gallery can still show the previous scene');
 const frostPaint = recorder();
 frostPaint.ctx.__mashBackgroundCoverage = { left: 0, right: 480, width: 480 };
 frostPack.bg(frostPaint.ctx, 12, 0, frost, 6000, null, 0);

@@ -23,12 +23,19 @@
     padding:3px 8px; font:inherit; }
   .controls button { color:var(--dim); cursor:pointer; }
   .controls button:hover { color:var(--accent); border-color:var(--accent); }
-  nav { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; align-items:center; }
-  nav a { color:var(--dim); text-decoration:none; padding:2px 9px; border:1px solid var(--line); border-radius:99px;
+  /* Grid, not flex-wrap: a ragged wrap sizes every pill to its own text, so
+     nothing lines up and a short title next to a long one reads as noise.
+     Fixed-width columns put every pill's left edge, and every count badge's
+     right edge, on a shared line — the thing that actually makes a list of
+     thirty section names scannable. */
+  nav { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:5px 10px; margin-top:8px; }
+  nav a { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0;
+          color:var(--dim); text-decoration:none; padding:3px 10px; border:1px solid var(--line); border-radius:6px;
+          overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
           transition:color .12s ease, border-color .12s ease, background .12s ease; }
   nav a:hover { color:var(--accent); border-color:var(--accent); }
   nav a.active { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
-  nav a .nav-count { opacity:0.55; font-size:9px; margin-left:5px; }
+  nav a .nav-count { opacity:0.55; font-size:9px; margin-left:5px; flex-shrink:0; }
   .pages { display:flex; gap:8px; margin:0 0 10px; }
   .pages a { color:var(--dim); text-decoration:none; font-size:11px; letter-spacing:0.1em;
              text-transform:uppercase; padding:3px 11px; border:1px solid var(--line); border-radius:5px;
@@ -48,6 +55,10 @@
   section.collapsed > *:not(h2) { display:none; }
   body.filtering section.collapsed > .grid { display:flex; }
   body.filtering section.collapsed > p.note, body.filtering section.collapsed > h3.subhead { display:block; }
+  /* Lab sections only — when a bake-off was opened, so a scroll down the page
+     reads oldest to newest. Not part of the heading's own uppercase run. */
+  section > h2 .section-date { color:var(--dim); font-size:10px; letter-spacing:0.08em;
+                                text-transform:none; font-weight:normal; margin-left:3px; opacity:0.75; }
   section > p.note { color:var(--dim); margin:0 0 12px; }
   h3.subhead { font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--dim);
                font-weight:normal; margin:16px 0 8px; }
@@ -98,6 +109,43 @@
     background-size:12px 12px; background-position:0 0, 6px 6px; }
   .bg-none canvas   { background:transparent; }
   #err { color:#e04848; white-space:pre-wrap; padding:20px; font-size:12px; }
+  /* Lab-only prune picker: tick a nav pill, review, copy the command. See the
+     "prune (lab)" block in gallery-entry.js — nothing here touches a file. */
+  .prune-item { display:flex; align-items:center; gap:5px; min-width:0; }
+  .prune-item a { flex:1; min-width:0; }
+  .prune-check { accent-color:var(--accent); cursor:pointer; width:13px; height:13px; }
+  #prune-bar { position:fixed; left:0; right:0; bottom:0; z-index:20; display:flex; align-items:center;
+               gap:12px; padding:10px 20px; background:rgba(24,12,12,0.95); backdrop-filter:blur(8px);
+               border-top:1px solid #5a2a2a; font:inherit; }
+  /* The #prune-bar ID rule above outranks the UA [hidden] rule on specificity,
+     so `.hidden = true` alone does nothing without this. */
+  #prune-bar[hidden] { display:none; }
+  #prune-bar .prune-count { color:#ff8a8a; font-weight:600; }
+  #prune-bar button { background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+                       border-radius:5px; padding:5px 12px; font:inherit; cursor:pointer; }
+  #prune-bar button:hover { border-color:var(--accent); color:var(--accent); }
+  #prune-bar button.danger { border-color:#e04848; color:#ff8a8a; }
+  #prune-bar button.danger:hover { background:#e04848; color:#fff; }
+  #prune-modal { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+                 background:rgba(0,0,0,0.6); }
+  #prune-modal[hidden] { display:none; }
+  #prune-modal .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+                         padding:20px; max-width:640px; width:calc(100% - 40px); max-height:80vh;
+                         overflow:auto; }
+  #prune-modal h2 { margin:0 0 10px; font-size:13px; letter-spacing:0.1em; text-transform:uppercase;
+                     color:#ff8a8a; }
+  #prune-modal p { color:var(--dim); margin:0 0 10px; }
+  #prune-modal ul { margin:0 0 14px; padding-left:18px; color:var(--ink); }
+  #prune-modal ul li { margin-bottom:6px; }
+  #prune-modal ul li .id { color:var(--dim); font-size:11px; }
+  #prune-modal textarea { width:100%; min-height:44px; background:var(--panel2); color:var(--ink);
+                           border:1px solid var(--line); border-radius:5px; padding:8px; font:inherit;
+                           resize:vertical; }
+  #prune-modal .actions { display:flex; gap:8px; margin-top:12px; }
+  #prune-modal .actions button { background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+                                  border-radius:5px; padding:6px 14px; font:inherit; cursor:pointer; }
+  #prune-modal .actions button:hover { border-color:var(--accent); color:var(--accent); }
+  #prune-modal .hint { font-size:11px; margin-top:10px; margin-bottom:0; }
 </style>
 </head>
 <body data-gallery="__MODE__">

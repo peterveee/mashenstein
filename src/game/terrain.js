@@ -142,6 +142,17 @@ export function maxTerrainHeight(cabinet) {
   return rises + (p ? p.amp : 0) + (STAGE_WAVE ? STAGE_WAVE.amp : 0);
 }
 
+/**
+ * Whether this cabinet's lane is the rolling one drawTerrain paints — whose
+ * surface is a 2px stroke CENTRED on terrainGroundY, so the visible edge of
+ * the ground body is a unit below the ground line. On plumber the stroke is
+ * within a shade of the hills behind it, so a thing seated exactly on the line
+ * reads as hovering a unit over the grass. The flat packs draw their own lane.
+ */
+export function hasRollingProfile(cabinet) {
+  return !!(cabinet && PROFILES[cabinet.id]);
+}
+
 // `viewW` is the world width actually on screen this frame. It runs inside the
 // zoomed world transform, so W here was never the visible width — at the
 // resting 1.6 the frame shows 300 units and this walked 480, painting a third
@@ -656,7 +667,7 @@ function trainRush(air) {
  */
 const TRAIN_FLYPAST_EXIT = 1500;
 const TRAIN_FLYPAST_GAIN = 5200;
-export function trainFlypast(camX, r) {
+export function trainFlypast(camX, r, extraLift = 0) {
   const d = r.x - camX;
   if (d >= TRAIN_FLIGHT_LEAD) return { hidden: true };
   const p = (TRAIN_FLIGHT_LEAD - d) / (TRAIN_FLIGHT_LEAD + TRAIN_FLYPAST_EXIT);
@@ -664,7 +675,7 @@ export function trainFlypast(camX, r) {
   return {
     dx: -TRAIN_FLIGHT_BACK + TRAIN_FLYPAST_GAIN * p,
     // A long shallow bow over the city, not a level line: it reads as flying.
-    lift: TRAIN_FLIGHT_AIR + Math.sin(p * Math.PI) * 14,
+    lift: TRAIN_FLIGHT_AIR + extraLift + Math.sin(p * Math.PI) * 14,
     open: 0,
     u: 0.5,          // mid-flight speed, for the streaks
     alpha: 0.85,
@@ -672,8 +683,9 @@ export function trainFlypast(camX, r) {
 }
 
 /** Draw a fly-past; false once it has gone for good. */
-export function drawNeonFlypast(ctx, camX, r, topAt, t = 0, palette = TRON_PALETTE.neon) {
-  const air = trainFlypast(camX, r);
+// `extraLift` raises the whole pass (portrait flies it higher in its taller sky).
+export function drawNeonFlypast(ctx, camX, r, topAt, t = 0, palette = TRON_PALETTE.neon, extraLift = 0) {
+  const air = trainFlypast(camX, r, extraLift);
   if (air.gone) return false;
   if (air.hidden) return true;
   const from = r.x - camX + air.dx;
@@ -756,12 +768,14 @@ export function neonNoseDrop(r, x) {
  * keep the train's prizes out from under it (Peter, 24 Sep: "avoid anything above or
  * below the sign and shift any power ups to before or after it").
  */
-// Past the nose, on the platform: a stride clear of the tip, and as long as a car's
-// window row. Its bottom clears the tallest hero standing on the lane (30px, see
-// HERO_REACH) with room to spare, so he runs underneath it.
+// Past the nose, on the platform: a stride clear of the tip. Its bottom clears the
+// tallest hero standing on the lane (30px, see HERO_REACH) with room to spare, so he
+// runs underneath it — and since it flies, clear of its chevrons too. A little higher
+// and wider than the stand it replaced (Peter, 24 Sep: "the sign could be a little
+// higher and wider also").
 const NEON_SIGN_GAP = 16;
-const NEON_SIGN_W = 80;
-const NEON_SIGN_LIFT = 36;
+const NEON_SIGN_W = 100;
+const NEON_SIGN_LIFT = 46;
 // How far past a train's nose its sign reaches.
 export const NEON_SIGN_REACH = NEON_SIGN_GAP + NEON_SIGN_W;
 export function neonStationSignSpan(r) {
@@ -960,8 +974,11 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palett
   // against the arrival offset — so the box only has to open UPWARD by the
   // cruising height, or the hull is sliced off at rail level all the way in.
   ctx.beginPath();
-  ctx.rect(from - 2, roofY - 4 - (air ? TRAIN_FLIGHT_AIR : 0),
-    (to - from) + 4, TRAIN_H + 14 + (air ? TRAIN_FLIGHT_AIR : 0));
+  // Open upward by as far as it is flying (a fly-past's bow and portrait lift go past
+  // the arrival's cruising height).
+  const headroom = air ? Math.max(TRAIN_FLIGHT_AIR, (air.lift || 0) + 4) : 0;
+  ctx.rect(from - 2, roofY - 4 - headroom,
+    (to - from) + 4, TRAIN_H + 14 + headroom);
   ctx.clip();
   // Solidifies as it comes down: full ghost at cruising height, opaque the
   // moment it is on the rail. `lift` is already smoothstepped, so this is too.

@@ -508,6 +508,9 @@ export const PICKUPS = {
   // See docs/mobile-rewind-powerup.md.
   capRewind: { w: 8, h: 8, sprite: 'capRewind', power: 'rewind' },
   appliance: { w: 22, h: 18, sprite: 'appliance', appliance: true, bob: true },
+  // The gold toaster's stand-in once its plug is banked: same flight, same
+  // spot, pays coins and nothing else. See Run.spawnApplianceMaybe.
+  applianceSilver: { w: 22, h: 18, sprite: 'applianceSilver', appliance: true, silver: true, bob: true },
   cord:      { w: 14, h: 9, sprite: 'cord', cord: true },
   resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },
 };

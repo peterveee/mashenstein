@@ -82,6 +82,7 @@ const GROUPS = [
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
       { cue: 'thunder', what: 'the lightning strike that turns neon-1 to night' },
+      { cue: 'cameraClick', what: 'the speed camera taking your picture on speed-2' },
       { cue: 'blockBreak', what: 'a crate or ?-crate breaking' },
       { cue: 'copterBonk', what: 'bonking the clown-copter' },
       { cue: 'boxKick', what: "the card box's crack; the plow", gain: 0.65 },

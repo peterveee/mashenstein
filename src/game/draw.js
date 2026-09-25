@@ -14,7 +14,7 @@ import {
   SWITCH_THROW_FRAMES, SWITCH_THROW_T, switchBonkLift,
   TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T, RAKE_FRAMES, RAKE_SWING_T,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
-  BATTERY_FOCUS,
+  BATTERY_FOCUS, applianceSheenSprite,
   PORTAL_SPRITE, PORTAL_ART_W, PORTAL_ART_H,
   PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE,
   PORTAL_SPEND_FRAMES, PORTAL_SPEND_TIME, PORTAL_WILT_FRAMES, PORTAL_WILT_TIME,
@@ -711,6 +711,11 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 // lane closing over it.
 const BED_SINK = 2;
 
+// Where in its hover the silver toaster's face catches the light, and how narrow
+// that lobe is, in units of the hover's sine.
+const SHEEN_AT = 0.3;
+const SHEEN_LOBE = 0.22;
+
 export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOptions = {}) {
   // Ceiling-mounted props use the exact same art-scale, animation and danger
   // treatment as floor props. Only their supporting surface is reflected.
@@ -963,7 +968,15 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
       ctx.drawImage(rimDark, ox, oy - 1, w0, h0); ctx.drawImage(rimDark, ox, oy + 1, w0, h0);
       ctx.globalAlpha = 1;
     }
-    ctx.drawImage(propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src), ox, oy, w0, h0);
+    // The silver toaster's glint rides its hover (the sine that lifts it above): the
+    // band slides across the face with the height, flaring as it passes SHEEN_AT.
+    let art = null;
+    if (propName === 'applianceSilver') {
+      const hover = Math.sin(t * 2.4 + e.bobPhase);
+      const a = Math.exp(-(((hover - SHEEN_AT) / SHEEN_LOBE) ** 2));
+      if (a > 0.03) art = applianceSheenSprite(sw, shT, frame, { pos: hover, a });
+    }
+    ctx.drawImage(art || (propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src)), ox, oy, w0, h0);
     ctx.imageSmoothingEnabled = prevSmooth;
   };
   // Do not paint a landing mark for airborne hazards. It is only decoration,

@@ -105,7 +105,9 @@ export function computeRank(result, difficulty) {
   let pts = 0;
   if (result.success) pts++;
   if (result.challengeDone) pts++;
-  if (result.applianceGot) pts++;
+  // The silver toaster is the replay's toaster, so it carries the rank point:
+  // without it a stage whose plug is banked could never rank S again.
+  if (result.applianceGot || result.silverGot) pts++;
   if (result.damageTaken === 0) pts++;
   let rank = pts >= 4 ? 'S' : pts === 3 ? 'A' : pts === 2 ? 'B' : 'C';
   // CONCERNING: an S earned while collecting zero coins (who ARE you), or any S on UNPLUGGED.

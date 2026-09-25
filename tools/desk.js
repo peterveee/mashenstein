@@ -69,6 +69,16 @@ const TOOL_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 // galleries/, and exits. So they get a different shape than TOOLS: no port,
 // no live/dead, just RUN and a log. `needsTool` is started first (and waited
 // on) when it is not already up, the way THE GAME has to be for a screenshot.
+// ids come from the browser (whatever was typed or pasted into the prune
+// card), so they are filtered to plausible kebab-case section ids before
+// ever reaching spawn — not for injection safety (array-form spawn already
+// has none of that risk), just so a stray paste cannot pass through as a
+// silent no-op-looking argument.
+function idsFrom(args) {
+  const raw = Array.isArray(args?.ids) ? args.ids : [];
+  return raw.map((s) => String(s).trim()).filter((s) => /^[a-z][a-z0-9-]*$/.test(s));
+}
+
 const ACTIONS = [
   {
     id: 'screens', label: 'REFRESH SCREEN GALLERY',
@@ -82,6 +92,25 @@ const ACTIONS = [
     blurb: 'renders every drawable (backgrounds, heroes, props, cabinets…) via the real draw functions, then archives a dated snapshot into galleries/ and rewrites the index.',
     steps: [['node', ['tools/build-gallery.js']], ['node', ['tools/archive-gallery.js']]],
     openPath: () => latestAssetGalleryHref(),
+  },
+  // The lab gallery's own checkbox picker hands you a `node tools/
+  // gallery-prune.js <ids> --yes` command to paste into a terminal; these two
+  // let you paste the ids here instead. Split in two on purpose — PLAN never
+  // writes, APPLY does — because this one action edits gallery-entry.js
+  // itself, everything else here only ever writes into galleries/.
+  {
+    id: 'pruneplan', label: 'GALLERY: PREVIEW DELETE',
+    blurb: 'dry-run of tools/gallery-prune.js for the ids below — prints exactly what would go, writes nothing.',
+    needsIds: true,
+    steps: (args) => [['node', ['tools/gallery-prune.js', ...idsFrom(args), '--dry-run']]],
+    openPath: () => null,
+  },
+  {
+    id: 'pruneapply', label: 'GALLERY: DELETE FOR REAL',
+    blurb: 'the same ids, for real — edits tools/gallery-entry.js, drops the imports that go orphaned with them, rebuilds.',
+    needsIds: true,
+    steps: (args) => [['node', ['tools/gallery-prune.js', ...idsFrom(args), '--yes']]],
+    openPath: () => null,
   },
 ];
 const ACTION_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
@@ -202,7 +231,7 @@ function runLog(state) {
   };
 }
 
-async function runAction(action) {
+async function runAction(action, runArgs = {}) {
   const existing = runs.get(action.id);
   if (existing?.running) return existing;
   const state = existing ?? { running: false, code: null, log: [] };
@@ -226,7 +255,10 @@ async function runAction(action) {
         }
       }
     }
-    for (const [cmd, args] of action.steps) {
+    // Most actions have a fixed command; the prune pair build theirs from
+    // whatever ids the browser sent, so `steps` can be either shape.
+    const steps = typeof action.steps === 'function' ? action.steps(runArgs) : action.steps;
+    for (const [cmd, args] of steps) {
       state.keep(`$ ${cmd} ${args.join(' ')}`);
       const code = await new Promise((res) => {
         const child = spawn(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -255,6 +287,7 @@ function actionStatus(action) {
     id: action.id,
     label: action.label,
     blurb: action.blurb,
+    needsIds: !!action.needsIds,
     running: !!state?.running,
     code: state?.code ?? null,
     log: state?.log.slice(-8) ?? [],
@@ -316,8 +349,17 @@ async function handle(req, res) {
   if (run && req.method === 'POST') {
     const action = ACTION_BY_ID[run[1]];
     if (!action) return json(res, 404, { ok: false, error: 'no such action' });
+    let args = {};
+    if (action.needsIds) {
+      const raw = await new Promise((resolve) => {
+        let body = '';
+        req.on('data', (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+        req.on('end', () => resolve(body));
+      });
+      try { args = JSON.parse(raw || '{}'); } catch { args = {}; }
+    }
     const alreadyRunning = !!runs.get(action.id)?.running;
-    runAction(action); // fire-and-forget; /api/status polls its progress
+    runAction(action, args); // fire-and-forget; /api/status polls its progress
     return json(res, 200, { ok: true, alreadyRunning });
   }
 

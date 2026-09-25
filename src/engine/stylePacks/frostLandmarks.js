@@ -144,6 +144,8 @@ export function frostLiftX(viewCenter, camX, atCam) {
 // A herd galloping along the far snowfield, overtaking the run, near the end of frost-2.
 // They cross the picture once, over a window of the stage, left to right, heads up and
 // antlers back; each on its own stride so the herd never marches in step.
+// THE FIRST DEER, kept drawable as the bake-off's control (A): superseded on 25 Sep by
+// the cut-paper deer below.
 const DEER = {
   body: '#7a5a46', dark: '#5a4234', belly: '#d8c0a2', rump: '#f4ece0', antler: '#6a5240', eye: '#1a1210',
 };
@@ -152,7 +154,7 @@ const HERD = [
   // [offset behind the leader, stride phase, size]
   [0, 0.0, 1.0], [24, 0.35, 0.92], [44, 0.7, 1.06], [66, 0.15, 0.88], [86, 0.55, 0.96],
 ];
-function drawDeer(ctx, x, y, s, phase, tilt = 0) {
+function drawDeerV1(ctx, x, y, s, phase, tilt = 0) {
   // `phase` 0..1 through a gallop: gathered (legs under) to extended (legs flung out).
   const ext = 0.5 - 0.5 * Math.cos(phase * TAU);
   // A small hop at the gathered part of the stride only: the hooves stay on the snow.
@@ -191,11 +193,111 @@ function drawDeer(ctx, x, y, s, phase, tilt = 0) {
   legs(-4, 2 - ext * 6, DEER.body);
   ctx.restore();
 }
+// THE HERD'S DEER — CUT PAPER (Peter, 25 Sep 2026: "Let's do D - drop the red nose
+// though"; the reindeer bake-off, src/dev/reindeer-candidates.js). Frost is cut paper,
+// so the deer is too: flat pieces with no ink line, each laid over a hazy copy of itself
+// a hair down and back (the cabinet's paper-shadow move), in colours pulled toward the
+// far ridge so the herd sits in the landscape. The anatomy is a caribou's, simplified to
+// what paper can cut: body over a paler belly, a pale rump, the neck with its hanging
+// pale mane, a long head with a dark muzzle and a NOSE, an ear, flat strip antlers with
+// the brow tine over the face, and jointed legs in a rotary gallop.
+//
+// `info.nose(ctx, x, y, r)` replaces the nose bead — the bake-off's red-nosed lead;
+// the game never passes one.
+const PAPER_DEER = {
+  body: '#80634f', under: '#b49a80', mane: '#efe9df', rump: '#f6f2ea', head: '#8a6c57',
+  muzzle: '#5a4538', nose: '#241a14', eye: '#1c1511', leg: '#5c4637', hoof: '#2c221b',
+  // Mid tan, not the cream they were cut in (Peter, 25 Sep 2026: "the reindeers antlers
+  // don't read so great against the background", then "go with c"): cream on the pale
+  // snow sky vanished. Tan reads against it and stays lighter than the head.
+  antler: '#9a7658', shadow: 'rgba(52,74,98,0.28)',
+};
+function strokePath(ctx, color, w, path) {
+  ctx.beginPath(); path(ctx);
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+}
+// A jointed leg: `ang` swings it from the hip (0 = straight down, + = forward), `bend`
+// folds the lower half at the knee/hock, and the hoof is a short dark cap.
+function deerLeg(ctx, hx, hy, ang, bend, l1, l2, w, color, hoof) {
+  const kx = hx + Math.sin(ang) * l1, ky = hy + Math.cos(ang) * l1;
+  const fx = kx + Math.sin(ang + bend) * l2, fy = ky + Math.cos(ang + bend) * l2;
+  strokePath(ctx, color, w, (c) => { c.moveTo(hx, hy); c.lineTo(kx, ky); c.lineTo(fx, fy); });
+  strokePath(ctx, hoof, w * 1.05, (c) => {
+    c.moveTo(fx - Math.sin(ang + bend) * 0.7, fy - Math.cos(ang + bend) * 0.7); c.lineTo(fx, fy);
+  });
+}
+function deerAntlers(c) {
+  c.moveTo(10.2, -15.7); c.lineTo(8.9, -19.2); c.lineTo(6.4, -21.2);
+  c.moveTo(8.9, -19.2); c.lineTo(9.9, -21.6);
+  c.moveTo(7.6, -20.3); c.lineTo(7.7, -22.8);
+  c.moveTo(11, -15.9); c.lineTo(10.7, -20); c.lineTo(8.6, -22.6);
+  c.moveTo(10.7, -20); c.lineTo(12.1, -21.8);
+  c.moveTo(11, -16.6); c.lineTo(12.8, -16.9); c.lineTo(13, -16);
+}
+function drawDeer(ctx, x, y, s, phase, tilt = 0, info = {}) {
+  const P = PAPER_DEER;
+  // A rotary gallop: fore pair reaching while the hind pair drives, each pair a little
+  // out of step so the legs never scissor as one; knees fold as a foreleg comes forward.
+  const a = phase * TAU;
+  const foreBend = (v) => -0.9 * Math.max(0, Math.cos(v));
+  const lift = Math.max(0, Math.sin(a)) * 0.45;
+  const piece = (color, path) => {
+    ctx.save(); ctx.translate(-0.35, 0.45); fillPath(ctx, P.shadow, path); ctx.restore();
+    fillPath(ctx, color, path);
+  };
+  ctx.save();
+  ctx.translate(x, y - lift * s);
+  ctx.rotate(tilt);
+  ctx.scale(s, s);
+  deerLeg(ctx, 4.2, -6.3, 0.62 * Math.sin(a - 0.5), foreBend(a - 0.5), 3.2, 3.4, 1.15, P.leg, P.hoof);
+  deerLeg(ctx, -5, -6.7, 0.55 * Math.sin(a + Math.PI * 0.9 - 0.5), -0.35, 3.3, 3.5, 1.25, P.leg, P.hoof);
+  piece(P.body, (c) => {
+    c.moveTo(-7.8, -8.4); c.lineTo(-6.4, -11); c.lineTo(-1.5, -11.4); c.lineTo(3.8, -11.3);
+    c.lineTo(6.6, -9.8); c.lineTo(6.6, -6.2); c.lineTo(0.5, -5.4); c.lineTo(-5.8, -5.8); c.closePath();
+  });
+  fillPath(ctx, P.under, (c) => { c.moveTo(-5, -6.6); c.lineTo(5.6, -7); c.lineTo(5.8, -6.2); c.lineTo(0.5, -5.5); c.lineTo(-5.2, -5.9); c.closePath(); });
+  fillPath(ctx, P.rump, (c) => { c.moveTo(-7.9, -8.5); c.lineTo(-7, -10.2); c.lineTo(-6.3, -8.8); c.lineTo(-6.8, -7.1); c.closePath(); });
+  // The neck in the body colour, the mane as a narrow hanging fringe under it.
+  piece(P.body, (c) => {
+    c.moveTo(3.4, -10.8); c.lineTo(6.8, -14.4); c.lineTo(9.6, -14.2); c.lineTo(9.8, -11.6); c.lineTo(7.4, -9.2); c.closePath();
+  });
+  fillPath(ctx, P.mane, (c) => {
+    c.moveTo(5.2, -10.2); c.lineTo(9.7, -12.3); c.lineTo(9.3, -11); c.lineTo(8.3, -9.4);
+    c.lineTo(7.7, -7.4); c.lineTo(7.1, -8.4); c.lineTo(6.5, -7.2); c.lineTo(6.1, -8.6); c.closePath();
+  });
+  piece(P.head, (c) => {
+    c.moveTo(8.5, -15.1); c.lineTo(11.4, -16); c.lineTo(14.8, -13); c.lineTo(14.2, -11.5); c.lineTo(10.4, -11.4); c.closePath();
+  });
+  fillPath(ctx, P.muzzle, (c) => { c.moveTo(12.8, -14.3); c.lineTo(14.8, -13); c.lineTo(14.2, -11.5); c.lineTo(12.4, -11.5); c.closePath(); });
+  if (info.nose) info.nose(ctx, 14.5, -12.6, 0.62);
+  else fillPath(ctx, P.nose, (c) => c.arc(14.5, -12.6, 0.62, 0, TAU));
+  fillPath(ctx, P.eye, (c) => c.arc(11.3, -14.4, 0.42, 0, TAU));
+  piece(P.head, (c) => { c.moveTo(9.6, -15.4); c.lineTo(7.9, -17.1); c.lineTo(10.1, -16); c.closePath(); });
+  // Antlers as cut strips: flat, a little broader than a stroke, over their shadow.
+  // `info.antler` ({ fill, edge, edgeWidth }) is the antler bake-off's seam (Peter,
+  // 25 Sep: make them stand out more); the game passes none.
+  const antler = info.antler || {};
+  ctx.save(); ctx.translate(-0.35, 0.45); strokePath(ctx, P.shadow, 0.85, deerAntlers); ctx.restore();
+  if (antler.edge) strokePath(ctx, antler.edge, 0.85 + 2 * (antler.edgeWidth ?? 0.35), deerAntlers);
+  strokePath(ctx, antler.fill || P.antler, 0.85, deerAntlers);
+  deerLeg(ctx, 3.8, -6.2, 0.62 * Math.sin(a), foreBend(a), 3.2, 3.4, 1.25, P.leg, P.hoof);
+  deerLeg(ctx, -5.4, -6.7, 0.55 * Math.sin(a + Math.PI * 0.9), -0.35, 3.3, 3.5, 1.35, P.leg, P.hoof);
+  ctx.restore();
+}
+
+// Gallery seam (the reindeer bake-off, src/dev/reindeer-candidates.js): a candidate
+// deer painter with drawDeer's signature plus `{ i, t }` — which deer of the herd (0 is
+// the leader) and the clock — so a bake-off draws the real herd, on the real crest,
+// under the real clip, with nothing forked. Null is the shipped deer.
+let deerOverride = null;
+export function setFrostDeerPainter(fn) { deerOverride = fn || null; }
+export { drawDeer as drawFrostDeer, drawDeerV1 as drawFrostDeerV1, PAPER_DEER as FROST_DEER_PALETTE };
+
 /**
  * The herd, `k` 0..1 through its crossing (0 = the leader entering at the left edge of
  * `view`, 1 = the last deer gone past the right). Feet on the far crest.
  */
-export function drawFrostReindeer(ctx, t, k, view, crest) {
+export function drawFrostReindeer(ctx, t, k, view, crest, hides = []) {
   const from = view.left - 30, to = view.left + view.width + 30 + HERD[HERD.length - 1][0];
   const lead = from + (to - from) * k;
   ctx.save();
@@ -204,10 +306,21 @@ export function drawFrostReindeer(ctx, t, k, view, crest) {
   // sunk a pixel in, and the herd is clipped to the sky side of the crest, so going over
   // the brow they drop out of sight behind it. Rocks and fortresses on this ridge are
   // drawn after the herd, so it passes behind those too.
+  //
+  // BUT A ROCK STOPS AT THE CREST. Scenery on this ridge is clipped to the snow line
+  // exactly (frostClipToSnow), and the hooves are sunk 1.2 below it — so behind every
+  // rock and fortress a sliver of hoof showed under its base (Peter, 24 Sep: "you can see
+  // the bottom of their feet below the rocks on the hill"). `hides` are the x-spans of
+  // the scenery standing on this crest; across them the herd is cut a touch ABOVE the
+  // crest, so a deer walking behind a rock is hidden by it all the way down. On open
+  // snow nothing changes.
+  const hidden = (x) => hides.some(([a, b]) => x >= a && x <= b);
   ctx.beginPath();
   ctx.moveTo(view.left - 40, -200);
   ctx.lineTo(view.left + view.width + 40, -200);
-  for (let x = view.left + view.width + 40; x >= view.left - 40; x -= 2) ctx.lineTo(x, crest(x) + 1.2);
+  for (let x = view.left + view.width + 40; x >= view.left - 40; x -= 1) {
+    ctx.lineTo(x, crest(x) + (hidden(x) ? -0.6 : 1.2));
+  }
   ctx.closePath();
   ctx.clip();
   for (let i = HERD.length - 1; i >= 0; i--) {
@@ -215,7 +328,7 @@ export function drawFrostReindeer(ctx, t, k, view, crest) {
     const x = lead - behind;
     if (x < view.left - 30 || x > view.left + view.width + 30) continue;
     const tilt = Math.atan2(crest(x + 5) - crest(x - 5), 10) * 0.8;
-    drawDeer(ctx, x, crest(x) + 1.2, 0.95 * s, (t * 2.2 + ph) % 1, tilt);
+    (deerOverride || drawDeer)(ctx, x, crest(x) + 1.2, 0.95 * s, (t * 2.2 + ph) % 1, tilt, { i, t });
   }
   ctx.restore();
 }

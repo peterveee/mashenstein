@@ -17,6 +17,10 @@
 // down to y = d at the bottom of the apron. They may not paint above y = 0 and
 // they may not paint across the open part of the break.
 
+// The two HARD fills — spike beds and gear works — live in their own module,
+// which also decides which of the shipped designs each pit gets.
+import { spikes, gears } from './pitFillHard.js';
+
 // The authored pit shaft is 38 world pixels deep. Keep the liquid surface and
 // its local detail independent of the presentation frame: portrait expands the
 // visible canvas height, but it does not move the material's near surface.
@@ -268,78 +272,15 @@ function slush(ctx, w, d, t) {
   }
 }
 
-// IRON TEETH — the crossing's material, and the only fill in the set that is
-// not a liquid.
+// IRON TEETH and THE WORKS — the crossings' materials, and the only fills in
+// the set that are not liquids. They are painted in game/pitFillHard.js (the
+// 24 Sep bake-off's winners, mixed per pit); what stays here is the geometry
+// they share with game/run.js — SPIKE_TIPS, GEAR_TOPS, the portrait cutoff.
 //
-// The other three are things you sink into, which is why they are painted as a
-// surface with weather on it. A spike bed has no surface: it is a row of
-// objects, and everything it has to say it says with silhouette — which is
-// lucky, because it says it at lane size, from the road, standing still, with
-// no glow and no animation to lean on. A player who has never seen this hole
-// before has to know from one glance that it is not a hole to land in.
-//
-// Fixed PITCH rather than a fixed count. A crossing is several hundred pixels
-// wide and an ordinary pit is sixty, and teeth that divided the width would be
-// railings on one and a comb on the other. Nine pixels puts a tooth roughly
-// every hero-width, so the bed reads the same in both.
-function spikes(ctx, w, d, t, lift = 0) {
-  // The plate they come out of, and NOTHING ELSE behind them.
-  //
-  // This had a dark shaft, and then a softer wash of one, and both were the
-  // same mistake: a hole in this game is SEEN THROUGH — the sky, the hills and
-  // the parallax all read straight down it, which is what says the ground has
-  // been removed rather than painted over. Anything laid across the break to
-  // make the teeth read is paid for with the scenery behind them, and the
-  // scenery is the picture. So the fill is the teeth and the plate under them,
-  // and the depth comes from the ROAD standing up either side (see
-  // CROSSING_ROAD_RISE in game/run.js).
-  const detailD = liquidSurfaceDepth(d);
-  const plate = detailD * 0.5;
-  basePlate(ctx, w, d, plate, lift, hardFillCutoff('spikes', w, d));
-  // THE SAME TOOTH THE LANE USES. `popSpikes` in sprites/props.js is the spike
-  // hazard a player already knows — narrow, inked, alternating pale and grey —
-  // and a pit full of some other spike would be a second vocabulary for one
-  // idea. Copied in proportion rather than shared as code: that painter draws
-  // into a prop's box with a plate and a chevron stripe, and this draws into a
-  // hole, but the tooth itself is its tooth.
-  const pitch = 9;
-  const n = Math.max(2, Math.round(w / pitch));
-  const step = w / n;
-  const half = Math.max(0.5, step * 0.2);
-  for (let i = 0; i < n; i++) {
-    const cx = step * (i + 0.5);
-    // THE ROW BREATHES, and as a wave rather than in unison — the same argument
-    // popSpikes makes: always out, always lethal, still moving. A hazard that
-    // is perfectly still on a scrolling screen falls out of the eye, and one
-    // that retracts far enough to be safe is a timing puzzle nobody was told
-    // about, so the travel is a fifth and it never reaches the plate. One sine
-    // across the whole row would be a bed inflating; a fifth of a cycle between
-    // neighbours is a ripple running along it.
-    const pump = 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(t * 3.1 + i * 0.62));
-    const full = plate - (i % 2 === 0 ? detailD * SPIKE_TIPS : detailD * SPIKE_TIPS + detailD * 0.11);
-    // The ink is scaled to the TOOTH, not to the hole. Off the hole's width it
-    // was two world pixels of outline round a three-pixel triangle — the row
-    // went solid black and the teeth stopped having a shape at all.
-    hzTooth(ctx, cx, plate, half, full * pump,
-      i % 2 ? '#e4eaf1' : '#b9c4d0', Math.max(0.1, half * 0.16));
-  }
-  glint(ctx, w, d, t, detailD * SPIKE_TIPS);
-}
-
-// One tooth of the lane's own spike plate: a narrow triangle with an ink line
-// round it. The ink is what makes it read at four pixels against sky.
-function hzTooth(ctx, cx, base, half, height, fill, lw) {
-  ctx.beginPath();
-  ctx.moveTo(cx - half, base);
-  ctx.lineTo(cx, base - height);
-  ctx.lineTo(cx + half, base);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.strokeStyle = '#232a34';
-  ctx.lineWidth = lw;
-  ctx.stroke();
-}
+// A hole in this game is SEEN THROUGH — the sky, the hills and the parallax
+// all read straight down it — so a hard fill is the hazard and the plate under
+// it and nothing laid across the break; the depth comes from the ROAD standing
+// up either side (CROSSING_ROAD_RISE in game/run.js).
 
 /**
  * Return the lower boundary of a dry pit. `d` is the full apron depth passed by
@@ -381,138 +322,6 @@ function drawDryPitLine(ctx, w, y) {
   ctx.fillRect(0, y + 1, w, 1);
 }
 
-// THE PLATE the teeth/gear train stand on, and the whole of what a hard fill
-// paints besides the hazard itself. In portrait, `bottom` marks the bay line
-// shortly below the silhouette; the normal background continues below it.
-// Liquids continue to use the full apron and never call this helper.
-//
-// In portrait it is only a line: everything below it is the break's ordinary
-// background, and everything above it is the open break — see the note in
-// spikes(). Landscape retains its existing plate treatment. `lift` is how far
-// the road stands above the flat groundline over this hole (game/terrain.js),
-// and it is the only reason a painter may paint above y = 0; drawPitFill's clip
-// is what bounds it.
-function basePlate(ctx, w, d, y, lift = 0, bottom = d) {
-  const end = Math.max(y + 2, Math.min(d, Number.isFinite(bottom) ? bottom : d));
-  const detailD = liquidSurfaceDepth(d);
-  if (d > HARD_FILL_LANDSCAPE_DEPTH) {
-    // Portrait leaves the cabinet's normal background visible below the dry
-    // hazard. The line is the bottom of the little mechanical bay; painting a
-    // dark shaft beneath it made the pit continue to the phone's bottom edge.
-    drawDryPitLine(ctx, w, end);
-    return;
-  }
-  const topBand = Math.max(2, detailD * 0.06);
-  ctx.fillStyle = '#232a34';
-  ctx.fillRect(0, y, w, topBand);
-  ctx.fillStyle = '#171522';
-  ctx.fillRect(0, y + topBand, w, Math.max(0, end - (y + topBand)));
-  if (end < d) {
-    // A thin lit lip and a dark underside make the cutoff read as the far
-    // wall of a service bay. The floor continues below that wall to the
-    // bottom of the portrait pit; leaving it transparent exposed scenery as
-    // empty air beneath the machinery.
-    ctx.fillStyle = '#59636f';
-    ctx.fillRect(0, end, w, 2);
-    ctx.fillStyle = '#0f1018';
-    ctx.fillRect(0, end + 2, w, 2);
-    ctx.fillRect(0, end + 4, w, Math.max(0, d - (end + 4)));
-  }
-}
-
-// ONE glint, travelling. A machine of teeth is otherwise still, and stillness on
-// a scrolling screen falls out of the eye — but steel does not bubble or
-// flicker, so what moves is the LIGHT on it: once across the row, slowly, the
-// way a highlight crosses a knife.
-function glint(ctx, w, d, t, y) {
-  const detailD = liquidSurfaceDepth(d);
-  const p = (t * 0.22) % 1.6;
-  const gx = -w * 0.1 + p * w * 0.75;
-  if (gx <= -w * 0.05 || gx >= w * 1.05) return;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.5;
-  ellipse(ctx, gx, y + detailD * 0.04, Math.max(0.5, w * 0.012), detailD * 0.06, '#ffffff');
-  ctx.restore();
-}
-
-// THE WORKS — cogs turning in the floor, and the plumber cabinet's answer to a
-// bed of teeth.
-//
-// Same job as the spikes and a different sentence: teeth are a trap somebody
-// SET, and a gear train is machinery that was here first and does not know you
-// are standing over it. That is the joke the arcade is built on, so the fill a
-// stage names is a tone choice as much as a hazard one.
-//
-// Drawn as a train rather than as scattered wheels: neighbouring cogs turn
-// OPPOSITE ways and their pitch circles touch, which is the one thing that
-// makes a row of toothed circles read as connected rather than as decoration.
-// The top of the tooth circle is the surface a falling hero comes to rest on
-// (GEAR_TOPS), so what he lands on is what the eye was measuring.
-function gears(ctx, w, d, t, lift = 0) {
-  const detailD = liquidSurfaceDepth(d);
-  const top = detailD * GEAR_TOPS;
-  // A TRAIN, not a row: big wheel, small wheel, big wheel, with their pitch
-  // circles touching and every neighbour turning the other way. Alternating the
-  // size is what stops nine identical circles reading as a texture — a machine
-  // is made of parts that are not each other — and it is also the cheapest way
-  // to show engagement, since the eye reads the small one as being DRIVEN.
-  //
-  // Sized off the hero rather than off the break: twenty-six pixels of pitch is
-  // about three hero-widths, so an ordinary sixty-pixel pit gets two wheels and
-  // a crossing gets a line of them, at the same scale in both.
-  const pitch = 26;
-  const n = Math.max(2, Math.round(w / pitch));
-  const step = w / n;
-  const big = Math.min(step * 0.52, detailD * 0.26);
-  // Unlike the liquid fills, a gear train needs a floor behind it. The bay
-  // ends just below the largest tooth, so the wheels are visibly seated rather
-  // than floating in the scenery or trailing to the phone's bottom edge.
-  basePlate(ctx, w, d, top, lift, hardFillCutoff('gears', w, d));
-  for (let i = 0; i < n; i++) {
-    const small = i % 2 === 1;
-    const r = small ? big * 0.66 : big;
-    const cx = step * (i + 0.5);
-    // Every wheel's TOP sits on the same line — the line a falling hero comes
-    // to rest on — so the small ones ride higher on their axles rather than
-    // being sunk to a common centre. A gear train's job here is to be a floor
-    // you cannot stand on, and a floor has one height.
-    const cy = top + r;
-    const dir = small ? -1 : 1;
-    const a0 = t * (small ? 2.3 : 1.5) * dir + i * 0.5;
-    const teeth = small ? 8 : 11;
-    ctx.fillStyle = '#3f454e';
-    ctx.beginPath();
-    for (let k = 0; k < teeth; k++) {
-      const a = a0 + (k / teeth) * TAU;
-      const wide = (TAU / teeth) * 0.26;
-      ctx.lineTo(cx + Math.cos(a - wide) * r, cy + Math.sin(a - wide) * r);
-      ctx.lineTo(cx + Math.cos(a - wide * 0.55) * r * 1.15, cy + Math.sin(a - wide * 0.55) * r * 1.15);
-      ctx.lineTo(cx + Math.cos(a + wide * 0.55) * r * 1.15, cy + Math.sin(a + wide * 0.55) * r * 1.15);
-      ctx.lineTo(cx + Math.cos(a + wide) * r, cy + Math.sin(a + wide) * r);
-    }
-    ctx.closePath();
-    ctx.fill();
-    // Iron, lit from above: the body a step up from the teeth, a crescent of
-    // highlight across the top of it, and a dark bore at the centre. Three
-    // values and no gradient — at this size a gradient is one flat grey.
-    ellipse(ctx, cx, cy, r * 0.88, r * 0.88, '#6e7681');
-    ellipse(ctx, cx, cy - r * 0.16, r * 0.66, r * 0.62, '#8b949f');
-    ellipse(ctx, cx, cy, r * 0.3, r * 0.3, '#2b3038');
-    // ONE spoke, and it is what makes the wheel visibly turn: a bare disc is
-    // the same picture every frame however fast it is spinning. Brass, because
-    // this is a plumber's gearbox and the one warm thing in the hole should be
-    // the moving part.
-    ctx.strokeStyle = '#d9a441';
-    ctx.lineWidth = Math.max(0.35, r * 0.15);
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a0) * r * 0.22, cy + Math.sin(a0) * r * 0.22);
-    ctx.lineTo(cx + Math.cos(a0) * r * 0.8, cy + Math.sin(a0) * r * 0.8);
-    ctx.stroke();
-  }
-  glint(ctx, w, d, t, top);
-}
-
 const FILLS = { tar, void: voidFill, lava, slush, spikes, gears };
 
 /**
@@ -539,12 +348,15 @@ export function fillSurface(id) { return FILL_SURFACE[id] || { at: PIT_FLOOR, ha
  * that. `phase` shifts the animation so neighbouring pits are out of step.
  * `groundFill` is the level's ordinary ground colour for the solid section
  * below a portrait dry-pit boundary; liquid fills leave it unused.
+ * `env` is only read by the hard fills (game/pitFillHard.js): `seed` (the pit's
+ * world x — which design each bay gets), `cab`, `crossing`, `beat`,
+ * `paperSlab`. Every key is optional.
  *
  * Clipped to the break, so a fill can never bleed onto the road either side:
  * the ground has already been drawn by the time this runs, and a material that
  * painted over it would be reporting a hole wider than the one you fall into.
  */
-export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0, groundFill = null) {
+export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0, groundFill = null, env = null) {
   const paint = FILLS[id];
   if (!paint || w <= 0 || d <= 0) return;
   ctx.save();
@@ -571,7 +383,7 @@ export function drawPitFill(ctx, id, x, y0, w, d, t = 0, phase = 0, lift = 0, gr
     const floorTop = Math.max(0, bottom - 1);
     ctx.fillRect(-1, floorTop, w + 2, Math.max(0, d - floorTop + 1));
   }
-  paint(ctx, w, d, t + phase, lift);
+  paint(ctx, w, d, t + phase, lift, env);
   ctx.restore();
 }
 

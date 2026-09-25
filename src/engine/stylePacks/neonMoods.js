@@ -164,7 +164,7 @@ export function neonStrikeLight(s) {
  * a second and the strike lands behind it; every re-strike redraws both a little
  * differently, which is the flicker. Additive, in the cabinet's cyan.
  */
-function skyCrawler(left, right, top, seed) {
+export function skyCrawler(left, right, top, seed) {
   const n = 18;
   const pts = [];
   for (let i = 0; i <= n; i++) {
@@ -174,7 +174,7 @@ function skyCrawler(left, right, top, seed) {
   }
   return pts;
 }
-function strikeFrom(sx, sy, x, y, seed) {
+export function strikeFrom(sx, sy, x, y, seed) {
   const pts = [[sx, sy]];
   const n = 8;
   for (let i = 1; i <= n; i++) {
@@ -183,56 +183,400 @@ function strikeFrom(sx, sy, x, y, seed) {
   }
   return pts;
 }
-export function drawNeonBolt(ctx, s, x, y, seed = 1, { left = x - 260, right = x + 260, top = y * 0.28 } = {}) {
-  const light = neonStrikeLight(s);
-  if (!light || light.bolt <= 0.01) return;
-  const fs = seed + light.which * 3;
-  const crawl = skyCrawler(left, right, top, fs);
-  // The crawler races across; the strike follows once it is past the hit point.
-  const across = Math.min(1, s / 0.18);
-  const shown = Math.max(2, Math.ceil(crawl.length * across));
-  // Where the strike leaves the crawler: the crawler point nearest above the hit.
-  let from = crawl[0];
-  for (const p of crawl) if (Math.abs(p[0] - x) < Math.abs(from[0] - x)) from = p;
-  const strike = strikeFrom(from[0], from[1], x, y, fs + 40);
-  const strikeGrow = Math.max(0, Math.min(1, (s - 0.06) / 0.1));
-  const path = (c) => {
-    crawl.slice(0, shown).forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py)));
-    // Forks hanging down off the crawler.
-    for (let f = 2; f < shown - 1; f += 3) {
-      const [fx, fy] = crawl[f];
-      c.moveTo(fx, fy);
-      c.lineTo(fx + (rnd(fs + f * 7) - 0.5) * 30, fy + 14 + rnd(fs + f) * 16);
-      c.lineTo(fx + (rnd(fs + f * 9) - 0.5) * 44, fy + 26 + rnd(fs + f * 2) * 22);
+/**
+ * THE BOLT IS WHITE-HOT (Peter, 25 Sep 2026: "Can we do a bake off of more detailed
+ * lightning. Possibly finer little electrical lines, more dramatic" — then "Let's do c").
+ * The skeleton is still skyCrawler + strikeFrom above, on the same clock: it tears across
+ * in 0.18 s, the strike leaves it at 0.06 s and lands 0.1 s later, five strokes and an
+ * afterglow. What the bake-off (src/dev/neon-bolt-candidates.js) changed is the detail and
+ * the light: the skeleton fractured fine (midpoint displacement) and grown into a tree of
+ * forks three generations deep down to hairlines; a fat white core that swells on each
+ * stroke inside cyan and magenta bloom; the skyline lit where it lands; the channel cooling
+ * white > ice > violet between strokes; and the first bolt burned in as a violet
+ * afterimage under the re-strikes. The forks die first as a stroke fades, so between
+ * strokes the main channel glows on its own and each re-strike relights the whole tree.
+ */
+// The cabinet's inks (TRON_PALETTE.neon.line, the bolt's own ice, the hover sign's magenta).
+const CYAN = '#38d8f8';
+const ICE = '#8cf0ff';
+const WHITE = '#ffffff';
+const MAGENTA = '#e838f8';
+const T = NEON_STRIKE_SECONDS;
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+// ------------------------------------------------------------------ geometry
+/** Midpoint displacement: every segment split and its middle kicked sideways, `depth` times. */
+export function jag(pts, depth, rough, seed) {
+  let out = pts;
+  for (let d = 0; d < depth; d++) {
+    const next = [out[0]];
+    for (let i = 1; i < out.length; i++) {
+      const [ax, ay] = out[i - 1];
+      const [bx, by] = out[i];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len = Math.hypot(dx, dy) || 1;
+      const off = (rnd(seed + d * 97.3 + i * 13.7) - 0.5) * len * rough;
+      next.push([(ax + bx) / 2 - (dy / len) * off, (ay + by) / 2 + (dx / len) * off]);
+      next.push(out[i]);
     }
-    if (strikeGrow > 0) {
-      const m = Math.max(2, Math.ceil(strike.length * strikeGrow));
-      strike.slice(0, m).forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py)));
-      if (strikeGrow >= 1) {
-        for (const f of [3, 5]) {
-          const [fx, fy] = strike[f];
-          c.moveTo(fx, fy);
-          c.lineTo(fx + (rnd(fs + f * 11) - 0.3) * 40, fy + 22);
-        }
-      }
+    out = next;
+  }
+  return out;
+}
+
+/** A wandering walk from (x, y) heading `ang`, `len` long. */
+export function walk(x, y, ang, len, steps, wander, seed) {
+  const pts = [[x, y]];
+  let a = ang;
+  const step = len / steps;
+  for (let i = 1; i <= steps; i++) {
+    a += (rnd(seed + i * 7.3) - 0.5) * wander;
+    x += Math.cos(a) * step;
+    y += Math.sin(a) * step;
+    pts.push([x, y]);
+  }
+  return pts;
+}
+
+export const dirAt = (pts, i) => {
+  const a = pts[Math.max(0, i - 2)];
+  const b = pts[Math.min(pts.length - 1, i + 2)];
+  return Math.atan2(b[1] - a[1], b[0] - a[0]);
+};
+
+/**
+ * A CHANNEL is a fine polyline plus WHEN its tip passes along it: it leaves its root
+ * at t0 and reaches its end dur seconds later, so the whole tree grows down from the
+ * sky the way the shipped bolt does, forks sprouting as the channel reaches them.
+ */
+export const chan = (pts, t0, dur, gen) => ({ pts, t0, dur, gen });
+export const arrival = (ch, i) => ch.t0 + ch.dur * (i / Math.max(1, ch.pts.length - 1));
+
+// Forks off a parent: gen 1 are real branches, gen 2 twigs, gen 3 hairlines.
+export const FORK = [
+  null,
+  { len: [22, 56], speed: 700, wander: 0.9, steps: 5, depth: 2, kids: [1, 3] },
+  { len: [9, 22], speed: 520, wander: 1.1, steps: 3, depth: 2, kids: [0, 2] },
+  { len: [4, 9], speed: 420, wander: 1.3, steps: 2, depth: 1, kids: [0, 0] },
+];
+export function sprout(out, parent, i, ang, gen, seed) {
+  const f = FORK[gen];
+  const len = f.len[0] + rnd(seed) * (f.len[1] - f.len[0]);
+  const [px, py] = parent.pts[i];
+  const pts = jag(walk(px, py, ang, len, f.steps, f.wander, seed + 3), f.depth, 0.34, seed + 5);
+  const ch = chan(pts, arrival(parent, i), len / f.speed, gen);
+  out.push(ch);
+  if (gen >= 3) return;
+  const nk = f.kids[0] + Math.floor(rnd(seed + 9) * (f.kids[1] - f.kids[0] + 1));
+  for (let k = 0; k < nk; k++) {
+    const at = 1 + Math.floor(rnd(seed + 11 + k * 5) * (pts.length - 2));
+    const side = rnd(seed + 17 + k) < 0.5 ? -1 : 1;
+    const a = dirAt(pts, at) + side * (0.4 + rnd(seed + 23 + k) * 0.7);
+    sprout(out, ch, at, a, gen + 1, seed * 1.37 + 31 + k * 41);
+  }
+  // Hairlines straight off a branch, too, so the fine detail is everywhere the branch is.
+  if (gen === 1) {
+    for (let k = 0; k < 2; k++) {
+      const at = 1 + Math.floor(rnd(seed + 51 + k * 3) * (pts.length - 2));
+      const a = dirAt(pts, at) + (k ? 1 : -1) * (0.6 + rnd(seed + 57 + k) * 0.7);
+      sprout(out, ch, at, a, 3, seed * 1.91 + 61 + k * 13);
     }
-  };
-  const stroke = (width, color, alpha) => {
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    path(ctx);
-    ctx.stroke();
-  };
-  const b = light.bolt;
+  }
+}
+
+/**
+ * The shipped skeleton, fractured and grown into a tree. Timings are the shipped
+ * bolt's: the crawler crosses in 0.18 s, the strike leaves it at 0.06 s and lands 0.1 s
+ * later.
+ */
+const treeCache = new Map();
+export function boltTree(fs, x, y, left, right, top, { forks = true, crawlDur = 0.18, strikeAt = 0.06, strikeDur = 0.1, thin = false } = {}) {
+  const key = [fs, x, y, left, right, top, forks, crawlDur, strikeAt, strikeDur, thin].join('|');
+  const hit = treeCache.get(key);
+  if (hit) return hit;
+  const coarse = skyCrawler(left, right, top, fs);
+  let from = coarse[0];
+  for (const p of coarse) if (Math.abs(p[0] - x) < Math.abs(from[0] - x)) from = p;
+  const crawl = chan(jag(coarse, 3, 0.3, fs + 1), 0, crawlDur, 0);
+  const strike = chan(jag(strikeFrom(from[0], from[1], x, y, fs + 40), 3, 0.32, fs + 2), strikeAt, strikeDur, 0);
+  const chans = [crawl, strike];
+  if (forks) {
+    // Off the crawler: branches hanging down, a little way either side of straight down.
+    const n = crawl.pts.length;
+    // `thin` (a mock-up, Peter 25 Sep: "Can we mock up the thinned version?") spaces
+    // them twice as far apart and, away from the strike, hangs twigs rather than
+    // branches, so the sky reads as one channel and the detail gathers where it lands.
+    const spacing = thin ? 20 : 9;
+    for (let i = 6, k = 0; i < n - 6; i += spacing + Math.floor(rnd(fs + i) * 7), k++) {
+      const a = Math.PI / 2 + (rnd(fs + i * 3.1) - 0.5) * 1.5;
+      const far = thin && Math.abs(crawl.pts[i][0] - x) > 90;
+      sprout(chans, crawl, i, a, far || rnd(fs + i * 1.7) < 0.3 ? 2 : 1, fs * 3.3 + i * 17);
+    }
+    // Off the strike: forks peeling away down and out, both sides.
+    const m = strike.pts.length;
+    for (let k = 0; k < 4; k++) {
+      const i = Math.floor(m * (0.18 + k * 0.17 + rnd(fs + 90 + k) * 0.08));
+      const a = dirAt(strike.pts, i) + (k % 2 ? 1 : -1) * (0.45 + rnd(fs + 95 + k) * 0.45);
+      sprout(chans, strike, i, a, 1, fs * 5.1 + 300 + k * 29);
+    }
+  }
+  const tree = { chans, crawl, strike, hit: [x, y] };
+  if (treeCache.size > 64) treeCache.clear();
+  treeCache.set(key, tree);
+  return tree;
+}
+
+/** The part of a channel its tip has reached by `s`. */
+export function traceGrown(c, ch, s) {
+  if (s < ch.t0) return;
+  const n = ch.pts.length;
+  const k = ch.dur > 0 ? Math.min(n - 1, ((s - ch.t0) / ch.dur) * (n - 1)) : n - 1;
+  const kk = Math.floor(k);
+  c.moveTo(ch.pts[0][0], ch.pts[0][1]);
+  for (let i = 1; i <= kk; i++) c.lineTo(ch.pts[i][0], ch.pts[i][1]);
+  if (k > kk && kk + 1 < n) {
+    const u = k - kk;
+    const [ax, ay] = ch.pts[kk];
+    const [bx, by] = ch.pts[kk + 1];
+    c.lineTo(ax + (bx - ax) * u, ay + (by - ay) * u);
+  }
+}
+
+export function strokeSet(ctx, chans, s, width, color, alpha) {
+  if (alpha <= 0.003 || !chans.length) return;
+  ctx.globalAlpha = Math.min(1, alpha);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  for (const ch of chans) traceGrown(ctx, ch, s);
+  ctx.stroke();
+}
+
+// Width and light per generation: the branches thin to hairlines, and die FIRST as the
+// strike fades (brightness ^ (1 + 0.6 gen)), so between strokes the main channel is left
+// glowing on its own and each re-strike relights the whole tree.
+export const GEN_W = [1, 0.5, 0.3, 0.2];
+export const genLight = (b, gen) => b ** (1 + gen * 0.6);
+export const byGen = (chans) => [0, 1, 2, 3].map((g) => chans.filter((c) => c.gen === g));
+
+export function beginBolt(ctx) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  stroke(16, '#38d8f8', 0.24 * b);
-  stroke(7, '#8cf0ff', 0.6 * b);
-  stroke(2.4, '#ffffff', b);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+}
+
+// How far above its afterglow the strike is right now: 1 on a stroke, 0 between them.
+export function heatOf(s, light) {
+  const floor = 0.4 * Math.max(0, 1 - s / T);
+  return clamp01((light.bolt - floor) / Math.max(0.05, 1 - floor));
+}
+
+// ------------------------------------------------------------------ colour
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, k) => {
+  const A = hexRgb(a);
+  const B = hexRgb(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',')})`;
+};
+
+/**
+ * THE CLOUD DECK (bolt bake-off E, added under C: Peter, 25 Sep 2026, "Can we
+ * incorporate e"): cells strung along the crawler's line, invisible until lit (they are
+ * additive light only — nothing is added to the sky when there is no bolt). Each lights
+ * as the crawler reaches it; each stroke lights them unevenly; between strokes single
+ * cells flicker on their own, the storm still going on inside.
+ */
+export function cloudDeck(ctx, s, x, y, left, right, top, seed, light) {
+  const N = 9;
+  const b = light.bolt;
+  const heat = heatOf(s, light);
+  const q = Math.floor(s * 14);
+  // The whole underside of the deck, a band of cold light.
+  const band = ctx.createLinearGradient(0, top - 40, 0, top + 70);
+  // tests trace painters on recorders that return no gradient.
+  if (!band) return;
+  band.addColorStop(0, 'rgba(120,90,255,0)');
+  band.addColorStop(0.45, `rgba(120,200,255,${0.26 * b})`);
+  band.addColorStop(1, 'rgba(56,216,248,0)');
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = band;
+  ctx.fillRect(left, top - 40, right - left, 110);
+  for (let i = 0; i < N; i++) {
+    const cx = left + ((i + 0.5) / N) * (right - left) + (rnd(seed + i * 3) - 0.5) * 30;
+    const cy = top - 12 + (rnd(seed + i * 5) - 0.5) * 14;
+    const reached = s >= 0.18 * ((cx - left) / (right - left));
+    if (!reached) continue;
+    const near = Math.max(0, 1 - Math.abs(cx - x) / 180);
+    const stroke = heat * (0.35 + 0.65 * rnd(seed + i * 7 + light.which * 13));
+    const sheet = rnd(seed + i * 11 + q * 3.7) > 0.86 ? 0.5 : 0;
+    const a = Math.min(1, Math.max(stroke, sheet * (1 - s / T), b * 0.35) * (0.6 + 0.4 * near));
+    if (a < 0.02) continue;
+    for (let k = 0; k < 4; k++) {
+      const bx = cx + (rnd(seed + i * 17 + k) - 0.5) * 60;
+      const by = cy + (rnd(seed + i * 19 + k) - 0.5) * 14;
+      const rx = 30 + rnd(seed + i * 23 + k) * 34;
+      const ry = rx * 0.45;
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.scale(1, ry / rx);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+      if (!g) { ctx.restore(); continue; }
+      g.addColorStop(0, `rgba(210,246,255,${0.55 * a})`);
+      g.addColorStop(0.5, `rgba(140,120,255,${0.3 * a})`);
+      g.addColorStop(1, 'rgba(90,60,220,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-rx, -rx, rx * 2, rx * 2);
+      ctx.restore();
+    }
+  }
+  // The skyline under the hit, lit.
+  if (s >= 0.16) {
+    const r = 70;
+    const g = ctx.createRadialGradient(x, y + 10, 0, x, y + 10, r);
+    if (!g) return;
+    g.addColorStop(0, `rgba(170,240,255,${0.32 * b})`);
+    g.addColorStop(1, 'rgba(56,216,248,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y + 10 - r, r * 2, r * 2);
+  }
+}
+
+export function drawNeonBolt(ctx, s, x, y, seed = 1, { left = x - 260, right = x + 260, top = y * 0.28, clouds = true, thin = false } = {}) {
+  const light = neonStrikeLight(s);
+  if (!light || light.bolt <= 0.01) return;
+  const b = light.bolt;
+  const heat = heatOf(s, light);
+  const opts = [x, y, left, right, top, { thin }];
+  const tree = boltTree(seed + light.which * 3, ...opts);
+  beginBolt(ctx);
+  // The storm it comes out of: the cloud deck lit from within, under everything else.
+  if (clouds) cloudDeck(ctx, s, x, y, left, right, top, seed, light);
+  // THE AFTERIMAGE: the first bolt stays burned in, violet, under every re-strike.
+  if (light.which > 0) {
+    const ghost = boltTree(seed, ...opts);
+    const g = 0.45 * Math.max(0, 1 - s / T);
+    const gens = byGen(ghost.chans);
+    for (let k = 0; k < 2; k++) {
+      strokeSet(ctx, gens[k], s, 6 * GEN_W[k], '#6a3cd8', 0.35 * g);
+      strokeSet(ctx, gens[k], s, 1.6 * GEN_W[k], '#b89cff', g);
+    }
+  }
+  // The skyline lit where it lands.
+  const gr = s >= tree.strike.t0 + tree.strike.dur
+    ? ctx.createRadialGradient(x, y, 0, x, y, 30 + 50 * heat) : null;
+  if (gr) {
+    const r = 30 + 50 * heat;
+    gr.addColorStop(0, `rgba(255,255,255,${0.55 * b})`);
+    gr.addColorStop(0.3, `rgba(140,240,255,${0.3 * b})`);
+    gr.addColorStop(1, 'rgba(56,216,248,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = gr;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // Cooling: white on a stroke; between strokes the core slides ice > violet as it dies.
+  const cool = mix(ICE, '#b48cff', clamp01(s / T));
+  const core = mix(cool, WHITE, clamp01(heat * 3));
+  const gens = byGen(tree.chans);
+  for (let g = 0; g < 4; g++) {
+    const w = GEN_W[g];
+    const l = genLight(b, g);
+    strokeSet(ctx, gens[g], s, 34 * w, MAGENTA, 0.12 * l);
+    strokeSet(ctx, gens[g], s, 15 * w, CYAN, 0.3 * l);
+    strokeSet(ctx, gens[g], s, (6 + 3 * heat) * w, ICE, 0.7 * l);
+    strokeSet(ctx, gens[g], s, Math.max(0.6, (2 + 3.6 * heat) * w), core, l);
+  }
+  ctx.restore();
+}
+
+// ------------------------------------------------------------ what it hits
+// Peter, 25 Sep 2026: "Should the lightning be striking the ground or something? It
+// just seems like it's overlaid", then "What if we struck a larger building with a sign
+// and the sign could blow out", "Might it work a bit better if the building was lower?"
+// The bolt lands on a building (bolt bake-off L): the city's struck sign tower when it
+// is in view, else the nearest middle-row mast (bake-off I). These answer the hit; the
+// tower and its dying sign are the pack's (index.js, neonStruckTower).
+/**
+ * THE TOWER ANSWERS: once the strike lands its whole outline flares white-hot inside ice
+ * bloom and dies back with the strokes, the mast lamp burns white, and sparks spit off
+ * the tip on the crackle's clock.
+ */
+export function neonTowerFlare(ctx, s, tw, seed) {
+  const light = neonStrikeLight(s);
+  if (!light || s < 0.16) return;
+  const b = light.bolt;
+  const heat = heatOf(s, light);
+  const body = (c) => {
+    c.rect(tw.x + 0.5, tw.top + 0.5, tw.bw, 400);
+    if (tw.mast) { c.moveTo(tw.tipX + 0.5, tw.top + 0.5); c.lineTo(tw.tipX + 0.5, tw.top - 12.5); }
+  };
+  beginBolt(ctx);
+  const tube = (width, color, alpha) => {
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath(); body(ctx); ctx.stroke();
+  };
+  tube(9, tw.ink, 0.22 * b);
+  tube(4, ICE, 0.45 * b);
+  tube(1.3, WHITE, b * (0.45 + 0.55 * heat));
+  // The lamp.
+  const r = 6 + 8 * heat;
+  const g = ctx.createRadialGradient(tw.tipX, tw.tipY, 0, tw.tipX, tw.tipY, r);
+  if (g) {
+    g.addColorStop(0, `rgba(255,255,255,${b})`);
+    g.addColorStop(0.35, `rgba(140,240,255,${0.5 * b})`);
+    g.addColorStop(1, 'rgba(56,216,248,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.fillRect(tw.tipX - r, tw.tipY - r, r * 2, r * 2);
+  }
+  // Sparks off the tip.
+  const q = Math.floor(s * 22);
+  const sparks = [];
+  for (let i = 0; i < 7; i++) {
+    const rr = (k) => rnd(seed * 5.3 + q * 13.1 + i * 4.7 + k * 0.61);
+    const ang = -Math.PI / 2 + (rr(0) - 0.5) * 3.4;
+    sparks.push(chan(jag(walk(tw.tipX, tw.tipY, ang, 4 + rr(1) * 9, 2, 1.2, q * 3 + i), 1, 0.5, q + i), 0, 0, 3));
+  }
+  strokeSet(ctx, sparks, s, 2.6, CYAN, 0.3 * (0.3 + heat));
+  strokeSet(ctx, sparks, s, 0.65, WHITE, 0.9 * (0.3 + heat));
+  ctx.restore();
+}
+
+/**
+ * THE SIGN SHORTS: a shower of sparks off the blade sign as it blows — bursts every
+ * 40 ms from the overload until it dies, each spark thrown out and falling, drawn as
+ * a streak along its flight. The sign's own overload, stutter and death are the
+ * pack's (neonBladeSigns `blown`), so the dead sign carries on after the bolt.
+ */
+export function neonSignSparks(ctx, s, tw) {
+  if (s < 0.16 || s > 1.6) return;
+  const ox = tw.x + tw.bw + 3 + 9;
+  const oy = tw.top + 10;
+  const sparks = [];
+  for (let k = 0; k < 28; k++) {
+    const born = 0.16 + Math.floor(k / 4) * 0.04 + rnd(k * 3.3) * 0.03;
+    const age = s - born;
+    if (age < 0 || age > 0.9) continue;
+    const vx = (rnd(k * 5.1) - 0.35) * 90;
+    const vy = -20 - rnd(k * 7.7) * 60;
+    const x0 = ox + (rnd(k * 2.9) - 0.5) * 14;
+    const y0 = oy + rnd(k * 1.3) * 40;
+    const x = x0 + vx * age;
+    const y = y0 + vy * age + 0.5 * 260 * age * age;
+    const dx = vx * 0.03;
+    const dy = (vy + 260 * age) * 0.03;
+    sparks.push({ x, y, dx, dy, a: 1 - age / 0.9 });
+  }
+  beginBolt(ctx);
+  for (const p of sparks) {
+    ctx.globalAlpha = 0.9 * p.a;
+    ctx.strokeStyle = p.a > 0.6 ? WHITE : '#ffd66a';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(p.x - p.dx, p.y - p.dy); ctx.lineTo(p.x, p.y); ctx.stroke();
+  }
   ctx.restore();
 }
 

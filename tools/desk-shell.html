@@ -229,24 +229,25 @@ function draw(tools) {
       }, 'STOP')))));
 }
 
-async function runAction(id) {
+async function runAction(id, body) {
   busy = id;
   errBox.textContent = '';
   drawActions(lastActions);
   try {
-    const res = await fetch(`/api/run/${id}`, { method: 'POST' });
-    const body = await res.json();
-    if (!body.ok) errBox.textContent = body.error;
+    const res = await fetch(`/api/run/${id}`, {
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const respBody = await res.json();
+    if (!respBody.ok) errBox.textContent = respBody.error;
   } catch (e) { errBox.textContent = e.message; }
   busy = null;
   await refresh();
 }
 
-let lastActions = [];
-function drawActions(actions) {
-  const galleryCountEl = document.getElementById('gallery-count');
-  if (galleryCountEl) galleryCountEl.textContent = String(actions.length).padStart(2, '0');
-  galleriesEl.replaceChildren(...actions.map((a) => el('div', { class: `tool${a.running ? ' live' : ''}`, 'data-tool': a.id },
+function actionCard(a) {
+  return el('div', { class: `tool${a.running ? ' live' : ''}`, 'data-tool': a.id },
     el('div', { class: 'dot', 'aria-hidden': 'true' }, a.id.slice(0, 2).toUpperCase()),
     el('div', {},
       el('div', { class: 'name' },
@@ -262,7 +263,69 @@ function drawActions(actions) {
         a.running ? '…' : 'RUN'),
       a.openPath
         ? el('button', { onclick: () => window.open(a.openPath, '_blank') }, 'OPEN')
-        : null))));
+        : null));
+}
+
+// Paste the whole command the lab gallery's picker copies for you
+// ("node tools/gallery-prune.js id1 id2 --yes") or just the bare ids —
+// anything that looks like a flag, a path, or the node/script tokens is
+// dropped, so either form works.
+function parseIds(text) {
+  return text.split(/\s+/).map((t) => t.trim())
+    .filter((t) => t && !t.startsWith('-') && t !== 'node' && !t.includes('/') && !t.endsWith('.js'));
+}
+
+// DELETE FOR REAL stays disabled until PREVIEW has run clean for this exact
+// text — pasting different ids or editing the box re-locks it. That is the
+// desk's stand-in for the terminal's own [y/N]: gallery-prune.js always runs
+// with --yes from here (spawned with stdin ignored, so its own prompt would
+// just hang), so this is where the "are you sure" actually has to live.
+let pruneIdsText = '';
+let prunePendingText = null;
+let prunePreviewedText = null;
+let wasPlanRunning = false;
+
+function prunePreviewCard(pruneplan, pruneapply) {
+  const ids = parseIds(pruneIdsText);
+  const active = pruneplan.running ? pruneplan : pruneapply.running ? pruneapply : pruneapply.code != null ? pruneapply : pruneplan;
+  const canConfirm = prunePreviewedText === pruneIdsText && ids.length > 0 && pruneplan.code === 0;
+  return el('div', { class: `tool${pruneplan.running || pruneapply.running ? ' live' : ''}` },
+    el('div', { class: 'dot', 'aria-hidden': 'true' }, 'PR'),
+    el('div', {},
+      el('div', { class: 'name' }, el('b', {}, 'GALLERY: DELETE SECTIONS')),
+      el('div', { class: 'blurb' },
+        'Paste section ids, or the whole command the lab gallery’s checkbox picker gives you. '
+        + 'Preview first — Delete stays locked until a preview of these exact ids comes back clean.'),
+      el('input', {
+        type: 'text', value: pruneIdsText, spellcheck: 'false',
+        placeholder: 'node tools/gallery-prune.js id-one id-two …  (or just: id-one id-two)',
+        style: 'width:100%;margin-top:9px;padding:8px 10px;background:rgba(13,17,21,.5);'
+          + 'border:1px solid var(--line);border-radius:7px;color:var(--ink);font:inherit;',
+        oninput: (e) => { pruneIdsText = e.target.value; drawActions(lastActions); },
+      }),
+      active.log.length ? el('div', { class: 'log' }, active.log.join('\n')) : null),
+    el('div', { class: 'acts' },
+      el('button', {
+        class: 'go', disabled: !ids.length || busy === 'pruneplan',
+        onclick: () => { prunePendingText = pruneIdsText; runAction('pruneplan', { ids }); },
+      }, busy === 'pruneplan' ? '…' : 'PREVIEW'),
+      el('button', {
+        disabled: !canConfirm || busy === 'pruneapply',
+        title: canConfirm ? 'writes tools/gallery-entry.js and rebuilds' : 'preview these exact ids first',
+        onclick: () => runAction('pruneapply', { ids }),
+      }, busy === 'pruneapply' ? '…' : 'DELETE FOR REAL')));
+}
+
+let lastActions = [];
+function drawActions(actions) {
+  const pruneplan = actions.find((a) => a.id === 'pruneplan');
+  const pruneapply = actions.find((a) => a.id === 'pruneapply');
+  const regular = actions.filter((a) => a !== pruneplan && a !== pruneapply);
+  const galleryCountEl = document.getElementById('gallery-count');
+  if (galleryCountEl) galleryCountEl.textContent = String(regular.length + (pruneplan ? 1 : 0)).padStart(2, '0');
+  const cards = regular.map(actionCard);
+  if (pruneplan && pruneapply) cards.push(prunePreviewCard(pruneplan, pruneapply));
+  galleriesEl.replaceChildren(...cards);
 }
 
 async function refresh() {
@@ -270,6 +333,11 @@ async function refresh() {
     const { tools, actions } = await (await fetch('/api/status')).json();
     last = tools;
     draw(tools);
+    const pruneplan = actions.find((a) => a.id === 'pruneplan');
+    if (pruneplan) {
+      if (wasPlanRunning && !pruneplan.running && pruneplan.code === 0) prunePreviewedText = prunePendingText;
+      wasPlanRunning = pruneplan.running;
+    }
     lastActions = actions;
     drawActions(actions);
   } catch (e) { errBox.textContent = `the desk stopped answering: ${e.message}`; }

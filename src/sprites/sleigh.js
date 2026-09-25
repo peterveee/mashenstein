@@ -109,7 +109,7 @@ export function flypastBlink(t) {
 // One nose, at the lead's muzzle. `blink` is 0..1 from flypastBlink; the halo is
 // drawn first and the bead over it, so the bead stays a hard shape however wide
 // the light around it goes.
-function rudolphNose(ctx, cx, cy, r, blink = 1) {
+export function rudolphNose(ctx, cx, cy, r, blink = 1) {
   const b = Math.max(0, Math.min(1, blink));
   if (b > 0.02) {
     const glow = r * (3.4 + 1.6 * b);
