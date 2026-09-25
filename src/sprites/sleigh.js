@@ -33,6 +33,8 @@
 // colour is the fortress windows, and a lead reindeer with a lit nose either
 // joins that family or spends it on a joke.
 
+import { drawFrostDeer } from '../engine/stylePacks/frostLandmarks.js';
+
 // HOW DARK THE THING IN THE SKY IS, as a ladder rather than a constant.
 //
 // It started as one slate most of the way to the Frost sky's own blue, which is
@@ -588,6 +590,169 @@ function teamDetail(ctx, x, y, len, t, n, opts = {}) {
   return x - (n - 1) * gap - len * 0.9;
 }
 
+// ------------------------------------------------------------------ round two: in colour
+// Peter, 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying
+// across the sky?" The first round was drawn for a sleigh seen THROUGH the finish blizzard,
+// which is why it is slate: at that depth only the warm accents came through. It flies in
+// FRONT of the snow now (FROST_FLYPAST_DEPTH), so colour can read, and these are drawn the
+// way the rest of Frost is: cut paper, flat pieces, no ink line. The reindeer are the
+// herd's own paper deer (frostLandmarks.js drawFrostDeer — the tan antlers, pale mane,
+// dark muzzle), in pairs, the far animal of each hazed back; the sleigh is red lacquer on
+// gold runners with a sack of presents; Santa is in full red and white, a beard, one
+// hand on the reins and the other waving.
+const PAPER_SANTA = {
+  red: '#c8463b', redDark: '#963127', trim: '#f3ece2', trimShade: '#d9cfc4', gold: '#e2b04a',
+  goldDark: '#b9862f', skin: '#e9b692', cheek: '#e08e7a', black: '#2a2226', sack: '#8a6a4a',
+  sackDark: '#6d523a', giftA: '#3f8f6a', giftB: '#4f78b8', strap: '#b33a30', rein: '#3a2a26',
+};
+const PAPER_SHADOW = 'rgba(40,50,80,0.28)';
+function pfill(ctx, color, path) { ctx.beginPath(); path(ctx); ctx.fillStyle = color; ctx.fill(); }
+function pstroke(ctx, color, w, path) {
+  ctx.beginPath(); path(ctx);
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+}
+// A cut piece over its paper shadow.
+function ppiece(ctx, color, path) {
+  ctx.save(); ctx.translate(-0.3, 0.4); pfill(ctx, PAPER_SHADOW, path); ctx.restore();
+  pfill(ctx, color, path);
+}
+// A paper reindeer in the air: the herd's deer, a red strap and a gold bell at its chest.
+// (x, y) is its NOSE; the deer's own origin is its hooves, 14.5 back and 12.6 down.
+function paperFlyer(ctx, x, y, s, phase, { nose = false, blink = 0, far = false } = {}) {
+  const ox = x - 14.5 * s, oy = y + 12.6 * s;
+  ctx.save();
+  if (far) ctx.globalAlpha *= 0.78;
+  drawFrostDeer(ctx, ox, oy, s, phase, 0, nose
+    ? { nose: (c, nx, ny, r) => rudolphNose(c, nx, ny, r * 1.2, blink) } : {});
+  // The harness: a strap round the chest, the bell on it.
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(s, s);
+  pstroke(ctx, PAPER_SANTA.strap, 0.9, (c) => { c.moveTo(4.6, -11.2); c.lineTo(6.2, -6.6); });
+  pfill(ctx, PAPER_SANTA.gold, (c) => { c.arc(5.7, -7.8, 0.75, 0, Math.PI * 2); });
+  ctx.restore();
+  ctx.restore();
+}
+// The sleigh and Santa, facing +x, the hitch at (x, y) (level with the team's chests).
+// Units: 16 long at s = 1, runners 7 below the hitch.
+function paperSleigh(ctx, x, y, s, t) {
+  const P = PAPER_SANTA;
+  const bob = Math.sin(t * 5.2) * 0.25;
+  ctx.save();
+  ctx.translate(x, y + bob * s);
+  ctx.scale(s, s);
+  // Runner, gold, curled at both ends, on two struts.
+  pstroke(ctx, P.goldDark, 0.9, (c) => { c.moveTo(-14.6, 6.4); c.lineTo(-11.6, 3.8); c.moveTo(-3.6, 6.4); c.lineTo(-4.2, 3.8); });
+  pstroke(ctx, P.gold, 0.9, (c) => {
+    c.moveTo(-16, 5.2); c.quadraticCurveTo(-16.4, 6.8, -14.6, 6.8); c.lineTo(0.4, 6.8);
+    c.quadraticCurveTo(3.6, 6.8, 3.4, 3.4); c.quadraticCurveTo(3.2, 1.6, 1.6, 2.2);
+  });
+  // The sack of presents, over the back.
+  ppiece(ctx, P.sack, (c) => { c.moveTo(-15.4, -1); c.quadraticCurveTo(-18.2, -6, -15.6, -9.4); c.quadraticCurveTo(-12.4, -11.2, -10.6, -8.4); c.quadraticCurveTo(-10.2, -4, -11.4, -1); c.closePath(); });
+  pfill(ctx, P.sackDark, (c) => { c.moveTo(-15.6, -9.4); c.quadraticCurveTo(-13.8, -10.8, -12.4, -9.8); c.lineTo(-13.4, -8.6); c.closePath(); });
+  pfill(ctx, P.giftA, (c) => c.rect(-15, -12.2, 3, 3));
+  pfill(ctx, P.giftB, (c) => c.rect(-12.6, -11.4, 2.4, 2.4));
+  pstroke(ctx, P.gold, 0.45, (c) => { c.moveTo(-13.5, -12.2); c.lineTo(-13.5, -9.2); c.moveTo(-15, -10.7); c.lineTo(-12, -10.7); c.moveTo(-11.4, -11.4); c.lineTo(-11.4, -9); });
+  // The body: red lacquer, high at the back, scooped, curled up at the front.
+  ppiece(ctx, P.red, (c) => {
+    c.moveTo(-15, 3.6); c.lineTo(-15.4, -3.4); c.quadraticCurveTo(-14.8, -5.6, -12.6, -5); c.lineTo(-10.6, -3.4);
+    c.lineTo(-3.6, -2.2); c.quadraticCurveTo(0.4, -2.8, 1.2, -5.4); c.quadraticCurveTo(3, -6.2, 3.2, -4.2);
+    c.quadraticCurveTo(2.8, 1.4, -0.6, 3.6); c.closePath();
+  });
+  pfill(ctx, P.redDark, (c) => { c.moveTo(-15, 3.6); c.lineTo(-0.6, 3.6); c.quadraticCurveTo(1.4, 2.6, 2, 1.2); c.lineTo(-15.2, 1.6); c.closePath(); });
+  // Gold trim along the side and a scroll on the flank.
+  pstroke(ctx, P.gold, 0.5, (c) => { c.moveTo(-14.6, -2.4); c.lineTo(-10.8, -1.8); c.lineTo(-3.4, -0.9); c.quadraticCurveTo(0.6, -1.4, 1.8, -3.8); });
+  pstroke(ctx, P.gold, 0.4, (c) => { c.moveTo(-9, 1.8); c.quadraticCurveTo(-7, -0.4, -5.4, 1); c.quadraticCurveTo(-6.4, 2.2, -7.2, 1.2); });
+  // SANTA. Coat and trim, belt and buckle, beard and face, hat and bobble.
+  ppiece(ctx, P.red, (c) => { c.moveTo(-10.8, -2.6); c.quadraticCurveTo(-11.6, -9.6, -7.4, -11); c.quadraticCurveTo(-4.2, -11.2, -3.8, -7.6); c.lineTo(-4.4, -2.6); c.closePath(); });
+  pfill(ctx, P.trim, (c) => { c.moveTo(-10.9, -3.6); c.lineTo(-4.3, -3.4); c.lineTo(-4.4, -2.4); c.lineTo(-10.8, -2.4); c.closePath(); });
+  pfill(ctx, P.black, (c) => c.rect(-10.7, -6.4, 6.6, 1.1));
+  pfill(ctx, P.gold, (c) => c.rect(-7.4, -6.6, 1.4, 1.5));
+  // The reins arm, forward, mitten on the lines.
+  pstroke(ctx, P.red, 1.3, (c) => { c.moveTo(-5, -8.6); c.lineTo(-1.6, -6.8); });
+  pfill(ctx, P.trim, (c) => c.arc(-1.8, -6.9, 0.75, 0, Math.PI * 2));
+  pfill(ctx, P.black, (c) => c.arc(-1, -6.6, 0.8, 0, Math.PI * 2));
+  // Head: face, cheek, beard, moustache.
+  pfill(ctx, P.skin, (c) => c.arc(-6.6, -12.8, 1.9, 0, Math.PI * 2));
+  pfill(ctx, P.cheek, (c) => c.arc(-5.7, -12.4, 0.55, 0, Math.PI * 2));
+  pfill(ctx, P.trim, (c) => { c.moveTo(-8.2, -12.2); c.quadraticCurveTo(-8.6, -9.4, -6.4, -8.6); c.quadraticCurveTo(-4.4, -9.4, -4.9, -12); c.quadraticCurveTo(-6.4, -11.2, -8.2, -12.2); c.closePath(); });
+  pfill(ctx, P.trim, (c) => { c.moveTo(-6.4, -12.2); c.quadraticCurveTo(-5.2, -12.6, -4.6, -11.8); c.quadraticCurveTo(-5.4, -11.6, -6.4, -12.2); c.closePath(); });
+  pfill(ctx, P.black, (c) => c.arc(-5.8, -13.3, 0.3, 0, Math.PI * 2));
+  // Hat, flopping back, white band, bobble.
+  const flop = Math.sin(t * 3.1) * 0.5;
+  ppiece(ctx, P.red, (c) => { c.moveTo(-8.6, -13.6); c.quadraticCurveTo(-7, -17.2, -4.8, -14); c.quadraticCurveTo(-8, -15.6, -10.6 + flop, -14.6); c.closePath(); });
+  pfill(ctx, P.trim, (c) => { c.moveTo(-8.8, -13.2); c.quadraticCurveTo(-6.8, -14.6, -4.6, -13.6); c.lineTo(-4.8, -12.8); c.quadraticCurveTo(-6.8, -13.8, -8.6, -12.4); c.closePath(); });
+  pfill(ctx, P.trim, (c) => c.arc(-10.7 + flop, -14.5, 0.9, 0, Math.PI * 2));
+  // The waving arm, from the far shoulder, back and forth.
+  const wave = Math.sin(t * 7) * 0.45;
+  ctx.save();
+  ctx.translate(-8.4, -9.6);
+  ctx.rotate(-2.1 + wave);
+  pstroke(ctx, P.redDark, 1.3, (c) => { c.moveTo(0, 0); c.lineTo(4, 0); });
+  pfill(ctx, P.trim, (c) => c.arc(4, 0, 0.75, 0, Math.PI * 2));
+  pfill(ctx, P.black, (c) => c.arc(4.8, 0, 0.85, 0, Math.PI * 2));
+  ctx.restore();
+  ctx.restore();
+  // Where the reins leave his hand, for the caller.
+  return { handX: x + -1 * s, handY: y + (-6.6 + bob) * s };
+}
+// A paper team: `cols` columns of reindeer back from the nose at (x, y), each column a pair
+// (the far one up and behind, hazed) unless `lone` says the lead flies alone; then the
+// sleigh. Returns the sleigh's back end, for a trail.
+function paperTeam(ctx, x, y, t, { s = 0.62, cols = 2, lone = false, blink = 0 } = {}) {
+  // A deer is ~23 units nose to rump with its antlers; the columns stand a body apart.
+  const gap = 19 * s;
+  const chest = (cx) => ({ x: cx - 9.1 * s, y: y + 3.2 * s });
+  const phase = (i) => ((t * 2.6 + i * 0.27) % 1 + 1) % 1;
+  // Far animals first, so every near one is in front of its partner.
+  for (let i = 0; i < cols; i++) {
+    const cx = x - i * gap;
+    if (!(lone && i === 0)) paperFlyer(ctx, cx - 2.6 * s, y - 2.8 * s, s * 0.94, phase(i + 0.5), { far: true });
+  }
+  // The gangline: one line from the hitch up the middle of the team.
+  // The sleigh hitched a hand behind the last animal's rump (nose - 14.5 to its origin,
+  // - 8 more to the rump), its front curl just short of it.
+  const lastNose = x - (cols - 1) * gap;
+  const hitchX = lastNose - 14.5 * s - 8 * s - 4.8 * s, hitchY = y + 4.8 * s;
+  pstroke(ctx, PAPER_SANTA.rein, 0.5 * s, (c) => { c.moveTo(hitchX, hitchY); c.lineTo(chest(x).x, chest(x).y); });
+  for (let i = cols - 1; i >= 0; i--) {
+    paperFlyer(ctx, x - i * gap, y, s, phase(i), { nose: i === 0, blink });
+  }
+  const hand = paperSleigh(ctx, hitchX, hitchY, s, t);
+  // The reins, from his mitten to the lead's harness, sagging.
+  const lead = chest(x);
+  pstroke(ctx, PAPER_SANTA.rein, 0.4 * s, (c) => {
+    c.moveTo(hand.handX, hand.handY);
+    c.quadraticCurveTo((hand.handX + lead.x) / 2, Math.max(hand.handY, lead.y) + 3 * s, lead.x, lead.y - 0.6 * s);
+  });
+  return hitchX - 17 * s;
+}
+// Stardust: a ribbon of gold curling off the back of the sleigh, twinkling as it goes.
+function stardust(ctx, x, y, t, len = 46, s = 1) {
+  for (let i = 0; i < 26; i++) {
+    const k = i / 26;
+    const drift = ((t * 0.9 + k) % 1);
+    const px = x - k * len * s;
+    const py = y + Math.sin(k * 7 - t * 3) * 3.2 * s * (0.4 + k) + k * 2 * s;
+    const tw = 0.5 + 0.5 * Math.sin(t * 11 + i * 2.3);
+    const a = (1 - k) * (0.45 + 0.55 * tw);
+    const r = (0.35 + (1 - k) * 0.55 + tw * 0.25) * s;
+    ctx.fillStyle = `rgba(255,${214 + (i % 3) * 12},${120 + (i % 4) * 25},${a})`;
+    if (i % 4 === 0) {
+      // A four-point star now and then.
+      ctx.beginPath();
+      ctx.moveTo(px, py - r * 2.6); ctx.lineTo(px + r * 0.6, py); ctx.lineTo(px, py + r * 2.6); ctx.lineTo(px - r * 0.6, py);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(px - r * 2.6, py); ctx.lineTo(px, py - r * 0.6); ctx.lineTo(px + r * 2.6, py); ctx.lineTo(px, py + r * 0.6);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+    }
+    void drift;
+  }
+}
+
 export const FROST_SLEIGH_CANDIDATES = [
   {
     id: 'stag',
@@ -691,6 +856,38 @@ export const FROST_SLEIGH_CANDIDATES = [
       sleighDetail(ctx, tail - 5, y + 1, 10, t * 9,
         { ink: PAL.inkSoft, lit: PAL.litSoft, runner: PAL.inkSoft, santa: true });
       sparkleTrail(ctx, tail - 13, y + 1, t, 10, 11);
+    },
+  },
+  {
+    id: 'paper-santa',
+    span: 60,   // how far back from the nose it reaches, at scale 1
+    name: 'I · paper Santa, in colour',
+    note: 'Round two (25 Sep 2026): the herd\'s own paper reindeer in two pairs, the far one of each hazed back, '
+      + 'red harness and gold bells, the lead with Rudolph\'s blinking nose; a red lacquered sleigh on gold runners with '
+      + 'a sack of presents; Santa in red and white with a beard, one hand on the reins, the other waving.',
+    draw(ctx, x, y, t) {
+      paperTeam(ctx, x, y, t, { s: 0.72, cols: 2, blink: flypastBlink(t) });
+    },
+  },
+  {
+    id: 'paper-santa-dust',
+    span: 96,   // how far back from the nose it reaches, at scale 1
+    name: 'J · I, with a trail of stardust',
+    note: 'I with a ribbon of gold stardust curling off the back of the sleigh and twinkling as it goes — four-point '
+      + 'stars among the specks. The magic is the thing the eye follows across the sky.',
+    draw(ctx, x, y, t) {
+      const back = paperTeam(ctx, x, y, t, { s: 0.72, cols: 2, blink: flypastBlink(t) });
+      stardust(ctx, back + 4, y + 4, t, 34, 1);
+    },
+  },
+  {
+    id: 'paper-santa-nine',
+    span: 80,   // how far back from the nose it reaches, at scale 1
+    name: 'K · the full team — Rudolph and eight',
+    note: 'Rudolph leading alone, eight behind him in four pairs, the sleigh and Santa after — the whole song, a size '
+      + 'down so it is a line of reindeer rather than a parade.',
+    draw(ctx, x, y, t) {
+      paperTeam(ctx, x, y, t, { s: 0.55, cols: 5, lone: true, blink: flypastBlink(t) });
     },
   },
 ];

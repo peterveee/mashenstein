@@ -91,6 +91,7 @@ import { drawIdeaScene, drawIdeaCloseUp } from '../src/dev/idea-scene.js';
 import { SPEED_SIGN_GAGS } from '../src/dev/speed-sign-gags.js';
 import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
 import { FROST_BG_V2, drawFrostV2Scene, drawFrostV2CloseUp } from '../src/dev/frost-background-v2.js';
+import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../src/dev/frost-sleigh-v2.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
 import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
@@ -7525,6 +7526,28 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         scene(ctx, 1.25, cand, 2, 1410);
         ctx.restore();
       }, { wide: true });
+  }
+}
+
+// ------------------------------------------ FROST — Santa and his reindeer, round two (lab)
+// Peter, 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying
+// across the sky?" The candidates are in src/sprites/sleigh.js with round one (I, J, K are
+// new; H is what flies at the frost-3 tape today); the scene is src/dev/frost-sleigh-v2.js.
+{
+  const grid = section('frost-sleigh-v2-bakeoff', 'FROST 3 — Santa and his reindeer, round two (bake-off)',
+    'OPEN, 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying across the sky?" H is what '
+    + 'flies over the frost-3 finish today — a small slate team, drawn for the days it flew BEHIND the blizzard. It flies '
+    + 'in front of the snow now, so the new ones are in colour and in Frost\'s cut paper: the herd\'s own paper reindeer '
+    + 'in pairs with red harness and gold bells, Rudolph\'s nose blinking on the lead, a red lacquered sleigh on gold '
+    + 'runners with a sack of presents, and Santa in red and white — beard, one hand on the reins, the other waving. '
+    + 'First card: the frost-3 finish in its real blizzard, the sleigh at the shipped scale and glow on the real arc. '
+    + 'Second: held in the dusk sky, 3.4x. ANIMATED.',
+    '25 Sep 2026');
+  for (const c of FROST_SLEIGH_V2) {
+    tile(grid, `${c.label} · at the frost-3 tape`, 'The finish in its real blizzard, the sleigh in front of the snow, looped.', W, H,
+      (ctx, t) => drawSleighFinishScene(ctx, t, c.id), { animated: true });
+    tile(grid, `${c.label} · close-up`, 'Held in the frost-3 sky, 3.4x.', W, H,
+      (ctx, t) => drawSleighCloseUp(ctx, t, c.id), { animated: true });
   }
 }
 

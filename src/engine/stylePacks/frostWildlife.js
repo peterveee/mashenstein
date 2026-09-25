@@ -806,6 +806,11 @@ function drawRunningDog(ctx, P, phase, far) {
     fill(ctx, P.cream, poly([4.6, -5, 6.3, -5, 6.2, -4.6, 4.4, -4.3]));
     fill(ctx, P.nose, circle(6.3, -5.15, 0.3));
   }
+  // The eye (Peter, 25 Sep 2026: "make sure the sled dogs have eyes"): the igloo husky's
+  // ice-blue eye at this head's size, between the ear and the muzzle, on every dog.
+  fill(ctx, P.eye, circle(4.75, -5.6, 0.34));
+  fill(ctx, P.pupil, circle(4.85, -5.6, 0.17));
+  fill(ctx, '#fff6d8', circle(4.9, -5.7, 0.07));
   leg(2, -3.6, 0.9 * Math.sin(a), -0.8 * Math.max(0, Math.cos(a)));
   leg(-3, -3.8, 0.8 * Math.sin(a + Math.PI * 0.9), 0.4);
   ctx.restore();

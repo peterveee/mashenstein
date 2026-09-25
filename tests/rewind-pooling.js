@@ -140,7 +140,12 @@ assert(!run.dead, 'the hero is alive and the world is running before the record 
 // undefined, and this died reading `camX` off it rather than failing an assertion. The
 // engine's own `pop()` guards on an empty ring; this read did not. Measured at 4 failures
 // in 40 runs before this, and the probe that found it printed `length=0 start=0 dead=false`.
-for (let i = 0; i < 240 && !ring.length; i++) frames(1);
+//
+// And that record must hold OBSTACLES, or the aliasing checks below compare empty lists
+// and prove nothing. A fresh revive can capture a lane with nothing on it yet — seen as
+// `the record holds live obstacles (0)` on a pre-push run — so wait for one that does.
+const newestSlot = () => ring.slots[(ring.start + ring.length - 1) % ring.capacity];
+for (let i = 0; i < 240 && !(ring.length && newestSlot().obstacleCount); i++) frames(1);
 assert(ring.length > 0, `the ring holds a record to read (${ring.length})`);
 // A reset during the window would silently invalidate everything below, so it
 // is caught and named rather than left to surface as three confusing aliasing
@@ -148,7 +153,7 @@ assert(ring.length > 0, `the ring holds a record to read (${ring.length})`);
 let ringResets = 0;
 const ringReset = ring.reset.bind(ring);
 ring.reset = () => { ringResets++; return ringReset(); };
-const newest = ring.slots[(ring.start + ring.length - 1) % ring.capacity];
+const newest = newestSlot();
 const recorded = {
   camX: newest.camX,
   tRun: newest.tRun,

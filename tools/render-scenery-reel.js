@@ -8,6 +8,7 @@
 //   ... --audio-only                    rebuild the soundtrack
 //   ... --assemble                      cut the saved shots + soundtrack into the export
 //   node tools/render-scenery-reel.js --script                                  the shot list
+//   ... --cut=animals                   assemble a named cut from the captured clips
 //
 // Everything it writes lands in work/local/scenery-reel-build/; the review copy is
 // work/social/mashenstein-scenery-reel-16x9.mp4.
@@ -66,7 +67,7 @@ const WIDE = [0, 0, SW, SH];
 // the scenery clock at frame 0; `keepRoutes` keeps the lane's floating islands. `pan` is the subject's centre in 4K px at the first and
 // last frame, measured off a --probe --wide sheet; `res` renders from a bigger canvas so
 // a tight crop stays 1:1.
-export const shots = [
+const ALL_SHOTS = [
   // PLUMBER PANIC — 112 BPM, 16 bars: the whole song
   { id: 'sun', cab: 'plumber', caption: 'THE SUN', bars: 1.5, stage: 'plumber-1', at: 2, pre: 1, drift: 0.3, bgT: 60, pan: { w: 1920, from: [2770, 500], to: [2730, 490] },
     note: 'The sun: rays turning, the disc breathing.' },
@@ -138,6 +139,8 @@ export const shots = [
     note: 'A fortress on the far ridge, its windows blinking.' },
   { id: 'reindeer', cab: 'frost', caption: 'REINDEER', bars: 1.5, stage: 'frost-2', at: 84, pre: 0.5, drift: 1, pan: { w: 1920, from: [1400, 1150], to: [2600, 1050] },
     note: 'The reindeer herd gallops along the far crest.' },
+  { id: 'wolvesfire', cab: 'frost', caption: 'WOLVES BY THE FIRE', bars: 2, stage: 'frost-3', at: 14.5, pre: 1.5, drift: 0.3, pan: { w: 1920, from: [2340, 1140], to: [1220, 1170] },
+    note: 'The frost-3 wolves round a campfire: the chorus, the flames lighting the pack, sparks blown downwind.' },
   { id: 'beacon', cab: 'frost', caption: 'BEACON TOWER', bars: 1, stage: 'frost-3', at: 35, pre: 1.5, drift: 0.3, pan: { w: 1920, from: [2151, 920], to: [1718, 900] },
     note: 'The beacon tower: signal fire, sparks, pennant.' },
   { id: 'groomer', cab: 'frost', caption: 'SNOW GROOMER', bars: 1.5, stage: 'frost-3', at: 67, pre: 1.5, drift: 0.3, pan: { w: 1920, from: [2860, 1140], to: [2420, 1180] },
@@ -156,10 +159,43 @@ export const shots = [
 // --override='{"wink":{"pre":6}}' merges fields into shots for one run, for trying a
 // framing or a clock without editing the table (timings still come from the table).
 for (const [id, fields] of Object.entries(JSON.parse(process.argv.find((x) => x.startsWith('--override='))?.slice(11) || '{}'))) {
-  const shot = shots.find((x) => x.id === id);
+  const shot = ALL_SHOTS.find((x) => x.id === id);
   if (!shot) throw new Error(`--override: no shot ${id}`);
   Object.assign(shot, fields);
 }
+
+// NAMED CUTS: a shorter reel made from the full reel's captures (--cut=animals). A cut
+// lists shot ids, in order, with a new caption or null to keep the table's; it gets its
+// own card kicker and export, and assembles in its own folder, so the two reels never
+// overwrite each other's cards or soundtrack. The end card is always added.
+const CUTS = {
+  animals: {
+    // Peter, 25 Sep: "JUST animals (excluding santa & reindeers)". The cottage's Labrador
+    // and hens are too small to carry a shot at the 2x ceiling, so it stays out too.
+    kicker: 'THE ANIMALS OF',
+    out: 'mashenstein-animal-reel-16x9.mp4',
+    shots: {
+      barn: 'HENS & ROBIN', sheep: 'SHEEP & SHEEPDOG',
+      vultures: null, howl: null, chorus: null, yawn: null, wink: null,
+      fox: null, wolves: null, bears: null, igloo: 'HUSKY', wolvesfire: null, sled: 'SLED DOGS',
+    },
+  },
+};
+const cutName = process.argv.find((a) => a.startsWith('--cut='))?.slice(6) || null;
+const CUT = cutName ? CUTS[cutName] : null;
+if (cutName && !CUT) throw new Error(`--cut: no cut ${cutName} (there is ${Object.keys(CUTS).join(', ')})`);
+export const shots = !CUT ? ALL_SHOTS : [
+  ...Object.entries(CUT.shots).map(([id, caption]) => {
+    const shot = ALL_SHOTS.find((x) => x.id === id);
+    if (!shot) throw new Error(`--cut=${cutName}: no shot ${id}`);
+    return caption ? { ...shot, caption } : shot;
+  }),
+  ALL_SHOTS.find((x) => x.title),
+];
+// Captures always live in DIR; a cut's cards, soundtrack and joins live in its own folder.
+const BUILD = CUT ? join(DIR, `cut-${cutName}`) : DIR;
+const EXPORT = CUT ? join(ROOT, 'work/social', CUT.out) : OUT;
+mkdirSync(BUILD, { recursive: true });
 
 // Frame boundaries come from the running total in seconds, so rounding never
 // accumulates: every cut is within half a frame of its bar line.
@@ -186,7 +222,7 @@ const segments = Object.keys(CABS).map((cab) => {
 // The words over the picture: a card on each cabinet's first shot, and every shot's
 // caption. Both are drawn by renderText; `at`/`dur` are seconds into the shot.
 export const texts = [
-  ...segments.map(({ cab, first }) => ({ shot: first.id, at: 0.15, dur: lenOf(first) - 0.35, style: 'cabinet', text: CABS[cab].name })),
+  ...segments.map(({ cab, first }) => ({ shot: first.id, at: 0.15, dur: lenOf(first) - 0.35, style: 'cabinet', text: CABS[cab].name, kicker: CUT?.kicker })),
   ...shots.filter((s) => s.caption).map((s) => ({ shot: s.id, at: 0.2, dur: lenOf(s) - 0.5, style: 'label', text: s.caption })),
 ];
 
@@ -493,14 +529,14 @@ async function renderText(browser) {
       };
       const dy = tx.dy || 0;
       if (tx.style === 'cabinet') {
-        draw('THE SCENERY OF', 60, 118 + dy, '#ffcf33', 1200);
+        draw(tx.kicker || 'THE SCENERY OF', 60, 118 + dy, '#ffcf33', 1200);
         draw(tx.text, 128, 248 + dy, '#ffffff', 1560);
       } else {
         draw(tx.text, 64, 1000 + dy, '#ffffff', 1500);
       }
       return c.toDataURL('image/png').split(',')[1];
     }, tx);
-    writeFileSync(join(DIR, `text-${i}.png`), Buffer.from(png, 'base64'));
+    writeFileSync(join(BUILD, `text-${i}.png`), Buffer.from(png, 'base64'));
   }
   await page.close();
 }
@@ -595,7 +631,7 @@ async function renderAudio() {
       }
     }
   } finally { await cues.close(); }
-  writeFileSync(join(DIR, 'cues-placed.txt'), placed.join('\n') + '\n');
+  writeFileSync(join(BUILD, 'cues-placed.txt'), placed.join('\n') + '\n');
 
   const MUSIC_G = 10 ** (-4 / 20), FX_G = 10 ** (-4 / 20);
   const out = [new Float32Array(len), new Float32Array(len)];
@@ -609,7 +645,7 @@ async function renderAudio() {
     }
   }
   if (peak > 0.89) for (let i = 0; i < len; i++) { out[0][i] *= 0.89 / peak; out[1][i] *= 0.89 / peak; }
-  const wav = join(DIR, 'soundtrack.wav');
+  const wav = join(BUILD, 'soundtrack.wav');
   writeFileSync(wav, wavBuffer(out));
   console.log(`rendered ${wav} (${placed.length} cues, peak ${(20 * Math.log10(peak)).toFixed(1)} dB before guard)`);
   return wav;
@@ -618,9 +654,19 @@ async function renderAudio() {
 // ---------------------------------------------------------------- assemble
 
 function assemble(wav) {
-  const list = join(DIR, 'clips.txt');
-  writeFileSync(list, shots.map((s) => `file '${join(DIR, `${s.id}.mp4`)}'`).join('\n') + '\n');
-  const joined = join(DIR, 'joined.mp4');
+  const clip = (s) => {
+    const src = join(DIR, `${s.id}.mp4`);
+    if (!existsSync(src)) throw new Error(`no capture for ${s.id}: capture the full reel's shot first`);
+    if (!CUT) return src;
+    // The cut's running total rounds differently, so a clip can be a frame long or short.
+    const fit = join(BUILD, `${s.id}.mp4`);
+    command('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', 'tpad=stop_mode=clone:stop=2,setsar=1',
+      '-frames:v', String(frames(s)), '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-pix_fmt', 'yuv420p', fit]);
+    return fit;
+  };
+  const list = join(BUILD, 'clips.txt');
+  writeFileSync(list, shots.map((s) => `file '${clip(s)}'`).join('\n') + '\n');
+  const joined = join(BUILD, 'joined.mp4');
   command('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list,
     '-vf', `fps=${FPS},format=yuv420p`, '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', joined]);
   const inputs = ['-i', joined, '-i', wav];
@@ -628,7 +674,7 @@ function assemble(wav) {
   let last = '0:v';
   texts.forEach((tx, i) => {
     const a = start(tx.shot) + tx.at, b = a + tx.dur;
-    inputs.push('-loop', '1', '-t', String(TOTAL), '-i', join(DIR, `text-${i}.png`));
+    inputs.push('-loop', '1', '-t', String(TOTAL), '-i', join(BUILD, `text-${i}.png`));
     filters.push(`[${i + 2}:v]format=rgba,fade=t=in:st=${a.toFixed(3)}:d=0.22:alpha=1,`
       + `fade=t=out:st=${(b - 0.28).toFixed(3)}:d=0.28:alpha=1[c${i}]`);
     filters.push(`[${last}][c${i}]overlay=0:0:enable='between(t,${a.toFixed(3)},${b.toFixed(3)})'[v${i}]`);
@@ -639,8 +685,8 @@ function assemble(wav) {
   command('ffmpeg', ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', filters.join(';'),
     '-map', '[v]', '-map', '1:a:0', '-t', TOTAL.toFixed(3), '-r', String(FPS),
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '14', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '320k', '-movflags', '+faststart', OUT]);
-  console.log(`${OUT}  ${TOTAL.toFixed(2)} s`);
+    '-c:a', 'aac', '-b:a', '320k', '-movflags', '+faststart', EXPORT]);
+  console.log(`${EXPORT}  ${TOTAL.toFixed(2)} s`);
 }
 
 // ---------------------------------------------------------------- the script
@@ -715,9 +761,14 @@ function writeScript() {
 async function main() {
   const selected = process.argv.find((a) => a.startsWith('--shots='))?.slice(8).split(',') || null;
   const pick = (s) => !selected || selected.includes(s.id);
-  if (arg('--script')) { writeScript(); return; }
+  if (arg('--script')) {
+    if (CUT) throw new Error('--script documents the full reel, not a cut');
+    writeScript();
+    return;
+  }
   const probe = arg('--probe'), captureOnly = arg('--capture-only');
-  const audioOnly = arg('--audio-only'), assembleOnly = arg('--assemble');
+  // A cut never captures: its clips are the full reel's.
+  const audioOnly = arg('--audio-only'), assembleOnly = arg('--assemble') || (!!CUT && !probe);
   if (!probe && !audioOnly && !process.argv.some((a) => a.startsWith('--scout='))) {
     // Only the end card may be unfinished: every other shot needs its capture.
     for (const s of shots) if (!s.title && !s.pan && !s.crop && !arg('--allow-wide')) console.log(`note: ${s.id} has no pan yet (whole frame)`);
@@ -746,7 +797,7 @@ async function main() {
     if (!audioOnly) await renderText(browser);
   } finally { if (browser) await browser.close(); }
   if (probe || captureOnly) return;
-  const wav = arg('--keep-audio') && existsSync(join(DIR, 'soundtrack.wav')) ? join(DIR, 'soundtrack.wav') : await renderAudio();
+  const wav = arg('--keep-audio') && existsSync(join(BUILD, 'soundtrack.wav')) ? join(BUILD, 'soundtrack.wav') : await renderAudio();
   if (audioOnly) return;
   assemble(wav);
 }
