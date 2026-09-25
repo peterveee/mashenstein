@@ -70,7 +70,7 @@ import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import {
   drawFrostFlypast, FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN, FROST_FLYPAST_DEPTH,
-  FROST_FLYPAST_CLEAR, FROST_FLYPAST_LEAD, flypastAt, flypastScaleFor,
+  FROST_FLYPAST_CLEAR, FROST_FLYPAST_LEAD, flypastAt, flypastPathY, flypastScaleFor,
 } from '../sprites/sleigh.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
@@ -8161,7 +8161,7 @@ export class RunState {
     // the only difference between the two. Falls back to the right edge when
     // there is no marker on screen, which is every caller that is not the
     // finish.
-    const shot = flypastAt(this.flypast.t, {
+    const flight = {
       left: coverage ? coverage.left : 0,
       right: coverage ? coverage.right : W,
       poleX: Number.isFinite(poleScreenX)
@@ -8170,7 +8170,8 @@ export class RunState {
       arc: frostFlypastArc({ ...context, backgroundBand: band },
         Number.isFinite(poleTopScreenY) ? toLocalY(poleTopScreenY) : null,
         FROST_FLYPAST_CLEAR),
-    });
+    };
+    const shot = flypastAt(this.flypast.t, flight);
     // Gone: over the mast and above the picture. Retired here rather than on the
     // step because only this knows where the mast was, and a rotation mid-flight
     // changes the answer.
@@ -8194,6 +8195,12 @@ export class RunState {
       // object and the overlay draws it without asking anything else.
       phone: !!context?.portrait || Input.isTouchDevice(),
       t: this.flypast.t,
+      // THE CURVE ITSELF, so a team that flies ON the arc can place every member on it
+      // (Peter, 25 Sep 2026: "can we possily get them all to fly on an arc path?"): in the
+      // pack's local space for the behind draw, carried to the screen for the overlay.
+      pathLocal: (lx) => flypastPathY(lx, flight),
+      pathScreen: (sx) => shift + GROUND_Y
+        + (flypastPathY((sx - W / 2 - xOffset) / bgZoom + W / 2, flight) - GROUND_Y) * bgZoom,
     };
   }
 
@@ -15170,7 +15177,8 @@ export class RunState {
       if (FROST_FLYPAST_DEPTH !== 'front' && this.flypastShot) {
         drawFrostFlypast(ctx, this.flypastShot.localX, this.flypastShot.localY,
           this.flypastShot.t,
-          { tilt: this.flypastShot.tilt, scale: flypastScaleFor(this.flypastShot.phone) });
+          { tilt: this.flypastShot.tilt, scale: flypastScaleFor(this.flypastShot.phone),
+            path: this.flypastShot.pathLocal });
       }
     } else {
       this.flypastShot = null;
@@ -16049,7 +16057,7 @@ export class RunState {
     if (FROST_FLYPAST_DEPTH === 'front' && this.flypastShot) {
       const shot = this.flypastShot;
       const drawSleigh = (d) => drawFrostFlypast(d, shot.x, shot.y, shot.t,
-        { zoom: shot.zoom, tilt: shot.tilt, scale: flypastScaleFor(shot.phone) });
+        { zoom: shot.zoom, tilt: shot.tilt, scale: flypastScaleFor(shot.phone), path: shot.pathScreen });
       if (!pushOverlayDraw(drawSleigh)) drawSleigh(ctx);
     }
     if (!pushOverlayDraw(drawFrame)) drawFrame(ctx);

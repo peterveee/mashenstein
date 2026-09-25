@@ -635,7 +635,7 @@ function paperFlyer(ctx, x, y, s, phase, { nose = false, blink = 0, far = false 
 }
 // The sleigh and Santa, facing +x, the hitch at (x, y) (level with the team's chests).
 // Units: 16 long at s = 1, runners 7 below the hitch.
-function paperSleigh(ctx, x, y, s, t) {
+function paperSleigh(ctx, x, y, s, t, { faceFront = false } = {}) {
   const P = PAPER_SANTA;
   const bob = Math.sin(t * 5.2) * 0.25;
   ctx.save();
@@ -672,6 +672,51 @@ function paperSleigh(ctx, x, y, s, t) {
   pstroke(ctx, P.red, 1.3, (c) => { c.moveTo(-5, -8.6); c.lineTo(-1.6, -6.8); });
   pfill(ctx, P.trim, (c) => c.arc(-1.8, -6.9, 0.75, 0, Math.PI * 2));
   pfill(ctx, P.black, (c) => c.arc(-1, -6.6, 0.8, 0, Math.PI * 2));
+  if (faceFront) {
+    // FACE TO CAMERA (Peter, 25 Sep 2026: "is santa's face facing front on? do a version
+    // with that. make sure we can at least dots for eyes"). Front-on from the start — it
+    // never turns (the no-turn-to-camera rule) — and a size up on the side-on head, because
+    // at the flypast's scale a face is a few pixels and the eyes have to survive as dots.
+    const hx = -6.6, hy = -13.4;
+    pfill(ctx, P.skin, (c) => c.arc(hx, hy, 2.35, 0, Math.PI * 2));
+    // The beard, ear to ear and down to a soft point; the moustache over it.
+    pfill(ctx, P.trim, (c) => { c.moveTo(hx - 2.45, hy - 0.2); c.quadraticCurveTo(hx - 2.8, hy + 3.8, hx, hy + 4.6); c.quadraticCurveTo(hx + 2.8, hy + 3.8, hx + 2.45, hy - 0.2); c.quadraticCurveTo(hx, hy + 1.4, hx - 2.45, hy - 0.2); c.closePath(); });
+    pfill(ctx, P.trimShade, (c) => { c.moveTo(hx - 1.6, hy + 2.6); c.quadraticCurveTo(hx, hy + 4.4, hx + 1.6, hy + 2.6); c.quadraticCurveTo(hx, hy + 3.4, hx - 1.6, hy + 2.6); c.closePath(); });
+    // A smile (Peter, 25 Sep 2026: "give him a smile"): an open, dark crescent under the
+    // moustache with a lip of warm pink, cut into the beard.
+    pfill(ctx, '#5a2a24', (c) => { c.moveTo(hx - 1.15, hy + 1.45); c.quadraticCurveTo(hx, hy + 3.1, hx + 1.15, hy + 1.45); c.quadraticCurveTo(hx, hy + 1.95, hx - 1.15, hy + 1.45); c.closePath(); });
+    pfill(ctx, P.cheek, (c) => { c.moveTo(hx - 0.6, hy + 2.2); c.quadraticCurveTo(hx, hy + 2.8, hx + 0.6, hy + 2.2); c.quadraticCurveTo(hx, hy + 2.45, hx - 0.6, hy + 2.2); c.closePath(); });
+    pfill(ctx, P.trim, (c) => { c.moveTo(hx, hy + 0.7); c.quadraticCurveTo(hx - 1.2, hy + 0.1, hx - 2, hy + 1.1); c.quadraticCurveTo(hx - 1, hy + 1.6, hx, hy + 1.1); c.quadraticCurveTo(hx + 1, hy + 1.6, hx + 2, hy + 1.1); c.quadraticCurveTo(hx + 1.2, hy + 0.1, hx, hy + 0.7); c.closePath(); });
+    // Rosy cheeks, a round nose, and the eyes: two dark dots, big enough to be dots.
+    pfill(ctx, P.cheek, (c) => { c.arc(hx - 1.45, hy + 0.1, 0.6, 0, Math.PI * 2); c.moveTo(hx + 2.05, hy + 0.1); c.arc(hx + 1.45, hy + 0.1, 0.6, 0, Math.PI * 2); });
+    pfill(ctx, P.cheek, (c) => c.arc(hx, hy + 0.25, 0.55, 0, Math.PI * 2));
+    pfill(ctx, P.black, (c) => { c.arc(hx - 0.9, hy - 0.8, 0.45, 0, Math.PI * 2); c.moveTo(hx + 1.35, hy - 0.8); c.arc(hx + 0.9, hy - 0.8, 0.45, 0, Math.PI * 2); });
+    // THE HAT, a proper Santa hat (Peter, 25 Sep 2026: "please fix the hat" — the band had
+    // swallowed the crown and read as a grey visor, and the tip hung off as a loose flap):
+    // a full red crown rising out of a thick white fur band, its tip BLOWN BACK the way he
+    // has come (Peter, 25 Sep 2026: "he is flyinbg left to right, cap should point from
+    // where he came (left)") — streaming out behind rather than drooping, above the waving
+    // mitten, a fold of shade along its underside, the bobble fluttering at the end.
+    const fl = Math.sin(t * 6.3) * 0.3;
+    ppiece(ctx, P.red, (c) => {
+      c.moveTo(hx + 2.6, hy - 2.4);
+      c.quadraticCurveTo(hx + 2.2, hy - 6.6, hx - 0.8, hy - 6.8);
+      c.quadraticCurveTo(hx - 3.8, hy - 6.9, hx - 5.6, hy - 6.1 + fl);
+      c.lineTo(hx - 5.3, hy - 5.1 + fl);
+      c.quadraticCurveTo(hx - 3.4, hy - 4.8, hx - 2.6, hy - 2.4);
+      c.closePath();
+    });
+    pfill(ctx, P.redDark, (c) => { c.moveTo(hx - 2.6, hy - 2.4); c.quadraticCurveTo(hx - 3.4, hy - 4.8, hx - 5.3, hy - 5.1 + fl); c.lineTo(hx - 5.45, hy - 5.6 + fl); c.quadraticCurveTo(hx - 3.2, hy - 5.6, hx - 2, hy - 3.6); c.closePath(); });
+    // The fur band, thick and rounded, across the brow; a line of shade under it.
+    pfill(ctx, P.trimShade, (c) => { c.moveTo(hx - 2.9, hy - 1.2); c.quadraticCurveTo(hx, hy - 2.1, hx + 2.9, hy - 1.2); c.lineTo(hx + 2.9, hy - 0.8); c.quadraticCurveTo(hx, hy - 1.7, hx - 2.9, hy - 0.8); c.closePath(); });
+    pfill(ctx, P.trim, (c) => {
+      c.moveTo(hx - 3, hy - 1.3); c.quadraticCurveTo(hx, hy - 2.3, hx + 3, hy - 1.3);
+      c.quadraticCurveTo(hx + 3.4, hy - 2.2, hx + 2.9, hy - 2.9); c.quadraticCurveTo(hx, hy - 3.9, hx - 2.9, hy - 2.9);
+      c.quadraticCurveTo(hx - 3.4, hy - 2.2, hx - 3, hy - 1.3); c.closePath();
+    });
+    pfill(ctx, P.trimShade, (c) => c.arc(hx - 6.1, hy - 5.4 + fl, 1.05, 0, Math.PI * 2));
+    pfill(ctx, P.trim, (c) => c.arc(hx - 6.3, hy - 5.6 + fl, 0.95, 0, Math.PI * 2));
+  } else {
   // Head: face, cheek, beard, moustache.
   pfill(ctx, P.skin, (c) => c.arc(-6.6, -12.8, 1.9, 0, Math.PI * 2));
   pfill(ctx, P.cheek, (c) => c.arc(-5.7, -12.4, 0.55, 0, Math.PI * 2));
@@ -683,60 +728,91 @@ function paperSleigh(ctx, x, y, s, t) {
   ppiece(ctx, P.red, (c) => { c.moveTo(-8.6, -13.6); c.quadraticCurveTo(-7, -17.2, -4.8, -14); c.quadraticCurveTo(-8, -15.6, -10.6 + flop, -14.6); c.closePath(); });
   pfill(ctx, P.trim, (c) => { c.moveTo(-8.8, -13.2); c.quadraticCurveTo(-6.8, -14.6, -4.6, -13.6); c.lineTo(-4.8, -12.8); c.quadraticCurveTo(-6.8, -13.8, -8.6, -12.4); c.closePath(); });
   pfill(ctx, P.trim, (c) => c.arc(-10.7 + flop, -14.5, 0.9, 0, Math.PI * 2));
-  // The waving arm, from the far shoulder, back and forth.
-  const wave = Math.sin(t * 7) * 0.45;
+  }
+  // The waving arm, from the far shoulder, back and forth. Facing us, his head is a size up
+  // and the mitten swung onto it and read as a third eye, so that arm is set back and up.
+  const wave = Math.sin(t * 7) * (faceFront ? 0.3 : 0.45);
+  const arm = faceFront ? { x: -9.6, y: -9.8, a: -2.55, len: 4.8 } : { x: -8.4, y: -9.6, a: -2.1, len: 4 };
   ctx.save();
-  ctx.translate(-8.4, -9.6);
-  ctx.rotate(-2.1 + wave);
-  pstroke(ctx, P.redDark, 1.3, (c) => { c.moveTo(0, 0); c.lineTo(4, 0); });
-  pfill(ctx, P.trim, (c) => c.arc(4, 0, 0.75, 0, Math.PI * 2));
-  pfill(ctx, P.black, (c) => c.arc(4.8, 0, 0.85, 0, Math.PI * 2));
+  ctx.translate(arm.x, arm.y);
+  ctx.rotate(arm.a + wave);
+  pstroke(ctx, P.redDark, 1.3, (c) => { c.moveTo(0, 0); c.lineTo(arm.len, 0); });
+  pfill(ctx, P.trim, (c) => c.arc(arm.len, 0, 0.75, 0, Math.PI * 2));
+  pfill(ctx, P.black, (c) => c.arc(arm.len + 0.8, 0, 0.85, 0, Math.PI * 2));
   ctx.restore();
   ctx.restore();
-  // Where the reins leave his hand, for the caller.
+  // Where the reins leave his hand, for the caller, in the frame it passed in.
   return { handX: x + -1 * s, handY: y + (-6.6 + bob) * s };
 }
 // A paper team: `cols` columns of reindeer back from the nose at (x, y), each column a pair
 // (the far one up and behind, hazed) unless `lone` says the lead flies alone; then the
-// sleigh. Returns the sleigh's back end, for a trail.
-function paperTeam(ctx, x, y, t, { s = 0.62, cols = 2, lone = false, blink = 0 } = {}) {
-  // A deer is ~23 units nose to rump with its antlers; the columns stand a body apart.
+// sleigh, then (with `dust`) a trail of stardust.
+//
+// ON THE ARC (Peter, 25 Sep 2026: "can we possily get them all to fly on an arc path? at the
+// moment they are all horizontal as they arc out of the screen"). `path(dx)` is the flight's
+// height `dx` behind the nose, in these units, relative to the nose (drawFrostFlypast hands
+// it in). Every column, the sleigh and the dust are placed ON it — follow the leader — so
+// the team bends over the mast the way the lead does instead of trailing behind him as one
+// level plank. Each one tips only PATH_TIP of the curve's slope, capped: the team as one
+// rigid thing rotated along the path read as pivoting (FROST_FLYPAST_TILT), and a train of
+// animals each nosing up a little reads as climbing. No path, and it is the level team.
+const PATH_TIP = 0.6;
+const PATH_TIP_CAP = 0.35;
+function paperTeam(ctx, x, y, t, { s = 0.62, cols = 2, lone = false, blink = 0, path = null, dust = 0, faceFront = false } = {}) {
+  const P = PAPER_SANTA;
   const gap = 19 * s;
-  const chest = (cx) => ({ x: cx - 9.1 * s, y: y + 3.2 * s });
+  const at = (dx) => {
+    const py = path ? path(dx) : 0;
+    const slope = path ? (path(dx + 2) - path(dx - 2)) / 4 : 0;
+    const a = Math.max(-PATH_TIP_CAP, Math.min(PATH_TIP_CAP, Math.atan(slope) * PATH_TIP));
+    return { x: x + dx, y: y + py, a };
+  };
+  // A point given in a frame's own (rotated) coordinates, out in ours.
+  const out = (f, lx, ly) => ({
+    x: f.x + lx * Math.cos(f.a) - ly * Math.sin(f.a),
+    y: f.y + lx * Math.sin(f.a) + ly * Math.cos(f.a),
+  });
+  const inFrame = (f, draw) => { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.a); draw(); ctx.restore(); };
   const phase = (i) => ((t * 2.6 + i * 0.27) % 1 + 1) % 1;
+  const colFrame = (i) => at(-i * gap);
   // Far animals first, so every near one is in front of its partner.
   for (let i = 0; i < cols; i++) {
-    const cx = x - i * gap;
-    if (!(lone && i === 0)) paperFlyer(ctx, cx - 2.6 * s, y - 2.8 * s, s * 0.94, phase(i + 0.5), { far: true });
+    if (lone && i === 0) continue;
+    inFrame(colFrame(i), () => paperFlyer(ctx, -2.6 * s, -2.8 * s, s * 0.94, phase(i + 0.5), { far: true }));
   }
-  // The gangline: one line from the hitch up the middle of the team.
   // The sleigh hitched a hand behind the last animal's rump (nose - 14.5 to its origin,
   // - 8 more to the rump), its front curl just short of it.
-  const lastNose = x - (cols - 1) * gap;
-  const hitchX = lastNose - 14.5 * s - 8 * s - 4.8 * s, hitchY = y + 4.8 * s;
-  pstroke(ctx, PAPER_SANTA.rein, 0.5 * s, (c) => { c.moveTo(hitchX, hitchY); c.lineTo(chest(x).x, chest(x).y); });
+  const hitchF = at(-(cols - 1) * gap - 27.3 * s);
+  const hitch = out(hitchF, 0, 4.8 * s);
+  const chests = [...Array(cols).keys()].map((i) => out(colFrame(i), -9.1 * s, 3.2 * s));
+  // The gangline, hitch to lead, through every column's harness.
+  pstroke(ctx, P.rein, 0.5 * s, (c) => { c.moveTo(hitch.x, hitch.y); for (let i = cols - 1; i >= 0; i--) c.lineTo(chests[i].x, chests[i].y); });
   for (let i = cols - 1; i >= 0; i--) {
-    paperFlyer(ctx, x - i * gap, y, s, phase(i), { nose: i === 0, blink });
+    inFrame(colFrame(i), () => paperFlyer(ctx, 0, 0, s, phase(i), { nose: i === 0, blink }));
   }
-  const hand = paperSleigh(ctx, hitchX, hitchY, s, t);
-  // The reins, from his mitten to the lead's harness, sagging.
-  const lead = chest(x);
-  pstroke(ctx, PAPER_SANTA.rein, 0.4 * s, (c) => {
-    c.moveTo(hand.handX, hand.handY);
-    c.quadraticCurveTo((hand.handX + lead.x) / 2, Math.max(hand.handY, lead.y) + 3 * s, lead.x, lead.y - 0.6 * s);
+  let hand = null;
+  inFrame({ ...hitchF, x: hitch.x, y: hitch.y }, () => { hand = paperSleigh(ctx, 0, 0, s, t, { faceFront }); });
+  const handW = out({ ...hitchF, x: hitch.x, y: hitch.y }, hand.handX, hand.handY);
+  // The reins, from his mitten up the team a little above the gangline.
+  pstroke(ctx, P.rein, 0.4 * s, (c) => {
+    c.moveTo(handW.x, handW.y);
+    for (let i = cols - 1; i >= 0; i--) c.lineTo(chests[i].x, chests[i].y - 0.8 * s);
   });
-  return hitchX - 17 * s;
+  const backDx = hitchF.x - x - 17 * s;
+  if (dust) stardust(ctx, x, y, backDx + 4, t, dust, path);
+  return backDx;
 }
-// Stardust: a ribbon of gold curling off the back of the sleigh, twinkling as it goes.
-function stardust(ctx, x, y, t, len = 46, s = 1) {
+// Stardust: a ribbon of gold curling off the back of the sleigh, twinkling as it goes, laid
+// along the flight (`path`) when there is one. `fromDx` is where it starts, behind the nose.
+function stardust(ctx, x, y, fromDx, t, len = 34, path = null) {
   for (let i = 0; i < 26; i++) {
     const k = i / 26;
-    const drift = ((t * 0.9 + k) % 1);
-    const px = x - k * len * s;
-    const py = y + Math.sin(k * 7 - t * 3) * 3.2 * s * (0.4 + k) + k * 2 * s;
+    const dx = fromDx - k * len;
+    const px = x + dx;
+    const py = y + (path ? path(dx) : 0) + 4 + Math.sin(k * 7 - t * 3) * 3.2 * (0.4 + k) + k * 2;
     const tw = 0.5 + 0.5 * Math.sin(t * 11 + i * 2.3);
     const a = (1 - k) * (0.45 + 0.55 * tw);
-    const r = (0.35 + (1 - k) * 0.55 + tw * 0.25) * s;
+    const r = 0.35 + (1 - k) * 0.55 + tw * 0.25;
     ctx.fillStyle = `rgba(255,${214 + (i % 3) * 12},${120 + (i % 4) * 25},${a})`;
     if (i % 4 === 0) {
       // A four-point star now and then.
@@ -749,7 +825,6 @@ function stardust(ctx, x, y, t, len = 46, s = 1) {
     } else {
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
     }
-    void drift;
   }
 }
 
@@ -865,8 +940,9 @@ export const FROST_SLEIGH_CANDIDATES = [
     note: 'Round two (25 Sep 2026): the herd\'s own paper reindeer in two pairs, the far one of each hazed back, '
       + 'red harness and gold bells, the lead with Rudolph\'s blinking nose; a red lacquered sleigh on gold runners with '
       + 'a sack of presents; Santa in red and white with a beard, one hand on the reins, the other waving.',
-    draw(ctx, x, y, t) {
-      paperTeam(ctx, x, y, t, { s: 0.72, cols: 2, blink: flypastBlink(t) });
+    follows: true,
+    draw(ctx, x, y, t, o = {}) {
+      paperTeam(ctx, x, y, t, { s: 0.72, cols: 2, blink: flypastBlink(t), path: o.path });
     },
   },
   {
@@ -875,9 +951,9 @@ export const FROST_SLEIGH_CANDIDATES = [
     name: 'J · I, with a trail of stardust',
     note: 'I with a ribbon of gold stardust curling off the back of the sleigh and twinkling as it goes — four-point '
       + 'stars among the specks. The magic is the thing the eye follows across the sky.',
-    draw(ctx, x, y, t) {
-      const back = paperTeam(ctx, x, y, t, { s: 0.72, cols: 2, blink: flypastBlink(t) });
-      stardust(ctx, back + 4, y + 4, t, 34, 1);
+    follows: true,
+    draw(ctx, x, y, t, o = {}) {
+      paperTeam(ctx, x, y, t, { s: 0.72, cols: 2, blink: flypastBlink(t), path: o.path, dust: 34 });
     },
   },
   {
@@ -886,8 +962,33 @@ export const FROST_SLEIGH_CANDIDATES = [
     name: 'K · the full team — Rudolph and eight',
     note: 'Rudolph leading alone, eight behind him in four pairs, the sleigh and Santa after — the whole song, a size '
       + 'down so it is a line of reindeer rather than a parade.',
-    draw(ctx, x, y, t) {
-      paperTeam(ctx, x, y, t, { s: 0.55, cols: 5, lone: true, blink: flypastBlink(t) });
+    follows: true,
+    draw(ctx, x, y, t, o = {}) {
+      paperTeam(ctx, x, y, t, { s: 0.55, cols: 5, lone: true, blink: flypastBlink(t), path: o.path });
+    },
+  },
+  {
+    id: 'paper-santa-nine-dust',
+    span: 104,  // how far back from the nose it reaches, at scale 1
+    follows: true,
+    name: 'L · the full team with stardust, on the arc',
+    note: 'SHIPS, 25 Sep 2026 ("lets do the full team WITH stardust"): K\'s Rudolph and eight with J\'s trail — and '
+      + 'every pair, the sleigh and the dust flying ON the arc, follow the leader, each tipped a little up the curve, '
+      + 'instead of trailing behind the lead as one level line.',
+    draw(ctx, x, y, t, o = {}) {
+      paperTeam(ctx, x, y, t, { s: 0.55, cols: 5, lone: true, blink: flypastBlink(t), path: o.path, dust: 36 });
+    },
+  },
+  {
+    id: 'paper-santa-front',
+    span: 104,  // how far back from the nose it reaches, at scale 1
+    follows: true,
+    name: 'M · L, with Santa facing us (SHIPS)',
+    note: 'L with Santa\'s face turned to camera (from the start — he never turns): a size up on the head, two dark '
+      + 'dot eyes, rosy cheeks, a round nose, a moustache over a full beard, the hat\'s fur band across his brow and '
+      + 'its tip flopping back.',
+    draw(ctx, x, y, t, o = {}) {
+      paperTeam(ctx, x, y, t, { s: 0.55, cols: 5, lone: true, blink: flypastBlink(t), path: o.path, dust: 36, faceFront: true });
     },
   },
 ];
@@ -906,7 +1007,13 @@ export const FROST_SLEIGH_BY_ID = Object.fromEntries(
 // rumps, knees, three-tine racks, a driver leaning into reins that reach the
 // team. Note that it asks for the soft inks by name — a rung down the palette
 // ladder — so H at `night` is about where E sat at `shadow`.
-export const FROST_FLYPAST = 'far-trail-detail';
+// L — Rudolph and eight with the stardust, every member on the arc (Peter, 25 Sep 2026:
+// "letd dfo the full team WITH stardust... can we possily get them all to fly on an arc
+// path?"). It replaced H, the small slate team drawn for when the flypast flew BEHIND the
+// blizzard; it flies in front of the snow now, so the team can be in colour.
+// M since the same day (Peter: "pushit it out then"): L with Santa facing us — two dot
+// eyes, a smile, a proper hat whose tip streams back the way he has come.
+export const FROST_FLYPAST = 'paper-santa-front';
 
 // The team faces +x and it FLIES +x: it comes in over the left of the sky and
 // leaves over the right, which is the way the finish itself is going.
@@ -951,7 +1058,9 @@ export const FROST_FLYPAST = 'far-trail-detail';
 // longer has to hurry to be gone before the scene cuts, and a team that is not
 // hurrying is the difference between a flypast and a thing being thrown across
 // the screen.
-export const FROST_FLYPAST_SPEED = 150;
+// 160 since L (25 Sep 2026): its span (104 against H's 82) lengthens the crossing, and
+// this keeps the whole flight inside the shortest ending as 150 did for H.
+export const FROST_FLYPAST_SPEED = 160;
 
 // How long before the finish arms that the sleigh does, in seconds of running.
 // The run is still live and scrolling here — the flight is screen-space and
@@ -1083,7 +1192,12 @@ export const FROST_FLYPAST_GLOW = 'warm';
 // the same team at the same size is simply THERE — the snow still crosses it,
 // because the flakes are drawn over the whole frame either way, but it is no
 // longer being read through a fog it cannot win against.
-export const FROST_FLYPAST_DEPTH = 'front';
+// BEHIND AGAIN since L (Peter, 25 Sep 2026: "is satna and co behind the snow? seems a bit too
+// clear against everything"). Front was bought for the slate team, which the blizzard
+// erased; L is in colour and carries its warm glow, and through the flakes and the veil it
+// still reads — while sitting IN the weather like everything else in the sky, instead of
+// being the one sharp thing pasted over it.
+export const FROST_FLYPAST_DEPTH = 'behind';
 
 // And how dark. See FLYPAST_PALETTES.
 //
@@ -1119,6 +1233,21 @@ export const FROST_FLYPAST_SPAN = Math.ceil(
  * `poleX` the mast the arc is aimed at, `arc` the two heights from
  * frostFlypastArc.
  */
+/**
+ * THE FLIGHT'S HEIGHT AT ANY x, in the same space and on the same curve as flypastAt: the
+ * climb to the mast, then the eased rise out. A team that flies ON the arc (a candidate
+ * with `follows`) looks up where each of its members is from this, not only its lead.
+ */
+export function flypastPathY(x, { left = 0, poleX = 480, arc } = {}) {
+  const x0 = left - FROST_FLYPAST_SPAN;
+  const run = Math.max(1, poleX - x0);
+  const u = (x - x0) / run;
+  const drop = arc.start - arc.apex;
+  if (u <= 1) { const d = 1 - u; return arc.apex + drop * d * d; }
+  const v = Math.min(1, (u - 1) / FROST_FLYPAST_LEVEL);
+  return arc.apex - FROST_FLYPAST_OVER * v * v * (3 - 2 * v);
+}
+
 export function flypastAt(t, { left = 0, right = 480, poleX = 480, arc } = {}) {
   const x0 = left - FROST_FLYPAST_SPAN;
   // u is 1 AT THE MAST and the flight carries on past it — that is the half of
@@ -1182,18 +1311,25 @@ export function drawFrostFlypast(ctx, x, y, t, {
   // about the NOSE, because the nose is the point the arc was solved for — the
   // tail hanging below the curve is what a team pulling uphill looks like.
   tilt = 0,
+  // The flight's height at any x, in the SAME space as (x, y) — screen when it flies on
+  // the overlay, the pack's local space behind it. A candidate that `follows` puts every
+  // member of the team on it; without it the team flies level behind its lead.
+  path = null,
 } = {}) {
   const cand = FROST_SLEIGH_BY_ID[id] || FROST_SLEIGH_BY_ID[FROST_FLYPAST];
   if (!cand) return;
   const s = scale * (Number.isFinite(zoom) && zoom > 0 ? zoom : 1);
+  // The path in the candidate's own units: height behind the nose, relative to it.
+  const lpath = typeof path === 'function' && !tilt
+    ? (lx) => (path(x + lx * s) - y) / s : null;
   setFlypastPalette(palette);
   ctx.save();
   ctx.translate(x, y);
   if (tilt) ctx.rotate(tilt);
   if (s !== 1) ctx.scale(s, s);
   try {
-    flypastGlow(ctx, cand, FLYPAST_GLOWS[glow]);
-    cand.draw(ctx, 0, 0, t);
+    flypastGlow(ctx, cand, FLYPAST_GLOWS[glow], cand.follows ? lpath : null);
+    cand.draw(ctx, 0, 0, t, { path: lpath });
   } finally {
     ctx.restore();
     setFlypastPalette('sky');
@@ -1209,9 +1345,30 @@ export function drawFrostFlypast(ctx, x, y, t, {
 // how a canvas draws an elliptical gradient, which is why the arc below is a
 // plain circle of the full radius. `alpha` is the centre stop and the edge runs
 // to zero — the falloff does the work and nothing here has a rim.
-function flypastGlow(ctx, cand, spec) {
+function flypastGlow(ctx, cand, spec, lpath = null) {
   if (!spec) return;
   const span = Number(cand.span) || 86;
+  if (lpath) {
+    // A team on the arc wears its light along the arc: three softer pools down the curve
+    // rather than one level ellipse the back half has climbed out of.
+    for (const f of [0.18, 0.5, 0.82]) {
+      const dx = -span * f;
+      const r = span * 0.28 + spec.pad * 0.8;
+      ctx.save();
+      ctx.translate(dx, lpath(dx) - 2);
+      ctx.scale(1, spec.ry);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+      g.addColorStop(0, `rgba(${spec.color},${spec.alpha * 0.7})`);
+      g.addColorStop(0.45, `rgba(${spec.color},${spec.alpha * 0.35})`);
+      g.addColorStop(1, `rgba(${spec.color},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    return;
+  }
   const r = span / 2 + spec.pad;
   ctx.save();
   ctx.translate(-span / 2, -2);

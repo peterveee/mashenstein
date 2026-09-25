@@ -13,15 +13,17 @@ import { drawToon } from '../sprites/toons.js';
 import { HERO_DRAW_H } from '../game/draw.js';
 import { PLAYER_X } from '../game/player.js';
 import {
-  drawFrostFlypast, flypastAt, FROST_FLYPAST, FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN,
-  FROST_FLYPAST_CLEAR, FROST_FLYPAST_SCALE,
+  drawFrostFlypast, flypastAt, flypastPathY, FROST_FLYPAST, FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN,
+  FROST_FLYPAST_CLEAR, FROST_FLYPAST_SCALE, FROST_FLYPAST_DEPTH,
 } from '../sprites/sleigh.js';
 
 export const FROST_SLEIGH_V2 = [
-  { id: FROST_FLYPAST, label: 'H — what flies now' },
+  { id: 'far-trail-detail', label: 'H — what flew before' },
   { id: 'paper-santa', label: 'I — paper Santa, in colour' },
   { id: 'paper-santa-dust', label: 'J — I, with stardust' },
   { id: 'paper-santa-nine', label: 'K — the full team, Rudolph and eight' },
+  { id: 'paper-santa-nine-dust', label: 'L — the full team with stardust, on the arc' },
+  { id: 'paper-santa-front', label: 'M — SHIPS: L, with Santa facing us' },
 ];
 
 function heroPose(t) {
@@ -32,12 +34,22 @@ const frost = () => CABINETS.find((c) => c.id === 'frost');
 // One crossing and a breath, looped.
 const LOOP = (480 + 2 * FROST_FLYPAST_SPAN) / FROST_FLYPAST_SPEED + 0.8;
 
-export function drawSleighFinishScene(ctx, t, id, { weather = true } = {}) {
+export function drawSleighFinishScene(ctx, t, id, { weather = true, depth = FROST_FLYPAST_DEPTH } = {}) {
   const cab = frost();
   const pack = getStylePack(cab.style, {});
   const TD = 18144, camX = 0.985 * TD + t * 60;
   const bc = { stageIndex: 3, progress: camX / TD };
   pack.bg(ctx, t, camX, cab, TD, bc, 0, bc);
+  const tt = t % LOOP;
+  const arc = frostFlypastArc(null, null, FROST_FLYPAST_CLEAR);
+  const flight = { left: 0, right: 480, poleX: 330, arc };
+  const p = flypastAt(tt, flight);
+  const sleigh = () => {
+    if (p) drawFrostFlypast(ctx, p.x, p.y, t, { id, scale: FROST_FLYPAST_SCALE, path: (x) => flypastPathY(x, flight) });
+  };
+  // 'behind' is where the run draws it for that depth: in the backdrop, under the post
+  // pass and the blizzard (flakes and veil both cross it).
+  if (depth === 'behind') sleigh();
   ctx.save();
   applyWorld(ctx, ZOOM, 0, GROUND_Y);
   pack.ground(ctx, camX, cab, [], [], t * 60, VIEW_W);
@@ -45,10 +57,7 @@ export function drawSleighFinishScene(ctx, t, id, { weather = true } = {}) {
   ctx.restore();
   if (pack.post) pack.post(ctx, t);
   if (weather && pack.weather) pack.weather(ctx, t);
-  const tt = t % LOOP;
-  const arc = frostFlypastArc(null, null, FROST_FLYPAST_CLEAR);
-  const p = flypastAt(tt, { left: 0, right: 480, poleX: 330, arc });
-  if (p) drawFrostFlypast(ctx, p.x, p.y, t, { id, scale: FROST_FLYPAST_SCALE });
+  if (depth !== 'behind') sleigh();
 }
 // Held in the frost-3 sky, `zoom` times the shipped size, flying in place.
 export function drawSleighCloseUp(ctx, t, id, { zoom = 3.4, w = 480, h = 270 } = {}) {

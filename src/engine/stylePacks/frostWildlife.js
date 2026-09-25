@@ -335,9 +335,12 @@ function paintWolves(ctx, f) {
 
 // THE WOLVES ROUND A FIRE (frost-3; Peter, 25 Sep 2026: "perhaps the wolves in level 3 could
 // be around. fire??"). The same three, no ledge: a campfire in the crown of the hill, a
-// ring of stones and crossed logs, one wolf either side facing in and the leader behind
-// the flames. The chorus is the ledge's; the fire flickers, lights the pack and throws
-// sparks off downwind.
+// ring of stones and crossed logs, the leader and one wolf on the left facing in, the third
+// on the right, and the fire in the open between them. The chorus is the ledge's; the fire
+// flickers, lights the pack, throws sparks and sends its smoke off downwind.
+// Seated in the open since the fire bake-off (Peter, 25 Sep 2026: "looks like one is on
+// fire" — the leader sat behind the flames; F ships: "F for the wolves"; the losers are in
+// src/dev/wolves-fire-candidates.js).
 const CAMPFIRE = { stone: '#5d6878', stoneLit: '#8e97a6', log: '#5b4336', logEnd: '#a07e63' };
 // Firelit silhouettes: at dusk the day wolves' grey is the far ridge's own value and they
 // dissolve into it (only the saddle and rim showed, as floating arcs). Dark against the
@@ -346,6 +349,8 @@ const FIRE_WOLF = {
   fur: '#4b515c', furLit: '#d08a55', furDark: '#343943', saddle: '#2b2f37', cream: '#a39d95',
   tip: '#202329', ear: '#86665c', nose: '#141213', eye: '#f2c152', pupil: '#141213', mouth: '#4a1f1a',
 };
+// The fire sits this far right of the pack's centre (painter units), in the gap.
+const FIRE_DX = 5.5;
 function paintWolvesFire(ctx, f) {
   const P = { ...tonePal(FIRE_WOLF, f.tone), furLit: FIRE_WOLF.furLit, eye: FIRE_WOLF.eye };
   const C = tonePal(CAMPFIRE, f.tone);
@@ -370,9 +375,11 @@ function paintWolvesFire(ctx, f) {
   ctx.save();
   ctx.translate(x0, y0);
   ctx.scale(S, S);
-  // The leader, behind the fire, a step up the far side of the crown and a touch smaller.
-  wolf(1.5, -0.9, 1, 0.84, 0.5, 3.5, 0);
-  // The fire: stones, crossed logs, flames.
+  // The leader on the left flank, a step up the crown behind his partner and a touch smaller.
+  wolf(-21.5, -0.9, 1, 0.84, 0.5, 3.5, 0);
+  // The fire, right of centre with nobody behind it: stones, crossed logs, flames.
+  ctx.save();
+  ctx.translate(FIRE_DX, 0);
   for (const [sx, r] of [[-5, 1.3], [-2.6, 1.1], [0, 1.2], [2.6, 1.1], [5, 1.3]]) {
     fill(ctx, C.stone, oval(sx, -0.2, r * 1.2, r * 0.8));
     fill(ctx, mix(C.stoneLit, '#ffc070', 0.35 * g), oval(sx - 0.2, -0.6, r * 0.8, r * 0.35));
@@ -385,20 +392,30 @@ function paintWolvesFire(ctx, f) {
   tongue(ctx, '#ffab45', 2.3, 6 * (0.8 + 0.2 * Math.sin(f.t * 12.7 + 1)), 0.8 + Math.sin(f.t * 6.3) * 0.5);
   tongue(ctx, '#ffe39a', 1.3, 3.6 * (0.8 + 0.2 * Math.sin(f.t * 15.3 + 2)), 0.3);
   ctx.restore();
-  // Either side, facing in.
-  wolf(-18, 0, 1, 0.88, 1.1, 3.3, 2.1);
-  wolf(19.5, 0, -1, 0.86, 1.5, 3.4, 4.3);
+  ctx.restore();
+  // The leader's partner on the left and the third on the right, both facing in.
+  wolf(-9.5, 0, 1, 0.88, 1.1, 3.3, 2.1);
+  wolf(21.5, 0, -1, 0.86, 1.5, 3.4, 4.3);
   ctx.restore();
   ctx.restore();
   mound(ctx, f, x0 - 30 * S, x0 + 30 * S, top, 14);
-  // The firelight over the pack and the snow, then the sparks. Unclipped.
-  const fx = x0, fy = y0 - 5 * S;
+  // The firelight over the pack and the snow, then the smoke and the sparks. Unclipped.
+  const fx = x0 + FIRE_DX * S, fy = y0 - 5 * S;
   halo(ctx, fx, fy, 34 * S, 0.42 * g * flick);
   halo(ctx, fx, fy, 8 * S, 0.5 * g * flick, [255, 230, 170]);
   const pool = ctx.createRadialGradient(fx, y0, 0, fx, y0, 26 * S);
   pool.addColorStop(0, `rgba(255,200,120,${0.35 * g * flick})`);
   pool.addColorStop(1, 'rgba(255,200,120,0)');
   fill(ctx, pool, oval(fx, y0 + 1, 26 * S, 4 * S));
+  // The smoke: the fire's own column, standing straight up off the flames until the wind
+  // takes it and leans it off downwind, swelling and thinning — clear of the right-hand
+  // wolf's head before it bends over him. The beacon tower's smoke colour.
+  for (let i = 0; i < 8; i++) {
+    const k = fract(f.t * 0.2 + i / 8);
+    const sx = fx + (k * k * 30 + Math.sin(k * 6 + f.t * 0.8 + i) * 1.6) * S;
+    const sy = fy - (4 + k * 26) * S;
+    puff(ctx, sx, sy, (1.3 + k * 4.6) * S, 0.55 * (1 - k) * smooth(0, 0.1, k), '#cdc9d6');
+  }
   for (let i = 0; i < 8; i++) {
     const k = fract(f.t * 0.75 + i / 8);
     const sx = fx + (k * 20 + Math.sin(k * 9 + i * 2) * 2.5) * S;
@@ -1318,7 +1335,9 @@ export function drawFrostWildlife(ctx, fr) {
     } else clock = Math.max(0, (entry - x) / (FROST_RUN_SPEED * k)) * pace;
     tone = tone || toner(fr);
     ctx.save();
-    K.paint(ctx, { ...fr, x, clock, held: false, tone, facing });
+    // `fr.paint` is the bake-off seam (backgroundContext.frostWildlifePaint): a painter per
+    // kind to draw in the item's place, at its real spot and clock. Unset in the game.
+    (fr.paint?.[kind] || K.paint)(ctx, { ...fr, x, clock, held: false, tone, facing });
     ctx.restore();
   }
 }
@@ -1330,6 +1349,10 @@ export { resolveSpot as frostWildlifeSpot, stageSpot as frostWildlifeStageSpot, 
 export const FROST_PAPER = {
   fill, stroke, poly, circle, oval, box, cubic, rr, arch, piece, strip, mix, rgba, tonePal, glowGain,
   clipSky, groundTop, clipAbove, mound, sceneryHides, puff, fract, clamp01, smooth,
+};
+// The wolf pack and its fire, for the fire bake-off (src/dev/wolves-fire-candidates.js).
+export const FROST_WOLF_KIT = {
+  drawSeatedCanine, howlPose, songRings, tongue, halo, FIRE_WOLF, CAMPFIRE,
 };
 export {
   paintWolves as drawFrostWolves, paintCabin as drawFrostCabin, paintIgloo as drawFrostIgloo,

@@ -92,6 +92,7 @@ import { SPEED_SIGN_GAGS } from '../src/dev/speed-sign-gags.js';
 import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
 import { FROST_BG_V2, drawFrostV2Scene, drawFrostV2CloseUp } from '../src/dev/frost-background-v2.js';
 import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../src/dev/frost-sleigh-v2.js';
+import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
 import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
@@ -7534,8 +7535,8 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // across the sky?" The candidates are in src/sprites/sleigh.js with round one (I, J, K are
 // new; H is what flies at the frost-3 tape today); the scene is src/dev/frost-sleigh-v2.js.
 {
-  const grid = section('frost-sleigh-v2-bakeoff', 'FROST 3 — Santa and his reindeer, round two (bake-off)',
-    'OPEN, 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying across the sky?" H is what '
+  const grid = section('frost-sleigh-v2-bakeoff', 'FROST 3 — Santa and his reindeer, round two (M ships)',
+    'SETTLED 25 Sep 2026: "lets do the full team WITH stardust... can we possily get them all to fly on an arc path?" — L is K\'s team with J\'s stardust, every member on the arc. Asked 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying across the sky?" H is what '
     + 'flies over the frost-3 finish today — a small slate team, drawn for the days it flew BEHIND the blizzard. It flies '
     + 'in front of the snow now, so the new ones are in colour and in Frost\'s cut paper: the herd\'s own paper reindeer '
     + 'in pairs with red harness and gold bells, Rudolph\'s nose blinking on the lead, a red lacquered sleigh on gold '
@@ -7548,6 +7549,31 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       (ctx, t) => drawSleighFinishScene(ctx, t, c.id), { animated: true });
     tile(grid, `${c.label} · close-up`, 'Held in the frost-3 sky, 3.4x.', W, H,
       (ctx, t) => drawSleighCloseUp(ctx, t, c.id), { animated: true });
+  }
+}
+
+// ------------------------------------------ FROST — the wolves round a fire (lab)
+// Peter, 25 Sep 2026: "For the wolves around the fire looks like one is on fire.. can you
+// redraw so perhaps the fire isn't infront of any of them. alternatialy what if they were
+// around glowing coals instead? do a bakeoff please". The candidates are in
+// src/dev/wolves-fire-candidates.js, painted in the item's real place through the pack's
+// frostWildlifePaint seam.
+{
+  const grid = section('wolves-fire-bakeoff', 'FROST 3 — the wolves round a fire, bake-off (F ships)',
+    'SETTLED 25 Sep 2026: "F for the wolves" — F is in the game now, and its cards draw the shipped painter. Asked 25 Sep '
+    + '2026: "looks like one is on fire.. can you redraw so perhaps the fire isn\'t in front of any of '
+    + 'them. alternatively what if they were around glowing coals instead?" A is what shipped before: the leader sat a step up the '
+    + 'crown BEHIND the flames, so they climbed his chest. B keeps the flames and reseats the pack — the leader and one wolf '
+    + 'on the left, one on the right, the fire in the open between them. C swaps the fire for a bed of glowing coals with '
+    + 'the pack as it sits now; D is a banked fire, coals with low tongues that stay under the leader; E is B\'s seating '
+    + 'round C\'s coals; F is B with a smoke plume ("should we have proper smoke from the fire? I like option b"). First card: frost-3 at 21% in its real storm, the chorus playing. Second: 3x on the hearth, the '
+    + 'snow left off so the seating reads. ANIMATED.',
+    '25 Sep 2026');
+  for (const c of WOLVES_FIRE_CANDIDATES) {
+    tile(grid, `${c.label} · frost-3 at 21%`, 'The pack in its real place and storm, the chorus playing.', W, H,
+      (ctx, t) => drawWolvesFireScene(ctx, t, c.id), { animated: true });
+    tile(grid, `${c.label} · close-up`, 'On the hearth, 3x, no snow.', W, H,
+      (ctx, t) => drawWolvesFireCloseUp(ctx, t, c.id), { animated: true });
   }
 }
 

@@ -6884,7 +6884,13 @@ function plumberNearSummit(period) {
 }
 // `near(x)` is the near crest's y at screen x in the current coordinates; `nearTop` the
 // highest the crest reaches.
-function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, nearTop, paper, hill) {
+// `pass` splits it round the near ridge's bushes and houses: 'landmark' (the barn or mill,
+// drawn before them) and 'flock' (after them). A bush standing on the slope at a
+// landmark's foot is nearer than the landmark on its summit, so it has to be drawn over
+// it; drawn under it, plumber-1's robin popped up behind the silo (Peter, 25 Sep 2026).
+// The flocks stay over the bushes, as they always were.
+function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, nearTop, paper, hill, pass = 'all') {
+  const landmarks = pass !== 'flock', flocks = pass !== 'landmark';
   const view = backgroundPaintCoverage(ctx);
   const P = PLUMBER_NEAR_TREE_PERIOD;
   const f = PLUMBER_NEAR_TREE_FACTOR * ZOOM;
@@ -6899,13 +6905,14 @@ function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, ne
     const k = tileAt(PLUMBER_BARN_AT_PX);
     landmarkTile = k;
     const x = summitX(k);
-    if (!outsideView(ctx, x, 60)) drawPlumberBarn(ctx, t, x, seat, paper);
+    if (landmarks && !outsideView(ctx, x, 60)) drawPlumberBarn(ctx, t, x, seat, paper);
   } else if (stageIndex === 3 && staged) {
     const k = tileAt(totalDist * PLUMBER_MILL_AT);
     landmarkTile = k;
     const x = summitX(k);
-    if (!outsideView(ctx, x, 40)) drawPlumberWindmill(ctx, t, x, seat, paper, hill);
+    if (landmarks && !outsideView(ctx, x, 40)) drawPlumberWindmill(ctx, t, x, seat, paper, hill);
   }
+  if (!flocks) return;
   // The flock: every sixth-ish summit, chosen by hash, clear of the landmark's.
   const first = Math.floor((camX * f - 100) / P) - 1;
   for (let k = first; k <= first + Math.ceil((view.width + 200) / P) + 2; k++) {
@@ -7150,22 +7157,26 @@ function pixelPack(settings) {
         }
       }
       ctx.save();
-      ctx.translate(0, sceneryOffset + plumberLandscapeOffset
-        + backgroundY(backgroundContext, 'near'));
+      ctx.translate(0, nearShift);
       parallaxHills(ctx, camX, cab.hills, nearBaseY, nearAmp,
         PLUMBER_NEAR_TREE_WL, PLUMBER_NEAR_TREE_FACTOR,
         cab.id === 'plumber'
           ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30', scale: PLUMBER_NEAR_TREE_SCALE }, paper: paperPreview,
             paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
           : null);
-      if (cab.id === 'plumber') {
-        drawPlumberScenery(ctx, camX, nearBaseY, paperPreview, paperPreset,
-          paperStrengths.scenery, t, plumberStage);
-      }
       ctx.restore();
       if (cab.id === 'plumber') {
+        // Summit landmarks, then the ridge's bushes and houses over them, then the flocks
+        // (see drawPlumberLife's `pass`).
         drawPlumberLife(ctx, t, camX, totalDist, plumberStage, plumberProgress,
-          nearCrest, nearTop, paperPreview, cab.hills);
+          nearCrest, nearTop, paperPreview, cab.hills, 'landmark');
+        ctx.save();
+        ctx.translate(0, nearShift);
+        drawPlumberScenery(ctx, camX, nearBaseY, paperPreview, paperPreset,
+          paperStrengths.scenery, t, plumberStage);
+        ctx.restore();
+        drawPlumberLife(ctx, t, camX, totalDist, plumberStage, plumberProgress,
+          nearCrest, nearTop, paperPreview, cab.hills, 'flock');
         // Plumber-2's two balloons, each crossing once, slower than the far range.
         if (plumberStage === 2 && Number.isFinite(totalDist) && totalDist > 0) {
           PLUMBER_BALLOONS_AT.forEach((at, i) => {
@@ -9741,6 +9752,7 @@ function watercolorPack(settings) {
             stageIndex: backgroundContext?.stageIndex ?? 1,
             portrait: backgroundContext?.portrait === true,
             run: Number.isFinite(backgroundContext?.heroFrac),
+            paint: backgroundContext?.frostWildlifePaint,
             crest: (x) => ridgeYAt(x, camX, frostY, amp, wl, f, { coverageLeft: view.left }),
             scenery: () => frostSceneryPlacements(ctx, camX, frostY, {
               layer: depth, stageIndex: backgroundContext?.stageIndex,
