@@ -1396,40 +1396,81 @@ function fence(S, it) {
   if (it.gate != null) {
     const gx = it.gate;
     const b = S.foot(gx, gateHalf);
+    // The posts only: the leaves between them are painted live (gateLeaves), so they
+    // can move.
     g.fillStyle = iron;
     for (const px of [gx - gateHalf, gx + gateHalf]) {
       g.fillRect(px - 1.5, b - 32, 3, 33.5);
       dab(g, px, b - 34.2, 2.5, 2.5, 0);
       g.fillRect(px - 2.2, b - 32.4, 4.4, 1.4);
     }
-    g.strokeStyle = iron;
-    g.lineWidth = 1.4;
-    g.beginPath();
-    g.moveTo(gx - gateHalf, b - 26);
-    g.quadraticCurveTo(gx, b - 41, gx + gateHalf, b - 26);
-    g.moveTo(gx - gateHalf, b - 12);
-    g.lineTo(gx + gateHalf, b - 12);
-    g.moveTo(gx - gateHalf, b - 4);
-    g.lineTo(gx + gateHalf, b - 4);
-    g.stroke();
-    g.lineWidth = 1.2;
-    g.beginPath();
-    for (let x = gx - gateHalf + 5; x < gx + gateHalf - 2; x += 5) {
-      g.moveTo(x, b + 1);
-      g.lineTo(x, b - 26 - 6.5 * Math.cos((x - gx) / gateHalf * 1.4));
-    }
-    g.stroke();
-    // A scroll either side of the centre, and the moon on the right-hand post.
-    g.lineWidth = 0.9;
-    for (const d of [-1, 1]) {
-      g.beginPath();
-      g.arc(gx + d * 5, b - 19, 2.6, 0, TAU);
-      g.stroke();
-    }
+    // The moon on the right-hand post.
     g.fillStyle = lit;
     g.fillRect(gx + gateHalf + 0.6, b - 31, 0.8, 31);
     dab(g, gx + gateHalf + 1, b - 35, 0.8, 1.2, 0.5);
     dab(g, gx - gateHalf + 1, b - 35, 0.8, 1.2, 0.5);
+  }
+}
+
+// ------------------------------------------------------------------ gate leaves
+// THE GATES' LEAVES are painted live over the baked bank, the way the lamps are: the
+// posts stay in the bake, what hangs between them can move. The pack hands in the
+// painter as view.gate — the run's are in cryptGates.js (creaking, with the odd one
+// slamming in landscape), the lab's in src/dev/crypt-gate-bakeoff.js; with none, they hang shut
+// and still, stroke for stroke what the bake used to hold.
+export const GATE_HALF = 15;
+
+export function gateStill(ctx, f) {
+  const { x: gx, b } = f;
+  ctx.strokeStyle = css(C.iron);
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(gx - GATE_HALF, b - 26);
+  ctx.quadraticCurveTo(gx, b - 41, gx + GATE_HALF, b - 26);
+  ctx.moveTo(gx - GATE_HALF, b - 12);
+  ctx.lineTo(gx + GATE_HALF, b - 12);
+  ctx.moveTo(gx - GATE_HALF, b - 4);
+  ctx.lineTo(gx + GATE_HALF, b - 4);
+  ctx.stroke();
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let x = gx - GATE_HALF + 5; x < gx + GATE_HALF - 2; x += 5) {
+    ctx.moveTo(x, b + 1);
+    ctx.lineTo(x, b - 26 - 6.5 * Math.cos((x - gx) / GATE_HALF * 1.4));
+  }
+  ctx.stroke();
+  // A scroll either side of the centre.
+  ctx.lineWidth = 0.9;
+  for (const d of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(gx + d * 5, b - 19, 2.6, 0, TAU);
+    ctx.stroke();
+  }
+}
+
+// `f` is { x, b, t, i, pass, ridgeY, view }: the gate's centre on screen, the foot the
+// bake seated its posts on (the deepest crest under them), the clock, which gate of the
+// bank this is (0, 1, ...) and which time round the bank (so every gate the run meets has
+// its own number, 2 * pass + i), the bank's crest at any screen x, and the view (heroX,
+// gateCue).
+function gateLeaves(ctx, t, shift, view) {
+  const L = SCENE.fg;
+  const dy = view.y.fg;
+  const ridgeY = (x) => L.profile(x + shift, L.period) + dy;
+  const paint = view.gate || gateStill;
+  let i = 0;
+  for (const it of L.items) {
+    if (it.kind !== 'fence' || it.gate == null) continue;
+    for (const x of instances(it.gate, shift, L.period, view.left, view.right, 60)) {
+      let b = -Infinity;
+      for (let d = -GATE_HALF; d <= GATE_HALF; d += 2) b = Math.max(b, ridgeY(x + d));
+      const pass = Math.round((x + shift - it.gate) / L.period);
+      ctx.save();
+      paint(ctx, { x, b, t, i, pass, ridgeY, view });
+      ctx.restore();
+    }
+    i++;
   }
 }
 
@@ -2240,6 +2281,7 @@ export function drawCryptGouache(ctx, t, camX, stageIndex, view) {
   const fgShift = shiftOf(SCENE.fg);
   study('fg', 'behind', fgShift);
   drawStrip(ctx, B.fg, fgShift, view, view.y.fg);
+  gateLeaves(ctx, t, fgShift, view);
   study('fg', 'on', fgShift);
   band(1);
 

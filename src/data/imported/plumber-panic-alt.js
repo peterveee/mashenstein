@@ -10,7 +10,7 @@
 import { seq, chordSeq } from '../../engine/notes.js';
 
 export const id = "plumber-panic-alt";
-export const title = "PLUMBER PANIC ALT";
+export const title = "FIELD SERVICE ALT";
 export const slug = "plumber-panic-alt";
 export const group = "alternate";
 export const alternateOf = "plumber";

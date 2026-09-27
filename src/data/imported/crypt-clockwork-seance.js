@@ -1096,90 +1096,74 @@ export const bank = {
     {
       s: 0,
       bars: 1,
-      off: [],
     },
     {
       s: 1,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 2,
       bars: 1,
-      off: [],
     },
     {
       s: 3,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 4,
       bars: 1,
-      off: [],
     },
     {
       s: 5,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 6,
       bars: 1,
-      off: [],
     },
     {
       s: 7,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 8,
       bars: 1,
-      off: [],
     },
     {
       s: 9,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 10,
       bars: 1,
-      off: [],
     },
     {
       s: 11,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 12,
       bars: 1,
-      off: [],
     },
     {
       s: 13,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 14,
       bars: 1,
-      off: [],
     },
     {
       s: 15,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 16,
@@ -1187,7 +1171,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 17,
@@ -1195,7 +1178,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 18,
@@ -1203,7 +1185,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 19,
@@ -1211,7 +1192,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 20,
@@ -1219,7 +1199,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 21,
@@ -1227,7 +1206,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 22,
@@ -1235,7 +1213,6 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 23,
@@ -1243,135 +1220,110 @@ export const bank = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 24,
       bars: 1,
-      off: [],
     },
     {
       s: 25,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 26,
       bars: 1,
-      off: [],
     },
     {
       s: 27,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 28,
       bars: 1,
-      off: [],
     },
     {
       s: 29,
       bars: 1,
-      off: [],
     },
     {
       s: 30,
       bars: 1,
-      off: [],
     },
     {
       s: 31,
       bars: 1,
-      off: [],
     },
     {
       s: 32,
       bars: 1,
-      off: [],
     },
     {
       s: 33,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 34,
       bars: 1,
-      off: [],
     },
     {
       s: 35,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 36,
       bars: 1,
-      off: [],
     },
     {
       s: 37,
       bars: 1,
-      off: [],
     },
     {
       s: 38,
       bars: 1,
-      off: [],
     },
     {
       s: 39,
       bars: 1,
-      off: [],
     },
     {
       s: 40,
       bars: 1,
-      off: [],
     },
     {
       s: 41,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 42,
       bars: 1,
-      off: [],
     },
     {
       s: 43,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 44,
       bars: 1,
-      off: [],
     },
     {
       s: 45,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 46,
       bars: 1,
-      off: [],
     },
     {
       s: 47,
       bars: 1,
       from: 1,
-      off: [],
     },
   ],
 };
@@ -1405,90 +1357,74 @@ export const arrangement = {
     {
       s: 0,
       bars: 1,
-      off: [],
     },
     {
       s: 1,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 2,
       bars: 1,
-      off: [],
     },
     {
       s: 3,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 4,
       bars: 1,
-      off: [],
     },
     {
       s: 5,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 6,
       bars: 1,
-      off: [],
     },
     {
       s: 7,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 8,
       bars: 1,
-      off: [],
     },
     {
       s: 9,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 10,
       bars: 1,
-      off: [],
     },
     {
       s: 11,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 12,
       bars: 1,
-      off: [],
     },
     {
       s: 13,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 14,
       bars: 1,
-      off: [],
     },
     {
       s: 15,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 16,
@@ -1496,7 +1432,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 17,
@@ -1504,7 +1439,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 18,
@@ -1512,7 +1446,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 19,
@@ -1520,7 +1453,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 20,
@@ -1528,7 +1460,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 21,
@@ -1536,7 +1467,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 22,
@@ -1544,7 +1474,6 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 23,
@@ -1552,135 +1481,110 @@ export const arrangement = {
       transpose: {
         bass: 12,
       },
-      off: [],
     },
     {
       s: 24,
       bars: 1,
-      off: [],
     },
     {
       s: 25,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 26,
       bars: 1,
-      off: [],
     },
     {
       s: 27,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 28,
       bars: 1,
-      off: [],
     },
     {
       s: 29,
       bars: 1,
-      off: [],
     },
     {
       s: 30,
       bars: 1,
-      off: [],
     },
     {
       s: 31,
       bars: 1,
-      off: [],
     },
     {
       s: 32,
       bars: 1,
-      off: [],
     },
     {
       s: 33,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 34,
       bars: 1,
-      off: [],
     },
     {
       s: 35,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 36,
       bars: 1,
-      off: [],
     },
     {
       s: 37,
       bars: 1,
-      off: [],
     },
     {
       s: 38,
       bars: 1,
-      off: [],
     },
     {
       s: 39,
       bars: 1,
-      off: [],
     },
     {
       s: 40,
       bars: 1,
-      off: [],
     },
     {
       s: 41,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 42,
       bars: 1,
-      off: [],
     },
     {
       s: 43,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 44,
       bars: 1,
-      off: [],
     },
     {
       s: 45,
       bars: 1,
       from: 1,
-      off: [],
     },
     {
       s: 46,
       bars: 1,
-      off: [],
     },
     {
       s: 47,
       bars: 1,
       from: 1,
-      off: [],
     },
   ],
   sections: [],

@@ -194,7 +194,7 @@ const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
 // back out to an open break.
 export const CABINETS = [
   {
-    id: 'plumber', name: 'PLUMBER PANIC', act: 1, style: 'pixel',
+    id: 'plumber', name: 'FIELD SERVICE', act: 1, style: 'pixel',
     unlockPlugs: 0,
     mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',

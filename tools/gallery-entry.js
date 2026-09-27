@@ -93,9 +93,12 @@ import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
 import { FROST_BG_V2, drawFrostV2Scene, drawFrostV2CloseUp } from '../src/dev/frost-background-v2.js';
 import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../src/dev/frost-sleigh-v2.js';
 import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
+import { PIG_FLOCK_CANDIDATES, drawPigFlockScene, drawPigFlockCloseUp, drawPigletLineup } from '../src/dev/pig-flock-candidates.js';
 import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
 import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
+import { SPEED_MCM_OBJECTS, OBJECT_STYLES, drawSpeedObjectClose, drawSpeedObjectGameScale } from '../src/dev/speed-mcm/object-sheet.js';
+import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
@@ -103,6 +106,7 @@ import { CRYPT_LANE_CANDIDATES, CRYPT_SELECTED_CANDIDATES, drawCryptLaneStudy } 
 import { CRYPT_ANIMAL_STUDIES, drawCryptAnimalStudy } from '../src/dev/crypt-animal-refinements.js';
 import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
 import { CRYPT_HALLOWEEN_BACKGROUNDS, CRYPT_HALLOWEEN_LANE, drawCryptHalloweenBackground, drawCryptHalloweenLane } from '../src/dev/crypt-halloween-bakeoff.js';
+import { CRYPT_GATE_CANDIDATES, drawCryptGateScene, drawCryptGateCloseUp, drawCryptGateSwingStrip } from '../src/dev/crypt-gate-bakeoff.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
 import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
@@ -7902,6 +7906,116 @@ function cryptStyleTiles(grid, tag, cand) {
     tile(grid, `${item.id} ${item.name} — close`, `${item.action} read at inspection size, between shipped heroes.`, W, H,
       (ctx, t) => drawCryptHalloweenLane(ctx, t, item, true), { animated: true });
   }
+}
+
+// ------------------------------------------ PLUMBER — a piglet with the brown collie (lab)
+// Peter, 27 Sep 2026: "do a bake off where we have a pig along with the brown sheepdog in
+// the plumbers panic level... the pig is a little baby pig in the style of the pig in the
+// movie Babe. give me several options". Candidates in src/dev/pig-flock-candidates.js; each
+// draws the shipped figure-of-eight flock through PLUMBER_FLOCK_KIT and adds the piglet.
+{
+  const grid = section('pig-flock-bakeoff', 'PLUMBER PANIC — a Babe piglet with the brown collie (B ships)',
+    'SETTLED 27 Sep 2026: "lets ship B" — B is the brown collie\'s flock in the game now, and its cards draw the shipped '
+    + 'painter; 0 is the flock as it was before. Asked 27 Sep 2026: "a pig along with the brown sheepdog … a little baby pig in the style of the pig in the movie '
+    + 'Babe. give me several options". The piglet is the same in every option — a pale-pink Large White with pricked '
+    + 'ears tipping forward, a snub snout and a curly tail, in the flock\'s cut paper, lamb-sized — and the options '
+    + 'are what he does. A trails her round the figure of eight and sits '
+    + 'where she stopped. B is the sheep-pig: he runs the flock (the sheep answer him) while she sits up on the '
+    + 'crest watching him — hopping round to keep him in view, wagging and panting when he stops to ask (redone 27 Sep: '
+    + '"I don\'t notice the dog watching"; she had lain in her working crouch). C sits on the crest in the gap, hops round to keep her in view and gets up when she comes close. D runs '
+    + 'at her side and drops flat when she crouches. E thinks he is a sheep: he roots in the grass in the right-hand '
+    + 'knot and is moved on with them. Each option: plumber-1 with the camera held, then 2.6x on the flock. Last card: '
+    + 'the piglet alone, every pose. ANIMATED.',
+    '27 Sep 2026');
+  for (const c of PIG_FLOCK_CANDIDATES) {
+    tile(grid, `${c.label} · plumber-1`, 'The flock on the near summit, the hero running.', W, H,
+      (ctx, t) => drawPigFlockScene(ctx, t, c.id), { animated: true });
+    tile(grid, `${c.label} · close-up`, 'On the flock, 2.6x.', W, H,
+      (ctx, t) => drawPigFlockCloseUp(ctx, t, c.id), { animated: true });
+  }
+  tile(grid, 'The piglet — every pose', 'Trot, stand, ask, sit, flat, root and the hop round, 5.2x.', W, H,
+    (ctx, t) => drawPigletLineup(ctx, t), { animated: true });
+}
+
+// ------------------------------------------ SPEED ZONE — every backdrop object in MCM (lab)
+// Peter, 27 Sep 2026: "i would like to see more of the art from the real speed cabinet
+// re-rendered in mcm style in the gallery to see what works and what doesn't. Can you put
+// all objects from the background in the lab? we already have versions of the coyote".
+// Objects and cameras in src/dev/speed-mcm/object-sheet.js, painters in objects.js.
+{
+  const grid = section('speed-mcm-objects-bakeoff', 'SPEED ZONE — every backdrop object in mid-century modern',
+    'Asked 27 Sep 2026: all of Speed Zone\'s backdrop objects re-rendered in the mid-century modern hand, to see what '
+    + 'works and what doesn\'t (the coyote has its own bake-off above). One row per object: 0 is the shipped paper '
+    + 'backdrop — the real pack at the stage and camera that put the object mid-picture — A is MCM SUNSET and B MCM '
+    + 'MIDDAY on the same spot of the same country, each framed close; the fourth card is all three cropped at game '
+    + 'scale (1x). NEW marks an object with no MCM version before today; the rest were painted for the two-screen '
+    + 'bake-off and are shown here on their own. ANIMATED (the signs are still).',
+    '27 Sep 2026');
+  for (const obj of SPEED_MCM_OBJECTS) {
+    const label = `${obj.name}${obj.isNew ? ' — NEW' : ''}`;
+    for (const style of OBJECT_STYLES) {
+      tile(grid, `${label} · ${style.tag} ${style.name}`, style.id === 'shipped' ? obj.note : `${obj.zoom}x game scale.`, W, H,
+        (ctx, t) => drawSpeedObjectClose(ctx, t, obj, style.id, W, H), { animated: !obj.still });
+    }
+    tile(grid, `${label} · game scale`, obj.views.length > 1 ? 'Rows 0 / A / B at 1x.' : '0 | A | B at 1x.', W, H,
+      (ctx, t) => drawSpeedObjectGameScale(ctx, t, obj, W, H), { animated: !obj.still });
+  }
+}
+
+// ------------------------------------------ SPEED ZONE — one afternoon across the act (lab)
+// Peter, 27 Sep 2026: "could we gradually adjust it as each level progresses so each
+// change starts like the end of the previous one". Keyframes, blending and the stage
+// placement in src/dev/speed-mcm/time-arc.js.
+{
+  const grid = section('speed-mcm-time-arc', 'SPEED ZONE — MCM light across the act (one afternoon)',
+    'Asked 27 Sep 2026: the mid-century palette moving through the day as the act goes on, each stage opening in '
+    + 'the light the last one closed in. Five authored palettes — MIDDAY (speed-1 opens), AFTERNOON and GOLDEN at the '
+    + 'stage joins, SUNSET halfway through speed-3 and DUSK at its finish (added 27 Sep: "a deeper sunset … early '
+    + 'evening but things are still visible": the sun down, an indigo-to-amber afterglow, an evening star) — blended '
+    + 'colour by colour in between; the steel swaps from terracotta to teal as the sky warms and goes to a dark slate '
+    + 'at dusk, and the sun sinks and swells until it sets behind the hills. From golden hour the clouds are lit from '
+    + 'underneath, and the road and hero take the light too: a warm cast to sunset, then cooling and dimming into dusk. First '
+    + 'card: every colour across the act, to spot a muddy stretch. Second: the whole act in 24 s. Then stills at the '
+    + 'opening, halfway and finish of each stage, the camera where the run has it (so each shows that stage\'s own '
+    + 'landmarks) — a stage\'s finish and the next one\'s opening are the same light. ANIMATED.',
+    '27 Sep 2026');
+  tile(grid, 'The colours across the act', 'Left to right is speed-1 opening to speed-3 finish.', W, H,
+    (ctx) => drawArcRibbon(ctx, W, H));
+  tile(grid, 'Time-lapse — the whole act in 24 s', 'Eight seconds a stage; the light runs continuously.', W, H,
+    (ctx, t) => drawArcTimelapse(ctx, t), { animated: true });
+  for (const still of ARC_STILLS) {
+    tile(grid, `speed-${still.stage} · ${still.label}`, `${Math.round(still.p * 100)}% into the stage.`, W, H,
+      (ctx, t) => drawArcStill(ctx, t, still), { animated: true });
+  }
+}
+
+// ------------------------------------------ CRYPT SHIFT — the gates, animated (lab)
+// Peter, 27 Sep 2026: "there are a lot of gates in the crypt levels.. maybe it would be
+// nice if they were animated swinging or if some were about to fall off... do a bakeoff
+// with some animate4d options". Painters in src/dev/crypt-gate-bakeoff.js, handed to the
+// shipped backdrop through its cryptGate seam (the posts stay baked, the leaves are live).
+{
+  const grid = section('crypt-gate-bakeoff', 'CRYPT SHIFT — the graveyard gates, animated (A ships, with the odd F)',
+    'SHIPPED 27 Sep 2026: "A mostly with the occasional slam shut (to make it special)" — the gates creak (A), and in '
+    + 'landscape one in four is F instead (with its clang, the gateSlam cue, on the beat; never in portrait). Both '
+    + 'cards draw the shipped painters (cryptGates.js), and 0 is the gate as it was. '
+    + 'Asked 27 Sep 2026: the near bank\'s iron gates swinging, or some about to fall off. The posts stay in the '
+    + 'painting; only the leaves move, redrawn stroke for stroke from the shipped gate. '
+    + 'A creaks ajar in the wind; B is blown open and slammed shut; C sags off a rusted top hinge; D leans out on its '
+    + 'last hinge and lurches; E is D until the runner comes up, then falls flat. F (asked 27 Sep: "I like A and B … '
+    + 'slam shut JUST before the hero gets to them … like denying him entry") is B held open until the gate is a stride '
+    + 'ahead of him, then banged shut in his face. The two gates on the bank can each '
+    + 'take a different one. Each option: crypt-1 with the camera running, then the camera held at 3.2x. Last card: the '
+    + 'swing in steps, to judge the rotation without the clock skipping it. ANIMATED.',
+    '27 Sep 2026');
+  for (const c of CRYPT_GATE_CANDIDATES) {
+    tile(grid, `${c.id} ${c.name} · crypt-1`, c.note, W, H,
+      (ctx, t) => drawCryptGateScene(ctx, t, c), { animated: true });
+    tile(grid, `${c.id} ${c.name} · close-up`, 'The camera held on the gate, 3.2x.', W, H,
+      (ctx, t) => drawCryptGateCloseUp(ctx, t, c, W, H), { animated: true });
+  }
+  tile(grid, 'The swing in steps', 'The right leaf from shut to nearly edge-on.', W, H,
+    (ctx) => drawCryptGateSwingStrip(ctx, W, H));
 }
 
 // ---------------------------------------------------------------- driver

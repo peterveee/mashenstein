@@ -5935,13 +5935,15 @@ export class VoiceRack {
     // pulled every oscillator back to the nominal length of a note nobody had let go of,
     // so pressing a second key CUT THE SOUND a fifth of a second later. The note ends when
     // `_releasePreview` says it does, which is what the note-off is for.
+    // The live solo/waveform registries follow the note's new end — forever while a key
+    // holds it, the re-armed release otherwise.
+    for (const entry of [...(prev.activeLayerMonitors || []), ...(prev.activeLayerWaves || [])]) {
+      entry.until = hold ? Infinity : finalStop + 0.02;
+    }
     if (hold) {
       prev.freq = base;
       prev.gateUntil = Infinity;
       prev.stopAt = Infinity;
-      for (const entry of [...(prev.activeLayerMonitors || []), ...(prev.activeLayerWaves || [])]) {
-        entry.until = Infinity;
-      }
       return;
     }
     // A legato handoff extends the sounding note beyond its first scheduled end.
@@ -5984,9 +5986,6 @@ export class VoiceRack {
     }
     for (const source of prev.sources || []) {
       try { source.stop(finalStop); } catch { /* already stopped */ }
-    }
-    for (const entry of [...(prev.activeLayerMonitors || []), ...(prev.activeLayerWaves || [])]) {
-      entry.until = finalStop + 0.02;
     }
     prev.freq = base;
     prev.gateUntil = stopAt;

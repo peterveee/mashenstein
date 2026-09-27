@@ -396,9 +396,15 @@ function paintGhost(ctx, f) {
   // The spatial ramp also prevents a jump if that crossing happens late in
   // the cycle. A group already left of centre simply follows the time delay.
   const screenMid = (f.view.left + f.view.right) * 0.5;
-  const timeFlight = f.flight ? (c - f.flight.start) / (period - 0.9 - f.flight.start) : 0;
+  const gone = period - 0.9;
+  const timeFlight = f.flight ? (c - f.flight.start) / (gone - f.flight.start) : 0;
   const placeFlight = (screenMid - f.x) / 190;
-  const flight = f.flight ? smooth(Math.min(timeFlight, placeFlight)) : 0;
+  // NO FADING ON THE HILL (Peter, 27 Sep: ghosts "appear and then fade out and
+  // reappear"): a flyer still held right of centre late in its cycle used to hover
+  // there until the end-of-cycle fade took it in place. It now leaves anyway, climbing
+  // out over the cycle's last 2.6 s, so every flyer exits by flying.
+  const lateFlight = (c - (gone - 2.6)) / 2.6;
+  const flight = f.flight ? smooth(Math.min(timeFlight, Math.max(placeFlight, lateFlight))) : 0;
   // The backdrop's `view.top` includes offscreen paint padding; target the
   // visible screen edge instead, with the whole ghost clear before the reset.
   // To the VISIBLE top of the frame (the pack's view.visibleTop: 0 in landscape, the band's
@@ -469,16 +475,22 @@ export function paintGhosts(ctx, f, seed) {
   // Give the delayed first encounter time to drift out of view before its
   // cycle repeats; the other hill groups keep their established nine seconds.
   const period = showcaseScatter ? 12 : GHOST_P;
-  const cycle = Math.floor((f.t + 0.8) / period);
-  const n = showcaseScatter ? 3 : 1 + Math.floor(hash(seed * 13.1 + cycle * 7.7) * 3);
-  // The decision is fixed for the whole appearance, so it never changes mid-flight.
-  // One in ten trios scatter together. The original four-in-ten single-flyer
-  // chance remains as a separate outcome; the other half stays on the hill.
-  const flightRoll = hash(seed * 19.7 + cycle * 11.3);
-  const scatter = showcaseScatter || (n === 3 && flightRoll < 0.1);
-  const flyer = n === 3 && flightRoll >= 0.1 && flightRoll < 0.5
-    ? Math.floor(hash(seed * 31.9 + cycle * 5.3) * 3) : -1;
-  for (let j = n - 1; j >= 0; j--) {
+  for (let j = 2; j >= 0; j--) {
+    // Each ghost runs a beat behind the last, so each reads the group's roll for ITS OWN
+    // cycle. Keyed to the leader's, a trailer still in the air when the leader's cycle
+    // turned over was repainted under the next roll: dropped mid-flight, or popped back
+    // onto the hill fully risen.
+    const t = f.t - j * 0.45;
+    const cycle = Math.floor((t + 0.8) / period);
+    const n = showcaseScatter ? 3 : 1 + Math.floor(hash(seed * 13.1 + cycle * 7.7) * 3);
+    if (j >= n) continue;
+    // The decision is fixed for the whole appearance, so it never changes mid-flight.
+    // One in ten trios scatter together. The original four-in-ten single-flyer
+    // chance remains as a separate outcome; the other half stays on the hill.
+    const flightRoll = hash(seed * 19.7 + cycle * 11.3);
+    const scatter = showcaseScatter || (n === 3 && flightRoll < 0.1);
+    const flyer = n === 3 && flightRoll >= 0.1 && flightRoll < 0.5
+      ? Math.floor(hash(seed * 31.9 + cycle * 5.3) * 3) : -1;
     const dx = GHOST_SPOTS[j] + (hash(seed * 3.3 + j * 5.1 + cycle) - 0.5) * 4;
     const flying = scatter || j === flyer;
     const side = hash(seed * 47.9 + cycle * 3.7 + j * 11.3) < 0.5 ? -1 : 1;
@@ -490,7 +502,7 @@ export function paintGhosts(ctx, f, seed) {
         : TAU * hash(seed * 67.1 + cycle * 4.9 + j * 2.7),
     } : null;
     ctx.save();
-    paintGhost(ctx, { ...f, x: f.x + dx, t: f.t - j * 0.45, period, flight });
+    paintGhost(ctx, { ...f, x: f.x + dx, t, period, flight });
     ctx.restore();
   }
 }

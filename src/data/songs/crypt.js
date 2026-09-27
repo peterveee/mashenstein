@@ -400,22 +400,22 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -2,
+  master: -8.5,
   masterEffects: [{ id: "mbCompN", params: { lowFrequency: 250, highFrequency: 2400, "low.threshold": -28, "low.ratio": 2.5, "low.attack": 0.05, "low.release": 0.3, "low.knee": 14, "mid.threshold": -22, "mid.ratio": 2.5, "mid.attack": 0.025, "mid.release": 0.16, "mid.knee": 18, "high.threshold": -24, "high.ratio": 2, "high.attack": 0.02, "high.release": 0.12, "high.knee": 18 } }],
-  layers: [{ key: "bass2", from: "bass", independent: true }, { key: "organChords2", from: "organChords", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "bass3", from: "bass", independent: true }, { key: "organChords3", from: "organChords", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "bass4", from: "bass", independent: true }, { key: "organChords4", from: "organChords", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }],
+  layers: [{ key: "bass2", from: "bass", independent: true }, { key: "organChords2", from: "organChords", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "bass3", from: "bass", independent: true }, { key: "organChords3", from: "organChords", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "bass4", from: "bass", independent: true }, { key: "organChords4", from: "organChords", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "hats2", from: "hats", independent: true }],
   order: ["kick","clap","hats","rim","bass","bass2","bass3","bass4","lead","lead3","lead2","lead4","lead5","twinkle","lead6","chords","organChords","organChords2","organChords3","organChords4"],
   labels: {"twinkle":"Toy Piano 2"},
-  voice: {"bassVoice":"roundMono","twinkleVoice":"toyPiano","chordsVoice":"tpPizz","organChordsVoice":"addShopOrgan","kickVoice":"kickCrush","hatsVoice":"ohatSustainAir","clapVoice":"gameBoySnare","bass2Voice":"roundMono","rimVoice":"rimEngine","organChords2Voice":"jmjrChoirAah","lead2Voice":"tpPizz","bass3Voice":"roundMono","organChords3Voice":"jmjrChoirAah","lead4Voice":"jmjrChoirAah","bass4Voice":"bestVoiceBox70s","organChords4Voice":"jmjrChoirAah","lead3Voice":"cryptTheremin","lead5Voice":"toyPiano","lead6Voice":"celeste","lead7Voice":"addDrawbarPerc"},
-  voiceParams: {"bassVoice":{"label":"Rounded","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.211,"sustain":0.36,"release":1.539},"filter":{"type":"lowpass","Q":0.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"transpose":-12,"kind":"tone","level":0.05718164915947845,"peak":0.9592955398652055,"songOrigin":"library","songSourceId":"bassVoice"},"bass2Voice":{"label":"Rounded","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":0.32,"sustain":0,"release":0.8},"filter":{"type":"lowpass","Q":0.45,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":0.184,"sustain":0.13,"release":0.06,"baseFrequency":180,"octaves":5.3}},"starter":false,"transpose":0,"fine":5,"kind":"tone","level":0.02201201947839369,"peak":0.9025298308193114,"songOrigin":"library","songSourceId":"bassVoice"},"organChordsVoice":{"label":"Shop Organ","category":"Organ","homeLane":"organChords","synth":"WNDR-9","dur":1.02,"note":"The shop theme’s own: bright, percussive, short and dry — comping rather than holding, so it sits under the lead instead of over it.","additive":{"bars":[0,0,1,0.78,0.48,0.3,0,0.16,0.42],"attack":0.004,"decay":1.02,"echo":false,"perc":{"ratio":3,"gain":0.9,"attack":0.002,"decay":0.072},"type":"triangle"},"starter":false,"chorus":{"mix":0.31},"kind":"tone","level":0.09232668411974897,"peak":1.0936438209939532,"songOrigin":"library","songSourceId":"organChordsVoice"},"kickVoice":{"label":"= Crushed Kick","category":"Kick","homeLane":"kick","dur":1,"note":"An ordinary 808 drop through the bit crusher, with the tone control pulling the top off what that adds. Hardware, rather than a distortion pedal.","osc":{"type":"sine","from":190,"to":48,"sweep":0.04,"decay":0.811,"curve":"exp","gain":1},"drive":0.45,"shape":"crush","tone":{"freq":5200},"starter":false,"noise":{"type":"lowpass","freq":320,"Q":0.7,"decay":1.294,"gain":0.26,"sweep":0.12},"knock":1,"osc2":{"type":"pulse","from":136,"to":13.92,"sweep":0.378,"decay":2.471,"curve":"exp","gain":1.2,"hold":0.449,"sag":0},"kind":"drum","level":0.11866490052513069,"peak":0.7210032898789344,"songOrigin":"library","songSourceId":"kickVoice"},"leadVoice":{"label":"Crypt Theremin","category":"Lead","synth":"MRDR-3","dur":2.8,"note":"A floating graveyard melody: sine body, a faint octave overtone, delayed vibrato and legato glide.","layer":{"osc1":{"type":"triangle","ratio":1,"gain":0.9,"attack":0.09,"decay":0.3,"sustain":0.85,"release":0.3,"unison":1},"osc2":{"type":"triangle","ratio":2,"gain":0.06,"attack":0.09,"decay":0.4,"sustain":0.65,"release":0.28},"osc3":{"gain":0.06,"type":"triangle","ratio":4,"detune":-2,"filter":{"type":"lowpass","freq":225,"Q":0.1,"env":{"decay":0,"attack":0},"track":0},"vca":"env"}},"vibrato":{"depth":0.56,"rate":5.3,"delay":0.445},"portamento":0.11,"starter":false,"global":{},"drive":0.19,"drivePlace":"pre","mode":"legato","bypassed":{"global.filter":{"type":"lowpass","freq":230,"Q":0.4,"track":0.93}},"humanize":{"entry":0.02,"pitch":0.0028922878693671272},"fine":-16,"kind":"tone","level":0.14793557908087268,"peak":0.6940185363893411,"songOrigin":"library","songSourceId":"leadVoice"},"chordsVoice":{"label":"Pizz","category":"Pluck","synth":"CRLS-1","dur":0.8,"note":"Highpassed and cut off immediately — pizzicato strings, all attack and no body.","origin":"Tonejs/Presets MonoSynth/Pizz","options":{"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":800,"octaves":-1.2}},"trim":-2.3,"id":"tpPizz","kind":"tone","factory":true,"level":0.017563,"peak":1.0667},"organChords2Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"hatsVoice":{"label":"Open Hat · Air Tail","category":"Hats","homeLane":"ohats","dur":3,"note":"A bright, airy open hat with a rising front and a sustained highpassed tail that stays above the bass without turning into a crash.","noise":{"type":"highpass","freq":7200,"to":4700,"sweep":0.62,"Q":1.15,"decay":0.68,"gain":1},"drive":0.16,"id":"ohatSustainAir","kind":"drum","factory":true,"level":0.0955,"peak":0.7},"rimVoice":{"label":"= Engine Rim","category":"Rim","homeLane":"rim","dur":0.5,"note":"The game’s own rimshot: three inharmonic squares sagging as they ring through a narrow band, a stick snap over the top and a woody tonk underneath — with the two-stage decay that makes it a strike rather than a fade.","osc":{"type":"triangle","from":430,"to":300,"sweep":0.05,"decay":0.0833,"curve":"exp","gain":0.38},"noise":{"type":"highpass","freq":3200,"Q":1,"decay":0.0165,"gain":0.45},"metal":{"wave":"square","freq":1720,"to":1617,"sweep":0.06,"ratios":[1,1.5291,1.9477],"count":3,"filter":"bandpass","hp":1750,"Q":3.6,"decay":0.1,"sag":0.16,"sagAt":0.02,"gain":1},"starter":false,"tune":0,"kind":"drum","level":0.032345999947581375,"peak":1.0751,"songOrigin":"library","songSourceId":"rimVoice"},"clapVoice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","noise":{"type":"bandpass","freq":1115,"Q":0.1,"decay":2.567,"gain":1.98,"color":"violet","to":425,"sweep":0.444},"trim":1.9,"monoGroup":"1","starter":false,"bypassed":{"osc":{"type":"square","from":2345,"to":80,"sweep":0.37,"decay":0.37,"gain":1.02}},"kind":"drum","level":0.11540413503623574,"peak":0.8457058036906073,"songOrigin":"user","songSourceId":"clapVoice"},"lead2Voice":{"label":"Pizz","category":"Pluck","synth":"CRLS-1","dur":0.8,"note":"Highpassed and cut off immediately — pizzicato strings, all attack and no body.","origin":"Tonejs/Presets MonoSynth/Pizz","options":{"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":800,"octaves":-1.2}},"trim":-2.3,"id":"tpPizz","kind":"tone","factory":true,"level":0.017563,"peak":1.0667},"bass3Voice":{"label":"Rounded","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":0.32,"sustain":0,"release":0.8},"filter":{"type":"lowpass","Q":0.45,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":0.184,"sustain":0.13,"release":0.06,"baseFrequency":180,"octaves":5.3}},"starter":false,"transpose":0,"fine":5,"kind":"tone","level":0.02201201947839369,"peak":0.9025298308193114,"songOrigin":"library","songSourceId":"bassVoice"},"organChords3Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"lead4Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"organChords4Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"lead3Voice":{"label":"Crypt Theremin","category":"Lead","synth":"MRDR-3","dur":2.8,"note":"A floating graveyard melody: sine body, a faint octave overtone, delayed vibrato and legato glide.","layer":{"osc1":{"type":"triangle","ratio":1,"gain":0.9,"attack":0.09,"decay":0.3,"sustain":0.85,"release":0.3},"osc2":{"type":"sine","ratio":2,"gain":0.04,"attack":0.09,"decay":0.4,"sustain":0.65,"release":0.28}},"vibrato":{"depth":0.42,"rate":7.1,"delay":0.445},"portamento":0.094,"starter":false,"global":{},"drive":0.15,"drivePlace":"pre","mode":"legato","bypassed":{"global.filter":{"type":"lowpass","freq":230,"Q":0.4,"track":0.93}},"humanize":{"entry":0.02,"pitch":0.0028922878693671272},"transpose":12,"fine":9,"kind":"tone","level":0.15036156810976273,"peak":0.68487772779597,"songOrigin":"library","songSourceId":"leadVoice"},"lead6Voice":{"label":"Celeste","category":"Bells","synth":"RMND-2","dur":4,"note":"Small, high and pure, with a very long tail. Made for the twinkle lane.","options":{"harmonicity":7,"modulationIndex":4,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":1.6,"sustain":0.01,"release":1.6},"modulationEnvelope":{"attack":0.001,"decay":0.4,"sustain":0,"release":0.4}},"id":"celeste","kind":"tone","factory":true,"level":0.024454,"peak":0.2195},"bass4Voice":{"label":"BEST Voice Box 70s","category":"Lead","synth":"MRDR-3","dur":2.2,"note":"The tube-in-the-mouth lead off a 1976 record. Two formants moving in OPPOSITE directions — one opening, one closing — is a mouth changing shape, and the LFO on top is it doing that over and over. Mono with a short glide, because a talk box is played one note at a time.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":1,"attack":0.008,"decay":0.5,"sustain":0.85,"release":0.12,"filter":{"type":"bandpass","slope":-12,"freq":700,"Q":9,"track":0,"env":{"octaves":1.7,"attack":0.04,"decay":0.55,"sustain":0.35,"release":0.2}}},"osc2":{"type":"sawtooth","ratio":1,"gain":0.75,"detune":5,"attack":0.012,"decay":0.6,"sustain":0.8,"release":0.12,"filter":{"type":"bandpass","slope":-12,"freq":1900,"Q":13,"track":0,"env":{"octaves":-1.3,"attack":0.06,"decay":0.65,"sustain":0.4,"release":0.2}}},"osc3":{"type":"pulse","width":0.22,"ratio":0.5,"gain":0.28,"attack":0.006,"decay":0.5,"sustain":0.7,"release":0.1,"pwm":{"type":"sine","rate":0.9,"depth":0.35,"delay":0.1}},"lfo":{"type":"triangle","rate":2.6,"depth":0.11,"target":"filter","delay":0.12}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":505,"Q":1.05,"track":0.35,"env":{"octaves":1.4,"attack":0.02,"decay":0.4,"sustain":0.45,"release":0.15}},"vca":{"attack":0.01,"decay":0.4,"sustain":0.85,"release":0.16}},"drive":0.18,"shape":"soft","tone":{"freq":7200},"vibrato":{"depth":0.12,"rate":5.5,"delay":0.35},"mono":true,"portamento":0.055,"starter":false,"transpose":12,"kind":"tone","level":0.0712958101251766,"peak":0.5980158944917162,"songOrigin":"library","songSourceId":"bass4Voice"},"lead7Voice":{"label":"Drawbar + Percussion","category":"Organ","homeLane":"organChords","synth":"WNDR-9","dur":7.2,"note":"Bright registration with a third-harmonic pip on the key attack, kept dry so repeated off-beat stabs stay crisp.","additive":{"bars":[0,0,1,0.78,0.48,0.3,0,0.16,0.33],"attack":0.035,"decay":1.574,"perc":{"ratio":3,"gain":0.72,"attack":0.002,"decay":0.078},"release":0.183,"sustain":0.61,"type":"triangle","damp":0.9},"starter":false,"chorus":{"mix":0.15},"kind":"tone","level":0.23034661376814014,"peak":0.964295599369547,"songOrigin":"library","songSourceId":"lead7Voice"},"twinkleVoice":{"label":"Toy Piano","category":"Bells","synth":"RMND-2","dur":2,"note":"Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.","options":{"harmonicity":4.02,"modulationIndex":6,"oscillator":{"type":"triangle"},"modulation":{"type":"square"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.5},"modulationEnvelope":{"attack":0.001,"decay":0.1,"sustain":0,"release":0.1}},"id":"toyPiano","kind":"tone","factory":true,"level":0.013277,"peak":0.2149},"lead5Voice":{"label":"Toy Piano","category":"Bells","synth":"RMND-2","dur":2,"note":"Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.","options":{"harmonicity":4.02,"modulationIndex":6,"oscillator":{"type":"triangle"},"modulation":{"type":"square"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.5},"modulationEnvelope":{"attack":0.001,"decay":0.1,"sustain":0,"release":0.1}},"id":"toyPiano","kind":"tone","factory":true,"level":0.013277,"peak":0.2149}},
+  voice: {"bassVoice":"roundMono","twinkleVoice":"toyPiano","chordsVoice":"tpPizz","organChordsVoice":"addShopOrgan","kickVoice":"kickCrush","hatsVoice":"ohatSustainAir","clapVoice":"gameBoySnare","bass2Voice":"roundMono","rimVoice":"rimEngine","organChords2Voice":"jmjrChoirAah","lead2Voice":"tpPizz","bass3Voice":"roundMono","organChords3Voice":"jmjrChoirAah","lead4Voice":"jmjrChoirAah","bass4Voice":"bestVoiceBox70s","organChords4Voice":"jmjrChoirAah","lead3Voice":"cryptTheremin","lead5Voice":"toyPiano","lead6Voice":"celeste","lead7Voice":"addDrawbarPerc","snare2Voice":"gameBoySnare","hats2Voice":"ohatSustainWash"},
+  voiceParams: {"bassVoice":{"label":"Rounded","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.211,"sustain":0.36,"release":1.539},"filter":{"type":"lowpass","Q":0.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"transpose":-12,"kind":"tone","level":0.05718164915947845,"peak":0.9592955398652055,"songOrigin":"library","songSourceId":"bassVoice"},"bass2Voice":{"label":"Rounded","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":0.32,"sustain":0,"release":0.8},"filter":{"type":"lowpass","Q":0.45,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":0.184,"sustain":0.13,"release":0.06,"baseFrequency":180,"octaves":5.3}},"starter":false,"transpose":0,"fine":5,"kind":"tone","level":0.02201201947839369,"peak":0.9025298308193114,"songOrigin":"library","songSourceId":"bassVoice"},"organChordsVoice":{"label":"Shop Organ","category":"Organ","homeLane":"organChords","synth":"WNDR-9","dur":1.02,"note":"The shop theme’s own: bright, percussive, short and dry — comping rather than holding, so it sits under the lead instead of over it.","additive":{"bars":[0,0,1,0.78,0.48,0.3,0,0.16,0.42],"attack":0.004,"decay":1.02,"echo":false,"perc":{"ratio":3,"gain":0.9,"attack":0.002,"decay":0.072},"type":"triangle"},"starter":false,"chorus":{"mix":0.31},"kind":"tone","level":0.09232668411974897,"peak":1.0936438209939532,"songOrigin":"library","songSourceId":"organChordsVoice"},"kickVoice":{"label":"= Crushed Kick","category":"Kick","homeLane":"kick","dur":1,"note":"An ordinary 808 drop through the bit crusher, with the tone control pulling the top off what that adds. Hardware, rather than a distortion pedal.","osc":{"type":"sine","from":190,"to":48,"sweep":0.04,"decay":0.811,"curve":"exp","gain":1},"drive":0.45,"shape":"crush","tone":{"freq":5200},"starter":false,"noise":{"type":"lowpass","freq":320,"Q":0.7,"decay":1.294,"gain":0.26,"sweep":0.12},"knock":1,"osc2":{"type":"pulse","from":136,"to":13.92,"sweep":0.378,"decay":2.471,"curve":"exp","gain":1.2,"hold":0.449,"sag":0},"kind":"drum","level":0.11866490052513069,"peak":0.7210032898789344,"songOrigin":"library","songSourceId":"kickVoice"},"leadVoice":{"label":"Crypt Theremin","category":"Lead","synth":"MRDR-3","dur":2.8,"note":"A floating graveyard melody: sine body, a faint octave overtone, delayed vibrato and legato glide.","layer":{"osc1":{"type":"triangle","ratio":1,"gain":0.9,"attack":0.09,"decay":0.3,"sustain":0.85,"release":0.3,"unison":1},"osc2":{"type":"triangle","ratio":2,"gain":0.06,"attack":0.09,"decay":0.4,"sustain":0.65,"release":0.28},"osc3":{"gain":0.06,"type":"triangle","ratio":4,"detune":-2,"filter":{"type":"lowpass","freq":225,"Q":0.1,"env":{"decay":0,"attack":0},"track":0},"vca":"env"}},"vibrato":{"depth":0.56,"rate":5.3,"delay":0.445},"portamento":0.11,"starter":false,"global":{},"drive":0.19,"drivePlace":"pre","mode":"legato","bypassed":{"global.filter":{"type":"lowpass","freq":230,"Q":0.4,"track":0.93}},"humanize":{"entry":0.02,"pitch":0.0028922878693671272},"fine":-16,"kind":"tone","level":0.14793557908087268,"peak":0.6940185363893411,"songOrigin":"library","songSourceId":"leadVoice"},"chordsVoice":{"label":"Pizz","category":"Pluck","synth":"CRLS-1","dur":0.8,"note":"Highpassed and cut off immediately — pizzicato strings, all attack and no body.","origin":"Tonejs/Presets MonoSynth/Pizz","options":{"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":870,"octaves":-1.2}},"trim":-2.3,"starter":false,"kind":"tone","level":0.017046876253123407,"peak":1.0581416071799736,"songOrigin":"library","songSourceId":"chordsVoice"},"organChords2Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"hatsVoice":{"label":"Open Hat · Air Tail","category":"Hats","homeLane":"ohats","dur":3,"note":"A bright, airy open hat with a rising front and a sustained highpassed tail that stays above the bass without turning into a crash.","noise":{"type":"highpass","freq":7200,"to":4700,"sweep":0.62,"Q":1.15,"decay":0.68,"gain":1},"drive":0.16,"id":"ohatSustainAir","kind":"drum","factory":true,"level":0.0955,"peak":0.7},"rimVoice":{"label":"= Engine Rim","category":"Rim","homeLane":"rim","dur":0.5,"note":"The game’s own rimshot: three inharmonic squares sagging as they ring through a narrow band, a stick snap over the top and a woody tonk underneath — with the two-stage decay that makes it a strike rather than a fade.","osc":{"type":"triangle","from":430,"to":300,"sweep":0.05,"decay":0.0833,"curve":"exp","gain":0.38},"noise":{"type":"highpass","freq":3200,"Q":1,"decay":0.0165,"gain":0.45},"metal":{"wave":"square","freq":1720,"to":1617,"sweep":0.06,"ratios":[1,1.5291,1.9477],"count":3,"filter":"bandpass","hp":1750,"Q":3.6,"decay":0.1,"sag":0.16,"sagAt":0.02,"gain":1},"starter":false,"tune":0,"kind":"drum","level":0.032345999947581375,"peak":1.0751,"songOrigin":"library","songSourceId":"rimVoice"},"clapVoice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","noise":{"type":"bandpass","freq":1115,"Q":0.1,"decay":2.567,"gain":1.98,"color":"violet","to":425,"sweep":0.444},"trim":1.9,"monoGroup":"1","starter":false,"bypassed":{"osc":{"type":"square","from":2345,"to":80,"sweep":0.37,"decay":0.37,"gain":1.02}},"kind":"drum","level":0.11540413503623574,"peak":0.8457058036906073,"songOrigin":"user","songSourceId":"clapVoice"},"lead2Voice":{"label":"Pizz","category":"Pluck","synth":"CRLS-1","dur":0.8,"note":"Highpassed and cut off immediately — pizzicato strings, all attack and no body.","origin":"Tonejs/Presets MonoSynth/Pizz","options":{"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":800,"octaves":-1.2}},"trim":-2.3,"id":"tpPizz","kind":"tone","factory":true,"level":0.017563,"peak":1.0667},"bass3Voice":{"label":"Rounded","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":0.32,"sustain":0,"release":0.8},"filter":{"type":"lowpass","Q":0.45,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":0.184,"sustain":0.13,"release":0.06,"baseFrequency":180,"octaves":5.3}},"starter":false,"transpose":0,"fine":5,"kind":"tone","level":0.02201201947839369,"peak":0.9025298308193114,"songOrigin":"library","songSourceId":"bassVoice"},"organChords3Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"fine":16,"kind":"tone","level":0.02814487484829359,"peak":0.13309480870166493,"songOrigin":"library","songSourceId":"organChords2Voice"},"lead4Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"organChords4Voice":{"label":"Choir Aah","category":"Pad","synth":"JMJR-4","dur":8,"note":"Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. The choir the synth exists for. It was four until the fourth was measured: a quarter of the note-on cost for a fullness nobody could hear.","jmjr4":{"voice":"chorister","line":"daa","morphTo":"M","unison":3,"spread":24,"tilt":5,"breath":0.26,"resonance":57,"amp":{"attack":0.055,"decay":0.4,"sustain":1,"release":1.2},"morph":0,"morphTime":4.077,"nasal":0,"sibilance":85,"buzz":66,"tract":1,"press":0.75,"jitter":0.6},"vibrato":{"depth":0.22,"rate":5.2,"delay":0.35},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.02853329592695264,"peak":0.1348610060958087,"songOrigin":"library","songSourceId":"organChords2Voice"},"lead3Voice":{"label":"Crypt Theremin","category":"Lead","synth":"MRDR-3","dur":2.8,"note":"A floating graveyard melody: sine body, a faint octave overtone, delayed vibrato and legato glide.","layer":{"osc1":{"type":"triangle","ratio":1,"gain":0.9,"attack":0.09,"decay":0.3,"sustain":0.85,"release":0.3},"osc2":{"type":"sine","ratio":2,"gain":0.04,"attack":0.09,"decay":0.4,"sustain":0.65,"release":0.28}},"vibrato":{"depth":0.42,"rate":7.1,"delay":0.445},"portamento":0.094,"starter":false,"global":{},"drive":0.15,"drivePlace":"pre","mode":"legato","bypassed":{"global.filter":{"type":"lowpass","freq":230,"Q":0.4,"track":0.93}},"humanize":{"entry":0.02,"pitch":0.0028922878693671272},"transpose":12,"fine":9,"kind":"tone","level":0.15036156810976273,"peak":0.68487772779597,"songOrigin":"library","songSourceId":"leadVoice"},"lead6Voice":{"label":"Celeste","category":"Bells","synth":"RMND-2","dur":4,"note":"Small, high and pure, with a very long tail. Made for the twinkle lane.","options":{"harmonicity":7,"modulationIndex":4,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":1.6,"sustain":0.01,"release":1.6},"modulationEnvelope":{"attack":0.001,"decay":0.4,"sustain":0,"release":0.4}},"id":"celeste","kind":"tone","factory":true,"level":0.024454,"peak":0.2195},"bass4Voice":{"label":"BEST Voice Box 70s","category":"Lead","synth":"MRDR-3","dur":2.2,"note":"The tube-in-the-mouth lead off a 1976 record. Two formants moving in OPPOSITE directions — one opening, one closing — is a mouth changing shape, and the LFO on top is it doing that over and over. Mono with a short glide, because a talk box is played one note at a time.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":1,"attack":0.008,"decay":0.5,"sustain":0.85,"release":0.12,"filter":{"type":"bandpass","slope":-12,"freq":700,"Q":9,"track":0,"env":{"octaves":1.7,"attack":0.04,"decay":0.55,"sustain":0.35,"release":0.2}}},"osc2":{"type":"sawtooth","ratio":1,"gain":0.75,"detune":5,"attack":0.012,"decay":0.6,"sustain":0.8,"release":0.12,"filter":{"type":"bandpass","slope":-12,"freq":1900,"Q":13,"track":0,"env":{"octaves":-1.3,"attack":0.06,"decay":0.65,"sustain":0.4,"release":0.2}}},"osc3":{"type":"pulse","width":0.22,"ratio":0.5,"gain":0.28,"attack":0.006,"decay":0.5,"sustain":0.7,"release":0.1,"pwm":{"type":"sine","rate":0.9,"depth":0.35,"delay":0.1}},"lfo":{"type":"triangle","rate":2.6,"depth":0.11,"target":"filter","delay":0.12}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":505,"Q":1.05,"track":0.35,"env":{"octaves":1.4,"attack":0.02,"decay":0.4,"sustain":0.45,"release":0.15}},"vca":{"attack":0.01,"decay":0.4,"sustain":0.85,"release":0.16}},"drive":0.18,"shape":"soft","tone":{"freq":7200},"vibrato":{"depth":0.12,"rate":5.5,"delay":0.35},"mono":true,"portamento":0.055,"starter":false,"transpose":12,"kind":"tone","level":0.0712958101251766,"peak":0.5980158944917162,"songOrigin":"library","songSourceId":"bass4Voice"},"lead7Voice":{"label":"Drawbar + Percussion","category":"Organ","homeLane":"organChords","synth":"WNDR-9","dur":7.2,"note":"Bright registration with a third-harmonic pip on the key attack, kept dry so repeated off-beat stabs stay crisp.","additive":{"bars":[0,0,1,0.78,0.48,0.3,0,0.16,0.33],"attack":0.035,"decay":1.574,"perc":{"ratio":3,"gain":0.72,"attack":0.002,"decay":0.078},"release":0.183,"sustain":0.61,"type":"triangle","damp":0.9},"starter":false,"chorus":{"mix":0.15},"kind":"tone","level":0.23034661376814014,"peak":0.964295599369547,"songOrigin":"library","songSourceId":"lead7Voice"},"twinkleVoice":{"label":"Toy Piano","category":"Bells","synth":"RMND-2","dur":2,"note":"Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.","options":{"harmonicity":4.02,"modulationIndex":6,"oscillator":{"type":"triangle"},"modulation":{"type":"square"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.5},"modulationEnvelope":{"attack":0.001,"decay":0.1,"sustain":0,"release":0.1}},"id":"toyPiano","kind":"tone","factory":true,"level":0.013277,"peak":0.2149},"lead5Voice":{"label":"Toy Piano","category":"Bells","synth":"RMND-2","dur":2,"note":"Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.","options":{"harmonicity":4.02,"modulationIndex":6,"oscillator":{"type":"triangle"},"modulation":{"type":"square"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.5},"modulationEnvelope":{"attack":0.001,"decay":0.1,"sustain":0,"release":0.1}},"id":"toyPiano","kind":"tone","factory":true,"level":0.013277,"peak":0.2149},"snare2Voice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","osc":{"type":"square","from":2345,"to":80,"sweep":0.37,"decay":0.37,"gain":1.02},"noise":{"type":"bandpass","freq":3710,"Q":2.85,"decay":0.905,"gain":1.98,"color":"pink","attack":0.0001},"trim":1.9,"monoGroup":"1","starter":false,"knock":0.91,"kind":"drum","level":0.08849636227430603,"peak":1.2836540221707482,"songOrigin":"user","songSourceId":"snare2Voice"},"hats2Voice":{"label":"Open Hat · Dark Wash","category":"Hats","homeLane":"ohats","dur":4,"note":"A slower, darker open hat wash: resonant air closes down over a long tail for wide gaps and half-time grooves.","noise":{"type":"bandpass","freq":5800,"to":2500,"sweep":0.9,"Q":1.4,"decay":0.92,"gain":1},"drive":0.12,"id":"ohatSustainWash","kind":"drum","factory":true,"level":0.0534,"peak":0.6181}},
   lanes: {
     bass: { gain: -2.08 },
     twinkle: { gain: 0.048, pan: 0.483, send: { delay: 0.743, reverb: 0.193 }, eq: { low: -4 } },
-    chords: { gain: -7.68, send: { reverb: 0.2 }, eq: { low: -12.4, mid: 7.9 }, effects: [{ id: "pingpong" }], noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":21},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
+    chords: { gain: -10.2, send: { reverb: 0.2 }, eq: { low: -12.4, mid: 7.9 }, effects: [{ id: "pingpong" }, { id: "exciter", params: { tune: 4600.114, drive: 0.41, timbre: 0.7, mix: 0.62 } }], noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":21},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
     organChords: { gain: -7.8, pan: -0.329, send: { reverb: 0.3 }, effects: [{ id: "chandelay", params: { tone: 1084.669, division: 1.5, mix: 0.07, pan: 0.4 } }] },
     kick: { gain: -2.32, send: { reverb: 0.064 } },
-    rim: { gain: -1.44, pan: 0.23, send: { reverb: 0.424 } },
-    hats: { gain: -8.8, pan: -0.338, effects: [{ id: "chandelay", params: { tone: 1789.639, feedback: 0.45, mix: 1, pan: 0 } }] },
-    clap: { gain: -5.9, send: { reverb: 1.173 } },
+    rim: { gain: -1.44, pan: 0.23, send: { reverb: 0.489 } },
+    hats: { gain: -5.1, pan: -0.338, send: { reverb: 0.046 }, effects: [{ id: "chandelay", params: { tone: 1789.639, feedback: 0.45, mix: 1, pan: 0 } }] },
+    clap: { gain: -5.9, send: { reverb: 1.298 } },
     bass2: { gain: -2.24 },
     organChords2: { gain: -6.16, send: { reverb: 0.3 }, effects: [{ id: "doubler" }] },
     lead2: { gain: -6.48, pan: 0.26, send: { delay: 0.16, reverb: 0.35 } },
@@ -429,6 +429,8 @@ export const mix = {
     lead6: { gain: -12, pan: 0.28, send: { delay: 0.07, reverb: 0.27 }, eq: { low: -5 } },
     lead7: { gain: -11.6, send: { reverb: 0.675 }, effects: [{ id: "doubler" }] },
     lead: { gain: -19, send: { delay: 0.031, reverb: 0.923 }, eq: { low: -11.8 }, effects: [{ id: "vibrato", params: { depth: 0.12, wet: 0.87 } }, { id: "compressor", params: { inputGain: 2.9, threshold: -39, ratio: 9, attack: 0.017 } }, { id: "exciter", params: { tune: 2500, drive: 0.58, timbre: 0.47, mix: 0.83 } }, { id: "filter", params: { type: "highpass", frequency: 620, Q: 4.3 } }] },
+    snare2: { gain: -1.8, eq: { low: 3.2, high: -5.3 }, effects: [{ id: "chandelay", bypass: true, params: { tone: 3294.616, mix: 0.52, feedback: 0.39 } }, { id: "reverb", params: { preDelay: 0.026, wet: 0.57, width: 2, high: -1.5, decay: 2.9 } }] },
+    hats2: { gain: -10.1, pan: -0.338, send: { reverb: 0.046 }, effects: [{ id: "chandelay", params: { tone: 1789.639, feedback: 0.45, mix: 1, pan: 0 } }] },
   },
 };
 
@@ -439,6 +441,16 @@ export const arrangement = {
       bars: 1,
       transpose: {
         bass4: 12,
+        organChords3: -12,
+        organChords4: -12,
+      },
+      gain: {
+        organChords4: -9,
+        organChords3: 3.5,
+      },
+      pan: {
+        organChords3: -30,
+        organChords4: 60,
       },
     },
     {
@@ -447,27 +459,59 @@ export const arrangement = {
       from: 1,
       transpose: {
         bass4: 12,
+        organChords3: -12,
+        organChords4: -12,
+      },
+      gain: {
+        organChords4: -9,
+        organChords3: 3.5,
+      },
+      pan: {
+        organChords3: -30,
+        organChords4: 60,
       },
     },
     {
       s: 72,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats","twinkle"],
       transpose: {
         bass4: 12,
+        organChords3: -12,
+        organChords4: -12,
+      },
+      gain: {
+        organChords4: -9,
+        organChords3: 3.5,
+      },
+      pan: {
+        organChords3: -30,
+        organChords4: 60,
       },
     },
     {
       s: 73,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
+        organChords3: -12,
+        organChords4: -12,
+      },
+      gain: {
+        organChords4: -9,
+        organChords3: 3.5,
+      },
+      pan: {
+        organChords3: -30,
+        organChords4: 60,
       },
     },
     {
-      s: 74,
+      s: 116,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -477,9 +521,10 @@ export const arrangement = {
       },
     },
     {
-      s: 75,
+      s: 117,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -491,6 +536,7 @@ export const arrangement = {
     {
       s: 76,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -503,6 +549,7 @@ export const arrangement = {
       s: 77,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -514,6 +561,7 @@ export const arrangement = {
     {
       s: 74,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -526,6 +574,7 @@ export const arrangement = {
       s: 75,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -537,6 +586,7 @@ export const arrangement = {
     {
       s: 78,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -549,6 +599,7 @@ export const arrangement = {
       s: 79,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -560,6 +611,7 @@ export const arrangement = {
     {
       s: 80,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -572,6 +624,7 @@ export const arrangement = {
       s: 81,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -583,6 +636,7 @@ export const arrangement = {
     {
       s: 82,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -595,6 +649,7 @@ export const arrangement = {
       s: 83,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -606,7 +661,7 @@ export const arrangement = {
     {
       s: 84,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats2","twinkle"],
       transpose: {
         bass: 12,
         bass4: 12,
@@ -615,7 +670,7 @@ export const arrangement = {
     {
       s: 85,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats2","twinkle"],
       transpose: {
         bass: 12,
         lead5: 12,
@@ -625,7 +680,7 @@ export const arrangement = {
     {
       s: 86,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats2","twinkle"],
       transpose: {
         bass: 12,
         lead5: 12,
@@ -635,7 +690,7 @@ export const arrangement = {
     {
       s: 87,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats2","twinkle"],
       transpose: {
         bass: 12,
         lead5: 12,
@@ -645,7 +700,7 @@ export const arrangement = {
     {
       s: 88,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats2","twinkle"],
       transpose: {
         bass: 12,
         lead5: 12,
@@ -655,7 +710,7 @@ export const arrangement = {
     {
       s: 89,
       bars: 1,
-      off: ["twinkle"],
+      off: ["hats2","twinkle"],
       transpose: {
         bass: 12,
         lead5: 12,
@@ -665,6 +720,7 @@ export const arrangement = {
     {
       s: 90,
       bars: 1,
+      off: ["hats2"],
       transpose: {
         bass: 12,
         bass4: 12,
@@ -673,6 +729,7 @@ export const arrangement = {
     {
       s: 91,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass: 12,
         bass4: 12,
@@ -681,6 +738,7 @@ export const arrangement = {
     {
       s: 92,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -689,6 +747,7 @@ export const arrangement = {
       s: 93,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -696,6 +755,7 @@ export const arrangement = {
     {
       s: 94,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -704,6 +764,7 @@ export const arrangement = {
       s: 95,
       bars: 1,
       from: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -711,7 +772,7 @@ export const arrangement = {
     {
       s: 96,
       bars: 1,
-      off: ["lead5"],
+      off: ["hats","lead5"],
       transpose: {
         bass4: 12,
       },
@@ -719,7 +780,7 @@ export const arrangement = {
     {
       s: 97,
       bars: 1,
-      off: ["lead5"],
+      off: ["hats","lead5"],
       transpose: {
         bass4: 12,
       },
@@ -727,7 +788,7 @@ export const arrangement = {
     {
       s: 98,
       bars: 1,
-      off: ["lead5"],
+      off: ["hats","lead5"],
       transpose: {
         bass4: 12,
       },
@@ -735,7 +796,7 @@ export const arrangement = {
     {
       s: 99,
       bars: 1,
-      off: ["lead5"],
+      off: ["hats","lead5"],
       transpose: {
         bass4: 12,
       },
@@ -743,7 +804,7 @@ export const arrangement = {
     {
       s: 100,
       bars: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -752,7 +813,7 @@ export const arrangement = {
       s: 101,
       bars: 1,
       from: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -760,7 +821,7 @@ export const arrangement = {
     {
       s: 102,
       bars: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -769,7 +830,7 @@ export const arrangement = {
       s: 103,
       bars: 1,
       from: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -777,6 +838,7 @@ export const arrangement = {
     {
       s: 104,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -784,6 +846,7 @@ export const arrangement = {
     {
       s: 105,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -791,6 +854,7 @@ export const arrangement = {
     {
       s: 106,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -798,6 +862,7 @@ export const arrangement = {
     {
       s: 107,
       bars: 1,
+      off: ["hats"],
       transpose: {
         bass4: 12,
       },
@@ -805,7 +870,7 @@ export const arrangement = {
     {
       s: 108,
       bars: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -814,7 +879,7 @@ export const arrangement = {
       s: 109,
       bars: 1,
       from: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -822,7 +887,7 @@ export const arrangement = {
     {
       s: 110,
       bars: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -831,7 +896,7 @@ export const arrangement = {
       s: 111,
       bars: 1,
       from: 1,
-      off: ["organChords2"],
+      off: ["hats","organChords2"],
       transpose: {
         bass4: 12,
       },
@@ -983,7 +1048,6 @@ export const arrangement = {
       bass2Len: [3,null,null,null,null,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [6.519354,null,null,null,null,null,4.169353999999999,null,null,null,5.3693539999999995,null,null,null,4.210405,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead: seq('A4 . . . . . C5 . . . B4 . . . A4 . | . . . . . . . . . . . . . . . .'),
-      hats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
     },
     {
       base: 2,
@@ -1089,7 +1153,7 @@ export const arrangement = {
       kick: seq('C1 . . . . . . C1 . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       rim: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
-      clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass2: seq('. . . A1 . . . . . . . A1 . . . . | . . . . . . . . . . . . . . . .'),
       bass2Len: [null,null,null,2,null,null,null,null,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
@@ -1501,6 +1565,11 @@ export const arrangement = {
       lead5Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3: [[440],null,null,null,null,null,null,null,null,null,[493.8833012561241],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [11.05522,null,null,null,null,null,null,null,null,null,7.774148,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4: [[440],null,null,null,null,null,null,null,null,null,[493.8833012561241],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4Len: [11.05522,null,null,null,null,null,null,null,null,null,7.774148,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 24,
@@ -1509,6 +1578,11 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.715909,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.715909,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.715909,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 39,
@@ -1517,6 +1591,11 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       hats: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: [[440],null,null,null,null,null,[523.2511306011972],null,null,null,[493.8833012561241],null,null,null,[440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [6.519354,null,null,null,null,null,4.169353999999999,null,null,null,5.3693539999999995,null,null,null,4.210405,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4: [[440],null,null,null,null,null,[523.2511306011972],null,null,null,[493.8833012561241],null,null,null,[440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4Len: [6.519354,null,null,null,null,null,4.169353999999999,null,null,null,5.3693539999999995,null,null,null,4.210405,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 25,
@@ -1528,6 +1607,11 @@ export const arrangement = {
       rim: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       hats: seq('. . . . . . . . . . . . . . . . | . . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.111861,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12.111861,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 26,
@@ -1537,6 +1621,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . B4 . . A4 . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 40,
@@ -1546,6 +1632,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . . . . . . | . . A4 . . G#4 . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.5,null,null,1.5,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.75,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
     },
     {
       base: 69,
@@ -1555,6 +1643,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . G4 . . E4 . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.5,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.76,null,null,0.72,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 68,
@@ -1564,6 +1654,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . . . . . . | . . . A4 . . G#4 . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,2,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.72,null,null,0.8,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
     },
     {
       base: 27,
@@ -1573,6 +1665,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . G4 . . E4 . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.5,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.76,null,null,0.72,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 41,
@@ -1584,6 +1678,8 @@ export const arrangement = {
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.72,null,null,0.8,null,null,null,null,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,9.607244,null,null,null,null,null,4.93022,null,null,null,5.110795,null,null,null,2.869673,null],
       clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
     },
     {
       base: 42,
@@ -1594,6 +1690,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [7.582741,null,null,null,null,null,5.457031,null,null,null,5.369318,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 28,
@@ -1603,6 +1701,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . . . . . . | . . B4 . . A4 . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.5,null,null,1.5,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.75,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
     },
     {
       base: 29,
@@ -1612,6 +1712,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . G4 . . E4 . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.5,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.76,null,null,0.72,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 49,
@@ -1622,6 +1724,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,2,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.72,null,null,0.8,null,null,null,null,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,6.15,null,null,null,null,null,6.164418,null,null,null,5.560369,null,null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
     },
     {
       base: 60,
@@ -1633,6 +1737,9 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass4Len: [null,null,null,null,null,null,null,null,7.987571,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass4: seq('. . . . . . . . F1 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('F3maj7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 61,
@@ -1644,6 +1751,9 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass4: seq('. . . . . . . . C2 . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass4Len: [null,null,null,null,null,null,null,null,7.972301,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('C3maj7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 62,
@@ -1655,6 +1765,9 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass4: seq('. . . . . . . . G1 . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass4Len: [null,null,null,null,null,null,null,null,8.023793,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('G3 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 63,
@@ -1666,6 +1779,9 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass4: seq('. . . . . . . . D2 . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass4Len: [null,null,null,null,null,null,null,null,8.023793,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('D3min7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 64,
@@ -1677,6 +1793,9 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass4: seq('. . . . . . . . F1 . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass4Len: [null,null,null,null,null,null,null,null,8.023793,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('F3maj7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 65,
@@ -1690,6 +1809,9 @@ export const arrangement = {
       bass4Len: [null,null,null,null,null,null,null,null,7.966264,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead: seq('A4 . . . . . . . D5 . . . . . . . | . . . . . . . . . . . . . . . .'),
       leadLen: [10.877486,null,null,null,null,null,null,null,8.943537,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('D3min7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 66,
@@ -1701,6 +1823,9 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass4: seq('. . . . . . . . B1 . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass4Len: [null,null,null,null,null,null,null,null,8.002486,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('B2min . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 67,
@@ -1715,6 +1840,10 @@ export const arrangement = {
       bass4: seq('. . . . . . . . E2 . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass4Len: [null,null,null,null,null,null,null,null,8.292614,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: seq('G#4 . . . . . . . B5 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      snare2: seq('. . . . . . . . . . . . C1 C1 C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords3: chordSeq('E3 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords3Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 43,
@@ -1724,6 +1853,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . B4 . . A4 . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 30,
@@ -1734,6 +1865,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.5,null,null,1.5,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.75,null,null,null,null,null,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,7.846591,null,null,null,null,null,5.365412,null,null,null,5.259233,null,null,null,2.597301,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
     },
     {
       base: 44,
@@ -1743,6 +1876,8 @@ export const arrangement = {
       lead6: seq('. . . . . . . . . . . G4 . . E4 . | . . . . . . . . . . . . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.5,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.76,null,null,0.72,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 31,
@@ -1754,6 +1889,8 @@ export const arrangement = {
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.72,null,null,0.8,null,null,null,null,null,null,null,null,null],
       lead: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,415.3046975799451,null,null,null,null,null,[493.8833012561241],null,null,null,659.2551138257398,null,null,null,587.3295358348151,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.8,null,null,null,null,null,[4.848722],null,null,null,3.8,null,null,null,2,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
     },
     {
       base: 56,
@@ -1766,6 +1903,8 @@ export const arrangement = {
       lead7: chordSeq('D3min . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [[15.896307,15.896307,15.896307],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [7.633523,null,null,null,6.633523,null,null,null,null,null,7.633523,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 57,
@@ -1779,6 +1918,8 @@ export const arrangement = {
       lead7Len: [[15.896307,15.896307,15.896307,15.896307],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [7.633523,null,null,null,8.441051,null,null,null,null,null,null,null,7.633523,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead: seq('E5 . . . C5 . . . . . . . G5 . . . | . . . . . . . . . . . . . . . .'),
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 58,
@@ -1791,6 +1932,8 @@ export const arrangement = {
       lead7: chordSeq('B2min . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [[15.896307,15.896307,15.896307],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [7.633523,null,null,null,6.633523,null,null,null,null,null,7.633523,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 59,
@@ -1803,6 +1946,8 @@ export const arrangement = {
       lead7: chordSeq('E3 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [[15.896307,15.896307,15.896307],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [7.633523,null,null,null,null,null,6.633523,null,null,null,null,null,6.633523,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 50,
@@ -1813,6 +1958,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [8.411932,null,null,null,null,null,5.054332,null,null,null,5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 32,
@@ -1824,6 +1971,8 @@ export const arrangement = {
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.75,null,null,null,null,null,null,null,null,null,0.58],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8.013139],null,null,null,null,null,5.476207,null,null,null,4.719815,null,null,null,[3.836293],null],
       lead: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[440],null,null,null,null,null,523.2511306011972,null,null,null,493.8833012561241,null,null,null,[659.2551138257398],null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
     },
     {
       base: 51,
@@ -1834,6 +1983,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.5,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.76,null,null,0.72,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [10.214843,null,null,null,null,null,5.988991,null,null,null,5.988991,null,null,null,4.988991,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 33,
@@ -1844,6 +1995,10 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,2,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.72,null,null,0.8,null,null,null,null,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.8,null,null,null,3.8,null,null,null,4.785866,null,null,null,2,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . C1 .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      rim: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . C1 .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 52,
@@ -1856,6 +2011,9 @@ export const arrangement = {
       lead7: chordSeq('A3min . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [[15.676847,15.676847,15.676847],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [6.944602,null,null,null,8.07919,null,null,null,null,null,6.944602,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 53,
@@ -1869,6 +2027,8 @@ export const arrangement = {
       lead7Len: [[15.676847,15.676847,15.676847],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [6.944602,null,null,null,6.105824,null,6.941761,null,null,null,null,6.944602,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead: seq('B4 . . . D5 . G5 . . . . B4 . . . . | . . . . . . . . . . . . . . . .'),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 54,
@@ -1882,6 +2042,8 @@ export const arrangement = {
       lead7Len: [[15.676847,15.676847,15.676847,15.676847],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [6.944602,null,null,null,[8.491477],null,null,null,null,null,6.944602,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead: [440,null,null,null,[523.2511306011972],null,null,null,null,null,440,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 55,
@@ -1895,6 +2057,8 @@ export const arrangement = {
       lead7Len: [[15.676847,15.676847,15.676847],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [6.944602,null,null,null,8.841974,null,null,null,null,null,null,null,6.944602,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead: seq('G#4 . . . B4 . . . . . . . E5 . . . | . . . . . . . . . . . . . . . .'),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 34,
@@ -1905,6 +2069,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [8.192116,null,null,null,null,null,4.828835,null,null,null,7.391335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 48,
@@ -1915,6 +2081,9 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.5,null,null,1.5,null,null,null,null,null,null,null,null,null,0.8],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.75,null,null,null,null,null,null,null,null,null,0.58],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,7.893111,null,null,null,null,null,4.84517,null,null,null,3,null,null,null,2,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
     },
     {
       base: 35,
@@ -1925,6 +2094,8 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.5,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.76,null,null,0.72,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadLen: [8.106179,null,null,null,null,null,5.123224,null,null,null,5.504616,null,null,null,6,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 47,
@@ -1936,6 +2107,8 @@ export const arrangement = {
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.72,null,null,0.8,null,null,null,null,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,6.156605,null,null,null,null,null,5.674006,null,null,null,4.791548,null,null,null,3.758168,null],
       lead: seq('. . . . . . . . . . . . . . . . | G#4 . . . . . B4 . . . E5 . . . D5 .'),
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
     },
     {
       base: 45,
@@ -1944,6 +2117,7 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       leadLen: [8.502841,null,null,null,null,null,5.362216,null,null,null,6.99929,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
     },
     {
       base: 36,
@@ -1952,6 +2126,7 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,6.773438,null,null,null,null,null,4.489702,null,null,null,4.919389,null,null,null,2.719815,null],
+      hats2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
     },
     {
       base: 46,
@@ -1961,6 +2136,7 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Vel: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       leadLen: [12.459517,null,null,null,null,null,null,null,null,null,9.262074,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
     },
     {
       base: 37,
@@ -1971,12 +2147,43 @@ export const arrangement = {
       lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.6,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,10.324219,null,null,null,null,null,null,null,null,null,5.8,null,null,null,null,null],
       lead: seq('. . . . . . . . . . . . . . . . | B4 . . . . . . . . . G#4 . . . . .'),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 2,
+      bass2: seq('A2 . . . . . A2 . E2 . . . . . A2 . | . . . . . . . . . . . . . . . .'),
+      bass2Len: [2,null,null,null,null,null,1.5,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [8.511683000000001,null,null,null,null,null,6.161683,null,null,null,5.906428,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats: seq('. . C1 . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      lead5: seq('. . . E4 . . A4 . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead5Len: [null,null,null,1.5,null,null,2.5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead5Vel: [null,null,null,0.76,null,null,0.85,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: seq('. . . . . . . . . . . B4 . . A4 . | . . . . . . . . . . . . . . . .'),
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,1.7,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      base: 2,
+      bass2: seq('. . . . . . . . . . . . . . . . | E2 . . . . . E2 . E2 . . . B1 . C2 .'),
+      bass2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1.5,null,2,null,null,null,1,null,1,null],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8.511683000000001,null,null,null,null,null,6.161683,null,null,null,5.361683,null,null,null,4.361683,null],
+      hats: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . . . . . . .').map((v) => !!v),
+      lead5: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . B3 . . G#4 . .'),
+      lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.3,null,null,2,null,null],
+      lead5Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.8,null,null],
+      lead6: seq('. . . . . . . . . . . . . . . . | . . A4 . . G#4 . . . . . . . . . .'),
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.5,null,null,1.5,null,null,null,null,null,null,null,null,null,null],
+      lead6Vel: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0.7,null,null,0.75,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats2: seq('. . . . . . . . . . . . . . . . | . . C1 . . . . . . . C1 . . . . .').map((v) => !!v),
     },
   ],
   bpm: 98,
   loop: {
     fromBar: 5,
-    toBar: 48,
+    toBar: 44,
   },
 };
 

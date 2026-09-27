@@ -1910,8 +1910,11 @@ const FINISH_DOG_VMAX = 0.85;
 // whole of it.
 export const BASE_CULL_MARGIN = (() => {
   let widest = 0;
+  // Only a box that carries ART can overhang. The gap is the widest box in the game and
+  // has no sprite at all — pricing its 56 at the largest art scale made one small
+  // oversized animal (the crypt panther's 1.7) push every prop's margin to the ring's.
   for (const table of [OBSTACLES, PICKUPS]) {
-    for (const def of Object.values(table)) if (def && def.w > widest) widest = def.w;
+    for (const def of Object.values(table)) if (def?.sprite && def.w > widest) widest = def.w;
   }
   // Art is centred on the box, so the overhang is half the growth.
   let overhang = widest * ((4 / 3) * maxPropVisualScale() - 1) / 2;
@@ -5149,6 +5152,43 @@ export class RunState {
       r.sparkCarry = (r.sparkCarry || 0) + dt * 110 * k;
       while (r.sparkCarry >= 1) { r.sparkCarry -= 1; spark(x, y, k); }
     }
+  }
+
+  // THE CRYPT'S GATES SLAM IN THE RUNNER'S FACE (stylePacks/cryptGates.js). The backdrop
+  // asks for the slam `sec` from now, when the gate is a stride ahead of him, and needs at
+  // least `minSec` to swing the leaves shut. It lands on the song's nearest half beat that
+  // leaves that much room and the clock enough warning, the clang placed on the same clock
+  // so picture and sound hit together; with no crypt song playing it is fired where asked.
+  // Returns the seconds to the slam, which the backdrop lands the leaves on.
+  // ...and whether a gate may slam at all. Not where the hero will be in or near an
+  // underground tunnel `sec` from now at his speed: the camera is down in the cutaway then
+  // and the bank is out of the picture (Peter: "it won't be seen properly, just do the
+  // other option"). Near is the camera's own way down and back up (it starts down
+  // TUNNEL_CAMERA_LOOKAHEAD_SEC ahead and comes up TUNNEL_CAMERA_RETURN_DELAY_SEC after),
+  // plus a second's running either side so the slam is never at the picture's edge.
+  cryptGateMaySlam(sec) {
+    if (this.route?.kind === 'tunnel') return false;
+    const speed = Math.max(1, Number(this.speed) || 1);
+    const x = this.camX + PLAYER_X + speed * Math.max(0, Number(sec) || 0);
+    const before = speed * (TUNNEL_CAMERA_LOOKAHEAD_SEC + 1);
+    const after = speed * (TUNNEL_CAMERA_RETURN_DELAY_SEC + 1);
+    return !(this.routes || []).some((r) => r.kind === 'tunnel'
+      && x > r.x - before && x < r.x + (r.w || 0) + after);
+  }
+
+  cryptGateSlam(sec, minSec = 0) {
+    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) {
+      Audio.sfx('gateSlam', { inSeconds: sec });
+      return sec;
+    }
+    const spb = 60 / bpm;
+    const least = Math.max(minSec, Audio.cueLeadSec()) / spb;
+    let target = Math.round((beat + sec / spb) * 2) / 2;
+    if (target - beat < least) target = Math.ceil((beat + least) * 2) / 2;
+    Audio.sfx('gateSlam', { inBeats: target - beat });
+    return (target - beat) * spb;
   }
 
   updateNeonSky(dt) {
@@ -15250,6 +15290,9 @@ export class RunState {
       musicBeat: this.cabinet?.id === 'crypt'
         ? (Number.isFinite(cryptMusicBeat) ? cryptMusicBeat : 0) : null,
       weatherClearBeat: this.cabinet?.id === 'crypt' ? this.cryptWeatherClearBeat : null,
+      // The near bank's gates slam on the beat: the backdrop asks, the run places the clang.
+      gateCue: this.cabinet?.id === 'crypt' ? this.cryptGateSlamFn ||= (sec, minSec) => this.cryptGateSlam(sec, minSec) : null,
+      gateMaySlam: this.cabinet?.id === 'crypt' ? this.cryptGateMayFn ||= (sec) => this.cryptGateMaySlam(sec) : null,
       weatherHeldProgress: this.cabinet?.id === 'crypt' ? this.cryptWeatherHeldProgress : null,
       weatherFade: this.cabinet?.id === 'crypt' ? this.cryptWeatherFade : 1,
       // And the weather itself, which on Frost is not a function of `progress`

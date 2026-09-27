@@ -49,7 +49,7 @@ Difficulty & Fairness Design, Modes One Through Four — **Parminder Josh**
 Design Lead, Mode Five *(Against Recommendation)* — **Parminder Josh** *(again, reluctantly)*
 
 **Cabinet Design**
-PLUMBER PANIC — **Ilse Novotny**
+FIELD SERVICE — **Ilse Novotny**
 SPEED ZONE — **Trent Okafor**
 TERMINAL VELOCITY — **Priya Wexler**
 FROST FORTRESS — **Gunnar Alstad**

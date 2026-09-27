@@ -90,7 +90,7 @@ const SCREENS = [
 ];
 
 const CABINETS = [
-  { id: 'plumber', name: 'PLUMBER PANIC' },
+  { id: 'plumber', name: 'FIELD SERVICE' },
   { id: 'speed', name: 'SPEED ZONE' },
   { id: 'rhythm', name: 'RHYTHM BANKRUPTCY' },
   { id: 'frost', name: 'FROST FORTRESS' },

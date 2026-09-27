@@ -488,7 +488,7 @@ const SCRIPT = [
   { k: 'role', role: 'Design Lead, Mode 5 (Against Recommendation)', name: 'Parminder Josh, again, reluctantly' },
   { k: 'gap', px: 10 },
   { k: 'sub', text: 'CABINET DESIGN', color: PINK },
-  { k: 'role', role: 'PLUMBER PANIC', name: 'Ilse Novotny' },
+  { k: 'role', role: 'FIELD SERVICE', name: 'Ilse Novotny' },
   { k: 'role', role: 'SPEED ZONE', name: 'Trent Okafor' },
   { k: 'role', role: 'TERMINAL VELOCITY', name: 'Priya Wexler' },
   { k: 'role', role: 'FROST FORTRESS', name: 'Gunnar Alstad' },

@@ -57,7 +57,7 @@ const bundle = outputFiles[0].text;
     'dev menu no longer exposes the retired portrait lab');
   const stagesItem = dev.top().items.find((item) => item.label === 'STAGES ▸');
   const stagesMenu = stagesItem && stagesItem.submenu(dev);
-  const plumberItem = stagesMenu && stagesMenu.items.find((item) => /PLUMBER PANIC/.test(item.label));
+  const plumberItem = stagesMenu && stagesMenu.items.find((item) => /FIELD SERVICE/.test(item.label));
   const plumberMenu = plumberItem && plumberItem.submenu(dev);
   const firstStageItem = plumberMenu && plumberMenu.items.find((item) => /^plumber-1\b/.test(item.label));
   const firstStageMenu = firstStageItem && firstStageItem.submenu(dev);

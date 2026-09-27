@@ -168,7 +168,7 @@ export const shots = [
 // The words over the picture (see renderText). `shot` + `at` seconds into it.
 export const texts = [
   { shot: 'dive', at: 2.8, dur: 1.4, style: 'callout', text: 'NEW THIS WEEK' },
-  { shot: 'rake', style: 'cabinet', text: 'PLUMBER PANIC' },
+  { shot: 'rake', style: 'cabinet', text: 'FIELD SERVICE' },
   { shot: 'goose', at: 0.1, dur: 1.4, style: 'callout', text: 'ANGRY GEESE' },
   { shot: 'windmill', at: 0.1, dur: 1.4, style: 'callout', text: 'NEW SCENERY' },
   { shot: 'jet', style: 'cabinet', text: 'SPEED ZONE', dur: 1.45 },

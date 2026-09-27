@@ -547,6 +547,16 @@ const DRUM = {
     osc: { type: 'square', from: 1900, to: 1750, sweep: 0.006, decay: 0.012, curve: 'lin', gain: 0.16 },
     ring: { freq: 780, Q: 80, hit: 0.004, decay: 0.2, gain: 1.2 },
     tone: { freq: 7000 } },
+  // The crypt's iron gate banging shut (the gateSlam cue, audio.js), picked by Peter from
+  // five on 27 Sep 2026 — work/local/gates/clangs.mjs renders the audition again.
+  gateClang: { label: '= Gate Clang', category: 'Perc', homeLane: 'crash', dur: 8,
+    note: 'The cymbal cluster pitched down and fed back round its bandpass through the '
+      + 'resonator, over a low thud: old iron, clangy and a bit trashy, still humming after '
+      + 'it is struck.',
+    osc: { type: 'sine', from: 135, to: 62, sweep: 0.08, decay: 0.18, curve: 'exp', gain: 0.45 },
+    noise: { type: 'bandpass', freq: 2400, Q: 0.9, decay: 0.03, gain: 0.4 },
+    metal: { wave: 'square', freq: 290, spread: 1.15, count: 6, filter: 'bandpass', hp: 1700, Q: 3.5, decay: 1.1, gain: 0.9, resonator: { feedback: 0.965, drive: 1.6 } },
+    drive: 0.25 },
   rimClang: { label: '= Clang Rim', category: 'Rim', homeLane: 'rim', dur: 0.5,
     note: 'One oscillator bent by another at an unmusical ratio, then folded. Metal '
       + 'rather than wood — the rim for a song with no acoustic pretensions at all.',
@@ -4549,21 +4559,20 @@ const USER_DRUM = {
 // from here falls back to its peak, which is what the library was levelled by before
 // and is close enough to keep a sound audible until the tool is run again.
 const LEVELS = {
-  cryptTheremin: 0.128322,
-  roundMono: 0.075557, fmGrowl: 0.023982, acidSquelch: 0.06367,
-  rubberBass: 0.056514, clangBass: 0.020067, detuneBass: 0.161441,
-  simpleSquare: 0.116548, simpleSawtooth: 0.069537, simpleTriangle: 0.076624,
-  monoBright: 0.087427, amHollow: 0.01455, duoDetune: 0.114131,
-  glassLead: 0.020582, reedLead: 0.114797, screamLead: 0.112678,
-  vibratoLead: 0.183201, fmKeys: 0.021576, epiano: 0.023667, clav: 0.005047,
-  toyPiano: 0.013277, softKeys: 0.060456, padTriangle: 0.101497,
-  warmPad: 0.104127, glassPad: 0.021327, breathPad: 0.119482, amOrgan: 0.026762,
-  fullOrgan: 0.062627, reedOrgan: 0.027077, fmBell: 0.018029, celeste: 0.024454,
-  marimba: 0.013661, musicBox: 0.020825, synthPluck: 0.028111,
-  harpPluck: 0.04711, koto: 0.013469, brassStab: 0.060669,
-  synthStrings: 0.148374, hornSwell: 0.025887, buzzSaw: 0.078515,
-  ringMod: 0.009345, hardFm: 0.013983, clave: 0.006432, woodBlock: 0.008281,
-  tpBah: 0.005703, tpBassGuitar: 0.085495, tpBassy: 0.0685,
+  cryptTheremin: 0.128322, roundMono: 0.075557, fmGrowl: 0.023982,
+  acidSquelch: 0.06367, rubberBass: 0.056514, clangBass: 0.020067,
+  detuneBass: 0.161441, simpleSquare: 0.116548, simpleSawtooth: 0.069537,
+  simpleTriangle: 0.076624, monoBright: 0.087427, amHollow: 0.01455,
+  duoDetune: 0.114131, glassLead: 0.020582, reedLead: 0.114797,
+  screamLead: 0.112678, vibratoLead: 0.183201, fmKeys: 0.021576,
+  epiano: 0.023667, clav: 0.005047, toyPiano: 0.013277, softKeys: 0.060456,
+  padTriangle: 0.101497, warmPad: 0.104127, glassPad: 0.021327,
+  breathPad: 0.119482, amOrgan: 0.026762, fullOrgan: 0.062627,
+  reedOrgan: 0.027077, fmBell: 0.018029, celeste: 0.024454, marimba: 0.013661,
+  musicBox: 0.020825, synthPluck: 0.028111, harpPluck: 0.04711, koto: 0.013469,
+  brassStab: 0.060669, synthStrings: 0.148374, hornSwell: 0.025887,
+  buzzSaw: 0.078515, ringMod: 0.009345, hardFm: 0.013983, clave: 0.006432,
+  woodBlock: 0.008281, tpBah: 0.005703, tpBassGuitar: 0.085495, tpBassy: 0.0685,
   tpBrassCircuit: 0.060105, tpCoolGuy: 0.246214, tpPianoetta: 0.111126,
   tpPizz: 0.017563, tpAlienChorus: 0.070974, tpDelicateWind: 0.050353,
   tpLectric: 0.031326, tpMarimba: 0.056977, tpSteelpan: 0.029149,
@@ -4702,33 +4711,33 @@ const LEVELS = {
   stKickTight: 0.058672, stKickThud: 0.026188, stKickDirty: 0.032487,
   stKickClick: 0.055838, stTaiko: 0.049216, stZap: 0.056003,
   stHatTick: 0.016717, stHatSizzle: 0.056353, stMetalHatClosed: 0.01638,
-  stCowbell: 0.028111, stTriangleDing: 0.028111
+  stCowbell: 0.028111, stTriangleDing: 0.028111, gateClang: 0.1334
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
 // read for now is headroom — a preset whose peak is far above its lane's target spends
 // the mix's ceiling on one transient — and being the fallback above.
 const PEAKS = {
-  cryptTheremin: 0.638468,
-  roundMono: 1.183, fmGrowl: 0.216, acidSquelch: 1.6469, rubberBass: 0.9084,
-  clangBass: 0.2115, detuneBass: 1.5362, simpleSquare: 0.785,
-  simpleSawtooth: 0.7751, simpleTriangle: 0.6951, monoBright: 0.8807,
-  amHollow: 0.1073, duoDetune: 1.3948, glassLead: 0.2129, reedLead: 0.8357,
-  screamLead: 2.1142, vibratoLead: 1.3321, fmKeys: 0.2185, epiano: 0.2199,
-  clav: 0.2594, toyPiano: 0.2149, softKeys: 0.6896, padTriangle: 0.6968,
-  warmPad: 0.7232, glassPad: 0.1228, breathPad: 0.8623, amOrgan: 0.111,
-  fullOrgan: 0.2204, reedOrgan: 0.4084, fmBell: 0.2199, celeste: 0.2195,
-  marimba: 0.2153, musicBox: 0.219, synthPluck: 1.1918, harpPluck: 0.6946,
-  koto: 0.2181, brassStab: 0.752, synthStrings: 1.0717, hornSwell: 0.2168,
-  buzzSaw: 1.1884, ringMod: 0.1355, hardFm: 0.2094, clave: 0.2031,
-  woodBlock: 0.2198, tpBah: 0.1386, tpBassGuitar: 0.7916, tpBassy: 0.992,
-  tpBrassCircuit: 1.0582, tpCoolGuy: 2.9141, tpPianoetta: 0.886, tpPizz: 1.0667,
-  tpAlienChorus: 0.8054, tpDelicateWind: 0.2183, tpLectric: 0.6403,
-  tpMarimba: 0.6906, tpSteelpan: 0.2812, tpSuperSaw: 0.2661,
-  tpTreeTrunk: 0.6572, tpElectricCello: 0.2173, tpKalimba: 0.2195,
-  tpThinSaws: 0.2098, tpHarmonics: 0.1082, tpTiny: 0.1531, roundMono2: 0.6824,
-  toneSquare: 0.6468, toneSawtooth: 0.5903, toneTriangle: 0.6582,
-  toneSine: 0.661, squareTone2: 0.6435, fmGrowl2: 0.2158, addDrawbar: 1.0818,
+  cryptTheremin: 0.638468, roundMono: 1.183, fmGrowl: 0.216,
+  acidSquelch: 1.6469, rubberBass: 0.9084, clangBass: 0.2115,
+  detuneBass: 1.5362, simpleSquare: 0.785, simpleSawtooth: 0.7751,
+  simpleTriangle: 0.6951, monoBright: 0.8807, amHollow: 0.1073,
+  duoDetune: 1.3948, glassLead: 0.2129, reedLead: 0.8357, screamLead: 2.1142,
+  vibratoLead: 1.3321, fmKeys: 0.2185, epiano: 0.2199, clav: 0.2594,
+  toyPiano: 0.2149, softKeys: 0.6896, padTriangle: 0.6968, warmPad: 0.7232,
+  glassPad: 0.1228, breathPad: 0.8623, amOrgan: 0.111, fullOrgan: 0.2204,
+  reedOrgan: 0.4084, fmBell: 0.2199, celeste: 0.2195, marimba: 0.2153,
+  musicBox: 0.219, synthPluck: 1.1918, harpPluck: 0.6946, koto: 0.2181,
+  brassStab: 0.752, synthStrings: 1.0717, hornSwell: 0.2168, buzzSaw: 1.1884,
+  ringMod: 0.1355, hardFm: 0.2094, clave: 0.2031, woodBlock: 0.2198,
+  tpBah: 0.1386, tpBassGuitar: 0.7916, tpBassy: 0.992, tpBrassCircuit: 1.0582,
+  tpCoolGuy: 2.9141, tpPianoetta: 0.886, tpPizz: 1.0667, tpAlienChorus: 0.8054,
+  tpDelicateWind: 0.2183, tpLectric: 0.6403, tpMarimba: 0.6906,
+  tpSteelpan: 0.2812, tpSuperSaw: 0.2661, tpTreeTrunk: 0.6572,
+  tpElectricCello: 0.2173, tpKalimba: 0.2195, tpThinSaws: 0.2098,
+  tpHarmonics: 0.1082, tpTiny: 0.1531, roundMono2: 0.6824, toneSquare: 0.6468,
+  toneSawtooth: 0.5903, toneTriangle: 0.6582, toneSine: 0.661,
+  squareTone2: 0.6435, fmGrowl2: 0.2158, addDrawbar: 1.0818,
   addDrawbarBright: 1.3409, addDrawbarPerc: 1.3508, addShopOrgan: 1.6177,
   addSwoop: 0.9589, addBell: 1.9133, addGlassPad: 1.5529, shopOrgan2: 2.0261,
   squareOrgan: 0.9585, bass80sMono: 1.1324, bass80sFM: 0.2208,
@@ -4842,7 +4851,8 @@ const PEAKS = {
   stFmBell: 0.2199, stAmHollow: 0.1073, stKickPunch: 0.7, stKickDeep: 0.7,
   stKickTight: 0.7, stKickThud: 0.6899, stKickDirty: 0.6934, stKickClick: 0.7,
   stTaiko: 0.7, stZap: 0.7, stHatTick: 0.6253, stHatSizzle: 1.0138,
-  stMetalHatClosed: 0.7687, stCowbell: 0.5426, stTriangleDing: 0.5426
+  stMetalHatClosed: 0.7687, stCowbell: 0.5426, stTriangleDing: 0.5426,
+  gateClang: 0.7
 };
 
 /**

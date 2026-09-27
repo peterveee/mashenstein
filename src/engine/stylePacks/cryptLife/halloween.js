@@ -154,7 +154,7 @@ function cauldronParts(k) {
 export function drawCryptCauldron(ctx, f) {
   const k = bakeScale(ctx), y = footAt(f, f.x, 10), p = cauldronParts(k);
   const boil = Math.sin(f.t * 2.8);
-  ctx.save(); ctx.translate(f.x, y); ctx.scale(0.5, 0.5);
+  ctx.save(); ctx.translate(f.x, y); ctx.scale(0.575, 0.575);
   const alpha = ctx.globalAlpha * 0.84;
   ctx.globalAlpha = alpha * 0.58;
   put(ctx, p.vapor, -2 + Math.sin(f.t * 0.7) * 1.2, 4 + boil * 1.2);
@@ -180,13 +180,15 @@ function onlyLateStage(stage, beginsAt, paint) {
 
 export const CRYPT_HALLOWEEN_LIFE = Object.freeze([
   {
-    id: 'pumpkin-patch', layer: 'mid', when: 'on', u: 2630, reach: 64,
+    // Place the patch on the graveyard hill so it crosses well before the Crypt-2 finish.
+    id: 'pumpkin-patch', layer: 'mid', when: 'on', u: 1254, reach: 64,
     warmStageIndex: 2, warmProgress: 0.9,
-    paint: onlyLateStage(2, 0.8, drawCryptPumpkinPatch),
+    paint: onlyLateStage(2, 0.55, drawCryptPumpkinPatch),
   },
   {
-    id: 'bubbling-cauldron', layer: 'mid', when: 'on', u: 750, reach: 48,
+    // Crypt-3 opens on a different stretch of the hill, so it gets its own u-position.
+    id: 'bubbling-cauldron', layer: 'mid', when: 'on', u: 2125, reach: 56,
     warmStageIndex: 3, warmProgress: 0.9,
-    paint: onlyLateStage(3, 0.8, drawCryptCauldron),
+    paint: onlyLateStage(3, 0.55, drawCryptCauldron),
   },
 ]);

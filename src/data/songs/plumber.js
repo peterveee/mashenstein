@@ -9,7 +9,7 @@
 import { seq, chordSeq } from '../../engine/notes.js';
 
 export const id = "plumber";
-export const title = "PLUMBER PANIC";
+export const title = "FIELD SERVICE";
 export const slug = "plumber-panic";
 export const group = "cabinet";
 

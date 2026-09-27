@@ -845,6 +845,221 @@ function drawCollie(ctx, x, y, s, dir, run, crouch, lift = 0, coat = COLLIE_COAT
   }
   ctx.restore();
 }
+// ------------------------------------------------------------ the piglet
+// The figure of eight's sheep-pig (Peter, 27 Sep 2026, from the bake-off in
+// src/dev/pig-flock-candidates.js: "lets ship B"). He runs the brown collie's figure of
+// eight and the flock answers him; she sits up on the crest and watches (THE SHEEP-PIG).
+// A Large White piglet — Babe — pale pink with a blush, a big head for his size, ears
+// pricked up and tipping forward, the snout a short tube ending in a flat disc. The pink is
+// muted to sit in the sheep's paper palette.
+const PIG = {
+  body: '#f2c4b6', shade: '#dba395', light: '#fadcd2', earIn: '#e7a293', snout: '#eeaa9b',
+  nostril: '#8e544b', trotter: '#7e5d55', eye: '#2b1f1c', glint: '#fff6f0', blush: '#eca092',
+  mouth: '#b3695f', shadow: 'rgba(28,64,30,0.22)',
+};
+const PIG_STRIDE = 7;                 // ground px per trotting stride
+const PIG_HOP = 2.6;                  // screen px, the turning hop
+
+// Piglet, feet at (x, y), facing `dir`. p: run (stride phase), gait 0..1 (trotting), sit,
+// lie, root (snout in the grass), nod (a polite bob of the head), perk (ears up), lift
+// (screen px off the ground), t, seed.
+function drawPiglet(ctx, x, y, s, dir, p = {}) {
+  const { run = 0, gait = 0, sit = 0, lie = 0, root = 0, nod = 0, perk = 0, lift = 0, t = 0, seed = 0 } = p;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s * dir, s);
+  const fx = dir < 0 ? -1 : 1;
+  const sh = 1 - Math.min(0.35, lift * 0.08);
+  flat(ctx, PIG.shadow, (c) => c.ellipse(0.2, 0.2, 4.6 * sh, 0.8 * sh, 0, 0, TAU));
+  ctx.translate(0, -lift / s);
+  const air = clamp01(lift / 1.2);
+
+  // The body frame: it tips back about the rump to sit, and drops to lie; it bobs at a trot.
+  const RX = -3.0, RY = -1.4;
+  const a = -0.55 * sit;
+  const drop = 1.0 * sit + 1.4 * lie * (1 - sit) - 0.3 * (0.5 + 0.5 * Math.cos(2 * run)) * gait;
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const B = (px, py) => [RX + (px - RX) * ca - (py - RY) * sa, RY + drop + (px - RX) * sa + (py - RY) * ca];
+
+  // A leg from a body-frame hip to its foot on the grass: a stout pink column narrowing to
+  // a dark trotter. Trotting, the diagonal pairs swing together.
+  const leg = (hx, hy, phase, hind, col) => {
+    const [ax, ay] = B(hx, hy);
+    const sw = Math.sin(run + phase) * gait;
+    let fx0 = ax + sw * 1.2, fy0 = -Math.max(0, Math.cos(run + phase)) * 0.9 * gait;
+    // Sitting: the hind trotters come forward under the belly, the fore stand straight.
+    fx0 = lerp(fx0, ax + (hind ? 0.9 : 0.2), sit);
+    fy0 = lerp(fy0, 0, sit);
+    // Lying: all four tucked, the trotters poking forward.
+    fx0 = lerp(fx0, ax + (hind ? 1.3 : 1.6), lie * (1 - sit));
+    fy0 = lerp(fy0, -0.25, lie * (1 - sit)) - air * 0.7;
+    const mx = lerp(ax, fx0, 0.5), my = lerp(ay, fy0, 0.5);
+    line(ctx, col, 1.3, (c) => { c.moveTo(ax, ay); c.lineTo(mx, my); });
+    line(ctx, col, 1.0, (c) => { c.moveTo(mx, my); c.lineTo(fx0, fy0); });
+    flat(ctx, PIG.trotter, (c) => c.ellipse(fx0 + 0.15, fy0 - 0.25, 0.55, 0.33, 0, 0, TAU));
+  };
+
+  // Far legs, then the body.
+  leg(-2.7, -2.7, 0, true, PIG.shade);
+  leg(1.8, -2.7, Math.PI, false, PIG.shade);
+
+  ctx.save();
+  ctx.translate(RX, RY + drop);
+  ctx.rotate(a);
+  ctx.translate(-RX, -RY);
+  const o = { fx, rot: a };
+  // The curly tail, wagging at the root; a quicker wag when he is excited.
+  ctx.save();
+  ctx.translate(-3.8, -4.1);
+  ctx.rotate(0.35 * Math.sin(t * (7 + 5 * perk) + seed) * (0.4 + 0.6 * Math.max(gait, perk)));
+  line(ctx, PIG.shade, 0.42, (c) => {
+    c.moveTo(0, 0);
+    c.quadraticCurveTo(-0.9, -0.1, -1.1, -0.8);
+    c.arc(-0.6, -0.95, 0.5, Math.PI, Math.PI + 1.75 * Math.PI);
+  });
+  ctx.restore();
+  const body = cut(ctx, (c) => {
+    c.moveTo(-3.9, -3.6);
+    c.quadraticCurveTo(-4.0, -5.6, -1.6, -5.9);
+    c.quadraticCurveTo(1.2, -6.1, 3.0, -5.5);
+    c.quadraticCurveTo(4.2, -4.8, 3.9, -3.2);
+    c.quadraticCurveTo(3.4, -1.7, 1.4, -1.7);
+    c.quadraticCurveTo(-0.6, -1.4, -2.4, -1.8);
+    c.quadraticCurveTo(-4.0, -2.2, -3.9, -3.6);
+    c.closePath();
+  }, PIG.body, { ...o, lift: 0.6, rim: 0.55 });
+  tone(ctx, body, (c) => c.ellipse(0.2, -1.5, 4.6, 1.1, 0, 0, TAU), PIG.shade);
+  tone(ctx, body, (c) => c.ellipse(-3.9, -3.4, 1.1, 2.3, 0, 0, TAU), PIG.shade);
+  tone(ctx, body, (c) => c.ellipse(-0.3, -5.5, 2.8, 0.45, -0.03, 0, TAU), PIG.light);
+  ctx.restore();
+
+  // Near legs over the body.
+  leg(-2.0, -2.6, Math.PI, true, PIG.body);
+  leg(2.5, -2.6, 0, false, PIG.body);
+
+  // The head, hung from the neck: down to root, a bob to ask, a lift at the top of a trot.
+  const [nx, ny] = B(2.8, -4.4);
+  const ha = a * 0.6 + 0.55 * root + 0.05 * Math.sin(t * 14 + seed) * root
+    + 0.12 * Math.sin(t * 7 + seed) * nod + 0.18 * lie * (1 - sit) - 0.04 * Math.sin(2 * run) * gait;
+  ctx.save();
+  ctx.translate(nx, ny + 0.5 * root);
+  ctx.rotate(ha);
+  const ho = { fx, rot: ha };
+  // Ears: pricked, the tips tipping forward, flapping a little at the trot; perk stands
+  // them up.
+  const flop = 0.3 * Math.sin(run * 2) * gait - 0.35 * perk + 0.2 * lie;
+  const ear = (dx, dy, col, inner) => {
+    const e = cut(ctx, (c) => {
+      c.moveTo(0.2 + dx, -1.6 + dy);
+      c.quadraticCurveTo(0.3 + dx, -3.6 + dy, 1.5 + dx, -4.7 + dy + flop * 0.5);
+      c.quadraticCurveTo(2.6 + dx + flop, -4.4 + dy + flop, 2.8 + dx + flop, -3.4 + dy + flop);
+      c.quadraticCurveTo(2.2 + dx, -2.6 + dy, 1.9 + dx, -1.9 + dy);
+      c.closePath();
+    }, col, { ...ho, lift: 0.3, rim: 0.35 });
+    if (inner) tone(ctx, e, (c) => c.ellipse(1.5 + dx + flop * 0.4, -3.3 + dy, 0.5, 1.1, 0.55, 0, TAU), PIG.earIn, false);
+  };
+  ear(-0.7, -0.1, PIG.shade, false);
+  const head = cut(ctx, (c) => {
+    c.moveTo(-0.6, -1.6);
+    c.quadraticCurveTo(0.8, -2.6, 2.3, -1.8);
+    c.quadraticCurveTo(3.0, -1.3, 3.4, -0.6);
+    c.lineTo(4.3, -0.5);
+    c.quadraticCurveTo(4.65, 0.2, 4.3, 0.9);
+    c.lineTo(3.3, 1.0);
+    c.quadraticCurveTo(2.4, 1.9, 0.8, 1.7);
+    c.quadraticCurveTo(-0.6, 1.4, -0.9, 0.2);
+    c.quadraticCurveTo(-1.0, -1.0, -0.6, -1.6);
+    c.closePath();
+  }, PIG.body, { ...ho, lift: 0.4, rim: 0.45 });
+  tone(ctx, head, (c) => c.ellipse(1.2, 1.5, 2.6, 0.7, 0, 0, TAU), PIG.shade);
+  tone(ctx, head, (c) => c.ellipse(1.9, 0.55, 0.75, 0.45, 0, 0, TAU), PIG.blush);
+  // Where the snout meets the face, the disc on the end of it and its nostril.
+  line(ctx, PIG.shade, 0.22, (c) => { c.moveTo(3.35, -0.5); c.quadraticCurveTo(3.2, 0.2, 3.3, 0.95); });
+  flat(ctx, PIG.snout, (c) => c.ellipse(4.45, 0.2, 0.42, 0.78, 0, 0, TAU));
+  flat(ctx, PIG.nostril, (c) => c.ellipse(4.55, 0.12, 0.13, 0.24, 0, 0, TAU));
+  // The eye with its glint, and a small smile.
+  dot(ctx, 2.1, -0.75, 0.36, PIG.eye);
+  dot(ctx, 2.2, -0.88, 0.12, PIG.glint);
+  line(ctx, PIG.mouth, 0.22, (c) => { c.moveTo(4.0, 1.12); c.quadraticCurveTo(3.4, 1.45, 2.85, 1.15); });
+  ear(0, 0, PIG.body, true);
+  ctx.restore();
+  ctx.restore();
+}
+
+// ------------------------------------------------------------ the collie, sat up
+// The brown collie of drawCollie sitting up to watch, feet at (x, y), facing `dir`: haunch
+// down, forelegs straight, chest and ruff up, her tail along the grass. Her head is
+// drawCollie's own, pitched by `tilt`. `happy` 0..1 wags the tail and opens her mouth;
+// `lift` px is the hop she turns round in.
+function drawSeatedCollie(ctx, x, y, s, dir, { lift = 0, t = 0, happy = 0, tilt = 0 } = {}) {
+  const P = { ...FLOCK, ...COLLIE_COATS[1] };
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s * dir, s);
+  const o = { fx: dir < 0 ? -1 : 1 };
+  const sh = 1 - Math.min(0.35, lift * 0.08);
+  flat(ctx, P.shadow, (c) => c.ellipse(-1, 0.2, 5.2 * sh, 0.9 * sh, 0, 0, TAU));
+  ctx.translate(0, -lift / s);
+  // The tail along the grass: a slow sweep while she watches, a wag when he asks.
+  const wag = Math.sin(t * (3 + 9 * happy)) * (0.35 + 0.8 * happy);
+  const tail = cut(ctx, (c) => {
+    c.moveTo(-3.4, -1.4);
+    c.quadraticCurveTo(-6.4, -1.7 + wag * 0.6, -8.6, -0.7 + wag);
+    c.quadraticCurveTo(-6.4, 0.1, -3.2, -0.2);
+    c.closePath();
+  }, P.dog, { ...o, lift: 0.4, rim: 0.5 });
+  tone(ctx, tail, (c) => c.arc(-8.3, -0.7 + wag, 1.4, 0, TAU), P.dogWhite);
+  const foreleg = (x0, col, sock) => {
+    line(ctx, col, 1.2, (c) => { c.moveTo(x0, -4.8); c.lineTo(x0 + 0.2, -2.2); });
+    line(ctx, col, 1.0, (c) => { c.moveTo(x0 + 0.2, -2.2); c.lineTo(x0 + 0.3, -0.3); });
+    line(ctx, sock, 0.95, (c) => { c.moveTo(x0 + 0.25, -1.7); c.lineTo(x0 + 0.3, -0.3); });
+    flat(ctx, sock, (c) => c.ellipse(x0 + 0.7, -0.3, 0.75, 0.35, 0, 0, TAU));
+  };
+  foreleg(1.3, P.dogShade, P.dogWhiteShade);
+  // Body: from the haunch on the grass up to a deep chest.
+  const body = cut(ctx, (c) => {
+    c.moveTo(-3.9, -1.2);
+    c.quadraticCurveTo(-4.4, -4.6, -1.8, -6.4);
+    c.quadraticCurveTo(0.2, -8.6, 2.4, -8.4);
+    c.quadraticCurveTo(3.8, -7.2, 3.2, -4.6);
+    c.quadraticCurveTo(2.6, -2.2, 1.4, -0.6);
+    c.lineTo(-3.2, -0.2);
+    c.closePath();
+  }, P.dog, { ...o, lift: 0.6, rim: 0.6 });
+  tone(ctx, body, (c) => c.ellipse(3.0, -5.2, 1.4, 2.9, 0.12, 0, TAU), P.dogWhite);
+  tone(ctx, body, (c) => c.ellipse(-1.9, -5.4, 1.9, 0.45, -0.75, 0, TAU), P.sheen);
+  const haunch = cut(ctx, (c) => c.ellipse(-1.9, -2.3, 2.3, 2.1, 0, 0, TAU), P.dog, { ...o, lift: 0.4, rim: 0.45 });
+  tone(ctx, haunch, (c) => c.ellipse(-1.2, -0.8, 2.3, 0.9, 0, 0, TAU), P.dogShade);
+  cut(ctx, (c) => c.ellipse(0.3, -0.4, 1.4, 0.45, 0, 0, TAU), P.dogWhite, { ...o, lift: 0.2, rim: 0.3 });
+  foreleg(2.3, P.dog, P.dogWhite);
+  const ruff = cut(ctx, (c) => c.ellipse(2.8, -7.5, 1.5, 1.9, 0.3, 0, TAU), P.dogWhite, { ...o, lift: 0.3, rim: 0.4 });
+  tone(ctx, ruff, (c) => c.ellipse(3.4, -6.6, 1.2, 1.3, 0, 0, TAU), P.dogWhiteShade);
+  // Head — drawCollie's, held up and watching.
+  ctx.save();
+  ctx.translate(3.1, -9.5);
+  ctx.rotate(tilt);
+  const ho = { ...o, rot: tilt };
+  cut(ctx, (c) => { c.moveTo(-1.3, -0.7); c.lineTo(-0.9, -3.1); c.lineTo(0, -1.1); c.closePath(); }, P.dogShade, { ...ho, lift: 0.3, rim: 0.35 });
+  const skull = cut(ctx, (c) => {
+    c.moveTo(-1.8, 0.4);
+    c.quadraticCurveTo(-1.6, -1.8, 0.4, -1.6);
+    c.quadraticCurveTo(1.6, -1.4, 2.2, -0.5);
+    c.lineTo(3.7, -0.1);
+    c.quadraticCurveTo(4.1, 0.5, 3.5, 0.9);
+    c.lineTo(1.4, 1.3);
+    c.quadraticCurveTo(-0.6, 1.9, -1.8, 0.4);
+    c.closePath();
+  }, P.dog, { ...ho, lift: 0.4, rim: 0.5 });
+  tone(ctx, skull, (c) => { c.moveTo(0.3, -1.8); c.lineTo(0.9, -1.8); c.lineTo(2.3, -0.3); c.lineTo(4, 0); c.lineTo(4, 1.6); c.lineTo(1.2, 1.6); c.quadraticCurveTo(1.6, 0.2, 0.3, -1.8); c.closePath(); }, P.dogWhite);
+  cut(ctx, (c) => { c.moveTo(-0.3, -1.3); c.lineTo(0.6, -3.2); c.quadraticCurveTo(1.3, -2.9, 1.2, -2.3); c.lineTo(0.9, -2.5); c.lineTo(0.9, -1.2); c.closePath(); }, P.dog, { ...ho, lift: 0.3, rim: 0.35 });
+  dot(ctx, 1.2, -0.7, 0.42, P.eye);
+  dot(ctx, 1.3, -0.7, 0.26, FLOCK.nose);
+  dot(ctx, 3.8, 0.1, 0.4, P.nose);
+  if (happy > 0.4) flat(ctx, P.tongue, (c) => c.ellipse(2.6, 1.55, 0.75, 0.38 + 0.1 * Math.sin(t * 11), 0.3, 0, TAU));
+  ctx.restore();
+  ctx.restore();
+}
+
 // ------------------------------------------------------------ the flock's choreography
 // Everything here is a pure function of t, and all of it is continuous: nothing picks a
 // position, a facing or a pose per time slot or on a distance threshold, so nothing can
@@ -859,10 +1074,12 @@ function drawCollie(ctx, x, y, s, dir, run, crouch, lift = 0, coat = COLLIE_COAT
 // turns along the stage (drawPlumberLife counts them), so neighbours always differ:
 //   0 THE LAP — nine in one loose line (one lying down, two lambs); the collie laps the
 //     whole flock and claps down on the front lane at the right-hand end, facing left.
-//   1 THE FIGURE OF EIGHT — six in two knots of three with a gap between; the collie
-//     runs a figure of eight round each knot and through the gap, and claps down IN the
-//     gap, facing the right-hand knot. Slower, and with a longer hold.
+//   1 THE FIGURE OF EIGHT — six in two knots of three with a gap between; the run is a
+//     figure of eight round each knot and through the gap, stopping IN the gap, facing
+//     the right-hand knot. Slower, and with a longer hold. Since 27 Sep 2026 it is the
+//     sheep-pig's run, not the collie's: see THE SHEEP-PIG.
 const FLOCK_S = 1.55;
+const PIG_S = FLOCK_S * 0.72;       // the piglet: a lamb's height, three-fifths of the collie's
 const FLOCK_SHEEP = [
   [
     [-50, 6, 1.0, 1, 1, false, 'stand'], [-34, 2, 0.95, 1, 2, true, 'stand'],
@@ -1041,10 +1258,42 @@ function shuffleAt(t, seed) {
 }
 // Nobody is shoved over the crest into the sky: depth eases to a floor of 0.8.
 const floorDepth = (d) => (d >= 2 ? d : 2 - 1.2 * (1 - Math.exp((d - 2) / 1.2)));
+// THE SHEEP-PIG. On the figure of eight the run is the piglet's: he has the collie's own
+// path and pace (so the flock answers him with the same sums), hops round at the loop ends
+// as she did, and at each stop stands square and asks, with a bob of the head, rather than
+// giving the eye. She sits up on the crest in the gap, against the sky, and watches him:
+// she hops round to face whichever side he is on, a beat late, and when he stops to ask
+// she wags, pants and lifts her nose. Running, she is intent: mouth shut, a slow sweep of
+// the tail, her head pitched down to follow him down the face. (Peter, 27 Sep 2026, on the
+// bake-off: "I don't notice the dog watching" — she lay in her working crouch at first.)
+const PIG_FLY = { x: 3, depth: 0.8 };
+const WATCH_LAG = 0.45, WATCH_WIN = 0.32, WATCH_N = 24, FLY_HOP = 2;
+// Which side of `x` the run is on, a beat late, read off a window of lagged samples so it
+// is a pure function of t; a crossing is a hop round, mirrored at the top of it.
+function turnToward(td, D, x, hop) {
+  const side = (tt) => (dogAt(tt, D).x - x < 0 ? -1 : 1);
+  let pos = 0;
+  for (let k = 0; k < WATCH_N; k++) if (side(td - WATCH_LAG - WATCH_WIN / 2 + (k * WATCH_WIN) / (WATCH_N - 1)) > 0) pos++;
+  const now = side(td - WATCH_LAG + WATCH_WIN / 2);
+  const k = (now > 0 ? pos : WATCH_N - pos) / WATCH_N;
+  const turning = pos > 0 && pos < WATCH_N;
+  return { face: turning && k < 0.5 ? -now : now, lift: turning ? Math.sin(Math.PI * k) * hop : 0 };
+}
+function sheepPigState(td, D, d) {
+  const still = smooth(1 - d.speed / (0.5 * D.v));
+  const pig = { run: ((d.run / TAU) * DOG_STRIDE / PIG_STRIDE) * TAU, gait: smooth(d.speed / 12) * (1 - d.hop),
+    nod: still * (1 - d.hop), perk: still, lift: d.hop * PIG_HOP };
+  const seen = dogAt(td - 0.25, D);
+  const happy = smooth(1 - seen.speed / (0.5 * D.v)) * (1 - seen.hop);
+  const fly = { x: PIG_FLY.x, depth: PIG_FLY.depth, ...turnToward(td, D, PIG_FLY.x, FLY_HOP), happy,
+    tilt: 0.14 * clamp01((seen.depth - PIG_FLY.depth) / 18) - 0.12 * happy };
+  return { pig, fly };
+}
 /**
  * Flock `variant` (0 the lap, 1 the figure of eight) and its dog at time t, in the
  * flock's frame: x from the anchor, depth px below the crest where each stands. Pure;
- * drawPlumberSheep draws exactly this.
+ * drawPlumberSheep draws exactly this. `dog` is the run the sheep answer; on the figure of
+ * eight that is the piglet (`pig` his pose), and `fly` is the collie sat watching.
  */
 export function plumberFlockState(t, variant = 0) {
   const v = variant ? 1 : 0;
@@ -1097,7 +1346,7 @@ export function plumberFlockState(t, variant = 0) {
     return { x: bx + px, depth: floorDepth(bd + pz), order: bd, s: sc, dir, pose, seed, whiteFace: wf,
       graze: lying ? 0 : grazing * (1 - alert), sw, hop };
   });
-  return { dog, sheep };
+  return v ? { dog, sheep, ...sheepPigState(td, D, d) } : { dog, sheep };
 }
 /**
  * SHEEP AND A WORKING COLLIE, two ways (`variant`, see FLOCK_SHEEP). Sheep over a near
@@ -1105,7 +1354,8 @@ export function plumberFlockState(t, variant = 0) {
  * two to fresh grass, a lamb skipping at its mother's side — and a collie working round
  * them, dropping into a crouch to give the flock the eye before it dashes off again.
  * Variant 0: nine sheep, one lying down, and a collie that laps the whole flock. Variant
- * 1: six in two knots, and a collie running a figure of eight round and between them.
+ * 1: six in two knots, a Babe piglet running a figure of eight round and between them, and
+ * the brown collie sat up on the crest watching him.
  * Sheep the dog comes near lift their heads to watch it, and those it passes close step
  * away from it and drift back once it has gone. See plumberFlockState for the motion.
  * Everyone stands on `seat.near` where they are.
@@ -1115,13 +1365,19 @@ export function plumberFlockState(t, variant = 0) {
 export function drawPlumberSheep(ctx, t, x, seat, paper = true, variant = 0) {
   ctx.save();
   withFinish(paper, () => {
-    const { dog, sheep } = plumberFlockState(t, variant);
+    const { dog, sheep, pig, fly } = plumberFlockState(t, variant);
     const items = sheep.map((q) => {
       const sx = x + q.x;
       return { order: q.order, draw: () => drawSheep(ctx, sx, seat.near(sx) + q.depth, q.s, q.dir, q.pose, q.graze, q.sw, 0, t, q.seed, q.whiteFace, q.hop) };
     });
     const dx = x + dog.x;
-    items.push({ order: dog.depth, draw: () => drawCollie(ctx, dx, seat.near(dx) + dog.depth, FLOCK_S * 1.05, dog.face, dog.run, dog.crouch, dog.lift, COLLIE_COATS[variant ? 1 : 0]) });
+    if (pig) {
+      const fx = x + fly.x;
+      items.push({ order: dog.depth, draw: () => drawPiglet(ctx, dx, seat.near(dx) + dog.depth, PIG_S, dog.face, { ...pig, t, seed: 3 }) });
+      items.push({ order: fly.depth, draw: () => drawSeatedCollie(ctx, fx, seat.near(fx) + fly.depth, FLOCK_S * 1.05, fly.face, { ...fly, t }) });
+    } else {
+      items.push({ order: dog.depth, draw: () => drawCollie(ctx, dx, seat.near(dx) + dog.depth, FLOCK_S * 1.05, dog.face, dog.run, dog.crouch, dog.lift, COLLIE_COATS[0]) });
+    }
     // Sheep keep their places in the queue as they are shoved (so two never swap over);
     // the dog files in by its own depth.
     items.sort((a, b) => a.order - b.order);
@@ -1129,6 +1385,15 @@ export function drawPlumberSheep(ctx, t, x, seat, paper = true, variant = 0) {
   });
   ctx.restore();
 }
+// The flock's own parts, for bake-offs that add to it (src/dev/pig-flock-candidates.js)
+// without retyping the paper cutout, the sheep, the collie or the runs. Read-only; the
+// game draws through drawPlumberSheep alone.
+export const PLUMBER_FLOCK_KIT = {
+  withFinish, cut, tone, line, flat, dot, FLOCK, COLLIE_COATS, FLOCK_S, FLOCK_DOGS, EIGHT, LAP,
+  drawSheep, drawCollie, drawPiglet, drawSeatedCollie, turnToward, PIG_S, PIG_STRIDE, PIG_HOP,
+  dogAt, floorDepth, DOG_M, DOG_STRIDE, SHOVE, SHOVE_R, SHOVE_W, ALERT_W,
+  ALERT_R, ALERT_GAIN, REACT_N, REACT_DT, REACT_FROM,
+};
 
 // ====================================================================== the patchwork
 const PATCH = {

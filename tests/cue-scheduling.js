@@ -52,6 +52,11 @@ Audio.ctx = ctx;
 Audio.master = node(); Audio.sfxGain = node(); Audio.musicGain = node();
 Audio.noiseBuf = node(); Audio.crashBuf = node();
 Audio.bpm = 120; Audio.tempo = 1; Audio.panicked = false;
+// A cue that strikes a KLNG-8 preset (gateSlam) goes through voiceSfx, whose voice rack
+// is Tone and cannot be built on this stand-in context. What this test is about is WHEN,
+// and voiceSfx is told when as `at` seconds after currentTime — so each strike is
+// recorded there, as the start it becomes.
+Audio.voiceSfx = (id, { at = 0.02 } = {}) => { starts.push(ctx.currentTime + at); return true; };
 
 // Arithmetic. 120bpm, latency 0.2s, and the cue brought forward far enough that
 // what is HEARD lands on the note rather than the silent foot of its 8ms ramp.

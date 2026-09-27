@@ -612,12 +612,20 @@ export function setSfxTrim(cue, value) {
   SFX_TRIM[cue] = value;
   return true;
 }
+// The gate slam's strikes: [seconds after the slam, strength]. Written to match the leaves
+// in stylePacks/cryptGates.js (slamShut), so change both together.
+const GATE_SLAM_HITS = [[0, 1], [0.05, 0.55], [0.31, 0.38], [0.44, 0.12], [0.51, 0.09], [0.55, 0.07], [0.66, 0.05]];
+
 export const SFX_TRIM = {
   blockBreak: 0.541, coinSpray: 0.822, hit: 0.785,
   // Levelled against 'boom', its opposite number, and deliberately far over it — the
   // biggest thing heard in the game, once a level (Peter: "giant LONG boom"). Held to
   // a -6 dBFS peak so it stays whole over the music rather than clipping into it.
   thunder: 0.47,
+  // The crypt's iron gate banging shut across the bank. Scenery, not a hazard: it sits
+  // about 3 dB under the lane hits on RMS (-33.4, blockBreak -31.3), the level the KLNG-8
+  // clang was picked at.
+  gateSlam: 0.484,
   // A shutter over the song: a small, crisp mechanism, well under the strike cues.
   cameraClick: 1.479,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
@@ -688,7 +696,7 @@ export const SFX_TRIM = {
   // ordering is the point: a barrel is the heavier thing and has to sound like
   // it, and letting the trim equalise them would have thrown away the only part
   // of the difference the player hears from across the lane.
-  punt: 1.096,
+  punt: 0.989,
   // Six noise layers plus the crash buffer sum far hotter than the two-layer
   // 'crunch' it replaces at the plow: untrimmed it peaked -6.7 dBFS, which is
   // over 'boom' and 3.5dB over 'blockBreak', and a break cue has no business
@@ -752,7 +760,7 @@ export const SFX_TRIM = {
   // Everything below this line is a cue that had no trim at all before the pass.
   switchFlick: 0.638, clickHard: 0.716, socketDrop: 0.62, boost: 0.638, slide: 0.776, plop: 1.233, die: 1.445,
   loopRun: 1.259, boostFall: 1.035, shoot: 1.622, checkpoint: 1.38, coin: 1,
-  abilityReady: 0.881, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
+  abilityReady: 0.603, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
   bridgeLay: 2.265,
   axe: 1.202,
 };
@@ -2656,6 +2664,25 @@ class AudioSys {
     src.start(t); src.stop(t + dur + 0.02);
   }
 
+  // THE CRYPT'S GATE BANGING SHUT (stylePacks/cryptGates.js), placed so its first hit is
+  // the frame the right leaf lands. The iron is a KLNG-8 preset, `gateClang` (data/voices.js)
+  // — the cymbal cluster pitched down and fed back through its resonator — picked by ear
+  // from five (Peter: "not very metallic. we can do metallic sounds with our KLNG-8").
+  // Struck once per thing the picture does, at the times it does them:
+  //   0      the right leaf slams
+  //   0.05   the left leaf, a flam behind and smaller
+  //   0.31   the bounce back onto the latch
+  //   0.44+  the latch rattling, unevenly (evenly spaced reads as a machine)
+  // Each strike goes through voiceSfx, which plays the preset on its own pool so the song
+  // underneath is never touched, at the time this cue was placed on (cueAt).
+  gateSlam() {
+    if (!this.ctx) return;
+    const at = Math.max(0, this.cueAt() - this.ctx.currentTime);
+    for (const [when, hit] of GATE_SLAM_HITS) {
+      this.voiceSfx('gateClang', { at: at + when, gain: this.cueGain * hit });
+    }
+  }
+
   explosion() {
     if (!this.ctx || !this.crashBuf) return;
     const t = this.cueAt();
@@ -4435,6 +4462,7 @@ class AudioSys {
       case 'doorClose': this.doorWhoosh(false); break;
       case 'doorSwingOpen': this.doorWhoosh(true, true); break;
       case 'doorSwingShut': this.doorWhoosh(false, true); break;
+      case 'gateSlam': this.gateSlam(); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;

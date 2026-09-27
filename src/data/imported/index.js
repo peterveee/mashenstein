@@ -103,6 +103,7 @@ import * as SPEED_HORIZON_LINES_OVERDRIVE from './speed-horizon-lines-overdrive.
 import * as SPEED_HORIZON_LINES from './speed-horizon-lines.js';
 import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
 import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
+import * as SPEED_ZONE_ORIGINAL from './speed-zone-original.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as SUPER_MARIO_WORLD from './super-mario-world.js';
 import * as TERMINAL_VELOCITY_ORIGINAL from './terminal-velocity-original.js';
@@ -203,6 +204,7 @@ export const IMPORTED_BY_ID = {
   "speed-horizon-lines": { bank: SPEED_HORIZON_LINES.bank, title: SPEED_HORIZON_LINES.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt-2": { bank: SPEED_ZONE_ALT_2.bank, title: SPEED_ZONE_ALT_2.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-zone-original": { bank: SPEED_ZONE_ORIGINAL.bank, title: SPEED_ZONE_ORIGINAL.title, group: "alternate", writable: true, alternateOf: "speed" },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "super-mario-world": { bank: SUPER_MARIO_WORLD.bank, title: SUPER_MARIO_WORLD.title, group: "copy", writable: true },
   "terminal-velocity-original": { bank: TERMINAL_VELOCITY_ORIGINAL.bank, title: TERMINAL_VELOCITY_ORIGINAL.title, group: "imported", writable: true },

@@ -41,4 +41,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-25 | `0839f59` | [2026-09-25-0839f59.html](2026-09-25-0839f59.html) | [bake-offs](2026-09-25-0839f59-lab.html) | Refactor code structure and remove redundant sections for improved readability and maintainability |
 | 2026-09-25 | `2bbd529` | [2026-09-25-2bbd529.html](2026-09-25-2bbd529.html) | [bake-offs](2026-09-25-2bbd529-lab.html) | feat: Introduce new sleigh and reindeer designs for Frost scene |
 | 2026-09-25 | `44d12b3` | [2026-09-25-44d12b3.html](2026-09-25-44d12b3.html) | [bake-offs](2026-09-25-44d12b3-lab.html) | Add wolves fire scene and candidates for Frost 3 bake-off |
+| 2026-09-27 | `18acca2` | [2026-09-27-18acca2.html](2026-09-27-18acca2.html) | [bake-offs](2026-09-27-18acca2-lab.html) | feat: add crypt enemies and headstone drawing functionality |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

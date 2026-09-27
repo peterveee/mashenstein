@@ -53,7 +53,7 @@ mkdirSync(DIR, { recursive: true });
 // One segment per cabinet: its song, its hero (hidden, but the speed trap's mugshot is
 // of him), and the card that opens it.
 const CABS = {
-  plumber: { name: 'PLUMBER PANIC', song: plumberSong, hero: 'lorenzo' },
+  plumber: { name: 'FIELD SERVICE', song: plumberSong, hero: 'lorenzo' },
   speed: { name: 'SPEED ZONE', song: speedSong, hero: 'rusty' },
   frost: { name: 'FROST FORTRESS', song: frostSong, hero: 'grumpos' },
 };

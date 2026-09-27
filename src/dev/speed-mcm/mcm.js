@@ -387,7 +387,7 @@ function burst(ctx, x, y, R, rot, col, w = 0.6, n = 8) {
 }
 
 // ------------------------------------------------------------------ sky
-function sky(ctx, f, pal, P) {
+function sky(ctx, f, pal, P, hook) {
   ctx.fillStyle = pal.sky[0];
   ctx.fillRect(-40, -80, f.W + 80, f.H + 160);
   // Stepped flat bands toward the horizon, each edge a slow lazy wave.
@@ -417,6 +417,7 @@ function sky(ctx, f, pal, P) {
   ctx.fill();
   ctx.globalAlpha = 1;
   sun(ctx, f, pal, P);
+  hook?.(ctx, f, pal, P);
   for (const c of f.clouds) cloud(ctx, c, pal, P);
 }
 
@@ -462,6 +463,21 @@ function cloud(ctx, c, pal, P) {
   const under = [X(0, 0.5), X(0.1, -0.05), X(0.5, 0.05), X(0.95, -0.1), X(1.02, 0.55), X(0.8, 1.05), X(0.45, 0.62), X(0.15, 1.02)];
   flat(ctx, under, pal.cloud[odd ? 1 : 0], { smooth: true, a: pal.cloudA[0] });
   flat(ctx, main, pal.cloud[odd ? 0 : 1], { smooth: true, a: pal.cloudA[1], tex: P.dryL, ta: 0.15, ax: x, ay: y });
+  // Lit from below once the sun is low (`cloudGlow` 0..1, only the time-of-day arc sets
+  // it): a crescent of `cloudLit` along the underside, the body shifted up cut out of it.
+  if ((pal.cloudGlow || 0) > 0.01) {
+    ctx.save();
+    ctx.beginPath();
+    pathBlob(ctx, main);
+    ctx.clip();
+    ctx.beginPath();
+    pathBlob(ctx, main);
+    pathBlob(ctx, main.map(([px, py]) => [px + w * 0.03, py - h * (0.3 + 0.12 * pal.cloudGlow)]));
+    ctx.fillStyle = pal.cloudLit;
+    ctx.globalAlpha = Math.min(1, pal.cloudGlow * 1.1);
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
   inkBlob(ctx, main, 60 + c.i * 7, [-2.2, -1.6], pal.ink, { w: 0.6, a: pal.cloudInk, dash: [w * 0.9, w * 0.4, w * 0.5, w * 0.6] });
 }
 
@@ -1147,34 +1163,47 @@ function weed(ctx, w, pal) {
 // ------------------------------------------------------------------ the painter
 // `o.coyote` swaps the coyote painter (the coyote bake-off's seam): any
 // draw(ctx, t, x, ledgeTop, facing, colours, opts) — see coyote-candidates.js.
+// `o.hooks.{sky,far,mid,near,top}(ctx, f, pal, P)` paint extra things into a layer (sky:
+// after the sun, before the clouds) (the
+// object sheet's seam); `o.farItems === false` leaves the plan's wind pump out, for a
+// card that stands another prop on that cap.
 function makePaint(pal) {
-  return (ctx, f, o = {}) => {
-    const P = pats(ctx, pal);
-    sky(ctx, f, pal, P);
-    if (f.butte) butte(ctx, f.butte, pal, P);
-    const far = f.layers.far;
-    // The far plain between the mesas.
-    ctx.fillStyle = pal.plain;
-    ctx.fillRect(-40, 197, f.W + 80, 60);
-    for (const m of far.mesas) if (!m.big) mesa(ctx, m, pal, P);
-    for (const m of far.mesas) if (m.big) mesa(ctx, m, pal, P);
-    for (const it of far.items) if (it.kind === 'pump') pump(ctx, it, f.t, pal, P);
-    for (const v of f.vultures) vulture(ctx, v, pal);
-    const mid = f.layers.mid;
-    smoke(ctx, f.smoke, pal);
-    poles(ctx, mid, pal);
-    ridgeLayer(ctx, mid, pal, P, 'mid');
-    for (const d of mid.devils) devil(ctx, d, f.t, pal);
-    const near = f.layers.near;
-    for (const it of near.items) {
-      if (it.kind === 'saguaro') saguaro(ctx, it, pal);
-      else if (it.kind === 'sage') sage(ctx, it, pal);
-    }
-    ridgeLayer(ctx, near, pal, P, 'near');
-    for (const it of near.items) if (it.kind === 'rock') rock(ctx, it, pal);
-    if (near.coyote) coyote(ctx, near.coyote, f, pal, P, o.coyote || drawMcmCoyote);
-    for (const w of near.weeds) weed(ctx, w, pal);
-  };
+  return (ctx, f, o = {}) => paintWith(pal, ctx, f, o);
+}
+
+// The painter with its palette passed per call, for a palette that changes over time
+// (palette-arc.js). `pal.id` keys the baked textures, so a blend names a keyframe's.
+export function paintWith(pal, ctx, f, o = {}) {
+  const P = pats(ctx, pal);
+  const hooks = o.hooks || {};
+  sky(ctx, f, pal, P, hooks.sky);
+  if (f.butte) butte(ctx, f.butte, pal, P);
+  const far = f.layers.far;
+  // The far plain between the mesas.
+  ctx.fillStyle = pal.plain;
+  ctx.fillRect(-40, 197, f.W + 80, 60);
+  for (const m of far.mesas) if (!m.big) mesa(ctx, m, pal, P);
+  for (const m of far.mesas) if (m.big) mesa(ctx, m, pal, P);
+  if (o.farItems !== false) for (const it of far.items) if (it.kind === 'pump') pump(ctx, it, f.t, pal, P);
+  hooks.far?.(ctx, f, pal, P);
+  for (const v of f.vultures) vulture(ctx, v, pal);
+  const mid = f.layers.mid;
+  smoke(ctx, f.smoke, pal);
+  poles(ctx, mid, pal);
+  ridgeLayer(ctx, mid, pal, P, 'mid');
+  for (const d of mid.devils) devil(ctx, d, f.t, pal);
+  hooks.mid?.(ctx, f, pal, P);
+  const near = f.layers.near;
+  for (const it of near.items) {
+    if (it.kind === 'saguaro') saguaro(ctx, it, pal);
+    else if (it.kind === 'sage') sage(ctx, it, pal);
+  }
+  ridgeLayer(ctx, near, pal, P, 'near');
+  for (const it of near.items) if (it.kind === 'rock') rock(ctx, it, pal);
+  if (near.coyote) coyote(ctx, near.coyote, f, pal, P, o.coyote || drawMcmCoyote);
+  for (const w of near.weeds) weed(ctx, w, pal);
+  hooks.near?.(ctx, f, pal, P);
+  hooks.top?.(ctx, f, pal, P);
 }
 
 export const MCM_SUNSET = {
@@ -1203,3 +1232,10 @@ export function drawCoyoteLedge(ctx, x, crestY, palId) {
   const pal = MCM_PALETTES[palId];
   ledge(ctx, x, crestY, pal, pats(ctx, pal));
 }
+
+// The hand itself, for the object sheet's painters (objects.js).
+export const MCM_KIT = {
+  REG, REG_SMALL, hash, rng, smooth, pats, texFill,
+  pathPoly, pathBlob, pathPill, flat, ink, inkBlob, inkLine, limb, disc, circlePts, burst,
+  weed, devil,
+};

@@ -50,6 +50,7 @@ import { frostFortressShape } from './frostFortresses.js';
 import { FROST_COMBINED_SCENERY_FINISH } from './frostSceneryFinish.js';
 import { drawCryptGouache, cryptNight } from './cryptGouache.js';
 import { CRYPT_LIFE, cryptWitches, paintCryptWitch } from './cryptLife.js';
+import { gateCreak, gateBank } from './cryptGates.js';
 
 import {
   PAPER_MATERIALS,
@@ -10077,6 +10078,14 @@ function gouachePack(settings) {
         // The graveyard's animals and ghosts (cryptLife.js), each on its depth layer; a lab
         // card can add the idea it is studying, or leave the shipped life out.
         study: [...(bc?.cryptLife === false ? [] : CRYPT_LIFE), ...(bc?.cryptStudy ? [bc.cryptStudy] : [])],
+        // The near bank's gates (cryptGates.js): they creak ajar, and in landscape one in
+        // four slams shut in the runner's face (never in portrait, where he stands too far
+        // across the picture for it to read). A lab card can hand in its own painter.
+        gate: bc?.cryptGate || (portrait ? gateCreak : gateBank),
+        // The run's scheduler for the slam's clang (run.js cryptGateSlam); none on a card.
+        gateCue: typeof bc?.gateCue === 'function' ? bc.gateCue : null,
+        // And whether it may slam at all (not in or near a tunnel); none on a card.
+        gateMaySlam: typeof bc?.gateMaySlam === 'function' ? bc.gateMaySlam : null,
       };
       view.witches = cryptWitches(t, bc?.progress, view);
       view.witchPaint = paintCryptWitch;
