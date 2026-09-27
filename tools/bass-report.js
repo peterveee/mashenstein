@@ -160,6 +160,7 @@ console.log('median    ' + median.map((v) => cell(`${v.toFixed(1)}   `)).join(''
 console.log('\n+N / -N: that many dB more / less of the band than the median song carries.');
 
 // ------------------------------------------------------------------- lanes
+const laneReports = {};
 if (LANES) {
   const focus = named.length ? named : [];
   if (!focus.length) console.log('\n--lanes needs a song id: node tools/bass-report.js neon --lanes');
@@ -181,9 +182,11 @@ if (LANES) {
     laneRows.sort((a, b) => (b.e[0] + b.e[1]) - (a.e[0] + a.e[1]));
     console.log(`\n${id}: who carries the low end — ${lanes.length} lanes soloed; each one's level vs the song's loudness, and its share of the band`);
     console.log('lane              ' + BANDS.slice(0, LOW_BANDS).map(([name]) => `${name.padStart(8)} share`).join('  '));
+    laneReports[id] = { at: new Date().toISOString(), hash: rows.find((r) => r.id === id).hash, count: lanes.length, rows: [] };
     for (const l of laneRows) {
       const shares = l.e.map((e, b) => (totals[b] > 0 ? (100 * e) / totals[b] : 0));
       if (Math.max(...shares) < 2) continue;
+      laneReports[id].rows.push({ key: l.key, levels: l.e.map((e) => dB(e) - songLufs), shares });
       console.log(l.key.slice(0, 16).padEnd(18) + l.e.map((e, b) => `${(dB(e) - songLufs).toFixed(1).padStart(8)} ${`${shares[b].toFixed(0)}%`.padStart(5)}`).join('  '));
     }
     console.log('(lanes under 2% of every low band are left off. Soloed lanes hit the master compressor');
@@ -192,3 +195,22 @@ if (LANES) {
 }
 
 await renderer?.close();
+
+// THE REPORT FILE, for the desk's /reports page (tools/desk.js). Lane breakdowns are
+// slow, so each song's is kept until that song is broken down again; its hash is the
+// song's at the time, so the page can say when a mix has moved on since.
+const reportPath = join(root, 'work/local/reports/bass-report.json');
+mkdirSync(dirname(reportPath), { recursive: true });
+let previousLanes = {};
+try { previousLanes = JSON.parse(readFileSync(reportPath, 'utf8')).lanes || {}; } catch { /* first run */ }
+writeFileSync(reportPath, JSON.stringify({
+  at: new Date().toISOString(),
+  repeats,
+  flag: FLAG,
+  finished: FINISHED,
+  bands: BANDS.map(([name, lo, hi]) => ({ name, lo, hi })),
+  lowBands: LOW_BANDS,
+  median,
+  rows: rows.map((r) => ({ id: r.id, lufs: r.lufs, levels: r.levels, hash: r.hash, inMedian: FINISHED.includes(r.id) })),
+  lanes: { ...previousLanes, ...laneReports },
+}, null, 2));

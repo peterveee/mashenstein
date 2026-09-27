@@ -114,6 +114,47 @@ const ACTIONS = [
     openPath: () => null,
   },
 ];
+// AUDIO REPORTS: the two song-balance tools, run from here and read on /reports.
+// Each tool writes its own latest result to work/local/reports/ whether it was
+// started from this desk or from a terminal, so the page is always the last run
+// and never a second copy of the numbers.
+//
+// Under `nice`, because both render through headless Chromium for minutes at a
+// time and the mixer's playback is the thing on this machine that must not glitch
+// (the renders inherit the niceness from the node that spawns them).
+const REPORTS_DIR = join(root, 'work/local/reports');
+const reportHref = (file, anchor) => () => (existsSync(join(REPORTS_DIR, file)) ? `/reports#${anchor}` : null);
+const niced = (args) => ['nice', ['-n', '15', process.execPath, ...args]];
+
+ACTIONS.push(
+  {
+    id: 'songlevels', group: 'audio', label: 'SONG LEVELS: MEASURE',
+    blurb: 'renders the nine cabinet songs and measures each against the -21 LUFS line (tools/song-levels.js). Writes only the report. About ten minutes.',
+    steps: [niced(['tools/song-levels.js'])],
+    openPath: reportHref('song-levels.json', 'levels'),
+  },
+  {
+    id: 'songlevelsapply', group: 'audio', label: 'SONG LEVELS: APPLY',
+    blurb: 'measures, then writes each off-line song’s master onto the line — edits src/data/songs/. Save the mixer first: a mixer save afterwards puts the old master back. Compressed songs can need a second run.',
+    confirm: true,
+    steps: [niced(['tools/song-levels.js', '--apply'])],
+    openPath: reportHref('song-levels.json', 'levels'),
+  },
+  {
+    id: 'bassreport', group: 'audio', label: 'BASS REPORT',
+    blurb: 'band balance of every finished cabinet against their median (tools/bass-report.js). Re-renders only the songs that changed; about a minute from cold. Writes only the report.',
+    steps: [niced(['tools/bass-report.js'])],
+    openPath: reportHref('bass-report.json', 'bass'),
+  },
+  {
+    id: 'basslanes', group: 'audio', label: 'BASS REPORT: LANES',
+    blurb: 'solos every lane of the song(s) below to show which strip carries the low end — where a Channel EQ would go. About ten minutes for a 30-lane song.',
+    needsIds: true,
+    input: 'song id, e.g. neon',
+    steps: (args) => [niced(['tools/bass-report.js', ...idsFrom(args), '--lanes'])],
+    openPath: reportHref('bass-report.json', 'bass'),
+  },
+);
 const ACTION_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
 
 // The index is rebuilt from disk on every archive run (see archive-gallery.js),
@@ -289,6 +330,9 @@ function actionStatus(action) {
     label: action.label,
     blurb: action.blurb,
     needsIds: !!action.needsIds,
+    group: action.group || 'galleries',
+    input: action.input || null,
+    confirm: !!action.confirm,
     running: !!state?.running,
     code: state?.code ?? null,
     log: state?.log.slice(-8) ?? [],
@@ -344,6 +388,24 @@ async function handle(req, res) {
     return json(res, 200, await stopBrowser(pid));
   }
 
+  // The AUDIO REPORTS page and the two result files it draws from. Missing files are
+  // null rather than an error: a report that has never been run is a normal state.
+  if (url.pathname === '/reports' && req.method === 'GET') {
+    const html = readFileSync(join(root, 'tools/desk-reports.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(html);
+  }
+  if (url.pathname === '/api/reports' && req.method === 'GET') {
+    const read = (file) => {
+      try { return JSON.parse(readFileSync(join(REPORTS_DIR, file), 'utf8')); } catch { return null; }
+    };
+    return json(res, 200, {
+      levels: read('song-levels.json'),
+      bass: read('bass-report.json'),
+      running: ACTIONS.filter((a) => a.group === 'audio' && runs.get(a.id)?.running).map((a) => a.label),
+    });
+  }
+
   if (url.pathname.startsWith('/galleries/') && req.method === 'GET') {
     // Serves the tracked galleries/ directory only -- resolve and check the
     // result still starts with that directory before ever touching disk, so
@@ -374,6 +436,7 @@ async function handle(req, res) {
         req.on('end', () => resolve(body));
       });
       try { args = JSON.parse(raw || '{}'); } catch { args = {}; }
+      if (!idsFrom(args).length) return json(res, 400, { ok: false, error: `${action.label} needs at least one id` });
     }
     const alreadyRunning = !!runs.get(action.id)?.running;
     runAction(action, args); // fire-and-forget; /api/status polls its progress
@@ -432,7 +495,7 @@ async function handle(req, res) {
 // data about where the tools live.
 const asServer = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
-export { TOOLS, probe };
+export { TOOLS, ACTIONS, probe };
 
 if (asServer) startDesk();
 

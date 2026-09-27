@@ -34,14 +34,28 @@ export const NEON_STATIONS = [
 ];
 export const neonBoardText = (st = NEON_STATIONS[3]) => `つぎは ${st.kana}　　NEXT STOP: ${st.en}　　`;
 export const NEON_BOARD_TEXT = neonBoardText();
-export const NEON_ANNOUNCE_KANA = 'まもなく でんしゃが まいります。';
+// THE PLATFORM'S CALL, one per neon stage, for the first train of the attempt that
+// lands (Peter, 27 Sep: "mix it up"). `at` is when it is made: 'flight' as the train
+// starts flying in, 'doors' as its wheels touch and the doors open — just ahead of the
+// hero reaching its tail. Indexed by stage number; a stage without its own uses 1's.
+export const NEON_PLATFORM_CALLS = {
+  1: { kana: 'みぎがわの ドアが ひらきます。', en: 'THE DOORS ON THE RIGHT WILL OPEN.', at: 'doors' },
+  2: { kana: 'まもなく でんしゃが まいります。', en: 'A TRAIN IS NOW APPROACHING.', at: 'flight' },
+  // 足元にご注意ください — the platform's warning about the step up into the car.
+  3: { kana: 'あしもとに ごちゅういください。', en: 'PLEASE MIND YOUR STEP.', at: 'doors' },
+};
+export const neonPlatformCall = (stageIndex) =>
+  NEON_PLATFORM_CALLS[stageIndex] || NEON_PLATFORM_CALLS[1];
+// What the hero says the first time in a stage he runs INTO a train rather than
+// jumping onto it (Peter, 27 Sep): excuse me, shouldering in with the commuters.
+export const NEON_SORRY_KANA = 'すみません！';
 
 export const KANA_FACE = "'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif";
 export const KANA_WEIGHT = 800;
 export const BOARD_FACE = "'DotGothic16', 'Hiragino Sans', 'Noto Sans JP', monospace";
 
 const glyphs = (...texts) => [...new Set([...texts.join('')])].filter((c) => c.trim()).join('');
-const ROUNDED_TEXT = glyphs(...NEON_SIGN_WORDS, ...NEON_BACK_SIGN_WORDS, NEON_ANNOUNCE_KANA, '！');
+const ROUNDED_TEXT = glyphs(...NEON_SIGN_WORDS, ...NEON_BACK_SIGN_WORDS, ...Object.values(NEON_PLATFORM_CALLS).map((c) => c.kana), NEON_SORRY_KANA, '！');
 const BOARD_TEXT = glyphs(...NEON_STATIONS.map((st) => neonBoardText(st)));
 
 let requested = false;

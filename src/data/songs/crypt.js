@@ -400,7 +400,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -1.9,
+  master: -4.1,
   masterEffects: [{ id: "mbCompN", params: { lowFrequency: 250, highFrequency: 2400, "low.threshold": -28, "low.ratio": 2.5, "low.attack": 0.05, "low.release": 0.3, "low.knee": 14, "mid.threshold": -22, "mid.ratio": 2.5, "mid.attack": 0.025, "mid.release": 0.16, "mid.knee": 18, "high.threshold": -24, "high.ratio": 2, "high.attack": 0.02, "high.release": 0.12, "high.knee": 18 } }],
   layers: [{ key: "bass2", from: "bass", independent: true }, { key: "organChords2", from: "organChords", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "bass3", from: "bass", independent: true }, { key: "organChords3", from: "organChords", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "bass4", from: "bass", independent: true }, { key: "organChords4", from: "organChords", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "hats2", from: "hats", independent: true }],
   order: ["kick","clap","hats","rim","bass","bass2","bass3","bass4","lead","lead3","lead2","lead4","lead5","twinkle","lead6","chords","organChords","organChords2","organChords3","organChords4"],

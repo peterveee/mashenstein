@@ -14,7 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TOOLS } from '../tools/desk.js';
+import { TOOLS, ACTIONS } from '../tools/desk.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -69,6 +69,27 @@ ok(shell.includes('/api/status') && shell.includes('data-tool'),
 
 ok(shell.includes('/api/browsers/kill/') && shell.includes('data-browser'),
   'the page lists background browsers and can kill one');
+
+// AUDIO REPORTS: each RUN spawns a real tool, and /reports reads the file that tool
+// writes. Both halves are checked, because a renamed report file fails as an empty
+// page that says "not run yet" forever, which reads as nothing being wrong.
+const audio = ACTIONS.filter((a) => a.group === 'audio');
+ok(audio.length > 0, `the desk runs ${audio.length} audio reports`);
+const deskSrc = readFileSync(join(root, 'tools/desk.js'), 'utf8');
+for (const a of audio) {
+  const steps = typeof a.steps === 'function' ? a.steps({ ids: ['neon'] }) : a.steps;
+  for (const [, args] of steps) {
+    const script = args.find((x) => /^tools\/.*\.js$/.test(x));
+    ok(script && existsSync(join(root, script)), `${a.id}: runs ${script}, which exists`);
+    const file = script && deskSrc.match(new RegExp(`'([a-z-]+\\.json)'`, 'g'));
+    const writes = script && readFileSync(join(root, script), 'utf8');
+    ok(file?.some((f) => writes.includes(`work/local/reports/${f.slice(1, -1)}`)),
+      `${a.id}: ${script} writes a report file the desk reads`);
+  }
+}
+const reports = readFileSync(join(root, 'tools/desk-reports.html'), 'utf8');
+ok(reports.includes('/api/reports') && reports.includes('id="levels"') && reports.includes('id="bass"'),
+  'the reports page reads /api/reports and has the #levels and #bass anchors the OPEN buttons use');
 
 console.log(failures ? 'DESK: FAILED' : 'DESK: PASSED');
 process.exit(failures ? 1 : 0);

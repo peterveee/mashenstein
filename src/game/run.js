@@ -57,7 +57,7 @@ import {
   neonStrikeFlash, neonStrikeRadius, NEON_STRIKE_SECONDS, neonPreFlicker, NEON_STRIKE_BEATS, neonStrikeLight,
   neonTowerFlare, neonSignSparks,
 } from '../engine/stylePacks/neonMoods.js';
-import { ensureKanaFonts, NEON_ANNOUNCE_KANA } from '../engine/kana.js';
+import { ensureKanaFonts, neonPlatformCall, NEON_SORRY_KANA } from '../engine/kana.js';
 import { TRON_PALETTE } from '../sprites/train.js';
 import { setGlowSprites } from '../sprites/props.js';
 import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js';
@@ -506,6 +506,12 @@ const SIGN_LEAD = 2;
 // airtime is under a second) with room for a bounced landing, short enough that
 // a line never reads as answering something that has scrolled off.
 const SPEECH_PATIENCE = 4;
+// A neon platform call made at 'doors' (updateNeonSky) goes up this far before the
+// hero draws level with the train's tail — AS HE APPROACHES it (Peter, 27 Sep), not once he
+// is there. 260 is about where its wheels touch and the doors start to open
+// (terrain.js: TRAIN_FLIGHT_DOWN of the flight is camera 314 short of the tail,
+// the hero stands 59 in), so the call goes with the doors — ~1.5 s at neon speed.
+const NEON_DOORS_LEAD_PX = 260;
 // Which faces a JUMP may roll. expressionFor's `jf` lookup (toons.js) knows
 // four — 0 surprised, 1 excited, 2 determined, 3 startled — and only the middle
 // two are rolled here.
@@ -2240,6 +2246,9 @@ export class RunState {
     this.unplugged = opts.difficulty === 5;
     this.startingPowerup = opts.startingPowerup || null;
     this.introDone = false; // constructor, not enter(): death-restarts must not replay the intro stall
+    // SUMIMASEN, once a stage: the first time the hero runs into a train instead of
+    // jumping onto it — any train but the first to land (updateNeonSky). Constructor, not enter(), so a retry does not say it again.
+    this.neonSorrySaid = false;
     // THE ROAD'S OWN BEAT NUMBERING, and it outlives a death. A beat stage's
     // retry keeps the song playing and puts the SAME road back, moved to the
     // beat the song has reached (see rhythmRespawnPlan) — so where the lane
@@ -5019,8 +5028,8 @@ export class RunState {
    * start of the others. The WHEN is src/engine/stylePacks/neonMoods.js; this keeps its
    * state for the attempt and puts the thunder on the song clock.
    *
-   * Also the platform announcement: once an attempt, the first time a train is standing
-   * on screen — まもなく でんしゃが まいります, "a train is now approaching".
+   * Also the platform's call: once an attempt, for the first train that lands — a
+   * different line each stage (kana.js NEON_PLATFORM_CALLS).
    */
   /**
    * THE STRUCK TOWER, planned (storm-bolt bake-off L; the tower and its sign are the
@@ -5198,7 +5207,7 @@ export class RunState {
     if (!this.neonSky) {
       this.neonSky = {
         turned: neonStartsTurned(stageIndex, beat), thundered: false,
-        prevBeat: beat, t: 0, strikeT: null, strikeFrom: null, placed: null, announced: false,
+        prevBeat: beat, t: 0, strikeT: null, strikeFrom: null, placed: null, platformTrain: null, platformSaid: false,
       };
     }
     const sky = this.neonSky;
@@ -5258,16 +5267,18 @@ export class RunState {
       }
     }
     this.updateTrainLandingSparks(dt);
-    if (!sky.announced && this.routes?.length) {
-      for (const r of this.routes) {
-        if (r.kind !== 'island' || (r.rise || 0) < 24) continue;
-        const onScreen = r.x - this.camX < W * 0.9 && r.x + r.w - this.camX > PLAYER_X + 40;
-        if (onScreen && !trainArrival(this.camX, r)) {
-          sky.announced = true;
-          this.say({ text: 'A TRAIN IS NOW APPROACHING.', kana: NEON_ANNOUNCE_KANA, t: 3.4, who: null });
-          break;
-        }
-      }
+    // THE PLATFORM'S CALL, for the first train of the attempt that LANDS (the ones
+    // before the turn only fly past) — a different one each stage (kana.js
+    // NEON_PLATFORM_CALLS). Its fate is decided as its flight begins, so a 'flight'
+    // call goes up then; a 'doors' call waits until the hero is coming up to its REAR
+    // — the tail, which is the route's start; the nose is ahead of him.
+    sky.platformTrain ||= this.routes?.find((r) => r.fate === 'land') || null;
+    const due = sky.platformTrain;
+    const call = neonPlatformCall(stageIndex);
+    if (due && !sky.platformSaid && (call.at === 'flight'
+      || this.playerWorldX() >= due.x - NEON_DOORS_LEAD_PX)) {
+      sky.platformSaid = true;
+      this.sayNow({ text: call.en, kana: call.kana, t: 3.4, who: null, platform: true });
     }
   }
 
@@ -6201,6 +6212,19 @@ export class RunState {
     // boarded is standing ON that roof and the sky is his limit again.
     this.insideTrain = this.route ? null
       : neonTrainAround(this.cabinet, this.routes, this.camX, this.playerWorldX(), this.player.y);
+    // Not in the first train to land, though: it already has a card of its own (the
+    // platform's call), and the two would land back to back.
+    if (this.insideTrain && !this.neonSorrySaid
+      && this.insideTrain !== this.neonSky?.platformTrain) {
+      this.neonSorrySaid = true;
+      // WHILE HE IS IN THE CAR, not whenever the queue gets to it — he often comes
+      // in through the door mid-hop (sayNow). Held for the whole ride, then taken
+      // down at the front door.
+      this.sayNow({ text: 'SUMIMASEN!', kana: NEON_SORRY_KANA, t: 60,
+        who: this.relay.current, train: this.insideTrain });
+    } else if (this.speech?.train && this.speech.train !== this.insideTrain) {
+      this.speech = null;
+    }
     // The step up onto the car floor, and back down out of the front door.
     // Eased over a few frames so it reads as a step rather than a pop.
     const floorTarget = this.insideTrain ? TRAIN_FLOOR_LIFT : 0;
@@ -10407,6 +10431,18 @@ export class RunState {
     if (!this.speechSettled() && this.speechWaitT < SPEECH_PATIENCE) return;
     const next = this.speechQueue.shift();
     this.speech = { ...next, page: 0, pageDuration: next.pageDuration ?? next.t };
+    this.speechWaitT = 0;
+  }
+
+  /**
+   * Say a line NOW, for the ones tied to a place on the lane (the neon platform
+   * calls, SUMIMASEN). say() would wait for a line already up and for the hero to
+   * land, and by then the train has gone by. Whatever it cuts off goes back to the
+   * head of the queue — unless that is a platform call too, which is stale by now.
+   */
+  sayNow(line) {
+    if (this.speech && !this.speech.platform) this.speechQueue.unshift(this.speech);
+    this.speech = { ...line, page: 0, pageDuration: line.pageDuration ?? line.t };
     this.speechWaitT = 0;
   }
 

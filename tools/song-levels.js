@@ -154,15 +154,29 @@ for (const id of songs) {
 rows.sort((a, b) => b.loud - a.loud);
 console.log(`\ncabinet songs, levelled to ${target.toFixed(1)} LUFS (integrated, gated, ${repeats} loop passes)\n`);
 console.log('song        secs    peak    loud    master   ->  new master');
+const at = new Date().toISOString();
 for (const r of rows) {
   const move = Math.abs(r.trim) >= DEADBAND;
   const next = Math.round((r.master + r.trim) * 10) / 10;
   // A trim that pushes the peak past -0.5 dBFS is flagged rather than refused:
   // it is the mix that wants looking at, and this tool does not get to decide.
-  const clips = r.peak + r.trim > -0.5 ? '  ** peak would clip **' : '';
-  console.log(`${r.id.padEnd(10)} ${r.secs.toFixed(0).padStart(4)}  ${r.peak.toFixed(1).padStart(6)}  ${r.loud.toFixed(1).padStart(6)}  ${r.master.toFixed(1).padStart(6)}   ->  ${move ? next.toFixed(1).padStart(5) : '    —'}${clips}`);
+  const clips = r.peak + r.trim > -0.5;
+  console.log(`${r.id.padEnd(10)} ${r.secs.toFixed(0).padStart(4)}  ${r.peak.toFixed(1).padStart(6)}  ${r.loud.toFixed(1).padStart(6)}  ${r.master.toFixed(1).padStart(6)}   ->  ${move ? next.toFixed(1).padStart(5) : '    —'}${clips ? '  ** peak would clip **' : ''}`);
   if (APPLY && move) setMaster(r.id, next);
+  Object.assign(r, { at, next: move ? next : null, clips, applied: APPLY && move });
 }
+
+// THE REPORT FILE, for the desk's /reports page (tools/desk.js). Merged by song, so
+// measuring one song does not wipe the other eight off the page; each row carries
+// when it was measured.
+const reportPath = join(root, 'work/local/reports/song-levels.json');
+mkdirSync(dirname(reportPath), { recursive: true });
+let previous = [];
+try { previous = JSON.parse(readFileSync(reportPath, 'utf8')).rows || []; } catch { /* first run */ }
+const merged = [...previous.filter((p) => !rows.some((r) => r.id === p.id)), ...rows]
+  .filter((r) => CABINETS.includes(r.id))
+  .sort((a, b) => CABINETS.indexOf(a.id) - CABINETS.indexOf(b.id));
+writeFileSync(reportPath, JSON.stringify({ at, target, deadband: DEADBAND, repeats, applied: APPLY, rows: merged }, null, 2));
 const moved = rows.filter((r) => Math.abs(r.trim) >= DEADBAND).length;
 console.log(APPLY
   ? `\napplied ${moved} trim(s). Re-run without --apply to confirm they landed.`

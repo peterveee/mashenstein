@@ -1111,7 +1111,8 @@ function portraitChatTextScale(speech, channel) {
     .slice(page * maxLines, page * maxLines + maxLines);
   const fits = (scale) => {
     const lines = pageLinesAt(scale);
-    const textHeight = lines.length * SPEECH_ROW * scale;
+    // A kana row (drawSpeech) rides over the English, and has to fit too.
+    const textHeight = lines.length * SPEECH_ROW * scale + (speech?.kana ? 13 * scale : 0);
     // Padding belongs to the fixed plate, not the variable type scale.
     return textHeight + PORTRAIT_CHAT_PADDING * panelScale <= cardHeight + 1e-9;
   };
@@ -3005,7 +3006,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
     const textOpts = opts.textScale == null ? opts : { ...opts, scale: s };
     const lines = speechPageLines(speech, textOpts);
     // A line in JAPANESE over the English, when the card carries one — the neon
-    // cabinet's platform announcement (まもなく でんしゃが まいります). Drawn in the kana
+    // cabinet's doors call (みぎがわの ドアが ひらきます). Drawn in the kana
     // face (engine/kana.js), since the game's own font has no kana; the English under
     // it is the card's ordinary text, so it reads for everyone.
     const kana = speech.kana || null;
@@ -3059,8 +3060,20 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const ROW = SPEECH_ROW * s;
   const textOpts = opts.textScale == null ? opts : { ...opts, scale: s };
   const lines = speechPageLines(speech, textOpts);
-  const tw = Math.max(showName ? textWidth(name, s) : 0, ...lines.map((line) => textWidth(line, s)));
-  const textH = (lines.length + (showName ? 1 : 0)) * ROW;
+  // A hero's line can carry JAPANESE too (the neon SUMIMASEN): its own row between
+  // the name and the English, in the kana face, as on the announcement card above.
+  const kana = speech.kana || null;
+  const kanaPx = 10 * s;
+  const kanaRow = kana ? 13 * s : 0;
+  let kanaW = 0;
+  if (kana) {
+    ctx.save();
+    ctx.font = `${KANA_WEIGHT} ${kanaPx}px ${KANA_FACE}`;
+    kanaW = ctx.measureText(kana).width;
+    ctx.restore();
+  }
+  const tw = Math.max(showName ? textWidth(name, s) : 0, kanaW, ...lines.map((line) => textWidth(line, s)));
+  const textH = (lines.length + (showName ? 1 : 0)) * ROW + kanaRow;
   const h = fixedCardHeight ? Number(opts.cardHeight)
     : Math.max(FACE_H + 6 * panelScale, textH + 8 * panelScale);
   const w = fixedCardWidth ? Number(opts.cardWidth) : PAD + FACE_W + GAP + tw + PAD;
@@ -3090,8 +3103,18 @@ export function drawSpeech(ctx, speech, opts = {}) {
   if (showName) {
     rawDrawText(ctx, name, tx, textY(textBlockTop + ROW / 2, s), nameInk, s);
   }
+  const bodyTop = textBlockTop + (showName ? ROW : 0) + kanaRow;
+  if (kana) {
+    ctx.save();
+    ctx.font = `${KANA_WEIGHT} ${kanaPx}px ${KANA_FACE}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = nameInk;
+    ctx.fillText(kana, tx, bodyTop - kanaRow / 2 + s);
+    ctx.restore();
+  }
   lines.forEach((line, i) => rawDrawText(ctx, line, tx,
-    textY(textBlockTop + (i + (showName ? 1 : 0) + 0.5) * ROW, s), ink, s));
+    textY(bodyTop + (i + 0.5) * ROW, s), ink, s));
 }
 
 // ACT announcement: full-screen corporate-glitch card over the frozen world.

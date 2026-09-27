@@ -86,7 +86,7 @@ import { drawMcgfnPlate } from '../src/sprites/mcgfn.js';
 import {
   drawNeonBolt, neonStrikeFlash, neonStrikeRadius, NEON_MINOR_TURN_BEAT,
 } from '../src/engine/stylePacks/neonMoods.js';
-import { ensureKanaFonts, NEON_ANNOUNCE_KANA } from '../src/engine/kana.js';
+import { ensureKanaFonts, NEON_PLATFORM_CALLS } from '../src/engine/kana.js';
 import { drawIdeaScene, drawIdeaCloseUp } from '../src/dev/idea-scene.js';
 import { SPEED_SIGN_GAGS } from '../src/dev/speed-sign-gags.js';
 import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
@@ -2401,7 +2401,7 @@ function propNominalSize(name) {
 // neon-1 opens at golden hour and a lightning strike turns it to night on the bar the
 // song turns minor; the aurora comes up halfway through neon-1 and is up from the start
 // of neon-2 and -3. Blade signs hang off a few towers, the trains carry a destination
-// board, and a train's first arrival is announced. Everything on these cards is the
+// board, and the first train to land gets the doors call. Everything on these cards is the
 // painter the game runs — the moods are the neon pack's own (NEON_GOLDEN_MOOD,
 // neonNightMood), the strike is src/engine/stylePacks/neonMoods.js.
 {
@@ -2413,7 +2413,7 @@ function propNominalSize(name) {
     + `turns minor (beat ${NEON_MINOR_TURN_BEAT}, bar 15): a neon bolt lands on the skyline and the night `
     + 'spreads out from the hit. The AURORA comes up halfway through neon-1 and is up from the first '
     + 'frame of neon-2 and neon-3. A few towers carry a vertical sign — never two on screen; the '
-    + 'middle cars carry a scrolling destination board; the first train to stand on screen is announced.');
+    + 'middle cars carry a scrolling destination board; the first train to land gets the doors call.');
 
   const drone = makeObstacle('drone', 0);
   const target = makeObstacle('target', 0);
@@ -2531,7 +2531,7 @@ function propNominalSize(name) {
     ctx.globalAlpha = 1;
   }, { animated: true, world: true, wide: true });
 
-  tile(grid, 'the announcement', 'Once an attempt, when the first train stands on screen: the kana in M PLUS '
+  tile(grid, 'the doors call', 'Once an attempt, at the tail of the first train to land: the kana in M PLUS '
     + 'Rounded, the English in the game\'s own face.', W, H, (ctx, t) => {
     const camX = t * 60;
     paint(ctx, t, camX, neonNightMood(1));
@@ -2543,7 +2543,7 @@ function propNominalSize(name) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.shadowBlur = 0;
     ctx.filter = 'none';
-    drawSpeech(ctx, { text: 'A TRAIN IS NOW APPROACHING.', kana: NEON_ANNOUNCE_KANA, who: null });
+    drawSpeech(ctx, { text: NEON_PLATFORM_CALLS[1].en, kana: NEON_PLATFORM_CALLS[1].kana, who: null });
     ctx.restore();
   }, { animated: true });
 }

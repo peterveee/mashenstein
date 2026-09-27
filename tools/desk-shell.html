@@ -73,7 +73,7 @@
   .section-head { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
   h2.section { margin: 0; color: var(--muted); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; }
   .section-count { color: var(--mint); font-size: 10px; letter-spacing: .1em; }
-  #list, #galleries, #browsers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #list, #galleries, #reports, #browsers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .tool {
     position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 14px; align-items: start;
     min-height: 132px; overflow: hidden; padding: 17px 17px 16px;
@@ -124,7 +124,7 @@
     .desk-intro { align-items: start; flex-direction: column; padding: 18px; }
     .intro-stats { width: 100%; }
     .intro-stat { flex: 1; }
-    #list, #galleries, #browsers { grid-template-columns: 1fr; }
+    #list, #galleries, #reports, #browsers { grid-template-columns: 1fr; }
   }
   @media (max-width: 520px) {
     .header-inner { align-items: flex-start; }
@@ -149,6 +149,7 @@
     <div class="header-meta">
       <span class="status-pill"><span id="live-count">0 LIVE</span></span>
       <span class="meta-chip quiet" id="browser-chip" title="automated Chromiums running on this machine">0 BROWSERS</span>
+      <a class="meta-chip" href="/reports" target="_blank" style="text-decoration:none">REPORTS</a>
       <span class="meta-chip">:8000</span>
     </div>
   </div>
@@ -175,6 +176,10 @@
     <div id="browsers"></div>
   </section>
   <section class="desk-section">
+    <div class="section-head"><h2 class="section">AUDIO REPORTS</h2><a class="section-count" href="/reports" target="_blank" style="text-decoration:none">OPEN THE REPORTS PAGE →</a></div>
+    <div id="reports"></div>
+  </section>
+  <section class="desk-section">
     <div class="section-head"><h2 class="section">GALLERIES</h2><span class="section-count">ONE-SHOT ROUTINES</span></div>
     <div id="galleries"></div>
   </section>
@@ -187,6 +192,7 @@
 <script>
 const list = document.getElementById('list');
 const galleriesEl = document.getElementById('galleries');
+const reportsEl = document.getElementById('reports');
 const errBox = document.getElementById('err');
 let busy = null;
 
@@ -259,7 +265,41 @@ async function runAction(id, body) {
   await refresh();
 }
 
+// Per-action text for the cards that take input (BASS REPORT: LANES), kept across
+// the two-second redraw — and the input element itself is kept too, so a redraw
+// never steals the caret mid-word.
+const inputText = {};
+const inputEls = {};
+function inputFor(a) {
+  if (!inputEls[a.id]) {
+    inputEls[a.id] = el('input', {
+      type: 'text', spellcheck: 'false', placeholder: a.input,
+      style: 'width:100%;margin-top:9px;padding:8px 10px;background:rgba(13,17,21,.5);'
+        + 'border:1px solid var(--line);border-radius:7px;color:var(--ink);font:inherit;',
+      oninput: (e) => { inputText[a.id] = e.target.value; drawActions(lastActions); },
+    });
+  }
+  return inputEls[a.id];
+}
+
+// An action that writes source files (SONG LEVELS: APPLY) takes two clicks, like
+// KILL: the first arms it for a few seconds.
+let armedAction = null; // { id, timer }
+function armAction(id) {
+  clearTimeout(armedAction?.timer);
+  armedAction = { id, timer: setTimeout(() => { armedAction = null; drawActions(lastActions); }, 4000) };
+  drawActions(lastActions);
+}
+
 function actionCard(a) {
+  const ids = a.input ? parseIds(inputText[a.id] || '') : [];
+  const isArmed = armedAction?.id === a.id;
+  const run = () => {
+    if (a.confirm && !isArmed) return armAction(a.id);
+    clearTimeout(armedAction?.timer);
+    armedAction = null;
+    return runAction(a.id, a.input ? { ids } : undefined);
+  };
   return el('div', { class: `tool${a.running ? ' live' : ''}`, 'data-tool': a.id },
     el('div', { class: 'dot', 'aria-hidden': 'true' }, a.id.slice(0, 2).toUpperCase()),
     el('div', {},
@@ -270,10 +310,15 @@ function actionCard(a) {
           : a.code != null ? el('span', { class: 'tag' }, `last run: failed (${a.code})`)
           : null),
       el('div', { class: 'blurb' }, a.blurb),
+      a.input ? inputFor(a) : null,
       a.log.length ? el('div', { class: 'log' }, a.log.join('\n')) : null),
     el('div', { class: 'acts' },
-      el('button', { class: 'go', disabled: a.running || busy === a.id, onclick: () => runAction(a.id) },
-        a.running ? '…' : 'RUN'),
+      el('button', {
+        class: isArmed ? 'armed' : 'go',
+        disabled: a.running || busy === a.id || (a.input && !ids.length),
+        title: a.confirm ? (isArmed ? 'click again — this writes src/data/songs/' : 'writes src/data/songs/ — asks twice') : null,
+        onclick: run,
+      }, a.running ? '…' : isArmed ? 'SURE?' : 'RUN'),
       a.openPath
         ? el('button', { onclick: () => window.open(a.openPath, '_blank') }, 'OPEN')
         : null));
@@ -409,7 +454,14 @@ let lastActions = [];
 function drawActions(actions) {
   const pruneplan = actions.find((a) => a.id === 'pruneplan');
   const pruneapply = actions.find((a) => a.id === 'pruneapply');
-  const regular = actions.filter((a) => a !== pruneplan && a !== pruneapply);
+  const audio = actions.filter((a) => a.group === 'audio');
+  // Re-inserting an element drops its focus, so the one being typed in gets its
+  // caret back after the redraw.
+  const focused = Object.values(inputEls).find((n) => n === document.activeElement);
+  const sel = focused ? [focused.selectionStart, focused.selectionEnd] : null;
+  reportsEl.replaceChildren(...audio.map(actionCard));
+  if (focused) { focused.focus(); focused.setSelectionRange(...sel); }
+  const regular = actions.filter((a) => a !== pruneplan && a !== pruneapply && a.group !== 'audio');
   const galleryCountEl = document.getElementById('gallery-count');
   if (galleryCountEl) galleryCountEl.textContent = String(regular.length + (pruneplan ? 1 : 0)).padStart(2, '0');
   const cards = regular.map(actionCard);

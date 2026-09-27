@@ -1119,14 +1119,16 @@ function mausoleumSprite(r, s, variant, pal) {
     g.fillStyle = css(lit, 0.55);
     fillPoly(g, S(rectPts(-24, -4, 48, 1)), 0.2, 10);
     fillPoly(g, S(rectPts(-20.5, -8.4, 41, 1)), 0.2, 11);
-    // The doorway: deep dark, a little lighter at the sill.
+    // The doorway: deep dark, a little lighter at the sill, inside a lit stone surround.
+    // Both are true semicircular arches on one centre, cut without wobble, so the crown
+    // stays round and sits exactly on the jambs.
+    g.fillStyle = css(lit, 0.35);
+    fillPoly(g, S(archOpeningPts(0, -8, 12.6, 16.8)), 0, 13);
     const dg = g.createLinearGradient(0, -24 * s, 0, -8 * s);
     dg.addColorStop(0, css([10, 12, 28]));
     dg.addColorStop(1, css([22, 26, 50]));
     g.fillStyle = dg;
-    fillPoly(g, S(archOpeningPts(0, -8, 11, 16)), 0.12, 12);
-    g.fillStyle = css(lit, 0.35);
-    fillPoly(g, S([-5.5, -8, -5.5, -17, -4.6, -18.5, -4.6, -8]), 0.1, 13);
+    fillPoly(g, S(archOpeningPts(0, -8, 11, 16)), 0, 12);
   });
 }
 

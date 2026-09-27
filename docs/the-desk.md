@@ -87,6 +87,39 @@ The same list from a terminal: `npm run browsers` (`tools/browsers.js`, which al
 takes `--kill`, `--kill <pid>` and `--kill-all`). It exits 1 when anything is
 running, so a bench can refuse to start on a noisy machine.
 
+## Audio reports
+
+```
+http://localhost:8000/reports
+```
+
+Four RUN cards under AUDIO REPORTS, and a page that shows what they found:
+
+| Card | Runs | Writes |
+| --- | --- | --- |
+| SONG LEVELS: MEASURE | `tools/song-levels.js` | the report only |
+| SONG LEVELS: APPLY | `tools/song-levels.js --apply` | each off-line song's `master` in `src/data/songs/` |
+| BASS REPORT | `tools/bass-report.js` | the report only |
+| BASS REPORT: LANES | `tools/bass-report.js <ids> --lanes` | the report only |
+
+Each tool writes its latest result to `work/local/reports/` wherever it was run
+from, terminal included, so `/reports` is always the last run. The page redraws
+when a file changes.
+
+- **Song levels** shows each cabinet song against the -21 LUFS line: how far off it
+  is, and the master that would put it back.
+- **Bass & band balance** shows seven bands per song, each measured against that
+  song's own loudness and coloured where it sits 2 dB or more off the median of
+  the finished cabinets.
+- **Who carries the low end** has one card per song broken down with LANES. It
+  shows each strip's share of the low bands, which is where a Channel EQ goes,
+  and is tagged when the song has changed since.
+
+APPLY asks twice, because it edits song files. Save the mixer first: a mixer save
+afterwards puts the old master back. Every run is under `nice`, because all of
+them render through headless Chromium for minutes at a time, and the mixer's
+playback comes first.
+
 ## When a tool will not start
 
 The card keeps the last few lines the tool printed and shows them once it is not

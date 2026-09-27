@@ -1172,18 +1172,17 @@ function cabinetScene(cab) {
 // The cabinet dive has to land a hero ON that ground line, so all three are now
 // stated once and derived from rather than restated.
 const SCREEN_WIN_FRAC = 0.2;   // window width, as a fraction of the scene canvas
-const SCREEN_WIN_TOP = 0.62;   // where the window's top edge sits on it
+const SCREEN_WIN_TOP = 0.62;   // landscape-frame fraction for the window's top edge
 // __mash_dev.screenWinTop: capture-only, the same pattern as the other hide/pin
-// flags. In portrait the renderer publishes a frame ~4x taller than the
-// authored one, so the level's ground line falls at about 0.19 of the scene
-// and a window pinned at 0.62 opens entirely BELOW it — the glass shows nothing
-// but ground (cabinetScreenGeometry says as much where it clamps). Lifting the
-// window puts the horizon, the sky and the cabinet's own hazards back on the
-// screen for a shot that is mostly THAT screen. Read through a function so the
+// flags. It is authored as a fraction of the landscape frame, then mapped to the
+// active frame height. The run groundline stays at logical y=232 in portrait, so
+// scaling this fraction with H keeps the cabinet glass on the same level slice
+// instead of dropping the crop below the horizon. Read through a function so the
 // art and the dive's foot geometry can never disagree about where the window is.
-function screenWinTop() {
+function screenWinTop(frameH = H) {
   const v = typeof window !== 'undefined' && window.__mash_dev ? window.__mash_dev.screenWinTop : null;
-  return typeof v === 'number' && v >= 0 && v <= 1 ? v : SCREEN_WIN_TOP;
+  const authoredTop = typeof v === 'number' && v >= 0 && v <= 1 ? v : SCREEN_WIN_TOP;
+  return authoredTop * LANDSCAPE_HEIGHT / frameH;
 }
 
 // Where the attract window puts the level's own ground line, and how big one
@@ -1199,39 +1198,23 @@ export function cabinetScreenGeometry(glassW, glassH) {
   const winW = srcW * SCREEN_WIN_FRAC;
   const winH = winW * (glassH / glassW);   // cabinetScreenArt's own aspect rule
   const perSrc = glassH / winH;
-  // The run's groundline, mapped through the window onto the glass.
-  //
-  // Measured at BOTH frame heights, because they do not agree and only one of them
-  // is an answer. GROUND_Y is a fixed 232, so the fraction of the frame it sits at
-  // moves with H: at the authored 480x270 it is 0.86 and lands inside the window,
-  // while in phone portrait the frame is about 1200 tall, the groundline is at 0.19,
-  // and a window opening at 0.62 is entirely BELOW it. There is no horizon in that
-  // picture to put anybody on — the attract screen is all ground.
-  const groundAt = (frameH) => {
+  // The run's groundline, mapped through the window onto the glass. Portrait adds
+  // logical height above the authored 480x270 playfield, so both the ground and
+  // the crop are measured in authored landscape coordinates before mapping onto
+  // the glass. The level therefore lands at the same place on the cabinet screen.
+  const groundAt = (frameH, top = screenWinTop(frameH)) => {
     const src = frameH / 2;
-    return (src * (GROUND_Y / frameH) - src * screenWinTop()) * perSrc;
+    return (src * (GROUND_Y / frameH) - src * top) * perSrc;
   };
   const raw = groundAt(H);
-  // So when the window misses it, fall back to WHERE THE AUTHORED FRAME PUTS IT
-  // rather than to a number somebody picked. This was clamped to 0.90 of the glass,
-  // which is not wrong so much as arbitrary — and being arbitrary it disagreed with
-  // landscape's own 0.963, so the same hero stood 6% higher up the same screen on a
-  // phone. The level's ground line is a property of the LEVEL; the phone's taller
-  // frame is a presentation decision and has no business moving it.
-  const fallback = groundAt(LANDSCAPE_HEIGHT);
+  // If a capture override moves the crop away from the horizon, keep the dive
+  // actor at the authored landscape ground position.
+  const fallback = groundAt(LANDSCAPE_HEIGHT, SCREEN_WIN_TOP);
   return {
     perSrc,
-    // CLAMPED INTO THE GLASS, and that is not defensive tidying — it is the
-    // portrait case. The renderer publishes a taller logical frame on a phone,
-    // so GROUND_Y is a SMALLER fraction of H there, and a window pinned at 0.62
-    // of the scene opens entirely BELOW the horizon: the attract screen is all
-    // ground, and the line itself is off the top of the glass. Unclamped this
-    // came back at -154 and the hero leapt to a point above the machine,
-    // hanging in the air over the posters.
-    //
-    // Still bounded, but only against nonsense: a window that misses the horizon
-    // gives the authored frame's answer, and anything that survives is kept as long
-    // as it is actually on the glass.
+    // Keep the dive's feet inside the glass if a development crop override moves
+    // the window away from the groundline. Normal landscape and portrait crops
+    // share the same authored ground position.
     groundY: Math.min(glassH * 0.97, raw > 0 ? raw : fallback),
     // Unclamped, for anyone who needs to know the window missed.
     groundYRaw: raw,
