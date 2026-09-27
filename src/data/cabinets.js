@@ -3,9 +3,8 @@
 // dx is px from pattern origin; the spawner enforces fairness gaps between
 // action-required cells at spawn time, so patterns describe intent, not exact spacing.
 import { seq, chordSeq } from '../engine/notes.js';
-// The music. Each song is one file in src/data/songs/ — its notes, its
-// arrangement and its mix together — and a cabinet refers to one rather than
-// carrying it, so there is exactly one copy of every song in the game.
+// Live music banks are shared from their source files; a cabinet selects a bank
+// rather than carrying a duplicate arrangement.
 import * as PLUMBER from './songs/plumber.js';
 import * as SPEED from './songs/speed.js';
 import * as NEON from './songs/neon.js';
@@ -100,13 +99,12 @@ const ANIMALS = {
     P(1, [{ t: 'dogBruiser', dx: 0 }]),
     P(2, [{ t: 'dogBruiser', dx: 0 }, { t: 'cardboardMonster', dx: 150 }]),
   ],
-  // Feral and cat together: a lean starving thing and the cat that is not
-  // fleeing it. The cat is the fastest closer in the game and the smallest box,
-  // so it is a tier-2 spawn everywhere it appears.
+  // Crypt's Violet Panther takes some turns from the furious cat. The feral
+  // dog remains in the mix; the smaller furious cat stays tier 2.
   crypt: [
     P(1, [{ t: 'dogFeral', dx: 0 }]),
     P(2, [{ t: 'dogFeral', dx: 0 }, coinArc(120)]),
-    P(2, [{ t: 'catFury', dx: 0 }, { t: 'tombstone', dx: 140 }]),
+    P(2, [{ t: 'cryptPanther', dx: 0 }, { t: 'tombstone', dx: 140 }]),
   ],
   // Corporate security, on four legs and wearing a collar someone expensed.
   office: [
@@ -716,9 +714,16 @@ export const CABINETS = [
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
   },
   {
-    id: 'crypt', name: 'CRYPT SHIFT', act: 2, style: 'vhs',
-    unlockPlugs: 16, speedBonus: 0.25,
+    // The gouache night since 25 Sep 2026 (stylePacks/cryptGouache.js); it was the VHS
+    // tape before, and that pack is kept.
+    id: 'crypt', name: 'CRYPT SHIFT', act: 2, style: 'gouache',
+    // SLOWED 26 Sep 2026 (Peter: "slow down the game lane a lot to match the slower music…
+    // to make the new zombies more visible and read better"): 1.25x → 0.85x base, about a
+    // third slower. Stages keep their 90 s; the lane simply covers less ground.
+    unlockPlugs: 16, speedBonus: -0.15,
     mechanic: 'darkness', // light radius; cursed shortcuts
+    // Never the same animal twice running (spawner.js pickPattern).
+    varyAnimals: true,
     sky: ['#181020', '#281830'], ground: '#3a3048', groundDark: '#281c30',
     far: '#302040', hills: '#282038',
     // The earth of a graveyard: near-black violet, so the catacomb's walls are
@@ -736,18 +741,41 @@ export const CABINETS = [
       {
         at: 0.40, dwell: 10, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88,
         hazards: ['tombstone', 'zombie', 'brazier'],
+        // Three spaced underground barrel passes. Each fraction marks the
+        // barrel, with its zombie target just ahead along the tunnel. Kick the
+        // barrel into the fleeing zombie; a barrel's own roll does not hit it.
+        // Crypt-1 opts out of tunnels in its layout, leaving these for levels 2 and 3.
+        // Stay beyond the entrance and its mid-span opening.
+        barrelPairs: [0.24, 0.56, 0.75],
       },
     ],
     music: CRYPT.bank,
     patterns: [
       ...ANIMALS.crypt,
-      ...BASE_PATTERNS.filter((p) => p.tier > 0),
-      P(0, [{ t: 'tombstone', dx: 0 }]),
-      P(0, [{ t: 'tombstone', dx: 0 }, coinArc(60)]),
+      // Preserve the pattern rhythm and coin formations with graveyard hazards.
+      // Cacti, robot drones and bright arcade birds belong to other cabinets.
+      ...BASE_PATTERNS.filter((p) => p.tier > 0).map((p) => ({
+        ...p,
+        cells: p.cells.map((cell) => ({ ...cell,
+          // The lone bird deals a zombie, not a stone (Peter, 26 Sep: more zombies vs tombstones).
+          t: ({ cactus: 'tombstone', cactusBig: 'brazier', drone: 'zombie', buzzbird: 'catFury' })[cell.t] || cell.t,
+        })),
+      })),
+      // MORE ANIMALS, FEWER PROPS (Peter, 26 Sep 2026: "put in more dogs/cats as obstacles to
+      // replace some of the more static elements (boxes/fires/etc)"): the plain stone, the
+      // campfires and the campfire's stone became dogs and cats; crates are excluded from
+      // the crypt stages' sections in stage-layouts.js.
+      // No snakes, no bruisers; more zombies, fewer dogs (Peter, 26 Sep 2026).
+      P(0, [{ t: 'zombie', dx: 0 }]),
+      // The Violet Panther replaces some cats; the feral dog and furious cat
+      // still appear in the other patterns.
+      P(1, [{ t: 'dogFeral', dx: 0 }, coinArc(90)]),
       P(1, [{ t: 'zombie', dx: 0 }]),
-      P(1, [{ t: 'zombie', dx: 0 }, { t: 'tombstone', dx: 80 }]),
-      P(2, [{ t: 'zombie', dx: 0 }, { t: 'zombie', dx: 40 }, coinArc(110)]),
-      P(2, [{ t: 'tombstone', dx: 0 }, { t: 'drone', dx: 90 }]),
+      P(1, [{ t: 'cryptPanther', dx: 0 }, { t: 'tombstone', dx: 160 }]),
+      // One zombie at a time since 26 Sep 2026 (Peter: "less zombies perhaps"): the pair
+      // became one, and the campfire's zombie below became a stone.
+      P(2, [{ t: 'zombie', dx: 0 }, coinArc(110)]),
+      P(2, [{ t: 'tombstone', dx: 0 }, { t: 'zombie', dx: 90 }]),
       // FIRE IN THE DARK CABINET. Crypt's mechanic is a light radius, which
       // makes it the one stage where a burning hazard pays you something back:
       // the brazier is lit before you can see the lane it stands in, so it
@@ -756,18 +784,21 @@ export const CABINETS = [
       // Tier 0 alone, then earning company — the same introduction the
       // tombstone gets, because a chest-height fire is a new shape here.
       P(0, [{ t: 'brazier', dx: 0 }]),
-      P(0, [{ t: 'campfire', dx: 0 }, coinArc(60)]),
-      P(1, [{ t: 'brazier', dx: 0 }, { t: 'tombstone', dx: 80 }]),
+      P(1, [{ t: 'dogSnarler', dx: 0 }, coinArc(90)]),
+      P(1, [{ t: 'brazier', dx: 0 }, { t: 'zombie', dx: 120 }]),
       // A dungeon trap under a grave marker. The tombstone is the silhouette
       // that hides it: at this light radius the plate is inside the stone's
       // shadow until you are nearly on it.
       P(1, [{ t: 'tombstone', dx: 0 }, { t: 'popSpikes', dx: 62 }]),
-      P(1, [{ t: 'campfire', dx: 0 }, { t: 'zombie', dx: 84 }]),
+      P(1, [{ t: 'dogSnarler', dx: 0 }, { t: 'tombstone', dx: 150 }]),
+      P(1, [{ t: 'dogFeral', dx: 0 }, { t: 'brazier', dx: 150 }]),
+      P(2, [{ t: 'catFury', dx: 0 }, coinArc(120)]),
       P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'brazier', dx: 88 }, coinArc(140)]),
       // The dungeon's own blade. Crypt already owns the spike plate; the saw
       // completes the trap-floor pair here the way it does in Plumber.
-      P(1, [{ t: 'floorSaw', dx: 0 }]),
-      P(2, [{ t: 'floorSaw', dx: 0 }, { t: 'tombstone', dx: 84 }]),
+      // Spikes, not saws (Peter, 26 Sep 2026: "Replace saw with spikes").
+      P(1, [{ t: 'popSpikes', dx: 0 }]),
+      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'zombie', dx: 120 }]),
     ],
     taunt: 'THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE.',
   },

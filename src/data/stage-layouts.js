@@ -108,6 +108,8 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.65, high: false },
     pits: null,
     rewindAt: null,
+    sections: [{ to: 1, label: 'sparse, animals over props', density: 0.7, exclude: ['gap', 'crate', 'dogBruiser'] }],
+    routes: { tunnels: [] },
   },
   "crypt-2": {
     durationSec: 90,
@@ -115,6 +117,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.75, high: true },
     pits: null,
     rewindAt: null,
+    sections: [{ to: 1, label: 'sparse, animals over props', density: 0.7, exclude: ['crate', 'dogBruiser'] }],
   },
   "crypt-3": {
     durationSec: 90,
@@ -122,6 +125,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.55, high: false },
     pits: null,
     rewindAt: null,
+    sections: [{ to: 1, label: 'sparse, animals over props', density: 0.7, exclude: ['crate', 'dogBruiser'] }],
   },
   "neon-1": {
     durationSec: 90,

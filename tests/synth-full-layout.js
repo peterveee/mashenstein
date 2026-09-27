@@ -44,6 +44,16 @@ if (!failed) ok('legacy CRLS-1 aliases and the drum kind use their public UI bra
 const VOICE = { synth: 'MRDR-3' };
 const DRUM = { kind: 'drum' };
 
+// Oscillator LEVEL needs an especially long lower travel: 0.1 is only 5% of the
+// stored 0–2 range, so the scale-3 curve gives that quiet region useful aim on the fader.
+const oscillatorLevels = panelSpec(VOICE).groups
+  .filter((group) => /^osc[123]$/.test(group.key))
+  .map((group) => group.rows.find((row) => row.label === 'LEVEL'));
+if (oscillatorLevels.length !== 3 || oscillatorLevels.some((row) => !row
+  || row.min !== 0 || row.max !== 2 || row.step !== 0.001 || row.scale !== 3)) {
+  fail('MRDR-3 oscillator LEVEL does not keep the extended 0–0.1 fader travel');
+} else ok('MRDR-3 oscillator LEVEL has 0.001 precision and a scale-3 low-end fader');
+
 // Layer copying is a whole subtree operation: live values, nested optional sections,
 // and the bypassed values that make an Off layer reversible all travel together.
 const copyVoice = {

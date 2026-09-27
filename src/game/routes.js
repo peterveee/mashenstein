@@ -493,6 +493,10 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // registry, laid by populateRoute — a branch has the same vocabulary
       // the lane has, it just has it somewhere else.
       hazards: d.hazards || null,
+      // Optional authored barrel-and-zombie encounters in a tunnel. Fractions
+      // mark the zombie positions; populateRoute puts each rolling barrel
+      // just ahead of its fleeing partner.
+      barrelPairs: d.barrelPairs || null,
       // One power-up somewhere along it, on top of whatever `prize` pays.
       // A road with real hazards on it has earned more than a coin run.
       bonus: d.bonus || null,

@@ -1,3 +1,4 @@
+import { drawSelectedCryptEnemy, cryptZombieRoleInOrder } from '../sprites/crypt-enemies.js';
 // Entity + hero drawing (logic-free; style packs may decorate).
 import { getSprite, buildSprite, scaled2x, tinted } from '../engine/sprites.js';
 import { W, H, pushOverlayDraw } from '../engine/renderer.js';
@@ -864,6 +865,17 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
       ctx.globalAlpha = 1;
     }
     ctx.imageSmoothingEnabled = false;
+    return;
+  }
+  // Cabinet identity, not the background style, selects Crypt's foreground art.
+  // bobPhase is immutable spawn identity, so costumes survive motion and rewind.
+  if (settings.cryptEnemyArt && (e.type === 'zombie' || e.type === 'tombstone')) {
+    drawSelectedCryptEnemy(ctx, t + (e.bobPhase || 0),
+      e.type === 'tombstone' ? 'stone' : cryptZombieRoleInOrder(e.bobPhase),
+      x + e.w / 2, bottom - (e.artLift || 0),
+      // Its mood (run.js shamblerVx): walking away faces right, idle stands, a bolter's
+      // legs speed up with it.
+      { facing: (e.vx || 0) > 0 ? -1 : 1, idle: e.zMood === 'idle', pace: Math.max(1, Math.abs(e.vx || 0) / 28), phase: e.zArtPhase });
     return;
   }
   // Vector art first, keyed by entity TYPE so !-crates, targets, pipes and

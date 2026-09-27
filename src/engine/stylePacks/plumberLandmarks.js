@@ -582,9 +582,9 @@ export function drawPlumberBalloon(ctx, t, x, y, { paper = true, phase = 0, vari
 // way — a baked fleece (a scalloped silhouette, a second row of curls laid inside it,
 // belly shade, a tail), live legs with knees and hooves, and a live head with ears, an
 // eye and a nose — and each is in its own pose: grazing head-down, head-up chewing, one
-// lying down, two lambs. The collie runs the crest out and back, drops into a crouch at
-// each turn to give the flock the eye, and dashes off again; the sheep it comes near
-// turn their heads to watch it, and the nearest ones scurry out of its way.
+// lying down, two lambs. The collie works round the flock — behind it along the crest,
+// in front of it down the face — drops into a crouch to give it the eye, and dashes off
+// again; the sheep it comes near turn their heads to watch it, and step out of its way.
 const FLOCK = {
   wool: '#f2ede1', woolShade: '#d9d0bd', woolLight: '#fbf8f0', curl: 'rgba(150,132,104,0.42)',
   lambWool: '#f9f6ee', face: '#3f3731', faceShade: '#2c2622', faceWhite: '#e8dfce',
@@ -593,6 +593,13 @@ const FLOCK = {
   dog: '#26221f', dogShade: '#141210', dogWhite: '#f4f1ea', dogWhiteShade: '#d6d0c4',
   tongue: '#e0707a', shadow: 'rgba(28,64,30,0.22)',
 };
+// The collies' coats: the lap's dog is black and white, the figure of eight's red and
+// white (Peter, 25 Sep 2026: "could one of the dogs have different colouring?"). `sheen`
+// is the light along the saddle; a red dog has a liver nose.
+const COLLIE_COATS = [
+  { dog: FLOCK.dog, dogShade: FLOCK.dogShade, sheen: '#3a3430', nose: FLOCK.nose },
+  { dog: '#8a4f2c', dogShade: '#5c321c', sheen: '#a8683f', nose: '#3a2018' },
+];
 // A fleece silhouette: an ellipse with a scalloped rim of curls, flatter along the belly.
 function woolPath(c, cx, cy, rx, ry, seed, n = 13) {
   c.moveTo(cx + rx * 0.9, cy);
@@ -694,9 +701,9 @@ function sheepLeg(ctx, hx, hy, swing, far, lamb, bend = 1) {
   flat(ctx, P.hoof, (c) => rr(c, fx - 0.55, fy - 0.55, 1.2, 0.75, 0.3));
 }
 // One sheep, feet at (x, y), facing `dir`. `pose`: 'stand' | 'lie' | 'lamb'.
-// `graze` 0..1 puts the head down; `step` is a walk phase (0 stands); `look` 0..1 turns
-// the head to face the viewer; `hop` lifts a skipping lamb.
-function drawSheep(ctx, x, y, s, dir, pose, graze, step, look, t, seed, whiteFace, hop = 0) {
+// `graze` 0..1 puts the head down; `sw` -1..1 is the legs' swing (0 stands square);
+// `look` 0..1 turns the head to face the viewer; `hop` lifts a skipping lamb.
+function drawSheep(ctx, x, y, s, dir, pose, graze, sw, look, t, seed, whiteFace, hop = 0) {
   const P = FLOCK;
   const lying = pose === 'lie', lamb = pose === 'lamb';
   ctx.save();
@@ -705,7 +712,6 @@ function drawSheep(ctx, x, y, s, dir, pose, graze, step, look, t, seed, whiteFac
   const o = { fx: dir };
   flat(ctx, P.shadow, (c) => c.ellipse(0.4, 0.2, lying ? 6.6 : 6.0, 1.05, 0, 0, TAU));
   ctx.translate(0, -hop);
-  const sw = step ? Math.sin(step) : 0;
   if (!lying) {
     const hy = lamb ? -3.4 : -4.2;
     // Far legs, then (after the fleece) the near ones.
@@ -719,8 +725,8 @@ function drawSheep(ctx, x, y, s, dir, pose, graze, step, look, t, seed, whiteFac
     sheepLeg(ctx, 4.2, hy, -sw * 1.2, false, lamb);
   }
   // Neck and head: down in the grass while it grazes, up and chewing when not, turned
-  // to the viewer when it watches the dog.
-  const chew = graze < 0.5 ? 0.5 + 0.5 * Math.sin(t * 9 + seed) : 0;
+  // to the viewer when it watches the dog. The chewing fades in as the head comes up.
+  const chew = smooth((0.6 - graze) / 0.2) * (0.5 + 0.5 * Math.sin(t * 9 + seed));
   const base = lying ? -4.6 : -6.6;
   const hs = lamb ? 1.2 : 1;
   const hx = lerp(6.0, 6.4, graze) * (lamb ? 0.85 : 1), hy = base + lerp(-1.3, 4.8, graze) + chew * 0.2;
@@ -743,17 +749,20 @@ function drawSheep(ctx, x, y, s, dir, pose, graze, step, look, t, seed, whiteFac
   ctx.restore();
   ctx.restore();
 }
-// A border collie, feet at (x, y), facing `dir`: `run` is the gallop phase, `crouch`
-// 0..1 drops it flat to give the flock the eye.
-function drawCollie(ctx, x, y, s, dir, run, crouch) {
-  const P = FLOCK;
+// A border collie, feet at (x, y), facing `dir` (±1): `run` is the gallop phase, `crouch`
+// 0..1 drops it flat to give the flock the eye, and `lift` px raises it off the ground
+// in a hop, its shadow left on the grass and shrinking. `coat`: one of COLLIE_COATS.
+function drawCollie(ctx, x, y, s, dir, run, crouch, lift = 0, coat = COLLIE_COATS[0]) {
+  const P = { ...FLOCK, ...coat };
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s * dir, s);
-  const o = { fx: dir };
+  const o = { fx: dir < 0 ? -1 : 1 };
   const st = Math.sin(run), ct = Math.cos(run);
   const gait = 1 - crouch;
-  flat(ctx, P.shadow, (c) => c.ellipse(0, 0.2, 5.8, 0.9, 0, 0, TAU));
+  const sh = 1 - Math.min(0.35, lift * 0.08);
+  flat(ctx, P.shadow, (c) => c.ellipse(0, 0.2, 5.8 * sh, 0.9 * sh, 0, 0, TAU));
+  ctx.translate(0, -lift / s);
   const by = -4.9 + crouch * 2.1 - Math.abs(ct) * 0.5 * gait;
   const pitch = -0.08 * st * gait + crouch * 0.05;
   // A leg in two parts with a white sock: hip or shoulder at (px, py), `a` the swing.
@@ -795,7 +804,7 @@ function drawCollie(ctx, x, y, s, dir, run, crouch) {
     c.closePath();
   }, P.dog, { ...po, lift: 0.6, rim: 0.6 });
   tone(ctx, body, (c) => { c.moveTo(0, 1.1); c.quadraticCurveTo(3.4, 0.4, 6, -0.2); c.lineTo(6, 4); c.lineTo(0, 4); c.closePath(); }, P.dogWhite);
-  tone(ctx, body, (c) => c.ellipse(-1, -1.6, 3.4, 0.5, 0, 0, TAU), '#3a3430');
+  tone(ctx, body, (c) => c.ellipse(-1, -1.6, 3.4, 0.5, 0, 0, TAU), P.sheen);
   // The white collar ruff round the neck.
   const ruff = cut(ctx, (c) => c.ellipse(4.1, -0.6, 1.4, 2.1, 0.35, 0, TAU), P.dogWhite, { ...po, lift: 0.3, rim: 0.4 });
   tone(ctx, ruff, (c) => c.ellipse(4.8, 0.4, 1.2, 1.4, 0, 0, TAU), P.dogWhiteShade);
@@ -825,7 +834,7 @@ function drawCollie(ctx, x, y, s, dir, run, crouch) {
   tone(ctx, skull, (c) => { c.moveTo(0.3, -1.8); c.lineTo(0.9, -1.8); c.lineTo(2.3, -0.3); c.lineTo(4, 0); c.lineTo(4, 1.6); c.lineTo(1.2, 1.6); c.quadraticCurveTo(1.6, 0.2, 0.3, -1.8); c.closePath(); }, P.dogWhite);
   cut(ctx, (c) => { c.moveTo(-0.3, -1.3); c.lineTo(0.6, -3.2); c.quadraticCurveTo(1.3, -2.9, 1.2, -2.3); c.lineTo(0.9, -2.5); c.lineTo(0.9, -1.2); c.closePath(); }, P.dog, { ...ho, lift: 0.3, rim: 0.35 });
   dot(ctx, 1.2, -0.7, 0.42, P.eye);
-  dot(ctx, 1.3, -0.7, 0.26, P.nose);
+  dot(ctx, 1.3, -0.7, 0.26, FLOCK.nose);
   dot(ctx, 3.8, 0.1, 0.4, P.nose);
   // Mouth open and tongue out while it runs; shut and intent in the crouch.
   if (gait > 0.4) flat(ctx, P.tongue, (c) => c.ellipse(2.6, 1.55, 0.75, 0.38, 0.3, 0, TAU));
@@ -836,52 +845,286 @@ function drawCollie(ctx, x, y, s, dir, run, crouch) {
   }
   ctx.restore();
 }
+// ------------------------------------------------------------ the flock's choreography
+// Everything here is a pure function of t, and all of it is continuous: nothing picks a
+// position, a facing or a pose per time slot or on a distance threshold, so nothing can
+// snap from one frame to the next.
+//
+// THE FLOCKS: dx from the anchor, depth px down the hill face below the crest, scale,
+// facing, seed, white-faced, pose, and whether a lamb skips. Nobody turns round: a sheep
+// the dog presses steps away from it, forwards or backwards, still facing its own way.
+//
+// A stage passes about two flocks, and they are not the same flock twice (Peter, 25 Sep
+// 2026: "should there be a little variation so they don't look identical?"). They take
+// turns along the stage (drawPlumberLife counts them), so neighbours always differ:
+//   0 THE LAP — nine in one loose line (one lying down, two lambs); the collie laps the
+//     whole flock and claps down on the front lane at the right-hand end, facing left.
+//   1 THE FIGURE OF EIGHT — six in two knots of three with a gap between; the collie
+//     runs a figure of eight round each knot and through the gap, and claps down IN the
+//     gap, facing the right-hand knot. Slower, and with a longer hold.
+const FLOCK_S = 1.55;
+const FLOCK_SHEEP = [
+  [
+    [-50, 6, 1.0, 1, 1, false, 'stand'], [-34, 2, 0.95, 1, 2, true, 'stand'],
+    [-21, 12, 1.08, -1, 3, false, 'lie'], [0, 3, 1.0, 1, 4, false, 'stand'],
+    [8.5, 5, 0.62, 1, 8, false, 'lamb', true], [20, 12, 1.12, -1, 5, true, 'stand'],
+    [30, 13, 0.58, -1, 9, true, 'lamb'], [40, 4, 1.0, 1, 6, false, 'stand'],
+    [54, 9, 1.05, -1, 7, false, 'stand'],
+  ],
+  [
+    [-51, 9, 1.04, 1, 11, true, 'stand'], [-41, 3.5, 0.6, 1, 12, false, 'lamb', true],
+    [-27, 12.5, 1.0, -1, 13, false, 'stand'],
+    [27, 6, 1.0, 1, 14, false, 'stand'], [49, 4, 0.97, -1, 15, true, 'stand'],
+    [42, 13, 1.1, -1, 16, false, 'stand'],
+  ],
+];
+// THE COLLIE'S RUNS. Distance along a run is GROUND px — a px of depth counts DOG_M — so
+// a turn is a true curve on the ground and the gait keeps one cadence all the way round.
+// `head` is the x part of the unit tangent; the dog never follows it into a squeeze (see
+// THE PACE for how it turns round).
+const DOG_M = 2;
+const DOG_BACK = 0.6;                              // the crest lane, feet just under the line
+const DOG_FRONT_GROUND = 36;                       // back lane to front lane, ground px
+const DOG_FRONT = DOG_BACK + DOG_FRONT_GROUND / DOG_M;   // 18.6, the lane in front of the flock
+// THE LAP, round the flock, not through it: along the crest BEHIND the sheep running
+// right, round the right-hand end and down the face, along the face IN FRONT of them
+// running left, and back up round the left-hand end.
+const DOG_R = DOG_FRONT_GROUND / 2;                // the turns' ground radius
+const DOG_MID = DOG_BACK + DOG_R / DOG_M;          // 9.6, each turn's apex
+const DOG_XR = 46.5, DOG_XL = -46.5;               // where the turns begin (ink stays in ±75)
+const DOG_STRAIGHT = DOG_XR - DOG_XL;
+const DOG_TURN = Math.PI * DOG_R;
+const LAP = {
+  length: 2 * DOG_STRAIGHT + 2 * DOG_TURN,
+  at(u) {
+    u = ((u % this.length) + this.length) % this.length;
+    if (u < DOG_STRAIGHT) return { x: DOG_XL + u, depth: DOG_BACK, head: 1 };
+    u -= DOG_STRAIGHT;
+    if (u < DOG_TURN) {
+      const a = u / DOG_R;
+      return { x: DOG_XR + DOG_R * Math.sin(a), depth: DOG_MID - (DOG_R / DOG_M) * Math.cos(a), head: Math.cos(a) };
+    }
+    u -= DOG_TURN;
+    if (u < DOG_STRAIGHT) return { x: DOG_XR - u, depth: DOG_FRONT, head: -1 };
+    const a = (u - DOG_STRAIGHT) / DOG_R;
+    return { x: DOG_XL - DOG_R * Math.sin(a), depth: DOG_MID + (DOG_R / DOG_M) * Math.cos(a), head: -Math.cos(a) };
+  },
+};
+// It stops at the apex of each end, turns there, and at the right-hand end holds the eye.
+LAP.stops = [
+  { at: DOG_STRAIGHT + DOG_TURN / 2, hold: 1.5 },
+  { at: 2 * DOG_STRAIGHT + 1.5 * DOG_TURN, hold: 0.55 },
+];
+// Any closed curve θ -> ground (X, Z), tabled by arc length so it runs at a true speed.
+// Position and heading are both interpolated, so neither steps between samples.
+function tabledRun(curve, n = 720) {
+  const pts = [], cum = [0];
+  for (let i = 0; i < n; i++) pts.push(curve((i / n) * TAU));
+  for (let i = 1; i <= n; i++) {
+    const a = pts[i - 1], b = pts[i % n];
+    cum.push(cum[i - 1] + Math.hypot(b.X - a.X, b.Z - a.Z));
+  }
+  const heads = pts.map((_, i) => {
+    const a = pts[(i + n - 1) % n], b = pts[(i + 1) % n];
+    return (b.X - a.X) / Math.hypot(b.X - a.X, b.Z - a.Z);
+  });
+  const length = cum[n];
+  return {
+    length,
+    arcAt: (theta) => cum[Math.round((((theta / TAU) % 1) + 1) % 1 * n)],
+    at(u) {
+      u = ((u % length) + length) % length;
+      let lo = 0, hi = n;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= u) lo = mid; else hi = mid; }
+      const k = (u - cum[lo]) / (cum[lo + 1] - cum[lo]);
+      const a = pts[lo], b = pts[(lo + 1) % n];
+      return { x: lerp(a.X, b.X, k), depth: lerp(a.Z, b.Z, k) / DOG_M,
+        head: lerp(heads[lo], heads[(lo + 1) % n], k) };
+    },
+  };
+}
+// THE FIGURE OF EIGHT (a lemniscate of Gerono): one loop round each knot of sheep, the
+// two crossing in the gap between them on a diagonal, never head-on to the viewer. It
+// spans the same lanes as the lap (crest lane to front lane) and x ±60.
+const EIGHT_X = 60, EIGHT_ZC = DOG_BACK * DOG_M + DOG_FRONT_GROUND / 2, EIGHT_Z = DOG_FRONT_GROUND / 2;
+const EIGHT = tabledRun((th) => ({ X: EIGHT_X * Math.cos(th), Z: EIGHT_ZC + EIGHT_Z * Math.sin(2 * th) }));
+// It turns at the far end of each loop and holds the eye in the gap, facing right.
+EIGHT.stops = [
+  { at: EIGHT.arcAt(0), hold: 0.55 },
+  { at: EIGHT.arcAt(Math.PI), hold: 0.55 },
+  { at: EIGHT.arcAt(1.5 * Math.PI), hold: 1.8 },
+];
+// THE PACE, and how it turns round. The dog runs from stop to stop: it springs away,
+// gallops, and slows into the next stop, dropping into its crouch as it does. Every
+// change of speed is eased, and the legs are driven by the distance run (DOG_STRIDE a
+// stride), so the feet never skate. Between stops it faces the way that leg runs, always
+// at full width: a cut-out squeezed through edge-on reads as a card spun round in 3D
+// (Peter, 25 Sep 2026: "it looks like just a 180 3d spin"). Where the next leg runs the
+// other way it turns the 2D way, standing still: a quick hop from the crouch, mirrored
+// at the top of it, down facing back. A leg too short to reach the gallop peaks lower.
+const DOG_V = 46;                                  // the lap's gallop, ground px/s
+const DOG_STRIDE = 18;                             // ground px per gallop stride
+const DOG_ACCEL = 0.9, DOG_DECEL = 1.0;            // s to spring up to speed / slow to a stop
+const HOP_AT = 0.1, HOP_D = 0.3, HOP_H = 3.2;      // the turning hop: start, length (s), px
+function dogPace(run, v, stops) {
+  const n = stops.length;
+  const legs = stops.map((st, i) => ((stops[(i + 1) % n].at - st.at) % run.length + run.length) % run.length || run.length);
+  const faces = stops.map((st, i) => (run.at(st.at + legs[i] / 2).head < 0 ? -1 : 1));
+  const pace = [];
+  let t0 = 0, s0 = 0;
+  const push = (d, v0, v1, extra) => {
+    pace.push({ t0, d, s0, v0, v1, ...extra });
+    t0 += d; s0 += d * (v0 + v1) * 0.5;
+  };
+  stops.forEach((st, i) => {
+    const L = legs[i], ramp = (DOG_ACCEL + DOG_DECEL) / 2;
+    const vp = Math.min(v, L / ramp);
+    const faceIn = faces[(i + n - 1) % n], face = faces[i];
+    push(st.hold, 0, 0, { face, faceIn, hold: true });
+    push(DOG_ACCEL, 0, vp, { face });
+    push((L - ramp * vp) / vp, vp, vp, { face });
+    push(DOG_DECEL, vp, 0, { face });
+  });
+  return { run, v, pace, period: t0, start: stops[0].at };
+}
+const FLOCK_DOGS = [dogPace(LAP, DOG_V, LAP.stops), dogPace(EIGHT, 40, EIGHT.stops)];
+function dogAt(t, D) {
+  const lap = Math.floor(t / D.period);
+  const u = t - lap * D.period;
+  let g = D.pace[D.pace.length - 1];
+  for (const seg of D.pace) if (u < seg.t0 + seg.d) { g = seg; break; }
+  const k = clamp01((u - g.t0) / (g.d || 1));
+  // Speed eases along smoothstep, so distance is its integral, k^3 - k^4/2.
+  const along = g.s0 + g.v0 * (u - g.t0) + (g.v1 - g.v0) * g.d * (k * k * k - (k * k * k * k) / 2);
+  const p = D.run.at(D.start + along);
+  let face = g.face, hop = 0;
+  if (g.hold && g.faceIn !== g.face) {
+    const h = (u - g.t0 - HOP_AT) / HOP_D;
+    if (h < 0.5) face = g.faceIn;
+    if (h > 0 && h < 1) hop = Math.sin(h * Math.PI);
+  }
+  return { x: p.x, depth: p.depth, face, hop, speed: g.v0 + (g.v1 - g.v0) * smooth(k),
+    run: ((lap * D.run.length + along) / DOG_STRIDE) * TAU };
+}
+// THE FLOCK'S ANSWER. Each sheep is shoved away from the dog (in the same ground
+// metric) and watches it, read off where the dog was over the last seconds and where
+// it is about to be: a weighted sum over fixed time offsets, so it is as smooth as the
+// run itself. They start to move as it comes, and drift back after it has gone.
+const REACT_DT = 0.1, REACT_FROM = -0.4, REACT_N = 31;   // offsets -0.4 .. 2.6 s
+const reactKernel = (tail) => {
+  const w = [];
+  for (let j = 0; j < REACT_N; j++) {
+    const lag = REACT_FROM + j * REACT_DT;
+    w.push(lag < 0 ? smooth(1 + lag / -REACT_FROM) : Math.exp(-lag / tail));
+  }
+  const sum = w.reduce((a, v) => a + v, 0);
+  return w.map((v) => v / sum);
+};
+const SHOVE_W = reactKernel(0.6);    // the shove eases off over a second or so
+const ALERT_W = reactKernel(1.1);    // they keep watching for a couple
+// Peter, 25 Sep 2026: "the sheep could move a little bit more" — a shove of up to 20 px
+// felt from 38 ground px (was 12 from 30), and a grazing shuffle between visits.
+const SHOVE = 20, SHOVE_R = 38, ALERT_R = 38, ALERT_GAIN = 2.4;
+// THE SHUFFLE: a grazing sheep steps forward a pace or two to fresh grass, and later
+// backs up as many; the rest of its own clock it stands. Each step is one smooth pace.
+const SHUFFLE_STEP = 2.2, SHUFFLE_DUR = 0.4, SHUFFLE_GAP = 0.55;
+function shuffleAt(t, seed) {
+  const P = 10 + (seed % 5) * 1.3;
+  const u = ((t + seed * 2.9) % P + P) % P;
+  const n = 1 + (seed % 2);
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    s += smooth((u - 1 - i * SHUFFLE_GAP) / SHUFFLE_DUR);
+    s -= smooth((u - P * 0.55 - i * SHUFFLE_GAP) / SHUFFLE_DUR);
+  }
+  return s * SHUFFLE_STEP;
+}
+// Nobody is shoved over the crest into the sky: depth eases to a floor of 0.8.
+const floorDepth = (d) => (d >= 2 ? d : 2 - 1.2 * (1 - Math.exp((d - 2) / 1.2)));
 /**
- * SHEEP AND A WORKING COLLIE. Nine sheep over a near summit — grazing head-down or
- * head-up chewing on their own clocks, one lying down, two lambs (one skipping at its
- * mother's side) — and a collie running the crest out and back behind them, dropping
- * into a crouch to give the flock the eye at each turn and dashing off again. Sheep the
- * dog comes near turn their heads to watch it; the nearest scurry out of its way.
+ * Flock `variant` (0 the lap, 1 the figure of eight) and its dog at time t, in the
+ * flock's frame: x from the anchor, depth px below the crest where each stands. Pure;
+ * drawPlumberSheep draws exactly this.
+ */
+export function plumberFlockState(t, variant = 0) {
+  const v = variant ? 1 : 0;
+  const D = FLOCK_DOGS[v];
+  const td = t + v * 3.7;                          // the two dogs are never in step
+  const dogs = [];
+  for (let j = 0; j <= REACT_N; j++) dogs.push(dogAt(td - REACT_FROM - j * REACT_DT, D));
+  const d = dogAt(td, D);
+  const dog = {
+    x: d.x, depth: d.depth, run: d.run, face: d.face, lift: d.hop * HOP_H,
+    // Low at a stop; it straightens a little in the air as it hops round.
+    crouch: smooth(1 - d.speed / (0.75 * D.v)) * (1 - 0.55 * d.hop),
+  };
+  const sheep = FLOCK_SHEEP[v].map(([bx, bd, s, dir, seed, wf, pose, skips]) => {
+    const lying = pose === 'lie', sc = s * FLOCK_S;
+    // (px, pz) the shove now, (qx, qz) a tick ago — the same sums one sample along.
+    let px = 0, pz = 0, qx = 0, qz = 0, seen = 0;
+    for (let j = 0; j <= REACT_N; j++) {
+      const q = dogs[j];
+      const dx = bx - q.x, dz = (bd - q.depth) * DOG_M;
+      const dist = Math.max(0.5, Math.hypot(dx, dz));
+      const f = SHOVE * smooth(1 - dist / SHOVE_R) / dist;
+      const sx = f * dx, sz = (f * dz) / DOG_M;
+      if (j < REACT_N) {
+        px += SHOVE_W[j] * sx; pz += SHOVE_W[j] * sz;
+        // Seen from anywhere, it lifts the head — which stays side-on: no sheep turns its
+        // face to the viewer (Peter: no head turns to camera).
+        seen += ALERT_W[j] * smooth(1 - dist / ALERT_R);
+      }
+      if (j > 0) { qx += SHOVE_W[j - 1] * sx; qz += SHOVE_W[j - 1] * sz; }
+    }
+    if (lying) { px = pz = qx = qz = 0; }
+    const alert = smooth(seen * ALERT_GAIN);
+    const grazing = smooth((Math.sin(t * 0.55 + seed * 1.9) + 0.35) * 1.6);
+    if (!lying && !skips) { px += dir * shuffleAt(t, seed); qx += dir * shuffleAt(t - REACT_DT, seed); }
+    // The legs walk the distance it has moved (a stride is 4.8 of its own units), and
+    // swing only while it is on the move.
+    const pace = Math.hypot(px - qx, (pz - qz) * DOG_M) / REACT_DT;
+    let sw = smooth(pace / 5) * Math.sin(((px * dir + pz * DOG_M) / (4.8 * sc)) * TAU + seed);
+    // A skipping lamb bounds beside its mother now and then, its legs going only while
+    // it does.
+    let hop = 0;
+    if (skips) {
+      const hp = (((t * 0.9 + seed * 0.37) % 2.6) + 2.6) % 2.6;
+      if (hp < 0.7) {
+        hop = Math.abs(Math.sin((hp / 0.7) * TAU)) * 1.6;
+        sw = lerp(sw, Math.sin(t * 10), Math.sin((hp / 0.7) * Math.PI));
+      }
+    }
+    return { x: bx + px, depth: floorDepth(bd + pz), order: bd, s: sc, dir, pose, seed, whiteFace: wf,
+      graze: lying ? 0 : grazing * (1 - alert), sw, hop };
+  });
+  return { dog, sheep };
+}
+/**
+ * SHEEP AND A WORKING COLLIE, two ways (`variant`, see FLOCK_SHEEP). Sheep over a near
+ * summit — grazing head-down or head-up chewing on their own clocks, shuffling a pace or
+ * two to fresh grass, a lamb skipping at its mother's side — and a collie working round
+ * them, dropping into a crouch to give the flock the eye before it dashes off again.
+ * Variant 0: nine sheep, one lying down, and a collie that laps the whole flock. Variant
+ * 1: six in two knots, and a collie running a figure of eight round and between them.
+ * Sheep the dog comes near lift their heads to watch it, and those it passes close step
+ * away from it and drift back once it has gone. See plumberFlockState for the motion.
  * Everyone stands on `seat.near` where they are.
  * Anchor `x` = the group's centre, on or just beside a NEAR-ridge summit. Ink extent
- * around (x, seat.near(x)): x -72..+72, y -22..+18.
+ * around x: -75..+75; in y, from 22 above the crest where each stands to 20 below it.
  */
-export function drawPlumberSheep(ctx, t, x, seat, paper = true) {
+export function drawPlumberSheep(ctx, t, x, seat, paper = true, variant = 0) {
   ctx.save();
   withFinish(paper, () => {
-    const xc = x;
-    const S = 1.55;
-    const dp = t * 0.75;
-    const dogX = xc + Math.sin(dp) * 56;
-    const v = Math.cos(dp);
-    const crouch = smooth(1 - Math.abs(v) * 2.4);
-    const FLOCKPOS = [
-      // dx, depth below the crest, scale, facing, seed, white-faced, pose
-      [-50, 6, 1.0, 1, 1, false, 'stand'], [-34, 2, 0.95, 1, 2, true, 'stand'],
-      [-21, 12, 1.08, -1, 3, false, 'lie'], [0, 3, 1.0, 1, 4, false, 'stand'],
-      [8.5, 5, 0.62, 1, 8, false, 'lamb'], [20, 12, 1.12, -1, 5, true, 'stand'],
-      [30, 13, 0.58, -1, 9, true, 'lamb'], [40, 4, 1.0, 1, 6, false, 'stand'],
-      [54, 9, 1.05, -1, 7, false, 'stand'],
-    ];
-    const items = [];
-    for (const [dx, depth, s, dir, seed, wf, pose] of FLOCKPOS) {
-      let sx = xc + dx;
-      const dd = sx - dogX;
-      const lying = pose === 'lie';
-      const near = lying ? 0 : clamp01(1 - Math.abs(dd) / 20);
-      sx += Math.sign(dd || 1) * near * 6;
-      const look = clamp01(1 - Math.abs(dd) / 36) * 1.4;
-      const grazing = smooth((Math.sin(t * 0.55 + seed * 1.9) + 0.35) * 1.6);
-      const graze = near > 0.05 || look > 0.5 || lying ? 0 : grazing;
-      const step = near > 0.05 ? t * 14 + seed : 0;
-      const face = near > 0.2 ? Math.sign(dd || 1) : dir;
-      // The first lamb skips beside its mother now and then.
-      const hp = ((t * 0.9 + seed * 0.37) % 2.6);
-      const hop = pose === 'lamb' && seed === 8 && hp < 0.7 ? Math.abs(Math.sin(hp / 0.7 * Math.PI * 2)) * 1.6 : 0;
-      items.push({ depth, draw: () => drawSheep(ctx, sx, seat.near(sx) + depth, s * S, face, pose, graze, step || (hop ? t * 10 : 0), near > 0.2 ? 0 : look, t, seed, wf, hop) });
-    }
-    items.push({ depth: -0.5, draw: () => drawCollie(ctx, dogX, seat.near(dogX) + 0.6, S * 1.05, v >= 0 ? 1 : -1, t * 15, crouch) });
-    items.sort((a, b) => a.depth - b.depth);
+    const { dog, sheep } = plumberFlockState(t, variant);
+    const items = sheep.map((q) => {
+      const sx = x + q.x;
+      return { order: q.order, draw: () => drawSheep(ctx, sx, seat.near(sx) + q.depth, q.s, q.dir, q.pose, q.graze, q.sw, 0, t, q.seed, q.whiteFace, q.hop) };
+    });
+    const dx = x + dog.x;
+    items.push({ order: dog.depth, draw: () => drawCollie(ctx, dx, seat.near(dx) + dog.depth, FLOCK_S * 1.05, dog.face, dog.run, dog.crouch, dog.lift, COLLIE_COATS[variant ? 1 : 0]) });
+    // Sheep keep their places in the queue as they are shoved (so two never swap over);
+    // the dog files in by its own depth.
+    items.sort((a, b) => a.order - b.order);
     for (const it of items) it.draw();
   });
   ctx.restore();

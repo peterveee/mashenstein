@@ -807,7 +807,7 @@ const COYOTE = {
 };
 /**
  * A coyote on a sandstone ledge, howling every 5 s, seated on the NEAR dunes.
- * x: the ledge's centre (a summit suits it). Ink spans about x-26 .. x+25 and ~40 px
+ * x: the ledge's centre (a summit suits it). Ink spans about x-27 .. x+27 and ~40 px
  * above the crest; the song rings drift a further ~15 px up and right.
  * facing: 1 howls to the right (at the sun), -1 to the left. Only the animal turns —
  * the ledge keeps its sun-lit face, and the rings go the way the muzzle points.
@@ -829,14 +829,17 @@ export function drawDesertCoyote(ctx, t, x, seat, facing = 1, { mode = 'howl', s
   clipSky(ctx, x0 - 90, x0 + 90, [(xx) => seat.near(xx) + 2]);
   ctx.translate(x0, y0);
   // The outcrop: a flat-topped sandstone ledge in the near-rock palette, strata and all.
-  const outline = [-26, 14, -24, -3, -19, -9, -8, -12.4, 9, -12.2, 17, -9.6, 22, -4, 25, 14];
+  // The top is FLAT out to ±21 (Peter, 25 Sep 2026): a coyote lying down reaches ±19
+  // with its paws either way it faces, and on the old domed top (level only over
+  // -8..9) its chin and paws hung in the air over the falling shoulder.
+  const outline = [-27, 14, -26, -4, -24, -10, -21, -12.3, 21, -12.3, 24, -10, 26, -4, 27, 14];
   fillPath(ctx, rock.body, poly(outline));
   ctx.save();
   ctx.beginPath(); poly(outline)(ctx); ctx.clip();
-  fillPath(ctx, rock.lit, poly([-19, -9, -8, -12.4, 9, -12.2, 17, -9.6, 16, -8.4, 8, -10.8, -8, -11, -18, -7.8]));
+  fillPath(ctx, rock.lit, poly([-24, -10, -21, -12.3, 21, -12.3, 24, -10, 23, -8.9, 20.4, -11.1, -20.4, -11.1, -23, -8.9]));
   for (const [yy, hh] of [[-6.2, 1.4], [-2.2, 1], [1.8, 1.6]]) fillPath(ctx, rgba(rock.band, 0.7), box(-30, yy, 60, hh));
-  fillPath(ctx, rgba(rock.dark, 0.75), poly([-26, 14, -24, -3, -19, -9, -16, -8, -20, 0, -21, 14]));
-  fillPath(ctx, rgba(rock.dark, 0.5), poly([17, -9.6, 22, -4, 25, 14, 20, 14, 19, -3]));
+  fillPath(ctx, rgba(rock.dark, 0.75), poly([-27, 14, -26, -4, -24, -10, -21, -9, -24, 0, -23, 14]));
+  fillPath(ctx, rgba(rock.dark, 0.5), poly([24, -10, 26, -4, 27, 14, 22, 14, 21, -3]));
   ctx.restore();
   if (mode !== 'howl' && COYOTE_SHOWS[mode]) {
     drawCoyotePerformance(ctx, t, P, facing < 0 ? -1 : 1, mode, since, pace);
@@ -929,7 +932,7 @@ const COYOTE_TONGUE = '#c86a6a';
 const COYOTE_SONG = '#fff4dc';
 const COYOTE_SPARK = '#fffbea';
 const COYOTE_HEAD_SIT = [2.6, -12.6];
-const COYOTE_HEAD_LIE = [9.0, -3.2];
+const COYOTE_HEAD_LIE = [9.0, -2.0];   // chin on the paws: the jaw's underside meets their tops
 function coyoteRest(t) {
   return {
     lie: 0, heave: 0, lean: 0, tw: Math.sin(t * 2.2) * 0.5,
@@ -973,10 +976,11 @@ function coyoteSideBody(ctx, P, pose) {
   fillPath(ctx, P.fur, (c) => { c.moveTo(T[0], T[1]); c.quadraticCurveTo(T[2], T[3], T[4], T[5]); c.lineTo(T[6] + h, T[7]); c.quadraticCurveTo(T[8] + h, T[9], T[10], T[11]); c.lineTo(T[12], T[13]); c.closePath(); });
   coyoteCurve(ctx, P.cream, lerpPts(COYOTE_CHEST, k), h);
   coyoteCurve(ctx, P.furLit, lerpPts(COYOTE_BACKLIT, k), 0);
-  // Front legs: straight down sitting, laid forward along the ledge lying.
+  // Front legs: straight down sitting, laid forward along the ledge lying — flat on
+  // it, so the forearm meets the paw at its tip rather than floating over it.
   for (const lx of [1.6, 3.2]) {
     ctx.save();
-    ctx.translate(lerp(lx, lx + 3.6, k), lerp(-8, -1.9, k));
+    ctx.translate(lerp(lx, lx + 3.6, k), lerp(-8, -0.75, k));
     ctx.rotate(lerp(0, -Math.PI / 2, k));
     fillPath(ctx, lx > 2 ? P.fur : P.furDark, box(-0.7, 0, 1.4, lerp(8, 6.6, k), 0.5));
     ctx.restore();

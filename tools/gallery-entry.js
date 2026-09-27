@@ -93,6 +93,16 @@ import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
 import { FROST_BG_V2, drawFrostV2Scene, drawFrostV2CloseUp } from '../src/dev/frost-background-v2.js';
 import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../src/dev/frost-sleigh-v2.js';
 import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
+import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
+import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
+import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
+import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
+import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
+import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
+import { CRYPT_LANE_CANDIDATES, CRYPT_SELECTED_CANDIDATES, drawCryptLaneStudy } from '../src/dev/crypt-lane-enemy-candidates.js';
+import { CRYPT_ANIMAL_STUDIES, drawCryptAnimalStudy } from '../src/dev/crypt-animal-refinements.js';
+import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
+import { CRYPT_HALLOWEEN_BACKGROUNDS, CRYPT_HALLOWEEN_LANE, drawCryptHalloweenBackground, drawCryptHalloweenLane } from '../src/dev/crypt-halloween-bakeoff.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
 import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
@@ -184,6 +194,11 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   'finish-cling',
   'spring-pad-bakeoff',
   'death-eyes-bakeoff',
+  // Replaced 26 Sep 2026 at Peter's request: movie-night scenery did not fit the Crypt.
+  // The clown is already part of the shipped graveyard; the new study is Halloween-only.
+  'crypt-movie-lane-bakeoff',
+  'crypt-movie-backdrops-bakeoff',
+  'crypt-movie-moments-bakeoff',
   // SETTLED 3 Sep 2026: N7 — close enough to break the eye-column echo, with
   // 0.9px of air left between the two nostril ellipses at panel scale.
   'gorilla-nostril-bakeoff',
@@ -7574,6 +7589,318 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       (ctx, t) => drawWolvesFireScene(ctx, t, c.id), { animated: true });
     tile(grid, `${c.label} · close-up`, 'On the hearth, 3x, no snow.', W, H,
       (ctx, t) => drawWolvesFireCloseUp(ctx, t, c.id), { animated: true });
+  }
+}
+
+// ------------------------------------------ NEON 1 — how Fuji leaves (lab)
+// Peter, 25 Sep 2026: rather than fading Mt Fuji out before the night, "a fog that covers
+// it gradually which then disappears when we [turn] to night … Open to suggestions or a
+// bake off". The candidates are in src/dev/neon-fuji-exit-candidates.js; each card is the
+// shipped neon pack through its golden and night moods, with the strike at 10%.
+{
+  ensureKanaFonts();
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-fuji-exit-bakeoff', 'TERMINAL VELOCITY — how Fuji leaves neon-1 (bake-off)',
+    'Asked 25 Sep 2026: "a fog that covers it gradually which then disappears when we [turn] to night … the fog '
+    + 'would rise up to cover it rather than a simple fade … It could move off screen I suppose. Technically Fuji is '
+    + 'visible from Tokyo." 0 is what ships. A–F finish just before the strike (2%–9.5% of the stage) and live in '
+    + 'the golden sky, so the spreading night takes whatever is left with the sun; G keeps the mountain into the night. '
+    + 'Each card runs neon-1 from 0% to 16% on a ten-second loop, the city arriving as it does in the game and the '
+    + 'strike at 10%; the stage % is in the corner. ANIMATED.',
+    '25 Sep 2026');
+  const LOOP = 10, RUN = 8, END = 0.16, TURN = 0.1;
+  for (const cand of FUJI_EXIT_CANDIDATES) {
+    const golden = fujiExitGoldenMood(cand);
+    const night = fujiExitNightMood(cand);
+    tile(grid, cand.label, cand.blurb, W, H, (ctx, t) => {
+      const tt = t % LOOP;
+      const progress = Math.min(END, (tt / RUN) * END);
+      const camX = tt * 60;
+      const paint = (mood) => {
+        const c = { stageIndex: 1, progress, neonMood: mood };
+        pack.bg(ctx, t, camX, neon, 1000, c, 0, c);
+      };
+      paint(golden);
+      const u = progress >= TURN ? (tt - (TURN / END) * RUN) : -1;
+      const hitX = W * 0.5, hitY = GROUND_Y - 70;
+      if (u >= 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hitX, hitY, neonStrikeRadius(u, W * 1.4), 0, Math.PI * 2);
+        ctx.clip();
+        paint(night);
+        ctx.restore();
+        drawNeonBolt(ctx, u, hitX, hitY, 7, { left: -20, right: W + 20, top: GROUND_Y * 0.24 });
+        const flash = neonStrikeFlash(u);
+        if (flash > 0) {
+          ctx.save();
+          ctx.globalAlpha = flash * 0.8;
+          ctx.fillStyle = '#eafcff';
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+        }
+      }
+      ctx.save();
+      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+      pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
+      drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+      ctx.restore();
+      if (pack.post) pack.post(ctx, t);
+      ctx.save();
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(4, 4, 44, 14);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`${(progress * 100).toFixed(1)}%`, 8, 15);
+      ctx.restore();
+    }, { animated: true });
+  }
+}
+
+// ------------------------------------------ CRYPT SHIFT — backdrop styles (lab)
+// Peter, 25 Sep 2026: "i want to do a bakeoff in different styles … So the crypt instead
+// of the plumber … World only … only the background will change our game lane remains as
+// is", with his Hybrid Vector brief, then "Are we doing Mid century modern and pop art et
+// al". Every style paints the one composition in src/dev/crypt-styles/plan.js; the lane
+// on top is the shipped vhs ground, real crypt hazards and the hero. Candidates are in
+// src/dev/crypt-style-candidates.js, one file per style under src/dev/crypt-styles/.
+// Then: "My favourites are: Gouache, crayon, voxel, shadow puppet, mid century modern. Can
+// we group these together as A LEVEL but keep the others as B LEVEL (for reference)", and
+// then "move voxel to LEVEL B". The write-up is docs/BACKDROP_STYLES.md.
+function cryptStyleTiles(grid, tag, cand) {
+  for (const screen of CRYPT_SCREENS) {
+    tile(grid, `${tag} ${cand.name} — ${screen.name}`, cand.note, W, H,
+      (ctx, t) => drawCryptStyleScene(ctx, t, cand.paint, screen), { animated: true });
+  }
+}
+{
+  const grid = section('crypt-style-bakeoff', 'CRYPT SHIFT — backdrop styles, A level (bake-off)',
+    'Asked 25 Sep 2026: a bake-off of whole backdrop styles on Crypt Shift, the world only — the lane stays '
+    + 'exactly as it ships. A LEVEL is Peter\'s favourites, in his order; 0 is the shipped VHS backdrop for '
+    + 'comparison, and the other nine are kept below as B LEVEL. Every card paints the same scene: a ruined abbey '
+    + 'against the moon on the far ridge, a graveyard hill with mausoleums, headstones and crosses, a near bank with '
+    + 'a gnarled tree, iron railings, a gate and a gas lamp, two fog bands, stars, clouds and bats. Two screens each: '
+    + 'the abbey, then four screens on at the second tomb; the camera runs from each on an eight-second loop so the '
+    + 'parallax shows, and the hero hops the hazards. The VHS scanlines are left off the candidates (a whole-frame '
+    + 'pass would be judging the tape, not the painting). Write-up: docs/BACKDROP_STYLES.md. ANIMATED.',
+    '25 Sep 2026');
+  cryptStyleTiles(grid, '0', CRYPT_STYLE_SHIPPED);
+  CRYPT_STYLE_A_LEVEL.forEach((cand, n) => cryptStyleTiles(grid, `A${n + 1}`, cand));
+}
+{
+  const grid = section('crypt-style-bakeoff-b', 'CRYPT SHIFT — backdrop styles, B level (reference)',
+    'The rest of the 25 Sep 2026 Crypt Shift style bake-off, kept for reference: the same scene, lane and loop as '
+    + 'the A level above. B4–B8 are the ingredients of Peter\'s Hybrid Vector brief on their own (voxel, blueprint, '
+    + 'constructivism, pop art, riso; mid-century modern and shadow puppetry are A level), and B9 is the brief\'s '
+    + 'blend. Voxel was A level until Peter moved it down the same day. ANIMATED.',
+    '25 Sep 2026');
+  CRYPT_STYLE_B_LEVEL.forEach((cand, n) => cryptStyleTiles(grid, `B${n + 1}`, cand));
+}
+
+// ------------------------------------------ SPEED ZONE — mid-century modern (lab)
+// Peter, 25 Sep 2026: "As for Speed, can we convert a small section into the lab gallery
+// to see how it might look as MCM" — after the crypt style bake-off, where he was "very
+// taken with MCM … a great fit for the speed level with it's desert theme". Two screens of
+// speed-1 re-composed from the shipped pack's own numbers (src/dev/speed-mcm/plan.js),
+// painted in one mid-century hand with two palettes; the lane is the shipped one.
+{
+  const grid = section('speed-mcm-bakeoff', 'SPEED ZONE — mid-century modern (bake-off)',
+    'Asked 25 Sep 2026: a small section of Speed Zone converted to the mid-century modern backdrop, the Road '
+    + 'Runner desert of the 1950s layout painters. 0 is the shipped paper backdrop. A is speed-1\'s own warm late '
+    + 'sun in period colours; B is the classic midday palette (turquoise sky, bleached sand, terracotta mesas). Two '
+    + 'screens: the opening, with the wind pump in front of the sun, and the stretch about 61% in where the first '
+    + 'coyote howls on its ledge. The world only — the road, hazards and hero are the shipped ones — on the same '
+    + 'eight-second loop as the crypt cards. ANIMATED.',
+    '25 Sep 2026');
+  SPEED_MCM_CANDIDATES.forEach((cand, n) => {
+    const tag = n === 0 ? '0' : String.fromCharCode(64 + n);
+    for (const screen of SPEED_MCM_SCREENS) {
+      tile(grid, `${tag} ${cand.name} — ${screen.name}`, cand.note, W, H,
+        (ctx, t) => drawSpeedMcmScene(ctx, t, cand.paint, screen), { animated: true });
+    }
+  });
+}
+
+// ------------------------------------------ SPEED ZONE — the mid-century coyote (lab)
+// Peter, 26 Sep 2026, of the MCM coyote re-cut from the paper one: "can we do a few more
+// styles for the cyote in a bakeoff? he looks a bit like an aardvark!" Candidates in
+// src/dev/speed-mcm/coyote-candidates.js; each is swapped into the real screen-2 card
+// through drawSpeedMcmScene's { coyote } seam.
+{
+  const grid = section('speed-mcm-coyote-bakeoff', 'SPEED ZONE — the mid-century coyote (bake-off)',
+    'Asked 26 Sep 2026: "he looks a bit like an aardvark!" — the long drooping snout, no brow, ears set back on a '
+    + 'long neck. 0 is that coyote; A–F are six takes on it in the mid-century hand, all on the same ledge at the same '
+    + 'scale, sitting and then howling on the shipped five-second clock (A and E also do the doze, the chorus with the '
+    + 'pup and the wink). First card: the coyote held close, SUNSET on the left and MIDDAY on the right. Second: the real '
+    + 'screen-2 SUNSET card with it swapped in. ANIMATED.',
+    '26 Sep 2026');
+  const sunset = SPEED_MCM_CANDIDATES.find((c) => c.id === 'mcm-sunset');
+  const coyoteScreen = SPEED_MCM_SCREENS.find((sc) => sc.id === 's2') || SPEED_MCM_SCREENS[1];
+  COYOTE_CANDIDATES.forEach((cand, n) => {
+    const tag = n === 0 ? '0' : String.fromCharCode(64 + n);
+    tile(grid, `${tag} ${cand.name} — close`, cand.note, W, H,
+      (ctx, t) => drawCoyoteCloseUp(ctx, t, cand, W, H), { animated: true });
+    tile(grid, `${tag} ${cand.name} — in the card`, 'The screen-2 SUNSET card, 61% into speed-1.', W, H,
+      (ctx, t) => drawSpeedMcmScene(ctx, t, sunset.paint, coyoteScreen, { coyote: cand.draw }), { animated: true });
+  });
+}
+
+// ------------------------------------------ CRYPT SHIFT — more life in the graveyard (lab)
+// Peter, 26 Sep 2026: "can we add more objects (maybe animals) for the crypt levels?
+// animated ideally … do we hav layers that move at different rates … lets do a bakeoff".
+// Ideas in src/dev/crypt-ideas/, one file per depth layer; each is painted INSIDE the
+// shipped gouache backdrop on its layer (cryptGouache.js's study seam), so it parallaxes at
+// that layer's rate and is covered by what stands in front of it.
+{
+  const grid = section('crypt-ideas-bakeoff', 'CRYPT SHIFT — more life in the graveyard (bake-off)',
+    'Asked 26 Sep 2026: more objects and animals for the crypt levels, animated where possible. Every idea lives on '
+    + 'one of the backdrop\'s depth layers — the parallax — and moves at that layer\'s rate: N is the near bank '
+    + 'behind the lane (fastest), H the graveyard hill, F the far ridge and the sky (barely moves). First card: the '
+    + 'camera running at lane speed over the idea, with the lane and hero on top. Second: the camera held, zoomed on '
+    + 'it. Nothing here is in the game yet. ANIMATED.',
+    '26 Sep 2026');
+  for (const group of CRYPT_IDEA_GROUPS) {
+    group.ideas.forEach((idea, n) => {
+      const tag = `${group.tag}${n + 1}`;
+      tile(grid, `${tag} ${idea.name} — running`, `${group.title}: ${idea.note}`, W, H,
+        (ctx, t) => drawCryptIdeaScene(ctx, t, idea), { animated: true });
+      tile(grid, `${tag} ${idea.name} — close`, `The camera held, ${idea.zoom ?? 3}x.`, W, H,
+        (ctx, t) => drawCryptIdeaCloseUp(ctx, t, idea, W, H), { animated: true });
+    });
+  }
+}
+
+// Crypt lane inhabitants: animated design proposals, deliberately outside production.
+{
+  const grid = section('crypt-distant-zombie-procession', 'CRYPT SHIFT — the far-hill zombie procession',
+    'Now in level 3 scenery. The unselected, gouache-influenced Z1 Last Usher, Z2 Graveyard Gardener and Z3 Overtime Clerk '
+    + 'lurch slowly across the far ridge in a close procession, entering one after another with staggered, uneven strides. '
+    + 'They use the original first-round art, softened for distance, '
+    + 'on the real Crypt background layer behind the nearer hills. The lane spawns and hitboxes are unchanged. ANIMATED.',
+    '26 Sep 2026');
+  tile(grid, 'Far hill — gameplay scale', 'Hold on the level-3 scene to watch Z1, then Z2, then Z3 lurch across the ridge.', W, H,
+    (ctx, t) => drawCryptDistantZombieScene(ctx, t + 11), { animated: true });
+  tile(grid, 'Far hill — scenery close-up', 'Same walking painters at 2.25× so the three old designs can be compared.', W, H,
+    (ctx, t) => drawCryptDistantZombieScene(ctx, t + 11, true), { animated: true });
+}
+
+// Crypt lane inhabitants: animated design proposals, deliberately outside production.
+{
+  const grid = section('crypt-enemy-bakeoff', 'CRYPT SHIFT — zombies & lane hazards (bake-off)',
+    'Z0 is the current zombie. Z1–Z3 explore richer faces, costumes and articulated walks at the same 13 × 19 world-pixel art size (10 × 14 logical footprint). '
+    + 'E1–O1 are new obstacle proposals. Each pair shows the real gouache backdrop and lane at gameplay scale, then the same art at 4×. '
+    + 'These are animated art studies, not playable encounters; no spawn rules or hitboxes have changed. All proposals use jump, slide or existing abilities.', '26 Sep 2026');
+  for (const item of CRYPT_ENEMY_CANDIDATES) {
+    tile(grid, `${item.id} ${item.name} — gameplay`, item.note, W, H,
+      (ctx,t) => drawCryptEnemyStudy(ctx,t,item), { animated:true });
+    tile(grid, `${item.id} ${item.name} — close`, '4× detail view. Same painter and animation as the gameplay card.', W, H,
+      (ctx,t) => drawCryptEnemyStudy(ctx,t,item,true), { animated:true });
+  }
+}
+
+// Second round: foreground style judged with shipped cast and a neutral close-up.
+{
+ const grid=section('crypt-lane-enemy-bakeoff','CRYPT SHIFT — larger zombies, lane styles (round 2)',
+  'Three costumes × three art directions, plus three slab-only headstones. A: soft cast cartoon. B: chunky cel. C: bold comic. '
+  + 'Zombies are 28 world units tall, roughly 50% above round one; headstones are 23. The first pair preserves the original designs. '
+  + 'Every new candidate appears between the real Lorenzo and Gary in the gameplay view and on a neutral close-up stage at equal scale. '
+  + 'The lane has its own visual identity: no backdrop texture or fog is applied to these figures. Art proposals only; collision and gameplay unchanged.', '26 Sep 2026');
+ tile(grid,'REF Round one — gameplay','Z1, Z2, Z3 and O1 at their previous sizes.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,null),{animated:true});
+ tile(grid,'REF Round one — close','Original four designs on a neutral stage.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,null,true),{animated:true});
+ for(const item of CRYPT_LANE_CANDIDATES){
+  const title=`${item.id} ${item.name} · ${item.style.name}`;
+  tile(grid,title+' — gameplay',item.style.note,W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item),{animated:true});
+  tile(grid,title+' — close',item.role==='stone'?'Upright slab only. No roots, arms or pedestal. Shipped heroes for comparison.':'Larger overall. Shipped Lorenzo and Gary are drawn at the same scale for comparison.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item,true),{animated:true});
+ }
+}
+
+// Approved selection. Original alternatives remain above for future reuse.
+{
+ const grid=section('crypt-selected-enemies','CRYPT SHIFT — selected lane cast',
+  'Shipped: A costumes with vacant eyes and slack jaws, plus BH with the original mouth animation. '
+  + 'Larger zombie art; slab-only headstone. All earlier alternatives remain in the gallery.', '26 Sep 2026');
+ for(const item of CRYPT_SELECTED_CANDIDATES){
+  tile(grid,item.id+' '+item.name+' — gameplay','Selected production painter, alongside Lorenzo and Gary.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item),{animated:true});
+  tile(grid,item.id+' '+item.name+' — close','Neutral close-up. Same painter used in the live level.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item,true),{animated:true});
+ }
+}
+
+// Graveyard animals: visual audition only. References use actual shipped entity painters.
+{
+ const grid=section('crypt-animal-refinements','CRYPT SHIFT — bone hounds, dogs, cats & panthers (bake-off)',
+  'H0/D0/C0 are the first bone hound and the shipped dog/cat controls. Three bone hounds, three dogs and three cats follow. '
+  + 'Each candidate runs against the real Crypt scene at gameplay size, then appears between Lorenzo and Gary on a neutral stage. '
+  + 'These are animated art proposals; panthers and revised hounds have no gameplay definition.', '26 Sep 2026');
+ for(const item of CRYPT_ANIMAL_STUDIES){
+  tile(grid,item.id+' '+item.name+' — gameplay',item.note,W,H,(ctx,t)=>drawCryptAnimalStudy(ctx,t,item),{animated:true});
+  tile(grid,item.id+' '+item.name+' — close','Neutral close-up against shipped heroes.',W,H,(ctx,t)=>drawCryptAnimalStudy(ctx,t,item,true),{animated:true});
+ }
+}
+
+// Crypt movie-night expansion: review-only gameplay props, stage-specific country,
+// and tiny animated cameos. Each backdrop card uses the shipped gouache painter's
+// study seam at its proposed depth and stage; lane props retain the lane's own art.
+{
+  const grid = section('crypt-movie-lane-bakeoff', 'CRYPT SHIFT — movie-night lane items',
+    'Twelve new obstacle art proposals in the real Crypt lane, alongside Lorenzo. '
+    + 'Each has a gameplay-scale card and the same painter enlarged between shipped heroes. '
+    + 'Cartoon props, stage magic and B-movie mischief: no gore, no new hitboxes or spawn rules. ANIMATED.',
+    '26 Sep 2026');
+  for (const item of CRYPT_MOVIE_LANE) {
+    tile(grid, `${item.id} ${item.name} — gameplay`, item.note, W, H,
+      (ctx,t)=>drawCryptMovieLane(ctx,t,item), {animated:true});
+    tile(grid, `${item.id} ${item.name} — close`, 'Same lane painter at inspection size, between Lorenzo and Gary.', W, H,
+      (ctx,t)=>drawCryptMovieLane(ctx,t,item,true), {animated:true});
+  }
+}
+{
+  const grid = section('crypt-movie-backdrops-bakeoff', 'CRYPT SHIFT — level 2 & 3 scenery',
+    'Eight stage-specific backdrop proposals, planted on the real far ridge or graveyard hill with the real Crypt parallax and lane. '
+    + 'The second card zooms into each idea. B2 belongs to Crypt 2; B3 belongs to Crypt 3. Review only.',
+    '26 Sep 2026');
+  for (const item of CRYPT_MOVIE_BACKDROPS) {
+    tile(grid, `${item.id} ${item.name} — level ${item.stage}`, item.note, W, H,
+      (ctx,t)=>drawCryptMovieBackdrop(ctx,t,item), {animated:true});
+    tile(grid, `${item.id} ${item.name} — detail`, `Real level ${item.stage} scenery at ${item.zoom}×.`, W, H,
+      (ctx,t)=>drawCryptMovieBackdrop(ctx,t,item,true), {animated:true});
+  }
+}
+{
+  const grid = section('crypt-movie-moments-bakeoff', 'CRYPT SHIFT — little movie moments',
+    'Four small animated backdrop cameos. The clown and balloon are an original comic silhouette; '
+    + 'the UFO and space-opera ideas are broad genre nods. Nothing is in the run yet.', '26 Sep 2026');
+  for (const item of CRYPT_MOVIE_MOMENTS) {
+    tile(grid, `${item.id} ${item.name} — level ${item.stage}`, item.note, W, H,
+      (ctx,t)=>drawCryptMovieBackdrop(ctx,t,item), {animated:true});
+    tile(grid, `${item.id} ${item.name} — detail`, `Same animated painter on the level ${item.stage} hill.`, W, H,
+      (ctx,t)=>drawCryptMovieBackdrop(ctx,t,item,true), {animated:true});
+  }
+}
+
+// Halloween props, with a deliberate style split: all environmental objects are painted
+// by GOUACHE_KIT inside the real graveyard hill; lane hazards use the Crypt's crisp game
+// outline style at run scale. Nothing here is hooked to gameplay.
+{
+  const grid = section('crypt-halloween-backdrop-bakeoff', 'CRYPT SHIFT — Halloween backdrop objects (gouache bake-off)',
+    'Ten Halloween props across the near bank, graveyard hill and far ridge. All use the gouache kit; the skeleton dances in a looping two-step. Each has a real scene card with runner scale and a held close-up. Review only.',
+    '26 Sep 2026');
+  for (const item of CRYPT_HALLOWEEN_BACKGROUNDS) {
+    tile(grid, `${item.name} — running`, item.note, W, H,
+      (ctx, t) => drawCryptHalloweenBackground(ctx, t, item), { animated: true });
+    tile(grid, `${item.name} — close`, 'Same gouache painter, camera held on the hill.', W, H,
+      (ctx, t) => drawCryptHalloweenBackground(ctx, t, item, true, W, H), { animated: true });
+  }
+}
+{
+  const grid = section('crypt-halloween-lane-bakeoff', 'CRYPT SHIFT — Halloween lane obstacles (game art bake-off)',
+    'Four classic Halloween obstacle ideas in the game’s bold, outlined lane style. Each shows the real Crypt scene at gameplay scale and the same painter enlarged between Lorenzo and Gary. JUMP and SLIDE are visual reads only; gameplay, hitboxes and spawns are unchanged. ANIMATED.',
+    '26 Sep 2026');
+  for (const item of CRYPT_HALLOWEEN_LANE) {
+    tile(grid, `${item.id} ${item.name} · ${item.action}`, item.note, W, H,
+      (ctx, t) => drawCryptHalloweenLane(ctx, t, item), { animated: true });
+    tile(grid, `${item.id} ${item.name} — close`, `${item.action} read at inspection size, between shipped heroes.`, W, H,
+      (ctx, t) => drawCryptHalloweenLane(ctx, t, item, true), { animated: true });
   }
 }
 

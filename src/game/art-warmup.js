@@ -18,6 +18,8 @@ import {
   hasProp, propFrames, propSprite, propRimPair, propTall, propHazardRim,
   propCacheStats, evictPropsExcept,
 } from '../sprites/props.js';
+import { cryptGouacheWarmJobs } from '../engine/stylePacks/cryptGouache.js';
+import { cryptLifeWarmJobs } from '../engine/stylePacks/cryptLife.js';
 
 // The two rim colours drawWorldEntity composes hazard outlines from. They are
 // literals there too; if they ever move, these follow, and the warm-up simply
@@ -94,17 +96,27 @@ function stageJobs(cabinet) {
 // the next stage of the same cabinet — never pays to rebuild anything.
 const CACHE_BUDGET_BYTES = 80 * 1024 * 1024;
 
+// A BAKED BACKDROP goes first: it is on screen from the run's first frame, where a prop
+// has a screen's width of travel. Its jobs are steps of one bake (`run`), not props, and
+// they stay out of artWarmupQueueFor, which is the prop list the tests hold to account.
+function backdropJobs(cabinet) {
+  if (cabinet?.style === 'gouache') {
+    return [...cryptGouacheWarmJobs(), ...cryptLifeWarmJobs()].map((run) => ({ run }));
+  }
+  return [];
+}
+
 export function beginStageArtWarmup(cabinet) {
   const id = cabinet?.id || null;
   if (builtFor === id && cursor < queue.length) return;   // already queued, keep going
   const changed = builtFor !== id;
   builtFor = id;
-  queue = stageJobs(cabinet);
+  queue = [...backdropJobs(cabinet), ...stageJobs(cabinet)];
   cursor = 0;
   if (changed && propCacheStats().residentBytes > CACHE_BUDGET_BYTES) {
     // Keep what this stage is about to ask for; everything else was the last
     // cabinet's, and rebuilding it later costs a menu frame, not a run.
-    evictPropsExcept(new Set(queue.map((j) => j.name)));
+    evictPropsExcept(new Set(queue.filter((j) => j.name).map((j) => j.name)));
   }
 }
 
@@ -134,6 +146,7 @@ export function stepArtWarmup(budgetMs = 2) {
   do {
     const j = queue[cursor++];
     try {
+      if (j.run) { j.run(); done++; continue; }
       propSprite(j.name, j.w, j.h, j.f);
       if (j.rim) {
         propRimPair(j.name, j.w, j.h, RIM_LITE, 'x', j.f);

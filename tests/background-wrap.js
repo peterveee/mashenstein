@@ -121,6 +121,7 @@ const CASES = [
   ['faux3d', 'speed'],
   ['watercolor', 'frost'],
   ['vhs', 'crypt'],
+  ['gouache', 'crypt'],
   ['neon', 'neon'],
   ['cardboard', 'cardboard'],
 ];

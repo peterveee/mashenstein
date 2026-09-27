@@ -6,6 +6,12 @@ import { GRAVITY, BASE_JUMP_V } from './player.js';
 import { randomPowerPickup, weightedPowerPickup } from './powerups.js';
 import { sectionAt, patternKey, DEFAULT_DRIP } from './layout.js';
 
+// The animal a pattern leads with, if any.
+function animalOf(pat) {
+  const c = pat.cells.find((cell) => OBSTACLES[cell.t]?.animal);
+  return c ? c.t : null;
+}
+
 // How much extra room a puntable prop buys the obstacle behind it, in seconds
 // of travel. A punt hangs for roughly a second (see PUNT in punt.js), and this
 // covers most of it, so the juggle jump is over before the next thing needs
@@ -207,6 +213,7 @@ export class Spawner {
     this.phraseLeft = 0;
     this.nextX = 0;
     this.lastPatternIdx = -1;
+    this.lastAnimal = null;
     this.lastActionX = -9999;
     // Where each spaced swap type last went down (see the cabinet's `swapSpacing`).
     this.lastSwapX = new Map();
@@ -359,7 +366,19 @@ export class Spawner {
     if (!pats.length) return null;
     let idx = this.rng.int(0, pats.length - 1);
     if (idx === this.lastPatternIdx && pats.length > 1) idx = (idx + 1) % pats.length;
+    // NEVER THE SAME ANIMAL TWICE RUNNING, for a cabinet that asks (Crypt: Peter, 26 Sep
+    // 2026, "dont repeat dogs so much and have a lot more variety in the animals"). The
+    // animal a pattern leads with may not be the last animal dealt, however many plain
+    // patterns came between; the pick steps on through the bag until one differs. No
+    // extra roll, so every other cabinet's deal is untouched.
+    if (this.cabinet.varyAnimals && this.lastAnimal) {
+      for (let k = 0; k < pats.length && animalOf(pats[idx]) === this.lastAnimal; k++) {
+        idx = (idx + 1) % pats.length;
+      }
+    }
     this.lastPatternIdx = idx;
+    const animal = animalOf(pats[idx]);
+    if (animal) this.lastAnimal = animal;
     return pats[idx];
   }
 

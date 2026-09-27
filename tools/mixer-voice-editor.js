@@ -1157,7 +1157,10 @@ const layerGroups = () => {
         // always there and always means the same thing — how much of this source is in
         // the sound — and a card that opens on it reads as a mixer channel, which is what
         // an oscillator section is.
-        n(`$${p}.gain`, 'LEVEL', 0, 2, 0.01, fixed(2), i === 1 ? 1 : 0.3),
+        n(`$${p}.gain`, 'LEVEL', 0, 2, 0.001, fixed(3), i === 1 ? 1 : 0.3, '', null,
+          { scale: 3,
+            tip: 'Oscillator level. The lower part of the control has extra travel for '
+              + 'quiet layers and fine balance' }),
         pick(`$${p}.type`, 'WAVE', LAYER_WAVES, i === 1 ? 'square' : 'sine'),
         // After the wave rather than before it, because it only exists for one of them:
         // a row that is greyed on four waveforms out of six should not be the second thing

@@ -47,6 +47,11 @@ import * as BARBER_Q from './barber-q.js';
 import * as BARBER from './barber.js';
 import * as CASTLE from './castle.js';
 import { CHOPIN3 } from './chopin3.js';
+import * as CRYPT_BLACK_ABBEY from './crypt-black-abbey.js';
+import * as CRYPT_CLOCKWORK_SEANCE from './crypt-clockwork-seance.js';
+import * as CRYPT_MIDNIGHT_PROCESSION from './crypt-midnight-procession.js';
+import * as CRYPT_WHISPER_EXCHANGE from './crypt-whisper-exchange.js';
+import * as CRYPT_WIDOWS_LANTERN from './crypt-widows-lantern.js';
 import * as ENDING from './ending.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3_2 from './everything-is-looking-up-m3-2.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3 from './everything-is-looking-up-m3.js';
@@ -94,6 +99,8 @@ import * as SMW_OVERWORLD from './smw-overworld.js';
 import * as SMW_TITLE_2 from './smw-title-2.js';
 import * as SMWGOOD from './smwgood.js';
 import * as SPECIAL_STAGE_1 from './special-stage-1.js';
+import * as SPEED_HORIZON_LINES_OVERDRIVE from './speed-horizon-lines-overdrive.js';
+import * as SPEED_HORIZON_LINES from './speed-horizon-lines.js';
 import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
 import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
@@ -140,6 +147,11 @@ export const IMPORTED_BY_ID = {
   "barber": { bank: BARBER.bank, title: BARBER.title, group: "imported", writable: true },
   "castle": { bank: CASTLE.bank, title: CASTLE.title, group: "imported", writable: true },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
+  "crypt-black-abbey": { bank: CRYPT_BLACK_ABBEY.bank, title: CRYPT_BLACK_ABBEY.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-clockwork-seance": { bank: CRYPT_CLOCKWORK_SEANCE.bank, title: CRYPT_CLOCKWORK_SEANCE.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-midnight-procession": { bank: CRYPT_MIDNIGHT_PROCESSION.bank, title: CRYPT_MIDNIGHT_PROCESSION.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-whisper-exchange": { bank: CRYPT_WHISPER_EXCHANGE.bank, title: CRYPT_WHISPER_EXCHANGE.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-widows-lantern": { bank: CRYPT_WIDOWS_LANTERN.bank, title: CRYPT_WIDOWS_LANTERN.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "ending": { bank: ENDING.bank, title: ENDING.title, group: "imported", writable: true },
   "everything-is-looking-up-m3-2": { bank: EVERYTHING_IS_LOOKING_UP_M3_2.bank, title: EVERYTHING_IS_LOOKING_UP_M3_2.title, group: "imported", writable: true },
   "everything-is-looking-up-m3": { bank: EVERYTHING_IS_LOOKING_UP_M3.bank, title: EVERYTHING_IS_LOOKING_UP_M3.title, group: "imported", writable: true },
@@ -187,6 +199,8 @@ export const IMPORTED_BY_ID = {
   "smw-title-2": { bank: SMW_TITLE_2.bank, title: SMW_TITLE_2.title, group: "imported", writable: true },
   "smwgood": { bank: SMWGOOD.bank, title: SMWGOOD.title, group: "imported", writable: true },
   "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
+  "speed-horizon-lines-overdrive": { bank: SPEED_HORIZON_LINES_OVERDRIVE.bank, title: SPEED_HORIZON_LINES_OVERDRIVE.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-horizon-lines": { bank: SPEED_HORIZON_LINES.bank, title: SPEED_HORIZON_LINES.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt-2": { bank: SPEED_ZONE_ALT_2.bank, title: SPEED_ZONE_ALT_2.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },

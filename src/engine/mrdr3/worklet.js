@@ -58,6 +58,10 @@ class Mrdr3Processor extends AudioWorkletProcessor {
       if (msg.type === 'installTables') { this.core.installTables(msg.tables); return; }
       if (msg.type === 'installNoise') { this.core.installNoise(msg.noise); return; }
       if (msg.type === 'installPatch') { this.core.installPatch(msg.patch); return; }
+      if (msg.type === 'soloLayers') {
+        this.core.setLayerSolo(msg.layers, currentFrame + this.offset);
+        return;
+      }
       this.core.schedule(msg);
     };
   }

@@ -25,6 +25,7 @@ import {
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import { warmTngr2Families } from './tngr2/tables.js';
 import { canHostTngr2, tngr2FamiliesOfVoice } from './tngr2/controller.js';
+import { syncMrdr3LayerSolo } from './mrdr3/controller.js';
 import {
   rearrangementPosition as resolveRearrangementPosition,
   rearrangementOutputSteps,
@@ -6622,6 +6623,9 @@ class AudioSys {
       // no work at all.
       if (!set.size) this.soloLayers.delete(voiceId);
     }
+    const current = this.soloLayers.get(voiceId) || null;
+    this.voices?.updateLayerSolo(voiceId, current);
+    syncMrdr3LayerSolo(this.ctx, voiceId, current);
     this._forgetRenderedNotes(voiceId);
   }
 
@@ -6630,7 +6634,11 @@ class AudioSys {
     const had = voiceId ? [voiceId] : [...this.soloLayers.keys()];
     if (voiceId) this.soloLayers.delete(voiceId);
     else this.soloLayers.clear();
-    for (const id of had) this._forgetRenderedNotes(id);
+    for (const id of had) {
+      this.voices?.updateLayerSolo(id, null);
+      syncMrdr3LayerSolo(this.ctx, id, null);
+      this._forgetRenderedNotes(id);
+    }
   }
 
   /**

@@ -116,6 +116,7 @@ export async function mrdr3Lane(ctx, laneKey, { voice, voices, maxGroups = 12, m
   });
   const lane = {
     key: laneKey, node, ctx, patch, problems,
+    voiceId: voice?.id || null,
     signature: signatureOf(patch), connected: false, out: null, chorusKey: null,
     // When this lane last had a note. Read by `releaseIdleMrdr3Lanes` — a lane just built
     // has not played yet and must not read as one nothing has wanted for a minute.
@@ -139,6 +140,7 @@ export async function mrdr3Lane(ctx, laneKey, { voice, voices, maxGroups = 12, m
  */
 export function syncMrdr3Patch(lane, voice) {
   if (!lane) return false;
+  if (voice?.id) lane.voiceId = voice.id;
   const { patch, problems } = compileMrdr3(voice);
   if (!patch) return false;
   const signature = signatureOf(patch);
@@ -148,6 +150,42 @@ export function syncMrdr3Patch(lane, voice) {
   lane.problems = problems;
   lane.signature = signature;
   return true;
+}
+
+/** Keep the monitoring-only layer solo in step on an existing AW lane. */
+export function setMrdr3LayerSolo(lane, layers = null) {
+  if (!lane) return false;
+  const list = Array.isArray(layers) ? layers.filter(Boolean) : layers instanceof Set
+    ? [...layers] : [];
+  const key = list.slice().sort().join(',');
+  if (key === lane.soloSignature) return false;
+  lane.soloSignature = key;
+  lane.node.port.postMessage({ type: 'soloLayers', layers: list });
+  return true;
+}
+
+/** Update every AW lane currently using this preset, including a held LEGATO note. */
+export function syncMrdr3LayerSolo(ctx, voiceId, layers = null) {
+  const state = contexts.get(ctx);
+  if (!state || !voiceId) return 0;
+  let updated = 0;
+  for (const lane of state.lanes.values()) {
+    if (lane.voiceId !== voiceId) continue;
+    if (setMrdr3LayerSolo(lane, layers)) updated++;
+  }
+  return updated;
+}
+
+/** Install a changed patch on all standing lanes so edits reach current LEGATO notes. */
+export function syncMrdr3Voice(ctx, voice) {
+  const state = contexts.get(ctx);
+  if (!state || !voice?.id) return 0;
+  let updated = 0;
+  for (const lane of state.lanes.values()) {
+    if (lane.voiceId !== voice.id) continue;
+    if (syncMrdr3Patch(lane, voice)) updated++;
+  }
+  return updated;
 }
 
 /** An already-created lane, if there is one. No awaiting, for use inside a scheduler. */

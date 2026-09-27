@@ -327,10 +327,22 @@ function Mrdr3Layer(rate) {
   this.syncInv = 1;
   this.band = new Mrdr3Biquad(rate);
   this.makeup = 1;
+  this.layerKey = '';
+  this.monitorGain = 1;
+  this.monitorFrom = 1;
+  this.monitorTo = 1;
+  this.monitorStart = 0;
+  this.monitorEnd = 0;
 }
 
 Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDelays, glide) {
   this.spec = spec;
+  this.layerKey = spec.layerKey || '';
+  this.monitorGain = 1;
+  this.monitorFrom = 1;
+  this.monitorTo = 1;
+  this.monitorStart = 0;
+  this.monitorEnd = 0;
   this.active = true;
   this.hz = hz * spec.ratio;
   // The pitch the envelopes were drawn for. A LEGATO note moves 'hz' under a note that is
@@ -552,7 +564,7 @@ function Mrdr3Tone(rate) {
   this.endFrame = 0;
 }
 
-Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, glide) {
+Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, glide, soloLayers) {
   this.active = true;
   this.lastGfq = NaN;
   this.hz = hz;
@@ -565,6 +577,9 @@ Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, g
     var spec2 = patch.layers[i];
     lay.noise = spec2.noiseColour && noise ? (noise[spec2.noiseColour] || noise.white) : null;
     lay.start(spec2, hz, frame, endFrame, rate, patch.entryDelays, glide);
+    lay.monitorGain = !soloLayers || soloLayers.has(spec2.layerKey) ? 1 : 0;
+    lay.monitorFrom = lay.monitorGain;
+    lay.monitorTo = lay.monitorGain;
     // HARD SYNC. Osc 1 is always the master and the pill names which layers follow it; a
     // slave's own ratio decides how many of its cycles fit before each reset, which is
     // where the bright tearing spectrum comes from. Noise has no phase to reset.
@@ -929,7 +944,7 @@ function Mrdr3Group(rate, maxTones) {
   this.tone = new Mrdr3Biquad(rate);
 }
 
-Mrdr3Group.prototype.start = function (patch, event, frame, rate, noise, glide) {
+Mrdr3Group.prototype.start = function (patch, event, frame, rate, noise, glide, soloLayers) {
   this.eventId = event.eventId | 0;
   this.gain = event.velocity === undefined ? 1 : event.velocity;
   this.active = true;
@@ -974,7 +989,7 @@ Mrdr3Group.prototype.start = function (patch, event, frame, rate, noise, glide) 
   for (var i = 0; i < n; i++) {
     var dur = durs[i] === undefined ? durs[0] : durs[i];
     var end = frame + (dur > 0 ? dur : rate * 0.25);
-    this.tones[i].start(patch, hzs[i], frame, end, rate, noise, glide);
+    this.tones[i].start(patch, hzs[i], frame, end, rate, noise, glide, soloLayers);
   }
   for (var j = n; j < this.tones.length; j++) this.tones[j].active = false;
   this.stereo = false;
@@ -1048,6 +1063,7 @@ function Mrdr3Core(opts) {
   this.noise = null;
   this.stride = 0; this.size = 0; this.levels = 0;
   this.patch = null;
+  this.soloLayers = null;
   this.age = 0; this.late = 0; this.steals = 0; this.dropped = 0;
   // How late a note-on may be and still be worth playing — see applyDue.
   this.staleFrames = Math.round(MRDR3_STALE_SECONDS * this.rate);
@@ -1063,7 +1079,88 @@ Mrdr3Core.prototype.installTables = function (tables) {
   this.stride = tables.size + 1;
 };
 
-Mrdr3Core.prototype.installPatch = function (patch) { this.patch = patch; };
+Mrdr3Core.prototype.installPatch = function (patch) {
+  this.patch = patch;
+  if (!patch) return;
+  // LEGATO notes keep their layer objects across note-ons. Refresh the waveform fields
+  // on those live objects as soon as a new patch arrives, so WAVE edits take effect
+  // without waiting for the held note to finish. Envelope and pitch state stays owned by
+  // the note that started it.
+  for (var g = 0; g < this.groups.length; g++) {
+    var group = this.groups[g];
+    if (!group.active) continue;
+    for (var t = 0; t < group.tones.length; t++) {
+      var tone = group.tones[t];
+      if (!tone.active) continue;
+      for (var li = 0; li < tone.used; li++) {
+        var layer = tone.layers[li];
+        if (!layer.active || !layer.spec) continue;
+        var next = null;
+        for (var p = 0; p < patch.layers.length; p++) {
+          if (patch.layers[p].layerKey === layer.layerKey) { next = patch.layers[p]; break; }
+        }
+        if (!next || next.type === layer.spec.type) continue;
+        layer.spec = {
+          ...layer.spec,
+          type: next.type, kind: next.kind, noiseColour: next.noiseColour,
+          duty: next.duty, width: next.width,
+          pwmDepth: next.pwmDepth, pwmRate: next.pwmRate,
+          pwmSwing: next.pwmSwing, pwmDelay: next.pwmDelay, pwmTri: next.pwmTri,
+        };
+        layer.noise = next.noiseColour && this.noise
+          ? (this.noise[next.noiseColour] || this.noise.white) : null;
+        if (layer.noise) {
+          layer.band.kind = 2;
+          layer.band.reset();
+          layer.band.setCoeffs(layer.hz, 2);
+          layer.makeup = Math.sqrt((this.rate * 0.5) / Math.max(20, layer.hz / 2));
+          layer.noisePos = 0;
+        } else {
+          layer.band.reset();
+          layer.makeup = 1;
+        }
+      }
+    }
+  }
+};
+
+function mrdr3LayerMonitorAt(layer, frame) {
+  if (!(layer.monitorEnd > layer.monitorStart)) return layer.monitorGain;
+  if (frame <= layer.monitorStart) return layer.monitorFrom;
+  if (frame >= layer.monitorEnd) {
+    layer.monitorGain = layer.monitorTo;
+    layer.monitorStart = layer.monitorEnd;
+    return layer.monitorGain;
+  }
+  var u = (frame - layer.monitorStart) / (layer.monitorEnd - layer.monitorStart);
+  return layer.monitorFrom + (layer.monitorTo - layer.monitorFrom) * u;
+}
+
+/** Monitor only the named oscillator layers, with a short fade to avoid a click. */
+Mrdr3Core.prototype.setLayerSolo = function (layers, frame) {
+  var list = Array.isArray(layers) ? layers.filter(Boolean) : [];
+  this.soloLayers = list.length ? new Set(list) : null;
+  var end = frame + Math.max(1, Math.round(this.rate * 0.006));
+  for (var g = 0; g < this.groups.length; g++) {
+    var group = this.groups[g];
+    if (!group.active) continue;
+    for (var t = 0; t < group.tones.length; t++) {
+      var tone = group.tones[t];
+      if (!tone.active) continue;
+      for (var li = 0; li < tone.used; li++) {
+        var layer = tone.layers[li];
+        if (!layer.active) continue;
+        var target = !this.soloLayers || this.soloLayers.has(layer.layerKey) ? 1 : 0;
+        var from = mrdr3LayerMonitorAt(layer, frame);
+        if (from === target) continue;
+        layer.monitorFrom = from;
+        layer.monitorTo = target;
+        layer.monitorStart = frame;
+        layer.monitorEnd = end;
+      }
+    }
+  }
+};
 
 /**
  * The noise buffers, already coloured, handed over from the main thread.
@@ -1241,7 +1338,7 @@ Mrdr3Core.prototype.applyDue = function (frame) {
     var slot = this.claim();
     if (!slot) continue;
     slot.age = this.age++;
-    slot.start(p, e, frame, this.rate, this.noise, glide);
+    slot.start(p, e, frame, this.rate, this.noise, glide, this.soloLayers);
     if (p.mono) {
       var lastHz = e.hz && e.hz.length !== undefined ? e.hz[e.hz.length - 1] : e.hz;
       var lastDur = e.durFrames && e.durFrames.length !== undefined
@@ -1529,8 +1626,10 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
             }
           }
           if (!layStereo) layR = layL;
-          toneL += layL * amp;
-          toneR += layR * amp;
+          var monitor = (lay.monitorGain === 1 && !(lay.monitorEnd > lay.monitorStart))
+            ? 1 : mrdr3LayerMonitorAt(lay, f);
+          toneL += layL * amp * monitor;
+          toneR += layR * amp * monitor;
         }
 
         if (!toneSounding) { tone.active = false; continue; }

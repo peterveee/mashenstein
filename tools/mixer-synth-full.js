@@ -1223,9 +1223,15 @@ export function createSynthFull({
     const wrap = div('sffader');
     const track = div('sffadertrack');
     const fill = div('sffaderfill');
-    const at = (v) => Math.min(1, Math.max(0,
-      ((typeof v === 'number' ? v : row.def) - row.min) / (row.max - row.min)));
-    fill.style.width = `${(at(kit.read(row)) * 100).toFixed(1)}%`;
+    const curve = Number.isFinite(row.scale) && row.scale > 0 ? row.scale : 1;
+    const positionAt = (v) => {
+      const fraction = Math.min(1, Math.max(0,
+        ((typeof v === 'number' ? v : row.def) - row.min) / (row.max - row.min)));
+      return Math.pow(fraction, 1 / curve);
+    };
+    const valueAt = (position) => row.min + (row.max - row.min)
+      * Math.pow(Math.min(1, Math.max(0, position)), curve);
+    fill.style.width = `${(positionAt(kit.read(row)) * 100).toFixed(1)}%`;
     track.append(fill, div('sffaderunity'));
     track.title = `${row.label} — drag across. ${row.min} … ${row.max}`;
     const num = span('sffadernum', row.fmt(kit.read(row) ?? row.def));
@@ -1239,10 +1245,10 @@ export function createSynthFull({
       const box = track.getBoundingClientRect();
       const move = (e) => {
         const f = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
-        const raw = row.min + f * (row.max - row.min);
+        const raw = valueAt(f);
         const x = Math.min(row.max, Math.max(row.min, Math.round(raw / row.step) * row.step));
         kit.write(row, x);
-        fill.style.width = `${(f * 100).toFixed(1)}%`;
+        fill.style.width = `${(positionAt(x) * 100).toFixed(1)}%`;
         num.textContent = row.fmt(x);
       };
       move(ev);

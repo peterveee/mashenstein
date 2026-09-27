@@ -1,7 +1,8 @@
 import { efficiencyProfile } from '../render-efficiency.js';
 // Style packs: renderer-only modules. One draw interface, zero game logic.
 // Every pack draws: bg(ctx,t,camX,cab,totalDist,scene),
-// ground(ctx,camX,cab,obstacles), post(ctx,t). `scene` is optional renderer
+// ground(ctx,camX,cab,obstacles), post(ctx,t). `routeGround` is an optional
+// detail pass after a lower route is drawn. `scene` is optional renderer
 // context: most packs ignore it, while LCD reads the rhythm stage and heard
 // beat without importing game or audio state into this renderer-only module.
 // Hitboxes/timings are style-independent; reduced flashing tames effects.
@@ -47,6 +48,8 @@ import {
 import { drawFrostWildlife } from './frostWildlife.js';
 import { frostFortressShape } from './frostFortresses.js';
 import { FROST_COMBINED_SCENERY_FINISH } from './frostSceneryFinish.js';
+import { drawCryptGouache, cryptNight } from './cryptGouache.js';
+import { CRYPT_LIFE, cryptWitches, paintCryptWitch } from './cryptLife.js';
 
 import {
   PAPER_MATERIALS,
@@ -208,7 +211,7 @@ function apronRuns(camX, obstacles, overhangs = [], viewW = W) {
   return body;
 }
 
-function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = [], t = 0, viewW = W) {
+function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = [], t = 0, viewW = W, bodyBottomY = H) {
   // A gap is drawn by NOT drawing, rather than by painting a black rectangle
   // over ground that has already been laid.
   //
@@ -225,6 +228,7 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
   // a flat bottom edge — the one shape in the picture that cannot be ground.
   // The lane's lit surface still gets drawn there: you run along it. What stops
   // is the fill UNDER it, which belongs to the tunnel's roof slab instead.
+  const fillBottom = Math.max(H, Number.isFinite(bodyBottomY) ? bodyBottomY : H);
   for (const [a, b] of runs) {
     if (b <= a) continue;
     // The cap goes with the body. It is drawn at the FLAT groundline while the
@@ -232,7 +236,7 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
     // has been cut away — it is left as a green bar hanging in the air under
     // the island. What the lane's surface is up there is the island's own cap.
     ctx.fillStyle = colBody;
-    ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
+    ctx.fillRect(a, GROUND_Y, b - a, fillBottom - GROUND_Y);
     ctx.fillStyle = colTop;
     ctx.fillRect(a, GROUND_Y, b - a, 3);
   }
@@ -471,7 +475,7 @@ const FROST_STAGE_LIGHT = Object.freeze([
   }),
 ]);
 
-function frostStageLight(stageIndex) {
+export function frostStageLight(stageIndex) {
   return FROST_STAGE_LIGHT[Math.max(1, Math.min(3, Number(stageIndex) || 1))];
 }
 
@@ -4929,9 +4933,11 @@ const FROST_BLIZZARD_LAYERS = Object.freeze([
 // The wind blows across and slightly down; a streak lies along its own travel.
 const FROST_BLIZZARD_SLOPE = 0.42;
 const FROST_BLIZZARD_HAZE = '#e6f1fa';
-// How much of the frame the veil covers before it gives up: the lane and the
-// apron below it stay clear.
-const FROST_BLIZZARD_VEIL_FLOOR = (GROUND_Y - 34) / H;
+// The wash clears 34 screen pixels above the displayed groundline. Its fade
+// span matches the original resting-camera gradient, but the endpoint follows
+// the camera so it cannot leave a horizontal colour break during a jump.
+const FROST_BLIZZARD_VEIL_CLEARANCE = 34;
+const FROST_BLIZZARD_VEIL_FADE_HEIGHT = (GROUND_Y - FROST_BLIZZARD_VEIL_CLEARANCE) * 0.45;
 // HOW THE WEATHER ARRIVES: ONE RUNG PER CHECKPOINT.
 //
 // The blizzard is ONE STORM ACROSS THE WHOLE CABINET rather than a setting each
@@ -5110,16 +5116,21 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
   // by a sun that has set.
   const haze = options.light?.haze || FROST_BLIZZARD_HAZE;
   const clear = frostAuroraFade(haze);
-  const veil = ctx.createLinearGradient(0, 0, 0, H);
-  veil.addColorStop(0, haze);
-  veil.addColorStop(FROST_BLIZZARD_VEIL_FLOOR * 0.55, haze);
-  veil.addColorStop(FROST_BLIZZARD_VEIL_FLOOR, clear);
-  veil.addColorStop(1, clear);
-  ctx.save();
-  ctx.globalAlpha = 0.34 * amount;
-  ctx.fillStyle = veil;
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
+  const rawGroundY = Number(options.groundScreenY);
+  const groundY = Number.isFinite(rawGroundY) ? rawGroundY : GROUND_Y;
+  const veilFloorY = Math.max(0, Math.min(H, groundY - FROST_BLIZZARD_VEIL_CLEARANCE));
+  if (veilFloorY > 0) {
+    const veil = ctx.createLinearGradient(0, 0, 0, H);
+    veil.addColorStop(0, haze);
+    veil.addColorStop(Math.max(0, veilFloorY - FROST_BLIZZARD_VEIL_FADE_HEIGHT) / H, haze);
+    veil.addColorStop(veilFloorY / H, clear);
+    veil.addColorStop(1, clear);
+    ctx.save();
+    ctx.globalAlpha = 0.34 * amount;
+    ctx.fillStyle = veil;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
 
   // A PATTERN MUST BE FILLED AT ITS OWN SCALE.
   //
@@ -6919,8 +6930,16 @@ function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, ne
     if (landmarkTile != null && Math.abs(k - landmarkTile) <= 2) continue;
     if (!plumberFlockTile(k)) continue;
     const x = summitX(k);
-    if (!outsideView(ctx, x, 80)) drawPlumberSheep(ctx, t, x, seat, paper);
+    if (!outsideView(ctx, x, 80)) drawPlumberSheep(ctx, t, x, seat, paper, plumberFlockVariant(k));
   }
+}
+// Which flock a flock tile carries: the two take turns along the stage (counted from tile
+// 0), so the next flock along is never the same one again.
+function plumberFlockVariant(k) {
+  const dec = Math.floor(k / 10);
+  let n = 0;
+  for (let m = Math.min(0, dec); m < Math.max(0, dec); m++) if (plumberFlockTile(m * 10 + 3)) n++;
+  return n % 2;
 }
 function hashUnit(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
 // Whether near summit tile `k` may carry a flock: every tenth tile, 60% of those by hash.
@@ -9272,6 +9291,21 @@ function neonFuji(ctx, cov, progress, paper = false) {
   ctx.drawImage(art.canvas, cx - art.w / 2, GROUND_Y - art.h + art.pad, art.w, art.h);
   ctx.restore();
 }
+// THE FUJI-EXIT BAKE-OFF's seam (Peter, 25 Sep 2026: fog rising over it rather than a
+// fade — "very very open to suggestions"). src/dev/neon-fuji-exit-candidates.js paints
+// the golden sky WITHOUT the mountain and places the mountain itself, so a candidate can
+// move it, sink it or bury it in weather. Nothing in the game reads this.
+export const neonFujiLab = Object.freeze({
+  spec: NEON_FUJI,
+  coverage: backgroundCoverage,
+  pattern: (ctx) => sharedPaperPatternFor(ctx, NEON_GOLDEN_PAPER_MATERIAL),
+  paperShape: drawPaperShape,
+  subtle: { deep: PAPER_SUBTLE_DEEP_OFFSET, contact: PAPER_SUBTLE_CONTACT_OFFSET },
+  skyWithoutFuji: (ctx, t, camX, context) => neonGoldenSky(ctx, t, camX, { ...(context || {}), progress: 1 }),
+  art: () => neonFujiArt(NEON_FUJI.scale, true),
+  // Summit centre x, and the drawn height above the groundline.
+  place: (cov) => ({ cx: cov.left + cov.width * NEON_FUJI.at, h: 162 * NEON_FUJI.scale, half: 365 * NEON_FUJI.scale }),
+});
 
 export const NEON_GOLDEN_MOOD = Object.freeze({
   id: 'golden',
@@ -9828,16 +9862,17 @@ function watercolorPack(settings) {
         ctx.fillRect(bx - 40, by - 40, 80, 80);
       }
     },
-    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null,
+      portraitContext = null, bodyBottomY = H) {
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
-      // Snow is bright because of what is falling on it, so the lane goes down
-      // with the sky. Only the two colours are swapped — the cabinet itself is
-      // handed through untouched, because terrain and pits read it by identity.
+      // Use the same stage light as the raised terrain and routes. Frost's
+      // apron is opaque so their shared ground colour stays continuous where
+      // the terrain columns meet it; the snow still passes over both later.
       const light = cab.id === 'frost' ? (frostFrame?.light || frostStageLight(1)) : null;
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = light ? 1 : 0.85;
       drawGapsAwareGround(ctx, camX, cab, obstacles,
         light ? light.ground : cab.ground,
-        light ? light.groundDark : cab.groundDark, overhangs, t, drawW);
+        light ? light.groundDark : cab.groundDark, overhangs, t, drawW, bodyBottomY);
       ctx.globalAlpha = 1;
     },
     // WEATHER IS NOT A FRAME TREATMENT, so it does not live in post().
@@ -9847,9 +9882,12 @@ function watercolorPack(settings) {
     // painted in post() is therefore snow BEHIND the player, which is the exact
     // opposite of the point — you are supposed to be running through it. The run
     // calls this hook on the overlay instead, after the hero and before the HUD.
-    weather(ctx, t) {
+    weather(ctx, t, frame = null) {
       const snow = frostFrame;
-      if (snow) drawFrostBlizzard(ctx, t, snow.camX, snow);
+      if (snow) drawFrostBlizzard(ctx, t, snow.camX, {
+        ...snow,
+        groundScreenY: frame?.groundScreenY,
+      });
     },
     post(ctx, t) {
       if (paperPreview) return;
@@ -9862,6 +9900,222 @@ function watercolorPack(settings) {
       ctx.fillStyle = 'rgba(255,250,240,0.05)';
       ctx.fillRect(0, 0, W, H);
     },
+  };
+}
+
+// CRYPT SHIFT'S BACKDROP since 25 Sep 2026: the gouache night from the backdrop-style
+// bake-off (docs/BACKDROP_STYLES.md), painted in cryptGouache.js. This pack only frames
+// it: where the picture is on screen, and where portrait's scenery bands and the crane
+// put each depth layer. The lane is the one the vhs pack has always drawn, and the tape's
+// scanlines are gone with the tape. The vhs pack below is kept whole — the Surge still
+// cycles through it, and Peter wants old looks kept rather than lost.
+const CRYPT_GOUACHE_MOON = Object.freeze({ x: 384, y: 66 });
+
+// THE LAMPS' LIGHT ON THE LANE. The backdrop's lamps stand on the near bank, so each one
+// is carried from where the backdrop pass drew it into the lane's world space (the two
+// passes have different transforms, and portrait and the crane move them apart) and laid
+// on the road as a warm pool.
+// Drawn with the ground, so hazards and the hero go over it untouched.
+function cryptLaneLight(ctx, lane, viewW) {
+  if (!lane?.m || typeof ctx.getTransform !== 'function' || typeof DOMMatrix === 'undefined') return;
+  const inv = ctx.getTransform().inverse();
+  const toLane = (x, y) => inv.transformPoint(lane.m.transformPoint(new DOMPoint(x, y)));
+  const top = GROUND_Y;
+  // No wash of its own over the road: the pack's post() night veil darkens the whole
+  // frame evenly, and a second, lane-shaped rectangle only showed its edges (Peter, 26
+  // Sep: "are we doing a big shaded rectangle over the ground?? not sure that is
+  // necessary"). Just the lamps' light.
+  ctx.save();
+  for (const L of lane.lamps) {
+    if (!(L.lit > 0.02)) continue;
+    const p = toLane(L.x, L.y);
+    const a = L.lit * (0.08 + 0.18 * lane.dim);
+    ctx.save();
+    ctx.translate(p.x, top + 3);
+    ctx.scale(1, 0.34);
+    const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 46);
+    g.addColorStop(0, `rgba(255,200,120,${a.toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(255,180,100,${(a * 0.4).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(255,170,90,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-48, -48, 96, 96);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+const CRYPT_GROUND_ROWS = [
+  { y: 7, period: 62, rate: 0.82, length: 14, alpha: 0.26, width: 0.7 },
+  { y: 15, period: 73, rate: 1.0, length: 17, alpha: 0.32, width: 0.85 },
+  { y: 24, period: 87, rate: 1.24, length: 21, alpha: 0.4, width: 1.0 },
+  { y: 32, period: 101, rate: 1.52, length: 25, alpha: 0.48, width: 1.2 },
+];
+
+function drawCryptGroundMark(ctx, x, y, mark, endY = y) {
+  // The narrow point leads left, the direction the lane travels on screen.
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + mark.length, endY - mark.width * 0.5);
+  ctx.lineTo(x + mark.length, endY + mark.width * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Faint tapered marks move back along the Crypt lane, under the hero and hazards.
+// Their staggered speeds borrow the Speed Zone road's depth cue while keeping the
+// graveyard palette; the lower floor gets a matching pass after its tunnel is drawn.
+function cryptGroundMotion(ctx, camX, obstacles, overhangs, viewW) {
+  const runs = apronRuns(camX, obstacles, overhangs, viewW);
+  const scroll = Number.isFinite(camX) ? camX : 0;
+  ctx.save();
+  ctx.fillStyle = '#c5bfd5';
+  for (const [a, b] of runs) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(a, GROUND_Y, b - a, H - GROUND_Y);
+    ctx.clip();
+    for (let row = 0; row < CRYPT_GROUND_ROWS.length; row++) {
+      const mark = CRYPT_GROUND_ROWS[row];
+      const phase = ((scroll * mark.rate) % mark.period + mark.period) % mark.period;
+      const y = GROUND_Y + mark.y;
+      ctx.globalAlpha = mark.alpha;
+      for (let x = a - mark.period - phase; x < b + mark.length; x += mark.period) {
+        drawCryptGroundMark(ctx, x, y, mark);
+      }
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// The lower Crypt floor is painted by drawRoutes after the pack's ground pass,
+// so its marks belong in the post-route detail pass. Keep them on the part of
+// the floor where the two levels are visibly separate, following its profile
+// and stopping cleanly at any gap in the underground road.
+function cryptRouteGroundMotion(ctx, camX, routes, viewW, groundAt) {
+  if (typeof groundAt !== 'function') return;
+  const right = Math.max(0, Number.isFinite(viewW) ? viewW : W);
+  const scroll = Number.isFinite(camX) ? camX : 0;
+  const tunnels = (routes || []).filter((route) => route.kind === 'tunnel' && route.openSpan);
+  if (!tunnels.length) return;
+  ctx.save();
+  ctx.fillStyle = '#c5bfd5';
+  for (const route of tunnels) {
+    const span = route.openSpan;
+    const a = Math.max(0, span.x - camX);
+    const b = Math.min(right, span.x + span.w - camX);
+    if (b <= a) continue;
+    for (const mark of CRYPT_GROUND_ROWS) {
+      const phase = ((scroll * mark.rate) % mark.period + mark.period) % mark.period;
+      ctx.globalAlpha = mark.alpha;
+      for (let x = -mark.period - phase; x < right + mark.length; x += mark.period) {
+        if (x < a || x + mark.length > b) continue;
+        const worldX = camX + x + mark.length * 0.5;
+        if ((route.gaps || []).some((gap) => worldX + mark.length * 0.5 > gap.x
+          && worldX - mark.length * 0.5 < gap.x + gap.w)) continue;
+        const y = groundAt(camX + x, route) + mark.y;
+        const endY = groundAt(camX + x + mark.length, route) + mark.y;
+        drawCryptGroundMark(ctx, x, y, mark, endY);
+      }
+    }
+  }
+  ctx.restore();
+}
+function gouachePack(settings) {
+  return {
+    name: 'gouache',
+    dark: true,
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
+      const bc = backgroundContext;
+      const cov = backgroundPaintCoverage(ctx);
+      const band = backgroundPaintBand(ctx);
+      const portrait = !!bc?.sceneryLayout;
+      // Each land layer's crest height is its landscape one; portrait moves it into
+      // its band (see sceneryRidgeBaseY), landscape leaves it where it was painted.
+      const lift = (bandName, amp) => sceneryRidgeBaseY(bc, bandName, amp, GROUND_Y) - GROUND_Y;
+      const bgLift = lift('farLandmark', 60);
+      const view = {
+        left: cov.left,
+        right: cov.right,
+        top: Number.isFinite(band.top) ? band.top : -PAN_MAX - 120,
+        // The top edge actually on screen (the band's top in portrait, 0 in landscape):
+        // what something leaving the sky has to clear (the ghosts' flight).
+        visibleTop: Number.isFinite(band.top) ? band.top : 0,
+        // Where the hero is across the picture, in this pass's units (the balloon clown lets
+        // go just before the hero reaches him).
+        heroX: Number.isFinite(bc?.heroFrac) ? cov.left + (cov.right - cov.left) * bc.heroFrac : null,
+        // The opening moon wisps clear with Crypt-1's run-in; keep this distance
+        // clock separate from the later weather, which follows the heard song.
+        progress: Number.isFinite(bc?.progress) ? Math.max(0, Math.min(1, bc.progress)) : 0,
+        bottom: Number.isFinite(band.bottom) ? band.bottom : H + PAN_MAX + 120,
+        skyOff: bgLift,
+        y: {
+          sky: backgroundY(bc, 'celestial'),
+          stars: backgroundY(bc, 'stars'),
+          clouds: backgroundY(bc, 'clouds'),
+          bats: backgroundY(bc, 'clouds'),
+          bg: bgLift + backgroundY(bc, 'far'),
+          // The graveyard hill takes portrait's near band; the bank behind the lane
+          // stays on the lane, where its railings and lamps belong in any frame.
+          mid: lift('near', 27) + backgroundY(bc, 'middle'),
+          fg: backgroundY(bc, 'near'),
+        },
+        moon: portrait
+          ? { x: cov.left + cov.width * 0.66, y: sceneryBandY(bc, 'celestial', CRYPT_GOUACHE_MOON.y) }
+          : CRYPT_GOUACHE_MOON,
+        cloudY: [
+          sceneryBandY(bc, 'upperCloud', 34), sceneryBandY(bc, 'lowerCloud', 104),
+          sceneryBandY(bc, 'upperCloud', 22) + (portrait ? 14 : 0), sceneryBandY(bc, 'middleCloud', 84),
+        ],
+        batY: [
+          sceneryBandY(bc, 'birds', 70), sceneryBandY(bc, 'birds', 60) - (portrait ? 10 : 0),
+          sceneryBandY(bc, 'birds', 124) + (portrait ? 40 : 0),
+        ],
+        // A live run supplies a heard beat (or zero when its transport is absent), so
+        // distance never triggers the weather; gallery previews may use progress.
+        night: cryptNight(bc?.progress, bc?.musicBeat, bc?.weatherFade, bc?.weatherClearBeat, bc?.weatherHeldProgress),
+        // The graveyard's animals and ghosts (cryptLife.js), each on its depth layer; a lab
+        // card can add the idea it is studying, or leave the shipped life out.
+        study: [...(bc?.cryptLife === false ? [] : CRYPT_LIFE), ...(bc?.cryptStudy ? [bc.cryptStudy] : [])],
+      };
+      view.witches = cryptWitches(t, bc?.progress, view);
+      view.witchPaint = paintCryptWitch;
+      const lit = drawCryptGouache(ctx, t, camX, bc?.stageIndex ?? scene?.stageIndex ?? 1, view);
+      // Kept for ground(), which lays the lamps' light on the lane: where they stood on
+      // screen (this pass's transform) and how dark the night is.
+      this._lane = lit && typeof ctx.getTransform === 'function'
+        ? { m: ctx.getTransform(), lamps: lit.lamps, dim: lit.dim, view } : null;
+      this._night = lit ? lit.dim : 0;
+    },
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
+      const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
+      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t, drawW);
+      cryptGroundMotion(ctx, camX, obstacles, overhangs, drawW);
+      cryptLaneLight(ctx, this._lane, drawW);
+    },
+    routeGround(ctx, camX, routes, viewW, groundAt) {
+      cryptRouteGroundMotion(ctx, camX, routes, viewW, groundAt);
+    },
+    // THE NIGHT VEIL (Peter: "the light on the hero should get dimmer also, we are
+    // travelling past a cemetery late at night and the moon is not visible"). Under the
+    // eclipse the whole frame — lane, hazards, pickups — goes a step darker after the cast
+    // is drawn; the hero, who is drawn on the overlay, is dimmed by nightVeil() below.
+    // Held light enough that every hazard still reads.
+    // The whole canvas, in device pixels: post() does not run under the backdrop pass's
+    // transform (portrait especially), so filling the backdrop's view box laid a visible
+    // dark rectangle over part of the frame (Peter, 26 Sep, with a screenshot).
+    post(ctx) {
+      const dim = this._night || 0;
+      if (!(dim > 0) || !ctx.canvas || typeof ctx.setTransform !== 'function') return;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = `rgba(6,6,20,${(0.48 * dim).toFixed(3)})`;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.restore();
+    },
+    // How dark the night is (0..1) for things drawn off the backbuffer (run.js dims the
+    // hero's overlay pass by it).
+    nightVeil() { return this._night || 0; },
   };
 }
 
@@ -17014,7 +17268,7 @@ function surgePack(settings) {
 
 const FACTORIES = {
   pixel: pixelPack, faux3d: faux3dPack, neon: neonPack, watercolor: watercolorPack,
-  vhs: vhsPack, lcd: lcdPack, cardboard: cardboardPack, doodle: doodlePack, surge: surgePack,
+  vhs: vhsPack, gouache: gouachePack, lcd: lcdPack, cardboard: cardboardPack, doodle: doodlePack, surge: surgePack,
 };
 
 export function getStylePack(name, settings) {

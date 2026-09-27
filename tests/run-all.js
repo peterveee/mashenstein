@@ -43,6 +43,7 @@ const suites = [
   'tests/pixel-background.js',
   'tests/frost-aurora.js',
   'tests/frost-weather.js',
+  'tests/crypt-weather.js',
   'tests/object-shadows.js',
   'tests/plumber-scenery.js',
   'tests/paper-material.js',
@@ -237,6 +238,9 @@ const suites = [
   // standing lane without rebuilding it, and the two delivery paths that TNGR-2's proof
   // gate showed are not interchangeable (docs/MRDR-3-worklet-spec.md §6).
   'tests/mrdr3-controller.js',
+  // Active worklet layers remain controllable during a held LEGATO note: solo fades
+  // individual oscillators and a patch WAVE edit reaches the running carrier in place.
+  'tests/mrdr3-live-controls.js',
   // The DSP core on its own, in Node — browserless, which is itself the claim: the core
   // takes its rate as an argument and is handed its frame, so it reaches for no worklet
   // global and the same source runs in both hosts.

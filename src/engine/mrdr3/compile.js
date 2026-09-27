@@ -127,6 +127,11 @@ export function compileMrdr3(voice) {
     const room = Math.min(width - 0.05, 0.95 - width);
     const swing = moving ? Math.min(room, Math.min(1, s.pwm.depth) * 0.45) : 0;
     layers.push({
+      // Keep the panel's oscillator identity on the compiled layer. Active worklet notes
+      // keep their layer objects across LEGATO handoffs, so a patch edit needs this key
+      // to update a waveform on the note that is already sounding.
+      layerKey: key,
+      type: s.type,
       kind: CLASSIC.includes(s.type) ? s.type : 'square',
       // `noise` is a WAVEFORM here, exactly as it is on KNDO-5: the seeded buffer
       // through a bandpass that follows the note. Every pot still means something.

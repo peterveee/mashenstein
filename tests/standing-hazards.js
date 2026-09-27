@@ -120,8 +120,11 @@ assert(carries('speed', 'dogBruiser') && carries('neon', 'dogBruiser') && carrie
 // barrel like everyone else.
 assert(carries('frost', 'popSpikes') && carries('frost', 'campfire'),
   'Frost reads the road at ankle height and owns one warm thing');
-assert(carries('crypt', 'floorSaw') && carries('rhythm', 'floorSaw') && carries('cardboard', 'floorSaw'),
-  'the saw spins in the crypt, the LCD lane and the kingdom');
+// Crypt traded its saw for spikes on 26 Sep 2026 (Peter: "Replace saw with spikes").
+assert(carries('rhythm', 'floorSaw') && carries('cardboard', 'floorSaw'),
+  'the saw spins in the LCD lane and the kingdom');
+assert(!carries('crypt', 'floorSaw') && carries('crypt', 'popSpikes'),
+  'Crypt deals spikes, not the saw');
 assert(carries('rhythm', 'barrel'),
   'Rhythm deals the barrel — it was the only cabinet in the game that never did');
 assert(carries('rhythm', 'beatBar')

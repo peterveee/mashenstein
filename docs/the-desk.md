@@ -68,6 +68,25 @@ That is the rule whether the other process was started by hand in a terminal, by
 another desk, or by anything else. The desk cannot tell the difference and does
 not try: the port answered, so it is not mine.
 
+## Background browsers
+
+Every Chromium that Playwright launched — the render tools, the tests, the mixer's
+warm renderer, a Claude session's Playwright MCP — is listed under BACKGROUND
+BROWSERS with its CPU, memory, uptime and the process that owns it. The header chip
+turns red when any of them is busy. A headless one has no window, so this is the
+only place a stray one shows up: on 23–24 Sep 2026 two of them pegging the CPU made
+two nights of song and level glitches that were really a busy machine.
+
+This is the one thing the desk will kill that it did not start, and only on an
+explicit click — KILL arms for four seconds, SURE? kills. An ORPHAN (its script is
+gone) is always safe. A SCRIPT row names the job that owns it; if that job is a
+render still running in another session, killing its browser fails the render. The
+mixer's warm renderer is refused, for the same reason as adopt-never-kill.
+
+The same list from a terminal: `npm run browsers` (`tools/browsers.js`, which also
+takes `--kill`, `--kill <pid>` and `--kill-all`). It exits 1 when anything is
+running, so a bench can refuse to start on a noisy machine.
+
 ## When a tool will not start
 
 The card keeps the last few lines the tool printed and shows them once it is not

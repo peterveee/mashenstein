@@ -188,7 +188,9 @@ export const OBSTACLES = {
   // of what you just did with it. It is also the only way a hero who cannot
   // reach the block still gets the bridge.
   switch:     { w: 12, h: 11, sprite: 'switch', alt: 36, breakable: false, throwable: true, action: 'none', isSwitch: true },
-  tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
+  // Lower and smaller since 26 Sep 2026 (Peter: "the grave stones in the lane need to be a
+  // bit lower and smaller"): 11x8 → 9x6.5, box and art together.
+  tombstone:  { w: 9, h: 6.5, sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
   beatBar:    { w: 10, h: 16,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },
   // THE CARD BOX — the beat cabinet's one prop you answer with the ability
@@ -371,6 +373,7 @@ export const OBSTACLES = {
   rattlesnake: { w: 18, h: 10, sprite: 'rattlesnake', ground: true, breakable: false, action: 'jump', animal: true },
   dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
   catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
+  cryptPanther:    { w: 11, h: 9, sprite: 'cryptPanther', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
 
   // The finish-line dog. Scripted, never dealt from a pattern bag — see
   // RunState.spawnFinishDog: on plumber stages one dog holds the tape, appears
@@ -489,6 +492,7 @@ export const DEBRIS = {
   rattlesnake: { colors: ['#c9a56b', '#6b4a2e', '#efe0b4'], size: 2.6, count: 10, mat: 'soft' },
   dogFeral:   { colors: ['#6a6a74', '#45454f', '#a09a94'], size: 2.4, count: 13, mat: 'soft' },
   catFury:    { colors: ['#332f3f', '#201d2a', '#8a86a0'], size: 2.2, count: 10, mat: 'soft' },
+  cryptPanther:    { colors: ['#765486', '#493657', '#a77caf'], size: 2.4, count: 13, mat: 'soft' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };

@@ -63,10 +63,8 @@ export function frostDeepSnowFeature(ctx, feature) {
         c.lineTo(1, -47); c.lineTo(6, -34); c.lineTo(4, -31);
         c.lineTo(0, -34); c.lineTo(-5, -21); c.lineTo(-10, -18);
       });
-      line(ctx, 'rgba(229,244,250,0.52)', 1.1, (c) => {
-        c.moveTo(-19, -8); c.quadraticCurveTo(-11, -15, -6, -5);
-        c.moveTo(11, -13); c.quadraticCurveTo(18, -21, 22, -11);
-      });
+      // No snow lips on the flanks (Peter, 25 Sep 2026): two stroked arcs here, one
+      // either side of the main peak, read as stray semicircles on the rock face.
       break;
     case 'pine':
       for (const [y, w] of [[-11, 4.1], [-5, 5.9], [-3, 7.6]]) {

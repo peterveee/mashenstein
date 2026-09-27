@@ -42,7 +42,8 @@ import {
   isMrdrVoice, MRDR3_NATIVE, MRDR3_AW, mrdrComparisonVoice,
 } from './mrdr3/identity.js';
 import {
-  mrdr3Lane, mrdr3LaneNow, mrdr3NoteOn, mrdr3NoteOff, syncMrdr3Patch, canHostMrdr3,
+  mrdr3Lane, mrdr3LaneNow, mrdr3NoteOn, mrdr3NoteOff, syncMrdr3Patch,
+  setMrdr3LayerSolo, syncMrdr3Voice, canHostMrdr3,
   mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
 import { mrdr3GateAdsrEvents } from './mrdr3/env.js';
@@ -2147,6 +2148,11 @@ export class VoiceRack {
     // here for is `refresh`: dragging a cutoff must move the note you are hearing, and
     // before this only a HELD note could be found to move. See `_registerLiveNote`.
     this._liveNotes = [];
+    // Native MRDR layer outputs retain a small monitor fader so oscillator solo can
+    // change what is heard on an already-sounding LEGATO note. Waveform callbacks are
+    // kept separately because an OscillatorNode can change its periodic shape in place.
+    this._activeLayerMonitors = new Set();
+    this._activeLayerWaves = [];
   }
 
   /**
@@ -3195,6 +3201,7 @@ export class VoiceRack {
     if (!lane) return this._queueMrdr3(v, laneKey, { freq, time, dur, gain, detune, dry, wet, echo, hold });
     // The preset as it is NOW — an edit or a preset change since the node was built.
     syncMrdr3Patch(lane, v);
+    setMrdr3LayerSolo(lane, this.soloLayers?.get(v.id) || null);
     const notes = Array.isArray(freq) ? freq : [freq];
     const shift = VoiceRack.pitchShift(v) * detune;
     const amp = Math.max(0, Number(gain) || 0);
@@ -5932,7 +5939,16 @@ export class VoiceRack {
       prev.freq = base;
       prev.gateUntil = Infinity;
       prev.stopAt = Infinity;
+      for (const entry of [...(prev.activeLayerMonitors || []), ...(prev.activeLayerWaves || [])]) {
+        entry.until = Infinity;
+      }
       return;
+    }
+    // A legato handoff extends the sounding note beyond its first scheduled end.
+    // The vibrato LFO belongs to that same note graph, so move its stop with the
+    // carriers; otherwise the pitch keeps gliding while its vibrato silently ends.
+    for (const modulator of prev.modulators || []) {
+      try { modulator.stop(finalStop); } catch { /* already stopped */ }
     }
     // Cancel the old note's release, hold its current level, and release the same gate
     // at the new note's end. This is the envelope distinction between LEGATO and MONO.
@@ -5968,6 +5984,9 @@ export class VoiceRack {
     }
     for (const source of prev.sources || []) {
       try { source.stop(finalStop); } catch { /* already stopped */ }
+    }
+    for (const entry of [...(prev.activeLayerMonitors || []), ...(prev.activeLayerWaves || [])]) {
+      entry.until = finalStop + 0.02;
     }
     prev.freq = base;
     prev.gateUntil = stopAt;
@@ -6041,16 +6060,13 @@ export class VoiceRack {
     // A layer at gain 0 is a layer taken out — skipped entirely, not run at 1e-4, or
     // the save-time measurement would hear it.
     //
-    // SOLO rides the same filter, which is the whole of its implementation: a soloed
-    // audition builds exactly the nodes that layer builds on its own, rather than
-    // attenuating the others and leaving them to leak through the shared drive. Empty or
-    // absent means everything plays; a set with anything in it plays only what it names,
-    // and a layer switched OFF stays off — solo removes the others, it does not turn
-    // anything on.
+    // Each layer keeps an output monitor so solo can change on a held LEGATO graph.
+    // Empty or absent means everything plays; a layer switched OFF stays off — solo
+    // removes the others, it does not turn anything on.
     const solo = this.soloLayers?.get(v.id) || null;
     const heard = (key) => !solo || solo.size === 0 || solo.has(key);
     const specs = [['osc1', L.osc1], ['osc2', L.osc2], ['osc3', L.osc3]]
-      .filter(([key, s]) => s && !held(`layer.${key}`, s) && (s.gain ?? 1) > 0 && heard(key))
+      .filter(([key, s]) => s && !held(`layer.${key}`, s) && (s.gain ?? 1) > 0)
       .map(([key, spec]) => ({ key, spec }));
     if (!specs.length) return false;
     const all = Array.isArray(freq) ? freq : [freq];
@@ -6298,6 +6314,8 @@ export class VoiceRack {
     const legatoEnvelopes = [];
     const legatoGates = [];
     const legatoSources = [];
+    const activeLayerMonitors = [];
+    const activeLayerWaves = [];
     let lastBase = 0;
     let gateUntil = 0;
     // Which KEY holds that gate open, when a finger does. A sequenced note has none and
@@ -6503,6 +6521,7 @@ export class VoiceRack {
               at: t,
               params: heldParams, sources: heldSources, shared: sharedMods,
               live: heldLive, voiceId: v.id, glideKey,
+              activeLayerMonitors, activeLayerWaves,
             });
             return;
           }
@@ -6647,7 +6666,21 @@ export class VoiceRack {
             heldLive.push({ chain, spec: fl, mul: track * toneMul });
             dest = chain.head;
           }
-          g.connect(into);
+          const monitor = ctx.createGain();
+          const initialMonitor = heard(layerKey) ? 1 : 0;
+          monitor.gain.setValueAtTime(initialMonitor, t);
+          g.connect(monitor);
+          monitor.connect(into);
+          const now = ctx.currentTime || 0;
+          for (const entry of this._activeLayerMonitors) {
+            if (entry.until <= now) this._activeLayerMonitors.delete(entry);
+          }
+          const monitorEntry = {
+            voiceId: v.id, key: layerKey, param: monitor.gain,
+            target: initialMonitor, until: off + 0.02,
+          };
+          this._activeLayerMonitors.add(monitorEntry);
+          activeLayerMonitors.push(monitorEntry);
 
           // Unison: free at 1 — no extra nodes, no detune arithmetic. Above 1 the
           // voices sit symmetrically across `spread` cents on `.detune`, scaled by
@@ -6658,6 +6691,7 @@ export class VoiceRack {
           // stack rather than narrowing it, which is the difference between a smaller
           // ensemble and a mono one. See MRDR_QUALITY.
           const count = Math.min(clampUnison(spec.unison), this._unisonCap());
+          const waveChanges = [];
           const norm = count > 1 ? 1 / Math.sqrt(count) : 1;
           // The bandwidth makeup `_playGame` derives: a bandpass keeps only its
           // slice of the noise, the slice narrows with the note, and the level goes
@@ -6788,6 +6822,23 @@ export class VoiceRack {
               pwmSecs.connect(line.delayTime);
               out = sum; sources.push(a, b);
               pitches.push(a.frequency, b.frequency); dets.push(a.detune, b.detune);
+              let pulseTopology = true;
+              waveChanges.push((type) => {
+                if (type === 'pulse') {
+                  if (!pulseTopology) {
+                    a.type = 'sawtooth'; b.type = 'sawtooth';
+                    a.connect(sum); b.connect(line);
+                    pulseTopology = true;
+                  }
+                  return;
+                }
+                a.type = nativeWave(type, 'square');
+                if (pulseTopology) {
+                  a.disconnect(); b.disconnect();
+                  a.connect(sum);
+                  pulseTopology = false;
+                }
+              });
             } else {
               // A static sync table is enough when the slave has no pitch envelope. When
               // it does, refresh the table in short, crossfaded grains. Each grain is one
@@ -6820,6 +6871,9 @@ export class VoiceRack {
                     * (2 ** ((slaveCents + bend) / 1200));
                   const part = ctx.createOscillator();
                   part.setPeriodicWave(hardSyncTable(ctx, spec.type, relative, wCentre));
+                  waveChanges.push((type) => part.setPeriodicWave(
+                    hardSyncTable(ctx, type, relative, wCentre),
+                  ));
                   const level = ctx.createGain();
                   level.gain.setValueAtTime(grain === 0 ? 1 : 0, start);
                   if (grain > 0) level.gain.linearRampToValueAtTime(1, start + crossfade);
@@ -6844,8 +6898,22 @@ export class VoiceRack {
                 if (hardSynced) {
                   const relative = (ratio / masterRatio) * (2 ** (slaveCents / 1200));
                   o.setPeriodicWave(hardSyncTable(ctx, spec.type, relative, wCentre));
-                } else if (spec.type === 'pulse') o.setPeriodicWave(pulseTable(ctx, wCentre));
-                else o.type = nativeWave(spec.type, 'square');
+                  waveChanges.push((type) => o.setPeriodicWave(
+                    hardSyncTable(ctx, type, relative, wCentre),
+                  ));
+                } else if (spec.type === 'pulse') {
+                  o.setPeriodicWave(pulseTable(ctx, wCentre));
+                  waveChanges.push((type) => {
+                    if (type === 'pulse') o.setPeriodicWave(pulseTable(ctx, wCentre));
+                    else o.type = nativeWave(type, 'square');
+                  });
+                } else {
+                  o.type = nativeWave(spec.type, 'square');
+                  waveChanges.push((type) => {
+                    if (type === 'pulse') o.setPeriodicWave(pulseTable(ctx, wCentre));
+                    else o.type = nativeWave(type, 'square');
+                  });
+                }
                 out = o; sources.push(o);
                 pitches.push(o.frequency); dets.push(o.detune);
               }
@@ -6962,6 +7030,16 @@ export class VoiceRack {
             // oscillators running underneath it.
             if (layerHolds || (through && heldVca)) heldSources.push(...sources);
           }
+          if (waveChanges.length) {
+            const now = ctx.currentTime || 0;
+            this._activeLayerWaves = this._activeLayerWaves.filter((entry) => entry.until > now);
+            const waveEntry = {
+              voiceId: v.id, key: layerKey, type: spec.type,
+              apply: waveChanges, until: off + 0.02,
+            };
+            this._activeLayerWaves.push(waveEntry);
+            activeLayerWaves.push(waveEntry);
+          }
           // Once per layer rather than per unison voice: the PWM LFO is the layer's, and
           // the FM operator is one modulator fanned across the whole stack.
           if (layerHolds || (through && heldVca)) heldSources.push(...layerMods);
@@ -6975,7 +7053,9 @@ export class VoiceRack {
     if (mono && lastBase > 0) {
       const record = {
         freq: lastBase, outs: allOuts, pitchSets, envelopes: legatoEnvelopes,
-        gates: legatoGates, sources: legatoSources, gateUntil, gateKey, stopAt: lastOff,
+        gates: legatoGates, sources: legatoSources, modulators: vibOscs,
+        activeLayerMonitors, activeLayerWaves,
+        gateUntil, gateKey, stopAt: lastOff,
         // MONO builds a NEW graph per note and this record replaces the one before it,
         // but the fingers do not belong to the graph — they belong to the lane, and the
         // keys still down when this note was struck are still down after it. Carried
@@ -7418,6 +7498,12 @@ export class VoiceRack {
   _refresh(voiceId) {
     const v = VOICES[voiceId];
     this._specRev ||= new Map();
+    // AW lanes hold a compiled patch and active note objects, unlike the native path that
+    // reads the preset on each note-on. Install the edit now; the worklet updates active
+    // oscillator shapes in place and keeps envelope/pitch state intact across LEGATO.
+    const editedMrdr = mrdrComparisonVoice(v);
+    if (editedMrdr?.synth === MRDR3_AW) syncMrdr3Voice(this.ctx, editedMrdr);
+    if (v?.synth === MRDR3_NATIVE) this._walkLiveLayerWaves(voiceId, v);
     // A JMJR-4 patch is compiled from the preset once and kept; an edit is a new preset.
     this._jmjr4Patches?.delete(voiceId);
     if (this._jmjr4Crushers) for (const k of [...this._jmjr4Crushers.keys()]) if (k.endsWith(`|${voiceId}`)) this._jmjr4Crushers.delete(k);
@@ -7825,6 +7911,45 @@ export class VoiceRack {
     }
   }
 
+  /** Apply oscillator waveform edits to native MRDR notes that are still sounding. */
+  _walkLiveLayerWaves(voiceId, voice) {
+    const now = this.ctx?.currentTime ?? 0;
+    this._activeLayerWaves = this._activeLayerWaves.filter((entry) => entry.until > now);
+    const supported = new Set(['sine', 'square', 'sawtooth', 'triangle', 'pulse']);
+    for (const entry of this._activeLayerWaves) {
+      if (entry.voiceId !== voiceId) continue;
+      const type = voice?.layer?.[entry.key]?.type;
+      if (!supported.has(type) || type === entry.type || !entry.apply.length) continue;
+      for (const apply of entry.apply) {
+        try { apply(type); } catch { /* a source may have ended during the edit */ }
+      }
+      entry.type = type;
+    }
+  }
+
+  /** Change the monitoring mask on every still-sounding native layer bus. */
+  updateLayerSolo(voiceId, layers = null) {
+    if (!voiceId) return 0;
+    const solo = layers instanceof Set && layers.size ? layers : null;
+    const now = this.ctx?.currentTime ?? 0;
+    let changed = 0;
+    for (const entry of this._activeLayerMonitors) {
+      if (entry.until <= now) { this._activeLayerMonitors.delete(entry); continue; }
+      if (entry.voiceId !== voiceId) continue;
+      const target = !solo || solo.has(entry.key) ? 1 : 0;
+      if (entry.target === target) continue;
+      const param = entry.param;
+      try {
+        if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(now);
+        else { param.cancelScheduledValues(now); param.setValueAtTime(param.value, now); }
+        param.linearRampToValueAtTime(target, now + 0.006);
+        entry.target = target;
+        changed++;
+      } catch { /* a note ended while the monitor mask changed */ }
+    }
+    return changed;
+  }
+
   /** Release a previewed note — the other half of triggerAttack above. */
   releasePreview(laneKey, freq) {
     const noteKey = `${laneKey}|${freq.toFixed(2)}`;
@@ -8015,6 +8140,9 @@ export class VoiceRack {
     // which is what keeps a source booked to end early from being handed the tail instead.
     if (held.stopSources) { try { held.stopSources(stopAt + 0.01); } catch { /* gone */ } }
     else for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
+    for (const entry of [...(held.activeLayerMonitors || []), ...(held.activeLayerWaves || [])]) {
+      entry.until = stopAt + 0.02;
+    }
     if (held.polyRecord) held.polyRecord.stopAt = stopAt + 0.01;
     // The note-on's shared modulators go when its LAST tone does — a chord releases
     // one key at a time and the rest are still wobbling.

@@ -30,7 +30,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
-| 2026-09-19 | `cef82df` | [2026-09-19-cef82df.html](2026-09-19-cef82df.html) | [bake-offs](2026-09-19-cef82df-lab.html) | Settings reset asks with YES/NO buttons; trim three stale touch hints |
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | 2026-09-22 | `b9c3169` | [2026-09-22-b9c3169.html](2026-09-22-b9c3169.html) | [bake-offs](2026-09-22-b9c3169-lab.html) | Refactor HUB_LIGHT_Y and REFLECT_SOLE_DROP to remove export and streamline code; add proposed mechanic ideas for Crypt Shift and Neon Blasters. |
 | 2026-09-23 | `eb03b14` | [2026-09-23-eb03b14.html](2026-09-23-eb03b14.html) | [bake-offs](2026-09-23-eb03b14-lab.html) | Add tests for neon city arrival and moon phases |
@@ -41,4 +40,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-24 | `3623387` | [2026-09-24-3623387.html](2026-09-24-3623387.html) | [bake-offs](2026-09-24-3623387-lab.html) | Add new level scenery and obstacles for Plumber, Speed, Frost, and Neon stages; implement feature reel rendering tool |
 | 2026-09-25 | `0839f59` | [2026-09-25-0839f59.html](2026-09-25-0839f59.html) | [bake-offs](2026-09-25-0839f59-lab.html) | Refactor code structure and remove redundant sections for improved readability and maintainability |
 | 2026-09-25 | `2bbd529` | [2026-09-25-2bbd529.html](2026-09-25-2bbd529.html) | [bake-offs](2026-09-25-2bbd529-lab.html) | feat: Introduce new sleigh and reindeer designs for Frost scene |
+| 2026-09-25 | `44d12b3` | [2026-09-25-44d12b3.html](2026-09-25-44d12b3.html) | [bake-offs](2026-09-25-44d12b3-lab.html) | Add wolves fire scene and candidates for Frost 3 bake-off |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

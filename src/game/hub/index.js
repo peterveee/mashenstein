@@ -1028,6 +1028,87 @@ export function heroIdFor(flow) {
 const SCENES = new Map();
 onPresentationChanged(() => SCENES.clear());
 
+// Cabinet glass only shows a narrow, moving slice of this scene. Drawing the full
+// Crypt style pack for that thumbnail also forces its large gouache texture bake the
+// first time the cabinet is seen. Keep the attract screen evocative but cheap; the
+// actual level continues to use the full pack.
+function drawCryptCabinetScene(ctx) {
+  // Portrait expands H but the cabinet still crops a short band at this fraction
+  // of the scene. Anchor the illustration to that band instead of GROUND_Y, which
+  // stays near the bottom only in the landscape level frame.
+  const bandTop = screenWinTop() * H;
+  const groundY = bandTop + 62;
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#100d1b');
+  sky.addColorStop(0.72, '#21182c');
+  sky.addColorStop(1, '#30233a');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // A few fixed stars and a low moon give the glass a readable night sky without
+  // invoking the level's painted sky, cloud train, or cached sprites.
+  ctx.fillStyle = '#d7cee5';
+  for (const [x, y, r] of [
+    [28, 6, 1.1], [62, 27, 0.8], [146, 3, 1], [198, 18, 0.8],
+    [277, 7, 1], [352, 25, 0.8], [426, 5, 1], [464, 28, 0.8],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(x, bandTop + y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#d9d0d1';
+  ctx.beginPath();
+  ctx.arc(104, bandTop + 18, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#171321';
+  ctx.beginPath();
+  ctx.arc(112, bandTop + 13, 17, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Distant graveyard ridge and a broken abbey silhouette.
+  ctx.fillStyle = '#211b30';
+  ctx.beginPath();
+  ctx.moveTo(0, groundY - 29);
+  for (let x = 0; x <= W; x += 24) {
+    const y = groundY - 28 + Math.sin(x * 0.025) * 7 + Math.sin(x * 0.061) * 3;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, groundY + 2);
+  ctx.lineTo(0, groundY + 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#171321';
+  ctx.fillRect(337, groundY - 51, 29, 52);
+  ctx.beginPath();
+  ctx.moveTo(331, groundY - 50);
+  ctx.lineTo(352, groundY - 76);
+  ctx.lineTo(373, groundY - 50);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(356, groundY - 67, 10, 18);
+
+  // A dark lane and large tombstone silhouettes survive the cabinet's tiny crop
+  // better than the full level's fine background detail.
+  ctx.fillStyle = '#211827';
+  ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.fillStyle = '#59445d';
+  ctx.fillRect(0, groundY - 1, W, 2);
+  for (const [x, w, h] of [[24, 13, 21], [112, 15, 27], [209, 13, 19], [302, 16, 25], [411, 14, 22], [462, 12, 18]]) {
+    const top = groundY - h;
+    ctx.fillStyle = '#56465e';
+    ctx.beginPath();
+    ctx.moveTo(x, groundY);
+    ctx.lineTo(x, top + 8);
+    ctx.quadraticCurveTo(x, top, x + w / 2, top);
+    ctx.quadraticCurveTo(x + w, top, x + w, top + 8);
+    ctx.lineTo(x + w, groundY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#342b40';
+    ctx.fillRect(x + 3, top + 12, 2, 7);
+  }
+}
+
 function cabinetScene(cab) {
   let c = SCENES.get(cab.id);
   if (c !== undefined) return c;
@@ -1037,43 +1118,47 @@ function cabinetScene(cab) {
     c.width = W / 2; c.height = H / 2;
     const x = c.getContext('2d');
     x.scale(0.5, 0.5);
-    const pack = getStylePack(cab.style, {});
-    // The cabinet's own hazards, pulled from its own pattern bank, so each
-    // screen shows the game that cabinet actually plays. Sky and ground alone
-    // came out as two flat bands — an attract screen needs something in it.
-    //
-    // WHICH bank, though, depends on which spawner the cabinet's stages
-    // actually run. A beat-locked cabinet never consults `patterns`: RunState
-    // builds a BeatSpawner off `beatCharts` for rhythm-1/2/3 and the pattern
-    // bank only comes back for that cabinet's overtime and boss runs (see
-    // `beatLock` in run.js). Reading the bank here put a thorn cactus on the
-    // screen of the one stage in the game whose lane lays nothing but bars,
-    // barrels and drones — the screen was advertising a level that does not
-    // exist. Chart first wherever there is one.
-    const types = [];
-    for (const chart of Object.values(cab.beatCharts || {})) {
-      for (const ev of chart.events || []) if (ev.type) types.push(ev.type);
+    if (cab.id === 'crypt') {
+      drawCryptCabinetScene(x);
+    } else {
+      const pack = getStylePack(cab.style, {});
+      // The cabinet's own hazards, pulled from its own pattern bank, so each
+      // screen shows the game that cabinet actually plays. Sky and ground alone
+      // came out as two flat bands — an attract screen needs something in it.
+      //
+      // WHICH bank, though, depends on which spawner the cabinet's stages
+      // actually run. A beat-locked cabinet never consults `patterns`: RunState
+      // builds a BeatSpawner off `beatCharts` for rhythm-1/2/3 and the pattern
+      // bank only comes back for that cabinet's overtime and boss runs (see
+      // `beatLock` in run.js). Reading the bank here put a thorn cactus on the
+      // screen of the one stage in the game whose lane lays nothing but bars,
+      // barrels and drones — the screen was advertising a level that does not
+      // exist. Chart first wherever there is one.
+      const types = [];
+      for (const chart of Object.values(cab.beatCharts || {})) {
+        for (const ev of chart.events || []) if (ev.type) types.push(ev.type);
+      }
+      if (!types.length) {
+        for (const pat of cab.patterns || []) for (const cell of pat.cells) types.push(cell.t);
+      }
+      const obstacles = [];
+      const seen = new Set();
+      for (const raw of types) {
+        // The same rule, one step on: a cabinet that SWAPS a shared obstacle for its
+        // own (`swaps` in data/cabinets.js — Terminal Velocity has no cactus at all)
+        // must show what its lane lays, not the pattern's placeholder. Take the swap
+        // list's first entry the screen does not already show.
+        const swapList = cab.swaps?.[raw];
+        const t = swapList ? swapList.find((s) => !seen.has(s) && OBSTACLES[s]) : raw;
+        if (!t || seen.has(t) || !OBSTACLES[t]) continue;
+        seen.add(t);
+        obstacles.push(makeObstacle(t, 90 + obstacles.length * 120));
+        if (obstacles.length >= 4) break;
+      }
+      if (pack.bg) pack.bg(x, 0, 0, cab, 1000);
+      if (pack.ground) pack.ground(x, 0, cab, obstacles);
+      for (const o of obstacles) drawWorldEntity(x, o, 0, 0, pack, {});
     }
-    if (!types.length) {
-      for (const pat of cab.patterns || []) for (const cell of pat.cells) types.push(cell.t);
-    }
-    const obstacles = [];
-    const seen = new Set();
-    for (const raw of types) {
-      // The same rule, one step on: a cabinet that SWAPS a shared obstacle for its
-      // own (`swaps` in data/cabinets.js — Terminal Velocity has no cactus at all)
-      // must show what its lane lays, not the pattern's placeholder. Take the swap
-      // list's first entry the screen does not already show.
-      const swapList = cab.swaps?.[raw];
-      const t = swapList ? swapList.find((s) => !seen.has(s) && OBSTACLES[s]) : raw;
-      if (!t || seen.has(t) || !OBSTACLES[t]) continue;
-      seen.add(t);
-      obstacles.push(makeObstacle(t, 90 + obstacles.length * 120));
-      if (obstacles.length >= 4) break;
-    }
-    if (pack.bg) pack.bg(x, 0, 0, cab, 1000);
-    if (pack.ground) pack.ground(x, 0, cab, obstacles);
-    for (const o of obstacles) drawWorldEntity(x, o, 0, 0, pack, {});
   } catch {
     c = null; // headless, or a pack that needs run state: fall back to the motif
   }

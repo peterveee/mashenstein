@@ -23,6 +23,7 @@ import { connect } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { listBrowsers, stopBrowser } from './browsers.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = process.env.MASH_DESK_HOST || '127.0.0.1';
@@ -324,7 +325,23 @@ async function handle(req, res) {
     return json(res, 200, {
       tools: await Promise.all(TOOLS.map(statusOf)),
       actions: ACTIONS.map(actionStatus),
+      browsers: listBrowsers(),
     });
+  }
+
+  // BACKGROUND BROWSERS: the one thing on this page the desk will kill that it did
+  // not start. A headless Chromium left spinning has no window and no port, and it
+  // cost two nights of chasing glitches that were really a busy machine — so it is
+  // listed here, where it cannot hide, and killed on an explicit click per row. The
+  // mixer's warm renderer is the exception, for the same reason as ADOPT, NEVER KILL.
+  const kill = /^\/api\/browsers\/kill\/(\d+)$/.exec(url.pathname);
+  if (kill && req.method === 'POST') {
+    const pid = Number(kill[1]);
+    const row = listBrowsers().find((b) => b.pid === pid);
+    if (row?.kind === 'mixer') {
+      return json(res, 409, { ok: false, error: 'the mixer keeps that one warm on purpose — not the desk’s to stop' });
+    }
+    return json(res, 200, await stopBrowser(pid));
   }
 
   if (url.pathname.startsWith('/galleries/') && req.method === 'GET') {

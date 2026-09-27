@@ -22,6 +22,7 @@
 // (the old dogs are kept for the gallery in src/dev/dogs-was.js).
 
 import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS } from './dogs.js';
+import { paintCryptAnimal } from './crypt-animals.js';
 
 // --------------------------------------------------------------- primitives
 // Same ink as every other prop, so an animal standing beside a crate is drawn
@@ -1226,6 +1227,11 @@ export const ANIMAL_PAINTERS = {
   // The three dogs are sprites/dogs.js (the dogs bake-off's B, shipped 24 Sep 2026).
   ...DOG_PAINTERS,
   catFury: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.catFury),
+  cryptPanther: (ctx, w, h, frame = 0) => {
+    ctx.save(); ctx.scale(w / 100, h / 70);
+    paintCryptAnimal(ctx, frame / (8 * 1.45), 'violet');
+    ctx.restore();
+  },
   rattlesnake,
   goose,
 };
@@ -1242,6 +1248,7 @@ export const ANIMAL_NAMES = Object.keys(ANIMAL_PAINTERS);
 
 export const ANIMAL_FRAMES = {
   dogSnarler: FRAMES, dogBruiser: FRAMES, dogFeral: FRAMES, catFury: FRAMES,
+  cryptPanther: FRAMES,
   rattlesnake: SNAKE_FRAMES,
   goose: GOOSE_FRAMES,
 };
@@ -1251,6 +1258,7 @@ export const ANIMAL_FRAMES = {
 // short-strided animal keeping up has to take more steps to do it.
 export const ANIMAL_FPS = {
   dogSnarler: 16, dogBruiser: 18, dogFeral: 15, catFury: 20,
+  cryptPanther: 12,
   rattlesnake: SNAKE_FPS,
   goose: 22,
 };
@@ -1260,6 +1268,7 @@ export const ANIMAL_FPS = {
 // point of it is that it is low.
 export const ANIMAL_TALL = {
   dogSnarler: 1.05, dogBruiser: 1.0, dogFeral: 1.15, catFury: 1.12,
+  cryptPanther: 1.0,
   // The snake's neck and rattle stand over a box kept at the height of its coil.
   rattlesnake: 1.25,
   goose: 1.35,
@@ -1291,6 +1300,7 @@ export const ANIMAL_TALL = {
 // that 286px worst case rather than adjusting this by eye.
 export const ANIMAL_DETAIL = {
   dogSnarler: 2, dogBruiser: 2, dogFeral: 2, catFury: 2, goose: 2,
+  cryptPanther: 2,
   // One, not two: the snake's ring is 24 frames, and at two it would hold four times
   // the pixels of a dog's eight for a drawing that is mostly flat tone.
   rattlesnake: 1,
@@ -1309,6 +1319,9 @@ export const ANIMAL_DETAIL = {
 // is the one that most needs to be seen coming.
 export const ANIMAL_VISUAL = {
   dogSnarler: 1.16, dogBruiser: 1.16, dogFeral: 1.16, catFury: 1.24,
+  // The panther has the cat's 11x9 collision box; draw its long body at the
+  // selected gallery size without making the jump timing harder.
+  cryptPanther: 1.7,
   // Drawn at its box: its box already takes in the strike.
   rattlesnake: 1,
   // 1.1 for the bird, times the room its honk lines need (GOOSE_PAD): same size on screen.

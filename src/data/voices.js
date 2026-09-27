@@ -2964,6 +2964,15 @@ const TONE = {
       lfo: { type: 'sine', rate: 0.5, depth: 0.35, target: 'filter', delay: 0.6 },
     } },
 
+  cryptTheremin: { label: 'Crypt Theremin', category: 'Lead', synth: 'MRDR-3', dur: 2.8,
+    note: 'A floating graveyard melody: sine body, a faint octave overtone, delayed vibrato and legato glide.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.9, attack: 0.055, decay: 0.3, sustain: 0.85, release: 0.3 },
+      osc2: { type: 'sine', ratio: 2, gain: 0.075, attack: 0.09, decay: 0.4, sustain: 0.65, release: 0.28 },
+    },
+    vibrato: { depth: 0.19, rate: 5.3, delay: 0.16 },
+    mono: true, portamento: 0.11 },
+
   // ---- sample-and-hold auditions -----------------------------------------
   // These five patches make the stepped-random Mod LFO audible in five different
   // jobs: a filter lead, a level pulse, a slow pad, a bass latch and a noisy machine
@@ -4540,6 +4549,7 @@ const USER_DRUM = {
 // from here falls back to its peak, which is what the library was levelled by before
 // and is close enough to keep a sound audible until the tool is run again.
 const LEVELS = {
+  cryptTheremin: 0.128322,
   roundMono: 0.075557, fmGrowl: 0.023982, acidSquelch: 0.06367,
   rubberBass: 0.056514, clangBass: 0.020067, detuneBass: 0.161441,
   simpleSquare: 0.116548, simpleSawtooth: 0.069537, simpleTriangle: 0.076624,
@@ -4699,6 +4709,7 @@ const LEVELS = {
 // read for now is headroom — a preset whose peak is far above its lane's target spends
 // the mix's ceiling on one transient — and being the fallback above.
 const PEAKS = {
+  cryptTheremin: 0.638468,
   roundMono: 1.183, fmGrowl: 0.216, acidSquelch: 1.6469, rubberBass: 0.9084,
   clangBass: 0.2115, detuneBass: 1.5362, simpleSquare: 0.785,
   simpleSawtooth: 0.7751, simpleTriangle: 0.6951, monoBright: 0.8807,

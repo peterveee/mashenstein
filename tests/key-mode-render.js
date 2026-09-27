@@ -206,6 +206,43 @@ window.__render = async ({ preset, mode, glide, sc, rate, C, E }) => {
   }
   return Array.from((await rendering).getChannelData(0));
 };
+
+window.__renderLiveLayerControls = async ({ rate, C }) => {
+  const id = '__mrdrLiveLayerControls';
+  VOICES[id] = {
+    synth: 'MRDR-3', id, mode: 'legato', portamento: 0.2, dur: 2,
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.6, attack: 0.01, sustain: 1, release: 0.2 },
+      osc2: { type: 'sine', ratio: 2, gain: 0.6, attack: 0.01, sustain: 1, release: 0.2 },
+    },
+  };
+  const ctx = new OfflineAudioContext(1, Math.ceil(rate * 1.2), rate);
+  const rack = new VoiceRack(ctx);
+  const dry = ctx.createGain(); dry.connect(ctx.destination);
+  rack.play('lead', id, C, {
+    time: 0.05, dur: 2, gain: 0.5, dry, wet: null, echo: false,
+    preview: true, hold: true, step: 0,
+  });
+  const checkpoints = [0.3, 0.55, 0.7, 0.9].map((at) => ctx.suspend(at));
+  const rendering = ctx.startRendering();
+  await checkpoints[0];
+  const solo2Changes = rack.updateLayerSolo(id, new Set(['osc2']));
+  ctx.resume();
+  await checkpoints[1];
+  const solo1Changes = rack.updateLayerSolo(id, new Set(['osc1']));
+  ctx.resume();
+  await checkpoints[2];
+  VOICES[id].layer.osc1.type = 'sine';
+  rack._refresh(id);
+  ctx.resume();
+  await checkpoints[3];
+  const clearChanges = rack.updateLayerSolo(id, null);
+  ctx.resume();
+  return {
+    samples: Array.from((await rendering).getChannelData(0)),
+    changes: [solo2Changes, solo1Changes, clearChanges],
+  };
+};
 `;
 
 let chromium; let esbuild;
@@ -228,6 +265,33 @@ if (chromium) {
       render.held = true;
       await claims(name, render);
     }
+    const liveResult = await page.evaluate((a) => window.__renderLiveLayerControls(a),
+      { rate: RATE, C: 220 });
+    const live = liveResult.samples;
+    const component = (hz, from, to) => {
+      let re = 0; let im = 0;
+      const first = Math.floor(from * RATE); const last = Math.floor(to * RATE);
+      for (let i = first; i < last; i++) {
+        const phase = 2 * Math.PI * hz * i / RATE;
+        re += live[i] * Math.cos(phase);
+        im += live[i] * Math.sin(phase);
+      }
+      return 2 * Math.hypot(re, im) / Math.max(1, last - first);
+    };
+    let fundamental = component(220, 0.4, 0.5);
+    let other = component(440, 0.4, 0.5);
+    assert(other > 0.01 && fundamental < other * 0.05,
+      `MRDR-3 native: osc 2 solo silences osc 1 (${fundamental.toExponential(1)} / ${other.toExponential(1)}; ${liveResult.changes.join(',')})`);
+    fundamental = component(220, 0.6, 0.7);
+    let third = component(660, 0.6, 0.7);
+    assert(fundamental > 0.01 && third > fundamental * 0.15,
+      `MRDR-3 native: osc 1 starts as square before the edit (${third.toExponential(1)} / ${fundamental.toExponential(1)})`);
+    fundamental = component(220, 0.75, 0.85);
+    third = component(660, 0.75, 0.85);
+    assert(fundamental > 0.01 && third < fundamental * 0.12,
+      `MRDR-3 native: a held LEGATO oscillator adopts its edited sine wave (${third.toExponential(1)} / ${fundamental.toExponential(1)})`);
+    assert(component(220, 0.95, 1.05) > 0.01 && component(440, 0.95, 1.05) > 0.01,
+      'MRDR-3 native: clearing solo restores both held oscillators');
     assert(errors.length === 0, `no page errors (${errors.join(' | ')})`);
   } finally {
     await browser.close();

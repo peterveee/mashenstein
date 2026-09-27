@@ -67,5 +67,8 @@ const shell = readFileSync(join(root, 'tools/desk-shell.html'), 'utf8');
 ok(shell.includes('/api/status') && shell.includes('data-tool'),
   'the page asks the desk for status and tags each row with its tool id');
 
+ok(shell.includes('/api/browsers/kill/') && shell.includes('data-browser'),
+  'the page lists background browsers and can kill one');
+
 console.log(failures ? 'DESK: FAILED' : 'DESK: PASSED');
 process.exit(failures ? 1 : 0);

@@ -3,9 +3,16 @@
 // Only saved songs explicitly marked group: "alternate" are imported here. Scratch
 // songs and MIDI auditions remain desk-only and never enter the game bundle.
 import * as GAME_ALT_ARCADE_THEME from './imported/arcade-theme.js';
+import * as GAME_ALT_CRYPT_BLACK_ABBEY from './imported/crypt-black-abbey.js';
+import * as GAME_ALT_CRYPT_CLOCKWORK_SEANCE from './imported/crypt-clockwork-seance.js';
+import * as GAME_ALT_CRYPT_MIDNIGHT_PROCESSION from './imported/crypt-midnight-procession.js';
+import * as GAME_ALT_CRYPT_WHISPER_EXCHANGE from './imported/crypt-whisper-exchange.js';
+import * as GAME_ALT_CRYPT_WIDOWS_LANTERN from './imported/crypt-widows-lantern.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
+import * as GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE from './imported/speed-horizon-lines-overdrive.js';
+import * as GAME_ALT_SPEED_HORIZON_LINES from './imported/speed-horizon-lines.js';
 import * as GAME_ALT_SPEED_ZONE_ALT_2 from './imported/speed-zone-alt-2.js';
 import * as GAME_ALT_SPEED_ZONE_ALT from './imported/speed-zone-alt.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT_2 from './imported/the-food-court-alt-2.js';
@@ -13,9 +20,16 @@ import * as GAME_ALT_THE_FOOD_COURT_ALT from './imported/the-food-court-alt.js';
 
 export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_ARCADE_THEME,
+  GAME_ALT_CRYPT_BLACK_ABBEY,
+  GAME_ALT_CRYPT_CLOCKWORK_SEANCE,
+  GAME_ALT_CRYPT_MIDNIGHT_PROCESSION,
+  GAME_ALT_CRYPT_WHISPER_EXCHANGE,
+  GAME_ALT_CRYPT_WIDOWS_LANTERN,
   GAME_ALT_MONSTER_MEGAMIX_ALT,
   GAME_ALT_NEW_THE_FOOD_COURT,
   GAME_ALT_PLUMBER_PANIC_ALT,
+  GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE,
+  GAME_ALT_SPEED_HORIZON_LINES,
   GAME_ALT_SPEED_ZONE_ALT_2,
   GAME_ALT_SPEED_ZONE_ALT,
   GAME_ALT_THE_FOOD_COURT_ALT_2,

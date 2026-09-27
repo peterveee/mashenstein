@@ -52,6 +52,8 @@
   .status-pill { color: var(--mint); border-color: rgba(87, 223, 196, .3); background: rgba(87, 223, 196, .07); }
   .status-pill::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--mint); box-shadow: 0 0 9px var(--mint); }
   .meta-chip { color: var(--gold); }
+  .meta-chip.quiet { color: var(--muted); }
+  .meta-chip.hot { color: var(--hazard); border-color: rgba(240, 106, 99, .45); background: rgba(240, 106, 99, .08); }
   main, footer { max-width: 1240px; margin: 0 auto; padding-left: 28px; padding-right: 28px; }
   main { padding-top: 30px; }
   .desk-intro {
@@ -71,7 +73,7 @@
   .section-head { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
   h2.section { margin: 0; color: var(--muted); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; }
   .section-count { color: var(--mint); font-size: 10px; letter-spacing: .1em; }
-  #list, #galleries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #list, #galleries, #browsers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .tool {
     position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 14px; align-items: start;
     min-height: 132px; overflow: hidden; padding: 17px 17px 16px;
@@ -95,6 +97,11 @@
   .name a:hover { color: var(--gold); }
   .port { color: var(--muted); font-size: 10px; letter-spacing: .08em; }
   .tag { padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); font-size: 9px; letter-spacing: .05em; }
+  .tool.hot { border-color: rgba(240, 106, 99, .4); }
+  .tool.hot::before { background: var(--hazard); }
+  .tool.hot .dot { color: var(--hazard); border-color: rgba(240, 106, 99, .45); }
+  .tool.quiet { min-height: 0; }
+  .tag.hot { color: var(--hazard); border-color: rgba(240, 106, 99, .4); background: rgba(240, 106, 99, .08); }
   .tag.adopted { color: var(--gold); border-color: rgba(246, 211, 90, .35); background: rgba(246, 211, 90, .07); }
   .blurb { margin-top: 8px; color: var(--dim); font-size: 11px; line-height: 1.5; }
   .log { margin-top: 10px; max-height: 58px; overflow: hidden; padding: 7px 9px; border-left: 2px solid var(--coral); background: rgba(240, 106, 99, .06); color: var(--muted); font-size: 10px; white-space: pre-wrap; }
@@ -106,6 +113,7 @@
   button:hover:not(:disabled) { color: var(--ink); border-color: var(--mint); background: rgba(87, 223, 196, .1); }
   button[disabled] { opacity: .32; cursor: default; }
   button[disabled]:hover { border-color: var(--line); background: rgba(13, 17, 21, .5); }
+  button.armed, button.armed:hover:not(:disabled) { color: var(--hazard); border-color: var(--hazard); background: rgba(240, 106, 99, .12); }
   button.go { color: #10201e; background: var(--mint); border-color: var(--mint); box-shadow: 0 5px 18px rgba(87, 223, 196, .16); }
   button.go:hover:not(:disabled) { color: #10201e; background: #8bf0dc; border-color: #8bf0dc; }
   footer { margin-top: 32px; padding-top: 17px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 10px; }
@@ -116,7 +124,7 @@
     .desk-intro { align-items: start; flex-direction: column; padding: 18px; }
     .intro-stats { width: 100%; }
     .intro-stat { flex: 1; }
-    #list, #galleries { grid-template-columns: 1fr; }
+    #list, #galleries, #browsers { grid-template-columns: 1fr; }
   }
   @media (max-width: 520px) {
     .header-inner { align-items: flex-start; }
@@ -140,6 +148,7 @@
     </div>
     <div class="header-meta">
       <span class="status-pill"><span id="live-count">0 LIVE</span></span>
+      <span class="meta-chip quiet" id="browser-chip" title="automated Chromiums running on this machine">0 BROWSERS</span>
       <span class="meta-chip">:8000</span>
     </div>
   </div>
@@ -160,6 +169,10 @@
   <section class="desk-section">
     <div class="section-head"><h2 class="section">TOOLS</h2><span class="section-count">LIVE CONTROL</span></div>
     <div id="list"></div>
+  </section>
+  <section class="desk-section">
+    <div class="section-head"><h2 class="section">BACKGROUND BROWSERS</h2><span class="section-count" id="browsers-count">QUIET</span></div>
+    <div id="browsers"></div>
   </section>
   <section class="desk-section">
     <div class="section-head"><h2 class="section">GALLERIES</h2><span class="section-count">ONE-SHOT ROUTINES</span></div>
@@ -316,6 +329,82 @@ function prunePreviewCard(pruneplan, pruneapply) {
       }, busy === 'pruneapply' ? '…' : 'DELETE FOR REAL')));
 }
 
+// Every Chromium that Playwright launched, from tools/browsers.js. Headless ones have
+// no window, so this is the only place a stray one shows up — and a stray one pegging
+// the CPU makes the game in the real browser glitch in ways that look like song bugs.
+// KILL takes two clicks: the first arms it for a few seconds, because a browser owned
+// by a live script may be another session's render mid-run.
+const browsersEl = document.getElementById('browsers');
+const HOT_CPU = 25;
+let armed = null; // { pid, timer }
+const KIND_DOT = { orphan: 'OR', script: 'SC', mcp: 'MC', mixer: 'MX' };
+const KIND_BLURB = {
+  orphan: () => 'its script is gone — nothing can be using it. Safe to kill.',
+  script: (b) => `started by pid ${b.owner.pid}: ${b.owner.cmd}. Finished or hung? Kill it. Still rendering for another session? That job will fail.`,
+  mcp: () => 'the Playwright MCP browser of a Claude session, which may still be driving it.',
+  mixer: () => 'the mixer’s warm renderer, kept open on purpose and restarted if it dies. Left alone.',
+};
+
+async function killBrowser(pid) {
+  clearTimeout(armed?.timer);
+  armed = null;
+  busy = `browser-${pid}`;
+  errBox.textContent = '';
+  drawBrowsers(lastBrowsers);
+  try {
+    const body = await (await fetch(`/api/browsers/kill/${pid}`, { method: 'POST' })).json();
+    if (!body.ok) errBox.textContent = body.error;
+  } catch (e) { errBox.textContent = e.message; }
+  busy = null;
+  await refresh();
+}
+
+function arm(pid) {
+  clearTimeout(armed?.timer);
+  armed = { pid, timer: setTimeout(() => { armed = null; drawBrowsers(lastBrowsers); }, 4000) };
+  drawBrowsers(lastBrowsers);
+}
+
+let lastBrowsers = [];
+function drawBrowsers(browsers) {
+  const cpu = browsers.reduce((s, b) => s + b.cpu, 0);
+  const hot = browsers.some((b) => b.cpu >= HOT_CPU);
+  const chip = document.getElementById('browser-chip');
+  chip.textContent = browsers.length ? `${browsers.length} BROWSER${browsers.length === 1 ? '' : 'S'} · ${cpu}% CPU` : '0 BROWSERS';
+  chip.className = `meta-chip ${hot ? 'hot' : browsers.length ? '' : 'quiet'}`;
+  document.getElementById('browsers-count').textContent = browsers.length ? `${browsers.length} RUNNING` : 'QUIET';
+  if (!browsers.length) {
+    browsersEl.replaceChildren(el('div', { class: 'tool quiet' },
+      el('div', { class: 'dot', 'aria-hidden': 'true' }, '—'),
+      el('div', {}, el('div', { class: 'name' }, el('b', {}, 'NONE RUNNING')),
+        el('div', { class: 'blurb' }, 'No automated Chromium on this machine. Safe to chase a glitch.')),
+      el('div', {})));
+    return;
+  }
+  browsersEl.replaceChildren(...browsers.map((b) => {
+    const isHot = b.cpu >= HOT_CPU;
+    const isArmed = armed?.pid === b.pid;
+    return el('div', { class: `tool${isHot ? ' hot' : ''}`, 'data-browser': b.pid },
+      el('div', { class: 'dot', 'aria-hidden': 'true' }, KIND_DOT[b.kind] || '??'),
+      el('div', {},
+        el('div', { class: 'name' },
+          el('b', {}, b.kind === 'orphan' ? 'ORPHAN' : b.kind.toUpperCase()),
+          el('span', { class: 'port' }, `pid ${b.pid}`),
+          el('span', { class: `tag${isHot ? ' hot' : ''}` }, `${b.cpu}% CPU`),
+          el('span', { class: 'tag' }, `${b.mb} MB`),
+          el('span', { class: 'tag' }, `up ${b.up}`),
+          el('span', { class: 'tag' }, b.headless ? 'headless' : 'headed')),
+        el('div', { class: 'blurb' }, KIND_BLURB[b.kind]?.(b) ?? '')),
+      el('div', { class: 'acts' },
+        el('button', {
+          class: isArmed ? 'armed' : '',
+          disabled: b.kind === 'mixer' || busy === `browser-${b.pid}`,
+          title: b.kind === 'mixer' ? 'the mixer keeps this one on purpose' : isArmed ? 'click again to kill it' : `kill browser ${b.pid}`,
+          onclick: () => (isArmed ? killBrowser(b.pid) : arm(b.pid)),
+        }, busy === `browser-${b.pid}` ? '…' : isArmed ? 'SURE?' : 'KILL')));
+  }));
+}
+
 let lastActions = [];
 function drawActions(actions) {
   const pruneplan = actions.find((a) => a.id === 'pruneplan');
@@ -330,9 +419,11 @@ function drawActions(actions) {
 
 async function refresh() {
   try {
-    const { tools, actions } = await (await fetch('/api/status')).json();
+    const { tools, actions, browsers = [] } = await (await fetch('/api/status')).json();
     last = tools;
     draw(tools);
+    lastBrowsers = browsers;
+    drawBrowsers(browsers);
     const pruneplan = actions.find((a) => a.id === 'pruneplan');
     if (pruneplan) {
       if (wasPlanRunning && !pruneplan.running && pruneplan.code === 0) prunePreviewedText = prunePendingText;

@@ -49,7 +49,7 @@ import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
-  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow, takeDesertTrapShutter, desertSpeedTrapStage,
+  frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, frostStageLight, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow, takeDesertTrapShutter, desertSpeedTrapStage,
   neonStruckX, neonStruckPlanL, neonStruckTower, neonPickMast, neonTowerNow, neonTokyoTowerTip }
   from '../engine/stylePacks/index.js';
 import {
@@ -61,6 +61,7 @@ import { ensureKanaFonts, NEON_ANNOUNCE_KANA } from '../engine/kana.js';
 import { TRON_PALETTE } from '../sprites/train.js';
 import { setGlowSprites } from '../sprites/props.js';
 import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js';
+import { finishCryptGouacheBake, CRYPT_WEATHER_TIMING, cryptNight } from '../engine/stylePacks/cryptGouache.js';
 import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
@@ -1810,7 +1811,7 @@ const SHOOTER_MIN_AHEAD = 60;
 // declines to participate, the bird has no opinion. The finish dog reads the
 // dog pool like the rest of them — he is a dog.
 function animalShotLines(type) {
-  if (type === 'catFury') return CAT_SHOT_SHORT;
+  if (type === 'catFury' || type === 'cryptPanther') return CAT_SHOT_SHORT;
   if (type === 'buzzbird') return BIRD_SHOT_SHORT;
   if (type === 'rattlesnake') return SNAKE_SHOT_SHORT;
   return DOG_SHOT_SHORT;
@@ -1927,6 +1928,101 @@ export function entityInRenderBand(e, cam, viewWidth) {
   return e.x + e.w >= cam - margin && e.x <= cam + viewWidth + margin;
 }
 
+
+// WHAT A ZOMBIE DOES (Peter, 26 Sep 2026: "can they sometimes move in the other direction
+// and we slowly catch up. as we get closer they slow down so that when we make a jump they
+// don't walk into us... in some cases the zombie can accelerate off the right and we never
+// catch up to them... some could just be standing by idly"). Each one's mood is fixed at
+// spawn from its spawn phase, so a replay or rewind deals the same zombie the same mood:
+//   toward — the old shamble at the hero, easing off as the gap closes so a jump over
+//            it is never walked into;
+//   idle   — stands where it is, swaying;
+//   away   — shuffles off to the right, slower than the lane, so we catch it up; it too
+//            slows as we come;
+//   flee   — starts running when approached, accelerates to bolter speed, then cannot be hit;
+//   bolt   — shuffles away, then as we close, breaks into a run off the right and is
+//            never caught.
+// `ob.zMood` and the sign of vx are what the painter reads to face it and pace its legs.
+export function shamblerMood(ob) {
+  if (ob.zMood) return ob.zMood;
+  const h = Math.abs(Math.sin((ob.bobPhase || 0) * 12.9898 + 4.1) * 43758.5453) % 1;
+  ob.zMood = h < 0.45 ? 'toward' : h < 0.65 ? 'idle' : h < 0.78 ? 'away'
+    : h < 0.95 ? 'flee' : 'bolt';
+  return ob.zMood;
+}
+function shamblerVx(ob, heroX, laneSpeed, dt) {
+  const mood = shamblerMood(ob);
+  const surge = 1.6 + 0.9 * Math.sin(ob.gait);
+  const base = Math.abs(ob.def.vx || 14);
+  const ahead = ob.x - heroX;
+  // Easing off as the hero comes: full pace beyond ~130 px, a creep inside ~40.
+  const near = Math.max(0.12, Math.min(1, (ahead - 40) / 90));
+  if (mood === 'idle') return 0;
+  if (mood === 'toward') return -base * surge * near;
+  if (mood === 'away') return base * 0.9 * surge * near;
+  if (mood === 'flee') {
+    const trigger = 30 + laneSpeed * 0.3;
+    if (ob.fleeing || (ahead < trigger && ahead > 0)) {
+      ob.fleeing = true;
+      // Once it breaks into a run, it gets clear at the same speed as a bolter:
+      // these are the zombies that move away instead of standing still for a
+      // jump. Once running, give them the same combat immunity as a bolter.
+      ob.bolting = true;
+      const cap = Math.max(laneSpeed * 1.5, 180);
+      return Math.min(cap, Math.max(ob.vx || 0, base) + 900 * dt);
+    }
+    return base * 0.9 * surge;
+  }
+  // bolt: it shuffles away (easing off like the others) and lets the hero come right
+  // up — then, a beat before the hero would have to jump it, it breaks into a run off
+  // the right and is never caught (Peter: "let the hero get much closer … perhaps they
+  // run a beat before we would want to jump over them so it looks like they are running
+  // away"). That first cut bolted at ~150 px, still half a screen off ("fleeing zombie
+  // still doesn't get close enough"): now it holds until the hero is ~70-80 px behind it,
+  // just outside where a jump would be taken off (~40-50 px), and bursts away at 900 px/s²,
+  // which loses under ten more px before it is outrunning the lane. It does not ease off
+  // as the hero comes, so the hero really does close on it first.
+  const trigger = 30 + laneSpeed * 0.3;
+  if (ob.bolting || (ahead < trigger && ahead > 0)) {
+    ob.bolting = true;
+    const cap = Math.max(laneSpeed * 1.5, 180);
+    return Math.min(cap, Math.max(ob.vx || 0, base) + 900 * dt);
+  }
+  return base * 0.9 * surge;
+}
+
+// THE HERO UNDER A NIGHT (see queueOverlay in draw): paint him into a scratch canvas
+// covering just the box (bx, by, bw, bh) in the overlay's logical units, darken what he
+// drew with `veil` source-atop, and copy it onto the overlay pixel for pixel. The scratch
+// takes the overlay's own transform, shifted to the box, so the hero's paint (which only
+// ever builds on the transform it is given) lands where it would have.
+let heroNightCanvas = null;
+function paintHeroNightTinted(c, fn, bx, by, bw, bh, veil) {
+  const m = typeof c.getTransform === 'function' ? c.getTransform() : null;
+  if (!m || typeof document === 'undefined') { fn(c); return; }
+  const x0 = Math.floor(m.a * bx + m.e) - 1;
+  const y0 = Math.floor(m.d * by + m.f) - 1;
+  const w = Math.ceil(Math.abs(m.a) * bw) + 3;
+  const h = Math.ceil(Math.abs(m.d) * bh) + 3;
+  if (!heroNightCanvas) heroNightCanvas = document.createElement('canvas');
+  const sc = heroNightCanvas;
+  if (sc.width < w || sc.height < h) { sc.width = Math.max(sc.width, w); sc.height = Math.max(sc.height, h); }
+  const g = sc.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, w, h);
+  g.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
+  fn(g);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = veil;
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+  c.save();
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
+  c.restore();
+}
 
 // The blackout mission's brown-out ramp. Built in local space so the same
 // object serves every frame wherever the hero has walked to; keyed on the
@@ -2792,6 +2888,18 @@ export class RunState {
   /** Where the player's own feet rest right now. */
   playerGroundY() {
     return this.routeGroundY(this.routeSampleX(), this.route);
+  }
+
+  /**
+   * How far into the dark the hero is: 0 on the surface, 1 at the catacomb's floor.
+   * The blackout mission's brown-out is scaled by it, so it only happens underground
+   * and it arrives with the descent rather than at a line (see the overlay in draw).
+   */
+  brownOutLevel() {
+    const r = this.route;
+    if (r?.kind !== 'tunnel' || !(r.peak < 0)) return 0;
+    const k = this.routeRise(this.routeSampleX(), r) / r.peak;
+    return Math.max(0, Math.min(1, k));
   }
 
   /**
@@ -3753,6 +3861,24 @@ export class RunState {
 
   createPlayer(heroId, mods) { return new Player(heroId, mods); }
 
+  armCryptWeatherClearDelay() {
+    const previousClear = this.cryptWeatherClearBeat;
+    const previousHeld = this.cryptWeatherHeldProgress;
+    this.cryptWeatherClearBeat = null;
+    this.cryptWeatherHeldProgress = null;
+    if (this.cabinet?.id !== 'crypt' || !this.introDone
+      || Audio.sourceBank !== this.cabinet.music) return;
+    const heardBeat = Audio.songBeat();
+    if (!Number.isFinite(heardBeat)) return;
+    const beat = ((heardBeat % CRYPT_WEATHER_TIMING.loopBeats) + CRYPT_WEATHER_TIMING.loopBeats)
+      % CRYPT_WEATHER_TIMING.loopBeats;
+    const { middleEightStartBeat, middleEightEndBeat, retryHoldBeats } = CRYPT_WEATHER_TIMING;
+    if (beat >= middleEightStartBeat && beat < middleEightEndBeat) {
+      this.cryptWeatherHeldProgress = cryptNight(0, beat, 1, previousClear, previousHeld).p;
+      this.cryptWeatherClearBeat = beat + retryHoldBeats;
+    }
+  }
+
   enter() {
     // `introDone` is true on the second and later enter() calls made by a
     // death-restart.  The first stage entry already has its opening card/run-in
@@ -3889,6 +4015,8 @@ export class RunState {
     this.failMsg = null;
     this.failDetail = null;     // the counted shortfall, when the line was crossed short
     this.paused = false;
+    this.cryptWeatherFade = this.introDone ? (this.cryptWeatherFade ?? 0) : 1;
+    this.armCryptWeatherClearDelay();
     this.pauseIdx = 0;          // which pause plate the arrows are sitting on
     this.debug = false;
 
@@ -4374,6 +4502,7 @@ export class RunState {
       const stopX = this.laneWallX();
       this.spawner.nextX = Math.max(this.spawner.nextX, this.camX);
       this.spawner.fill(this.camX, startSp, this.obstacles, this.pickups, () => jumpHeightFor(hero), stopX);
+      this.populateCryptSurfaceBarrelTargets();
       this.dripUpdate(0, stopX);
       // A dev start can drop the camera straight onto a staged exit, and this
       // prefill is drawn before the first update runs its own sweep.
@@ -4443,7 +4572,7 @@ export class RunState {
       paperCutout: queryPaperOff ? false : this.save.settings.paperCutout,
       portraitPresentation: isPhonePortraitPresentation(),
     });
-    this.renderSettings = { ...this.save.settings, smoothMotion: true };
+    this.renderSettings = { ...this.save.settings, smoothMotion: true, cryptEnemyArt: this.cabinet?.id === 'crypt' };
     this.mirror = this.corrupted.includes('mirror');
 
     // Not setBank. The cabinet screen has usually been playing this very song, in its
@@ -4461,6 +4590,10 @@ export class RunState {
     // which on neon-1 was the golden sky's first frame, after the song had started. Free
     // when boot's title-screen warm got there (see main.js).
     paperTextureSource(this.stage?.paperPreset || 'cardstockClear');
+    // And the gouache backdrop's bake (cryptGouache.js): ~0.6 s from cold, which would
+    // otherwise all land on its first frame. The briefing's art warm-up normally gets
+    // through it first, and then this returns at once.
+    if (this.cabinet?.style === 'gouache') finishCryptGouacheBake();
     MusicDirector.enterStage(musicSong?.bank || this.cabinet.music, {
       mixOverride: musicSong?.mix,
       arrangementOverride: musicSong?.arrangement,
@@ -5643,6 +5776,26 @@ export class RunState {
     // rather than each caller remembering to.
     if (this.paused !== wasPaused) this.pauseChanged();
     if (wasPaused && !this.paused && this.beatLock) this.resetRhythmLane();
+    if (this.cabinet?.id === 'crypt') {
+      const heard = Audio.sourceBank === this.cabinet.music ? Audio.songBeat() : null;
+      if (Number.isFinite(heard)) {
+        const beat = ((heard % CRYPT_WEATHER_TIMING.loopBeats) + CRYPT_WEATHER_TIMING.loopBeats)
+          % CRYPT_WEATHER_TIMING.loopBeats;
+        // A retry belongs to this pass through the song, never the next loop.
+        if (Number.isFinite(this.cryptWeatherLastBeat) && beat < this.cryptWeatherLastBeat - 1) {
+          this.cryptWeatherClearBeat = null;
+          this.cryptWeatherHeldProgress = null;
+        }
+        this.cryptWeatherLastBeat = beat;
+      }
+      const target = this.paused || this.dead ? 0 : 1;
+      // The song may keep moving under a pause or death, but the weather clears out
+      // of the picture over about a second. On resume it eases back to the current song.
+      const step = Math.max(0, dt) / 1.25;
+      this.cryptWeatherFade = target < this.cryptWeatherFade
+        ? Math.max(target, this.cryptWeatherFade - step)
+        : Math.min(target, this.cryptWeatherFade + step);
+    }
     // Scene bloom brightens anything above ~0.8 luma. On paper-white packs
     // that is the WHOLE background, so the bloom clips it to pure white and
     // erases the linework. Those packs opt out.
@@ -6159,6 +6312,7 @@ export class RunState {
       const spawnAt = updateProfileMark();
       this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero),
         this.overtime ? Infinity : this.laneWallX());
+      this.populateCryptSurfaceBarrelTargets();
       this.dripUpdate(wdt, this.overtime ? Infinity : this.laneWallX());
       this.pinFinishCoins();
       this.spawnScriptedPits();
@@ -7430,7 +7584,11 @@ export class RunState {
   // and its 'boxKick'. Stacking a polite 'crunch' under that just muddies the
   // front edge of the sound the player is meant to notice. Not `silent`: the
   // scatter, the shake and the payout all still belong.
-  breakObstacle(ob, silent, quiet) {
+  breakObstacle(ob, silent, quiet, force = false) {
+    // A zombie in flight is not there to be hit (shamblerVx: 'bolt'): nothing breaks it.
+    // A player-kicked barrel on the same Crypt road is the one exception: its
+    // impact destroys a fleeing zombie just like any other zombie on that road.
+    if (ob.bolting && !force) return;
     ob.live = false;
     // The flag the entity was born with (makeObstacle) and the tutorial's copy
     // of this method both promise: a broken thing is MARKED broken, so anything
@@ -8695,10 +8853,15 @@ export class RunState {
       if (ob.bridged && ob.bridgeT < BRIDGE_LAY_T) ob.bridgeT = (ob.bridgeT || 0) + dt;
       const moving = !ob.route || ob.x <= wake;
       // Shamblers lurch rather than glide: each step surges then nearly stalls.
-      // The surge never flips sign, so they only ever close on the player.
       if (moving && ob.def.shamble) {
         ob.gait += dt * 5;
-        ob.vx = ob.def.vx * (1.6 + 0.9 * Math.sin(ob.gait));
+        ob.vx = shamblerVx(ob, this.playerWorldX(), this.speed, dt);
+        // Integrate the art cycle as speed changes. The bolter accelerates very
+        // quickly; deriving its pose from t * currentSpeed made the head skip.
+        if (ob.type === 'zombie') {
+          if (ob.zArtPhase == null) ob.zArtPhase = (this.tRun + (ob.bobPhase || 0)) * 0.68;
+          ob.zArtPhase += dt * 0.68 * Math.max(1, Math.min(3, Math.abs(ob.vx || 0) / 28));
+        }
       }
       if (moving && ob.def.airDrift) {
         const { amp, speed } = ob.def.airDrift;
@@ -8888,6 +9051,23 @@ export class RunState {
           this.projectiles.push({ type: 'enemyShot', route: ob.route || null, x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
           Audio.sfx('shoot');
         }
+      }
+    }
+    // Only a barrel the player kicked can kill a Crypt zombie on the same
+    // road. Natural rolls still move toward the player, but pass through
+    // zombies harmlessly. A kicked barrel flies over them, then can hit once
+    // it lands and rolls on.
+    for (const barrel of this.obstacles) {
+      if (!barrel.live || barrel.type !== 'barrel' || !barrel.punted || barrel.vx <= 0
+        || (barrel.route?.kind !== 'tunnel'
+          && !(this.cabinet?.id === 'crypt' && barrel.route == null))) continue;
+      for (const zombie of this.obstacles) {
+        if (!zombie.live || zombie.type !== 'zombie'
+          || (zombie.route || null) !== (barrel.route || null)) continue;
+        const verticalOverlap = barrel.alt < zombie.h && barrel.alt + barrel.h > 0;
+        const horizontalOverlap = barrel.x < zombie.x + zombie.w
+          && barrel.x + barrel.w > zombie.x;
+        if (verticalOverlap && horizontalOverlap) this.breakObstacle(zombie, false, false, true);
       }
     }
     // Tossed loot: arcs forward out of whatever dropped it, bounces once or
@@ -9625,6 +9805,7 @@ export class RunState {
     let target = null;
     for (const ob of this.obstacles) {
       if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
+      if (ob.bolting) continue;   // a bolter is not a target (shamblerVx)
       if ((ob.route || null) !== (pr.route || null)) continue;   // its own road only
       // UNBREAKABLE SCENERY IS NOT A TARGET — but the POWER BLOCK is, and it
       // is the one unbreakable thing in the game a round is meant to reach. A
@@ -9834,6 +10015,9 @@ export class RunState {
           // axe, a piercing pellet) keep pr.live true and are unaffected.
           if (!pr.live) break;
           if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
+          // Shots pass a bolting zombie by (Peter: "we shouldn't be able to shoot them
+          // when they are running away").
+          if (ob.bolting) continue;
           // ...AND ONLY ON ITS OWN ROAD. Both boxes are now measured off their
           // own floors, but two roads can still put a crate and a shot at the
           // same screen height by coincidence — the hero's own hitbox has taken
@@ -11473,6 +11657,33 @@ export class RunState {
     }
   }
 
+  // The Crypt's regular surface barrel pattern is independent of the
+  // underground route furniture, so give each committed surface barrel its
+  // own close, fleeing target. The marker lives on the barrel and therefore
+  // survives rewind with the pair; naturally rolling barrels remain harmless.
+  populateCryptSurfaceBarrelTargets() {
+    if (this.cabinet?.id !== 'crypt' || !this.stage || this.stage.index < 2) return;
+    const finishWall = this.overtime ? Infinity : this.laneWallX();
+    for (const barrel of this.obstacles) {
+      if (!barrel.live || barrel.type !== 'barrel' || barrel.route != null
+        || barrel.cryptSurfaceTargetSpawned) continue;
+      barrel.cryptSurfaceTargetSpawned = true;
+      const zombieX = barrel.x + 32;
+      if (zombieX + OBSTACLES.zombie.w > finishWall) continue;
+      // Surface openings are not a place to stand. Keep the pair together
+      // outside the holes cut into the tunnel roof.
+      const pairRight = zombieX + OBSTACLES.zombie.w;
+      const inOpening = this.routes.some((route) => route.kind === 'tunnel'
+        && tunnelSweepOpenings(route).some((span) =>
+          pairRight >= span.x - 8 && barrel.x <= span.x + span.w + 8));
+      if (inOpening) continue;
+      const zombie = makeObstacle('zombie', zombieX, {});
+      zombie.zMood = 'flee';
+      zombie.route = null;
+      this.obstacles.push(zombie);
+    }
+  }
+
   /**
    * Furnish a road, so that going down there is a SECTION rather than a
    * corridor with a prize at the end of it.
@@ -11525,14 +11736,33 @@ export class RunState {
     const openings = r.kind === 'tunnel' ? tunnelSweepOpenings(r) : [];
     const overOpening = (x, w2) => openings.some((h) =>
       x + w2 >= h.x - OPENING_CLEAR && x <= h.x + h.w + OPENING_CLEAR);
+    const barrelEncounters = (r.kind === 'tunnel' ? (r.barrelPairs || []) : []).map((at) => {
+      const barrelX = r.x + r.bodyW * at;
+      const zombieX = barrelX + 32;
+      return { zombieX, barrelX, from: barrelX, to: zombieX + OBSTACLES.zombie.w };
+    }).filter((pair) => !overOpening(pair.zombieX, OBSTACLES.zombie.w)
+      && !overOpening(pair.barrelX, OBSTACLES.barrel.w));
     for (let x = from; x < to; x += gap * (0.9 + rng.float() * 0.7)) {
       const type = r.hazards[rng.int(0, r.hazards.length - 1)];
       const ob = makeObstacle(type, x, {});
       if (overOpening(x, ob.w)) continue;
+      // Treat each barrel-and-zombie pass as one encounter when preserving the
+      // tunnel's reaction spacing. A random obstacle inside its runway would
+      // crowd the barrel or keep the pair from reading together.
+      if (barrelEncounters.some((pair) =>
+        x + ob.w >= pair.from - gap && x <= pair.to + gap)) continue;
       // The one field that puts it underground. Everything else about it —
       // hitbox, breaking, debris, drawing — is an ordinary obstacle's.
       ob.route = r;
       this.obstacles.push(ob);
+    }
+    for (const pair of barrelEncounters) {
+      const zombie = makeObstacle('zombie', pair.zombieX, {});
+      zombie.zMood = 'flee';
+      zombie.route = r;
+      const barrel = makeObstacle('barrel', pair.barrelX, {});
+      barrel.route = r;
+      this.obstacles.push(zombie, barrel);
     }
   }
 
@@ -12782,6 +13012,9 @@ export class RunState {
   }
 
   restoreSnapshot(s) {
+    // The song keeps running through a checkpoint death. If it was inside the
+    // middle eight, delay this attempt's cloud exit from the live music beat.
+    this.armCryptWeatherClearDelay();
     // No ride survives a death. The checkpoint is always behind the ring (see
     // checkCheckpoints), the entities are all rebuilt below, and a live ride
     // holding the id of an obstacle that no longer exists would keep driving the
@@ -14577,7 +14810,8 @@ export class RunState {
    * and then finds unbreakable, and the bird is a FLIER, which pellets and
    * arrows never get to hit at all — they ping off it a few pixels away. Both
    * are the same event to the player (they shot at a living thing and nothing
-   * happened), so both say so.
+   * happened), so both use the same response path. Crypt suppresses that line
+   * for its dogs and cats below.
    *
    * ONE LINE PER SHOT, NOT PER ROUND: Clara fires a pair a few pixels apart and
    * a fast hero can empty several into one animal, and a floatie each reads as
@@ -14585,7 +14819,9 @@ export class RunState {
    * longer than the copter's shimmer because this one is a sentence, not a word.
    */
   animalShrugOff(ob) {
-    if (!ob.def.animal) return;
+    // Crypt already puts several dogs and cats in the lane; repeated shots at
+    // them should not fill the screen with invincibility asides.
+    if (!ob.def.animal || this.cabinet.id === 'crypt') return;
     if (ob.shotGagAt != null && this.tRun - ob.shotGagAt <= ANIMAL_GAG_GAP) return;
     ob.shotGagAt = this.tRun;
     this.floatText(this.fxRng.pick(animalShotLines(ob.type)), '#e8c49a',
@@ -14982,6 +15218,8 @@ export class RunState {
     // the shipped landscape painters.  The resolved depth table tells a pack
     // how much local compensation to apply so sky, clouds and terrain all
     // arrive at the same final camera position without independent x/y rules.
+    const cryptMusicBeat = this.cabinet?.id === 'crypt'
+      && Audio.sourceBank === this.cabinet.music ? Audio.songBeat() : null;
     const backgroundContext = {
       portrait: portraitFrameActive,
       // Background landmarks may vary by authored stage while remaining
@@ -15007,6 +15245,13 @@ export class RunState {
       // needs this; a pack that only paints scenery ignores it.
       progress: Number.isFinite(this.totalDist) && this.totalDist > 0
         ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0,
+      // The live Crypt weather is music-only: zero means no active Crypt transport,
+      // never fall back to the level-distance progress above.
+      musicBeat: this.cabinet?.id === 'crypt'
+        ? (Number.isFinite(cryptMusicBeat) ? cryptMusicBeat : 0) : null,
+      weatherClearBeat: this.cabinet?.id === 'crypt' ? this.cryptWeatherClearBeat : null,
+      weatherHeldProgress: this.cabinet?.id === 'crypt' ? this.cryptWeatherHeldProgress : null,
+      weatherFade: this.cabinet?.id === 'crypt' ? this.cryptWeatherFade : 1,
       // And the weather itself, which on Frost is not a function of `progress`
       // at all: it climbs a rung at every checkpoint and eases between them
       // (blizzardTarget). The pack keeps its own odometer ramp for the pictures
@@ -15269,8 +15514,21 @@ export class RunState {
       groundScreenY: screenYFor(GROUND_Y, z, pan, floorY),
       mirror: this.mirror,
     } : null;
-    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun,
-      W / z, portraitRenderViewW, groundWorldContext);
+    // The 38px apron normally reaches past the bottom of the view. During a
+    // vertical camera move (especially portrait framing), its fixed world-H
+    // edge can enter the frame as a hard colour boundary. Extend only the
+    // ground fill far enough to cover the actual screen bottom; the ground
+    // painter still clips out pits and tunnel overhangs.
+    const groundBottomY = Math.max(H, worldYForScreenY(H, z, pan, floorY) + 8);
+    // Frost's background and apron already use stage light. Give the terrain,
+    // pit and route painters those same colours so the raised snow joins the
+    // apron without a straight daytime-blue strip at their shared bottom.
+    const frostGround = this.cabinet.id === 'frost' ? frostStageLight(backgroundContext.stageIndex) : null;
+    const groundCabinet = frostGround ? {
+      ...this.cabinet, ground: frostGround.ground, groundDark: frostGround.groundDark,
+    } : this.cabinet;
+    this.style.ground(ctx, cam, groundCabinet, this.obstacles, laneCuts, this.tRun,
+      W / z, portraitRenderViewW, groundWorldContext, groundBottomY);
     // A HOLE THAT NAMES ITS OWN MATERIAL IS FILLED WHATEVER THE PACK IS.
     //
     // Six packs paint the cabinet's fill on their way past; the other three draw
@@ -15287,15 +15545,15 @@ export class RunState {
     // answer, and answering it twice put spikes and works in the same hole
     // while the ordinary hole a beat earlier held only works.
     if (!this.style.ownPitFills) {
-      drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true,
+      drawPitFills(ctx, cam, groundCabinet, this.obstacles, this.tRun, true,
         (ob) => riseHeight(ob.x + ob.w / 2), portraitRenderViewW ?? W,
-        this.cabinet.groundDark,
+        groundCabinet.groundDark,
         // The piston spike bed fires on the song's beat; the gear works wear
         // the pack's paper finish where it has one (game/pitFillHard.js).
         { beat: Audio.songBeat(), paperSlab: this.style.paperSlab });
     }
     if (!this.bossCab) {
-      drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
+      drawTerrain(ctx, cam, groundCabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
         this.style.ownSurface === true, this.style.paperSlab);
     }
     if (this.routes.length) {
@@ -15311,16 +15569,21 @@ export class RunState {
       const bottomWorldY = worldYForScreenY(H, z, pan, floorY) + 8;
       if (this.camFloorY > GROUND_Y + 1 || this.routes.some((r) => r.kind === 'tunnel'
         && r.x - cam < visibleWorldW + 8 && r.x + r.w - cam > -8)) {
-        drawSubsoil(ctx, this.cabinet, visibleWorldW, bottomWorldY, cam, laneCuts, hillDepth,
+        drawSubsoil(ctx, groundCabinet, visibleWorldW, bottomWorldY, cam, laneCuts, hillDepth,
           this.style.paperSlab);
       }
-      drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), visibleWorldW,
+      drawRoutes(ctx, cam, groundCabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), visibleWorldW,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
           // Scenery time, not run time: tRun stops for the finish-pad hold, and the
           // station sign's LED strip froze on the one frame the player stops to look
           // at it (Peter, 24 Sep).
           bottomY: bottomWorldY, hillDepth, t: this.backgroundT,
           paperSlab: this.style.paperSlab });
+      // Detail that belongs to a lower road is painted after its earth and floor,
+      // but before the actors standing on it. Surface packs can use this to keep
+      // their ground treatment continuous when a route drops underground.
+      this.style.routeGround?.(ctx, cam, this.routes, visibleWorldW,
+        (wx, route) => this.renderGroundY(wx, route));
       // The trains that only fly past (updateNeonSky): daylight livery until the
       // song turns, the neon one after.
       if (this.neonFlypasts?.length) {
@@ -15776,13 +16039,31 @@ export class RunState {
         // it, and this frame's chatter push below decides where it goes.
         // The train shell rides IN THE HERO'S OWN CALLBACK — see paintTrainShell.
         queueOverlay: (fn) => {
+          let lit = fn;
+          // A pack's night (Crypt's eclipse) dims the hero too: he is drawn on the
+          // overlay, past the reach of its post() veil. Not a canvas filter — that
+          // forced an offscreen pass over the whole full-resolution overlay and took a
+          // frame from 8 ms to 33 — and not a wash laid over the overlay round him,
+          // which darkened the speech cards and floaties sharing that patch (Peter:
+          // "the tint over the hero is also affecting chat/floaties"). He is painted
+          // into a small scratch canvas the size of a box round him, darkened there,
+          // and copied onto the overlay: only his own pixels are ever touched. Star
+          // power keeps its full glow.
+          const night = this.style.nightVeil ? this.style.nightVeil() : 0;
+          if (night > 0.01 && !this.powerups.active.unpeel) {
+            const cx = (heroScreenX + 6) * z + portraitXOffset;
+            const hx = this.mirror ? W - cx : cx;
+            const hy = screenYFor(this.playerGroundY() - this.player.y, z, pan, floorY);
+            const veil = `rgba(6,6,20,${(0.55 * night).toFixed(3)})`;
+            lit = (c) => paintHeroNightTinted(c, fn, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, veil);
+          }
           const paint = this.insideTrain ? (c) => {
             c.save();
             this.clipAboveTrainRoof(c, cam, z, pan, floorY, portraitXOffset);
-            fn(c);
+            lit(c);
             c.restore();
             this.paintTrainShell(c, cam, z, pan, floorY, portraitXOffset);
-          } : fn;
+          } : lit;
           if (liftHero) heroLift = paint;
           else pushOverlayDraw(paint);
         },
@@ -15863,8 +16144,14 @@ export class RunState {
       ctx.restore();
     }
 
-    // Blackout overlay (mission).
-    if (this.mission.type === 'blackout') {
+    // Blackout overlay (mission) — UNDERGROUND ONLY since 25 Sep 2026. Peter, with the
+    // gouache backdrop: "at present we present low light, but perhaps we park that and
+    // only do that on the underground sections … I want the gouache look to be what we
+    // see when there is light". So the brown-out follows the catacomb's own depth
+    // (brownOutLevel): none on the surface, coming in down the entry and gone again on the
+    // climb out, with no switch anywhere.
+    const brownOut = this.mission.type === 'blackout' ? this.brownOutLevel() : 0;
+    if (brownOut > 0) {
       // A brown-out, not a blackout: the edges dim hard but hazards stay
       // readable — the tension is squinting, not guessing. Drawn in screen
       // space with a screen-space radius: scaled with the zoom it would light
@@ -15882,6 +16169,7 @@ export class RunState {
       // immediately ahead of a full-frame fill.
       ctx.save();
       ctx.translate(px, py);
+      ctx.globalAlpha = brownOut;
       ctx.fillStyle = blackoutGradient(ctx, r);
       ctx.fillRect(-px, -py, W, H);
       ctx.restore();
@@ -16043,7 +16331,9 @@ export class RunState {
       // but Frost 2 and 3 open mid-ladder and the stage came up under a sheet
       // of snow nailed to the screen. backgroundT is alive from the first frame
       // and still freezes on a real pause, which is what this wants.
-      const drawWeather = (d) => this.style.weather(d, backgroundT);
+      const drawWeather = (d) => this.style.weather(d, backgroundT, {
+        groundScreenY: screenYFor(GROUND_Y, z, pan, floorY),
+      });
       if (!pushOverlayDraw(drawWeather)) drawWeather(ctx);
     }
     // AND THE SLEIGH GOES ABOVE THE WEATHER. It is the one thing in the sky the
