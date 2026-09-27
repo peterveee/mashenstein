@@ -420,8 +420,8 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: 3.3,
-  masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }, { id: "l7", params: { threshold: -6, ceiling: -0.3, release: 0.06, lookahead: 3, arc: 1 } }],
+  master: -1.4,
+  masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }],
   layers: [{ key: "lead7", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead8", from: "lead5", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "clap2", from: "clap", independent: true }, { key: "hats3", from: "hats", independent: true }, { key: "hats2", from: "hats", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead10", from: "lead", independent: true }, { key: "lead11", from: "lead", independent: true }, { key: "lead12", from: "lead", independent: true }, { key: "lead13", from: "lead", independent: true }, { key: "kick2", from: "kick", independent: true }, { key: "crash2", from: "crash", independent: true }],
   off: ["sweeps"],
   order: ["kick","kick2","snare","snare2","clap","clap2","hats","hats3","hats2","ohats","crash","crash2","tom","bass","bass2","lead","lead7","lead2","lead3","lead4","twinkle","lead10","lead11","lead12","lead13","lead5","lead8","lead6","lead9","chords","chords2"],
@@ -429,37 +429,37 @@ export const mix = {
   voice: {"leadVoice":"tngrAlloyChime","twinkleVoice":"celeste2","lead2Voice":"koto","chordsVoice":"tngrWarmStrings","bassVoice":"bass80sSynth","lead3Voice":"simpleSawtooth","lead4Voice":"tngrCrystalTrigger","lead5Voice":"jmjrOohOpens","lead6Voice":"tngrNeonReed","bass2Voice":"tngrNightSequence","chords2Voice":"tngrBurntHorizon","tomVoice":"syn3PewLong","kickVoice":"kickMegamix","snareVoice":"ds909Snare","clapVoice":"clapEngine","hatsVoice":"hatEngine","ohatsVoice":"ohat909SixBit","crashVoice":"crashEngine","lead7Voice":"tngrAlloyChime","lead8Voice":"warmPad","snare2Voice":"ds909Snare","clap2Voice":"clapEngine","hats2Voice":"hatEngine","hats3Voice":"hatEngine","lead9Voice":"wubSyncScreech","lead10Voice":"simpleSquare","lead11Voice":"wubClassic","lead12Voice":"jmjrOohOpens","lead13Voice":"simpleSquare","kick2Voice":"kickMegamix","crash2Voice":"crashEngine"},
   voiceParams: {"sweepsVoice":{"label":"Sweep Up","category":"Sweep","homeLane":"tom","dur":3,"note":"Sweep Up SFX","osc":{"type":"square","from":39,"to":1527.62,"sweep":0.654,"pitchCurve":"snap","attack":0.017,"hold":0.468,"decay":0.003,"curve":"lin","gain":1.84},"osc2":{"type":"sawtooth","from":828,"to":20000,"sweep":0.375,"decay":1.835,"curve":"exp","gain":0.61,"attack":0.061,"hold":0.005},"ring":{"type":"bandpass","freq":611,"Q":40,"hit":0.05,"attack":0.068,"decay":0.027,"curve":"exp","gain":1,"to":6177},"metal":{"wave":"square","freq":800,"spread":1,"count":6,"hp":1090,"Q":0.7,"attack":0.124,"decay":0.011,"gain":0.96,"hpTo":1375},"drive":0,"taps":[0,0.042,0.084],"tapFalloff":0.78,"tapDecays":[0.6,2.437],"bypassed":{"noise":{"type":"bandpass","freq":1130,"Q":0.7,"decay":0.001,"gain":0.65,"color":"brown","to":440,"sweep":0.092,"attack":0.005,"hold":0,"slope":-12,"curve":"exp","sag":0.37,"sagAt":0.003},"metal.resonator":{"feedback":0.93,"drive":1.25,"leak":0.00035}},"starter":false,"trim":6,"kind":"drum","level":0.7689041913595466,"peak":6.470243341157184,"songOrigin":"user","songSourceId":"sweepsVoice"},"lead4Voice":{"label":"Crystal Trigger","category":"Pluck","synth":"TNGR-2","dur":1.2,"note":"A sparkling high-partial attack with a clean short body.","tngr2":{"oscA":{"table":"crystal","position":0.8,"envAmount":-0.68,"level":0.78},"oscB":{"table":"bellFold","position":0.72,"level":0.14,"interval":12},"amp":{"attack":0.001,"decay":0.45,"sustain":0.04,"release":0.16},"positionEnv":{"attack":0,"decay":0.32,"sustain":0},"filter":{"type":"lowpass","cutoff":4230,"resonance":2},"master":{"gain":0.52},"filterEnv":{"attack":0.209,"amount":1.2,"decay":0.303}},"starter":false,"kind":"tone","level":0.010504,"peak":0.171,"songOrigin":"library","songSourceId":"lead4Voice"},"lead3Voice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.002,"decay":0.15,"sustain":0,"release":0.2},"filter":{"type":"lowpass","Q":1.85,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.35,"release":0.25,"baseFrequency":1605,"octaves":1.2}},"starter":false,"kind":"tone","level":0.00957255968077221,"peak":0.7855703031934191,"songOrigin":"library","songSourceId":"lead3Voice"},"leadVoice":{"label":"Alloy Chime","category":"Bells","synth":"TNGR-2","dur":2.6,"note":"A darker metallic evolution with controlled beating between oscillators.","tngr2":{"oscA":{"table":"alloy","position":0.55,"envAmount":-0.3,"level":0.72,"unison":2,"spread":5},"oscB":{"table":"bellFold","position":0.38,"level":0.2,"interval":12,"detune":7},"amp":{"attack":0.001,"decay":0.359,"sustain":0,"release":0.176},"positionEnv":{"attack":0,"decay":0.344,"sustain":0.14},"filter":{"type":"lowpass","cutoff":5600,"resonance":0.6},"master":{"gain":0.5},"filterEnv":{"decay":0.354,"amount":0.5}},"starter":false,"kind":"tone","level":0.014265,"peak":0.132,"songOrigin":"library","songSourceId":"leadVoice"},"bass2Voice":{"label":"Night Sequence","category":"Bass","synth":"TNGR-2","dur":1,"note":"A tempo-synced spectral pulse for repeated sixteenth notes.","tngr2":{"oscA":{"table":"spectralPWM","position":0.22,"envAmount":0.08,"lfoAmount":0.8,"level":0.82},"oscB":{"table":"organShift","position":0.1,"envAmount":0.12,"level":0.2,"interval":0},"amp":{"attack":0,"decay":0.18,"sustain":0,"release":0.08},"filter":{"type":"lowpass","cutoff":2180,"resonance":3.35},"positionEnv":{"attack":0.002,"decay":0.16,"sustain":0.15},"lfo1":{"shape":"triangle","sync":true,"division":"1/16","amount":0.55},"master":{"gain":0.66},"filterEnv":{"attack":0,"amount":0.1}},"starter":false,"kind":"tone","level":0.019071,"peak":0.2963,"songOrigin":"library","songSourceId":"bass2Voice"},"lead2Voice":{"label":"Koto","category":"Pluck","synth":"RMND-2","dur":1.6,"note":"Bright inharmonic pluck with a fast decay. Reads as a struck string.","options":{"harmonicity":2.51,"modulationIndex":9,"oscillator":{"type":"triangle"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.4},"modulationEnvelope":{"attack":0.001,"decay":0.12,"sustain":0,"release":0.15}},"id":"koto","kind":"tone","factory":true,"level":0.013469,"peak":0.2181},"lead5Voice":{"label":"Ooh Opens","category":"Pad","synth":"JMJR-4","dur":8,"note":"Every note starts on ooh and opens into aah over a second: MORPH TIME doing the singing.","jmjr4":{"voice":"chorister","line":"ooh","morphTo":"AH","morph":100,"morphTime":1.2,"unison":2,"spread":22,"amp":{"attack":0.029,"decay":0.2,"sustain":1,"release":0.9}},"vibrato":{"depth":0.17,"rate":5,"delay":0.15},"starter":false,"kind":"tone","level":0.027187786189404786,"peak":0.1402578660790875,"songOrigin":"library","songSourceId":"lead5Voice"},"twinkleVoice":{"label":"Celeste 2","category":"Bells","synth":"RMND-2","dur":4,"note":"Small, high and pure, with a very long tail. Made for the twinkle lane.","options":{"harmonicity":3.765,"modulationIndex":2.4,"oscillator":{"type":"square"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":1.6,"sustain":0.01,"release":1.6},"modulationEnvelope":{"attack":0.001,"decay":0.4,"sustain":0,"release":0.4}},"starter":false,"transpose":0,"vibrato":{"depth":0.04},"trim":2.2,"kind":"tone","level":0.03035936557556754,"peak":0.19988926058112816,"songOrigin":"user","songSourceId":"twinkleVoice"},"bassVoice":{"label":"=BASS 80s Synth","category":"Bass","synth":"CRLS-1","dur":1.6,"note":"A clean 80s synth bass with a pulse-like square tone, quick decay and a small release that keeps repeated eighth notes from becoming clicks.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.003,"decay":0.32,"sustain":0.28,"release":0.2},"filter":{"type":"lowpass","rolloff":-12,"Q":2.25},"filterEnvelope":{"attack":0.01,"decay":0.2,"sustain":0.5,"release":0.3,"baseFrequency":565,"octaves":0}},"starter":false,"kind":"tone","level":0.0735438748794786,"peak":0.8802046490934979,"songOrigin":"library","songSourceId":"bassVoice"},"chordsVoice":{"label":"Warm Strings","category":"Orch","synth":"TNGR-2","dur":6,"note":"A restrained ensemble-style string bed with slow natural articulation.","tngr2":{"oscA":{"table":"sawForm","position":0.18,"envAmount":0.06,"level":0.76,"unison":1},"amp":{"attack":0.42,"decay":1.2,"sustain":0.82,"release":1.5},"filter":{"type":"lowpass","cutoff":3300,"resonance":0.96},"filterEnv":{"amount":0.35,"attack":0.5,"decay":1.4,"sustain":0.55},"positionEnv":{"attack":0.8,"decay":2.2,"sustain":0.35},"master":{"gain":0.57}},"starter":false,"vibrato":{"depth":0.06,"delay":0.228,"rate":3.8},"kind":"tone","level":0.041256,"peak":0.2535,"songOrigin":"library","songSourceId":"chordsVoice"},"chords2Voice":{"label":"Burnt Horizon","category":"Pad","synth":"TNGR-2","dur":8,"note":"A slow glass-and-vowel pad that opens across held chords.","tngr2":{"oscA":{"table":"vowelGlass","position":0.12,"envAmount":0.55,"lfoAmount":0.08,"lfo2Amount":0.05,"level":0.76,"unison":2,"spread":9,"stereo":0.6},"amp":{"attack":0.014,"decay":1.8,"sustain":0.69,"release":1.989},"positionEnv":{"attack":2.4,"decay":3.4,"sustain":0.5,"release":2.269},"filter":{"type":"lowpass","cutoff":5200,"resonance":4},"filterEnv":{"amount":1.4,"attack":1.1,"decay":2.2,"sustain":0.55,"release":0.05},"lfo1":{"shape":"sine","sync":true,"division":"1/2","amount":0.3},"lfo2":{"shape":"triangle","rate":0.11,"amount":0.2},"master":{"gain":0.56},"oscB":{"table":"darkToAir","position":0.3,"envAmount":0.25,"lfoAmount":-0.1,"lfo2Amount":-0.06,"level":0.49,"unison":1,"spread":6,"stereo":0.6,"interval":-12}},"starter":false,"trim":-0.5,"kind":"tone","level":0.03929,"peak":0.2604,"songOrigin":"library","songSourceId":"chords2Voice"},"lead7Voice":{"label":"Alloy Chime","category":"Bells","synth":"TNGR-2","dur":2.6,"note":"A darker metallic evolution with controlled beating between oscillators.","tngr2":{"oscA":{"table":"alloy","position":0.55,"envAmount":-0.3,"level":0.72,"unison":2,"spread":5},"oscB":{"table":"bellFold","position":0.38,"level":0.2,"interval":12,"detune":7},"amp":{"attack":0.001,"decay":1.375,"sustain":0,"release":0.608},"positionEnv":{"attack":0,"decay":0.344,"sustain":0.14},"filter":{"type":"lowpass","cutoff":5600,"resonance":0.6},"master":{"gain":0.5},"filterEnv":{"decay":0.354,"amount":0.5}},"starter":false,"chorus":{"mix":0},"vibrato":{"depth":0.09},"kind":"tone","level":0.014265,"peak":0.132,"songOrigin":"library","songSourceId":"leadVoice"},"lead8Voice":{"label":"Warm Pad","category":"Pad","synth":"CRLS-1","dur":4,"note":"Saw behind a filter that opens slowly. The most ordinary pad there is, and it works.","options":{"oscillator":{"type":"fatsawtooth","spread":30,"count":2},"envelope":{"attack":0.153,"decay":0.805,"sustain":0.84,"release":1.879},"filter":{"type":"lowpass","Q":12.75,"rolloff":-12},"filterEnvelope":{"attack":0.106,"decay":1.41,"sustain":0.75,"release":1,"baseFrequency":430,"octaves":1.1}},"starter":false,"fine":19,"vibrato":{"depth":0.02},"kind":"tone","level":0.08092578267679638,"peak":0.9416864848573313,"songOrigin":"library","songSourceId":"lead8Voice"},"crashVoice":{"label":"= Engine Crash","category":"Crash","homeLane":"crash","dur":5,"note":"The game’s own crash: bright on the transient and darkening as it falls, a lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the 2.5-second buffer rather than looping the short one.","noise":{"type":"lowpass","freq":8060,"to":185,"sweep":4.014,"Q":16.15,"attack":0.008,"decay":3.492,"gain":1.69,"hold":0.007,"sag":0,"color":"white","slope":-24},"tone":{"type":"highpass","freq":1200,"Q":1},"starter":false,"trim":3.3,"drive":0,"kind":"drum","level":0.45883343300974955,"peak":3.8903030420066034,"songOrigin":"library","songSourceId":"crashVoice"},"lead6Voice":{"label":"Neon Reed","category":"Lead","synth":"TNGR-2","dur":1.3,"note":"A reed-to-wire scan with a focused bandpass edge.","tngr2":{"oscA":{"table":"reedWire","position":0.12,"envAmount":0.62,"level":0.75},"oscB":{"table":"vowelGlass","position":0.42,"envAmount":0.24,"level":0.2,"interval":12},"amp":{"attack":0.008,"decay":0.22,"sustain":0.76,"release":0.2},"filter":{"type":"bandpass","cutoff":3400,"resonance":2.16},"filterEnv":{"amount":1.5,"attack":0.004,"decay":0.3,"sustain":0.35},"positionEnv":{"attack":0.01,"decay":0.4,"sustain":0.25},"master":{"gain":0.6}},"id":"tngrNeonReed","kind":"tone","factory":true,"level":0.00125,"peak":0.0191},"tomVoice":{"label":"Synare · Long Pew","category":"Sweep","homeLane":"tom","dur":3,"note":"The disco hook: 2.4 kHz gliding evenly down to 120 over seven tenths of a second, on `exp` so the fall is constant in semitones and the ear hears a line rather than a drop. The one to reach for first.","osc":{"type":"sine","from":2400,"to":120,"sweep":0.7,"pitchCurve":"exp","attack":0.003,"hold":0.45,"decay":0.55,"curve":"lin","gain":1},"drive":0.1,"id":"syn3PewLong","kind":"drum","factory":true,"level":0.274815,"peak":0.7},"kickVoice":{"label":"= Megamix Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The hardest front of the three and the shortest tail — it has to cut through every other cabinet playing at once.","osc":{"type":"sine","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.1982,"curve":"exp","gain":1},"knock":0.87,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.31},"trim":-1.15,"starter":false,"kind":"drum","level":0.03231656203965446,"peak":0.9691090191904996,"songOrigin":"library","songSourceId":"kickVoice"},"snareVoice":{"label":"=909 Snare","category":"Snare","homeLane":"snare","dur":1,"note":"A bright 909-style snare: a pitched shell under a wide, slightly metallic noise burst with enough decay to carry a backbeat.","osc":{"type":"triangle","from":135,"to":285,"sweep":0.03,"decay":0.165,"curve":"exp","gain":0.72,"hold":0},"knock":1,"noise":{"type":"bandpass","freq":1950,"Q":0.8,"decay":0.88,"gain":1.62,"hold":0.019,"attack":0.001,"color":"white","slope":-24,"sweep":0.155},"drive":0.42,"shape":"fold","trim":1.6,"id":"ds909Snare","kind":"drum","factory":true,"level":0.129815,"peak":0.7},"clapVoice":{"label":"= Engine Clap","category":"Clap","homeLane":"clap","dur":1,"note":"The game’s own clap: three highpassed bursts twelve milliseconds apart, the LAST of them the loudest and four times as long — two slaps, then the room.","noise":{"type":"highpass","freq":1500,"Q":1,"decay":0.0544,"gain":1},"taps":[0,0.012,0.024],"tapGains":[1,1,1.625],"tapDecays":[0.0544,0.0544,0.2092],"id":"clapEngine","kind":"drum","factory":true,"level":0.052286,"peak":1.0679},"hatsVoice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":5200,"Q":1,"decay":0.301,"gain":1,"color":"blue"},"starter":false,"kind":"drum","level":0.050908837830288434,"peak":0.8580225481867683,"songOrigin":"library","songSourceId":"hatsVoice"},"ohatsVoice":{"label":"Open Hat · 909 Six-Bit","category":"Hats","homeLane":"ohats","dur":3,"note":"The 909’s open hat is a six-bit sample, so this is the cluster quantised to six bits — `crush` at 0.6, which is exactly where this engine’s curve lands — under an 11 kHz lowpass standing in for the real anti-aliasing filter. Dirtier and flatter than the 808, which is the difference.","metal":{"wave":"square","freq":620,"count":6,"spread":1.06,"filter":"highpass","hp":6400,"Q":0.85,"slope":-24,"decay":0.55,"sag":0.42,"sagAt":0.045,"gain":0.95},"drive":0.6,"shape":"crush","tone":{"type":"lowpass","freq":11000,"Q":0.7},"humanize":{"gain":0.04},"id":"ohat909SixBit","kind":"drum","factory":true,"level":0.06495,"peak":1.0602},"snare2Voice":{"label":"=909 Snare","category":"Snare","homeLane":"snare","dur":1,"note":"A bright 909-style snare: a pitched shell under a wide, slightly metallic noise burst with enough decay to carry a backbeat.","osc":{"type":"triangle","from":135,"to":285,"sweep":0.03,"decay":0.297,"curve":"exp","gain":0.72,"hold":0},"knock":1,"noise":{"type":"bandpass","freq":1950,"Q":0.8,"decay":1.595,"gain":1.62,"hold":0.019,"attack":0.001,"color":"white","slope":-24,"sweep":0.155},"drive":0.42,"shape":"fold","trim":1.6,"starter":false,"kind":"drum","level":0.16772414585053239,"peak":0.7000001251702166,"songOrigin":"library","songSourceId":"snare2Voice"},"clap2Voice":{"label":"= Engine Clap","category":"Clap","homeLane":"clap","dur":1,"note":"The game’s own clap: three highpassed bursts twelve milliseconds apart, the LAST of them the loudest and four times as long — two slaps, then the room.","noise":{"type":"highpass","freq":1500,"Q":1,"decay":0.0544,"gain":1},"taps":[0,0.012,0.024],"tapGains":[1,1,1.625],"tapDecays":[0.0544,0.0544,0.2092],"id":"clapEngine","kind":"drum","factory":true,"level":0.052286,"peak":1.0679},"hats2Voice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":3645,"Q":1,"decay":0.42,"gain":1.08,"color":"white"},"starter":false,"kind":"drum","level":0.06182818576983434,"peak":1.1738760181243637,"songOrigin":"library","songSourceId":"hatsVoice"},"hats3Voice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":2855,"Q":1,"decay":0.13,"gain":1,"color":"blue"},"starter":false,"mode":"mono","kind":"drum","level":0.03306227138320277,"peak":0.8736066693964172,"songOrigin":"library","songSourceId":"hatsVoice"},"lead9Voice":{"label":"WUB Sync Screech","category":"Bass","synth":"MRDR-3","dur":1.6,"note":"Hard-synced saws — the tearing, vocal edge — through a brighter triplet wobble. Sits higher than the others: the lead wub of a drop.","sync":"1+2","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.6,"attack":0.003,"decay":0.3,"sustain":0.9,"release":0.1},"osc2":{"type":"sawtooth","ratio":2.5,"gain":0.7,"attack":0.003,"decay":0.3,"sustain":0.9,"release":0.1},"osc3":{"type":"square","ratio":0.5,"gain":0.45,"attack":0.003,"decay":0.3,"sustain":0.9,"release":0.1},"lfo":{"type":"sine","rate":7,"depth":0.9,"target":"filter"}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":750,"Q":6,"track":0.5}},"drive":0.51,"shape":"soft","mode":"mono","portamento":0.02,"starter":false,"kind":"tone","level":0.15626754349386965,"peak":0.7,"songOrigin":"user","songSourceId":"lead9Voice"},"tom2Voice":{"label":"KW Blip · Glass","category":"Blip","homeLane":"rim","dur":1,"note":"High, clean and allowed to ring: four sine partials at 1.76 kHz with the feedback almost closed, so the resonance outlives the strike by a long way. The blip that becomes a bell if you leave it alone.","ring":{"freq":1760,"Q":120,"hit":0.0012,"decay":0.3,"gain":1,"attack":0.037},"starter":false,"osc":{"type":"sine","from":190,"to":6.66,"sweep":0.07,"decay":0.35,"curve":"exp","gain":1,"fm":{"type":"sine","ratio":9.12,"index":6.15,"decay":0.02,"attack":0.028}},"osc2":{"type":"square","from":1304,"to":20000,"sweep":0.097,"decay":0.31,"curve":"exp","gain":0.6,"fm":{"type":"sine","ratio":1.4,"index":0.2,"decay":0.045,"attack":0.256}},"noise":{"type":"bandpass","freq":2600,"Q":0.7,"decay":0.12,"gain":1,"color":"pink"},"drive":0.15,"trim":-0.9,"metal":{"wave":"square","freq":71,"ratios":[1,2.04,3.09,4.16],"count":6,"spread":1,"filter":"bandpass","hp":6780,"Q":24,"slope":-12,"attack":0.0005,"decay":0.22,"sag":0.22,"sagAt":0.01,"gain":1.6,"resonator":{"feedback":0.982,"drive":1.25,"leak":0.00025},"sweep":2.659},"kind":"drum","level":0.057135677442289194,"peak":0.701130487065752,"songOrigin":"library","songSourceId":"tom2Voice"},"lead10Voice":{"label":"Simple Square","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"triangle"},"envelope":{"attack":0.001,"decay":0.15,"sustain":0,"release":0.2},"filter":{"type":"lowpass","Q":0.1,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":2915,"octaves":1.2}},"starter":false,"transpose":-12,"kind":"tone","level":0.0073637697597156646,"peak":0.6089707794616748,"songOrigin":"library","songSourceId":"lead10Voice"},"lead11Voice":{"label":"WUB Classic 1/8","category":"Bass","synth":"MRDR-3","dur":1.8,"note":"The textbook wub: saw plus a square an octave down through a resonant 24 dB lowpass that a sine LFO opens and shuts on the eighth note at 140.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.8,"attack":0.004,"decay":0.3,"sustain":0.9,"release":0.12,"unison":2,"spread":10},"osc2":{"type":"square","ratio":0.5,"gain":0.55,"attack":0.004,"decay":0.3,"sustain":0.9,"release":0.12},"lfo":{"type":"sine","rate":4.667,"depth":0.75,"target":"filter"}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":420,"Q":6,"track":0.3}},"drive":0.3,"shape":"soft","mode":"mono","portamento":0.03,"starter":false,"id":"wubClassic","kind":"tone","user":true,"level":0.146325,"peak":0.7},"lead12Voice":{"label":"Ooh Opens","category":"Pad","synth":"JMJR-4","dur":8,"note":"Every note starts on ooh and opens into aah over a second: MORPH TIME doing the singing.","jmjr4":{"voice":"small","line":"oh","morphTo":"AH","morph":0,"morphTime":1.2,"unison":1,"spread":22,"amp":{"attack":0.171,"decay":0.021,"sustain":1,"release":0.037}},"vibrato":{"depth":0.35,"rate":5,"delay":0.609},"starter":false,"mode":"legato","portamento":0.175,"kind":"tone","level":0.026691838625068527,"peak":0.1455768121583271,"songOrigin":"library","songSourceId":"lead12Voice"},"lead13Voice":{"label":"Simple Square","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"fatsawtooth"},"envelope":{"attack":0.024,"decay":0.15,"sustain":1,"release":0.855},"filter":{"type":"lowpass","Q":0.1,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.855,"baseFrequency":2915,"octaves":1.2}},"starter":false,"mode":"mono","portamento":0.208,"vibrato":{"depth":0.08},"kind":"tone","level":0.05418892940465323,"peak":0.8336105273597445,"songOrigin":"library","songSourceId":"lead13Voice"},"kick2Voice":{"label":"= Megamix Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The hardest front of the three and the shortest tail — it has to cut through every other cabinet playing at once.","osc":{"type":"sine","from":165,"to":48,"sweep":0.05,"attack":0.015,"decay":1.291,"curve":"exp","gain":1},"knock":1,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.202,"gain":0.31},"trim":-1.15,"starter":false,"kind":"drum","level":0.059364505361239335,"peak":0.8402766473353758,"songOrigin":"library","songSourceId":"kickVoice"},"crash2Voice":{"label":"= Engine Crash","category":"Crash","homeLane":"crash","dur":5,"note":"The game’s own crash: bright on the transient and darkening as it falls, a lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the 2.5-second buffer rather than looping the short one.","noise":{"type":"lowpass","freq":8060,"to":185,"sweep":10,"Q":16.15,"attack":0.008,"decay":10,"gain":1.46,"hold":0.007,"sag":0,"color":"white","slope":-24},"tone":{"type":"highpass","freq":1200,"Q":1},"starter":false,"trim":3.3,"drive":0,"kind":"drum","level":0.6509499583882276,"peak":3.4737319690283166,"songOrigin":"library","songSourceId":"crashVoice"}},
   lanes: {
-    lead: { gain: -4, send: { delay: 0.084, reverb: 0.216 }, eq: { high: 1 }, effects: [{ id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }, { id: "compressor" }] },
+    lead: { gain: -4, send: { delay: 0.084, reverb: 0.216 }, eq: { high: -1.5 }, effects: [{ id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }, { id: "compressor" }] },
     twinkle: { gain: 2.928, pan: -0.2, send: { reverb: 0.5 }, effects: [{ id: "chorus" }] },
     lead2: { gain: -16.5, pan: 0.47, send: { reverb: 0.106 } },
     chords: { gain: -12.4, send: { reverb: 0.5 } },
     bass: { gain: -8.8 },
-    lead3: { gain: -9.3, send: { delay: 0.18, reverb: 0.3 }, eq: { high: 2.5 }, effects: [{ id: "autopanner", params: { rateDivision: 16 } }, { id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }] },
-    lead4: { gain: -9, send: { delay: 0.134, reverb: 0.033 } },
+    lead3: { gain: -8.5, send: { delay: 0.069, reverb: 0.3 }, effects: [{ id: "autopanner", params: { rateDivision: 16 } }, { id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }] },
+    lead4: { gain: -10.9, send: { delay: 0.134, reverb: 0.033 }, eq: { high: -2.2 } },
     lead5: { gain: -12.7, pan: -0.27, send: { reverb: 0.3 }, effects: [{ id: "doubler" }] },
     lead6: { gain: 0.048, pan: 0.276, send: { delay: 0.12, reverb: 0.35 } },
-    bass2: { gain: -10, eq: { low: 1 }, effects: [{ id: "compressor" }] },
+    bass2: { gain: -10, eq: { low: 5.5, mid: -0.2 }, effects: [{ id: "peq", params: { f1: 100, g1: 5.5, f5: 1040, g5: 1.5, f2: 190, g2: 2.5 } }] },
     chords2: { gain: -11, send: { reverb: 0.275 }, eq: { low: -2.4, high: 2.2 }, effects: [{ id: "widener" }] },
     tom: { gain: -7.52, pan: 0.25, send: { reverb: 0.7 }, eq: { low: -6, high: 2 }, effects: [{ id: "pingpong", params: { sync: 1, division: 0.75, feedback: 0.64, wet: 0.5 } }] },
     snare: { gain: -3.9, send: { reverb: 0.08 } },
     clap: { gain: 0.2, pan: -0.415, send: { reverb: 0.2 } },
-    hats: { gain: -6.7, pan: -0.3, eq: { mid: 0.9, high: 3.8 } },
+    hats: { gain: -3.12, pan: -0.3 },
     ohats: { gain: -9, pan: -0.3, eq: { high: 2.5 } },
     crash: { gain: -4.48, pan: 0.67, send: { reverb: 0.4 } },
     sweeps: { gain: -6, send: { reverb: 0.4 } },
-    lead7: { gain: -4, send: { delay: 0.084, reverb: 0.216 }, eq: { high: 1 }, effects: [{ id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }, { id: "compressor" }] },
+    lead7: { gain: -4, send: { delay: 0.084, reverb: 0.216 }, effects: [{ id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }, { id: "compressor" }] },
     lead8: { gain: -13, pan: 0.374, send: { reverb: 0.3 } },
     snare2: { gain: -5.76, send: { reverb: 3 }, eq: { low: -5.3, high: 5.5 } },
     clap2: { pan: 0.616, send: { reverb: 1.274 }, effects: [{ id: "chandelay", params: { division: 0.75, mix: 0.72, tone: 5608.733, feedback: 0.56 } }] },
     hats2: { gain: 0.144, pan: -0.3, eq: { high: 3.8 } },
-    hats3: { gain: -6.6, eq: { high: 3.8 }, effects: [{ id: "autopanner", params: { rateDivision: 8, wet: 0.75 } }] },
+    hats3: { gain: -9.84, eq: { high: 3.8 }, effects: [{ id: "autopanner", params: { rateDivision: 8, wet: 0.75 } }] },
     lead9: { gain: -9.28, effects: [{ id: "tremolo", bypass: true, params: { spread: 155, depth: 0.46 } }] },
     lead10: { gain: -13.4 },
     lead11: { gain: -6.8, eq: { high: 2.8 } },
     lead13: { gain: -14.5, send: { reverb: 1.656 }, eq: { low: -5.4 }, effects: [{ id: "l7", params: { threshold: -11.2 } }, { id: "chandelay", params: { division: 2, pan: 0, mix: 0.26, tone: 1935.285 } }, { id: "autopanner" }] },
     kick2: { gain: 0.3, effects: [{ id: "reverb", params: { decay: 4.3, wet: 0.76, low: -1.5, high: 3.5, preDelay: 0.017 } }] },
     crash2: { gain: -6.96, pan: -0.365, send: { delay: 0.359, reverb: 1.809 } },
-    kick: { gain: -3.4, eq: { low: 1.8 } },
+    kick: { gain: -1.7, eq: { low: 1.8 } },
   },
 };
 
@@ -633,6 +633,7 @@ export const arrangement = {
         chords2: 3,
         hats: 6,
         hats3: 6,
+        lead3: 2.5,
       },
     },
     {
@@ -644,6 +645,7 @@ export const arrangement = {
         hats: 6,
         hats3: 6,
         twinkle: -2,
+        lead3: 2.5,
       },
     },
     {
@@ -659,6 +661,7 @@ export const arrangement = {
         hats: 6,
         hats3: 6,
         twinkle: -2,
+        lead3: 2.5,
       },
     },
     {
@@ -784,7 +787,7 @@ export const arrangement = {
       bars: 1,
       off: ["kick2","lead","lead7","tom"],
       gain: {
-        lead3: 4.5,
+        lead3: 3.5,
         lead4: -6.5,
       },
     },
@@ -794,7 +797,7 @@ export const arrangement = {
       from: 1,
       off: ["kick2","lead","lead7","tom"],
       gain: {
-        lead3: 4.5,
+        lead3: 3.5,
         lead4: -6.5,
       },
     },
@@ -803,7 +806,7 @@ export const arrangement = {
       bars: 1,
       off: ["kick2","lead","lead7"],
       gain: {
-        lead3: 4.5,
+        lead3: 3.5,
         lead4: -6.5,
       },
     },
@@ -813,7 +816,7 @@ export const arrangement = {
       from: 1,
       off: ["kick2","lead","lead7"],
       gain: {
-        lead3: 4.5,
+        lead3: 3.5,
         lead4: -6.5,
       },
     },
@@ -821,7 +824,7 @@ export const arrangement = {
       s: 45,
       off: ["kick2"],
       gain: {
-        lead3: 4.5,
+        lead3: 3.5,
         lead4: -6.5,
       },
     },
@@ -830,7 +833,7 @@ export const arrangement = {
       bars: 1,
       off: ["kick2"],
       gain: {
-        lead3: 4.5,
+        lead3: 3.5,
         lead4: -6.5,
       },
     },
@@ -1677,7 +1680,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1703,7 +1706,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1728,7 +1731,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1754,7 +1757,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1779,7 +1782,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1805,7 +1808,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1830,7 +1833,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1856,7 +1859,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1881,7 +1884,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -1907,7 +1910,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         twinkle: -7,
         lead5: -3,
@@ -1936,7 +1939,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         twinkle: -7,
         lead5: -3,
@@ -1966,7 +1969,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         twinkle: -7,
         lead5: -3,
@@ -1995,7 +1998,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         twinkle: -7,
         lead5: -3,
@@ -2025,7 +2028,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -2050,7 +2053,7 @@ export const arrangement = {
         lead8: 2,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,
@@ -2077,7 +2080,7 @@ export const arrangement = {
         twinkle: -12,
       },
       gain: {
-        lead3: 4,
+        lead3: 3,
         lead4: -4,
         lead5: -3,
         lead8: -3.5,

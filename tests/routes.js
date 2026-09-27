@@ -1165,6 +1165,48 @@ for (let i = 0; i < 240; i++) {
 assert(Math.abs(run.camFloorY - GY) < 2,
   `and back to the groundline once he is off it (${run.camFloorY.toFixed(1)})`);
 
+// ---- a checkpoint restore re-lays the roads still ahead -----------------------
+// Peter, 27 Sep 2026: "if I die while underground when I come back the underground
+// area is nothing but coins". The restore empties the world and re-arms `populated`
+// and `spawned`, but `sprung` gates the pass that cuts a tunnel's openings, places a
+// sky road's pad and lays every road's hazards — left set, only the coins came back.
+// Nothing here resets `sprung` by hand: that is exactly what hid it before.
+function relaid(route) {
+  const mine = run.obstacles.filter((o) => o.live && (o.tunnel === route || o.route === route || o.springFor === route));
+  return {
+    cuts: mine.filter((o) => o.def?.isGap).length,
+    hazards: mine.filter((o) => o.route === route && !o.def?.isGap).length,
+    pads: mine.filter((o) => o.def?.isSpring).length,
+  };
+}
+for (const road of [tunnel, sky]) {
+  run.route = null;
+  run.player.y = 0;
+  run.obstacles.length = 0;
+  road.sprung = false;
+  road.populated = false;
+  run.camX = road.x - 400;
+  run.spawnRouteEntries();
+  const before = relaid(road);
+  const checkpoint = run.makeSnapshot();
+  // Run on past the road's mouth — it is sprung and furnished — then die.
+  run.camX = road.x + 40;
+  run.spawnRouteEntries();
+  run.restoreSnapshot(checkpoint);
+  run.spawnRouteEntries();
+  const after = relaid(road);
+  assert(before.cuts + before.hazards + before.pads > 0,
+    `the ${road.kind} has something to lose (${JSON.stringify(before)})`);
+  assert(JSON.stringify(after) === JSON.stringify(before),
+    `and a checkpoint restore lays it all again, not just its coins (${JSON.stringify(after)} vs ${JSON.stringify(before)})`);
+}
+// Behind him it stays spent: a road whose mouth he is already past is not re-cut.
+run.obstacles.length = 0;
+tunnel.sprung = true;
+run.camX = tunnel.x + 40;
+run.restoreSnapshot(run.makeSnapshot());
+assert(tunnel.sprung, 'a road he is already inside is not re-armed under his feet');
+
 // ---- a cabinet with no islands is untouched ---------------------------------
 const { CABINETS } = await import('../src/data/cabinets.js');
 const bare = CABINETS.filter((c) => !c.islands);

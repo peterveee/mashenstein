@@ -9,10 +9,16 @@
 // Blasters. Levelling the songs once is worth more than levelling the cues nine
 // times.
 //
-// WHAT IT MEASURES. The loudest three-second window's RMS, not the whole file's:
-// a song with a quiet intro is not a quiet song, and the window is what the
-// player is actually standing in when a cue fires. Peak is reported too, because
-// a trim that pushes a peak over 0dBFS is a trim that clips.
+// WHAT IT MEASURES. Integrated loudness in LUFS (ITU-R BS.1770: K-weighted,
+// 400ms blocks, absolute and relative gates) — how loud the song sounds, not how
+// much energy it carries. Until 27 Sep 2026 this measured the loudest three
+// seconds' plain RMS, and that is blind to sub-bass: the Crypt remix put 90% of
+// its energy under 120Hz, read -22 RMS "on the line", and played ~5.5dB quieter
+// than every other cabinet. K-weighting hears the song the way a player does.
+// The relative gate drops quiet intros and breakdowns from the average, so a song
+// with a soft opening is still not a quiet song. It is tools/lib/loudness.js, the
+// same measurement the desk's bounce uses. Peak is reported too, because a
+// trim that pushes a peak over 0dBFS is a trim that clips.
 //
 // WHAT IT CHANGES. One number per song: `master` in that song's own mix block
 // (src/data/songs/<id>.js), which is dB on top of the bank's musicTrim — the
@@ -35,12 +41,13 @@
 // Usage:
 //   node tools/song-levels.js                 measure and print the table
 //   node tools/song-levels.js --apply         ...and write the trims
-//   node tools/song-levels.js --target -21.5  level to a different line
+//   node tools/song-levels.js --target -21.5  level to a different line (LUFS)
 //   node tools/song-levels.js --repeats 4     longer renders (default 4)
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loudness } from './lib/loudness.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -48,12 +55,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // is also the basename of its song file.
 const CABINETS = ['plumber', 'speed', 'neon', 'frost', 'crypt', 'rhythm', 'cardboard', 'office', 'surge'];
 
-// THE LINE EVERY CABINET SONG SITS ON, in dBFS, as the loudest-3s RMS of a
-// render at unity. -22 is where the middle of the nine already sat when this was
-// written, so adopting it moved the most songs the least — and it leaves ~4dB of
-// peak headroom on the loudest song, which is what keeps a master trim from
-// turning into a limiter decision.
-const TARGET = -22.0;
+// THE LINE EVERY CABINET SONG SITS ON, in LUFS integrated, of a render at
+// unity. -21 is where the middle of the nine already sat when the tool moved to
+// LUFS (they had been levelled to -22 RMS, which read -19.5 to -21.6 LUFS), so
+// adopting it moved the most songs the least and left the SFX levelled against
+// the same beds.
+const TARGET = -21.0;
 // Under this, a song is close enough that moving it is churn: the desk's own
 // fader steps are 0.1dB and nobody can hear two tenths on a song.
 const DEADBAND = 0.3;
@@ -73,11 +80,9 @@ const outDir = join(root, 'work/local/levels');
 mkdirSync(outDir, { recursive: true });
 
 // ---------------------------------------------------------------- measuring
-const db = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
-
 // Minimal 16-bit PCM WAV reader. The renders are the game's own output and are
 // always 16-bit; anything else is a bug worth failing on rather than guessing at.
-function measure(path) {
+function readWav(path) {
   const buf = readFileSync(path);
   let off = 12, fmt = null, data = null;
   while (off + 8 <= buf.length) {
@@ -91,23 +96,17 @@ function measure(path) {
   }
   if (!fmt || !data || fmt.bits !== 16) throw new Error(`${path}: not 16-bit PCM`);
   const frames = Math.floor(data.size / 2 / fmt.ch);
-  const win = Math.min(frames, Math.floor(fmt.sr * 3));
-  const ring = new Float64Array(win);
-  let peak = 0, acc = 0, best = 0, ri = 0, filled = 0;
+  const channels = Array.from({ length: fmt.ch }, () => new Float64Array(frames));
   for (let i = 0; i < frames; i++) {
-    let s = 0;
-    for (let c = 0; c < fmt.ch; c++) s += buf.readInt16LE(data.off + (i * fmt.ch + c) * 2) / 32768;
-    s /= fmt.ch;
-    if (Math.abs(s) > peak) peak = Math.abs(s);
-    const sq = s * s;
-    acc += sq - ring[ri];
-    ring[ri] = sq;
-    ri = (ri + 1) % win;
-    if (filled < win) filled++;
-    else if (acc / win > best) best = acc / win;
+    for (let c = 0; c < fmt.ch; c++) channels[c][i] = buf.readInt16LE(data.off + (i * fmt.ch + c) * 2) / 32768;
   }
-  if (filled < win) best = acc / Math.max(1, filled);
-  return { secs: frames / fmt.sr, peak: db(peak), loud: db(Math.sqrt(best)) };
+  return { sr: fmt.sr, channels };
+}
+
+function measure(path) {
+  const { sr, channels } = readWav(path);
+  const { lufs, peakDb } = loudness(channels, sr);
+  return { secs: channels[0].length / sr, peak: peakDb, loud: lufs };
 }
 
 // ----------------------------------------------------------------- applying
@@ -149,11 +148,11 @@ for (const id of songs) {
     { cwd: root, stdio: ['ignore', 'ignore', 'ignore'] });
   const m = measure(wav);
   rows.push({ id, ...m, master: currentMaster(id), trim: target - m.loud });
-  process.stderr.write(`${m.loud.toFixed(1)} dB\n`);
+  process.stderr.write(`${m.loud.toFixed(1)} LUFS\n`);
 }
 
 rows.sort((a, b) => b.loud - a.loud);
-console.log(`\ncabinet songs, levelled to ${target.toFixed(1)} dB (loudest 3s RMS, ${repeats} loop passes)\n`);
+console.log(`\ncabinet songs, levelled to ${target.toFixed(1)} LUFS (integrated, gated, ${repeats} loop passes)\n`);
 console.log('song        secs    peak    loud    master   ->  new master');
 for (const r of rows) {
   const move = Math.abs(r.trim) >= DEADBAND;

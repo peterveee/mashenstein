@@ -13172,10 +13172,20 @@ export class RunState {
     // already run do not restock as he leaves them. The far edge decides, not
     // the near one — a tunnel is most of a screen long and its far half is
     // still ahead of a hero standing in its mouth.
+    //
+    // And `sprung`, the third one-shot, for a road he has not reached the mouth of.
+    // It gates spawnRouteEntries, the pass that cuts a tunnel's openings, signs it,
+    // places a sky road's spring pad — and is the only caller of populateRoute. Left
+    // set, the restore handed back the coins (`spawned`) and nothing else: a crypt
+    // catacomb came back as a tube of coins with no hazards and no way in from above
+    // (Peter, 27 Sep 2026), and a sky road came back with no pad. Only AHEAD of him,
+    // so nothing is re-cut under or behind his feet; the pass draws from the route's
+    // own named stream, so the road comes back as it was.
     for (const route of this.routes) {
       if (route.x + (route.w || 0) <= this.camX) continue;
       route.populated = false;
       route.spawned = false;
+      if (route.x > this.camX) route.sprung = false;
     }
     // Anything still waiting for its ground goes with them: the queue is a list
     // of prizes not yet laid, and the roads that owed them are about to offer

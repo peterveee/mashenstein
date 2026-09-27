@@ -400,7 +400,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -8.5,
+  master: -1.9,
   masterEffects: [{ id: "mbCompN", params: { lowFrequency: 250, highFrequency: 2400, "low.threshold": -28, "low.ratio": 2.5, "low.attack": 0.05, "low.release": 0.3, "low.knee": 14, "mid.threshold": -22, "mid.ratio": 2.5, "mid.attack": 0.025, "mid.release": 0.16, "mid.knee": 18, "high.threshold": -24, "high.ratio": 2, "high.attack": 0.02, "high.release": 0.12, "high.knee": 18 } }],
   layers: [{ key: "bass2", from: "bass", independent: true }, { key: "organChords2", from: "organChords", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "bass3", from: "bass", independent: true }, { key: "organChords3", from: "organChords", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "bass4", from: "bass", independent: true }, { key: "organChords4", from: "organChords", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "hats2", from: "hats", independent: true }],
   order: ["kick","clap","hats","rim","bass","bass2","bass3","bass4","lead","lead3","lead2","lead4","lead5","twinkle","lead6","chords","organChords","organChords2","organChords3","organChords4"],
@@ -412,11 +412,11 @@ export const mix = {
     twinkle: { gain: 0.048, pan: 0.483, send: { delay: 0.743, reverb: 0.193 }, eq: { low: -4 } },
     chords: { gain: -10.2, send: { reverb: 0.2 }, eq: { low: -12.4, mid: 7.9 }, effects: [{ id: "pingpong" }, { id: "exciter", params: { tune: 4600.114, drive: 0.41, timbre: 0.7, mix: 0.62 } }], noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":21},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
     organChords: { gain: -7.8, pan: -0.329, send: { reverb: 0.3 }, effects: [{ id: "chandelay", params: { tone: 1084.669, division: 1.5, mix: 0.07, pan: 0.4 } }] },
-    kick: { gain: -2.32, send: { reverb: 0.064 } },
+    kick: { gain: -2.32, send: { reverb: 0.064 }, eq: { low: 3.6 } },
     rim: { gain: -1.44, pan: 0.23, send: { reverb: 0.489 } },
     hats: { gain: -5.1, pan: -0.338, send: { reverb: 0.046 }, effects: [{ id: "chandelay", params: { tone: 1789.639, feedback: 0.45, mix: 1, pan: 0 } }] },
     clap: { gain: -5.9, send: { reverb: 1.298 } },
-    bass2: { gain: -2.24 },
+    bass2: { gain: -2.24, eq: { low: -1.1 } },
     organChords2: { gain: -6.16, send: { reverb: 0.3 }, effects: [{ id: "doubler" }] },
     lead2: { gain: -6.48, pan: 0.26, send: { delay: 0.16, reverb: 0.35 } },
     bass3: { gain: -13, pan: -0.12 },
@@ -429,7 +429,7 @@ export const mix = {
     lead6: { gain: -12, pan: 0.28, send: { delay: 0.07, reverb: 0.27 }, eq: { low: -5 } },
     lead7: { gain: -11.6, send: { reverb: 0.675 }, effects: [{ id: "doubler" }] },
     lead: { gain: -19, send: { delay: 0.031, reverb: 0.923 }, eq: { low: -11.8 }, effects: [{ id: "vibrato", params: { depth: 0.12, wet: 0.87 } }, { id: "compressor", params: { inputGain: 2.9, threshold: -39, ratio: 9, attack: 0.017 } }, { id: "exciter", params: { tune: 2500, drive: 0.58, timbre: 0.47, mix: 0.83 } }, { id: "filter", params: { type: "highpass", frequency: 620, Q: 4.3 } }] },
-    snare2: { gain: -1.8, eq: { low: 3.2, high: -5.3 }, effects: [{ id: "chandelay", bypass: true, params: { tone: 3294.616, mix: 0.52, feedback: 0.39 } }, { id: "reverb", params: { preDelay: 0.026, wet: 0.57, width: 2, high: -1.5, decay: 2.9 } }] },
+    snare2: { gain: -4, eq: { low: 3.2, high: -5.3 }, effects: [{ id: "chandelay", bypass: true, params: { tone: 3294.616, mix: 0.52, feedback: 0.39 } }, { id: "reverb", params: { preDelay: 0.026, wet: 0.57, width: 2, high: -1.5, decay: 2.9 } }] },
     hats2: { gain: -10.1, pan: -0.338, send: { reverb: 0.046 }, effects: [{ id: "chandelay", params: { tone: 1789.639, feedback: 0.45, mix: 1, pan: 0 } }] },
   },
 };

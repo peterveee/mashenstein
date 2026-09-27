@@ -28,7 +28,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -3.6,
+  master: -5.6,
   masterEffects: [{ id: "mbCompN", params: { lowFrequency: 178.691, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }],
   layers: [{ key: "bass2", from: "bass", independent: true }, { key: "lead8", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead7", from: "lead2", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead5", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead10", from: "lead9", independent: true }],
   voice: {"kickVoice":"fatKick","snareVoice":"dsCrackSnare2","clapVoice":"bigRoomClap","hatsVoice":"simple808StyleHat","ohatsVoice":"ds909OpenHat","bassVoice":"tpBassy","leadVoice":"tpTiny","bass2Voice":"tpBassy","lead2Voice":"tngrPolarDrift","lead3Voice":"bestPwmStrings","lead4Voice":"tngrWireHarp","lead5Voice":"jmjrSmallVoice","lead6Voice":"jmjrSmallVoice","crash2Voice":"syn3PewDeep","lead7Voice":"tngrPolarDrift","tom2Voice":"syn3Deooom","lead8Voice":"squareMono","lead9Voice":"celeste2","lead10Voice":"celeste2"},

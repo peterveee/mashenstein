@@ -82,7 +82,8 @@ export const SFX_BIRTHDAYS = {
   socketDrop: '2026-09-20',   // 72b9fca
   stripThrow: '2026-09-20',   // 72b9fca
   thunder: '2026-09-24',   // cc5e30c
-  cameraClick: null,
+  cameraClick: '2026-09-25',   // 0839f59
+  gateSlam: '2026-09-27',   // 32ebad5
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

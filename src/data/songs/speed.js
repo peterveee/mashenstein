@@ -73,7 +73,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: 0.6,
+  master: 1.2,
   masterEffects: [{ id: "gain" }, { id: "filter", mute: true, params: { type: "highpass", Q: 0.1 } }, { id: "phaser", mute: true, params: { frequency: 0.122, octaves: 3.1, feedback: 0.6, baseFrequency: 323.25, wet: 1 } }, { id: "doubler", bypass: true, params: { depth: 0.66, delayMs: 27, wet: 0.52 } }],
   layers: [{ key: "hats2", from: "hats", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead2", from: "lead" }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead6", from: "lead4", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "crash3", from: "crash", independent: true }],
   order: ["kick","snare","clap","hats","hats2","ohats","crash2","bass","bass2","lead","lead3","lead2","lead4","lead5","lead6","keyGliss"],
