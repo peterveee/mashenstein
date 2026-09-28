@@ -134,23 +134,35 @@ function drawLevels(r) {
   const head = el('div', { class: 'report-head' }, el('h2', {}, 'Song levels'),
     r ? el('span', { class: 'when' }, `${r.applied ? 'measured and applied' : 'measured'} ${ago(r.at)}`) : null);
   if (!r) {
-    root.replaceChildren(head, el('div', { class: 'empty' }, 'Not run yet. SONG LEVELS: MEASURE on the desk renders the nine cabinet songs and fills this in.'));
+    root.replaceChildren(head, el('div', { class: 'empty' }, 'Not run yet. SONG LEVELS: MEASURE on the desk renders every song that ships and fills this in.'));
     return;
   }
   const off = r.rows.filter((x) => x.next != null);
   const lede = el('p', { class: 'lede' },
-    'Every cabinet song on one loudness line, so a cue lands the same on every stage. ',
-    el('b', {}, `Line: ${f1(r.target)} LUFS`), ` (integrated, gated), deadband ±${r.deadband} dB. `,
+    'Every song that ships, on one of two loudness lines, so a cue lands the same on every stage and gameplay is the loudest thing in the game. ',
+    el('b', {}, `Cabinets and events: ${f1(r.target)} LUFS`), ', ',
+    el('b', {}, `menus: ${f1(r.menuTarget ?? r.target - 3)}`), ` (integrated, gated), deadband ±${r.deadband} dB. `,
     off.length ? el('b', {}, `${off.length} song${off.length === 1 ? '' : 's'} off the line`) : 'All on the line.',
-    off.length ? (r.applied ? ' — their masters were written; measure again to confirm they landed.' : ' — SONG LEVELS: APPLY writes the new masters.') : '');
+    off.length ? (r.applied ? ' — still off after three passes; that mix wants a look.' : ' — SONG LEVELS: APPLY writes the new masters.') : '');
   const RANGE = 6; // dB either side of the line across the bar
   const pos = (db) => 50 + (Math.max(-RANGE, Math.min(RANGE, db)) / RANGE) * 50;
-  const rows = r.rows.map((x) => {
-    const dev = x.loud - r.target;
+  const GROUPS = [
+    ['cabinet', 'Cabinets'],
+    ['event', 'Events — the finale and the credits'],
+    ['menu', 'Menus — between games, 3 dB under'],
+  ];
+  // Which control carries the level: the master fader on a song with nothing on its
+  // master chain, the Gain at the end of the chain on one that has a compressor.
+  const levelOf = (x) => (x.control === 'gain' ? `end gain ${f1(x.level)}` : `master ${f1(x.level ?? x.master)}`);
+  const rowFor = (x) => {
+    const target = x.target ?? r.target;
+    const dev = x.loud - target;
     const a = pos(Math.min(0, dev)), b = pos(Math.max(0, dev));
     const isOff = x.next != null;
-    const tip = `${x.id}: ${f1(x.loud)} LUFS, ${signed(dev)} dB from the line\npeak ${f1(x.peak)} dBFS · master ${f1(x.master)}`
-      + (isOff ? `\n→ master ${f1(x.next)}${x.applied ? ' (written)' : ''}` : '\nwithin the deadband')
+    const tip = `${x.id}: ${f1(x.loud)} LUFS, ${signed(dev)} dB from its line (${f1(target)})\npeak ${f1(x.peak)} dBFS · master fader ${f1(x.master)}`
+      + (x.control === 'gain' ? `\nlevelled by the Gain at the end of its master chain (${f1(x.level)} dB), so its compressor sees the mix you set` : '')
+      + (isOff ? `\n→ ${x.control === 'gain' ? 'end gain' : 'master'} ${f1(x.next)}` : '\nwithin the deadband')
+      + (x.applied ? `\nmoved from ${f1(x.from)} on this run` : '')
       + (x.clips ? '\n** the trim would push the peak past -0.5 dBFS **' : '');
     return el('tr', { 'data-tip': tip },
       el('td', { class: 'song' }, x.id, x.clips ? el('span', { class: 'tag hot' }, 'would clip') : null),
@@ -158,18 +170,26 @@ function drawLevels(r) {
         el('div', { class: 'band', style: `left:${pos(-r.deadband)}%;width:${pos(r.deadband) - pos(-r.deadband)}%` }),
         el('div', { class: `bar${isOff ? ' off' : ''}`, style: `left:${a}%;width:${Math.max(b - a, 1.2)}%` }))),
       el('td', {}, f1(x.loud)),
+      el('td', { class: 'muted' }, f1(target)),
       el('td', {}, signed(dev)),
       el('td', { class: 'muted' }, f1(x.peak)),
-      el('td', {}, f1(x.master)),
-      el('td', {}, isOff ? el('span', { class: 'next' }, `→ ${f1(x.next)}`, x.applied ? el('span', { class: 'tag gold' }, 'written') : null) : el('span', { class: 'muted' }, 'on the line')),
+      el('td', {}, levelOf(x)),
+      el('td', {}, isOff
+        ? el('span', { class: 'next' }, `→ ${f1(x.next)}`)
+        : el('span', { class: 'muted' }, 'on the line', x.applied ? el('span', { class: 'tag gold' }, `moved from ${f1(x.from)}`) : null)),
       el('td', { class: 'muted' }, ago(x.at).split(' · ')[0]));
+  };
+  const COLS = 9;
+  const rows = GROUPS.flatMap(([g, label]) => {
+    const inGroup = r.rows.filter((x) => (x.group || 'cabinet') === g);
+    return inGroup.length ? [el('tr', { class: 'divider' }, el('td', { colspan: COLS }, label)), ...inGroup.map(rowFor)] : [];
   });
   root.replaceChildren(head, lede, el('div', { class: 'scroll' }, el('table', {},
     el('thead', {}, el('tr', {},
       el('th', {}, 'song'),
-      el('th', {}, `vs line`, el('span', { class: 'range' }, `−${RANGE} … +${RANGE} dB`)),
-      el('th', {}, 'LUFS'), el('th', {}, 'off by'), el('th', {}, 'peak'),
-      el('th', {}, 'master'), el('th', {}, 'new master'), el('th', {}, 'measured'))),
+      el('th', {}, `vs its line`, el('span', { class: 'range' }, `−${RANGE} … +${RANGE} dB`)),
+      el('th', {}, 'LUFS'), el('th', {}, 'line'), el('th', {}, 'off by'), el('th', {}, 'peak'),
+      el('th', {}, 'level'), el('th', {}, 'new level'), el('th', {}, 'measured'))),
     el('tbody', {}, rows))));
 }
 

@@ -119,6 +119,124 @@ export function mrdr3PulsePyramid(duty) {
   });
 }
 
+// ---- HARD SYNC, as the native path builds it ----------------------------------------
+//
+// A synced slave is periodic at the MASTER's frequency, so the native path states it as
+// one PeriodicWave: walk the slave waveform `ratio` times across one master cycle and let
+// the table's wrap be the reset. That table is what the game plays, so it is what the
+// worklet plays too — the same projection, read at the master's pitch — rather than a
+// per-sample reset of the slave's own table. The per-sample reset was a different
+// instrument in three measurable ways: it kept the DC the reset leaves (a PeriodicWave
+// cannot carry one), it skipped the peak normalisation every PeriodicWave gets (+6 dB on a
+// saw at ratio 0.5), and it let the slave's DETUNE move the reset pitch where natively it
+// moves the ratio. Measured on speed's SYNTH LEAD, 28 Sep: the desk 5 dB over the game.
+
+/** The waveform a sync table walks — `hardSyncTable`'s own mapping. */
+export function mrdr3SyncKind(type) {
+  if (type === 'pulse') return 'pulse';
+  return ['sine', 'square', 'sawtooth', 'triangle'].includes(type) ? type : 'square';
+}
+
+/** One key per distinct table, the same string `hardSyncTable` caches under. */
+export function mrdr3SyncKey(kind, ratio, width = 0.5, harmonics = 96) {
+  const r = Math.max(0.01, ratio);
+  const duty = Math.min(0.95, Math.max(0.05, width));
+  return `${kind}|${r.toFixed(5)}|${duty.toFixed(4)}|${harmonics}`;
+}
+
+/**
+ * The sync table's Fourier series: the ONE definition both backends use. The native path
+ * hands these to createPeriodicWave; the worklet builds its pyramid from them.
+ *
+ * Note the waveforms are the formula shapes, not the classic tables: a sawtooth here
+ * rises from -1 at phase 0, which is half a cycle round from an OscillatorNode's own.
+ * That is what the game has always played, so it is what this keeps.
+ */
+export function hardSyncPartials(kind, ratio, width = 0.5, harmonics = 96) {
+  const r = Math.max(0.01, ratio);
+  const duty = Math.min(0.95, Math.max(0.05, width));
+  const samples = 1024;
+  const real = new Float32Array(harmonics + 1);
+  const imag = new Float32Array(harmonics + 1);
+  for (let i = 0; i < samples; i++) {
+    const master = (i + 0.5) / samples;
+    const phase = (master * r) % 1;
+    let value;
+    if (kind === 'sine') value = Math.sin(phase * Math.PI * 2);
+    else if (kind === 'square') value = phase < 0.5 ? 1 : -1;
+    else if (kind === 'sawtooth') value = phase * 2 - 1;
+    else if (kind === 'triangle') value = 1 - 4 * Math.abs(phase - 0.5);
+    else value = phase < duty ? 1 : -1;
+    const angle = master * Math.PI * 2;
+    const cosStep = Math.cos(angle);
+    const sinStep = Math.sin(angle);
+    let cosN = cosStep;
+    let sinN = sinStep;
+    for (let n = 1; n <= harmonics; n++) {
+      real[n] += value * cosN;
+      imag[n] += value * sinN;
+      const nextCos = cosN * cosStep - sinN * sinStep;
+      sinN = sinN * cosStep + cosN * sinStep;
+      cosN = nextCos;
+    }
+  }
+  const scale = 2 / samples;
+  for (let n = 1; n <= harmonics; n++) {
+    real[n] *= scale;
+    imag[n] *= scale;
+  }
+  return { real, imag };
+}
+
+/**
+ * A sync table's pyramid: the native series, band-limited and normalised the way every
+ * other pyramid here is — which is the way Chromium treats a PeriodicWave.
+ */
+export function mrdr3SyncPyramid(kind, ratio, width = 0.5, harmonics = 96) {
+  const { real, imag } = hardSyncPartials(kind, ratio, width, harmonics);
+  const N = MRDR3_TABLE_SIZE;
+  const cosT = new Float64Array(N);
+  const sinT = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    cosT[i] = Math.cos((2 * Math.PI * i) / N);
+    sinT[i] = Math.sin((2 * Math.PI * i) / N);
+  }
+  return buildPyramid((data, base, partials) => {
+    const top = Math.min(partials, harmonics);
+    for (let n = 1; n <= top; n++) {
+      const re = real[n];
+      const im = imag[n];
+      if (!re && !im) continue;
+      // n*i taken modulo the table: the angle is exact, not accumulated.
+      for (let i = 0, k = 0; i < N; i++, k = (k + n) % N) {
+        data[base + i] += re * cosT[k] + im * sinT[k];
+      }
+    }
+  });
+}
+
+// Built per ratio a patch asks for, so cached by key for the life of the process. Each is
+// a few milliseconds; the cap bounds memory on a desk where a RATIO knob is being swept.
+const SYNC_PYRAMIDS = new Map();
+const SYNC_PYRAMID_CACHE = 256;
+
+/** The pyramids for a list of `{ key, kind, ratio, width }`, by key, built on first ask. */
+export function mrdr3SyncSet(specs) {
+  const out = {};
+  for (const t of specs) {
+    let p = SYNC_PYRAMIDS.get(t.key);
+    if (!p) {
+      p = mrdr3SyncPyramid(t.kind, t.ratio, t.width);
+      if (SYNC_PYRAMIDS.size >= SYNC_PYRAMID_CACHE) {
+        SYNC_PYRAMIDS.delete(SYNC_PYRAMIDS.keys().next().value);
+      }
+      SYNC_PYRAMIDS.set(t.key, p);
+    }
+    out[t.key] = p;
+  }
+  return out;
+}
+
 /** Every classic pyramid, built once and shared. Pulses are built per authored duty. */
 let CLASSIC = null;
 export function mrdr3Tables(duties = []) {

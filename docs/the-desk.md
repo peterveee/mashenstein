@@ -106,8 +106,10 @@ Each tool writes its latest result to `work/local/reports/` wherever it was run
 from, terminal included, so `/reports` is always the last run. The page redraws
 when a file changes.
 
-- **Song levels** shows each cabinet song against the -21 LUFS line: how far off it
-  is, and the master that would put it back.
+- **Song levels** shows every song that ships against its line: -21 LUFS for the nine
+  cabinets, the finale and the credits megamix; -24 for the title, the Food Court
+  and the shop, which play between games. It shows how far off each one is, and the
+  master that would put it back.
 - **Bass & band balance** shows seven bands per song, each measured against that
   song's own loudness and coloured where it sits 2 dB or more off the median of
   the finished cabinets.
@@ -115,8 +117,15 @@ when a file changes.
   shows each strip's share of the low bands, which is where a Channel EQ goes,
   and is tagged when the song has changed since.
 
-APPLY asks twice, because it edits song files. Save the mixer first: a mixer save
-afterwards puts the old master back. Every run is under `nice`, because all of
+APPLY asks twice, because it edits song files. On a song with nothing on its master
+chain it moves the master fader. On a song with a compressor, limiter or exciter on
+the master it moves a Gain at the END of that chain instead, adding one the first
+time: the master fader drives the chain, so moving it would change how hard the
+compressor works rather than just the level. The master fader stays the mix's.
+Keep the tool's Gain last; put an effect after it and the next run adds a fresh one.
+It re-measures what it moved and goes again until it lands, up to three passes. Save the mixer first,
+and reload the song there afterwards: a mixer save from a stale copy puts the old
+master back. The desk shows those steps above the cards. Every run is under `nice`, because all of
 them render through headless Chromium for minutes at a time, and the mixer's
 playback comes first.
 

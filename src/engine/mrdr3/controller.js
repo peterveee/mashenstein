@@ -26,8 +26,8 @@
  * boundary, so a note time is never rounded twice.
  */
 import { ensureMrdr3Dsp, createMrdr3Node, canHostMrdr3 } from './worklet.js';
-import { compileMrdr3, mrdr3Duties, mrdr3Colours } from './compile.js';
-import { mrdr3Tables } from './tables.js';
+import { compileMrdr3, mrdr3Duties, mrdr3Colours, mrdr3PatchSyncTables } from './compile.js';
+import { mrdr3Tables, mrdr3SyncSet } from './tables.js';
 import { mrdr3NoiseSet } from './noise.js';
 import { frameAt } from './dsp.js';
 
@@ -90,6 +90,19 @@ function assetsFor(ctx, voices) {
   return { tables: sharedTables, noise: sharedNoise.get(rate) };
 }
 
+// ---- hard-sync tables, per patch --------------------------------------------------
+//
+// A synced slave plays a table built from the native path's own series (tables.js,
+// mrdr3SyncPyramid) — one per ratio, so they are made for the patches that ask, not for
+// the library up front. Built on the main thread, cached in tables.js, and sent to a lane
+// BEFORE the patch that reads it: port messages arrive in order, so the patch never
+// outruns its tables. A new node gets them with its construction (createMrdr3Node).
+
+/** The pyramids a patch reads that the lane does not hold yet, by key. */
+function syncTablesOf(patch, skip = null) {
+  return mrdr3SyncSet(mrdr3PatchSyncTables(patch).filter((t) => !skip || !skip.has(t.key)));
+}
+
 /** Everything about a voice that changes what the core renders. */
 const signatureOf = (patch) => JSON.stringify(patch);
 
@@ -116,6 +129,8 @@ export async function mrdr3Lane(ctx, laneKey, { voice, voices, maxGroups = 12, m
   });
   const lane = {
     key: laneKey, node, ctx, patch, problems,
+    // Which sync pyramids this node already holds — see syncMrdr3Patch.
+    syncKeys: new Set(mrdr3PatchSyncTables(patch).map((t) => t.key)),
     voiceId: voice?.id || null,
     signature: signatureOf(patch), connected: false, out: null, chorusKey: null,
     // When this lane last had a note. Read by `releaseIdleMrdr3Lanes` — a lane just built
@@ -145,6 +160,14 @@ export function syncMrdr3Patch(lane, voice) {
   if (!patch) return false;
   const signature = signatureOf(patch);
   if (signature === lane.signature) return false;
+  // The tables first, so the patch that reads them can never arrive ahead of them.
+  lane.syncKeys ||= new Set();
+  const syncs = syncTablesOf(patch, lane.syncKeys);
+  const fresh = Object.keys(syncs);
+  if (fresh.length) {
+    lane.node.port.postMessage({ type: 'installSyncTables', syncs });
+    for (const k of fresh) lane.syncKeys.add(k);
+  }
   lane.node.port.postMessage({ type: 'installPatch', patch });
   lane.patch = patch;
   lane.problems = problems;

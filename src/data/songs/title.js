@@ -75,26 +75,7 @@ export const bank = {
 export const mix = {
   master: -19.4,
   limiter: true,
-  masterEffects: [
-    {
-      id: "compressor",
-      bypass: true,
-      params: {
-        threshold: -12,
-        ratio: 2,
-        attack: 0.03,
-        release: 0.25,
-      },
-    },
-    {
-      id: "reverb",
-      params: {
-        decay: 7,
-        wet: 0.36,
-        preDelay: 0.034,
-      },
-    },
-  ],
+  masterEffects: [{ id: "compressor", bypass: true, params: { threshold: -12, ratio: 2, attack: 0.03, release: 0.25 } }, { id: "reverb", params: { decay: 7, wet: 0.36, preDelay: 0.034 } }, { id: "gain", params: { gain: 9.3 } }],
   layers: [
     {
       key: "bass2",

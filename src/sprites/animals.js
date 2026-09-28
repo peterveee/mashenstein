@@ -23,6 +23,9 @@
 
 import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS } from './dogs.js';
 import { paintCryptAnimal } from './crypt-animals.js';
+import {
+  paintBobcat, BOBCAT_FRAMES, BOBCAT_FPS, BOBCAT_TALL, BOBCAT_VISUAL,
+} from './bobcat.js';
 
 // --------------------------------------------------------------- primitives
 // Same ink as every other prop, so an animal standing beside a crate is drawn
@@ -1232,6 +1235,8 @@ export const ANIMAL_PAINTERS = {
     paintCryptAnimal(ctx, frame / (8 * 1.45), 'violet');
     ctx.restore();
   },
+  // SPEED ZONE's streak bobcat, in the bruiser's place there (sprites/bobcat.js).
+  bobcat: paintBobcat,
   rattlesnake,
   goose,
 };
@@ -1249,6 +1254,7 @@ export const ANIMAL_NAMES = Object.keys(ANIMAL_PAINTERS);
 export const ANIMAL_FRAMES = {
   dogSnarler: FRAMES, dogBruiser: FRAMES, dogFeral: FRAMES, catFury: FRAMES,
   cryptPanther: FRAMES,
+  bobcat: BOBCAT_FRAMES,
   rattlesnake: SNAKE_FRAMES,
   goose: GOOSE_FRAMES,
 };
@@ -1259,6 +1265,7 @@ export const ANIMAL_FRAMES = {
 export const ANIMAL_FPS = {
   dogSnarler: 16, dogBruiser: 18, dogFeral: 15, catFury: 20,
   cryptPanther: 12,
+  bobcat: BOBCAT_FPS,
   rattlesnake: SNAKE_FPS,
   goose: 22,
 };
@@ -1269,6 +1276,7 @@ export const ANIMAL_FPS = {
 export const ANIMAL_TALL = {
   dogSnarler: 1.05, dogBruiser: 1.0, dogFeral: 1.15, catFury: 1.12,
   cryptPanther: 1.0,
+  bobcat: BOBCAT_TALL,
   // The snake's neck and rattle stand over a box kept at the height of its coil.
   rattlesnake: 1.25,
   goose: 1.35,
@@ -1301,6 +1309,7 @@ export const ANIMAL_TALL = {
 export const ANIMAL_DETAIL = {
   dogSnarler: 2, dogBruiser: 2, dogFeral: 2, catFury: 2, goose: 2,
   cryptPanther: 2,
+  bobcat: 2,
   // One, not two: the snake's ring is 24 frames, and at two it would hold four times
   // the pixels of a dog's eight for a drawing that is mostly flat tone.
   rattlesnake: 1,
@@ -1322,6 +1331,10 @@ export const ANIMAL_VISUAL = {
   // The panther has the cat's 11x9 collision box; draw its long body at the
   // selected gallery size without making the jump timing harder.
   cryptPanther: 1.7,
+  // UNDER 1: the bobcat's 29x13 box already covers his head and body over the whole
+  // stride (only the tail, tufts and paws overhang it), so the art is not blown up past
+  // it the way the dogs' is.
+  bobcat: BOBCAT_VISUAL,
   // Drawn at its box: its box already takes in the strike.
   rattlesnake: 1,
   // 1.1 for the bird, times the room its honk lines need (GOOSE_PAD): same size on screen.

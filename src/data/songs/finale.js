@@ -185,7 +185,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -0.5,
+  master: 1.5,
   voice: {"kickVoice":"kickEngine","clapVoice":"clapEngine","rimVoice":"rimEngine","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","crashVoice":"crashFinale"},
   lanes: {
     kick: { gain: -2 },

@@ -112,8 +112,10 @@ assert(carries('speed', 'campfire'), 'Speed gives the campfire its second home')
 assert(carries('plumber', 'fireBarrel'), 'Plumber gets the drum fire back from Speed');
 assert(carries('neon', 'popSpikes') && carries('neon', 'floorSaw') && carries('neon', 'fireBarrel'),
   'Neon owns ground reads of its own — its bag is not just the air');
-assert(carries('speed', 'dogBruiser') && carries('neon', 'dogBruiser') && carries('cardboard', 'dogBruiser'),
-  'the bruiser — the slow closer — finally appears in a pattern (Speed, Neon, Cardboard)');
+assert(carries('neon', 'dogBruiser') && carries('cardboard', 'dogBruiser'),
+  'the bruiser — the slow closer — appears in a pattern (Neon, Cardboard)');
+assert(carries('speed', 'bobcat') && !carries('speed', 'dogBruiser'),
+  'Speed deals the streak bobcat in the bruiser\'s slot (28 Sep 2026)');
 // The Act II/III spread: floor hazards stop being an Act I vocabulary. Frost
 // gets spikes and a campfire, Crypt and Rhythm and Cardboard each get the saw,
 // and Rhythm — which used to filter out every BASE tier-2 row — now deals a

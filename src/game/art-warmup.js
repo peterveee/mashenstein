@@ -20,6 +20,7 @@ import {
 } from '../sprites/props.js';
 import { cryptGouacheWarmJobs } from '../engine/stylePacks/cryptGouache.js';
 import { cryptLifeWarmJobs } from '../engine/stylePacks/cryptLife.js';
+import { speedMcmWarmJobs } from '../engine/stylePacks/speedMcm.js';
 
 // The two rim colours drawWorldEntity composes hazard outlines from. They are
 // literals there too; if they ever move, these follow, and the warm-up simply
@@ -103,6 +104,7 @@ function backdropJobs(cabinet) {
   if (cabinet?.style === 'gouache') {
     return [...cryptGouacheWarmJobs(), ...cryptLifeWarmJobs()].map((run) => ({ run }));
   }
+  if (cabinet?.style === 'mcm') return speedMcmWarmJobs().map((run) => ({ run }));
   return [];
 }
 

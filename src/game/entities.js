@@ -374,6 +374,10 @@ export const OBSTACLES = {
   dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
   catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
   cryptPanther:    { w: 11, h: 9, sprite: 'cryptPanther', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
+  // SPEED ZONE's closer since 28 Sep 2026 (Peter, from the desert-cat bake-off: the streak
+  // bobcat at L2): the bruiser's slot and closing speed, in a box that covers the long low
+  // cat's head and body over the whole stride — a wider jump than the bruiser's.
+  bobcat:     { w: 29, h: 13, sprite: 'bobcat', ground: true, breakable: false, action: 'jump', vx: -38, animal: true },
 
   // The finish-line dog. Scripted, never dealt from a pattern bag — see
   // RunState.spawnFinishDog: on plumber stages one dog holds the tape, appears
@@ -493,6 +497,7 @@ export const DEBRIS = {
   dogFeral:   { colors: ['#6a6a74', '#45454f', '#a09a94'], size: 2.4, count: 13, mat: 'soft' },
   catFury:    { colors: ['#332f3f', '#201d2a', '#8a86a0'], size: 2.2, count: 10, mat: 'soft' },
   cryptPanther:    { colors: ['#765486', '#493657', '#a77caf'], size: 2.4, count: 13, mat: 'soft' },
+  bobcat:     { colors: ['#c29a68', '#a07c52', '#ddd1bb'], size: 2.6, count: 13, mat: 'soft' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };

@@ -47,6 +47,7 @@ import {
   mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
 import { mrdr3GateAdsrEvents } from './mrdr3/env.js';
+import { mrdr3SyncKind, mrdr3SyncKey, hardSyncPartials } from './mrdr3/tables.js';
 import { compileJmjr4 } from './jmjr4/compile.js';
 import { renderIr } from './jmjr4/dsp.js';
 import { makeBitCrusher } from './effects.js';
@@ -221,6 +222,14 @@ const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? t
 // Musical lengths are measured in sixteenths because the sequencer's `spb` is the
 // seconds-per-sixteenth clock. The stored keys stay readable in the preset file while
 // the native path gets one exact period at the current song tempo.
+// The square LFO's step: a sine in, -1 below zero and +1 above, the same edge the
+// worklet's LFO takes (+1 for the first half-cycle). See the LFO in `_playLayer`.
+const LFO_SQUARE_CURVE = (() => {
+  const c = new Float32Array(1024);
+  for (let i = 0; i < c.length; i++) c[i] = i < c.length / 2 ? -1 : 1;
+  return c;
+})();
+
 const LFO_TEMPO_STEPS = Object.freeze({
   '1/64': 0.25, '1/32': 0.5, '1/16': 1, '1/8': 2, '1/4': 4, '1/2': 8,
   // Keep old saved voices renderable even though the editor no longer offers these.
@@ -309,44 +318,15 @@ const syncTables = new WeakMap();
 // keeps. The cap bounds memory only — the same key rebuilds the same wave.
 const SYNC_TABLE_CACHE = 512;
 export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
-  const kind = type === 'pulse' ? 'pulse' : nativeWave(type, 'square');
-  const r = Math.max(0.01, ratio);
-  const duty = Math.min(0.95, Math.max(0.05, width));
+  // The series itself lives in mrdr3/tables.js, because the worklet builds its sync
+  // pyramid from the very same numbers — one definition, so the two cannot drift.
+  const kind = mrdr3SyncKind(type);
   let perCtx = syncTables.get(ctx);
   if (!perCtx) { perCtx = new Map(); syncTables.set(ctx, perCtx); }
-  const key = `${kind}|${r.toFixed(5)}|${duty.toFixed(4)}|${harmonics}`;
+  const key = mrdr3SyncKey(kind, ratio, width, harmonics);
   const hit = perCtx.get(key);
   if (hit) return hit;
-  const samples = 1024;
-  const real = new Float32Array(harmonics + 1);
-  const imag = new Float32Array(harmonics + 1);
-  for (let i = 0; i < samples; i++) {
-    const master = (i + 0.5) / samples;
-    const phase = (master * r) % 1;
-    let value;
-    if (kind === 'sine') value = Math.sin(phase * Math.PI * 2);
-    else if (kind === 'square') value = phase < 0.5 ? 1 : -1;
-    else if (kind === 'sawtooth') value = phase * 2 - 1;
-    else if (kind === 'triangle') value = 1 - 4 * Math.abs(phase - 0.5);
-    else value = phase < duty ? 1 : -1;
-    const angle = master * Math.PI * 2;
-    const cosStep = Math.cos(angle);
-    const sinStep = Math.sin(angle);
-    let cosN = cosStep;
-    let sinN = sinStep;
-    for (let n = 1; n <= harmonics; n++) {
-      real[n] += value * cosN;
-      imag[n] += value * sinN;
-      const nextCos = cosN * cosStep - sinN * sinStep;
-      sinN = sinN * cosStep + cosN * sinStep;
-      cosN = nextCos;
-    }
-  }
-  const scale = 2 / samples;
-  for (let n = 1; n <= harmonics; n++) {
-    real[n] *= scale;
-    imag[n] *= scale;
-  }
+  const { real, imag } = hardSyncPartials(kind, ratio, width, harmonics);
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
   // Bounded like the phase-wave cache below, and for a sharper reason: a syncBend note
   // asks for a new ratio every 32 ms grain, so a single held bend mints dozens of these
@@ -6219,7 +6199,12 @@ export class VoiceRack {
         // than an AudioWorklet so it remains available to the offline renderer and stems.
         lfoOsc.offset.setValueAtTime(hitRandom(time, 1907) * 2 - 1, time);
       } else {
-        lfoOsc.type = nativeWave(lfoSpec.type, 'sine');
+        // A SQUARE LFO is a sine through a hard step, not OscillatorNode's square. That
+        // one is band-limited — a control signal with Gibbs ripple at every edge, up to
+        // Nyquist — and on a filter it wobbles the cutoff at audio rate right as it jumps.
+        // Near Nyquist that tips a resonant biquad into a full-scale burst (speed's SYNTH
+        // LEAD, 28 Sep: a 4 ms crack the worklet, whose square is a clean ±1, never made).
+        lfoOsc.type = lfoSpec.type === 'square' ? 'sine' : nativeWave(lfoSpec.type, 'sine');
         const freeRate = Math.max(0.01, lfoSpec.rate ?? 4);
         const tempoSteps = LFO_TEMPO_STEPS[lfoSpec.division] ?? 4;
         const rate = lfoSpec.sync === 'tempo' && Number.isFinite(spb) && spb > 0
@@ -6234,7 +6219,12 @@ export class VoiceRack {
       const amount = lfoSpec.target === 'filter' ? depth * LFO_FILTER_CENTS
         : lfoSpec.target === 'pitch' ? depth * LFO_PITCH_CENTS : depth;
       lfoOut.gain.setValueAtTime(amount, time);
-      lfoOsc.connect(env); env.connect(lfoOut);
+      if (lfoSpec.type === 'square') {
+        const step = ctx.createWaveShaper();
+        step.curve = LFO_SQUARE_CURVE;
+        lfoOsc.connect(step); step.connect(env);
+      } else lfoOsc.connect(env);
+      env.connect(lfoOut);
     }
 
     // ---- glide and choke ----------------------------------------------------

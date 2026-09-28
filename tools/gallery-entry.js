@@ -99,6 +99,10 @@ import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SC
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
 import { SPEED_MCM_OBJECTS, OBJECT_STYLES, drawSpeedObjectClose, drawSpeedObjectGameScale } from '../src/dev/speed-mcm/object-sheet.js';
 import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
+import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
+import { WINK_CANDIDATES, drawWinkCandidate } from '../src/dev/speed-mcm/wink-candidates.js';
+import { DESERT_CAT_CANDIDATES, BOBCAT_ROUND2, BOBCAT_ROUND3, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup, drawBobcatLineup, drawStreakLineup } from '../src/dev/desert-cat-candidates.js';
+import { MCM_KIT as SPEED_MCM_KIT, MCM_PAINT as SPEED_MCM_PAINT, arcPalette as speedArcPalette } from '../src/engine/stylePacks/speedMcm.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
@@ -8016,6 +8020,138 @@ function cryptStyleTiles(grid, tag, cand) {
   }
   tile(grid, 'The swing in steps', 'The right leaf from shut to nearly edge-on.', W, H,
     (ctx) => drawCryptGateSwingStrip(ctx, W, H));
+}
+
+// ------------------------------------------ SPEED ZONE — mid-century modern, shipped (lab)
+// Peter, 28 Sep 2026: ship the MCM desert — the afternoon arc, the Chuck Jones coyote,
+// every object as painted, the road and hero taking the late light. The run's own pack,
+// and the coyote's new shows (it only howled in the bake-off). src/dev/speed-mcm/shipped.js.
+{
+  const grid = section('speed-mcm-shipped', 'SPEED ZONE — mid-century modern, as shipped',
+    'SHIPPED 28 Sep 2026: Speed Zone\'s backdrop is the mid-century modern desert (the mcm pack). Its light runs one '
+    + 'afternoon across the act, midday at speed-1\'s opening to dusk at speed-3\'s finish; the coyote is the Chuck '
+    + 'Jones one; every object is the lab\'s; the road and the hero take the warm cast of golden hour and the violet of '
+    + 'dusk. First nine cards: the run\'s own pack at each stage\'s opening, halfway and finish (the camera creeping, '
+    + 'so the country moves). Then the Jones coyote in each show the desert deals — new for the game: lying down to '
+    + 'doze, singing with a pup, and sat square on to wink (at speed-3\'s finish it only blinks until the hero is on '
+    + 'the pad). ANIMATED.',
+    '28 Sep 2026');
+  for (const still of SHIPPED_STILLS) {
+    tile(grid, `speed-${still.stage} · ${still.label}`, `${Math.round(still.p * 100)}% into the stage.`, W, H,
+      (ctx, t) => drawShippedStill(ctx, t, still), { animated: true });
+  }
+  for (const show of JONES_SHOWS) {
+    tile(grid, `The coyote · ${show.name}`, 'The Chuck Jones coyote, 3.6x.', W, H,
+      (ctx, t) => drawJonesShow(ctx, t, show, W, H), { animated: true });
+  }
+}
+
+// ------------------------------------------ SPEED ZONE — the coyote's wink (lab)
+// Peter, 28 Sep 2026: "can we do a bake off for the smile animation of the coyote... the
+// smile looks off, perhaps we don't need a smile or could have the head move left/right
+// - be creative". Timelines for the shipped square-on Jones figure, in
+// src/dev/speed-mcm/wink-candidates.js; the winner becomes JONES_MODEL.wink.
+{
+  const grid = section('speed-mcm-wink-bakeoff', 'SPEED ZONE — the coyote\'s wink (C+D ships)',
+    'SHIPPED 28 Sep 2026: "i like the look both ways but with the groucho at the end" — the last card pair, C+D, is '
+    + 'the shipped wink (speedMcmCoyote.js jonesWinkShow). '
+    + 'Asked 28 Sep 2026: the winking coyote\'s grin "looks off". 0 is the grin as shipped; A–H are other ways to play '
+    + 'the moment on the same square-on Chuck Jones figure: no smile, a smirk, a look both ways, a Groucho brow '
+    + 'waggle, a salute, a SHOW-OFF! sign, licking his chops, and a sorry-pal head-shake. Each twice, in speed-3\'s '
+    + 'dusk (the wink only happens at its finish): first the show looped every 6 s, then as the finish plays it — '
+    + 'three seconds of blinking while the hero is still coming, then the show once, then still. ANIMATED.',
+    '28 Sep 2026');
+  const pal = speedArcPalette(0.97);
+  for (const cand of WINK_CANDIDATES) {
+    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
+      (ctx, t) => drawWinkCandidate(ctx, t, cand, pal, SPEED_MCM_KIT.pats(ctx, pal), SPEED_MCM_PAINT.ledge, W, H), { animated: true });
+    tile(grid, `${cand.id} ${cand.name} · at the finish`, 'Blinks until the hero is on the pad (3 s), then the show once.', W, H,
+      (ctx, t) => drawWinkCandidate(ctx, t, cand, pal, SPEED_MCM_KIT.pats(ctx, pal), SPEED_MCM_PAINT.ledge, W, H, true), { animated: true });
+  }
+}
+
+// ------------------------------------------ SPEED ZONE — a desert cat for the bruiser's slot (lab)
+// Peter, 28 Sep 2026: "could we bake off a new dog style similar to the existing ones but
+// relevant for a desert, like a cougar or bobcat? the style should be the lane style, NOT
+// MCM...". Candidates in src/dev/desert-cat-candidates.js: the kennel's clean-line rig
+// (sprites/dogs.js) reshaped as a cat, fitted to dogBruiser's box so a winner drops in.
+{
+  const grid = section('desert-cat-bakeoff', 'SPEED ZONE — a desert cat for the bruiser\'s slot (bake-off)',
+    'Asked 28 Sep 2026: "a new dog style similar to the existing ones but relevant for a desert, like a cougar or '
+    + 'bobcat? the style should be the lane style, NOT MCM". A big cat to charge the hero in the bruiser\'s place, '
+    + 'drawn the way the dogs are (sprites/dogs.js): one silhouette with one fine outer line, the far legs darker '
+    + 'behind, two flat tones and the animal\'s own markings, on the dogs\' keyed eight-frame gallop — reshaped as a '
+    + 'cat: a long low body whose back rounds as it gathers, a high rump, a small round head with a whisker pad and '
+    + 'long fangs, big round paws, the tail. Every take is fitted to the bruiser\'s box (15x10, drawn 1.16x) and '
+    + 'rasterized as the game rasterizes him, so a winner would take his slot with no hitbox or size changed (only '
+    + 'the fps, on the card). 0 is the bruiser as shipped. A is the cougar, B the bobcat; C slinks low, D bounds, E '
+    + 'is a heavier old tom with his mouth held wide, F is A in a rust coat to test colour against the sand. Each: '
+    + 'first large (4x) running in place, then at game scale on speed-2, coming down the lane at the bruiser\'s '
+    + 'closing speed while the hero hops it. Last card: all of them side by side. ANIMATED.',
+    '28 Sep 2026');
+  for (const cand of DESERT_CAT_CANDIDATES) {
+    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
+      (ctx, t) => drawDesertCatTile(ctx, t, cand, W, H), { animated: true });
+    tile(grid, `${cand.id} ${cand.name} · in the lane`, 'Speed-2 halfway, game scale: the approach and the hop.', W, H,
+      (ctx, t) => drawDesertCatInLane(ctx, t, cand, W, H), { animated: true });
+  }
+  tile(grid, 'All of them side by side', 'Every take at 2x its lane size, on one clock.', W, H,
+    (ctx, t) => drawDesertCatLineup(ctx, t, W, H), { animated: true });
+}
+
+// ------------------------------------------ SPEED ZONE — the bobcat, refined and sleeker (lab)
+// Peter, 28 Sep 2026: "i like B, can we refine him further and have some variations on
+// body shape to be a bit sleeker". Round 2 in src/dev/desert-cat-candidates.js
+// (BOBCAT_ROUND2): B as picked, B+ redrawn, and B+ in five sleeker bodies.
+{
+  const grid = section('desert-cat-bobcat-round2', 'SPEED ZONE — the bobcat, refined and sleeker (bake-off)',
+    'Asked 28 Sep 2026: "i like B, can we refine him further and have some variations on body shape to be a bit sleeker". '
+    + 'B is round 1\'s bobcat as picked. B+ is him redrawn: the hind shank carries its width to a flatter paw (no knob '
+    + 'at the hock), the back rounds harder as he gathers, the coat is streaks down the spine, scattered flank spots '
+    + 'and black spots on the white belly instead of a polka-dot grid, the forearm bars sit below the elbow, two '
+    + 'facial lines sweep from the eye into the ruff, a soft throat bib, and a proper bob — coat-coloured with bars, '
+    + 'black on top at the tip, white under. S1–S5 are B+ in five sleeker bodies with the same face and markings, so '
+    + 'the cards compare body shape only: S1 LEAN (longer barrel, tucked waist), S2 LEGGY (longer, finer legs), S3 '
+    + 'STREAK (long, low, flat out), S4 SMALL HEAD (the real animal\'s proportions), S5 LONGER BOB. All are still '
+    + 'fitted to the bruiser\'s box, so any of them drops into his slot. Each: large (4x) running in place, then at '
+    + 'game scale on speed-2 as he comes down the lane and the hero hops him. Last card: all of them side by side. '
+    + 'ANIMATED.',
+    '28 Sep 2026');
+  for (const cand of BOBCAT_ROUND2) {
+    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
+      (ctx, t) => drawDesertCatTile(ctx, t, cand, W, H), { animated: true });
+    tile(grid, `${cand.id} ${cand.name} · in the lane`, 'Speed-2 halfway, game scale: the approach and the hop.', W, H,
+      (ctx, t) => drawDesertCatInLane(ctx, t, cand, W, H), { animated: true });
+  }
+  tile(grid, 'All of them side by side', 'Every bobcat at 2x its lane size, on one clock.', W, H,
+    (ctx, t) => drawBobcatLineup(ctx, t, W, H), { animated: true });
+}
+
+// ------------------------------------------ SPEED ZONE — the streak bobcat, bigger (lab)
+// Peter, 28 Sep 2026: "i am leaning towards streak ... he needs to be a bit bigger overall
+// though". Round 3 in src/dev/desert-cat-candidates.js (BOBCAT_ROUND3): round 2's S3 and
+// the same art at 1.2x, 1.35x and 1.5x, each with a proposed collision box (dashed).
+{
+  const grid = section('desert-cat-bobcat-round3', 'SPEED ZONE — the streak bobcat, bigger (bake-off)',
+    'Asked 28 Sep 2026: "i am leaning towards streak ... he needs to be a bit bigger overall though". S3 read smallest '
+    + 'because he is fitted, long and low, into the bruiser\'s 15x10 box — his head and body span only about 21x10 of '
+    + 'it. S3 is round 2\'s streak as picked, over the bruiser\'s box; L1, L2 and L3 are the same art, fps and markings '
+    + 'at 1.2x, 1.35x and 1.5x his size. Art that big past the old box would make hits look unfair, so each carries a '
+    + 'PROPOSED collision box (the dashed outline, lab-only) covering his head and body over the whole stride — the '
+    + 'tail, ear tufts and legs may overhang it — with the art centred on it, so the game would take it with only the '
+    + 'box and the VISUAL/TALL numbers changed (in each card\'s note). Each note also gives the takeoff window on a '
+    + 'full jump at speed-2\'s pace against the bruiser\'s 540 ms: the bigger the box, the tighter the jump. Each: '
+    + 'large (4x) running in place, then at game scale on speed-2 as he comes down the lane and the hero hops him. '
+    + 'Last card: the four sizes side by side over their boxes. ANIMATED.',
+    '28 Sep 2026');
+  for (const cand of BOBCAT_ROUND3) {
+    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
+      (ctx, t) => drawDesertCatTile(ctx, t, cand, W, H), { animated: true });
+    tile(grid, `${cand.id} ${cand.name} · in the lane`, 'Speed-2 halfway, game scale, the box dashed: the approach and the hop.', W, H,
+      (ctx, t) => drawDesertCatInLane(ctx, t, cand, W, H), { animated: true });
+  }
+  tile(grid, 'The four sizes side by side', 'At 1.5x lane size, each over its collision box.', W, H,
+    (ctx, t) => drawStreakLineup(ctx, t, W, H), { animated: true });
 }
 
 // ---------------------------------------------------------------- driver

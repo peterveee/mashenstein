@@ -22,8 +22,8 @@
 // Each is { id, name, note, draw(ctx, t, x, ledgeTop, facing, colours, opts) }, the
 // signature mcm.js's coyote seam takes (drawSpeedMcmScene(…, { coyote: cand.draw })).
 import {
-  CURRENT_MODEL, drawCoyoteModel, drawMcmCoyote, winkShow, part, line, plate,
-  poly, oval, lerp, lerpPts, mix, MCM_COYOTE_MODES,
+  CURRENT_MODEL, JONES_MODEL, drawCoyoteModel, drawMcmCoyote, winkShow, part, line, plate,
+  poly, oval, lerp, lerpPts, mix, MCM_COYOTE_MODES, ear, jawOpen, lids,
 } from './coyote.js';
 import { MCM_PALETTES, drawCoyoteLedge } from './mcm.js';
 
@@ -44,40 +44,6 @@ const blob = (pts) => (c) => {
   c.closePath();
 };
 const shift = (pts, dx, dy) => pts.map((v, i) => v + (i % 2 ? dy : dx));
-
-// A triangular ear on a base (x0,y0)-(x1,y1), `len` long, leaning `rot` (0 = straight up,
-// negative = back), with an optional inner colour.
-function ear(ctx, pass, x0, y0, x1, y1, len, rot, fill, inner = null) {
-  const mx = (x0 + x1) / 2;
-  const my = (y0 + y1) / 2;
-  const tip = [mx + Math.sin(rot) * len, my - Math.cos(rot) * len];
-  part(ctx, pass, poly([x0, y0, tip[0], tip[1], x1, y1]), fill);
-  if (inner) {
-    part(ctx, pass, poly([lerp(x0, mx, 0.45), lerp(y0, my, 0.45) - 0.15, lerp(mx, tip[0], 0.78), lerp(my, tip[1], 0.78),
-      lerp(x1, mx, 0.45), lerp(y1, my, 0.45) - 0.15]), inner, false);
-  }
-}
-
-// An open jaw hinged at (hx, hy): the dark mouth wedge from the upper lip line, and the
-// lower jaw (and tongue) rotated down by `jaw`.
-function jawOpen(ctx, pass, K, h, hx, hy, len, lip, colour) {
-  if (h.jaw <= 0.05) return;
-  const jx = hx + Math.cos(h.jaw) * len;
-  const jy = hy + Math.sin(h.jaw) * len;
-  part(ctx, pass, poly([hx + 0.1, hy - 0.45, lip[0], lip[1], jx, jy]), K.mouth);
-  ctx.save();
-  ctx.translate(hx, hy);
-  ctx.rotate(h.jaw);
-  if (h.tongue > 0.02) part(ctx, pass, oval(len * 0.62, -0.35, len * 0.4 * h.tongue, 0.5, -0.1), K.tongue, false);
-  part(ctx, pass, poly([0, -0.35, len, -0.15, len * 0.94, 0.5, 0, 1.05]), colour);
-  ctx.restore();
-}
-
-// Eyelids for the yawn's waking blink: the coat drawn down over the top of an eye.
-function lids(ctx, pass, K, h, cx, cy, rx, ry, rot) {
-  if (h.lids <= 0.05) return;
-  part(ctx, pass, (c) => { c.ellipse(cx, cy, rx * 1.08, ry * 1.12, rot, Math.PI, Math.PI + Math.PI * h.lids); c.lineTo(cx, cy); c.closePath(); }, K.coat, false);
-}
 
 // ================================================================== A RE-PROPORTIONED
 // The control's body and hand, the head rebuilt: a skull with a brow and a stop, a
@@ -118,53 +84,8 @@ const MODEL_A = {
 };
 
 // ================================================================== B CHUCK JONES
-// The Maurice Noble-era Wile E.: scrawny and tall, sat up with a slight hunch; a big
-// cranium with enormous ears, a pointed snout ending in a black nose, heavy sly lids;
-// a scraggly chest tuft, stick arms to the ledge, a thin bony tail with a bushy tip.
-function bodyB(ctx, pass, K, pose) {
-  const tw = pose.tw;
-  // A bony tail along the ledge, its brush drooping over the ledge's end.
-  part(ctx, pass, poly([-4.4, -1.5, -10.4, -1.3, -10.5, -0.6, -4.4, -0.4]), K.coat);
-  part(ctx, pass, poly([-9.6, -1.5, -12.2, -2.5 + tw * 0.3, -14.6, -1.5 + tw * 0.4, -15.6, 1.4 + tw * 0.5, -14.2, 2.3, -13.0, 0.2, -10.2, -0.5]), K.coat);
-  part(ctx, pass, poly([-14.4, -1.2 + tw * 0.4, -14.6, -1.5 + tw * 0.4, -15.6, 1.4 + tw * 0.5, -14.2, 2.3, -13.8, 0.6]), K.tip);
-  part(ctx, pass, poly([-5.4, -0.4, -5.6, -3.6, -4.4, -7.2, -2.2, -8.0, -0.6, -6.2, -0.4, -2.8, -1.8, -0.6]), K.coat);
-  part(ctx, pass, poly([-5.4, -0.4, -5.6, -3.6, -4.8, -5.8, -3.6, -3.4, -3.0, -0.5]), K.dark, false);
-  part(ctx, pass, poly([-3.0, 0, 1.4, 0, 1.7, -0.8, -2.6, -1.2]), K.dark);
-  const h = pose.heave;
-  part(ctx, pass, poly([-3.8, -5.0, -3.2, -11.4, -1.6, -15.4, 1.2, -16.2, 2.4 + h, -13.4, 2.2 + h, -8.0, 1.2, -2.4, -1.8, -1.6]), K.coat);
-  part(ctx, pass, poly([-3.8, -5.0, -3.2, -11.4, -1.6, -15.4, -0.5, -15.6, -2.0, -11.8, -2.6, -6.0]), K.back, false);
-  part(ctx, pass, poly([1.2, -15.6, 2.8 + h, -14.0, 2.2 + h, -13.6, 3.2 + h, -12.6, 2.2 + h, -12.2, 2.9 + h, -11.1, 1.8, -11.0, 2.2, -9.6, 1.0, -10.4, 0.6, -13.4]), K.cream, false);
-  part(ctx, pass, poly([0.2, -13.4, 1.1, -13.2, 2.0, -0.9, 1.2, -0.9]), K.dark);
-  part(ctx, pass, poly([0.9, -12.9, 1.9, -12.7, 3.3, -0.8, 2.4, -0.8]), K.coat);
-  part(ctx, pass, oval(1.8, -0.45, 0.95, 0.45), K.dark);
-  part(ctx, pass, oval(3.1, -0.42, 1.0, 0.45), K.coat);
-}
-function headB(ctx, pass, K, h) {
-  ctx.rotate(h.rot);
-  ear(ctx, pass, -2.6, -2.4, -0.6, -4.0, 7.0, -0.34 - h.flick, K.dark);
-  ear(ctx, pass, -1.2, -4.4, 1.9, -4.2, 7.6, -0.12, K.coat, K.ear);
-  jawOpen(ctx, pass, K, h, 3.6, 0.3, 3.9, [7.3, -0.5], K.cream);
-  part(ctx, pass, poly([-2.9, -0.8, -2.7, -3.0, -1.4, -4.6, 0.9, -5.1, 2.8, -4.3, 3.6, -3.2, 3.9, -2.6, 7.0, -1.5, 7.9, -1.1,
-    7.8, -0.55, 7.1, -0.35, 4.6, 0.3, 3.2, 1.5, 0.8, 1.9, -1.6, 1.1]), K.coat);
-  part(ctx, pass, poly([4.0, -1.7, 7.4, -0.7, 7.1, -0.35, 4.6, 0.3, 3.2, 1.5, 2.2, 0.4]), K.cream, false);
-  part(ctx, pass, oval(7.72, -0.95, 0.8, 0.62), K.nose, false);
-  if (h.eye === 'shut') {
-    line(ctx, pass, K.eye, 0.4, (c) => { c.moveTo(1.2, -2.8); c.quadraticCurveTo(2.3, -2.2, 3.4, -2.75); });
-  } else if (pass === 'paint') {
-    part(ctx, pass, oval(2.3, -2.8, 1.2, 0.95, -0.1), K.cream, false);
-    part(ctx, pass, oval(2.72, -2.5, 0.46, 0.5), K.eye, false);
-    // The heavy lid: the coat drawn half down over the eye, a dark rim along it.
-    ctx.save();
-    ctx.beginPath();
-    oval(2.3, -2.8, 1.25, 1.0, -0.1)(ctx);
-    ctx.clip();
-    part(ctx, pass, (c) => c.rect(0.8, -4.2, 3.2, 1.45), K.coat, false);
-    ctx.restore();
-    line(ctx, pass, K.back, 0.42, (c) => { c.moveTo(1.1, -2.78); c.lineTo(3.5, -2.72); });
-  }
-  part(ctx, pass, poly([0.9, -4.0, 3.5, -3.9, 3.3, -3.45, 1.1, -3.55]), K.back, false);
-}
-const MODEL_B = { body: bodyB, head: headB, headSit: [1.2, -16.0], ringReach: 8.6, scale: 0.87, modes: ['howl'] };
+// The winner, shipped 28 Sep 2026: JONES_MODEL in the engine (speedMcmCoyote.js), with
+// the doze, the chorus with a pup and the square-on wink added for the game's shows.
 
 // ================================================================== C CHARLEY HARPER
 // A coyote from a handful of flat shapes and no line at all: a half-disc haunch, a
@@ -451,9 +372,10 @@ export const COYOTE_CANDIDATES = [
       + 'Sits, howls, dozes, sings with the pup and winks.',
   },
   {
-    id: 'chuck-jones', name: 'B CHUCK JONES', draw: model(MODEL_B),
+    id: 'chuck-jones', name: 'B CHUCK JONES', draw: model(JONES_MODEL),
     note: 'The Maurice Noble-era Wile E. read: scrawny and tall with a slight hunch, a big cranium, enormous ears, a '
-      + 'pointed snout with a black nose, heavy sly lids, a scraggly chest tuft, stick arms, a bony tail with a bushy tip.',
+      + 'pointed snout with a black nose, heavy sly lids, a scraggly chest tuft, stick arms, a bony tail with a bushy tip. '
+      + 'SHIPPED 28 Sep, now with the doze, the chorus with the pup and the wink.',
   },
   {
     id: 'charley-harper', name: 'C CHARLEY HARPER', draw: model(MODEL_C),

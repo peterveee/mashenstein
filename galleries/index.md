@@ -43,4 +43,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-25 | `44d12b3` | [2026-09-25-44d12b3.html](2026-09-25-44d12b3.html) | [bake-offs](2026-09-25-44d12b3-lab.html) | Add wolves fire scene and candidates for Frost 3 bake-off |
 | 2026-09-27 | `18acca2` | [2026-09-27-18acca2.html](2026-09-27-18acca2.html) | [bake-offs](2026-09-27-18acca2-lab.html) | feat: add crypt enemies and headstone drawing functionality |
 | 2026-09-27 | `2b096da` | [2026-09-27-2b096da.html](2026-09-27-2b096da.html) | [bake-offs](2026-09-27-2b096da-lab.html) | Add time-arc.js for dynamic lighting and color palettes in MCM act |
+| 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
 | screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |

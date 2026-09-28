@@ -16,6 +16,7 @@
  * refused, rather than approximated.
  */
 import { MRDR3_NATIVE, isMrdrVoice } from './identity.js';
+import { mrdr3SyncKind, mrdr3SyncKey } from './tables.js';
 
 /**
  * A number in [0,1) that depends only on its salt — the engine's `hitRandom`, at the one
@@ -80,6 +81,59 @@ const FILTER_KIND = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
 
 /** Biquad sections for a slope, exactly as `_filterChain` counts them. */
 const stagesFor = (slope) => (slope === -48 ? 4 : slope === -24 ? 2 : 1);
+
+/**
+ * A hard-synced slave, stated the way `_playLayer` builds one: an oscillator at the
+ * MASTER's pitch (Osc 1's ratio and detune, no unison spread) playing a table in which
+ * the slave's own ratio, detune and spread are baked — one table per unison voice.
+ *
+ * By layer KEY, not position, because a gain-0 layer is dropped from the stack and the
+ * positional `syncSlaves` would then name the wrong one. Noise has no phase to reset.
+ *
+ * A slave with a PITCH ENVELOPE is left to the core's own per-sample reset: natively that
+ * bend re-tables the slave every 32 ms, which a static table cannot say.
+ */
+function syncFor(voice, key, s) {
+  const slaves = voice.sync === '1+2+3' ? ['osc2', 'osc3']
+    : voice.sync === '1+2' ? ['osc2'] : voice.sync === '1+3' ? ['osc3'] : [];
+  const master = voice.layer?.osc1;
+  if (!master || !slaves.includes(key) || s.type === 'noise') return {};
+  if (s.pitch && (s.pitch.semitones ?? 0) !== 0) return {};
+  const kind = mrdr3SyncKind(s.type);
+  const width = Math.min(0.95, Math.max(0.05, s.width ?? 0.5));
+  const masterRatio = Math.max(0.01, master.ratio ?? 1);
+  const count = Math.max(1, Math.min(4, Math.round(s.unison ?? 1)));
+  const syncKeys = [];
+  const syncTables = [];
+  for (let u = 0; u < count; u++) {
+    const cents = (s.detune ?? 0) + (count > 1 ? (s.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
+    const ratio = ((s.ratio ?? 1) / masterRatio) * (2 ** (cents / 1200));
+    const k = mrdr3SyncKey(kind, ratio, width);
+    syncKeys.push(k);
+    syncTables.push({ key: k, kind, ratio, width });
+  }
+  return {
+    syncKeys, syncTables,
+    // The pitch the oscillator actually runs at: the master's.
+    syncPitchRatio: masterRatio,
+    syncCents: master.detune ?? 0,
+  };
+}
+
+/** A filter envelope's shape, exactly the fields the native centsEnv reads. */
+const filterEnvOf = (env) => (env ? {
+  attack: env.attack, decay: env.decay, sustain: env.sustain, release: env.release,
+  attackCurve: env.attackCurve, decayCurve: env.decayCurve, releaseCurve: env.releaseCurve,
+} : {});
+
+/** Every sync table a compiled patch reads, once each. */
+export function mrdr3PatchSyncTables(patch) {
+  const out = new Map();
+  for (const l of patch?.layers || []) {
+    for (const t of l.syncTables || []) if (!out.has(t.key)) out.set(t.key, t);
+  }
+  return [...out.values()];
+}
 
 /**
  * Compile one preset. Returns `{ patch, problems }`.
@@ -169,6 +223,8 @@ export function compileMrdr3(voice) {
       } : null,
       ratio: s.ratio ?? 1,
       detune: s.detune ?? 0,
+      // A HARD-SYNCED slave plays the native path's table — see syncFor below.
+      ...syncFor(voice, key, s),
       unison: Math.max(1, Math.min(4, Math.round(s.unison ?? 1))),
       spread: s.spread ?? 20,
       stereo: Math.min(1, Math.max(0, s.stereo ?? 0)),
@@ -180,7 +236,12 @@ export function compileMrdr3(voice) {
         decay: s.decay ?? 0,
         sustain: s.sustain ?? 0,
         release: s.release ?? 0.015,
+        // Every curve the shared builder reads (mrdr3GateAdsrEvents), not just the attack's.
+        // A dropped releaseCurve turned an authored LINEAR release exponential here while
+        // the native path kept it linear — the same patch rang ~40 dB longer in the game.
         attackCurve: s.attackCurve,
+        curve: s.curve,
+        releaseCurve: s.releaseCurve,
       },
       filterStages: fl ? stagesFor(fl.slope) : 0,
       filterKind: fl ? (FILTER_KIND[fl.type] ?? 0) : 0,
@@ -188,12 +249,9 @@ export function compileMrdr3(voice) {
       filterQ: fl ? (fl.Q ?? 0.7) : 0.7,
       filterTrack: fl ? (fl.track ?? 0) : 0,
       filterOct: fl?.env ? (fl.env.octaves ?? 0) : 0,
-      filterEnvShape: fl?.env ? {
-        attack: fl.env.attack ?? 0.01,
-        decay: fl.env.decay ?? 0.2,
-        sustain: fl.env.sustain ?? 0.5,
-        release: fl.env.release ?? 0.3,
-      } : { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.3 },
+      // The envelope as authored, defaults and all left to the cents builder — the
+      // native path's filterEnv reads the raw block. See mrdr3WriteFilterEnv.
+      filterEnvShape: filterEnvOf(fl?.env),
     });
   }
 
@@ -304,7 +362,10 @@ export function compileMrdr3(voice) {
       decay: gv.decay ?? 0,
       sustain: gv.sustain ?? 0,
       release: gv.release ?? 0.015,
+      // All three curves, as on the layer envelope above.
       attackCurve: gv.attackCurve,
+      curve: gv.curve,
+      releaseCurve: gv.releaseCurve,
     } : null,
     filterStages: gf ? stagesFor(gf.slope) : 0,
     filterKind: gf ? (FILTER_KIND[gf.type] ?? 0) : 0,
@@ -312,12 +373,7 @@ export function compileMrdr3(voice) {
     filterQ: gf ? (gf.Q ?? 0.7) : 0.7,
     filterTrack: gf ? (gf.track ?? 0) : 0,
     filterOct: gf?.env ? (gf.env.octaves ?? 0) : 0,
-    filterEnvShape: gf?.env ? {
-      attack: gf.env.attack ?? 0.01,
-      decay: gf.env.decay ?? 0.2,
-      sustain: gf.env.sustain ?? 0.5,
-      release: gf.env.release ?? 0.3,
-    } : { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.3 },
+    filterEnvShape: filterEnvOf(gf?.env),
   };
   return { patch, problems };
 }

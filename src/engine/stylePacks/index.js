@@ -51,6 +51,12 @@ import { FROST_COMBINED_SCENERY_FINISH } from './frostSceneryFinish.js';
 import { drawCryptGouache, cryptNight } from './cryptGouache.js';
 import { CRYPT_LIFE, cryptWitches, paintCryptWitch } from './cryptLife.js';
 import { gateCreak, gateBank } from './cryptGates.js';
+import { MCM_KIT, MCM_PAINT, arcPalette, arcSun, actU, eveningStar, laneTint } from './speedMcm.js';
+import {
+  mcmBigEar, mcmMast, mcmLookout, mcmLaunchPad, mcmWaterTower, mcmWindFarm,
+  mcmPumpjacks, mcmSpeedTrap, mcmJet, mcmRoadSign,
+} from './speedMcmObjects.js';
+import { drawJonesCoyote } from './speedMcmCoyote.js';
 
 import {
   PAPER_MATERIALS,
@@ -3046,14 +3052,18 @@ const DESERT_SPEED_SIGN_CONTACT_DROP = 2;
 // between frames. Highway boards keep their deterministic silly cycle.
 const DESERT_HIGHWAY_VALUES = Object.freeze(['13', '404', 'πr²', '∞', '7']);
 const DESERT_SPEED_LIMIT_RANDOM_VALUES = new Map();
-function randomSpeedLimitValue(index, cache = DESERT_SPEED_LIMIT_RANDOM_VALUES) {
-  if (!cache.has(index)) cache.set(index, String(10 + Math.floor(Math.random() * 90)));
-  return cache.get(index);
+// `min` is the lowest limit posted: never under 67, the number the speed trap enforces
+// (Peter, 28 Sep 2026: "make sure the speed limit in any level is never less than 67").
+function randomSpeedLimitValue(index, cache = DESERT_SPEED_LIMIT_RANDOM_VALUES, min = DESERT_TRAP_MIN_LIMIT) {
+  const key = `${index}|${min}`;
+  if (!cache.has(key)) cache.set(key, String(min + Math.floor(Math.random() * (100 - min))));
+  return cache.get(key);
 }
 // Except on the speed-trap stage (Peter, 25 Sep): sign 0 is the only SPEED LIMIT
 // the hero passes before the camera — it starts left of the trap's lot and scrolls
 // faster — and it always reads 67.
 const DESERT_TRAP_SPEED_LIMIT = '67';
+const DESERT_TRAP_MIN_LIMIT = 67;
 const DESERT_ROAD_SIGNS = Object.freeze([
   {
     kind: 'speed', w: 62, top: -58, bottom: -26,
@@ -5499,7 +5509,8 @@ function desertSpeedLimitPlacements(ctx, camX, layerBaseY = GROUND_Y, options = 
         : 0;
       const value = sign.kind === 'speed'
         ? (options.speedTrap && index === 0 ? DESERT_TRAP_SPEED_LIMIT
-          : randomSpeedLimitValue(index, options.speedLimitValues))
+          : options.firstSpeedLimit && index === 0 ? options.firstSpeedLimit
+            : randomSpeedLimitValue(index, options.speedLimitValues, Math.max(DESERT_TRAP_MIN_LIMIT, options.minSpeedLimit ?? 0)))
         : sign.kind === 'highway' ? DESERT_HIGHWAY_VALUES[cycle] : sign.value;
       return {
         ...sign,
@@ -7271,6 +7282,10 @@ const DESERT_TRAP_AT_PX = 320;
 const DESERT_JET_PASS = 1600;         // world px of the run the jet's pass lasts
 const DESERT_WEED_SPACING = 640;      // near-layer px between tumbleweed slots
 const DESERT_WEED_WIND = 26;          // near-layer px/s the wind rolls them to the right
+// A weed is gone within DESERT_WEED_COYOTE_CLEAR px of a coyote's ledge centre (the ledge
+// is ±27 and a weed ±11), and fully back DESERT_WEED_COYOTE_FADE px further out.
+const DESERT_WEED_COYOTE_CLEAR = 42;
+const DESERT_WEED_COYOTE_FADE = 36;
 const DESERT_PUMP_AT = 0.49;          // between DESERT_DUNES[0] and [2], so both rigs sit on summits
 const desertHash = (i) => {
   const v = Math.sin(i * 127.1 + 311.7) * 43758.5453;
@@ -7325,6 +7340,8 @@ function desertFinishWinkL(view, finish, nearP, nearF, portrait) {
   }
   return null;
 }
+// How far across the picture the hero is when the winker's head is fully turned to him.
+const DESERT_WINK_LOOK_SPAN = 80;
 // Ledge half-width (26) plus a saguaro's arms and a little air.
 const DESERT_WINK_CLEAR = 44;
 // Landscape aims a little behind the tape, or the ledge sits right behind the pole
@@ -7380,7 +7397,17 @@ export function takeDesertTrapShutter() {
   desertTrapLatch.pending = false;
   return p;
 }
-function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false, finish = null, finishPadT = null) {
+// Who draws each of these. The paper desert's painters by default; the mid-century pack
+// hands in its own (mcmPack), so both looks share every placement, latch and clock here.
+const DESERT_LIFE_PAPER = Object.freeze({
+  pumpjacks: drawDesertPumpjacks,
+  devil: drawDesertDustDevil,
+  trap: drawDesertSpeedTrap,
+  coyote: drawDesertCoyote,
+  weed: drawDesertTumbleweed,
+  jet: drawDesertJet,
+});
+function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false, finish = null, finishPadT = null, paint = DESERT_LIFE_PAPER) {
   const view = backgroundPaintCoverage(ctx);
   const nearP = Math.max(16, Math.round(Math.PI * DESERT_RIDGE.wl));
   const midP = Math.max(16, Math.round(Math.PI * DESERT_MID.wl));
@@ -7396,11 +7423,13 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
   // tile past the opening frame. The lot's berm covers a saguaro on its summit.
   const trapTile = landmark === 'speedTrap' ? desertTileAt(atCam, nearF, nearP, summit0) : null;
   const wink = stageIndex === 3 && finish ? desertFinishWinkL(view, finish, nearP, nearF, portrait) : null;
+  // Where this frame's coyotes sit, for the tumbleweeds to keep clear of.
+  const coyoteXs = [];
 
   if (landmark === 'pumpjacks') {
     const k = desertTileAt(atCam, midF, midP, DESERT_PUMP_AT);
     const x = desertLayerX(view, camX, midF, k * midP + DESERT_PUMP_AT * midP);
-    if (!outsideView(ctx, x, 300)) drawDesertPumpjacks(ctx, t, x, seat);
+    if (!outsideView(ctx, x, 300)) paint.pumpjacks(ctx, t, x, seat);
   }
   // Dust devils: on fewer than half the middle tiles, wandering a little, and kept clear
   // of everything else that moves back here (Peter, 24 Sep: "less dust devils and make
@@ -7417,7 +7446,8 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       if (pumpTile != null && Math.abs(k - pumpTile) <= 1) continue;
       const L = k * midP + 0.33 * midP + 30 * Math.sin(t * 0.15 + k);
       const x = desertLayerX(view, camX, midF, L);
-      if (outsideView(ctx, x, 60)) continue;
+      // Its wisps blow off the top up to ~75 px right of its foot.
+      if (outsideView(ctx, x, 90)) continue;
       let near = Infinity;
       // Measured from the middle of its lean (it tilts ~45px right at the top).
       for (const bx of busy) near = Math.min(near, Math.abs(bx - (x + 20)));
@@ -7425,13 +7455,17 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       if (clear <= 0) continue;
       ctx.save();
       ctx.globalAlpha *= clear * clear * (3 - 2 * clear);
-      drawDesertDustDevil(ctx, t, x, seat);
+      paint.devil(ctx, t, x, seat);
       ctx.restore();
     }
   }
   if (landmark === 'speedTrap') {
     const x = desertLayerX(view, camX, nearF, trapTile * nearP + summit0 * nearP);
     let since;
+    // Px still to go before the camera fires (null once it has, or with no run): the
+    // mid-century camera flashes a few times on the way in (Peter, 28 Sep 2026: "can the
+    // camera flash a few times before the click?"). The click itself is unchanged.
+    let approach = null;
     if (Number.isFinite(heroFrac)) {
       const heroX = view.left + heroFrac * view.width;
       // Landscape: the pole a little ahead of the hero. Portrait: the moment the whole
@@ -7446,8 +7480,9 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       }
       since = desertTrapLatch.firedAt == null ? null
         : (t - desertTrapLatch.firedAt) * (portrait ? DESERT_TRAP_PORTRAIT_PACE : 1);
+      if (since == null) approach = Math.max(0, x + DESERT_TRAP_POLE_DX - fireAt);
     }
-    if (!outsideView(ctx, x, 100)) drawDesertSpeedTrap(ctx, t, x, seat, heroId, since);   // ink x-90..x+75
+    if (!outsideView(ctx, x, 100)) paint.trap(ctx, t, x, seat, heroId, since, approach);   // ink x-90..x+75
   }
   // Coyotes: on about half the bare summits, never next to the speed trap.
   {
@@ -7456,6 +7491,7 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       && !(trapTile != null && Math.abs(k - trapTile) <= 3)
       && !(wink && Math.abs(k - wink.k) <= 1);
     const shows = DESERT_COYOTE_SHOWS[stageIndex] || ['howl'];
+    if (wink) coyoteXs.push(desertLayerX(view, camX, nearF, wink.L));
     const seen = backgroundCoverage(ctx);
     const entry = seen.right - DESERT_COYOTE_ENTRY;
     // Its show starts as its ledge comes into view, latched like the others'.
@@ -7474,8 +7510,11 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       // hero lands on it, it only blinks. A picture with no run (the gallery) keeps the
       // looped show.
       if (!outsideView(ctx, x, 40)) {
-        drawDesertCoyote(ctx, t, x, seat, 1, Number.isFinite(heroFrac)
-          ? { mode: 'winkWait', since: finishPadT, pace: 1 }
+        // Where the hero is, left or right of him, for a winker that watches him come.
+        const look = Number.isFinite(heroFrac)
+          ? Math.max(-1, Math.min(1, (view.left + heroFrac * view.width - x) / DESERT_WINK_LOOK_SPAN)) : 0;
+        paint.coyote(ctx, t, x, seat, 1, Number.isFinite(heroFrac)
+          ? { mode: 'winkWait', since: finishPadT, pace: 1, look }
           : { mode: 'wink', since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1 });
       }
     }
@@ -7484,10 +7523,13 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       const x = desertLayerX(view, camX, nearF, k * nearP + summit0 * nearP);
       // Half of them howl the other way (Peter, 24 Sep). Hashed on the summit AND the
       // stage, since every stage passes the same summits.
-      const facing = desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
       let order = 0;
       for (let j = Math.max(0, k - 600); j < k; j++) if (isCoyote(j)) order++;
       const mode = shows[order % shows.length];
+      coyoteXs.push(x);
+      // A dozing one always lies facing left, back toward the oncoming hero (Peter, 28
+      // Sep 2026: "If he appears at the end in the yawn pose he should be facing left").
+      const facing = mode === 'yawn' ? -1 : desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
       // Only a run passes heroFrac; the gallery loops every show on its clock.
       let since = null;
       if (mode !== 'howl' && Number.isFinite(heroFrac)) {
@@ -7502,13 +7544,16 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
         }
       }
       if (!outsideView(ctx, x, 40)) {
-        drawDesertCoyote(ctx, t, x, seat, facing,
+        paint.coyote(ctx, t, x, seat, facing,
           { mode, since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1 });
       }
     }
   }
   // Tumbleweeds: a slot every DESERT_WEED_SPACING, three in five filled, all rolling
-  // right on the wind.
+  // right on the wind. They roll THROUGH the coyotes' summits (the wind moves them and
+  // not the ledges), so a weed thins out as it reaches a ledge and comes back once it is
+  // past (Peter, 28 Sep 2026: "make sure tumbleweeds don't overlap the coyote") — a fade
+  // over distance, as the dust devils keep clear of things, never a pop.
   {
     const travel = camX * nearF * ZOOM;
     const drift = DESERT_WEED_WIND * t;
@@ -7518,12 +7563,19 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       const L = k * DESERT_WEED_SPACING + drift;
       const x = desertLayerX(view, camX, nearF, L);
       if (outsideView(ctx, x, 30)) continue;
-      drawDesertTumbleweed(ctx, t, x, seat, Math.floor(desertHash(k + 29) * 3), L);
+      let near = Infinity;
+      for (const cx of coyoteXs) near = Math.min(near, Math.abs(cx - x));
+      const clear = Math.max(0, Math.min(1, (near - DESERT_WEED_COYOTE_CLEAR) / DESERT_WEED_COYOTE_FADE));
+      if (clear <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha *= clear * clear * (3 - 2 * clear);
+      paint.weed(ctx, t, x, seat, Math.floor(desertHash(k + 29) * 3), L);
+      ctx.restore();
     }
   }
   if (landmark === 'jet') {
     const k = (camX - atCam) / DESERT_JET_PASS;
-    if (k >= 0 && k < 1) drawDesertJet(ctx, k, view.left - 40, view.right + 40, jetY);
+    if (k >= 0 && k < 1) paint.jet(ctx, k, view.left - 40, view.right + 40, jetY);
   }
 }
 
@@ -7782,6 +7834,411 @@ function faux3dPack(settings) {
     },
   };
 }
+
+// ---------------------------------------------------------------- SPEED ZONE in MCM
+//
+// SPEED ZONE'S BACKDROP since 28 Sep 2026: the mid-century modern desert from the lab
+// bake-offs (docs/BACKDROP_STYLES.md), painted in speedMcm.js, speedMcmObjects.js and
+// speedMcmCoyote.js. Peter's picks: the light runs one afternoon across the act (midday
+// at speed-1's opening to dusk at speed-3's finish, arcPalette), the coyote is the Chuck
+// Jones one, and every object ships as the lab painted it.
+//
+// THIS PACK IS THE PAPER DESERT'S COMPOSITION WITH ANOTHER HAND. Every layer sits where
+// faux3d puts it — the same translates, bases, amplitudes and portrait bands — and every
+// thing on it comes from the paper desert's own placement functions (the cacti, tufts,
+// poles, horizon props, signs) and from drawDesertLife with MCM painters handed in (the
+// coyotes, devils, tumbleweeds, pumpjacks, speed trap and jet, with all their latches and
+// clocks). So it is the same country: only the painting changes, and a placement fix in
+// the paper desert is one here too. The paper pack is kept whole — the Surge still
+// cycles through it, and any cabinet but Speed that names this pack gets it.
+//
+// The road is faux3d's checkered road (the stage's paper finish is laid on it by
+// getStylePack as before). It and the hero take the late light: a warm cast from golden
+// hour, a violet veil into dusk (laneTint) — the road here in ground(), the hero through
+// heroLight(), which run.js paints him with. Hazards and pickups are left alone.
+
+// The kidney clouds (the paper desert's sky is bare; the style brings them), in the
+// lab's layer space: high and slow. `band` is the portrait scenery band each keeps to.
+const MCM_CLOUDS = Object.freeze({
+  factor: 0.03, drift: 2.2, period: 1100,
+  items: [
+    { u: 70, y: 30, w: 120, h: 13, band: 'upperCloud', dy: 4 },
+    { u: 330, y: 92, w: 84, h: 9, band: 'lowerCloud', dy: 0 },
+    { u: 610, y: 22, w: 150, h: 15, band: 'upperCloud', dy: -8 },
+    { u: 880, y: 70, w: 100, h: 11, band: 'middleCloud', dy: 0 },
+  ],
+});
+const MCM_MESAS = [
+  { at: 0.5, cap: 0.24, slope: 0.085, h: 1 },
+  { at: 0.08, cap: 0.13, slope: 0.06, h: 0.56 },
+];
+// The weeds' hop, as the paper tumbleweed's (desertLandmarks.js WEEDS).
+const MCM_WEEDS = [
+  { R: 9.0, hop: 0.66, H: 15, ph: 0.1 },
+  { R: 6.8, hop: 0.5, H: 10, ph: 0.55 },
+  { R: 11.0, hop: 0.84, H: 19, ph: 0.3 },
+];
+
+// Hide what stands below the nearest of `crests` between x0 and x1 (a devil's foot
+// behind the dunes in front of it). The paper painters' clipSky, for this pack's.
+function mcmClipAbove(ctx, x0, x1, crests) {
+  ctx.beginPath();
+  ctx.moveTo(x0, -400);
+  ctx.lineTo(x1, -400);
+  for (let x = x1; x >= x0 - 2; x -= 2) {
+    let y = Infinity;
+    for (const f of crests) y = Math.min(y, f(x));
+    ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.clip();
+}
+
+// The MCM painters set their own alpha for every plate, so a fade (the dust devil
+// thinning out near something else that moves) cannot ride on globalAlpha. A fading
+// one is painted onto a scratch canvas and laid down at that alpha instead; `box` is
+// its extent in the current units.
+let mcmFadeCanvas = null;
+function mcmFaded(ctx, alpha, box, paint) {
+  if (alpha >= 0.995 || typeof document === 'undefined' || typeof ctx.getTransform !== 'function') {
+    paint(ctx);
+    return;
+  }
+  if (alpha <= 0.005) return;
+  const m = ctx.getTransform();
+  const x0 = Math.floor(m.a * box.x + m.e) - 2;
+  const y0 = Math.floor(m.d * box.y + m.f) - 2;
+  const w = Math.ceil(Math.abs(m.a) * box.w) + 4;
+  const h = Math.ceil(Math.abs(m.d) * box.h) + 4;
+  if (w <= 0 || h <= 0) return;
+  if (!mcmFadeCanvas) mcmFadeCanvas = document.createElement('canvas');
+  const sc = mcmFadeCanvas;
+  if (sc.width < w || sc.height < h) { sc.width = Math.max(sc.width, w); sc.height = Math.max(sc.height, h); }
+  const g = sc.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
+  paint(g);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
+  ctx.restore();
+}
+
+function mcmPack(settings) {
+  // The paper desert: its road is this pack's road, and any cabinet but Speed is its.
+  const paperDesert = faux3dPack(settings);
+  const speedLimitValues = new Map();
+  // The lane's light for this frame (laneTint), set by bg() and read by ground() and
+  // heroLight(). Closure state: getStylePack re-wraps ground() for the paper finish, and
+  // the wrapper calls it unbound.
+  let tint = null;
+  return {
+    name: 'mcm',
+    // The bright skies (and the bloom's white clip) — see faux3d.
+    lightBg: true,
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, bc = null) {
+      if (cab?.id !== 'speed') {
+        tint = null;
+        paperDesert.bg(ctx, t, camX, cab, totalDist, scene, bgShift, bc);
+        return;
+      }
+      const portrait = !!bc?.portrait;
+      const stageIndex = bc?.stageIndex ?? scene?.stageIndex ?? 1;
+      // Where in the act: the stage and how far through it. Overtime has no finish, so it
+      // keeps the stage's closing light.
+      const staged = Number.isFinite(totalDist) && totalDist > 0;
+      const p = !staged ? 1 : Number.isFinite(bc?.progress) ? bc.progress
+        : Math.max(0, Math.min(1, camX / totalDist));
+      const u = actU(stageIndex, p);
+      const pal = arcPalette(u);
+      tint = laneTint(u);
+      const P = MCM_KIT.pats(ctx, pal);
+      const cov = backgroundPaintCoverage(ctx);
+      const band = backgroundPaintBand(ctx);
+
+      // The paper desert's layer offsets and bases, exactly (faux3dPack).
+      const sceneryOffset = -desertSceneryLift(portrait);
+      const backSceneryOffset = !portrait ? sceneryOffset - DESERT_LANDSCAPE_BACK_LIFT : sceneryOffset;
+      const farAmp = portrait ? DESERT_FAR_PORTRAIT_AMP : DESERT_FAR.amp;
+      const farBaseY = sceneryRidgeBaseY(bc, 'farLandmark', farAmp, GROUND_Y)
+        + (portrait ? DESERT_FAR_PORTRAIT_DROP : 0);
+      const middleBaseY = sceneryRidgeBaseY(bc, 'middle', DESERT_MID.amp, GROUND_Y);
+      const nearBaseY = sceneryRidgeBaseY(bc, 'near', DESERT_RIDGE.amp, GROUND_Y);
+      const farY = backSceneryOffset + backgroundY(bc, 'far');
+      const midY = backSceneryOffset + backgroundY(bc, 'middle');
+      const nearY = sceneryOffset + backgroundY(bc, 'near');
+      const skyOff = backgroundY(bc, 'celestial');
+      const cloudOff = backgroundY(bc, 'clouds');
+      const farRidge = (x) => ridgeYAt(x, camX, farBaseY, farAmp, DESERT_FAR.wl, DESERT_FAR.factor,
+        { mesa: true, coverageLeft: cov.left });
+      const midRidge = (x) => ridgeYAt(x, camX, middleBaseY, DESERT_MID.amp, DESERT_MID.wl, DESERT_MID.factor,
+        { dunes: true, coverageLeft: cov.left });
+      const nearRidge = (x) => ridgeYAt(x, camX, nearBaseY, DESERT_RIDGE.amp, DESERT_RIDGE.wl, DESERT_RIDGE.factor,
+        { dunes: true, coverageLeft: cov.left });
+      // The picture's edges in each layer's own units (a layer is drawn translated).
+      // Landscape publishes no band, and the crane can lift the frame up to PAN_MAX over
+      // the top of the picture, so its edges are padded as the paper sky's are; the
+      // sky's stretch is measured from the top actually on screen.
+      const top = Number.isFinite(band.top) ? band.top : -PAN_MAX - 40;
+      const bottom = Number.isFinite(band.bottom) ? band.bottom : H + PAN_MAX + 40;
+      const visibleTop = Number.isFinite(band.top) ? band.top : 0;
+      const viewAt = (dy) => ({ left: cov.left, right: cov.right, top: top - dy, bottom: bottom - dy });
+
+      // ---- the sky: bands, streaks, the sun on its afternoon path, the clouds.
+      // Its bands and the sun keep their height above the far plain, and a portrait sky
+      // (taller than the card's) spreads them over its extra height.
+      const horizon = farBaseY + farY - 1 - skyOff;
+      const skyTop = visibleTop - skyOff;
+      const skyView = {
+        ...viewAt(skyOff), horizon,
+        stretch: Math.max(1, (horizon - skyTop) / CARD_SKY_H),
+      };
+      // The sun on its afternoon path. In portrait it keeps to the paper sun's celestial
+      // band at its highest (a stretched sky would put noon under the HUD) and sinks from
+      // there to the horizon on the same schedule.
+      const sunCard = arcSun(u);
+      let sunY = sunCard.y;
+      if (portrait) {
+        const high = sceneryBandPointY(bc, 'celestial', 60, DESERT_SUN_RADIUS) + DESERT_SUN_PORTRAIT_OFFSET;
+        sunY = high + (sunCard.y - ARC_SUN_HIGH) * (horizon - high) / (CARD_SKY_H - ARC_SUN_HIGH);
+      }
+      const sun = { x: portrait ? desertSunX(ctx, true) : sunCard.x, y: sunY, r: sunCard.r };
+      const C = MCM_CLOUDS;
+      const cloudShift = camX * C.factor * ZOOM + t * C.drift;
+      const clouds = [];
+      C.items.forEach((c, i) => {
+        const x0 = (((c.u - cloudShift) % C.period) + C.period) % C.period;
+        const y = (portrait ? sceneryBandY(bc, c.band, c.y) + c.dy : c.y) + cloudOff - skyOff;
+        for (let x = cov.left + x0 - C.period * 2; x < cov.right + c.w + C.period; x += C.period) {
+          // A cloud reaches 1.05 of its width right of x, and its ink a little further.
+          if (x > cov.left - c.w * 1.2 - 8 && x < cov.right + 8) clouds.push({ i, x, y, w: c.w, h: c.h });
+        }
+      });
+      ctx.save();
+      ctx.translate(0, skyOff);
+      MCM_PAINT.sky(ctx, { view: skyView, camX, t, sun, clouds, cacheSky: true }, pal, P,
+        (c) => eveningStar(c, u, skyView));
+      ctx.restore();
+
+      // ---- the far country: the butte, the plain, the mesas, what stands on them.
+      ctx.save();
+      ctx.translate(0, farY);
+      const farView = viewAt(farY);
+      if (staged) {
+        const bx = viewCenterX(ctx) + (totalDist * 0.55 - camX) * 0.09 * ZOOM;
+        if (!(outsideView(ctx, bx + 62 + 70, 120) && outsideView(ctx, bx - 62 - 30, 120))) {
+          const base = farBaseY - 4;
+          MCM_PAINT.butte(ctx, { x: bx, base, top: base - 108, halfW: 62 }, pal, P);
+        }
+      }
+      MCM_PAINT.farPlain(ctx, farView, farBaseY - 1, pal);
+      const farP = DESERT_FAR_PERIOD;
+      const farShift = camX * DESERT_FAR.factor * ZOOM - cov.left;
+      const mesas = [];
+      for (let k = Math.floor((farShift + cov.left - 160) / farP); k <= Math.ceil((farShift + cov.right + 160) / farP); k++) {
+        MCM_MESAS.forEach((m, j) => {
+          const x = k * farP + m.at * farP - farShift;
+          const capHalf = (m.cap * farP) / 2;
+          const slope = m.slope * farP;
+          if (x + capHalf + slope < cov.left - 40 || x - capHalf - slope > cov.right + 40) return;
+          mesas.push({ i: k * 2 + j, big: j === 0, x, capHalf, slope, base: farBaseY, top: farBaseY - m.h * farAmp });
+        });
+      }
+      for (const m of mesas) if (!m.big) MCM_PAINT.mesa(ctx, m, pal, P);
+      for (const m of mesas) if (m.big) MCM_PAINT.mesa(ctx, m, pal, P);
+      for (const prop of desertHorizonPropPlacements(ctx, camX, farBaseY, { portrait, stageIndex })) {
+        const { kind, x, baseY } = prop;
+        if (kind === 'wind-pump') MCM_PAINT.pump(ctx, { x, y: baseY - 2 }, t, pal, P);
+        else if (kind === 'big-ear') mcmBigEar(ctx, x, baseY, t, pal, P);
+        else if (kind === 'water') mcmWaterTower(ctx, x, baseY, pal, P);
+        else if (kind === 'mast') mcmMast(ctx, x, baseY, t, pal, P, farRidge);
+        else if (kind === 'lookout') mcmLookout(ctx, x, baseY, t, pal, P, sun.x);
+        else if (kind === 'launch-pad') mcmLaunchPad(ctx, x, baseY, t, desertRocketLaunchClock(x, cov), pal, P);
+        // The farm is three turbines on one cap: painted once, from its middle one.
+        else if (kind === 'wind' && prop.variant === 1) mcmWindFarm(ctx, x, t, pal, P, (xx) => farRidge(xx) + 2, prop.index);
+      }
+      ctx.restore();
+
+      // ---- the vultures, circling over the far country and behind everything nearer.
+      ctx.save();
+      ctx.translate(0, cloudOff);
+      const thermals = desertThermals(bc);
+      thermals.forEach((th, ti) => {
+        for (let i = 0; i < th.n; i++) {
+          const a = t * th.rate + (i * TAU_BG) / th.n;
+          MCM_PAINT.vulture(ctx, {
+            i: ti * 4 + i, near: ti === 0,
+            x: wrapIntoView(ctx, th.x + Math.cos(a) * th.rx - camX * th.plx * ZOOM, 80),
+            y: th.y + Math.sin(a) * th.ry,
+            s: th.s * (0.84 + 0.16 * (0.5 + 0.5 * Math.sin(a))),
+            bank: -Math.sin(a) * 0.22,
+            flap: Math.max(0, Math.sin(t * 1.7 + i * 2.3) - 0.8) * 4.4,
+          }, pal);
+        }
+      });
+      ctx.restore();
+
+      // ---- the middle dunes: the campfire's smoke behind them, the power line on them.
+      ctx.save();
+      ctx.translate(0, midY);
+      const midView = viewAt(midY);
+      const puffs = [];
+      const span = cov.width * 4;
+      for (const d of DESERT_SMOKE_PLUMES) {
+        const x = cov.left - 110 + (((d.x - camX * d.plx * ZOOM - t * d.drift) % span) + span) % span;
+        if (outsideView(ctx, x, 60)) continue;
+        const N = 6;
+        for (let i = 0; i < N; i++) {
+          const rise = (t * (0.08 + d.rate * 0.01) + (i + 0.5) / N) % 1;
+          const uu = 0.06 + rise * 0.88;
+          const drift = Math.sin(t * d.rate + i * 1.7 + d.x) * (1.5 + uu * 5.5);
+          const sway = Math.sin(t * d.rate * 0.64 + i * 2.1 + d.x * 0.02) * 2.6;
+          puffs.push({
+            i: puffs.length, u: uu,
+            x: x + d.lean * d.h * uu * uu + drift + sway,
+            y: middleBaseY - 4 - d.h * uu,
+            r: d.w * (0.52 + uu * 0.42),
+            a: Math.min(1, rise / 0.12) * Math.min(1, (1 - rise) / 0.18),
+          });
+        }
+      }
+      MCM_PAINT.smoke(ctx, puffs, pal);
+      const poles = desertTelegraphPlacements(ctx, camX, middleBaseY)
+        .map((pl) => ({ i: pl.index, x: pl.x, base: pl.baseY, top: pl.topY }));
+      MCM_PAINT.poles(ctx, { poles, view: midView }, pal);
+      MCM_PAINT.ridge(ctx, {
+        shift: camX * DESERT_MID.factor * ZOOM - cov.left, ridge: midRidge, view: midView, base: middleBaseY,
+      }, pal, P, 'mid');
+      ctx.restore();
+
+      // ---- the near dunes: saguaros and tufts on them, rocks in them.
+      ctx.save();
+      ctx.translate(0, nearY);
+      const nearView = viewAt(nearY);
+      const surface = desertNearSurfacePlacements(ctx, camX, nearBaseY, { portrait });
+      for (const c of desertCactusPlacements(ctx, camX, nearBaseY, { portrait })) {
+        MCM_PAINT.saguaro(ctx, { i: c.tile * 3 + c.duneIndex, x: c.x, y: c.crest, h: c.height, arms: c.arms, flip: c.flip }, pal);
+      }
+      for (const f of surface) {
+        if (f.kind === 'sage') MCM_PAINT.sage(ctx, { i: f.tile * 5 + f.featureIndex, x: f.x, y: f.ridgeY, s: f.scale }, pal);
+      }
+      MCM_PAINT.ridge(ctx, {
+        shift: camX * DESERT_RIDGE.factor * ZOOM - cov.left, ridge: nearRidge, view: nearView, base: nearBaseY,
+      }, pal, P, 'near');
+      for (const f of surface) {
+        if (f.kind === 'rock') MCM_PAINT.rock(ctx, { i: f.tile * 5 + f.featureIndex, x: f.x, y: f.ridgeY, s: f.scale }, pal);
+      }
+      ctx.restore();
+
+      // ---- the stage's landmark and the wildlife: the paper desert's, in this hand.
+      const seat = {
+        far: (x) => farRidge(x) + farY,
+        mid: (x) => midRidge(x) + midY,
+        near: (x) => nearRidge(x) + nearY,
+      };
+      const life = {
+        pumpjacks: (c, tt, x, st) => mcmPumpjacks(c, x, tt, pal, P, st.mid),
+        devil: (c, tt, x, st) => {
+          // drawDesertLife fades a devil by globalAlpha; these plates set their own.
+          const alpha = c.globalAlpha;
+          c.save();
+          c.globalAlpha = 1;
+          mcmClipAbove(c, x - 90, x + 130, [(xx) => st.mid(xx) + 6, st.near]);
+          mcmFaded(c, alpha, { x: x - 60, y: st.mid(x) - 140, w: 190, h: 150 },
+            (g) => MCM_PAINT.devil(g, { x, y: st.mid(x) + 2 }, tt, pal));
+          c.restore();
+        },
+        trap: (c, tt, x, st, heroId, since, approach) => mcmSpeedTrap(c, x, st.near(x) - 0.3, tt, pal, P, heroId, since, st.near, approach),
+        coyote: (c, tt, x, st, facing, opts) => {
+          const y = st.near(x);
+          MCM_PAINT.ledge(c, x, y, pal, P);
+          drawJonesCoyote(c, tt, x, y - 12.4, facing, pal.coyote, opts);
+        },
+        weed: (c, tt, x, st, variant, roll) => {
+          // drawDesertLife fades a weed near a coyote by globalAlpha; these plates set their own.
+          const alpha = c.globalAlpha;
+          c.save();
+          c.globalAlpha = 1;
+          mcmFaded(c, alpha, { x: x - 40, y: st.near(x) - 70, w: 80, h: 80 }, (g) => mcmWeed(g, tt, x, st, variant, roll));
+          c.restore();
+        },
+        jet: (c, k, x0, x1, y) => mcmJet(c, k, x0, x1, y, pal),
+      };
+      function mcmWeed(c, tt, x, st, variant, roll) {
+        {
+          const w = MCM_WEEDS[((variant % 3) + 3) % 3];
+          const k = tt / w.hop + w.ph;
+          const hopN = Math.floor(k);
+          const q = k - hopN;
+          const Hh = w.H * (0.55 + 0.7 * desertHash(hopN * 3.1 + w.R));
+          MCM_PAINT.weed(c, {
+            i: variant, x, ground: st.near(x), R: w.R, variant,
+            lift: Hh * 4 * q * (1 - q),
+            squash: Math.max(0, 1 - q / 0.1) * 0.8 + Math.max(0, (q - 0.94) / 0.06) * 0.5,
+            spin: roll / w.R, age: q * w.hop,
+          }, pal);
+        }
+      }
+      drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat,
+        (portrait ? sceneryBandY(bc, 'upperCloud', 104) : 104) + cloudOff, bc?.heroId,
+        Number.isFinite(bc?.heroFrac) ? bc.heroFrac : null, portrait,
+        bc?.finish || null,
+        Number.isFinite(bc?.finishPadT) ? bc.finishPadT : null, life);
+
+      // ---- the roadside signs: a very-near plane in front of everything back here.
+      // NEVER CULLED OVER A PIT (Peter, 28 Sep 2026: "pop in pop outs on the signs ...
+      // make sure this does not happen ever"). The paper desert hides a sign while a live
+      // gap is under its post, and since the lane outruns the sign plane a pit slides in
+      // under a sign already on screen: it blinked out mid-picture and back. Here nothing
+      // below the lane's top edge is drawn instead — where the road hides the post anyway —
+      // so over a pit the post ends at the far lip, standing behind the hole. The backdrop
+      // is scaled about that groundline in portrait too, so the edge is the same line.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cov.left - 200, GROUND_Y - 4000, cov.width + 400, 4000);
+      ctx.clip();
+      for (const sign of desertSpeedLimitPlacements(ctx, camX, GROUND_Y + 5 + sceneryOffset, {
+        portrait,
+        speedLimitValues,
+        speedTrap: staged && DESERT_LANDMARK_BY_STAGE[stageIndex] === 'speedTrap',
+        // Speed-1 (Peter, 28 Sep 2026): the first SPEED LIMIT is no limit at all. None
+        // anywhere is under 67 (randomSpeedLimitValue).
+        firstSpeedLimit: stageIndex === 1 ? '∞' : null,
+      })) {
+        mcmRoadSign(ctx, sign.kind, sign.x, sign.baseY, sign.postFootY, sign.value, pal, P);
+      }
+      ctx.restore();
+    },
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
+      paperDesert.ground(ctx, camX, cab, obstacles, overhangs, t, viewW, portraitViewW);
+      // The late light on the road, over its solid runs (a hole shows the backdrop, which
+      // is already lit).
+      if (cab?.id !== 'speed' || !tint || !(tint.a > 0.002)) return;
+      const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
+      ctx.save();
+      ctx.globalAlpha = tint.a;
+      ctx.fillStyle = tint.color;
+      for (const [a, b] of solidRuns(camX, obstacles, drawW)) ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
+      ctx.restore();
+    },
+    // No post pass: faux3d's "rendered in 1994" sheen belongs to its look, not this one.
+    post() {},
+    // The same light on the hero, who is drawn on the overlay: run.js paints him into a
+    // scratch box and lays this over his own pixels only.
+    heroLight() {
+      if (!tint || !(tint.a > 0.002)) return null;
+      const n = Number.parseInt(tint.color.slice(1), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${tint.a.toFixed(3)})`;
+    },
+  };
+}
+// How tall the lab card's sky is above its far plain (arcSun and the sky bands are in
+// its units; a taller sky spreads them).
+const CARD_SKY_H = 198;
+// And the sun's highest, at speed-1's opening (arcSun).
+const ARC_SUN_HIGH = 34;
 
 // ---------------------------------------------------------------- NEON city
 //
@@ -17276,7 +17733,7 @@ function surgePack(settings) {
 }
 
 const FACTORIES = {
-  pixel: pixelPack, faux3d: faux3dPack, neon: neonPack, watercolor: watercolorPack,
+  pixel: pixelPack, faux3d: faux3dPack, mcm: mcmPack, neon: neonPack, watercolor: watercolorPack,
   vhs: vhsPack, gouache: gouachePack, lcd: lcdPack, cardboard: cardboardPack, doodle: doodlePack, surge: surgePack,
 };
 

@@ -88,9 +88,11 @@ const ANIMALS = {
   // note in game/entities.js). He is a closer you JUMP, on the cabinet that is
   // otherwise about the cannon — which is a better use of the slot than one
   // more thing to point it at.
+  // Speed's closer is the streak bobcat since 28 Sep 2026 (the desert-cat bake-off): the
+  // bruiser's slot and pace in a desert animal, with a longer box to clear.
   speed: [
-    P(1, [{ t: 'dogBruiser', dx: 0 }]),
-    P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(130)]),
+    P(1, [{ t: 'bobcat', dx: 0 }]),
+    P(2, [{ t: 'bobcat', dx: 0 }, coinArc(130)]),
   ],
   neon: [
     P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(120)]),
@@ -433,7 +435,9 @@ export const CABINETS = [
     taunt: 'MY IQ IS 300 AND YOURS IS A HIGH SCORE.',
   },
   {
-    id: 'speed', name: 'SPEED ZONE', act: 1, style: 'faux3d',
+    // Mid-century modern since 28 Sep 2026 (stylePacks/speedMcm.js); the paper desert
+    // it replaced is the faux3d pack, kept for the Surge.
+    id: 'speed', name: 'SPEED ZONE', act: 1, style: 'mcm',
     unlockPlugs: 2, speedBonus: 0.125,
     mechanic: 'boost',
     // Keep the sky and road in sun-baked clay, then cool the depth cues: the

@@ -129,13 +129,13 @@ const niced = (args) => ['nice', ['-n', '15', process.execPath, ...args]];
 ACTIONS.push(
   {
     id: 'songlevels', group: 'audio', label: 'SONG LEVELS: MEASURE',
-    blurb: 'renders the nine cabinet songs and measures each against the -21 LUFS line (tools/song-levels.js). Writes only the report. About ten minutes.',
+    blurb: 'renders every song that ships and measures it against its line — -21 LUFS for the cabinets, finale and megamix, -24 for the title, Food Court and shop (tools/song-levels.js). Writes only the report. About fifteen minutes.',
     steps: [niced(['tools/song-levels.js'])],
     openPath: reportHref('song-levels.json', 'levels'),
   },
   {
     id: 'songlevelsapply', group: 'audio', label: 'SONG LEVELS: APPLY',
-    blurb: 'measures, then writes each off-line song’s master onto the line — edits src/data/songs/. Save the mixer first: a mixer save afterwards puts the old master back. Compressed songs can need a second run.',
+    blurb: 'measures, sets each off-line song’s level, and re-measures until it lands — edits src/data/songs/. A song with a compressor on its master is levelled by a Gain at the END of its master chain, so the compressor keeps working as you tuned it; the master fader stays yours. Save the mixer first, and reload the song there after.',
     confirm: true,
     steps: [niced(['tools/song-levels.js', '--apply'])],
     openPath: reportHref('song-levels.json', 'levels'),

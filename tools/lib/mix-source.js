@@ -28,7 +28,9 @@ const fmtParams = (params = {}) => Object.entries(params)
   .map(([k, v]) => `${fmtKey(k)}: ${typeof v === 'string' ? JSON.stringify(v) : round(v)}`)
   .join(', ');
 
-const fmtEffects = (list = []) => `[${list.map((e) => {
+// Exported for tools/song-levels.js, which rewrites a master chain's last Gain and has
+// to write the line exactly as the desk would.
+export const fmtEffects = (list = []) => `[${list.map((e) => {
   const bits = [`id: ${JSON.stringify(e.id)}`];
   if (e.bypass) bits.push('bypass: true');
   // Both flags, and for different reasons. `bypass` takes the link out of the wiring;

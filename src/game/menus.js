@@ -50,6 +50,7 @@ const GUIDE_ICON_SIZES = {
   bananaPeel: [10, 6],
   dogBruiser: [17, 12], dogSnarler: [19, 13], dogFeral: [20, 16], catFury: [14, 12],
   cryptPanther: [20, 16],
+  bobcat: [24, 11],
   finishSnarler: [26, 18], dogSign: [17, 18],
   // The four that spent a while in the lane before they were in the guide.
   // Same rule as the standing hazards above: def box, height times PROP_TALL.
@@ -4633,6 +4634,7 @@ const GUIDE_PAGES = [
       { s: 'dogFeral', name: 'FERAL DOG', desc: 'LEAN AND STARVING. FASTER AGAIN.' },
       { s: 'catFury', name: 'FURY CAT', desc: 'SMALLEST AND FASTEST. IT IS NOT FLEEING ANYTHING.' },
       { s: 'cryptPanther', name: 'VIOLET PANTHER', desc: 'LONGER SHADOW, SAME QUICK JUMP.' },
+      { s: 'bobcat', name: 'BOBCAT', desc: 'LONG, LOW AND IN NO HURRY. JUMP EARLY.' },
       // The set piece. Its whole identity is the two words UNBREAKABLE and
       // JUMP, so the line says both and nothing else.
       { s: 'finishSnarler', name: 'GUARD DOG', desc: 'HOLDS THE FINISH. NOTHING KILLS IT. JUMP IT.' },

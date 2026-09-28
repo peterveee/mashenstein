@@ -1,7 +1,7 @@
 # Backdrop styles
 
-Status, 25 Sep 2026: **Crypt Shift ships the gouache backdrop** (see "Decisions" below). Speed
-Zone's mid-century modern conversion is in the lab gallery. Everything else is exploration.
+Status, 28 Sep 2026: **Crypt Shift ships the gouache backdrop, and Speed Zone ships mid-century
+modern** (see "Decisions" below). Everything else is exploration.
 Scope: whole-backdrop art styles, and which cabinet each might suit.
 
 The question: do the cabinets keep sharing one look (three of them are cut paper today),
@@ -29,6 +29,28 @@ what has to change if a cabinet switches style.
   fourteen ideas ("keep bakeoff items"). Baked textures are budgeted: past ~50 MB the GPU
   cache thrashed (0.2 → 5 ms a frame), so the bake is capped at 2x and the sky and moon
   glow bake at half that.
+- **Speed Zone → mid-century modern, shipped 28 Sep 2026.** These are Peter's picks from the lab
+  bake-offs:
+  - **The light** is the afternoon arc: midday at speed-1's opening to dusk at speed-3's finish,
+    each stage opening in the light the last one closed in (`arcPalette`, five authored
+    keyframes blended in OKLab).
+  - **The coyote** is the Chuck Jones one (B of the coyote bake-off). It was given the
+    lying-down doze, the chorus with a pup and a square-on wink, so it plays every show the
+    paper coyote did.
+  - **Every backdrop object** ships as the object sheet painted it.
+  - **The road keeps its paper finish.** It and the hero take the late light: a warm cast from
+    golden hour, then a violet veil into dusk.
+
+  It is the new `mcm` pack (stylePacks/index.js `mcmPack`), painted in `speedMcm.js`,
+  `speedMcmObjects.js` and `speedMcmCoyote.js`. The pack is the paper desert's composition
+  with another hand. It uses the same layer offsets, bases and portrait bands, and it places
+  everything with the paper desert's own placement code. `drawDesertLife` takes the MCM
+  painters through a seam, so the coyotes, devils, tumbleweeds, pumpjacks, speed trap and jet
+  keep all their latches and clocks. The textures are baked during the briefing
+  (`game/art-warmup.js`), and the sky's still part is cached as a bitmap. The `faux3d` pack
+  is kept whole, because the Surge cycles through it. The lab's bake-off files now draw with
+  the shipped painters; the shipped look is in the lab section *SPEED ZONE — mid-century
+  modern, as shipped*.
 - **Plumber keeps paper**; Peter agrees it is a good fit.
 - **Styles may repeat across cabinets.** Peter: "We don't necessary HAVE to have a
   completely different style for every single level.. some can repeat if it makes sense …
@@ -180,7 +202,7 @@ Of the three paper cabinets, to my eye:
 | Cabinet | Today | Suggestion | Why |
 |---|---|---|---|
 | Plumber Panic | paper (`pixel`) | **keep paper** | Paper's best fit and the most finished. If anything, test gouache or crayon-on-white in daylight only to confirm paper holds. |
-| Speed Zone | paper (`faux3d`) | **mid-century modern** (strong; in the lab, *SPEED ZONE — mid-century modern*, sunset and midday palettes) | The Road Runner desert (Maurice Noble's layouts) *is* mid-century modern: mesas, stylised cacti, a coyote on a ledge, dust devils, tumbleweed. Speed already has all of those. |
+| Speed Zone | **mid-century modern (shipped 28 Sep)** | — | The Road Runner desert (Maurice Noble's layouts) *is* mid-century modern: mesas, stylised cacti, a coyote on a ledge, dust devils, tumbleweed. Speed already had all of those. |
 | Rhythm Bankruptcy | LCD | keep | Already a distinct, finished identity. |
 | Frost Fortress | paper (`watercolor`) | **keep paper for now**; bake off voxel and gouache | Voxel is on the nose for ice: the igloo, the ice-block bridge, the crystal citadel and the fortress are blocks already. Gouache handles the day → low sun → dusk light. Paper has just had a lot of new work, so any switch needs to clearly beat it. |
 | Crypt Shift | **gouache (shipped 25 Sep)** | — | The thinnest backdrop in the game, so the biggest gain. The scanlines went with the tape. Puppet was the runner-up. |
@@ -260,16 +282,23 @@ resampled and goes slightly soft.
 These are desktop headless numbers for the backdrop alone. A phone in portrait pays
 roughly 3x.
 
+**Speed Zone's shipped `mcm` pack**, measured 28 Sep:
+- **Headless software canvas at 2x:** 3.4 ms a frame against the paper desert's 2.6.
+- **Desktop GPU (Metal, 2x):** 0.8 ms against 0.4.
+- **In the running game (M3, GPU):** the backdrop pass takes 0.5–0.6 ms of CPU a frame in
+  either orientation, against Plumber's 0.1–0.2, and frames held 120 Hz.
+- **What it took to get there:** the sky's still part is cached as a bitmap, laid down at
+  whole device pixels. The dunes' clip and dry brush stop 40 px under each layer's ground
+  line, and below that the hill is one plain rect. The dunes are now most of what is left.
+
 ## Next bake-offs: converting existing level art
 
 Each should reuse the crypt method: one shared composition with that cabinet's own real
 scenery, one file per style, the shipped lane on top, and the shipped look as the control.
 
-1. **Speed Zone in mid-century modern: built, 25 Sep** (lab section `speed-mcm-bakeoff`,
-   files in `src/dev/speed-mcm/`). Speed-1's opening with the wind pump before the sun, and
-   the first coyote's ledge about 61% in, in a sunset and a midday palette, with the shipped
-   paper as the control. Next: Peter picks a palette, then the full port of Speed's
-   scenery (see "What changes").
+1. **Speed Zone in mid-century modern: shipped, 28 Sep** (above). The bake-offs that led to
+   it are still in the lab: the two-screen card, the coyote, every object, and the light
+   across the act.
 2. **Crypt in gouache: shipped** (above). What would expand it further: a landmark of its
    own per stage (the abbey, a castle keep, a lych-gate); life in the graveyard (an owl,
    will-o'-wisps, a ghost between the stones, crows on the railings); a moon phase per

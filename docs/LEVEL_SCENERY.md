@@ -73,7 +73,42 @@ headless ledger cannot run, so its counts come from the charts themselves.
 
 ---
 
-## SPEED ZONE (speed-1..3) — pack `faux3d` (desert)
+## SPEED ZONE (speed-1..3) — pack `mcm` (mid-century desert)
+
+**28 Sep 2026:** the backdrop is the mid-century modern desert from the lab bake-offs
+(`stylePacks/speedMcm.js`, `speedMcmObjects.js`, `speedMcmCoyote.js`; see
+`docs/BACKDROP_STYLES.md`). It replaced the cut-paper desert, which is the `faux3d` pack,
+kept for the Surge. Everything in the table below stands where it did: the pack uses
+the paper desert's own placement code, so only the painting changed. Three things are
+new with it:
+
+- **The light runs one afternoon across the act.** Midday at speed-1's opening,
+  afternoon at the speed-1/2 join, golden hour at the speed-2/3 join, sunset halfway
+  through speed-3 and dusk at its finish, with an evening star. Each stage opens in the
+  light the last one closed in. The sun sinks and swells along the way and sets behind
+  the mesas. The road and the hero take the late light: a warm cast from golden hour, then a
+  violet veil into dusk. Hazards and pickups are left alone.
+- **Kidney clouds**, four in a slow drifting row, high in the sky. The paper desert's sky
+  was bare.
+- **The coyote is the Chuck Jones one**, with the same shows on the same clocks as
+  before. The doze, the chorus with a pup and the square-on wink were drawn new for it.
+
+Four rules changed with it, the same day:
+
+- **A dozing coyote always faces left**, toward the hero coming down the road.
+- **The wink has no grin** (from the wink bake-off). Until the hero lands on the finish pad,
+  the winker's head follows him across the picture. Then he turns square on, waggles both
+  brows twice Groucho-style under a closed smirk, and winks.
+- **Speed-1's first SPEED LIMIT sign reads ∞**, and no speed limit on any stage is under 67.
+- **The speed camera flashes three times before it fires**, with a red lamp blinking faster
+  as the pole closes in. The click and its sound are unchanged.
+- **Tumbleweeds fade out** as they roll up to a coyote's ledge and back in once past it,
+  so the two never overlap.
+- **Roadside signs are never culled over a pit.** The paper desert hid a sign while a gap
+  was under its post, so it blinked out mid-picture. Now nothing of a sign is drawn below
+  the lane's top edge, and over a pit the post ends at the far lip.
+- **The speed trap's lot is dug into its summit**, with its embankment running down to
+  meet the dune.
 
 The wildlife and horizon props are `camX`-driven, so all three stages get them at the same
 points; only the landmark differs. Positions below are for desktop zoom 1.6.
@@ -109,7 +144,7 @@ points; only the landmark differs. Positions below are for desktop zoom 1.6.
 | Fire barrel / campfire: flames | obstacle | speed-2, speed-3 | fire barrel 0 / 2.0 / 2.3; campfire 0 / 0.5 / 0.3 | `fireBarrel`, `campfire` |
 | Barrel: rolls | obstacle | speed-2, speed-3 | 0 / 1.5 / 1.3 | `barrel` |
 | Drone | flyer | speed-2, speed-3 | 0 / 1.3 / 2.3 | `drone` |
-| Bruiser dog: charges (vx −38), keyed 8-frame gallop (redrawn 24 Sep, `sprites/dogs.js`) | obstacle (closer) | speed-2, speed-3 | 0 / 1.0 / 1.3 | `ANIMALS.speed` |
+| **new 28 Sep** Streak bobcat, in the bruiser dog's slot: charges (vx −38), keyed 8-frame flat-out gallop, 29×13 box (a longer jump than the bruiser's 15×10; `sprites/bobcat.js`, from the desert-cat bake-off) | obstacle (closer) | speed-2, speed-3 | 0 / 1.0 / 1.3 (the bruiser's counts, before the swap) | `ANIMALS.speed` |
 | Razor hurdle / pop spikes / floor saw | obstacle | speed-2, speed-3 | hurdle 0 / 1.0 / 0.8; spikes 0 / 0.3 / 0; saw 0 / 0 / 0.3 | cabinets.js speed bank |
 | Clown-copter (Eggshell): flies in 2 bars after the start, hovers over the hero, drops barrels, 3 bonk windows | flyer (mission) | speed-2 | Whole stage | `run.js` `mission.type === 'chase'`, `COPTER_*` |
 | Traffic cone | obstacle, *static* (puntable) | all | 4.3 / 6.5 / 10.5 | `trafficCone` |

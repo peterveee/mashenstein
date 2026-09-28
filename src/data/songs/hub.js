@@ -102,7 +102,7 @@ export const bank = {
 
 export const mix = {
   master: -1.9,
-  masterEffects: [{ id: "peq", params: { f1: 110, g1: 4, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 3200, g3: -3, q3: 0.9, f4: 9000, g4: -0.5 } }, { id: "mbComp" }, { id: "l7", params: { threshold: -4.3, ceiling: -1.5 } }],
+  masterEffects: [{ id: "peq", params: { f1: 110, g1: 4, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 3200, g3: -3, q3: 0.9, f4: 9000, g4: -0.5 } }, { id: "mbComp" }, { id: "l7", params: { threshold: -4.3, ceiling: -1.5 } }, { id: "gain", params: { gain: -7.1 } }],
   layers: [{ key: "crash2", from: "crash", independent: true }, { key: "crash3", from: "crash2", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }],
   labels: {"bass2":"Square Mono 2","kick":"Kick","snare":"Snare","clap":"Clap","hats":"HH","ohats":"Open Hat","crash2":"Crash","crash3":"Crash Echo"},
   voice: {"kickVoice":"kickEngine","snareVoice":"snareEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine","ohatsVoice":"hatSnapOpen","crash2Voice":"crashFinale","bassVoice":"toneSquare","bass2Voice":"squareMono","chordsVoice":"shopOrgan2","leadVoice":"toneSquare","leadHarmVoice":"squareTone2","chords2Voice":"shopOrgan2","crash3Voice":"crashFinale","lead2Voice":"bestSampleHoldVox"},

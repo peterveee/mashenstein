@@ -1022,7 +1022,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: 1.9,
+  master: 0.3,
   limiter: true,
   masterEffects: [{ id: "peq", params: { f1: 90, g1: 6, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 2000, g3: 0, q3: 1, f4: 7200, g4: 5 } }, { id: "mbComp", params: { lowFrequency: 180, highFrequency: 2200, "low.threshold": -24, "low.ratio": 2.5, "low.attack": 0.045, "low.release": 0.3, "low.knee": 12, "mid.threshold": -20, "mid.ratio": 2, "mid.attack": 0.03, "mid.release": 0.12, "mid.knee": 18, "high.threshold": -20, "high.ratio": 2, "high.attack": 0.015, "high.release": 0.08, "high.knee": 18 } }],
   layers: [{ key: "tom2", from: "tom" }, { key: "bass3", from: "bass", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }],

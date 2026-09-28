@@ -48,8 +48,10 @@ assert(dog.vx < 0, 'the dog closes on the hero rather than waiting for him');
 // 18 to the dog's 15, and should — a pipe is a wall and this is an animal.)
 const grounded = Object.entries(OBSTACLES)
   .filter(([, d]) => d.ground && !d.isGap && !d.isBoost && !d.isLoop && !d.isSpring);
-const widest = Math.max(...grounded.map(([, d]) => d.w));
-assert(dog.w === widest, 'the finish dog is the widest thing on the road — it is the set piece');
+// Except Speed Zone's streak bobcat (28 Sep 2026): Peter picked it at a 29-wide box,
+// knowing the longer jump. It never shares a cabinet with the finish dog (Plumber's).
+const widest = Math.max(...grounded.filter(([id]) => id !== 'bobcat').map(([, d]) => d.w));
+assert(dog.w === widest, 'the finish dog is the widest thing on the road but Speed\'s bobcat — it is the set piece');
 for (const pack of ['dogSnarler', 'dogBruiser', 'dogFeral', 'catFury']) {
   assert(dog.w > OBSTACLES[pack].w && dog.h > OBSTACLES[pack].h,
     `the finish dog is bigger than the lane's ${pack}`);

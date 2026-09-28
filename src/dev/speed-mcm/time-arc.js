@@ -19,193 +19,19 @@ import { HERO_DRAW_H } from '../../game/draw.js';
 import { PLAYER_X } from '../../game/player.js';
 import { drawTextVectorCentered, textYForMid } from '../../engine/sprites.js';
 import { speedFrame, SPEED_STAGE_LEN, hash } from './plan.js';
-import { MCM_PALETTES, paintWith } from './mcm.js';
 import {
-  MCM_OBJ, mcmBigEar, mcmMast, mcmLookout, mcmLaunchPad, mcmWaterTower, mcmWindFarm,
+  paintWith, ARC_KEYS, arcPalette, arcSun, eveningStar, laneTint, actU,
+} from '../../engine/stylePacks/speedMcm.js';
+import {
+  mcmBigEar, mcmMast, mcmLookout, mcmLaunchPad, mcmWaterTower, mcmWindFarm,
   mcmPumpjacks, mcmSpeedTrap, mcmJet, mcmRoadSign,
 } from './objects.js';
 import { SLOT_U, PUMP_U, TRAP_U, SIGN_U, SIGN_SCALE, SIGN_BASE_Y, farProp } from './object-sheet.js';
 
-// ------------------------------------------------------------------ OKLab
-const toLin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const toSrgb = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
-function hexToLab(hex) {
-  const n = Number.parseInt(hex.slice(1), 16);
-  const r = toLin(((n >> 16) & 255) / 255);
-  const g = toLin(((n >> 8) & 255) / 255);
-  const b = toLin((n & 255) / 255);
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
-    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-  ];
-}
-function labToHex([L, A, B]) {
-  const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
-  const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
-  const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
-  const rgb = [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ];
-  return `#${rgb.map((c) => Math.round(Math.max(0, Math.min(1, toSrgb(Math.max(0, c)))) * 255).toString(16).padStart(2, '0')).join('')}`;
-}
-const labCache = new Map();
-function lab(hex) {
-  let v = labCache.get(hex);
-  if (!v) {
-    v = hexToLab(hex);
-    labCache.set(hex, v);
-  }
-  return v;
-}
-function mixHex(a, b, k) {
-  if (k <= 0) return a;
-  if (k >= 1) return b;
-  const A = lab(a);
-  const B = lab(b);
-  return labToHex([A[0] + (B[0] - A[0]) * k, A[1] + (B[1] - A[1]) * k, A[2] + (B[2] - A[2]) * k]);
-}
-
-// Every key of a palette, blended: hex colours in OKLab, numbers and 'r,g,b' strings
-// linearly, arrays and objects member by member; anything else (the id) from `a`.
-function blend(a, b, k) {
-  if (typeof a === 'string' && typeof b === 'string') {
-    if (a[0] === '#' && b[0] === '#') return mixHex(a, b, k);
-    if (/^\d+,\d+,\d+$/.test(a) && /^\d+,\d+,\d+$/.test(b)) {
-      const A = a.split(',').map(Number);
-      const B = b.split(',').map(Number);
-      return A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',');
-    }
-    return a;
-  }
-  if (typeof a === 'number' && typeof b === 'number') return a + (b - a) * k;
-  if (Array.isArray(a) && Array.isArray(b)) return a.map((v, i) => blend(v, b[i] ?? v, k));
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const out = {};
-    for (const key of Object.keys(a)) out[key] = key in b ? blend(a[key], b[key], k) : a[key];
-    return out;
-  }
-  return a;
-}
-function over(base, patch) {
-  const out = { ...base };
-  for (const [k, v] of Object.entries(patch)) {
-    out[k] = v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' ? over(base[k], v) : v;
-  }
-  return out;
-}
-
-// ------------------------------------------------------------------ the four keyframes
-// cloudGlow / cloudLit: how strongly, and in what colour, the clouds are lit from below.
-const MIDDAY = { ...MCM_PALETTES.midday, obj: MCM_OBJ.midday, cloudGlow: 0, cloudLit: '#fffaf0' };
-const SUNSET = { ...MCM_PALETTES.sunset, obj: MCM_OBJ.sunset, cloudGlow: 0.55, cloudLit: '#ffc987' };
-// Mid-afternoon: the turquoise holds overhead, the horizon warms to straw, the steel
-// deepens to a brick red.
-const AFTERNOON = over(blend(MIDDAY, SUNSET, 0.22), {
-  id: 'midday', dryL: MIDDAY.dryL, dryD: MIDDAY.dryD,
-  sky: ['#3495a7', '#51a9b3', '#80bebb', '#bcd4bb', '#f0d9a6'],
-  streak: '#e2efdc', streakA: 0.28,
-  sun: { disc: '#fff8df', plate: '#f4c04a', ray: '#fffbeb', halo: '#f5efcd', haloA: 0.22 },
-  cloud: ['#f1e9d8', '#fffaf0'], cloudA: [0.5, 0.88],
-  obj: { plate: '#a84c33', plateDark: '#7e3726', alt: '#6f8b8e' },
-  pump: { plate: '#a84c33' },
-});
-// Golden hour: a dusty mauve overhead falling to rose, amber and gold at the horizon;
-// the steel has turned to a deep teal to stand against it.
-const GOLDEN = over(blend(MIDDAY, SUNSET, 0.62), {
-  id: 'sunset', dryL: SUNSET.dryL, dryD: SUNSET.dryD,
-  sky: ['#8a86a8', '#b6929f', '#daa17e', '#edb971', '#f6d590'],
-  streak: '#fbe3b8', streakA: 0.26,
-  sun: { disc: '#fff3cf', plate: '#f2b23a', ray: '#fff5d8', halo: '#fbd88c', haloA: 0.22 },
-  cloud: ['#e7ad97', '#fbe1bb'], cloudA: [0.44, 0.74], cloudGlow: 0.25, cloudLit: '#ffe2a8',
-  obj: { plate: '#2c6f6e', plateDark: '#1f5352', alt: '#b36372' },
-  pump: { plate: '#2c6f6e' },
-});
-// Early evening: the sun is down. Indigo overhead through violet and a magenta band to
-// a coral and amber afterglow on the horizon; the clouds lit from underneath; the land
-// cooled toward violet but still read; the steel gone to a dark slate that holds as a
-// silhouette; an evening star out. Built from SUNSET with every colour pulled a third of
-// the way to twilight, then the sky, sun, clouds and steel authored.
-function mapColours(v, fn) {
-  if (typeof v === 'string' && v[0] === '#') return fn(v);
-  if (Array.isArray(v)) return v.map((x) => mapColours(x, fn));
-  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, mapColours(x, fn)]));
-  return v;
-}
-const TWILIGHT = '#3b3162';
-const DUSK = over(mapColours(SUNSET, (c) => mixHex(c, TWILIGHT, 0.34)), {
-  id: 'sunset', ink: '#1f1522',
-  sky: ['#2c2d5a', '#4e3b6c', '#8f4d6e', '#d8694f', '#efa05a'],
-  streak: '#f0b98a', streakA: 0.2,
-  sun: { disc: '#ffd9a0', plate: '#e8723a', ray: '#ffcf9a', halo: '#f29a5e', haloA: 0.26 },
-  cloud: ['#5e4c80', '#6e5a8e'], cloudA: [0.8, 0.96], cloudInk: 0.3, cloudGlow: 1, cloudLit: '#f28a6c',
-  bird: '#1f1522', birdSlip: '#8f4d6e',
-  shade: '#2a2450', shadeA: 0.42,
-  obj: { plate: '#27434c', plateDark: '#1a2f36', cream: '#e8d6c8', glass: '#f4b36a' },
-  pump: { plate: '#27434c', tank: '#27434c', tankRim: '#1a2f36', water: '#f0a060' },
-});
-export const ARC_KEYS = [
-  { at: 0, name: 'MIDDAY', pal: MIDDAY },
-  { at: 1 / 3, name: 'AFTERNOON', pal: AFTERNOON },
-  { at: 2 / 3, name: 'GOLDEN', pal: GOLDEN },
-  { at: 0.85, name: 'SUNSET', pal: SUNSET },
-  { at: 1, name: 'DUSK', pal: DUSK },
-];
-
-// The palette at act position u (0 = speed-1's first frame, 1 = speed-3's last).
-// Blends are cached by u to 1/600 of the act, far finer than a step anyone could see.
-const arcCache = new Map();
-export function arcPalette(u) {
-  const q = Math.round(Math.max(0, Math.min(1, u)) * 600);
-  let pal = arcCache.get(q);
-  if (pal) return pal;
-  const v = q / 600;
-  let i = 0;
-  while (i < ARC_KEYS.length - 2 && v > ARC_KEYS[i + 1].at) i++;
-  const a = ARC_KEYS[i];
-  const b = ARC_KEYS[i + 1];
-  const k = (v - a.at) / (b.at - a.at);
-  pal = blend(a.pal, b.pal, k);
-  pal.id = k < 0.5 ? a.pal.id : b.pal.id;
-  if (arcCache.size > 700) arcCache.clear();
-  arcCache.set(q, pal);
-  return pal;
-}
-// The sun sinks and swells as the light warms; by sunset it is going behind the mesas.
-export function arcSun(u) {
-  const SET = 0.85;
-  if (u > SET) {
-    const k = (u - SET) / (1 - SET);
-    return { x: 380, y: 130 + 110 * k * k, r: 27 };
-  }
-  const v = u / SET;
-  const e = v * v * (3 - 2 * v);
-  return { x: 380, y: 34 + 96 * e ** 1.3, r: 21 + 6 * e };
-}
-// The evening star, fading in as the sun goes down: a small four-point starburst.
-function eveningStar(ctx, u) {
-  const a = Math.max(0, Math.min(1, (u - 0.88) / 0.1));
-  if (a <= 0) return;
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.fillStyle = '#fff6e0';
-  ctx.beginPath();
-  ctx.arc(96, 44, 1.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#fff6e0';
-  ctx.lineWidth = 0.6;
-  ctx.beginPath();
-  ctx.moveTo(96 - 5, 44); ctx.lineTo(96 + 5, 44);
-  ctx.moveTo(96, 44 - 5); ctx.lineTo(96, 44 + 5);
-  ctx.stroke();
-  ctx.restore();
-}
-export const actU = (stage, p) => (stage - 1 + p) / 3;
+// The keyframes, the OKLab blend, the sun's path, the evening star and the lane's tint
+// shipped on 28 Sep 2026 and live in the engine (speedMcm.js, "the light across the
+// act"); these cards draw the shipped arc.
+export { ARC_KEYS, arcPalette, arcSun, actU };
 
 // ------------------------------------------------------------------ what each stage passes
 // The shipped placement (the object sheet's numbers) for any camera, so a still at 50%
@@ -313,17 +139,6 @@ function drawArcFrame(ctx, t, stage, camX, u) {
   }
 }
 
-// The lane's light: nothing through the day, a warm cast from golden hour to sunset,
-// then cooling and darkening into dusk (a veil toward twilight violet, never black, so
-// the hero and the road still read).
-function laneTint(u) {
-  const WARM = '#f08a50';
-  const DUSK_VEIL = '#2c2552';
-  if (u < 0.6) return null;
-  if (u < 0.85) return { color: WARM, a: 0.1 * ((u - 0.6) / 0.25) };
-  const k = (u - 0.85) / 0.15;
-  return { color: mixHex(WARM, DUSK_VEIL, Math.min(1, k * 1.4)), a: 0.1 + 0.3 * k };
-}
 const laneLayers = new WeakMap();
 function laneLayer(ctx) {
   let c = laneLayers.get(ctx);

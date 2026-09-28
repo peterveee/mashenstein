@@ -18,6 +18,8 @@ import { MRDR3_PARAMS_SOURCE } from './params.js';
 import { MRDR3_PRIMITIVES_SOURCE } from './primitives.js';
 import { MRDR3_OSC_SOURCE } from './osc.js';
 import { MRDR3_ENV_SOURCE } from './env.js';
+import { mrdr3SyncSet } from './tables.js';
+import { mrdr3PatchSyncTables } from './compile.js';
 
 const CORE_SOURCE = `
 // ---- the envelope: the SHARED builder, written into a timeline --------------------
@@ -199,6 +201,22 @@ function mrdr3WriteGate(param, startFrame, gateEnd, level, rate) {
   return gateEnd + fade;
 }
 
+/**
+ * Where a 'through' layer's gate closes: when the GLOBAL VCA has finished its release, not
+ * when the note ends — the VCA is what shapes this layer, so its release is this layer's
+ * release too. The native path's rule, 'max(lt + 0.002, stage.off || end)'. With no global
+ * VCA it closes at the layer's own end: a VCO straight to the output, a raw gate.
+ *
+ * It closed at the note's end here, which cut every through layer 4ms after note-off while
+ * the game let it ring out under the VCA — so the desk played a short, articulated note
+ * and the game a pad (speed's SYNTH LEAD, 28 Sep: a 5.76s release heard only in the game).
+ */
+function mrdr3GateEnd(startFrame, layerEnd, vcaOff, rate) {
+  var end = vcaOff > 0 ? vcaOff : layerEnd;
+  var floor = startFrame + 0.002 * rate;
+  return end > floor ? end : floor;
+}
+
 /*
  * The pitch envelope, written into a timeline. Its own builder, and its own writer
  * because it speaks a third event kind ('target') the gain envelope never uses.
@@ -208,6 +226,26 @@ function mrdr3WriteGate(param, startFrame, gateEnd, level, rate) {
  * copies of this loop would be two chances for the released note to bend differently
  * from the one that ran its length. See Mrdr3Layer.release.
  */
+/*
+ * A FILTER envelope, as a unit shape the caller scales by its octaves. The native path
+ * draws a filter's envelope with the same cents builder as a pitch bend — linear in cents,
+ * the attack held to 45% of a short note, the decay cut at the note's end — NOT with the
+ * gain ADSR, whose exponential and raised-cosine segments put the cutoff somewhere else
+ * for most of every note. Drawn at one cent, so 'filterOct * 1200 * value' is the curve.
+ */
+function mrdr3WriteFilterEnv(param, startFrame, durSeconds, e, rate) {
+  param.reset(0);
+  var built = mrdr3CentsEnvEvents(1, e || {}, 0, durSeconds, 0, 0.01);
+  if (!built) return;
+  for (var i = 0; i < built.events.length; i++) {
+    var ev = built.events[i];
+    var at = startFrame + ev.t * rate;
+    if (ev.k === 'set') param.setValueAtTime(ev.v, at);
+    else if (ev.k === 'lin') param.linearRampToValueAtTime(ev.v, at);
+    else if (ev.k === 'target') param.setTargetAtTime(ev.v, at, ev.tau * rate);
+  }
+}
+
 function mrdr3WriteCentsEnv(param, startFrame, durSeconds, spec, rate) {
   param.reset(0);
   var built = mrdr3CentsEnvEvents(spec.pitchCents, spec.pitchEnv, 0, durSeconds, 0, 0);
@@ -335,7 +373,7 @@ function Mrdr3Layer(rate) {
   this.monitorEnd = 0;
 }
 
-Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDelays, glide) {
+Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDelays, glide, vcaOff) {
   this.spec = spec;
   this.layerKey = spec.layerKey || '';
   this.monitorGain = 1;
@@ -344,7 +382,10 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   this.monitorStart = 0;
   this.monitorEnd = 0;
   this.active = true;
-  this.hz = hz * spec.ratio;
+  // A synced slave runs at the MASTER's pitch and plays a table with its own ratio baked
+  // in — the native construction. See mrdr3SyncPyramid.
+  var pitchRatio = spec.syncKeys ? spec.syncPitchRatio : spec.ratio;
+  this.hz = hz * pitchRatio;
   // The pitch the envelopes were drawn for. A LEGATO note moves 'hz' under a note that is
   // still sounding, and a release drawn again at the new pitch would move the gate floor
   // under an attack that has already been rendered.
@@ -364,7 +405,10 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
     v.phase = 0;
     // Symmetric across the spread, as the native path places them: voice 0 flat, the last
     // sharp, the middle at centre.
-    v.cents = spec.detune + (count > 1 ? spec.spread * (u / (count - 1) - 0.5) : 0);
+    // A synced slave's detune and spread are in its TABLE; the oscillator carries the
+    // master's detune alone, exactly as _playLayer writes it.
+    v.cents = spec.syncKeys ? spec.syncCents
+      : spec.detune + (count > 1 ? spec.spread * (u / (count - 1) - 0.5) : 0);
     v.gain = norm;
     // ENTRY, in frames. Every unison voice including the first, because the native path
     // draws voice 0's stagger from the same table as the rest.
@@ -372,7 +416,7 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
     v.lastCents = NaN;
     // GLIDE from the note before, in this layer's own ratio so a stack arrives together.
     if (glide && glide.frames > 0 && glide.from > 0) {
-      v.glideFrom = glide.from * spec.ratio;
+      v.glideFrom = glide.from * pitchRatio;
       v.glideStart = frame;
       v.glideUntil = frame + glide.frames;
     } else {
@@ -408,7 +452,7 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   // The layer's own note length in SECONDS, which is the builder's domain.
   var layerSeconds = (layerEnd - frame) / rate;
   this.off = spec.through
-    ? mrdr3WriteGate(this.gain, frame, layerEnd, spec.gain, rate)
+    ? mrdr3WriteGate(this.gain, frame, mrdr3GateEnd(frame, layerEnd, vcaOff, rate), spec.gain, rate)
     // The layer's TARGET frequency, not the note's: gateFloor asks how long a quarter of
     // THIS oscillator's cycle is, and a sub an octave down has the least of one to work
     // with. The native path passes the same thing for the same reason.
@@ -444,7 +488,7 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   if (this.stages) {
     this.track = spec.filterTrack > 0
       ? Math.pow(this.hz / 110, spec.filterTrack < 1 ? spec.filterTrack : 1) : 1;
-    mrdr3WriteEnvelope(this.filterEnv, frame, layerSeconds, 1, spec.filterEnvShape, this.hz, rate);
+    mrdr3WriteFilterEnv(this.filterEnv, frame, layerSeconds, spec.filterEnvShape, rate);
     for (var k = 0; k < this.stages; k++) {
       this.filters[k].kind = spec.filterKind;
       this.filters[k].reset();
@@ -472,29 +516,29 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
  * A layer whose own 'len' ran out first is left alone: its release is already scheduled,
  * and a shorter note may cut a layer short but never lengthen it.
  */
-Mrdr3Layer.prototype.release = function (frame, rate) {
+Mrdr3Layer.prototype.release = function (frame, rate, vcaOff) {
   if (!this.active || !this.spec) return;
   var at = frame > this.startFrame ? frame : this.startFrame;
   if (at >= this.endFrame) return;
-  this.redraw(at, rate);
+  this.redraw(at, rate, vcaOff);
 };
 
 /** Draw every envelope again for a note that ends at 'at'. See release() and retarget(). */
-Mrdr3Layer.prototype.redraw = function (at, rate) {
+Mrdr3Layer.prototype.redraw = function (at, rate, vcaOff) {
   this.endFrame = at;
   var spec = this.spec;
   var hz = this.envHz;
   var seconds = (at - this.startFrame) / rate;
   this.off = spec.through
-    ? mrdr3WriteGate(this.gain, this.startFrame, at, spec.gain, rate)
+    ? mrdr3WriteGate(this.gain, this.startFrame, mrdr3GateEnd(this.startFrame, at, vcaOff, rate),
+      spec.gain, rate)
     : mrdr3WriteEnvelope(this.gain, this.startFrame, seconds, spec.gain, spec.env, hz, rate);
   if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, this.startFrame, seconds, spec, rate);
   if (this.fmOn) {
     mrdr3WriteEnvelope(this.fmParam, this.startFrame, seconds, 1, spec.fmEnv, hz, rate);
   }
   if (this.stages) {
-    mrdr3WriteEnvelope(this.filterEnv, this.startFrame, seconds, 1, spec.filterEnvShape,
-      hz, rate);
+    mrdr3WriteFilterEnv(this.filterEnv, this.startFrame, seconds, spec.filterEnvShape, rate);
   }
 };
 
@@ -505,9 +549,9 @@ Mrdr3Layer.prototype.redraw = function (at, rate) {
  * the note's own start, so the sustain simply carries on. A layer whose own 'len' has
  * already run out is not brought back.
  */
-Mrdr3Layer.prototype.retarget = function (hz, frame, glideFrames, noteEnd, rate) {
+Mrdr3Layer.prototype.retarget = function (hz, frame, glideFrames, noteEnd, rate, vcaOff) {
   if (!this.active || !this.spec) return;
-  var target = hz * this.spec.ratio;
+  var target = hz * (this.spec.syncKeys ? this.spec.syncPitchRatio : this.spec.ratio);
   for (var u = 0; u < this.count; u++) {
     var uv = this.unison[u];
     var now = this.hz;
@@ -528,7 +572,7 @@ Mrdr3Layer.prototype.retarget = function (hz, frame, glideFrames, noteEnd, rate)
   if (noteEnd === undefined || this.endFrame <= frame) return;
   var span = (noteEnd - this.startFrame) * (this.spec.len > 0 ? this.spec.len : 1);
   var end = this.startFrame + (span > 1 ? span : 1);
-  this.redraw(end > frame ? end : frame, rate);
+  this.redraw(end > frame ? end : frame, rate, vcaOff);
 };
 
 // ---- one sounding chord tone -----------------------------------------------------------
@@ -562,6 +606,9 @@ function Mrdr3Tone(rate) {
   this.patch = null;
   this.startFrame = 0;
   this.endFrame = 0;
+  // When the global VCA finishes its release, or 0 with no VCA — the end of every
+  // 'through' layer's gate. See mrdr3GateEnd.
+  this.vcaOff = 0;
 }
 
 Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, glide, soloLayers) {
@@ -572,18 +619,32 @@ Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, g
   this.startFrame = frame;
   this.endFrame = endFrame;
   this.used = patch.layers.length < 3 ? patch.layers.length : 3;
+  // The VCA is drawn BEFORE the layers, because a 'through' layer's gate has to stay open
+  // until it has finished — see mrdr3GateEnd.
+  //
+  // Both absent is the DEFAULT: a preset with no global block sums its layers straight
+  // through, which is what _playLayer does and what fifteen presets are. A transparent VCA
+  // would be a different sound — an envelope at unity still gates, and its release would
+  // cut a layer whose own release is longer.
+  this.hasVca = !!patch.vca;
+  var noteSeconds = (endFrame - frame) / rate;
+  this.vcaOff = this.hasVca
+    ? mrdr3WriteEnvelope(this.vca, frame, noteSeconds, 1, patch.vca, hz, rate) : 0;
   for (var i = 0; i < this.used; i++) {
     var lay = this.layers[i];
     var spec2 = patch.layers[i];
     lay.noise = spec2.noiseColour && noise ? (noise[spec2.noiseColour] || noise.white) : null;
-    lay.start(spec2, hz, frame, endFrame, rate, patch.entryDelays, glide);
+    lay.start(spec2, hz, frame, endFrame, rate, patch.entryDelays, glide, this.vcaOff);
     lay.monitorGain = !soloLayers || soloLayers.has(spec2.layerKey) ? 1 : 0;
     lay.monitorFrom = lay.monitorGain;
     lay.monitorTo = lay.monitorGain;
     // HARD SYNC. Osc 1 is always the master and the pill names which layers follow it; a
     // slave's own ratio decides how many of its cycles fit before each reset, which is
     // where the bright tearing spectrum comes from. Noise has no phase to reset.
-    lay.syncOn = !!(patch.syncSlaves && patch.syncSlaves[i]) && !spec2.noiseColour && i > 0;
+    // The per-sample reset is only for a slave with no table — one whose pitch envelope
+    // bends the ratio (see syncFor in compile.js). A tabled slave is an ordinary oscillator.
+    lay.syncOn = !spec2.syncKeys
+      && !!(patch.syncSlaves && patch.syncSlaves[i]) && !spec2.noiseColour && i > 0;
     if (lay.syncOn) {
       lay.syncRatio = spec2.ratio / (patch.masterRatio > 0.01 ? patch.masterRatio : 0.01);
       lay.syncInv = 1 / lay.syncRatio;
@@ -596,13 +657,6 @@ Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, g
     var l2 = this.layers[k2];
     if (l2.stereo && !l2.noise) this.stereo = true;
   }
-  // Both absent is the DEFAULT: a preset with no global block sums its layers straight
-  // through, which is what _playLayer does and what fifteen presets are. A transparent VCA
-  // would be a different sound — an envelope at unity still gates, and its release would
-  // cut a layer whose own release is longer.
-  this.hasVca = !!patch.vca;
-  var noteSeconds = (endFrame - frame) / rate;
-  if (this.hasVca) mrdr3WriteEnvelope(this.vca, frame, noteSeconds, 1, patch.vca, hz, rate);
   this.stages = patch.filterStages;
   if (this.stages) {
     this.freq = patch.filterFreq;
@@ -610,7 +664,7 @@ Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, g
     this.oct = patch.filterOct;
     this.track = patch.filterTrack > 0
       ? Math.pow(hz / 110, patch.filterTrack < 1 ? patch.filterTrack : 1) : 1;
-    mrdr3WriteEnvelope(this.filterEnv, frame, noteSeconds, 1, patch.filterEnvShape, hz, rate);
+    mrdr3WriteFilterEnv(this.filterEnv, frame, noteSeconds, patch.filterEnvShape, rate);
     for (var k = 0; k < this.stages; k++) {
       this.filters[k].kind = patch.filterKind;
       this.filters[k].reset();
@@ -624,7 +678,7 @@ Mrdr3Tone.prototype.release = function (frame, rate) {
   var at = frame > this.startFrame ? frame : this.startFrame;
   if (at >= this.endFrame) return;
   this.redraw(at, rate);
-  for (var i = 0; i < this.used; i++) this.layers[i].release(at, rate);
+  for (var i = 0; i < this.used; i++) this.layers[i].release(at, rate, this.vcaOff);
 };
 
 /** The global VCA and filter envelopes drawn again for a note that ends at 'at'. */
@@ -632,11 +686,11 @@ Mrdr3Tone.prototype.redraw = function (at, rate) {
   this.endFrame = at;
   var seconds = (at - this.startFrame) / rate;
   if (this.hasVca) {
-    mrdr3WriteEnvelope(this.vca, this.startFrame, seconds, 1, this.patch.vca, this.hz, rate);
+    this.vcaOff = mrdr3WriteEnvelope(this.vca, this.startFrame, seconds, 1, this.patch.vca,
+      this.hz, rate);
   }
   if (this.stages) {
-    mrdr3WriteEnvelope(this.filterEnv, this.startFrame, seconds, 1,
-      this.patch.filterEnvShape, this.hz, rate);
+    mrdr3WriteFilterEnv(this.filterEnv, this.startFrame, seconds, this.patch.filterEnvShape, rate);
   }
 };
 
@@ -647,8 +701,11 @@ Mrdr3Tone.prototype.redraw = function (at, rate) {
  */
 Mrdr3Tone.prototype.retarget = function (hz, frame, glideFrames, noteEnd, rate) {
   if (!this.active || !this.patch) return;
-  for (var i = 0; i < this.used; i++) this.layers[i].retarget(hz, frame, glideFrames, noteEnd, rate);
+  // The VCA first, so the 'through' gates below close where its new release ends.
   if (noteEnd !== undefined && this.endFrame > frame) this.redraw(noteEnd > frame ? noteEnd : frame, rate);
+  for (var i = 0; i < this.used; i++) {
+    this.layers[i].retarget(hz, frame, glideFrames, noteEnd, rate, this.vcaOff);
+  }
 };
 
 // ---- the note group's shared modulators (§5.1) -------------------------------------
@@ -1073,10 +1130,29 @@ function Mrdr3Core(opts) {
 }
 
 Mrdr3Core.prototype.installTables = function (tables) {
+  // The sync pyramids arrive separately and per patch (installSyncTables), so a table set
+  // installed after them must not throw them away.
+  var syncs = (this.tables && this.tables.syncs) || {};
   this.tables = tables;
+  if (tables.syncs) for (var k in tables.syncs) syncs[k] = tables.syncs[k];
+  if (this.pendingSyncs) {
+    for (var pk in this.pendingSyncs) syncs[pk] = this.pendingSyncs[pk];
+    this.pendingSyncs = null;
+  }
+  this.tables.syncs = syncs;
   this.size = tables.size;
   this.levels = tables.levels;
   this.stride = tables.size + 1;
+};
+
+/**
+ * Hard-sync pyramids, by key — built on the main thread from the native series and sent
+ * ahead of the patch that reads them (see mrdr3PatchSyncTables). Merged, never replaced:
+ * two lanes' patches may share a key and a note still sounding may be reading one.
+ */
+Mrdr3Core.prototype.installSyncTables = function (syncs) {
+  if (!this.tables) this.pendingSyncs = syncs;
+  else for (var k in syncs) this.tables.syncs[k] = syncs[k];
 };
 
 Mrdr3Core.prototype.installPatch = function (patch) {
@@ -1106,6 +1182,8 @@ Mrdr3Core.prototype.installPatch = function (patch) {
           duty: next.duty, width: next.width,
           pwmDepth: next.pwmDepth, pwmRate: next.pwmRate,
           pwmSwing: next.pwmSwing, pwmDelay: next.pwmDelay, pwmTri: next.pwmTri,
+          // A synced slave's tables name its waveform; its PITCH stays the note's own.
+          syncKeys: layer.spec.syncKeys && next.syncKeys ? next.syncKeys : layer.spec.syncKeys,
         };
         layer.noise = next.noiseColour && this.noise
           ? (this.noise[next.noiseColour] || this.noise.white) : null;
@@ -1375,7 +1453,7 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
     return;
   }
   var rate = this.rate, size = this.size, stride = this.stride, levels = this.levels;
-  var kinds = this.tables.kinds, pulses = this.tables.pulses;
+  var kinds = this.tables.kinds, pulses = this.tables.pulses, syncs = this.tables.syncs || {};
 
   // ---- the coefficient update period -------------------------------------------
   //
@@ -1477,7 +1555,10 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
             if (lay.fmPhase >= 1) lay.fmPhase -= 1;
             fmHz = Math.sin(MRDR3_TAU * lay.fmPhase) * lay.fmDepth * lay.fmParam.valueAt(f);
           }
-          var moving = spec.pwmDepth > 0;
+          // A synced slave has no pulse-width modulation — the native path turns it off
+          // for a hard-synced layer — and reads its own table per unison voice below.
+          var synced = !!spec.syncKeys;
+          var moving = spec.pwmDepth > 0 && !synced;
           // A MOVING width reads the sawtooth pyramid twice; a static one has its own
           // table at the authored duty, and a classic waveform its own.
           var data = moving ? kinds.sawtooth
@@ -1577,9 +1658,13 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
               }
               v = mrdr3Read(data, stride, size, level, uv.phase) * uv.gain;
             } else {
+              // A synced slave's table is per unison voice, because its spread is in the
+              // table rather than in the pitch. Missing only if a patch outran its tables,
+              // which the controller orders against; the plain wave is the safe stand-in.
+              var vdata = synced ? (syncs[spec.syncKeys[u]] || data) : data;
               v = (moving
-                ? mrdr3Pulse(data, stride, size, level, uv.phase, duty)
-                : mrdr3Read(data, stride, size, level, uv.phase)) * uv.gain;
+                ? mrdr3Pulse(vdata, stride, size, level, uv.phase, duty)
+                : mrdr3Read(vdata, stride, size, level, uv.phase)) * uv.gain;
               uv.phase += inc;
               // Both directions: deep FM can carry an instantaneous frequency negative,
               // and a phase that walks off the bottom indexes the table just as far out
@@ -1753,6 +1838,12 @@ export function renderMrdr3({
   const core = new Mrdr3Core({ rate: sampleRate, maxGroups, maxTones });
   if (tables) core.installTables(tables);
   if (noise) core.installNoise(noise);
+  // A synced slave's tables, which the live controller sends ahead of its patch. Built
+  // here for whatever patch this render was handed, so the reference and the worklet
+  // cannot be rendering two different instruments.
+  if (patch && tables) {
+    core.installSyncTables(mrdr3SyncSet(mrdr3PatchSyncTables(patch)));
+  }
   if (patch) core.installPatch(patch);
   core.scheduleAll(events);
   const size = Math.max(1, blockSize | 0);

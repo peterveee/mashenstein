@@ -1817,7 +1817,7 @@ const SHOOTER_MIN_AHEAD = 60;
 // declines to participate, the bird has no opinion. The finish dog reads the
 // dog pool like the rest of them — he is a dog.
 function animalShotLines(type) {
-  if (type === 'catFury' || type === 'cryptPanther') return CAT_SHOT_SHORT;
+  if (type === 'catFury' || type === 'cryptPanther' || type === 'bobcat') return CAT_SHOT_SHORT;
   if (type === 'buzzbird') return BIRD_SHOT_SHORT;
   if (type === 'rattlesnake') return SNAKE_SHOT_SHORT;
   return DOG_SHOT_SHORT;
@@ -4202,7 +4202,7 @@ export class RunState {
     this.pitPlan = [];
     this.crossings = [];
     const rhythmChart = this.beatLock ? this.cabinet.beatCharts?.[this.stage?.index] : null;
-    const speedTrap = !this.overtime && this.cabinet.style === 'faux3d' && desertSpeedTrapStage(this.stage?.index);
+    const speedTrap = !this.overtime && this.cabinet.id === 'speed' && desertSpeedTrapStage(this.stage?.index);
     if (this.beatLock && rhythmChart) {
       this.spawner = new BeatSpawner({
         bank: this.cabinet.music,
@@ -15474,9 +15474,10 @@ export class RunState {
     } finally {
       if (previousBackgroundCoverage === undefined) delete ctx.__mashBackgroundCoverage;
       else ctx.__mashBackgroundCoverage = previousBackgroundCoverage;
-      // The speed camera fired in this frame's backdrop: its shutter.
-    if (takeDesertTrapShutter() && !this.demo) Audio.sfx('cameraClick');
-    if (previousBackgroundBand === undefined) delete ctx.__mashBackgroundBand;
+      // The speed camera fired in this frame's backdrop: its shutter. Bot play runs
+      // as a demo, and hears it like every other cue.
+      if (takeDesertTrapShutter()) Audio.sfx('cameraClick');
+      if (previousBackgroundBand === undefined) delete ctx.__mashBackgroundBand;
       else ctx.__mashBackgroundBand = previousBackgroundBand;
     }
     // The flypast is PLACED here and drawn later. This is where the two things
@@ -16139,11 +16140,14 @@ export class RunState {
           // and copied onto the overlay: only his own pixels are ever touched. Star
           // power keeps its full glow.
           const night = this.style.nightVeil ? this.style.nightVeil() : 0;
-          if (night > 0.01 && !this.powerups.active.unpeel) {
+          // And a pack's light (Speed Zone's afternoon: the warm cast of golden hour, the
+          // violet of dusk), laid on him the same way — the colour, alpha and all.
+          const light = night > 0.01 ? null : this.style.heroLight ? this.style.heroLight() : null;
+          if ((night > 0.01 || light) && !this.powerups.active.unpeel) {
             const cx = (heroScreenX + 6) * z + portraitXOffset;
             const hx = this.mirror ? W - cx : cx;
             const hy = screenYFor(this.playerGroundY() - this.player.y, z, pan, floorY);
-            const veil = `rgba(6,6,20,${(0.55 * night).toFixed(3)})`;
+            const veil = light || `rgba(6,6,20,${(0.55 * night).toFixed(3)})`;
             lit = (c) => paintHeroNightTinted(c, fn, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, veil);
           }
           const paint = this.insideTrain ? (c) => {

@@ -41,6 +41,7 @@ const suites = [
   'tests/beat-ground.js',
   'tests/lane-calls.js',
   'tests/pixel-background.js',
+  'tests/speed-mcm.js',
   'tests/frost-aurora.js',
   'tests/frost-weather.js',
   'tests/crypt-weather.js',

@@ -16,6 +16,8 @@
  * construction rather than by review. tests/mrdr3-dsp-parity.js holds it to that.
  */
 import { MRDR3_DSP_SOURCE } from './dsp.js';
+import { mrdr3SyncSet } from './tables.js';
+import { mrdr3PatchSyncTables } from './compile.js';
 
 export const MRDR3_PROCESSOR_NAME = 'mrdr3';
 
@@ -56,6 +58,7 @@ class Mrdr3Processor extends AudioWorkletProcessor {
         return;
       }
       if (msg.type === 'installTables') { this.core.installTables(msg.tables); return; }
+      if (msg.type === 'installSyncTables') { this.core.installSyncTables(msg.syncs); return; }
       if (msg.type === 'installNoise') { this.core.installNoise(msg.noise); return; }
       if (msg.type === 'installPatch') { this.core.installPatch(msg.patch); return; }
       if (msg.type === 'soloLayers') {
@@ -142,6 +145,11 @@ export function createMrdr3Node(ctx, {
   channels = 2, events = null, tables = null, patch = null, noise = null,
   maxGroups = 12, maxTones = 4, frameOffset = 0,
 } = {}) {
+  // A synced slave's tables travel WITH the patch that reads them, whoever built the node.
+  if (tables && patch) {
+    const syncs = mrdr3SyncSet(mrdr3PatchSyncTables(patch));
+    if (Object.keys(syncs).length) tables = { ...tables, syncs: { ...(tables.syncs || {}), ...syncs } };
+  }
   const node = new AudioWorkletNode(ctx, MRDR3_PROCESSOR_NAME, {
     numberOfInputs: 0,
     numberOfOutputs: 1,
