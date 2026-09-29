@@ -509,7 +509,8 @@ export function neonTowerFlare(ctx, s, tw, seed) {
   const heat = heatOf(s, light);
   const body = (c) => {
     c.rect(tw.x + 0.5, tw.top + 0.5, tw.bw, 400);
-    if (tw.mast) { c.moveTo(tw.tipX + 0.5, tw.top + 0.5); c.lineTo(tw.tipX + 0.5, tw.top - 12.5); }
+    // The pole, roof to lamp, whatever its height (tipX is already a pixel centre).
+    if (tw.mast) { c.moveTo(tw.tipX, tw.top + 0.5); c.lineTo(tw.tipX, tw.tipY + 1.5); }
   };
   beginBolt(ctx);
   const tube = (width, color, alpha) => {

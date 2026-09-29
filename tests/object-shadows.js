@@ -26,7 +26,7 @@ function recorder() {
         calls.push({ key, args });
         return gradient;
       };
-      if (key === 'fillRect') return (...args) => calls.push({ key, args });
+      if (key === 'fillRect') return (...args) => calls.push({ key, args, fill: target.fillStyle });
       return key in target ? target[key] : (...args) => calls.push({ key, args });
     },
     set: (target, key, value) => { target[key] = value; return true; },
@@ -88,7 +88,9 @@ drawWorldEntity(plateCtx, makeObstacle('popSpikes', 200), 0, 0, {}, {}, {
   preculled: true,
   beddedSurface: { centerX: 50, centerY: GROUND_Y - 9, angle: 0.2 },
 });
-assert(!plateCtx.calls.some((c) => c.key === 'fillRect'),
+// The red tick specifically: the spike plate's inlaid warning strip is itself
+// painted with fillRect (its yellow ground), and that is not a ground tick.
+assert(!plateCtx.calls.some((c) => c.key === 'fillRect' && /224,\s*72,\s*72/.test(String(c.fill))),
   'bedded floor plates paint no red ground tick');
 assert(!plateCtx.calls.some((c) => c.key === 'createRadialGradient'),
   'bedded floor plates take no contact ellipse either — the burial is the contact');

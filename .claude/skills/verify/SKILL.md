@@ -128,7 +128,7 @@ builds (`npm run dev`). A save slot is auto-seeded if none exists.
 
 | Param | Values | Effect |
 |---|---|---|
-| `&hero=X` | `lorenzo`, `gnash`, `fernwick`, `b33p`, `mochi`, `chompo`, `ramon`, `grumpos` | Start as this hero |
+| `&hero=X` | a hero id from `src/data/heroes.js` (e.g. `lorenzo`, `rusty`, `b33p`) | Start as this hero |
 | `&invuln` | (flag) | God mode — never die |
 | `&autoexit` | (flag) | Skip results screen, return to title on end |
 | `&time=N` | seconds (e.g. `10`) | Auto-finish the run after N seconds |
@@ -170,8 +170,8 @@ If you must navigate from the hub manually:
   `measureText`. In Node the DOM stub returns bogus metrics, so `textWidth()`
   is meaningless headlessly — check text fit by screenshotting, or compare
   character counts against a line already known to fit.
-- `#game` gets a WebGL context whenever `glfx.init()` succeeds, and the
-  `fancyFx` setting does not change that. So `drawImage(canvas, ...)` reads
+- `#game` gets a WebGL context whenever `glfx.init()` succeeds, so
+  `drawImage(canvas, ...)` reads
   back **black** — you cannot magnify by copying the live canvas. Capture with
   `locator('#game').screenshot()` (a compositor grab, which works), then
   upscale that PNG in a second page with `imageSmoothingEnabled = false`.

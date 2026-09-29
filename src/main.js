@@ -209,7 +209,8 @@ function routeDevUrl(goto, p) {
       // ?goto=attract alone is the idle demo. With &stage=3-3 (or &boss=neon) it
       // is the dev menu's BOT-PLAY for that scenario, seed- and hero-pinned, in
       // quiet dev mode so a recording of it shows only the game — the shape the
-      // teaser footage is taped from (work/local/teaser/record.mjs).
+      // teaser footage is taped from (work/local/teaser/record.mjs). A stage
+      // with &background=1 is RECORD BACKGROUND: scenery and hero only.
       const { stageId } = (p.has('stage') || p.has('level')) ? devStageRoute(p) : {};
       const bossId = p.get('boss');
       const stage = stageId ? STAGE_BY_ID[stageId] : null;
@@ -219,6 +220,7 @@ function routeDevUrl(goto, p) {
         realSettings: save.settings,
         ...(scenario ? {
           scenario, seed: seedFrom(p), hero: heroFrom(p), devMode: true, quiet: true,
+          background: !!stage && p.get('background') === '1',
         } : {}),
         onExit: () => Flow.toTitle(),
       }));

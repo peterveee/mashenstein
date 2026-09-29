@@ -73,11 +73,11 @@ ok(shell.includes('/api/browsers/kill/') && shell.includes('data-browser'),
 // AUDIO REPORTS: each RUN spawns a real tool, and /reports reads the file that tool
 // writes. Both halves are checked, because a renamed report file fails as an empty
 // page that says "not run yet" forever, which reads as nothing being wrong.
-const audio = ACTIONS.filter((a) => a.group === 'audio');
-ok(audio.length > 0, `the desk runs ${audio.length} audio reports`);
+const audio = ACTIONS.filter((a) => a.group === 'audio' || a.group === 'perf');
+ok(audio.length > 0, `the desk runs ${audio.length} reports`);
 const deskSrc = readFileSync(join(root, 'tools/desk.js'), 'utf8');
 for (const a of audio) {
-  const steps = typeof a.steps === 'function' ? a.steps({ ids: ['neon'] }) : a.steps;
+  const steps = typeof a.steps === 'function' ? a.steps({ ids: [a.group === 'perf' ? 'speed' : 'neon'] }) : a.steps;
   for (const [, args] of steps) {
     const script = args.find((x) => /^tools\/.*\.js$/.test(x));
     ok(script && existsSync(join(root, script)), `${a.id}: runs ${script}, which exists`);
@@ -88,8 +88,8 @@ for (const a of audio) {
   }
 }
 const reports = readFileSync(join(root, 'tools/desk-reports.html'), 'utf8');
-ok(reports.includes('/api/reports') && reports.includes('id="levels"') && reports.includes('id="bass"'),
-  'the reports page reads /api/reports and has the #levels and #bass anchors the OPEN buttons use');
+ok(reports.includes('/api/reports') && reports.includes('id="levels"') && reports.includes('id="bass"') && reports.includes('id="frames"'),
+  'the reports page reads /api/reports and has the #levels, #bass and #frames anchors the OPEN buttons use');
 
 console.log(failures ? 'DESK: FAILED' : 'DESK: PASSED');
 process.exit(failures ? 1 : 0);

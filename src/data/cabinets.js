@@ -589,7 +589,7 @@ export const CABINETS = [
   },
   {
     id: 'frost', name: 'FROST FORTRESS', act: 2, style: 'watercolor',
-    unlockPlugs: 12, speedBonus: 0.2,
+    unlockPlugs: 12, speedBonus: 0.075,
     mechanic: 'ice', // slidey landings + buried bear traps + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',

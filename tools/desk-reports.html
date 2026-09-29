@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MASHENSTEIN — AUDIO REPORTS</title>
+<title>MASHENSTEIN — REPORTS</title>
 <style>
   /* The desk's own palette (tools/desk-shell.html), plus one cool pole for the
      diverging "less than the median" cells. Warm = more of a band, cool = less. */
@@ -77,6 +77,32 @@
   .share .pct { min-width: 32px; text-align: right; }
   td .lvl { color: var(--muted); font-size: 11px; margin-right: 8px; }
 
+  /* FRAMES: time a frame against the 16.7 ms budget, 0-40 ms across the track. */
+  .ms { position: relative; width: 200px; height: 16px; margin-left: auto; }
+  .ms .budget { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--dim); opacity: .6; }
+  .ms .p90 { position: absolute; top: 5px; height: 6px; border-radius: 3px; background: rgba(144, 173, 181, .16); }
+  .ms .bar { position: absolute; top: 4px; height: 8px; border-radius: 4px; }
+  .v-ok { background: var(--mint); } .v-marginal { background: var(--gold); } .v-over { background: var(--hazard); }
+  .tag.ok { color: var(--mint); border-color: rgba(87, 223, 196, .4); }
+  .tag.marginal { color: var(--gold); border-color: rgba(246, 211, 90, .4); }
+  .tag.over { color: var(--hazard); border-color: rgba(240, 106, 99, .45); }
+  .better { color: var(--mint); } .worse { color: var(--hazard); }
+
+  /* ADVICE: one card per song that is out of step, biggest departure first. */
+  .advice { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 14px; }
+  .advice > * { min-width: 0; }
+  .advice-card { padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: 12px; background: rgba(13, 17, 21, .35); }
+  .advice-card h3 { margin: 0 0 8px; font: 700 15px/1.2 var(--display); letter-spacing: .06em; }
+  .advice-card .char { margin-left: 10px; color: var(--dim); font: 400 12px/1 var(--mono); letter-spacing: 0; }
+  .point { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-top: 1px solid var(--line-soft); font-size: 12px; }
+  .chip { align-self: start; padding: 2px 7px; border-radius: 6px; font-weight: 700; font-size: 11px; text-align: center; color: var(--ink); }
+  .chip.up { background: rgba(255, 135, 108, .30); }
+  .chip.dn { background: rgba(111, 168, 255, .30); }
+  .hear { color: var(--ink); }
+  .move { color: var(--dim); margin-top: 3px; }
+  .move b { color: var(--dim); font-weight: 600; }
+  .strip { color: var(--mint); margin-top: 3px; }
+  .hint { margin-top: 8px; color: var(--gold); font-size: 11px; }
   #tip { position: fixed; z-index: 20; pointer-events: none; max-width: 300px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(21, 27, 33, .97); color: var(--ink); font-size: 11px; line-height: 1.45; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); display: none; white-space: pre-line; }
   [data-tip] { cursor: default; }
 
@@ -92,8 +118,8 @@
 <header>
   <div class="header-inner">
     <div>
-      <div class="eyebrow">the desk / audio</div>
-      <h1>AUDIO REPORTS</h1>
+      <div class="eyebrow">the desk / reports</div>
+      <h1>REPORTS</h1>
     </div>
     <div class="chips">
       <span class="chip running" id="running" hidden></span>
@@ -102,6 +128,7 @@
   </div>
 </header>
 <main>
+  <section class="report" id="frames"></section>
   <section class="report" id="levels"></section>
   <section class="report" id="bass"></section>
 </main>
@@ -251,7 +278,7 @@ function drawBass(r) {
     const L = r.lanes[id];
     const stale = current[id] && current[id] !== L.hash;
     return el('div', { class: 'lane-card' },
-      el('h3', {}, id, stale ? el('span', { class: 'tag gold', 'data-tip': 'the song, its mix or its arrangement has changed since — run BASS REPORT: LANES again' }, 'mix changed since') : null),
+      el('h3', {}, id, stale ? el('span', { class: 'tag gold', 'data-tip': 'the song, its mix or its arrangement has changed since — run BASS REPORT with + LANES again' }, 'mix changed since') : null),
       el('span', { class: 'when' }, `${L.count} lanes soloed ${ago(L.at)} · lanes under 2% of every low band left off`),
       el('div', { class: 'scroll' }, el('table', {},
         el('thead', {}, el('tr', {}, el('th', {}, 'lane'), ...low.map((b) => el('th', {}, `${b.name} share`, el('span', { class: 'range' }, `${hz(b.lo)}–${hz(b.hi)} Hz`))))),
@@ -266,9 +293,92 @@ function drawBass(r) {
   });
   const lanes = [el('div', { class: 'report-head', style: 'margin-top:26px' }, el('h2', { style: 'font-size:16px' }, 'Who carries the low end')),
     el('p', { class: 'lede' }, 'Each lane soloed (the others muted in a copy of the song’s mix): its share of each low band, and its level against the song’s loudness. The strip with the share is the one a Channel EQ goes on. Soloed lanes hit the master compressor less than the full mix, so on a compressed song the shares are approximate.'),
-    laneCards.length ? el('div', { class: 'lanes' }, laneCards) : el('div', { class: 'empty' }, 'No lane breakdowns yet. BASS REPORT: LANES on the desk, with a song id, adds one here.')];
+    laneCards.length ? el('div', { class: 'lanes' }, laneCards) : el('div', { class: 'empty' }, 'No lane breakdowns yet. BASS REPORT on the desk, with + LANES and a song ticked, adds one here.')];
 
-  root.replaceChildren(head, lede, legend, table, ...lanes);
+  // What it means: generated by tools/lib/bass-advice.js, most out of step first.
+  const adv = (r.advice || []).filter((a) => a.points.length);
+  const calm = (r.advice || []).filter((a) => !a.points.length).map((a) => a.id);
+  const adviceBlock = [
+    el('div', { class: 'report-head', style: 'margin-top:26px' }, el('h2', { style: 'font-size:16px' }, 'What it’s telling you')),
+    el('p', { class: 'lede' }, 'Advice, not orders. A song is allowed its own character, so act on a band only when you can hear it: boomy, thin, muffled or harsh next to the others, or a sound effect getting lost. Then run ', el('b', {}, 'SONG LEVELS: APPLY'), ', because EQ changes loudness too.',
+      calm.length ? ` In step with the others: ${calm.join(', ')}.` : ''),
+    adv.length ? el('div', { class: 'advice' }, adv.map((a) => el('div', { class: 'advice-card' },
+      el('h3', {}, a.id, el('span', { class: 'char' }, a.headline)),
+      ...a.points.map((p) => el('div', { class: 'point' },
+        el('span', { class: `chip ${p.dev > 0 ? 'up' : 'dn'}` }, `${p.dev > 0 ? '+' : '−'}${Math.abs(p.dev).toFixed(0)} ${p.band}`),
+        el('div', {},
+          el('div', { class: 'hear' }, p.hear.replace(/^./, (c) => c.toUpperCase()), '.'),
+          el('div', { class: 'move' }, el('b', {}, 'To change it: '), p.move, '.'),
+          p.strip ? el('div', { class: 'strip' }, p.strip, '.') : null))),
+      a.needsLanes ? el('div', { class: 'hint' }, `BASS REPORT with + LANES on ${a.id} will name the strip carrying its low end.`) : null))) : null,
+  ];
+
+  root.replaceChildren(head, lede, legend, table, ...adviceBlock, ...lanes);
+}
+
+// ---------------------------------------------------------------- frames --
+const CAB_NAMES = { plumber: 'Field Service', speed: 'Speed Zone', rhythm: 'Rhythm Bankruptcy', frost: 'Frost Fortress', crypt: 'Crypt Shift', neon: 'Terminal Velocity' };
+function drawFrames(r) {
+  const root = document.getElementById('frames');
+  const head = el('div', { class: 'report-head' }, el('h2', {}, 'Frame time — cabinets 1–6 on a phone'),
+    r ? el('span', { class: 'when' }, `measured ${ago(r.at)} · ${Math.round(r.minutes || 0)} min${r.quick ? ' · quick run' : ''}`) : null);
+  if (!r) {
+    root.replaceChildren(head, el('div', { class: 'empty' }, 'Not run yet. FRAME REPORT on the desk plays every stage of cabinets 1–6 and fills this in.'));
+    return;
+  }
+  const P = r.phone;
+  const portrait = r.rows.filter((x) => x.orient === 'portrait');
+  const over = portrait.filter((x) => x.verdict === 'over').length;
+  const lede = el('p', { class: 'lede' },
+    `Each stage played on an ${P.name}-shaped screen (${P.w}×${P.h} at ${P.dpr}x; render density pinned at ${P.density.portrait} portrait, ${P.density.landscape} landscape, where that phone starts), `,
+    `timed frame by frame for ${r.seconds} s at ${r.points.join('%, ')}% of the stage. Each row is the stage’s `, el('b', {}, 'slowest'), ' point. ',
+    el('b', {}, `Budget ${r.budget} ms`), ` (60 fps); a frame over ${r.hitch} ms is a hitch. `,
+    'These are this Mac’s numbers with the 2D renderer, not the phone’s: compare cabinets, orientations and runs with each other. ',
+    over ? el('b', {}, `${over} portrait stage${over === 1 ? '' : 's'} over budget.`) : 'No portrait stage over budget.');
+  const MAX = 40;
+  const pos = (v) => Math.max(0, Math.min(100, (v / MAX) * 100));
+  const bar = (x) => el('div', { class: 'ms' },
+    el('div', { class: 'p90', style: `left:0;width:${pos(x.p90)}%` }),
+    el('div', { class: `bar v-${x.verdict}`, style: `left:0;width:${Math.max(pos(x.median), 1)}%` }),
+    el('div', { class: 'budget', style: `left:${pos(r.budget)}%` }));
+  const change = (x) => {
+    if (!x.was) return el('span', { class: 'muted' }, '—');
+    const d = x.median - x.was.median;
+    if (Math.abs(d) < 0.8) return el('span', { class: 'muted', 'data-tip': `was ${f1(x.was.median)} ms, ${ago(x.was.at)}` }, 'same');
+    return el('span', { class: d < 0 ? 'better' : 'worse', 'data-tip': `was ${f1(x.was.median)} ms, ${ago(x.was.at)}` }, `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)} ms`);
+  };
+  const tipOf = (x) => x.error ? x.error : `${x.stage} ${x.orient}\n` + x.points.map((p) => (p.error
+    ? `${p.at}%: ${p.error}`
+    : `${p.at}%: median ${f1(p.median)} · p90 ${f1(p.p90)} · p99 ${f1(p.p99)} · worst ${f1(p.worst)} ms · ${(p.hitches * 100).toFixed(0)}% hitches · ${f1(p.fps)} fps`)).join('\n')
+    + (x.px ? `\ncanvas ${x.px[0]}×${x.px[1]} px` : '');
+  const COLS = 9;
+  const body = [];
+  for (const cab of Object.keys(CAB_NAMES)) {
+    const rows = portrait.filter((x) => x.cab === cab);
+    if (!rows.length) continue;
+    body.push(el('tr', { class: 'divider' }, el('td', { colspan: COLS }, CAB_NAMES[cab])));
+    for (const x of rows) {
+      const land = r.rows.find((y) => y.stage === x.stage && y.orient === 'landscape');
+      body.push(el('tr', { 'data-tip': tipOf(x) },
+        el('td', { class: 'song' }, x.stage),
+        el('td', {}, x.error ? el('span', { class: 'tag hot' }, 'error') : bar(x)),
+        el('td', {}, f1(x.median)),
+        el('td', { class: 'muted' }, f1(x.p90)),
+        el('td', { class: 'muted' }, f1(x.worst)),
+        el('td', {}, Number.isFinite(x.hitches) ? `${(x.hitches * 100).toFixed(0)}%` : '—'),
+        el('td', {}, el('span', { class: `tag ${x.verdict}` }, x.verdict)),
+        el('td', land ? { 'data-tip': tipOf(land) } : {}, land && !land.error ? el('span', {}, f1(land.median), el('span', { class: `tag ${land.verdict}` }, land.verdict)) : el('span', { class: 'muted' }, '—')),
+        el('td', {}, change(x))));
+    }
+  }
+  root.replaceChildren(head, lede, el('div', { class: 'scroll' }, el('table', {},
+    el('thead', {}, el('tr', {},
+      el('th', {}, 'stage'),
+      el('th', {}, 'portrait', el('span', { class: 'range' }, `median (p90 shaded) · 0–${MAX} ms · line = budget`)),
+      el('th', {}, 'median'), el('th', {}, 'p90'), el('th', {}, 'worst'), el('th', {}, 'hitches'), el('th', {}, 'verdict'),
+      el('th', {}, 'landscape', el('span', { class: 'range' }, 'median, halfway')),
+      el('th', {}, 'vs last run'))),
+    el('tbody', {}, body))));
 }
 
 // ------------------------------------------------------------- tooltips --
@@ -289,13 +399,14 @@ let stamp = '';
 let firstDraw = true;
 async function refresh() {
   try {
-    const { levels, bass, running } = await (await fetch('/api/reports')).json();
+    const { levels, bass, frames, running } = await (await fetch('/api/reports')).json();
     const chip = document.getElementById('running');
     chip.hidden = !running.length;
     chip.textContent = running.length ? `running: ${running.join(', ')}` : '';
-    const next = JSON.stringify([levels?.at, bass?.at, Object.values(bass?.lanes || {}).map((l) => l.at)]);
+    const next = JSON.stringify([levels?.at, bass?.at, frames?.at, Object.values(bass?.lanes || {}).map((l) => l.at)]);
     if (next !== stamp) {
       stamp = next;
+      drawFrames(frames);
       drawLevels(levels);
       drawBass(bass);
       if (firstDraw && location.hash) document.querySelector(location.hash)?.scrollIntoView();

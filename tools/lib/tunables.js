@@ -44,10 +44,12 @@ export const TUNABLES = [
   { file: 'src/game/player.js', name: 'LANDED_T', short: 'LANDED_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
   { file: 'src/game/player.js', name: 'SLIDE_IN_T', short: 'SLIDE_IN_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
   { file: 'src/game/player.js', name: 'SLIDE_OUT_T', short: 'SLIDE_OUT_T', group: PHYSICS, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
-  // The gait/scroll coupling. Lower means faster legs at the same speed, and
-  // it is the one number that ties the animation to the world rather than to
-  // the clock — which is why it sits in physics and not in gait.
-  { file: 'src/game/player.js', name: 'ANIM_SPEED_DIVISOR', short: 'ANIM_DIV', group: PHYSICS, step: 1, coarse: 10, min: 5, max: 200, fmt: 0 },
+  // The gait/scroll coupling: strides/s at BASE_SPEED, and how much of any
+  // speed-up reaches the legs (1 = all of it, 0 = none). They are the numbers
+  // that tie the animation to the world rather than to the clock — which is
+  // why they sit in physics and not in gait.
+  { file: 'src/game/player.js', name: 'RUN_CADENCE', short: 'CADENCE', group: PHYSICS, step: 0.1, coarse: 0.5, min: 0.5, max: 10, fmt: 1 },
+  { file: 'src/game/player.js', name: 'RUN_CADENCE_EXP', short: 'CAD_EXP', group: PHYSICS, step: 0.05, coarse: 0.25, min: 0, max: 1.5, fmt: 2 },
 
   // ---- physics: the world -----------------------------------------------
   { file: 'src/game/layout.js', name: 'BASE_SPEED', short: 'BASE_SPEED', group: PHYSICS, step: 5, coarse: 20, min: 40, max: 500, fmt: 0 },

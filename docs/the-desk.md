@@ -93,14 +93,13 @@ running, so a bench can refuse to start on a noisy machine.
 http://localhost:8000/reports
 ```
 
-Four RUN cards under AUDIO REPORTS, and a page that shows what they found:
+Three RUN cards under AUDIO REPORTS, and a page that shows what they found:
 
 | Card | Runs | Writes |
 | --- | --- | --- |
 | SONG LEVELS: MEASURE | `tools/song-levels.js` | the report only |
 | SONG LEVELS: APPLY | `tools/song-levels.js --apply` | each off-line song's `master` in `src/data/songs/` |
-| BASS REPORT | `tools/bass-report.js` | the report only |
-| BASS REPORT: LANES | `tools/bass-report.js <ids> --lanes` | the report only |
+| BASS REPORT | `tools/bass-report.js <ticked songs> [--lanes]` | the report only; unticked songs keep their last rows |
 
 Each tool writes its latest result to `work/local/reports/` wherever it was run
 from, terminal included, so `/reports` is always the last run. The page redraws
@@ -112,8 +111,12 @@ when a file changes.
   master that would put it back.
 - **Bass & band balance** shows seven bands per song, each measured against that
   song's own loudness and coloured where it sits 2 dB or more off the median of
-  the finished cabinets.
-- **Who carries the low end** has one card per song broken down with LANES. It
+  the finished cabinets. Below the table, **What it's telling you** turns each
+  coloured band into advice: what you'd hear, which Channel EQ band to reach for, and
+  which strip carries it once + LANES has run. A band 15 dB or more under is reported as
+  a missing part, not an EQ job. The title, Food Court, shop, finale and megamix are
+  compared too, but kept out of the median.
+- **Who carries the low end** has one card per song broken down with + LANES. It
   shows each strip's share of the low bands, which is where a Channel EQ goes,
   and is tagged when the song has changed since.
 
@@ -128,6 +131,31 @@ and reload the song there afterwards: a mixer save from a stale copy puts the ol
 master back. The desk shows those steps above the cards. Every run is under `nice`, because all of
 them render through headless Chromium for minutes at a time, and the mixer's
 playback comes first.
+
+## Performance
+
+Two RUN cards under PERFORMANCE, reported at the top of the same `/reports` page
+(`#frames`):
+
+| Card | Runs | Writes |
+| --- | --- | --- |
+| FRAME REPORT | `tools/frame-report.js <ticked cabinets>` | the report only; unticked cabinets keep their last rows |
+
+It plays every stage of cabinets 1–6 on an iPhone 15 Pro-shaped screen, at three points
+a stage in portrait and at the halfway point in landscape, and times every frame for six
+seconds each. The render density is pinned where that phone plays (2 portrait, 3
+landscape), and the 2D renderer is forced, since headless Chromium has no GPU. Each row
+is a stage's slowest point:
+- **OK**: the typical frame fits the 16.7 ms budget.
+- **MARGINAL**: it fits, but one frame in ten or more takes over 20 ms.
+- **OVER**: the typical frame misses, which reads as steady judder.
+
+The numbers are this Mac's, not the phone's. Read them against each other: cabinet
+against cabinet, portrait against landscape, and this run against the last one (the
+page shows the change). It uses THE GAME on :8001, or starts the dev server for the run
+and stops it after. It takes about twelve minutes; run it with the mixer quiet, since
+anything else busy on the machine shows up as slow frames. `--quick` measures portrait
+only, one point a stage.
 
 ## When a tool will not start
 

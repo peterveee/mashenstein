@@ -51,6 +51,24 @@ what has to change if a cabinet switches style.
   is kept whole, because the Surge cycles through it. The lab's bake-off files now draw with
   the shipped painters; the shipped look is in the lab section *SPEED ZONE — mid-century
   modern, as shipped*.
+- **Frost's sky → wax crayon on white paper, shipped 29 Sep 2026; the rest of Frost stays
+  paper.** These are Peter's picks from the lab sections *FROST FORTRESS — crayon* and
+  *crayon sky in the snow*:
+  - **The full crayon world** was tried and turned down: "i am not in love with it... but
+    i DO like the way the sky looks".
+  - **The crayon sky over the paper world**, on white paper rather than blue-grey.
+  - **The paper aurora back**, not the crayon one: "not so much for the aurora, could that
+    be the other way?"
+  - **The aurora brighter**, because the crayon navy swallowed it. It is 2.4× on frost-3
+    only; by day and in the afternoon 2.4× was a green wash, so frost-1 and frost-2 stay
+    at 1×.
+
+  The painter is the bake-off's (`stylePacks/frostCrayon/`, with the lab files kept as
+  re-export shims). The watercolor pack hands it the whole sky pass through
+  `backgroundContext.frostSkyPainter`, and `null` still draws the cut-paper sky. The sky
+  bakes once, at a fixed 2.5× scale, with its geometry taken with the portrait crane at
+  rest, because the render-scale ladder and the crane both used to force re-bakes
+  mid-run. It is warmed in `RunState.enter`, before the song starts.
 - **Plumber keeps paper**; Peter agrees it is a good fit.
 - **Styles may repeat across cabinets.** Peter: "We don't necessary HAVE to have a
   completely different style for every single level.. some can repeat if it makes sense …

@@ -438,16 +438,19 @@ function skyBase(ctx, V, pal, P, x0, x1, yTop, yBot) {
 // bitmap's corner lands inside a device pixel: it is always laid down at whole device
 // pixels, so it is never resampled (a fractional blit is what dims baked art).
 const SKY_CACHE = new WeakMap();
-const palIds = new WeakMap();
-let palSerial = 0;
-function palKey(pal) {
-  let id = palIds.get(pal);
-  if (!id) palIds.set(pal, (id = ++palSerial));
-  return id;
+// A cached picture may keep its colours while the afternoon light moves on a little: the
+// arc steps 600 times an act (about three times a second), and repainting on every step
+// was a full-sky repaint three times a second. PAL_SLACK steps is about a second of play
+// — a colour change nobody can see. Palettes off the arc (no arcStep) must match exactly.
+const PAL_SLACK = 4;
+function palClose(a, b) {
+  if (a === b) return true;
+  return !!a && !!b && Number.isFinite(a.arcStep) && Number.isFinite(b.arcStep)
+    && Math.abs(a.arcStep - b.arcStep) < PAL_SLACK;
 }
 function cachedSkyBase(ctx, V, pal, x0, x1, yTop, yBot) {
-  const m = ctx.getTransform();
-  if (m.b || m.c || !(m.a > 0) || !(m.d > 0) || typeof document === 'undefined') return false;
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || typeof document === 'undefined') return false;
   const dx = m.a * x0 + m.e;
   const dy = m.d * yTop + m.f;
   const ix = Math.floor(dx);
@@ -455,16 +458,16 @@ function cachedSkyBase(ctx, V, pal, x0, x1, yTop, yBot) {
   const w = Math.ceil(m.a * (x1 - x0) + (dx - ix)) + 1;
   const h = Math.ceil(m.d * (yBot - yTop) + (dy - iy)) + 1;
   if (w <= 0 || h <= 0 || w * h > 16e6) return false;
-  const key = `${palKey(pal)}|${x0}|${x1}|${yTop}|${yBot}|${V.horizon}|${V.stretch}|${m.a}|${m.d}|${(dx - ix).toFixed(3)}|${(dy - iy).toFixed(3)}`;
+  const key = `${x0}|${x1}|${yTop}|${yBot}|${V.horizon}|${V.stretch}|${m.a}|${m.d}|${(dx - ix).toFixed(3)}|${(dy - iy).toFixed(3)}`;
   let c = SKY_CACHE.get(ctx);
-  if (!c || c.key !== key) {
+  if (!c || c.key !== key || !palClose(c.pal, pal)) {
     const canvas = c && c.canvas.width === w && c.canvas.height === h ? c.canvas : makeCanvas(w, h);
     const g = canvas.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, w, h);
     g.setTransform(m.a, 0, 0, m.d, m.e - ix, m.f - iy);
     skyBase(g, V, pal, pats(g, pal), x0, x1, yTop, yBot);
-    c = { key, canvas, ix: 0, iy: 0 };
+    c = { key, pal, canvas, ix: 0, iy: 0 };
     SKY_CACHE.set(ctx, c);
   }
   ctx.save();
@@ -664,9 +667,83 @@ function slabStack(ctx, o, pal, P, reg) {
   }
 }
 
+// THE MESAS ARE PAINTED ONCE, not every frame. A slab stack is its strata, a shade wedge,
+// fissures and loose ink per slab, each slab filled twice (colour, then the dry-brush
+// texture) — and the texture fills were most of the cost of this whole backdrop in
+// portrait, where they took the frame from about 17 ms to 24 (28 Sep, "a little jittery
+// on an actual iPhone ... in portrait"). A stack only ever slides sideways, so it is
+// baked at the canvas's own scale into a bitmap and blitted at whole device pixels: never
+// resampled, so the ink stays as crisp as the live paint. Its colours follow the light
+// with PAL_SLACK's tolerance, and only one stale stack is repainted a frame, so the
+// repaints spread out instead of landing together. While the canvas scale is moving (a
+// dive, a resize) it paints live rather than baking a picture per frame.
+const SLAB_CACHE = new WeakMap();
+const SLAB_CACHE_MAX = 24;
+const SCALE_SETTLE = 8;
+let slabFrameAt = -1;
+let slabStaleLeft = 1;
+function cachedSlabStack(ctx, o, pal, reg) {
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || typeof document === 'undefined') return false;
+  let st = SLAB_CACHE.get(ctx);
+  if (!st) SLAB_CACHE.set(ctx, (st = { a: m.a, d: m.d, stable: 0, map: new Map() }));
+  if (st.a !== m.a || st.d !== m.d) {
+    st.a = m.a;
+    st.d = m.d;
+    st.stable = 0;
+    st.map.clear();
+  }
+  if (st.stable < SCALE_SETTLE) {
+    st.stable++;
+    return false;
+  }
+  // One stale repaint a frame: a new frame is any call more than 4 ms after the last.
+  const now = performance.now();
+  if (now - slabFrameAt > 4) slabStaleLeft = 1;
+  slabFrameAt = now;
+  const H = o.base - o.top;
+  const halfW = o.capHalf + o.slope + Math.abs(o.lean ?? 0) + 8;
+  const padTop = 6;
+  const key = `${o.seed}|${o.fracs.join(',')}|${o.capHalf}|${o.slope}|${H}|${o.lean ?? 0}|${o.flare ?? ''}|${reg[0]}|${reg[1]}`;
+  let e = st.map.get(key);
+  const fresh = e && palClose(e.pal, pal);
+  if (!e || (!fresh && slabStaleLeft > 0)) {
+    if (e && !fresh) slabStaleLeft--;
+    const w = Math.ceil(m.a * halfW * 2) + 2;
+    const h = Math.ceil(m.d * (H + padTop + 4)) + 2;
+    if (w * h > 8e6) return false;
+    const canvas = e && e.canvas.width === w && e.canvas.height === h ? e.canvas : makeCanvas(w, h);
+    const g = canvas.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const ox = m.a * halfW + 1;
+    const oy = m.d * padTop + 1;
+    g.setTransform(m.a, 0, 0, m.d, ox, oy);
+    slabStack(g, { ...o, x: 0, top: 0, base: H }, pal, pats(g, pal), reg);
+    if (!e && st.map.size >= SLAB_CACHE_MAX) {
+      let old = null;
+      for (const [k, v] of st.map) if (!old || v.used < old[1].used) old = [k, v];
+      st.map.delete(old[0]);
+    }
+    e = { canvas, pal, ox, oy };
+    st.map.set(key, e);
+  }
+  e.used = now;
+  const dx = Math.round(m.a * o.x + m.e - e.ox);
+  const dy = Math.round(m.d * o.top + m.f - e.oy);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(e.canvas, dx, dy);
+  ctx.restore();
+  return true;
+}
+function slabStackCached(ctx, o, pal, P, reg) {
+  if (!cachedSlabStack(ctx, o, pal, reg)) slabStack(ctx, o, pal, P, reg);
+}
+
 function mesa(ctx, m, pal, P) {
   const seed = 30 + (((m.i % 97) + 97) % 97);
-  slabStack(ctx, {
+  slabStackCached(ctx, {
     x: m.x, top: m.top, base: m.base + 2,
     capHalf: m.capHalf * 0.8, slope: m.slope * 1.75,
     fracs: m.big ? [0.07, 0.17, 0.12, 0.2, 0.16, 0.28] : [0.1, 0.3, 0.26, 0.34],
@@ -681,12 +758,12 @@ function mesa(ctx, m, pal, P) {
 function butte(ctx, b, pal, P) {
   const top = b.top - 8;
   // The needle, first: it stands behind and to the left.
-  slabStack(ctx, {
+  slabStackCached(ctx, {
     x: b.x - b.halfW - 20, top: top + 26, base: b.base + 4, capHalf: 5, slope: 16,
     fracs: [0.08, 0.22, 0.3, 0.4], cols: [pal.butte[3], pal.butte[1], pal.butte[3]], capCol: pal.butte[2],
     lean: -4, seed: 71,
   }, pal, P, REG.far);
-  slabStack(ctx, {
+  slabStackCached(ctx, {
     x: b.x, top, base: b.base + 4, capHalf: b.halfW * 0.46, slope: b.halfW * 0.7,
     fracs: [0.06, 0.14, 0.12, 0.2, 0.14, 0.34], cols: pal.butte, capCol: pal.butteCap,
     lean: 6, seed: 83,
@@ -1541,6 +1618,7 @@ export function arcPalette(u) {
   const k = (v - a.at) / (b.at - a.at);
   pal = blend(a.pal, b.pal, k);
   pal.id = k < 0.5 ? a.pal.id : b.pal.id;
+  pal.arcStep = q;
   if (arcCache.size > 700) arcCache.clear();
   arcCache.set(q, pal);
   return pal;

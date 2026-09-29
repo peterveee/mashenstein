@@ -31,7 +31,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
-| 2026-09-22 | `b9c3169` | [2026-09-22-b9c3169.html](2026-09-22-b9c3169.html) | [bake-offs](2026-09-22-b9c3169-lab.html) | Refactor HUB_LIGHT_Y and REFLECT_SOLE_DROP to remove export and streamline code; add proposed mechanic ideas for Crypt Shift and Neon Blasters. |
 | 2026-09-23 | `eb03b14` | [2026-09-23-eb03b14.html](2026-09-23-eb03b14.html) | [bake-offs](2026-09-23-eb03b14-lab.html) | Add tests for neon city arrival and moon phases |
 | 2026-09-23 | `77ae44b` | [2026-09-23-77ae44b.html](2026-09-23-77ae44b.html) | [bake-offs](2026-09-23-77ae44b-lab.html) | Add neon-themed candidates and gravity mechanics for enhanced gameplay experience |
 | 2026-09-24 | `3bce133` | [2026-09-24-3bce133.html](2026-09-24-3bce133.html) | [bake-offs](2026-09-24-3bce133-lab.html) | Update mix.js assertions for remixed song settings |
@@ -44,4 +43,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-27 | `18acca2` | [2026-09-27-18acca2.html](2026-09-27-18acca2.html) | [bake-offs](2026-09-27-18acca2-lab.html) | feat: add crypt enemies and headstone drawing functionality |
 | 2026-09-27 | `2b096da` | [2026-09-27-2b096da.html](2026-09-27-2b096da.html) | [bake-offs](2026-09-27-2b096da-lab.html) | Add time-arc.js for dynamic lighting and color palettes in MCM act |
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
-| screens.ht | `screens` | [screens.html](screens.html) | -- | (commit not in history) |
+| 2026-09-28 | `054c34f` | [2026-09-28-054c34f.html](2026-09-28-054c34f.html) | [bake-offs](2026-09-28-054c34f-lab.html) | Add speed-mcm.js test suite for mid-century style pack validation |

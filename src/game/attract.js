@@ -60,7 +60,11 @@ export class AttractState {
   // devMode drops the exit-on-input guard and the DEMO banner; crash runs the
   // stage invulnerable with the mission forced; noBot leaves the hero entirely
   // unpiloted so it plows into everything; quiet drops the [DEV] strip too, so
-  // a recording of the run shows only the game.
+  // a recording of the run shows only the game. background (RECORD BACKGROUND)
+  // is the scenery pass: see RunState.recordBackground. The mission is forced
+  // because nothing is left in the lane to complete it with, and the hero is
+  // invulnerable so a mistimed pit costs a glitch rather than the take — the
+  // pits he ran over are in run.devHits.
   constructor(opts) { this.o = opts; }
 
   enter() {
@@ -68,6 +72,7 @@ export class AttractState {
     this.devMode = !!this.o.devMode;
     this.quiet = !!this.o.quiet;
     this.crash = !!this.o.crash;
+    this.background = !!this.o.background;
     this.actTok = Input.activity;
     Input.clearAll();
     const stage = this.scenario.kind === 'stage' ? STAGE_BY_ID[this.scenario.id] : null;
@@ -77,8 +82,9 @@ export class AttractState {
       seed: this.o.seed ?? clipSeed(this.scenario.id),
       difficulty: 1,
       demo: true,
-      devInvuln: this.crash,
-      devForceMission: this.crash,
+      devInvuln: this.crash || this.background,
+      devForceMission: this.crash || this.background,
+      recordBackground: this.background,
       // Dev watch modes may name the hero; the idle demo takes the slot's own.
       initialHeroId: this.o.hero || undefined,
       onEnd: () => { this.done = true; },

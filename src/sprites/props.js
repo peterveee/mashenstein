@@ -512,6 +512,39 @@ function hzStripe(ctx, x, y, w, h, phase = 0) {
   }
   ctx.restore();
 }
+
+// The spike plate's teeth, as fractions of its drawn width. One table for the
+// painter and for its lip below, so each slot sits under its tooth.
+const SPIKE_TEETH = [0.15, 0.325, 0.5, 0.675, 0.85];
+
+// THE FLOOR HAZARDS' WARNING STRIPS, inlaid in the road. Drawn by the lane
+// (drawWorldEntity's bedded branch), not by the prop rasters, because each has
+// to stay put while its art sinks and rises through it (lurkDrop): the strip's
+// TOP edge sits exactly on the road's top edge and it runs down into the road
+// band, so the teeth or blade come up out of a slot in a marked plate flush
+// with the surface. `span` is the strip's width as a multiple of the art's
+// drawn width; `slots` are [centre, width] as fractions of the STRIP.
+//
+// The saw's strip is wider than its art: its slot has to match the blade's
+// chord at the road line, which is 0.82 of the art, and a strip that size
+// would be all slot and no chevrons.
+export const FLOOR_LIPS = {
+  popSpikes: { span: 1, slots: SPIKE_TEETH.map((t) => [t, 0.09]) },
+  floorSaw: { span: 1.2, slots: [[0.5, 0.7]] },
+};
+// `w` is the strip's width (art width times span). The chevrons chase one
+// full period per 8-frame ring so the loop is seamless.
+export function drawFloorLip(ctx, name, x, y, w, h, frame = 0) {
+  const lip = FLOOR_LIPS[name];
+  if (!lip) return;
+  const f = ((frame % 8) + 8) % 8;
+  hzBox(ctx, x + w * 0.04, y, w * 0.92, h, h * 0.2, '#12161d', null, 0);
+  const sx = x + w * 0.06, sw = w * 0.88, sy = y + h * 0.14, sh = h * 0.72;
+  hzStripe(ctx, sx, sy, sw, sh, (f / 8) * sh * 2.2);
+  for (const [t, sw2] of lip.slots) {
+    hzBox(ctx, x + w * (t - sw2 / 2), sy, w * sw2, sh * 0.8, sh * 0.2, '#12161d', null, 0);
+  }
+}
 // Circular blade. `rot` is absolute so the caller owns the seam.
 function hzBlade(ctx, x, y, r, rot, teeth) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
@@ -1739,46 +1772,37 @@ export const PROP_PAINTERS = {
       : TRAP_SHAPE.hinge);
   },
   popSpikes(ctx, w, h, frame = 0) {
-    const f = ((frame % 8) + 8) % 8;
     const p = hzPhase(frame, 8);
-    // 0.62..1 rather than 0..1. Always out, always lethal, still moving.
-    const up = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(p));
-    // Was 0.62. The teeth keep their full travel wherever this sits, because
-    // they are measured from the plate, not from the box.
-    const plateY = h * 0.6;
-    const n = 5;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, -h, w, plateY + h);
-    ctx.clip();
-    for (let i = 0; i < n; i++) {
-      const x = w * (0.15 + i * 0.7 / (n - 1));
-      hzTri(ctx, x, plateY + h * 0.05, w * 0.06, h * (0.1 + 0.54 * up),
-        i % 2 ? '#e4eaf1' : '#b9c4d0', '#232a34', Math.max(0.12, w * 0.018));
-    }
-    ctx.restore();
-    // 0.46 tall from 0.6 reaches h * 1.06 — deliberately past the bottom of the
-    // canvas, so the rounded corners and the ink line at the foot are cut off
-    // rather than drawn. A shape with no visible bottom edge continues.
-    hzBox(ctx, w * 0.03, plateY, w * 0.94, h * 0.46, h * 0.06, '#454f5c', HZ_INK, Math.max(0.14, w * 0.02));
-    // The chevron chase slides with the FRAME, not with the spike height. Tied
-    // to the height it inherited the sine's mirror symmetry, and a plate whose
-    // frames 1 and 3 are the same picture is a four-frame animation wearing an
-    // eight-frame cache.
+    // Always out, always lethal, still moving: 0..1 over the cycle, but never
+    // retracted below the 7px box. A quick spring up and a slower sink rather
+    // than a plain sine: a sine's mirror symmetry would make frames 1 and 3
+    // (and 5 and 7) the same picture — the chevron chase used to break that
+    // tie, and there is no plate left to carry one. -1.052..1.162 is the
+    // curve's exact range, so `up` spans 0..1.
+    const up = (Math.sin(p) + 0.25 * Math.sin(2 * p) + 0.15 * Math.cos(p) + 1.052) / 2.214;
+    // NO PLATE IN THE RASTER. The warning strip is drawFloorLip's, inlaid in the
+    // road so it can stay still while this art sinks. Each tooth is a fixed
+    // cone that runs on down past the road line, and the lane's burial clip
+    // (the entity's `flush` flag — see drawWorldEntity's bedded branch) cuts
+    // it at the road's top edge. So the base sits exactly on the road wherever
+    // the road is, sloped or flat, and a tooth sinking reads as a tooth going
+    // INTO the ground — narrower at the surface — rather than as one shrinking.
     //
-    // Directly under the plate's top edge, with the tooth slots punched
-    // THROUGH it afterwards, because that top strip is all of the face the
-    // road leaves visible (see the burial note above). Where it used to sit —
-    // 0.15h down the face — is underground now, and a hazard stripe nobody
-    // can see marks nothing.
-    hzStripe(ctx, w * 0.06, plateY + h * 0.035, w * 0.88, h * 0.07, f * h * 0.028);
-    // Narrower than they were (0.13w): five slots at that width ate nearly
-    // the whole stripe and the band read as black with yellow flecks. 0.09
-    // still brackets each tooth and leaves the chevrons legible between them.
-    for (let i = 0; i < n; i++) {
-      const x = w * (0.15 + i * 0.7 / (n - 1));
-      hzBox(ctx, x - w * 0.045, plateY + h * 0.035, w * 0.09, h * 0.06, h * 0.02,
-        '#12161d', '#2b323c', Math.max(0.1, w * 0.014));
+    // It was a steel plate with a hazard stripe, sunk until only the stripe
+    // cleared the road; even that thin lip sat on top of the road's edge line.
+    // Now the stripe is below the edge line (drawFloorLip) and the teeth above.
+    //
+    // In the lane the art is 16px tall and the road's top edge is 12.5px down
+    // it (0.78h: BED_SINK plus drawAtGround's 1.5px seat), and the box top is
+    // at 0.34h. The tips ride 0.30h..0.03h: at their lowest still clear of the
+    // box, at their highest where the old plate's peak was.
+    const tipY = h * (0.3 - 0.27 * up);
+    for (let i = 0; i < SPIKE_TEETH.length; i++) {
+      const x = w * SPIKE_TEETH[i];
+      // 0.95h tall, so the foot is always below the road (and past the
+      // canvas's bottom edge when fully risen) — the clip draws the base.
+      hzTri(ctx, x, tipY + h * 0.95, w * 0.076, h * 0.95,
+        i % 2 ? '#e4eaf1' : '#b9c4d0', '#232a34', Math.max(0.12, w * 0.018));
     }
   },
 
@@ -1860,34 +1884,27 @@ export const PROP_PAINTERS = {
     hzEmbers(ctx, w * 0.5, bowlY - h * 0.09, w * 0.7, h * 0.34, p, 4, 1);
   },
 
-  // Half-buried blade in a slotted plate. The 8-frame ring turns the disc by
+  // A blade standing up out of the road. The 8-frame ring turns the disc by
   // exactly one tooth, so the loop point is invisible and the spin never
   // strobes backwards the way an arbitrary frame count does.
+  //
+  // NO PLATE IN THE RASTER, same as the spike plate: the warning strip is
+  // drawFloorLip's, inlaid in the road, and the lane's `flush` burial clip cuts
+  // the blade at the road's top edge. In the lane the art is 15px tall and the
+  // road's top edge is 11.5px down it (0.767h: BED_SINK plus drawAtGround's
+  // 1.5px seat). The disc is centred ON that line, so exactly half of it
+  // stands clear — it was about 40%, over a grey plate; 60% was tried and
+  // read as too much blade.
   floorSaw(ctx, w, h, frame = 0) {
     const f = ((frame % 8) + 8) % 8;
-    // Was 0.66, with the plate stopping exactly on the bottom of the box: two
-    // rounded corners and an ink line at the floor, which is a slab standing on
-    // the road. Same fix as the spike plate — sit it lower, run it past the
-    // bottom edge so the foot is cut rather than drawn, and bed the corners.
-    const slotY = h * 0.62;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, -h, w, slotY + h);
-    ctx.clip();
-    // Centred just below the slot with a big radius, so roughly the top half of
-    // the disc stands above the plate. The first pass sank it: 2px of white
-    // bump over a yellow-and-black plinth is a lump, not a blade.
-    hzBlade(ctx, w * 0.5, slotY + h * 0.12, Math.min(w * 0.42, h * 0.62), (f / 8) * (HZ_TAU / 12), 12);
-    ctx.restore();
-    hzBox(ctx, w * 0.02, slotY, w * 0.96, h * 0.44, h * 0.06, '#454f5c', HZ_INK, Math.max(0.14, w * 0.02));
-    // Stripe at the very top of the plate, blade slot punched through it —
-    // same reason as the spike plate's (see its burial note): the road leaves
-    // only the top sliver of the face visible, and the stripe's old berth
-    // 0.14h down the face is underground.
-    hzStripe(ctx, w * 0.05, slotY + h * 0.025, w * 0.9, h * 0.08, f * 1.6);
-    hzBox(ctx, w * 0.2, slotY + h * 0.03, w * 0.6, h * 0.08, h * 0.025, '#10141a', '#2b323c', Math.max(0.1, w * 0.014));
-    hzSparks(ctx, w * 0.28, slotY, Math.min(w, h) * 0.16, f, 8, 1, 3);
-    hzSparks(ctx, w * 0.72, slotY, Math.min(w, h) * 0.16, f, 8, 4, 3);
+    const roadY = h * 0.767;
+    const r = Math.min(w * 0.42, h * 0.62);
+    const cy = roadY;
+    hzBlade(ctx, w * 0.5, cy, r, (f / 8) * (HZ_TAU / 12), 12);
+    // Sparks thrown off where the blade cuts the road.
+    const half = Math.sqrt(r * r - (cy - roadY) ** 2);
+    hzSparks(ctx, w * 0.5 - half * 0.85, roadY, Math.min(w, h) * 0.16, f, 8, 1, 3);
+    hzSparks(ctx, w * 0.5 + half * 0.85, roadY, Math.min(w, h) * 0.16, f, 8, 4, 3);
   },
 
   // The razor hurdle — a short ground-standing jump (registered under the legacy

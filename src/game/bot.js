@@ -328,7 +328,8 @@ export class DemoBot {
    */
   finishJump() {
     const run = this.run;
-    if (!run.finishing) return false;
+    // RECORD BACKGROUND has no pole: he runs straight on out of the picture.
+    if (!run.finishing || run.recordBackground) return false;
     const dist = run.finishSeatX() - run.playerWorldX();
     if (dist <= 0 || !(run.speed > 0)) return false;
     const a = this.arc();
@@ -647,21 +648,18 @@ export class DemoBot {
     const next = threats.find((t) => t.act !== 'air' && t.exit > -0.05) || null;
     const airtime = this.flight().airtime;
 
-    // something worth jumping FOR: elevated mission pickups / targets / copter
+    // something worth jumping FOR: the mission's own pieces, and nothing else.
+    // The bot's job is to get past the hazards — a hop for an air coin, a
+    // capsule or a star box is a jump the road never asked for, and a demo
+    // full of them reads as a hero bouncing for no reason. Anything low enough
+    // to run through he still collects on the way.
     let grab = null;
     for (const p of run.pickups) {
       if (!p.live) continue;
-      const want = p.def.appliance || p.def.cord || p.def.power || p.def.resident || (p.def.coin && p.alt > 24);
+      const want = p.def.appliance || p.def.cord || p.def.resident;
       if (!want) continue;
       const dx = p.x - px;
       if (dx > 8 && dx < sp * 0.32 && p.alt > 16) { grab = p; break; }
-    }
-    if (!grab) {
-      for (const ob of run.obstacles) {
-        if (!ob.live || !ob.def.isTarget) continue;
-        const dx = ob.x - px;
-        if (dx > 8 && dx < sp * 0.32 && ob.alt > 16) { grab = ob; break; }
-      }
     }
     const copter = run.mission && run.mission.type === 'chase' ? run.copter : null;
     // He comes into reach for about a bar at a time now, so the jump is taken

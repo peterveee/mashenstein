@@ -19,6 +19,7 @@ import {
   PORTAL_SPRITE, PORTAL_ART_W, PORTAL_ART_H,
   PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE,
   PORTAL_SPEND_FRAMES, PORTAL_SPEND_TIME, PORTAL_WILT_FRAMES, PORTAL_WILT_TIME,
+  drawFloorLip, FLOOR_LIPS,
 } from '../sprites/props.js';
 
 const POWER_GLOW = {
@@ -712,6 +713,42 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 // lane closing over it.
 const BED_SINK = 2;
 
+// How deep a floor hazard's inlaid warning strip runs into the road band.
+const FLOOR_LIP_H = 1.6;
+
+// A `lurks` plate (the spike plate) keeps its teeth under the road while it
+// scrolls in and pops them once it has crossed LURK_AT of the frame — a
+// SCREEN fraction, so the player sees it arrive hidden and sees it spring at
+// every zoom. A world distance (it was 210) fired off the right edge of a
+// zoomed-in frame, so the teeth were already up by the time the plate came on.
+//
+// The caller passes `past`: world units the plate's centre has travelled
+// beyond that line. The teeth shoot up and BOUNCE on a damped spring: full
+// height about 10 units later, peaking ~20% over at 20, a small dip at 40 and
+// settled by about 60 (under 0.4s at base speed). Art only: the box is live the
+// whole time, and the inlaid warning strip is on show from the frame edge, so
+// the plate reads as a hazard before it pops. LURK_DROP is how far the art
+// sinks when hidden: the tallest tooth stands 12px, so 14 puts every tip
+// under the road line.
+//
+// Landscape only. The caller decides that — in portrait the same plate stays
+// out the whole way in, because the shorter runway there leaves too little
+// time to read a trap that appears late.
+export const LURK_AT = 0.85;
+// The spring: LURK_WAVE is one full bounce in world units, LURK_DAMP its decay
+// length. The first peak overshoots by e^(-WAVE/2/DAMP) = 20%, which is the
+// most the art can take: 20% of 14 lifts the teeth 2.8px, and at the top of
+// their bob a tooth's foot is only 3.2px under the road — any more and the
+// flat bottom of the cone would clear the road line.
+const LURK_WAVE = 40;
+const LURK_DAMP = 12.4;
+const LURK_DROP = 14;
+export function lurkDrop(past) {
+  if (past <= 0) return LURK_DROP;
+  const up = 1 - Math.exp(-past / LURK_DAMP) * Math.cos(2 * Math.PI * past / LURK_WAVE);
+  return LURK_DROP * (1 - up);
+}
+
 // Where in its hover the silver toaster's face catches the light, and how narrow
 // that lobe is, in units of the hover's sine.
 const SHEEN_AT = 0.3;
@@ -1087,7 +1124,10 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     // leaving only its red damage marker visible. The entity's local centre is
     // the same sample point and stays in the correct space here.
     const clipX = x + e.w / 2;
-    const clipY = Number.isFinite(surface?.centerY) ? surface.centerY : GROUND_Y;
+    // A `flush` plate is cut at the road's real top edge: the seating sink
+    // (drawAtGround's push-down, which centerY carries) is taken back out.
+    const clipY = (Number.isFinite(surface?.centerY) ? surface.centerY : GROUND_Y)
+      - (e.def.flush && Number.isFinite(surface?.sink) ? surface.sink : 0);
     const clipSlope = Number.isFinite(surface?.angle) ? Math.tan(surface.angle) : 0;
     const clipL = x - 20, clipR = x + e.w + 20;
     ctx.beginPath();
@@ -1097,8 +1137,22 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     ctx.lineTo(clipL, clipY + (clipL - clipX) * clipSlope);
     ctx.closePath();
     ctx.clip();
-    draw1(x, y + BED_SINK);
+    // `bedDrop` (see lurkDrop) sinks the whole drawing further, under the clip.
+    draw1(x, y + BED_SINK + (Number.isFinite(renderOptions.bedDrop) ? renderOptions.bedDrop : 0));
     ctx.restore();
+    // A floor hazard's warning strip, inlaid in the road: top edge ON the
+    // clip line (the road's top edge), lying along the slope, and outside the
+    // clip so the road cannot hide it. The teeth or blade sink and rise
+    // through it. Centred on the box, as the art is.
+    const lip = propName && FLOOR_LIPS[propName];
+    if (lip) {
+      const lipW = Math.round(e.w * 4 / 3 * propVisualScale(propName)) * lip.span;
+      ctx.save();
+      ctx.translate(clipX, clipY);
+      ctx.rotate(Number.isFinite(surface?.angle) ? surface.angle : 0);
+      drawFloorLip(ctx, propName, x + e.w / 2 - lipW / 2 - clipX, 0, lipW, FLOOR_LIP_H, frame);
+      ctx.restore();
+    }
   } else {
     draw1(x, y, propName && propBoxCentred(propName) ? 'center' : 'bottom');
   }

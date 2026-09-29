@@ -57,10 +57,12 @@ import {
   mcmPumpjacks, mcmSpeedTrap, mcmJet, mcmRoadSign,
 } from './speedMcmObjects.js';
 import { drawJonesCoyote } from './speedMcmCoyote.js';
+import { paintFrostSky } from './frostCrayon/sky.js';
 
 import {
   PAPER_MATERIALS,
   PAPER_TEXTURE_BLEND,
+  PAPER_PATTERN_SCALE,
   paperTextureSource as sharedPaperTextureSource,
   paperPatternFor as sharedPaperPatternFor,
   anchorPaperPattern,
@@ -791,6 +793,14 @@ function drawSeamFreeHill(ctx, camX, color, yBase, amp, wl, factor, options = {}
     ctx.lineTo(end, H + HILL_UNDERFILL);
     ctx.closePath();
   };
+  // An opaque paper hill is copied from its pre-drawn strip (below); a translucent one
+  // (the foreground snow sheet) is painted live, where its shadows show through its fill.
+  if (options.paper && ctx.globalAlpha === 1 && drawHillStrip(ctx, {
+    color, yBase, amp, wl, period, peak, mesa, dunes, coverage, scroll,
+    material: options.paperMaterial || 'cardstockClear',
+    grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA * (options.paperStrength ?? 1),
+    grainBottom: options.grainBottom,
+  })) return;
   if (options.paper) {
     paperShadowPass(ctx, path, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
     paperShadowPass(ctx, path, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
@@ -799,12 +809,136 @@ function drawSeamFreeHill(ctx, camX, color, yBase, amp, wl, factor, options = {}
   path();
   ctx.fill();
   if (options.paper) {
-    paperFinishPass(ctx, path,
-      sharedPaperPatternFor(ctx, options.paperMaterial || 'cardstockClear'), {
-        grainAlpha: PAPER_LANDMARK_GRAIN_ALPHA * (options.paperStrength ?? 1),
-        rim: false,
-      });
+    const material = options.paperMaterial || 'cardstockClear';
+    const alpha = PAPER_LANDMARK_GRAIN_ALPHA * (options.paperStrength ?? 1);
+    if (!cachedHillGrain(ctx, path, material, alpha, options.grainBottom)) {
+      paperFinishPass(ctx, path, sharedPaperPatternFor(ctx, material), { grainAlpha: alpha, rim: false });
+    }
   }
+}
+
+// A SEAM-FREE HILL IS PAINTED ONCE AND SLID, NOT PAINTED EVERY FRAME. Frost's far and
+// near hills were drawn live each frame — two paper shadows, the fill and the grain,
+// each from the crest to the bottom of the picture — about 10 ms of a 37 ms portrait
+// frame at 2x, headless (29 Sep 2026). The ridge repeats every `period`, so one strip a
+// picture plus two periods wide holds every phase it can show: it is baked at the
+// canvas's device scale, placed at the phase the scroll asks for, and copied on in ONE
+// draw at whole device pixels — no join on screen for a seam to open at (the seams of
+// the old per-period tiles are why this hill went seam-free in the first place), and
+// no resampling. The grain is baked in, so its fibres now travel with the hill rather
+// than sitting still behind it. The strip reaches down only as far as can be seen (or
+// to `grainBottom`, where the next hill covers it), and grows if the view drops lower.
+// Returns false (the caller paints live) for a rotated or skewed frame.
+const HILL_STRIPS = new WeakMap();
+function drawHillStrip(ctx, o) {
+  const m = ctx.getTransform?.();
+  const cv = ctx.canvas;
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || !cv || typeof document === 'undefined') return false;
+  const P = o.period;
+  const top = o.yBase - o.amp - 8;
+  let need = Math.min(H + HILL_UNDERFILL, (cv.height - m.f) / m.d + 8);
+  if (Number.isFinite(o.grainBottom)) need = Math.min(need, o.grainBottom + 8);
+  if (need <= top) return true;
+  const stripW = o.coverage.width + P * 2 + 16;
+  let byCtx = HILL_STRIPS.get(ctx);
+  if (!byCtx) HILL_STRIPS.set(ctx, (byCtx = new Map()));
+  const id = `${o.color}|${o.yBase}|${o.amp}|${o.wl}|${P}|${o.peak ? 1 : 0}${o.mesa ? 1 : 0}${o.dunes ? 1 : 0}`;
+  const key = `${o.material}|${o.grainAlpha}|${m.a}|${m.d}|${stripW}`;
+  let strip = byCtx.get(id);
+  if (!strip || strip.key !== key || strip.bottom < need) {
+    const bottom = Math.ceil(need + 40);
+    const w = Math.ceil(m.a * stripW) + 2;
+    const h = Math.ceil(m.d * (bottom - top)) + 2;
+    if (w * h > 16e6) return false;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d');
+    g.setTransform(m.a, 0, 0, m.d, 0, -m.d * top);
+    const path = () => {
+      g.beginPath();
+      g.moveTo(0, bottom + 10);
+      for (let u = 0; u <= stripW; u += 2) {
+        g.lineTo(u, ridgeProfile(u % P, o.yBase, o.amp, o.wl, P, o.peak, o.mesa, o.dunes));
+      }
+      g.lineTo(stripW, bottom + 10);
+      g.closePath();
+    };
+    paperShadowPass(g, path, PAPER_DEEP_OFFSET, PAPER_LANDMARK_DEEP_COLOR);
+    paperShadowPass(g, path, PAPER_CONTACT_OFFSET, PAPER_LANDMARK_CONTACT_COLOR);
+    g.fillStyle = o.color;
+    path();
+    g.fill();
+    paperFinishPass(g, path, sharedPaperPatternFor(g, o.material), { grainAlpha: o.grainAlpha, rim: false });
+    if (strip) byCtx.delete(id);
+    if (byCtx.size >= 6) byCtx.delete(byCtx.keys().next().value);
+    strip = { key, canvas: c, bottom };
+    byCtx.set(id, strip);
+  }
+  // The strip's u = 0 is ridge phase 0; place it one period left of where the live path
+  // put that phase, so it spans the whole picture.
+  const x0 = o.coverage.left - o.scroll - P;
+  const dx = Math.round(m.a * x0 + m.e);
+  const dy = Math.round(m.d * top + m.f);
+  const rows = Math.min(strip.canvas.height, Math.ceil(m.d * (need - top)) + 2);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(strip.canvas, 0, 0, strip.canvas.width, rows, dx, dy, strip.canvas.width, rows);
+  ctx.restore();
+  return true;
+}
+
+// THE HILL GRAIN IS NEVER RE-SCALED DURING PLAY. Frost's two live hills each filled
+// the fibre pattern from their crest to the bottom of the picture every frame, the
+// pattern scaled on the fly from its 1024 px tile — 42 ms of a 108 ms frame in
+// portrait, headless (28 Sep 2026). So the tile is scaled once, to the canvas's own
+// device resolution, and each hill fills its path with that at the identity transform
+// (the path is built in the layer's space first, and a built path keeps its device
+// coordinates), shifted by the layer's translation so the fibres land where the
+// scaled pattern put them. Same sheet, same place, no resampling. Returns false (the
+// caller fills the pattern live) for a rotated or skewed frame.
+const HILL_GRAIN = new WeakMap();
+function cachedHillGrain(ctx, path, material, alpha, bottom = null) {
+  const m = ctx.getTransform?.();
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || typeof document === 'undefined') return false;
+  if (!(alpha > 0)) return true;
+  const src = sharedPaperTextureSource(material);
+  if (!src) return false;
+  const tw = Math.max(1, Math.round(src.width * PAPER_PATTERN_SCALE * m.a));
+  const th = Math.max(1, Math.round(src.height * PAPER_PATTERN_SCALE * m.d));
+  let byMaterial = HILL_GRAIN.get(ctx);
+  if (!byMaterial) HILL_GRAIN.set(ctx, (byMaterial = new Map()));
+  let c = byMaterial.get(material);
+  if (!c || c.tw !== tw || c.th !== th) {
+    const tile = document.createElement('canvas');
+    tile.width = tw;
+    tile.height = th;
+    const g = tile.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.drawImage(src, 0, 0, tw, th);
+    c = { tw, th, pattern: ctx.createPattern(tile, 'repeat') };
+    byMaterial.set(material, c);
+  }
+  if (!c.pattern) return false;
+  if (c.pattern.setTransform && typeof DOMMatrix === 'function') {
+    c.pattern.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(m.e), Math.round(m.f)]));
+  }
+  ctx.save();
+  // `bottom` (local units): below it something opaque covers the hill, so its grain
+  // stops there.
+  if (Number.isFinite(bottom)) {
+    ctx.beginPath();
+    ctx.rect(-1e5, -1e5, 2e5, bottom + 2 + 1e5);
+    ctx.clip();
+  }
+  path();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = c.pattern;
+  ctx.fill();
+  ctx.restore();
+  return true;
 }
 
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
@@ -826,7 +960,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const strata = Array.isArray(opts && opts.strata) ? opts.strata : null;
   if (opts && opts.seamFree) {
     drawSeamFreeHill(ctx, camX, color, yBase, amp, wl, factor, {
-      paper, paperMaterial, paperStrength, peak, mesa, dunes,
+      paper, paperMaterial, paperStrength, peak, mesa, dunes, grainBottom: opts.grainBottom,
     });
     return;
   }
@@ -4941,6 +5075,11 @@ const FROST_BLIZZARD_LAYERS = Object.freeze([
   { tile: 168, n: 62, len: 6.5, wide: 1.1, alpha: 0.40, depth: 0.34, wind: 62, seed: 2 },
   { tile: 240, n: 34, len: 15, wide: 1.9, alpha: 0.50, depth: 0.95, wind: 130, seed: 3 },
 ]);
+// Portrait leaves out the third, nearest layer (Peter, 29 Sep 2026: "drop the 3rd
+// blizzard layer in portrait"): one full-screen sheet fewer on the frame that has three
+// times the pixels. The two farther sheets carry the storm.
+const FROST_BLIZZARD_PORTRAIT_LAYERS = Object.freeze(FROST_BLIZZARD_LAYERS.slice(0, 2));
+const frostBlizzardLayers = () => (H > W ? FROST_BLIZZARD_PORTRAIT_LAYERS : FROST_BLIZZARD_LAYERS);
 // The wind blows across and slightly down; a streak lies along its own travel.
 const FROST_BLIZZARD_SLOPE = 0.42;
 const FROST_BLIZZARD_HAZE = '#e6f1fa';
@@ -5131,15 +5270,26 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
   const groundY = Number.isFinite(rawGroundY) ? rawGroundY : GROUND_Y;
   const veilFloorY = Math.max(0, Math.min(H, groundY - FROST_BLIZZARD_VEIL_CLEARANCE));
   if (veilFloorY > 0) {
-    const veil = ctx.createLinearGradient(0, 0, 0, H);
-    veil.addColorStop(0, haze);
-    veil.addColorStop(Math.max(0, veilFloorY - FROST_BLIZZARD_VEIL_FADE_HEIGHT) / H, haze);
-    veil.addColorStop(veilFloorY / H, clear);
-    veil.addColorStop(1, clear);
+    // Flat haze down to the fade, the gradient only across the fade, nothing below
+    // it: the same veil as one full-height gradient, for a fraction of the fill (a
+    // gradient is the dear fill, and below the floor it was painting nothing). The
+    // join is snapped to a device row so the two fills neither overlap nor part.
+    const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+    let fadeTop = Math.max(0, veilFloorY - FROST_BLIZZARD_VEIL_FADE_HEIGHT);
+    if (m && m.d > 0) fadeTop = (Math.round(m.d * fadeTop + m.f) - m.f) / m.d;
     ctx.save();
     ctx.globalAlpha = 0.34 * amount;
-    ctx.fillStyle = veil;
-    ctx.fillRect(0, 0, W, H);
+    if (fadeTop > 0) {
+      ctx.fillStyle = haze;
+      ctx.fillRect(0, 0, W, fadeTop);
+    }
+    if (veilFloorY > fadeTop) {
+      const veil = ctx.createLinearGradient(0, fadeTop, 0, veilFloorY);
+      veil.addColorStop(0, haze);
+      veil.addColorStop(1, clear);
+      ctx.fillStyle = veil;
+      ctx.fillRect(0, fadeTop, W, veilFloorY - fadeTop);
+    }
     ctx.restore();
   }
 
@@ -5156,10 +5306,25 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
   //
   // The scroll offset is rounded in that same device space for the same reason:
   // a fractional origin puts the whole sheet back on the slow path.
-  const ss = frostAuroraBakeScale(ctx);
+  //
+  // THE DENSITY IS THE EXACT ONE, not a whole number. This used the aurora's baking
+  // scale, which rounds up: right in landscape (3), but a portrait phone renders at
+  // 2.46, so the tiles were baked for 3 and every blizzard pixel was resampled at
+  // 0.82 — 33 ms of a portrait frame, headless (28 Sep 2026), and the flakes a fifth
+  // under size. The fill is done at the identity transform with the origin snapped
+  // to a device pixel; the tiles re-bake only when the density changes.
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const exact = m && !m.b && !m.c && m.a > 0 && m.d > 0;
+  const ss = exact ? m.a : frostAuroraBakeScale(ctx);
+  // HALF RESOLUTION, THEN ONE STRETCH. The three sheets are laid into a buffer at half
+  // the device density and that is copied up onto the frame once: a quarter of the
+  // pixels for each fill, for one smoothed copy (29 Sep 2026). The streaks come out a
+  // touch softer, which falling snow can carry.
+  if (exact && drawBlizzardHalf(ctx, m, ss, camX, clock, amount)) return;
   ctx.save();
-  ctx.scale(1 / ss, 1 / ss);
-  for (const layer of FROST_BLIZZARD_LAYERS) {
+  if (exact) ctx.setTransform(1, 0, 0, 1, Math.round(m.e), Math.round(m.f));
+  else ctx.scale(1 / ss, 1 / ss);
+  for (const layer of frostBlizzardLayers()) {
     const pattern = frostBlizzardTile(ctx, layer, ss);
     if (!pattern) continue;
     // The camera term is what makes it feel like running THROUGH the snow
@@ -5176,6 +5341,43 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
     ctx.restore();
   }
   ctx.restore();
+}
+
+let blizzardBuffer = null;
+function drawBlizzardHalf(ctx, m, ss, camX, clock, amount) {
+  if (typeof document === 'undefined') return false;
+  const hs = ss / 2;
+  const bw = Math.max(1, Math.ceil(W * hs));
+  const bh = Math.max(1, Math.ceil(H * hs));
+  if (!blizzardBuffer) blizzardBuffer = document.createElement('canvas');
+  if (blizzardBuffer.width !== bw || blizzardBuffer.height !== bh) {
+    blizzardBuffer.width = bw;
+    blizzardBuffer.height = bh;
+  }
+  const g = blizzardBuffer.getContext('2d');
+  if (!g) return false;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, bw, bh);
+  for (const layer of frostBlizzardLayers()) {
+    const pattern = frostBlizzardTile(ctx, layer, hs);
+    if (!pattern) continue;
+    const travel = camX * layer.depth * ZOOM + clock * layer.wind;
+    const span = layer.tile * hs;
+    const ox = -Math.round((travel * hs) % span);
+    const oy = Math.round((travel * FROST_BLIZZARD_SLOPE * hs) % span);
+    g.save();
+    g.globalAlpha = layer.alpha * amount;
+    g.translate(ox, oy);
+    g.fillStyle = pattern;
+    g.fillRect(-ox, -oy, bw, bh);
+    g.restore();
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, Math.round(m.e), Math.round(m.f));
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(blizzardBuffer, 0, 0, bw, bh, 0, 0, bw * 2, bh * 2);
+  ctx.restore();
+  return true;
 }
 
 function frostSkyRibbonPath(ctx, x, y, width, height, tilt = 0) {
@@ -7355,6 +7557,12 @@ const DESERT_WINK_BEHIND = 0.14;
 // 4.2 s, so there the show plays DESERT_COYOTE_PORTRAIT_PACE times faster.
 const DESERT_COYOTE_ENTRY = 25;          // px inside the visible right edge
 const DESERT_COYOTE_PORTRAIT_PACE = 1.5;
+// THE HOWL STARTS BY HALFWAY (Peter, 28 Sep 2026: "he should be howling at least from
+// halfway across and keep howling until off screen"). In landscape a howler's head
+// comes up as its ledge passes this fraction of the picture from the left — the song is
+// going ~0.3 s later, before the middle — and it holds until it scrolls off. Until then
+// it keeps its own 5 s loop.
+const DESERT_HOWL_FROM = 0.6;
 const desertCoyoteLatch = new Map();
 // Screen x of everything in the desert backdrop that moves on its own — the campfire
 // plumes, the horizon's dishes and turbines, and the coyotes — so a dust devil can keep
@@ -7532,9 +7740,13 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       const facing = mode === 'yawn' ? -1 : desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
       // Only a run passes heroFrac; the gallery loops every show on its clock.
       let since = null;
-      if (mode !== 'howl' && Number.isFinite(heroFrac)) {
+      // Landscape's howler lifts its head as its ledge passes DESERT_HOWL_FROM across
+      // the picture and holds the song until it is off the left edge.
+      const howlHeld = mode === 'howl' && !portrait;
+      if ((mode !== 'howl' || howlHeld) && Number.isFinite(heroFrac)) {
         const key = stageIndex * 1e6 + k;
-        if (x > entry) desertCoyoteLatch.delete(key);
+        const armAt = howlHeld ? seen.left + (seen.right - seen.left) * DESERT_HOWL_FROM : entry;
+        if (x > armAt) desertCoyoteLatch.delete(key);
         else {
           if (!desertCoyoteLatch.has(key) || desertCoyoteLatch.get(key) > t) {
             if (desertCoyoteLatch.size > 32) desertCoyoteLatch.clear();
@@ -8856,6 +9068,110 @@ const NEON_WIRE_ROWS = {
   middle: { factor: 0.15, seed: 7, span: 74, count: 9, w: 26, roofs: [58, 112] },
   near: { factor: 0.3, seed: 23, span: 132, count: 7, w: 42, roofs: [84, 158] },
 };
+// THE ROOFTOP KIT (antenna bake-off G, SHIPPED 29 Sep 2026; src/dev/neon-antenna-candidates.js).
+// Peter: "a mix of 0 and B and C", then "do 1 in 3 for B and 1 in 5 for C... ship it".
+// Each building draws its lot off its own hash, per building along the street (`block`,
+// the row's repeat) so the pattern does not come round every screen:
+//   a third wear a STEPPED SPIRE — the tall ones step back twice, the rest once, and
+//     every one ends in a needle and lamp ("make sure the stepped ones always have an
+//     antenna");
+//   a fifth wear AERIAL CLUTTER — whips and a TV aerial, the tallest whip lamped on the
+//     tall roofs (no dishes: "don't want any with a satellite dish");
+//   the rest a lone mast, down to the lowest fifth of the row's range — a short one on
+//     the mid-height roofs — so few roofs are bare ("make sure not tons without any
+//     sort of antenna"). Only the shortest of those stand bare: about 1 roof in 20 in
+//     the middle row, 1 in 8 in the near one.
+// The plan is shared with neonWireTowers, so the bolt lands on the tip the pack paints.
+const NEON_ROOF_SPIRE = 1 / 3;
+const NEON_ROOF_AERIALS = 1 / 5;
+function neonRoofPlan(seed, i, block, h, minH, maxH, bw) {
+  const k = (h - minH) / Math.max(1, maxH - minH);
+  const u = neonHash(seed * 31 + i * 7 + block * 101 + 70);
+  if (u < NEON_ROOF_SPIRE) {
+    // Every step an EVEN width about one pixel centre, so the needle stands dead in
+    // the middle of each and its lamp on the needle.
+    const tall = k >= 0.72;
+    const steps = [];
+    let w = bw;
+    let rise = 0;
+    for (let n = 0; n < (tall ? 2 : 1); n++) {
+      w = Math.max(4, 2 * Math.round(w * 0.29));
+      const hh = 4 + n;
+      steps.push({ w, hh, rise });
+      rise += hh;
+    }
+    const needle = Math.round(6 + Math.max(0, k) * 10);
+    return { kind: 'spire', k, steps, rise, needle, tipRise: rise + needle + 1 };
+  }
+  if (u < NEON_ROOF_SPIRE + NEON_ROOF_AERIALS) return { kind: 'aerials', k: Math.max(0, k), tipRise: 0 };
+  // The shipped mast (13px) where it always stood, above 78% of the roof range; a
+  // shorter one (9px) on the mid-height roofs below that.
+  if (h > maxH * 0.78) return { kind: 'mast', pole: 13, tipRise: 14 };
+  return k >= 0.2 ? { kind: 'mast', pole: 9, tipRise: 10 } : null;
+}
+// An aviation lamp: a disc on the pole's own centre (a 2px square beside a 1px pole
+// cannot be centred on it) and, when lit, a soft bloom that the golden hour turns off.
+function neonRoofLamp(ctx, x, y, on, color, size = 1) {
+  const a = ctx.globalAlpha;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = a * (0.18 + 0.82 * on);
+  ctx.beginPath(); ctx.arc(x, y, 1.2 * size, 0, Math.PI * 2); ctx.fill();
+  if (on > 0 && neonGlowScale > 0) {
+    ctx.globalAlpha = a * on * 0.28 * neonGlowScale;
+    ctx.beginPath(); ctx.arc(x, y, 3.5 * size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = a;
+}
+function neonRoofKit(ctx, plan, { x, top, bw, i, block, seed, t, ink, lamp, stroke, glow }) {
+  if (!plan) return;
+  const cx = Math.floor(x + bw / 2) + 0.5;
+  const blink = (k = 0) => (Math.sin(t * 2.2 + i + k) > 0 ? 1 : 0);
+  if (plan.kind === 'mast') {
+    neonTube(ctx, ink, stroke, glow * 0.6, (c) => { c.moveTo(cx, top + 0.5); c.lineTo(cx, top - plan.pole + 0.5); });
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * (blink() ? 1 : 0.2);
+    ctx.fillStyle = lamp;
+    ctx.beginPath(); ctx.arc(cx, top - plan.tipRise, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = a;
+    return;
+  }
+  const y0 = Math.round(top) + 0.5;
+  if (plan.kind === 'spire') {
+    for (const { w, hh, rise } of plan.steps) {
+      neonTube(ctx, ink, stroke, glow * 0.7, (c) => c.rect(cx - w / 2, y0 - rise - hh, w, hh));
+    }
+    const y = y0 - plan.rise;
+    neonTube(ctx, ink, stroke * 0.9, glow * 0.6, (c) => { c.moveTo(cx, y); c.lineTo(cx, y - plan.needle); });
+    neonRoofLamp(ctx, cx, y - plan.needle - 1, blink(), lamp);
+    return;
+  }
+  // AERIALS: one piece per 10px of roof at most — packed tighter, a TV aerial and a
+  // whip tangle into one mark that reads as a kana.
+  const r = (k) => neonHash(seed * 31 + i * 7 + block * 101 + k);
+  const px = (v) => Math.round(v) + 0.5;
+  const thin = (draw) => neonTube(ctx, ink, stroke * 0.7, glow * 0.5, draw);
+  const span = bw - 6;
+  const n = Math.max(1, Math.min(1 + Math.round(plan.k * 2), Math.floor(span / 10)));
+  for (let j = 0; j < n; j++) {
+    const ax = px(x + 3 + span * ((j + 0.3 + r(10 + j) * 0.4) / n));
+    const h = 5 + Math.round((0.3 + r(20 + j) * 0.7) * (6 + plan.k * 14));
+    const kind = r(30 + j);
+    if (kind < 0.3 && h < 14) {
+      // A TV aerial: a mast with three shortening crossbars at the top.
+      thin((c) => {
+        c.moveTo(ax, top); c.lineTo(ax, top - h);
+        for (let q = 0; q < 3; q++) {
+          const y = px(top - h + 1 + q * 2.5);
+          c.moveTo(ax - (4 - q), y); c.lineTo(ax + (4 - q), y);
+        }
+      });
+    } else {
+      thin((c) => { c.moveTo(ax, top); c.lineTo(ax, top - h); });
+      if (j === 0 && plan.k > 0.6) neonRoofLamp(ctx, ax, top - h - 1, blink(j), lamp, 0.8);
+    }
+  }
+}
+
 /**
  * Where a wire row's towers stand right now, in background px (the row's parallax
  * offset included): each tower's box, whether it carries a mast, and its tip — the
@@ -8877,10 +9193,14 @@ export function neonWireTowers(ctx, camX, context, rowName = 'middle') {
     const h = lower && lower.i === i && lower.block === Math.floor(raw / period)
       ? lower.h : minH + neonHash(row.seed + i) * (maxH - minH);
     const top = Math.round(GROUND_Y - h) + dy;
-    const mast = h > maxH * 0.78;
+    const block = Math.floor(raw / period);
+    // A tower "has a mast" when its roof kit ends in a lamped tip — the lone mast or
+    // a spire's needle — and the tip is where the painter puts that lamp.
+    const plan = neonRoofPlan(row.seed, i, block, h, minH, maxH, bw);
+    const tipRise = plan?.tipRise ?? 0;
     out.push({
-      i, block: Math.floor(raw / period), x, bw, top, mast, ink: i % 2 ? NEON_CYAN : NEON_MAGENTA,
-      tipX: x + bw / 2, tipY: mast ? top - 14 : top,
+      i, block, x, bw, top, mast: tipRise > 0 && plan.kind !== 'aerials', ink: i % 2 ? NEON_CYAN : NEON_MAGENTA,
+      tipX: Math.floor(x + bw / 2) + 0.5, tipY: top - tipRise,
     });
   }
   return out;
@@ -8890,7 +9210,7 @@ function neonWireRow(ctx, shift, t, {
   seed = 7, span = 78, count = 10, minH = 60, maxH = 132, w = 34,
   stroke = 1, glow = 0.14, alpha = 1, windows = true, masts = true,
   inkA = NEON_MAGENTA, inkB = NEON_CYAN, lit = NEON_AMBER, lamp = NEON_LAMP,
-  onTower = null, lower = null,
+  onTower = null, lower = null, antenna = null,
 } = {}) {
   if (alpha <= 0) return;
   // The row repeats every `period` of shift; which repeat a tower is in is what makes
@@ -8939,15 +9259,19 @@ function neonWireRow(ctx, shift, t, {
         ctx.fillRect(x + 3 + Math.floor(neonHash(i * 7 + k) * (bw - 7)), wy + 2, 2, 2);
       }
     }
-    if (masts && h > maxH * 0.78) {
+    // THE ANTENNA SEAM: the rooftop-antenna bake-off (src/dev/neon-antenna-candidates.js)
+    // hands in a painter that owns every roof, tall or not. Absent, the shipped roof kit.
+    if (masts && antenna) {
       ctx.globalAlpha = alpha;
-      neonTube(ctx, ink, stroke, glow * 0.6, (c) => {
-        c.moveTo(x + bw / 2 + 0.5, top + 0.5);
-        c.lineTo(x + bw / 2 + 0.5, top - 12.5);
+      antenna(ctx, {
+        x, top, bw, h, minH, maxH, i, block: Math.floor(raw / period), seed, t, ink, lamp,
+        stroke, glow, alpha, tube: neonTube, hash: neonHash,
       });
-      ctx.globalAlpha = alpha * (Math.sin(t * 2.2 + i) > 0 ? 1 : 0.2);
-      ctx.fillStyle = lamp;
-      ctx.fillRect(x + bw / 2 - 1, top - 15, 2, 2);
+    } else if (masts) {
+      ctx.globalAlpha = alpha;
+      const block = Math.floor(raw / period);
+      neonRoofKit(ctx, neonRoofPlan(seed, i, block, h, minH, maxH, bw),
+        { x, top, bw, i, block, seed, t, ink, lamp, stroke, glow });
     }
     if (onTower) {
       ctx.globalAlpha = 1;
@@ -9061,6 +9385,10 @@ function neonPaintBladeSign(ctx, { x, top, bw, ink, word, lit = 1, dim = 1, scal
 // view: the Tokyo Tower, then the nearest middle-row mast (neonPickMast).
 const NEON_STRUCK_HEIGHT = 0.22;   // of the near row's roof range: 100 px of landscape's 84..158
 const NEON_STRUCK_W = 40;
+// IT CARRIES A MAST, and the bolt lands on the lamp at its tip (Peter, 29 Sep 2026: "the
+// lightning is striking buildings with no antennas… i prefer when an antenna is struck,
+// it looks more impressive"). Taller than the rooftop kit's, as the building is lower.
+const NEON_STRUCK_MAST = 18;
 export const neonStruckX = (L, camX) => Math.round(L - camX * NEON_WIRE_ROWS.near.factor * ZOOM);
 /**
  * The L that puts the struck tower's roof `frac` of the way across the picture with the
@@ -9080,7 +9408,8 @@ export function neonStruckTower(ctx, camX, context) {
   const top = Math.round(GROUND_Y - h) + backgroundY(context, 'near');
   const cov = backgroundCoverage(ctx);
   return {
-    x, top, bw: NEON_STRUCK_W, mast: false, ink: NEON_CYAN, tipX: x + NEON_STRUCK_W / 2, tipY: top,
+    x, top, bw: NEON_STRUCK_W, mast: true, ink: NEON_CYAN,
+    tipX: Math.floor(x + NEON_STRUCK_W / 2) + 0.5, tipY: top - NEON_STRUCK_MAST - 1,
     word: NEON_SIGN_WORDS[(st.n || 0) % NEON_SIGN_WORDS.length], since: st.since,
     inView: x + NEON_STRUCK_W > cov.left + 8 && x < cov.right - 8,
   };
@@ -9095,16 +9424,26 @@ function drawNeonStruckTower(ctx, t, tw, { alpha = 1, lit = 1, ink = tw.ink } = 
   ctx.beginPath();
   for (let y = tw.top + 9; y < H - 2; y += 9) { ctx.moveTo(tw.x + 0.5, y + 0.5); ctx.lineTo(tw.x + tw.bw + 0.5, y + 0.5); }
   ctx.stroke();
+  // The mast and its lamp, which dies with the sign once the bolt has been through it.
+  ctx.globalAlpha = alpha;
+  neonTube(ctx, ink, 1.1, 0.12, (c) => { c.moveTo(tw.tipX, tw.top + 0.5); c.lineTo(tw.tipX, tw.tipY + 1); });
+  const lampOn = tw.since != null && tw.since > 0.16 ? 0 : (Math.sin(t * 2.2) > 0 ? 1 : 0);
+  neonRoofLamp(ctx, tw.tipX, tw.tipY, lampOn, NEON_LAMP);
   const phase = tw.since != null ? neonSignBlowout(tw.since, 7) : null;
   neonPaintBladeSign(ctx, { x: tw.x, top: tw.top, bw: tw.bw, ink, word: tw.word, lit, dim: alpha, phase });
   ctx.globalAlpha = 1;
 }
-/** The middle-row mast nearest x (else the nearest roof), named so it can be followed. */
+/**
+ * The middle-row mast nearest x, named so it can be followed. Any mast in the picture
+ * beats a bare roof however near (Peter, 29 Sep: "i prefer when an antenna is struck");
+ * a bare roof only when no tower in view carries one.
+ */
 export function neonPickMast(ctx, camX, context, x) {
   // Not a row that has not arrived yet (neon-1's city assembles; neonCityReveal).
   if (neonCityReveal(context?.stageIndex ?? 1, context?.progress).midWire < 0.6) return null;
   const towers = neonWireTowers(ctx, camX, context, 'middle');
-  const masts = towers.filter((t) => t.mast && Math.abs(t.tipX - x) < 130);
+  const cov = backgroundCoverage(ctx);
+  const masts = towers.filter((t) => t.mast && t.tipX > cov.left + 16 && t.tipX < cov.right - 16);
   const pool = masts.length ? masts : towers;
   let best = pool[0];
   for (const t of pool) if (Math.abs(t.tipX - x) < Math.abs(best.tipX - x)) best = t;
@@ -9155,13 +9494,24 @@ function neonBandVeil(ctx, cab, { alpha = 0.72, top = null, context = null, tint
   // but it is PAINTED to the bottom of the frame, holding its final colour.
   // Stopping it at the road put a brightness step across every hole at exactly
   // road height, which is the one horizontal a pit must not have.
-  const g = ctx.createLinearGradient(0, from, 0, GROUND_Y);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(0.55, tint);
-  g.addColorStop(1, tint);
+  // The fade runs only the first 55% of the way to GROUND_Y; below that it is the tint,
+  // flat, to the bottom. So the gradient is filled across the fade alone and the rest
+  // is a plain fill — the same veil, without a gradient over half a portrait picture
+  // (28 Sep 2026). The join is snapped to a device row so the two neither overlap nor
+  // part.
+  let solid = from + (GROUND_Y - from) * 0.55;
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  if (m && m.d > 0 && !m.b && !m.c) solid = (Math.round(m.d * solid + m.f) - m.f) / m.d;
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = g;
-  ctx.fillRect(cov.left, from, cov.width, H - from);
+  if (solid > from) {
+    const g = ctx.createLinearGradient(0, from, 0, solid);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, tint);
+    ctx.fillStyle = g;
+    ctx.fillRect(cov.left, from, cov.width, solid - from);
+  }
+  ctx.fillStyle = tint;
+  ctx.fillRect(cov.left, Math.max(from, solid), cov.width, H - Math.max(from, solid));
   ctx.globalAlpha = 1;
 }
 
@@ -9473,6 +9823,26 @@ const goldenGradients = new WeakMap();
 // and glow is a change of MATERIAL, not only of light. `mood.paper === false` draws the
 // old light-ray look (the gallery keeps both to compare).
 const NEON_GOLDEN_PAPER_MATERIAL = 'cardstockClear';
+// THE RAYS ARE THEIR OWN SHEET (Peter, 29 Sep 2026: "a separate paper texture for the
+// sun rays so it looks like rotating paper? at present i think it's just under the sky
+// filter"). They were: the shared grain is anchored to the screen, so the strips turned
+// over a still texture — windows onto the sky's own paper. Now they are cut from a
+// different stock whose grain is pinned to the fan and turns with it, about the sun.
+const NEON_GOLDEN_RAY_MATERIAL = 'cardstockSoft';
+const neonRayPatterns = new WeakMap();
+function neonRayPattern(ctx, cx, cy, turn) {
+  let pattern = neonRayPatterns.get(ctx);
+  if (pattern === undefined) {
+    const source = sharedPaperTextureSource(NEON_GOLDEN_RAY_MATERIAL);
+    pattern = source && typeof ctx.createPattern === 'function' ? ctx.createPattern(source, 'repeat') : null;
+    neonRayPatterns.set(ctx, pattern);
+  }
+  if (pattern && typeof pattern.setTransform === 'function' && typeof DOMMatrix === 'function') {
+    pattern.setTransform(new DOMMatrix().translate(cx, cy).rotate(turn * 180 / Math.PI)
+      .translate(-cx, -cy).scale(PAPER_PATTERN_SCALE));
+  }
+  return pattern;
+}
 function neonGoldenSky(ctx, t, camX = 0, context = null) {
   const paper = context?.neonMood?.paper !== false;
   if (paper) return neonGoldenPaperSky(ctx, t, context);
@@ -9543,11 +9913,12 @@ function neonGoldenPaperSky(ctx, t, context) {
     q.closePath();
   }
   const pattern = sharedPaperPatternFor(ctx, NEON_GOLDEN_PAPER_MATERIAL);
+  const rayPattern = neonRayPattern(ctx, x, y, turn) || pattern;
   ctx.save();
   ctx.globalAlpha *= 0.62;
   for (const [q, fill] of [[strips[0], '#ffe6b8'], [strips[1], '#fff2d6']]) {
     drawPaperShape(ctx, q, fill, {
-      pattern, deep: PAPER_DEEP_OFFSET, contact: PAPER_CONTACT_OFFSET,
+      pattern: rayPattern, deep: PAPER_DEEP_OFFSET, contact: PAPER_CONTACT_OFFSET,
       deepColor: 'rgba(120,52,40,0.16)', contactColor: 'rgba(90,40,30,0.08)',
     });
   }
@@ -9842,10 +10213,16 @@ function neonAurora(ctx, t, strength) {
     }
     auroraKey = key;
   }
+  // Only the rows a curtain can reach: every band hangs UP from its base, and below the
+  // lowest base (plus its ripple) the sheet is empty. Copying the empty rest — two
+  // thirds of a portrait picture, blended and magnified — was most of this layer's
+  // cost (28 Sep 2026).
+  const floor = Math.min(H, H * Math.max(...AURORA_BANDS.map((b) => b[1])) + 24);
+  const rows = Math.min(h, Math.ceil((floor - top) / 2));
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.globalAlpha = Math.min(1, strength);
-  ctx.drawImage(auroraCanvas, cov.left, top, cov.width, h * 2);
+  ctx.drawImage(auroraCanvas, 0, 0, w, rows, cov.left, top, cov.width, rows * 2);
   ctx.restore();
 }
 
@@ -9946,6 +10323,7 @@ function neonPack(settings) {
         layer('middle', row.factor, (shift) => neonWireRow(ctx, shift, t, {
           seed: row.seed, span: row.span, count: row.count, minH: midRoofs.minH, maxH: midRoofs.maxH, w: row.w,
           stroke: 1, glow: 0.1, alpha: 0.46 * reveal.midWire, ...(mood?.wire || {}),
+          antenna: backgroundContext?.neonAntenna?.middle || null,
           onTower: reveal.midWire >= 1 ? neonBladeSigns(ctx, {
             lit: mood?.signs ?? 1, words: NEON_BACK_SIGN_WORDS, scale: 0.72, dim: 0.62, tower: 6,
           }) : null,
@@ -9960,6 +10338,7 @@ function neonPack(settings) {
           seed: row.seed, span: row.span, count: row.count, minH: nearRoofs.minH, maxH: nearRoofs.maxH, w: row.w,
           stroke: 1.2, glow: 0.18, alpha: reveal.nearWire, ...(mood?.wire || {}),
           lower: backgroundContext?.neonLowTower || null,
+          antenna: backgroundContext?.neonAntenna?.near || null,
           onTower: reveal.nearWire >= 1 ? neonBladeSigns(ctx, {
             lit: mood?.signs ?? 1, blown: backgroundContext?.neonSignBlown || null,
             faulty: neonFaultySignBlock(ctx, backgroundContext, totalDist), t,
@@ -10069,6 +10448,37 @@ function neonPack(settings) {
   };
 }
 
+// FROST'S CRAYON SKY BAKES TO ITS GEOMETRY (the band it spans and the far ridge's base), and
+// RunState.enter bakes it before the song starts through warmFrostSky: a first-frame bake
+// just after the downbeat stalls the audio scheduler. Landscape's geometry is fixed (no
+// scenery layout, no crane); portrait's comes from the frame (the same for all three
+// stages), so the one warmed is the one last drawn — the session's first portrait Frost
+// stage bakes on its first frame, in the intro.
+const frostSkySeen = new Map();
+const frostStageOf = (context) => Math.max(1, Math.min(3, Number(context?.stageIndex) || 1));
+
+export function warmFrostSky(stageIndex, portrait = false) {
+  if (typeof document === 'undefined') return;
+  const stage = frostStageOf({ stageIndex });
+  const seen = frostSkySeen.get(portrait === true);
+  if (portrait && !seen) return;
+  const farBase = seen ? seen.farBase : sceneryRidgeBaseY(null, 'farLandmark', 66, GROUND_Y) - FROST_LANDSCAPE_SCENERY_LIFT;
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 4;
+  const ctx = c.getContext('2d');
+  if (!ctx) return;
+  // Drawn into a scrap canvas: the bake is the point, and blitting it forces the raster.
+  paintFrostSky(ctx, {
+    t: 0, camX: 0, totalDist: 0, stageIndex: stage, progress: 0, portrait: portrait === true,
+    coverage: { left: 0, right: W, width: W }, band: seen ? seen.band : UNBOUNDED_BACKGROUND_BAND,
+    skyRect: { x: 0, y: -PAN_MAX - H, w: W, h: GROUND_Y + PAN_MAX + H },
+    groundY: GROUND_Y, farRidge: { top: farBase - 66, base: farBase },
+    auroraRect: frostAuroraRect(null), auroraGain: 0, zoom: ZOOM,
+    wrap: (v) => v, paperAurora: () => {},
+  });
+}
+
 function watercolorPack(settings) {
   const paperPreview = !!(settings?.paperPreset
     && settings.paperCutout !== false && settings.paperCutout !== 'off');
@@ -10094,7 +10504,15 @@ function watercolorPack(settings) {
           ? FROST_COMBINED_SCENERY_FINISH : backgroundContext.frostSceneryStudy)
         : null;
       const sky = frostLight ? frostLight.sky : cab.sky;
-      skyGrad(ctx, sky[0], sky[1]);
+      // FROST'S SKY IS CRAYON (frostCrayon/sky.js, shipped 29 Sep 2026): a painter takes
+      // the whole sky pass — the fill, the sky sheet, the aurora and the ribbons — and the
+      // hills and everything after are the pack's own. A context may hand in another
+      // painter (the lab's bake-off candidates), or null for the cut-paper sky Frost had
+      // before, which is kept whole.
+      const frostSkyPainter = cab.id === 'frost'
+        ? (backgroundContext?.frostSkyPainter === undefined ? paintFrostSky : backgroundContext.frostSkyPainter)
+        : null;
+      if (!frostSkyPainter) skyGrad(ctx, sky[0], sky[1]);
       frostFrame = cab.id === 'frost'
         ? {
           camX,
@@ -10108,7 +10526,44 @@ function watercolorPack(settings) {
           light: frostLight,
         }
         : null;
-      if (cab.id === 'frost') {
+      if (frostSkyPainter) {
+        const coverage = backgroundPaintCoverage(ctx);
+        const bleed = coverage.left !== 0 || coverage.right !== W ? W : 0;
+        // The far ridge's crest line and base in this (untranslated) sky space, so the
+        // painter can sit its horizon glow right behind the paper hills — WITH THE CRANE AT
+        // REST. The painter bakes its sky to this geometry, so geometry that followed the
+        // portrait crane would re-bake on every jump; a sky is frame-fixed anyway.
+        const farBase = sceneryRidgeBaseY(backgroundContext, 'farLandmark', 66, GROUND_Y)
+          - (backgroundContext?.portrait ? FROST_SCENERY_LIFT : FROST_LANDSCAPE_SCENERY_LIFT);
+        // And the visible band likewise: the crane moves it by shift / zoom in this space
+        // (run.js portraitBackgroundBand), and the band's height is H / zoom.
+        const liveBand = backgroundPaintBand(ctx);
+        const craneShift = Number(backgroundContext?.cameraShiftY) || 0;
+        const band = craneShift && Number.isFinite(liveBand.top) && Number.isFinite(liveBand.bottom)
+          ? { top: liveBand.top + craneShift * ((liveBand.bottom - liveBand.top) / H),
+            bottom: liveBand.bottom + craneShift * ((liveBand.bottom - liveBand.top) / H) }
+          : liveBand;
+        frostSkySeen.set(backgroundContext?.portrait === true, { band, farBase });
+        frostSkyPainter(ctx, {
+          t, camX, totalDist, light: frostLight, sky,
+          stageIndex: backgroundContext?.stageIndex, progress: backgroundContext?.progress,
+          portrait: backgroundContext?.portrait === true, backgroundContext,
+          coverage, band,
+          // The rectangle skyGrad fills (headroom above for the crane, bleed for portrait).
+          skyRect: { x: coverage.left - bleed, y: -PAN_MAX - H, w: coverage.width + bleed * 2, h: GROUND_Y + PAN_MAX + H },
+          groundY: GROUND_Y, farRidge: { top: farBase - 66, base: farBase },
+          auroraRect: frostAuroraRect(backgroundContext), auroraGain: backgroundContext?.auroraGain,
+          zoom: ZOOM, wrap: (v, margin) => wrapIntoView(ctx, v, margin),
+          // The pack's own vellum aurora, for a study that keeps it over its own sky.
+          // `boost` scales the stage's gain.
+          paperAurora: (boost = 1) => drawFrostAurora(ctx, t, camX, {
+            paper: paperPreview, paperMaterial: paperPreset, paperStrength: paperStrengths.sky,
+            stageIndex: backgroundContext?.stageIndex, t, backgroundContext,
+            gain: (backgroundContext?.auroraGain
+              ?? FROST_AURORA_STAGE_GAIN[Math.max(1, Math.min(3, Number(backgroundContext?.stageIndex) || 1))]) * boost,
+          }),
+        });
+      } else if (cab.id === 'frost') {
         if (paperPreview) {
           drawPaperSurface(ctx, backgroundPaintCoverage(ctx), `frost-paper-sky:${paperPreset}`,
             paperPreset, paperStrengths.sky);
@@ -10154,10 +10609,18 @@ function watercolorPack(settings) {
           });
           ctx.globalAlpha = hillAlpha;
         }
+        // The far hill's grain need go no lower than the near hill's deepest valley,
+        // in the far layer's units: the opaque near hill covers everything below it.
+        const nearValley = depth === 'far' && cab.id === 'frost'
+          ? sceneryRidgeBaseY(backgroundContext, 'near', 40, GROUND_Y)
+            - (backgroundContext?.portrait ? FROST_SCENERY_LIFT : FROST_LANDSCAPE_SCENERY_LIFT)
+            + backgroundY(backgroundContext, 'near') - backgroundY(backgroundContext, 'far')
+          : null;
         const hillOptions = cab.id === 'frost'
           ? {
             paper: paperPreview, paperMaterial: paperPreset,
             paperStrength: paperStrengths.scenery, seamFree: true,
+            grainBottom: nearValley,
           }
           : paperPreview
             ? { paper: true, paperMaterial: paperPreset, paperStrength: paperStrengths.scenery }
@@ -11388,6 +11851,11 @@ function lcdSceneFrame(scene) {
     // presentation bit to hand the rooftop gorilla from his barrel loop to a
     // friendly wave; it is not gameplay state and no other scene reads it.
     finish: !!scene?.finish,
+    // A BACKGROUND PLATE (the dev menu's RECORD BACKGROUND): the skyline with
+    // nothing on it that answers to the run — the counting board shows an
+    // empty face and the rooftop gorilla, who throws the lane's barrels, is
+    // not there to throw them.
+    plate: !!scene?.plate,
     // HOW THE RUN IS GOING, and the one crack in "no gameplay reaches this
     // painter". It is deliberately narrow: the count of clean beats in a row
     // (RunState.beatCombo) and a boolean that goes true for a couple of seconds
@@ -17023,6 +17491,8 @@ function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null,
         lcdBillboard(ctx, art.buildings[bi], artName, frame);
       } else if (frame.verbCue) {
         lcdVerbSign(ctx, art.buildings[bi], frame.verbCue, frame);
+      } else if (frame.plate) {
+        lcdBoardFrame(ctx, art.buildings[bi], LCD_BOARD_W, LCD_BOARD_H);
       } else {
         lcdComboBoard(ctx, art.buildings[bi], frame);
       }
@@ -17055,7 +17525,7 @@ function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null,
   // against, and the two scenes that own those furnishings own no gorilla.
   const gorillaRise = Number.isInteger(art.rooftopGorilla)
     ? riseOf(`b${art.rooftopGorilla}`) : null;
-  if (Number.isInteger(art.rooftopGorilla) && gorillaRise !== null) {
+  if (Number.isInteger(art.rooftopGorilla) && gorillaRise !== null && !frame.plate) {
     // He and his chute ride his own roof up, for the reason every roof
     // furnishing does — see onRoof above. The chute is authored FROM the roof
     // (`GROUND_Y - gh`), so the whole rig moves as one under the offset.

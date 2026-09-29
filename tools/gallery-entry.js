@@ -53,6 +53,7 @@ import {
   PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT, jumpV, gravityFor, jumpHeightFor, airtimeFor,
   Player, SLIDE_KICK_T, STAND_AFTER_PLOW_T,
 } from '../src/game/player.js';
+import { BASE_SPEED, SPEED_RAMP_K } from '../src/game/layout.js';
 import { drawBambooShoot } from '../src/engine/sprites.js';
 // Roads are built by the SAME function the run builds them with, off the SAME
 // cabinet data, and drawn through the SAME painters. Anything less and this
@@ -95,14 +96,14 @@ import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../sr
 import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
 import { PIG_FLOCK_CANDIDATES, drawPigFlockScene, drawPigFlockCloseUp, drawPigletLineup } from '../src/dev/pig-flock-candidates.js';
 import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
+import { NEON_ANTENNA_CANDIDATES } from '../src/dev/neon-antenna-candidates.js';
 import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
+import { FROST_CRAYON_CANDIDATES, FROST_CRAYON_SNOW_CANDIDATES, FROST_CRAYON_SCREENS, drawFrostCrayonScene } from '../src/dev/frost-crayon-candidates.js';
 import { SPEED_MCM_OBJECTS, OBJECT_STYLES, drawSpeedObjectClose, drawSpeedObjectGameScale } from '../src/dev/speed-mcm/object-sheet.js';
 import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
 import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
-import { WINK_CANDIDATES, drawWinkCandidate } from '../src/dev/speed-mcm/wink-candidates.js';
-import { DESERT_CAT_CANDIDATES, BOBCAT_ROUND2, BOBCAT_ROUND3, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup, drawBobcatLineup, drawStreakLineup } from '../src/dev/desert-cat-candidates.js';
-import { MCM_KIT as SPEED_MCM_KIT, MCM_PAINT as SPEED_MCM_PAINT, arcPalette as speedArcPalette } from '../src/engine/stylePacks/speedMcm.js';
+import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
@@ -8046,30 +8047,6 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// ------------------------------------------ SPEED ZONE — the coyote's wink (lab)
-// Peter, 28 Sep 2026: "can we do a bake off for the smile animation of the coyote... the
-// smile looks off, perhaps we don't need a smile or could have the head move left/right
-// - be creative". Timelines for the shipped square-on Jones figure, in
-// src/dev/speed-mcm/wink-candidates.js; the winner becomes JONES_MODEL.wink.
-{
-  const grid = section('speed-mcm-wink-bakeoff', 'SPEED ZONE — the coyote\'s wink (C+D ships)',
-    'SHIPPED 28 Sep 2026: "i like the look both ways but with the groucho at the end" — the last card pair, C+D, is '
-    + 'the shipped wink (speedMcmCoyote.js jonesWinkShow). '
-    + 'Asked 28 Sep 2026: the winking coyote\'s grin "looks off". 0 is the grin as shipped; A–H are other ways to play '
-    + 'the moment on the same square-on Chuck Jones figure: no smile, a smirk, a look both ways, a Groucho brow '
-    + 'waggle, a salute, a SHOW-OFF! sign, licking his chops, and a sorry-pal head-shake. Each twice, in speed-3\'s '
-    + 'dusk (the wink only happens at its finish): first the show looped every 6 s, then as the finish plays it — '
-    + 'three seconds of blinking while the hero is still coming, then the show once, then still. ANIMATED.',
-    '28 Sep 2026');
-  const pal = speedArcPalette(0.97);
-  for (const cand of WINK_CANDIDATES) {
-    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
-      (ctx, t) => drawWinkCandidate(ctx, t, cand, pal, SPEED_MCM_KIT.pats(ctx, pal), SPEED_MCM_PAINT.ledge, W, H), { animated: true });
-    tile(grid, `${cand.id} ${cand.name} · at the finish`, 'Blinks until the hero is on the pad (3 s), then the show once.', W, H,
-      (ctx, t) => drawWinkCandidate(ctx, t, cand, pal, SPEED_MCM_KIT.pats(ctx, pal), SPEED_MCM_PAINT.ledge, W, H, true), { animated: true });
-  }
-}
-
 // ------------------------------------------ SPEED ZONE — a desert cat for the bruiser's slot (lab)
 // Peter, 28 Sep 2026: "could we bake off a new dog style similar to the existing ones but
 // relevant for a desert, like a cougar or bobcat? the style should be the lane style, NOT
@@ -8099,59 +8076,194 @@ function cryptStyleTiles(grid, tag, cand) {
     (ctx, t) => drawDesertCatLineup(ctx, t, W, H), { animated: true });
 }
 
-// ------------------------------------------ SPEED ZONE — the bobcat, refined and sleeker (lab)
-// Peter, 28 Sep 2026: "i like B, can we refine him further and have some variations on
-// body shape to be a bit sleeker". Round 2 in src/dev/desert-cat-candidates.js
-// (BOBCAT_ROUND2): B as picked, B+ redrawn, and B+ in five sleeker bodies.
+// ------------------------------------------ FROST FORTRESS — crayon (lab)
+// Peter, 28 Sep 2026: "do you think crayon might work for the frost level?" then "do a small
+// bakeoff for frost 1 and frost 3 at dusk". Two screens re-composed from the shipped
+// watercolor pack's own numbers (src/dev/frost-crayon/plan.js), in one crayon hand on two
+// papers; the lane, hazards and hero are the shipped ones.
 {
-  const grid = section('desert-cat-bobcat-round2', 'SPEED ZONE — the bobcat, refined and sleeker (bake-off)',
-    'Asked 28 Sep 2026: "i like B, can we refine him further and have some variations on body shape to be a bit sleeker". '
-    + 'B is round 1\'s bobcat as picked. B+ is him redrawn: the hind shank carries its width to a flatter paw (no knob '
-    + 'at the hock), the back rounds harder as he gathers, the coat is streaks down the spine, scattered flank spots '
-    + 'and black spots on the white belly instead of a polka-dot grid, the forearm bars sit below the elbow, two '
-    + 'facial lines sweep from the eye into the ruff, a soft throat bib, and a proper bob — coat-coloured with bars, '
-    + 'black on top at the tip, white under. S1–S5 are B+ in five sleeker bodies with the same face and markings, so '
-    + 'the cards compare body shape only: S1 LEAN (longer barrel, tucked waist), S2 LEGGY (longer, finer legs), S3 '
-    + 'STREAK (long, low, flat out), S4 SMALL HEAD (the real animal\'s proportions), S5 LONGER BOB. All are still '
-    + 'fitted to the bruiser\'s box, so any of them drops into his slot. Each: large (4x) running in place, then at '
-    + 'game scale on speed-2 as he comes down the lane and the hero hops him. Last card: all of them side by side. '
-    + 'ANIMATED.',
+  const grid = section('frost-crayon-bakeoff', 'FROST FORTRESS — crayon (bake-off)',
+    'Asked 28 Sep 2026: could crayon replace the cut paper on Frost? 0 is the shipped paper. A is crayon on WHITE '
+    + 'paper, where the bare sheet is the snow; B is the same hand on pale BLUE-GREY stock with the snow laid in as '
+    + 'white crayon. Two screens: frost-1 by day (the polar bears under the crown keep) and frost-3 at dusk with the '
+    + 'aurora. The legibility test is the white snowmen and ice crystals in the lane: both papers press the band '
+    + 'just above the lane to a mid-toned shadow blue so they read. Round 2 (Peter: "sky crayon, paper everything '
+    + 'else"): C and D keep the shipped paper world and swap only the sky for crayon — C from the white-paper hand, '
+    + 'D from the blue-grey. The paper pack\'s soft cloud washes still draw over the crayon sky. ANIMATED.',
     '28 Sep 2026');
-  for (const cand of BOBCAT_ROUND2) {
-    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
-      (ctx, t) => drawDesertCatTile(ctx, t, cand, W, H), { animated: true });
-    tile(grid, `${cand.id} ${cand.name} · in the lane`, 'Speed-2 halfway, game scale: the approach and the hop.', W, H,
-      (ctx, t) => drawDesertCatInLane(ctx, t, cand, W, H), { animated: true });
-  }
-  tile(grid, 'All of them side by side', 'Every bobcat at 2x its lane size, on one clock.', W, H,
-    (ctx, t) => drawBobcatLineup(ctx, t, W, H), { animated: true });
+  FROST_CRAYON_CANDIDATES.forEach((cand, n) => {
+    const tag = n === 0 ? '0' : String.fromCharCode(64 + n);
+    for (const screen of FROST_CRAYON_SCREENS) {
+      tile(grid, `${tag} ${cand.name} — ${screen.name}`, cand.note, W, H,
+        (ctx, t) => drawFrostCrayonScene(ctx, t, cand.paint, screen), { animated: true });
+    }
+  });
 }
 
-// ------------------------------------------ SPEED ZONE — the streak bobcat, bigger (lab)
-// Peter, 28 Sep 2026: "i am leaning towards streak ... he needs to be a bit bigger overall
-// though". Round 3 in src/dev/desert-cat-candidates.js (BOBCAT_ROUND3): round 2's S3 and
-// the same art at 1.2x, 1.35x and 1.5x, each with a proposed collision box (dashed).
 {
-  const grid = section('desert-cat-bobcat-round3', 'SPEED ZONE — the streak bobcat, bigger (bake-off)',
-    'Asked 28 Sep 2026: "i am leaning towards streak ... he needs to be a bit bigger overall though". S3 read smallest '
-    + 'because he is fitted, long and low, into the bruiser\'s 15x10 box — his head and body span only about 21x10 of '
-    + 'it. S3 is round 2\'s streak as picked, over the bruiser\'s box; L1, L2 and L3 are the same art, fps and markings '
-    + 'at 1.2x, 1.35x and 1.5x his size. Art that big past the old box would make hits look unfair, so each carries a '
-    + 'PROPOSED collision box (the dashed outline, lab-only) covering his head and body over the whole stride — the '
-    + 'tail, ear tufts and legs may overhang it — with the art centred on it, so the game would take it with only the '
-    + 'box and the VISUAL/TALL numbers changed (in each card\'s note). Each note also gives the takeoff window on a '
-    + 'full jump at speed-2\'s pace against the bruiser\'s 540 ms: the bigger the box, the tighter the jump. Each: '
-    + 'large (4x) running in place, then at game scale on speed-2 as he comes down the lane and the hero hops him. '
-    + 'Last card: the four sizes side by side over their boxes. ANIMATED.',
+  // The blizzard at the strength the run has there: frost-1's end of the ladder (0.45) by
+  // day, frost-3's opening (about 1.0) at dusk.
+  const SNOW = { s1: 0.45, s2: 1.02 };
+  const grid = section('frost-crayon-sky-snow', 'FROST FORTRESS — crayon sky in the snow (bake-off)',
+    'Asked 28 Sep 2026, after the crayon-sky round: "i kinda like the crayon sky (against white)... not so much for '
+    + 'the aurora, could that be the other way? also I need to see it with snow against it". Every card has the '
+    + 'shipped blizzard falling at the strength the run has there (haze and flakes, laid over the hero as the game '
+    + 'does): frost-1 by day at 0.45, frost-3 at dusk at 1.0. 0 is the shipped paper; C is the crayon sky on white '
+    + 'with its crayon aurora; E is the same crayon sky with the shipped vellum aurora at 2.4x its gain (brightened '
+    + 'on request, as the navy swallowed it at 1x). By day C and E match (no '
+    + 'aurora on frost-1). ANIMATED.',
     '28 Sep 2026');
-  for (const cand of BOBCAT_ROUND3) {
-    tile(grid, `${cand.id} ${cand.name}`, cand.note, W, H,
-      (ctx, t) => drawDesertCatTile(ctx, t, cand, W, H), { animated: true });
-    tile(grid, `${cand.id} ${cand.name} · in the lane`, 'Speed-2 halfway, game scale, the box dashed: the approach and the hop.', W, H,
-      (ctx, t) => drawDesertCatInLane(ctx, t, cand, W, H), { animated: true });
+  FROST_CRAYON_SNOW_CANDIDATES.forEach((cand, n) => {
+    const name = n === 0 ? `0 ${cand.name}` : cand.name;
+    for (const screen of FROST_CRAYON_SCREENS) {
+      tile(grid, `${name} — ${screen.name}, snowing`, cand.note, W, H,
+        (ctx, t) => drawFrostCrayonScene(ctx, t, cand.paint, screen, { snow: SNOW[screen.id] }), { animated: true });
+    }
+  });
+}
+
+// ------------------------------------------------ run cadence vs speed
+//
+// The run cycle is wound by the lane's speed: Player.update adds
+// gaitRate(speed) to `anim` every second, and poseFromPlayer reads anim % 1 as
+// the gait phase. Before this bake-off gaitRate was speed / 40 — strictly
+// proportional, 4 strides/s at BASE_SPEED, so every multiplier the run stacks on
+// top (cabinet bonus, time ramp, SPEED power-up, boost pad) multiplied the legs
+// too. Row I won, lifted to a 3.5 base as row J, which ships (player.js RUN_CADENCE / RUN_CADENCE_EXP).
+//
+// Each row is one cadence curve; each card is one real speed the game reaches,
+// built from the same numbers run.js multiplies (see `get speed()`). Every curve
+// passes through 4.0 at BASE_SPEED, so FIELD SERVICE's opening reads the same
+// in all four rows and only the fast end changes. The ground scrolls at the true
+// lane speed, so a slower cadence shows up honestly as the feet not keeping pace.
+{
+  const s = sectionEl('run-cadence-bakeoff', 'Heroes — run cadence vs speed (bake-off)',
+    'Asked 29 Sep 2026: "the walk/run cycle seems WAY too fast on faster levels... perhaps reduce the range so it '
+    + 'does not multiply so much". Today strides/s = speed / 40, so it scales 1:1 with every speed multiplier. '
+    + 'Rows are candidate curves, all equal at base speed (4 strides/s); cards are real in-game speeds, the ground '
+    + 'scrolling at the true lane speed. A was the game before; J SHIPS (I picked 29 Sep, base then raised to 3.5). B = square root, C = fourth root, D = one fixed cadence. '
+    + '"end" = the time ramp at the stage\'s full duration. Round two: E cube root; F and G are the fourth root with the base cadence lowered to 3.5 and 3.0. Round three: H and I are the cube and square root from a 3.0 base. Lorenzo only — every hero winds the same clock. ANIMATED.',
+    '29 Sep 2026');
+  const subhead = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    if (note) {
+      const p = document.createElement('p');
+      p.className = 'note';
+      p.textContent = note;
+      s.appendChild(p);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  const cab = (id) => CABINETS.find((c) => c.id === id);
+  const stage = (id) => STAGES.find((st) => st.id === id);
+  // The run's own formula, minus the terms a gallery has no state for.
+  const speedAt = (stageId, { end = false, mult = 1 } = {}) => {
+    const st = stage(stageId);
+    const ramp = end ? 1 + SPEED_RAMP_K * Math.sqrt(st.durationSec) : 1;
+    return BASE_SPEED * (1 + (cab(st.cabinet).speedBonus || 0)) * (st.speedMult ?? 1) * ramp * mult;
+  };
+  // Powerups.speedMultiplier(): 1.25 at level 1, 1.4 at level 2. A boost pad
+  // adds 0.5 to run.speedBoost, i.e. x1.5 at the moment it fires.
+  const SCENARIOS = [
+    { name: 'CRYPT SHIFT, start', v: speedAt('crypt-1') },
+    { name: 'FIELD SERVICE, start', v: speedAt('plumber-3') },
+    { name: 'FIELD SERVICE + SPEED x1.25', v: speedAt('plumber-3', { mult: 1.25 }) },
+    { name: 'FROST FORTRESS, end', v: speedAt('frost-3', { end: true }) },
+    { name: 'THE SURGE, end', v: speedAt('surge-3', { end: true }) },
+    { name: 'SPEED ZONE, end + boost pad', v: speedAt('speed-3', { end: true, mult: 1.5 }) },
+    { name: 'THE SURGE, end + SPEED x1.4', v: speedAt('surge-3', { end: true, mult: 1.4 }) },
+  ];
+  // The pre-29-Sep coupling, speed / 40, kept here as row A for reference.
+  const BASE_RATE = BASE_SPEED / 40;
+  const CURVES = [
+    { name: 'A — before: linear, speed / 40', rate: (v) => v / 40 },
+    { name: 'B — square root of the speed ratio', rate: (v) => BASE_RATE * Math.sqrt(v / BASE_SPEED) },
+    { name: 'C — fourth root of the speed ratio', rate: (v) => BASE_RATE * Math.pow(v / BASE_SPEED, 0.25) },
+    { name: 'D — fixed cadence, 4 strides/s at any speed', rate: () => BASE_RATE },
+    // Round two (29 Sep): between B and C, and C with the whole curve lowered —
+    // these two no longer read 4.0 at base speed.
+    { name: 'E — cube root of the speed ratio', rate: (v) => BASE_RATE * Math.cbrt(v / BASE_SPEED) },
+    { name: 'F — fourth root, base lowered to 3.5 strides/s', rate: (v) => 3.5 * Math.pow(v / BASE_SPEED, 0.25) },
+    { name: 'G — fourth root, base lowered to 3.0 strides/s', rate: (v) => 3.0 * Math.pow(v / BASE_SPEED, 0.25) },
+    // Round three: the 3.0 base with more of the speed let through.
+    { name: 'H — cube root, base lowered to 3.0 strides/s', rate: (v) => 3.0 * Math.cbrt(v / BASE_SPEED) },
+    { name: 'I — square root, base lowered to 3.0 strides/s', rate: (v) => 3.0 * Math.sqrt(v / BASE_SPEED) },
+    // I won, then read a touch slow: the base went up to 3.5, and that ships.
+    { name: 'J — SHIPS (29 Sep): square root, base 3.5 strides/s', rate: (v) => 3.5 * Math.sqrt(v / BASE_SPEED) },
+  ];
+  const HERO_CX = 70, TW = 84, TH = HERO_DRAW_H + 14, FLOOR = HERO_DRAW_H + 6, HERO_AT = 34;
+  for (const curve of CURVES) {
+    const grid = subhead(curve.name);
+    for (const sc of SCENARIOS) {
+      const rate = curve.rate(sc.v);
+      const player = {
+        hero: {}, anim: 0, vy: 0, grounded: true, sliding: false, rolling: false,
+        compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
+        headless: 0, fistThrown: false, y: 0, invuln: 0, powers: {},
+      };
+      tile(grid, sc.name, `${Math.round(sc.v)} u/s · ${rate.toFixed(1)} strides/s`, TW * WORLD_Z, TH * WORLD_Z,
+        (ctx, t) => {
+          ctx.scale(WORLD_Z, WORLD_Z);
+          // The lane: a floor line, sleepers every 12u and a post every 48u,
+          // all scrolling left at the real speed.
+          const off = (sc.v * t);
+          ctx.fillStyle = '#e9e4da';
+          ctx.fillRect(0, 0, TW, TH);
+          ctx.fillStyle = '#8a7f6e';
+          ctx.fillRect(0, FLOOR, TW, TH - FLOOR);
+          ctx.fillStyle = '#6d6353';
+          for (let x = -(off % 12); x < TW; x += 12) ctx.fillRect(x, FLOOR + 2, 5, 2);
+          ctx.fillStyle = '#b9b0a0';
+          for (let x = -(off % 48); x < TW; x += 48) ctx.fillRect(x, FLOOR - 30, 2, 30);
+          ctx.translate(HERO_AT - HERO_CX, 0);
+          player.anim = t * rate;
+          drawHeroSprite(ctx, player, 'lorenzo', t, 0, false, { flat: true, groundY: FLOOR, specialOrb: false });
+        }, { animated: true, hires: 3 });
+    }
   }
-  tile(grid, 'The four sizes side by side', 'At 1.5x lane size, each over its collision box.', W, H,
-    (ctx, t) => drawStreakLineup(ctx, t, W, H), { animated: true });
+}
+
+// ------------------------------------------ TERMINAL VELOCITY — rooftop antennas (lab)
+// Peter, 29 Sep 2026: "bakeoff. better antennas in terminal velocity buildings". Each
+// candidate is a painter for neonWireRow's `antenna` seam (context.neonAntenna), in
+// src/dev/neon-antenna-candidates.js; the rest of every card is the shipped neon pack.
+{
+  ensureKanaFonts();
+  const neon = CABINETS.find((cab) => cab.id === 'neon');
+  const pack = getStylePack('neon', {});
+  const grid = section('neon-antenna-bakeoff', 'TERMINAL VELOCITY — rooftop antennas (bake-off)',
+    'Asked 29 Sep 2026: "better antennas in terminal velocity buildings". 0 is what ships: one 13px tube and a '
+    + '2px lamp on the tallest towers, nothing on the rest. A lattice truss, B stepped spire crowns, C rooftop '
+    + 'aerial clutter on most roofs, D guyed broadcast masts with cell panels, E a mix (each tall tower picks A, B '
+    + 'or D; mid roofs get C), F is E with Tokyo\'s red aviation lamps flashing in unison, roof corners included. '
+    + 'Round two (29 Sep, "a mix of 0 and B and C. say 1 in 4 have B and 1 in 6 have C"): G. Every lamp, the '
+    + 'shipped one included, is now centred on its pole (it sat half a pixel to one side). '
+    + 'SHIPPED 29 Sep: G at 1 in 3 spires and 1 in 5 aerials ("do 1 in 3 for b and 1 in 5 for C... ship it"); '
+    + 'card 0 now shows it, G keeps the 1-in-4 / 1-in-6 round. '
+    + 'First card: neon-2 at night, the city scrolling. Second: the same, 3x on the near roofline. ANIMATED.',
+    '29 Sep 2026');
+  const night = neonNightMood(1);
+  const scene = (ctx, t, cand) => {
+    const c = { stageIndex: 2, progress: 0.2, neonMood: night, neonAntenna: cand.antenna };
+    pack.bg(ctx, t, 400 + t * 40, neon, 20000, c, 0, c);
+    pack.post(ctx, t);
+  };
+  for (const cand of NEON_ANTENNA_CANDIDATES) {
+    tile(grid, cand.label, cand.note, W, H, (ctx, t) => scene(ctx, t, cand), { animated: true });
+    tile(grid, `${cand.label} — close-up`, 'The near roofline at 3x.', W, H, (ctx, t) => {
+      ctx.save();
+      ctx.scale(3, 3);
+      ctx.translate(-150, -(GROUND_Y - 176));
+      scene(ctx, t, cand);
+      ctx.restore();
+    }, { animated: true });
+  }
 }
 
 // ---------------------------------------------------------------- driver

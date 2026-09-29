@@ -36,6 +36,7 @@ const suites = [
   'tests/gravity-level.js',
   'tests/mid-air-slide-kick.js',
   'tests/barrel-arrival.js',
+  'tests/portal-clear-of-trains.js',
   'tests/beat-chart.js',
   'tests/cue-scheduling.js',
   'tests/beat-ground.js',
@@ -422,6 +423,10 @@ const suites = [
   // beat cabinet's stronger claim too — there the chart marks every press, so
   // the bot is held to taking no damage at all.
   'tests/bot-pits.js',
+  // The dev menu's RECORD BACKGROUND: the same bot on every stage with the lane
+  // stripped to its holes — nothing else ever up, every hole jumped, and the
+  // hero running out of the right edge to end it.
+  'tests/record-background.js',
   // And the one surface a hole may not be cut into: the roof of a tunnel. It is
   // the upper of two paths with a floor ninety-six pixels under it, so a lane
   // pit there is a break the renderers do not draw, the route system does not

@@ -425,7 +425,7 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // up, not part of the train, and drawing it as a one-car train would be a
     // carriage the length of a stride.
     if (isTrain) {
-      drawTrainRoute(ctx, camX, r, topInside, from, to, air, opts.t ?? 0);
+      drawTrainRoute(ctx, camX, r, topInside, from, to, air, opts.t ?? 0, undefined, opts.ceilingY);
       continue;
     }
     drawSlab(ctx, camX, cabinet, r, topInside, from, to, asCloud, null, opts.paperSlab);
@@ -667,6 +667,7 @@ function trainRush(air) {
  */
 const TRAIN_FLYPAST_EXIT = 1500;
 const TRAIN_FLYPAST_GAIN = 5200;
+const TRAIN_FLYPAST_BOW = 14;      // the bow's rise over its cruising height, mid-pass
 export function trainFlypast(camX, r, extraLift = 0) {
   const d = r.x - camX;
   if (d >= TRAIN_FLIGHT_LEAD) return { hidden: true };
@@ -675,7 +676,8 @@ export function trainFlypast(camX, r, extraLift = 0) {
   return {
     dx: -TRAIN_FLIGHT_BACK + TRAIN_FLYPAST_GAIN * p,
     // A long shallow bow over the city, not a level line: it reads as flying.
-    lift: TRAIN_FLIGHT_AIR + extraLift + Math.sin(p * Math.PI) * 14,
+    lift: TRAIN_FLIGHT_AIR + extraLift + Math.sin(p * Math.PI) * TRAIN_FLYPAST_BOW,
+    peak: TRAIN_FLIGHT_AIR + extraLift + TRAIN_FLYPAST_BOW,
     open: 0,
     u: 0.5,          // mid-flight speed, for the streaks
     alpha: 0.85,
@@ -683,13 +685,14 @@ export function trainFlypast(camX, r, extraLift = 0) {
 }
 
 /** Draw a fly-past; false once it has gone for good. */
-// `extraLift` raises the whole pass (portrait flies it higher in its taller sky).
-export function drawNeonFlypast(ctx, camX, r, topAt, t = 0, palette = TRON_PALETTE.neon, extraLift = 0) {
+// `extraLift` raises the whole pass (portrait flies it higher in its taller sky);
+// `ceilingY` is the highest world y its roof may reach (see drawTrainRoute).
+export function drawNeonFlypast(ctx, camX, r, topAt, t = 0, palette = TRON_PALETTE.neon, extraLift = 0, ceilingY = null) {
   const air = trainFlypast(camX, r, extraLift);
   if (air.gone) return false;
   if (air.hidden) return true;
   const from = r.x - camX + air.dx;
-  drawTrainRoute(ctx, camX, r, topAt, from, from + r.w, air, t, palette);
+  drawTrainRoute(ctx, camX, r, topAt, from, from + r.w, air, t, palette, ceilingY);
   return true;
 }
 
@@ -873,6 +876,25 @@ export function neonTrainInterior(r) {
 }
 // The doorway's width, read off the aperture itself rather than restated.
 const DOOR_W_OF = (a) => a.openW + a.leafW;
+
+/**
+ * WHICH CAR HE IS IN, counted from the tail he boarded by. The run gives each car
+ * its own face, held the whole length of it — shocked, normal, surprised, and
+ * round again (Peter, 29 Sep). The count ticks over halfway across a coupler,
+ * where the gangway hides him, so the face never changes where it can be seen.
+ */
+export function neonTrainCarAt(r, worldX) {
+  const consist = trainConsistFor(r);
+  const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
+  const local = (worldX - r.x) / k;
+  let end = 0;
+  for (let i = 0; i < consist.length - 1; i++) {
+    end += tronCarApertures(consist[i], 0, TRAIN_H, TRAIN_H).len;
+    if (local < end + TRON_BOARD_GAP / 2) return i;
+    end += TRON_BOARD_GAP;
+  }
+  return consist.length - 1;
+}
 // How far through the first doorway he has to be before he is in. A third of
 // the way leaves most of his 12px sprite inside a 20px opening at the flip.
 const DOOR_STEP_IN = 7;
@@ -932,7 +954,7 @@ export function drawNeonTrainShell(ctx, camX, r, topAt, t = 0) {
   ctx.restore();
 }
 
-function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palette = TRON_PALETTE.neon) {
+function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palette = TRON_PALETTE.neon, ceilingY = null) {
   const roofY = topAt(r.x + r.w / 2, r);
   const consist = trainConsistFor(r);
   // The painter walks from a left edge at its own natural lengths, so scale the
@@ -941,7 +963,19 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palett
   const natural = tronConsistLength(consist, TRON_BOARD_GAP);
   const k = r.w / natural;
   const dx = air ? air.dx : 0;
-  const lift = air ? air.lift : 0;
+  // THE ROOF STAYS IN THE SKY (Peter, 29 Sep: "make sure the top of the train is
+  // visible when flying overhead"). The flight heights were set on the desktop's 1.6
+  // framing, which shows 145 world px above the lane; the close framings show 116
+  // (tablet, desktop ZOOM IN) and 105 (phone), and a train at its cruising height
+  // lost the top of its hull off the frame there. So when the caller names a ceiling
+  // — the frame's top edge at the resting zoom, plus a margin — the whole flight is
+  // scaled down until its highest point fits under it. Scaled, not clamped: a clamp
+  // flattens the fly-past's bow into a level line. The ghost fade still reads the
+  // UNSCALED height, so a train is exactly as faint at cruise on every framing.
+  const flown = air ? air.lift : 0;
+  const peak = air ? (air.peak ?? TRAIN_FLIGHT_AIR) : 0;
+  const room = ceilingY == null ? Infinity : roofY - ceilingY;
+  const lift = peak > room ? flown * Math.max(0, room) / peak : flown;
   // SPEED LINES, from the train's own painter (Peter, 23 Sep: "where are the
   // speed lines for the train as it rushes past?"). The old ones were nine
   // hand-placed 1px dashes at the skirt, where the road covers them, and they
@@ -976,13 +1010,13 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palett
   ctx.beginPath();
   // Open upward by as far as it is flying (a fly-past's bow and portrait lift go past
   // the arrival's cruising height).
-  const headroom = air ? Math.max(TRAIN_FLIGHT_AIR, (air.lift || 0) + 4) : 0;
+  const headroom = air ? Math.max(TRAIN_FLIGHT_AIR, lift + 4) : 0;
   ctx.rect(from - 2, roofY - 4 - headroom,
     (to - from) + 4, TRAIN_H + 14 + headroom);
   ctx.clip();
   // Solidifies as it comes down: full ghost at cruising height, opaque the
   // moment it is on the rail. `lift` is already smoothstepped, so this is too.
-  if (air) ctx.globalAlpha *= air.alpha ?? (1 - (lift / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA));
+  if (air) ctx.globalAlpha *= air.alpha ?? (1 - (flown / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA));
   ctx.translate(r.x - camX + dx, roofY - lift);
   ctx.scale(k, 1);
   drawTronTrain(ctx, 0, TRAIN_H, {

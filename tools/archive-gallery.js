@@ -117,8 +117,13 @@ function isoWeek(date) {
   return `${t.getUTCFullYear()}-W${Math.ceil(((t - jan1) / DAY / 1000 + 1) / 7)}`;
 }
 
+// Only dated snapshots (`YYYY-MM-DD-<sha>.html`, and their `-lab` pair). Other
+// pages live here too -- screens.html is rebuilt in place by its own tool -- and
+// must neither be pruned nor have their name handed to git as a commit.
+const SNAPSHOT = /^\d{4}-\d{2}-\d{2}-[0-9a-f]{7,}(-lab)?\.html$/;
+
 const snapshots = readdirSync(galleries)
-  .filter((f) => f.endsWith('.html') && !f.endsWith('-lab.html'))
+  .filter((f) => SNAPSHOT.test(f) && !f.endsWith('-lab.html'))
   .map((file) => ({ file, time: snapshotTime(file, file.slice(0, -5).split('-').pop()) }))
   .sort((a, b) => a.time - b.time);
 
@@ -142,7 +147,7 @@ for (const s of snapshots) {
 
 // Rebuild the index from whatever is on disk, so a hand-deleted or
 // hand-added snapshot stays consistent without a separate bookkeeping file.
-const all = readdirSync(galleries).filter((f) => f.endsWith('.html'));
+const all = readdirSync(galleries).filter((f) => SNAPSHOT.test(f));
 // Lab pages are listed as a column on their sibling's row, not as rows of their
 // own -- one snapshot, two files.
 const recorded = recordedSubjects(join(galleries, 'index.md'));

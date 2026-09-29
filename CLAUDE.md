@@ -18,14 +18,15 @@ started on branch X, do you want me to work here or on main?" and wait.
 
 The rest of it:
 
-- **Never create a branch** for a piece of work. Commit where you are and push to
-  `main`.
+- **Never create a branch** for a piece of work. Work on `main`.
 - **Never open a pull request** unless Peter asks for one in words. A PR needs a
   branch, so it is the same rule.
 - **Warn before anything branch-shaped** — creating one, pushing to one, opening a
   PR — rather than doing it and reporting afterwards.
-- **Push to `main` when the work is done.** If `main` has moved and your push is
-  not a fast-forward, stop and ask rather than merging or rebasing on his behalf.
+- **Never commit or push unless Peter asks in words.** Leave finished work in the
+  tree and say what changed. When he does ask, push to `main`; if `main` has moved
+  and your push is not a fast-forward, stop and ask rather than merging or
+  rebasing on his behalf.
 
 ## The tree is shared. Stage by path, never by wildcard.
 

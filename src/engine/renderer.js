@@ -528,6 +528,16 @@ const MAX_BACKING_H = 1440;
 // budget, so `native` becomes the ceiling instead.
 const MAX_BACKING_PX = 2560 * MAX_BACKING_H;
 const PHONE_SEED_DENSITY = 3;         // initial rung on iPhone/Android handsets
+// PORTRAIT ON A PHONE RENDERS AT 2x, not at the screen's own density (Peter, 29 Sep
+// 2026, after a side-by-side on an iPhone 15 Pro: "very little difference"). Portrait
+// keeps the 480-unit width and fills the tall screen, so at native (2.46x there) it
+// asks for about 3 MP a frame against landscape's 1.2; at 2x it is 2 MP and every
+// finished cabinet measured about 28% faster (headless, speed/frost/crypt/neon). The
+// ladder's ceiling is capped, so the controller neither starts above it nor climbs
+// back past it; landscape, tablets, desktops and the full-screen visualiser keep
+// native, and a ?density= pin still wins. This reverses the 13 Sep choice to keep
+// portrait native.
+const PHONE_PORTRAIT_DENSITY_MAX = 2;
 // Desktops and tablets seed at rung 0 — native, the display's own resolution.
 // Adaptation stays armed underneath: a machine that genuinely cannot hold 60 FPS
 // at native still steps down, it just is not assumed to be that machine before
@@ -1270,11 +1280,17 @@ function resize(options = {}) {
   // its CSS box in both orientations.
   const coverScale = Math.max(winW / W, winH / H);
   nativeDensity = (coverFit ? coverScale : Math.round(W * scale) / W) * dpr;
-  ladder = buildLadder(nativeDensity, renderW * renderH);
+  const phonePortrait = phonePlatform && !visualiserFullscreen && !portraitFill && H > W;
+  // A full-screen visualiser is a picture whose point is the picture: it starts at the
+  // ceiling and hands back the density it found on the way out — the cover crop in
+  // landscape, and the portrait phone frame, which is capped for play but not for it.
+  const fullPicture = coverFit || (visualiserFullscreen && phonePlatform && !portraitFill && H > W);
+  ladder = buildLadder(phonePortrait ? Math.min(nativeDensity, PHONE_PORTRAIT_DENSITY_MAX) : nativeDensity,
+    renderW * renderH);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
     rung = seedRung();
-  } else if (coverFit && !coverFitActive) {
+  } else if (fullPicture && !coverFitActive) {
     // ENTERING THE FULLSCREEN VISUALISER: START AT THE CEILING, DO NOT CLIMB TO IT.
     //
     // Everywhere else the density carried over from the previous frame is the
@@ -1290,7 +1306,7 @@ function resize(options = {}) {
     // second, and the strike system bars the rung for the session after twice.
     coverRestoreDensity = prevLadder[Math.min(rung, prevLadder.length - 1)];
     rung = 0;
-  } else if (!coverFit && coverFitActive && coverRestoreDensity > 0) {
+  } else if (!fullPicture && coverFitActive && coverRestoreDensity > 0) {
     // Leaving it again, hand the menu back the density it was actually running,
     // rather than letting the visualiser's optimism promote every other screen.
     rung = nearestIndex(ladder, coverRestoreDensity);
@@ -1299,7 +1315,7 @@ function resize(options = {}) {
     const cur = pinnedDensity != null ? pinnedDensity : prevLadder[Math.min(rung, prevLadder.length - 1)];
     rung = nearestIndex(ladder, cur);
   }
-  coverFitActive = coverFit;
+  coverFitActive = fullPicture;
   const px = pinnedDensity != null ? Math.min(nativeDensity, pinnedDensity) : ladder[rung];
   const devBacking = devPortraitFill;
   const pxW = devBacking ? Math.max(1, Math.round(cssW * dpr)) : Math.max(1, Math.round(renderW * px));

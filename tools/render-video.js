@@ -2,8 +2,8 @@
 //
 // Dev tooling — this never ships. Nothing in src/ imports from tools/, the
 // build only bundles src/gate.js and src/main.js, and the dependency runs one
-// way: this file imports from src/, never the reverse. Output lands in dist/,
-// which is gitignored.
+// way: this file imports from src/, never the reverse. Output lands in
+// work/video/, which is gitignored.
 //
 // The song comes from the GAME'S OWN ENGINE via tools/lib/render-bank-browser.js
 // (the same render render-track.js writes, so the video's audio is byte-identical

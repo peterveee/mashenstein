@@ -2,6 +2,7 @@
 // Physics tuned so: base jump height ~57px, airtime ~0.71s at jumpMult 1.
 // `jumpMult` is a HEIGHT multiplier, not a speed one — see jumpV().
 import { HERO_BY_ID } from '../data/heroes.js';
+import { BASE_SPEED } from './layout.js';
 
 export const GRAVITY = 900;
 export const BASE_JUMP_V = 320;
@@ -68,10 +69,30 @@ export const STAND_AFTER_PLOW_T = 0.38;
 // at 0.9s the player has time to press jump, watch nothing happen, and press
 // it again, which reads as the controls having been taken away.
 export const SLIP_T = 0.55;
-// The walk cycle is driven by scroll speed, not by wall time, so the stride
-// stays planted as the run accelerates: anim advances at world.speed / this.
-// Lower means faster legs at the same speed.
-export const ANIM_SPEED_DIVISOR = 40;
+// THE RUN CADENCE, in strides per second. The cycle is still wound by scroll
+// speed rather than wall time, but on a square root of it, not in proportion.
+// It used to be speed / 40 — 4 strides/s at base and every multiplier the run
+// stacks (cabinet, ramp, SPEED, boost pad) passed straight to the legs, so the
+// fastest case (SURGE's end under SPEED x1.4) spun them at 9.2 strides/s, a
+// blur. Picked from the run-cadence bake-off (29 Sep 2026): row I's square
+// root, with the base then raised from 3.0 to 3.5 (row J) as 3.0 read a touch
+// slow — 5.3 at that same fastest case, quick but still legs. The feet
+// no longer keep exact pace with the floor at speed; at this scale it does not
+// read as skating.
+export const RUN_CADENCE = 3.5;
+// 1 = proportional to speed (the old coupling), 0 = one cadence at any speed.
+export const RUN_CADENCE_EXP = 0.5;
+// THE HEAVY HERO STEPS SLOWER. Grumpos takes 0.8 of the cast's strides on a
+// stride lengthened to match (LOCO `heavyKnee` in toons.js), so his feet keep
+// pace with the floor and he covers the same ground — the lane speed is the
+// same for everyone; only his legs' tempo differs. Picked from the skirted-gait
+// bake-off (29 Sep 2026): at the shared cadence on his short stride he read as
+// "shuffling really fast", and a big step taken less often reads as mass.
+export const HEAVY_CADENCE_MULT = 0.8;
+export function gaitRate(speed, hero) {
+  return RUN_CADENCE * Math.pow(Math.max(0, speed) / BASE_SPEED, RUN_CADENCE_EXP)
+    * (hero && hero.heavy ? HEAVY_CADENCE_MULT : 1);
+}
 // The runner anchor: a fixed WORLD offset from camX, which the camera then
 // magnifies into a screen position (23.3% of the frame at ZOOM 2). Everything
 // right of it is runway, so this is really a reaction-time dial — the view is
@@ -478,7 +499,7 @@ export class Player {
   }
 
   update(dt, input, world) {
-    this.anim += dt * (world ? world.speed / ANIM_SPEED_DIVISOR : 8);
+    this.anim += dt * (world ? gaitRate(world.speed, this.hero) : 8);
     if (this.iframes > 0) this.iframes -= dt;
     // The bench recharges alongside the hero you are holding, so the moment a
     // cooldown reaches zero is recorded rather than announced here: only the

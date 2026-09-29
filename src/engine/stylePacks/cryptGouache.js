@@ -985,6 +985,56 @@ function buildPaper(k) {
   return c;
 }
 
+// THE TOOTH IS PAINTED ONCE PER SCREEN SIZE, not once a frame. Scaling the tile over the
+// whole picture every frame was about half of this backdrop's cost in portrait (28 Sep:
+// 66 ms a frame against 33 without it, headless, iPhone 15 Pro portrait). The tooth sits
+// in the frame's own space — it never scrolls with the scenery — so it is laid down once
+// at the canvas's device resolution, a tile wider and taller than the canvas, and copied
+// on unscaled each frame, shifted by the frame's translation modulo one tile exactly as
+// the pattern was. Returns false (the caller paints the pattern live) for a rotated or
+// skewed frame, or a canvas too large to double.
+const PAPER_OVERLAY = new WeakMap();
+function paperOverlay(ctx, B, view) {
+  const m = ctx.getTransform?.();
+  const cv = ctx.canvas;
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || !cv || typeof document === 'undefined') return false;
+  const tileX = 128 * m.a;
+  const tileY = 128 * m.d;
+  const w = Math.ceil(cv.width + tileX) + 2;
+  const h = Math.ceil(cv.height + tileY) + 2;
+  if (w * h > 24e6) return false;
+  const key = `${w}x${h}|${m.a}|${m.d}|${B.paper.width}`;
+  let o = PAPER_OVERLAY.get(ctx);
+  if (!o || o.key !== key) {
+    const c = o && o.c.width === w && o.c.height === h ? o.c : canvas(w, h);
+    const g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const pk = B.paper.width / 128;
+    g.setTransform(m.a / pk, 0, 0, m.d / pk, 0, 0);
+    g.fillStyle = g.createPattern(B.paper, 'repeat');
+    g.fillRect(0, 0, w * pk / m.a, h * pk / m.d);
+    o = { key, c };
+    PAPER_OVERLAY.set(ctx, o);
+  }
+  // The part of the canvas the painting covers, in device pixels.
+  const x0 = Math.max(0, Math.floor(m.a * (view.left - 40) + m.e));
+  const y0 = Math.max(0, Math.floor(m.d * (view.top - 40) + m.f));
+  const x1 = Math.min(cv.width, Math.ceil(m.a * (view.right + 40) + m.e));
+  const y1 = Math.min(cv.height, Math.ceil(m.d * (view.bottom + 40) + m.f));
+  if (x1 <= x0 || y1 <= y0) return true;
+  // The pattern was anchored at the frame's origin; so is the copy, to the nearest pixel.
+  const ox = Math.round(((m.e % tileX) + tileX) % tileX);
+  const oy = Math.round(((m.f % tileY) + tileY) % tileY);
+  const sx = x0 - ox + Math.round(tileX);
+  const sy = y0 - oy + Math.round(tileY);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(o.c, sx, sy, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+  ctx.restore();
+  return true;
+}
+
 // ------------------------------------------------------------------ item painters
 // Every painter returns a sprite in the item's local coords: origin at its base, the
 // resolved (x, y) of the frame.
@@ -2342,7 +2392,7 @@ export function drawCryptGouache(ctx, t, camX, stageIndex, view) {
   });
 
   // Paper tooth over the whole painting. The pattern is made once per context.
-  if (B.paper && B.paper.width > 1 && typeof ctx.createPattern === 'function') {
+  if (B.paper && B.paper.width > 1 && typeof ctx.createPattern === 'function' && !paperOverlay(ctx, B, view)) {
     const pk = B.paper.width / 128;
     if (!B.paperPat || B.paperPatCtx !== ctx) {
       B.paperPat = ctx.createPattern(B.paper, 'repeat');

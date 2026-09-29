@@ -61,7 +61,12 @@ function fakeResult(stage) {
 // stays off the picture (quiet), the recording is bound to the AttractState so
 // it stops itself however the run ends, and the toast with the path arrives in
 // the hub once ffmpeg has finished.
-function watch(dev, scenario, { crash = false, record = false } = {}) {
+//
+// background: RECORD BACKGROUND — the bot runs the stage with nothing in the
+// lane but its pits, no HUD, no portal and no finish pole, and the take cuts
+// in on the first frame and out as the hero leaves the right edge. See
+// RunState.recordBackground. `hero` names who runs it.
+function watch(dev, scenario, { crash = false, record = false, background = false, hero = null } = {}) {
   const { Flow } = dev.ctx;
   dev.close();
   const state = new AttractState({
@@ -69,14 +74,23 @@ function watch(dev, scenario, { crash = false, record = false } = {}) {
     seed: dev.seedLock ?? undefined,
     devMode: true,
     crash,
+    background,
+    hero,
     quiet: record,
     realSettings: dev.ctx.save.settings,
     onExit: () => Flow.toHub(),
   });
   setState(state);
   if (record) {
-    const stem = `${crash ? 'crash' : 'bot'}-${scenario.id}${dev.seedLock != null ? `-seed${dev.seedLock}` : ''}`;
-    dev.startRecording({ name: stem, state });
+    const kind = background ? 'bg' : crash ? 'crash' : 'bot';
+    const stem = `${kind}-${scenario.id}${hero ? `-${hero}` : ''}${dev.seedLock != null ? `-seed${dev.seedLock}` : ''}`;
+    // A pit the bot mistimed is run over rather than fallen into (the take is
+    // invulnerable), which is a glitch in the plate — so say how many.
+    const afterSave = background ? () => {
+      const missed = (state.run?.devHits || []).filter((h) => h.type === 'pit').length;
+      return missed ? `(BOT MISSED ${missed} PIT${missed > 1 ? 'S' : ''})` : '';
+    } : null;
+    dev.startRecording({ name: stem, state, cut: background, afterSave });
   }
 }
 
@@ -148,6 +162,13 @@ function stageActions(dev, stage) {
     ],
   });
   const playLast = () => playLastMenu();
+  const recordBackgroundMenu = () => ({
+    title: 'RECORD BACKGROUND AS',
+    items: HEROES.map((hero) => ({
+      label: hero.short,
+      act: () => watch(dev, scenario, { record: true, background: true, hero: hero.id }),
+    })),
+  });
   const playAsMenu = () => ({
     title: 'PLAY AS',
     items: HEROES.map((hero) => ({
@@ -166,6 +187,7 @@ function stageActions(dev, stage) {
       { label: 'PLAY AS ▸', submenu: playAsMenu },
       { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
       { label: 'RECORD BOT-PLAY (mp4)', act: () => watch(dev, scenario, { record: true }) },
+      { label: 'RECORD BACKGROUND ▸', submenu: recordBackgroundMenu },
       { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
       { label: 'INSTANT-CLEAR', act: () => instantClear(dev, stage) },
       { label: 'INSTANT-FAIL', act: () => instantFail(dev, stage) },

@@ -149,11 +149,14 @@ export const Dev = {
   // Dev.draw paints onto the same back buffer the recorder captures, so a
   // "RECORDING" toast would be the first 2.5s of every clip. The tab title
   // carries the ● REC instead, and the path arrives as a toast once saved.
-  startRecording({ name, state = null } = {}) {
+  // `cut` and `afterSave` are for RECORD BACKGROUND: hard cuts instead of
+  // fades, and a line appended to the SAVED toast.
+  startRecording({ name, state = null, cut = false, afterSave = null } = {}) {
     const why = Recorder.start({
-      name, state,
+      name, state, cut,
       onSaved: ({ path, error, note }) => {
-        this.say(error ? `RECORDING FAILED: ${error}` : `SAVED ${path}`);
+        const extra = !error && afterSave ? afterSave() : '';
+        this.say(error ? `RECORDING FAILED: ${error}` : `SAVED ${path}${extra ? `  ${extra}` : ''}`);
         if (note) console.warn('[rec]', note);
         if (path) console.log('[rec] saved', path);
       },

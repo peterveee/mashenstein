@@ -210,6 +210,39 @@ for (const stage of STAGES) {
   }
 }
 
+// ---- and as the run actually lays them ------------------------------------------
+// The loop above reads stages.js, but the run reads the level editor's layouts
+// (layout.js resolveLayout), whose pits and checkpoints are dragged by hand. On
+// speed-3 the crossing was dragged from 0.70 to 0.665 while its checkpoints stayed
+// at thirds, so the 2/3 line fell 19px inside the crossing: a death there came back
+// with the hero standing over the pit (Peter, 28 Sep 2026). So, for every crossing
+// on a checkpointed (non-beat) stage: the line behind it leaves a run-up, and no
+// line falls anywhere across it.
+{
+  const { resolveLayout, stageBaseSpeed, speedAtFrac, totalDistFor } = await import('../src/game/layout.js');
+  const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
+  for (const stage of STAGES) {
+    const cab = CABINET_BY_ID[stage.cabinet];
+    if (!cab || cab.mechanic === 'beat') continue;
+    const L = resolveLayout(stage, cab);
+    if (!L || !L.pits) continue;
+    const base = stageBaseSpeed(cab, L.speedMult);
+    const total = totalDistFor(base, L.durationSec);
+    const lines = [0, ...(L.checkpoints || [])];
+    for (const p of L.pits.filter((x) => x.jumps)) {
+      const w = crossingLayout(p.at * total, p.jumps, speedAtFrac(base, L.durationSec, p.at)).w;
+      const end = p.at + w / total;
+      const prev = lines.filter((c) => c <= p.at).pop();
+      const runUp = (p.at - prev) * L.durationSec;
+      assert(runUp >= REPLAY_MIN,
+        `${stage.id}: the crossing at ${p.at} leaves ${runUp.toFixed(1)}s after the checkpoint behind it`);
+      const inside = lines.filter((c) => c > p.at && c < end);
+      assert(!inside.length,
+        `${stage.id}: no checkpoint across the crossing ${p.at}..${end.toFixed(3)} (${inside.join(', ') || 'none'})`);
+    }
+  }
+}
+
 // ---- stages that carry one ---------------------------------------------------
 const authored = STAGES.filter((s) => (s.pits || []).some((p) => p.jumps));
 assert(authored.length > 0, `the game carries crossings (${authored.map((s) => s.id).join(', ')})`);

@@ -146,6 +146,24 @@ export function howlLoop(t) {
   p.ringDir = -up * 0.95 - 0.1;
   return p;
 }
+// THE HOWL HELD TO THE EDGE (Peter, 28 Sep 2026: "he should be howling at least from
+// halfway across and keep howling until off screen"). `u` is seconds since the run's
+// latch let go: the head comes up over 0.3 s and the song runs from there, never
+// ending. Taken with the loop's own rise, so a head already up stays up — no dip.
+export function howlHold(t, u) {
+  const p = howlLoop(t);
+  const cyc = fract(t / 5);
+  const loopUp = cyc < 0.5 ? 0 : cyc < 0.58 ? smooth(0.5, 0.58, cyc) : cyc < 0.88 ? 1 : 1 - smooth(0.88, 0.98, cyc);
+  const up = Math.max(loopUp, smooth(0, 0.3, u));
+  const howl = (cyc > 0.58 && cyc < 0.88) || u > 0.3;
+  p.head.rot = -up * 0.95 + rest(t).head.rot * (1 - up);
+  p.head.jaw = howl ? 0.35 + Math.sin(t * 6) * 0.08 : 0;
+  p.head.eye = howl ? 'shut' : 'open';
+  p.heave = howl ? Math.sin(t * 9) * 0.25 : 0;
+  p.rings = howl ? 1 : up > 0.5 ? 0.4 : 0;
+  p.ringDir = -up * 0.95 - 0.1;
+  return p;
+}
 const HEAD_SIT = [2.6, -12.6];
 const HEAD_LIE = [9.0, -3.2];
 // `sit` and `lie` are the model's head anchors, where the doze's Z's rise from.
@@ -508,7 +526,7 @@ export const CURRENT_MODEL = {
  * paper coyote's (x0, y0 - 12.4). facing 1 looks right, -1 left; the ledge is the
  * caller's. mode is the paper's: 'howl' (default), 'yawn', 'chorus' or 'wink', where the
  * model has it (else the howl); `since` and `pace` latch a show as the paper does
- * (null = looped on t).
+ * (null = looped on t). For the howl, `since` holds the song from then on (howlHold).
  */
 export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 'howl', since = null, pace = 1, look = 0 } = {}) {
   const dir = facing < 0 ? -1 : 1;
@@ -546,7 +564,7 @@ export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 
       ? yawnShow(u, t, dir, model.headSit, model.headLie ?? model.headSit, model.marks)
       : chorusShow(u, t, dir, model.pupDx);
   } else {
-    cast = [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, howlLoop(t)]];
+    cast = [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, since == null ? howlLoop(t) : howlHold(t, Math.max(0, since))]];
   }
   for (const [fig, pose] of cast) {
     const P = fig.pup

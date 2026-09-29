@@ -8,6 +8,15 @@ const SPEED = 25;
 const POSE_RATE = 12;
 const SPRITE_DENSITY = 2;
 const SPRITES = KINDS.map(() => null);
+// THE HAZE IS BAKED INTO THE POSE, not applied at the screen. A canvas filter set on
+// the frame itself costs a whole extra compositing layer per draw, and three of them
+// every frame were the whole of crypt-3's two-second slowdown in the opening
+// (29 Sep 2026: 75-100 ms frames against 27, iPhone-shaped portrait, headless). The
+// colour ops do not care where they run; the blur is scaled to the sprite, which is
+// drawn well under its own pixel size; 0.6 px here matched the screen's 0.4 px by eye in
+// a side-by-side (1 px read a shade soft).
+const HAZE = 'saturate(0.55) contrast(0.88) blur(0.6px)';
+let scratch = null;
 
 function zombieSprite(index, stepTime, kind) {
   if (typeof document === 'undefined') return null;
@@ -22,12 +31,23 @@ function zombieSprite(index, stepTime, kind) {
   }
   const frame = Math.round(stepTime * POSE_RATE);
   if (sprite.frame !== frame) {
-    sprite.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    sprite.ctx.clearRect(0, 0, sprite.canvas.width, sprite.canvas.height);
+    if (!scratch) {
+      scratch = document.createElement('canvas');
+      scratch.width = sprite.canvas.width;
+      scratch.height = sprite.canvas.height;
+    }
+    const g = scratch.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, scratch.width, scratch.height);
     // Keep the zombie's authored 118-unit silhouette sharp when the game scales
     // the far ridge up to the display.
-    sprite.ctx.setTransform(SPRITE_DENSITY, 0, 0, SPRITE_DENSITY, 40, 236);
-    drawCryptBackgroundZombie(sprite.ctx, stepTime, kind);
+    g.setTransform(SPRITE_DENSITY, 0, 0, SPRITE_DENSITY, 40, 236);
+    drawCryptBackgroundZombie(g, stepTime, kind);
+    sprite.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    sprite.ctx.clearRect(0, 0, sprite.canvas.width, sprite.canvas.height);
+    sprite.ctx.filter = HAZE;
+    sprite.ctx.drawImage(scratch, 0, 0);
+    sprite.ctx.filter = 'none';
     sprite.frame = frame;
   }
   return sprite.canvas;
@@ -50,7 +70,7 @@ export const CRYPT_ZOMBIE_PROCESSION = {
       const sprite = zombieSprite(i, stepTime, kind);
       ctx.save();
       ctx.globalAlpha = 0.67;
-      ctx.filter = 'saturate(0.55) contrast(0.88) blur(0.4px)';
+      if (!sprite) ctx.filter = 'saturate(0.55) contrast(0.88) blur(0.4px)';
       ctx.translate(x, f.ridgeY(x) + 2 + 0.6 * Math.sin(stride));
       ctx.rotate(-0.035 - 0.085 * Math.max(0, Math.sin(stride - 0.7)));
       ctx.scale(scale, scale);

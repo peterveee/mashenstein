@@ -142,20 +142,38 @@ ACTIONS.push(
   },
   {
     id: 'bassreport', group: 'audio', label: 'BASS REPORT',
-    blurb: 'band balance of every finished cabinet against their median (tools/bass-report.js). Re-renders only the songs that changed; about a minute from cold. Writes only the report.',
-    steps: [niced(['tools/bass-report.js'])],
-    openPath: reportHref('bass-report.json', 'bass'),
-  },
-  {
-    id: 'basslanes', group: 'audio', label: 'BASS REPORT: LANES',
-    blurb: 'solos every lane of the song(s) below to show which strip carries the low end — where a Channel EQ would go. About ten minutes for a 30-lane song.',
+    blurb: 'band balance of the ticked songs against the finished cabinets’ median, with advice (tools/bass-report.js). Unticked songs keep their last rows. Only songs that changed are re-rendered. + LANES also solos every lane of each ticked song — slow, about ten minutes a song. Writes only the report.',
+    // One card, a toggle per shipped song (all on by default); + LANES is an option,
+    // off by default, that adds the per-lane breakdown for whatever is ticked.
+    choices: ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'cardboard', 'office', 'surge', 'title', 'hub', 'shop', 'finale', 'megamix'],
+    options: [{ key: 'lanes', label: '+ LANES', flag: '--lanes' }],
     needsIds: true,
-    input: 'song id, e.g. neon',
-    steps: (args) => [niced(['tools/bass-report.js', ...idsFrom(args), '--lanes'])],
+    steps: (args) => [niced(['tools/bass-report.js', ...idsFrom(args), ...optionFlags('bassreport', args)])],
     openPath: reportHref('bass-report.json', 'bass'),
   },
 );
+// PERFORMANCE: how smoothly cabinets 1-6 run on a phone-shaped screen, portrait first
+// (tools/frame-report.js). Niced like the audio reports; the measurements are relative,
+// so run it with the machine otherwise quiet and compare against the last run.
+ACTIONS.push(
+  {
+    id: 'framereport', group: 'perf', label: 'FRAME REPORT',
+    blurb: 'plays every stage of the ticked cabinets on an iPhone-shaped screen and times each frame — portrait at three points a stage, landscape at one (tools/frame-report.js). Cabinets left unticked keep their last numbers on the report. Uses THE GAME on :8001, or starts it for the run. About two minutes a cabinet; best with the mixer quiet.',
+    // One card, a toggle per cabinet (all on by default): RUN measures what is ticked.
+    choices: ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'],
+    needsIds: true,
+    steps: (args) => [niced(['tools/frame-report.js', ...idsFrom(args)])],
+    openPath: reportHref('frame-report.json', 'frames'),
+  },
+);
 const ACTION_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
+
+// The option flags a RUN asked for, filtered to the ones that action declares: the
+// browser sends keys, and only a declared key turns into an argument.
+function optionFlags(id, args) {
+  const asked = new Set(Array.isArray(args?.opts) ? args.opts : []);
+  return (ACTION_BY_ID[id].options || []).filter((o) => asked.has(o.key)).map((o) => o.flag);
+}
 
 // The index is rebuilt from disk on every archive run (see archive-gallery.js),
 // so the newest asset gallery is always its last row -- no separate bookkeeping.
@@ -332,10 +350,14 @@ function actionStatus(action) {
     needsIds: !!action.needsIds,
     group: action.group || 'galleries',
     input: action.input || null,
+    choices: action.choices || null,
+    options: (action.options || []).map(({ key, label }) => ({ key, label })),
     confirm: !!action.confirm,
     running: !!state?.running,
     code: state?.code ?? null,
-    log: state?.log.slice(-8) ?? [],
+    // The audio cards sit beside the tall explainer, so they have room to show the
+    // whole result table a run prints rather than its last few lines.
+    log: state?.log.slice(action.group === 'audio' ? -30 : -8) ?? [],
     openPath: action.openPath(),
   };
 }
@@ -402,7 +424,8 @@ async function handle(req, res) {
     return json(res, 200, {
       levels: read('song-levels.json'),
       bass: read('bass-report.json'),
-      running: ACTIONS.filter((a) => a.group === 'audio' && runs.get(a.id)?.running).map((a) => a.label),
+      frames: read('frame-report.json'),
+      running: ACTIONS.filter((a) => (a.group === 'audio' || a.group === 'perf') && runs.get(a.id)?.running).map((a) => a.label),
     });
   }
 

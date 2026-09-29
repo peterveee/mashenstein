@@ -1175,7 +1175,7 @@ export const TOON_SPECS = {
   fernwick: {
     rig: 'humanoid', shoeShape: 'slipper', head: 'floppy', mouth: 'smile', back: 'quiver', ranged: 'bow',
     bowStyle: 'high', tunic: true, rollTuck: true, slim: true, armDepth: true,
-    hands: true, limbStyle: 'tunic', ears: true,
+    hands: true, limbStyle: 'tunic', ears: true, clothKnee: 1,
     // The head, off the G1 study.
     faceLike: 'fernwick', referenceHair: 'kicked', lockLift: 0.14, joinedLocks: true,
     fineTies: true, tuftBounce: true, tieAngle: 0.9, tieStyle: 'band', tieSize: 1.16,
@@ -1411,7 +1411,7 @@ export const TOON_SPECS = {
   // does the half that was wanted — 1.42 of the length, the standard girth — so
   // the plimsoll stays a plimsoll and simply has more of itself in front of the
   // ankle, which is what a tall man's foot does.
-  grumpos: { rig: 'humanoid', shoeShape: 'slipper', footLong: 1.42, heavy: true, head: 'bald', beard: true, back: 'axe', axeThrow: true, shoulders: 1.08, taper: 0.6, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', ears: true, earOut: 0.88, jumpKneeDrop: 0.12, celebTuck: 0.52,
+  grumpos: { rig: 'humanoid', shoeShape: 'slipper', footLong: 1.42, heavy: true, head: 'bald', beard: true, back: 'axe', axeThrow: true, shoulders: 1.08, taper: 0.6, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', clothKnee: 1, ears: true, earOut: 0.88, jumpKneeDrop: 0.12, celebTuck: 0.52,
     // `headAngle: -57` is SOLVED, not eyeballed. The blade's socket edge runs
     // from (-0.27,-0.04) to (-0.24,-0.25) in the art's own coordinates, so its
     // axis — square to that edge — bears -171.9 degrees, while the haft bears
@@ -2600,6 +2600,54 @@ function ankleRoll(p, L) {
   const e = t * t * (3 - 2 * t);
   return L.toe * (1 - e * e) - L.heel * e * e;
 }
+// THE KNEE PUSHES THE CLOTH (skirted-gait bake-off, 29 Sep 2026; on for any
+// spec with `clothKnee`). A hem that only follows the foot hides a lifting
+// knee completely, and a knee that passes through it reads as the leather
+// riding up — which is why Grumpos and Fernwick were held to a flat scissor
+// until this landed. Here a hanging edge from root
+// (rx, ry) to tip (tx, ty) is swung about its root just far enough to pass
+// every knee on its side (`side` +1 = the front edge, -1 = the back), with
+// `clear` of room for the thigh. A knee BELOW the hem is judged where its
+// thigh crosses the hem line, since that is the part of the leg the edge has
+// to get past. Each knee is [hipX, hipY, kneeX, kneeY]. Returns the signed
+// swing in radians (forward positive), 0 when nothing is in the way.
+function kneePush(rx, ry, tx, ty, knees, side, clear) {
+  const have = Math.atan2(tx - rx, ty - ry);
+  let best = 0;
+  for (const [hx, hy, kx, ky] of knees) {
+    let qx = kx, qy = ky;
+    if (ky > ty && ky - hy > 1e-6) {
+      const k = (ty - hy) / (ky - hy);
+      qx = hx + (kx - hx) * k; qy = ty;
+    }
+    if (qy <= ry + 1e-6) continue;
+    const need = Math.atan2(qx + side * clear - rx, qy - ry);
+    best = Math.max(best, side > 0 ? need - have : have - need);
+  }
+  return side * Math.min(best, 1.1);
+}
+// The other half of it: the hem RIDES the knee. A kilt over a lifting thigh
+// does not stay at full length — it lies on the thigh, so its hem comes up
+// with the knee and the knee and shin show below it. That, more than the
+// edge swinging clear, is what says "knee" through a garment; the knee rarely
+// leaves the skirt's outline at all. Returns how far the hem on `side` must
+// rise to sit at the height of the highest knee on that side of `midX`.
+function kneeLift(knees, side, midX, hemY) {
+  let lift = 0;
+  for (const [, , kx, ky] of knees) {
+    if ((kx - midX) * side <= 0) continue;
+    lift = Math.max(lift, hemY - ky);
+  }
+  return lift;
+}
+// Rotate (x, y) about (ax, ay) by `a`, forward-positive from hanging straight
+// down — the convention kneePush returns in.
+function swingAbout(ax, ay, x, y, a) {
+  if (!a) return [x, y];
+  const dx = x - ax, dy = y - ay, c = Math.cos(a), s = Math.sin(a);
+  return [ax + dx * c + dy * s, ay - dx * s + dy * c];
+}
+
 function locoFoot(p, stride, lift, L) {
   const q = (p % 1 + 1) % 1;
   const cf = L.contact;
@@ -2736,29 +2784,31 @@ const LOCO = {
     seg: 0.76, hold: 0.66, bob: 1.15, bobShape: 1.5, knee: 1, legLen: 1.12, hipSplit: 0.052,
     armLag: 0.125, jumpSeg: 0.46, ankle: 1, extend: 0.9, hipDepth: 1,
   },
-  // Fernwick: the shipped leg swing, and only the shipped leg swing. Every
-  // gait term below is neutral, `path` sends her back down gaitFoot, and what
-  // she keeps from the port is the FOOT — a real heel strike and toe-off in
-  // place of a flat oval — plus the rebuilt jump and the arm timing, neither
-  // of which is a leg. contact 0.5 because that is where gaitFoot's stance
-  // ends; at the spec's 0.46 the roll would unwind against her own footfall.
+  // THE SKIRTED PAIR (29 Sep 2026, skirted-gait bake-off, candidate B). Both
+  // used to run the shipped scissor — path 'gait', lift peaking mid-stride
+  // with the leg near-straight — because a knee that came up went THROUGH the
+  // hem: Grumpos's leather was cut to his knee's lowest point (-0.1800u both),
+  // leaving no room. Under a hem that scissor showed two feet sliding and no
+  // knee at all, and at the shared cadence on his short stride Grumpos read as
+  // "shuffling really fast". They now run snap's styled path — lift skewed
+  // early, so the knee folds up and forward — and the garment gives way
+  // instead of the leg: `clothKnee` on the spec lets the knee push the cloth
+  // and the hem ride up on the lifting thigh (kneePush / kneeLift), so the knee
+  // and shin show below it. Snap's fold is kept, its reach damped: no hip
+  // raise (stance 1) and a half-strength pelvis split.
   tunic: {
-    stride: 1, lift: 1, contact: 0.6, skew: 0.58, toe: 0.72, heel: 0.24,
-    seg: 1, hold: 1, bob: 1, bobShape: 1, knee: 1, legLen: 1, hipSplit: 0,
-    armLag: 0.125, jumpSeg: 0.44, ankle: 1, extend: 1, hipDepth: 0, path: 'gait',
+    stride: 1, lift: 1.1, contact: 0.46, skew: 0.58, toe: 0.72, heel: 0.24,
+    seg: 1, hold: 0.8, holdAt: 0.35, bob: 1.1, bobShape: 1.5, knee: 1, legLen: 1, hipSplit: 0.02,
+    armLag: 0.125, jumpSeg: 0.44, ankle: 1, extend: 1, hipDepth: 1, thigh: 0.48, stance: 1,
   },
-  // Grumpos, and the measurement that decided it: his battle-skirt hem sits at
-  // -0.1800u and his shipped knee's lowest point across the cycle is -0.1800u.
-  // The leather was cut to that knee. Any change to his leg geometry either
-  // lengthens the bone and puts the joint THROUGH the hem — the exact failure
-  // his own skirt comment warns about — or keeps the bone short and stretches
-  // the shin instead. There is no third option and no room to trade, so he
-  // takes the same deal fernwick does: shipped legs, new foot, new jump. The
-  // roll is damped hardest of anyone because his boots are a slab, not a shoe.
+  // Stride 1.3 because his legs are wound at 0.8 of the cast cadence
+  // (HEAVY_CADENCE_MULT in player.js): 1.05 was the stride at the shared
+  // clock, and 1.05 / 0.8 keeps his feet at the floor's pace. The roll is
+  // damped hardest of anyone because his boots are a slab, not a shoe.
   heavy: {
-    stride: 1, lift: 1, contact: 0.6, skew: 0.7, toe: 0.46, heel: 0.2,
-    seg: 1, hold: 1, bob: 1, bobShape: 1, knee: 1, legLen: 1, hipSplit: 0,
-    armLag: 0.125, jumpSeg: 0.42, ankle: 0.66, extend: 1, hipDepth: 0, path: 'gait',
+    stride: 1.3, lift: 1.5, contact: 0.46, skew: 0.58, toe: 0.46, heel: 0.2,
+    seg: 1, hold: 0.8, holdAt: 0.35, bob: 1.15, bobShape: 1.5, knee: 1, legLen: 1, hipSplit: 0.02,
+    armLag: 0.125, jumpSeg: 0.42, ankle: 0.66, extend: 1, hipDepth: 1, thigh: 0.48, stance: 1,
   },
   // Damped hard against the humanoids' 0.84: his shoe is nearly twice as long
   // as theirs and floats free, so the same angle swings its far edge a
@@ -7900,6 +7950,36 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     + (run ? drag((footB[0] - hipAt(-1)) * (long ? 0.3 : 0.15), 0.045 * u) : 0)
     + (run && long ? Math.sin(t * 12) * 0.008 * u : 0);
   const dip = 0.045 * u * (s.flare / 1.3);
+  // THE KNEE PUSHES THE GOWN (skirted-gait bake-off, 29 Sep 2026 — see
+  // kneePush). The leading and trailing edges each swing about their
+  // waist corner just far enough to pass the knees, and every other point of
+  // the skirt swings about the waist point above it by a share that falls
+  // away across the width: the cloth tents over a lifting thigh instead of
+  // hiding it. With no knees handed in both pushes are 0 and bend() is the
+  // identity, so the shipped gown is drawn exactly as it was.
+  let pushF = 0, pushB = 0, liftF = 0, liftB = 0;
+  if (g.clothKnee && g.knees) {
+    const wh = wHem * (s.loose ? 0.97 : 1);
+    pushF = kneePush(px + wTop, top, px + wh + sway, hemY, g.knees, 1, g.kneeClear) * g.clothKnee;
+    pushB = kneePush(px - wTop, top, px - wh + sway, hemY, g.knees, -1, g.kneeClear) * g.clothKnee;
+    liftF = kneeLift(g.knees, 1, px, hemY) * g.clothKnee;
+    liftB = kneeLift(g.knees, -1, px, hemY) * g.clothKnee;
+  }
+  const bend = (x, y) => {
+    if (!pushF && !pushB && !liftF && !liftB) return [x, y];
+    const fr = Math.max(0, Math.min(1, (y - top) / Math.max(1e-6, hemY - top)));
+    const width = wTop + (wHem - wTop) * fr;
+    const fx = Math.max(-1, Math.min(1, (x - px - sway * fr) / Math.max(1e-6, width)));
+    const wF = Math.max(0, (fx + 0.9) / 1.9) ** 1.6, wB = Math.max(0, (0.9 - fx) / 1.9) ** 1.6;
+    const ax = px + fx * wTop;
+    // Ride first — drawn up toward the waist along the drop, so the hem over
+    // a lifted knee is shorter there — then swing clear of the knee.
+    const k = Math.max(0.35, 1 - (liftF * wF + liftB * wB) / Math.max(1e-6, hemY - top));
+    return swingAbout(ax, top, ax + (x - ax) * k, top + (y - top) * k, pushF * wF + pushB * wB);
+  };
+  const bMove = (c, x, y) => c.moveTo(...bend(x, y));
+  const bLine = (c, x, y) => c.lineTo(...bend(x, y));
+  const bQuad = (c, cx, cy, x, y) => c.quadraticCurveTo(...bend(cx, cy), ...bend(x, y));
   // THE SLIT CLOSES FOR THE CELEBRATION. It is cut over the stepping thigh,
   // which is exactly right while she is walking or running — the leg it shows
   // is a leg in motion. Standing on both feet with them apart, the same
@@ -7912,23 +7992,23 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     // the slit a gown opens over the stepping thigh. `splitHigh` is where the
     // apex sits as a fraction of the drop from the waist — small is high.
     const apexY = top + (hy - top) * (s.splitHigh || 0.42);
-    c.moveTo(px - wTop, top);
-    c.lineTo(px + wTop, top);
+    bMove(c, px - wTop, top);
+    bLine(c, px + wTop, top);
     if (split > 0) {
-      c.lineTo(px + wh + sway, hy);
-      c.quadraticCurveTo(px + wh * 0.9 + sway, hy + dip * 0.3, px + wh * 0.68 + sway, hy);
-      c.lineTo(px + wTop * 0.42 + sway * 0.5, apexY);
-      c.lineTo(px + wh * 0.22 + sway, hy);
-      c.quadraticCurveTo(px - sway * 0.3, hy + dip, px - wh + sway, hy);
+      bLine(c, px + wh + sway, hy);
+      bQuad(c, px + wh * 0.9 + sway, hy + dip * 0.3, px + wh * 0.68 + sway, hy);
+      bLine(c, px + wTop * 0.42 + sway * 0.5, apexY);
+      bLine(c, px + wh * 0.22 + sway, hy);
+      bQuad(c, px - sway * 0.3, hy + dip, px - wh + sway, hy);
     } else if (split < 0) {
-      c.lineTo(px + wh + sway, hy);
-      c.quadraticCurveTo(px + sway * 0.6, hy + dip, px - wh * 0.2 + sway, hy);
-      c.lineTo(px - wTop * 0.4 + sway * 0.5, apexY);
-      c.lineTo(px - wh * 0.62 + sway, hy);
-      c.quadraticCurveTo(px - wh * 0.82 + sway, hy + dip * 0.35, px - wh + sway, hy);
+      bLine(c, px + wh + sway, hy);
+      bQuad(c, px + sway * 0.6, hy + dip, px - wh * 0.2 + sway, hy);
+      bLine(c, px - wTop * 0.4 + sway * 0.5, apexY);
+      bLine(c, px - wh * 0.62 + sway, hy);
+      bQuad(c, px - wh * 0.82 + sway, hy + dip * 0.35, px - wh + sway, hy);
     } else {
-      c.lineTo(px + wh + sway, hy);
-      c.quadraticCurveTo(px + sway, hy + dip, px - wh + sway, hy);
+      bLine(c, px + wh + sway, hy);
+      bQuad(c, px + sway, hy + dip, px - wh + sway, hy);
     }
     c.closePath();
   };
@@ -7988,10 +8068,10 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
       // waist, where they are pinned and must read as one garment.
       const o = 0.04;
       const panelPath = (c) => {
-        c.moveTo(px + (f0 - o) * wTop, top);
-        c.lineTo(px + (f1 + o) * wTop, top);
-        c.lineTo(px + (f1 + o) * wHem + dx, hemY + dy);
-        c.quadraticCurveTo(px + fc * wHem + dx, hemY + dy + dip * 0.5,
+        bMove(c, px + (f0 - o) * wTop, top);
+        bLine(c, px + (f1 + o) * wTop, top);
+        bLine(c, px + (f1 + o) * wHem + dx, hemY + dy);
+        bQuad(c, px + fc * wHem + dx, hemY + dy + dip * 0.5,
           px + (f0 - o) * wHem + dx, hemY + dy);
         c.closePath();
       };
@@ -13128,16 +13208,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // and matching their color makes it read as depth, not a second garment.
     // It follows the flare, or the A-line opens past its edges.
     const wUnder = wTop * flare * 0.92;
-    outlined(ctx, p.w, hair(0.5, ow * 0.5), (c) => {
-      c.moveTo(px - wTop * 0.96 * depthScaleAt(-1), topYAt(-1));
-      c.lineTo(px + wTop * 0.96 * depthScaleAt(1), topYAt(1));
-      c.lineTo(px + wUnder * depthScaleAt(1) + sway, tipYAt(1) - 0.022 * u);
-      c.lineTo(px - wUnder * depthScaleAt(-1) + sway, tipYAt(-1) - 0.022 * u);
-      c.closePath();
-    });
-    // Paint the far half first so the screen-left foreground straps occlude it.
-    const panelOrder = turned && nearSign < 0 ? [...PANELS].reverse() : PANELS;
-    for (const { f, gain } of panelOrder) {
+    // Each strap's resting geometry, before any knee gets a say.
+    const strapAt = (f, gain) => {
       // The turned rig puts footF under the screen-left foreground half.
       // Drive each leather panel from the thigh actually beneath it.
       const followsFront = turned ? (nearSign < 0 ? f < 0 : f > 0) : f > 0;
@@ -13158,13 +13230,64 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const bx = px + f * wHem * depthScale + sway
         + drag(drivenGain * 0.45 * lead, 0.055 * u) + airX;
       const by = tipYAt(f) + drag(drivenGain * 0.45 * rise, 0.045 * u) + airY;
+      return { topX, topY: topYAt(f), panelHalf, bx, by, tipHalf: panelHalf * (1 + (flare - 1) * 0.85) };
+    };
+    // The knee pushes the leather (spec.clothKnee; the pose can override it).
+    // Solved on the two OUTER straps' free edges, then handed to the rest of
+    // the fan at a falling share, so the stack opens like leather over a
+    // lifting thigh rather than one strap peeling off it. Run only — the jump
+    // and the hop have their own tuned tucks (jumpKneeDrop, celebTuck).
+    // Styled gait only: a 'legacy' column's flat scissor never lifts a knee.
+    const clothKnee = styledGait && !turned ? Math.max(0, Number(pose.clothKnee ?? spec.clothKnee) || 0) : 0;
+    let pushF = 0, pushB = 0, liftF = 0, liftB = 0;
+    if (clothKnee) {
+      const knees = [
+        [hipAt(1), legRootYF, ...kneeAt(hipAt(1), legRootYF, footF, kneeF)],
+        [hipAt(-1), legRootYB, ...kneeAt(hipAt(-1), legRootYB, footB, kneeB)],
+      ];
+      const clear = legW * 0.5 + 0.01 * u;
+      const fr = strapAt(PANEL_SPREAD, 1), bk = strapAt(-PANEL_SPREAD, 0.25);
+      pushF = kneePush(fr.topX + fr.panelHalf, fr.topY, fr.bx + fr.tipHalf, fr.by, knees, 1, clear) * clothKnee;
+      pushB = kneePush(bk.topX - bk.panelHalf, bk.topY, bk.bx - bk.tipHalf, bk.by, knees, -1, clear) * clothKnee;
+      liftF = kneeLift(knees, 1, px, tipY) * clothKnee;
+      liftB = kneeLift(knees, -1, px, tipY) * clothKnee;
+    }
+    // Share of each push a strap takes, by its place in the fan (f -1..1).
+    const shareF = (f) => Math.max(0, Math.min(1, (f + 0.95) / 1.7)) ** 1.6;
+    const shareB = (f) => Math.max(0, Math.min(1, (0.95 - f) / 1.7)) ** 1.6;
+    const pushAt = (f) => pushF * shareF(f) + pushB * shareB(f);
+    const liftAt = (f) => liftF * shareF(f) + liftB * shareB(f);
+    // Swing a free corner about its root, then draw it up toward the root by
+    // the hem's ride — along the strap, so it shortens rather than slides.
+    const hang = (rx, ry, x, y, a, lift) => {
+      const [sx, sy] = swingAbout(rx, ry, x, y, a);
+      if (!lift) return [sx, sy];
+      const k = Math.max(0.35, 1 - lift / Math.max(1e-6, sy - ry));
+      return [rx + (sx - rx) * k, ry + (sy - ry) * k];
+    };
+    const uF = [px + wTop * 0.96 * depthScaleAt(1), topYAt(1)];
+    const uB = [px - wTop * 0.96 * depthScaleAt(-1), topYAt(-1)];
+    outlined(ctx, p.w, hair(0.5, ow * 0.5), (c) => {
+      c.moveTo(uB[0], uB[1]);
+      c.lineTo(uF[0], uF[1]);
+      c.lineTo(...hang(uF[0], uF[1], px + wUnder * depthScaleAt(1) + sway, tipYAt(1) - 0.022 * u, pushAt(1) * 0.85, liftAt(1)));
+      c.lineTo(...hang(uB[0], uB[1], px - wUnder * depthScaleAt(-1) + sway, tipYAt(-1) - 0.022 * u, pushAt(-1) * 0.85, liftAt(-1)));
+      c.closePath();
+    });
+    // Paint the far half first so the screen-left foreground straps occlude it.
+    const panelOrder = turned && nearSign < 0 ? [...PANELS].reverse() : PANELS;
+    for (const { f, gain } of panelOrder) {
+      const strap = strapAt(f, gain);
+      const a = pushAt(f), lift = liftAt(f);
+      // Each strap widens toward its tip in step with the flare — held to a
+      // constant width, an A-line just opens gaps between them.
+      const tipR = hang(strap.topX, strap.topY, strap.bx + strap.tipHalf, strap.by, a, lift);
+      const tipL = hang(strap.topX, strap.topY, strap.bx - strap.tipHalf, strap.by, a, lift);
       outlined(ctx, p.w, hair(0.6, ow * 0.7), (c) => {
-        c.moveTo(topX - panelHalf, topYAt(f));
-        c.lineTo(topX + panelHalf, topYAt(f));
-        // Each strap widens toward its tip in step with the flare — held to a
-        // constant width, an A-line just opens gaps between them.
-        c.lineTo(bx + panelHalf * (1 + (flare - 1) * 0.85), by);
-        c.lineTo(bx - panelHalf * (1 + (flare - 1) * 0.85), by);
+        c.moveTo(strap.topX - strap.panelHalf, strap.topY);
+        c.lineTo(strap.topX + strap.panelHalf, strap.topY);
+        c.lineTo(tipR[0], tipR[1]);
+        c.lineTo(tipL[0], tipL[1]);
         c.closePath();
       });
     }
@@ -13225,6 +13348,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     paintPrincessCostume(ctx, spec, p, u, ow, lod, { px: torsoCx, torsoTop, torsoBot, torsoHalf, torsoPath, hipY, legL, bob, run, jump, frontLegs, hipAt, footB, waistHalf, shoulderSoft, bodyHalfAt, t: pose.time || 0, slingSocketX: shF - (nearArmSeated ? sideF * ARM_SEAT_IN * u : 0),
       slingSocketY: armY + (nearArmSeated ? ARM_SEAT_DOWN * u : 0),
       slingSocketR: armWF * 0.52,
+      // The knees the gown has to get past (spec.clothKnee, see kneePush).
+      clothKnee: styledGait && !turned ? Math.max(0, Number(pose.clothKnee ?? spec.clothKnee) || 0) : 0,
+      knees: styledGait && !turned && (pose.clothKnee ?? spec.clothKnee) ? [
+        [hipAt(1), legRootYF, ...kneeAt(hipAt(1), legRootYF, footF, kneeF)],
+        [hipAt(-1), legRootYB, ...kneeAt(hipAt(-1), legRootYB, footB, kneeB)],
+      ] : null,
+      kneeClear: legW * 0.5 + 0.01 * u,
       // The sling strip sits a fixed way inboard of the socket; when the
       // socket is fitted into the gown the strip moves with it, or its
       // shoulder start pokes out past the arm's root.

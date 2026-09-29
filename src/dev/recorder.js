@@ -62,6 +62,10 @@ const ROUTE = '/__dev/record';
 const FADE_IN_S = 0.4;
 const OUTRO_FADE_S = 0.6;
 const TAIL_S = 0.4;
+// A CUT take (RECORD BACKGROUND) keeps the black lead — the shutter is still no
+// part of the run — but opens on the first live frame with no fade, and stops
+// on the frame the state reports its outro rather than fading into a tail.
+// The file is footage to cut with, so it starts and ends on picture.
 
 function pickMime() {
   if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return null;
@@ -102,6 +106,7 @@ export const Recorder = {
   phaseT: 0,
   cover: 0,           // alpha of the black cover Dev.draw paints for us
   _outroFading: false,
+  _cut: false,
   _rec: null,
   _chunks: [],
   _stopped: null,
@@ -114,8 +119,9 @@ export const Recorder = {
    *   name     file stem; the timestamp is appended
    *   state    optional State — the recording stops itself when it is left
    *   onSaved  optional ({path, error}) callback once the file is on disk
+   *   cut      with state: open and close on hard cuts instead of fades
    */
-  start({ name = 'rec', state = null, onSaved = null } = {}) {
+  start({ name = 'rec', state = null, onSaved = null, cut = false } = {}) {
     if (this.active) return 'ALREADY RECORDING';
     if (this.saving) return 'STILL SAVING THE LAST ONE';
     const canvas = presentCanvas();
@@ -159,6 +165,7 @@ export const Recorder = {
     this.phaseT = 0;
     this.cover = state ? 1 : 0;
     this._outroFading = false;
+    this._cut = !!(state && cut);
     // A bound take opens on silence and fades in with the picture; a
     // free-running one records what the room hears from the first frame.
     try { Audio.setCaptureLevel(state ? 0 : 1, 0); } catch (e) { /* no tap */ }
@@ -257,9 +264,15 @@ export const Recorder = {
       if (cur === this.boundState && !trans) {
         this.phase = 'live';
         this.phaseT = 0;
-        Audio.setCaptureLevel(1, FADE_IN_S);
+        Audio.setCaptureLevel(1, this._cut ? 0 : FADE_IN_S);
+        if (this._cut) this.cover = 0;
       }
     } else if (this.phase === 'live') {
+      if (this._cut) {
+        this.cover = 0;
+        if (cur !== this.boundState || trans || Number(cur.recordingOutro) > 0) this.stop();
+        return;
+      }
       if (cur !== this.boundState || trans) {
         this.phase = 'tail';
         this.phaseT = 0;

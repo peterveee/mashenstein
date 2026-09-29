@@ -9,7 +9,7 @@ description: Export an MP4 of a jukebox visualiser set to a rendered music bank,
 bank. It is **dev tooling and never ships** — nothing in `src/` imports from
 `tools/`, the build only bundles `src/gate.js` and `src/main.js`, and the
 dependency runs one way (the tool imports *from* `src/`). Rendered MP4s land in
-`dist/`, which is gitignored, so a 300MB video is never committed.
+`work/video/`, which is gitignored, so a 300MB video is never committed.
 
 ```
 node tools/render-video.js [trackId] [visualiser] [outPath] [--flags]
@@ -74,9 +74,10 @@ stepped once per video frame. The tool prints mean/peak for bass, mid and treble
 — healthy values on megamix are ~0.66/0.40/0.23 mean. All-zero or pegged-at-1.0
 means the analysis is wrong, and the visualiser will look dead or fully saturated.
 
-Audio itself comes from `renderBank()`, the same DSP as `tools/render-track.js`,
-so a video's soundtrack is identical to the WAV audition. It is mono, because
-every bank in the game renders mono.
+Audio itself comes from `renderBankBrowser()` (`tools/lib/render-bank-browser.js`),
+the same renderer `tools/render-track.js` uses, so a video's soundtrack is
+identical to the WAV audition. The soundtrack is stereo; the analysis above runs
+on an L+R mono sum.
 
 ## Portrait and social exports
 

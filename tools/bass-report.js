@@ -24,10 +24,10 @@
 // and compares it with the cached others. --fresh ignores the cache.
 //
 // Usage:
-//   node tools/bass-report.js                    the finished cabinets
-//   node tools/bass-report.js neon               ...re-measure neon, compare with the rest
-//   node tools/bass-report.js cardboard          any track id, compared with the finished
+//   node tools/bass-report.js                    every song that ships (9 cabinets, 5 themes)
+//   node tools/bass-report.js neon crypt         just those; the others keep their last rows
 //   node tools/bass-report.js neon --lanes       ...and which lanes carry neon's low end
+//   node tools/bass-report.js --lanes            lanes for EVERY song — hours, not minutes
 //   node tools/bass-report.js --fresh            re-render everything
 //   node tools/bass-report.js --repeats 2        longer renders (default 1 loop pass)
 import { createHash } from 'node:crypto';
@@ -38,6 +38,7 @@ import { openRenderer, SR } from './lib/render-bank-browser.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { loudness } from './lib/loudness.js';
 import { bandEnergies } from './lib/spectrum.js';
+import { adviseSong, adviceText } from './lib/bass-advice.js';
 import { activeLanes, deskBank } from '../src/engine/lanes.js';
 import { MIX } from '../src/data/mix.js';
 import { applyArrangement } from '../src/data/arrangements.js';
@@ -49,6 +50,15 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // the median would drag the line toward a song nobody has signed off. Move an id
 // in here when its song is finished.
 const FINISHED = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'];
+// The rest of the music that ships, reported against the cabinets but never part
+// of their median: between-games songs are allowed to be different, and the report
+// says how different.
+const THEMES = ['title', 'hub', 'shop', 'finale', 'megamix'];
+// Cabinets whose songs are still being written: reported, never in the median.
+const UNFINISHED = ['cardboard', 'office', 'surge'];
+// Every song that ships, in the order the report lists them. The desk's BASS REPORT
+// card offers exactly these as toggles (tools/desk.js), all ticked by default.
+const ALL_SONGS = [...FINISHED, ...UNFINISHED, ...THEMES];
 
 const BANDS = [
   ['sub', 20, 60],
@@ -73,7 +83,12 @@ const FRESH = argv.includes('--fresh');
 const LANES = argv.includes('--lanes');
 const repeats = Math.max(1, Number(flag('repeats', 1)) || 1);
 const named = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--repeats');
-const songs = [...FINISHED, ...named.filter((id) => !FINISHED.includes(id))];
+// The ticked songs: what this run reports (and, with --lanes, breaks down). The
+// finished cabinets are always measured as well, cached or not, because the median
+// is theirs; a song not ticked keeps its last row on the report.
+const ticked = named.length ? named : ALL_SONGS;
+const orderOf = (id) => (ALL_SONGS.includes(id) ? ALL_SONGS.indexOf(id) : ALL_SONGS.length);
+const songs = [...new Set([...FINISHED, ...ticked])].sort((a, b) => orderOf(a) - orderOf(b));
 
 // ------------------------------------------------------------------- cache
 const cacheDir = join(root, 'work/local/bass-report');
@@ -162,8 +177,7 @@ console.log('\n+N / -N: that many dB more / less of the band than the median son
 // ------------------------------------------------------------------- lanes
 const laneReports = {};
 if (LANES) {
-  const focus = named.length ? named : [];
-  if (!focus.length) console.log('\n--lanes needs a song id: node tools/bass-report.js neon --lanes');
+  const focus = ticked;
   for (const id of focus) {
     const track = resolveOrExit(id);
     const entry = MIX[track.id] || null;
@@ -203,14 +217,31 @@ const reportPath = join(root, 'work/local/reports/bass-report.json');
 mkdirSync(dirname(reportPath), { recursive: true });
 let previousLanes = {};
 try { previousLanes = JSON.parse(readFileSync(reportPath, 'utf8')).lanes || {}; } catch { /* first run */ }
+const allLanes = { ...previousLanes, ...laneReports };
+// Songs this run did not measure keep the row the last run gave them.
+let previousRows = [];
+try { previousRows = JSON.parse(readFileSync(reportPath, 'utf8')).rows || []; } catch { /* first run */ }
+const shown = [
+  ...rows,
+  ...previousRows.filter((p) => !rows.some((r) => r.id === p.id)),
+].sort((a, b) => orderOf(a.id) - orderOf(b.id));
+const bandList = BANDS.map(([name, lo, hi]) => ({ name, lo, hi }));
+// What it means, song by song, most out of step first — see tools/lib/bass-advice.js.
+const advice = shown
+  .map((r) => adviseSong(r, median, bandList, FLAG, allLanes[r.id] || null))
+  .sort((a, b) => b.worst - a.worst);
 writeFileSync(reportPath, JSON.stringify({
   at: new Date().toISOString(),
   repeats,
   flag: FLAG,
   finished: FINISHED,
-  bands: BANDS.map(([name, lo, hi]) => ({ name, lo, hi })),
+  bands: bandList,
   lowBands: LOW_BANDS,
   median,
-  rows: rows.map((r) => ({ id: r.id, lufs: r.lufs, levels: r.levels, hash: r.hash, inMedian: FINISHED.includes(r.id) })),
-  lanes: { ...previousLanes, ...laneReports },
+  rows: shown.map((r) => ({ id: r.id, lufs: r.lufs, levels: r.levels, hash: r.hash, inMedian: FINISHED.includes(r.id) })),
+  lanes: allLanes,
+  advice,
 }, null, 2));
+
+console.log('\nwhat it means — advice, not orders: act on what you can hear, then SONG LEVELS: APPLY\n');
+for (const a of advice.filter((x) => songs.includes(x.id))) console.log(`${adviceText(a)}\n`);

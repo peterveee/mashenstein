@@ -58,6 +58,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.607, high: false },
     pits: [{ at: 0.38, w: 60 }, { at: 0.665, jumps: 5 }],
     rewindAt: null,
+    checkpoints: [0.333333, 0.63],
   },
   "rhythm-1": {
     durationSec: 90,

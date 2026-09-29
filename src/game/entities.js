@@ -300,7 +300,15 @@ export const OBSTACLES = {
   // ellipse under it. The two floor plates are the only things in the lane that
   // claim to be part of the road, and an oval shadow around one is the mark
   // that gives it away.
-  popSpikes:  { w: 15, h: 7,  sprite: 'popSpikes', ground: true, breakable: false, action: 'jump', bedded: true },
+  //
+  // `flush`: the burial cuts at the road's real top edge, not at the seated
+  // line 1.5px under it. The teeth come straight out of the road surface and
+  // nothing of the plate is left painted over the road's edge line.
+  //
+  // `lurks`: in landscape the teeth stay under the road as the plate scrolls
+  // in and pop up as the hero closes (lurkDrop in draw.js). Art only; the box
+  // is live throughout, and the teeth are up long before the jump is due.
+  popSpikes:  { w: 15, h: 7,  sprite: 'popSpikes', ground: true, breakable: false, action: 'jump', bedded: true, flush: true, lurks: true },
   // Low and wide, and the second-flattest hazard in the game after the peel.
   campfire:   { w: 14, h: 10, sprite: 'campfire', ground: true, breakable: false, action: 'jump' },
   // SHOOTABLE, not kickable. Same 13x13 box as the wooden barrel it stands
@@ -313,7 +321,9 @@ export const OBSTACLES = {
   // lane for what it shows you as much as for what it costs you.
   brazier:    { w: 12, h: 14, sprite: 'brazier', ground: true, breakable: true, action: 'jump' },
   // The floor blade. Not breakable and not puntable for the obvious reason.
-  floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
+  // Flush like the spike plate: the blade stands half out of a striped slot
+  // in the road. It does not lurk — it is always up.
+  floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   // A cold, spring-loaded floor trap. It is bedded like the spike plate and
   // saw, so the snow swallows its base instead of leaving a prop sitting on
   // top of the road. The jaws are always open: the jump is the answer in every
