@@ -332,6 +332,44 @@ a half step), and the desk now normalises on save — see
 32-step transport, because one bar carries a 1/32 arp, but `_fineBars` is down to that one
 bar and the other 64 take the whole-tick fast path.
 
+### First versions of every song as jukebox bonus tracks
+The first version of every song, as a bonus section in the jukebox. Confirmed doable on
+2026-09-30: each one renders cleanly through the `src/engine/audio.js` of the commit it
+first appeared in. That commit's `src/` is extracted with `git archive`, bundled, and its
+`Audio.schedule()` is driven one step at a time against an OfflineAudioContext whose
+`currentTime` is proxied to sit 0.12s behind `Audio.nextTime`.
+`node work/local/render-first-versions.mjs [minSeconds=30] [group...]` writes
+`work/auditions/first-versions/<group>/<id>.wav`, repeating the song's form until it
+passes `minSeconds`. Neither the script nor the renders are tracked.
+
+| Song | First version | Engine then | Level (LUFS) |
+| --- | --- | --- | --- |
+| Nine cabinets | `04c9246`, 19 Jul (first commit) | 200 lines | -31 to -37.5 |
+| Food court | `04c9246`: an unnamed bass+hats loop inline in `HubState.enter()` | 200 lines | -36.0 |
+| Food court, first `HUB_THEME` | `9105c0a`, 19 Jul: the same loop plus a kick | 200 lines | -29.8 |
+| Title (EMPTY ARCADE) | `659b55e`, 19 Jul. The title screen was silent in the first commit | 675 lines | -35.8 |
+| Finale | `8a976e8`, 21 Jul | 968 lines | -24.1 |
+| All 20 shop songs | `49f81fd`, 26 Jul. Every shop song and variant landed in this one commit | 1,751 lines | Dolores -34 to -37.5, Gary -29 to -30.6, dance mix -26.1 |
+| Megamix | `49f81fd`, 26 Jul | 1,751 lines | -25.4 |
+
+- **The first commit's cabinet songs are sketches.** Each is a 2-bar loop with four
+  voices: bass, lead, a sine kick and noise hats. Tempos run from 90 (crypt) to 132
+  (surge). The first food-court song has no melody at all.
+- **The megamix is built from the other songs as they stood on 26 Jul**, not from these
+  first versions.
+- **Live or files.** The first-commit songs could play live from a small copy of the
+  first-commit engine inside the jukebox (the sequencer is about 60 lines, each song one
+  line of data): identical by construction and nothing added to the download. The title,
+  finale, shop songs and megamix need the engine of their own commit (675–1,751 lines),
+  so audio files are probably simpler for those.
+- **Rebalance the levels.** Everything above sits well below the cabinets' -21
+  (`tools/song-levels.js`), and the spread is wide, so each song needs its own trim.
+  A flat boost won't do it.
+- **Decide the length.** The cabinet loops can loop forever like they did in the game,
+  or play N passes and fade out.
+- The pre-mixer versions (28 Jul, `1bdf353^`) are also renderable, through that
+  commit's own `tools/render-track.js`. They sit in `work/auditions/premixer-originals/`.
+
 ## Done
 <!-- move shipped items here with a date -->
 

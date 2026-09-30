@@ -29,6 +29,7 @@ import {
   DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
 import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
+import * as PLUMBER_CLASSIC from './fixtures/plumber-classic.js';
 import {
   sharedPatternGroups, sharedPatternDescription, playheadCell, playheadWindow, drumRowOrder,
   KITS,
@@ -47,6 +48,11 @@ function assert(cond, msg) {
 
 const tracks = listTracks().map((t) => resolveTrack(t.id)).filter((t) => t && t.bank);
 const banks = Object.fromEntries(tracks.map((t) => [t.id, t.bank]));
+// Every check below that reaches for `banks.plumber` means the small, layer-free song it
+// was written around (six sections, the classic lanes). The live plumber song is HARVEST
+// OPUS since 30 Sep 2026, so those read the frozen classic song instead; the catalogue-wide
+// checks still walk every live track through `tracks` and `withSections`.
+banks.plumber = PLUMBER_CLASSIC.bank;
 const withSections = tracks.filter((t) => t.bank.sections?.length);
 const json = (v) => JSON.stringify(v);
 
@@ -1049,7 +1055,7 @@ const clearEntry = entryOf(plumber, cleared);
 const clearedBank = applyArrangement(plumber, 'cleared', { cleared: clearEntry });
 assert(clearedNotes(clearedBank, clearEntry.order) === 0,
   'clearing a track empties every bar of it, through the arrangement a save would write');
-assert(json(plumber.bass) === json(resolveTrack('plumber').bank.bass),
+assert(json(plumber.bass) === json(PLUMBER_CLASSIC.bank.bass),
   'and the song it was cleared out of still has its own notes');
 // One delta per section, not one per bar: a section four bars long is emptied once.
 assert(clearEntry.sections.length <= (plumber.sections?.length || 0)
@@ -1286,6 +1292,7 @@ const fixture = {
     resolution: 32,
     swing: 62,
     loop: { startBar: 1, fromBar: 3, toBar: 6 },
+    automation: { bass: { points: [[3, 0, 0], [5, 0, null, 'equal']], cuts: [[6, 8.5]] } },
     // Up to 8, not 9: plumber's own 6 sections plus the 3 layer sections below make
     // nine, and they are addressed 0-8. The validator caught this fixture doing it.
     order: [0, 0, { s: 1, bars: 1,
@@ -1308,6 +1315,8 @@ assert(json(back.plumber.order) === json(fixture.plumber.order),
 assert(back.plumber.resolution === 32 && back.plumber.swing === 62
   && json(back.plumber.loop) === json(fixture.plumber.loop),
   'round-trip: fine resolution, swing and song loop survive');
+assert(json(back.plumber.automation) === json(fixture.plumber.automation),
+  'round-trip: a fade, its shape and a cut on a 1/32 survive');
 assert(back.plumber.sections.length === 3 && back.plumber.sections[0].base === 1,
   'round-trip: layer sections survive, and keep what they are based on');
 assert(json(back.plumber.sections[0].lead) === json(fixture.plumber.sections[0].lead),
@@ -1343,6 +1352,9 @@ const rewrittenPath = join(tmp, 'rewritten.js');
 writeFileSync(rewrittenPath, rewritten.replace(
   "'./songs/index.js'",
   JSON.stringify(new URL('../src/data/songs/index.js', import.meta.url).pathname),
+).replace(
+  "'./automation.js'",
+  JSON.stringify(new URL('../src/data/automation.js', import.meta.url).pathname),
 ));
 const round2 = await import(rewrittenPath);
 assert(typeof round2.applyArrangement === 'function' && Object.keys(round2.ARRANGEMENTS).length === 0,

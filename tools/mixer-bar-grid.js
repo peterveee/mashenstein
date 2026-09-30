@@ -42,6 +42,10 @@ import { writeBarNotes, writeBarNotesShared, setLanesOff } from './lib/arrangeme
 // mid-playback on its own schedule, and must never widen the window an edit is
 // waiting to be heard through. See lib/heavy-ui.js.
 import { heavyUi } from './lib/heavy-ui.js';
+import {
+  curveLevelAt, dbToLevel, levelToDb, positionLabel, levelLabel,
+  AUTOMATION_SHAPES, AUTOMATION_SHAPE_NAMES, AUTOMATION_SHAPE_NOTES, AUTOMATION_MAX_DB,
+} from '../src/data/automation.js';
 
 /**
  * The bars a shared edit really reaches.
@@ -515,6 +519,15 @@ export function createBarGrid({
   noteLabels = () => true,
   title, headerExtra = () => [], rulerHeader = () => [], rowHeader = () => [], lead = () => [],
   laneLabel = (key) => key,
+  // The VOLUME strip — one track's level line and cuts, under a docked editor, on the
+  // editor's own time axis (src/data/automation.js). The host says which track, reads
+  // and writes its automation, and lends the desk's fader law so a height on the strip
+  // means what the same height on a fader does. Null: no strip.
+  //
+  //   { lane(), read() → { points: [{ pos, db, shape }], cuts: [pos] },
+  //     write({ points, cuts }, what), dbToPos(db), posToDb(p), menu(x, y, title, items),
+  //     colour(), name(lane) }
+  volume = null,
 }) {
   const POS_KEY = `mash-mixer-${ns}-pos`;
   // Deliberately NOT namespaced: "am I editing this bar or every bar that plays it"
@@ -591,6 +604,10 @@ export function createBarGrid({
   let bodyEl = null;
   let fixedBodyEl = null;
   let rulerEl = null;
+  // The Volume strip, when the host asked for one — see `volume` above and `buildVolume`.
+  let volEl = null;
+  let volWatch = null;
+  let volCutArmed = false;
   // The hatched band over the bars picked out. ONE element across the whole ruler — both
   // number strips and the air between them — because two of them, one per strip, is two
   // blocks with a seam and a restarted hatch angle rather than one region. It hangs in a
@@ -732,6 +749,7 @@ export function createBarGrid({
   const syncDockedChrome = (scroll) => {
     if (!docked || !scroll) return;
     rulerEl?.style.setProperty('--roll-scroll-x', `${scroll.scrollLeft}px`);
+    volEl?.style.setProperty('--roll-scroll-x', `${scroll.scrollLeft}px`);
     if (fixedBodyEl) fixedBodyEl.style.transform = `translateY(${-scroll.scrollTop}px)`;
   };
 
@@ -1475,6 +1493,8 @@ export function createBarGrid({
       surface.append(keys, scroll, zoom);
       // Rulers and the keyboard are pinned siblings of the only scroll viewport.
       el.append(ruler, surface);
+      const vol = buildVolume();
+      if (vol) el.append(vol);
     } else {
       rulerEl = null;
       el.append(scroll);
@@ -1516,6 +1536,404 @@ export function createBarGrid({
       syncDockedChrome(scroll);
     }, { passive: true });
     watchSize(scroll);
+    if (volEl) requestAnimationFrame(() => drawVolume());
+  }
+
+  // ---- the Volume strip ------------------------------------------------------------
+  //
+  // One track's level line and its cuts, drawn on this editor's own time axis — the one
+  // place on the desk with a grid finer than a bar, which is what "cut it off exactly
+  // there" needs. Built out of the same per-column divs as the ruler, carrying the same
+  // beat and bar classes, so it lines up with the notes by construction; the line is an
+  // SVG over them, measured off those cells rather than computed from a width.
+  //
+  // Height is the desk's FADER LAW, lent by the host: 0 dB sits three quarters of the
+  // way up, exactly where a fader's unity mark is, so a point at a given height is the
+  // level a fader at that height would be.
+  //
+  // Gestures, all one undo step each:
+  //   · double-click the strip — a point there; double-click a point or a cut — gone
+  //   · drag a point — time and level (⇧ for off the grid); drag a cut — time
+  //   · ✂ armed, or ⌥-click — a cut there
+  //   · right-click — the curve a point arrives on, and the rest
+
+  const VOL_PAD = 6;
+
+  function buildVolume() {
+    volEl = null;
+    if (!docked || !volume) return null;
+    const lane = volume.lane?.();
+    if (!lane) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'ssqvolstrip';
+    wrap.style.setProperty('--roll-scroll-x', `${scrollAt.left}px`);
+    wrap.style.setProperty('--vol-colour', volume.colour?.() || 'var(--accent)');
+    const row = document.createElement('div');
+    row.className = 'ssqvol';
+    const label = document.createElement('div');
+    label.className = 'ssqvol-label';
+    const name = document.createElement('span');
+    name.className = 'ssqvol-name';
+    // Which track, because the kit shows several and the strip is only the selected one's.
+    const whose = volume.name?.(lane) || '';
+    name.textContent = whose ? `Volume · ${whose}` : 'Volume';
+    name.title = whose ? `${whose}'s level line and cuts` : '';
+    const cut = document.createElement('button');
+    cut.type = 'button';
+    cut.className = 'ssqvol-cut' + (volCutArmed ? ' on' : '');
+    cut.textContent = '✂ Cut';
+    cut.setAttribute('aria-pressed', volCutArmed ? 'true' : 'false');
+    cut.title = volCutArmed
+      ? 'Click the strip to place a cut — whatever this track has ringing stops there. Click here again to stop'
+      : 'Place cuts: whatever this track has ringing stops at the cut, and the next note plays (⌥-click the strip does the same)';
+    cut.onclick = (ev) => {
+      ev.stopPropagation();
+      volCutArmed = !volCutArmed;
+      cut.classList.toggle('on', volCutArmed);
+      cut.setAttribute('aria-pressed', volCutArmed ? 'true' : 'false');
+      wrap.classList.toggle('cutting', volCutArmed);
+    };
+    label.append(name, cut);
+    const track = document.createElement('div');
+    track.className = 'ssqvol-track';
+    const cells = document.createElement('div');
+    cells.className = 'ssqvolcells';
+    for (let b = range.from; b <= range.to; b++) {
+      for (let i = 0; i < cols; i++) {
+        const n = document.createElement('div');
+        n.className = 'ssqvolcell' + stepClasses(b, i);
+        n.dataset.bar = String(b);
+        n.dataset.col = String(i);
+        cells.append(n);
+      }
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('ssqvolsvg');
+    cells.append(svg);
+    track.append(cells);
+    row.append(label, track);
+    wrap.append(row);
+    wrap.classList.toggle('cutting', volCutArmed);
+    wrap.title = 'Volume for this track. Double-click to add a point; drag a point to move it '
+      + '(⇧ for off the grid); double-click a point or a cut to remove it; right-click for its curve. '
+      + '✂ Cut, or ⌥-click, places a cut.';
+    wireVolume(wrap);
+    // The columns change width with the roll's time zoom, which is a CSS variable rather
+    // than a rebuild — so the line is redrawn whenever the cells it is measured off move.
+    if (typeof ResizeObserver === 'function') {
+      volWatch?.disconnect();
+      volWatch = new ResizeObserver(() => requestAnimationFrame(() => drawVolume()));
+      volWatch.observe(cells);
+    }
+    volEl = wrap;
+    return wrap;
+  }
+
+  /** Where each column sits inside the strip's cells, measured. */
+  const volGeometry = () => {
+    const cellsEl = volEl?.querySelector('.ssqvolcells');
+    if (!cellsEl) return null;
+    const list = [...cellsEl.querySelectorAll('.ssqvolcell')]
+      .map((c) => ({ left: c.offsetLeft, width: c.offsetWidth }));
+    if (!list.length) return null;
+    const H = cellsEl.clientHeight || 52;
+    return { cellsEl, list, W: cellsEl.scrollWidth, H };
+  };
+
+  const volColWidth = () => 16 / cols;
+  const volStart = () => range.from * 16;
+  const volEnd = () => (range.to + 1) * 16;
+
+  const volX = (g, pos) => {
+    const rel = Math.max(0, Math.min(volEnd() - volStart(), pos - volStart()));
+    const at = rel / volColWidth();
+    const i = Math.min(g.list.length - 1, Math.floor(at));
+    const c = g.list[i];
+    return c.left + (at - i) * c.width;
+  };
+  const volPosAtX = (g, x) => {
+    let i = 0;
+    while (i + 1 < g.list.length && g.list[i + 1].left <= x) i++;
+    const c = g.list[i];
+    const frac = c.width > 0 ? Math.max(0, Math.min(1, (x - c.left) / c.width)) : 0;
+    return volStart() + (i + frac) * volColWidth();
+  };
+  const volY = (g, db) => {
+    const p = db == null ? 0 : Math.max(0, Math.min(1, volume.dbToPos(db)));
+    return VOL_PAD + (1 - p) * (g.H - VOL_PAD * 2);
+  };
+  const volDbAtY = (g, y) => {
+    const p = 1 - (y - VOL_PAD) / Math.max(1, g.H - VOL_PAD * 2);
+    if (p <= 0.015) return null;
+    let db = Math.min(AUTOMATION_MAX_DB, volume.posToDb(Math.min(1, p)));
+    // Unity is a detent, as it is on a fader: the level a line is most often put back to.
+    if (Math.abs(db) < 0.75) db = 0;
+    return Math.round(db * 2) / 2;
+  };
+  const volSnap = (pos, free = false) => {
+    const q = Math.max(1e-6, snapSize() * slotUnit());
+    const p = free ? Math.round(pos * 1e4) / 1e4 : Math.round(pos / q) * q;
+    return Math.max(volStart(), Math.min(volEnd(), p));
+  };
+
+  const volData = () => {
+    const d = volume?.read?.() || {};
+    return {
+      points: (d.points || []).map((p) => ({ pos: p.pos, db: p.db ?? null, shape: p.shape || 'even' })),
+      cuts: [...(d.cuts || [])],
+    };
+  };
+  const volCurve = (pts) => ({ points: pts.map((p) => ({ ...p, gain: dbToLevel(p.db) })) });
+
+  let volPreview = null;
+
+  function drawVolume() {
+    if (!volEl || !volume) return;
+    const g = volGeometry();
+    if (!g) return;
+    const svg = volEl.querySelector('.ssqvolsvg');
+    const NS = 'http://www.w3.org/2000/svg';
+    svg.setAttribute('width', String(g.W));
+    svg.setAttribute('height', String(g.H));
+    svg.setAttribute('viewBox', `0 0 ${g.W} ${g.H}`);
+    svg.replaceChildren();
+    const data = volPreview || volData();
+    const curve = volCurve(data.points);
+    const dbAt = (pos, left = false) => levelToDb(curveLevelAt(curve, pos, { left }));
+    const el2 = (tag, attrs) => {
+      const n = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+      return n;
+    };
+    // Unity, as a faint rule: where "as mixed" is, so a line below it reads as below it.
+    svg.append(el2('line', { x1: 0, x2: g.W, y1: volY(g, 0), y2: volY(g, 0), class: 'ssqvol-unity' }));
+    // The line: every column edge, and both sides of every point.
+    const marks = new Set();
+    for (let p = volStart(); p <= volEnd() + 1e-9; p += volColWidth()) marks.add(Math.round(p * 1e6) / 1e6);
+    for (const p of data.points) if (p.pos >= volStart() && p.pos <= volEnd()) marks.add(p.pos);
+    const coords = [];
+    for (const m of [...marks].sort((a, b) => a - b)) {
+      const x = volX(g, m);
+      const left = dbAt(m, true);
+      const right = dbAt(m);
+      coords.push([x, volY(g, left)]);
+      if (left !== right) coords.push([x, volY(g, right)]);
+    }
+    const line = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+    const bottom = g.H - VOL_PAD;
+    if (coords.length) {
+      svg.append(el2('path', {
+        d: `${line} L${coords.at(-1)[0].toFixed(1)} ${bottom} L${coords[0][0].toFixed(1)} ${bottom} Z`,
+        class: 'ssqvol-fill' + (data.points.length ? '' : ' idle'),
+      }));
+      svg.append(el2('path', { d: line, class: 'ssqvol-line' + (data.points.length ? '' : ' idle') }));
+    }
+    // The cuts: a rule top to bottom with a notch at the top, and a wide invisible grip.
+    for (const c of data.cuts) {
+      if (c < volStart() || c > volEnd()) continue;
+      const x = volX(g, c);
+      const grp = el2('g', { class: 'ssqvol-cutmark', 'data-cut': c });
+      grp.append(el2('rect', { x: x - 5, y: 0, width: 10, height: g.H, class: 'ssqvol-grip' }));
+      grp.append(el2('line', { x1: x, x2: x, y1: 0, y2: g.H }));
+      grp.append(el2('path', { d: `M${x - 4} 0 L${x + 4} 0 L${x} 6 Z` }));
+      const tip = el2('title', {});
+      tip.textContent = `Cut at ${positionLabel(c)} — drag to move, double-click to remove`;
+      grp.append(tip);
+      svg.append(grp);
+    }
+    data.points.forEach((p, i) => {
+      if (p.pos < volStart() || p.pos > volEnd()) return;
+      const dot = el2('circle', {
+        cx: volX(g, p.pos), cy: volY(g, p.db), r: 4, class: 'ssqvol-point', 'data-point': i,
+      });
+      const tip = el2('title', {});
+      tip.textContent = `${levelLabel(p.db)} at ${positionLabel(p.pos)}`
+        + (i ? ` · arrives ${AUTOMATION_SHAPE_NAMES[p.shape] || 'Even'}` : '');
+      dot.append(tip);
+      svg.append(dot);
+    });
+  }
+
+  /** What is under the pointer on the strip: a point, a cut, or the line itself. */
+  const volHit = (g, x, y, data) => {
+    let best = null;
+    data.points.forEach((p, i) => {
+      const d = Math.hypot(volX(g, p.pos) - x, volY(g, p.db) - y);
+      if (d <= 8 && (!best || d < best.d)) best = { kind: 'point', i, d };
+    });
+    if (best) return best;
+    data.cuts.forEach((c, i) => {
+      const d = Math.abs(volX(g, c) - x);
+      if (d <= 5 && (!best || d < best.d)) best = { kind: 'cut', i, d };
+    });
+    return best;
+  };
+
+  const volLocal = (g, ev) => {
+    const r = g.cellsEl.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  };
+
+  const volCommit = (data, what) => {
+    volPreview = null;
+    const sorted = data.points
+      .map((p, i) => ({ ...p, i }))
+      .sort((a, b) => a.pos - b.pos || a.i - b.i)
+      .map(({ i, ...p }) => p);
+    volume.write({ points: sorted, cuts: data.cuts }, what);
+    drawVolume();
+  };
+
+  function wireVolume(wrap) {
+    wrap.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0 || ev.target.closest('.ssqvol-label')) return;
+      const g = volGeometry();
+      if (!g) return;
+      const { x, y } = volLocal(g, ev);
+      const data = volData();
+      const hit = volHit(g, x, y, data);
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!hit) {
+        if (volCutArmed || ev.altKey) {
+          const at = volSnap(volPosAtX(g, x), ev.shiftKey);
+          if (data.cuts.some((c) => Math.abs(c - at) < 1e-6)) return;
+          volCommit({ ...data, cuts: [...data.cuts, at] }, `Cut at ${positionLabel(at)}`);
+        }
+        return;
+      }
+      const start = { x, y };
+      let moved = false;
+      const move = (e) => {
+        const here = volLocal(g, e);
+        if (!moved && Math.hypot(here.x - start.x, here.y - start.y) < 3) return;
+        moved = true;
+        const next = { points: data.points.map((p) => ({ ...p })), cuts: [...data.cuts] };
+        if (hit.kind === 'point') {
+          const p = next.points[hit.i];
+          const lo = hit.i > 0 ? data.points[hit.i - 1].pos : volStart();
+          const hi = hit.i + 1 < data.points.length ? data.points[hit.i + 1].pos : volEnd();
+          p.pos = Math.max(lo, Math.min(hi, volSnap(volPosAtX(g, here.x), e.shiftKey)));
+          p.db = volDbAtY(g, here.y);
+        } else {
+          next.cuts[hit.i] = volSnap(volPosAtX(g, here.x), e.shiftKey);
+        }
+        volPreview = next;
+        drawVolume();
+      };
+      const up = () => {
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', up);
+        removeEventListener('pointercancel', up);
+        if (!moved || !volPreview) { volPreview = null; return; }
+        const next = volPreview;
+        if (hit.kind === 'point') {
+          const p = next.points[hit.i];
+          volCommit(next, `Volume point to ${levelLabel(p.db)} at ${positionLabel(p.pos)}`);
+        } else {
+          volCommit({ ...next, cuts: [...new Set(next.cuts)] }, `Cut moved to ${positionLabel(next.cuts[hit.i])}`);
+        }
+      };
+      addEventListener('pointermove', move);
+      addEventListener('pointerup', up);
+      addEventListener('pointercancel', up);
+    });
+
+    wrap.addEventListener('dblclick', (ev) => {
+      if (ev.target.closest('.ssqvol-label')) return;
+      const g = volGeometry();
+      if (!g) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const { x, y } = volLocal(g, ev);
+      const data = volData();
+      const hit = volHit(g, x, y, data);
+      if (hit?.kind === 'point') {
+        const p = data.points[hit.i];
+        data.points.splice(hit.i, 1);
+        volCommit(data, `Volume point at ${positionLabel(p.pos)} removed`);
+        return;
+      }
+      if (hit?.kind === 'cut') {
+        const c = data.cuts[hit.i];
+        data.cuts.splice(hit.i, 1);
+        volCommit(data, `Cut at ${positionLabel(c)} removed`);
+        return;
+      }
+      const pos = volSnap(volPosAtX(g, x), ev.shiftKey);
+      const db = volDbAtY(g, y);
+      // Where it lands in the list: after every point at or before it, so a point
+      // dropped on top of another makes a step rather than replacing it.
+      let at = 0;
+      while (at < data.points.length && data.points[at].pos <= pos) at++;
+      // A line that had no points was a flat 0 dB; the first point on it must not drag
+      // the whole song to its own level, so the line is pinned at unity around it.
+      if (!data.points.length) {
+        data.points.push({ pos: volStart(), db: 0, shape: 'even' }, { pos, db, shape: 'even' },
+          { pos: volEnd(), db: 0, shape: 'even' });
+        data.points = data.points.filter((p, i, list) => i === 0 || Math.abs(p.pos - list[i - 1].pos) > 1e-9 || p.db !== list[i - 1].db);
+      } else {
+        data.points.splice(at, 0, { pos, db, shape: 'even' });
+      }
+      volCommit(data, `Volume point ${levelLabel(db)} at ${positionLabel(pos)}`);
+    });
+
+    wrap.addEventListener('contextmenu', (ev) => {
+      if (ev.target.closest('.ssqvol-label')) return;
+      const g = volGeometry();
+      if (!g || !volume.menu) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const { x, y } = volLocal(g, ev);
+      const data = volData();
+      const hit = volHit(g, x, y, data);
+      if (hit?.kind === 'point') {
+        const p = data.points[hit.i];
+        const items = [];
+        if (hit.i > 0) {
+          for (const shape of AUTOMATION_SHAPES) {
+            items.push({
+              label: `${shape === p.shape ? '✓ ' : ''}Arrive ${AUTOMATION_SHAPE_NAMES[shape]}`,
+              title: AUTOMATION_SHAPE_NOTES[shape],
+              run: () => {
+                data.points[hit.i] = { ...p, shape };
+                volCommit(data, `Curve into ${positionLabel(p.pos)}: ${AUTOMATION_SHAPE_NAMES[shape]}`);
+              },
+            });
+          }
+        }
+        items.push({ label: 'Set to 0 dB', run: () => { data.points[hit.i] = { ...p, db: 0 }; volCommit(data, 'Volume point to 0 dB'); } });
+        items.push({ label: 'Set to Silence', run: () => { data.points[hit.i] = { ...p, db: null }; volCommit(data, 'Volume point to silence'); } });
+        items.push({ label: 'Delete Point', run: () => { data.points.splice(hit.i, 1); volCommit(data, 'Volume point removed'); } });
+        volume.menu(ev.clientX, ev.clientY, `${levelLabel(p.db)} at ${positionLabel(p.pos)}`, items);
+        return;
+      }
+      if (hit?.kind === 'cut') {
+        const c = data.cuts[hit.i];
+        volume.menu(ev.clientX, ev.clientY, `Cut at ${positionLabel(c)}`, [
+          { label: 'Delete Cut', run: () => { data.cuts.splice(hit.i, 1); volCommit(data, `Cut at ${positionLabel(c)} removed`); } },
+        ]);
+        return;
+      }
+      const pos = volSnap(volPosAtX(g, x), ev.shiftKey);
+      volume.menu(ev.clientX, ev.clientY, `Volume at ${positionLabel(pos)}`, [
+        { label: 'Add Point Here', run: () => {
+          const db = volDbAtY(g, y);
+          let at = 0;
+          while (at < data.points.length && data.points[at].pos <= pos) at++;
+          if (!data.points.length) data.points.push({ pos: volStart(), db: 0 }, { pos, db }, { pos: volEnd(), db: 0 });
+          else data.points.splice(at, 0, { pos, db, shape: 'even' });
+          volCommit(data, `Volume point ${levelLabel(db)} at ${positionLabel(pos)}`);
+        } },
+        { label: 'Add Cut Here', run: () => {
+          if (!data.cuts.some((c) => Math.abs(c - pos) < 1e-6)) volCommit({ ...data, cuts: [...data.cuts, pos] }, `Cut at ${positionLabel(pos)}`);
+        } },
+        { label: 'Clear Line', disabled: !data.points.length,
+          run: () => volCommit({ ...data, points: [] }, 'Volume line cleared') },
+        { label: 'Clear Cuts', disabled: !data.cuts.length,
+          run: () => volCommit({ ...data, cuts: [] }, 'Cuts cleared') },
+      ].filter((item) => !item.disabled));
+    });
   }
 
   /**
@@ -3604,6 +4022,12 @@ export function createBarGrid({
     /** And the bars an action reaches, for a menu that has to name them — see `scope`. */
     actionSpan,
     setRulerLabel(label) { rulerLabel = label; },
+    /** The Volume strip, redrawn from the arrangement — after a fade made elsewhere. */
+    redrawVolume() {
+      if (!volEl) return;
+      // A different track is a different strip: rebuilt with the rest of the panel.
+      drawVolume();
+    },
     armPendingPlayback(step, range = null) {
       const target = Number(step);
       const start = Number(range?.start ?? target);

@@ -809,7 +809,8 @@ Right-click an **arrangement lane** for that track only:
 | Mute / Unmute | silences or restores that track in the selected bars |
 | Copy Notes / Paste Notes | copies only that instrument's notes; paste may target a different instrument |
 | Erase Notes | empties those bars of that track. The notes are gone, not flagged; `⌘Z` brings them back |
-| Reset Edits | sets that track's mute, transpose, timing, gain and pan in those bars back to none. The notes are not touched |
+| Reset Edits | sets that track's mute, transpose, timing, gain, pan, fades and cuts in those bars back to none. The notes are not touched |
+| Volume | fades, a crossfade and cuts over those bars — see [Volume](#volume-fades-crossfades-and-cuts) |
 
 Whole-track work is not on this panel: **Delete Track**, **Duplicate**, the preset and
 the track's name are on the [track panel](#right-click-a-track), which the row's
@@ -852,6 +853,98 @@ decisions are saved beside that song's notes and channel settings by **Save song
 **Discard unsaved changes** returns the arrangement and channel settings to the saved
 song together. `⌘Z` undoes a region edit like any other, and the song does not stop
 while you make it.
+
+### Volume: fades, crossfades and cuts
+
+A track's **level line** and its **cuts** — the two things the per-bar edits above
+cannot do. A bar's Gain belongs to the notes struck in it, so it cannot fade a note that
+is already ringing; a bar's Mute stops new notes and lets the one ringing carry on. Both of
+these act on the **channel**, under notes that are still sounding. The format and the
+reasoning are in [`src/data/automation.js`](../src/data/automation.js); the engine side is
+`_automationTick` and the cut doors in `src/engine/audio.js`.
+
+**The line** runs through points you place, and **holds** before its first point and after
+its last — the way a DAW's automation lane does. A fade made from the bar panel changes
+the bars it was drawn over and **no others**, whatever kind of fade it is: the bars before
+it and the bars after it keep the level they had. It starts from its own level on its first
+bar and the line goes back to where it was on the bar after its last — a step at either end
+where the two differ. A fade-in from silence over bars 45–49 is a track at full level up to
+bar 44, silent on the downbeat of 45 and full by 50; a fade-out over bars 9–12 is full again
+on bar 13. To keep a track out after a fade-out, mute the bars after it. The line is
+relative to the fader: 0 dB is "as mixed". It sits on its own node on the strip, between the solo gate and the fader, so
+nothing else ever writes it — a fader move, a mute, a solo or a cabinet transition cannot
+land on a fade halfway down. The sends tap after it, so a channel's echo and reverb follow
+its fade.
+
+Three shapes, chosen per segment:
+
+| Shape | Use |
+| --- | --- |
+| **Even** | a straight line in dB — the ear hears it move at one steady rate. The default. A fade to silence walks to -48 dB (the meters' floor) and is silent at its end |
+| **Equal-power** | sine and cosine — two tracks crossfading on it hold their loudness through the middle, where two straight lines would dip about 3 dB |
+| **S-curve** | eases in and out at both ends — a swell rather than a slope |
+
+**A cut is a choke.** Whatever the track has ringing at that point stops (over 12 ms, the
+engine's usual stop), and the next note it plays sounds normally — nothing to reopen. It
+works on every kind of voice: notes struck before the cut go through a door that shuts on
+it, notes after it through a fresh one, and the worklet synths (TNGR-2, MRDR-3's worklet
+backend), which no door can hold, are told by message.
+
+What happens to the echoes:
+
+| Where the echo is | On a cut |
+| --- | --- |
+| **The shared Delay and Reverb returns** (the channel's sends) | ring on — they are every channel's, and one track's cut cannot reach into them |
+| **A Delay, Advanced Delay or Ping-Pong on the channel** | emptied: what is in the line is held silent, and kept from going round again, until it has passed — one delay time, two on a Ping-Pong's right side. A note struck on the cut keeps every one of its repeats |
+| **A Reverb, Spring or Ambience on the channel** | rings on. A room cannot be emptied, only muted, and a muted room would take the next note's reverb with it |
+
+**Where you edit it**
+
+- **Right-click bars on a track** → the bar panel's **Volume** section, over exactly those
+  bars. **Fade Out** (from the level the line is at, down to silence), **Fade In** (from
+  silence to 0 dB), or **From / To / Shape** and **Apply Fade** for anything else.
+  **Crossfade into…** takes this track out and the one you pick in, equal-power. **Cut at**
+  offers every sixteenth on a one- or two-bar selection and every beat on a longer one,
+  defaulting to the bar line after the selection; **Clear Volume** takes the fades and
+  cuts out of those bars. **Reset Edits** clears them too.
+- **The Volume strip**, pinned under the piano roll and under the docked kit, on the
+  editor's own time axis — the place for anything finer than a bar. Height is the fader
+  law (the faint dashed rule is 0 dB, three quarters of the way up, where a fader's unity
+  mark is). **Double-click** to add a point (on an empty line it is pinned to 0 dB either
+  side, so one point does not drag the whole song to its level); **drag** a point in time
+  and level, snapped to the editor's quantise (**⇧** for off the grid; unity is a detent);
+  **double-click** a point or a cut to remove it; **right-click** a point for the curve it
+  arrives on. **✂ Cut**, or **⌥-click**, places a cut; drag a cut to move it.
+
+**How it shows on the arrangement.** A veil over the part of each bar the line has taken
+the level out of, with the line along its lower edge: a fade-out is the row going dark
+across its bars, a crossfade one row dimming as the next lights up. Depth follows the fader
+law, so the same depth is the same level on every row. A cut is a red rule at its exact
+sixteenth. The bar's hover card lists the fades crossing it and its cuts.
+
+**What moves with the music.** Positions are counted in sixteenths from the top, so every
+edit that inserts or removes bars carries the points and cuts with the bars they were on,
+exactly as it carries the loop markers: **Insert Silence**, **Delete Bars**, **Cut**,
+**Paste** and **Repeat** (a repeated fade-out is heard twice). **Delete Track** takes a
+track's automation with it; **Duplicate** gives the copy the same line and cuts.
+
+**Freezing.** A frozen track bakes its **cuts** (they are routing in front of the strip) but
+not its **line**, which the strip plays live over the frozen samples. So a cut on a frozen
+track re-freezes it; a fade — on it or on any other track — does not.
+
+**In the file**, beside the loop and the choke map:
+
+```js
+automation: {
+  pad: { points: [[9, 0, 0], [13, 0, null]], cuts: [[14, 6]] },
+  lead: { points: [[9, 0, null], [13, 0, 0, "equal"]] },
+},
+```
+
+A point is `[bar, step, dB, shape]` — bar from 1, step the sixteenth inside it from 0
+(fractional on a finer grid), `null` dB for silence, and the shape the line **arrives** on.
+A cut is `[bar, step]`. The game plays it exactly as the desk does: it is read by the same
+scheduler.
 
 ### Step sequencer
 

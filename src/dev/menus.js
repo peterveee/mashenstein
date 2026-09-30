@@ -94,6 +94,18 @@ function watch(dev, scenario, { crash = false, record = false, background = fals
   }
 }
 
+// RECORD BOT-PLAY with the starting hero named. The relay still swaps at the
+// portals as usual; this only picks who runs the first leg.
+function recordBotPlayAsMenu(dev, scenario) {
+  return {
+    title: 'RECORD BOT-PLAY AS',
+    items: HEROES.map((hero) => ({
+      label: hero.short,
+      act: () => watch(dev, scenario, { record: true, hero: hero.id }),
+    })),
+  };
+}
+
 function instantClear(dev, stage) {
   const { save, Flow } = dev.ctx;
   const result = fakeResult(stage);
@@ -187,6 +199,7 @@ function stageActions(dev, stage) {
       { label: 'PLAY AS ▸', submenu: playAsMenu },
       { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
       { label: 'RECORD BOT-PLAY (mp4)', act: () => watch(dev, scenario, { record: true }) },
+      { label: 'RECORD BOT-PLAY AS ▸', submenu: () => recordBotPlayAsMenu(dev, scenario) },
       { label: 'RECORD BACKGROUND ▸', submenu: recordBackgroundMenu },
       { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
       { label: 'INSTANT-CLEAR', act: () => instantClear(dev, stage) },
@@ -235,6 +248,7 @@ function bossesMenu(dev) {
             { label: 'FIGHT', act: () => { dev.close(); dev.ctx.Flow.startBoss(id, dev.seedLock ?? undefined); } },
             { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
             { label: 'RECORD BOT-PLAY (mp4)', act: () => watch(dev, scenario, { record: true }) },
+            { label: 'RECORD BOT-PLAY AS ▸', submenu: () => recordBotPlayAsMenu(dev, scenario) },
             { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
           ],
         }),

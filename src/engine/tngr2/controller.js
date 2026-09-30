@@ -268,6 +268,15 @@ export function tngr2NoteOff(lane, { at, eventId }) {
   });
 }
 
+/**
+ * A CUT at `at`: everything sounding on the lane stops, and the notes booked after it
+ * still play. Not a panic, which also clears the queue — a cut is the song going on.
+ */
+export function tngr2Choke(lane, { at }) {
+  if (!lane) return;
+  lane.node.port.postMessage({ type: 'choke', frame: frameAt(at, lane.ctx.sampleRate) });
+}
+
 /*
  * §7.3's continuous controller used to be posted from here as {type:'param'}. It is gone
  * rather than kept warm: Tngr2Core.apply handles noteOn, noteOff and panic and nothing

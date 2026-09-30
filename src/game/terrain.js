@@ -878,22 +878,16 @@ export function neonTrainInterior(r) {
 const DOOR_W_OF = (a) => a.openW + a.leafW;
 
 /**
- * WHICH CAR HE IS IN, counted from the tail he boarded by. The run gives each car
- * its own face, held the whole length of it — shocked, normal, surprised, and
- * round again (Peter, 29 Sep). The count ticks over halfway across a coupler,
- * where the gangway hides him, so the face never changes where it can be seen.
+ * WHETHER HE HAS REACHED THE FRONT CAR, the one whose door he leaves by. The run
+ * holds his shocked face from the rear door to here, and lets it go to normal
+ * just before he steps out (Peter, 29 Sep). The flip falls halfway across the
+ * last coupler, where the gangway hides him, so it is never seen to change.
  */
-export function neonTrainCarAt(r, worldX) {
+export function neonTrainInFrontCar(r, worldX) {
   const consist = trainConsistFor(r);
   const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
-  const local = (worldX - r.x) / k;
-  let end = 0;
-  for (let i = 0; i < consist.length - 1; i++) {
-    end += tronCarApertures(consist[i], 0, TRAIN_H, TRAIN_H).len;
-    if (local < end + TRON_BOARD_GAP / 2) return i;
-    end += TRON_BOARD_GAP;
-  }
-  return consist.length - 1;
+  const front = tronConsistLength(consist.slice(0, -1), TRON_BOARD_GAP) + TRON_BOARD_GAP / 2;
+  return (worldX - r.x) / k >= front;
 }
 // How far through the first doorway he has to be before he is in. A third of
 // the way leaves most of his 12px sprite inside a 20px opening at the flip.

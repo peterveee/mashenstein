@@ -4137,6 +4137,17 @@ const TONE = {
       morph: 40, morphTime: 3.0, unison: 2, spread: 12,
       amp: { attack: 0.6, decay: 0.5, sustain: 1.0, release: 1.6 } },
     vibrato: { depth: 0.1, rate: 5.0, delay: 0.15 } },
+  // The Speed Zone coyote's howl (the coyoteHowl cue, audio.js), picked by Peter from six
+  // on 29 Sep 2026 — tools/render-howl-auditions.js renders the audition again. The cue
+  // plays COYOTE_HOWL_NOTES through it: three yips, then one breath that rises and falls.
+  coyoteHowl: { label: '= Coyote Howl', category: 'FX', synth: 'JMJR-4', dur: 1.5,
+    note: 'A small throat on eeh for the yips, each scooping up a fifth, then ooh opening to aw '
+      + 'for the howl, legato with a glide so the rise and the fall are one breath.',
+    jmjr4: { voice: 'small', line: 'eeh eeh eeh ooh ooh ooh', morphTo: 'AW', morph: 100, morphTime: 0.5,
+      bend: -7, bendTime: 0.07, tract: 1.15, breath: 0.35, unison: 1,
+      amp: { attack: 0.01, decay: 0.2, sustain: 1, release: 0.25 } },
+    mode: 'legato', portamento: 0.22,
+    vibrato: { depth: 0.35, rate: 6, delay: 0.35 } },
   jmjrBreathPluck: { label: 'Breath Pluck', category: 'Pluck', synth: 'JMJR-4', dur: 1.5,
     note: 'A plucked wah that settles into breath: decay and sustain doing the work.',
     jmjr4: { voice: 'chorister', line: 'wah', morphTo: 'UH',
@@ -4200,6 +4211,398 @@ const TONE = {
     note: 'PER KEY is WORD: each step says the next word of the phrase at that step\'s pitch, starting again with the song. Write a four-note figure and it raps.',
     jmjr4: { mode: 'speak', voice: 'small', phrase: 'pump up the jam', speed: 1.1, ending: 'flat', perKey: 'word', pitchFollows: 'key',
       phraseIr: {"source":{"phrase":"pump up the jam","voice":"small","speed":1.1,"pitchHz":118,"range":1,"step":0,"ending":"flat","tract":1.16,"press":0.55,"tilt":-1,"breath":0.35,"flutter":0,"sibilance":100,"buzz":40,"resonance":50},"ir":{"schema":"robot-voice-ir/1","sample_rate":44100,"samples":42954,"total_seconds":0.97403,"seed":7,"formants":{"t":[0,0.04926,0.08926,0.18452,0.2368,0.25013,0.27013,0.31939,0.38391,0.38803,0.40658,0.45584,0.50182,0.54511,0.56365,0.56777,0.61229,0.63887,0.71887,0.87024,0.93069,0.95403],"f1":[200,200,600,600,320,320,200,200,500,500,200,200,200,200,500,500,200,200,650,650,320,320],"f2":[700,700,1200,1200,1150,1150,700,700,1400,1400,700,700,1600,1600,1400,1400,2000,2000,1650,1650,1150,1150],"f3":[2300,2300,2400,2400,2050,2050,2300,2300,2500,2500,2300,2300,2600,2600,2500,2500,2600,2600,2450,2450,2050,2050]},"voicing":{"t":[0,0,0.06926,0.10926,0.12126,0.19452,0.22152,0.25513,0.27013,0.33939,0.35238,0.37737,0.39158,0.40658,0.47584,0.48883,0.50182,0.51182,0.53511,0.54511,0.55711,0.57132,0.59931,0.61229,0.69887,0.70887,0.72087,0.88024,0.90724,0.95903,0.97403],"v":[0,0,0,0,1,1,0.22,0.22,0,0,0.55,1,1,0,0,0.55,0,0.35,0.35,0,1,1,0.55,0,0,0,1,1,0.22,0.22,0]},"aspiration":{"t":[0,0,0.04926,0.05226,0.10926,0.12926,0.18952,0.22952,0.25013,0.27013,0.31939,0.32239,0.33939,0.33939,0.36537,0.38537,0.38658,0.40658,0.45584,0.45884,0.47584,0.47585,0.50182,0.50182,0.54511,0.56511,0.56632,0.58632,0.61229,0.6123,0.63887,0.64187,0.70887,0.72887,0.87524,0.91524,0.95403,0.97403],"v":[0,0,0,0.32,0.09,0,0,0,0,0,0,0.32,0,0,0,0,0,0,0,0.32,0,0,0,0,0,0,0,0,0,0,0,0.32,0.09,0,0,0,0,0]},"voicebar":{"t":[0,0.61229,0.61629,0.63887,0.64187,0.97403],"v":[0,0,0.3,0.3,0,0]},"nasal_zero":{"t":[0,0.16952,0.21452,0.26513,0.27513,0.85524,0.90024,0.96903,0.97403],"v":[250,250,750,750,250,250,750,750,250],"active":true},"pitch":[[0,118],[0.975,118]],"extras":[{"start":2172,"samples":882,"spec":[[900,1.5,1]],"shape":["ad",0.006,0.02],"ratio":0.187,"voiced":false},{"start":14085,"samples":882,"spec":[[900,1.5,1]],"shape":["ad",0.006,0.02],"ratio":0.055,"voiced":false},{"start":20102,"samples":882,"spec":[[900,1.5,1]],"shape":["ad",0.006,0.02],"ratio":0.055,"voiced":false},{"start":22130,"samples":1909,"spec":[[5500,0.7,0.7],[8000,1,0.4]],"shape":["asr",0.03,0.04],"ratio":0.16,"voiced":true},{"start":28174,"samples":2646,"spec":[[3000,2,1]],"shape":["ad",0.006,0.06],"ratio":0.153,"voiced":false}],"controls":{"src":"glottal","oq":0.55,"fscale":1.16,"asp":0.35,"jitter":0,"flutter":0,"tilt_db":-1,"chip":false,"tract":"hybrid","gains":[1,1,0.35,0.15],"bw":[105,147,210,262.5],"q":7,"f5":[4500,300],"tilt":null,"post_fir":null,"f4":3400,"nasal_pole":[250,2600],"nasal_zero_bw":90,"hybrid_high_gain":1.2589,"nasal_buzz":0.4,"nasal_high":0.15,"nasal_high_max":1.4,"nasal_buzz_db":22,"nasal_buzz_hz":400,"hybrid_f5_gain":0.1,"hybrid_dep_exp":0.187,"asp_level":0.35,"bar_level":0.4,"no_vowel_ref":0.0707,"tract_ref_gain":0.133,"radiation":0.97,"block":64,"sibilance":1,"seed":7},"levels":{"vref":0.07866,"asp_gain":1.86151,"bar_gain":0.31747,"extra_gains":[0.13675,0.04022,0.04022,0.05713,0.09901],"derived":"browser tables"}},"words":[{"schema":"robot-voice-ir/1","sample_rate":44100,"samples":19159,"total_seconds":0.43446,"seed":7,"formants":{"t":[0,0.04926,0.08926,0.24063,0.30108,0.32442,0.34442,0.41446],"f1":[200,200,600,600,320,320,200,200],"f2":[700,700,1200,1200,1150,1150,700,700],"f3":[2300,2300,2400,2400,2050,2050,2300,2300]},"voicing":{"t":[0,0,0.06926,0.10926,0.12126,0.25063,0.27763,0.32942,0.34442,0.43446,0.43446],"v":[0,0,0,0,1,1,0.22,0.22,0,0,0]},"aspiration":{"t":[0,0,0.04926,0.05226,0.10926,0.12926,0.24563,0.28563,0.32442,0.34442,0.41446,0.41746,0.43446,0.43446],"v":[0,0,0,0.32,0.09,0,0,0,0,0,0,0.32,0,0]},"voicebar":{"t":[0,0.43446],"v":[0,0]},"nasal_zero":{"t":[0,0.22563,0.27063,0.33942,0.34942,0.43446],"v":[250,250,750,750,250,250],"active":true},"pitch":[[0,118],[0.435,118]],"extras":[{"start":2172,"samples":882,"spec":[[900,1.5,1]],"shape":["ad",0.006,0.02],"ratio":0.187,"voiced":false},{"start":18277,"samples":882,"spec":[[900,1.5,1]],"shape":["ad",0.006,0.02],"ratio":0.055,"voiced":false}],"controls":{"src":"glottal","oq":0.55,"fscale":1.16,"asp":0.35,"jitter":0,"flutter":0,"tilt_db":-1,"chip":false,"tract":"hybrid","gains":[1,1,0.35,0.15],"bw":[105,147,210,262.5],"q":7,"f5":[4500,300],"tilt":null,"post_fir":null,"f4":3400,"nasal_pole":[250,2600],"nasal_zero_bw":90,"hybrid_high_gain":1.2589,"nasal_buzz":0.4,"nasal_high":0.15,"nasal_high_max":1.4,"nasal_buzz_db":22,"nasal_buzz_hz":400,"hybrid_f5_gain":0.1,"hybrid_dep_exp":0.187,"asp_level":0.35,"bar_level":0.4,"no_vowel_ref":0.0707,"tract_ref_gain":0.133,"radiation":0.97,"block":64,"sibilance":1,"seed":7},"levels":{"vref":0.07666,"asp_gain":2.26525,"bar_gain":0.30941,"extra_gains":[0.13328,0.0392],"derived":"browser tables"}},{"schema":"robot-voice-ir/1","sample_rate":44100,"samples":6515,"total_seconds":0.14774,"seed":7,"formants":{"t":[0.02,0.0377,0.0577,0.12774],"f1":[500,500,200,200],"f2":[1400,1400,700,700],"f3":[2500,2500,2300,2300]},"voicing":{"t":[0,0.012,0.0427,0.0577,0.14774,0.14774],"v":[0,1,1,0,0,0]},"aspiration":{"t":[0,0.02,0.0377,0.0577,0.12774,0.13074,0.14774,0.14774],"v":[0,0,0,0,0,0.32,0,0]},"voicebar":{"t":[0,0.14774],"v":[0,0]},"nasal_zero":{"t":[0,0.14774],"v":[250,250],"active":false},"pitch":[[0,118],[0.15,118]],"extras":[{"start":5633,"samples":882,"spec":[[900,1.5,1]],"shape":["ad",0.006,0.02],"ratio":0.055,"voiced":false}],"controls":{"src":"glottal","oq":0.55,"fscale":1.16,"asp":0.35,"jitter":0,"flutter":0,"tilt_db":-1,"chip":false,"tract":"hybrid","gains":[1,1,0.35,0.15],"bw":[105,147,210,262.5],"q":7,"f5":[4500,300],"tilt":null,"post_fir":null,"f4":3400,"nasal_pole":[250,2600],"nasal_zero_bw":90,"hybrid_high_gain":1.2589,"nasal_buzz":0.4,"nasal_high":0.15,"nasal_high_max":1.4,"nasal_buzz_db":22,"nasal_buzz_hz":400,"hybrid_f5_gain":0.1,"hybrid_dep_exp":0.187,"asp_level":0.35,"bar_level":0.4,"no_vowel_ref":0.0707,"tract_ref_gain":0.133,"radiation":0.97,"block":64,"sibilance":1,"seed":7},"levels":{"vref":0.08241,"asp_gain":2.43527,"bar_gain":0.33263,"extra_gains":[0.04214],"derived":"browser tables"}},{"schema":"robot-voice-ir/1","sample_rate":44100,"samples":4453,"total_seconds":0.10099,"seed":7,"formants":{"t":[0,0.04329,0.06829,0.08099],"f1":[200,200,500,500],"f2":[1600,1600,1400,1400],"f3":[2600,2600,2500,2500]},"voicing":{"t":[0,0,0.01,0.03329,0.04329,0.05529,0.08599,0.10099],"v":[0,0,0.35,0.35,0,1,1,0]},"aspiration":{"t":[0,0,0.04329,0.06329,0.08099,0.10099],"v":[0,0,0,0,0,0]},"voicebar":{"t":[0,0.10099],"v":[0,0]},"nasal_zero":{"t":[0,0.10099],"v":[250,250],"active":false},"pitch":[[0,118],[0.105,118]],"extras":[{"start":0,"samples":1909,"spec":[[5500,0.7,0.7],[8000,1,0.4]],"shape":["asr",0.03,0.04],"ratio":0.16,"voiced":true}],"controls":{"src":"glottal","oq":0.55,"fscale":1.16,"asp":0.35,"jitter":0,"flutter":0,"tilt_db":-1,"chip":false,"tract":"hybrid","gains":[1,1,0.35,0.15],"bw":[105,147,210,262.5],"q":7,"f5":[4500,300],"tilt":null,"post_fir":null,"f4":3400,"nasal_pole":[250,2600],"nasal_zero_bw":90,"hybrid_high_gain":1.2589,"nasal_buzz":0.4,"nasal_high":0.15,"nasal_high_max":1.4,"nasal_buzz_db":22,"nasal_buzz_hz":400,"hybrid_f5_gain":0.1,"hybrid_dep_exp":0.187,"asp_level":0.35,"bar_level":0.4,"no_vowel_ref":0.0707,"tract_ref_gain":0.133,"radiation":0.97,"block":64,"sibilance":1,"seed":7},"levels":{"vref":0.08241,"asp_gain":0.58228,"bar_gain":0.33263,"extra_gains":[0.05986],"derived":"browser tables"}},{"schema":"robot-voice-ir/1","sample_rate":44100,"samples":15952,"total_seconds":0.36173,"seed":7,"formants":{"t":[0,0.02658,0.10658,0.25794,0.3184,0.34173],"f1":[200,200,650,650,320,320],"f2":[2000,2000,1650,1650,1150,1150],"f3":[2600,2600,2450,2450,2050,2050]},"voicing":{"t":[0,0,0.08658,0.09658,0.10858,0.26794,0.29494,0.34673,0.36173],"v":[0,0,0,0,1,1,0.22,0.22,0]},"aspiration":{"t":[0,0,0.02658,0.02958,0.09658,0.11658,0.26294,0.30294,0.34173,0.36173],"v":[0,0,0,0.32,0.09,0,0,0,0,0]},"voicebar":{"t":[0,0,0.004,0.02658,0.02958,0.36173],"v":[0,0,0.3,0.3,0,0]},"nasal_zero":{"t":[0,0.24294,0.28794,0.35673,0.36173],"v":[250,250,750,750,250],"active":true},"pitch":[[0,118],[0.365,118]],"extras":[{"start":1172,"samples":2646,"spec":[[3000,2,1]],"shape":["ad",0.006,0.06],"ratio":0.153,"voiced":false}],"controls":{"src":"glottal","oq":0.55,"fscale":1.16,"asp":0.35,"jitter":0,"flutter":0,"tilt_db":-1,"chip":false,"tract":"hybrid","gains":[1,1,0.35,0.15],"bw":[105,147,210,262.5],"q":7,"f5":[4500,300],"tilt":null,"post_fir":null,"f4":3400,"nasal_pole":[250,2600],"nasal_zero_bw":90,"hybrid_high_gain":1.2589,"nasal_buzz":0.4,"nasal_high":0.15,"nasal_high_max":1.4,"nasal_buzz_db":22,"nasal_buzz_hz":400,"hybrid_f5_gain":0.1,"hybrid_dep_exp":0.187,"asp_level":0.35,"bar_level":0.4,"no_vowel_ref":0.0707,"tract_ref_gain":0.133,"radiation":0.97,"block":64,"sibilance":1,"seed":7},"levels":{"vref":0.0769,"asp_gain":1.26316,"bar_gain":0.31037,"extra_gains":[0.0968],"derived":"browser tables"}}]} } },
+
+  // ---- Pianos, across the synths -------------------------------------------
+  //
+  // Auditioned side by side on one ballad by tools/render-piano-auditions.js. What each
+  // synth brings: WNDR-9 real partials, with `stretch` as the piano string's own
+  // inharmonicity law and `damp` decaying the top of the stack first; MRDR-3 a hammer (a
+  // noise layer gone in 40 ms) and a keytracked filter envelope; TNGR-2 a table swept
+  // bright to dark; RMND-2 a falling FM index.
+  //
+  // The WNDR-9 three sit on the ordinary drawbar series, so every bar is the footage its
+  // pot says it is: the 8′ is the fundamental and the 2⅔′, 1⅗′ and 1′ carry the 3rd, 5th
+  // and 8th partials. Only the 7th and 9th are missing, and by then damp has them faint.
+  wndrConcertGrand: { label: 'Concert Grand', category: 'Keys', synth: 'WNDR-9', dur: 3.6,
+    note: 'Stretched partials — the 1′ bar lands about 20 cents sharp, as a long string\'s '
+      + 'eighth partial does — with the top of the stack gone first. A short high sine on '
+      + 'the strike stands in for the hammer.',
+    additive: { bars: [0, 0, 1, 0.7, 0.5, 0.38, 0.3, 0.2, 0.1],
+      attack: 0.001, decay: 3.6, sustain: 0, release: 0.4, stretch: 0.0004, damp: 0.9,
+      perc: { ratio: 8, gain: 0.22, attack: 0.001, decay: 0.018 } },
+    humanize: { gain: 0.07, pitch: 0.0006 } },
+  wndrOldUpright: { label: 'Old Upright', category: 'Keys', synth: 'WNDR-9', dur: 2.5,
+    note: 'Shorter strings, so twice the stretch and a quicker decay. The slow chorus is '
+      + 'the string pairs drifting out of unison — what a piano that has not been tuned '
+      + 'this year sounds like.',
+    additive: { bars: [0, 0, 1, 0.78, 0.42, 0.28, 0.2, 0.13, 0],
+      attack: 0.001, decay: 2.5, sustain: 0, release: 0.3, stretch: 0.0008, damp: 1.1,
+      perc: { ratio: 8, gain: 0.3, attack: 0.001, decay: 0.022 } },
+    humanize: { gain: 0.09, pitch: 0.001 },
+    chorus: { mix: 0.3, rate: 0.5, depth: 0.35, width: 0.8 } },
+  wndrFeltPiano: { label: 'Felt Piano', category: 'Keys', synth: 'WNDR-9', dur: 4.6,
+    note: 'Felt on the hammers: almost nothing above the third partial, a soft 6 ms '
+      + 'attack and a long bloom. The close-mic lullaby piano.',
+    additive: { bars: [0, 0, 1, 0.34, 0.12, 0.06, 0.03, 0.02, 0],
+      attack: 0.006, decay: 4.6, sustain: 0, release: 0.7, stretch: 0.0003, damp: 1.4 },
+    humanize: { gain: 0.06, pitch: 0.0006 } },
+
+  mrdrGrand: { label: 'Studio Grand', category: 'Keys', synth: 'MRDR-3', dur: 3.2,
+    note: 'A triangle string pair beating 3 cents apart, a saw whose keytracked filter '
+      + 'snaps open on the strike and shuts over a third of a second, and a noise thump.',
+    layer: {
+      osc1: { type: 'triangle', ratio: 1, gain: 0.8, attack: 0.001, decay: 3.2, sustain: 0, release: 0.4, unison: 2, spread: 3, stereo: 0.3 },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.34, attack: 0.001, decay: 1.1, sustain: 0, release: 0.3, filter: { type: 'lowpass', slope: -12, freq: 1400, Q: 0.6, track: 0.8, env: { octaves: 2, attack: 0.001, decay: 0.32, sustain: 0, release: 0.3 } } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.12, color: 'white', attack: 0.001, decay: 0.04, sustain: 0, release: 0.03, filter: { type: 'bandpass', slope: -12, freq: 1200, Q: 1.1, track: 0.5 } },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 5200, Q: 0.5, track: 0.4, env: { octaves: 0.8, attack: 0.001, decay: 1.2, sustain: 0.2, release: 0.4 } } },
+    humanize: { entry: 0.006, gain: 0.07, filter: 0.1 } },
+  mrdrPopGrand: { label: 'Bright Pop Grand', category: 'Keys', synth: 'MRDR-3', dur: 2.8,
+    note: 'FM inside the layers: a 1:1 operator whose index falls away over half a second '
+      + '(brightness that decays, which is what a struck string does), and a slightly '
+      + 'inharmonic 7.01 operator on the octave for the metal in the attack.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.82, attack: 0.001, decay: 2.8, sustain: 0, release: 0.4, unison: 2, spread: 4, stereo: 0.35, fm: { type: 'sine', ratio: 1, index: 1.6, attack: 0.001, decay: 0.5 } },
+      osc2: { type: 'sine', ratio: 2, gain: 0.3, attack: 0.001, decay: 1.4, sustain: 0, release: 0.3, fm: { type: 'sine', ratio: 7.01, index: 0.5, attack: 0.001, decay: 0.08 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.08, color: 'white', attack: 0.001, decay: 0.022, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 3000, Q: 1, track: 0.3 } },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 7000, Q: 0.5, track: 0.3 } },
+    humanize: { entry: 0.005, gain: 0.07 } },
+  mrdrElectricGrand: { label: 'Electric Grand', category: 'Keys', synth: 'MRDR-3', dur: 2.2,
+    note: 'The CP-70: real strings on a pickup, so a thinner body, a brighter strike and '
+      + 'the chorus it was always played through.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.7, attack: 0.001, decay: 2.2, sustain: 0, release: 0.3, unison: 2, spread: 6, stereo: 0.5, filter: { type: 'lowpass', slope: -12, freq: 900, Q: 0.8, track: 0.9, env: { octaves: 2.5, attack: 0.001, decay: 0.25, sustain: 0, release: 0.2 } } },
+      osc2: { type: 'triangle', ratio: 2, gain: 0.25, attack: 0.001, decay: 1.2, sustain: 0, release: 0.25 },
+      osc3: { type: 'noise', ratio: 1, gain: 0.07, color: 'white', attack: 0.001, decay: 0.018, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 2400, Q: 1.2, track: 0.4 } },
+    },
+    humanize: { entry: 0.005, gain: 0.07 },
+    chorus: { mix: 0.35, rate: 0.6, depth: 0.4, width: 1 } },
+
+  tngrConcertGrand: { label: 'Wavetable Grand', category: 'Keys', synth: 'TNGR-2', dur: 2.8,
+    note: 'Warm Harmonics swept from bright to dark by the position envelope, a quiet '
+      + 'Bell Fold an octave up for the hammer, and a keytracked filter envelope.', tngr2: {
+      oscA: { table: 'warmHarmonics', position: 0.45, envAmount: -0.35, level: 0.8, unison: 2, spread: 3, stereo: 0.3 },
+      oscB: { table: 'bellFold', position: 0.1, level: 0.05, interval: 12, detune: 3 },
+      amp: { attack: 0.002, decay: 2.8, sustain: 0.03, release: 0.5 },
+      positionEnv: { attack: 0, decay: 0.8, sustain: 0.1 },
+      filter: { type: 'lowpass', slope: -12, cutoff: 3200, resonance: 0.5, keyTrack: 0.6 },
+      filterEnv: { amount: 1.4, attack: 0.001, decay: 0.6, sustain: 0.1 },
+      master: { gain: 0.6 } } },
+  tngrFeltUpright: { label: 'Felt Upright', category: 'Keys', synth: 'TNGR-2', dur: 3.4,
+    note: 'Dark and close: a mostly-fundamental table with a sine 6 cents off it for the '
+      + 'beating string pair, through a 24 dB lowpass that follows the keyboard.', tngr2: {
+      oscA: { table: 'warmHarmonics', position: 0.15, envAmount: -0.1, level: 0.85 },
+      oscB: { table: 'basic', position: 0, level: 0.25, interval: 0, detune: 6 },
+      amp: { attack: 0.008, decay: 3.4, sustain: 0.03, release: 0.7 },
+      positionEnv: { attack: 0, decay: 0.6, sustain: 0.05 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 1400, resonance: 0.4, keyTrack: 0.7 },
+      filterEnv: { amount: 0.8, attack: 0.001, decay: 0.4, sustain: 0 },
+      master: { gain: 0.66 } } },
+
+  rmndDxPiano: { label: 'FM Piano', category: 'Keys', synth: 'RMND-2', dur: 2.4,
+    note: 'Harmonicity 1 is a full harmonic series; the index falls from bright to nearly '
+      + 'a sine across the first second. The DX7 piano everybody has heard.',
+    options: {
+      harmonicity: 1, modulationIndex: 2.4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 2.4, sustain: 0.02, release: 0.6 },
+      modulationEnvelope: { attack: 0.001, decay: 0.9, sustain: 0.06, release: 0.5 },
+    } },
+  rmndTineEP: { label: 'Tine Electric Piano', category: 'Keys', synth: 'RMND-2', dur: 2.8,
+    note: 'A 7:1 operator for the tine\'s ping, gone in an eighth of a second, over a sine '
+      + 'that holds a little. The Rhodes end of "piano".',
+    options: {
+      harmonicity: 7, modulationIndex: 2.4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 2.8, sustain: 0.1, release: 0.7 },
+      modulationEnvelope: { attack: 0.001, decay: 0.12, sustain: 0.08, release: 0.3 },
+    } },
+
+  // ---- Slap bass -------------------------------------------------------------
+  //
+  // Eighties slap, auditioned by tools/render-slap-bass-auditions.js. A slap is a strike
+  // far brighter than the note behind it, gone in well under a tenth of a second: the
+  // DX7 got there with an FM index that falls off a cliff, and the MRDR-3 hybrids add
+  // the fret click (high noise) and the POP's pitch, which starts sharp because the
+  // string is stretched as it is pulled. The pops carry no drive: MRDR-3's shaper is
+  // normalised to full scale, so it levels the strike with the note behind it.
+  rmndDxSlap: { label: 'DX Slap', category: 'Bass', synth: 'RMND-2', dur: 1,
+    note: 'The DX7 bass: a 1:1 modulator at index 12, gone in an eighth of a second, so '
+      + 'the note starts as a buzz-saw and settles to a round sine.',
+    options: {
+      harmonicity: 1, modulationIndex: 12,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.9, sustain: 0.35, release: 0.08 },
+      modulationEnvelope: { attack: 0.001, decay: 0.12, sustain: 0.06, release: 0.1 },
+    } },
+  rmndDxPop: { label: 'DX Pop', category: 'Bass', synth: 'RMND-2', dur: 1,
+    note: 'Harder and shorter: index 14 collapsing in 60 ms, and a body that lets go '
+      + 'quickly. All snap — the pulled note on its own.',
+    options: {
+      harmonicity: 1, modulationIndex: 14,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.35, sustain: 0.15, release: 0.06 },
+      modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0.02, release: 0.05 },
+    } },
+  rmndDigitalSlap: { label: 'Digital Slap', category: 'Bass', synth: 'RMND-2', dur: 1,
+    note: 'A square modulator: odd harmonics only in the strike, so it barks rather than '
+      + 'buzzes. The hollow, glassy Level 42 end.',
+    options: {
+      harmonicity: 1, modulationIndex: 8,
+      oscillator: { type: 'sine' }, modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 0.7, sustain: 0.3, release: 0.07 },
+      modulationEnvelope: { attack: 0.001, decay: 0.09, sustain: 0.1, release: 0.08 },
+    } },
+  mrdrSlapThumb: { label: 'Thumb Slap', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'A sine body carrying a fast-falling FM strike, a saw whose filter slams open '
+      + 'five octaves and shuts in 70 ms, and a 4 kHz click for the string hitting the frets.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.9, attack: 0.001, decay: 0.8, sustain: 0.4, release: 0.07, fm: { type: 'sine', ratio: 1, index: 5, attack: 0.001, decay: 0.1 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.5, attack: 0.001, decay: 0.3, sustain: 0.15, release: 0.06, filter: { type: 'lowpass', slope: -12, freq: 260, Q: 1.2, track: 0.8, env: { octaves: 5, attack: 0.001, decay: 0.07, sustain: 0, release: 0.05 } } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.16, color: 'white', attack: 0.001, decay: 0.014, sustain: 0, release: 0.01, filter: { type: 'bandpass', slope: -12, freq: 4000, Q: 1.4, track: 0 } },
+    },
+    humanize: { entry: 0.004, gain: 0.1 } },
+  mrdrSlapPop: { label: 'Pulled Pop', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'The pull: every layer starts 40 cents sharp and drops onto the note in 25 ms, a '
+      + '3:1 FM operator for the metallic snap, and a brighter, louder fret click.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.85, attack: 0.001, decay: 0.6, sustain: 0.3, release: 0.06, pitch: { semitones: 0.4, decay: 0.025 }, fm: { type: 'sine', ratio: 3, index: 3.5, attack: 0.001, decay: 0.07 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.55, attack: 0.001, decay: 0.25, sustain: 0.1, release: 0.05, pitch: { semitones: 0.4, decay: 0.025 }, filter: { type: 'lowpass', slope: -12, freq: 400, Q: 2, track: 0.8, env: { octaves: 5.5, attack: 0.001, decay: 0.05, sustain: 0, release: 0.04 } } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.24, color: 'white', attack: 0.001, decay: 0.01, sustain: 0, release: 0.01, filter: { type: 'bandpass', slope: -12, freq: 5200, Q: 1.6, track: 0 } },
+    },
+    drive: 0.15, shape: 'soft',
+    humanize: { entry: 0.004, gain: 0.1 } },
+  mrdrSynthSlap: { label: 'Synth Slap', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'The analogue answer: saw and square through a resonant 24 dB lowpass whose '
+      + 'envelope spits open and shuts. Rubbery rather than stringy — the Jupiter/SH-101 '
+      + 'take on slap that half of eighties pop actually used.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.001, decay: 0.6, sustain: 0.5, release: 0.07 },
+      osc2: { type: 'square', ratio: 1, gain: 0.45, detune: -6, attack: 0.001, decay: 0.6, sustain: 0.5, release: 0.07 },
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.35, attack: 0.001, decay: 0.7, sustain: 0.6, release: 0.07 },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 180, Q: 4, track: 0.7, env: { octaves: 4.6, attack: 0.001, decay: 0.09, sustain: 0.05, release: 0.06 } } },
+    drive: 0.2, shape: 'soft',
+    humanize: { entry: 0.004, gain: 0.08 } },
+  tngrSlap: { label: 'Wavetable Slap', category: 'Bass', synth: 'TNGR-2', dur: 1,
+    note: 'Saw Form swept from its brightest frame to its roundest in 80 ms, under a '
+      + 'filter envelope four octaves deep. The cleanest, most produced of the set.', tngr2: {
+      oscA: { table: 'sawForm', position: 0.85, envAmount: -0.7, level: 0.85 },
+      oscB: { table: 'basic', position: 0, level: 0.4, interval: -12 },
+      amp: { attack: 0.001, decay: 0.7, sustain: 0.35, release: 0.07 },
+      positionEnv: { attack: 0, decay: 0.08, sustain: 0 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 320, resonance: 1.4, keyTrack: 0.7 },
+      filterEnv: { amount: 4, attack: 0.001, decay: 0.08, sustain: 0.02 },
+      master: { gain: 0.7 } } },
+
+  mrdrMegaPop: { label: 'Mega Pop', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'The pull taken to a semitone and a half, dropping in 18 ms; a 3:1 operator at '
+      + 'index 7, a resonant saw that opens six and a half octaves, and a fret clack twice '
+      + 'as loud as Pulled Pop\'s.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.85, attack: 0.001, decay: 0.7, sustain: 0.35, release: 0.07, pitch: { semitones: 1.5, decay: 0.018 }, fm: { type: 'sine', ratio: 3, index: 7, attack: 0.001, decay: 0.05 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.6, attack: 0.001, decay: 0.3, sustain: 0.12, release: 0.05, pitch: { semitones: 1.5, decay: 0.018 }, filter: { type: 'lowpass', slope: -12, freq: 300, Q: 3, track: 0.8, env: { octaves: 6.5, attack: 0.001, decay: 0.06, sustain: 0, release: 0.04 } } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.42, color: 'white', attack: 0.001, decay: 0.008, sustain: 0, release: 0.008, filter: { type: 'bandpass', slope: -12, freq: 6000, Q: 1.8, track: 0 } },
+    },
+    humanize: { entry: 0.003, gain: 0.08 } },
+  mrdrFretClack: { label: 'Fret Clack', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'The string slapping back onto metal: a square rung through a tight 2.6 kHz '
+      + 'bandpass for 30 ms — a clang with a pitch — over an FM body. The most percussive '
+      + 'of the pops; half the note is the fretboard.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.85, attack: 0.001, decay: 0.6, sustain: 0.3, release: 0.06, pitch: { semitones: 0.8, decay: 0.02 }, fm: { type: 'sine', ratio: 1, index: 6, attack: 0.001, decay: 0.06 } },
+      osc2: { type: 'square', ratio: 4, gain: 0.5, attack: 0.001, decay: 0.03, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 2600, Q: 6, track: 0 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.5, color: 'white', attack: 0.001, decay: 0.02, sustain: 0, release: 0.01, filter: { type: 'bandpass', slope: -12, freq: 4500, Q: 2.4, track: 0 } },
+    },
+    humanize: { entry: 0.003, gain: 0.08 } },
+  mrdrWirePop: { label: 'Wire Pop', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'Bright and LONG: the filter opens six octaves and only falls back a quarter of '
+      + 'the way, at resonance 5, so every pop leaves a singing, wah-shaped ring behind it.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.001, decay: 0.9, sustain: 0.45, release: 0.08, pitch: { semitones: 1, decay: 0.03 }, filter: { type: 'lowpass', slope: -12, freq: 260, Q: 5, track: 0.8, env: { octaves: 6, attack: 0.001, decay: 0.12, sustain: 0.25, release: 0.06 } } },
+      osc2: { type: 'sine', ratio: 1, gain: 0.55, attack: 0.001, decay: 0.9, sustain: 0.5, release: 0.08, pitch: { semitones: 1, decay: 0.03 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.3, color: 'white', attack: 0.001, decay: 0.012, sustain: 0, release: 0.01, filter: { type: 'bandpass', slope: -12, freq: 5000, Q: 1.6, track: 0 } },
+    },
+    humanize: { entry: 0.003, gain: 0.08 } },
+  mrdrZapPop: { label: 'Zap Pop', category: 'Bass', synth: 'MRDR-3', dur: 1,
+    note: 'The analogue pop turned into a laser: two semitones of pitch gone in 15 ms under '
+      + 'a 24 dB filter at resonance 9 that sweeps six octaves. More synth than string, and '
+      + 'the most eighties of the lot.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.001, decay: 0.5, sustain: 0.45, release: 0.06, pitch: { semitones: 2, decay: 0.015 } },
+      osc2: { type: 'square', ratio: 1, gain: 0.45, detune: -7, attack: 0.001, decay: 0.5, sustain: 0.45, release: 0.06, pitch: { semitones: 2, decay: 0.015 } },
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.4, attack: 0.001, decay: 0.6, sustain: 0.55, release: 0.06 },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 150, Q: 9, track: 0.7, env: { octaves: 6, attack: 0.001, decay: 0.06, sustain: 0.04, release: 0.05 } } },
+    drive: 0.1, shape: 'soft',
+    humanize: { entry: 0.003, gain: 0.06 } },
+  rmndMaxPop: { label: 'DX Max Pop', category: 'Bass', synth: 'RMND-2', dur: 1,
+    note: 'The DX slap with the index at 22 and gone in 35 ms. Nearly a click with a bass '
+      + 'note hanging off it.',
+    options: {
+      harmonicity: 1, modulationIndex: 22,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.5, sustain: 0.25, release: 0.06 },
+      modulationEnvelope: { attack: 0.001, decay: 0.035, sustain: 0.03, release: 0.04 },
+    } },
+  rmndClangPop: { label: 'DX Clang Pop', category: 'Bass', synth: 'RMND-2', dur: 1,
+    note: 'A 3:1 modulator at index 10: the strike rings like struck metal before it '
+      + 'settles. The DX7 pop that sounds like a DX7 on purpose.',
+    options: {
+      harmonicity: 3, modulationIndex: 10,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.6, sustain: 0.3, release: 0.06 },
+      modulationEnvelope: { attack: 0.001, decay: 0.045, sustain: 0.02, release: 0.04 },
+    } },
+  rmndSquarePop: { label: 'DX Square Pop', category: 'Bass', synth: 'RMND-2', dur: 1,
+    note: 'Square modulator at index 12 for 40 ms: a hard, hollow bark at the front of '
+      + 'every note.',
+    options: {
+      harmonicity: 1, modulationIndex: 12,
+      oscillator: { type: 'sine' }, modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 0.55, sustain: 0.28, release: 0.06 },
+      modulationEnvelope: { attack: 0.001, decay: 0.04, sustain: 0.04, release: 0.04 },
+    } },
+  tngrMegaPop: { label: 'Wavetable Mega Pop', category: 'Bass', synth: 'TNGR-2', dur: 1,
+    note: 'Saw Form from its top frame to its bottom in 40 ms, under a resonant filter '
+      + 'envelope six octaves deep that shuts in 50.', tngr2: {
+      oscA: { table: 'sawForm', position: 1, envAmount: -1, level: 0.85 },
+      oscB: { table: 'basic', position: 0, level: 0.4, interval: -12 },
+      amp: { attack: 0.001, decay: 0.6, sustain: 0.32, release: 0.06 },
+      positionEnv: { attack: 0, decay: 0.04, sustain: 0 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 260, resonance: 3, keyTrack: 0.7 },
+      filterEnv: { amount: 6, attack: 0.001, decay: 0.05, sustain: 0.02 },
+      master: { gain: 0.7 } } },
+
+  // ---- Woodwinds -------------------------------------------------------------
+  //
+  // Auditioned on one slow tune by tools/render-woodwind-auditions.js. A flute is mostly
+  // BREATH, and MRDR-3's noise layer is a band that follows the note: at ratio 1 it is air
+  // on the pitch. Its gain reads like an oscillator's, though (the layer makes up what its
+  // bandpass throws away), so every breath here was set by measuring air against tone
+  // (`--breath` in that tool) and then brought down by ear. How the air is filtered
+  // mattered more than how loud it is: on the four breathy ones it goes through a
+  // narrow band ON the note (CUTOFF 110 × KEY FOLLOW 1 is the note itself, Q 5), because
+  // the noise layer's own band has wide skirts and the skirts are the hiss.
+  mrdrConcertFlute: { label: 'Concert Flute', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'A triangle with a quiet octave partial, breath on the pitch that chiffs as the '
+      + 'note speaks and settles to a steady hiss, and a vibrato that is half pitch and '
+      + 'half level — which is how a flautist\'s diaphragm vibrato actually works.',
+    layer: {
+      osc1: { type: 'triangle', ratio: 1, gain: 0.85, attack: 0.06, decay: 0.3, sustain: 0.92, release: 0.16, attackCurve: 'lin' },
+      osc2: { type: 'sine', ratio: 2, gain: 0.16, attack: 0.08, decay: 0.3, sustain: 0.85, release: 0.14, attackCurve: 'lin' },
+      osc3: { type: 'noise', ratio: 1, gain: 0.028, color: 'pink', attack: 0.02, decay: 0.12, sustain: 0.32, release: 0.12, attackCurve: 'lin', filter: { type: 'bandpass', slope: -12, freq: 110, Q: 5, track: 1 } },
+      lfo: { type: 'sine', rate: 5.2, depth: 0.12, target: 'level', delay: 0.35 },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 3600, Q: 0.6, track: 0.5 } },
+    humanize: { entry: 0.008, pitch: 0.0015, gain: 0.05 },
+    vibrato: { depth: 0.12, rate: 5.2, delay: 0.35 } },
+
+  mrdrShakuhachi: { label: 'Shakuhachi', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'Mostly air: a sine under a breath band sitting on the pitch. Every note scoops '
+      + 'up from more than a semitone flat (meri into kari), and the slow, deep vibrato arrives '
+      + 'late — the head-shake, not the diaphragm.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.72, attack: 0.1, decay: 0.4, sustain: 0.9, release: 0.25, attackCurve: 'lin', pitch: { semitones: -1.3, decay: 0.2 } },
+      osc2: { type: 'noise', ratio: 1, gain: 0.023, color: 'pink', attack: 0.015, decay: 0.16, sustain: 0.55, release: 0.22, attackCurve: 'lin', pitch: { semitones: -1.3, decay: 0.2 }, filter: { type: 'bandpass', slope: -12, freq: 110, Q: 5, track: 1 } },
+      lfo: { type: 'sine', rate: 4.2, depth: 0.22, target: 'level', delay: 0.6 },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 3000, Q: 0.6, track: 0.4 } },
+    humanize: { entry: 0.012, pitch: 0.003, gain: 0.08 },
+    vibrato: { depth: 0.3, rate: 4.2, delay: 0.6 } },
+
+  mrdrPanFlute: { label: 'Pan Flute', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'A stopped pipe, so odd partials only — sine plus a whisper of the third — and a '
+      + 'hard breath chiff on every note that falls back to a breathy tone. The Andes, or '
+      + 'Zamfir, depending on the reverb.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.8, attack: 0.03, decay: 0.3, sustain: 0.88, release: 0.2, attackCurve: 'lin', pitch: { semitones: 0.25, decay: 0.05 } },
+      osc2: { type: 'sine', ratio: 3, gain: 0.1, attack: 0.03, decay: 0.2, sustain: 0.7, release: 0.15, attackCurve: 'lin' },
+      osc3: { type: 'noise', ratio: 1, gain: 0.07, color: 'pink', attack: 0.005, decay: 0.07, sustain: 0.3, release: 0.18, attackCurve: 'lin', filter: { type: 'bandpass', slope: -12, freq: 110, Q: 5, track: 1 } },
+      lfo: { type: 'sine', rate: 5, depth: 0.1, target: 'level', delay: 0.4 },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 4200, Q: 0.6, track: 0.4 } },
+    humanize: { entry: 0.01, pitch: 0.002, gain: 0.07 },
+    vibrato: { depth: 0.1, rate: 5, delay: 0.45 } },
+
+  mrdrRecorder: { label: 'Recorder', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'A fipple does the embouchure for you, so the tone is steadier and purer than a '
+      + 'flute\'s: triangle and octave, a short clean chiff, very little breath, and '
+      + 'almost no vibrato. The early-music soprano.',
+    layer: {
+      osc1: { type: 'triangle', ratio: 1, gain: 0.85, attack: 0.025, decay: 0.2, sustain: 0.95, release: 0.1, attackCurve: 'lin' },
+      osc2: { type: 'sine', ratio: 2, gain: 0.24, attack: 0.025, decay: 0.2, sustain: 0.9, release: 0.1, attackCurve: 'lin' },
+      osc3: { type: 'noise', ratio: 1, gain: 0.076, color: 'pink', attack: 0.004, decay: 0.05, sustain: 0.1, release: 0.08, attackCurve: 'lin', filter: { type: 'lowpass', slope: -12, freq: 1800, Q: 0.5, track: 0.5 } },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 5000, Q: 0.6, track: 0.4 } },
+    humanize: { entry: 0.006, pitch: 0.001, gain: 0.04 },
+    vibrato: { depth: 0.05, rate: 5.5, delay: 0.6 } },
+
+  mrdrBansuri: { label: 'Bansuri', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'Bamboo and a big bore: a darker, breathier flute, each note flicked into from a '
+      + 'semitone above (the kan grace note) and held with a wide, slow vibrato.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.8, attack: 0.07, decay: 0.3, sustain: 0.9, release: 0.25, attackCurve: 'lin', pitch: { semitones: 1, decay: 0.06 } },
+      osc2: { type: 'triangle', ratio: 1, gain: 0.2, detune: 4, attack: 0.08, decay: 0.3, sustain: 0.85, release: 0.25, attackCurve: 'lin', pitch: { semitones: 1, decay: 0.06 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.04, color: 'pink', attack: 0.02, decay: 0.15, sustain: 0.45, release: 0.2, attackCurve: 'lin', pitch: { semitones: 1, decay: 0.06 }, filter: { type: 'bandpass', slope: -12, freq: 110, Q: 5, track: 1 } },
+      lfo: { type: 'sine', rate: 4.6, depth: 0.16, target: 'level', delay: 0.45 },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 2600, Q: 0.6, track: 0.5 } },
+    humanize: { entry: 0.01, pitch: 0.002, gain: 0.06 },
+    vibrato: { depth: 0.2, rate: 4.6, delay: 0.45 } },
+
+  mrdrOcarina: { label: 'Ocarina', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'A vessel flute, the purest tone of any wind: nearly a sine, a soft breath band '
+      + 'tucked under it, a gentle chiff and a slow shallow vibrato. Hyrule.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.9, attack: 0.04, decay: 0.3, sustain: 0.92, release: 0.14, attackCurve: 'lin' },
+      osc2: { type: 'sine', ratio: 2, gain: 0.05, attack: 0.04, decay: 0.3, sustain: 0.8, release: 0.12, attackCurve: 'lin' },
+      osc3: { type: 'noise', ratio: 1, gain: 0.13, color: 'white', attack: 0.01, decay: 0.08, sustain: 0.14, release: 0.12, attackCurve: 'lin' },
+    },
+    humanize: { entry: 0.008, pitch: 0.0015, gain: 0.05 },
+    vibrato: { depth: 0.08, rate: 4.8, delay: 0.5 } },
+
+  mrdrClarinet: { label: 'Clarinet', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'A cylindrical bore closed at the reed end, so odd harmonics: two squares a few '
+      + 'cents apart through a keytracked lowpass that opens a little as the note is '
+      + 'blown in. Played straight, as a classical clarinettist does — no vibrato.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.75, attack: 0.04, decay: 0.3, sustain: 0.92, release: 0.12, attackCurve: 'lin' },
+      osc2: { type: 'square', ratio: 1, gain: 0.35, detune: 3, attack: 0.05, decay: 0.3, sustain: 0.9, release: 0.12, attackCurve: 'lin' },
+      osc3: { type: 'noise', ratio: 1, gain: 0.033, color: 'pink', attack: 0.01, decay: 0.08, sustain: 0.12, release: 0.1, attackCurve: 'lin', filter: { type: 'lowpass', slope: -12, freq: 1800, Q: 0.5, track: 0.5 } },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 1500, Q: 0.7, track: 0.6, env: { octaves: 0.6, attack: 0.06, decay: 0.4, sustain: 0.4, release: 0.15 } },
+    },
+    humanize: { entry: 0.008, pitch: 0.001, gain: 0.04 },
+    vibrato: { depth: 0.02, rate: 5, delay: 0.8 } },
+
+  mrdrOboe: { label: 'Oboe', category: 'Orch', synth: 'MRDR-3', dur: 2,
+    note: 'A double reed: a saw through a fixed 1.1 kHz body resonance is the nasal, '
+      + 'pinched voice, over a plain saw for the rest of the spectrum. Quick to speak, '
+      + 'with a narrow, fast vibrato.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.55, attack: 0.03, decay: 0.3, sustain: 0.9, release: 0.1, attackCurve: 'lin', filter: { type: 'lowpass', slope: -12, freq: 2200, Q: 0.7, track: 0.4 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.7, detune: -3, attack: 0.035, decay: 0.3, sustain: 0.9, release: 0.1, attackCurve: 'lin', filter: { type: 'bandpass', slope: -12, freq: 1100, Q: 3, track: 0 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.035, color: 'pink', attack: 0.008, decay: 0.06, sustain: 0.1, release: 0.08, attackCurve: 'lin', filter: { type: 'lowpass', slope: -12, freq: 1800, Q: 0.5, track: 0.5 } },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 4000, Q: 0.6, track: 0.3 } },
+    humanize: { entry: 0.008, pitch: 0.0015, gain: 0.05 },
+    vibrato: { depth: 0.1, rate: 5.8, delay: 0.3 } },
+
+  tngrAirFlute: { label: 'Air Flute', category: 'Orch', synth: 'TNGR-2', dur: 2,
+    note: 'The wavetable route: a sine with Choir Breath an octave up for the air, the '
+      + 'breath table walking as the note settles. Softer-focused and more "synth flute" '
+      + 'than the MRDR-3 ones — the eighties pop-ballad flute.',
+    tngr2: {
+      oscA: { table: 'basic', position: 0, level: 0.8 },
+      oscB: { table: 'choirBreath', position: 0.4, envAmount: 0.3, level: 0.3, interval: 12 },
+      amp: { attack: 0.07, decay: 0.3, sustain: 0.9, release: 0.2 },
+      positionEnv: { attack: 0.05, decay: 0.6, sustain: 0.3 },
+      filter: { type: 'lowpass', slope: -12, cutoff: 3800, resonance: 0.5, keyTrack: 0.5 },
+      master: { gain: 0.66 } },
+    vibrato: { depth: 0.12, rate: 5, delay: 0.4 } },
 
 };
 
@@ -4711,7 +5114,19 @@ const LEVELS = {
   stKickTight: 0.058672, stKickThud: 0.026188, stKickDirty: 0.032487,
   stKickClick: 0.055838, stTaiko: 0.049216, stZap: 0.056003,
   stHatTick: 0.016717, stHatSizzle: 0.056353, stMetalHatClosed: 0.01638,
-  stCowbell: 0.028111, stTriangleDing: 0.028111, gateClang: 0.1334
+  stCowbell: 0.028111, stTriangleDing: 0.028111, gateClang: 0.1334,
+  wndrConcertGrand: 0.2647, wndrOldUpright: 0.1838, wndrFeltPiano: 0.2148,
+  mrdrGrand: 0.1251, mrdrPopGrand: 0.1081, mrdrElectricGrand: 0.0443,
+  tngrConcertGrand: 0.0248, tngrFeltUpright: 0.0317, rmndDxPiano: 0.0267,
+  rmndTineEP: 0.0301, rmndDxSlap: 0.0215, rmndDxPop: 0.0152,
+  rmndDigitalSlap: 0.0206, mrdrSlapThumb: 0.104, mrdrSlapPop: 0.101,
+  mrdrSynthSlap: 0.1126, tngrSlap: 0.0153, mrdrMegaPop: 0.0903,
+  mrdrFretClack: 0.0757, mrdrWirePop: 0.0976, mrdrZapPop: 0.11,
+  rmndMaxPop: 0.0187, rmndClangPop: 0.0201, rmndSquarePop: 0.0187,
+  tngrMegaPop: 0.0143, mrdrConcertFlute: 0.0876, mrdrShakuhachi: 0.0796,
+  mrdrPanFlute: 0.1032, mrdrRecorder: 0.0914, mrdrBansuri: 0.1136,
+  mrdrOcarina: 0.1116, mrdrClarinet: 0.1622, mrdrOboe: 0.0552,
+  tngrAirFlute: 0.0163
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -4852,7 +5267,18 @@ const PEAKS = {
   stKickTight: 0.7, stKickThud: 0.6899, stKickDirty: 0.6934, stKickClick: 0.7,
   stTaiko: 0.7, stZap: 0.7, stHatTick: 0.6253, stHatSizzle: 1.0138,
   stMetalHatClosed: 0.7687, stCowbell: 0.5426, stTriangleDing: 0.5426,
-  gateClang: 0.7
+  gateClang: 0.7, wndrConcertGrand: 1.9679, wndrOldUpright: 1.4454,
+  wndrFeltPiano: 1.003, mrdrGrand: 0.6125, mrdrPopGrand: 0.7024,
+  mrdrElectricGrand: 0.4886, tngrConcertGrand: 0.1688, tngrFeltUpright: 0.1462,
+  rmndDxPiano: 0.2183, rmndTineEP: 0.2206, rmndDxSlap: 0.2207,
+  rmndDxPop: 0.2206, rmndDigitalSlap: 0.2207, mrdrSlapThumb: 0.8492,
+  mrdrSlapPop: 0.7, mrdrSynthSlap: 0.7, tngrSlap: 0.3063, mrdrMegaPop: 1.1457,
+  mrdrFretClack: 0.5966, mrdrWirePop: 0.9741, mrdrZapPop: 0.7,
+  rmndMaxPop: 0.2193, rmndClangPop: 0.2206, rmndSquarePop: 0.2188,
+  tngrMegaPop: 0.3518, mrdrConcertFlute: 0.6653, mrdrShakuhachi: 0.5068,
+  mrdrPanFlute: 0.5921, mrdrRecorder: 0.6735, mrdrBansuri: 0.7261,
+  mrdrOcarina: 0.6815, mrdrClarinet: 0.8933, mrdrOboe: 0.7119,
+  tngrAirFlute: 0.1282
 };
 
 /**

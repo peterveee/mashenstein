@@ -142,5 +142,26 @@ for (const type of PADS) {
     `and toward the crate's middle (${wantCrate}), not down onto the pad (${pad.alt + pad.h / 2})`);
 }
 
+// --- nor at anything still off screen ----------------------------------------
+// The range reaches past the frame's right edge. A high target out there must
+// not lift the round: it flies straight until the target is in view.
+{
+  const run = new RunState({ stage, save, seed: 12345, difficulty: 1, onEnd: () => {} });
+  run.enter();
+  run.obstacles = [];
+  run.pickups = [];
+  run.projectiles = [];
+  const right = run.viewRightX();
+  const high = makeObstacle('target', right + 4);
+  run.obstacles.push(high);
+  const pr = { type: 'pellet', x: right - 40, alt: 8, vx: 260, live: true, hitIds: new Set() };
+  assert(high.x - pr.x <= 240, 'the fixture puts the target inside the homing range');
+  run.homeRound(pr, 1 / 60);
+  assert(pr.alt === 8, `a round does not rise toward a target past the right edge (alt ${pr.alt})`);
+  high.x = right - 20;
+  run.homeRound(pr, 1 / 60);
+  assert(pr.alt > 8, 'and once the target is in the frame, it steers as before');
+}
+
 console.log(failed ? '\nFLOOR PAD TESTS FAILED' : '\nfloor pads ok');
 process.exit(failed ? 1 : 0);

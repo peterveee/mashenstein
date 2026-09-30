@@ -238,6 +238,13 @@ export function mrdr3NoteOn(lane, { at, hz, durSeconds, velocity = 1, eventId, r
   return true;
 }
 
+/** A CUT at `at` — what is sounding stops, what is booked after it plays. */
+export function mrdr3Choke(lane, { at }) {
+  if (!lane) return false;
+  lane.node.port.postMessage({ type: 'choke', frame: frameAt(at, lane.ctx.sampleRate) });
+  return true;
+}
+
 /** End a held note. Sequenced notes carry their own length and need none of this. */
 export function mrdr3NoteOff(lane, { at, eventId }) {
   if (!lane) return false;

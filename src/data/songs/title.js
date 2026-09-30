@@ -75,16 +75,21 @@ export const bank = {
 export const mix = {
   master: -19.4,
   limiter: true,
-  masterEffects: [{ id: "compressor", bypass: true, params: { threshold: -12, ratio: 2, attack: 0.03, release: 0.25 } }, { id: "reverb", params: { decay: 7, wet: 0.36, preDelay: 0.034 } }, { id: "gain", params: { gain: 9.3 } }],
+  masterEffects: [{ id: "compressor", bypass: true, params: { threshold: -12, ratio: 2, attack: 0.03, release: 0.25 } }, { id: "reverb", params: { decay: 7, wet: 0.36, preDelay: 0.034 } }, { id: "gain", params: { gain: 8.9 } }],
   layers: [
     {
       key: "bass2",
+      from: "bass",
+    },
+    {
+      key: "bass3",
       from: "bass",
     },
   ],
   voice: {
     bass2Voice: "tpAlienChorus",
   },
+  voiceParams: {"bass3Voice": {"label": "Title Sub", "category": "Bass", "synth": "MRDR-3", "dur": 7.4, "note": "The title bass an octave down: the same slow sine, felt under the nocturne rather than heard. Added 30 Sep 2026 because the song had nothing under 60 Hz (bass report: sub 38 dB under the cabinets).", "layer": {"osc1": {"type": "sine", "ratio": 0.5, "gain": 1, "attack": 0.25, "decay": 7.4}}, "kind": "tone", "level": 0.221732, "peak": 0.7, "songOrigin": "user", "songSourceId": "bass3Voice"}},
   lanes: {
     sweeps: {
       gain: -1.2,
@@ -168,6 +173,9 @@ export const mix = {
       send: {
         delay: 0.31,
       },
+    },
+    bass3: {
+      gain: -7.5,
     },
   },
 };

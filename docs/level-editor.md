@@ -54,6 +54,16 @@ neighbour or off either end of the stage; the inspector's slider is still there
 for the pixel a hand cannot hit. `tools/lib/timeline-drag.js` owns those rules
 and `tests/level-editor.js` holds them.
 
+Whatever you select says WHEN as well as where: under its percentage is the
+time a clean run reaches it — `≈ 0:29 in (0:26–0:31 by hero)` — and THIS LEVEL
+says when the tape comes. The lane accelerates all the way, so half the
+distance is well under half the clock, and a 60s stage reaches its tape at
+about 0:57. The bracket is the relay: RUSTY at ×1.15 gets there first, RAMON at
+×0.95 last. Deaths, dashes, boost pads and speed capsules are not counted. A
+beat-charted lane runs at one speed whoever is on it, so there is no bracket.
+`tools/lib/stage-clock.js` walks the run's own ramp a frame at a time; a
+headless plumber-1 run matched it to 0.05s at every mark.
+
 Three things on the lanes deliberately do not drag, and all three for the same
 reason — nothing behind them would change if they did. The FINISH DOG is a
 chance rather than a place: the run puts it on the tape, and clicking it gives

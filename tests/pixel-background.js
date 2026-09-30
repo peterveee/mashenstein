@@ -347,8 +347,9 @@ const variedSpeedValues = new Set(variedSigns
 const variedHighwayValues = new Set(variedSigns
   .filter((sign) => sign.kind === 'highway').map((sign) => sign.value));
 assert(variedSpeedValues.size > 0
-  && [...variedSpeedValues].every((value) => /^\d+$/.test(value)
-    && Number(value) >= 10 && Number(value) <= 99)
+  && variedSpeedValues.has('98.6')
+  && [...variedSpeedValues].every((value) => value === '98.6' || (/^\d+$/.test(value)
+    && Number(value) >= 10 && Number(value) <= 99))
   && ['13', '404', 'πr²', '∞'].every((value) => variedHighwayValues.has(value)),
   'speed limits stay random and at or below 99 while highway signs keep their silly cycle');
 const signOverGap = __testing.desertSpeedLimitPlacements(

@@ -1834,6 +1834,30 @@
   /* Muted is still written and still occupies time: keep the lane colour, dim the
      notes beneath it, and stamp a small M. Deletion stays the hollow/red state below,
      so the two edits cannot be mistaken for each other. */
+  /* A lane's level line (src/data/automation.js), as a VEIL over the part of the bar the
+     line has taken the level out of: a fade-out is the row going dark across its bars, a
+     crossfade one row dimming as the next one lights. The page's own panel colour, so it
+     reads as the bar fading away in the light themes as well as the dark ones, with the
+     line itself in ink along its lower edge. Mapped onto the bar's content box — the same
+     inset the cells sit in — so a cut lands on its sixteenth. */
+  .arrauto { position: absolute; z-index: 1; inset: 0; pointer-events: none;
+              overflow: hidden; border-radius: 3px; }
+  /* The line is drawn over the content box, where the cells are, and runs out flat into
+     the bar's side padding — clipped by the box above — so a veiled bar is veiled edge
+     to edge rather than keeping a lit stripe either side. */
+  .arrauto svg { position: absolute; top: 0; bottom: 0; left: 4px; right: 4px;
+                 width: calc(100% - 8px); height: 100%; overflow: visible; }
+  .arrauto .arrcutmark { margin-left: 3px; }
+  .arrauto-veil { fill: color-mix(in srgb, var(--panel) 74%, transparent); }
+  .arrauto-line { fill: none; stroke: color-mix(in srgb, var(--ink) 78%, transparent);
+                  stroke-width: 1.25; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  /* A cut: a hard rule at the exact sixteenth, with a notch on top so it reads as a
+     cut and not as a bar line. */
+  .arrcutmark { position: absolute; top: 0; bottom: 0; width: 2px;
+                background: var(--hot); box-shadow: 0 0 0 1px color-mix(in srgb, var(--panel) 60%, transparent); }
+  .arrcutmark::before { content: ''; position: absolute; top: 0; left: -3px;
+                        border: 4px solid transparent; border-top: 5px solid var(--hot);
+                        border-bottom: none; }
   .arrbar.barmuted { opacity: .72; }
   .arrbar.barmuted::before { content: 'M'; position: absolute; z-index: 2; inset: 1px auto auto 2px;
                              min-width: 11px; height: 11px; padding: 0 2px; border-radius: 3px;
@@ -2838,6 +2862,18 @@
                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .regactions button.danger { color: color-mix(in srgb, var(--hot) 62%, var(--ink)); }
   .regactions button.danger:hover { border-color: var(--hot-line); }
+  /* The bar panel's Volume section: FROM, TO and SHAPE as three labelled drop-downs over
+     the buttons that use them, then the crossfade picker and the cut. */
+  .regfadefields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px;
+                   margin-bottom: 6px; }
+  .regfadefield { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .regfadefield > span { color: var(--dim); font-size: 8.5px; letter-spacing: .06em;
+                         text-transform: uppercase; }
+  .regfadefield .fxsel { margin-top: 0; }
+  .regfadecross { margin-top: 6px; }
+  .regfadecut { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px;
+                align-items: end; margin-top: 8px; }
+  .regfadecut .regactions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .regcontrols { display: flex; flex-direction: column; gap: 10px; }
   .regcontrol { display: grid; grid-template-columns: 78px minmax(0, 1fr) 66px 36px;
                 align-items: center; gap: 7px; }
@@ -5850,6 +5886,61 @@
   /* Playback is the one mark that is not per-cell: the playhead is the single element
      above the rows, while the beat and bar rules belong to their cells. */
   #pianoroll .ssqcell.playing::after { content: none; }
+
+  /* ---- the Volume strip ------------------------------------------------------------
+     One track's level line and cuts, pinned under a docked note editor on the editor's
+     own time axis (see `buildVolume` in mixer-bar-grid.js). Built from per-column cells
+     with the ruler's beat and bar classes, so it lines up by construction; travels
+     sideways on the same `--roll-scroll-x` the ruler rides. Height is the fader law:
+     the faint rule is 0 dB, three quarters of the way up, where a fader's unity is. */
+  /* The strip's own surface starts where the field does. The roll's control column may
+     run down past the keyboard into this row, and a rule or a panel colour across the
+     whole width would cut it in half. */
+  :is(#pianoroll,#kitroll) .ssqvolstrip { position: relative; flex: none; overflow: hidden;
+                       background: transparent; }
+  :is(#pianoroll,#kitroll) .ssqvol { display: flex; width: 100%; min-width: 0; height: 58px; }
+  :is(#pianoroll,#kitroll) .ssqvol-label { width: var(--keys); flex: 0 0 var(--keys);
+                       box-sizing: border-box; display: flex; align-items: center;
+                       justify-content: flex-end; gap: 6px; padding: 0 8px; min-width: 0; }
+  :is(#pianoroll,#kitroll) .ssqvol-name { color: var(--faint); font-size: 9px; letter-spacing: .06em;
+                       text-transform: uppercase; white-space: nowrap; min-width: 0;
+                       overflow: hidden; text-overflow: ellipsis; }
+  :is(#pianoroll,#kitroll) .ssqvol-cut { flex: none; }
+  :is(#pianoroll,#kitroll) .ssqvol-cut { padding: 2px 6px; font-size: 9.5px; white-space: nowrap;
+                       color: var(--dim); }
+  :is(#pianoroll,#kitroll) .ssqvol-cut.on { color: var(--on-accent); background: var(--hot);
+                       border-color: var(--hot); }
+  :is(#pianoroll,#kitroll) .ssqvol-track { width: 0; min-width: 0; flex: 1 1 0; overflow: hidden;
+                       margin: 0 0 0 var(--keyseam); padding: 0; position: relative;
+                       background: var(--panel); border-top: 1px solid var(--line); }
+  :is(#pianoroll,#kitroll) .ssqvolcells { position: relative; display: flex; width: max-content;
+                       height: 100%; margin: 0; padding: 0;
+                       transform: translateX(calc(-1 * var(--roll-scroll-x, 0px))); }
+  :is(#pianoroll,#kitroll) .ssqvolcell { width: 22px; flex: none; height: 100%; }
+  /* The kit's steps stand 2px apart (see `.ssqcells`); the roll's touch. Same here. */
+  #kitroll .ssqvolcells { gap: 2px; }
+  #pianoroll .ssqvolcell { width: calc(22px * var(--roll-time-zoom, 1)); }
+  #pianoroll .ssqvolcell.gap, #pianoroll .ssqvolcell.barstart { margin-left: 0; }
+  :is(#pianoroll,#kitroll) .ssqvolcell.downbeat { box-shadow: inset 1px 0 0 var(--line); }
+  :is(#pianoroll,#kitroll) .ssqvolcell.beat:not(.downbeat) { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--line) 45%, transparent); }
+  :is(#pianoroll,#kitroll) .ssqvolsvg { position: absolute; left: 0; top: 0; overflow: visible;
+                       cursor: crosshair; }
+  :is(#pianoroll,#kitroll) .ssqvolstrip.cutting .ssqvolsvg { cursor: col-resize; }
+  :is(#pianoroll,#kitroll) .ssqvol-unity { stroke: color-mix(in srgb, var(--ink) 22%, transparent);
+                       stroke-width: 1; stroke-dasharray: 3 4; }
+  :is(#pianoroll,#kitroll) .ssqvol-fill { fill: color-mix(in srgb, var(--vol-colour, var(--accent)) 22%, transparent); }
+  :is(#pianoroll,#kitroll) .ssqvol-fill.idle { fill: color-mix(in srgb, var(--vol-colour, var(--accent)) 9%, transparent); }
+  :is(#pianoroll,#kitroll) .ssqvol-line { fill: none; stroke: var(--vol-colour, var(--accent));
+                       stroke-width: 1.75; stroke-linejoin: round; }
+  :is(#pianoroll,#kitroll) .ssqvol-line.idle { stroke: color-mix(in srgb, var(--ink) 30%, transparent);
+                       stroke-width: 1; }
+  :is(#pianoroll,#kitroll) .ssqvol-point { fill: var(--panel); stroke: var(--ink); stroke-width: 1.5;
+                       cursor: grab; }
+  :is(#pianoroll,#kitroll) .ssqvol-point:hover { fill: var(--ink); }
+  :is(#pianoroll,#kitroll) .ssqvol-cutmark { cursor: ew-resize; }
+  :is(#pianoroll,#kitroll) .ssqvol-cutmark line { stroke: var(--hot); stroke-width: 2; }
+  :is(#pianoroll,#kitroll) .ssqvol-cutmark path { fill: var(--hot); }
+  :is(#pianoroll,#kitroll) .ssqvol-grip { fill: transparent; }
 
   /* ---- the kit, docked ------------------------------------------------------------
      The step grid in the Notes panel, where a pitched channel has its roll. It takes its

@@ -232,7 +232,13 @@ async function main() {
           delay: voiceDelay, delayTime: voiceDelayTime, delayFeedback: voiceDelayFb,
         });
       }
-      else Audio.sfx(cue, { gain: useGain, shape: useShape, reverb: voiceReverb, reverbDecay: plainVerbDecay });
+      else {
+        // The coyote's howl and yip play from buffers the game bakes on stage entry; bake first.
+        if (cue === 'coyoteHowl' || cue === 'coyoteYip') {
+          await Audio._coyoteHowlBuffer((Audio.bpm || 128) * (Audio.tempo || 1), cue === 'coyoteYip' ? 'yip' : 'howl');
+        }
+        Audio.sfx(cue, { gain: useGain, shape: useShape, reverb: voiceReverb, reverbDecay: plainVerbDecay });
+      }
       const buf = await ctx.startRendering();
       const L = Array.from(buf.getChannelData(0));
       const R = Array.from(buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0));

@@ -642,6 +642,8 @@ export function createPianoRoll({
   pitchSize = ROW_H,
   toast = () => {},
   onClose = () => {},
+  // The shown channel's Volume strip under the roll — see `volume` in createBarGrid.
+  volume = null,
 }) {
   let pitchUnit = Number.isFinite(Number(pitchSize)) && Number(pitchSize) > 0
     ? Number(pitchSize) : ROW_H;
@@ -1545,6 +1547,7 @@ export function createPianoRoll({
     onTimeContextMenu: timeContextMenu,
     onDoubleClickStep,
     onSelectTimeEnd,
+    volume,
     ns: 'roll',
     toast,
     // The two that make this a roll rather than a pattern editor: it shows the whole
@@ -1943,6 +1946,8 @@ export function createPianoRoll({
   };
 
   return {
+    /** The Volume strip, redrawn after a fade or a cut made somewhere else on the desk. */
+    redrawVolume: () => grid.redrawVolume(),
     // Opening lands on the selected bar when there is one, otherwise on the part, and
     // so does arriving at a new song. Everywhere else the scroll position is left
     // exactly where the hand put it — an edit must never move the instrument under

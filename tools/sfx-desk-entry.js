@@ -83,6 +83,10 @@ const GROUPS = [
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
       { cue: 'thunder', what: 'the lightning strike that turns neon-1 to night' },
       { cue: 'gateSlam', what: 'a crypt gate banging shut just ahead of the runner' },
+      { cue: 'coyoteHowl', what: 'the Speed Zone coyote howling on his ledge' },
+      { cue: 'coyoteWink', what: "the ding on the finish coyote's wink, speed-3" },
+      { cue: 'coyoteYip', what: "one of the pup's two yips in the coyote chorus" },
+      { cue: 'sleighCarol', what: "the minor-key carol on vibes as Santa's sleigh flies over frost-3's tape" },
       { cue: 'cameraClick', what: 'the speed camera taking your picture on speed-2' },
       { cue: 'blockBreak', what: 'a crate or ?-crate breaking' },
       { cue: 'copterBonk', what: 'bonking the clown-copter' },
@@ -240,6 +244,9 @@ function ensureAudio() {
   if (armed) return;
   Audio.ensure();
   Audio.resumeAfterPanic?.();
+  // The coyote's howl plays from a baked buffer (Audio.coyoteHowl); bake it now so the
+  // first press is heard.
+  Audio.warmCoyoteHowl?.();
   armed = true;
 }
 

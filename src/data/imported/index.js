@@ -50,19 +50,45 @@ import { CHOPIN3 } from './chopin3.js';
 import * as CRYPT_BLACK_ABBEY from './crypt-black-abbey.js';
 import * as CRYPT_CLOCKWORK_SEANCE from './crypt-clockwork-seance.js';
 import * as CRYPT_MIDNIGHT_PROCESSION from './crypt-midnight-procession.js';
+import * as CRYPT_REMIX_COVEN from './crypt-remix-coven.js';
+import * as CRYPT_REMIX_GRAVEYARD_SHIFT from './crypt-remix-graveyard-shift.js';
+import * as CRYPT_REMIX_RAISE_THE_DEAD from './crypt-remix-raise-the-dead.js';
 import * as CRYPT_WHISPER_EXCHANGE from './crypt-whisper-exchange.js';
 import * as CRYPT_WIDOWS_LANTERN from './crypt-widows-lantern.js';
 import * as ENDING from './ending.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3_2 from './everything-is-looking-up-m3-2.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3 from './everything-is-looking-up-m3.js';
+import * as FIELD_SERVICE_AUSSENDIENST from './field-service-aussendienst.js';
+import * as FIELD_SERVICE_CHIPSTEP from './field-service-chipstep.js';
+import * as FIELD_SERVICE_HARVEST_AFTERGLOW_GPT from './field-service-harvest-afterglow-gpt.js';
+import * as FIELD_SERVICE_HARVEST_COPY from './field-service-harvest-copy.js';
+import * as FIELD_SERVICE_HARVEST_OPUS from './field-service-harvest-opus.js';
+import * as FIELD_SERVICE_HARVEST from './field-service-harvest.js';
+import * as FIELD_SERVICE_LIVE_WIRE from './field-service-live-wire.js';
+import * as FIELD_SERVICE_MACHINE_CODE from './field-service-machine-code.js';
+import * as FIELD_SERVICE_NIGHT_DRIVE_WITH_PIANO_LEAD from './field-service-night-drive-with-piano-lead.js';
+import * as FIELD_SERVICE_NIGHT_DRIVE from './field-service-night-drive.js';
+import * as FIELD_SERVICE_ORIGINAL from './field-service-original.js';
+import * as FIELD_SERVICE_OVERCLOCK from './field-service-overclock.js';
+import * as FIELD_SERVICE_SLAP_HAPPY from './field-service-slap-happy.js';
 import * as FOODCOURTTWEAK from './foodcourttweak.js';
+import * as FROST_REMIX_ABSOLUTE_ZERO from './frost-remix-absolute-zero.js';
+import * as FROST_REMIX_BLACK_ICE from './frost-remix-black-ice.js';
+import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
 import * as MIN_NEW from './min-new.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
+import * as NEON_REMIX_ENDSTATION from './neon-remix-endstation.js';
+import * as NEON_REMIX_FREEFALL from './neon-remix-freefall.js';
+import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
+import * as NEON_REMIX_LIVE_WIRE from './neon-remix-live-wire.js';
 import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
 import * as PLUMBER_PANIC_ALT from './plumber-panic-alt.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
+import * as RHYTHM_REMIX_FIRE_SALE from './rhythm-remix-fire-sale.js';
+import * as RHYTHM_REMIX_HOSTILE_TAKEOVER from './rhythm-remix-hostile-takeover.js';
+import * as RHYTHM_REMIX_IN_THE_RED from './rhythm-remix-in-the-red.js';
 import * as ROSSINI_BARBER_OF_SEVILLE_OVERTURE from './rossini-barber-of-seville-overture.js';
 import * as S_N_C_SPECIAL_STAGE from './s-n-c-special-stage.js';
 import * as SESERAGI_V1_OWN_MOTIF from './seseragi-v1-own-motif.js';
@@ -101,11 +127,19 @@ import * as SMWGOOD from './smwgood.js';
 import * as SPECIAL_STAGE_1 from './special-stage-1.js';
 import * as SPEED_HORIZON_LINES_OVERDRIVE from './speed-horizon-lines-overdrive.js';
 import * as SPEED_HORIZON_LINES from './speed-horizon-lines.js';
+import * as SPEED_REMIX_BREAKNECK from './speed-remix-breakneck.js';
+import * as SPEED_REMIX_COWBELL from './speed-remix-cowbell.js';
+import * as SPEED_REMIX_HAIRPIN from './speed-remix-hairpin.js';
+import * as SPEED_REMIX_REDLINE_ACID_GPT from './speed-remix-redline-acid-gpt.js';
 import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
 import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SPEED_ZONE_ORIGINAL from './speed-zone-original.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as SUPER_MARIO_WORLD from './super-mario-world.js';
+import * as SURGE_REMIX_HIGH_VOLTAGE from './surge-remix-high-voltage.js';
+import * as SURGE_REMIX_MASHTERPIECE from './surge-remix-mashterpiece.js';
+import * as SURGE_REMIX_OVERLOAD from './surge-remix-overload.js';
+import * as SURGE_REMIX_SHORT_CIRCUIT from './surge-remix-short-circuit.js';
 import * as TERMINAL_VELOCITY_ORIGINAL from './terminal-velocity-original.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
@@ -151,19 +185,45 @@ export const IMPORTED_BY_ID = {
   "crypt-black-abbey": { bank: CRYPT_BLACK_ABBEY.bank, title: CRYPT_BLACK_ABBEY.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-clockwork-seance": { bank: CRYPT_CLOCKWORK_SEANCE.bank, title: CRYPT_CLOCKWORK_SEANCE.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-midnight-procession": { bank: CRYPT_MIDNIGHT_PROCESSION.bank, title: CRYPT_MIDNIGHT_PROCESSION.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-remix-coven": { bank: CRYPT_REMIX_COVEN.bank, title: CRYPT_REMIX_COVEN.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-remix-graveyard-shift": { bank: CRYPT_REMIX_GRAVEYARD_SHIFT.bank, title: CRYPT_REMIX_GRAVEYARD_SHIFT.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-remix-raise-the-dead": { bank: CRYPT_REMIX_RAISE_THE_DEAD.bank, title: CRYPT_REMIX_RAISE_THE_DEAD.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-whisper-exchange": { bank: CRYPT_WHISPER_EXCHANGE.bank, title: CRYPT_WHISPER_EXCHANGE.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-widows-lantern": { bank: CRYPT_WIDOWS_LANTERN.bank, title: CRYPT_WIDOWS_LANTERN.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "ending": { bank: ENDING.bank, title: ENDING.title, group: "imported", writable: true },
   "everything-is-looking-up-m3-2": { bank: EVERYTHING_IS_LOOKING_UP_M3_2.bank, title: EVERYTHING_IS_LOOKING_UP_M3_2.title, group: "imported", writable: true },
   "everything-is-looking-up-m3": { bank: EVERYTHING_IS_LOOKING_UP_M3.bank, title: EVERYTHING_IS_LOOKING_UP_M3.title, group: "imported", writable: true },
+  "field-service-aussendienst": { bank: FIELD_SERVICE_AUSSENDIENST.bank, title: FIELD_SERVICE_AUSSENDIENST.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-chipstep": { bank: FIELD_SERVICE_CHIPSTEP.bank, title: FIELD_SERVICE_CHIPSTEP.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-harvest-afterglow-gpt": { bank: FIELD_SERVICE_HARVEST_AFTERGLOW_GPT.bank, title: FIELD_SERVICE_HARVEST_AFTERGLOW_GPT.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-harvest-copy": { bank: FIELD_SERVICE_HARVEST_COPY.bank, title: FIELD_SERVICE_HARVEST_COPY.title, group: "copy", writable: true },
+  "field-service-harvest-opus": { bank: FIELD_SERVICE_HARVEST_OPUS.bank, title: FIELD_SERVICE_HARVEST_OPUS.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-harvest": { bank: FIELD_SERVICE_HARVEST.bank, title: FIELD_SERVICE_HARVEST.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-live-wire": { bank: FIELD_SERVICE_LIVE_WIRE.bank, title: FIELD_SERVICE_LIVE_WIRE.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-machine-code": { bank: FIELD_SERVICE_MACHINE_CODE.bank, title: FIELD_SERVICE_MACHINE_CODE.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-night-drive-with-piano-lead": { bank: FIELD_SERVICE_NIGHT_DRIVE_WITH_PIANO_LEAD.bank, title: FIELD_SERVICE_NIGHT_DRIVE_WITH_PIANO_LEAD.title, group: "copy", writable: true },
+  "field-service-night-drive": { bank: FIELD_SERVICE_NIGHT_DRIVE.bank, title: FIELD_SERVICE_NIGHT_DRIVE.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-original": { bank: FIELD_SERVICE_ORIGINAL.bank, title: FIELD_SERVICE_ORIGINAL.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-overclock": { bank: FIELD_SERVICE_OVERCLOCK.bank, title: FIELD_SERVICE_OVERCLOCK.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-slap-happy": { bank: FIELD_SERVICE_SLAP_HAPPY.bank, title: FIELD_SERVICE_SLAP_HAPPY.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "foodcourttweak": { bank: FOODCOURTTWEAK.bank, title: FOODCOURTTWEAK.title, group: "copy", writable: true },
+  "frost-remix-absolute-zero": { bank: FROST_REMIX_ABSOLUTE_ZERO.bank, title: FROST_REMIX_ABSOLUTE_ZERO.title, group: "alternate", writable: true, alternateOf: "frost" },
+  "frost-remix-black-ice": { bank: FROST_REMIX_BLACK_ICE.bank, title: FROST_REMIX_BLACK_ICE.title, group: "alternate", writable: true, alternateOf: "frost" },
+  "frost-remix-snow-globe": { bank: FROST_REMIX_SNOW_GLOBE.bank, title: FROST_REMIX_SNOW_GLOBE.title, group: "alternate", writable: true, alternateOf: "frost" },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
+  "neon-remix-endstation": { bank: NEON_REMIX_ENDSTATION.bank, title: NEON_REMIX_ENDSTATION.title, group: "alternate", writable: true, alternateOf: "neon" },
+  "neon-remix-freefall": { bank: NEON_REMIX_FREEFALL.bank, title: NEON_REMIX_FREEFALL.title, group: "alternate", writable: true, alternateOf: "neon" },
+  "neon-remix-golden-hour": { bank: NEON_REMIX_GOLDEN_HOUR.bank, title: NEON_REMIX_GOLDEN_HOUR.title, group: "alternate", writable: true, alternateOf: "neon" },
+  "neon-remix-live-wire": { bank: NEON_REMIX_LIVE_WIRE.bank, title: NEON_REMIX_LIVE_WIRE.title, group: "alternate", writable: true, alternateOf: "neon" },
   "new-the-food-court": { bank: NEW_THE_FOOD_COURT.bank, title: NEW_THE_FOOD_COURT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "plumber-panic-alt": { bank: PLUMBER_PANIC_ALT.bank, title: PLUMBER_PANIC_ALT.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
+  "rhythm-remix-fire-sale": { bank: RHYTHM_REMIX_FIRE_SALE.bank, title: RHYTHM_REMIX_FIRE_SALE.title, group: "alternate", writable: true, alternateOf: "rhythm" },
+  "rhythm-remix-hostile-takeover": { bank: RHYTHM_REMIX_HOSTILE_TAKEOVER.bank, title: RHYTHM_REMIX_HOSTILE_TAKEOVER.title, group: "alternate", writable: true, alternateOf: "rhythm" },
+  "rhythm-remix-in-the-red": { bank: RHYTHM_REMIX_IN_THE_RED.bank, title: RHYTHM_REMIX_IN_THE_RED.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rossini-barber-of-seville-overture": { bank: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.bank, title: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.title, group: "imported", writable: true },
   "s-n-c-special-stage": { bank: S_N_C_SPECIAL_STAGE.bank, title: S_N_C_SPECIAL_STAGE.title, group: "copy", writable: true },
   "seseragi-v1-own-motif": { bank: SESERAGI_V1_OWN_MOTIF.bank, title: SESERAGI_V1_OWN_MOTIF.title, group: "imported", writable: true },
@@ -202,11 +262,19 @@ export const IMPORTED_BY_ID = {
   "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
   "speed-horizon-lines-overdrive": { bank: SPEED_HORIZON_LINES_OVERDRIVE.bank, title: SPEED_HORIZON_LINES_OVERDRIVE.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-horizon-lines": { bank: SPEED_HORIZON_LINES.bank, title: SPEED_HORIZON_LINES.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-remix-breakneck": { bank: SPEED_REMIX_BREAKNECK.bank, title: SPEED_REMIX_BREAKNECK.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-remix-cowbell": { bank: SPEED_REMIX_COWBELL.bank, title: SPEED_REMIX_COWBELL.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-remix-hairpin": { bank: SPEED_REMIX_HAIRPIN.bank, title: SPEED_REMIX_HAIRPIN.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-remix-redline-acid-gpt": { bank: SPEED_REMIX_REDLINE_ACID_GPT.bank, title: SPEED_REMIX_REDLINE_ACID_GPT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt-2": { bank: SPEED_ZONE_ALT_2.bank, title: SPEED_ZONE_ALT_2.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-original": { bank: SPEED_ZONE_ORIGINAL.bank, title: SPEED_ZONE_ORIGINAL.title, group: "alternate", writable: true, alternateOf: "speed" },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "super-mario-world": { bank: SUPER_MARIO_WORLD.bank, title: SUPER_MARIO_WORLD.title, group: "copy", writable: true },
+  "surge-remix-high-voltage": { bank: SURGE_REMIX_HIGH_VOLTAGE.bank, title: SURGE_REMIX_HIGH_VOLTAGE.title, group: "alternate", writable: true, alternateOf: "surge" },
+  "surge-remix-mashterpiece": { bank: SURGE_REMIX_MASHTERPIECE.bank, title: SURGE_REMIX_MASHTERPIECE.title, group: "alternate", writable: true, alternateOf: "surge" },
+  "surge-remix-overload": { bank: SURGE_REMIX_OVERLOAD.bank, title: SURGE_REMIX_OVERLOAD.title, group: "alternate", writable: true, alternateOf: "surge" },
+  "surge-remix-short-circuit": { bank: SURGE_REMIX_SHORT_CIRCUIT.bank, title: SURGE_REMIX_SHORT_CIRCUIT.title, group: "alternate", writable: true, alternateOf: "surge" },
   "terminal-velocity-original": { bank: TERMINAL_VELOCITY_ORIGINAL.bank, title: TERMINAL_VELOCITY_ORIGINAL.title, group: "imported", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },

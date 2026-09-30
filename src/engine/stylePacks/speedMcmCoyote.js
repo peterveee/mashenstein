@@ -146,32 +146,50 @@ export function howlLoop(t) {
   p.ringDir = -up * 0.95 - 0.1;
   return p;
 }
-// THE HOWL HELD TO THE EDGE (Peter, 28 Sep 2026: "he should be howling at least from
-// halfway across and keep howling until off screen"). `u` is seconds since the run's
-// latch let go: the head comes up over 0.3 s and the song runs from there, never
-// ending. Taken with the loop's own rise, so a head already up stays up — no dip.
-export function howlHold(t, u) {
-  const p = howlLoop(t);
-  const cyc = fract(t / 5);
-  const loopUp = cyc < 0.5 ? 0 : cyc < 0.58 ? smooth(0.5, 0.58, cyc) : cyc < 0.88 ? 1 : 1 - smooth(0.88, 0.98, cyc);
-  const up = Math.max(loopUp, smooth(0, 0.3, u));
-  const howl = (cyc > 0.58 && cyc < 0.88) || u > 0.3;
-  p.head.rot = -up * 0.95 + rest(t).head.rot * (1 - up);
-  p.head.jaw = howl ? 0.35 + Math.sin(t * 6) * 0.08 : 0;
-  p.head.eye = howl ? 'shut' : 'open';
-  p.heave = howl ? Math.sin(t * 9) * 0.25 : 0;
-  p.rings = howl ? 1 : up > 0.5 ? 0.4 : 0;
+// THE HOWL, ONCE, WITH ITS SOUND (Peter, 29 Sep 2026: "make sure the howl animation and
+// howl sound happen together, don't howl on a loop, just howl once"). A run's howler plays
+// this and nothing else: `u` is seconds from the coyoteHowl cue's first note (negative
+// while it waits for it) and `spb` the song's seconds per beat, since the cue is written in
+// beats. The mouth follows audio.js COYOTE_HOWL_NOTES — change both together: three yips
+// with the head half up, then the head goes all the way back for the long note, and comes
+// down as it ends.
+export const HOWL_ONCE_YIPS = [0, 0.5, 1];    // beats, each yip's note-on
+export const HOWL_ONCE_SONG = [1.5, 5.75];    // beats, the long note's start and end
+export function howlOnce(t, u, spb = 60 / 128) {
+  const p = rest(t);
+  const b = u / spb;
+  const [s0, s1] = HOWL_ONCE_SONG;
+  if (b < -0.5 || b > s1 + 1) return p;
+  let yip = 0;
+  for (const y of HOWL_ONCE_YIPS) {
+    const k = (b - y) / 0.4;
+    if (k > 0 && k < 1) yip = Math.max(yip, Math.sin(k * Math.PI));
+  }
+  const song = b > s0 && b < s1;
+  const lift = smooth(-0.4, 0, b) * (1 - smooth(s1, s1 + 0.8, b));
+  const up = lift * (0.55 + 0.45 * smooth(s0 - 0.3, s0, b));
+  p.head.rot = -up * 0.95 + p.head.rot * (1 - up);
+  p.head.jaw = song ? 0.35 + Math.sin(t * 6) * 0.08 : yip * 0.45;
+  p.head.eye = song ? 'shut' : 'open';
+  p.heave = song ? Math.sin(t * 9) * 0.25 : yip * 0.15;
+  p.rings = song ? 1 : yip > 0.3 ? 0.8 : up > 0.5 ? 0.4 : 0;
   p.ringDir = -up * 0.95 - 0.1;
   return p;
 }
 const HEAD_SIT = [2.6, -12.6];
 const HEAD_LIE = [9.0, -3.2];
 // `sit` and `lie` are the model's head anchors, where the doze's Z's rise from.
+// THE DOZE READS WELL BEFORE THE EDGE (Peter, 29 Sep 2026: "starts his yawn much earlier
+// so that the zzz's from his sleeping are clearly visible well before he is off screen").
+// The show latches as the ledge comes into view (index.js DESERT_COYOTE_ENTRY) and he
+// crosses the picture in ~4.2 s (portrait ~2.3 s at 1.5x), so the yawn is under way at
+// entry, he is down by ~1.9 and the Z's run from ~2.0 — under 40% of the way across in
+// landscape, about half in portrait — one every 0.6 s until he wakes.
 function yawnShow(u, t, dir, sit = HEAD_SIT, lieAt = HEAD_LIE, markAt = [0, 0]) {
   const p = rest(t);
   const h = p.head;
   if (u >= 7.8) return [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, howlAt(p, u, t, 8.2, 9.9)]];
-  const yawn = smooth(0.8, 1.3, u) * (1 - smooth(2.2, 2.5, u));
+  const yawn = smooth(0.2, 0.55, u) * (1 - smooth(1.25, 1.5, u));
   h.rot = lerp(h.rot, -0.5, yawn);
   h.jaw = yawn * (1.05 + (yawn > 0.95 ? Math.sin(t * 16) * 0.03 : 0));
   h.eye = yawn > 0.25 ? 'shut' : 'open';
@@ -179,11 +197,11 @@ function yawnShow(u, t, dir, sit = HEAD_SIT, lieAt = HEAD_LIE, markAt = [0, 0]) 
   h.tongue = yawn;
   p.heave = 0.5 * yawn;
   p.lean = -0.05 * yawn;
-  const lie = smooth(2.6, 3.4, u) * (1 - smooth(6.4, 7.1, u));
+  const lie = smooth(1.35, 1.85, u) * (1 - smooth(6.4, 7.1, u));
   p.lie = lie;
   if (lie > 0) {
     h.rot = lerp(h.rot, 0.12, lie);
-    if (u > 3.0 && u < 6.3) h.eye = 'shut';
+    if (u > 1.5 && u < 6.3) h.eye = 'shut';
     else if (u >= 6.3 && u < 6.7) h.lids = 0.6;
     p.heave += Math.sin(t * 2.4) * 0.3 * lie;
     h.flick = u > 5.1 && u < 5.25 ? 0.5 : 0;
@@ -191,21 +209,25 @@ function yawnShow(u, t, dir, sit = HEAD_SIT, lieAt = HEAD_LIE, markAt = [0, 0]) 
   }
   const ax = lerp(sit[0], lieAt[0], lie);
   const ay = lerp(sit[1], lieAt[1], lie);
-  for (let i = 0; i < 4; i++) {
-    const age = (u - 3.5 - i * 0.8) / 1.7;
+  for (let i = 0; i < 8; i++) {
+    const age = (u - 1.65 - i * 0.6) / 1.7;
     if (age <= 0 || age >= 1 || u > 6.4) continue;
     p.marks.push({ x: ax + markAt[0] + 2 + age * 3.5 + Math.sin(age * 5 + i) * 0.6, y: ay + markAt[1] - 4.5 - age * 8,
       s: 0.9 + age * 0.7, a: Math.min(1, age * 5) * (1 - smooth(0.65, 1, age)) });
   }
   return [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, p]];
 }
+// The pup's two yips: their mouths open at u CHORUS_YIP_U and CHORUS_YIP_U + CHORUS_YIP_GAP
+// (the positive halves of one sine), and the coyoteYip cue is struck on each.
+const CHORUS_YIP_U = 1.8;
+export const CHORUS_YIP_GAP = 0.5;
 // `pupDx` is how far along the ledge the pup sits (a bigger-headed model wants room).
 function chorusShow(u, t, dir, pupDx = 9.5) {
   const A = howlAt(rest(t), u, t, 0.8, 3.4);
   const B = rest(t + 1.3);
   const upB = smooth(1.6, 1.8, u) * (1 - smooth(3.4, 3.8, u));
-  const yipT = u - 1.8;
-  const yip = yipT > 0 && yipT < 0.75 ? Math.max(0, Math.sin((yipT / 0.25) * Math.PI)) : 0;
+  const yipT = u - CHORUS_YIP_U;
+  const yip = yipT > 0 && yipT < CHORUS_YIP_GAP * 1.5 ? Math.max(0, Math.sin((yipT / (CHORUS_YIP_GAP / 2)) * Math.PI)) : 0;
   const howlB = u > 2.55 && u < 3.4;
   B.head.rot = -upB * (howlB ? 1.05 : 0.7) + B.head.rot * (1 - upB);
   B.head.jaw = howlB ? 0.4 + Math.sin(t * 7.3) * 0.08 : yip * 0.45;
@@ -500,12 +522,15 @@ export function winkShow(ctx, t, K, u, idleBlink = null) {
 
 // ------------------------------------------------------------------ entry
 const SHOWS = {
-  yawn: { loop: 10.4, start: 0.55 },
+  yawn: { loop: 10.4, start: 0.35 },
   chorus: { loop: 6, start: 0.5 },
   wink: { loop: 6, start: 0.2 },
   winkWait: { loop: 6, start: 0.2 },
 };
 export const MCM_COYOTE_MODES = ['howl', 'yawn', 'chorus', 'wink'];
+// When the pup's first yip opens, in show seconds after a latched chorus starts (divide by
+// the pace for real ones): stylePacks/index.js places the coyoteYip pair on it.
+export const CHORUS_YIP_AFTER = CHORUS_YIP_U - SHOWS.chorus.start;
 // THE WINK WAITS FOR THE FINISH, as the paper one does (desertLandmarks.js 'winkWait'):
 // until the run says the hero is on the finish pad (`since` null) it sits square on and
 // only blinks; then it plays the wink once and holds this still moment of it.
@@ -526,9 +551,10 @@ export const CURRENT_MODEL = {
  * paper coyote's (x0, y0 - 12.4). facing 1 looks right, -1 left; the ledge is the
  * caller's. mode is the paper's: 'howl' (default), 'yawn', 'chorus' or 'wink', where the
  * model has it (else the howl); `since` and `pace` latch a show as the paper does
- * (null = looped on t). For the howl, `since` holds the song from then on (howlHold).
+ * (null = looped on t). For the howl, `since` plays it ONCE (howlOnce), in real seconds from
+ * its sound's first note on a `beat` of that many seconds.
  */
-export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 'howl', since = null, pace = 1, look = 0 } = {}) {
+export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 'howl', since = null, pace = 1, look = 0, beat = 60 / 128 } = {}) {
   const dir = facing < 0 ? -1 : 1;
   const m0 = ctx.getTransform();
   FRAME_SCALE = Math.hypot(m0.a, m0.b) || 1;
@@ -564,7 +590,7 @@ export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 
       ? yawnShow(u, t, dir, model.headSit, model.headLie ?? model.headSit, model.marks)
       : chorusShow(u, t, dir, model.pupDx);
   } else {
-    cast = [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, since == null ? howlLoop(t) : howlHold(t, Math.max(0, since))]];
+    cast = [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, since == null ? howlLoop(t) : howlOnce(t, since, beat)]];
   }
   for (const [fig, pose] of cast) {
     const P = fig.pup
@@ -930,6 +956,8 @@ export const jonesFlick = (t) => (fract(t * 0.43) < 0.06 ? 0.3 : 0);
 // closed smirk, and the wink with its star. Settled by ~3, so the held moment (u 5.5)
 // is still.
 const hold = (a, b, c, d, u) => smooth(a, b, u) * (1 - smooth(c, d, u));
+// Where in the show the wink's star pops.
+const JONES_WINK_STAR_U = 1.83;
 export function jonesWinkShow(ctx, t, K, u, idle = null, lookIn = 0) {
   const look = (lookIn || 0) * (1 - smooth(0.2, 0.55, u));
   const bounce = (a) => (u > a && u < a + 0.3 ? Math.max(0, Math.sin(((u - a) / 0.3) * Math.PI)) : 0);
@@ -947,9 +975,13 @@ export function jonesWinkShow(ctx, t, K, u, idle = null, lookIn = 0) {
   ctx.save();
   jonesFrontFrame(ctx);
   jonesFrontFigure(ctx, t, K, f);
-  jonesWinkStar(ctx, K, (u - 1.83) / 0.8);
+  jonesWinkStar(ctx, K, (u - JONES_WINK_STAR_U) / 0.8);
   ctx.restore();
 }
+// When the shipped wink's star pops, in seconds after the pad's clock starts: the show
+// starts at SHOWS.winkWait.start and runs at pace 1. The coyoteWink cue's "ting!" lands
+// here (stylePacks/index.js drawDesertLife), so a retimed star moves its ding with it.
+export const WINK_SPARKLE_AFTER = JONES_WINK_STAR_U - SHOWS.winkWait.start;
 
 // The bake-off's first cut, kept for the lab: a raised brow, the slow wink with a star,
 // and Wile E.'s toothy grin with a glint off a tooth.

@@ -299,6 +299,8 @@ export function createStepSeq({
   // What differs is these flags.
   ns = 'stepseq', docked = false, wholeSong = false, scopeToggle = true,
   rulerLabel = 'Channel rack', headerHost = null,
+  // The selected drum's Volume strip under the docked kit — see `volume` in createBarGrid.
+  volume = null,
   // (kind) => { from, to } | null — the desk turning "the bar being played" / "the bars
   // I select" / "the whole song" into actual bars. Only the desk knows the transport and
   // the selection; `null` is the grid's word for the whole of what is shown.
@@ -354,7 +356,7 @@ export function createStepSeq({
     // the panel's header row survives a fold and these must not, and a column of track
     // names has no blank half to hold them the way the roll's keyboard does.
     docked, wholeSong, scopeToggle, headerHost, selectedBars, onSelectBars,
-    onDoubleClickStep,
+    onDoubleClickStep, volume,
     // Follows the song's grid. The pattern editor can RENDER any of them — the shared
     // grid engine is generic — but has no picker of its own yet, so it cannot promote a
     // song onto one. Drawing a triplet still starts in the roll; see the plan.
@@ -598,6 +600,7 @@ export function createStepSeq({
     focusRange: grid.focusRange,
     armFollow: grid.armFollow,
     songChanged() { kitOrder = null; grid.songChanged(); },
+    redrawVolume: grid.redrawVolume,
     /**
      * The lane set really has changed — a track was added or deleted.
      *

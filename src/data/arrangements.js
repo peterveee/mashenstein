@@ -87,6 +87,10 @@
 //
 // So a pure arrangement edit is one line of numbers, and reads as one in a diff.
 //
+// `automation` is the one field that is not about bars: a volume line per track, and
+// the points where a track is cut dead. Its format and its reasons are in
+// src/data/automation.js; here it is only carried, so the engine finds it on the bank.
+//
 // LAYER SECTIONS ARE DELTAS. A section in `sections` here may carry `base: n`,
 // meaning "bank section n, with these keys replaced". That is what makes "replace
 // the lead everywhere and leave the rest alone" expressible; fully materialised
@@ -99,6 +103,7 @@
 // machine-rewritten.
 
 import { ARRANGEMENT_BY_ID } from './songs/index.js';
+import { automationIssues, hasAutomation } from './automation.js';
 
 // Written by the desk, and rewritten WHOLE on every save — so nothing inside the
 // object below survives, comments included. Anything worth saying about it is said
@@ -396,9 +401,13 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
   // means any grid finer than the sixteenth rather than the one that used to exist.
   const fine = RESOLUTIONS.includes(entry.resolution) && entry.resolution !== LEGACY_RESOLUTION
     ? entry.resolution : null;
+  // Automation counts on its own too: a fade on an otherwise untouched song is still a
+  // decision about how it plays, and the engine reads it off the bank.
+  const automation = hasAutomation(entry.automation) ? entry.automation : null;
   if (!layer.length && !order && entry.bpm == null && entry.swing == null
-    && fine == null) return bank;
+    && fine == null && !automation) return bank;
   const out = { ...bank };
+  if (automation) out.automation = automation;
   if (entry.bpm != null) out.bpm = entry.bpm;
   if (entry.swing != null) out.swing = entry.swing;
   if (fine != null) out.resolution = fine;
@@ -519,5 +528,9 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
       issues.push(`layer section ${i} is based on section ${s.base}, which does not exist`);
     }
   });
+  if (entry.automation != null) {
+    const bars = expandOrder(order, !!sections.length).length;
+    issues.push(...automationIssues(entry.automation, laneKeys, bars));
+  }
   return issues;
 }

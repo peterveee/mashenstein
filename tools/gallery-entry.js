@@ -38,7 +38,7 @@ import {
 import { drawPoster, POSTER_W, POSTER_H, CABINET_STAR } from '../src/sprites/backwall.js';
 import { TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, caneScale, setInkScale, setInkDensity, ACTIVE_CELEBRATION_STYLE, DEATH_FACE_TIMING, DEATH_EYE_STYLES, TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction, b33pTitleShotPose, poseFromPlayer, drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC, drawThrownAxe, drawRocketFist, AXE_THROW_AT } from '../src/sprites/toons.js';
 import { HERO_SPRITES } from '../src/sprites/heroes.js';
-import { getStylePack, neonCityReveal, NEON_GOLDEN_MOOD, neonNightMood, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_NOSTRIL_STYLES, lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem } from '../src/engine/stylePacks/index.js';
+import { plumberBarnAtCamFor, getStylePack, neonCityReveal, NEON_GOLDEN_MOOD, neonNightMood, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_NOSTRIL_STYLES, lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 
 import { UNLOCKS } from '../src/data/stages.js';
@@ -96,19 +96,16 @@ import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../sr
 import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
 import { PIG_FLOCK_CANDIDATES, drawPigFlockScene, drawPigFlockCloseUp, drawPigletLineup } from '../src/dev/pig-flock-candidates.js';
 import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
-import { NEON_ANTENNA_CANDIDATES } from '../src/dev/neon-antenna-candidates.js';
 import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
-import { FROST_CRAYON_CANDIDATES, FROST_CRAYON_SNOW_CANDIDATES, FROST_CRAYON_SCREENS, drawFrostCrayonScene } from '../src/dev/frost-crayon-candidates.js';
-import { SPEED_MCM_OBJECTS, OBJECT_STYLES, drawSpeedObjectClose, drawSpeedObjectGameScale } from '../src/dev/speed-mcm/object-sheet.js';
 import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
 import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
+import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
 import { CRYPT_LANE_CANDIDATES, CRYPT_SELECTED_CANDIDATES, drawCryptLaneStudy } from '../src/dev/crypt-lane-enemy-candidates.js';
-import { CRYPT_ANIMAL_STUDIES, drawCryptAnimalStudy } from '../src/dev/crypt-animal-refinements.js';
 import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
 import { CRYPT_HALLOWEEN_BACKGROUNDS, CRYPT_HALLOWEEN_LANE, drawCryptHalloweenBackground, drawCryptHalloweenLane } from '../src/dev/crypt-halloween-bakeoff.js';
 import { CRYPT_GATE_CANDIDATES, drawCryptGateScene, drawCryptGateCloseUp, drawCryptGateSwingStrip } from '../src/dev/crypt-gate-bakeoff.js';
@@ -7835,18 +7832,6 @@ function cryptStyleTiles(grid, tag, cand) {
  }
 }
 
-// Graveyard animals: visual audition only. References use actual shipped entity painters.
-{
- const grid=section('crypt-animal-refinements','CRYPT SHIFT — bone hounds, dogs, cats & panthers (bake-off)',
-  'H0/D0/C0 are the first bone hound and the shipped dog/cat controls. Three bone hounds, three dogs and three cats follow. '
-  + 'Each candidate runs against the real Crypt scene at gameplay size, then appears between Lorenzo and Gary on a neutral stage. '
-  + 'These are animated art proposals; panthers and revised hounds have no gameplay definition.', '26 Sep 2026');
- for(const item of CRYPT_ANIMAL_STUDIES){
-  tile(grid,item.id+' '+item.name+' — gameplay',item.note,W,H,(ctx,t)=>drawCryptAnimalStudy(ctx,t,item),{animated:true});
-  tile(grid,item.id+' '+item.name+' — close','Neutral close-up against shipped heroes.',W,H,(ctx,t)=>drawCryptAnimalStudy(ctx,t,item,true),{animated:true});
- }
-}
-
 // Crypt movie-night expansion: review-only gameplay props, stage-specific country,
 // and tiny animated cameos. Each backdrop card uses the shipped gouache painter's
 // study seam at its proposed depth and stage; lane props retain the lane's own art.
@@ -7940,31 +7925,6 @@ function cryptStyleTiles(grid, tag, cand) {
   }
   tile(grid, 'The piglet — every pose', 'Trot, stand, ask, sit, flat, root and the hop round, 5.2x.', W, H,
     (ctx, t) => drawPigletLineup(ctx, t), { animated: true });
-}
-
-// ------------------------------------------ SPEED ZONE — every backdrop object in MCM (lab)
-// Peter, 27 Sep 2026: "i would like to see more of the art from the real speed cabinet
-// re-rendered in mcm style in the gallery to see what works and what doesn't. Can you put
-// all objects from the background in the lab? we already have versions of the coyote".
-// Objects and cameras in src/dev/speed-mcm/object-sheet.js, painters in objects.js.
-{
-  const grid = section('speed-mcm-objects-bakeoff', 'SPEED ZONE — every backdrop object in mid-century modern',
-    'Asked 27 Sep 2026: all of Speed Zone\'s backdrop objects re-rendered in the mid-century modern hand, to see what '
-    + 'works and what doesn\'t (the coyote has its own bake-off above). One row per object: 0 is the shipped paper '
-    + 'backdrop — the real pack at the stage and camera that put the object mid-picture — A is MCM SUNSET and B MCM '
-    + 'MIDDAY on the same spot of the same country, each framed close; the fourth card is all three cropped at game '
-    + 'scale (1x). NEW marks an object with no MCM version before today; the rest were painted for the two-screen '
-    + 'bake-off and are shown here on their own. ANIMATED (the signs are still).',
-    '27 Sep 2026');
-  for (const obj of SPEED_MCM_OBJECTS) {
-    const label = `${obj.name}${obj.isNew ? ' — NEW' : ''}`;
-    for (const style of OBJECT_STYLES) {
-      tile(grid, `${label} · ${style.tag} ${style.name}`, style.id === 'shipped' ? obj.note : `${obj.zoom}x game scale.`, W, H,
-        (ctx, t) => drawSpeedObjectClose(ctx, t, obj, style.id, W, H), { animated: !obj.still });
-    }
-    tile(grid, `${label} · game scale`, obj.views.length > 1 ? 'Rows 0 / A / B at 1x.' : '0 | A | B at 1x.', W, H,
-      (ctx, t) => drawSpeedObjectGameScale(ctx, t, obj, W, H), { animated: !obj.still });
-  }
 }
 
 // ------------------------------------------ SPEED ZONE — one afternoon across the act (lab)
@@ -8076,52 +8036,6 @@ function cryptStyleTiles(grid, tag, cand) {
     (ctx, t) => drawDesertCatLineup(ctx, t, W, H), { animated: true });
 }
 
-// ------------------------------------------ FROST FORTRESS — crayon (lab)
-// Peter, 28 Sep 2026: "do you think crayon might work for the frost level?" then "do a small
-// bakeoff for frost 1 and frost 3 at dusk". Two screens re-composed from the shipped
-// watercolor pack's own numbers (src/dev/frost-crayon/plan.js), in one crayon hand on two
-// papers; the lane, hazards and hero are the shipped ones.
-{
-  const grid = section('frost-crayon-bakeoff', 'FROST FORTRESS — crayon (bake-off)',
-    'Asked 28 Sep 2026: could crayon replace the cut paper on Frost? 0 is the shipped paper. A is crayon on WHITE '
-    + 'paper, where the bare sheet is the snow; B is the same hand on pale BLUE-GREY stock with the snow laid in as '
-    + 'white crayon. Two screens: frost-1 by day (the polar bears under the crown keep) and frost-3 at dusk with the '
-    + 'aurora. The legibility test is the white snowmen and ice crystals in the lane: both papers press the band '
-    + 'just above the lane to a mid-toned shadow blue so they read. Round 2 (Peter: "sky crayon, paper everything '
-    + 'else"): C and D keep the shipped paper world and swap only the sky for crayon — C from the white-paper hand, '
-    + 'D from the blue-grey. The paper pack\'s soft cloud washes still draw over the crayon sky. ANIMATED.',
-    '28 Sep 2026');
-  FROST_CRAYON_CANDIDATES.forEach((cand, n) => {
-    const tag = n === 0 ? '0' : String.fromCharCode(64 + n);
-    for (const screen of FROST_CRAYON_SCREENS) {
-      tile(grid, `${tag} ${cand.name} — ${screen.name}`, cand.note, W, H,
-        (ctx, t) => drawFrostCrayonScene(ctx, t, cand.paint, screen), { animated: true });
-    }
-  });
-}
-
-{
-  // The blizzard at the strength the run has there: frost-1's end of the ladder (0.45) by
-  // day, frost-3's opening (about 1.0) at dusk.
-  const SNOW = { s1: 0.45, s2: 1.02 };
-  const grid = section('frost-crayon-sky-snow', 'FROST FORTRESS — crayon sky in the snow (bake-off)',
-    'Asked 28 Sep 2026, after the crayon-sky round: "i kinda like the crayon sky (against white)... not so much for '
-    + 'the aurora, could that be the other way? also I need to see it with snow against it". Every card has the '
-    + 'shipped blizzard falling at the strength the run has there (haze and flakes, laid over the hero as the game '
-    + 'does): frost-1 by day at 0.45, frost-3 at dusk at 1.0. 0 is the shipped paper; C is the crayon sky on white '
-    + 'with its crayon aurora; E is the same crayon sky with the shipped vellum aurora at 2.4x its gain (brightened '
-    + 'on request, as the navy swallowed it at 1x). By day C and E match (no '
-    + 'aurora on frost-1). ANIMATED.',
-    '28 Sep 2026');
-  FROST_CRAYON_SNOW_CANDIDATES.forEach((cand, n) => {
-    const name = n === 0 ? `0 ${cand.name}` : cand.name;
-    for (const screen of FROST_CRAYON_SCREENS) {
-      tile(grid, `${name} — ${screen.name}, snowing`, cand.note, W, H,
-        (ctx, t) => drawFrostCrayonScene(ctx, t, cand.paint, screen, { snow: SNOW[screen.id] }), { animated: true });
-    }
-  });
-}
-
 // ------------------------------------------------ run cadence vs speed
 //
 // The run cycle is wound by the lane's speed: Player.update adds
@@ -8229,39 +8143,98 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// ------------------------------------------ TERMINAL VELOCITY — rooftop antennas (lab)
-// Peter, 29 Sep 2026: "bakeoff. better antennas in terminal velocity buildings". Each
-// candidate is a painter for neonWireRow's `antenna` seam (context.neonAntenna), in
-// src/dev/neon-antenna-candidates.js; the rest of every card is the shipped neon pack.
+// ------------------------------------------ FIELD SERVICE — the pixel intro (lab)
+// Peter, 30 Sep 2026: the opening of plumber-1 highly pixelated, "sharp and stylish", then
+// transforming to the paper world on a bar of the music; "dots over everything... like
+// looking through a windscreen... go nuts", cheap, four bars. The looks are in
+// src/dev/field-service-pixel-intro.js; every card is the shipped paper backdrop fed through
+// one of them, with the real lane and Lorenzo crisp on top.
 {
-  ensureKanaFonts();
-  const neon = CABINETS.find((cab) => cab.id === 'neon');
-  const pack = getStylePack('neon', {});
-  const grid = section('neon-antenna-bakeoff', 'TERMINAL VELOCITY — rooftop antennas (bake-off)',
-    'Asked 29 Sep 2026: "better antennas in terminal velocity buildings". 0 is what ships: one 13px tube and a '
-    + '2px lamp on the tallest towers, nothing on the rest. A lattice truss, B stepped spire crowns, C rooftop '
-    + 'aerial clutter on most roofs, D guyed broadcast masts with cell panels, E a mix (each tall tower picks A, B '
-    + 'or D; mid roofs get C), F is E with Tokyo\'s red aviation lamps flashing in unison, roof corners included. '
-    + 'Round two (29 Sep, "a mix of 0 and B and C. say 1 in 4 have B and 1 in 6 have C"): G. Every lamp, the '
-    + 'shipped one included, is now centred on its pole (it sat half a pixel to one side). '
-    + 'SHIPPED 29 Sep: G at 1 in 3 spires and 1 in 5 aerials ("do 1 in 3 for b and 1 in 5 for C... ship it"); '
-    + 'card 0 now shows it, G keeps the 1-in-4 / 1-in-6 round. '
-    + 'First card: neon-2 at night, the city scrolling. Second: the same, 3x on the near roofline. ANIMATED.',
-    '29 Sep 2026');
-  const night = neonNightMood(1);
-  const scene = (ctx, t, cand) => {
-    const c = { stageIndex: 2, progress: 0.2, neonMood: night, neonAntenna: cand.antenna };
-    pack.bg(ctx, t, 400 + t * 40, neon, 20000, c, 0, c);
-    pack.post(ctx, t);
+  const cab = CABINETS.find((c) => c.id === 'plumber');
+  const st = STAGES.find((x) => x.id === 'plumber-1');
+  const pack = getStylePack(cab.style, {});
+  const speed = BASE_SPEED * (1 + (cab.speedBonus || 0)) * (st.speedMult ?? 1);
+  const loopSec = PIXEL_INTRO_LOOP_BARS * 4 * 60 / PIXEL_INTRO_BPM;
+  const totalDist = speed * (st.durationSec || 60);
+  const s = sectionEl('field-service-pixel-intro', 'FIELD SERVICE — the pixel intro (bake-off)',
+    'Asked 30 Sep 2026: the opening of Field Service level 1 "highly pixelated but in a sharp and stylish way", '
+    + 'transforming to the paper world in time with a bar of the music; "dots over everything... like looking through a '
+    + 'windscreen... go nuts", nothing expensive, on screen for 4 bars. The song picks the bar: FIELD SERVICE opens on '
+    + 'four bars of square-wave intro with a POWER DOWN on bar 4\'s last beat, falling into bar 5. So every card loops '
+    + 'the real plumber-1 opening at 124 BPM: bars 1–4 in the look, the resolve across that one power-down beat, bar 5 '
+    + 'on paper. The strip bottom-right counts the bars (red = the power-down beat). The picture is painted at 1x (a '
+    + 'ninth of a 3x frame\'s pixels) and halved down to its cells; measured headless, every look is 0.8–2.6 ms of '
+    + 'main-thread work a frame, round two\'s inks on a tube the dearest (N, at 4px). ANIMATED.',
+    '30 Sep 2026');
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
   };
-  for (const cand of NEON_ANTENNA_CANDIDATES) {
-    tile(grid, cand.label, cand.note, W, H, (ctx, t) => scene(ctx, t, cand), { animated: true });
-    tile(grid, `${cand.label} — close-up`, 'The near roofline at 3x.', W, H, (ctx, t) => {
-      ctx.save();
-      ctx.scale(3, 3);
-      ctx.translate(-150, -(GROUND_Y - 176));
-      scene(ctx, t, cand);
-      ctx.restore();
+  window.__pixelIntroCost = pixelIntroCost;
+  const rounds = [
+    [sub('Round four — the landing on 5.1',
+      'Asked 30 Sep: shake the screen across the pixel-to-paper change? Not during the power-down — the tube dying is a '
+      + 'falling gesture and a shake would jitter the line — but on the 5.1 downbeat, where the paper lands and the band '
+      + 'comes in. All three are Q (as shipped) up to 5.1. R: the game\'s own shake at the act card\'s weight. S: the '
+      + 'paper backdrop dropped in like a cut-out sheet, one small bounce, lane and hero still. T: both. Use SLOW to read the landing.'),
+    PIXEL_INTRO_ROUND_FOUR],
+    [sub('Round three — L, the backdrop only',
+      'Peter picked L, but with Lorenzo and the lane left alone: the player has already seen him in paper, so it is the '
+      + 'background that transforms, not the whole scene. Only bg() is on the tube; he runs crisp in front of it, over '
+      + 'the dead black tube on 4.4 and the paper world on 5.1.'),
+    PIXEL_INTRO_ROUND_THREE],
+    [sub('Round two — inside the arcade cabinet',
+      'Peter liked A, C and H, and gave the story: the hero has just jumped INTO an arcade cabinet\'s screen; bars 1–4 are '
+      + 'chiptune, 4.4 is a falling sine, and on 5.1 the paper world is fully there and the song turns modern. So these '
+      + 'pixelate the WHOLE frame — hero and lane too, since whoever jumped in is in the game — mostly as C\'s flat inks '
+      + 'on a softer version of H\'s tube, with the set switching off as the change: the falling sine, made visible.'),
+    PIXEL_INTRO_ROUND_TWO],
+    [sub('Round one', 'The backdrop only; the lane and hero stay crisp paper (F and G are glass in front of '
+      + 'everything, hero included).'), PIXEL_INTRO_CANDIDATES],
+  ];
+  for (const [grid, cands] of rounds) for (const cand of cands) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, W, H, (ctx, t) => {
+      const lt = t % loopSec;
+      const camX = lt * speed;
+      // The barn aimed the way the run aims it (RunState.openingBarnAtCam): at the
+      // right of the picture when the paper lands. This world never holds still, so
+      // the camera then is simply the speed times the four bars.
+      const bc = { stageIndex: 1, progress: 0,
+        plumberBarnAtCam: plumberBarnAtCamFor(speed * (PIXEL_INTRO_LOOP_BARS - 1) * 4 * 60 / PIXEL_INTRO_BPM, W) };
+      const ph = drawPixelIntro(ctx, cand, {
+        t: lt,
+        base: cab.sky[0],
+        measure: true,
+        paintBg: (g) => pack.bg(g, lt, camX, cab, totalDist, null, 0, bc),
+        paintWorld: (g) => {
+          g.save();
+          applyWorld(g, WORLD_Z, 0);
+          if (pack.ground) pack.ground(g, camX, cab, []);
+          drawToon(g, 'lorenzo', pose('run', lt), 62, GROUND_Y, 24);
+          g.restore();
+          if (pack.post) pack.post(g, lt);
+          if (pack.weather) pack.weather(g, lt);
+        },
+      });
+      // the bar counter: five bars, the current one lit, the power-down beat in red
+      for (let b = 0; b < PIXEL_INTRO_LOOP_BARS; b++) {
+        const x = W - 8 - (PIXEL_INTRO_LOOP_BARS - b) * 16;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x - 1, H - 8, 16, 5);
+        ctx.fillStyle = b + 1 === ph.bar ? (ph.s > 0 && ph.s < 1 ? '#ff3b3b' : '#fff6d8') : 'rgba(255,255,255,0.28)';
+        ctx.fillRect(x, H - 7, 14, 3);
+        if (b === 3) { ctx.fillStyle = '#ff3b3b'; ctx.fillRect(x + 10.5, H - 7, 3.5, 3); }
+      }
     }, { animated: true });
   }
 }

@@ -335,6 +335,11 @@ const Flow = {
     onAttract: () => Flow.startAttract(),
     onSlotChosen: (i, isNew) => {
       Flow.hubPosition = null;
+      // Who you are is session memory, not save data. Choosing a shift starts
+      // it as Lorenzo rather than as whoever you last played in another one.
+      Flow.hubAvatar = null;
+      Flow.lastTeam = null;
+      setTransitionHero(Flow.heroId());
       if (isNew) {
         setState(new DifficultyState({ save, onStart: () => save.newSlot(i, Date.now()), onCancel: () => { save.eraseSlot(i); Flow.toTitle(); }, onDone: () => setState(new IntroState({
           // The film is the opening of a new save, not an item in a gallery: it
@@ -350,9 +355,11 @@ const Flow = {
           onDone: () => {
             save.slot.campaign.storyFlags.sawIntro = true;
             save.persist();
+            // The film ends on Lorenzo leaping into the cabinet, so 1-1 opens
+            // with him — named here, not left to Flow.heroId().
             const stage = STAGES[0];
             const cab = CABINET_BY_ID[stage.cabinet];
-            if (cab) Flow.launchStage(cab, stage, [], undefined, undefined, true, false, false, 0, 0, false, false, true);
+            if (cab) Flow.launchStage(cab, stage, [], undefined, 'lorenzo', true, false, false, 0, 0, false, false, true);
             else Flow.toHub();
           },
         })) }));

@@ -4630,12 +4630,16 @@ export const PROP_PAINTERS = {
     // pushed every point down into the last quarter of the visible mark, which
     // is the one thing a chevron cannot survive.
     const dx = w * 0.03, dy = top + h * 0.16, dw = w * 0.94, dh = h - dy;
-    const run = dh * 0.5, t = dh * 0.5, step = w * 0.23;
+    // The pitch is capped against the HEIGHT, so a pad drawn wider (the loop's,
+    // across the ring's mouth) gets more chevrons at the same spacing instead of
+    // the same five pulled apart. The lane's 14x4 pad is under the cap and
+    // unchanged.
+    const run = dh * 0.5, t = dh * 0.5, step = Math.min(w * 0.23, h * 0.9);
     ctx.save();
     ctx.beginPath();
     rr(ctx, dx, dy, dw, dh, h * 0.05);
     ctx.clip();
-    for (let i = -1; i < 5; i++) {
+    for (let i = -1, n = Math.ceil(dw / step) + 1; i < n; i++) {
       const cx = dx + (i + p) * step;
       plain(ctx, '#f6d33c', (c) => {
         c.moveTo(cx - run, dy);

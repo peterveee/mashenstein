@@ -198,7 +198,7 @@ export const CABINETS = [
   {
     id: 'plumber', name: 'FIELD SERVICE', act: 1, style: 'pixel',
     unlockPlugs: 0,
-    mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
+    mechanic: 'qcrates', // breakable !-crates, islands and a tunnel as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
     // What the ground is made of UNDER the turf — the cutaway you see inside a
@@ -341,10 +341,10 @@ export const CABINETS = [
         // corridor a few seconds sooner.
         at: 0.18, dwell: 8, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88,
         // Plumber's own furniture, minus the cactus — a desert plant is the one
-        // thing in the set that cannot be underground. The pipe earns its place
-        // twice over: it is tall enough to be a real jump and it is the thing
-        // this cabinet is named after.
-        hazards: ['crate', 'barrel', 'pipe', 'drone'],
+        // thing in the set that cannot be underground. No pipe either: the
+        // cabinet has none any more (Peter, 30 Sep 2026), and the box it
+        // shared this list with is what stands in its place.
+        hazards: ['crate', 'barrel', 'drone'],
         prize: 'coins', bonus: 'capShield', lowPrize: 'capSpeed',
       },
     ],
@@ -366,7 +366,7 @@ export const CABINETS = [
       // to avoid. Counted, not eyeballed: see the tier tally in the note on
       // PLUMBER_PATTERNS.
       P(1, [{ t: 'qcrate', dx: 0 }, { t: 'qcrate', dx: 16 }, { t: 'cactus', dx: 90 }]),
-      P(2, [{ t: 'pipe', dx: 0 }, coinArc(60)]),
+      P(2, [{ t: 'crate', dx: 0, n: 2 }, coinArc(60)]),
       P(2, [{ t: 'qcrate', dx: 0 }, { t: 'qcrate', dx: 16 }, { t: 'qcrate', dx: 32 }]),
       // THE PEEL IS BENCHED. Everything below used to be the banana peel lane —
       // eight patterns across two cabinets, built to give Plumber a hazard you
@@ -393,10 +393,12 @@ export const CABINETS = [
       P(1, [{ t: 'crate', dx: 0 }, { t: 'popSpikes', dx: 56 }]),
       P(1, [{ t: 'floorSaw', dx: 0 }]),
       P(1, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
-      // The pipe is tall enough to hide what is behind it until you are on it,
+      // The stack is tall enough to hide what is behind it until you are on it,
       // and the saw is in the floor. Tier 2 for that reason: it is a read you
-      // can only make early, and early is a skill.
-      P(2, [{ t: 'pipe', dx: 0 }, { t: 'floorSaw', dx: 60 }]),
+      // can only make early, and early is a skill. (These three cells were the
+      // pipe's until Peter took pipes out of the cabinet, 30 Sep 2026; a
+      // two-box stack is the same height of jump.)
+      P(2, [{ t: 'crate', dx: 0, n: 2 }, { t: 'floorSaw', dx: 60 }]),
       // Prize box overhead, teeth underfoot. Jumping for the !-crate is what
       // carries you over the plate — take the prize and the hazard is free.
       P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'qcrate', dx: 0 }]),
@@ -406,7 +408,7 @@ export const CABINETS = [
       // wall — the cabinet already owned both through BASE_PATTERNS, at tier 2
       // only, which is late enough that most of a first run never met them.
       P(1, [{ t: 'barrel', dx: 0 }, coinArc(90)]),
-      P(1, [{ t: 'pipe', dx: 0 }]),
+      P(1, [{ t: 'crate', dx: 0, n: 2 }]),
       // The countryside picks (Peter, 24 Sep, from the plumber ideas bake-off): the
       // farmyard GOOSE, a closer like the dogs, and the RAKE whose handle comes up into
       // the face of a hero who steps on it. Each alone, with room to read it.

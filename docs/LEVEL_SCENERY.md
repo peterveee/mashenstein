@@ -40,7 +40,7 @@ headless ledger cannot run, so its counts come from the charts themselves.
 | Cloud flock (8 faceless clouds) drifting left | background | all | Always on screen. Wind 4 px/s plus 0.2 parallax | `paintClouds` in `pixelPack.bg` |
 | Cloud pal: face that bobs, looks about, blinks, giggles or dozes; laughs or gasps when the hero is hit | background | all | Crosses left to right at 13 px/s. On screen about 44 s in every 51.5 s cycle | `drawCloudPal`, `sunShock` |
 | Volcano with smoke puffs (7.7 s cycle); a lava glint when paper is off | background | all | One volcano per stage, pinned at **0.5 of the stage**. Visible over roughly 30–70% (parallax 0.09) | `drawVolcano`, `drawVolcanoSmoke`, `VOLCANO_PLX` |
-| **new** Barn and silo: rooster vane swings, hoist rope swings, 3 hens peck | background | plumber-1 | Once, near the start. `PLUMBER_BARN_AT_PX` = 700 world px (on the nearest near summit), so on screen ≈3–12% of the stage | `drawPlumberLife` → `drawPlumberBarn` (plumberLandmarks.js) |
+| **new** Barn and silo: rooster vane swings, hoist rope swings, 3 hens peck | background | plumber-1 | Once, near the start. `PLUMBER_BARN_AT_PX` = 700 world px (on the nearest near summit), so on screen ≈3–12% of the stage. **On the arcade intro (30 Sep 2026)** the run aims it instead (`RunState.openingBarnAtCam` → `backgroundContext.plumberBarnAtCam`): on screen at the right while the backdrop is pixelated, and re-placed ~72% across the moment the paper lands (the move is hidden by the power-down's black tube), so the paper arrives on the barn and it has ≈3.5 s of paper left to cross | `drawPlumberLife` → `drawPlumberBarn` (plumberLandmarks.js) |
 | **new** Patchwork fields: tractor ploughs a field every 12 s with 3 gulls behind it; cloud shadows slide | background | plumber-1 | **Land that ramps up** — nothing animates: a slope in the country itself, anchored in each band's parallax plane. Its toe enters at the right edge at `PLUMBER_FIELDS_AT` = 0.7 of the stage and full relief is `PLUMBER_FIELDS_RAMP` = 320 screen px behind it (`opts.heightAt`); the fields become visible as the run travels onto the higher ground, then stay to the finish | `drawPlumberPatchwork`, `ploughAndGulls` |
 | **new** Hot-air balloons ×2: burner fires every 3.4 s, passenger waves, balloon sways | background | plumber-2 | Two single crossings, centred at `PLUMBER_BALLOONS_AT` = 0.22 and 0.66 (parallax `PLUMBER_BALLOON_FACTOR` 0.1). Each is on screen ≈18 s; never both at once | `drawPlumberBalloon` |
 | **new** Windmill: sails turn (7.4 s per revolution) and billow, pennant flies | background | plumber-3 | Once, on the near summit nearest `PLUMBER_MILL_AT` = 0.35 of the stage (≈32–40% on screen) | `drawPlumberWindmill` |
@@ -61,7 +61,7 @@ headless ledger cannot run, so its counts come from the charts themselves.
 | **new** Rake: handle swings up into a grounded hero's face 0.12 s before he arrives (not if he jumps) | obstacle | all | 3.0 / 1.3 / 1.0 | `rake`; `RAKE_SWING_LEAD` / `RAKE_FRAMES` (props.js); trigger in `run.js` update |
 | **new** Goose: charges and honks (vx −50) | obstacle (closer) | plumber-2, plumber-3 | 0 / 1.3 / 1.3 (tier 1, so not on plumber-1) | `goose` (animals.js) |
 | Barrel: rolls at the hero | obstacle | all | 1.5 / 0.8 / 2.0 | `barrel` (vx −40) |
-| Pipe: cap lifts and settles | obstacle | all | 2.3 / 1.0 / 4.3 (includes tunnel hazards) | `pipe` |
+| ~~Pipe: cap lifts and settles~~ **removed 30 Sep 2026** — no pipes in the cabinet; its three lane cells deal a two-crate stack instead, and the tunnel lost it from its hazards (crate, barrel, drone). The `pipe` entity and prop still exist but nothing deals them | obstacle | none | 0 / 0 / 0 | `pipe` |
 | Drone: rotor, bob, drift | flyer | all | 1.5 / 1.3 / 4.8 | `drone` |
 | Buzzbird: flaps and approaches | flyer | plumber-2, plumber-3 | 0 / 2.5 / 0.5 | `buzzbird` |
 | Floor saw: spins | obstacle | plumber-2, plumber-3 | 0 / 1.8 / 1.8 | `floorSaw` |
@@ -383,4 +383,4 @@ anything not listed hurts. Nothing alive can be kicked.
 | --- | --- | --- |
 | Breaks it | crate, !-crate, snowman, big snowman, ice crystals | `SLIDE_PLOWABLE` (run.js) |
 | Punts it | traffic cone, barrel (heavy), road-works panda / frog / monkey, office chair, printer, cardboard monster | `punt` on the def (entities.js) |
-| Nothing — you take the hit | everything else, including every animal, the rake, cacti and thistles, tombstones, fire, floor traps and blades, the pipe, razor hurdle and beat bar | — |
+| Nothing — you take the hit | everything else, including every animal, the rake, cacti and thistles, tombstones, fire, floor traps and blades, razor hurdle and beat bar | — |

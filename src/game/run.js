@@ -1,7 +1,7 @@
 import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
@@ -10,6 +10,7 @@ import { Input } from '../engine/input.js';
 import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
   PORTAL_RELAY_GAIN, PORTAL_RELAY_IN_GAIN, portalCueFlashAt,
+  SLEIGH_CAROLS, SLEIGH_CAROL,
 } from '../engine/audio.js';
 import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
@@ -48,7 +49,7 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
+import { plumberBarnAtCamFor, plumberBarnFracAt, getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
   frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, frostStageLight, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow, takeDesertTrapShutter, desertSpeedTrapStage,
   neonStruckX, neonStruckPlanL, neonStruckTower, neonPickMast, neonTowerNow, neonTokyoTowerTip, warmFrostSky }
   from '../engine/stylePacks/index.js';
@@ -62,6 +63,7 @@ import { TRON_PALETTE } from '../sprites/train.js';
 import { setGlowSprites } from '../sprites/props.js';
 import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js';
 import { finishCryptGouacheBake, CRYPT_WEATHER_TIMING, cryptNight } from '../engine/stylePacks/cryptGouache.js';
+import { drawArcadeIntroBackdrop, arcadeIntroResolve, ARCADE_INTRO_POWER_DOWN_BEAT, arcadeLandingDrop, ARCADE_LANDING_SECS, ARCADE_LANDING_SHAKE, warmArcadeIntro } from '../engine/arcadeIntro.js';
 import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
@@ -75,7 +77,7 @@ import {
 } from '../sprites/sleigh.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, lurkDrop, LURK_AT, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, neonTrainCarAt, drawNeonTrainShell, TRAIN_FLOOR_LIFT, trainArrival, drawNeonFlypast, TRAIN_FLIGHT_LEAD_PX, shapeNeonTrainNoses, neonNoseDrop, neonStationSignSpan, NEON_SIGN_REACH } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, neonTrainInFrontCar, drawNeonTrainShell, TRAIN_FLOOR_LIFT, trainArrival, drawNeonFlypast, TRAIN_FLIGHT_LEAD_PX, shapeNeonTrainNoses, neonNoseDrop, neonStationSignSpan, NEON_SIGN_REACH } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -582,13 +584,19 @@ const BEAT_BANNED_POWERS = new Set([
   'capSpeed', 'capLowGrav', 'capRewind', 'capMagnet', 'capUnpeel', 'capStar',
 ]);
 // The capsules a CABINET bans on every stage, beat or not (`bannedPowers` in its
-// data) — the neon cabinet's invincibility (Peter, 24 Sep). Merged with the beat
-// ban into the one set every spawner and the lane sweep consult.
+// data) — the neon cabinet's invincibility (Peter, 24 Sep) — and the ones a single
+// STAGE bans (stages.js `bannedPowers`: no speed on plumber-1, 30 Sep). Merged with
+// the beat ban into the one set every spawner and the lane sweep consult.
+function ownBannedPowers(cabinet, stage) {
+  const cab = cabinet?.bannedPowers, own = stage?.bannedPowers;
+  if (!own?.length) return cab?.length ? cab : null;
+  return cab?.length ? [...cab, ...own] : own;
+}
 const bannedPowersCache = new WeakMap();
-function bannedPowersFor(cabinet, beatLock) {
-  const own = cabinet?.bannedPowers;
-  if (!own?.length) return beatLock ? BEAT_BANNED_POWERS : null;
-  const key = beatLock ? 'beat' : 'free';
+function bannedPowersFor(cabinet, beatLock, stage = null) {
+  const own = ownBannedPowers(cabinet, stage);
+  if (!own) return beatLock ? BEAT_BANNED_POWERS : null;
+  const key = `${stage?.bannedPowers?.length ? stage.id : ''}|${beatLock ? 'beat' : 'free'}`;
   let byMode = bannedPowersCache.get(cabinet);
   if (!byMode) { byMode = {}; bannedPowersCache.set(cabinet, byMode); }
   if (!byMode[key]) byMode[key] = new Set([...(beatLock ? BEAT_BANNED_POWERS : []), ...own]);
@@ -1078,6 +1086,12 @@ const RHYTHM_CHEER_T = 2.2;
 // Longer than the pad's own flare: the pad is behind you almost immediately,
 // and the thing the boost is actually about is what it did to YOU.
 const BOOST_LEAN_T = 0.5;
+// How long a boost pad's kick holds at full before it starts to bleed off.
+// Without it the +0.5 was gone in 0.83s, which read as a flicker rather than a
+// burst (Peter, 29 Sep: "can it last a bit longer?"). Pad-only: the loop and
+// the tag-speed mod share the decay and keep theirs. The lean and ground rush
+// are held with it so the picture says fast for as long as the lane does.
+const BOOST_PAD_HOLD_T = 0.5;
 // The spring's own flare. Longer than the pad's because the hero is still ON
 // SCREEN above it for most of a second, and a confirmation that has finished
 // before the thing it confirms has stopped happening is not a confirmation.
@@ -2126,15 +2140,6 @@ const CELEBRATE_DIP = {
 // The controller underneath the frozen finish frame still derives a RUN pose,
 // including its slight directional head turn. The celebration is front-on, so
 // its snapshot must own the face angle as explicitly as it owns lean/squash.
-// The faces down a packed train, one per car from the tail he boarded by, held
-// the whole length of it (Peter, 29 Sep). Shocked is the startled brow over the
-// gasp; surprised is the gasp alone.
-const TRAIN_CAR_FACES = Object.freeze([
-  Object.freeze({ faceSurprised: true, browRaise: true }),
-  Object.freeze({ faceSurprised: false, browRaise: false }),
-  Object.freeze({ faceSurprised: true, browRaise: false }),
-]);
-
 export const FINISH_CELEBRATION_POSE = Object.freeze({
   kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0, headTurn: 0,
   sliding: false, slideAmount: 0, roll: false, float: false, cling: 0,
@@ -2227,6 +2232,21 @@ const SLIDE_PLOWABLE = new Set(['crate', 'qcrate', 'snowman', 'snowmanBig', 'ice
 
 // World px the neon fly-past trains cruise higher in portrait.
 const NEON_FLYPAST_PORTRAIT_LIFT = 7;
+
+// WHEN THE SLEIGH'S CAROL COMES IN (cueSleighCarol). Aimed at SLEIGH_CAROL_AFTER seconds
+// after the team takes off — about when it clears the left edge — and allowed to move off
+// that to stay in one key and in step: as early as it is put on the song, SLEIGH_CAROL_EARLY
+// before the take-off at most, or as late as SLEIGH_CAROL_LATE after the aim. It comes in
+// on an ODD bar — 1, 3, 5, … — every SLEIGH_CAROL_GRID beats from bar 1 (Peter, 30 Sep:
+// "on an odd numbered bar so it lines up better"; the sleigh "doesn't need to be perfectly
+// aligned"). Frost is built in four-bar blocks from bar 1, so the two-bar refrain fills the
+// first or second half of one, and never straddles the F# lift at 17 or 29. At 100bpm an
+// odd bar comes round every 4.8 s, a refrain's length — which is what LATE is, for the one
+// path that cannot go early (a hero dropped past the arming point by a checkpoint).
+const SLEIGH_CAROL_AFTER = 0.8;
+const SLEIGH_CAROL_EARLY = 2.4;
+const SLEIGH_CAROL_LATE = 4.8;
+const SLEIGH_CAROL_GRID = 8;
 // Screen px a flying neon train's roof keeps below the top of a LANDSCAPE frame, at
 // the resting zoom (terrain.js drawTrainRoute: THE ROOF STAYS IN THE SKY). The
 // desktop's 1.6 framing already clears it by more, so only the close framings move.
@@ -3864,6 +3884,7 @@ export class RunState {
 
   resetRenderInterpolation() {
     this.prevCamX = this.camX;
+    this.prevBackdropLead = this.backdropLead;
     if (this.copter) { this.copter.prevX = this.copter.x; this.copter.prevAlt = this.copter.alt; }
     this.prevCamZoom = this.camZoom;
     this.prevCamPan = this.camPan;
@@ -3877,6 +3898,7 @@ export class RunState {
 
   captureRenderInterpolation() {
     this.prevCamX = this.camX;
+    this.prevBackdropLead = this.backdropLead;
     // The chase copter is placed each tick RELATIVE TO THE SIM CAMERA, so drawn
     // against the interpolated one its x wobbled by the tick remainder every
     // frame — the one thing in the lane that jittered while the world glided.
@@ -3992,9 +4014,17 @@ export class RunState {
     this.camGuardNeed = undefined;
     this.camGuardDwell = 0;
     this.speedBoost = 0;
+    this.speedBoostHoldT = 0;
     // The loop-de-loop ride, while one is happening. See game/loop.js: for its
     // length the run drives the hero's position instead of the physics doing it.
     this.loop = null;
+    // How far the backdrop is ahead of the camera, in world px: a lap puts it
+    // there and the run after it pays it back (LOOP.backdropPayback).
+    this.backdropLead = 0;
+    this.backdropPayT = 0;
+    // How far the chase copter is being held ahead of his camera-relative place,
+    // in world px, so that a lap never flies him backward (LOOP.copterRelease).
+    this.copterLoopHold = 0;
     // Neon's day and night, per ATTEMPT (updateNeonSky). Null until the first frame,
     // which is when the song's beat is known: an attempt that starts after the song
     // has turned minor starts at night.
@@ -4044,6 +4074,7 @@ export class RunState {
     this.flypast = null;        // the Frost sleigh crossing the sky; see armFlypast
     this.flypastShot = null;    // where the background pass last put it, in screen space
     this.flypastArmed = false;  // one sleigh per attempt, however the tape is reached
+    this.carolArmed = false;    // and one carol with it; see armSleighCarol
     // Off-screen entrance. Defaulted here to the resting anchor so a restart or
     // any early position read is safe; the opener below arms the actual run-in.
     this.introRunning = false;
@@ -4527,6 +4558,10 @@ export class RunState {
     // sailed through it and on the fourth retry that limped there.
     this.checkpointsAt = this.checkpoints.slice();
     this.snapshot = null;
+    // Aimed afresh each attempt: see openingBarnAtCam.
+    this.openingBarn = null;
+    // And the paper's landing on 5.1, once an attempt: see arcadeLandingOffset.
+    this.arcadeLanding = null;
 
     // ?startAt=N — pre-fill the world so the camera doesn't start in empty space,
     // and mark any checkpoints behind us as already reached.
@@ -4643,6 +4678,8 @@ export class RunState {
       variants: musicSong?.variants,
     });
     if (this.beatLock) Audio.setWarp(this.laneTempo(), 1);
+    // And the Speed Zone coyote's howl, baked at this song's tempo (Audio.coyoteHowl).
+    if (this.cabinet?.id === 'speed') Audio.warmCoyoteHowl?.();
     // BUILD THE VOICES THIS STAGE IS ABOUT TO NEED, here, behind the shutter.
     //
     // A pooled Tone voice builds its graph at its FIRST NOTE, inside the lookahead —
@@ -4684,6 +4721,10 @@ export class RunState {
     //
     // After enterStage too, because its setBank fallback releases every lane.
     Audio.warmWorkletLanes?.();
+    // And the arcade intro's first frames — see warmArcadeIntro. After the prefill for the
+    // same reason as the line above: it is a block of main thread, and the queue has to be
+    // full past it first. Behind the shutter, where a block costs nothing anyone sees.
+    if (this.stage?.arcadeIntro) this.warmArcadeIntroArt();
     // SKIP SYNTHESIS FOR LANES THE MIX HAS SILENCED — but not yet if a handover is
     // still pending. rhythm ships `lead4` muted: an MRDR-3 string pad layered off the
     // lead, so it carries the lead's notes and every pass builds a three-oscillator
@@ -4781,15 +4822,16 @@ export class RunState {
     this.setButtons();
     this.resetRenderInterpolation();
     // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
+    const ownBan = ownBannedPowers(this.cabinet, this.stage);
     const bannedStartingPower = (this.beatLock &&
       (BEAT_BANNED_POWERS.has(this.startingPowerup)
         || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star'].includes(this.startingPowerup)))
-      || (this.cabinet?.bannedPowers?.length
-        && (this.cabinet.bannedPowers.includes(this.startingPowerup)
+      || (ownBan
+        && (ownBan.includes(this.startingPowerup)
           // The ban lists CAPSULES (capSpeed) and a starting power is a POWER
           // (speed), so match through the capsule's own power field.
-          || this.cabinet.bannedPowers.some((c) => PICKUPS[c]?.power === this.startingPowerup)
-          || (this.cabinet.bannedPowers.includes('capUnpeel') && ['unpeel', 'star'].includes(this.startingPowerup))));
+          || ownBan.some((c) => PICKUPS[c]?.power === this.startingPowerup)
+          || (ownBan.includes('capUnpeel') && ['unpeel', 'star'].includes(this.startingPowerup))));
     if (bannedStartingPower) this.startingPowerup = null;
     if (this.startingPowerup) {
       const id = this.startingPowerup;
@@ -5233,6 +5275,60 @@ export class RunState {
     return (target - beat) * spb;
   }
 
+  // The Speed Zone coyote's howl, placed like the gate's slam: rounded to the nearest half
+  // beat of the cabinet's own song at least `minSec` and the clock's warning out, so the
+  // yips fall on the grid. Returns the seconds to it, which the backdrop lifts the head on.
+  speedCoyoteHowl(sec, minSec = 0) {
+    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) {
+      Audio.sfx('coyoteHowl', { inSeconds: sec });
+      return sec;
+    }
+    const spb = 60 / bpm;
+    const least = Math.max(minSec, Audio.cueLeadSec()) / spb;
+    let target = Math.round((beat + sec / spb) * 2) / 2;
+    if (target - beat < least) target = Math.ceil((beat + least) * 2) / 2;
+    Audio.sfx('coyoteHowl', { inBeats: target - beat });
+    return (target - beat) * spb;
+  }
+
+  // The chorus pup's two yips, `gap` seconds apart: the first rounded to the nearest half
+  // beat like the howl, the second where the pup's mouth opens again after it. Returns the
+  // seconds to the first, which the backdrop moves the show onto.
+  speedCoyoteYips(sec, gap) {
+    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) {
+      Audio.sfx('coyoteYip', { inSeconds: sec });
+      Audio.sfx('coyoteYip', { inSeconds: sec + gap });
+      return sec;
+    }
+    const spb = 60 / bpm;
+    const least = Audio.cueLeadSec() / spb;
+    let target = Math.round((beat + sec / spb) * 2) / 2;
+    if (target - beat < least) target = Math.ceil((beat + least) * 2) / 2;
+    Audio.sfx('coyoteYip', { inBeats: target - beat });
+    Audio.sfx('coyoteYip', { inBeats: target - beat + gap / spb });
+    return (target - beat) * spb;
+  }
+
+  // The winking coyote's ding, on the next whole beat at or after `sec` (and the clock's
+  // warning): the wink waits for it, so it is never more than a beat late. Returns the
+  // seconds to it; with no song of this cabinet's playing it goes where asked.
+  speedCoyoteWink(sec) {
+    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) {
+      Audio.sfx('coyoteWink', { inSeconds: sec });
+      return sec;
+    }
+    const spb = 60 / bpm;
+    const target = Math.ceil(beat + Math.max(sec, Audio.cueLeadSec()) / spb - 1e-6);
+    Audio.sfx('coyoteWink', { inBeats: target - beat });
+    return (target - beat) * spb;
+  }
+
   updateNeonSky(dt) {
     if (this.cabinet?.id !== 'neon') return;
     const stageIndex = this.stage?.index ?? 1;
@@ -5400,6 +5496,119 @@ export class RunState {
    */
   beatBpmStep() {
     return (this.beatLock && this.stage?.bpmRamp) || 0;
+  }
+
+  /**
+   * THE ARCADE INTRO'S RESOLVE, or null for the ordinary backdrop.
+   *
+   * A stage that asks for it (stages.js `arcadeIntro`: plumber-1) opens inside the
+   * arcade cabinet's screen for as long as its OWN song is in the chiptune bars —
+   * 0 through bars 1-4, 0..1 across the power-down on bar 4's last beat, null from
+   * bar 5. Read straight off the song's clock, because the song is what the picture
+   * is keeping time with: the cabinet screen hands over mid-song and keeps its clock,
+   * so how long the intro lasts is however much of bars 1-4 is left; and a retry,
+   * which finds the song long past bar 5, is simply paper. No clock (no audio
+   * context, or a remix playing in place of the song) is paper too.
+   */
+  /**
+   * WHERE plumber-1's BARN STANDS WHILE IT OPENS INSIDE THE ARCADE CABINET — as the
+   * camera it is pinned to (stylePacks PLUMBER_BARN_AT_PX's units), or null for its
+   * ordinary spot.
+   *
+   * Peter (30 Sep 2026): seen pixelated, AND on screen the moment the pixels stop, so the
+   * paper lands on something. Two placements, with the power-down between them:
+   *
+   * WHILE PIXELATED it is aimed at the right of the picture for the moment the paper is
+   * due: the camera now, plus the speed times however much of what is left of bars 1-4
+   * the world will spend MOVING — the act card and the run-in hold it still, and the
+   * phone's controls card holds it until a tap, so that is predicted from what is still
+   * up. Re-aimed every frame while it is off the right of the picture (nobody sees a barn
+   * that is not there move), and latched the moment it would come into view.
+   *
+   * The prediction can be wrong — a press skips the act card, and then the world moves
+   * seconds early — so WHEN THE PAPER LANDS it is put there regardless: the power-down
+   * beat is a dead black tube, so the move from one placement to the other happens where
+   * nobody can see it, and the paper world arrives with the barn standing in it.
+   *
+   * No intro this attempt (a retry long past bar 5, a remix, no clock): null, and the barn
+   * is where it always was.
+   */
+  openingBarnAtCam(coverage) {
+    if (!this.stage?.arcadeIntro || this.cabinet?.id !== 'plumber') return null;
+    const o = this.openingBarn || (this.openingBarn = { atCam: null, seen: false, pixelLatched: false, paperLatched: false });
+    if (o.paperLatched) return o.atCam;
+    const viewW = coverage?.width || W;
+    const s = this.arcadeIntroResolve();
+    if (s == null) {
+      // Paper. Only an attempt that actually showed the pixels moves the barn for it.
+      if (o.seen) { o.atCam = plumberBarnAtCamFor(this.camX, viewW); o.paperLatched = true; }
+      return o.atCam;
+    }
+    o.seen = true;
+    if (s > 0 || o.pixelLatched) return o.atCam;
+    const beat = Audio.songBeat();
+    const spb = 60 / ((Audio.bpm || 124) * (Audio.tempo || 1));
+    const toPaper = (ARCADE_INTRO_POWER_DOWN_BEAT + 1 - beat) * spb;
+    // How long the world will still be held: the act card, the phone's card (until a
+    // tap: as good as for ever), and the run-in, which covers its apron at a little
+    // over half speed on average.
+    const runIn = this.introRunning
+      ? Math.max(0, PLAYER_X - this.introRunX) / (this.baseSpeed() * 0.55) : 0;
+    const held = this.zoneCard ? Infinity : Math.max(0, this.introFreeze || 0) + runIn;
+    const camAtPaper = this.camX + Math.max(0, this.speed) * Math.max(0, toPaper - held);
+    const aimed = plumberBarnAtCamFor(camAtPaper, viewW);
+    o.atCam = aimed;
+    // In view (its gable within the right edge): stop aiming, let it scroll.
+    if (plumberBarnFracAt(aimed, this.camX, viewW) < 1.02) o.pixelLatched = true;
+    return o.atCam;
+  }
+
+  /**
+   * THE PAPER LANDING ON 5.1: the backdrop's drop in frame px for this frame, and the
+   * screen shake fired on the first frame of it (arcadeIntro.js ARCADE_LANDING_*).
+   *
+   * Once an attempt, and only an attempt that showed the pixels (`arcadeLanding` is made
+   * the first frame the arcade picture draws). Timed off the song clock as HEARD, so it
+   * lands on the downbeat the band comes in on; and latched `done` after, because the
+   * song loops bars 5-48 and comes back through the same beat every lap.
+   */
+  warmArcadeIntroArt() {
+    try {
+      const frame = presentationFrame();
+      const bg = (g, barnAtCam) => this.style.bg(g, 0, 0, this.cabinet, this.totalDist, null, 0,
+        { stageIndex: this.stage?.index ?? 1, progress: 0, plumberBarnAtCam: barnAtCam });
+      const barnInView = plumberBarnAtCamFor(0, W);
+      warmArcadeIntro({
+        w: frame.width, h: frame.height, k: renderScreen.px || 1,
+        fill: this.cabinet.sky?.[0] || '#000',
+        paintBg: (g) => bg(g, barnInView),
+        paintPaper: (g) => bg(g, barnInView),
+      });
+    } catch (err) {
+      // A warm-up is an optimisation: never the reason a stage fails to start.
+      console.warn('[arcade intro] warm-up skipped:', err?.message || err);
+    }
+  }
+
+  arcadeLandingOffset() {
+    const o = this.arcadeLanding;
+    if (!o || o.done) return 0;
+    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
+    if (!Number.isFinite(beat)) return 0;
+    const since = (beat - (ARCADE_INTRO_POWER_DOWN_BEAT + 1)) * 60 / ((Audio.bpm || 124) * (Audio.tempo || 1));
+    if (since < 0) return 0;
+    if (since >= ARCADE_LANDING_SECS) { o.done = true; return 0; }
+    if (!o.shaken) {
+      o.shaken = true;
+      shake(ARCADE_LANDING_SHAKE.power, ARCADE_LANDING_SHAKE.secs);
+    }
+    return arcadeLandingDrop(since);
+  }
+
+  arcadeIntroResolve() {
+    if (!this.stage?.arcadeIntro || !this.cabinet?.music) return null;
+    if (Audio.sourceBank !== this.cabinet.music) return null;
+    return arcadeIntroResolve(Audio.songBeat());
   }
 
   /**
@@ -6122,8 +6331,16 @@ export class RunState {
     // began, which is a jolt at the one moment the player is watching closely.
     if (this.loop && this.loop.pending && this.playerWorldX() >= this.loop.cx) this.loop.pending = false;
     if (this.loop && !this.loop.pending) {
+      const thetaBefore = this.loop.theta;
+      const camBefore = this.camX;
       const pos = stepLoop(this.loop, wdt, sp);
       this.camX = pos.x - PLAYER_X;
+      // The backdrop goes on by the ARC he covered, not by the camera's swing
+      // round it (LOOP.backdropPayback): over the top the camera runs backward
+      // and the scenery must not.
+      this.backdropLead += (this.loop.theta - thetaBefore) * this.loop.r - (this.camX - camBefore);
+      this.backdropPayT = 0;
+      this.stepCopterLoopHold(this.camX - camBefore);
       this.player.y = pos.alt;
       // The physics is not running (player.update is skipped below), so the two
       // things it would otherwise keep moving are wound on here: the run cycle,
@@ -6165,6 +6382,18 @@ export class RunState {
       if (pos.done) this.loop.done = true;
     } else {
       this.camX += sp * wdt;
+      if (this.copterLoopHold > 0) this.stepCopterLoopHold(sp * wdt);
+      // Paying back what a lap put the backdrop ahead by: it runs a little
+      // slower than the world until the two agree again.
+      if (this.backdropLead > 0) {
+        // Eased in off the exit and out as the lead runs dry, so neither end
+        // of the payback is a step in the scenery's pace.
+        this.backdropPayT += wdt;
+        const into = Math.min(1, this.backdropPayT / LOOP.backdropEaseIn);
+        const ease = into * into * (3 - 2 * into) * Math.min(1, Math.sqrt(this.backdropLead / LOOP.backdropTail));
+        this.backdropLead -= Math.min(this.backdropLead, sp * wdt * LOOP.backdropPayback * ease);
+        if (this.backdropLead < 0.01) this.backdropLead = 0;
+      }
     }
     this.distance = this.camX;
     this.updateCamera(wdt);
@@ -6173,7 +6402,8 @@ export class RunState {
     // would enter boosted and leave at a crawl, and the ring would read as the
     // thing that took his speed away. He is on rails for that second anyway;
     // nothing is being won by draining it while he is on them.
-    if (this.speedBoost > 0 && !this.loop) this.speedBoost = Math.max(0, this.speedBoost - wdt * 0.6);
+    if (this.speedBoostHoldT > 0) this.speedBoostHoldT -= wdt;
+    else if (this.speedBoost > 0 && !this.loop) this.speedBoost = Math.max(0, this.speedBoost - wdt * 0.6);
 
     // Score accrual (real time).
     const sMult = hero.scoreMult * this.powerups.scoreMult() * (this.modIds.includes('crayon') ? 0.95 : 1);
@@ -6485,6 +6715,7 @@ export class RunState {
     // the way in instead of the sleigh arriving as a thing that happens after
     // the level. The run is still live and scrolling here; the flight is
     // screen-space and does not care.
+    this.armSleighCarol();
     this.armFlypast(FROST_FLYPAST_LEAD * this.speed);
     if (!this.overtime && this.distance >= this.finishCameraX() && this.missionSatisfied()) {
       this.startFinishRun();
@@ -7474,7 +7705,7 @@ export class RunState {
   // quiet: a screen-clear can pop several boxes on one frame, and one 'power'
   // sting per box stacks into noise.
   tossPrize(x, alt, quiet) {
-    const opts = { allowRewind: !this.rewindUsed && !this.beatLock, banned: bannedPowersFor(this.cabinet, this.beatLock) };
+    const opts = { allowRewind: !this.rewindUsed && !this.beatLock, banned: bannedPowersFor(this.cabinet, this.beatLock, this.stage) };
     const weights = this.cabinet?.capsuleWeights;
     const type = weights
       ? weightedPowerPickup(this.fxRng, weights, this.drip.lastPowerType, opts)
@@ -8396,6 +8627,27 @@ export class RunState {
   }
 
 
+  // THE VILLAIN IS NOT ON THE RING (LOOP.copterRelease). His flight stays
+  // camera-relative (c.dx) and untouched, so a pass or a bonk window keeps its
+  // timing; what a lap changes is only where that flight is anchored. Backward
+  // camera travel is banked here and his anchor stays put, and forward travel
+  // spends it — all of it while the bank is deep, less and less as it runs dry,
+  // so he takes the run's pace back up without a step.
+  stepCopterLoopHold(camStep) {
+    if (camStep < 0) { this.copterLoopHold -= camStep; return; }
+    const ease = Math.min(1, Math.sqrt(this.copterLoopHold / LOOP.copterRelease));
+    this.copterLoopHold = Math.max(0, this.copterLoopHold - camStep * ease);
+    if (this.copterLoopHold < 0.01) this.copterLoopHold = 0;
+  }
+
+  // The hold as it is flown: the drawing and the hull both read c.x. Never past
+  // the picture's right edge — on a close framing with him far out in front the
+  // edge is what stops him, and there he rides with the camera for a moment.
+  copterHoldDx(c) {
+    if (!(this.copterLoopHold > 0)) return 0;
+    return Math.max(0, Math.min(this.copterLoopHold, this.viewRightDx() - COPTER_BOX / 2 - 4 - c.dx));
+  }
+
   // He leaves, accelerating off the right edge and climbing, and retires once
   // wholly off screen. SCREEN-relative on purpose — the camera parks for the
   // finish run while the hero crosses to the tape, so a world velocity here
@@ -8450,6 +8702,65 @@ export class RunState {
     if (this.distance < this.finishCameraX() - Math.max(0, lead)) return;
     this.flypastArmed = true;
     this.flypast = { t: 0 };
+    // The fallback, for a hero dropped past the carol's own arming point too.
+    if (!this.carolArmed) { this.carolArmed = true; this.cueSleighCarol(SLEIGH_CAROL_AFTER); }
+  }
+
+  /**
+   * Put the carol on the song, ONCE, a little before the sleigh goes up — early enough
+   * that it can come in ahead of the team as well as after it (see cueSleighCarol).
+   * `toArm` is the seconds of running left until armFlypast fires, at today's speed.
+   */
+  armSleighCarol() {
+    if (this.carolArmed || this.overtime || this.recordBackground) return;
+    if (this.cabinet?.id !== 'frost' || this.stage?.index !== 3) return;
+    const speed = Math.max(1, Number(this.speed) || 1);
+    const toArm = (this.finishCameraX() - FROST_FLYPAST_LEAD * speed - this.distance) / speed;
+    if (toArm > SLEIGH_CAROL_EARLY) return;
+    this.carolArmed = true;
+    this.cueSleighCarol(Math.max(0, toArm) + SLEIGH_CAROL_AFTER);
+  }
+
+  /**
+   * The carol the team flies to (SLEIGH_CAROLS in engine/audio.js), its first strong note
+   * on the downbeat of an odd bar of the song (SLEIGH_CAROL_GRID) — a pickup stays in front
+   * of the line, the tune stays in step with the song's phrases — and the WHOLE PHRASE IN
+   * ONE KEY. Frost moves up to F# minor for four bars at a time, and a tune that stepped up
+   * with it mid-refrain was not wanted (Peter: "would prefer we not change key though, it's
+   * ok if it comes in early or late"). So of the odd bars from the clock's warning out to
+   * SLEIGH_CAROL_LATE past `idealSec`, it takes the one nearest `idealSec` that keeps every
+   * note, and the last one's ring, inside a single key.
+   */
+  cueSleighCarol(idealSec) {
+    const carol = SLEIGH_CAROLS[SLEIGH_CAROL];
+    if (!carol) return;
+    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) {
+      Audio.sfx('sleighCarol', { inSeconds: idealSec });
+      return;
+    }
+    const spb = 60 / bpm;
+    const least = Audio.cueLeadSec() / spb;
+    const ideal = beat + idealSec / spb;
+    const last = Math.max(...carol.notes.map(([b, , d]) => b + d));
+    // Every onset, and a hair before the end so a ring over a bar line into a new key counts.
+    const probes = [...carol.notes.map(([b]) => b), last - 0.05];
+    const oneKey = (start) => {
+      const tonics = probes.map((b) => Audio.songTonic?.(start + b));
+      if (tonics.some((t) => !(t > 0))) return true;
+      return tonics.every((t) => Math.abs(1200 * Math.log2(t / tonics[0])) < 5);
+    };
+    let pick = null;
+    const grid = SLEIGH_CAROL_GRID;
+    const first = Math.ceil((beat + least + carol.downbeat) / grid - 1e-6) * grid;
+    for (let strong = first; strong <= ideal + SLEIGH_CAROL_LATE / spb; strong += grid) {
+      if (!oneKey(strong - carol.downbeat - beat)) continue;
+      if (pick == null || Math.abs(strong - ideal) < Math.abs(pick - ideal)) pick = strong;
+    }
+    // Nowhere in the window keeps one key (a song that modulates every bar): on time, then.
+    if (pick == null) pick = Math.max(first, Math.ceil(ideal / grid - 1e-6) * grid);
+    Audio.sfx('sleighCarol', { inBeats: pick - carol.downbeat - beat });
   }
 
   placeFlypast(coverage, context, {
@@ -9233,7 +9544,7 @@ export class RunState {
       // whatever path produced a banned capsule on a rhythm stage — the drip,
       // a prize toss, a stair, a stale pool — it dies here before it is ever
       // drawn. "None of those in these levels" means none.
-      const banned = bannedPowersFor(this.cabinet, this.beatLock);
+      const banned = bannedPowersFor(this.cabinet, this.beatLock, this.stage);
       if (banned && banned.has(p.type)) { p.live = false; continue; }
       if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
       // ...unless the magnet has hold of it: rewriting x from _baseX every
@@ -9848,7 +10159,7 @@ export class RunState {
       // How he is moving, for anything that has to guess where he will be a
       // few frames on (cueHeadBonk).
       c.velDx = Number.isFinite(wasDx) && dt > 0 ? (c.drawnDx - wasDx) / dt : 0;
-      c.x = this.camX + c.dx;
+      c.x = this.camX + c.dx + this.copterHoldDx(c);
       const DOWN_RATE = 22, UP_RATE = 18;
       if (Number.isFinite(c.drawnAlt)) {
         const step = c.alt - c.drawnAlt;
@@ -9957,6 +10268,11 @@ export class RunState {
    */
   homeRound(pr, dt) {
     const thrown = pr.type === 'axe' || pr.type === 'fist';
+    // ONLY WHAT YOU CAN SEE. The range reaches past the right edge, so a round
+    // fired at nothing used to lift towards a high box still off screen — a
+    // shot visibly steering at empty sky (Peter, 29 Sep). The player aims at
+    // what is in the frame; anything beyond it is not a target yet.
+    const viewRight = this.viewRightX();
     let target = null;
     for (const ob of this.obstacles) {
       if (!ob.live || ob.def.isGap || isFloorPad(ob.def)) continue;
@@ -9973,6 +10289,7 @@ export class RunState {
         && !(ob.def.ground || ob.def.isTarget || ob.def.isSwitch)) continue;
       if (pr.hitIds?.has(ob.id)) continue;
       if (ob.x + ob.w < pr.x || ob.x > pr.x + ROUND_HOME_RANGE) continue;
+      if (ob.x >= viewRight) continue;
       if (!target || ob.x < target.x) target = ob;
     }
     if (!target) return 0;
@@ -10154,8 +10471,13 @@ export class RunState {
         // BOX_LEAD_BEATS ahead, comfortably inside the frame, so nothing the
         // shot is aimed at is lost by ending the flight at the edge; the margin
         // is only enough for the pellet to clear its own body first.
+        //
+        // The right edge is only an exit for a round heading OUT through it. A
+        // shooter opens fire up to SHOOTER_RANGE_AHEAD, which is past this edge
+        // on every framing, and its shot is meant to fly in from off screen; culled
+        // here, every printer's first shot died on the frame it was fired.
         const viewRight = this.viewRightX();
-        if (pr.x > viewRight + 16 || pr.x < this.camX - 60) pr.live = false;
+        if ((pr.vx > 0 && pr.x > viewRight + 16) || pr.x < this.camX - 60) pr.live = false;
       }
       // Projectile vs obstacles.
       if (pr.type === 'pellet' || pr.type === 'arrow' || pr.type === 'axe' || pr.type === 'fist') {
@@ -10731,7 +11053,7 @@ export class RunState {
   dripUpdate(dt, stopX) {
     const before = this.pickups.length;
     this.drip.update(dt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX,
-      !this.rewindUsed && !this.beatLock, bannedPowersFor(this.cabinet, this.beatLock), this.obstacles);
+      !this.rewindUsed && !this.beatLock, bannedPowersFor(this.cabinet, this.beatLock, this.stage), this.obstacles);
     for (let i = before; i < this.pickups.length; i++) this.pinPickupToBeat(this.pickups[i]);
   }
 
@@ -11768,6 +12090,10 @@ export class RunState {
     for (const r of this.routes) {
       if (r.sprung || this.camX + W + 240 < r.x) continue;
       r.sprung = true;
+      // Set by a checkpoint restore that landed part-way along this road: lay
+      // nothing short of it (see restoreSnapshot).
+      const resumeFrom = r.resumeFrom ?? -Infinity;
+      r.resumeFrom = null;
       // A tunnel's mouth is a HOLE, and the lane already knows how to have one:
       // a gap obstacle is exactly the right shape, both terrain renderers carve
       // it for free, and it telegraphs itself the way every other gap on the
@@ -11781,6 +12107,7 @@ export class RunState {
         // cut and nothing to fall through.
         let mouth = null;
         for (const span of tunnelOpenings(r)) {
+          if (span.x < resumeFrom) continue;
           const hole = makeObstacle('gap', span.x, {});
           hole.w = span.w;
           hole.tunnel = r;
@@ -11795,19 +12122,20 @@ export class RunState {
         // Same lip placement as signPits (SIGN_LEAD's comment argues it), and
         // `tunnel` set so no sweep — route, spring, scripted pit — takes the
         // sign out from in front of the thing it is announcing.
-        if (mouth && this.cabinet.mechanic === 'darkness') {
+        if (mouth && this.cabinet.mechanic === 'darkness' && mouth.x - SIGN_LEAD > resumeFrom) {
           const sign = makeObstacle('downSign', mouth.x - SIGN_LEAD - OBSTACLES.downSign.w, {});
           sign.tunnel = r;
           this.obstacles.push(sign);
         }
-        this.populateRoute(r);
+        this.populateRoute(r, resumeFrom);
         continue;
       }
-      this.populateRoute(r);
+      this.populateRoute(r, resumeFrom);
       if (!r.spring) continue;
       const h = r.entry + SPRING_CLEAR;
       const back = Math.sqrt((2 * h) / GRAVITY) * this.speed;
       const px = r.x + SPRING_LEAD - back;
+      if (px < resumeFrom) continue;
       const pad = makeObstacle('springPad', px, 0);
       pad.springFor = r;
       this.obstacles.push(pad);
@@ -11875,7 +12203,7 @@ export class RunState {
    * a replay and the main lane's sequence is undisturbed by whether the branch
    * was ever generated.
    */
-  populateRoute(r) {
+  populateRoute(r, minX = -Infinity) {
     if (r.populated || !r.hazards || !r.hazards.length) return;
     r.populated = true;
     const rng = this.rng.stream(`route:${r.kind}:${Math.round(r.x)}`);
@@ -11887,11 +12215,21 @@ export class RunState {
     // one event a second, which is a section you play rather than a gauntlet
     // you endure. The floor underneath it is what protects the slowest stage.
     const gap = Math.max(110, this.spawner.react * speed * 2.2);
-    // Start clear of the way IN and stop clear of the way OUT. On a tunnel that
-    // is the mouth he is still falling down; on a sky road it is the lip he is
-    // still landing on, and at the far end it is the drop he does not choose
-    // the timing of.
-    const from = r.x + (r.kind === 'tunnel' ? r.mouthW + gap * 0.6 : r.w * r.lip + gap * 0.4);
+    // Start clear of the way IN and stop clear of the way OUT. On a sky road
+    // the way in is the lip he is still landing on, and at the far end it is
+    // the drop he does not choose the timing of.
+    //
+    // On a tunnel the way in is the whole ENTRANCE SLIDE, not just the hole at
+    // the top of it, and then one full spacing past its foot (Peter, 30 Sep
+    // 2026). The camera is still craning ninety-six pixels down while he
+    // slides, and a hazard on the slope or at the bottom of it has to be read
+    // and answered in a frame that is still moving — plumber-1's first barrel
+    // used to stand at the foot itself. Measured (work/local/tunnel-settle-probe.mjs,
+    // plumber-3 and crypt-3): the anchor is settled on the chamber floor about
+    // a quarter of a second past the foot, and a spacing is 0.75s at
+    // plumber's speed, so the first hazard arrives in a frame that has stopped.
+    const foot = r.x + Math.max(r.mouthW ?? 0, r.w * (r.lip + r.climb));
+    const from = r.kind === 'tunnel' ? foot + gap : r.x + r.w * r.lip + gap * 0.4;
     // A tunnel's span now outlives its chamber — the staged exit runs on past
     // it, out in the open (routes.js, TUNNEL_EXIT_SHELF) — and furniture
     // belongs UNDERGROUND. `bodyW` is the chamber; on every other kind of
@@ -11907,7 +12245,8 @@ export class RunState {
     const overOpening = (x, w2) => openings.some((h) =>
       x + w2 >= h.x - OPENING_CLEAR && x <= h.x + h.w + OPENING_CLEAR);
     const barrelEncounters = (r.kind === 'tunnel' ? (r.barrelPairs || []) : []).map((at) => {
-      const barrelX = r.x + r.bodyW * at;
+      // Authored, but under the same rule: nothing before `from`.
+      const barrelX = Math.max(from, r.x + r.bodyW * at);
       const zombieX = barrelX + 32;
       return { zombieX, barrelX, from: barrelX, to: zombieX + OBSTACLES.zombie.w };
     }).filter((pair) => !overOpening(pair.zombieX, OBSTACLES.zombie.w)
@@ -11915,6 +12254,9 @@ export class RunState {
     for (let x = from; x < to; x += gap * (0.9 + rng.float() * 0.7)) {
       const type = r.hazards[rng.int(0, r.hazards.length - 1)];
       const ob = makeObstacle(type, x, {});
+      // After the draw, never before it: skipping the roll would shift every
+      // hazard after this one, and a resumed road must be the road it was.
+      if (x < minX) continue;
       if (overOpening(x, ob.w)) continue;
       // Treat each barrel-and-zombie pass as one encounter when preserving the
       // tunnel's reaction spacing. A random obstacle inside its runway would
@@ -11927,6 +12269,7 @@ export class RunState {
       this.obstacles.push(ob);
     }
     for (const pair of barrelEncounters) {
+      if (pair.from < minX) continue;
       const zombie = makeObstacle('zombie', pair.zombieX, {});
       zombie.zMood = 'flee';
       zombie.route = r;
@@ -12360,7 +12703,10 @@ export class RunState {
             if (ob.x + ob.w >= span.x - 8 && ob.x <= span.x + span.w + 8) { onHole = true; break; }
             if (ob.x + ob.w >= span.x - holeClear && ob.x <= span.x + span.w + holeClear) nearHole = true;
           }
-          if (onHole) { ob.live = false; continue; }
+          // Except a MOVER already in view: laid things are swept off screen,
+          // but a fleeing zombie or a rolling barrel can carry itself onto a
+          // hole in front of the player, and deleting it there is a pop-out.
+          if (onHole) { if (ob.vx) retireExit(ob); else ob.live = false; continue; }
           if (nearHole && ob.def.action !== 'none') { retireExit(ob); continue; }
           // And the way OUT. A tunnel converges, so the hero surfaces running
           // with a jump in hand — which is the case `fairGap` covers, and it is
@@ -12492,7 +12838,30 @@ export class RunState {
     // it, and only the placing waits for ground. A nudge of a few pixels at the
     // far end does not move a 480px rule.
     (this.lanePrizeQueue ||= []).push({ type, x, alt });
-    if (PICKUPS[type]?.power) this.drip.notePower(x, type);
+    if (PICKUPS[type]?.power) {
+      this.giveWayToLanePrize(x);
+      this.drip.notePower(x, type);
+    }
+  }
+
+  /**
+   * makeRoomForGatedPrize THE OTHER WAY ROUND.
+   *
+   * That one settles a gated prize laid beside a lane prize already booked. This
+   * is the fork booking beside a capsule already down: the ledger only stops the
+   * NEXT capsule, so a gated prize the fill laid a moment earlier stood 260px
+   * from a fork's lowPrize on frost-1. Same verdict, same line: the authored
+   * prize stays, a dripped or gated capsule gives way — and only while it is
+   * still off screen.
+   */
+  giveWayToLanePrize(x) {
+    const viewRight = this.viewRightX();
+    for (const p of this.pickups) {
+      if (!p.live || !p.def?.power || p.road || !(p.dripped || p.gated)) continue;
+      if (p.x <= viewRight || Math.abs(p.x - x) >= POWER_MIN_GAP) continue;
+      p.live = false;
+      if (p.dripped) this.drip.capsuleTimer = Math.min(this.drip.capsuleTimer, 0.5);
+    }
   }
 
   // Drained every frame from spawnRoutePrizes. One placed per pass at most is
@@ -13190,6 +13559,8 @@ export class RunState {
     // holding the id of an obstacle that no longer exists would keep driving the
     // camera round a circle nothing is drawing.
     this.loop = null;
+    this.backdropLead = 0;
+    this.copterLoopHold = 0;
     this.camX = s.camX; this.distance = s.distance ?? s.camX;
     // THE SONG HAS MOVED ON, SO THE ROAD MOVES WITH IT — first, so that every
     // "ahead of him / behind him" below (the pits, the wall) reads the camera
@@ -13311,11 +13682,21 @@ export class RunState {
     // (Peter, 27 Sep 2026), and a sky road came back with no pad. Only AHEAD of him,
     // so nothing is re-cut under or behind his feet; the pass draws from the route's
     // own named stream, so the road comes back as it was.
+    //
+    // AND A ROAD HE IS ALREADY PART-WAY ALONG. A checkpoint can land inside one —
+    // plumber-1's first sits on its tunnel's exit stretch — and there `sprung`
+    // stayed set because the road starts behind him, so the restore came back with
+    // the rest of the tunnel empty (Peter, 30 Sep 2026). It is re-armed with a
+    // RESUME point: the entry pass then lays only what stands past it — the hero's
+    // feet plus a reaction runway — off the same named stream, so what comes back
+    // is exactly what was there, minus anything that would land on top of him.
+    const resumeFrom = this.camX + PLAYER_X + this.spawner.react * this.baseSpeed();
     for (const route of this.routes) {
       if (route.x + (route.w || 0) <= this.camX) continue;
       route.populated = false;
       route.spawned = false;
-      if (route.x > this.camX) route.sprung = false;
+      route.sprung = false;
+      route.resumeFrom = route.x > this.camX ? null : resumeFrom;
     }
     // Anything still waiting for its ground goes with them: the queue is a list
     // of prizes not yet laid, and the roads that owed them are about to offer
@@ -13344,6 +13725,9 @@ export class RunState {
     this.flypast = null;
     this.flypastShot = null;
     this.flypastArmed = false;
+    this.carolArmed = false;
+    // ...and its carol with it: the approach is run again, and so is the tune.
+    Audio.stopSleighCarol();
     this.dead = false;
     this.pitDeath = null;
     this.player.iframes = 0.75;
@@ -13454,6 +13838,8 @@ export class RunState {
   writeRewindSnapshot(s) {
     // Camera & run
     s.camX = this.camX; s.camZoom = this.camZoom; s.camPan = this.camPan;
+    s.backdropLead = this.backdropLead; s.backdropPayT = this.backdropPayT;
+    s.copterLoopHold = this.copterLoopHold;
     s.camFloorY = this.camFloorY;
     // The guard is latched state, not a derived value: without it a rewind
     // lands with the crane where it was and the requirement it was holding gone,
@@ -13468,7 +13854,7 @@ export class RunState {
     // progress in mission.count, which the JSON copy below already carries.
     s.copterBonks = this.copterBonks;
     s.copterPressure = this.copterPressure;
-    s.battery = this.battery; s.damageTaken = this.damageTaken; s.speedBoost = this.speedBoost;
+    s.battery = this.battery; s.damageTaken = this.damageTaken; s.speedBoost = this.speedBoost; s.speedBoostHoldT = this.speedBoostHoldT;
     s.coinCombo = this.coinCombo; s.coinComboT = this.coinComboT;
     s.powerupsCollected = this.powerupsCollected;
     s.hintT = this.hintT; s.bonusT = this.bonusT;
@@ -13608,6 +13994,8 @@ export class RunState {
   restoreRewindSnapshot(s) {
     // Camera & run
     this.camX = s.camX; this.camZoom = s.camZoom; this.camPan = s.camPan;
+    this.backdropLead = s.backdropLead || 0; this.backdropPayT = s.backdropPayT || 0;
+    this.copterLoopHold = s.copterLoopHold || 0;
     this.camFloorY = s.camFloorY ?? GROUND_Y;
     this.camFeetY = null;
     this.camFloorV = s.camFloorV || 0;
@@ -13616,7 +14004,7 @@ export class RunState {
     this.distance = s.distance; this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
     this.copterBonks = s.copterBonks || 0;
     this.copterPressure = Number.isFinite(s.copterPressure) ? s.copterPressure : COPTER_PRESSURE_START;
-    this.battery = s.battery; this.damageTaken = s.damageTaken; this.speedBoost = s.speedBoost;
+    this.battery = s.battery; this.damageTaken = s.damageTaken; this.speedBoost = s.speedBoost; this.speedBoostHoldT = s.speedBoostHoldT || 0;
     this.coinCombo = s.coinCombo; this.coinComboT = s.coinComboT;
     this.powerupsCollected = s.powerupsCollected;
     this.hintT = s.hintT; this.bonusT = s.bonusT;
@@ -13907,8 +14295,9 @@ export class RunState {
             ob.hitT = BOOST_HIT_TAIL;   // the tick run keeps climbing from here
             ob.tickT = 0.045;
             ob.firedT = BOOST_FLARE_T;
-            this.player.boostT = BOOST_LEAN_T;
+            this.player.boostT = BOOST_LEAN_T + BOOST_PAD_HOLD_T;
             this.speedBoost = Math.min(1.0, this.speedBoost + 0.5);
+            this.speedBoostHoldT = BOOST_PAD_HOLD_T;
             Audio.sfx('boost');
             this.score += 50;
             if (this.challenge && this.challenge.type === 'boosts') this.challenge.count++;
@@ -14227,8 +14616,9 @@ export class RunState {
       || ['rewind', 'speed', 'lowgrav', 'magnet', 'unpeel', 'star'].includes(p.def?.power))) {
       return;
     }
-    // ...and a cabinet's own ban (the neon cabinet's invincibility), by the same test.
-    const cabBan = this.cabinet?.bannedPowers;
+    // ...and a cabinet's or stage's own ban (the neon cabinet's invincibility,
+    // plumber-1's speed), by the same test.
+    const cabBan = ownBannedPowers(this.cabinet, this.stage);
     if (cabBan?.length && (cabBan.includes(p.type)
       || (cabBan.includes('capUnpeel') && ['unpeel', 'star'].includes(p.def?.power)))) {
       return;
@@ -15140,6 +15530,10 @@ export class RunState {
     // use the fractional remainder, so ordinary runner motion is continuous
     // without predicting a future collision or changing gameplay timing.
     const cam = mix(Number.isFinite(this.prevCamX) ? this.prevCamX : this.camX, this.camX);
+    // The backdrop's camera: the world's, plus what a loop-de-loop has put it
+    // ahead by (LOOP.backdropPayback). Zero everywhere but on and after a ring.
+    const lead = this.backdropLead || 0;
+    const bgCam = cam + mix(Number.isFinite(this.prevBackdropLead) ? this.prevBackdropLead : lead, lead);
     const z = mix(Number.isFinite(this.prevCamZoom) ? this.prevCamZoom : this.camZoom, this.camZoom);
     const pan = mix(Number.isFinite(this.prevCamPan) ? this.prevCamPan : this.camPan, this.camPan);
     const floorY = mix(Number.isFinite(this.prevCamFloorY) ? this.prevCamFloorY : this.camFloorY, this.camFloorY);
@@ -15233,6 +15627,9 @@ export class RunState {
     const bgShift = (portraitFrameActive ? 0 : pan) * (this.style.bgPan ?? 1)
       + climb * BG_FOLLOW * (this.style.bgPan ?? 1);
     const frameShift = frameGroundY() - GROUND_Y;
+    // The FRAME's own transform, before the backdrop's shifts and zoom go on:
+    // the arcade intro works in frame units (see arcadeIntro.js).
+    const bgFrameBase = ctx.getTransform();
     ctx.save();
     // Portrait keeps the authored world scale and moves the presentation
     // groundline down into the full-height frame. A base sky fill covers the
@@ -15417,6 +15814,20 @@ export class RunState {
       // Seconds since the hero landed on the finish pad (null before): speed-3's
       // finish coyote saves its wink for it (desertLandmarks.js, 'winkWait').
       finishPadT: this.flip ? this.flip.t : null,
+      // The coyotes' voices: the backdrop asks as a howler's head is about to come up (the
+      // run places the howl on the beat, speedCoyoteHowl) and as the finish's winker is
+      // about to wink (the ding goes exactly where asked, on the sparkle).
+      coyoteCues: this.cabinet?.id === 'speed' ? this.speedCoyoteCues ||= {
+        howl: (sec, minSec) => this.speedCoyoteHowl(sec, minSec),
+        wink: (sec) => this.speedCoyoteWink(sec),
+        yips: (sec, gap) => this.speedCoyoteYips(sec, gap),
+        // Seconds per beat, which the howl's picture is written in (speedMcmCoyote.js howlOnce).
+        spb: () => 60 / ((Audio.bpm || 128) * (Audio.tempo || 1)),
+        // The audio clock as HEARD, which both answers above are seconds from. The pictures
+        // are timed on it rather than on game time: the game clock slips behind the audio
+        // one whenever frames run slow, and the sound would not wait.
+        now: () => (Audio.ctx ? Audio.ctx.currentTime - Audio.heardLatencySec() : null),
+      } : null,
       // And where the tape will stand in the frame the camera parks on, with that
       // camera: speed-3 seats its winking coyote by it (desertFinishWinkL).
       finish: this.overtime || this.recordBackground || !Number.isFinite(this.totalDist) ? null : {
@@ -15483,9 +15894,10 @@ export class RunState {
     const backgroundBand = portraitFrameActive
       ? portraitBackgroundBand(frameShift, bgShift, bgZoom) : null;
     if (backgroundBand) ctx.__mashBackgroundBand = backgroundBand;
+    backgroundContext.plumberBarnAtCam = this.openingBarnAtCam(backgroundCoverage);
     try {
       const neon = this.cabinet?.id === 'neon' ? this.neonMoodNow(backgroundContext.progress) : null;
-      if (this.cabinet?.id === 'neon') backgroundContext.neonStruck = this.neonStruckFor(ctx, cam, backgroundContext);
+      if (this.cabinet?.id === 'neon') backgroundContext.neonStruck = this.neonStruckFor(ctx, bgCam, backgroundContext);
       if (neon?.strike) {
         // THE STRIKE. The day is painted, then the night over it through a circle
         // spreading from where the bolt lands — the city converting outward from the
@@ -15511,7 +15923,7 @@ export class RunState {
           : neon.strike.from ? NEON_CRAWLER_TURN_TOP : NEON_CRAWLER_NIGHT_TOP;
         const s = neon.strike.s;
         // IT HITS SOMETHING (neonStrikeTarget): the old centre is only where it looks.
-        const target = this.neonStrikeTarget(ctx, cam, backgroundContext, hitX);
+        const target = this.neonStrikeTarget(ctx, bgCam, backgroundContext, hitX);
         if (target) {
           hitX = target.tipX;
           hitY = target.tipY;
@@ -15531,7 +15943,7 @@ export class RunState {
           [bandTop, H].map((cy) => Math.hypot(cx - hitX, cy - hitY)))) + 8;
         const radius = from ? neonStrikeRadius(s, reach) : Infinity;
         if (radius < reach - 0.5) {
-          this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
+          this.style.bg(ctx, backgroundT, bgCam, this.cabinet, this.totalDist,
             backgroundScene, bgShift, { ...backgroundContext, neonMood: from });
         }
         ctx.save();
@@ -15540,7 +15952,7 @@ export class RunState {
           ctx.arc(hitX, hitY, radius, 0, Math.PI * 2);
           ctx.clip();
         }
-        this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
+        this.style.bg(ctx, backgroundT, bgCam, this.cabinet, this.totalDist,
           backgroundScene, bgShift, { ...backgroundContext, neonMood: neon.mood });
         ctx.restore();
         drawNeonBolt(ctx, s, hitX, hitY, 7, { left: cov.left - 20, right: cov.left + cov.width + 20, top: boltTop, thin: true });
@@ -15556,8 +15968,32 @@ export class RunState {
         }
       } else {
         if (neon) backgroundContext.neonMood = neon.mood;
-        this.style.bg(ctx, backgroundT, cam, this.cabinet, this.totalDist,
-          backgroundScene, bgShift, backgroundContext);
+        const arcade = this.arcadeIntroResolve();
+        const drop = arcade == null ? this.arcadeLandingOffset() : 0;
+        if (arcade != null) {
+          this.arcadeLanding ||= { shaken: false, done: false };
+          // THE ARCADE INTRO: the backdrop as an arcade picture while the song is in
+          // its chiptune bars, switched off across the power-down. Lane and hero are
+          // drawn after this, untouched.
+          drawArcadeIntroBackdrop(ctx, {
+            base: bgFrameBase, w: presentation.width, h: presentation.height, s: arcade,
+            fill: this.cabinet.sky?.[0] || '#000',
+            paintBg: (g) => this.style.bg(g, backgroundT, bgCam, this.cabinet, this.totalDist,
+              backgroundScene, bgShift, backgroundContext),
+          });
+        } else if (drop) {
+          // The landing: the backdrop alone, dropped in FRAME px whatever zoom the
+          // backdrop is drawn under (portrait's is not 1).
+          const rel = bgFrameBase.inverse().multiply(ctx.getTransform());
+          ctx.save();
+          ctx.translate(0, drop / (rel.d || 1));
+          this.style.bg(ctx, backgroundT, bgCam, this.cabinet, this.totalDist,
+            backgroundScene, bgShift, backgroundContext);
+          ctx.restore();
+        } else {
+          this.style.bg(ctx, backgroundT, bgCam, this.cabinet, this.totalDist,
+            backgroundScene, bgShift, backgroundContext);
+        }
         if (neon?.preFlash) {
           const cov = ctx.__mashBackgroundCoverage || { left: 0, width: W };
           ctx.save();
@@ -16288,10 +16724,10 @@ export class RunState {
           : (this.loop && !this.loop.pending)
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
               sliding: false, slideAmount: 0, roll: false, float: false, cling: 0 }
-            // SQUEEZING DOWN A PACKED TRAIN (Peter, 29 Sep): one face per car,
-            // held through every window of it — shocked, normal, surprised.
-            : this.insideTrain
-              ? TRAIN_CAR_FACES[neonTrainCarAt(this.insideTrain, cam + heroArtX) % TRAIN_CAR_FACES.length]
+            // SQUEEZING DOWN A PACKED TRAIN (Peter, 29 Sep): shocked from the
+            // moment he is in, back to normal in the front car just before the exit.
+            : (this.insideTrain && !neonTrainInFrontCar(this.insideTrain, cam + heroArtX))
+              ? { faceSurprised: true, browRaise: true }
               : undefined,
       // SAMPLED WHERE HE IS DRAWN, not where his slot starts. drawHeroSprite
       // centres the art in its 12px slot — `cx = screenX + HERO_CENTER_OFF` —

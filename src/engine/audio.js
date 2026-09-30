@@ -23,6 +23,9 @@ import {
   resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION, RESOLUTIONS,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
+import {
+  laneCurve, curveLevelAt, pointsBetween, cutsBetween, hasAutomation,
+} from '../data/automation.js';
 import { warmTngr2Families } from './tngr2/tables.js';
 import { canHostTngr2, tngr2FamiliesOfVoice } from './tngr2/controller.js';
 import { syncMrdr3LayerSolo } from './mrdr3/controller.js';
@@ -298,6 +301,19 @@ const SONG_FADE = 0.012;
 // is a discontinuity in both channels at once, which is a click; twelve milliseconds is
 // short enough to read as "on the beat" and has no edge in it. See `_barPan`.
 const BAR_PAN_SECONDS = 0.012;
+
+// How long a CUT takes to close its door (src/data/automation.js). The cut lands on its
+// step and is silent this long after it — the engine's usual stop, short enough to read
+// as "exactly there" and long enough to walk the waveform to zero rather than chop it,
+// which on anything above 80Hz is a cycle or more. STOP_FADE and SONG_FADE are the same
+// number for the same reason.
+const CUT_SECONDS = 0.012;
+
+// Where inside a sixteenth the level line is sampled for the channel to follow. A
+// quarter of a sixteenth apart is a 1/64 — at 120bpm, 31ms of straight line — and the
+// shapes are smooth enough that the join cannot be heard; a flat stretch is written as
+// its two ends and nothing between.
+const AUTOMATION_SAMPLES = [0.25, 0.5, 0.75];
 
 // Layered and harmonically dense cues sum much louder than a single oscillator
 // at the same nominal gain. These trims keep their perceived peaks close to the
@@ -615,17 +631,124 @@ export function setSfxTrim(cue, value) {
 // The gate slam's strikes: [seconds after the slam, strength]. Written to match the leaves
 // in stylePacks/cryptGates.js (slamShut), so change both together.
 const GATE_SLAM_HITS = [[0, 1], [0.05, 0.55], [0.31, 0.38], [0.44, 0.12], [0.51, 0.09], [0.55, 0.07], [0.66, 0.05]];
+// The coyote's howl as the JMJR-4 preset `coyoteHowl` plays it: [beat, Hz, beats]. Three
+// yips on B5, then E5 gliding up to B5, held, and falling to G5 — Speed Zone's E minor.
+// A note held into the next overlaps it by COYOTE_HOWL_TIE so the legato gate is still
+// open when it arrives: the yips strike afresh, the howl is one breath. Candidate B of
+// tools/render-howl-auditions.js, which Peter picked on 29 Sep 2026.
+const COYOTE_HOWL_TIE = 0.06;
+const COYOTE_HOWL_NOTES = [
+  [0, 987.77, 0.2], [0.5, 987.77, 0.2], [1, 987.77, 0.2],
+  [1.5, 659.26, 0.5 + COYOTE_HOWL_TIE], [2, 987.77, 2.5 + COYOTE_HOWL_TIE], [4.5, 783.99, 1.25],
+];
+// The chorus pup's yip: the howl's own yip (the preset's first syllable, eeh, scooping up
+// a fifth), an octave up on E6 because the pup is small. The coyoteYip cue is one of them;
+// the run fires two, where the pup's mouth opens (speedMcmCoyote.js chorusShow).
+const COYOTE_YIP_NOTES = [[0, 1318.51, 0.2]];
+const COYOTE_NOTES = { howl: COYOTE_HOWL_NOTES, yip: COYOTE_YIP_NOTES };
+
+// THE FROST SLEIGH'S CAROL (sleighCarol below; run.js cueSleighCarol): a Christmas tune,
+// turned minor, on a vibraphone while Santa's team crosses the sky at frost-3's tape.
+//
+// A phrase is `notes` of [beat, semitones from the tonic, beats long, velocity], beat 0
+// its first note, and `downbeat` is how many beats in its first STRONG note falls — the
+// run puts that on an odd bar's downbeat, so a pickup stays a pickup. The semitones
+// are D dorian's (a minor third, a major sixth, a flat seventh) because that is what FROST
+// FORTRESS is: a Dm vamp with B and C natural in it. A semitone may be a list, which is
+// two mallets struck together.
+//
+// The TONIC is not written here: the phrase asks the song what key its strong note will
+// sound in (songTonic) and holds it to the end. ONE key a phrase — Frost moves up to F#
+// minor four bars at a time, and a refrain that stepped up with it mid-tune was turned
+// down; the run places the phrase inside one key instead (run.js cueSleighCarol).
+//
+// The tunes, from the C-major sheets, degree for degree:
+//   jingle        "Jingle bells, jingle bells, jingle all the way" — E E E, E E E, E G C D E
+//                 — at twice the song's pace (a sheet quarter is our eighth), so the
+//                 refrain is the two bars the sleigh takes to cross.
+//   jingleDuo     the same, two mallets: a diatonic third under each note, a Dm chord
+//                 at the end.
+//   santaWatch    "You better watch out, you better not cry" — G E F G G, G A B C C —
+//                 in at the song's own quarter, pickups before the bar.
+//   santaTown     "Santa Claus is coming to town" — E G C E D F B C — with the B a flat
+//                 seventh, as the song has it.
+//   santaTownLead the same with the leading tone (C#) back in on "to", the harmonic-
+//                 minor version: more of the original's pull home, and a note the song
+//                 itself never plays.
+export const SLEIGH_CAROLS = {
+  jingle: {
+    downbeat: 0,
+    notes: [
+      [0, 3, 0.5, 1], [0.5, 3, 0.5, 0.78], [1, 3, 1, 0.9],
+      [2, 3, 0.5, 1], [2.5, 3, 0.5, 0.78], [3, 3, 1, 0.9],
+      [4, 3, 0.5, 1], [4.5, 7, 0.5, 0.85], [5, 0, 0.75, 0.92], [5.75, 2, 0.25, 0.72],
+      [6, 3, 2, 1],
+    ],
+  },
+  jingleDuo: {
+    downbeat: 0,
+    notes: [
+      [0, [3, 0], 0.5, 1], [0.5, [3, 0], 0.5, 0.78], [1, [3, 0], 1, 0.9],
+      [2, [3, 0], 0.5, 1], [2.5, [3, 0], 0.5, 0.78], [3, [3, 0], 1, 0.9],
+      [4, [3, 0], 0.5, 1], [4.5, [7, 3], 0.5, 0.85], [5, [0, -3], 0.75, 0.92], [5.75, [2, -2], 0.25, 0.72],
+      [6, [3, 0, -5], 2, 1],
+    ],
+  },
+  santaWatch: {
+    downbeat: 1.5,
+    notes: [
+      [0, 7, 0.5, 0.75], [0.5, 3, 0.5, 0.72], [1, 5, 0.5, 0.78],
+      [1.5, 7, 1, 1], [2.5, 7, 1.5, 0.88],
+      [4, 7, 0.5, 0.75], [4.5, 9, 0.5, 0.78], [5, 10, 0.5, 0.82],
+      [5.5, 12, 1, 1], [6.5, 12, 2, 0.9],
+    ],
+  },
+  santaTown: {
+    downbeat: 1,
+    notes: [
+      [0, 3, 0.5, 0.78], [0.5, 7, 0.5, 0.82], [1, 12, 1, 1], [2, 3, 1, 0.8],
+      [3, 2, 1, 0.95], [4, 5, 0.5, 0.8], [4.5, -2, 0.5, 0.8], [5, 0, 2.5, 1],
+    ],
+  },
+  santaTownLead: {
+    downbeat: 1,
+    notes: [
+      [0, 3, 0.5, 0.78], [0.5, 7, 0.5, 0.82], [1, 12, 1, 1], [2, 3, 1, 0.8],
+      [3, 2, 1, 0.95], [4, 5, 0.5, 0.8], [4.5, -1, 0.5, 0.8], [5, 0, 2.5, 1],
+    ],
+  },
+};
+// The one frost-3 plays — picked by ear from the five over the song, 29 Sep 2026. The
+// sheet is work/auditions/sleigh-carol (tools/render-carol-auditions.js); every phrase
+// above stays playable by name.
+export const SLEIGH_CAROL = 'jingle';
+// Where the tonic is folded to: the octave from C5. D lands on D5, F# on F#5 — up with the
+// song's triangle lead and the celeste, where a mallet carries over a full band.
+const SLEIGH_CAROL_LO = 523.25;
 
 export const SFX_TRIM = {
-  blockBreak: 0.541, coinSpray: 0.822, hit: 0.785,
+  blockBreak: 0.495, coinSpray: 0.822, hit: 0.785,
   // Levelled against 'boom', its opposite number, and deliberately far over it — the
   // biggest thing heard in the game, once a level (Peter: "giant LONG boom"). Held to
   // a -6 dBFS peak so it stays whole over the music rather than clipping into it.
-  thunder: 0.47,
+  thunder: 0.519,
   // The crypt's iron gate banging shut across the bank. Scenery, not a hazard: it sits
   // about 3 dB under the lane hits on RMS (-33.4, blockBreak -31.3), the level the KLNG-8
   // clang was picked at.
-  gateSlam: 0.484,
+  gateSlam: 0.507,
+  // The Speed Zone coyote howling on his ledge. Scenery, asked for "much softer than the
+  // preview": it went in at 0.16 (-39.9 RMS over its 3.3 s, tools/render-cues.js) and was
+  // brought up to here on the SFX desk, -28.2 RMS.
+  coyoteHowl: 0.61,
+  // The winking coyote's "ting!" at speed-3's finish. Levelled against cameraClick, the
+  // other Speed Zone scenery gag: -34.0 RMS against its -34.4.
+  coyoteWink: 0.733,
+  // The chorus pup's yips: the howl's own yip, so at the howl's trim.
+  coyoteYip: 0.767,
+  // The Frost sleigh's carol. A tune has to be FOLLOWED over the band, not just heard, so
+  // it sits with the howl rather than under it: -35.3 RMS untrimmed, here -28.4, against
+  // FROST FORTRESS at -23.1 in the bars it plays over (tools/render-carol-auditions.js).
+  sleighCarol: 2.2,
   // A shutter over the song: a small, crisp mechanism, well under the strike cues.
   cameraClick: 1.479,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
@@ -649,7 +772,7 @@ export const SFX_TRIM = {
   // It is a sound with its energy in the body rather than in the attack, which
   // is what a bark heard across a yard is, and it leaves 9dB more headroom for
   // the song underneath.
-  dogBark: 0.295,
+  dogBark: 0.275,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
   // playContact's fallback — gnash and mochi have no baked contact cue — and that path
@@ -704,7 +827,7 @@ export const SFX_TRIM = {
   // RMS — level with 'blockBreak', 6.4dB up on 'crunch', and running 0.48s
   // where 'crunch' runs 0.11. It reads as bigger because it IS longer and
   // broader, not because it is jumping the mix.
-  boxKick: 0.501,
+  boxKick: 0.305,
   // A latch clack plus a bell on inharmonic partials sums hotter at the strike
   // than the clean chime this replaced; trim it back into the coin/purchase
   // family instead of letting the clang jump the mix.
@@ -902,6 +1025,19 @@ class AudioSys {
     // A lane absent from here has never been touched, which is what lets a song with no
     // pan edits leave every strip exactly as the mix left it.
     this._barPans = new Map();
+    // THE CUT DOORS (see `_cutRoute`). One gain pair per lane that has cuts, between
+    // that lane's notes and its gate: the notes struck since the last cut all pass
+    // through the current one, and a cut shuts it and lets the next note open a new
+    // one. `_cutEpochs` counts them per lane, so a per-bar gain bus can be one per door.
+    this._cutDoors = new Map();
+    this._cutEpochs = new Map();
+    // Cuts whose door has been told to shut but whose moment the scheduler has not yet
+    // reached — see `_automationTick`, which swaps the door when it gets there.
+    this._pendingCuts = [];
+    // The sixteenth the level line was last written for, and the lanes it was written
+    // on — so each is written once, and a lane whose line was removed is walked home.
+    this._autoWindow = null;
+    this._autoLanes = new Set();
     // Preset-bench notes get their own gates so changing an audition never cuts a
     // song lane. They belong to this context just like the song gates do.
     this._benchGates = new Map();
@@ -913,6 +1049,9 @@ class AudioSys {
     // Reversed cue buffers: the in-flight render promises, and the ones that landed.
     this._revBufs = new Map();
     this._revReady = new Map();
+    // The coyote's howl, baked per tempo (see _coyoteHowlBuffer): in flight, and landed.
+    this._howlBufs = new Map();
+    this._howlReady = new Map();
     // Reversed cues currently scheduled or sounding — see stopVoiceCues.
     this._liveVoiceCues = new Set();
     // Set only for the duration of one sfx() call — see the note there.
@@ -1270,6 +1409,7 @@ class AudioSys {
     // Lane gates belong to the context that made them; a rebuilt graph starts with none.
     this._laneGates.clear();
     this._barGainBuses.clear();
+    this._clearAutomationState(0, { strips: false });
     this._benchGates.clear();
     this._previewOutput = null;
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
@@ -2664,6 +2804,108 @@ class AudioSys {
     src.start(t); src.stop(t + dur + 0.02);
   }
 
+  // THE FROST SLEIGH'S CAROL (SLEIGH_CAROLS): a phrase on a vibraphone, placed by the run
+  // on an odd bar as Santa's team takes off at frost-3's tape.
+  //
+  // The vibraphone, from what makes one: an aluminium bar tuned so its first overtone
+  // sits two octaves up (3.99x) and its second near 10x, both dying far faster than
+  // the fundamental — which is why a vibe is a pure tone a moment after it is a bright
+  // one. A soft mallet's thud in front. And the motor: the resonator discs turning,
+  // an amplitude wobble at ~5.5 Hz over the whole instrument, which is the sound
+  // people mean by "vibes" and the one thing a marimba or a bell does not have.
+  //
+  // The phrase pans left to right as it plays, because that is the way the team flies.
+  //
+  // `opt.tonic` (Hz) and `opt.bpm` are for renders with no song under them; the game
+  // leaves both out and the song answers.
+  sleighCarol({ carol = SLEIGH_CAROL, tonic = null, bpm = null, trem = 0.3, pan = 0.55 } = {}) {
+    if (!this.ctx) return;
+    const phrase = typeof carol === 'string' ? SLEIGH_CAROLS[carol] : carol;
+    if (!phrase?.notes?.length) return;
+    const ctx = this.ctx;
+    const t0 = this.cueAt();
+    const spb = 60 / (bpm || (this.bpm || 100) * (this.tempo || 1));
+    const lead = this.cueBeatLead || 0;
+    const fold = (f) => {
+      while (f < SLEIGH_CAROL_LO) f *= 2;
+      while (f >= SLEIGH_CAROL_LO * 2) f /= 2;
+      return f;
+    };
+    // One key for the whole phrase: the song's, where its strong note lands.
+    const key = fold(tonic || this.songTonic(lead + (phrase.downbeat || 0)) || 587.33);
+    const last = phrase.notes.reduce((m, [b, , d]) => Math.max(m, b + d), 0) * spb;
+    const end = t0 + last + 2.6;
+
+    // The motor, on everything at once: a gain riding at 1 - trem with the LFO adding
+    // up to trem back on top.
+    const motor = ctx.createGain();
+    motor.gain.value = 1 - trem;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.5;
+    const depth = ctx.createGain();
+    depth.gain.value = trem;
+    lfo.connect(depth); depth.connect(motor.gain);
+    const panner = ctx.createStereoPanner();
+    panner.pan.setValueAtTime(-pan, t0);
+    panner.pan.linearRampToValueAtTime(pan, t0 + last);
+    // The phrase's own fader, so a run that ends under it can take it away (stopSleighCarol).
+    const out = ctx.createGain();
+    out.gain.value = this.cueGain;
+    motor.connect(panner); panner.connect(out); out.connect(this.cueDest || this.sfxGain);
+    lfo.start(t0); lfo.stop(end);
+    this._sleighCarolOut = { out, end };
+
+    const partial = (t, f, peak, decay) => {
+      const o = ctx.createOscillator();
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+      o.connect(g); g.connect(motor);
+      o.start(t); o.stop(t + decay + 0.02);
+    };
+    for (const [beat, semis, len, vel = 1] of phrase.notes) {
+      const t = t0 + beat * spb;
+      const root = key;
+      // Rung for as long as a player would let it: a little past its written length,
+      // never less than a pedalled vibe's bloom, never so long the tune smears.
+      const ring = Math.min(2.4, Math.max(0.9, len * spb * 1.8));
+      const chord = Array.isArray(semis) ? semis : [semis];
+      const each = 0.15 * vel / Math.sqrt(chord.length);
+      for (const s of chord) {
+        const f = root * Math.pow(2, s / 12);
+        partial(t, f, each, ring);
+        partial(t, f * 3.99, each * 0.2, Math.min(ring, 0.42));
+        partial(t, f * 9.9, each * 0.05, 0.09);
+      }
+      // The mallet: a soft yarn thud, not a click.
+      if (this.noiseBuf) {
+        const src = ctx.createBufferSource();
+        src.buffer = this.noiseBuf; src.loop = true;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = Math.min(4000, root * 3); bp.Q.value = 1.4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.05 * vel, t + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+        src.connect(bp); bp.connect(g); g.connect(motor);
+        src.start(t); src.stop(t + 0.05);
+      }
+    }
+  }
+
+  /** Take a carol still ringing away — the run it was playing for has been undone. */
+  stopSleighCarol() {
+    const c = this._sleighCarolOut;
+    this._sleighCarolOut = null;
+    if (!c || !this.ctx || this.ctx.currentTime >= c.end) return;
+    const now = this.ctx.currentTime;
+    c.out.gain.cancelScheduledValues(now);
+    c.out.gain.setValueAtTime(c.out.gain.value, now);
+    c.out.gain.linearRampToValueAtTime(0, now + 0.08);
+  }
+
   // THE CRYPT'S GATE BANGING SHUT (stylePacks/cryptGates.js), placed so its first hit is
   // the frame the right leaf lands. The iron is a KLNG-8 preset, `gateClang` (data/voices.js)
   // — the cymbal cluster pitched down and fed back through its resonator — picked by ear
@@ -2681,6 +2923,85 @@ class AudioSys {
     for (const [when, hit] of GATE_SLAM_HITS) {
       this.voiceSfx('gateClang', { at: at + when, gain: this.cueGain * hit });
     }
+  }
+
+  // THE SPEED ZONE COYOTE HOWLING (stylePacks/index.js drawDesertLife), placed by the run
+  // on the half-beat his head comes up on. The phrase is sung by JMJR-4 with legato and a
+  // glide, which only works as one rack playing the notes in order, so it is rendered ONCE
+  // per tempo into a buffer (the reversed cues' trick, _reversedVoiceBuffer) and played
+  // from there: the same sound as the audition, and no formant graph built mid-run. Not
+  // baked yet (a cold first call) is a quiet coyote, never a late one.
+  coyoteHowl(kind = 'howl') {
+    if (!this.ctx) return;
+    const bpm = (this.bpm || 128) * (this.tempo || 1);
+    const buf = this._howlReady.get(`${kind}|${Math.round(bpm * 10)}`);
+    if (!buf) { this._coyoteHowlBuffer(bpm, kind).catch(() => {}); return; }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.value = this.cueGain;
+    src.connect(g);
+    g.connect(this.sfxGain);
+    this._liveVoiceCues.add(src);
+    src.addEventListener('ended', () => this._liveVoiceCues.delete(src));
+    src.start(this.cueAt());
+  }
+
+  // THE COYOTE'S WINK (speed-3's finish, speedMcmCoyote.js winkShow): the cartoon "ting!"
+  // on the sparkle that pops off his eye, placed by the backdrop at the star's first frame.
+  // A struck bell at E7, the top of Speed Zone's E minor: a sine with a twin 5 Hz sharp so
+  // the tail shimmers, two inharmonic partials (2.76x and 5.4x, a small bell's) that die
+  // well before it, and an E6 underneath so it has a body rather than being a whistle.
+  coyoteWink() {
+    const f = 2637;
+    this.osc('sine', f, f, 1.2, 0.16);
+    this.osc('sine', f + 5, f + 5, 1.0, 0.07);
+    this.osc('sine', f * 2.76, f * 2.76, 0.32, 0.05);
+    this.osc('sine', f * 5.4, f * 5.4, 0.09, 0.025);
+    this.osc('triangle', f / 2, f / 2, 0.5, 0.05);
+  }
+
+  /** Bake the howl and the pup's yip for a tempo ahead of needing them (RunState.enter). */
+  warmCoyoteHowl(bpm = (this.bpm || 128) * (this.tempo || 1)) {
+    for (const kind of Object.keys(COYOTE_NOTES)) this._coyoteHowlBuffer(bpm, kind).catch(() => {});
+  }
+
+  async _coyoteHowlBuffer(bpm, kind = 'howl') {
+    const notes = COYOTE_NOTES[kind];
+    const key = `${kind}|${Math.round(bpm * 10)}`;
+    if (this._howlBufs.has(key)) return this._howlBufs.get(key);
+    const job = (async () => {
+      const OC = (typeof window !== 'undefined')
+        && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+      if (!OC || !this.ctx || !VOICES.coyoteHowl || !notes || !(bpm > 0)) return null;
+      const sr = this.ctx.sampleRate || 44100;
+      const spb = 60 / bpm;
+      const end = Math.max(...notes.map(([b, , d]) => (b + d) * spb));
+      const octx = new OC(2, Math.ceil(sr * (end + 1)), sr);
+      // Building a rack calls Tone.setContext on the offline context. Put Tone back before
+      // anything else can run, or the stage's live voices are built on a dead context
+      // (the "different audio context" crash in prepareRealtimeVoices).
+      const live = Tone.getContext();
+      let rendering;
+      try {
+        const rack = new VoiceRack(octx, this.noiseBuf, this.crashBuf);
+        const dry = octx.createGain();
+        dry.connect(octx.destination);
+        notes.forEach(([b, hz, d], step) => {
+          rack.play('howl', 'coyoteHowl', hz, {
+            time: 0.005 + b * spb, dur: d * spb, gain: 0.8, dry, wet: null, echo: false, step,
+          });
+        });
+        rendering = octx.startRendering();
+      } finally {
+        Tone.setContext(live);
+      }
+      const out = await rendering;
+      this._howlReady.set(key, out);
+      return out;
+    })();
+    this._howlBufs.set(key, job);
+    return job;
   }
 
   explosion() {
@@ -4463,6 +4784,10 @@ class AudioSys {
       case 'doorSwingOpen': this.doorWhoosh(true, true); break;
       case 'doorSwingShut': this.doorWhoosh(false, true); break;
       case 'gateSlam': this.gateSlam(); break;
+      case 'coyoteHowl': this.coyoteHowl(); break;
+      case 'coyoteYip': this.coyoteHowl('yip'); break;
+      case 'coyoteWink': this.coyoteWink(); break;
+      case 'sleighCarol': this.sleighCarol(opt); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;
@@ -4952,9 +5277,11 @@ class AudioSys {
    * `_laneGate` re-points onto a new strip, so the pool wired to this bus stays wired
    * to it. Cleared with the lane gates: these hang off them.
    */
-  _barGainBus(key, db, scale, dryDest, wetDest) {
+  _barGainBus(key, db, scale, dryDest, wetDest, epoch = null) {
     if (!this.ctx || !dryDest || !wetDest) return null;
-    const id = `${key}|${db}`;
+    // One per CUT DOOR as well, on a lane that has cuts: re-pointing a bus onto the next
+    // door would carry the notes on it from before the cut through a door that is open.
+    const id = epoch ? `${key}|${db}|${epoch}` : `${key}|${db}`;
     let bus = this._barGainBuses.get(id);
     if (!bus) {
       const dry = this.ctx.createGain(); dry.gain.value = scale; dry.connect(dryDest);
@@ -5001,6 +5328,178 @@ class AudioSys {
     this._barPans.set(key, value);
     const strip = this.mixer && this.mixer.lane(key);
     if (strip && strip.setPanOffset) strip.setPanOffset(value, when, BAR_PAN_SECONDS);
+  }
+
+  // ---- automation: the level line and the cuts --------------------------------
+  //
+  // The format, and why it exists beside the per-bar edits rather than inside them, is
+  // in src/data/automation.js. What happens here is the playing of it, and it is two
+  // unrelated mechanisms that happen to be written in the same place:
+  //
+  //   · The LEVEL LINE is a param on the channel strip (`strip.automate`), written a
+  //     sixteenth at a time, just ahead of the sequencer — the same way bar pan is. It
+  //     moves under notes that are already ringing, which a bar's gain cannot.
+  //   · A CUT is routing. A lane with cuts sends its notes through a DOOR — a gain pair
+  //     in front of its gate — and a cut shuts that door and opens a fresh one for the
+  //     notes after it. So "stop what is ringing, let the next note play" is exact
+  //     however the notes were built: a Tone pool keyed on its route gets a new pool, a
+  //     native note is connected where it was struck, and a worklet lane (which no door
+  //     can hold) is told by message. Nothing has to know how to stop a note.
+
+  /**
+   * One sequencer tick's worth of automation. Cheap to call on every tick: a song with
+   * no automation returns on the first line, which is every song until one is given some.
+   */
+  _automationTick(sourceStep, barIndex, bars, spb) {
+    const auto = this.bank?.automation || null;
+    if (!auto && !this._autoLanes.size && !this._pendingCuts.length) return;
+    if (!(bars > 0) || !Number.isFinite(sourceStep) || !(spb > 0)) return;
+    // Sixteenths from the top of the FORM, which is what the stored positions count —
+    // the loop wraps and Rearrange's slices both land on the right stretch of line.
+    const within = ((sourceStep % 16) + 16) % 16;
+    const pos = (((barIndex % bars) + bars) % bars) * 16 + within;
+    const k = Math.floor(pos + 1e-6);
+    const t0 = this.nextTime - (pos - k) * spb;
+    const last = this._autoWindow;
+    if (!last || last.k !== k || Math.abs(last.t0 - t0) > spb * 0.5) {
+      // A sixteenth not yet written. Any cut from the last one that the ticks have not
+      // reached is reached now: the transport has left that window — onwards or by a
+      // jump — and a door that has been told to shut must never take another note.
+      this._takePendingCuts(Infinity);
+      this._autoWindow = { k, t0 };
+      this._writeAutomation(auto, k, t0, spb);
+    }
+    this._takePendingCuts(pos);
+  }
+
+  /** Write sixteenth `k` of every lane's line, and book the cuts that fall inside it. */
+  _writeAutomation(auto, k, t0, spb) {
+    const seen = new Set();
+    for (const [key, stored] of Object.entries(auto || {})) {
+      const curve = laneCurve(stored);
+      if (!curve) continue;
+      const strip = this.mixer?.lane(key);
+      if (curve.points.length && strip?.automate) {
+        seen.add(key);
+        strip.automate(this._automationEvents(curve, k, t0, spb));
+      }
+      for (const c of cutsBetween(curve, k, k + 1)) {
+        const at = t0 + (c - k) * spb;
+        // The door shuts on the cut's own time, now; the worklet lanes are told now, for
+        // the same time. What waits is only the SWAP — the moment the notes after the cut
+        // start going somewhere else — because notes between here and the cut are still
+        // before it.
+        this._shutCutDoor(key, at);
+        this.voices?.chokeLane(key, at);
+        // And the channel's own delay inserts, emptied of what the track had put into them.
+        this.mixer?.lane(key)?.flushEchoes?.(at);
+        this._pendingCuts.push({ key, pos: c, at });
+      }
+    }
+    // A lane that had a line a sixteenth ago and has none now — removed on the desk with
+    // the song playing — walks back to unity rather than staying wherever it was left.
+    for (const key of this._autoLanes) {
+      if (!seen.has(key)) this.mixer?.lane(key)?.clearAutomation?.(t0);
+    }
+    this._autoLanes = seen;
+  }
+
+  /**
+   * The events one sixteenth of a curve becomes: where it starts, the points inside it
+   * (both sides of a step, the second four milliseconds on), three samples along any
+   * part that is not flat, and where it ends — the value ARRIVING there, so a step on a
+   * sixteenth line is the next window's to take.
+   */
+  _automationEvents(curve, k, t0, spb) {
+    const at = (p) => t0 + (p - k) * spb;
+    const v0 = curveLevelAt(curve, k);
+    const v1 = curveLevelAt(curve, k + 1, { left: true });
+    const inside = pointsBetween(curve, k, k + 1);
+    const events = [[t0, v0]];
+    if (inside.length || Math.abs(v0 - v1) > 1e-7) {
+      const marks = [...new Set([...AUTOMATION_SAMPLES.map((f) => k + f), ...inside.map((p) => p.pos)])]
+        .sort((a, b) => a - b);
+      for (const m of marks) {
+        const left = curveLevelAt(curve, m, { left: true });
+        const right = curveLevelAt(curve, m);
+        events.push([at(m), left]);
+        if (Math.abs(right - left) > 1e-7) events.push([at(m) + 0.004, right]);
+      }
+    }
+    events.push([at(k + 1), v1]);
+    return events;
+  }
+
+  /**
+   * The door a lane's next note goes through, or the gate itself on a lane with no
+   * cuts — which is every lane of every song that has not asked, so nothing about their
+   * routing changes at all.
+   */
+  _cutRoute(key, gate) {
+    if (!gate || !this.ctx || this._previewing) return gate;
+    if (!this.bank?.automation?.[key]?.cuts?.length) return gate;
+    let door = this._cutDoors.get(key);
+    if (!door || door.gate !== gate) {
+      const epoch = (this._cutEpochs.get(key) || 0) + 1;
+      this._cutEpochs.set(key, epoch);
+      const dry = this.ctx.createGain(); dry.gain.value = 1; dry.connect(gate.dry);
+      const wet = this.ctx.createGain(); wet.gain.value = 1; wet.connect(gate.wet);
+      door = { dry, wet, gate, epoch, shutAt: null };
+      this._cutDoors.set(key, door);
+    }
+    return door;
+  }
+
+  /**
+   * Shut a lane's current door at `at`. No door means nothing has been struck on the
+   * lane since its last cut, and there is nothing ringing to stop.
+   */
+  _shutCutDoor(key, at) {
+    const door = this._cutDoors.get(key);
+    if (!door || door.shutAt != null) return;
+    const when = Math.max(at, this.ctx?.currentTime ?? 0);
+    door.shutAt = when;
+    // Anchored and ramped by hand, as setPanOffset is: the door has never been
+    // automated, so a lone ramp would start from the top of the render.
+    for (const param of [door.dry.gain, door.wet.gain]) {
+      param.setValueAtTime(1, when);
+      param.linearRampToValueAtTime(0, when + CUT_SECONDS);
+    }
+  }
+
+  /** Swap the doors for every booked cut the transport has reached. */
+  _takePendingCuts(pos) {
+    if (!this._pendingCuts.length) return;
+    const keep = [];
+    for (const cut of this._pendingCuts) {
+      if (cut.pos > pos + 1e-6) { keep.push(cut); continue; }
+      const door = this._cutDoors.get(cut.key);
+      if (door && door.shutAt != null) {
+        this._cutDoors.delete(cut.key);
+        // Live, disconnected once it has been silent a moment; offline the render is
+        // bounded and scheduling runs ahead of it, so it is left where it is.
+        if (!this.offline) {
+          const wait = Math.max(0, (door.shutAt + CUT_SECONDS - (this.ctx?.currentTime ?? 0)) * 1000) + 250;
+          setTimeout(() => {
+            try { door.dry.disconnect(); } catch { /* already gone */ }
+            try { door.wet.disconnect(); } catch { /* already gone */ }
+          }, wait);
+        }
+      }
+      this.voices?.cutLane(cut.key, cut.at);
+    }
+    this._pendingCuts = keep;
+  }
+
+  /** A new song, or a new graph: no doors, no line, nothing booked. */
+  _clearAutomationState(fade = 0, { strips = true } = {}) {
+    this._cutDoors.clear();
+    this._pendingCuts = [];
+    this._autoWindow = null;
+    this._autoLanes = new Set();
+    if (!strips) return;   // a rebuilt graph: the strips are about to be new ones
+    const now = this.ctx?.currentTime ?? 0;
+    this.mixer?.clearAutomation?.(fade > 0 ? now + fade : null);
   }
 
   /** The dry/wet gates used only by the preset library's bench. */
@@ -5102,6 +5601,11 @@ class AudioSys {
     else cut();
     this._laneGates.clear();
     this._barGainBuses.clear();
+    // The cut doors hang off the gates just cut, so they are silent with them; what goes
+    // here is only the bookkeeping, so the next song cannot route a note into one. The
+    // level line goes back to unity once the gates have finished walking down, not
+    // before — a faded lane must not come back up under its own fade-out.
+    this._clearAutomationState(fade);
     // The pan offsets are not nodes to disconnect but a number written on somebody
     // else's panner, so they have to be TAKEN BACK rather than dropped: a strip left
     // where the last bar of the last song put it is a channel whose pot and whose sound
@@ -5461,6 +5965,13 @@ class AudioSys {
     const resolution = resolutionOf(source, patch);
     if (resolution !== LEGACY_RESOLUTION) next.resolution = resolution;
     else delete next.resolution;
+    // The level line and the cuts, the same way round again: the arrangement's while it
+    // has any, the song's own (a hand-written bank may carry them) when it does not. Read
+    // fresh by `_automationTick` every sixteenth, so a fade drawn on the desk is heard
+    // from the next one without a seam.
+    const automation = hasAutomation(patch?.automation) ? patch.automation : source.automation;
+    if (hasAutomation(automation)) next.automation = automation;
+    else delete next.automation;
     this.bank = next;
     this.refreshTransportResolution(next, this.mixEntry);
     this.mixer?.prepareBarEffects?.(barPlan(next), next.bpm || this.bpm);
@@ -6438,8 +6949,10 @@ class AudioSys {
           : (Number.isFinite(value) && value > 0) || value === true ? [value] : [];
         if (!notes.length) continue;
         const strip = this.mixer?.lane(key);
-        const gate = this._laneGate(key, strip ? strip.dry : this.musicBus,
-          strip ? strip.wet : this.echoBus);
+        // Through the door the first note will take, or the warmed pool is wired to a
+        // route the first note does not use and is thrown away on arrival.
+        const gate = this._cutRoute(key, this._laneGate(key, strip ? strip.dry : this.musicBus,
+          strip ? strip.wet : this.echoBus));
         const dry = gate ? gate.dry : (strip ? strip.dry : this.musicBus);
         const wet = gate ? gate.wet : (strip ? strip.wet : this.echoBus);
         const primaryEcho = key === 'keyGliss' || key === 'organGliss'
@@ -6610,6 +7123,9 @@ class AudioSys {
         // The transport's step, for the one engine whose sound advances per step: JMJR-4's
         // syllable line. Every other path ignores it.
         step: this.step,
+        // A lane with cuts plays through a door per cut; a worklet voice is one node
+        // wired once, so it takes the lane's own gate and is choked by message instead.
+        laneRoute: this._cutDoors.has(key) ? this._laneGates.get(key) || null : null,
         // Its own synths while the song keeps its own — see previewNote.
         preview: !!this._previewing,
         // ...and whether that note waits for a note-off. Two questions, because the
@@ -7287,6 +7803,11 @@ class AudioSys {
         && Number.isFinite(sourceStep)) {
         this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime);
       }
+      // The level line and the cuts, BEFORE any lane is asked for a note: a cut on this
+      // very step has to swap its lane's door before the note that lands on it is routed.
+      // Ahead of the half-tick skip below too, so a cut between two sixteenths is reached
+      // on the tick that reaches it. Returns at once on a song with no automation.
+      this._automationTick(sourceStep, sourceBarIndex, plan.length, spb);
       const frozenKeys = new Set();
       for (const key of (rearrangeMute ? [] : this.frozenLanes.keys())) {
         const frozenPercussion = PERCUSSION_LANES.includes(baseLane(key));
@@ -7671,8 +8192,8 @@ class AudioSys {
         }
         const gate = this._previewing && !strip
           ? this._benchGate(key)
-          : this._laneGate(key, strip ? strip.dry : this.musicBus,
-            strip ? strip.wet : this.echoBus);
+          : this._cutRoute(key, this._laneGate(key, strip ? strip.dry : this.musicBus,
+            strip ? strip.wet : this.echoBus));
         const baseDry = gate ? gate.dry : (strip ? strip.dry : this.musicBus);
         const baseWet = gate ? gate.wet : (strip ? strip.wet : this.echoBus);
         lastLane = key;
@@ -7690,7 +8211,7 @@ class AudioSys {
           // implementations below. Pooled presets take the stable route above and
           // receive the same scale in `playVoice`. The bus is HELD between steps — a
           // new pair each step is a new graph to the voice rack.
-          const bus = this._barGainBus(key, db, scale, baseDry, baseWet);
+          const bus = this._barGainBus(key, db, scale, baseDry, baseWet, gate?.epoch);
           if (bus) { dry = bus.dry; wet = bus.wet; }
           else { dry = baseDry; wet = baseWet; }
         }
@@ -8718,6 +9239,28 @@ class AudioSys {
     const key = { root, classes };
     this._songKeyMemo = { bank: this.bank, sec: secIdx, key };
     return key;
+  }
+
+  /**
+   * The tonic of the bar `leadBeats` out, in Hz — songKey's root with that bar's
+   * transpose applied.
+   *
+   * songKey reads a section's notes as written, and an arrangement can play a section
+   * up or down per bar (`transpose`, by lane). Frost does: bars 17-20 and 29-32 are its
+   * D minor sections moved up four, so the key there is F# minor while songKey still
+   * says D. A cue that has to be IN the tune — the sleigh's carol — reads this instead.
+   * The bass lane's transpose, because the root is the bass's note.
+   */
+  songTonic(leadBeats = this.cueBeatLead) {
+    const key = this.songKey(leadBeats);
+    if (!key) return null;
+    const plan = barPlan(this.bank);
+    const heard = this.songBeat();
+    const beat = (heard == null ? this.step / 4 : heard) + (leadBeats || 0);
+    const bars = plan.length;
+    const bar = plan[((Math.floor(beat / 4) % bars) + bars) % bars];
+    const tr = Number(bar?.transpose?.bass) || 0;
+    return key.root * Math.pow(2, tr / 12);
   }
 
   /**

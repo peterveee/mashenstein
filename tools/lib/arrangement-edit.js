@@ -41,6 +41,11 @@ import {
  */
 const fineOr = (v) => (RESOLUTIONS.includes(v) && v !== LEGACY_RESOLUTION ? v : null);
 import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
+import {
+  hasAutomation, shiftAutomation, copyAutomationRange, pasteAutomation, dropLanes,
+  copyLane as copyLaneAutomation, setLaneFade, clearLaneRange, addLaneCut, removeLaneCut,
+  moveLaneCut, setLanePoints, setLane, laneCurve, curveDbAt,
+} from '../../src/data/automation.js';
 import { createNoteFxProcessor, resolveNoteFx } from '../../src/engine/note-fx.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
@@ -134,6 +139,11 @@ export function draftOf(bank, entry = null) {
     // draft is round-tripped through `entryOf` on EVERY edit — so anything not carried
     // is not merely ignored, it is deleted by the next thing anyone does to a bar.
     loop: entry?.loop ? clone(entry.loop) : null,
+    // The level line and the cuts, per track (src/data/automation.js). Carried like the
+    // loop and for the same reason — every edit round-trips the draft — and moved like
+    // the loop by every edit that inserts or removes bars, because its positions are
+    // sixteenths from the top and the music moves out from under them.
+    automation: hasAutomation(entry?.automation) ? clone(entry.automation) : null,
     // Missing is the old 16-slot format. Once upgraded, a draft stays upgraded even
     // if its last off-grid note is erased: silently compacting it back would make the
     // next 1/32 edit repeatedly reshape every lane and would invalidate undo snapshots.
@@ -238,14 +248,18 @@ export function entryOf(bank, draft) {
   // that are a bare two-bar loop with no order of their own. A swing is the same case
   // and the commonest one of all: shuffling a song is usually the ONLY thing done to it,
   // and `{ swing: 62 }` has to be a whole entry or the drag would not survive a save.
+  // A fade on a song nobody has otherwise arranged is still an arrangement, the way a
+  // swing is — and a line taken back off compacts to no key at all.
+  const automation = hasAutomation(draft.automation) ? clone(draft.automation) : null;
   if (same && !compacted.sections.length) {
-    if (bpm == null && swing == null && !loop && resolution == null && !choke) return null;
+    if (bpm == null && swing == null && !loop && resolution == null && !choke && !automation) return null;
     return {
       ...(bpm == null ? {} : { bpm }),
       ...(swing == null ? {} : { swing }),
       ...(choke ? { choke } : {}),
       ...(loop ? { loop } : {}),
       ...(resolution == null ? {} : { resolution }),
+      ...(automation ? { automation } : {}),
     };
   }
   const out = { order };
@@ -255,6 +269,7 @@ export function entryOf(bank, draft) {
   if (choke) out.choke = choke;
   if (loop) out.loop = loop;
   if (resolution != null) out.resolution = resolution;
+  if (automation) out.automation = automation;
   return out;
 }
 
@@ -693,6 +708,7 @@ const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
   swing: draft.swing ?? null, loop: clone(draft.loop ?? null),
   choke: clone(draft.choke ?? null),
+  automation: hasAutomation(draft.automation) ? clone(draft.automation) : null,
   resolution: fineOr(draft.resolution),
 });
 const range = (draft, from, to) => {
@@ -764,8 +780,11 @@ export function copyLaneArrangement(draft, from, to) {
   const names = (bar) => LANE_LISTS.some((field) => bar[field]?.includes(from))
     || BAR_MAPS.some((field) => Number.isFinite(bar[field]?.[from]))
     || bar.noteFx?.[from] != null || bar.inlineFx?.[from] != null;
-  if (!draft.plan?.some(names)) return draft;
+  const automated = !!draft.automation?.[from];
+  if (!draft.plan?.some(names) && !automated) return draft;
   const out = copy(draft);
+  // A duplicate plays the way its source plays — fades and cuts included.
+  if (automated) out.automation = copyLaneAutomation(out.automation, from, to);
   for (const bar of out.plan) {
     for (const field of LANE_LISTS) {
       if (!bar[field]?.includes(from)) continue;
@@ -845,6 +864,8 @@ export function removeLanes(draft, keys) {
     }
     if (!Object.keys(out.choke).length) out.choke = null;
   }
+  // Its fades and cuts go with it, for the same reason.
+  out.automation = dropLanes(out.automation, drop);
   for (const section of out.sections) {
     // The lengths go with the lane, or deleting a track and adding it back gives the
     // new one the old one's note lengths — for notes that are not there any more.
@@ -871,6 +892,80 @@ export function removeLanes(draft, keys) {
     }
   }
   return out;
+}
+
+// ---- automation: fades and cuts ----------------------------------------------------
+//
+// Positions here are SIXTEENTHS from the top of the song, the unit src/data/automation.js
+// counts in — the desk works out which from a bar range or a point on the piano roll.
+
+const withAutomation = (draft, automation) => {
+  const out = copy(draft);
+  out.automation = hasAutomation(automation) ? automation : null;
+  return out;
+};
+
+/** The level a lane's line is at, in dB (null for silence), at a position. */
+export function automationDbAt(draft, lane, pos, { left = false } = {}) {
+  const curve = laneCurve(draft?.automation?.[lane]);
+  return curve ? curveDbAt(curve, pos, { left }) : 0;
+}
+
+/** A fade on one lane — see `setLaneFade`. */
+export function setFade(draft, lane, from, to, fromDb, toDb, shape = 'even') {
+  if (!draft || !lane) return draft;
+  return withAutomation(draft, setLaneFade(draft.automation, lane, from, to, fromDb, toDb, shape));
+}
+
+/**
+ * One track out and another in over the same stretch — two fades, one gesture. The
+ * outgoing track leaves from wherever its line is at the start; the incoming one
+ * arrives at `inDb`. Equal-power by default, which is what keeps the middle from dipping.
+ * Like every fade, neither reaches outside the stretch — see `setLaneFade` — so the
+ * outgoing track plays again after it wherever it has notes, unless those bars are muted.
+ */
+export function setCrossfade(draft, outLane, inLane, from, to, { shape = 'equal', inDb = 0 } = {}) {
+  if (!draft || !outLane || !inLane || outLane === inLane) return draft;
+  const startOut = automationDbAt(draft, outLane, from);
+  let auto = setLaneFade(draft.automation, outLane, from, to, startOut, null, shape);
+  auto = setLaneFade(auto, inLane, from, to, null, inDb, shape);
+  return withAutomation(draft, auto);
+}
+
+/** Take one lane's fades and/or cuts out of [from, to). */
+export function clearAutomation(draft, lane, from, to, { points = true, cuts = true } = {}) {
+  if (!draft || !lane || !draft.automation?.[lane]) return draft;
+  return withAutomation(draft, clearLaneRange(draft.automation, lane, from, to, { points, cuts }));
+}
+
+/** A cut on one lane at a position — everything it has ringing there stops. */
+export function addCut(draft, lane, pos) {
+  if (!draft || !lane || !Number.isFinite(pos)) return draft;
+  return withAutomation(draft, addLaneCut(draft.automation, lane, pos));
+}
+
+/** The cut at a position taken away. */
+export function removeCut(draft, lane, pos) {
+  if (!draft || !lane) return draft;
+  return withAutomation(draft, removeLaneCut(draft.automation, lane, pos));
+}
+
+/** A cut moved. */
+export function moveCut(draft, lane, from, to) {
+  if (!draft || !lane) return draft;
+  return withAutomation(draft, moveLaneCut(draft.automation, lane, from, to));
+}
+
+/** A lane's whole line AND its cuts replaced — one gesture on the Volume strip. */
+export function setLaneAutomation(draft, lane, points, cuts) {
+  if (!draft || !lane) return draft;
+  return withAutomation(draft, setLane(draft.automation, lane, points, cuts));
+}
+
+/** A lane's whole line replaced — the piano roll's Volume strip writes through this. */
+export function setAutomationPoints(draft, lane, points) {
+  if (!draft || !lane) return draft;
+  return withAutomation(draft, setLanePoints(draft.automation, lane, points));
 }
 
 /** Set one lane's nondestructive Note FX override across a bar range. */
@@ -984,7 +1079,11 @@ export function copyBars(bank, draft, from, to) {
   const used = [...new Set(bars.map((bar) => bar.sec).filter((sec) => sec != null && sec >= base))];
   const remap = new Map(used.map((sec, i) => [sec, base + i]));
   for (const bar of bars) if (remap.has(bar.sec)) bar.sec = remap.get(bar.sec);
-  return { bars, sections: used.map((sec) => clone(draft.sections[sec - base])) };
+  return {
+    bars,
+    sections: used.map((sec) => clone(draft.sections[sec - base])),
+    automation: copyAutomationRange(draft.automation, a * 16, (b + 1) * 16),
+  };
 }
 
 /** Paste copied structural bars at a bar boundary, preserving section deltas. */
@@ -1008,6 +1107,10 @@ export function pasteBars(bank, draft, at, clip, times = 1) {
     }));
   }
   out.plan.splice(index, 0, ...pasted);
+  // The copied bars' fades and cuts come with them, laid over the time just made.
+  out.automation = pasteAutomation(
+    shiftAutomation(out.automation, index * 16, { added: pasted.length * 16 }),
+    index * 16, clip.automation, Math.max(1, times));
   return shiftLoop(out, index, { added: pasted.length });
 }
 
@@ -1023,6 +1126,7 @@ export function insertSilence(draft, at, count, keys = LANE_KEYS) {
     delete: [...keys].sort(),
   }));
   out.plan.splice(index, 0, ...bars);
+  out.automation = shiftAutomation(out.automation, index * 16, { added: bars.length * 16 });
   return shiftLoop(out, index, { added: bars.length });
 }
 
@@ -1176,6 +1280,7 @@ export function deleteBars(draft, from, to) {
   if (b - a + 1 >= draft.plan.length) return { ...copy(draft), refused: 'a song needs at least one bar' };
   const out = copy(draft);
   out.plan.splice(a, b - a + 1);
+  out.automation = shiftAutomation(out.automation, a * 16, { removed: (b - a + 1) * 16 });
   return shiftLoop(out, a, { removed: b - a + 1 });
 }
 
@@ -1187,6 +1292,12 @@ export function duplicateBars(draft, from, to, times = 1) {
   const repeats = [];
   for (let t = 0; t < times; t++) repeats.push(...clone(block));
   out.plan.splice(b + 1, 0, ...repeats);
+  // A repeat is the range again, fades and cuts included: a fade-out repeated is heard
+  // twice, with the line stepping back up where the second copy starts.
+  const clip = copyAutomationRange(draft.automation, a * 16, (b + 1) * 16);
+  out.automation = pasteAutomation(
+    shiftAutomation(out.automation, (b + 1) * 16, { added: repeats.length * 16 }),
+    (b + 1) * 16, clip, times);
   return shiftLoop(out, b + 1, { added: repeats.length });
 }
 
@@ -1222,6 +1333,11 @@ export function buildUp(draft, from, to, passes = 4, lanes = BUILD_ORDER) {
     }
   }
   out.plan.splice(a, width, ...built);
+  // The first pass is the original bars; the passes after it are new time, and the line
+  // after the range moves out past them.
+  if (built.length > width) {
+    out.automation = shiftAutomation(out.automation, (a + width) * 16, { added: (built.length - width) * 16 });
+  }
   return shiftLoop(out, a, { added: built.length, removed: width });
 }
 

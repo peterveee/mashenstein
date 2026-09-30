@@ -234,15 +234,35 @@ function makeChannelDelay(ctx, params) {
 
   const state = { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, mix: 0.35, pan: 0, ...params };
   const node = { input, output, _custom: true };
+  let seconds = delaySeconds(state, 120);
   node.applyState = (bpm) => {
     const t = ctx.currentTime;
-    line.delayTime.setTargetAtTime(delaySeconds(state, bpm), t, 0.05);
+    seconds = delaySeconds(state, bpm);
+    line.delayTime.setTargetAtTime(seconds, t, 0.05);
     fb.gain.setTargetAtTime(Math.max(0, Math.min(0.95, state.feedback)), t, 0.05);
     lp.frequency.setTargetAtTime(Math.max(200, Math.min(16000, state.tone)), t, 0.05);
     wet.gain.setTargetAtTime(Math.max(0, state.mix), t, 0.03);
     pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, state.pan)), t, 0.03);
   };
   node.setState = (patch, bpm) => { Object.assign(state, patch); node.applyState(bpm); };
+  /**
+   * Empty the line at `at` — a CUT on the channel (src/data/automation.js). What is in the
+   * line then is the track from before the cut, so for exactly one delay time the repeats
+   * are silenced and nothing is fed back round: after that the line holds only what
+   * arrived since, and a note struck ON the cut has its first repeat, which comes out one
+   * delay time later, exactly when the repeats come back.
+   */
+  node.flush = (at) => {
+    const end = at + seconds;
+    const hold = (param, value) => {
+      param.setValueAtTime(value, at);
+      param.linearRampToValueAtTime(0, at + 0.004);
+      param.setValueAtTime(0, end);
+      param.linearRampToValueAtTime(value, end + 0.004);
+    };
+    hold(fb.gain, Math.max(0, Math.min(0.95, state.feedback)));
+    hold(wet.gain, Math.max(0, state.mix));
+  };
   node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
   node.dispose = () => node.disconnect();
@@ -3861,6 +3881,8 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
       setAt: () => {
         throw new Error(`effects: "${id}" applies immediately and cannot be moved at an audio time`);
       },
+      // A CUT on the channel empties a delay that can say how — see `flushEchoes` in mixer.js.
+      flush: typeof node.flush === 'function' ? (at) => node.flush(at) : null,
     };
   }
   if (!Tone[def.tone]) return null;
@@ -3876,6 +3898,7 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   }
   // LFO-driven effects sit silent until started.
   if (def.start && typeof node.start === 'function') { try { node.start(); } catch { /* already running */ } }
+  if (def.tone === 'PingPongDelay') cutReturns(node);
   const merged = { ...opts };
   // The desk's vocabulary is note divisions and sync flags; Tone's is seconds and hertz.
   // Both doors into this node go through the same translation, so a scheduled change
@@ -3899,7 +3922,77 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
     set: (patch, b = bpm) => applyParams(node, resolve(patch, b)),
     /** The same change at an audio time. rampParams refuses the params that cannot move. */
     setAt: (patch, when, seconds = 0, b = bpm) => rampParams(ctx, node, resolve(patch, b), when, seconds),
+    flush: flushFor(node, def),
   };
+}
+
+/**
+ * Hold a gain at silence from `at` until `end`, walking in and out over the snap — the
+ * one move a CUT makes on a delay's returns.
+ */
+function holdSilent(param, at, end) {
+  param.setValueAtTime(1, at);
+  param.linearRampToValueAtTime(0, at + SNAP_SECONDS);
+  param.setValueAtTime(0, Math.max(end, at + SNAP_SECONDS));
+  param.linearRampToValueAtTime(1, Math.max(end, at + SNAP_SECONDS) + SNAP_SECONDS);
+}
+
+/**
+ * A gain on each side of a Ping-Pong's return, where Tone has none.
+ *
+ * A CUT on a channel has to empty its delays of the track from before the cut WITHOUT
+ * touching a note struck on the cut, and a Ping-Pong is where that is hard: its two sides
+ * share one feedback control and one wet control, and its right side runs a whole delay
+ * behind its left (Tone pre-delays the right input). Silencing either control long enough
+ * to clear the right side took the next note's first repeats with it. A gain per side,
+ * between each delay and the merge the feedback is tapped from, can be held separately —
+ * the left for one delay time, the right for two — so what is in the lines is neither
+ * heard nor fed back, and the next note's first ping and pong both come through.
+ *
+ * At unity they are a multiply by one, which is exact: a Ping-Pong nothing has cut
+ * renders what it always did.
+ */
+function cutReturns(node) {
+  const left = node._leftDelay;
+  const right = node._rightDelay;
+  const merge = node._merge;
+  if (!left || !right || !merge) return;
+  try {
+    left.disconnect(merge, 0, 0);
+    right.disconnect(merge, 0, 1);
+    const cutL = new Tone.Gain({ context: node.context });
+    const cutR = new Tone.Gain({ context: node.context });
+    left.connect(cutL);
+    right.connect(cutR);
+    cutL.connect(merge, 0, 0);
+    cutR.connect(merge, 0, 1);
+    node._cutL = cutL;
+    node._cutR = cutR;
+    const dispose = node.dispose.bind(node);
+    node.dispose = () => { cutL.dispose(); cutR.dispose(); return dispose(); };
+  } catch {
+    // Tone's internals moved under us. Leave the delay exactly as Tone wired it: a cut
+    // then leaves its repeats ringing, which is the old behaviour, not a broken delay.
+    delete node._cutL;
+    delete node._cutR;
+  }
+}
+
+/** How a Tone delay is emptied by a cut at `at`, or null for anything that is not one. */
+function flushFor(node, def) {
+  if (def.tone === 'FeedbackDelay' && node.effectReturn?.gain) {
+    // The return is also where the feedback is tapped, so holding it silent for one delay
+    // time both hides what was in the line and stops it going round again.
+    return (at) => holdSilent(node.effectReturn.gain, at, at + Math.max(0.001, Number(node.delayTime?.value) || 0));
+  }
+  if (def.tone === 'PingPongDelay' && node._cutL && node._cutR) {
+    return (at) => {
+      const d = Math.max(0.001, Number(node.delayTime?.value) || 0);
+      holdSilent(node._cutL.gain, at, at + d);
+      holdSilent(node._cutR.gain, at, at + 2 * d);
+    };
+  }
+  return null;
 }
 
 /**

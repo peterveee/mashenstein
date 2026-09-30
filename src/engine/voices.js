@@ -42,7 +42,7 @@ import {
   isMrdrVoice, MRDR3_NATIVE, MRDR3_AW, mrdrComparisonVoice,
 } from './mrdr3/identity.js';
 import {
-  mrdr3Lane, mrdr3LaneNow, mrdr3NoteOn, mrdr3NoteOff, syncMrdr3Patch,
+  mrdr3Lane, mrdr3LaneNow, mrdr3NoteOn, mrdr3NoteOff, mrdr3Choke, syncMrdr3Patch,
   setMrdr3LayerSolo, syncMrdr3Voice, canHostMrdr3,
   mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
@@ -55,7 +55,7 @@ import { buildJmjr4Note, singerVariants } from './jmjr4/note.js';
 import { JMJR4_DATA } from './jmjr4/data.js';
 import { advanceLine, newLineState } from './jmjr4/line.js';
 import {
-  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, releaseTngr2Context,
+  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, tngr2Choke, releaseTngr2Context,
   tngr2ControllerHealth, canHostTngr2, renderTngr2Lane, tngr2PatchForVoice, tngr2VibratoOf,
   syncTngr2Patch, tngr2EffectsOf,
 } from './tngr2/controller.js';
@@ -2410,6 +2410,7 @@ export class VoiceRack {
   play(laneKey, voiceId, freq, {
     time, dur, gain, detune = 1, dry, wet, echo = true, preview = false,
     hold = preview, spb = null, laneEffects = true, choke = null, step = null,
+    laneRoute = null,
   }) {
     // The comparison override, in front of dispatch and nowhere else (§9.2). With nothing
     // forced this returns the voice unchanged, which is the shipping path.
@@ -2481,8 +2482,14 @@ export class VoiceRack {
       // persistent node; offline, they are collected for `flushTngr2Offline`. There is no
       // second synthesis path to fall back to — see `_playTngr2Node` for what happens
       // when a lane has no node, and `warmTngr2Lane` for the warning when it cannot.
+      // A lane that has CUTS hands its notes a door per cut (see `_cutRoute` in
+      // audio.js), and a worklet lane is one persistent node wired once to wherever its
+      // first note pointed. Wired to a door, the first cut would shut it for good — so it
+      // takes the lane's own stable route, and a cut reaches it as a message instead
+      // (`chokeLane`).
+      const route = laneRoute || { dry, wet };
       return this._playTngr2Node(v, {
-        freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb,
+        freq, time, dur, gain, detune, dry: route.dry, wet: route.wet, echo, laneKey, preview, hold, spb,
       });
     }
     // RENDERER DISPATCH — the one deliberate exact-identity branch (§9.1). Which
@@ -2514,8 +2521,9 @@ export class VoiceRack {
       // else: no cache to consult, and no second synthesis path to fall back to — which
       // is the point. See `_playMrdr3Aw` for a lane with no node yet, and
       // `warmMrdr3Lane` for the warning when it cannot have one.
+      const route = laneRoute || { dry, wet };
       return this._playMrdr3Aw(v, {
-        freq, time, dur, gain, detune, dry, wet, echo, laneKey, hold,
+        freq, time, dur, gain, detune, dry: route.dry, wet: route.wet, echo, laneKey, hold,
       });
     }
     if (!v || !synthClassFor(v.synth, v.options)) return false;
@@ -7757,6 +7765,89 @@ export class VoiceRack {
   panicMrdr3Aw() {
     if (!this.ctx) return 0;
     try { return mrdr3PanicAll(this.ctx, { at: this.ctx.currentTime }); } catch { return 0; }
+  }
+
+  /**
+   * A CUT on one lane, reaching the WORKLET voices — see src/data/automation.js.
+   *
+   * Everything else a lane plays is cut by the door it was routed through (`_cutLane`
+   * in audio.js). A worklet lane is one persistent node on the lane's stable route, so
+   * the door cannot reach it: it is told instead, stamped for the cut's own frame, and
+   * it chokes what it is sounding there while leaving everything booked after it alone.
+   * Called as soon as the cut is known — the message carries its time.
+   */
+  chokeLane(laneKey, at) {
+    if (!laneKey || !Number.isFinite(at)) return;
+    const offline = typeof this.ctx?.startRendering === 'function';
+    if (!offline) {
+      tngr2Choke(tngr2LaneNow(this.ctx, laneKey), { at });
+      mrdr3Choke(mrdr3LaneNow(this.ctx, laneKey), { at });
+      return;
+    }
+    // Offline, TNGR-2's notes are collected and handed over a stretch at a time (see
+    // `flushTngr2Offline`). A booking still open takes the choke with its notes; a lane
+    // already built is told directly, exactly as the flush tells it later notes.
+    const frame = Math.max(0, Math.round(at * this.ctx.sampleRate));
+    let booked = false;
+    for (const booking of this._tngr2Offline?.values() || []) {
+      if (booking.laneKey !== laneKey) continue;
+      booking.events.push({ type: 'choke', frame });
+      booked = true;
+    }
+    const built = this._tngr2OfflineLanes?.get(laneKey);
+    if (!booked && built && built.context === this.ctx) {
+      try { built.node.port.postMessage({ type: 'choke', frame }); } catch { /* gone */ }
+    }
+  }
+
+  /**
+   * The rest of a cut's bookkeeping, done at the moment the notes after it start being
+   * scheduled: what the rack keeps PER LANE that would otherwise carry a note from
+   * before the cut into the time after it.
+   *
+   *   · The MRDR lane stage — the summing point every MRDR-3, WNDR-9, KNDO-5 and JMJR-4
+   *     note on the lane passes through. It is re-pointed, not rebuilt, when a lane's
+   *     destination moves, and re-pointing it onto the new door would carry every note
+   *     struck before the cut through a door that is open. So it is let go here: the
+   *     notes before the cut keep the old stage, wired to the door that has just shut,
+   *     and the next note builds a fresh one.
+   *   · The MONO and LEGATO records. A legato note after the cut would otherwise take
+   *     over the voice from before it — a voice now behind a shut door — and play
+   *     nothing; a glide would start from a pitch that was cut. Their gates end at the cut.
+   *
+   * Tone pools need nothing: a pool is keyed on the route it was built for, so the next
+   * note on a new door gets a new pool, and the old one rings out behind the old door.
+   */
+  cutLane(laneKey, at) {
+    if (!laneKey) return;
+    const offline = typeof this.ctx?.startRendering === 'function';
+    const now = Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0;
+    for (const [key, stage] of [...this._mrdrLaneStages]) {
+      if (stage.laneKey !== laneKey || stage.scope !== 'song') continue;
+      this._mrdrLaneStages.delete(key);
+      // The chorus is a generator and would run on for the life of the render; it is
+      // stopped just after the door has shut rather than disconnected now, which would
+      // take the chorus off the notes that still have until the cut to sound.
+      const leg = stage.chorus;
+      if (leg && !leg.stopped) { try { leg.osc.stop(at + 0.1); } catch { /* already */ } }
+      if (!offline) {
+        setTimeout(() => {
+          for (const node of [stage.input, stage.direct, stage.output]) {
+            try { node?.disconnect(); } catch { /* already gone */ }
+          }
+          if (stage.chorus) disconnectChorusLeg(stage.chorus);
+          stage.disposed = true;
+        }, Math.max(0, (at - now) * 1000) + MRDR_STAGE_DRAIN_MS);
+      }
+    }
+    for (const [key, record] of this._last || []) {
+      if (!key.startsWith(`${laneKey}|`) || key.endsWith('|p')) continue;
+      if (record.gateUntil > at) record.gateUntil = at;
+    }
+    for (const [key, record] of this._jmjr4Last || []) {
+      if (key.split('|')[1] !== laneKey) continue;
+      if (record.gateUntil > at) record.gateUntil = at;
+    }
   }
 
   stopPreview() {

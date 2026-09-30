@@ -39,6 +39,7 @@ const renderMixFile = (mix) => `export const MIX = {\n${Object.entries(mix)
   .map(([id, e]) => [id, mixEntrySource(e, '  ')]).filter(([, x]) => x)
   .map(([id, x]) => `  ${JSON.stringify(id)}: ${x},\n`).join('')}};\n`;
 import { resolveTrack, listTracks } from '../src/data/tracks.js';
+import * as PLUMBER_CLASSIC from './fixtures/plumber-classic.js';
 // The shipped mixes, for the catalogue-wide check at the foot of this file: a song's
 // strips are its bank AND its mix, so asking which ones the desk draws needs both.
 import { MIX } from '../src/data/mix.js';
@@ -49,7 +50,10 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-const bank = resolveTrack('plumber').bank;
+// The classic plumber song, frozen (tests/fixtures/plumber-classic.js): the small, layer-free
+// real song these checks were written around. The live plumber song is HARVEST OPUS since
+// 30 Sep 2026 and has layers of its own.
+const bank = PLUMBER_CLASSIC.bank;
 
 // ---- the untouched path ----------------------------------------------------
 // The whole of the null test rests on this: nothing about layers may cost a song

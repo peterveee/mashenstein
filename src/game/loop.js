@@ -132,6 +132,31 @@ export const LOOP = {
   // placed, but a barrel rolls, and coming out of a loop into a hit taken from
   // something that arrived while you were upside down is not a fair death.
   exitIframes: 0.35,
+  // THE BACKDROP DOES NOT RIDE THE RING (Peter, 30 Sep 2026: "things in the
+  // background move left and right too, not just the hero ... the plane in
+  // level 3"). The U-turn above is the WORLD's; the scenery behind it followed
+  // the same camera, so every hill, coyote and the speed-3 jet swung back over
+  // the top and forward again. The backdrop is driven by the distance he covers
+  // round the ring instead (RunState.backdropLead), which is monotonic and meets
+  // the camera's own rate at both ends of the lap.
+  //
+  // A full lap leaves the backdrop one circumference ahead of the world, and it
+  // has to come back: speed-3's winking coyote is seated off the finish camera.
+  // So after the exit the backdrop runs at (1 - this) of the camera's pace until
+  // the lead is spent — a few seconds, easing in over `backdropEaseIn` seconds
+  // off the exit and out over the last `backdropTail` px, so the scenery's pace
+  // never steps at either end.
+  backdropPayback: 0.3,
+  backdropEaseIn: 0.6,
+  backdropTail: 40,
+  // AND THE VILLAIN HANGS IN THE AIR (Peter, 30 Sep 2026: "shouldn't the villain
+  // keep moving forward when we hit a loop"). The chase copter is flown off the
+  // camera, so he U-turned with it. Flying on at the run's pace would put him a
+  // circumference ahead, and the frame has a third of that in front of him; so
+  // he never goes BACKWARD instead — over the top he holds his place in the sky
+  // (RunState.copterLoopHold) and picks the run's pace up again as the camera
+  // comes back to him, easing in over the last `copterRelease` px.
+  copterRelease: 40,
   // Where in the stage the one loop of the run stands, as a fraction of the
   // total distance. 0.55 is deliberately between the two checkpoints (1/3 and
   // 2/3): far enough in that the stage has established its own vocabulary

@@ -6,16 +6,48 @@ import * as GAME_ALT_ARCADE_THEME from './imported/arcade-theme.js';
 import * as GAME_ALT_CRYPT_BLACK_ABBEY from './imported/crypt-black-abbey.js';
 import * as GAME_ALT_CRYPT_CLOCKWORK_SEANCE from './imported/crypt-clockwork-seance.js';
 import * as GAME_ALT_CRYPT_MIDNIGHT_PROCESSION from './imported/crypt-midnight-procession.js';
+import * as GAME_ALT_CRYPT_REMIX_COVEN from './imported/crypt-remix-coven.js';
+import * as GAME_ALT_CRYPT_REMIX_GRAVEYARD_SHIFT from './imported/crypt-remix-graveyard-shift.js';
+import * as GAME_ALT_CRYPT_REMIX_RAISE_THE_DEAD from './imported/crypt-remix-raise-the-dead.js';
 import * as GAME_ALT_CRYPT_WHISPER_EXCHANGE from './imported/crypt-whisper-exchange.js';
 import * as GAME_ALT_CRYPT_WIDOWS_LANTERN from './imported/crypt-widows-lantern.js';
+import * as GAME_ALT_FIELD_SERVICE_AUSSENDIENST from './imported/field-service-aussendienst.js';
+import * as GAME_ALT_FIELD_SERVICE_CHIPSTEP from './imported/field-service-chipstep.js';
+import * as GAME_ALT_FIELD_SERVICE_HARVEST_AFTERGLOW_GPT from './imported/field-service-harvest-afterglow-gpt.js';
+import * as GAME_ALT_FIELD_SERVICE_HARVEST_OPUS from './imported/field-service-harvest-opus.js';
+import * as GAME_ALT_FIELD_SERVICE_HARVEST from './imported/field-service-harvest.js';
+import * as GAME_ALT_FIELD_SERVICE_LIVE_WIRE from './imported/field-service-live-wire.js';
+import * as GAME_ALT_FIELD_SERVICE_MACHINE_CODE from './imported/field-service-machine-code.js';
+import * as GAME_ALT_FIELD_SERVICE_NIGHT_DRIVE from './imported/field-service-night-drive.js';
+import * as GAME_ALT_FIELD_SERVICE_ORIGINAL from './imported/field-service-original.js';
+import * as GAME_ALT_FIELD_SERVICE_OVERCLOCK from './imported/field-service-overclock.js';
+import * as GAME_ALT_FIELD_SERVICE_SLAP_HAPPY from './imported/field-service-slap-happy.js';
+import * as GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO from './imported/frost-remix-absolute-zero.js';
+import * as GAME_ALT_FROST_REMIX_BLACK_ICE from './imported/frost-remix-black-ice.js';
+import * as GAME_ALT_FROST_REMIX_SNOW_GLOBE from './imported/frost-remix-snow-globe.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
+import * as GAME_ALT_NEON_REMIX_ENDSTATION from './imported/neon-remix-endstation.js';
+import * as GAME_ALT_NEON_REMIX_FREEFALL from './imported/neon-remix-freefall.js';
+import * as GAME_ALT_NEON_REMIX_GOLDEN_HOUR from './imported/neon-remix-golden-hour.js';
+import * as GAME_ALT_NEON_REMIX_LIVE_WIRE from './imported/neon-remix-live-wire.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
+import * as GAME_ALT_RHYTHM_REMIX_FIRE_SALE from './imported/rhythm-remix-fire-sale.js';
+import * as GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER from './imported/rhythm-remix-hostile-takeover.js';
+import * as GAME_ALT_RHYTHM_REMIX_IN_THE_RED from './imported/rhythm-remix-in-the-red.js';
 import * as GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE from './imported/speed-horizon-lines-overdrive.js';
 import * as GAME_ALT_SPEED_HORIZON_LINES from './imported/speed-horizon-lines.js';
+import * as GAME_ALT_SPEED_REMIX_BREAKNECK from './imported/speed-remix-breakneck.js';
+import * as GAME_ALT_SPEED_REMIX_COWBELL from './imported/speed-remix-cowbell.js';
+import * as GAME_ALT_SPEED_REMIX_HAIRPIN from './imported/speed-remix-hairpin.js';
+import * as GAME_ALT_SPEED_REMIX_REDLINE_ACID_GPT from './imported/speed-remix-redline-acid-gpt.js';
 import * as GAME_ALT_SPEED_ZONE_ALT_2 from './imported/speed-zone-alt-2.js';
 import * as GAME_ALT_SPEED_ZONE_ALT from './imported/speed-zone-alt.js';
 import * as GAME_ALT_SPEED_ZONE_ORIGINAL from './imported/speed-zone-original.js';
+import * as GAME_ALT_SURGE_REMIX_HIGH_VOLTAGE from './imported/surge-remix-high-voltage.js';
+import * as GAME_ALT_SURGE_REMIX_MASHTERPIECE from './imported/surge-remix-mashterpiece.js';
+import * as GAME_ALT_SURGE_REMIX_OVERLOAD from './imported/surge-remix-overload.js';
+import * as GAME_ALT_SURGE_REMIX_SHORT_CIRCUIT from './imported/surge-remix-short-circuit.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT_2 from './imported/the-food-court-alt-2.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT from './imported/the-food-court-alt.js';
 
@@ -24,16 +56,48 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_CRYPT_BLACK_ABBEY,
   GAME_ALT_CRYPT_CLOCKWORK_SEANCE,
   GAME_ALT_CRYPT_MIDNIGHT_PROCESSION,
+  GAME_ALT_CRYPT_REMIX_COVEN,
+  GAME_ALT_CRYPT_REMIX_GRAVEYARD_SHIFT,
+  GAME_ALT_CRYPT_REMIX_RAISE_THE_DEAD,
   GAME_ALT_CRYPT_WHISPER_EXCHANGE,
   GAME_ALT_CRYPT_WIDOWS_LANTERN,
+  GAME_ALT_FIELD_SERVICE_AUSSENDIENST,
+  GAME_ALT_FIELD_SERVICE_CHIPSTEP,
+  GAME_ALT_FIELD_SERVICE_HARVEST_AFTERGLOW_GPT,
+  GAME_ALT_FIELD_SERVICE_HARVEST_OPUS,
+  GAME_ALT_FIELD_SERVICE_HARVEST,
+  GAME_ALT_FIELD_SERVICE_LIVE_WIRE,
+  GAME_ALT_FIELD_SERVICE_MACHINE_CODE,
+  GAME_ALT_FIELD_SERVICE_NIGHT_DRIVE,
+  GAME_ALT_FIELD_SERVICE_ORIGINAL,
+  GAME_ALT_FIELD_SERVICE_OVERCLOCK,
+  GAME_ALT_FIELD_SERVICE_SLAP_HAPPY,
+  GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO,
+  GAME_ALT_FROST_REMIX_BLACK_ICE,
+  GAME_ALT_FROST_REMIX_SNOW_GLOBE,
   GAME_ALT_MONSTER_MEGAMIX_ALT,
+  GAME_ALT_NEON_REMIX_ENDSTATION,
+  GAME_ALT_NEON_REMIX_FREEFALL,
+  GAME_ALT_NEON_REMIX_GOLDEN_HOUR,
+  GAME_ALT_NEON_REMIX_LIVE_WIRE,
   GAME_ALT_NEW_THE_FOOD_COURT,
   GAME_ALT_PLUMBER_PANIC_ALT,
+  GAME_ALT_RHYTHM_REMIX_FIRE_SALE,
+  GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER,
+  GAME_ALT_RHYTHM_REMIX_IN_THE_RED,
   GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE,
   GAME_ALT_SPEED_HORIZON_LINES,
+  GAME_ALT_SPEED_REMIX_BREAKNECK,
+  GAME_ALT_SPEED_REMIX_COWBELL,
+  GAME_ALT_SPEED_REMIX_HAIRPIN,
+  GAME_ALT_SPEED_REMIX_REDLINE_ACID_GPT,
   GAME_ALT_SPEED_ZONE_ALT_2,
   GAME_ALT_SPEED_ZONE_ALT,
   GAME_ALT_SPEED_ZONE_ORIGINAL,
+  GAME_ALT_SURGE_REMIX_HIGH_VOLTAGE,
+  GAME_ALT_SURGE_REMIX_MASHTERPIECE,
+  GAME_ALT_SURGE_REMIX_OVERLOAD,
+  GAME_ALT_SURGE_REMIX_SHORT_CIRCUIT,
   GAME_ALT_THE_FOOD_COURT_ALT_2,
   GAME_ALT_THE_FOOD_COURT_ALT,
 ].map((song) => [song.id, song]));

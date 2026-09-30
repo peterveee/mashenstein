@@ -766,7 +766,14 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     return;
   }
   const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
-  const x = smoothMotion ? e.x - camX : Math.round(e.x - camX);
+  // THE LOOP PAD SITS IN THE MIDDLE OF ITS RING. The ride's circle is the one
+  // the hero's sprite LEFT EDGE travels (game/loop.js), and the pad's box is
+  // centred on that — so the art, drawn on the box, sat half a sprite behind the
+  // mouth of a ring that is centred on the hero's middle (drawLoopRing). The
+  // box stays where the ride needs it; the art moves to where the eye does, and
+  // the ring is drawn off this same x so the two can never drift apart again.
+  const padOff = e.def && e.def.isLoop ? HERO_CENTER_OFF : 0;
+  const x = (smoothMotion ? e.x - camX : Math.round(e.x - camX)) + padOff;
   // The loop pad's ring stands a radius clear of its box on both sides, so it is
   // still putting ink on screen long after the pad itself has left. Everything
   // else draws inside a few px of its own box.
@@ -1153,6 +1160,14 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
       drawFloorLip(ctx, propName, x + e.w / 2 - lipW / 2 - clipX, 0, lipW, FLOOR_LIP_H, frame);
       ctx.restore();
     }
+  } else if (e.def.isLoop) {
+    // Stretched across the road inside the ring (LOOP_PAD_SPAN), centred on the box.
+    // draw1 grows the art by 4/3 around the width it is handed, so it is handed
+    // the span un-grown — whole, because it is also the raster's cache key. The
+    // painter lays chevrons at a fixed pitch, so a wider pad is more chevrons,
+    // not the same ones pulled apart.
+    const sw = Math.round(LOOP_PAD_SPAN * 3 / 4);
+    draw1(x + e.w / 2 - sw / 2, y, 'bottom', false, sw);
   } else {
     draw1(x, y, propName && propBoxCentred(propName) ? 'center' : 'bottom');
   }
@@ -1286,6 +1301,18 @@ function drawBoostReaction(ctx, e, x, t, propName) {
 // is more machinery than the read is short of.
 const LOOP_TRACK_SHADOW = '#2f4249';
 const LOOP_TRACK_BODY = '#49636b';
+// The ring's cross-section and its open mouth, at module level because the pad
+// is sized off them (LOOP_PAD_SPAN) — see drawLoopRing for what each one is.
+const LOOP_TRACK_T = 7;
+const LOOP_TRACK_CLEAR = 2;
+const LOOP_MOUTH_GAP = 0.34;
+// THE PAD FILLS THE ROAD INSIDE THE RING, and no more. Its width is where the
+// running surface comes down to meet the road, so each end stops where the
+// track starts: the round ends of the track sit over the pad's corners and tuck
+// them in, and nothing of it pokes out past the loop. Art only — the box is
+// still loopPad's 18, because that is where the ride starts.
+const LOOP_INNER_R = LOOP.r + LOOP_TRACK_CLEAR;
+export const LOOP_PAD_SPAN = 2 * Math.sqrt(LOOP_INNER_R * LOOP_INNER_R - LOOP.r * LOOP.r);
 
 function drawLoopRing(ctx, e, x, t) {
   const r = LOOP.r;
@@ -1294,8 +1321,9 @@ function drawLoopRing(ctx, e, x, t) {
   // the ring of coins, which is placed to meet the middle of him — runs half a
   // sprite to the right of it. Drawing the track on the box instead leaves the
   // art six pixels adrift of the hero and the coins riding its right-hand rim.
-  // Same offset, same reason, as the finish seat: see HERO_CENTER_OFF.
-  const cx = x + e.w / 2 + HERO_CENTER_OFF;
+  // Same offset, same reason, as the finish seat: see HERO_CENTER_OFF. It is
+  // already in `x` — drawWorldEntity moves the pad's art onto this same centre.
+  const cx = x + e.w / 2;
   const cy = GROUND_Y - r;
   const arm = e.arm || 0;
   const fired = e.firedT || 0;
@@ -1310,7 +1338,7 @@ function drawLoopRing(ctx, e, x, t) {
   // which is what the first cut did: at the top of the ring he was threaded
   // through the rail rather than standing on it. The body of the track hangs
   // OFF the surface, outward, the way the underside of a road hangs below it.
-  const T = 7;                 // how thick the track reads
+  const T = LOOP_TRACK_T;      // how thick the track reads
   // A hair of daylight between the running line and the structure. `r` is where
   // the hero's feet are PLANTED, but a drawn boot is a few pixels of art around
   // that point and some of the cast wear loose ones — Ramon's are detached
@@ -1318,7 +1346,7 @@ function drawLoopRing(ctx, e, x, t) {
   // through the rail. Clearance here rather than a nudge in the toon painter,
   // which is shared by the whole cast and would be a one-hero fix applied to
   // eight of them.
-  const CLEAR = 2;
+  const CLEAR = LOOP_TRACK_CLEAR;
   const inner = r + CLEAR;     // the face he runs on
   const mid = inner + T / 2;   // so the band spans inner .. inner + T
   // The track is OPEN at the bottom, and that is not decoration. A closed circle
@@ -1326,7 +1354,7 @@ function drawLoopRing(ctx, e, x, t) {
   // the hero is about to run into, and it hides the pad — the one thing he has
   // to actually hit — underneath itself. Real loops flare into the road at both
   // ends, so the ring does too, and the gap is where the ride begins and ends.
-  const gap = 0.34;
+  const gap = LOOP_MOUTH_GAP;
   const a0 = Math.PI / 2 + gap;
   const a1 = Math.PI / 2 - gap + Math.PI * 2;
   const band = (rad, width, color) => {

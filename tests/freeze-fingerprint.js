@@ -142,6 +142,18 @@ assert(!survives('bass', () => { ARR.order[1].gain.lead = -6; }),
 
 assert(!survives('lead2', () => { ARR.sections[0].lead[1] = 660; }),
   'editing the source of a linked layer invalidates the layer’s freeze');
+
+// ---- automation: cuts are baked, the level line is not ------------------------
+//
+// A cut is routing in front of the strip, so it is in the frozen samples like a mute;
+// the level line is the strip's own and is applied live on top of them. So a cut on the
+// frozen lane invalidates it, and a fade — on it or anywhere — does not.
+assert(!survives('bass', () => { ARR.automation = { bass: { cuts: [[1, 8]] } }; }),
+  'a cut on the frozen lane invalidates it — the cut is in the samples');
+assert(survives('bass', () => { ARR.automation = { bass: { points: [[1, 0, 0], [2, 0, null]] } }; }),
+  'a fade on the frozen lane does not — it is played live on the strip, over the samples');
+assert(survives('bass', () => { ARR.automation = { lead: { points: [[1, 0, null]], cuts: [[1, 4]] } }; }),
+  'and another track\u2019s fades and cuts are nothing to do with this freeze');
 assert(survives('chords2', () => { ARR.sections[0].chords[1] = 660; }),
   'editing the source of an INDEPENDENT layer does not — its notes were snapshotted');
 

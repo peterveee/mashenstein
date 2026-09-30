@@ -1499,6 +1499,14 @@ Tngr2Core.prototype.apply = function apply(event, frame) {
     // bar into the silence it was called to make.
     this.pending.length = 0;
     this.pendingHead = 0;
+  } else if (event.type === 'choke') {
+    // A CUT on the lane (src/data/automation.js): what is sounding stops, over the same
+    // fade a steal uses, and — unlike a panic — nothing booked behind it is touched. The
+    // next note is the song carrying on, and it plays.
+    for (i = 0; i < this.voices.length; i++) {
+      if (this.voices[i].active) this.voices[i].env.choke(this.stealFade);
+    }
+    this.lastVoice = null;
   }
 };
 

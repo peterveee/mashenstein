@@ -117,6 +117,18 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // The power-up's guaranteed introduction on every device — the drip can
   // also deal one anywhere, but only the dice say when.
   rewindAt: opts.rewindAt ?? null,
+  // CAPSULES THIS ONE STAGE NEVER DEALS, on top of any its cabinet bans
+  // (cabinets.js `bannedPowers`). run.js merges the two into the one set every
+  // spawner, the lane sweep, the pickup itself and the breaker-box starting power
+  // consult, so a ban here means none from any source. An AUTHORED route prize is
+  // data, not dice: swap it in stage-layouts.js too, or the lane sweep removes it
+  // and leaves that road paying nothing.
+  bannedPowers: opts.bannedPowers || null,
+  // OPENS INSIDE THE ARCADE CABINET: the backdrop is an 8-bit picture on a CRT for as
+  // long as the stage's own song is in its chiptune bars, and the tube switches off on
+  // the power-down (src/engine/arcadeIntro.js, run.js arcadeIntroResolve). The song has
+  // to be written for it — bars 1-4 chiptune, the power-down on bar 4's last beat.
+  arcadeIntro: !!opts.arcadeIntro,
 });
 
 export const STAGES = [
@@ -126,7 +138,13 @@ export const STAGES = [
     { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
       introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
-      speedMult: 0.9 }),
+      speedMult: 0.9,
+      // No SPEED on the first stage of the game (Peter, 30 Sep 2026). Its two
+      // authored speed prizes — the fork's and the tunnel's low roads — are
+      // AIR JUMP in stage-layouts.js.
+      bannedPowers: ['capSpeed'],
+      // The hero has just jumped into the cabinet (Peter, 30 Sep 2026).
+      arcadeIntro: true }),
   // The rewind capsule's guaranteed introduction, and this stage on purpose:
   // its challenge is TAKE NO DAMAGE, which is the run where undoing three
   // seconds is worth the most and teaches itself. 0.15 is early — before the

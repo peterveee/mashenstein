@@ -1,5 +1,5 @@
 // Test runner: smoke + integration + invariants + sims.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +21,12 @@ const suites = [
   // can quietly stop matching when an obstacle is renamed.
   'tests/stage-layouts.js',
   'tests/capsule-clearance.js',
+  // A stage's own capsule ban (plumber-1: no SPEED) holds on every road a capsule arrives by.
+  'tests/stage-power-bans.js',
+  // Field Service opens inside the arcade cabinet, in time with its song.
+  'tests/arcade-intro.js',
+  // A restore that lands part-way along a road gets the rest of the road back.
+  'tests/checkpoint-mid-route.js',
   // The tool that writes it: idempotent saves, the history snapshot, the
   // session's own undo, and the shapes the validator refuses before they can
   // reach a level.
@@ -115,6 +121,9 @@ const suites = [
   // matters — an empty layer hands every song back the bank it always had — which is
   // tests/null-test.js's claim, made at the object rather than at the sample.
   'tests/arrangement.js',
+  // Volume automation and cuts as data: the curves, the line holding past its ends, and
+  // every structural edit carrying the points with the music they were on.
+  'tests/automation.js',
   // Which half steps the scheduler owes the song. Beside the arrangement suite because
   // it is the same subject from the clock's side: a 1/32 arpeggiator anywhere promotes
   // the transport everywhere, and what may be skipped on the promoted ticks is a claim
@@ -402,6 +411,7 @@ const suites = [
   'tests/tunnel-camera.js',
   'tests/portrait-framing.js',
   'tests/portrait-finish.js',
+  'tests/sleigh-carol.js',
   'tests/portrait-layout.js',
   'tests/portrait-objective-notices.js',
   'tests/scenery-layout.js',
@@ -459,6 +469,8 @@ const suites = [
   // launching the hero back out of it.
   'tests/unpressed-launches.js',
   'tests/loop.js',
+  // The scenery behind the ring keeps going forward while the world U-turns.
+  'tests/loop-backdrop.js',
   // The other cue that plays against the song rather than over it: the coin,
   // snapped to the key by the same ladder the loop's climb and the boost pad's
   // telegraph use. Directly after the loop suite because they share that ladder
@@ -529,6 +541,10 @@ const suites = [
   // prove is arithmetic: a lane at +10 with a bar of -20 sounds like a lane at -10, the
   // bar before it does not drift on its way there, and the pot itself never moves.
   'tests/bar-pan.js',
+  // The level line and the cut, rendered: a fade lands on its curve a sixteenth at a
+  // time, and a cut silences what was ringing on every kind of voice without letting the
+  // tail back in under the next note. A claim about samples, like the two above it.
+  'tests/mix-automation.js',
   // And the mirror image of it: a cabinet's treatment handing over to a level's mix
   // must do the opposite — keep the clock, keep the note ringing, change only the
   // presentation. Same claim, opposite sign. The first is the clock, in counters; the
@@ -586,6 +602,7 @@ const browserSuites = new Set([
   'tests/song-switch.js',
   'tests/bar-gain.js',
   'tests/bar-pan.js',
+  'tests/mix-automation.js',
   'tests/music-variant.js',
   'tests/music-variant-render.js',
   'tests/voices.js',
@@ -650,7 +667,7 @@ const soundSuites = [
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
   'tests/song-copies.js', 'tests/song-alternates.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
-  'tests/arrangement.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
+  'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
@@ -668,7 +685,8 @@ const soundSuites = [
   'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
   'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js',
-  'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/music-variant.js',
+  'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/mix-automation.js',
+  'tests/music-variant.js',
   'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
   'tests/new-effects.js',
 ];
@@ -691,13 +709,58 @@ const skipped = pool.filter((s) => !selected.includes(s));
 // that no longer matches its baseline — a deliberate edit, not a regression, but not
 // something to discover three weeks later either. Collected here and repeated at the
 // very end, because a warning halfway up a run this long is a warning nobody reads.
+//
+// Failures get the same treatment: each suite's output streams live as before and is
+// also kept, so the failing suites' FAIL lines (or, for a suite that died without
+// printing one, the tail of what it did print) can be replayed at the end, where the
+// pre-push hook leaves the terminal.
+const FAIL_LINE = /FAIL|✗|✘|not ok|Error\b|AssertionError|^\s+at /;
+const TAIL_LINES = 20;
+const MAX_FAIL_LINES = 40;
+function runSuite(suite) {
+  return new Promise((resolve) => {
+    // stderr folded into stdout by the shell, so a suite's FAIL lines (console.error)
+    // land in the same order among its ok lines as they did on a terminal.
+    const child = spawn('sh', ['-c', 'exec node "$0" 2>&1', join(root, suite)], {
+      stdio: ['inherit', 'pipe', 'inherit'],
+      env: { ...process.env, SEEDS: process.env.SEEDS || '100' },
+    });
+    let out = '';
+    child.stdout.on('data', (d) => { process.stdout.write(d); out += d; });
+    child.on('close', (status, signal) => resolve({ status, signal, out }));
+  });
+}
+function failureSummary(out) {
+  const lines = out.split('\n').map((l) => l.replace(/\s+$/, '')).filter(Boolean);
+  // A FAIL line keeps the indented lines under it: that is where the suites put
+  // the detail (which stage, which seed, which x).
+  const hits = [];
+  let inHit = false;
+  for (const l of lines) {
+    if (FAIL_LINE.test(l)) { hits.push(l); inHit = true; }
+    else if (inHit && /^\s/.test(l)) hits.push(l);
+    else inHit = false;
+  }
+  const shown = hits.length ? hits : lines.slice(-TAIL_LINES);
+  const extra = shown.length - MAX_FAIL_LINES;
+  const kept = extra > 0 ? shown.slice(0, MAX_FAIL_LINES) : shown;
+  return {
+    lines: kept,
+    note: (extra > 0 ? `… ${extra} more line(s)` : '') + (hits.length ? '' : ' (no FAIL line — last lines of output)'),
+  };
+}
+
 let failed = 0;
 const warned = [];
+const failures = [];
 for (const suite of selected) {
   console.log(`\n=== ${suite} ===`);
-  const r = spawnSync('node', [join(root, suite)], { stdio: 'inherit', env: { ...process.env, SEEDS: process.env.SEEDS || '100' } });
+  const r = await runSuite(suite);
   if (r.status === 2) warned.push(suite);
-  else if (r.status !== 0) failed++;
+  else if (r.status !== 0) {
+    failed++;
+    failures.push({ suite, why: r.signal ? `killed by ${r.signal}` : `exit ${r.status}`, ...failureSummary(r.out) });
+  }
 }
 // Said out loud, every time. A gate that silently covers less than it looks like it
 // covers is worse than a slow one.
@@ -717,5 +780,13 @@ if (warned.length) {
   console.log(`\n${warned.length} SUITE(S) PASSED WITH WARNINGS: ${warned.join(', ')}`);
   console.log('  scroll up to that suite for the detail — it did not fail the run.');
 }
-console.log(failed ? `\n${failed} SUITE(S) FAILED` : '\nALL SUITES PASSED');
+if (failures.length) {
+  console.log(`\n${'='.repeat(72)}\nFAILURES\n${'='.repeat(72)}`);
+  for (const f of failures) {
+    console.log(`\n✗ ${f.suite}  (${f.why})`);
+    for (const l of f.lines) console.log(`    ${l}`);
+    if (f.note.trim()) console.log(`    ${f.note.trim()}`);
+  }
+}
+console.log(failed ? `\n${failed} SUITE(S) FAILED: ${failures.map((f) => f.suite).join(', ')}` : '\nALL SUITES PASSED');
 process.exit(failed ? 1 : 0);

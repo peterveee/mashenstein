@@ -58,7 +58,15 @@ import {
   barCount, removeLanes, setTempo, setSwing, setSongLoop, setBarNoteFx, setBarEffects,
   renderArpToNotes,
   readBarLane, DRUM_LANES,
+  setFade, setCrossfade, clearAutomation, addCut, setLaneAutomation, automationDbAt,
 } from './lib/arrangement-edit.js';
+// Volume automation: the level line and the cuts (src/data/automation.js). The desk draws
+// the line on the arrangement and under the note editors, and edits it from the bar
+// panel and the Volume strip.
+import {
+  laneCurve, curveLevelAt, lanePoints, laneCuts, positionLabel, levelLabel, dbToLevel,
+  levelToDb, AUTOMATION_SHAPES, AUTOMATION_SHAPE_NAMES, AUTOMATION_SHAPE_NOTES,
+} from '../src/data/automation.js';
 // Recording: the fourth caller of the one-note seam the keyboard, the computer keys
 // and MIDI already share. It owns the clock and the buffer; the note semantics are
 // the roll's, which it imports rather than restating. See tools/lib/note-recorder.js.
@@ -10630,6 +10638,11 @@ function applyArrangementEdit(next, what, {
         stepSeq.refresh();
         pianoRoll.refresh();
         kitRoll.refresh();
+      } else {
+        // A fade or a cut made from the bar panel changes nothing the editors draw except
+        // the Volume strip under them.
+        pianoRoll.redrawVolume?.();
+        kitRoll.redrawVolume?.();
       }
     }
   }
@@ -10757,6 +10770,31 @@ function toggleRearrangeFavourite(range, lane = rollShownLane()) {
   renderRearrangeList();
 }
 
+/**
+ * The host side of a note editor's Volume strip (see `volume` in mixer-bar-grid.js):
+ * which track it shows, and that track's automation read off the draft and written back
+ * through `applyArrangementEdit` — so a point dragged on the strip is an arrangement edit
+ * like any other, with its ⌘Z, its A/B and its Save.
+ */
+const volumeFor = (laneOf) => ({
+  lane: () => laneOf() || null,
+  read: () => {
+    const lane = laneOf();
+    const automation = arrDraftOf()?.automation;
+    return { points: lanePoints(automation, lane), cuts: laneCuts(automation, lane) };
+  },
+  write: ({ points, cuts }, what) => {
+    const lane = laneOf();
+    if (!lane) return;
+    applyArrangementEdit(setLaneAutomation(arrDraftOf(), lane, points, cuts),
+      `${presetHeadingFor(lane).name}: ${what}`);
+  },
+  dbToPos, posToDb,
+  menu: (x, y, title, items) => { closeMenu(); openMenu(x, y, title, items); },
+  colour: () => laneColour(laneOf() || ''),
+  name: (lane) => (lane ? presetHeadingFor(lane).name : ''),
+});
+
 const pianoRoll = createPianoRoll({
   el: $('pianoroll'),
   Audio,
@@ -10831,6 +10869,8 @@ const pianoRoll = createPianoRoll({
   // No button of its own to un-light: the notes panel's fold button is what says
   // whether the roll is up.
   onClose: () => rememberSongLayout(),
+  // The shown channel's level line and cuts, on the roll's own time axis.
+  volume: volumeFor(rollShownLane),
 });
 
 const rollFollowButton = $('rollfollowbtn');
@@ -10925,6 +10965,9 @@ const kitRoll = createStepSeq({
     openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 6 : 120, lane);
   },
   currentLane: () => selectedLane,
+  // The selected drum's level line and cuts — a crash cut dead on the downbeat is the
+  // commonest cut there is.
+  volume: volumeFor(() => selectedLane),
   onDoubleClickStep: (step, range) => {
     const start = range?.start ?? step;
     const end = range?.end ?? (start + 4);
@@ -11868,6 +11911,168 @@ function trackHoverGroups(preset, { frozen = false } = {}) {
   ];
 }
 
+// The levels a fade can start or end on, loudest first. Silence is its own entry, not a
+// very small number: a fade to −∞ is silent at its end, which -60 dB is not.
+const FADE_LEVELS = [6, 3, 0, -3, -6, -9, -12, -18, -24, -36, -48, null];
+const fadeValue = (db) => (db == null ? 'silence' : String(db));
+const fadeDb = (value) => (value === 'silence' ? null : Number(value));
+
+/**
+ * The Volume section of the bar panel: fades, a crossfade and cuts over exactly the bars
+ * that were right-clicked (see src/data/automation.js).
+ *
+ * Buttons ACT, the way the verbs above them do — one click, one undo step. The two
+ * drop-downs beside FADE and the shape are the settings those buttons use, so "fade out
+ * over these four bars" is one click and "fade from -6 to -24 on an S-curve" is three.
+ * Anything finer than a bar — a fade that ends on beat three, a cut on a sixteenth — is
+ * the Volume strip's, under the note editor, where the grid is.
+ */
+function regionVolumeSection({ section, laneKey, laneLabel, from, to, span }) {
+  const fromPos = from * 16;
+  const toPos = (to + 1) * 16;
+  const here = arrDraftOf();
+  const curve = laneCurve(here.automation?.[laneKey]);
+  const pointsHere = (curve?.points || []).filter((p) => p.pos >= fromPos && p.pos <= toPos);
+  const cutsHere = (curve?.cuts || []).filter((c) => c >= fromPos && c < toPos);
+  // What the line already does over these bars, so reopening the panel on a fade shows
+  // that fade — its two ends and its shape — rather than the defaults for a new one. The
+  // start is the level LEAVING the first bar line, the end the level ARRIVING at the last,
+  // which on a fade drawn over exactly these bars are its From and its To.
+  const startDb = automationDbAt(here, laneKey, fromPos);
+  const endDb = automationDbAt(here, laneKey, toPos, { left: true });
+  const lineHere = (curve?.points || []).some((p) => p.pos > fromPos && p.pos <= toPos);
+  const shapeHere = [...(curve?.points || [])].reverse()
+    .find((p) => p.pos > fromPos && p.pos <= toPos)?.shape || 'even';
+  const note = [
+    pointsHere.length ? `${pointsHere.length} point${pointsHere.length === 1 ? '' : 's'}` : null,
+    cutsHere.length ? `cut at ${cutsHere.map(positionLabel).join(', ')}` : null,
+  ].filter(Boolean).join(' · ') || (startDb === 0 ? null : `starts at ${levelLabel(startDb)}`);
+  const wrap = section('Volume', note);
+  const lower = span.toLowerCase();
+
+  const select = (options, value, title) => {
+    const sel = document.createElement('select');
+    sel.className = 'fxsel';
+    if (title) sel.title = title;
+    for (const option of options) {
+      const el = document.createElement('option');
+      el.value = option.value; el.textContent = option.text;
+      if (option.title) el.title = option.title;
+      if (option.value === value) el.selected = true;
+      sel.append(el);
+    }
+    return sel;
+  };
+  const levelOptions = (extra) => {
+    const list = [...FADE_LEVELS];
+    if (extra !== undefined && !list.some((v) => v === extra)) list.push(extra);
+    return list.sort((a, b) => (b ?? -Infinity) - (a ?? -Infinity))
+      .map((v) => ({ value: fadeValue(v), text: levelLabel(v) }));
+  };
+  const labelled = (text, control) => {
+    const label = document.createElement('label');
+    label.className = 'regfadefield';
+    const name = document.createElement('span');
+    name.textContent = text;
+    label.append(name, control);
+    return label;
+  };
+
+  // The settings row: where a fade starts and ends, and the shape it takes.
+  const fields = document.createElement('div');
+  fields.className = 'regfadefields';
+  const fromSel = select(levelOptions(startDb), fadeValue(startDb), `The level ${laneLabel} fades from, at the start of ${lower}`);
+  // With no line in these bars yet, TO offers the commonest thing to do: fade out.
+  const toDb = lineHere ? endDb : null;
+  const toSel = select(levelOptions(toDb), fadeValue(toDb), `The level ${laneLabel} fades to, at the end of ${lower}`);
+  const shapeSel = select(AUTOMATION_SHAPES.map((id) => ({
+    value: id, text: AUTOMATION_SHAPE_NAMES[id], title: AUTOMATION_SHAPE_NOTES[id],
+  })), shapeHere, 'How the level travels between the two ends');
+  fields.append(labelled('From', fromSel), labelled('To', toSel), labelled('Shape', shapeSel));
+  wrap.append(fields);
+
+  const shape = () => shapeSel.value;
+  const actions = document.createElement('div');
+  actions.className = 'regactions';
+  const button = (label, title, run, { disabled = false, danger = false } = {}) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.title = title; b.disabled = disabled;
+    if (danger) b.classList.add('danger');
+    b.onclick = () => { closeMenu(); run(); };
+    actions.append(b);
+  };
+  button('Fade Out', `${laneLabel} from ${levelLabel(startDb)} down to silence across ${lower} — the bars after it are left as they are`,
+    () => applyArrangementEdit(setFade(arrDraftOf(), laneKey, fromPos, toPos, startDb, null, shape()),
+      `${laneLabel} fades out across ${lower}`));
+  button('Fade In', `${laneLabel} from silence up to 0 dB across ${lower} — the bars before it are left as they are`,
+    () => applyArrangementEdit(setFade(arrDraftOf(), laneKey, fromPos, toPos, null, 0, shape()),
+      `${laneLabel} fades in across ${lower}`));
+  button('Apply Fade', `From the level on the left to the level on the right, across ${lower}, on the shape chosen`,
+    () => {
+      const a = fadeDb(fromSel.value);
+      const b = fadeDb(toSel.value);
+      applyArrangementEdit(setFade(arrDraftOf(), laneKey, fromPos, toPos, a, b, shape()),
+        `${laneLabel} ${levelLabel(a)} → ${levelLabel(b)} across ${lower}`);
+    });
+  wrap.append(actions);
+
+  // A crossfade: this track out and another in, over the same bars, on the curve that
+  // keeps the middle from dipping. Picking the track is the gesture.
+  const others = deskLanes(viewBank(), 1).map((l) => l.key).filter((k) => k !== laneKey);
+  if (others.length) {
+    const cross = select([
+      { value: '', text: 'Crossfade into…' },
+      ...others.map((k) => ({ value: k, text: `${laneNumbers.get(k) ? `${laneNumbers.get(k)}. ` : ''}${presetHeadingFor(k).name}` })),
+    ], '', `${laneLabel} fades out and the track you pick fades in across ${lower}, equal-power so the loudness holds through the middle`);
+    cross.onchange = () => {
+      const other = cross.value;
+      if (!other) return;
+      closeMenu();
+      applyArrangementEdit(setCrossfade(arrDraftOf(), laneKey, other, fromPos, toPos, { shape: 'equal' }),
+        `${laneLabel} crossfades into ${presetHeadingFor(other).name} across ${lower}`);
+    };
+    const crossRow = document.createElement('div');
+    crossRow.className = 'regfadecross';
+    crossRow.append(cross);
+    wrap.append(crossRow);
+  }
+
+  // Cuts: a choke at a point. Offered on the bar grid — every sixteenth on a short
+  // selection, every beat on a long one — ending on the bar line after it, which is
+  // where a tail most often wants stopping.
+  const fine = to - from < 2;
+  const stride = fine ? 1 : 4;
+  const spots = [];
+  for (let p = fromPos; p <= toPos; p += stride) spots.push(p);
+  const cutSel = select(spots.map((p) => ({ value: String(p), text: positionLabel(p) })), String(toPos),
+    `Where ${laneLabel} is cut: whatever it has ringing there stops, and the next note plays`);
+  const cutRow = document.createElement('div');
+  cutRow.className = 'regfadecut';
+  cutRow.append(labelled('Cut at', cutSel));
+  const cutActions = document.createElement('div');
+  cutActions.className = 'regactions';
+  const addCutButton = document.createElement('button');
+  addCutButton.textContent = 'Add Cut';
+  addCutButton.title = `Stop whatever ${laneLabel} has ringing at the point chosen — the next note plays as normal`;
+  addCutButton.onclick = () => {
+    const at = Number(cutSel.value);
+    closeMenu();
+    applyArrangementEdit(addCut(arrDraftOf(), laneKey, at), `${laneLabel} cut at ${positionLabel(at)}`);
+  };
+  const clearButton = document.createElement('button');
+  clearButton.textContent = 'Clear Volume';
+  clearButton.title = `Take ${laneLabel}'s fades and cuts out of ${lower}`;
+  clearButton.disabled = !pointsHere.length && !cutsHere.length;
+  clearButton.onclick = () => {
+    closeMenu();
+    applyArrangementEdit(clearAutomation(arrDraftOf(), laneKey, fromPos, toPos),
+      `${laneLabel} fades and cuts cleared in ${lower}`);
+  };
+  cutActions.append(addCutButton, clearButton);
+  cutRow.append(cutActions);
+  wrap.append(cutRow);
+}
+
 /**
  * The right-click editor. One panel, three scopes, and the scope is whatever you
  * right-clicked: bars on a lane row edit that lane in those bars, the timeline edits
@@ -12016,9 +12221,10 @@ function openRegionEditor(x, y, {
   // done that: a note edit is a section of its own, and ⌘Z is what undoes one.
   const resetAction = laneKey && {
     label: 'Reset Edits',
-    title: `Set ${laneLabel}'s mute, transpose, timing, gain and pan back to none in ${scopeName} — the notes are not touched`,
+    title: `Set ${laneLabel}'s mute, transpose, timing, gain, pan, fades and cuts back to none in ${scopeName} — the notes are not touched`,
     run: () => {
       let next = arrDraftOf();
+      next = clearAutomation(next, laneKey, from * 16, (to + 1) * 16);
       next = setLanesOff(next, from, to, [laneKey], false);
       next = setLanesDeleted(next, from, to, [laneKey], false);
       next = transposeBars(next, from, to, [laneKey], 0);
@@ -12135,6 +12341,7 @@ function openRegionEditor(x, y, {
         run: () => clearLaneBars(laneKey, from, to, `${laneLabel} erased in ${span.toLowerCase()}`) },
       resetAction,
     ]);
+    regionVolumeSection({ section, laneKey, laneLabel, from, to, span });
   } else if (wholeTrack) {
     // Everything you can do TO a track, on the thing you right-clicked. Mute and solo
     // are the two that are missing on purpose: they have their own buttons on both the
@@ -12623,6 +12830,98 @@ addEventListener('pointercancel', () => {
   dragClickSuppress = false;
 });
 
+/**
+ * A lane's level line and cuts, drawn over one bar of its arrangement row.
+ *
+ * The line is a VEIL rather than a graph: the part of the bar above the line is dimmed,
+ * so a fade-out reads as the row going dark across the bars it covers, a crossfade as one
+ * row darkening while the next one brightens, and a bar sitting at 0 dB is untouched —
+ * which is every bar of every track that has no automation. Height follows the fader
+ * law, so the same depth of veil is the same level on every row. Cuts are a hard rule at
+ * the exact sixteenth, the one thing on the row finer than a bar.
+ */
+function automationBarMarks(curve, bar) {
+  if (!curve || (!curve.points.length && !curve.cuts.length)) return null;
+  const a = bar * 16;
+  const b = a + 16;
+  const cuts = curve.cuts.filter((c) => c >= a && c < b);
+  const box = document.createElement('div');
+  box.className = 'arrauto';
+  box.setAttribute('aria-hidden', 'true');
+  if (curve.points.length) {
+    const unity = dbToPos(0);
+    const veilY = (g) => {
+      if (!(g > 0)) return 100;
+      return (1 - Math.min(1, dbToPos(levelToDb(g)) / unity)) * 100;
+    };
+    const marks = new Set(Array.from({ length: 17 }, (_, i) => a + i));
+    for (const p of curve.points) if (p.pos > a && p.pos < b) marks.add(p.pos);
+    const coords = [];
+    let quiet = true;
+    for (const pos of [...marks].sort((x, y) => x - y)) {
+      const left = curveLevelAt(curve, pos, { left: true });
+      const right = curveLevelAt(curve, pos);
+      for (const g of (Math.abs(left - right) > 1e-9 ? [left, right] : [left])) {
+        const y = veilY(g);
+        if (y > 0.5) quiet = false;
+        coords.push([((pos - a) / 16) * 100, y]);
+      }
+    }
+    if (!quiet) {
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 100 100');
+      svg.setAttribute('preserveAspectRatio', 'none');
+      const line = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
+      const veil = document.createElementNS(NS, 'path');
+      veil.setAttribute('class', 'arrauto-veil');
+      // Out past both edges at the edge's own level, into the side padding the box clips.
+      const edged = [[-40, coords[0][1]], ...coords, [140, coords[coords.length - 1][1]]];
+      veil.setAttribute('d', `M-40 0 L140 0 L${[...edged].reverse().map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join(' L')} Z`);
+      const stroke = document.createElementNS(NS, 'path');
+      stroke.setAttribute('class', 'arrauto-line');
+      stroke.setAttribute('d', line);
+      svg.append(veil, stroke);
+      box.append(svg);
+    }
+  }
+  for (const c of cuts) {
+    const mark = document.createElement('span');
+    mark.className = 'arrcutmark';
+    mark.style.left = `${(((c - a) / 16) * 100).toFixed(2)}%`;
+    box.append(mark);
+  }
+  return box.childElementCount ? box : null;
+}
+
+/** The hover card's Volume group for one bar: the fades crossing it and its cuts. */
+function automationTipGroups(curve, bar) {
+  if (!curve) return [];
+  const a = bar * 16;
+  const b = a + 16;
+  const items = [];
+  const pts = curve.points;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    if (q.pos <= a || p.pos >= b || q.pos - p.pos < 1e-9) continue;
+    if (p.db === q.db) continue;
+    items.push({
+      text: `${levelLabel(p.db)} → ${levelLabel(q.db)} · ${AUTOMATION_SHAPE_NAMES[q.shape] || 'Even'}`
+        + ` · ${positionLabel(p.pos)}–${positionLabel(q.pos)}`,
+      tone: 'active',
+    });
+  }
+  if (!items.length && pts.length) {
+    const held = levelToDb(curveLevelAt(curve, a + 8));
+    if (held !== 0) items.push({ text: `Holding ${levelLabel(held)}`, tone: held == null ? 'warn' : 'active' });
+  }
+  for (const c of curve.cuts) {
+    if (c >= a && c < b) items.push({ text: `Cut at ${positionLabel(c)}`, tone: 'danger' });
+  }
+  return items.length ? [{ label: 'Volume', items }] : [];
+}
+
 function buildArrangement() {
   const grid = $('arrgrid');
   grid.textContent = '';
@@ -12665,6 +12964,8 @@ function buildArrangement() {
     const frozen = freezeState !== 'live';
     // The lane's track Note FX, read once per row: every bar badge resolves against it.
     const laneNoteFx = mixFor(trackId).lanes?.[row.key]?.noteFx || null;
+    // And its level line and cuts, once per row for the same reason.
+    const autoCurve = laneCurve(arrFor(trackId)?.automation?.[row.key]);
     const el = document.createElement('div');
     el.className = `arrrow${frozen ? ' frozen' : ''}${freezeState === 'partial' ? ' partially-frozen' : ''}`;
     el.dataset.lane = row.key;
@@ -12960,6 +13261,8 @@ function buildArrangement() {
       if (plan[bar]?.delete?.includes(row.key)) {
         box.classList.add('bardeleted');
       }
+      const autoMarks = automationBarMarks(autoCurve, bar);
+      if (autoMarks) box.append(autoMarks);
       const barFx = plan[bar]?.inlineFx?.[row.key] || [];
       const barFxNames = barFx.map((effect) => EFFECT_BY_ID[effect.id]?.short
         || EFFECT_BY_ID[effect.id]?.name || effect.id).join(' + ');
@@ -13008,6 +13311,7 @@ function buildArrangement() {
             tone: synthesizerLabelFor(preset) ? 'active' : 'quiet',
           }] },
           ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen }),
+          ...automationTipGroups(autoCurve, bar),
         ]);
         box.dataset.tiphints = JSON.stringify([
           { key: 'Click', text: 'Select' },
@@ -20117,6 +20421,27 @@ function laneOnlyBlock(block, sources) {
  * match a newer one, so every existing freeze needs rendering once more. That is the
  * last time it should happen for an edit to another track.
  */
+/**
+ * The arrangement a freeze renders against, as far as AUTOMATION goes: this lane's CUTS
+ * and nothing else.
+ *
+ * A cut is routing in front of the strip, so it belongs in the frozen samples exactly as
+ * a mute does. The level LINE is the strip's own, after the frozen PCM joins the channel
+ * (see `frozen` in src/engine/mixer.js), and the render runs through that same strip —
+ * so baking the line in as well would play every fade twice, once in the file and once
+ * live. And another track's fade is nothing to do with these samples, so editing one
+ * must not throw this freeze away.
+ */
+function freezeArrangement(entry, sources) {
+  if (!entry?.automation) return entry ?? null;
+  const cuts = Object.fromEntries(Object.entries(entry.automation)
+    .filter(([key, lane]) => sources.has(key) && lane?.cuts?.length)
+    .map(([key, lane]) => [key, { cuts: lane.cuts }]));
+  const out = { ...entry };
+  if (Object.keys(cuts).length) out.automation = cuts; else delete out.automation;
+  return out;
+}
+
 function freezeFingerprint(id, lane) {
   const m = mixFor(id) || {};
   const sources = freezeNoteSources(m, lane);
@@ -20131,7 +20456,7 @@ function freezeFingerprint(id, lane) {
   return JSON.stringify({
     v: 2,
     lane,
-    arrangement: laneOnlyBlock(arrFor(id), sources),
+    arrangement: laneOnlyBlock(freezeArrangement(arrFor(id), sources), sources),
     layers: (m.layers || []).filter((L) => sources.has(L.key) || sources.has(L.from)),
     off: m.off || [],
     voice: pick(m.voice), voiceParams: pick(m.voiceParams),
@@ -20504,7 +20829,8 @@ async function freezeLane(lane, {
       throw new Error(`the 256 MB freeze memory cap would be exceeded (approximately ${Math.ceil((used + keptBytes + expectedBytes) / 1048576)} MB)`);
     }
     const bank = structuredClone(source); bank.musicTrim = 1;
-    const arrangement = structuredClone(arrFor(id) ?? null);
+    const arrangement = structuredClone(
+      freezeArrangement(arrFor(id), freezeNoteSources(mixFor(id) || {}, lane)) ?? null);
     const out = await bounceWav(bank, {
       trackId: id, mix: rawFreezeMix(id, lane), arrangement,
       tail: span.tailSeconds, range: span, frameUrl: RENDER_FRAME_URL,

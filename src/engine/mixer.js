@@ -659,6 +659,18 @@ export function createMixer(ctx, {
     // fader is the fader — so splitting them is a pass-through change.
     const vol = ctx.createGain();
     vol.gain.value = 1;
+    // The ARRANGEMENT's level line — a fade, a crossfade, a track brought down under
+    // itself (see src/data/automation.js). A node of its own, between the gate and the
+    // fader, for the same reason the gate and the fader are two: each param has exactly
+    // one writer. The sequencer writes this one and nothing else ever does, so a fader
+    // move, a mute, a solo or a cabinet transition ramping `pres` can never land on top
+    // of a fade that is halfway down. Upstream of the send taps, so the echo and reverb
+    // a channel sends follow its fade rather than ringing on at full level.
+    //
+    // At unity it is a multiply by one, which is exact — every song with no automation
+    // renders the samples it always did.
+    const auto = ctx.createGain();
+    auto.gain.value = 1;
     const pres = ctx.createGain();
     pres.gain.value = 1;
     const panner = ctx.createStereoPanner();
@@ -695,7 +707,8 @@ export function createMixer(ctx, {
     // the live channel. It enters after those branches and before fader/pan/EQ/inserts.
     const frozen = ctx.createGain();
     frozen.connect(vol);
-    vol.connect(pres);
+    vol.connect(auto);
+    auto.connect(pres);
     pres.connect(panner);
     panner.connect(laneEq.input);
     widthNode.output.connect(monitor);
@@ -805,6 +818,26 @@ export function createMixer(ctx, {
     // way to an edit that belonged to bar 2. See tests/bar-pan.js, claim 1.
     let panWritten = state.pan;
 
+    // What the automation param was last told, as the last two events: a ramp has to
+    // start from somewhere, and `.value` cannot be asked about a time in the future.
+    // Null when nothing has been written since the song started — the next write then
+    // sets its value outright rather than walking to it.
+    let autoLast = null;
+    let autoPrev = null;
+    const AUTO_SNAP = 0.004;
+    const autoValueAt = (t) => {
+      if (!autoLast) return 1;
+      if (!autoPrev || t >= autoLast.t) return autoLast.v;
+      if (t <= autoPrev.t) return autoPrev.v;
+      return autoPrev.v + (autoLast.v - autoPrev.v) * ((t - autoPrev.t) / (autoLast.t - autoPrev.t));
+    };
+    const autoWrite = (t, v, ramp = true) => {
+      if (ramp) auto.gain.linearRampToValueAtTime(v, t);
+      else auto.gain.setValueAtTime(v, t);
+      autoPrev = autoLast;
+      autoLast = { t, v };
+    };
+
     const strip = {
       key,
       dry,
@@ -853,6 +886,97 @@ export function createMixer(ctx, {
         panWritten = target;
       },
       get panOffset() { return panOffset; },
+      /**
+       * The arrangement's level line over one stretch of time — `events` is
+       * `[[time, gain], …]`, ascending, the first being where the stretch starts. The
+       * param passes through each of them in straight lines; the sequencer hands over
+       * enough of them that a curve is a curve.
+       *
+       * Continuity is this function's to keep, and it is the whole of the difficulty:
+       *
+       *   · a stretch that begins where the last one ended, at the level it ended on,
+       *     is simply more line;
+       *   · one that begins later — the sequencer skipped a stretch, or the transport
+       *     stood still — is anchored where it starts, so the ramp that follows does not
+       *     begin back where the last event was and slope across the gap;
+       *   · one that begins at a DIFFERENT level — a loop wrap, a jump, a bar deleted
+       *     under the playhead — walks there in four milliseconds rather than stepping,
+       *     which is the click-safe edge rampParam uses for a snap;
+       *   · one that begins BEFORE the last event — the transport moved back inside the
+       *     lookahead — takes back what was written past its start first.
+       *
+       * The very first stretch after `clearAutomation` is set outright: nothing on this
+       * channel was sounding through a line before it, so there is nothing to walk from.
+       */
+      automate(events) {
+        if (!Array.isArray(events) || !events.length) return;
+        const now = ctx.currentTime;
+        const [t0raw, v0] = events[0];
+        const t0 = Math.max(t0raw, now);
+        const near = (a, b) => Math.abs(a - b) < 1e-5;
+        let from = 1;
+        if (!autoLast) {
+          autoWrite(t0, v0, false);
+        } else if (t0 < autoLast.t - 1e-6) {
+          from = autoValueAt(t0);
+          auto.gain.cancelScheduledValues(t0);
+          auto.gain.setValueAtTime(from, t0);
+          autoPrev = null; autoLast = { t: t0, v: from };
+          if (!near(from, v0)) autoWrite(t0 + AUTO_SNAP, v0);
+        } else if (near(autoLast.t, t0)) {
+          if (!near(autoLast.v, v0)) autoWrite(t0 + AUTO_SNAP, v0);
+        } else if (autoLast.t < now - 0.05) {
+          // The last thing written is already in the past: the transport stood still
+          // (the sequencer writes every sixteenth while it runs), so nothing on this
+          // channel is sounding through the old value and the new one is set outright.
+          autoWrite(t0, v0, false);
+        } else {
+          from = autoLast.v;
+          autoWrite(t0, from, false);
+          if (!near(from, v0)) autoWrite(t0 + AUTO_SNAP, v0);
+        }
+        for (let i = 1; i < events.length; i++) {
+          const [t, v] = events[i];
+          if (!(t > autoLast.t + 1e-6)) continue;
+          autoWrite(t, v);
+        }
+      },
+      /**
+       * The line gone: back to unity. `at` is when; with no time it is now and outright,
+       * which is what a song change wants — the old song's notes are already being cut.
+       * With a time it walks there over the snap, for a line removed while the song plays.
+       */
+      clearAutomation(at = null) {
+        if (at == null) {
+          auto.gain.cancelScheduledValues(ctx.currentTime);
+          auto.gain.value = 1;
+          autoLast = null; autoPrev = null;
+          return;
+        }
+        this.automate([[at, 1]]);
+      },
+      /** What the line was last told — for tests and the desk's readouts. */
+      get automationLevel() { return autoLast ? autoLast.v : 1; },
+      /**
+       * A CUT reaching this channel's own ECHOES (src/data/automation.js). The notes are
+       * stopped in front of the strip; a Delay on the strip would go on repeating what
+       * it already had, so each delay insert is emptied: what is in its line is held
+       * silent, and kept from going round again, for as long as the line takes to clear —
+       * one delay time, two on a Ping-Pong's right side, which runs a delay behind its left.
+       * A note struck on the cut is not touched: its first repeat comes out after that.
+       * How each delay does it is its own business — see `flush` in effects.js.
+       *
+       * Reverb inserts are left alone. A room cannot be emptied, only muted, and a muted
+       * room would take the next note's reverb with it.
+       */
+      flushEchoes(at) {
+        const links = [...(slot.chain || []), ...[...barFxBranches.values()].flatMap((b) => b.slot.chain || [])];
+        for (const link of links) {
+          if (!link || link.bypassed || link.muted) continue;
+          link.flush?.(at);
+        }
+      },
+      get _auto() { return auto; },
       /** 1 = as recorded, 0 = mono, 2 = pushed wide. */
       setWidth(w) { cancelState('width'); state.width = w; widthNode.set(w); },
       setSolo(on) {
@@ -1459,6 +1583,12 @@ export function createMixer(ctx, {
      * that lies about itself the moment the next song starts.
      */
     clearPanOffsets() { for (const s of strips.values()) s.setPanOffset(0, ctx.currentTime, 0); },
+    /**
+     * Every channel's automation line back to unity — a song change. With `at`, walked
+     * there at that time (the old song's fade-out is still running until then); without
+     * it, at once. See `automate` on the strip.
+     */
+    clearAutomation(at = null) { for (const s of strips.values()) s.clearAutomation(at); },
     /**
      * Kept, and resolved. The reverb used to build its impulse response by rendering
      * noise through its own offline context, so an offline render had to await it or

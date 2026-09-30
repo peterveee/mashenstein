@@ -1351,6 +1351,16 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       this.last.group = null;
       continue;
     }
+    if (e.type === 'choke') {
+      // A CUT on the lane (src/data/automation.js): every sounding group goes over the
+      // MONO choke's twelve milliseconds, and — unlike a panic — nothing booked behind it
+      // is touched, because the next note is the song carrying on.
+      var cutFrames = Math.max(1, Math.round(0.012 * this.rate));
+      for (var c = 0; c < this.groups.length; c++) this.groups[c].choke(frame, cutFrames);
+      this.last.gateUntil = -1;
+      this.last.group = null;
+      continue;
+    }
     if (e.type === 'noteOff') {
       // AT 'frame', NOT AT 'e.frame'. A note-off may be stale — it is never dropped, on
       // purpose — and drawing a release that finished in the past would step the note to

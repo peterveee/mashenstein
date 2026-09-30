@@ -50,11 +50,18 @@ export function glottalWave(ctx, oq, tiltDb, f0, useFlow = false) {
   if (!m) { m = new Map(); waveMemo.set(ctx, m); }
   const key = `${oq.toFixed(3)}|${(tiltDb || 0).toFixed(2)}|${Math.round(f0)}|${useFlow ? 1 : 0}`;
   let w = m.get(key);
-  if (!w) { w = buildGlottalWave(ctx, oq, tiltDb, f0, useFlow); m.set(key, w); }
+  if (!w) {
+    const { re, im } = glottalHarmonics(ctx.sampleRate, oq, tiltDb, f0, useFlow);
+    w = ctx.createPeriodicWave(re, im, { disableNormalization: true });
+    m.set(key, w);
+  }
   return w;
 }
-function buildGlottalWave(ctx, oq, tiltDb, f0, useFlow) {
-  const sr = ctx.sampleRate;
+// The harmonic amplitudes the wave is built from. Not memoised here: the wave's memo is per
+// context and rounds its pitch, and a second, global one would hand a note the harmonics
+// of whichever nearby pitch played first, so a render would depend on its history.
+// Formant tuning (see `tunedTract`) reads these too, and keeps its own exact-keyed memo.
+export function glottalHarmonics(sr, oq, tiltDb, f0, useFlow = false) {
   const P = Math.max(64, Math.round(sr / f0));
   const H = 96;
   const tp = oq * SKEW;
@@ -99,7 +106,7 @@ function buildGlottalWave(ctx, oq, tiltDb, f0, useFlow) {
     re[h] = (2 * c / P) * mag;
     im[h] = (-2 * s / P) * mag;
   }
-  return ctx.createPeriodicWave(re, im, { disableNormalization: true });
+  return { re, im };
 }
 
 // ---- the one noise generator, shared with the reference's noise_stream() -----------
@@ -282,6 +289,152 @@ function resonatorMag(sr, f, bw, at) {
   return A / Math.sqrt(dr * dr + di * di);
 }
 
+/*
+ * FORMANT TUNING: what a soprano does, and why this synth has to.
+ *
+ * F1 and F2 are resonances at the vowel's own frequencies, and below F1 a note has several
+ * harmonics under it to ring it. Once the fundamental climbs past F1 there is nothing left
+ * under the resonance: the note falls down the lowpass slope and goes quiet. Measured
+ * before this existed (work/local/jmjr4-pitch-level-probe.mjs, 29 September 2026), Choir
+ * Aah was +7 dB at G5, where 784 Hz sits on its 750 Hz F1, then -15 dB by G6; the ooh
+ * presets, F1 near 300 Hz, were already -10 dB by C5. A singer raises F1 to sit just above
+ * the note, so this does too: F1 never goes below F1_TUNE times the fundamental.
+ *
+ * A resonance tuned onto the fundamental is louder than the vowel ever was, by up to 18 dB
+ * measured, so the tract's output is also scaled by the power it delivers at the pitch
+ * where tuning begins over the power it delivers here — both computed from the glottal
+ * harmonics this note actually plays through the two resonators (Klatt's, which the
+ * lowpass biquads match to within 1.2 dB). Level is flat from that pitch up and joins the
+ * untuned voice there.
+ *
+ * F2 is kept at least F2_GAP above the tuned F1, or at the top of the range (C7 on an ooh,
+ * F2 near 870 Hz) the second lowpass sits under the note and the same hole opens again.
+ *
+ * Switched on per note, applied per breakpoint: a note is tuned only once it is above every
+ * F1 its IR visits, and then a spoken phrase, or a sung D before its vowel, has each of its
+ * points tuned for what that point is. A note that is not tuned keeps the same frequencies
+ * to the bit and a gain of exactly 1, so it renders as it did before this existed.
+ */
+const F1_TUNE = 1.1;
+const F2_GAP = 1.3;
+// |H| of a biquad b/a at `at` Hz
+function biquadMag(sr, b, a, at) {
+  const w = 2 * Math.PI * at / sr;
+  const mag = (k) => Math.hypot(k[0] + k[1] * Math.cos(w) + k[2] * Math.cos(2 * w), k[1] * Math.sin(w) + k[2] * Math.sin(2 * w));
+  return mag(b) / mag(a);
+}
+// |H| of Web Audio's bandpass (the spec's RBJ coefficients, 0 dB peak) at `at` Hz
+function bandpassMag(sr, f, q, at) {
+  const w0 = 2 * Math.PI * f / sr;
+  const al = Math.sin(w0) / (2 * q);
+  return biquadMag(sr, [al, 0, -al], [1 + al, -2 * Math.cos(w0), 1 - al], at);
+}
+/*
+ * The power a note delivers through the tract, summed over the harmonics it actually has.
+ * Both branches, as renderIr builds them: F1 x F2 at `tract_ref_gain`, and the parallel
+ * F3/F4/F5 bandpasses scaled by the vowel dependence — the upper branch is what the top
+ * octave lands on (C7 is 2 kHz, where F3 sits), so leaving it out over-boosted exactly
+ * there. The branches and the bandpasses are summed as powers, not phases: up here a
+ * formant holds one or two harmonics and their phases are anybody's.
+ *
+ * `nose`, when given, is a nasal path at that place: its pole, its notch (at the place it
+ * is given, already moved if it is tuned) and the BUZZ shelf, in front of the tract.
+ * f1, f2, f3 and the place are Hz after fscale.
+ *
+ * Exact keys, so the answer never depends on what was asked before; cleared when it grows,
+ * since a session plays a bounded set of pitches through a bounded set of vowels.
+ */
+const powerMemo = new Map();
+const AH = [750, 1200, 2500];
+function tractPower(sr, c, f0, f1, f2, f3, bw, nose = null) {
+  const key = `${sr}|${c.src}|${c.oq}|${c.tilt_db}|${c.nasal_buzz}|${f0}|${f1}|${f2}|${f3}|${nose}|${bw.join(',')}`;
+  let p = powerMemo.get(key);
+  if (p !== undefined) return p;
+  const { re, im } = c.src === 'saw' ? { re: null, im: null } : glottalHarmonics(sr, c.oq, c.tilt_db || 0, f0);
+  const fs = c.fscale;
+  const upper = c.tract === 'hybrid' || c.tract === 'parallel';
+  let dep = 0;
+  const bands = [];
+  if (upper) {
+    const ref = resonatorMag(sr, AH[0], bw[0], AH[2]) * resonatorMag(sr, AH[1], bw[1], AH[2]);
+    dep = Math.pow(resonatorMag(sr, f1 / fs, bw[0], f3 / fs) * resonatorMag(sr, f2 / fs, bw[1], f3 / fs) / ref, c.hybrid_dep_exp) * c.hybrid_high_gain;
+    bands.push([f3, bw[2], c.gains[2]], [c.f4 * fs, bw[3], c.gains[3]]);
+    if (c.f5) bands.push([c.f5[0] * fs, c.f5[1], c.hybrid_f5_gain]);
+  }
+  const buzzDb = nose != null ? (c.nasal_buzz_db ?? 22) * clamp01(c.nasal_buzz || 0) : 0;
+  p = 0;
+  for (let h = 1; h <= 96 && h * f0 < sr / 2; h++) {
+    const at = h * f0;
+    const s2 = re ? re[h] * re[h] + im[h] * im[h] : 1 / (h * h);
+    const lo = c.tract_ref_gain * resonatorMag(sr, f1, bw[0], at) * resonatorMag(sr, f2, bw[1], at);
+    let g2 = lo * lo;
+    for (const [cf, b, g] of bands) { const m = dep * g * bandpassMag(sr, cf, cf / b, at); g2 += m * m; }
+    if (nose != null) {
+      let n = resonatorMag(sr, c.nasal_pole[0], c.nasal_pole[1], at) / resonatorMag(sr, nose, c.nasal_zero_bw, at);
+      if (buzzDb > 0) n *= shelfMag(sr, c.nasal_buzz_hz ?? 400, buzzDb, at);
+      g2 *= n * n;
+    }
+    p += s2 * g2;
+  }
+  if (powerMemo.size > 4096) powerMemo.clear();
+  powerMemo.set(key, p);
+  return p;
+}
+/** F1 and F2 (Hz, after fscale) as tuned for a note at `f0`, and the gain that levels it. */
+export function tunedTract(sr, c, f0, f1, f2, f3, bw) {
+  const floor = F1_TUNE * f0;
+  if (!(floor > f1)) return { tuned: false, f1, f2, gain: 1 };
+  const t2 = Math.max(f2, F2_GAP * floor);
+  const from = f1 / F1_TUNE;
+  const gain = Math.sqrt(tractPower(sr, c, from, f1, f2, f3, bw) / tractPower(sr, c, f0, floor, t2, f3, bw));
+  return { tuned: true, f1: floor, f2: t2, gain };
+}
+
+/*
+ * THE NOSE, TUNED THE SAME WAY. A nasal's anti-resonator is a notch 90 Hz wide at a fixed
+ * place (1000 Hz for a live hum, the IR's own for a sung M), so a note climbing onto it is
+ * cut out: Kazoo Lead was -7 dB at B5 against its neighbours. Once the note is within
+ * Z_TUNE of the notch, the notch moves to Z_TUNE times the note, between the fundamental
+ * and its octave, where there is no harmonic to cut.
+ *
+ * And each path is levelled on its own. `tunedTract`'s gain is the MOUTH's; a path through
+ * the nose also has its pole, the notch and the BUZZ shelf in it, and at the top of the
+ * range the shelf alone is 10 dB the oral model never sees — Hummer was +20 dB at C7. So
+ * on a note with a nose, the mouth's gain goes on the dry path and each wet path carries
+ * its own: the power it delivers where tuning began over the power it delivers here.
+ * Absolute, not relative to the mouth's: it was once the wet path's gain divided by the
+ * oral gain on `low`, and a morph from aah into a hum glides both, linearly, at once, and
+ * the product of two linear glides bulged +7 dB half way. Paths levelled one by one sum
+ * level whatever the mix of nose and mouth.
+ *
+ * A note the tuning never reaches gets exactly 1, as before.
+ */
+const Z_TUNE = 1.5;
+const zeroPlace = (fz, f0) => Math.max(fz, Z_TUNE * f0);
+// |H| of Web Audio's highshelf (the spec's RBJ coefficients, slope 1) at `at` Hz
+function shelfMag(sr, f, db, at) {
+  const A = Math.pow(10, db / 40);
+  const w0 = 2 * Math.PI * f / sr;
+  const cw = Math.cos(w0);
+  const al = Math.sin(w0) / 2 * Math.SQRT2;
+  const sa = 2 * Math.sqrt(A) * al;
+  const b = [A * ((A + 1) + (A - 1) * cw + sa), -2 * A * ((A - 1) + (A + 1) * cw), A * ((A + 1) + (A - 1) * cw - sa)];
+  const a = [(A + 1) - (A - 1) * cw + sa, 2 * ((A - 1) - (A + 1) * cw), (A + 1) - (A - 1) * cw - sa];
+  return biquadMag(sr, b, a, at);
+}
+/**
+ * The gain one nasal path at place `fz` needs, for a note at
+ * `f0` holding the vowel (f1v, f2v, f3) — Hz after fscale — tuned as `oral` says.
+ */
+export function nasalTune(sr, c, f0, f1v, f2v, f3, fz, oral, bw) {
+  const zeroTuned = Z_TUNE * f0 > fz;
+  if (!oral.tuned && !zeroTuned) return 1;
+  const from = Math.min(oral.tuned ? f1v / F1_TUNE : Infinity, zeroTuned ? fz / Z_TUNE : Infinity);
+  const ref = tractPower(sr, c, from, f1v, f2v, f3, bw, fz);
+  const now = tractPower(sr, c, f0, oral.f1, oral.f2, f3, bw, zeroPlace(fz, f0));
+  return Math.sqrt(ref / now);
+}
+
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
 /**
@@ -429,9 +582,26 @@ export function renderIr(ctx, ir, opts = {}) {
   voicing.connect(tractIn);
   if (asp) asp.connect(tractIn);
 
+  // FORMANT TUNING (see tunedTract). A note is tuned once it is above every F1 its IR
+  // visits — not before, or a D's 200 Hz closure would retune a note whose vowel is still
+  // well above it — and then per breakpoint. The IR repeats its points, so each distinct
+  // pair is worked out once. Worked out here, ahead of the nose, because the nasal paths
+  // are levelled against it (see nasalTune).
+  const F = ir.formants;
+  const tuneMemo = new Map();
+  const tuneNote = F1_TUNE * meanF0 > Math.max(...F.f1) * fs;
+  const tuning = F.t.map((_, i) => {
+    if (!tuneNote) return { tuned: false, f1: F.f1[i] * fs, f2: F.f2[i] * fs, gain: 1 };
+    const k = `${F.f1[i]}|${F.f2[i]}|${F.f3[i]}`;
+    if (!tuneMemo.has(k)) tuneMemo.set(k, tunedTract(sr, c, meanF0, F.f1[i] * fs, F.f2[i] * fs, F.f3[i] * fs, bw));
+    return tuneMemo.get(k);
+  });
+  const heldF = [F.f1[F.f1.length - 1] * fs, F.f2[F.f2.length - 1] * fs, F.f3[F.f3.length - 1] * fs];
+
   // ---- nasal stage -----------------------------------------------------------
   let tractSrc = tractIn;
   let dryPath = null;
+  let dryComp = null;
   let wetPaths = [];
   const forced = (opts.nasalPlaces || []).map((v) => Math.round(v));
   if (ir.nasal_zero.active || forced.length) {
@@ -441,15 +611,21 @@ export function renderIr(ctx, ir, opts = {}) {
     const targets = [...new Set([...ir.nasal_zero.v.filter((v) => v > fnp + 1).map((v) => Math.round(v)), ...forced])];
     const sum = ctx.createGain();
     const dry = ctx.createGain();
-    tractIn.connect(dry); dry.connect(sum);
+    // the mouth's own level (see Z_TUNE's note): on this path, not on `low`, on a note
+    // with a nose; exactly 1 on a note the tuning never reaches
+    dryComp = ctx.createGain();
+    tractIn.connect(dry); dry.connect(dryComp); dryComp.connect(sum);
+    nodes.push(dryComp);
     const buzz = clamp01(c.nasal_buzz || 0);
     const wets = targets.map((fz) => {
       // y[n] = A x[n] + B y[n-1] + C y[n-2], the reference's own coefficients
       const pC = -Math.exp(-2 * Math.PI * bwp * T);
       const pB = 2 * Math.exp(-Math.PI * bwp * T) * Math.cos(2 * Math.PI * fnp * T);
       const pA = 1 - pB - pC;
+      // the notch moves off a note that has climbed onto it (see Z_TUNE); `fz` stays the
+      // path's name, which the envelope and `nasalise` find it by
       const C = -Math.exp(-2 * Math.PI * bwz * T);
-      const B = 2 * Math.exp(-Math.PI * bwz * T) * Math.cos(2 * Math.PI * fz * T);
+      const B = 2 * Math.exp(-Math.PI * bwz * T) * Math.cos(2 * Math.PI * zeroPlace(fz, meanF0) * T);
       const A = 1 - B - C;
       // ONE filter, not two in series. The resonator pA/(1 - pB z^-1 - pC z^-2) and the
       // anti-resonator (1 - B z^-1 - C z^-2)/A are both linear and time-invariant, so their
@@ -468,9 +644,14 @@ export function renderIr(ctx, ir, opts = {}) {
         sh.gain.value = (c.nasal_buzz_db ?? 22) * buzz;
         nasal.connect(sh); tail = sh; nodes.push(sh);
       }
-      tractIn.connect(nasal); tail.connect(g); g.connect(sum);
-      nodes.push(nasal, g);
-      return { fz, g };
+      // the path's own level (see nasalTune), after the nose and before the crossfade;
+      // exactly 1 on a note the tuning never reaches
+      const comp = ctx.createGain();
+      const level = nasalTune(sr, c, meanF0, heldF[0], heldF[1], heldF[2], fz, tuning[tuning.length - 1], bw);
+      comp.gain.value = level;
+      tractIn.connect(nasal); tail.connect(comp); comp.connect(g); g.connect(sum);
+      nodes.push(nasal, comp, g);
+      return { fz, g, comp, level };
     });
     const zt = ir.nasal_zero.t;
     const zv = ir.nasal_zero.v;
@@ -491,16 +672,26 @@ export function renderIr(ctx, ir, opts = {}) {
   }
 
   // ---- tract: F1, F2 in series; F3, F4, F5 in parallel ---------------------
-  const F = ir.formants;
   const qdb = (f, b) => 20 * Math.log10(Math.max(1.0001, f / b));
   const f1 = ctx.createBiquadFilter();
   const f2 = ctx.createBiquadFilter();
   f1.type = f2.type = 'lowpass';
-  automate(f1.frequency, F.t, F.f1, t0, (v) => v * fs); automate(f1.Q, F.t, F.f1, t0, (v) => qdb(v * fs, bw[0]));
-  automate(f2.frequency, F.t, F.f2, t0, (v) => v * fs); automate(f2.Q, F.t, F.f2, t0, (v) => qdb(v * fs, bw[1]));
+  automate(f1.frequency, F.t, F.f1, t0, (v, i) => tuning[i].f1); automate(f1.Q, F.t, F.f1, t0, (v, i) => qdb(tuning[i].f1, bw[0]));
+  automate(f2.frequency, F.t, F.f2, t0, (v, i) => tuning[i].f2); automate(f2.Q, F.t, F.f2, t0, (v, i) => qdb(tuning[i].f2, bw[1]));
   tractSrc.connect(f1); f1.connect(f2);
   const low = ctx.createGain();
-  low.gain.value = c.tract_ref_gain;
+  const anyTuned = tuning.some((x) => x.tuned);
+  // the mouth's tuning gain: on `low` when there is no nose, on the dry path when there is
+  // (and then `low` and the upper branch leave it alone, or the wet paths would get it too)
+  const oralGain = dryComp ? dryComp.gain : low.gain;
+  const oralRef = dryComp ? 1 : c.tract_ref_gain;
+  const upperTune = (i) => (dryComp ? 1 : tuning[i].gain);
+  if (dryComp) low.gain.value = c.tract_ref_gain;
+  if (anyTuned) automate(oralGain, F.t, F.f1, t0, (v, i) => oralRef * tuning[i].gain);
+  else oralGain.value = oralRef;
+  // where F1, F2 and `low` sit once the IR's curves are over: a morph glides on from here
+  let held = tuning[tuning.length - 1];
+  let lowGain = oralRef * held.gain;
   f2.connect(low);
 
   const out = ctx.createGain();
@@ -519,11 +710,13 @@ export function renderIr(ctx, ir, opts = {}) {
       tractSrc.connect(bp); bp.connect(gg); gg.connect(upper); nodes.push(bp, gg);
       if (!f3node) f3node = bp;
     }
-    const AH = [750, 1200, 2500];
     const ref = resonatorMag(sr, AH[0], bw[0], AH[2]) * resonatorMag(sr, AH[1], bw[1], AH[2]);
-    const dep = F.t.map((_, i) => Math.pow(resonatorMag(sr, F.f1[i], bw[0], F.f3[i]) * resonatorMag(sr, F.f2[i], bw[1], F.f3[i]) / ref, c.hybrid_dep_exp));
+    const dep = F.t.map((_, i) => {
+      const [d1, d2] = tuning[i].tuned ? [tuning[i].f1 / fs, tuning[i].f2 / fs] : [F.f1[i], F.f2[i]];
+      return Math.pow(resonatorMag(sr, d1, bw[0], F.f3[i]) * resonatorMag(sr, d2, bw[1], F.f3[i]) / ref, c.hybrid_dep_exp);
+    });
     const depG = ctx.createGain();
-    automate(depG.gain, F.t, dep, t0, (v) => v * c.hybrid_high_gain);
+    automate(depG.gain, F.t, dep, t0, (v, i) => v * c.hybrid_high_gain * upperTune(i));
     upper.connect(depG); nodes.push(upper, depG);
     // The mouth is shut during a nasal, so most of the upper branch is not there; BUZZ
     // decides how much comes back. Off the nasal envelope, which is on its own time grid.
@@ -632,9 +825,9 @@ export function renderIr(ctx, ir, opts = {}) {
   sources.push(...mainOscs);
   if (noiseN) sources.push(noiseN.src);
   const oscs = [...mainOscs, ...nodes.filter((n) => n instanceof OscillatorNode && !mainOscs.includes(n) && n.frequency.value > 20)];
-  const go = (param, v, t, tc, dur) => {
+  const go = (param, v, t, tc, dur, from) => {
     param.cancelScheduledValues(t);
-    if (dur > 0) { param.setValueAtTime(param.value, t); param.linearRampToValueAtTime(v, t + dur); } else param.setTargetAtTime(v, t, tc);
+    if (dur > 0) { param.setValueAtTime(from ?? param.value, t); param.linearRampToValueAtTime(v, t + dur); } else param.setTargetAtTime(v, t, tc);
   };
   return {
     end: t0 + total,
@@ -649,11 +842,28 @@ export function renderIr(ctx, ir, opts = {}) {
     // `tc` is an exponential time constant (a pot nudge); `dur` is a linear glide that takes
     // exactly that long (MORPH TIME on a new note)
     retarget(f, t = ctx.currentTime, tc = 0.04, dur = 0) {
-      const set = (node, hz, b, lowpass) => {
-        go(node.frequency, hz * fs, t, tc, dur);
-        go(node.Q, lowpass ? 20 * Math.log10(Math.max(1.0001, hz * fs / b)) : hz * fs / b, t, tc, dur);
+      const q = (at, b, lowpass) => (lowpass ? 20 * Math.log10(Math.max(1.0001, at / b)) : at / b);
+      const set = (node, at, b, lowpass, from) => {
+        go(node.frequency, at, t, tc, dur, from);
+        go(node.Q, q(at, b, lowpass), t, tc, dur, from == null ? undefined : q(from, b, lowpass));
       };
-      set(f1, f[0], bw[0], true); set(f2, f[1], bw[1], true); if (f3node) set(f3node, f[2], bw[2], false);
+      // Re-tuned on the vowel it is going to. A glide reads `param.value` for where it starts,
+      // which is the biquad's default 350 Hz, not the vowel (see `automate`): harmless on a
+      // note under its vowel, and kept there, but a tuned note gliding up from 350 falls
+      // straight back into the hole tuning fills. So a tuned glide starts from where the
+      // note is held. The gain is only booked when it moves, so a morph between two vowels
+      // the note sits under leaves `low` a constant.
+      const tt = tunedTract(sr, c, meanF0, f[0] * fs, f[1] * fs, f[2] * fs, bw);
+      const from = tt.tuned || held.tuned ? held : null;
+      set(f1, tt.f1, bw[0], true, from?.f1); set(f2, tt.f2, bw[1], true, from?.f2);
+      if (f3node) set(f3node, f[2] * fs, bw[2], false);
+      const g = oralRef * tt.gain;
+      if (g !== lowGain) { go(oralGain, g, t, tc, dur, lowGain); lowGain = g; }
+      for (const w of wetPaths) {
+        const level = nasalTune(sr, c, meanF0, f[0] * fs, f[1] * fs, f[2] * fs, w.fz, tt, bw);
+        if (level !== w.level) { go(w.comp.gain, level, t, tc, dur, w.level); w.level = level; }
+      }
+      held = tt;
     },
     // live nasality on a held note: crossfade the dry tract against the pole/zero path at
     // `place` (Hz), 0 = oral, 1 = fully the nasal. Same timing arguments as retarget.

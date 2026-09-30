@@ -31,7 +31,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-06 | `71a8e7d` | [2026-09-06-71a8e7d.html](2026-09-06-71a8e7d.html) | [bake-offs](2026-09-06-71a8e7d-lab.html) | Archive published build f7d5dae |
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
-| 2026-09-23 | `eb03b14` | [2026-09-23-eb03b14.html](2026-09-23-eb03b14.html) | [bake-offs](2026-09-23-eb03b14-lab.html) | Add tests for neon city arrival and moon phases |
 | 2026-09-23 | `77ae44b` | [2026-09-23-77ae44b.html](2026-09-23-77ae44b.html) | [bake-offs](2026-09-23-77ae44b-lab.html) | Add neon-themed candidates and gravity mechanics for enhanced gameplay experience |
 | 2026-09-24 | `3bce133` | [2026-09-24-3bce133.html](2026-09-24-3bce133.html) | [bake-offs](2026-09-24-3bce133-lab.html) | Update mix.js assertions for remixed song settings |
 | 2026-09-24 | `4aaa009` | [2026-09-24-4aaa009.html](2026-09-24-4aaa009.html) | [bake-offs](2026-09-24-4aaa009-lab.html) | Update LEVEL_SCENERY.md to clarify patchwork fields animation; enhance drone column spacing in entities.js and spawner.js for improved gameplay dynamics. |
@@ -44,3 +43,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-27 | `2b096da` | [2026-09-27-2b096da.html](2026-09-27-2b096da.html) | [bake-offs](2026-09-27-2b096da-lab.html) | Add time-arc.js for dynamic lighting and color palettes in MCM act |
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
 | 2026-09-28 | `054c34f` | [2026-09-28-054c34f.html](2026-09-28-054c34f.html) | [bake-offs](2026-09-28-054c34f-lab.html) | Add speed-mcm.js test suite for mid-century style pack validation |
+| 2026-09-29 | `924c72c` | [2026-09-29-924c72c.html](2026-09-29-924c72c.html) | [bake-offs](2026-09-29-924c72c-lab.html) | feat: add frost crayon sky rendering and portal train clearance tests |

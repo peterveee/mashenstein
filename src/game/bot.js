@@ -358,6 +358,17 @@ export class DemoBot {
       if (far < px) continue;
       out.push({ ob, near, far });
     }
+    // AND THE BREAKS IN THE ROAD HE IS ON. A route's `gaps` are spans in
+    // routes.js, not obstacles, so the loop above never saw them and the bot
+    // walked off the high road at every one. Usually a free fall to the lane —
+    // until the lane under the landing has a hole of its own, which is how the
+    // frost-1 sky fork put the demo in the water.
+    for (const g of this.run.route?.gaps || []) {
+      const near = g.x - HIT_MID;
+      const far = g.x + g.w - HIT_MID;
+      if (far < px) continue;
+      out.push({ ob: g, near, far });
+    }
     return out.sort((a, b) => a.near - b.near);
   }
 
@@ -845,7 +856,7 @@ export class DemoBot {
       : !!(next && next.act === 'jump' && next.enter < REACT_T
         && (this.clears(next) || next.enter <= LAST_T)
         && (landingClear || next.enter <= LAST_T)
-        && (!hole || next.ob.x < hole.near));
+        && (!hole || (next.ob || next.shot).x < hole.near));
 
     // AND THE JUMPS NOBODY ASKED FOR — a coin up in the air, the mission's
     // copter. These are the ones that used to kill the demo: the copter on

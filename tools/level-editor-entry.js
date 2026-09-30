@@ -31,6 +31,7 @@ import {
 import { GRAB_PX, grabAt, dropAt } from './lib/timeline-drag.js';
 import { buildScene, paintMap } from './lib/stage-preview.js';
 import { createLayoutHistory } from './lib/level-edit-history.js';
+import { whenAt, mmss, HERO_SPEED } from './lib/stage-clock.js';
 
 // Where PLAY sends the browser — the game's own dev server, substituted at
 // bundle time by tools/level-editor.js.
@@ -651,6 +652,9 @@ function center(m, fc, warns) {
     el('dl', { class: 'kv' },
       el('dt', {}, 'cabinet'), el('dd', {}, `${m.cab.name} — ${m.cab.mechanic}`),
       el('dt', {}, 'clock'), el('dd', {}, `${m.L.durationSec}s over ${Math.round(m.totalDist)}px`),
+      // The ramp gains more than DIST_SLACK adds, so the tape comes before the
+      // clock runs out — said here so a 0:57 at 100% is not a surprise.
+      el('dt', {}, 'tape'), el('dd', {}, whenText(when(m, 1))),
       el('dt', {}, 'speed'), el('dd', {}, `${Math.round(m.base)}px/s base, ${Math.round(m.speedAt(1))}px/s at the tape`),
       el('dt', {}, 'bag'), el('dd', {}, `${m.cab.patterns.length} patterns, tier ≤ ${Math.min(2, (m.st.index - 1) + (m.cab.act - 1))}`),
       fc ? el('dt', {}, 'this deal') : null,
@@ -871,21 +875,45 @@ function numRow(label, value, min, max, step, set) {
     }));
 }
 
-function pctRow(label, frac, set, onDelete) {
-  return el('div', { class: 'row' },
-    el('span', { class: 'lbl' }, label),
-    el('input', {
-      type: 'range', min: 1, max: 99, step: 1, value: Math.round(frac * 100),
-      oninput: (e) => { set(parseInt(e.target.value, 10) / 100); render(); },
-    }),
-    el('span', {}, `${Math.round(frac * 100)}%`),
-    onDelete ? el('button', { class: 'del', title: 'remove', onclick: onDelete }, '✕') : null);
+function pctRow(m, label, frac, set, onDelete) {
+  return el('div', {},
+    el('div', { class: 'row' },
+      el('span', { class: 'lbl' }, label),
+      el('input', {
+        type: 'range', min: 1, max: 99, step: 1, value: Math.round(frac * 100),
+        oninput: (e) => { set(parseInt(e.target.value, 10) / 100); render(); },
+      }),
+      el('span', {}, `${Math.round(frac * 100)}%`),
+      onDelete ? el('button', { class: 'del', title: 'remove', onclick: onDelete }, '✕') : null),
+    whenLine(m, frac));
+}
+
+// Every position is also a moment. The percentage is the stage's distance; the
+// time is when a clean run gets there (tools/lib/stage-clock.js), with the
+// spread the relay's hero speeds put on it.
+function when(m, frac) {
+  return whenAt(m.base, frac * m.totalDist, { ramp: !isBeatCharted(m.st) });
+}
+
+function whenText(w) {
+  const spread = mmss(w.early) === mmss(w.late) ? '' : `  (${mmss(w.early)}–${mmss(w.late)} by hero)`;
+  return `≈ ${mmss(w.t)} in${spread}`;
+}
+
+function whenLine(m, frac) {
+  const w = when(m, frac);
+  return el('div', {
+    class: 'when',
+    title: w.early === w.late ? 'the beat lane runs at one speed, whoever is running it'
+      : `a clean run at hero speed ×1; ${HERO_SPEED.fastest} (×${HERO_SPEED.max}) gets there first, `
+        + `${HERO_SPEED.slowest} (×${HERO_SPEED.min}) last. Deaths, dashes and boosts are not counted.`,
+  }, whenText(w));
 }
 
 function pitInspector(box, rail, m, i) {
   const p = entry().pits[i];
   box.append(el('h2', {}, p.jumps ? 'SPIKE CROSSING' : 'PIT'),
-    pctRow('at', p.at, (v) => { p.at = v; markDirty(); },
+    pctRow(m, 'at', p.at, (v) => { p.at = v; markDirty(); },
       () => { entry().pits.splice(i, 1); if (!entry().pits.length) entry().pits = null; state.sel = null; markDirty(); render(); }),
     p.jumps
       ? numRow('jumps', p.jumps, 2, 8, 1, (v) => { p.jumps = Math.round(v); markDirty(); })
@@ -906,7 +934,7 @@ function pitInspector(box, rail, m, i) {
 
 function checkpointInspector(box, rail, m, i) {
   box.append(el('h2', {}, `CHECKPOINT ${i + 1}`),
-    pctRow('at', entry().checkpoints ? entry().checkpoints[i] : m.L.checkpoints[i], (v) => {
+    pctRow(m, 'at', entry().checkpoints ? entry().checkpoints[i] : m.L.checkpoints[i], (v) => {
       if (!entry().checkpoints) entry().checkpoints = [...m.L.checkpoints];
       entry().checkpoints[i] = v;
       entry().checkpoints.sort((a, b) => a - b);
@@ -925,7 +953,7 @@ function checkpointInspector(box, rail, m, i) {
 function pinInspector(box, rail, m, kind) {
   if (kind === 'appliance') {
     box.append(el('h2', {}, 'GOLDEN TOASTER'),
-      pctRow('at', entry().appliance.at, (v) => { entry().appliance.at = v; markDirty(); }),
+      pctRow(m, 'at', entry().appliance.at, (v) => { entry().appliance.at = v; markDirty(); }),
       el('label', { class: 'chk' },
         el('input', {
           type: 'checkbox', checked: !!entry().appliance.high,
@@ -941,7 +969,7 @@ function pinInspector(box, rail, m, kind) {
         ? el('button', {
           class: 'btn', onclick: () => { entry().loopAt = LOOP.at; markDirty(); render(); },
         }, 'PLACE ONE')
-        : pctRow('at', m.L.loopAt, (v) => { entry().loopAt = v; markDirty(); },
+        : pctRow(m, 'at', m.L.loopAt, (v) => { entry().loopAt = v; markDirty(); },
           () => { entry().loopAt = null; state.sel = null; markDirty(); render(); }),
       el('div', { class: 'hint' },
         `The one ring of the run, ${Math.round(LOOP.r * 2)}px tall and ridden in a lap. `
@@ -953,7 +981,7 @@ function pinInspector(box, rail, m, kind) {
         ? el('button', {
           class: 'btn', onclick: () => { entry().rewindAt = 0.15; state.sel = { kind: 'rewind' }; markDirty(); render(); },
         }, 'PLACE ONE')
-        : pctRow('at', entry().rewindAt, (v) => { entry().rewindAt = v; markDirty(); },
+        : pctRow(m, 'at', entry().rewindAt, (v) => { entry().rewindAt = v; markDirty(); },
           () => { entry().rewindAt = null; state.sel = null; markDirty(); render(); }),
       el('div', { class: 'hint' }, 'The banked one-shot, guaranteed on this stage. The drip can still deal one anywhere.'));
   }
@@ -972,7 +1000,7 @@ function roadInspector(box, rail, m, sel) {
   const ribbons = m.routes.filter((q) => q.srcKind === sel.roadKind && q.srcIndex === sel.i);
 
   box.append(el('h2', {}, ROAD_LABEL[sel.roadKind] || 'ROAD'),
-    pctRow('at', r.at, (v) => write((d) => { d.at = v; }),
+    pctRow(m, 'at', r.at, (v) => write((d) => { d.at = v; }),
       () => { forkRoads(m)[sel.roadKind].splice(sel.i, 1); state.sel = null; markDirty(); render(); }),
     // Seconds, not pixels: a road's span is authored in lane time so the same
     // road is the same road on a stage that runs half again as fast.
@@ -1008,6 +1036,7 @@ function dogInspector(box, rail, m) {
         },
       }),
       el('span', {}, `${Math.round(m.L.finishDogChance * 100)}%`)),
+    whenLine(m, 1),
     el('div', { class: 'hint' },
       'Guarding the tape, at the tape — where it stands is the run’s to say, so this '
       + 'is the one pin on the timeline that does not drag.'));
@@ -1027,7 +1056,7 @@ function sectionInspector(box, rail, m, i) {
         type: 'text', value: s.label || '', placeholder: `SECTION ${i + 1}`,
         oninput: (e) => { s.label = e.target.value || undefined; markDirty(); },
       })),
-    pctRow('ends at', s.to, (v) => {
+    pctRow(m, 'ends at', s.to, (v) => {
       const lo = i === 0 ? 0.02 : secs[i - 1].to + 0.02;
       const hi = i === secs.length - 1 ? 1 : secs[i + 1].to - 0.02;
       s.to = Math.max(lo, Math.min(hi, v));

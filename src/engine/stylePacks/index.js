@@ -56,7 +56,7 @@ import {
   mcmBigEar, mcmMast, mcmLookout, mcmLaunchPad, mcmWaterTower, mcmWindFarm,
   mcmPumpjacks, mcmSpeedTrap, mcmJet, mcmRoadSign,
 } from './speedMcmObjects.js';
-import { drawJonesCoyote } from './speedMcmCoyote.js';
+import { drawJonesCoyote, WINK_SPARKLE_AFTER, CHORUS_YIP_AFTER, CHORUS_YIP_GAP } from './speedMcmCoyote.js';
 import { paintFrostSky } from './frostCrayon/sky.js';
 
 import {
@@ -3198,6 +3198,8 @@ function randomSpeedLimitValue(index, cache = DESERT_SPEED_LIMIT_RANDOM_VALUES, 
 // faster — and it always reads 67.
 const DESERT_TRAP_SPEED_LIMIT = '67';
 const DESERT_TRAP_MIN_LIMIT = 67;
+// The second SPEED LIMIT on every speed stage is body temperature (Peter, 29 Sep 2026).
+const DESERT_FEVER_SPEED_LIMIT = '98.6';
 const DESERT_ROAD_SIGNS = Object.freeze([
   {
     kind: 'speed', w: 62, top: -58, bottom: -26,
@@ -5712,6 +5714,7 @@ function desertSpeedLimitPlacements(ctx, camX, layerBaseY = GROUND_Y, options = 
       const value = sign.kind === 'speed'
         ? (options.speedTrap && index === 0 ? DESERT_TRAP_SPEED_LIMIT
           : options.firstSpeedLimit && index === 0 ? options.firstSpeedLimit
+            : index === DESERT_ROAD_SIGNS.length ? DESERT_FEVER_SPEED_LIMIT
             : randomSpeedLimitValue(index, options.speedLimitValues, Math.max(DESERT_TRAP_MIN_LIMIT, options.minSpeedLimit ?? 0)))
         : sign.kind === 'highway' ? DESERT_HIGHWAY_VALUES[cycle] : sign.value;
       return {
@@ -7085,6 +7088,28 @@ function drawShelfTexture(ctx, camX, cab, shelves, viewW = W, material = null) {
 // nearest that point. THE SHEEP AND THEIR DOG ARE ON EVERY STAGE, a flock on about one
 // near summit in seventeen, never on the barn's or the mill's.
 const PLUMBER_BARN_AT_PX = 700;          // world px: near the start of plumber-1
+
+// THE BARN ON THE ARCADE INTRO. plumber-1 opens inside the arcade cabinet
+// (src/engine/arcadeIntro.js): a pixel picture through the song's chiptune bars 1-4, paper
+// from bar 5. Peter (30 Sep 2026): the barn should be seen pixelated AND be on screen the
+// moment the pixels stop, so the paper arrives on something rather than only on the hills.
+// How much of those bars the world spends moving depends on the player — the act card
+// is skippable, the phone's controls card waits for a tap — so run.js aims it (see
+// RunState.openingBarnAtCam) and hands the answer in as `backgroundContext.plumberBarnAtCam`,
+// in the same units as PLUMBER_BARN_AT_PX. These two are its arithmetic: the camera at
+// which the barn's summit stands `frac` of the way across a view `viewWidth` wide, if the
+// camera is at `camX` then; and where the barn pinned at `atCam` stands at camera `camX`.
+export const PLUMBER_OPENING_BARN_FRAC = 0.72;
+export function plumberBarnAtCamFor(camX, viewWidth, frac = PLUMBER_OPENING_BARN_FRAC) {
+  return camX + (frac * viewWidth - W / 2) / (PLUMBER_NEAR_TREE_FACTOR * ZOOM);
+}
+export function plumberBarnFracAt(atCam, camX, viewWidth) {
+  const P = PLUMBER_NEAR_TREE_PERIOD, f = PLUMBER_NEAR_TREE_FACTOR * ZOOM;
+  const summit = plumberNearSummit(P);
+  const k = Math.round((atCam * f + W / 2 - summit) / P);
+  return (k * P + summit - camX * f) / viewWidth;
+}
+
 const PLUMBER_MILL_AT = 0.35;            // fraction of plumber-3 (the volcano owns 0.5)
 const PLUMBER_BALLOONS_AT = [0.22, 0.66];  // fractions of plumber-2
 const PLUMBER_BALLOON_FACTOR = 0.1;      // they drift across slower than the far range
@@ -7114,7 +7139,7 @@ function plumberNearSummit(period) {
 // landmark's foot is nearer than the landmark on its summit, so it has to be drawn over
 // it; drawn under it, plumber-1's robin popped up behind the silo (Peter, 25 Sep 2026).
 // The flocks stay over the bushes, as they always were.
-function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, nearTop, paper, hill, pass = 'all') {
+function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, nearTop, paper, hill, pass = 'all', barnAtCam = null) {
   const landmarks = pass !== 'flock', flocks = pass !== 'landmark';
   const view = backgroundPaintCoverage(ctx);
   const P = PLUMBER_NEAR_TREE_PERIOD;
@@ -7127,7 +7152,7 @@ function drawPlumberLife(ctx, t, camX, totalDist, stageIndex, progress, near, ne
   const seat = { near, far: near };
   let landmarkTile = null;
   if (stageIndex === 1) {
-    const k = tileAt(PLUMBER_BARN_AT_PX);
+    const k = tileAt(Number.isFinite(barnAtCam) ? barnAtCam : PLUMBER_BARN_AT_PX);
     landmarkTile = k;
     const x = summitX(k);
     if (landmarks && !outsideView(ctx, x, 60)) drawPlumberBarn(ctx, t, x, seat, paper);
@@ -7402,14 +7427,14 @@ function pixelPack(settings) {
         // Summit landmarks, then the ridge's bushes and houses over them, then the flocks
         // (see drawPlumberLife's `pass`).
         drawPlumberLife(ctx, t, camX, totalDist, plumberStage, plumberProgress,
-          nearCrest, nearTop, paperPreview, cab.hills, 'landmark');
+          nearCrest, nearTop, paperPreview, cab.hills, 'landmark', backgroundContext?.plumberBarnAtCam);
         ctx.save();
         ctx.translate(0, nearShift);
         drawPlumberScenery(ctx, camX, nearBaseY, paperPreview, paperPreset,
           paperStrengths.scenery, t, plumberStage);
         ctx.restore();
         drawPlumberLife(ctx, t, camX, totalDist, plumberStage, plumberProgress,
-          nearCrest, nearTop, paperPreview, cab.hills, 'flock');
+          nearCrest, nearTop, paperPreview, cab.hills, 'flock', backgroundContext?.plumberBarnAtCam);
         // Plumber-2's two balloons, each crossing once, slower than the far range.
         if (plumberStage === 2 && Number.isFinite(totalDist) && totalDist > 0) {
           PLUMBER_BALLOONS_AT.forEach((at, i) => {
@@ -7557,13 +7582,43 @@ const DESERT_WINK_BEHIND = 0.14;
 // 4.2 s, so there the show plays DESERT_COYOTE_PORTRAIT_PACE times faster.
 const DESERT_COYOTE_ENTRY = 25;          // px inside the visible right edge
 const DESERT_COYOTE_PORTRAIT_PACE = 1.5;
-// THE HOWL STARTS BY HALFWAY (Peter, 28 Sep 2026: "he should be howling at least from
-// halfway across and keep howling until off screen"). In landscape a howler's head
-// comes up as its ledge passes this fraction of the picture from the left — the song is
-// going ~0.3 s later, before the middle — and it holds until it scrolls off. Until then
-// it keeps its own 5 s loop.
-const DESERT_HOWL_FROM = 0.6;
 const desertCoyoteLatch = new Map();
+// THE HOWL, ONCE, SEEN AND HEARD WHOLE (Peter, 29 Sep 2026: howl-b of the howl bake-off,
+// "much softer than the preview", then "make sure the howl animation and howl sound happen
+// together, don't howl on a loop, just howl once and time it so we see and hear the howl in
+// full in landscape at least"; this replaces 28 Sep's howl held from halfway to the edge).
+// A run's howler sits quiet until its ledge is DESERT_HOWL_ARM px inside the right edge,
+// then asks `cues.howl` (run.js speedCoyoteHowl), which places the coyoteHowl cue on the
+// song's half-beat grid and returns the seconds to it. The painter plays howlOnce against
+// that moment on the song's beat (`cues.spb`), so every yip and the long note are drawn
+// as they sound — timed on the audio clock as heard (`cues.now`), never on game time,
+// which slips behind the sound whenever frames run slow (desertHowlAt holds, per summit,
+// when its first note is heard, and the game-time fallback for a run with no clock). Yips and song last ~2.7 s at 128 BPM; landscape crosses in ~4.2 s, so
+// arming this near the edge lets the whole howl play on screen. Portrait crosses faster
+// and loses the end of it. Speed-2's howler is caught by the finish camera parking, and
+// howls on its way in. Once per pass: the latch re-arms like the others'.
+const DESERT_HOWL_ARM = 45;
+const desertHowlAt = new Map();
+// AND THE PUP YIPS (Peter, 29 Sep 2026: "a corresponding pair of yips when it's the 2
+// coyotes"). A chorus latches as its ledge comes into view, as ever; on the latch it asks
+// `cues.yips` (run.js speedCoyoteYips) for its pup's two yips, and the show is moved onto
+// the answer the way the howl is (desertHowlAt, sinceCued), so both mouths open on a yip.
+// Seconds since an event the run placed: on the heard audio clock when there is one, else
+// on the painter's own `t` from when it was asked.
+function sinceCued(placed, now, t) {
+  if (!placed) return null;
+  return placed.at != null && Number.isFinite(now) ? now - placed.at : t - placed.askedT - placed.cued;
+}
+// AND THE WINK DINGS, ON THE BEAT (Peter, 29 Sep 2026: "a DING sound effect when the coyote
+// winks", then "sync the wink and the sound effect to a beat"). The finish's winker would
+// sparkle WINK_SPARKLE_AFTER seconds after the hero lands on the pad. On the landing it asks
+// `cues.wink` (run.js speedCoyoteWink) for that moment; the run moves it to the next whole
+// beat, places the ding there and says when, and the wink holds its first frame for the
+// difference (under a beat) so the sparkle lands with the ding — on the heard audio clock,
+// like the howl (sinceCued), so a slow frame rate cannot pull them apart. The pad's clock stands at 0
+// while the hero slides down the pole, so it asks on the first frame the clock moves. Once per landing: the latch
+// clears while there is no landing (before it, a rewind, a new run).
+const desertWinkPlaced = new Map();
 // Screen x of everything in the desert backdrop that moves on its own — the campfire
 // plumes, the horizon's dishes and turbines, and the coyotes — so a dust devil can keep
 // its distance. The plume and coyote rules are their painters' own, repeated here.
@@ -7615,7 +7670,7 @@ const DESERT_LIFE_PAPER = Object.freeze({
   weed: drawDesertTumbleweed,
   jet: drawDesertJet,
 });
-function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false, finish = null, finishPadT = null, paint = DESERT_LIFE_PAPER) {
+function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId = 'lorenzo', heroFrac = null, portrait = false, finish = null, finishPadT = null, paint = DESERT_LIFE_PAPER, cues = null) {
   const view = backgroundPaintCoverage(ctx);
   const nearP = Math.max(16, Math.round(Math.PI * DESERT_RIDGE.wl));
   const midP = Math.max(16, Math.round(Math.PI * DESERT_MID.wl));
@@ -7702,6 +7757,8 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
     if (wink) coyoteXs.push(desertLayerX(view, camX, nearF, wink.L));
     const seen = backgroundCoverage(ctx);
     const entry = seen.right - DESERT_COYOTE_ENTRY;
+    const howlCue = typeof cues?.howl === 'function' ? cues.howl : null;
+    const now = typeof cues?.now === 'function' ? cues.now() : null;
     // Its show starts as its ledge comes into view, latched like the others'.
     if (wink) {
       const x = desertLayerX(view, camX, nearF, wink.L);
@@ -7717,12 +7774,29 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       // It saves the wink for the finish pad (desertLandmarks.js 'winkWait'): until the
       // hero lands on it, it only blinks. A picture with no run (the gallery) keeps the
       // looped show.
+      const dingKey = `wink:${stageIndex}`;
+      if (!Number.isFinite(finishPadT) || !Number.isFinite(heroFrac)) desertWinkPlaced.delete(dingKey);
+      // Asked once the pad's clock is RUNNING: it reads 0 through the whole slide down the
+      // pole (run.js flipSlide), and the wink waits for it.
+      else if (!desertWinkPlaced.has(dingKey) && finishPadT > 0) {
+        // The wink's clock from here: when the sparkle is heard. With no ding asked for (off
+        // screen, or a frame late), the sparkle simply comes where the pad's clock puts it.
+        let placed = { at: null, askedT: t, cued: WINK_SPARKLE_AFTER - finishPadT };
+        // A frame that arrives after the sparkle has passed says nothing rather than dinging late.
+        if (typeof cues?.wink === 'function' && finishPadT < WINK_SPARKLE_AFTER && !outsideView(ctx, x, 40)) {
+          const cued = cues.wink(WINK_SPARKLE_AFTER - finishPadT);
+          if (Number.isFinite(cued)) placed = { at: Number.isFinite(now) ? now + cued : null, askedT: t, cued };
+        }
+        desertWinkPlaced.set(dingKey, placed);
+      }
+      const placedWink = desertWinkPlaced.get(dingKey);
+      const winkSince = placedWink ? WINK_SPARKLE_AFTER + sinceCued(placedWink, now, t) : finishPadT;
       if (!outsideView(ctx, x, 40)) {
         // Where the hero is, left or right of him, for a winker that watches him come.
         const look = Number.isFinite(heroFrac)
           ? Math.max(-1, Math.min(1, (view.left + heroFrac * view.width - x) / DESERT_WINK_LOOK_SPAN)) : 0;
         paint.coyote(ctx, t, x, seat, 1, Number.isFinite(heroFrac)
-          ? { mode: 'winkWait', since: finishPadT, pace: 1, look }
+          ? { mode: 'winkWait', since: winkSince, pace: 1, look }
           : { mode: 'wink', since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1 });
       }
     }
@@ -7740,24 +7814,41 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       const facing = mode === 'yawn' ? -1 : desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
       // Only a run passes heroFrac; the gallery loops every show on its clock.
       let since = null;
-      // Landscape's howler lifts its head as its ledge passes DESERT_HOWL_FROM across
-      // the picture and holds the song until it is off the left edge.
-      const howlHeld = mode === 'howl' && !portrait;
-      if ((mode !== 'howl' || howlHeld) && Number.isFinite(heroFrac)) {
+      // A run's howler howls ONCE, with its sound (DESERT_HOWL_ARM); until then it sits
+      // quiet (a since far in the past plays howlOnce's rest).
+      const howls = mode === 'howl';
+      if (Number.isFinite(heroFrac)) {
         const key = stageIndex * 1e6 + k;
-        const armAt = howlHeld ? seen.left + (seen.right - seen.left) * DESERT_HOWL_FROM : entry;
-        if (x > armAt) desertCoyoteLatch.delete(key);
-        else {
+        const armAt = howls ? seen.right - DESERT_HOWL_ARM : entry;
+        if (x > armAt) {
+          desertCoyoteLatch.delete(key); desertHowlAt.delete(key);
+          if (howls) since = -1e9;
+        } else {
           if (!desertCoyoteLatch.has(key) || desertCoyoteLatch.get(key) > t) {
-            if (desertCoyoteLatch.size > 32) desertCoyoteLatch.clear();
+            if (desertCoyoteLatch.size > 32) { desertCoyoteLatch.clear(); desertHowlAt.clear(); }
             desertCoyoteLatch.set(key, t);
+            desertHowlAt.delete(key);
+            if (howls && howlCue) {
+              const cued = howlCue(0);
+              if (Number.isFinite(cued)) desertHowlAt.set(key, { at: Number.isFinite(now) ? now + cued : null, askedT: t, cued });
+            } else if (mode === 'chorus' && typeof cues?.yips === 'function') {
+              const pace = portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1;
+              const want = CHORUS_YIP_AFTER / pace;
+              const cued = cues.yips(want, CHORUS_YIP_GAP / pace);
+              // Held as "the first yip, heard at `at`": since is counted back from it.
+              if (Number.isFinite(cued)) desertHowlAt.set(key, { at: Number.isFinite(now) ? now + cued : null, askedT: t, cued, lead: want });
+            }
           }
-          since = t - desertCoyoteLatch.get(key);
+          const placed = desertHowlAt.get(key);
+          const fromCue = sinceCued(placed, now, t);
+          since = fromCue == null ? t - desertCoyoteLatch.get(key) : fromCue + (placed.lead || 0);
         }
       }
       if (!outsideView(ctx, x, 40)) {
-        paint.coyote(ctx, t, x, seat, facing,
-          { mode, since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1 });
+        paint.coyote(ctx, t, x, seat, facing, {
+          mode, since, pace: portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1,
+          beat: typeof cues?.spb === 'function' ? cues.spb() : undefined,
+        });
       }
     }
   }
@@ -7983,7 +8074,8 @@ function faux3dPack(settings) {
           + backgroundY(backgroundContext, 'clouds'), backgroundContext?.heroId,
         Number.isFinite(backgroundContext?.heroFrac) ? backgroundContext.heroFrac : null, portrait,
         backgroundContext?.finish || null,
-        Number.isFinite(backgroundContext?.finishPadT) ? backgroundContext.finishPadT : null);
+        Number.isFinite(backgroundContext?.finishPadT) ? backgroundContext.finishPadT : null,
+        DESERT_LIFE_PAPER, backgroundContext?.coyoteCues || null);
         // Roadside signs are a very-near background plane: they sit above the
         // road shoulder, in front of the near dunes, but still behind every
         // gameplay actor and obstacle drawn after the background pass.
@@ -8397,7 +8489,7 @@ function mcmPack(settings) {
         (portrait ? sceneryBandY(bc, 'upperCloud', 104) : 104) + cloudOff, bc?.heroId,
         Number.isFinite(bc?.heroFrac) ? bc.heroFrac : null, portrait,
         bc?.finish || null,
-        Number.isFinite(bc?.finishPadT) ? bc.finishPadT : null, life);
+        Number.isFinite(bc?.finishPadT) ? bc.finishPadT : null, life, bc?.coyoteCues || null);
 
       // ---- the roadside signs: a very-near plane in front of everything back here.
       // NEVER CULLED OVER A PIT (Peter, 28 Sep 2026: "pop in pop outs on the signs ...

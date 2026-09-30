@@ -791,7 +791,17 @@ const step = Math.max(110, runway * 2.2);
 // span is no longer the length the density claim is about. `bodyW` is that
 // length, and on every other kind of route it IS the span.
 const body = furnished.bodyW ?? furnished.w;
-const want = Math.max(3, Math.floor((body - step * 1.4) / (step * 1.6)));
+// A tunnel's way in is its whole entrance SLIDE and a spacing past the foot of
+// it — the camera is still craning down while he slides (populateRoute) — so
+// the span it furnishes starts there rather than 0.6 of a step past the hole.
+const foot = furnished.kind === 'tunnel'
+  ? Math.max(furnished.mouthW, furnished.w * (furnished.lip + furnished.climb))
+  : null;
+const leadIn = foot == null ? step * 0.6 : foot + step;
+// Two, not the three this floor used to be: plumber-1's six-second chamber
+// spends its first 1.75s on that lead-in, and the mid-span hole can take a
+// slot out of what is left (2 to 4 over 300 seeds, work/local/tunnel-density-probe.mjs).
+const want = Math.max(2, Math.floor((body - leadIn - step * 0.8) / (step * 1.6)));
 assert(laid.length >= want,
   `and they are laid along it (${laid.length} of them, ${want} the least a `
   + `${body.toFixed(0)}px chamber may carry)`);
@@ -803,6 +813,13 @@ const inset = Math.min(...laid.map((o) => o.x)) - furnished.x;
 const outset = furnished.x + furnished.w - Math.max(...laid.map((o) => o.x));
 assert(inset > 40 && outset > 40,
   `clear of the entrance and the exit (${inset.toFixed(0)}px in, ${outset.toFixed(0)}px out)`);
+// Underground, nothing until the camera has come down with him: not on the
+// entrance slide, and not at its foot either — a whole spacing past it
+// (Peter, 30 Sep 2026).
+if (foot != null) {
+  assert(inset >= foot + step - 0.5,
+    `nothing on the tunnel's slide or at its foot (first at ${inset.toFixed(0)}px, foot at ${foot.toFixed(0)}px)`);
+}
 // The one invariant a lane owes the player, applied to the branch.
 const react = run.spawner.react * run.baseSpeed();
 const xs = laid.map((o) => o.x).sort((a, b) => a - b);
@@ -1200,12 +1217,21 @@ for (const road of [tunnel, sky]) {
   assert(JSON.stringify(after) === JSON.stringify(before),
     `and a checkpoint restore lays it all again, not just its coins (${JSON.stringify(after)} vs ${JSON.stringify(before)})`);
 }
-// Behind him it stays spent: a road whose mouth he is already past is not re-cut.
+// Behind him it stays spent: a road whose mouth he is already past is not re-cut
+// UNDER HIM. Since 30 Sep 2026 it is re-armed with a resume point instead of left
+// spent — a checkpoint on plumber-1's tunnel came back with the rest of the tunnel
+// empty — so the rule is now checked for what it was for: nothing of the road, hole
+// or hazard, is laid short of his feet plus a reaction runway.
 run.obstacles.length = 0;
 tunnel.sprung = true;
 run.camX = tunnel.x + 40;
 run.restoreSnapshot(run.makeSnapshot());
-assert(tunnel.sprung, 'a road he is already inside is not re-armed under his feet');
+run.spawnRouteEntries();
+const resumeFrom = run.camX + PLAYER_X + run.spawner.react * run.baseSpeed();
+const underFeet = run.obstacles.filter((o) => o.live && (o.route === tunnel || o.tunnel === tunnel)
+  && o.x < resumeFrom);
+assert(tunnel.sprung && underFeet.length === 0,
+  `a road he is already inside is re-armed, but nothing is laid under his feet (${underFeet.map((o) => o.type).join(',') || 'none'})`);
 
 // ---- a cabinet with no islands is untouched ---------------------------------
 const { CABINETS } = await import('../src/data/cabinets.js');

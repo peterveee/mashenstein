@@ -4590,7 +4590,9 @@ const freezeFingerprint = entry.slice(entry.indexOf('function freezeFingerprint'
 // tests/freeze-fingerprint.js, against a real song rather than against this file's text.
 assert(!/\border:\s*m\.order/.test(freezeFingerprint),
   'reordering channel strips does not invalidate an otherwise unchanged frozen lane');
-assert(/arrangement: laneOnlyBlock\(arrFor\(id\), sources\)/.test(freezeFingerprint)
+// Automation is narrowed to this lane's CUTS on the way in (see freezeArrangement): a
+// fade is the live strip's and is not baked, and another track's line is not this one's.
+assert(/arrangement: laneOnlyBlock\(freezeArrangement\(arrFor\(id\), sources\), sources\)/.test(freezeFingerprint)
   && /freezeNoteSources\(m, lane\)/.test(freezeFingerprint)
   && /v: 2/.test(freezeFingerprint),
   'and a freeze is fingerprinted against its OWN lane, so a note added to another track'

@@ -458,5 +458,31 @@ function modelFor(id, over = undefined) {
     'a stage nobody edited comes out of the session byte-identical');
 }
 
+// ---- the clock: every position is also a moment ------------------------------
+//
+// tools/lib/stage-clock.js walks rampAt frame by frame. Pinned against the
+// ramp's closed form (distance = base·(t + ⅔K·t^1.5) below the cap), which a
+// headless plumber-1 run matched to 0.05s at every mark when this was written.
+{
+  const { secondsToCover, whenAt, mmss, HERO_SPEED } = await import('../tools/lib/stage-clock.js');
+  const { stageBaseSpeed, totalDistFor, SPEED_RAMP_K } = await import('../src/game/layout.js');
+  const base = stageBaseSpeed(CABINET_BY_ID.plumber, 1);
+  const D = totalDistFor(base, 60);
+  const closed = (t) => base * (t + (2 / 3) * SPEED_RAMP_K * t ** 1.5);
+  ok(Math.abs(secondsToCover(base, closed(30)) - 30) < 1 / 30,
+    'the frame walk lands on the ramp’s closed form');
+  const tape = secondsToCover(base, D);
+  ok(tape > 50 && tape < 60, `a 60s stage reaches the tape before its clock runs out (${tape.toFixed(1)}s)`);
+  ok(secondsToCover(base, D / 2) < 30, 'half the distance comes before half the clock — the lane accelerates');
+  ok(secondsToCover(base, 1000, { ramp: false }) === 1000 / base, 'a beat lane is distance over speed, flat');
+
+  const w = whenAt(base, D / 2);
+  ok(HERO_SPEED.min <= 1 && HERO_SPEED.max >= 1 && w.early <= w.t && w.t <= w.late,
+    'the hero spread brackets the 1.0 reading');
+  const flat = whenAt(base, D / 2, { ramp: false });
+  ok(flat.early === flat.t && flat.late === flat.t, 'and a beat lane has no spread: the hero does not change its speed');
+  ok(mmss(57.2) === '0:57' && mmss(89.6) === '1:30' && mmss(0) === '0:00', 'mm:ss reads the way a song does');
+}
+
 console.log(failures ? 'LEVEL EDITOR: FAILED' : 'LEVEL EDITOR: PASSED');
 process.exit(failures ? 1 : 0);

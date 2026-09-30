@@ -21,7 +21,8 @@ import { Audio } from ${JSON.stringify(join(ROOT, 'src/engine/audio.js'))};
 import { MusicDirector } from ${JSON.stringify(join(ROOT, 'src/engine/music-director.js'))};
 import { CABINET_BY_ID } from ${JSON.stringify(join(ROOT, 'src/data/cabinets.js'))};
 import { MIX, VARIANTS } from ${JSON.stringify(join(ROOT, 'src/data/mix.js'))};
-window.__M = { Audio, MusicDirector, CABINET_BY_ID, MIX, VARIANTS };
+import * as PLUMBER_CLASSIC from ${JSON.stringify(join(ROOT, 'tests/fixtures/plumber-classic.js'))};
+window.__M = { Audio, MusicDirector, CABINET_BY_ID, MIX, VARIANTS, PLUMBER_CLASSIC };
 `;
 
 let failed = false;
@@ -60,7 +61,20 @@ async function main() {
     Audio.ensure(ctx);
     if (Audio.mixer) await Audio.mixer.ready;
 
-    const BANK = CABINET_BY_ID.plumber.music;
+    // The classic plumber song (tests/fixtures/plumber-classic.js): the song whose cabinet
+    // treatment these timings were written around — the live plumber song is HARVEST OPUS
+    // since 30 Sep 2026. It reaches the director the way a game alternate does, carrying
+    // its own mix, treatments and arrangement; only THIS bank object gets them, exactly as
+    // only the cabinet's registered bank used to, so the derived banks below ({ ...BANK })
+    // still play as songs with no saved mix.
+    const C = window.__M.PLUMBER_CLASSIC;
+    const BANK = C.bank;
+    const withOwn = (b, o = {}) => (b === BANK
+      ? { mixOverride: C.mix, variants: C.variants, arrangementOverride: C.arrangement, ...o } : o);
+    const play0 = MusicDirector.play.bind(MusicDirector);
+    MusicDirector.play = (b, v, s, o) => play0(b, v, s, withOwn(b, o));
+    const stage0 = MusicDirector.enterStage.bind(MusicDirector);
+    MusicDirector.enterStage = (b, o) => stage0(b, withOwn(b, o));
     const realRampMix = Audio.rampMix.bind(Audio);
     let calls = [];
     const recordRamps = () => {
@@ -343,8 +357,8 @@ async function main() {
       leadMuted: sel.mix.lanes.lead.mute,
       snareSend: sel.mix.lanes.snare.send.reverb,
       snareGainKept: sel.mix.lanes.snare.gain,
-      baseSnareSend: MIX.plumber.lanes.snare.send.reverb,
-      baseSnareGain: MIX.plumber.lanes.snare.gain,
+      baseSnareSend: C.mix.lanes.snare.send.reverb,
+      baseSnareGain: C.mix.lanes.snare.gain,
       kickGainKept: sel.mix.lanes.kick.gain,
       reverbLevel: sel.mix.fx.reverb.level,
       loop: sel.loop,

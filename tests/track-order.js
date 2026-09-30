@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { deskBank, deskLanes, activeLanes } from '../src/engine/lanes.js';
 import { mixEntrySource } from '../tools/lib/mix-source.js';
 import { mixSignature, mixChanged } from '../tools/lib/mix-signature.js';
-import { resolveTrack } from '../src/data/tracks.js';
+import * as PLUMBER_CLASSIC from './fixtures/plumber-classic.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -31,7 +31,10 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-const bank = resolveTrack('plumber').bank;
+// The classic plumber song, frozen (tests/fixtures/plumber-classic.js): the small, layer-free
+// real song these checks were written around. The live plumber song is HARVEST OPUS since
+// 30 Sep 2026 and has layers of its own.
+const bank = PLUMBER_CLASSIC.bank;
 const keys = (b) => deskLanes(b, 1).map((l) => l.key);
 const view = (entry) => keys(deskBank(bank, entry));
 
