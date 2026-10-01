@@ -19,6 +19,7 @@ and on the mixer desk, and none of them replaces a shipped song.
 | | `field-service-overclock` | liquid drum & bass, 172 |
 | | `field-service-chipstep` | chip + half-time wobble, 140 |
 | | `field-service-aussendienst` | Kraftwerk (Man-Machine / Computer World), 116 |
+| | `field-service-rewired` | electro-disco, 136 — Claude's answer to GPT's LIVE WIRE (1 Oct 2026): an 8-bit intro that powers down on 4.4 (plumber-1's picture cue), robot "FIELD SERVICE" / "REWIRED" tags into each drop, a blackout breakdown, drop two in B minor. Spot FX are laid by its generator, `work/local/_fs-remix-rewired.mjs`. Not bounced or levelled yet. |
 | | `field-service-harvest-opus` | Peter's HARVEST copy + a hyper-electronic intro (bars 1–8 only) + the POWER DOWN on bar 4, 124. **Since 30 Sep 2026 this is the plumber cabinet's song** (`src/data/songs/plumber.js`, in game and jukebox); the old 112 BPM theme is kept as `field-service-original` (FIELD SERVICE (ORIGINAL VERSION)) and frozen for tests as `tests/fixtures/plumber-classic.js`. |
 | Speed | ★ `speed-remix-breakneck` · `speed-remix-hairpin` · `speed-remix-cowbell` | D&B 174 · eurobeat 155 · drift phonk 130 |
 | Neon | ★ `neon-remix-live-wire` · `neon-remix-golden-hour` · `neon-remix-freefall` | hard-dance 150 · city pop 120 · lo-fi→jungle 174 |
@@ -48,6 +49,13 @@ the stage is every other level glitched together.
   from every cabinet with that cabinet's chords, a harmonisation onto Am–F–G–E, and its
   signature voices. It also carries glitch devices (`glitchRepeat`, `sag`, `slice`, `CRUSH`,
   `TAPE`, `automate`). `node work/local/_surge-quotes.mjs` prints it all.
+- **The glitches themselves are Spot FX on the master (since 1 Oct 2026).** The quote library's
+  devices are note-level imitations, and `TAPE` is a look-ahead effect that played 8.6 ms late at
+  both edges of its bar. `work/local/_spot-fx-surge.mjs` lays the real ones on top of each song as
+  it stands: a Stutter of the whole mix for a buffer repeat, cuts plus the master at −48 dB for a
+  hole, a 1/32 gate for a flicker, a lowpass closing a sixteenth at a time for a tape stop, the
+  whole mix crushed for the LCD window. It also takes `TAPE` out of every snapshot. Re-run it
+  after a generator rewrites a Surge song. MASHTERPIECE has it on the CALL & ANSWER version only.
 - **Every hook is already in the Surge's key at its own pitch** (A minor, C major, D dorian,
   G major without F#, Speed's riff without F#), so a quote drops onto the Surge's bed
   untransposed. That is what holds the mash together.
@@ -55,7 +63,8 @@ the stage is every other level glitched together.
   1. IGNITION: the original loop, restyled (bars 1–4, the cabinet screen).
   2. Build.
   3. Drop one: the riff as the hook, the THEME as a counter-line.
-  4. CHANNEL SURF: glitch-cut windows, one hook each, on that cabinet's own timbre.
+  4. CHANNEL SURF: glitch-cut windows, one hook each, on that cabinet's own timbre, each
+     seam a real device on the master (above).
   5. Breakdown: Crypt and Frost.
   6. Build two.
   7. Drop two: a key lift, with the remaining hooks as counter-lines.
@@ -83,6 +92,10 @@ the stage is every other level glitched together.
 | `_remix-cpu-bench.mjs <ids…>` | Best-of-N CPU cost against rhythm, over the whole song. Needs a quiet machine. First run 1 Oct 2026: `_remix-cpu-bench-2026-10-01.txt`. |
 | `_remix-brief.md` | The brief the five parallel composers worked from. |
 | `_remix-voices.txt`, `_remix-effects.txt` | Every voice id with its description, and every effect id with its default params. |
+| `_spot-fx-scan.mjs <id> --bars=a-b [--lanes=…]` | Where every lane strikes (`x`) and rings (`-`), sixteenth by sixteenth, with each bar's snapshots. Use it to place cuts and Spot FX on the real notes. |
+| `_spot-fx-lib.mjs` | Lays master sections, lane sections and cuts on a song as it stands, through the desk's own automation functions, and splices a fresh desk tail. The text above the marker is never touched. It asserts the tail round-trips, the arrangement validates and the notes are unchanged. It records what it laid in `_spot-fx-laid.json`, so a re-run takes out only its own work. Devices: `repeat`, `hole`, `flicker`, `crushed`, `closing`, `crack`, `WOBBLE`. |
+| `_spot-fx-surge.mjs`, `_spot-fx-stops.mjs`, `_spot-fx-picture.mjs`, `_spot-fx-more.mjs` | The 1 Oct passes: the Surge glitches; true stops (cuts, and silence where nothing plays); the plumber intro's crush ending on the paper power-down and the neon bar-45 lightning crack; and (`more`) stutter rolls into drops, whole-mix filter builds, crossfades, exits on cuts and throws across the unshipped remixes. Each takes `--dry` (and `--only=<id>`). |
+| `_spot-fx-bounce.mjs <id> --tag=before\|after --excerpts=a-b,…` | Whole-song bounce plus bar excerpts cut from it, into `<cabinet>/spot-fx/`. |
 
 ## The workflow
 
@@ -347,6 +360,19 @@ RAISE THE DEAD (128, with a horror flavour)
 - a filter-sweep build, a stutter, or call-and-response between two voices.
 - Peter turned down an upside-down answer to his melody; vary the setting, not the tune.
 
+**Spot FX moves (the desk, 1 Oct 2026):** these are what the notes can't do on their own.
+- **A true stop.** Leaving notes out still lets releases, channel delays and inserts ring on.
+  Cuts make it a stop; the master at −48 dB takes the shared returns out too.
+  - Leave the riser lane (`crash2`) uncut: it is the drop's run-up.
+- **A buffer repeat of the whole mix.** A master Stutter grabs the drums and the room with the
+  hook. A note-level re-strike can't.
+- **A filter build that moves by the eighth or sixteenth on the whole mix,** not by the bar on
+  one lane.
+- **Sound on a picture cue,** to the sixteenth: the plumber intro's crush ending on the paper
+  power-down, the neon lightning crack.
+- **Never put a look-ahead effect in a section.** The desk refuses them; `TAPE` in an old
+  snapshot is late by 8.6 ms.
+
 ### Five more styles to try
 
 **Trance** (uplifting or psy), 136–142
@@ -477,6 +503,10 @@ RAISE THE DEAD (128, with a horror flavour)
 ## Open items
 
 - The `run.js` sourceBank gate described above: rhythm alternates can't play a beat stage.
+- Neon's bar-15 lightning (beat 56) only fires on a song's first pass. Every neon loop returns
+  to bar 15 without crossing beat 56, so `updateNeonStruck` never sees it again. A Spot FX crack
+  there would sound on every pass with no flash, so it is held back pending Peter's call (1 Oct 2026).
+  Bar 45's strike fires every pass and has its crack.
 - CPU was benched on 1 Oct 2026, whole song, best of 2, against rhythm, the heaviest cabinet (full
   table: `work/local/_remix-cpu-bench-2026-10-01.txt`). Every remix is at or under rhythm:
   - `speed-remix-hairpin` is the heaviest at 103%. After it come the plumber cabinet song (87%),

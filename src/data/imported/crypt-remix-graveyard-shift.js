@@ -40,6 +40,10 @@
 // 60 bars at 112. Written by work/local/_crypt-remix-graveyard-shift.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-stops.mjs): the false ending's chord is cut on bar 46, so the clock ticks alone in dead air.
+//
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): a reverb throw on the false ending's chord (45); its room rings on over the clock.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -714,6 +718,78 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 60,
+  },
+  automation: {
+    bass: {
+      cuts: [[46,0]],
+    },
+    hats2: {
+      cuts: [[46,0]],
+    },
+    lead: {
+      cuts: [[46,0]],
+    },
+    chords: {
+      cuts: [[46,0]],
+    },
+    bass2: {
+      cuts: [[46,0]],
+    },
+    kick: {
+      cuts: [[46,0]],
+    },
+    snare: {
+      cuts: [[46,0]],
+    },
+    clap: {
+      cuts: [[46,0]],
+    },
+    hats: {
+      cuts: [[46,0]],
+    },
+    ohats: {
+      cuts: [[46,0]],
+    },
+    crash: {
+      cuts: [[46,0]],
+    },
+    tom: {
+      cuts: [[46,0]],
+    },
+    tom2: {
+      cuts: [[46,0]],
+    },
+    lead6: {
+      cuts: [[46,0]],
+    },
+    chords2: {
+      cuts: [[46,0]],
+    },
+    lead2: {
+      cuts: [[46,0]],
+    },
+    __master: {
+      fx: [
+        {
+          from: [45,0],
+          to: [45,1],
+          chain: [
+            {
+              id: "reverb",
+              params: {
+                decay: 4.5,
+                preDelay: 0.01,
+                low: 0,
+                mid: 0,
+                high: 0,
+                width: 1,
+                wet: 0.55,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

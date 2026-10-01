@@ -101,10 +101,11 @@ const CACHE_BUDGET_BYTES = 80 * 1024 * 1024;
 // has a screen's width of travel. Its jobs are steps of one bake (`run`), not props, and
 // they stay out of artWarmupQueueFor, which is the prop list the tests hold to account.
 function backdropJobs(cabinet) {
-  if (cabinet?.style === 'gouache') {
-    return [...cryptGouacheWarmJobs(), ...cryptLifeWarmJobs()].map((run) => ({ run }));
-  }
+  const gouache = () => [...cryptGouacheWarmJobs(), ...cryptLifeWarmJobs()];
+  if (cabinet?.style === 'gouache') return gouache().map((run) => ({ run }));
   if (cabinet?.style === 'mcm') return speedMcmWarmJobs().map((run) => ({ run }));
+  // THE SURGE cycles through both, and its first cut to either must not stall on a bake.
+  if (cabinet?.style === 'surge') return [...speedMcmWarmJobs(), ...gouache()].map((run) => ({ run }));
   return [];
 }
 

@@ -347,7 +347,8 @@ banked charge (and buys a temporary +1 level), it does not stack a second rewind
 - **Perf sanity**: the gameplay profile HUD prints `REWIND x.xxms`
   (`src/engine/gameplay-profile.js`) — on touch it should read 0 outside armed windows
   and rise only inside them. Not yet measured on hardware.
-- **Audio**: on touch the capture node is a `ScriptProcessor` created mid-run on grab.
+- **Audio**: on touch the capture node is created mid-run on grab. (Since 1 Oct 2026 it
+  is an AudioWorklet, not a `ScriptProcessor` — see src/engine/engine-worklets.js.)
   Listen for a glitch at that moment on a real phone — it lands under the `'power'`
   sting, which should mask it, but it is the one thing here that could sound wrong.
   Desktop is unaffected (its node is a boot-time fixture).

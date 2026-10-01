@@ -124,6 +124,12 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // data, not dice: swap it in stage-layouts.js too, or the lane sweep removes it
   // and leaves that road paying nothing.
   bannedPowers: opts.bannedPowers || null,
+  // CAPSULES THIS STAGE DEALS AS SOMETHING ELSE, { capsule: pickup }. Where a ban
+  // falls back to whatever the dice had next, a swap names the replacement. It is
+  // applied after the roll, so the seeded streams draw exactly what they always
+  // did, and at the lane sweep, so it holds for every source a ban does — plus
+  // the breaker box, which refuses a starting power whose capsule is swapped.
+  powerSwaps: opts.powerSwaps || null,
   // OPENS INSIDE THE ARCADE CABINET: the backdrop is an 8-bit picture on a CRT for as
   // long as the stage's own song is in its chiptune bars, and the tube switches off on
   // the power-down (src/engine/arcadeIntro.js, run.js arcadeIntroResolve). The song has
@@ -143,6 +149,12 @@ export const STAGES = [
       // authored speed prizes — the fork's and the tunnel's low roads — are
       // AIR JUMP in stage-layouts.js.
       bannedPowers: ['capSpeed'],
+      // No INVINCIBILITY either (Peter, 1 Oct 2026: "it's the intro so lets keep
+      // it easy breezy for a newcomer"). UNPEELABLE — and the legacy star capsule
+      // stale data can still deal — comes up as a battery cell instead, or a
+      // shield when the meter is full or another cell is on screen (run.js
+      // dealtPickupType).
+      powerSwaps: { capUnpeel: 'battery', capStar: 'battery' },
       // The hero has just jumped into the cabinet (Peter, 30 Sep 2026).
       arcadeIntro: true }),
   // The rewind capsule's guaranteed introduction, and this stage on purpose:

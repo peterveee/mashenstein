@@ -1892,7 +1892,26 @@ export function saveScreenshot(filename = 'mashenstein.png') {
 export function presentCanvas() { return canvas; }
 
 // Map a client (CSS pixel) coordinate to logical 480x270 space, for touch/mouse.
+// THE SCREEN TURNED UPSIDE DOWN (THE SURGE, surgeCut.js surgeFlip). A CSS transform on
+// the game canvas: the compositor does it on either backend at no cost to a frame, the
+// turn is the canvas squashing to a line and opening inverted, and #chrome — the touch
+// buttons — is its own element and stays where the thumbs are. Pointer input on the
+// canvas is turned with it.
+let screenFlipped = false;
+export function setScreenFlip(on) {
+  on = !!on;
+  if (on === screenFlipped || !canvas?.style) return;
+  screenFlipped = on;
+  canvas.style.transition = 'transform 140ms cubic-bezier(0.6, 0, 0.4, 1)';
+  canvas.style.transform = on ? 'scaleY(-1)' : '';
+}
+export function isScreenFlipped() { return screenFlipped; }
+
 export function clientToLogical(cx, cy) {
+  if (screenFlipped && typeof canvas?.getBoundingClientRect === 'function') {
+    const r = canvas.getBoundingClientRect();
+    cy = r.top + r.bottom - cy;
+  }
   return {
     x: (cx - screen.ox) / screen.inputScaleX + screen.inputLeft,
     y: (cy - screen.oy) / screen.inputScaleY + screen.inputTop,

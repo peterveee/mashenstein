@@ -31,6 +31,10 @@
 // work/local/_frost-remix-snow-globe.mjs through work/local/_remix-lib.mjs;
 // re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-stops.mjs): the false ending is dead air — every lane cut on bar 38 and the master silent until the pickup on beat 4.
+//
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): the whole mix opens an eighth at a time over the build (5–8).
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -629,6 +633,73 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 58,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 800,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 16000,
+              },
+            },
+          ],
+        },
+        {
+          from: [38,0],
+          to: [38,12],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    chords: {
+      cuts: [[38,0]],
+    },
+    chords2: {
+      cuts: [[38,0]],
+    },
+    lead2: {
+      cuts: [[38,0]],
+    },
+    bass: {
+      cuts: [[38,0]],
+    },
+    lead: {
+      cuts: [[38,0]],
+    },
+    lead4: {
+      cuts: [[38,0]],
+    },
+    kick: {
+      cuts: [[38,0]],
+    },
+    snare: {
+      cuts: [[38,0]],
+    },
+    hats: {
+      cuts: [[38,0]],
+    },
   },
 };
 

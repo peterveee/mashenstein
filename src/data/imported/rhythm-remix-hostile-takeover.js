@@ -34,6 +34,10 @@
 // 64 bars at 124. Written by work/local/_rhythm-remix-hostile-takeover.mjs
 // through work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-stops.mjs): the false ending on bar 49 cuts the drop's tails; the grand, its pad and the four-on-the-floor play on.
+//
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): the whole mix opens an eighth at a time over the build (5–8).
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -664,6 +668,55 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 64,
+  },
+  automation: {
+    chords: {
+      cuts: [[49,0]],
+    },
+    bass2: {
+      cuts: [[49,0]],
+    },
+    clap: {
+      cuts: [[49,0]],
+    },
+    snare: {
+      cuts: [[49,0]],
+    },
+    lead2: {
+      cuts: [[49,0]],
+    },
+    bass: {
+      cuts: [[49,0]],
+    },
+    ohats: {
+      cuts: [[49,0]],
+    },
+    lead3: {
+      cuts: [[49,0]],
+    },
+    lead4: {
+      cuts: [[49,0]],
+    },
+    __master: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 800,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 16000,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

@@ -21,6 +21,7 @@ import * as GAME_ALT_FIELD_SERVICE_MACHINE_CODE from './imported/field-service-m
 import * as GAME_ALT_FIELD_SERVICE_NIGHT_DRIVE from './imported/field-service-night-drive.js';
 import * as GAME_ALT_FIELD_SERVICE_ORIGINAL from './imported/field-service-original.js';
 import * as GAME_ALT_FIELD_SERVICE_OVERCLOCK from './imported/field-service-overclock.js';
+import * as GAME_ALT_FIELD_SERVICE_REWIRED from './imported/field-service-rewired.js';
 import * as GAME_ALT_FIELD_SERVICE_SLAP_HAPPY from './imported/field-service-slap-happy.js';
 import * as GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO from './imported/frost-remix-absolute-zero.js';
 import * as GAME_ALT_FROST_REMIX_BLACK_ICE from './imported/frost-remix-black-ice.js';
@@ -71,6 +72,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_FIELD_SERVICE_NIGHT_DRIVE,
   GAME_ALT_FIELD_SERVICE_ORIGINAL,
   GAME_ALT_FIELD_SERVICE_OVERCLOCK,
+  GAME_ALT_FIELD_SERVICE_REWIRED,
   GAME_ALT_FIELD_SERVICE_SLAP_HAPPY,
   GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO,
   GAME_ALT_FROST_REMIX_BLACK_ICE,

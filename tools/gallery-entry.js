@@ -102,6 +102,7 @@ import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../sr
 import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
+import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
@@ -8234,6 +8235,112 @@ function cryptStyleTiles(grid, tag, cand) {
         ctx.fillStyle = b + 1 === ph.bar ? (ph.s > 0 && ph.s < 1 ? '#ff3b3b' : '#fff6d8') : 'rgba(255,255,255,0.28)';
         ctx.fillRect(x, H - 7, 14, 3);
         if (b === 3) { ctx.fillStyle = '#ff3b3b'; ctx.fillRect(x + 10.5, H - 7, 3.5, 3); }
+      }
+    }, { animated: true });
+  }
+}
+
+// ------------------------------------------ THE SURGE — changing looks on the bar (lab)
+// Peter, 1 Oct 2026: the Surge's change of look should be "relatively dramatic", and the
+// pixel/CRT move that opens plumber-1 was the one he named. The moves are in
+// src/dev/surge-transition-candidates.js; every card cycles the eight shipped looks
+// (stylePacks SURGE_CYCLE) the way a Surge run paints them, with the Surge's own
+// cabinet, and Lorenzo running on the lane in front.
+{
+  const cab = CABINETS.find((c) => c.id === 'surge');
+  const st = STAGES.find((x) => x.id === 'surge-1');
+  const speed = BASE_SPEED * (1 + (cab.speedBonus || 0)) * (st.speedMult ?? 1);
+  const totalDist = speed * (st.durationSec || 60);
+  const LOOKS = ['pixel', 'mcm', 'neon', 'watercolor', 'gouache', 'lcd', 'cardboard', 'doodle'];
+  const loopBeats = LOOKS.length * SURGE_FX_SLOT_BEATS;
+  const loopSec = loopBeats * 60 / SURGE_FX_BPM;
+  const grid = section('surge-look-changes', 'THE SURGE — changing looks on the bar (bake-off)',
+    'Asked 1 Oct 2026: the Surge cycles every cabinet\'s shipped backdrop, and the change from one to the next '
+    + 'should be relatively dramatic, plumber-1\'s pixel/CRT move named. Today (A) it is a 7 s timer on game time '
+    + 'with a faint magenta flicker, not on the music. B–I change on THE SURGE\'s bar line instead: four bars a look '
+    + 'at 132 BPM (7.3 s), each move landing on the next bar\'s downbeat. The backdrop changes; the lane and '
+    + 'Lorenzo stay crisp, on the old look until the downbeat (flash, shake and tape are over the whole frame). The '
+    + 'pixels are plumber-1\'s cells averaged rather than snapped to Field Service\'s inks, which are that '
+    + 'cabinet\'s colours. The strip bottom-right counts the four bars, red while a move is under way. One loop of '
+    + 'the eight looks is 58 s; use SLOW to read a move. ANIMATED.',
+    '1 Oct 2026');
+  const grid2 = section('surge-glitching', 'THE SURGE — the cabinet glitching out (round two)',
+    'Peter, 1 Oct 2026: "I love I, but I would like it to be random"; the effects should also come through the '
+    + 'looks, crt/pixel across a whole scene or part of one, like the cabinet glitching out severely, worse from '
+    + 'level 1 to level 3, and as it gets worse reaching the game lane. So each card plays the moves at random (never '
+    + 'the same twice running) and glitches between them at one stage\'s severity: pixel crunches and tube rolls, '
+    + 'tears, blackouts, block dropouts and another cabinet bleeding through, in bands or whole-screen, every one on '
+    + 'the sixteenths. Lorenzo is never glitched. Amber on the strip = a glitch. Seeded, so a card repeats; the game '
+    + 'would draw a fresh seed a run. ANIMATED.',
+    '1 Oct 2026');
+  for (const cand of [...SURGE_FX_CANDIDATES, ...SURGE_GLITCH_CANDIDATES]) {
+    // Each card its own packs: a pack keeps per-instance state between its bg() and
+    // ground() (the gouache lamps, the mcm light), and cards must not share a frame's.
+    const packs = LOOKS.map((name) => getStylePack(name, {}));
+    const surgePack = cand.now ? getStylePack('surge', {}) : null;
+    const state = {};
+    tile(cand.level ? grid2 : grid, `${cand.letter} — ${cand.name}`, cand.note, W, H, (ctx, t) => {
+      const lt = t % loopSec;
+      const camX = lt * speed;
+      const bc = { stageIndex: 1, progress: Math.min(1, camX / totalDist) };
+      const laneOnly = (pack, g) => {
+        g.save();
+        applyWorld(g, WORLD_Z, 0);
+        if (pack.ground) pack.ground(g, camX, cab, []);
+        g.restore();
+        if (pack.post) pack.post(g, lt);
+      };
+      const heroOnly = (g) => {
+        g.save();
+        applyWorld(g, WORLD_Z, 0);
+        drawToon(g, 'lorenzo', pose('run', lt), 62, GROUND_Y, 24);
+        g.restore();
+      };
+      const lane = (pack, g) => {
+        g.save();
+        applyWorld(g, WORLD_Z, 0);
+        if (pack.ground) pack.ground(g, camX, cab, []);
+        if (!pack.actorsAbovePost) drawToon(g, 'lorenzo', pose('run', lt), 62, GROUND_Y, 24);
+        g.restore();
+        if (pack.post) pack.post(g, lt);
+        if (pack.actorsAbovePost) {
+          g.save();
+          applyWorld(g, WORLD_Z, 0);
+          drawToon(g, 'lorenzo', pose('run', lt), 62, GROUND_Y, 24);
+          g.restore();
+        }
+      };
+      const beat = lt * SURGE_FX_BPM / 60;
+      // The LCD city dances to the Surge's song, as the run hands it (run.js surgeScene).
+      const scene = { stageIndex: 1, beat, progress: bc.progress };
+      let ph;
+      if (surgePack) {
+        surgePack.bg(ctx, lt, camX, cab, totalDist, scene, 0, bc);
+        lane(surgePack, ctx);
+        ph = { bar: Math.floor((beat % SURGE_FX_SLOT_BEATS) / 4) + 1, move: (lt % 7) / 7 > 0.96 };
+      } else {
+        ph = drawSurgeFx(ctx, cand, {
+          beat, t: lt, count: LOOKS.length, base: cab.sky[0], state,
+          k: Math.hypot(ctx.getTransform().a, ctx.getTransform().b) || 1,
+          bg: (i, g, dy = 0, scrub = 0) => {
+            g.save();
+            if (dy) g.translate(0, dy);
+            packs[i].bg(g, lt, camX - scrub, cab, totalDist, scene, 0, bc);
+            g.restore();
+          },
+          world: (i, g) => lane(packs[i], g),
+          lane: (i, g) => laneOnly(packs[i], g),
+          hero: (i, g) => heroOnly(g),
+          level: cand.level || 0, seed: 7,
+        });
+      }
+      // the bar counter: four bars a look, the current one lit, red while a move is on
+      for (let b = 0; b < 4; b++) {
+        const x = W - 8 - (4 - b) * 16;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x - 1, H - 8, 16, 5);
+        ctx.fillStyle = b + 1 === ph.bar ? (ph.move ? '#ff3b3b' : ph.glitch ? '#ffb020' : '#fff6d8') : 'rgba(255,255,255,0.28)';
+        ctx.fillRect(x, H - 7, 14, 3);
       }
     }, { animated: true });
   }

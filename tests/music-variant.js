@@ -188,6 +188,30 @@ async function main() {
       spb: spb(),
     };
 
+    // ---- a hand-written effect that is not changing does not break the handover ------
+    // Most cabinet songs carry mbCompN on the master, which can only take new settings
+    // NOW. rampMix used to ask it to "move" to the settings it already had, threw half
+    // way, and the director rebuilt the whole mix on the spot — the tick a moment after
+    // a level starts (1 Oct 2026). The real Field Service song, its real cabinet
+    // treatment, and the level: the handover must ride the bar line, not rebuild.
+    {
+      const LIVE = CABINET_BY_ID.plumber.music;
+      MusicDirector.play(LIVE, 'select', 'always');
+      const hasCustom = !!Audio.mixer?.masterEffects?.some((l) => l.def?.id === 'mbCompN' && l.node?._custom);
+      Audio.nextTime = 1; Audio.step = 0;
+      let rebuilt = 0, threw = null, ramps = 0;
+      // The REAL rampMix: earlier cases stub it with a recorder (recordRamps).
+      const proto = Object.getPrototypeOf(Audio);
+      const am = proto.applyMix, rm = proto.rampMix;
+      const stubbed = Audio.rampMix;
+      Audio.applyMix = function (...a) { rebuilt++; return am.apply(this, a); };
+      Audio.rampMix = function (...a) { ramps++; try { return rm.apply(this, a); } catch (e) { threw = String(e.message); throw e; } };
+      MusicDirector.enterStage(LIVE);
+      run(20);
+      Audio.applyMix = am; Audio.rampMix = stubbed;
+      r.customHandover = { hasCustom, rebuilt, threw, ramps };
+    }
+
     // ---- a hard bank change takes the loop with it -------------------------------
     arm();
     Audio.setLoop(0, 64);
@@ -398,6 +422,10 @@ async function main() {
   assert(Math.abs((out.atLoopEnd.firedAtWhen)
     - (out.atLoopEnd.spb * 4)) > 0 && out.atLoopEnd.firedAtWhen > 0,
   'the ramp is aimed at the downbeat that now follows, four steps ahead of the release');
+
+  assert(out.customHandover.hasCustom && out.customHandover.ramps === 1 && !out.customHandover.threw
+    && out.customHandover.rebuilt === 0,
+    `the Field Service handover rides the bar line with mbCompN on the master, no rebuild (${JSON.stringify(out.customHandover)})`);
 
   assert(out.loopClearedByBankChange.start === null && out.loopClearedByBankChange.end === null,
     'a bank change clears the loop the previous song armed — the food court does not inherit four bars');

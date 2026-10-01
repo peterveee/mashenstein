@@ -14,7 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TOOLS, ACTIONS } from '../tools/desk.js';
+import { TOOLS, ACTIONS, setBand } from '../tools/desk.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -87,6 +87,33 @@ for (const a of audio) {
       `${a.id}: ${script} writes a report file the desk reads`);
   }
 }
+// BACKGROUND / FULL SPEED: the switch has to reach a job already running, grandchildren
+// included (a report's Chromium renderers are two levels down), and has to come back.
+// A process started as `taskpolicy -b …` would pass the first half and silently fail
+// the second, so both directions are checked on a real tree. macOS only: taskpolicy
+// is a Darwin tool, and on Linux the desk's switch moves nothing.
+const switched = ACTIONS.filter((a) => a.speed);
+ok(switched.length > 0 && switched.every((a) => a.speed === 'background'),
+  `${switched.map((a) => a.id).join(', ')} default to BACKGROUND`);
+ok(!ACTIONS.find((a) => a.id === 'framereport')?.speed, 'FRAME REPORT has no switch: it measures frame time');
+if (process.platform === 'darwin') {
+  const { spawn, execFileSync } = await import('node:child_process');
+  const parent = spawn(process.execPath, ['-e',
+    "require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'], { stdio: 'inherit' }); setTimeout(() => {}, 20000)"]);
+  await new Promise((r) => setTimeout(r, 500));
+  const pri = () => execFileSync('ps', ['-Ao', 'pid=,ppid=,pri='], { encoding: 'utf8' }).trim().split('\n')
+    .map((l) => l.trim().split(/\s+/).map(Number)).filter(([p, pp]) => p === parent.pid || pp === parent.pid).map(([, , n]) => n);
+  setBand(parent.pid, 'background');
+  const bg = pri();
+  setBand(parent.pid, 'full');
+  const full = pri();
+  // The child first: once the parent is gone it is no longer under it to be found.
+  try { execFileSync('pkill', ['-P', String(parent.pid)], { stdio: 'ignore' }); } catch { /* already gone */ }
+  parent.kill();
+  ok(bg.length === 2 && bg.every((n) => n === 4), `BACKGROUND moves the job and its child into the background band (pri ${bg})`);
+  ok(full.length === 2 && full.every((n) => n > 4), `FULL SPEED brings both back out (pri ${full})`);
+}
+
 const reports = readFileSync(join(root, 'tools/desk-reports.html'), 'utf8');
 ok(reports.includes('/api/reports') && reports.includes('id="levels"') && reports.includes('id="bass"') && reports.includes('id="frames"'),
   'the reports page reads /api/reports and has the #levels, #bass and #frames anchors the OPEN buttons use');

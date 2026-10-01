@@ -117,12 +117,16 @@ for (const def of Object.values(EFFECT_BY_ID)) {
   // Only the switches the effect ACTUALLY HAS may vary — that is the whole bug. Setting
   // `sync` on an effect with no tempo switch describes a state the desk can never be in,
   // and a test that does it passes on a card the desk draws wrong.
-  const states = ['sync', 'rateSync']
+  const states = ['sync', 'rateSync', 'sweep']
     .filter((s) => def.params.includes(s))
     .reduce((acc, s) => acc.flatMap((base) => [{ ...base, [s]: 0 }, { ...base, [s]: 1 }]), [{}]);
   const seen = new Set();
+  // And on both kinds of card: a Spot FX section's draws what needs a section's start and
+  // end (the Filter's sweep), which an insert's never can.
   for (const state of states) {
-    for (const p of visibleParams(def, { ...def.defaults, ...state })) seen.add(p);
+    for (const section of [false, true]) {
+      for (const p of visibleParams(def, { ...def.defaults, ...state }, { section })) seen.add(p);
+    }
   }
   for (const p of def.params) {
     assert(seen.has(p), `${def.id}: "${p}" is drawn on the desk in at least one state`);

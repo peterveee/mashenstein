@@ -984,7 +984,7 @@ export const CABINETS = [
     taunt: 'THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP.',
   },
   {
-    id: 'surge', name: 'THE SURGE', act: 3, style: 'surge',
+    id: 'surge', name: 'DÉJÀ VIEW', act: 3, style: 'surge',
     unlockPlugs: 40, speedBonus: 0.35,
     mechanic: 'remix', // segments sample other cabinets
     sky: ['#181828', '#282838'], ground: '#484858', groundDark: '#303040',

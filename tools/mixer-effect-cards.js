@@ -12,8 +12,8 @@
 
 import { Audio } from '../src/engine/audio.js';
 import {
-  EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS,
-  AUTOPANNER_RATE_DIVISIONS, syncSeconds,
+  EFFECT_BY_ID, paramRange, visibleParams, sweepStartOf, SYNC_DIVISIONS, RATE_DIVISIONS,
+  AUTOPANNER_RATE_DIVISIONS, syncSeconds, STUTTER_SLICES, STUTTER_RETRIGGERS, STUTTER_STOPS,
   effectPresetNames, resolveEffectPreset, resolveEffectSnapshot, matchEffectPreset,
   PEQ_BANDS, peqResponse,
 } from '../src/engine/effects.js';
@@ -506,7 +506,9 @@ function multibandControls({ def, entryParams, applyPatch }) {
     const useLog = rng.log && rng.min > 0;
     const logToPos = (v) => Math.log(v / rng.min) / Math.log(rng.max / rng.min);
     const logFromPos = (p) => rng.min * Math.pow(rng.max / rng.min, p);
-    const unitFmt = (x) => (rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
+    // A level whose bottom is silence says so, rather than naming the floor's number.
+    const unitFmt = (x) => (rng.silentAtMin && x <= rng.min ? '−∞'
+      : rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
       : rng.unit === 's' ? (x * 1000).toFixed(0) + 'ms'
       : x.toFixed(rng.step >= 1 ? 0 : 2)) + (rng.unit && rng.unit !== 's' ? ' ' + rng.unit : '');
     const row = slider({
@@ -564,12 +566,15 @@ function multibandControls({ def, entryParams, applyPatch }) {
  * bypass }`). Keeping their controls here means a Delay cannot expose tempo mode in
  * one editor and only milliseconds in the other, and a new effect automatically
  * becomes editable in both places. The caller owns where changes land: the channel
- * inspector supplies a live-node writer, while Bar Effects supplies a staged array
- * that is silent until Apply.
+ * inspector supplies a live-node writer, and Spot FX one that retunes the playing
+ * section and writes the arrangement — both live, with the drag's tag for undo.
  */
 function fillEffectControls({
   grid, def, entry, presetScope = 'inserts', patch, replaceParams, rebuild,
   tag = () => null,
+  // A Spot FX section's card rather than an insert's: the controls that need a section's
+  // start and end — the Filter's sweep — are drawn only here (see visibleParams).
+  section = false,
 }) {
   if (!def) return;
   const entryParams = { ...(def.defaults || {}), ...(entry.params || {}) };
@@ -602,7 +607,10 @@ function fillEffectControls({
     return true;
   };
 
-  const presetNames = effectPresetNames(def.id, presetScope);
+  // A preset built on a section's sweep would set pots an insert card does not show, and
+  // read as a sweep that never moves — so those are offered on a section's card only.
+  const presetNames = effectPresetNames(def.id, presetScope)
+    .filter((name) => section || !(resolveEffectPreset(def.id, name, presetScope)?.sweep >= 0.5));
   // Every effect gets a reset path, even before it has named creative presets. The
   // catalogue default is the safe way back from a hand-tuned card; removing and
   // re-adding an insert should never be necessary just to recover its starting sound.
@@ -644,12 +652,27 @@ function fillEffectControls({
     return;
   }
 
+  // A control the catalogue explains (`def.tips`) carries its explanation on its LABEL, in
+  // the desk's hover card — the name in bold and what it does underneath. The label only,
+  // so the card is never in the way of the control itself while it is being used.
+  const explain = (label, pname) => {
+    const says = def.tips?.[pname];
+    if (!label || !says) return;
+    label.dataset.tip = paramLabel(pname, def);
+    label.dataset.tipsays = says;
+    label.classList.add('hastip');
+  };
+
   // Delay time is either a note division or free milliseconds, and a modulation rate
   // either a division or a free frequency. Only the active mode is drawn.
   const hasSync = (def.params || []).includes('sync');
   const synced = hasSync && (entryParams.sync ?? 1) >= 0.5;
-  for (const pname of visibleParams(def, entryParams)) {
+  const shown = visibleParams(def, entryParams, { section });
+  for (const pname of shown) {
     const rateSynced = (entryParams.rateSync ?? 0) >= 0.5;
+    // A sweep's end value is the second handle on the control it ends, drawn with it below —
+    // all but the Stutter's SLICE TO, a list like SLICE itself.
+    if (sweepStartOf(def, pname) && !(def.id === 'stutter' && pname === 'sliceTo')) continue;
     if (pname === 'rateSync') {
       const tempoMode = checkRow('Tempo Mode', rateSynced, (on) => {
         applyPatch({ rateSync: on ? 1 : 0 }); rebuild();
@@ -679,12 +702,60 @@ function fillEffectControls({
         (beats) => applyPatch({ division: beats }, 'div')));
       continue;
     }
+    // The Stutter's two note lengths: how long a slice it grabs, and how often it lets go
+    // and grabs the next — never, by default, which holds the first one for the section.
+    if (def.id === 'stutter' && (pname === 'slice' || pname === 'retrigger' || pname === 'sliceTo')) {
+      // A roll has to end on a slice, so SLICE TO has no Off.
+      const table = pname === 'retrigger' ? STUTTER_RETRIGGERS : pname === 'slice' ? STUTTER_SLICES
+        : Object.fromEntries(Object.entries(STUTTER_SLICES).filter(([, beats]) => beats > 0));
+      const slice = entryParams.slice ?? def.defaults?.slice ?? 0.25;
+      // The readout says what it really does. A retrigger is never sooner than two slices
+      // (makeStutter), so one that asks for less reads the interval it gets, and why.
+      const fmt = pname !== 'retrigger'
+        ? (beats) => (beats ? fmtDelay(syncSeconds(beats, deskTempo())) : 'off')
+        : (beats) => (!beats ? 'held'
+          : `${fmtDelay(syncSeconds(Math.max(beats, 2 * slice), deskTempo()))}${beats < 2 * slice ? ' · 2 slices' : ''}`);
+      const row = divisionRow(paramLabel(pname, def), table,
+        entryParams[pname] ?? def.defaults?.[pname] ?? 0, fmt,
+        (beats) => {
+          applyPatch({ [pname]: beats }, pname);
+          // A new slice changes what the retrigger row has to say.
+          if (pname === 'slice') rebuild();
+        });
+      explain(row.querySelector('.k'), pname);
+      grid.append(row);
+      continue;
+    }
+    // How long the TAPE STOP takes to wind down to its section's end. The readout is the
+    // length at this tempo; a section shorter than that winds down across all of it.
+    if (def.id === 'stutter' && pname === 'stop') {
+      const row = divisionRow(paramLabel(pname, def), STUTTER_STOPS,
+        entryParams.stop ?? def.defaults?.stop ?? 0,
+        (beats) => (beats ? fmtDelay(syncSeconds(beats, deskTempo())) : 'off'),
+        (beats) => applyPatch({ stop: beats }, 'stop'));
+      explain(row.querySelector('.k'), pname);
+      grid.append(row);
+      continue;
+    }
 
     const rng = paramRange(pname, def);
     if (rng.toggle) {
       const toggle = checkRow(paramLabel(pname, def),
         (entryParams[pname] ?? def.defaults?.[pname] ?? 0) >= 0.5,
-        (on) => applyPatch({ [pname]: on ? 1 : 0 }));
+        (on) => {
+          const next = { [pname]: on ? 1 : 0 };
+          // SWEEP switched on puts each end handle where its start is, so nothing moves until
+          // one is dragged away — unless it had been set already and is being switched back.
+          if (pname === 'sweep' && on) {
+            for (const [start, end] of Object.entries(def.sweeps || {})) {
+              if (entryParams[end] === def.defaults?.[end]) next[end] = entryParams[start];
+            }
+          }
+          applyPatch(next);
+          // SWEEP brings the end handles with it, and takes them away.
+          if (pname === 'sweep') rebuild();
+        });
+      explain(toggle.lastElementChild, pname);
       if (def.id === 'l7') {
         toggle.classList.add('l7control');
         toggle.dataset.l7Param = pname;
@@ -706,16 +777,18 @@ function fillEffectControls({
     const useLog = rng.log && rng.min > 0;
     const logToPos = (v) => Math.log(v / rng.min) / Math.log(rng.max / rng.min);
     const logFromPos = (p) => rng.min * Math.pow(rng.max / rng.min, p);
-    const unitFmt = (x) => (rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
+    // A level whose bottom is silence says so, rather than naming the floor's number.
+    const unitFmt = (x) => (rng.silentAtMin && x <= rng.min ? '−∞'
+      : rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
       : rng.unit === 's' ? (x * 1000).toFixed(0) + 'ms'
       : x.toFixed(rng.step >= 1 ? 0 : 2)) + (rng.unit && rng.unit !== 's' ? ' ' + rng.unit : '');
-    const row = slider({
+    const toPos = (v) => (useLog ? logToPos(v) : v);
+    const fromPos = (x) => (useLog ? logFromPos(x) : x);
+    const travel = {
       min: useLog ? 0 : rng.min,
       max: useLog ? 1 : rng.max,
       step: useLog ? 0.001 : rng.step,
-      value: useLog ? logToPos(value) : value,
-      reset: useLog ? logToPos(def.defaults[pname] ?? rng.min) : (def.defaults[pname] ?? rng.min),
-      fmt: (x) => unitFmt(useLog ? logFromPos(x) : x),
+      fmt: (x) => unitFmt(fromPos(x)),
       display: useLog ? {
         format: (pos) => unitFmt(logFromPos(pos)),
         parse: (s) => {
@@ -723,10 +796,52 @@ function fillEffectControls({
           return Number.isFinite(n) ? clamp(logToPos(n), 0, 1) : null;
         },
       } : undefined,
-      onInput: (x) => applyPatch({ [pname]: useLog ? logFromPos(x) : x }, pname),
+    };
+    const row = slider({
+      ...travel,
+      value: toPos(value),
+      reset: toPos(def.defaults[pname] ?? rng.min),
+      onInput: (x) => applyPatch({ [pname]: fromPos(x) }, pname),
     });
     row.label.textContent = paramLabel(pname, def);
-    controlSyncs.set(pname, (next) => row.sync(useLog ? logToPos(next) : next));
+    explain(row.label, pname);
+    controlSyncs.set(pname, (next) => row.sync(toPos(next)));
+    // With SWEEP on, the control's END is a second handle on the same groove — hollow, so
+    // the two are told apart — and its reading follows the first: "200 Hz → 8.0k Hz". The
+    // stretch between them is lit, which is the sweep the section will play.
+    const endKey = def.sweeps?.[pname];
+    if (endKey && shown.includes(endKey)) {
+      let paint = () => {};
+      const end = slider({
+        ...travel,
+        value: toPos(entryParams[endKey] ?? value),
+        reset: toPos(def.defaults[endKey] ?? def.defaults[pname] ?? rng.min),
+        onInput: (x) => { applyPatch({ [endKey]: fromPos(x) }, endKey); paint(); },
+      });
+      const rail = document.createElement('span');
+      rail.className = 'sweeprail';
+      row.input.replaceWith(rail);
+      end.input.classList.add('sweepend');
+      rail.append(row.input, end.input);
+      const arrow = document.createElement('span');
+      arrow.className = 'sweeparrow';
+      arrow.textContent = '→';
+      end.readout.classList.add('sweepend');
+      row.readout.after(arrow, end.readout);
+      const frac = (input) => (Number(input.value) - Number(input.min))
+        / Math.max(1e-9, Number(input.max) - Number(input.min));
+      paint = () => {
+        const a = frac(row.input);
+        const b = frac(end.input);
+        rail.style.setProperty('--lo', String(Math.min(a, b)));
+        rail.style.setProperty('--hi', String(Math.max(a, b)));
+      };
+      row.input.addEventListener('input', paint);
+      const startSync = controlSyncs.get(pname);
+      controlSyncs.set(pname, (next) => { startSync(next); paint(); });
+      controlSyncs.set(endKey, (next) => { end.sync(toPos(next)); paint(); });
+      paint();
+    }
     if (def.id === 'l7') {
       row.wrap.classList.add('l7control');
       row.wrap.dataset.l7Param = pname;

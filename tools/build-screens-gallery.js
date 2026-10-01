@@ -98,7 +98,7 @@ const CABINETS = [
   { id: 'neon', name: 'TERMINAL VELOCITY' },
   { id: 'cardboard', name: 'CARDBOARD KINGDOM' },
   { id: 'office', name: 'CORPORATE KOMBAT' },
-  { id: 'surge', name: 'THE SURGE' },
+  { id: 'surge', name: 'DÉJÀ VIEW' },
 ];
 const CABINET_SHOTS = CABINETS.map((c) => ({
   id: `cab-${c.id}`,

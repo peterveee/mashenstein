@@ -132,6 +132,22 @@ master back. The desk shows those steps above the cards. Every run is under `nic
 them render through headless Chromium for minutes at a time, and the mixer's
 playback comes first.
 
+### Background or full speed
+
+The audio cards and the two gallery refreshes each have a **BACKGROUND / FULL SPEED**
+pair, and BACKGROUND is the default. In BACKGROUND the job runs in macOS's background
+band (what `taskpolicy -b` sets): efficiency cores only and throttled disk, so the
+performance cores stay with the mixer and the game. It is slower for it: a CPU-bound
+loop measured 4–5× slower, so a fifteen-minute SONG LEVELS run can take an hour.
+
+Flip to FULL SPEED before RUN, or while it runs: the desk moves every process in the
+job's tree (node, its Chromium, every renderer) on the spot, and whatever the job
+starts afterwards follows. Flipping back works the same way. The setting is the
+desk's, not the page's, so it holds across a reload until the desk restarts.
+
+FRAME REPORT has no switch. It measures frame time, and in the background band
+every number would come from the efficiency cores.
+
 ## Performance
 
 Two RUN cards under PERFORMANCE, reported at the top of the same `/reports` page

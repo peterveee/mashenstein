@@ -29,6 +29,8 @@
 // work/local/_frost-remix-black-ice.mjs through work/local/_remix-lib.mjs;
 // re-running it rewrites this file.
 //
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): a delay throw on the ice bell's last answer of bar 48 (step 14), echoing into the dub.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -669,6 +671,27 @@ export const arrangement = {
     toBar: 56,
   },
   swing: 57,
+  automation: {
+    lead3: {
+      fx: [
+        {
+          from: [48,14],
+          to: [49,0],
+          chain: [
+            {
+              id: "delay",
+              params: {
+                sync: 1,
+                division: 0.75,
+                feedback: 0.6,
+                wet: 0.5,
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
 
 export const variants = {

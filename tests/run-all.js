@@ -49,6 +49,8 @@ const suites = [
   'tests/lane-calls.js',
   'tests/pixel-background.js',
   'tests/speed-mcm.js',
+  // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
+  'tests/surge-cycle.js',
   'tests/frost-aurora.js',
   'tests/frost-weather.js',
   'tests/crypt-weather.js',
@@ -545,6 +547,10 @@ const suites = [
   // time, and a cut silences what was ringing on every kind of voice without letting the
   // tail back in under the next note. A claim about samples, like the two above it.
   'tests/mix-automation.js',
+  // Bar-effect sections, the same kind of claim: a section on a track or on the master is
+  // exactly its stretch and the same samples outside it, the Stutter repeats what it
+  // grabbed, and nothing a section offers is late — the latency table, measured.
+  'tests/fx-sections.js',
   // And the mirror image of it: a cabinet's treatment handing over to a level's mix
   // must do the opposite — keep the clock, keep the note ringing, change only the
   // presentation. Same claim, opposite sign. The first is the clock, in counters; the
@@ -560,6 +566,9 @@ const suites = [
   // LENGTH with its back half silent, and every baseline comparison above was happy.
   'tests/render-length.js',
   'tests/new-effects.js',
+  // The engine's own worklets: the Noise Gate and the rewind tap, off the main thread.
+  // The gate is the same gate, on time; a bounce builds it on the worklet.
+  'tests/engine-worklets.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',
 ];
@@ -603,12 +612,14 @@ const browserSuites = new Set([
   'tests/bar-gain.js',
   'tests/bar-pan.js',
   'tests/mix-automation.js',
+  'tests/fx-sections.js',
   'tests/music-variant.js',
   'tests/music-variant-render.js',
   'tests/voices.js',
   'tests/null-test.js',
   'tests/render-length.js',
   'tests/new-effects.js',
+  'tests/engine-worklets.js',
   'tests/song-processing.js',
   // Both open a browser and neither said so, which is how a push-triggered deploy came
   // to run them on a runner with no chromium installed: `npm ci` fetches the playwright
@@ -686,9 +697,9 @@ const soundSuites = [
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
   'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/mix-automation.js',
-  'tests/music-variant.js',
+  'tests/fx-sections.js', 'tests/music-variant.js',
   'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
-  'tests/new-effects.js',
+  'tests/new-effects.js', 'tests/engine-worklets.js',
 ];
 // A suite renamed out of `suites` would silently vanish from this group too, and a
 // gate that covers less than it looks like it covers is the failure this file already

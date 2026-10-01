@@ -496,7 +496,7 @@ const SCRIPT = [
   { k: 'role', role: 'RHYTHM BANKRUPTCY', name: 'Marlon deSouza' },
   { k: 'role', role: 'CARDBOARD KINGDOM', name: 'Rhiannon Oduya' },
   { k: 'role', role: 'CORPORATE KOMBAT', name: 'Felix Bramante' },
-  { k: 'role', role: 'THE SURGE', name: 'The entire Design department, at once' },
+  { k: 'role', role: 'DÉJÀ VIEW', name: 'The entire Design department, at once' },
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'NARRATIVE' },

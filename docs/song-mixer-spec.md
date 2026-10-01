@@ -472,8 +472,9 @@ suggesting enhancements:
      while its explicit Length menu can quantise selected notes or a whole track to
      sixteenth intervals.
    - **Overdub only.** Recording adds notes; deletion stays with the grid and the roll.
-   - **Writes are shared** (`writeBarNotesShared`), so a note played into a looping
-     section changes every bar that plays that part.
+   - **Writes are per bar** (`writeBarNotes`, the roll's own write), so a note lands
+     only in the bar it was played in — never in another bar sharing its section
+     (a duplicate, an `order` repeat). `tests/note-recorder.js` pins it.
    - **Buffered, flushed on the BEAT** (~500ms at 120bpm), never per note:
      `applyArrangementEdit` pushes undo, revalidates the arrangement and rebuilds the
      timeline. The writes coalesce via `pushUndo`'s 700ms same-tag window, so a whole

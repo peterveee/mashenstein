@@ -17,8 +17,8 @@ what has to change if a cabinet switches style.
   card's hand over a longer country: each layer's period is two to three times the
   card's, with four tombs, a second ruin, more trees, railings and lamps, and each stage
   opening on its own stretch. It is portrait-aware, and it is baked during the briefing
-  (`game/art-warmup.js`) in 2048 px tiles. The `vhs` pack is kept, because the Surge
-  cycles through it.
+  (`game/art-warmup.js`) in 2048 px tiles. The `vhs` pack is kept for the lab's crypt-style
+  cards; since 1 Oct the Surge cycles the gouache night instead.
 - **The brown-out is underground only.** Peter: "at present we present low light, but
   perhaps we park that and only do that on the underground sections". Crypt-1 and crypt-3's
   blackout missions now darken only the catacomb, following its depth (`brownOutLevel` in
@@ -48,7 +48,8 @@ what has to change if a cabinet switches style.
   painters through a seam, so the coyotes, devils, tumbleweeds, pumpjacks, speed trap and jet
   keep all their latches and clocks. The textures are baked during the briefing
   (`game/art-warmup.js`), and the sky's still part is cached as a bitmap. The `faux3d` pack
-  is kept whole, because the Surge cycles through it. The lab's bake-off files now draw with
+  is kept whole: its road is this pack's road. Since 1 Oct the Surge cycles `mcm`, not
+  `faux3d`. The lab's bake-off files now draw with
   the shipped painters; the shipped look is in the lab section *SPEED ZONE — mid-century
   modern, as shipped*.
 - **Frost's sky → wax crayon on white paper, shipped 29 Sep 2026; the rest of Frost stays
@@ -227,7 +228,7 @@ Of the three paper cabinets, to my eye:
 | Terminal Velocity | neon | keep | Already distinct. |
 | Cardboard Kingdom | `cardboard` | **crayon** (or voxel) | A kids' craft world: crayon on construction paper or card fits the theme, and today's pack is very thin. Voxel reads as boxes. |
 | Corporate Kombat | `doodle` (graph paper) | keep doodle | Already a sketchbook look; crayon would be too close to it. |
-| The Surge | cycles every pack | nothing to do | New packs join its cycle automatically; check that each one survives the cut. |
+| The Surge | cycles every cabinet's shipped pack, glitching | keep `SURGE_CYCLE` in step | The cycle is a list in `stylePacks/index.js` (`SURGE_CYCLE`), not derived. When a cabinet changes style, swap its entry; `tests/surge-cycle.js` fails until you do. Since 1 Oct the look changes on the Surge song's bar line (four bars a look, each stage opening three looks on), with a random move each change, and glitches between, worse each stage and reaching the lane from surge-2: `stylePacks/surgeCut.js`, picked in the lab sections *surge-look-changes* and *surge-glitching*. Each pack paints with the Surge's colours and stage index, so cabinet-gated extras (Frost's crayon sky, the plumber sun) stay off unless the pack opts the Surge in, as `mcm` does. |
 
 Where the rest of the A level could go:
 

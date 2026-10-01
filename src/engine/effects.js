@@ -19,7 +19,12 @@
 // being different files breaks stems, baselines and the null test at once.
 import * as Tone from 'tone';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
+import { AUTOMATION_FLOOR_DB } from '../data/automation.js';
 import { upperFormants, vowelAt, parseStack, vowelPosition } from './formants.js';
+import {
+  canHostEngineWorklets, createNoiseGateNode, engineWorkletsReady, isOfflineContext,
+  noiseGateSettings, prepareEngineWorklets,
+} from './engine-worklets.js';
 
 // Note divisions for tempo-synced effects, in beats — eight bars down to a 1/32,
 // with the dotted and triplet values in between. One table for delay times and for
@@ -97,6 +102,9 @@ const PARAM_RANGES = {
   // buildDevices. Note it is the OPPOSITE sense to the strip's own WIDTH control,
   // which is transparent at 1: here 0 is off and 1 is collapsed.
   mono: { min: 0, max: 1, step: 1, toggle: true },
+  // A Spot FX section's SWEEP: every card that can glide across its section has one. The
+  // end values it glides to take their ranges from the controls they end — see paramRange.
+  sweep: { min: 0, max: 1, step: 1, toggle: true },
   tone: { min: 400, max: 20000, step: 100, unit: 'Hz', log: true },
   sync: { min: 0, max: 1, step: 1, toggle: true },
   delayMs: { min: 1, max: 1000, step: 1, unit: 'ms' },
@@ -232,19 +240,38 @@ function makeChannelDelay(ctx, params) {
   line.connect(lp); lp.connect(fb); fb.connect(line);
   lp.connect(wet); wet.connect(pan); pan.connect(output);
 
-  const state = { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, mix: 0.35, pan: 0, ...params };
+  const state = { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, mix: 0.35, pan: 0,
+    sweep: 0, ...params };
   const node = { input, output, _custom: true };
   let seconds = delaySeconds(state, 120);
+  const feedbackOf = (v) => Math.max(0, Math.min(0.95, Number(v) || 0));
+  const mixOf = (v) => Math.max(0, Number(v) || 0);
+  // SWEEP — FEEDBACK and MIX glide across a Spot FX section (see sectionGlide).
+  const glide = sectionGlide(ctx, {
+    on: () => (Number(state.sweep) || 0) >= 0.5,
+    still: () => [feedbackOf(state.feedback), mixOf(state.mix)],
+    tracks: () => {
+      const f = [feedbackOf(state.feedback), feedbackOf(state.feedbackTo ?? state.feedback)];
+      const m = [mixOf(state.mix), mixOf(state.mixTo ?? state.mix)];
+      return [
+        { params: [fb.gain], ramp: 'lin', at: (u) => [f[0] + (f[1] - f[0]) * u] },
+        { params: [wet.gain], ramp: 'lin', at: (u) => [m[0] + (m[1] - m[0]) * u] },
+      ];
+    },
+  });
   node.applyState = (bpm) => {
     const t = ctx.currentTime;
     seconds = delaySeconds(state, bpm);
     line.delayTime.setTargetAtTime(seconds, t, 0.05);
-    fb.gain.setTargetAtTime(Math.max(0, Math.min(0.95, state.feedback)), t, 0.05);
     lp.frequency.setTargetAtTime(Math.max(200, Math.min(16000, state.tone)), t, 0.05);
-    wet.gain.setTargetAtTime(Math.max(0, state.mix), t, 0.03);
     pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, state.pan)), t, 0.03);
+    if (glide.retune()) return;
+    fb.gain.setTargetAtTime(feedbackOf(state.feedback), t, 0.05);
+    wet.gain.setTargetAtTime(mixOf(state.mix), t, 0.03);
   };
   node.setState = (patch, bpm) => { Object.assign(state, patch); node.applyState(bpm); };
+  node.engage = (at, sixteenth, until, since) => glide.engage(at, until, since);
+  node.disengage = (at, fade = 0) => glide.disengage(at, fade);
   /**
    * Empty the line at `at` — a CUT on the channel (src/data/automation.js). What is in the
    * line then is the track from before the cut, so for exactly one delay time the repeats
@@ -884,6 +911,15 @@ export function bellResponse(params = {}, freqs = [], sampleRate = 44100) {
  * inserted, whether or not anything had been moved. This rides ONE side down from
  * unity, so centred it is bit-for-bit the input — which is what an insert you reach for
  * to fix a level has to be.
+ *
+ * The bottom of GAIN's travel is SILENCE (the automation floor, -48, reads −∞), and on a
+ * Spot FX section SWEEP glides the card across the section: GAIN to GAIN TO and BALANCE
+ * to BALANCE TO, from its first step to its last. That is a fade or a pan of exactly the
+ * painted stretch, of one track or — on the master — of the whole mix. The level walks
+ * evenly in dB, the Even shape of a level-line fade, down to the floor, so a fade to −∞
+ * falls at one steady rate the ear hears; the balance moves evenly along its own law. The
+ * section switch says when it starts and ends, as it does for the Filter's sweep, and a
+ * jump landing part-way through picks the glide up where it would be.
  */
 function makeGain(ctx, params) {
   const level = ctx.createGain();
@@ -911,11 +947,13 @@ function makeGain(ctx, params) {
   split.connect(lToR, 0); lToR.connect(merge, 0, 1);
   split.connect(rToL, 1); rToL.connect(merge, 0, 0);
   merge.connect(output);
-  const state = { gain: 0, balance: 0, mono: 0, ...params };
-  const apply = () => {
-    const t = ctx.currentTime;
-    level.gain.setTargetAtTime(10 ** (state.gain / 20), t, 0.02);
-    const b = Math.max(-1, Math.min(1, state.balance ?? 0));
+  const state = { gain: 0, balance: 0, mono: 0, sweep: 0, gainTo: 0, balanceTo: 0, ...params };
+  // The bottom of the travel is silence; anything above it is its dB.
+  const silent = (db) => !(Number(db) > AUTOMATION_FLOOR_DB);
+  const amp = (db) => (silent(db) ? 0 : 10 ** ((Number(db) || 0) / 20));
+  // What a BALANCE puts on the four paths: left, right, and the two crossed ones.
+  const sides = (balance) => {
+    const b = Math.max(-1, Math.min(1, Number(balance) || 0));
     const bl = b <= 0 ? 1 : 1 - b;
     const br = b >= 0 ? 1 : 1 + b;
     // MONO is a mid/side collapse, not a sum: at 1 both outputs are (L+R)/2, so a
@@ -928,16 +966,46 @@ function makeGain(ctx, params) {
     // the desk writes it as 0 or 1: the halfway states are reachable by the same
     // arithmetic, and nothing has to special-case the ends.
     const m = Math.max(0, Math.min(1, state.mono ?? 0)) / 2;
-    left.gain.setTargetAtTime(bl * (1 - m), t, 0.02);
-    right.gain.setTargetAtTime(br * (1 - m), t, 0.02);
-    rToL.gain.setTargetAtTime(bl * m, t, 0.02);
-    lToR.gain.setTargetAtTime(br * m, t, 0.02);
+    return [bl * (1 - m), br * (1 - m), bl * m, br * m];
+  };
+  const paths = [level.gain, left.gain, right.gain, rToL.gain, lToR.gain];
+  const still = () => [amp(state.gain), ...sides(state.balance)];
+  // SWEEP — see sectionGlide. The level walks evenly in dB down to the floor rather than to
+  // silence: a ramp cannot reach zero, and -48 is inaudible under anything else in a mix.
+  // The balance law has a corner at the centre — below it the right side rides, above it
+  // the left — so a pan through the middle is two straight runs, not one.
+  const glide = sectionGlide(ctx, {
+    on: () => (Number(state.sweep) || 0) >= 0.5,
+    still,
+    tracks: () => {
+      const dA = Math.max(AUTOMATION_FLOOR_DB, Number(state.gain) || 0);
+      const dZ = Math.max(AUTOMATION_FLOOR_DB, Number(state.gainTo) || 0);
+      const bA = Math.max(-1, Math.min(1, Number(state.balance) || 0));
+      const bB = Math.max(-1, Math.min(1, Number(state.balanceTo) || 0));
+      return [
+        { params: [level.gain], ramp: 'exp', at: (u) => [10 ** ((dA + (dZ - dA) * u) / 20)] },
+        {
+          params: [left.gain, right.gain, rToL.gain, lToR.gain],
+          ramp: 'lin',
+          corners: bA * bB < 0 ? [-bA / (bB - bA)] : [],
+          at: (u) => sides(bA + (bB - bA) * u),
+        },
+      ];
+    },
+  });
+
+  const apply = () => {
+    if (glide.retune()) return;
+    const t = ctx.currentTime;
+    still().forEach((v, i) => paths[i].setTargetAtTime(v, t, 0.02));
   };
   apply();
   return {
     input: level, output, _custom: true,
     applyState: apply,
     setState: (patch) => { Object.assign(state, patch); apply(); },
+    engage: (at, sixteenth, until, since) => glide.engage(at, until, since),
+    disengage: (at, seconds = 0) => glide.disengage(at, seconds),
     connect: (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest)),
     disconnect: () => { try { output.disconnect(); } catch { /* fine */ } },
     dispose: () => {
@@ -2143,48 +2211,90 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
   return node;
 }
 
+// One staircase per bit depth, shared: a WaveShaperNode copies the curve it is given, so
+// building the same 65537 points again for every crusher on the desk buys nothing.
+const CRUSH_CURVES = new Map();
+// The shaper's input is scaled into its -1..1 domain from this much either side of zero, so
+// a hot master — several songs peak well over 1.0 before the limiter — is crushed rather
+// than clipped at 0dBFS by the end of the curve.
+const CRUSH_RANGE = 4;
+const crushCurve = (bits) => {
+  if (CRUSH_CURVES.has(bits)) return CRUSH_CURVES.get(bits);
+  const steps = 2 ** (bits - 1);
+  // Odd, so the middle point is exactly zero in and zero out: silence stays silence, which
+  // tests/new-effects.js holds the crusher to.
+  const n = 65537;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1) * CRUSH_RANGE;
+    curve[i] = Math.round(x * steps) / steps;
+  }
+  CRUSH_CURVES.set(bits, curve);
+  return curve;
+};
+
+/**
+ * BIT CRUSHER — bit depth and sample rate, from native nodes.
+ *
+ * It used to be a ScriptProcessorNode, which costs a 256-frame block: every crushed sample
+ * came out 11.7ms after it went in, on the MAIN thread, and against its own dry leg at any
+ * MIX under 100% that lag was a comb filter. Late is also what kept it off bar-effect
+ * sections, where switching it in would have moved the whole track (or the whole mix) by
+ * that much. Now neither half has any latency:
+ *
+ *   · DEPTH is a WaveShaperNode whose curve is a staircase — round(x · 2^(bits-1)) over
+ *     2^(bits-1) — fine enough that the shaper's own interpolation between two points is
+ *     a hair of a step, so the flats are the exact levels the old processor rounded to.
+ *   · RATE is a sample-and-hold made of a delay line: its delay time is a sawtooth that
+ *     climbs one sample per sample and drops back to zero every DOWNSAMPLE samples, so the
+ *     read position stands still on the sample at the top of each period. The sawtooth is
+ *     a looped buffer of exact sample counts rather than an oscillator, whose band-limited
+ *     ramp rings at the drop.
+ *
+ * Both are memoryless apart from the hold, so it does not matter that the hold comes first.
+ */
 export function makeBitCrusher(ctx, params = {}) {
   const input = ctx.createGain();
   const output = ctx.createGain();
   const dry = ctx.createGain();
   const wet = ctx.createGain();
-  // ScriptProcessorNode is deprecated for new application code, but it is the one
-  // processor Chromium runs in both live AudioContexts and OfflineAudioContexts here.
-  // A 256-frame block keeps the live latency bounded while preserving the export path;
-  // the held sample and its phase live across blocks, so a downsample factor does not
-  // restart at every callback.
-  const processor = ctx.createScriptProcessor(256, 2, 2);
+  const hold = ctx.createDelay(0.05);
+  hold.delayTime.value = 0;
+  const scale = ctx.createGain(); scale.gain.value = 1 / CRUSH_RANGE;
+  const shaper = ctx.createWaveShaper();
+  shaper.oversample = 'none';
   input.connect(dry); dry.connect(output);
-  input.connect(processor); processor.connect(wet); wet.connect(output);
+  input.connect(hold); hold.connect(scale); scale.connect(shaper); shaper.connect(wet); wet.connect(output);
   const state = { bits: 8, downsample: 4, wet: 1, ...params };
-  const held = [0, 0];
-  let samplesUntilNext = 0;
   let running = false;
+  let saw = null;
+  let sawFactor = null;
+  let bitsNow = null;
   const setParam = (p, value, tc = 0.03) => setAudioParam(ctx, p, value, running, tc);
-  processor.onaudioprocess = (event) => {
-    const source = event.inputBuffer;
-    const destination = event.outputBuffer;
-    const channels = destination.numberOfChannels;
-    const sourceChannels = source.numberOfChannels;
-    const sourceData = Array.from({ length: sourceChannels }, (_, c) => source.getChannelData(c));
-    const destinationData = Array.from({ length: channels }, (_, c) => destination.getChannelData(c));
-    const bits = Math.max(1, Math.min(24, Math.round(Number(state.bits) || 8)));
-    const steps = 2 ** (bits - 1);
-    const factor = Math.max(1, Math.min(40, Math.round(Number(state.downsample) || 1)));
-    for (let i = 0; i < destination.length; i++) {
-      if (samplesUntilNext <= 0) {
-        for (let c = 0; c < channels; c++) {
-          const inputChannel = sourceChannels ? Math.min(c, sourceChannels - 1) : -1;
-          const sample = inputChannel < 0 ? 0 : sourceData[inputChannel][i];
-          held[c] = Math.round(sample * steps) / steps;
-        }
-        samplesUntilNext = factor;
-      }
-      for (let c = 0; c < channels; c++) destinationData[c][i] = held[c] || 0;
-      samplesUntilNext--;
+  // A new sawtooth for a new factor, taking over from the old one at the same instant.
+  const setFactor = (factor) => {
+    if (factor === sawFactor) return;
+    const buffer = ctx.createBuffer(1, factor, ctx.sampleRate);
+    const ramp = buffer.getChannelData(0);
+    for (let i = 0; i < factor; i++) ramp[i] = i / ctx.sampleRate;
+    const next = ctx.createBufferSource();
+    next.buffer = buffer;
+    next.loop = true;
+    next.connect(hold.delayTime);
+    const at = ctx.currentTime;
+    next.start(at);
+    if (saw) {
+      try { saw.stop(at); } catch { /* already stopped */ }
+      const old = saw;
+      old.onended = () => { try { old.disconnect(); } catch { /* fine */ } };
     }
+    saw = next;
+    sawFactor = factor;
   };
   const apply = () => {
+    const bits = Math.max(1, Math.min(24, Math.round(Number(state.bits) || 8)));
+    if (bits !== bitsNow) { shaper.curve = crushCurve(bits); bitsNow = bits; }
+    setFactor(Math.max(1, Math.min(40, Math.round(Number(state.downsample) || 1))));
     const w = Math.max(0, Math.min(1, state.wet || 0));
     setParam(wet.gain, Math.sin((w * Math.PI) / 2), 0.03);
     setParam(dry.gain, Math.cos((w * Math.PI) / 2), 0.03);
@@ -2197,9 +2307,9 @@ export function makeBitCrusher(ctx, params = {}) {
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
   node.dispose = () => {
     node.disconnect();
-    processor.onaudioprocess = null;
-    for (const n of [input, dry, processor, wet, output]) {
-      try { n.disconnect(); } catch { /* fine */ }
+    if (saw) { try { saw.stop(); } catch { /* already stopped */ } }
+    for (const n of [input, dry, saw, hold, scale, shaper, wet, output]) {
+      try { n?.disconnect(); } catch { /* fine */ }
     }
   };
   return node;
@@ -2208,22 +2318,85 @@ export function makeBitCrusher(ctx, params = {}) {
 /**
  * A level-sensitive noise gate. The detector is stereo-linked so a quiet channel
  * cannot pull the image apart, and the same attack/release ballistics are applied to
- * the gain control so closing the gate is a fade rather than a click. A
- * ScriptProcessorNode is used here for the per-sample envelope: it is deprecated for
- * new browser work, but is the native processor this project can render in both live
- * and OfflineAudioContexts. There is no dry leg — below THRESHOLD means silence.
+ * the gain control so closing the gate is a fade rather than a click. There is no dry
+ * leg — below THRESHOLD means silence.
+ *
+ * The per-sample envelope runs in an AudioWorklet (engine-worklets.js), on the audio
+ * thread. It used to be a ScriptProcessorNode, which runs on the MAIN thread: a 256-sample
+ * deadline in the live signal path of every song that used the gate, so a frame that
+ * held the main thread past it dropped that lane out. The ScriptProcessor is kept only
+ * as the fallback for a context that cannot host a worklet (the LAN dev URL over http,
+ * file://), and for the moment before the worklet is registered on a live context —
+ * which it then hands over to, carrying its envelope so an open gate stays open. An
+ * offline render never swaps: it uses whichever it was built with, and every render that
+ * awaits `mixer.ready` is built with the worklet.
  */
 function makeNoiseGate(ctx, params = {}) {
   const input = ctx.createGain();
   const output = ctx.createGain();
-  const processor = ctx.createScriptProcessor(256, 2, 2);
   const state = { threshold: -45, attack: 0.005, release: 0.12, ...params };
+  let gate = engineWorkletsReady(ctx) ? workletNoiseGate(ctx, state) : scriptNoiseGate(ctx, state);
+  let disposed = false;
+  input.connect(gate.processor);
+  gate.processor.connect(output);
+
+  if (!gate.worklet && canHostEngineWorklets(ctx) && !isOfflineContext(ctx)) {
+    prepareEngineWorklets(ctx).then((ok) => {
+      if (!ok || disposed) return;
+      let next;
+      try { next = workletNoiseGate(ctx, state, gate.carry()); } catch { return; }
+      input.connect(next.processor);
+      next.processor.connect(output);
+      try { input.disconnect(gate.processor); } catch { /* fine */ }
+      gate.dispose();
+      gate = next;
+    });
+  }
+
+  const node = { input, output, _custom: true };
+  /** Which processor is running: 'worklet' or 'script'. Read by tests. */
+  Object.defineProperty(node, 'engine', { get: () => (gate.worklet ? 'worklet' : 'script') });
+  node.applyState = () => gate.apply();
+  node.setState = (patch = {}) => { Object.assign(state, patch); gate.apply(); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    disposed = true;
+    node.disconnect();
+    gate.dispose();
+    for (const n of [input, output]) { try { n.disconnect(); } catch { /* fine */ } }
+  };
+  return node;
+}
+
+/** The Noise Gate on the audio thread. `state` is read on every apply(). */
+function workletNoiseGate(ctx, state, carry = null) {
+  const processor = createNoiseGateNode(ctx, noiseGateSettings(state), carry);
+  return {
+    worklet: true,
+    processor,
+    apply() {
+      const s = noiseGateSettings(state);
+      for (const k of Object.keys(s)) {
+        const p = processor.parameters.get(k);
+        if (p && p.value !== s[k]) p.value = s[k];
+      }
+    },
+    carry: () => null,
+    dispose() { try { processor.disconnect(); } catch { /* fine */ } },
+  };
+}
+
+/**
+ * The fallback: the same envelope in a ScriptProcessorNode, which renders anywhere — at
+ * the cost of the main-thread deadline the worklet exists to remove. `state` is read on
+ * every callback.
+ */
+function scriptNoiseGate(ctx, state) {
+  const processor = ctx.createScriptProcessor(256, 2, 2);
   const sampleRate = ctx.sampleRate;
   let envelope = 0;
   let gateGain = 0;
-
-  input.connect(processor);
-  processor.connect(output);
   processor.onaudioprocess = (event) => {
     const source = event.inputBuffer;
     const destination = event.outputBuffer;
@@ -2231,12 +2404,10 @@ function makeNoiseGate(ctx, params = {}) {
     const channels = destination.numberOfChannels;
     const sourceData = Array.from({ length: sourceChannels }, (_, c) => source.getChannelData(c));
     const destinationData = Array.from({ length: channels }, (_, c) => destination.getChannelData(c));
-    const numberOr = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-    const threshold = 10 ** (Math.max(-80, Math.min(0, numberOr(state.threshold, -45))) / 20);
-    const attack = Math.max(0.001, Math.min(0.5, numberOr(state.attack, 0.005)));
-    const release = Math.max(0.01, Math.min(2, numberOr(state.release, 0.12)));
-    const attackCoef = Math.exp(-1 / (attack * sampleRate));
-    const releaseCoef = Math.exp(-1 / (release * sampleRate));
+    const s = noiseGateSettings(state);
+    const threshold = 10 ** (s.threshold / 20);
+    const attackCoef = Math.exp(-1 / (s.attack * sampleRate));
+    const releaseCoef = Math.exp(-1 / (s.release * sampleRate));
 
     for (let i = 0; i < destination.length; i++) {
       let level = 0;
@@ -2253,18 +2424,16 @@ function makeNoiseGate(ctx, params = {}) {
       }
     }
   };
-
-  const node = { input, output, _custom: true };
-  node.applyState = () => {};
-  node.setState = (patch = {}) => { Object.assign(state, patch); };
-  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
-  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
-  node.dispose = () => {
-    node.disconnect();
-    processor.onaudioprocess = null;
-    for (const n of [input, processor, output]) { try { n.disconnect(); } catch { /* fine */ } }
+  return {
+    worklet: false,
+    processor,
+    apply() {},
+    carry: () => ({ envelope, gain: gateGain }),
+    dispose() {
+      processor.onaudioprocess = null;
+      try { processor.disconnect(); } catch { /* fine */ }
+    },
   };
-  return node;
 }
 
 const VOWEL_EXCITER_CURVE = (() => {
@@ -2830,6 +2999,444 @@ function makeRhythmicGate(ctx, params = {}) {
   return node;
 }
 
+/**
+ * The lengths a Stutter can grab, in beats — the delay's own divisions, kept to the ones
+ * a repeat is any use at. Longer than a half note is a loop, not a stutter, and a DelayNode
+ * holds the slice, so the slice is bounded by MAX_DELAY_SECONDS anyway.
+ */
+export const STUTTER_SLICES = {
+  Off: 0, '1/2': 2, '1/4': 1, '1/8': 0.5, '1/8 triplet': 1 / 3, '1/16': 0.25,
+  '1/16 triplet': 1 / 6, '1/32': 0.125,
+};
+
+/**
+ * How often a Stutter lets go of its slice and grabs the next one, in beats. `0` is never:
+ * the slice it grabbed when its section started repeats until the section ends. A
+ * retrigger always leaves room for at least one repeat — see `makeStutter`.
+ */
+export const STUTTER_RETRIGGERS = {
+  Off: 0, '1/8': 0.5, '1/4': 1, '1/2': 2, '1 bar': 4,
+};
+
+/**
+ * How long a Stutter's TAPE STOP takes to wind down, in beats — always ENDING at its
+ * section's end, so the music stands still on the bar line it was painted up to. One
+ * longer than its section takes the whole section. `0` is no stop.
+ */
+export const STUTTER_STOPS = {
+  Off: 0, '1/16': 0.25, '1/8': 0.5, '1/4': 1, '1/2': 2, '1 bar': 4, '2 bars': 8,
+};
+
+/**
+ * STUTTER — grabs a slice of what is playing and plays it again, and again, for as long
+ * as its section lasts. A bar-effect section is the only place it does anything: the
+ * section switching it in is what says WHEN to grab (`engage`), and switching it out is
+ * what lets go (`disengage`). In an insert slot nobody ever engages it and it is a wire,
+ * which is why the desk only offers it on a section.
+ *
+ * Native nodes and nothing else — a delay line in a feedback loop — so it renders the same
+ * in an OfflineAudioContext, in a freeze and on a phone, and costs no worklet:
+ *
+ *   in ──┬── dry ──────────────────────────────┬── out
+ *        └── rec ──► loop (delay = slice) ──┬── wet
+ *                     ▲                     │
+ *                     └──────── fb ◄────────┘
+ *
+ * At the grab, `rec` opens and `fb` is shut, so the line fills with exactly one slice of the
+ * music while `dry` plays that same slice live. One slice later `fb` closes the loop, `rec`
+ * shuts, `dry` hands over to `wet`, and the line plays its slice back once per slice length
+ * for as long as `fb` holds it there — `fb` below one is the FADE, each repeat that much
+ * quieter than the last.
+ *
+ * Every slice is windowed by `rec`'s own short ramps, so the loop's seam is a dip and never
+ * a click, and the live first pass hands over across the same window — the first pass and
+ * every repeat after it end the same way and sound like the same thing.
+ *
+ * A RETRIGGER lets go and grabs again every so often, measured from the grab rather than
+ * from the bar line, because a section can start anywhere. It is scheduled a sixteenth at
+ * a time from `scheduleRhythm`, like the gate's pulses, so a jump or a stop never leaves a
+ * grab booked in the future.
+ *
+ * THE LOOP IS LATE BY A RENDER QUANTUM, in Chromium: a DelayNode's own output comes back
+ * round a feedback loop 128 frames after the delay time says, so a loop set to a sixteenth
+ * drifts 2.9ms later on every pass and a held slice slides out of time with the song
+ * (measured: passes 2128 frames apart on a 2000-frame delay). The spec says it should not,
+ * so other engines may not — which is why the lateness is MEASURED once per page
+ * (`probeCycleLag`) rather than assumed. The loop's delay is set short by it, and the
+ * recording reaches the loop through a delay of exactly that much, so the first repeat and
+ * every repeat after it land one slice apart. The slice is also a whole number of frames:
+ * a fractional delay interpolates, and a loop that interpolates on every pass dulls a
+ * little more each time round.
+ *
+ * TAPE STOP winds whatever the Stutter is playing — the repeats, or with SLICE Off the
+ * music itself — down to a standstill, so that it stands still exactly at the section's
+ * end. It is one more delay line, after the loop, whose delay GROWS: the read point falls
+ * behind the music at an increasing rate, so speed and pitch fall together, the way a
+ * reel does when the motor lets go. The speed falls in a straight line from 1 to 0
+ * (constant braking), which makes the delay a parabola, (t − S)² / 2L. At rest the line
+ * is at zero delay, a wire — and it is only built at all once a stop has been asked for.
+ */
+// Frames a DelayNode's output is late coming back round its own feedback loop. 128 is what
+// Chromium does and what every render here runs on; the probe replaces it with what this
+// engine actually does, long before a section can engage.
+let cycleLagFrames = 128;
+let cycleProbe = null;
+function probeCycleLag() {
+  if (cycleProbe || typeof OfflineAudioContext !== 'function') return;
+  try {
+    const N = 4096;
+    const probe = new OfflineAudioContext(1, N, 44100);
+    const buffer = probe.createBuffer(1, N, 44100);
+    buffer.getChannelData(0)[64] = 1;
+    const src = probe.createBufferSource(); src.buffer = buffer;
+    const line = probe.createDelay(0.1); line.delayTime.value = 1000 / 44100;
+    const back = probe.createGain(); back.gain.value = 0.5;
+    src.connect(line); line.connect(back); back.connect(line); line.connect(probe.destination);
+    src.start(0);
+    // The first pass is at 1064 whatever the engine does; the second is at 2064 plus the lag.
+    cycleProbe = probe.startRendering().then((rendered) => {
+      const y = rendered.getChannelData(0);
+      let at = -1; let peak = 0;
+      for (let i = 1564; i < N; i++) if (Math.abs(y[i]) > peak) { peak = Math.abs(y[i]); at = i; }
+      const lag = at - 2064;
+      if (peak > 0.1 && lag >= 0 && lag <= 1024) cycleLagFrames = lag;
+    }).catch(() => { /* keep the default */ });
+  } catch { /* no offline context here: keep the default */ }
+}
+
+function makeStutter(ctx, params = {}) {
+  probeCycleLag();
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain(); dry.gain.value = 1;
+  const rec = ctx.createGain(); rec.gain.value = 0;
+  // The recording's way into the loop, late by exactly what the loop's own way round is.
+  const lead = ctx.createDelay(0.05); lead.delayTime.value = 0;
+  const loop = ctx.createDelay(MAX_DELAY_SECONDS); loop.delayTime.value = 0.125;
+  const fb = ctx.createGain(); fb.gain.value = 0;
+  const wet = ctx.createGain(); wet.gain.value = 0;
+  // What the loop plays, live or repeated — and what a TAPE STOP winds down.
+  const core = ctx.createGain();
+  input.connect(dry); dry.connect(core);
+  input.connect(rec); rec.connect(lead); lead.connect(loop); loop.connect(fb); fb.connect(loop);
+  loop.connect(wet); wet.connect(core);
+  core.connect(output);
+  const state = { slice: 0.25, retrigger: 0, fade: 0, stop: 0, ...params };
+  const IDLE = { dry: 1, wet: 0, rec: 0, fb: 0 };
+  const params4 = { dry: dry.gain, wet: wet.gain, rec: rec.gain, fb: fb.gain };
+  // What is playing: `{ at, d, w, every, g }` from the grab until the section lets go.
+  let pattern = null;
+  let nextGrab = 1;            // which retrigger the clock books next
+  let sixteenth = null;        // seconds, from the sequencer — the last one it reported
+  let lastStep = null;
+  let lastWhen = null;
+  // The tape: `{ line, level }`, spliced in after the loop the first time a stop is asked
+  // for and kept. `stop` is the wind-down booked on it, `{ S, E, L }` in seconds, and
+  // `section` the end of the section engaged — what a stop turned mid-section aims at.
+  let tape = null;
+  let stop = null;
+  let section = null;
+  const ensureTape = () => {
+    if (tape) return;
+    const line = ctx.createDelay(MAX_DELAY_SECONDS); line.delayTime.value = 0;
+    const level = ctx.createGain(); level.gain.value = 1;
+    try { core.disconnect(output); } catch { /* not wired */ }
+    core.connect(line); line.connect(level); level.connect(output);
+    tape = { line, level };
+  };
+  if (Number(state.stop) > 0) ensureTape();
+
+  /** The four gains at time `t` under the pattern, worked out rather than read back. */
+  const levelsAt = (t) => {
+    const p = pattern;
+    if (!p || t < p.at) return IDLE;
+    const k = p.every > 0 ? Math.floor((t - p.at) / p.every + 1e-9) : 0;
+    const u = t - (p.at + k * p.every);
+    const { d, w } = p;
+    const ramp = (x) => Math.max(0, Math.min(1, x));
+    // The first grab starts from the music playing live; a retrigger starts from the loop,
+    // and so does a roll's next step (`cont`).
+    const fromLoop = k > 0 || p.cont;
+    let dryL; let wetL;
+    if (u < w) { dryL = fromLoop ? ramp(u / w) : 1; wetL = fromLoop ? ramp(1 - u / w) : 0; }
+    else if (u < d - w) { dryL = 1; wetL = 0; }
+    else if (u < d) { dryL = ramp((d - u) / w); wetL = 0; }
+    else { dryL = 0; wetL = 1; }
+    const recL = u < w ? ramp(u / w) : u < d - w ? 1 : u < d ? ramp((d - u) / w) : 0;
+    return { dry: dryL, wet: wetL, rec: recL, fb: u < d + p.lag ? 0 : p.g };
+  };
+
+  /** Pin every gain to where it is at `t` and drop whatever was booked after it. */
+  const anchor = (t, levels) => {
+    for (const [name, param] of Object.entries(params4)) {
+      param.cancelScheduledValues(t);
+      param.setValueAtTime(levels[name], t);
+    }
+  };
+
+  /** Where the tape is at `t` under the stop booked — worked out, like `levelsAt`. */
+  const tapeAt = (t) => {
+    const p = stop;
+    if (!p || t <= p.S) return { delay: 0, level: 1 };
+    const u = Math.min(1, (t - p.S) / p.L);
+    return { delay: (u * u * p.L) / 2, level: u < 0.75 ? 1 : Math.max(0, (1 - u) / 0.25) };
+  };
+
+  /**
+   * The tape straight from `t` — whatever a last stop left it at — and, with a stop asked
+   * for and a section end to aim at, wound down to stand still exactly at `until`.
+   *
+   * Cancelled and anchored one frame AFTER `t`. A cancel AT `t` would take events at `t`
+   * with it, and a section starting where the last one's stop ended would lose that stop's
+   * final fade — the step it left would be a click. The wind-down is short linear segments
+   * rather than a value curve: a curve cannot be cut short part-way, and a jump has to.
+   */
+  const bookStop = (t, until, s16) => {
+    if (!tape) { stop = null; return; }
+    const eps = 1 / ctx.sampleRate;
+    const { line, level } = tape;
+    const from = tapeAt(t);
+    line.delayTime.cancelScheduledValues(t + eps);
+    level.gain.cancelScheduledValues(t + eps);
+    line.delayTime.setValueAtTime(0, t + eps);
+    level.gain.setValueAtTime(from.level, t + eps);
+    level.gain.linearRampToValueAtTime(1, t + eps + 0.002);
+    stop = null;
+    const beats = Number(state.stop) || 0;
+    if (!(beats > 0) || !(until > t + 0.02) || !(s16 > 0)) return;
+    const L = Math.min(beats * 4 * s16, until - t, 2 * (MAX_DELAY_SECONDS - 0.1));
+    const S = until - L;
+    stop = { S, E: until, L };
+    // Four-millisecond steps of constant speed: a fall in pitch too fine to hear as steps.
+    const steps = Math.max(16, Math.min(1024, Math.ceil(L / 0.004)));
+    line.delayTime.setValueAtTime(0, Math.max(S, t + eps));
+    for (let i = 1; i <= steps; i++) {
+      const u = i / steps;
+      line.delayTime.linearRampToValueAtTime((u * u * L) / 2, S + u * L);
+    }
+    // A stopped tape is silence, never a held sample: out over the last quarter.
+    level.gain.setValueAtTime(1, S + 0.75 * L);
+    level.gain.linearRampToValueAtTime(0, until);
+  };
+
+  /**
+   * The section has let go at `t`. A stop part-way through (a jump, the song stopping)
+   * fades out from where it is; a finished one is already silent. Either way the tape is
+   * straight again once it is quiet, ready for the next section.
+   */
+  const settleTape = (t, seconds = 0) => {
+    const p = stop;
+    if (!tape || !p) { stop = null; return; }
+    const eps = 1 / ctx.sampleRate;
+    const { line, level } = tape;
+    let quiet = Math.max(t, p.E);
+    if (t < p.E - eps) {
+      const from = tapeAt(t);
+      line.delayTime.cancelScheduledValues(t + eps);
+      level.gain.cancelScheduledValues(t + eps);
+      line.delayTime.setValueAtTime(from.delay, t + eps);
+      level.gain.setValueAtTime(from.level, t + eps);
+      level.gain.linearRampToValueAtTime(0, t + eps + Math.max(0.002, seconds || 0));
+      quiet = t + eps + Math.max(0.002, seconds || 0);
+    }
+    stop = null;
+    line.delayTime.setValueAtTime(0, quiet + 0.01);
+    level.gain.setValueAtTime(0, quiet + 0.01);
+    level.gain.linearRampToValueAtTime(1, quiet + 0.02);
+  };
+
+  /** One grab at `c`: a slice recorded while it plays live, then looped from `c + d`. */
+  const grab = (c, from) => {
+    const { d, w, g, lag } = pattern;
+    anchor(c, from);
+    lead.delayTime.setValueAtTime(lag, c);
+    loop.delayTime.setValueAtTime(d - lag, c + w);
+    dry.gain.linearRampToValueAtTime(1, c + w);
+    dry.gain.setValueAtTime(1, c + d - w);
+    dry.gain.linearRampToValueAtTime(0, c + d);
+    wet.gain.linearRampToValueAtTime(0, c + w);
+    wet.gain.setValueAtTime(1, c + d);
+    rec.gain.setValueAtTime(0, c);
+    rec.gain.linearRampToValueAtTime(1, c + w);
+    rec.gain.setValueAtTime(1, c + d - w);
+    rec.gain.linearRampToValueAtTime(0, c + d);
+    // Shut while the slice is going in — it reaches the loop `lag` late — and closed round
+    // it once the first repeat is in the line to go round again.
+    fb.gain.setValueAtTime(0, c);
+    fb.gain.setValueAtTime(g, c + d + lag);
+  };
+
+  /**
+   * The pattern a grab at `at` plays: a slice `beats` long, its retrigger and its fade.
+   * `cont` is a roll's next step, which takes over from the loop rather than from the music.
+   */
+  const patternFor = (at, beats, s16, cont = false) => {
+    const sr = ctx.sampleRate;
+    // Whole frames, so no pass round the loop interpolates — see the note above.
+    const frames = Math.round(Math.max(0.015, Math.min(MAX_DELAY_SECONDS - 0.06, beats * 4 * s16)) * sr);
+    const d = frames / sr;
+    const lag = cycleLagFrames / sr;
+    const w = Math.min(0.002, d / 6);
+    // A retrigger sooner than two slices would let go before the first repeat was heard,
+    // which is the music playing on with a dip in it — so it is never shorter than that.
+    const asked = Math.max(0, Number(state.retrigger) || 0) * 4 * s16;
+    const every = asked > 0 ? Math.max(asked, 2 * d) : 0;
+    const g = Math.min(1, 10 ** (Math.min(0, Number(state.fade) || 0) / 20));
+    return { at, d, w, every, g, lag, s16, cont, steps: [] };
+  };
+
+  /**
+   * ROLL — SWEEP on a Stutter: the slice steps from SLICE to SLICE TO across the section,
+   * halving (or doubling) each time, so 1/4 to 1/32 is a quarter, an eighth, a sixteenth and a
+   * thirty-second. An end that is not a power of two from the start is the last step anyway.
+   * Each step is an equal share of the section, started on its sixteenth, and each grabs the
+   * music afresh — the build roll, faster every bar into the drop.
+   */
+  const rollSteps = (a, b) => {
+    const out = [a];
+    if (Math.abs(a - b) < 1e-9) return out;
+    const down = b < a;
+    for (let v = a; ;) {
+      const n = down ? v / 2 : v * 2;
+      if (down ? n < b - 1e-9 : n > b + 1e-9) break;
+      out.push(n); v = n;
+    }
+    if (Math.abs(out[out.length - 1] - b) > 1e-9) out.push(b);
+    return out;
+  };
+  /** `[{ at, beats }]`, one per step of the roll over the section engaged, or null. */
+  const rollPlan = () => {
+    const a = Number(state.slice) || 0;
+    const b = Number(state.sliceTo) || 0;
+    if (!section || !((Number(state.sweep) || 0) >= 0.5) || !(a > 0) || !(b > 0)) return null;
+    const steps = rollSteps(a, b);
+    if (steps.length < 2) return null;
+    const n16 = Math.max(1, Math.round((section.until - section.since) / section.s16));
+    const plan = [];
+    steps.forEach((beats, k) => {
+      const at = section.since + Math.round((k * n16) / steps.length) * section.s16;
+      // A section too short for every step loses the earlier ones, never the last.
+      if (plan.length && at <= plan[plan.length - 1].at + 1e-9) plan[plan.length - 1].beats = beats;
+      else plan.push({ at, beats });
+    });
+    return plan;
+  };
+
+  /** Book every retrigger and roll step that falls before `until` — the clock's look-ahead. */
+  const bookGrabs = (until) => {
+    for (;;) {
+      const p = pattern;
+      if (!p) return;
+      const retrigger = p.every > 0 ? p.at + nextGrab * p.every : Infinity;
+      const step = p.steps.length ? p.steps[0].at : Infinity;
+      const c = Math.min(retrigger, step);
+      if (!(c < until - 1e-9)) return;
+      const from = levelsAt(c - 1e-6);
+      if (step <= retrigger + 1e-9) {
+        const [next, ...rest] = p.steps;
+        pattern = patternFor(c, next.beats, p.s16, true);
+        pattern.steps = rest;
+        nextGrab = 1;
+      } else {
+        nextGrab++;
+      }
+      grab(c, from);
+    }
+  };
+
+  const node = { input, output, _custom: true };
+  node.applyState = () => {};
+  /**
+   * New settings — the Spot FX editor retunes a playing section through here. A slice or
+   * a retrigger takes effect at the next grab. A TAPE STOP turned while its section plays
+   * is heard at once: the wind-down is booked again from now, to the same end.
+   */
+  node.setState = (patch) => {
+    const before = Number(state.stop) || 0;
+    Object.assign(state, patch);
+    // A roll turned while it plays: the steps still to come follow the new settings.
+    if (pattern && section && ('sweep' in patch || 'slice' in patch || 'sliceTo' in patch)) {
+      const plan = rollPlan();
+      const now = Math.max(ctx.currentTime + 0.02, pattern.at);
+      pattern.steps = plan ? plan.filter((st) => st.at > now + 1e-9) : [];
+    }
+    const after = Number(state.stop) || 0;
+    if (after === before) return;
+    if (after > 0) ensureTape();
+    const now = ctx.currentTime + 0.02;
+    if (section && section.until > now + 0.02) bookStop(now, section.until, section.s16);
+  };
+  /**
+   * Grab at `at`. `seconds16` is the sequencer's sixteenth, which is what a slice is
+   * measured in; without one the last the clock reported is used. `until` is when the
+   * section ends — where a TAPE STOP stands still. Without one (a per-bar snapshot, whose
+   * end nothing knows) there is no stop.
+   */
+  node.engage = (at, seconds16 = null, until = null, since = null) => {
+    const s16 = seconds16 > 0 ? seconds16 : sixteenth;
+    if (!(s16 > 0)) return;
+    const t = Math.max(at, ctx.currentTime);
+    section = Number.isFinite(until) && until > t
+      ? { until, s16, since: Number.isFinite(since) && since <= t ? since : t } : null;
+    bookStop(t, section?.until ?? null, s16);
+    // A roll landed on part-way through — a jump, a loop — starts on the step it is at.
+    const plan = rollPlan();
+    const current = plan ? plan.filter((st) => st.at <= t + 1e-9).pop() : null;
+    // SLICE Off grabs nothing — the card is a tape stop on the music as it plays.
+    const sliceBeats = current ? current.beats : Number(state.slice) || 0;
+    if (!(sliceBeats > 0)) {
+      if (pattern) node.disengage(t, 0, { keepTape: true });
+      return;
+    }
+    const from = levelsAt(t);
+    pattern = patternFor(t, sliceBeats, s16);
+    pattern.steps = plan ? plan.filter((st) => st.at > t + 1e-9) : [];
+    nextGrab = 1;
+    grab(t, from);
+    bookGrabs(t + s16);
+  };
+  /**
+   * Let go at `at`: the loop fades out over `seconds` (a window, if none) and the line is
+   * emptied, so nothing of the slice can come back when the section next starts.
+   */
+  node.disengage = (at, seconds = 0, { keepTape = false } = {}) => {
+    const t = Math.max(at, ctx.currentTime);
+    if (!keepTape) { section = null; settleTape(t, seconds); }
+    if (!pattern) return;
+    const from = levelsAt(t);
+    const span = Math.max(pattern.w || 0.002, seconds || 0);
+    pattern = null;
+    anchor(t, from);
+    wet.gain.linearRampToValueAtTime(0, t + span);
+    rec.gain.linearRampToValueAtTime(0, t + span);
+    fb.gain.setValueAtTime(0, t + span);
+    // Back to a wire for the next grab — after the input has closed, so the live music
+    // still coming through for the switch's few milliseconds is not let back in under it.
+    dry.gain.setValueAtTime(from.dry, t + span);
+    dry.gain.setValueAtTime(1, t + span + 0.01);
+  };
+  node.scheduleRhythm = (step, when, seconds16) => {
+    // The gate's continuity test, less the tempo: a jump or a loop makes any booked grab a
+    // grab for music that is no longer coming, and the section playing at the new place
+    // engages again on its own. A tempo change is the same music, so a slice already
+    // grabbed keeps going at the length it was grabbed at.
+    const jumped = lastStep != null && (step !== lastStep + 1 || when < lastWhen - 1e-6
+      || when > lastWhen + (sixteenth || seconds16) * 1.5);
+    lastStep = step; lastWhen = when; sixteenth = seconds16;
+    if (jumped && (pattern || stop)) node.disengage(when);
+    bookGrabs(when + seconds16);
+  };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    for (const n of [input, dry, rec, lead, loop, fb, wet, core, tape?.line, tape?.level, output]) {
+      try { n?.disconnect(); } catch { /* fine */ }
+    }
+  };
+  return node;
+}
+
 function makeRingMod(ctx, params = {}) {
   const input = ctx.createGain();
   const output = ctx.createGain();
@@ -3085,6 +3692,13 @@ function makeTape(ctx, params = {}) {
   return node;
 }
 
+// The three delays' SWEEP, said once.
+const DELAY_SWEEP_TIP = 'Glides FEEDBACK and the wet level across the whole section, each'
+  + ' from its first handle to its second. FEEDBACK climbing towards the top is the dub swell,'
+  + ' the repeats building on each other into the drop; the wet level coming up on the last'
+  + ' beat or two of a phrase is an echo throw. After the section the delay is back at its'
+  + ' first handles, and what it is still repeating rings out.';
+
 export const EFFECTS = [
   // 0.03 rather than the 0.02 it cost as a lone GainNode: BALANCE is a splitter, two
   // gains and a merger behind it. Re-measured by the same hand method as the rest of
@@ -3093,8 +3707,27 @@ export const EFFECTS = [
   // decision, not a width setting: the widener's own 0 collapses the image AND brings
   // the result back 6dB hot, so reaching for it to make something mono costs you a
   // level you then have to find again on the fader. This one is unity by construction.
+  //
+  // SWEEP, GAIN TO and BALANCE TO are a Spot FX section's, as the Filter's sweep is: an
+  // insert slot has no start or end to glide between (see visibleParams). GAIN reaches
+  // down to the automation floor, which is silence, so a section can fade to or from −∞.
   { id: 'gain', name: 'Gain', cost: 0.03, custom: makeGain,
-    params: ['gain', 'balance', 'mono'], defaults: { gain: 0, balance: 0, mono: 0 } },
+    params: ['gain', 'balance', 'mono', 'sweep', 'gainTo', 'balanceTo'],
+    defaults: { gain: 0, balance: 0, mono: 0, sweep: 0, gainTo: 0, balanceTo: 0 },
+    sweeps: { gain: 'gainTo', balance: 'balanceTo' },
+    ranges: {
+      gain: { min: AUTOMATION_FLOOR_DB, max: 24, step: 0.5, unit: 'dB', silentAtMin: true },
+    },
+    labels: { gainTo: 'GAIN TO', balanceTo: 'BALANCE TO' },
+    tips: {
+      sweep: 'Glides GAIN and BALANCE across the whole section, each from its first handle to'
+        + ' its second. On the master it fades or moves the whole mix; on a track, that track.'
+        + ' All the way down is −∞, so GAIN from 0 dB to −∞ is a fade-out and the other way a'
+        + ' fade-in; the level falls evenly in dB, one steady fade. BALANCE from hard left to'
+        + ' hard right is a pan — a stereo part keeps only one side at either end of a balance,'
+        + ' so turn MONO on to pan the whole of it. After the section it is back at its first'
+        + ' handles.',
+    } },
   // `short` is what an insert slot shows: a 118px strip cannot hold "Multiband
   // Compressor", and a name cut off mid-word is worse than an abbreviation someone
   // chose. The full name stays everywhere there is room for it.
@@ -3191,15 +3824,24 @@ export const EFFECTS = [
       body: 'BODY', air: 'AIR', tilt: 'TILT', intensity: 'INTENSITY',
       excite: 'EXCITE', breath: 'BREATH',
     } },
+  // The three delays SWEEP their FEEDBACK and their WET (MIX on the Advanced Delay): the
+  // dub swell, repeats building towards runaway over a few bars, and the echo throw.
   { id: 'chandelay', name: 'Advanced Delay', short: 'Adv. Delay', cost: 0.19, custom: makeChannelDelay, timed: true,
-    params: ['sync', 'division', 'delayMs', 'feedback', 'tone', 'pan', 'mix'],
-    defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, pan: 0, mix: 0.35 } },
+    params: ['sync', 'division', 'delayMs', 'feedback', 'tone', 'pan', 'mix', 'sweep', 'feedbackTo', 'mixTo'],
+    defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, pan: 0, mix: 0.35,
+      sweep: 0, feedbackTo: 0.3, mixTo: 0.35 },
+    sweeps: { feedback: 'feedbackTo', mix: 'mixTo' },
+    tips: { sweep: DELAY_SWEEP_TIP } },
   { id: 'pingpong', name: 'Ping-Pong Delay', short: 'Ping-Pong', cost: 0.44, tone: 'PingPongDelay', timed: true,
-    params: ['sync', 'division', 'delayMs', 'feedback', 'wet'],
-    defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35 } },
+    params: ['sync', 'division', 'delayMs', 'feedback', 'wet', 'sweep', 'feedbackTo', 'wetTo'],
+    defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35, sweep: 0, feedbackTo: 0.3, wetTo: 0.35 },
+    sweeps: { feedback: 'feedbackTo', wet: 'wetTo' },
+    tips: { sweep: DELAY_SWEEP_TIP } },
   { id: 'delay', name: 'Delay', cost: 0.19, tone: 'FeedbackDelay', timed: true,
-    params: ['sync', 'division', 'delayMs', 'feedback', 'wet'],
-    defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35 } },
+    params: ['sync', 'division', 'delayMs', 'feedback', 'wet', 'sweep', 'feedbackTo', 'wetTo'],
+    defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35, sweep: 0, feedbackTo: 0.3, wetTo: 0.35 },
+    sweeps: { feedback: 'feedbackTo', wet: 'wetTo' },
+    tips: { sweep: DELAY_SWEEP_TIP } },
   { id: 'chorus', name: 'Chorus', short: 'Chorus', cost: 0.55, tone: 'Chorus',
     params: ['rateSync', 'rateDivision', 'frequency', 'delayTime', 'depth', 'feedback', 'spread', 'type', 'wet'],
     defaults: { rateSync: 0, rateDivision: 1, frequency: 1.5, delayTime: 3.5, depth: 0.7, feedback: 0, spread: 180, type: 'sine', wet: 0.5 },
@@ -3228,6 +3870,52 @@ export const EFFECTS = [
     // the short end is dialable at all: a gate's decay is the whole character of it.
     ranges: { gateLength: { min: 0.01, max: 1, step: 0.01 }, attack: { min: 0.001, max: 0.25, step: 0.001, unit: 's', log: true }, decay: { min: 0.001, max: 1, step: 0.001, unit: 's', log: true } },
     labels: { division: 'RATE', gateLength: 'GATE LENGTH', attack: 'ATTACK', decay: 'DECAY', depth: 'DEPTH' } },
+  // Offered only on a bar-effect section, which is what tells it when to grab — see
+  // `makeStutter` and SECTION_EFFECTS. The cost is an estimate from what it is built of
+  // (one delay line and four gains, against the gate's two), not yet a measurement.
+  { id: 'stutter', name: 'Stutter', short: 'Stutter', cost: 0.15, custom: makeStutter,
+    sectionOnly: true,
+    params: ['slice', 'retrigger', 'fade', 'stop', 'sweep', 'sliceTo'],
+    defaults: { slice: 0.25, retrigger: 0, fade: 0, stop: 0, sweep: 0, sliceTo: 0.25 },
+    // SWEEP on a Stutter is a ROLL: the slice steps from SLICE to SLICE TO across the
+    // section, halving at each step — see `rollSteps` in makeStutter.
+    sweeps: { slice: 'sliceTo' },
+    // The three note lengths are in BEATS and are drawn as lists, not pots; the ranges are
+    // here because a preset is resolved through them, and an undeclared range is 0–1 — which
+    // turned a two-bar Tape Stop into a one-beat one.
+    ranges: { fade: { min: -24, max: 0, step: 0.5, unit: 'dB' },
+      slice: { min: 0, max: 2, step: 0.001 }, retrigger: { min: 0, max: 4, step: 0.001 },
+      stop: { min: 0, max: 8, step: 0.001 } },
+    labels: { slice: 'SLICE', retrigger: 'RETRIGGER', fade: 'FADE', stop: 'TAPE STOP', sliceTo: 'SLICE TO' },
+    // What each control does, for the hover card on its label (see fillEffectControls).
+    tips: {
+      slice: 'How much of the music the Stutter grabs when its section starts, as a note length'
+        + ' at the song\'s tempo. The slice plays once as the music, then repeats back to back'
+        + ' until the section ends, or until RETRIGGER grabs a fresh one. 1/32 and 1/16 buzz'
+        + ' like a machine gun; 1/4 and 1/2 loop a phrase. Off grabs nothing, which makes the'
+        + ' card a plain TAPE STOP on the music as it plays.',
+      retrigger: 'How often the Stutter lets go of its slice and grabs the next one, counted'
+        + ' from the start of the section. Off holds the first slice for the whole section.'
+        + ' 1/4 grabs on every beat, so a bar becomes four short stutters, each on its own'
+        + ' beat\'s music. It never grabs sooner than two slices apart, so every grab is heard'
+        + ' to repeat at least once; the readout shows the interval it really uses.',
+      fade: 'How much quieter each repeat is than the one before. 0 dB keeps every repeat at'
+        + ' full level; -3 dB lets the stutter die away like an echo; -12 dB and below leaves'
+        + ' only the first few repeats audible. The first pass, the music itself, is never'
+        + ' faded.',
+      stop: 'Winds the Stutter down to a standstill the way a tape machine or a turntable does'
+        + ' when its motor cuts out: speed and pitch fall together, then it fades to silence.'
+        + ' It always finishes exactly at the end of its section, so the music stops dead on the'
+        + ' bar line you painted to and comes back on the next beat. The length is how long the'
+        + ' wind-down takes; one longer than the section takes all of it. With repeats it slows'
+        + ' the repeats; with SLICE Off it slows the music itself.',
+      sweep: 'A ROLL: the slice steps from SLICE to SLICE TO across the section, halving each'
+        + ' time, and every step grabs the music afresh. Each step is an equal share of the'
+        + ' section, so 1/4 to 1/32 over four bars is a bar of quarters, a bar of eighths, a bar'
+        + ' of sixteenths and a bar of thirty-seconds: the build roll into a drop.',
+      sliceTo: 'The slice the roll ends on, in its last share of the section. Shorter than'
+        + ' SLICE speeds up; longer slows down.',
+    } },
   { id: 'flanger', name: 'Flanger', cost: 0.54, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'flanger'),
     params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'feedback', 'spread', 'tone', 'wet'],
     defaults: { rateSync: 0, rateDivision: 2, frequency: 0.25, delayMs: 2, depth: 0.7, feedback: 0.45, spread: 180, tone: 8000, wet: 0.5 },
@@ -3282,7 +3970,14 @@ export const EFFECTS = [
     params: ['tune', 'drive', 'timbre', 'mix'],
     defaults: { tune: 3000, drive: 0.35, timbre: 0.5, mix: 0.3 } },
   { id: 'widener', name: 'Stereo Widener', short: 'Widener', cost: 0.39, tone: 'StereoWidener',
-    params: ['width', 'wet'], defaults: { width: 0.7, wet: 1 } },
+    params: ['width', 'wet', 'sweep', 'widthTo'], defaults: { width: 0.7, wet: 1, sweep: 0, widthTo: 0.7 },
+    sweeps: { width: 'widthTo' },
+    tips: {
+      sweep: 'Glides WIDTH across the whole section, from where its first handle is to where'
+        + ' its second is. 0.5 leaves the image as it is, 0 is mono and 1 is all sides. On the'
+        + ' master, 0.5 down to 0 squeezes the mix to mono through a build, and the drop'
+        + ' springs back wide when the section ends.',
+    } },
   // Ours, and the only effect here built out of a pitch shifter that nothing in the
   // catalogue exposes: see makeDoubler. Deliberately NOT tempo-syncable, unlike every
   // other modulation in the list — a drift that lands on the beat is a rhythm part, and
@@ -3304,9 +3999,19 @@ export const EFFECTS = [
       frequency: { min: 0.02, max: 6, step: 0.01, unit: 'Hz' },
     } },
   { id: 'shifter', name: 'Frequency Shifter', short: 'Freq Shift', cost: 0.97, tone: 'FrequencyShifter',
-    params: ['frequency', 'wet'], defaults: { frequency: 0, wet: 1 },
-    // Also a frequency that is not a rate: how far the whole spectrum is moved.
-    ranges: { frequency: { min: -1200, max: 1200, step: 5, unit: 'Hz' } } },
+    params: ['frequency', 'wet', 'sweep', 'frequencyTo', 'wetTo'],
+    defaults: { frequency: 0, wet: 1, sweep: 0, frequencyTo: 0, wetTo: 1 },
+    sweeps: { frequency: 'frequencyTo', wet: 'wetTo' },
+    // Also a frequency that is not a rate: how far the whole spectrum is moved — which is
+    // why the card says SHIFT, where the shared label for `frequency` is an LFO's RATE.
+    ranges: { frequency: { min: -1200, max: 1200, step: 5, unit: 'Hz' } },
+    labels: { frequency: 'SHIFT' },
+    tips: {
+      sweep: 'Glides the SHIFT (and the WET) across the whole section, from the first handle'
+        + ' to the second. The shift moves evenly in hertz, straight through zero, so 0 up to a'
+        + ' few hundred is a metallic riser and the other way a fall; the further from zero, the'
+        + ' less like the music it sounds.',
+    } },
   { id: 'pitch', name: 'Pitch Shift', cost: 1.05, tone: 'PitchShift',
     params: ['pitch', 'windowSize', 'feedback', 'wet'], defaults: { pitch: 0, windowSize: 0.1, feedback: 0, wet: 1 } },
   // A low-CPU native space effect. It is intentionally separate from the shared
@@ -3399,10 +4104,26 @@ export const EFFECTS = [
     } },
   // `frequency` here is a CUTOFF, not an LFO rate, so it carries its own range —
   // the shared one tops out at 20Hz and turning the knob simply muted the channel.
+  // SWEEP and SWEEP TO are a Spot FX section's: the cutoff glides from CUTOFF at the
+  // section's start to SWEEP TO at its end. An insert slot has no start or end to sweep
+  // between, so the card does not show them there — see visibleParams — and the Tone node
+  // never sees either key (createEffect keeps them to itself).
   { id: 'filter', name: 'Filter', cost: 0.2, tone: 'Filter',
-    params: ['type', 'frequency', 'Q'], defaults: { type: 'lowpass', frequency: 1000, Q: 1 },
-    labels: { frequency: 'CUTOFF', Q: 'RESONANCE' },
-    ranges: { frequency: { min: 20, max: 18000, step: 10, unit: 'Hz', log: true } } },
+    params: ['type', 'frequency', 'Q', 'sweep', 'sweepTo'],
+    defaults: { type: 'lowpass', frequency: 1000, Q: 1, sweep: 0, sweepTo: 8000 },
+    sweeps: { frequency: 'sweepTo' },
+    labels: { frequency: 'CUTOFF', Q: 'RESONANCE', sweep: 'SWEEP', sweepTo: 'SWEEP TO' },
+    ranges: { frequency: { min: 20, max: 18000, step: 10, unit: 'Hz', log: true } },
+    tips: {
+      frequency: 'Where the filter cuts. Low-pass keeps what is below it, high-pass what is'
+        + ' above it, band-pass a band around it. With SWEEP on, the first handle is where the'
+        + ' sweep starts and the second where it ends.',
+      sweep: 'Glides the cutoff across the whole section, from CUTOFF\'s first handle on its'
+        + ' first step to the second on its last, evenly in pitch, so every octave takes as long'
+        + ' as the one before. Up opens a low-pass into a build, or thins a high-pass towards a'
+        + ' drop; down closes it into a breakdown. After the section the filter is back at its'
+        + ' first handle. Paint the section as long as the sweep you want.',
+    } },
 ];
 
 // Keep the literals above as a safe fallback, then overlay the source-backed DEV
@@ -3516,6 +4237,36 @@ export function isDefaultMasterChain(list = []) {
 }
 
 export const EFFECT_BY_ID = Object.fromEntries(EFFECTS.map((e) => [e.id, e]));
+
+/**
+ * How late each effect's output is against its input at its defaults, in milliseconds —
+ * the ones that are late at all. Measured, not looked up, by a tone burst and the lag of
+ * its best cross-correlation, and held to that by tests/fx-sections.js, which measures
+ * the whole catalogue again: an effect that gains a look-ahead has to appear here.
+ *
+ * Four of these look ahead on purpose (the compressors, the L7). Tape
+ * and Vibrato are modulated delay lines with a delay at rest, and Pitch Shift is its own
+ * window. On an insert slot that costs nothing anyone hears — the whole channel is late
+ * together. Switched in and out by a bar-effect SECTION it is a jump: the track, or on
+ * the master the whole song, moves by this much at both ends of the section. So sections
+ * do not offer them; see SECTION_EFFECTS.
+ *
+ * The bit crusher was on this list at 11.7ms, a ScriptProcessor's block, until it was
+ * rebuilt from native nodes — see makeBitCrusher. The noise gate was on it at 12.3ms, its
+ * ScriptProcessor's two blocks, until it moved to an AudioWorklet — see makeNoiseGate. Its
+ * fallback is still that late, but that only runs where no worklet can (the http LAN dev
+ * URL), and the game and every bounce get the worklet.
+ */
+export const EFFECT_LATENCY_MS = Object.freeze({
+  compressor: 6, mbCompN: 6, msComp: 12, l7: 3,
+  tape: 8.6, vibrato: 2.5, pitch: 50,
+});
+
+/** What a bar-effect section can hold: everything that is on time. */
+export const SECTION_EFFECTS = EFFECTS.filter((def) => !(EFFECT_LATENCY_MS[def.id] > 0));
+
+/** What an insert slot can hold: everything that does something without a section. */
+export const INSERT_EFFECTS = EFFECTS.filter((def) => !def.sectionOnly);
 // Old local drafts may still contain the former Tone id. Keep that data audible while
 // making the native entry the only enumerable catalogue item and the only picker item.
 Object.defineProperty(EFFECT_BY_ID, 'mbComp', {
@@ -3597,6 +4348,24 @@ export function resolveEffectSnapshot(id, params = {}) {
 }
 
 /**
+ * SWEEPS. An effect whose controls can glide across a Spot FX section says which in
+ * `sweeps`: each control that glides, mapped to the key its END value is kept in —
+ * `{ frequency: 'sweepTo' }` on the Filter, `{ gain: 'gainTo', balance: 'balanceTo' }` on the
+ * Gain. The end values are ordinary params, so a sweep saves, undoes, retunes live and
+ * comes back from a preset exactly as every other setting does, and the keys the first two
+ * cards were saved with stay what they are. SWEEP (`sweep`) turns the glide on; with it
+ * off, or in an insert slot, the end values do nothing.
+ *
+ * This answers the other way round: the control `name` is the end of, or null.
+ */
+export function sweepStartOf(def, name) {
+  const map = def?.sweeps;
+  if (!map) return null;
+  for (const [start, end] of Object.entries(map)) if (end === name) return start;
+  return null;
+}
+
+/**
  * The range a parameter is edited over. An effect can override one: `frequency` is
  * an LFO rate on a tremolo and a cutoff on a filter, and one range cannot be both.
  */
@@ -3605,6 +4374,9 @@ export function paramRange(name, def = null) {
   // compressor all read `threshold`'s range without three copies of it. The full
   // name still wins, which is how `lowFrequency` gets a crossover range of its own.
   const leaf = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : null;
+  // A sweep's end value travels the same range as the control it ends: GAIN TO is GAIN's.
+  const ends = sweepStartOf(def, name);
+  if (ends && !def?.ranges?.[name]) return paramRange(ends, def);
   return def?.ranges?.[name] || PARAM_RANGES[name]
     || (leaf && (def?.ranges?.[leaf] || PARAM_RANGES[leaf]))
     || { min: 0, max: 1, step: 0.01 };
@@ -3625,7 +4397,7 @@ export function paramRange(name, def = null) {
  * Doubler — had its TIME row skipped in every state there was. The control saved,
  * loaded, rendered and could not be seen. See tests/mix.js.
  */
-export function visibleParams(def, params = {}) {
+export function visibleParams(def, params = {}, { section = false } = {}) {
   if (!def?.params) return [];
   // `has` before value, always: an effect that does not carry a switch is not in either
   // of that switch's states, it is in neither.
@@ -3641,6 +4413,17 @@ export function visibleParams(def, params = {}) {
     if (p === 'delayMs') return !synced;
     if (p === 'rateDivision') return rateSynced;
     if (p === 'frequency') return !rateSynced;
+    // A sweep runs from a section's start to its end, and an insert slot has neither: the
+    // pots would do nothing there. The end values go with SWEEP when it is off.
+    if (p === 'sweep') return section && !!def.sweeps
+      && !(def.id === 'stutter' && !((params.slice ?? def.defaults?.slice ?? 0.25) > 0));
+    if (sweepStartOf(def, p)) return section && on('sweep')
+      && !(def.id === 'stutter' && !((params.slice ?? def.defaults?.slice ?? 0.25) > 0));
+    // A Stutter that grabs nothing has nothing to retrigger or fade: SLICE Off is the card
+    // as a plain tape stop, and its two repeat controls would be pots that do nothing.
+    if (def.id === 'stutter' && (p === 'retrigger' || p === 'fade')) {
+      return (params.slice ?? def.defaults?.slice ?? 0.25) > 0;
+    }
     return true;
   });
 }
@@ -3883,10 +4666,20 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
       },
       // A CUT on the channel empties a delay that can say how — see `flushEchoes` in mixer.js.
       flush: typeof node.flush === 'function' ? (at) => node.flush(at) : null,
+      // A bar-effect section starting and ending, for the effects whose whole job is WHEN —
+      // the Stutter grabs at the one and lets go at the other. See makeSectionSwitch.
+      engage: typeof node.engage === 'function'
+        ? (at, sixteenth, until, since) => node.engage(at, sixteenth, until, since) : null,
+      disengage: typeof node.disengage === 'function' ? (at, seconds) => node.disengage(at, seconds) : null,
     };
   }
   if (!Tone[def.tone]) return null;
+  // Keys an effect keeps to itself rather than handing to Tone — SWEEP and the end values it
+  // glides to, which are a section's and not the node's (see toneSweep below).
+  const ownKeys = def.sweeps ? ['sweep', ...Object.values(def.sweeps)] : [];
   const opts = { ...def.defaults, ...params };
+  const own = {};
+  for (const k of ownKeys) { own[k] = opts[k]; delete opts[k]; }
   // Tone's delays take seconds; the desk speaks note divisions or milliseconds.
   if (def.timed) opts.delayTime = delaySeconds(opts, bpm);
   if (def.params.includes('rateSync')) opts.frequency = rateHz(opts, bpm);
@@ -3899,13 +4692,14 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   // LFO-driven effects sit silent until started.
   if (def.start && typeof node.start === 'function') { try { node.start(); } catch { /* already running */ } }
   if (def.tone === 'PingPongDelay') cutReturns(node);
-  const merged = { ...opts };
+  const merged = { ...opts, ...own };
   // The desk's vocabulary is note divisions and sync flags; Tone's is seconds and hertz.
   // Both doors into this node go through the same translation, so a scheduled change
   // and an immediate one cannot drift apart over what "1/8 dotted" means.
   const resolve = (patch, b) => {
     Object.assign(merged, patch);
     const out = { ...patch };
+    for (const k of ownKeys) delete out[k];
     if (def.timed) {
       delete out.sync; delete out.division; delete out.delayMs;
       out.delayTime = delaySeconds(merged, b);
@@ -3916,13 +4710,184 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
     }
     return out;
   };
-  return {
+  const link = {
     def,
     node,
     set: (patch, b = bpm) => applyParams(node, resolve(patch, b)),
     /** The same change at an audio time. rampParams refuses the params that cannot move. */
     setAt: (patch, when, seconds = 0, b = bpm) => rampParams(ctx, node, resolve(patch, b), when, seconds),
     flush: flushFor(node, def),
+  };
+  if (def.sweeps && ctx) toneSweep(link, node, merged, ctx, def);
+  return link;
+}
+
+/**
+ * SWEEP on a Tone effect — the Filter's cutoff, a delay's feedback and wet, the Widener's
+ * width, the Frequency Shifter's shift: each control in the catalogue's `sweeps` glides
+ * from its setting to its end value across the section (see sectionGlide). Evenly in pitch
+ * for a control the desk turns on a log scale, in a straight line otherwise, so the
+ * Shifter's hertz pass straight through zero.
+ *
+ * A setting changed while the glide plays — the Spot FX editor's live retune — goes to the
+ * glide rather than to the node: written straight to the param, it would cancel the ramp in
+ * progress and jump.
+ */
+function toneSweep(link, node, merged, ctx, def) {
+  const keys = Object.keys(def.sweeps).filter((k) => typeof node[k]?.setValueAtTime === 'function');
+  if (!keys.length) return;
+  const ends = (k) => {
+    const r = paramRange(k, def);
+    const num = (v, fallback) => {
+      const n = Number(v);
+      return Math.min(r.max, Math.max(r.min, Number.isFinite(n) ? n : fallback));
+    };
+    const a = num(merged[k], Number(def.defaults?.[k]) || 0);
+    return [a, num(merged[def.sweeps[k]], a), !!r.log];
+  };
+  const glide = sectionGlide(ctx, {
+    on: () => (Number(merged.sweep) || 0) >= 0.5,
+    still: () => keys.map((k) => ends(k)[0]),
+    tracks: () => keys.map((k) => {
+      const [a, b, log] = ends(k);
+      const even = log && a > 0 && b > 0;
+      return {
+        params: [node[k]],
+        ramp: even ? 'exp' : 'lin',
+        at: (u) => [even ? a * (b / a) ** u : a + (b - a) * u],
+      };
+    }),
+  });
+  link.engage = (at, sixteenth, until, since) => glide.engage(at, until, since);
+  link.disengage = (at, seconds) => glide.disengage(at, seconds);
+  const mine = new Set(['sweep', ...keys, ...keys.map((k) => def.sweeps[k])]);
+  const plain = link.set;
+  link.set = (patch, b) => {
+    const rest = {};
+    let moved = false;
+    for (const [k, v] of Object.entries(patch || {})) {
+      if (mine.has(k)) { merged[k] = v; moved = true; } else rest[k] = v;
+    }
+    if (Object.keys(rest).length) plain(rest, b);
+    if (!moved || glide.retune()) return;
+    const starts = keys.filter((k) => k in patch);
+    if (starts.length) plain(Object.fromEntries(starts.map((k) => [k, merged[k]])), b);
+  };
+}
+
+/**
+ * SECTION GLIDE — the engine of every SWEEP: a card gliding from its settings to their end
+ * values across its Spot FX section. The section switch says when it starts and ends
+ * (`engage` with `since` and `until`), so a jump or a loop landing part-way through picks
+ * the glide up where it would be, and when the section lets go the params go back to the
+ * card's own settings once the chain's input has closed.
+ *
+ * The glide is BOOKED as a line of [time, value, how] per param, and kept, because a
+ * booking has to be CUT exactly where it would be at a moment: a stop or a knob turned in
+ * the middle of a fade carries on from where the fade has got to. cancelScheduledValues
+ * alone throws away the ramp in progress, and the param holds that ramp's FIRST value
+ * until whatever comes next. A knob turned while it plays eases onto the new line over 20ms.
+ *
+ * `tracks()` says what to glide for the settings as they are now, always the same params
+ * in the same order:
+ *   [{ params: [AudioParam…], ramp: 'exp' | 'lin', at: (u) => [value…], corners: [u…] }]
+ * one value per param at fraction `u` of the section; 'exp' for a glide even in pitch or
+ * in dB (it falls back to a straight line if an end is not above zero), and `corners`
+ * where a straight-line track bends. `still()` is what the params hold with no section, in
+ * the same order, and `on()` whether SWEEP is on. Works on native AudioParams and on Tone's
+ * params alike — Tone's keep their own timeline, so getValueAtTime stays true.
+ */
+function sectionGlide(ctx, { tracks, still, on }) {
+  let section = null;                                   // { since, until }, seconds
+  let lines = null;                                     // per param, in track order
+  const sweeping = () => !!section && on();
+  const flat = () => tracks().flatMap((tr) => tr.params);
+  const lay = (param, line) => {
+    for (const [t, v, how] of line) {
+      if (how === 'exp') param.exponentialRampToValueAtTime(v, t);
+      else if (how === 'lin') param.linearRampToValueAtTime(v, t);
+      else param.setValueAtTime(v, t);
+    }
+  };
+  // Up to and INCLUDING a ramp ending on T: the cancel took that ramp's own end event, and
+  // a section starting on the bar its twin ends on cuts exactly there.
+  const cut = (param, line, T) => {
+    param.cancelScheduledValues(T);
+    for (let i = 1; line && i < line.length; i++) {
+      const [t0, v0] = line[i - 1];
+      const [t1, v1, how] = line[i];
+      if (!(T > t0 && T <= t1) || how === 'set') continue;
+      const u = (T - t0) / (t1 - t0);
+      if (how === 'exp') param.exponentialRampToValueAtTime(v0 * (v1 / v0) ** u, T);
+      else param.linearRampToValueAtTime(v0 + (v1 - v0) * u, T);
+      return;
+    }
+  };
+  const book = (t0, live = false) => {
+    const { since, until } = section;
+    const T = live ? t0 - 0.02 : t0;
+    const list = tracks();
+    const params = list.flatMap((tr) => tr.params);
+    params.forEach((p, i) => {
+      if (lines) cut(p, lines[i], T);
+      else { const v = p.value; p.cancelScheduledValues(T); if (live) p.setValueAtTime(v, T); }
+    });
+    const span = Math.max(1e-6, until - since);
+    const u0 = Math.max(0, Math.min(1, (t0 - since) / span));
+    const next = [];
+    for (const tr of list) {
+      const first = tr.at(u0);
+      const per = tr.params.map((_, i) => [[t0, first[i], live ? 'lin' : 'set']]);
+      if (until > t0) {
+        const stops = [...(tr.corners || []).filter((c) => c > u0 && c < 1).sort((a, b) => a - b), 1];
+        let prev = first;
+        for (const c of stops) {
+          const vals = tr.at(c);
+          const exp = tr.ramp === 'exp' && [...prev, ...vals].every((v) => v > 0);
+          per.forEach((line, i) => line.push([since + c * span, vals[i], exp ? 'exp' : 'lin']));
+          prev = vals;
+        }
+      }
+      next.push(...per);
+    }
+    lines = next;
+    params.forEach((p, i) => lay(p, lines[i]));
+  };
+  /** Back to the card's own settings at `T`, from wherever a booked glide has got to. */
+  const settle = (T) => {
+    const values = still();
+    flat().forEach((p, i) => { cut(p, lines?.[i], T); p.setValueAtTime(values[i], T); });
+    lines = null;
+  };
+  return {
+    engage(at, until, since) {
+      const t = Math.max(at, ctx.currentTime);
+      section = Number.isFinite(until) && until > t
+        ? { since: Number.isFinite(since) && since <= t ? since : t, until } : null;
+      if (sweeping()) book(t);
+      else if (lines) settle(t);
+    },
+    // After the switch has closed this chain's input — `seconds` is a stop's own fade — so a
+    // param does not jump under the last few milliseconds of what it was working on.
+    disengage(at, seconds = 0) {
+      if (!section) return;
+      section = null;
+      if (lines) settle(Math.max(at, ctx.currentTime) + (Number(seconds) || 0) + 0.05);
+    },
+    /**
+     * The card's settings moved. True when the glide has taken them — re-aimed from now, or
+     * let go from where it had got to — and the caller must leave the swept params alone;
+     * false when no glide is involved and the caller sets them as it always does.
+     */
+    retune() {
+      if (sweeping()) { book(ctx.currentTime + 0.03, true); return true; }
+      if (!lines) return false;
+      const T = ctx.currentTime + 0.01;
+      const values = still();
+      flat().forEach((p, i) => { cut(p, lines[i], T); p.setTargetAtTime(values[i], T, 0.02); });
+      lines = null;
+      return true;
+    },
   };
 }
 

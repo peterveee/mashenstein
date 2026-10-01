@@ -19,6 +19,10 @@
 // its familiar first half, then NIGHT DRIVE's E7 arpeggio up to E6, after the hook's own bars (restored at Peter's ask); bars 45–64 are the second build
 // and drop two again a whole step up (B minor, per-bar transpose); outro 65–68; loop 5–68.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-picture.mjs): the whole mix is bit-crushed (6 bits,
+// downsample 3) from the top until bar 4 beat 4 — the sixteenth plumber-1's picture powers
+// down to paper — so the sound powers down with it.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -1497,6 +1501,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1556,6 +1561,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1614,6 +1620,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1673,6 +1680,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1731,6 +1739,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1790,6 +1799,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1848,6 +1858,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
     {
@@ -1907,6 +1918,7 @@ export const arrangement = {
       gain: {
         lead2: 1,
         lead: -4,
+        chords2: 2.5,
       },
     },
   ],
@@ -2023,7 +2035,7 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      kick2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      kick2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       hats3: seq('. . . . . . . . . . . . . . . . | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
       rim: seq('. . . . . . . . . . . . . . . . | . C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1').map((v) => !!v),
     },
@@ -2094,10 +2106,12 @@ export const arrangement = {
       lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,1,1,1,1,1,1,1,null,null,null,null],
       bass3: seq('. . . . . . . . . . . . . . . . | C2 . C3 . C2 . C3 . G1 . G2 . . . . .'),
       tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
-      tom2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,2,2,2,null,2,null,2,2],
-      clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      snare3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
+      kick2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      tom2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
     },
     {
       base: 11,
@@ -2340,7 +2354,6 @@ export const arrangement = {
     },
     {
       base: 30,
-      lead2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [2,null,2,2,null,2,null,null,2,2,2,null,2,null,2,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       kick: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
@@ -2407,8 +2420,6 @@ export const arrangement = {
     },
     {
       base: 78,
-      lead: [[130.8127826502993,329.6275569128699,440],null,null,null,null,null,null,null,[130.8127826502993,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      leadLen: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: seq('E4 . C5 E5 . A4 . . F4 A4 C5 . E5 . D5 C5 | . . . . . . . . . . . . . . . .'),
     },
     {
@@ -2508,8 +2519,6 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       kick: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       kick2: seq('C1 . . . . . . . C1 . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
-      leadLen: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead: [[130.8127826502993,329.6275569128699,440],null,null,null,null,null,null,null,[130.8127826502993,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6: seq('A4 . C5 E5 . A4 . . F4 A4 C5 . E5 . D5 C5 | . . . . . . . . . . . . . . . .'),
       lead6Len: [1,null,1,1,null,1,null,null,1,1,1,null,1,null,1,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
@@ -2544,8 +2553,8 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       kick: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       kick2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . C1 . . . . . . .').map((v) => !!v),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[130.8127826502993,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      lead: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[130.8127826502993,329.6275569128699,440],null,null,null,null,null,null,null,[130.8127826502993,349.2282314330039,440],null,null,null,null,null,null,null],
       lead6: seq('. . . . . . . . . . . . . . . . | A4 . C5 E5 . G5 . . F5 E5 D5 . . . . .'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,1,null,1,null,null,1,1,1,null,null,null,null,null],
       tom2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
@@ -2604,6 +2613,22 @@ export const arrangement = {
     },
     lead: {
       points: [[41,0,0],[57,0,0],[57,0,-12],[61,0,0],[61,0,-12],[65,0,null]],
+      fx: [
+        {
+          from: [57,0],
+          to: [65,0],
+          chain: [
+            {
+              id: "bell",
+              params: {
+                frequency: 3000,
+                gain: 10.5,
+                q: 1,
+              },
+            },
+          ],
+        },
+      ],
     },
     snare: {
       points: [[26,0,0],[26,0,-9],[29,0,0]],
@@ -2613,6 +2638,73 @@ export const arrangement = {
     },
     clap: {
       points: [[26,0,0],[26,0,-6],[29,0,0]],
+    },
+    __master: {
+      fx: [
+        {
+          from: [4,12],
+          to: [5,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0,
+                retrigger: 0,
+                fade: 0,
+                stop: 1,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: 2,
+                balance: 0,
+                mono: 0,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    chords2: {
+      fx: [
+        {
+          from: [57,0],
+          to: [65,0],
+          chain: [
+            {
+              id: "doubler",
+              params: {
+                delayMs: 11,
+                frequency: 0.91,
+                depth: 0.4,
+                width: 0.8,
+                dryPan: -1,
+                wetPan: 1,
+                wet: 0.5,
+              },
+            },
+            {
+              id: "peq",
+              params: {
+                f1: 120,
+                g1: 0,
+                f2: 500,
+                g2: 0,
+                q2: 1,
+                f5: 1000,
+                g5: 0,
+                q5: 1,
+                f3: 1420,
+                g3: 8,
+                q3: 1,
+                f4: 12000,
+                g4: 5,
+              },
+            },
+          ],
+        },
+      ],
     },
   },
 };

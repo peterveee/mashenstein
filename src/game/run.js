@@ -1,7 +1,7 @@
 import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, setScreenFlip, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
@@ -2044,6 +2044,106 @@ function paintHeroNightTinted(c, fn, bx, by, bw, bh, veil) {
   c.save();
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
+  c.restore();
+}
+
+// THE HERO GLITCHING (Peter, 1 Oct 2026): on surge-3, from the last checkpoint until he
+// lands on the finish pad, the cabinet is breaking up around HIM too. He is painted into a
+// scratch box as the night tint does it, and on each sixteenth of the song the box comes
+// back clean, split into red and cyan, sliced sideways, crunched to blocks or jumped a few
+// px with a ghost left behind — more often the nearer the pad (`heat` 0..1). Never hidden:
+// every state still shows the whole of him, where he is.
+let heroGlitchCanvas = null, heroGlitchTint = null;
+function heroGlitchHash(n) {
+  const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+function paintHeroGlitched(c, fn, bx, by, bw, bh, beat, heat) {
+  const m = typeof c.getTransform === 'function' ? c.getTransform() : null;
+  if (!m || typeof document === 'undefined' || !Number.isFinite(beat)) { fn(c); return; }
+  // The home stretch (heat 2) goes nuts: a new glitch every 32nd, never a clean one, and
+  // bigger; everywhere else one a sixteenth at most.
+  const nuts = heat > 1;
+  const tick = Math.floor(beat * (nuts ? 8 : 4));
+  const r = heroGlitchHash(tick * 1.731);
+  const kinds = ['split', 'slice', 'pixel', 'jump'];
+  const kind = !nuts && r < 0.55 - heat * 0.4 ? null : kinds[Math.floor(heroGlitchHash(tick * 7.13) * kinds.length)];
+  if (!kind) { fn(c); return; }
+  const k = Math.abs(m.a) || 1;
+  const pad = Math.ceil(10 * k);
+  const x0 = Math.floor(m.a * bx + m.e) - pad;
+  const y0 = Math.floor(m.d * by + m.f) - 1;
+  const w = Math.ceil(Math.abs(m.a) * bw) + pad * 2;
+  const h = Math.ceil(Math.abs(m.d) * bh) + 3;
+  if (!heroGlitchCanvas) heroGlitchCanvas = document.createElement('canvas');
+  const sc = heroGlitchCanvas;
+  if (sc.width < w || sc.height < h) { sc.width = Math.max(sc.width, w); sc.height = Math.max(sc.height, h); }
+  const g = sc.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, sc.width, sc.height);
+  g.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
+  fn(g);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const amp = (2 + Math.min(heat, 1) * 4 + (nuts ? 5 : 0)) * k;
+  c.save();
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  if (kind === 'split') {
+    // The colour guns out of register: a red copy one way, a cyan one the other.
+    if (!heroGlitchTint) heroGlitchTint = document.createElement('canvas');
+    const tc = heroGlitchTint;
+    if (tc.width < w || tc.height < h) { tc.width = Math.max(tc.width, w); tc.height = Math.max(tc.height, h); }
+    const tg = tc.getContext('2d');
+    for (const [col, dx] of [['#ff2a55', -amp], ['#22f0ff', amp]]) {
+      tg.setTransform(1, 0, 0, 1, 0, 0);
+      tg.globalCompositeOperation = 'source-over';
+      tg.clearRect(0, 0, w, h);
+      tg.drawImage(sc, 0, 0, w, h, 0, 0, w, h);
+      tg.globalCompositeOperation = 'source-atop';
+      tg.fillStyle = col;
+      tg.fillRect(0, 0, w, h);
+      c.globalAlpha = 0.7;
+      c.drawImage(tc, 0, 0, w, h, x0 + dx, y0, w, h);
+    }
+    c.globalAlpha = 1;
+    c.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
+  } else if (kind === 'slice') {
+    const band = Math.max(2, Math.round(3 * k));
+    // Gone nuts, the slices come apart in colour too.
+    if (nuts) {
+      c.globalAlpha = 0.5;
+      c.globalCompositeOperation = 'lighter';
+      c.drawImage(sc, 0, 0, w, h, x0 - amp, y0, w, h);
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
+    }
+    for (let y = 0; y < h; y += band) {
+      const q = heroGlitchHash(tick * 3.3 + y * 0.17);
+      const dx = q > 0.6 ? (q * 2 - 1) * amp * 2 : 0;
+      c.drawImage(sc, 0, y, w, Math.min(band, h - y), x0 + dx, y0 + y, w, Math.min(band, h - y));
+    }
+  } else if (kind === 'pixel') {
+    const cell = Math.max(2, Math.round((2 + Math.min(heat, 1) * 2 + (nuts ? 2 : 0)) * k));
+    const sw = Math.max(1, Math.round(w / cell)), sh = Math.max(1, Math.round(h / cell));
+    if (!heroGlitchTint) heroGlitchTint = document.createElement('canvas');
+    const tc = heroGlitchTint;
+    if (tc.width < sw || tc.height < sh) { tc.width = Math.max(tc.width, sw); tc.height = Math.max(tc.height, sh); }
+    const tg = tc.getContext('2d');
+    tg.setTransform(1, 0, 0, 1, 0, 0);
+    tg.globalCompositeOperation = 'source-over';
+    tg.clearRect(0, 0, sw, sh);
+    tg.imageSmoothingEnabled = true;
+    tg.drawImage(sc, 0, 0, w, h, 0, 0, sw, sh);
+    c.imageSmoothingEnabled = false;
+    c.drawImage(tc, 0, 0, sw, sh, x0, y0, w, h);
+  } else {
+    // Jumped a few px, the frame he left still fading where he was.
+    const dx = (heroGlitchHash(tick * 9.1) * 2 - 1) * amp, dy = (heroGlitchHash(tick * 4.7) * 2 - 1) * amp * 0.5;
+    c.globalAlpha = 0.35;
+    c.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
+    c.globalAlpha = 1;
+    c.drawImage(sc, 0, 0, w, h, x0 + dx, y0 + dy, w, h);
+  }
   c.restore();
 }
 
@@ -4831,7 +4931,9 @@ export class RunState {
           // The ban lists CAPSULES (capSpeed) and a starting power is a POWER
           // (speed), so match through the capsule's own power field.
           || ownBan.some((c) => PICKUPS[c]?.power === this.startingPowerup)
-          || (ownBan.includes('capUnpeel') && ['unpeel', 'star'].includes(this.startingPowerup))));
+          || (ownBan.includes('capUnpeel') && ['unpeel', 'star'].includes(this.startingPowerup))))
+      // A swapped capsule's power is one this stage does not hand out either.
+      || Object.keys(this.stage?.powerSwaps || {}).some((c) => PICKUPS[c]?.power === this.startingPowerup);
     if (bannedStartingPower) this.startingPowerup = null;
     if (this.startingPowerup) {
       const id = this.startingPowerup;
@@ -4861,6 +4963,7 @@ export class RunState {
   }
 
   exit() {
+    setScreenFlip(false);
     setGlowSprites(true); setNeonGlow(1);
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
     Input.setDoubleTapTarget?.(null);
@@ -7710,7 +7813,16 @@ export class RunState {
     const type = weights
       ? weightedPowerPickup(this.fxRng, weights, this.drip.lastPowerType, opts)
       : randomPowerPickup(this.fxRng, this.drip.lastPowerType, opts);
-    const p = makePickup(type, x, alt);
+    // Decided here rather than by the lane sweep, because the toss arcs out in
+    // full view and the sweep would be a frame late: judged where it lands, and
+    // a box with nothing it may deal pays out in coins (the caller). The ledger
+    // still books the ROLLED kind, so the next roll steers off it as always.
+    const landX = x + this.speed * 1.45 * 0.85;
+    const dealt = this.dealtPickupType(type, landX);
+    if (!dealt) return false;
+    const p = makePickup(dealt, x, alt);
+    if (dealt !== type) p.swappedFrom = type;
+    p.screened = true;
     p.toss = true;
     p.vx = this.speed * 1.45;
     p.vy = 205; // arcs higher than a coin — you should see this one coming
@@ -7718,10 +7830,35 @@ export class RunState {
     // The toss arcs and bounces before it settles (~0.85s of forward travel at
     // these numbers), so the spacing rule measures from where it lands, not
     // from the box it came out of.
-    this.drip.notePower(x + p.vx * 0.85, type);
+    this.drip.notePower(landX, type);
     // No floatie: the capsule arcs high on its own and the catch announces
     // itself. Calling the toss and the catch is announcing one capsule twice.
     if (!quiet) Audio.sfx('power');
+    return true;
+  }
+
+  /**
+   * WHAT A POWER-UP ARRIVING AT x IS ACTUALLY DEALT AS — its own kind, the
+   * stage's replacement for it, or nothing (null).
+   *
+   * ONE OF EACH ON A SCREEN (Peter, 1 Oct 2026: "should never have two of the
+   * same power up on a screen at once"). The capsule ledger keeps capsules a
+   * screen apart, but nothing kept a cell off a cell, or a box's prize off a
+   * prize an author or the lane had already laid; this is the last word for
+   * every source, called on the toss and on a pickup's first frame in the lane.
+   *
+   * A stage SWAP (stages.js `powerSwaps`) is resolved here too. A swapped-in
+   * battery the meter has no room for, or one beside another battery, is a
+   * SHIELD instead (Peter, 1 Oct: "no extras. Make a shield") — which also
+   * covers a one-hit run, whose single cell is always full.
+   */
+  dealtPickupType(type, x, self = null) {
+    const onScreen = (k) => this.pickups.some((q) => q !== self && q.live && q.type === k
+      && Math.abs(q.x - x) < POWER_MIN_GAP);
+    let dealt = this.stage?.powerSwaps?.[type] || type;
+    if (dealt === 'battery' && dealt !== type
+      && (this.battery >= this.maxBattery() || onScreen('battery'))) dealt = 'capShield';
+    return onScreen(dealt) ? null : dealt;
   }
 
   // Contact remains visually explicit, while the weapon-specific WAV makes the
@@ -7974,8 +8111,10 @@ export class RunState {
       // within a screen of the last one pays out in coins instead. A box
       // always gives you something.
       const won = ob.def.prizeChance && this.fxRng.chance(ob.def.prizeChance);
-      if (won && this.drip.canPlacePower(cx)) this.tossPrize(cx, alt, silent);
-      else this.tossCoins(cx, ob.def.bonusCoins, alt, silent);
+      // tossPrize declines (false) when nothing it may deal fits on this screen.
+      if (!(won && this.drip.canPlacePower(cx) && this.tossPrize(cx, alt, silent))) {
+        this.tossCoins(cx, ob.def.bonusCoins, alt, silent);
+      }
     }
     if (ob.def.isTarget && this.mission.type === 'targets' && (!this.mission.targetType || this.mission.targetType === ob.type)) {
       this.mission.count++;
@@ -9546,6 +9685,19 @@ export class RunState {
       // drawn. "None of those in these levels" means none.
       const banned = bannedPowersFor(this.cabinet, this.beatLock, this.stage);
       if (banned && banned.has(p.type)) { p.live = false; continue; }
+      // One of each on a screen, and the stage's swaps, settled on a power-up's
+      // first frame (dealtPickupType). The drip and the pattern lane lay out
+      // past the frame, so this turns them over before anyone sees them; a
+      // !-box decides at the toss and arrives already screened.
+      if (!p.screened && (p.def.power || p.def.heal)) {
+        p.screened = true;
+        const dealt = this.dealtPickupType(p.type, p.x, p);
+        if (!dealt) { p.live = false; continue; }
+        if (dealt !== p.type) {
+          p.swappedFrom = p.type;
+          p.type = dealt; p.def = PICKUPS[dealt]; p.w = p.def.w; p.h = p.def.h;
+        }
+      }
       if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
       // ...unless the magnet has hold of it: rewriting x from _baseX every
       // frame would peg a captured appliance in place while it was being reeled in.
@@ -15520,7 +15672,33 @@ export class RunState {
     try { this.drawFrame(ctx, renderAlpha); } finally { setPropDrawPhase(false); }
   }
 
+  // How hard the hero is glitching (0..1, rising to the pad), or null when he is not:
+  // surge-3 only, from its last checkpoint until he lands on the finish pad.
+  // Over 1 is the home stretch: the last two screens, where he goes nuts.
+  heroGlitchHeat() {
+    if (this.cabinet?.id !== 'surge' || this.stage?.index !== 3 || this.flip) return null;
+    if (this.inSurgeHomeStretch()) return 2;
+    const last = this.checkpointsAt?.[this.checkpointsAt.length - 1];
+    if (!Number.isFinite(last) || !(this.distance >= last)) return null;
+    const span = (this.totalDist || 0) - last;
+    return span > 0 ? Math.max(0, Math.min(1, (this.distance - last) / span)) : 1;
+  }
+
+  // THE HOME STRETCH: surge-3's last two screens before the finish line (a landscape
+  // screen of world each — portrait's are narrower, so it gets more than two of its own).
+  inSurgeHomeStretch() {
+    if (this.cabinet?.id !== 'surge' || this.stage?.index !== 3 || this.overtime) return false;
+    const left = (this.totalDist || 0) - this.distance;
+    return Number.isFinite(left) && left <= 2 * VIEW_W;
+  }
+
   drawFrame(ctx, renderAlpha = 0) {
+    // THE SURGE turns the screen upside down now and then (surgeCut.js surgeFlip); never
+    // under the pause menu, a death or the finish, which have to be read.
+    // ...and never in the last two screens before the finish line (Peter, 1 Oct): the run
+    // home is the right way up, with the hero glitching instead (heroGlitchHeat).
+    setScreenFlip(!!this.style?.screenFlipped && !this.paused && !this.dead && !this.finishing
+      && !this.inSurgeHomeStretch());
     const alpha = Math.max(0, Math.min(1, Number.isFinite(renderAlpha) ? renderAlpha : 0));
     const mix = (previous, current) => this.paused
       ? current
@@ -15722,7 +15900,19 @@ export class RunState {
     // because nothing on this screen eases.
     const sceneBeat = this.beatLock && this.stage && !this.rhythmSyncPending
       ? this.rhythmBeatNow() : null;
-    const backgroundScene = this.beatLock && this.stage
+    // THE SURGE's cycle passes through the LCD city too, and it dances to the song there as
+    // it does on its own stages: the heard beat of the Surge's song, and nothing of the
+    // rhythm stage's chart, cheer or skyline intro, which this run does not have.
+    const surgeScene = !this.beatLock && this.cabinet?.id === 'surge' && this.stage
+      ? {
+        stageIndex: this.stage.index,
+        beat: Audio.sourceBank === this.cabinet.music ? Audio.songBeat() : null,
+        progress: Number.isFinite(this.totalDist) && this.totalDist > 0
+          ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0,
+        audio: Audio.musicAnalysis?.() || null,
+      }
+      : null;
+    const backgroundScene = surgeScene || (this.beatLock && this.stage
       ? {
         stageIndex: this.stage.index,
         beat: sceneBeat,
@@ -15772,7 +15962,7 @@ export class RunState {
         // twelve pixels lower — which is the band nearest the lane.
         maxRoadRise: maxTerrainHeight(this.cabinet),
       }
-      : null;
+      : null);
     const presentation = presentationFrame();
     // THE LAYOUT THE HUD ITSELF WILL DRAW WITH, options and all. Asked
     // without them this resolved a rail row for a stage that has no rail,
@@ -16691,6 +16881,18 @@ export class RunState {
             const hy = screenYFor(this.playerGroundY() - this.player.y, z, pan, floorY);
             const veil = light || `rgba(6,6,20,${(0.55 * night).toFixed(3)})`;
             lit = (c) => paintHeroNightTinted(c, fn, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, veil);
+          }
+          // THE HERO GLITCHING: surge-3, from the last checkpoint until the finish pad.
+          const heat = this.heroGlitchHeat();
+          if (heat != null) {
+            const cx = (heroScreenX + 6) * z + portraitXOffset;
+            const hx = this.mirror ? W - cx : cx;
+            const hy = screenYFor(this.playerGroundY() - this.player.y, z, pan, floorY);
+            const inner = lit;
+            // The song's sixteenths; off the wall clock at its tempo if it is not playing.
+            const heard = Audio.songBeat();
+            const beat = Number.isFinite(heard) ? heard : performance.now() / 1000 * (132 / 60);
+            lit = (c) => paintHeroGlitched(c, inner, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, beat, heat);
           }
           const paint = this.insideTrain ? (c) => {
             c.save();

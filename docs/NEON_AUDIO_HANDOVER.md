@@ -122,6 +122,11 @@ whose main thread is already starved, and even at 4× CPU throttle nothing was l
 Worth replacing with an AudioWorklet recorder one day on principle; it is not tonight's
 bug.
 
+*1 Oct 2026: replaced.* The tap is now an AudioWorklet (src/engine/engine-worklets.js)
+that posts 2048-sample chunks to the main thread, with the ScriptProcessor kept only where
+no worklet can run. The Noise Gate effect moved off its ScriptProcessor in the same change.
+See tests/engine-worklets.js.
+
 ## 3. Real-time health, neon vs rhythm
 
 All headed on the real output device, made inaudible (a −66 dB gain before the

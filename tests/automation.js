@@ -11,13 +11,14 @@ import {
   AUTOMATION_FLOOR_DB, posOf, barStepOf, shapeLevel, laneCurve, curveLevelAt, curveDbAt,
   setLaneFade, clearLaneRange, addLaneCut, removeLaneCut, moveLaneCut, shiftAutomation,
   copyAutomationRange, pasteAutomation, tidyPoints, hasAutomation, automationIssues,
-  positionLabel, levelLabel,
+  positionLabel, levelLabel, replaceFxRange, laneFx, fxSectionAt, fxEdgesBetween, fxStartsAt,
 } from '../src/data/automation.js';
 import { applyArrangement, arrangementIssues } from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, setFade, setCrossfade, clearAutomation, addCut, removeCut,
   deleteBars, insertSilence, duplicateBars, copyBars, pasteBars, removeLanes,
-  copyLaneArrangement, automationDbAt,
+  copyLaneArrangement, automationDbAt, setBarSections, setBarEffects, barSections,
+  putBarSections,
 } from '../tools/lib/arrangement-edit.js';
 import { bankSource } from '../tools/lib/song-source.js';
 
@@ -228,6 +229,90 @@ assert(near(dB(shapeLevel('s', 1, 10 ** (-24 / 20), 0.5)), -12, 1e-9)
     && bad.some((m) => /not a bar and a step/.test(m)),
     `a bad one says why (${bad.length} issues)`);
   assert(automationIssues(null).length === 0, 'no automation is nothing wrong');
+}
+
+// ---- effect sections -------------------------------------------------------------------
+//
+// The same positions, carrying a chain instead of a level: a lane's `fx`, and the master's.
+// tests/fx-sections.js proves what the engine plays; this proves they travel with the music.
+{
+  const stutter = [{ id: 'stutter', params: { slice: 0.25 } }];
+  const crush = [{ id: 'bitcrusher', params: { bits: 6 } }];
+  const fx = (a, b, chain = stutter) => ({ from: a, to: b, chain });
+  const sections = (auto, key) => JSON.stringify(laneFx(auto, key).map((s) => [s.from, s.to]));
+
+  let auto = replaceFxRange(null, '__master', posOf(2), posOf(4), [fx(posOf(2, 12), posOf(3))]);
+  assert(JSON.stringify(auto) === '{"__master":{"fx":[{"from":[2,12],"to":[3,0],"chain":[{"id":"stutter","params":{"slice":0.25}}]}]}}',
+    'a section is written as two places and a chain, under the lane it plays on — the master included');
+  auto = replaceFxRange(auto, '__master', posOf(3), posOf(4), [fx(posOf(3, 0), posOf(3, 0.5), crush)]);
+  const curve = laneCurve(auto.__master);
+  assert(fxSectionAt(curve, posOf(2, 11.9)) === null && fxSectionAt(curve, posOf(2, 12))?.chain === auto.__master.fx[0].chain
+    && fxSectionAt(curve, posOf(3, 0.25))?.chain[0].id === 'bitcrusher' && fxSectionAt(curve, posOf(3, 0.5)) === null,
+    'a section plays from its start up to (not including) its end, on a 1/32 as well as a sixteenth');
+  assert(JSON.stringify(fxEdgesBetween(curve, posOf(2, 11), posOf(3, 1))) === JSON.stringify([posOf(2, 12), posOf(3), posOf(3, 0.5)])
+    && fxStartsAt(curve, posOf(3)) && !fxStartsAt(curve, posOf(2, 13)),
+    'its edges are where a window has to switch, and its start is a start even where another ends');
+
+  // Every edit to the level line or the cuts goes through the same writer; none may drop them.
+  let both = setLaneFade(replaceFxRange(null, 'pad', 0, 64, [fx(posOf(2), posOf(3))]), 'pad', posOf(1), posOf(2), 0, -6);
+  both = addLaneCut(both, 'pad', posOf(3, 4));
+  assert(sections(both, 'pad') === JSON.stringify([[16, 32]]), 'a fade and a cut on the same track leave its sections alone');
+  assert(sections(clearLaneRange(both, 'pad', 0, 64), 'pad') === JSON.stringify([[16, 32]])
+    && !laneFx(clearLaneRange(both, 'pad', posOf(2, 8), 64, { fx: true }), 'pad').some((s) => s.to > posOf(2, 8)),
+    'Clear Volume keeps them; a clear that asks for sections cuts them at the edge of its range');
+  assert(sections(replaceFxRange(both, 'pad', posOf(2, 4), posOf(2, 8), []), 'pad') === JSON.stringify([[16, 20], [24, 32]]),
+    'emptying the middle of a section leaves the two ends as two sections');
+
+  // Structure.
+  const one = { m: { fx: [{ from: [2, 0], to: [4, 0], chain: stutter }] } };
+  assert(sections(shiftAutomation(one, posOf(1), { added: 16 }), 'm') === JSON.stringify([[32, 64]]),
+    'bars inserted before a section move it later');
+  assert(sections(shiftAutomation(one, posOf(3), { added: 16 }), 'm') === JSON.stringify([[16, 32], [48, 64]]),
+    'bars inserted inside one split it round them — the new bars are not part of it');
+  assert(sections(shiftAutomation(one, posOf(3), { removed: 16 }), 'm') === JSON.stringify([[16, 32]])
+    && sections(shiftAutomation(one, posOf(1), { removed: 32 }), 'm') === JSON.stringify([[0, 16]]),
+    'bars taken out of one shorten it, and out from under its start move what is left back');
+  assert(shiftAutomation(one, posOf(2), { removed: 32 }) === null, 'and deleting all of its bars deletes it');
+  const clip = copyAutomationRange(one, posOf(3), posOf(5));
+  assert(JSON.stringify(clip.lanes.m.fx.map((s) => [s.from, s.to])) === '[[0,16]]',
+    'a copy brings the part of a section inside the copied bars, as far as their edge');
+  assert(sections(pasteAutomation(shiftAutomation(one, posOf(6), { added: 32 }), posOf(6), clip, 2), 'm')
+    === JSON.stringify([[16, 48], [80, 96], [112, 128]]), 'and a paste lays it down once per copy');
+
+  // Through the draft.
+  const bank = { bpm: 120, lead: new Array(32).fill(null), pad: new Array(32).fill(null), order: [0, 0, 0, 0] };
+  let draft = setBarEffects(draftOf(bank, null), 2, 3, 'pad', crush);
+  draft = setBarSections(draft, 2, 2, 'pad', [fx(posOf(3, 12), posOf(4))]);
+  assert(!draft.plan[2].inlineFx && JSON.stringify(draft.plan[3].inlineFx) === JSON.stringify({ pad: crush })
+    && sections(draft.automation, 'pad') === JSON.stringify([[44, 48]]),
+    'writing sections over bars takes those bars\' own snapshots away, and leaves the next bar\'s');
+  draft = setBarSections(draft, 0, 1, '__master', [fx(0, posOf(1, 4))]);
+  const entry = entryOf(bank, draft);
+  assert(entry.automation.__master.fx.length === 1 && !arrangementIssues(bank, entry, ['lead', 'pad']).length,
+    'the master\'s sections are an entry like any other and validate');
+  assert(hasAutomation({ __master: { fx: [{ from: [1, 0], to: [1, 4], chain: stutter }] } })
+    && applyArrangement(bank, 'x', { x: { automation: entry.automation } }).automation === entry.automation,
+    'a song whose only arrangement is a section is still arranged — the engine finds it on the bank');
+  assert(JSON.stringify(barSections(draft, 'pad', 2)) === JSON.stringify([{ from: 12, to: 16, chain: stutter }])
+    && sections(putBarSections(draft, 'pad', 0, barSections(draft, 'pad', 2)).automation, 'pad') === JSON.stringify([[12, 16], [44, 48]]),
+    'one bar\'s sections lift out relative to its top and lay down on another bar (Replicate, track paste)');
+  assert(removeLanes(draft, ['pad']).automation?.pad === undefined
+    && sections(copyLaneArrangement(draft, 'pad', 'pad2').automation, 'pad2') === JSON.stringify([[44, 48]]),
+    'Delete Track takes a track\'s sections; Duplicate gives the copy the same ones');
+  const reset = clearAutomation(draft, 'pad', posOf(1), posOf(5), { points: true, cuts: true, fx: true });
+  assert(!reset.automation?.pad, 'Reset Edits takes them out with the fades and cuts');
+  const src = `(${bankSource(entry)})`;
+  // eslint-disable-next-line no-eval
+  assert(JSON.stringify((0, eval)(src)) === JSON.stringify(entry), 'the song file writes them and reads them back exactly');
+
+  const bad = automationIssues({
+    __master: { points: [[1, 0, 0]], fx: [{ from: [1, 4], to: [1, 4], chain: stutter }] },
+    pad: { fx: [{ from: [1, 0], to: [1, 4], chain: [] }, { from: [9, 0], to: [9, 4], chain: stutter }] },
+  }, ['pad'], 4);
+  assert(bad.some((m) => /master carries effect sections only/.test(m)) && bad.some((m) => /ends where it starts/.test(m))
+    && bad.some((m) => /no valid chain/.test(m)) && bad.some((m) => /past bar 4/.test(m))
+    && !bad.some((m) => /"__master", which is not a lane/.test(m)),
+    `a bad section says why, and the master is never "not a lane" (${bad.length} issues)`);
 }
 
 if (failed) process.exit(1);

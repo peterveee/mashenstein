@@ -33,7 +33,9 @@ import { LANES } from './lanes.js';
 import {
   createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS, delaySeconds,
 } from './effects.js';
+import { prepareEngineWorklets } from './engine-worklets.js';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
+import { MASTER_KEY } from '../data/automation.js';
 
 export const dbToGain = (db) => 10 ** (db / 20);
 export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
@@ -296,6 +298,9 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       chain = list.map((e) => {
         const link = createEffect(e.id, e.params, ctx, bpm);
         if (link) {
+          // What it is set to now — so a transition can tell an effect it would have to
+          // MOVE from one it merely has to leave alone (see Audio.rampMix).
+          link.params = { ...(e.params || {}) };
           link.bypassed = !!e.bypass;
           link.muted = !!e.mute;
           link.muteDry = ctx.createGain();
@@ -359,6 +364,34 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
         watchForSilence();
       }
     },
+    /**
+     * The same chain with different settings, played by the nodes already built: each
+     * link takes its new params through `set` — the insert panel's live write — and a
+     * flipped bypass rewires. Answers false, touching nothing, when the list is not the
+     * same effects in the same order; that is a new chain, and `set` builds it.
+     */
+    retune(list = [], bpm = sourceBpm) {
+      if (!Array.isArray(list) || list.length !== chain.length
+        || list.some((e, i) => e?.id !== chain[i]?.def?.id)) return false;
+      list.forEach((e, i) => {
+        const link = chain[i];
+        const params = { ...(e.params || {}) };
+        const changed = Object.fromEntries(Object.entries(params)
+          .filter(([k, v]) => JSON.stringify(link.params?.[k]) !== JSON.stringify(v)));
+        if (Object.keys(changed).length) link.set(changed, bpm);
+        link.params = params;
+        if (!!e.bypass !== !!link.bypassed) {
+          link.bypassed = !!e.bypass;
+          if (liveLinks().length) connectOutput();
+          rewire();
+        }
+      });
+      sourceList = list;
+      sourceBpm = bpm;
+      quietSince = null;
+      watchForSilence();
+      return true;
+    },
     /** Pull a dormant graph back into the render tree before scheduled audio reaches it. */
     wake(until = ctx.currentTime) {
       if (!sleeper || !liveLinks().length) return;
@@ -392,6 +425,140 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     },
     get awake() { return !sleeper || awake; },
   };
+}
+
+/**
+ * BAR-EFFECT SECTIONS — the switch that sends a stretch of a track, or of the whole mix,
+ * through an effect chain of its own (src/data/automation.js: a lane's `fx`, and the
+ * per-bar `inlineFx` snapshot before it).
+ *
+ * Every chain the song asks for is built in parallel before playback, and the switch
+ * changes which one RECEIVES audio — the inputs, never the outputs. So what is already
+ * inside a chain when its section ends rings out (a delay's repeats, a room's tail), and
+ * nothing has to be built while the song is playing. With no section selected the direct
+ * path is unity and every branch input is zero: `x * 1`, bit-exact, which is what lets a
+ * strip or the master carry one of these whether or not a song ever uses it.
+ *
+ * The other half is WHEN. An effect that cares when its section starts and ends — the
+ * Stutter grabs its slice at the one and lets go at the other — is told by `engage` and
+ * `disengage`, and told again for a FRESH section of the same chain: two sections side by
+ * side with one chain are two grabs, where switching from a chain to itself is otherwise
+ * nothing at all.
+ */
+function makeSectionSwitch(ctx, from, to) {
+  const direct = ctx.createGain();
+  direct.gain.value = 1;
+  from.connect(direct);
+  direct.connect(to);
+  const branches = new Map();
+  // The initial graph is already direct. Do not schedule a no-op ramp at bar one:
+  // OfflineAudioContext receives the whole song's automation before rendering and
+  // Chromium can otherwise resolve a later cancel-and-hold through that redundant
+  // first event, attenuating the opening direct bar. This also avoids touching the
+  // graph between adjacent bars that use the same snapshot.
+  let selected = '';
+  const live = (signature) => (branches.get(signature)?.slot.chain || []).filter((link) => !link.bypassed);
+  const sw = {
+    /** Pre-create every route before the scheduler needs to select it. */
+    prepare(chains = [], bpm = 120) {
+      for (const list of chains) {
+        if (!Array.isArray(list) || !list.length) continue;
+        const signature = JSON.stringify(list);
+        if (branches.has(signature)) continue;
+        const input = ctx.createGain(); input.gain.value = 0;
+        from.connect(input);
+        const slot = makeChainSlot(ctx, input, to, { sleepWhenSilent: true });
+        slot.set(list, bpm);
+        branches.set(signature, { input, slot, list });
+      }
+    },
+    /**
+     * Select a prepared route at an audio time; deselected routes keep ringing out.
+     * `fresh` says a section STARTS here, `sixteenth` is the sequencer's — what a
+     * Stutter measures its slice in — and `since` and `until` are when the section began
+     * and ends: where a TAPE STOP stands still, and what a Filter's SWEEP runs between.
+     */
+    select(list = [], when = ctx.currentTime, { fresh = false, sixteenth = null, until = null, since = null } = {}) {
+      const signature = Array.isArray(list) && list.length ? JSON.stringify(list) : '';
+      if (signature && !branches.has(signature)) sw.prepare([list]);
+      if (signature === selected) {
+        if (fresh && signature) {
+          const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
+          for (const link of live(signature)) link.engage?.(at, sixteenth, until, since);
+        }
+        return;
+      }
+      const previous = selected;
+      selected = signature;
+      if (signature) branches.get(signature)?.slot.wake(Infinity);
+      // We know both sides of this switch. Anchor them explicitly instead of using
+      // cancelAndHoldAtTime: an offline render queues later bars before processing
+      // bar one, and Chromium's future hold can leak backwards through that queue.
+      // Four milliseconds is the same click-safe edge rampParam uses for a snap.
+      const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
+      const switchGain = (param, a, b) => {
+        param.cancelScheduledValues(at);
+        param.setValueAtTime(a, at);
+        param.linearRampToValueAtTime(b, at + 0.004);
+      };
+      switchGain(direct.gain, previous ? 0 : 1, signature ? 0 : 1);
+      for (const [id, branch] of branches) {
+        switchGain(branch.input.gain, id === previous ? 1 : 0, id === signature ? 1 : 0);
+      }
+      if (previous) {
+        for (const link of live(previous)) link.disengage?.(at);
+        branches.get(previous)?.slot.release(at + 0.004);
+      }
+      if (signature) for (const link of live(signature)) link.engage?.(at, sixteenth, until, since);
+    },
+    /**
+     * A chain's settings moved while it may be playing — the Spot FX editor's knobs. The
+     * branch built for `oldList` takes `newList`'s params on its own nodes and is filed
+     * under the new signature, so a drag is heard at once, keeps the tail it has, and does
+     * not re-grab a Stutter; building a fresh branch per value would do all three wrong.
+     * False when there is no such branch, the new chain already has one, or the effects
+     * themselves differ — then the next `prepare`/`select` builds it as usual. A section
+     * elsewhere that still plays `oldList` gets its own branch back from the next prepare.
+     */
+    retune(oldList = [], newList = [], bpm = 120) {
+      const from = JSON.stringify(oldList || []);
+      const to = JSON.stringify(newList || []);
+      if (from === to) return true;
+      const branch = branches.get(from);
+      if (!branch || branches.has(to) || !Array.isArray(newList) || !newList.length) return false;
+      if (!branch.slot.retune(newList, bpm)) return false;
+      branches.delete(from);
+      branches.set(to, { ...branch, list: newList });
+      if (selected === from) selected = to;
+      return true;
+    },
+    /**
+     * The song has stopped: let go of whatever is engaged over `seconds` — the stop's own
+     * fade — and go back to direct once it has. A Stutter is downstream of the gates a
+     * stop closes, so nothing else would ever stop its loop.
+     */
+    release(at = ctx.currentTime, seconds = 0) {
+      if (!selected) return;
+      const t = Math.max(Number.isFinite(at) ? at : 0, ctx.currentTime);
+      for (const link of live(selected)) link.disengage?.(t, seconds);
+      sw.select([], t + seconds);
+    },
+    get slots() { return [...branches.values()].map((branch) => branch.slot); },
+    get links() { return [...branches.values()].flatMap((branch) => branch.slot.chain || []); },
+    /** A new song owns a new set of chains; do not accumulate the last song's graphs. */
+    clear() {
+      selected = '';
+      direct.gain.cancelScheduledValues(ctx.currentTime);
+      direct.gain.value = 1;
+      for (const branch of branches.values()) {
+        branch.slot.dispose();
+        try { from.disconnect(branch.input); } catch { /* already gone */ }
+        try { branch.input.disconnect(); } catch { /* already gone */ }
+      }
+      branches.clear();
+    },
+  };
+  return sw;
 }
 
 /** Three serial shelving/peaking filters — transparent at 0dB. */
@@ -517,7 +684,12 @@ export function createMixer(ctx, {
   // balance, which is the sort of thing you chase for an hour.
   const auxReturn = songTrim || musicBus;
   const auxes = new Map();
-  const readyPromises = [];
+  // The Noise Gate and the rewind tap run in the engine's own worklets, which have to be
+  // registered on this context before a node can be built. Started here, with the
+  // context, and awaited by every offline render through `ready` — so a bounce builds
+  // its gates on the worklet from the first sample. Resolves false, never rejects, where
+  // no worklet can run.
+  const readyPromises = [prepareEngineWorklets(ctx)];
 
   for (const def of AUXES) {
     const d = AUX_DEFAULTS[def.id];
@@ -692,17 +864,7 @@ export function createMixer(ctx, {
     // and every distinct effect snapshot are built in parallel before the live strip;
     // at a bar edge only one receives new audio. Turning a branch off therefore stops
     // later notes entering it while delay/reverb already inside keeps its natural tail.
-    const barDirect = ctx.createGain();
-    barDirect.gain.value = 1;
-    dry.connect(barDirect);
-    barDirect.connect(vol);
-    const barFxBranches = new Map();
-    // The initial graph is already direct. Do not schedule a no-op ramp at bar one:
-    // OfflineAudioContext receives the whole song's automation before rendering and
-    // Chromium can otherwise resolve a later cancel-and-hold through that redundant
-    // first event, attenuating the opening direct bar. This also avoids touching the
-    // graph between adjacent bars that use the same snapshot.
-    let selectedBarFx = '';
+    const barSwitch = makeSectionSwitch(ctx, dry, vol);
     // Frozen PCM has already passed through its bar-effect snapshots, but nothing on
     // the live channel. It enters after those branches and before fader/pan/EQ/inserts.
     const frozen = ctx.createGain();
@@ -970,7 +1132,7 @@ export function createMixer(ctx, {
        * room would take the next note's reverb with it.
        */
       flushEchoes(at) {
-        const links = [...(slot.chain || []), ...[...barFxBranches.values()].flatMap((b) => b.slot.chain || [])];
+        const links = [...(slot.chain || []), ...barSwitch.links];
         for (const link of links) {
           if (!link || link.bypassed || link.muted) continue;
           link.flush?.(at);
@@ -1019,55 +1181,16 @@ export function createMixer(ctx, {
       setEffectMute(index, on) { slot.setMute(index, on); },
 
       /** Pre-create every bar-effect route before the scheduler needs to select it. */
-      prepareBarEffects(chains = [], bpm = 120) {
-        for (const list of chains) {
-          if (!Array.isArray(list) || !list.length) continue;
-          const signature = JSON.stringify(list);
-          if (barFxBranches.has(signature)) continue;
-          const input = ctx.createGain(); input.gain.value = 0;
-          dry.connect(input);
-          const fxSlot = makeChainSlot(ctx, input, vol, { sleepWhenSilent: true });
-          fxSlot.set(list, bpm);
-          barFxBranches.set(signature, { input, slot: fxSlot, list });
-        }
-      },
-      /** Select a prepared route at an audio time; deselected routes keep ringing out. */
-      scheduleBarEffects(list = [], when = ctx.currentTime) {
-        const signature = Array.isArray(list) && list.length ? JSON.stringify(list) : '';
-        if (signature && !barFxBranches.has(signature)) this.prepareBarEffects([list]);
-        if (signature === selectedBarFx) return;
-        const previous = selectedBarFx;
-        selectedBarFx = signature;
-        if (signature) barFxBranches.get(signature)?.slot.wake(Infinity);
-        // We know both sides of this switch. Anchor them explicitly instead of using
-        // cancelAndHoldAtTime: an offline render queues later bars before processing
-        // bar one, and Chromium's future hold can leak backwards through that queue.
-        // Four milliseconds is the same click-safe edge rampParam uses for a snap.
-        const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
-        const switchGain = (param, from, to) => {
-          param.cancelScheduledValues(at);
-          param.setValueAtTime(from, at);
-          param.linearRampToValueAtTime(to, at + 0.004);
-        };
-        switchGain(barDirect.gain, previous ? 0 : 1, signature ? 0 : 1);
-        for (const [id, branch] of barFxBranches) {
-          switchGain(branch.input.gain, id === previous ? 1 : 0, id === signature ? 1 : 0);
-        }
-        if (previous) barFxBranches.get(previous)?.slot.release(at + 0.004);
-      },
-      get _barFxSlots() { return [...barFxBranches.values()].map((branch) => branch.slot); },
+      prepareBarEffects(chains = [], bpm = 120) { barSwitch.prepare(chains, bpm); },
+      /** Select a prepared route at an audio time; see makeSectionSwitch. */
+      scheduleBarEffects(list = [], when = ctx.currentTime, opts = {}) { barSwitch.select(list, when, opts); },
+      /** A chain's settings moved under it; see makeSectionSwitch's retune. */
+      retuneBarEffects(oldList, newList, bpm = 120) { return barSwitch.retune(oldList, newList, bpm); },
+      /** The song stopped — see makeSectionSwitch's release. */
+      releaseBarEffects(at, seconds = 0) { barSwitch.release(at, seconds); },
+      get _barFxSlots() { return barSwitch.slots; },
       /** A new song owns a new set of snapshots; do not accumulate the last song's graphs. */
-      clearBarEffects() {
-        selectedBarFx = '';
-        barDirect.gain.cancelScheduledValues(ctx.currentTime);
-        barDirect.gain.value = 1;
-        for (const branch of barFxBranches.values()) {
-          branch.slot.dispose();
-          try { dry.disconnect(branch.input); } catch { /* already gone */ }
-          try { branch.input.disconnect(); } catch { /* already gone */ }
-        }
-        barFxBranches.clear();
-      },
+      clearBarEffects() { barSwitch.clear(); },
 
       /**
        * Everything a presentation variant can move on this channel, AT AN AUDIO TIME.
@@ -1236,6 +1359,7 @@ export function createMixer(ctx, {
   treatWet.gain.value = 0;
   let treatSlot = null;
   let masterSlot = null;
+  let masterSections = null;
   if (master) {
     master.disconnect();
     master.connect(treatDry);
@@ -1245,7 +1369,17 @@ export function createMixer(ctx, {
     // Master chain sits after the trim and before the limiter, so anything here is
     // the last thing to touch the mix — which is where a bus compressor or a final
     // EQ belongs.
-    masterSlot = makeChainSlot(ctx, masterTrim, masterOut);
+    //
+    // Then the song's own master SECTIONS (`automation.__master.fx`): a Stutter or a gate
+    // across the whole mix for a beat. After the inserts, so they act on the finished mix
+    // the way a DJ's effect does — a bus compressor does not pump on a gate's gaps, and a
+    // stutter repeats the mix as it is heard — and still before the pan and the limiter,
+    // so a distortion section cannot get past the ceiling. Two unity gains on every song
+    // that has none, which is `x * 1 * 1`: the null test cannot hear them.
+    const sectionIn = ctx.createGain();
+    sectionIn.gain.value = 1;
+    masterSlot = makeChainSlot(ctx, masterTrim, sectionIn);
+    masterSections = makeSectionSwitch(ctx, sectionIn, masterOut);
   }
 
   // Keep the pre-chain tap for the developer watchdog, which uses it to distinguish
@@ -1394,7 +1528,7 @@ export function createMixer(ctx, {
         ...[...strips.values()].map((s) => s._slot),
         ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
         ...[...auxes.values()].map((a) => a.slot),
-        masterSlot, treatSlot,
+        masterSlot, treatSlot, ...(masterSections?.slots || []),
       ].filter(Boolean);
       for (const slot of slots) {
         for (const link of slot.chain || []) {
@@ -1469,6 +1603,7 @@ export function createMixer(ctx, {
       const link = slotFor(target)?.chain?.[index];
       if (!link) throw new Error(`mixer: no effect at ${target}[${index}] to ramp`);
       link.setAt(params, when, seconds, bpm);
+      link.params = { ...(link.params || {}), ...params };
     },
 
     /**
@@ -1506,7 +1641,7 @@ export function createMixer(ctx, {
         ...[...strips.values()].map((s) => s._slot),
         ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
         ...[...auxes.values()].map((a) => a.slot),
-        masterSlot, treatSlot,
+        masterSlot, treatSlot, ...(masterSections?.slots || []),
       ].filter(Boolean);
       for (const slot of slots) {
         for (const link of slot.chain || []) {
@@ -1517,24 +1652,61 @@ export function createMixer(ctx, {
       }
     },
 
-    /** Build all arrangement-owned effect branches while no bar is switching them. */
-    prepareBarEffects(plan = [], bpm = 120) {
+    /**
+     * Build all arrangement-owned effect branches while no bar is switching them: every
+     * bar's `inlineFx` snapshot and every effect SECTION in the automation, the master's
+     * included (src/data/automation.js).
+     */
+    prepareBarEffects(plan = [], bpm = 120, automation = null) {
       const byLane = new Map();
+      const add = (key, chain) => {
+        if (!Array.isArray(chain) || !chain.length) return;
+        if (!byLane.has(key)) byLane.set(key, []);
+        byLane.get(key).push(chain);
+      };
       for (const bar of plan || []) {
-        for (const [key, chain] of Object.entries(bar.inlineFx || {})) {
-          if (!byLane.has(key)) byLane.set(key, []);
-          byLane.get(key).push(chain);
-        }
+        for (const [key, chain] of Object.entries(bar.inlineFx || {})) add(key, chain);
+      }
+      for (const [key, lane] of Object.entries(automation || {})) {
+        for (const section of lane?.fx || []) add(key, section?.chain);
       }
       for (const [key, chains] of byLane) {
+        if (key === MASTER_KEY) { masterSections?.prepare(chains, bpm); continue; }
         const strip = strips.get(key) || makeStrip(key);
         strip?.prepareBarEffects(chains, bpm);
       }
     },
-    scheduleBarEffects(key, list, when) { strips.get(key)?.scheduleBarEffects(list, when); },
-    scheduleBarEffectsForBar(bar = {}, when = ctx.currentTime) {
-      for (const [key, strip] of strips) strip.scheduleBarEffects(bar.inlineFx?.[key] || [], when);
+    /** One lane's chain — or the master's, under `__master` — from an audio time. */
+    scheduleBarEffects(key, list, when, opts = {}) {
+      if (key === MASTER_KEY) masterSections?.select(list, when, opts);
+      else strips.get(key)?.scheduleBarEffects(list, when, opts);
     },
+    /**
+     * One lane's — or the master's — section chain retuned in place: the Spot FX editor's
+     * live knobs. False when the engine has nothing to retune; the arrangement write that
+     * follows builds what it needs.
+     */
+    retuneBarEffects(key, oldList, newList, bpm = 120) {
+      if (key === MASTER_KEY) return masterSections?.retune(oldList, newList, bpm) ?? false;
+      return strips.get(key)?.retuneBarEffects(oldList, newList, bpm) ?? false;
+    },
+    /**
+     * A bar line: every strip to its bar's snapshot. `skip` is the lanes that have effect
+     * SECTIONS — those are switched by the sequencer's automation pass, a sixteenth at a
+     * time, and a bar line here would switch them back under it.
+     */
+    scheduleBarEffectsForBar(bar = {}, when = ctx.currentTime, skip = null) {
+      for (const [key, strip] of strips) {
+        if (skip?.has(key)) continue;
+        strip.scheduleBarEffects(bar.inlineFx?.[key] || [], when);
+      }
+    },
+    /** The song has stopped: every section lets go over the stop's fade. */
+    releaseBarEffects(at = ctx.currentTime, seconds = 0) {
+      for (const strip of strips.values()) strip.releaseBarEffects(at, seconds);
+      masterSections?.release(at, seconds);
+    },
+    get _masterSectionSlots() { return masterSections?.slots || []; },
 
     /**
      * Unhook auxes nothing is sending to. A ConvolverNode is not free just because
@@ -1593,8 +1765,9 @@ export function createMixer(ctx, {
      * Kept, and resolved. The reverb used to build its impulse response by rendering
      * noise through its own offline context, so an offline render had to await it or
      * the aux was silent for the whole track. Ours generates the buffer in a loop and
-     * is ready when it is constructed — but every caller that awaited this is right to,
-     * and will be again the day something here is asynchronous.
+     * is ready when it is constructed — but every caller that awaited this is right to.
+     * That day came: the engine worklets (the Noise Gate) register asynchronously, and a
+     * render that sets its bank before this resolves builds its gates on the fallback.
      */
     ready: Promise.all(readyPromises),
     /** Reset every strip to unity — the state the songs were balanced against. */
@@ -1614,6 +1787,7 @@ export function createMixer(ctx, {
         s.setSend(defaultSends());
       }
       if (masterSlot) masterSlot.set([]);
+      masterSections?.clear();
       for (const a of auxes.values()) {
         a.slot.set([]);
         a.state = JSON.parse(JSON.stringify(AUX_DEFAULTS[a.def.id]));

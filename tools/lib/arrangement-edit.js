@@ -44,7 +44,7 @@ import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
 import {
   hasAutomation, shiftAutomation, copyAutomationRange, pasteAutomation, dropLanes,
   copyLane as copyLaneAutomation, setLaneFade, clearLaneRange, addLaneCut, removeLaneCut,
-  moveLaneCut, setLanePoints, setLane, laneCurve, curveDbAt,
+  moveLaneCut, setLanePoints, setLane, laneCurve, curveDbAt, replaceFxRange, laneFx, MASTER_KEY,
 } from '../../src/data/automation.js';
 import { createNoteFxProcessor, resolveNoteFx } from '../../src/engine/note-fx.js';
 
@@ -932,10 +932,13 @@ export function setCrossfade(draft, outLane, inLane, from, to, { shape = 'equal'
   return withAutomation(draft, auto);
 }
 
-/** Take one lane's fades and/or cuts out of [from, to). */
-export function clearAutomation(draft, lane, from, to, { points = true, cuts = true } = {}) {
+/**
+ * Take one lane's fades and/or cuts out of [from, to) — and its effect sections, when
+ * asked: Clear Volume leaves them, Reset Edits takes everything.
+ */
+export function clearAutomation(draft, lane, from, to, { points = true, cuts = true, fx = false } = {}) {
   if (!draft || !lane || !draft.automation?.[lane]) return draft;
-  return withAutomation(draft, clearLaneRange(draft.automation, lane, from, to, { points, cuts }));
+  return withAutomation(draft, clearLaneRange(draft.automation, lane, from, to, { points, cuts, fx }));
 }
 
 /** A cut on one lane at a position — everything it has ringing there stops. */
@@ -981,6 +984,42 @@ export function setBarNoteFx(draft, from, to, lane, override = null) {
     else delete out.plan[i].noteFx;
   }
   return out;
+}
+
+/**
+ * Effect SECTIONS over bars `from`–`to` of one lane, or of the master under `__master`:
+ * `sections` is `[{ from, to, chain }]` in sixteenths from the top, and replaces whatever
+ * the bars held. The bars' own per-bar snapshots (`inlineFx`) go at the same time, because
+ * the editor that writes this showed them as part of the bars it was editing — what it
+ * hands back is the whole of what those bars play through, and a snapshot left underneath
+ * would come back wherever a section had been taken away.
+ */
+export function setBarSections(draft, from, to, lane, sections = []) {
+  if (!draft || !lane) return draft;
+  const [a, b] = range(draft, from, to);
+  let out = withAutomation(draft,
+    replaceFxRange(draft.automation, lane, a * 16, (b + 1) * 16, sections || []));
+  if (lane !== MASTER_KEY) out = setBarEffects(out, a, b, lane, null);
+  return out;
+}
+
+/**
+ * One bar of a lane's effect sections, positions counted from the bar's own top — what a
+ * bar carries when Replicate or a track clip moves it somewhere else.
+ */
+export function barSections(draft, lane, bar) {
+  const a = bar * 16;
+  return laneFx(draft?.automation, lane)
+    .filter((s) => s.to > a + 1e-6 && s.from < a + 16 - 1e-6)
+    .map((s) => ({ from: Math.max(s.from, a) - a, to: Math.min(s.to, a + 16) - a, chain: clone(s.chain) }));
+}
+
+/** The other half: lay a bar's sections (from `barSections`) down on bar `bar`. */
+export function putBarSections(draft, lane, bar, sections = []) {
+  if (!draft || !lane) return draft;
+  const a = bar * 16;
+  return withAutomation(draft, replaceFxRange(draft.automation, lane, a, a + 16,
+    (sections || []).map((s) => ({ from: a + s.from, to: a + s.to, chain: s.chain }))));
 }
 
 /** Snapshot an insert chain onto one lane in a range of bars. */
@@ -1212,6 +1251,8 @@ export function copyLaneTrack(bank, draft, from, to, lane) {
     }
     if (bar.noteFx?.[lane] != null) edit.noteFx = clone(bar.noteFx[lane]);
     if (bar.inlineFx?.[lane] != null) edit.inlineFx = clone(bar.inlineFx[lane]);
+    const sections = barSections(draft, lane, i);
+    if (sections.length) edit.fx = sections;
     edits.push(edit);
   }
   return { lane, bars, lengths, edits };
@@ -1241,6 +1282,7 @@ export function pasteLaneTrack(bank, draft, at, lane, clip) {
     }
     out = setBarNoteFx(out, bar, bar, lane, edit.noteFx || null);
     out = setBarEffects(out, bar, bar, lane, edit.inlineFx || null);
+    out = putBarSections(out, lane, bar, edit.fx || []);
   }
   return out;
 }

@@ -1319,8 +1319,11 @@ assert(/function silenceAll\(\)[\s\S]*?releaseOskSources\('m:'\)/.test(entry)
 assert(/Audio\.setCaptureEnabled\(false\)/.test(entry)
   && entry.indexOf('Audio.setCaptureEnabled(false)') < entry.indexOf('Audio.ensure()'),
   'the desk turns the rewind capture tap off before it builds its graph — it has no rewind');
-assert(/_startCapture\(\)[\s\S]{0,400}?createScriptProcessor/.test(audio),
-  'and that tap is still the ScriptProcessorNode this is worth avoiding');
+// The tap itself is an AudioWorklet now, with the ScriptProcessor kept only where no
+// worklet can run. Cheaper, not free: still a node on the master and a message every
+// 2048 samples, for a ring buffer nothing on the desk reads.
+assert(/_startCapture\(\) \{[\s\S]*?createCaptureNode\(ctx\)[\s\S]*?_wireCapture\(worklet\) \{[\s\S]*?createScriptProcessor/.test(audio),
+  'and that tap is a worklet where one can run, the ScriptProcessor only its fallback');
 assert(/panic\(\)[\s\S]*?this\._cutLaneGates\(\)[\s\S]*?this\.voices\.dispose\(\)[\s\S]*?this\.bank = null/.test(audio)
   && /resumeAfterPanic\(\)[\s\S]*?this\.levels\.master/.test(audio)
   && /previewNote\([^\n]*\)[\s\S]*?this\.resumeAfterPanic\(\)/.test(audio),
@@ -2320,8 +2323,14 @@ assert(/function syncArrangementLaneSelection[\s\S]*?const selected = el\.datase
   && /function loadTrack\(id\)[\s\S]*?buildArrangement\(\);[\s\S]{0,300}?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
   && /function buildArrangement\(\)[\s\S]*?syncArrangementLaneSelection\(\);\s*\n\s*redrawSelection\(\)/.test(entry),
   'channel selection and song load reveal the selected track while rebuilds preserve its mark');
-assert(/function selectLane\(key\)[\s\S]*?classList\.toggle\('selected', selected\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?rack\.scrollLeft/.test(entry),
+assert(/function selectLane\(key\)[\s\S]*?classList\.toggle\('selected', selected\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?revealMixerStrip\(\$\('rack'\), chosenStrip\)/.test(entry),
   'selecting an arrangement track highlights and reveals its channel whenever the Mixer is visible');
+// Showing the Mixer again reveals the selected strip WHOLE. The rack kept its old scroll
+// while hidden and the selection moved on without it; and the reveal lands on a strip
+// start, since a reveal by the overshoot alone was snapped back half off the edge.
+assert(/function setLowerView[\s\S]*?view === 'mixer' && from !== 'mixer'[\s\S]*?syncMixerScroll\(\);\s*revealMixerStrip\(\$\('rack'\)/.test(entry)
+  && /function revealMixerStrip\(rack, strip\)[\s\S]*?starts\.find\(\(s\) => s >= right - view/.test(scroll),
+  'bringing the Mixer back scrolls the selected strip fully into view, on a snap point');
 assert(/function selectLane\(key\)[\s\S]*?voiceEditor\.isOpen\(\)[\s\S]*?voiceEditor\.laneKey[\s\S]*?voiceEditor\.laneKey !== key[\s\S]*?dismissVoiceEditor\(\)/.test(entry),
   'changing channel strips dismisses the previous lane\'s preset controls');
 assert(deskLayout.includes("const FX_KEY = 'mash-mixer-fxh'")
@@ -4554,24 +4563,72 @@ assert(channelStrip.includes('label: customTrackLabel(key) || preset?.label || l
   && !entry.includes('function stepVoice')
   && !shell.includes('.voicestep'),
   'channel strips show the current preset above its type and use that name to choose');
-assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams\)[\s\S]*?paramRange\(pname, def\)/.test(effectCards)
+assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams, \{ section \}\)[\s\S]*?paramRange\(pname, def\)/.test(effectCards)
   && /function buildDevices\(\)[\s\S]*?fillEffectControls\(\{[\s\S]*?grid, def, entry, patch, replaceParams/.test(entry)
-  && /function openBarEffectsEditor[\s\S]*?card\.className = `device barfxdevice[\s\S]*?fillEffectControls\(\{[\s\S]*?patch: \(params\)[\s\S]*?replaceParams: \(params\)/.test(noteFxEditors)
-  && /bypass\.onclick = \(\) => \{ chain\[index\] = \{ \.\.\.chain\[index\], bypass: !effect\.bypass \}; draw\(\); \}/.test(noteFxEditors)
-  && /\[chain\[index - 1\], chain\[index\]\] = \[chain\[index\], chain\[index - 1\]\]/.test(noteFxEditors)
-  && /foot\.append\(snapshot, clear, closeButton, applyPlay\);[\s\S]*?panel\.append\(guide, foot\)/.test(noteFxEditors)
+  && /const drawCard = \(\) => \{[\s\S]*?const effect = chain\[index\];[\s\S]*?card\.className = `device barfxdevice[\s\S]*?bar\.append\(bypass, heading, remove\);[\s\S]*?fillEffectControls\(\{[\s\S]*?rebuild: drawCard,[\s\S]*?patch: \(params, tag\)[\s\S]*?commitSoon\(tag\)[\s\S]*?replaceParams: \(params, tag\)[\s\S]*?tag: \(part\) => \(part \? `spotfx:/.test(noteFxEditors)
+  && /const drawSlots = \(\) => \{[\s\S]*?slot\.className = `barfxslot[\s\S]*?power\.className = 'pwrhit'[\s\S]*?cross\.className = 'rmhit'[\s\S]*?slot\.onclick = \(\) => selectSlot\(index\);[\s\S]*?slot\.draggable = true;[\s\S]*?move\(src, index\)/.test(noteFxEditors)
+  && /let dragFrom = null;/.test(noteFxEditors.slice(noteFxEditors.indexOf('function buildBarEffectsEditor')))
+  && /const toggleBypass = \(i\) => \{ chain\[i\] = \{ \.\.\.chain\[i\], bypass: !chain\[i\]\.bypass \}; draw\(\); commit\(\); \};/.test(noteFxEditors)
+  && /const \[moved\] = chain\.splice\(src, 1\);\s*chain\.splice\(dst, 0, moved\);\s*const \[steps\] = masks\.splice\(src, 1\);\s*masks\.splice\(dst, 0, steps\);\s*selected = chain\.indexOf\(keep\);\s*draw\(\); commit\(\);/.test(noteFxEditors)
+  && /foot\.append\(\.\.\.\(master \? \[\] : \[snapshot\]\), clear, closeButton, play\);\s*panel\.append\(status, foot\);/.test(noteFxEditors)
   && /foot\.className = 'regfoot barfxfoot'/.test(noteFxEditors)
-  && /#regionedit\.barfxmodal \.barfxcontrols \{[^}]*gap:\s*8px[^}]*padding:\s*10px 12px 12px/s.test(shell)
-  && /#regionedit\.barfxmodal \.barfxcontrols \.regcontrol > span \{ font-size:\s*var\(--microcopy-size\); \}/.test(shell)
+  && !/barfxguide|barfxmove|barfxlist|barfxhelp|barfxcontrols|Choose an effect…/.test(noteFxEditors + shell)
+  && /#regionedit\.barfxmodal \{ width: 640px; \}/.test(shell)
+  && /#regionedit\.barfxmodal \.barfxsplit \{[^}]*height:\s*clamp\(240px, 44vh, 380px\)[^}]*grid-template-columns:\s*188px minmax\(0, 1fr\)/s.test(shell)
+  && /#regionedit\.barfxmodal :is\(\.barfxslots, \.barfxcard\) \{[^}]*position: relative[^}]*min-height: 0[^}]*overflow-y: auto/s.test(shell)
   && /--popup-action-size:\s*12px/.test(shell)
   && /#regionedit:is\(\.notefxmodal, \.barfxmodal\) :is\(\.notefxfoot, \.barfxfoot\) button \{[^}]*font-size:\s*var\(--popup-action-size\)[^}]*padding:\s*6px 9px/s.test(shell)
   && /#regionedit\.barfxmodal \.barfxdevice \.devgrid \{[^}]*grid-auto-flow:\s*row[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s.test(shell),
-  'Bar Effects uses the channel insert parameter surface in staged, narrow editable cards with bypass and ordering');
+  'Spot FX is a column of insert slots beside the selected effect\'s card, live, with the channel insert parameter surface');
+// Each effect can have steps of its own: on EACH EFFECT, Where shows and paints the selected
+// slot's; on ALL EFFECTS (the default) a stroke paints every effect's alike and a new effect
+// takes the chain's steps. What is written is a section per stretch where the set of lit
+// effects changes — so the engine and the file format stay the sections they were.
+assert(/const mine = masks\[selected\] \|\| null;/.test(noteFxEditors)
+  && /const painted = \(\) => \(own \? \[masks\[selected\]\] : masks\)\.filter\(Boolean\);/.test(noteFxEditors)
+  && /for \(const mine of painted\(\)\) for \(let i = first; i < first \+ grid \/ CELL; i\+\+\) mine\[i\] = paint;/.test(noteFxEditors)
+  && /let own = restoredOwn === true \|\| differ\(\);/.test(noteFxEditors)
+  && /const newSteps = \(\) => \(!own && masks\[0\] \? \[\.\.\.masks\[0\]\] : fullMask\(\)\);/.test(noteFxEditors)
+  && /masks\.push\(newSteps\(\)\);/.test(noteFxEditors)
+  && /if \(!own && differ\(\)\) \{[\s\S]*?masks = masks\.map\(\(\) => \[\.\.\.steps\]\);\s*draw\(\); commit\(\);/.test(noteFxEditors)
+  && /popup\.own = own;/.test(noteFxEditors)
+  && (entry.match(/own: popup\.own === true/g) || []).length === 2
+  && /#regionedit\.barfxmodal :is\(\.barfxmodeseg, \.barfxgridseg\) \.segbtn\.on \{/.test(shell)
+  && /const litAt = \(i\) => masks\.map\(\(m\) => \(m\[i\] \? 1 : 0\)\)\.join\(''\);[\s\S]*?const sub = chain\.filter\(\(_, e\) => masks\[e\]\[i\]\);/.test(noteFxEditors)
+  && /picks\.get\(chainSig\(c\)\)\.includes\(m\)/.test(noteFxEditors)
+  && /masks: popup\.masks \|\| null/.test(entry)
+  && /#regionedit\.barfxmodal \.barfxcell\[data-state="off"\]\[data-also="1"\]/.test(shell)
+  && !/data-state="other"|restoredCells|restoredOthers/.test(noteFxEditors + shell),
+  'Spot FX lights steps for all effects or each effect, written as sections where the lit set changes');
+// The + slot opens the desk's own catalogue in callback mode: only what a section can hold,
+// and without closing or forgetting the window that asked — closeMenu would do both.
+assert(/let pickerAway = null;\s*function buildPicker\(\{ at = null, anchor = null, x = null, y = null, ids: only = null, onPick = null \} = \{\}\) \{\s*if \(!onPick\) restorablePopup = \{ kind: 'effectPicker', at \};/.test(entry)
+  && /const offered = \(def\) => \(allowed \? allowed\.has\(def\.id\) : !def\.sectionOnly\);/.test(entry)
+  && /b\.onclick = onPick\s*\? \(\) => \{ closePicker\(\); onPick\(def\.id\); \}\s*: \(\) => \{ closeMenu\(\); addEffect\(def\.id, at\); \};/.test(entry)
+  && /column\('Other', EFFECTS\.filter\(\(e\) => !placed\.has\(e\.id\) && offered\(e\)\)\.map\(\(e\) => e\.id\)\);/.test(entry)
+  && /function closePicker\(\) \{[\s\S]*?removeEventListener\('pointerdown', pickerAway, true\)[\s\S]*?return was;/.test(entry)
+  && /installNoteFxEditors\(\{[\s\S]*?powerIcon, trashIcon, closeIcon, effectsOf, openPicker, closePicker,/.test(entry)
+  && /if \(closePicker\(\)\) return;[\s\S]*?openPicker\(\{ anchor: add,[\s\S]*?ids: SECTION_EFFECTS\.map\(\(def\) => def\.id\), onPick: addPicked \}\)/.test(noteFxEditors)
+  && !/closeMenu\(\);\s*openPicker/.test(noteFxEditors),
+  'the Spot FX + opens the catalogue for a section, in callback mode, without closing the window');
+// The selection survives a reload and a ⌘Z by the effect it showed, and a reload does not
+// replay one card's fields into another.
+assert(/popup\.selected = selected;\s*popup\.selectedId = chain\[selected\]\?\.id \?\? null;/.test(noteFxEditors)
+  && /chain\.findIndex\(\(e\) => e\.id === restoredSelectedId\)/.test(noteFxEditors)
+  && /popup\.kind === 'barEffects' && popup\.laneKey\) \{[\s\S]{0,400}?selected: Number\.isInteger\(popup\.selected\)/.test(entry)
+  && /function reopenSpotFx\(\) \{[\s\S]*?selectedId: popup\.selectedId \?\? null/.test(entry)
+  && /if \(popup\.kind !== 'barEffects'\) requestAnimationFrame\(\(\) => restorePopupFields\(popup\)\);/.test(entry),
+  'the Spot FX window comes back on the effect it was showing');
+// Its keys: arrows choose and (with ⌥) move, Delete removes the effect and never reaches the
+// desk's bar erase, Escape puts the catalogue away before the window.
+assert(/slots\.addEventListener\('keydown'[\s\S]*?ev\.altKey[\s\S]*?move\(at, at \+ step\)[\s\S]*?ev\.key === 'Delete' \|\| ev\.key === 'Backspace'\) removeAt\(at\)[\s\S]*?ev\.stopPropagation\(\);/.test(noteFxEditors)
+  && /panel\.onkeydown = \(ev\) => \{\s*if \(ev\.key === 'Delete' \|\| ev\.key === 'Backspace'\) ev\.stopPropagation\(\);[\s\S]*?if \(!closePicker\(\)\) panel\.querySelector\('\.reghead \.regclose'\)\?\.click\(\);/.test(noteFxEditors),
+  'Spot FX keys: arrows, ⌥ arrows, Delete on a slot, and Escape that closes the catalogue first');
 assert(/const freezeState = freezeLaneState\(trackId, row\.key\);[\s\S]*?el\.className = `arrrow\$\{frozen \? ' frozen' : ''\}\$\{freezeState === 'partial' \? ' partially-frozen' : ''\}`/.test(entry)
   && /const icon = frozen\s*\?\s*freezeMark\('arrtrack-icon arrfreeze', '❄'\)/.test(entry)
   && /frozen \? \{ text: 'Frozen render', tone: 'ice' \}/.test(entry)
   && /const barFrozen = freezeCoversBar\(trackId, row\.key, bar\)/.test(entry)
-  && /barOperationGroups\(plan\[bar\], row\.key, \{ frozen: barFrozen \}\)/.test(entry)
+  && /barOperationGroups\(plan\[bar\], row\.key, \{ frozen: barFrozen, sections: barSections \}\)/.test(entry)
   && /\.arrbar\.frozen:not\(\.bardeleted\) \{[^}]*background-color:\s*color-mix\(in srgb, var\(--freeze\) 58%, var\(--bar-colour, var\(--cell\)\)\) !important[^}]*box-shadow:/s.test(shell)
   && /\.arrbar\.frozen:not\(\.bardeleted\) \.arrcell \{ background: transparent !important; \}/.test(shell)
   && /\.arrfreeze \{[^}]*color:\s*var\(--freeze\)/s.test(shell),
@@ -4696,7 +4753,7 @@ assert(/function barOperationGroups\(barPlanEntry, key/.test(entry)
   && /box\.dataset\.tip = displayLabel/.test(arrangementFn)
   && /box\.dataset\.tipkey = trackNumber \? `Track \$\{trackNumber\}` : 'Track'/.test(arrangementFn)
   && /box\.dataset\.tipcontext = `Bar \$\{bar \+ 1\}`/.test(arrangementFn)
-  && /label: 'Synthesiser'[\s\S]*?\.\.\.barOperationGroups\(plan\[bar\], row\.key, \{ frozen: barFrozen \}\)/.test(arrangementFn)
+  && /label: 'Synthesiser'[\s\S]*?\.\.\.barOperationGroups\(plan\[bar\], row\.key, \{ frozen: barFrozen, sections: barSections \}\)/.test(arrangementFn)
   && /name\.dataset\.tipkind = 'track'/.test(arrangementFn)
   && /name\.dataset\.tipgroups = JSON\.stringify\(trackHoverGroups\(preset, \{ frozen \}\)\)/.test(arrangementFn)
   && /box\.dataset\.tiphints = JSON\.stringify\(\[[\s\S]*?\{ key: 'Drag', text: 'Move' \}[\s\S]*?\{ key: '⌘ Drag', text: 'Copy' \}[\s\S]*?\{ key: 'Right-click', text: 'Edit' \}/.test(arrangementFn)
@@ -4878,10 +4935,13 @@ assert(/function recordNote\([\s\S]*?\n\}/.test(entry)
   'recordNote NEVER commits — applyArrangementEdit pushes undo, revalidates the whole'
   + ' arrangement and rebuilds the timeline, so a per-note commit would mean one undo'
   + ' step per note and a desk rebuild on every key');
-assert(/function flushTake\([\s\S]*?writeBarNotesShared\(eb, d, bar, lane, notes16, lengths16\)/
-  .test(entry),
-  'a take is written SHARED — recording into a loop changes the pattern, or a note'
-  + ' played into bar 1 of a four-bar section returns every fourth pass');
+{
+  const body = /function flushTake\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  assert(/writeBarNotes\(eb, d, bar, lane, notes16, lengths16\)/.test(body)
+    && !body.includes('writeBarNotesShared('),
+    'a take is written into the bar it was played in ONLY — a shared write put the note'
+    + ' into every bar playing the same section, duplicated bars and order repeats alike');
+}
 assert(/let locA = null[\s\S]*?let locB = null/.test(entry)
   && /function currentLoopBounds\(\)[\s\S]*?selectedBar[\s\S]*?16/.test(entry)
   && /function applyLoop\([\s\S]*?currentLoopBounds\(\)[\s\S]*?Audio\.setLoop\(start, end\)/.test(entry)

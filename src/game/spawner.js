@@ -974,7 +974,12 @@ export class DripSpawner {
       // the meter is full and nothing will be placed, so a held cell and a
       // dropped one keep the same cadence.
       const x = this.settle(worldX + 480 + 100, CELL_ALT, worldX, stopX, pickups, obstacles);
-      if (x == null) {
+      // And it holds rather than land within a screen of another cell — a roof
+      // battery, or a capsule the stage swaps for one (Peter, 1 Oct: "don't
+      // have two batteries near each other"). Only when it would be placed: a
+      // full meter keeps the cadence it always had.
+      if (x == null || (!batteryFull && pickups.some((p) => p.live && p.type === 'battery'
+        && Math.abs(p.x - x) < POWER_MIN_GAP))) {
         this.batteryTimer = 0.5;
       } else {
         this.batteryTimer = this.rearm('battery', x);

@@ -1,8 +1,9 @@
-// Note FX and Bar Effects — the two editors that hang off a bar or a track.
+// Note FX and Spot FX — the two editors that hang off a bar or a track.
 //
 // Lifted out of mixer-entry.js. Note FX is the strum and the arpeggiator: what a lane
-// does to the notes it was given, as opposed to what it sounds like. Bar Effects is the
-// insert chain a range of bars carries on top of the channel's. They travel together
+// does to the notes it was given, as opposed to what it sounds like. Spot FX (called Bar
+// Effects in the code and the data, which predate the name) is an effect chain a stretch
+// of the song carries on top of the channel's, down to a 1/32 and on the master too. They travel together
 // because they are the same window with two contents — the same anchor, the same
 // restore-on-rebuild handling, the same scope of "this track, or these bars".
 //
@@ -11,8 +12,9 @@
 import {
   resolveNoteFx, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX, NOTE_FX_LIMIT_MAX,
 } from '../src/engine/note-fx.js';
-import { EFFECTS, EFFECT_BY_ID, MAX_EFFECTS } from '../src/engine/effects.js';
-import { setBarNoteFx, setBarEffects, renderArpToNotes } from './lib/arrangement-edit.js';
+import { EFFECT_BY_ID, MAX_EFFECTS, SECTION_EFFECTS } from '../src/engine/effects.js';
+import { laneCurve, fxSectionAt, MASTER_KEY } from '../src/data/automation.js';
+import { setBarNoteFx, setBarSections, renderArpToNotes } from './lib/arrangement-edit.js';
 import { createCustomSelect } from './lib/custom-select.js';
 import { deskNoteName } from './mixer-note-names.js';
 import { heavyUi } from './lib/heavy-ui.js';
@@ -26,16 +28,16 @@ const $ = (id) => document.getElementById(id);
 // back on screen — read, written and mutated here, so it comes as a pair.
 let targetLabel, closeMenu, clamp, toast, gap, selectLane, markBar, jumpTo,
   applyArrangementEdit, regionPanelBusy, noteFxFor, setTrackNoteFx, clearTrackArp,
-  powerIcon, trashIcon, effectsOf, arrDraftOf, editBank,
-  restorablePopup, setRestorablePopup;
+  powerIcon, trashIcon, closeIcon, effectsOf, arrDraftOf, editBank, openPicker, closePicker,
+  restorablePopup, setRestorablePopup, retuneSpotFx;
 
 /** Hand the two editors the desk they edit. */
 export function installNoteFxEditors(deps) {
   ({
     targetLabel, closeMenu, clamp, toast, gap, selectLane, markBar, jumpTo,
     applyArrangementEdit, regionPanelBusy, noteFxFor, setTrackNoteFx, clearTrackArp,
-    powerIcon, trashIcon, effectsOf, arrDraftOf, editBank,
-    restorablePopup, setRestorablePopup,
+    powerIcon, trashIcon, closeIcon, effectsOf, arrDraftOf, editBank, openPicker, closePicker,
+    restorablePopup, setRestorablePopup, retuneSpotFx,
   } = deps);
 }
 
@@ -480,151 +482,619 @@ function openBarEffectsEditor(x, y, key, scope) {
   return heavyUi('open bar effects', () => buildBarEffectsEditor(x, y, key, scope));
 }
 
-function buildBarEffectsEditor(x, y, key, { from, to, chain: restoredChain = null }) {
+// The steps a section can be painted on — the grid's cell, in sixteenths — and the finest
+// of them, which is the unit the painted state is kept in whatever the grid is showing, so
+// switching from 1/32 to 1/4 and back loses nothing that was painted.
+const SECTION_GRIDS = [['1/4', 4], ['1/8', 2], ['1/16', 1], ['1/32', 0.5]];
+const CELL = 0.5;
+const cloneChain = (chain) => JSON.parse(JSON.stringify(chain || []));
+const chainSig = (chain) => JSON.stringify(chain || []);
+const chainLabel = (chain) => (chain || []).map((effect) => EFFECT_BY_ID[effect.id]?.short
+  || EFFECT_BY_ID[effect.id]?.name || effect.id).join(' + ');
+const sixteenthsText = (n) => (n % 4 === 0
+  ? `${n / 4} beat${n === 4 ? '' : 's'}`
+  : `${n} sixteenth${n === 1 ? '' : 's'}`);
+// A slot's own coverage as a strip: its lit runs in the accent, the rest clear.
+const coverageStrip = (mask) => {
+  const n = mask?.length || 0;
+  if (!n) return 'none';
+  const stops = [];
+  for (let i = 0; i < n;) {
+    let j = i + 1;
+    while (j < n && !!mask[j] === !!mask[i]) j++;
+    stops.push(`${mask[i] ? 'var(--accent)' : 'transparent'} ${((i / n) * 100).toFixed(2)}% ${((j / n) * 100).toFixed(2)}%`);
+    i = j;
+  }
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
+};
+
+/**
+ * Spot FX: an effect chain over a stretch of the song, on one track or — under
+ * `__master` — on the whole mix (src/data/automation.js, a lane's `fx`).
+ *
+ * The chain is a column of insert slots on the left, as on a strip — power, name, cross,
+ * drag to reorder — with a dashed + under the last one that opens the effect catalogue;
+ * the slot that is selected has its card beside the list. WHERE, across the top, is the
+ * selected bars as a grid of steps. On ALL EFFECTS, the default, they are the chain's: the
+ * whole chain plays where they are lit. On EACH EFFECT every slot has steps of its own and
+ * the grid shows the selected one's, so a Bit Crusher can run across all the bars while a
+ * tape stop takes only the last beat; the steps the other effects play on are marked
+ * faintly, and each slot carries a thin strip of its own coverage. Where several are lit
+ * they chain in slot order. A new effect takes the chain's steps, or on EACH EFFECT every
+ * step, so selecting bars and adding one is still the whole of the simple case.
+ */
+function buildBarEffectsEditor(x, y, key, {
+  from, to, chain: restoredChain = null, masks: restoredMasks = null, grid: restoredGrid = null,
+  selected: restoredSelected = null, selectedId: restoredSelectedId = null, own: restoredOwn = false,
+}) {
   closeMenu();
   const panel = $('regionedit'); panel.textContent = ''; panel.classList.add('barfxmodal');
-  let chain = JSON.parse(JSON.stringify(restoredChain
-    || arrDraftOf().plan?.[from]?.inlineFx?.[key] || []));
-  setRestorablePopup({ kind: 'barEffects', laneKey: key, from, to, chain });
+  const master = key === MASTER_KEY;
+  const draft = arrDraftOf();
+  const base = from * 16;
+  const count = ((to - from + 1) * 16) / CELL;
+  const curve = laneCurve(draft.automation?.[key]);
+  // What each step of the range plays through now: a section, or on a track the bar's own
+  // per-bar snapshot wherever no section covers it — the order the engine reads them in.
+  const chainAt = (pos) => fxSectionAt(curve, pos)?.chain
+    || (master ? null : draft.plan?.[Math.floor(pos / 16)]?.inlineFx?.[key]) || null;
+  const now = Array.from({ length: count }, (_, i) => chainAt(base + (i + 0.5) * CELL));
+  // ---- the chain, and where each of its effects plays ----
+  // The window holds ONE list of effects — the slots — and, for each, the steps it plays on.
+  // Wherever several are lit they chain in slot order. What the song file gets is a section
+  // per stretch where the set that plays changes (see `sections`), so the engine and the
+  // format are the same as every other section's.
+  //
+  // Opened on a range, the sections already there are read back into that form: their chains
+  // merged into one list, in order, each effect lit wherever a chain holding it plays. An
+  // effect is the same effect wherever its settings are the same. Two chains holding the same
+  // effects in different orders keep a second copy of the one out of order — two slots of one
+  // name are two places in the chain, which is what the song plays.
+  const effectKey = (e) => JSON.stringify([e.id, e.params || {}, !!e.bypass, !!e.mute]);
+  const merged = [];
+  const picks = new Map();
+  for (const c of now) {
+    if (!c?.length || picks.has(chainSig(c))) continue;
+    const picked = [];
+    let last = -1;
+    for (const e of c) {
+      const k = effectKey(e);
+      let at = -1;
+      for (let u = last + 1; u < merged.length; u++) {
+        if (merged[u].key === k && !picked.includes(merged[u])) { at = u; break; }
+      }
+      if (at < 0) { at = last + 1; merged.splice(at, 0, { effect: cloneChain([e])[0], key: k }); }
+      picked.push(merged[at]);
+      last = at;
+    }
+    picks.set(chainSig(c), picked);
+  }
+  const fullMask = () => new Array(count).fill(1);
+  let chain = merged.map((m) => m.effect);
+  let masks = merged.map((m) => now.map((c) => (c?.length && picks.get(chainSig(c)).includes(m) ? 1 : 0)));
+  // Every change is written as it is made, so the draft is what this window shows — after a
+  // reload, a rebuild or a ⌘Z alike. The one thing the draft cannot hold is an effect lit on
+  // no step (it writes nothing), and only that comes back from the stored record. A record
+  // from before effects had steps of their own is a chain for an empty range, lit throughout.
+  if (Array.isArray(restoredMasks) && Array.isArray(restoredChain)) {
+    restoredChain.forEach((effect, i) => {
+      if ((restoredMasks[i] || []).some(Boolean)) return;
+      if (chain.length >= MAX_EFFECTS) return;
+      chain.push(cloneChain([effect])[0]);
+      masks.push(new Array(count).fill(0));
+    });
+  } else if (!chain.length && Array.isArray(restoredChain) && restoredChain.length) {
+    chain = cloneChain(restoredChain);
+    masks = chain.map(() => fullMask());
+  }
+  // ALL EFFECTS — the default — paints one set of steps for the whole chain; EACH EFFECT gives
+  // every slot its own. Steps that already differ can only be shown the second way.
+  const differ = () => masks.some((m) => m.some((v, i) => v !== masks[0][i]));
+  let own = restoredOwn === true || differ();
+  // A new effect's steps: the chain's while they are shared, otherwise every step.
+  const newSteps = () => (!own && masks[0] ? [...masks[0]] : fullMask());
+  // The grid opens as fine as what is already there needs, and never coarser than a 1/16.
+  let grid = restoredGrid || (masks.some((m) => m.some((v, i) => i % 2 && v !== m[i - 1])) ? 0.5 : 1);
+  // Which slot's card is showing. Found again by the effect, not just the place: a rebuild
+  // reads the draft, and after an undone reorder the same place holds a different effect.
+  let selected = Number.isInteger(restoredSelected) ? restoredSelected : 0;
+  if (restoredSelectedId != null && chain[selected]?.id !== restoredSelectedId) {
+    const found = chain.findIndex((e) => e.id === restoredSelectedId);
+    if (found >= 0) selected = found;
+  }
+  const remember = () => {
+    const popup = restorablePopup();
+    if (popup?.kind !== 'barEffects') return;
+    popup.chain = cloneChain(chain);
+    popup.masks = masks.map((m) => [...m]);
+    popup.grid = grid;
+    popup.selected = selected;
+    popup.selectedId = chain[selected]?.id ?? null;
+    popup.own = own;
+  };
+  setRestorablePopup({ kind: 'barEffects', laneKey: key, from, to, chain: cloneChain(chain),
+    masks: masks.map((m) => [...m]), grid, own });
+  const span = from === to ? `bar ${from + 1}` : `bars ${from + 1}–${to + 1}`;
   const head = document.createElement('div'); head.className = 'reghead';
   const title = document.createElement('div'); title.className = 'regtitle';
-  title.textContent = `Bar Effects · ${targetLabel(key)} · bars ${from + 1}–${to + 1}`;
+  title.textContent = `Spot FX · ${targetLabel(key)} · ${span}`;
+  title.title = 'Changes play as you make them — ⌘Z undoes; a knob drag is one undo';
   const close = document.createElement('button'); close.className = 'regclose'; close.textContent = '×';
-  close.title = 'Close without applying these staged changes';
-  close.setAttribute('aria-label', 'Close without applying these staged changes');
-  close.onclick = closeMenu; head.append(title, close); panel.append(head);
+  close.title = 'Close — every change is already playing';
+  close.setAttribute('aria-label', close.title);
+  close.onclick = () => { flush(); closeMenu(); }; head.append(title, close); panel.append(head);
 
-  const form = document.createElement('div'); form.className = 'regcontrols barfxcontrols';
-  const list = document.createElement('div'); list.className = 'barfxlist';
-  const status = document.createElement('div'); status.className = 'barfxstatus';
-  const chainNames = () => chain.map((effect) => EFFECT_BY_ID[effect.id]?.short
-    || EFFECT_BY_ID[effect.id]?.name || effect.id).join(' + ');
-  const refreshStatus = () => {
-    status.textContent = chain.length
-      ? `${chainNames()} replaces the channel inserts only in bars ${from + 1}–${to + 1}.`
-        + ' Apply + Play saves it, starts at this range, and leaves this window open.'
-      : `No bar insert is active in bars ${from + 1}–${to + 1}. The normal channel plays there.`;
-  };
-  const rememberChain = () => {
-    if (restorablePopup()?.kind === 'barEffects') {
-      restorablePopup().chain = JSON.parse(JSON.stringify(chain));
+  // ---- live ----
+  // Like an insert: what you change is what plays, with nothing to press. `heard` is the
+  // chain the engine is playing for these cards — what a knob retunes FROM, so a drag
+  // moves the nodes already sounding (tail kept, Stutter not re-grabbed) instead of
+  // building a branch per value. A knob writes at most once a frame and its undo steps
+  // coalesce on the card's tag; everything else writes at once, as its own ⌘Z.
+  let heard = cloneChain(chain);
+  let frame = null;
+  let frameTag = null;
+  // The chains these steps play, one per set of lit effects — what the engine holds a branch
+  // for. Read with `list` standing in for the slots, so the same steps give the chains as
+  // they were heard and as they are now, pair by pair.
+  const playing = (list) => {
+    const seen = new Map();
+    for (let i = 0; i < count; i++) {
+      const lit = masks.map((m) => (m[i] ? 1 : 0)).join('');
+      if (!lit.includes('1') || seen.has(lit)) continue;
+      seen.set(lit, list.filter((_, e) => masks[e]?.[i]));
     }
+    return [...seen.values()];
   };
-  const draw = () => {
-    rememberChain();
+  const commit = (tag = null) => {
+    if (frame != null) { cancelAnimationFrame(frame); frame = null; }
+    // A knob moves every chain its effect is in, each on the nodes already playing it.
+    const before = heard.length === chain.length ? playing(heard) : [];
+    const after = playing(chain);
+    const retuned = [];
+    if (before.length === after.length) {
+      before.forEach((old, n) => {
+        if (chainSig(old) !== chainSig(after[n]) && retuneSpotFx?.(key, old, after[n])) retuned.push(n);
+      });
+    }
+    const ok = applyArrangementEdit(setBarSections(arrDraftOf(), from, to, key, sections()), '',
+      { undoTag: tag });
+    if (ok) heard = cloneChain(chain);
+    else for (const n of retuned) retuneSpotFx?.(key, after[n], before[n]);
+    remember();
     refreshStatus();
-    list.textContent = '';
-    if (!chain.length) {
-      const empty = document.createElement('div'); empty.className = 'devnote';
-      empty.textContent = 'No bar effects. Later bars use the normal channel and any tail from this chain can finish.';
-      list.append(empty);
+    return ok;
+  };
+  const commitSoon = (tag) => {
+    frameTag = tag;
+    if (frame == null) frame = requestAnimationFrame(() => { frame = null; commit(frameTag); });
+  };
+  const flush = () => { if (frame != null) commit(frameTag); };
+
+  const status = document.createElement('div'); status.className = 'barfxstatus';
+  status.setAttribute('aria-live', 'polite');
+  const coverage = (mask) => {
+    const lit = (mask || []).reduce((n, v) => n + (v ? 1 : 0), 0) * CELL;
+    return lit === count * CELL ? `all of ${span}` : lit ? `${sixteenthsText(lit)} of ${span}` : 'no step';
+  };
+  // Where each effect plays — a long chain names three and counts the rest, rather than
+  // growing the window a line an effect.
+  const each = () => {
+    const all = chain.map((e, i) => `${chainLabel([e])}: ${coverage(masks[i])}`);
+    return all.length > 4 ? [...all.slice(0, 3), `${all.length - 3} more`] : all;
+  };
+  const refreshStatus = () => {
+    const place = master ? 'on the whole mix, after the master inserts'
+      : `on ${targetLabel(key)}, ahead of its own inserts`;
+    status.textContent = !chain.length
+      ? `No effects yet. Add one with + and it plays across ${span}; then light only the steps it should play on.`
+      : own ? `${each().join(' · ')} — ${place}.`
+        : `${chainLabel(chain)}: ${coverage(masks[0])} — ${place}.`;
+  };
+
+  // ---- where ----
+  const where = document.createElement('div'); where.className = 'barfxwhere';
+  const whereHead = document.createElement('div'); whereHead.className = 'barfxwherehead';
+  const whereName = document.createElement('span'); whereName.textContent = 'Where';
+  // Whose steps the grid is: the chain's (ALL EFFECTS) or the selected slot's (EACH EFFECT).
+  const modeSeg = document.createElement('div'); modeSeg.className = 'seg barfxmodeseg';
+  modeSeg.setAttribute('role', 'group');
+  modeSeg.setAttribute('aria-label', 'Whose steps the grid paints');
+  const seg = document.createElement('div'); seg.className = 'seg barfxgridseg';
+  const rows = document.createElement('div'); rows.className = 'barfxrows';
+  const drawGrid = () => {
+    for (const button of seg.children) button.classList.toggle('on', Number(button.dataset.size) === grid);
+    for (const button of modeSeg.children) {
+      const on = (button.dataset.own === '1') === own;
+      button.classList.toggle('on', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
+    // Whose steps these are: the chain's, or the selected slot's.
+    const named = own && chain[selected] ? chainLabel([chain[selected]]) : null;
+    whereName.textContent = named ? `Where · ${named}` : 'Where';
+    const whose = named ? 'the selected effect' : 'the chain';
+    rows.setAttribute('aria-label', `Steps of ${span} ${whose} plays on`);
+    rows.title = `The steps ${whose} plays on. Click a step to light it or put it out, drag to paint`
+      + ` across.${named ? ' Faintly marked steps are where the chain\'s other effects play.' : ''}`
+      + ' Effect tails ring on after their steps.';
+    for (const [button, tip] of [[fillAll, `Play ${named || 'the chain'} on every step of ${span}`],
+      [fillNone, `Take ${named || 'the chain'} off every step of ${span}`]]) {
+      button.title = tip;
+      button.setAttribute('aria-label', tip);
+    }
+    rows.textContent = '';
+    const per = grid / CELL;
+    const perBar = 16 / grid;
+    const mine = masks[selected] || null;
+    rows.style.setProperty('--cells', perBar);
+    rows.classList.toggle('empty', !mine);
+    for (let b = 0; b <= to - from; b++) {
+      const row = document.createElement('div'); row.className = 'barfxrow';
+      const number = document.createElement('span'); number.className = 'barfxbarno';
+      number.textContent = String(from + b + 1);
+      const strip = document.createElement('div'); strip.className = 'barfxcells';
+      for (let j = 0; j < perBar; j++) {
+        const first = (b * perBar + j) * per;
+        const values = mine ? mine.slice(first, first + per) : [0];
+        const value = values.every((v) => v === values[0]) ? values[0] : null;
+        const cell = document.createElement('span'); cell.className = 'barfxcell';
+        cell.dataset.index = String(first);
+        cell.dataset.state = value === 1 ? 'on' : value === 0 ? 'off' : 'mixed';
+        // Where the chain's OTHER effects play, so the one being painted is never painted blind.
+        if (value !== 1) {
+          for (let i = first; i < first + per; i++) {
+            if (masks.some((m, e) => e !== selected && m[i])) { cell.dataset.also = '1'; break; }
+          }
+        }
+        if ((j * grid) % 4 === 0) cell.classList.add('beat');
+        strip.append(cell);
+      }
+      row.append(number, strip);
+      rows.append(row);
+    }
+  };
+  for (const [name, size] of SECTION_GRIDS) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'segbtn'; button.textContent = name;
+    button.dataset.size = String(size);
+    button.title = `Paint in ${name} steps`;
+    button.onclick = () => { grid = size; drawGrid(); remember(); };
+    seg.append(button);
+  }
+  // Back to ALL EFFECTS from steps that differ: every effect takes the ones on show — the
+  // selected effect's. That changes the song, so it is written, and ⌘Z brings them back.
+  const setOwn = (value) => {
+    if (value === own) return;
+    flush();
+    own = value;
+    if (!own && differ()) {
+      const kept = chainLabel([chain[selected]]);
+      const steps = masks[selected] || masks[0];
+      masks = masks.map(() => [...steps]);
+      draw(); commit();
+      toast(`Every effect now plays on ${kept}'s steps — ⌘Z to undo`);
+      return;
+    }
+    draw();
+  };
+  for (const [value, label, tip] of [
+    [false, 'All effects', 'One set of steps for the whole chain: every effect plays where the grid is lit'],
+    [true, 'Each effect', 'Every effect has steps of its own: select a slot to see and paint where it plays'],
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'segbtn'; button.textContent = label;
+    button.dataset.own = value ? '1' : '0';
+    button.title = tip;
+    button.onclick = () => setOwn(value);
+    modeSeg.append(button);
+  }
+  // What a stroke paints: the selected effect's steps, or on ALL EFFECTS every effect's.
+  const painted = () => (own ? [masks[selected]] : masks).filter(Boolean);
+  const fill = (value, label) => {
+    const button = document.createElement('button'); button.type = 'button';
+    button.className = 'barfxfill'; button.textContent = label;
+    button.onclick = () => {
+      if (!masks[selected]) return;
+      for (const mine of painted()) mine.fill(value);
+      draw(); commit();
+    };
+    return button;
+  };
+  const fillAll = fill(1, 'All');
+  const fillNone = fill(0, 'None');
+  whereHead.append(whereName, modeSeg, seg, fillAll, fillNone);
+  // Click a step to light it or put it out, drag to paint the same across — the step grid's
+  // own gesture. Captured, so a drag that leaves the grid keeps painting when it comes back.
+  let paint = null;
+  const paintCell = (el) => {
+    if (!el || paint == null || !masks[selected] || !rows.contains(el)) return;
+    const first = Number(el.dataset.index);
+    for (const mine of painted()) for (let i = first; i < first + grid / CELL; i++) mine[i] = paint;
+    el.dataset.state = paint ? 'on' : 'off';
+  };
+  rows.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest?.('.barfxcell');
+    if (!el || ev.button !== 0 || !masks[selected]) return;
+    ev.preventDefault();
+    paint = el.dataset.state === 'on' ? 0 : 1;
+    paintCell(el);
+    try { rows.setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
+  });
+  rows.addEventListener('pointermove', (ev) => {
+    if (paint == null) return;
+    paintCell(document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.barfxcell'));
+  });
+  // One stroke, one write, one ⌘Z.
+  const endPaint = () => { if (paint == null) return; paint = null; draw(); commit(); };
+  rows.addEventListener('pointerup', endPaint);
+  rows.addEventListener('pointercancel', endPaint);
+  where.append(whereHead, rows);
+
+  // ---- the chain ----
+  // Slots on the left, the selected one's card on the right. Every change ends in the same
+  // `draw(); commit();` the rest of the window uses, so it plays as it is made.
+  const split = document.createElement('div'); split.className = 'barfxsplit';
+  const slots = document.createElement('div'); slots.className = 'barfxslots';
+  slots.setAttribute('role', 'group');
+  slots.setAttribute('aria-label', 'Effect chain, in signal order');
+  const cardPane = document.createElement('div'); cardPane.className = 'barfxcard';
+  split.append(slots, cardPane);
+  // This window's own drag, never the strips': a slot dragged here cannot land on a strip,
+  // and a strip's slot cannot land here.
+  let dragFrom = null;
+  const selectSlot = (i, { focus = false } = {}) => {
+    if (!chain.length) return;
+    const next = clamp(i, 0, chain.length - 1);
+    if (next !== selected) {
+      flush();
+      selected = next;
+      remember(); drawSlots(); drawCard(); drawGrid();
+      cardPane.scrollTop = 0;
+    }
+    if (focus) slots.querySelector('.barfxslot.selected')?.focus({ preventScroll: true });
+  };
+  const toggleBypass = (i) => { chain[i] = { ...chain[i], bypass: !chain[i].bypass }; draw(); commit(); };
+  // The selection follows the effect that was selected, wherever the move puts it.
+  const move = (src, dst) => {
+    if (src === dst || !chain[src] || dst < 0 || dst >= chain.length) return;
+    const keep = chain[selected];
+    const [moved] = chain.splice(src, 1);
+    chain.splice(dst, 0, moved);
+    const [steps] = masks.splice(src, 1);
+    masks.splice(dst, 0, steps);
+    selected = chain.indexOf(keep);
+    draw(); commit();
+  };
+  const removeAt = (i) => {
+    if (!chain[i]) return;
+    chain.splice(i, 1);
+    masks.splice(i, 1);
+    if (i < selected) selected -= 1;
+    draw(); commit();
+  };
+  // At the END of the chain, where the + is drawn — as on a strip — and selected, so its
+  // card is the one beside the list.
+  const addPicked = (id) => {
+    const def = EFFECT_BY_ID[id];
+    if (!def || !slots.isConnected) return;   // the window went while the catalogue was up
+    if (chain.length >= MAX_EFFECTS) return toast(`A chain holds at most ${MAX_EFFECTS} effects`);
+    chain.push({ id: def.id, params: JSON.parse(JSON.stringify(def.defaults || {})) });
+    masks.push(newSteps());                       // the chain's steps, or on EACH EFFECT all of them
+    selected = chain.length - 1;
+    draw(); commit();
+    slots.querySelector('.barfxslot.selected')?.focus({ preventScroll: true });
+  };
+  const drawSlots = () => {
+    const focused = slots.contains(document.activeElement);
+    slots.textContent = '';
     chain.forEach((effect, index) => {
       const def = EFFECT_BY_ID[effect.id];
       const name = def?.name || effect.id;
-      const card = document.createElement('div');
-      card.className = `device barfxdevice${effect.bypass ? ' bypassed' : ''}`;
-      card.dataset.idx = String(index);
-      const bar = document.createElement('div'); bar.className = 'devbar';
-      const bypass = document.createElement('button');
-      bypass.className = `devtoggle${effect.bypass ? '' : ' on'}`;
-      bypass.append(powerIcon());
-      bypass.title = effect.bypass ? `Enable ${name}` : `Bypass ${name}`;
-      bypass.setAttribute('aria-label', bypass.title);
-      bypass.onclick = () => { chain[index] = { ...chain[index], bypass: !effect.bypass }; draw(); };
-      const heading = document.createElement('h4'); heading.textContent = name;
-      const up = document.createElement('button'); up.className = 'barfxmove'; up.textContent = '↑';
-      up.disabled = index === 0; up.title = `Move ${name} earlier in the chain`;
-      up.setAttribute('aria-label', up.title);
-      up.onclick = () => {
-        if (index <= 0) return;
-        [chain[index - 1], chain[index]] = [chain[index], chain[index - 1]]; draw();
-      };
-      const down = document.createElement('button'); down.className = 'barfxmove'; down.textContent = '↓';
-      down.disabled = index === chain.length - 1; down.title = `Move ${name} later in the chain`;
-      down.setAttribute('aria-label', down.title);
-      down.onclick = () => {
-        if (index >= chain.length - 1) return;
-        [chain[index], chain[index + 1]] = [chain[index + 1], chain[index]]; draw();
-      };
-      const remove = document.createElement('button'); remove.className = 'devclose';
-      remove.append(trashIcon());
-      remove.title = `Remove ${name} from this bar effect snapshot`;
-      remove.setAttribute('aria-label', remove.title);
-      remove.onclick = () => { chain.splice(index, 1); draw(); };
-      bar.append(bypass, heading, up, down, remove); card.append(bar);
-      const grid = document.createElement('div'); grid.className = 'devgrid'; card.append(grid);
-      fillEffectControls({
-        grid, def, entry: effect, rebuild: draw,
-        patch: (params) => {
-          if (!chain[index]) return;
-          chain[index] = { ...chain[index], params: { ...(chain[index].params || {}), ...params } };
-          rememberChain();
-        },
-        replaceParams: (params) => {
-          if (!chain[index]) return;
-          chain[index] = { ...chain[index], params };
-          rememberChain();
-        },
+      const slot = document.createElement('button');
+      slot.type = 'button';
+      slot.className = `barfxslot${effect.bypass ? '' : ' on'}${index === selected ? ' selected' : ''}`;
+      slot.dataset.idx = String(index);
+      if (index === selected) slot.setAttribute('aria-current', 'true');
+      slot.title = `${name} — click to edit it\nDrag, or ⌥↑ ⌥↓, to move it · Delete removes it`;
+      const power = document.createElement('span'); power.className = 'pwrhit';
+      power.append(powerIcon());
+      power.title = effect.bypass ? `Turn ${name} on` : `Turn ${name} off`;
+      power.onclick = (ev) => { ev.stopPropagation(); toggleBypass(index); };
+      const label = document.createElement('span'); label.className = 'fxname';
+      label.textContent = name;
+      const cross = document.createElement('span'); cross.className = 'rmhit';
+      cross.append(closeIcon());
+      cross.title = `Remove ${name}`;
+      cross.onclick = (ev) => { ev.stopPropagation(); removeAt(index); };
+      slot.append(power, label, cross);
+      // On EACH EFFECT, a thin strip along the slot's foot: where in the range it plays.
+      if (own) {
+        const mini = document.createElement('span'); mini.className = 'barfxmini';
+        mini.style.background = coverageStrip(masks[index]);
+        slot.append(mini);
+      }
+      slot.onclick = () => selectSlot(index);
+      slot.draggable = true;
+      slot.addEventListener('dragstart', (ev) => {
+        dragFrom = index;
+        slot.classList.add('dragging');
+        if (ev.dataTransfer) { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', name); }
       });
-      list.append(card);
+      slot.addEventListener('dragend', () => {
+        dragFrom = null;
+        for (const el of slots.children) el.classList.remove('dragging', 'dropzone', 'after');
+      });
+      slot.addEventListener('dragover', (ev) => {
+        if (dragFrom == null || dragFrom === index) return;
+        ev.preventDefault();
+        slot.classList.add('dropzone');
+        slot.classList.toggle('after', dragFrom < index);
+      });
+      slot.addEventListener('dragleave', () => slot.classList.remove('dropzone', 'after'));
+      slot.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        const src = dragFrom;
+        dragFrom = null;
+        if (src != null) move(src, index);
+      });
+      slots.append(slot);
     });
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'barfxaddslot';
+    add.textContent = '+';
+    const full = chain.length >= MAX_EFFECTS;
+    add.disabled = full;
+    add.title = full ? `A chain holds at most ${MAX_EFFECTS} effects`
+      : 'Add an effect to the end of the chain. Effects with a look-ahead are not offered:'
+        + ' switching one in would move the music by it.';
+    add.setAttribute('aria-label', full ? add.title : 'Add an effect');
+    add.onclick = () => {
+      if (closePicker()) return;                     // the + also puts it away
+      // Over the card it is about to replace, and only what is on time — EFFECT_LATENCY_MS.
+      const pane = cardPane.getBoundingClientRect();
+      openPicker({ anchor: add, x: pane.left + 6, y: pane.top + 6,
+        ids: SECTION_EFFECTS.map((def) => def.id), onPick: addPicked });
+    };
+    slots.append(add);
+    if (focused) slots.querySelector('.barfxslot.selected')?.focus({ preventScroll: true });
   };
-  form.append(status, list);
-  const addRow = document.createElement('label'); addRow.className = 'regcontrol';
-  const addName = document.createElement('span'); addName.textContent = 'Add effect';
-  const picker = document.createElement('select');
-  picker.add(new Option('Choose an effect…', ''));
-  for (const def of EFFECTS) picker.add(new Option(def.name, def.id));
-  const add = document.createElement('button'); add.textContent = 'Add';
-  add.disabled = true;
-  picker.onchange = () => { add.disabled = !picker.value; };
-  add.onclick = () => {
-    if (chain.length >= MAX_EFFECTS) return toast(`A bar holds at most ${MAX_EFFECTS} effects`);
-    const def = EFFECT_BY_ID[picker.value];
-    if (def) chain.push({ id: def.id, params: JSON.parse(JSON.stringify(def.defaults || {})) });
-    draw();
+  const drawCard = () => {
+    const scrolled = cardPane.scrollTop;
+    cardPane.textContent = '';
+    const index = selected;
+    const effect = chain[index];
+    if (!effect) {
+      const empty = document.createElement('div'); empty.className = 'devnote barfxempty';
+      empty.textContent = 'No effects yet — add one with +.';
+      cardPane.append(empty);
+      return;
+    }
+    const def = EFFECT_BY_ID[effect.id];
+    const name = def?.name || effect.id;
+    const card = document.createElement('div');
+    card.className = `device barfxdevice${effect.bypass ? ' bypassed' : ''}`;
+    card.dataset.idx = String(index);
+    const bar = document.createElement('div'); bar.className = 'devbar';
+    const bypass = document.createElement('button');
+    bypass.className = `devtoggle${effect.bypass ? '' : ' on'}`;
+    bypass.append(powerIcon());
+    bypass.title = effect.bypass ? `Turn ${name} on` : `Turn ${name} off`;
+    bypass.setAttribute('aria-label', bypass.title);
+    bypass.onclick = () => toggleBypass(index);
+    const heading = document.createElement('h4'); heading.textContent = name;
+    const remove = document.createElement('button'); remove.className = 'devclose';
+    remove.append(trashIcon());
+    remove.title = `Remove ${name} from this chain`;
+    remove.setAttribute('aria-label', remove.title);
+    remove.onclick = () => removeAt(index);
+    bar.append(bypass, heading, remove); card.append(bar);
+    const grid = document.createElement('div'); grid.className = 'devgrid'; card.append(grid);
+    fillEffectControls({
+      grid, def, entry: effect, rebuild: drawCard,
+      patch: (params, tag) => {
+        if (!chain[index]) return;
+        chain[index] = { ...chain[index], params: { ...(chain[index].params || {}), ...params } };
+        commitSoon(tag);
+      },
+      replaceParams: (params, tag) => {
+        if (!chain[index]) return;
+        chain[index] = { ...chain[index], params };
+        commitSoon(tag);
+      },
+      // A drag is one ⌘Z, as on an insert card — see pushUndo.
+      tag: (part) => (part ? `spotfx:${key}:${from}:${index}:${part}` : null),
+      // A section's card: the Filter's SWEEP shows here and nowhere else.
+      section: true,
+    });
+    cardPane.append(card);
+    cardPane.scrollTop = scrolled;
   };
-  add.title = 'Add the selected effect to the end of this bar effect snapshot';
-  add.setAttribute('aria-label', add.title);
-  const addHelp = document.createElement('div'); addHelp.className = 'barfxhelp';
-  addHelp.textContent = 'Add creates an editable card. Changes remain staged until Apply.';
-  addRow.append(addName, picker, add, addHelp); form.append(addRow); panel.append(form); draw();
+  const draw = () => {
+    // One mask per effect, whatever replaced the chain (Clear, Snapshot Inserts).
+    while (masks.length < chain.length) masks.push(newSteps());
+    masks.length = chain.length;
+    selected = clamp(selected, 0, Math.max(0, chain.length - 1));
+    remember();
+    refreshStatus();
+    drawSlots();
+    drawCard();
+    drawGrid();
+  };
+  // ↑ ↓ choose, ⌥↑ ⌥↓ move, Home and End, Delete (or the Mac's Backspace) removes.
+  slots.addEventListener('keydown', (ev) => {
+    const at = Number(ev.target.closest?.('.barfxslot')?.dataset.idx);
+    if (!Number.isInteger(at)) return;
+    const step = ev.key === 'ArrowUp' ? -1 : ev.key === 'ArrowDown' ? 1 : 0;
+    if (step && ev.altKey) { selectSlot(at); move(at, at + step); slots.querySelector('.barfxslot.selected')?.focus(); }
+    else if (step) selectSlot(at + step, { focus: true });
+    else if (ev.key === 'Home' || ev.key === 'End') selectSlot(ev.key === 'Home' ? 0 : chain.length - 1, { focus: true });
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') removeAt(at);
+    else return;
+    ev.preventDefault();
+    ev.stopPropagation();
+  });
+  panel.append(where, split); draw();
+  // The window's own keys. Delete and Backspace never reach the desk while it has focus —
+  // with a bar range selected behind it, the desk would erase that range's notes. Escape
+  // puts the catalogue away first, then closes whichever window this is.
+  panel.onkeydown = (ev) => {
+    if (ev.key === 'Delete' || ev.key === 'Backspace') ev.stopPropagation();
+    if (ev.key !== 'Escape') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (!closePicker()) panel.querySelector('.reghead .regclose')?.click();
+  };
+
+  /**
+   * The painted steps as sections: one per run of steps where the same effects are lit, each
+   * holding those effects in slot order. Bit Crusher across a bar and a tape stop on its last
+   * beat is two — the Crusher alone, then the Crusher into the Stutter — and the second is a
+   * section of its own, so the Stutter grabs where its beat starts.
+   */
+  const sections = () => {
+    const out = [];
+    const litAt = (i) => masks.map((m) => (m[i] ? 1 : 0)).join('');
+    for (let i = 0; i < count;) {
+      const lit = litAt(i);
+      let j = i + 1;
+      while (j < count && litAt(j) === lit) j++;
+      const sub = chain.filter((_, e) => masks[e][i]);
+      if (sub.length) out.push({ from: base + i * CELL, to: base + j * CELL, chain: cloneChain(sub) });
+      i = j;
+    }
+    return out;
+  };
 
   const foot = document.createElement('div'); foot.className = 'regfoot barfxfoot';
   const snapshot = document.createElement('button'); snapshot.textContent = 'Snapshot Inserts';
-  snapshot.title = 'Copy this channel’s current insert chain into the bar snapshot';
+  snapshot.title = 'Copy this channel’s current insert chain into these cards';
   snapshot.setAttribute('aria-label', snapshot.title);
-  snapshot.onclick = () => { chain = JSON.parse(JSON.stringify(effectsOf(key).slice(0, MAX_EFFECTS))); draw(); };
-  const clear = document.createElement('button'); clear.textContent = 'Clear';
-  clear.title = 'Remove every effect from this bar snapshot';
-  clear.setAttribute('aria-label', clear.title);
-  clear.onclick = () => { chain = []; draw(); };
-  const closeButton = document.createElement('button'); closeButton.textContent = 'Close';
-  closeButton.title = 'Close without applying these staged bar-effect changes';
-  closeButton.setAttribute('aria-label', closeButton.title);
-  closeButton.onclick = closeMenu;
-  const applyPlay = document.createElement('button'); applyPlay.className = 'regapply barfxplay';
-  applyPlay.textContent = 'Apply + Play';
-  applyPlay.title = `Save these effects and play ${targetLabel(key)} from bar ${from + 1}`;
-  applyPlay.setAttribute('aria-label', applyPlay.title);
-  applyPlay.onclick = () => {
-    const ok = applyArrangementEdit(setBarEffects(arrDraftOf(), from, to, key, chain), '');
-    if (!ok) return;
-    selectLane(key);
-    markBar(key, from, to);
-    jumpTo(from * 16, { start: true, immediate: true });
-    toast(`Playing ${targetLabel(key)} from bar ${from + 1} with ${chain.length || 'no'} bar effects — ⌘Z to undo`);
+  snapshot.onclick = () => {
+    chain = JSON.parse(JSON.stringify(effectsOf(key).slice(0, MAX_EFFECTS)));
+    masks = chain.map(() => newSteps());
+    draw(); commit();
   };
-  const guide = document.createElement('div'); guide.className = 'barfxguide';
-  guide.innerHTML = '<span><strong>Per-bar insert</strong> replaces the channel inserts only while these bars play.</span>'
-    + '<span><strong>Apply + Play</strong> saves the snapshot, starts here, and keeps this window open.</span>'
-    + '<span><strong>Snapshot Inserts</strong> replaces these cards with a copy of the channel chain.</span>'
-    + '<span><strong>Power / arrows</strong> bypass and reorder the staged chain.</span>'
-    + '<span><strong>Close</strong> discards staged changes.</span>'
-    + '<span><strong>Effect tails</strong> may continue after the selected bars.</span>';
-  foot.append(snapshot, clear, closeButton, applyPlay);
-  panel.append(guide, foot);
+  const clear = document.createElement('button'); clear.textContent = 'Clear';
+  clear.title = 'Remove every effect from these cards';
+  clear.setAttribute('aria-label', clear.title);
+  clear.onclick = () => { chain = []; masks = []; draw(); commit(); };
+  const closeButton = document.createElement('button'); closeButton.textContent = 'Close';
+  closeButton.title = 'Close — every change is already playing';
+  closeButton.setAttribute('aria-label', closeButton.title);
+  closeButton.onclick = () => { flush(); closeMenu(); };
+  const play = document.createElement('button'); play.className = 'regapply barfxplay';
+  play.textContent = '▶ Play';
+  play.title = `Jump to bar ${from + 1} and play ${master ? 'the song' : targetLabel(key)} from there`;
+  play.setAttribute('aria-label', play.title);
+  // Every press jumps, playing or not: it is how you hear the same spot again.
+  play.onclick = () => {
+    flush();
+    if (!master) {
+      selectLane(key);
+      markBar(key, from, to);
+    }
+    jumpTo(from * 16, { start: true, immediate: true });
+  };
+  foot.append(...(master ? [] : [snapshot]), clear, closeButton, play);
+  panel.append(status, foot);
   panel.style.left = `${x}px`; panel.style.top = `${y}px`; panel.classList.add('show');
   const rect = panel.getBoundingClientRect();
   panel.style.left = `${Math.max(6, Math.min(x, innerWidth - rect.width - 6))}px`;

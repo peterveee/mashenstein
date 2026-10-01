@@ -24,7 +24,7 @@ import {
 import { midiFreq, freqMidi } from '../tools/mixer-piano-roll.js';
 import { polyLane } from '../src/data/voices.js';
 import {
-  draftOf, writeBarNotesShared, entryOf, readBarLane,
+  draftOf, writeBarNotes, entryOf, readBarLane,
 } from '../tools/lib/arrangement-edit.js';
 import { lenKey } from '../src/engine/lanes.js';
 import { seq, n } from '../src/engine/notes.js';
@@ -431,22 +431,56 @@ assert(chordAnchor(null, 0, 7).step === 7 && chordAnchor({ ms: 0, step: 3 }, NaN
   take.add({ bar: 1, lane: 'hats', step: 8 });
 
   for (const { bar, lane, notes16, lengths16 } of take.entries()) {
-    d = writeBarNotesShared(bank, d, bar, lane, notes16, lengths16);
+    d = writeBarNotes(bank, d, bar, lane, notes16, lengths16);
   }
   const entry = entryOf(bank, d);
-  assert(entry && entry.sections?.length === 1 && entry.sections[0].base === 0,
-    'a take becomes a layer section, exactly like a drawn note');
+  // Two bars played into, two layer sections: each bar forks on its own, exactly like
+  // a drawn note, because the two bars of section 0 are two places in the song.
+  assert(entry && entry.sections?.length === 2
+    && entry.sections.every((s) => s.base === 0),
+    'a take becomes a layer section per bar played, exactly like a drawn note');
   assert(entry.sections[0].bass[4] === fifth, 'carrying the note that was played');
   assert(entry.sections[0].bass[0] === A2,
     'and keeping what the bar already played — the overdub survived the write');
   assert(entry.sections[0][lenKey('bass')]?.[4] === 3,
     'the measured length went into bassLen, at the note’s step');
-  assert(entry.sections[0].hats[16 + 8] === true,
-    'and the hat recorded into the second bar landed in the second half of the section');
-  assert(entry.sections[0].hats.every((v) => v === true || v === false),
+  assert(entry.sections[1].hats[16 + 8] === true,
+    'and the hat recorded into the second bar landed in the second half of its section');
+  assert(entry.sections[1].hats.every((v) => v === true || v === false),
     'with the drum lane still all-boolean end to end');
   assert(json(bank) === before,
     'while the composition is untouched — the desk never rewrites a bank');
+}
+
+// ---- a take lands in the bar it was played in, and NOWHERE else -------------------
+//
+// Section 0 played twice — an `order` repeat, the shape a generated song is written
+// in and the shape the desk's Duplicate leaves behind. A note played into bar 1 must
+// not turn up in bar 3 because bar 3 happens to play the same section. The shared
+// write did exactly that.
+{
+  const bank = {
+    bpm: 120,
+    sections: [{ lead: seq('E4 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .') }],
+    order: [0, 0],
+  };
+  let d = draftOf(bank);
+  assert(d.plan.length === 4 && d.plan[0].sec === d.plan[2].sec && d.plan[0].half === d.plan[2].half,
+    'bars 1 and 3 play the same half of the same section');
+  const bar3 = json(readBarLane(bank, d, 2, 'lead'));
+  const take = createTake({ read: (bar, key) => readBarLane(bank, d, bar, key) });
+  const g = midiFreq(67);
+  take.add({ bar: 0, lane: 'lead', step: 8, midi: 67, freq: g });
+  for (const { bar, lane, notes16, lengths16 } of take.entries()) {
+    d = writeBarNotes(bank, d, bar, lane, notes16, lengths16);
+  }
+  const back = draftOf(bank, entryOf(bank, d));
+  assert(readBarLane(bank, back, 0, 'lead')[8] === g,
+    'the note is in bar 1, where it was played — through a save and a reload');
+  assert(json(readBarLane(bank, back, 2, 'lead')) === bar3,
+    'and bar 3, playing the same section, is exactly what it was');
+  assert([1, 3].every((i) => readBarLane(bank, back, i, 'lead').every((v) => v !== g)),
+    'nor did it reach either second bar');
 }
 
 // ---- a take that measured nothing writes no Len key -----------------------------
@@ -460,7 +494,7 @@ assert(chordAnchor(null, 0, 7).step === 7 && chordAnchor({ ms: 0, step: 3 }, NaN
   const f = midiFreq(50);
   take.add({ bar: 0, lane: 'bass', step: 6, midi: 50, freq: f });   // never closed
   for (const { bar, lane, notes16, lengths16 } of take.entries()) {
-    d = writeBarNotesShared(bank, d, bar, lane, notes16, lengths16);
+    d = writeBarNotes(bank, d, bar, lane, notes16, lengths16);
   }
   const entry = entryOf(bank, d);
   assert(entry.sections[0].bass[6] === f, 'the note is there');

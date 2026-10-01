@@ -11,7 +11,7 @@
 
 import {
   barCount, readBarLane, writeBarNotes, setLanesOff, setLanesDeleted, transposeBars,
-  offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects,
+  offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects, barSections, putBarSections,
 } from './lib/arrangement-edit.js';
 import { lenKey } from '../src/engine/lanes.js';
 
@@ -53,6 +53,7 @@ const rangeHasEveryFlag = (draft, from, to, field, lanes) => {
  */
 const laneBarPart = (bank, draft, bar, lane) => {
   const entry = draft.plan[bar] || null;
+  const sections = barSections(draft, lane, bar);
   return {
     notes: readBarLane(bank, draft, bar, lane),
     lengths: readBarLane(bank, draft, bar, lenKey(lane)),
@@ -65,6 +66,10 @@ const laneBarPart = (bank, draft, bar, lane) => {
       pan: barFieldValue(entry, 'pan', lane),
       noteFx: entry?.noteFx?.[lane] ?? null,
       inlineFx: entry?.inlineFx?.[lane] ?? null,
+      // The bar's share of the lane's effect sections, from the bar's own top — the finer
+      // form of `inlineFx`, which is why it travels with it. Empty is null, so a bar with
+      // none still reads as a bar with no edits.
+      fx: sections.length ? sections : null,
     },
   };
 };
@@ -112,6 +117,7 @@ const writeLaneBarPart = (bank, draft, bar, lane, part, current = null) => {
   if (!same('pan')) out = panBars(out, bar, bar, [lane], now.pan);
   if (!same('noteFx')) out = setBarNoteFx(out, bar, bar, lane, now.noteFx);
   if (!same('inlineFx')) out = setBarEffects(out, bar, bar, lane, now.inlineFx);
+  if (!same('fx')) out = putBarSections(out, lane, bar, now.fx || []);
   return out;
 };
 

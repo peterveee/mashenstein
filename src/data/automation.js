@@ -64,7 +64,26 @@
 // Its own reverb inserts are left alone: a room cannot be emptied, only muted, and a
 // muted room would take the next note's reverb with it.
 //
-// Absent — no `automation` key, or a lane with neither points nor cuts — is every song
+// EFFECT SECTIONS — `fx` on a lane — are the third thing, and the one that is not about
+// level: a stretch of the song that plays through an effect chain of its own.
+//
+//   bass:     { fx: [{ from: [16, 12], to: [17, 0], chain: [{ id: 'stutter', params: {…} }] }] },
+//   __master: { fx: [{ from: [24, 0], to: [25, 0], chain: [{ id: 'distortion', params: {…} }] }] },
+//
+// `from` and `to` are places like a point's, so a section can start on any sixteenth (or
+// between two, on a finer grid) and runs up to `to`, not including it. They are the finer
+// form of the per-bar `inlineFx` snapshot on an order entry, which can only switch at a bar
+// line; the desk writes sections now, and a bar's `inlineFx` plays wherever no section
+// covers it. On a TRACK the chain runs in front of the channel — before the fader, the
+// pan, the EQ and the channel's own inserts — exactly where a bar's snapshot does. The lane
+// key `__master` is the whole mix, after the master's inserts and before the limiter, and
+// sections are the only thing the master's lane can carry: it has no level line or cuts.
+//
+// A section's END lets its chain ring out — what is already in an echo or a room is not
+// cut off — and its START is an event of its own: a Stutter grabs its slice there, so two
+// sections side by side with the same chain are two grabs, where one longer one is one.
+//
+// Absent — no `automation` key, or a lane with no points, cuts or sections — is every song
 // that has not asked, and plays exactly as it did before this file existed.
 
 /** The shapes a segment can take, in the order the desk offers them. */
@@ -98,6 +117,12 @@ export const AUTOMATION_MAX_DB = 6;
 
 /** Sixteenths in a bar — the unit every position below is counted in. */
 const BAR = 16;
+
+/** The lane key that means the whole mix — the name Audio.rampMix already uses for it. */
+export const MASTER_KEY = '__master';
+
+/** The most effects one section's chain can hold: an insert strip's six. */
+const SECTION_MAX = 6;
 
 const EPS = 1e-6;
 const tidyNumber = (n) => Math.round(n * 1e6) / 1e6;
@@ -171,28 +196,79 @@ export function laneCurve(lane) {
   const cuts = [...new Set((Array.isArray(lane.cuts) ? lane.cuts : [])
     .filter((c) => Array.isArray(c) && Number.isFinite(c[0]))
     .map((c) => posOf(c[0], c[1])))].sort((a, b) => a - b);
-  const curve = { points, cuts };
+  const fx = readFx(lane.fx);
+  const curve = { points, cuts, fx };
   CURVES.set(lane, curve);
   return curve;
+}
+
+const validChain = (chain) => Array.isArray(chain) && chain.length > 0 && chain.length <= SECTION_MAX
+  && chain.every((e) => e && typeof e.id === 'string');
+
+/**
+ * Stored sections as the engine reads them: `{ from, to, chain, sig }` in sixteenths,
+ * sorted by where they start, the stored order kept between equals. `sig` is the chain as
+ * one string — the key the mixer builds a branch under, worked out once here rather than
+ * on every sixteenth that asks.
+ */
+function readFx(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((s, i) => {
+      if (!s || !Array.isArray(s.from) || !Array.isArray(s.to) || !validChain(s.chain)) return null;
+      if (!Number.isFinite(s.from[0]) || !Number.isFinite(s.to[0])) return null;
+      const from = posOf(s.from[0], s.from[1]);
+      const to = posOf(s.to[0], s.to[1]);
+      return to > from + EPS ? { from, to, chain: s.chain, sig: JSON.stringify(s.chain), i } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.from - b.from || a.i - b.i);
 }
 
 /** True when an automation object asks for anything at all. */
 export function hasAutomation(automation) {
   if (!automation || typeof automation !== 'object') return false;
   return Object.values(automation).some((lane) => lane
-    && ((lane.points?.length || 0) + (lane.cuts?.length || 0)) > 0);
+    && ((lane.points?.length || 0) + (lane.cuts?.length || 0) + (lane.fx?.length || 0)) > 0);
 }
 
-/** The lanes that carry points (a level line), and the lanes that carry cuts. */
+/** The lanes that carry points (a level line), cuts, and effect sections. */
 export function automatedLanes(automation) {
   const level = [];
   const cut = [];
+  const fx = [];
   for (const [key, lane] of Object.entries(automation || {})) {
     if (lane?.points?.length) level.push(key);
     if (lane?.cuts?.length) cut.push(key);
+    if (lane?.fx?.length) fx.push(key);
   }
-  return { level, cut };
+  return { level, cut, fx };
 }
+
+/**
+ * The effect section playing at `pos`, or null. Sections run from `from` up to `to`; were
+ * two ever to overlap, the one that starts later is the one that plays.
+ */
+export function fxSectionAt(curve, pos) {
+  let found = null;
+  for (const s of curve?.fx || []) {
+    if (s.from > pos + EPS) break;
+    if (pos < s.to - EPS) found = s;
+  }
+  return found;
+}
+
+/** Where a section starts or ends strictly inside (from, to) — the switches a window holds. */
+export function fxEdgesBetween(curve, from, to) {
+  const edges = new Set();
+  for (const s of curve?.fx || []) {
+    for (const p of [s.from, s.to]) if (p > from + EPS && p < to - EPS) edges.add(p);
+  }
+  return [...edges].sort((a, b) => a - b);
+}
+
+/** True when a section STARTS at `pos` — a fresh grab, even under the same chain. */
+export const fxStartsAt = (curve, pos) => (curve?.fx || [])
+  .some((s) => Math.abs(s.from - pos) <= EPS);
 
 /**
  * The line's gain at `pos`, linear. `left: true` asks for the value arriving at `pos`
@@ -247,6 +323,9 @@ const storedPoint = (p) => {
   return out;
 };
 const storedCut = (pos) => barStepOf(pos);
+const storedFx = (s) => ({
+  from: barStepOf(s.from), to: barStepOf(s.to), chain: JSON.parse(JSON.stringify(s.chain)),
+});
 
 /** A lane's points as editable `{ pos, db, shape }`, stored order. */
 export const lanePoints = (automation, key) => (laneCurve(automation?.[key])?.points || [])
@@ -254,6 +333,32 @@ export const lanePoints = (automation, key) => (laneCurve(automation?.[key])?.po
 
 /** A lane's cuts, as positions. */
 export const laneCuts = (automation, key) => [...(laneCurve(automation?.[key])?.cuts || [])];
+
+/** A lane's effect sections as editable `{ from, to, chain }`, in sixteenths. */
+export const laneFx = (automation, key) => (laneCurve(automation?.[key])?.fx || [])
+  .map(({ from, to, chain }) => ({ from, to, chain }));
+
+/** Sections in their order, the empty and the backwards ones dropped. */
+const tidyFx = (list) => list
+  .map((s, i) => ({ from: tidyNumber(s.from), to: tidyNumber(s.to), chain: s.chain, i }))
+  .filter((s) => s.from >= 0 && s.to > s.from + EPS && validChain(s.chain))
+  .sort((a, b) => a.from - b.from || a.i - b.i)
+  .map(({ i, ...s }) => s);
+
+/**
+ * Sections with [from, to) taken out of them. One that straddles an edge keeps the part
+ * outside; one that covers the whole stretch is cut in two around it — and its second part
+ * is a section that STARTS at `to`, which is a fresh grab for a Stutter.
+ */
+const fxWithout = (sections, from, to) => {
+  const kept = [];
+  for (const s of sections) {
+    if (s.to <= from + EPS || s.from >= to - EPS) { kept.push(s); continue; }
+    if (s.from < from - EPS) kept.push({ ...s, to: from });
+    if (s.to > to + EPS) kept.push({ ...s, from: to });
+  }
+  return kept;
+};
 
 /**
  * Sorted, clamped, and without exact repeats — two points at the same place and level.
@@ -305,16 +410,23 @@ function pruneSplits(points) {
   return pts.map(({ split, ...p }) => p);
 }
 
-/** Put one lane back into an automation object — or take it out when it is empty. */
-function withLane(automation, key, points, cuts) {
+/**
+ * Put one lane back into an automation object — or take it out when it is empty. Its
+ * effect sections ride along untouched unless they are what is being written: every edit
+ * to a level line or a cut goes through here, and one that rebuilt the lane from its
+ * points and cuts alone would quietly delete the sections beside them.
+ */
+function withLane(automation, key, points, cuts, fx = laneFx(automation, key)) {
   const out = { ...(automation || {}) };
   const pts = tidyPoints(points);
   const cs = [...new Set(cuts.map(tidyNumber))].filter((c) => c >= 0).sort((a, b) => a - b);
-  if (!pts.length && !cs.length) delete out[key];
+  const fs = tidyFx(fx);
+  if (!pts.length && !cs.length && !fs.length) delete out[key];
   else {
     out[key] = {};
     if (pts.length) out[key].points = pts.map(storedPoint);
     if (cs.length) out[key].cuts = cs.map(storedCut);
+    if (fs.length) out[key].fx = fs.map(storedFx);
   }
   return Object.keys(out).length ? out : null;
 }
@@ -322,6 +434,18 @@ function withLane(automation, key, points, cuts) {
 /** Replace one lane's points AND cuts outright — the Volume strip writes through this. */
 export function setLane(automation, key, points, cuts) {
   return withLane(automation, key, points || [], cuts || []);
+}
+
+/**
+ * The effect sections over [from, to) replaced by `sections` — the bar-effects editor's one
+ * write. What was there is taken out (cut at the edges, see `fxWithout`), and each new
+ * section is held inside the stretch, so nothing outside it changes.
+ */
+export function replaceFxRange(automation, key, from, to, sections = []) {
+  const laid = (sections || [])
+    .map((s) => ({ from: Math.max(from, s.from), to: Math.min(to, s.to), chain: s.chain }));
+  return withLane(automation, key, lanePoints(automation, key), laneCuts(automation, key),
+    [...fxWithout(laneFx(automation, key), from, to), ...laid]);
 }
 
 /** Replace one lane's points outright — the Volume strip's drag writes through this. */
@@ -360,13 +484,17 @@ export function setLaneFade(automation, key, from, to, fromDb, toDb, shape = 'ev
   ], laneCuts(automation, key));
 }
 
-/** Take a lane's points and/or cuts out of [from, to). */
-export function clearLaneRange(automation, key, from, to, { points = true, cuts = true } = {}) {
+/**
+ * Take a lane's points, cuts and/or effect sections out of [from, to). Sections only when
+ * asked: Clear Volume is about level and leaves them alone, Reset Edits asks for all three.
+ */
+export function clearLaneRange(automation, key, from, to, { points = true, cuts = true, fx = false } = {}) {
   const pts = lanePoints(automation, key)
     .filter((p) => !points || p.pos < from - EPS || p.pos >= to - EPS);
   const cs = laneCuts(automation, key)
     .filter((c) => !cuts || c < from - EPS || c >= to - EPS);
-  return withLane(automation, key, pts, cs);
+  const fs = fx ? fxWithout(laneFx(automation, key), from, to) : laneFx(automation, key);
+  return withLane(automation, key, pts, cs, fs);
 }
 
 /** A cut at `pos`. A second cut at the same place is the same cut. */
@@ -427,6 +555,19 @@ export function shiftAutomation(automation, at, { added = 0, removed = 0 } = {})
     const cuts = laneCuts(automation, key);
     let nextPts;
     let nextCuts;
+    // Sections follow the music like everything else. Bars inserted INSIDE one split it
+    // round them — the new bars are not part of it, and the music after them starts it
+    // again — and bars taken out of one shorten it, the two sides meeting as one section.
+    const fx = laneFx(automation, key);
+    const nextFx = added
+      ? fx.flatMap((s) => (s.to <= at + EPS ? [s]
+        : s.from >= at - EPS ? [{ ...s, from: s.from + added, to: s.to + added }]
+          : [{ ...s, to: at }, { ...s, from: at + added, to: s.to + added }]))
+      : fx.map((s) => {
+        const end = at + removed;
+        const move = (p) => (p >= end - EPS ? p - removed : p > at ? at : p);
+        return { ...s, from: move(s.from), to: move(s.to) };
+      }).filter((s) => s.to > s.from + EPS);
     if (added) {
       const { left, right } = splitValues(curve, at);
       const exact = pts.some((p) => Math.abs(p.pos - at) <= EPS);
@@ -456,7 +597,7 @@ export function shiftAutomation(automation, at, { added = 0, removed = 0 } = {})
       nextCuts = cuts.filter((c) => c < at - EPS || c >= end - EPS)
         .map((c) => (c >= end - EPS ? c - removed : c));
     }
-    out = withLane(out, key, pruneSplits(nextPts), nextCuts) || {};
+    out = withLane(out, key, pruneSplits(nextPts), nextCuts, nextFx) || {};
   }
   return Object.keys(out).length ? out : null;
 }
@@ -480,7 +621,10 @@ export function copyAutomationRange(automation, from, to) {
       { pos: length, db: curveDbAt(curve, to, { left: true }), shape: curve.points.find((p) => p.pos >= to - EPS)?.shape || 'even', split: true },
     ] : [];
     const cuts = cutsBetween(curve, from, to).map((c) => c - from);
-    if (points.length || cuts.length) lanes[key] = { points, cuts };
+    // A section that runs over either edge comes as far as the edge and no further.
+    const fx = curve.fx.filter((s) => s.to > from + EPS && s.from < to - EPS)
+      .map((s) => ({ from: Math.max(s.from, from) - from, to: Math.min(s.to, to) - from, chain: s.chain }));
+    if (points.length || cuts.length || fx.length) lanes[key] = { points, cuts, fx };
   }
   return { length, lanes };
 }
@@ -501,6 +645,14 @@ export function pasteAutomation(automation, at, clip, times = 1) {
     const pts = lanePoints(out, key);
     const cuts = laneCuts(out, key);
     if (!piece) continue;
+    // The clip's sections go down once per copy, over whatever the stretch held — which
+    // after the insert that made room for it is nothing.
+    const laidFx = [];
+    for (let t = 0; t < Math.max(1, times); t++) {
+      const base = at + t * clip.length;
+      laidFx.push(...(piece.fx || []).map((s) => ({ from: base + s.from, to: base + s.to, chain: s.chain })));
+    }
+    const fx = [...fxWithout(laneFx(out, key), at, at + span), ...laidFx];
     // The insert left a held stretch between `at` and `at + span`; the clip replaces it.
     // What the line does either side stays exactly as it was: the level ARRIVING at `at`
     // and the level LEAVING `at + span` are read off the line and pinned there, so the
@@ -520,7 +672,7 @@ export function pasteAutomation(automation, at, clip, times = 1) {
     const keepBefore = laid.length ? before : pts.filter((p) => p.pos <= at + EPS);
     const keepAfter = laid.length ? after : pts.filter((p) => p.pos >= at + span - EPS);
     out = withLane(out, key, pruneSplits([...keepBefore, ...edgeBefore, ...laid, ...edgeAfter, ...keepAfter]),
-      [...cuts.filter((c) => c < at - EPS || c >= at + span - EPS), ...laidCuts]) || {};
+      [...cuts.filter((c) => c < at - EPS || c >= at + span - EPS), ...laidCuts], fx) || {};
   }
   return Object.keys(out).length ? out : null;
 }
@@ -535,10 +687,29 @@ export function automationIssues(automation, laneKeys = null, bars = null) {
     return ['the automation is not a map of tracks'];
   }
   for (const [key, lane] of Object.entries(automation)) {
-    if (laneKeys && !laneKeys.includes(key)) issues.push(`automation names "${key}", which is not a lane`);
+    const master = key === MASTER_KEY;
+    if (!master && laneKeys && !laneKeys.includes(key)) issues.push(`automation names "${key}", which is not a lane`);
     if (!lane || typeof lane !== 'object') { issues.push(`automation for "${key}" is not an object`); continue; }
     const place = (p) => Array.isArray(p) && Number.isFinite(p[0]) && p[0] >= 1
       && Number.isFinite(p[1] ?? 0) && (p[1] ?? 0) >= 0 && (p[1] ?? 0) < BAR;
+    // The master's lane is effect sections and nothing else: nothing in the engine plays
+    // a level line or a cut on the whole mix, and a file that asked for one would be
+    // asking for something it silently does not get.
+    if (master && ((lane.points?.length || 0) + (lane.cuts?.length || 0)) > 0) {
+      issues.push('the master carries effect sections only — no level line or cuts');
+    }
+    for (const s of lane.fx || []) {
+      if (!s || typeof s !== 'object' || !place(s.from) || !place(s.to)) {
+        issues.push(`automation for "${key}" has an effect section that is not two places`);
+      } else if (posOf(s.to[0], s.to[1]) <= posOf(s.from[0], s.from[1])) {
+        issues.push(`automation for "${key}" has an effect section that ends where it starts`);
+      } else if (!validChain(s.chain)) {
+        issues.push(`automation for "${key}" has an effect section with no valid chain`
+          + ` (one to ${SECTION_MAX} effects, each with an id)`);
+      } else if (bars != null && posOf(s.to[0], s.to[1]) > bars * BAR) {
+        issues.push(`automation for "${key}" has an effect section past bar ${bars}, where the song ends`);
+      }
+    }
     for (const p of lane.points || []) {
       if (!place(p)) issues.push(`automation for "${key}" has a point that is not a bar and a step`);
       else if (p[2] != null && !Number.isFinite(p[2])) issues.push(`automation for "${key}" has a non-numeric level`);

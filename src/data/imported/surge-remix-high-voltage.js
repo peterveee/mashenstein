@@ -59,6 +59,11 @@
 // 84 bars at 150. Written by work/local/_surge-remix-high-voltage.mjs through
 // work/local/_remix-lib.mjs and work/local/_surge-quotes.mjs; re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-surge.mjs — re-run it after a regeneration): the
+// glitches are real now, on the master. Buffer repeats (the whole mix) at 8, 24, 28, 36, 56, 82;
+// true holes — every lane cut, the master to -48 dB — on 8 and 56 beat 4, 36 beat 3, 84 beat 4;
+// tape stops as a lowpass closing a sixteenth at a time on 32, 40 and 84. No TAPE snapshots.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -883,10 +888,331 @@ export const mix = {
 };
 
 export const arrangement = {
-  order: [{"s":0,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":0.9}}]}},{"s":0,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":0.9}}]}},{"s":1,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4200,"Q":0.9}}],"chords":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}]}},{"s":1,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":0.9}}]}},{"s":2,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":600,"Q":0.9}}]},"gain":{"snare":-12}},{"s":2,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}]},"gain":{"snare":-8}},{"s":3,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":2200,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":0.9}}]},"gain":{"snare":-4}},{"s":3,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":5200,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":0.9}}]},"gain":{"snare":0}},4,5,6,7,8,9,10,{"s":11,"bars":1},{"s":11,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead5":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead6":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"chords":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]}},{"s":12,"bars":1,"gain":{"lead2":5,"lead5":-2}},{"s":12,"bars":1,"from":1,"gain":{"lead2":5,"lead5":-2}},{"s":13,"bars":1,"gain":{"lead2":5,"lead5":-2}},{"s":13,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead5":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"chords":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]},"gain":{"lead2":5,"lead5":-2}},{"s":14,"bars":1,"gain":{"lead6":-3}},{"s":14,"bars":1,"from":1,"gain":{"lead6":-3}},{"s":15,"bars":1,"gain":{"lead6":-3}},{"s":15,"bars":1,"from":1,"inlineFx":{"twinkle":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead6":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"chords":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]},"gain":{"lead6":-3}},{"s":16,"bars":1,"gain":{"lead5":1,"lead7":2}},{"s":16,"bars":1,"from":1,"gain":{"lead5":1,"lead7":2}},{"s":17,"bars":1,"gain":{"lead5":1,"lead7":2}},{"s":17,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}],"lead5":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}],"lead7":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}]},"gain":{"lead5":1,"lead7":2}},18,{"s":19,"bars":1},{"s":19,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"lead4":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"lead5":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"chords":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}]}},20,21,22,23,24,25,{"s":26,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":0.9}}]},"gain":{"snare":-14}},{"s":26,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":0.9}}]},"gain":{"snare":-10}},{"s":27,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1600,"Q":0.9}}]},"gain":{"snare":-5}},{"s":27,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":5200,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":0.9}}]},"gain":{"snare":-1}},{"s":28,"bars":1,"gain":{"lead":-4}},{"s":28,"bars":1,"from":1,"gain":{"lead":-4}},{"s":29,"bars":1,"gain":{"lead":-4}},{"s":29,"bars":1,"from":1,"gain":{"lead":-4}},{"s":30,"bars":1,"gain":{"lead":-4}},{"s":30,"bars":1,"from":1,"gain":{"lead":-4}},{"s":31,"bars":1,"gain":{"lead":-4}},{"s":31,"bars":1,"from":1,"gain":{"lead":-4}},{"s":32,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":32,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":33,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":33,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":34,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":34,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":35,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":35,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":36,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":36,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":37,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":37,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":38,"bars":1,"gain":{"lead":-4,"lead2":2}},{"s":38,"bars":1,"from":1,"gain":{"lead":-4,"lead2":2}},{"s":39,"bars":1,"gain":{"lead":-4,"lead2":2}},{"s":39,"bars":1,"from":1,"gain":{"lead":-4,"lead2":2}},{"s":40,"bars":1},{"s":40,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"chords":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]}},{"s":41,"bars":1,"inlineFx":{"chords":[{"id":"rhythmgate","params":{"division":0.125,"gateLength":0.5,"attack":0.001,"decay":0.015,"depth":1}}]},"gain":{"snare":-5}},{"s":41,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"rhythmgate","params":{"division":0.125,"gateLength":0.5,"attack":0.001,"decay":0.015,"depth":1}},{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"lead6":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":1,"flutter":0.5,"wet":1}}]},"gain":{"snare":-1}}],
+  order: [{"s":0,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":0.9}}]}},{"s":0,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":0.9}}]}},{"s":1,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4200,"Q":0.9}}],"chords":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}]}},{"s":1,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":0.9}}]}},{"s":2,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":600,"Q":0.9}}]},"gain":{"snare":-12}},{"s":2,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}]},"gain":{"snare":-8}},{"s":3,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":2200,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":0.9}}]},"gain":{"snare":-4}},{"s":3,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":5200,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":0.9}}]},"gain":{"snare":0}},4,5,6,7,8,9,10,{"s":11,"bars":1},{"s":11,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead5":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead6":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"chords":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]}},{"s":12,"bars":1,"gain":{"lead2":5,"lead5":-2}},{"s":12,"bars":1,"from":1,"gain":{"lead2":5,"lead5":-2}},{"s":13,"bars":1,"gain":{"lead2":5,"lead5":-2}},{"s":13,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead5":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"chords":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]},"gain":{"lead2":5,"lead5":-2}},{"s":14,"bars":1,"gain":{"lead6":-3}},{"s":14,"bars":1,"from":1,"gain":{"lead6":-3}},{"s":15,"bars":1,"gain":{"lead6":-3}},{"s":15,"bars":1,"from":1,"gain":{"lead6":-3}},{"s":16,"bars":1,"gain":{"lead5":1,"lead7":2}},{"s":16,"bars":1,"from":1,"gain":{"lead5":1,"lead7":2}},{"s":17,"bars":1,"gain":{"lead5":1,"lead7":2}},{"s":17,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}],"lead5":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}],"lead7":[{"id":"bitcrusher","params":{"bits":4,"downsample":8,"wet":1}}]},"gain":{"lead5":1,"lead7":2}},18,{"s":19,"bars":1},{"s":19,"bars":1,"from":1},20,21,22,23,24,25,{"s":26,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":0.9}}]},"gain":{"snare":-14}},{"s":26,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":0.9}}]},"gain":{"snare":-10}},{"s":27,"bars":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1600,"Q":0.9}}]},"gain":{"snare":-5}},{"s":27,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"filter","params":{"type":"lowpass","frequency":5200,"Q":0.9}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":0.9}}]},"gain":{"snare":-1}},{"s":28,"bars":1,"gain":{"lead":-4}},{"s":28,"bars":1,"from":1,"gain":{"lead":-4}},{"s":29,"bars":1,"gain":{"lead":-4}},{"s":29,"bars":1,"from":1,"gain":{"lead":-4}},{"s":30,"bars":1,"gain":{"lead":-4}},{"s":30,"bars":1,"from":1,"gain":{"lead":-4}},{"s":31,"bars":1,"gain":{"lead":-4}},{"s":31,"bars":1,"from":1,"gain":{"lead":-4}},{"s":32,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":32,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":33,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":33,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":34,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":34,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":35,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":35,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":36,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":36,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":37,"bars":1,"gain":{"lead":-4,"lead2":-2}},{"s":37,"bars":1,"from":1,"gain":{"lead":-4,"lead2":-2}},{"s":38,"bars":1,"gain":{"lead":-4,"lead2":2}},{"s":38,"bars":1,"from":1,"gain":{"lead":-4,"lead2":2}},{"s":39,"bars":1,"gain":{"lead":-4,"lead2":2}},{"s":39,"bars":1,"from":1,"gain":{"lead":-4,"lead2":2}},{"s":40,"bars":1},{"s":40,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}],"chords":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]}},{"s":41,"bars":1,"inlineFx":{"chords":[{"id":"rhythmgate","params":{"division":0.125,"gateLength":0.5,"attack":0.001,"decay":0.015,"depth":1}}]},"gain":{"snare":-5}},{"s":41,"bars":1,"from":1,"inlineFx":{"chords":[{"id":"rhythmgate","params":{"division":0.125,"gateLength":0.5,"attack":0.001,"decay":0.015,"depth":1}}]},"gain":{"snare":-1}}],
   loop: {
     fromBar: 9,
     toBar: 84,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [8,8],
+          to: [8,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 400,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [8,12],
+          to: [9,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [24,8],
+          to: [25,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.5,
+                retrigger: 0,
+                fade: -2,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 6,
+                downsample: 4,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [28,8],
+          to: [29,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 6,
+                downsample: 4,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [32,4],
+          to: [32,8],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 3000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 300,
+              },
+            },
+          ],
+        },
+        {
+          from: [36,8],
+          to: [36,12],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [36,12],
+          to: [37,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 5,
+                downsample: 6,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [40,8],
+          to: [41,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 4000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 200,
+              },
+            },
+          ],
+        },
+        {
+          from: [56,8],
+          to: [56,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 400,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [56,12],
+          to: [57,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [82,12],
+          to: [83,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 5,
+                downsample: 6,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [84,4],
+          to: [84,12],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 3000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 250,
+              },
+            },
+          ],
+        },
+        {
+          from: [84,12],
+          to: [85,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead: {
+      cuts: [[8,12],[41,0],[56,12],[84,12]],
+    },
+    snare: {
+      cuts: [[8,12],[36,8],[41,0],[56,12],[84,12]],
+    },
+    clap: {
+      cuts: [[8,12],[36,8],[41,0],[84,12]],
+    },
+    hats: {
+      cuts: [[8,12],[36,8],[41,0],[56,12],[84,12]],
+    },
+    kick: {
+      cuts: [[8,12],[36,8],[41,0],[56,12],[84,12]],
+    },
+    bass: {
+      cuts: [[8,12],[36,8],[41,0],[56,12],[84,12]],
+    },
+    rim: {
+      cuts: [[8,12],[36,8],[41,0],[84,12]],
+    },
+    chords: {
+      cuts: [[8,12],[36,8],[41,0],[56,12],[84,12]],
+    },
+    lead6: {
+      cuts: [[8,12],[32,8],[84,12]],
+    },
+    crash2: {
+      cuts: [[8,12],[56,12],[84,12]],
+    },
+    twinkle: {
+      cuts: [[32,8]],
+    },
+    lead5: {
+      cuts: [[36,8],[41,0],[84,12]],
+    },
+    lead7: {
+      cuts: [[36,8]],
+    },
+    crash: {
+      cuts: [[41,0]],
+    },
+    ohats: {
+      cuts: [[41,0],[84,12]],
+    },
+    crash3: {
+      cuts: [[41,0]],
+    },
+    lead4: {
+      cuts: [[41,0],[56,12]],
+    },
+    leadHarm: {
+      cuts: [[41,0],[56,12]],
+    },
+    chords2: {
+      cuts: [[56,12]],
+    },
+    lead2: {
+      cuts: [[84,12]],
+    },
+    lead3: {
+      cuts: [[84,12]],
+    },
   },
 };
 

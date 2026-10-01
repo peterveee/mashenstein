@@ -4855,6 +4855,19 @@ const USER_TONE = {
       filter: { type: 'lowpass', cutoff: 2400, resonance: 6 },
       lfo1: { shape: 'saw', rate: 4.667 } },
     starter: false },
+  siren: { label: 'Siren', category: 'FX', synth: 'MRDR-3', dur: 3,
+    note: 'Song-local (SHORT CIRCUIT): square + saw with a triangle pitch LFO of ±5 semitones, '
+      + 'one cycle a bar at 140. Hold a note for the bar.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.6, attack: 0.2, decay: 0.3, sustain: 1, release: 0.5 },
+      osc2: { type: 'sawtooth', ratio: 1, detune: 8, gain: 0.35, attack: 0.2, decay: 0.3, sustain: 1, release: 0.5 },
+      lfo: { type: 'triangle', rate: 0.583333, depth: 0.42, target: 'pitch' },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 2400, Q: 1.5, track: 0.3 },
+    },
+    drive: 0.25, shape: 'soft',
+    starter: false },
 };
 const USER_DRUM = {
   vl1Pi2: { label: 'VL-1 Pi 2', category: 'Blip', homeLane: 'rim', dur: 0.5,
@@ -5126,7 +5139,7 @@ const LEVELS = {
   tngrMegaPop: 0.0143, mrdrConcertFlute: 0.0876, mrdrShakuhachi: 0.0796,
   mrdrPanFlute: 0.1032, mrdrRecorder: 0.0914, mrdrBansuri: 0.1136,
   mrdrOcarina: 0.1116, mrdrClarinet: 0.1622, mrdrOboe: 0.0552,
-  tngrAirFlute: 0.0163
+  tngrAirFlute: 0.0163, siren: 0.162248
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -5278,7 +5291,7 @@ const PEAKS = {
   tngrMegaPop: 0.3518, mrdrConcertFlute: 0.6653, mrdrShakuhachi: 0.5068,
   mrdrPanFlute: 0.5921, mrdrRecorder: 0.6735, mrdrBansuri: 0.7261,
   mrdrOcarina: 0.6815, mrdrClarinet: 0.8933, mrdrOboe: 0.7119,
-  tngrAirFlute: 0.1282
+  tngrAirFlute: 0.1282, siren: 0.6981
 };
 
 /**

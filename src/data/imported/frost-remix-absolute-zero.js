@@ -31,6 +31,10 @@
 // work/local/_frost-remix-absolute-zero.mjs through work/local/_remix-lib.mjs;
 // re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-stops.mjs): the stop at the end of bar 40 cuts the drums, bass and chords under the held hook and the riser, into the F# minor lift.
+//
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): the build (5–8) opens a lowpass on the whole mix an eighth at a time; stutter rolls on beat 3 of 8 and 32.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -728,6 +732,143 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 60,
+  },
+  automation: {
+    bass: {
+      cuts: [[40,12]],
+    },
+    bass2: {
+      cuts: [[40,12]],
+    },
+    kick: {
+      cuts: [[40,12]],
+    },
+    clap: {
+      cuts: [[40,12]],
+    },
+    ohats: {
+      cuts: [[40,12]],
+    },
+    hats: {
+      cuts: [[40,12]],
+    },
+    chords: {
+      cuts: [[40,12]],
+    },
+    snare: {
+      cuts: [[40,12]],
+    },
+    lead5: {
+      cuts: [[40,12]],
+    },
+    __master: {
+      fx: [
+        {
+          from: [5,0],
+          to: [8,8],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 800,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 16000,
+              },
+            },
+          ],
+        },
+        {
+          from: [8,8],
+          to: [8,10],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [8,10],
+          to: [8,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [32,8],
+          to: [32,10],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [32,10],
+          to: [32,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

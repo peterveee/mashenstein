@@ -20,6 +20,8 @@
 // 80 bars at 172. Written by work/local/_fs-remix-overclock.mjs through
 // work/local/_fs-remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): stutter rolls into both drops (16, 48); in the breakdown the air flute swells in as the shimmer bell fades.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -761,6 +763,106 @@ export const arrangement = {
   loop: {
     fromBar: 9,
     toBar: 80,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [16,12],
+          to: [16,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [16,14],
+          to: [17,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [48,12],
+          to: [48,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [48,14],
+          to: [49,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead3: {
+      points: [[33,0,0],[33,0,null],[35,0,0,"s"]],
+    },
+    lead4: {
+      points: [[37,0,0],[41,0,null,"equal"],[41,0,0]],
+    },
   },
 };
 

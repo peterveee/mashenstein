@@ -17,7 +17,7 @@
 //   is the game, as they always were. Nothing here is in the way of typing them.
 //   /mixer is a shortcut ON TOP of that, not a replacement for it: it starts the
 //   desk if it is cold and sends you there either way.
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
@@ -85,12 +85,14 @@ const ACTIONS = [
     id: 'screens', label: 'REFRESH SCREEN GALLERY',
     blurb: 'drives the real game and screenshots every UI screen and cabinet, landscape + portrait, into galleries/screens.html.',
     needsTool: 'game',
+    speed: 'background',
     steps: [['node', ['tools/build-screens-gallery.js']]],
     openPath: () => (existsSync(join(root, 'galleries/screens.html')) ? '/galleries/screens.html' : null),
   },
   {
     id: 'assetgallery', label: 'REFRESH ASSET GALLERY',
     blurb: 'renders every drawable (backgrounds, heroes, props, cabinets…) via the real draw functions, then archives a dated snapshot into galleries/ and rewrites the index.',
+    speed: 'background',
     steps: [['node', ['tools/build-gallery.js']], ['node', ['tools/archive-gallery.js']]],
     openPath: () => latestAssetGalleryHref(),
   },
@@ -130,6 +132,7 @@ ACTIONS.push(
   {
     id: 'songlevels', group: 'audio', label: 'SONG LEVELS: MEASURE',
     blurb: 'renders every song that ships and measures it against its line — -21 LUFS for the cabinets, finale and megamix, -24 for the title, Food Court and shop (tools/song-levels.js). Writes only the report. About fifteen minutes.',
+    speed: 'background',
     steps: [niced(['tools/song-levels.js'])],
     openPath: reportHref('song-levels.json', 'levels'),
   },
@@ -137,6 +140,7 @@ ACTIONS.push(
     id: 'songlevelsapply', group: 'audio', label: 'SONG LEVELS: APPLY',
     blurb: 'measures, sets each off-line song’s level, and re-measures until it lands — edits src/data/songs/. A song with a compressor on its master is levelled by a Gain at the END of its master chain, so the compressor keeps working as you tuned it; the master fader stays yours. Save the mixer first, and reload the song there after.',
     confirm: true,
+    speed: 'background',
     steps: [niced(['tools/song-levels.js', '--apply'])],
     openPath: reportHref('song-levels.json', 'levels'),
   },
@@ -148,13 +152,16 @@ ACTIONS.push(
     choices: ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'cardboard', 'office', 'surge', 'title', 'hub', 'shop', 'finale', 'megamix'],
     options: [{ key: 'lanes', label: '+ LANES', flag: '--lanes' }],
     needsIds: true,
+    speed: 'background',
     steps: (args) => [niced(['tools/bass-report.js', ...idsFrom(args), ...optionFlags('bassreport', args)])],
     openPath: reportHref('bass-report.json', 'bass'),
   },
 );
 // PERFORMANCE: how smoothly cabinets 1-6 run on a phone-shaped screen, portrait first
 // (tools/frame-report.js). Niced like the audio reports; the measurements are relative,
-// so run it with the machine otherwise quiet and compare against the last run.
+// so run it with the machine otherwise quiet and compare against the last run. No
+// BACKGROUND switch: what it measures is frame time, and in the background band every
+// number would be the efficiency cores' and incomparable with the runs before.
 ACTIONS.push(
   {
     id: 'framereport', group: 'perf', label: 'FRAME REPORT',
@@ -278,6 +285,49 @@ async function waitLive(tool, ms = 30000) {
   return false;
 }
 
+// -------------------------------------------------------------------- speed --
+
+// BACKGROUND or FULL SPEED. A card with a `speed` runs its job in macOS's
+// background band by default (what `taskpolicy -b` sets): efficiency cores only and
+// throttled disk, so the performance cores stay with the mixer and the game. It
+// costs real time — a CPU-bound loop measured 4-5x slower there — so the card has a
+// switch, and the switch reaches a job already running: every process in its tree
+// (node, its Chromium, each renderer) is moved, and whatever it starts afterwards
+// inherits the move.
+//
+// The job is spawned normally and moved from here a moment later, never launched as
+// `taskpolicy -b node …`. A process that put ITSELF in the background, which is what
+// that form does, cannot be brought out by anyone else: -B on it is a silent no-op.
+// Moved from outside, it comes back.
+const speedOf = new Map(ACTIONS.filter((a) => a.speed).map((a) => [a.id, a.speed]));
+
+// The pid and everything under it, parents before children.
+function treeOf(pid) {
+  const kids = new Map();
+  for (const line of execFileSync('ps', ['-Ao', 'pid=,ppid='], { encoding: 'utf8' }).split('\n')) {
+    const [p, pp] = line.trim().split(/\s+/).map(Number);
+    if (p) (kids.get(pp) || kids.set(pp, []).get(pp)).push(p);
+  }
+  const tree = [pid];
+  for (let i = 0; i < tree.length; i++) tree.push(...(kids.get(tree[i]) || []));
+  return tree;
+}
+
+// Twice over: a process born between the listing and its parent's move inherits the
+// old band, and the second pass catches it.
+function setBand(pid, speed) {
+  const moved = new Set();
+  for (let pass = 0; pass < 2; pass++) {
+    for (const p of treeOf(pid)) {
+      try {
+        execFileSync('taskpolicy', [speed === 'full' ? '-B' : '-b', '-p', String(p)], { stdio: 'ignore' });
+        moved.add(p);
+      } catch { /* exited mid-walk */ }
+    }
+  }
+  return moved.size;
+}
+
 // ------------------------------------------------------------------ actions --
 
 // One run at a time per action, remembered after it exits so a finished RUN
@@ -322,9 +372,12 @@ async function runAction(action, runArgs = {}) {
       state.keep(`$ ${cmd} ${args.join(' ')}`);
       const code = await new Promise((res) => {
         const child = spawn(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+        // Read per step, so a switch flipped mid-run also holds for the steps after.
+        if (child.pid && speedOf.get(action.id) === 'background') setBand(child.pid, 'background');
+        state.child = child;
         child.stdout.on('data', state.keep);
         child.stderr.on('data', state.keep);
-        child.on('exit', (c) => res(c ?? 1));
+        child.on('exit', (c) => { state.child = null; res(c ?? 1); });
         child.on('error', (err) => { state.keep(`— could not start: ${err.message} —`); res(1); });
       });
       if (code !== 0) {
@@ -353,6 +406,7 @@ function actionStatus(action) {
     choices: action.choices || null,
     options: (action.options || []).map(({ key, label }) => ({ key, label })),
     confirm: !!action.confirm,
+    speed: speedOf.get(action.id) ?? null,
     running: !!state?.running,
     code: state?.code ?? null,
     // The audio cards sit beside the tall explainer, so they have room to show the
@@ -447,6 +501,20 @@ async function handle(req, res) {
     }
   }
 
+  // The BACKGROUND / FULL SPEED switch: holds for the next RUN, and moves the one
+  // running now, if there is one.
+  const speed = /^\/api\/speed\/([a-z]+)\/(background|full)$/.exec(url.pathname);
+  if (speed && req.method === 'POST') {
+    if (!speedOf.has(speed[1])) return json(res, 404, { ok: false, error: 'that card has no speed switch' });
+    speedOf.set(speed[1], speed[2]);
+    const state = runs.get(speed[1]);
+    if (state?.child?.pid) {
+      const n = setBand(state.child.pid, speed[2]);
+      state.keep(`— ${speed[2] === 'full' ? 'FULL SPEED' : 'BACKGROUND'} from here: ${n} process${n === 1 ? '' : 'es'} moved —`);
+    }
+    return json(res, 200, { ok: true });
+  }
+
   const run = /^\/api\/run\/([a-z]+)$/.exec(url.pathname);
   if (run && req.method === 'POST') {
     const action = ACTION_BY_ID[run[1]];
@@ -518,7 +586,7 @@ async function handle(req, res) {
 // data about where the tools live.
 const asServer = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
-export { TOOLS, ACTIONS, probe };
+export { TOOLS, ACTIONS, probe, setBand };
 
 if (asServer) startDesk();
 

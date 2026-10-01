@@ -66,6 +66,7 @@ import {
 import {
   laneCurve, curveLevelAt, lanePoints, laneCuts, positionLabel, levelLabel, dbToLevel,
   levelToDb, AUTOMATION_SHAPES, AUTOMATION_SHAPE_NAMES, AUTOMATION_SHAPE_NOTES,
+  AUTOMATION_FLOOR_DB,
 } from '../src/data/automation.js';
 // Recording: the fourth caller of the one-note seam the keyboard, the computer keys
 // and MIDI already share. It owns the clock and the buffer; the note semantics are
@@ -107,6 +108,7 @@ import {
 } from './mixer-effect-cards.js';
 import {
   forgetArrangementGeometry, followArrangementScroll, syncMixerScroll, syncArrangementScroll,
+  revealMixerStrip,
 } from './mixer-scroll.js';
 import {
   installNoteFxEditors, openNoteFxEditor, openBarEffectsEditor,
@@ -1037,7 +1039,23 @@ function undo() {
     buildRack(); applyToEngine(mixFor(trackId)); updateStatus();
     if (noteFxSig() !== fxBefore) buildArrangement();
   }
+  if (arrMoved) reopenSpotFx();
   toast('undone');
+}
+
+/**
+ * An open Spot FX window draws the draft, and an undo has just moved it. Spot FX writes
+ * every change as it is made, so the window has nothing of its own to keep — it is
+ * opened again where it is, on the same bars, from what the song now says.
+ */
+function reopenSpotFx() {
+  const popup = restorablePopup;
+  const el = $('regionedit');
+  if (popup?.kind !== 'barEffects' || !popup.laneKey || !el?.classList.contains('show')) return;
+  openBarEffectsEditor(Number.parseFloat(el.style.left) || 6, Number.parseFloat(el.style.top) || 6,
+    popup.laneKey, { from: popup.from, to: popup.to, grid: popup.grid || null,
+      selected: Number.isInteger(popup.selected) ? popup.selected : null, selectedId: popup.selectedId ?? null,
+      own: popup.own === true });
 }
 
 /**
@@ -1710,6 +1728,44 @@ addEventListener('pointerdown', (e) => {
     || (e.target.closest && e.target.closest('.devaddcard'));
   if (!inside && !opener) closeMenu();
 }, true);
+// The bar, track, Note FX and Bar Effects editors are moved by their title bar, like the
+// preset editor and the performance log. Bar Effects most of all: six cards tall, it sits
+// over the very bars it is editing. Delegated, because every editor rebuilds its header.
+addEventListener('pointerdown', (e) => {
+  const head = e.target.closest?.('#regionedit .reghead');
+  if (!head || e.button !== 0 || e.target.closest('button, input, select, textarea')) return;
+  e.preventDefault();
+  const panel = $('regionedit');
+  const r = panel.getBoundingClientRect();
+  const dx = e.clientX - r.left;
+  const dy = e.clientY - r.top;
+  const move = (ev) => {
+    panel.style.left = `${clamp(ev.clientX - dx, 6, Math.max(6, innerWidth - r.width - 6))}px`;
+    panel.style.top = `${clamp(ev.clientY - dy, 6, Math.max(6, innerHeight - r.height - 6))}px`;
+  };
+  const stop = () => { head.removeEventListener('pointermove', move); head.classList.remove('dragging'); };
+  head.classList.add('dragging');
+  try { head.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+  head.addEventListener('pointermove', move);
+  head.addEventListener('pointerup', stop, { once: true });
+  head.addEventListener('pointercancel', stop, { once: true });
+});
+// And kept on screen as it grows. Every editor here is placed once, at the click, then
+// measured — but Bar Effects gains a card per Add, and its custom selects settle after
+// that measurement, so a window opened low on the desk ran its footer (Apply, Close) off
+// the bottom. Its height is capped at the viewport, so pulling it up always fits it whole.
+// Only position is written, which no observer of size can feed back on.
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(() => {
+    const panel = $('regionedit');
+    if (!panel.classList.contains('show')) return;
+    const r = panel.getBoundingClientRect();
+    const left = clamp(r.left, 6, Math.max(6, innerWidth - r.width - 6));
+    const top = clamp(r.top, 6, Math.max(6, innerHeight - r.height - 6));
+    if (left !== r.left) panel.style.left = `${left}px`;
+    if (top !== r.top) panel.style.top = `${top}px`;
+  }).observe($('regionedit'));
+}
 // Switching browser tabs should not throw away a staged popup: the tab may be
 // reloaded or discarded while hidden, and its session snapshot needs the live fields.
 // Clicking into another application still dismisses it after the blur settles.
@@ -3954,13 +4010,17 @@ function clearTrackArp(key) {
 installNoteFxEditors({
   targetLabel, closeMenu, clamp, toast, gap, selectLane, markBar, jumpTo,
   applyArrangementEdit, regionPanelBusy, noteFxFor, setTrackNoteFx, clearTrackArp,
-  powerIcon, trashIcon, effectsOf,
+  powerIcon, trashIcon, closeIcon, effectsOf, openPicker, closePicker,
   // Declared far below this, so both are asked for rather than captured.
   arrDraftOf: () => arrDraftOf(),
   editBank: (...a) => editBank(...a),
   // What a rebuild should put back on screen: read, written and mutated over there.
   restorablePopup: () => restorablePopup,
   setRestorablePopup: (v) => { restorablePopup = v; },
+  // A Spot FX knob heard while it moves: the playing section's own nodes take the new
+  // params, as an insert's do (see makeSectionSwitch's retune).
+  retuneSpotFx: (key, oldChain, newChain) =>
+    Audio.mixer?.retuneBarEffects?.(key, oldChain, newChain, deskTempo()) ?? false,
 });
 
 /**
@@ -8161,6 +8221,19 @@ function buildTimeline() {
     }
     ruler.append(tick);
   }
+  // The master's effect sections, where they run — the same rule a track's sections draw
+  // along its bars, here for the whole mix (src/data/automation.js).
+  const band = $('mastersections');
+  if (band) {
+    band.textContent = '';
+    const steps = Math.max(1, barCount * 16);
+    for (const section of laneCurve(arrFor(trackId)?.automation?.__master)?.fx || []) {
+      const mark = document.createElement('span');
+      mark.style.left = `${(section.from / steps) * 100}%`;
+      mark.style.width = `${(Math.min(steps, section.to) - section.from) / steps * 100}%`;
+      band.append(mark);
+    }
+  }
 
   $('tnow').title = `Where you are in ${track.title}, and how long it runs`;
   $('tnow').textContent = `0:00/${fmtTime(loopSecs)}`;
@@ -8871,8 +8944,12 @@ function restoreDeskPopup(popup) {
     } else if (popup.kind === 'noteFx' && popup.laneKey) {
       openNoteFxEditor(x, y, popup.laneKey, popup.scope || null);
     } else if (popup.kind === 'barEffects' && popup.laneKey) {
-      openBarEffectsEditor(x, y, popup.laneKey,
-        { from: popup.from, to: popup.to, chain: popup.chain || [] });
+      openBarEffectsEditor(x, y, popup.laneKey, {
+        from: popup.from, to: popup.to, chain: popup.chain || [],
+        masks: popup.masks || null, grid: popup.grid || null,
+        selected: Number.isInteger(popup.selected) ? popup.selected : null,
+        selectedId: popup.selectedId ?? null, own: popup.own === true,
+      });
     } else if (popup.kind === 'noteLength') {
       openNoteLengthAdjust(popup.scopeKind === 'all' ? 'all' : 'selection', x, y);
     } else if (popup.kind === 'voicePicker' && popup.laneKey) {
@@ -8884,7 +8961,10 @@ function restoreDeskPopup(popup) {
     console.warn('[mixer] could not restore popup', err);
     return;
   }
-  requestAnimationFrame(() => restorePopupFields(popup));
+  // Not Spot FX: it shows one card of several and writes every control it is handed, so
+  // replaying fields by position would pour one effect's values into another's. The draft
+  // and the record hold every parameter already.
+  if (popup.kind !== 'barEffects') requestAnimationFrame(() => restorePopupFields(popup));
 }
 
 /** Restore once, after selectSong has built every song-dependent surface. */
@@ -9715,13 +9795,23 @@ function openPicker(options = {}) {
   return heavyUi('open effect picker', () => buildPicker(options));
 }
 
-function buildPicker({ at = null, anchor = null, x = null, y = null } = {}) {
-  restorablePopup = { kind: 'effectPicker', at };
+/**
+ * The catalogue, for the selected channel's inserts — or, with `onPick`, for whoever opened
+ * it: the Spot FX window hands it the effects a section may hold (`ids`) and takes the one
+ * chosen. That mode leaves the desk's popup alone: no `closeMenu`, which would close the
+ * window that opened it, and no restore record, which is that window's; a press anywhere
+ * but the catalogue or its opener puts it away.
+ */
+let pickerAway = null;
+function buildPicker({ at = null, anchor = null, x = null, y = null, ids: only = null, onPick = null } = {}) {
+  if (!onPick) restorablePopup = { kind: 'effectPicker', at };
   const el = $('fxpicker');
   el.textContent = '';
   const placed = new Set();
+  const allowed = only ? new Set(only) : null;
+  const offered = (def) => (allowed ? allowed.has(def.id) : !def.sectionOnly);
   const column = (title, ids) => {
-    const list = ids.map((id) => EFFECT_BY_ID[id]).filter(Boolean);
+    const list = ids.map((id) => EFFECT_BY_ID[id]).filter((def) => def && offered(def));
     if (!list.length) return;
     const g = document.createElement('div');
     g.className = 'fxgroup';
@@ -9738,15 +9828,24 @@ function buildPicker({ at = null, anchor = null, x = null, y = null } = {}) {
       c.textContent = `${(def.cost ?? 0).toFixed(2)}%`;
       b.append(n, c);
       b.title = `${def.name} — about ${(def.cost ?? 0).toFixed(2)}% of one core each`;
-      b.onclick = () => { closeMenu(); addEffect(def.id, at); };
+      b.onclick = onPick
+        ? () => { closePicker(); onPick(def.id); }
+        : () => { closeMenu(); addEffect(def.id, at); };
       g.append(b);
     }
     el.append(g);
   };
   for (const [title, ids] of EFFECT_GROUPS) column(title, ids);
-  column('Other', EFFECTS.filter((e) => !placed.has(e.id)).map((e) => e.id));
+  // Not the Stutter, which only a bar-effect section can engage — see makeStutter — unless
+  // a section is what is asking.
+  column('Other', EFFECTS.filter((e) => !placed.has(e.id) && offered(e)).map((e) => e.id));
 
   el.classList.add('show');
+  if (pickerAway) removeEventListener('pointerdown', pickerAway, true);
+  pickerAway = onPick ? (ev) => {
+    if (!el.contains(ev.target) && !anchor?.contains?.(ev.target)) closePicker();
+  } : null;
+  if (pickerAway) addEventListener('pointerdown', pickerAway, true);
   // The effects inspector is flush right, so its catalogue opens immediately to its
   // left instead of covering the cards. Other callers keep the pointer/anchor route.
   // Either way the catalogue is pulled back inside the window.
@@ -9758,6 +9857,15 @@ function buildPicker({ at = null, anchor = null, x = null, y = null } = {}) {
   const top = inInspector ? from.top : (y != null ? y : from.top - r.height - 6);
   el.style.left = `${Math.max(6, Math.min(left, innerWidth - r.width - 6))}px`;
   el.style.top = `${Math.max(6, Math.min(top, innerHeight - r.height - 6))}px`;
+}
+
+/** Put the catalogue away and nothing else. True if it was up — the + slot's toggle. */
+function closePicker() {
+  if (pickerAway) { removeEventListener('pointerdown', pickerAway, true); pickerAway = null; }
+  const el = $('fxpicker');
+  const was = !!el?.classList.contains('show');
+  el?.classList.remove('show');
+  return was;
 }
 
 /**
@@ -9939,12 +10047,8 @@ function selectLane(key) {
   // scrolled rack. When the Mixer is the available lower workspace, reveal the strip
   // by the smallest amount so the visible highlight and the selected row cannot
   // disagree. Roll and Pattern preserve the rack's scroll position while it is hidden.
-  if (chosenStrip && $('desk').dataset.lowerView === 'mixer' && $('rack').contains(chosenStrip)) {
-    const rack = $('rack');
-    const rr = rack.getBoundingClientRect();
-    const tr = chosenStrip.getBoundingClientRect();
-    if (tr.left < rr.left) rack.scrollLeft -= rr.left - tr.left + 6;
-    else if (tr.right > rr.right) rack.scrollLeft += tr.right - rr.right + 6;
+  if (chosenStrip && $('desk').dataset.lowerView === 'mixer') {
+    revealMixerStrip($('rack'), chosenStrip);
   }
   syncArrangementLaneSelection({ reveal: true });
   // Do not leave the previous lane's playback accent behind until the next beat
@@ -11534,6 +11638,19 @@ function setLowerView(next, { remember = true, animate = true } = {}) {
   if (remember) localStorage.setItem(LOWER_VIEW_KEY, view);
   runLowerViewMotion(motionToken);
   scheduleDeskFit(true);
+  // Bringing the Mixer back shows the channel you are on. The rack kept whatever scroll
+  // it had when it went away, and the selection has usually moved since — in the roll,
+  // or in the arrangement — so it could come back with that strip half off the edge or
+  // not on screen at all. A frame later, once it has a box again: the tail padding that
+  // makes the last strip reachable is measured first, since a rack rebuilt while hidden
+  // measured none.
+  if (view === 'mixer' && from !== 'mixer' && track) {
+    requestAnimationFrame(() => {
+      if (lowerView !== 'mixer') return;
+      syncMixerScroll();
+      revealMixerStrip($('rack'), document.querySelector('#rack .strip[data-lane].selected'));
+    });
+  }
 }
 
 const toggleLowerView = (view) => setLowerView(lowerView === view ? 'none' : view);
@@ -11825,7 +11942,7 @@ function noteFxBadge(barPlanEntry, key, trackNoteFx) {
  * as it does in the engine. Bypassed devices remain visible, but are clearly struck out
  * as inactive rather than silently disappearing from the authored chain.
  */
-function barOperationGroups(barPlanEntry, key, { frozen = false } = {}) {
+function barOperationGroups(barPlanEntry, key, { frozen = false, sections = [] } = {}) {
   const laneMix = mixFor(trackId).lanes?.[key] || {};
   const muted = barPlanEntry?.off?.includes(key);
   const deleted = barPlanEntry?.delete?.includes(key);
@@ -11881,9 +11998,17 @@ function barOperationGroups(barPlanEntry, key, { frozen = false } = {}) {
     : override?.mode === 'off' ? 'Override'
       : (laneMix.noteFx?.strum?.enabled || laneMix.noteFx?.arp?.enabled) ? 'Track setting' : '';
 
+  // What the bar puts the track through AHEAD of the channel: its effect sections, each with
+  // where it runs, or — where no section reaches this bar — its per-bar snapshot.
   const barChain = barPlanEntry?.inlineFx?.[key];
-  const insertChain = Array.isArray(barChain) && barChain.length ? barChain : (laneMix.effects || []);
-  const insertItems = insertChain.map((effect) => ({
+  const chainText = (chain) => chain.map((effect) => `${effectDisplayName(effect)}${effectOff(effect) ? ' (off)' : ''}`).join(' + ');
+  const barItems = sections.length
+    ? sections.map((section) => ({
+      text: `${chainText(section.chain)} · ${positionLabel(section.from)}–${positionLabel(section.to)}`,
+      tone: 'active',
+    }))
+    : Array.isArray(barChain) && barChain.length ? [{ text: `${chainText(barChain)} · whole bar`, tone: 'active' }] : [];
+  const insertItems = (laneMix.effects || []).map((effect) => ({
     text: `${effectDisplayName(effect)}${effectOff(effect) ? ' · off' : ''}`,
     tone: effectOff(effect) ? 'bypassed' : 'active',
   }));
@@ -11893,8 +12018,8 @@ function barOperationGroups(barPlanEntry, key, { frozen = false } = {}) {
     { label: 'Playback', items: [playback] },
     { label: 'Bar changes', items: changes.length ? changes : [{ text: 'None', tone: 'quiet' }] },
     { label: 'Note FX', context: noteContext, items: noteItems },
-    { label: 'Insert FX', context: Array.isArray(barChain) && barChain.length ? 'Bar snapshot' : 'Channel chain',
-      items: insertItems },
+    ...(barItems.length ? [{ label: 'Spot FX', context: 'Ahead of the inserts', items: barItems }] : []),
+    { label: 'Insert FX', context: 'Channel chain', items: insertItems },
   ];
 }
 
@@ -12221,10 +12346,10 @@ function openRegionEditor(x, y, {
   // done that: a note edit is a section of its own, and ⌘Z is what undoes one.
   const resetAction = laneKey && {
     label: 'Reset Edits',
-    title: `Set ${laneLabel}'s mute, transpose, timing, gain, pan, fades and cuts back to none in ${scopeName} — the notes are not touched`,
+    title: `Set ${laneLabel}'s mute, transpose, timing, gain, pan, fades, cuts and Spot FX back to none in ${scopeName} — the notes are not touched`,
     run: () => {
       let next = arrDraftOf();
-      next = clearAutomation(next, laneKey, from * 16, (to + 1) * 16);
+      next = clearAutomation(next, laneKey, from * 16, (to + 1) * 16, { points: true, cuts: true, fx: true });
       next = setLanesOff(next, from, to, [laneKey], false);
       next = setLanesDeleted(next, from, to, [laneKey], false);
       next = transposeBars(next, from, to, [laneKey], 0);
@@ -12276,6 +12401,14 @@ function openRegionEditor(x, y, {
       { label: 'Delete Bars', danger: true, title: `Remove ${span.toLowerCase()} and move everything after it earlier`,
         run: () => applyArrangementEdit(deleteBars(arrDraftOf(), from, to), `${span} deleted`) },
     ]);
+    // The whole mix over these bars — the same editor a track's bars open, aimed at the
+    // master: a Stutter or a gate across everything for a beat, a little distortion on a
+    // drop. Its own heading, because it is the one thing on this panel that is not
+    // structure, and the heading is what says the scope (see src/data/automation.js).
+    actionSection(`Master in ${scopeName}`, [
+      { label: 'Spot FX…', title: `Put the whole mix through an effect chain in ${span.toLowerCase()}`,
+        run: () => openBarEffectsEditor(x, y, '__master', { from, to }) },
+    ]);
   } else if (!wholeTrack) {
     const muted = laneHasBarFlag(draft, from, to, 'off', laneKey);
     const selectedFreezeScope = freezeScope(from, to);
@@ -12306,7 +12439,7 @@ function openRegionEditor(x, y, {
           run: () => freezeLane(laneKey, { scope: selectedFreezeScope }) },
       { label: 'Note FX…', title: `Set strum or arpeggiator for ${laneLabel}`,
         run: () => openNoteFxEditor(x, y, laneKey, { from, to }) },
-      { label: 'Bar Effects…', title: `Insert an audio-effect snapshot on ${laneLabel} in ${span.toLowerCase()}`,
+      { label: 'Spot FX…', title: `Put ${laneLabel} through an effect chain in ${span.toLowerCase()}, down to a 1/32`,
         run: () => openBarEffectsEditor(x, y, laneKey, { from, to }) },
       // The same three verbs as the track panel, meaning the same three things — only the
       // scope differs, and the heading is what says the scope. See NOTE-VERBS.
@@ -12836,12 +12969,16 @@ addEventListener('pointercancel', () => {
  * The line is a VEIL rather than a graph: the part of the bar above the line is dimmed,
  * so a fade-out reads as the row going dark across the bars it covers, a crossfade as one
  * row darkening while the next one brightens, and a bar sitting at 0 dB is untouched —
- * which is every bar of every track that has no automation. Height follows the fader
- * law, so the same depth of veil is the same level on every row. Cuts are a hard rule at
- * the exact sixteenth, the one thing on the row finer than a bar.
+ * which is every bar of every track that has no automation. Depth is straight dB from
+ * 0 at the top to the automation floor (-48) at the foot, so the same depth of veil is
+ * the same level on every row and each shape draws as its name: an Even fade-out is one
+ * straight diagonal into the bottom corner, an S-curve an S. (It was the fader law, whose
+ * straight-line breakpoints put a kink in every fade at -10, -20 and -35, and whose -48
+ * sat a tenth off the foot, so a fade to silence ended on a hook.) Cuts are a hard rule
+ * at the exact sixteenth, the one thing on the row finer than a bar.
  */
 function automationBarMarks(curve, bar) {
-  if (!curve || (!curve.points.length && !curve.cuts.length)) return null;
+  if (!curve || (!curve.points.length && !curve.cuts.length && !curve.fx.length)) return null;
   const a = bar * 16;
   const b = a + 16;
   const cuts = curve.cuts.filter((c) => c >= a && c < b);
@@ -12849,19 +12986,26 @@ function automationBarMarks(curve, bar) {
   box.className = 'arrauto';
   box.setAttribute('aria-hidden', 'true');
   if (curve.points.length) {
-    const unity = dbToPos(0);
     const veilY = (g) => {
       if (!(g > 0)) return 100;
-      return (1 - Math.min(1, dbToPos(levelToDb(g)) / unity)) * 100;
+      return clamp(levelToDb(g) / AUTOMATION_FLOOR_DB, 0, 1) * 100;
     };
-    const marks = new Set(Array.from({ length: 17 }, (_, i) => a + i));
+    // Four samples a sixteenth, so a curved shape is a curve and not a row of facets.
+    const marks = new Set(Array.from({ length: 65 }, (_, i) => a + i / 4));
     for (const p of curve.points) if (p.pos > a && p.pos < b) marks.add(p.pos);
     const coords = [];
     let quiet = true;
     for (const pos of [...marks].sort((x, y) => x - y)) {
-      const left = curveLevelAt(curve, pos, { left: true });
-      const right = curveLevelAt(curve, pos);
-      for (const g of (Math.abs(left - right) > 1e-9 ? [left, right] : [left])) {
+      // A step ON the bar line belongs to neither bar's picture: the bar starts from the
+      // level leaving its first sixteenth and ends on the level arriving at the next bar.
+      // Drawn, the pin a fade makes at either end showed as a rule from full level at the
+      // bar's edge — a fade-out ending on the climb back to 0 dB, and the bar after it
+      // veiled for the sake of one vertical line.
+      const left = pos === a ? null : curveLevelAt(curve, pos, { left: true });
+      const right = pos === b ? null : curveLevelAt(curve, pos);
+      const levels = left == null ? [right] : right == null ? [left]
+        : Math.abs(left - right) > 1e-9 ? [left, right] : [left];
+      for (const g of levels) {
         const y = veilY(g);
         if (y > 0.5) quiet = false;
         coords.push([((pos - a) / 16) * 100, y]);
@@ -12872,11 +13016,13 @@ function automationBarMarks(curve, bar) {
       const svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('viewBox', '0 0 100 100');
       svg.setAttribute('preserveAspectRatio', 'none');
-      const line = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
+      // Out past both edges at the edge's own level, into the side padding the box clips,
+      // so the veil AND its line run to the edge of the bar: a fade-out lands in the
+      // bottom corner, a fade-in leaves from it.
+      const edged = [[-40, coords[0][1]], ...coords, [140, coords[coords.length - 1][1]]];
+      const line = edged.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
       const veil = document.createElementNS(NS, 'path');
       veil.setAttribute('class', 'arrauto-veil');
-      // Out past both edges at the edge's own level, into the side padding the box clips.
-      const edged = [[-40, coords[0][1]], ...coords, [140, coords[coords.length - 1][1]]];
       veil.setAttribute('d', `M-40 0 L140 0 L${[...edged].reverse().map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join(' L')} Z`);
       const stroke = document.createElementNS(NS, 'path');
       stroke.setAttribute('class', 'arrauto-line');
@@ -12889,6 +13035,18 @@ function automationBarMarks(curve, bar) {
     const mark = document.createElement('span');
     mark.className = 'arrcutmark';
     mark.style.left = `${(((c - a) / 16) * 100).toFixed(2)}%`;
+    box.append(mark);
+  }
+  // An effect section is a rule along the foot of the bar over exactly the steps it runs
+  // on, so a Stutter on the last beat reads as the last quarter of the bar.
+  for (const section of curve.fx) {
+    if (section.to <= a + 1e-6 || section.from >= b - 1e-6) continue;
+    const mark = document.createElement('span');
+    mark.className = 'arrfxspan';
+    const left = Math.max(0, (section.from - a) / 16);
+    const right = Math.min(1, (section.to - a) / 16);
+    mark.style.left = `calc(4px + (100% - 8px) * ${left.toFixed(4)})`;
+    mark.style.width = `calc((100% - 8px) * ${(right - left).toFixed(4)})`;
     box.append(mark);
   }
   return box.childElementCount ? box : null;
@@ -13263,9 +13421,15 @@ function buildArrangement() {
       }
       const autoMarks = automationBarMarks(autoCurve, bar);
       if (autoMarks) box.append(autoMarks);
-      const barFx = plan[bar]?.inlineFx?.[row.key] || [];
-      const barFxNames = barFx.map((effect) => EFFECT_BY_ID[effect.id]?.short
-        || EFFECT_BY_ID[effect.id]?.name || effect.id).join(' + ');
+      // The bar's effect sections, and its per-bar snapshot where no section reaches it —
+      // the same reading the engine and the hover card make.
+      const barSections = (autoCurve?.fx || [])
+        .filter((section) => section.to > bar * 16 + 1e-6 && section.from < bar * 16 + 16 - 1e-6);
+      const barFx = barSections.length
+        ? barSections.flatMap((section) => section.chain)
+        : plan[bar]?.inlineFx?.[row.key] || [];
+      const barFxNames = [...new Set(barFx.map((effect) => EFFECT_BY_ID[effect.id]?.short
+        || EFFECT_BY_ID[effect.id]?.name || effect.id))].join(' + ');
       // Keep the most important melodic edit visible without opening a tooltip. The
       // full details remain in the hover card, while a compact +5/-7 badge makes a transposed
       // bar immediately recognisable in the arrangement row.
@@ -13310,7 +13474,7 @@ function buildArrangement() {
             text: synthesizerLabelFor(preset) || 'Unknown',
             tone: synthesizerLabelFor(preset) ? 'active' : 'quiet',
           }] },
-          ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen }),
+          ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen, sections: barSections }),
           ...automationTipGroups(autoCurve, bar),
         ]);
         box.dataset.tiphints = JSON.stringify([
@@ -16850,10 +17014,12 @@ function releaseOskSources(prefix) {
  * the same reasons: each bar is written on its own, and each write is CHAINED onto the
  * draft the last one returned, so forking one bar cannot lose another's edit.
  *
- * `writeBarNotesShared`, not `writeBarNotes`. Recording into a loop is changing the
- * PATTERN: plumber plays section 0 for four bars, and a note forked into bar 1 alone
- * would come back every fourth pass — which reads as dropped notes rather than as an
- * edit. Shared is what makes a two-bar loop behave the way the ear expects.
+ * `writeBarNotes`, never `writeBarNotesShared`. A note lands in the bar it was played
+ * in and nowhere else — the piano roll's rule. Shared wrote it into every bar playing
+ * the same section, so a take into bar 1 also turned up in a duplicated bar 9 and in
+ * every repeat a generated song's `order` reuses. Looping two bars and playing over
+ * them still builds the part up pass by pass: the loop is those bars, so every note
+ * written into them is heard on the next time round.
  *
  * Beat commits deliberately skip the expensive desk redraw, synchronous localStorage
  * write and loop re-arm. Those are presentation/save work, not audio work; doing all
@@ -16876,7 +17042,7 @@ function flushTake(reason) {
   // dropping it here is what made every held note come out a sixteenth long.
   recTake.clear();
   for (const { bar, lane, notes16, lengths16 } of entries) {
-    d = writeBarNotesShared(eb, d, bar, lane, notes16, lengths16);
+    d = writeBarNotes(eb, d, bar, lane, notes16, lengths16);
   }
   // ALWAYS silent. The summary belongs to the take ending, not to a write — and those
   // are not the same moment: by the time you disarm, the last beat has usually already
@@ -19735,6 +19901,12 @@ function isolatedTrackProfileMix(id, lane, { withoutInserts = false } = {}) {
 
 function trackProfileArrangement(id, lane, { withoutInserts = false } = {}) {
   const arrangement = structuredClone(arrFor(id) ?? null);
+  // Its effect sections are inserts too, for this measurement.
+  if (withoutInserts && arrangement?.automation?.[lane]?.fx) {
+    delete arrangement.automation[lane].fx;
+    if (!Object.keys(arrangement.automation[lane]).length) delete arrangement.automation[lane];
+    if (!Object.keys(arrangement.automation).length) delete arrangement.automation;
+  }
   if (!withoutInserts || !arrangement?.plan) return arrangement;
   for (const bar of arrangement.plan) {
     if (!bar.inlineFx?.[lane]) continue;
@@ -20434,11 +20606,18 @@ function laneOnlyBlock(block, sources) {
  */
 function freezeArrangement(entry, sources) {
   if (!entry?.automation) return entry ?? null;
-  const cuts = Object.fromEntries(Object.entries(entry.automation)
-    .filter(([key, lane]) => sources.has(key) && lane?.cuts?.length)
-    .map(([key, lane]) => [key, { cuts: lane.cuts }]));
+  // Cuts and effect SECTIONS are both in front of the point the frozen PCM re-enters the
+  // strip, so both are baked: a frozen track plays its sections out of the samples, and a
+  // section moved on it re-freezes it. The level line and the master's sections are after
+  // that point and stay live.
+  const kept = Object.fromEntries(Object.entries(entry.automation)
+    .filter(([key, lane]) => sources.has(key) && (lane?.cuts?.length || lane?.fx?.length))
+    .map(([key, lane]) => [key, {
+      ...(lane.cuts?.length ? { cuts: lane.cuts } : {}),
+      ...(lane.fx?.length ? { fx: lane.fx } : {}),
+    }]));
   const out = { ...entry };
-  if (Object.keys(cuts).length) out.automation = cuts; else delete out.automation;
+  if (Object.keys(kept).length) out.automation = kept; else delete out.automation;
   return out;
 }
 

@@ -96,6 +96,35 @@ function snapMixerScroll() {
   if (Math.abs(rail.scrollLeft - target) > 0.5) rail.scrollLeft = target;
 }
 
+/**
+ * Scroll the rack the least it takes to show one strip WHOLE, and land on a snap point.
+ *
+ * The rack snaps to strip starts, so the smallest scroll that uncovers a strip is not
+ * enough: the snap nearest to it can be the one before, and the strip is cut off again.
+ * Off the left, the strip's own start is the snap point. Off the right, it is the first
+ * strip start from which the whole strip fits — read off the strips themselves rather
+ * than a step, because the sends queue behind the channels on a spacing of their own.
+ */
+function revealMixerStrip(rack, strip) {
+  if (!rack || !strip || !rack.contains(strip)) return;
+  const rackRect = rack.getBoundingClientRect();
+  const at = (el) => el.getBoundingClientRect().left - rackRect.left + rack.scrollLeft;
+  const left = at(strip);
+  const right = left + strip.getBoundingClientRect().width;
+  const view = rack.clientWidth;
+  const now = rack.scrollLeft;
+  if (left >= now - 0.5 && right <= now + view + 0.5) return;
+  let target = left;
+  if (left >= now) {
+    const starts = [...rack.querySelectorAll('.strip')].map(at).sort((a, b) => a - b);
+    target = starts.find((s) => s >= right - view - 0.5) ?? left;
+  }
+  target = Math.max(0, Math.min(Math.max(0, rack.scrollWidth - view), Math.round(target)));
+  rack.scrollLeft = target;
+  const rail = $('mixscroll');
+  if (rail) rail.scrollLeft = target;
+}
+
 function syncMixerScroll() {
   const rack = $('rack');
   const rail = $('mixscroll');
@@ -187,4 +216,5 @@ function syncArrangementScroll() {
 
 export {
   forgetArrangementGeometry, followArrangementScroll, syncMixerScroll, syncArrangementScroll,
+  revealMixerStrip,
 };

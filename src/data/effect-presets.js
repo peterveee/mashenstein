@@ -6,7 +6,10 @@ export const EFFECT_PRESETS = {
       "default": {
         "gain": 0,
         "balance": 0,
-        "mono": 0
+        "mono": 0,
+        "sweep": 0,
+        "gainTo": 0,
+        "balanceTo": 0
       },
       "presets": {
         "Boost": {
@@ -23,6 +26,38 @@ export const EFFECT_PRESETS = {
           "gain": 0,
           "balance": 0,
           "mono": 1
+        },
+        "Fade Out": {
+          "gain": 0,
+          "balance": 0,
+          "mono": 0,
+          "sweep": 1,
+          "gainTo": -48,
+          "balanceTo": 0
+        },
+        "Fade In": {
+          "gain": -48,
+          "balance": 0,
+          "mono": 0,
+          "sweep": 1,
+          "gainTo": 0,
+          "balanceTo": 0
+        },
+        "Pan Left to Right": {
+          "gain": 0,
+          "balance": -1,
+          "mono": 1,
+          "sweep": 1,
+          "gainTo": 0,
+          "balanceTo": 1
+        },
+        "Pan Right to Left": {
+          "gain": 0,
+          "balance": 1,
+          "mono": 1,
+          "sweep": 1,
+          "gainTo": 0,
+          "balanceTo": -1
         }
       }
     },
@@ -391,9 +426,37 @@ export const EFFECT_PRESETS = {
         "feedback": 0.3,
         "tone": 4000,
         "pan": 0,
-        "mix": 0.35
+        "mix": 0.35,
+        "sweep": 0,
+        "feedbackTo": 0.3,
+        "mixTo": 0.35
       },
-      "presets": {}
+      "presets": {
+        "Dub Swell": {
+          "sync": 1,
+          "division": 0.75,
+          "delayMs": 250,
+          "feedback": 0.35,
+          "tone": 4000,
+          "pan": 0,
+          "mix": 0.25,
+          "sweep": 1,
+          "feedbackTo": 0.85,
+          "mixTo": 0.55
+        },
+        "Echo Throw": {
+          "sync": 1,
+          "division": 0.75,
+          "delayMs": 250,
+          "feedback": 0.5,
+          "tone": 4000,
+          "pan": 0,
+          "mix": 0,
+          "sweep": 1,
+          "feedbackTo": 0.5,
+          "mixTo": 0.6
+        }
+      }
     },
     "pingpong": {
       "default": {
@@ -401,7 +464,10 @@ export const EFFECT_PRESETS = {
         "division": 0.5,
         "delayMs": 250,
         "feedback": 0.3,
-        "wet": 0.35
+        "wet": 0.35,
+        "sweep": 0,
+        "feedbackTo": 0.3,
+        "wetTo": 0.35
       },
       "presets": {
         "Slapback": {
@@ -417,6 +483,26 @@ export const EFFECT_PRESETS = {
           "delayMs": 250,
           "feedback": 0.4,
           "wet": 0.35
+        },
+        "Dub Swell": {
+          "sync": 1,
+          "division": 0.75,
+          "delayMs": 250,
+          "feedback": 0.35,
+          "wet": 0.25,
+          "sweep": 1,
+          "feedbackTo": 0.85,
+          "wetTo": 0.55
+        },
+        "Echo Throw": {
+          "sync": 1,
+          "division": 0.75,
+          "delayMs": 250,
+          "feedback": 0.5,
+          "wet": 0,
+          "sweep": 1,
+          "feedbackTo": 0.5,
+          "wetTo": 0.6
         }
       }
     },
@@ -426,7 +512,10 @@ export const EFFECT_PRESETS = {
         "division": 0.5,
         "delayMs": 250,
         "feedback": 0.3,
-        "wet": 0.35
+        "wet": 0.35,
+        "sweep": 0,
+        "feedbackTo": 0.3,
+        "wetTo": 0.35
       },
       "presets": {
         "Slapback": {
@@ -449,6 +538,26 @@ export const EFFECT_PRESETS = {
           "delayMs": 500,
           "feedback": 0.45,
           "wet": 0.3
+        },
+        "Dub Swell": {
+          "sync": 1,
+          "division": 0.75,
+          "delayMs": 250,
+          "feedback": 0.35,
+          "wet": 0.25,
+          "sweep": 1,
+          "feedbackTo": 0.85,
+          "wetTo": 0.55
+        },
+        "Echo Throw": {
+          "sync": 1,
+          "division": 0.75,
+          "delayMs": 250,
+          "feedback": 0.5,
+          "wet": 0,
+          "sweep": 1,
+          "feedbackTo": 0.5,
+          "wetTo": 0.6
         }
       }
     },
@@ -559,6 +668,56 @@ export const EFFECT_PRESETS = {
           "attack": 0.001,
           "decay": 0.012,
           "depth": 1
+        }
+      }
+    },
+    "stutter": {
+      "default": {
+        "slice": 0.25,
+        "retrigger": 0,
+        "fade": 0,
+        "stop": 0,
+        "sweep": 0,
+        "sliceTo": 0.25
+      },
+      "presets": {
+        "Machine Gun": {
+          "slice": 0.125,
+          "retrigger": 0,
+          "fade": 0,
+          "stop": 0
+        },
+        "Beat Repeat": {
+          "slice": 0.25,
+          "retrigger": 1,
+          "fade": 0,
+          "stop": 0
+        },
+        "Echo Out": {
+          "slice": 0.5,
+          "retrigger": 0,
+          "fade": -3,
+          "stop": 0
+        },
+        "Tape Stop": {
+          "slice": 0,
+          "retrigger": 0,
+          "fade": 0,
+          "stop": 8
+        },
+        "Stutter Stop": {
+          "slice": 0.25,
+          "retrigger": 0,
+          "fade": 0,
+          "stop": 4
+        },
+        "Build Roll": {
+          "slice": 1,
+          "retrigger": 0,
+          "fade": 0,
+          "stop": 0,
+          "sweep": 1,
+          "sliceTo": 0.125
         }
       }
     },
@@ -846,7 +1005,9 @@ export const EFFECT_PRESETS = {
     "widener": {
       "default": {
         "width": 0.7,
-        "wet": 1
+        "wet": 1,
+        "sweep": 0,
+        "widthTo": 0.7
       },
       "presets": {
         "Subtle": {
@@ -856,6 +1017,18 @@ export const EFFECT_PRESETS = {
         "Wide": {
           "width": 0.9,
           "wet": 1
+        },
+        "Squeeze to Mono": {
+          "width": 0.5,
+          "wet": 1,
+          "sweep": 1,
+          "widthTo": 0
+        },
+        "Open Out": {
+          "width": 0.5,
+          "wet": 1,
+          "sweep": 1,
+          "widthTo": 1
         }
       }
     },
@@ -893,7 +1066,10 @@ export const EFFECT_PRESETS = {
     "shifter": {
       "default": {
         "frequency": 0,
-        "wet": 1
+        "wet": 1,
+        "sweep": 0,
+        "frequencyTo": 0,
+        "wetTo": 1
       },
       "presets": {
         "Subtle Shift": {
@@ -903,6 +1079,20 @@ export const EFFECT_PRESETS = {
         "Metallic": {
           "frequency": 350,
           "wet": 0.5
+        },
+        "Rise": {
+          "frequency": 0,
+          "wet": 1,
+          "sweep": 1,
+          "frequencyTo": 300,
+          "wetTo": 1
+        },
+        "Fall": {
+          "frequency": 0,
+          "wet": 1,
+          "sweep": 1,
+          "frequencyTo": -300,
+          "wetTo": 1
         }
       }
     },
@@ -1334,18 +1524,66 @@ export const EFFECT_PRESETS = {
       "default": {
         "type": "lowpass",
         "frequency": 1000,
-        "Q": 1
+        "Q": 1,
+        "sweep": 0,
+        "sweepTo": 8000
       },
       "presets": {
         "Low-pass Clean": {
           "type": "lowpass",
           "frequency": 8000,
-          "Q": 0.7
+          "Q": 0.7,
+          "sweep": 0,
+          "sweepTo": 8000
         },
         "High-pass Clean": {
           "type": "highpass",
           "frequency": 100,
-          "Q": 0.7
+          "Q": 0.7,
+          "sweep": 0,
+          "sweepTo": 8000
+        },
+        "Sweep Up": {
+          "type": "lowpass",
+          "frequency": 200,
+          "Q": 1.2,
+          "sweep": 1,
+          "sweepTo": 18000
+        },
+        "Sweep Down": {
+          "type": "lowpass",
+          "frequency": 18000,
+          "Q": 1.2,
+          "sweep": 1,
+          "sweepTo": 200
+        },
+        "Resonant Sweep Up": {
+          "type": "lowpass",
+          "frequency": 300,
+          "Q": 8,
+          "sweep": 1,
+          "sweepTo": 8000
+        },
+        "High-pass Riser": {
+          "type": "highpass",
+          "frequency": 30,
+          "Q": 1.5,
+          "sweep": 1,
+          "sweepTo": 1500
+        },
+        "High-pass Return": {
+          "type": "highpass",
+          "frequency": 1500,
+          "Q": 1,
+          "sweep": 1,
+          "sweepTo": 30
+        },
+        "Band Sweep": {
+          "type": "bandpass",
+          "frequency": 400,
+          "Q": 2,
+          "sweep": 1,
+          "sweepTo": 4000
         }
       }
     }

@@ -6,6 +6,7 @@ import * as Tone from 'tone';
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
 import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
+import { canHostEngineWorklets, createCaptureNode, prepareEngineWorklets } from './engine-worklets.js';
 import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
   LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength, sequenceValue, lenKey,
@@ -25,6 +26,7 @@ import {
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import {
   laneCurve, curveLevelAt, pointsBetween, cutsBetween, hasAutomation,
+  fxSectionAt, fxEdgesBetween, fxStartsAt, MASTER_KEY,
 } from '../data/automation.js';
 import { warmTngr2Families } from './tngr2/tables.js';
 import { canHostTngr2, tngr2FamiliesOfVoice } from './tngr2/controller.js';
@@ -1038,6 +1040,7 @@ class AudioSys {
     // on — so each is written once, and a lane whose line was removed is walked home.
     this._autoWindow = null;
     this._autoLanes = new Set();
+    this._fxLanes = new Set();
     // Preset-bench notes get their own gates so changing an audition never cuts a
     // song lane. They belong to this context just like the song gates do.
     this._benchGates = new Map();
@@ -1211,7 +1214,7 @@ class AudioSys {
     // so we can play it backwards during rewind.
     this._capBuf = null;     // Float32Array ring buffer (~4s)
     this._capPos = 0;        // write cursor
-    this._capNode = null;    // ScriptProcessorNode
+    this._capNode = null;    // capture AudioWorkletNode (ScriptProcessorNode fallback)
     this._capGain = null;    // zero-gain sink
     this.captureEnabled = true;
     // Null means "whatever the browser does by default", which is the smallest buffer
@@ -5352,7 +5355,7 @@ class AudioSys {
    */
   _automationTick(sourceStep, barIndex, bars, spb) {
     const auto = this.bank?.automation || null;
-    if (!auto && !this._autoLanes.size && !this._pendingCuts.length) return;
+    if (!auto && !this._autoLanes.size && !this._pendingCuts.length && !this._fxLanes.size) return;
     if (!(bars > 0) || !Number.isFinite(sourceStep) || !(spb > 0)) return;
     // Sixteenths from the top of the FORM, which is what the stored positions count —
     // the loop wraps and Rearrange's slices both land on the right stretch of line.
@@ -5366,8 +5369,12 @@ class AudioSys {
       // reached is reached now: the transport has left that window — onwards or by a
       // jump — and a door that has been told to shut must never take another note.
       this._takePendingCuts(Infinity);
+      // The NEXT sixteenth, arriving on time — as opposed to a jump, a loop or a start,
+      // after which whatever section is playing at the new place starts again.
+      const continuous = !!last && k === last.k + 1 && Math.abs(t0 - (last.t0 + spb)) < spb * 0.5;
       this._autoWindow = { k, t0 };
       this._writeAutomation(auto, k, t0, spb);
+      this._writeSections(auto, k, t0, spb, continuous);
     }
     this._takePendingCuts(pos);
   }
@@ -5376,6 +5383,8 @@ class AudioSys {
   _writeAutomation(auto, k, t0, spb) {
     const seen = new Set();
     for (const [key, stored] of Object.entries(auto || {})) {
+      // The master's lane is effect sections and nothing else — see _writeSections.
+      if (key === MASTER_KEY) continue;
       const curve = laneCurve(stored);
       if (!curve) continue;
       const strip = this.mixer?.lane(key);
@@ -5402,6 +5411,63 @@ class AudioSys {
       if (!seen.has(key)) this.mixer?.lane(key)?.clearAutomation?.(t0);
     }
     this._autoLanes = seen;
+  }
+
+  /**
+   * The lanes whose effect chain the SECTIONS decide, rather than the bar lines — every
+   * lane with an `fx` list, the master's excepted, which no bar line ever touches. Kept
+   * per automation object, because the sequencer asks at every bar line.
+   */
+  _sectionLanes(auto = this.bank?.automation) {
+    if (!auto) return null;
+    if (this._sectionLanesFor?.auto === auto) return this._sectionLanesFor.keys;
+    const keys = new Set(Object.entries(auto)
+      .filter(([key, lane]) => key !== MASTER_KEY && lane?.fx?.length).map(([key]) => key));
+    this._sectionLanesFor = { auto, keys };
+    return keys;
+  }
+
+  /**
+   * Sixteenth `k` of every effect section: the chain each sectioned lane — and the master —
+   * is playing through at the window's start, and every section that starts or ends
+   * inside it, at its own time. Where no section covers a lane the bar's `inlineFx`
+   * snapshot plays, so a song half-converted from per-bar snapshots plays both halves.
+   *
+   * A section STARTING is told to the chain even when the chain is the one already
+   * playing — two sections side by side are two Stutter grabs — and so is landing in the
+   * middle of one after a jump, which is the closest thing to a start the music has.
+   */
+  _writeSections(auto, k, t0, spb, continuous) {
+    const lanes = new Set(Object.entries(auto || {})
+      .filter(([, lane]) => lane?.fx?.length).map(([key]) => key));
+    if (!lanes.size && !this._fxLanes.size) return;
+    const plan = barPlan(this.bank);
+    const fallback = (key, pos) => (key === MASTER_KEY ? []
+      : plan[Math.floor(pos / 16 + 1e-9) % plan.length]?.inlineFx?.[key] || []);
+    for (const key of new Set([...lanes, ...this._fxLanes])) {
+      const curve = lanes.has(key) ? laneCurve(auto[key]) : null;
+      // `since` and `until` are when the section playing at `pos` began and ends, at this
+      // tempo: where a Stutter's TAPE STOP has to stand still, and the two ends a Filter's
+      // SWEEP runs between — `since` in the past when a jump lands part-way through.
+      const at = (pos) => {
+        const section = fxSectionAt(curve, pos);
+        return {
+          chain: section ? section.chain : fallback(key, pos),
+          fresh: !!section && fxStartsAt(curve, pos),
+          since: section ? t0 + (section.from - k) * spb : null,
+          until: section ? t0 + (section.to - k) * spb : null,
+        };
+      };
+      const start = at(k);
+      this.mixer?.scheduleBarEffects?.(key, start.chain, t0,
+        { fresh: start.fresh || !continuous, sixteenth: spb, until: start.until, since: start.since });
+      for (const edge of fxEdgesBetween(curve, k, k + 1)) {
+        const here = at(edge);
+        this.mixer?.scheduleBarEffects?.(key, here.chain, t0 + (edge - k) * spb,
+          { fresh: here.fresh, sixteenth: spb, until: here.until, since: here.since });
+      }
+    }
+    this._fxLanes = lanes;
   }
 
   /**
@@ -5497,9 +5563,13 @@ class AudioSys {
     this._pendingCuts = [];
     this._autoWindow = null;
     this._autoLanes = new Set();
+    this._fxLanes = new Set();
     if (!strips) return;   // a rebuilt graph: the strips are about to be new ones
     const now = this.ctx?.currentTime ?? 0;
     this.mixer?.clearAutomation?.(fade > 0 ? now + fade : null);
+    // And every effect section lets go, over the same fade. A Stutter's loop is downstream
+    // of the gates this stop closes, so nothing else would ever stop it repeating.
+    this.mixer?.releaseBarEffects?.(now, fade);
   }
 
   /** The dry/wet gates used only by the preset library's bench. */
@@ -5974,7 +6044,7 @@ class AudioSys {
     else delete next.automation;
     this.bank = next;
     this.refreshTransportResolution(next, this.mixEntry);
-    this.mixer?.prepareBarEffects?.(barPlan(next), next.bpm || this.bpm);
+    this.mixer?.prepareBarEffects?.(barPlan(next), next.bpm || this.bpm, next.automation);
     // A step past the end of a shortened song would keep playing past it until the
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
     const steps = barPlan(next).length * 16;
@@ -6103,7 +6173,7 @@ class AudioSys {
     }
     // Sends are final by here, so anything unused can be dropped from the graph.
     if (this.mixer) this.mixer.pruneAuxes();
-    if (this.mixer && bank) this.mixer.prepareBarEffects(barPlan(bank), bank.bpm || this.bpm);
+    if (this.mixer && bank) this.mixer.prepareBarEffects(barPlan(bank), bank.bpm || this.bpm, bank.automation);
 
     // `id` was read from the bank as passed in, above, before applyArrangement and
     // deskBank patched it — which is exactly what the song's preset copies need to be
@@ -6336,6 +6406,19 @@ class AudioSys {
       const strip = this.mixer.lane(key);
       if (strip) chains.push([key, strip.effects, entry?.lanes?.[key]?.effects || []]);
     }
+    // A hand-written effect (mbCompN, most of the desk's own processors) takes new settings
+    // only NOW, not at an audio time — its setAt throws. Most cabinet songs carry one on the
+    // master, unchanged between the cabinet screen and the level, and asking it to "move"
+    // to the settings it already has threw half way through the ramps below: the director
+    // then rebuilt the whole mix on the spot, a bar line early, and the rebuild clicked
+    // (the tick after a level starts; Peter, 1 Oct 2026). So one that has nothing to move
+    // is left alone, and one that really would change is refused HERE, before anything
+    // moves, the way a change of shape is.
+    const sameParams = (a, b) => {
+      const ka = Object.keys(a || {}), kb = Object.keys(b || {});
+      return ka.length === kb.length && ka.every((k) => JSON.stringify(a[k]) === JSON.stringify((b || {})[k]));
+    };
+    const leaveAlone = new Set();
     for (const [target, live, want] of chains) {
       if (live.length !== want.length) {
         throw new Error(`rampMix: ${target} has ${live.length} effects and the target has ${want.length}`
@@ -6348,6 +6431,13 @@ class AudioSys {
         }
         if (!!live[i].bypassed !== !!want[i].bypass) {
           throw new Error(`rampMix: ${target}[${i}] changes its bypass, which re-wires the chain`);
+        }
+        if (live[i].node?._custom && want[i].params) {
+          if (!sameParams(live[i].params, want[i].params)) {
+            throw new Error(`rampMix: ${target}[${i}] "${want[i].id}" changes its settings, and it`
+              + ' can only take new ones now, not at an audio time');
+          }
+          leaveAlone.add(`${target}#${i}`);
         }
       }
     }
@@ -6378,7 +6468,9 @@ class AudioSys {
 
     for (const [target, , want] of chains) {
       for (let i = 0; i < want.length; i++) {
-        if (want[i].params) this.mixer.rampEffectParams(target, i, want[i].params, when, seconds, bpm);
+        if (want[i].params && !leaveAlone.has(`${target}#${i}`)) {
+          this.mixer.rampEffectParams(target, i, want[i].params, when, seconds, bpm);
+        }
         // Unconditionally, unlike the params above: `mute` absent means UNMUTED, and a
         // link the target says nothing about has to come back on. Skipping the falsy
         // case would make a mute one-way — on for the cabinet screen and still on for
@@ -6465,29 +6557,42 @@ class AudioSys {
     }
   }
 
-  // Continuously record the master output into a ring buffer. A zero-gain
-  // ScriptProcessorNode taps the signal without affecting the live mix.
+  // Continuously record the master output into a ring buffer, for playing it backwards.
+  //
+  // The tap is an AudioWorklet (engine-worklets.js) that posts each 2048 samples here.
+  // It was a ScriptProcessorNode, whose callback runs on the main thread against a
+  // deadline: a busy frame lost that stretch of the recording. Messages queue instead, so
+  // a stall delays the copy and loses nothing, and the audio thread never waits on us.
+  // The ScriptProcessor stays as the fallback where no worklet can run (the http LAN dev
+  // URL, file://). Registration is asynchronous, so the tap arrives a few ms after
+  // ensure() — the ring is empty then anyway.
   _startCapture() {
-    if (!this.captureEnabled || this._capNode) return;
-    const SR = this.ctx.sampleRate;
+    if (!this.captureEnabled || this._capBuf) return;
+    const ctx = this.ctx;
     const CAPTURE_SEC = 4;
-    this._capBuf = new Float32Array(Math.floor(SR * CAPTURE_SEC));
+    const buf = new Float32Array(Math.floor(ctx.sampleRate * CAPTURE_SEC));
+    this._capBuf = buf;
     this._capPos = 0;
-    this._capNode = this.ctx.createScriptProcessor(2048, 1, 1);
-    this._capNode.onaudioprocess = (e) => {
-      if (!this._capBuf || this.lifecyclePaused) return;
-      const input = e.inputBuffer.getChannelData(0);
-      const buf = this._capBuf;
-      let pos = this._capPos;
-      const len = buf.length;
-      for (let i = 0; i < input.length; i++) {
-        buf[pos] = input[i];
-        pos = (pos + 1) % len;
-      }
-      this._capPos = pos;
-    };
-    // Tap master without doubling the output: route through capNode into a
-    // zero-gain sink so the onaudioprocess fires but nothing reaches the speakers.
+    if (!canHostEngineWorklets(ctx)) { this._wireCapture(null); return; }
+    prepareEngineWorklets(ctx).then((ok) => {
+      // Stopped, restarted or re-contexted while registering: that start is not ours.
+      if (this._capBuf !== buf || this.ctx !== ctx || this._capNode) return;
+      let node = null;
+      if (ok) { try { node = createCaptureNode(ctx); } catch { node = null; } }
+      this._wireCapture(node);
+    });
+  }
+
+  // Hook a capture node (the worklet, or null for the ScriptProcessor fallback) onto the
+  // master, through a zero-gain sink so the graph pulls it and nothing reaches the speakers.
+  _wireCapture(worklet) {
+    if (worklet) {
+      worklet.port.onmessage = (e) => this._captureChunk(e.data);
+      this._capNode = worklet;
+    } else {
+      this._capNode = this.ctx.createScriptProcessor(2048, 1, 1);
+      this._capNode.onaudioprocess = (e) => this._captureChunk(e.inputBuffer.getChannelData(0));
+    }
     this.master.connect(this._capNode);
     this._capGain = this.ctx.createGain();
     this._capGain.gain.value = 0;
@@ -6495,8 +6600,30 @@ class AudioSys {
     this._capGain.connect(this.ctx.destination);
   }
 
+  _captureChunk(input) {
+    if (!this._capBuf || this.lifecyclePaused || !input || !input.length) return;
+    const buf = this._capBuf;
+    let pos = this._capPos;
+    const len = buf.length;
+    for (let i = 0; i < input.length; i++) {
+      buf[pos] = input[i];
+      pos = (pos + 1) % len;
+    }
+    this._capPos = pos;
+  }
+
   _stopCapture() {
-    if (this._capNode && typeof this._capNode.disconnect === 'function') this._capNode.disconnect();
+    const node = this._capNode;
+    if (node) {
+      if (node.port) {
+        node.port.onmessage = null;
+        try { node.port.postMessage('stop'); } catch { /* already gone */ }
+      } else {
+        node.onaudioprocess = null;
+      }
+      try { this.master?.disconnect(node); } catch { /* not connected */ }
+      if (typeof node.disconnect === 'function') node.disconnect();
+    }
     if (this._capGain && typeof this._capGain.disconnect === 'function') this._capGain.disconnect();
     this._capNode = null;
     this._capGain = null;
@@ -7801,7 +7928,7 @@ class AudioSys {
       const bar = plan[sourceBarIndex % plan.length];
       if ((sourceStep % 16 === 0 || sourceBarChanged)
         && Number.isFinite(sourceStep)) {
-        this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime);
+        this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime, this._sectionLanes());
       }
       // The level line and the cuts, BEFORE any lane is asked for a note: a cut on this
       // very step has to swap its lane's door before the note that lands on it is routed.

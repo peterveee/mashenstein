@@ -70,6 +70,7 @@ import * as FIELD_SERVICE_NIGHT_DRIVE_WITH_PIANO_LEAD from './field-service-nigh
 import * as FIELD_SERVICE_NIGHT_DRIVE from './field-service-night-drive.js';
 import * as FIELD_SERVICE_ORIGINAL from './field-service-original.js';
 import * as FIELD_SERVICE_OVERCLOCK from './field-service-overclock.js';
+import * as FIELD_SERVICE_REWIRED from './field-service-rewired.js';
 import * as FIELD_SERVICE_SLAP_HAPPY from './field-service-slap-happy.js';
 import * as FOODCOURTTWEAK from './foodcourttweak.js';
 import * as FROST_REMIX_ABSOLUTE_ZERO from './frost-remix-absolute-zero.js';
@@ -143,6 +144,8 @@ import * as SURGE_REMIX_SHORT_CIRCUIT from './surge-remix-short-circuit.js';
 import * as TERMINAL_VELOCITY_ORIGINAL from './terminal-velocity-original.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
+import * as THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER from './the-surge-mashterpiece-call-and-answer.js';
+import * as THE_SURGE_MASHTERPIECE_COPY from './the-surge-mashterpiece-copy.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 import * as WIPL_BGM_SHOP_COPY from './wipl-bgm-shop-copy.js';
@@ -205,6 +208,7 @@ export const IMPORTED_BY_ID = {
   "field-service-night-drive": { bank: FIELD_SERVICE_NIGHT_DRIVE.bank, title: FIELD_SERVICE_NIGHT_DRIVE.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-original": { bank: FIELD_SERVICE_ORIGINAL.bank, title: FIELD_SERVICE_ORIGINAL.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-overclock": { bank: FIELD_SERVICE_OVERCLOCK.bank, title: FIELD_SERVICE_OVERCLOCK.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-rewired": { bank: FIELD_SERVICE_REWIRED.bank, title: FIELD_SERVICE_REWIRED.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-slap-happy": { bank: FIELD_SERVICE_SLAP_HAPPY.bank, title: FIELD_SERVICE_SLAP_HAPPY.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "foodcourttweak": { bank: FOODCOURTTWEAK.bank, title: FOODCOURTTWEAK.title, group: "copy", writable: true },
   "frost-remix-absolute-zero": { bank: FROST_REMIX_ABSOLUTE_ZERO.bank, title: FROST_REMIX_ABSOLUTE_ZERO.title, group: "alternate", writable: true, alternateOf: "frost" },
@@ -278,6 +282,8 @@ export const IMPORTED_BY_ID = {
   "terminal-velocity-original": { bank: TERMINAL_VELOCITY_ORIGINAL.bank, title: TERMINAL_VELOCITY_ORIGINAL.title, group: "imported", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
+  "the-surge-mashterpiece-call-and-answer": { bank: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.bank, title: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.title, group: "copy", writable: true },
+  "the-surge-mashterpiece-copy": { bank: THE_SURGE_MASHTERPIECE_COPY.bank, title: THE_SURGE_MASHTERPIECE_COPY.title, group: "copy", writable: true },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },
   "wipl-bgm-shop-copy": { bank: WIPL_BGM_SHOP_COPY.bank, title: WIPL_BGM_SHOP_COPY.title, group: "copy", writable: true },

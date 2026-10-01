@@ -44,6 +44,11 @@
 // 64 bars at 150. Written by work/local/_neon-remix-live-wire.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-stops.mjs): the stop on bar 14 beat 3 cuts every lane but the chime's run (lead4) and the riser, which lead into the strike.
+//
+// SPOT FX — LIGHTNING (1 Oct 2026, work/local/_spot-fx-picture.mjs): a sixteenth of the whole mix
+// overdriven and crushed on bar 45's downbeat, the strike at beat 176 the game flashes every pass.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -696,6 +701,60 @@ export const arrangement = {
   loop: {
     fromBar: 15,
     toBar: 64,
+  },
+  automation: {
+    lead: {
+      cuts: [[14,8]],
+    },
+    hats: {
+      cuts: [[14,8]],
+    },
+    lead2: {
+      cuts: [[14,8]],
+    },
+    bass: {
+      cuts: [[14,8]],
+    },
+    kick: {
+      cuts: [[14,8]],
+    },
+    clap: {
+      cuts: [[14,8]],
+    },
+    snare: {
+      cuts: [[14,8]],
+    },
+    chords: {
+      cuts: [[14,8]],
+    },
+    ohats: {
+      cuts: [[14,8]],
+    },
+    __master: {
+      fx: [
+        {
+          from: [45,0],
+          to: [45,1],
+          chain: [
+            {
+              id: "distortion",
+              params: {
+                distortion: 0.6,
+                wet: 0.6,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 4,
+                downsample: 6,
+                wet: 1,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

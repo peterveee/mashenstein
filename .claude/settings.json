@@ -63,7 +63,9 @@
       "Bash(git fsck *)",
       "Bash(node tests/beat-chart.js)",
       "Bash(awk 'NR>=2590 && NR<=2622' src/game/hud.js)",
-      "Edit(/.claude/skills/verify/**)"
+      "Edit(/.claude/skills/verify/**)",
+      "Bash(node work/local/gainsweep-debug.mjs)",
+      "Bash(node tests/fx-sections.js)"
     ],
     "additionalDirectories": [
       "/Users/Peter/mashenstein/src/game"

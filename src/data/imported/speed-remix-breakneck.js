@@ -26,6 +26,8 @@
 // 64 bars at 174, 88 s. Written by work/local/_speed-remix-breakneck.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): stutter rolls into both drops (12, 40).
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -659,6 +661,100 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 64,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [12,12],
+          to: [12,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [12,14],
+          to: [13,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [40,12],
+          to: [40,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [40,14],
+          to: [41,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

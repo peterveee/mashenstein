@@ -26,6 +26,8 @@
 // 64 bars at 116. Written by work/local/_fs-remix-aussendienst.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): the machine winds down: each part stops on a cut (57–64), and the last bar loops itself quieter and quieter.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -592,6 +594,59 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 64,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [64,0],
+          to: [65,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 1,
+                retrigger: 0,
+                fade: -3,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    bass: {
+      cuts: [[63,0]],
+    },
+    kick: {
+      cuts: [[63,0]],
+    },
+    rim2: {
+      cuts: [[57,0]],
+    },
+    lead: {
+      cuts: [[59,0]],
+    },
+    snare: {
+      cuts: [[61,0]],
+    },
+    hats: {
+      cuts: [[61,0]],
+    },
+    ohats: {
+      cuts: [[57,0]],
+    },
+    lead2: {
+      cuts: [[57,0]],
+    },
+    lead3: {
+      cuts: [[57,0]],
+    },
+    chords: {
+      cuts: [[57,0]],
+    },
+    clap: {
+      cuts: [[57,0]],
+    },
   },
 };
 

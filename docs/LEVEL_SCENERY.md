@@ -78,7 +78,7 @@ headless ledger cannot run, so its counts come from the charts themselves.
 **28 Sep 2026:** the backdrop is the mid-century modern desert from the lab bake-offs
 (`stylePacks/speedMcm.js`, `speedMcmObjects.js`, `speedMcmCoyote.js`; see
 `docs/BACKDROP_STYLES.md`). It replaced the cut-paper desert, which is the `faux3d` pack,
-kept for the Surge. Everything in the table below stands where it did: the pack uses
+kept as this pack's road. The Surge's cycle shows this desert too (since 1 Oct). Everything in the table below stands where it did: the pack uses
 the paper desert's own placement code, so only the painting changed. Three things are
 new with it:
 
@@ -256,7 +256,8 @@ Zombies can approach, stand, wander away, make a catchable flee, or occasionally
 **25 Sep 2026:** the backdrop is now the gouache night from the backdrop-style bake-off
 (`stylePacks/cryptGouache.js`; see `docs/BACKDROP_STYLES.md`). It replaced the VHS tape
 look, which had a gradient, two hill silhouettes and a dead tree. The `vhs` pack is kept
-for the Surge. All three stages paint the same country, but each opens on a different
+for the lab's crypt-style cards. The Surge's cycle shows this gouache night (since 1 Oct),
+with its gates creaking only: the slam's clang is Crypt's. All three stages paint the same country, but each opens on a different
 stretch of it (`STAGE_OPEN`: 0, 0.37 and 0.71 of every layer's period). Positions below
 are for desktop zoom 1.6.
 

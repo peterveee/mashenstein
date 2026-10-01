@@ -47,6 +47,12 @@
 // work/local/_remix-lib.mjs and the shared quotes in work/local/_surge-quotes.mjs;
 // re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-surge.mjs — re-run it after a regeneration): each
+// channel-surf seam is a real device on the master — 30 repeat + crush, 32 the razor wobbling
+// (tremolo + crush, on time), 34 a true hole, 36 a repeat, 38 a tape stop (lowpass closing),
+// 39–40 the whole mix crushed (the LCD), 42 a repeat, 44 a power-down into the breakdown. Build
+// two stutters at 61 and 63 and rolls into a hole at 64; 80 and 96 power down. No TAPE snapshots.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -938,10 +944,463 @@ export const mix = {
 };
 
 export const arrangement = {
-  order: [{"s":0,"bars":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-4,"lead2":-3},"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1}}]}},{"s":0,"bars":1,"from":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-3,"lead2":-2},"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3500,"Q":1}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":3500,"Q":1}}]}},{"s":1,"bars":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-2,"lead2":-1}},{"s":1,"bars":1,"from":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-1}},{"s":2,"bars":1,"gain":{"bass3":-14},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":380,"Q":1.4}}]}},{"s":2,"bars":1,"from":1,"gain":{"bass3":-10},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":600,"Q":1.4}}]}},{"s":3,"bars":1,"gain":{"bass3":-7},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}]}},{"s":3,"bars":1,"from":1,"gain":{"bass3":-4},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.4}}]}},{"s":4,"bars":1,"gain":{"bass3":-2,"snare":-10,"kick":-2},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":2200,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":1}}]}},{"s":4,"bars":1,"from":1,"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":3600,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2600,"Q":1}}]},"gain":{"snare":-8,"kick":-2}},{"s":5,"bars":1,"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.4}}]},"gain":{"snare":-6,"kick":-2}},{"s":5,"bars":1,"from":1,"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.4}}],"lead":[{"id":"bitcrusher","params":{"bits":7,"downsample":3,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":7,"downsample":3,"wet":1}}]},"gain":{"snare":-4,"kick":-2}},{"s":6,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":6,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":7,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":7,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":8,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":8,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":9,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":9,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":10,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":10,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":11,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":11,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":12,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":12,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":13,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":13,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1},"inlineFx":{"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead3":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":14,"bars":1,"gain":{"lead2":4}},{"s":14,"bars":1,"from":1,"gain":{"lead2":4},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]}},{"s":15,"bars":1},{"s":15,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},16,{"s":17,"bars":1},{"s":17,"bars":1,"from":1,"inlineFx":{"lead8":[{"id":"bitcrusher","params":{"bits":5,"downsample":5,"wet":1}}]}},{"s":18,"bars":1},{"s":18,"bars":1,"from":1,"inlineFx":{"lead5":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"chords":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass3":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":19,"bars":1,"gain":{"lead2":4},"inlineFx":{"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":3,"wet":1}}]}},{"s":19,"bars":1,"from":1,"gain":{"lead2":4},"inlineFx":{"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":3,"wet":1}}],"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":3,"wet":1}}]}},{"s":20,"bars":1},{"s":20,"bars":1,"from":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":5,"downsample":5,"wet":1}}]}},{"s":21,"bars":1},{"s":21,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead7":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"chords":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":22,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":22,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":23,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":23,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":24,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":24,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":25,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":25,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":26,"bars":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":26,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":27,"bars":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":27,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":28,"bars":1,"gain":{"snare":-10,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":700,"Q":1.2}}]}},{"s":28,"bars":1,"from":1,"gain":{"snare":-10,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1200,"Q":1.2}}]}},{"s":29,"bars":1,"gain":{"snare":-8,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":2200,"Q":1.2}}]}},{"s":29,"bars":1,"from":1,"gain":{"snare":-8,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4000,"Q":1.2}}]}},{"s":30,"bars":1,"gain":{"snare":-6,"kick":-2,"bass":-3}},{"s":30,"bars":1,"from":1,"gain":{"snare":-6,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":7,"downsample":3,"wet":1}}]}},{"s":31,"bars":1,"gain":{"snare":-5,"bass":-3}},{"s":31,"bars":1,"from":1,"gain":{"snare":-4,"bass":-3},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":4,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":4,"downsample":6,"wet":1}}]}},{"s":32,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":32,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":33,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":33,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":34,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":34,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":35,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":35,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}],"bass4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":36,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":36,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":37,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":37,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":38,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":38,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":39,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":39,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1},"inlineFx":{"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead7":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass4":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":40,"bars":1,"gain":{"lead4":-3}},{"s":40,"bars":1,"from":1,"gain":{"lead4":-3}},{"s":41,"bars":1,"gain":{"lead4":-3}},{"s":41,"bars":1,"from":1,"gain":{"lead4":-3}},{"s":42,"bars":1,"gain":{"lead4":-3}},{"s":42,"bars":1,"from":1,"gain":{"lead4":-3}},{"s":43,"bars":1,"gain":{"lead4":-3}},{"s":43,"bars":1,"from":1,"gain":{"lead4":-3}},44,45,46,{"s":47,"bars":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"lead3":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"lead7":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"bass4":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}]}},{"s":47,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead3":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead7":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass4":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}}],
+  order: [{"s":0,"bars":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-4,"lead2":-3},"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1}}]}},{"s":0,"bars":1,"from":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-3,"lead2":-2},"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3500,"Q":1}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":3500,"Q":1}}]}},{"s":1,"bars":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-2,"lead2":-1}},{"s":1,"bars":1,"from":1,"gain":{"kick":-5,"hats":-3,"snare":-2,"bass":-1}},{"s":2,"bars":1,"gain":{"bass3":-14},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":380,"Q":1.4}}]}},{"s":2,"bars":1,"from":1,"gain":{"bass3":-10},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":600,"Q":1.4}}]}},{"s":3,"bars":1,"gain":{"bass3":-7},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}]}},{"s":3,"bars":1,"from":1,"gain":{"bass3":-4},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.4}}]}},{"s":4,"bars":1,"gain":{"bass3":-2,"snare":-10,"kick":-2},"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":2200,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":1}}]}},{"s":4,"bars":1,"from":1,"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":3600,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2600,"Q":1}}]},"gain":{"snare":-8,"kick":-2}},{"s":5,"bars":1,"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.4}}]},"gain":{"snare":-6,"kick":-2}},{"s":5,"bars":1,"from":1,"inlineFx":{"bass3":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.4}}],"lead":[{"id":"bitcrusher","params":{"bits":7,"downsample":3,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":7,"downsample":3,"wet":1}}]},"gain":{"snare":-4,"kick":-2}},{"s":6,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":6,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":7,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":7,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":8,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":8,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":9,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":9,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":10,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":10,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":11,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":11,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":12,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":12,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":13,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":13,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":14,"bars":1,"gain":{"lead2":4}},{"s":14,"bars":1,"from":1,"gain":{"lead2":4},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":5,"downsample":6,"wet":1}}]}},{"s":15,"bars":1},{"s":15,"bars":1,"from":1},16,{"s":17,"bars":1},{"s":17,"bars":1,"from":1,"inlineFx":{"lead8":[{"id":"bitcrusher","params":{"bits":5,"downsample":5,"wet":1}}]}},{"s":18,"bars":1},{"s":18,"bars":1,"from":1},{"s":19,"bars":1,"gain":{"lead2":4},"inlineFx":{"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":3,"wet":1}}]}},{"s":19,"bars":1,"from":1,"gain":{"lead2":4},"inlineFx":{"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":3,"wet":1}}],"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":3,"wet":1}}]}},{"s":20,"bars":1},{"s":20,"bars":1,"from":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":5,"downsample":5,"wet":1}}]}},{"s":21,"bars":1},{"s":21,"bars":1,"from":1},{"s":22,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":22,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":23,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":23,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":24,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":24,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":25,"bars":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":25,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-3,"chords":-3}},{"s":26,"bars":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":26,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":27,"bars":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":27,"bars":1,"from":1,"gain":{"bass3":-3,"bass2":-2,"chords":-2,"kick":-2,"snare":-3,"hats":-4,"lead5":-1.5,"lead8":-1.5}},{"s":28,"bars":1,"gain":{"snare":-10,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":700,"Q":1.2}}]}},{"s":28,"bars":1,"from":1,"gain":{"snare":-10,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1200,"Q":1.2}}]}},{"s":29,"bars":1,"gain":{"snare":-8,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":2200,"Q":1.2}}]}},{"s":29,"bars":1,"from":1,"gain":{"snare":-8,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4000,"Q":1.2}}]}},{"s":30,"bars":1,"gain":{"snare":-6,"kick":-2,"bass":-3}},{"s":30,"bars":1,"from":1,"gain":{"snare":-6,"kick":-2,"bass":-3},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":7,"downsample":3,"wet":1}}]}},{"s":31,"bars":1,"gain":{"snare":-5,"bass":-3}},{"s":31,"bars":1,"from":1,"gain":{"snare":-4,"bass":-3},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":4,"downsample":6,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":4,"downsample":6,"wet":1}}]}},{"s":32,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":32,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":33,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":33,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":34,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":34,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":35,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":35,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1},"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}],"bass4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":36,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":36,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":37,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":37,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":38,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":38,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":39,"bars":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":39,"bars":1,"from":1,"gain":{"kick":1.5,"snare":1,"bass":2,"bass4":2,"bass2":1.5,"lead":1,"lead2":1}},{"s":40,"bars":1,"gain":{"lead4":-3}},{"s":40,"bars":1,"from":1,"gain":{"lead4":-3}},{"s":41,"bars":1,"gain":{"lead4":-3}},{"s":41,"bars":1,"from":1,"gain":{"lead4":-3}},{"s":42,"bars":1,"gain":{"lead4":-3}},{"s":42,"bars":1,"from":1,"gain":{"lead4":-3}},{"s":43,"bars":1,"gain":{"lead4":-3}},{"s":43,"bars":1,"from":1,"gain":{"lead4":-3}},44,45,46,{"s":47,"bars":1,"inlineFx":{"lead":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"lead2":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"lead3":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"lead7":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"bass":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}],"bass4":[{"id":"bitcrusher","params":{"bits":6,"downsample":5,"wet":1}}]}},{"s":47,"bars":1,"from":1}],
   loop: {
     fromBar: 9,
     toBar: 96,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [30,8],
+          to: [30,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 6,
+                downsample: 4,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [34,8],
+          to: [34,12],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [36,8],
+          to: [36,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.5,
+                retrigger: 0,
+                fade: -2,
+              },
+            },
+          ],
+        },
+        {
+          from: [38,4],
+          to: [38,8],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 3000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 300,
+              },
+            },
+          ],
+        },
+        {
+          from: [39,0],
+          to: [40,12],
+          chain: [
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 6,
+                downsample: 4,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [42,8],
+          to: [42,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+          ],
+        },
+        {
+          from: [44,8],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 4000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 200,
+              },
+            },
+          ],
+        },
+        {
+          from: [61,12],
+          to: [62,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.5,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+          ],
+        },
+        {
+          from: [63,12],
+          to: [64,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+          ],
+        },
+        {
+          from: [64,8],
+          to: [64,12],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 600,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [64,12],
+          to: [65,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [80,8],
+          to: [81,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 4000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 600,
+              },
+            },
+          ],
+        },
+        {
+          from: [95,12],
+          to: [96,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 6,
+                downsample: 4,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [96,4],
+          to: [96,12],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 3000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 250,
+              },
+            },
+          ],
+        },
+        {
+          from: [96,12],
+          to: [97,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead: {
+      cuts: [[34,8],[45,0],[64,12],[81,0],[96,12]],
+      fx: [
+        {
+          from: [28,0],
+          to: [29,0],
+          chain: [
+            {
+              id: "tremolo",
+              params: {
+                rateSync: 0,
+                rateDivision: 0.5,
+                frequency: 9,
+                depth: 0.6,
+                spread: 0,
+                wet: 1,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 8,
+                downsample: 2,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [32,0],
+          to: [32,12],
+          chain: [
+            {
+              id: "tremolo",
+              params: {
+                rateSync: 0,
+                rateDivision: 0.5,
+                frequency: 9,
+                depth: 0.6,
+                spread: 0,
+                wet: 1,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 8,
+                downsample: 2,
+                wet: 1,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead2: {
+      cuts: [[64,12],[81,0],[96,12]],
+      fx: [
+        {
+          from: [28,0],
+          to: [29,0],
+          chain: [
+            {
+              id: "tremolo",
+              params: {
+                rateSync: 0,
+                rateDivision: 0.5,
+                frequency: 9,
+                depth: 0.6,
+                spread: 0,
+                wet: 1,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 8,
+                downsample: 2,
+                wet: 1,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead3: {
+      cuts: [[81,0],[96,12]],
+      fx: [
+        {
+          from: [28,0],
+          to: [29,0],
+          chain: [
+            {
+              id: "tremolo",
+              params: {
+                rateSync: 0,
+                rateDivision: 0.5,
+                frequency: 9,
+                depth: 0.6,
+                spread: 0,
+                wet: 1,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 8,
+                downsample: 2,
+                wet: 1,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    bass: {
+      cuts: [[34,8],[45,0],[64,12],[81,0],[96,12]],
+      fx: [
+        {
+          from: [28,0],
+          to: [29,0],
+          chain: [
+            {
+              id: "tremolo",
+              params: {
+                rateSync: 0,
+                rateDivision: 0.5,
+                frequency: 9,
+                depth: 0.6,
+                spread: 0,
+                wet: 1,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 8,
+                downsample: 2,
+                wet: 1,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    bass2: {
+      cuts: [[34,8],[45,0],[81,0],[96,12]],
+    },
+    kick: {
+      cuts: [[34,8],[45,0],[64,12],[81,0],[96,12]],
+    },
+    hats: {
+      cuts: [[34,8],[45,0],[64,12],[81,0],[96,12]],
+    },
+    snare: {
+      cuts: [[34,8],[45,0],[64,12],[81,0],[96,12]],
+    },
+    snare2: {
+      cuts: [[34,8],[45,0],[81,0],[96,12]],
+    },
+    chords: {
+      cuts: [[34,8],[38,8],[45,0],[64,12]],
+    },
+    bass3: {
+      cuts: [[34,8],[38,8],[45,0],[64,12]],
+    },
+    crash3: {
+      cuts: [[34,8],[45,0],[81,0]],
+    },
+    lead4: {
+      cuts: [[34,8],[81,0]],
+    },
+    lead5: {
+      cuts: [[38,8],[45,0]],
+    },
+    crash: {
+      cuts: [[45,0],[81,0]],
+    },
+    lead7: {
+      cuts: [[45,0],[64,12],[81,0],[96,12]],
+    },
+    crash2: {
+      cuts: [[64,12]],
+    },
+    ohats: {
+      cuts: [[81,0],[96,12]],
+    },
+    lead6: {
+      cuts: [[81,0]],
+    },
+    bass4: {
+      cuts: [[81,0],[96,12]],
+    },
   },
 };
 

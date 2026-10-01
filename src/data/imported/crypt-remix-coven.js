@@ -37,6 +37,8 @@
 // 80 bars at 140. Written by work/local/_crypt-remix-coven.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): the Ghost Choir swells in over its first two bars (17, 65).
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -741,6 +743,11 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 80,
+  },
+  automation: {
+    lead5: {
+      points: [[17,0,0],[17,0,null],[19,0,0,"s"],[65,0,0],[65,0,null],[67,0,0,"s"]],
+    },
   },
 };
 

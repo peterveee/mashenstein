@@ -35,6 +35,11 @@
 // 72 bars at 124. Written by work/local/_neon-remix-endstation.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX — LIGHTNING (1 Oct 2026, work/local/_spot-fx-picture.mjs): a sixteenth of the whole mix
+// overdriven and crushed on bar 45's downbeat, the strike at beat 176 the game flashes every pass.
+//
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): the machine winds down: each part stops on a cut (61–72), and the last bar loops itself quieter and quieter.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -694,6 +699,77 @@ export const arrangement = {
   loop: {
     fromBar: 15,
     toBar: 72,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [45,0],
+          to: [45,1],
+          chain: [
+            {
+              id: "distortion",
+              params: {
+                distortion: 0.6,
+                wet: 0.6,
+              },
+            },
+            {
+              id: "bitcrusher",
+              params: {
+                bits: 4,
+                downsample: 6,
+                wet: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [72,0],
+          to: [73,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 1,
+                retrigger: 0,
+                fade: -3,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead: {
+      cuts: [[67,0]],
+    },
+    kick: {
+      cuts: [[71,0]],
+    },
+    hats: {
+      cuts: [[69,0]],
+    },
+    snare: {
+      cuts: [[67,0]],
+    },
+    ohats: {
+      cuts: [[67,0]],
+    },
+    lead6: {
+      cuts: [[61,0]],
+    },
+    bass2: {
+      cuts: [[61,0]],
+    },
+    clap: {
+      cuts: [[67,0]],
+    },
+    lead3: {
+      cuts: [[67,0]],
+    },
+    chords2: {
+      cuts: [[61,0]],
+    },
   },
 };
 

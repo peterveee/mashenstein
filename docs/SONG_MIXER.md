@@ -525,10 +525,12 @@ What it does and does not do:
   clicking a new pitch on an occupied step still replaces it, which is what you want
   while you are correcting a line. Set it to *Poly* and the mouse stacks the way the
   recorder does.
-- **It changes the pattern, not one bar.** A note played into a looping section lands
-  in every bar that plays that part, which is the same choice the step grid's "edit all
-  repeats" makes. The alternative would put your note in bar 1 of a four-bar section and
-  bring it back every fourth pass, which reads as dropped notes rather than as an edit.
+- **It changes one bar, the one you played in.** A note lands where you played it and
+  nowhere else — never in a duplicated bar, a repeat the song's order reuses, or any
+  other bar that happens to play the same section. That is the piano roll's rule too.
+  Loop the bars you are playing over and everything you add is heard on the next pass,
+  because the loop *is* those bars. Writing a part into every repeat is still there on
+  purpose, behind the step grid's **Edit all repeats** switch.
 - **Recorded starts and held lengths are quantised to sixteenths**, because a bank holds
   sixteen note-start steps to the bar. Once a note is in the piano roll, its per-note
   length is independent of that start grid and may be fractional; the **Length** menu
@@ -794,7 +796,8 @@ Right-click the **timeline** for whole-song structure:
 | Insert Silence | inserts the same number of empty bars at the selection start |
 | Mute Bars | silences every track without changing the song length; right-click again to unmute |
 | Delete Bars | removes the bars and moves everything after them earlier. The final bar is protected |
-| Transpose | the only adjustment here — see below |
+| Transpose | the only note adjustment here — see below |
+| Spot FX… (under **Master**) | the whole mix through an effect chain over those bars — see [Spot FX](#spot-fx-sections-the-master-and-the-stutter) |
 
 Anything that changes the bar count carries the song's own start-and-loop markers with
 it: bars inserted ahead of the loop push it later, bars taken from under it pull it
@@ -809,7 +812,8 @@ Right-click an **arrangement lane** for that track only:
 | Mute / Unmute | silences or restores that track in the selected bars |
 | Copy Notes / Paste Notes | copies only that instrument's notes; paste may target a different instrument |
 | Erase Notes | empties those bars of that track. The notes are gone, not flagged; `⌘Z` brings them back |
-| Reset Edits | sets that track's mute, transpose, timing, gain, pan, fades and cuts in those bars back to none. The notes are not touched |
+| Reset Edits | sets that track's mute, transpose, timing, gain, pan, fades, cuts and Spot FX in those bars back to none. The notes are not touched |
+| Spot FX… | that track through an effect chain over those bars, down to a 1/32 — see [Spot FX](#spot-fx-sections-the-master-and-the-stutter) |
 | Volume | fades, a crossfade and cuts over those bars — see [Volume](#volume-fades-crossfades-and-cuts) |
 
 Whole-track work is not on this panel: **Delete Track**, **Duplicate**, the preset and
@@ -945,6 +949,193 @@ A point is `[bar, step, dB, shape]` — bar from 1, step the sixteenth inside it
 (fractional on a finer grid), `null` dB for silence, and the shape the line **arrives** on.
 A cut is `[bar, step]`. The game plays it exactly as the desk does: it is read by the same
 scheduler.
+
+### Spot FX: sections, the master and the Stutter
+
+A stretch of the song played through an effect chain of its own — a Stutter on the last beat
+before a drop, a gate across the whole mix for a bar, a little distortion on one phrase. On a
+**track** it is the bar panel's **Spot FX…**; on the **whole mix** it is the timeline's,
+under **Master**. Both open the same editor over the bars you right-clicked.
+
+**The editor.** **Where** runs across the top; under it, the chain is a column of insert
+slots on the left, as on a strip, and the selected slot's card is beside them. A slot's power
+mark bypasses it, its cross removes it, and a drag — or **⌥↑ / ⌥↓** — moves it; **↑ / ↓**
+choose another slot, **Delete** removes the one that has focus (it never reaches the
+arrangement's bar erase behind the window), and **Escape** puts the catalogue away before it
+closes the window. The dashed **+** under the last slot opens the effect catalogue showing only
+what a section can hold, and the effect you pick lands at the end of the chain with its card up.
+The window comes back on the same card after a reload or a ⌘Z. Labels with a dotted underline
+explain themselves on hover — every Stutter control does.
+
+**Where** is the selected bars as steps, one row a bar. On **All effects**, the default, the steps
+are the chain's: the whole chain plays where they are lit, so selecting bars and adding effects is
+still the whole of the simple case, and a new effect takes the steps already lit. Switch to **Each
+effect** and every effect has steps of its own, with Where showing the selected slot's — so a Bit
+Crusher can run across all the bars while a tape stop takes only the last beat: select the
+Crusher and light everything, select the Stutter and light beat 4. There the steps the chain's
+other effects play on are tinted faintly, each slot has a thin strip along its foot showing its
+own coverage, and a new effect starts lit on every step. Back on All effects, effects whose steps
+differ all take the steps of the one showing (⌘Z undoes it); a range whose effects already play
+on different steps opens on Each effect. **Click** a step to light it or put it out and **drag**
+to paint the same across. The grid is **1/4, 1/8, 1/16 or 1/32** — what you paint is kept at a
+1/32 whatever the grid shows, and a step coarser than what was painted under it is drawn half
+lit. **All** and **None** light or clear every step — the chain's, or on Each effect the
+selected effect's.
+
+Where several effects are lit they chain in slot order, and what the song gets is a section per
+stretch where the set of lit effects changes — Bit Crusher alone on beats 1–3, Bit Crusher into
+Stutter on beat 4 — so the Stutter's beat is a section of its own and it grabs where that beat
+starts. At a change the chain switches as a whole: effects with no memory (a crusher, a filter,
+distortion) carry straight across, while an echo or a room running over the change rings out
+from the first stretch and starts again in the next. Opened on a range that already has sections,
+the window reads them back the same way: their chains merged into one list of slots, each effect
+lit where a chain holding it plays.
+
+**Live, like an insert.** There is no Apply: every change plays as you make it. A knob
+moves the nodes the section is already playing through — its tail is kept and a Stutter does
+not re-grab — and a whole drag is one ⌘Z; a card added, removed, moved or bypassed, and a
+painted stroke, are one each. **▶ Play** jumps to the first bar of the window and plays from
+there, every time it is pressed. **Close** just closes. (It was called Bar Effects until 1 Oct
+2026; the file format and the code still say `fx` and bar effects.)
+
+**Where it sits.** On a track the chain runs **ahead of the channel** — before the fader, the
+pan, the EQ and the channel's own inserts. On the master it runs **after the master inserts and
+before the pan and the limiter**: on the finished mix, the way a DJ's effect does, so a bus
+compressor does not pump on a gate's gaps — and a distortion section still cannot get past the
+ceiling. Game sound effects never go through it; the master here is the music's.
+
+**Edges.** A section switches at its exact place, a 1/32 included. When it ends, what is already
+inside its chain **rings on** — an echo's repeats, a room's tail. Each section's **start** is an
+event of its own: a Stutter grabs there. Lit steps that touch are one section, so to grab twice in
+a row leave a step between them, or use the Stutter's **RETRIGGER**.
+
+**What a section can hold.** Everything in the catalogue that is **on time**. Seven effects are late
+against their own input — measured, by `tests/fx-sections.js`, and listed in `EFFECT_LATENCY_MS`
+in `src/engine/effects.js` — and switching one in and out would move the track, or on the master
+the whole song, by that much at both ends of the section:
+
+| Effect | Late by |
+| --- | --- |
+| L7 Limiter | 3 ms (its look-ahead) |
+| Compressor, Multiband Compressor | 6 ms (look-ahead) |
+| Mid/Side Compressor | 12 ms (look-ahead) |
+| Tape Saturation, Vibrato | 8.6 ms, 2.5 ms (a modulated delay line's resting delay) |
+| Pitch Shift | 50 ms (its window) |
+
+They stay in the insert slots, where a whole channel is late together and nothing jumps.
+The Noise Gate was on this list at 12 ms until it moved to an AudioWorklet (1 Oct 2026); it
+is on time now and a section offers it. On the http LAN dev URL, which cannot run a worklet,
+it falls back to the old, late version.
+
+**The Stutter** is the section's own effect, and only a section offers it: it grabs a slice of
+what is playing when its section starts and plays it again for as long as the section lasts.
+
+| Control | Does |
+| --- | --- |
+| SLICE | how long a slice it grabs — 1/2 down to 1/32, triplets included. **Off** grabs nothing: the card is then a plain tape stop on the music as it plays, and RETRIGGER and FADE are hidden |
+| RETRIGGER | how often it lets go and grabs the next slice, measured from the section's start. **Off** holds the first slice to the end. Never sooner than two slices, so a repeat is always heard |
+| FADE | how much quieter each repeat is than the one before, 0 to −24 dB |
+| TAPE STOP | winds everything the Stutter plays — the repeats, or with SLICE Off the music — down to a standstill, speed and pitch falling together like a reel losing its motor. 1/16 up to 2 bars, and it always ENDS at the section's end, so the music stands still on the bar line it was painted to; one longer than its section takes the whole section. **Off** is no stop |
+
+Presets: **Machine Gun**, **Beat Repeat** and **Echo Out** repeat; **Tape Stop** is SLICE Off with a
+two-bar stop (the whole of any section up to that long); **Stutter Stop** repeats a 1/16 and winds
+it down over the section's last bar. A TAPE STOP turned while its section plays is heard at once,
+winding down from there to the same end.
+
+The first pass of a slice is the music playing live; the repeats are that same audio, windowed
+by a couple of milliseconds at each seam so the loop never clicks. Stopping the song, or jumping
+out of the section, ends the loop. It is built from native nodes — a delay line in a feedback
+loop, and for the stop a second line whose delay grows (the speed falls in a straight line, so
+the delay is a parabola, and the last quarter fades to silence rather than holding a sample) —
+so it renders in a bounce, in a freeze and on a phone. (Chromium brings a delay line's own
+feedback round one render quantum late; the Stutter measures that once per page and sets the loop
+short by it, so a held slice stays on the beat — see `makeStutter`.)
+
+**SWEEP** glides a card across its section. Eight cards have it on a Spot FX section: the
+Filter, Gain, Delay, Ping-Pong Delay, Advanced Delay, Stereo Widener, Frequency Shifter and
+Stutter. Turn it on and each control that can glide gets a **second handle** on its own groove.
+The solid handle is where the section starts, the hollow one is where it ends, and the stretch
+between them is lit. The reading says both, e.g. "200 Hz → 8.0k Hz". Switching SWEEP on puts
+each end handle on its start, so nothing moves until one is dragged away. After the section,
+every control is back at its first handle. A jump or a loop that lands part-way through picks
+the glide up where it would be. A stop in the middle carries it on through the stop's own fade
+instead of jumping back. A knob turned while it plays eases onto the new line over 20 ms. An
+insert slot has no start or end to glide between, so SWEEP and the end handles are only on a
+section's card, and so are the presets built on them.
+
+What glides, and how:
+
+- **Filter** — CUTOFF, evenly in pitch, so every octave takes as long as the one before. Up
+  opens a low-pass into a build or thins a high-pass towards a drop; down closes it into a
+  breakdown. Presets: **Sweep Up**, **Sweep Down**, **Resonant Sweep Up**, **High-pass Riser**,
+  **High-pass Return**, **Band Sweep**.
+- **Gain** — GAIN and BALANCE. This is how the whole mix fades: on the master row it fades or
+  moves the whole mix; on a track, that track. The bottom of GAIN's travel reads **−∞** and is
+  silence (on inserts too), so 0 dB → −∞ is a fade-out and the other way a fade-in. The level
+  falls evenly in dB down to −48, the floor the level line uses. BALANCE follows its own law:
+  hard left → hard right brings the right side up to the centre, then takes the left side down.
+  A stereo part keeps only one side at either end of a balance, so turn **MONO** on to pan the
+  whole of it. Presets: **Fade Out**, **Fade In**, **Pan Left to Right**, **Pan Right to Left**
+  (the pans with MONO on).
+- **Delay, Ping-Pong, Advanced Delay** — FEEDBACK and the wet level (MIX on the Advanced
+  Delay), in straight lines. FEEDBACK climbing is the dub swell; the wet level coming up at a
+  phrase end is an echo throw. Whatever is still repeating when the section ends rings out.
+  Presets: **Dub Swell**, **Echo Throw**.
+- **Stereo Widener** — WIDTH. 0.5 leaves the image alone, 0 is mono, 1 is all sides. On the
+  master, 0.5 → 0 squeezes the mix to mono through a build and the drop springs back wide when
+  the section ends. Presets: **Squeeze to Mono**, **Open Out**.
+- **Frequency Shifter** — SHIFT (the card used to say RATE, which is an LFO's word) and WET.
+  The shift moves evenly in hertz, straight through zero: 0 → +300 is a metallic riser and
+  0 → −300 a fall. Presets: **Rise**, **Fall**.
+- **Stutter** — a **ROLL**: the slice steps from SLICE to **SLICE TO** across the section,
+  halving each time, an equal share of the section per step, each step grabbing the music
+  afresh. 1/4 → 1/32 over four bars is a bar each of quarters, eighths, sixteenths and
+  thirty-seconds. SLICE TO is a list, like SLICE, rather than a second handle. Preset:
+  **Build Roll**.
+
+The end values are ordinary params, named for what they end (`sweepTo` on the Filter, from
+before the rest; `gainTo`, `balanceTo`, `feedbackTo`, `wetTo`, `mixTo`, `widthTo`,
+`frequencyTo`, `sliceTo`), and the catalogue's `sweeps` map says which control each one ends.
+So a sweep saves, undoes, retunes live and comes back from a preset like any other setting.
+The engine is one glide for all of them (`sectionGlide` in src/engine/effects.js), and the
+Stutter's roll lives in `makeStutter`.
+
+**The Bit Crusher** is back on the list: it used to be a main-thread processor running 11.7 ms
+late, and is native now — a stepped waveshaper for BITS and a delay-line sample-and-hold for
+DOWNSAMPLE — with nothing late about it. Every song that already carried one hears its crushed
+part on time now, where at any MIX under 100% it had been a comb filter against its own dry half.
+
+**How it shows.** A rule along the foot of each bar over exactly the steps a section runs on, and
+the bar's badge names the chain; the hover card's **Spot FX** group lists each section and
+where it runs, above the channel's own inserts. The master's sections are the same rule along the
+foot of the timeline's ruler.
+
+**What moves with the music.** Positions are sixteenths from the top, like fades and cuts, so the
+same edits carry them: **Insert Silence** and **Paste** inside a section split it round the new
+bars (they are not part of it, and the music after them starts it again), **Delete Bars** shortens
+it, and **Cut**, **Copy**, **Paste** and **Repeat** bring the part of it inside the bars. **Replicate**
+and a pasted track bring a bar's sections with its notes; **Duplicate** gives the copy the same
+sections; **Delete Track** takes them; **Reset Edits** clears them (and **Clear Volume** does not).
+
+**Freezing.** A track's sections are in front of the point a frozen track re-enters its strip, so
+a freeze bakes them, as it bakes cuts, and moving one re-freezes the track. The master's are after
+everything and stay live.
+
+**In the file**, beside the level line and the cuts:
+
+```js
+automation: {
+  bass: { fx: [{ from: [16, 12], to: [17, 0], chain: [{ id: "stutter", params: { slice: 0.25, retrigger: 0, fade: 0 } }] }] },
+  __master: { fx: [{ from: [24, 0], to: [25, 0], chain: [{ id: "distortion", params: { distortion: 0.3, wet: 0.5 } }] }] },
+},
+```
+
+`from` and `to` are places like a point's — bar from 1, step the sixteenth inside it, fractional on
+a finer grid — and a section runs up to `to`, not including it. The master's lane carries sections
+and nothing else. Older songs keep the per-bar snapshot an order entry can carry (`inlineFx`): it
+still plays wherever no section covers its bar, and editing those bars here turns them into
+sections. The format is `src/data/automation.js`; the engine side is `_writeSections` in
+`src/engine/audio.js` and `makeSectionSwitch` in `src/engine/mixer.js`.
 
 ### Step sequencer
 
@@ -1384,6 +1575,9 @@ Grouped, and **priced** with each effect's measured cost as a percentage of one 
 | Drive | Exciter, Distortion, Chebyshev |
 | Space & stereo | Reverb, Doubler, Stereo Widener, Frequency Shifter, Pitch Shift |
 | Dynamics | L7 Limiter, Compressor, Mid/Side Compressor, Multiband Compressor |
+
+The **Stutter** is not in this catalogue: it does nothing without a section to tell it when to
+grab, so only a Spot FX section offers it — see [Spot FX](#spot-fx-sections-the-master-and-the-stutter).
 
 #### Vowel Filter
 

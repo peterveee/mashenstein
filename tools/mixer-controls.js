@@ -32,11 +32,11 @@ const PARAM_LABELS = {
   // as a reset of every song carrying one. What is on the card is what has to be
   // consistent, and two names for one gesture is what sent you looking for the pan
   // control on an effect that called it something else.
-  wet: 'WET / DRY', mix: 'MIX', pan: 'BALANCE', balance: 'BALANCE', tone: 'DAMPING',
+  wet: 'WET / DRY', mix: 'MIX', pan: 'BALANCE', balance: 'BALANCE', tone: 'DAMPING', sweep: 'SWEEP',
   feedback: 'FEEDBACK', delayMs: 'TIME', frequency: 'RATE', depth: 'DEPTH',
   baseFrequency: 'BASE FREQ', octaves: 'OCTAVES', distortion: 'DRIVE',
   order: 'ORDER', width: 'WIDTH', pitch: 'PITCH', windowSize: 'WINDOW',
-  detune: 'DETUNE', dryPan: 'DRY BALANCE', wetPan: 'WET BALANCE',
+  detune: 'DETUNE', dryPan: 'DRY BALANCE', wetPan: 'WET BALANCE', balanceTo: 'BALANCE TO',
   decay: 'DECAY', preDelay: 'PRE-DELAY', threshold: 'THRESHOLD', ratio: 'RATIO',
   attack: 'ATTACK', release: 'RELEASE', spread: 'SPREAD', sensitivity: 'SENSITIVITY',
   delayTime: 'TIME', Q: 'Q', knee: 'KNEE',
@@ -53,9 +53,16 @@ const PARAM_LABELS = {
  * reads LOW THRESHOLD — so the three bands of a multiband compressor need one entry
  * for THRESHOLD between them rather than one per band.
  */
-const paramLabel = (p, def = null) => def?.labels?.[p] || PARAM_LABELS[p] || p.split('.')
-  .map((s) => PARAM_LABELS[s] || s.replace(/([A-Z])/g, ' $1').toUpperCase())
-  .join(' ');
+const paramLabel = (p, def = null) => def?.labels?.[p] || PARAM_LABELS[p] || sweepEndLabel(p, def)
+  || p.split('.')
+    .map((s) => PARAM_LABELS[s] || s.replace(/([A-Z])/g, ' $1').toUpperCase())
+    .join(' ');
+
+/** A sweep's end value is named for the control it ends: WIDTH's end is WIDTH TO. */
+function sweepEndLabel(p, def) {
+  const start = def?.sweeps && Object.keys(def.sweeps).find((k) => def.sweeps[k] === p);
+  return start ? `${paramLabel(start, def)} TO` : null;
+}
 
 /**
  * Make a dB readout typable, so a level can be entered exactly rather than nudged

@@ -58,6 +58,7 @@ import {
 } from './speedMcmObjects.js';
 import { drawJonesCoyote, WINK_SPARKLE_AFTER, CHORUS_YIP_AFTER, CHORUS_YIP_GAP } from './speedMcmCoyote.js';
 import { paintFrostSky } from './frostCrayon/sky.js';
+import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost } from './surgeCut.js';
 
 import {
   PAPER_MATERIALS,
@@ -2267,6 +2268,7 @@ export const __testing = {
   desertCactusPlacements,
   desertNearSurfacePlacements,
   frostSceneryPlacements, cryptSceneryPlacements, surgeSceneryPlacements,
+  get SURGE_CYCLE() { return SURGE_CYCLE; },
   get FROST_SCENERY_EMBED() { return FROST_SCENERY_EMBED; },
   get FROST_PINE_EMBED() { return FROST_PINE_EMBED; },
   frostSceneryUsesPaperShadow,
@@ -8230,8 +8232,13 @@ function mcmFaded(ctx, alpha, box, paint) {
   ctx.restore();
 }
 
+// The cabinets this pack paints the desert for: Speed, and THE SURGE, whose cycle shows
+// each cabinet's shipped look. Anything else gets the paper desert's generic faux3d.
+const MCM_COUNTRY = new Set(['speed', 'surge']);
+
 function mcmPack(settings) {
-  // The paper desert: its road is this pack's road, and any cabinet but Speed is its.
+  // The paper desert: its road is this pack's road, and any cabinet but Speed's or
+  // the Surge's is its.
   const paperDesert = faux3dPack(settings);
   const speedLimitValues = new Map();
   // The lane's light for this frame (laneTint), set by bg() and read by ground() and
@@ -8243,7 +8250,7 @@ function mcmPack(settings) {
     // The bright skies (and the bloom's white clip) — see faux3d.
     lightBg: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, bc = null) {
-      if (cab?.id !== 'speed') {
+      if (!MCM_COUNTRY.has(cab?.id)) {
         tint = null;
         paperDesert.bg(ctx, t, camX, cab, totalDist, scene, bgShift, bc);
         return;
@@ -8519,7 +8526,7 @@ function mcmPack(settings) {
       paperDesert.ground(ctx, camX, cab, obstacles, overhangs, t, viewW, portraitViewW);
       // The late light on the road, over its solid runs (a hole shows the backdrop, which
       // is already lit).
-      if (cab?.id !== 'speed' || !tint || !(tint.a > 0.002)) return;
+      if (!MCM_COUNTRY.has(cab?.id) || !tint || !(tint.a > 0.002)) return;
       const drawW = Number.isFinite(portraitViewW) ? portraitViewW : W;
       ctx.save();
       ctx.globalAlpha = tint.a;
@@ -11093,7 +11100,8 @@ function gouachePack(settings) {
         // The near bank's gates (cryptGates.js): they creak ajar, and in landscape one in
         // four slams shut in the runner's face (never in portrait, where he stands too far
         // across the picture for it to read). A lab card can hand in its own painter.
-        gate: bc?.cryptGate || (portrait ? gateCreak : gateBank),
+        // Only Crypt's run places the slam's clang, so in THE SURGE's cycle they only creak.
+        gate: bc?.cryptGate || (portrait || cab?.id === 'surge' ? gateCreak : gateBank),
         // The run's scheduler for the slam's clang (run.js cryptGateSlam); none on a card.
         gateCue: typeof bc?.gateCue === 'function' ? bc.gateCue : null,
         // And whether it may slam at all (not in or near a tunnel); none on a card.
@@ -18245,50 +18253,76 @@ function doodlePack(settings) {
   };
 }
 
+// THE SURGE'S CYCLE: every other cabinet's SHIPPED pack, by name. Not derived from
+// CABINETS (that would pull every song into this module), so it can drift when a
+// cabinet changes style — it did, keeping faux3d and vhs after Speed went mcm and Crypt
+// went gouache. tests/surge-cycle.js holds it to the cabinets' styles.
+const SURGE_CYCLE = Object.freeze(['pixel', 'mcm', 'neon', 'watercolor', 'gouache', 'lcd', 'cardboard', 'doodle']);
+
 function surgePack(settings) {
-  // Cycles through the other packs with glitch cuts.
-  const packs = [pixelPack(settings), faux3dPack(settings), neonPack(settings), watercolorPack(settings), vhsPack(settings), lcdPack(settings), cardboardPack(settings), doodlePack(settings)];
-  const period = 7; // seconds per style
-  function pick(t) { return packs[Math.floor(t / period) % packs.length]; }
+  // THE SURGE cycles every cabinet's look on its song's bar line, changing with a move
+  // drawn at random and glitching worse through the act (surgeCut.js). Without the
+  // song's beat (the hub's screen, the gallery, a test) it keeps the same clock off
+  // game time at the song's tempo.
+  const packs = SURGE_CYCLE.map((name) => FACTORIES[name](settings));
+  // A fresh draw of moves and glitches every run.
+  const seed = 1 + Math.floor(Math.random() * 100000);
+  const state = {};
+  let ph = surgePhase(0, { seed, count: packs.length });
+  let live = null;
+  // The look whose lane, light and claims the frame is on: the outgoing one until the
+  // downbeat a move lands on, the incoming one from it.
+  const cur = () => packs[ph.look];
   return {
     name: 'surge',
     dark: true,
+    seed,
     // Read fresh each frame by the run's draw, so the cast is held back past
     // post() only while the cycle is sitting on a pack that converts the frame.
-    get actorsAbovePost() { return pick(this._t || 0).actorsAbovePost === true; },
+    get actorsAbovePost() { return cur().actorsAbovePost === true; },
     // Same deal for the bloom gate: the cycle passes through the light packs,
     // and their backgrounds clip just as hard here as they do standalone.
-    get lightBg() { return pick(this._t || 0).lightBg === true; },
+    get lightBg() { return cur().lightBg === true; },
     // ...and for the crane: the cycle passes through lcd and doodle, whose
     // backgrounds are screen furniture and must stay put while it is on them.
-    get bgPan() { return pick(this._t || 0).bgPan ?? 1; },
+    get bgPan() { return cur().bgPan ?? 1; },
     // ...and whether a soft contact shadow may be laid on the ground, which is
     // the LCD pack's to refuse for the same reason it owns its surface.
-    get heroShadow() { return pick(this._t || 0).heroShadow !== false; },
+    get heroShadow() { return cur().heroShadow !== false; },
     // ...and for the two claims a pack can make on the ground: whether it fills
     // its own holes and whether it walks its own surface. Both are true only
     // while the cycle is sitting on the LCD pack, and both are read fresh by
     // the run's draw for exactly that reason.
-    get ownPitFills() { return pick(this._t || 0).ownPitFills === true; },
-    get ownSurface() { return pick(this._t || 0).ownSurface === true; },
+    get ownPitFills() { return cur().ownPitFills === true; },
+    get ownSurface() { return cur().ownSurface === true; },
+    // Whether the screen is upside down this frame (surgeCut.js surgeFlip); run.js turns it.
+    get screenFlipped() { return ph.flip === true; },
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
-      pick(t).bg(ctx, t, camX, cab, totalDist, scene, bgShift, backgroundContext);
+      const beat = Number.isFinite(scene?.beat) ? scene.beat : t * SURGE_BPM / 60;
+      const level = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
+      const progress = backgroundContext?.progress ?? scene?.progress ?? 0;
+      ph = surgePhase(beat, { level, seed, count: packs.length, progress });
+      live = paintSurgeBackdrop(ctx, ph, (i, dy = 0, scrub = 0) => {
+        ctx.save();
+        if (dy) ctx.translate(0, dy);
+        packs[i].bg(ctx, t, camX - scrub, cab, totalDist, scene, bgShift, backgroundContext);
+        ctx.restore();
+      });
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
-      pick(this._t || 0).ground(ctx, camX, cab, obstacles, overhangs, t, viewW, portraitViewW);
+      cur().ground(ctx, camX, cab, obstacles, overhangs, t, viewW, portraitViewW);
     },
+    // The light a pack lays on the hero and the routes, which the run asks the wrapper
+    // for: gouache's night veil and route-ground motion, mcm's afternoon light.
+    routeGround(...args) { cur().routeGround?.(...args); },
+    nightVeil() { return cur().nightVeil?.() || 0; },
+    heroLight() { return cur().heroLight?.() ?? null; },
     post(ctx, t) {
-      this._t = t;
-      pick(t).post(ctx, t);
-      const phase = (t % period) / period;
-      if (phase > 0.96) {
-        // glitch cut: horizontal slice offsets
-        ctx.fillStyle = 'rgba(232,56,248,0.15)';
-        for (let i = 0; i < 5; i++) ctx.fillRect(0, (i * 61 + t * 200) % H, W, 3);
-      }
+      cur().post(ctx, t);
+      surgePost(ctx, ph, live, state);
     },
     decorate(ctx, e, x, y) {
-      const p = pick(this._t || 0);
+      const p = cur();
       if (p.decorate) p.decorate(ctx, e, x, y);
     },
   };

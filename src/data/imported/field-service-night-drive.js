@@ -22,6 +22,8 @@
 // 64 bars at 118. Written by work/local/_fs-remix-night-drive.mjs through
 // work/local/_remix-lib.mjs; re-running it rewrites this file.
 //
+// SPOT FX — MORE (1 Oct 2026, work/local/_spot-fx-more.mjs): stutter rolls into both choruses (16, 44); the glass choir swells into the breakdown, the grand fades into the build.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -633,6 +635,106 @@ export const arrangement = {
   loop: {
     fromBar: 5,
     toBar: 64,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [16,12],
+          to: [16,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [16,14],
+          to: [17,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [44,12],
+          to: [44,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [44,14],
+          to: [45,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    chords2: {
+      points: [[33,0,0],[33,0,null],[35,0,0,"s"]],
+    },
+    lead6: {
+      points: [[39,0,0],[41,0,null,"equal"],[41,0,0]],
+    },
   },
 };
 

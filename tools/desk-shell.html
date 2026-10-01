@@ -433,6 +433,30 @@ function choicesFor(a) {
     }));
 }
 
+// BACKGROUND / FULL SPEED. The switch lives on the desk, not the page, so a flip
+// reaches a run that is already going. Two chips, one lit, rather than one chip
+// whose word changes.
+function speedFor(a) {
+  return el('div', { class: 'choices' },
+    ...[['background', 'BACKGROUND', 'efficiency cores only: about 4x slower, and the performance cores stay with the mixer'],
+      ['full', 'FULL SPEED', 'every core it can get: done sooner, but it competes with the mixer']]
+      .map(([s, label, title]) => el('button', {
+        class: `choice${a.speed === s ? ' on' : ''}`,
+        'aria-pressed': a.speed === s ? 'true' : 'false',
+        title,
+        onclick: () => a.speed !== s && setSpeed(a.id, s),
+      }, label)));
+}
+
+async function setSpeed(id, speed) {
+  errBox.textContent = '';
+  try {
+    const body = await (await fetch(`/api/speed/${id}/${speed}`, { method: 'POST' })).json();
+    if (!body.ok) errBox.textContent = body.error;
+  } catch (e) { errBox.textContent = e.message; }
+  await refresh();
+}
+
 function actionCard(a) {
   const ids = a.choices ? a.choices.filter((c) => chosenFor(a).has(c))
     : a.input ? parseIds(inputText[a.id] || '') : [];
@@ -455,6 +479,7 @@ function actionCard(a) {
       el('div', { class: 'blurb' }, CARD_INFO[a.id] ? CARD_INFO[a.id]() : a.blurb),
       a.input ? inputFor(a) : null,
       a.choices ? choicesFor(a) : null,
+      a.speed ? speedFor(a) : null,
       a.log.length ? el('div', { class: 'log' }, a.log.join('\n')) : null),
     el('div', { class: 'acts' },
       el('button', {

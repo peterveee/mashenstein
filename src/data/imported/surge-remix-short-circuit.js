@@ -58,6 +58,12 @@
 // 80 bars at 140, 137 s. Written by work/local/_surge-remix-short-circuit.mjs through
 // work/local/_remix-lib.mjs and work/local/_surge-quotes.mjs; re-running it rewrites this file.
 //
+// SPOT FX (1 Oct 2026, work/local/_spot-fx-surge.mjs — re-run it after a regeneration): the
+// short circuits are real now, on the master. The power flickers (the mix gated in 1/32s) and
+// goes dead on 8, 24 and 40; each channel-surf window is scratched in by a 1/16 Stutter of the
+// whole mix on its downbeat (25, 29, 33, 37); 32 is a true hole; 28, 36 and 68 tape-stop as a
+// lowpass closing a sixteenth at a time; 51–52 stutter into a hole. No TAPE snapshots.
+//
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
@@ -901,10 +907,332 @@ export const mix = {
 };
 
 export const arrangement = {
-  order: [{"s":0,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}]}},{"s":0,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}]}},{"s":1,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}]}},{"s":1,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}]}},{"s":2,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}]}},{"s":2,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}]}},{"s":3,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}]}},{"s":3,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}]}},4,5,6,7,8,9,10,11,{"s":12,"bars":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":12,"bars":1,"from":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":13,"bars":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":13,"bars":1,"from":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":14,"bars":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":14,"bars":1,"from":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":15,"bars":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":15,"bars":1,"from":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":16,"bars":1,"inlineFx":{"lead5":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":16,"bars":1,"from":1,"inlineFx":{"lead5":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":17,"bars":1,"inlineFx":{"lead5":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":17,"bars":1,"from":1,"inlineFx":{"lead5":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":18,"bars":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":18,"bars":1,"from":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":19,"bars":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":19,"bars":1,"from":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":20,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":350,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":20,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":500,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":21,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":700,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":21,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":22,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":22,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":23,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2900,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":23,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":4200,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":24,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}]}},{"s":24,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}]}},{"s":25,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}]}},{"s":25,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}]}},26,27,28,29,30,31,32,{"s":33,"bars":1},{"s":33,"bars":1,"from":1,"inlineFx":{"lead7":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead3":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"lead2":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}],"bass":[{"id":"tape","params":{"drive":6,"bias":0.1,"tone":6000,"wow":0.9,"flutter":0.5,"wet":1}}]}},{"s":34,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}]}},{"s":34,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}]}},{"s":35,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}]}},{"s":35,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}]}},{"s":36,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}]}},{"s":36,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}]}},{"s":37,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}]}},{"s":37,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}]}},38,39],
+  order: [{"s":0,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":450,"Q":1.3}}]}},{"s":0,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":650,"Q":1.3}}]}},{"s":1,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":950,"Q":1.3}}]}},{"s":1,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":1.3}}]}},{"s":2,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":1.3}}]}},{"s":2,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}]}},{"s":3,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":4500,"Q":1.3}}]}},{"s":3,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":7500,"Q":1.3}}]}},4,5,6,7,8,9,10,11,{"s":12,"bars":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":12,"bars":1,"from":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":13,"bars":1,"gain":{"lead3":6},"inlineFx":{"lead3":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":13,"bars":1,"from":1,"gain":{"lead3":6}},{"s":14,"bars":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":14,"bars":1,"from":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":15,"bars":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":15,"bars":1,"from":1,"gain":{"lead4":2},"inlineFx":{"lead4":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":16,"bars":1,"inlineFx":{"lead5":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":16,"bars":1,"from":1,"inlineFx":{"lead5":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":17,"bars":1,"inlineFx":{"lead5":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":17,"bars":1,"from":1},{"s":18,"bars":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":4,"downsample":10,"wet":1}}]}},{"s":18,"bars":1,"from":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":19,"bars":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":19,"bars":1,"from":1,"inlineFx":{"lead6":[{"id":"bitcrusher","params":{"bits":6,"downsample":4,"wet":1}}]}},{"s":20,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":350,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":20,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":500,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":21,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":700,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":21,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":0.9}}],"lead8":[{"id":"filter","params":{"type":"lowpass","frequency":1100,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":22,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1400,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":22,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2000,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":23,"bars":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2900,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":23,"bars":1,"from":1,"inlineFx":{"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":4200,"Q":3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":800,"Q":0.9}}],"lead5":[{"id":"filter","params":{"type":"lowpass","frequency":1500,"Q":0.9}}],"lead9":[{"id":"filter","params":{"type":"lowpass","frequency":1800,"Q":1}}]}},{"s":24,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1000,"Q":1.3}}]}},{"s":24,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1700,"Q":1.3}}]}},{"s":25,"bars":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3000,"Q":1.3}}]}},{"s":25,"bars":1,"from":1,"inlineFx":{"kick":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"snare":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"snare2":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"hats":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"ohats":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"rim":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"bass":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"lead":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":6000,"Q":1.3}}]}},26,27,28,29,30,31,32,{"s":33,"bars":1},{"s":33,"bars":1,"from":1},{"s":34,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":900,"Q":1.4}}]}},{"s":34,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":1300,"Q":1.4}}]}},{"s":35,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":1900,"Q":1.4}}]}},{"s":35,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":2700,"Q":1.4}}]}},{"s":36,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":3800,"Q":1.4}}]}},{"s":36,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":5400,"Q":1.4}}]}},{"s":37,"bars":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":7600,"Q":1.4}}]}},{"s":37,"bars":1,"from":1,"inlineFx":{"lead":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead2":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead3":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead4":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}],"lead6":[{"id":"filter","params":{"type":"lowpass","frequency":11000,"Q":1.4}}]}},38,39],
   loop: {
     fromBar: 9,
     toBar: 80,
+  },
+  automation: {
+    __master: {
+      fx: [
+        {
+          from: [8,8],
+          to: [8,12],
+          chain: [
+            {
+              id: "rhythmgate",
+              params: {
+                division: 0.125,
+                gateLength: 0.5,
+                attack: 0.001,
+                decay: 0.004,
+                depth: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [8,12],
+          to: [9,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [24,8],
+          to: [24,12],
+          chain: [
+            {
+              id: "rhythmgate",
+              params: {
+                division: 0.125,
+                gateLength: 0.5,
+                attack: 0.001,
+                decay: 0.004,
+                depth: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [24,12],
+          to: [25,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [25,0],
+          to: [25,4],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: 0,
+              },
+            },
+          ],
+        },
+        {
+          from: [28,4],
+          to: [28,12],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 3000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 300,
+              },
+            },
+          ],
+        },
+        {
+          from: [29,0],
+          to: [29,4],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: 0,
+              },
+            },
+          ],
+        },
+        {
+          from: [32,8],
+          to: [32,12],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [33,0],
+          to: [33,4],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: 0,
+              },
+            },
+          ],
+        },
+        {
+          from: [36,4],
+          to: [36,12],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 3000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 300,
+              },
+            },
+          ],
+        },
+        {
+          from: [37,0],
+          to: [37,4],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: 0,
+              },
+            },
+          ],
+        },
+        {
+          from: [40,4],
+          to: [40,8],
+          chain: [
+            {
+              id: "rhythmgate",
+              params: {
+                division: 0.125,
+                gateLength: 0.5,
+                attack: 0.001,
+                decay: 0.004,
+                depth: 1,
+              },
+            },
+          ],
+        },
+        {
+          from: [40,8],
+          to: [41,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [51,12],
+          to: [52,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1.5,
+              },
+            },
+          ],
+        },
+        {
+          from: [52,12],
+          to: [53,0],
+          chain: [
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+            {
+              id: "gain",
+              params: {
+                gain: -24,
+              },
+            },
+          ],
+        },
+        {
+          from: [68,4],
+          to: [69,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 4000,
+                Q: 0.9,
+                sweep: 1,
+                sweepTo: 200,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead: {
+      cuts: [[8,12],[24,12],[52,12],[69,0]],
+    },
+    bass: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    kick: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    hats: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    snare: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    snare2: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    ohats: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    bass2: {
+      cuts: [[8,12],[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    lead9: {
+      cuts: [[8,12],[52,12]],
+    },
+    lead2: {
+      cuts: [[8,12],[24,12],[52,12],[69,0]],
+    },
+    crash2: {
+      cuts: [[8,12],[52,12]],
+    },
+    tom: {
+      cuts: [[8,12],[69,0]],
+    },
+    rim: {
+      cuts: [[24,12],[32,8],[40,8],[52,12],[69,0]],
+    },
+    lead3: {
+      cuts: [[24,12],[28,12],[69,0]],
+    },
+    lead7: {
+      cuts: [[24,12],[69,0]],
+    },
+    lead4: {
+      cuts: [[32,8],[69,0]],
+    },
+    lead5: {
+      cuts: [[36,12]],
+    },
+    lead6: {
+      cuts: [[40,8]],
+    },
+    crash: {
+      cuts: [[69,0]],
+    },
+    leadHarm: {
+      cuts: [[69,0]],
+    },
   },
 };
 
