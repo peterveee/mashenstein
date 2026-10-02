@@ -57,7 +57,7 @@ async function main() {
   const bundleJs = built.outputFiles[0].text;
   const html = '<!doctype html><meta charset="utf-8">'
     + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
   const errors = [];
 
   // One render: a bank, an optional arrangement entry, how many sixteenths to schedule,

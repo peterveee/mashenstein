@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banger Sounds</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1d2026; --panel2: #23272e; --line: #333944; --ink: #e6e9ef;
+    --dim: #8b93a3; --faint: #5d6575; --accent: #4ec9b0; --on-accent: #0d1f1b; --hot: #ef6b5b;
+    --warm: #f0b84f; --input: #191c21; --hover: #2a2f38;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2f4f8; --panel: #ffffff; --panel2: #f7f8fb; --line: #d3d8e2; --ink: #1d2026;
+      --dim: #5d6575; --faint: #8b93a3; --accent: #13836f; --on-accent: #ffffff; --hot: #c73a2c;
+      --warm: #9a6500; --input: #ffffff; --hover: #eceff5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  button { font: inherit; color: var(--ink); background: var(--panel2); border: 1px solid var(--line);
+           border-radius: 5px; padding: 5px 11px; cursor: pointer; }
+  button:hover { background: var(--hover); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+  input[type=number] { font: inherit; color: var(--ink); background: var(--input); border: 1px solid var(--line);
+                       border-radius: 4px; padding: 5px 7px; width: 72px; }
+  input[type=checkbox] { accent-color: var(--accent); }
+
+  header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
+           padding: 10px 22px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 15px; letter-spacing: .08em; }
+  header .spacer { flex: 1; }
+  #status { color: var(--dim); }
+  #status.dirty { color: var(--warm); }
+  #status.bad { color: var(--hot); }
+  #issues { margin: 0 22px; }
+  #issues:empty { display: none; }
+  #issues div { color: var(--hot); padding: 3px 0; }
+  #nav { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 22px 0; }
+  #nav a { color: var(--dim); text-decoration: none; padding: 3px 8px; border-radius: 4px; }
+  #nav a:hover { color: var(--ink); background: var(--hover); }
+
+  main { max-width: 1220px; padding: 6px 22px 80px; }
+  section { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px 16px 16px; }
+  section > h2 { margin: 0 0 4px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  section > p.lead { margin: 0 0 12px; color: var(--dim); max-width: 860px; }
+  h3 { margin: 16px 0 6px; font-size: 11px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+
+  .row { display: grid; grid-template-columns: 230px minmax(240px, 340px) 34px 1fr; gap: 10px;
+         align-items: center; padding: 5px 0; border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+  .row:first-of-type { border-top: 0; }
+  .row .name b { display: block; font-weight: 600; }
+  .row .name small { color: var(--dim); }
+  .problem { color: var(--hot); }
+  .warn { color: var(--warm); }
+  .note { color: var(--dim); }
+  .play { width: 30px; height: 28px; padding: 0; text-align: center; }
+  .play.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+  .controls label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--dim);
+                    text-transform: uppercase; letter-spacing: .06em; }
+  .controls .bsel { min-width: 150px; }
+  .controls label .bsel, .controls label input { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+  #readout { margin-top: 12px; color: var(--dim); }
+  #readout .form { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  #readout .form span { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; }
+  #readout .form span.now { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+  table.kits { border-collapse: collapse; width: 100%; }
+  table.kits th { text-align: left; font-weight: 600; color: var(--dim); padding: 4px 6px; font-size: 11px; }
+  table.kits td { padding: 4px 6px; vertical-align: top; }
+  table.kits .cell { display: flex; gap: 4px; align-items: center; }
+  table.kits .cell .bsel { width: 150px; }
+  table.kits .problem { font-size: 11px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 2px; border: 1px solid var(--line);
+          border-radius: 99px; background: var(--panel2); }
+  .chip .play { width: 24px; height: 22px; border-radius: 99px; font-size: 10px; }
+  .chip .x { border: 0; background: none; padding: 0 5px; color: var(--dim); }
+  .chip .x:hover { color: var(--hot); }
+  .chip.bad { border-color: var(--hot); }
+  .chip.warned { border-color: var(--warm); }
+  .chip small { color: var(--dim); }
+  .job { margin-top: 10px; }
+  .job > b { display: inline-block; min-width: 90px; }
+
+  .mood { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; }
+  .mood:first-of-type { border-top: 0; margin-top: 0; }
+
+  .harvest-filters { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }
+  .harvest-filters label { display: flex; gap: 6px; align-items: center; }
+  .hrow { display: grid; grid-template-columns: 34px minmax(200px, 1fr) 150px 110px 220px 230px; gap: 10px;
+          align-items: center; padding: 4px 0; border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+  .hrow .used { color: var(--accent); font-size: 11px; }
+  .hrow .count { color: var(--dim); }
+
+  /* The desk's own dropdown — never the operating system's (tools/lib/custom-select.js). */
+  .bsel { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+          min-height: 30px; padding: 5px 9px; text-align: left; background: var(--input); }
+  .bsel::after { content: '▾'; color: var(--dim); }
+  .bsel-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bsel.problem-field { border-color: var(--hot); }
+  .bsmenu { position: fixed; z-index: 100; max-height: min(60vh, 520px); max-width: min(720px, calc(100vw - 24px));
+            overflow: auto; padding: 4px;
+            background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+            box-shadow: 0 14px 40px rgba(0,0,0,.35); font-size: 13px; }
+  .bsopt { padding: 5px 9px; border-radius: 4px; cursor: pointer; }
+  .bsopt-label { white-space: nowrap; }
+  .bsmenu.twocol .bsopt { display: grid; grid-template-columns: minmax(180px, auto) 1fr; gap: 18px; }
+  .bsopt-note { color: var(--dim); }
+  .bsopt.active { background: var(--hover); }
+  .bsopt.on { color: var(--accent); font-weight: 600; }
+  .bsopt.off { color: var(--faint); cursor: default; }
+  .bsopt.off .bsopt-note { color: var(--hot); opacity: .8; }
+
+  @media (max-width: 760px) {
+    .row { grid-template-columns: 1fr 34px; }
+    .row .name { grid-column: 1 / -1; }
+    .hrow { grid-template-columns: 34px 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>BANGER SOUNDS</h1>
+  <span id="stylepick"></span>
+  <span class="spacer"></span>
+  <span id="status">loading…</span>
+  <button id="revert" disabled>Revert</button>
+  <button id="save" class="primary" disabled>Save</button>
+</header>
+<div id="issues"></div>
+<nav id="nav">
+  <a href="#test">Test Banger</a><a href="#parts">Parts</a><a href="#kits">Drum Kits</a>
+  <a href="#random">Random Shortlists</a><a href="#moods">Moods</a><a href="#never">Never Use</a>
+  <a href="#songs">From Your Songs</a>
+</nav>
+<main>
+  <section id="test">
+    <h2>Test Banger</h2>
+    <p class="lead">A banger made with the table as it stands on this page — saved or not. Pick a riff,
+      play it, change a sound below, play it again.</p>
+    <div class="controls" id="testcontrols"></div>
+    <div id="readout"></div>
+  </section>
+  <section id="parts">
+    <h2>Parts</h2>
+    <p class="lead">One sound for each part the generator writes. Each dropdown offers only what the rules
+      allow in that slot; the rest are listed, shut, with the reason. ▶ plays the sound in its real job.</p>
+    <label class="note"><input type="checkbox" id="withbeat" checked> Audition with a beat under it</label>
+    <div id="partrows"></div>
+  </section>
+  <section id="kits">
+    <h2>Drum Kits</h2>
+    <p class="lead">The kits the Kit switch picks between. Wherever a kit leaves a drum out, the Style Kit's
+      sound plays.</p>
+    <div id="kittable"></div>
+  </section>
+  <section id="random">
+    <h2>Random Shortlists</h2>
+    <p class="lead">What Riff Sound = Random may give the riff's own parts, by the job each part does. Random
+      only ever picks from these lists — less the never-use list and the mood's skips.</p>
+    <div id="randomlists"></div>
+  </section>
+  <section id="choices">
+    <h2>Part Shortlists</h2>
+    <p class="lead">What Part Sounds = Roll may give the parts the generator writes. Each take draws one —
+      the style's own sound is always in the draw. A part with no list always plays the style's own, so leave
+      a style's signature parts empty. A mood that swaps a part's sound overrides the roll.</p>
+    <div id="choicelists"></div>
+  </section>
+  <section id="moods">
+    <h2>Moods</h2>
+    <p class="lead">A mood can swap any part's sound (Dark → a Reese bass), and take sounds out of the Random
+      lists. Anything a mood does not override is the style's own choice.</p>
+    <div id="moodlist"></div>
+  </section>
+  <section id="never">
+    <h2>Never Use</h2>
+    <p class="lead">Presets no banger in this style may use — not as a part, not in a kit, not at random.</p>
+    <div id="neverlist"></div>
+  </section>
+  <section id="songs">
+    <h2>From Your Songs</h2>
+    <p class="lead">Every preset the songs on disk use, and how many songs use it — the remixes first. A sound
+      that has already worked is one Use As… away from a slot or a shortlist.</p>
+    <div id="harvest"><button id="scan">Scan Songs</button></div>
+  </section>
+</main>
+<script src="/banger-sounds-bundle.js"></script>
+</body>
+</html>

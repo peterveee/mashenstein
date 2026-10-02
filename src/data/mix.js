@@ -16,6 +16,8 @@
 //     limiter: false,        // costs 6ms of output latency when on — see mixer.js
 //     lanes: {
 //       bass: {
+//         group: 'group1',   // routed into Group 1 instead of straight to the mix;
+//                            // absent = unassigned. See src/data/group-buses.js
 //         gain: -2.5,        // dB, 0 = as authored
 //         pan: -0.1,         // -1 left .. +1 right
 //         width: 1,          // stereo image: 1 as-is, 0 mono, 2 wide
@@ -42,6 +44,11 @@
 //                 feedback: 0.35, tone: 2800, // repeats, and their damping in Hz
 //                 level: 1 },                 // how loud the return comes back
 //       reverb: { decay: 2.2, preDelay: 0.012 },
+//     },
+//     groups: {                               // the four group buses' own settings,
+//       group1: { gain: -2, pan: 0,           // kept with or without members
+//                 mute: false, eq: { low: 0, mid: 0, high: 0 },
+//                 effects: [{ id: 'compressor', params: { ratio: 4 } }] },
 //     },
 //   }
 //

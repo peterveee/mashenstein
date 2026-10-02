@@ -242,7 +242,7 @@ async function browserHalf() {
   });
   const bundleJs = built.outputFiles[0].text;
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));

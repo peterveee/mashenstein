@@ -1081,9 +1081,10 @@ What glides, and how:
   Delay), in straight lines. FEEDBACK climbing is the dub swell; the wet level coming up at a
   phrase end is an echo throw. Whatever is still repeating when the section ends rings out.
   Presets: **Dub Swell**, **Echo Throw**.
-- **Stereo Widener** — WIDTH. 0.5 leaves the image alone, 0 is mono, 1 is all sides. On the
-  master, 0.5 → 0 squeezes the mix to mono through a build and the drop springs back wide when
-  the section ends. Presets: **Squeeze to Mono**, **Open Out**.
+- **Stereo Widener** — WIDTH. 0.5 leaves the sound alone, 0 is mono, 1 doubles the sides and
+  adds a side made from the middle, so a mono sound widens too (see Stereo Widener below). On
+  the master, 0.5 → 0 squeezes the mix to mono through a build and the drop springs back wide
+  when the section ends; 0.5 → 1 opens it out. Presets: **Squeeze to Mono**, **Open Out**.
 - **Frequency Shifter** — SHIFT (the card used to say RATE, which is an LFO's word) and WET.
   The shift moves evenly in hertz, straight through zero: 0 → +300 is a metallic riser and
   0 → −300 a fall. Presets: **Rise**, **Fall**.
@@ -1238,9 +1239,20 @@ A strip, top to bottom:
   its own — meters are read against the numbers beside them, not against the fader.
 - **Mute and solo appear twice** — here and on the arrangement row — and are the same
   state in both places.
-- **Sends**: how a channel *reaches* the delay differs per lane (melodic voices tap it
-  pre-fader, as the engine's echo always did; everything else routes the whole channel
-  in post-fader). The row's tooltip says which.
+- **Signal flow is a DAW's** (since 2 Oct 2026):
+
+  ```
+  voice → Spot FX → EQ → inserts → solo gate → automation → fader/mute ─┬─► pan → width → mix / group
+                                                                         ├─► DELAY SEND
+                                                                         └─► REVERB SEND
+  ```
+
+  Every send taps post-fader and post-insert, so the delay and reverb hear the channel
+  as processed — a gated pad sends a gated pad — and they are unpanned whatever the pan
+  pot says. EQ and inserts are pre-fader, so moving the fader or fading a track never
+  changes how hard a compressor or distortion is driven. Before 2 Oct the order was
+  fader → pan → EQ → inserts with the sends tapping the fader: no insert or EQ ever
+  reached a send, and a fader cut also cut an insert's drive.
 
 ### When the window is short
 
@@ -1517,6 +1529,69 @@ return's built-in card in the effects panel.
 
 Soloing a return leaves the channels feeding it and mutes everything else, so you hear
 the effect on its own.
+
+### Group buses
+
+Four fixed groups, **Group 1–4**, for treating several tracks as one: one compressor over
+the three leads instead of three, one filter sweep over everything but the bass. A track
+routed into a group stops feeding the mix directly; the group sums its tracks through its
+own EQ, inserts, Spot FX, fader and pan, and that goes into the mix. A track in no group
+goes straight to the mix, as every track always has.
+
+```
+kick, snare, hats ─► (each its own strip) ─► GROUP 1: EQ → inserts → Spot FX → fader → pan ─┐
+lead 1, 2, 3      ─► (each its own strip) ─► GROUP 2: EQ → inserts → Spot FX → fader → pan ─┤
+bass, chords      ─► (each its own strip) ──────────────────────────────────────────────────┴─► mix → master
+```
+
+- **Assigning.** Every channel strip has a small button beside M and S: `—` for straight
+  to the mix, or the group's number, filled and bold when it is routed. Click it for
+  *None* / *Group 1–4*, plus **Assign Every Track by Family** and **Clear Every
+  Assignment** (each one undo step). By family: drums to Group 1, leads (lead, pluck,
+  bells, blip) to Group 2, FX and sweeps to Group 3, vocals to Group 4; bass, keys, pads,
+  organ and orchestra stay on the mix. The sound's category decides first, so a layer
+  playing a lead preset goes with the leads whatever lane it copies. Moving a track while
+  the song plays cross-fades over 20 ms.
+- **The group strip** appears in the bus slot, before the returns, as soon as a group has
+  a track in it, and goes when the last one leaves; its settings are kept for next time.
+  It has the group's name and track count, EQ, insert slots, fader, pan, M and S, and a
+  meter — no sends and no width (a Stereo Widener insert does that job). Its inserts run
+  once, on the sum.
+- **Spot FX on a group.** Each group with tracks gets a row at the top of the arrangement
+  (G1, G2…) with its M/S and level. Right-click its bars — or drag across them first for a
+  range — for **Spot FX…**; the timeline's region menu offers "Group N in …" beside the
+  master's too. A group's sections act on everything routed into it and nothing else.
+  Sections only: no level line and no cuts on a group.
+- **Filter everything but the bass:** route every other track into Group 1 (or use
+  Assign by family and move what is left), leave the bass on `—`, then put a Filter with
+  SWEEP on Group 1's row over the bars you want.
+- **Mute** silences the group's tracks *and their sends*; a track you muted yourself stays
+  muted when the group is unmuted, and its own M is outlined dashed (muted by its group)
+  rather than lit. **Solo** a group to hear its tracks, with their sends; soloing one
+  track in a group is ordinary channel solo.
+- **Sends are taken before the group.** Delay and reverb are shared returns fed from
+  each track's fader, so a group's fader, inserts and Spot FX do not reach its tracks'
+  echo and reverb — a filter swept over the drums leaves their reverb tail open. Put a
+  reverb or delay on the group itself, as an insert, for one that follows the group. A
+  track's own meter also reads before its group's fader.
+- **Saved** as `lanes.<track>.group = 'group1'` and a `groups: { group1: { gain, pan,
+  mute, eq, effects } }` block, defaults left out; a group's Spot FX are
+  `automation['__group:group1'].fx`. Cabinet variants cannot move groups — the routing is
+  the song's shape, not something a screen changes at a bar line.
+- **Stems.** A group compressor or saturator acts on the sum of its tracks, so the
+  stems of a grouped song cannot add back up to the mix exactly. `render-stems` says so
+  by name ("Group 1 runs Compressor across 3 stems") instead of printing an unexplained
+  residual. Linear group processing — EQ, filters, delays, reverbs — still sums exactly.
+- **Cost.** A song with no groups builds no group nodes and renders the same samples as
+  before. Measured offline (ms per audio-second, best of three): plumber 480 → 488 with
+  every track grouped by family, 493 with a group compressor and EQ, 504 with four
+  groups each running a compressor; neon 230 → 228, 237, 240 — and 240 for the same
+  compressor duplicated on each drum channel instead.
+
+The engine half is the group-bus section of `createMixer` in `src/engine/mixer.js`; the
+format is `src/data/group-buses.js`; the tests are `tests/group-buses.js` (rendered),
+`tests/group-buses-data.js`, `tests/group-buses-desk.js` and the group cases in
+`tests/mix.js` and `tests/automation.js`. The design is `docs/group-buses-handover.md`.
 
 ### Master
 
@@ -1844,6 +1919,43 @@ claim of the effect is that the second voice is not counting.
 Two things worth knowing. It is **stereo out whatever goes in**, so a mono lane comes
 out of it spread. And at WET 0 it is sample-exact transparent, dry balance included, so it
 costs nothing but CPU when it is turned down.
+
+#### Stereo Widener
+
+One knob, **WIDTH**, and 0.5 is the sound as it is (one knob since 2 Oct 2026).
+
+| WIDTH | Does |
+| --- | --- |
+| **0 to 0.5** | narrows: the sides are scaled by 2 × WIDTH, so 0 is mono. The middle never moves |
+| **0.5 to 1** | widens: the sides come up, doubled at 1, and a side made from the middle is added — the middle 12ms late, above 300Hz, at 2 × WIDTH − 1 of it: half at 0.75, as loud as the middle at 1 |
+
+The made side is what lets a **mono sound** widen at all: it has no sides of its own to
+raise. It comes out added on the left and subtracted on the right, so **summed to mono it
+cancels exactly**: on one speaker the sound is just itself, with none of the comb filtering
+a plain Haas delay leaves behind. The 300Hz cut keeps the bass in the middle. Widening makes
+a mono sound a little louder in stereo, about +1dB at 0.75 and +3dB at 1 (measured on
+noise), because the extra side adds level to both speakers.
+
+SWEEP glides WIDTH, made side and all: 0.5 → 0 on the master squeezes the mix to mono
+through a build, and 0.5 → 1 opens it out. The made side's delay and filter are only built
+once WIDTH (or the end of its sweep) goes past 0.5, so a widener that only narrows costs what
+it always did.
+
+It was two knobs for a few hours on 2 Oct 2026, WIDTH and **MONO SPREAD**, and before that it
+had a **WET**. Both are retired: with the middle untouched a wet/dry mix was only a second
+WIDTH knob, and Tone's equal-power crossfade put a mono sound up 3dB at WET 0.5. Left in an
+old save, either one is ignored.
+
+When it became one knob, the wideners in the cabinet songs, the banger seeds and the five
+seed remixes the banger levels are read from (ABSOLUTE ZERO, SNOW GLOBE, HAIRPIN, CHIPSTEP,
+NIGHT DRIVE) were sorted by what they sat on. The eight on a mono sound, which had done
+nothing until then, were taken out: hub `leadHarm`; plumber `chords`; the big-room,
+future-bass and eurobeat seeds' `chords`/`chords3`; ABSOLUTE ZERO's and SNOW GLOBE's
+`chords`; HAIRPIN's `lead6`. The thirteen on a wide sound had their faders lowered by what
+the made side added, 0.4–1.2dB, measured solo over each song (work/local/_widener-refade*.json).
+The sends tap after the fader, so they came back with it. The banger references were rebuilt
+(`refs`), and a new banger's faders move by under 0.1dB for it. Other remixes and bangers
+were left as they were, and widen where they did not before.
 
 Everything here has been verified to render in an offline context, because WAVs, stems
 and videos are produced by rendering the engine offline. JCReverb and Freeverb remain

@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { buildPage } from '../tools/character-editor.js';
 
 const html = await buildPage();
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));

@@ -17,6 +17,8 @@
  */
 import { MRDR3_NATIVE, isMrdrVoice } from './identity.js';
 import { mrdr3SyncKind, mrdr3SyncKey } from './tables.js';
+import { mrdr3SyncBendSteps } from './env.js';
+import { driveCurve, DRIVE_HEADROOM } from '../drive-curve.js';
 
 /**
  * A number in [0,1) that depends only on its salt — the engine's `hitRandom`, at the one
@@ -39,41 +41,6 @@ function fixedRandom(salt) {
 }
 const fixedVary = (amount, salt) => (amount > 0 ? 1 + (fixedRandom(salt) - 0.5) * 2 * amount : 1);
 
-/**
- * The drive's transfer curve — the native `_driveCurve`, verbatim.
- *
- * Normalised so the curve always reaches full scale and DRIVE changes the KNEE rather
- * than the level. Built here, on the main thread, and shipped as a table the core reads
- * exactly as a WaveShaper does, so the shaper is a Tier-A port rather than a new
- * distortion.
- */
-function driveCurve(amount, shape) {
-  const a = Math.round(amount * 100) / 100;
-  const curve = new Float32Array(1025);
-  if (shape === 'fold') {
-    const k = 1 + a ** 2 * 12;
-    for (let i = 0; i < curve.length; i++) {
-      const x = (i / (curve.length - 1)) * 2 - 1;
-      curve[i] = Math.sin(k * x * Math.PI * 0.5);
-    }
-  } else if (shape === 'crush') {
-    const bits = Math.max(1.5, 12 - a * 10);
-    const steps = 2 ** bits;
-    for (let i = 0; i < curve.length; i++) {
-      const x = (i / (curve.length - 1)) * 2 - 1;
-      curve[i] = Math.round(x * steps) / steps;
-    }
-  } else {
-    const k = 1 + a ** 2 * 24;
-    const norm = Math.tanh(k);
-    for (let i = 0; i < curve.length; i++) {
-      const x = (i / (curve.length - 1)) * 2 - 1;
-      curve[i] = Math.tanh(k * x) / norm;
-    }
-  }
-  return curve;
-}
-
 const LFO_TARGET = { filter: 0, level: 1, pitch: 2 };
 
 const CLASSIC = ['sine', 'square', 'sawtooth', 'triangle'];
@@ -90,30 +57,47 @@ const stagesFor = (slope) => (slope === -48 ? 4 : slope === -24 ? 2 : 1);
  * By layer KEY, not position, because a gain-0 layer is dropped from the stack and the
  * positional `syncSlaves` would then name the wrong one. Noise has no phase to reset.
  *
- * A slave with a PITCH ENVELOPE is left to the core's own per-sample reset: natively that
- * bend re-tables the slave every 32 ms, which a static table cannot say.
+ * A slave with a PITCH ENVELOPE moves its RATIO, not its pitch, so it gets a GRID of tables
+ * per unison voice — table j at j/steps of the envelope's cents — and the core crossfades
+ * between them on the knots mrdr3SyncBendKnots plans, exactly as the native path's grains
+ * do. The bend is carried as 'bendCents' instead of 'pitchCents', which is zeroed: on a
+ * synced slave nothing may bend the oscillator itself, because that is the master.
  */
 function syncFor(voice, key, s) {
   const slaves = voice.sync === '1+2+3' ? ['osc2', 'osc3']
     : voice.sync === '1+2' ? ['osc2'] : voice.sync === '1+3' ? ['osc3'] : [];
   const master = voice.layer?.osc1;
   if (!master || !slaves.includes(key) || s.type === 'noise') return {};
-  if (s.pitch && (s.pitch.semitones ?? 0) !== 0) return {};
+  const bendCents = s.pitch ? (s.pitch.semitones ?? 0) * 100 : 0;
+  const bendSteps = bendCents ? mrdr3SyncBendSteps(bendCents) : 0;
   const kind = mrdr3SyncKind(s.type);
   const width = Math.min(0.95, Math.max(0.05, s.width ?? 0.5));
   const masterRatio = Math.max(0.01, master.ratio ?? 1);
   const count = Math.max(1, Math.min(4, Math.round(s.unison ?? 1)));
   const syncKeys = [];
   const syncTables = [];
+  const bendKeys = [];
+  const seen = new Set();
+  const table = (ratio) => {
+    const k = mrdr3SyncKey(kind, ratio, width);
+    if (!seen.has(k)) { seen.add(k); syncTables.push({ key: k, kind, ratio, width }); }
+    return k;
+  };
   for (let u = 0; u < count; u++) {
     const cents = (s.detune ?? 0) + (count > 1 ? (s.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
-    const ratio = ((s.ratio ?? 1) / masterRatio) * (2 ** (cents / 1200));
-    const k = mrdr3SyncKey(kind, ratio, width);
-    syncKeys.push(k);
-    syncTables.push({ key: k, kind, ratio, width });
+    syncKeys.push(table(((s.ratio ?? 1) / masterRatio) * (2 ** (cents / 1200))));
+    if (bendSteps) {
+      const row = [];
+      for (let j = 0; j <= bendSteps; j++) {
+        row.push(table(((s.ratio ?? 1) / masterRatio)
+          * (2 ** ((cents + (bendCents * j) / bendSteps) / 1200))));
+      }
+      bendKeys.push(row);
+    }
   }
   return {
     syncKeys, syncTables,
+    ...(bendSteps ? { bendKeys, bendSteps, bendCents, pitchCents: 0 } : {}),
     // The pitch the oscillator actually runs at: the master's.
     syncPitchRatio: masterRatio,
     syncCents: master.detune ?? 0,
@@ -330,7 +314,11 @@ export function compileMrdr3(voice) {
     // The drive, and its TONE filter, which is the DRIVE's tone control and not a
     // whole-voice EQ — with no shaper there is no fizz to tame, so the pair stands or
     // falls together, exactly as the native path builds them.
+    // The table the native WaveShaper reads, shipped verbatim (src/engine/drive-curve.js),
+    // and the trim into it: the table spans ±DRIVE_HEADROOM, so the core scales the
+    // group into it exactly as the gain in front of the native shaper does.
     driveCurve: (voice.drive ?? 0) > 0 ? driveCurve(voice.drive, voice.shape) : null,
+    driveIn: 1 / DRIVE_HEADROOM,
     toneStages: (voice.drive ?? 0) > 0 && voice.tone ? 1 : 0,
     toneKind: voice.tone ? (FILTER_KIND[voice.tone.type] ?? 0) : 0,
     toneFreq: voice.tone ? (voice.tone.freq ?? 8000) : 8000,

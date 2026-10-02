@@ -287,7 +287,7 @@ const build = async (minify) => (await esbuild.build({
 
 const browser = await chromium.launch({
   headless: true,
-  args: ['--autoplay-policy=no-user-gesture-required'],
+  args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
 });
 try {
   for (const minify of [false, true]) {

@@ -3704,9 +3704,8 @@ export const EFFECTS = [
   // gains and a merger behind it. Re-measured by the same hand method as the rest of
   // these, on a bench that reads the Channel EQ at 0.148 against its listed 0.15.
   // MONO belongs here rather than on the Stereo Widener because it is a routing
-  // decision, not a width setting: the widener's own 0 collapses the image AND brings
-  // the result back 6dB hot, so reaching for it to make something mono costs you a
-  // level you then have to find again on the fader. This one is unity by construction.
+  // decision, not a width setting. (The widener's own 0 used to bring the result back
+  // 6dB hot; since midAtUnity it is unity too, but a switch is still the right control.)
   //
   // SWEEP, GAIN TO and BALANCE TO are a Spot FX section's, as the Filter's sweep is: an
   // insert slot has no start or end to glide between (see visibleParams). GAIN reaches
@@ -3969,14 +3968,33 @@ export const EFFECTS = [
   { id: 'exciter', name: 'Exciter', cost: 0.95, custom: makeExciter,
     params: ['tune', 'drive', 'timbre', 'mix'],
     defaults: { tune: 3000, drive: 0.35, timbre: 0.5, mix: 0.3 } },
-  { id: 'widener', name: 'Stereo Widener', short: 'Widener', cost: 0.39, tone: 'StereoWidener',
-    params: ['width', 'wet', 'sweep', 'widthTo'], defaults: { width: 0.7, wet: 1, sweep: 0, widthTo: 0.7 },
+  // ONE knob (2 Oct 2026, Peter's call). Below 0.5 WIDTH narrows the sides, to mono at 0.
+  // Above it, it raises them, doubled at 1, and adds a side made from the middle, as loud
+  // as the middle at 1 — so a mono sound, which has no sides to raise, widens too (see
+  // madeSide). It was two knobs for a few hours, WIDTH and MONO SPREAD, and one knob that
+  // always widens is the one a widener should be.
+  //
+  // No WET, the same day. With the middle at unity (midAtUnity) a wet/dry mix is a second
+  // WIDTH knob, except that Tone's is an equal-power crossfade, and dry and wet here share
+  // the same middle, so WET 0.5 put a mono sound up 3dB. Every saved widener was at WET 1.
+  // Both are `retired`: an older save's WET or MONO SPREAD never reaches the node.
+  //
+  // 0.48 is past 0.5, with the made side built: 1.23 times the 0.39 it costs at or under 0.5,
+  // thirty in series on noise, offline, a fresh page each, median of five (2 Oct 2026).
+  { id: 'widener', name: 'Stereo Widener', short: 'Widener', cost: 0.48, tone: 'StereoWidener',
+    params: ['width', 'sweep', 'widthTo'], defaults: { width: 0.7, sweep: 0, widthTo: 0.7 },
     sweeps: { width: 'widthTo' },
+    retired: ['wet', 'monoSpread'],
     tips: {
+      width: '0.5 leaves the sound as it is. Down to 0 it narrows, to mono. Up to 1 it widens:'
+        + ' the sides it has come up, doubled at 1, and a mono sound, which has none, gets a'
+        + ' side made from its middle (a copy 12ms late, above 300Hz), as loud as the middle'
+        + ' at 1. The bass stays in the middle, and summed back to one speaker the sound is'
+        + ' exactly itself. Widening makes it a little louder: about 1dB at 0.75, 3dB at 1.',
       sweep: 'Glides WIDTH across the whole section, from where its first handle is to where'
-        + ' its second is. 0.5 leaves the image as it is, 0 is mono and 1 is all sides. On the'
-        + ' master, 0.5 down to 0 squeezes the mix to mono through a build, and the drop'
-        + ' springs back wide when the section ends.',
+        + ' its second is. On the master, 0.5 down to 0 squeezes the mix to mono through a'
+        + ' build, and the drop springs back wide when the section ends; 0.5 up to 1 opens'
+        + ' it out.',
     } },
   // Ours, and the only effect here built out of a pitch shifter that nothing in the
   // catalogue exposes: see makeDoubler. Deliberately NOT tempo-syncable, unlike every
@@ -4678,6 +4696,8 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   // glides to, which are a section's and not the node's (see toneSweep below).
   const ownKeys = def.sweeps ? ['sweep', ...Object.values(def.sweeps)] : [];
   const opts = { ...def.defaults, ...params };
+  // A control the card no longer has does nothing, whatever an older save says.
+  for (const k of def.retired || []) delete opts[k];
   const own = {};
   for (const k of ownKeys) { own[k] = opts[k]; delete opts[k]; }
   // Tone's delays take seconds; the desk speaks note divisions or milliseconds.
@@ -4693,6 +4713,7 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   if (def.start && typeof node.start === 'function') { try { node.start(); } catch { /* already running */ } }
   if (def.tone === 'PingPongDelay') cutReturns(node);
   const merged = { ...opts, ...own };
+  if (def.tone === 'StereoWidener') { midAtUnity(node); madeSide(node, widestOf(merged)); }
   // The desk's vocabulary is note divisions and sync flags; Tone's is seconds and hertz.
   // Both doors into this node go through the same translation, so a scheduled change
   // and an immediate one cannot drift apart over what "1/8 dotted" means.
@@ -4700,6 +4721,7 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
     Object.assign(merged, patch);
     const out = { ...patch };
     for (const k of ownKeys) delete out[k];
+    for (const k of def.retired || []) delete out[k];
     if (def.timed) {
       delete out.sync; delete out.division; delete out.delayMs;
       out.delayTime = delaySeconds(merged, b);
@@ -4708,6 +4730,8 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
       delete out.rateSync; delete out.rateDivision;
       out.frequency = rateHz(merged, b);
     }
+    // The widener's made side is built the first time WIDTH goes past 0.5 (see madeSide).
+    node._madeFor?.(widestOf(merged));
     return out;
   };
   const link = {
@@ -4941,6 +4965,105 @@ function cutReturns(node) {
     delete node._cutL;
     delete node._cutR;
   }
+}
+
+/**
+ * The Stereo Widener moves the SIDES and never the middle (2 Oct 2026, Peter's call).
+ *
+ * Tone's StereoWidener scales the mid by 2(1 − width) as it scales the side by 2·width, so
+ * past 0.5 it trades the middle away: at 0.9 a mono sound kept a fifth of itself, 14 dB
+ * down, and at 1 it was silent — a noise riser on a widened channel played nothing at all,
+ * and so did any other patch put on that channel. A widener should do nothing to a mono
+ * sound. So the mid multiplier is fed a constant 1 instead of 2(1 − width): 0.5 still
+ * leaves the image alone, 0 is still mono (now at unity, not 6 dB hot), and 1 doubles the
+ * sides. WIDTH stays Tone's Signal, so SWEEP and scheduled changes reach it as before.
+ *
+ * Every song's widened channels were re-faded when this landed, by what the old widener
+ * took off the sound actually on them, so the songs kept their balance.
+ */
+function midAtUnity(node) {
+  const mult = node._midMult;
+  const twice = node._twoTimesWidthMid;
+  if (!mult?.factor || !twice) return;
+  try {
+    twice.disconnect(mult.factor);
+    Tone.connect(node.context.getConstant(1), mult.factor);
+  } catch {
+    // Tone's internals moved under us: the widener keeps Tone's own law.
+  }
+}
+
+/**
+ * The Stereo Widener's made side, said once: tools/banger-levels.js measures how much of
+ * each sound gets through it. The delay is rounded to whole samples (see madeSide), and the
+ * low cut is a Butterworth — a highpass biquad reads its Q in dB, so 1/√2 is −3.01.
+ */
+export const MADE_SIDE = { delaySeconds: 0.012, lowCutHz: 300, lowCutQ: 1 / Math.SQRT2 };
+
+/** The widest a widener's settings take it: WIDTH, or where its SWEEP glides to if that is wider. */
+const widestOf = (p) => Math.max(Number(p.width) || 0, (Number(p.sweep) || 0) >= 0.5 ? Number(p.widthTo) || 0 : 0);
+
+/**
+ * WIDTH past 0.5 makes a side out of the middle, for the sound the widener otherwise has
+ * nothing to widen: a mono sound has no side, and raising nothing leaves nothing.
+ *
+ * The middle, 12ms late and high-passed at 300Hz, joins the side after the side multiplier,
+ * so it comes out added on the left and subtracted on the right, at 2·WIDTH − 1 of the
+ * middle: nothing up to 0.5, half at 0.75, all of it at 1. That level is read off WIDTH
+ * itself, through a waveshaper at audio rate, so a SWEEP or a scheduled move carries it
+ * with them. Because it sits on the side, L + R cancels it exactly: summed to mono the sound
+ * is the dry sound, with none of the comb filtering a plain Haas delay leaves. The low cut
+ * keeps the bass in the middle.
+ *
+ * Built the first time WIDTH (or the end of its SWEEP) goes past 0.5. A widener that only
+ * ever narrows — the squeeze to mono on a master — never builds a delay, a biquad, a
+ * waveshaper and a gain it would pay for silent. Built once, they stay until the effect is
+ * rebuilt.
+ */
+function madeSide(node, widest) {
+  const mid = node._midSend;
+  const side = node._sideReturn;
+  const width = node.width;
+  if (!mid || !side || !width) return;
+  let built = false;
+  node._madeFor = (w) => {
+    if (built) return true;
+    if (!(Number(w) > 0.5)) return false;
+    const made = [];
+    try {
+      // Whole samples: a DelayNode between two samples interpolates, and that is a low-pass
+      // — at 12ms and 44.1kHz (529.2 samples) it took 1.7dB off the made side of a noise.
+      const sr = node.context.sampleRate;
+      const delayTime = Math.round(MADE_SIDE.delaySeconds * sr) / sr;
+      const delay = new Tone.Delay({ context: node.context, delayTime, maxDelay: delayTime + 1 / sr });
+      made.push(delay);
+      // A native biquad, because Tone's Filter will not take a Q under 0.
+      const lowCut = node.context.createBiquadFilter();
+      lowCut.type = 'highpass';
+      lowCut.frequency.value = MADE_SIDE.lowCutHz;
+      lowCut.Q.value = 20 * Math.log10(MADE_SIDE.lowCutQ);
+      // 2·WIDTH − 1, and nothing under 0.5. 2049 points put one exactly on the corner.
+      const law = new Tone.WaveShaper({ context: node.context, mapping: (x) => Math.max(0, 2 * x - 1), length: 2049 });
+      made.push(law);
+      const amount = new Tone.Gain({ context: node.context, gain: 0 });
+      made.push(amount);
+      width.connect(law);
+      law.connect(amount.gain);
+      mid.connect(delay);
+      Tone.connect(delay, lowCut);
+      Tone.connect(lowCut, amount);
+      amount.connect(side);
+      const dispose = node.dispose.bind(node);
+      node.dispose = () => { for (const n of made) n.dispose(); lowCut.disconnect(); return dispose(); };
+      built = true;
+      return true;
+    } catch {
+      // Tone's internals moved under us: WIDTH only scales the sides, as it did before.
+      for (const n of made) { try { n.dispose(); } catch { /* fine */ } }
+      return false;
+    }
+  };
+  node._madeFor(widest);
 }
 
 /** How a Tone delay is emptied by a cut at `at`, or null for anything that is not one. */

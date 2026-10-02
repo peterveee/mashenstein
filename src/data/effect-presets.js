@@ -1005,28 +1005,23 @@ export const EFFECT_PRESETS = {
     "widener": {
       "default": {
         "width": 0.7,
-        "wet": 1,
         "sweep": 0,
         "widthTo": 0.7
       },
       "presets": {
         "Subtle": {
-          "width": 0.35,
-          "wet": 1
+          "width": 0.35
         },
         "Wide": {
-          "width": 0.9,
-          "wet": 1
+          "width": 0.9
         },
         "Squeeze to Mono": {
           "width": 0.5,
-          "wet": 1,
           "sweep": 1,
           "widthTo": 0
         },
         "Open Out": {
           "width": 0.5,
-          "wet": 1,
           "sweep": 1,
           "widthTo": 1
         }

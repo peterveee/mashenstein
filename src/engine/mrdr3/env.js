@@ -219,6 +219,73 @@ export function mrdr3CentsEnvEvents(cents, e, t, end, base, dfltAttack) {
 }
 
 /**
+ * How many table steps a synced slave's pitch envelope is drawn in: one per half
+ * semitone, capped at 48 so a two-octave bend on a four-voice unison stays a few hundred
+ * tables rather than a thousand. Main thread only — the worklet is handed the answer.
+ */
+export function mrdr3SyncBendSteps(cents) {
+  var steps = Math.ceil(Math.abs(cents || 0) / 50);
+  return steps < 1 ? 1 : (steps > 48 ? 48 : steps);
+}
+
+/**
+ * A HARD-SYNCED slave's pitch envelope, as KNOTS between sync tables.
+ *
+ * A synced slave plays a table at the master's pitch with the slave/master ratio baked in,
+ * so its pitch envelope cannot go on the oscillator's detune — that would move the master.
+ * It moves the RATIO instead, which means moving between tables. Both backends do that
+ * with the same plan: a grid of 'steps' + 1 tables, table j at j/steps of the envelope's
+ * cents, and a list of knots — (time, table) pairs — with the sound a straight crossfade
+ * from one knot's table to the next's. The native path builds it as one oscillator per
+ * run of equal tables with a hat-shaped gain; the worklet reads two tables and blends.
+ * Same knots, same weights, same tables: the two are one instrument.
+ *
+ * The curve is the one mrdr3CentsEnvEvents draws — attack held to 45% of a short note,
+ * decay squeezed to fit, sustain, release — with each segment's ends snapped to the grid,
+ * a knot wherever a linear segment crosses a grid line, and an 'exp' segment's knots
+ * where its setTarget approach crosses them. Writes into outT (seconds from the layer's
+ * start) and outJ (table index), returns the count; never more than 3 * steps + 2.
+ */
+export function mrdr3SyncBendKnots(cents, e, end, steps, outT, outJ) {
+  var n = 0;
+  if (!cents || !(steps > 0)) return 0;
+  e = e || {};
+  var attack = Math.max(0, e.attack == null ? 0 : e.attack);
+  var sustain = Math.min(1, Math.max(0, e.sustain == null ? 0 : e.sustain));
+  var release = Math.max(0.001, e.release == null ? 0.015 : e.release);
+  var peakAt = attack > 0 ? Math.min(Math.max(0.001, attack), Math.max(0.001, end * 0.45)) : 0;
+  var decayEnd = Math.min(end, peakAt + Math.max(0, e.decay == null ? 0 : e.decay));
+  var jSustain = Math.round(steps * sustain);
+  function seg(t0, j0, t1, j1, shape) {
+    if (t1 > t0 && j1 !== j0) {
+      var dir = j1 > j0 ? 1 : -1;
+      var tau = (t1 - t0) / 4;
+      for (var j = j0 + dir; j !== j1; j += dir) {
+        var at;
+        if (shape === 'exp') {
+          at = t0 - tau * Math.log((j - j1) / (j0 - j1));
+          if (at > t1) at = t1;
+        } else {
+          at = t0 + ((j - j0) / (j1 - j0)) * (t1 - t0);
+        }
+        outT[n] = at; outJ[n] = j; n++;
+      }
+    }
+    outT[n] = t1; outJ[n] = j1; n++;
+  }
+  if (attack > 0) {
+    outT[n] = 0; outJ[n] = 0; n++;
+    seg(0, 0, peakAt, steps, e.attackCurve);
+  } else {
+    outT[n] = 0; outJ[n] = steps; n++;
+  }
+  seg(peakAt, steps, decayEnd, jSustain, e.decayCurve);
+  if (decayEnd < end) { outT[n] = end; outJ[n] = jSustain; n++; }
+  seg(end, jSustain, end + release, 0, e.releaseCurve);
+  return n;
+}
+
+/**
  * The source text of the builders, for the worklet.
  *
  * Generated from the functions themselves, so there is exactly one definition of this
@@ -227,4 +294,5 @@ export function mrdr3CentsEnvEvents(cents, e, t, end, base, dfltAttack) {
  */
 export const MRDR3_ENV_SOURCE = [
   mrdr3GateFloor, mrdr3GateLinUnder, mrdr3GateAdsrEvents, mrdr3CentsEnvEvents,
+  mrdr3SyncBendKnots,
 ].map((fn) => fn.toString()).join('\n\n');

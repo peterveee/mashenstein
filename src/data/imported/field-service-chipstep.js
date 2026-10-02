@@ -485,7 +485,7 @@ export const mix = {
   order: ["kick","kick2","snare","snare2","hats","ohats","crash","crash2","tom","bass","bass2","bass3","lead","lead2","lead3","lead6","lead4","lead5","chords"],
   labels: {"lead":"HOOK Pulse","lead2":"HOOK 8vb Square","lead3":"ARCADE CHORUS","lead4":"ARP Square","lead5":"BREAK Square","lead6":"SCREAMER (C phrase)","chords":"PAD PWM Wide","bass":"BASS Octaves","bass2":"WOBBLE","bass3":"STUTTER","kick":"KICK Click-Top","kick2":"KICK 808","snare":"SNARE Game Boy","snare2":"SNARE 909 Crack","tom":"ZAP","crash2":"RISER Noise"},
   voice: {"kickVoice":"kickClickTop","kick2Voice":"ds808Kick","snareVoice":"gameBoySnare","snare2Voice":"ds909SnareCrack","hatsVoice":"hatEngine","ohatsVoice":"ohat909SixBit","crashVoice":"ds909Crash","tomVoice":"kwBlipDrop","bassVoice":"bass80sSynth","bass2Voice":"wubClassic","bass3Voice":"wubStutter","leadVoice":"tngrPlainPulse","lead2Voice":"tngrClassicSquare","lead3Voice":"jmjrArcadeChorus","lead4Voice":"toneSquare","lead5Voice":"tngrClassicSquare","lead6Voice":"bestScreamerLead","chordsVoice":"bestPwmPadWide"},
-  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.4285714285714284,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.43s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.4285714285714284,"Q":1.6,"slope":-24,"color":"white","attack":3.1542857142857144,"hold":0,"decay":0.2742857142857143,"curve":"exp","gain":1},"drive":0.08,"peak":0.034}},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.4285714285714284,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.43s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.4285714285714284,"Q":1.6,"slope":-24,"color":"white","attack":3.1542857142857144,"hold":0,"decay":0.2742857142857143,"curve":"exp","gain":1},"drive":0.22,"peak":0.034}},
   lanes: {
     kick: { gain: -3 },
     kick2: { gain: -3 },
@@ -494,7 +494,7 @@ export const mix = {
     hats: { gain: -6, pan: 0.2 },
     ohats: { gain: -7, pan: -0.2 },
     crash: { gain: -9, pan: 0.3, send: { reverb: 0.3 } },
-    crash2: { gain: -4, send: { reverb: 0.8 }, eq: { low: 5.5 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    crash2: { gain: -16.8, send: { reverb: 0.8 }, eq: { low: 5.5 } },
     tom: { gain: -2, send: { reverb: 0.5 }, effects: [{ id: "pingpong", params: { sync: 1, division: 0.75, feedback: 0.5, wet: 0.45 } }] },
     bass: { gain: -6 },
     bass2: { gain: -9 },
@@ -505,7 +505,7 @@ export const mix = {
     lead4: { gain: -7, pan: -0.3, send: { delay: 0.2 }, effects: [{ id: "autopanner", params: { rateSync: 1, rateDivision: 2, depth: 0.6, wet: 1 } }] },
     lead5: { gain: 3, send: { delay: 0.25, reverb: 0.4 }, effects: [{ id: "vibrato" }] },
     lead6: { gain: -12, pan: 0.25, send: { reverb: 0.3 } },
-    chords: { gain: -6, send: { reverb: 0.45 }, effects: [{ id: "widener", params: { width: 0.9 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.14, decay: 0.02, depth: 0.6 } }] },
+    chords: { gain: -9.59, send: { reverb: 0.64 }, effects: [{ id: "widener", params: { width: 0.9 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.14, decay: 0.02, depth: 0.6 } }] },
   },
 };
 

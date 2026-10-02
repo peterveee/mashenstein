@@ -8,7 +8,7 @@ export async function openLiveBrowser() {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   let browser;
   try {
-    browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+    browser = await chromium.launch({ headless: true, args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'] });
   } catch (error) { server.close(); throw error; }
   const origin = `http://127.0.0.1:${server.address().port}`;
   return { browser, origin, close: async () => { try { await browser.close(); } finally { server.close(); } } };

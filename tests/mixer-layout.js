@@ -1463,8 +1463,13 @@ assert(/silentLayers = true/.test(audio)
 // which is the cost the skip exists to remove.
 assert(/prepareRealtimeVoices\(\{[\s\S]*?for \(const lane of laneList\(b\)\) \{[\s\S]{0,900}?if \(this\.silentLaneSkip && this\.mixer\?\.laneSilent\(key\)\) continue;/.test(audio),
   'and the realtime pre-warm skips a silenced lane on the same flag and the same predicate');
-assert(/laneSilent\(key\)/.test(readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8'))
-  && /soloed\.size > 0 && !soloed\.has\(key\)/.test(readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8')),
+// With group buses the channel solo is widened to a soloed group's members (anySolo /
+// soloHeard), and still never consults the aux solo set.
+const mixerSrc = readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8');
+assert(/laneSilent\(key\)/.test(mixerSrc)
+  && (/soloed\.size > 0 && !soloed\.has\(key\)/.test(mixerSrc)
+    || (/anySolo\(\) && !soloHeard\(key\)/.test(mixerSrc)
+      && /const anySolo = \(\) => soloed\.size > 0 \|\| soloedGroups\.size > 0;/.test(mixerSrc))),
   'a lane is silent to the skip when muted or losing a channel solo — never for an aux solo');
 // A deliberate heavy UI build must not drain the sequencer's queue: expanding the
 // whole-song roll blocks the main thread ~320ms against a 250ms lookahead, which is
@@ -2488,7 +2493,8 @@ assert(/const masterFx = insertSlots\('__master', 'master',\s*\n\s*Math\.min\(MA
 // on the desk, so counting its chain in only bought every other strip a row that only
 // the master would have used — one compressor across the mix bus, which is the ordinary
 // case, put an empty row under every channel's chain and pushed every fader down by it.
-assert(/const maxChain = Math\.max\(\s*0,\s*\.\.\.lanes\.map\(\(l\) => effectsOf\(l\.key\)\.length\),\s*\.\.\.AUXES\.map\(\(a\) => effectsOf\(`__aux:\$\{a\.id\}`\)\.length\),\s*\);/.test(entry)
+// The group buses stand on the same line as the returns they sit beside, so they count too.
+assert(/const maxChain = Math\.max\(\s*0,\s*\.\.\.lanes\.map\(\(l\) => effectsOf\(l\.key\)\.length\),\s*\.\.\.AUXES\.map\(\(a\) => effectsOf\(`__aux:\$\{a\.id\}`\)\.length\),\s*(?:\.\.\.activeGroups\(\)\.map\(\(g\) => effectsOf\(groupKey\(g\.id\)\)\.length\),\s*)?\);/.test(entry)
   && !/const maxChain = Math\.max\([\s\S]*?effectsOf\('__master'\)\.length,[\s\S]*?\);/.test(entry),
   'the rack reserves for the strips that share the line — the master sizes its own block');
 assert(/el\.style\.setProperty\('--fxrowsh', `\$\{slots \* SLOT_ROW - 4\}px`\)/.test(entry)
@@ -3246,9 +3252,18 @@ assert(/function openChannelEffects\(key\) \{[\s\S]*?selectLane\(key\);[\s\S]*?s
 // panel and the track panel — only the heading's scope differs.
 const panelLabels = [...regionFn.matchAll(/label: (?:[\w?.\s]+\?\s*)?'([^']+)'(?:\s*:\s*'([^']+)')?/g)]
   .flatMap((m) => [m[1], m[2]]).filter(Boolean);
+// `a` joins the small words a title keeps lower case: "Make a Banger…".
 assert(panelLabels.length >= 12
-  && panelLabels.every((label) => label.split(' ').every((word) => /^(?:[A-Z]|\d|from$|in$|to$)/.test(word))),
-`every panel button is Title Case (${panelLabels.filter((l) => !l.split(' ').every((w) => /^(?:[A-Z]|\d|from$|in$|to$)/.test(w))).join(', ') || 'none stray'})`);
+  && panelLabels.every((label) => label.split(' ').every((word) => /^(?:[A-Z]|\d|from$|in$|to$|a$)/.test(word))),
+`every panel button is Title Case (${panelLabels.filter((l) => !l.split(' ').every((w) => /^(?:[A-Z]|\d|from$|in$|to$|a$)/.test(w))).join(', ') || 'none stray'})`);
+// Make a Banger…: on the bars panel (the selection is the riff) and in the drawer, with
+// its take buttons on a banger and a wide dialog of real controls — no native dropdown.
+assert(panelLabels.includes('Make a Banger…') && /actionSection\('New Song From These Bars'/.test(regionFn)
+  && ['makebanger', 'bangersounds', 'bangeragain', 'bangerprev', 'bangernext', 'bangersettings', 'bangeruse', 'bangercombo', 'bangerab'].every((id) => shell.includes(`id="${id}"`))
+  && /\/bangersounds`/.test(entry)
+  && /#askbox\.wide\s*\{/.test(shell)
+  && !/data-native/.test(readFileSync(new URL('../tools/mixer-banger.js', import.meta.url), 'utf8')),
+'Make a Banger… is on the bars panel and in the drawer, its takes on a banger, its dialog wide and custom');
 assert(!/label: '(?:Clear|Reset|Reset track|Delete)'/.test(regionFn)
   && panelLabels.includes('Erase Notes') && panelLabels.includes('Reset Edits')
   && panelLabels.includes('Delete Track') && panelLabels.includes('Delete Bars')
@@ -4570,7 +4585,7 @@ assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams, 
   && /let dragFrom = null;/.test(noteFxEditors.slice(noteFxEditors.indexOf('function buildBarEffectsEditor')))
   && /const toggleBypass = \(i\) => \{ chain\[i\] = \{ \.\.\.chain\[i\], bypass: !chain\[i\]\.bypass \}; draw\(\); commit\(\); \};/.test(noteFxEditors)
   && /const \[moved\] = chain\.splice\(src, 1\);\s*chain\.splice\(dst, 0, moved\);\s*const \[steps\] = masks\.splice\(src, 1\);\s*masks\.splice\(dst, 0, steps\);\s*selected = chain\.indexOf\(keep\);\s*draw\(\); commit\(\);/.test(noteFxEditors)
-  && /foot\.append\(\.\.\.\(master \? \[\] : \[snapshot\]\), clear, closeButton, play\);\s*panel\.append\(status, foot\);/.test(noteFxEditors)
+  && /foot\.append\(\.\.\.\((?:master|bus) \? \[\] : \[snapshot\]\), clear, closeButton, play\);\s*panel\.append\(status, foot\);/.test(noteFxEditors)
   && /foot\.className = 'regfoot barfxfoot'/.test(noteFxEditors)
   && !/barfxguide|barfxmove|barfxlist|barfxhelp|barfxcontrols|Choose an effect…/.test(noteFxEditors + shell)
   && /#regionedit\.barfxmodal \{ width: 640px; \}/.test(shell)
@@ -4766,7 +4781,7 @@ assert(/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| f
   && /\.arrtrack-notefx \{/.test(shell),
   'a track with active Note FX shows the compact NFX marker in its header');
 assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*buildArrangement\(\);\s*\n\}/.test(entry)
-  && /if \(noteFxSig\(\) !== fxBefore\) buildArrangement\(\);/.test(entry),
+  && /if \(noteFxSig\(\) !== fxBefore(?: \|\| routeSig\(\) !== routesBefore)?\) buildArrangement\(\);/.test(entry),
   'applying, clearing or undoing track Note FX repaints the arrangement, so the NFX marker follows the setting');
 assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(tooltips)
   && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(tooltips)
@@ -4854,6 +4869,14 @@ assert(/el\.classList\.add\('vefloat'\)/.test(placeFn)
   && /if \(laneKey\) clampFloatingEditor\(r\.left, r\.top\); else placeFloatingEditor\(\);/.test(placeFn)
   && !/centreFloatingEditor/.test(placeFn),
   'a repaint keeps the editor where it is; only an open centres it');
+// Hiding a family on the desk is a view. A preset editor on a hidden drum (or synth)
+// lane still edits a lane the song plays, so neither the repaint nor the open may ask
+// for the lane's STRIP — they ask the song whether it has the lane.
+const editVoiceBody = bareEditorWindow.slice(bareEditorWindow.indexOf('function editVoice(laneKey'));
+assert(/if \(laneKey && !laneExists\(laneKey\)\)/.test(placeFn)
+  && !/\.strip\[data-lane/.test(placeFn) && !/\.strip\[data-lane/.test(editVoiceBody)
+  && /laneExists: \(key\) => engineDeskLanes\(viewBank\(\), 1\)\.some/.test(entry),
+  'a lane filtered out of the rack can still open and keep its preset editor');
 assert(/#voiceedit\.vefloat \{[\s\S]*?height: min\(350px, calc\(100vh - 8px\)\);[\s\S]*?max-height: min\(350px, calc\(100vh - 8px\)\);[\s\S]*?resize: none; overflow: hidden;/.test(shell),
   'Simple editors share one short, non-resizable height and scroll extra rows internally');
 // Centred in the middle of the screen, the panel is the only thing on screen naming the

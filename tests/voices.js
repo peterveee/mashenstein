@@ -861,16 +861,21 @@ try {
     [lane]: Array.from({ length: 32 }, (_, i) => i % 8 === 0),
     [VOICE_LANES[lane].voiceKey]: voice,
   });
-  // The PEAK of each hit rather than its energy: a window that starts a sample either
-  // side of the transient moves an RMS by a tenth of a decibel, and the whole question
-  // here is a difference of that order. Four hits, because two draws of a ±12% jitter
-  // land close together often enough that a pair proves nothing either way.
+  // The ENERGY of each hit, not its peak. The peak used to be the quieter measure, but
+  // only because the old drive curve's floor squashed it: a triangle knock starts each
+  // hit at a slightly different phase against the same noise, so the peak of the sum
+  // moves ~1.2 dB on a preset with no variation at all (0.00 dB with the oscillator
+  // taken out). Once drive-curve.js (2 Oct 2026) took the floor away, the peak spread of
+  // dsSnare and of the humanised snarePink both read 1.2 dB. The energy spread is
+  // 0.09 dB against 0.38. Four hits, because two draws of a ±12% jitter land close
+  // together often enough that a pair proves nothing either way.
   const spreadOf = (out) => {
     const step = Math.round(SR * (60 / 120) / 4);   // a 16th, from the tempo
     const peaks = [0, 8, 16, 24].map((s) => {
-      let p = 0;
-      for (let i = s * step; i < s * step + 4400 && i < out.length; i++) p = Math.max(p, Math.abs(out[i]));
-      return p;
+      let e = 0;
+      const end = Math.min(s * step + 4400, out.length);
+      for (let i = s * step; i < end; i++) e += out[i] * out[i];
+      return Math.sqrt(e / Math.max(1, end - s * step));
     });
     return 20 * Math.log10(Math.max(...peaks) / (Math.min(...peaks) || 1));
   };
@@ -885,8 +890,8 @@ try {
   const varied = spreadOf(h1.outL);
   const flat = spreadOf((await renderer.render(fourHits('snare', 'dsSnare'),
     { repeat: 1, mix: null, trackId: null })).outL);
-  // The floor is the render's own transient jitter, measured at 0.08 dB on a preset
-  // with no variation at all — so the claim is that humanise is several times that.
+  // The floor is the render's own transient jitter, measured at 0.09 dB of energy on a
+  // preset with no variation at all — so the claim is that humanise is several times that.
   assert(varied > 0.25 && varied > flat * 3,
     `and its four hits are four different hits (${varied.toFixed(2)} dB apart)`);
   assert(flat < 0.15,
@@ -995,15 +1000,25 @@ try {
   // whole schedule is written before a sample is rendered, that read is the param's
   // resting value rather than anything the envelope was doing, and the old note stepped
   // UP before it faded. Measured at 1.041 with that read, 0.961 with the hold.
-  const monoBank = (every) => ({
+  //
+  // "One note of it" is a lone note at EVERY start the packed run uses, not at four of
+  // them. Classic Mono's detuned saws beat against each other and run free, so each note
+  // meets the beat at a different phase: sixteen notes simply draw more peaks than four,
+  // which read 1.4% over a four-note "alone" with the choke working exactly (osc2 at
+  // detune 0 renders the two identically). Against all four offsets it is 0.9999.
+  const monoBank = (every, offset = 0) => ({
     bpm: 120,
-    bass: Array.from({ length: 32 }, (_, i) => (i % every === 0 ? 110 : null)),
+    bass: Array.from({ length: 32 }, (_, i) => (i >= offset && (i - offset) % every === 0 ? 110 : null)),
     bassVoice: 'bestClassicMono',
   });
   const peakOf = (o) => { let p = 0; for (const x of o) p = Math.max(p, Math.abs(x)); return p; };
   const overlap = peakOf((await renderer.render(monoBank(2), { repeat: 1, mix: null, trackId: null })).outL);
-  const alone = peakOf((await renderer.render(monoBank(8), { repeat: 1, mix: null, trackId: null })).outL);
-  assert(overlap < alone,
+  let alone = 0;
+  for (const offset of [0, 2, 4, 6]) {
+    alone = Math.max(alone, peakOf((await renderer.render(monoBank(8, offset),
+      { repeat: 1, mix: null, trackId: null })).outL));
+  }
+  assert(overlap <= alone * (1 + 1e-4),
     'a mono MRDR-3 choking itself never gets louder than one note of it'
     + ` (${overlap.toFixed(5)} against ${alone.toFixed(5)})`);
 
@@ -1094,13 +1109,14 @@ try {
   });
   const five = peakOf((await renderer.render(padChord([110, 138.6, 164.8, 220, 261.6]),
     { repeat: 1, mix: null, trackId: null })).outL);
-  const single = peakOf((await renderer.render(padChord([110]),
-    { repeat: 1, mix: null, trackId: null })).outL);
   assert(five < 1,
     `the heaviest MRDR-3 preset does not clip on a five-note chord (peak ${five.toFixed(4)})`);
-  assert(five < single * 4,
-    'and a chord of it comes out well under the sum of its notes, rather than summing'
-    + ` straight through the drive (${(five / single).toFixed(2)}× one note, against 5×)`);
+  // No "well under the sum" bound any more (2 Oct 2026). It was the old curve's floor:
+  // tanh(x)/tanh(1) at the bottom of the pot, so every setting compressed the stack.
+  // src/engine/drive-curve.js takes the floor out on purpose — the bottom of the pot is a
+  // straight line, and the knee sits at full scale — so this pad at DRIVE 0.1 sums nearly
+  // clean (5.9× one note's peak across five pitches), which is the pot saying what it
+  // means. What still holds, and is the point of a chord here, is that it does not clip.
 
   // Vibrato SPREAD is the one control that builds a phase-rotated wave per note-on and
   // per unison voice, so it is the one that fills the phase-wave cache. The cache is
@@ -1227,17 +1243,26 @@ try {
   // Rendered as a leap into the SAME destination note from an octave above and from a
   // step above. The note landed on is identical, so the interval is the only variable:
   // a wider leap must not make the arrival LOUDER, which is what an accidental width
-  // sweep across it does. Measured 1.15 with the delay fixed, 0.92 with it tracking.
+  // sweep across it does. Measured 1.15 with the delay fixed (on A1, where the window was
+  // too short to trust — see below); 0.94 with it tracking, on A4.
   //
   // SLURRED on purpose — `bassLen` holds the first note a twentieth of a step past the
   // second one's start. A glide is fingered, so a leap has to be played legato to be a
   // glide at all: four steps of rest between these notes and both takes arrive on the
   // destination pitch with nothing to sweep, which is a real behaviour and a test of
   // nothing. The overlap is kept SHORT so the choked first note is gone from the window
-  // measured below (a cycle and a half of 61.7 Hz is 24 ms of fade).
+  // measured below (a cycle and a half of 493.9 Hz is 3 ms of fade).
+  //
+  // Up at A4, not on the bass's own A1 (2 Oct 2026). The window below is 10 ms, and at
+  // 55 Hz that is half a cycle: what it measured was which half of the waveform it caught,
+  // not how loud the note was — the same note alone swings 0.04 to 0.19 between adjacent
+  // 5 ms windows there. It only ever read 0.92 because the old fold curve clamped the
+  // glide; with drive at zero it read 1.69 at HEAD as well, PWM or no PWM. At 440 Hz the
+  // window holds four cycles, and the octave arrives at 0.94 of the step with PWM and
+  // 0.94 without it — which is the claim: the duty tracks, so PWM adds nothing.
   const leap = (fromHz) => ({
     bpm: 120,
-    bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? fromHz : i === 4 ? 55 : null)),
+    bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? fromHz : i === 4 ? 440 : null)),
     // BOTH notes state their length. The first slurs 0.05 past the second's start (see
     // above); the second used to take its length from the patch, which is the fallback
     // `legacyLaneLength` deliberately removed — a note nobody has measured must not change
@@ -1250,8 +1275,8 @@ try {
     bassLen: [4.05, null, null, null, 1.6],
     bassVoice: 'bestPwmGrowlBass',
   });
-  const fromOctave = (await renderer.render(leap(110), { repeat: 1, mix: null, trackId: null })).outL;
-  const fromStep = (await renderer.render(leap(61.7), { repeat: 1, mix: null, trackId: null })).outL;
+  const fromOctave = (await renderer.render(leap(880), { repeat: 1, mix: null, trackId: null })).outL;
+  const fromStep = (await renderer.render(leap(493.9), { repeat: 1, mix: null, trackId: null })).outL;
   const rmsIn = (o, a, b) => {
     let s = 0; let c = 0;
     for (let n = a; n < Math.min(o.length, b); n++) { s += o[n] * o[n]; c++; }
@@ -1259,8 +1284,8 @@ try {
   };
   // The second note lands on step 4 — half a second at 120 bpm — and portamento is 0.03s.
   // Measured over the SECOND HALF of the glide, which is the window the choke has left:
-  // the note being cut fades over a cycle and a half of its own pitch, 14 ms from the
-  // octave above and 24 ms from the step above, and the two are different sounds. The
+  // the note being cut fades over a cycle and a half of its own pitch, 2 ms from the
+  // octave above and 3 ms from the step above, and the two are different sounds. The
   // pitch is still 26% above its destination 20 ms into the ramp, so a duty that does not
   // track is still wide open here.
   const noteOn = Math.round(SR * 0.5);

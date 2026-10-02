@@ -152,7 +152,7 @@ window.__biquadStereo = async ({ type, freq, Q }) => {
   return { native, ported: [portedL, portedR] };
 };
 
-/** The drive shaper: MRDR-3's own 1025-point curve, at oversample 'none'. */
+/** The drive shaper's lookup, on a 1025-point tanh table, at oversample 'none'. */
 window.__shaper = async ({ amount }) => {
   const curve = new Float32Array(1025);
   const k = 1 + amount ** 2 * 24;
@@ -241,7 +241,7 @@ const built = await esbuild.build({
 const html = '<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const page = await browser.newPage();
 page.on('pageerror', (err) => fail(`page error: ${err.message}`));
 await page.route('**/*', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: html }));

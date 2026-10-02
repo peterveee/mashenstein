@@ -44,7 +44,7 @@ import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
 import {
   hasAutomation, shiftAutomation, copyAutomationRange, pasteAutomation, dropLanes,
   copyLane as copyLaneAutomation, setLaneFade, clearLaneRange, addLaneCut, removeLaneCut,
-  moveLaneCut, setLanePoints, setLane, laneCurve, curveDbAt, replaceFxRange, laneFx, MASTER_KEY,
+  moveLaneCut, setLanePoints, setLane, laneCurve, curveDbAt, replaceFxRange, laneFx, isBusKey,
 } from '../../src/data/automation.js';
 import { createNoteFxProcessor, resolveNoteFx } from '../../src/engine/note-fx.js';
 
@@ -999,7 +999,8 @@ export function setBarSections(draft, from, to, lane, sections = []) {
   const [a, b] = range(draft, from, to);
   let out = withAutomation(draft,
     replaceFxRange(draft.automation, lane, a * 16, (b + 1) * 16, sections || []));
-  if (lane !== MASTER_KEY) out = setBarEffects(out, a, b, lane, null);
+  // The master and the group buses have no per-bar snapshots to clear.
+  if (!isBusKey(lane)) out = setBarEffects(out, a, b, lane, null);
   return out;
 }
 

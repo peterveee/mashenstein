@@ -148,7 +148,7 @@ const built = await esbuild.build({
 const html = '<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const page = await browser.newPage();
 page.on('pageerror', (err) => fail(`page error: ${err.message}`));
 await page.route('**/*', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: html }));

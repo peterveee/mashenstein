@@ -66,8 +66,26 @@ const applyAt = main.indexOf('applyPhoneAudioProfile(Audio, platform)');
 const ensureAt = main.indexOf('Audio.ensure()');
 assert(applyAt > 0 && ensureAt > 0 && applyAt < ensureAt,
   'the game applies the phone profile before it builds the audio context');
-assert(/import \{ applyPhoneAudioProfile \} from '\.\/engine\/phone-audio\.js'/.test(main),
+assert(/import \{[^}]*\bapplyPhoneAudioProfile\b[^}]*\} from '\.\/engine\/phone-audio\.js'/.test(main),
   'and gets it from the module the tests above can reach without a DOM');
+
+// THE SYNTH QUALITY TIER (2 Oct 2026): phones AND tablets get MRDR-3's `phone` rendering,
+// the desktop keeps `full`, and ?mrdr= forces either anywhere.
+{
+  const { mrdrQualityFor, applyMobileSynthQuality } = await import('../src/engine/phone-audio.js');
+  assert(mrdrQualityFor({ isIphone: true }) === 'phone', 'an iPhone gets the phone synth tier');
+  assert(mrdrQualityFor({ isIpad: true }) === 'phone', 'an iPad gets it too — it is about compute, not the buffer');
+  assert(mrdrQualityFor({ isAndroidPhone: true }) === 'phone' && mrdrQualityFor({ isAndroidTablet: true }) === 'phone',
+    'and Android phones and tablets');
+  assert(mrdrQualityFor({ isDesktop: true }) === 'full' && mrdrQualityFor({}) === 'full', 'the desktop keeps full');
+  assert(mrdrQualityFor({ isIphone: true }, 'full') === 'full' && mrdrQualityFor({ isDesktop: true }, 'phone') === 'phone',
+    '?mrdr= forces either tier on any device');
+  assert(mrdrQualityFor({ isIphone: true }, 'bogus') === 'phone', 'an unknown override is ignored');
+  let set = null;
+  const q = applyMobileSynthQuality({ setMrdrQuality: (m) => { set = m; } }, { isIpad: true });
+  assert(q === 'phone' && set === 'phone', 'applying it hands the tier to Audio.setMrdrQuality');
+  assert(main.includes('applyMobileSynthQuality(Audio, platform'), 'and the game applies it at boot');
+}
 
 console.log(failed ? '\nFAILED' : '\nPASSED');
 process.exit(failed ? 1 : 0);

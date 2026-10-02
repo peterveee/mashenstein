@@ -15,6 +15,7 @@ import { isDefaultMasterChain } from '../../src/engine/effects.js';
 // so a value equal to its default is left out and a default that drifts apart from
 // the engine's cannot quietly start being saved.
 import { AUX_DEFAULTS } from '../../src/engine/mixer.js';
+import { GROUP_IDS, laneGroup } from '../../src/data/group-buses.js';
 
 const round = (n) => Math.round(n * 1000) / 1000;
 
@@ -46,6 +47,11 @@ export const fmtEffects = (list = []) => `[${list.map((e) => {
 
 function laneLine(key, L, indent) {
   const parts = [];
+  // The group the channel is routed into, first: it is where the channel GOES, which is
+  // read before how loud it is. Only one of the four groups — anything else is unassigned
+  // and has nothing to say. See src/data/group-buses.js.
+  const group = laneGroup(L);
+  if (group) parts.push(`group: ${JSON.stringify(group)}`);
   if (L.gain) parts.push(`gain: ${round(L.gain)}`);
   if (L.pan) parts.push(`pan: ${round(L.pan)}`);
   // Compared against 1, not against falsy: width 0 is mono, which is a decision, and
@@ -142,6 +148,26 @@ export function mixEntrySource(entry, indent = '') {
       if (line) bits.push(`${aux}: ${line}`);
     }
     if (bits.length) body += `${i2}fx: { ${bits.join(', ')} },\n`;
+  }
+  // The group buses' own settings — fader, pan, mute, EQ, inserts — with every default
+  // left out, as everywhere else. Kept whether or not the group has members, because
+  // taking the last track out of a group must not throw away the compressor on it.
+  if (e.groups) {
+    const bits = [];
+    for (const id of GROUP_IDS) {
+      const G = e.groups[id];
+      if (!G || typeof G !== 'object') continue;
+      const p = [];
+      if (G.gain) p.push(`gain: ${round(G.gain)}`);
+      if (G.pan) p.push(`pan: ${round(G.pan)}`);
+      if (G.mute) p.push('mute: true');
+      const eq = G.eq || {};
+      const eqBits = ['low', 'mid', 'high'].filter((b) => eq[b]).map((b) => `${b}: ${round(eq[b])}`);
+      if (eqBits.length) p.push(`eq: { ${eqBits.join(', ')} }`);
+      if (G.effects && G.effects.length) p.push(`effects: ${fmtEffects(G.effects)}`);
+      if (p.length) bits.push(`${id}: { ${p.join(', ')} }`);
+    }
+    if (bits.length) body += `${i2}groups: { ${bits.join(', ')} },\n`;
   }
   if (lanes) body += `${i2}lanes: {\n${lanes}${i2}},\n`;
 

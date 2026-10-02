@@ -46,11 +46,12 @@ import {
   setMrdr3LayerSolo, syncMrdr3Voice, canHostMrdr3,
   mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
-import { mrdr3GateAdsrEvents } from './mrdr3/env.js';
+import { mrdr3GateAdsrEvents, mrdr3SyncBendKnots, mrdr3SyncBendSteps } from './mrdr3/env.js';
 import { mrdr3SyncKind, mrdr3SyncKey, hardSyncPartials } from './mrdr3/tables.js';
 import { compileJmjr4 } from './jmjr4/compile.js';
 import { renderIr } from './jmjr4/dsp.js';
 import { makeBitCrusher } from './effects.js';
+import { driveCurve, DRIVE_HEADROOM } from './drive-curve.js';
 import { buildJmjr4Note, singerVariants } from './jmjr4/note.js';
 import { JMJR4_DATA } from './jmjr4/data.js';
 import { advanceLine, newLineState } from './jmjr4/line.js';
@@ -117,9 +118,21 @@ export const MAX_UNISON = 4;
  * is never disabled, envelopes are never altered and no note is ever skipped — those would
  * be a different preset, not a cheaper rendering of this one.
  */
-export const MRDR_QUALITY = Object.freeze({ FULL: 'full', PERFORMANCE: 'performance' });
+//
+// `phone` is the third, and it IS a different rendering, on purpose (2 Oct 2026, Peter's
+// call): touch devices only, chosen by src/engine/phone-audio.js. Measured live in WebKit
+// (Safari's engine, an iPhone's and an iPad's), MRDR-3's cost there is its OSCILLATOR count
+// — unison was half of bestChoirAah — and its moving-pulse delay lines — PWM was 40–55% of
+// the PWM presets — and nothing else (k-rate params, the worklet backend and `performance`
+// were all measured and did not help). On an iPad Pro 11 (A12Z) the heavy cabinet songs
+// fell behind the audio clock. So on a phone every layer plays ONE voice, a pulse plays at
+// its centre width without the sweep, and filters cap at two stages. The desktop keeps
+// `full`. `?mrdr=full` / `?mrdr=phone` forces either on any device, for A/B by ear.
+export const MRDR_QUALITY = Object.freeze({ FULL: 'full', PERFORMANCE: 'performance', PHONE: 'phone' });
 const PERFORMANCE_UNISON = 3;
 const PERFORMANCE_MAX_FILTER_STAGES = 2;
+const PHONE_UNISON = 1;
+const PHONE_MAX_FILTER_STAGES = 2;
 
 const clampUnison = (n, dflt = 1) => Math.max(1, Math.min(MAX_UNISON, Math.round(Number(n) || dflt)));
 
@@ -831,27 +844,6 @@ const filterEnv = (stages, fe, t, end) =>
 const pitchEnv = (params, pe, t, end, base = 0) =>
   centsEnv(params, (pe?.semitones ?? 0) * 100, pe || {}, t, end, { base, dfltAttack: 0 });
 
-// The same envelope sampled at a sync-grain boundary. A hard-synced slave cannot put
-// this bend on `.detune`: that would move the whole already-shaped wavetable. Instead,
-// dynamic sync samples the envelope as a change in the slave/master ratio. Keep this
-// arithmetic beside `pitchEnv` so the panel's AMOUNT/ATTACK/DECAY/SUSTAIN values mean
-// exactly the same thing on an ordinary and a synced layer.
-function pitchEnvValue(pe, at, t, end) {
-  const amount = (pe?.semitones ?? 0) * 100;
-  if (!amount) return 0;
-  const span = Math.max(0.001, end - t);
-  const attack = Math.max(0, pe?.attack ?? 0);
-  const peakAt = attack > 0 ? t + Math.min(Math.max(0.001, attack), span * 0.45) : t;
-  const decay = Math.max(0, pe?.decay ?? 0);
-  const decayEnd = Math.min(end, peakAt + decay);
-  if (at < peakAt) return amount * Math.max(0, (at - t) / Math.max(0.001, peakAt - t));
-  if (decay > 0 && at < decayEnd) {
-    const u = Math.max(0, Math.min(1, (at - peakAt) / decay));
-    return amount * (1 + ((pe?.sustain ?? 0) - 1) * u);
-  }
-  return amount * (pe?.sustain ?? 0);
-}
-
 /**
  * The other half of a HELD envelope: let go, from wherever the note happens to be.
  *
@@ -988,7 +980,8 @@ function estimateMrdrEventCost(v, notes, dur) {
     const unison = clampUnison(s.unison);
     const pwm = s.type === 'pulse' && s.pwm && (s.pwm.depth ?? 0) > 0;
     const syncBend = v.sync && s.pitch && (s.pitch.semitones ?? 0) !== 0;
-    const sourceCount = unison * (pwm ? 2 : 1);
+    // A moving pulse is one saw plus a delay line since 2 Oct 2026 (it was two saws).
+    const sourceCount = unison * (pwm ? 1.5 : 1);
     topology += sourceCount;
     if (s.filter && !sectionBypassed(v, `layer.${key}.filter`, s.filter)) {
       const slope = Number(s.filter.slope) || 12;
@@ -2331,8 +2324,8 @@ export class VoiceRack {
    * two never mix.
    */
   setMrdrQuality(mode) {
-    const next = mode === MRDR_QUALITY.PERFORMANCE
-      ? MRDR_QUALITY.PERFORMANCE : MRDR_QUALITY.FULL;
+    const next = mode === MRDR_QUALITY.PERFORMANCE || mode === MRDR_QUALITY.PHONE
+      ? mode : MRDR_QUALITY.FULL;
     if (next === this.mrdrQuality) return this.mrdrQuality;
     this.mrdrQuality = next;
     return next;
@@ -2340,13 +2333,18 @@ export class VoiceRack {
 
   /** How many unison voices a layer may build under the current mode. */
   _unisonCap() {
+    if (this.mrdrQuality === MRDR_QUALITY.PHONE) return PHONE_UNISON;
     return this.mrdrQuality === MRDR_QUALITY.PERFORMANCE ? PERFORMANCE_UNISON : MAX_UNISON;
   }
 
   /** How many biquads a MRDR-3 filter slope may become under the current mode. */
   _filterStageCap() {
+    if (this.mrdrQuality === MRDR_QUALITY.PHONE) return PHONE_MAX_FILTER_STAGES;
     return this.mrdrQuality === MRDR_QUALITY.PERFORMANCE ? PERFORMANCE_MAX_FILTER_STAGES : 4;
   }
+
+  /** Whether a moving pulse (PWM) is built, or plays at its centre width — see MRDR_QUALITY. */
+  _pwmAllowed() { return this.mrdrQuality !== MRDR_QUALITY.PHONE; }
 
   _recordMrdrTailOpportunity(v, { notes, dur, time, preview, hold, mode }) {
     const stats = this._mrdrTailStats;
@@ -3511,10 +3509,7 @@ export class VoiceRack {
         tf.Q.value = v.tone.Q ?? 0.7;
         tf.connect(into); into = tf;
       }
-      const shaper = this.ctx.createWaveShaper();
-      shaper.curve = this._driveCurve(v.drive, v.shape);
-      shaper.connect(into);
-      return shaper;
+      return this._driveShaper(this.ctx, v.drive, v.shape, into);
     };
 
     // ---- CHORUS 2 --------------------------------------------------------------
@@ -3843,12 +3838,11 @@ export class VoiceRack {
       }
     }
     // A hard-synced slave with a PITCH ENVELOPE is not one oscillator: `_playLayer`
-    // refreshes its sync table in 32ms grains, each grain a fresh oscillator started at
-    // its own time. A Chrome oscillator takes its phase from the render quantum
-    // boundary rather than from `start()`, so where each grain lands in the grid — and
-    // therefore what the note sounds like — is not a function of pitch and length
-    // alone. The probe measures it at a fifth of the note's own peak, which is how this
-    // was found; `syncRazorLead` is the only preset in the catalogue that does it.
+    // crossfades a run of sync tables across the bend. When each part started at its own
+    // time, Chrome's render-quantum phase made the note not a function of pitch and
+    // length alone — the probe measured it at a fifth of the note's own peak. The parts
+    // now start together, but nothing has re-probed it, so it stays refused;
+    // `syncRazorLead` is the only preset in the catalogue that does it.
     if (v.layer.osc1 && v.sync) {
       const slaves = v.sync === '1+2+3' ? ['osc2', 'osc3']
         : v.sync === '1+2' ? ['osc2'] : v.sync === '1+3' ? ['osc3'] : [];
@@ -4895,10 +4889,7 @@ export class VoiceRack {
           tf.connect(into);
           into = tf;
         }
-        const shaper = ctx.createWaveShaper();
-        shaper.curve = this._driveCurve(v.drive, v.shape);
-        shaper.connect(into);
-        into = shaper;
+        into = this._driveShaper(ctx, v.drive, v.shape, into);
       }
 
       // ---- a pitched body ---------------------------------------------------
@@ -5439,9 +5430,7 @@ export class VoiceRack {
         tf.Q.value = v.tone.Q ?? 0.7;
         tf.connect(into); into = tf;
       }
-      const shaper = ctx.createWaveShaper();
-      shaper.curve = this._driveCurve(v.drive, v.shape);
-      shaper.connect(into); into = shaper;
+      into = this._driveShaper(ctx, v.drive, v.shape, into);
     }
     return { out, stackIn: into };
   }
@@ -5564,10 +5553,7 @@ export class VoiceRack {
         tf.Q.value = v.tone.Q ?? 0.7;
         tf.connect(into); into = tf;
       }
-      const shaper = ctx.createWaveShaper();
-      shaper.curve = this._driveCurve(v.drive, v.shape);
-      shaper.connect(into); into = shaper;
-      return into;
+      return this._driveShaper(ctx, v.drive, v.shape, into);
     };
     // The lane bus, kept standing even at MIX zero: three unity gains, so winding the
     // chorus up reaches notes that are ALREADY SOUNDING through the route that is already
@@ -6356,10 +6342,7 @@ export class VoiceRack {
           tf.Q.value = v.tone.Q ?? 0.7;
           tf.connect(into); into = tf;
         }
-        const shaper = ctx.createWaveShaper();
-        shaper.curve = this._driveCurve(v.drive, v.shape);
-        shaper.connect(into); into = shaper;
-        return into;
+        return this._driveShaper(ctx, v.drive, v.shape, into);
       };
 
       // One chain per note-on, built on demand: shaper → tone → trem → lane bus → out.
@@ -6717,8 +6700,10 @@ export class VoiceRack {
           // `_playGame` needs a gain per note to put vibrato in hertz on a tracking
           // bandpass. Every one starts at the same instant with the same phase, so a
           // chord's notes still breathe together: this costs nodes, not a sound.
+          // Not under the phone quality: the pulse plays at its centre width (the static
+          // table below), one oscillator instead of a saw and a delay line.
           const pwm = !hardSynced && spec.type === 'pulse'
-            && spec.pwm && (spec.pwm.depth ?? 0) > 0
+            && spec.pwm && (spec.pwm.depth ?? 0) > 0 && this._pwmAllowed()
             ? spec.pwm : null;
           const wCentre = Math.min(0.95, Math.max(0.05, spec.width ?? 0.5));
           // ---- the duty is SECONDS, and a glide moves what a second is worth --------
@@ -6781,8 +6766,6 @@ export class VoiceRack {
             const pitches = [];        // every frequency param the note must be written to
             const dets = [];           // every detune param the spread and vibrato reach
             const sourceEnds = new Map();
-            const sourceStarts = new Map();
-            const grainStarts = new Map();
             let o;
             if (isNoise) {
               o = ctx.createBufferSource();
@@ -6801,47 +6784,57 @@ export class VoiceRack {
               out = bp; sources.push(o);
               pitches.push(bp.frequency); dets.push(bp.detune);
             } else if (pwm) {
-              // Two saws, one delayed by the duty and subtracted. Both take the note, the
-              // detune, the spread, the pitch envelope and the FM together — they are one
-              // oscillator wearing two nodes, and anything written to only one of them
-              // would come out as a phasing artefact rather than as a pulse.
+              // One saw, and the same saw delayed by the duty and subtracted. It used to be
+              // TWO saws — a second oscillator taking the note, the detune, the spread, the
+              // pitch envelope, the vibrato, the FM and the start and stop exactly as the
+              // first did, so its output was the first's, sample for sample. Feeding the one
+              // saw into the delay line is therefore the same pulse, bit for bit, at half the
+              // oscillators (2 Oct 2026: measured live in WebKit, PWM was most of the cost of
+              // the PWM presets on a phone — bestPwmBrass 80% → 48% with PWM off).
               const a = ctx.createOscillator(); a.type = 'sawtooth';
-              const b = ctx.createOscillator(); b.type = 'sawtooth';
               // 0.25s is four seconds' worth of headroom at the lowest note anything here
               // can play; the delay only ever holds one cycle's fraction.
               const line = ctx.createDelay(0.25);
               const inv = ctx.createGain(); inv.gain.value = -1;
               const sum = ctx.createGain();
               a.connect(sum);
-              b.connect(line); line.connect(inv); inv.connect(sum);
+              a.connect(line); line.connect(inv); inv.connect(sum);
               line.delayTime.setValueAtTime(secsAt(startHz), lt);
               if (glideFrom) line.delayTime.exponentialRampToValueAtTime(secsAt(target), glideEnd);
               pwmSecs.connect(line.delayTime);
-              out = sum; sources.push(a, b);
-              pitches.push(a.frequency, b.frequency); dets.push(a.detune, b.detune);
+              out = sum; sources.push(a);
+              pitches.push(a.frequency); dets.push(a.detune);
               let pulseTopology = true;
               waveChanges.push((type) => {
                 if (type === 'pulse') {
                   if (!pulseTopology) {
-                    a.type = 'sawtooth'; b.type = 'sawtooth';
-                    a.connect(sum); b.connect(line);
+                    a.type = 'sawtooth';
+                    a.connect(line);
                     pulseTopology = true;
                   }
                   return;
                 }
                 a.type = nativeWave(type, 'square');
                 if (pulseTopology) {
-                  a.disconnect(); b.disconnect();
-                  a.connect(sum);
+                  // Off the delay line only: the dry path to `sum` is the oscillator itself.
+                  try { a.disconnect(line); } catch { /* not wired */ }
                   pulseTopology = false;
                 }
               });
             } else {
               // A static sync table is enough when the slave has no pitch envelope. When
-              // it does, refresh the table in short, crossfaded grains. Each grain is one
-              // master-frequency oscillator whose table contains the slave ratio sampled
-              // at that point in the envelope. This keeps the reset spectrum moving
-              // while staying native and OfflineAudioContext-renderable.
+              // it does, the envelope moves the RATIO: mrdr3SyncBendKnots plans knots
+              // between a grid of tables, and the sound is a straight crossfade from one
+              // knot's table to the next — one master-frequency oscillator per run of
+              // equal tables, with a hat-shaped gain. The worklet reads the same knots
+              // and tables and blends them per sample, so the two are one instrument.
+              //
+              // Every part starts with the note, not with its own window. They all run
+              // at the master's frequency under the same glide, vibrato and LFO, so
+              // started together they stay in PHASE and a crossfade is a blend of two
+              // tables; started at their own times they were out of phase by however
+              // much of a cycle the grain length happened to leave, and every crossfade
+              // partly cancelled itself. The parts that are done stop early.
               const syncBend = hardSynced && spec.pitch
                 && (spec.pitch.semitones ?? 0) !== 0;
               // OPTIONAL, because `syncMaster` is `L.osc1` and a layer stack need not have
@@ -6855,36 +6848,38 @@ export class VoiceRack {
                 + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
               if (syncBend) {
                 out = ctx.createGain();
-                const grainSeconds = 0.032;
-                const grainCount = Math.max(1, Math.ceil((end - lt) / grainSeconds));
-                const span = (end - lt) / grainCount;
-                const crossfade = Math.min(0.004, span * 0.25);
-                for (let grain = 0; grain < grainCount; grain++) {
-                  const start = lt + grain * span;
-                  const stop = Math.min(end, start + span);
-                  const middle = start + (stop - start) * 0.5;
-                  const bend = pitchEnvValue(spec.pitch, middle, lt, end);
+                const bendCents = (spec.pitch.semitones ?? 0) * 100;
+                const steps = mrdr3SyncBendSteps(bendCents);
+                const kt = [];
+                const kj = [];
+                const knots = mrdr3SyncBendKnots(bendCents, spec.pitch, end - lt, steps, kt, kj);
+                for (let a = 0; a < knots;) {
+                  let b = a;
+                  while (b + 1 < knots && kj[b + 1] === kj[a]) b++;
                   const relative = (ratio / masterRatio)
-                    * (2 ** ((slaveCents + bend) / 1200));
+                    * (2 ** ((slaveCents + (bendCents * kj[a]) / steps) / 1200));
                   const part = ctx.createOscillator();
                   part.setPeriodicWave(hardSyncTable(ctx, spec.type, relative, wCentre));
                   waveChanges.push((type) => part.setPeriodicWave(
                     hardSyncTable(ctx, type, relative, wCentre),
                   ));
+                  // Up from the previous knot, down to the next: the hats sum to one.
                   const level = ctx.createGain();
-                  level.gain.setValueAtTime(grain === 0 ? 1 : 0, start);
-                  if (grain > 0) level.gain.linearRampToValueAtTime(1, start + crossfade);
-                  if (grain < grainCount - 1) {
-                    level.gain.setValueAtTime(1, stop - crossfade);
-                    level.gain.linearRampToValueAtTime(0, stop);
+                  level.gain.setValueAtTime(a === 0 ? 1 : 0, lt);
+                  if (a > 0) {
+                    level.gain.setValueAtTime(0, lt + kt[a - 1]);
+                    level.gain.linearRampToValueAtTime(1, lt + kt[a]);
+                  }
+                  if (b < knots - 1) {
+                    level.gain.setValueAtTime(1, lt + kt[b]);
+                    level.gain.linearRampToValueAtTime(0, lt + kt[b + 1]);
+                    sourceEnds.set(part, Math.min(off + 0.01, lt + kt[b + 1] + 0.006));
                   }
                   part.connect(level); level.connect(out);
                   sources.push(part);
                   pitches.push(part.frequency);
                   dets.push(part.detune);
-                  grainStarts.set(part.frequency, start);
-                  sourceStarts.set(part, start);
-                  sourceEnds.set(part, stop + 0.006);
+                  a = b + 1;
                 }
               } else {
                 o = ctx.createOscillator();
@@ -6919,8 +6914,8 @@ export class VoiceRack {
               + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
             // The static offset is the pitch envelope's BASE when there is one, because
             // both live on `.detune` and an envelope scheduled from zero would cancel a
-            // DETUNE written before it. Dynamic sync puts the slave bend into each
-            // grain's table, so detune is reserved for master pitch and vibrato.
+            // DETUNE written before it. Dynamic sync puts the slave bend into its
+            // tables, so detune is reserved for master pitch and vibrato.
             if (!hardSynced && spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
               pitchEnv(dets, spec.pitch, lt, end, cents);
             } else if (cents) for (const d of dets) d.setValueAtTime(cents, lt);
@@ -6934,11 +6929,6 @@ export class VoiceRack {
             // scoop and was unreachable while the two shared one param.
             for (const pitch of pitches) {
               const playedRatio = hardSynced ? Math.max(0.01, syncMaster.ratio ?? 1) : ratio;
-              const grainStart = grainStarts.get(pitch);
-              if (grainStart != null) {
-                pitch.setValueAtTime(base * playedRatio, grainStart);
-                continue;
-              }
               if (glideFrom) {
                 // Written from the NOTE's start rather than the layer's, and that is not
                 // an oversight: a portamento is one gesture the whole note makes, not
@@ -7016,8 +7006,7 @@ export class VoiceRack {
             const late = entry > 0
               ? hitRandom(MRDR_ENSEMBLE_JITTER ? t : ENSEMBLE_FIXED_TIME, 1013 + u) * entry : 0;
             for (const src of sources) {
-              const ownStart = sourceStarts.get(src);
-              src.start(ownStart ?? (lt + late));
+              src.start(lt + late);
               const ownEnd = sourceEnds.get(src);
               const naturalStop = ownEnd ?? (off + 0.01);
               src.stop(tailPlan ? Math.min(naturalStop, tailPlan.cullAt + STOP_FADE) : naturalStop);
@@ -7098,58 +7087,18 @@ export class VoiceRack {
   }
 
   /**
-   * The drive's transfer curve, cached per amount and shape, normalised so the curve
-   * always reaches full scale and the drive changes the KNEE rather than the level.
-   * Deterministic — a formula, not noise — so it renders offline like everything else.
-   *
-   * Three shapes, and they are three different jobs rather than three flavours of the
-   * same one. `soft` is a desk being pushed: it rounds the top of a transient and adds
-   * the harmonics above it. `fold` turns the peak back on itself, so past a point MORE
-   * level makes a DIFFERENT sound instead of a louder one — ring-modulator territory,
-   * where a kick's body turns to metal. `crush` throws away resolution, which is
-   * quantisation noise riding the signal and the one that sounds like hardware.
-   *
-   * Only FOLD and CRUSH are named below; everything else falls through to the soft
-   * curve. That is what lets the shape be RENAMED without touching a preset — `soft`
-   * and the older `tanh` both land in the same branch and render identically.
+   * The drive's transfer curve, cached per amount and shape. The curve itself — and why
+   * it is shaped the way it is — lives in src/engine/drive-curve.js, because MRDR-3's
+   * worklet ships the same table and the two must not be able to drift.
    */
   _driveCurve(amount, shape = 'soft') {
     this._driveCurves ||= new Map();
     const key = `${shape}:${Math.round(amount * 100)}`;
     let curve = this._driveCurves.get(key);
     if (curve) return curve;
-    const a = Math.round(amount * 100) / 100;
-    curve = new Float32Array(1025);
-    if (shape === 'fold') {
-      // A sine folder: past full scale the transfer turns over rather than clipping,
-      // so the folds are smooth and there is no step for aliasing to hang off.
-      const k = 1 + a ** 2 * 12;
-      for (let i = 0; i < curve.length; i++) {
-        const x = (i / (curve.length - 1)) * 2 - 1;
-        curve[i] = Math.sin(k * x * Math.PI * 0.5);
-      }
-    } else if (shape === 'crush') {
-      // Twelve bits down to two across the dial. Rounded rather than truncated so the
-      // curve stays odd-symmetric and a quiet hit does not pick up a DC step.
-      const bits = Math.max(1.5, 12 - a * 10);
-      const steps = 2 ** bits;
-      for (let i = 0; i < curve.length; i++) {
-        const x = (i / (curve.length - 1)) * 2 - 1;
-        curve[i] = Math.round(x * steps) / steps;
-      }
-    } else {
-      // Square-law, like a drive knob: the bottom half of the travel is warmth, the
-      // near-square crunch lives in the top quarter. Linear-in-k put a heavily
-      // squared wave at 0.2 on the dial and left the rest of the travel repeating it.
-      const k = 1 + a ** 2 * 24;
-      const norm = Math.tanh(k);
-      for (let i = 0; i < curve.length; i++) {
-        const x = (i / (curve.length - 1)) * 2 - 1;
-        curve[i] = Math.tanh(k * x) / norm;
-      }
-    }
+    curve = driveCurve(amount, shape);
     // Bounded, because the key is the pot's position rounded to a percent and a drag
-    // across the dial mints a hundred of these per shape — each a 1025-point Float32Array
+    // across the dial mints a hundred of these per shape — each an 8193-point Float32Array
     // that nothing ever evicted. A miss costs one pass over the table and lands on the
     // identical curve, so forgetting the far end of a sweep is free.
     if (this._driveCurves.size >= DRIVE_CURVE_CACHE) {
@@ -7157,6 +7106,24 @@ export class VoiceRack {
     }
     this._driveCurves.set(key, curve);
     return curve;
+  }
+
+  /**
+   * The drive's shaper, feeding `dest`; returns the node to connect INTO.
+   *
+   * The gain in front is the curve's headroom: the table spans ±DRIVE_HEADROOM in the
+   * signal's own units, and a WaveShaper reads its table over −1…+1, so the signal is
+   * scaled into it here and the curve hands back full-size values. Without it anything
+   * over full scale clips flat at the end of the table, whatever the pot says.
+   */
+  _driveShaper(ctx, drive, shape, dest) {
+    const trim = ctx.createGain();
+    trim.gain.value = 1 / DRIVE_HEADROOM;
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = this._driveCurve(drive, shape);
+    trim.connect(shaper);
+    shaper.connect(dest);
+    return trim;
   }
 
   /**

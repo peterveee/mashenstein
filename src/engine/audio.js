@@ -17,6 +17,7 @@ import {
   clearNoteCacheState, invalidateNoteCacheState, MRDR_QUALITY,
 } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
+import { laneGroup } from '../data/group-buses.js';
 import { VOICES, VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
 import {
@@ -26,7 +27,7 @@ import {
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import {
   laneCurve, curveLevelAt, pointsBetween, cutsBetween, hasAutomation,
-  fxSectionAt, fxEdgesBetween, fxStartsAt, MASTER_KEY,
+  fxSectionAt, fxEdgesBetween, fxStartsAt,
 } from '../data/automation.js';
 import { warmTngr2Families } from './tngr2/tables.js';
 import { canHostTngr2, tngr2FamiliesOfVoice } from './tngr2/controller.js';
@@ -2445,8 +2446,10 @@ class AudioSys {
    * cache rather than invalidating them — flipping back finds them warm.
    */
   setMrdrQuality(mode) {
-    this.mrdrQuality = mode === MRDR_QUALITY.PERFORMANCE
-      ? MRDR_QUALITY.PERFORMANCE : MRDR_QUALITY.FULL;
+    // `phone` too: the touch-device tier src/engine/phone-audio.js chooses — see
+    // MRDR_QUALITY in voices.js.
+    this.mrdrQuality = mode === MRDR_QUALITY.PERFORMANCE || mode === MRDR_QUALITY.PHONE
+      ? mode : MRDR_QUALITY.FULL;
     this.voices?.setMrdrQuality(this.mrdrQuality);
     return this.mrdrQuality;
   }
@@ -5384,7 +5387,8 @@ class AudioSys {
     const seen = new Set();
     for (const [key, stored] of Object.entries(auto || {})) {
       // The master's lane is effect sections and nothing else — see _writeSections.
-      if (key === MASTER_KEY) continue;
+      // The master and the group buses carry sections only — no level line, no cuts.
+      if (key.startsWith('__')) continue;
       const curve = laneCurve(stored);
       if (!curve) continue;
       const strip = this.mixer?.lane(key);
@@ -5422,7 +5426,7 @@ class AudioSys {
     if (!auto) return null;
     if (this._sectionLanesFor?.auto === auto) return this._sectionLanesFor.keys;
     const keys = new Set(Object.entries(auto)
-      .filter(([key, lane]) => key !== MASTER_KEY && lane?.fx?.length).map(([key]) => key));
+      .filter(([key, lane]) => !key.startsWith('__') && lane?.fx?.length).map(([key]) => key));
     this._sectionLanesFor = { auto, keys };
     return keys;
   }
@@ -5442,7 +5446,8 @@ class AudioSys {
       .filter(([, lane]) => lane?.fx?.length).map(([key]) => key));
     if (!lanes.size && !this._fxLanes.size) return;
     const plan = barPlan(this.bank);
-    const fallback = (key, pos) => (key === MASTER_KEY ? []
+    // The master and the group buses have no per-bar snapshots to fall back to.
+    const fallback = (key, pos) => (key.startsWith('__') ? []
       : plan[Math.floor(pos / 16 + 1e-9) % plan.length]?.inlineFx?.[key] || []);
     for (const key of new Set([...lanes, ...this._fxLanes])) {
       const curve = lanes.has(key) ? laneCurve(auto[key]) : null;
@@ -6170,6 +6175,19 @@ class AudioSys {
           if (chain.length) strip.setEffects(chain, bank?.bpm || this.bpm);
         }
       }
+    }
+    // GROUP BUSES (src/data/group-buses.js): which lanes are routed into which group,
+    // and the groups' own settings. Outside `if (entry)` on purpose — a song with no mix
+    // still has to have the last song's routing taken off it — and over laneList, so a
+    // deleted track is not a member and a duplicated one can be.
+    if (this.mixer?.applyGroups) {
+      const laneRoutes = new Map();
+      const deleted = new Set(entry?.off || []);
+      for (const { key } of laneList(bank)) {
+        const g = deleted.has(key) ? null : laneGroup(entry?.lanes?.[key]);
+        if (g) laneRoutes.set(key, g);
+      }
+      this.mixer.applyGroups(entry?.groups || null, laneRoutes, bank?.bpm || this.bpm);
     }
     // Sends are final by here, so anything unused can be dropped from the graph.
     if (this.mixer) this.mixer.pruneAuxes();

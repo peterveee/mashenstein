@@ -19,6 +19,8 @@
 import { W, H, shake } from '../renderer.js';
 import { cellTile, grilleSoftTile, arcadeLandingDrop } from '../arcadeIntro.js';
 import { TapeRewindEffect } from '../../game/rewindFx.js';
+import { GROUND_Y } from '../camera.js';
+import { drawNeonBolt, neonStrikeFlash, NEON_STRIKE_SECONDS } from './neonMoods.js';
 
 export const SURGE_BPM = 132;
 export const SURGE_SLOT_BEATS = 16; // four bars a look
@@ -142,15 +144,65 @@ export function surgeFlip(slot, level, seed, progress = 0) {
   return { start, end: start + (early && long ? 8 : 4) };
 }
 
+// OTHER CABINETS' WEATHER, ON THE WRONG SCREEN (Peter, 2 Oct 2026: "overlay the snow
+// layers from frost and the lightning from neon in the surge levels as part of it
+// glitching out... ideally on screens they don't belong, eg. snow on speed levels").
+// A look may be crossed by Frost's blizzard (a bar or two of it, cut in and out with a
+// stutter like a bad signal) or by Neon's strike (the sky crawler and its bolt, landing
+// on a beat). Neither ever falls on its home look: no snow on the watercolor look, no
+// bolt on the neon one. Both sit clear of the moves either side, like the glitches.
+// Chance a look is crossed, by level, and climbing with surge-3's progress.
+export const SURGE_INTRUDERS = Object.freeze({
+  snow: { home: 'watercolor' },
+  bolt: { home: 'neon' },
+});
+const INTRUDE_CHANCE = { 1: 0.3, 2: 0.45, 3: 0.55 };
+const BOLT_BEATS = NEON_STRIKE_SECONDS / SPB;
+export function surgeIntrusions(slot, level, seed, lookName = null, progress = 0) {
+  const lv = Math.max(1, Math.min(3, Math.round(level) || 1));
+  const r = rng(seed * 97 + slot * 29 + 0.75);
+  const ramp = lv >= 3 ? 0.35 * Math.pow(clamp01(progress), 1.6) : 0;
+  const kinds = Object.keys(SURGE_INTRUDERS).filter((k) => SURGE_INTRUDERS[k].home !== lookName);
+  const out = [];
+  // surge-3 can take both in one look, the strike inside the snow.
+  const tries = lv >= 3 ? 2 : 1;
+  for (let i = 0; i < tries && kinds.length; i++) {
+    const roll = r(), pick = r(), when = r(), x = r(), long = r();
+    if (roll >= (i ? 0.35 + ramp : INTRUDE_CHANCE[lv] + ramp)) break;
+    const kind = kinds.splice(Math.floor(pick * kinds.length), 1)[0];
+    if (kind === 'snow') {
+      // A bar from the second or third bar line, or two bars late in surge-2/3.
+      const len = lv >= 2 && long < 0.4 ? 8 : 4;
+      const start = len === 8 ? 4 : (when < 0.5 ? 4 : 8);
+      out.push({ kind, start, len, strength: [0, 0.9, 1.15, 1.4][lv] });
+    } else {
+      // On a beat, its 2.4 s done before the last bar's move.
+      const start = 2 + Math.floor(when * Math.floor(14 - BOLT_BEATS - 2 + 1));
+      out.push({ kind, start, len: BOLT_BEATS, x: 0.18 + x * 0.64, seed: 11 + Math.floor(long * 89) });
+    }
+  }
+  return out;
+}
+
+// How much of the snow is on, b beats into its run of len: it cuts in and out on a
+// stutter of sixteenths, a bad signal finding the channel and losing it.
+export function surgeSnowOn(b, len) {
+  if (!(b >= 0 && b < len)) return 0;
+  const edge = Math.min(b, len - b);
+  if (edge >= 0.75) return 1;
+  return Math.floor(edge * 4) % 2 === 0 ? 1 : 0;
+}
+
 // Where the act is: the look, and any move or glitches under way. `beat` is quarter
 // notes of THE SURGE's song; each stage opens three looks on from the last.
-export function surgePhase(beat, { level = 1, seed = 1, count = 8, progress = 0 } = {}) {
+// `names` (the cycle's style names) lets a look refuse its own cabinet's weather.
+export function surgePhase(beat, { level = 1, seed = 1, count = 8, progress = 0, names = null } = {}) {
   const lv = Math.max(1, Math.min(3, Math.round(level) || 1));
   const n = Math.floor(beat / SURGE_SLOT_BEATS) + (lv - 1) * 3;
   const since = beat - Math.floor(beat / SURGE_SLOT_BEATS) * SURGE_SLOT_BEATS;
   const toNext = SURGE_SLOT_BEATS - since;
   const next = surgeMove(seed, n + 1), last = surgeMove(seed, n);
-  const ph = { n, look: mod(n, count), level: lv, seed, count, move: null, u: 0, change: 0, glitches: [] };
+  const ph = { n, look: mod(n, count), level: lv, seed, count, move: null, u: 0, change: 0, glitches: [], intrusions: [] };
   if (toNext <= SURGE_MOVES[next].lead) Object.assign(ph, { move: next, u: -toNext, change: n + 1 });
   else if (since < SURGE_MOVES[last].tail) Object.assign(ph, { move: last, u: since, change: n });
   else {
@@ -158,6 +210,9 @@ export function surgePhase(beat, { level = 1, seed = 1, count = 8, progress = 0 
       .filter((g) => since >= g.start && since < g.start + g.len)
       .map((g) => ({ ...g, b: since - g.start }));
   }
+  ph.intrusions = surgeIntrusions(n, lv, seed, names?.[ph.look] ?? null, progress)
+    .filter((x) => since >= x.start && since < x.start + x.len)
+    .map((x) => ({ ...x, b: since - x.start }));
   const flip = surgeFlip(n, lv, seed, progress);
   if (flip) {
     ph.flip = since >= flip.start && since < flip.end;
@@ -300,7 +355,8 @@ function scaleOf(m) { return Math.hypot(m.a, m.b) || 1; }
 // paints look i's backdrop on ctx under its own transform, dy frame px down and its
 // camera scrubbed `scrub` px back. Returns what post() needs.
 export function paintSurgeBackdrop(ctx, ph, paint) {
-  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : { a: 1, b: 0, d: 1, f: 0 };
+  // A recording or stub context can have the method and hand back nothing (tests/boss.js).
+  const m = (typeof ctx.getTransform === 'function' && ctx.getTransform()) || { a: 1, b: 0, d: 1, f: 0 };
   const k = scaleOf(m);
   // Where the lane's top edge lands on the canvas: the line the lane glitches start at.
   const laneTop = m.d * 232 + m.f;
@@ -312,6 +368,7 @@ export function paintSurgeBackdrop(ctx, ph, paint) {
 
   if (!ph.move) {
     paint(ph.look);
+    for (const x of ph.intrusions) if (x.kind === 'bolt') surgeBolt(ctx, x);
     for (const g of ph.glitches) if (!g.lane) glitchBackdrop(ctx, g, g.full ? full() : band(g.band), k, paint);
     return live;
   }
@@ -429,6 +486,28 @@ export function paintSurgeBackdrop(ctx, ph, paint) {
     }
   }
   return live;
+}
+
+// Neon's strike over a look that is not Neon's: the crawler across the top of the sky
+// and the bolt down onto the horizon, in the backdrop's own frame space, so the lane and
+// the hero stand in front of it and the glitches after it tear it with the rest.
+function surgeBolt(ctx, x) {
+  const s = x.b * SPB;
+  const cov = ctx.__mashBackgroundCoverage || { left: 0, width: W };
+  const band = ctx.__mashBackgroundBand;
+  const tall = band && Number.isFinite(band.top);
+  const hitX = cov.left + cov.width * x.x;
+  const hitY = tall ? band.top + (GROUND_Y - band.top) * 0.4 : GROUND_Y - 70;
+  const top = tall ? band.top + (GROUND_Y - band.top) * 0.08 : -34;
+  drawNeonBolt(ctx, s, hitX, hitY, x.seed, { left: cov.left - 20, right: cov.left + cov.width + 20, top, thin: true });
+  const flash = neonStrikeFlash(s);
+  if (flash > 0) {
+    ctx.save();
+    ctx.globalAlpha = flash * 0.8;
+    ctx.fillStyle = '#eafcff';
+    ctx.fillRect(cov.left - 40, -40, cov.width + 80, H + 80);
+    ctx.restore();
+  }
 }
 
 function glitchBackdrop(ctx, g, R, k, paint) {

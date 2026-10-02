@@ -449,7 +449,7 @@ export const mix = {
   order: ["kick","snare","clap","hats","ohats","tom","tom2","crash","crash2","bass","lead","lead2","lead3","lead4","lead5","chords","chords2"],
   labels: {"lead":"HARVEST Piano Hook","lead2":"HERO PWM Double","lead3":"PLUCK Night Sequencer","lead4":"ICE Octave","lead5":"HARVEST Harmony","chords":"STRING MACHINE Pump","chords2":"BRASS Answers","bass":"OUTRUN Octaves","crash2":"TWO BAR Lift"},
   voice: {"kickVoice":"ds909KickPunch","snareVoice":"dsSnare","clapVoice":"ds909Clap","hatsVoice":"dsHatClosed","ohatsVoice":"ohat909SixBit","tomVoice":"sdsTomHigh","tom2Voice":"sdsTomLow","crashVoice":"ds909Crash","bassVoice":"bass80sMono","leadVoice":"tngrConcertGrand","lead2Voice":"bestPwmHollowLead","lead3Voice":"tngrCrystalTrigger","lead4Voice":"tngrIceBell","lead5Voice":"roundMono2","chordsVoice":"bestPwmStrings","chords2Voice":"bestPwmBrass"},
-  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":4,"note":"White noise through a band climbing 250 Hz to 8 kHz over 4.00s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":4,"Q":1.6,"slope":-24,"color":"white","attack":3.68,"hold":0,"decay":0.32,"curve":"exp","gain":1},"drive":0.08,"peak":0.034}},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":4,"note":"White noise through a band climbing 250 Hz to 8 kHz over 4.00s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":4,"Q":1.6,"slope":-24,"color":"white","attack":3.68,"hold":0,"decay":0.32,"curve":"exp","gain":1},"drive":0.22,"peak":0.034}},
   lanes: {
     kick: { gain: 1, eq: { low: -2 } },
     snare: { gain: 7.7, eq: { low: 2.8, high: 5.2 }, effects: [{ id: "reverb", params: { decay: 1.1, preDelay: 0.008, wet: 0.48 } }, { id: "noisegate", params: { threshold: -34, attack: 0.002, release: 0.055 } }] },
@@ -466,7 +466,7 @@ export const mix = {
     lead3: { gain: -9, pan: -0.2, send: { delay: 0.22 } },
     lead4: { gain: -12, pan: 0.15, send: { reverb: 0.35 } },
     lead5: { gain: -10, send: { delay: 0.08 } },
-    chords: { gain: -5, send: { reverb: 0.35 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.8 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.16, decay: 0.02, depth: 0.6 } }] },
+    chords: { gain: -6.97, send: { reverb: 0.439 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.8 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.16, decay: 0.02, depth: 0.6 } }] },
     chords2: { gain: -12, pan: 0.15, send: { reverb: 0.2 } },
   },
 };

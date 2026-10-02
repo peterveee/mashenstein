@@ -49,6 +49,11 @@ const TOOLS = [
     blurb: 'a fader per cue over a real song. Auto walks the list; Save writes SFX_TRIM.',
   },
   {
+    id: 'bangersounds', label: 'BANGER SOUNDS', port: 8022,
+    script: 'tools/banger-sounds.js', portEnv: 'MASH_BANGER_SOUNDS_PORT', npm: 'npm run banger-sounds',
+    blurb: 'every sound Make a Banger… uses: parts, kits, the Random lists, moods. Audition, test-banger, Save writes tools/lib/banger/sounds.js.',
+  },
+  {
     id: 'levels', label: 'LEVEL EDITOR', port: 8021,
     script: 'tools/level-editor.js', portEnv: 'MASH_LEVELS_PORT', npm: 'npm run levels',
     blurb: 'the timeline of a stage: sections, set pieces, checkpoints, clock. Writes src/data/stage-layouts.js.',
@@ -155,6 +160,19 @@ ACTIONS.push(
     speed: 'background',
     steps: (args) => [niced(['tools/bass-report.js', ...idsFrom(args), ...optionFlags('bassreport', args)])],
     openPath: reportHref('bass-report.json', 'bass'),
+  },
+  {
+    id: 'bangerlevels', group: 'audio', label: 'BANGER LEVELS',
+    blurb: 'makes test bangers in the ticked styles and renders them channel by channel: how far each channel lands from the part it is matched to (the style’s seed banger once you have used one, else its seed remix), before levelling and after (tools/banger-levels.js). Measures any new banger sound first. Writes only the report. About ten minutes a style. + FIT folds each channel’s average miss into the levels.',
+    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'kraftwerk', 'synthwave'],
+    options: [{ key: 'fit', label: '+ FIT', flag: '--fit' }],
+    needsIds: true,
+    speed: 'background',
+    steps: (args) => [
+      niced(['tools/banger-levels.js', 'curves']),
+      niced(['tools/banger-levels.js', 'check', ...idsFrom(args), ...optionFlags('bangerlevels', args)]),
+    ],
+    openPath: reportHref('banger-levels.json', 'bangers'),
   },
 );
 // PERFORMANCE: how smoothly cabinets 1-6 run on a phone-shaped screen, portrait first
@@ -478,6 +496,7 @@ async function handle(req, res) {
     return json(res, 200, {
       levels: read('song-levels.json'),
       bass: read('bass-report.json'),
+      bangers: read('banger-levels.json'),
       frames: read('frame-report.json'),
       running: ACTIONS.filter((a) => (a.group === 'audio' || a.group === 'perf') && runs.get(a.id)?.running).map((a) => a.label),
     });

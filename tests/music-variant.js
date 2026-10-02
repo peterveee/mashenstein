@@ -45,7 +45,7 @@ async function main() {
     bundle: true, format: 'iife', target: ['es2020'], write: false, logLevel: 'silent',
   });
   const bundleJs = built.outputFiles[0].text;
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -213,10 +213,17 @@ async function main() {
     }
 
     // ---- a hard bank change takes the loop with it -------------------------------
+    // Neon's arrangement names a form loop of its own (bars 21-80), which setBank arms on
+    // the way in — so "cleared" means the old song's loop is gone and the new song's own
+    // is what stands, not that nothing is armed.
+    arm();
+    Audio.setLoop();
+    Audio.setBank(CABINET_BY_ID.neon.music);
+    const neonOwn = { start: Audio.loopStart, end: Audio.loopEnd };
     arm();
     Audio.setLoop(0, 64);
     Audio.setBank(CABINET_BY_ID.neon.music);
-    r.loopClearedByBankChange = { start: Audio.loopStart, end: Audio.loopEnd };
+    r.loopClearedByBankChange = { start: Audio.loopStart, end: Audio.loopEnd, own: neonOwn };
 
     // ---- a request is dropped when the song moves underneath it -------------------
     arm();
@@ -427,8 +434,10 @@ async function main() {
     && out.customHandover.rebuilt === 0,
     `the Field Service handover rides the bar line with mbCompN on the master, no rebuild (${JSON.stringify(out.customHandover)})`);
 
-  assert(out.loopClearedByBankChange.start === null && out.loopClearedByBankChange.end === null,
-    'a bank change clears the loop the previous song armed — the food court does not inherit four bars');
+  assert(!(out.loopClearedByBankChange.start === 0 && out.loopClearedByBankChange.end === 64)
+    && out.loopClearedByBankChange.start === out.loopClearedByBankChange.own.start
+    && out.loopClearedByBankChange.end === out.loopClearedByBankChange.own.end,
+    `a bank change clears the loop the previous song armed — the food court does not inherit four bars, and the new song's own form loop is what stands (${JSON.stringify(out.loopClearedByBankChange)})`);
 
   assert(out.droppedOnSongChange.fired === 0 && out.droppedOnSongChange.pending === false,
     'a pending change is dropped when the song moves out from under it');

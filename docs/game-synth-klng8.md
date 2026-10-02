@@ -495,13 +495,15 @@ It takes a level and nothing else. Its shape is the engine's — 300 → 180 Hz 
 
 ### Drive Shaper
 
-A `WaveShaperNode` applied to the summed sections, in one of three shapes (`v.shape`):
+A `WaveShaperNode` applied to the summed sections, in one of three shapes (`v.shape`). The curve is the one every synth with a DRIVE pot shares — `src/engine/drive-curve.js`:
 
-- `'soft'` (default) — a desk being pushed. **Square-law scaling**: `k = 1 + amount² × 24`, so the bottom half of the travel is warmth and near-square crunch lives in the top quarter
-- `'fold'` — a sine folder: past full scale the transfer turns over rather than clipping, so more level makes a *different* sound instead of a louder one. Ring-modulator territory
+- `'soft'` (default) — a desk being pushed. `tanh(k·x)/tanh(k)` with **square-law scaling** `k = amount² × 24`, so the bottom of the pot is clean, the bottom half is warmth and near-square crunch lives in the top quarter
+- `'fold'` — a sine folder: past the knee the transfer turns over rather than clipping, so more level makes a *different* sound instead of a louder one. Ring-modulator territory
 - `'crush'` — quantisation, 12 bits down to ~1.5 across the dial. Rounded rather than truncated so the curve stays odd-symmetric
 
-All three: **inside the voice**, before the per-note level (a preset drives the same however loud its lane is), **normalized**, and **cached** per `shape:amount` key — formulas, not noise, so they render deterministically offline.
+All three: **inside the voice**, before the per-note level (a preset drives the same however loud its lane is), **knee at full scale** (1 in is 1 out for SOFT at every setting), and **cached** per `shape:amount` key — formulas, not noise, so they render deterministically offline.
+
+The table covers **±8 (+18 dB)**, and a gain of 1/8 in front of the shaper scales the signal into it. Before 2 Oct 2026 it covered only ±1 and SOFT started at `k = 1`: a voice summing above full scale — most of them — was hard-clipped at the table's end whatever the pot said, and DRIVE 0.01 was already most of the way to DRIVE 1.0. Every song's own copy of a driven voice was converted then so the songs kept their sound.
 
 ### Tone Filter (`v.tone`)
 

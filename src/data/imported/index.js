@@ -28,6 +28,13 @@ import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
 import * as BABY_PORTABLE_ROCK_4_COPY from './baby-portable-rock-4-copy.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
+import * as BANGER_SEED_BIG_ROOM from './banger-seed-big-room.js';
+import * as BANGER_SEED_CHIPSTEP from './banger-seed-chipstep.js';
+import * as BANGER_SEED_EUROBEAT from './banger-seed-eurobeat.js';
+import * as BANGER_SEED_FUTURE_BASS from './banger-seed-future-bass.js';
+import * as BANGER_SEED_KRAFTWERK from './banger-seed-kraftwerk.js';
+import * as BANGER_SEED_SYNTHWAVE from './banger-seed-synthwave.js';
+import * as BANGER_SEED_TRANCE from './banger-seed-trance.js';
 import * as BARBER_2 from './barber-2.js';
 import * as BARBER_3 from './barber-3.js';
 import * as BARBER_4 from './barber-4.js';
@@ -84,6 +91,17 @@ import * as NEON_REMIX_FREEFALL from './neon-remix-freefall.js';
 import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
 import * as NEON_REMIX_LIVE_WIRE from './neon-remix-live-wire.js';
 import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
+import * as ORIGINAL_CARDBOARD from './original-cardboard.js';
+import * as ORIGINAL_CRYPT from './original-crypt.js';
+import * as ORIGINAL_FROST from './original-frost.js';
+import * as ORIGINAL_HUB from './original-hub.js';
+import * as ORIGINAL_NEON from './original-neon.js';
+import * as ORIGINAL_OFFICE from './original-office.js';
+import * as ORIGINAL_PLUMBER from './original-plumber.js';
+import * as ORIGINAL_RHYTHM from './original-rhythm.js';
+import * as ORIGINAL_SPEED from './original-speed.js';
+import * as ORIGINAL_SURGE from './original-surge.js';
+import * as ORIGINAL_TITLE from './original-title.js';
 import * as PLUMBER_PANIC_ALT from './plumber-panic-alt.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
@@ -166,6 +184,13 @@ export const IMPORTED_BY_ID = {
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
   "baby-portable-rock-4-copy": { bank: BABY_PORTABLE_ROCK_4_COPY.bank, title: BABY_PORTABLE_ROCK_4_COPY.title, group: "copy", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
+  "banger-seed-big-room": { bank: BANGER_SEED_BIG_ROOM.bank, title: BANGER_SEED_BIG_ROOM.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_BIG_ROOM.banger },
+  "banger-seed-chipstep": { bank: BANGER_SEED_CHIPSTEP.bank, title: BANGER_SEED_CHIPSTEP.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_CHIPSTEP.banger },
+  "banger-seed-eurobeat": { bank: BANGER_SEED_EUROBEAT.bank, title: BANGER_SEED_EUROBEAT.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_EUROBEAT.banger },
+  "banger-seed-future-bass": { bank: BANGER_SEED_FUTURE_BASS.bank, title: BANGER_SEED_FUTURE_BASS.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_FUTURE_BASS.banger },
+  "banger-seed-kraftwerk": { bank: BANGER_SEED_KRAFTWERK.bank, title: BANGER_SEED_KRAFTWERK.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_KRAFTWERK.banger },
+  "banger-seed-synthwave": { bank: BANGER_SEED_SYNTHWAVE.bank, title: BANGER_SEED_SYNTHWAVE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_SYNTHWAVE.banger },
+  "banger-seed-trance": { bank: BANGER_SEED_TRANCE.bank, title: BANGER_SEED_TRANCE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_TRANCE.banger },
   "barber-2": { bank: BARBER_2.bank, title: BARBER_2.title, group: "imported", writable: true },
   "barber-3": { bank: BARBER_3.bank, title: BARBER_3.title, group: "imported", writable: true },
   "barber-4": { bank: BARBER_4.bank, title: BARBER_4.title, group: "imported", writable: true },
@@ -222,6 +247,17 @@ export const IMPORTED_BY_ID = {
   "neon-remix-golden-hour": { bank: NEON_REMIX_GOLDEN_HOUR.bank, title: NEON_REMIX_GOLDEN_HOUR.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-live-wire": { bank: NEON_REMIX_LIVE_WIRE.bank, title: NEON_REMIX_LIVE_WIRE.title, group: "alternate", writable: true, alternateOf: "neon" },
   "new-the-food-court": { bank: NEW_THE_FOOD_COURT.bank, title: NEW_THE_FOOD_COURT.title, group: "alternate", writable: true, alternateOf: "hub" },
+  "original-cardboard": { bank: ORIGINAL_CARDBOARD.bank, title: ORIGINAL_CARDBOARD.title, group: "original", writable: false },
+  "original-crypt": { bank: ORIGINAL_CRYPT.bank, title: ORIGINAL_CRYPT.title, group: "original", writable: false },
+  "original-frost": { bank: ORIGINAL_FROST.bank, title: ORIGINAL_FROST.title, group: "original", writable: false },
+  "original-hub": { bank: ORIGINAL_HUB.bank, title: ORIGINAL_HUB.title, group: "original", writable: false },
+  "original-neon": { bank: ORIGINAL_NEON.bank, title: ORIGINAL_NEON.title, group: "original", writable: false },
+  "original-office": { bank: ORIGINAL_OFFICE.bank, title: ORIGINAL_OFFICE.title, group: "original", writable: false },
+  "original-plumber": { bank: ORIGINAL_PLUMBER.bank, title: ORIGINAL_PLUMBER.title, group: "original", writable: false },
+  "original-rhythm": { bank: ORIGINAL_RHYTHM.bank, title: ORIGINAL_RHYTHM.title, group: "original", writable: false },
+  "original-speed": { bank: ORIGINAL_SPEED.bank, title: ORIGINAL_SPEED.title, group: "original", writable: false },
+  "original-surge": { bank: ORIGINAL_SURGE.bank, title: ORIGINAL_SURGE.title, group: "original", writable: false },
+  "original-title": { bank: ORIGINAL_TITLE.bank, title: ORIGINAL_TITLE.title, group: "original", writable: false },
   "plumber-panic-alt": { bank: PLUMBER_PANIC_ALT.bank, title: PLUMBER_PANIC_ALT.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },

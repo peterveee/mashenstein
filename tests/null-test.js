@@ -76,8 +76,13 @@ export const TOLERANCE = 5e-6;
  * them; `title` carries a compressor and a limiter at -19.4dB and reproduces fine. If one of
  * those comes up in level and starts warning, this is the reason and this is the place.
  */
+//
+// `plumber.mix` joined it on 2 Oct 2026: the levelling pass gave plumber the same
+// mbCompN → l7 master. Rendered twice against itself it now differs by 7.838e-6 with the
+// master and 6.985e-7 with the master removed (work/local/_plumber-determinism.mjs) —
+// the same mechanism, at a smaller gain, and over 5e-6 every run.
 export const LOOSE_TOLERANCE = 5e-4;
-export const looseIds = new Set(['megamix.mix']);
+export const looseIds = new Set(['megamix.mix', 'plumber.mix']);
 export const toleranceFor = (id, suffix) => (looseIds.has(`${id}${suffix}`) ? LOOSE_TOLERANCE : TOLERANCE);
 
 // plumber covers the melodic lanes and the echo; megamix walks every song's voices

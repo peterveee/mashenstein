@@ -36,6 +36,7 @@ import {
 import { prepareEngineWorklets } from './engine-worklets.js';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
 import { MASTER_KEY } from '../data/automation.js';
+import { GROUP_IDS, groupIdOf, isGroupKey, groupSettings } from '../data/group-buses.js';
 
 export const dbToGain = (db) => 10 ** (db / 20);
 export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
@@ -102,40 +103,94 @@ const DEFAULTS = {
  *   M = (L+R)/2      L' = M + S·w
  *   S = (L-R)/2      R' = M - S·w
  *
- * At w = 1 that reduces to L' = L and R' = R with no rounding beyond a pair of
- * multiply-adds, which is what keeps the null test intact. Only gains and a
- * splitter/merger, so it costs essentially nothing.
+ * At w = 1 that reduces to L' = L and R' = R, so at w = 1 the network is not in the
+ * graph at all: the stage is `input → output` and nothing else (2 Oct 2026). Every
+ * strip carries one, almost every strip sits at 1, and Chrome VISITS every connected
+ * node every quantum whether or not it does anything: measured live, a light song made
+ * ~1200 node visits a quantum of which only a few percent did real work, and these
+ * eleven nodes a strip were the largest share (work/local/_live-trace-probe.mjs). The
+ * network is built the first time a width other than 1 is asked for, and taken out again
+ * once the width is back at exactly 1 with nothing scheduled (live contexts only).
+ *
+ * A path swap is a disconnect and a connect in one task, which the audio thread sees
+ * whole — never both paths, never neither — and at w = 1 both paths carry the same
+ * signal to within a last-bit rounding, so the swap is inaudible.
  */
 function makeWidth(ctx) {
   const input = ctx.createGain();
   input.channelCount = 2; input.channelCountMode = 'explicit'; input.channelInterpretation = 'speakers';
-  const split = ctx.createChannelSplitter(2);
-  const merge = ctx.createChannelMerger(2);
-  input.connect(split);
+  // The stage's one exit, whichever path feeds it, so nothing downstream rewires.
+  const output = ctx.createGain();
+  const live = typeof ctx.startRendering !== 'function';
+  const clamp = (w) => Math.max(0, Math.min(2, w));
 
-  const mid = ctx.createGain(); mid.gain.value = 1;
-  const side = ctx.createGain(); side.gain.value = 1;
-  const lToM = ctx.createGain(); lToM.gain.value = 0.5;
-  const rToM = ctx.createGain(); rToM.gain.value = 0.5;
-  const lToS = ctx.createGain(); lToS.gain.value = 0.5;
-  const rToS = ctx.createGain(); rToS.gain.value = -0.5;
-  split.connect(lToM, 0); split.connect(rToM, 1);
-  split.connect(lToS, 0); split.connect(rToS, 1);
-  lToM.connect(mid); rToM.connect(mid);
-  lToS.connect(side); rToS.connect(side);
+  let ms = null;           // the mid/side network while it is in the graph
+  let dropTimer = null;    // live only: the pending return to the bypass
+  input.connect(output);
 
-  const sPos = ctx.createGain(); sPos.gain.value = 1;
-  const sNeg = ctx.createGain(); sNeg.gain.value = -1;
-  side.connect(sPos); side.connect(sNeg);
-  mid.connect(merge, 0, 0); sPos.connect(merge, 0, 0);   // L = M + S
-  mid.connect(merge, 0, 1); sNeg.connect(merge, 0, 1);   // R = M - S
+  const buildMs = () => {
+    const split = ctx.createChannelSplitter(2);
+    const merge = ctx.createChannelMerger(2);
+    const mid = ctx.createGain(); mid.gain.value = 1;
+    const side = ctx.createGain(); side.gain.value = 1;   // transparent until moved
+    const lToM = ctx.createGain(); lToM.gain.value = 0.5;
+    const rToM = ctx.createGain(); rToM.gain.value = 0.5;
+    const lToS = ctx.createGain(); lToS.gain.value = 0.5;
+    const rToS = ctx.createGain(); rToS.gain.value = -0.5;
+    split.connect(lToM, 0); split.connect(rToM, 1);
+    split.connect(lToS, 0); split.connect(rToS, 1);
+    lToM.connect(mid); rToM.connect(mid);
+    lToS.connect(side); rToS.connect(side);
+    const sPos = ctx.createGain(); sPos.gain.value = 1;
+    const sNeg = ctx.createGain(); sNeg.gain.value = -1;
+    side.connect(sPos); side.connect(sNeg);
+    mid.connect(merge, 0, 0); sPos.connect(merge, 0, 0);   // L = M + S
+    mid.connect(merge, 0, 1); sNeg.connect(merge, 0, 1);   // R = M - S
+    merge.connect(output);
+    input.connect(split);
+    try { input.disconnect(output); } catch { /* not wired */ }
+    return { side, nodes: [split, merge, mid, side, lToM, rToM, lToS, rToS, sPos, sNeg] };
+  };
+  const ensureMs = () => {
+    if (dropTimer != null) { clearTimeout(dropTimer); dropTimer = null; }
+    if (!ms) ms = buildMs();
+    return ms;
+  };
+  // Back to the bypass once the side gain has arrived at 1 and nothing newer is asked.
+  const dropMsAfter = (seconds) => {
+    if (!ms || !live) return;
+    if (dropTimer != null) clearTimeout(dropTimer);
+    dropTimer = setTimeout(() => {
+      dropTimer = null;
+      if (!ms || Math.abs(ms.side.gain.value - 1) > 1e-4) return;
+      input.connect(output);
+      try { input.disconnect(ms.nodes[0]); } catch { /* not wired */ }
+      for (const n of ms.nodes) { try { n.disconnect(); } catch { /* already gone */ } }
+      ms = null;
+    }, Math.max(0, seconds) * 1000 + 250);
+  };
 
   return {
     input,
-    output: merge,
-    set(w) { side.gain.setTargetAtTime(Math.max(0, Math.min(2, w)), ctx.currentTime, 0.03); },
+    output,
+    set(w) {
+      const v = clamp(w);
+      if (v === 1 && !ms) return;
+      const { side } = ensureMs();
+      side.gain.setTargetAtTime(v, ctx.currentTime, 0.03);
+      // setTargetAtTime approaches and never lands: give it ten time constants, then pin.
+      if (v === 1) dropMsAfter(0.3);
+    },
     /** The same move at an audio time — see rampParam. */
-    ramp(w, when, seconds) { rampParam(ctx, side.gain, Math.max(0, Math.min(2, w)), when, seconds); },
+    ramp(w, when, seconds) {
+      const v = clamp(w);
+      if (v === 1 && !ms) return;
+      const { side } = ensureMs();
+      rampParam(ctx, side.gain, v, when, seconds);
+      if (v === 1) dropMsAfter(Math.max(0, (when ?? ctx.currentTime) - ctx.currentTime) + (seconds || 0));
+    },
+    /** Whether the mid/side network is in the graph — for tests and the perf probe. */
+    get active() { return !!ms; },
   };
 }
 
@@ -249,7 +304,39 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     sleepTimer = setTimeout(pollForSilence, EFFECT_SLEEP_POLL_MS);
   };
 
+  // A chain EMPTIED is not taken out of the graph until the task ends, and a chain set
+  // back to the very same effects before then never left it. That is what applyMix does
+  // to every slot on the desk — reset() empties them all, then the mix puts each one back
+  // — and it runs on every preset choice, not only on a song change.
+  //
+  // It used to dispose and rebuild them, and the audio thread does not wait for the task
+  // to finish: it renders a quantum against whatever the graph is at that instant, so the
+  // ~10ms between reset() and the re-apply was heard. A rebuilt chain with lookahead also
+  // starts from an empty delay line — a master of mbCompN (6ms) and l7 (3ms) put 9ms of
+  // digital silence across the whole mix on every drum preset picked while the song played
+  // (2 Oct 2026, measured: three silent render quanta after every applyMix, none after a
+  // re-bank, none after this). A compressor's envelope, a reverb's tail and an LFO's phase
+  // went the same way. So the links stay wired and in place, `chain` reads empty, and at
+  // the end of the task they are either back in `chain` or unwired and disposed.
+  let pending = null;      // { links, bpm, wired }: emptied this task, still in the graph
+  const disposeLinks = (links) => {
+    for (const link of links) {
+      try { link.node.dispose(); } catch { /* fine */ }
+      try { link.muteDry.disconnect(); } catch { /* fine */ }
+      try { link.muteWet.disconnect(); } catch { /* fine */ }
+    }
+  };
+  // The same effects, settings, bypass and mute, at the same tempo: what a fresh build of
+  // `list` would be. Anything less is a different chain and is built new, as it always was.
+  const sameChain = (links, linksBpm, list, bpm) => linksBpm === bpm
+    && links.length === list.length
+    && list.every((e, i) => e && links[i].def?.id === e.id
+      && JSON.stringify(links[i].params || {}) === JSON.stringify(e.params || {})
+      && !!links[i].bypassed === !!e.bypass && !!links[i].muted === !!e.mute);
+
   const rewire = () => {
+    // Anything that rewires while a chain is pending has unwired it — see `pending`.
+    if (pending) pending.wired = false;
     try { from.disconnect(to); } catch { /* not wired */ }
     try { from.disconnect(inGain); } catch { /* not wired */ }
     try { outGain.disconnect(to); } catch { /* not wired */ }
@@ -288,11 +375,46 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     get chain() { return chain; },
     set(list = [], bpm = 120) {
       clearSleepTimer();
-      for (const link of chain) {
-        try { link.node.dispose(); } catch { /* fine */ }
-        try { link.muteDry.disconnect(); } catch { /* fine */ }
-        try { link.muteWet.disconnect(); } catch { /* fine */ }
+      // The chain emptied earlier in this task, still wired (see `pending`): the same list
+      // puts it back untouched; anything else disposes it and builds below. Only ever the
+      // PENDING chain — a set onto a standing chain still builds new, even to the same
+      // list, because that is how the desk's audio watchdog replaces a chain a NaN has
+      // poisoned (checkAudioHealth).
+      if (pending) {
+        const p = pending;
+        pending = null;
+        if (!chain.length && sameChain(p.links, p.bpm, list, bpm)) {
+          chain = p.links;
+          sourceList = list;
+          sourceBpm = bpm;
+          pinned = false;
+          holdUntil = ctx.currentTime + EFFECT_SLEEP_SETTLE_S;
+          quietSince = null;
+          if (p.wired) connectOutput();
+          else { awake = true; rewire(); }
+          watchForSilence();
+          return chain.length;
+        }
+        disposeLinks(p.links);
       }
+      // Emptied: `chain` reads empty from here, and the graph is left as it is until the
+      // task ends — by when applyMix has usually put the same chain straight back.
+      if (!list.length && chain.length) {
+        const p = { links: chain, bpm: sourceBpm, wired: true };
+        pending = p;
+        chain = [];
+        sourceList = list;
+        sourceBpm = bpm;
+        queueMicrotask(() => {
+          if (pending !== p) return;
+          pending = null;
+          awake = true;
+          rewire();                 // `from` straight to `to` first, then the old links go
+          disposeLinks(p.links);
+        });
+        return 0;
+      }
+      disposeLinks(chain);
       sourceList = list;
       sourceBpm = bpm;
       chain = list.map((e) => {
@@ -412,11 +534,9 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     dispose() {
       disposed = true;
       clearSleepTimer();
-      for (const link of chain) {
-        try { link.node.dispose(); } catch { /* fine */ }
-        try { link.muteDry.disconnect(); } catch { /* fine */ }
-        try { link.muteWet.disconnect(); } catch { /* fine */ }
-      }
+      disposeLinks(chain);
+      if (pending) disposeLinks(pending.links);
+      pending = null;
       chain = [];
       try { from.disconnect(inGain); } catch { /* not wired */ }
       try { from.disconnect(to); } catch { /* not wired */ }
@@ -758,9 +878,147 @@ export function createMixer(ctx, {
   // taps — muting at the fader would take the sends down with it.
   const soloedAux = new Set();
 
+  // ---- GROUP BUSES (src/data/group-buses.js) ------------------------------------------
+  //
+  // A channel routed into a group stops feeding the music bus: its `monitor` — the last
+  // node on the strip, after the EQ, inserts, fader and width, and after the send taps —
+  // feeds the group's input instead, and nothing else about the strip changes. The group
+  // sums its members and runs them through, in this order:
+  //
+  //   input → EQ → insert chain → Spot FX sections → fader → pan → monitor → musicBus
+  //
+  // The fader comes AFTER the inserts, as a channel's does, so a bus compressor's drive does
+  // not move when the group is turned down; the sections sit after the inserts as the
+  // master's do. Out into musicBus, the same place every channel goes, so the game's own
+  // ducks on that bus still reach a grouped track.
+  //
+  // MUTE is a broadcast, not a node: the sends tap each member's fader, upstream of the
+  // group, so silencing the group's output would leave its members' echo and reverb
+  // playing. Muting a group mutes its members' faders instead, on a flag of their own —
+  // a member's level is `!laneMute && !groupMuted`, and the lane's own mute, which is what
+  // is saved, is never written. SOLO is the channel solo, widened: a soloed group is heard
+  // the way a soloed channel is, members and their sends, and composes with channel solo.
+  //
+  // Built only when a track is first routed into it, so a song with no groups has no group
+  // nodes at all and renders the samples it always did. Its insert chain is loaded while
+  // it has members and emptied when the last one leaves — the settings stay in its state
+  // for the next — rather than left to sleep on silence: a sleeping chain is woken only by
+  // the sequencer's notes, and a desk preview through a grouped track would find it asleep.
+  // The master's and the returns' chains do not sleep either, for the same reason.
+  const routes = new Map();                        // lane key → group id
+  const soloedGroups = new Set();
+  const groupBuses = new Map();                    // group id → built bus
+  const groupState = new Map(GROUP_IDS.map((id) => [id, groupSettings(null)]));
+  const pendingGroupSections = new Map();          // group id → chains to prepare once built
+  let groupBpm = 120;
+
+  const anySolo = () => soloed.size > 0 || soloedGroups.size > 0;
+  const soloHeard = (key) => soloed.has(key) || soloedGroups.has(routes.get(key));
+  const applySoloAll = () => { for (const s of strips.values()) s._applySolo(); };
+
+  const applyGroupLevel = (bus) => {
+    const st = groupState.get(bus.id);
+    bus.fader.gain.cancelScheduledValues(ctx.currentTime);
+    bus.fader.gain.value = dbToGain(st.gain);
+    bus.panner.pan.cancelScheduledValues(ctx.currentTime);
+    bus.panner.pan.value = Math.max(-1, Math.min(1, st.pan || 0));
+  };
+
+  const ensureGroupBus = (id) => {
+    if (!groupState.has(id)) return null;
+    let bus = groupBuses.get(id);
+    if (bus) return bus;
+    const input = ctx.createGain();
+    input.channelCount = 2;
+    input.channelCountMode = 'explicit';
+    input.channelInterpretation = 'speakers';
+    const eq = makeEq(ctx);
+    input.connect(eq.input);
+    const sectionIn = ctx.createGain();
+    const fader = ctx.createGain();
+    // Explicit stereo into the panner, exactly as a lane does it: see the pan note above.
+    fader.channelCount = 2;
+    fader.channelCountMode = 'explicit';
+    fader.channelInterpretation = 'speakers';
+    const panner = ctx.createStereoPanner();
+    const monitor = ctx.createGain();
+    const slot = makeChainSlot(ctx, eq.output, sectionIn);
+    const sections = makeSectionSwitch(ctx, sectionIn, fader);
+    fader.connect(panner);
+    panner.connect(monitor);
+    monitor.connect(musicBus);
+    bus = { id, input, eq, slot, sections, fader, panner, monitor, active: false, meter: null, meterSink: null };
+    groupBuses.set(id, bus);
+    const st = groupState.get(id);
+    eq.set(st.eq);
+    applyGroupLevel(bus);
+    const pending = pendingGroupSections.get(id);
+    if (pending?.length) sections.prepare(pending, groupBpm);
+    if (soloedAux.size) monitor.gain.value = 0;
+    return bus;
+  };
+
+  /**
+   * Each built group, active or not by whether anything is routed into it. An active one
+   * has its insert chain loaded (from its state, or rebuilt from it when `rebuild` says the
+   * chain itself changed) and a meter; an empty one has neither. A meter is pulled through
+   * a muted sink to the destination, so one left on an empty group is a branch the browser
+   * processes for nothing.
+   */
+  const syncGroups = ({ rebuild = false } = {}) => {
+    const counts = new Map();
+    for (const id of routes.values()) counts.set(id, (counts.get(id) || 0) + 1);
+    for (const [id, bus] of groupBuses) {
+      const active = (counts.get(id) || 0) > 0;
+      if (rebuild || active !== bus.active) {
+        bus.slot.set(active ? groupState.get(id).effects : [], groupBpm);
+        bus.active = active;
+      }
+      if (!metersEnabled) continue;
+      if (active && !bus.meter) {
+        bus.meter = new Tone.Meter({ normalRange: true, smoothing: 0.6, channelCount: 2 });
+        Tone.connect(bus.panner, bus.meter);
+        bus.meterSink = ctx.createGain();
+        bus.meterSink.gain.value = 0;
+        Tone.connect(bus.meter, bus.meterSink);
+        bus.meterSink.connect(ctx.destination);
+      } else if (!active && bus.meter) {
+        try { Tone.disconnect(bus.panner, bus.meter); } catch { /* already gone */ }
+        try { bus.meterSink.disconnect(); } catch { /* already gone */ }
+        try { bus.meter.dispose(); } catch { /* already gone */ }
+        bus.meter = null;
+        bus.meterSink = null;
+      }
+    }
+  };
+
+  /** Every member's group mute, from the groups' own state. */
+  const broadcastGroupMute = () => {
+    for (const [key, s] of strips) s._setGroupMute(!!groupState.get(routes.get(key))?.mute);
+  };
+
+  /**
+   * Point one lane at a group, or back at the mix (`id` null). Instant with no `seconds`
+   * — loading a song, applying a mix, an offline render — and a short equal-gain
+   * crossfade with them, for a channel moved by hand while it plays.
+   */
+  const routeLane = (key, id, { seconds = 0, when = ctx.currentTime } = {}) => {
+    const strip = strips.get(key);
+    if (!strip) return;
+    const target = id && groupState.has(id) ? id : null;
+    if ((routes.get(key) || null) === target) return;
+    const bus = target ? ensureGroupBus(target) : null;
+    if (target) routes.set(key, target); else routes.delete(key);
+    strip._route(bus ? bus.input : musicBus, { seconds, when });
+    strip._setGroupMute(!!(target && groupState.get(target).mute));
+    strip._applySolo();
+  };
+
   const applyMonitoring = () => {
     const busSolo = soloedAux.size > 0;
     for (const s of strips.values()) s._monitor(busSolo ? 0 : 1);
+    // A group's output is a dry path like a channel's: soloing a return silences it too.
+    for (const bus of groupBuses.values()) bus.monitor.gain.setTargetAtTime(busSolo ? 0 : 1, ctx.currentTime, 0.01);
     for (const a of auxes.values()) {
       const heard = busSolo ? soloedAux.has(a.def.id) : !a.state.mute;
       a.monitor.gain.setTargetAtTime(heard ? 1 : 0, ctx.currentTime, 0.01);
@@ -858,23 +1116,34 @@ export function createMixer(ctx, {
     const monitor = ctx.createGain();
     monitor.gain.value = 1;
 
-    // The channel path: fader, pan, EQ, then the effect chain (spliced in by
-    // rewireChain below), then the stereo width stage into the music bus.
+    // The channel path, in a DAW's order (2 Oct 2026):
+    //   Spot FX sections → EQ → insert chain → gate → automation → fader → [sends] → pan → width
+    // EQ and inserts are pre-fader, so the sends hear the processed channel — a gated pad
+    // sends a gated pad to the reverb — and a fader move or a fade never changes how hard
+    // a compressor or a distortion is driven. Pan follows the send taps, so a send is
+    // unpanned whatever the channel's pan. It used to be fader → pan → EQ → inserts with
+    // the sends tapping the fader, which meant no insert ever reached a send.
     // Bar-scoped inserts switch their INPUTS, never their outputs. The direct input
     // and every distinct effect snapshot are built in parallel before the live strip;
     // at a bar edge only one receives new audio. Turning a branch off therefore stops
     // later notes entering it while delay/reverb already inside keeps its natural tail.
-    const barSwitch = makeSectionSwitch(ctx, dry, vol);
+    const pre = ctx.createGain();
+    const barSwitch = makeSectionSwitch(ctx, dry, pre);
     // Frozen PCM has already passed through its bar-effect snapshots, but nothing on
-    // the live channel. It enters after those branches and before fader/pan/EQ/inserts.
+    // the live channel. It enters after those branches and before EQ/inserts/fader/pan.
     const frozen = ctx.createGain();
-    frozen.connect(vol);
+    frozen.connect(pre);
+    pre.connect(laneEq.input);
     vol.connect(auto);
     auto.connect(pres);
     pres.connect(panner);
-    panner.connect(laneEq.input);
+    panner.connect(widthNode.input);
     widthNode.output.connect(monitor);
-    monitor.connect(musicBus);            // the strip's only route to the mix
+    // The strip's only route to the mix: the music bus, or the group it is routed into.
+    // `routeTo` is where `monitor` goes now, and the only thing a group assignment moves.
+    let routeTo = musicBus;
+    let routeFade = null;                 // a live reassignment's crossfade, while it runs
+    monitor.connect(routeTo);
 
     // One send per aux, all tapping `pres` — post-gate, post-fader — so a send node
     // carries the send AMOUNT and nothing else.
@@ -894,18 +1163,48 @@ export function createMixer(ctx, {
     // (`addShopOrgan`, `shopOrgan2`), had nothing arriving at the send and the knob
     // did nothing at any position. Every channel can reach the delay now; a channel
     // that should not is a send at zero, which is a thing you can see.
+    //
+    // A send at ZERO is not connected to its aux (2 Oct 2026). Chrome visits every node
+    // with a path to the destination every quantum, so two idle send gains a strip were
+    // two more visits a strip for nothing. `linkSend` connects one the moment its amount
+    // leaves zero — at call time, before any ramp it starts — and `unlinkSend` takes it
+    // out when it is set to zero, or (live only) once a ramp down to zero has finished.
     const sends = new Map();
+    const sendLinked = new Map();
+    const sendDrop = new Map();
+    const linkSend = (id) => {
+      const t = sendDrop.get(id);
+      if (t != null) { clearTimeout(t); sendDrop.delete(id); }
+      if (sendLinked.get(id)) return;
+      sends.get(id).connect(auxes.get(id).input);
+      sendLinked.set(id, true);
+    };
+    const unlinkSend = (id) => {
+      if (!sendLinked.get(id)) return;
+      try { sends.get(id).disconnect(auxes.get(id).input); } catch { /* not wired */ }
+      sendLinked.set(id, false);
+    };
+    const unlinkSendAfter = (id, seconds) => {
+      if (typeof ctx.startRendering === 'function') return;   // offline keeps it wired
+      const t = sendDrop.get(id);
+      if (t != null) clearTimeout(t);
+      sendDrop.set(id, setTimeout(() => {
+        sendDrop.delete(id);
+        if (sends.get(id).gain.value === 0) unlinkSend(id);
+      }, Math.max(0, seconds) * 1000 + 100));
+    };
     for (const def of AUXES) {
       const g = ctx.createGain();
       g.gain.value = def.defaultSend;
       pres.connect(g);
-      g.connect(auxes.get(def.id).input);
       sends.set(def.id, g);
+      sendLinked.set(def.id, false);
+      if (def.defaultSend > 0) linkSend(def.id);
     }
 
     // A channel insert is pulled only while this lane is producing audio or an actual
     // tail. `wakeEffects` below is called by the sequencer before notes and frozen PCM.
-    const slot = makeChainSlot(ctx, laneEq.output, widthNode.input, { sleepWhenSilent: true });
+    const slot = makeChainSlot(ctx, laneEq.output, vol, { sleepWhenSilent: true });
 
     // The meter taps post-pan. It also runs into a muted sink that reaches the
     // destination: a terminal analyser is not guaranteed to be pulled by the graph,
@@ -947,14 +1246,20 @@ export function createMixer(ctx, {
     // taps — so silencing a channel silences its sends without this writing them, and
     // without stepping on a ramp a transition has scheduled there.
     const applySolo = () => {
-      vol.gain.value = (soloed.size > 0 && !soloed.has(key)) ? 0 : 1;
+      vol.gain.value = (anySolo() && !soloHeard(key)) ? 0 : 1;
     };
+
+    // A GROUP's mute, broadcast into its members (see the group buses above). Held apart
+    // from `state.mute`, which is the lane's own and is what gets saved: a lane muted by
+    // hand stays muted through its group's mute and unmute, and one muted only by its
+    // group never gains a mute it did not have.
+    let groupMuted = false;
 
     // The fader, with the mute folded in — one param, so a mix and a transition move a
     // lane's level through the same door whichever of the two things they are changing.
     const applyLevel = () => {
       pres.gain.cancelScheduledValues(ctx.currentTime);
-      pres.gain.value = state.mute ? 0 : dbToGain(state.gain);
+      pres.gain.value = (state.mute || groupMuted) ? 0 : dbToGain(state.gain);
     };
 
     // The ARRANGEMENT's pan, held apart from the MIX's, and added to it.
@@ -1143,7 +1448,7 @@ export function createMixer(ctx, {
       setWidth(w) { cancelState('width'); state.width = w; widthNode.set(w); },
       setSolo(on) {
         if (on) soloed.add(key); else soloed.delete(key);
-        for (const s of strips.values()) s._applySolo();
+        applySoloAll();
       },
       setEQ(patch = {}) {
         cancelState('eq');
@@ -1163,7 +1468,7 @@ export function createMixer(ctx, {
           // Only ever upwards here: dropping the last send to zero leaves the return
           // wired and silent until the next applyMix prunes it, which costs a little
           // CPU and never costs a sound.
-          if (v > 0) wakeAux(id);
+          if (v > 0) { linkSend(id); wakeAux(id); } else unlinkSend(id);
         }
       },
       /**
@@ -1212,7 +1517,7 @@ export function createMixer(ctx, {
       rampTo({ gain, mute, pan, width, eq, send } = {}, when, seconds = 0) {
         const at = Math.max(when, ctx.currentTime);
         if (gain != null || mute != null) {
-          rampParam(ctx, pres.gain, mute ? 0 : dbToGain(gain ?? state.gain), when, seconds);
+          rampParam(ctx, pres.gain, (mute || groupMuted) ? 0 : dbToGain(gain ?? state.gain), when, seconds);
           queueState(at, 'gain', gain ?? state.gain);
           queueState(at, 'mute', !!mute);
         }
@@ -1239,8 +1544,10 @@ export function createMixer(ctx, {
         }
         for (const [id, v] of Object.entries(send || {})) {
           if (v == null || !sends.has(id)) continue;
-          if (v > 0) wakeAux(id);
+          // Wired NOW, before the ramp is scheduled, or its opening would be lost.
+          if (v > 0) { linkSend(id); wakeAux(id); }
           rampParam(ctx, sends.get(id).gain, v, when, seconds);
+          if (v === 0) unlinkSendAfter(id, Math.max(0, (when ?? ctx.currentTime) - ctx.currentTime) + (seconds || 0));
           queueState(at, `send:${id}`, v);
         }
       },
@@ -1255,6 +1562,64 @@ export function createMixer(ctx, {
       _sends: sends,
       _applySolo: applySolo,
       _monitor: (g) => { monitor.gain.setTargetAtTime(g, ctx.currentTime, 0.01); },
+      _monitorNode: monitor,
+      get _routeTo() { return routeTo; },
+      get groupMuted() { return groupMuted; },
+      _setGroupMute: (on) => {
+        if (groupMuted === !!on) return;
+        groupMuted = !!on;
+        cancelState('gain', 'mute');
+        applyLevel();
+      },
+      /**
+       * Send this strip's output somewhere else: the music bus or a group's input. With no
+       * `seconds` it is a reconnection in one task — which the audio thread sees whole, so
+       * there is no instant at which the strip feeds both or neither. With them, the old
+       * and new paths cross-fade at equal gain through a pair of temporary gains, and once
+       * the fade is over (live contexts only — an offline render keeps the pair, which by
+       * then is a gain of exactly 1 and 0) the strip is put back on a plain connection.
+       */
+      _route(dest, { seconds = 0, when = ctx.currentTime } = {}) {
+        if (!dest) return;
+        if (routeFade) routeFade.finish();
+        if (dest === routeTo) return;
+        const old = routeTo;
+        routeTo = dest;
+        if (!(seconds > 0)) {
+          monitor.connect(dest);
+          try { monitor.disconnect(old); } catch { /* not wired */ }
+          return;
+        }
+        const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
+        const out = ctx.createGain();
+        const into = ctx.createGain();
+        out.gain.value = 1;
+        into.gain.value = 0;
+        out.gain.setValueAtTime(1, at);
+        out.gain.linearRampToValueAtTime(0, at + seconds);
+        into.gain.setValueAtTime(0, at);
+        into.gain.linearRampToValueAtTime(1, at + seconds);
+        monitor.connect(out); out.connect(old);
+        monitor.connect(into); into.connect(dest);
+        try { monitor.disconnect(old); } catch { /* not wired */ }
+        let timer = null;
+        const fade = {
+          finish() {
+            if (timer != null) clearTimeout(timer);
+            timer = null;
+            monitor.connect(dest);
+            for (const n of [out, into]) {
+              try { monitor.disconnect(n); } catch { /* already gone */ }
+              try { n.disconnect(); } catch { /* already gone */ }
+            }
+            if (routeFade === fade) routeFade = null;
+          },
+        };
+        routeFade = fade;
+        if (typeof ctx.startRendering !== 'function') {
+          timer = setTimeout(() => fade.finish(), Math.ceil((at + seconds - ctx.currentTime) * 1000) + 60);
+        }
+      },
       _commitScheduledState: commitState,
       _clearScheduledState: () => pendingState.clear(),
     };
@@ -1410,7 +1775,10 @@ export function createMixer(ctx, {
   // per-link moves, params and mute, must never disagree about where a target points.
   const slotFor = (target) => (target === '__master' ? masterSlot
     : target.startsWith('__aux:') ? auxes.get(target.slice(6))?.slot
-      : strips.get(target)?._slot);
+      : isGroupKey(target) ? groupBuses.get(groupIdOf(target))?.slot
+        : strips.get(target)?._slot);
+  // Every insert and section slot a group has built, for the walks that retune them.
+  const groupSlots = () => [...groupBuses.values()].flatMap((b) => [b.slot, ...b.sections.slots]);
 
   return {
     lanes: LANES.map((l) => l.key),
@@ -1443,7 +1811,7 @@ export function createMixer(ctx, {
     laneSilent(key) {
       const s = strips.get(key);
       if (!s) return false;
-      return !!s.state.mute || (soloed.size > 0 && !soloed.has(key));
+      return !!s.state.mute || s.groupMuted || (anySolo() && !soloHeard(key));
     },
     /** The final master output level as one number, after master processing. */
     masterLevel: () => {
@@ -1529,6 +1897,7 @@ export function createMixer(ctx, {
         ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
         ...[...auxes.values()].map((a) => a.slot),
         masterSlot, treatSlot, ...(masterSections?.slots || []),
+        ...groupSlots(),
       ].filter(Boolean);
       for (const slot of slots) {
         for (const link of slot.chain || []) {
@@ -1642,6 +2011,7 @@ export function createMixer(ctx, {
         ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
         ...[...auxes.values()].map((a) => a.slot),
         masterSlot, treatSlot, ...(masterSections?.slots || []),
+        ...groupSlots(),
       ].filter(Boolean);
       for (const slot of slots) {
         for (const link of slot.chain || []) {
@@ -1670,15 +2040,29 @@ export function createMixer(ctx, {
       for (const [key, lane] of Object.entries(automation || {})) {
         for (const section of lane?.fx || []) add(key, section?.chain);
       }
+      // A group's sections are kept whether or not the group is built yet: an empty group
+      // has no nodes, and the first track routed into it builds the bus and prepares them.
+      pendingGroupSections.clear();
       for (const [key, chains] of byLane) {
         if (key === MASTER_KEY) { masterSections?.prepare(chains, bpm); continue; }
+        if (isGroupKey(key)) {
+          const id = groupIdOf(key);
+          if (!id) continue;
+          pendingGroupSections.set(id, chains);
+          groupBuses.get(id)?.sections.prepare(chains, bpm);
+          continue;
+        }
+        // Never a strip for a key in the engine's own namespace: `__group:` above, and
+        // anything else beginning `__` is not a lane and must not be built as one.
+        if (key.startsWith('__')) continue;
         const strip = strips.get(key) || makeStrip(key);
         strip?.prepareBarEffects(chains, bpm);
       }
     },
-    /** One lane's chain — or the master's, under `__master` — from an audio time. */
+    /** One lane's chain — or the master's, under `__master`, or a group's — from an audio time. */
     scheduleBarEffects(key, list, when, opts = {}) {
       if (key === MASTER_KEY) masterSections?.select(list, when, opts);
+      else if (isGroupKey(key)) groupBuses.get(groupIdOf(key))?.sections.select(list, when, opts);
       else strips.get(key)?.scheduleBarEffects(list, when, opts);
     },
     /**
@@ -1688,6 +2072,7 @@ export function createMixer(ctx, {
      */
     retuneBarEffects(key, oldList, newList, bpm = 120) {
       if (key === MASTER_KEY) return masterSections?.retune(oldList, newList, bpm) ?? false;
+      if (isGroupKey(key)) return groupBuses.get(groupIdOf(key))?.sections.retune(oldList, newList, bpm) ?? false;
       return strips.get(key)?.retuneBarEffects(oldList, newList, bpm) ?? false;
     },
     /**
@@ -1704,9 +2089,82 @@ export function createMixer(ctx, {
     /** The song has stopped: every section lets go over the stop's fade. */
     releaseBarEffects(at = ctx.currentTime, seconds = 0) {
       for (const strip of strips.values()) strip.releaseBarEffects(at, seconds);
+      for (const bus of groupBuses.values()) bus.sections.release(at, seconds);
       masterSections?.release(at, seconds);
     },
     get _masterSectionSlots() { return masterSections?.slots || []; },
+
+    // ---- group buses -----------------------------------------------------------------
+    //
+    // See the note where `routes` is declared, and src/data/group-buses.js.
+
+    /**
+     * A whole mix's groups at once — what applyMix calls on every song. `groups` is the
+     * mix's `groups` block, `laneRoutes` a Map of lane key → group id for every lane that
+     * is routed (anything not in it goes straight to the mix). Instant, never faded: a song
+     * that opens grouped must not fade its grouped tracks in at bar one, and a render must
+     * be what playback is. Only what differs is touched, so re-applying a mix on the desk
+     * does not churn the graph under the music.
+     */
+    applyGroups(groups = null, laneRoutes = new Map(), bpm = 120) {
+      groupBpm = bpm;
+      for (const id of GROUP_IDS) groupState.set(id, groupSettings(groups?.[id]));
+      for (const key of strips.keys()) routeLane(key, laneRoutes.get(key) || null);
+      for (const [id, bus] of groupBuses) {
+        const st = groupState.get(id);
+        bus.eq.set(st.eq);
+        applyGroupLevel(bus);
+      }
+      syncGroups({ rebuild: true });
+      broadcastGroupMute();
+      applySoloAll();
+    },
+    /** Route one lane into a group (`id`), or back to the mix (null). `seconds` fades it. */
+    setLaneRoute(key, id, opts = {}) {
+      routeLane(key, id, opts);
+      syncGroups();
+    },
+    laneRoute: (key) => routes.get(key) || null,
+    /** The lanes routed into a group, in no particular order. */
+    groupMembers: (id) => [...routes].filter(([, g]) => g === id).map(([k]) => k),
+    groupState: (id) => groupState.get(id),
+    /** A group's fader (dB), pan and EQ, now. Mute broadcasts into its members. */
+    setGroup(id, { gain, pan, eq, mute } = {}) {
+      const st = groupState.get(id);
+      if (!st) return;
+      if (gain != null) st.gain = gain;
+      if (pan != null) st.pan = Math.max(-1, Math.min(1, pan));
+      if (eq) Object.assign(st.eq, eq);
+      if (mute != null) st.mute = !!mute;
+      const bus = groupBuses.get(id);
+      if (bus) {
+        if (eq) bus.eq.set(eq);
+        if (gain != null || pan != null) applyGroupLevel(bus);
+      }
+      if (mute != null) broadcastGroupMute();
+    },
+    /** A group's insert chain. Kept in its state whether or not the bus is built yet. */
+    setGroupEffects(id, list = [], bpm = groupBpm) {
+      const st = groupState.get(id);
+      if (!st) return 0;
+      st.effects = list;
+      groupBpm = bpm;
+      const bus = groupBuses.get(id);
+      return bus?.active ? bus.slot.set(list, bpm) : 0;
+    },
+    groupEffects: (id) => groupBuses.get(id)?.slot.chain || [],
+    setGroupEffectBypass(id, i, on) { groupBuses.get(id)?.slot.setBypass(i, on); },
+    setGroupEffectMute(id, i, on) { groupBuses.get(id)?.slot.setMute(i, on); },
+    /** Solo a group: its members heard as soloed channels are, with their sends. */
+    setGroupSolo(id, on) {
+      if (on) soloedGroups.add(id); else soloedGroups.delete(id);
+      applySoloAll();
+    },
+    get soloedGroups() { return [...soloedGroups]; },
+    /** A group's output level, 0..1 — its strip's meter. 0 while it has no members. */
+    groupLevel: (id) => groupBuses.get(id)?.meter?.getValue?.() ?? 0,
+    /** For tests: the built bus, or undefined. */
+    _groupBus: (id) => groupBuses.get(id),
 
     /**
      * Unhook auxes nothing is sending to. A ConvolverNode is not free just because
@@ -1745,7 +2203,7 @@ export function createMixer(ctx, {
     get limiterOn() { return limiterOn; },
     /** Costs 6ms of output latency whenever it is on — see the note where it is built. */
     setLimiter(on) { limiterOn = !!on; wireMaster(); },
-    clearSolo() { soloed.clear(); for (const s of strips.values()) s._applySolo(); },
+    clearSolo() { soloed.clear(); soloedGroups.clear(); applySoloAll(); },
     /**
      * Every channel back to the pan its MIX says, with no arrangement offset on it.
      *
@@ -1774,6 +2232,20 @@ export function createMixer(ctx, {
     reset() {
       soloed.clear();
       soloedAux.clear();
+      soloedGroups.clear();
+      // The groups back to their defaults and their sections gone. ROUTES are left as
+      // they are: applyMix sets them in the same task, from the mix it is applying, so a
+      // grouped song re-applied on the desk never has its routing pulled out and put back.
+      pendingGroupSections.clear();
+      for (const id of GROUP_IDS) groupState.set(id, groupSettings(null));
+      for (const bus of groupBuses.values()) {
+        bus.sections.clear();
+        bus.slot.set([]);
+        bus.active = false;
+        bus.eq.set(groupSettings(null).eq);
+        applyGroupLevel(bus);
+        bus.monitor.gain.value = 1;
+      }
       for (const s of strips.values()) {
         s.clearBarEffects();
         s.setPanOffset(0, ctx.currentTime, 0);

@@ -384,9 +384,10 @@ the two things a melodic stack has that a one-shot does not.
 | `PLACE` | `$drivePlace` | post, pre | post | Which side of the global stage the shaper sits on |
 
 `post` is the chain MRDR-3 has always built: the three layers summed, through the Global
-Filter and the Global VCA, and **then** into the shaper. Because `_driveCurve` is
-normalised to full scale (slope ≈ `k/tanh(k)`, up to ~25× at DRIVE 1.0), a shaper sitting
-there is also a hard compressor — it drags a decayed tail back up, and CRUSH will gate a
+Filter and the Global VCA, and **then** into the shaper. Because the drive curve
+(`src/engine/drive-curve.js`) keeps its knee at full scale (slope ≈ `k/tanh(k)`, from 1×
+at the bottom of the pot to ~24× at DRIVE 1.0), a shaper sitting there is also a hard
+compressor — it drags a decayed tail back up, and CRUSH will gate a
 release outright once the tail falls under one quantisation step.
 
 `pre` moves the shaper **and its TONE filter** in front of that stage: layers → drive →

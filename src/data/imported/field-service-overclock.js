@@ -736,7 +736,7 @@ export const mix = {
   order: ["kick","snare","snare2","hats","hats2","ohats","crash","crash2","tom","bass","bass2","lead","lead2","lead3","lead4","chords","chords2"],
   labels: {"lead":"HOOK Ice Bell","lead2":"HOOK 8vb Neon Reed","lead3":"FLUTE Air","lead4":"SHIMMER Ice Bell","chords":"RHODES Tine EP","chords2":"PAD Warm Strings","bass":"BASS Reese","bass2":"SUB","snare2":"GHOST Snare","hats2":"SHAKER","ohats":"RIDE","tom":"PEW Deep","crash2":"RISER Noise"},
   voice: {"kickVoice":"stKickTight","snareVoice":"ds909SnareCrack","snare2Voice":"snareTap","hatsVoice":"dsHatClosed","hats2Voice":"shaker","ohatsVoice":"ride909SixBit","crashVoice":"crash808Long","tomVoice":"syn3PewDeep","bassVoice":"bestReeseBass","bass2Voice":"stSubSine","leadVoice":"tngrIceBell","lead2Voice":"tngrNeonReed","lead3Voice":"tngrAirFlute","lead4Voice":"tngrIceBell","chordsVoice":"rmndTineEP","chords2Voice":"tngrWarmStrings"},
-  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":2.7906976744186047,"note":"White noise through a band climbing 250 Hz to 8 kHz over 2.79s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":2.7906976744186047,"Q":1.6,"slope":-24,"color":"white","attack":2.5674418604651166,"hold":0,"decay":0.22325581395348837,"curve":"exp","gain":1},"drive":0.08,"peak":0.034}},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":2.7906976744186047,"note":"White noise through a band climbing 250 Hz to 8 kHz over 2.79s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":2.7906976744186047,"Q":1.6,"slope":-24,"color":"white","attack":2.5674418604651166,"hold":0,"decay":0.22325581395348837,"curve":"exp","gain":1},"drive":0.22,"peak":0.034}},
   lanes: {
     kick: { gain: -3 },
     snare: { gain: 2, send: { reverb: 0.25 } },
@@ -745,7 +745,7 @@ export const mix = {
     hats2: { gain: -11, pan: -0.3 },
     ohats: { gain: -14, pan: 0.35 },
     crash: { gain: -9, pan: -0.3, send: { reverb: 0.3 } },
-    crash2: { gain: -4, send: { reverb: 0.8 }, eq: { low: 5.5 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    crash2: { gain: -16.8, send: { reverb: 0.8 }, eq: { low: 5.5 } },
     tom: { gain: -11, pan: 0.25, send: { reverb: 0.7 }, effects: [{ id: "pingpong", params: { sync: 1, division: 0.75, feedback: 0.55, wet: 0.5 } }] },
     bass: { gain: -9, effects: [{ id: "filter", params: { type: "lowpass", frequency: 1600, Q: 0.8 } }] },
     bass2: { gain: -13 },
@@ -754,7 +754,7 @@ export const mix = {
     lead3: { gain: -2, pan: -0.2, send: { delay: 0.2, reverb: 0.45 } },
     lead4: { gain: -12, pan: 0.3, send: { delay: 0.3, reverb: 0.5 } },
     chords: { gain: -8, send: { reverb: 0.35 }, effects: [{ id: "chorus", params: { wet: 0.3 } }] },
-    chords2: { gain: -9, send: { reverb: 0.5 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
+    chords2: { gain: -22.98, send: { reverb: 2.5 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
   },
 };
 

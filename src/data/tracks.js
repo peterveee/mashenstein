@@ -9,13 +9,13 @@
 // stamping a `mixId` onto all 34 bank literals, which would be one more thing to
 // keep in step by hand.
 import { CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
-import { SHOP_THEME_BY_ID, COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
+import { COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
 import { bank as GRAVITY_THEME } from './songs/gravity.js';
 import { MEGAMIX_THEME } from './megamix.js';
 
 // Friendly aliases for the named themes plus the in-game shop theme. "shop"
 // resolves to COUNTER_DANCE_MIX_THEME — the approved bank both counters actually
-// play — rather than one of the parked audition candidates.
+// play. The audition candidates it was chosen from are in archive/shop-auditions/.
 const ALIASES = {
   gravity: { bank: GRAVITY_THEME, slug: 'gravity-grid', title: 'POLARITY DRIVE', group: 'cabinet' },
   hub: { bank: HUB_THEME, slug: 'food-court', title: 'THE FOOD COURT' },
@@ -39,10 +39,10 @@ const RUNTIME = new Map();
  * the built-in registries below always win, so an import cannot shadow the game.
  */
 export function registerTrack({
-  id, bank, title, slug, group = 'imported', writable = false, alternateOf = null,
+  id, bank, title, slug, group = 'imported', writable = false, alternateOf = null, banger = null,
 }) {
   if (!id || !bank) return null;
-  if (ALIASES[id] || SHOP_THEME_BY_ID[id] || CABINET_BY_ID[id]?.music) return null;
+  if (ALIASES[id] || CABINET_BY_ID[id]?.music) return null;
   RUNTIME.set(id, {
     bank,
     title: title || id.toUpperCase(),
@@ -54,6 +54,9 @@ export function registerTrack({
     // through the registry because it is what the desk's "Save over …" aims at, and
     // a parent guessed from a title is a parent that writes over the wrong song.
     ...(alternateOf ? { alternateOf } : {}),
+    // A song the desk's Make a Banger… wrote: the recipe it was made from (the riff,
+    // the options, the seed), which is what Another Take re-rolls. See tools/lib/banger/.
+    ...(banger ? { banger } : {}),
   });
   // Never over the id a built-in already gave this bank. The moment an imported bank
   // is put IN the game — `music: COOL_SONG` on a cabinet — the same object is both
@@ -65,7 +68,7 @@ export function registerTrack({
 
 /** Remove a runtime imported/scratch track without touching built-in game tracks. */
 export function unregisterTrack(id) {
-  if (!id || ALIASES[id] || SHOP_THEME_BY_ID[id] || CABINET_BY_ID[id]?.music) return false;
+  if (!id || ALIASES[id] || CABINET_BY_ID[id]?.music) return false;
   const current = RUNTIME.get(id);
   if (!current) return false;
   RUNTIME.delete(id);
@@ -75,9 +78,6 @@ export function unregisterTrack(id) {
 
 export function resolveTrack(trackId) {
   if (ALIASES[trackId]) return { id: trackId, ...ALIASES[trackId] };
-  if (SHOP_THEME_BY_ID[trackId]) {
-    return { id: trackId, bank: SHOP_THEME_BY_ID[trackId], slug: trackId, title: trackId.toUpperCase() };
-  }
   const cabinet = CABINET_BY_ID[trackId];
   if (cabinet && cabinet.music) {
     return { id: trackId, bank: cabinet.music, slug: `${trackId}-panic`, title: (cabinet.name || trackId).toUpperCase() };
@@ -88,20 +88,26 @@ export function resolveTrack(trackId) {
 }
 
 // Every track id the resolver accepts, so a picker never has to guess or duplicate
-// the rules. Aliases first — they are the real in-game cues — then cabinets, then
-// the parked shop candidates.
-// `group` is for a picker: these are four different kinds of thing — the cues the
-// game plays, the cabinet songs, the parked shop candidates nobody ships, and
-// whatever has been imported from a .mid — and a flat list of thirty-odd makes you
+// the rules. Aliases first — they are the real in-game cues — then cabinets.
+// `group` is for a picker: these are different kinds of thing — the cues the
+// game plays, the cabinet songs, and whatever has been imported from a .mid — and a flat list of thirty-odd makes you
 // read all of them to find the one you want. The registry decides, because the
 // registry is what knows.
 export function listTracks() {
   const groups = [
     ['theme', Object.keys(ALIASES)],
     ['cabinet', Object.keys(CABINET_BY_ID).filter((id) => CABINET_BY_ID[id].music)],
-    ['audition', Object.keys(SHOP_THEME_BY_ID)],
+    // The cabinets and simply-made themes as they first existed (src/data/imported/
+    // original-*.js, read-only). Desk only, like every runtime group.
+    ['original', [...RUNTIME.entries()].filter(([, t]) => t.group === 'original').map(([id]) => id)],
     ['imported', [...RUNTIME.entries()].filter(([, t]) => (t.group || 'imported') === 'imported').map(([id]) => id)],
     ['scratch', [...RUNTIME.entries()].filter(([, t]) => t.group === 'scratch').map(([id]) => id)],
+    // What the desk's Make a Banger… made: scratch songs in every mechanical sense, in a
+    // drawer of their own (work/bangers/) so they can be found.
+    ['banger', [...RUNTIME.entries()].filter(([, t]) => t.group === 'banger').map(([id]) => id)],
+    // One per banger style, laid out to be tuned on the desk (tools/lib/banger-seeds.js):
+    // tracked songs in src/data/imported, read back into the style by Use as Style.
+    ['bangerSeed', [...RUNTIME.entries()].filter(([, t]) => t.group === 'bangerSeed').map(([id]) => id)],
     // A game song's music with somebody else's mix and arrangement on it, saved under
     // its own name rather than over the song it came from. Its own heading because it
     // is neither scratch material nor a shipped song: it is a candidate, and the whole

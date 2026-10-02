@@ -21,6 +21,8 @@ import { activeLanes } from '../src/engine/lanes.js';
 import { midiBuffer, MIDI_UNSUPPORTED_LANES } from './lib/render-midi-bank.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { applyArrangement, bpmOf, swingOf } from '../src/data/arrangements.js';
+import { MIX } from '../src/data/mix.js';
+import { nonlinearGroupEffects, nonlinearGroupSummary } from './lib/stem-linearity.js';
 
 const argv = process.argv.filter((a) => !a.startsWith('--'));
 // The song's own start bar and loop, like render-track.js — so a folder of stems is a
@@ -74,6 +76,21 @@ for (let n = 0; n < sum.length; n++) {
 }
 const residualDb = energy > 0 ? 10 * Math.log10(residual / energy) : -Infinity;
 
+// Except where the song itself breaks that promise on purpose: a group compressor or
+// saturator acts on the SUM of its members, so those stems cannot add back up to the mix
+// (tools/lib/stem-linearity.js, docs/group-buses-handover.md §7.1). Named here so a large
+// residual reads as expected rather than as a broken export.
+//
+// Checked against what these renders actually run. The mix is MIX[track.id], the entry
+// the page resolves from the same id (render-bank-page.js). The ARRANGEMENT is not in
+// them: renderer.render is given no `arrangement`, and the page cannot look the song's up
+// because the bank crosses as JSON and trackIdOf is identity-based — so these renders
+// play without the arrangement's automation, Spot FX sections included, and `arranged`
+// above is only the lane list and the MIDI. Hence null: inserts only. If a render here is
+// ever given `arrangement`, pass the same object as the second argument.
+const nonlinear = nonlinearGroupSummary(nonlinearGroupEffects(MIX[track.id] || null, null, lanes.map((l) => l.key)));
+const labelOf = new Map(lanes.map((l) => [l.key, l.label]));
+
 const midi = midiBuffer(arranged, {
   repeat: REPEAT, title: track.title, bpm: bpmOf(arranged, track.id), swing: swingOf(arranged, track.id),
 });
@@ -86,7 +103,14 @@ const w = rows.reduce((m, r) => Math.max(m, r[0].length), 0);
 console.log(`${DIR} — ${lanes.length} stems + full mix, ${mix.seconds.toFixed(1)}s, ${REPEAT}x form (${mix.blocks * 2} bars at ${bpmOf(arranged, track.id)}bpm)`);
 for (const [file, peak, rms] of rows) console.log(`  ${file.padEnd(w)}  peak ${peak.padStart(10)}   rms ${rms}`);
 console.log(`  ${midiName.padEnd(w)}  ${midi.trackNames.length} instrument tracks`);
-console.log(`  stems sum to the mix at ${residualDb.toFixed(0)} dB residual (float rounding only)`);
+for (const g of nonlinear) {
+  console.log(`  WARNING: ${g.name} runs ${g.effects.join(', ')} on the sum of ${g.members.length} stems `
+    + `(${g.members.map((k) => labelOf.get(k) || k).join(', ')}) — nonlinear, so those stems will not sum back to the mix exactly`);
+}
+console.log(nonlinear.length
+  ? `  stems sum to the mix at ${residualDb.toFixed(0)} dB residual — expected, not a broken export: `
+    + nonlinear.map((g) => `${g.name} runs ${g.effects.join(', ')} across ${g.members.length} stems`).join('; ')
+  : `  stems sum to the mix at ${residualDb.toFixed(0)} dB residual (float rounding only)`);
 if (midi.trimmed) console.log(`  midi: ${midi.trimmed} notes shortened to clear a same-pitch retrigger`);
 if (midi.deadPitches) console.log(`  midi: ${midi.deadPitches} unparseable 0 Hz pitches dropped — the bank plays these silent too (see chordSeq)`);
 if (droppedFromMidi.length) console.log(`  note: ${droppedFromMidi.join(', ')} is in the WAV stems but has no MIDI equivalent (unpitched noise)`);

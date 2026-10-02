@@ -147,6 +147,46 @@ for (const level of [1, 2, 3]) {
     'a look\'s glitches only gain more as the count rises; none it had change');
 }
 
+// Other cabinets' weather on the wrong screen: Frost's snow and Neon's strike cross the
+// looks, never their own, clear of the moves, more often each stage.
+{
+  const { surgeIntrusions, surgeSnowOn, SURGE_INTRUDERS } = await import('../src/engine/stylePacks/surgeCut.js');
+  const seen = { 1: 0, 2: 0, 3: 0 };
+  const home = [], clash = [], kinds = new Set();
+  for (const level of [1, 2, 3]) {
+    for (let slot = 0; slot < 400; slot++) {
+      const name = cycle[slot % cycle.length];
+      for (const x of surgeIntrusions(slot, level, 5, name, 0.5)) {
+        seen[level]++;
+        kinds.add(x.kind);
+        if (SURGE_INTRUDERS[x.kind].home === name) home.push(`${x.kind} on ${name}`);
+        if (!(x.start >= 2 && x.start + x.len <= 14)) clash.push(`${x.kind} ${x.start}+${x.len}`);
+      }
+    }
+  }
+  assert(kinds.has('snow') && kinds.has('bolt'), 'both the snow and the strike turn up');
+  assert(!home.length, `neither falls on its own cabinet's look${home.length ? ` (${home[0]})` : ''}`);
+  assert(!clash.length, `each keeps clear of the moves either side${clash.length ? ` (${clash[0]})` : ''}`);
+  assert(seen[1] < seen[2] && seen[2] < seen[3], `more of them each stage (${seen[1]}, ${seen[2]}, ${seen[3]})`);
+  assert(JSON.stringify(surgeIntrusions(7, 2, 5, 'mcm')) === JSON.stringify(surgeIntrusions(7, 2, 5, 'mcm')),
+    'a look\'s weather is the same every frame');
+  assert(surgeSnowOn(2, 4) === 1 && surgeSnowOn(0.3, 4) === 0 && surgeSnowOn(4, 4) === 0,
+    'the snow stutters in, holds, and is gone at the end of its run');
+  // The phase carries them, and the pack's weather hook paints the snow only while it is on.
+  let snowBeat = null;
+  for (let beat = 0; beat < 400 * 16 && snowBeat == null; beat += 0.25) {
+    const ph = surgePhase(beat, { level: 3, seed: pack.seed, progress: 1, names: cycle });
+    const s = ph.intrusions.find((x) => x.kind === 'snow');
+    if (s && surgeSnowOn(s.b, s.len)) snowBeat = beat;
+  }
+  assert(snowBeat != null, 'a surge-3 run meets the snow');
+  const { ctx, counts } = recorder();
+  pack.bg(ctx, 1, 100, surge, LEN, { stageIndex: 3, beat: snowBeat }, 0, { stageIndex: 3, progress: 1 });
+  const before = counts.fill;
+  pack.weather(ctx, 1, { groundScreenY: 400 });
+  assert(counts.fill > before, 'the Surge paints the blizzard while the snow is on');
+}
+
 // The mid-century look paints the desert itself: only it lays the afternoon light on
 // the hero, and at surge-3's close that light is dusk.
 {

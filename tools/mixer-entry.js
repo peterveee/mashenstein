@@ -91,6 +91,9 @@ import '../src/data/imported/index.js';
 // time this bundles — buildPage() reindexes immediately before esbuild runs.
 import '../work/scratch/index.js';
 import { MIX, VARIANTS, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
+import {
+  GROUP_BUSES, GROUP_BY_ID, groupKey, groupIdOf, isGroupKey, laneGroup, groupSettings, familyGroup,
+} from '../src/data/group-buses.js';
 import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, defaultAddedVoice, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor, isQuickVoice } from './mixer-voice-editor.js';
 import {
@@ -147,6 +150,12 @@ import { SONG_STYLES } from './lib/song-styles.js';
 // The musical machinery that turns a seed into a playable bank — browser-safe, so
 // New Song works on the static deployed mixer without a server.
 import { newSongPlan } from './lib/new-song-plan.js';
+// Make a Banger…: a whole arranged song from a few bars. The generator runs here in the
+// page (browser-safe, like newSongPlan); the dialog and the takes live in their own file.
+import { extractRiff } from './lib/banger/index.js';
+import { createBangerDesk } from './mixer-banger.js';
+import { createSeedDesk } from './mixer-banger-seeds.js';
+import { laneList as bangerLaneList } from '../src/engine/lanes.js';
 import {
   generateRearrangement, validateRearrangement,
   randomSeed, transformRearrangement, transformRearrangementSection,
@@ -372,12 +381,13 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
  * spelled out at each of the three gates, so a third heading is one line here.
  */
 const isDeskSong = (t) => t?.group === 'scratch' || t?.group === 'styleAudition'
-  || t?.group === 'alternate' || t?.group === 'copy';
+  || t?.group === 'alternate' || t?.group === 'copy' || t?.group === 'banger' || t?.group === 'bangerSeed';
 
 /** What this song's own file is called, in the drawer's words. */
 const deskSongKind = (t) => (t?.group === 'styleAudition' ? 'style audition'
   : t?.group === 'alternate' ? 'alternate'
-    : t?.group === 'copy' ? 'copy' : 'scratch song');
+    : t?.group === 'copy' ? 'copy' : t?.group === 'banger' ? 'banger'
+      : t?.group === 'bangerSeed' ? 'style seed' : 'scratch song');
 
 // The engine writes its lane names in lower case, because there they are keys into
 // stem files and mix entries rather than words anyone reads. On the desk they ARE
@@ -473,7 +483,16 @@ const arrDirty = (id) => id in arrDraft
 // find yours again before you can hear whether last night's change was right.
 const SONG_KEY = 'mash-mixer-song';
 const lastSong = localStorage.getItem(SONG_KEY);
-let trackId = (lastSong && resolveTrack(lastSong)) ? lastSong : (Object.keys(saved)[0] || 'plumber');
+// A link can name the song to open (`?song=id` — the Banger Sounds page's Open on the Desk).
+const linkedSong = _params.get('song');
+let trackId = (linkedSong && resolveTrack(linkedSong)) ? linkedSong
+  : (lastSong && resolveTrack(lastSong)) ? lastSong : (Object.keys(saved)[0] || 'plumber');
+// Followed once: a reload afterwards opens whatever was on the desk, as it always has.
+if (linkedSong) {
+  const here = new URL(location.href);
+  here.searchParams.delete('song');
+  history.replaceState(null, '', here);
+}
 let track = null;
 let playing = false;
 let abHeld = false;
@@ -1003,8 +1022,15 @@ function undo() {
     return JSON.stringify(Object.keys(lanes).sort()
       .map((k) => [k, lanes[k].noteFx || null]));
   };
+  // Which tracks are in which group: the group strips and the arrangement's group rows
+  // are drawn from it, so an undo that moves a track between groups repaints both.
+  const routeSig = () => {
+    const m = mixFor(trackId);
+    return JSON.stringify(Object.keys(m.lanes || {}).sort().map((k) => [k, laneGroup(m.lanes[k])]));
+  };
   const before = bankSig();
   const fxBefore = noteFxSig();
+  const routesBefore = routeSig();
   const arrBefore = JSON.stringify(arrFor(step.trackId) || null);
   if (step.mix === null) delete draft[step.trackId];
   else draft[step.trackId] = step.mix;
@@ -1037,7 +1063,7 @@ function undo() {
     updateStatus();
   } else {
     buildRack(); applyToEngine(mixFor(trackId)); updateStatus();
-    if (noteFxSig() !== fxBefore) buildArrangement();
+    if (noteFxSig() !== fxBefore || routeSig() !== routesBefore) buildArrangement();
   }
   if (arrMoved) reopenSpotFx();
   toast('undone');
@@ -1157,6 +1183,14 @@ function storeEffects(m, key, list) {
     m.fx = m.fx || {};
     m.fx[id] = { ...AUX_DEFAULTS[id], ...(m.fx[id] || {}) };
     if (list.length) m.fx[id].effects = list; else delete m.fx[id].effects;
+  } else if (isGroupKey(key)) {
+    // A group bus keeps its chain in `groups`, beside its fader — never as a lane, which
+    // is what the fallback below would make of a `__group:` key.
+    const id = groupIdOf(key);
+    if (!id) return;
+    m.groups = m.groups || {};
+    m.groups[id] = { ...(m.groups[id] || {}) };
+    if (list.length) m.groups[id].effects = list; else delete m.groups[id].effects;
   } else {
     const L = laneOf(m, key);
     if (list.length) L.effects = list; else delete L.effects;
@@ -1541,6 +1575,7 @@ function copyStrip(key, kind) {
   const mix = mixFor(trackId);
   const data = key === '__master' ? { master: mix.master || 0, limiter: !!mix.limiter, effects: effectsOf(key) }
     : key.startsWith('__aux:') ? fxOf(mix)[key.slice(6)]
+    : isGroupKey(key) ? mix.groups?.[groupIdOf(key)] || {}
     : mix.lanes[key] || {};
   clipboard = { kind, from: targetLabel(key), data: JSON.parse(JSON.stringify(data)) };
   toast(`${clipboard.from} copied`);
@@ -1562,8 +1597,15 @@ function pasteStrip(key, kind) {
       const { effects, ...rest } = data;
       m.fx[id] = { ...AUX_DEFAULTS[id], ...rest };
       storeEffects(m, key, effects || []);
+    } else if (isGroupKey(key)) {
+      m.groups = m.groups || {};
+      m.groups[groupIdOf(key)] = JSON.parse(JSON.stringify(data));
     } else {
+      // The group the channel is routed into is the channel's own, not the one copied:
+      // pasting a drum's settings onto the bass must not move the bass into the drums.
+      const route = m.lanes[key]?.group;
       m.lanes[key] = JSON.parse(JSON.stringify(data));
+      if (route) m.lanes[key].group = route; else delete m.lanes[key].group;
     }
   });
   buildRack();
@@ -1654,6 +1696,10 @@ function stripMenu(el, key, kind) {
         },
       },
       { label: `Reset ${Kind}`, run: () => resetTarget(key) },
+      // A group strip is where the routing is looked at as a whole, so the two actions
+      // that change all of it at once are here as well as on every channel's group menu.
+      kind === 'group' && { label: 'Assign Every Track by Family', run: () => assignRoutesByFamily() },
+      kind === 'group' && { label: 'Clear Every Assignment', run: () => clearAllRoutes() },
     ].filter(Boolean));
   });
 }
@@ -1809,8 +1855,15 @@ function resetTarget(key) {
       m.master = 0; m.masterPan = 0; m.limiter = false; delete m.masterEffects;
     }
     else if (key.startsWith('__aux:')) { if (m.fx) delete m.fx[key.slice(6)]; }
+    // A group back to unity, flat and empty. Its members stay in it: which tracks are in
+    // a group is the song's routing, not a setting on the group's strip.
+    else if (isGroupKey(key)) { if (m.groups) delete m.groups[groupIdOf(key)]; }
     else {
+      // Routing is structural, like the track's order and name: a reset puts the levels
+      // back and leaves the channel in the group it was routed into.
+      const route = m.lanes[key]?.group;
       delete m.lanes[key];
+      if (route) m.lanes[key] = { group: route };
       // A layer keeps its own, exactly as "Reset every channel" leaves it: a
       // duplicated track with no voice makes no sound at all, so clearing it would not
       // put a channel back to defaults, it would empty the lane.
@@ -2458,6 +2511,7 @@ function buildRack() {
     0,
     ...lanes.map((l) => effectsOf(l.key).length),
     ...AUXES.map((a) => effectsOf(`__aux:${a.id}`).length),
+    ...activeGroups().map((g) => effectsOf(groupKey(g.id)).length),
   );
   // The longest chain and one line more: the spare is the empty slot at the end of
   // the selected strip's chain, and reserving it for the whole rack means selecting
@@ -2501,10 +2555,15 @@ function buildRack() {
   // see #sendslot: with room to spare they sit against the right edge, and when the
   // channels overflow they queue up behind the last of them instead.
   sends.textContent = '';
+  // The group buses with tracks in them come first, in number order, then the returns:
+  // channels, then the buses they sum into, then the shared effects — the order a signal
+  // reads in on a console. A group with no members has no strip.
+  for (const def of activeGroups()) sends.append(groupStrip(def, mix, slotRows));
   for (const def of AUXES) sends.append(sendStrip(def, mix, slotRows));
   rack.append(sends);
 
-  const special = selectedLane === '__master' || (selectedLane || '').startsWith('__aux:');
+  const special = selectedLane === '__master' || (selectedLane || '').startsWith('__aux:')
+    || activeGroups().some((g) => groupKey(g.id) === selectedLane);
   if (selectedLane && !special && !lanes.some((l) => l.key === selectedLane)) selectedLane = null;
   requestAnimationFrame(() => {
     syncMixerScroll();
@@ -2752,6 +2811,9 @@ function eqRow(band, value, onInput) {
 // mix. The engine holds the same set; this is what re-draws the lit button.
 const soloed = new Set();
 const soloedAux = new Set();
+// A soloed GROUP — its members heard as soloed channels are. Kept apart from `soloed`,
+// which is channels only, so a group's solo follows its membership as it changes.
+const soloedGroups = new Set();
 
 /**
  * The M and S pair for one lane. There are two of each on screen — the channel
@@ -2823,11 +2885,12 @@ function setAuxSolo(id, on) {
  * sounds exactly like every other channel being broken.
  */
 function updateSoloLight() {
-  const any = soloed.size > 0 || soloedAux.size > 0;
+  const any = soloed.size > 0 || soloedAux.size > 0 || soloedGroups.size > 0;
   const btn = $('clearsolo');
   btn.classList.toggle('on', any);
   btn.title = any
-    ? `Soloed: ${[...soloed, ...[...soloedAux].map((id) => `${id} send`)].join(', ')} — click to clear`
+    ? `Soloed: ${[...soloed, ...[...soloedGroups].map((id) => GROUP_BY_ID[id]?.name || id),
+      ...[...soloedAux].map((id) => `${id} send`)].join(', ')} — click to clear`
     : 'Nothing is soloed';
 }
 
@@ -2842,14 +2905,15 @@ function updateSoloLight() {
 function dropSolo() {
   for (const key of [...soloed]) { soloed.delete(key); Audio.mixer?.lane(key)?.setSolo(false); syncLaneButtons(key); }
   for (const id of [...soloedAux]) { soloedAux.delete(id); Audio.mixer?.setAuxSolo(id, false); }
+  for (const id of [...soloedGroups]) { soloedGroups.delete(id); Audio.mixer?.setGroupSolo?.(id, false); }
   refreshOsk();
-  for (const b of document.querySelectorAll('.strip.send .solobtn')) b.classList.remove('on');
+  for (const b of document.querySelectorAll('.strip.send .solobtn, .groupsolo')) b.classList.remove('on');
   updateSoloLight();
   syncEffectSoloButton();
 }
 
 function clearAllSolo() {
-  const had = soloed.size + soloedAux.size;
+  const had = soloed.size + soloedAux.size + soloedGroups.size;
   dropSolo();
   if (had) toast('Solo cleared');
 }
@@ -2878,6 +2942,12 @@ function reapplySolo() {
   }
   for (const key of gone) { soloed.delete(key); syncLaneButtons(key); }
   for (const id of soloedAux) Audio.mixer.setAuxSolo(id, true);
+  // A group with no members left has nothing to solo, and soloing it would silence the
+  // desk for a strip that is not there.
+  const live = new Set(activeGroups().map((g) => g.id));
+  for (const id of [...soloedGroups]) {
+    if (live.has(id)) Audio.mixer.setGroupSolo?.(id, true); else soloedGroups.delete(id);
+  }
   updateSoloLight();
   syncEffectSoloButton();
 }
@@ -2885,9 +2955,240 @@ function reapplySolo() {
 /** Light both copies of a lane's M and S — the strip's and the arrangement row's. */
 function syncLaneButtons(key) {
   const sel = `[data-lane="${CSS.escape(key)}"]`;
-  const muted = !!mixFor(trackId).lanes?.[key]?.mute;
-  for (const b of document.querySelectorAll(`${sel} .mutebtn`)) b.classList.toggle('on', muted);
+  const mix = mixFor(trackId);
+  const muted = !!mix.lanes?.[key]?.mute;
+  // Muted by its GROUP rather than by itself: its own M stays unlit — that is what is
+  // saved, and what comes back when the group is unmuted — and says so another way.
+  const route = laneGroup(mix.lanes?.[key]);
+  const byGroup = !muted && !!(route && groupSettings(mix.groups?.[route]).mute);
+  for (const b of document.querySelectorAll(`${sel} .mutebtn`)) {
+    b.classList.toggle('on', muted);
+    b.classList.toggle('bygroup', byGroup);
+    if (byGroup) b.dataset.groupnote = `Muted by ${GROUP_BY_ID[route].name}`;
+    else delete b.dataset.groupnote;
+  }
   for (const b of document.querySelectorAll(`${sel} .solobtn`)) b.classList.toggle('on', soloed.has(key));
+}
+
+// ---- GROUP BUSES -----------------------------------------------------------------------
+//
+// A channel can be routed into one of four group buses instead of straight to the mix —
+// see src/data/group-buses.js for the format and src/engine/mixer.js for the routing. The
+// desk's half: the small [—|1|2|3|4] button beside M and S on every channel strip, a strip
+// for each group that has tracks in it (in the bus slot, before the returns), and a row
+// for each in the arrangement, which is where a group's Spot FX are painted.
+//
+// "Group" means the ROUTING group here. A lane's family — drums, melodic, fx, vocal, the
+// thing `hiddenGroups` filters and `groupIcon` draws — is `lane.group`, a different thing.
+
+/** The desk's tracks, as the rack lists them. */
+const deskLaneKeys = () => deskLanes(viewBank(), 1).map((l) => l.key);
+
+/** The tracks routed into one group — the ones the song has, deleted tracks left out. */
+function groupMemberKeys(id, mix = mixFor(trackId)) {
+  const off = new Set(mix.off || []);
+  return deskLaneKeys().filter((k) => !off.has(k) && laneGroup(mix.lanes?.[k]) === id);
+}
+
+/** The groups with at least one track in them, in number order. Only these get a strip. */
+function activeGroups(mix = mixFor(trackId)) {
+  return GROUP_BUSES.filter((g) => groupMemberKeys(g.id, mix).length > 0);
+}
+
+/**
+ * Where "Assign by family" puts a track. The SOUND decides first — the preset's category,
+ * because a layer is named after the lane it copies and can play anything — and the lane's
+ * family when there is no preset to ask. See familyGroup for the table.
+ */
+function familyRouteFor(key) {
+  const base = baseLane(key);
+  return familyGroup({
+    category: presetForLane(key)?.category || null,
+    family: LANES.find((l) => l.key === base)?.group || null,
+    base,
+  });
+}
+
+/** Re-point the engine at what the mix now says, for these tracks. Faded while playing. */
+function routeLive(keys) {
+  const m = mixFor(trackId);
+  const seconds = playing ? 0.02 : 0;
+  for (const key of keys) Audio.mixer?.setLaneRoute?.(key, laneGroup(m.lanes?.[key]), { seconds });
+}
+
+/** After the routing moved: every surface drawn from it. */
+function afterRoutesChanged() {
+  buildRack();
+  buildArrangement();
+  syncEffectTargetPicker();
+}
+
+/** Route one track into a group, or back to the mix (`id` null). One undo step. */
+function setLaneRoute(key, id) {
+  if ((laneGroup(mixFor(trackId).lanes?.[key]) || null) === (id || null)) return;
+  editMix((m) => {
+    const L = laneOf(m, key);
+    if (id) L.group = id; else delete L.group;
+    if (!Object.keys(L).length) delete m.lanes[key];
+  }, null);
+  routeLive([key]);
+  afterRoutesChanged();
+  toast(id ? `${targetLabel(key)} → ${GROUP_BY_ID[id].name}` : `${targetLabel(key)} → straight to the mix`);
+}
+
+/** Every track at once, from its family — one undo step, for you to adjust after. */
+function assignRoutesByFamily() {
+  const m0 = mixFor(trackId);
+  const off = new Set(m0.off || []);
+  const keys = deskLaneKeys().filter((k) => !off.has(k));
+  const plan = new Map(keys.map((k) => [k, familyRouteFor(k)]));
+  editMix((m) => {
+    for (const [key, id] of plan) {
+      const L = laneOf(m, key);
+      if (id) L.group = id; else delete L.group;
+      if (!Object.keys(L).length) delete m.lanes[key];
+    }
+  }, null);
+  routeLive(keys);
+  afterRoutesChanged();
+  const counts = GROUP_BUSES.map((g) => [g, [...plan.values()].filter((v) => v === g.id).length])
+    .filter(([, n]) => n);
+  const direct = [...plan.values()].filter((v) => !v).length;
+  toast(`${counts.map(([g, n]) => `${g.name}: ${n}`).join(' · ') || 'No groups'}`
+    + `${direct ? ` · ${direct} straight to the mix` : ''} — ⌘Z undoes`, 4000);
+}
+
+/** Every track back to the mix. Each group keeps its settings for next time. */
+function clearAllRoutes() {
+  const m0 = mixFor(trackId);
+  const keys = Object.keys(m0.lanes || {}).filter((k) => laneGroup(m0.lanes[k]));
+  if (!keys.length) { toast('No track is in a group'); return; }
+  editMix((m) => {
+    for (const key of keys) {
+      delete m.lanes[key].group;
+      if (!Object.keys(m.lanes[key]).length) delete m.lanes[key];
+    }
+  }, null);
+  routeLive(keys);
+  afterRoutesChanged();
+  toast(`${keys.length} track${keys.length === 1 ? '' : 's'} back to the mix — ⌘Z undoes`);
+}
+
+/**
+ * The group button beside M and S: `—` for a track going straight to the mix, the
+ * group's number when it is routed into one. Filled and bold when assigned, so the state
+ * reads without the colour. It is always on the strip because it is a gain stage the
+ * strip's own meter cannot show: a track reading −6 in a group at −10 is not giving −6.
+ */
+function routeButton(key) {
+  const b = document.createElement('button');
+  b.className = 'routebtn';
+  const id = laneGroup(mixFor(trackId).lanes?.[key]);
+  const g = id ? GROUP_BY_ID[id] : null;
+  b.textContent = g ? String(g.index) : '—';
+  b.classList.toggle('on', !!g);
+  if (g) b.dataset.route = g.id;
+  const label = `Group for ${targetLabel(key)}: ${g ? g.name : 'none — straight to the mix'}`;
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.setAttribute('aria-haspopup', 'menu');
+  b.onclick = (ev) => {
+    ev.stopPropagation();
+    const r = b.getBoundingClientRect();
+    openRouteMenu(key, r.left, r.bottom + 2);
+  };
+  return b;
+}
+
+function openRouteMenu(key, x, y) {
+  const cur = laneGroup(mixFor(trackId).lanes?.[key]);
+  const tracks = (id) => {
+    const n = groupMemberKeys(id).length;
+    return n ? ` · ${n} track${n === 1 ? '' : 's'}` : '';
+  };
+  openMenu(x, y, `${targetLabel(key)} → Group`, [
+    { label: `${cur ? '' : '✓ '}None — straight to the mix`, run: () => setLaneRoute(key, null) },
+    ...GROUP_BUSES.map((g) => ({
+      label: `${cur === g.id ? '✓ ' : ''}${g.name}${tracks(g.id)}`, run: () => setLaneRoute(key, g.id),
+    })),
+    { label: 'Assign Every Track by Family', run: () => assignRoutesByFamily() },
+    { label: 'Clear Every Assignment', run: () => clearAllRoutes() },
+  ]);
+}
+
+/** Write one group's settings, and push them straight at the live bus. */
+function editGroup(id, patch, tag) {
+  editMix((m) => {
+    m.groups = m.groups || {};
+    const cur = m.groups[id] || {};
+    m.groups[id] = { ...cur, ...patch, ...(patch.eq ? { eq: { ...(cur.eq || {}), ...patch.eq } } : {}) };
+  }, tag);
+  Audio.mixer?.setGroup?.(id, patch);
+}
+
+/** Group mute: saved with the group, and broadcast to its tracks and their sends. */
+function setGroupMute(id, on) {
+  editGroup(id, { mute: on }, null);
+  for (const b of document.querySelectorAll(`[data-lane="${CSS.escape(groupKey(id))}"] .mutebtn`)) {
+    b.classList.toggle('on', on);
+  }
+  for (const key of groupMemberKeys(id)) syncLaneButtons(key);
+  refreshOsk();
+}
+
+/** Group solo: its tracks heard as soloed channels are. Monitoring only, never saved. */
+function setGroupSolo(id, on) {
+  if (on) soloedGroups.add(id); else soloedGroups.delete(id);
+  Audio.mixer?.setGroupSolo?.(id, on);
+  for (const b of document.querySelectorAll(`[data-lane="${CSS.escape(groupKey(id))}"] .solobtn`)) {
+    b.classList.toggle('on', on);
+  }
+  updateSoloLight();
+  syncEffectSoloButton();
+  refreshOsk();
+}
+
+/**
+ * A group bus's strip: what a channel has, less what a bus does not. EQ and inserts on the
+ * sum of its tracks, its fader and pan, M and S — no sends (its tracks keep their own, and
+ * they are taken before the group) and no width. Its meter reads the group's output.
+ */
+function groupStrip(def, mix, slotRows) {
+  const key = groupKey(def.id);
+  const g = groupSettings(mix.groups?.[def.id]);
+  const n = groupMemberKeys(def.id, mix).length;
+  const { el, body, foot } = stripShell(key, {
+    label: def.name.toUpperCase(), sublabel: `${n} track${n === 1 ? '' : 's'}`, cls: 'groupbus',
+  });
+  el.dataset.route = def.id;
+  for (const band of ['high', 'mid', 'low']) {
+    body.append(eqRow(band, g.eq[band], (x) => editGroup(def.id, { eq: { [band]: x } }, `${key}:eq:${band}`)));
+  }
+  body.append(insertSlots(key, def.name, slotRows));
+  const fb = faderBlock({
+    value: g.gain,
+    title: `${def.name} level — moves its ${n} track${n === 1 ? '' : 's'} together`,
+    onInput: (x) => editGroup(def.id, { gain: x }, `${key}:gain`),
+    onReset: (x) => editGroup(def.id, { gain: x }),
+  });
+  const pan = panKnob({
+    value: g.pan,
+    onInput: (x) => editGroup(def.id, { pan: x }, `${key}:pan`),
+  });
+  const mute = document.createElement('button');
+  mute.textContent = 'M';
+  mute.className = 'mutebtn warn' + (g.mute ? ' on' : '');
+  mute.title = `Mute ${def.name} — its tracks and their sends (M)`;
+  mute.onclick = (ev) => { ev.stopPropagation(); setGroupMute(def.id, !mute.classList.contains('on')); };
+  const solo = document.createElement('button');
+  solo.textContent = 'S';
+  solo.className = 'solobtn groupsolo' + (soloedGroups.has(def.id) ? ' on' : '');
+  solo.title = `Solo ${def.name} — its tracks, monitoring only, never saved (S)`;
+  solo.onclick = (ev) => { ev.stopPropagation(); setGroupSolo(def.id, !solo.classList.contains('on')); };
+  foot.append(faderRow(fb.col), panRow(pan.el), btnRow(mute, solo));
+  stripMenu(el, key, 'group');
+  meters.push({ key, chans: fb.chans, meter: fb.meter });
+  return el;
 }
 
 /**
@@ -4229,6 +4530,10 @@ installVoiceEditorWindow({
   track: () => track,
   closeMenu,
   selectLane,
+  // Whether the SONG has this lane — not whether the rack is showing its strip. The
+  // family switches hide strips as a view, and an editor asked for on a hidden drum
+  // is still editing a lane that plays.
+  laneExists: (key) => engineDeskLanes(viewBank(), 1).some((l) => l.key === key),
 });
 
 // ---- the preset library -----------------------------------------------------
@@ -4707,7 +5012,7 @@ function channelStrip(lane, mix, slotRows, number) {
   });
   // Mute and solo close the strip, under the pot — the same small pair the
   // arrangement rows carry, so they read the same in both places.
-  const btns = btnRow(...muteSoloPair(key, lane.label));
+  const btns = btnRow(routeButton(key), ...muteSoloPair(key, lane.label));
 
   // Declared before the fader so both callbacks can name it, and assigned after: the
   // fader is what `except` has to point at, and it does not exist yet.
@@ -5322,6 +5627,12 @@ function syncBounceScope() {
     audition.title = m8
       ? 'Bounce THE SONG and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it. The M8TRX recipe is not in this bounce.'
       : 'Bounce this song and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it';
+  }
+  const aaf = $('exportaaf');
+  if (aaf) {
+    aaf.title = m8
+      ? 'Every track of THE SONG bounced on its own, packed into one AAF. The M8TRX recipe is not in it. Asks how many passes first.'
+      : 'Every track bounced on its own with the mix as it stands, packed into one AAF for Logic or Pro Tools: each track from bar 1, the audio embedded — asks how many passes first';
   }
 }
 
@@ -8974,7 +9285,8 @@ function restoreDeskSession(session = savedDeskSession) {
   const totalSteps = songShape().totalSteps;
   const laneKeys = new Set(deskLanes(viewBank(), 1).map((lane) => lane.key));
   const lane = typeof session.lane === 'string' && (laneKeys.has(session.lane)
-    || session.lane === '__master' || session.lane.startsWith('__aux:'))
+    || session.lane === '__master' || session.lane.startsWith('__aux:')
+    || activeGroups().some((g) => groupKey(g.id) === session.lane))
     ? session.lane : selectedLane;
   if (lane) selectLane(lane);
 
@@ -9172,18 +9484,21 @@ function effectsOf(key) {
   // masterEffects line in mix.js for a chain nobody has touched.
   if (key === '__master') return mix.masterEffects || DEFAULT_MASTER_CHAIN();
   if (key && key.startsWith('__aux:')) return mix.fx?.[key.slice(6)]?.effects || [];
+  if (isGroupKey(key)) return mix.groups?.[groupIdOf(key)]?.effects || [];
   return mix.lanes[key]?.effects || [];
 }
 
 function liveChain(key) {
   if (key === '__master') return Audio.mixer?.masterEffects;
   if (key && key.startsWith('__aux:')) return Audio.mixer?.auxEffects(key.slice(6));
+  if (isGroupKey(key)) return Audio.mixer?.groupEffects?.(groupIdOf(key));
   return Audio.mixer?.lane(key)?.effects;
 }
 
 function bypassOn(key, i, on) {
   if (key === '__master') Audio.mixer?.setMasterEffectBypass(i, on);
   else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffectBypass(key.slice(6), i, on);
+  else if (isGroupKey(key)) Audio.mixer?.setGroupEffectBypass?.(groupIdOf(key), i, on);
   else Audio.mixer?.lane(key)?.setEffectBypass(i, on);
 }
 
@@ -9234,6 +9549,7 @@ function setEffectOff(key, list, i, off) {
 function muteOn(key, i, on) {
   if (key === '__master') Audio.mixer?.setMasterEffectMute(i, on);
   else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffectMute(key.slice(6), i, on);
+  else if (isGroupKey(key)) Audio.mixer?.setGroupEffectMute?.(groupIdOf(key), i, on);
   else Audio.mixer?.lane(key)?.setEffectMute(i, on);
 }
 
@@ -9242,6 +9558,7 @@ function targetLabel(key) {
   if (key && key.startsWith('__aux:')) {
     return (AUXES.find((a) => a.id === key.slice(6))?.name || key.slice(6)) + ' return';
   }
+  if (isGroupKey(key)) return (GROUP_BY_ID[groupIdOf(key)]?.name || 'Group').toUpperCase();
   if (pendingAddTrack?.key === key) return pendingAddTrack.label;
   const found = deskLanes(viewBank(), 1).find((l) => l.key === key);
   // A DELETED track has no row and no strip, so it is not in the desk's lane list —
@@ -9259,6 +9576,7 @@ function setEffects(key, list) {
   editMix((m) => storeEffects(m, key, list), null);
   if (key === '__master') Audio.mixer?.setMasterEffects(list, bpm);
   else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffects(key.slice(6), list, bpm);
+  else if (isGroupKey(key)) Audio.mixer?.setGroupEffects?.(groupIdOf(key), list, bpm);
   else Audio.mixer?.lane(key)?.setEffects(list, bpm);
   // Rebuild the rack, not just the summary line: the per-effect bypass buttons live
   // on the strip and have to appear and disappear with the chain.
@@ -9473,6 +9791,11 @@ function effectTargetEntries() {
     const label = number ? `${number} · ${targetLabel(lane.key)}` : targetLabel(lane.key);
     add(lane.key, label, effectsOfForPicker(effectsOf(lane.key)));
   }
+  // A group bus with tracks in it is a target whether or not it carries anything yet:
+  // putting one compressor over several tracks is what it is for.
+  for (const g of activeGroups()) {
+    add(groupKey(g.id), g.name.toUpperCase(), effectsOfForPicker(effectsOf(groupKey(g.id))), true);
+  }
   // Returns always have their built-in delay/reverb card, even when they have no
   // additional insert, so they are valid effect targets too.
   for (const aux of AUXES) {
@@ -9514,7 +9837,8 @@ function syncEffectSoloButton() {
   const applicable = !!key && key !== '__master';
   const isAux = !!key && key.startsWith('__aux:');
   const id = isAux ? key.slice(6) : null;
-  const on = applicable && (isAux ? soloedAux.has(id) : soloed.has(key));
+  const group = groupIdOf(key);
+  const on = applicable && (isAux ? soloedAux.has(id) : group ? soloedGroups.has(group) : soloed.has(key));
   button.hidden = !applicable;
   button.classList.toggle('on', on);
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -9523,7 +9847,8 @@ function syncEffectSoloButton() {
   // arrangement to resolve a human-readable name.
   button.title = isAux
     ? `Solo the selected return — monitoring only, never saved`
-    : `Solo the selected track — monitoring only, never saved`;
+    : group ? `Solo the selected group — its tracks, monitoring only, never saved`
+      : `Solo the selected track — monitoring only, never saved`;
 }
 
 function buildDevices() {
@@ -10017,6 +10342,9 @@ $('devsolo').onclick = () => {
   if (selectedLane.startsWith('__aux:')) {
     const id = selectedLane.slice(6);
     setAuxSolo(id, !soloedAux.has(id));
+  } else if (groupIdOf(selectedLane)) {
+    const id = groupIdOf(selectedLane);
+    setGroupSolo(id, !soloedGroups.has(id));
   } else {
     setLaneSolo(selectedLane, !soloed.has(selectedLane));
   }
@@ -12409,6 +12737,19 @@ function openRegionEditor(x, y, {
       { label: 'Spot FX…', title: `Put the whole mix through an effect chain in ${span.toLowerCase()}`,
         run: () => openBarEffectsEditor(x, y, '__master', { from, to }) },
     ]);
+    // A whole new song made from these bars — the riff — and this one left alone.
+    actionSection('New Song From These Bars', [
+      { label: 'Make a Banger…', title: `Turn ${span.toLowerCase()} into a whole arranged song of its own — builds, drops, a breakdown — and leave this song as it is`,
+        run: () => bangerDesk.makeBanger({ from, to }) },
+    ]);
+    // And each group with tracks in it, the same way: everything routed into it, and
+    // nothing that is not — the drums swept, the bass left alone.
+    for (const g of activeGroups()) {
+      actionSection(`${g.name} in ${scopeName}`, [
+        { label: 'Spot FX…', title: `Put the tracks in ${g.name} through an effect chain in ${span.toLowerCase()}`,
+          run: () => openBarEffectsEditor(x, y, groupKey(g.id), { from, to }) },
+      ]);
+    }
   } else if (!wholeTrack) {
     const muted = laneHasBarFlag(draft, from, to, 'off', laneKey);
     const selectedFreezeScope = freezeScope(from, to);
@@ -12920,6 +13261,8 @@ const barDropTarget = (ev) => {
   const box = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.arrbar');
   if (!box) return null;
   const row = box.closest('.arrrow');
+  // A group's row holds its Spot FX and no notes, so nothing can be moved or copied onto it.
+  if (isGroupKey(row?.dataset.lane)) return null;
   return row?.dataset.lane ? { row, box, lane: row.dataset.lane, bar: Number(box.dataset.bar) } : null;
 };
 function finishBarDrag(cancelled = false) {
@@ -13080,6 +13423,193 @@ function automationTipGroups(curve, bar) {
   return items.length ? [{ label: 'Volume', items }] : [];
 }
 
+/**
+ * A GROUP BUS's row in the arrangement — where its Spot FX are painted, because a section
+ * on a group is a section on everything routed into it and nothing else: the drums swept,
+ * the bass left alone. The row reads like a track's: its number (G1), name, how many tracks
+ * it sums, an FX dot for its inserts, M and S, and its level with a live meter. Its bars
+ * hold no notes — only the sections, drawn as a track's are. Click a bar to select it,
+ * drag across bars for a range, right-click for Spot FX, double-click to open them.
+ */
+let groupRange = null;            // { id, from, to } — the bars taken on a group's row
+let groupDragFrom = null;         // the bar a drag across a group's row started on
+addEventListener('pointerup', () => { groupDragFrom = null; }, { passive: true });
+function paintGroupRange() {
+  for (const box of document.querySelectorAll('.arrgrouprow .arrbar')) {
+    const id = box.closest('.arrgrouprow')?.dataset.route;
+    const bar = Number(box.dataset.bar);
+    box.classList.toggle('sel', !!groupRange && groupRange.id === id && bar >= groupRange.from && bar <= groupRange.to);
+  }
+}
+function groupRangeAt(g, bar) {
+  return groupRange?.id === g.id && bar >= groupRange.from && bar <= groupRange.to
+    ? { from: groupRange.from, to: groupRange.to } : { from: bar, to: bar };
+}
+function groupBarMenu(ev, g, bar) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const key = groupKey(g.id);
+  const r = groupRangeAt(g, bar);
+  const span = r.from === r.to ? `Bar ${r.from + 1}` : `Bars ${r.from + 1}–${r.to + 1}`;
+  const has = (laneCurve(arrFor(trackId)?.automation?.[key])?.fx || [])
+    .some((sec) => sec.to > r.from * 16 + 1e-6 && sec.from < (r.to + 1) * 16 - 1e-6);
+  const x = ev.clientX;
+  const y = ev.clientY;
+  openMenu(x, y, `${g.name} · ${span}`, [
+    { label: 'Spot FX…', run: () => openBarEffectsEditor(x, y, key, { from: r.from, to: r.to }) },
+    has && {
+      label: 'Clear Spot FX',
+      run: () => applyArrangementEdit(clearAutomation(arrDraftOf(), key, r.from * 16, (r.to + 1) * 16,
+        { points: false, cuts: false, fx: true }), `${g.name} — Spot FX cleared in ${span.toLowerCase()}`),
+    },
+    { label: `${g.name} Effects`, run: () => openChannelEffects(key) },
+  ].filter(Boolean));
+}
+
+function groupRow(g, barTotal) {
+  const key = groupKey(g.id);
+  const mix = mixFor(trackId);
+  const settings = groupSettings(mix.groups?.[g.id]);
+  const n = groupMemberKeys(g.id, mix).length;
+  const curve = laneCurve(arrFor(trackId)?.automation?.[key]);
+  const el = document.createElement('div');
+  el.className = 'arrrow arrgrouprow';
+  // `data-lane` is what selection and the M/S sync look rows up by; `data-route` names the
+  // group. Never `data-group`, which is a track's FAMILY on every other row.
+  el.dataset.lane = key;
+  el.dataset.route = g.id;
+  const header = document.createElement('div');
+  header.className = 'arrhead-cell';
+  const num = document.createElement('span');
+  num.className = 'arrnum';
+  num.textContent = `G${g.index}`;
+  const icon = groupIcon('bus');
+  icon.classList.add('arrtrack-icon');
+  const top = document.createElement('div');
+  top.className = 'arrtrack-top';
+  const name = document.createElement('div');
+  name.className = 'arrname';
+  name.textContent = g.name.toUpperCase();
+  const category = document.createElement('span');
+  category.className = 'arrpresetcat';
+  category.textContent = `${n} track${n === 1 ? '' : 's'}`;
+  top.append(name, category);
+  const bottom = document.createElement('div');
+  bottom.className = 'arrtrack-bottom';
+  if (effectsOf(key).length) {
+    const fx = document.createElement('button');
+    fx.type = 'button';
+    fx.className = 'arrfxdot';
+    fx.textContent = 'FX';
+    fx.title = `Open effects for ${g.name}`;
+    fx.setAttribute('aria-label', fx.title);
+    fx.onclick = (ev) => { ev.stopPropagation(); openChannelEffects(key); };
+    bottom.append(fx);
+  }
+  const btns = document.createElement('div');
+  btns.className = 'arrbtns';
+  const mute = document.createElement('button');
+  mute.textContent = 'M';
+  mute.className = 'mutebtn warn' + (settings.mute ? ' on' : '');
+  mute.title = `Mute ${g.name} — its tracks and their sends`;
+  mute.onclick = (ev) => { ev.stopPropagation(); setGroupMute(g.id, !mute.classList.contains('on')); };
+  const solo = document.createElement('button');
+  solo.textContent = 'S';
+  solo.className = 'solobtn groupsolo' + (soloedGroups.has(g.id) ? ' on' : '');
+  solo.title = `Solo ${g.name} — its tracks, monitoring only, never saved`;
+  solo.onclick = (ev) => { ev.stopPropagation(); setGroupSolo(g.id, !solo.classList.contains('on')); };
+  btns.append(mute, solo);
+  bottom.append(btns);
+  // The group's level, with its live meter in the rail — the same control a track's row has.
+  const gainSlider = document.createElement('input');
+  gainSlider.type = 'range';
+  gainSlider.className = 'arrgain';
+  gainSlider.min = 0; gainSlider.max = 1; gainSlider.step = 0.002;
+  gainSlider.title = `${g.name} level`;
+  gainSlider.value = dbToPos(settings.gain);
+  const gainWrap = document.createElement('span');
+  gainWrap.className = 'arrgainwrap';
+  const vu = document.createElement('span');
+  vu.className = 'arrvumeter';
+  vu.setAttribute('aria-hidden', 'true');
+  const vuFill = document.createElement('i');
+  const vuPeak = document.createElement('b');
+  vu.append(vuFill, vuPeak);
+  const setGain = (db, tag) => {
+    editGroup(g.id, { gain: db }, tag);
+    // The group strip's fader shows the same number, so it moves with this one.
+    for (const f of document.querySelectorAll(`.strip[data-lane="${CSS.escape(key)}"] .fader`)) f.value = dbToPos(db);
+    for (const d of document.querySelectorAll(`.strip[data-lane="${CSS.escape(key)}"] .db`)) {
+      if (!d.querySelector('input')) d.textContent = `${db > 0 ? '+' : ''}${db.toFixed(1)}`;
+    }
+  };
+  gainSlider.addEventListener('input', () => setGain(posToDb(+gainSlider.value), `${key}:gain`));
+  gainSlider.addEventListener('dblclick', () => { gainSlider.value = dbToPos(0); setGain(0, null); });
+  gainWrap.append(vu, gainSlider);
+  arrangementMeters.set(key, { meter: vu, fill: vuFill, peak: vuPeak, shown: 0, held: 0, heldAt: 0 });
+  bottom.append(gainWrap);
+  header.append(num, icon, top, bottom);
+  header.addEventListener('click', () => selectLane(key));
+  header.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    selectLane(key);
+    openMenu(ev.clientX, ev.clientY, g.name, [
+      { label: `${g.name} Effects`, run: () => openChannelEffects(key) },
+      { label: 'Assign Every Track by Family', run: () => assignRoutesByFamily() },
+      { label: 'Clear Every Assignment', run: () => clearAllRoutes() },
+    ]);
+  });
+  const bars = document.createElement('div');
+  bars.className = 'arrbars';
+  for (let bar = 0; bar < barTotal; bar++) {
+    const box = document.createElement('div');
+    box.className = 'arrbar busbar';
+    box.dataset.bar = String(bar);
+    const marks = automationBarMarks(curve, bar);
+    if (marks) box.append(marks);
+    const sections = (curve?.fx || [])
+      .filter((sec) => sec.to > bar * 16 + 1e-6 && sec.from < bar * 16 + 16 - 1e-6);
+    if (sections.length) {
+      const names = [...new Set(sections.flatMap((sec) => sec.chain)
+        .map((e) => EFFECT_BY_ID[e.id]?.short || EFFECT_BY_ID[e.id]?.name || e.id))].join(' + ');
+      const meta = document.createElement('span');
+      meta.className = 'arrmeta';
+      meta.textContent = names;
+      box.append(meta);
+    }
+    box.title = `${g.name}, bar ${bar + 1} — right-click for Spot FX on everything routed into it`;
+    box.onclick = (ev) => {
+      if (selectedLane !== key) selectLane(key);
+      groupRange = ev.shiftKey && groupRange?.id === g.id
+        ? { id: g.id, from: Math.min(groupRange.from, bar), to: Math.max(groupRange.to, bar) }
+        : { id: g.id, from: bar, to: bar };
+      paintGroupRange();
+    };
+    box.onpointerdown = (ev) => {
+      if (ev.button !== 0) return;
+      ev.stopPropagation();
+      groupDragFrom = { id: g.id, bar };
+    };
+    box.onpointerenter = () => {
+      if (groupDragFrom?.id !== g.id) return;
+      const from = groupDragFrom.bar;
+      groupRange = { id: g.id, from: Math.min(from, bar), to: Math.max(from, bar) };
+      paintGroupRange();
+    };
+    box.oncontextmenu = (ev) => groupBarMenu(ev, g, bar);
+    box.ondblclick = (ev) => {
+      const r = groupRangeAt(g, bar);
+      openBarEffectsEditor(ev.clientX, ev.clientY, key, { from: r.from, to: r.to });
+    };
+    bars.append(box);
+  }
+  const main = document.createElement('div');
+  main.className = 'arrrow-main';
+  main.append(header, bars);
+  el.append(main);
+  return el;
+}
+
 function buildArrangement() {
   const grid = $('arrgrid');
   grid.textContent = '';
@@ -13117,6 +13647,11 @@ function buildArrangement() {
     }
   }
 
+  // The group buses with tracks in them, first: a row each, for their Spot FX — under the
+  // master's band above and over the tracks they sum, in number order. Not in `arrCells`:
+  // they hold no notes, so nothing that walks or drags the tracks' bars should find them.
+  for (const g of activeGroups()) grid.append(groupRow(g, plan.length));
+  paintGroupRange();
   rows.forEach((row) => {
     const freezeState = freezeLaneState(trackId, row.key);
     const frozen = freezeState !== 'live';
@@ -14187,6 +14722,7 @@ function tick() {
       // take the louder side, which is the side that clipped.
       const v = mt.master || mt.key === '__master' ? Audio.mixer.masterLevels()
         : mt.key.startsWith('__aux:') ? Audio.mixer.auxLevel(mt.key.slice(6))
+        : isGroupKey(mt.key) ? (Audio.mixer.groupLevel?.(groupIdOf(mt.key)) ?? 0)
         : Audio.mixer.lane(mt.key)?.level();
       const vals = Array.isArray(v) ? v : [v];
       let loudest = 0;
@@ -14254,7 +14790,9 @@ function tick() {
     for (const [key, readout] of arrangementMeters) {
       watchMeter(readout);
       if (readout.visible === false) continue;
-      const lin = laneLevels.has(key) ? laneLevels.get(key) : Audio.mixer.lane(key)?.level();
+      const lin = laneLevels.has(key) ? laneLevels.get(key)
+        : isGroupKey(key) ? (Audio.mixer.groupLevel?.(groupIdOf(key)) ?? 0)
+          : Audio.mixer.lane(key)?.level();
       updateArrangementMeter(readout, lin, now, dt);
     }
     updateL7Meters(dt);
@@ -15543,6 +16081,12 @@ function checkAudioHealth() {
         const v = Audio.mixer.auxLevel(a.id);
         if (!Number.isFinite(Array.isArray(v) ? v[0] : v)) poisoned.push(`__aux:${a.id}`);
       }
+      // A group bus sums its members, so a NaN in one silences all of them at once —
+      // it has to be as findable, and as repairable, as a lane or a return.
+      for (const g of GROUP_BUSES) {
+        const v = Audio.mixer.groupLevel?.(g.id) ?? 0;
+        if (!Number.isFinite(Array.isArray(v) ? v[0] : v)) poisoned.push(groupKey(g.id));
+      }
       if (!Number.isFinite(pre)) poisoned.push('__master(pre-chain)');
     }
     console.warn('[audio-health] output dead 3s:', JSON.stringify({
@@ -15573,6 +16117,7 @@ function checkAudioHealth() {
       const m = mixFor(trackId);
       for (const key of poisoned) {
         if (key.startsWith('__aux:')) Audio.mixer.setAuxEffects(key.slice(6), effectsOf(key), bpm);
+        else if (isGroupKey(key)) Audio.mixer.setGroupEffects?.(groupIdOf(key), effectsOf(key), bpm);
         else if (m.lanes?.[key]?.effects?.length) Audio.mixer.lane(key)?.setEffects(m.lanes[key].effects, bpm);
       }
     }
@@ -15589,6 +16134,7 @@ function checkAudioHealth() {
         if (L.effects?.length) Audio.mixer.lane(key)?.setEffects(L.effects, bpm);
       }
       for (const a of AUXES) Audio.mixer.setAuxEffects(a.id, effectsOf(`__aux:${a.id}`), bpm);
+      for (const g of GROUP_BUSES) Audio.mixer.setGroupEffects?.(g.id, effectsOf(groupKey(g.id)), bpm);
     }
     appendDiagnosticEvent('AUDIO OUTPUT REPAIR', 'Still silent after first repair', {
       preMasterPeak: diagnosticPeak(pre), postMasterPeak: diagnosticPeak(post),
@@ -15922,12 +16468,15 @@ function updateStatus() {
   // browser from gone is the one reading nobody should have to guess at.
   const cabUp = inCabMode();
   const cabD = cabDeskDirty();
-  save.textContent = !writable ? 'Read-only MIDI import'
+  const isOriginal = track?.group === 'original';
+  save.textContent = !writable ? (isOriginal ? 'Read-only original' : 'Read-only MIDI import')
     : cabUp ? (cabD ? 'Update cabinet mix' : 'Cabinet mix — matches the file')
       : STATIC ? (d ? 'Save my mix' : 'Saved — matches your copy')
         : d ? 'Save song' : 'Saved — matches the file';
   save.disabled = !writable || (cabUp ? !cabD : !d);
-  save.title = !writable ? 'This legacy MIDI import has no desk-owned file section to save'
+  save.title = !writable ? (isOriginal
+    ? 'The original version from git history — use Save a copy to work on it'
+    : 'This legacy MIDI import has no desk-owned file section to save')
     : STATIC ? (d ? `Keep ${halves.join(' and ')} as your copy of this song, in this browser only`
       : `${track.title} matches the copy you saved in this browser`)
       : d ? `Write ${halves.join(' and ')} into src/data/songs/${trackId}.js`
@@ -15986,7 +16535,8 @@ function updateStatus() {
   }
   const deleteButton = $('deletesong');
   if (deleteButton) {
-    const scratch = isDeskSong(track) && track?.writable === true;
+    // A style seed is kept in the repo and defines its style: it is tuned, never thrown away.
+    const scratch = isDeskSong(track) && track?.writable === true && track.group !== 'bangerSeed';
     deleteButton.hidden = !scratch;
     deleteButton.title = scratch
       ? (STATIC ? `Remove ${track.title} from this browser`
@@ -16004,6 +16554,11 @@ function updateStatus() {
   // the saved copy IS the song, and going back to it is the ordinary thing to want.
   const revertButton = $('revert');
   if (revertButton) revertButton.hidden = !DEV_USER && !isDeskSong(track);
+  // A banger's takes: Another Take always, Previous / Next only where there is one.
+  // Guarded because the desk can paint its status while booting, before the banger
+  // desk further down this file exists — and a `const` read that early throws.
+  try { bangerDesk.syncButtons(); } catch { /* not wired yet */ }
+  try { seedDesk.syncButtons(); } catch { /* not wired yet */ }
 }
 
 // The drawer is the one project-level surface. The song browser is rendered on every
@@ -16031,6 +16586,7 @@ function openDrawer() {
   resetDrawerSections();
   $('songsearch').value = '';
   renderSongBrowser();
+  if (songSort === 'newest') refreshSongDates();
   syncFreezeExportButton();
   drawer.classList.add('show');
   $('drawerbackdrop').classList.add('show');
@@ -16067,7 +16623,7 @@ $('navdrawer').addEventListener('click', (ev) => {
   // leave the drawer before opening a modal, render job, or file chooser.
   if (!['save', 'savecopy', 'savealt', 'promotealt',
     'revert', 'importtracks', 'history', 'resetsong', 'deletesong', 'renderwav', 'auditionwav', 'midi',
-    'importmidi', 'exportfreezes', 'importfreezes', 'exportjson', 'voicelibbtn',
+    'exportaaf', 'importmidi', 'exportfreezes', 'importfreezes', 'exportjson', 'voicelibbtn',
     'applytocab', 'auditioncab', 'clearcab', 'loadcab'].includes(button.id)) return;
   closeMenu();
 });
@@ -17200,7 +17756,9 @@ function setRecord(on) {
     // take will play, and localStorage will keep it between refreshes, but it can never
     // reach the file. Better said once, on arming, than found out afterwards.
     if (track && track.writable === false) {
-      toast('Recording, but this song came from a .mid and cannot be saved', 5000);
+      toast(track.group === 'original'
+        ? 'Recording, but this original is read-only and cannot be saved'
+        : 'Recording, but this song came from a .mid and cannot be saved', 5000);
     } else if (!oskPlayable(selectedLane)) {
       toast('Select a channel first — that is where the notes would go');
     } else {
@@ -18389,7 +18947,15 @@ const SONG_GROUPS = [
   // Next to the songs they are alternates of, because that is the comparison anybody
   // opening one is making: this version of TERMINAL VELOCITY against the shipped one.
   ['Alternate Game Songs', 'alternate'],
-  ['Shop auditions', 'audition'],
+  // The cabinets and the simply-made themes as they FIRST existed, lifted from git
+  // history into src/data/imported/original-*.js. Read-only: the files carry no desk
+  // section, so Save is off and Save a copy is how you work on one.
+  ['Original Cabinets', 'original'],
+  // What Make a Banger… made — its own shelf (and folder, work/bangers/) so a banger
+  // can be found without searching the scratch songs for it.
+  ['Bangers', 'banger'],
+  // A banger style laid out to be tuned, one per style; Use as Style reads it back.
+  ['Style Seeds', 'bangerSeed'],
   ['Scratch songs', 'scratch'],
   // Snapshots — "Save a copy…" on any song. Under the scratch material rather than
   // beside the songs they were taken from: a copy is a moment somebody kept, not a
@@ -18401,7 +18967,7 @@ const SONG_GROUPS = [
   // a pack's opening sounds can be heard and swapped rather than read off a list. They
   // are development scaffolding, so they sort under the material rather than over it.
   ['Style auditions', 'styleAudition'],
-].filter(([, group]) => !STATIC || group === 'theme' || group === 'scratch' || group === 'copy');
+].filter(([, group]) => !STATIC || group === 'theme' || group === 'scratch' || group === 'banger' || group === 'copy');
 
 /** Which songs this desk is allowed to show. Everything, unless it is the deployed one. */
 const visibleTrack = (t) => !STATIC || SHIPPED_SONG_IDS.has(t.id) || deskSongIds.has(t.id);
@@ -18427,10 +18993,11 @@ if (STATIC) {
   // they are bytes built here and handed to a download. On a desk whose only copy of
   // your work is localStorage, a way to get that work OUT is not a luxury.
   //
-  // The two that genuinely cannot work here still go: Audition drives a plugin host
-  // on the machine running the mixer, and Import MIDI writes a song file to a disk
-  // this build does not have.
+  // The ones that genuinely cannot work here still go: Audition drives a plugin host
+  // on the machine running the mixer, Import MIDI writes a song file to a disk this
+  // build does not have, and Export AAF packs its stems with Python on that machine.
   $('auditionwav')?.setAttribute('hidden', '');
+  $('exportaaf')?.setAttribute('hidden', '');
   $('importmidi')?.setAttribute('hidden', '');
   // M8TRX goes too, and not because it cannot work here — it runs entirely in the
   // browser and would. It is a composer's tool for pulling a song apart into a
@@ -18508,11 +19075,66 @@ function selectSong(id) {
   return promise;
 }
 
+// How each shelf is ordered: as the registry lists it, or newest first. The dates come
+// from the server (tools/lib/song-dates.js — when the song was MADE, not last written),
+// and are asked for again each time the drawer opens in that order. Kept between opens,
+// so a reopened drawer is already in order and only a brand-new song moves into place.
+const SONG_SORT_KEY = 'mash-mixer-song-sort';
+let songSort = 'default';
+try { if (localStorage.getItem(SONG_SORT_KEY) === 'newest') songSort = 'newest'; } catch { /* default */ }
+const songDates = new Map();
+
+async function refreshSongDates() {
+  if (STATIC) return;
+  let dates = null;
+  try {
+    const res = await fetch('/song-dates', { cache: 'no-store' });
+    if (res.ok) dates = await res.json();
+  } catch { dates = null; }
+  if (!dates) return;
+  songDates.clear();
+  for (const [id, at] of Object.entries(dates)) songDates.set(id, at);
+  if ($('navdrawer')?.classList.contains('show')) renderSongBrowser();
+}
+
+// A day and a month, and the year only when it is not this one.
+const songDateLabel = (at) => {
+  const d = new Date(at);
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short',
+    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+  });
+};
+
+function paintSongSort() {
+  for (const b of $('songsort').querySelectorAll('button')) {
+    const on = b.dataset.sort === songSort;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+}
+
+for (const b of $('songsort').querySelectorAll('button')) {
+  b.onclick = (ev) => {
+    ev.stopPropagation();
+    songSort = b.dataset.sort;
+    try { localStorage.setItem(SONG_SORT_KEY, songSort); } catch { /* this tab only */ }
+    paintSongSort();
+    renderSongBrowser();
+    if (songSort === 'newest') refreshSongDates();
+  };
+}
+paintSongSort();
+
 function songButton(t, { recent = false } = {}) {
   const b = document.createElement('button');
   b.className = `drawer-song${t.id === trackId ? ' on' : ''}`;
   const name = document.createElement('span'); name.className = 'songname'; name.textContent = t.title;
   const id = document.createElement('span'); id.className = 'songid'; id.textContent = t.id;
+  // In date order the date is what the list is sorted BY, so it is on the row — an order
+  // you cannot see the reason for reads as no order at all.
+  const made = !recent && songSort === 'newest' && !STATIC ? songDates.get(t.id) : null;
+  if (made) id.textContent = `${t.id} · ${songDateLabel(made)}`;
   b.append(name, id);
   b.title = `${t.title} — ${t.id}` + (recent ? ' · recently opened' : '');
   b.onclick = async () => {
@@ -18539,8 +19161,19 @@ function renderSongBrowser() {
   const list = $('songlist');
   list.textContent = '';
   let any = false;
-  for (const [title, group] of SONG_GROUPS) {
+  const newest = songSort === 'newest' && !STATIC;
+  const madeAt = (t) => songDates.get(t.id) ?? 0;
+  const shelves = SONG_GROUPS.map(([title, group]) => {
     const rows = tracks.filter((t) => t.group === group && matches(t));
+    // Songs stay on their own shelf — the shelf says what kind of thing a song is — and
+    // the shelf is sorted inside. Undated songs keep their place, last.
+    if (newest) rows.sort((a, b) => madeAt(b) - madeAt(a));
+    return { title, rows, latest: rows.length ? madeAt(rows[0]) : 0 };
+  });
+  // And the shelves themselves, by their newest song — so whatever you made last, of any
+  // kind, is the first shelf down. Ties and undated shelves keep their usual order.
+  if (newest) shelves.sort((a, b) => b.latest - a.latest);
+  for (const { title, rows } of shelves) {
     if (!rows.length) continue;
     any = true;
     // A handful of songs, all of them yours: one flat list under the section's own
@@ -18728,8 +19361,98 @@ async function createNewSong() {
 
 $('newsong').onclick = createNewSong;
 
+// ---- Make a Banger… -----------------------------------------------------------------
+// Everything the banger desk needs from this one, handed over rather than reached for.
+// See tools/mixer-banger.js; the generator is tools/lib/banger/.
+const bangerDesk = createBangerDesk({
+  // Passed as calls, not values: `tell` and `escapeHtml` are declared further down this
+  // file, so handing them over here would hand over nothing.
+  $, ask, toast, closeMenu,
+  tell: (...args) => tell(...args),
+  escapeHtml: (text) => escapeHtml(text),
+  isStatic: () => STATIC,
+  current: () => ({ id: trackId, track }),
+  barCount: () => arrDraftOf().plan.length,
+  selection: () => (selectedBar ? { from: selFrom(), to: selTo() } : null),
+  // The riff as the desk HEARS it: this draft, unsaved edits and all, minus whatever is
+  // muted or soloed out.
+  readRiff: (from, to) => {
+    const bank = editBank();
+    const mix = mixFor(trackId);
+    return extractRiff({
+      bank, draft: arrDraftOf(), mix, from, to,
+      laneKeys: bangerLaneList(bank).map((l) => l.key),
+      source: { id: trackId, title: track.title },
+      heard: (key) => !mix.lanes?.[key]?.mute && (!soloed.size || soloed.has(key)),
+      labelFor: (key) => presetHeadingFor(key).name,
+    });
+  },
+  listTracks,
+  // A banger arrives SAVED: what the file holds is what the desk compares against, so a
+  // new take is not born with a dot on its drawer.
+  adopt: ({ track: t, mix, arrangement, local = false, swap = false }) => {
+    if (swap && t.id === trackId) {
+      // A take swap replaces the music under the song: frozen audio of the old take,
+      // and undo steps that would put the old take's mix on the new one, both go.
+      for (const lane of bangerLaneList(editBank()).map((l) => l.key)) {
+        if (frozenSegments(trackId, lane).length) unfreezeLane(lane, { quiet: true });
+      }
+      for (let i = undoStack.length - 1; i >= 0; i--) if (undoStack[i]?.trackId === t.id) undoStack.splice(i, 1);
+      syncUndoButton();
+      delete cabOnDesk[t.id];
+      delete cabStash[t.id];
+    }
+    registerTrack(t);
+    if (local) deskSongIds.add(t.id);
+    saved[t.id] = mix ?? null;
+    savedArr[t.id] = arrangement ?? null;
+    variantSaved[t.id] = null;
+    discardSongDraft(draft, arrDraft, t.id);
+    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+    localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+    if (local) { persistLocalSongs(); persistLocalSave(); }
+  },
+  selectSong,
+  play: () => { try { setPlaying(true, 0); } catch { /* audio not unlocked yet — the song is loaded */ } },
+  isDirty,
+  slugForClient,
+});
+$('makebanger').onclick = () => bangerDesk.makeFromDrawer();
+// Through the desk launcher's shortcut, which starts the page when it is cold and sends
+// you on when it is warm (tools/desk.js). The deployed desk has no tools to open.
+$('bangersounds').hidden = STATIC;
+$('bangersounds').onclick = () => {
+  closeMenu();
+  window.open(`${location.protocol}//${location.hostname}:8000/bangersounds`, '_blank', 'noopener');
+};
+$('bangeragain').onclick = () => bangerDesk.anotherTake();
+$('bangerprev').onclick = () => bangerDesk.previousTake();
+$('bangernext').onclick = () => bangerDesk.nextTake();
+$('bangersettings').onclick = () => bangerDesk.settings();
+
+// ---- seed bangers and Sound Combos -------------------------------------------------
+// Use as Style, Save as Combo and the seed's A/B with its remix: tools/mixer-banger-seeds.js.
+const seedDesk = createSeedDesk({
+  $, ask, toast, closeMenu,
+  tell: (...args) => tell(...args),
+  escapeHtml: (text) => escapeHtml(text),
+  isStatic: () => STATIC,
+  current: () => ({ id: trackId, track }),
+  resolveTrack,
+  isDirty,
+  saveMix: (id) => saveMix(id),
+  selectSong,
+  isPlaying: () => playing,
+  stop: () => setPlaying(false),
+  position: () => (playing ? (heardStepNow() ?? parkedAt) : parkedAt),
+  jumpTo: (step, opts) => jumpTo(step, opts),
+});
+$('bangeruse').onclick = () => seedDesk.useAsStyle();
+$('bangercombo').onclick = () => seedDesk.saveCombo();
+$('bangerab').onclick = () => seedDesk.ab();
+
 async function deleteScratchSong() {
-  if (!isDeskSong(track) || track?.writable !== true) return;
+  if (!isDeskSong(track) || track?.writable !== true || track.group === 'bangerSeed') return;
   closeMenu();
   const id = trackId;
   const title = track.title;
@@ -19436,7 +20159,8 @@ const tutorial = createTutorial({
   // not on the screen. Failing both, the first channel in the rack.
   tourLane: () => {
     const strips = [...document.querySelectorAll('#rack .strip[data-lane]')]
-      .filter((s) => !s.classList.contains('master') && !s.classList.contains('send'));
+      .filter((s) => !s.classList.contains('master') && !s.classList.contains('send')
+        && !s.classList.contains('groupbus'));
     const melodic = (s) => LANES.find((l) => l.key === baseLane(s.dataset.lane))?.group === 'melodic';
     const withPreset = strips.filter((s) => editablePresetFor(s.dataset.lane));
     return (withPreset.find(melodic) || withPreset[0] || strips[0])?.dataset.lane || null;
@@ -21235,6 +21959,106 @@ $('midi').onclick = () => {
   }
 };
 
+// Every track as its own stem, packed into one AAF for a DAW.
+//
+// Each stem is a Bounce with every other track muted, taken from the same snapshot
+// Bounce takes, so the stems carry what Bounce carries: the unsaved mix, the
+// arrangement's shape and automation, the master chain. Muting zeroes a lane's level,
+// and its sends tap after that (see mixer.js), so no other track's reverb gets into a
+// stem. A track you have muted, or one that renders silent, is left out.
+//
+// The stems go to work/stems/<slug>/ on the machine running the mixer, and the server
+// packs them with tools/stems-to-aaf.py. That is Python on that machine, which is why
+// the deployed desk hides this button. AAF carries no tempo, so the toast says what
+// to set.
+$('exportaaf').onclick = async () => {
+  if (rendering) { toast('A bounce is already running'); return; }
+  const passes = await askRenderPasses('Export AAF');
+  if (passes == null) return;
+  if (rendering) { toast('A bounce is already running'); return; }
+
+  const id = trackId;
+  const title = track.title;
+  const source = resolveTrack(id)?.bank;
+  if (!source) { toast('That song has no bank to render'); return; }
+  const bank = structuredClone(source);
+  const mix = structuredClone(mixFor(id) || {});
+  const arrangement = renderArrangement(id);
+  const shown = viewBank();
+  const all = deskLanes(shown, 1);
+  const lanes = all.filter((l) => !mix.lanes?.[l.key]?.mute);
+  if (!lanes.length) { toast('Nothing to export — every track is muted'); return; }
+  const bpm = bpmOf(shown, id, { [id]: arrFor(id) ?? null });
+  // Solo by mute, as Freeze does (rawFreezeMix). Every other lane keeps its own
+  // settings and gains only the mute, so the graph is the mix's in every other respect.
+  const soloMix = (key) => {
+    const out = structuredClone(mix);
+    out.lanes = { ...(out.lanes || {}) };
+    for (const l of all) out.lanes[l.key] = { ...(out.lanes[l.key] || {}), mute: l.key !== key };
+    return out;
+  };
+  // "03-Shop Bass.wav". The number keeps the tracks in strip order, and the packer
+  // strips it off again, so the AAF's track names are the strip names. Two strips
+  // can show the same preset name, and a DAW full of identical names is no use, so
+  // a repeat gets a number: "Tiny", "Tiny 2".
+  const seen = new Map();
+  const fileNames = new Map(lanes.map((l, i) => {
+    const base = l.label.replace(/[^\w .+-]+/g, '-').replace(/^[\s.+-]+|[\s.+-]+$/g, '') || 'track';
+    const n = (seen.get(base) || 0) + 1;
+    seen.set(base, n);
+    return [l.key, `${String(i + 1).padStart(2, '0')}-${n > 1 ? `${base} ${n}` : base}.wav`];
+  }));
+
+  const wasPlaying = playing;
+  if (wasPlaying) setPlaying(false);
+  const btn = $('exportaaf');
+  const label = btn.textContent;
+  rendering = true;
+  btn.disabled = true;
+  const stopped = wasPlaying ? ' · playback stopped' : '';
+  const report = (i, lane, pct) => {
+    btn.textContent = `AAF ${i}/${lanes.length}…`;
+    toast(`Exporting AAF — ${lane.label} (${i} of ${lanes.length})${pct == null ? '' : ` ${pct}%`}${stopped}`, 0);
+  };
+  const post = async (url, body) => {
+    const res = await fetch(url, {
+      method: 'POST', ...(body ? { headers: { 'content-type': 'audio/wav' }, body } : {}),
+    }).catch(() => null);
+    if (!res) throw new Error('the mixer server did not answer');
+    if (!res.ok) throw new Error((await res.text()) || `the mixer server answered ${res.status}`);
+    return res.json();
+  };
+  try {
+    let written = 0;
+    for (const [i, lane] of lanes.entries()) {
+      report(i + 1, lane, null);
+      const out = await bounceWav(bank, {
+        trackId: id, mix: soloMix(lane.key), arrangement,
+        repeat: passes, frameUrl: RENDER_FRAME_URL,
+        onStage: (stage, fraction) => {
+          if (stage === 'rendering') report(i + 1, lane, fraction > 0 ? Math.min(99, Math.round(fraction * 100)) : null);
+        },
+      });
+      if (!(out.peak > 0)) continue;
+      // The first stem clears the folder, so a track the song has since lost does not
+      // come back as an extra track from an older export.
+      const q = new URLSearchParams({ track: id, name: fileNames.get(lane.key), ...(written ? {} : { clear: '1' }) });
+      await post(`/write-stem?${q}`, out.wav);
+      written++;
+    }
+    if (!written) throw new Error('every track rendered silent');
+    toast(`Exporting AAF — packing ${written} stems${stopped}`, 0);
+    const info = await post(`/write-aaf?${new URLSearchParams({ track: id, title })}`);
+    toast(`${info.file} · ${written} stems · set the DAW to ${bpm} bpm (AAF carries no tempo)`, 12000);
+  } catch (err) {
+    toast(`AAF export failed — ${err.message}`, 10000);
+  } finally {
+    rendering = false;
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+};
+
 /**
  * This song's edits, as a JSON file you name.
  *
@@ -21459,7 +22283,7 @@ function persistLocalSongs() {
   const songs = {};
   for (const id of deskSongIds) {
     const t = resolveTrack(id);
-    if (t) songs[id] = { id, title: t.title, slug: t.slug || id, group: t.group || 'scratch', bank: t.bank };
+    if (t) songs[id] = { id, title: t.title, slug: t.slug || id, group: t.group || 'scratch', bank: t.bank, ...(t.banger ? { banger: t.banger } : {}) };
   }
   try { localStorage.setItem(LOCAL_SONGS_KEY, JSON.stringify(songs)); }
   catch { toast('This browser is full — your new songs may not come back', 5000); }
@@ -21703,11 +22527,15 @@ const escapeHtml = (text) => String(text)
 /** Say something, in the desk. The `alert()` half of ask(). */
 const tell = (title, body) => ask(title, body, 'OK', { cancel: false });
 
-function ask(title, body, okLabel = 'Save song', { cancel = true } = {}) {
+function ask(title, body, okLabel = 'Save song', { cancel = true, wide = false } = {}) {
   return new Promise((resolve) => {
     $('asktitle').textContent = title;
     $('askbody').innerHTML = body;
     $('askok').textContent = okLabel;
+    // A dialog with a lot to set (Make a Banger…) takes the wider box.
+    $('askbox').classList.toggle('wide', wide);
+    $('askok').disabled = false;
+    $('askok').title = '';
     // With nothing to cancel it is a statement, not a question: one button, and
     // Escape closes it like any other.
     $('askcancel').hidden = !cancel;
@@ -21722,8 +22550,20 @@ function ask(title, body, okLabel = 'Save song', { cancel = true } = {}) {
       resolve(answer);
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
-      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); }
+      // A key aimed at a control inside the dialog is that control's: Enter on a
+      // dropdown opens it, Enter on a button presses it, Escape closes an open list —
+      // none of them answers the whole dialog. A text or number field still does.
+      const own = $('askbody').contains(e.target) && e.target.matches?.('button, summary, [role="combobox"], [role="option"]');
+      if (e.key === 'Escape') {
+        if (own && e.target.getAttribute('aria-expanded') === 'true') return;
+        e.preventDefault(); e.stopPropagation(); done(false);
+      }
+      if (e.key === 'Enter') {
+        if (own) return;
+        e.preventDefault(); e.stopPropagation();
+        // Switched off is switched off: Enter does not get round it.
+        if (!$('askok').disabled) done(true);
+      }
     };
     $('askok').onclick = () => done(true);
     $('askcancel').onclick = () => done(false);

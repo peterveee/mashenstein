@@ -89,6 +89,11 @@ const suites = [
   'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
   'tests/mix.js',
+  // Group buses: the four groups, assign-by-family, the desk wiring read off the source,
+  // and the stems export's warning for processing that does not distribute over a sum.
+  'tests/group-buses-data.js',
+  'tests/group-buses-desk.js',
+  'tests/stem-linearity.js',
   'tests/mixer-layout.js',
   // The desk's watchdog decides whether to reduce its own drawing. Beside the layout
   // suite because it is the same kind of claim — a contract about the desk, provable
@@ -139,6 +144,9 @@ const suites = [
   // Source-backed scratch creation: starter patterns, writable saves, history,
   // collision-safe ids, and a mixed legacy/scratch imported index.
   'tests/new-song.js',
+  // When a song file was born, for the drawer's "Newest first": its first commit or its
+  // birth time, whichever is earlier — never its last write.
+  'tests/song-dates.js',
   // The other way a song file is born: a game song's music kept under another name
   // until somebody decides it is the version to ship. Beside new-song.js because it is
   // the same writer and the same folder — what it adds is the one line that makes an
@@ -149,6 +157,13 @@ const suites = [
   // Directly after the alternates suite because the two are read together — what makes
   // a copy safe is exactly the line an alternate carries.
   'tests/song-copies.js',
+  // And the fourth: a whole song made from a few bars — the desk's Make a Banger…. Every
+  // banger the generator can make checked as a valid song, its musical promises checked
+  // as promises (Faithful keeps the notes, nothing is ever inverted), and its takes.
+  'tests/banger.js',
+  // What every banger is made of: the sounds table held to its rulebook, its file, its
+  // Save, and the generator really playing what it names (the Banger Sounds page).
+  'tests/banger-sounds.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -551,6 +566,14 @@ const suites = [
   // exactly its stretch and the same samples outside it, the Stutter repeats what it
   // grabbed, and nothing a section offers is late — the latency table, measured.
   'tests/fx-sections.js',
+  // The Stereo Widener: one WIDTH widens a mono sound too, and it still sums to itself.
+  'tests/stereo-widener.js',
+  // Group buses, rendered: a track routed into a group reaches the mix once, through it;
+  // a group's Spot FX act on its members and nothing else; no groups is the same samples.
+  'tests/group-buses.js',
+  // Re-applying a mix is not a rebuild: the same mix laid back over a playing song keeps
+  // every effect chain's nodes and changes no sample — the drum-preset dropout of 2 Oct.
+  'tests/chain-reapply.js',
   // And the mirror image of it: a cabinet's treatment handing over to a level's mix
   // must do the opposite — keep the clock, keep the note ringing, change only the
   // presentation. Same claim, opposite sign. The first is the clock, in counters; the
@@ -613,6 +636,9 @@ const browserSuites = new Set([
   'tests/bar-pan.js',
   'tests/mix-automation.js',
   'tests/fx-sections.js',
+  'tests/stereo-widener.js',
+  'tests/group-buses.js',
+  'tests/chain-reapply.js',
   'tests/music-variant.js',
   'tests/music-variant-render.js',
   'tests/voices.js',
@@ -675,8 +701,8 @@ const soundSuites = [
   'tests/song-analysis.js', 'tests/beat-detect.js', 'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
-  'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
-  'tests/song-copies.js', 'tests/song-alternates.js',
+  'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
+  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
@@ -697,7 +723,9 @@ const soundSuites = [
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
   'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/mix-automation.js',
-  'tests/fx-sections.js', 'tests/music-variant.js',
+  'tests/fx-sections.js', 'tests/stereo-widener.js',
+  'tests/group-buses.js', 'tests/group-buses-data.js', 'tests/group-buses-desk.js', 'tests/chain-reapply.js',
+  'tests/stem-linearity.js', 'tests/music-variant.js',
   'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
   'tests/new-effects.js', 'tests/engine-worklets.js',
 ];

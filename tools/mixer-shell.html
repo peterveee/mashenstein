@@ -172,6 +172,7 @@
        Light Paper's accent is a dark teal, and dark lettering on it is a black
        button. Every theme states it; only the light ones flip it. */
     --on-accent: #10231f; --on-solo: #241a05; --on-go: #08210f; --on-lim: #180f28;
+    --on-hot: #230d0d;
     /* The piano roll's field is the keyboard's colours laid across the bars: a black-key
        row is DARK and a white-key row is LIGHT, always, so the row you are about to click
        in is the key you are about to play. Two shades, one per kind of key, and nothing
@@ -1881,7 +1882,7 @@
                                    inset 0 -2px 0 color-mix(in srgb, var(--hot) 80%, transparent); }
   .arrbar.bardeleted::before { content: 'D'; position: absolute; z-index: 2; inset: 1px auto auto 2px;
                                min-width: 11px; height: 11px; padding: 0 2px; border-radius: 3px;
-                               background: color-mix(in srgb, var(--hot) 78%, transparent); color: #230d0d;
+                               background: color-mix(in srgb, var(--hot) 78%, transparent); color: var(--on-hot);
                                font: 500 8px/11px ui-monospace, SFMono-Regular, Menlo, monospace;
                                text-align: center; pointer-events: none; }
   .arrbar.bardeleted .arrmeta { padding-left: 15px; }
@@ -2517,6 +2518,33 @@
      them on the same neutral panel and border so Delay and Reverb do not become a
      second colour language beside the master. */
   .strip.send { background: var(--panel); border-color: var(--line); }
+  /* GROUP BUSES (src/data/group-buses.js). Each group has one colour, used on its strip,
+     on its row in the arrangement and on the button of every track routed into it —
+     the theme's own accents, so every theme recolours them. */
+  .routebtn[data-route="group1"], .strip.groupbus[data-route="group1"], .arrgrouprow[data-route="group1"] { --route: var(--accent); }
+  .routebtn[data-route="group2"], .strip.groupbus[data-route="group2"], .arrgrouprow[data-route="group2"] { --route: var(--go); }
+  .routebtn[data-route="group3"], .strip.groupbus[data-route="group3"], .arrgrouprow[data-route="group3"] { --route: var(--lim); }
+  .routebtn[data-route="group4"], .strip.groupbus[data-route="group4"], .arrgrouprow[data-route="group4"] { --route: var(--solo); }
+  /* The group button beside M and S: a dash for a track going straight to the mix, the
+     group's number when it is routed into one — filled and bold then, so the state reads
+     without the colour. */
+  .ctlbtns button.routebtn { font-weight: 400; }
+  .ctlbtns button.routebtn.on { background: var(--route); border-color: var(--route);
+                                color: #fff; font-weight: 800; }
+  /* A track muted by its GROUP rather than by itself: its own M stays unlit — that is
+     what is saved — and is outlined dashed instead. */
+  button.mutebtn.bygroup { border-style: dashed; border-color: var(--hot); color: var(--hot); }
+  /* A group's strip: a bus like the returns, with its colour along the top and in its name. */
+  .strip.groupbus { background: var(--panel); border-color: var(--line);
+                    box-shadow: inset 0 2px 0 var(--route); }
+  .strip.groupbus .striphead h3 { color: var(--route); }
+  /* The returns start a little apart from the groups before them. */
+  #sendslot .strip.groupbus + .strip.send { margin-left: 6px; }
+  /* A group's row in the arrangement: its number in its colour, and bars that hold its
+     Spot FX and no notes, tinted faintly so the row reads as a bus and not a track. */
+  .arrgrouprow .arrnum { color: var(--route); font-weight: 700; }
+  .arrgrouprow .arrname { color: var(--route); }
+  .arrgrouprow .arrbar.busbar { background: color-mix(in srgb, var(--route) 9%, transparent); }
   .fxsel { width: 100%; padding: 2px 4px; font-size: 10px; margin-top: 1px; }
   /* The lane's colour behind its name and underlining it, rather than as a hairline
      above it: the name is what you look for when you are hunting for a channel, so
@@ -3066,6 +3094,18 @@
                         padding: 7px 8px; color: var(--ink); background: var(--input);
                         border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 12px; }
   .drawersearch input:focus { outline: none; border-color: var(--accent); }
+  /* The deployed desk hides search and sort together; the display above needs its own
+     [hidden] rule or the attribute does nothing — same trap as the drawer buttons below. */
+  .drawersearch[hidden] { display: none; }
+  .drawersearchhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  /* The voice editor's segmented pills, at drawer size: the pick you are on is filled. */
+  #songsort { display: flex; gap: 2px; padding: 2px; background: var(--input);
+              border: 1px solid var(--line); border-radius: 6px; }
+  #songsort button { width: auto; min-height: 0; padding: 2px 7px; border: 0; border-radius: 4px;
+                     font-size: 9px; font-weight: 700; letter-spacing: .04em; color: var(--dim);
+                     white-space: nowrap; }
+  #songsort button:hover { background: var(--hover); color: var(--ink); }
+  #songsort button.on, #songsort button.on:hover { background: var(--accent); color: var(--on-accent); }
   #recent:empty, #songlist:empty { display: none; }
   .drawerempty { padding: 5px 8px; color: var(--dim); font-size: 10px; }
   .drawergroup { margin: 8px 0 0; }
@@ -7652,6 +7692,43 @@
   #askrow button { padding: 7px 16px; font-size: var(--popup-action-size); }
   #askok { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   #askok:hover { filter: brightness(1.1); }
+  /* Switched off with a reason (Make a Banger… on bars it cannot use): plainly off. */
+  #askok:disabled { filter: none; opacity: .4; cursor: default; }
+  /* ---- Make a Banger… — the wide dialog. A quick row of choices you make every time,
+     and everything else folded under More Options in four groups. */
+  #askbox.wide { width: min(760px, 94vw); max-height: 92vh; overflow: auto; box-sizing: border-box; }
+  #askbody .bangergrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
+  #askbody .bangergrid .askfield { margin-top: 10px; }
+  #askbody .bangerrow { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  #askbody .bangerlabel { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  #askbody .askseg { display: flex; gap: 2px; padding: 2px; background: var(--input);
+                     border: 1px solid var(--line); border-radius: 6px; }
+  #askbody .askseg button { margin: 0; padding: 5px 14px; font-size: 11px; font-weight: 600; color: var(--dim);
+                            background: none; border: none; border-radius: 4px; }
+  #askbody .askseg button:hover { background: var(--hover); color: var(--ink); }
+  #askbody .askseg button.on { background: var(--accent); color: var(--on-accent); }
+  #askbody .bangersurprise { margin-left: auto; padding: 6px 14px; font-size: 11px; }
+  #askbody .bangerriff { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 14px;
+                         padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px;
+                         background: color-mix(in srgb, var(--input) 60%, transparent); color: var(--ink); font-size: 11px; }
+  #askbody .bangerriff .askfield.bangerhook { display: flex; align-items: center; gap: 8px; margin: 0; }
+  #askbody .bangerriff .askfield.bangerhook button.deskselect { margin-top: 0; min-width: 170px; }
+  #askbody .bangerlength { color: var(--dim); }
+  #askbody .bangernote { color: var(--dim); font-style: italic; }
+  #askbody .bangerwarn { color: var(--hot); }
+  #askbody details.bangermore { margin-top: 14px; }
+  #askbody details.bangermore > summary { cursor: pointer; color: var(--ink); font-size: 12px; font-weight: 600; padding: 4px 0; }
+  #askbody .bangergroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-top: 6px; }
+  #askbody fieldset.bangergroup { margin: 0; padding: 4px 11px 10px; border: 1px solid var(--line); border-radius: 6px;
+                                  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; align-content: start; }
+  #askbody fieldset.bangergroup legend { padding: 0 5px; font-size: 10px; color: var(--dim);
+                                         text-transform: uppercase; letter-spacing: .06em; }
+  #askbody fieldset.bangergroup .askfield { margin-top: 8px; }
+  #askbody fieldset.bangergroup .askcheck { margin-top: 8px; }
+  @media (max-width: 640px) {
+    #askbody .bangergrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #askbody .bangergroups { grid-template-columns: 1fr; }
+  }
   /* A normal browser tab cannot clamp the outer browser window. Keep the desk at its
      working floor and block interaction when the viewport itself falls below it, so a
      resize cannot leave a playable-looking but unreachable set of controls behind a
@@ -8844,10 +8921,27 @@
     <section class="drawersection">
       <div class="drawersectionhead"><span id="opensectionhead">New / Open</span></div>
       <button id="newsong" class="drawerprimary">＋ New song…</button>
+      <!-- A whole arranged song from a few bars of the one on the desk — which is left
+           as it is. The selected bars, or the first four; the dialog lets you change them. -->
+      <button id="makebanger" title="Turn a few bars of this song into a whole arranged song of its own — builds, drops, a breakdown. This song is not touched.">Make a Banger…</button>
+      <!-- The page that decides what a banger SOUNDS like — every part's preset, the kits,
+           the Random lists, the moods — opened through the desk launcher (:8000), which
+           starts it if it is not running. -->
+      <button id="bangersounds" title="Choose every sound a banger is made with — parts, drum kits, Random lists, moods. Opens the Banger Sounds page in a new tab, starting it if it is not running.">Banger Sounds…</button>
       <div id="recent"></div>
-      <label class="drawersearch"><span>Find a song</span>
+      <!-- The sort sits on the search's own caption line: both decide what the list below
+           shows, and a row of its own would push the songs down for two words. A div
+           rather than the label it used to be, because a label wrapping buttons hands
+           every click on them to the text box. -->
+      <div class="drawersearch">
+        <div class="drawersearchhead"><label for="songsearch">Find a song</label>
+          <span id="songsort" role="radiogroup" aria-label="Sort songs">
+            <button type="button" role="radio" data-sort="default" title="Each shelf in its usual order">Default</button>
+            <button type="button" role="radio" data-sort="newest" title="Newest first, by when each song was made — the shelves, and the songs on each shelf">Newest first</button>
+          </span>
+        </div>
         <input id="songsearch" type="search" autocomplete="off" spellcheck="false" placeholder="Title or song ID">
-      </label>
+      </div>
       <div id="songlist"></div>
     </section>
     <section class="drawersection" data-drawer-section="this-song">
@@ -8873,6 +8967,15 @@
        button on the desk that writes a file other than the one you are on, which is
        why it says which, why it asks first, and why it is nowhere near Save. -->
   <button id="promotealt" class="dangeraction" title="Make this alternate the song it was taken from" hidden>Save over the built-in song…</button>
+  <!-- Only on a song Make a Banger… made. Another Take re-rolls the same recipe into
+       this song; the take it replaces is kept whole, and Previous Take brings it back. -->
+  <button id="bangeragain" title="Re-roll this banger with the same settings — the take on the desk is kept" hidden>Another Take</button>
+  <button id="bangerprev" title="Go back to the take before this one" hidden>Previous Take</button>
+  <button id="bangernext" title="Go forward to the next take" hidden>Next Take</button>
+  <button id="bangersettings" title="Change this banger's settings and make a new take of it" hidden>Banger Settings…</button>
+  <button id="bangeruse" title="Make new bangers in this style start from this seed — its sounds, its channels and its master. Sounds you tuned here are kept as presets of their own." hidden>Use as Style…</button>
+  <button id="bangercombo" title="Keep this banger's sounds and channels under a name — a Sound Combo, chosen in Make a Banger" hidden>Save as Combo…</button>
+  <button id="bangerab" title="Switch between this seed and the remix its style came from — each keeps its own place" hidden>A/B with the Remix</button>
   <button id="revert" title="Throw away everything unsaved for this song — faders, effects and bar edits alike">Discard unsaved changes</button>
   <button id="importtracks" title="Choose another song, then add selected complete tracks with their notes, edits and channel settings">Import tracks…</button>
   <!-- The way back into a version of mix.js that has already been overwritten.
@@ -8933,6 +9036,7 @@
   <button id="renderwav" title="Bounce this song to a WAV, offline through the real engine, with the mix as it stands — asks how many passes first">Bounce</button>
   <button id="auditionwav" title="Bounce this song and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it">Audition through a plugin…</button>
   <button id="midi" title="Download this song as a MIDI file">Export MIDI</button>
+  <button id="exportaaf" title="Every track bounced on its own with the mix as it stands, packed into one AAF for Logic or Pro Tools: each track from bar 1, the audio embedded — asks how many passes first">Export AAF…</button>
   <button id="importmidi" title="Turn a .mid into a song and switch to it — same filename replaces">Import MIDI…</button>
   <input id="midifile" type="file" accept=".mid,.midi,audio/midi" hidden>
   <button id="exportfreezes" title="Save every active full-track and selected-bar freeze for this song in one file">Export Freezes…</button>

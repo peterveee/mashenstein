@@ -86,6 +86,8 @@
 // Absent — no `automation` key, or a lane with no points, cuts or sections — is every song
 // that has not asked, and plays exactly as it did before this file existed.
 
+import { groupIdOf, isGroupKey, GROUP_BY_ID } from './group-buses.js';
+
 /** The shapes a segment can take, in the order the desk offers them. */
 export const AUTOMATION_SHAPES = Object.freeze(['even', 'equal', 's']);
 
@@ -120,6 +122,13 @@ const BAR = 16;
 
 /** The lane key that means the whole mix — the name Audio.rampMix already uses for it. */
 export const MASTER_KEY = '__master';
+
+/**
+ * A BUS's lane: the master's, or one of the four group buses' (`__group:group1`, see
+ * src/data/group-buses.js). A bus lane carries effect SECTIONS and nothing else — nothing
+ * in the engine plays a level line or a cut on a bus — and it is not a track.
+ */
+export const isBusKey = (key) => key === MASTER_KEY || !!groupIdOf(key);
 
 /** The most effects one section's chain can hold: an insert strip's six. */
 const SECTION_MAX = 6;
@@ -688,15 +697,18 @@ export function automationIssues(automation, laneKeys = null, bars = null) {
   }
   for (const [key, lane] of Object.entries(automation)) {
     const master = key === MASTER_KEY;
-    if (!master && laneKeys && !laneKeys.includes(key)) issues.push(`automation names "${key}", which is not a lane`);
+    const group = groupIdOf(key);
+    const bus = master || !!group;
+    if (isGroupKey(key) && !group) issues.push(`automation names "${key}", which is not a group`);
+    else if (!bus && laneKeys && !laneKeys.includes(key)) issues.push(`automation names "${key}", which is not a lane`);
     if (!lane || typeof lane !== 'object') { issues.push(`automation for "${key}" is not an object`); continue; }
     const place = (p) => Array.isArray(p) && Number.isFinite(p[0]) && p[0] >= 1
       && Number.isFinite(p[1] ?? 0) && (p[1] ?? 0) >= 0 && (p[1] ?? 0) < BAR;
     // The master's lane is effect sections and nothing else: nothing in the engine plays
     // a level line or a cut on the whole mix, and a file that asked for one would be
     // asking for something it silently does not get.
-    if (master && ((lane.points?.length || 0) + (lane.cuts?.length || 0)) > 0) {
-      issues.push('the master carries effect sections only — no level line or cuts');
+    if (bus && ((lane.points?.length || 0) + (lane.cuts?.length || 0)) > 0) {
+      issues.push(`${master ? 'the master' : GROUP_BY_ID[group].name} carries effect sections only — no level line or cuts`);
     }
     for (const s of lane.fx || []) {
       if (!s || typeof s !== 'object' || !place(s.from) || !place(s.to)) {

@@ -37,6 +37,7 @@ import { mixSignature } from '../tools/lib/mix-signature.js';
 import { AUXES, AUX_DEFAULTS } from '../src/engine/mixer.js';
 import { EFFECT_BY_ID, MAX_EFFECTS, DEFAULT_MASTER_CHAIN, visibleParams, paramRange } from '../src/engine/effects.js';
 import { LANE_KEYS } from '../src/engine/lanes.js';
+import { GROUP_IDS, GROUP_DEFAULTS } from '../src/data/group-buses.js';
 // The node-side registry, which is the one the desk saves against: a mix can be
 // dialled in on an imported song, and an entry for it is not a broken mix file.
 import { listTracks } from '../tools/lib/tracks.js';
@@ -96,6 +97,19 @@ for (const [id, entry] of Object.entries(MIX)) {
     assert(auxIds.has(aux), `${id}: fx "${aux}" is a real aux`);
     assert((patch.effects || []).every((e) => EFFECT_BY_ID[e.id]),
       `${id}: ${aux} return effects are all in the catalogue`);
+  }
+  // Group buses: a lane routes to one of the four or to nothing, and a group's own
+  // settings are the four and nothing else — see src/data/group-buses.js.
+  for (const [key, lane] of Object.entries(entry.lanes || {})) {
+    if (lane.group != null) assert(GROUP_IDS.includes(lane.group), `${id}.${key}: group "${lane.group}" is one of the four`);
+  }
+  for (const [g, G] of Object.entries(entry.groups || {})) {
+    assert(GROUP_IDS.includes(g), `${id}: groups "${g}" is one of the four`);
+    const chain = G.effects || [];
+    assert(chain.length <= MAX_EFFECTS && chain.every((e) => EFFECT_BY_ID[e.id]),
+      `${id}: ${g} has at most ${MAX_EFFECTS} effects, all in the catalogue`);
+    assert((G.gain ?? 0) >= -60 && (G.gain ?? 0) <= 6 && Math.abs(G.pan ?? 0) <= 1,
+      `${id}: ${g} fader and pan are in range`);
   }
 }
 
@@ -350,6 +364,7 @@ const sample = {
       // Keep all six new ids in one saved channel fixture so the source serializer
       // proves their arbitrary parameter objects and bypass flags survive a reload.
       kick: {
+        group: 'group1',
         gain: 1,
         effects: [
           { id: 'chorus2', params: { rateSync: 0, frequency: 0.65, density: 0.75 } },
@@ -364,8 +379,19 @@ const sample = {
       // it gets into a mix is by hand — and the serialiser used to erase it on the
       // next Save. 0 is mono, and mono is a decision, so it has to survive a round
       // trip like any other number.
-      hats: { width: 0 },
+      hats: { width: 0, group: 'group1' },
       snare: { width: 1.6 },
+      // A group id that is not one of the four is unassigned, and says nothing.
+      clap: { group: 'group9' },
+    },
+    // The group buses' own settings, every field moved, and one group at its defaults
+    // that must write nothing.
+    groups: {
+      group1: {
+        gain: -2.5, pan: 0.25, mute: true, eq: { low: 1.5, high: -2 },
+        effects: [{ id: 'compressor', params: { threshold: -18, ratio: 4 } }, { id: 'filter', bypass: true }],
+      },
+      group3: { gain: 0, pan: 0, mute: false, eq: { low: 0, mid: 0, high: 0 }, effects: [] },
     },
   },
 };
@@ -403,6 +429,15 @@ assert(wrote.lanes.hats.width === 0 && wrote.lanes.snare.width === 1.6,
   'round-trip: a lane keeps its stereo width, mono included');
 assert(!('width' in (wrote.lanes.kick || {})),
   'round-trip: a lane at the default width says nothing about it');
+assert(wrote.lanes.kick.group === 'group1' && wrote.lanes.hats.group === 'group1',
+  'round-trip: a channel keeps the group it is routed into');
+assert(!wrote.lanes.clap && !('group' in (wrote.lanes.snare || {})),
+  'round-trip: a group that is not one of the four, or none, writes nothing');
+assert(JSON.stringify(wrote.groups?.group1) === JSON.stringify({
+  gain: -2.5, pan: 0.25, mute: true, eq: { low: 1.5, high: -2 },
+  effects: [{ id: 'compressor', params: { threshold: -18, ratio: 4 } }, { id: 'filter', bypass: true }],
+}), 'round-trip: a group keeps its fader, pan, mute, EQ and insert chain');
+assert(!('group3' in (wrote.groups || {})), 'round-trip: a group at its defaults writes nothing');
 for (const aux of ['delay', 'reverb']) {
   const a = wrote.fx[aux], b = sent.fx[aux];
   assert(Object.entries(b).every(([k, v]) => (k === 'effects'
@@ -544,9 +579,10 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
 const varyBase = {
   master: -1.5,
+  groups: { group1: { gain: -2, effects: [{ id: 'compressor', params: { ratio: 4 } }] } },
   fx: { delay: { level: 0.8 }, reverb: { decay: 3.4, effects: [{ id: 'chorus' }] } },
   lanes: {
-    bass: { gain: -2.5, send: { delay: 0.5 }, effects: [{ id: 'peq', params: { f1: 90, g1: 3 } }] },
+    bass: { group: 'group1', gain: -2.5, send: { delay: 0.5 }, effects: [{ id: 'peq', params: { f1: 90, g1: 3 } }] },
     // At unity and untouched: the channel a chorus could be added to without the desk
     // noticing, because the old check called a lane with nothing but a chain "bare".
     kick: {},
@@ -603,6 +639,18 @@ const CHANGES = [
   ['the reverb pre-delay', (m) => { m.fx.reverb.preDelay = 0.05; }],
   ['an effect added to a return', (m) => { m.fx.delay.effects = [{ id: 'filter' }]; }],
   ['an effect taken off a return', (m) => { m.fx.reverb.effects = []; }],
+  ['a channel routed into a group', (m) => { m.lanes.kick.group = 'group2'; }],
+  ['a channel moved to another group', (m) => { m.lanes.bass.group = 'group4'; }],
+  ['a channel taken out of its group', (m) => { delete m.lanes.bass.group; }],
+  ['a group fader', (m) => { m.groups.group1.gain = -6; }],
+  ['a group pan', (m) => { m.groups.group1.pan = -0.5; }],
+  ['a group muted', (m) => { m.groups.group1.mute = true; }],
+  ['a group EQ band', (m) => { m.groups.group1.eq = { mid: 2 }; }],
+  ['an effect added to a group', (m) => { m.groups.group1.effects.push({ id: 'chorus' }); }],
+  ['a group effect parameter', (m) => { m.groups.group1.effects[0].params.ratio = 8; }],
+  ['a group effect bypassed', (m) => { m.groups.group1.effects[0].bypass = true; }],
+  ['a group effect muted', (m) => { m.groups.group1.effects[0].mute = true; }],
+  ['a group with no members given settings', (m) => { m.groups.group3 = { gain: 3 }; }],
 ];
 
 // And each of these changes nothing the file can hold, so the desk must stay quiet.
@@ -620,6 +668,9 @@ const NON_CHANGES = [
   ['an empty voice map', (m) => { m.voice = {}; }],
   ['an empty layer list', (m) => { m.layers = []; }],
   ['an empty track-label map', (m) => { m.labels = {}; }],
+  ['a group that is not one of the four', (m) => { m.lanes.kick.group = 'group9'; }],
+  ['a channel explicitly unassigned', (m) => { m.lanes.kick.group = null; }],
+  ['a group written out at its defaults', (m) => { m.groups.group2 = { ...GROUP_DEFAULTS, effects: [] }; }],
 ];
 
 const renamedTrack = clone(varyBase);
@@ -731,6 +782,13 @@ const cabinet = {
 };
 const cabErrs = validateVariants(cabinet);
 assert(!cabErrs.length, `the treatment under test is one the desk would accept${cabErrs.length ? `: ${cabErrs.join('; ')}` : ''}`);
+// Group routing is the song's shape, not something a cabinet screen moves at a bar line:
+// neither a group's settings nor a channel's assignment belongs in a treatment.
+const groupErrs = validateVariants({ select: [{ when: 'always', patch: {
+  groups: { group1: { gain: -3 } }, lanes: { kick: { group: 'group1' } },
+} }] });
+assert(groupErrs.some((e) => /"groups"/.test(e)) && groupErrs.some((e) => /"group"/.test(e)),
+  'a cabinet treatment can neither re-tune a group bus nor move a channel between groups');
 
 const varPath = join(dir, 'variants.js');
 writeFileSync(varPath, `export const variants = ${variantsSource(cabinet, '')};\n`);

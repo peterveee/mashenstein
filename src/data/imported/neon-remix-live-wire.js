@@ -671,7 +671,7 @@ export const mix = {
   order: ["kick","kick2","snare","clap","hats","ohats","crash","crash2","tom","tom2","bass","bass2","lead","lead2","lead3","lead4","lead5","chords","chords2","chords3"],
   labels: {"lead":"HOOK Alloy Chime","lead2":"PIANO Pop Grand (hook in octaves)","lead3":"DROP Square Pluck","lead4":"SWEEP / 8va Ice Bell","lead5":"BRASS Stabs","chords":"SUPERSAW Pump","chords2":"PAD Warm Strings","chords3":"BUILD Filter Sweep","bass":"BASS Off-beat","bass2":"BASS Tron Sixteenths","kick":"KICK Megamix","kick2":"KICK 909 (drop two)","tom":"SYNDRUM Pew","tom2":"IMPACT Noise","crash2":"RISER Noise"},
   voice: {"kickVoice":"kickMegamix","kick2Voice":"ds909KickPunch","snareVoice":"dsSnare","clapVoice":"ds909Clap","hatsVoice":"dsHatClosed","ohatsVoice":"ohat909SixBit","crashVoice":"ds909Crash","tomVoice":"syn3PewLong","tom2Voice":"noiseSweep","bassVoice":"detuneBass","bass2Voice":"tngrNightSequence","leadVoice":"tngrAlloyChime","lead2Voice":"mrdrPopGrand","lead3Voice":"roundMono2","lead4Voice":"tngrIceBell","lead5Voice":"tngrBrassSection","chordsVoice":"tpSuperSaw","chords2Voice":"tngrWarmStrings","chords3Voice":"tpSuperSaw"},
-  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.2,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.20s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.2,"Q":1.6,"slope":-24,"color":"white","attack":2.9440000000000004,"hold":0,"decay":0.256,"curve":"exp","gain":1},"drive":0.08,"peak":0.034},"lead3Voice":{"label":"Plain Square vs Synth","category":"Lead","synth":"CRLS-1","dur":7.7,"note":"Simple Square Tone 2","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.2,"sustain":0,"release":0.3,"attackCurve":"linear","decayCurve":"exponential","releaseCurve":"exponential"},"filter":{"type":"lowpass","rolloff":-12,"Q":4.5},"filterEnvelope":{"baseFrequency":20,"octaves":7.6,"attack":0.001,"decay":0.417,"sustain":0,"release":0.3,"attackCurve":"linear","decayCurve":"exponential","releaseCurve":"exponential"}},"starter":false,"kind":"tone","level":0.04240780626115417,"peak":0.9301964619030684},"chords3Voice":{"label":"Sweep Saw","category":"Pad","synth":"CRLS-1","dur":4,"kind":"tone","note":"Three detuned saws behind a lowpass that opens across two bars: the filter sweep of a build.","options":{"oscillator":{"type":"fatsawtooth","count":3,"spread":30},"envelope":{"attack":0.05,"decay":0.1,"sustain":1,"release":0.3},"filter":{"type":"lowpass","Q":4,"rolloff":-24},"filterEnvelope":{"attack":3.04,"decay":0.2,"sustain":1,"release":0.3,"baseFrequency":160,"octaves":5.8}},"level":0.024461,"peak":0.2661}},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.2,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.20s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.2,"Q":1.6,"slope":-24,"color":"white","attack":2.9440000000000004,"hold":0,"decay":0.256,"curve":"exp","gain":1},"drive":0.22,"peak":0.034},"lead3Voice":{"label":"Plain Square vs Synth","category":"Lead","synth":"CRLS-1","dur":7.7,"note":"Simple Square Tone 2","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.2,"sustain":0,"release":0.3,"attackCurve":"linear","decayCurve":"exponential","releaseCurve":"exponential"},"filter":{"type":"lowpass","rolloff":-12,"Q":4.5},"filterEnvelope":{"baseFrequency":20,"octaves":7.6,"attack":0.001,"decay":0.417,"sustain":0,"release":0.3,"attackCurve":"linear","decayCurve":"exponential","releaseCurve":"exponential"}},"starter":false,"kind":"tone","level":0.04240780626115417,"peak":0.9301964619030684},"chords3Voice":{"label":"Sweep Saw","category":"Pad","synth":"CRLS-1","dur":4,"kind":"tone","note":"Three detuned saws behind a lowpass that opens across two bars: the filter sweep of a build.","options":{"oscillator":{"type":"fatsawtooth","count":3,"spread":30},"envelope":{"attack":0.05,"decay":0.1,"sustain":1,"release":0.3},"filter":{"type":"lowpass","Q":4,"rolloff":-24},"filterEnvelope":{"attack":3.04,"decay":0.2,"sustain":1,"release":0.3,"baseFrequency":160,"octaves":5.8}},"level":0.024461,"peak":0.2661}},
   lanes: {
     kick: { gain: 5, eq: { low: 1.8 }, effects: [{ id: "peq", params: { f2: 200, g2: -4, q2: 1 } }] },
     kick2: { gain: -6, eq: { low: -3 } },
@@ -680,9 +680,9 @@ export const mix = {
     hats: { gain: -9, pan: -0.25 },
     ohats: { gain: -8, pan: 0.2, eq: { high: 3 } },
     crash: { gain: -8, pan: 0.35, send: { delay: 0.5, reverb: 1.8 } },
-    crash2: { gain: -2.7, send: { reverb: 0.8 }, eq: { low: 5.5, high: 2 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    crash2: { gain: -15.5, send: { reverb: 0.8 }, eq: { low: 5.5, high: 2 } },
     tom: { gain: -8, pan: -0.3, send: { delay: 0.25, reverb: 0.45 } },
-    tom2: { gain: -9, send: { reverb: 0.7 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    tom2: { gain: -20.7, send: { reverb: 0.7 }, effects: [{ id: "widener", params: { width: 1 } }] },
     bass: { gain: -2.5 },
     bass2: { gain: -10, eq: { low: -6 } },
     lead: { gain: -8, send: { delay: 0.1, reverb: 0.25 }, effects: [{ id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }, { id: "compressor" }, { id: "peq", params: { f3: 3500, g3: -3, q3: 0.8 } }] },
@@ -690,9 +690,9 @@ export const mix = {
     lead3: { gain: 5, pan: 0.15, send: { delay: 0.12, reverb: 0.2 } },
     lead4: { gain: -7, pan: -0.2, send: { delay: 0.2, reverb: 0.5 } },
     lead5: { gain: -9, pan: 0.25, send: { reverb: 0.3 } },
-    chords: { gain: 5.5, send: { reverb: 0.25 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.9 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.16, decay: 0.02, depth: 0.7 } }] },
-    chords2: { gain: -10, send: { reverb: 0.5 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
-    chords3: { gain: 3, send: { reverb: 0.4 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    chords: { gain: -8.48, send: { reverb: 1.25 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.9 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.16, decay: 0.02, depth: 0.7 } }] },
+    chords2: { gain: -23.98, send: { reverb: 2.5 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
+    chords3: { gain: -13.2, send: { reverb: 0.4 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 1 } }] },
   },
 };
 

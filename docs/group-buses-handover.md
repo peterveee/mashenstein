@@ -1,8 +1,9 @@
 # Mixer Group Buses — Handover Specification
 
-Status: Proposed implementation spec  
+Status: **Implemented 2 October 2026** — see "As built" at the end for where the build
+differs from this spec. User-facing docs: `docs/SONG_MIXER.md`, "Group buses".  
 Scope: Song Mixer fixed subgroup routing  
-Groups: Group 1 and Group 2 only; non-nested
+Groups: Group 1 to Group 4 (as built; the spec below says 1 and 2); non-nested
 
 ## 1. Decision summary
 
@@ -411,3 +412,55 @@ Still open, to be resolved in the implementation issue:
 6. Add safe live reassignment and last-member sleep behaviour.
 7. Add persistence/legacy compatibility tests, the stems decision from 7.1, and the watchdog sweep (6.4).
 8. Run real-song CPU comparisons and a listening pass for grouped drums, including group compression and mute/solo/send tails.
+
+## As built (2 October 2026)
+
+Implemented on these lines, with these differences from the spec above (Peter's
+decisions, and what the code showed once it was open):
+
+1. **Four groups**, `group1`–`group4`, fixed names "Group 1"…"Group 4", no custom labels.
+   Definitions in `src/data/group-buses.js` (pure, no imports), which also holds the
+   defaults, `groupKey`/`groupIdOf`/`isGroupKey` and the "by family" table.
+2. **Spot FX on groups**, which the spec did not cover: arrangement automation under
+   `__group:<id>`, sections only (like `__master`), validated by `automationIssues`
+   (`isBusKey` in `src/data/automation.js`). Each active group gets an arrangement row at
+   the top for them; the timeline region menu offers them beside the master's.
+3. **Bus order** is input → EQ → inserts → Spot FX sections → fader → pan → monitor →
+   `musicBus` — fader after the inserts so a bus compressor's drive does not follow it,
+   sections after the inserts as on the master, out into `musicBus` so the game's ducks
+   still reach grouped tracks.
+4. **Placement:** group strips sit in `#sendslot` *before* the Delay/Reverb returns
+   (§3.2's "beside Master" is impossible — the master is its own non-scrolling column on
+   the left). Channels → groups → returns.
+5. **Group solo** is a derived predicate (`soloHeard(key)`: in the channel solo set, or
+   routed into a soloed group) rather than copying members into `soloed` — same meaning,
+   and membership changes need no bookkeeping.
+6. **Lazy activation, simplified:** a bus is built on its first member and never torn
+   down; its insert chain is loaded while it has members and emptied when the last
+   leaves (state kept), and its meter exists only while it has members. The chain does
+   **not** use sleep-when-silent: a sleeping chain is woken only by the sequencer's
+   notes, so a desk preview through a grouped track could find it asleep. Master and
+   return chains do not sleep either.
+7. **Assign by family** (spec §3.3 left it out): the preset's category first, the lane's
+   family second — drums → 1, leads (Lead, Pluck, Bells, Blip / lead, leadHarm, twinkle)
+   → 2, FX & Sweep → 3, vocals → 4, bass/keys/pads/organ/orchestra unassigned. In the
+   group menu on every channel and the group strip's menu, beside "Clear every
+   assignment"; one undo step each.
+8. **Copy/paste/reset (§9 q4):** Paste Channel keeps the target's own group; Duplicate
+   keeps the source's (an existing copy of the whole lane); Reset Channel keeps the group.
+   Reset Group clears the group's settings and leaves its members.
+9. **No group width** (§9 q1): channels have no width control on the desk either.
+10. **Stems (§7.1):** option 2 — `tools/render-stems.js` names each group running
+    nonlinear processing across two or more audible member stems, via
+    `tools/lib/stem-linearity.js` (an allow-list of linear effects; anything new is
+    nonlinear until classified, which `tests/stem-linearity.js` enforces). Note that
+    render-stems' renders get no arrangement, so no Spot FX of any kind reach stems today
+    — a pre-existing limitation, flagged in its code.
+11. **Live reassignment** cross-fades over 20 ms (equal gain) through a temporary pair of
+    gains, cleaned up once the fade is over; load, `applyMix` and offline renders route
+    instantly (`tests/group-buses.js` proves no fade-in at bar one).
+
+Measured (offline render, ms per audio-second, best of 3, 20 s): plumber 479.5 none /
+488.1 grouped by family / 492.5 + group compressor & EQ / 503.7 four groups with a
+compressor each / 488.1 the drum compressor per channel instead; neon 229.6 / 227.9 /
+237.2 / 240.1 / 239.9. Differences under ~2% are inside the bench's noise.

@@ -562,7 +562,7 @@ export const mix = {
   order: ["kick","kick2","snare","clap","hats","hats2","ohats","crash","crash2","bass","bass2","lead","lead2","lead3","lead6","lead4","lead5","chords","chords2","chords3"],
   labels: {"lead":"HOOK Mega Saw","lead2":"WHISTLE Ocarina","lead3":"PLUCK Koto","lead4":"HARMONY (plumber's own)","lead5":"PIANO Pop Grand","lead6":"PLUCK Koto (drop double)","chords":"SUPERSAW Pump","chords2":"STRUM Harp","chords3":"CHOIR Aah","bass":"BASS Picked","bass2":"BASS Off-beat","kick":"STOMP","kick2":"KICK 909","hats":"TAMBOURINE","hats2":"SHAKER","crash2":"RISER Noise"},
   voice: {"kickVoice":"stKickThud","kick2Voice":"ds909KickPunch","snareVoice":"snareCrisp","clapVoice":"clapRoom","hatsVoice":"tambourine","hats2Voice":"shaker","ohatsVoice":"ohat909SixBit","crashVoice":"ds909Crash","bassVoice":"tngrPickedBass","bass2Voice":"detuneBass","leadVoice":"bestMegaSawLead","lead2Voice":"mrdrOcarina","lead3Voice":"koto","lead4Voice":"mrdrConcertFlute","lead5Voice":"mrdrPopGrand","lead6Voice":"koto","chordsVoice":"tpSuperSaw","chords2Voice":"harpPluck","chords3Voice":"bestChoirAah"},
-  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.870967741935484,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.87s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.870967741935484,"Q":1.6,"slope":-24,"color":"white","attack":3.5612903225806454,"hold":0,"decay":0.3096774193548387,"curve":"exp","gain":1},"drive":0.08,"peak":0.034}},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.870967741935484,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.87s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.870967741935484,"Q":1.6,"slope":-24,"color":"white","attack":3.5612903225806454,"hold":0,"decay":0.3096774193548387,"curve":"exp","gain":1},"drive":0.22,"peak":0.034}},
   lanes: {
     kick: { gain: -6 },
     kick2: { gain: -3, eq: { low: -1.5 } },
@@ -572,7 +572,7 @@ export const mix = {
     hats2: { gain: -8, pan: -0.3 },
     ohats: { gain: -6, pan: 0.15 },
     crash: { gain: -9, pan: -0.3, send: { reverb: 0.3 } },
-    crash2: { gain: -4, send: { reverb: 0.8 }, eq: { low: 5.5 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    crash2: { gain: -16.8, send: { reverb: 0.8 }, eq: { low: 5.5 } },
     bass: { gain: -6 },
     bass2: { gain: -6 },
     lead: { gain: -1, send: { delay: 0.15, reverb: 0.3 }, effects: [{ id: "exciter", params: { tune: 2500, drive: 0.5, timbre: 0.4, mix: 0.3 } }] },
@@ -581,9 +581,9 @@ export const mix = {
     lead6: { gain: -7, pan: -0.25, send: { delay: 0.12, reverb: 0.25 } },
     lead4: { gain: -9, pan: 0.25, send: { reverb: 0.35 } },
     lead5: { gain: -10, pan: -0.15, send: { reverb: 0.35 } },
-    chords: { gain: 2, send: { reverb: 0.25 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.9 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.18, decay: 0.02, depth: 0.7 } }] },
+    chords: { gain: -11.98, send: { reverb: 1.25 }, eq: { low: -3 }, effects: [{ id: "widener", params: { width: 0.9 } }, { id: "rhythmgate", params: { division: 1, gateLength: 1, attack: 0.18, decay: 0.02, depth: 0.7 } }] },
     chords2: { gain: -8, pan: 0.2, send: { reverb: 0.2 }, eq: { low: -3 }, noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":14},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
-    chords3: { gain: -12, send: { reverb: 0.6 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
+    chords3: { gain: -14.66, send: { reverb: 0.815 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
   },
 };
 

@@ -246,6 +246,20 @@ function mrdr3WriteFilterEnv(param, startFrame, durSeconds, e, rate) {
   }
 }
 
+/*
+ * A synced slave's knots, in frames. Drawn again on a note-off for the length the note
+ * turned out to have, exactly as its pitch envelope would be — see Mrdr3Layer.release.
+ */
+function mrdr3PlanBend(lay, startFrame, durSeconds, rate) {
+  var spec = lay.spec;
+  lay.bendK = 0;
+  lay.bendCount = spec.bendKeys
+    ? mrdr3SyncBendKnots(spec.bendCents, spec.pitchEnv, durSeconds, spec.bendSteps,
+      lay.bendT, lay.bendJ)
+    : 0;
+  for (var k = 0; k < lay.bendCount; k++) lay.bendFrames[k] = startFrame + lay.bendT[k] * rate;
+}
+
 function mrdr3WriteCentsEnv(param, startFrame, durSeconds, spec, rate) {
   param.reset(0);
   var built = mrdr3CentsEnvEvents(spec.pitchCents, spec.pitchEnv, 0, durSeconds, 0, 0);
@@ -299,10 +313,6 @@ function Mrdr3Unison() {
   this.glideFrom = 0;
   this.glideStart = 0;
   this.glideUntil = -1;
-  // Where the MASTER is in its cycle, for a synced slave. The slave's phase is derived
-  // from this rather than zeroed, so a reset lands where it happened instead of on the
-  // sample boundary after it.
-  this.masterPhase = 0;
 }
 
 // ---- a layer, for one tone -----------------------------------------------------------
@@ -357,12 +367,14 @@ function Mrdr3Layer(rate) {
   // no envelope depth — asked the same question for the whole life of every note. NaN so
   // the first sample of a note always builds.
   this.lastLfq = NaN;
-  this.syncOn = false;
-  this.syncRatio = 1;
-  // The master's increment is the slave's DIVIDED by the ratio, and that division would
-  // otherwise run once per sample per unison voice. The ratio is fixed for the note, so
-  // its reciprocal is too.
-  this.syncInv = 1;
+  // A synced slave's PITCH ENVELOPE, as knots between its sync tables — see
+  // mrdr3SyncBendKnots. Preallocated at the planner's ceiling (3 * 48 + 2) so a note-on
+  // allocates nothing; 'bendK' is the knot the render has reached.
+  this.bendT = new Float64Array(160);
+  this.bendJ = new Int32Array(160);
+  this.bendFrames = new Float64Array(160);
+  this.bendCount = 0;
+  this.bendK = 0;
   this.band = new Mrdr3Biquad(rate);
   this.makeup = 1;
   this.layerKey = '';
@@ -473,6 +485,8 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   // ---- the pitch envelope, in cents on top of the layer's own detune --------
   this.pitchOn = !!spec.pitchCents && !!spec.pitchEnv;
   if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, frame, layerSeconds, spec, rate);
+  // A synced slave bends its RATIO instead — the same envelope, as knots between tables.
+  mrdr3PlanBend(this, frame, layerSeconds, rate);
   // ---- the FM operator: pitch fixed at the carrier's STARTING frequency ------
   //
   // Depth in hertz as a multiple of it, with its own envelope through the same builder —
@@ -534,6 +548,7 @@ Mrdr3Layer.prototype.redraw = function (at, rate, vcaOff) {
       spec.gain, rate)
     : mrdr3WriteEnvelope(this.gain, this.startFrame, seconds, spec.gain, spec.env, hz, rate);
   if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, this.startFrame, seconds, spec, rate);
+  mrdr3PlanBend(this, this.startFrame, seconds, rate);
   if (this.fmOn) {
     mrdr3WriteEnvelope(this.fmParam, this.startFrame, seconds, 1, spec.fmEnv, hz, rate);
   }
@@ -638,18 +653,6 @@ Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, g
     lay.monitorGain = !soloLayers || soloLayers.has(spec2.layerKey) ? 1 : 0;
     lay.monitorFrom = lay.monitorGain;
     lay.monitorTo = lay.monitorGain;
-    // HARD SYNC. Osc 1 is always the master and the pill names which layers follow it; a
-    // slave's own ratio decides how many of its cycles fit before each reset, which is
-    // where the bright tearing spectrum comes from. Noise has no phase to reset.
-    // The per-sample reset is only for a slave with no table — one whose pitch envelope
-    // bends the ratio (see syncFor in compile.js). A tabled slave is an ordinary oscillator.
-    lay.syncOn = !spec2.syncKeys
-      && !!(patch.syncSlaves && patch.syncSlaves[i]) && !spec2.noiseColour && i > 0;
-    if (lay.syncOn) {
-      lay.syncRatio = spec2.ratio / (patch.masterRatio > 0.01 ? patch.masterRatio : 0.01);
-      lay.syncInv = 1 / lay.syncRatio;
-      for (var su = 0; su < lay.count; su++) lay.unison[su].masterPhase = 0;
-    }
   }
   for (var j = this.used; j < 3; j++) this.layers[j].active = false;
   this.stereo = false;
@@ -1577,6 +1580,22 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
           // native path fans one modulator across both — resolved once per sample for the
           // group in mrdr3StepMods.
           var duty = moving ? grp.pwmDuty[li] : 0;
+          // A synced slave's pitch envelope: which two tables, and how far between them.
+          // Linear in time from one knot to the next, as the native path's gain ramps are.
+          var bendA = -1;
+          var bendB = -1;
+          var bendW = 0;
+          if (lay.bendCount) {
+            var bf = lay.bendFrames;
+            var bk = lay.bendK;
+            while (bk + 1 < lay.bendCount && f >= bf[bk + 1]) bk++;
+            lay.bendK = bk;
+            bendA = lay.bendJ[bk];
+            if (bk + 1 < lay.bendCount && f > bf[bk]) {
+              bendB = lay.bendJ[bk + 1];
+              bendW = (f - bf[bk]) / (bf[bk + 1] - bf[bk]);
+            }
+          }
 
           for (var u = 0; u < lay.count; u++) {
             var uv = lay.unison[u];
@@ -1640,47 +1659,30 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
             var level = uv.levelNow + grp.vibLevel[u];
             if (level < 0) level = 0; else if (level > topLevel) level = topLevel;
             var v;
-            if (lay.syncOn) {
-              // The slave runs at the MASTER's rate for the purpose of resetting, and at
-              // its own for the purpose of its waveform — which is the whole of hard sync.
-              // The master runs at the slave's rate DIVIDED by the ratio, so a slave
-              // tuned well below its master takes an increment larger than the slave's —
-              // and can pass a whole cycle even with the slave clamped to Nyquist. The
-              // accumulator is wrapped properly rather than by one subtraction.
-              var minc = inc * lay.syncInv;
-              uv.masterPhase += minc;
-              if (uv.masterPhase >= 2 || uv.masterPhase < 0) {
-                uv.masterPhase -= Math.floor(uv.masterPhase);
-                uv.phase = uv.masterPhase * lay.syncRatio;
-                if (uv.phase >= 1) uv.phase -= Math.floor(uv.phase);
-              } else if (uv.masterPhase >= 1) {
-                // THE RESET. The slave's phase is derived from how far the master is PAST
-                // its wrap, not set to zero outright — otherwise the reset lands on a
-                // sample boundary rather than where it actually happened, and the sync
-                // edge jitters with the note's pitch.
-                uv.masterPhase -= 1;
-                var sp = uv.masterPhase * lay.syncRatio;
-                if (sp >= 1) sp -= Math.floor(sp);
-                uv.phase = sp;
-              } else {
-                uv.phase += inc;
-                if (uv.phase >= 1) uv.phase -= 1; else if (uv.phase < 0) uv.phase += 1;
+            // A synced slave's table is per unison voice, because its spread is in the
+            // table rather than in the pitch. Missing only if a patch outran its tables,
+            // which the controller orders against; the plain wave is the safe stand-in.
+            var vdata = synced ? (syncs[spec.syncKeys[u]] || data) : data;
+            if (bendA >= 0) {
+              // A bending slave: this knot's table crossfaded into the next one's.
+              var rowB = spec.bendKeys[u];
+              var ta = syncs[rowB[bendA]] || vdata;
+              v = mrdr3Read(ta, stride, size, level, uv.phase);
+              if (bendW > 0) {
+                var tb = syncs[rowB[bendB]] || vdata;
+                v += (mrdr3Read(tb, stride, size, level, uv.phase) - v) * bendW;
               }
-              v = mrdr3Read(data, stride, size, level, uv.phase) * uv.gain;
+              v *= uv.gain;
             } else {
-              // A synced slave's table is per unison voice, because its spread is in the
-              // table rather than in the pitch. Missing only if a patch outran its tables,
-              // which the controller orders against; the plain wave is the safe stand-in.
-              var vdata = synced ? (syncs[spec.syncKeys[u]] || data) : data;
               v = (moving
                 ? mrdr3Pulse(vdata, stride, size, level, uv.phase, duty)
                 : mrdr3Read(vdata, stride, size, level, uv.phase)) * uv.gain;
-              uv.phase += inc;
-              // Both directions: deep FM can carry an instantaneous frequency negative,
-              // and a phase that walks off the bottom indexes the table just as far out
-              // of bounds as one that walks off the top.
-              if (uv.phase >= 1) uv.phase -= 1; else if (uv.phase < 0) uv.phase += 1;
             }
+            uv.phase += inc;
+            // Both directions: deep FM can carry an instantaneous frequency negative,
+            // and a phase that walks off the bottom indexes the table just as far out
+            // of bounds as one that walks off the top.
+            if (uv.phase >= 1) uv.phase -= 1; else if (uv.phase < 0) uv.phase += 1;
             layL += v * uv.panL;
             // Measured both ways: skipping this on a mono layer beats doing it and letting
             // the mirror overwrite it, by about 7% on a mono preset. The branch predicts
@@ -1781,8 +1783,8 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
         groupR *= grp.lfoTrem;
       }
       if (p2.driveCurve) {
-        groupL = mrdr3Shape(p2.driveCurve, groupL);
-        if (grp.stereo) groupR = mrdr3Shape(p2.driveCurve, groupR);
+        groupL = mrdr3Shape(p2.driveCurve, groupL * p2.driveIn);
+        if (grp.stereo) groupR = mrdr3Shape(p2.driveCurve, groupR * p2.driveIn);
         if (p2.toneStages) {
           groupL = grp.tone.stepL(groupL);
           if (grp.stereo) groupR = grp.tone.stepR(groupR);

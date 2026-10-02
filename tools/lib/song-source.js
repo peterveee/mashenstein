@@ -191,7 +191,7 @@ export const NOTES_IMPORT_DEFAULT = '../../engine/notes.js';
 
 export function songFile({
   id, title, slug, group, bank, mix, arrangement, variants, m8trx = null, note, seed, alternateOf,
-  notesPath = NOTES_IMPORT_DEFAULT,
+  notesPath = NOTES_IMPORT_DEFAULT, banger = null,
 }) {
   const head = `// ${title} — one song: what it plays, how it is arranged, how it sounds.\n`
     + `//\n`
@@ -210,7 +210,12 @@ export function songFile({
     + (alternateOf ? `export const alternateOf = ${JSON.stringify(alternateOf)};\n` : '')
     + (seed == null ? '' : `export const seed = ${JSON.stringify(seed)};\n`)
     + `\n`
-    + `export const bank = ${bankSource(bank)};\n\n`;
+    + `export const bank = ${bankSource(bank)};\n\n`
+    // A banger's recipe — the riff it was made from, the options, the seed — above the
+    // marker with the music, because it IS the music's provenance: Another Take re-rolls
+    // it, and a desk save (which rewrites only below the marker) must never lose it.
+    // See tools/lib/banger/.
+    + (banger ? `export const banger = ${JSON.stringify(banger, null, 2)};\n\n` : '');
 
   return head + deskTail({ mix, arrangement, variants, m8trx });
 }

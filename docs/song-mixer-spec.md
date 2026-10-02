@@ -332,10 +332,9 @@ floors keeping bass and melody in their written octaves).
 ### Signal path
 
 ```
-Per-lane voice → [Width] → [EQ (3-band biquad)] → [Insert chain (0–6 effects)]
-    → [Fader + Pan] → [Mute] → musicBus
-    ↘ pre-fader send (melodic lanes) → Delay send bus
-    ↘ post-fader send (all other lanes) → Delay/Rev send buses
+Per-lane voice → [Spot FX sections] → [EQ (3-band biquad)] → [Insert chain (0–6 effects)]
+    → [Solo gate] → [Automation] → [Fader + Mute] → [Pan] → [Width] → musicBus / group
+                                               ↘ post-fader, post-insert sends → Delay/Rev send buses
 
 Delay send bus → [EQ] → [Insert chain] → [Fader + Pan] → master
 Reverb send bus → [EQ] → [Insert chain] → [Fader + Pan] → master
@@ -359,8 +358,7 @@ musicBus → [songTrim] → [Master inserts (0–6)] → [Master trim]
   added nodes. Bypassed effects are disconnected (not turned down), so an effect with
   a tail doesn't keep ringing.
 - **Delay**: Shared tempo-synced delay return (0.75 division default, 0.35 feedback,
-  2.8kHz tone). Melodic lanes tap pre-fader (preserving the engine's original echo
-  behaviour); all others tap post-fader.
+  2.8kHz tone). Every lane taps post-fader and post-insert, before pan.
 - **Reverb**: Shared convolution reverb with generated (seeded) impulse response.
   NOT Tone.Reverb (which uses `Math.random` — two renders would differ, breaking
   stems and null tests). 2.2s decay, 12ms pre-delay defaults.

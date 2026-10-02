@@ -175,7 +175,7 @@ await ensureGame();
 // Unlocked from the display's refresh: a locked browser reports frame times in whole
 // refresh steps (8.3 ms here), which hid savings smaller than a step. Unlocked, a
 // frame takes as long as its work, so the numbers move with the work.
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu-vsync', '--disable-frame-rate-limit'] });
+const browser = await chromium.launch({ args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required', '--disable-gpu-vsync', '--disable-frame-rate-limit'] });
 const results = [];
 const began = Date.now();
 try {

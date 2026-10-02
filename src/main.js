@@ -53,7 +53,7 @@ import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy, portraitNow, portraitAllowedFor } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
 import { setInk, PHONE_INK } from './sprites/toons.js';
-import { applyPhoneAudioProfile } from './engine/phone-audio.js';
+import { applyPhoneAudioProfile, applyMobileSynthQuality } from './engine/phone-audio.js';
 import { efficiencyProfile } from './engine/render-efficiency.js';
 import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
@@ -668,8 +668,12 @@ function sampleAudioHealth() {
   const noWorklet = !ctx.audioWorklet;
   audioRows = [`C${audioProbe.ratio.toFixed(2)} ${marginTxt}`, `L${lat}ms ${rate}k`];
   if (noWorklet) audioRows.push('NO WORKLET');
+  // Which MRDR-3 rendering is playing — `SYNTH PHONE` on a touch device (phone-audio.js),
+  // so an A/B with ?mrdr=full can be read off the screen rather than remembered.
+  const synthTier = Audio.mrdrQuality && Audio.mrdrQuality !== 'full' ? `SYNTH ${Audio.mrdrQuality.toUpperCase()}` : '';
+  if (synthTier) audioRows.push(synthTier);
   audioTxt = `C${audioProbe.ratio.toFixed(2)} ${marginTxt} L${lat}ms ${rate}k`
-    + (noWorklet ? ' NOWORKLET' : '');
+    + (noWorklet ? ' NOWORKLET' : '') + (synthTier ? ` ${synthTier}` : '');
 }
 
 // The same numbers for the beacon, so a phone reports without anyone holding it.
@@ -772,6 +776,10 @@ function boot() {
   // latencyHint is an AudioContext constructor argument — see phone-audio.js, and
   // note that this line and the one above it are both "before ensure()" fixtures.
   applyPhoneAudioProfile(Audio, platform);
+  // MRDR-3's lighter rendering on phones and tablets (see phone-audio.js); `?mrdr=full`
+  // or `?mrdr=phone` forces either on any device, to A/B the two by ear.
+  applyMobileSynthQuality(Audio, platform,
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('mrdr') : null);
   // EVERY CABINET SONG'S TNGR-2 TABLES, built while nobody is waiting on them (see
   // Audio.warmSongTables) — the neon cabinet's song alone asks ~700 ms of them. In a
   // BACKGROUND WORKER, so it costs the main thread nothing and can start at once: by
@@ -961,9 +969,12 @@ function boot() {
       // The dev recorder captures this very canvas, so a diagnostic left up
       // would be burned into every frame of the file.
       const hidesFps = menuState?.constructor?.hidesFps === true || Dev.recording;
-      const showChromeFps = save.settings.showFps && !visualiserActive && !hidesFps
+      // A screen can also ASK for the readout while it is up: the jukebox does, in dev
+      // builds, once its screensaver has been double-tapped off (SoundTestState).
+      const showsStats = menuState?.wantsStats === true;
+      const showChromeFps = (save.settings.showFps || showsStats) && !visualiserActive && !hidesFps
         && Input.isTouchDevice() && chrome.mode !== 'none';
-      if ((save.settings.showFps || auditioning) && !hidesFps) {
+      if ((save.settings.showFps || auditioning || showsStats) && !hidesFps) {
         const fps = frameRate() || '--';
         // Render density rides along with the FPS: on a device you can only
         // look at, "blocky" and "which rung did it settle on" are the same

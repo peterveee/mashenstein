@@ -4920,6 +4920,9 @@ const VISUAL_OUT_FADE = 0.20;
 const VISUAL_OUT_GAP = 0.10;
 const VISUAL_OUT_TOTAL = 0.45;
 
+// A dev build (`npm run dev` / `devs`), by the same test src/main.js uses for devMode.
+const DEV_BUILD = () => typeof window !== 'undefined' && !!window.__MASH_BUILD__;
+
 export class SoundTestState {
   // The listening/visualiser surface is deliberately usable in portrait. Its
   // list uses the same uniform frame and full-height rows as the other staff
@@ -4965,7 +4968,15 @@ export class SoundTestState {
     this.lastVisualiserIndex = -1;
     this.fullscreenReady = false;
     this.actTok = 0;
+    // DEV BUILDS ONLY: a double tap on the visualiser turns the screensaver off for the
+    // rest of this jukebox visit and puts the FPS/audio-health readout up instead, so a
+    // song can be judged on a device without the visualiser's drawing in the frame
+    // (2 Oct 2026, for listening to the cabinet songs on an iPad).
+    this.screensaverOff = false;
+    this.lastVisualTap = -Infinity;
   }
+  /** main.js shows its FPS/audio readout while this is true (see `showsStats` there). */
+  get wantsStats() { return this.screensaverOff; }
   enter() {
     // The list now uses the same uniform frame as Settings. Keeping the old
     // non-uniform jukebox flag here made glyphs soft and gave long labels a
@@ -5006,6 +5017,7 @@ export class SoundTestState {
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
+    this.screensaverOff = false;
   }
   clearVisualiser() {
     setVisualiserFullscreen(false);
@@ -5233,6 +5245,22 @@ export class SoundTestState {
     const n = this.tracks.length;
     const total = n + 1; // +1 for the trailing BACK row
     if (this.visualState !== 'list') {
+      // Dev builds: a second press within 350 ms of the first turns the screensaver
+      // off and shows the stats readout. The first press has already started the
+      // wake; this one finishes it at once, and is consumed so it cannot also pick a
+      // row in the list underneath.
+      if (DEV_BUILD() && Input.pressed('pointer')) {
+        if (this.t - this.lastVisualTap < 0.35) {
+          this.lastVisualTap = -Infinity;
+          this.screensaverOff = true;
+          this.clearVisualiser();
+          this.idleT = 0;
+          this.actTok = Input.activity;
+          Input.endFrame();
+          return;
+        }
+        this.lastVisualTap = this.t;
+      }
       const swipeHandled = this.handleVisualiserSwipe();
       const previous = Input.pressed('left') || Input.pressed('up');
       const next = Input.pressed('right') || Input.pressed('down');
@@ -5277,7 +5305,7 @@ export class SoundTestState {
       Input.endFrame();
       return;
     }
-    if (this.playing >= 0) {
+    if (this.playing >= 0 && !this.screensaverOff) {
       this.idleT += dt;
       if (this.idleT >= 5) this.startVisualiser();
     }

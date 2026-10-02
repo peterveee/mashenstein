@@ -633,7 +633,7 @@ export const mix = {
   order: ["kick","snare","clap","hats","ohats","crash","crash2","tom","tom2","bass","lead","lead2","lead3","lead4","lead5","lead6","chords","chords2"],
   labels: {"lead":"RIFF + SOLO Sync Razor","lead2":"SYNTH LEAD Pop Grand","lead3":"SYNTH LEAD Plain Square","lead4":"BRASS Stabs","lead5":"ARP Crystal","lead6":"ORCH HIT","chords":"STRINGS","chords2":"PIANO Chords","bass":"OCTAVE BASS","crash2":"RISER Noise","tom":"TOM Hi","tom2":"TOM Lo"},
   voice: {"kickVoice":"ds909Kick","snareVoice":"dsSnare","clapVoice":"ds909Clap","hatsVoice":"dsHatClosed","ohatsVoice":"ohat909SixBit","crashVoice":"ds909Crash","tomVoice":"sdsTomHigh","tom2Voice":"sdsTomLow","bassVoice":"bass80sSynth","leadVoice":"syncRazorLead","lead2Voice":"mrdrPopGrand","lead3Voice":"roundMono2","lead4Voice":"bestPwmBrass","lead5Voice":"tngrCrystalTrigger","lead6Voice":"layerFinaleSawStab","chordsVoice":"bestPwmStrings","chords2Voice":"mrdrPopGrand"},
-  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.096774193548387,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.10s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.096774193548387,"Q":1.6,"slope":-24,"color":"white","attack":2.849032258064516,"hold":0,"decay":0.24774193548387097,"curve":"exp","gain":1},"drive":0.08,"peak":0.034}},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.096774193548387,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.10s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.096774193548387,"Q":1.6,"slope":-24,"color":"white","attack":2.849032258064516,"hold":0,"decay":0.24774193548387097,"curve":"exp","gain":1},"drive":0.22,"peak":0.034}},
   lanes: {
     kick: { gain: -1.5, eq: { low: -1 }, effects: [{ id: "peq", params: { f2: 210, g2: -2.5, q2: 1.1 } }] },
     snare: { gain: 5.5, send: { reverb: 0.2 }, eq: { low: 2.8, high: 5.2 }, effects: [{ id: "peq", params: { f3: 3300, g3: -3.5, q3: 0.8 } }] },
@@ -641,7 +641,7 @@ export const mix = {
     hats: { gain: -6, pan: 0.25 },
     ohats: { gain: -8, pan: -0.2 },
     crash: { gain: -5, pan: -0.2, send: { reverb: 0.8 } },
-    crash2: { gain: -2.7, send: { reverb: 0.8 }, eq: { low: 5.5, high: 2 }, effects: [{ id: "widener", params: { width: 1 } }] },
+    crash2: { gain: -15.5, send: { reverb: 0.8 }, eq: { low: 5.5, high: 2 } },
     tom: { gain: -4, pan: 0.3, send: { reverb: 0.35 } },
     tom2: { gain: -4, pan: -0.3, send: { reverb: 0.35 } },
     bass: { gain: -6.5, effects: [{ id: "peq", params: { f2: 200, g2: -3, q2: 1 } }] },
@@ -650,8 +650,8 @@ export const mix = {
     lead3: { gain: 1, pan: 0.1 },
     lead4: { gain: -4, pan: -0.25, send: { reverb: 0.25 } },
     lead5: { gain: -17, pan: 0.3, send: { delay: 0.2 } },
-    lead6: { gain: -3, send: { reverb: 0.6 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
-    chords: { gain: -7, send: { reverb: 0.4 }, eq: { low: -3 }, effects: [{ id: "peq", params: { f2: 400, g2: -2.5, q2: 0.9 } }, { id: "widener", params: { width: 0.9 } }] },
+    lead6: { gain: -16.98, send: { reverb: 3 } },
+    chords: { gain: -9.54, send: { reverb: 0.501 }, eq: { low: -3 }, effects: [{ id: "peq", params: { f2: 400, g2: -2.5, q2: 0.9 } }, { id: "widener", params: { width: 0.9 } }] },
     chords2: { gain: -6, send: { reverb: 0.35 }, eq: { low: -2 }, effects: [{ id: "peq", params: { f2: 400, g2: -2, q2: 0.9 } }] },
   },
 };

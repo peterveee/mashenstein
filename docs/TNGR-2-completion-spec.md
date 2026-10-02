@@ -436,6 +436,11 @@ the steady-state processor loop.
 > around and grows like x/9 — so as a limiter it did the opposite of its job, making a hot
 > signal louder and un-clipped. Clamped at ±3 where it meets ±1 continuously, output peaks
 > at exactly 1.000.
+>
+> Superseded 2 Oct 2026: TNGR-2's drive is now the shared curve every DRIVE pot uses
+> (`src/engine/drive-curve.js`, pasted into the core's source). The worklet had its own
+> Padé/reflect/16-step trio while its native fallback used the shared one, so one pot read
+> two ways on one synth.
 
 ### 7.5 Controls the spec asked for and the synth does not have
 

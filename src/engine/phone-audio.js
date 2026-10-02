@@ -62,3 +62,28 @@ export function applyPhoneAudioProfile(audio, platform = {}) {
   audio.setSequencerLookahead(p.lookahead);
   return p;
 }
+
+// THE SYNTH QUALITY TIER (2 Oct 2026, Peter's call): MRDR-3's `phone` quality — one
+// unison voice a layer, PWM at its centre width, two-stage filters; see MRDR_QUALITY in
+// voices.js for what was measured. PHONES AND TABLETS, unlike the profile above: the
+// buffer is about absorbing a late callback, which a tablet's headroom already does, but
+// this is about how much there is to compute at all — and an iPad Pro 11 (A12Z) was
+// measured falling behind the audio clock on neon, frost (published build) and Field
+// Service. The desktop keeps `full`. Strings rather than MRDR_QUALITY so this module stays
+// free of the synth engine it configures.
+export const MRDR_PHONE = 'phone';
+export const MRDR_FULL = 'full';
+
+/** `?mrdr=full|phone` wins; otherwise touch devices get `phone` and everything else `full`. */
+export function mrdrQualityFor(platform = {}, override = null) {
+  if (override === MRDR_FULL || override === MRDR_PHONE) return override;
+  const touch = !!(platform.isIphone || platform.isAndroidPhone || platform.isIpad || platform.isAndroidTablet);
+  return touch ? MRDR_PHONE : MRDR_FULL;
+}
+
+/** Apply it. Any time is fine — it takes effect on the next note-on. Returns the tier. */
+export function applyMobileSynthQuality(audio, platform = {}, override = null) {
+  const q = mrdrQualityFor(platform, override);
+  audio.setMrdrQuality(q);
+  return q;
+}

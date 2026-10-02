@@ -58,7 +58,7 @@ import {
 } from './speedMcmObjects.js';
 import { drawJonesCoyote, WINK_SPARKLE_AFTER, CHORUS_YIP_AFTER, CHORUS_YIP_GAP } from './speedMcmCoyote.js';
 import { paintFrostSky } from './frostCrayon/sky.js';
-import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost } from './surgeCut.js';
+import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost, surgeSnowOn } from './surgeCut.js';
 
 import {
   PAPER_MATERIALS,
@@ -17291,8 +17291,12 @@ let lcdPanelCacheEnabled = true;
 let lcdPanelBake = null;
 const panelKey = [];
 const windowLevels = [], roofLevels = [], skyLevels = [];
+// Every field lcdSceneFrame returns must be in one of these two sets: one that is in
+// neither marks the frame unsupported, and an unsupported frame skips the panel bake.
+// `plate` (29 Sep) was left out, and that turned the bake off on every frame of every
+// run until 2 Oct — no error, only the cost. tests/lcd-cache-browser.js is the guard.
 const FRAME_SCALARS = new Set(`stageIndex live step beat4 beatAbs bar phrase phase finish
-  streak cheer barrelBeat barrelGrid gorillaExpr gorillaNostrils gorillaBrow gorillaInk
+  plate streak cheer barrelBeat barrelGrid gorillaExpr gorillaNostrils gorillaBrow gorillaInk
   gorillaBuild gorillaPit gorillaTuft gorillaShock gorillaEar gorillaSpikes gorillaShoulder
   gorillaShoulderShape barrelCell barrelShape runnerOutline intro introBeat omenStep
   maxRoadRise`.split(/\s+/));
@@ -18268,8 +18272,9 @@ function surgePack(settings) {
   // A fresh draw of moves and glitches every run.
   const seed = 1 + Math.floor(Math.random() * 100000);
   const state = {};
-  let ph = surgePhase(0, { seed, count: packs.length });
+  let ph = surgePhase(0, { seed, count: packs.length, names: SURGE_CYCLE });
   let live = null;
+  let snowCamX = 0;
   // The look whose lane, light and claims the frame is on: the outgoing one until the
   // downbeat a move lands on, the incoming one from it.
   const cur = () => packs[ph.look];
@@ -18297,11 +18302,14 @@ function surgePack(settings) {
     get ownSurface() { return cur().ownSurface === true; },
     // Whether the screen is upside down this frame (surgeCut.js surgeFlip); run.js turns it.
     get screenFlipped() { return ph.flip === true; },
+    // The act this frame — look, move, glitches, other cabinets' weather — for a probe.
+    get phase() { return ph; },
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       const beat = Number.isFinite(scene?.beat) ? scene.beat : t * SURGE_BPM / 60;
       const level = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
       const progress = backgroundContext?.progress ?? scene?.progress ?? 0;
-      ph = surgePhase(beat, { level, seed, count: packs.length, progress });
+      ph = surgePhase(beat, { level, seed, count: packs.length, progress, names: SURGE_CYCLE });
+      snowCamX = camX;
       live = paintSurgeBackdrop(ctx, ph, (i, dy = 0, scrub = 0) => {
         ctx.save();
         if (dy) ctx.translate(0, dy);
@@ -18320,6 +18328,16 @@ function surgePack(settings) {
     post(ctx, t) {
       cur().post(ctx, t);
       surgePost(ctx, ph, live, state);
+    },
+    // Frost's blizzard blown onto another cabinet's look (surgeCut.js surgeIntrusions):
+    // weather, so it goes on the overlay over the hero, as it does on Frost.
+    weather(ctx, t, frame = null) {
+      const snow = ph.intrusions?.find((x) => x.kind === 'snow');
+      const on = snow ? surgeSnowOn(snow.b, snow.len) : 0;
+      if (!on) return;
+      drawFrostBlizzard(ctx, t, snowCamX, {
+        stageIndex: ph.level, strength: snow.strength * on, groundScreenY: frame?.groundScreenY,
+      });
     },
     decorate(ctx, e, x, y) {
       const p = cur();

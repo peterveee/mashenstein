@@ -131,6 +131,7 @@
   <section class="report" id="frames"></section>
   <section class="report" id="levels"></section>
   <section class="report" id="bass"></section>
+  <section class="report" id="bangers"></section>
 </main>
 <div id="tip"></div>
 <script>
@@ -393,22 +394,65 @@ document.addEventListener('mousemove', (e) => {
   tip.style.top = `${e.clientY + 16 + h > innerHeight ? e.clientY - h - 10 : e.clientY + 16}px`;
 });
 
+// --------------------------------------------------------------- bangers --
+// tools/banger-levels.js check: test bangers rendered channel by channel, each channel's
+// loudness against the part its fader is matched to — before the prediction moved it, and
+// after. Under a dB is where it should be.
+function drawBangers(r) {
+  const root = document.getElementById('bangers');
+  const head = el('div', { class: 'report-head' }, el('h2', {}, 'Banger levels'),
+    r ? el('span', { class: 'when' }, `checked ${ago(r.at)}`) : null);
+  if (!r) {
+    root.replaceChildren(head, el('div', { class: 'empty' }, 'Not run yet. BANGER LEVELS on the desk makes test bangers in each style and fills this in.'));
+    return;
+  }
+  const styles = Object.entries(r.styles || {});
+  const lede = el('p', { class: 'lede' },
+    'Each banger channel, rendered alone, against the part its fader is matched to — the style’s seed banger once you have used one as the style, else the seed remix it was copied from. ',
+    el('b', {}, 'before'), ' is where the recipe’s fader alone would have put it; ', el('b', {}, 'after'), ' is where the prediction did. ',
+    ...styles.flatMap(([id, s], i) => [i ? ' · ' : '', el('b', {}, id), ` ${f1(s.summary.before)} → ${f1(s.summary.after)} dB`]));
+  const RANGE = 6;
+  const pos = (db) => 50 + (Math.max(-RANGE, Math.min(RANGE, db)) / RANGE) * 50;
+  const bar = (miss) => el('div', { class: 'dev' },
+    el('div', { class: 'band', style: `left:${pos(-1)}%;width:${pos(1) - pos(-1)}%` }),
+    el('div', { class: `bar${Math.abs(miss) > 1 ? ' off' : ''}`, style: `left:${pos(Math.min(0, miss))}%;width:${Math.max(pos(Math.max(0, miss)) - pos(Math.min(0, miss)), 1.2)}%` }));
+  const COLS = 7;
+  const rows = styles.flatMap(([id, s]) => [
+    el('tr', { class: 'divider' }, el('td', { colspan: COLS }, `${id} — ${s.summary.rows} channels, ${f1(s.summary.before)} dB off on average before, ${f1(s.summary.after)} after`)),
+    ...s.rows.map((x) => el('tr', { 'data-tip': `${x.job} on ${x.lane}, test banger ${x.banger + 1}\nmatched to ${x.from}\nmeasured ${f1(x.measured)} LUFS, its reference ${f1(x.target)}\nfader ${f1(x.before)} → ${f1(x.after)}` },
+      el('td', { class: 'song' }, x.job, x.how === 'sound' ? el('span', { class: 'tag' }, 'sound') : null),
+      el('td', {}, bar(x.missAfter)),
+      el('td', { class: 'muted' }, signed(x.missBefore)),
+      el('td', {}, signed(x.missAfter)),
+      el('td', {}, `${f1(x.before)} → ${f1(x.after)}`),
+      el('td', { class: 'muted' }, `banger ${x.banger + 1}`),
+      el('td', { class: 'muted' }, String(x.from).split(',')[0]))),
+  ]);
+  root.replaceChildren(head, lede, el('div', { class: 'scroll' }, el('table', {},
+    el('thead', {}, el('tr', {},
+      el('th', {}, 'channel'),
+      el('th', {}, 'after, vs its reference', el('span', { class: 'range' }, `−${RANGE} … +${RANGE} dB`)),
+      el('th', {}, 'before'), el('th', {}, 'after'), el('th', {}, 'fader'), el('th', {}, 'banger'), el('th', {}, 'matched to'))),
+    el('tbody', {}, rows))));
+}
+
 // --------------------------------------------------------------- polling --
 // Redrawn only when a report file changes, so hovering is not interrupted.
 let stamp = '';
 let firstDraw = true;
 async function refresh() {
   try {
-    const { levels, bass, frames, running } = await (await fetch('/api/reports')).json();
+    const { levels, bass, bangers, frames, running } = await (await fetch('/api/reports')).json();
     const chip = document.getElementById('running');
     chip.hidden = !running.length;
     chip.textContent = running.length ? `running: ${running.join(', ')}` : '';
-    const next = JSON.stringify([levels?.at, bass?.at, frames?.at, Object.values(bass?.lanes || {}).map((l) => l.at)]);
+    const next = JSON.stringify([levels?.at, bass?.at, bangers?.at, frames?.at, Object.values(bass?.lanes || {}).map((l) => l.at)]);
     if (next !== stamp) {
       stamp = next;
       drawFrames(frames);
       drawLevels(levels);
       drawBass(bass);
+      drawBangers(bangers);
       if (firstDraw && location.hash) document.querySelector(location.hash)?.scrollIntoView();
       firstDraw = false;
     }

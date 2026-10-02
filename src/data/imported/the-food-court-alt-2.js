@@ -101,7 +101,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  master: -9.4,
+  master: -3.38,
   masterEffects: [{ id: "mbCompN", bypass: true }, { id: "filter", params: { type: "highpass", frequency: 258.122, Q: 5.3 } }, { id: "widener", params: { width: 0, wet: 1 } }],
   layers: [{ key: "crash2", from: "crash", independent: true }],
   voice: {"bassVoice":"arcadeBass","leadVoice":"arcadeLead","leadHarmVoice":"arcadeLead","twinkleVoice":"arcadeLead","chordsVoice":"arcadeChord","organChordsVoice":"arcadeChord","organSwoopVoice":"arcadeLead","electroFxVoice":"arcadeFx","voxVoice":"arcadeLead","shoutVoice":"arcadeLead","glissVoice":"arcadeLead","organGlissVoice":"arcadeLead","keyGlissVoice":"arcadeLead","sweepsVoice":"arcadeFx","kickVoice":"ds808Kick","clapVoice":"arcadeClap","rimVoice":"arcadeRim","hatsVoice":"dsCr78Hat","ohatsVoice":"arcadeOpenHat","tomVoice":"arcadeTom","crashVoice":"arcadeCrash","crash2Voice":"arcadeCrash"},

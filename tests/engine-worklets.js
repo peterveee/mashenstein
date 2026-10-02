@@ -88,7 +88,7 @@ const built = await esbuild.build({
 });
 const html = '<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
-const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
 
 async function freshPage(label) {

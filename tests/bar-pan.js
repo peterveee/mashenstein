@@ -70,7 +70,7 @@ async function main() {
   });
   const bundleJs = built.outputFiles[0].text;
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
   const errors = [];
 
   // A fresh page per render: Audio is a singleton and `ensure` binds one context for

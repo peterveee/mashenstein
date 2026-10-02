@@ -14,6 +14,7 @@ import {
 } from '../src/engine/note-fx.js';
 import { EFFECT_BY_ID, MAX_EFFECTS, SECTION_EFFECTS } from '../src/engine/effects.js';
 import { laneCurve, fxSectionAt, MASTER_KEY } from '../src/data/automation.js';
+import { groupIdOf, GROUP_BY_ID } from '../src/data/group-buses.js';
 import { setBarNoteFx, setBarSections, renderArpToNotes } from './lib/arrangement-edit.js';
 import { createCustomSelect } from './lib/custom-select.js';
 import { deskNoteName } from './mixer-note-names.js';
@@ -530,6 +531,10 @@ function buildBarEffectsEditor(x, y, key, {
   closeMenu();
   const panel = $('regionedit'); panel.textContent = ''; panel.classList.add('barfxmodal');
   const master = key === MASTER_KEY;
+  // A group bus's sections (`__group:group1`) are a bus lane like the master's: no per-bar
+  // snapshots to fall back to, nothing to snapshot from, and not a track to select.
+  const group = groupIdOf(key);
+  const bus = master || !!group;
   const draft = arrDraftOf();
   const base = from * 16;
   const count = ((to - from + 1) * 16) / CELL;
@@ -537,7 +542,7 @@ function buildBarEffectsEditor(x, y, key, {
   // What each step of the range plays through now: a section, or on a track the bar's own
   // per-bar snapshot wherever no section covers it — the order the engine reads them in.
   const chainAt = (pos) => fxSectionAt(curve, pos)?.chain
-    || (master ? null : draft.plan?.[Math.floor(pos / 16)]?.inlineFx?.[key]) || null;
+    || (bus ? null : draft.plan?.[Math.floor(pos / 16)]?.inlineFx?.[key]) || null;
   const now = Array.from({ length: count }, (_, i) => chainAt(base + (i + 0.5) * CELL));
   // ---- the chain, and where each of its effects plays ----
   // The window holds ONE list of effects — the slots — and, for each, the steps it plays on.
@@ -684,7 +689,8 @@ function buildBarEffectsEditor(x, y, key, {
   };
   const refreshStatus = () => {
     const place = master ? 'on the whole mix, after the master inserts'
-      : `on ${targetLabel(key)}, ahead of its own inserts`;
+      : group ? `on ${GROUP_BY_ID[group].name}, after its inserts`
+        : `on ${targetLabel(key)}, ahead of its own inserts`;
     status.textContent = !chain.length
       ? `No effects yet. Add one with + and it plays across ${span}; then light only the steps it should play on.`
       : own ? `${each().join(' · ')} — ${place}.`
@@ -1087,13 +1093,13 @@ function buildBarEffectsEditor(x, y, key, {
   // Every press jumps, playing or not: it is how you hear the same spot again.
   play.onclick = () => {
     flush();
-    if (!master) {
+    if (!bus) {
       selectLane(key);
       markBar(key, from, to);
     }
     jumpTo(from * 16, { start: true, immediate: true });
   };
-  foot.append(...(master ? [] : [snapshot]), clear, closeButton, play);
+  foot.append(...(bus ? [] : [snapshot]), clear, closeButton, play);
   panel.append(status, foot);
   panel.style.left = `${x}px`; panel.style.top = `${y}px`; panel.classList.add('show');
   const rect = panel.getBoundingClientRect();

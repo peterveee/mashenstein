@@ -14,10 +14,12 @@ assert.equal(tngr2TableName('missing'), 'Basic Shapes', 'unknown tables fall bac
 
 
 const presets = Object.values(VOICES).filter((v) => v.synth === 'TNGR-2');
-assert.equal(presets.length, 46, 'the expanded bank contains 46 TNGR-2 presets');
+// 51 since 1 Oct 2026: two basses, two keys and a woodwind joined with the piano, slap-bass
+// and woodwind auditions (4bc4afd).
+assert.equal(presets.length, 51, 'the expanded bank contains 51 TNGR-2 presets');
 assert.deepEqual(presets.reduce((out, v) => {
   out[v.category] = (out[v.category] || 0) + 1; return out;
-}, {}), { Bass: 10, Lead: 8, Pad: 6, Keys: 8, Pluck: 3, Bells: 5, Orch: 4, FX: 2 },
+}, {}), { Bass: 12, Lead: 8, Pad: 6, Keys: 10, Pluck: 3, Bells: 5, Orch: 5, FX: 2 },
 'TNGR-2 presets cover showcase and conventional instrument categories');
 const familiar = presets.filter((v) => /^(Round Bass|Picked Bass|Soft Piano|Bright Piano|Electric Keys|Music Bell|Church Bell|Celesta|Warm Strings|Soft Strings|Brass Section|Soft Horn|Plain Saw Synth|Plain Pulse Synth|Classic Square Synth)$/.test(v.label));
 assert.equal(familiar.length, 15, 'the expanded bank includes fifteen familiar instruments');

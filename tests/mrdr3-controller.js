@@ -144,7 +144,7 @@ const html = '<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
 
 const browser = await chromium.launch({
-  headless: true, args: ['--autoplay-policy=no-user-gesture-required'],
+  headless: true, args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
 });
 const page = await browser.newPage();
 page.on('pageerror', (e) => fail(`page error: ${e.message}`));

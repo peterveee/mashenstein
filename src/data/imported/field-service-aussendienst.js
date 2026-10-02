@@ -584,7 +584,7 @@ export const mix = {
     lead4: { gain: 3, send: { delay: 0.25, reverb: 0.2 } },
     lead5: { gain: 3, send: { delay: 0.25, reverb: 0.2 } },
     lead6: { gain: -8, pan: -0.25, send: { delay: 0.2 }, effects: [{ id: "autopanner", params: { rateSync: 1, rateDivision: 4, depth: 0.5, wet: 1 } }] },
-    chords: { gain: -11, send: { reverb: 0.5 }, effects: [{ id: "widener", params: { width: 0.8 } }] },
+    chords: { gain: -12.89, send: { reverb: 0.622 }, effects: [{ id: "widener", params: { width: 0.8 } }] },
     chords2: { gain: -11, send: { reverb: 0.5 } },
   },
 };

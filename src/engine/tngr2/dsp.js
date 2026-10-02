@@ -36,6 +36,8 @@
  * allocator, the queue, or the parity this file's tests establish.
  */
 
+import { driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS } from '../drive-curve.js';
+
 /**
  * The core, as source. Pure: no DOM, no Tone, no VoiceRack, no mixer or game state, and
  * no reference to `sampleRate`, `currentFrame` or any other worklet global — the rate is
@@ -401,56 +403,27 @@ Tngr2Svf.prototype.tick = function tick(input) {
 
 var TNGR2_FILTER_MODES = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
 
-var TNGR2_SHAPE_SOFT = 0;
-var TNGR2_SHAPE_FOLD = 1;
-var TNGR2_SHAPE_CRUSH = 2;
-var TNGR2_SHAPES = { soft: TNGR2_SHAPE_SOFT, fold: TNGR2_SHAPE_FOLD, crush: TNGR2_SHAPE_CRUSH };
+// ---- DRIVE ----------------------------------------------------------------------------
+//
+// The shared curve every synth with the pot uses — src/engine/drive-curve.js, its source
+// pasted in here because this string cannot import. Until it was, TNGR-2's worklet had a
+// drive of its own (a Padé tanh with a reflecting fold and a 16-step crush) while its
+// native fallback used the shared one, so the same DRIVE read two ways on one synth.
+var tngr2DriveTable = (${driveCurveTable.toString()});
+var TNGR2_DRIVE_IN = ${1 / DRIVE_HEADROOM};
+var TNGR2_DRIVE_POINTS = ${DRIVE_CURVE_POINTS};
 
 /**
- * The three drive shapes, matching the curves MRDR-3 and the drum panel build.
- *
- * FOLD turns back on itself past the limit instead of flattening, so it adds harmonics
- * rather than removing them; CRUSH quantises the level, which is a different kind of
- * dirt again. SOFT is the saturator below.
+ * The drive's table, read exactly as a WaveShaperNode reads one at oversample 'none':
+ * linear interpolation, ends held. The signal is scaled into the table's ±headroom first.
  */
-function tngr2Shape(x, amount, shape, steps) {
-  if (shape === TNGR2_SHAPE_FOLD) {
-    // Reflect repeatedly about +-1 so a hot signal folds rather than clipping.
-    var d = x * (1 + amount * 6);
-    for (var i = 0; i < 4; i++) {
-      if (d > 1) d = 2 - d;
-      else if (d < -1) d = -2 - d;
-      else break;
-    }
-    return d;
-  }
-  if (shape === TNGR2_SHAPE_CRUSH) {
-    // Level quantisation: from 16 steps down to 2 as the amount climbs. The step COUNT is
-    // a property of the patch, not of the sample, so the compiler works it out once and
-    // hands it in — this used to be two Math.rounds per channel per sample to arrive at
-    // the same number the note started with.
-    var q = Math.round(x * steps) / steps;
-    return q > 1 ? 1 : (q < -1 ? -1 : q);
-  }
-  return tngr2Drive(x, amount);
-}
-
-/**
- * A bounded soft clip, for DRIVE.
- *
- * The Padé approximation of tanh, x(27+x^2)/(27+9x^2), which is smooth and cheap — but it
- * is only an approximation NEAR ZERO. It reaches exactly 1 at x = 3 and then turns around
- * and grows like x/9, so used unguarded it is not a limiter at all: a hot signal comes out
- * the other side louder and un-clipped. Clamped at +-3, where it meets +-1 continuously,
- * it is a real saturator with no discontinuity at the corner.
- */
-function tngr2Drive(x, amount) {
-  if (amount <= 0) return x;
-  var d = x * (1 + amount * 3);
-  if (d >= 3) return 1;
-  if (d <= -3) return -1;
-  var d2 = d * d;
-  return (d * (27 + d2)) / (27 + 9 * d2);
+function tngr2Shape(curve, x) {
+  var n = curve.length;
+  var v = (n - 1) * 0.5 * (x * TNGR2_DRIVE_IN + 1);
+  if (v <= 0) return curve[0];
+  if (v >= n - 1) return curve[n - 1];
+  var k = v | 0;
+  return curve[k] + (curve[k + 1] - curve[k]) * (v - k);
 }
 
 /**
@@ -531,7 +504,7 @@ function tngr2CompilePatch(patch) {
     // pre/post that means anything here: TNGR-2's filter is inside the voice.
     drive: {
       amount: Math.min(1, Math.max(0, Number(p.drive) || 0)),
-      shape: TNGR2_SHAPES[p.shape] !== undefined ? TNGR2_SHAPES[p.shape] : TNGR2_SHAPE_SOFT,
+      curve: null,
       pre: p.drivePlace === 'pre',
       // TONE is a one-pole lowpass after the shaper, taming the harmonics it just made.
       tone: Math.min(20000, Math.max(20, Number(p.tone && p.tone.freq) || 18000))
@@ -547,9 +520,11 @@ function tngr2CompilePatch(patch) {
     sources: [],
     lfos: []
   };
-  // CRUSH's step count: constant for the life of the patch, so it is worked out here
-  // rather than twice per sample inside the shaper. See tngr2Shape.
-  out.drive.steps = Math.max(2, Math.round(16 - out.drive.amount * 14));
+  // The drive's table, built once per patch: a pot move is a new patch, never a new table
+  // per note.
+  if (out.drive.amount > 0) {
+    out.drive.curve = tngr2DriveTable(out.drive.amount, p.shape, 1 / TNGR2_DRIVE_IN, TNGR2_DRIVE_POINTS);
+  }
   var lfoSpecs = [p.lfo1];
   for (var li = 0; li < 1; li++) {
     var l = lfoSpecs[li] || {};
@@ -1168,8 +1143,8 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
   // drives the filtered signal, which is the brighter, more obvious one of the two.
   var drive = patch.drive;
   if (patch.usesDrive && drive.pre) {
-    l = tngr2Shape(l, drive.amount, drive.shape, drive.steps);
-    r = tngr2Shape(r, drive.amount, drive.shape, drive.steps);
+    l = tngr2Shape(drive.curve, l);
+    r = tngr2Shape(drive.curve, r);
     this.toneL += this.toneCoeff * (l - this.toneL); l = this.toneL;
     this.toneR += this.toneCoeff * (r - this.toneR); r = this.toneR;
   }
@@ -1178,8 +1153,8 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
     r = this.svfR[s].tick(r);
   }
   if (patch.usesDrive && !drive.pre) {
-    l = tngr2Shape(l, drive.amount, drive.shape, drive.steps);
-    r = tngr2Shape(r, drive.amount, drive.shape, drive.steps);
+    l = tngr2Shape(drive.curve, l);
+    r = tngr2Shape(drive.curve, r);
     this.toneL += this.toneCoeff * (l - this.toneL); l = this.toneL;
     this.toneR += this.toneCoeff * (r - this.toneR); r = this.toneR;
   }

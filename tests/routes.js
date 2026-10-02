@@ -1072,9 +1072,17 @@ if (steps.length >= 2) {
 }
 
 // IT DOES NOT on a landing the player judged perfectly — which is the whole
-// reason the speed test had to go.
-assert(fallFaceOver(48, () => { plant(1000)(); dom.keyDown('Space'); }) === 0,
-  'an ordinary held jump never wears it, however fast the landing');
+// reason the speed test had to go. On OPEN ground: a fixed x of 1000 came to sit just
+// short of an island's tail, and the jump landed on its last few pixels and stepped off
+// the end — a real 29px drop, which is exactly where the face belongs.
+const openGround = (() => {
+  for (let x = 1000; x < 40000; x += 16) {
+    if (!run.routes.some((r) => r.x < x + 500 && r.x + r.w > x - 50)) return x;
+  }
+  return 1000;
+})();
+assert(fallFaceOver(48, () => { plant(openGround)(); dom.keyDown('Space'); }) === 0,
+  `an ordinary held jump never wears it, however fast the landing (open ground at x ${openGround})`);
 dom.keyUp('Space');
 frames(30);
 // Nor on rolling terrain, where the ground itself falls away under the arc. The

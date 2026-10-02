@@ -6,7 +6,7 @@ import {drawWorldEntity} from './src/game/draw.js';
 import {OBSTACLES,PICKUPS,makeObstacle,makePickup} from './src/game/entities.js';
 import {getStylePack} from './src/engine/stylePacks/index.js';
 window.cullTest={entityInRenderBand,BASE_CULL_MARGIN,LOOP_CULL_MARGIN,drawWorldEntity,OBSTACLES,PICKUPS,makeObstacle,makePickup,getStylePack};`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 try {
   const page = await browser.newPage();
   await page.addScriptTag({ content: bundle.outputFiles[0].text });

@@ -11,7 +11,7 @@ import {
   AUTOMATION_FLOOR_DB, posOf, barStepOf, shapeLevel, laneCurve, curveLevelAt, curveDbAt,
   setLaneFade, clearLaneRange, addLaneCut, removeLaneCut, moveLaneCut, shiftAutomation,
   copyAutomationRange, pasteAutomation, tidyPoints, hasAutomation, automationIssues,
-  positionLabel, levelLabel, replaceFxRange, laneFx, fxSectionAt, fxEdgesBetween, fxStartsAt,
+  positionLabel, levelLabel, replaceFxRange, laneFx, fxSectionAt, fxEdgesBetween, fxStartsAt, isBusKey,
 } from '../src/data/automation.js';
 import { applyArrangement, arrangementIssues } from '../src/data/arrangements.js';
 import {
@@ -313,6 +313,28 @@ assert(near(dB(shapeLevel('s', 1, 10 ** (-24 / 20), 0.5)), -12, 1e-9)
     && bad.some((m) => /no valid chain/.test(m)) && bad.some((m) => /past bar 4/.test(m))
     && !bad.some((m) => /"__master", which is not a lane/.test(m)),
     `a bad section says why, and the master is never "not a lane" (${bad.length} issues)`);
+
+  // GROUP BUSES (src/data/group-buses.js): a group's lane is a bus lane like the master's —
+  // sections only, never "not a lane" — and a group that is not one of the four is refused.
+  const groupOk = automationIssues({ '__group:group1': { fx: [{ from: [1, 0], to: [2, 0], chain: stutter }] } }, ['pad'], 4);
+  assert(!groupOk.length, `a group's sections validate against a song's lanes (${groupOk.join('; ')})`);
+  const groupBad = automationIssues({
+    '__group:group2': { points: [[1, 0, -6]], cuts: [[2, 0]] },
+    '__group:group9': { fx: [{ from: [1, 0], to: [2, 0], chain: stutter }] },
+  }, ['pad'], 4);
+  assert(groupBad.some((m) => /Group 2 carries effect sections only/.test(m))
+    && groupBad.some((m) => /"__group:group9", which is not a group/.test(m))
+    && !groupBad.some((m) => /which is not a lane/.test(m)),
+    'a group carries sections only, and a group that does not exist is named as such');
+  assert(isBusKey('__master') && isBusKey('__group:group3') && !isBusKey('__group:group9') && !isBusKey('pad'),
+    'the master and the four groups are bus lanes; nothing else is');
+  let gd = setBarEffects(draftOf(bank, null), 0, 1, 'pad', crush);
+  gd = setBarSections(gd, 0, 0, '__group:group1', [fx(0, posOf(1, 8))]);
+  assert(JSON.stringify(gd.plan[0].inlineFx) === JSON.stringify({ pad: crush })
+    && sections(gd.automation, '__group:group1') === JSON.stringify([[0, 8]]),
+    'writing a group\'s sections leaves the tracks\' own per-bar snapshots alone');
+  assert(sections(shiftAutomation(gd.automation, posOf(1), { added: 16 }), '__group:group1') === JSON.stringify([[16, 24]]),
+    'and inserting bars before it moves it along like any other section');
 }
 
 if (failed) process.exit(1);

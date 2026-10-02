@@ -20,7 +20,7 @@ import { wavBuffer } from './lib/wav.js';
 import { loudness, gainToTarget, LOUDNESS_TARGET } from './lib/loudness.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import { bankFromMidi } from './lib/midi-import.js';
-import { writeImportedIndex, importId, slugFor, IMPORTED_DIR, SCRATCH_DIR, SONG_DIRS, songFileIn } from './lib/imported-index.js';
+import { writeImportedIndex, importId, slugFor, IMPORTED_DIR, SCRATCH_DIR, BANGER_DIR, SONG_DIRS, songFileIn } from './lib/imported-index.js';
 import { buildVisualiserHtml } from './build-visualiser.js';
 import { MIXER_BRAND } from './mixer-brand.js';
 // Through lib/tracks.js, not src/data/tracks.js: that is what registers the songs in
@@ -47,7 +47,10 @@ import { songFile } from './lib/song-source.js';
 import { validateVariants } from './lib/mix-source.js';
 import { writeSongsIndex } from './lib/songs-index.js';
 import { newScratchSong } from './lib/new-song.js';
+import { bangerIssues, writeBangerSong, moveTake, takesState, deleteTakes, moveBangersOutOfScratch } from './lib/banger-file.js';
+import { useAsStyle, saveCombo } from './lib/banger-seeds.js';
 import { randomSongName } from './lib/song-names.js';
+import { songCreatedDates } from './lib/song-dates.js';
 // The sends' defaults, read from the engine rather than written out again here: a
 // value equal to its default is left out of the file, so a number that drifted apart
 // from the engine's would quietly stop being saved.
@@ -348,8 +351,8 @@ async function adoptUnregisteredSongs() {
         if (!mod?.bank) continue;
         registerTrack({
           id, bank: mod.bank, title: mod.title, slug: mod.slug || id,
-          group: mod.group || (dir === SCRATCH_DIR ? 'scratch' : 'imported'),
-          writable: true, alternateOf: mod.alternateOf || null,
+          group: dir === BANGER_DIR ? 'banger' : mod.group || (dir === SCRATCH_DIR ? 'scratch' : 'imported'),
+          writable: true, alternateOf: mod.alternateOf || null, banger: mod.banger || null,
         });
         console.log(`registered ${dir}/${file} (it was added after the desk started)`);
       } catch (err) {
@@ -467,6 +470,7 @@ async function readCurrentMix() {
     ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'mix'),
     ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'mix'),
     ...await readSongStateDir(join(ROOT, SCRATCH_DIR), 'mix'),
+    ...await readSongStateDir(join(ROOT, BANGER_DIR), 'mix'),
   };
 }
 
@@ -476,6 +480,7 @@ async function readCurrentArrangements() {
     ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'arrangement'),
     ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'arrangement'),
     ...await readSongStateDir(join(ROOT, SCRATCH_DIR), 'arrangement'),
+    ...await readSongStateDir(join(ROOT, BANGER_DIR), 'arrangement'),
   };
 }
 
@@ -484,6 +489,7 @@ async function readCurrentM8trx() {
     ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'm8trx'),
     ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'm8trx'),
     ...await readSongStateDir(join(ROOT, SCRATCH_DIR), 'm8trx'),
+    ...await readSongStateDir(join(ROOT, BANGER_DIR), 'm8trx'),
   };
 }
 
@@ -807,9 +813,9 @@ const server = createServer(async (req, res) => {
       // `importedRoot` guard below refuses outright.
       // And copies, which are the most disposable of the lot: a copy is a snapshot
       // somebody took, and the whole point of taking them freely is being able to throw
-      // them away just as freely.
+      // them away just as freely. And bangers, which are scratch songs in their own drawer.
       const madeHere = track && (track.group === 'scratch' || track.group === 'styleAudition'
-        || track.group === 'alternate' || track.group === 'copy');
+        || track.group === 'alternate' || track.group === 'copy' || track.group === 'banger');
       if (!madeHere || track.writable !== true
         || !target || !songRoots.some((root) => target.startsWith(root))) {
         res.writeHead(404, { 'content-type': 'text/plain' });
@@ -817,6 +823,9 @@ const server = createServer(async (req, res) => {
         return;
       }
       rmSync(target);
+      // A banger's kept takes go with it — they are that song's, and nothing else
+      // could ever bring them back.
+      if (track.banger) deleteTakes(ROOT, id);
       if (existsSync(HISTORY_DIR)) {
         for (const file of readdirSync(HISTORY_DIR)) {
           if (file.startsWith('song-') && file.endsWith(`-${id}.js`)) {
@@ -910,6 +919,127 @@ const server = createServer(async (req, res) => {
         arrangement: mod.arrangement ?? null,
         variants: mod.variants ?? null,
       }));
+      return;
+    }
+
+    // ---- Make a Banger… — a whole song from a few bars --------------------------------
+    //
+    // The page MAKES the banger (tools/lib/banger/ runs in the browser, so the static desk
+    // can make one too and a generator edit needs only a refresh); this writes it. A new
+    // scratch song, its recipe above the marker. See tools/lib/banger-file.js.
+    if (req.method === 'POST' && req.url === '/make-banger') {
+      const body = await readJson(req);
+      const generated = body?.generated;
+      const issues = bangerIssues(generated);
+      if (issues.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`banger:\n  ${issues.join('\n  ')}`);
+        return;
+      }
+      const title = String(body?.title ?? generated.title ?? '').trim() || 'BANGER';
+      const id = newScratchId(title);
+      const bank = generated.bank;
+      const arrangement = generated.arrangement
+        ? normaliseArrangementResolution(bank, compactArrangement(bank, generated.arrangement)) : null;
+      const { path, file } = writeBangerSong(ROOT, { id, title, generated: { ...generated, arrangement } });
+      writeImportedIndex(ROOT);
+      const mod = await freshImport(path);
+      const registered = registerTrack({
+        id, bank: mod.bank, title: mod.title, slug: mod.slug, group: 'banger', writable: true, banger: mod.banger,
+      });
+      console.log(`made a banger ${file}  (from ${generated.banger?.source?.id ?? '?'})`);
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        file,
+        track: { id: registered.id, title: registered.title, slug: registered.slug, group: 'banger',
+          writable: true, bank: registered.bank, banger: mod.banger },
+        mix: mod.mix ?? null, arrangement: mod.arrangement ?? null,
+        takes: takesState(ROOT, id, mod.banger),
+      }));
+      return;
+    }
+
+    // Where a banger stands: which take, which takes are kept, and whether this one has
+    // been mixed since it was made — asked before anything replaces it.
+    if (req.method === 'GET' && req.url.startsWith('/banger-takes?')) {
+      const id = new URL(req.url, `http://${HOST}:${PORT}`).searchParams.get('id') || '';
+      const path = songFileIn(ROOT, id);
+      if (!path || !resolveTrack(id)?.banger) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`"${id}" is not a banger`);
+        return;
+      }
+      const mod = await freshImport(path);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ...takesState(ROOT, id, mod.banger), banger: mod.banger }));
+      return;
+    }
+
+    // Another Take (the page sends the new take it made), Previous Take, Next Take. The
+    // take being left is always kept whole first — music, mix and all.
+    if (req.method === 'POST' && req.url === '/banger-take') {
+      const body = await readJson(req);
+      const id = String(body?.id || '');
+      const direction = String(body?.direction || '');
+      const track = resolveTrack(id);
+      const path = songFileIn(ROOT, id);
+      if (!track?.banger || !path || !['another', 'previous', 'next'].includes(direction)) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`no ${direction || 'such'} take of "${id}"`);
+        return;
+      }
+      let generated = body?.generated || null;
+      if (direction === 'another') {
+        const issues = bangerIssues(generated);
+        if (issues.length) {
+          res.writeHead(422, { 'content-type': 'text/plain' });
+          res.end(`banger:\n  ${issues.join('\n  ')}`);
+          return;
+        }
+        const arrangement = generated.arrangement
+          ? normaliseArrangementResolution(generated.bank, compactArrangement(generated.bank, generated.arrangement)) : null;
+        generated = { ...generated, arrangement };
+      }
+      const before = await freshImport(path);
+      let take;
+      try {
+        take = moveTake(ROOT, id, before.banger, { direction, generated, title: track.title });
+      } catch (err) {
+        res.writeHead(409, { 'content-type': 'text/plain' });
+        res.end(String(err.message || err));
+        return;
+      }
+      writeImportedIndex(ROOT);
+      const mod = await freshImport(path);
+      const registered = registerTrack({
+        id, bank: mod.bank, title: mod.title, slug: mod.slug, group: 'banger', writable: true, banger: mod.banger,
+      });
+      console.log(`banger ${id}: ${direction} → take ${take}`);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        track: { id: registered.id, title: registered.title, slug: registered.slug, group: 'banger',
+          writable: true, bank: registered.bank, banger: mod.banger },
+        mix: mod.mix ?? null, arrangement: mod.arrangement ?? null,
+        takes: takesState(ROOT, id, mod.banger),
+      }));
+      return;
+    }
+
+    // ---- seed bangers and Sound Combos (tools/lib/banger-seeds.js) -----------------
+    // The desk saves the seed first; these read its file as saved. A sound tuned on it is
+    // kept as a preset of its own, measured the way /voice-save measures one.
+    if (req.method === 'POST' && (req.url === '/banger-seed-use' || req.url === '/banger-combo-save')) {
+      const body = await readJson(req);
+      const id = String(body?.id || '');
+      const keep = { measure: (vid, preset, src) => measureVoice(vid, preset, src), restart: restartRenderer };
+      const result = req.url === '/banger-seed-use'
+        ? await useAsStyle(ROOT, id, keep)
+        : await saveCombo(ROOT, id, body?.label, keep);
+      if (result.ok) console.log(req.url === '/banger-seed-use'
+        ? `${result.style} now starts from ${id}${result.kept?.length ? ` (kept ${result.kept.map((k) => k.id).join(', ')})` : ''}`
+        : `saved the Sound Combo ${result.style}/${result.combo} from ${id}`);
+      res.writeHead(result.ok ? 200 : 422, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(result));
       return;
     }
 
@@ -1237,6 +1367,67 @@ const server = createServer(async (req, res) => {
       console.log(`${file} — ${(bytes.length / 1048576).toFixed(1)} MB, rendered on the desk`);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ file }));
+      return;
+    }
+
+    // Export AAF, in two steps: the desk renders every track solo and posts each one
+    // here as a stem, then asks for them to be packed. work/stems/<slug>/ is the same
+    // folder `node tools/render-stems.js` writes, so either route leaves its stems where
+    // the other would look. `clear` arrives on the first stem and empties the folder's
+    // stems, so tracks from an older export do not get packed with this one.
+    if (req.method === 'POST' && req.url.startsWith('/write-stem')) {
+      const q = new URL(req.url, `http://${HOST}:${PORT}`).searchParams;
+      const track = resolveTrack(q.get('track'));
+      if (!track) { res.writeHead(404); res.end('unknown track'); return; }
+      const name = q.get('name') || '';
+      if (!/^\d+-[\w .+-]+\.wav$/.test(name)) { res.writeHead(400); res.end('bad stem name'); return; }
+      const bytes = await readBytes(req);
+      if (!bytes) {
+        res.writeHead(413, { 'content-type': 'text/plain' });
+        res.end(`that stem is over ${Math.round(MAX_RENDER_BYTES / 1048576)}MB — render fewer passes`);
+        return;
+      }
+      const dir = join(ROOT, 'work', 'stems', track.slug);
+      mkdirSync(dir, { recursive: true });
+      if (q.get('clear')) {
+        for (const f of readdirSync(dir)) if (/^\d+-.*\.wav$/i.test(f)) rmSync(join(dir, f));
+      }
+      writeFileSync(join(dir, name), bytes);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ file: join('work', 'stems', track.slug, name) }));
+      return;
+    }
+    if (req.method === 'POST' && req.url.startsWith('/write-aaf')) {
+      const q = new URL(req.url, `http://${HOST}:${PORT}`).searchParams;
+      const track = resolveTrack(q.get('track'));
+      if (!track) { res.writeHead(404); res.end('unknown track'); return; }
+      const py = join(ROOT, 'tools/.venv-audio/bin/python');
+      if (!existsSync(py)) {
+        res.writeHead(400, { 'content-type': 'text/plain' });
+        res.end('packing an AAF needs tools/.venv-audio with pyaaf2:\n\n'
+          + '  python3 -m venv tools/.venv-audio\n'
+          + '  tools/.venv-audio/bin/pip install pyaaf2');
+        return;
+      }
+      const dir = join('work', 'stems', track.slug);
+      const file = join(dir, `${track.slug}.aaf`);
+      const title = q.get('title') || track.title || track.slug;
+      const result = await new Promise((resolve) => {
+        const child = spawn(py, ['tools/stems-to-aaf.py', dir, file, '--title', title], { cwd: ROOT });
+        let text = '';
+        child.stdout.on('data', (d) => { text += d; });
+        child.stderr.on('data', (d) => { text += d; });
+        child.on('error', (e) => resolve({ code: -1, text: e.message }));
+        child.on('close', (code) => resolve({ code, text: text.trim() }));
+      });
+      if (result.code !== 0) {
+        res.writeHead(500, { 'content-type': 'text/plain' });
+        res.end(result.text || `stems-to-aaf exited ${result.code}`);
+        return;
+      }
+      console.log(result.text);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ file, summary: result.text }));
       return;
     }
 
@@ -1715,6 +1906,14 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // When each song was made, for the drawer's "Newest first". Asked for each time the
+    // drawer opens in that order, so a song made a minute ago is already on top.
+    if (req.method === 'GET' && req.url === '/song-dates') {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(await songCreatedDates(ROOT, listTracks().map((t) => t.id))));
+      return;
+    }
+
     // The mix file as it stands, for a desk that wants to be sure rather than to
     // remember. The page is bundled with the file it was built from and updates that
     // copy on its own saves, which is right until something else writes it — another
@@ -1782,6 +1981,17 @@ server.on('error', (err) => {
 // Only when run as `npm run mixer`; importing this module (a test round-tripping a
 // song file, say) must not take the port.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Bangers made before they had their own drawer move into it now, as this desk starts,
+  // and the index follows them — so the songs list and every tool reading it agree.
+  const movedBangers = moveBangersOutOfScratch(ROOT);
+  for (const id of movedBangers) {
+    const t = resolveTrack(id);
+    if (t) registerTrack({ ...t, id, group: 'banger' });
+  }
+  if (movedBangers.length) {
+    writeImportedIndex(ROOT);
+    console.log(`moved ${movedBangers.length} banger${movedBangers.length === 1 ? '' : 's'} from ${SCRATCH_DIR}/ into ${BANGER_DIR}/: ${movedBangers.join(', ')}`);
+  }
   server.listen(PORT, HOST, () => {
     console.log(`${MIXER_BRAND}: http://${HOST}:${PORT}/`);
     // Named as the folder rather than as one file: a save rewrites the song you are

@@ -19,6 +19,7 @@
 import { laneSettings } from '../../src/data/mix.js';
 import { AUX_DEFAULTS } from '../../src/engine/mixer.js';
 import { isDefaultMasterChain } from '../../src/engine/effects.js';
+import { GROUP_IDS, laneGroup } from '../../src/data/group-buses.js';
 
 // The three decimals the serialiser rounds to, so the file is the arbiter of what
 // counts as a different number: a drag that leaves 0.1234 behind writes 0.123, and a
@@ -73,7 +74,11 @@ export function laneSig(L) {
   const chain = chainSig(L?.effects);
   const noteFx = L?.noteFx && (L.noteFx.strum?.enabled || L.noteFx.arp?.enabled)
     ? JSON.parse(JSON.stringify(L.noteFx)) : null;
+  // The group the channel is routed into — or nothing, which is unassigned. Written by
+  // laneLine in mix-source.js; without it here an assignment is a change Save cannot see.
+  const group = laneGroup(L);
   return {
+    ...(group ? { group } : {}),
     gain: r3(s.gain || 0),
     pan: r3(s.pan || 0),
     width: r3(s.width ?? 1),
@@ -120,6 +125,30 @@ export function fxSig(fx) {
 }
 
 /**
+ * The group buses, against their defaults — what `mixEntrySource` writes in `groups`:
+ * fader, pan, mute, the three EQ bands and the insert chain, each only when it has moved.
+ * A group at its defaults says nothing, members or not.
+ */
+export function groupsSig(groups) {
+  const out = {};
+  for (const id of GROUP_IDS) {
+    const G = groups?.[id];
+    if (!G || typeof G !== 'object') continue;
+    const bits = {};
+    if (r3(G.gain || 0)) bits.gain = r3(G.gain);
+    if (r3(G.pan || 0)) bits.pan = r3(G.pan);
+    if (G.mute) bits.mute = true;
+    const eq = {};
+    for (const b of ['low', 'mid', 'high']) if (r3(G.eq?.[b] || 0)) eq[b] = r3(G.eq[b]);
+    if (Object.keys(eq).length) bits.eq = eq;
+    const chain = chainSig(G.effects);
+    if (chain) bits.effects = chain;
+    if (Object.keys(bits).length) out[id] = bits;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
  * A whole song's mix, reduced to its decisions. `null` for a mix that carries none —
  * which is what "Reset every channel" leaves behind, and what the file leaves out.
  */
@@ -135,6 +164,8 @@ export function mixSignature(m) {
   };
   const fx = fxSig(m.fx);
   if (fx) out.fx = fx;
+  const groups = groupsSig(m.groups);
+  if (groups) out.groups = groups;
   if (m.voice && Object.keys(m.voice).length) out.voice = { ...m.voice };
   if (m.voiceParams && Object.keys(m.voiceParams).length) out.voiceParams = JSON.parse(JSON.stringify(m.voiceParams));
   const labels = Object.fromEntries(Object.entries(m.labels || {})
@@ -164,7 +195,7 @@ export function mixSignature(m) {
   if (off.length) out.off = off;
   if (order.length) out.order = order;
   if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.voiceParams && !out.labels && !out.masterEffects
-      && !out.fx && !out.layers && !out.off && !out.order && !Object.keys(lanes).length) return null;
+      && !out.fx && !out.groups && !out.layers && !out.off && !out.order && !Object.keys(lanes).length) return null;
   return out;
 }
 

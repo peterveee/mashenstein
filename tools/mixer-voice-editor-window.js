@@ -20,14 +20,14 @@ const $ = (id) => document.getElementById(id);
 // way to be sure of an answer.
 let voiceEditor, voiceEditEl, laneVoiceId, dismissVoiceEditor, clamp, editMix, rebank,
   applyToEngine, mixFor, trackId, targetLabel, toast, voiceLibrary, dockIntoLibrary,
-  track, closeMenu, selectLane;
+  track, closeMenu, selectLane, laneExists;
 
 /** Hand the window the desk it floats over. */
 export function installVoiceEditorWindow(deps) {
   ({
     voiceEditor, voiceEditEl, laneVoiceId, dismissVoiceEditor, clamp, editMix, rebank,
     applyToEngine, mixFor, trackId, targetLabel, toast, voiceLibrary, dockIntoLibrary,
-    track, closeMenu, selectLane,
+    track, closeMenu, selectLane, laneExists,
   } = deps);
   // Bound here rather than at module scope: the element arrives with the deps.
   // Dragged by its header, like every other window here. Delegated from the panel rather
@@ -223,8 +223,9 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
  * cannot touch it — but a save or a rename still calls through here, and re-placing
  * rather than rebuilding is still what keeps the caret in the name field.
  *
- * A lane that has gone — deleted, or filtered out of the view — leaves the editor
- * describing a channel that is not there, so it closes.
+ * A lane that has gone — deleted — leaves the editor describing a channel that is not
+ * there, so it closes. A lane merely FILTERED out of the view has not gone: hiding the
+ * drums on the desk is a view, and the editor on a kick goes on editing the kick.
  */
 function placeVoiceEditor() {
   const el = voiceEditEl;
@@ -237,7 +238,7 @@ function placeVoiceEditor() {
   // Not `close()`: this runs FROM buildRack, and close rebuilds the rack. Tearing the
   // panel down without asking for another repaint is the whole difference between
   // closing an editor and re-entering the function that is already running.
-  if (laneKey && !document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`)) {
+  if (laneKey && !laneExists(laneKey)) {
     dismissVoiceEditor();
     return;
   }
@@ -335,7 +336,6 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
   // are gated on it, so `advanced: true` on a preset that has only the one panel opens
   // that panel rather than nothing.
   const hasAdvanced = isQuickVoice(VOICES[chosen]);
-  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
   // BOTH WINDOWS OPEN AT THE POINTER, not against an element. `at` is where the click
   // that asked for them was — see `placeEditorAtPointer`, and the `at` branch of the full
   // window's own `open`. Every caller that has a pointer hands it over; the ones that do
@@ -362,7 +362,7 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
   // says so: closing the window puts the preset down, rather than uncovering a panel
   // the user never asked to open. A drum takes this route on its own — see the note on
   // `advanced` above — and `advanced: false` is the one thing that overrules it.
-  if (strip && ((fullEngine === 'drum' && advanced !== false) || (advanced && hasAdvanced))) {
+  if (laneExists(laneKey) && ((fullEngine === 'drum' && advanced !== false) || (advanced && hasAdvanced))) {
     voiceEditEl.classList.remove('show');
     voiceEditor.openFull(1, { standalone: true, at, avoidTransport: true });
     return;

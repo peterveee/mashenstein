@@ -146,7 +146,7 @@ export const mix = {
         "decay": 0.015,
         "gain": 0.25
       },
-      "drive": 0.2,
+      "drive": 0.29,
       "starter": false,
       "knock": 0.3,
       "kind": "drum",
@@ -177,7 +177,7 @@ export const mix = {
         "decay": 0.07,
         "gain": 1
       },
-      "drive": 0.16,
+      "drive": 0.26,
       "id": "ds808Snare",
       "kind": "drum",
       "factory": true,

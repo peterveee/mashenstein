@@ -42,6 +42,7 @@ dependency — nothing in `tools/` knows it exists.
 | MIXER | `npm run mixer` | 8010 | `src/data/songs/` |
 | SFX DESK | `npm run sfx` | 8020 | `SFX_TRIM` |
 | LEVEL EDITOR | `npm run levels` | 8021 | `src/data/stage-layouts.js` |
+| BANGER SOUNDS | `npm run banger-sounds` | 8022 | `tools/lib/banger/sounds.js` |
 | CHARACTER EDITOR | `npm run characters` | 8030 | hero spec files |
 | COMPOSITION TUNER | `npm run composition` | 8031 | `src/data/composition-profiles.js` |
 
@@ -93,13 +94,14 @@ running, so a bench can refuse to start on a noisy machine.
 http://localhost:8000/reports
 ```
 
-Three RUN cards under AUDIO REPORTS, and a page that shows what they found:
+Four RUN cards under AUDIO REPORTS, and a page that shows what they found:
 
 | Card | Runs | Writes |
 | --- | --- | --- |
 | SONG LEVELS: MEASURE | `tools/song-levels.js` | the report only |
 | SONG LEVELS: APPLY | `tools/song-levels.js --apply` | each off-line song's `master` in `src/data/songs/` |
 | BASS REPORT | `tools/bass-report.js <ticked songs> [--lanes]` | the report only; unticked songs keep their last rows |
+| BANGER LEVELS | `tools/banger-levels.js curves`, then `check <ticked styles> [--fit]` | the report; new banger sounds' loudness curves; with + FIT, each channel's average miss into `tools/lib/banger/levels-data.js` |
 
 Each tool writes its latest result to `work/local/reports/` wherever it was run
 from, terminal included, so `/reports` is always the last run. The page redraws
@@ -109,6 +111,10 @@ when a file changes.
   cabinets, the finale and the credits megamix; -24 for the title, the Food Court
   and the shop, which play between games. It shows how far off each one is, and the
   master that would put it back.
+- **Banger levels** shows every channel of a few test bangers per style, rendered alone,
+  against the part its fader is matched to (the style's seed banger once one is used as
+  the style, else its seed remix) — before the prediction moved it and after. See
+  docs/MAKE_A_BANGER.md.
 - **Bass & band balance** shows seven bands per song, each measured against that
   song's own loudness and coloured where it sits 2 dB or more off the median of
   the finished cabinets. Below the table, **What it's telling you** turns each

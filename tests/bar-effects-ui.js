@@ -13,7 +13,7 @@ const assert = (condition, message) => {
   if (!condition) failed = true;
 };
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
 // The desk mirrors its diagnostics log to work/local/mixer-diagnostics.csv, the file a live

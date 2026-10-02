@@ -534,6 +534,9 @@ should never have to reason about:
   today; the panel offers it, so it must work.)
 - The drive curve — `_driveCurve`'s 1025-point table, unchanged, shipped as an array so
   the shaper port is a table lookup and stays bit-comparable with the native shaper.
+  (Since 2 Oct 2026: the shared 8193-point table over ±8 from `src/engine/drive-curve.js`,
+  with `driveIn` = 1/8 scaling the group into it, exactly as the gain in front of the
+  native shaper does.)
 - The coloured noise buffer for any noise layer's `color`.
 - `clampUnison` against `MAX_UNISON`, and the waveform/type coercions `scrubOscTypes` and
   `nativeWave` do — a malformed preset must not reach the audio thread.
