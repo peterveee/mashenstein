@@ -5373,7 +5373,11 @@ export class SoundTestState {
       onBack: () => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === rec)), rec)),
     }));
   }
-  /** The club's pencil: the riff grid on this song, and BRING TO LIFE remakes it; BACK returns to the club. */
+  /**
+   * The club's pencil: the riff grid on this song. BRING TO LIFE remakes it and goes
+   * straight back to the club — no IT'S ALIVE! for an edit (Peter, 3 Oct 2026); BACK
+   * returns to the club as it was.
+   */
   openEditor(rec) {
     Audio.sfx('uiConfirm');
     setState(new BangerMakerState({
@@ -5381,7 +5385,7 @@ export class SoundTestState {
       onDone: () => this.openClub(rec),
       onMade: (r, song) => {
         songFor(r, song);
-        setState(new BangerBirthState({ rec: r, onDone: () => this.openClub(r) }));
+        this.openClub(r);
       },
     }));
   }
