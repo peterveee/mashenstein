@@ -41,7 +41,7 @@
 // average miss per channel back in (`offsets`). Browser-safe, like the rest of the package.
 import { VOICES, voiceGain, baseLane, PERCUSSION_LANES } from '../../../src/data/voices.js';
 import { L, P, midi, hasNotes } from './theory.js';
-import { DROP_ROLES } from './form.js';
+import { isHookSection } from './form-types.js';
 import { laneVoiceOf } from './riff.js';
 import { DRUM_ROLES } from './lanes.js';
 import { hashStr } from '../../../src/engine/rng.js';
@@ -268,7 +268,7 @@ export function partLevel({ bars, bpm, voice = null, curveId = null, lane, curve
  * never does. `plays(bar)` says whether the part has notes in a bar.
  */
 export function levelWindow(form, plays) {
-  const sections = [...form.filter((f) => DROP_ROLES.has(f.role)).reverse(), ...form.filter((f) => !DROP_ROLES.has(f.role))];
+  const sections = [...form.filter(isHookSection).reverse(), ...form.filter((f) => !isHookSection(f))];
   for (const sec of sections) {
     for (let b = sec.from - 1; b < sec.to; b++) {
       if (plays(b)) return [b, Math.min(sec.to - 1, b + LEVEL_WINDOW_BARS - 1)];

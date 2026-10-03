@@ -9,10 +9,15 @@ import { TRANCE } from './trance.js';
 import { FUTURE_BASS } from './future-bass.js';
 import { EUROBEAT } from './eurobeat.js';
 import { CHIPSTEP } from './chipstep.js';
-import { KRAFTWERK } from './kraftwerk.js';
 import { SYNTHWAVE } from './synthwave.js';
+import { SHIBUYA } from './shibuya.js';
+import { DNB } from './dnb.js';
+import { ELECTRO } from './electro.js';
+import { MEGADRIVE } from './megadrive.js';
+import { withSharedMoods } from '../moods.js';
 
-export const BANGER_STYLES = Object.freeze([BIG_ROOM, TRANCE, FUTURE_BASS, EUROBEAT, CHIPSTEP, KRAFTWERK, SYNTHWAVE]);
+// Every style plays the shared moods (moods.js) unless it has its own take on one.
+export const BANGER_STYLES = Object.freeze([BIG_ROOM, TRANCE, FUTURE_BASS, EUROBEAT, CHIPSTEP, SYNTHWAVE, SHIBUYA, DNB, ELECTRO, MEGADRIVE].map(withSharedMoods));
 const BY_ID = new Map(BANGER_STYLES.map((s) => [s.id, s]));
 
 /** The recipe called `id`, or null. */

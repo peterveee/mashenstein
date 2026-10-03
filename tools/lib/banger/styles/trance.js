@@ -11,11 +11,15 @@ import { BIG_ROOM } from './big-room.js';
 export const TRANCE = Object.freeze({
   id: 'trance',
   label: 'Trance',
+  // What the Style list says beside it, and its tooltip.
+  note: '138 · rolling bass, gated saws, long breakdown',
+  title: '138 BPM: a rolling sixteenth bass, supersaws trance-gated in sixteenths, a long breakdown with the hook on a piano. Uplifting, Long, and the Anthem form by default',
   bpm: 138,
   tempoRange: [136, 140],
   // Trance rolls its bass, leans uplifting, and wants room for its breakdown: Long by
   // default (about three and a quarter minutes at 138).
-  defaults: { mood: 'uplifting', length: 'long', parts: { bass: 'rolling' } },
+  // The Anthem form (templates.js): one long breakdown with the hook alone, one huge drop.
+  defaults: { mood: 'uplifting', length: 'long', parts: { bass: 'rolling' }, form: { template: 'anthem' } },
 
   // The form's natural lengths: a long intro and a long breakdown — the trance shape. When
   // a length is too short for all of it, the breakdown is the last thing given up.
@@ -144,7 +148,8 @@ export const TRANCE = Object.freeze({
     saws: { gain: -4.1, eq: { low: -3 }, send: { delay: 0.12, reverb: 0.35 } },
     piano: { gain: -2, send: { delay: 0.18, reverb: 0.55 } },
     pad: { gain: -9.59, eq: { low: -4 }, send: { reverb: 0.6 } },
-    arp: { gain: -9, pan: -0.2, send: { delay: 0.3, reverb: 0.3 }, effects: [{ id: 'autopanner', params: { rateSync: 1, rateDivision: 2, depth: 0.5, wet: 1 } }] },
+    // A touch down by ear (Peter, 3 Oct 2026: the arpeggio sat a little loud).
+    arp: { gain: -11, pan: -0.2, send: { delay: 0.3, reverb: 0.3 }, effects: [{ id: 'autopanner', params: { rateSync: 1, rateDivision: 2, depth: 0.5, wet: 1 } }] },
   },
   // The trance gate: the supersaws chopped in sixteenths, a little open — not a pump.
   pump: { id: 'rhythmgate', params: { division: 0.25, gateLength: 0.55, attack: 0.002, decay: 0.04, depth: 0.9 } },

@@ -17,6 +17,9 @@ import { BIG_ROOM } from './big-room.js';
 export const CHIPSTEP = Object.freeze({
   id: 'chipstep',
   label: 'Chipstep',
+  // What the Style list says beside it, and its tooltip.
+  note: '140 · chip-house, square bass, half-time wobble drop',
+  title: '140 BPM, CHIPSTEP\'s shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it, a Game Boy snare',
   bpm: 140,
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,

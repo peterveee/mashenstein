@@ -41,6 +41,7 @@ import {
 } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
 import { customPicker } from './mixer-picker.js';
+import { scrollMovesField } from './lib/custom-select.js';
 import { normaliseArrangementResolution } from './lib/arrangement-edit.js';
 import {
   RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution, resolutionOf,
@@ -829,7 +830,10 @@ export function createPianoRoll({
     // Anything that moves the field out from under the list closes it rather than
     // chasing it. Capturing, because the scroll that matters is a panel's, not the
     // window's, and a scroll event does not bubble.
-    const onDismiss = () => closeMenu();
+    const onDismiss = (ev) => {
+      if (ev?.type === 'scroll' && !scrollMovesField(ev, field, menu)) return;
+      closeMenu();
+    };
 
     const closeMenu = ({ focus = false } = {}) => {
       if (!open) return;
@@ -985,7 +989,10 @@ export function createPianoRoll({
     const onDocDown = (ev) => {
       if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
     };
-    const onDismiss = () => closeMenu();
+    const onDismiss = (ev) => {
+      if (ev?.type === 'scroll' && !scrollMovesField(ev, field, menu)) return;
+      closeMenu();
+    };
 
     const openMenu = () => {
       if (open) return;

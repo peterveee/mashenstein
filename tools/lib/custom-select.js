@@ -21,6 +21,24 @@
  * pick that" with silence. A closed row cannot be chosen, cannot be landed on by the
  * arrow keys, and says why it is closed.
  */
+
+/**
+ * Does this scroll move the field an open menu is pinned to?
+ *
+ * Every desk dropdown is a FIXED list placed under its field, so a scroll that carries
+ * the field away has to close it. But the listener is on the window in the capture
+ * phase, which hears EVERY scroll on the page — and the piano roll scrolls on its own
+ * whenever it follows the playhead. Closing on all of them shut any list open in a
+ * dialog the moment the song moved. Only a scroll of something that CONTAINS the field
+ * (the document, or a panel the field sits in) can move it, and a list scrolling inside
+ * itself is meant to be wheeled through.
+ */
+export function scrollMovesField(ev, field, menu) {
+  const target = ev?.target;
+  if (!(target instanceof Node)) return true;
+  if (menu?.contains(target)) return false;
+  return target.contains(field);
+}
 export function createCustomSelect({
   label, title = '', idPrefix, options, value,
   fieldClass = 'regselect', menuClass = 'rolltool-menu regcustommenu',
@@ -72,6 +90,8 @@ export function createCustomSelect({
       option.setAttribute('aria-disabled', 'true');
     }
     if (optionNote) {
+      // The note as the row's tooltip too, for when the column is cut short.
+      if (optionNote.trim()) option.title = optionNote;
       const name = document.createElement('span');
       name.className = `${optionClass}-label`;
       name.textContent = optionLabel;
@@ -188,10 +208,10 @@ export function createCustomSelect({
     if (!inMenu && !inField) closeMenu();
   };
   // The desk scrolling under an open menu should close it — the menu is fixed and would
-  // be left pointing at nothing. The menu scrolling INSIDE ITSELF is the opposite: a
-  // capped list is meant to be wheeled through. Ignore scrolls that came from the list.
+  // be left pointing at nothing. Any other scroll — the list itself, or the piano roll
+  // following the playhead behind a dialog — leaves it open. See scrollMovesField.
   const onDismiss = (ev) => {
-    if (ev?.target instanceof Node && menu.contains(ev.target)) return;
+    if (ev?.type === 'scroll' && !scrollMovesField(ev, field, menu)) return;
     closeMenu();
   };
   const onGlobalClose = () => closeMenu();

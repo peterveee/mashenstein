@@ -22,17 +22,25 @@ hears it: unsaved edits are included, and muted or soloed-out tracks are left ou
 
 ## The dialog
 
+**Simple** (how it opens, until you choose otherwise) is the bare minimum: **Style**, **Mood**,
+**Length** (Short, Medium, Long) and the riff line (which bars, what it reads as, why it
+cannot be made if it cannot). Everything else is the style's own — or, if you have set
+things in **Full Options**, what you set there; Simple then says *+ your Full Options
+settings*, with **Use the style's own** to put the rest back (keeping the style, the mood
+and the length). The dialog remembers which of the two you last used.
+
+
 The quick row has the choices you make every time:
 
 | Control | What it does |
 |---|---|
-| Style | The recipe. **Big-Room House** (128, the ABSOLUTE ZERO shape: pumping supersaws, off-beat bass), **Trance** (138: a rolling sixteenth bass, trance-gated supersaws, a long breakdown with the hook on a piano; Uplifting and Long by default), **Future Bass** (140 at half time: hat rolls, an 808 under a talking wobble, stuttered supersaws, a full-time second drop; Euphoric by default) or **Eurobeat** (155, HAIRPIN's shape: four on the floor, an octave bass in eighths, strings, brass stabs, the razor lead doubling the hook; Anthemic by default) or **Chipstep** (140, CHIPSTEP's shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it with the wobble stuttering, a Game Boy snare) or **Kraftwerk** (120, and not a banger at all: no build, riser, roll, crash or pump — its own 128-bar form, a part joining or leaving on each eight-bar block: a lone arp, the motorik kit, the piston bass, the hook on an analog lead, then a vocoder, an isolated breakdown, everything back at once, and a step-by-step power-down) or **Synthwave** (118, NIGHT DRIVE's outrun: a gated-reverb snare, a root–octave sixteenth bass, a string machine pumping, brass stabs, pre-chorus and chorus, the last chorus a whole step up). Picking a style resets every switch under More Options to that style's defaults. |
-| Mood | Anthemic, Uplifting, Euphoric, Moody or Dark. Mood picks the chord progression, the chord colours (Moody uses sevenths, Uplifting adds ninths) and how bright the hook is. |
+| Style | The recipe. **Big-Room House** (128, the ABSOLUTE ZERO shape: pumping supersaws, off-beat bass), **Trance** (138: a rolling sixteenth bass, trance-gated supersaws, a long breakdown with the hook on a piano; Uplifting and Long by default), **Future Bass** (140 at half time: hat rolls, an 808 under a talking wobble, stuttered supersaws, a full-time second drop; Euphoric by default) or **Eurobeat** (155, HAIRPIN's shape: four on the floor, an octave bass in eighths, strings, brass stabs, the razor lead doubling the hook; Anthemic by default) or **Chipstep** (140, CHIPSTEP's shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it with the wobble stuttering, a Game Boy snare) or **Synthwave** (118, NIGHT DRIVE's outrun: a gated-reverb snare, a root–octave sixteenth bass, a string machine pumping, brass stabs, pre-chorus and chorus, the last chorus a whole step up). Picking a style resets every switch under More Options to that style's defaults. **Shibuya-Kei** (126 with a light swing: a breakbeat with a rim click, a bossa bass, nylon guitar comping, vibes doubling the hook and a flute answering it, strings, organ and a ba-ba choir; a Pop Song in the Lounge mood by default — written from the idea of the genre, not checked against the records). **Drum & Bass** (174: the two-step beat with ghost notes and shuffling hats, a reese bass under held pads, a pluck doubling the hook; Moody by default, the riff's own drums replaced), **Electro** (126: an 808 kit with a syncopated kick, an 808 bass locked to it, stabs on the off-beats, a robot vocoder doubling the hook, no pump; Dark by default) and **Mega Drive** (150, sixteen-bit FM: a slap-FM bass in octaves, FM keys on the off-beats, the hook on an FM lead with an FM bell over it, FM toms; a Pop Song in the Heroic mood, no riser, pump or filter build). These three are also written from the idea of the genre — correct them by ear. |
+| Mood | Anthemic, Uplifting, Euphoric, Moody, Dark, Gothic, Heroic, Nostalgic or Funky — or one of the fourteen every style shares (`tools/lib/banger/moods.js`), each its own progression: Bittersweet (I–IVmaj7–iv–I–vi7–II7–IVmaj7–Vsus4), Disco (i7–IV7 vamp), Sunshine Pop (Imaj7–iii7–IVmaj7–V, home by ♭VII), Doo-Wop (I–vi–IV–V), Lament (the falling circle of fifths), Lo-Fi (IVmaj7–iii7–ii7–Imaj7), Dreamy (I–II), Wonder (I–♭VI–I–♭III), Boogie (eight-bar blues), Lounge (Imaj7–VI7–ii7–V7, then sliding down by semitones), Hopeful (vi–IV–I–V, landing home on a suspended V — where Moody's major walk goes round for ever), Boss Fight (i and ♭II a half-bar each, turning on the big V) and Andalusian (i–VII–VI–V two chords a bar, resting on the big V — Gothic's descent at twice the pace, without the church) and Hypnotic (I–♭III–IV–V: four bars on I over the new **Sequencer** bass — root, octave, fifth, seventh in sixteenths — then shifting up in blocks; it lifts key by the plain jump). Mood picks the chord progression, the chord colours (Moody uses sevenths, Uplifting adds ninths, Funky ninths on the major chords) and how bright the hook is, and can swap parts' sounds (Gothic: organ, harpsichord, tolling bell, timpani) and suggest a bass (Funky → Funk Syncopated). |
 | Mode | **Keep**, **Major**, **Minor**, **Dorian** (minor with a raised 6th: bright, groovy), **Phrygian** (minor with a flat 2nd: dark, menacing), **Harmonic Minor** (minor with a raised 7th: dramatic, a big V), **Mixolydian** (major with a flat 7th: rocky, open) or **Lydian** (major with a raised 4th: dreamy, floating). Each mode brings its own chord walks, built on the chord that makes it (dorian's IV, phrygian's flat II, mixolydian's flat VII …), and its turnarounds land there instead of on the dominant. Each mode has a **bright** walk (leaning on its major chords) for Anthemic, Uplifting and Euphoric, and a **dark** one (leaning on its minor chords) for Moody and Dark, so the mood still steers the chords. The list marks which modes **suit** the chosen mood and which **fight** it — Dark suits Minor, Phrygian and Harmonic Minor and fights Major and Lydian; Euphoric suits Lydian and Major — and Surprise Me always rolls one of the modes that suit. Any mode can still be picked with any mood. |
 | Riff Notes | Shown when Mode is not Keep. The banger stays on your riff's own home note either way — to move a finished banger higher or lower, select all its bars on the desk and use **Transpose**. **Keep As Written** (the default) never moves a note: the mode is in the chords — the mode's own wherever your riff sits on them, and your riff's own chords borrowed wherever it plays the note the mode changes, so nothing clashes. **Fit to the Mode** moves your notes into the mode, degree by degree — an A-minor riff in Dorian has every F raised to F♯ — so the riff itself takes on the colour. The readout says how many notes would move. |
 | Length | Short (48 bars, about stage length), Medium (64 bars, two minutes at 128), Long (112 bars), or Custom (24–256 bars, in fours). |
 | Tempo | The style's own tempo (128), the source song's, or a number you type. |
-| Variation | **Faithful** keeps your notes exactly and varies only the setting: octaves, instruments, harmony, half speed. **Some** also moves the riff up the scale and turns the phrase ends round. **Wild** also develops fragments, shifts the rhythm by an eighth, leaps at the peak and adds a counter-line. |
+| Variation | **Faithful** keeps your notes exactly and varies only the setting: octaves, instruments, harmony, half speed. **Some** also moves the riff up the scale and turns the phrase ends round. **Wild** also develops fragments, shifts the rhythm by an eighth and leaps at the peak — and each of those comes back: the fragment returns in the same bar of the phrase's second half, and consecutive phrases differ in one bar only. |
 
 Nothing ever turns the melody upside down. Peter turned that down for the remixes, and
 the generator has no operation that could do it; the tests check this.
@@ -47,6 +55,57 @@ The readout line shows:
 If those bars cannot make a banger (drums only, or more than eight bars), Make It is
 switched off and the readout says why.
 
+### The Form row
+
+The song's shape, drawn as a strip: one block a section, as wide as it is long, as tall as
+it hits (its energy), coloured by its kind. The buttons choose the form:
+
+| Form | The shape |
+|---|---|
+| **Club** | The build-and-drop banger below (*What a banger is made of*), shaped by the Form switches under More Options. |
+| **Pop Song** | Intro (the chorus quoted, through an opening low-pass) · Verse · Pre-Chorus · Chorus · Verse 2 · Pre-Chorus 2 · Chorus 2 · **Middle 8** · Final Chorus (lifted) · Outro (the chorus tagged, then home held). A Short song loses the second verse and chorus first — the radio edit. |
+| **Anthem** | Intro · Build · First Drop · a long Breakdown with the hook alone over a pad (the choir and the pedal join halfway) · Rebuild (the arp from the first bar) · one huge lifted Final Drop · Outro. The breakdown is the last thing a short song gives up. |
+| **Groove** | No drops: eight-bar sections over one groove. The style's layers arrive over the first two-fifths, everything plays through the middle with one section of the drums out, and the last two sections take them away. No riser, impact or roll. |
+
+A riff with its own bassline: **Riff Bass** (More Options → Bass & Chords) says what
+happens to it. **Replace** (the default) plays the Bass setting's line in the drops — your
+bassline plays in the intro and outro, where the riff plays as written. **Keep** plays your
+bassline in the drops wherever the hook plays as written; where the hook is varied, moved
+or set over other chords, the Bass setting fills in. The readout says which, when the riff
+has a bassline.
+
+A breakdown's hook is the **Breakdown Hook** switch (More Options → Form, every form):
+**Half Speed** (the default — every note twice as long), **As Written** (its own speed over
+the pad), or **No Hook** (the pad, the choir and the pedal alone). A breakdown in the Form
+row can say its own (Plays: Half-Speed Hook, Hook As Written, Hook Alone, No Hook).
+
+Half time is its own kind of section, the **Half-Time Drop**: the hook and chords at full
+speed over a half-time kick and backbeat. A **Drop** or **Chorus** is always full time.
+Chipstep's and Future Bass's first drop shows on their Club strip as a Half-Time Drop —
+change it to a Drop to play it full time, or turn any drop in any style into one. (The
+Half-Time Switch under More Options still halves just the first eight bars of the Club
+form's drop two.) Every block, button and choice in the row has a tooltip, and the
+section lists show a one-line note beside each kind.
+
+Click a block to change it — its kind, its name, its bars (± four), its energy (five
+steps), what it plays (an intro can be the riff, a chorus quote, layers or drums and bass;
+an outro the riff, a chorus tag, a fade, a cold end or layers; a breakdown the half-speed
+hook or the hook alone), and Lift on a chorus or drop. Add a section after it, remove it,
+or drag a block to move it (or Alt+←/→; + and − resize; Delete removes). The first change
+makes it a **drawn** form: the request carries it, every take re-makes it, Banger Settings
+reopens it, and changing Length rescales it. **Reset**, another form, or another style
+goes back to the form's own. The switches under More Options that only shape the Club
+form are dimmed when another form, or a drawn one, is chosen.
+
+Each style starts on a form that suits it: **Synthwave** and **Eurobeat** a Pop Song,
+**Trance** an Anthem, the rest the Club form.
+
+**Style Defaults** puts every setting back to the chosen style's own — mood, mode, length,
+tempo, variation, the form and everything under More Options — keeping the riff's bars.
+**Classic** is the style as it was before the variety: its own sounds every take (Part
+Sounds: Style's Own), its own arp figure throughout, no Bass Lifts, the Club form — for
+Big-Room House, ABSOLUTE ZERO's shape and sound.
+
 **Surprise Me** rolls the mood, a mode that suits it, the riff notes, the variation and
 the tempo; flips each spice switch (percussion, extra layers, intro and ending FX, half
 time, false ending …) about one time in four; re-rolls the key lift one time in four;
@@ -59,10 +118,11 @@ rolls and the riser.
 
 | Group | Switches |
 |---|---|
-| Form | Style's Own Form · Intro · Build in Layers (Off, Long Songs, Always) · Drums & Bass Intro · Build · Breakdown · Second Drop · Double Drop · Key Lift (none, half step, whole step, major third) · Hard Stop · False Ending · Half-Time Switch · Outro |
+| Form | (the form itself is the Form row) Style's Own Form · Intro · Build in Layers (Off, Long Songs, Always) · Drums & Bass Intro · Build · Breakdown · Second Drop · Double Drop · Key Lift (none, half step, whole step, major third) · Second Mood (None or any mood: its chords, chord colours, the bass it suggests — unless the bass was picked by hand — and its key-change approach; the sounds stay the first mood's) · Switch At (After the Break — from the breakdown or middle 8 on; Final Chorus — the last drop or chorus on; Choruses Only — the drops and choruses, the verses and builds keep the first mood) · Key Change (how the lift arrives, on the last half-bar before it: Mood's Own, Straight, Pivot — the new V7, Two-Step — ii7–V7, Borrowed Step — ♭VI–♭VII, Walk-Up — the bass climbing in by semitones; Mood's Own gives each kind of lifted section the same approach every time, the mood's first for the first kind) · Hard Stop · False Ending · Half-Time Switch · Outro. Intro, Outro, Build in Layers, Drums & Bass Intro, Key Lift, Hard Stop (as the pause before a final chorus) and False Ending (before the final chorus) shape every form; the rest only the Club form. |
 | Drums | Source Drums (Keep and Add / Replace / Keep As-Is) · Kit (Style, Studio, 909, 808, DS, CR-78) · Crashes · Fills · Snare Rolls · Impact · Shaker · Tambourine · Congas · Cowbell · Ride |
-| Bass & Chords | Bass (Off-Beat, Rolling 16ths, Sub Only, None) · Sub Layer · Chords (Pumping Supersaws, Piano Stabs, Pad, None) · Square Double · Bell Octave · Octave Hook · Third Below · Arp · Choir · Counter-Melody · Riff Sound (Keep / Random) |
-| FX | Riser · Filter Build · Stutter Before Drop · Sidechain Pump · Delay Throws · Low-Pass Intro · Bitcrush Intro · Tape-Stop Ending |
+| Bass & Chords | Bass (Off-Beat, Rolling 16ths, Octave Eighths, Root–Fifth, Funk Syncopated, Long 808, Reese Drone, Gallop, Arpeggiated, Pedal, Walking, Sub Only, None) · Bass Lifts (later drops move to a busier related bass) · Sub Layer · Chords (Pumping Supersaws, Piano Stabs, Pad, None) · Square Double · Bell Octave · Octave Hook · Third Below · Arp · Arp Pattern (Varied, Style's Own, or one of thirteen figures) · Choir · Counter-Melody · Write a Lead (When Needed / Always / Off) · Riff Sound (Keep / Random) · Part Sounds (Roll / Style's Own) · Fill In (`tools/lib/banger/embellish.js`: Off, Repeat — the first half of each bar's long notes struck twice, Passing — a scale note between notes a third or more apart, Neighbour — long notes stepping up and back; every added note in the banger's key) · Fill Every (Every Pass, Every 2nd, Every 4th — the last pass of each group is the filled one, so it answers the plain ones) · Fill Notes (One, Two, Every Gap — figures a filled bar gets, earliest first). The same bar on the same pass is always filled the same way; the chords are chosen under the plain tune; a busy riff has no room and is left alone |
+| Spot FX | Effects chosen by what they are for — each **Style** (the switches' own moves) by default. **Into a Drop** (the last bar before every drop or chorus: Stutter, Beat Repeat, High-Pass Sweep, Reverb Wash, Tape Stop, None) · **Out of a Drop** (the last bar before the song drops down: Delay Throw, Reverb Wash, Low-Pass Down, Tape Stop, None — a transition's Tape Stop winds the mix down over the bar's last beat, two from 160 BPM, and stands still on the bar line) · **Breakdowns** (over every breakdown and middle 8: Underwater, Ping-Pong Echo, Big Reverb) · **Intro FX** (Low-Pass, Bitcrush, Radio, None) · **Ending** (Tape Stop, Echo Out, Fade, None). Surprise Me rolls each one time in four. All written as the desk's Spot FX, so they can be edited afterwards |
+| FX | Riser · Filter Build · Stutter Before Drop · Sidechain Pump · **Chord Gate** (Style's Own — Trance sixteenths, Future Bass eighths, the rest a quarter-note pump — or Pump, Eighths, Sixteenths, Dotted Eighths, or By Energy: a pump in quiet sections, eighths building, sixteenths in the drops) · Delay Throws · Low-Pass Intro · Bitcrush Intro · Tape-Stop Ending |
 
 **Build in Layers** turns the intro into a build-up: the parts arrive one at a time, a few
 bars apart — on a banger the kick alone, then the rest of the kit, the bass, the chords and
@@ -78,11 +138,10 @@ order (`layers`).
 once — Pocket Calculator's way in. Where Build in Layers applies, it wins.
 
 **Style's Own Form** plays the style's own arrangement, bar by bar, in place of every other
-Form switch (only Key Lift still applies). Only Kraftwerk has one so far; on any other
-style the switch does nothing. A script (`script` in the style file) is a list of sections,
+Form switch (only Key Lift still applies). No style has one at present
+(Kraftwerk's was the only one, and Kraftwerk was removed on 3 Oct 2026), so the switch does nothing. A script (`script` in the style file) is a list of sections,
 each a run of blocks — `[bar of the section, the parts that play from it, extras]` — so a
-part joins or leaves only on a block. It is written at its own length (Kraftwerk's at 128
-bars); any other length scales every section and block in proportion, in fours from 56
+part joins or leaves only on a block. It is written at its own length; any other length scales every section and block in proportion, in fours from 56
 bars and in twos below, the difference going to the section marked `grows`. The parts a
 block can name: `arp`, `sonar`, `kick`, `snare`, `hats` (sixteenths, accented — the eighths
 on HATS, the ones between on HATS SOFT a step down, since a bank holds no velocities),
@@ -97,10 +156,9 @@ A drop straight after either intro (no Build) keeps every part from its first ba
 nothing drops out again.
 
 Every switch combines with every other, and a style only sets where they start: layers then
-a build then a drop is a club track; drums and bass into the theme with the riser, the
-rolls, the crashes and the pump off is Kraftwerk.
+a build then a drop is a club track.
 
-The drop is always in; it is what a banger is for (Kraftwerk calls it the Theme). A riff with no drums gets the whole
+The drop is always in; it is what a banger is for. A riff with no drums gets the whole
 kit. A riff with drums:
 
 - **Keep and Add**: a busy riff kick, backbeat or hat (two or more hits a bar) stands in
@@ -284,6 +342,51 @@ its mix. Deleting the song deletes its takes too.
 On the deployed desk, which has no server, a take is kept as its seed and re-made when
 you come back to it.
 
+## Forms beyond the drop
+
+Everything but the Club form is a list of typed sections (`tools/lib/banger/form-types.js`):
+intro, verse, pre-chorus, build, chorus, drop, breakdown, middle 8, groove, false ending,
+outro — each with a label, a colour, a default **energy** (0–1), a range of bars and its
+variants. The templates (`templates.js`) are data: their sections at 64 bars, what a
+shorter song gives up first, what a longer one grows, fitted the way the Club form is.
+`form.js formFromList` gives each section the role its music is written from: the hook
+sections are drop, drop2, drop3 in turn, so each chorus hits harder than the last (the
+second brings the mega saw and every part in from its first bar), and the last — or a
+lifted one — is final (the octave hook, the choir, the ride).
+
+**It hangs together** because everything that is not the chorus is grown from the hook
+(`cohesion.js`):
+
+- **Verse** — the hook's own rhythm thinned to its strong eighths, written lower and
+  narrower (a fifth to an octave under the hook) over chords that are not the chorus's
+  (i–iv–VI–VII in minor, I–IV–vi–V in major, two bars a chord; under a mode, the mode's
+  other walk — a dark verse under a bright chorus). Verse 2 is verse 1 again, its second
+  half a step up. Sung on the hook's own channel, two dB under the chorus. The kit by
+  energy: half time at the quietest, four on the floor and the backbeat from the middle,
+  open hats and shaker from halfway up.
+- **Pre-Chorus** — the hook's head sequenced up a step a bar over a climbing walk (iv–v–VI
+  in minor, ii–iii–IV in major) that lands on the dominant; the music opens through a
+  low-pass across it and the roll swells in its last two bars.
+- **Middle 8** — somewhere else: IV and vi, then the borrowed bVI–bVII in major; VI and iv,
+  then III–VII in minor; the dominant last. Its melody is the hook's tail motif developed
+  (`variation.js fragment` — sequenced, never turned over), over half-time drums, a
+  Walking bass and an open pad, the choir joining for its second half; its last bar is
+  silent until the hook's first beat comes in early as the pickup home.
+- **Intro** can quote the chorus; **outro** can tag it.
+
+**The joins** between sections (`transitions.js`) are chosen by how much the energy
+changes. A big rise into a chorus gets a riser and one of: the kick and bass dropping out
+for the last two beats, stop-time on the last beat, the mix stuttering, or — into the
+final chorus, with Hard Stop on — the pause; and a two-note pickup in the hook. A smaller
+rise gets a fill and the pickup; a level join a fill; a fall a delay throw off the hook or
+a half-time last bar. The switches still say yes or no (Fills, Riser, Hard Stop, Stutter,
+Delay Throws), and every join is listed in the song's header note under **Joins**. A Club
+form drawn out in the editor keeps the Club form's own builds, stops and throws.
+
+**For a new style:** `defaults.form.template` is the form it starts on; `drums.sections[type]`
+gives a section type its own drum patterns; `harmony[type]` its own chord walk (an 8-bar
+numeral walk per mode family); `sectionLabels[type]` its own names.
+
 ## What a banger is made of
 
 The full form is ABSOLUTE ZERO's:
@@ -412,54 +515,6 @@ Chip-house into dubstep, the way CHIPSTEP plays it:
 The half-time first drop is the recipe's `halfTimeUntil` (future bass's `fullTimeFrom` the
 other way round): the drops before it play its `drums.halfTime` and `rhythms.halfTime`.
 
-### Kraftwerk
-
-Kraftwerk — the melodic side of The Man-Machine and Computer World — and not a banger at all:
-
-- **120 BPM**, dry, straight, the riff kept as written (Faithful) and an Uplifting walk by
-  default. Its defaults switch off the Build, the Double Drop, the Key Lift, the Hard
-  Stop, the riser, the snare rolls, the crashes, the impact, the fills, the pump, the
-  stutter, the filter build, the delay throws and the chords.
-- **Its own form** (Peter's re-model brief, 2 Oct 2026; Style's Own Form, 128 bars by
-  default). Nothing is announced by a riser or a crash: parts simply arrive and leave on
-  eight-bar blocks.
-
-  | Bars | Section | What happens |
-  |---|---|---|
-  | 1–16 | Ignition | A lone sixteenth arp, high and dry, bouncing left and right; a low-passed sonar ping on the chord's root every two bars from 9 |
-  | 17–32 | Motorik | The kick at 17 (no sub under it); the noise snare on two and four and sixteenth hats accented 100/75 at 25 |
-  | 33–48 | Engine | The piston bass in rigid eighths at 33; the hook on a warm triangle analog lead at 41 |
-  | 49–80 | Voice | The vocoder sings the hook at 49 (the lead stands aside); counter-arps under it and rim clicks on the off-beats at 65 |
-  | 81–96 | Isolation | Kit, bass and sonar gone: the vocoder and the arp alone in an eighth-note ping-pong; from 89 the vocoder says one word — the phrase's first note — in eighths |
-  | 97–112 | Full Power | Everything back at once, no swell: kick, bass, kit, arps, the lead and the vocoder an octave under it |
-  | 113–128 | Power Down | Kick and bass out at 113; the lead and vocoder fade across 121–124 over the arp and the kit; the kit stops at 125 and the arp closes down a step a bar to one dry low pulse on the tonic |
-
-  Short, Medium, Long and any custom length play the same seven sections, scaled.
-- **The sounds**: a Simmons kit (kick, noise snare, metal hats), Clang Rim clicks, a
-  Classic Mono piston bass, a Crystal Trigger arp, a Sine Tone sonar, a Triangle Tone lead,
-  Square Tone counter-arps, BEST Robot Vox for the vocoder and its word. The sonar, the
-  vocoder and the rim are Kraftwerk's own slots on the Banger Sounds page.
-- **Style's Own Form off**, it is the switch-built form: four bars of drums and bass (the
-  Drums & Bass Intro), then Theme, Interlude, Theme 2, Outro — or, on a **Long** song,
-  layers in and out (the beat, the bass, the backbeat, the chords, the hook with its
-  doubles). The Minimoog line there is the same piston eighths, and with Chords off there
-  is no string machine unless you switch one on.
-- No seed remix: its channels are set by hand, like trance's. The soft hats, rim, sonar,
-  vocoder and word have no reference parts yet, so their faders are the style's own.
-
-AUSSENDIENST's blips and Casio pi-po were tried and taken out: they are drums at a fixed
-pitch (the Ping is always an A), so under a riff in another key they clash, and loops
-lifted from one song's hook are clutter under any other. Chipstep's blip fills went for the
-same reason. The sonar is tuned — the chord's root — so it is never in the wrong key.
-
-What it cannot do yet: the robot or vocoder saying actual words (a JMJR-4 speaking preset
-needs its phrase compiled, which the generator cannot do in the page). The Isolation's
-"word" is the vocoder chanting one note.
-
-A style's section names are its own (`sectionLabels`: Theme, Interlude; a script names its
-own), and so is when its parts join a drop (`enter`, by phrase: a banger's bell and counter
-from the second, its arp from the fourth).
-
 ### Synthwave
 
 Outrun, the way NIGHT DRIVE plays it — built from our own remix and our style notes, so
@@ -483,6 +538,38 @@ correct it by ear:
 
 What it has not got: NIGHT DRIVE's verse, the hook at half speed on a hollow lead with the
 kick on one and three. The Half-Time Switch gives the first phrase of chorus two that kick.
+
+### Drum & Bass, Electro and Mega Drive
+
+Three styles added on 3 Oct 2026, written from the general idea of each genre and not
+checked against the records — correct them by ear. None has a seed remix yet: their
+channels are set by hand, like trance's, and the levels match each part to the style's
+own default banger.
+
+- **Drum & Bass** (`styles/dnb.js`): **174**. The **two-step** — the kick on the one and
+  the "and" of three, the snare (the BACKBEAT strip, labelled SNARE Two-Step) on two and
+  four — with a ghost kick and a ghost snare on the second bar, and **shuffling sixteenth
+  hats**. A **Reese Bass** holding two notes a bar (Bass = Reese Drone) over a sine sub;
+  **held pads** (Chords = Pad, Polar Drift) instead of pumping supersaws, no pump; a Wire
+  Harp pluck doubling the hook and an Ice Bell over it; a ride in the final drop. Every
+  mood's plain triads become sevenths and ninths. The riff's own drums are replaced.
+- **Electro** (`styles/electro.js`): **126**, the **808 kit** throughout (Kit = 808): the
+  kick on the one, the "a" of two and the "and" of three, pushing one more in on the
+  second bar; **808 tom runs** for fills. The **Distorted 808** bass rides the kick;
+  **Brass Stab** chords on the off-beats (Chords = Piano Stabs); the hook doubled by **BEST
+  Robot Vox** (VOCODER) with **Hard FM** an octave up later. Dry and straight: no pump, no
+  exciter, a short room. Dark by default. The 808 cowbell is left off on purpose — it is
+  a fixed pitch, and would clash with a riff in another key.
+- **Mega Drive** (`styles/megadrive.js`): **150**, the FM chip — chipstep's older sibling.
+  A **DX Slap** bass bouncing root to octave with a push before the three; **FM Keys** on
+  the off-beats; the hook on **Megamix Lead**, an **FM Bell** an octave over it, **Hard FM**
+  later; a **crushed kick**, a crack snare, an **FM Clap** backbeat and Simmons tom runs.
+  Song-shaped like synthwave (Pre-Chorus and Chorus), Heroic by default, and none of a
+  banger's studio moves — no riser, pump, filter build or stutter — and a short room.
+
+**Sounds they could use** that the catalogue does not have yet: for Mega Drive an **FM
+brass**, an **orchestra hit** and **low-bit PCM drums**; for Drum & Bass a **break snare
+and kick** (tight, ringing, high-tuned). Each style plays the nearest sound we have.
 
 ### Levels
 
@@ -568,13 +655,14 @@ named by part alone (`KICK`, `HATS`).
 
 | Path | What it is |
 |---|---|
-| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js` |
+| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js` |
 | `tools/lib/banger/sounds.js` | The sounds table — written by the Banger Sounds page |
 | `tools/lib/banger/sound-rules.js` | The rulebook: every slot, and what may go in it |
 | `tools/lib/banger/sounds-source.js`, `audition.js` | The table's serialiser; the two-bar auditions |
 | `tools/banger-sounds.js`, `banger-sounds-entry.js`, `banger-sounds-shell.html` | The Banger Sounds page (:8022) |
 | `tools/lib/banger-file.js` | Writing a banger song into `work/bangers/`, its takes, and the one-time move out of `work/scratch/` |
-| `tools/mixer-banger.js` | The dialog and the take buttons |
+| `tools/lib/banger/form-types.js`, `templates.js`, `cohesion.js`, `transitions.js`, `form-edit.js`, `lead.js` | The kinds of section; the Pop Song, Anthem and Groove forms; the verse, pre-chorus and middle 8 grown from the hook; the joins; the form editor's moves; Write a Lead |
+| `tools/mixer-banger.js`, `tools/mixer-banger-form.js` | The dialog and the take buttons; the Form row's strip and editor |
 | `tools/mixer.js` | `POST /make-banger`, `GET /banger-takes`, `POST /banger-take` |
 | `tools/banger-audition.js` | Make and render bangers from the command line |
 | `tools/lib/banger/levels.js`, `levels-data.js` | The fader prediction, and what it reads (generated) |
@@ -587,6 +675,7 @@ named by part alone (`KICK`, `HATS`).
 | `src/data/imported/banger-seed-*.js` | The seven seed bangers |
 | `tests/banger.js` | Tests for the generator, the riff reader, the song file and the takes |
 | `tests/banger-sounds.js` | Tests for the sounds table, the rules, Save, and the generator playing the table |
+| `tests/banger-forms.js` | Tests for the forms: every length exact, every style valid, drawn forms re-made exactly, the verse/pre/middle 8 promises, the joins, the groove, the editor's moves |
 
 The page makes the music and the server only writes the file. So a change to the
 generator needs a refresh, not a server restart; only a change to the routes needs a

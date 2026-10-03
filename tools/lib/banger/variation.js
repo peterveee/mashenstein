@@ -13,6 +13,11 @@
 //   Wild      + a fragment developed across the bar · displaced by an eighth · a leap
 //             at the phrase's peak
 //
+// WILD IS NEVER A ONE-OFF. A new idea heard once sounds like a mistake; heard again, it
+// is part of the tune. So the fragment comes back in the same bar of the phrase's second
+// half, the displacement and the leap sit in the same bars of both plans, and A and B
+// differ in one bar only — different enough to move on, the same enough to remember.
+//
 // Browser-safe: no `node:*` imports.
 import {
   blank, clonePart, diatonic, midi, nameOf, clampMidi, parseChord, cut, hasNotes,
@@ -146,7 +151,8 @@ export const OPS_BY_VARIATION = Object.freeze({
 /**
  * Eight-bar drop plans, by cell length (1, 2, 4 or 8 bars) and level: each bar is
  * `[cell bar, op]`. Two plans per level, A and B — consecutive phrases alternate, so no
- * two phrases of a drop play the hook the same way. C=1 Some A is ABSOLUTE ZERO's drop:
+ * two phrases of a drop play the hook the same way. At Wild they differ in one bar, so
+ * what changes is heard against what comes back (see the note at the top). C=1 Some A is ABSOLUTE ZERO's drop:
  * H, H3, H, H5, H, H3, H, CAD.
  */
 const PLANS = {
@@ -157,8 +163,8 @@ const PLANS = {
       [[0, 'as'], [0, 'k2'], [0, 'k4'], [0, 'turn'], [0, 'as'], [0, 'k2'], [0, 'chop'], [0, 'turn']],
     ],
     wild: [
-      [[0, 'as'], [0, 'k2'], [0, 'as'], [0, 'frag'], [0, 'as'], [0, 'disp'], [0, 'leap'], [0, 'turn']],
-      [[0, 'as'], [0, 'frag'], [0, 'k2'], [0, 'k4'], [0, 'disp'], [0, 'k2'], [0, 'leap'], [0, 'turn']],
+      [[0, 'as'], [0, 'frag'], [0, 'as'], [0, 'disp'], [0, 'as'], [0, 'frag'], [0, 'leap'], [0, 'turn']],
+      [[0, 'as'], [0, 'frag'], [0, 'k2'], [0, 'disp'], [0, 'as'], [0, 'frag'], [0, 'leap'], [0, 'turn']],
     ],
   },
   2: {
@@ -168,8 +174,8 @@ const PLANS = {
       [[0, 'as'], [1, 'as'], [0, 'as'], [1, 'chop'], [0, 'k4'], [1, 'k2'], [0, 'as'], [1, 'turn']],
     ],
     wild: [
-      [[0, 'as'], [1, 'as'], [0, 'k2'], [1, 'frag'], [0, 'as'], [1, 'disp'], [0, 'leap'], [1, 'turn']],
-      [[0, 'as'], [1, 'frag'], [0, 'k2'], [1, 'k2'], [0, 'disp'], [1, 'as'], [0, 'k4'], [1, 'turn']],
+      [[0, 'as'], [1, 'frag'], [0, 'as'], [1, 'disp'], [0, 'as'], [1, 'frag'], [0, 'leap'], [1, 'turn']],
+      [[0, 'as'], [1, 'frag'], [0, 'k2'], [1, 'disp'], [0, 'as'], [1, 'frag'], [0, 'leap'], [1, 'turn']],
     ],
   },
   4: {
@@ -179,8 +185,8 @@ const PLANS = {
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'chop'], [0, 'as'], [1, 'as'], [2, 'k2'], [3, 'turn']],
     ],
     wild: [
-      [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'frag'], [0, 'k2'], [1, 'disp'], [2, 'leap'], [3, 'turn']],
-      [[0, 'as'], [1, 'frag'], [2, 'as'], [3, 'as'], [0, 'disp'], [1, 'k2'], [2, 'as'], [3, 'turn']],
+      [[0, 'as'], [1, 'frag'], [2, 'as'], [3, 'disp'], [0, 'as'], [1, 'frag'], [2, 'leap'], [3, 'turn']],
+      [[0, 'as'], [1, 'frag'], [2, 'k2'], [3, 'disp'], [0, 'as'], [1, 'frag'], [2, 'leap'], [3, 'turn']],
     ],
   },
   8: {
@@ -189,9 +195,11 @@ const PLANS = {
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [4, 'as'], [5, 'as'], [6, 'as'], [7, 'turn']],
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [4, 'k2'], [5, 'as'], [6, 'chop'], [7, 'turn']],
     ],
+    // An eight-bar cell has no second half that repeats the first, so the fragment of
+    // bar 2 is played again in bar 6 — the same source bar, so the same music.
     wild: [
-      [[0, 'as'], [1, 'as'], [2, 'frag'], [3, 'as'], [4, 'as'], [5, 'disp'], [6, 'leap'], [7, 'turn']],
-      [[0, 'as'], [1, 'frag'], [2, 'as'], [3, 'k2'], [4, 'disp'], [5, 'as'], [6, 'as'], [7, 'turn']],
+      [[0, 'as'], [1, 'frag'], [2, 'as'], [3, 'disp'], [4, 'as'], [1, 'frag'], [6, 'leap'], [7, 'turn']],
+      [[0, 'as'], [1, 'frag'], [2, 'k2'], [3, 'disp'], [4, 'as'], [1, 'frag'], [6, 'leap'], [7, 'turn']],
     ],
   },
 };

@@ -154,7 +154,7 @@ const GROUNDED_EPS = 0.05;
  * the frame. A capture returns a passthrough instead: the video was graded on
  * per-subject composites and blur, so a take keeps them.
  */
-export function beginFloorReflectionBand(ctx, floorY, { height } = {}) {
+export function beginFloorReflectionBand(ctx, floorY, { height, alpha = REFLECT_ALPHA } = {}) {
   stats.frames++;
   if (!ctx || !(height > 0) || typeof document === 'undefined') return null;
   const m = readTransform(ctx);
@@ -176,6 +176,7 @@ export function beginFloorReflectionBand(ctx, floorY, { height } = {}) {
   return {
     ctx, floorY, m, span, w, h, x0: 0, y0,
     fy: floorDeviceY - y0,
+    alpha,
     n: 0,
     lifted: null,
   };
@@ -212,7 +213,7 @@ export function endFloorReflectionBand(band) {
     const { canvas: off, ctx: o } = scratch(false, band.w, band.h);
     fadeAndLay(band.ctx, o, off, {
       x0: band.x0, y0: band.y0, w: band.w, h: band.h,
-      fy: band.fy, span: band.span, alpha: REFLECT_ALPHA, blur: 0,
+      fy: band.fy, span: band.span, alpha: band.alpha, blur: 0,
     });
     stats.subjects += band.n;
     stats.px += band.w * band.h;

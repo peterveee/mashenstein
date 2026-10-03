@@ -47,7 +47,7 @@ import { songFile } from './lib/song-source.js';
 import { validateVariants } from './lib/mix-source.js';
 import { writeSongsIndex } from './lib/songs-index.js';
 import { newScratchSong } from './lib/new-song.js';
-import { bangerIssues, writeBangerSong, moveTake, takesState, deleteTakes, moveBangersOutOfScratch } from './lib/banger-file.js';
+import { bangerIssues, writeBangerSong, moveTake, modifyTake, takesState, deleteTakes, moveBangersOutOfScratch } from './lib/banger-file.js';
 import { useAsStyle, saveCombo } from './lib/banger-seeds.js';
 import { randomSongName } from './lib/song-names.js';
 import { songCreatedDates } from './lib/song-dates.js';
@@ -983,13 +983,13 @@ const server = createServer(async (req, res) => {
       const direction = String(body?.direction || '');
       const track = resolveTrack(id);
       const path = songFileIn(ROOT, id);
-      if (!track?.banger || !path || !['another', 'previous', 'next'].includes(direction)) {
+      if (!track?.banger || !path || !['another', 'previous', 'next', 'modify'].includes(direction)) {
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end(`no ${direction || 'such'} take of "${id}"`);
         return;
       }
       let generated = body?.generated || null;
-      if (direction === 'another') {
+      if (direction === 'another' || direction === 'modify') {
         const issues = bangerIssues(generated);
         if (issues.length) {
           res.writeHead(422, { 'content-type': 'text/plain' });
@@ -1003,7 +1003,9 @@ const server = createServer(async (req, res) => {
       const before = await freshImport(path);
       let take;
       try {
-        take = moveTake(ROOT, id, before.banger, { direction, generated, title: track.title });
+        take = direction === 'modify'
+          ? modifyTake(ROOT, id, before.banger, { generated, title: track.title })
+          : moveTake(ROOT, id, before.banger, { direction, generated, title: track.title });
       } catch (err) {
         res.writeHead(409, { 'content-type': 'text/plain' });
         res.end(String(err.message || err));

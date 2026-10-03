@@ -19415,6 +19415,9 @@ const bangerDesk = createBangerDesk({
   selectSong,
   play: () => { try { setPlaying(true, 0); } catch { /* audio not unlocked yet — the song is loaded */ } },
   isDirty,
+  // The take as saved — what Modify This Take merges into (hand edits live in the
+  // arrangement layer, so the arrangement comes too).
+  savedSong: () => ({ mix: saved[trackId] ?? null, arrangement: savedArr[trackId] ?? null }),
   slugForClient,
 });
 $('makebanger').onclick = () => bangerDesk.makeFromDrawer();
@@ -19429,6 +19432,7 @@ $('bangeragain').onclick = () => bangerDesk.anotherTake();
 $('bangerprev').onclick = () => bangerDesk.previousTake();
 $('bangernext').onclick = () => bangerDesk.nextTake();
 $('bangersettings').onclick = () => bangerDesk.settings();
+$('bangermodify').onclick = () => bangerDesk.modify();
 
 // ---- seed bangers and Sound Combos -------------------------------------------------
 // Use as Style, Save as Combo and the seed's A/B with its remix: tools/mixer-banger-seeds.js.

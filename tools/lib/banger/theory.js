@@ -388,19 +388,19 @@ export function arpBar(chords, idx, from = 'A3', len = null) {
  * the Arp Pattern switch, and Varied, choose between.
  */
 export const ARP_FIGURES = Object.freeze([
-  { id: 'up', label: 'Up', idx: '0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3' },
-  { id: 'down', label: 'Down', idx: '3 2 1 0 3 2 1 0 3 2 1 0 3 2 1 0' },
-  { id: 'upDown', label: 'Up & Down', idx: '0 1 2 3 4 3 2 1 0 1 2 3 4 3 2 1' },
-  { id: 'downUp', label: 'Down & Up', idx: '4 3 2 1 0 1 2 3 4 3 2 1 0 1 2 3' },
-  { id: 'climb', label: 'Two-Octave Climb', idx: '0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7' },
-  { id: 'fall', label: 'Two-Octave Fall', idx: '7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0' },
-  { id: 'threes', label: 'Three Against Four', idx: '0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 3' },
-  { id: 'pedal', label: 'Pedal Top', idx: '0 3 1 3 2 3 1 3 0 3 1 3 2 3 1 3' },
-  { id: 'alberti', label: 'Alberti', idx: '0 2 1 2 0 2 1 2 0 2 1 2 0 2 1 2' },
-  { id: 'octaves', label: 'Octave Jumps', idx: '0 3 0 3 1 4 1 4 2 5 2 5 1 4 1 4' },
-  { id: 'leapfrog', label: 'Leapfrog', idx: '0 2 1 3 2 4 3 5 4 2 3 1 2 0 1 2' },
-  { id: 'eighths', label: 'Eighths', idx: '0 . 1 . 2 . 3 . 4 . 3 . 2 . 1 .' },
-  { id: 'syncopated', label: 'Syncopated', idx: '0 . 2 3 . 1 2 . 3 . 4 2 . 1 3 .' },
+  { id: 'up', label: 'Up', note: 'Root to the top, again and again', idx: '0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3' },
+  { id: 'down', label: 'Down', note: 'From the top down to the root', idx: '3 2 1 0 3 2 1 0 3 2 1 0 3 2 1 0' },
+  { id: 'upDown', label: 'Up & Down', note: 'Up and back down, a wave', idx: '0 1 2 3 4 3 2 1 0 1 2 3 4 3 2 1' },
+  { id: 'downUp', label: 'Down & Up', note: 'Down and back up', idx: '4 3 2 1 0 1 2 3 4 3 2 1 0 1 2 3' },
+  { id: 'climb', label: 'Two-Octave Climb', note: 'Up through two octaves', idx: '0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7' },
+  { id: 'fall', label: 'Two-Octave Fall', note: 'Down through two octaves', idx: '7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0' },
+  { id: 'threes', label: 'Three Against Four', note: 'Three notes against the four-beat bar — the trance pluck', idx: '0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 3' },
+  { id: 'pedal', label: 'Pedal Top', note: 'A held top note between climbing ones', idx: '0 3 1 3 2 3 1 3 0 3 1 3 2 3 1 3' },
+  { id: 'alberti', label: 'Alberti', note: 'Low, high, middle, high — the classical left hand', idx: '0 2 1 2 0 2 1 2 0 2 1 2 0 2 1 2' },
+  { id: 'octaves', label: 'Octave Jumps', note: 'Each chord tone and its octave', idx: '0 3 0 3 1 4 1 4 2 5 2 5 1 4 1 4' },
+  { id: 'leapfrog', label: 'Leapfrog', note: 'Two up, one back, climbing', idx: '0 2 1 3 2 4 3 5 4 2 3 1 2 0 1 2' },
+  { id: 'eighths', label: 'Eighths', note: 'Up and down in eighths — half as busy', idx: '0 . 1 . 2 . 3 . 4 . 3 . 2 . 1 .' },
+  { id: 'syncopated', label: 'Syncopated', note: 'Off the beat, with gaps — funky', idx: '0 . 2 3 . 1 2 . 3 . 4 2 . 1 3 .' },
 ]);
 
 /**
@@ -408,20 +408,48 @@ export const ARP_FIGURES = Object.freeze([
  * patterns (R root, O / 8 octave, 5 fifth, 3 third, 7 seventh, `:n` a length in
  * sixteenths). `tonic` plays the home note under every chord instead of the chord's root.
  * `lift` is the busier bass a later drop moves to when Bass Lifts is on — null stays put.
+ * `echo` copies the line onto a channel of its own a sixteenth late (echoPart, below).
  * Off-Beat and Rolling are the style's own rhythms; their lifts are in BASS_LIFTS.
  */
 export const BASS_FIGURES = Object.freeze([
-  { id: 'octaves', label: 'Octave Eighths', pat: 'R:2 . O:2 . R:2 . O:2 . R:2 . O:2 . R:2 . O:2 .', lift: 'gallop' },
-  { id: 'rootFifth', label: 'Root–Fifth', pat: 'R:2 . 5:2 . O:2 . 5:2 . R:2 . 5:2 . O:2 . 5:2 .', lift: 'octaves' },
-  { id: 'funk', label: 'Funk Syncopated', pat: 'R:3 . . R:1 . O:1 R:2 . . 5:1 . R:1 7:2 . 5:2 .', lift: null },
-  { id: 'long808', label: 'Long 808', pat: 'R:10 . . . . . . . . . R:6 . . . . .', lift: 'offbeat' },
-  { id: 'reese', label: 'Reese Drone', pat: 'R:8 . . . . . . . R:8 . . . . . . .', lift: 'octaves' },
-  { id: 'gallop', label: 'Gallop', pat: 'R:2 . R:1 R:1 R:2 . R:1 R:1 R:2 . R:1 R:1 R:2 . R:1 R:1', lift: 'rolling' },
-  { id: 'arpeggiated', label: 'Arpeggiated', pat: 'R:1 3:1 5:1 7:1 O:1 7:1 5:1 3:1 R:1 3:1 5:1 7:1 O:1 7:1 5:1 3:1', lift: null },
-  { id: 'pedal', label: 'Pedal', pat: 'R:8 . . . . . . . R:8 . . . . . . .', tonic: true, lift: 'reese' },
-  { id: 'walking', label: 'Walking', pat: 'R:4 . . . 3:4 . . . 5:4 . . . 7:4 . . .', lift: 'rootFifth' },
+  { id: 'octaves', label: 'Octave Eighths', note: 'Root and octave in eighths — disco, eurobeat', pat: 'R:2 . O:2 . R:2 . O:2 . R:2 . O:2 . R:2 . O:2 .', lift: 'gallop' },
+  { id: 'rootFifth', label: 'Root–Fifth', note: 'Root, fifth, octave, fifth — bouncing', pat: 'R:2 . 5:2 . O:2 . 5:2 . R:2 . 5:2 . O:2 . 5:2 .', lift: 'octaves' },
+  { id: 'funk', label: 'Funk Syncopated', note: 'Sixteenth pushes and a seventh — funk', pat: 'R:3 . . R:1 . O:1 R:2 . . 5:1 . R:1 7:2 . 5:2 .', lift: null },
+  { id: 'long808', label: 'Long 808', note: 'One long note, then a short one — trap', pat: 'R:10 . . . . . . . . . R:6 . . . . .', lift: 'offbeat' },
+  { id: 'reese', label: 'Reese Drone', note: 'Two held notes a bar — dark, D&B', pat: 'R:8 . . . . . . . R:8 . . . . . . .', lift: 'octaves' },
+  { id: 'gallop', label: 'Gallop', note: 'Eighth, sixteenth, sixteenth — driving', pat: 'R:2 . R:1 R:1 R:2 . R:1 R:1 R:2 . R:1 R:1 R:2 . R:1 R:1', lift: 'rolling' },
+  { id: 'arpeggiated', label: 'Arpeggiated', note: 'Root, third, fifth, seventh up and back', pat: 'R:1 3:1 5:1 7:1 O:1 7:1 5:1 3:1 R:1 3:1 5:1 7:1 O:1 7:1 5:1 3:1', lift: null },
+  { id: 'pedal', label: 'Pedal', note: 'The home note held under every chord', pat: 'R:8 . . . . . . . R:8 . . . . . . .', tonic: true, lift: 'reese' },
+  { id: 'walking', label: 'Walking', note: 'Quarter notes through the chord tones — jazzy', pat: 'R:4 . . . 3:4 . . . 5:4 . . . 7:4 . . .', lift: 'rootFifth' },
+  // The echo, a sixteenth behind, fills the gaps between the eighths: the gallop is the
+  // line and its delay together, as the record does it.
+  { id: 'sequencer', label: 'Sequencer', note: 'Root, octave, fifth, seventh in eighths with an echo a sixteenth behind — Munich disco', pat: 'R:1 . O:1 . 5:1 . 7:1 . R:1 . O:1 . 5:1 . 7:1 .', lift: null, echo: true },
 ]);
 export const BASS_LIFTS = Object.freeze({ offbeat: 'octaves', rolling: 'gallop' });
+
+/**
+ * A delay written as notes: `from`'s part in every bar copied to `to`, `steps` sixteenths
+ * late, the last notes of a bar carried over the barline into the next one — but only into
+ * a bar that plays `from` too, so a stop or a breakdown stays clean. Notes and lengths are
+ * kept. Changes `bars` in place.
+ */
+export function echoPart(bars, from, to, steps = 1) {
+  const echoes = bars.map(() => null);
+  bars.forEach((bar, b) => {
+    const src = bar?.[from];
+    if (!src) return;
+    src.notes.forEach((v, i) => {
+      if (v == null) return;
+      const at = b * 16 + i + steps;
+      const tb = Math.floor(at / 16);
+      if (!bars[tb]?.[from]) return;
+      const out = (echoes[tb] ||= blank());
+      out.notes[at % 16] = v;
+      out.lens[at % 16] = src.lens[i];
+    });
+  });
+  echoes.forEach((part, b) => { if (part && hasNotes(part)) bars[b][to] = part; });
+}
 
 // ---------------------------------------------------------------- the song
 /** The Hz `n()` makes of a name — and a throw, rather than a silent rest, if it cannot. */

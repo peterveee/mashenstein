@@ -13,13 +13,17 @@ import { BIG_ROOM } from './big-room.js';
 export const EUROBEAT = Object.freeze({
   id: 'eurobeat',
   label: 'Eurobeat',
+  // What the Style list says beside it, and its tooltip.
+  note: '155 · octave bass, strings, brass stabs',
+  title: '155 BPM, HAIRPIN\'s shape: four on the floor, an octave bass in eighths, strings, brass stabs on the off-beats, a razor lead doubling the hook. Starts as a Pop Song',
   bpm: 155,
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,
   tempoRange: [150, 160],
   // Dramatic and driving, with the brass stabs on; no sub (the octave bass is the floor)
   // and no pump.
-  defaults: { mood: 'anthemic', parts: { sub: false, counter: true }, fx: { pump: false } },
+  // A Pop Song (templates.js): eurobeat is verses and a chorus, not a drop.
+  defaults: { mood: 'anthemic', parts: { sub: false, counter: true }, fx: { pump: false }, form: { template: 'pop' } },
 
   progressions: {
     // Em G C D: the eurobeat minor.

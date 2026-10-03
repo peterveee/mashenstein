@@ -68,6 +68,8 @@ export const seedOptions = (style) => ({
   style: style.id,
   parts: { sub: true, thirdBelow: true, counter: true, arp: true, choir: true, bell: true, square: true, octaveDouble: true, partSounds: 'style' },
   drums: { shaker: true, tambourine: true, congas: true, cowbell: true, ride: true },
+  // Always the Club form: a seed is every part laid out to tune, and Use as Style reads it by its drops.
+  form: { template: 'club' },
 });
 
 /**

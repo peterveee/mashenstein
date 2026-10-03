@@ -880,4 +880,249 @@ export const BANGER_SOUNDS = {
     },
     never: [],
   },
+  shibuya: {
+    parts: {
+      bass: "tngrRoundBass", sub: "stSubSine", square: "mrdrVibraphone",
+      squareDense: "mrdrVibraphone", bell: "tngrCelesta", megaSaw: "mrdrMutedTrumpet",
+      third: "epiano", arp: "mrdrHarpsichord", counter: "mrdrConcertFlute",
+      choir: "bestChoirAah", saws: "tngrWarmStrings", pad: "addDrawbar",
+      piano: "mrdrAcousticGuitar", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "epiano",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "dsKick", snare: "snareCrisp", clap: "dsRim",
+        hats: "dsHatClosed", ohats: "dsHatOpen", crash: "ds909Crash",
+        fill: "dsTom",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+    },
+    random: {
+      hook: [
+        "mrdrConcertFlute", "mrdrVibraphone", "mrdrMutedTrumpet", "epiano", "mrdrHarpsichord",
+        "tngrCelesta", "mrdrAcousticGuitar"
+      ],
+      counter: [
+        "mrdrConcertFlute", "mrdrVibraphone", "mrdrMutedTrumpet", "tngrCelesta",
+        "mrdrHarpsichord"
+      ],
+      bass: ["tngrRoundBass", "tngrPickedBass", "layerLoungeBass", "layerWalkingBass"],
+      chords: [
+        "epiano", "mrdrAcousticGuitar", "addDrawbar", "tngrWarmStrings", "mrdrHarpsichord",
+        "mrdrVibraphone"
+      ],
+    },
+    choices: {
+      saws: ["bestPwmStrings"],
+      pad: ["tngrWarmStrings"],
+      arp: ["mrdrVibraphone", "mrdrAcousticGuitar"],
+      choir: ["jmjrChoirOoh"],
+      bell: ["mrdrVibraphone"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  dnb: {
+    parts: {
+      bass: "bestReeseBass", sub: "stSubSine", square: "tngrWireHarp",
+      squareDense: "tngrWireHarp", bell: "tngrIceBell", megaSaw: "bestPwmHollowLead",
+      third: "rmndTineEP", arp: "tngrCrystalTrigger", counter: "tngrAlloyChime",
+      choir: "tngrGlassChoir", saws: "bestPwmPadWide", pad: "tngrPolarDrift",
+      piano: "rmndTineEP", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "rmndTineEP",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds909KickPunch", snare: "snareTight", clap: "dsCrackSnare2",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+    },
+    random: {
+      hook: [
+        "tngrWireHarp", "tngrIceBell", "rmndTineEP", "tngrCrystalTrigger", "bestPwmHollowLead",
+        "tngrAlloyChime", "mrdrElectricGrand", "epiano"
+      ],
+      counter: ["tngrIceBell", "tngrAlloyChime", "tngrCrystalTrigger", "rmndTineEP", "tngrWireHarp"],
+      bass: ["bestReeseBass", "syncBassBite", "bestClassicMono", "detuneBass"],
+      chords: [
+        "tngrPolarDrift", "glassPad", "tngrGlassChoir", "rmndTineEP", "bestPwmPadWide",
+        "tngrDreamCircuit"
+      ],
+    },
+    choices: {
+      saws: ["tngrDreamCircuit"],
+      pad: ["glassPad", "tngrBurntHorizon", "layerDreamPad"],
+      arp: ["tngrWireHarp", "bestSampleHoldPulse"],
+      choir: ["bestChoirOoh"],
+      bell: ["tngrAlloyChime"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  electro: {
+    parts: {
+      bass: "mrdrDist808", sub: "stSubSine", square: "bestRobotVox",
+      squareDense: "bestRobotVox", bell: "fmBell", megaSaw: "hardFm",
+      third: "fmKeys", arp: "bestSampleHoldPulse", counter: "toneSquare",
+      choir: "bestPwmChoir", saws: "bestPwmStrings", pad: "bestPwmStrings",
+      piano: "brassStab", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "fmKeys",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", crash: "crash808Long",
+        fill: "ds808Tom",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+    },
+    random: {
+      hook: [
+        "bestRobotVox", "hardFm", "toneSquare", "tngrPlainPulse", "fmKeys",
+        "bestPwmHollowLead", "syncRazorLead", "fmBell"
+      ],
+      counter: ["toneSquare", "fmBell", "bestSampleHoldPulse", "fmKeys", "tngrPlainPulse"],
+      bass: ["mrdrDist808", "bass80sFM", "syncBassBite", "bestClassicMono"],
+      chords: ["brassStab", "bestPwmBrass", "bestPwmStrings", "fmKeys", "mrdrHornStab"],
+    },
+    choices: {
+      saws: ["bestPwmPadWide"],
+      pad: ["synthStrings"],
+      arp: ["toneSquare", "tngrCrystalTrigger"],
+      choir: ["tngrGlassChoir"],
+      bell: ["tngrIceBell"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  megadrive: {
+    parts: {
+      bass: "rmndDxSlap", sub: "stSubSine", square: "layerMegamixLead",
+      squareDense: "layerMegamixLead", bell: "fmBell", megaSaw: "hardFm",
+      third: "rmndDxPiano", arp: "fmBell", counter: "fmKeys",
+      choir: "bestPwmChoir", saws: "bestPwmBrass", pad: "synthStrings",
+      piano: "fmKeys", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "layerMegamixLead",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "kickCrush", snare: "dsCrackSnare2", clap: "clapFm",
+        hats: "hatGrit", ohats: "ohat909SixBit", crash: "ds909Crash",
+        fill: "sdsTomHigh",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+    },
+    random: {
+      hook: [
+        "layerMegamixLead", "hardFm", "fmKeys", "fmBell", "rmndDxPiano", "mrdrDx7Keys",
+        "toneSquare", "bestPwmBrass"
+      ],
+      counter: ["fmBell", "fmKeys", "mrdrDx7Keys", "rmndDxPiano", "toneSquare"],
+      bass: ["rmndDxSlap", "bass80sFM", "layerMegamixBass", "rmndDxPop", "rmndMaxPop"],
+      chords: ["fmKeys", "rmndDxPiano", "bestPwmBrass", "mrdrDx7Keys", "synthStrings"],
+    },
+    choices: {
+      saws: ["synthStrings"],
+      pad: ["bestPwmStrings"],
+      arp: ["mrdrDx7Keys", "toneSquare"],
+      choir: ["jmjrChoirOoh"],
+      bell: ["mrdrDx7Keys"],
+    },
+    moods: {
+    },
+    never: [],
+  },
 };

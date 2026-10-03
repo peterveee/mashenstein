@@ -7,6 +7,12 @@
 // Fitting is two lists of moves, tried in order: shrink until the form fits, then grow
 // until it is exactly the length asked for. Drops move by whole eight-bar phrases where
 // they can; everything else by four. Browser-safe.
+//
+// That is the CLUB form. The others — Pop Song, Anthem, Groove (templates.js) — and a form
+// drawn in the dialog's editor (`options.form.sections`) are lists of typed sections
+// (form-types.js) that `formFromList` gives roles, bars and energies.
+import { SECTION_TYPES, ROLE_TYPE, DROP_INDEX, roleFits } from './form-types.js';
+import { templateSections, defaultLabel } from './templates.js';
 
 export const SECTION_LABELS = Object.freeze({
   intro: 'Intro', build: 'Build', drop: 'Drop', breakdown: 'Breakdown', build2: 'Build 2',
@@ -78,8 +84,89 @@ function wanted(form, natural = {}, style = null, layered = false) {
   return out;
 }
 
-/** Does this request play its style's own bar-by-bar arrangement (Style's Own Form)? */
-export const scriptOn = (options, style) => !!(options.form.script && style?.script?.length);
+/**
+ * Does this request play its style's own bar-by-bar arrangement (Style's Own Form)? Only
+ * on the Club form with no form drawn — choosing Pop Song in Kraftwerk plays Pop Song.
+ */
+export const scriptOn = (options, style) => !!(options.form.script && style?.script?.length
+  && (options.form.template || 'club') === 'club' && !options.form.sections);
+
+/** Which form a request is: 'own' (a style script), 'custom' (drawn), or a template id. */
+export const formTemplateOf = (options, style) => (scriptOn(options, style) ? 'own'
+  : options.form.sections ? 'custom' : options.form.template || 'club');
+
+// The Club form's energies by role: each drop harder than the last.
+const CLUB_ENERGY = { drop2: 0.9, drop3: 1, reprise: 1, build2: 0.65 };
+/**
+ * A Club or scripted form entry, given its type and energy (nothing it plays changes). A
+ * drop the style plays half time (Chipstep's first, Future Bass's before it goes full
+ * time) is a Half-Time Drop — its own item on the strip, so it can be changed.
+ */
+const stamp = (f, style) => {
+  let type = ROLE_TYPE[f.role] || 'groove';
+  const d = DROP_INDEX[f.role];
+  if (d != null && (d < (style?.halfTimeUntil ?? 0) || d < (style?.fullTimeFrom ?? 0))) type = 'halfDrop';
+  return Object.assign(f, { type, energy: CLUB_ENERGY[f.role] ?? SECTION_TYPES[type].energy });
+};
+
+/** The bars a drawn form adds up to. */
+export const sectionsBars = (list) => (list || []).reduce((n, s) => n + (s.bars || 0), 0);
+
+/**
+ * A list of typed sections ({ type, bars, label?, energy?, lift?, variant?, role? }) as a
+ * form. Each gets the role its renderer reads: the hook sections are drop, drop2, drop3
+ * in turn (each harder than the last — sections.js keys the drop machinery by which drop
+ * it is), the second build and on build2, a false ending `false`, everything else its
+ * type. A section that came from the Club form keeps the role it had. The last hook
+ * section, and any lifted one, is FINAL: the octave hook, the choir, the ride.
+ */
+export function formFromList(list, options, style = null, total = sectionsBars(list)) {
+  const layered = layersOn(options.form, total);
+  // A list that is the Club form drawn out (every section still carries its Club role)
+  // keeps the Club form's own builds, stops and throws; anything else gets the joins
+  // planned by energy (transitions.js).
+  const joins = !list.every((s) => roleFits(s.role, s.type));
+  const hooks = list.filter((s) => SECTION_TYPES[s.type]?.hook);
+  const lastHook = hooks[hooks.length - 1];
+  const seen = {};
+  let hookN = 0;
+  let buildN = 0;
+  let bar = 1;
+  return list.map((s) => {
+    const type = s.type;
+    const def = SECTION_TYPES[type];
+    const nth = seen[type] = (seen[type] ?? -1) + 1;
+    let role = roleFits(s.role, type) ? s.role : type;
+    if (!roleFits(s.role, type)) {
+      if (def.hook) role = ['drop', 'drop2', 'drop3'][Math.min(2, hookN)];
+      else if (type === 'build') role = buildN ? 'build2' : 'build';
+      else if (type === 'falseEnding') role = 'false';
+    }
+    if (def.hook) hookN++;
+    if (type === 'build') buildN++;
+    let variant = s.variant || null;
+    if (type === 'intro' && (!variant || variant === 'riff' || variant === 'quote')) {
+      variant = layered ? 'layers' : options.form.grooveIntro ? 'groove' : variant || 'riff';
+    }
+    if (type === 'outro' && layered && (!variant || variant === 'riff')) variant = 'layers';
+    const energy = s.energy ?? def.energy;
+    const lifted = !!s.lift;
+    const label = s.label || (variant === 'layers' && LAYERED_LABELS[type])
+      || (type === 'intro' && variant === 'groove' && 'Drums & Bass')
+      || style?.sectionLabels?.[type] || defaultLabel(type, nth);
+    const out = {
+      type, role, label, bars: s.bars, from: bar, to: bar + s.bars - 1, energy, lifted, variant,
+      dropIndex: DROP_INDEX[role] ?? (role === 'build2' ? 1 : 0),
+      final: !!def.hook && (lifted || s === lastHook),
+      hook: !!def.hook || (type === 'groove' && energy >= 0.8 && variant !== 'dip'),
+      typed: true,
+      joins,
+    };
+    bar += s.bars;
+    return out;
+  });
+}
+
 
 /**
  * A style's own arrangement (`style.script`, Kraftwerk's), fitted to `total` bars. A script
@@ -126,6 +213,17 @@ export function scriptForm(script, total) {
  * applies to — the last drop and anything after it that plays the drop.
  */
 export function buildForm(options, total, style = null) {
+  const which = formTemplateOf(options, style);
+  if (which === 'custom') return formFromList(options.form.sections, options, style, total);
+  if (which !== 'club' && which !== 'own') {
+    const count = (style?.layers || DEFAULT_LAYERS).length;
+    return formFromList(templateSections(which, options.form, total, count), options, style, total);
+  }
+  return clubForm(options, total, style).map((f) => stamp(f, style));
+}
+
+/** The Club form (or a style's script): the build-and-drop banger, fitted to `total`. */
+function clubForm(options, total, style) {
   if (scriptOn(options, style)) {
     const form = scriptForm(style.script, total);
     // The key lift, if asked for, from the last drop to the outro — as for any form.

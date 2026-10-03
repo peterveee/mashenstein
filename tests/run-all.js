@@ -71,6 +71,8 @@ const suites = [
   'tests/settings-menu.js',
   'tests/calibrate.js',
   'tests/sound-test-menu.js',
+  // MAKE A BANGER on the jukebox: the riff grid, the save, the maker screen, the rows.
+  'tests/jukebox-banger.js',
   // Its sibling on the tools side: every cue the engine can play has a row on
   // the SFX desk and a date in the birthday record. Seventeen cues — every menu
   // step, every fanfare, the title buzz, the ice deck — were unlistenable on
@@ -164,6 +166,12 @@ const suites = [
   // What every banger is made of: the sounds table held to its rulebook, its file, its
   // Save, and the generator really playing what it names (the Banger Sounds page).
   'tests/banger-sounds.js',
+  // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
+  // drawn in the editor — each fitting every length, hanging together, re-made exactly.
+  'tests/banger-forms.js',
+  // Modify This Take: a take re-made with changed settings keeps every part the change
+  // does not reach — hand edits, faders and automation with it.
+  'tests/banger-modify.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -697,12 +705,12 @@ for (const s of suites) {
 // most important thing to find out about — and it is the reason this group is not
 // simply "the fast ones".
 const soundSuites = [
-  'tests/sound-test-menu.js', 'tests/visualisers.js', 'tests/mix.js',
+  'tests/sound-test-menu.js', 'tests/jukebox-banger.js', 'tests/visualisers.js', 'tests/mix.js',
   'tests/song-analysis.js', 'tests/beat-detect.js', 'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
-  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js',
+  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',

@@ -6,6 +6,7 @@
 // recipe's roles follow, ABSOLUTE ZERO's way: bass/bass2, lead2–lead6, chords/chords2,
 // crash2 for the riser, tom/tom2 for the impact and the fill. Every lane that is not a
 // base lane is an independent layer in `mix.layers`. Browser-safe.
+import { stripGate } from './fx.js';
 import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { baseLane, VOICES } from '../../../src/data/voices.js';
 import { riser } from './theory.js';
@@ -16,7 +17,7 @@ export const ROLE_FAMILY = Object.freeze({
   kick: 'kick', snare: 'snare', clap: 'clap', hats: 'hats', hatsSoft: 'hats', ohats: 'ohats', crash: 'crash',
   riser: 'crash', impact: 'tom', fill: 'tom', shaker: 'rim', tambourine: 'rim', cowbell: 'rim',
   congas: 'tom', ride: 'crash', rim: 'rim',
-  bass: 'bass', sub: 'bass',
+  bass: 'bass', sub: 'bass', bassEcho: 'bass',
   saws: 'chords', pad: 'chords', piano: 'chords',
   square: 'lead', bell: 'lead', megaSaw: 'lead', arp: 'lead', choir: 'lead', third: 'lead', counter: 'lead',
   sonar: 'lead', vocoder: 'lead', word: 'lead',
@@ -25,7 +26,7 @@ export const ROLE_FAMILY = Object.freeze({
 export const ROLE_ORDER = Object.freeze([
   'kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'impact', 'fill',
   'shaker', 'tambourine', 'cowbell', 'congas', 'ride', 'rim',
-  'bass', 'sub', 'saws', 'piano', 'pad',
+  'bass', 'sub', 'bassEcho', 'saws', 'piano', 'pad',
   'square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter', 'sonar', 'vocoder', 'word',
 ]);
 export const DRUM_ROLES = new Set(['kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'impact',
@@ -33,9 +34,14 @@ export const DRUM_ROLES = new Set(['kick', 'snare', 'clap', 'hats', 'hatsSoft', 
 /**
  * Roles that play another role's sound on a channel of their own: the soft hats are the
  * kit's hats a step quieter (a drum machine's accent, which a bank cannot store per hit),
- * the vocoder's spoken word is the vocoder.
+ * the vocoder's spoken word is the vocoder, the bass echo (Bass = Sequencer) is the bass.
  */
-const SOUND_OF = Object.freeze({ hatsSoft: 'hats', word: 'vocoder' });
+const SOUND_OF = Object.freeze({ hatsSoft: 'hats', word: 'vocoder', bassEcho: 'bass' });
+/**
+ * The bass echo's channel: the bass's own, this much quieter and off to one side. Its
+ * fader follows the bass's after levelling (index.js), so it stays this far under.
+ */
+export const BASS_ECHO = Object.freeze({ gain: -5, pan: 0.35, label: 'BASS ECHO' });
 
 const isEngineVoice = (part) => (!part.voice && !part.voiceParams) || VOICES[part.voice]?.kind === 'engine';
 
@@ -200,16 +206,20 @@ export function buildMix({
     else if (DRUM_ROLES.has(role)) mix.voice[vk] = kit[as] || sounds.parts[as] || kit.fill;
     else if (role === 'square' && denseHook) mix.voice[vk] = sounds.parts.squareDense;
     else mix.voice[vk] = sounds.parts[as];
-    const strip = clone(style.strips[role] || {});
-    if (role === 'saws' && options.fx.pump) strip.effects = [...(strip.effects || []), clone(style.pump)];
-    if (role === 'pad' && options.fx.pump && options.parts.chords === 'pad') {
-      strip.effects = [...(strip.effects || []), { ...clone(style.pump), params: { ...style.pump.params, depth: 0.5 } }];
+    const strip = role === 'bassEcho'
+      ? { ...clone(style.strips.bass || {}), gain: (style.strips.bass?.gain ?? 0) + BASS_ECHO.gain, pan: BASS_ECHO.pan }
+      : clone(style.strips[role] || {});
+    // The chords' gate: the style's own, or the one Chord Gate names (fx.js stripGate).
+    const gate = stripGate(options, style);
+    if (role === 'saws' && gate) strip.effects = [...(strip.effects || []), clone(gate)];
+    if (role === 'pad' && gate && options.parts.chords === 'pad') {
+      strip.effects = [...(strip.effects || []), { ...clone(gate), params: { ...gate.params, depth: 0.5 } }];
     }
     mix.lanes[lane] = strip;
     // A tuned part's strip says what it is AND what it plays — `PAD · Polar Drift` — because
     // the sound is editable on the Banger Sounds page and a name baked into the label would
     // go on naming the old one. A drum's part name is enough.
-    const base = style.labels[role] || role.toUpperCase();
+    const base = style.labels[role] || (role === 'bassEcho' ? BASS_ECHO.label : role.toUpperCase());
     const preset = DRUM_ROLES.has(role) ? null : VOICES[mix.voice[vk]]?.label;
     mix.labels[lane] = preset ? `${base} · ${preset}` : base;
   }

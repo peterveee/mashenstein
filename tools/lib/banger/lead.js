@@ -47,9 +47,11 @@ function scaleStep(m, dir, scale) {
  * riff's chord per bar (analyse.js riffChords — a symbol, or two for a split bar),
  * `scale` the key's pitch classes, `rng` anything with `.next()`.
  */
-export function writeLead({ chords, scale, rng, centre = 'E4' }) {
+export function writeLead({ chords, scale, rng, centre = 'E4', rhythm: given = null, tones: span = 7 }) {
   const pick = (list) => list[Math.floor(rng.next() * list.length)];
-  const rhythm = pick(RHYTHMS);
+  // A verse (cohesion.js) passes its own rhythm — the hook's, thinned — so it is the
+  // chorus's cousin; a written lead draws one.
+  const rhythm = given || pick(RHYTHMS);
   const ending = pick(ENDINGS);
   // The melodic shape: a step (in chord tones) from each note to the next. Mostly small,
   // the occasional leap — drawn once, so every bar that uses it has the same contour.
@@ -70,10 +72,10 @@ export function writeLead({ chords, scale, rng, centre = 'E4' }) {
     const steps = last ? shapeE : shapeA;
     const on = onsetsOf(pat);
     // Bar two answers a little higher; the rest start mid-range.
-    let pos = phraseBar === 1 ? 3 : 2;
+    let pos = Math.min(span - 1, phraseBar === 1 ? 3 : 2);
     const toks = Array(16).fill('.');
     on.forEach((i, j) => {
-      const tones = chordRun(chordAt(c, i), nameOf(low), 7).map(midi);
+      const tones = chordRun(chordAt(c, i), nameOf(low), span).map(midi);
       pos = Math.max(0, Math.min(tones.length - 1, pos + (j === 0 ? 0 : steps[j])));
       let m = tones[pos];
       // The last note of the phrase lands on the chord's root.

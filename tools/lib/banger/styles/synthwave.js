@@ -18,13 +18,17 @@ import { BIG_ROOM } from './big-room.js';
 export const SYNTHWAVE = Object.freeze({
   id: 'synthwave',
   label: 'Synthwave',
+  // What the Style list says beside it, and its tooltip.
+  note: '118 · gated snare, root–octave bass, string machine',
+  title: '118 BPM, NIGHT DRIVE\'s outrun: a gated-reverb snare, a root–octave sixteenth bass, a pumping string machine, brass stabs. Starts as a Pop Song with the last chorus a step up',
   bpm: 118,
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,
   tempoRange: [100, 120],
   // The brass stabs (Counter-Melody) on; a chorus, a breakdown, a chorus a whole step up.
   defaults: {
-    form: { doubleDrop: false, hardStop: false },
+    // A Pop Song (templates.js) — NIGHT DRIVE has verses, a pre-chorus and a chorus.
+    form: { template: 'pop', doubleDrop: false, hardStop: false },
     drums: { impact: false, shaker: false, ride: false },
     parts: { counter: true },
   },

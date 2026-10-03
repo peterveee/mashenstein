@@ -7943,8 +7943,8 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
   // the sides; the other half of that fix is the shallower `celebTuck`.
   const celebUp = Math.min(1, (g.celebLift || 0) / 0.09);
   const airUp = jump ? Math.max(0, -Math.min(1, (Number(g.vy) || 0) / 160)) : celebUp;
-  const wHem = torsoHalf * s.flare * (frontLegs && s.flare > 1.3 ? 1.06 : 1)
-    * (1 + airUp * 0.16);
+  const wHem = Math.max(torsoHalf * s.flare * (frontLegs && s.flare > 1.3 ? 1.06 : 1)
+    * (1 + airUp * 0.16), g.danceHemHalf || 0);
   const long = s.len > 0.6;
   const sway = (jump ? 0.02 : 0) * u
     + (run ? drag((footB[0] - hipAt(-1)) * (long ? 0.3 : 0.15), 0.045 * u) : 0)
@@ -8651,7 +8651,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // is the root every pose in this file measures its hands from, so moving it
   // for everyone would re-pose the entire shipped cast, and this is a request
   // about the candidates.
-  const armY = shoulderY + (heavy ? 0.03 : 0) * u - (spec.armLift || 0) * u;
+  const armY = shoulderY + (heavy ? 0.03 : 0) * u - (spec.armLift || 0) * u
+    - (pose.dance?.shoulderLift || 0) * u;
   // Running, the NEAR arm rides a little higher in its socket than the far one:
   // it is the arm carrying the silhouette, and seated at the same depth as the
   // receding one it read as slung off the bottom of the shoulder. Run only —
@@ -8851,6 +8852,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // past the leather either side of him.
     footF = [STAND_FOOT_X * u, 0]; footB = [-STAND_FOOT_X * u, 0]; kneeB = -1;
     legSeg = Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u;
+  }
+  // Optional normalized choreography targets. Only the dance lab supplies
+  // these; the ordinary locomotion/celebration paths retain their own joints.
+  // A dance with no `feet` dances from the waist up and stands on the legs
+  // above, unbent — the club's skirted heroes (banger/club.js).
+  if (pose.dance?.feet) {
+    footF = pose.dance.feet[0].map(v => v * u);
+    footB = pose.dance.feet[1].map(v => v * u);
+    [ankleF, ankleB] = pose.dance.ankles || [0, 0];
+    legSeg = Math.max(legSeg, legL * 0.56);
   }
   // `clung` sent the whole painter down the STAND path above — same hip roots,
   // same front-facing shoes as idling — and the ride's legs live in the
@@ -10442,6 +10453,17 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     }
   }
 
+  if (pose.dance) {
+    const [front, back] = pose.dance.hands;
+    handF = [shF + sideF * front[0] * armL, armY + front[1] * armL];
+    handB = [shB + sideB * back[0] * armL, armY + back[1] * armL];
+    // Keep the elbow on the LOWER/outboard solution of the two-bone chain.
+    // The other solution folds raised dance arms up beside the cheeks.
+    // Keep this side throughout the cycle so no elbow flips mid-gesture.
+    elbF = -sideF; elbB = -sideB;
+    if (pose.dance.pointAngle != null) armOverHead = true;
+  }
+
   // THE ONE CHANGE THE CLING MAKES. Everything above ran as a stand, so what is
   // in handF/handB right now is the idle's own pair of arms, breathing and all.
   // The pole-side one reaches out and takes the pole; the other is not touched,
@@ -10960,6 +10982,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // of a stride — that is why neither of them is authored in body coordinates.
   const kneeAt = (hipX, rootY, foot, kneeDir) =>
     joint(hipX, rootY, foot[0], foot[1] - ankleLift, thighSeg, kneeDir, shinSeg);
+  // Lab dances can spread or lift the knees much further than the idle.
+  // Measure the actual joints, including thigh thickness, so hems open with
+  // the pose and settle back as the legs close. The waist remains fitted.
+  const danceHemHalf = pose.dance?.feet ? Math.max(
+    Math.abs(kneeAt(hipAt(1), legRootYF, footF, kneeF)[0] - torsoCx),
+    Math.abs(kneeAt(hipAt(-1), legRootYB, footB, kneeB)[0] - torsoCx),
+  ) + legW * 0.65 + 0.025 * u : 0;
   // What a LEG is made of, and where the garment on it stops. Trousers are the
   // default — the limb is drawn in p.p from hip to ankle and that is the whole
   // lower body. `shorts` is the other build: the limb is drawn in SKIN, and a
@@ -13156,7 +13185,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // standing and celebrating poses need a real A-line or his legs show past
     // the leather. In profile the legs are behind it and a tighter hang reads
     // better. Fanned wider than this the straps stop overlapping.
-    const flare = (frontLegs || cm ? 1.5 : 1.18) / tie;
+    const flare = Math.max((frontLegs || cm ? 1.5 : 1.18) / tie, danceHemHalf / wTop);
     // Spreads with the hop and the jump, like every hem on the roster: the
     // straps are free at the bottom and the air opens them.
     // Spreads as she leaves the floor — the straps are free at the bottom and
@@ -13349,6 +13378,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       slingSocketY: armY + (nearArmSeated ? ARM_SEAT_DOWN * u : 0),
       slingSocketR: armWF * 0.52,
       // The knees the gown has to get past (spec.clothKnee, see kneePush).
+      danceHemHalf,
       clothKnee: styledGait && !turned ? Math.max(0, Number(pose.clothKnee ?? spec.clothKnee) || 0) : 0,
       knees: styledGait && !turned && (pose.clothKnee ?? spec.clothKnee) ? [
         [hipAt(1), legRootYF, ...kneeAt(hipAt(1), legRootYF, footF, kneeF)],
@@ -13385,7 +13415,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const top = beltY + 0.02 * u;
     const hemY = hipY + legL * 0.36 + bob * 0.5;
     const wTop = torsoHalf * 0.96;
-    const wHem = torsoHalf * 1.3;
+    const wHem = Math.max(torsoHalf * 1.3, danceHemHalf);
     outlined(ctx, p.b, ow, (c) => {
       c.moveTo(px - wTop, top);
       c.lineTo(px + wTop, top);
@@ -13456,7 +13486,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const wTop = torsoHalf * 0.98;
     // Flares wider than the tunic: front-on the legs root at ±0.095u and this
     // hem has to clear both of them, or the thighs show past the cloth.
-    const wHem = torsoHalf * (frontLegs ? 1.52 : 1.34);
+    const wHem = Math.max(torsoHalf * (frontLegs ? 1.52 : 1.34), danceHemHalf);
     const gold = (path) => {
       if (lod) return;
       ctx.strokeStyle = p.a;
@@ -13521,7 +13551,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // a tube; the A-line is most of what says "skirt" once there is not much
       // length left to say it with, and the panels have to clear thighs that
       // root wide front-on.
-      const flare = (frontLegs ? 1.72 : 1.44) / tie;
+      const flare = Math.max((frontLegs ? 1.72 : 1.44) / tie, danceHemHalf / wTopS);
       // Same spread as the pteruges: the panels open as she leaves the floor.
       // Same spread as the pteruges: the panels open as she leaves the floor.
       const upNowK = Math.max(0, jump
@@ -16642,6 +16672,12 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   // floor, then lifts and swings forward. The torso settles on contact.
   const footF = run ? floatingFoot(pose.phase || 0, 0.115 * u, 0.082 * u) : [0, 0];
   const footB = run ? floatingFoot((pose.phase || 0) + 0.5, 0.115 * u, 0.082 * u) : [0, 0];
+  if (pose.dance?.feet) {
+    footF[0] = (pose.dance.feet[0][0] - 0.13) * u;
+    footF[1] = pose.dance.feet[0][1] * u;
+    footB[0] = (pose.dance.feet[1][0] + 0.13) * u;
+    footB[1] = pose.dance.feet[1][1] * u;
+  }
   const bob = run ? -Math.abs(Math.sin(ph)) * 0.028 * u : 0;
   const cy = (slide ? -0.3 : -0.5) * u + bob - airApex * 0.03 * u;
   const handSwing = run ? Math.cos(ph) * 0.075 * u : jump ? 0.055 * u : 0;
@@ -16677,8 +16713,8 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
     const e = t * t * (3 - 2 * t);
     return (rayL.toe * (1 - e * e) - rayL.heel * e * e) * rayL.ankle;
   };
-  const backTilt = -0.08 + (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0));
-  const frontTilt = 0.08 + (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0));
+  const backTilt = -0.08 + (pose.dance?.ankles?.[1] ?? (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0)));
+  const frontTilt = 0.08 + (pose.dance?.ankles?.[0] ?? (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0)));
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
   // Ramon has no legs, so there is no endpoint to hang a shoe off: `centred`
   // sits a shaped shoe exactly where his floating oval sat, and a zero offset
@@ -16704,7 +16740,14 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   const handOut = slide && enhancedMotion ? 0.34 : 0.29;
   const cheer = pose.kind === 'celebrate';
   const gloveStudy = cheer && usesReworkedCelebration(pose);
-  if (gloveStudy) {
+  if (pose.dance) {
+    pose.dance.hands.forEach(([out, lift], i) => {
+      const side = i === 0 ? 1 : -1;
+      outlined(ctx, p.w, ow, c => c.ellipse(side * (0.19 + out * 0.22) * u,
+        cy - 0.14 * u + lift * 0.26 * u, 0.105 * u, 0.095 * u,
+        side * 0.12, 0, Math.PI * 2));
+    });
+  } else if (gloveStudy) {
     const gm = celebrateMotion(id, pose.time || 0, true);
     const smooth = (v) => {
       const n = Math.max(0, Math.min(1, v));

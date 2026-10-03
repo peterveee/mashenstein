@@ -7707,7 +7707,12 @@
                             background: none; border: none; border-radius: 4px; }
   #askbody .askseg button:hover { background: var(--hover); color: var(--ink); }
   #askbody .askseg button.on { background: var(--accent); color: var(--on-accent); }
-  #askbody .bangersurprise { margin-left: auto; padding: 6px 14px; font-size: 11px; }
+  #askbody .bangerresets { margin-left: auto; display: flex; gap: 6px; }
+  #askbody .bangerresets button { margin: 0; padding: 6px 14px; font-size: 11px; }
+  #askbody .bgmodifyrow { margin-top: 10px; }
+  #askbody .bgmodifyrow .askseg { flex-wrap: wrap; }
+  #askbody .bgmodifynote { margin: 10px 0 0; font-size: 11px; color: var(--dim); line-height: 1.5; }
+  #askbody .bglocked { opacity: .45; }
   #askbody .bangerriff { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 14px;
                          padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px;
                          background: color-mix(in srgb, var(--input) 60%, transparent); color: var(--ink); font-size: 11px; }
@@ -7725,6 +7730,41 @@
                                          text-transform: uppercase; letter-spacing: .06em; }
   #askbody fieldset.bangergroup .askfield { margin-top: 8px; }
   #askbody fieldset.bangergroup .askcheck { margin-top: 8px; }
+  /* The Form row: template buttons, the strip of sections, the selected one's controls. */
+  #askbody .bangerform .bangerrow { flex-wrap: wrap; }
+  #askbody .bgformsum { margin-left: auto; font-size: 11px; color: var(--dim); }
+  #askbody .bgformdrawn { font-size: 11px; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+  #askbody .bgformdrawn button { margin: 0; padding: 3px 9px; font-size: 10px; }
+  #askbody .bgstrip { display: flex; gap: 3px; margin-top: 10px; height: 58px; align-items: stretch; user-select: none; touch-action: none; }
+  #askbody .bgblock { position: relative; flex: 1 1 0; min-width: 16px; border-radius: 4px; overflow: hidden; cursor: grab;
+                      background: color-mix(in srgb, var(--c) 18%, var(--input)); border: 1px solid color-mix(in srgb, var(--c) 40%, var(--line)); }
+  #askbody .bgblock:focus-visible, #askbody .bgblock.on { outline: 2px solid var(--ink); outline-offset: 1px; }
+  #askbody .bgblock.dragging { opacity: .45; cursor: grabbing; }
+  #askbody .bgblock.dropmark { box-shadow: -4px 0 0 var(--accent); }
+  #askbody .bgstrip.dropend .bgblock:last-child { box-shadow: 4px 0 0 var(--accent); }
+  #askbody .bgblockfill { position: absolute; left: 0; right: 0; bottom: 0; height: var(--e); background: color-mix(in srgb, var(--c) 72%, var(--input)); }
+  #askbody .bgblocklab, #askbody .bgblockn { position: relative; display: block; padding: 0 5px; white-space: nowrap; overflow: hidden;
+                                             text-overflow: ellipsis; color: var(--ink); text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }
+  #askbody .bgblocklab { margin-top: 5px; font-size: 10px; font-weight: 600; }
+  #askbody .bgblockn { font-size: 10px; opacity: .85; }
+  #askbody .bgformtools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 14px; margin-top: 10px; font-size: 11px; }
+  #askbody .bgformtools .askfield { margin: 0; min-width: 120px; }
+  #askbody .bgformtools .bangernote { align-self: center; }
+  #askbody .bgfsbars, #askbody .bgfsenergy { display: flex; align-items: center; gap: 6px; }
+  #askbody .bgfsbars button { margin: 0; padding: 3px 9px; }
+  #askbody .bgfsbars b { min-width: 22px; text-align: center; color: var(--ink); }
+  #askbody .bgfsenergy .askseg button { padding: 4px 9px; }
+  #askbody .bgformtools .askcheck { margin: 0; }
+  #askbody .bgfsdel { margin: 0 0 0 auto; padding: 5px 12px; font-size: 11px; }
+  #askbody .bangerdim { opacity: .4; }
+  /* Simple / Full Options: Simple hides everything marked .bgfull, Full the Simple-only row. */
+  #askbody .bgmodebar { display: flex; justify-content: flex-end; margin: -4px 0 4px; }
+  #askbody .bgmode-simple .bgfull, #askbody .bgmode-simple .bangerhook, #askbody .bgmode-simple .bangernote { display: none !important; }
+  #askbody .bgmode-simple .bgsimplenote { display: inline !important; }
+  #askbody .bgmode-full .bgsimpleonly { display: none !important; }
+  #askbody .bgsimplenote { font-size: 11px; color: var(--dim); }
+  #askbody .bglink { margin: 0 0 0 4px; padding: 0; background: none; border: none; color: var(--accent);
+                     font-size: 11px; text-decoration: underline; cursor: pointer; }
   @media (max-width: 640px) {
     #askbody .bangergrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #askbody .bangergroups { grid-template-columns: 1fr; }
@@ -8973,6 +9013,7 @@
   <button id="bangerprev" title="Go back to the take before this one" hidden>Previous Take</button>
   <button id="bangernext" title="Go forward to the next take" hidden>Next Take</button>
   <button id="bangersettings" title="Change this banger's settings and make a new take of it" hidden>Banger Settings…</button>
+  <button id="bangermodify" title="Change this take in place without changing its shape: add or take out parts, effects, sounds, a new mood or re-roll one part — your edits and mix on everything else stay" hidden>Modify Take…</button>
   <button id="bangeruse" title="Make new bangers in this style start from this seed — its sounds, its channels and its master. Sounds you tuned here are kept as presets of their own." hidden>Use as Style…</button>
   <button id="bangercombo" title="Keep this banger's sounds and channels under a name — a Sound Combo, chosen in Make a Banger" hidden>Save as Combo…</button>
   <button id="bangerab" title="Switch between this seed and the remix its style came from — each keeps its own place" hidden>A/B with the Remix</button>

@@ -21,6 +21,9 @@
 export const BIG_ROOM = Object.freeze({
   id: 'big-room',
   label: 'Big-Room House',
+  // What the Style list says beside it, and its tooltip.
+  note: '128 · pumping supersaws, off-beat bass, big drops',
+  title: '128 BPM, ABSOLUTE ZERO\'s shape: four on the floor, an off-beat bass, pumping supersaw chords, snare-roll builds and a harder second drop. Starts on the Club form',
   bpm: 128,
   tempoRange: [124, 130],
   // The generator's defaults are this style's already; a later style overrides here.

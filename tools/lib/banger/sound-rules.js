@@ -24,6 +24,7 @@
 //
 // Browser-safe: no `node:*` imports.
 import { VOICES, voicesFor } from '../../../src/data/voices.js';
+import { SHARED_MOODS } from './moods.js';
 
 /**
  * Every slot a style's table fills. `prefer` only ORDERS a slot's list — its usual
@@ -112,7 +113,8 @@ export const RANDOM_JOBS = Object.freeze([
  * style's signature sounds stay put.
  */
 export const CHOICE_SLOTS = Object.freeze(['saws', 'pad', 'arp', 'choir', 'bell']);
-export const MOOD_IDS = Object.freeze(['anthemic', 'uplifting', 'euphoric', 'moody', 'dark', 'gothic', 'heroic', 'nostalgic', 'funky']);
+export const MOOD_IDS = Object.freeze(['anthemic', 'uplifting', 'euphoric', 'moody', 'dark', 'gothic', 'heroic', 'nostalgic', 'funky',
+  ...Object.keys(SHARED_MOODS)]);
 
 const BUSY = 'a CRLS-1 on a busy part — too heavy on the CPU (docs/audio/remixes.md)';
 

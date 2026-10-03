@@ -197,7 +197,8 @@ function routeDevUrl(goto, p) {
     case 'settings':
       setState(new SettingsState({ save,
         onDone: () => Flow.toTitle(),
-        onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)) }));
+        onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)),
+        onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
       break;
     case 'calibrate':
       Flow.toCalibrate(() => Flow.toTitle());
@@ -232,6 +233,10 @@ function routeDevUrl(goto, p) {
     // ?audition — open straight into the VJ MEGAMIX on its short dev cycle, so
     // every transition in the set is shown and named within about forty seconds
     // instead of one every sixteen bars.
+    // ?goto=lab — THE LAB (STAFF ONLY): the player's own songs, and the club.
+    case 'lab':
+      setState(new SoundTestState({ lab: true, onDone: () => Flow.toTitle() }));
+      break;
     case 'soundtest': {
       const audition = p.has('audition');
       setMegamixAudition(audition);
@@ -373,6 +378,7 @@ const Flow = {
     onTutorial: () => Flow.toTutorial(true),
     onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toExtras('guide') })),
     onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toExtras('soundtest') })),
+    onLab: () => setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') })),
     // A replay, not the real thing: this onDone only walks back to the title.
     // The new-file path above is the one that sets sawIntro and persists.
     onIntro: () => setState(new IntroState({ onDone: () => Flow.toExtras('intro') })),
@@ -423,7 +429,8 @@ const Flow = {
   toSettings() {
     setState(new SettingsState({ save,
       onDone: () => Flow.toExtras('settings'),
-      onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()) }));
+      onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()),
+      onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
   },
 
   toCalibrate(onDone) {

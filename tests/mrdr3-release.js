@@ -28,7 +28,8 @@
  */
 import { VOICES } from '../src/data/voices.js';
 import { compileMrdr3, mrdr3Colours } from '../src/engine/mrdr3/compile.js';
-import { renderMrdr3, frameAt, Mrdr3Core } from '../src/engine/mrdr3/dsp.js';
+import { renderMrdr3, frameAt, Mrdr3Core, Mrdr3Param } from '../src/engine/mrdr3/dsp.js';
+import { mrdr3GateAdsrEvents } from '../src/engine/mrdr3/env.js';
 import { mrdr3Tables } from '../src/engine/mrdr3/tables.js';
 import { mrdr3NoiseSet } from '../src/engine/mrdr3/noise.js';
 import { MRDR3_NATIVE } from '../src/engine/mrdr3/identity.js';
@@ -180,6 +181,43 @@ if (monoName) {
 // One preset proving it is not the claim. A long release, a slow pad attack and a layer
 // with its own `len` fraction all reach this arithmetic differently, and a `through`
 // layer takes the gate writer rather than the envelope one.
+// ---- a note shorter than its own decay ---------------------------------------------
+//
+// The gate edge lands INSIDE the decay (or the attack), so the ramp in flight has to be
+// cut there rather than cancelled. Cancelling deleted the decay's endpoint, and with it
+// the decay: the note held its peak for its whole length and dropped to the decayed level
+// in one sample at note-off — a click on every short vibraphone note. Checked on the
+// envelope itself, because a tremolo or a waveform would only blur the step it is after.
+const envelopeOf = (e, seconds, hz = 440) => {
+  const built = mrdr3GateAdsrEvents(0, seconds, 1, e, false, hz);
+  const param = new Mrdr3Param(0);
+  param.reset(0);
+  for (const ev of built.events) {
+    const at = ev.t * SR;
+    if (ev.k === 'set') param.setValueAtTime(ev.v, at);
+    else if (ev.k === 'lin') param.linearRampToValueAtTime(ev.v, at);
+    else if (ev.k === 'exp') param.exponentialRampToValueAtTime(ev.v, at);
+    else if (ev.k === 'cancel') param.cancelScheduledValues(at);
+  }
+  const out = new Float64Array(Math.ceil((built.off + 0.05) * SR));
+  for (let i = 0; i < out.length; i++) out[i] = param.valueAt(i);
+  return out;
+};
+const SHORT = [
+  ['a vibraphone note cut inside its decay', VOICES.mrdrVibraphone.layer.osc1, 0.24],
+  ['a note cut inside a linear attack', { attack: 0.004, decay: 1, sustain: 0.5, release: 0.2 }, 0.002],
+  ['a note cut inside an exponential attack', { attack: 0.3, decay: 1, sustain: 0.5, release: 0.2 }, 0.12],
+  ['a note cut inside a linear decay', { attack: 0.002, decay: 2, sustain: 0, release: 0.3, curve: 'lin' }, 0.5],
+];
+for (const [what, e, seconds] of SHORT) {
+  const env = envelopeOf(e, seconds);
+  const step = biggestStep(env, 0.006 * SR, env.length);
+  assert(step < 2e-3, `${what} has no step at the gate edge (${step.toExponential(1)})`);
+}
+const vib = envelopeOf(VOICES.mrdrVibraphone.layer.osc1, 0.24);
+assert(vib[frameAt(0.2, SR)] < 0.9,
+  `a vibraphone note decays while it is held (${vib[frameAt(0.2, SR)].toFixed(3)} of peak at 0.2s)`);
+
 const names = Object.keys(VOICES).filter((k) => VOICES[k].synth === MRDR3_NATIVE);
 const ringing = [];
 for (const name of names) {

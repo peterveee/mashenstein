@@ -11,6 +11,7 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
 import { GAME_ALTERNATES } from '../data/game-alternates.js';
 import { DESK_SONGS } from './desk-songs.js';
+import { spikeBangers } from './banger-spike.js';
 import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
 import { MODS, BENCH_UPGRADES } from '../data/progression.js';
@@ -786,6 +787,17 @@ export function rootMenu(dev) {
   const build = () => ({
     title: 'DEV MENU',
     items: [
+      // The in-game Make a Banger spike: every style made from one two-bar riff, on
+      // this device, then played on the jukebox. See src/dev/banger-spike.js.
+      { label: 'BANGER SPIKE (JUKEBOX)', act: () => {
+        dev.close();
+        const bangers = spikeBangers();
+        setState(new SoundTestState({
+          onDone: () => dev.ctx.Flow.toHub(),
+          tracks: [...JUKEBOX, ...bangers],
+          initialTrack: JUKEBOX.length,
+        }));
+      } },
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
       { label: 'GRAVITY GRID — PLAYTEST', act: () => {
         dev.close();

@@ -20,26 +20,28 @@ import { riffNeedsLead, writeLead, freeLeadLane } from './lead.js';
 import { PERCUSSION_LANES, baseLane } from '../../../src/data/voices.js';
 import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { arrangementIssues } from '../../../src/data/arrangements.js';
-import { packBank, hasNotes, isDrumPart, midi, MIDI_MIN, MIDI_MAX } from './theory.js';
+import { packBank, hasNotes, isDrumPart, midi, MIDI_MIN, MIDI_MAX, BASS_FIGURES, echoPart } from './theory.js';
 import { normaliseBangerOptions, bangerBars, bangerBpm } from './options.js';
 import { styleFor } from './styles/index.js';
 import { validateRiff, parseRiff, pickHook } from './riff.js';
 import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
 import { buildForm } from './form.js';
 import { buildSections } from './sections.js';
-import { allocateLanes, buildMix, pickRiffSounds } from './lanes.js';
+import { allocateLanes, buildMix, pickRiffSounds, BASS_ECHO } from './lanes.js';
 import { levelMix } from './levels.js';
 import { buildFx } from './fx.js';
 import { BANGER_SOUNDS } from './sounds.js';
 import { BANGER_CHANNELS } from './channels.js';
 import { BANGER_COMBOS } from './combos.js';
+import { bangerPrints } from './modify.js';
 import { resolveSounds } from './sound-rules.js';
 
 export { BANGER_DEFAULTS, BANGER_GROUPS, BANGER_MOODS, BANGER_KEYS, BANGER_MODES, BANGER_RIFF_NOTES, MOOD_MODES,
   BANGER_VARIATIONS, BANGER_LENGTHS,
-  BANGER_TEMPOS, BANGER_LIMITS, normaliseBangerOptions, surpriseBangerOptions, styleDefaults,
-  bangerBars, bangerBpm, MOOD_BASS, moodBass } from './options.js';
+  BANGER_TEMPOS, BANGER_LIMITS, normaliseBangerOptions, surpriseBangerOptions, goCrazyBangerOptions, styleDefaults, classicDefaults,
+  bangerBars, bangerBpm, MOOD_BASS, moodBass, BANGER_STRUCTURE, keepStructure } from './options.js';
 export { BANGER_STYLES, styleFor } from './styles/index.js';
+export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
 export { BANGER_SOUNDS } from './sounds.js';
@@ -94,18 +96,29 @@ function withComboSounds(sounds, combo) {
 
 export function generateBanger({
   riff, options: raw = {}, seed = 1, sounds: table = BANGER_SOUNDS, level = true,
-  channels = BANGER_CHANNELS, combos = BANGER_COMBOS, levelData = undefined,
+  channels = BANGER_CHANNELS, combos = BANGER_COMBOS, levelData = undefined, rerolls = null,
 }) {
   const recipe = styleFor(raw?.style) || styleFor('big-room');
   const { options, issues } = normaliseBangerOptions(raw, recipe);
   if (issues.length) throw new Error(`can't make that banger: ${issues.join('; ')}`);
+  riff = sourceRiff(riff);
   const riffIssues = validateRiff(riff);
   if (riffIssues.length) throw new Error(`can't make a banger from that: ${riffIssues.join('; ')}`);
+  // The riff as read off the song is what the recipe keeps: a Written Lead belongs to its
+  // take, so every take — in any style — writes its own.
+  const source = riff;
   const s = normaliseSeed(seed);
   const root = new Rng(s);
+  // RE-ROLLS (Modify This Take): a stream drawn from a seed of its own, so one part is
+  // drawn again and nothing else moves. See BANGER_REROLLS and modify.js.
+  const reroll = rerolls && typeof rerolls === 'object'
+    ? Object.fromEntries(Object.entries(rerolls).filter(([, v]) => v != null).map(([k, v]) => [k, normaliseSeed(v)])) : {};
+  const stream = (name) => (reroll[name] != null ? new Rng(reroll[name]).stream(name) : root.stream(name));
   const rng = {
-    harmony: root.stream('harmony'), drums: root.stream('drums'), form: root.stream('form'), sounds: root.stream('sounds'),
-    arps: root.stream('arps'), parts: root.stream('partSounds'),
+    harmony: stream('harmony'), drums: stream('drums'), form: stream('form'), sounds: stream('sounds'),
+    arps: stream('arps'), parts: stream('partSounds'),
+    // The other forms' own (verse material, the joins) — new names, so Club's draws never move.
+    verse: stream('verse'), transitions: stream('transitions'),
   };
   const warnings = [];
   // A Sound Combo, when one is chosen and the style has it: its sounds and channels over
@@ -124,23 +137,24 @@ export function generateBanger({
 
   // Write a Lead: a riff with no tune gets one, written from its own chords (lead.js), and
   // from here on it is a riff part like any other — the hook, unless one was chosen.
+  let hookWanted = options.hook;
   if (options.parts.writeLead === 'always' || (options.parts.writeLead !== 'off' && riffNeedsLead(riff))) {
     const lane = freeLeadLane(riff);
     if (lane) {
       const pre = analyseRiff(parseRiff(riff), options, style);
-      const bars = writeLead({ chords: pre.riffChords, scale: pre.key.melodyScale || pre.key.scale, rng: root.stream('lead') });
+      const bars = writeLead({ chords: pre.riffChords, scale: pre.key.melodyScale || pre.key.scale, rng: stream('lead') });
       const names = bars.flatMap((s) => s.split(/\s+/).filter((t) => t !== '.').map((t) => midi(t.split(':')[0])));
       const meanPitch = names.reduce((a, x) => a + x, 0) / Math.max(1, names.length);
       riff = { ...riff, parts: [...riff.parts.map((p) => (p.role === 'hook' ? { ...p, role: p.kind === 'chord' ? 'chords' : (p.meanPitch < 52 ? 'bass' : 'counter') } : p)),
         { key: lane, label: 'Written Lead', kind: 'melodic', role: 'hook', voice: 'toneSquare', voiceParams: null, engineKeys: null, strip: null, meanPitch, bars }] };
-      if (!options.hook || options.hook === 'auto' || options.parts.writeLead === 'always') options.hook = lane;
+      if (!hookWanted || hookWanted === 'auto' || options.parts.writeLead === 'always') hookWanted = lane;
       warnings.push(`the riff had no lead, so one was written from its chords (${lane})`);
     } else warnings.push('the riff has no lead and every lead lane is taken — none was written');
   }
 
   // The riff, parsed, with the hook chosen.
   const parts = parseRiff(riff);
-  const hookKey = pickHook(riff, options.hook);
+  const hookKey = pickHook(riff, hookWanted);
   for (const p of parts) {
     if (p.key === hookKey) p.role = 'hook';
     else if (p.role === 'hook') p.role = p.kind === 'chord' ? 'chords' : (p.meanPitch < 52 ? 'bass' : 'counter');
@@ -164,6 +178,9 @@ export function generateBanger({
     dominant: key.own ? romanChord('V', key.own) : romanChord(MODE_INFO[key.mode]?.turn || 'V', key),
   };
   const { bars, events } = buildSections(ctx);
+  // A bass figure with an echo (Sequencer): the bass again on a channel of its own, a
+  // sixteenth behind — the record's delay, written as notes.
+  if (BASS_FIGURES.find((f) => f.id === options.parts.bass)?.echo) echoPart(bars, 'bass', 'bassEcho');
 
   // Roles onto lanes.
   const roles = new Set(bars.flatMap((b) => Object.keys(b)));
@@ -192,10 +209,15 @@ export function generateBanger({
     }
     return [...out];
   };
-  const automation = buildFx({ options, events, laneOf, total, lanesSounding });
-  const firstBuild = form.find((x) => x.role === 'build') || form.find((x) => x.role === 'drop');
+  const automation = buildFx({ options, events, laneOf, total, lanesSounding, form, bpm });
+  // The loop: from the first build (or drop) of a Club banger; from the first section after
+  // the intro of any other form.
+  const loopFrom = form[0]?.joins ? (form.find((x) => x.role !== 'intro') || form[0])
+    : form.find((x) => x.role === 'build') || form.find((x) => x.role === 'drop');
   const arrangement = {
-    ...(options.fx.tapeStop ? {} : { loop: { fromBar: firstBuild.from, toBar: total } }),
+    ...(options.fx.tapeStop || options.spot?.ending === 'tapeStop' ? {} : { loop: { fromBar: loopFrom.from, toBar: total } }),
+    // A style that swings (Shibuya-Kei) says so on the arrangement, as the desk's Swing does.
+    ...(style.swing ? { swing: style.swing } : {}),
     ...(automation ? { automation } : {}),
   };
 
@@ -207,6 +229,10 @@ export function generateBanger({
   // Every channel's fader, from what its part plays and on what (levels.js). `level: false`
   // is for tools/banger-levels.js, which reads the style's own default parts from here.
   const levels = level ? levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts: tparts, hookKey, refs: combo?.refs, data: levelData }) : [];
+  // The bass echo has no reference of its own: it rides the bass's levelled fader.
+  if (laneOf.has('bassEcho') && laneOf.has('bass')) {
+    mix.lanes[laneOf.get('bassEcho')].gain = Math.round(((mix.lanes[laneOf.get('bass')]?.gain ?? 0) + BASS_ECHO.gain) * 10) / 10;
+  }
 
   // ---- the self-check: a failure here is a generator bug, never the request's fault.
   const laneKeys = laneKeysOf(bank, mix);
@@ -239,6 +265,7 @@ export function generateBanger({
     `The hook is ${hook?.label || hookKey}. Seed ${s}; generator v${BANGER_GENERATOR_VERSION}.`,
     '',
     ...formLines,
+    ...(events.transitions?.length ? ['', 'Joins:', ...events.transitions.map((t) => `  bar ${String(t.bar).padStart(3)}  ${t.from} → ${t.to}: ${t.moves.join(', ')}`)] : []),
     '',
     'Written by tools/lib/banger/ (Make a Banger…). The recipe — riff, options, seed — is in',
     '`banger` below, which is what Another Take re-rolls. Mix it freely: the desk saves under',
@@ -250,15 +277,49 @@ export function generateBanger({
     style: style.id,
     options,
     seed: s,
-    riff,
+    riff: source,
     source: { id: riff.source?.id ?? null, title: riff.source?.title ?? null, from: riff.source?.from, to: riff.source?.to },
     take: 1,
     // Which lane does which job, and the form — what Save as Combo and Use as Style read a
     // tuned banger back by (tools/lib/banger-seeds.js).
     laneOf: Object.fromEntries(laneOf),
-    form: form.map((f) => ({ role: f.role, from: f.from, to: f.to })),
+    form: form.map((f) => ({ role: f.role, type: f.type, label: f.label, from: f.from, to: f.to, energy: f.energy, ...(f.hook ? { hook: true } : {}) })),
+    ...(Object.keys(reroll).length ? { rerolls: reroll } : {}),
+    // Each part's fingerprint as generated — what Modify This Take tells hand edits by.
+    prints: bangerPrints({ bank, mix, arrangement, laneOf: Object.fromEntries(laneOf) }),
   };
-  return { title, bank, mix, arrangement, note, summary, form, banger, warnings, levels, laneOf: Object.fromEntries(laneOf) };
+  return { title, bank, mix, arrangement, note, summary, form, banger, warnings, levels, laneOf: Object.fromEntries(laneOf), transitions: events.transitions || [] };
+}
+
+/**
+ * The parts Modify This Take can draw again on their own, each one random stream. Re-rolling
+ * one gives it a seed of its own; everything drawn from the other streams stays put.
+ */
+export const BANGER_REROLLS = Object.freeze([
+  { stream: 'arps', label: 'Arp', title: 'A new arp figure in every section that has one' },
+  { stream: 'drums', label: 'Drum Fills', title: 'New fills' },
+  { stream: 'partSounds', label: 'Part Sounds', title: 'New sounds for the chords, pad, arp, choir and bell (Part Sounds: Roll)' },
+  { stream: 'sounds', label: 'Riff Sound', title: 'New sounds for the riff\'s own parts (Riff Sound: Random)' },
+  { stream: 'lead', label: 'Written Lead', title: 'A new tune, where the banger wrote one' },
+  { stream: 'verse', label: 'Verse Tune', title: 'New verse material, in the forms that have verses' },
+  { stream: 'transitions', label: 'Joins', title: 'New moves between sections, in the forms that have them' },
+]);
+
+/**
+ * The riff as it was read off the song. A recipe saved before 3 Oct kept its riff with the
+ * Written Lead in it, so every later take reused that first take's tune: the lead comes out
+ * again here and the hook it displaced goes back, chosen as extractRiff chose it. A take
+ * re-made from such a recipe writes the same lead again from the same seed.
+ */
+export function sourceRiff(riff) {
+  if (!riff?.parts?.some((p) => p.label === 'Written Lead')) return riff;
+  const parts = riff.parts.filter((p) => p.label !== 'Written Lead').map((p) => ({ ...p }));
+  const out = { ...riff, parts };
+  if (!parts.some((p) => p.role === 'hook')) {
+    const hook = pickHook(out);
+    for (const p of parts) if (p.key === hook) p.role = 'hook';
+  }
+  return out;
 }
 
 /** A banger re-made from a stored recipe with a new seed — Another Take. */

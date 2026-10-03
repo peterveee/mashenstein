@@ -38,6 +38,9 @@ const MOTORIK = ['arp', 'sonar', 'kick', 'snare', 'hats'];
 export const KRAFTWERK = Object.freeze({
   id: 'kraftwerk',
   label: 'Kraftwerk',
+  // What the Style list says beside it, and its tooltip.
+  note: '120 · motorik, vocoder, its own 128-bar form',
+  title: '120 BPM and not a banger at all: no build, riser or pump — its own form, a part joining or leaving on each eight-bar block: a lone arp, the motorik kit, the piston bass, a vocoder, a step-by-step power-down',
   bpm: 120,
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,

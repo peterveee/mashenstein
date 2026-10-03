@@ -83,9 +83,12 @@ import * as FOODCOURTTWEAK from './foodcourttweak.js';
 import * as FROST_REMIX_ABSOLUTE_ZERO from './frost-remix-absolute-zero.js';
 import * as FROST_REMIX_BLACK_ICE from './frost-remix-black-ice.js';
 import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
+import * as GARY_NUMAN_CARS from './gary-numan-cars.js';
 import * as MIN_NEW from './min-new.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
+import * as NEON_BLASTERS_ORIGINAL_BANGER_COPY from './neon-blasters-original-banger-copy.js';
+import * as NEON_ORBIT_BANGER_BITTERSWEET from './neon-orbit-banger-bittersweet.js';
 import * as NEON_REMIX_ENDSTATION from './neon-remix-endstation.js';
 import * as NEON_REMIX_FREEFALL from './neon-remix-freefall.js';
 import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
@@ -239,9 +242,12 @@ export const IMPORTED_BY_ID = {
   "frost-remix-absolute-zero": { bank: FROST_REMIX_ABSOLUTE_ZERO.bank, title: FROST_REMIX_ABSOLUTE_ZERO.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-black-ice": { bank: FROST_REMIX_BLACK_ICE.bank, title: FROST_REMIX_BLACK_ICE.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-snow-globe": { bank: FROST_REMIX_SNOW_GLOBE.bank, title: FROST_REMIX_SNOW_GLOBE.title, group: "alternate", writable: true, alternateOf: "frost" },
+  "gary-numan-cars": { bank: GARY_NUMAN_CARS.bank, title: GARY_NUMAN_CARS.title, group: "imported", writable: true },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
+  "neon-blasters-original-banger-copy": { bank: NEON_BLASTERS_ORIGINAL_BANGER_COPY.bank, title: NEON_BLASTERS_ORIGINAL_BANGER_COPY.title, group: "copy", writable: true },
+  "neon-orbit-banger-bittersweet": { bank: NEON_ORBIT_BANGER_BITTERSWEET.bank, title: NEON_ORBIT_BANGER_BITTERSWEET.title, group: "copy", writable: true },
   "neon-remix-endstation": { bank: NEON_REMIX_ENDSTATION.bank, title: NEON_REMIX_ENDSTATION.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-freefall": { bank: NEON_REMIX_FREEFALL.bank, title: NEON_REMIX_FREEFALL.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-golden-hour": { bank: NEON_REMIX_GOLDEN_HOUR.bank, title: NEON_REMIX_GOLDEN_HOUR.title, group: "alternate", writable: true, alternateOf: "neon" },

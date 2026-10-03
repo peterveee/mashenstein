@@ -170,6 +170,8 @@ const DEFAULTS = [
 const refOptions = (style, parts) => ({
   style: style.id, parts: { sub: true, thirdBelow: true, counter: true, ...parts },
   drums: { shaker: true, tambourine: true, congas: true, cowbell: true, ride: true },
+  // The Club form, whatever the style's default: the level references are its drops.
+  form: { template: 'club' },
 });
 
 /** The style's own default banger number `n`, unlevelled and on the recipe's own channels, as a song. */

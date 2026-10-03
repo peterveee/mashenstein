@@ -74,6 +74,11 @@ import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 // arrangement — see bpmOf.
 import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
+import { BangerMakerState } from './banger/maker.js';
+import { setState } from '../engine/states.js';
+import { jukeboxBangerRows, songFor, deleteBanger, bangerTitle } from './banger/store.js';
+import { BangerClubState } from './banger/club.js';
+import { BangerBirthState } from './banger/birth.js';
 import { totalPlugs, MAX_PLUGS, formatCoins, formatRunTime, nextStage, stageUnlocked } from './progress.js';
 import {
   portraitMenuActive, portraitMenuScale, portraitMenuText, portraitMenuTextCentered,
@@ -1957,9 +1962,9 @@ function flickerBlock(t) {
 export class TitleState {
   static portraitMode = 'frame';
 
-  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
+  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onLab, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onSettings = onSettings;
-    this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onIntro = onIntro;
+    this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onLab = onLab; this.onIntro = onIntro;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
     this.attractLabel = attractLabel || 'DEMO';
     this.onTutorial = onTutorial;
@@ -2151,6 +2156,8 @@ export class TitleState {
     if (anyFile) choices.push({ id: 'intro', label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });
     choices.push({ id: 'guide', label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
     choices.push({ id: 'soundtest', label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
+    // The player's own songs, made from a riff and played live in the club.
+    if (this.onLab) choices.push({ id: 'lab', label: 'THE LAB', act: () => this.onLab() });
     if (anyFile) choices.push({ id: 'erase', label: 'ERASE A SHIFT', act: () => this.beginErase() });
     choices.push({ id: 'settings', label: 'SETTINGS', act: () => this.onSettings() });
     choices.push({ id: 'back', label: 'BACK', cancel: true });
@@ -4872,11 +4879,13 @@ export const JUKEBOX = [
 // The tempo a row reports is the one the song PLAYS at: the arrangement's when the
 // mixing desk has retuned it, else the tempo it was written at. Read through the same
 // seam the engine reads, so the list cannot disagree with what you are hearing.
-const jukeboxBpm = (tr) => Math.round(bpmOf(tr.bank, trackIdOf(tr.bank)));
+// A kept banger carries its BPM, so listing it does not have to make the song.
+const jukeboxBpm = (tr) => Math.round(tr.bpm ?? bpmOf(tr.bank, trackIdOf(tr.bank)));
 // The underlying name still carries its parenthetical theme/genre tag — the
 // megamix's frozen composition matches sections against that full string, so
-// it can't change there. The jukebox only ever shows the bare title.
-const jukeboxTitle = (tr) => tr.name.replace(/\s*\([^)]*\)\s*$/, '');
+// it can't change there. The jukebox only ever shows the bare title — except for the
+// player's own songs, whose (STYLE/MOOD) is part of the title on purpose.
+const jukeboxTitle = (tr) => (tr.banger ? tr.name : tr.name.replace(/\s*\([^)]*\)\s*$/, ''));
 // Match Settings' finger-sized scrolling list. BACK stays fixed below the
 // window so a long catalogue never shrinks the rows or pushes the exit target
 // off-screen.
@@ -4933,13 +4942,36 @@ export class SoundTestState {
   // `tracks` defaults to the shipped jukebox, so every production route is the list it
   // always was. The dev menu passes a longer one to audition a song that lives on the
   // mixing desk rather than in the game — see src/dev/desk-songs.js.
+  //
+  // The player's banger (src/game/banger/) follows whatever list it is given, as the
+  // next track — once there is one. LAB, beside BACK, opens the maker. `initialSelect`
+  // puts the cursor on a row without playing it (BACK is tracks.length, LAB the
+  // one after): coming back from the maker lands on its button, not on a song.
+  //
+  // While the selected song is one of the player's own — the row the cursor is on, or
+  // was on last, playing or not — DELETE joins the bottom row between BACK and LAB (its index is
+  // tracks.length + 2): it asks ARE YOU SURE? naming the song, NO picked first, and YES
+  // takes it out (stopping it if it was playing), the songs after it moving up a number
+  // (Peter, 3 Oct 2026).
+  //
+  // `lab: true` is THE BANGER LAB (STAFF ONLY → THE LAB, Peter, 3 Oct 2026): the same
+  // list, holding only the player's own songs, with BACK · DELETE · NEW BANGER under it.
+  // Choosing a song there opens it in the club (banger/club.js) rather than playing it
+  // in the list; NEW BANGER opens the riff grid. The jukebox itself lists only the
+  // shipped songs, with BACK alone under them.
   constructor({
-    onDone, initialTrack = -1, startVisualiser = false, startVisualiserIndex = null,
-    tracks = JUKEBOX,
+    onDone, initialTrack = -1, initialSelect = -1, startVisualiser = false, startVisualiserIndex = null,
+    tracks = JUKEBOX, lab = false, labPlaying = null,
   }) {
     this.onDone = onDone;
-    this.tracks = tracks && tracks.length ? tracks : JUKEBOX;
+    this.lab = !!lab;
+    // The song still playing from the club, if any: back in the Lab it plays on, and
+    // choosing it again stops it (Peter, 3 Oct 2026).
+    this.labPlaying = this.lab ? labPlaying : null;
+    this.baseTracks = this.lab ? [] : (tracks && tracks.length ? tracks : JUKEBOX);
+    this.tracks = this.lab ? jukeboxBangerRows() : [...this.baseTracks];
     this.initialTrack = initialTrack;
+    this.initialSelect = initialSelect;
     this.startVisualiserOnEnter = startVisualiser;
     this.startVisualiserIndex = Number.isInteger(startVisualiserIndex) ? startVisualiserIndex : null;
     // Vertical layout is re-measured against the device's safe area every frame
@@ -4974,6 +5006,12 @@ export class SoundTestState {
     // (2 Oct 2026, for listening to the cabinet songs on an iPad).
     this.screensaverOff = false;
     this.lastVisualTap = -Infinity;
+    // The ARE YOU SURE? box over the list: { rec, yes } while it is up — `yes` is the
+    // answer the arrows have picked, NO to begin with.
+    this.confirmDelete = null;
+    // The last list row the cursor was on: what DELETE means once the cursor has moved
+    // down onto the button row.
+    this.rowFocus = -1;
   }
   /** main.js shows its FPS/audio readout while this is true (see `showsStats` there). */
   get wantsStats() { return this.screensaverOff; }
@@ -4988,10 +5026,16 @@ export class SoundTestState {
     this.layout();
     const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < this.tracks.length
       ? this.initialTrack : -1;
-    this.idx = initial >= 0 ? initial : 0;
-    this.playing = initial;
+    const select = Number.isInteger(this.initialSelect) && this.initialSelect >= 0 && this.initialSelect <= this.tracks.length + 1
+      ? this.initialSelect : -1;
+    this.idx = initial >= 0 ? initial : (select >= 0 ? select : 0);
+    this.rowFocus = this.idx < this.tracks.length ? this.idx : -1;
+    const playingOn = this.labPlaying ? this.tracks.findIndex((row) => row.banger === this.labPlaying) : -1;
+    if (playingOn >= 0 && select < 0) { this.idx = playingOn; this.rowFocus = playingOn; }
+    this.playing = playingOn >= 0 ? playingOn : initial;
     this.t = 0;
     this.listStart = 0;
+    this.keepSelectionVisible();
     this.pointerGesture = null;
     this.visualSwipe = null;
     this.idleT = 0;
@@ -5005,8 +5049,8 @@ export class SoundTestState {
     this.lastVisualiserIndex = -1;
     this.fullscreenReady = false;
     this.actTok = Input.activity;
-    Audio.setBank(null);
-    if (this.playing >= 0) {
+    if (playingOn < 0) Audio.setBank(null);
+    if (playingOn < 0 && this.playing >= 0) {
       this.openTrack(this.playing);
       this.resetIdle();
       if (this.startVisualiserOnEnter) this.startVisualiser();
@@ -5208,19 +5252,189 @@ export class SoundTestState {
 
   maxListStart() { return Math.max(0, this.tracks.length - this.visibleRows); }
   trackCounter(i) { return `${i + 1}.`; }
+  rowText(i, tr) { return `${this.trackCounter(i)} ${jukeboxTitle(tr)}`; }
   keepSelectionVisible() {
     if (this.idx >= this.tracks.length) return;
     if (this.idx < this.listStart) this.listStart = this.idx;
     else if (this.idx >= this.listStart + this.visibleRows) this.listStart = this.idx - this.visibleRows + 1;
     this.listStart = Math.max(0, Math.min(this.maxListStart(), this.listStart));
   }
-  pointerIndex(y) {
-    if (y >= this.backY && y < this.backY + this.backH) return this.tracks.length;
+  pointerIndex(y, x = 0) {
+    if (y >= this.backY && y < this.backY + this.backH) {
+      const { del, gen } = this.backPlates();
+      if (del && x >= del.x && x < del.x + del.w) return this.tracks.length + 2;
+      return gen && x >= gen.x ? this.tracks.length + 1 : this.tracks.length;
+    }
     if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
     const i = this.listStart + Math.floor((y - this.listY) / this.rowH);
     return i < this.tracks.length ? i : -1;
   }
+  /**
+   * Seconds of no input before the visualiser takes over. A banger just made gets 30, so
+   * its name and the list stay up while it is first heard (Peter, 3 Oct 2026); the
+   * shipped songs keep their 5.
+   */
+  visualiserWait() { return this.tracks[this.playing]?.banger ? 30 : 5; }
+  /**
+   * The song DELETE would take: the selected one — the row the cursor is on, or was on
+   * last before moving down to the buttons — when it is one of the player's own, playing
+   * or not (Peter, 3 Oct 2026). Null otherwise, and then DELETE is not up.
+   */
+  deletable() {
+    const focused = this.tracks[this.rowFocus];
+    return focused?.banger ? focused : null;
+  }
+  /** Every selectable index in arrow order: the rows, then BACK, DELETE (when it is up), LAB. */
+  selectOrder() {
+    const n = this.tracks.length;
+    const rows = Array.from({ length: n }, (_, i) => i);
+    if (!this.lab) return [...rows, n];
+    return this.deletable() ? [...rows, n, n + 2, n + 1] : [...rows, n, n + 1];
+  }
+  stepSelection(delta) {
+    const order = this.selectOrder();
+    const at = Math.max(0, order.indexOf(this.idx));
+    this.idx = order[(at + delta + order.length) % order.length];
+  }
+  /** DELETE: the ARE YOU SURE? box, NO picked first. */
+  askDelete() {
+    const tr = this.deletable();
+    if (!tr) return;
+    this.confirmDelete = { rec: tr.banger, yes: false };
+    Audio.sfx('uiBad');
+  }
+  /** YES: the song is taken out (and stops, if it was playing); the ones after it move up. */
+  deleteConfirmed() {
+    const rec = this.confirmDelete?.rec;
+    this.confirmDelete = null;
+    const i = this.tracks.findIndex((tr) => tr.banger === rec);
+    if (i < 0) return;
+    if (this.playing === i) { this.playing = -1; Audio.setBank(null); }
+    else if (this.playing > i) this.playing -= 1;     // the song playing moved up a row
+    deleteBanger(rec);
+    this.tracks = [...this.baseTracks, ...jukeboxBangerRows()];
+    const n = this.tracks.length;
+    // The cursor lands on the song that moved up into its place, else the song before it
+    // if that is one of theirs, else on LAB.
+    this.idx = i < n ? i : (n > this.baseTracks.length ? n - 1 : n + 1);
+    this.rowFocus = this.idx < n ? this.idx : -1;
+    this.listStart = Math.min(this.listStart, this.maxListStart());
+    this.keepSelectionVisible();
+    this.resetIdle();
+    Audio.sfx('uiConfirm');
+  }
+  /** The ARE YOU SURE? box's input: arrows pick, confirm answers, back is NO. */
+  updateDeleteConfirm() {
+    const c = this.confirmDelete;
+    const g = settingsConfirmLayout();
+    const p = Input.pointer;
+    const hit = (r) => Input.pressed('pointer') && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    if (Input.pressed('left') || Input.pressed('right') || Input.pressed('up') || Input.pressed('down')) {
+      c.yes = !c.yes;
+      Audio.sfx('ui');
+    }
+    if (hit(g.yes) || (Input.pressed('confirm') && c.yes)) this.deleteConfirmed();
+    else if (hit(g.no) || (Input.pressed('confirm') && !c.yes) || Input.pressed('back') || Input.pressed('slide')) {
+      this.confirmDelete = null;
+      Audio.sfx('ui');
+    }
+    Input.endFrame();
+  }
+  /** A fresh Lab list, the cursor on `select`. */
+  labAgain(select = -1, labPlaying = null) {
+    return new SoundTestState({ onDone: this.onDone, lab: true, initialSelect: select, labPlaying });
+  }
+  /** NEW BANGER: off to the maker. BACK comes back to the Lab; BRING TO LIFE goes through IT'S ALIVE! into the club. */
+  openMaker() {
+    Audio.sfx('uiConfirm');
+    Audio.setBank(null);
+    this.clearVisualiser();
+    setJukeboxPortrait(false);
+    setState(new BangerMakerState({
+      // Back on NEW BANGER, wherever the list now ends.
+      onDone: () => setState(this.labAgain(jukeboxBangerRows().length + 1)),
+      // The song just made is handed to the cache, so the club does not make it again.
+      onMade: (rec, song) => {
+        songFor(rec, song);
+        setState(new BangerBirthState({ rec, onDone: () => this.openClub(rec) }));
+      },
+    }));
+  }
+  /** A song from the Lab, in the club; its back button returns here with the song selected. */
+  openClub(rec) {
+    Audio.sfx('uiConfirm');
+    Audio.setBank(null);
+    this.clearVisualiser();
+    setJukeboxPortrait(false);
+    setState(new BangerClubState({
+      rec,
+      onEdit: (r) => this.openEditor(r),
+      // the song plays on in the Lab; choosing it there again stops it
+      onBack: () => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === rec)), rec)),
+    }));
+  }
+  /** The club's pencil: the riff grid on this song, and BRING TO LIFE remakes it; BACK returns to the club. */
+  openEditor(rec) {
+    Audio.sfx('uiConfirm');
+    setState(new BangerMakerState({
+      from: rec,
+      onDone: () => this.openClub(rec),
+      onMade: (r, song) => {
+        songFor(r, song);
+        setState(new BangerBirthState({ rec: r, onDone: () => this.openClub(r) }));
+      },
+    }));
+  }
+  /**
+   * The bottom row: BACK on the left, LAB on the right, and DELETE between them while
+   * one of the player's songs is playing. Logical x and width of each, for drawing and
+   * for taps; `del` is null when DELETE is not up.
+   */
+  backPlates() {
+    const portrait = portraitMenuActive();
+    const rowX = portrait ? 18 : JUKEBOX_ROW_X;
+    const rowW = portrait ? W - 36 : W - JUKEBOX_ROW_X - JUKEBOX_ROW_INSET_R;
+    const gap = portrait ? 12 : 8;
+    if (!this.lab) return { back: { x: rowX, w: rowW }, del: null, gen: null };
+    if (this.deletable()) {
+      // Three equal thirds of the full row, outer edges on the list's.
+      const third = (rowW - 2 * gap) / 3;
+      return {
+        back: { x: rowX, w: third },
+        del: { x: rowX + third + gap, w: third },
+        gen: { x: rowX + 2 * (third + gap), w: third },
+      };
+    }
+    // Two equal halves of the full row, so their outer edges line up with the list.
+    const half = (rowW - gap) / 2;
+    return { back: { x: rowX, w: half }, del: null, gen: { x: rowX + half + gap, w: half } };
+  }
+  drawDelete(ctx, y, h, radius, size, text) {
+    const { del } = this.backPlates();
+    if (!del) return;
+    const sel = this.idx === this.tracks.length + 2;
+    drawMenuRow(ctx, del.x, y, del.w, h, radius, sel ? undefined : 'rgba(224,72,72,0.14)');
+    text(del, sel ? '#c9a0ff' : '#e04848', size);
+  }
+  /** The line under the title: what is playing — or, in the Lab, what to do. */
+  statusText() {
+    if (this.lab && this.playing >= 0) return `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}`;
+    if (this.lab) return this.tracks.length ? 'CHOOSE A SONG TO PLAY IT LIVE' : 'NO SONGS YET: MAKE ONE WITH NEW BANGER';
+    return this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
+  }
+  drawGener8(ctx, y, h, radius, size, text) {
+    const { gen } = this.backPlates();
+    if (!gen) return;
+    const sel = this.idx === this.tracks.length + 1;
+    drawMenuRow(ctx, gen.x, y, gen.w, h, radius, sel ? undefined : 'rgba(72,224,200,0.14)');
+    text(gen, sel ? '#c9a0ff' : '#48e0c8', size);
+  }
   toggle(i) {
+    if (this.lab) {
+      if (this.playing === i) { this.playing = -1; this.labPlaying = null; Audio.setBank(null); return; }
+      if (this.tracks[i]) this.openClub(this.tracks[i].banger);
+      return;
+    }
     if (this.playing === i) {
       this.playing = -1;
       Audio.setBank(null);
@@ -5242,8 +5456,10 @@ export class SoundTestState {
     // Rotating the phone or opening it in portrait moves every row, and taps are
     // resolved against these same numbers — re-measure before reading a pointer.
     this.layout();
+    if (this.confirmDelete) { this.updateDeleteConfirm(); return; }
     const n = this.tracks.length;
-    const total = n + 1; // +1 for the trailing BACK row
+    // DELETE leaves with the song it was for.
+    if (this.idx === n + 2 && !this.deletable()) this.idx = n + 1;
     if (this.visualState !== 'list') {
       // Dev builds: a second press within 350 ms of the first turns the screensaver
       // off and shows the stats readout. The first press has already started the
@@ -5305,28 +5521,30 @@ export class SoundTestState {
       Input.endFrame();
       return;
     }
-    if (this.playing >= 0 && !this.screensaverOff) {
+    if (this.playing >= 0 && !this.screensaverOff && !this.lab) {
       this.idleT += dt;
-      if (this.idleT >= 5) this.startVisualiser();
+      if (this.idleT >= this.visualiserWait()) this.startVisualiser();
     }
     if (Input.pressed('down') || Input.pressed('right')) {
-      this.idx = (this.idx + 1) % total;
+      this.stepSelection(1);
       this.keepSelectionVisible();
       this.resetIdle();
       Audio.sfx('ui');
     }
     if (Input.pressed('up') || Input.pressed('left')) {
-      this.idx = (this.idx + total - 1) % total;
+      this.stepSelection(-1);
       this.keepSelectionVisible();
       this.resetIdle();
       Audio.sfx('ui');
     }
     if (Input.pressed('confirm')) {
       if (this.idx === n) this.done();
+      else if (this.idx === n + 1) this.openMaker();
+      else if (this.idx === n + 2) this.askDelete();
       else this.toggle(this.idx);
     }
     if (Input.pressed('pointer')) {
-      const i = this.pointerIndex(Input.pointer.y);
+      const i = this.pointerIndex(Input.pointer.y, Input.pointer.x);
       if (i >= 0) {
         if (Input.usingTouch) {
           this.pointerGesture = {
@@ -5336,6 +5554,10 @@ export class SoundTestState {
           };
         } else if (i === n) {
           this.done();
+        } else if (i === n + 1) {
+          this.openMaker();
+        } else if (i === n + 2) {
+          this.askDelete();
         } else if (this.idx === i) {
           this.toggle(i);
         } else {
@@ -5357,8 +5579,10 @@ export class SoundTestState {
       const moved = this.pointerGesture.moved;
       this.pointerGesture = null;
       if (!moved) {
-        const i = this.pointerIndex(Input.pointer.y);
+        const i = this.pointerIndex(Input.pointer.y, Input.pointer.x);
         if (i === n) this.done();
+        else if (i === n + 1) this.openMaker();
+        else if (i === n + 2) this.askDelete();
         else if (i >= 0) {
           this.idx = i;
           this.toggle(i);
@@ -5366,6 +5590,7 @@ export class SoundTestState {
       }
     }
     if (Input.pressed('back')) this.done();
+    if (this.idx < this.tracks.length) this.rowFocus = this.idx;
     Input.endFrame();
   }
   drawList(ctx, alpha = 1) {
@@ -5405,8 +5630,10 @@ export class SoundTestState {
     const rowX = JUKEBOX_ROW_X;
     const rowW = W - JUKEBOX_ROW_X - JUKEBOX_ROW_INSET_R;
     const textX = JUKEBOX_TEXT_X;
-    menuText('SOUND TEST', textX, this.titleY, '#fff', 2, 'title');
-    const status = this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
+    const rowFit = (label, scale) => Math.min(JUKEBOX_ITEM_S,
+      (rowX + rowW - 8 - textX) / Math.max(1, textWidth(label, scale)));
+    menuText(this.lab ? 'THE BANGER LAB' : 'SOUND TEST', textX, this.titleY, '#fff', 2, 'title');
+    const status = this.statusText();
     menuText(status, textX, this.statusY, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
     this.tracks.forEach((tr, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
@@ -5419,14 +5646,17 @@ export class SoundTestState {
         // The glyphs are vertically compressed in the logical canvas and
         // expanded by the portrait CSS fill. Account for that once when
         // choosing the baseline, otherwise the ink lands high in the plate.
-        const inkScale = itemScale * (JUKEBOX_ITEM_S / LEFT_MENU_ITEM_S) / textYScale;
+        const label = this.rowText(i, tr);
+        const size = rowFit(label, portraitMenuScale);
+        const inkScale = itemScale * (size / LEFT_MENU_ITEM_S) / textYScale;
         const titleY = textYForMid(rowMid, inkScale);
-        menuText(`${this.trackCounter(i)} ${jukeboxTitle(tr)}`, textX, titleY,
-          on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
+        menuText(label, textX, titleY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', size);
       } else {
-        const textY = textYForMid(rowMid, JUKEBOX_ITEM_S);
-        menuText(`${this.trackCounter(i)} ${jukeboxTitle(tr)}  (${jukeboxBpm(tr)} BPM)`, textX,
-          textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
+        // A long title (a kept song's NAME (STYLE/MOOD)) comes down a size to fit its row.
+        const label = `${this.rowText(i, tr)}  (${jukeboxBpm(tr)} BPM)`;
+        const size = rowFit(label, portraitMenuScale);
+        const textY = textYForMid(rowMid, size);
+        menuText(label, textX, textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', size);
       }
     });
     if (this.tracks.length > this.visibleRows) {
@@ -5440,10 +5670,15 @@ export class SoundTestState {
       ctx.fillRect(W - 18, thumbY, 4, thumbH);
     }
     const backSelected = this.idx === this.tracks.length;
-    drawMenuRow(ctx, rowX, this.backY + 1, rowW, this.backH - 2, 3,
+    const plates = this.backPlates();
+    drawMenuRow(ctx, plates.back.x, this.backY + 1, plates.back.w, this.backH - 2, 3,
       backSelected ? undefined : BACK_BUTTON_PLATE);
     const backTextY = textYForMid(this.backY + this.backH / 2, JUKEBOX_ITEM_S);
-    menuText('BACK', textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
+    menuTextCentered('BACK', plates.back.x + plates.back.w / 2, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
+    this.drawGener8(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
+      (gen, color, size) => menuTextCentered('NEW BANGER', gen.x + gen.w / 2, backTextY, color, size));
+    this.drawDelete(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
+      (del, color, size) => menuTextCentered('DELETE', del.x + del.w / 2, backTextY, color, size));
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
@@ -5452,9 +5687,10 @@ export class SoundTestState {
         ctx.fillRect(textX + i * 6, this.barsBase - hgt, 4, hgt);
       }
     }
-    menuTextCentered(`${confirmVerb()}: PLAY/STOP`,
+    menuTextCentered(`${confirmVerb()}: ${this.lab && this.playing < 0 ? 'PLAY' : 'PLAY/STOP'}`,
       W / 2, this.hintY, '#5a5a68');
     ctx.restore();
+    if (this.confirmDelete) drawDeleteConfirm(ctx, this.confirmDelete);
   }
   drawPortraitList(ctx, alpha = 1) {
     ctx.save();
@@ -5463,10 +5699,11 @@ export class SoundTestState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const titleX = 28;
-    const titleS = portraitMenuFit('SOUND TEST', 2.35, W - 56, 'title');
-    portraitMenuText(ctx, 'SOUND TEST', titleX,
+    const titleText = this.lab ? 'THE BANGER LAB' : 'SOUND TEST';
+    const titleS = portraitMenuFit(titleText, 2.35, W - 56, 'title');
+    portraitMenuText(ctx, titleText, titleX,
       portraitMenuTextY(this.titleY, titleS, 'title'), '#fff', titleS, 'title');
-    const status = this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
+    const status = this.statusText();
     const statusS = portraitMenuFit(status, 1.2, W - titleX - 28);
     portraitMenuText(ctx, status, titleX,
       portraitMenuTextY(this.statusY, statusS), this.playing >= 0 ? '#48e0c8' : '#5a5a68', statusS);
@@ -5483,7 +5720,7 @@ export class SoundTestState {
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
       if (selected) drawMenuRow(ctx, rowX, rowTop + 2, rowW, this.rowH - 4, 8);
       const rowMid = rowTop + this.rowH / 2;
-      const label = `${this.trackCounter(i)} ${jukeboxTitle(tr)}`;
+      const label = this.rowText(i, tr);
       const labelS = portraitMenuFit(label, PORTRAIT_JUKEBOX_ITEM_S, W - titleX - 34);
       const labelColor = this.playing === i ? '#48e0c8' : selected ? '#c9a0ff' : '#c8c8d8';
       portraitMenuText(ctx, label, titleX,
@@ -5500,11 +5737,20 @@ export class SoundTestState {
       ctx.fillRect(W - 16, thumbY, 7, thumbH);
     }
     const backSelected = this.idx === this.tracks.length;
-    drawMenuRow(ctx, rowX, this.backY + 2, rowW, this.backH - 4, 8,
+    const plates = this.backPlates();
+    drawMenuRow(ctx, plates.back.x, this.backY + 2, plates.back.w, this.backH - 4, 8,
       backSelected ? undefined : BACK_BUTTON_PLATE);
-    const backS = portraitMenuFit('BACK', PORTRAIT_JUKEBOX_ITEM_S, W - titleX - 34);
-    portraitMenuText(ctx, 'BACK', titleX,
+    const backS = portraitMenuFit('BACK', PORTRAIT_JUKEBOX_ITEM_S, plates.back.w - 24);
+    portraitMenuTextCentered(ctx, 'BACK', plates.back.x + plates.back.w / 2,
       portraitMenuTextY(this.backY + this.backH / 2, backS), backSelected ? '#c9a0ff' : '#c8c8d8', backS);
+    this.drawGener8(ctx, this.backY + 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (gen, color, size) => {
+      const s = portraitMenuFit('NEW BANGER', size, gen.w - 24);
+      portraitMenuTextCentered(ctx, 'NEW BANGER', gen.x + gen.w / 2, portraitMenuTextY(this.backY + this.backH / 2, s), color, s);
+    });
+    this.drawDelete(ctx, this.backY + 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (del, color, size) => {
+      const s = portraitMenuFit('DELETE', size, del.w - 24);
+      portraitMenuTextCentered(ctx, 'DELETE', del.x + del.w / 2, portraitMenuTextY(this.backY + this.backH / 2, s), color, s);
+    });
     if (this.playing >= 0) {
       for (let i = 0; i < 12; i++) {
         const hgt = 3 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 10;
@@ -5512,9 +5758,10 @@ export class SoundTestState {
         ctx.fillRect(titleX + i * 7, this.barsBase - hgt, 5, hgt);
       }
     }
-    portraitMenuTextCentered(ctx, `${confirmVerb()}: PLAY/STOP`,
+    portraitMenuTextCentered(ctx, `${confirmVerb()}: ${this.lab && this.playing < 0 ? 'PLAY' : 'PLAY/STOP'}`,
       W / 2, portraitMenuTextY(this.hintY, 1.0), '#5a5a68', 1.0);
     ctx.restore();
+    if (this.confirmDelete) drawDeleteConfirm(ctx, this.confirmDelete);
   }
   draw(ctx) {
     if (this.visualState === 'list' || !this.visualiser) {
@@ -5826,12 +6073,54 @@ function drawSettingsConfirm(ctx) {
   drawSettingsConfirmButton(ctx, g.no, 'NO', '#c8c8d8', g.portrait);
 }
 
+/**
+ * The jukebox's ARE YOU SURE? box for DELETE: Settings' reset box, with the song's name
+ * under the question, and the answer the arrows have picked ringed in the selection
+ * colour (NO to begin with — two presses of ENTER must not delete a song).
+ */
+function drawDeleteConfirm(ctx, { rec, yes }) {
+  const g = settingsConfirmLayout();
+  ctx.fillStyle = 'rgba(2,3,10,0.78)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b0b14';
+  platePath(ctx, g.x, g.y, g.w, g.h, g.portrait ? 12 : 5);
+  ctx.fill();
+  ctx.strokeStyle = '#e04848';
+  ctx.lineWidth = g.portrait ? 2 : 1;
+  platePath(ctx, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, g.portrait ? 12 : 5);
+  ctx.stroke();
+  const title = 'ARE YOU SURE?';
+  const line = `DELETE ${bangerTitle(rec)}?`;
+  if (g.portrait) {
+    const ts = portraitMenuFit(title, 2.1, g.w - 36, 'title');
+    portraitMenuTextCentered(ctx, title, W / 2, portraitMenuTextY(g.y + 56, ts, 'title'), '#e04848', ts, 'title');
+    const ls = portraitMenuFit(line, 1.4, g.w - 36);
+    portraitMenuTextCentered(ctx, line, W / 2, portraitMenuTextY(g.y + 108, ls), '#c8c8d8', ls);
+  } else {
+    const ts = Math.min(1.4, (g.w - 28) / Math.max(1, textWidth(title, 1, 'title')));
+    drawTextCentered(ctx, title, W / 2, textYForMid(g.y + 17, ts, 'title'), '#e04848', ts, 'title');
+    const ls = Math.min(1, (g.w - 28) / Math.max(1, textWidth(line, 1)));
+    drawTextCentered(ctx, line, W / 2, textYForMid(g.y + 38, ls), '#c8c8d8', ls);
+  }
+  drawSettingsConfirmButton(ctx, g.yes, 'YES', '#e04848', g.portrait);
+  drawSettingsConfirmButton(ctx, g.no, 'NO', '#c8c8d8', g.portrait);
+  const r = yes ? g.yes : g.no;
+  const pad = g.portrait ? 5 : 3;
+  ctx.strokeStyle = '#c9a0ff';
+  ctx.lineWidth = g.portrait ? 3 : 1.5;
+  platePath(ctx, r.x - pad, r.y - pad, r.w + 2 * pad, r.h + 2 * pad, (g.portrait ? 10 : 5) + pad);
+  ctx.stroke();
+}
+
 export class SettingsState {
   static portraitMode = 'frame';
 
-  constructor({ save, onDone, onCalibrate = null }) {
+  // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
+  // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null }) {
     this.save = save;
     this.onDone = onDone;
+    this.onDevMenu = onDevMenu;
     this.onCalibrate = onCalibrate;
     this.listY = SETTINGS_TOP;
     this.rowH = SETTINGS_ROW;
@@ -5927,6 +6216,7 @@ export class SettingsState {
   options() {
     const s = this.save.settings;
     return [
+      ...(this.onDevMenu ? [{ label: 'DEV MENU', act: () => this.onDevMenu() }] : []),
       { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
       // Only where the choice is honoured: a handheld's framing is fixed.
       ...(framingIsChosen()

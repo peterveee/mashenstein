@@ -8,6 +8,10 @@
 // Browser-safe: no `node:*` imports.
 import { styleFor, BANGER_STYLES } from './styles/index.js';
 import { ARP_FIGURES, BASS_FIGURES } from './theory.js';
+import { normaliseSections } from './form-types.js';
+import { FORM_TEMPLATES } from './templates.js';
+import { SHARED_MOODS, LIFT_APPROACHES } from './moods.js';
+import { FILL_INS, FILL_EVERY, FILL_NOTES } from './embellish.js';
 
 export const BANGER_MOODS = Object.freeze([
   { id: 'anthemic', label: 'Anthemic', title: 'Big minor-key festival chords, bright hook — the ABSOLUTE ZERO sound' },
@@ -19,6 +23,8 @@ export const BANGER_MOODS = Object.freeze([
   { id: 'nostalgic', label: 'Nostalgic', title: 'City-pop royal road in sevenths and ninths — electric piano and warm strings' },
   { id: 'funky', label: 'Funky', title: 'A dorian two-chord vamp in ninths — slap bass and clav' },
   { id: 'gothic', label: 'Gothic', title: 'A descending minor walk to the big V — church organ, choir and tolling bells' },
+  // The moods every style shares (moods.js), each a progression of its own.
+  ...Object.entries(SHARED_MOODS).map(([id, m]) => ({ id, label: m.label, title: m.title })),
 ]);
 /**
  * The modes a banger can be in (tools/lib/banger/analyse.js MODE_INFO). Each is major or
@@ -49,6 +55,7 @@ export const MOOD_MODES = Object.freeze({
   nostalgic: { suits: ['major', 'dorian', 'lydian'], fights: ['phrygian', 'harmonic'] },
   funky: { suits: ['dorian', 'mixolydian', 'minor'], fights: ['phrygian', 'harmonic'] },
   gothic: { suits: ['harmonic', 'minor', 'phrygian'], fights: ['major', 'lydian', 'mixolydian'] },
+  ...Object.fromEntries(Object.entries(SHARED_MOODS).map(([id, m]) => [id, m.modes])),
 });
 
 /**
@@ -57,6 +64,7 @@ export const MOOD_MODES = Object.freeze({
  */
 export const MOOD_BASS = Object.freeze({
   funky: 'funk', heroic: 'gallop', gothic: 'pedal', nostalgic: 'walking', dark: 'reese', moody: 'arpeggiated',
+  ...Object.fromEntries(Object.entries(SHARED_MOODS).filter(([, m]) => m.bass).map(([id, m]) => [id, m.bass])),
 });
 /** The bass a request should start from for `mood` in `style`. */
 export function moodBass(style, mood) {
@@ -111,46 +119,72 @@ export const BANGER_LIMITS = Object.freeze({
  */
 export const BANGER_GROUPS = Object.freeze([
   { id: 'form', label: 'Form', fields: [
-    { key: 'script', label: 'Style\'s Own Form',
-      title: 'The style\'s own arrangement, bar by bar, in place of the switches below (Kraftwerk: 128 bars, a part joining or leaving on each eight-bar block). Styles without one ignore it' },
+    { key: 'template', label: 'Form', type: 'select',
+      title: 'The shape of the song: Club (build and drop), Pop Song (verses, choruses, a middle 8), Anthem (one long breakdown, one huge drop) or Groove (no drops — parts arriving and leaving)',
+      options: [['club', 'Club'], ...Object.entries(FORM_TEMPLATES).map(([id, t]) => [id, t.label])] },
+    { key: 'script', label: 'Style\'s Own Form', forms: ['club'],
+      title: 'The style\'s own arrangement, bar by bar, in place of the switches below. No style has one at present; styles without one ignore it' },
     { key: 'intro', label: 'Intro', title: 'Open on the riff as written' },
     { key: 'layers', label: 'Build in Layers', type: 'select',
       title: 'The intro brings the parts in one at a time — drums, bass, chords, the hook last — and the outro takes them away again: on a Long song only (more than 64 bars), or always',
-      options: [['off', 'Off'], ['long', 'Long Songs'], ['always', 'Always']] },
+      options: [['off', 'Off', 'Intro and outro as the switches say'], ['long', 'Long Songs', 'Only past 64 bars'], ['always', 'Always', 'Every song builds up and down']] },
     { key: 'grooveIntro', label: 'Drums & Bass Intro', title: 'The intro is the beat and the bass alone, then everything comes in at once (Build in Layers wins where it applies)' },
-    { key: 'build', label: 'Build', title: 'A snare-roll build before each drop' },
-    { key: 'breakdown', label: 'Breakdown', title: 'The riff at half speed over a pedal, between the drops' },
-    { key: 'secondDrop', label: 'Second Drop', title: 'Come back for another drop after the breakdown' },
-    { key: 'doubleDrop', label: 'Double Drop', title: 'Drop two runs straight into a third, harder one' },
+    { key: 'build', label: 'Build', forms: ['club'], title: 'A snare-roll build before each drop' },
+    { key: 'breakdown', label: 'Breakdown', forms: ['club'], title: 'A breakdown between the drops: the drums out, the hook over a pedal and an open pad (Breakdown Hook says what the hook does there)' },
+    { key: 'breakdownHook', label: 'Breakdown Hook', type: 'select',
+      title: 'What the hook does in a breakdown, in any form: at half speed (every note twice as long), as written at full speed, or resting so the pad, the choir and the pedal play alone. A breakdown drawn in the Form row with its own Plays choice keeps that',
+      options: [['half', 'Half Speed', 'Every note twice as long — the classic'], ['written', 'As Written', 'The hook at its own speed, over the pad'], ['none', 'No Hook', 'The pad, the choir and the pedal alone']] },
+    { key: 'secondDrop', label: 'Second Drop', forms: ['club'], title: 'Come back for another drop after the breakdown' },
+    { key: 'doubleDrop', label: 'Double Drop', forms: ['club'], title: 'Drop two runs straight into a third, harder one' },
     { key: 'keyLift', label: 'Key Lift', type: 'select', title: 'The last drop goes up',
-      options: [['none', 'None'], ['half', 'Half Step'], ['whole', 'Whole Step'], ['third', 'Major Third']] },
+      options: [['none', 'None', 'Stays in one key'], ['half', 'Half Step', 'Up a semitone — subtle'], ['whole', 'Whole Step', 'Up a tone — the classic'], ['third', 'Major Third', 'Up four semitones — huge']] },
+    // A SECOND MOOD (sections.js): the notes change, the sounds stay the first mood's.
+    { key: 'mood2', label: 'Second Mood', type: 'select',
+      title: 'A second mood later in the song — its chords, its chord colours and the bass it suggests. The sounds stay the first mood\'s. Switch At says where',
+      options: [['none', 'None', 'One mood all the way through'], ...BANGER_MOODS.map((m) => [m.id, m.label, m.title])] },
+    { key: 'moodSwitch', label: 'Switch At', type: 'select',
+      title: 'Where the second mood takes over',
+      options: [['breakdown', 'After the Break', 'From the breakdown or middle 8 to the end'],
+        ['final', 'Final Chorus', 'The last drop or chorus, and what follows it'],
+        ['choruses', 'Choruses Only', 'Every drop or chorus — the verses and builds keep the first mood']] },
+    { key: 'keyApproach', label: 'Key Change', type: 'select',
+      title: 'How the key lift arrives. Mood\'s Own: the way the mood changes key — the same way every time a section of that kind lifts',
+      options: [['mood', 'Mood\'s Own', 'Each mood\'s own way in — Bittersweet by a borrowed step, Disco on a ii–V'],
+        ...LIFT_APPROACHES.map((a) => [a.id, a.label, a.note])] },
     { key: 'hardStop', label: 'Hard Stop', title: 'Everything cut dead on the last beat before the final drop' },
     { key: 'falseEnding', label: 'False Ending', title: 'Stop after the last drop, then come back for one more' },
-    { key: 'halfTime', label: 'Half-Time Switch', title: 'The first phrase of drop two at half time' },
+    { key: 'halfTime', label: 'Half-Time Switch', forms: ['club'], title: 'The first eight bars of drop two at half time (Club form only). For a whole drop at half time — or to take a style\'s half-time drop away — change the section to or from a Half-Time Drop in the Form row' },
     { key: 'outro', label: 'Outro', title: 'End on the riff as written' },
   ] },
   { id: 'drums', label: 'Drums', fields: [
     { key: 'source', label: 'Source Drums', type: 'select', title: 'What happens to drums already in the riff',
-      options: [['add', 'Keep and Add'], ['replace', 'Replace'], ['asis', 'Keep As-Is']] },
+      options: [['add', 'Keep and Add', 'Your drums play, the style\'s kit joins'], ['replace', 'Replace', 'The style\'s kit instead of yours'], ['asis', 'Keep As-Is', 'Only your drums, as written']] },
     { key: 'kit', label: 'Kit', type: 'select', title: 'The drum sounds',
       options: [['style', 'Style Kit'], ['studio', 'Studio'], ['909', '909'], ['808', '808'], ['ds', 'DS'], ['cr78', 'CR-78']] },
     { key: 'crashes', label: 'Crashes', title: 'A crash on the one of every phrase' },
     { key: 'fills', label: 'Fills', title: 'A snare-and-tom fill every eight bars' },
     { key: 'rolls', label: 'Snare Rolls', title: 'The snare accelerating through every build' },
     { key: 'impact', label: 'Impact', title: 'A deep hit on the first beat of every drop' },
-    { key: 'shaker', label: 'Shaker' },
-    { key: 'tambourine', label: 'Tambourine' },
-    { key: 'congas', label: 'Congas' },
-    { key: 'cowbell', label: 'Cowbell' },
+    { key: 'shaker', label: 'Shaker', title: 'A shaker in sixteenths through the drops, from the second phrase' },
+    { key: 'tambourine', label: 'Tambourine', title: 'A tambourine on the off-beats through the drops, from the second phrase' },
+    { key: 'congas', label: 'Congas', title: 'A conga pattern through the drops, from the second phrase' },
+    { key: 'cowbell', label: 'Cowbell', title: 'A cowbell pattern through the drops, from the second phrase' },
     { key: 'ride', label: 'Ride', title: 'A ride in the final drop' },
   ] },
   { id: 'parts', label: 'Bass & Chords', fields: [
     { key: 'bass', label: 'Bass', type: 'select',
-      options: [['offbeat', 'Off-Beat'], ['rolling', 'Rolling 16ths'], ...BASS_FIGURES.map((f) => [f.id, f.label]), ['sub', 'Sub Only'], ['none', 'None']] },
+      title: 'The bassline under the drops. A mood may suggest one (Funky: Funk Syncopated); choosing one here always wins',
+      options: [['offbeat', 'Off-Beat', 'Between the kicks — the house bass'], ['rolling', 'Rolling 16ths', 'Three sixteenths after every kick — trance'],
+        ...BASS_FIGURES.map((f) => [f.id, f.label, f.note]), ['sub', 'Sub Only', 'Just the sub, no mid bass'], ['none', 'None', 'No bass at all']] },
+    { key: 'riffBass', label: 'Riff Bass', type: 'select',
+      title: 'When the riff has its own bassline: Replace it with the Bass setting\'s line in the drops (it still plays in the intro and outro), or Keep it — your bass plays wherever the hook plays as written, and the Bass setting fills in where the hook is varied',
+      options: [['replace', 'Replace', 'The Bass setting\'s line in the drops'], ['keep', 'Keep', 'Your own bassline wherever the hook is as written']] },
     { key: 'bassLift', label: 'Bass Lifts', title: 'The later drops move the bass to a busier, related line — Off-Beat to Octave Eighths, Rolling to Gallop' },
     { key: 'sub', label: 'Sub Layer', title: 'A sine sub under the bass' },
     { key: 'chords', label: 'Chords', type: 'select',
-      options: [['saws', 'Pumping Supersaws'], ['piano', 'Piano Stabs'], ['pad', 'Pad'], ['none', 'None']] },
+      title: 'How the chords are played in the drops',
+      options: [['saws', 'Pumping Supersaws', 'Wide saws ducking on every beat'], ['piano', 'Piano Stabs', 'Off-beat piano chords — house'],
+        ['pad', 'Pad', 'Held, soft chords'], ['none', 'None', 'No chords — the hook and the bass alone']] },
     { key: 'square', label: 'Square Double', title: 'A loud plain square doubling the hook in the drops' },
     { key: 'bell', label: 'Bell Octave', title: 'A bell an octave over the hook from the second phrase' },
     { key: 'octaveDouble', label: 'Octave Hook', title: 'The hook in octaves in the final drop' },
@@ -158,24 +192,64 @@ export const BANGER_GROUPS = Object.freeze([
     { key: 'arp', label: 'Arp', title: 'A sixteenth arpeggio in the builds and later drops' },
     { key: 'arpPattern', label: 'Arp Pattern', type: 'select',
       title: 'Varied: the style\'s own figure first, then a different one each build and drop. Or one figure throughout',
-      options: [['vary', 'Varied'], ['style', 'Style\'s Own'], ...ARP_FIGURES.map((f) => [f.id, f.label])] },
+      options: [['vary', 'Varied', 'The style\'s own first, then a new figure each section'], ['style', 'Style\'s Own', 'The style\'s figure throughout'],
+        ...ARP_FIGURES.map((f) => [f.id, f.label, f.note])] },
     { key: 'choir', label: 'Choir', title: 'A choir in the breakdown and the final drop' },
     { key: 'counter', label: 'Counter-Melody', title: 'A new line in the hook\'s rests' },
+    { key: 'fillIn', label: 'Fill In', type: 'select',
+      title: 'Embellish a simple riff: notes struck twice, passing notes between them, or a step up and back — the same way every time the riff comes round. A busy riff has no room and stays as it is',
+      options: FILL_INS.map((f) => [f.id, f.label, f.note]) },
+    { key: 'fillEvery', label: 'Fill Every', type: 'select',
+      title: 'Which times the riff comes round are filled in: every time, every second time, or every fourth — the last of each group, so the fill answers the plain ones',
+      options: FILL_EVERY.map((f) => [f.id, f.label, f.note]) },
+    { key: 'fillNotes', label: 'Fill Notes', type: 'select',
+      title: 'How many figures a filled bar gets — the earliest gaps first, so the bar starts busy and finishes plain',
+      options: FILL_NOTES.map((f) => [f.id, f.label, f.note]) },
     { key: 'writeLead', label: 'Write a Lead', type: 'select',
       title: 'When Needed: a riff with no tune (only chords, or a bass) gets a lead written from its chords — a new one every take. Always: write one even over a riff with its own',
-      options: [['auto', 'When Needed'], ['always', 'Always'], ['off', 'Off']] },
+      options: [['auto', 'When Needed', 'Only when the riff has no tune'], ['always', 'Always', 'A new tune even over your own'], ['off', 'Off', 'Never — your parts carry it']] },
     { key: 'riffSound', label: 'Riff Sound', type: 'select',
       title: 'Keep the riff\'s own sounds, or give its tuned parts random presets — a new roll every take',
-      options: [['keep', 'Keep'], ['random', 'Random']] },
+      options: [['keep', 'Keep', 'Your parts keep their sounds'], ['random', 'Random', 'A new sound for your parts every take']] },
     { key: 'partSounds', label: 'Part Sounds', type: 'select',
       title: 'Roll: the chords, pad, arp, choir and bell each drawn from the style\'s shortlist — a new roll every take. Style: always the style\'s own',
-      options: [['roll', 'Roll'], ['style', 'Style\'s Own']] },
+      options: [['roll', 'Roll', 'A new pick from the shortlist every take'], ['style', 'Style\'s Own', 'Always the style\'s own sounds']] },
+  ] },
+  { id: 'spot', label: 'Spot FX', fields: [
+    { key: 'intoDrop', label: 'Into a Drop', type: 'select',
+      title: 'The effect on the last bar before every drop or chorus. Style: the build\'s stutter (Stutter Before Drop) and, in the other forms, their run-ups',
+      options: [['style', 'Style', 'The switches\' own: the build\'s stutter'], ['stutter', 'Stutter', 'The mix repeating in sixteenths, then thirty-seconds'],
+        ['repeat', 'Beat Repeat', 'The last half bar repeating on itself'], ['sweep', 'High-Pass Sweep', 'The bass draining out as it rises'],
+        ['wash', 'Reverb Wash', 'The last two beats blooming into a huge room'],
+        ['tapeStop', 'Tape Stop', 'The mix winding down on the last beat and stopping dead — the drop comes in from nothing'], ['none', 'None', 'Straight in']] },
+    { key: 'outOf', label: 'Out of a Drop', type: 'select',
+      title: 'The effect on the last bar before the song drops down — into a breakdown, a verse, a middle 8. Style: the Delay Throws switch',
+      options: [['style', 'Style', 'The switches\' own: a delay throw off the hook'], ['throw', 'Delay Throw', 'An echo thrown off the hook\'s last notes'],
+        ['wash', 'Reverb Wash', 'The last two beats washing out'], ['lowpass', 'Low-Pass Down', 'The mix closing to a muffle over the bar'],
+        ['tapeStop', 'Tape Stop', 'The mix winding down on the last beat and stopping dead before the quiet section'], ['none', 'None', 'A clean cut']] },
+    { key: 'quiet', label: 'Breakdowns', type: 'select',
+      title: 'An effect over every breakdown and middle 8',
+      options: [['none', 'None', 'As they are'], ['underwater', 'Underwater', 'The whole mix muffled, opening up across the section'],
+        ['echo', 'Ping-Pong Echo', 'The hook echoing side to side'], ['reverb', 'Big Reverb', 'The hook, the pad and the choir in a huge room']] },
+    { key: 'intro', label: 'Intro FX', type: 'select',
+      title: 'An effect over the intro. Style: the Low-Pass Intro and Bitcrush Intro switches',
+      options: [['style', 'Style', 'The switches\' own'], ['lowpass', 'Low-Pass', 'Through a wall, opening up'], ['bitcrush', 'Bitcrush', 'Crushed to a few bits'],
+        ['radio', 'Radio', 'Thin and boxy, like a small speaker'], ['none', 'None', 'Clean']] },
+    { key: 'ending', label: 'Ending', type: 'select',
+      title: 'An effect over the last bars. Style: the Tape-Stop Ending switch',
+      options: [['style', 'Style', 'The switches\' own'], ['tapeStop', 'Tape Stop', 'Winding down — and the song does not loop'],
+        ['echo', 'Echo Out', 'The last bars repeating away'], ['fade', 'Fade', 'Everything fading over the last four bars'], ['none', 'None', 'Clean']] },
   ] },
   { id: 'fx', label: 'FX', fields: [
     { key: 'riser', label: 'Riser', title: 'A two-bar noise riser into every drop' },
     { key: 'filterBuild', label: 'Filter Build', title: 'The music opens up through a low-pass across each build' },
     { key: 'stutter', label: 'Stutter Before Drop', title: 'The whole mix repeating in 1/16s then 1/32s on the last beat of a build' },
-    { key: 'pump', label: 'Sidechain Pump', title: 'The chords duck on every beat' },
+    { key: 'pump', label: 'Sidechain Pump', title: 'The chords gated in time — on every beat by default. Chord Gate says at what rate' },
+    { key: 'gate', label: 'Chord Gate', type: 'select',
+      title: 'The rate the chords are gated at (with Sidechain Pump on): the style\'s own, a quarter-note pump, eighths, the sixteenth trance gate, dotted eighths — or By Energy, slower in quiet sections and faster where the song hits',
+      options: [['style', 'Style\'s Own', 'Trance sixteenths, Future Bass eighths, the rest a pump'], ['pump', 'Pump (1/4)', 'Ducking on every beat — house'],
+        ['eighths', 'Eighths', 'Choppy, stuttered chords — future bass'], ['sixteenths', 'Sixteenths', 'The trance gate'],
+        ['dotted', 'Dotted Eighths', 'A lopsided, rolling gate'], ['energy', 'By Energy', 'Pump in quiet sections, eighths building, sixteenths in the drops']] },
     { key: 'delayThrows', label: 'Delay Throws', title: 'An echo thrown off the hook before a breakdown or a stop' },
     { key: 'lowpassIntro', label: 'Low-Pass Intro', title: 'The intro heard through a wall, opening up' },
     { key: 'bitcrushIntro', label: 'Bitcrush Intro', title: 'The intro crushed down to a few bits' },
@@ -192,8 +266,8 @@ export const BANGER_DEFAULTS = Object.freeze({
   // A Sound Combo (combos.js) by its id, or null for the style's own sounds and channels.
   combo: null,
   form: {
-    script: false, intro: true, layers: 'off', grooveIntro: false, build: true, breakdown: true, secondDrop: true, doubleDrop: true, keyLift: 'whole',
-    hardStop: true, falseEnding: false, halfTime: false, outro: true,
+    template: 'club', sections: null, script: false, intro: true, layers: 'off', grooveIntro: false, build: true, breakdown: true, secondDrop: true, doubleDrop: true, keyLift: 'whole', keyApproach: 'mood', mood2: 'none', moodSwitch: 'breakdown',
+    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'half',
   },
   drums: {
     source: 'add', kit: 'style', crashes: true, fills: true, rolls: true, impact: true,
@@ -201,10 +275,11 @@ export const BANGER_DEFAULTS = Object.freeze({
   },
   parts: {
     bass: 'offbeat', sub: true, chords: 'saws', square: true, bell: true, octaveDouble: true,
-    bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', choir: true, counter: false, writeLead: 'auto', riffSound: 'keep', partSounds: 'roll',
+    riffBass: 'replace', bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', choir: true, counter: false, fillIn: 'off', fillEvery: '2', fillNotes: '2', writeLead: 'auto', riffSound: 'keep', partSounds: 'roll',
   },
+  spot: { intoDrop: 'style', outOf: 'style', quiet: 'none', intro: 'style', ending: 'style' },
   fx: {
-    riser: true, filterBuild: true, stutter: true, pump: true, delayThrows: true,
+    gate: 'style', riser: true, filterBuild: true, stutter: true, pump: true, delayThrows: true,
     lowpassIntro: false, bitcrushIntro: false, tapeStop: false,
   },
 });
@@ -222,6 +297,18 @@ export function styleDefaults(style = styleFor(BANGER_DEFAULTS.style)) {
   }
   d.style = style.id;
   d.bpm = style.bpm;
+  return d;
+}
+
+/**
+ * A style as it was before the variety (2 Oct 2026): its own sounds every take, its own
+ * arp figure throughout, no bass lift, the Club form — Big-Room House is ABSOLUTE ZERO's
+ * shape and sound again. Everything else is the style's defaults.
+ */
+export function classicDefaults(style = styleFor(BANGER_DEFAULTS.style)) {
+  const d = styleDefaults(style);
+  d.parts = { ...d.parts, partSounds: 'style', arpPattern: 'style', bassLift: false };
+  d.form = { ...d.form, template: 'club', sections: null };
   return d;
 }
 
@@ -282,7 +369,20 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     const given = raw?.[group.id];
     if (given == null) continue;
     if (!isPlain(given)) { issues.push(`${group.id} is not a set of switches`); continue; }
+    // A drawn form (the dialog's editor): checked as a whole, not a switch.
+    if (group.id === 'form' && given.sections != null) {
+      const { sections, issues: si } = normaliseSections(given.sections);
+      issues.push(...si);
+      const bars = (sections || []).reduce((n, x) => n + x.bars, 0);
+      if (sections && (bars < BANGER_LIMITS.minBars || bars > BANGER_LIMITS.maxBars)) {
+        issues.push(`a drawn form is ${BANGER_LIMITS.minBars}–${BANGER_LIMITS.maxBars} bars, not ${bars}`);
+      } else if (sections) out.form.sections = sections;
+    }
+    // A request that spells out its form but names no template was made before there were
+    // templates (2 Oct 2026): it is the Club form, so an old take re-makes as it was.
+    if (group.id === 'form' && given.template == null) out.form.template = 'club';
     for (const [k, given1] of Object.entries(given)) {
+      if (group.id === 'form' && k === 'sections') continue;
       const field = FIELD.get(`${group.id}.${k}`);
       // Build in Layers was an on/off switch for its first hour (2 Oct 2026): a banger made
       // then says true or false, and its takes must still re-make.
@@ -300,8 +400,34 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
   return { options: out, issues };
 }
 
+/**
+ * The settings that decide the song's SHAPE — which sections there are and how long.
+ * Modify This Take keeps them as the take has them (measured: each of these, and only
+ * these, moves a section boundary in some style and form), so a modified take still lines
+ * up bar for bar with the one it modifies. Everything else — mood, mode, tempo, parts,
+ * sounds, drums, FX, the key lift — changes what plays, not where.
+ */
+export const BANGER_STRUCTURE = Object.freeze({
+  top: ['style', 'length', 'customBars'],
+  form: ['template', 'sections', 'script', 'intro', 'layers', 'build', 'breakdown', 'secondDrop', 'doubleDrop', 'falseEnding', 'outro'],
+});
+
+/** `options` with the take's shape put back from `from`. */
+export function keepStructure(options, from) {
+  const out = structuredClone(options);
+  for (const k of BANGER_STRUCTURE.top) out[k] = structuredClone(from[k]);
+  out.form ||= {};
+  for (const k of BANGER_STRUCTURE.form) {
+    if (from.form?.[k] === undefined) delete out.form[k];
+    else out.form[k] = structuredClone(from.form[k]);
+  }
+  return out;
+}
+
 /** How many bars the request is for. */
 export function bangerBars(options) {
+  // A drawn form is as long as its sections.
+  if (options.form?.sections?.length) return options.form.sections.reduce((n, s) => n + s.bars, 0);
   if (options.length === 'custom') return options.customBars;
   return BANGER_LENGTHS.find((l) => l.id === options.length)?.bars ?? 64;
 }
@@ -353,5 +479,34 @@ export function surpriseBangerOptions(rng, base = BANGER_DEFAULTS) {
   out.parts.bass = moodBass(style, out.mood);
   if (rng.next() < 1 / 3) out.parts.bass = pickOf(['offbeat', 'rolling', ...BASS_FIGURES.map((f) => f.id)]);
   if (rng.next() < 1 / 3) out.parts.chords = pickOf(['saws', 'piano', 'pad']);
+  // Spot FX: each moment rolled one time in four (its own stream position after the rest).
+  const spotField = (k) => BANGER_GROUPS.find((g) => g.id === 'spot').fields.find((f) => f.key === k).options.map(([id]) => id);
+  for (const k of ['intoDrop', 'outOf', 'quiet', 'intro', 'ending']) if (rng.next() < 0.25) out.spot[k] = pickOf(spotField(k));
+  if (rng.next() < 0.25) out.fx.gate = pickOf(['style', 'pump', 'eighths', 'sixteenths', 'dotted', 'energy']);
   return out;
+}
+
+/**
+ * GO CRAZY: every switch that radically transforms the original, on at once — a fixed
+ * recipe, not a roll, so it is the same kind of song every time it is pressed. The tune
+ * goes Wild with a counter-melody and a third under it; the riff's own bass, drums and
+ * sounds are replaced; the extra percussion joins; the form lifts a major third, drops
+ * to half time and fakes its ending; the FX stutter, crush and tape-stop.
+ *
+ * Never the KEY or the TEMPO (Peter's call, 3 Oct): with everything else changed, those
+ * two are what keep the riff recognisable under it. Nor the style, mood, mode or length —
+ * it is applied on top of whatever the dialog already says.
+ */
+export function goCrazyBangerOptions(base = BANGER_DEFAULTS) {
+  const style = styleFor(base.style) || BANGER_STYLES[0];
+  const out = normaliseBangerOptions(base, style).options;
+  out.variation = 'wild';
+  Object.assign(out.parts, {
+    counter: true, thirdBelow: true, riffBass: 'replace', bassLift: true,
+    riffSound: 'random', partSounds: 'roll',
+  });
+  Object.assign(out.drums, { source: 'replace', congas: true, cowbell: true, tambourine: true });
+  Object.assign(out.form, { keyLift: 'third', keyApproach: 'walkup', halfTime: true, falseEnding: true });
+  Object.assign(out.fx, { stutter: true, bitcrushIntro: true, tapeStop: true });
+  return normaliseBangerOptions(out, style).options;
 }

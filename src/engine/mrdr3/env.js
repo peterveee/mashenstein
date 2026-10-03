@@ -114,22 +114,6 @@ export function mrdr3GateAdsrEvents(t, end, peak, e, sustaining, freq) {
     return 0.5 * (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, u))));
   };
 
-  var levelAt = function (at) {
-    var dt = Math.max(0, at - t);
-    if (dt < attack) {
-      var u = dt / attack;
-      if (attackLin) return level * cosAt(u);
-      if (dt < minAttack) return liftLevel * cosAt(dt / minAttack);
-      return expAt(u);
-    }
-    if (decay > 0 && dt < attack + decay) {
-      var v = (dt - attack) / decay;
-      if (e.curve === 'lin') return level + (held - level) * v;
-      return level * Math.pow(held / level, v);
-    }
-    return held;
-  };
-
   var events = [];
   var i;
   // From actual zero, not 1e-4: the param starts where silence is.
@@ -156,14 +140,34 @@ export function mrdr3GateAdsrEvents(t, end, peak, e, sustaining, freq) {
   }
 
   // Note-off may arrive before the attack or decay automation has reached its endpoint.
-  // Cancel those future events and pin the exact level at the gate edge before starting
-  // Release. Without this, a short note either releases from silence or leaves a future
-  // decay ramp fighting the release ramp.
+  // The ramp in flight at the gate edge is TRUNCATED there — same kind, ending at the
+  // value it had actually reached — and nothing after it is written. It is never
+  // cancelled: a ramp event shapes the interval BEFORE its own time, so deleting the
+  // decay's endpoint left the note holding its peak for its whole length and then
+  // stepping down to the decayed level in one sample at note-off. On a sine that step is
+  // a click on every note shorter than its decay — the vibraphone, the bells, anything
+  // with sustain 0. A linear ramp cut between its endpoints is that same line, and an
+  // exponential one is that same exponential, so the sound before the gate is unchanged.
   var offAt = Math.max(t, end);
+  var kept = [];
+  var at = events[0].v;
+  for (i = 0; i < events.length; i++) {
+    var ev = events[i];
+    if (ev.t <= offAt) { kept.push(ev); at = ev.v; continue; }
+    var prev = kept[kept.length - 1];
+    if (ev.k === 'lin' || ev.k === 'exp') {
+      var u = (offAt - prev.t) / (ev.t - prev.t);
+      at = ev.k === 'exp' && prev.v > 0 && ev.v > 0
+        ? prev.v * Math.pow(ev.v / prev.v, u)
+        : prev.v + (ev.v - prev.v) * u;
+      if (offAt > prev.t) kept.push({ k: ev.k, v: at, t: offAt });
+    }
+    break;
+  }
+  events = kept;
   // Floored: the attack starts from a true zero, and an exponential release ramp out of
   // exactly zero is not a ramp — it is a no-op that ends in a step.
-  var current = Math.max(1e-4, levelAt(offAt));
-  events.push({ k: 'cancel', t: offAt });
+  var current = Math.max(1e-4, at);
   events.push({ k: 'set', v: current, t: offAt });
   var off = offAt + release;
   if (release > 0) {

@@ -131,8 +131,11 @@ keyboard.enter();
 function down() {
   Input.press('down'); keyboard.update(1 / 60); Input.release('down'); Input.endFrame();
 }
-for (let i = 0; i < 14; i++) down();
-assert(keyboard.idx === 14 && keyboard.listStart === 9,
+// The list runs on past the shipped songs: MAKE A BANGER and any kept bangers
+// (tests/jukebox-banger.js), then the fixed BACK.
+const rowCount = keyboard.tracks.length;
+for (let i = 0; i < rowCount; i++) down();
+assert(keyboard.idx === rowCount && keyboard.listStart === rowCount - 5,
   'keyboard navigation reaches fixed BACK while scrolling to the final page');
 Input.press('confirm'); keyboard.update(1 / 60); Input.release('confirm'); Input.endFrame();
 assert(keyboardReturned === 1, 'keyboard confirmation activates fixed BACK');

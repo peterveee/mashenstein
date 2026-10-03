@@ -13,10 +13,46 @@ export const HIGHPASS = (frequency, Q = 0.9) => ({ id: 'filter', params: { type:
 export const SWEEP = (f0, f1, type = 'lowpass', Q = 0.9) => ({ id: 'filter', params: { type, frequency: f0, Q, sweep: 1, sweepTo: f1 } });
 // The desk's Tape Stop preset (src/data/effect-presets.js): the mix winding down over two bars.
 export const TAPE_STOP = { id: 'stutter', params: { slice: 0, retrigger: 0, fade: 0, stop: 8 } };
+/**
+ * A short tape stop on a transition (Spot FX → Tape Stop, 3 Oct 2026): the mix winding
+ * down over the last `beats` of a bar and standing still on the bar line, so the next
+ * section starts from nothing. One beat; two from 160 BPM, where one is over before the
+ * ear hears a tape slowing.
+ */
+export const tapeStopBeats = (bpm) => (bpm >= 160 ? 2 : 1);
+export const TRANSITION_TAPE_STOP = (beats) => ({ id: 'stutter', params: { slice: 0, retrigger: 0, fade: 0, stop: beats } });
 export const DELAY_THROW = { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.6, wet: 0.5 } };
 // A gentle eighth-note ping-pong: the space a scripted section opens up (Kraftwerk's Isolation).
 export const PING_PONG = { id: 'pingpong', params: { sync: 1, division: 0.5, feedback: 0.35, wet: 0.3 } };
 export const LOWPASS = (frequency, Q = 0.9) => ({ id: 'filter', params: { type: 'lowpass', frequency, Q } });
+
+export const REVERB_WASH = { id: 'reverb', params: { decay: 4.5, preDelay: 0.02, low: 0, mid: 0, high: -3, width: 1, wet: 0.55 } };
+export const BAND_PASS = { id: 'filter', params: { type: 'bandpass', frequency: 1400, Q: 1.3 } };
+export const ECHO_OUT = { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.65, wet: 0.55 } };
+
+/**
+ * The chords' rhythm gate, by name (Chord Gate). Division in beats: 1 a quarter (the
+ * pump), 0.5 an eighth, 0.25 a sixteenth (the trance gate), 0.75 a dotted eighth.
+ */
+export const GATES = Object.freeze({
+  pump: { id: 'rhythmgate', params: { division: 1, gateLength: 1, attack: 0.16, decay: 0.02, depth: 0.65 } },
+  eighths: { id: 'rhythmgate', params: { division: 0.5, gateLength: 0.6, attack: 0.004, decay: 0.06, depth: 0.85 } },
+  sixteenths: { id: 'rhythmgate', params: { division: 0.25, gateLength: 0.55, attack: 0.002, decay: 0.04, depth: 0.9 } },
+  dotted: { id: 'rhythmgate', params: { division: 0.75, gateLength: 0.6, attack: 0.004, decay: 0.05, depth: 0.85 } },
+});
+/** The gate a section of `energy` gets under Chord Gate = By Energy. */
+export const gateForEnergy = (energy) => (energy >= 0.85 ? 'sixteenths' : energy >= 0.6 ? 'eighths' : 'pump');
+/**
+ * The gate on the chords' strip, or null: the style's own (Style), a named one, none (Off,
+ * or the Sidechain Pump switch off) — or none on the strip under By Energy, whose gates
+ * are written section by section instead (buildFx).
+ */
+export function stripGate(options, style) {
+  if (!options.fx.pump) return null;
+  const g = options.fx.gate || 'style';
+  if (g === 'style') return style.pump || null;
+  return GATES[g] || null;
+}
 
 /** Sections added to a lane, alongside whatever it already has. */
 function addSections(auto, key, sections) {
@@ -30,13 +66,73 @@ const section = (from, to, chain) => ({ from, to, chain: Array.isArray(chain) ? 
  * The automation for a song: `events` from the section builders, `laneOf` mapping
  * roles to lanes, `total` bars. Returns the automation object, or null.
  */
-export function buildFx({ options, events, laneOf, total, lanesSounding }) {
+export function buildFx({ options, events, laneOf, total, lanesSounding, form = [], bpm = 120 }) {
   let auto = null;
   const lane = (role) => laneOf.get(role) || null;
   const fx = options.fx;
+  const spot = options.spot || {};
+  const own = (k) => (spot[k] || 'style') === 'style';
+  const bar = (b, step = 0) => posOf(b, step);
+  const master = (from, to, chain) => { auto = addSections(auto, MASTER_KEY, [section(from, to, chain)]); };
+  // The last beat (or two) of bar `b`, winding down into the bar line.
+  const tapeStopInto = (b) => {
+    const beats = tapeStopBeats(bpm);
+    master(bar(b, 16 - 4 * beats), bar(b + 1), TRANSITION_TAPE_STOP(beats));
+  };
+
+  // ---- Spot FX by purpose (More Options → Spot FX). `Style` is the switches' own moves.
+  // Into a drop or a chorus: the last bar before every section that carries the hook.
+  if (!own('intoDrop') && spot.intoDrop !== 'none') {
+    form.forEach((s, i) => {
+      const prev = form[i - 1];
+      if (!prev || !(s.hook || ['drop', 'drop2', 'drop3', 'reprise'].includes(s.role)) || prev.role === s.role) return;
+      const b = prev.to;
+      if (spot.intoDrop === 'stutter') {
+        master(bar(b, 12), bar(b, 14), [STUTTER(0.25, -1), HIGHPASS(500)]);
+        master(bar(b, 14), bar(b + 1), [STUTTER(0.125, -1), HIGHPASS(1200)]);
+      } else if (spot.intoDrop === 'repeat') {
+        master(bar(b, 8), bar(b, 12), [STUTTER(0.5, 0)]);
+        master(bar(b, 12), bar(b + 1), [STUTTER(0.25, -1)]);
+      } else if (spot.intoDrop === 'sweep') master(bar(b), bar(b + 1), SWEEP(150, 6000, 'highpass', 1.2));
+      else if (spot.intoDrop === 'wash') master(bar(b, 8), bar(b + 1), REVERB_WASH);
+      else if (spot.intoDrop === 'tapeStop') tapeStopInto(b);
+    });
+  }
+  // Out of a big section into a quieter one: the last bar before it.
+  if (!own('outOf') && spot.outOf !== 'none') {
+    form.forEach((s, i) => {
+      const next = form[i + 1];
+      if (!next || !((next.energy ?? 0.5) < (s.energy ?? 0.5) - 0.1 || ['breakdown', 'false', 'middle8'].includes(next.role))) return;
+      const b = s.to;
+      if (spot.outOf === 'throw' && lane('hook')) auto = addSections(auto, lane('hook'), [section(bar(b, 8), Math.min(bar(total + 1), bar(b + 1, 4)), DELAY_THROW)]);
+      else if (spot.outOf === 'wash') master(bar(b, 8), bar(b + 1), REVERB_WASH);
+      else if (spot.outOf === 'lowpass') master(bar(b), bar(b + 1), SWEEP(16000, 400));
+      else if (spot.outOf === 'tapeStop') tapeStopInto(b);
+    });
+  }
+  // The quiet sections themselves: breakdowns and middle 8s.
+  if (spot.quiet && spot.quiet !== 'none') {
+    for (const s of form.filter((x) => x.role === 'breakdown' || x.role === 'middle8')) {
+      const a = bar(s.from); const z = bar(s.to + 1);
+      if (spot.quiet === 'underwater') master(a, z, SWEEP(700, 16000));
+      else if (spot.quiet === 'echo') { for (const role of ['hook', 'piano']) if (lane(role)) auto = addSections(auto, lane(role), [section(a, z, PING_PONG)]); }
+      else if (spot.quiet === 'reverb') { for (const role of ['hook', 'piano', 'pad', 'choir']) if (lane(role)) auto = addSections(auto, lane(role), [section(a, z, REVERB_WASH)]); }
+    }
+  }
+  // The intro, its own way.
+  if (!own('intro') && events.intro && spot.intro !== 'none') {
+    const chain = { lowpass: SWEEP(500, 16000), bitcrush: CRUSH(6, 4), radio: BAND_PASS }[spot.intro];
+    if (chain) master(bar(events.intro.from), bar(events.intro.to + 1), chain);
+  }
+  // The ending, its own way (Tape Stop also stops the song looping — index.js).
+  if (!own('ending') && spot.ending !== 'none' && total >= 4) {
+    if (spot.ending === 'tapeStop') master(bar(total - 1), bar(total + 1), TAPE_STOP);
+    else if (spot.ending === 'echo') master(bar(total - 1), bar(total + 1), ECHO_OUT);
+    else if (spot.ending === 'fade') for (const key of new Set(laneOf.values())) auto = setLaneFade(auto, key, bar(total - 3), bar(total + 1), 0, -40, 'even');
+  }
 
   // The intro, through a wall and/or crushed — one master section over it.
-  if (events.intro && (fx.lowpassIntro || fx.bitcrushIntro)) {
+  if (own('intro') && events.intro && (fx.lowpassIntro || fx.bitcrushIntro)) {
     const chain = [];
     if (fx.bitcrushIntro) chain.push(CRUSH(6, 4));
     if (fx.lowpassIntro) chain.push(SWEEP(500, 16000));
@@ -60,7 +156,7 @@ export function buildFx({ options, events, laneOf, total, lanesSounding }) {
     }
     // The last beat: the whole mix repeating in sixteenths, then thirty-seconds, a
     // high-pass climbing under it.
-    if (fx.stutter && build.intoDrop) {
+    if (own('intoDrop') && fx.stutter && build.intoDrop) {
       const s = posOf(build.to, 12);
       auto = addSections(auto, MASTER_KEY, [
         section(s, s + 2, [STUTTER(0.25, -1), HIGHPASS(500)]),
@@ -94,7 +190,7 @@ export function buildFx({ options, events, laneOf, total, lanesSounding }) {
   }
 
   // Throws: an echo off the hook's last note before a breakdown or a stop.
-  if (fx.delayThrows && lane('hook')) {
+  if (own('outOf') && fx.delayThrows && lane('hook')) {
     for (const t of events.throws) {
       const a = posOf(t.bar, t.step);
       const b = Math.min(posOf(total + 1, 0), a + 4);
@@ -130,8 +226,39 @@ export function buildFx({ options, events, laneOf, total, lanesSounding }) {
     }
   }
 
+  // A section sung under the chorus (a verse, a pre-chorus, a middle 8 on the hook's own
+  // lane) a little under it — the chorus is the loudest the tune gets.
+  for (const t of events.trims || []) {
+    const key = lane(t.role);
+    if (key) auto = setLaneFade(auto, key, posOf(t.from, 0), posOf(t.to + 1, 0), t.db, t.db, 'even');
+  }
+  // A chorus quoted in the intro, heard through a wall that opens across it — unless Spot
+  // FX names the intro's effect itself: a choice made there owns the intro (3 Oct 2026; it
+  // used to land under this sweep and never be heard).
+  const introOwned = !own('intro') && events.intro;
+  for (const sw of events.sweeps || []) {
+    if (introOwned && sw.from <= events.intro.to && sw.to >= events.intro.from) continue;
+    auto = addSections(auto, MASTER_KEY, [section(posOf(sw.from, 0), posOf(sw.to + 1, 0), SWEEP(400, 16000))]);
+  }
+
+  // Chord Gate = By Energy: the chords gated section by section, slower where the song is
+  // quiet and faster where it hits — a pump in a verse, eighths in a build, sixteenths in a
+  // drop. Last, so a gate joins whatever a section already has (a build's sweep) rather
+  // than being replaced by it.
+  if (fx.pump && fx.gate === 'energy') {
+    for (const role of ['saws', ...(options.parts.chords === 'pad' ? ['pad'] : [])]) {
+      const key = lane(role);
+      if (!key) continue;
+      for (const s of form) {
+        const a = bar(s.from); const z = bar(s.to + 1);
+        const there = laneFx(auto, key).find((x) => x.from === a && x.to === z);
+        auto = addSections(auto, key, [section(a, z, [...(there?.chain || []), GATES[gateForEnergy(s.energy ?? 0.6)]])]);
+      }
+    }
+  }
+
   // The tape stop: the last two bars winding down, the whole mix.
-  if (fx.tapeStop && total >= 2) {
+  if (own('ending') && fx.tapeStop && total >= 2) {
     auto = addSections(auto, MASTER_KEY, [section(posOf(total - 1, 0), posOf(total + 1, 0), TAPE_STOP)]);
   }
   return auto;

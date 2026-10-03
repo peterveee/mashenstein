@@ -25,6 +25,7 @@ import {
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
 import { PUNT, HEAVY_PUNT, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
+import { HERO_DANCE_CANDIDATES, drawHeroDanceCard } from '../src/dev/hero-dance-candidates.js';
 import {
   PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite,
   PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
@@ -8343,6 +8344,35 @@ function cryptStyleTiles(grid, tag, cand) {
         ctx.fillRect(x, H - 7, 14, 3);
       }
     }, { animated: true });
+  }
+}
+
+// Eight heroes, three review-only choreographies each, on one beat clock.
+{
+  const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
+    'OPEN — three options per hero. Each card pairs a close-up with a 28px lab-size figure. '
+    + 'All moves share a beat clock; the four lights count the bar. Tempo is a silent preview. '
+    + 'Use ANIMATE to pause or SLOW to inspect the joints. Pick A, B or C for each hero before these enter Banger Lab.',
+    '2026-10-03');
+  let bpm = 128;
+  const controls = document.createElement('label');
+  controls.style.cssText = 'display:flex;align-items:center;gap:12px;margin:16px 0;color:#7df3d1';
+  const tempo = document.createElement('input');
+  tempo.type = 'range'; tempo.min = '70'; tempo.max = '180'; tempo.value = String(bpm);
+  tempo.setAttribute('aria-label', 'Dance preview tempo');
+  const readout = document.createElement('span');
+  readout.textContent = `${bpm} BPM`;
+  tempo.addEventListener('input', () => { bpm = Number(tempo.value); readout.textContent = `${bpm} BPM`; });
+  controls.append('PREVIEW TEMPO', tempo, readout); s.append(controls);
+  for (const hero of Object.values(HERO_BY_ID)) {
+    const title = document.createElement('h3'); title.textContent = hero.short;
+    const grid = document.createElement('div'); grid.className = 'grid';
+    s.append(title, grid);
+    for (const candidate of HERO_DANCE_CANDIDATES.filter(c => c.hero === hero.id)) {
+      tile(grid, `${hero.short} ${candidate.letter} — ${candidate.name}`, candidate.description,
+        240, 176, (ctx, t) => drawHeroDanceCard(ctx, candidate, t * bpm / 60),
+        { animated: true, hires: 3, displayScale: 1.5 });
+    }
   }
 }
 

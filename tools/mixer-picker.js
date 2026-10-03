@@ -12,6 +12,8 @@
 // `options` is [{ value, label }]. `value()` is read on every paint, so the caller keeps
 // its own state and this never holds a stale copy of it.
 
+import { scrollMovesField } from './lib/custom-select.js';
+
 export const customPicker = ({ label, title, idPrefix, options, value, chooseValue }) => {
   const field = document.createElement('button');
   field.type = 'button';
@@ -77,7 +79,10 @@ export const customPicker = ({ label, title, idPrefix, options, value, chooseVal
   const onDocDown = (ev) => {
     if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
   };
-  const onDismiss = () => closeMenu();
+  const onDismiss = (ev) => {
+    if (ev?.type === 'scroll' && !scrollMovesField(ev, field, menu)) return;
+    closeMenu();
+  };
   const choose = (next) => {
     chooseValue(next);
     paint();

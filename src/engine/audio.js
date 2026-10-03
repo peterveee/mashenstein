@@ -1041,6 +1041,11 @@ class AudioSys {
     // on — so each is written once, and a lane whose line was removed is walked home.
     this._autoWindow = null;
     this._autoLanes = new Set();
+    // The Banger Lab's club plays the player's live effects on the master's section
+    // switch (src/game/banger/club-fx.js). Until this audio time the song's own master
+    // sections stand aside — the sequencer re-selects them every sixteenth, which would
+    // switch a held effect off the moment it went in. -Infinity: nothing live.
+    this.masterLiveUntil = -Infinity;
     this._fxLanes = new Set();
     // Preset-bench notes get their own gates so changing an audition never cuts a
     // song lane. They belong to this context just like the song gates do.
@@ -5450,6 +5455,8 @@ class AudioSys {
     const fallback = (key, pos) => (key.startsWith('__') ? []
       : plan[Math.floor(pos / 16 + 1e-9) % plan.length]?.inlineFx?.[key] || []);
     for (const key of new Set([...lanes, ...this._fxLanes])) {
+      // The club's live effect has the master until it ends (see masterLiveUntil).
+      if (key === '__master' && t0 < this.masterLiveUntil) continue;
       const curve = lanes.has(key) ? laneCurve(auto[key]) : null;
       // `since` and `until` are when the section playing at `pos` began and ends, at this
       // tempo: where a Stutter's TAPE STOP has to stand still, and the two ends a Filter's

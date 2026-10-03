@@ -3264,6 +3264,18 @@ assert(panelLabels.includes('Make a Banger…') && /actionSection\('New Song Fro
   && /#askbox\.wide\s*\{/.test(shell)
   && !/data-native/.test(readFileSync(new URL('../tools/mixer-banger.js', import.meta.url), 'utf8')),
 'Make a Banger… is on the bars panel and in the drawer, its takes on a banger, its dialog wide and custom');
+// Its Form row: the template buttons and the strip of sections, drawn by its own module,
+// with the desk's dropdowns rather than the OS's.
+{
+  const banger = readFileSync(new URL('../tools/mixer-banger.js', import.meta.url), 'utf8');
+  const formSrc = readFileSync(new URL('../tools/mixer-banger-form.js', import.meta.url), 'utf8');
+  assert(/id="bgform"/.test(banger) && /createFormEditor\(/.test(banger) && /data-key="template"/.test(banger)
+    && /id="bgstrip"/.test(formSrc) && /id="bgtemplate"/.test(formSrc) && !/data-native/.test(formSrc)
+    && /#askbody \.bgstrip\s*\{/.test(shell) && /#askbody \.bgblock\s*\{/.test(shell)
+    && /id="bgdefaults" title="[^"]{20,}"/.test(banger) && /id="bgclassic" title="[^"]{20,}"/.test(banger)
+    && /id="bgmodeseg"/.test(banger) && /id="bgsimplelen"/.test(banger) && /#askbody \.bgmode-simple \.bgfull/.test(shell),
+  'Make a Banger… draws the song\'s form — template buttons and a strip of sections to edit — with desk dropdowns');
+}
 assert(!/label: '(?:Clear|Reset|Reset track|Delete)'/.test(regionFn)
   && panelLabels.includes('Erase Notes') && panelLabels.includes('Reset Edits')
   && panelLabels.includes('Delete Track') && panelLabels.includes('Delete Bars')
@@ -4293,6 +4305,37 @@ assert(/field\.onkeydown = \(ev\) =>/.test(piano)
   // And it flips up when there is no room below, rather than off the bottom of the window.
   && /const flip = below < height \+ 8 && r\.top > below/.test(piano),
   'the picker carries the keyboard, dismissal and flip-up a native select gave for free');
+{
+  // A SCROLL ELSEWHERE LEAVES AN OPEN LIST ALONE. The scroll listener is on the window in
+  // the capture phase, so it hears the piano roll following the playhead too — and that
+  // shut every list open in a dialog the moment the song moved. Only a scroll of
+  // something holding the field can carry it away.
+  const { scrollMovesField } = await import('../tools/lib/custom-select.js');
+  const hadNode = 'Node' in globalThis;
+  const savedNode = globalThis.Node;
+  globalThis.Node = class {};
+  const node = (kids = []) => Object.assign(new globalThis.Node(), {
+    contains: (n) => kids.includes(n),
+  });
+  const field = node(); const menu = node(); const option = node();
+  menu.contains = (n) => n === menu || n === option;
+  const dialogBody = node([field]);
+  const pianoRoll = node();
+  const page = node([field]);
+  const verdicts = [
+    scrollMovesField({ target: pianoRoll }, field, menu),
+    scrollMovesField({ target: option }, field, menu),
+    scrollMovesField({ target: dialogBody }, field, menu),
+    scrollMovesField({ target: page }, field, menu),
+  ];
+  if (hadNode) globalThis.Node = savedNode; else delete globalThis.Node;
+  assert(verdicts.join() === 'false,false,true,true',
+    `a dropdown closes only when the scroll moves its field (${verdicts.join()})`);
+  const picker = readFileSync(new URL('../tools/mixer-picker.js', import.meta.url), 'utf8');
+  const guards = (src) => (src.match(/ev\?\.type === 'scroll' && !scrollMovesField\(ev, field, menu\)/g) || []).length;
+  assert(guards(customSelect) === 1 && guards(picker) === 1 && guards(piano) === 2,
+    'every desk dropdown asks whether a scroll moved it before closing');
+}
 assert(/let followEnabled = true/.test(barGrid)
   && /setFollow\(enabled\)/.test(barGrid)
   && /followEnabled: \(\) => followEnabled/.test(barGrid)

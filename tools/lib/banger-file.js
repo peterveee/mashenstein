@@ -194,5 +194,22 @@ export function moveTake(root, id, meta, { direction, generated = null, title })
   return target;
 }
 
+/**
+ * Modify This Take: `generated` (the take merged with its new settings, made in the page —
+ * tools/lib/banger/modify.js) written over the CURRENT take, in place. The version it
+ * replaces is kept in BANGER_TAKE_DIR under a name that is not a take's, so Previous and
+ * Next never land on it but nothing is lost. Returns the take number, unchanged.
+ */
+export function modifyTake(root, id, meta, { generated, title }) {
+  if (!generated) throw new Error('modify needs the modified take');
+  const state = takesState(root, id, meta);
+  const dir = join(root, BANGER_TAKE_DIR);
+  mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  copyFileSync(bangerPath(root, id), join(dir, `banger-${id}-take-${String(state.take).padStart(3, '0')}-before-modify-${stamp}.js`));
+  writeBangerSong(root, { id, title, generated, take: state.take, made: meta?.made });
+  return state.take;
+}
+
 /** The raw text of a kept take (for the tests). */
 export const readTake = (root, id, n) => readFileSync(join(root, BANGER_TAKE_DIR, takeFileName(id, n)), 'utf8');

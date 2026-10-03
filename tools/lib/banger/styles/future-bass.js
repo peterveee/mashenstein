@@ -12,6 +12,9 @@ import { BIG_ROOM } from './big-room.js';
 export const FUTURE_BASS = Object.freeze({
   id: 'future-bass',
   label: 'Future Bass',
+  // What the Style list says beside it, and its tooltip.
+  note: '140 half time · 808, wobble, stuttered chords',
+  title: '140 BPM felt at half time: hat rolls, an 808 under a talking wobble, chords stuttered in eighths, a full-time second drop. Euphoric by default',
   bpm: 140,
   tempoRange: [138, 150],
   // The half-time groove IS the style, and a riff's own backbeat on two and four would

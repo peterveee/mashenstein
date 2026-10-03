@@ -8,7 +8,7 @@
 // faster, every drop lands with a crash and an impact. Then the file: a banger round-trips
 // through its own source, and a take can be left and come back byte for byte.
 import {
-  copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+  copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,15 +22,18 @@ import { VOICES, baseLane, isLayer, PERCUSSION_LANES, seamFor } from '../src/dat
 import { LANE_KEYS } from '../src/engine/lanes.js';
 import { Rng } from '../src/engine/rng.js';
 import {
-  generateBanger, extractRiff, validateRiff, normaliseBangerOptions, surpriseBangerOptions,
-  BANGER_DEFAULTS, BANGER_MOODS, BANGER_VARIATIONS, BANGER_GROUPS, BANGER_MODES, MOOD_MODES, riffSummary, anotherTake,
+  generateBanger, extractRiff, validateRiff, normaliseBangerOptions, surpriseBangerOptions, goCrazyBangerOptions,
+  BANGER_DEFAULTS, BANGER_MOODS, BANGER_VARIATIONS, BANGER_GROUPS, BANGER_MODES, MOOD_MODES, riffSummary, anotherTake, sourceRiff,
 } from '../tools/lib/banger/index.js';
-import { L, P, midi, augment, cut } from '../tools/lib/banger/theory.js';
-import { planOps, OPS_BY_VARIATION } from '../tools/lib/banger/variation.js';
+import { L, P, midi, augment, cut, parseChord } from '../tools/lib/banger/theory.js';
+import { planOps, phrasePlan, OPS_BY_VARIATION } from '../tools/lib/banger/variation.js';
+import { SHARED_MOODS, moodLifts } from '../tools/lib/banger/moods.js';
+import { DROP_ROLES } from '../tools/lib/banger/form.js';
+import { approachChords } from '../tools/lib/banger/sections.js';
 import { sectionIds } from '../tools/lib/banger/fx.js';
 import { laneFx, laneCurve } from '../src/data/automation.js';
 import {
-  bangerSource, writeBangerSong, moveTake, takesState, listTakes, readTake, deleteTakes,
+  bangerSource, writeBangerSong, moveTake, modifyTake, takesState, listTakes, readTake, deleteTakes,
   tailHashOf, bangerIssues, moveBangersOutOfScratch,
 } from '../tools/lib/banger-file.js';
 import { writeSongFile } from '../tools/lib/song-file.js';
@@ -141,6 +144,25 @@ try {
         const ops = planOps(C, v);
         check(ops.every((op) => OPS_BY_VARIATION[v].includes(op)), `cell ${C} at ${v} uses only ops its level allows`);
       }
+    }
+    {
+      // WILD IS NEVER A ONE-OFF: every bar that leaves the hook comes back — again in the
+      // same phrase, or in the same bar of the other plan, so every phrase plays it.
+      const oneOffs = [];
+      for (const C of [1, 2, 4, 8]) {
+        const A = phrasePlan(C, 'wild', 0); const B = phrasePlan(C, 'wild', 1);
+        for (const [plan, other] of [[A, B], [B, A]]) {
+          plan.forEach(([src, op], i) => {
+            if (op === 'as') return;
+            const again = plan.some(([s2, o2], j) => j !== i && s2 === src && o2 === op);
+            const sameBar = other[i][0] === src && other[i][1] === op;
+            if (!again && !sameBar) oneOffs.push(`C${C} bar ${i + 1} ${op}`);
+          });
+        }
+        check(A.some((step, i) => step.join() !== B[i].join()), `cell ${C} at wild: plans A and B still differ`);
+      }
+      // Only the one bar that tells A from B may be heard once.
+      assert(oneOffs.length <= 8, `every Wild departure comes back — heard once only where A and B differ: ${oneOffs.join(', ') || 'none'}`);
     }
     assert(!['invert', 'mirror', 'retrograde'].some((op) => Object.values(OPS_BY_VARIATION).flat().includes(op)),
       'no level may invert, mirror or retrograde the riff');
@@ -328,6 +350,97 @@ try {
     assert(compared > 20 && inverted === 0, `no hook bar is ever the riff inverted (${compared} compared)`);
   }
   {
+    // A SECOND MOOD: its chords from where Switch At says, the first mood's everywhere
+    // before; the sounds the first mood's throughout.
+    const open = riffOf([{ key: 'lead', label: 'Lead', kind: 'melodic', role: 'hook', meanPitch: 69, bars: ['A4:16 . . . . . . . . . . . . . . .'] }], 1);
+    const one = generateBanger({ riff: open, options: { mood: 'moody', form: { keyLift: 'none' } }, seed: 3 });
+    const secs = (out, f) => JSON.stringify(out.bank.sections.slice((f.from - 1) / 2, f.to / 2));
+    const changed = (out) => out.form.filter((f, i) => secs(out, f) !== secs(one, one.form[i])).map((f) => f.role);
+    const make = (moodSwitch, mood2 = 'anthemic') => generateBanger({ riff: open, options: { mood: 'moody', form: { keyLift: 'none', mood2, moodSwitch } }, seed: 3 });
+    const brk = make('breakdown');
+    const at = brk.form.findIndex((f) => f.role === 'breakdown');
+    assert(changed(brk).length && brk.form.slice(0, at).every((f) => !changed(brk).includes(f.role)),
+      `After the Break: nothing before the breakdown changes, the rest does (${changed(brk)})`);
+    const fin = make('final');
+    const lastDrop = fin.form.reduce((r, f) => (DROP_ROLES.has(f.role) ? f.role : r), null);
+    assert(changed(fin).includes(lastDrop) && !changed(fin).includes('drop'), `Final Chorus: only the last drop on (${changed(fin)})`);
+    const ch = make('choruses');
+    assert(changed(ch).length && changed(ch).every((r) => DROP_ROLES.has(r)), `Choruses Only: the drops change, nothing else (${changed(ch)})`);
+    assert([brk, fin, ch].every((o) => JSON.stringify(o.mix.voice) === JSON.stringify(one.mix.voice)), 'the sounds stay the first mood\'s');
+    assert(!changed(make('breakdown', 'none')).length && !changed(make('breakdown', 'moody')).length, 'no second mood, or the same one, changes nothing');
+  }
+  {
+    // FILL IN (embellish.js): a simple riff embellished, the same way every time it comes
+    // round; a busy riff left alone.
+    const plain = riffOf([{ key: 'lead', label: 'Lead', kind: 'melodic', role: 'hook', meanPitch: 64,
+      bars: ['C4:4 . . . E4:4 . . . G4:4 . . . C5:4 . . .', 'A4:2 . . . G4:2 . . . E4:4 . . . D4:4 . . .'] }], 2);
+    const hookBars = (out) => {
+      const lane = laneByLabel(out, /HOOK$/);
+      return Array.from({ length: out.summary.bars }, (_, b) => JSON.stringify(barPart(out, lane, b + 1)));
+    };
+    const count = (out) => hookBars(out).reduce((n, j) => n + onsets(JSON.parse(j)).length, 0);
+    const base = generateBanger({ riff: plain, options: { variation: 'faithful', key: 'keep', mode: 'keep' }, seed: 9 });
+    const off = generateBanger({ riff: plain, options: { variation: 'faithful', key: 'keep', mode: 'keep', parts: { fillIn: 'off' } }, seed: 9 });
+    assert(JSON.stringify(hookBars(base)) === JSON.stringify(hookBars(off)), 'Fill In is off by default');
+    for (const how of ['repeat', 'passing', 'neighbour']) {
+      const a = generateBanger({ riff: plain, options: { variation: 'faithful', key: 'keep', mode: 'keep', parts: { fillIn: how } }, seed: 9 });
+      const b = generateBanger({ riff: plain, options: { variation: 'faithful', key: 'keep', mode: 'keep', parts: { fillIn: how } }, seed: 9 });
+      check(count(a) > count(base), `${how}: the hook has more notes (${count(a)} against ${count(base)})`);
+      check(JSON.stringify(hookBars(a)) === JSON.stringify(hookBars(b)), `${how}: the same take fills in the same way`);
+    }
+    const opts = (parts) => ({ variation: 'faithful', key: 'keep', mode: 'keep', parts: { fillIn: 'repeat', ...parts } });
+    const hookAt = (out, bar) => onsets(barPart(out, laneByLabel(out, /HOOK$/), bar)).map(([i]) => i);
+    const every = generateBanger({ riff: plain, options: opts({ fillEvery: '1', fillNotes: 'all' }), seed: 9 });
+    const drop = every.form.find((f) => f.hook) || every.form.find((f) => f.role === 'drop');
+    assert(hookAt(every, drop.from).join() === '0,2,4,6,8,10,12,14',
+      `Repeat on every pass, every gap: a bar of quarter notes plays in eighths (${hookAt(every, drop.from)})`);
+    const capped = generateBanger({ riff: plain, options: opts({ fillEvery: '1', fillNotes: '2' }), seed: 9 });
+    assert(hookAt(capped, drop.from).join() === '0,2,4,6,8,12', `Fill Notes: Two fills the first two gaps and leaves the rest (${hookAt(capped, drop.from)})`);
+    // Every 2nd: the two-bar riff is plain on its first pass (bars 1–2 of the drop), filled
+    // on its second (bars 3–4), plain again on its third.
+    const second = generateBanger({ riff: plain, options: opts({ fillEvery: '2', fillNotes: 'all' }), seed: 9 });
+    const n = (b) => hookAt(second, drop.from + b).length;
+    assert(n(0) === 4 && n(2) === 8 && n(4) === 4, `Fill Every 2nd: plain, filled, plain (${[0, 2, 4].map(n)} notes)`);
+    const fourth = generateBanger({ riff: plain, options: opts({ fillEvery: '4', fillNotes: 'all' }), seed: 9 });
+    const m = (b) => hookAt(fourth, drop.from + b).length;
+    assert(m(0) === 4 && m(2) === 4 && m(4) === 4 && m(6) === 8, `Fill Every 4th: only the fourth pass is filled (${[0, 2, 4, 6].map(m)} notes)`);
+    const passing = generateBanger({ riff: plain, options: opts({ fillIn: 'passing', fillEvery: '1', fillNotes: 'all' }), seed: 9 });
+    const scalePcs = [0, 2, 4, 5, 7, 9, 11];
+    const pcsIn = onsets(barPart(passing, laneByLabel(passing, /HOOK$/), drop.from)).map(([, v]) => semis(v) % 12);
+    assert(pcsIn.length > 4 && pcsIn.every((pc) => scalePcs.includes(pc)), `the notes Fill In adds are in the key (${pcsIn})`);
+    const busy = riffOf([{ key: 'lead', label: 'Lead', kind: 'melodic', role: 'hook', meanPitch: 64,
+      bars: ['C4:1 D4:1 E4:1 F4:1 G4:1 F4:1 E4:1 D4:1 C4:1 D4:1 E4:1 F4:1 G4:1 F4:1 E4:1 D4:1'] }], 1);
+    const busyOff = generateBanger({ riff: busy, options: { variation: 'faithful' }, seed: 9 });
+    const busyOn = generateBanger({ riff: busy, options: { variation: 'faithful', parts: { fillIn: 'repeat' } }, seed: 9 });
+    assert(JSON.stringify(hookBars(busyOff)) === JSON.stringify(hookBars(busyOn)), 'a busy riff has no room, and is left as it is');
+  }
+  {
+    // THE COUNTER-LINE REPEATS WITH THE HOOK. Wherever the same hook bar comes round over
+    // the same chords, the counter answers it the same way — chained bar to bar it was a
+    // new line on every pass, which sounds generated rather than written.
+    // A riff with rests on the off-beats, or there is nowhere for a counter-line to go.
+    const sparse = riffOf([{ key: 'lead', label: 'Lead', kind: 'melodic', role: 'hook', meanPitch: 70,
+      bars: ['A4:2 . . . E5:2 . . . C5:2 . . . G4:2 . . .', 'F4:2 . . . A4:2 . . . C5:4 . . . B4:2 . . .'] }], 2);
+    let repeats = 0; let differs = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const out = generateBanger({ riff: sparse, options: { variation: 'wild', parts: { counter: true } }, seed });
+      const hook = laneByLabel(out, /HOOK$/);
+      const counter = laneByLabel(out, /^COUNTER/);
+      const chords = laneByLabel(out, /^CHORDS/);
+      const seen = new Map();
+      for (let bar = 1; bar <= out.summary.bars; bar++) {
+        const line = JSON.stringify(barPart(out, counter, bar));
+        if (!onsets(barPart(out, counter, bar)).length) continue;
+        const key = JSON.stringify([barPart(out, hook, bar), chords ? barPart(out, chords, bar) : null]);
+        if (!seen.has(key)) { seen.set(key, line); continue; }
+        repeats++;
+        if (seen.get(key) !== line) differs++;
+      }
+    }
+    assert(repeats > 20 && differs === 0,
+      `a repeated hook bar over the same chords gets the same counter-line (${repeats} repeats, ${differs} answered differently)`);
+  }
+  {
     // Major on a minor riff: the relative major, so the riff's notes are all still in it.
     const minor = generateBanger({ riff: plumber, options: { key: 'keep' }, seed: 2 });
     const major = generateBanger({ riff: plumber, options: { key: 'major' }, seed: 2 });
@@ -442,8 +555,33 @@ try {
       if (!MOOD_MODES[o.mood].suits.includes(o.mode)) suited = false;
     }
     assert(suited, 'Surprise Me always rolls a mode that suits the mood it rolled');
-    const { BIG_ROOM } = await import('../tools/lib/banger/styles/big-room.js');
-    assert(BANGER_MOODS.every((m) => ['bright', 'dark'].includes(BIG_ROOM.moods[m.id].walk))
+  {
+    // GO CRAZY: every transforming switch on, the key and tempo left alone, and a song
+    // that still builds — for every style.
+    const base = { ...BANGER_DEFAULTS, key: 'minor', tempo: 'custom', bpm: 133, mood: 'dark' };
+    const o = goCrazyBangerOptions(base);
+    assert(o.variation === 'wild' && o.parts.counter && o.parts.thirdBelow && o.parts.riffBass === 'replace'
+      && o.parts.bassLift && o.parts.riffSound === 'random' && o.parts.partSounds === 'roll'
+      && o.drums.source === 'replace' && o.drums.congas && o.drums.cowbell && o.drums.tambourine
+      && o.form.keyLift === 'third' && o.form.halfTime && o.form.falseEnding
+      && o.fx.stutter && o.fx.bitcrushIntro && o.fx.tapeStop,
+    'Go Crazy turns on every switch that transforms the original');
+    const was = normaliseBangerOptions(base).options;
+    assert(['key', 'mode', 'tempo', 'bpm', 'mood', 'style', 'length'].every((k) => JSON.stringify(o[k]) === JSON.stringify(was[k])),
+      'Go Crazy keeps the key, the tempo, the mood and the style');
+    assert(JSON.stringify(goCrazyBangerOptions(base)) === JSON.stringify(o), 'Go Crazy is a recipe, not a roll');
+    let built = 0;
+    for (const st of BANGER_STYLES) {
+      try {
+        const out = generateBanger({ riff: BAND, options: goCrazyBangerOptions({ ...BANGER_DEFAULTS, style: st.id }), seed: 3 });
+        if (out.summary.bars > 0) built++;
+      } catch (err) { check(false, `Go Crazy on ${st.id}: ${err.message}`); }
+    }
+    assert(built === BANGER_STYLES.length, `Go Crazy makes a song in every style (${built} of ${BANGER_STYLES.length})`);
+  }
+    // The style as the generator plays it: its own moods and the shared ones (moods.js).
+    const BIG_ROOM = BANGER_STYLES.find((st) => st.id === 'big-room');
+    assert(BANGER_MOODS.every((m) => ['bright', 'dark'].includes(BIG_ROOM.moods[m.id]?.walk))
       && Object.values(BIG_ROOM.modeHarmony).every((w) => JSON.stringify(w.bright.progression) !== JSON.stringify(w.dark.progression)),
     'each mode has a bright walk and a different dark one, and every mood leans to one');
     // A riff that leaves the chords free — one long note a bar — hears the walk itself.
@@ -460,6 +598,51 @@ try {
       if (dropChords(bright) === dropChords(dark)) differ = false;
     }
     assert(differ, 'in every mode, an Uplifting banger and a Dark one walk different chords');
+  }
+  {
+    // THE SHARED MOODS (moods.js): each a progression of its own — no two moods, shared
+    // or a style's own, walk the same eight bars, major or minor. (Played over a riff the
+    // hook still has its say about every chord; the sweeps below play every mood in every
+    // style.)
+    const shared = Object.keys(SHARED_MOODS);
+    const bigRoom = BANGER_STYLES.find((st) => st.id === 'big-room');
+    const walks = Object.entries(bigRoom.progressions).flatMap(([mood, prog]) =>
+      ['major', 'minor'].map((side) => [`${mood} ${side}`, JSON.stringify(prog[side])]));
+    for (const [name, walk] of walks) {
+      if (!shared.includes(name.split(' ')[0])) continue;
+      const twin = walks.find(([other, w]) => other !== name && w === walk);
+      check(!twin, `${name} walks the same chords as ${twin?.[0]}`);
+    }
+    assert(shared.length >= 10 && BANGER_STYLES.every((st) => shared.every((m) => st.progressions[m] && st.moods[m])),
+      `the ${shared.length} shared moods are in every style, each walking chords no other mood walks`);
+
+    // THE WAY INTO A LIFTED KEY: the bar before the lift ends on the approach's chords in
+    // the NEW key, the tune resting for the half-bar.
+    const lastBefore = (out) => out.form.find((f) => f.lifted).from - 1;
+    const pcs = (notes) => onsets(notes).filter(([i]) => i >= 8).map(([i, v]) => [i, [].concat(v).map((hz) => semis(hz) % 12)]);
+    const tonicOf = (out) => ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].indexOf(out.summary.key.split(' ')[0]);
+    for (const id of ['pivot', 'twostep', 'borrowed', 'walkup']) {
+      const out = generateBanger({ riff: BAND, options: { form: { keyLift: 'whole', keyApproach: id } }, seed: 4 });
+      const bar = lastBefore(out);
+      const home = (tonicOf(out) + 2) % 12;
+      const minor = /minor/.test(out.summary.key);
+      const want = approachChords(id, home, minor).map(([, sym]) => parseChord(sym).root);
+      const bass = pcs(barPart(out, laneByLabel(out, /^BASS/), bar));
+      const lead = pcs(barPart(out, laneByLabel(out, /HOOK$/), bar));
+      check(bass.length && bass[0][1][0] === want[0], `${id}: the bass is on the approach's first chord (${bass[0]?.[1]} vs ${want[0]})`);
+      check(!lead.length, `${id}: the tune rests for the half-bar`);
+      if (id === 'walkup') {
+        const steps = bass.map(([, v]) => v[0]);
+        check(steps.slice(-3).every((pc, k) => pc === (home - 3 + k + 12) % 12), `walkup: the bass climbs into the new root (${steps})`);
+      }
+    }
+    const straight = generateBanger({ riff: BAND, options: { form: { keyLift: 'whole', keyApproach: 'straight' } }, seed: 4 });
+    const plain = generateBanger({ riff: BAND, options: { form: { keyLift: 'none' } }, seed: 4 });
+    const b0 = lastBefore(straight);
+    check(JSON.stringify(barPart(straight, laneByLabel(straight, /^BASS/), b0)) === JSON.stringify(barPart(plain, laneByLabel(plain, /^BASS/), b0)),
+      'straight: the bar before the lift is left as it was');
+    assert(moodLifts('bittersweet')[0] === 'borrowed' && moodLifts('disco')[0] === 'twostep' && BANGER_MOODS.every((m) => moodLifts(m.id).length),
+      'every mood has its own way into a new key — Bittersweet by a borrowed step, Disco on a ii–V');
   }
   {
     // TRANCE: the second style. Every banger it makes is a valid song in every mood and
@@ -479,7 +662,8 @@ try {
       }
     }
     assert(!failed, `${made2} trance bangers across every mood and mode are all valid songs`);
-    const t = generateBanger({ riff: HOOK1, options: { style: 'trance' }, seed: 5 });
+    // The Club form's trance — its default form is the Anthem (tests/banger-forms.js).
+    const t = generateBanger({ riff: HOOK1, options: { style: 'trance', form: { template: 'club' } }, seed: 5 });
     const bd = t.form.find((f) => f.role === 'breakdown');
     assert(t.summary.bpm === 138 && t.summary.mood === 'uplifting' && t.summary.bars === 112 && bd.bars === 16,
       `trance is 138, uplifting and Long by default, with a sixteen-bar breakdown (${t.form.map((f) => `${f.label} ${f.bars}`).join(', ')})`);
@@ -493,9 +677,13 @@ try {
     const hook = laneByLabel(t, /HOOK$/);
     assert(piano && onsets(barPart(t, piano, bd.from)).length > 0 && onsets(barPart(t, hook, bd.from)).length === 0,
       'in its breakdown the hook is on a piano, as written, and the riff\'s own sound rests');
-    const mediumT = generateBanger({ riff: HOOK1, options: { style: 'trance', length: 'medium' }, seed: 5 });
+    const mediumT = generateBanger({ riff: HOOK1, options: { style: 'trance', length: 'medium', form: { template: 'club' } }, seed: 5 });
     assert(mediumT.summary.bars === 64 && mediumT.form.find((f) => f.role === 'breakdown').bars === 16,
       'a Medium trance banger keeps its long breakdown and gives up length elsewhere');
+    const anthem = generateBanger({ riff: HOOK1, options: { style: 'trance' }, seed: 5 });
+    const abd = anthem.form.find((f) => f.type === 'breakdown');
+    assert(abd && abd.variant === 'exposed' && abd.bars >= 16 && anthem.form.filter((f) => f.type === 'drop').length === 2,
+      `by default trance is an Anthem: one drop, a long breakdown with the hook alone, one final drop (${anthem.form.map((f) => `${f.label} ${f.bars}`).join(', ')})`);
   }
   {
     // FUTURE BASS: half time with hat rolls, an 808 and a talking wobble, stuttered
@@ -549,7 +737,7 @@ try {
       }
     }
     assert(!failed, `${made4} eurobeat bangers across every mood and mode are all valid songs`);
-    const eb = generateBanger({ riff: BAND, options: { style: 'eurobeat', parts: { partSounds: 'style' } }, seed: 5 });
+    const eb = generateBanger({ riff: BAND, options: { style: 'eurobeat', parts: { partSounds: 'style' }, form: { template: 'club' } }, seed: 5 });
     const d = eb.form.find((f) => f.role === 'drop');
     const row = (re, bar) => onsets(barPart(eb, laneByLabel(eb, re), bar)).map(([i]) => i).join(',');
     assert(eb.summary.bpm === 155 && eb.summary.mood === 'anthemic' && row(/^KICK/, d.from + 1) === '0,4,8,12'
@@ -655,104 +843,6 @@ try {
     `a Drums & Bass Intro is the beat and the bass alone, then everything comes in at once (${tune(dbIntro.to + 1).join(', ')})`);
   }
   {
-    // KRAFTWERK: not a banger — no build, riser, roll, crash, impact, fill or pump — and,
-    // by default, its own form (Peter's re-model brief, 2 Oct 2026): 128 bars at 120, a part
-    // joining or leaving on each eight-bar block. Ignition (an arp alone, a sonar ping from
-    // 9), Motorik (kick 17, noise snare and accented hats 25), Engine (piston bass 33, the
-    // hook on an analog lead 41), Voice (the vocoder 49, counter-arps and rim clicks 65),
-    // Isolation (vocoder and arp in a ping-pong, a spoken word from 89), Full Power (all of
-    // it at 97, lead and vocoder in octaves), Power Down (kick and bass out 113, voices fade
-    // 121, the arp closing a step a bar from 125 to one low pulse).
-    let made6 = 0;
-    for (const [name, riff] of [['hook1', HOOK1], ['band', BAND], ['plumber', plumber], ['crypt', crypt]]) {
-      for (const mood of BANGER_MOODS.map((m) => m.id)) {
-        for (const mode of BANGER_MODES.map((m) => m.id)) {
-          const label = `kraftwerk/${name}/${mood}/${mode}`;
-          try {
-            const out = generateBanger({ riff, options: { style: 'kraftwerk', mood, mode, riffNotes: made6 % 2 ? 'fit' : 'keep',
-              variation: ['faithful', 'some', 'wild'][made6 % 3], length: ['short', 'medium', 'long', 'custom'][made6 % 4],
-              form: { script: made6 % 5 !== 0 }, drums: { source: ['add', 'replace', 'asis'][made6 % 3] },
-              parts: { riffSound: made6 % 4 ? 'keep' : 'random' } }, seed: ++made6 });
-            invariants(out, label);
-          } catch (err) { check(false, `${label}: ${err.message}`); }
-        }
-      }
-    }
-    assert(!failed, `${made6} kraftwerk songs across every mood and mode, scripted and not, are all valid songs`);
-    const kw = generateBanger({ riff: HOOK1, options: { style: 'kraftwerk' }, seed: 5 });
-    const sounding = (out, bar) => Object.keys(out.mix.labels).filter((lane) => onsets(barPart(out, lane, bar)).length)
-      .map((lane) => out.mix.labels[lane].split(' · ')[0]);
-    const SEVEN = 'Ignition 16, Motorik 16, Engine 16, Voice 32, Isolation 16, Full Power 16, Power Down 16';
-    assert(kw.summary.bpm === 120 && kw.summary.variation === 'faithful' && kw.summary.bars === 128
-      && kw.form.map((f) => `${f.label} ${f.bars}`).join(', ') === SEVEN,
-    `kraftwerk is 120, faithful to the riff and 128 bars in seven sections (${kw.form.map((f) => `${f.label} ${f.bars}`).join(', ')})`);
-    assert(!Object.values(kw.mix.labels).some((l) => /^(RISER|CRASH|IMPACT|FILL|SIMMONS|BLIP|CASIO|OPEN HATS|STRINGS)/.test(l))
-      && !Object.values(kw.mix.lanes).some((s) => (s.effects || []).some((e) => e.id === 'rhythmgate'))
-      && !sectionIds(kw.arrangement.automation).includes('stutter')
-      && !Object.values(kw.mix.voice).some((id) => /^(kwBlip|vl1P)/.test(id)),
-    'no riser, crash, impact, fill, pump, stutter or string machine — and no fixed-pitch blips or Casio pi-po');
-    const set = (bar) => sounding(kw, bar).filter((l) => l !== 'SONAR').sort().join(', ');
-    const MOTOR = ['ARP', 'KICK', 'SNARE', 'HATS', 'HATS SOFT'];
-    const want = [
-      [1, ['ARP']], [17, ['ARP', 'KICK']], [25, MOTOR], [33, [...MOTOR, 'PISTON BASS']],
-      [41, [...MOTOR, 'PISTON BASS', 'RIFF Grand', 'ANALOG LEAD']], [49, [...MOTOR, 'PISTON BASS', 'VOCODER']],
-      [65, [...MOTOR, 'PISTON BASS', 'VOCODER', 'COUNTER ARP', 'RIM CLICKS']], [81, ['ARP', 'VOCODER']],
-      [89, ['ARP', 'VOCODER', 'VOCODER WORD']],
-      [97, [...MOTOR, 'PISTON BASS', 'RIFF Grand', 'ANALOG LEAD', 'VOCODER', 'COUNTER ARP', 'RIM CLICKS']],
-      [113, ['ARP', 'SNARE', 'HATS', 'HATS SOFT', 'RIFF Grand', 'ANALOG LEAD', 'VOCODER', 'COUNTER ARP', 'RIM CLICKS']],
-      [121, ['ARP', 'SNARE', 'HATS', 'HATS SOFT', 'RIFF Grand', 'ANALOG LEAD', 'VOCODER', 'RIM CLICKS']], [125, ['ARP']],
-    ];
-    const wrong = want.filter(([bar, parts]) => set(bar) !== [...parts].sort().join(', ') || set(bar + 7 > 128 ? bar : bar + 3) !== set(bar));
-    assert(!wrong.length, `each part comes in and goes out on its block (${wrong.map(([b]) => `bar ${b}: ${set(b)}`).join('; ') || 'all as the brief'})`);
-    const sonarBars = Array.from({ length: 96 }, (_, i) => i + 1).filter((b) => sounding(kw, b).includes('SONAR'));
-    assert(sonarBars[0] === 9 && sonarBars[sonarBars.length - 1] === 79 && sonarBars.every((b) => b % 2 === 1),
-      `a sonar ping every two bars from bar 9 to the Isolation (${sonarBars[0]}–${sonarBars[sonarBars.length - 1]})`);
-    const row = (re, bar) => onsets(barPart(kw, laneByLabel(kw, re), bar)).map(([i]) => i).join(',');
-    const pitches = (re, bar) => onsets(barPart(kw, laneByLabel(kw, re), bar)).map(([, v]) => semis(lowHz(v)));
-    assert(row(/^KICK$/, 30) === '0,4,8,12' && row(/^SNARE$/, 30) === '4,12' && row(/^HATS$/, 30) === '0,2,4,6,8,10,12,14'
-      && row(/^HATS SOFT$/, 30) === '1,3,5,7,9,11,13,15' && row(/^RIM CLICKS/, 70) === '2,6,10,14',
-    'four on the floor, the snare on two and four, sixteenth hats accented on the eighths, rim clicks off the beat');
-    const hatsSoft = kw.mix.lanes[laneByLabel(kw, /^HATS SOFT$/)].gain;
-    const hats = kw.mix.lanes[laneByLabel(kw, /^HATS$/)].gain;
-    assert(hats - hatsSoft >= 2 && hats - hatsSoft <= 3 && kw.mix.lanes.kick.eq?.low < 0,
-      `the soft hats sit 75 to the accent's 100 (${(hatsSoft - hats).toFixed(1)} dB), and the kick has no sub under it`);
-    const piston = pitches(/^PISTON BASS/, 40);
-    assert(row(/^PISTON BASS/, 40) === '0,2,4,6,8,10,12,14' && new Set(piston).size === 1 && row(/^ARP/, 3) === '0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15'
-      && pitches(/^ARP/, 3).every((m) => m >= 69) && row(/^COUNTER ARP/, 70) === '0,2,4,6,8,10,12,14',
-    'a piston bass in rigid eighths on one note, a high sixteenth arp, counter-arps in eighths');
-    const word = pitches(/^VOCODER WORD/, 90);
-    assert(row(/^VOCODER WORD/, 90) === '0,2,4,6,8,10,12,14' && new Set(word).size === 1,
-      'the vocoder says one word in eighths in the Isolation');
-    assert(pitches(/^ANALOG LEAD/, 97)[0] - pitches(/^VOCODER ·/, 97)[0] === 12 && pitches(/^VOCODER ·/, 49)[0] === pitches(/^ANALOG LEAD/, 41)[0],
-      'the vocoder sings the hook where the lead played it, and an octave under the lead in Full Power');
-    assert(row(/^PISTON BASS/, 128) === '8' && row(/^ARP/, 128) === '0,1,2,3,4,5,6,7',
-      'the song ends on one low pulse, the arp stopping under it');
-    const fxOf = (re) => laneFx(kw.arrangement.automation, laneByLabel(kw, re));
-    const at = (bar) => (bar - 1) * 16;
-    const filters = fxOf(/^ARP/).filter((s) => s.chain.some((e) => e.id === 'filter')).map((s) => [s.from, s.chain[0].params.frequency]);
-    const echo = (re) => fxOf(re).filter((s) => s.chain[0].id === 'pingpong' && s.chain[0].params.division === 0.5);
-    assert(echo(/^VOCODER ·/)[0]?.from === at(81) && echo(/^VOCODER ·/).at(-1)?.to === at(97) && echo(/^ARP/)[0]?.from === at(81)
-      && filters.map(([f]) => f).join() === [125, 126, 127, 128].map(at).join() && filters.every(([, hz], i) => i === 0 || hz < filters[i - 1][1])
-      && laneCurve(kw.arrangement.automation[laneByLabel(kw, /^VOCODER ·/)])?.points.length > 0,
-    `an eighth ping-pong over the Isolation, the arp closing a step a bar (${filters.map(([, hz]) => hz).join(' ')} Hz), the vocoder fading`);
-    const voice = (re) => kw.mix.voice[`${laneByLabel(kw, re)}Voice`];
-    assert(voice(/^ARP/) === 'tngrCrystalTrigger' && voice(/^VOCODER ·/) === 'bestRobotVox' && voice(/^VOCODER WORD/) === 'bestRobotVox'
-      && voice(/^ANALOG LEAD/) === 'toneTriangle' && voice(/^SONAR/) === 'toneSine' && voice(/^RIM CLICKS/) === 'rimClang'
-      && voice(/^HATS SOFT$/) === voice(/^HATS$/),
-    'a crystal arp, a robot vocoder, a triangle lead, a sine sonar, metal rim clicks, the soft hats on the hats\' own sound');
-    for (const [length, bars] of [['short', 48], ['medium', 64], ['long', 112]]) {
-      const out = generateBanger({ riff: HOOK1, options: { style: 'kraftwerk', length }, seed: 5 });
-      check(out.summary.bars === bars && out.form.map((f) => f.label).join() === SEVEN.replace(/ \d+/g, '').split(', ').join(),
-        `a ${length} Kraftwerk song is the same seven sections, scaled (${out.form.map((f) => `${f.label} ${f.bars}`).join(', ')})`);
-    }
-    assert(!failed, 'a shorter or longer Kraftwerk song scales the same seven sections');
-    const plain = generateBanger({ riff: HOOK1, options: { style: 'kraftwerk', length: 'medium', form: { script: false } }, seed: 5 });
-    const plainLong = generateBanger({ riff: HOOK1, options: { style: 'kraftwerk', length: 'long', form: { script: false } }, seed: 5 });
-    assert(plain.form.map((f) => f.label).join(', ') === 'Drums & Bass, Theme, Interlude, Theme 2, Outro'
-      && plainLong.form[0].label === 'Layers In' && plainLong.form[plainLong.form.length - 1].label === 'Layers Out',
-    `Style's Own Form off, it is the switch-built form: drums and bass, theme, interlude, theme two (${plain.form.map((f) => `${f.label} ${f.bars}`).join(', ')}) — or layers on a Long song`);
-  }
-  {
     // SYNTHWAVE: NIGHT DRIVE's outrun — 118, a gated-reverb snare, a root–octave sixteenth
     // bass, a string machine pumping on the beat, a hero lead doubling the hook, brass stabs,
     // Simmons fills; pre-chorus, chorus, breakdown, and the last chorus a whole step up.
@@ -772,7 +862,7 @@ try {
     }
     assert(!failed, `${made7} synthwave songs across every mood and mode are all valid songs`);
     const sw = generateBanger({ riff: HOOK1, options: { style: 'synthwave', form: { keyLift: 'none' }, parts: { partSounds: 'style' } }, seed: 5 });
-    const up = generateBanger({ riff: HOOK1, options: { style: 'synthwave', parts: { partSounds: 'style' } }, seed: 5 });
+    const up = generateBanger({ riff: HOOK1, options: { style: 'synthwave', parts: { partSounds: 'style' }, form: { template: 'club' } }, seed: 5 });
     assert(sw.summary.bpm === 118 && up.form.map((f) => f.label).join(', ') === 'Intro, Pre-Chorus, Chorus, Breakdown, Pre-Chorus 2, Chorus 2, Outro',
       `synthwave is 118: pre-chorus, chorus, breakdown, pre-chorus, chorus (${up.form.map((f) => `${f.label} ${f.bars}`).join(', ')})`);
     const c2 = up.form.find((f) => f.role === 'drop2');
@@ -928,6 +1018,38 @@ try {
     const ledAgain = generateBanger({ riff: low, options: {}, seed: 2 });
     const hookBars = (o) => JSON.stringify(o.bank.sections?.map?.((x) => x) ?? o.bank);
     assert(hookBars(led) !== hookBars(ledAgain), 'and another take writes another lead');
+    // The recipe keeps the riff as read — the written lead belongs to its take — so a take
+    // in another style writes its own, and the same seed writes the same one again.
+    assert(JSON.stringify(led.banger.riff) === JSON.stringify(low) && (led.banger.options.hook ?? 'auto') === 'auto',
+      'the recipe keeps the riff as read, with no Written Lead in it and the hook still unchosen');
+    assert(hookBars(anotherTake(led.banger, led.banger.seed)) === hookBars(led), 'a take re-made from that recipe writes the same lead');
+    const trance = generateBanger({ riff: led.banger.riff, options: { ...led.banger.options, style: 'trance' }, seed: 1 });
+    assert(trance.warnings.some((w) => /one was written/.test(w)), 'a take in another style writes its own lead');
+    // A recipe saved before 3 Oct kept the lead baked into its riff: it comes out again,
+    // the hook it displaced goes back, and the take re-made from it is the same music.
+    const lane = led.warnings.join(' ').match(/written from its chords \((\w+)\)/)[1];
+    const baked = { ...low, parts: [{ ...low.parts[0], role: 'bass' },
+      { key: lane, label: 'Written Lead', kind: 'melodic', role: 'hook', voice: 'toneSquare', voiceParams: null, engineKeys: null, strip: null, meanPitch: 72,
+        bars: ['A5:2 . . . . . . . . . . . . . . .', 'D5:2 . . . . . . . . . . . . . . .'] }] };
+    assert(JSON.stringify(sourceRiff(baked)) === JSON.stringify(low), 'an old recipe\'s baked lead comes out of its riff');
+    assert(hookBars(generateBanger({ riff: baked, options: { hook: lane }, seed: 1 })) === hookBars(led),
+      'and a take re-made from an old recipe is the same music');
+    // Bass = Sequencer: the line in eighths, and its echo a sixteenth behind on a channel of
+    // its own, the bass's sound, its fader riding 5 dB under the bass's.
+    const { echoPart, blank } = await import('../tools/lib/banger/theory.js');
+    const seqBar = () => { const p = blank(); p.notes[0] = 'C2'; p.lens[0] = 1; p.notes[15] = 'G2'; p.lens[15] = 1; return p; };
+    const echoBars = [{ bass: seqBar() }, { bass: seqBar() }, {}];
+    echoPart(echoBars, 'bass', 'bassEcho');
+    assert(echoBars[0].bassEcho.notes[1] === 'C2' && echoBars[1].bassEcho.notes[0] === 'G2' && !echoBars[2].bassEcho,
+      'an echo lands a sixteenth late, carries over the barline, and never into a bar with no bass');
+    const seq = generateBanger({ riff: HOOK1, options: { style: 'electro', parts: { bass: 'sequencer' } }, seed: 2 });
+    const laneOfLabel = (o, re) => Object.entries(o.mix.labels).find(([, l]) => re.test(l))?.[0];
+    const seqBass = laneOfLabel(seq, /^BASS 808/); const seqEcho = laneOfLabel(seq, /^BASS ECHO/);
+    assert(seqEcho && seq.mix.voice[`${seqEcho}Voice`] === seq.mix.voice[`${seqBass}Voice`]
+      && Math.abs(seq.mix.lanes[seqEcho].gain - (seq.mix.lanes[seqBass].gain - 5)) < 0.05,
+      'the Sequencer bass gets its echo channel, on the bass\'s sound, 5 dB under it');
+    assert(!laneOfLabel(generateBanger({ riff: HOOK1, options: { style: 'electro', parts: { bass: 'octaves' } }, seed: 2 }), /ECHO/),
+      'and no other bass does');
     // …and future bass, whose sub is a talking wobble, leaves the wobble out: with no 808
     // under a riff that is the bass, the wobble would be the whole low end.
     const fbLow = generateBanger({ riff: low, options: { style: 'future-bass', parts: { writeLead: 'off' } }, seed: 1 });
@@ -1058,6 +1180,17 @@ try {
     now = moveTake(temp, 'test-banger', await meta(), { direction: 'previous' });
     const mixed2 = readTake(temp, 'test-banger', 2);
     assert(now === 1 && /"master": -1|master: -1/.test(mixed2), 'leaving a mixed take keeps the mix in that take');
+    // Modify This Take: written over the take it modifies, the take number unchanged, the
+    // version it replaced kept aside under a name Previous and Next never land on.
+    const before = readFileSync(path, 'utf8');
+    const takesBefore = listTakes(temp, 'test-banger').join();
+    const modified = generateBanger({ riff: out.banger.riff, options: { ...out.banger.options, parts: { ...out.banger.options.parts, counter: true } }, seed: out.banger.seed });
+    now = modifyTake(temp, 'test-banger', await meta(), { generated: modified, title: 'TEST BANGER' });
+    const kept = readdirSync(join(temp, 'work/mix-history')).filter((f) => f.startsWith('banger-test-banger-take-001-before-modify-'));
+    assert(now === 1 && (await meta()).take === 1 && readFileSync(path, 'utf8') !== before,
+      'Modify This Take rewrites the take in place, keeping its number');
+    assert(kept.length === 1 && readFileSync(join(temp, 'work/mix-history', kept[0]), 'utf8') === before
+      && listTakes(temp, 'test-banger').join() === takesBefore, 'and keeps the version it replaced aside, not as a take');
     deleteTakes(temp, 'test-banger');
     assert(listTakes(temp, 'test-banger').length === 0, 'deleting the song\'s takes leaves none behind');
 
@@ -1116,7 +1249,7 @@ try {
     'Use as Style takes the seed\'s sounds, channels and master into the style — the chords\' gate stays its own switch');
     assert(tLevels.refs.eurobeat.saws?.song === seedId && tLevels.refs.eurobeat.saws.gain === -3,
       'and the seed becomes what new bangers\' faders are matched against');
-    const fromSeed = generateBanger({ riff: HOOK1, options: { style: 'eurobeat', parts: { partSounds: 'style' } }, seed: 1, sounds: tSounds, channels: tChannels, levelData: tLevels });
+    const fromSeed = generateBanger({ riff: HOOK1, options: { style: 'eurobeat', parts: { partSounds: 'style' }, form: { template: 'club' } }, seed: 1, sounds: tSounds, channels: tChannels, levelData: tLevels });
     const saws = fromSeed.mix.lanes[fromSeed.laneOf.saws];
     assert(fromSeed.mix.voice[`${fromSeed.laneOf.kick}Voice`] === 'ds808Kick' && saws.eq?.high === 1.5 && fromSeed.mix.master === -1,
       'a banger made after it has the seed\'s kick, its strings\' EQ and its master');

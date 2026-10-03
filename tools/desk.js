@@ -164,7 +164,7 @@ ACTIONS.push(
   {
     id: 'bangerlevels', group: 'audio', label: 'BANGER LEVELS',
     blurb: 'makes test bangers in the ticked styles and renders them channel by channel: how far each channel lands from the part it is matched to (the style’s seed banger once you have used one, else its seed remix), before levelling and after (tools/banger-levels.js). Measures any new banger sound first. Writes only the report. About ten minutes a style. + FIT folds each channel’s average miss into the levels.',
-    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'kraftwerk', 'synthwave'],
+    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive'],
     options: [{ key: 'fit', label: '+ FIT', flag: '--fit' }],
     needsIds: true,
     speed: 'background',
