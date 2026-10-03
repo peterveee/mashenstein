@@ -263,7 +263,10 @@ export class BangerMakerState {
       return;
     }
     if (!this.from) saveDraft(this.draft());
-    const rec = this.from ? reviseBanger(this.from, { ...recipe, bpm: song.bpm }) : keepBanger({ ...recipe, bpm: song.bpm });
+    // An edit remakes that song in place — except the starter, which is never overwritten:
+    // editing it keeps a new song (Peter, 3 Oct 2026).
+    const rec = this.from && !this.from.preset ? reviseBanger(this.from, { ...recipe, bpm: song.bpm })
+      : keepBanger({ ...recipe, bpm: song.bpm, fresh: !!this.from });
     this.onMade(rec, song);
   }
 

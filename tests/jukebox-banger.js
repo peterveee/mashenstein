@@ -161,9 +161,31 @@ assert(threw, 'an empty grid is refused');
 {
   const fake = { data: { settings: {}, slots: [] }, writes: 0, persist() { this.writes++; } };
   const b = bangerState(fake);
-  assert(b.draft.style === MAKER_STYLES[0].id && b.draft.mode === 'simple' && b.draft.simple.join() === DEFAULT_NOTES.join() && b.kept.length === 0,
+  assert(b.draft.style === MAKER_STYLES[0].id && b.draft.mode === 'simple' && b.draft.simple.join() === DEFAULT_NOTES.join(),
     'a new save starts from the default SIMPLE grid in the first style');
+  // THE STARTER: a first-time Lab holds NEON ORBIT, played exactly as saved on the desk
+  {
+    const { songFor, bangerTitle } = await import('../src/game/banger/store.js');
+    const NEON = await import('../src/data/bangers/neon-orbit-banger.js');
+    const st = b.kept[0];
+    const song = st && songFor(st);
+    assert(b.kept.length === 1 && st.preset === 'neon-orbit' && st.n === 1 && bangerTitle(st) === 'NEON ORBIT (BIG-ROOM HOUSE/HYPNOTIC)'
+      && song.bank === NEON.bank && song.mix === NEON.mix && song.form.length === NEON.banger.form.length,
+    'a first-time Lab opens on NEON ORBIT, the desk song exactly as saved');
+    assert(st.mode === 'simple' && st.notes.length === 16 && st.notes.filter((n) => n >= 0).length === 9 && !st.options,
+      'and it carries its riff on the standard SIMPLE grid, for the pencil');
+    deleteBanger(st, fake);
+    assert(bangerState(fake).kept.length === 0, 'deleted, the starter does not come back');
+    // a Lab that already has songs gets it too, at the end; once gone, gone
+    const old = { data: { settings: {}, slots: [], bangers: { kept: [{ v: 3, n: 1, name: 'OLD ONE', mode: 'simple', notes: DEFAULT_NOTES, style: 'trance', mood: 'dark', seed: 4, bpm: 138 }], next: 2 } }, persist() {} };
+    const ob = bangerState(old);
+    assert(ob.kept.length === 2 && ob.kept[0].name === 'OLD ONE' && ob.kept[1].preset === 'neon-orbit' && ob.kept[1].n === 2,
+      'a Lab that already has songs gets the starter after them');
+    deleteBanger(ob.kept[1], old);
+    assert(bangerState(old).kept.length === 1 && bangerState(old).kept.length === 1, 'and once deleted there, it is gone for good');
+  }
   const advanced = toggleNote(expand(DEFAULT_NOTES), 1, 1, 'advanced');
+  fake.writes = 0;
   saveDraft({ mode: 'advanced', simple: DEFAULT_NOTES, advanced, simpleEdited: false, style: 'dnb', mood: 'funky' }, fake);
   const d = bangerState(fake).draft;
   assert(d.style === 'dnb' && d.mode === 'advanced' && d.advanced[1] === 1 && fake.writes === 1,
@@ -171,7 +193,7 @@ assert(threw, 'an empty grid is refused');
   const first = keepBanger({ notes: DEFAULT_NOTES, mode: 'simple', style: 'trance', mood: 'dark', seed: 1, bpm: 138 }, fake);
   assert(/^[A-Z]+ [A-Z]+$/.test(first.name), `a banger gets a name from the new-song names (${first.name})`);
   const again = keepBanger({ notes: DEFAULT_NOTES, mode: 'simple', style: 'trance', mood: 'dark', seed: 9, bpm: 140 }, fake);
-  assert(again === first && bangerState(fake).kept.length === 1 && first.seed === 9 && first.bpm === 140 && first.n === 1,
+  assert(again === first && bangerState(fake).kept.length === 1 && first.seed === 9 && first.bpm === 140 && first.n === 2,
     'GENER8 again with the same riff, style and mood is a new take of that song: same name and number, new seed');
   const second = keepBanger({ notes: DEFAULT_NOTES, style: 'trance', mood: 'moody', seed: 2, bpm: 138 }, fake, () => 0);
   const kept = bangerState(fake).kept;
@@ -217,7 +239,8 @@ function tap(state, x, y) {
 const centre = (r) => [r.x + r.w / 2, r.y + r.h / 2];
 
 // ---------------------------------------------------------------- the jukebox and THE LAB, before
-save.data = { settings: {}, slots: [null, null, null] };
+// (a Lab that has had its starter, and deleted it)
+save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven: ['neon-orbit'] } };
 {
   const jb = new SoundTestState({ onDone: () => {} });
   jb.enter();
@@ -606,6 +629,26 @@ save.data = { settings: {}, slots: [null, null, null] };
   back.openClub = () => { reopened = true; };
   back.toggle(row);
   assert(!reopened && back.playing === -1 && !Audio.bank, 'choosing the playing song in the Lab stops it');
+}
+
+// ---------------------------------------------------------------- THE PENCIL on the starter
+{
+  const { STARTERS } = await import('../src/game/banger/starters.js');
+  const { songFor } = await import('../src/game/banger/store.js');
+  const st = { n: 99, name: 'NEON ORBIT', ...STARTERS['neon-orbit'].recipe, notes: [...STARTERS['neon-orbit'].recipe.notes], preset: 'neon-orbit' };
+  const before = bangerState().kept.length;
+  let made = null;
+  const maker = new BangerMakerState({ from: st, onDone: () => {}, onMade: (r, song) => { made = { r, song }; }, random: () => 0 });
+  maker.enter();
+  assert(maker.mode === 'simple' && maker.notes.join() === st.notes.join() && maker.style === 'big-room' && maker.mood === 'hypnotic',
+    'the pencil opens the starter on its riff, style and mood');
+  maker.mood = 'heroic';
+  maker.make();
+  maker.exit();
+  const fresh = made?.r;
+  assert(fresh && fresh !== st && st.preset === 'neon-orbit' && st.mood === 'hypnotic' && fresh.mood === 'heroic' && !fresh.preset
+    && bangerState().kept.at(-1) === fresh && bangerState().kept.length === before + 1 && songFor(fresh).bank !== STARTERS['neon-orbit'].song().bank,
+    'editing the starter never overwrites it: it keeps a new song, made by the plain recipe');
 }
 
 // ---------------------------------------------------------------- THE PENCIL: edit and remake

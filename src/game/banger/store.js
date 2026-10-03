@@ -21,6 +21,7 @@ import { save as defaultSave } from '../../engine/save.js';
 import { RIFF_VERSION, normaliseNotes, upgradeDraft, upgradeRecipeNotes, modeOf } from './riff.js';
 import { MAKER_STYLES, MAKER_MOODS, defaultMoodFor, makeBanger, styleLabel, moodLabel } from './make.js';
 import { randomSongName } from '../../../tools/lib/song-names.js';
+import { STARTERS, FIRST_STARTER } from './starters.js';
 
 /**
  * How many the jukebox keeps. A recipe is a few dozen bytes, so this is only a ceiling on
@@ -50,6 +51,20 @@ export function bangerState(save = defaultSave) {
   b.kept = Array.isArray(b.kept) ? b.kept.filter((r) => r && typeof r.style === 'string' && Number.isInteger(r.seed)) : [];
   for (const r of b.kept) if (r.v !== RIFF_VERSION) { Object.assign(r, upgradeRecipeNotes(r)); r.v = RIFF_VERSION; }
   b.next = Number.isInteger(b.next) && b.next > 0 ? b.next : b.kept.reduce((m, r) => Math.max(m, (r.n | 0) + 1), 1);
+  // Every Lab gets the starter song (starters.js) once: a first-time Lab opens on it rather
+  // than an empty list, and one that already has songs gets it at the end of them (Peter,
+  // 3 Oct 2026). `startersGiven` remembers it was handed over, so once deleted it is gone
+  // for good. Only into a loaded save.
+  const given = Array.isArray(b.startersGiven) ? b.startersGiven : (b.startersGiven = []);
+  if (save.data && !given.includes(FIRST_STARTER)) {
+    given.push(FIRST_STARTER);
+    if (!b.kept.some((r) => r.preset === FIRST_STARTER)) {
+      const st = STARTERS[FIRST_STARTER];
+      b.kept.push({ v: RIFF_VERSION, n: b.next++, name: st.name, ...st.recipe, notes: [...st.recipe.notes], preset: FIRST_STARTER });
+      if (b.kept.length > MAX_KEPT) b.kept.splice(0, b.kept.length - MAX_KEPT);
+    }
+    save.persist?.();
+  }
   return b;
 }
 
@@ -66,12 +81,13 @@ export function saveDraft(draft, save = defaultSave) {
  * else is a new song at the end of the list, under a name no kept song has. Returns the
  * recipe (the same object, for a new take).
  */
-export function keepBanger({ notes, mode = 'simple', style, mood, seed, bpm }, save = defaultSave, random = Math.random) {
+export function keepBanger({ notes, mode = 'simple', style, mood, seed, bpm, fresh = false }, save = defaultSave, random = Math.random) {
   const b = bangerState(save);
   const m = modeOf(mode).id;
   const grid = normaliseNotes(notes, m);
   const last = b.kept.at(-1);
-  if (last && last.mode === m && last.style === style && last.mood === mood && last.notes.join() === grid.join()) {
+  // `fresh` always keeps a new song (an edited starter: the starter itself is never touched)
+  if (!fresh && last && !last.preset && last.mode === m && last.style === style && last.mood === mood && last.notes.join() === grid.join()) {
     songs.delete(keyOf(last));
     Object.assign(last, { seed, bpm });
     save.persist?.();
@@ -94,6 +110,7 @@ export function reviseBanger(rec, { notes, mode = rec.mode, style, mood, seed, b
   songs.delete(keyOf(rec));
   const m = modeOf(mode).id;
   Object.assign(rec, { mode: m, notes: normaliseNotes(notes, m), style, mood, seed, bpm });
+  delete rec.preset;
   save.persist?.();
   return rec;
 }
@@ -110,13 +127,13 @@ export function deleteBanger(rec, save = defaultSave) {
 }
 
 const songs = new Map();
-const keyOf = (r) => `${r.mode}|${r.style}|${r.mood}|${r.seed}|${r.notes.join(',')}`;
+const keyOf = (r) => `${r.preset || ''}|${r.mode}|${r.style}|${r.mood}|${r.seed}|${r.notes.join(',')}`;
 
 /** The song for a recipe, made on first ask and kept for the session. */
 export function songFor(rec, prebuilt = null) {
   const k = keyOf(rec);
   if (prebuilt) songs.set(k, prebuilt);
-  if (!songs.has(k)) songs.set(k, makeBanger(rec));
+  if (!songs.has(k)) songs.set(k, rec.preset && STARTERS[rec.preset] ? STARTERS[rec.preset].song() : makeBanger(rec));
   return songs.get(k);
 }
 
