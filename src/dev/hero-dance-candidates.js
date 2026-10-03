@@ -1,6 +1,7 @@
 // Review-only choreography. Beat is a continuous quarter-note song position,
 // not elapsed wall time: a future Banger Lab caller can pass its heard-song beat.
 import { drawToon } from '../sprites/toons.js';
+import { tameSkirt } from '../game/banger/dance-legs.js';
 
 const choices = {
   lorenzo: [['Pipework Two-step', 'groove'], ['Saturday Night Plumber', 'fever-point'], ['Overtime Shuffle', 'shuffle']],
@@ -52,8 +53,47 @@ export const HERO_DANCE_CANDIDATES = Object.entries(choices).flatMap(([hero, mov
       : `${descriptions[move]} Legs: ${legNotes[footwork[hero][i]]}` })));
 
 const TAU = Math.PI * 2;
+// The club randomizes quiet legs on skirted heroes. Show one of each in the
+// gallery, through the SAME helper, instead of the retired wide-knee preview.
+const skirted = new Set(['kiko', 'clara', 'fernwick', 'grumpos']);
+const rustyLegs = ['rusty-step', 'rusty-heel', 'rusty-bounce'];
+export const HERO_DANCE_LAB_CANDIDATES = Object.keys(choices).flatMap(hero => {
+  const current = HERO_DANCE_CANDIDATES.filter(c => c.hero === hero).map((c, i) => {
+    const labLegs = skirted.has(hero) ? hero === 'grumpos' ? 'stand' : ['tap', 'stand', 'hop'][i] : null;
+    if (hero === 'grumpos' && c.letter === 'C') return { ...c,
+      move: 'muscle-hold', footwork: null, labLegs: 'stand', name: 'Double Biceps',
+      description: 'Classic double biceps held for one full bar, then one bar relaxed. Elbows wide, fists beside the head, feet planted. Gallery candidate.' };
+    if (hero === 'rusty') return { ...c, footwork: rustyLegs[i],
+      name: ['Pocket Step', 'Heel-down Groove', 'Soft-knee Bounce'][i],
+      description: ['Small lifted step and return; the supporting leg stays still.',
+        'One heel marks the beat while the other foot stays planted.',
+        'Both feet stay down; a soft knee dip takes the beat.'][i] + ' Gallery candidate.' };
+    return { ...c, labLegs, description: labLegs
+      ? `${descriptions[c.move]} Club legs: ${labLegs}.` : c.description };
+  });
+  return [...current, ...['D', 'E'].map((letter, i) => ({
+    hero, id: `${hero}-${letter}`, letter, move: i ? 'tap-sway' : 'tap', footwork: null,
+    labLegs: 'tap', alternateTap: !!i,
+    name: i ? 'Take Turns' : 'Just the Beat',
+    description: i ? 'Quiet foot tap; swap the tapping foot every bar. Small arm groove. Gallery candidate.'
+      : 'One foot taps the beat, the other stays planted. Relaxed arms. Gallery candidate.',
+  }))];
+});
 export function heroDancePose(candidate, beat) {
   const b = Number.isFinite(beat) ? ((beat % 8) + 8) % 8 : 0;
+  if (candidate.move === 'muscle-hold') {
+    const smooth = v => { const n = Math.max(0, Math.min(1, v)); return n * n * (3 - 2 * n); };
+    const hold = b < 4 ? 1 : b < 4.3 ? 1 - smooth((b - 4) / 0.3)
+      : b > 7.7 ? smooth((b - 7.7) / 0.3) : 0;
+    return {
+      kind: 'stand', time: 0, phase: 0, grounded: true, facing: 1,
+      squash: 0, lean: 0, faceJoy: true, armsInFront: true,
+      shift: 0, tilt: 0, bounce: 0,
+      dance: { hands: [[0.65 - 0.25 * hold, 0.75 - 1.35 * hold],
+        [0.65 - 0.25 * hold, 0.75 - 1.35 * hold]], feet: null,
+        ankles: [0, 0], pointAngle: null, shoulderLift: 0 },
+    };
+  }
   if (candidate.move === 'fever-point') {
     // One complete bar held high; one bar back in the original shuffle.
     // The short arrival is at the end of the shuffle bar, so it never eats
@@ -88,6 +128,11 @@ export function heroDancePose(candidate, beat) {
   let pointAngle = null;
   let shoulderLift = 0;
   switch (candidate.move) {
+    case 'tap':
+    case 'tap-sway':
+      hands = candidate.move === 'tap' ? [[0.7, 0.8], [0.7, 0.8]]
+        : [[0.7, 0.6 + 0.1 * s], [0.7, 0.6 - 0.1 * s]];
+      shift = 0; tilt = 0; bounce = 0; break;
     case 'disco': {
       const reach = Math.sin(b * Math.PI / 2);
       hands = [[0.58, -0.12 - 0.72 * reach], [0.58, -0.12 + 0.72 * reach]];
@@ -158,6 +203,26 @@ export function heroDancePose(candidate, beat) {
   const upF = Math.max(0, s), upB = Math.max(0, -s);
   let ankles = [0, 0];
   switch (candidate.footwork) {
+    case 'rusty-step': {
+      const f = b % 1;
+      const up = Math.sin(Math.PI * f) ** 2;
+      const front = Math.floor(b) % 2 === 0;
+      feet = [[0.1 + (front ? 0.025 * up : 0), front ? -0.065 * up : 0],
+        [-0.1 - (front ? 0 : 0.025 * up), front ? 0 : -0.065 * up]];
+      ankles = [front ? -0.15 * up : 0, front ? 0 : -0.15 * up];
+      shift = 0; bounce = 0; tilt = 0; break;
+    }
+    case 'rusty-heel': {
+      const f = b % 1, up = f > 0.5 ? Math.sin((f - 0.5) * TAU) : 0;
+      feet = [[0.1, -0.02 * up], [-0.1, 0]]; ankles = [-0.35 * up, 0];
+      shift = 0; bounce = 0; tilt = 0; break;
+    }
+    case 'rusty-bounce':
+      // Lower the body while moving foot targets down by the same amount:
+      // the soles stay on the floor and the knees absorb the beat.
+      bounce = -0.025 * pulse;
+      feet = [[0.1, -bounce * light], [-0.1, -bounce * light]];
+      shift = 0; tilt = 0; break;
     case 'planted':
       feet = [[0.17, 0], [-0.17, 0]]; shift = 0; bounce = 0; tilt = 0; break;
     case 'heel-taps':
@@ -202,12 +267,21 @@ export function heroDancePose(candidate, beat) {
   return {
     kind: 'stand', time: poseTime, phase: b / 2 % 1, grounded: true, headTurn,
     facing: 1, squash: 0, lean: 0, faceJoy: true,
-    dance: { hands, feet, ankles, pointAngle, shoulderLift }, shift: shift * light, tilt: tilt * light, bounce: bounce * light,
+    dance: { hands, feet, ankles, pointAngle, shoulderLift,
+      legFlex: candidate.footwork?.startsWith('rusty-') || candidate.move.startsWith('tap') ? 0.5 : 0.56 },
+    shift: shift * light, tilt: tilt * light, bounce: bounce * light,
   };
 }
 
 export function drawHeroDance(ctx, candidate, beat, x, feetY, height) {
-  const pose = heroDancePose(candidate, beat);
+  let pose = heroDancePose(candidate, beat);
+  if (candidate.labLegs) {
+    pose = tameSkirt(pose, candidate.labLegs, beat);
+    if (candidate.alternateTap && Math.floor(beat / 4) % 2 === 1) {
+      pose.dance.feet = pose.dance.feet.slice().reverse().map(([x, y]) => [-x, y]);
+      pose.dance.ankles = pose.dance.ankles.slice().reverse();
+    }
+  }
   ctx.save();
   ctx.translate(x + pose.shift * height, feetY - pose.bounce * height);
   ctx.rotate(pose.tilt);

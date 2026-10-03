@@ -37,7 +37,7 @@ import {
   tailHashOf, bangerIssues, moveBangersOutOfScratch,
 } from '../tools/lib/banger-file.js';
 import { writeSongFile } from '../tools/lib/song-file.js';
-import { partLevel, noteDb, MAX_LEVEL_MOVE, CURVE_SECONDS, CURVE_MIDI, widenerOf, stereoDb } from '../tools/lib/banger/levels.js';
+import { partLevel, noteDb, MAX_LEVEL_MOVE, LEAD_ROLES, LEAD_CAUTION_DB, LEAD_MAX_RAISE, CURVE_SECONDS, CURVE_MIDI, widenerOf, stereoDb } from '../tools/lib/banger/levels.js';
 import { BANGER_LEVEL_DATA } from '../tools/lib/banger/levels-data.js';
 import { BANGER_STYLES } from '../tools/lib/banger/styles/index.js';
 import { BANGER_SOUNDS } from '../tools/lib/banger/sounds.js';
@@ -1084,8 +1084,13 @@ try {
     assert(['bass', 'saws', 'square', 'kick'].every((j) => jobs.has(j)) && !jobs.has('hook'),
       `the bass, chords, hook double and kick are levelled, and a hook on its own sound is left alone (${[...jobs].join(' ')})`);
     const offsets = BANGER_LEVEL_DATA.offsets['big-room'] || {};
-    assert(keep.levels.every((r) => Math.abs(r.after - r.base - (offsets[r.job] ?? 0)) <= MAX_LEVEL_MOVE + 0.05),
+    const caution = (r) => (LEAD_ROLES.includes(r.job) ? LEAD_CAUTION_DB : 0);
+    assert(keep.levels.every((r) => Math.abs(r.after - r.base - (offsets[r.job] ?? 0) - caution(r)) <= MAX_LEVEL_MOVE + 0.05),
       `no prediction moves a fader more than ${MAX_LEVEL_MOVE} dB from its reference's`);
+    // the leads err soft: never raised past LEAD_MAX_RAISE, and set LEAD_CAUTION_DB under the prediction
+    assert(keep.levels.filter((r) => LEAD_ROLES.includes(r.job)).length > 0
+      && keep.levels.filter((r) => LEAD_ROLES.includes(r.job)).every((r) => r.after - r.base - (offsets[r.job] ?? 0) <= LEAD_MAX_RAISE + LEAD_CAUTION_DB + 0.05),
+    'the leads and the arpeggio err soft: never raised much, always set below the prediction');
     // Kept means kept: a riff part is moved only where it could not keep its sound — a lane's
     // own engine voice cannot follow it to another lane, and plays the style's fallback there.
     const forced = keep.levels.filter((r) => r.job.startsWith('riff:'));

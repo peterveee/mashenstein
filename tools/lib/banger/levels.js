@@ -52,6 +52,17 @@ export const LEVEL_WINDOW_BARS = 8;
 /** The most a prediction may move a fader either way, in dB. Past that the guess is the problem. */
 export const MAX_LEVEL_MOVE = 6;
 /**
+ * ERR SOFT ON THE LEADS (Peter, 3 Oct 2026: "the leads are often too loud as are the
+ * arpeggios… I would prefer to err on the side of caution and have them too soft than too
+ * loud"). The parts that sit on top of the mix — the hook's doubles and the arpeggio — come
+ * down LEAD_CAUTION_DB below the prediction, and the prediction may raise them by no more
+ * than LEAD_MAX_RAISE: a guess that a lead should come UP is the guess that costs most when
+ * it is wrong. Only these parts; the rest of the mix is as predicted.
+ */
+export const LEAD_ROLES = Object.freeze(['square', 'bell', 'megaSaw', 'arp']);
+export const LEAD_CAUTION_DB = -2.5;
+export const LEAD_MAX_RAISE = 2;
+/**
  * The note lengths a curve holds, in seconds — a step to a bar at the bench's 120 BPM, an
  * octave apart. Five, because a sound need not get louder the longer it is held: some
  * peak at an eighth note and fall away, and three points stepped right over that.
@@ -396,7 +407,9 @@ export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts,
     }
     if (M != null) M += stereo(now, part, widener);
     if (R == null || M == null) continue;
-    const after = round1(base + clamp(R - M, -MAX_LEVEL_MOVE, MAX_LEVEL_MOVE) + offset);
+    const lead = LEAD_ROLES.includes(role);
+    const move = clamp(R - M, -MAX_LEVEL_MOVE, lead ? LEAD_MAX_RAISE : MAX_LEVEL_MOVE);
+    const after = round1(base + move + offset + (lead ? LEAD_CAUTION_DB : 0));
     strip.gain = after;
     rows.push({ lane, job: riffPart && role !== 'hook' ? `riff:${riffPart.key}` : role, how, from, base, before, after, move: round1(after - before), window });
   }

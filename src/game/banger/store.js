@@ -20,7 +20,7 @@
 import { save as defaultSave } from '../../engine/save.js';
 import { RIFF_VERSION, normaliseNotes, upgradeDraft, upgradeRecipeNotes, modeOf } from './riff.js';
 import { MAKER_STYLES, MAKER_MOODS, defaultMoodFor, makeBanger, styleLabel, moodLabel } from './make.js';
-import { randomSongName } from '../../../tools/lib/song-names.js';
+import { moodSongName } from './mood-names.js';
 import { STARTERS, FIRST_STARTER } from './starters.js';
 
 /**
@@ -50,6 +50,12 @@ export function bangerState(save = defaultSave) {
   // still has it. Only recipes that are not recipes at all are dropped.
   b.kept = Array.isArray(b.kept) ? b.kept.filter((r) => r && typeof r.style === 'string' && Number.isInteger(r.seed)) : [];
   for (const r of b.kept) if (r.v !== RIFF_VERSION) { Object.assign(r, upgradeRecipeNotes(r)); r.v = RIFF_VERSION; }
+  // A starter already handed over follows its song file: when the file is replaced (a new
+  // take), the kept record's style, mood, seed and BPM come with it, so its title is true.
+  for (const r of b.kept) {
+    const st = r.preset && STARTERS[r.preset];
+    if (st) Object.assign(r, { mode: st.recipe.mode, notes: [...st.recipe.notes], style: st.recipe.style, mood: st.recipe.mood, seed: st.recipe.seed, bpm: st.recipe.bpm });
+  }
   b.next = Number.isInteger(b.next) && b.next > 0 ? b.next : b.kept.reduce((m, r) => Math.max(m, (r.n | 0) + 1), 1);
   // Every Lab gets the starter song (starters.js) once: a first-time Lab opens on it rather
   // than an empty list, and one that already has songs gets it at the end of them (Peter,
@@ -93,7 +99,8 @@ export function keepBanger({ notes, mode = 'simple', style, mood, seed, bpm, fre
     save.persist?.();
     return last;
   }
-  const name = randomSongName({ taken: b.kept.map((r) => r.name).filter(Boolean), random });
+  // named for its mood (mood-names.js): a bittersweet song is LEMON or UNSENT something
+  const name = moodSongName({ mood, taken: b.kept.map((r) => r.name).filter(Boolean), random });
   const rec = { v: RIFF_VERSION, n: b.next++, name, mode: m, notes: grid, style, mood, seed, bpm };
   b.kept.push(rec);
   if (b.kept.length > MAX_KEPT) b.kept.splice(0, b.kept.length - MAX_KEPT);

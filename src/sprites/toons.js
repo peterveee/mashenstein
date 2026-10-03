@@ -8861,7 +8861,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     footF = pose.dance.feet[0].map(v => v * u);
     footB = pose.dance.feet[1].map(v => v * u);
     [ankleF, ankleB] = pose.dance.ankles || [0, 0];
-    legSeg = Math.max(legSeg, legL * 0.56);
+    legSeg = Math.max(legSeg, legL * (pose.dance.legFlex ?? 0.56));
   }
   // `clung` sent the whole painter down the STAND path above — same hip roots,
   // same front-facing shoes as idling — and the ride's legs live in the

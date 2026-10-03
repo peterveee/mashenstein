@@ -106,6 +106,7 @@ export class BangerMakerState {
     this.focus = { area: 'grid', col: Math.max(0, first), row: first >= 0 ? this.rows - 1 - this.notes[first] : this.rows - 1, picker: 0, button: GENER8 };
     this.message = null;
     this.messageT = 0;
+    this.chooser = null;       // the STYLE / MOOD chooser while it is open
     this.making = 0;
     this.loopT0 = null;
     this.scheduled = -1;
@@ -230,6 +231,79 @@ export class BangerMakerState {
 
   say(text) { this.message = text; this.messageT = 2; }
 
+  // ------------------------------------------------------------------ the chooser
+  // A tap on the middle of STYLE or MOOD (or confirm on it) opens every choice at once, a
+  // grid to tap, rather than stepping through twenty-odd moods one at a time (Peter, 3 Oct
+  // 2026). The arrows at the ends still step. A tap outside, or back, closes it.
+  openChooser(picker) {
+    const items = picker === 0 ? MAKER_STYLES : MAKER_MOODS;
+    const cur = picker === 0 ? this.style : this.mood;
+    this.chooser = { picker, items, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
+    Audio.sfx('ui');
+  }
+
+  choose(i) {
+    const c = this.chooser;
+    const it = c.items[i];
+    if (it) { if (c.picker === 0) this.style = it.id; else this.mood = it.id; }
+    this.chooser = null;
+    Audio.sfx('uiConfirm');
+  }
+
+  chooserLayout(L) {
+    const c = this.chooser;
+    const n = c.items.length;
+    const cols = L.portrait ? 2 : (n > 10 ? 4 : 2);
+    const rows = Math.ceil(n / cols);
+    const pad = L.portrait ? 14 : 6, gap = L.portrait ? 8 : 4, titleH = L.portrait ? 50 : 18;
+    const panel = { x: 8, y: L.top, w: W - 16, h: (L.buttons[0].y + L.buttons[0].h) - L.top };
+    const cw = (panel.w - pad * 2 - gap * (cols - 1)) / cols;
+    const ch = Math.min(L.portrait ? 64 : 22, (panel.h - pad * 2 - titleH - gap * (rows - 1)) / rows);
+    const cells = c.items.map((_, i) => ({
+      x: panel.x + pad + (i % cols) * (cw + gap), y: panel.y + pad + titleH + Math.floor(i / cols) * (ch + gap), w: cw, h: ch,
+    }));
+    panel.h = Math.min(panel.h, pad * 2 + titleH + rows * ch + (rows - 1) * gap);
+    return { panel, cells, cols, titleH, pad };
+  }
+
+  updateChooser(L) {
+    const c = this.chooser;
+    const { panel, cells, cols } = this.chooserLayout(L);
+    const n = c.items.length;
+    if (Input.pressed('right')) c.sel = (c.sel + 1) % n;
+    if (Input.pressed('left')) c.sel = (c.sel + n - 1) % n;
+    if (Input.pressed('down')) c.sel = Math.min(n - 1, c.sel + cols);
+    if (Input.pressed('up')) c.sel = Math.max(0, c.sel - cols);
+    if (Input.pressed('confirm')) { this.choose(c.sel); return; }
+    if (Input.pressed('back')) { this.chooser = null; Audio.sfx('ui'); return; }
+    if (Input.pressed('pointer')) {
+      const { x, y } = Input.pointer;
+      const inside = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+      const i = cells.findIndex(inside);
+      if (i >= 0) this.choose(i);
+      else if (!inside(panel)) { this.chooser = null; Audio.sfx('ui'); }
+    }
+  }
+
+  drawChooser(ctx, L) {
+    const c = this.chooser;
+    const { panel, cells, titleH, pad } = this.chooserLayout(L);
+    const showFocus = !Input.usingTouch;
+    ctx.fillStyle = 'rgba(5,5,10,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    drawMenuRow(ctx, panel.x, panel.y, panel.w, panel.h, plateRadius(28, L.portrait), 'rgba(16,14,28,0.98)');
+    const title = c.picker === 0 ? 'CHOOSE A STYLE' : 'CHOOSE A MOOD';
+    portraitMenuTextCentered(ctx, title, W / 2, textYForMid(panel.y + pad + titleH / 2, portraitMenuScale(1.3)), '#fff', 1.3);
+    const cur = c.picker === 0 ? this.style : this.mood;
+    c.items.forEach((it, i) => {
+      const r = cells[i];
+      const on = it.id === cur, sel = showFocus && c.sel === i;
+      drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.2)' : BACK_BUTTON_PLATE);
+      const s = portraitMenuFit(it.label, 1.1, r.w - 10);
+      portraitMenuTextCentered(ctx, it.label, r.x + r.w / 2, textYForMid(r.y + r.h / 2, portraitMenuScale(s)), sel ? C_SEL : on ? C_NOTE : C_TEXT, s);
+    });
+  }
+
   press(button) {
     const name = BUTTONS[button];
     if (name === 'CLEAR') {
@@ -313,7 +387,8 @@ export class BangerMakerState {
     }
     for (let i = 0; i < L.pickers.length; i++) {
       const r = L.pickers[i];
-      if (inside(r)) return { area: 'picker', picker: i, dir: x < r.x + r.w * 0.3 ? -1 : 1 };
+      // the arrows at the ends step; the middle opens every choice at once
+      if (inside(r)) return { area: 'picker', picker: i, dir: x < r.x + r.w * 0.22 ? -1 : x > r.x + r.w * 0.78 ? 1 : 0 };
     }
     for (let i = 0; i < L.buttons.length; i++) if (inside(L.buttons[i])) return { area: 'button', button: i };
     return null;
@@ -325,18 +400,22 @@ export class BangerMakerState {
     this.tickLoop();
     const L = this.layout();
     const f = this.focus;
+    if (this.chooser) { this.updateChooser(L); Input.endFrame(); return; }
     this.moveFocus();
     if (Input.pressed('confirm')) {
       if (f.area === 'mode') this.setMode(this.mode === 'simple' ? 'advanced' : 'simple');
       else if (f.area === 'grid') this.toggle(f.col, f.row);
-      else if (f.area === 'picker') this.cycle(f.picker, 1);
+      else if (f.area === 'picker') this.openChooser(f.picker);
       else this.press(f.button);
     }
     if (Input.pressed('pointer')) {
       const hit = this.pointerHit(L, Input.pointer.x, Input.pointer.y);
       if (hit?.area === 'mode') { f.area = 'mode'; this.setMode(hit.mode); }
       else if (hit?.area === 'grid') { Object.assign(f, hit); this.toggle(hit.col, hit.row); }
-      else if (hit?.area === 'picker') { f.area = 'picker'; f.picker = hit.picker; this.cycle(hit.picker, hit.dir); }
+      else if (hit?.area === 'picker') {
+        f.area = 'picker'; f.picker = hit.picker;
+        if (hit.dir) this.cycle(hit.picker, hit.dir); else this.openChooser(hit.picker);
+      }
       else if (hit?.area === 'button') { f.area = 'button'; f.button = hit.button; this.press(hit.button); }
     }
     if (Input.pressed('back') && this.making === 0) { Audio.sfx('ui'); this.onDone(); }
@@ -379,6 +458,7 @@ export class BangerMakerState {
       portraitMenuTextCentered(ctx, BUTTONS[i], r.x + r.w / 2, textYForMid(r.y + r.h / 2, portraitMenuScale(s)),
         sel ? C_SEL : (i === GENER8 ? C_NOTE : C_TEXT), s);
     });
+    if (this.chooser) this.drawChooser(ctx, L);
   }
 
   drawStatus(ctx, L, status) {

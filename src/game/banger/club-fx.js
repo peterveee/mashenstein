@@ -40,7 +40,10 @@ export const HERO_MOVES = Object.freeze([
     chain: [{ id: 'filter', params: { type: 'lowpass', frequency: 420, Q: 1 } }] },
   { hero: 'b33p', name: 'B-33P', move: '8-BIT', what: 'hold: the robot crushes it to bits', col: '#f0c040', hold: true,
     chain: [{ id: 'bitcrusher', params: { bits: 5, downsample: 6, wet: 1 } }] },
+  // A different length of stutter each press (Peter, 3 Oct 2026): quarters, eighths,
+  // sixteenths or thirty-seconds (`slices`, in beats).
   { hero: 'ramon', name: 'RAMON', move: 'ROCKET FIST', what: 'hold: punch, punch, punch', col: '#ff7a59', hold: true,
+    slices: [1, 0.5, 0.25, 0.125],
     chain: [{ id: 'stutter', params: { slice: 0.25, retrigger: 0, fade: 0 } }] },
   // The pump — the whole room ducking on every beat — rather than a bass boost on the
   // finished mix, which most speakers could not show (Peter: "not sure Grumpos is doing
@@ -56,7 +59,9 @@ export const HERO_MOVES = Object.freeze([
     chain: [{ id: 'stutter', params: { slice: 0, retrigger: 0, fade: 0, stop: 1 } }] },
   { hero: 'clara', name: 'CLARA', move: 'PLOT HOLE', what: 'the band falls through it: drums only', col: '#c9a0ff',
     drop: ['bass', 'chords', 'lead'] },
+  // A riser of one, two or four bars, picked each time (Peter, 3 Oct 2026: up to four).
   { hero: 'fernwick', name: 'FERNWICK', move: 'LONGBOW', what: 'a riser, loosed on the one', col: '#7ad06a', bars: 2,
+    barChoices: [1, 2, 4],
     chain: [{ id: 'filter', params: { type: 'highpass', frequency: 30, Q: 0.9, sweep: 1, sweepTo: 1800 } }] },
   { hero: 'rusty', name: 'RUSTY', move: 'BOOMERANG', what: 'an echo that comes back', col: '#e0a04a',
     chain: [{ id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.65, wet: 0.55 } }] },
@@ -105,10 +110,17 @@ export function nextSixteenthAt() {
   return { when, step, spb };
 }
 
+/** The chain a held move plays this press: Ramon's stutter at one of its lengths. */
+export function holdChain(move, random = Math.random) {
+  if (!move.slices) return move.chain;
+  const slice = move.slices[Math.floor(random() * move.slices.length)];
+  return move.chain.map((fx) => (fx.id === 'stutter' ? { ...fx, params: { ...fx.params, slice } } : fx));
+}
+
 /** A held move goes in at `at`, and stays until endHold. */
-export function startHold(move, at) {
+export function startHold(move, at, random = Math.random) {
   if (!Audio.mixer?.scheduleBarEffects || !at) return;
-  Audio.mixer.scheduleBarEffects(MASTER, move.chain, at.when, { fresh: true, sixteenth: at.spb, since: at.when });
+  Audio.mixer.scheduleBarEffects(MASTER, holdChain(move, random), at.when, { fresh: true, sixteenth: at.spb, since: at.when });
   Audio.masterLiveUntil = Infinity;
 }
 
@@ -153,13 +165,17 @@ export function landingFor(move, random = Math.random) {
     const at = nextTwoOrFourAt();
     return at && { ...at, plan: kikoPlan(at, random) };
   }
+  if (move.barChoices) {
+    const at = nextBeatAt();
+    return at && { ...at, plan: { bars: move.barChoices[Math.floor(random() * move.barChoices.length)], hits: 1 } };
+  }
   return move.onFour ? nextFourAt() : nextBeatAt();
 }
 
 /** How long a move lasts, in seconds, at a sixteenth of `spb` — by its `plan`, if it has one. */
 export const moveSeconds = (move, spb, plan = null) => {
   const beats = plan?.beats || move.beats;
-  return beats ? 4 * spb * beats : 16 * spb * (move.bars || 1);
+  return beats ? 4 * spb * beats : 16 * spb * (plan?.bars || move.bars || 1);
 };
 
 /**
@@ -184,7 +200,7 @@ export function playMove(move, at, { song = null, levels = null } = {}) {
   // a tape stop winding down across each one.
   const hits = at.plan?.hits || 1;
   const each = (until - at.when) / hits;
-  const chain = at.plan
+  const chain = at.plan?.beats
     ? move.chain.map((fx) => (fx.id === 'stutter' ? { ...fx, params: { ...fx.params, stop: at.plan.beats / hits } } : fx))
     : move.chain;
   for (let h = 0; h < hits; h++) {

@@ -19,7 +19,7 @@ const { bangerState, keepBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger } 
 const { BangerMakerState, RIFF_VOICES } = await import('../src/game/banger/maker.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState } = await import('../src/game/banger/club.js');
-const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds } = await import('../src/game/banger/club-fx.js');
+const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor } = await import('../src/game/banger/club-fx.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -165,15 +165,16 @@ assert(threw, 'an empty grid is refused');
     'a new save starts from the default SIMPLE grid in the first style');
   // THE STARTER: a first-time Lab holds NEON ORBIT, played exactly as saved on the desk
   {
+    const { STARTERS } = await import('../src/game/banger/starters.js');
     const { songFor, bangerTitle } = await import('../src/game/banger/store.js');
     const NEON = await import('../src/data/bangers/neon-orbit-banger.js');
     const st = b.kept[0];
     const song = st && songFor(st);
-    assert(b.kept.length === 1 && st.preset === 'neon-orbit' && st.n === 1 && bangerTitle(st) === 'NEON ORBIT (BIG-ROOM HOUSE/HYPNOTIC)'
-      && song.bank === NEON.bank && song.mix === NEON.mix && song.form.length === NEON.banger.form.length,
+    assert(b.kept.length === 1 && st.preset === 'neon-orbit' && st.n === 1 && bangerTitle(st) === `NEON ORBIT (BIG-ROOM HOUSE/${NEON.banger.options.mood.toUpperCase()})`
+      && song.bank === NEON.bank && song.mix === NEON.mix && song.form.length >= 7 && song.form[0].from === 1 && song.form.every((f, i) => !i || f.from === song.form[i - 1].to + 1),
     'a first-time Lab opens on NEON ORBIT, the desk song exactly as saved');
-    assert(st.mode === 'simple' && st.notes.length === 16 && st.notes.filter((n) => n >= 0).length === 9 && !st.options,
-      'and it carries its riff on the standard SIMPLE grid, for the pencil');
+    assert(st.mode === 'advanced' && st.notes.length === 32 && st.notes.filter((n) => n >= 0).length === 9 && !st.options,
+      'and it carries its riff on the ADVANCED grid, for the pencil');
     deleteBanger(st, fake);
     assert(bangerState(fake).kept.length === 0, 'deleted, the starter does not come back');
     // a Lab that already has songs gets it too, at the end; once gone, gone
@@ -181,6 +182,10 @@ assert(threw, 'an empty grid is refused');
     const ob = bangerState(old);
     assert(ob.kept.length === 2 && ob.kept[0].name === 'OLD ONE' && ob.kept[1].preset === 'neon-orbit' && ob.kept[1].n === 2,
       'a Lab that already has songs gets the starter after them');
+    // a starter kept under an older take follows the file's current one
+    ob.kept[1].mood = 'hypnotic'; ob.kept[1].seed = 1;
+    const re = bangerState(old).kept[1];
+    assert(re.mood === STARTERS['neon-orbit'].recipe.mood && re.seed === STARTERS['neon-orbit'].recipe.seed, 'a kept starter follows its song file when the take is replaced');
     deleteBanger(ob.kept[1], old);
     assert(bangerState(old).kept.length === 1 && bangerState(old).kept.length === 1, 'and once deleted there, it is gone for good');
   }
@@ -192,6 +197,20 @@ assert(threw, 'an empty grid is refused');
     'the draft is saved, both grids and the mode');
   const first = keepBanger({ notes: DEFAULT_NOTES, mode: 'simple', style: 'trance', mood: 'dark', seed: 1, bpm: 138 }, fake);
   assert(/^[A-Z]+ [A-Z]+$/.test(first.name), `a banger gets a name from the new-song names (${first.name})`);
+  {
+    const { MOOD_WORDS, MOOD_NOUNS, moodNameCount, moodSongName } = await import('../src/game/banger/mood-names.js');
+    const { BANGER_MOODS } = await import('../tools/lib/banger/options.js');
+    assert(MOOD_WORDS.dark.includes(first.name.split(' ')[0]) && MOOD_NOUNS.includes(first.name.split(' ')[1]),
+      `a banger is named for its mood: a dark one gets a dark word (${first.name})`);
+    const plain = (w) => /^[A-Z]+$/.test(w);
+    assert(BANGER_MOODS.every((m) => MOOD_WORDS[m.id]?.length >= 20 && moodNameCount(m.id) >= 2000)
+      && Object.values(MOOD_WORDS).flat().concat(MOOD_NOUNS).every(plain),
+    'every mood has its own words, a couple of thousand names each, all plain one-word pairs');
+    const taken = [];
+    for (let k = 0; k < 300; k++) taken.push(moodSongName({ mood: 'bittersweet', taken }));
+    assert(new Set(taken).size === 300 && taken.every((n) => MOOD_WORDS.bittersweet.includes(n.split(' ')[0])),
+      'three hundred bittersweet songs, three hundred different bittersweet names');
+  }
   const again = keepBanger({ notes: DEFAULT_NOTES, mode: 'simple', style: 'trance', mood: 'dark', seed: 9, bpm: 140 }, fake);
   assert(again === first && bangerState(fake).kept.length === 1 && first.seed === 9 && first.bpm === 140 && first.n === 2,
     'GENER8 again with the same riff, style and mood is a new take of that song: same name and number, new seed');
@@ -270,6 +289,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.enter();
   let L = maker.layout();
   assert(maker.mode === 'simple' && maker.rows === 8 && maker.steps === 16, 'the maker opens in SIMPLE');
+  {
+    // the middle of MOOD opens every mood at once; a tap on one picks it and closes
+    const moodBox = L.pickers[1];
+    const before = maker.mood;
+    tap(maker, moodBox.x + moodBox.w / 2, moodBox.y + moodBox.h / 2);
+    assert(maker.chooser?.picker === 1 && maker.chooser.items.length === MAKER_MOODS.length, 'the middle of MOOD opens every mood at once');
+    const { cells } = maker.chooserLayout(maker.layout());
+    const pick = MAKER_MOODS.findIndex((m) => m.id !== before);
+    maker.draw(document.createElement('canvas').getContext('2d'));
+    tap(maker, cells[pick].x + cells[pick].w / 2, cells[pick].y + cells[pick].h / 2);
+    assert(!maker.chooser && maker.mood === MAKER_MOODS[pick].id, 'and a tap on one picks it and closes');
+    tap(maker, moodBox.x + moodBox.w - 3, moodBox.y + moodBox.h / 2);
+    assert(!maker.chooser && maker.mood === MAKER_MOODS[(pick + 1) % MAKER_MOODS.length].id, 'the arrow at the end still steps');
+    maker.mood = before;
+  }
   {
     // The style and mood are remembered; the grid's preview sound changes every visit.
     const left = { style: MAKER_STYLES[MAKER_STYLES.length - 1].id, mood: MAKER_MOODS[MAKER_MOODS.length - 1].id };
@@ -495,8 +529,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const firstIn = club.dancers.filter((d) => d.move).length;
   for (let k = 0; k < 60; k++) club.update(1 / 60);
   const grumposAt = HERO_MOVES.findIndex((m) => m.hero === 'grumpos');
-  assert(firstIn < HERO_MOVES.length && club.dancers.every((d, i) => (i === grumposAt ? d.resting && !d.move : d.move && d.move.hero === HERO_MOVES[i].hero) && d.moves.length === 3),
-    'the heroes join the dancing one at a time, each on one of their own three dances — Grumpos joins in just standing there');
+  assert(firstIn < HERO_MOVES.length && club.dancers.every((d, i) => (i === grumposAt ? d.resting && !d.move : d.move && d.move.hero === HERO_MOVES[i].hero) && d.moves.length === 5),
+    'the heroes join the dancing one at a time, each on one of their own five dances (the gallery\'s lab set) — Grumpos joins in just standing there');
   {
     // mostly standing and bopping, dancing now and then
     const g = club.dancers[grumposAt];
@@ -532,6 +566,47 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       && longTwo.beats === 2 && longTwo.hits === 1 && twoTwos.beats === 2 && twoTwos.hits === 2
       && moveSeconds(kikoMove, 0.1, longTwo) === 0.8 && moveSeconds(kikoMove, 0.1, four) === 0.4,
     'Kiko stops the tape on the 2 or the 4: a beat on the 4; on the 2, half a bar, one stop or two');
+  }
+  // Ramon's stutter comes in four lengths; Fernwick's riser in one, two or four bars
+  {
+    const ramon = HERO_MOVES.find((m) => m.hero === 'ramon');
+    const slices = new Set([0, 0.3, 0.6, 0.9].map((r) => holdChain(ramon, () => r)[0].params.slice));
+    const fern = HERO_MOVES.find((m) => m.hero === 'fernwick');
+    assert(slices.size === 4 && [...slices].every((x) => [1, 0.5, 0.25, 0.125].includes(x)),
+      'Ramon\'s stutter is quarters, eighths, sixteenths or thirty-seconds, a different one each press');
+    assert(fern.barChoices.join() === '1,2,4' && moveSeconds(fern, 0.1, { bars: 4 }) === 6.4 && moveSeconds(fern, 0.1, { bars: 1 }) === 1.6,
+      'Fernwick\'s riser runs one, two or four bars');
+  }
+  // the LED board: random lines, held a few bars or scrolled all the way off, style lines mixed in
+  {
+    const { LED_SLOGANS, LED_SCROLLS, LED_STYLE_LINES, fillLed } = await import('../src/game/banger/led-slogans.js');
+    const realT = club.t, realRec = club.rec;
+    club.rec = { ...realRec, style: 'shibuya' };
+    club.led = null; club.ledRecent = [];
+    const seen = [];
+    let complete = true, scrolled = false;
+    for (let t = 0; t < 600; t += 0.1) {
+      club.t = t;
+      const before = club.led;
+      const a = club.ledText();
+      if (club.led !== before && before) {
+        // the line that just ended had its whole run: a scroll had left the board
+        if (before.scroll && 54 - before.dur * 22 + (before.text.length * 6 - 1) > 0.01) complete = false;
+      }
+      if (club.led !== before) { seen.push(club.led.text); if (club.led.scroll) scrolled = true; }
+      if (!club.led.scroll && (a.offset < 0 || a.offset + club.led.text.length * 6 - 1 > 54)) complete = false;
+    }
+    club.t = realT; club.rec = realRec; club.led = null;
+    const order2 = [];
+    club.ledRecent = [];
+    for (let k = 0; k < 10; k++) order2.push(club.nextLed(0).text);
+    assert(complete && scrolled, 'every line fits or scrolls all the way off before the next comes on');
+    assert(seen.includes('KAWAII') || seen.includes('ARIGATO') || seen.includes('SO KAWAII'), 'a Shibuya-Kei song gets its own lines: KAWAII, ARIGATO');
+    assert(seen.slice(0, 10).join() !== order2.join(), 'the board picks at random, not in a set order');
+    const removed = ['TAKE A NO', 'BIG TUNE', 'NOT TOO', 'STAY UP', 'SWEAT', 'NO SKIPS', 'TUNE!', 'COMBO!', 'FREE PLAY'];
+    const all = [...LED_SLOGANS, ...LED_SCROLLS, ...Object.values(LED_STYLE_LINES).flatMap((l) => [...l.hold, ...l.scroll])];
+    assert(removed.every((r) => !all.includes(r)), 'the lines Peter cut are gone');
+    assert(all.every((t) => /^[A-Z0-9 !?\-.':()\/{}]+$/.test(t)), 'every line is in the board\'s font');
   }
   // Skirts: no footwork — tap one foot, stand, or hop on the spot; Grumpos only stands.
   {
@@ -607,6 +682,32 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     'lanes sort into their parts by family');
   club.draw(ctx);
   frame(club, 'back');
+  // the count-in reads a negative beat: every colour the room draws must still be a colour
+  {
+    const realBeat = club.beat;
+    const strict = document.createElement('canvas').getContext('2d');
+    const grad = strict.createLinearGradient.bind(strict);
+    let bad = 0;
+    const check = (g) => { const add = g.addColorStop?.bind(g); if (add) g.addColorStop = (o, c) => { if (typeof c !== 'string' || c.includes('undefined')) bad++; add(o, c); }; return g; };
+    strict.createLinearGradient = (...a) => check(grad(...a));
+    const rad = strict.createRadialGradient.bind(strict);
+    strict.createRadialGradient = (...a) => check(rad(...a));
+    for (const b of [-3.5, -0.5, 16.5, 33.5]) { club.beat = () => b; club.draw(strict); }
+    club.beat = realBeat;
+    assert(bad === 0, 'the room draws in real colours even on the count-in\'s negative beats');
+  }
+  // the song looping back starts a Mexican wave across the floor
+  {
+    const realBeat = club.beat;
+    const bars = club.song.form.at(-1).to;
+    club.lastBeat = bars * 4 - 0.5; club.beat = () => bars * 4 + 0.3;   // the engine counts on past the end
+    club.update(1 / 60);
+    const started = club.waveAt === club.t;
+    club.beat = realBeat;
+    club.draw(ctx);
+    assert(started, 'when the song loops, the heroes start a Mexican wave');
+    club.waveAt = -Infinity;
+  }
   // a tap on the mirror ball brings up the song's title for a while
   club.showTitle();
   const t0 = club.t;
@@ -640,13 +741,13 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   let made = null;
   const maker = new BangerMakerState({ from: st, onDone: () => {}, onMade: (r, song) => { made = { r, song }; }, random: () => 0 });
   maker.enter();
-  assert(maker.mode === 'simple' && maker.notes.join() === st.notes.join() && maker.style === 'big-room' && maker.mood === 'hypnotic',
-    'the pencil opens the starter on its riff, style and mood');
+  assert(maker.mode === 'advanced' && maker.notes.join() === st.notes.join() && maker.style === 'big-room' && maker.mood === STARTERS['neon-orbit'].recipe.mood,
+    'the pencil opens the starter in ADVANCED mode on its riff, style and mood');
   maker.mood = 'heroic';
   maker.make();
   maker.exit();
   const fresh = made?.r;
-  assert(fresh && fresh !== st && st.preset === 'neon-orbit' && st.mood === 'hypnotic' && fresh.mood === 'heroic' && !fresh.preset
+  assert(fresh && fresh !== st && st.preset === 'neon-orbit' && st.mood === STARTERS['neon-orbit'].recipe.mood && fresh.mood === 'heroic' && !fresh.preset
     && bangerState().kept.at(-1) === fresh && bangerState().kept.length === before + 1 && songFor(fresh).bank !== STARTERS['neon-orbit'].song().bank,
     'editing the starter never overwrites it: it keeps a new song, made by the plain recipe');
 }
@@ -673,11 +774,19 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
 
 // ---------------------------------------------------------------- IT'S ALIVE!
 {
-  const { BangerBirthState, FLASH_AT, BIRTH_S } = await import('../src/game/banger/birth.js');
+  const { BangerBirthState, FLASH_AT, BIRTH_S, SWITCH_AT } = await import('../src/game/banger/birth.js');
   const rec = bangerState().kept.at(-1);
   let opened = 0;
   const birth = new BangerBirthState({ rec, onDone: () => { opened++; } });
   birth.enter();
+  {
+    // Gary holds the switch up through the steps and has it thrown on the flash
+    birth.t = 0; const up = birth.switchAngle();
+    birth.t = SWITCH_AT; const down = birth.switchAngle();
+    birth.t = SWITCH_AT - 0.1; const mid = birth.switchAngle();
+    assert(up < 0 && down > 0 && mid > up && mid < down && SWITCH_AT < FLASH_AT - 1, 'Gary throws the switch first, and that starts it all');
+    birth.t = 0;
+  }
   const ctx = document.createElement('canvas').getContext('2d');
   for (let k = 0; k < Math.ceil(FLASH_AT * 60) - 2; k++) { birth.update(1 / 60); if (k % 10 === 0) birth.draw(ctx); }
   assert(!birth.flashed && birth.step === 3 && opened === 0, 'BRING TO LIFE ticks through its four steps before the lightning');
