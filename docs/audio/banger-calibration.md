@@ -17,6 +17,8 @@ npm run banger-calibrate -- refresh big-room --max-profiles=1
 
 On the desk, choose styles and RUN. FULL REBUILD ignores cached measurements for that run. BANGER CALIBRATION COVERAGE is a quick inventory without audio rendering. OPEN leads to the calibration report, including validation errors, peaks and rejected profiles.
 
+The Desk's **BANGER BALANCE** panel is for ear-led mix preferences: select a style, adjust the main hook, lead stack, or individual part trims, then choose **SAVE + BUILD**. **MEASURE + BUILD** runs the calibration refresh for that selected style and builds the game after publication. These are separate adjustments: a fader preference does not require new instrument measurements. Restore a style's built-in balance with RESET TO STYLE.
+
 WEEKLY: ON schedules an incremental run of all styles seven days later. The setting survives restarting the desk. An overdue job starts when the desk is open and no other desk job is running. Turning the setting off prevents future runs; it does not interrupt an existing refresh. This is a desk-local scheduler, not a machine service that runs after the desk closes. It starts disabled.
 
 ## What is measured
@@ -41,6 +43,6 @@ This is instrument/part calibration, not full-song mastering. Per-profile peaks 
 - `work/local/reports/banger-calibration.json` is the latest coverage or run report.
 - `tools/lib/banger/calibration-data.js` is the published runtime table. Publication is atomic, and rendering errors leave the previous table intact. Source edits during a run prevent publication; rerun to reuse unaffected cached measurements.
 - A full sweep can require tens of thousands of renders. Start with selected styles; the first sweep is much longer than later incremental runs.
-- After changing an instrument, effects chain, library gain behavior or engine, run refresh and rebuild the game. Review rejected profiles instead of compensating with large blanket boosts.
+- After changing an instrument, effects chain, library gain behavior or engine, run refresh and rebuild the game. From the Desk, MEASURE + BUILD does both. Review rejected profiles instead of compensating with large blanket boosts.
 
 The older single-note curve collector now includes rolled alternatives and combo parts too. Its `curves` and `check` commands remain available independently. Calibration can use its existing fallback predictor even when a one-note curve is absent; the new empirical residual is measured against that exact predictor.

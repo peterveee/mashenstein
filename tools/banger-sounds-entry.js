@@ -14,7 +14,7 @@ import { deskBank, laneList } from '../src/engine/lanes.js';
 import { draftOf } from './lib/arrangement-edit.js';
 import { createCustomSelect } from './lib/custom-select.js';
 import {
-  generateBanger, extractRiff, BANGER_MOODS, BANGER_STYLES, BANGER_VARIATIONS, BANGER_LENGTHS, styleFor,
+  generateBanger, extractRiff, BANGER_MOODS, BANGER_STYLES, BANGER_SOUND_SETS, BANGER_VARIATIONS, BANGER_LENGTHS, styleFor,
 } from './lib/banger/index.js';
 import {
   PART_SLOTS, KIT_ROLES, KITS, RANDOM_JOBS, CHOICE_SLOTS, MOOD_IDS, soundIssues, slotChoices, tableIssues, slotsFor,
@@ -58,6 +58,8 @@ const state = {
 const sounds = () => state.table[state.styleId];
 const style = () => styleFor(state.styleId);
 const never = () => sounds().never || [];
+// A phone style (a lite recipe) shuts MRDR-3 and JMJR-4: sound-rules.js.
+const phone = () => !!style()?.phone;
 const dirty = () => JSON.stringify(tidyTable(state.table)) !== state.saved;
 
 // ---------------------------------------------------------------- dropdowns
@@ -65,8 +67,8 @@ const dirty = () => JSON.stringify(tidyTable(state.table)) !== state.saved;
 // rulebook being asked several thousand questions per render otherwise.
 const choiceCache = new Map();
 function choicesFor(slot) {
-  const key = `${slot.kind}|${slot.family}|${slot.busy ? 1 : 0}|${slot.random ? 1 : 0}|${slot.key}|${never().join(',')}`;
-  if (!choiceCache.has(key)) choiceCache.set(key, slotChoices(slot, { never: never() }));
+  const key = `${slot.kind}|${slot.family}|${slot.busy ? 1 : 0}|${slot.random ? 1 : 0}|${slot.key}|${phone() ? 1 : 0}|${never().join(',')}`;
+  if (!choiceCache.has(key)) choiceCache.set(key, slotChoices(slot, { never: never(), phone: phone() }));
   return choiceCache.get(key);
 }
 let selectSeq = 0;
@@ -257,7 +259,7 @@ function changed() {
 }
 function problemsOf(id, slot) {
   if (!id) return null;
-  const { blocked, warnings } = soundIssues(id, slot, { never: never() });
+  const { blocked, warnings } = soundIssues(id, slot, { never: never(), phone: phone() });
   if (blocked.length) return h('span', { class: 'problem' }, `✕ ${blocked.join('; ')}`);
   if (warnings.length) return h('span', { class: 'warn' }, warnings.join('; '));
   return h('span', { class: 'note' }, metaOf(id));
@@ -308,7 +310,7 @@ function renderKits() {
 
 function chip({ id, slot, key, onRemove }) {
   // A chip with no slot (a mood's skip, the never-use list) only has to name a real preset.
-  const { blocked, warnings } = slot ? soundIssues(id, slot, { never: never() })
+  const { blocked, warnings } = slot ? soundIssues(id, slot, { never: never(), phone: phone() })
     : { blocked: VOICES[id] ? [] : ['not a preset in the library'], warnings: [] };
   return h('span', { class: `chip${blocked.length ? ' bad' : warnings.length ? ' warned' : ''}`, title: [metaOf(id), ...blocked, ...warnings].join(' — ') },
     slot ? playButton(key, slot, () => id) : '',
@@ -429,17 +431,17 @@ function targetsFor(id) {
   const out = [];
   const nv = never();
   for (const slot of slotsFor(state.styleId)) {
-    if (soundIssues(id, slot, { never: nv }).blocked.length || sounds().parts[slot.key] === id) continue;
+    if (soundIssues(id, slot, { never: nv, phone: phone() }).blocked.length || sounds().parts[slot.key] === id) continue;
     out.push([`part:${slot.key}`, `Part · ${slot.label}`, `now ${labelOf(sounds().parts[slot.key])}`]);
   }
   for (const kit of KITS) {
     for (const role of KIT_ROLES) {
-      if (soundIssues(id, role, { never: nv }).blocked.length || sounds().kits[kit.key]?.[role.key] === id) continue;
+      if (soundIssues(id, role, { never: nv, phone: phone() }).blocked.length || sounds().kits[kit.key]?.[role.key] === id) continue;
       out.push([`kit:${kit.key}:${role.key}`, `Kit · ${kit.label} · ${role.label}`, `now ${labelOf(sounds().kits[kit.key]?.[role.key] || sounds().kits.style[role.key])}`]);
     }
   }
   for (const job of RANDOM_JOBS) {
-    if (soundIssues(id, job, { never: nv }).blocked.length || (sounds().random[job.key] || []).includes(id)) continue;
+    if (soundIssues(id, job, { never: nv, phone: phone() }).blocked.length || (sounds().random[job.key] || []).includes(id)) continue;
     out.push([`random:${job.key}`, `Random · add to the ${job.label} list`, `${(sounds().random[job.key] || []).length} there now`]);
   }
   return out;
@@ -546,7 +548,8 @@ function renderStatus() {
 function renderStylePick() {
   const box = $('stylepick');
   box.textContent = '';
-  const options = BANGER_STYLES.filter((s) => state.table[s.id]).map((s) => [s.id, s.label]);
+  // The Sound Sets (Chipstep · Light …) are edited here like a style: each has its own row.
+  const options = [...BANGER_STYLES, ...BANGER_SOUND_SETS].filter((s) => state.table[s.id]).map((s) => [s.id, s.label]);
   box.append(plainSelect({ label: 'Style', options, value: state.styleId, onChange: (v) => { state.styleId = v; changed(); } }));
 }
 function renderAll() {

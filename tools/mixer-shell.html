@@ -6419,7 +6419,9 @@
   #regionedit.barfxmodal.show { display: flex; flex-direction: column; }
   #regionedit.barfxmodal .barfxpresets { flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
-  #regionedit.barfxmodal .barfxpresets .regselect { flex: 1; min-width: 160px; }
+  #regionedit.barfxmodal .barfxpresets .regselect { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 6px; padding: 5px 8px; text-align: left; }
+  #regionedit.barfxmodal .barfxpresets .regselect-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #regionedit.barfxmodal .barfxpresets .regselect::after { content: '▾'; flex: none; }
   #regionedit.barfxmodal .barfxpresets > button:last-child { flex: none; padding: 5px 8px; }
   #regionedit.barfxmodal > :is(.reghead, .barfxwhere, .barfxstatus, .barfxfoot) { flex: none; }
   /* ONE reserved height for the chain and its card, whichever card is showing: choosing a
@@ -7779,6 +7781,10 @@
                                              text-overflow: ellipsis; color: var(--ink); text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }
   #askbody .bgblocklab { margin-top: 5px; font-size: 10px; font-weight: 600; }
   #askbody .bgblockn { font-size: 10px; opacity: .85; }
+  #askbody .bgsectionfx { flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 12px; border-top: 1px solid #404650; }
+  #askbody .bgsectionfxrow { flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 8px; background: #242a32; border-radius: 4px; }
+  #askbody .bgsectionfxrow .bgfxparam { min-width: 72px; width: 84px; }
+  #askbody .bgsectionfxrow .bangerwarn { flex-basis: 100%; }
   #askbody .bgformtools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 14px; margin-top: 10px; font-size: 11px; }
   #askbody .bgformtools .askfield { margin: 0; min-width: 120px; }
   #askbody .bgformtools .bangernote { align-self: center; }

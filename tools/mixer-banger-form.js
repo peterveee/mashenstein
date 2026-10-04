@@ -12,9 +12,11 @@
 // them and wires the keys and the pointer. Its dropdowns are plain <select>s, which the
 // desk turns into its own (tools/mixer-select.js) — no OS popups.
 import { SECTION_TYPES, SECTION_TYPE_IDS } from './lib/banger/form-types.js';
-import { buildForm, formFromList } from './lib/banger/form.js';
+import { buildForm, formFromList, identifySections } from './lib/banger/form.js';
 import { bangerBars, bangerBpm } from './lib/banger/options.js';
 import { FORM_TEMPLATES } from './lib/banger/templates.js';
+import { sectionFxInspector, wireSectionFx } from './mixer-banger-section-fx.js';
+import { expandSectionRules } from './lib/banger/section-effects.js';
 import * as edit from './lib/banger/form-edit.js';
 
 const TEMPLATES = [['club', 'Club', 'Build and drop: intro, build, drop, breakdown, a harder second drop, outro'],
@@ -30,13 +32,13 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart
  * The editor in `host`. `request()` is the dialog's request as it stands (normalised
  * options without a drawn form, and its style); `changed()` is called after every edit.
  */
-export function createFormEditor({ host, escapeHtml, request, changed, toast }) {
-  const state = { edited: false, list: [], selected: null, pressing: false };
+export function createFormEditor({ host, escapeHtml, request, changed, toast, availability }) {
+  const state = { edited: false, list: [], selected: null, pressing: false, assignments: {}, locked: false };
 
   /** The form as it will be made: the drawn one, or the template's at the chosen length. */
   function shown() {
     const { options, style } = request();
-    if (state.edited) return formFromList(state.list, options, style);
+    if (state.edited) return identifySections(formFromList(state.list, options, style));
     return buildForm(options, bangerBars(options), style);
   }
   /** Start drawing: the template's form becomes the list being edited. */
@@ -53,7 +55,7 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
     changed();
     host.querySelector(`.bgblock[data-i="${state.selected}"]`)?.focus();
   }
-  const apply = (fn, select) => { ensureEdited(); commit(fn(state.list), select); };
+  const apply = (fn, select) => { if (state.locked) return; ensureEdited(); commit(fn(state.list), select); };
 
   // ---------------------------------------------------------------- drawing
   function render() {
@@ -79,12 +81,13 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
           + ` style="flex-grow:${f.bars};--c:${def.colour};--e:${Math.round((0.25 + 0.75 * (f.energy ?? def.energy)) * 100)}%"`
           + ` title="${escapeHtml(`${f.label} (${def.label}) — ${def.title}.\n${f.bars} bars, bars ${f.from}–${f.to} · energy ${ENERGY_NAMES[Math.max(0, Math.min(4, Math.round((f.energy ?? def.energy) * 5) - 1))]}${lifted ? ' · lifted by the Key Lift' : ''}\nClick to change it, drag to move it`)}">`
           + '<span class="bgblockfill"></span>'
-          + `<span class="bgblocklab">${escapeHtml(f.label)}${lifted ? ' ↑' : ''}</span><span class="bgblockn">${f.bars}</span></div>`;
+          + `<span class="bgblocklab">${escapeHtml(f.label)}${lifted ? ' ↑' : ''}</span><span class="bgblockn">${f.bars}${state.assignments[f.id]?.length ? ' · FX' : ''}</span></div>`;
       }).join('')
       + '</div>'
-      + `<div class="bgformtools">${sel ? inspector(sel, state.selected) : hint(form.length)}</div>`
+      + `<div class="bgformtools">${sel ? inspector(sel, state.selected) + sectionFxInspector(state.assignments[sel.id] || [], escapeHtml, availability?.(sel, state.assignments[sel.id] || []) || []) : hint(form.length)}</div>`
       + (problems.length ? `<div class="bangerwarn">${escapeHtml(problems.join(' · '))}</div>` : '');
     wire();
+    if (state.locked) host.querySelectorAll('#bgtemplate button, #bgformreset, .bgformtools > label input, .bgformtools > label select, .bgformtools > button, .bgfsbars button, .bgfsenergy button, #bgfsadd').forEach(el => el.disabled = true);
   }
 
   const hint = (n) => '<span class="bangernote">Click a section to change it, drag one to move it. A changed form is kept for every take.</span>'
@@ -120,6 +123,8 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
   function wire() {
     host.querySelectorAll('#bgtemplate button').forEach((b) => {
       b.onclick = () => {
+        if (state.locked) return;
+        clearEffects();
         const input = document.getElementById('bgtemplatevalue');
         state.edited = false; state.list = []; state.selected = null;
         if (input) { input.value = b.dataset.template; input.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -128,7 +133,7 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
       };
     });
     const reset = host.querySelector('#bgformreset');
-    if (reset) reset.onclick = () => { state.edited = false; state.list = []; state.selected = null; render(); changed(); };
+    if (reset) reset.onclick = () => { if (state.locked) return; clearEffects(); state.edited = false; state.list = []; state.selected = null; render(); changed(); };
 
     const strip = host.querySelector('#bgstrip');
     strip.addEventListener('pointerdown', onPointerDown);
@@ -137,6 +142,12 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
       el.addEventListener('focus', () => { if (!state.pressing && state.selected !== Number(el.dataset.i)) { state.selected = Number(el.dataset.i); render(); host.querySelector(`.bgblock[data-i="${state.selected}"]`)?.focus(); } });
     });
 
+    const f = shown()[state.selected];
+    if (f) wireSectionFx(host, state.assignments[f.id] || [], rows => {
+      if (rows.length) state.assignments[f.id] = rows;
+      else delete state.assignments[f.id];
+      changed();
+    });
     const i = state.selected;
     const on = (id, ev, fn) => { const el = host.querySelector(`#${id}`); if (el) el.addEventListener(ev, fn); };
     on('bgfstype', 'change', (e) => apply((l) => edit.setSection(l, i, { type: e.target.value }), i));
@@ -157,7 +168,9 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
   }
 
   function remove(i) {
+    if (state.locked) return;
     if (shown().length <= 1) { toast?.('A song needs at least one section', 1500); return; }
+    delete state.assignments[shown()[i]?.id];
     apply((l) => edit.removeSection(l, i), Math.min(i, shown().length - 2));
   }
 
@@ -168,9 +181,10 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
       const to = i + (e.key === 'ArrowLeft' ? -1 : 1);
       if (to < 0 || to >= n) return;
       e.preventDefault();
-      if (e.altKey) apply((l) => edit.moveSection(l, i, to), to);
+      if (e.altKey && !state.locked) apply((l) => edit.moveSection(l, i, to), to);
       else host.querySelector(`.bgblock[data-i="${to}"]`)?.focus();
-    } else if (e.key === '+' || e.key === '=') {
+    } else if (state.locked) return;
+    else if (e.key === '+' || e.key === '=') {
       e.preventDefault(); apply((l) => edit.resizeSection(l, i, 4), i);
     } else if (e.key === '-' || e.key === '_') {
       e.preventDefault(); apply((l) => edit.resizeSection(l, i, -4), i);
@@ -192,6 +206,7 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
     strip.setPointerCapture(e.pointerId);
     const blocks = [...strip.querySelectorAll('.bgblock')];
     const move = (ev) => {
+      if (state.locked) return;
       if (!dragging && Math.abs(ev.clientX - x0) < 5) return;
       dragging = true;
       block.classList.add('dragging');
@@ -214,23 +229,31 @@ export function createFormEditor({ host, escapeHtml, request, changed, toast }) 
     strip.addEventListener('pointercancel', up);
   }
 
+  function clearEffects() {
+    if (Object.keys(state.assignments).length) toast?.('Explicit section effects cleared', 1800);
+    state.assignments = {};
+  }
   return {
     render,
+    setStructureLocked(value) { state.locked = value; render(); },
+    loadEffects(config) { state.assignments = expandSectionRules(config, shown()); render(); },
     /** The request with the drawn form in it, when there is one. */
     apply(raw) {
+      raw.sectionFx = { ...raw.sectionFx, firstEffect: 'none', secondEffect: 'none', assignments: structuredClone(state.assignments) };
       if (state.edited) raw.form = { ...(raw.form || {}), sections: state.list.map((s) => ({ ...s })) };
       return raw;
     },
     /** Back to the template's own form — `why` says so, when there was a drawn one. */
     reset(why = null) {
       if (state.edited && why) toast?.(why, 1800);
-      state.edited = false; state.list = []; state.selected = null;
+      clearEffects();
+      if (!state.locked) { state.edited = false; state.list = []; state.selected = null; }
       render();
     },
     /** A drawn form to start from (a banger's own settings). */
     load(list) {
       if (!list?.length) return;
-      state.edited = true; state.list = list.map((s) => ({ ...s })); state.selected = null;
+      state.edited = true; state.list = list.map((s, i) => ({ ...s, id: s.id || `custom:${s.type}:${list.slice(0,i+1).filter(x=>x.type===s.type).length}` })); state.selected = null;
       render();
     },
     /** A new Length: a drawn form rescales to it, keeping its sections. */

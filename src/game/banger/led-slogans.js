@@ -69,6 +69,22 @@ export const LED_STYLE_LINES = Object.freeze({
     scroll: ['ROBOTS WELCOME TONIGHT', 'B-33P ON THE DECKS', 'DO THE ROBOT'] },
   megadrive: { hold: ['16-BIT', 'PRESS A', 'NOW LOADING', 'PLAYER 2', 'GAME OVER?'],
     scroll: ['BLAST PROCESSING', 'BLOW ON THE CARTRIDGE', 'INSERT CARTRIDGE', 'RESET BUTTON DO NOT PRESS'] },
+  'deep-house': { hold: ['DEEP', 'WAREHOUSE', 'AFTERHOURS', 'SOULFUL', 'ONE MORE'],
+    scroll: ['DEEPER AND DEEPER', 'THE SUN IS COMING UP', 'NO PHOTOS ON THE DANCEFLOOR', 'JUST ONE MORE TUNE'] },
+  'nu-disco': { hold: ['DISCO', 'SUNSET', 'BOOGIE', 'GROOVY', 'BALEARIC'],
+    scroll: ['SUNSET ON THE TERRACE', 'ROLLER SKATES ON', 'CONGAS PLEASE', 'GLITTER IS FOREVER'] },
+  downtempo: { hold: ['CHILL', 'SLOW', 'HAZY', 'RAINY', 'NIGHT'],
+    scroll: ['TAKE IT SLOW', 'RAIN ON THE WINDOW', 'TURN THE LIGHTS DOWN', 'HEAVY EYES HEAVY BEATS'] },
+  eurodance: { hold: ['HANDS UP', 'EURO', 'PIANO!', '1995', 'JUMP'],
+    scroll: ['EVERYBODY HANDS UP', 'PIANO STABS INCOMING', 'ONE MORE CHORUS', 'THE RAVE BUS IS HERE'] },
+  'italo-disco': { hold: ['ITALO', 'DISCO', 'ROBOT', 'MIDNIGHT', 'AMORE'],
+    scroll: ['THE ROBOT IS IN LOVE', 'DANCING UNTIL MIDNIGHT', 'SYNTHESIZER ROMANCE', 'CIAO CIAO DISCO'] },
+  'electro-funk': { hold: ['FUNK', 'BOOGIE', 'SLAP', 'GET DOWN', 'TALK BOX'],
+    scroll: ['GET DOWN ON IT', 'THE BASS IS SLAPPING', 'TALK TO ME TALK BOX', 'BOOGIE ALL NIGHT'] },
+  'french-house': { hold: ['FILTER', 'TOUJOURS', 'ENCORE', 'DISCO', 'PUMP'],
+    scroll: ['OPEN THE FILTER', 'ENCORE UNE FOIS', 'ONE MORE LOOP', 'TOUJOURS LA FETE'] },
+  reggaeton: { hold: ['DEMBOW', 'PERREO', 'FUEGO', 'DALE', 'OTRA VEZ'],
+    scroll: ['DALE DALE DALE', 'PERREO HASTA ABAJO', 'FUEGO EN LA PISTA', 'OTRA VEZ OTRA VEZ'] },
 });
 
 /** A board line with the song's details filled in. */

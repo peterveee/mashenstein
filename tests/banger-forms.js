@@ -215,6 +215,14 @@ assert(!failed, `${made} bangers in every form, style and length are valid songs
   assert(gateOf(make({})) === 1 && gateOf(make({ fx: { gate: 'sixteenths' } })) === 0.25 && gateOf(make({ fx: { gate: 'dotted' } })) === 0.75
     && gateOf(make({ fx: { gate: 'sixteenths', pump: false } })) === undefined,
   'Chord Gate sets the chords\' gate: the style\'s pump, sixteenths, dotted eighths — and nothing with Sidechain Pump off');
+  const stabs = make({ parts: { chords: 'stabs' }, fx: { gate: 'sixteenths' } });
+  const sawSteps = (o) => o.bank.sections.flatMap((sec) => sec[o.laneOf.saws] || []).filter((x) => x != null).length;
+  assert(gateOf(stabs) === undefined && sawSteps(stabs) > sawSteps(make({})) && /Stabs/.test(stabs.mix.labels[stabs.laneOf.saws]),
+    'Supersaw Stabs play the supersaws on the stab rhythm, labelled as stabs, and never gated');
+  const choirGate = (o) => (o.mix.lanes[o.laneOf.choir].effects || []).find((e) => e.id === 'rhythmgate')?.params.division;
+  assert(choirGate(make({ fx: { gateChoir: true, gate: 'eighths' } })) === 0.5 && choirGate(make({})) === undefined
+    && choirGate(make({ fx: { gateChoir: true, pump: false } })) === undefined,
+    'Gate the Choir gates the choir at the Chord Gate\'s rate — off by default, and nothing with Sidechain Pump off');
   const byEnergy = make({ fx: { gate: 'energy' } });
   const sections = laneFx(byEnergy.arrangement.automation, byEnergy.laneOf.saws).flatMap((x) => x.chain).filter((e) => e.id === 'rhythmgate').map((e) => e.params.division);
   assert(gateOf(byEnergy) === undefined && new Set(sections).size >= 2,

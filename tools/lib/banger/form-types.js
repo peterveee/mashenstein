@@ -105,6 +105,8 @@ export function normaliseSections(raw) {
       return;
     }
     const out = { type: s.type, bars };
+    if (typeof s.id === 'string' && s.id.length && s.id.length <= 160) out.id = s.id;
+    if (out.id && sections.some(x => x.id === out.id)) issues.push(`section ${i + 1}: duplicate identity`);
     if (typeof s.label === 'string' && s.label.trim()) out.label = s.label.trim().slice(0, 24);
     if (s.energy != null) {
       const e = Number(s.energy);

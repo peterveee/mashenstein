@@ -1,7 +1,7 @@
 // Review-only choreography. Beat is a continuous quarter-note song position,
 // not elapsed wall time: a future Banger Lab caller can pass its heard-song beat.
 import { drawToon } from '../sprites/toons.js';
-import { tameSkirt } from '../game/banger/dance-legs.js';
+import { groundDanceFeet, tameSkirt } from '../game/banger/dance-legs.js';
 
 const choices = {
   lorenzo: [['Pipework Two-step', 'groove'], ['Saturday Night Plumber', 'fever-point'], ['Overtime Shuffle', 'shuffle']],
@@ -36,6 +36,9 @@ const footwork = {
 };
 const legNotes = {
   'heel-taps': 'Alternating heel taps; feet stay in place.',
+  'rusty-step': 'A small lifted step returns to its supporting foot.',
+  'rusty-heel': 'One heel marks each beat while the other foot stays planted.',
+  'rusty-hop': 'A loose two-foot lift with a soft, cushioned landing.',
   planted: 'Wide planted feet; let the upper body lead.',
   kicks: 'Alternating low kicks on the beat.',
   'running-man': 'Running-man lifts and returning feet.',
@@ -45,6 +48,90 @@ const legNotes = {
   locks: 'Feet hold still between mechanical heel locks.',
   orbit: 'Floating shoes circle in opposite directions.',
   stomps: 'Heavy alternating lift-and-stamp steps.',
+};
+// Additional signature routines. The same list feeds the gallery and club, so
+// every move shown here is one the dancers can pick in a live set.
+const extraMoves = {
+  lorenzo: [
+    { letter: 'G', name: 'Valve Twist', move: 'valve-twist', footwork: 'heel-taps', description: 'A plumber’s two-handed valve turn with a relaxed heel mark.' },
+    { letter: 'H', name: 'Pipe Swing', move: 'pipe-swing', footwork: 'planted', description: 'A broad side-to-side arm swing with a planted, easy pivot.' },
+    { letter: 'I', name: 'Toolbox Glide', move: 'toolbox-glide', footwork: 'toe-taps', description: 'One hand rides high while the other swings low; alternating toe taps keep it light.' },
+  ],
+  rusty: [
+    { letter: 'F', name: 'Tailwind Flick', move: 'tailwind-flick', footwork: 'rusty-step', description: 'Loose paw flicks and a tiny lifted step let Rusty’s tail swing with the groove.' },
+    { letter: 'G', name: 'Paws Up', move: 'paws-up', footwork: 'rusty-heel', description: 'A playful alternating paw raise over a steady heel mark.' },
+    { letter: 'H', name: 'Branch Break', move: 'branch-break', footwork: 'running-man', description: 'A sweeping overhead arm break with a quick, returning running-man step.' },
+  ],
+  fernwick: [
+    { letter: 'F', name: 'Leaf Fan', move: 'leaf-fan', footwork: 'heel-taps', description: 'Soft, opening arm fans flow from side to side.' },
+    { letter: 'G', name: 'Acorn Turn', move: 'acorn-turn', footwork: 'planted', description: 'A small shoulder turn alternates with a tucked, proud pose.' },
+    { letter: 'H', name: 'Quest Cheer', move: 'quest-cheer', footwork: 'knee-lifts', description: 'A bright two-arm cheer rises and settles with the beat.' },
+  ],
+  b33p: [
+    { letter: 'F', name: 'Servo Pivot', move: 'servo-pivot', footwork: 'locks', description: 'Crisp arm locks and isolated head turns; B33P keeps its knees compact.' },
+    { letter: 'G', name: 'Antenna Pop', move: 'antenna-pop', footwork: 'toe-taps', description: 'Both arms pop up in short signals over neat alternating toe taps.' },
+    { letter: 'H', name: 'Hydraulic Glide', move: 'hydraulic-glide', footwork: 'planted', description: 'A smooth side shift with one precise arm lift and a planted stance.' },
+  ],
+  clara: [
+    { letter: 'F', name: 'Rope Swing', move: 'rope-swing', footwork: 'heel-taps', description: 'Alternating overhead arcs, like swinging across a gap.' },
+    { letter: 'G', name: 'Vault Snap', move: 'vault-snap', footwork: 'planted', description: 'A sharp diagonal reach lands in a confident, balanced pose.' },
+    { letter: 'H', name: 'Spotlight', move: 'spotlight', footwork: 'knee-lifts', description: 'One hand presents the spotlight while the other frames the finish.' },
+  ],
+  kiko: [
+    { letter: 'F', name: 'Badge Flash', move: 'badge-flash', footwork: 'toe-taps', description: 'A quick badge-side salute opens into a clear outward point.' },
+    { letter: 'G', name: 'Siren Sweep', move: 'siren-sweep', footwork: 'heel-taps', description: 'Wide, clean arm sweeps travel across the beat.' },
+    { letter: 'H', name: 'Justice Jive', move: 'justice-jive', footwork: 'planted', description: 'A compact shoulder bounce punctuated by alternating hand points.' },
+  ],
+  ramon: [
+    { letter: 'F', name: 'Phantom Float', move: 'phantom-float', footwork: 'orbit', description: 'Slow floating arms and a measured head turn give Ramon a ghostly glide.' },
+    { letter: 'G', name: 'Orbit Uppercut', move: 'orbit-uppercut', footwork: 'locks', description: 'Alternating glove lifts snap upward between mechanical heel locks.' },
+    { letter: 'H', name: 'Ectoplasm Freeze', move: 'ectoplasm-freeze', footwork: 'planted', description: 'A rising arm wave resolves into a still, floating finish.' },
+  ],
+  grumpos: [
+    { letter: 'F', name: 'Dad Groove', move: 'dad-groove', footwork: 'heel-taps', description: 'A laid-back shoulder roll and slow weight shift.' },
+    { letter: 'G', name: 'Tuba Turn', move: 'tuba-turn', footwork: 'stomps', description: 'A gentle side turn and low, steady bounce.' },
+    { letter: 'H', name: 'Beard Bounce', move: 'beard-bounce', footwork: 'knee-lifts', description: 'A soft two-beat body bounce with a relaxed head nod.' },
+  ],
+};
+const signatureDance = (move, b) => {
+  const s = Math.sin(b * Math.PI), c = Math.cos(b * Math.PI);
+  const wave = Math.sin(b * Math.PI / 2), pulse = (1 - Math.cos(b * TAU)) / 2;
+  // Move between two held shapes over each two-beat half phrase, rather than
+  // snapping the limbs at the phrase boundary.
+  const alternate = (1 - Math.cos(b * Math.PI / 2)) / 2;
+  switch (move) {
+    case 'valve-twist': return { hands: [[0.76, 0.05 - 0.3 * s], [0.76, 0.05 + 0.3 * s]], shift: 0.018 * s, tilt: 0.025 * s };
+    case 'pipe-swing': return { hands: [[0.8, 0.12 + 0.42 * wave], [0.8, 0.12 - 0.42 * wave]], shift: 0.028 * wave, tilt: 0.04 * wave };
+    case 'toolbox-glide': return { hands: [[0.84, -0.25 - 0.22 * c], [0.48, 0.38 + 0.18 * c]], shift: 0.04 * s, tilt: 0.025 * s };
+    case 'tailwind-flick': return { hands: [[0.86, 0.12 - 0.36 * s], [0.5, 0.38 + 0.18 * s]], shift: 0.025 * s, tilt: 0.035 * s, bounce: 0.01 * pulse };
+    case 'paws-up': return { hands: [[0.66, 0.3 - 0.78 * alternate], [0.66, -0.48 + 0.78 * alternate]], shift: 0.016 * s, tilt: 0.02 * s };
+    case 'branch-break': return { hands: [[0.56, -0.22 - 0.48 * wave], [0.78, 0.25 + 0.18 * wave]], shift: 0.025 * wave, tilt: -0.03 * wave };
+    case 'leaf-fan': return { hands: [[0.78, -0.1 - 0.34 * wave], [0.78, -0.1 + 0.34 * wave]], shift: 0.02 * wave, tilt: 0.028 * wave };
+    case 'acorn-turn': return { hands: [[0.72, 0.2 - 0.7 * alternate], [0.72, -0.5 + 0.7 * alternate]], shift: 0.018 * s, tilt: 0.055 * (1 - 2 * alternate), headTurn: 8 * (1 - 2 * alternate) };
+    case 'quest-cheer': return { hands: [[0.55, -0.2 - 0.42 * pulse], [0.55, -0.2 - 0.42 * pulse]], bounce: 0.014 * pulse, shoulderLift: 0.06 * pulse };
+    case 'servo-pivot': return { hands: [[0.82, 0.38 - 0.8 * alternate], [0.55, -0.42 + 0.8 * alternate]], headTurn: 14 * s, shift: 0.012 * s };
+    case 'antenna-pop': return { hands: [[0.72, 0.1 - 0.72 * pulse], [0.72, 0.1 - 0.72 * pulse]], bounce: 0.012 * pulse, shoulderLift: 0.05 * pulse };
+    case 'hydraulic-glide': return { hands: [[0.9, -0.12 - 0.18 * c], [0.52, 0.25 + 0.12 * c]], shift: 0.035 * s, tilt: 0.018 * s };
+    case 'rope-swing': return { hands: [[0.58, -0.22 - 0.48 * wave], [0.58, -0.22 + 0.48 * wave]], shift: 0.022 * wave, tilt: 0.025 * wave };
+    case 'vault-snap': return { hands: [[0.56, 0.28 - 0.9 * alternate], [0.82, -0.62 + 0.9 * alternate]], shift: 0.018 * s, tilt: 0.035 * (1 - 2 * alternate) };
+    case 'spotlight': return { hands: [[0.58, -0.56], [0.84, 0.12 + 0.16 * s]], headTurn: 10 * s, shoulderLift: 0.035 };
+    case 'badge-flash': return { hands: [[0.28, 0.02 + 0.08 * s], [0.96, -0.5 + 0.32 * alternate]], headTurn: 8 * s, shift: 0.012 * s };
+    case 'siren-sweep': return { hands: [[0.88, -0.12 - 0.35 * wave], [0.88, -0.12 + 0.35 * wave]], shift: 0.026 * wave, tilt: 0.025 * wave };
+    case 'justice-jive': return { hands: [[0.9, 0.12 - 0.5 * alternate], [0.9, -0.38 + 0.5 * alternate]], bounce: 0.009 * pulse, tilt: 0.022 * s };
+    case 'phantom-float': return { hands: [[0.68 + 0.12 * c, -0.24 - 0.18 * s], [0.68 - 0.12 * c, -0.24 + 0.18 * s]], shift: 0.018 * s, tilt: 0.018 * s, headTurn: 7 * c };
+    case 'orbit-uppercut': return { hands: [[0.66, 0.08 - 0.64 * alternate], [0.66, -0.56 + 0.64 * alternate]], tilt: 0.022 * s, bounce: 0.008 * pulse };
+    case 'ectoplasm-freeze': {
+      const smooth = value => { const n = Math.max(0, Math.min(1, value)); return n * n * (3 - 2 * n); };
+      const phrase = b % 4;
+      const rise = smooth(phrase / 0.45), settle = 1 - smooth((phrase - 3.6) / 0.4);
+      const eased = rise * settle;
+      return { hands: [[0.7, 0.28 - 0.7 * eased], [0.7, 0.28 - 0.7 * eased]], shift: 0.012 * (1 - eased) * s, tilt: 0.025 * (1 - eased) * s, headTurn: 12 * eased };
+    }
+    case 'dad-groove': return { hands: [[0.54, 0.4 + 0.08 * s], [0.54, 0.4 - 0.08 * s]], shift: 0.035 * s, tilt: 0.025 * s, bounce: 0.014 * pulse };
+    case 'tuba-turn': return { hands: [[0.62, 0.32 - 0.1 * c], [0.62, 0.32 + 0.1 * c]], shift: 0.03 * s, tilt: 0.06 * (1 - 2 * alternate), bounce: 0.018 * pulse };
+    case 'beard-bounce': return { hands: [[0.5, 0.42], [0.5, 0.42]], headTurn: 8 * s, bounce: 0.025 * pulse, squash: 0.045 * (1 - pulse) };
+    default: return null;
+  }
 };
 export const HERO_DANCE_CANDIDATES = Object.entries(choices).flatMap(([hero, moves]) =>
   moves.map(([name, move], i) => ({ hero, name, move, footwork: footwork[hero][i],
@@ -56,7 +143,8 @@ const TAU = Math.PI * 2;
 // The club randomizes quiet legs on skirted heroes. Show one of each in the
 // gallery, through the SAME helper, instead of the retired wide-knee preview.
 const skirted = new Set(['kiko', 'clara', 'fernwick', 'grumpos']);
-const rustyLegs = ['rusty-step', 'rusty-heel', 'rusty-bounce'];
+const softerHopC = new Set(['fernwick', 'clara', 'kiko', 'rusty']);
+const rustyLegs = ['rusty-step', 'rusty-heel', 'rusty-hop'];
 // GRUMPOS keeps his arms at his sides for everything but A and C (Peter, 3 Oct 2026); B
 // becomes one foot tapping, slowly — once every two beats; C keeps its Double Biceps, with
 // the arms hanging idle between the poses.
@@ -72,20 +160,37 @@ const LAB_ALL = () => Object.keys(choices).flatMap(hero => {
       move: 'muscle-hold', footwork: null, labLegs: 'stand', name: 'Double Biceps',
       description: 'Classic double biceps held for one full bar, then one bar relaxed. Elbows wide, fists beside the head, feet planted. Current Lab move.' };
     if (hero === 'rusty') return { ...c, footwork: rustyLegs[i],
-      name: ['Pocket Step', 'Heel-down Groove', 'Soft-knee Bounce'][i],
+      name: ['Pocket Step', 'Heel-down Groove', 'Soft-knee Hop'][i],
       description: ['Small lifted step and return; the supporting leg stays still.',
         'One heel marks the beat while the other foot stays planted.',
-        'Both feet stay down; a soft knee dip takes the beat.'][i] + ' Current Lab move.' };
+        'A loose two-foot lift with a soft, cushioned landing.'][i] + ' Current Lab move.' };
     return { ...c, labLegs, description: labLegs
       ? `${descriptions[c.move]} Club legs: ${labLegs}.` : c.description };
   });
-  return [...current, ...['D', 'E'].map((letter, i) => ({
+  const taps = ['D', 'E'].map((letter, i) => ({
     hero, id: `${hero}-${letter}`, letter, move: i ? 'tap-sway' : 'tap', footwork: null,
     labLegs: 'tap', alternateTap: !!i,
     name: i ? 'Take Turns' : 'Just the Beat',
     description: i ? 'Quiet foot tap; swap the tapping foot every bar. Small arm groove. Current Lab move.'
       : 'One foot taps the beat, the other stays planted. Relaxed arms. Current Lab move.',
-  }))];
+  }));
+  const moonwalk = hero === 'lorenzo' ? [{
+    hero, id: 'lorenzo-F', letter: 'F', move: 'moonwalk', footwork: null,
+    name: 'Moonwalk',
+    description: 'A side-on backward glide with alternating toe lifts and a smooth reset. Occasional club dance.',
+  }] : [];
+  const additions = extraMoves[hero].map((move, i) => {
+    const labLegs = skirted.has(hero)
+      ? hero === 'grumpos' ? 'stand' : ['tap', 'stand', 'hop'][i]
+      : null;
+    const legs = labLegs ? `Gallery legwork: ${labLegs}; the club varies quiet legs during playback.`
+      : `Legs: ${legNotes[move.footwork]}`;
+    return {
+      hero, ...move, id: `${hero}-${move.letter}`, signature: true, labLegs,
+      description: `${move.description} ${legs} Current Lab move.`,
+    };
+  });
+  return [...current, ...taps, ...moonwalk, ...additions];
 });
 export const HERO_DANCE_LAB_CANDIDATES = LAB_ALL().map(grumposPlain);
 export function heroDancePose(candidate, beat) {
@@ -95,7 +200,17 @@ export function heroDancePose(candidate, beat) {
     pose.dance = { ...pose.dance, restArms: true, pointAngle: null, shoulderLift: 0 };
     pose.armsInFront = false;
   }
-  return pose;
+  if (candidate.hero === 'b33p' && pose.dance?.feet) {
+    // His knees are compact mechanical hinges, so keep the dance pose near
+    // straight instead of letting the default humanoid bend bow them outward.
+    pose.dance = { ...pose.dance, legSegMax: 0.43 };
+  } else if (softerHopC.has(candidate.hero) && candidate.letter === 'C' && pose.dance?.feet) {
+    // Their C hops keep B33P's spring, with a smaller knee fold and foot
+    // spread. The skirted trio's extra spread is read by tameSkirt below.
+    pose.dance = { ...pose.dance, legSegMax: candidate.hero === 'clara' ? 0.43 : 0.45,
+      ...(skirted.has(candidate.hero) ? { hopKneeSpread: 0.02 } : {}) };
+  }
+  return groundDanceFeet(pose);
 }
 function danceInner(candidate, beat) {
   const b = Number.isFinite(beat) ? ((beat % 8) + 8) % 8 : 0;
@@ -137,6 +252,18 @@ function danceInner(candidate, beat) {
       },
     };
   }
+  if (candidate.move === 'moonwalk') {
+    // Keep Lorenzo's shipped walk silhouette and arm swing. The backward travel
+    // comes from the root sliding beneath that familiar side-facing cycle.
+    const phrase = b % 8;
+    const glide = phrase < 6 ? (phrase / 6) ** 2 * (3 - 2 * phrase / 6)
+      : 1 - ((phrase - 6) / 2) ** 2 * (3 - 2 * (phrase - 6) / 2);
+    return {
+      kind: 'run', time: b / 2, phase: (b / 2) % 1, grounded: true,
+      walk: true, menu: true, facing: 1,
+      shift: -0.12 * glide, tilt: 0, bounce: 0,
+    };
+  }
   const s = Math.sin(b * Math.PI), c = Math.cos(b * Math.PI);
   const pulse = (1 - Math.cos(b * TAU)) / 2;
   const light = candidate.hero === 'rusty' ? 1.22 : candidate.hero === 'grumpos' ? 0.7 : 1;
@@ -146,6 +273,7 @@ function danceInner(candidate, beat) {
   let poseTime = b / 2, headTurn = 0;
   let pointAngle = null;
   let shoulderLift = 0;
+  let squash = 0;
   switch (candidate.move) {
     case 'tap':
     case 'tap-sway':
@@ -236,12 +364,14 @@ function danceInner(candidate, beat) {
       feet = [[0.1, -0.02 * up], [-0.1, 0]]; ankles = [-0.35 * up, 0];
       shift = 0; bounce = 0; tilt = 0; break;
     }
-    case 'rusty-bounce':
-      // Lower the body while moving foot targets down by the same amount:
-      // the soles stay on the floor and the knees absorb the beat.
-      bounce = -0.025 * pulse;
-      feet = [[0.1, -bounce * light], [-0.1, -bounce * light]];
+    case 'rusty-hop': {
+      const hop = Math.sin(Math.PI * (b % 1));
+      const spread = 0.1 + 0.02 * hop;
+      feet = [[spread, -0.025 * hop], [-spread, -0.025 * hop]];
+      bounce = 0.07 * hop; // Rusty's 1.22 motion gain brings this to B33P's 0.085.
+      squash = 0.16 * (1 - hop);
       shift = 0; tilt = 0; break;
+    }
     case 'planted':
       feet = [[0.17, 0], [-0.17, 0]]; shift = 0; bounce = 0; tilt = 0; break;
     case 'heel-taps':
@@ -283,11 +413,21 @@ function danceInner(candidate, beat) {
       feet = [[0.14 + 0.07 * c, -0.07 - 0.06 * s], [-0.14 - 0.07 * c, -0.07 + 0.06 * s]];
       ankles = [0.3 * s, -0.3 * s]; shift = 0; bounce = 0; tilt = 0; break;
   }
+  const signature = candidate.signature ? signatureDance(candidate.move, b) : null;
+  if (signature) {
+    hands = signature.hands;
+    if (signature.shift !== undefined) shift = signature.shift;
+    if (signature.tilt !== undefined) tilt = signature.tilt;
+    if (signature.bounce !== undefined) bounce = signature.bounce;
+    if (signature.squash !== undefined) squash = signature.squash;
+    if (signature.headTurn !== undefined) headTurn = signature.headTurn;
+    if (signature.shoulderLift !== undefined) shoulderLift = signature.shoulderLift;
+  }
   return {
     kind: 'stand', time: poseTime, phase: b / 2 % 1, grounded: true, headTurn,
-    facing: 1, squash: 0, lean: 0, faceJoy: true,
+    facing: 1, squash, lean: 0, faceJoy: true,
     dance: { hands, feet, ankles, pointAngle, shoulderLift,
-      legFlex: candidate.footwork?.startsWith('rusty-') || candidate.move.startsWith('tap') ? 0.5 : 0.56 },
+      legFlex: 0.48 },
     shift: shift * light, tilt: tilt * light, bounce: bounce * light,
   };
 }

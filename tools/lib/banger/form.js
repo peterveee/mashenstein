@@ -155,7 +155,7 @@ export function formFromList(list, options, style = null, total = sectionsBars(l
       || (type === 'intro' && variant === 'groove' && 'Drums & Bass')
       || style?.sectionLabels?.[type] || defaultLabel(type, nth);
     const out = {
-      type, role, label, bars: s.bars, from: bar, to: bar + s.bars - 1, energy, lifted, variant,
+      ...(s.id ? { id: s.id } : {}), type, role, label, bars: s.bars, from: bar, to: bar + s.bars - 1, energy, lifted, variant,
       dropIndex: DROP_INDEX[role] ?? (role === 'build2' ? 1 : 0),
       final: !!def.hook && (lifted || s === lastHook),
       hook: !!def.hook || (type === 'groove' && energy >= 0.8 && variant !== 'dip'),
@@ -212,7 +212,7 @@ export function scriptForm(script, total) {
  * lifted }]` with `from`/`to` counted from 1. `lifted` marks the sections the key lift
  * applies to — the last drop and anything after it that plays the drop.
  */
-export function buildForm(options, total, style = null) {
+function buildFormShape(options, total, style = null) {
   const which = formTemplateOf(options, style);
   if (which === 'custom') return formFromList(options.form.sections, options, style, total);
   if (which !== 'club' && which !== 'own') {
@@ -290,3 +290,18 @@ function clubForm(options, total, style) {
 
 /** The section a bar (from 1) is in. */
 export const sectionAt = (form, bar) => form.find((s) => bar >= s.from && bar <= s.to) || null;
+
+/** Identity is independent of labels, lengths and the random musical streams. */
+export function buildForm(options, total, style = null) {
+  const template = formTemplateOf(options, style);
+  const form = buildFormShape(options, total, style);
+  return identifySections(template === 'custom' ? form : form.map(f => ({ ...f, id: f.id ? `${template}:${f.id}` : undefined })), template);
+}
+export function identifySections(form, template = 'custom') {
+  const seen = {};
+  return form.map(f => {
+    const kind = f.type || f.role;
+    const occurrence = seen[kind] = (seen[kind] || 0) + 1;
+    return { ...f, id: f.id || `${template}:${kind}:${occurrence}` };
+  });
+}

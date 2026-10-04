@@ -8,7 +8,7 @@
 // Browser-safe: no `node:*` imports.
 import { BANGER_ENERGIES } from './energy.js';
 import { TRACK_EFFECTS_MODES, TRACK_EFFECTS_VERSION } from './production.js';
-import { SECTION_FX_FIELDS, SECTION_FX_DEFAULTS } from './section-effects.js';
+import { SECTION_FX_FIELDS, SECTION_FX_DEFAULTS, normaliseSectionAssignments } from './section-effects.js';
 import { styleFor, BANGER_STYLES } from './styles/index.js';
 import { ARP_FIGURES, BASS_FIGURES } from './theory.js';
 import { normaliseSections } from './form-types.js';
@@ -191,7 +191,8 @@ export const BANGER_GROUPS = Object.freeze([
     { key: 'sub', label: 'Sub Layer', title: 'A sine sub under the bass' },
     { key: 'chords', label: 'Chords', type: 'select',
       title: 'How the chords are played in the drops',
-      options: [['saws', 'Pumping Supersaws', 'Wide saws ducking on every beat'], ['piano', 'Piano Stabs', 'Off-beat piano chords — house'],
+      options: [['saws', 'Pumping Supersaws', 'Wide saws ducking on every beat'], ['stabs', 'Supersaw Stabs', 'The supersaws as off-beat stabs, on the style\'s stab rhythm — never gated'],
+        ['piano', 'Piano Stabs', 'Off-beat piano chords — house'],
         ['pad', 'Pad', 'Held, soft chords'], ['none', 'None', 'No chords — the hook and the bass alone']] },
     { key: 'square', label: 'Square Double', title: 'A loud plain square doubling the hook in the drops' },
     { key: 'bell', label: 'Bell Octave', title: 'A bell an octave over the hook from the second phrase' },
@@ -222,6 +223,12 @@ export const BANGER_GROUPS = Object.freeze([
     { key: 'partSounds', label: 'Part Sounds', type: 'select',
       title: 'Roll: the chords, pad, arp, choir and bell each drawn from the style\'s shortlist — a new roll every take. Style: always the style\'s own',
       options: [['roll', 'Roll', 'A new pick from the shortlist every take'], ['style', 'Style\'s Own', 'Always the style\'s own sounds']] },
+    // A style's other sets of sounds (styles/index.js BANGER_SOUND_SETS, 5 Oct 2026). A style
+    // without the set asked for is made with its own, and says so.
+    { key: 'soundSet', label: 'Sound Set', type: 'select',
+      title: 'The style\'s own sounds, or another set: Light plays the same music on the cheap synths only — light enough for a phone. 8-Bit is pure square, saw and triangle blips. Only some styles have them',
+      options: [['style', 'Style\'s Own', 'The style\'s own sounds'], ['light', 'Light', 'The cheap synths only — light enough for a phone'],
+        ['8bit', '8-Bit', 'Square, saw and triangle blips, every note short']] },
   ] },
   { id: 'sectionFx', label: 'Section FX', fields: SECTION_FX_FIELDS },
   { id: 'spot', label: 'Spot FX', fields: [
@@ -259,6 +266,7 @@ export const BANGER_GROUPS = Object.freeze([
       options: [['style', 'Style\'s Own', 'Trance sixteenths, Future Bass eighths, the rest a pump'], ['pump', 'Pump (1/4)', 'Ducking on every beat — house'],
         ['eighths', 'Eighths', 'Choppy, stuttered chords — future bass'], ['sixteenths', 'Sixteenths', 'The trance gate'],
         ['dotted', 'Dotted Eighths', 'A lopsided, rolling gate'], ['energy', 'By Energy', 'Pump in quiet sections, eighths building, sixteenths in the drops']] },
+    { key: 'gateChoir', label: 'Gate the Choir', title: 'The choir gated at the Chord Gate\'s rate too (with Sidechain Pump on)' },
     { key: 'delayThrows', label: 'Delay Throws', title: 'An echo thrown off the hook before a breakdown or a stop' },
     { key: 'lowpassIntro', label: 'Low-Pass Intro', title: 'The intro heard through a wall, opening up' },
     { key: 'bitcrushIntro', label: 'Bitcrush Intro', title: 'The intro crushed down to a few bits' },
@@ -312,12 +320,12 @@ export const BANGER_DEFAULTS = Object.freeze({
   },
   parts: {
     bass: 'offbeat', sub: true, chords: 'saws', square: true, bell: true, octaveDouble: true,
-    riffBass: 'replace', bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', choir: true, counter: false, fillIn: 'off', fillEvery: '2', fillNotes: '2', writeLead: 'auto', riffSound: 'keep', partSounds: 'roll',
+    riffBass: 'replace', bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', choir: true, counter: false, fillIn: 'off', fillEvery: '2', fillNotes: '2', writeLead: 'auto', riffSound: 'keep', partSounds: 'roll', soundSet: 'style',
   },
   spot: { intoDrop: 'style', outOf: 'style', quiet: 'none', intro: 'style', ending: 'style' },
   fx: {
     gate: 'style', riser: true, filterBuild: true, stutter: true, pump: true, delayThrows: true,
-    lowpassIntro: false, bitcrushIntro: false, tapeStop: false,
+    lowpassIntro: false, bitcrushIntro: false, tapeStop: false, gateChoir: false,
   },
 });
 
@@ -423,6 +431,7 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     // templates (2 Oct 2026): it is the Club form, so an old take re-makes as it was.
     if (group.id === 'form' && given.template == null) out.form.template = 'club';
     for (const [k, given1] of Object.entries(given)) {
+      if (group.id === 'sectionFx' && k === 'assignments') { out.sectionFx.assignments = normaliseSectionAssignments(given1, issues); continue; }
       if (group.id === 'production' && k === 'version') continue;
       if (group.id === 'form' && k === 'sections') continue;
       const field = FIELD.get(`${group.id}.${k}`);

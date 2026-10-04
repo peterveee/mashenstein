@@ -49,7 +49,7 @@ export function bangerReportHtml(track, mix = {}) {
     ? table(['Part / section', 'Source', 'Effects / range', 'Decision'], b.sectionEffects.decisions.map(e => [
       `${mix.labels?.[e.lane] || e.role} / ${e.section}`, e.origin,
       `${(e.effects || []).filter(id => id !== 'gain').map(effectName).join(', ') || '—'}${e.from ? ` · ${sectionRanges(e)} (end excluded)` : ''}`,
-      `${e.status}: ${e.reason}`,
+      `${e.status}: ${e.reason}${e.chain ? ' · ' + e.chain.map(x => x.id + ' ' + JSON.stringify(x.params)).join(' + ') : ''}`,
     ])) : paragraph('No section treatments were requested or saved in this style.'));
   html += section('Tracks on the desk now', table(['Track / job', 'Sound', 'Effects / sends', 'Compared with roll'], Object.entries(b.laneOf || {}).map(([role, lane]) => {
     const now = reportStrip(mix, lane); const old = recorded.get(role);

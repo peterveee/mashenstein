@@ -78,6 +78,7 @@ import { BangerMakerState } from './banger/maker.js';
 import { setState } from '../engine/states.js';
 import {
   jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
+  reviseBanger, keepBanger,
 } from './banger/store.js';
 import { BangerClubState } from './banger/club.js';
 import { BangerBirthState } from './banger/birth.js';
@@ -5011,6 +5012,8 @@ export class SoundTestState {
     // The ARE YOU SURE? box over the list: { rec, yes } while it is up — `yes` is the
     // answer the arrows have picked, NO to begin with.
     this.confirmDelete = null;
+    // A banger made or edited and previewed in the club but not kept yet: { from, rec, song }.
+    this.pending = null;
     // The last list row the cursor was on: what DELETE means once the cursor has moved
     // down onto the button row.
     this.rowFocus = -1;
@@ -5357,41 +5360,84 @@ export class SoundTestState {
     setState(new BangerMakerState({
       // Back on NEW BANGER, wherever the list now ends.
       onDone: () => setState(this.labAgain(jukeboxBangerRows().length + 1)),
-      // The song just made is handed to the cache, so the club does not make it again.
-      onMade: (rec, song) => {
-        songFor(rec, song);
-        setState(new BangerBirthState({ rec, onDone: () => this.openClub(rec) }));
-      },
+      // The song just made is previewed in the club, not kept: saving is the player's call.
+      onMade: (rec, song, from, recharging) => this.openPendingClub({ rec, song, from, birth: !recharging }),
     }));
   }
+  /**
+   * BRING TO LIFE just handed a song over: preview it in the club before it is kept. IT'S
+   * ALIVE! is the ceremony for a NEW BANGER — the one the player asked for by that name —
+   * and never for an edit: a song remade with the pencil goes straight back to the club,
+   * where the same save question is waiting (Peter, 4 Oct 2026).
+   */
+  openPendingClub({ rec, song, from, birth = false }) {
+    this.pending = { from, rec, song };
+    if (birth) setState(new BangerBirthState({ rec, onDone: () => this.openClub(rec, this.pending) }));
+    else this.openClub(rec, this.pending);
+  }
   /** A song from the Lab, in the club; its back button returns here with the song selected. */
-  openClub(rec) {
+  openClub(rec, pending = null) {
     Audio.sfx('uiConfirm');
-    rememberBanger(rec);
+    if (!pending) rememberBanger(rec);
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
     setState(new BangerClubState({
       rec,
-      onEdit: (r) => this.openEditor(r),
+      pending: pending ? { kind: pending.from ? (pending.from.preset ? 'starter' : 'edit') : 'new', song: pending.song } : null,
+      onSave: pending ? (asNew) => this.commitPending(asNew) : null,
+      onDiscard: pending ? () => this.discardPending() : null,
+      onEdit: (r, p) => { if (p) this.reEditPending(); else this.openEditor(r); },
       // the song plays on in the Lab; choosing it there again stops it
-      onBack: () => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === rec)), rec)),
+      onBack: (r) => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === r)), r)),
+    }));
+  }
+  /** SAVE on the pending song: update the original in place, or keep a new one. */
+  commitPending(asNew = false) {
+    const p = this.pending;
+    if (!p) return null;
+    // SAVE AS NEW is a new song under a new name; only a brand-new banger keeps the
+    // name its preview has already shown.
+    const rec = p.from && !asNew
+      ? reviseBanger(p.from, p.rec)
+      : keepBanger({ ...p.rec, fresh: true, name: p.from ? null : p.rec.name });
+    if (!rec) return null;      // the list is full: the song stays pending, nothing saved
+    this.pending = null;
+    songFor(rec, p.song);
+    rememberBanger(rec);
+    return rec;
+  }
+  /** DON'T SAVE: back to the Lab, nothing kept, nothing playing. */
+  discardPending() {
+    const p = this.pending;
+    this.pending = null;
+    Audio.setBank(null);
+    setState(this.labAgain(p?.from ? Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === p.from)) : jukeboxBangerRows().length + 1));
+  }
+  /** The pencil while a banger is pending: another pass on the same recipe, the original
+   *  kept, and straight back to the club — the ceremony is NEW BANGER's alone. */
+  reEditPending() {
+    const p = this.pending;
+    if (!p) return;
+    Audio.sfx('uiConfirm');
+    setState(new BangerMakerState({
+      from: p.from,
+      seed: p.rec,
+      onDone: () => this.openClub(p.rec, p),
+      onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging }),
     }));
   }
   /**
-   * The club's pencil: the riff grid on this song. BRING TO LIFE remakes it and goes
-   * straight back to the club — no IT'S ALIVE! for an edit (Peter, 3 Oct 2026); BACK
-   * returns to the club as it was.
+   * The club's pencil: the riff grid on this song. RECHARGE remakes it and goes straight
+   * back to the club — no IT'S ALIVE! for an edit (Peter, 3 Oct 2026); BACK returns to
+   * the club as it was.
    */
   openEditor(rec) {
     Audio.sfx('uiConfirm');
     setState(new BangerMakerState({
       from: rec,
       onDone: () => this.openClub(rec),
-      onMade: (r, song) => {
-        songFor(r, song);
-        this.openClub(r);
-      },
+      onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging }),
     }));
   }
   /**

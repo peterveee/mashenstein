@@ -19,12 +19,15 @@
 //   · a wobble or a growl (WUB …, … Growl) as the MAIN bass, chosen or Random — too much
 //     to stand a banger on; it can still be a layer, like future bass's WOBBLE (2 Oct 2026)
 //   · anything on the style's never-use list
+//   · an MRDR-3 or a JMJR-4 in a PHONE style (a lite recipe, `phone: true`) — the two synths
+//     whose cost a phone cannot carry (work/local/_banger-lanes-webkit-2026-10-04.txt)
 // SOFT RULES only warn: a CRLS-1 on a Random list (skipped whenever the riff part is
 // busy), a sound outside the usual categories for a Random job.
 //
 // Browser-safe: no `node:*` imports.
 import { VOICES, voicesFor } from '../../../src/data/voices.js';
 import { SHARED_MOODS } from './moods.js';
+import { styleFor } from './styles/index.js';
 
 /**
  * Every slot a style's table fills. `prefer` only ORDERS a slot's list — its usual
@@ -117,6 +120,10 @@ export const MOOD_IDS = Object.freeze(['anthemic', 'uplifting', 'euphoric', 'moo
   ...Object.keys(SHARED_MOODS)]);
 
 const BUSY = 'a CRLS-1 on a busy part — too heavy on the CPU (docs/audio/remixes.md)';
+const HEAVY_FOR_PHONE = new Set(['MRDR-3', 'JMJR-4']);
+
+/** Whether `styleId` is a PHONE style — a lite recipe that plays only the cheap synths. */
+export const phoneStyle = (styleId) => !!styleFor(styleId)?.phone;
 
 // What the desk's picker offers on a lane, asked once per lane: the page asks it of every
 // preset for every slot, and the answer only changes when the library does.
@@ -133,9 +140,10 @@ const isWobble = (v) => /^wub/i.test(v.id || '') || /\b(wub|growl)\b/i.test(v.la
 
 /**
  * Why `id` can or cannot go in `slot`: `{ blocked: [reasons], warnings: [reasons] }`.
- * An empty `blocked` means it may be chosen. `never` is the style's never-use list.
+ * An empty `blocked` means it may be chosen. `never` is the style's never-use list; `phone`
+ * says the style is a phone style (`phoneStyle`).
  */
-export function soundIssues(id, slot, { never = [] } = {}) {
+export function soundIssues(id, slot, { never = [], phone = false } = {}) {
   const blocked = [];
   const warnings = [];
   const v = VOICES[id];
@@ -158,6 +166,7 @@ export function soundIssues(id, slot, { never = [] } = {}) {
   if (slot.random && v.synth === 'JMJR-4') blocked.push('a speech synth — it needs words to say');
   if (slot.key === 'bass' && isWobble(v)) blocked.push('a wobble or growl — too much for the main bass (it can be a layer)');
   if (never.includes(id)) blocked.push('on the never-use list');
+  if (phone && HEAVY_FOR_PHONE.has(v.synth)) blocked.push(`a ${v.synth} — too heavy for a phone style, which plays only the cheap synths`);
   if (slot.random && slot.categories && v.category && !slot.categories.includes(v.category) && !blocked.length) {
     warnings.push(`a ${v.category} sound, which is not the usual for a ${slot.label.toLowerCase()}`);
   }
@@ -171,12 +180,12 @@ export const soundAllowed = (id, slot, opts) => soundIssues(id, slot, opts).bloc
  * Every preset a slot could hold, as `{ id, label, category, synth, blocked, warnings }`
  * — the allowed ones first, by category then label. What the page's dropdowns list.
  */
-export function slotChoices(slot, { never = [] } = {}) {
+export function slotChoices(slot, { never = [], phone = false } = {}) {
   const out = [];
   for (const [id, v] of Object.entries(VOICES)) {
     if (v.songLocal || v.nameOnly) continue;
     if (slot.kind === 'drum' ? v.kind !== 'drum' : v.kind === 'drum') continue;
-    const { blocked, warnings } = soundIssues(id, slot, { never });
+    const { blocked, warnings } = soundIssues(id, slot, { never, phone });
     out.push({ id, label: v.label || id, category: v.category || '', synth: v.synth || (v.kind === 'drum' ? 'KLNG8' : v.kind), starter: !!v.starter, blocked, warnings });
   }
   const prefer = slot.prefer || slot.categories || [];
@@ -198,11 +207,12 @@ export function tableIssues(table) {
   for (const [styleId, s] of Object.entries(table)) {
     if (!isObj(s)) { add(styleId, null, 'not a style\'s sounds'); continue; }
     const never = Array.isArray(s.never) ? s.never : [];
+    const phone = phoneStyle(styleId);
     if (s.never != null && !Array.isArray(s.never)) add(`${styleId}.never`, null, 'not a list');
     for (const id of never) if (!VOICES[id]) add(`${styleId}.never`, id, 'not a preset in the library');
     const check = (where, id, slot) => {
       if (typeof id !== 'string' || !id) { add(where, id, 'no sound chosen'); return; }
-      for (const reason of soundIssues(id, slot, { never }).blocked) add(where, id, reason);
+      for (const reason of soundIssues(id, slot, { never, phone }).blocked) add(where, id, reason);
     };
     for (const slot of slotsFor(styleId)) check(`${styleId}.parts.${slot.key}`, s.parts?.[slot.key], slot);
     for (const k of Object.keys(s.parts || {})) if (!slotsFor(styleId).some((p) => p.key === k)) add(`${styleId}.parts.${k}`, null, 'not a part a banger has');
@@ -230,7 +240,7 @@ export function tableIssues(table) {
         // from it — so barring a sound does not mean hunting it out of every list first.
         // A part or a kit has to name SOME sound, so there it stays a problem to fix.
         if (typeof id !== 'string' || !id) { add(`${styleId}.random.${job.key}[${i}]`, id, 'no sound chosen'); return; }
-        for (const reason of soundIssues(id, job, { never: [] }).blocked) add(`${styleId}.random.${job.key}[${i}]`, id, reason);
+        for (const reason of soundIssues(id, job, { never: [], phone }).blocked) add(`${styleId}.random.${job.key}[${i}]`, id, reason);
       });
     }
     if (s.choices != null && !isObj(s.choices)) add(`${styleId}.choices`, null, 'not a set of lists');
@@ -284,5 +294,6 @@ export function resolveSounds(table, styleId, mood) {
     random,
     choices,
     never: [...never],
+    phone: phoneStyle(styleId),
   };
 }

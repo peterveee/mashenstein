@@ -246,7 +246,8 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
   // drop. Last, so a gate joins whatever a section already has (a build's sweep) rather
   // than being replaced by it.
   if (fx.pump && fx.gate === 'energy') {
-    for (const role of ['saws', ...(options.parts.chords === 'pad' ? ['pad'] : [])]) {
+    for (const role of [...(options.parts.chords === 'stabs' ? [] : ['saws']), ...(options.parts.chords === 'pad' ? ['pad'] : []),
+      ...(fx.gateChoir ? ['choir'] : [])]) {
       const key = lane(role);
       if (!key) continue;
       for (const s of form) {

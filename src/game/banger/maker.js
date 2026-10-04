@@ -9,8 +9,8 @@
 // written in since. ZAP (Peter, 3 Oct 2026; it was SURPRISE ME) writes a random riff in
 // whichever is showing.
 //
-// The grid loops while you edit, over a plain kick, hat and light clap at the low end of
-// the chosen style's tempo range. It runs its own clock through Audio.voiceSfx rather
+// The grid loops while you edit, over a plain kick, hat and light clap at four BPM below
+// the chosen style's lower tempo limit. It runs its own clock through Audio.voiceSfx rather
 // than loading a song: edits are heard on the next pass, and a style change restarts
 // the loop at its new tempo.
 //
@@ -31,8 +31,19 @@ import {
 } from './riff.js';
 import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION } from './make.js';
 import { styleFor } from '../../../tools/lib/banger/styles/index.js';
-import { bangerState, saveDraft, keepBanger, reviseBanger } from './store.js';
+import { bangerState, saveDraft, pendingRecipe } from './store.js';
 import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
+
+// DNA — how far the riff's own notes are rewritten — has its own picker beside VOLTAGE, which
+// is the effects, energy and arrangement, so a Overload take can keep the riff as written
+// (Peter, 4 Oct 2026). It is the desk's Variation: PURE Faithful, HYBRID Some, MUTANT Wild.
+export const MAKER_VARIATIONS = Object.freeze([
+  Object.freeze({ id: 'faithful', label: 'Pure', description: 'Your notes, as written' }),
+  Object.freeze({ id: 'some', label: 'Hybrid', description: 'Sequenced up, phrase ends turned round' }),
+  Object.freeze({ id: 'wild', label: 'Mutant', description: 'Fragments, rhythm shifts and big leaps' }),
+]);
+const PICKERS = 4;
+const VARIATION = 3;
 
 const LOOKAHEAD_S = 0.12;
 // The grid's own preview sound, a different one each visit, drawn from gentle voices
@@ -47,12 +58,13 @@ export const RIFF_VOICES = Object.freeze([
 // The riff over the loop: about 6 dB down from full — at 1 it was far too loud over the
 // kick and hat (Peter, 3 Oct 2026).
 const RIFF_GAIN = 0.5;
-// BRING TO LIFE was GENER8 (Peter, 3 Oct 2026: the IT'S ALIVE! angle — birth.js).
+// BRING TO LIFE was GENER8 (Peter, 3 Oct 2026: the IT'S ALIVE! angle — birth.js). Editing a
+// kept song shows RECHARGE instead — the same make, for a song already alive (Peter, 4 Oct 2026).
 const BUTTONS = ['BACK', 'CLEAR', 'ZAP', 'BRING TO LIFE'];
 const BUTTON_HINTS = ['Back to songs', 'Erase all notes', 'Generate notes', 'Create a banger'];
 const GENER8 = 3;
-// Shares of the button row: BRING TO LIFE the widest, it is the one that matters.
-const BUTTON_SHARES = [1.1, 0.9, 0.9, 1.9];
+// Every button the same width, lined up with the selectors above (Peter, 4 Oct 2026).
+const BUTTON_SHARES = [1, 1, 1, 1];
 const MODE_IDS = ['simple', 'advanced'];
 
 const C_BG = '#0b0b14';
@@ -76,10 +88,16 @@ export class BangerMakerState {
   // `from` is a kept song to edit (the club's pencil): the grid opens on its riff, style
   // and mood, and BRING TO LIFE remakes that song rather than adding one. The NEW BANGER
   // draft is left as it was.
-  constructor({ onDone, onMade, from = null, random = Math.random }) {
+  // `seed` opens the grid on a recipe that is not kept yet (a banger being previewed and
+  // edited again), while `from` still names the kept song an update would change.
+  constructor({ onDone, onMade, from = null, seed = null, random = Math.random }) {
     this.onDone = onDone;
     this.onMade = onMade;
     this.from = from;
+    this.seed = seed;
+    // Either a kept song (`from`) or a pending preview (`seed`) came from the pencil.
+    // Both are a RECHARGE; only the NEW BANGER entry is a birth.
+    this.recharging = !!(from || seed);
     this.random = random;
   }
 
@@ -97,13 +115,16 @@ export class BangerMakerState {
     this.style = d.style;
     this.mood = d.mood;
     this.setVoltage(voltageFor(d), false);
-    if (this.from) {
-      this.mode = this.from.mode;
-      if (this.mode === 'simple') { this.simple = normaliseNotes(this.from.notes, 'simple'); this.simpleLengths = normaliseLengths(this.from.lengths, this.simple, 'simple'); this.simpleEdited = true; }
-      else { this.advanced = normaliseNotes(this.from.notes, 'advanced'); this.advancedLengths = normaliseLengths(this.from.lengths, this.advanced, 'advanced'); }
-      this.style = this.from.style;
-      this.mood = this.from.mood;
-      this.setVoltage(voltageFor(this.from), false);
+    this.setVariation(d.variation);
+    const src = this.seed || this.from;
+    if (src) {
+      this.mode = src.mode;
+      if (this.mode === 'simple') { this.simple = normaliseNotes(src.notes, 'simple'); this.simpleLengths = normaliseLengths(src.lengths, this.simple, 'simple'); this.simpleEdited = true; }
+      else { this.advanced = normaliseNotes(src.notes, 'advanced'); this.advancedLengths = normaliseLengths(src.lengths, this.advanced, 'advanced'); }
+      this.style = src.style;
+      this.mood = src.mood;
+      this.setVoltage(voltageFor(src), false);
+      this.setVariation(src.variation ?? (src.wild ? 'wild' : 'faithful'));   // a song made before DNA kept its riff as written
     }
     const voices = RIFF_VOICES.filter((id) => id !== BangerMakerState.lastVoice);
     this.riffVoice = voices[Math.floor(this.random() * voices.length)];
@@ -122,7 +143,7 @@ export class BangerMakerState {
     Input.setMenuButtons();
   }
 
-  exit() { if (!this.from) saveDraft(this.draft()); }
+  exit() { if (!this.recharging) saveDraft(this.draft()); }
 
   draft() {
     return { mode: this.mode, simple: this.simple, advanced: this.advanced, simpleLengths: this.simpleLengths, advancedLengths: this.advancedLengths, simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
@@ -143,7 +164,7 @@ export class BangerMakerState {
   }
   get previewBpm() {
     const style = styleFor(this.style);
-    return style?.tempoRange?.[0] ?? style?.bpm ?? RIFF_BPM;
+    return (style?.tempoRange?.[0] ?? style?.bpm ?? RIFF_BPM) - 4;
   }
   get previewSixteenthS() { return 60 / this.previewBpm / 4; }
   setStyle(id) {
@@ -192,7 +213,11 @@ export class BangerMakerState {
     const modeBox = { x: x0 + width - modeW, y: top + (titleH - modeH) / 2 - (portrait ? 6 : 2), w: modeW, h: modeH };
     // The note names stand in a column of their own, left of the grid.
     const labelW = portrait ? 44 : 24;
-    const ctrlRows = 2;
+    // The four selectors: one row in landscape; two by two in portrait, where four abreast
+    // leave no room between the arrows for BIG-ROOM HOUSE.
+    const cols = this.pickerCols();
+    const pickerRows = Math.ceil(PICKERS / cols);
+    const ctrlRows = pickerRows + 1;
     const ctrlTop = bottom - ctrlRows * ctrlH - (ctrlRows - 1) * gap;
     const gridTop = top + titleH;
     const cellW = (width - labelW) / this.steps;
@@ -200,8 +225,10 @@ export class BangerMakerState {
     // squares are what a thumb wants.
     const cellH = (ctrlTop - gap - gridTop) / this.rows;
     const grid = { x: x0 + labelW, y: gridTop, w: width - labelW, h: cellH * this.rows, cellW, cellH, labelX: x0 };
-    const selectorW = (width - 2 * gap) / 3;
-    const pickers = [0, 1, 2].map((i) => ({ x: x0 + i * (selectorW + gap), y: ctrlTop, w: selectorW, h: ctrlH }));
+    const selectorW = (width - (cols - 1) * gap) / cols;
+    const pickers = Array.from({ length: PICKERS }, (_, i) => ({
+      x: x0 + (i % cols) * (selectorW + gap), y: ctrlTop + Math.floor(i / cols) * (ctrlH + gap), w: selectorW, h: ctrlH,
+    }));
     const by = ctrlTop + (ctrlRows - 1) * (ctrlH + gap);
     const unit = (width - (BUTTONS.length - 1) * gap) / BUTTON_SHARES.reduce((a, b) => a + b, 0);
     const buttons = [];
@@ -259,19 +286,26 @@ export class BangerMakerState {
     } else if (picker === 1) {
       const i = MAKER_MOODS.findIndex((m) => m.id === this.mood);
       this.mood = MAKER_MOODS[(i + dir + MAKER_MOODS.length) % MAKER_MOODS.length].id;
+    } else if (picker === VARIATION) {
+      const i = MAKER_VARIATIONS.findIndex((v) => v.id === this.variation);
+      this.setVariation(MAKER_VARIATIONS[Math.max(0, Math.min(MAKER_VARIATIONS.length - 1, i + dir))].id);
     } else this.setVoltage(this.voltage + dir, false);
     Audio.sfx('ui');
   }
 
   say(text) { this.message = text; this.messageT = 2; }
 
+  /** The make-it button's word: BRING TO LIFE for a new banger, RECHARGE when remaking one. */
+  actionWord() { return this.recharging ? 'RECHARGE' : 'BRING TO LIFE'; }
+  actionHint() { return this.recharging ? 'Remake this banger' : 'Create a banger'; }
+
   // ------------------------------------------------------------------ the chooser
   // The centre opens the full choice list; the arrows at either end step the selection.
   // A tap outside, or back, closes the list.
   openChooser(picker) {
-    const items = picker === 0 ? MAKER_STYLES : picker === 1 ? MAKER_MOODS
+    const items = picker === 0 ? MAKER_STYLES : picker === 1 ? MAKER_MOODS : picker === VARIATION ? MAKER_VARIATIONS
       : BANGER_VOLTAGES.map(({ level, label, helper }) => ({ id: String(level), label, description: helper }));
-    const cur = picker === 0 ? this.style : picker === 1 ? this.mood : String(this.voltage);
+    const cur = this.pickerValue(picker);
     this.chooser = { picker, items, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
     Audio.sfx('ui');
   }
@@ -282,6 +316,7 @@ export class BangerMakerState {
     if (it) {
       if (c.picker === 0) this.setStyle(it.id);
       else if (c.picker === 1) this.mood = it.id;
+      else if (c.picker === VARIATION) this.setVariation(it.id);
       else this.setVoltage(Number(it.id), false);
     }
     this.chooser = null;
@@ -330,9 +365,9 @@ export class BangerMakerState {
     ctx.fillStyle = 'rgba(5,5,10,0.7)';
     ctx.fillRect(0, 0, W, H);
     drawMenuRow(ctx, panel.x, panel.y, panel.w, panel.h, plateRadius(28, L.portrait), 'rgba(16,14,28,0.98)');
-    const title = ['CHOOSE A FORMULA', 'CHOOSE A VIBE', 'CHOOSE A VOLTAGE'][c.picker];
+    const title = ['CHOOSE A FORMULA', 'CHOOSE AN ELEMENT', 'CHOOSE A VOLTAGE', 'CHOOSE ITS DNA'][c.picker];
     portraitMenuTextCentered(ctx, title, W / 2, textYForMid(panel.y + pad + titleH / 2, portraitMenuScale(1.3)), '#fff', 1.3);
-    const cur = c.picker === 0 ? this.style : c.picker === 1 ? this.mood : String(this.voltage);
+    const cur = this.pickerValue(c.picker);
     c.items.forEach((it, i) => {
       const r = cells[i];
       const on = it.id === cur, sel = showFocus && c.sel === i;
@@ -373,24 +408,28 @@ export class BangerMakerState {
 
   make() {
     // `expression` is the recipe's playing-policy version (make.js): a new or revised song opts in,
-    // so GO WILD also sets the slide on its lead; an old recipe kept without it is made as it was.
+    // so GO WILD also sets the slide on its lead and the take draws its voltage rolls (a new lead
+    // sound, and by voltage a new bass line and chord gate); an old recipe kept without it is made as it was.
     const recipe = { notes: this.notes, lengths: this.lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
       production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed() };
     let song;
     try {
-      song = makeBanger(recipe);
+      song = makeBanger({ ...recipe, useCurrentPalette: true });
     } catch (e) {
       console.warn('[banger] could not make it:', e);
       Audio.sfx('uiBad');
       this.say('THAT ONE WOULD NOT MAKE - TRY AGAIN');
       return;
     }
-    if (!this.from) saveDraft(this.draft());
-    // An edit remakes that song in place — except the starter, which is never overwritten:
-    // editing it keeps a new song (Peter, 3 Oct 2026).
-    const rec = this.from && !this.from.preset ? reviseBanger(this.from, { ...recipe, bpm: song.bpm })
-      : keepBanger({ ...recipe, bpm: song.bpm, fresh: !!this.from });
-    this.onMade(rec, song);
+    if (!this.recharging) saveDraft(this.draft());
+    // Nothing is kept here — generation hands a pending recipe over, and the club asks
+    // whether to save it (UPDATE / SAVE AS NEW / DON'T SAVE) rather than keeping every take
+    // (Peter, 4 Oct 2026).
+    const rec = pendingRecipe({ ...recipe, bpm: song.bpm, paletteSnapshot: song.paletteSnapshot }, this.from);
+    // Editing a still-pending new song starts with a seed recipe but no kept `from` row.
+    // Keep the label already shown in the club through that second recharge.
+    if (this.seed && !this.from) rec.name = this.seed.name;
+    this.onMade(rec, song, this.from, this.recharging);
   }
 
   // ------------------------------------------------------------------ input
@@ -405,17 +444,20 @@ export class BangerMakerState {
     } else if (f.area === 'grid') {
       if (dx) f.col = (f.col + dx + this.steps) % this.steps;
       if (dy < 0 && f.row === 0) f.area = 'mode';
-      else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(2, Math.floor(f.col * 3 / this.steps)); }
+      else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(this.pickerCols() - 1, Math.floor(f.col * this.pickerCols() / this.steps)); }
       else if (dy) f.row = Math.max(0, Math.min(this.rows - 1, f.row + dy));
     } else if (f.area === 'picker') {
       if (dx) { this.cycle(f.picker, dx); return true; }
-      if (dy < 0) {
+      const cols = this.pickerCols();
+      if (dy < 0 && f.picker >= cols) f.picker -= cols;
+      else if (dy < 0) {
         f.area = 'grid'; f.row = this.rows - 1;
-        f.col = Math.floor(this.steps * (f.picker + 0.5) / 3);
-      } else if (dy > 0) { f.area = 'button'; f.button = GENER8; }
+        f.col = Math.floor(this.steps * (f.picker + 0.5) / cols);
+      } else if (dy > 0 && f.picker + cols < PICKERS) f.picker += cols;
+      else if (dy > 0) { f.area = 'button'; f.button = GENER8; }
     } else if (f.area === 'button') {
       if (dx) f.button = (f.button + dx + BUTTONS.length) % BUTTONS.length;
-      if (dy < 0) { f.area = 'picker'; f.picker = 2; }
+      if (dy < 0) { f.area = 'picker'; f.picker = PICKERS - 1; }
     }
     Audio.sfx('ui');
     return true;
@@ -425,11 +467,24 @@ export class BangerMakerState {
     const next = Math.max(0, Math.min(BANGER_VOLTAGES.length - 1, Math.round(Number(level) || 0)));
     this.voltage = next;
     const preset = voltageSettings(next);
-    this.variation = preset.variation;
+    // DNA is its own picker now: Voltage leaves the riff's notes alone.
     this.wild = preset.wild;
     this.energy = preset.energy;
     this.trackEffects = preset.production;
     if (sound) Audio.sfx('ui');
+  }
+
+  /** How many selectors stand abreast: all four in landscape, two in portrait. */
+  pickerCols() { return portraitMenuActive() ? 2 : PICKERS; }
+
+  /** DNA's setting (the desk's Variation id); anything unreadable is Hybrid, the Lab's default. */
+  setVariation(id) {
+    this.variation = MAKER_VARIATIONS.some((v) => v.id === id) ? id : 'some';
+  }
+
+  /** What a picker shows, as its chooser's id. */
+  pickerValue(picker) {
+    return picker === 0 ? this.style : picker === 1 ? this.mood : picker === VARIATION ? this.variation : String(this.voltage);
   }
 
   pointerHit(L, x, y) {
@@ -524,8 +579,9 @@ export class BangerMakerState {
     if (status) this.drawStatus(ctx, L, status);
     const selectors = [
       { label: 'FORMULA', value: (MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '').toUpperCase() },
-      { label: 'VIBE', value: (MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? '').toUpperCase() },
+      { label: 'ELEMENT', value: (MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? '').toUpperCase() },
       { label: 'VOLTAGE', value: BANGER_VOLTAGES[this.voltage].label.toUpperCase() },
+      { label: 'DNA', value: (MAKER_VARIATIONS.find((v) => v.id === this.variation)?.label ?? '').toUpperCase() },
     ];
     L.pickers.forEach((r, i) => {
       const sel = showFocus && this.focus.area === 'picker' && this.focus.picker === i;
@@ -549,11 +605,13 @@ export class BangerMakerState {
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), plate);
       const titleMid = r.y + r.h * (L.portrait ? 0.38 : 0.34);
       const hintMid = r.y + r.h * (L.portrait ? 0.72 : 0.70);
-      const s = portraitMenuFit(BUTTONS[i], i === GENER8 ? 1.35 : 1.1, r.w - 14);
-      const hintSize = portraitMenuFit(BUTTON_HINTS[i], L.portrait ? 0.72 : 0.66, r.w - 14);
-      portraitMenuTextCentered(ctx, BUTTONS[i], r.x + r.w / 2, textYForMid(titleMid, portraitMenuScale(s)),
+      const label = i === GENER8 ? this.actionWord() : BUTTONS[i];
+      const hint = i === GENER8 ? this.actionHint() : BUTTON_HINTS[i];
+      const s = portraitMenuFit(label, i === GENER8 ? 1.35 : 1.1, r.w - 14);
+      const hintSize = portraitMenuFit(hint, L.portrait ? 0.72 : 0.66, r.w - 14);
+      portraitMenuTextCentered(ctx, label, r.x + r.w / 2, textYForMid(titleMid, portraitMenuScale(s)),
         sel ? C_SEL : (i === GENER8 ? C_NOTE : C_TEXT), s);
-      portraitMenuTextCentered(ctx, BUTTON_HINTS[i], r.x + r.w / 2, textYForMid(hintMid, portraitMenuScale(hintSize)),
+      portraitMenuTextCentered(ctx, hint, r.x + r.w / 2, textYForMid(hintMid, portraitMenuScale(hintSize)),
         sel ? '#d3c0f4' : '#89899a', hintSize);
     });
     if (this.chooser) this.drawChooser(ctx, L);

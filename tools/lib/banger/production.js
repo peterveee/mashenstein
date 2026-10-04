@@ -40,6 +40,14 @@ const STYLE = {
   electro: { echo: 0.5, lush: 0.4, room: 0.3 },
   kraftwerk: { echo: 0.5, lush: 0.3, room: 0.2 },
   megadrive: { echo: 0.35, lush: 0, room: 0.2 },
+  'deep-house': { echo: 1, lush: 0.8, room: 0.7 },
+  'nu-disco': { echo: 0.6, lush: 0.8, room: 0.9 },
+  downtempo: { echo: 1, lush: 0.6, room: 1 },
+  eurodance: { echo: 0.9, lush: 0.9, room: 0.6 },
+  'italo-disco': { echo: 1, lush: 1, room: 0.6 },
+  'electro-funk': { echo: 0.5, lush: 0.4, room: 0.5 },
+  'french-house': { echo: 0.4, lush: 0.5, room: 0.4 },
+  reggaeton: { echo: 0.8, lush: 0.6, room: 0.6 },
   chipstep: { echo: 0.5, lush: 0, room: 0.3 },
 };
 const AIRY = new Set(['dreamy', 'wonder', 'nostalgic', 'euphoric', 'gothic', 'lament']);
@@ -93,13 +101,13 @@ function choose(pool, u) {
 }
 
 /** Read-only planner. The result records a clean decision as well as every treatment. */
-export function planTrackEffects({ style, options, mix, bars, laneOf, riffParts, hookKey, bpm, rng, combo = null }) {
+export function planTrackEffects({ style, options, mix, bars, laneOf, riffParts, hookKey, bpm, rng, combo = null, protectedLanes = null }) {
   const mode = trackEffectsMode(options.production?.mode);
   const result = { version: TRACK_EFFECTS_VERSION, mode, roles: [], applied: [] };
   if (mode === 'style') return result;
   const overhaul = mode === 'overhaul';
   const bold = mode === 'adventurous' || overhaul;
-  const profile = STYLE[style.id] || STYLE['big-room'];
+  const profile = STYLE[style.id] || STYLE[style.base] || STYLE['big-room'];
   const airy = AIRY.has(options.mood) ? 1.3 : DRY.has(options.mood) ? 0.7 : 1;
   // Existing prominent production consumes the same budget as new production.
   const strips = Object.values(mix.lanes || {});
@@ -121,6 +129,7 @@ export function planTrackEffects({ style, options, mix, bars, laneOf, riffParts,
     result.roles.push(entry);
     const sourceHook = role === 'hook' && authored(byKey.get(hookKey));
     if (combo) { entry.treatment = 'protected'; entry.reason = 'Preserved the tuned Sound Combo'; continue; }
+    if (protectedLanes?.has(lane)) { entry.treatment = 'protected'; entry.reason = 'Preserved the Sound Palette channel'; continue; }
     if (sourceHook && !bold) { entry.treatment = 'protected'; entry.reason = 'Subtle mode preserves the authored riff effects'; continue; }
     // Adventurous can complement a source strip. An explicitly bypassed insert still
     // protects its own family, rather than locking every unrelated effect out.

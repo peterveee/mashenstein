@@ -41,6 +41,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // every Playwright script that drives the game.
 const DEV_HOST = '0.0.0.0';
 const DEV_PORT = 8001;
+// The TLS listener's port when http and https run side by side (`npm run devb`).
+const DEV_TLS_PORT = 8002;
 const watch = process.argv.includes('--watch');
 
 // Load .env if present so MASH_TELEMETRY_URL persists across builds.
@@ -430,8 +432,9 @@ function handleRecordUpload(req, res, url) {
 //
 //     npm run dev    plain http, exactly as it always was
 //     npm run devs   the same server over TLS  ("dev secure")
+//     npm run devb   BOTH at once: http on 8001, https on 8002  ("dev both")
 //
-// `devs` is only MASH_DEV_TLS=1 in front of the same command; the variable still works
+// `devs` is only MASH_DEV_TLS=1 in front of the same command (`devb` is MASH_DEV_TLS=both); the variable still works
 // on its own, and MASH_DEV_KEY / MASH_DEV_CERT point at a pair kept somewhere else.
 // Without a readable pair the server stays plain http and says why rather than failing
 // to start — a dev server that will not boot is a worse answer than one without TLS.
@@ -445,7 +448,7 @@ function handleRecordUpload(req, res, url) {
 // lives under work/ — which also means a private key cannot be committed by accident.
 const DEV_CERT_DIR = join(root, 'work', 'dev-cert');
 function devTlsOptions() {
-  if (process.env.MASH_DEV_TLS !== '1') return null;
+  if (process.env.MASH_DEV_TLS !== '1' && process.env.MASH_DEV_TLS !== 'both') return null;
   const keyPath = process.env.MASH_DEV_KEY || join(DEV_CERT_DIR, 'key.pem');
   const certPath = process.env.MASH_DEV_CERT || join(DEV_CERT_DIR, 'cert.pem');
   if (!existsSync(keyPath) || !existsSync(certPath)) {
@@ -586,9 +589,13 @@ if (watch) {
   // Resolved before the listen so a missing pair prints its instructions ahead of the
   // banner, rather than under a URL that says https and is not.
   const tls = devTlsOptions();
-  const scheme = tls ? 'https' : 'http';
+  // `both`: the primary port stays plain http (every bookmark keeps working) and the
+  // same proxy is stood up a second time over TLS on its own port.
+  const both = !!tls && process.env.MASH_DEV_TLS === 'both';
+  const TLS_PORT = Number(process.env.MASH_DEV_TLS_PORT) || DEV_TLS_PORT;
+  const scheme = tls && !both ? 'https' : 'http';
   try {
-    await startProxy(HOST, PORT, upstream.port, tls);
+    await startProxy(HOST, PORT, upstream.port, both ? null : tls);
   } catch (err) {
     // A fixed PORT fails loudly when one is already running, where the old
     // ephemeral-port behaviour would silently start a SECOND server somewhere
@@ -626,6 +633,17 @@ if (watch) {
     }
   }
 
+  let secondary = false;
+  if (both) {
+    try {
+      await startProxy(boundHost, TLS_PORT, upstream.port, tls);
+      secondary = true;
+    } catch (err) {
+      console.error(`\nCould not open the https port ${TLS_PORT} (${err.code || err.message}); serving http only.`);
+      console.error(`  Pick another: MASH_DEV_TLS_PORT=8003 npm run devb\n`);
+    }
+  }
+
   if (boundHost === '0.0.0.0') {
     const mdns = mdnsName();
     const lan = Object.values(networkInterfaces()).flat()
@@ -636,6 +654,10 @@ if (watch) {
     // clients, which is the one case the IP is still needed for.
     if (mdns) console.log(`    device: ${scheme}://${mdns}:${PORT}/   <- save this one`);
     if (lan) console.log(`            ${scheme}://${lan.address}:${PORT}/   (today's lease; it moves)`);
+    if (secondary) {
+      console.log(`    secure: https://localhost:${TLS_PORT}/`);
+      if (mdns) console.log(`            https://${mdns}:${TLS_PORT}/   <- the phone one: AudioWorklet works here`);
+    }
     // The device URL is the only one this matters for: localhost is a secure context
     // whatever the scheme, and a .local name never is without it. Said here rather than
     // left to be discovered as a synth that makes no sound.

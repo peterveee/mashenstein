@@ -67,19 +67,33 @@ on ordinary songs as well as Bangers, and on group/master regions too.
 
 Full Options → More Options → **Section FX** offers Style Presets, Style + Automatic,
 or Manual Only. Selecting **Wild** or **Go Crazy** on the desk enables Style + Automatic
-and keeps your explicit rules. You can change Section FX afterward, including switching
+and keeps your explicit section assignments. You can change Section FX afterward, including switching
 it to Manual Only; reading a saved Wild recipe does not force it back on.
-Two explicit rules each choose a part, effect, section type and range
-(whole section, first half, second half, or last two bars). Rules apply to every matching
-section. Choose Main Lead / Ping-Pong Echo / Intro / Whole Section, for example, or
-Arp / Arp Echo Layers / Drop / Second Half. A silent or absent part is reported as skipped.
+Click a block in the Full Options form strip to open **Effects in this section**.
+Add effect defaults to Main Lead / Ping-Pong Echo / Whole Section. Each row chooses
+its part, preset, range (whole section, first half, second half, last two bars),
+primary effect parameters, and enabled state. Saved style chains are copied when
+selected; editing a preset later does not change the recipe. Remaining chain settings
+are preserved when adjusting a compact parameter. Rows can be removed or disabled.
+The strip marks assigned blocks with FX. Silent or missing parts produce a preview
+warning and a skipped report entry; an assignment never enables a part or adds notes.
+
+Assignments live in `sectionFx.assignments`, keyed by stable block identity, separately
+from the structural form. Adding FX to a template leaves its musical form unchanged.
+A drawn block keeps its identity through moves, resizing, naming and kind changes;
+removing it removes its assignments. Changing template, resetting the drawn form,
+or choosing Style Defaults clears explicit assignments with feedback. Recipes with
+the old Rule 1 / Rule 2 switches expand into individual matching blocks in the inspector,
+in the same precedence order. Their density-sensitive preset values remain intact until
+a parameter is edited. Modify This Take permits selection and effect edits while
+locking structural fields, reordering, resizing and removal.
 
 Arp Echo Layers overlaps recent notes with dotted-eighth ping-pong repeats. The three-step
 offset overlaps different pitches in a typical four-note sixteenth arp. Busy phrases
 remain eligible; generic presets use a lower wet mix for busy notes and a 2 dB gain
 reserve. Automatic adds at most one lead/arp treatment per section and four sections,
 avoiding existing channel ambience and occupied Spot FX ranges. It has its own seeded
-Section FX reroll. Manual rules are deliberate and may layer over existing channel
+Section FX reroll. Explicit section choices are deliberate and may layer over existing channel
 inserts/sends. The resulting effects remain editable in the normal Spot FX editor.
 
 Use as Style and Save as Combo now capture part Spot FX (including legacy inline
@@ -90,11 +104,16 @@ the section boundary. Master Spot FX, cuts and volume curves are not captured as
 presets. Big-Room and Future Bass's already-published channel profiles have been refreshed
 with their saved seeds' part Spot FX; future seed edits still need Use as Style.
 
-Precedence is automatic, then saved style, then Rule 1, then Rule 2. Overlapping Spot FX
+Precedence is automatic, saved style, legacy Rule 1 then Rule 2, then explicit section rows in order. Overlapping Spot FX
 chains retain unrelated effects and replace matching delay/reverb families. Fades and
-cuts survive. Banger Report records origins, ranges, skipped decisions and overrides;
+cuts survive. Banger Report records block identity, origins, settings, ranges, disabled/skipped decisions and overrides;
 Modify reports changed automation and replaced hand edits. Existing song files are not
 rewritten until a take is modified or regenerated.
+
+`node tests/banger-section-assignments.js` checks block identity, recipe snapshots, ranges,
+legacy migration and Modify. `node tests/banger-section-effects-ui.js` exercises the
+served inspector, generation, report, reopening, structural locks and resets using
+isolated browser storage and mocked writes.
 
 `node tests/banger-section-effects.js` covers placement, busy phrases, inheritance,
 overlaps, determinism and modification. `node tools/render-banger-section-auditions.js`

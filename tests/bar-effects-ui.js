@@ -3,6 +3,7 @@
 // one-drag-one-undo rule, reload restoration, Play and Close all travel through the same
 // DOM paths a user clicks.
 import { createRequire } from 'node:module';
+import { SECTION_EFFECTS } from '../src/engine/effects.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -162,6 +163,24 @@ try {
   assert(JSON.stringify(knob.ids) === '["delay"]' && Math.abs(Number(knob.feedback) - 0.71) < 1e-6,
     'a parameter change is in the draft at once, with nothing to apply');
 
+  // Style treatments are reusable on an ordinary song's selected region, with no
+  // Banger form or section numbers. Appending the full chain is one undo gesture.
+  await page.getByRole('combobox', { name: 'Style effect preset', exact: true }).click();
+  assert(await page.getByRole('option').filter({ hasText: 'Big-Room' }).count() > 0,
+    'the region preset list offers saved style effects as well as generic treatments');
+  await page.getByRole('option').filter({ hasText: 'Arp Echo Layers' }).click();
+  await page.getByRole('button', { name: 'Add to region', exact: true }).click();
+  await frames(3);
+  const presetWritten = await written();
+  assert(JSON.stringify(presetWritten.ids) === '["delay","pingpong","gain"]',
+    'adding a style preset writes its complete chain to this region and retains existing effects');
+  await page.screenshot({ path: '/tmp/region-style-effects.png' });
+  await page.evaluate(() => dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })));
+  await frames(3);
+  const presetUndone = await written();
+  assert(JSON.stringify(presetUndone.ids) === '["delay"]' && Math.abs(Number(presetUndone.feedback) - 0.71) < 1e-6,
+    'one undo removes the whole added preset and restores the original region');
+
   // Bypass the Delay on its card, then add a Filter through the + and the catalogue.
   const catalogue = await page.evaluate(() => {
     const root = document.querySelector('#regionedit.barfxmodal');
@@ -177,8 +196,10 @@ try {
     [...picker.querySelectorAll('button')].find((b) => b.querySelector('span')?.textContent === 'Filter').click();
     return { offered, open, toggled, closedOnPick: !picker.classList.contains('show') };
   });
+  const sectionNames = new Set(SECTION_EFFECTS.map(effect => effect.name));
   assert(catalogue.open && catalogue.offered.includes('Stutter') && catalogue.offered.includes('Bit Crusher')
-    && !catalogue.offered.some((name) => /Compressor|Limiter|Noise Gate|Tape Saturation|Vibrato|Pitch Shift/.test(name)),
+    && [...sectionNames].every(name => catalogue.offered.includes(name))
+    && catalogue.offered.filter(Boolean).every(name => sectionNames.has(name)),
   `the + opens the catalogue over the window with what a section can hold (${catalogue.offered.length} effects)`);
   assert(catalogue.toggled && catalogue.closedOnPick,
     'the + puts the catalogue away again, and picking from it closes it and keeps the window');

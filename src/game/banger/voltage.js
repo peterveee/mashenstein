@@ -2,13 +2,13 @@ import { energyOf } from '../../../tools/lib/banger/energy.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
 
 export const BANGER_VOLTAGES = Object.freeze([
-  Object.freeze({ level: 0, label: 'Safe', goWild: 'Off', variation: 'faithful', wild: false, energy: 'lean', production: 'style',
+  Object.freeze({ level: 0, label: 'Safe', goWild: 'Off', variation: 'faithful', wild: false, energy: 'lean', production: 'style', sectionFx: 'style',
     helper: 'Strict adherence to base formula' }),
-  Object.freeze({ level: 1, label: 'Juiced', goWild: 'Off', variation: 'faithful', wild: false, energy: 'full', production: 'subtle',
+  Object.freeze({ level: 1, label: 'Charged', goWild: 'Off', variation: 'faithful', wild: false, energy: 'full', production: 'subtle', sectionFx: 'subtle',
     helper: 'Boosts rhythm energy with light effects' }),
-  Object.freeze({ level: 2, label: 'Overcharged', goWild: 'Medium', variation: 'some', wild: false, energy: 'huge', production: 'adventurous',
+  Object.freeze({ level: 2, label: 'Surge', goWild: 'Medium', variation: 'some', wild: false, energy: 'huge', production: 'adventurous', sectionFx: 'expressive',
     helper: 'Alters pattern structures & twists effects' }),
-  Object.freeze({ level: 3, label: 'High Voltage', goWild: 'Full', variation: 'wild', wild: true, energy: 'maximum', production: 'overhaul', bpmBoost: 4,
+  Object.freeze({ level: 3, label: 'Overload', goWild: 'Full', variation: 'wild', wild: true, energy: 'maximum', production: 'overhaul', sectionFx: 'wild', bpmBoost: 4,
     helper: 'Maximum chaos & wild FX' }),
 ]);
 

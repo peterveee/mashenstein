@@ -19,6 +19,10 @@
 // The song itself is made in the riff grid (maker.js) on the frame before this opens, so
 // what this shows is the birth, not a wait: on a phone it covers the generation's few
 // hundred milliseconds, and on a Mac it is simply the ceremony.
+//
+// BIRTH, NOT REVISION (Peter, 4 Oct 2026): this plays for a NEW BANGER — the maker the
+// player opened by that name — and only for that. A song remade with the pencil goes
+// straight back to the club; the jukebox decides (menus.js, openPendingClub).
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';

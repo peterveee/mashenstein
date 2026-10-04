@@ -11,6 +11,7 @@ import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { baseLane, VOICES } from '../../../src/data/voices.js';
 import { riser } from './theory.js';
 import { RANDOM_JOBS, soundAllowed, slotChoices } from './sound-rules.js';
+import { weightedPalettePick } from './palette.js';
 
 /** Which lane family each generated role lives in. */
 export const ROLE_FAMILY = Object.freeze({
@@ -104,10 +105,11 @@ const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
  *
  * Returns Map(part key → { id, label }).
  */
-export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds }) {
+export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds, palette = null }) {
   const out = new Map();
   const taken = new Set();
   const never = sounds?.never || [];
+  const phone = !!sounds?.phone;
   for (const p of riffParts) {
     if (p.kind === 'drum' || p.kind === 'gesture') continue;
     // A hook down in the bass register IS the bass (sections.js), so it is re-voiced from
@@ -119,16 +121,24 @@ export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds }) {
     if (!lane) continue;
     const onsets = p.parsed.reduce((n, bar) => n + bar.notes.filter((v) => v != null).length, 0);
     const slot = { ...job, family: baseLane(lane), busy: onsets / p.parsed.length > 8 };
-    const fits = (id) => id !== p.voice && !taken.has(id) && soundAllowed(id, slot, { never });
-    let pool = (sounds?.random?.[job.key] || []).filter(fits);
+    // Ordinary random rolls avoid leaving the riff on its original voice. A preset
+    // audition is deliberately pinned, though: it must still be heard when it happens
+    // to be the same preset as the source riff.
+    const fits = (choice) => (choice.audition || choice.id !== p.voice)
+      && !taken.has(choice.id) && soundAllowed(choice.id, slot, { never, phone });
+    const configured = palette?.[`riff:${job.key}`];
+    let pool = configured?.filter(fits) || (sounds?.random?.[job.key] || [])
+      .map((id) => ({ id })).filter(fits);
     if (!pool.length) {
-      pool = slotChoices(slot, { never })
-        .filter((c) => !c.blocked.length && job.categories.includes(c.category)).map((c) => c.id).filter(fits);
+      if (configured) continue;
+      pool = slotChoices(slot, { never, phone })
+        .filter((c) => !c.blocked.length && job.categories.includes(c.category)).map((c) => ({ id: c.id } )).filter(fits);
     }
     if (!pool.length) continue;
-    const id = pool[Math.floor(rng.next() * pool.length)];
+    const selected = configured ? weightedPalettePick(pool, rng) : pool[Math.floor(rng.next() * pool.length)];
+    const id = selected.id;
     taken.add(id);
-    out.set(p.key, { id, label: VOICES[id].label || id });
+    out.set(p.key, { ...selected, id, label: VOICES[id].label || id, palettePart: `riff:${job.key}` });
   }
   return out;
 }
@@ -211,15 +221,18 @@ export function buildMix({
       : clone(style.strips[role] || {});
     // The chords' gate: the style's own, or the one Chord Gate names (fx.js stripGate).
     const gate = stripGate(options, style);
-    if (role === 'saws' && gate) strip.effects = [...(strip.effects || []), clone(gate)];
-    if (role === 'pad' && gate && options.parts.chords === 'pad') {
+    // Supersaw Stabs are a rhythm already: never gated. Gate the Choir chops the choir with the chords.
+    if (role === 'saws' && gate && options.parts.chords !== 'stabs') strip.effects = [...(strip.effects || []), clone(gate)];
+    if (role === 'choir' && gate && options.fx.gateChoir) strip.effects = [...(strip.effects || []), clone(gate)];
+    if (role === 'pad' && gate && (options.parts.chords === 'pad' || style.padUnder)) {
       strip.effects = [...(strip.effects || []), { ...clone(gate), params: { ...gate.params, depth: 0.5 } }];
     }
     mix.lanes[lane] = strip;
     // A tuned part's strip says what it is AND what it plays — `PAD · Polar Drift` — because
     // the sound is editable on the Banger Sounds page and a name baked into the label would
     // go on naming the old one. A drum's part name is enough.
-    const base = style.labels[role] || (role === 'bassEcho' ? BASS_ECHO.label : role.toUpperCase());
+    const base = role === 'saws' && options.parts.chords === 'stabs' ? 'CHORDS Stabs'
+      : style.labels[role] || (role === 'bassEcho' ? BASS_ECHO.label : role.toUpperCase());
     const preset = DRUM_ROLES.has(role) ? null : VOICES[mix.voice[vk]]?.label;
     mix.labels[lane] = preset ? `${base} · ${preset}` : base;
   }

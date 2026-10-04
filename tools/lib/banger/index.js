@@ -22,7 +22,7 @@ import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { arrangementIssues } from '../../../src/data/arrangements.js';
 import { packBank, hasNotes, isDrumPart, midi, MIDI_MIN, MIDI_MAX, BASS_FIGURES, echoPart } from './theory.js';
 import { normaliseBangerOptions, bangerBars, bangerBpm } from './options.js';
-import { styleFor } from './styles/index.js';
+import { styleFor, soundSetOf } from './styles/index.js';
 import { validateRiff, parseRiff, pickHook } from './riff.js';
 import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
 import { buildForm } from './form.js';
@@ -38,7 +38,8 @@ import { BANGER_COMBOS } from './combos.js';
 import { bangerPrints } from './modify.js';
 import { applyExpression } from './expression.js';
 import { applyTrackEffects } from './production.js';
-import { resolveSounds } from './sound-rules.js';
+import { PART_SLOTS, soundAllowed, resolveSounds } from './sound-rules.js';
+import { BANGER_PALETTE, paletteSnapshot, resolvePalette, weightedPalettePick } from './palette.js';
 
 export { BANGER_DEFAULTS, BANGER_GROUPS, BANGER_MOODS, BANGER_KEYS, BANGER_MODES, BANGER_RIFF_NOTES, MOOD_MODES,
   BANGER_VARIATIONS, BANGER_LENGTHS,
@@ -48,7 +49,7 @@ export { BANGER_DEFAULTS, BANGER_GROUPS, BANGER_MOODS, BANGER_KEYS, BANGER_MODES
 export { EXPRESSION_ROLES, EXPRESSION_POLICY, planExpression, applyExpression, voiceOfLane } from './expression.js';
 export { TRACK_EFFECTS_VERSION, TRACK_EFFECTS_MODES, PRODUCTION_ROLES, trackEffectsMode,
   normaliseTrackEffects, productionFeatures, planTrackEffects, applyTrackEffects } from './production.js';
-export { BANGER_STYLES, styleFor } from './styles/index.js';
+export { BANGER_STYLES, BANGER_SOUND_SETS, styleFor, soundSetOf, soundSetsFor } from './styles/index.js';
 export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
@@ -102,6 +103,17 @@ export function withChannels(style, ...layers) {
 }
 
 /** A style's sounds with a Sound Combo's over them. */
+/** Every tuned note in `bank` held at most `steps` steps — each lane's `…Len`, in every section. */
+function blipBank(bank, steps) {
+  const cap = (obj) => {
+    for (const [k, v] of Object.entries(obj)) {
+      if (/Len$/.test(k) && Array.isArray(v)) obj[k] = v.map((len) => (len == null ? len : Math.min(len, steps)));
+    }
+  };
+  cap(bank);
+  for (const sec of bank.sections || []) cap(sec);
+}
+
 function withComboSounds(sounds, combo) {
   if (!combo?.sounds) return sounds;
   return {
@@ -114,6 +126,7 @@ function withComboSounds(sounds, combo) {
 export function generateBanger({
   riff, options: raw = {}, seed = 1, sounds: table = BANGER_SOUNDS, level = true,
   channels = BANGER_CHANNELS, combos = BANGER_COMBOS, levelData = undefined, calibration = undefined, rerolls = null,
+  palette = BANGER_PALETTE,
 }) {
   const recipe = styleFor(raw?.style) || styleFor('big-room');
   const { options, issues } = normaliseBangerOptions(raw, recipe);
@@ -131,6 +144,8 @@ export function generateBanger({
   const reroll = rerolls && typeof rerolls === 'object'
     ? Object.fromEntries(Object.entries(rerolls).filter(([, v]) => v != null).map(([k, v]) => [k, normaliseSeed(v)])) : {};
   const stream = (name) => (reroll[name] != null ? new Rng(reroll[name]).stream(name) : root.stream(name));
+  const partStream = (key) => (reroll.partSounds != null
+    ? new Rng(reroll.partSounds).stream(`palette:${key}`) : root.stream(`palette:${key}`));
   const rng = {
     harmony: stream('harmony'), drums: stream('drums'), form: stream('form'), sounds: stream('sounds'),
     arps: stream('arps'), parts: stream('partSounds'),
@@ -150,18 +165,53 @@ export function generateBanger({
   if (raw?.expression?.autoPortamento === true && !options.expression.autoPortamento) {
     warnings.push(`Auto Portamento was asked for by expression version ${JSON.stringify(raw.expression.version)}, which this generator does not know — made without it`);
   }
+  // A SOUND SET (styles/index.js BANGER_SOUND_SETS): the style's music on another set of
+  // sounds — a recipe of its own, with its own entry in sounds.js, and maybe a phone budget
+  // or blips. Its channels are the style's.
+  const set = options.parts.soundSet === 'style' ? null : soundSetOf(recipe, options.parts.soundSet);
+  if (options.parts.soundSet !== 'style' && !set) {
+    warnings.push(`${recipe.label} has no ${({ light: 'Light', '8bit': '8-Bit' })[options.parts.soundSet] || options.parts.soundSet} Sound Set — made with its own sounds`);
+  }
+  // (A set asked for by its own id — the Banger Sounds page's audition — is played as itself.)
+  for (const [k, swap] of Object.entries((set || recipe).remapParts || {})) if (swap[options.parts[k]]) options.parts[k] = swap[options.parts[k]];
   // A Sound Combo, when one is chosen and the style has it: its sounds and channels over
-  // the style's own, and its own banger as what the faders are matched against.
-  const combo = options.combo ? combos?.[recipe.id]?.[options.combo] || null : null;
-  if (options.combo && !combo) warnings.push(`${recipe.label} has no Sound Combo "${options.combo}" — made with its own sounds`);
-  const style = withChannels(recipe, channels?.[recipe.id], combo?.channels);
+  // the style's own, and its own banger as what the faders are matched against. Not over a
+  // Sound Set: a combo's sounds are the style's kind, and would undo a Light set's budget.
+  const combo = options.combo && !set ? combos?.[recipe.id]?.[options.combo] || null : null;
+  if (options.combo && set) warnings.push(`a Sound Combo does not go over a Sound Set — made with the ${set.label} sounds`);
+  else if (options.combo && !combo) warnings.push(`${recipe.label} has no Sound Combo "${options.combo}" — made with its own sounds`);
+  const style = withChannels(set || recipe, channels?.[recipe.id] ?? channels?.[recipe.base], combo?.channels);
   // Every sound it is made with — the style's table, with the mood's overrides. `table`
   // is the shipped one unless the Banger Sounds page is auditioning unsaved choices.
   const sounds = withComboSounds(resolveSounds(table, style.id, options.mood), combo);
+  const paletteForTake = combo ? null : resolvePalette(palette, style.id, options.mood, { sounds: table });
+  const paletteSelected = new Map();
+  const sourceRole = (key) => `part:${key}`;
+  for (const slot of PART_SLOTS) {
+    if (slot.kind !== 'tone' || !Object.hasOwn(sounds.parts || {}, slot.key)) continue;
+    const list = paletteForTake?.[sourceRole(slot.key)];
+    if (!list) continue;
+    const base = sounds.parts[slot.key];
+    const defaultChoice = list.find((x) => x.id === base && x.enabled !== false);
+    if (options.parts.partSounds === 'roll') {
+      const available = list.filter((x) => soundAllowed(x.id, slot, { never: sounds.never, phone: sounds.phone }));
+      const draw = partStream(slot.key);
+      const selected = weightedPalettePick(available, draw);
+      if (selected) { sounds.parts[slot.key] = selected.id; paletteSelected.set(slot.key, selected); }
+    } else if (defaultChoice) paletteSelected.set(slot.key, defaultChoice);
+    else {
+      const available = list.filter((x) => soundAllowed(x.id, slot, { never: sounds.never, phone: sounds.phone }));
+      const fallback = weightedPalettePick(available, partStream(slot.key));
+      if (fallback) { sounds.parts[slot.key] = fallback.id; paletteSelected.set(slot.key, fallback); }
+    }
+  }
   // Part Sounds = Roll: each part with a shortlist draws its sound for this take. A combo
   // is a set of sounds chosen together, so it is played as chosen.
   if (options.parts.partSounds === 'roll' && !combo) {
-    for (const [k, list] of Object.entries(sounds.choices || {})) if (list.length > 1) sounds.parts[k] = rng.parts.pick(list);
+    for (const [k, list] of Object.entries(sounds.choices || {})) {
+      if (paletteForTake?.[sourceRole(k)]) continue;
+      if (list.length > 1) sounds.parts[k] = rng.parts.pick(list);
+    }
   }
 
   // Write a Lead: a riff with no tune gets one, written from its own chords (lead.js), and
@@ -219,8 +269,10 @@ export function generateBanger({
   const drumLanes = [...laneOf.values()].filter((lane) => PERCUSSION_LANES.includes(baseLane(lane)));
   // Riff Sound = Random: the riff's tuned parts re-voiced (see pickRiffSounds).
   const riffSounds = options.parts.riffSound === 'random'
-    ? pickRiffSounds({ riffParts: tparts, laneOf, hookKey, rng: rng.sounds, sounds }) : new Map();
+    ? pickRiffSounds({ riffParts: tparts, laneOf, hookKey, rng: rng.sounds, sounds, palette: paletteForTake }) : new Map();
   const bank = packBank(laneBars, { bpm, drums: drumLanes });
+  // A style that plays only BLIPS (chipstep-8bit.js): every tuned note cut to `blips` steps.
+  if (style.blips > 0) blipBank(bank, style.blips);
   // A riff part playing its lane's own engine body brings the bank keys that body reads.
   for (const p of parts) {
     const role = p.key === hookKey ? 'hook' : `riff:${p.key}`;
@@ -255,14 +307,37 @@ export function generateBanger({
     style, sounds, options, laneOf, riffParts: tparts, hookKey, coreFromRiff: ctx.coreFromRiff, bpm,
     denseHook: hookOnsets / hookPart.parsed.length > 8, riffSounds,
   });
+  // Palette production is ordinary channel data. Apply it before the production planner
+  // so the planner sees authored inserts/sends and leaves that channel alone.
+  const paletteByLane = new Map();
+  for (const [role, lane] of laneOf) {
+    let choice = null;
+    if (role === 'hook' || role.startsWith('riff:')) {
+      const key = role === 'hook' ? hookKey : role.slice(5);
+      choice = riffSounds.get(key) || null;
+    } else {
+      const voice = mix.voice?.[`${lane}Voice`];
+      choice = paletteSelected.get(role) || (voice ? { id: voice } : null);
+      if (choice && !choice.palettePart) choice = { ...choice, palettePart: `part:${role}` };
+    }
+    if (!choice) continue;
+    const strip = mix.lanes[lane] ||= {};
+    if (choice.inserts != null) strip.effects = structuredClone(choice.inserts);
+    if (choice.send != null) strip.send = { ...(strip.send || {}), ...structuredClone(choice.send) };
+    paletteByLane.set(lane, choice);
+  }
   const trackEffects = applyTrackEffects({ style, options, mix, bars, laneOf, riffParts: tparts,
-    hookKey, bpm, rng: rng.production, combo });
+    hookKey, bpm, rng: rng.production, combo, protectedLanes: new Set([...paletteByLane].filter(([, p]) => p.inserts != null || p.send != null).map(([lane]) => lane)) });
   const sectionEffects = applySectionEffects({ automation, options, style, form, bars, laneOf, mix, bpm, rng: rng.sectionFx });
   if (sectionEffects.automation) arrangement.automation = sectionEffects.automation;
   // Every channel's fader, from what its part plays and on what (levels.js). `level: false`
   // is for tools/banger-levels.js, which reads the style's own default parts from here.
   const levels = level ? levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts: tparts, hookKey, refs: combo?.refs, data: levelData, calibration }) : [];
-  // The bass echo has no reference of its own: it rides the bass's levelled fader.
+  for (const [lane, choice] of paletteByLane) {
+    if (choice.trimDb) mix.lanes[lane].gain = Math.round(((mix.lanes[lane].gain || 0) + choice.trimDb) * 10) / 10;
+  }
+  // The bass echo has no reference of its own: it rides the bass's final levelled fader,
+  // including any palette trim.
   if (laneOf.has('bassEcho') && laneOf.has('bass')) {
     mix.lanes[laneOf.get('bassEcho')].gain = Math.round(((mix.lanes[laneOf.get('bass')]?.gain ?? 0) + BASS_ECHO.gain) * 10) / 10;
   }
@@ -311,19 +386,24 @@ export function generateBanger({
     '`banger` below, which is what Another Take re-rolls. Mix it freely: the desk saves under',
     'the marker and never touches the music above it.',
   ].join('\n');
+  const resolvedPaletteSnapshot = paletteSnapshot(palette, style.id, options.mood, { sounds: table });
+  const paletteReport = [...paletteByLane].map(([lane, selected]) => ({ lane, part: selected.palettePart || null, preset: selected.id,
+    trimDb: selected.trimDb || 0, favourite: !!selected.favourite, origin: selected.origin || 'style default' }));
   const banger = {
     version: 1,
     generator: BANGER_GENERATOR_VERSION,
     style: style.id,
     options,
     seed: s,
+    paletteSnapshot: resolvedPaletteSnapshot,
+    palette: paletteReport,
     riff: source,
     source: { id: riff.source?.id ?? null, title: riff.source?.title ?? null, from: riff.source?.from, to: riff.source?.to },
     take: 1,
     // Which lane does which job, and the form — what Save as Combo and Use as Style read a
     // tuned banger back by (tools/lib/banger-seeds.js).
     laneOf: Object.fromEntries(laneOf),
-    form: form.map((f) => ({ role: f.role, type: f.type, label: f.label, from: f.from, to: f.to, energy: f.energy, ...(f.hook ? { hook: true } : {}) })),
+    form: form.map((f) => ({ id: f.id, role: f.role, type: f.type, label: f.label, from: f.from, to: f.to, energy: f.energy, ...(f.hook ? { hook: true } : {}) })),
     report: rollReport({ summary, warnings, levels, transitions: events.transitions || [], expressed,
       mix, laneOf: Object.fromEntries(laneOf) }),
     ...(trackEffects.mode !== 'style' ? { trackEffects } : {}),

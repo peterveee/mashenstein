@@ -33,11 +33,10 @@ const writeStore = (key, value) => { try { localStorage.setItem(key, JSON.string
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
 /** A deliberate desk variation choice also chooses its automatic slide policy.
- * Wild enables section treatments; later Section FX edits remain independent.
+ * Spot FX intensity is chosen independently in Section FX.
  * Reading old recipes never calls this: their original expression stays intact. */
 export function deskBangerVariation(options, variation) {
   return { ...options, variation,
-    ...(variation === 'wild' ? { sectionFx: { ...options.sectionFx, mode: 'auto' } } : {}),
     expression: { autoPortamento: variation === 'wild', version: BANGER_EXPRESSION_VERSION } };
 }
 
@@ -105,7 +104,7 @@ export function createBangerDesk(desk) {
       { id: 'bass', label: 'Bass', keys: ['bass', 'riffBass', 'bassLift', 'sub'] },
       { id: 'chords', label: 'Chords', keys: ['chords', 'choir', 'arp', 'arpPattern'] },
       { id: 'leads', label: 'Leads', keys: ['writeLead', 'riffSound', 'fillIn', 'fillEvery', 'fillNotes', 'square', 'bell', 'octaveDouble', 'thirdBelow', 'counter'] },
-      { id: 'sounds', label: 'Instrument sounds', keys: ['partSounds'] },
+      { id: 'sounds', label: 'Instrument sounds', keys: ['soundSet', 'partSounds'] },
     ];
     const parts = BANGER_GROUPS.find((g) => g.id === 'parts');
     const sections = new Map([
@@ -164,7 +163,7 @@ export function createBangerDesk(desk) {
         + ids.map((id) => {
           const g = sections.get(id);
           return `<fieldset class="bangergroup"><legend>${escapeHtml(g.label)}</legend>`
-            + g.fields.filter((f) => !(g.id === 'form' && f.key === 'template'))
+            + g.fields.filter((f) => !(g.id === 'sectionFx' && f.key !== 'mode') && !(g.id === 'form' && f.key === 'template'))
               .sort((a, b) => Number(b.type === 'select') - Number(a.type === 'select'))
               .map((f) => (f.type === 'select' ? select(g.group, f, o[g.group][f.key]) : toggle(g.group, f, o[g.group][f.key]))).join('')
             + (g.id === 'leads' ? toggle('expression', { key: 'autoPortamento', label: 'Auto Portamento',
@@ -270,12 +269,29 @@ export function createBangerDesk(desk) {
     // and, when it cannot be made, why, with Make It switched off.
     // The Form row: the request without a drawn form is what the strip draws a template
     // from; with one, the drawn form is part of the request.
+    let availabilityCache = null;
     const formEditor = createFormEditor({
       host: $('bgform'), escapeHtml, toast,
       request: () => {
         const plain = readDialog(box);
         const { options } = normaliseBangerOptions(plain);
         return { options, style: styleFor(options.style), sourceBpm: riff?.source?.bpm };
+      },
+      availability: (section, rows) => {
+        if (!rows.length || !riff || riffIssues.length) return [];
+        const raw = formEditor.apply(readDialog(box));
+        const { options, issues } = normaliseBangerOptions(raw);
+        if (issues.length) return [];
+        const key = JSON.stringify([riff, options]);
+        try {
+          if (availabilityCache?.key !== key) availabilityCache = { key, song: generateBanger({ riff, options,
+            seed: settings ? recipe.seed : 19, rerolls: settings ? recipe.rerolls : null }) };
+          const decisions = availabilityCache.song.banger.sectionEffects.decisions.filter(d => d.origin === 'Section choice' && d.sectionId === section.id);
+          return rows.map((_, i) => {
+            const decision = decisions.find(d => d.assignmentIndex === i);
+            return decision?.status === 'Skipped' ? `Preview: ${decision.reason}. No notes will be added.` : '';
+          });
+        } catch { return []; }
       },
       changed: () => paint(),
     });
@@ -407,6 +423,7 @@ export function createBangerDesk(desk) {
 
     readRiff();
     if (start.form.sections) formEditor.load(start.form.sections);
+    formEditor.loadEffects(start.sectionFx);
     paint();
     // A switch's light follows its box.
     box.addEventListener('change', (e) => {
@@ -443,7 +460,7 @@ export function createBangerDesk(desk) {
           x.classList.toggle('on', x === b);
           x.setAttribute('aria-pressed', String(x === b));
         });
-        write(deskBangerVariation(normaliseBangerOptions(readDialog(box)).options, b.dataset.value));
+        write(deskBangerVariation(normaliseBangerOptions(read()).options, b.dataset.value));
         paint();
       };
     });
@@ -455,7 +472,7 @@ export function createBangerDesk(desk) {
       syncCombos(style.id);
       formEditor.reset();
       paint();
-      toast(`${style.label} — ${what}`, 1600);
+      toast(`${style.label} — ${what}; explicit section effects cleared`, 2200);
     };
     $('bgdefaults').onclick = () => resetTo(styleDefaults, 'its own defaults');
     $('bgclassic').onclick = () => resetTo(classicDefaults, 'classic: its own sounds, its own arp, no bass lift, the Club form');
@@ -493,8 +510,7 @@ export function createBangerDesk(desk) {
         el.disabled = true;
         el.closest('label')?.classList.add('bglocked');
       });
-      const strip = $('bgform');
-      if (strip) { strip.inert = true; strip.classList.add('bglocked'); }
+      formEditor.setStructureLocked(true);
     }
     $('bgcrazy').onclick = () => {
       write(deskBangerVariation(goCrazyBangerOptions(normaliseBangerOptions(read()).options), 'wild'));

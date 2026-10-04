@@ -219,7 +219,7 @@ assert(BANGER_GENERATOR_VERSION >= 3 && gen(MEL(SLIDES), { style: 'eurobeat' }).
       }
     }
   }
-  assert(failures === startFailures && pairs === 10 * 3 * 2 * 2, `${pairs} takes made twice, expression off and on: nothing but the portamento settings moved (${quiet} checks)`);
+  assert(failures === startFailures && pairs === BANGER_STYLES.length * 3 * 2 * 2, `${pairs} takes made twice, expression off and on: nothing but the portamento settings moved (${quiet} checks)`);
   assert(withSetting > 0 && withSetting < pairs, `and the setting is there for some takes and not others (${withSetting} of ${pairs})`);
   quiet = 0;
 }
@@ -655,24 +655,85 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   const { riffFromNotes, DEFAULT_SIMPLE } = await import('../src/game/banger/riff.js');
   const make = await import('../src/game/banger/make.js');
   const store = await import('../src/game/banger/store.js');
-  const { makeBanger, MAKER_STYLES, defaultMoodFor, hookSoundFor, spotFor, RECIPE_EXPRESSION, expressionVersionOf, RIFF_TRIM_DB } = make;
+  const { makeBanger, MAKER_STYLES, defaultMoodFor, hookSoundFor, labSoundSet, spotFor, RECIPE_EXPRESSION, expressionVersionOf, RIFF_TRIM_DB } = make;
   const { keepBanger, reviseBanger, songFor, bangerState } = store;
   const notes = DEFAULT_SIMPLE;
   const recipe = (style, seed = 3, extra = {}) => ({ notes, mode: 'simple', style, mood: defaultMoodFor(style), seed, ...extra });
   const hookOf = (song) => song.mix.lanes.lead;
-  const direct = (r, options) => generateBanger({ riff: riffFromNotes(r.notes, hookSoundFor(r.style, r.mood), r.mode), seed: r.seed,
-    options: { style: r.style, mood: r.mood, energy: 'full', ...(spotFor(r.style, r.seed) && Object.keys(spotFor(r.style, r.seed)).length ? { spot: spotFor(r.style, r.seed) } : {}), ...options } });
+  // The Lab's Sound Set for the take (make.js LAB_SOUND_SETS): chipstep and synthwave play on Light.
+  const labSet = (r) => (labSoundSet(r.style, r.seed, r.voltage) !== 'style' ? { parts: { soundSet: labSoundSet(r.style, r.seed, r.voltage) } } : {});
+  const direct = (r, options) => generateBanger({ riff: riffFromNotes(r.notes, hookSoundFor(r.style, r.mood, r.seed, r.voltage), r.mode), seed: r.seed,
+    options: { style: r.style, mood: r.mood, energy: 'full', ...(spotFor(r.style, r.seed) && Object.keys(spotFor(r.style, r.seed)).length ? { spot: spotFor(r.style, r.seed) } : {}), ...labSet(r), ...options } });
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + RIFF_TRIM_DB) * 10) / 10; return o; };
 
-  assert(RECIPE_EXPRESSION === 1 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 2 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 1 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 2 for a new recipe, and anything unreadable reads as none');
+
+  // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
+  // the higher the voltage, the more often the bass and the chord gate move
+  {
+    const { voltageRollsFor, VOLTAGE_ROLL_ODDS } = make;
+    const seeds = Array.from({ length: 400 }, (_, i) => (i * 2654435761) >>> 0 || 1);
+    const rate = (style, mood, v, has) => seeds.filter((s) => has(voltageRollsFor(style, mood, v, s))).length / seeds.length;
+    assert(same(voltageRollsFor('big-room', 'anthemic', 3, 77), voltageRollsFor('big-room', 'anthemic', 3, 77)), 'voltage rolls are the same for the same seed');
+    const bass = [0, 1, 2, 3].map((v) => rate('big-room', 'anthemic', v, (r) => r.parts.bass));
+    // (the gate is counted over the takes that keep their supersaws — piano stabs are never gated)
+    // (a gate draw may come up as Supersaw Stabs instead, which counts)
+    const sawTakes = (v) => seeds.map((s) => voltageRollsFor('big-room', 'anthemic', v, s)).filter((r) => !['piano', 'pad'].includes(r.parts.chords));
+    const gate = [0, 1, 2, 3].map((v) => sawTakes(v).filter((r) => r.fx?.gate || r.parts.chords === 'stabs').length / sawTakes(v).length);
+    assert(bass.every((x, v) => Math.abs(x - VOLTAGE_ROLL_ODDS.bass[v]) < 0.08) && gate.every((x, v) => Math.abs(x - VOLTAGE_ROLL_ODDS.gate[v]) < 0.08),
+      `the bass and chord gate move more often the higher the voltage (bass ${bass.join(' ')}, gate ${gate.join(' ')})`);
+    assert(rate('eurobeat', 'anthemic', 3, (r) => r.parts.bass) === 0 && rate('big-room', 'funky', 3, (r) => r.parts.bass) === 0,
+      'never a rolled bass where the style\'s bass is its signature (Eurobeat) or the mood chose one (Funky)');
+    assert(rate('electro', 'dark', 3, (r) => r.fx && !r.fx.pump) === 0 && rate('trance', 'uplifting', 3, (r) => r.fx?.gate === 'sixteenths') === 0,
+      'the gate rolls only where the style pumps its chords, and never onto the style\'s own rate');
+    const { styleDefaults: defaultsOf } = await import('../tools/lib/banger/options.js');
+    const styleDefaults = (st) => defaultsOf(BANGER_STYLES.find((x) => x.id === st.id));
+    const highOnly = ['keyLift', 'halfTime', 'falseEnding', 'keyApproach', 'breakdownHook'];
+    const makeUp = (r) => (r.parts.chords && r.parts.chords !== 'stabs') || r.fx?.pump || r.drums || highOnly.some((k) => r.form?.[k] != null) || r.spot?.intro;
+    assert([0, 1, 2].every((v) => MAKER_STYLES.every((st) => rate(st.id, defaultMoodFor(st.id), v, makeUp) === 0)),
+      'below Overload the chords (but for stabs in place of a gate), the kit, the key, the drops and the ending are the style\'s own');
+    assert([0, 1].every((v) => MAKER_STYLES.every((st) => rate(st.id, defaultMoodFor(st.id), v, (r) => r.spot || r.form) === 0))
+      && rate('big-room', 'anthemic', 2, (r) => r.spot) > 0 && rate('big-room', 'anthemic', 2, (r) => r.form?.layers || r.form?.grooveIntro) > 0,
+      'Spot FX and the intro\'s build-up start rolling at Surge');
+    assert(rate('big-room', 'anthemic', 2, (r) => r.parts.chords === 'stabs') > 0 && rate('big-room', 'anthemic', 2, (r) => r.fx?.gateChoir) > 0
+      && rate('big-room', 'anthemic', 1, (r) => r.fx?.gateChoir) === 0 && rate('shibuya', 'lounge', 2, (r) => r.fx?.gateChoir) === 0,
+      'Surge can stab the supersaws and gate the choir — the choir only where there is a gate');
+    const hv = MAKER_STYLES.map((st) => ({ st, rolls: seeds.map((s) => voltageRollsFor(st.id, defaultMoodFor(st.id), 3, s)) }));
+    assert(hv.every(({ st, rolls }) => (styleDefaults(st).parts.chords === 'pad' ? rolls.every((r) => !r.parts.chords) : rolls.some((r) => r.parts.chords)) && rolls.some((r) => r.drums?.kit) && rolls.some((r) => r.form?.keyLift === 'third')
+      && rolls.every((r) => !r.form?.halfTime || styleDefaults(st).form.template === 'club')),
+      'at Overload every style can play its chords another way (but Drum & Bass, whose chords are its pad), change kit and lift a third; half time only in the Club form');
+    assert(hv.every(({ st, rolls }) => rolls.every((r) => !r.fx?.pump || (!styleDefaults(st).fx.pump && ['saws', 'pad'].includes(r.parts.chords || styleDefaults(st).parts.chords))))
+      && hv.filter(({ rolls }) => rolls.some((r) => r.fx?.pump)).length === MAKER_STYLES.filter((st) => !styleDefaults(st).fx.pump).length,
+      'a chop goes only on the styles that do not pump, and only on supersaws or a pad');
+    // no roll costs the phone a part: a Overload take has no channel its style's Charged takes lack
+    let extra = [];
+    for (const st of MAKER_STYLES) {
+      const juiced = new Set(seeds.slice(0, 12).flatMap((seed) => Object.keys(makeBanger(recipe(st.id, seed, { voltage: 1, expression: 1 })).mix.lanes)));
+      for (const seed of seeds.slice(0, 12)) {
+        const hv = makeBanger(recipe(st.id, seed, { voltage: 3, expression: 2, wild: true }));
+        extra.push(...Object.keys(hv.mix.lanes).filter((k) => !juiced.has(k)).map((k) => `${st.id}: ${hv.mix.labels[k]}`));
+      }
+    }
+    assert(!extra.length, `every Lab style makes Overload takes, with no channel more than its Charged ones (${[...new Set(extra)].join('; ') || 'none'})`);
+    assert(hv.every(({ st, rolls }) => rolls.every((r) => !r.form || r.form.template === styleDefaults(st).form.template)),
+      'a rolled form keeps the style\'s own template (a form naming none is read as Club)');
+    assert(hv.every(({ rolls }) => rolls.some((r) => r.spot?.intoDrop) && rolls.every((r) => !r.spot?.ending && r.spot?.intoDrop !== 'tapeStop')),
+      'Overload rolls Spot FX — never an ending, the jukebox loops the song');
+    const lead = rate('big-room', 'anthemic', 1, (r) => r.parts.riffSound === 'random');
+    assert(lead > 0.8 && lead < 1, `the riff\'s sound is drawn most takes, with the style\'s own still in the draw (${lead})`);
+    const r = recipe('big-room', 3, { voltage: 3 });
+    const v1 = makeBanger({ ...r, expression: 1 });
+    assert(same(makeBanger({ ...r, expression: 2 }).mix, makeBanger({ ...r, expression: 2 }).mix) && !same(makeBanger({ ...r, expression: 2 }).mix.voice, v1.mix.voice),
+      'a recipe at 2 is made the same every time, and differently from one kept at 1');
+  }
 
   // which Lab styles hold a sound that takes a slide, in the real catalogue
   const hooks = Object.fromEntries(MAKER_STYLES.map((s) => [s.id, hookSoundFor(s.id, defaultMoodFor(s.id))]));
   const slides = MAKER_STYLES.map((s) => s.id).filter((id) => autoPortamentoSupport(VOICES[hooks[id]]).supported);
   assert(hooks.eurobeat === 'syncRazorLead' && hooks.shibuya === 'mrdrConcertFlute' && hooks.electro === 'bestRobotVox' && hooks.megadrive === 'layerMegamixLead'
-    && ['eurobeat', 'shibuya', 'electro', 'megadrive'].every((id) => slides.includes(id)), 'Eurobeat, Shibuya-Kei, Electro and Mega Drive hooks are sustained MRDR-3 leads that take a slide');
+    && ['eurobeat', 'shibuya', 'electro', 'megadrive'].every((id) => slides.includes(id)), 'Eurobeat, Shibuya-Kei, Electro and 16-Bit hooks are sustained MRDR-3 leads that take a slide');
   assert(hooks['big-room'] === GRAND && hooks.trance === GRAND && hooks['future-bass'] === 'mrdrPopGrand' && hooks.dnb === WIRE_HARP
     && ['big-room', 'trance', 'future-bass', 'dnb'].every((id) => !slides.includes(id)), 'Big-Room, Trance, Future Bass and Drum & Bass hooks are pianos and a TNGR-2 harp: not');
 
@@ -765,11 +826,14 @@ const plannedAt = (fixture, lane, set) => createLaneView({
     const rec = keepBanger({ notes, mode: 'simple', style: 'shibuya', mood: 'dreamy', seed: 4, bpm: 130, wild: true }, s);
     const before = songFor(rec);
     reviseBanger(rec, { notes, style: 'shibuya', mood: 'dreamy', seed: 5, bpm: 130, wild: true }, s);
-    assert(rec.expression === 1 && hookOf(songFor(rec)).noteFx?.portamento && songFor(rec) !== before, 'a revised recipe opts into expression version 1');
+    // At 2 the take draws its own lead, so the slide is there exactly when the drawn sound takes one.
+    const revisedSong = songFor(rec);
+    assert(rec.expression === 2 && !!hookOf(revisedSong).noteFx?.portamento === autoPortamentoSupport(VOICES[revisedSong.mix.voice.leadVoice]).supported
+      && revisedSong !== before, 'a revised recipe opts into expression version 2');
     reviseBanger(rec, { notes, style: 'shibuya', mood: 'dreamy', seed: 6, bpm: 130, wild: true, expression: 0 }, s);
     assert(!('expression' in rec) && !hookOf(songFor(rec)).noteFx?.portamento, 'unless it is told not to, which leaves the recipe as a legacy one');
     reviseBanger(rec, { notes, style: 'shibuya', mood: 'dreamy', seed: 7, bpm: 130, wild: false }, s);
-    assert(rec.expression === 1 && !portamentoLanes(songFor(rec).mix).length, 'Go Wild off is no slide, whatever the recipe says');
+    assert(rec.expression === 2 && !portamentoLanes(songFor(rec).mix).length, 'Go Wild off is no slide, whatever the recipe says');
   }
   {
     // the starter is untouched: it plays the file as saved, and has no expression of its own

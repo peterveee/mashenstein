@@ -9,6 +9,7 @@
     "dev": "node build/dev.js",
     "composition": "node tools/composition-tuner.js",
     "devs": "MASH_DEV_TLS=1 node build/dev.js",
+    "devb": "MASH_DEV_TLS=both node build/dev.js",
     "dev:once": "node build/build.js --watch",
     "setup": "git config core.hooksPath .githooks && git config merge.index-table.name 'archive index tables' && git config merge.index-table.driver 'node tools/merge-index-table.js %O %A %B'",
     "test": "node tests/run-all.js",

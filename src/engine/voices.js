@@ -6433,6 +6433,8 @@ export class VoiceRack {
     const legatoEnvelopes = [];
     const legatoGates = [];
     const legatoSources = [];
+    // Every audible source this note starts — what `_retireLayerNote` waits on.
+    const noteSources = [];
     const activeLayerMonitors = [];
     const activeLayerWaves = [];
     let lastBase = 0;
@@ -7147,6 +7149,7 @@ export class VoiceRack {
               const naturalStop = ownEnd ?? (off + 0.01);
               src.stop(tailPlan ? Math.min(naturalStop, tailPlan.cullAt + STOP_FADE) : naturalStop);
             }
+            noteSources.push(...sources);
             // A bypassed layer is held by the GLOBAL VCA, so its sources have to be let go
             // when that is — otherwise a key-up would release the envelope and leave the
             // oscillators running underneath it.
@@ -7223,7 +7226,48 @@ export class VoiceRack {
       this._mrdrTailStats.culled++;
       this._mrdrTailStats.savedSeconds += tailPlan.saved;
     }
+    this._retireLayerNote(noteSources, allOuts);
     return true;
+  }
+
+  /**
+   * TAKE A FINISHED NOTE OUT OF THE GRAPH — its outputs, once every source in it has ended.
+   *
+   * ---- why a stopped note does not leave on its own -----------------------------------
+   *
+   * A browser retires a finished chain by letting "dormant" spread downstream from the
+   * stopped source — but a node only goes dormant when it is down to ONE live input. A
+   * native MRDR-3 note is built of nodes with several: the layers sum into the global
+   * filter, the chord tones into the one `out`. So the filter, the VCA and the out never go
+   * dormant at all. They stay in the render graph, pulled every quantum, until garbage
+   * collection breaks their connections — and GC is lazy, so on a busy song that is
+   * thousands of dead nodes.
+   *
+   * MEASURED, 5 Oct 2026 (work/local/_mrdr-deadchain-probe.mjs): eight bestPwmPadWide
+   * chords, over by 5 s, still had 24 biquads and 46 gains pulled at 40 s, and a forced
+   * gc() did not free them. The same osc -> gain -> biquad chain with ONE input per node
+   * was gone at once; three inputs into the biquad and it stayed. On the synthwave banger
+   * that is 1386 biquads pulled at 70 s with 28 oscillators actually sounding, and the
+   * audio thread climbing from 20% to saturated through the song — in Chrome and WebKit
+   * alike, and invisible section by section because the cost is everything that HAS
+   * played, not what is playing.
+   *
+   * Disconnecting the note's outputs is enough: nothing upstream of them is reachable from
+   * the destination any more, so nothing pulls it. On `ended` rather than at a computed
+   * time, because a note's stop moves after it is booked — a held key, a LEGATO takeover,
+   * a MONO choke all re-stop its sources — and `ended` is when the last of them actually
+   * stopped, after the envelope has reached its floor. Realtime only: an offline render is
+   * one finite pass, and a disconnect landing at a main-thread moment inside it would make
+   * the bounce depend on timing.
+   */
+  _retireLayerNote(sources, outs) {
+    if (!sources.length || !outs.length || typeof this.ctx.startRendering === 'function') return;
+    let left = sources.length;
+    const ended = () => {
+      if (--left > 0) return;
+      for (const out of outs) { try { out.disconnect(); } catch { /* already gone */ } }
+    };
+    for (const src of sources) src.addEventListener('ended', ended, { once: true });
   }
 
   /**

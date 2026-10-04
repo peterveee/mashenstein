@@ -1,5 +1,6 @@
 import { SKIRT_LEGS, tameSkirt } from './dance-legs.js';
 import { drawDiscoBall } from './mirrorball.js';
+import { drawBeachBall, BEACH_BALL_COLOURS, BEACH_BALL_COLOURS_2 } from './beachball.js';
 import { PARTY_BEATS, CLEANERS, partyAge, partyAlive, partyHero, drawPartyFront, scrapY } from './club-party.js';
 export { SKIRT_LEGS } from './dance-legs.js';
 // THE BANGER LAB'S CLUB — one of the player's songs, played live. 3 Oct 2026.
@@ -25,11 +26,11 @@ import { frameRate } from '../../engine/loop.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { isTransitioning } from '../../engine/states.js';
-import { TITLE_FONT } from '../../engine/sprites.js';
-import { portraitMenuActive, portraitMenuSafeTop, portraitMenuSafeBottom } from '../../engine/portrait-menu.js';
+import { TITLE_FONT, drawTextCenteredForPresentation as drawTextCentered, textWidth, textYForMid } from '../../engine/sprites.js';
+import { portraitMenuActive, portraitMenuSafeTop, portraitMenuSafeBottom, portraitMenuTextCentered, portraitMenuTextY, portraitMenuFit } from '../../engine/portrait-menu.js';
 import { drawToon, titleParadeAction, toonInkTop } from '../../sprites/toons.js';
-// The heroes' dances, three each, from the lab where they are still being worked on
-// (gallery: hero dances). Imported from there so the club dances whatever the lab has now.
+// The heroes' dances come from the gallery's shared list, so the club always offers the same
+// moves the gallery previews.
 import { HERO_DANCE_LAB_CANDIDATES, heroDancePose } from '../../dev/hero-dance-candidates.js';
 import { songFor, bangerTitle } from './store.js';
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
@@ -142,9 +143,20 @@ const MOMENT_S = { ball: 0, confetti: 4.2, streamers: 4.8, sticks: 2.8 };   // t
 const FLOOR_CONFETTI_MAX = 130;   // how much confetti may pool on the floor before somebody must clean it
 const CLEAN_CHANCE = 0.5;         // the chance a confetti drop sends a cleaner (Dolores or the vacuum)
 const BALL_BOUNCES = 12;   // laser beams thrown off the mirror ball, per corner beam
-const BALL_BEATS = 16;   // each ball takes four bars to cross
-const BALL_SPAWN_BEATS = 0; // one beach ball at a time (Peter, 3 Oct 2026: just one)
-const BALL_BOUNCE_BEATS = 8; // one big bounce every two bars
+// The ball HOPS HEAD TO HEAD, from off the floor to off the floor (Peter, 5 Oct 2026: it only
+// ever came down on one hero). And not like clockwork ("I don't want the ball to be that
+// consistent... maybe vary height and skip more"): each crossing draws its own path when it
+// starts — how many heroes each hop skips, how many beats it hangs in the air, how high it
+// goes. A hop is BALL_HOP[step] for a step of 1–4 heroes: the beats it may take, so it
+// always lands on a beat, and a longer hop has the time to go higher.
+const BALL_HOP = { 1: [2], 2: [2, 4], 3: [4], 4: [4, 6] };
+const BALL_STEP_WEIGHTS = [[1, 0.15], [2, 0.4], [3, 0.3], [4, 0.15]];
+// Now and then a second, smaller ball follows the first a bar behind, landing on the bars the
+// first is in the air (Peter, 5 Oct 2026: "smaller, perhaps 2 can go across one after the
+// other occasionally").
+const BALL_SPAWN_BEATS = 4;
+const BALL_PAIR_CHANCE = 0.3;
+const BALL_R = 0.3;   // of a hero's height (was 0.43 until 5 Oct 2026)
 /** Four-bar strobe bursts, with 12–16 quiet bars between them. */
 const STROBE_BARS = 4;
 const STROBE_FIRST_BARS = 8;
@@ -202,16 +214,24 @@ export class BangerClubState {
 
   /** `rec` is the kept song to play; `onBack` is where the back button goes. */
   /** `onEdit(rec)` is the pencil: the riff grid on this song, to change it and remake it. */
-  constructor({ rec, onBack, onEdit = null }) {
+  /** `pending` is a song not kept yet — `{ kind: 'new'|'edit'|'starter', song }` — with a SAVE
+   *  button beside the pencil and a save-or-not prompt on the way out. `onSave(asNew)` keeps it
+   *  and returns the kept recipe; a successful save from the Back prompt also calls `onBack`.
+   *  `onDiscard()` leaves without saving. */
+  constructor({ rec, onBack, onEdit = null, pending = null, onSave = null, onDiscard = null }) {
     this.rec = rec;
     this.onBack = onBack;
     this.onEdit = onEdit;
+    this.pending = pending;
+    this.onSave = onSave;
+    this.onDiscard = onDiscard;
     this.bakes = new Map();
   }
 
   enter() {
     this.t = 0;
-    this.song = songFor(this.rec);
+    this.song = this.pending ? this.pending.song : songFor(this.rec);
+    this.savePrompt = null;    // { options: [{label, asNew, discard}], sel } while it asks
     // Moves run on the AUDIO clock, not a beat count: the song loops, and its step count
     // goes back to the top when it does.
     this.queued = null;        // { i, when, bar } — a hero waiting for the beat they go on
@@ -235,10 +255,9 @@ export class BangerClubState {
     // When the club came out from behind the screen transition: the walk-in, the ball's
     // drop and the intro run from here, so none of them happens behind the shutter.
     this.shownAt = null;
-    // THE DANCING: each hero's dances — the gallery's lab set, five each since 3 Oct 2026
-    // (their three, plus Just the Beat and Take Turns; Grumpos's third is now Double Biceps) —
-    // the order they join in (random), and, once joined, the dance they are on and when they
-    // next change it.
+    // THE DANCING: each hero's eight regular gallery dances, plus Lorenzo's occasional
+    // moonwalk; the order they join in (random), and, once joined, the dance they are on and
+    // when they next change it.
     this.dancers = HERO_MOVES.map((m) => ({
       moves: HERO_DANCE_LAB_CANDIDATES.filter((d) => d.hero === m.hero),
       move: null, joinAt: Infinity, changeAt: Infinity, resting: false, last: null, legs: 'stand',
@@ -271,12 +290,13 @@ export class BangerClubState {
     this.dropJumpNext = true;
     this.lastSoloHero = -1;
     this.lastSignTap = -Infinity;
-    this.devMomentIndex = 0;
+    this.lastLedTap = -Infinity;
+    this.skipTo = null;        // the section a double-tap on the sign has queued, until it lands
     this.section = null;       // the section of the song playing, by index into its form
     this.waveAt = -Infinity;   // when the last Mexican wave started (on the song's loop)
     this.lastBeat = null;
     this.focus = 0;            // keyboard / pad focus: heroes, then the part icons, then back
-    this.boxes = { heroes: [], mixer: null, panel: null, faders: [], back: null, ball: null };
+    this.boxes = { heroes: [], mixer: null, panel: null, faders: [], back: null, ball: null, led: null };
     Audio.setBank(this.song.bank, this.song.mix, this.song.arrangement, { startAtBeginning: true });
     Input.setMenuButtons();
     // Into the whole-screen frame now, behind the closed shutter, so the switch is never seen.
@@ -286,7 +306,7 @@ export class BangerClubState {
   /** The pencil: off to the riff grid with this song. */
   edit() {
     if (!this.onEdit) return;
-    this.onEdit(this.rec);
+    this.onEdit(this.rec, this.pending);
   }
 
   /** A tap on the mirror ball: the song's title fades in under it for a while. */
@@ -396,12 +416,50 @@ export class BangerClubState {
     if (at) playMove(move, at, { song: this.song, levels: this.levels });
   }
 
+  /** A fresh path for one ball across a row of `perRow` heroes: hops of { k, beats, h }, k the
+   *  hero it lands on counted in the order it travels (-1 before the first, perRow past the
+   *  last: off the floor), `beats` the hop's length and `h` its height in heroes. */
+  static ballHops(perRow) {
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+    const step = () => { let q = Math.random(); for (const [n, w] of BALL_STEP_WEIGHTS) if ((q -= w) < 0) return n; return 2; };
+    // heights in heroes, kept under the old big bounce (1.25) so it stays below the LED sign
+    const hop = (k, beats) => ({ k, beats, h: Math.max(0.4, Math.min(1.3, (0.35 + beats * 0.17) * (0.6 + Math.random() * 0.8))) });
+    const hops = [{ k: -1, beats: 0, h: 0 }];
+    for (let k = Math.floor(Math.random() * 3); k < perRow; k += step()) {
+      hops.push(hop(k, hops.length === 1 ? pick([2, 4]) : pick(BALL_HOP[Math.min(4, k - hops[hops.length - 1].k)])));
+    }
+    hops.push(hop(perRow, pick([2, 4])));
+    return hops;
+  }
+
+  /** Ball `n` of crossing `m` as points on the floor: { x, at (beats from its start), h, head }. */
+  ballPath(m, n, r) {
+    const { heroL, cellW, perRow } = this.ballLayout || { heroL: 4, cellW: (W - 8) / 8, perRow: 8 };
+    const off = 2 * r + 4;
+    let at = 0;
+    return m.paths[n].map(({ k, beats, h }) => {
+      at += beats;
+      const head = k >= 0 && k < perRow;
+      const x = head ? heroL + cellW * ((m.dir > 0 ? k : perRow - 1 - k) + 0.5)
+        : (k < 0) === (m.dir > 0) ? -off : W + off;
+      return { x, at, h, head };
+    });
+  }
+
   /** A crowd moment, starting now. */
   startMoment(kind, options = {}) {
     // never a second beach ball while one is still crossing
     if (kind === 'ball' && this.moments.some((mm) => mm.kind === 'ball')) return false;
     const beatS = this.barSeconds() / 4;
-    const m = { kind, t0: this.t, life: kind === 'ball' ? (BALL_BEATS + BALL_SPAWN_BEATS) * beatS + 0.2 : kind === 'smoke' ? SMOKE_S : MOMENT_S[kind], dir: Math.random() < 0.5 ? 1 : -1 };
+    const balls = kind === 'ball' && Math.random() < BALL_PAIR_CHANCE ? 2 : 1;
+    const m = { kind, t0: this.t, life: kind === 'smoke' ? SMOKE_S : MOMENT_S[kind], dir: Math.random() < 0.5 ? 1 : -1 };
+    if (kind === 'ball') {
+      const perRow = this.ballLayout ? this.ballLayout.perRow : 8;
+      m.balls = balls;
+      m.paths = Array.from({ length: balls }, () => BangerClubState.ballHops(perRow));
+      m.beats = Math.max(...m.paths.map((hops, n) => n * BALL_SPAWN_BEATS + hops.reduce((sum, h) => sum + h.beats, 0)));
+      m.life = m.beats * beatS + 0.2;
+    }
     if (PARTY_BEATS[kind]) {
       if (this.moments.some(m => PARTY_BEATS[m.kind] && partyAlive(m, this.beat())
         || m.kind === 'ball' && this.t < m.t0 + m.life)) return false;
@@ -417,7 +475,7 @@ export class BangerClubState {
     if (kind === 'ball') {
       if (this.moments.some(m => PARTY_BEATS[m.kind] && partyAlive(m, this.beat())
         || m.kind === 'ball' && this.t < m.t0 + m.life)) return false;
-      this.partyNextBeat = this.beat() + BALL_BEATS + BALL_SPAWN_BEATS + 32;
+      this.partyNextBeat = this.beat() + m.beats + 32;
     }
     if (kind === 'smoke') {
       m.puffs = Array.from({ length: 28 }, (_, k) => ({
@@ -535,18 +593,33 @@ export class BangerClubState {
     this.formationShuffleAt = Infinity;
   }
 
-  tapSign() {
-    if (this.t - this.lastSignTap < 0.35) {
-      this.lastSignTap = -Infinity;
-      this.popup = { text: `${Math.round(this.song.bpm || 120)} BPM`, t: this.t };
-      if (typeof window === 'undefined' || !window.__MASH_BUILD__) return;
-      // Cycle rather than roll randomly so every event is easy to inspect.
-      // Replace only the visual moments; hero controls and audio stay intact.
-      const kinds = ['ball', 'cleaner', 'vacuum', 'spotlight', 'bubbles', 'drop-jump', 'confetti', 'streamers', 'sticks', 'smoke'];
-      this.moments = [];
-      this.startMoment(kinds[this.devMomentIndex++ % kinds.length]);
-      this.momentAt = this.t + this.barSeconds() * MOMENT_QUIET_BARS;
-    } else this.lastSignTap = this.t;
+  tapLedBoard() {
+    if (this.t - this.lastLedTap < 0.35) {
+      this.lastLedTap = -Infinity;
+      this.popup = null;
+      this.led = {
+        text: `${Math.round(this.song.bpm || 120)} BPM`,
+        scroll: false,
+        start: this.t,
+        dur: LED_HOLD_BARS * this.barSeconds(),
+      };
+    } else this.lastLedTap = this.t;
+  }
+
+  /**
+   * Double-tap the club-name sign: on to the next section of the song (the last goes round
+   * to the first). The engine holds the seek to the end of the bar playing, so it lands
+   * like a live deck — and the section's own moment fires as it arrives. Tapping again
+   * before it lands steps on from the queued section, not the one still playing.
+   */
+  tapClubSign() {
+    if (this.t - this.lastSignTap >= 0.35) { this.lastSignTap = this.t; return; }
+    this.lastSignTap = -Infinity;
+    const form = this.song.form || [];
+    if (form.length < 2) return;
+    const next = ((this.skipTo ?? this.section ?? -1) + 1) % form.length;
+    this.skipTo = next;
+    Audio.setStepAtBoundary((form[next].from - 1) * 16);
   }
 
   /**
@@ -576,7 +649,9 @@ export class BangerClubState {
       const others = d.moves.filter((m) => m !== was);
       d.move = others[Math.floor(Math.random() * others.length)] || d.moves[0];
       d.resting = false;
-      d.legs = ARMS_ONLY_HEROES.has(d.hero) ? 'stand' : SKIRT_LEGS[Math.floor(Math.random() * SKIRT_LEGS.length)];
+      d.legs = ARMS_ONLY_HEROES.has(d.hero) ? 'stand'
+        : d.skirted && d.move?.letter === 'C' && d.move.labLegs === 'hop' ? 'hop'
+          : SKIRT_LEGS[Math.floor(Math.random() * SKIRT_LEGS.length)];
       d.changeAt = this.t + bars(grumpy ? GRUMPY.danceBars : DANCE_CHANGE_BARS);
     }
   }
@@ -611,7 +686,81 @@ export class BangerClubState {
   }
 
   back() {
-    this.onBack?.();
+    // A banger not kept yet asks on the way out: SAVE / UPDATE / SAVE AS NEW / DON'T SAVE.
+    if (this.pending) { this.openSavePrompt(true); return; }
+    this.onBack?.(this.rec);
+  }
+
+  /** The SAVE button beside the pencil. A brand-new banger saves straight away; an
+   *  edit asks first, so UPDATE is a choice rather than a slip of the thumb. */
+  savePressed() {
+    if (!this.pending) return;
+    if (this.pending.kind !== 'new') { this.openSavePrompt(false); return; }
+    const rec = this.onSave?.(false);
+    if (rec) {
+      this.rec = rec;
+      this.pending = null;
+      this.popup = { text: 'SAVED', t: this.t };
+      Audio.sfx('uiConfirm');
+    } else {
+      this.popup = { text: 'SONG LIST FULL - DELETE ONE FIRST', t: this.t };
+      Audio.sfx('uiBad');
+    }
+  }
+
+  /**
+   * The choices a pending song is offered. On the way OUT (`closing`) the last is DON'T
+   * SAVE; a successful save also returns to the Lab. From the SAVE button, CANCEL just
+   * hides the box and a successful save stays on the floor (Peter, 4 Oct 2026).
+   */
+  openSavePrompt(closing = false) {
+    const kind = this.pending.kind;
+    const last = closing ? { label: "DON'T SAVE", discard: true } : { label: 'CANCEL', cancel: true };
+    const options = kind === 'edit'
+      ? [{ label: 'UPDATE', asNew: false }, { label: 'SAVE AS NEW', asNew: true }, last]
+      : kind === 'starter'
+        ? [{ label: 'SAVE AS NEW', asNew: true }, last]
+        : [{ label: 'SAVE', asNew: false }, last];
+    this.savePrompt = { closing, options, sel: options.length - 1 };
+    Audio.sfx('uiBad');
+  }
+
+  answerSavePrompt(choice) {
+    const closing = this.savePrompt?.closing === true;
+    this.savePrompt = null;
+    if (choice.cancel) { Audio.sfx('ui'); return; }   // just hide it; the club carries on
+    if (choice.discard) { this.onDiscard?.(); return; }
+    const rec = this.onSave?.(choice.asNew);
+    if (rec) {
+      this.rec = rec;
+      this.pending = null;
+      this.popup = { text: 'SAVED', t: this.t };
+      Audio.sfx('uiConfirm');
+      if (closing) this.onBack?.(rec);
+    } else {
+      // the list is full: the song stays pending, so back can offer DON'T SAVE
+      this.popup = { text: 'SONG LIST FULL - DELETE ONE FIRST', t: this.t };
+      Audio.sfx('uiBad');
+    }
+  }
+
+  updateSavePrompt() {
+    const p = this.savePrompt;
+    const g = this.savePromptLayout();
+    const ptr = Input.pointer;
+    const hit = (r) => Input.pressed('pointer') && ptr.x >= r.x && ptr.x <= r.x + r.w && ptr.y >= r.y && ptr.y <= r.y + r.h;
+    if (Input.pressed('left') || Input.pressed('right') || Input.pressed('up') || Input.pressed('down')) {
+      const dir = (Input.pressed('right') || Input.pressed('down')) ? 1 : -1;
+      p.sel = (p.sel + dir + p.options.length) % p.options.length;
+      Audio.sfx('ui');
+    }
+    if (Input.pressed('back') || Input.pressed('slide')) { this.savePrompt = null; Audio.sfx('ui'); }
+    else {
+      const i = p.options.findIndex((_, k) => hit(g.buttons[k]));
+      if (i >= 0) this.answerSavePrompt(p.options[i]);
+      else if (Input.pressed('confirm')) this.answerSavePrompt(p.options[p.sel]);
+    }
+    Input.endFrame();
   }
 
   update(dt) {
@@ -673,6 +822,7 @@ export class BangerClubState {
           this.momentAt = this.t + this.barSeconds() * MOMENT_QUIET_BARS;
         }
         this.section = si;
+        this.skipTo = null;
       }
     }
     this.updateDancers();
@@ -710,6 +860,8 @@ export class BangerClubState {
     }
     if (this.mixerOpen && this.dragging == null && this.t - this.iconsAt > MIXER_IDLE_S) this.mixerOpen = false;
 
+    if (this.savePrompt) { this.updateSavePrompt(); return; }
+
     if (this.mixerOpen) {
       // THE MIXER PANEL owns the keys while it is open: left/right a fader, up/down its level.
       if (Input.pressed('right')) this.mixSel = (this.mixSel + 1) % PARTS.length;
@@ -726,22 +878,27 @@ export class BangerClubState {
       return;
     }
 
-    const targets = HERO_MOVES.length + (this.onEdit ? 3 : 2);   // the heroes, the mixer, back, the pencil
+    // the heroes, the mixer, back, the pencil, and the SAVE button while the song is not kept yet
+    const targets = HERO_MOVES.length + 3 + (this.pending ? 1 : 0);
     if (Input.pressed('right') || Input.pressed('down')) this.focus = (this.focus + 1) % targets;
     if (Input.pressed('left') || Input.pressed('up')) this.focus = (this.focus + targets - 1) % targets;
     const key = Input.pressed('confirm') ? 'confirm' : Input.pressed('jump') ? 'jump' : null;
     if (key) {
       if (this.focus < HERO_MOVES.length) this.pressHero(this.focus, key);
       else if (this.focus === HERO_MOVES.length) this.openMixer(true);
+      else if (this.focus === HERO_MOVES.length + 1) this.back();
       else if (this.focus === HERO_MOVES.length + 2) this.edit();
+      else if (this.focus === HERO_MOVES.length + 3) this.savePressed();
       else this.back();
     }
     if (Input.pressed('pointer')) {
       const ball = this.boxes.ball;
-      if (inside(this.boxes.sign)) this.tapSign();
+      if (inside(this.boxes.led)) this.tapLedBoard();
+      else if (inside(this.boxes.sign)) this.tapClubSign();
       else if (inside(this.boxes.back)) this.back();
       else if (inside(this.boxes.mixer)) this.openMixer(true);
       else if (inside(this.boxes.edit)) this.edit();
+      else if (inside(this.boxes.save)) this.savePressed();
       else if (ball && Math.hypot(x - ball.x, y - ball.y) < ball.r * 1.6) this.showTitle();
       else {
         const h = this.boxes.heroes.findIndex(inside);
@@ -952,6 +1109,7 @@ export class BangerClubState {
     // Where the heroes stand: the whole width, in front of the speakers, clear of the notch.
     const heroL = portrait ? sx : safeL + 4;
     const cellW = (portrait ? sw : W - heroL - safeR - 4) / perRow;
+    this.ballLayout = { heroL, cellW, perRow };   // where the beach ball lands
     const rig = (() => {
       if (portrait) {
         const w = cellW * 0.8;
@@ -1005,6 +1163,7 @@ export class BangerClubState {
       const by = stageTop + (portrait ? 84 * P : 34) - (LED_ROWS + 2) * pitch / 2;
       const bh = (LED_ROWS + 2) * pitch;
       hang(bx - 2 * pitch, by - 2 * pitch, bw + 4 * pitch, bh + 4 * pitch, '#16121c', '#3a3248');
+      this.boxes.led = { x: bx - 2 * pitch, y: by - 2 * pitch, w: bw + 4 * pitch, h: bh + 4 * pitch };
       this.drawLed(ctx, bx, by, pitch);
     }
 
@@ -1327,14 +1486,20 @@ export class BangerClubState {
       this.boxes.heroes[i] = box;
       if (solo?.hero === i && !walking) {
         const fade = Math.min(1, partyAge(solo, beat) * 2, (solo.beats - partyAge(solo, beat)) * 2);
+        // Straight down from the rig over the hero (Peter, 5 Oct 2026: it didn't quite hit them).
+        // It used to fan out from the middle of the truss, so for anyone off-centre the cone
+        // was aimed at their feet and leant away from their head — and its pool, half again a
+        // hero's height across, lit the neighbours too. Now the cone stands over the hero and
+        // the pool is one dancer wide.
+        const spread = toonH * 0.55;
         const beam = ctx.createLinearGradient(hx, stageTop, hx, floorY);
         beam.addColorStop(0, `rgba(255,244,193,${0.05 * fade})`);
         beam.addColorStop(1, `rgba(255,244,193,${0.3 * fade})`);
-        ctx.fillStyle = beam;ctx.beginPath();ctx.moveTo(W * 0.5 - 3 * u, stageTop);
-        ctx.lineTo(hx - toonH * 0.75, floorY);ctx.lineTo(hx + toonH * 0.75, floorY);
-        ctx.lineTo(W * 0.5 + 3 * u, stageTop);ctx.closePath();ctx.fill();
+        ctx.fillStyle = beam;ctx.beginPath();ctx.moveTo(hx - 4 * u, stageTop);
+        ctx.lineTo(hx - spread, floorY);ctx.lineTo(hx + spread, floorY);
+        ctx.lineTo(hx + 4 * u, stageTop);ctx.closePath();ctx.fill();
         ctx.fillStyle = `rgba(255,240,180,${0.25 * fade})`;
-        ctx.beginPath();ctx.ellipse(hx, floorY, toonH * 0.75, toonH * 0.12, 0, 0, Math.PI * 2);ctx.fill();
+        ctx.beginPath();ctx.ellipse(hx, floorY, spread, toonH * 0.1, 0, 0, Math.PI * 2);ctx.fill();
       }
       const isActing = this.acting?.i === i && !walking;
       const isQueued = this.queued?.i === i;
@@ -1384,19 +1549,22 @@ export class BangerClubState {
         if (pose !== dance && (moment.kind === 'drop-jump' || moment.kind === 'spotlight' && moment.hero === i)) dance = pose;
       }
       // BONK: a hero the beach ball comes down on reacts — a start, a duck, then back to it
-      // (Peter, 3 Oct 2026). The ball lands every BALL_BOUNCE_BEATS of its crossing.
+      // (Peter, 3 Oct 2026). Every head a ball comes down on.
       if (!walking) {
-        const beatS = this.barSeconds() / 4, br = toonH * 0.43;
+        const beatS = this.barSeconds() / 4, br = toonH * BALL_R;
         for (const bm of this.moments) {
           if (bm.kind !== 'ball') continue;
-          for (let n = 0; n * BALL_BOUNCE_BEATS <= BALL_BEATS; n++) {
-            const since = t - (bm.t0 + n * BALL_BOUNCE_BEATS * beatS);
-            if (since < 0 || since > beatS * 1.5) continue;
-            const xc = (bm.dir > 0 ? -br : W + br) + bm.dir * (W + 2 * br) * (n * BALL_BOUNCE_BEATS / BALL_BEATS);
-            if (Math.abs(hx - xc) > cellW * 0.6) continue;
-            const k = 1 - since / (beatS * 1.5);
-            pose = { ...pose, faceSurprised: true, headTurn: 18 * k,
-              squash: 0.18 * Math.sin(Math.PI * Math.min(1, since / (beatS * 0.6))) * k };
+          for (let b = 0; b < (bm.balls || 1); b++) {
+            for (const land of this.ballPath(bm, b, br)) {
+              if (!land.head) continue;
+              const since = t - (bm.t0 + (b * BALL_SPAWN_BEATS + land.at) * beatS);
+              if (since < 0 || since > beatS * 1.5) continue;
+              // only the front row: it is their heads the ball comes down on
+              if (r !== rows - 1 || Math.abs(hx - land.x) > cellW * 0.5) continue;
+              const k = 1 - since / (beatS * 1.5);
+              pose = { ...pose, faceSurprised: true, headTurn: 18 * k,
+                squash: 0.18 * Math.sin(Math.PI * Math.min(1, since / (beatS * 0.6))) * k };
+            }
           }
         }
       }
@@ -1519,6 +1687,7 @@ export class BangerClubState {
     this.drawControls(ctx, { portrait, P, u, stageTop, stageBot, safeL, safeR });
     this.drawIntro(ctx, { portrait, P, stageTop, stageBot });
     this.drawTitle(ctx, { portrait, P });
+    if (this.savePrompt) this.drawSavePrompt(ctx);
     ctx.restore();
   }
 
@@ -1636,38 +1805,26 @@ export class BangerClubState {
       }
       if (layer !== 'front') continue;
       if (m.kind === 'ball') {
-        // One large beach ball crosses the room (Peter, 3 Oct 2026: just one).
+        // A beach ball crosses the room — now and then a second follows it a bar behind.
         const beatS = this.barSeconds() / 4;
         const age = k / beatS;
-        for (let n = 0; n < 1; n++) {
+        for (let n = 0; n < (m.balls || 1); n++) {
+          const r = toonH * BALL_R;
+          const path = this.ballPath(m, n, r);
           const ballBeat = age - n * BALL_SPAWN_BEATS;
-          if (ballBeat < 0 || ballBeat > BALL_BEATS) continue;
-          const p = ballBeat / BALL_BEATS;
-          const r = toonH * 0.43;
-          const x0 = m.dir > 0 ? -r : W + r;
-          const x = x0 + m.dir * (W + 2 * r) * p;
-          const bf = (((ballBeat / BALL_BOUNCE_BEATS) % 1) + 1) % 1;
+          const hop = path.findIndex((p) => p.at > ballBeat);   // the landing it is flying to
+          if (ballBeat < 0 || hop < 1) continue;
+          const from = path[hop - 1], to = path[hop], hopBeats = to.at - from.at;
+          const bf = (ballBeat - from.at) / hopBeats;   // through this hop, 0 to 1
+          const x = from.x + (to.x - from.x) * bf;
           const headY = floorRef - toonH * 1.05 - r;
-          const y = headY - Math.sin(Math.PI * bf) * toonH * 1.25;
+          const y = headY - Math.sin(Math.PI * bf) * toonH * to.h;
           ctx.fillStyle = 'rgba(0,0,0,0.25)';
           ctx.beginPath(); ctx.ellipse(x, floorRef + 2 * u, r * (0.7 + 0.3 * (1 - Math.sin(Math.PI * bf))), r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(m.dir * ballBeat * 0.12);
-          const cols = n === 0
-            ? ['#ff3355', '#ffffff', '#ffd23f', '#ffffff', '#3fb8ff', '#ffffff']
-            : ['#a67cf4', '#ffffff', '#54c8ce', '#ffffff', '#ff8c42', '#ffffff'];
-          cols.forEach((c, i) => {
-            ctx.fillStyle = c;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, i * Math.PI / 3, (i + 1) * Math.PI / 3); ctx.closePath(); ctx.fill();
-          });
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath(); ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2); ctx.fill();
-          const sh = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
-          sh.addColorStop(0, 'rgba(255,255,255,0.45)'); sh.addColorStop(1, 'rgba(0,0,0,0.25)');
-          ctx.fillStyle = sh;
-          ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-          ctx.restore();
+          // the VINYL ball from the bake-off (beachball.js), squashing on each head it lands on
+          const fromHead = Math.min(bf, 1 - bf) * hopBeats;   // beats either side of a landing
+          drawBeachBall(ctx, x, y, r, { spin: ballBeat * 0.9 + n * 2, dir: m.dir, squash: Math.max(0, 1 - fromHead / 0.3),
+            colours: n ? BEACH_BALL_COLOURS_2 : BEACH_BALL_COLOURS });
         }
       }
       if (m.ribbons) {
@@ -1793,8 +1950,6 @@ export class BangerClubState {
     ctx.beginPath(); ctx.arc(bx, by, br * 2.2, 0, Math.PI * 2); ctx.fill();
     // the ball itself: the DISCO look from the bake-off (mirrorball.js)
     drawDiscoBall(ctx, bx, by, br, { t, pulse, accent, hits: this.ballHits, bands: this.lite ? 11 : 16 });
-    ctx.fillStyle = '#5a5670';
-    ctx.fillRect(bx - u, by + br - 0.5 * u, 2 * u, 2.5 * u);
     const glint = Math.pow(Math.max(0, Math.sin(t * 2.3)), 20);
     if (glint > 0.05) {
       const gx = bx - br * 0.4, gy = by - br * 0.45, gl = br * 0.9 * glint;
@@ -1860,6 +2015,61 @@ export class BangerClubState {
       ctx.beginPath(); ctx.moveTo(-w / 2, len * 0.22); ctx.lineTo(w / 2, len * 0.22); ctx.lineTo(0, len / 2 + w * 0.2); ctx.closePath(); ctx.fill();
       ctx.fillStyle = '#3a3a52';
       ctx.beginPath(); ctx.moveTo(-w * 0.18, len / 2 - w * 0.25); ctx.lineTo(w * 0.18, len / 2 - w * 0.25); ctx.lineTo(0, len / 2 + w * 0.2); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+    // SAVE, the pencil's twin on its right while the song is not kept yet: the same disc
+    // and the same idle fade as the mixer and the pencil, with a floppy in the save's own
+    // teal (Peter, 4 Oct 2026).
+    this.boxes.save = null;
+    if (this.pending) {
+      const ex = portrait ? 32 * P : safeL + 16;
+      const sx = ex + r * 2.8 + (portrait ? 10 * P : 8);
+      const focused = this.focus === HERO_MOVES.length + 3 && !Input.usingTouch;
+      this.boxes.save = { x: sx - r * 1.4, y: my - r * 1.4, w: r * 2.8, h: r * 2.8 };
+      disc(sx, my, r, focused ? 1 : iconAlpha);
+      ctx.strokeStyle = focused ? '#c9a0ff' : 'rgba(72,224,200,0.7)';
+      ctx.lineWidth = 0.8 * u;
+      ctx.beginPath(); ctx.arc(sx, my, r, 0, Math.PI * 2); ctx.stroke();
+      // the floppy save icon, the way everyone draws it: a blue body with the 3.5" corner cut
+      // well in, a silver shutter hung from the top edge with its read slot, and a white label
+      // on the lower half. The body is the one dark mass and the shutter and label the two
+      // lights, so at icon size it reads as a floppy rather than one tan card with lines on it.
+      ctx.save();
+      ctx.translate(sx, my);
+      const f = r * 0.64, cut = f * 0.5, rad = f * 0.14;
+      ctx.beginPath();
+      ctx.moveTo(-f + rad, -f);
+      ctx.lineTo(f - cut, -f);
+      ctx.lineTo(f, -f + cut);
+      ctx.lineTo(f, f - rad);
+      ctx.arcTo(f, f, f - rad, f, rad);
+      ctx.lineTo(-f + rad, f);
+      ctx.arcTo(-f, f, -f, f - rad, rad);
+      ctx.lineTo(-f, -f + rad);
+      ctx.arcTo(-f, -f, -f + rad, -f, rad);
+      ctx.closePath();
+      ctx.fillStyle = '#3f7fd6';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(11,11,20,0.5)';
+      ctx.lineWidth = Math.max(0.5, r * 0.06);
+      ctx.stroke();
+      const shL = -f * 0.52, shR = f * 0.38, shT = -f, shB = -f * 0.22;
+      ctx.fillStyle = '#e4e8f2';
+      ctx.fillRect(shL, shT, shR - shL, shB - shT);
+      const slotW = (shR - shL) * 0.24;
+      ctx.fillStyle = '#1c2a44';
+      ctx.fillRect(shR - slotW * 1.55, shT + f * 0.16, slotW, shB - shT - f * 0.28);
+      const lbL = -f * 0.74, lbR = f * 0.74, lbT = f * 0.06, lbB = f * 0.92;
+      ctx.fillStyle = '#f7f9fd';
+      ctx.fillRect(lbL, lbT, lbR - lbL, lbB - lbT);
+      ctx.strokeStyle = 'rgba(60,80,120,0.7)';
+      ctx.lineWidth = Math.max(0.4, r * 0.05);
+      ctx.beginPath();
+      const ly1 = lbT + (lbB - lbT) * 0.36, ly2 = lbT + (lbB - lbT) * 0.68;
+      ctx.moveTo(lbL + f * 0.16, ly1); ctx.lineTo(lbR - f * 0.16, ly1);
+      ctx.moveTo(lbL + f * 0.16, ly2); ctx.lineTo(lbR - f * 0.16, ly2);
+      ctx.stroke();
       ctx.restore();
       ctx.globalAlpha = 1;
     }
@@ -2024,6 +2234,80 @@ export class BangerClubState {
     ctx.globalAlpha = REFLECT_CLUB_ALPHA;
     ctx.drawImage(rc.canvas, 0, 0, w, h, 0, y0, cw, h / half);
     ctx.restore();
+  }
+
+  /** Where the save prompt's buttons sit: two or three, centred, stacked on a phone. */
+  savePromptLayout() {
+    const portrait = portraitMenuActive();
+    const n = this.savePrompt.options.length;
+    const pad = portrait ? 22 : 20, gap = portrait ? 14 : 14;
+    if (!portrait) {
+      const bw = n === 3 ? 104 : 110, bh = 32;
+      const total = n * bw + (n - 1) * gap;
+      const w = Math.max(280, total + pad * 2);
+      const h = 116;
+      const x = Math.round((W - w) / 2), y = Math.round((H - h) / 2);
+      const bx = Math.round(W / 2 - total / 2);
+      const by = y + h - bh - 18;
+      return { portrait, x, y, w, h, buttons: this.savePrompt.options.map((_, i) => ({ x: bx + i * (bw + gap), y: by, w: bw, h: bh })) };
+    }
+    const w = Math.min(W - screen.safeLeft - screen.safeRight - 32, 440);
+    const x = (W - w) / 2;
+    const bh = 64;
+    const h = 116 + n * (bh + gap) + 28;
+    const y = portraitMenuSafeTop() + Math.round((portraitMenuSafeBottom() - portraitMenuSafeTop() - h) / 2);
+    const buttons = this.savePrompt.options.map((_, i) => ({ x: x + pad, y: y + 108 + i * (bh + gap), w: w - pad * 2, h: bh }));
+    return { portrait, x, y, w, h, buttons };
+  }
+
+  /** One save-prompt answer: its plate, label, and the selection ring on the one picked. */
+  drawSavePromptButton(ctx, r, label, picked, portrait) {
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    rr(ctx, r.x, r.y, r.w, r.h, portrait ? 10 : 5); ctx.fill();
+    ctx.strokeStyle = picked ? '#c9a0ff' : '#48e0c8';
+    ctx.lineWidth = portrait ? 2 : 1;
+    rr(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, portrait ? 10 : 5); ctx.stroke();
+    const ink = picked ? '#c9a0ff' : '#48e0c8';
+    if (portrait) {
+      const s = portraitMenuFit(label, 2, r.w - 20, 'bold');
+      portraitMenuTextCentered(ctx, label, r.x + r.w / 2, portraitMenuTextY(r.y + r.h / 2, s, 'bold'), ink, s, 'bold');
+    } else {
+      const s = Math.min(1.25, (r.w - 12) / Math.max(1, textWidth(label, 1, 'bold')));
+      drawTextCentered(ctx, label, r.x + r.w / 2, textYForMid(r.y + r.h / 2, s, 'bold'), ink, s, 'bold');
+    }
+    if (picked) {
+      const pad = portrait ? 5 : 3;
+      ctx.strokeStyle = '#c9a0ff';
+      ctx.lineWidth = portrait ? 3 : 1.5;
+      rr(ctx, r.x - pad, r.y - pad, r.w + 2 * pad, r.h + 2 * pad, (portrait ? 10 : 5) + pad); ctx.stroke();
+    }
+  }
+
+  /** SAVE THIS BANGER? over the room — the club's own box, on the way out before saving. */
+  drawSavePrompt(ctx) {
+    const g = this.savePromptLayout();
+    const p = this.savePrompt;
+    ctx.fillStyle = 'rgba(2,3,10,0.78)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#0b0b14';
+    rr(ctx, g.x, g.y, g.w, g.h, g.portrait ? 12 : 5); ctx.fill();
+    ctx.strokeStyle = '#48e0c8';
+    ctx.lineWidth = g.portrait ? 2 : 1;
+    rr(ctx, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, g.portrait ? 12 : 5); ctx.stroke();
+    const title = 'SAVE THIS BANGER?';
+    const line = bangerTitle(this.rec);
+    if (g.portrait) {
+      const ts = portraitMenuFit(title, 2.1, g.w - 36, 'title');
+      portraitMenuTextCentered(ctx, title, W / 2, portraitMenuTextY(g.y + 54, ts, 'title'), '#48e0c8', ts, 'title');
+      const ls = portraitMenuFit(line, 1.4, g.w - 36);
+      portraitMenuTextCentered(ctx, line, W / 2, portraitMenuTextY(g.y + 98, ls), '#c8c8d8', ls);
+    } else {
+      const ts = Math.min(1.4, (g.w - 28) / Math.max(1, textWidth(title, 1, 'title')));
+      drawTextCentered(ctx, title, W / 2, textYForMid(g.y + 20, ts, 'title'), '#48e0c8', ts, 'title');
+      const ls = Math.min(1, (g.w - 28) / Math.max(1, textWidth(line, 1)));
+      drawTextCentered(ctx, line, W / 2, textYForMid(g.y + 44, ls), '#c8c8d8', ls);
+    }
+    g.buttons.forEach((r, i) => this.drawSavePromptButton(ctx, r, p.options[i].label, p.sel === i, g.portrait));
   }
 
   /** The song's name, faded in under the mirror ball when it is tapped. */

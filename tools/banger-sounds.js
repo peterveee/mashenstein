@@ -15,7 +15,7 @@
 // table on Save — refusing a table the rulebook rejects, and a Save made against a file
 // that changed on disk after the page loaded (several sessions share this tree).
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -25,24 +25,26 @@ import { tableIssues } from './lib/banger/sound-rules.js';
 import { VOICES, baseLane, seamFor } from '../src/data/voices.js';
 import { bangerIssues, writeBangerSong } from './lib/banger-file.js';
 import { slugFor, songFileIn, writeImportedIndex } from './lib/imported-index.js';
+import { paletteIssues, tidyPalette } from './lib/banger/palette.js';
 
 const require = createRequire(import.meta.url);
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.MASH_BANGER_SOUNDS_PORT) || 8022;
 const SOUNDS_FILE = join(root, 'tools/lib/banger/sounds.js');
+const PALETTE_FILE = join(root, 'tools/lib/banger/palette.json');
 
 // ------------------------------------------------------------------- bundle
 // Rebuilt on every page load, like the SFX desk: a fresh bundle cannot go stale against a
 // Save this process just wrote, or against a generator edit made in another window.
-function bundle() {
+function bundle(entry = 'tools/banger-sounds-entry.js', name = 'banger-sounds') {
   const esbuild = require('esbuild');
   const out = esbuild.buildSync({
-    entryPoints: [join(root, 'tools/banger-sounds-entry.js')],
+    entryPoints: [join(root, entry)],
     bundle: true,
     format: 'iife',
     write: false,
     logLevel: 'warning',
-    define: { __MASH_BUILD__: '"banger-sounds"' },
+    define: { __MASH_BUILD__: JSON.stringify(name) },
   });
   return out.outputFiles[0].text;
 }
@@ -70,6 +72,31 @@ export function saveTable(table, baseHash, file = SOUNDS_FILE) {
   const source = soundsSource(tidy);
   writeFileSync(file, source);
   return { status: 200, body: { hash: hashOf(source) } };
+}
+
+const paletteHash = (text) => createHash('sha256').update(text).digest('hex').slice(0, 16);
+export function readPalette(file = PALETTE_FILE) {
+  const source = readFileSync(file, 'utf8');
+  return { palette: tidyPalette(JSON.parse(source)), hash: paletteHash(source) };
+}
+export function savePalette(palette, baseHash, file = PALETTE_FILE) {
+  const current = readFileSync(file, 'utf8');
+  if (baseHash && baseHash !== paletteHash(current)) {
+    return { status: 409, body: { error: 'the palette changed on disk since this page loaded — reload to see it, then make your change again' } };
+  }
+  const tidy = tidyPalette(palette);
+  const issues = paletteIssues(tidy);
+  if (issues.length) return { status: 422, body: { error: 'the palette breaks the rules', issues } };
+  const source = `${JSON.stringify(tidy, null, 2)}\n`;
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temp, source, { flag: 'wx' });
+    renameSync(temp, file);
+  } catch (err) {
+    try { unlinkSync(temp); } catch { /* no temporary file to clean up */ }
+    throw err;
+  }
+  return { status: 200, body: { hash: paletteHash(source) } };
 }
 
 // ------------------------------------------------------------------- the songs
@@ -140,6 +167,7 @@ export function startServer(port = PORT) {
   const server = createServer(async (req, res) => {
     try {
       if (req.method === 'GET' && req.url === '/sounds') return json(res, 200, await readTable());
+      if (req.method === 'GET' && req.url === '/palette') return json(res, 200, readPalette());
       if (req.method === 'GET' && req.url === '/harvest') return json(res, 200, { songs: await harvest() });
       if (req.method === 'POST' && req.url === '/save') {
         const { table, hash } = JSON.parse((await readBody(req)) || '{}');
@@ -147,6 +175,17 @@ export function startServer(port = PORT) {
         if (out.status === 200) console.log(`saved ${SOUNDS_FILE.slice(root.length + 1)}`);
         else console.warn(`refused a save: ${out.body.error}`);
         return json(res, out.status, out.body);
+      }
+      if (req.method === 'POST' && req.url === '/palette/save') {
+        const { palette, hash } = JSON.parse((await readBody(req)) || '{}');
+        const out = savePalette(palette, hash);
+        if (out.status === 200) console.log(`saved ${PALETTE_FILE.slice(root.length + 1)}`);
+        else console.warn(`refused a palette save: ${out.body.error}`);
+        return json(res, out.status, out.body);
+      }
+      if (req.url === '/banger-palette-bundle.js') {
+        try { return send(res, 200, 'application/javascript', bundle('tools/banger-palette-entry.js', 'banger-palette')); }
+        catch (err) { return send(res, 500, 'application/javascript', `document.body.textContent = ${JSON.stringify(`bundle failed: ${err.message}`)};`); }
       }
       // Open on the Desk: the page's test banger, written into work/bangers like any banger
       // the desk makes, so the desk (which reads that folder on every load) opens it.
@@ -168,7 +207,7 @@ export function startServer(port = PORT) {
             `document.body.textContent = ${JSON.stringify(`bundle failed: ${err.message}`)};`);
         }
       }
-      const shell = join(root, 'tools/banger-sounds-shell.html');
+      const shell = join(root, req.url === '/advanced' ? 'tools/banger-sounds-shell.html' : 'tools/banger-palette-shell.html');
       if (!existsSync(shell)) return send(res, 500, 'text/plain', 'shell missing');
       return send(res, 200, 'text/html', readFileSync(shell));
     } catch (err) {
@@ -176,8 +215,8 @@ export function startServer(port = PORT) {
     }
   });
   server.listen(port, '127.0.0.1', () => {
-    console.log(`Banger Sounds on http://localhost:${port}/`);
-    console.log('  every sound a banger is made with — audition, change, Save writes tools/lib/banger/sounds.js. Ctrl-C to stop.');
+    console.log(`Banger Sound Palette on http://localhost:${port}/`);
+    console.log('  add scoped presets, trims and channel effects; Save writes tools/lib/banger/palette.json. Ctrl-C to stop.');
   });
   return server;
 }

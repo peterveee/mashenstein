@@ -1,4 +1,5 @@
-// MEGA DRIVE — the eleventh recipe. 3 Oct 2026.
+// 16-BIT (id `megadrive`) — the eleventh recipe. 3 Oct 2026. Shown as 16-Bit since 5 Oct 2026:
+// no console's brand name on a style.
 //
 // Sixteen-bit FM game music, written from the general idea of the sound, not checked
 // against the records — Peter's ear wins over anything here. Chipstep's older sibling:
@@ -13,7 +14,7 @@ import { BIG_ROOM } from './big-room.js';
 
 export const MEGADRIVE = Object.freeze({
   id: 'megadrive',
-  label: 'Mega Drive',
+  label: '16-Bit',
   note: '150 · FM bass, FM keys, FM lead',
   title: '150 BPM, sixteen-bit FM: a slap-FM bass in octaves, FM keys on the off-beats, the hook on an FM lead with an FM bell over it, FM toms. A Pop Song in the Heroic mood by default — no riser, pump or filter build',
   bpm: 150,

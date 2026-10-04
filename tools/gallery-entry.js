@@ -122,6 +122,8 @@ import {
 } from '../src/dev/eggshell-redesigns.js';
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
 import { MIRRORBALL_CANDIDATES } from '../src/dev/mirrorball-candidates.js';
+import { BEACHBALL_CANDIDATES } from '../src/dev/beachball-candidates.js';
+import { HERO_MOVES } from '../src/game/banger/club-fx.js';
 import { BangerClubState } from '../src/game/banger/club.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 
@@ -8349,13 +8351,13 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// Eight heroes, five current Lab choreographies each, on one beat clock.
+// Eight regular Lab choreographies per hero, plus Lorenzo's occasional moonwalk.
 {
   const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
-    'CURRENT LAB MOVES — five per hero, all available in the club. Includes Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
+    'CURRENT LAB MOVES — eight regular dances per hero, all available in the club, plus Lorenzo’s occasional side-on moonwalk. Includes three new signature routines for each hero, Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
     + 'All moves share a beat clock; the four lights count the bar. Tempo is a silent preview. '
     + 'Use ANIMATE to pause or SLOW to inspect the joints. Skirted heroes show a sample of the quiet legwork that the club varies during playback.',
-    '2026-10-04');
+    '2026-10-05');
   let bpm = 128;
   const controls = document.createElement('label');
   controls.style.cssText = 'display:flex;align-items:center;gap:12px;margin:16px 0;color:#7df3d1';
@@ -8408,6 +8410,97 @@ function cryptStyleTiles(grid, tag, cand) {
     tile(grid, `${k + 1} — ${name.toUpperCase()} (close-up)`, 'Close up.', 240, 200,
       (ctx, t) => { backdrop(ctx, 240, 200); paint(ctx, 120, 100, 60, state(t)); }, { animated: true });
   });
+}
+
+// The club's beach ball: today's pinwheel against six balls drawn as gores on a turning
+// sphere (Peter, 4 Oct 2026: "make a better looking beach ball … bake off"). Each crosses a
+// full 480x270 dance floor on the club's own path and tempo, over heroes at the club's
+// landscape height, then turns close up.
+{
+  const s = sectionEl('beachball-bakeoff', 'BANGER LAB — beach ball looks',
+    'SETTLED 4 Oct 2026: E VINYL is the club’s ball now (src/game/banger/beachball.js), so 0 and E match. The ball it replaced was six pie wedges from the centre, which turned flat like a pinwheel (0 close-up). '
+    + 'A–F draw the panels as GORES that run pole to pole on a sphere spun about a leaning axis, so the stripes curve and sweep round in depth. '
+    + 'A CLASSIC gloss; B CEL, the cast’s flat look and ink; C RAINBOW; D CLUB-LIT, dimmed to the room and rim-lit on the beat; '
+    + 'E VINYL, an inflatable with a valve that squashes when it lands on a head; F UV GLOW. '
+    + 'Left card: the club’s path at 128 BPM over heroes at the club’s 66px; right: close-up.',
+    '2026-10-04');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128;
+  const CROSS = 16, BOUNCE = 8, REST = 6;   // club.js BALL_BEATS / BALL_BOUNCE_BEATS, and a breath between
+  const dancers = Object.keys(HERO_BY_ID).slice(0, 5);
+  const room = (ctx, t, ids = dancers, at = (i) => FW * (i + 0.5) / ids.length) => {
+    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
+    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
+    ctx.strokeStyle = 'rgba(201,160,255,0.18)'; ctx.lineWidth = 1;
+    for (let x = -FW; x < FW * 2; x += 40) { ctx.beginPath(); ctx.moveTo(FW / 2 + (x - FW / 2) * 0.55, FLOOR); ctx.lineTo(x, FH); ctx.stroke(); }
+    ids.forEach((id, i) => drawToon(ctx, id, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, at(i), FLOOR, TOON_H));
+  };
+  // where the ball is, on club.js's path: across in 16 beats, bounding off heads every 8
+  const flight = (t) => {
+    const beat = t * BPM / 60, lap = Math.floor(beat / (CROSS + REST)), ballBeat = beat - lap * (CROSS + REST);
+    if (ballBeat > CROSS) return null;
+    const dir = lap % 2 ? -1 : 1, r = TOON_H * 0.43;
+    const bf = ballBeat / BOUNCE % 1;
+    const x = (dir > 0 ? -r : FW + r) + dir * (FW + 2 * r) * (ballBeat / CROSS);
+    const y = FLOOR - TOON_H * 1.05 - r - Math.sin(Math.PI * bf) * TOON_H * 1.25;
+    const fromLanding = Math.min(bf, 1 - bf) * BOUNCE;   // beats either side of a head
+    return { x, y, r, dir, bf, ballBeat, spin: ballBeat * 0.9, squash: Math.max(0, 1 - fromLanding / 0.3) };
+  };
+  const shadow = (ctx, f) => {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(f.x, FLOOR + 2, f.r * (0.7 + 0.3 * (1 - Math.sin(Math.PI * f.bf))), f.r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+  };
+  // today's ball through the club's own painter, on a stand-in club
+  // all eight heroes in the club's own cells, so the ball's hops land where they do in the club
+  const CLUB_CELL = (FW - 8) / HERO_MOVES.length;
+  const today = Object.assign(Object.create(BangerClubState.prototype), { song: { bpm: BPM }, floorConfetti: [], moments: [],
+    ballLayout: { heroL: 4, cellW: CLUB_CELL, perRow: HERO_MOVES.length } });
+  const LAP = 32;   // beats: room for a pair's 24, then a breath
+  tile(grid, '0 — TODAY (club)', 'The ball as the club draws it now (club.js drawMoments): smaller since 5 Oct, hopping head to head on a path drawn fresh each crossing (how many it skips, how long and how high each hop); every other crossing here a pair.', FW, FH, (ctx, t) => {
+    room(ctx, t, HERO_MOVES.map((m) => m.hero), (i) => 4 + CLUB_CELL * (i + 0.5));
+    const beat = t * BPM / 60, lap = Math.floor(beat / LAP);
+    today.t = t;
+    // a fresh path each lap, as the club draws one each crossing
+    if (today.lap !== lap) {
+      today.lap = lap;
+      const balls = lap % 2 ? 2 : 1;
+      today.moments = [{ kind: 'ball', t0: lap * LAP * 60 / BPM, dir: lap % 2 ? -1 : 1, life: 99, balls,
+        paths: Array.from({ length: balls }, () => BangerClubState.ballHops(HERO_MOVES.length)) }];
+    }
+    today.drawMoments(ctx, 'front', { u: 1, floorRef: FLOOR, toonH: TOON_H, stageTop: 0, stageBot: FH, beat });
+  }, { animated: true });
+  const closeBackdrop = (ctx) => {
+    const g = ctx.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, '#0f0d24'); g.addColorStop(1, '#1a1236');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 200, 200);
+  };
+  tile(grid, '0 — BEFORE (close-up)', 'The pie-wedge ball VINYL replaced.', 200, 200, (ctx, t) => {
+    closeBackdrop(ctx);
+    const r = 70;
+    ctx.save(); ctx.translate(100, 100); ctx.rotate(t * BPM / 60 * 0.12);   // club.js: 0.12 rad a beat
+    ['#ff3355', '#ffffff', '#ffd23f', '#ffffff', '#3fb8ff', '#ffffff'].forEach((c, i) => {
+      ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, i * Math.PI / 3, (i + 1) * Math.PI / 3); ctx.closePath(); ctx.fill();
+    });
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2); ctx.fill();
+    const sh = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+    sh.addColorStop(0, 'rgba(255,255,255,0.45)'); sh.addColorStop(1, 'rgba(0,0,0,0.25)');
+    ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }, { animated: true });
+  for (const c of BEACHBALL_CANDIDATES) {
+    tile(grid, `${c.letter} — ${c.name} (club)`, c.description, FW, FH, (ctx, t) => {
+      room(ctx, t);
+      const f = flight(t);
+      if (!f) return;
+      shadow(ctx, f);
+      c.paint(ctx, f.x, f.y, f.r, { t, spin: f.spin, dir: f.dir, squash: f.squash, accent: '#3fe0ff' });
+    }, { animated: true });
+    tile(grid, `${c.letter} — ${c.name} (close-up)`, 'Turning in place.', 200, 200, (ctx, t) => {
+      closeBackdrop(ctx);
+      const beat = t * BPM / 60;
+      c.paint(ctx, 100, 104, 70, { t, spin: beat * 0.9, dir: 1, squash: Math.max(0, 1 - (beat % 4) / 0.3), accent: '#3fe0ff' });
+    }, { animated: true });
+  }
 }
 
 // ---------------------------------------------------------------- driver

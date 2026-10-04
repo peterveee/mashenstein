@@ -24,7 +24,7 @@ export function applyTemplate(id, form, bars, layerCount = 5) {
  */
 export function fromForm(form, keepRoles = false) {
   return form.map((f) => ({
-    type: f.type, bars: f.bars, label: f.label, energy: f.energy,
+    ...(f.id ? { id: f.id } : {}), type: f.type, bars: f.bars, label: f.label, energy: f.energy,
     ...(f.lifted ? { lift: true } : {}),
     ...(f.variant && f.variant !== 'riff' ? { variant: f.variant } : {}),
     ...(keepRoles ? { role: f.role } : {}),
@@ -35,7 +35,9 @@ export function fromForm(form, keepRoles = false) {
 export function addSection(list, at, type) {
   const def = SECTION_TYPES[type];
   const out = list.map((s) => ({ ...s }));
-  out.splice(at + 1, 0, { type, bars: Math.max(4, def.min * 2) });
+  let serial = 1;
+  while (list.some(s => s.id === `section-${serial}`)) serial++;
+  out.splice(at + 1, 0, { id: `section-${serial}`, type, bars: Math.max(4, def.min * 2) });
   return out;
 }
 export const removeSection = (list, i) => list.filter((_, j) => j !== i).map((s) => ({ ...s }));

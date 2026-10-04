@@ -282,12 +282,14 @@ export function buildSections(ctx) {
     const cc = colourAll(c, mood);
     switch (options.parts.chords) {
       case 'piano': return chordBar(cc, R.pianoStabs, C.piano);
+      // Supersaw Stabs: the piano's stab rhythm on the supersaws, in their register.
+      case 'stabs': return chordBar(cc, R.pianoStabs, C.saws);
       case 'pad': return padBar(cc, C.pad);
       case 'none': return null;
       default: return padBar(cc, C.saws, { drop: true });
     }
   };
-  const chordRole = options.parts.chords === 'none' ? null : options.parts.chords;
+  const chordRole = options.parts.chords === 'none' ? null : options.parts.chords === 'stabs' ? 'saws' : options.parts.chords;
   // The arp's figure, section by section. Varied: the style's own in the first build and
   // the first drop, then a different figure for each build and drop after — never the one
   // just played. A style that fixes its arp (`arpFixed`) always plays its own.
@@ -394,6 +396,8 @@ export function buildSections(ctx) {
       else if (pb.op === 'k2' || pb.op === 'k4') put(b, `riff:${rp.key}`, st(diatonic(rp.parsed[pb.src % L0], pb.op === 'k2' ? 2 : 4, ctx.scale)));
     }
     if (chordRole) put(b, chordRole, st(chordPart(c)));
+    // A style whose pad holds under its stabs through the drops (deep house's `padUnder`).
+    if (style.padUnder && chordRole && chordRole !== 'pad') put(b, 'pad', st(padBar(colourAll(c, mood), C.pad)));
     const own = ownBass(pb);
     if (own) for (const [role, part] of own) put(b, role, st(part));
     else {
@@ -411,7 +415,8 @@ export function buildSections(ctx) {
       put(b, 'clap', drum('clap', half ? DD.halfClap : DD.clap, k));
       put(b, 'snare', P(fillHere ? fill.snare : at(half ? DD.halfClap : DD.clap, k)));
       if (!half) put(b, 'ohats', drum('ohats', DD.ohats, k));
-      put(b, 'hats', drum('hats', half ? DD.hats8 : DD.hats16, k));
+      // A half-time bar's hats: the style's own (`halfHats` — reggaeton's trap rolls), else eighths.
+      put(b, 'hats', drum('hats', half ? DD.halfHats || DD.hats8 : DD.hats16, k));
       if (fillHere) put(b, 'fill', P(fill.tom));
     }
   };
@@ -936,7 +941,7 @@ export function buildSections(ctx) {
         if (!hookIsBass && options.parts.bass !== 'none') put(b, 'bass', bassBar(triads(c), walk, C.bassFloor));
         put(b, 'kick', drum('kick', D.halfKick, i));
         put(b, 'clap', drum('clap', D.halfClap, i));
-        put(b, 'hats', drum('hats', D.hats8, i));
+        put(b, 'hats', drum('hats', D.halfHats || D.hats8, i));
       }
       if (options.drums.crashes) put(from, 'crash', P(D.crash));
       events.trims.push({ role: singer, from: sec.from, to: sec.to, db: -1 });

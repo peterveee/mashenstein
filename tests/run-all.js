@@ -172,6 +172,7 @@ const suites = [
   'tests/banger-energy.js',
   'tests/banger-production.js',
   'tests/banger-section-effects.js',
+  'tests/banger-section-assignments.js',
   'tests/region-style-effects.js',
   'tests/banger-report.js',
   // Modify This Take: a take re-made with changed settings keeps every part the change

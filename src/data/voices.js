@@ -2599,6 +2599,13 @@ const TONE = {
     note: 'The upper drawbars pulled further out. Cuts through where the soft '
       + 'registration sits under everything.',
     additive: { bars: [0, 0, 1, 0.78, 0.48, 0.3, 0, 0.16, 0], attack: 0.035, decay: 7.2 } },
+  addOrganStab: { label: 'Drawbar Stab', category: 'Organ', homeLane: 'organChords',
+    synth: 'WNDR-9', dur: 0.5,
+    note: 'A drawbar organ played as a stab (5 Oct 2026): a bright registration with the '
+      + '16-foot under it and a second-harmonic percussion click, dying away in under half '
+      + 'a second so off-beat chords never smear.',
+    additive: { bars: [0.6, 0, 1, 0.8, 0.6, 0.5, 0, 0.3, 0.25], attack: 0.003, decay: 0.42,
+      perc: { ratio: 2, gain: 0.6, attack: 0.002, decay: 0.09 } } },
   addDrawbarPerc: { label: 'Drawbar + Percussion', category: 'Organ', homeLane: 'organChords',
     synth: 'WNDR-9', dur: 7.2,
     note: 'Bright registration with a third-harmonic pip on the key attack, kept dry so '
@@ -4855,6 +4862,67 @@ const TONE = {
     },
     drive: 0.15, shape: 'soft',
     humanize: { entry: 0.005, gain: 0.06 } },
+
+  // ---- organ stabs and a clean funk guitar, 5 Oct 2026 (the chill banger styles)
+  mrdrHouseOrganStab: { label: 'House Organ Stab', category: 'Organ', homeLane: 'chords', synth: 'MRDR-3', dur: 0.6,
+    note: 'The house-music organ chord: two square drawbars an octave apart and a sine pip a '
+      + 'twelfth up that speaks only on the strike, a filter that flashes open and closes '
+      + 'again, and no sustain at all, so every off-beat stab stops before the next.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.55, attack: 0.002, decay: 0.35, sustain: 0, release: 0.08 },
+      osc2: { type: 'square', ratio: 2, gain: 0.4, attack: 0.002, decay: 0.28, sustain: 0, release: 0.07 },
+      osc3: { type: 'sine', ratio: 3, gain: 0.35, attack: 0.001, decay: 0.09, sustain: 0, release: 0.04 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 2600, Q: 0.8, track: 0.5, env: { octaves: 1.4, attack: 0.001, decay: 0.14, sustain: 0, release: 0.06 } },
+      vca: { attack: 0.002, decay: 0.38, sustain: 0, release: 0.08 },
+    },
+    humanize: { entry: 0.003, gain: 0.05 } },
+
+  mrdrDeepOrganStab: { label: 'Deep Organ Stab', category: 'Organ', homeLane: 'chords', synth: 'MRDR-3', dur: 0.8,
+    note: 'The house organ stab rounded off for deep house: a triangle at the note, a soft '
+      + 'square an octave up behind a low filter and a sine sub-octave underneath, closing '
+      + 'slowly enough to bloom a little before it goes.',
+    layer: {
+      osc1: { type: 'triangle', ratio: 1, gain: 0.7, attack: 0.003, decay: 0.5, sustain: 0, release: 0.12 },
+      osc2: { type: 'square', ratio: 2, gain: 0.25, attack: 0.003, decay: 0.35, sustain: 0, release: 0.1, filter: { type: 'lowpass', slope: -12, freq: 1400, Q: 0.7, track: 0.4 } },
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.35, attack: 0.004, decay: 0.45, sustain: 0, release: 0.12 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 1500, Q: 1, track: 0.4, env: { octaves: 1, attack: 0.002, decay: 0.2, sustain: 0, release: 0.08 } },
+      vca: { attack: 0.003, decay: 0.5, sustain: 0, release: 0.12 },
+    },
+    humanize: { entry: 0.003, gain: 0.05 } },
+
+  mrdrFunkGuitar: { label: 'Clean Funk Guitar', category: 'Pluck', homeLane: 'chords', synth: 'MRDR-3', dur: 0.7,
+    note: 'A clean single-coil funk guitar for chord chops: a bright saw string whose top '
+      + 'falls fast, a thin pulse through a bandpass at 1.5 kHz for the quack, a tick of '
+      + 'pick noise, and the low end cut away so it sits above the bass. Short, with a '
+      + 'little ring left in it.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.6, attack: 0.001, decay: 0.3, sustain: 0.12, release: 0.05, filter: { type: 'lowpass', slope: -12, freq: 2200, Q: 0.9, track: 0.6, env: { octaves: 1.5, attack: 0.001, decay: 0.09, sustain: 0.1, release: 0.05 } } },
+      osc2: { type: 'pulse', width: 0.22, ratio: 1, gain: 0.4, detune: 4, attack: 0.001, decay: 0.25, sustain: 0.1, release: 0.05, filter: { type: 'bandpass', slope: -12, freq: 1500, Q: 1.4, track: 0.3 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.08, color: 'white', attack: 0.001, decay: 0.012, sustain: 0, release: 0.01, filter: { type: 'highpass', slope: -12, freq: 3200, Q: 0.8, track: 0 } },
+    },
+    global: {
+      filter: { type: 'highpass', slope: -12, freq: 220, Q: 0.7, track: 0 },
+      vca: { attack: 0.001, decay: 0.32, sustain: 0.12, release: 0.05 },
+    },
+    humanize: { entry: 0.004, pitch: 0.0015, gain: 0.1 } },
+
+  mrdrFunkGuitarMuted: { label: 'Funk Guitar · Muted', category: 'Pluck', homeLane: 'chords', synth: 'MRDR-3', dur: 0.25,
+    note: 'The same clean funk guitar with the palm on the strings: every pick a dry '
+      + 'scratch, mostly pick and quack, gone in a sixteenth. For the scratch between the chops.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.5, attack: 0.001, decay: 0.07, sustain: 0, release: 0.03, filter: { type: 'lowpass', slope: -12, freq: 1800, Q: 0.9, track: 0.6, env: { octaves: 1.2, attack: 0.001, decay: 0.04, sustain: 0, release: 0.03 } } },
+      osc2: { type: 'pulse', width: 0.22, ratio: 1, gain: 0.45, detune: 4, attack: 0.001, decay: 0.06, sustain: 0, release: 0.03, filter: { type: 'bandpass', slope: -12, freq: 1500, Q: 1.6, track: 0.3 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.14, color: 'white', attack: 0.001, decay: 0.025, sustain: 0, release: 0.01, filter: { type: 'bandpass', slope: -12, freq: 2600, Q: 1.2, track: 0 } },
+    },
+    global: {
+      filter: { type: 'highpass', slope: -12, freq: 250, Q: 0.7, track: 0 },
+      vca: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.03 },
+    },
+    humanize: { entry: 0.004, gain: 0.12 } },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -5632,7 +5700,9 @@ const LEVELS = {
   seedFutureBassSquare: 0.018129, seedFutureBassBell: 0.020825,
   seedFutureBassMegaSaw: 0.126683, seedFutureBassArp: 0.016702,
   seedFutureBassChoir: 0.017453, seedFutureBassThird: 0.068382,
-  seedFutureBassCounter: 0.034436
+  seedFutureBassCounter: 0.034436, addOrganStab: 0.0662,
+  mrdrHouseOrganStab: 0.0236, mrdrDeepOrganStab: 0.021, mrdrFunkGuitar: 0.0163,
+  mrdrFunkGuitarMuted: 0.0022
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -5806,7 +5876,9 @@ const PEAKS = {
   seedFutureBassSquare: 0.132, seedFutureBassBell: 0.219,
   seedFutureBassMegaSaw: 0.7717, seedFutureBassArp: 0.3444,
   seedFutureBassChoir: 0.1229, seedFutureBassThird: 0.6944,
-  seedFutureBassCounter: 0.2067
+  seedFutureBassCounter: 0.2067, addOrganStab: 1.4628,
+  mrdrHouseOrganStab: 0.7484, mrdrDeepOrganStab: 0.7663, mrdrFunkGuitar: 0.7478,
+  mrdrFunkGuitarMuted: 0.1848
 };
 
 /**

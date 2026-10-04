@@ -65,6 +65,18 @@ const bassList = slotChoices(part('bass'));
 assert(bassList[0].category === 'Bass' && bassList.findIndex((c) => c.blocked.length) > bassList.findIndex((c) => c.category !== 'Bass'),
   'a slot lists its usual category first, everything allowed next, and the shut ones last');
 assert(slotChoices(kitRole('kick')).every((c) => VOICES[c.id].kind === 'drum'), 'a drum slot only ever lists drums');
+// A phone style — a Light or 8-Bit Sound Set (styles/index.js BANGER_SOUND_SETS, 5 Oct 2026)
+// — shuts the two synths a phone cannot carry, everywhere, and nothing else.
+assert(['bestPwmPadWide', 'mrdrElectricGrand'].every((id) => blocked(id, part('saws'), { phone: true }).some((r) => /too heavy for a phone/.test(r)))
+  && blocked('jmjrChoirAah', part('choir'), { phone: true }).some((r) => /too heavy for a phone/.test(r))
+  && soundAllowed('tngrWarmStrings', part('saws'), { phone: true }) && soundAllowed('toneSquare', part('arp'), { phone: true })
+  && soundAllowed('bestPwmPadWide', part('saws')), 'a phone style shuts MRDR-3 and JMJR-4, and only a phone style does');
+{
+  const { BANGER_SOUND_SETS } = await import('../tools/lib/banger/styles/index.js');
+  const { phoneStyle } = await import('../tools/lib/banger/sound-rules.js');
+  assert(BANGER_SOUND_SETS.length && BANGER_SOUND_SETS.every((x) => BANGER_SOUNDS[x.id] && x.base && phoneStyle(x.id)) && !phoneStyle('chipstep'),
+    'every Sound Set has its own sounds and is a phone style; its base style is not');
+}
 
 // ---------------------------------------------------------------- whole-table checks
 const t = () => clone(BANGER_SOUNDS);

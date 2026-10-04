@@ -97,7 +97,7 @@ const mix = (a, b, k) => {
  * fills a frame was the second-biggest cost in the club on a phone, and a ball of a dozen
  * greys looks the same as one of two hundred and fifty.
  */
-export function drawDiscoBall(ctx, x, y, r, { t, pulse = 0, accent = '#c9a0ff', hits = [], bands = 16 }) {
+export function drawDiscoBall(ctx, x, y, r, { t, pulse = 0, hits = [], bands = 16 }) {
   ctx.save();
   ctx.fillStyle = '#0d0b14'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   const buckets = new Map();       // fill colour -> corner lists
@@ -141,6 +141,6 @@ export function drawDiscoBall(ctx, x, y, r, { t, pulse = 0, accent = '#c9a0ff', 
   sh.addColorStop(0, 'rgba(255,255,255,0.35)'); sh.addColorStop(0.3, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.45)');
   ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   sparkles(ctx, x, y, r, t, 5, 2);
-  rim(ctx, x, y, r, accent, pulse);
+  // no accent rim: the purple arc round its lower right read as a mark, not light (Peter, 5 Oct 2026)
   ctx.restore();
 }

@@ -167,7 +167,7 @@ Drops: sub, supersaws, Octave Hook.
 | Arp | ARP · BEST S&H Pulse |
 | Choir | CHOIR · BEST PWM Choir |
 
-**Mega Drive** (Heroic) — Bass Octaves · Chords as Piano Stabs (FM keys). Drops: sub, supersaws.
+**16-Bit** (Heroic) — Bass Octaves · Chords as Piano Stabs (FM keys). Drops: sub, supersaws.
 
 | Part | Strip |
 | --- | --- |
@@ -192,7 +192,7 @@ A mood never switches a part on or off. It does three things.
 
 Hypnotic's sequencer bass brings a **BASS ECHO** lane on the bass's own sound. This happens in
 every style whose bass can move: Big-Room, Trance, Future Bass, Shibuya-Kei, Drum & Bass,
-Electro and Mega Drive. Eurobeat, Chipstep and Synthwave don't get it, because their bass is
+Electro and 16-Bit. Eurobeat, Chipstep and Synthwave don't get it, because their bass is
 fixed.
 
 ### 2. The mood picks the bass figure
@@ -218,7 +218,7 @@ bass.
 ### 3. The original nine moods re-voice some parts
 
 These sound swaps apply in **Big-Room, Trance, Future Bass, Eurobeat, Chipstep and Synthwave**.
-Shibuya-Kei, Drum & Bass, Electro and Mega Drive have no mood sounds, so they always keep
+Shibuya-Kei, Drum & Bass, Electro and 16-Bit have no mood sounds, so they always keep
 their own. The newer shared moods (Bittersweet onward) swap no sounds.
 
 A swap is heard only if the style plays that part. Counter is on only in Eurobeat and Synthwave,

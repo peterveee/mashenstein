@@ -16,6 +16,14 @@ const PROFILES = {
   electro: { perc: 'cowbell' },
   megadrive: { perc: 'ride', keep: ['megaSaw'] },
   synthwave: { perc: 'tambourine', keep: ['arp'] },
+  'deep-house': { perc: 'congas', keep: ['counter'] },
+  'nu-disco': { perc: 'congas', keep: ['arp'] },
+  downtempo: { perc: 'shaker' },
+  eurodance: { perc: 'tambourine' },
+  'italo-disco': { perc: 'tambourine', keep: ['arp'] },
+  'electro-funk': { perc: 'cowbell', keep: ['counter'] },
+  'french-house': { perc: 'shaker', keep: ['arp'] },
+  reggaeton: { perc: 'congas', keep: ['counter'] },
   chipstep: { perc: 'tambourine' },
 };
 const DECORATION = ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',
@@ -26,7 +34,7 @@ const DROPS = new Set(['drop', 'drop2', 'drop3', 'reprise']);
 export function arrangeEnergy({ options, style, form, scale }, sec, bars, events) {
   const energy = energyOf(options.energy);
   if (energy === 'full') return;
-  const profile = PROFILES[style.id] || PROFILES['big-room'];
+  const profile = PROFILES[style.id] || PROFILES[style.base] || PROFILES['big-room'];
   const from = sec.from - 1;
   if (energy === 'lean') {
     for (let b = from; b < sec.to; b++) {

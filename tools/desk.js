@@ -20,10 +20,13 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
+import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listBrowsers, stopBrowser } from './browsers.js';
+import { BANGER_STYLES } from './lib/banger/styles/index.js';
+import { BANGER_LEVEL_DATA } from './lib/banger/levels-data.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = process.env.MASH_DESK_HOST || '127.0.0.1';
@@ -49,9 +52,9 @@ const TOOLS = [
     blurb: 'a fader per cue over a real song. Auto walks the list; Save writes SFX_TRIM.',
   },
   {
-    id: 'bangersounds', label: 'BANGER SOUNDS', port: 8022,
+    id: 'bangersounds', label: 'BANGER SOUND PALETTE', port: 8022,
     script: 'tools/banger-sounds.js', portEnv: 'MASH_BANGER_SOUNDS_PORT', npm: 'npm run banger-sounds',
-    blurb: 'every sound Make a Banger… uses: parts, kits, the Random lists, moods. Audition, test-banger, Save writes tools/lib/banger/sounds.js.',
+    blurb: 'alternative style and mood presets, levels and channel effects. Compare them against a banger loop; advanced sound tables stay one click away.',
   },
   {
     id: 'levels', label: 'LEVEL EDITOR', port: 8021,
@@ -130,8 +133,111 @@ const ACTIONS = [
 // time and the mixer's playback is the thing on this machine that must not glitch
 // (the renders inherit the niceness from the node that spawns them).
 const REPORTS_DIR = join(root, 'work/local/reports');
+const BALANCE_OVERRIDES_FILE = join(root, 'tools/lib/banger/balance-overrides.json');
 const reportHref = (file, anchor) => () => (existsSync(join(REPORTS_DIR, file)) ? `/reports#${anchor}` : null);
 const niced = (args) => ['nice', ['-n', '15', process.execPath, ...args]];
+
+const BALANCE_ROLE_GROUPS = [
+  { id: 'lead', label: 'Leads and harmony', roles: ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter'] },
+  { id: 'chords', label: 'Chords and keys', roles: ['saws', 'pad', 'piano'] },
+  { id: 'bass', label: 'Bass and sub', roles: ['bass', 'sub'] },
+  { id: 'drums', label: 'Drums', roles: ['kick', 'snare', 'clap', 'hats', 'ohats', 'crash', 'impact', 'fill', 'shaker', 'tambourine', 'cowbell', 'congas', 'ride'] },
+];
+const BALANCE_ROLE_LABELS = {
+  square: 'Square lead', bell: 'Bell lead', megaSaw: 'Mega saw', arp: 'Arpeggio', choir: 'Choir',
+  third: 'Third harmony', counter: 'Counter line', saws: 'Supersaw chords', pad: 'Pad chords', piano: 'Piano',
+  bass: 'Bass', sub: 'Sub', kick: 'Kick', snare: 'Snare', clap: 'Clap', hats: 'Closed hats', ohats: 'Open hats',
+  crash: 'Crash', impact: 'Impact', fill: 'Fill', shaker: 'Shaker', tambourine: 'Tambourine',
+  cowbell: 'Cowbell', congas: 'Congas', ride: 'Ride',
+};
+const BALANCE_DEFAULTS = { leadCautionDb: -2.5, riffTrimDb: -3 };
+const finiteDb = value => Number.isFinite(value) && value >= -12 && value <= 12;
+function readBalanceOverrides() {
+  try { return JSON.parse(readFileSync(BALANCE_OVERRIDES_FILE, 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
+}
+const balanceFileHash = () => createHash('sha256').update(readFileSync(BALANCE_OVERRIDES_FILE)).digest('hex');
+function balancePageData() {
+  const overrides = readBalanceOverrides();
+  return {
+    hash: balanceFileHash(),
+    styles: BANGER_STYLES.map(style => {
+      const base = style.balance || {};
+      const saved = overrides[style.id] || {};
+      const available = new Set(Object.keys(BANGER_LEVEL_DATA.refs?.[style.id] || {}).filter(role => role !== 'hook'));
+      return {
+        id: style.id,
+        label: style.label,
+        overridden: !!overrides[style.id],
+        balance: {
+          leadCautionDb: finiteDb(saved.leadCautionDb) ? saved.leadCautionDb
+            : finiteDb(base.leadCautionDb) ? base.leadCautionDb : BALANCE_DEFAULTS.leadCautionDb,
+          riffTrimDb: finiteDb(saved.riffTrimDb) ? saved.riffTrimDb
+            : finiteDb(base.riffTrimDb) ? base.riffTrimDb : BALANCE_DEFAULTS.riffTrimDb,
+          roleGainDb: Object.fromEntries(BALANCE_ROLE_GROUPS.flatMap(group => group.roles
+            .filter(role => available.has(role)).map(role => [role,
+              finiteDb(saved.roleGainDb?.[role]) ? saved.roleGainDb[role]
+                : finiteDb(base.roleGainDb?.[role]) ? base.roleGainDb[role] : 0]))),
+        },
+        roleGroups: BALANCE_ROLE_GROUPS.map(group => ({
+          id: group.id,
+          label: group.label,
+          roles: group.roles.filter(role => available.has(role)).map(role => ({ id: role, label: BALANCE_ROLE_LABELS[role] || role })),
+        })).filter(group => group.roles.length),
+      };
+    }),
+  };
+}
+function atomicWrite(path, text) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, text);
+  renameSync(tmp, path);
+}
+function balanceDb(value, name) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < -12 || n > 12 || Math.abs(n * 2 - Math.round(n * 2)) > 1e-8) {
+    throw new Error(`${name} must be between -12 and +12 dB in half-dB steps`);
+  }
+  return Math.round(n * 2) / 2;
+}
+function saveBalanceOverride({ styleId, balance, reset = false }) {
+  const style = BANGER_STYLES.find(item => item.id === styleId);
+  if (!style) throw new Error('choose a Banger style');
+  const overrides = readBalanceOverrides();
+  if (reset) {
+    delete overrides[styleId];
+  } else {
+    if (!balance || typeof balance !== 'object' || Array.isArray(balance)) throw new Error('balance values are missing');
+    const allowed = new Set(Object.keys(BANGER_LEVEL_DATA.refs?.[styleId] || {}).filter(role => role !== 'hook'));
+    const submitted = balance.roleGainDb || {};
+    if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) throw new Error('part balances are invalid');
+    for (const role of Object.keys(submitted)) if (!allowed.has(role)) throw new Error(`unknown role for ${styleId}: ${role}`);
+    const requested = {
+      leadCautionDb: balanceDb(balance.leadCautionDb, 'Lead trim'),
+      riffTrimDb: balanceDb(balance.riffTrimDb, 'Main hook trim'),
+      roleGainDb: Object.fromEntries([...allowed].map(role => [role,
+        Object.hasOwn(submitted, role) ? balanceDb(submitted[role], `${role} trim`)
+          : balancePageData().styles.find(row => row.id === styleId).balance.roleGainDb[role]])),
+    };
+    const base = style.balance || {};
+    const patch = {};
+    const leadDefault = finiteDb(base.leadCautionDb) ? base.leadCautionDb : BALANCE_DEFAULTS.leadCautionDb;
+    const hookDefault = finiteDb(base.riffTrimDb) ? base.riffTrimDb : BALANCE_DEFAULTS.riffTrimDb;
+    if (requested.leadCautionDb !== leadDefault) patch.leadCautionDb = requested.leadCautionDb;
+    if (requested.riffTrimDb !== hookDefault) patch.riffTrimDb = requested.riffTrimDb;
+    const rolePatch = {};
+    for (const role of allowed) {
+      const baseDb = finiteDb(base.roleGainDb?.[role]) ? base.roleGainDb[role] : 0;
+      if (requested.roleGainDb[role] !== baseDb) rolePatch[role] = requested.roleGainDb[role];
+    }
+    if (Object.keys(rolePatch).length) patch.roleGainDb = rolePatch;
+    if (Object.keys(patch).length) overrides[styleId] = patch;
+    else delete overrides[styleId];
+  }
+  atomicWrite(BALANCE_OVERRIDES_FILE, `${JSON.stringify(overrides, null, 2)}\n`);
+  return balancePageData();
+}
 
 ACTIONS.push(
   {
@@ -164,7 +270,7 @@ ACTIONS.push(
   {
     id: 'bangerlevels', group: 'audio', label: 'BANGER LEVELS',
     blurb: 'makes test bangers in the ticked styles and renders them channel by channel: how far each channel lands from the part it is matched to (the style’s seed banger once you have used one, else its seed remix), before levelling and after (tools/banger-levels.js). Measures any new banger sound first. Writes only the report. About ten minutes a style. + FIT folds each channel’s average miss into the levels.',
-    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive'],
+    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton'],
     options: [{ key: 'fit', label: '+ FIT', flag: '--fit' }],
     needsIds: true,
     speed: 'background',
@@ -192,10 +298,14 @@ ACTIONS.push(
   },
 );
 ACTIONS.push({
+  id: 'bangerbalancebuild', group: 'internal', label: 'BANGER BALANCE BUILD',
+  blurb: 'builds the game after a Desk balance change so the next take uses the saved faders.',
+  speed: 'background', steps: [niced(['build/build.js'])], openPath: () => null,
+}, {
   id: 'bangercalibration', group: 'audio', label: 'BANGER CALIBRATION',
-  blurb: 'Measures instruments playing short, sustained, busy and chord phrases through their channels. Reuses unchanged measurements, checks unseen phrases, then publishes validated offsets for generation. The first full run is lengthy; interrupted runs resume from cached renders. FULL rebuilds everything selected. Weekly runs use all styles while the desk is open.',
-  choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive'],
-  options: [{ key: 'full', label: 'FULL REBUILD', flag: '--full' }], needsIds: true, speed: 'background',
+  blurb: 'Measures instruments playing short, sustained, busy and chord phrases through their channels. Reuses unchanged measurements, checks unseen phrases, publishes validated offsets, then rebuilds the game. The first full run is lengthy; interrupted runs resume from cached renders. FULL rebuilds everything selected. Weekly runs use all styles while the desk is open.',
+  choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton'],
+  options: [{ key: 'full', label: 'FULL REBUILD', flag: '--full' }], needsIds: true, speed: 'background', buildAfter: true,
   steps: args => [niced(['tools/banger-calibrate.js', 'refresh', ...idsFrom(args), ...optionFlags('bangercalibration', args)])],
   openPath: reportHref('banger-calibration.json', 'calibration'),
 }, {
@@ -413,7 +523,8 @@ async function runAction(action, runArgs = {}) {
     }
     // Most actions have a fixed command; the prune pair build theirs from
     // whatever ids the browser sent, so `steps` can be either shape.
-    const steps = typeof action.steps === 'function' ? action.steps(runArgs) : action.steps;
+    const steps = typeof action.steps === 'function' ? action.steps(runArgs) : [...action.steps];
+    if (action.buildAfter) steps.push(niced(['build/build.js']));
     for (const [cmd, args] of steps) {
       state.keep(`$ ${cmd} ${args.join(' ')}`);
       const code = await new Promise((res) => {
@@ -469,6 +580,14 @@ const json = (res, code, body) => {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 };
+async function requestJSON(req, limit = 50000) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > limit) throw new Error('request is too large');
+  }
+  return JSON.parse(body || '{}');
+}
 
 // Redirect to the hostname the request arrived on, so the desk reached as
 // MBP14.local sends you to MBP14.local and not to a loopback address the phone
@@ -481,6 +600,27 @@ const hostnameOf = (req) => {
 
 async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (url.pathname === '/api/banger-balance' && req.method === 'GET') {
+    return json(res, 200, balancePageData());
+  }
+  if (url.pathname === '/api/banger-balance' && req.method === 'POST') {
+    let body;
+    try { body = await requestJSON(req); }
+    catch (error) { return json(res, 400, { ok: false, error: error.message || 'invalid JSON' }); }
+    if (body.baseHash !== balanceFileHash()) {
+      return json(res, 409, { ok: false, error: 'the balance settings changed since this page loaded — reload the Desk before saving' });
+    }
+    if (runs.get('bangerbalancebuild')?.running || runs.get('bangercalibration')?.running) {
+      return json(res, 409, { ok: false, error: 'wait for the current Banger build or calibration to finish first' });
+    }
+    try {
+      const result = saveBalanceOverride(body);
+      runAction(ACTION_BY_ID.bangerbalancebuild);
+      return json(res, 200, { ok: true, ...result });
+    } catch (error) {
+      return json(res, 422, { ok: false, error: error.message || String(error) });
+    }
+  }
   const weekly = /^\/api\/banger-calibration\/weekly\/(on|off)$/.exec(url.pathname);
   if (weekly && req.method === 'POST') {
     const enabled = weekly[1] === 'on';
@@ -574,6 +714,9 @@ async function handle(req, res) {
   if (run && req.method === 'POST') {
     const action = ACTION_BY_ID[run[1]];
     if (!action) return json(res, 404, { ok: false, error: 'no such action' });
+    if (action.id === 'bangercalibration' && runs.get('bangerbalancebuild')?.running) {
+      return json(res, 409, { ok: false, error: 'wait for the Banger balance build to finish first' });
+    }
     let args = {};
     if (action.needsIds) {
       const raw = await new Promise((resolve) => {

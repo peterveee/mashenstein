@@ -1253,7 +1253,9 @@ export const TOON_SPECS = {
   // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
   // own width to 2.5x. Held short of 1.4, where the reach starts to read lanky
   // against his short legs.
-  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
+  // The broad front footprint and opposing roll keep his neutral robot pads
+  // from collapsing into round caps when viewed head-on.
+  b33p: { rig: 'humanoid', footScale: 1.08, footSplay: 0.9, frontPoseFootAngle: 0.34, head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
     // proportions — written by the character editor (tools/character-editor.js)
     hipTuck: 1.2,
     legShiftRoot: -0.025,
@@ -2590,13 +2592,13 @@ function floatingFoot(p, stride, lift) {
 // and takes only the heel strike and the toe-off. `contact` lines the roll up
 // with whichever path is underneath — 0.5 matches gaitFoot's stance, which
 // runs from q 0 to 0.5 with the sole flat.
-function ankleRoll(p, L) {
+function ankleRoll(p, L, contact = L.contact) {
   const q = (p % 1 + 1) % 1;
-  if (q < L.contact) {
-    const t = q / L.contact;
+  if (q < contact) {
+    const t = q / contact;
     return -L.heel * (1 - t) + L.toe * t * t;
   }
-  const t = (q - L.contact) / (1 - L.contact);
+  const t = (q - contact) / (1 - contact);
   const e = t * t * (3 - 2 * t);
   return L.toe * (1 - e * e) - L.heel * e * e;
 }
@@ -8471,11 +8473,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const run = !clung && pose.kind === 'run';
   const walk = run && (!!pose.walk || !!spec.smallSteps);
   // A WALK is not a slow run: it keeps a foot on the ground at all times, and
-  // locoFoot's recovery arc is a flight phase. The spec is a run spec, and the
-  // one caller that sets the flag — the grumpos walk study — has named beats
-  // (contact / down / pass / up) that a re-shaped clock would slide off. So
-  // the gait terms below leave walks exactly as they were; only legLen, which
-  // is a body proportion rather than a gait, still applies.
+  // locoFoot's recovery arc is a flight phase. Keep styled running clocks out
+  // of walks so their planted steps retain a steady, authored beat.
   const styledGait = !!L && run && !walk;
   const jump = !clung && pose.kind === 'jump';
   const slide = !clung && pose.kind === 'slide';
@@ -8702,13 +8701,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // move the bulge, because it points across the leg rather than along it.
   let legSeg = (slide ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
   if (walk && heavy) legSeg = 0.4 * legL + 0.005 * u;
-  // Dolores shuffles under her original skirt: low recovery and a compact
-  // thigh keep the knee high and inside the cloth, with leggings below it.
+  // Keep Dolores's knee tucked under the apron while her feet get a clear
+  // recovery arc. The short thigh limits how far the joint can flare sideways.
   const smallWalk = walk && spec.smallSteps;
   if (smallWalk) legSeg = 0.5 * legL + 0.005 * u;
-  const stride = legL * (walk ? (smallWalk ? 0.55 : heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
+  const stride = legL * (walk ? (smallWalk ? 0.44 : heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
     * (styledGait ? L.stride : 1);
-  const lift = legL * (walk ? (smallWalk ? 0.10 : heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN)
+  const lift = legL * (walk ? (smallWalk ? 0.24 : heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN)
     * (styledGait ? L.lift : 1);
   let footF, footB, kneeF = 1, kneeB = 1;
   // Ankle rotation, in radians, positive = toe down. The shoes were un-rotated
@@ -8739,10 +8738,17 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         footB = [fB[0], fB[1]]; ankleB = fB[2] * L.ankle;
       }
     } else {
-      // Keep Dolores's original snap-style timing, with the low walking arc.
+      // A walk uses a steady clock; the snap runner's held timing made
+      // Dolores pause at each end of the step and read as a shuffle.
       const phase = pose.phase || 0;
-      footF = gaitFoot(smallWalk && L ? gaitPhase(phase, L) : phase, stride, lift);
-      footB = gaitFoot(smallWalk && L ? gaitPhase(phase + 0.5, L) : phase + 0.5, stride, lift);
+      footF = gaitFoot(phase, stride, lift);
+      footB = gaitFoot(phase + 0.5, stride, lift);
+      if (smallWalk && L) {
+        // A modest heel-to-toe roll makes her sneakers legible through the
+        // step without changing the tucked knee line.
+        ankleF = ankleRoll(phase, L, 0.5) * 0.42;
+        ankleB = ankleRoll(phase + 0.5, L, 0.5) * 0.42;
+      }
     }
   } else if (jump) {
     if (L) {
@@ -8877,7 +8883,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     footF = pose.dance.feet[0].map(v => v * u);
     footB = pose.dance.feet[1].map(v => v * u);
     [ankleF, ankleB] = pose.dance.ankles || [0, 0];
-    legSeg = Math.max(legSeg, legL * (pose.dance.legFlex ?? 0.56));
+    legSeg = Math.max(legSeg, legL * (pose.dance.legFlex ?? 0.48));
+    if (Number.isFinite(pose.dance.legSegMax)) {
+      legSeg = Math.min(legSeg, legL * Math.max(0, pose.dance.legSegMax));
+    }
   }
   // `clung` sent the whole painter down the STAND path above — same hip roots,
   // same front-facing shoes as idling — and the ride's legs live in the
@@ -10886,6 +10895,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // end-on foreshortening is a fact about every foot, not just the shaped ones.
   const FRONT_DEPTH = 0.78;
   const footRy = (capR + 0.008 * u) * footScale * (frontLegs ? FRONT_DEPTH : 1);
+  // Slides keep their brace flare. Celebration toe-point follows actual lift so
+  // grounded beats do not leave the cast standing on tiptoes.
+  const celebrateToePoint = pose.kind === 'celebrate' && cm
+    ? 0.52 * Math.max(0, Math.min(1, (cm.lift - 0.045) / 0.12))
+    : 0;
+  const frontPoseFootAngle = frontLegs
+    && (pose.dance || pose.kind === 'idle' || pose.kind === 'stand')
+    ? (Number(spec.frontPoseFootAngle) || 0)
+    : 0;
+  const frontFootFlare = frontLegs && !pose.dance
+    ? (pose.kind === 'slide' ? 0.52 : celebrateToePoint)
+    : 0;
   // The rolled shoe is a RIGID FOOT: it pivots about the ankle the way a real
   // shoe does, so the shoe's offset from the leg's endpoint rotates with it
   // and the leg's round end cap stays buried at every angle — burial is the
@@ -10907,8 +10928,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the clamp reads the same whether the foot is an oval or a shape — the
   // placement arithmetic that used to live here has moved into paintShoe,
   // which is the only thing that needs to know which of the two it is drawing.
-  const dropF = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleF, frontLegs);
-  const dropB = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleB, frontLegs);
+  const dropF = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleF + frontFootFlare + frontPoseFootAngle, frontLegs);
+  const dropB = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleB - frontFootFlare - frontPoseFootAngle, frontLegs);
   // THE GROUND IS NOT LEVEL, and until now the rig has drawn as though it were.
   // Foot targets are figure-space and the clamp below plants a sole on a
   // HORIZONTAL line, so on a hill both feet sat at the same height and both
@@ -11177,7 +11198,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       }
     }
     paintShoe(ctx, spec, ow, lod, footFill,
-      footF[0], footF[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleF + tiltF, frontLegs,
+      footF[0], footF[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleF + tiltF + frontFootFlare + frontPoseFootAngle, frontLegs,
       // The SAME two-bone solution the leg was just drawn with, so the cuff
       // cannot drift off the shin the knee actually folded on. `toe` turns a
       // splayed foot outboard — the near foot to the right, the far one left,
@@ -12238,7 +12259,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
   bootShaft(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(footFill, farShade));
   paintShoe(ctx, spec, ow, lod, recede(footFill, farShade),
-    footB[0], footB[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleB + tiltB, frontLegs,
+    footB[0], footB[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleB + tiltB - frontFootFlare - frontPoseFootAngle, frontLegs,
     { base: footFill, knee: kneeAt(hipAt(-1), legRootYB, footB, kneeB), legW: legWB, toe: -1 });
   // The far holster recedes with the leg it is on, like every other far-side
   // piece — an un-pushed one reads as a bright tag floating off the back thigh.
@@ -16741,8 +16762,12 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
     const e = t * t * (3 - 2 * t);
     return (rayL.toe * (1 - e * e) - rayL.heel * e * e) * rayL.ankle;
   };
-  const backTilt = -0.08 + (pose.dance?.ankles?.[1] ?? (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0)));
-  const frontTilt = 0.08 + (pose.dance?.ankles?.[0] ?? (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0)));
+  const backTilt = pose.dance || pose.kind === 'idle' || pose.kind === 'stand'
+    ? (pose.dance?.ankles?.[1] ?? 0)
+    : -0.08 + (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0));
+  const frontTilt = pose.dance || pose.kind === 'idle' || pose.kind === 'stand'
+    ? (pose.dance?.ankles?.[0] ?? 0)
+    : 0.08 + (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0));
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
   // Ramon has no legs, so there is no endpoint to hang a shoe off: `centred`
   // sits a shaped shoe exactly where his floating oval sat, and a zero offset

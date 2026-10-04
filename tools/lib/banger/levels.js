@@ -48,6 +48,7 @@ import { hashStr } from '../../../src/engine/rng.js';
 import { BANGER_LEVEL_DATA } from './levels-data.js';
 import { BANGER_CALIBRATION } from './calibration-data.js';
 import { measuredPart, referenceKey } from './calibration.js';
+import { balanceForStyle } from './style-balance.js';
 
 /** How many bars of a part its level is read over: a drop phrase. */
 export const LEVEL_WINDOW_BARS = 8;
@@ -367,9 +368,10 @@ const sameSound = (a, b) => a.voice === b.voice
  */
 export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts, hookKey, refs: own = null, data = BANGER_LEVEL_DATA, calibration = BANGER_CALIBRATION }) {
   // A Sound Combo brings its own: the banger it was saved from is what its faders were set for.
-  const refs = own || data.refs?.[style.id] || {};
-  const offsets = data.offsets?.[style.id] || {};
-  const balance = style.balance || {};
+  // A lite style (styles/chipstep-lite.js) has its base's seed song, so its base's references.
+  const refs = own || data.refs?.[style.id] || data.refs?.[style.base] || {};
+  const offsets = data.offsets?.[style.id] || data.offsets?.[style.base] || {};
+  const balance = balanceForStyle(style);
   const leadCautionDb = Number.isFinite(balance.leadCautionDb) ? balance.leadCautionDb : LEAD_CAUTION_DB;
   const byKey = new Map(riffParts.map((p) => [p.key, p]));
   // What a channel's widener does to `sound` playing `notes`: see stereoDb.
