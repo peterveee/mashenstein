@@ -7,12 +7,22 @@
 // SIMPLE and ADVANCED (riff.js) are two grids over one riff: ADVANCED is remembered
 // while SIMPLE shows it converted down, and comes back as it was unless SIMPLE has been
 // written in since. ZAP (Peter, 3 Oct 2026; it was SURPRISE ME) writes a random riff in
-// whichever is showing.
+// whichever is showing. EXPERIMENT (Peter, 5 Oct 2026) is ZAP for everything else: a random
+// FORMULA, ELEMENT, VOLTAGE and DNA, leaving the notes alone.
 //
 // The grid loops while you edit, over a plain kick, hat and light clap at four BPM below
 // the chosen style's lower tempo limit. It runs its own clock through Audio.voiceSfx rather
 // than loading a song: edits are heard on the next pass, and a style change restarts
 // the loop at its new tempo.
+//
+// BACK is the dance floor's round arrow, left of the title (Peter, 5 Oct 2026), which gave
+// its slot in the button row to EXPERIMENT. The note-only buttons come first: CLEAR, ZAP, then
+// EXPERIMENT, then the make. The buttons are one line, no hints, and the selectors slimmer,
+// so the grid has the room; in portrait they stand two by two, under the selectors (Peter, 5 Oct 2026).
+//
+// The grid runs G4 to C6 (riff.js). Portrait shows every row; landscape shows as many as the
+// A-to-A grid did, at the same size, and scrolls for the rest (Peter, 5 Oct 2026): the wheel,
+// a drag up or down the note names, or the focus walking off the edge.
 //
 // The jukebox owns where this screen goes next, so it hands in `onDone` (BACK) and
 // `onMade(recipe, song)` (BRING TO LIFE); nothing here imports the jukebox.
@@ -60,11 +70,12 @@ export const RIFF_VOICES = Object.freeze([
 const RIFF_GAIN = 0.5;
 // BRING TO LIFE was GENER8 (Peter, 3 Oct 2026: the IT'S ALIVE! angle — birth.js). Editing a
 // kept song shows RECHARGE instead — the same make, for a song already alive (Peter, 4 Oct 2026).
-const BUTTONS = ['BACK', 'CLEAR', 'ZAP', 'BRING TO LIFE'];
-const BUTTON_HINTS = ['Back to songs', 'Erase all notes', 'Generate notes', 'Create a banger'];
+const BUTTONS = ['CLEAR', 'ZAP', 'EXPERIMENT', 'BRING TO LIFE'];
 const GENER8 = 3;
-// Every button the same width, lined up with the selectors above (Peter, 4 Oct 2026).
-const BUTTON_SHARES = [1, 1, 1, 1];
+/** Rows on show in landscape, which scrolls: the A-to-A grid's, so the squares stay their size. */
+const LANDSCAPE_ROWS = { simple: 8, advanced: 13 };
+/** Wheel travel (deltaY) for one row. */
+const WHEEL_ROW = 40;
 const MODE_IDS = ['simple', 'advanced'];
 
 const C_BG = '#0b0b14';
@@ -75,7 +86,7 @@ const C_NOTE = '#48e0c8';
 // Each of the twelve notes has its own colour, round the wheel from A (the game's teal),
 // so a tune reads as a shape of colours and an octave lands on the colour it left — the
 // same colour for a note in either mode. The black-key rows sit darker, as on a keyboard.
-const hueOf = (semi) => (172 + (semi % 12) * 30) % 360;
+const hueOf = (semi) => (172 + (((semi % 12) + 12) % 12) * 30) % 360;
 const noteColour = (mode, row) => `hsl(${hueOf(semitoneOf(mode, row))}, 78%, ${isSharp(mode, row) ? 58 : 64}%)`;
 const cellColour = (mode, row, alpha) => `hsla(${hueOf(semitoneOf(mode, row))}, 55%, ${isSharp(mode, row) ? 30 : 55}%, ${alpha})`;
 /** Rounded plates: near-pill on the short controls. */
@@ -130,7 +141,13 @@ export class BangerMakerState {
     this.riffVoice = voices[Math.floor(this.random() * voices.length)];
     BangerMakerState.lastVoice = this.riffVoice;
     const first = this.notes.findIndex((n) => n >= 0);
-    this.focus = { area: 'grid', col: Math.max(0, first), row: first >= 0 ? this.rows - 1 - this.notes[first] : this.rows - 1, picker: 0, button: GENER8 };
+    this.scroll = 0;
+    this.scrollToNotes();
+    this.focus = { area: 'grid', col: Math.max(0, first), row: first >= 0 ? this.rows - 1 - this.notes[first] : this.scrollRow + this.visibleRows - 1, picker: 0, button: GENER8 };
+    this.scrollDrag = null;
+    this.wheelAcc = 0;
+    // The wheel scrolls the grid here rather than stepping the focus.
+    Input.wheelNav = false;
     this.message = null;
     this.pointerNote = null;
     this.messageT = 0;
@@ -143,7 +160,10 @@ export class BangerMakerState {
     Input.setMenuButtons();
   }
 
-  exit() { if (!this.recharging) saveDraft(this.draft()); }
+  exit() {
+    Input.wheelNav = true;
+    if (!this.recharging) saveDraft(this.draft());
+  }
 
   draft() {
     return { mode: this.mode, simple: this.simple, advanced: this.advanced, simpleLengths: this.simpleLengths, advancedLengths: this.advancedLengths, simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
@@ -175,6 +195,26 @@ export class BangerMakerState {
     this.playStep = -1;
   }
   get rows() { return modeOf(this.mode).semis.length; }
+  /** How many rows the grid shows at once: all of them in portrait. */
+  get visibleRows() { return portraitMenuActive() ? this.rows : Math.min(this.rows, LANDSCAPE_ROWS[this.mode] ?? this.rows); }
+  /** The top row on show, counted down from the top (a visual row), kept in range. */
+  get scrollRow() { return Math.max(0, Math.min(this.rows - this.visibleRows, this.scroll | 0)); }
+  set scrollRow(v) { this.scroll = Math.max(0, Math.min(this.rows - this.visibleRows, Math.round(v))); }
+  /** Scroll just far enough that visual row `vr` is on show. */
+  showRow(vr) {
+    const top = this.scrollRow;
+    if (vr < top) this.scrollRow = vr;
+    else if (vr > top + this.visibleRows - 1) this.scrollRow = vr - this.visibleRows + 1;
+  }
+  /** The A4-to-A5 window the grid always had, moved just enough to take in every note written. */
+  scrollToNotes() {
+    const aRow = modeOf(this.mode).semis.indexOf(0);
+    this.scrollRow = this.rows - aRow - this.visibleRows;
+    const vrs = this.notes.filter((n) => n >= 0).map((n) => this.rows - 1 - n);
+    if (!vrs.length) return;
+    this.showRow(Math.max(...vrs));
+    this.showRow(Math.min(...vrs));
+  }
   get steps() { return modeOf(this.mode).steps; }
 
   setMode(id) {
@@ -194,6 +234,8 @@ export class BangerMakerState {
     this.mode = id;
     f.col = Math.min(this.steps - 1, Math.floor(f.col * this.steps / was));
     f.row = Math.min(this.rows - 1, f.row);
+    this.scrollToNotes();
+    if (f.area === 'grid') this.showRow(f.row);
     Audio.sfx('ui');
   }
 
@@ -203,38 +245,46 @@ export class BangerMakerState {
     const top = portrait ? portraitMenuSafeTop(28) : 6;
     const bottom = portrait ? portraitMenuSafeBottom(24) : H - 6;
     const titleH = portrait ? 70 : 24;
-    const ctrlH = portrait ? 66 : 38;
-    const gap = portrait ? 14 : 6;
+    const ctrlH = portrait ? 54 : 30;       // a selector: its label over its value
+    const buttonH = portrait ? 46 : 22;     // a button: one line
+    const gap = portrait ? 10 : 4;
     const x0 = 12;
     const width = W - 24;
     // The SIMPLE / ADVANCED switch, at the right of the title.
-    const modeW = portrait ? 236 : 150;
-    const modeH = portrait ? 46 : 18;
+    // Smaller than it was (Peter, 5 Oct 2026): the title row is not where the eye should go.
+    const modeW = portrait ? 176 : 112;
+    const modeH = portrait ? 36 : 15;
     const modeBox = { x: x0 + width - modeW, y: top + (titleH - modeH) / 2 - (portrait ? 6 : 2), w: modeW, h: modeH };
+    // BACK, the dance floor's round button (club.js), at the left of the title; the box is
+    // the tap target, a little wider than the disc.
+    const backR = portrait ? 20 * W / 390 : 9;
+    const backMid = modeBox.y + modeH / 2;
+    const backBox = { x: x0 - 4, y: backMid - backR * 1.4, w: backR * 2.8, h: backR * 2.8, cx: x0 + backR, cy: backMid, r: backR };
     // The note names stand in a column of their own, left of the grid.
     const labelW = portrait ? 44 : 24;
     // The four selectors: one row in landscape; two by two in portrait, where four abreast
     // leave no room between the arrows for BIG-ROOM HOUSE.
     const cols = this.pickerCols();
     const pickerRows = Math.ceil(PICKERS / cols);
-    const ctrlRows = pickerRows + 1;
-    const ctrlTop = bottom - ctrlRows * ctrlH - (ctrlRows - 1) * gap;
+    const buttonRows = Math.ceil(BUTTONS.length / cols);
+    const ctrlTop = bottom - pickerRows * (ctrlH + gap) - buttonRows * (buttonH + gap) + gap;
     const gridTop = top + titleH;
     const cellW = (width - labelW) / this.steps;
     // Portrait gives the grid everything between the title and the pickers: tall
     // squares are what a thumb wants.
-    const cellH = (ctrlTop - gap - gridTop) / this.rows;
-    const grid = { x: x0 + labelW, y: gridTop, w: width - labelW, h: cellH * this.rows, cellW, cellH, labelX: x0 };
+    const visible = this.visibleRows;
+    const cellH = (ctrlTop - gap - gridTop) / visible;
+    const grid = { x: x0 + labelW, y: gridTop, w: width - labelW, h: cellH * visible, cellW, cellH, labelX: x0, visible };
     const selectorW = (width - (cols - 1) * gap) / cols;
     const pickers = Array.from({ length: PICKERS }, (_, i) => ({
       x: x0 + (i % cols) * (selectorW + gap), y: ctrlTop + Math.floor(i / cols) * (ctrlH + gap), w: selectorW, h: ctrlH,
     }));
-    const by = ctrlTop + (ctrlRows - 1) * (ctrlH + gap);
-    const unit = (width - (BUTTONS.length - 1) * gap) / BUTTON_SHARES.reduce((a, b) => a + b, 0);
-    const buttons = [];
-    let bx = x0;
-    for (const share of BUTTON_SHARES) { buttons.push({ x: bx, y: by, w: unit * share, h: ctrlH }); bx += unit * share + gap; }
-    return { portrait, top, titleH, modeBox, grid, pickers, buttons };
+    // The buttons stand in the selectors' columns, so each lines up with the one above it.
+    const by = ctrlTop + pickerRows * (ctrlH + gap);
+    const buttons = BUTTONS.map((_, i) => ({
+      x: x0 + (i % cols) * (selectorW + gap), y: by + Math.floor(i / cols) * (buttonH + gap), w: selectorW, h: buttonH,
+    }));
+    return { portrait, top, titleH, modeBox, backBox, grid, pickers, buttons };
   }
 
   // ------------------------------------------------------------------ the loop
@@ -261,7 +311,7 @@ export class BangerMakerState {
       if (s16 % 4 === 0) Audio.voiceSfx('kickMegamix', { gain: 0.45, at });
       else if (s16 % 4 === 2) Audio.voiceSfx('hatEngine', { gain: 0.3, at });
       if (s16 % 8 === 4) Audio.voiceSfx('ds808Clap', { gain: 0.2, at });
-      if (semis[s16] >= 0) Audio.voiceSfx(this.riffVoice, { freq: semitoneHz(semis[s16]), seconds: lengths[Math.floor(s16 / (16 / this.steps))] * stepS * 0.9, gain: RIFF_GAIN, at });
+      if (semis[s16] != null) Audio.voiceSfx(this.riffVoice, { freq: semitoneHz(semis[s16]), seconds: lengths[Math.floor(s16 / (16 / this.steps))] * stepS * 0.9, gain: RIFF_GAIN, at });
     }
     const pos = Math.floor((now - this.loopT0) / stepS);
     this.playStep = pos >= 0 ? Math.floor((pos % 32) * this.steps / 32) : -1;
@@ -295,9 +345,20 @@ export class BangerMakerState {
 
   say(text) { this.message = text; this.messageT = 2; }
 
+  /** EXPERIMENT: a new FORMULA and ELEMENT (never the ones on show), and any VOLTAGE and DNA. The notes stay. */
+  experiment() {
+    const other = (list, cur) => {
+      const rest = list.filter((it) => it.id !== cur);
+      return (rest.length ? rest : list)[Math.floor(this.random() * (rest.length || list.length))].id;
+    };
+    this.setStyle(other(MAKER_STYLES, this.style));
+    this.mood = other(MAKER_MOODS, this.mood);
+    this.setVoltage(Math.floor(this.random() * BANGER_VOLTAGES.length), false);
+    this.setVariation(MAKER_VARIATIONS[Math.floor(this.random() * MAKER_VARIATIONS.length)].id);
+  }
+
   /** The make-it button's word: BRING TO LIFE for a new banger, RECHARGE when remaking one. */
   actionWord() { return this.recharging ? 'RECHARGE' : 'BRING TO LIFE'; }
-  actionHint() { return this.recharging ? 'Remake this banger' : 'Create a banger'; }
 
   // ------------------------------------------------------------------ the chooser
   // The centre opens the full choice list; the arrows at either end step the selection.
@@ -393,9 +454,9 @@ export class BangerMakerState {
       this.notes = luckyNotes(this.mode);
       this.lengths = normaliseLengths(null, this.notes, this.mode);
       Audio.sfx('uiConfirm');
-    } else if (name === 'BACK') {
-      Audio.sfx('ui');
-      this.onDone();
+    } else if (name === 'EXPERIMENT') {
+      this.experiment();
+      Audio.sfx('uiConfirm');
     } else if (!hasNotes(this.notes)) {
       Audio.sfx('uiBad');
       this.say('PUT SOME NOTES IN FIRST');
@@ -438,26 +499,34 @@ export class BangerMakerState {
     const dx = (Input.pressed('right') ? 1 : 0) - (Input.pressed('left') ? 1 : 0);
     const dy = (Input.pressed('down') ? 1 : 0) - (Input.pressed('up') ? 1 : 0);
     if (!dx && !dy) return false;
-    if (f.area === 'mode') {
-      if (dx) { this.setMode(dx < 0 ? 'simple' : 'advanced'); return true; }
-      if (dy > 0) { f.area = 'grid'; f.row = 0; }
+    if (f.area === 'back') {
+      if (dx > 0) f.area = 'mode';
+      if (dy > 0) { f.area = 'grid'; f.row = this.scrollRow; f.col = 0; }
+    } else if (f.area === 'mode') {
+      // left past SIMPLE reaches the BACK arrow
+      if (dx < 0 && this.mode === 'simple') f.area = 'back';
+      else if (dx) { this.setMode(dx < 0 ? 'simple' : 'advanced'); return true; }
+      if (dy > 0) { f.area = 'grid'; f.row = this.scrollRow; }
     } else if (f.area === 'grid') {
       if (dx) f.col = (f.col + dx + this.steps) % this.steps;
       if (dy < 0 && f.row === 0) f.area = 'mode';
       else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(this.pickerCols() - 1, Math.floor(f.col * this.pickerCols() / this.steps)); }
-      else if (dy) f.row = Math.max(0, Math.min(this.rows - 1, f.row + dy));
+      else if (dy) { f.row = Math.max(0, Math.min(this.rows - 1, f.row + dy)); this.showRow(f.row); }
     } else if (f.area === 'picker') {
       if (dx) { this.cycle(f.picker, dx); return true; }
       const cols = this.pickerCols();
       if (dy < 0 && f.picker >= cols) f.picker -= cols;
       else if (dy < 0) {
-        f.area = 'grid'; f.row = this.rows - 1;
+        f.area = 'grid'; f.row = this.scrollRow + this.visibleRows - 1;
         f.col = Math.floor(this.steps * (f.picker + 0.5) / cols);
       } else if (dy > 0 && f.picker + cols < PICKERS) f.picker += cols;
-      else if (dy > 0) { f.area = 'button'; f.button = GENER8; }
+      else if (dy > 0) { f.area = 'button'; f.button = f.picker % cols; }
     } else if (f.area === 'button') {
+      const cols = this.pickerCols();
       if (dx) f.button = (f.button + dx + BUTTONS.length) % BUTTONS.length;
-      if (dy < 0) { f.area = 'picker'; f.picker = PICKERS - 1; }
+      if (dy > 0 && f.button + cols < BUTTONS.length) f.button += cols;
+      else if (dy < 0 && f.button >= cols) f.button -= cols;
+      else if (dy < 0) { f.area = 'picker'; f.picker = PICKERS - cols + f.button; }
     }
     Audio.sfx('ui');
     return true;
@@ -489,13 +558,16 @@ export class BangerMakerState {
 
   pointerHit(L, x, y) {
     const inside = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    if (inside(L.backBox)) return { area: 'back' };
     if (inside(L.modeBox)) return { area: 'mode', mode: x < L.modeBox.x + L.modeBox.w / 2 ? 'simple' : 'advanced' };
     const g = L.grid;
+    // the note names are the handle that scrolls the grid
+    if (x >= g.labelX - 12 && x < g.x && y >= g.y && y < g.y + g.h) return { area: 'names' };
     if (inside(g)) {
       return {
         area: 'grid',
         col: Math.min(this.steps - 1, Math.floor((x - g.x) / g.cellW)),
-        row: Math.min(this.rows - 1, Math.floor((y - g.y) / g.cellH)),
+        row: Math.min(this.rows - 1, this.scrollRow + Math.floor((y - g.y) / g.cellH)),
       };
     }
     for (let i = 0; i < L.pickers.length; i++) {
@@ -515,15 +587,28 @@ export class BangerMakerState {
     const f = this.focus;
     if (this.chooser) { this.updateChooser(L); Input.endFrame(); return; }
     this.moveFocus();
+    this.wheelAcc += Input.wheelY;
+    while (Math.abs(this.wheelAcc) >= WHEEL_ROW) {
+      const dir = Math.sign(this.wheelAcc);
+      this.scrollRow = this.scrollRow + dir;
+      this.wheelAcc -= dir * WHEEL_ROW;
+    }
+    if (this.scrollDrag) {
+      if (Input.pointer.down) this.scrollRow = this.scrollDrag.from - (Input.pointer.y - this.scrollDrag.y) / L.grid.cellH;
+      else this.scrollDrag = null;
+    }
     if (Input.pressed('confirm')) {
-      if (f.area === 'mode') this.setMode(this.mode === 'simple' ? 'advanced' : 'simple');
+      if (f.area === 'back') { Audio.sfx('ui'); this.onDone(); }
+      else if (f.area === 'mode') this.setMode(this.mode === 'simple' ? 'advanced' : 'simple');
       else if (f.area === 'grid') this.toggle(f.col, f.row);
       else if (f.area === 'picker') this.openChooser(f.picker);
       else this.press(f.button);
     }
     if (Input.pressed('pointer')) {
       const hit = this.pointerHit(L, Input.pointer.x, Input.pointer.y);
-      if (hit?.area === 'mode') { f.area = 'mode'; this.setMode(hit.mode); }
+      if (hit?.area === 'back') { Audio.sfx('ui'); this.onDone(); }
+      else if (hit?.area === 'names') this.scrollDrag = { y: Input.pointer.y, from: this.scrollRow };
+      else if (hit?.area === 'mode') { f.area = 'mode'; this.setMode(hit.mode); }
       else if (hit?.area === 'grid') {
         Object.assign(f, hit);
         this.toggle(hit.col, hit.row);
@@ -570,8 +655,10 @@ export class BangerMakerState {
     ctx.fillStyle = C_BG;
     ctx.fillRect(0, 0, W, H);
     const titleMid = L.top + L.titleH / 2 - (L.portrait ? 6 : 2);
-    portraitMenuText(ctx, this.from ? 'EDIT BANGER' : 'NEW BANGER', L.grid.labelX, textYForMid(titleMid, portraitMenuScale(1.6), 'title'), '#fff', 1.6, 'title');
     const showFocus = !Input.usingTouch;
+    this.drawBack(ctx, L, showFocus);
+    const titleX = L.backBox.cx + L.backBox.r + (L.portrait ? 18 : 8);
+    portraitMenuText(ctx, this.from ? 'EDIT BANGER' : 'NEW BANGER', titleX, textYForMid(titleMid, portraitMenuScale(1.6), 'title'), '#fff', 1.6, 'title');
     this.drawModeSwitch(ctx, L, showFocus);
     this.drawGrid(ctx, L.grid, L.portrait);
     // CHARGING... and the like float over the middle of the grid: the title row is full.
@@ -603,16 +690,10 @@ export class BangerMakerState {
       const sel = showFocus && this.focus.area === 'button' && this.focus.button === i;
       const plate = sel ? MENU_ROW_HILITE : (i === GENER8 ? 'rgba(72,224,200,0.16)' : BACK_BUTTON_PLATE);
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), plate);
-      const titleMid = r.y + r.h * (L.portrait ? 0.38 : 0.34);
-      const hintMid = r.y + r.h * (L.portrait ? 0.72 : 0.70);
       const label = i === GENER8 ? this.actionWord() : BUTTONS[i];
-      const hint = i === GENER8 ? this.actionHint() : BUTTON_HINTS[i];
-      const s = portraitMenuFit(label, i === GENER8 ? 1.35 : 1.1, r.w - 14);
-      const hintSize = portraitMenuFit(hint, L.portrait ? 0.72 : 0.66, r.w - 14);
-      portraitMenuTextCentered(ctx, label, r.x + r.w / 2, textYForMid(titleMid, portraitMenuScale(s)),
+      const s = portraitMenuFit(label, i === GENER8 ? 1.2 : 1, r.w - 14);
+      portraitMenuTextCentered(ctx, label, r.x + r.w / 2, textYForMid(r.y + r.h / 2, portraitMenuScale(s)),
         sel ? C_SEL : (i === GENER8 ? C_NOTE : C_TEXT), s);
-      portraitMenuTextCentered(ctx, hint, r.x + r.w / 2, textYForMid(hintMid, portraitMenuScale(hintSize)),
-        sel ? '#d3c0f4' : '#89899a', hintSize);
     });
     if (this.chooser) this.drawChooser(ctx, L);
   }
@@ -626,6 +707,21 @@ export class BangerMakerState {
     portraitMenuTextCentered(ctx, status, W / 2, textYForMid(y, portraitMenuScale(s)), C_NOTE, s);
   }
 
+  /** BACK, drawn as the dance floor draws its own (club.js): a dark disc, a faint rim, a chevron. */
+  drawBack(ctx, L, showFocus) {
+    const { cx, cy, r } = L.backBox;
+    const u = L.portrait ? 1.9 * W / 390 : 1;
+    const focused = showFocus && this.focus.area === 'back';
+    ctx.save();
+    ctx.fillStyle = 'rgba(11,11,20,0.78)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = focused ? C_SEL : 'rgba(200,200,216,0.45)'; ctx.lineWidth = 0.8 * u;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = C_TEXT; ctx.lineWidth = 1.6 * u; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(cx + r * 0.15, cy - r * 0.42); ctx.lineTo(cx - r * 0.3, cy); ctx.lineTo(cx + r * 0.15, cy + r * 0.42); ctx.stroke();
+    ctx.restore();
+  }
+
   drawModeSwitch(ctx, L, showFocus) {
     const b = L.modeBox;
     const r = plateRadius(b.h, L.portrait);
@@ -636,7 +732,7 @@ export class BangerMakerState {
       const on = this.mode === id;
       if (on) drawMenuRow(ctx, seg.x + 2, b.y + 2, seg.w - 4, b.h - 4, Math.max(0, r - 2), 'rgba(72,224,200,0.22)');
       const label = RIFF_MODES[id].label;
-      const s = portraitMenuFit(label, 0.9, seg.w - 10);
+      const s = portraitMenuFit(label, 0.72, seg.w - 8);
       portraitMenuTextCentered(ctx, label, seg.x + seg.w / 2, textYForMid(b.y + b.h / 2, portraitMenuScale(s)),
         on ? C_NOTE : (focused ? C_SEL : '#7a7a8c'), s);
     });
@@ -649,9 +745,14 @@ export class BangerMakerState {
     const per = 32 / steps;                  // sixteenths per column
     const pad = g.cellW > 20 ? 1.5 : 1;
     const labelS = Math.min(0.85, g.cellH / (portrait ? 20 : 12));
-    for (let vr = 0; vr < rows; vr++) {
+    // Only the rows on show (landscape scrolls); `top` is the first, a visual row.
+    const top = this.scrollRow;
+    const shown = [];
+    for (let vr = top; vr < top + g.visible; vr++) shown.push(vr);
+    const yOf = (vr) => g.y + (vr - top) * g.cellH;
+    for (const vr of shown) {
       const row = rows - 1 - vr;
-      const mid = g.y + (vr + 0.5) * g.cellH;
+      const mid = yOf(vr) + g.cellH / 2;
       portraitMenuText(ctx, rowName(mode, row), g.labelX, textYForMid(mid, portraitMenuScale(labelS)),
         isSharp(mode, row) ? cellColour(mode, row, 0.9) : noteColour(mode, row), labelS);
     }
@@ -663,10 +764,10 @@ export class BangerMakerState {
       const playing = col === this.playStep;
       // Beats alternate in shade so the bar reads in fours.
       const beatLift = Math.floor((col * per) / 4) % 2 === 0 ? 0.05 : 0;
-      for (let vr = 0; vr < rows; vr++) {
+      for (const vr of shown) {
         const row = rows - 1 - vr;
         const fill = cellColour(mode, row, (isSharp(mode, row) ? 0.22 : 0.16) + beatLift + (playing ? 0.12 : 0));
-        drawMenuRow(ctx, x + pad, g.y + vr * g.cellH + pad, w, h, radius, fill);
+        drawMenuRow(ctx, x + pad, yOf(vr) + pad, w, h, radius, fill);
       }
     }
     const lengths = normaliseLengths(this.lengths, this.notes, mode);
@@ -676,8 +777,9 @@ export class BangerMakerState {
       const row = this.notes[col];
       if (row < 0) continue;
       const vr = rows - 1 - row;
+      if (vr < top || vr >= top + g.visible) continue;
       const x = g.x + col * g.cellW + pad;
-      const y = g.y + vr * g.cellH + pad;
+      const y = yOf(vr) + pad;
       const span = Math.max(w, lengths[col] / per * g.cellW - 2 * pad);
       const first = Math.min(span, g.x + g.w - x);
       drawMenuRow(ctx, x, y, first, h, Math.min(radius, first / 2),
@@ -689,11 +791,18 @@ export class BangerMakerState {
     // The bar line.
     ctx.fillStyle = 'rgba(201,160,255,0.55)';
     ctx.fillRect(g.x + g.w / 2 - 1, g.y, 2, g.h);
-    if (!Input.usingTouch && this.focus.area === 'grid') {
+    // More rows than show: a slim bar left of the names says where the window is.
+    if (g.visible < rows) {
+      const tx = g.labelX - 7;
+      drawMenuRow(ctx, tx, g.y, 3, g.h, 1.5, 'rgba(201,160,255,0.12)');
+      drawMenuRow(ctx, tx, g.y + g.h * top / rows, 3, g.h * g.visible / rows, 1.5, 'rgba(201,160,255,0.55)');
+    }
+    const fr = this.focus.row;
+    if (!Input.usingTouch && this.focus.area === 'grid' && fr >= top && fr < top + g.visible) {
       ctx.save();
       ctx.strokeStyle = C_SEL;
       ctx.lineWidth = 2;
-      ctx.strokeRect(g.x + this.focus.col * g.cellW + 1, g.y + this.focus.row * g.cellH + 1, g.cellW - 2, g.cellH - 2);
+      ctx.strokeRect(g.x + this.focus.col * g.cellW + 1, yOf(this.focus.row) + 1, g.cellW - 2, g.cellH - 2);
       ctx.restore();
     }
   }

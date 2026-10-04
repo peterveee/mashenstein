@@ -8351,35 +8351,6 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// Eight regular Lab choreographies per hero, plus Lorenzo's occasional moonwalk.
-{
-  const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
-    'CURRENT LAB MOVES — eight regular dances per hero, all available in the club, plus Lorenzo’s occasional side-on moonwalk. Includes three new signature routines for each hero, Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
-    + 'All moves share a beat clock; the four lights count the bar. Tempo is a silent preview. '
-    + 'Use ANIMATE to pause or SLOW to inspect the joints. Skirted heroes show a sample of the quiet legwork that the club varies during playback.',
-    '2026-10-05');
-  let bpm = 128;
-  const controls = document.createElement('label');
-  controls.style.cssText = 'display:flex;align-items:center;gap:12px;margin:16px 0;color:#7df3d1';
-  const tempo = document.createElement('input');
-  tempo.type = 'range'; tempo.min = '70'; tempo.max = '180'; tempo.value = String(bpm);
-  tempo.setAttribute('aria-label', 'Dance preview tempo');
-  const readout = document.createElement('span');
-  readout.textContent = `${bpm} BPM`;
-  tempo.addEventListener('input', () => { bpm = Number(tempo.value); readout.textContent = `${bpm} BPM`; });
-  controls.append('PREVIEW TEMPO', tempo, readout); s.append(controls);
-  for (const hero of Object.values(HERO_BY_ID)) {
-    const title = document.createElement('h3'); title.textContent = hero.short;
-    const grid = document.createElement('div'); grid.className = 'grid';
-    s.append(title, grid);
-    for (const candidate of HERO_DANCE_LAB_CANDIDATES.filter(c => c.hero === hero.id)) {
-      tile(grid, `${hero.short} ${candidate.letter} — ${candidate.name}`, candidate.description,
-        240, 176, (ctx, t) => drawHeroDanceCard(ctx, candidate, t * bpm / 60),
-        { animated: true, hires: 3, displayScale: 1.5 });
-    }
-  }
-}
-
 // The club's mirror ball: today's against five new looks (Peter, 3 Oct 2026: "it could
 // look a lot nicer"). Each at the size it hangs in the club, and again close up.
 {
@@ -8500,6 +8471,35 @@ function cryptStyleTiles(grid, tag, cand) {
       const beat = t * BPM / 60;
       c.paint(ctx, 100, 104, 70, { t, spin: beat * 0.9, dir: 1, squash: Math.max(0, 1 - (beat % 4) / 0.3), accent: '#3fe0ff' });
     }, { animated: true });
+  }
+}
+
+// Eight regular Lab choreographies per hero, plus Lorenzo's occasional moonwalk.
+{
+  const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
+    'CURRENT LAB MOVES — eight regular dances per hero, all available in the club, plus Lorenzo’s occasional side-on moonwalk. Includes three new signature routines for each hero, Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
+    + 'All moves share a beat clock; the four lights count the bar. Tempo is a silent preview. '
+    + 'Use ANIMATE to pause or SLOW to inspect the joints. Skirted heroes show a sample of the quiet legwork that the club varies during playback.',
+    '2026-10-05');
+  let bpm = 128;
+  const controls = document.createElement('label');
+  controls.style.cssText = 'display:flex;align-items:center;gap:12px;margin:16px 0;color:#7df3d1';
+  const tempo = document.createElement('input');
+  tempo.type = 'range'; tempo.min = '70'; tempo.max = '180'; tempo.value = String(bpm);
+  tempo.setAttribute('aria-label', 'Dance preview tempo');
+  const readout = document.createElement('span');
+  readout.textContent = `${bpm} BPM`;
+  tempo.addEventListener('input', () => { bpm = Number(tempo.value); readout.textContent = `${bpm} BPM`; });
+  controls.append('PREVIEW TEMPO', tempo, readout); s.append(controls);
+  for (const hero of Object.values(HERO_BY_ID)) {
+    const title = document.createElement('h3'); title.textContent = hero.short;
+    const grid = document.createElement('div'); grid.className = 'grid';
+    s.append(title, grid);
+    for (const candidate of HERO_DANCE_LAB_CANDIDATES.filter(c => c.hero === hero.id)) {
+      tile(grid, `${hero.short} ${candidate.letter} — ${candidate.name}`, candidate.description,
+        240, 176, (ctx, t) => drawHeroDanceCard(ctx, candidate, t * bpm / 60),
+        { animated: true, hires: 3, displayScale: 1.5 });
+    }
   }
 }
 

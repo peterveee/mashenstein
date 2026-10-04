@@ -1,11 +1,11 @@
 // Energy changes arrangement density, never the tune, core rhythm or master gain.
 import assert from 'node:assert/strict';
 import { generateBanger, normaliseBangerOptions } from '../tools/lib/banger/index.js';
+import { energyPeaks, DECORATION } from '../tools/lib/banger/energy.js';
 import { BANGER_STYLES } from '../tools/lib/banger/styles/index.js';
 import { expandOrder } from '../src/data/arrangements.js';
 import { riffFromNotes, DEFAULT_SIMPLE } from '../src/game/banger/riff.js';
 const riff = riffFromNotes(DEFAULT_SIMPLE);
-const drops = new Set(['drop', 'drop2', 'drop3', 'reprise']);
 function part(out, role) {
   const lane = out.laneOf[role];
   return expandOrder(out.bank.order).map(({ sec, half }) => {
@@ -32,10 +32,13 @@ for (const style of BANGER_STYLES) {
         assert.deepEqual(part(out, role), part(full, role), `${style.id}: ${out.banger.options.energy} keeps ${role}`);
       }
     }
-    assert(Object.keys(lean.laneOf).length < Object.keys(full.laneOf).length, `${style.id}: Lean has fewer layers`);
+    // Fewer layers wherever Full has decoration to shed; a style with none (Downtempo) is already lean.
+    const decorated = Object.keys(full.laneOf).some((role) => DECORATION.includes(role));
+    assert(decorated ? Object.keys(lean.laneOf).length < Object.keys(full.laneOf).length
+      : Object.keys(lean.laneOf).length === Object.keys(full.laneOf).length, `${style.id}: Lean has fewer layers`);
     assert.notDeepEqual(huge.bank, full.bank, `${style.id}: Huge adds music`);
     assert.notDeepEqual(maximum.bank, huge.bank, `${style.id}: Maximum intensifies every drop`);
-    const final = full.form.findLast((s) => drops.has(s.role));
+    const final = energyPeaks(full.form).at(-1);
     for (const role of new Set([...Object.keys(full.laneOf), ...Object.keys(huge.laneOf)])) {
       const a = part(full, role); const b = part(huge, role);
       for (const sec of full.form) {
@@ -59,7 +62,8 @@ const { bangerState, saveDraft, keepBanger, reviseBanger, songFor } = await impo
 const { makeBanger } = await import('../src/game/banger/make.js');
 const storage = { data: {}, persist() {} };
 assert.equal(bangerState(storage).draft.energy, 'full');
-saveDraft({ ...bangerState(storage).draft, energy: 'huge' }, storage);
+// The draft's energy is its Voltage's (voltage.js): Surge is Huge.
+saveDraft({ ...bangerState(storage).draft, voltage: 2 }, storage);
 assert.equal(bangerState(storage).draft.energy, 'huge');
 const recipe = { notes: DEFAULT_SIMPLE, style: 'trance', mood: 'uplifting', seed: 3, bpm: 138 };
 const full = keepBanger(recipe, storage);

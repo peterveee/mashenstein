@@ -18,6 +18,7 @@ import {
   EXPRESSION_ROLES, EXPRESSION_POLICY, modifyBanger, describeModify, bangerPrints,
 } from '../tools/lib/banger/index.js';
 import { BANGER_STYLES } from '../tools/lib/banger/styles/index.js';
+import { balanceForStyle } from '../tools/lib/banger/style-balance.js';
 import { L, packBank } from '../tools/lib/banger/theory.js';
 import { songSlots, laneKeysOf } from '../tools/lib/banger/modify.js';
 import { voiceOfLane } from '../tools/lib/banger/expression.js';
@@ -664,11 +665,13 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   const labSet = (r) => (labSoundSet(r.style, r.seed, r.voltage) !== 'style' ? { parts: { soundSet: labSoundSet(r.style, r.seed, r.voltage) } } : {});
   const direct = (r, options) => generateBanger({ riff: riffFromNotes(r.notes, hookSoundFor(r.style, r.mood, r.seed, r.voltage), r.mode), seed: r.seed,
     options: { style: r.style, mood: r.mood, energy: 'full', ...(spotFor(r.style, r.seed) && Object.keys(spotFor(r.style, r.seed)).length ? { spot: spotFor(r.style, r.seed) } : {}), ...labSet(r), ...options } });
-  const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + RIFF_TRIM_DB) * 10) / 10; return o; };
+  // The Lab's hook trim: the style's own riffTrimDb (style-balance.js) where it sets one, RIFF_TRIM_DB otherwise.
+  const hookTrim = (style) => { const t = balanceForStyle(BANGER_STYLES.find((st) => st.id === style)).riffTrimDb; return Number.isFinite(t) ? t : RIFF_TRIM_DB; };
+  const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; return o; };
 
-  assert(RECIPE_EXPRESSION === 2 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 3 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 2 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 3 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
@@ -826,14 +829,14 @@ const plannedAt = (fixture, lane, set) => createLaneView({
     const rec = keepBanger({ notes, mode: 'simple', style: 'shibuya', mood: 'dreamy', seed: 4, bpm: 130, wild: true }, s);
     const before = songFor(rec);
     reviseBanger(rec, { notes, style: 'shibuya', mood: 'dreamy', seed: 5, bpm: 130, wild: true }, s);
-    // At 2 the take draws its own lead, so the slide is there exactly when the drawn sound takes one.
+    // From 2 the take draws its own lead, so the slide is there exactly when the drawn sound takes one.
     const revisedSong = songFor(rec);
-    assert(rec.expression === 2 && !!hookOf(revisedSong).noteFx?.portamento === autoPortamentoSupport(VOICES[revisedSong.mix.voice.leadVoice]).supported
-      && revisedSong !== before, 'a revised recipe opts into expression version 2');
+    assert(rec.expression === RECIPE_EXPRESSION && !!hookOf(revisedSong).noteFx?.portamento === autoPortamentoSupport(VOICES[revisedSong.mix.voice.leadVoice]).supported
+      && revisedSong !== before, 'a revised recipe opts into the current expression version');
     reviseBanger(rec, { notes, style: 'shibuya', mood: 'dreamy', seed: 6, bpm: 130, wild: true, expression: 0 }, s);
     assert(!('expression' in rec) && !hookOf(songFor(rec)).noteFx?.portamento, 'unless it is told not to, which leaves the recipe as a legacy one');
     reviseBanger(rec, { notes, style: 'shibuya', mood: 'dreamy', seed: 7, bpm: 130, wild: false }, s);
-    assert(rec.expression === 2 && !portamentoLanes(songFor(rec).mix).length, 'Go Wild off is no slide, whatever the recipe says');
+    assert(rec.expression === RECIPE_EXPRESSION && !portamentoLanes(songFor(rec).mix).length, 'Go Wild off is no slide, whatever the recipe says');
   }
   {
     // the starter is untouched: it plays the file as saved, and has no expression of its own

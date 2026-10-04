@@ -26,9 +26,18 @@ const PROFILES = {
   reggaeton: { perc: 'congas', keep: ['counter'] },
   chipstep: { perc: 'tambourine' },
 };
-const DECORATION = ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',
+export const DECORATION = ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',
   'shaker', 'tambourine', 'congas', 'cowbell', 'ride'];
 const DROPS = new Set(['drop', 'drop2', 'drop3', 'reprise']);
+
+/**
+ * The sections Huge and Maximum lift: the drops — or, in a form with none (Deep House and
+ * Downtempo are one long groove), the grooves that carry the hook at full strength.
+ */
+export function energyPeaks(form) {
+  const drops = form.filter((s) => DROPS.has(s.role));
+  return drops.length ? drops : form.filter((s) => s.hook);
+}
 
 /** Applied before a section's key lift. No random draws, fader or core-part edits. */
 export function arrangeEnergy({ options, style, form, scale }, sec, bars, events) {
@@ -42,9 +51,10 @@ export function arrangeEnergy({ options, style, form, scale }, sec, bars, events
     }
     return;
   }
-  const final = sec === form.findLast((s) => DROPS.has(s.role));
+  const peaks = energyPeaks(form);
+  const final = sec === peaks.at(-1);
   const maximum = energy === 'maximum';
-  const activeDrop = maximum ? DROPS.has(sec.role) : final;
+  const activeDrop = maximum ? peaks.includes(sec) : final;
   const build = ['build', 'build2', 'preChorus'].includes(sec.role);
   if (!activeDrop && !build) return;
   const pattern = style.drums.perc?.[profile.perc];

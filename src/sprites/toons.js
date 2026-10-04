@@ -8883,6 +8883,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     footF = pose.dance.feet[0].map(v => v * u);
     footB = pose.dance.feet[1].map(v => v * u);
     [ankleF, ankleB] = pose.dance.ankles || [0, 0];
+    if (Array.isArray(pose.dance.kneeDirections)) {
+      const [front, back] = pose.dance.kneeDirections;
+      if (front === 1 || front === -1) kneeF = front;
+      if (back === 1 || back === -1) kneeB = back;
+    }
     legSeg = Math.max(legSeg, legL * (pose.dance.legFlex ?? 0.48));
     if (Number.isFinite(pose.dance.legSegMax)) {
       legSeg = Math.min(legSeg, legL * Math.max(0, pose.dance.legSegMax));

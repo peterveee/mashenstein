@@ -22,6 +22,7 @@ export function groundDanceFeet(pose) {
 }
 export function tameSkirt(pose, legs, beat) {
   const f = ((beat % 1) + 1) % 1;
+  const hopLegFlex = Number(pose.dance?.hopLegFlex);
   const planted = [[SKIRT_STANCE, 0], [-SKIRT_STANCE, 0]];
   // No feet: the painter stands them as it does at idle, legs straight under the hem
   // (a dance's feet slacken the legs for its kicks, and bowed knees show under a kilt).
@@ -50,6 +51,7 @@ export function tameSkirt(pose, legs, beat) {
     bounce,
     squash,
     ...(legs === 'stand' ? { tilt: 0 } : {}),
-    dance: { ...pose.dance, feet, ankles, ...(legs === 'hop' ? { legFlex: 0.42 } : {}) },
+    dance: { ...pose.dance, feet, ankles,
+      ...(legs === 'hop' ? { legFlex: Number.isFinite(hopLegFlex) ? hopLegFlex : 0.42 } : {}) },
   });
 }

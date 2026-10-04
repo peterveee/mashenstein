@@ -205,10 +205,14 @@ export function heroDancePose(candidate, beat) {
     // straight instead of letting the default humanoid bend bow them outward.
     pose.dance = { ...pose.dance, legSegMax: 0.43 };
   } else if (softerHopC.has(candidate.hero) && candidate.letter === 'C' && pose.dance?.feet) {
-    // Their C hops keep B33P's spring, with a smaller knee fold and foot
-    // spread. The skirted trio's extra spread is read by tameSkirt below.
-    pose.dance = { ...pose.dance, legSegMax: candidate.hero === 'clara' ? 0.43 : 0.45,
-      ...(skirted.has(candidate.hero) ? { hopKneeSpread: 0.02 } : {}) };
+    // Their C hops keep B33P's spring, with a small foot spread. Clara gets an
+    // actual landing fold: the legs extend in the air, then soften at touchdown.
+    const hopPhase = Number.isFinite(beat) ? ((beat % 1) + 1) % 1 : 0;
+    const hopLift = Math.sin(hopPhase * Math.PI);
+    pose.dance = { ...pose.dance, legSegMax: candidate.hero === 'clara' ? 0.8 : 0.45,
+      ...(candidate.hero === 'clara' ? { hopLegFlex: 0.5 + 0.24 * (1 - hopLift) } : {}),
+      ...(skirted.has(candidate.hero) ? { hopKneeSpread: 0.02 } : {}),
+      ...(candidate.hero === 'clara' ? { kneeDirections: [1, -1] } : {}) };
   }
   return groundDanceFeet(pose);
 }

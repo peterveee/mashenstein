@@ -11,16 +11,17 @@
 // 2026: the pencil opens it in advanced mode), the style and mood — so the pencil can open it. Editing it never overwrites it: BRING TO LIFE keeps
 // a NEW song, made by the game's own plain recipe (Peter, 3 Oct 2026).
 import * as NEON_ORBIT from '../../data/bangers/neon-orbit-banger.js';
+import { advancedRow } from './riff.js';
 
 /**
  * The desk riff (two bars of eighth notes, C6 to B6) on the ADVANCED grid — sixteenths on
- * every semitone, A4 to A5 — taken down a whole tone, which fits all nine notes in the
- * grid's octave with the tune's shape exactly as written: each entry is a note's semitone
- * above A4, on the sixteenth it starts on.
+ * every semitone, then A4 to A5 — taken down a whole tone, which fitted all nine notes in the
+ * grid's octave with the tune's shape exactly as written: each pair is the sixteenth a note
+ * starts on and its semitone above A4.
  */
 const NEON_ORBIT_GRID = (() => {
   const g = new Array(32).fill(-1);
-  [[0, 7], [4, 2], [8, 1], [12, 9], [16, 6], [20, 4], [22, 12], [26, 4], [30, 10]].forEach(([at, semi]) => { g[at] = semi; });
+  [[0, 7], [4, 2], [8, 1], [12, 9], [16, 6], [20, 4], [22, 12], [26, 4], [30, 10]].forEach(([at, semi]) => { g[at] = advancedRow(semi); });
   return Object.freeze(g);
 })();
 

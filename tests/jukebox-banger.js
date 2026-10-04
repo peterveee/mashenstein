@@ -20,7 +20,7 @@ const {
   bangerState, keepBanger, reviseBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger, lastPlayedBanger,
 } = await import('../src/game/banger/store.js');
 const { BangerMakerState, RIFF_VOICES } = await import('../src/game/banger/maker.js');
-const { BANGER_VOLTAGES } = await import('../src/game/banger/voltage.js');
+const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
 const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor } = await import('../src/game/banger/club-fx.js');
@@ -34,11 +34,13 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------- the grid
 {
   const S = RIFF_MODES.simple; const A = RIFF_MODES.advanced;
-  assert(S.steps === 16 && S.semis.length === 8 && S.len === 2, 'SIMPLE is eighth notes on the eight notes of A minor');
-  assert(A.steps === 32 && A.semis.length === 13 && A.len === 1, 'ADVANCED is sixteenth notes on all thirteen semitones');
-  assert(Math.abs(rowHz('advanced', 0) - 440) < 1e-9 && Math.abs(rowHz('advanced', 12) - 880) < 1e-9
-    && Math.abs(rowHz('simple', 7) - 880) < 1e-9 && rowName('advanced', 1) === 'A#' && rowName('simple', 1) === 'B',
-  'both span A4 to A5');
+  assert(S.steps === 16 && S.semis.length === 11 && S.len === 2, 'SIMPLE is eighth notes on the eleven notes of A minor from G4 to C6');
+  assert(A.steps === 32 && A.semis.length === 18 && A.len === 1, 'ADVANCED is sixteenth notes on all eighteen semitones from G4 to C6');
+  assert(Math.abs(rowHz('advanced', 2) - 440) < 1e-9 && Math.abs(rowHz('advanced', 14) - 880) < 1e-9
+    && Math.abs(rowHz('simple', 1) - 440) < 1e-9 && Math.abs(rowHz('simple', 8) - 880) < 1e-9
+    && rowName('advanced', 0) === 'G' && rowName('advanced', 3) === 'A#' && rowName('advanced', 17) === 'C'
+    && rowName('simple', 0) === 'G' && rowName('simple', 2) === 'B' && rowName('simple', 10) === 'C',
+  'both span G4 to C6, A4 a row or two up');
 }
 {
   let n = normaliseNotes(null);
@@ -55,20 +57,22 @@ function assert(cond, msg) {
   assert(riff.bars === 2 && riff.grid === 16 && tokens.every((t) => t.length === 16),
     'the riff is two bars of sixteen sixteenths, the shape the desk reads off a song');
   assert(tokens[0][0] === 'A4:2' && tokens[0][1] === '.' && tokens[0][4] === 'C5:2', 'a SIMPLE step is an eighth note of the scale');
-  const adv = riffFromNotes([0, 1, -1, 4], 'simpleSquare', 'advanced').parts[0].bars[0].split(' ');
-  assert(adv[0] === 'A4:1' && adv[1] === 'A#4:1' && adv[3] === 'C#5:1', 'an ADVANCED step is a sixteenth, sharps included');
+  const adv = riffFromNotes([2, 3, -1, 6, 0, 17], 'simpleSquare', 'advanced').parts[0].bars[0].split(' ');
+  assert(adv[0] === 'A4:1' && adv[1] === 'A#4:1' && adv[3] === 'C#5:1' && adv[4] === 'G4:1' && adv[5] === 'C6:1',
+    'an ADVANCED step is a sixteenth, sharps included, G4 to C6');
 }
 {
   // ADVANCED → SIMPLE: first note in each eighth, to the nearest scale note (a tie goes down).
   const adv = normaliseNotes(null, 'advanced');
-  adv[0] = 0; adv[1] = 5;          // A then D in the first eighth: A wins
-  adv[3] = 4;                       // C# on the off-sixteenth of the second eighth → C (tie goes down)
-  adv[4] = 9;                       // F# → F
+  adv[0] = 2; adv[1] = 7;          // A then D in the first eighth: A wins
+  adv[3] = 6;                       // C# on the off-sixteenth of the second eighth → C (tie goes down)
+  adv[4] = 11;                      // F# → F
+  adv[6] = 1;                       // G#4 → G4 (tie goes down)
   const simple = simplify(adv);
-  assert(simple[0] === 0 && simple[1] === 2 && simple[2] === 5 && simple.length === 16,
+  assert(simple[0] === 1 && simple[1] === 3 && simple[2] === 6 && simple[3] === 0 && simple.length === 16,
     'converting down keeps the first note of each eighth, moved to the nearest scale note');
   const up = expand(simple);
-  assert(up[0] === 0 && up[2] === 3 && up[4] === 8 && up[1] === -1 && up.length === 32,
+  assert(up[0] === 2 && up[2] === 5 && up[4] === 10 && up[6] === 0 && up[1] === -1 && up.length === 32,
     'converting up puts each eighth on its first sixteenth');
 }
 {
@@ -78,19 +82,30 @@ function assert(cond, msg) {
     for (let k = 0; k < 50; k++) {
       const n = luckyNotes(mode, random);
       const m = RIFF_MODES[mode];
-      const onScale = n.every((r) => r < 0 || (mode === 'simple' ? r < 8 : [0, 2, 3, 5, 7, 8, 10, 12].includes(r)));
+      const onScale = n.every((r) => r < 0 || (mode === 'simple' ? r < 11 : [0, 2, 4, 5, 7, 9, 10, 12, 14, 16, 17].includes(r)));
       if (n.length !== m.steps || n[0] < 0 || !onScale || n.filter((r) => r >= 0).length < 4) ok = false;
     }
     assert(ok, `ZAP writes a ${mode} riff: starts on the beat, stays in the scale, has a tune in it`);
   }
 }
 {
-  assert(upgradeDraft({ notes: [0, 1, 7] }).mode === 'simple' && upgradeDraft({ notes: [0, 1, 7] }).simple[2] === 7,
-    'a draft from the first day (scale notes) opens as SIMPLE');
+  assert(upgradeDraft({ notes: [0, 1, 7] }).mode === 'simple' && upgradeDraft({ notes: [0, 1, 7] }).simple[2] === 8,
+    'a draft from the first day (scale notes) opens as SIMPLE, on the same notes');
   const v2 = upgradeDraft({ v: 2, notes: [0, 1, 12] });
-  assert(v2.mode === 'advanced' && v2.advanced[2] === 1 && v2.advanced[4] === 12, 'a semitone draft from this afternoon opens as ADVANCED');
-  assert(upgradeRecipeNotes({ notes: [3] }).mode === 'simple' && upgradeRecipeNotes({ v: 2, notes: [3] }).notes[0] === 3,
+  assert(v2.mode === 'advanced' && v2.advanced[2] === 3 && v2.advanced[4] === 14, 'a semitone draft from 3 Oct opens as ADVANCED');
+  assert(upgradeRecipeNotes({ notes: [3] }).mode === 'simple' && upgradeRecipeNotes({ notes: [3] }).notes[0] === 4
+    && upgradeRecipeNotes({ v: 2, notes: [3] }).notes[0] === 5,
     'kept songs from before are read in today\'s shape');
+  const v3 = upgradeDraft({ v: 3, mode: 'advanced', simple: [0, 7, -1], advanced: [0, 12, -1], simpleLengths: [2, 4], advancedLengths: [1, 3] });
+  const v3r = upgradeRecipeNotes({ v: 3, mode: 'advanced', notes: [0, 12, -1], lengths: [1, 3] });
+  assert(v3.mode === 'advanced' && v3.simple[0] === 1 && v3.simple[1] === 8 && v3.advanced[0] === 2 && v3.advanced[1] === 14
+    && v3.advancedLengths[1] === 3 && v3.simpleLengths[1] === 4 && v3r.notes[0] === 2 && v3r.notes[1] === 14 && v3r.notes[2] === -1 && v3r.lengths[1] === 3,
+  'an A-to-A grid (version 3) opens on the G-to-C grid with every note and length where it was');
+  const rec = { v: 3, mode: 'advanced', notes: [0, 12, 3] };
+  const before = riffFromNotes(rec.notes, 'simpleSquare', 'advanced');   // read as today's rows, it would be wrong
+  const after = riffFromNotes(upgradeRecipeNotes(rec).notes, 'simpleSquare', 'advanced');
+  assert(after.parts[0].bars[0].startsWith('A4:1 A5:1 C5:1') && !before.parts[0].bars[0].startsWith('A4'),
+    'so a kept song plays the pitches it was made with');
 }
 
 // ---------------------------------------------------------------- the generator
@@ -283,6 +298,7 @@ function tap(state, x, y) {
   Input.endFrame();
 }
 const centre = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+const WHEEL_ROWS = (n) => n * 40;
 
 // ---------------------------------------------------------------- the jukebox and THE LAB, before
 // (a Lab that has had its starter, and deleted it)
@@ -358,8 +374,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   }
   chooseVoltage(1);
   assert(maker.voltage === 1 && !maker.wild && maker.energy === 'full' && maker.trackEffects === 'subtle', 'Charged maps to medium energy and subtle FX');
-  assert(maker.mode === 'simple' && maker.rows === 8 && maker.steps === 16, 'the maker opens in SIMPLE');
-  assert(maker.actionWord() === 'BRING TO LIFE' && maker.actionHint() === 'Create a banger', 'a new banger is made with BRING TO LIFE');
+  assert(maker.mode === 'simple' && maker.rows === 11 && maker.steps === 16, 'the maker opens in SIMPLE');
+  assert(maker.actionWord() === 'BRING TO LIFE', 'a new banger is made with BRING TO LIFE');
   {
     // the middle of MOOD opens every mood at once; a tap on one picks it and closes
     const moodBox = L.pickers[1];
@@ -396,19 +412,46 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(voices.size >= 6 && repeats === 0 && [...voices].every((id) => RIFF_VOICES.includes(id)),
       `and plays the grid on a different soft preset each visit, never last visit's (${voices.size} heard in 30)`);
   }
+  {
+    // Landscape shows the A-to-A window at the old size and scrolls for G4 and the top B and C.
+    assert(maker.visibleRows === 8 && L.grid.visible === 8 && maker.scrollRow === 2,
+      'landscape shows eight rows, A4 to A5, at the size they always were');
+    Input.wheelY = -WHEEL_ROWS(2);
+    maker.update(1 / 60); Input.endFrame();
+    assert(maker.scrollRow === 0, 'the wheel scrolls up to C6');
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + L.grid.cellH / 2);
+    assert(maker.notes[2] === 10, 'and the top square is C6 now');
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + L.grid.cellH / 2);
+    // drag the note names up: the grid follows, down to G4
+    const nx = L.grid.labelX + 4;
+    Input.pointer = { x: nx, y: L.grid.y + L.grid.cellH, down: true };
+    Input.press('pointer'); maker.update(1 / 60); Input.release('pointer'); Input.endFrame();
+    Input.pointer.y -= L.grid.cellH * 3; maker.update(1 / 60); Input.endFrame();
+    assert(maker.scrollRow === 3 && maker.notes[0] >= 0, 'dragging the note names scrolls the grid, writing nothing');
+    Input.pointer.down = false; maker.update(1 / 60); Input.endFrame();
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + 7.5 * L.grid.cellH);
+    assert(maker.notes[2] === 0, 'the bottom square is G4 now');
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + 7.5 * L.grid.cellH);
+    maker.focus = { area: 'grid', col: 0, row: 3, picker: 0, button: 3 };
+    frame(maker, 'up');
+    assert(maker.focus.row === 2 && maker.scrollRow === 2, 'the focus walking off the top scrolls one row');
+    maker.focus = { area: 'mode', col: 0, row: 0, picker: 0, button: 3 };
+    frame(maker, 'down');
+    assert(maker.focus.area === 'grid' && maker.focus.row === 2, 'down from SIMPLE / ADVANCED lands on the top row on show');
+  }
   // Tap the top-left square: A5 at step 0.
   tap(maker, L.grid.x + L.grid.cellW / 2, L.grid.y + L.grid.cellH / 2);
-  assert(maker.notes[0] === 7, 'tapping a square writes that note');
+  assert(maker.notes[0] === 8, 'tapping a square writes that note');
 
   // SIMPLE → ADVANCED after an edit in SIMPLE: ADVANCED is SIMPLE converted up.
   tap(maker, L.modeBox.x + L.modeBox.w * 0.75, L.modeBox.y + L.modeBox.h / 2);
   L = maker.layout();
-  assert(maker.mode === 'advanced' && maker.rows === 13 && maker.steps === 32 && maker.notes[0] === 12,
+  assert(maker.mode === 'advanced' && maker.rows === 18 && maker.visibleRows === 13 && maker.steps === 32 && maker.notes[0] === 14,
     'ADVANCED shows SIMPLE converted up');
   // Write a sharp on an off-sixteenth: only ADVANCED can hold it.
-  const sharpRow = 12 - 1;                       // A#, one row up from the bottom
+  const sharpRow = 12 - 1;                       // A#4, one row up from the bottom of the window
   tap(maker, L.grid.x + 1.5 * L.grid.cellW, L.grid.y + (sharpRow + 0.5) * L.grid.cellH);
-  assert(maker.advanced[1] === 1, 'ADVANCED takes a sharp on a sixteenth');
+  assert(maker.advanced[1] === 3, 'ADVANCED takes a sharp on a sixteenth');
   const remembered = [...maker.advanced];
   tap(maker, L.modeBox.x + L.modeBox.w * 0.25, L.modeBox.y + L.modeBox.h / 2);
   assert(maker.mode === 'simple' && maker.notes.join() === simplify(remembered).join(),
@@ -469,9 +512,26 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   frame(maker, 'left');
   assert(maker.mode === 'simple', 'left picks SIMPLE');
 
-  tap(maker, ...centre(L.buttons[1]));
+  tap(maker, ...centre(L.buttons[0]));
   assert(maker.notes.every((n) => n < 0), 'CLEAR empties the grid');
-  tap(maker, ...centre(L.buttons[2]));
+  {
+    const was = { style: maker.style, mood: maker.mood, voltage: maker.voltage, variation: maker.variation };
+    const notes = maker.notes.join();
+    let styles = 0, moods = 0;
+    const voltages = new Set(), dnas = new Set();
+    for (let k = 0; k < 40; k++) {
+      const before = { style: maker.style, mood: maker.mood };
+      tap(maker, ...centre(L.buttons[2]));
+      if (maker.style !== before.style) styles++;
+      if (maker.mood !== before.mood) moods++;
+      voltages.add(maker.voltage); dnas.add(maker.variation);
+    }
+    assert(styles === 40 && moods === 40 && voltages.size === BANGER_VOLTAGES.length && dnas.size === 3
+      && maker.energy === voltageSettings(maker.voltage).energy && maker.notes.join() === notes,
+    'EXPERIMENT picks a new formula and element every time, any voltage and DNA, and leaves the notes alone');
+    maker.setStyle(was.style); maker.mood = was.mood; maker.setVoltage(was.voltage, false); maker.setVariation(was.variation);
+  }
+  tap(maker, ...centre(L.buttons[1]));
   assert(hasNotes(maker.notes) && maker.notes.length === 16, 'ZAP writes a riff into the grid on show');
   const lucky = [...maker.notes];
 
@@ -493,13 +553,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(kept.expression === 3 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
     'a new recipe opts into expression version 3 (Go Wild\'s slide on the lead, the voltage rolls), and made again from the kept recipe it is the song just handed over');
 
-  tap(maker, ...centre(L.buttons[1]));
+  tap(maker, ...centre(L.buttons[0]));
   made = null;
   tap(maker, ...centre(L.buttons[3]));
   frame(maker); frame(maker);
   assert(!made && maker.messageT > 0, 'GENER8 on an empty grid says so and makes nothing');
-  tap(maker, ...centre(L.buttons[0]));
+  assert(L.backBox.x + L.backBox.w < L.modeBox.x && L.backBox.cy === L.modeBox.y + L.modeBox.h / 2,
+    'BACK is a round arrow at the left of the title row, level with SIMPLE / ADVANCED');
+  tap(maker, ...centre(L.backBox));
   assert(backs === 1, 'BACK goes back');
+  maker.focus = { area: 'mode', col: 0, row: 0, picker: 0, button: 3 };
+  frame(maker, 'left');
+  assert(maker.focus.area === 'back' && maker.mode === 'simple', 'left past SIMPLE reaches the BACK arrow');
+  frame(maker, 'confirm');
+  assert(backs === 2, 'and confirm on it goes back');
+  backs = 1;
   frame(maker, 'back');
   assert(backs === 2, 'so does the back gesture');
   const ctx = document.createElement('canvas').getContext('2d');
@@ -632,15 +700,15 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(club.levels.drums > 0.4 && club.levels.drums < 0.6 && club.popup?.text === 'YES DRUMS', 'and halfway up: YES DRUMS, at half');
   tap(club, 5, 5);
   assert(!club.mixerOpen, 'a tap outside the panel closes it');
-  // The dancing: one hero at a time joins in, each on one of their own three dances, and
-  // a change always picks a different one.
+  // The dancing: one hero at a time joins in, each on one of their own eight dances (and
+  // Lorenzo's occasional moonwalk), and a change always picks a different one.
   club.dancers.forEach((d, k) => { d.move = null; d.joinAt = club.t + 0.05 + k * 0.1; d.changeAt = Infinity; });
   club.update(1 / 60);
   const firstIn = club.dancers.filter((d) => d.move).length;
   for (let k = 0; k < 60; k++) club.update(1 / 60);
   const grumposAt = HERO_MOVES.findIndex((m) => m.hero === 'grumpos');
-  assert(firstIn < HERO_MOVES.length && club.dancers.every((d, i) => (i === grumposAt ? d.resting && !d.move : d.move && d.move.hero === HERO_MOVES[i].hero) && d.moves.length === 5),
-    'the heroes join the dancing one at a time, each on one of their own five dances (the gallery\'s lab set) — Grumpos joins in just standing there');
+  assert(firstIn < HERO_MOVES.length && club.dancers.every((d, i) => (i === grumposAt ? d.resting && !d.move : d.move && d.move.hero === HERO_MOVES[i].hero) && d.moves.filter((m) => m.move !== 'moonwalk').length === 8),
+    'the heroes join the dancing one at a time, each on one of their own eight dances (the gallery\'s lab set) — Grumpos joins in just standing there');
   {
     // mostly standing and bopping, dancing now and then
     const g = club.dancers[grumposAt];
@@ -739,10 +807,12 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       for (const legs of SKIRT_LEGS) {
         const pose = club.constructor.tameSkirtForTest(heroDancePose(wide, b), legs, b);
         const feet = pose.dance.feet;
-        // standing and hopping hand the painter no feet: it stands them as at idle
+        // standing hands the painter no feet: it stands them as at idle
         if (legs === 'hop' && pose.bounce > 0.03) hopped = true;
         if (legs === 'stand' && (pose.bounce !== 0 || pose.tilt !== 0)) ok = false;
-        if (legs !== 'tap') { if (feet) ok = false; continue; }
+        if (legs === 'stand') { if (feet) ok = false; continue; }
+        // a hop gathers its feet under the hem: a shallow tuck and at most a hair wider (dance-legs.js)
+        if (legs === 'hop') { if (!feet || Math.max(...feet.map((f) => Math.abs(f[0]))) > 0.11) ok = false; continue; }
         const tilt = pose.tilt || 0;
         const planted = feet.filter((f) => Math.abs(Math.abs(f[0]) - 0.085) < 1e-9
           && Math.abs(-pose.bounce + f[0] * Math.sin(tilt) + f[1] * Math.cos(tilt)) < 1e-9).length;
@@ -1134,14 +1204,14 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.enter();
   assert(maker.style === rec.style && maker.mood === rec.mood && maker.mode === rec.mode && maker.notes.join() === rec.notes.join(),
     'the pencil opens the grid on the song\'s own riff, style and mood');
-  assert(maker.actionWord() === 'RECHARGE' && maker.actionHint() === 'Remake this banger', 'editing a kept banger remakes it with RECHARGE');
+  assert(maker.actionWord() === 'RECHARGE', 'editing a kept banger remakes it with RECHARGE');
   const pendingSeed = { ...rec, n: rec.n + 1, name: `${rec.name} PENDING` };
   let pendingRechargeFlag = false;
   const pendingMaker = new BangerMakerState({
     seed: pendingSeed, onDone: () => {}, onMade: (r, song, from, recharging) => { pendingRechargeFlag = recharging; }, random: () => 0,
   });
   pendingMaker.enter();
-  assert(!pendingMaker.from && pendingMaker.actionWord() === 'RECHARGE' && pendingMaker.actionHint() === 'Remake this banger',
+  assert(!pendingMaker.from && pendingMaker.actionWord() === 'RECHARGE',
     'the pencil on a not-yet-saved preview also says RECHARGE');
   pendingMaker.make();
   assert(pendingRechargeFlag === true, 'a pencil recharge is marked so it skips the birth animation');

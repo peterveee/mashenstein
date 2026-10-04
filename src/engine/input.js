@@ -87,6 +87,9 @@ class InputSys {
     // row" opts out: a wheel tick synthesises a press with no matching release,
     // which a list consumes in a frame and a continuous control does not.
     this.wheelNav = true;
+    // What the wheel moved this frame (deltaY, summed) while wheelNav is off: a screen that
+    // scrolls something of its own reads it.
+    this.wheelY = 0;
   }
 
   init() {
@@ -367,7 +370,7 @@ class InputSys {
     // Scroll wheel navigates lists in menu / hub / paused contexts.
     window.addEventListener('wheel', (e) => {
       if (this.suspended) return;
-      if (!this.wheelNav) return;
+      if (!this.wheelNav) { this.wheelY += e.deltaY; return; }
       if (!this.menuNav()) return;
       const ticks = Math.min(5, Math.ceil(Math.abs(e.deltaY) / 40));
       const action = e.deltaY > 0 ? 'down' : 'up';
@@ -671,7 +674,7 @@ class InputSys {
     }
   }
 
-  endFrame() { this.hit.clear(); this.up.clear(); this.pressedAt.clear(); this.swipeLeft = false; }
+  endFrame() { this.hit.clear(); this.up.clear(); this.pressedAt.clear(); this.swipeLeft = false; this.wheelY = 0; }
 }
 
 export const Input = new InputSys();
