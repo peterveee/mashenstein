@@ -20,6 +20,7 @@ import { laneSettings } from '../../src/data/mix.js';
 import { AUX_DEFAULTS } from '../../src/engine/mixer.js';
 import { isDefaultMasterChain } from '../../src/engine/effects.js';
 import { GROUP_IDS, laneGroup } from '../../src/data/group-buses.js';
+import { hasEnabledNoteFx } from '../../src/engine/note-fx.js';
 
 // The three decimals the serialiser rounds to, so the file is the arbiter of what
 // counts as a different number: a drag that leaves 0.1234 behind writes 0.123, and a
@@ -72,7 +73,10 @@ export function laneSig(L) {
   const send = {};
   for (const id of Object.keys(AUX_DEFAULTS)) send[id] = r3(s.send[id] || 0);
   const chain = chainSig(L?.effects);
-  const noteFx = L?.noteFx && (L.noteFx.strum?.enabled || L.noteFx.arp?.enabled)
+  // The same gate laneLine writes by — `hasEnabledNoteFx`, so a lane holding only an Auto
+  // Portamento signs as different from a bare one. It used to be "strum or arp" here, and
+  // that lane compared equal to LANE_BARE: Save read "matches the file" over the change.
+  const noteFx = L?.noteFx && hasEnabledNoteFx(L.noteFx)
     ? JSON.parse(JSON.stringify(L.noteFx)) : null;
   // The group the channel is routed into — or nothing, which is unassigned. Written by
   // laneLine in mix-source.js; without it here an assignment is a change Save cannot see.

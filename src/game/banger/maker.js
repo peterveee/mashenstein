@@ -9,13 +9,14 @@
 // written in since. ZAP (Peter, 3 Oct 2026; it was SURPRISE ME) writes a random riff in
 // whichever is showing.
 //
-// The grid loops while you edit, over a plain kick, hat and light clap at the riff's 120 BPM, so
-// what you hear is what goes in. It runs its own clock through Audio.voiceSfx rather
-// than loading a song: an edit is heard on the next pass of the loop, and nothing
-// restarts under your finger.
+// The grid loops while you edit, over a plain kick, hat and light clap at the low end of
+// the chosen style's tempo range. It runs its own clock through Audio.voiceSfx rather
+// than loading a song: edits are heard on the next pass, and a style change restarts
+// the loop at its new tempo.
 //
 // The jukebox owns where this screen goes next, so it hands in `onDone` (BACK) and
 // `onMade(recipe, song)` (BRING TO LIFE); nothing here imports the jukebox.
+import { TRACK_EFFECTS_VERSION } from '../../../tools/lib/banger/production.js';
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
@@ -26,28 +27,29 @@ import {
 } from '../../engine/portrait-menu.js';
 import {
   RIFF_MODES, RIFF_BPM, modeOf, semitoneOf, rowName, isSharp, rowHz, semitoneHz, toggleNote, hasNotes,
-  normaliseNotes, simplify, expand, sixteenths, luckyNotes,
+  normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes,
 } from './riff.js';
-import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed } from './make.js';
+import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION } from './make.js';
+import { styleFor } from '../../../tools/lib/banger/styles/index.js';
 import { bangerState, saveDraft, keepBanger, reviseBanger } from './store.js';
+import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
 
-const SIXTEENTH_S = 60 / RIFF_BPM / 4;
 const LOOKAHEAD_S = 0.12;
-// The grid's own preview sound, a different one each visit, drawn from GENTLE presets:
-// soft attacks and little top end — felt and soft pianos, electric pianos, marimbas, a
-// kalimba, a harp, a sine, a triangle, a breathy flute. No squares, bells, music boxes,
-// FM or bright plucks, which were harsh to edit over, and nothing on MRDR-3, which a
-// phone pays for (Peter, 3 Oct 2026). Only this screen hears it: the song plays the
-// style's hook sound (make.js hookSoundFor).
+// The grid's own preview sound, a different one each visit, drawn from gentle voices
+// with a real sustain stage. Struck pianos, mallets, plucks and fixed-length test tones
+// sound lovely on a tap but hide the difference between short and held notes. These
+// have quick attacks and an audible sustain; no MRDR-3 voices, to keep the Lab light on
+// a phone. Only this screen hears them: the song uses the style's hook sound.
 export const RIFF_VOICES = Object.freeze([
-  'simpleTriangle', 'toneSine', 'softKeys', 'tngrSoftPiano', 'wndrFeltPiano', 'tngrFeltUpright', 'epiano',
-  'rmndTineEP', 'tngrHollowKeys', 'marimba', 'tpMarimba', 'tpKalimba', 'harpPluck', 'tngrAirFlute',
+  'simpleTriangle', 'softKeys', 'padTriangle', 'amOrgan', 'tngrSoftPiano',
+  'tngrHollowKeys', 'tngrMemoryOrgan', 'tngrAirFlute',
 ]);
 // The riff over the loop: about 6 dB down from full — at 1 it was far too loud over the
 // kick and hat (Peter, 3 Oct 2026).
 const RIFF_GAIN = 0.5;
 // BRING TO LIFE was GENER8 (Peter, 3 Oct 2026: the IT'S ALIVE! angle — birth.js).
 const BUTTONS = ['BACK', 'CLEAR', 'ZAP', 'BRING TO LIFE'];
+const BUTTON_HINTS = ['Back to songs', 'Erase all notes', 'Generate notes', 'Create a banger'];
 const GENER8 = 3;
 // Shares of the button row: BRING TO LIFE the widest, it is the one that matters.
 const BUTTON_SHARES = [1.1, 0.9, 0.9, 1.9];
@@ -86,18 +88,22 @@ export class BangerMakerState {
     this.mode = d.mode;
     this.simple = normaliseNotes(d.simple, 'simple');
     this.advanced = normaliseNotes(d.advanced, 'advanced');
+    this.simpleLengths = normaliseLengths(d.simpleLengths, this.simple, 'simple');
+    this.advancedLengths = normaliseLengths(d.advancedLengths, this.advanced, 'advanced');
     this.simpleEdited = !!d.simpleEdited;
     // The style and mood it was left on (store.js has already checked they still exist).
     // What changes every visit is only the grid's preview sound — never last visit's
     // (Peter, 3 Oct 2026).
     this.style = d.style;
     this.mood = d.mood;
+    this.setVoltage(voltageFor(d), false);
     if (this.from) {
       this.mode = this.from.mode;
-      if (this.mode === 'simple') { this.simple = normaliseNotes(this.from.notes, 'simple'); this.simpleEdited = true; }
-      else this.advanced = normaliseNotes(this.from.notes, 'advanced');
+      if (this.mode === 'simple') { this.simple = normaliseNotes(this.from.notes, 'simple'); this.simpleLengths = normaliseLengths(this.from.lengths, this.simple, 'simple'); this.simpleEdited = true; }
+      else { this.advanced = normaliseNotes(this.from.notes, 'advanced'); this.advancedLengths = normaliseLengths(this.from.lengths, this.advanced, 'advanced'); }
       this.style = this.from.style;
       this.mood = this.from.mood;
+      this.setVoltage(voltageFor(this.from), false);
     }
     const voices = RIFF_VOICES.filter((id) => id !== BangerMakerState.lastVoice);
     this.riffVoice = voices[Math.floor(this.random() * voices.length)];
@@ -105,6 +111,7 @@ export class BangerMakerState {
     const first = this.notes.findIndex((n) => n >= 0);
     this.focus = { area: 'grid', col: Math.max(0, first), row: first >= 0 ? this.rows - 1 - this.notes[first] : this.rows - 1, picker: 0, button: GENER8 };
     this.message = null;
+    this.pointerNote = null;
     this.messageT = 0;
     this.chooser = null;       // the STYLE / MOOD chooser while it is open
     this.making = 0;
@@ -118,22 +125,49 @@ export class BangerMakerState {
   exit() { if (!this.from) saveDraft(this.draft()); }
 
   draft() {
-    return { mode: this.mode, simple: this.simple, advanced: this.advanced, simpleEdited: this.simpleEdited, style: this.style, mood: this.mood };
+    return { mode: this.mode, simple: this.simple, advanced: this.advanced, simpleLengths: this.simpleLengths, advancedLengths: this.advancedLengths, simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
+      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION } };
   }
 
   /** The grid on show. */
   get notes() { return this.mode === 'simple' ? this.simple : this.advanced; }
+  get lengths() { return this.mode === 'simple' ? this.simpleLengths : this.advancedLengths; }
+  set lengths(v) {
+    const n = this.notes;
+    if (this.mode === 'simple') { this.simpleLengths = normaliseLengths(v, n, 'simple'); this.simpleEdited = true; }
+    else this.advancedLengths = normaliseLengths(v, n, 'advanced');
+  }
   set notes(v) {
-    if (this.mode === 'simple') { this.simple = normaliseNotes(v, 'simple'); this.simpleEdited = true; }
-    else this.advanced = normaliseNotes(v, 'advanced');
+    if (this.mode === 'simple') { this.simple = normaliseNotes(v, 'simple'); this.simpleLengths = normaliseLengths(this.simpleLengths, this.simple, 'simple'); this.simpleEdited = true; }
+    else { this.advanced = normaliseNotes(v, 'advanced'); this.advancedLengths = normaliseLengths(this.advancedLengths, this.advanced, 'advanced'); }
+  }
+  get previewBpm() {
+    const style = styleFor(this.style);
+    return style?.tempoRange?.[0] ?? style?.bpm ?? RIFF_BPM;
+  }
+  get previewSixteenthS() { return 60 / this.previewBpm / 4; }
+  setStyle(id) {
+    if (this.style === id) return;
+    this.style = id;
+    this.loopT0 = null;
+    this.scheduled = -1;
+    this.playStep = -1;
   }
   get rows() { return modeOf(this.mode).semis.length; }
   get steps() { return modeOf(this.mode).steps; }
 
   setMode(id) {
     if (id === this.mode || !RIFF_MODES[id]) return;
-    if (id === 'simple') { this.simple = simplify(this.advanced); this.simpleEdited = false; }
-    else if (this.simpleEdited) this.advanced = expand(this.simple);
+    if (id === 'simple') {
+      this.simple = simplify(this.advanced);
+      this.simpleLengths = normaliseLengths(this.simple.map((note, i) =>
+        note < 0 ? 0 : (this.advanced[2 * i] >= 0 ? this.advancedLengths[2 * i] : this.advancedLengths[2 * i + 1])), this.simple, 'simple');
+      this.simpleEdited = false;
+    } else if (this.simpleEdited) {
+      this.advanced = expand(this.simple);
+      this.advancedLengths = normaliseLengths(this.simpleLengths.flatMap((len, i) =>
+        this.simple[i] < 0 ? [0, 0] : [len, len]), this.advanced, 'advanced');
+    }
     const f = this.focus;
     const was = this.steps;
     this.mode = id;
@@ -148,7 +182,7 @@ export class BangerMakerState {
     const top = portrait ? portraitMenuSafeTop(28) : 6;
     const bottom = portrait ? portraitMenuSafeBottom(24) : H - 6;
     const titleH = portrait ? 70 : 24;
-    const ctrlH = portrait ? 66 : 26;
+    const ctrlH = portrait ? 66 : 38;
     const gap = portrait ? 14 : 6;
     const x0 = 12;
     const width = W - 24;
@@ -158,9 +192,7 @@ export class BangerMakerState {
     const modeBox = { x: x0 + width - modeW, y: top + (titleH - modeH) / 2 - (portrait ? 6 : 2), w: modeW, h: modeH };
     // The note names stand in a column of their own, left of the grid.
     const labelW = portrait ? 44 : 24;
-    // Portrait stacks the two pickers, so each can carry its longest label at the
-    // portrait type size; landscape puts them side by side under the grid.
-    const ctrlRows = portrait ? 3 : 2;
+    const ctrlRows = 2;
     const ctrlTop = bottom - ctrlRows * ctrlH - (ctrlRows - 1) * gap;
     const gridTop = top + titleH;
     const cellW = (width - labelW) / this.steps;
@@ -168,10 +200,8 @@ export class BangerMakerState {
     // squares are what a thumb wants.
     const cellH = (ctrlTop - gap - gridTop) / this.rows;
     const grid = { x: x0 + labelW, y: gridTop, w: width - labelW, h: cellH * this.rows, cellW, cellH, labelX: x0 };
-    const half = (width - gap) / 2;
-    const pickers = portrait
-      ? [{ x: x0, y: ctrlTop, w: width, h: ctrlH }, { x: x0, y: ctrlTop + ctrlH + gap, w: width, h: ctrlH }]
-      : [{ x: x0, y: ctrlTop, w: half, h: ctrlH }, { x: x0 + half + gap, y: ctrlTop, w: half, h: ctrlH }];
+    const selectorW = (width - 2 * gap) / 3;
+    const pickers = [0, 1, 2].map((i) => ({ x: x0 + i * (selectorW + gap), y: ctrlTop, w: selectorW, h: ctrlH }));
     const by = ctrlTop + (ctrlRows - 1) * (ctrlH + gap);
     const unit = (width - (BUTTONS.length - 1) * gap) / BUTTON_SHARES.reduce((a, b) => a + b, 0);
     const buttons = [];
@@ -187,15 +217,16 @@ export class BangerMakerState {
     const ctx = Audio.ctx;
     if (!ctx) return;
     const now = ctx.currentTime;
+    const stepS = this.previewSixteenthS;
     if (this.loopT0 == null) { this.loopT0 = now + 0.1; this.scheduled = -1; }
-    const { semis, len } = sixteenths(this.notes, this.mode);
+    const { semis, lengths } = sixteenths(this.notes, this.mode, this.lengths);
     for (;;) {
       const next = this.scheduled + 1;
-      const t = this.loopT0 + next * SIXTEENTH_S;
+      const t = this.loopT0 + next * stepS;
       if (t > now + LOOKAHEAD_S) break;
       // Fell well behind (a hidden tab, a long frame): pick the loop up from here
       // rather than firing a backlog of notes at once.
-      if (t < now - 0.25) { this.loopT0 = now + 0.05 - next * SIXTEENTH_S; continue; }
+      if (t < now - 0.25) { this.loopT0 = now + 0.05 - next * stepS; continue; }
       this.scheduled = next;
       const at = Math.max(0.005, t - now);
       const s16 = next % 32;
@@ -203,9 +234,9 @@ export class BangerMakerState {
       if (s16 % 4 === 0) Audio.voiceSfx('kickMegamix', { gain: 0.45, at });
       else if (s16 % 4 === 2) Audio.voiceSfx('hatEngine', { gain: 0.3, at });
       if (s16 % 8 === 4) Audio.voiceSfx('ds808Clap', { gain: 0.2, at });
-      if (semis[s16] >= 0) Audio.voiceSfx(this.riffVoice, { freq: semitoneHz(semis[s16]), seconds: len * SIXTEENTH_S * 0.9, gain: RIFF_GAIN, at });
+      if (semis[s16] >= 0) Audio.voiceSfx(this.riffVoice, { freq: semitoneHz(semis[s16]), seconds: lengths[Math.floor(s16 / (16 / this.steps))] * stepS * 0.9, gain: RIFF_GAIN, at });
     }
-    const pos = Math.floor((now - this.loopT0) / SIXTEENTH_S);
+    const pos = Math.floor((now - this.loopT0) / stepS);
     this.playStep = pos >= 0 ? Math.floor((pos % 32) * this.steps / 32) : -1;
   }
 
@@ -214,6 +245,9 @@ export class BangerMakerState {
     const row = this.rows - 1 - visualRow;
     const wasOn = this.notes[col] === row;
     this.notes = toggleNote(this.notes, col, row, this.mode);
+    const lens = [...this.lengths];
+    lens[col] = wasOn ? 0 : modeOf(this.mode).len;
+    this.lengths = lens;
     if (!wasOn) Audio.voiceSfx(this.riffVoice, { freq: rowHz(this.mode, row), seconds: 0.2, gain: RIFF_GAIN });
     else Audio.sfx('ui');
   }
@@ -221,23 +255,23 @@ export class BangerMakerState {
   cycle(picker, dir) {
     if (picker === 0) {
       const i = MAKER_STYLES.findIndex((s) => s.id === this.style);
-      this.style = MAKER_STYLES[(i + dir + MAKER_STYLES.length) % MAKER_STYLES.length].id;
-    } else {
+      this.setStyle(MAKER_STYLES[(i + dir + MAKER_STYLES.length) % MAKER_STYLES.length].id);
+    } else if (picker === 1) {
       const i = MAKER_MOODS.findIndex((m) => m.id === this.mood);
       this.mood = MAKER_MOODS[(i + dir + MAKER_MOODS.length) % MAKER_MOODS.length].id;
-    }
+    } else this.setVoltage(this.voltage + dir, false);
     Audio.sfx('ui');
   }
 
   say(text) { this.message = text; this.messageT = 2; }
 
   // ------------------------------------------------------------------ the chooser
-  // A tap on the middle of STYLE or MOOD (or confirm on it) opens every choice at once, a
-  // grid to tap, rather than stepping through twenty-odd moods one at a time (Peter, 3 Oct
-  // 2026). The arrows at the ends still step. A tap outside, or back, closes it.
+  // The centre opens the full choice list; the arrows at either end step the selection.
+  // A tap outside, or back, closes the list.
   openChooser(picker) {
-    const items = picker === 0 ? MAKER_STYLES : MAKER_MOODS;
-    const cur = picker === 0 ? this.style : this.mood;
+    const items = picker === 0 ? MAKER_STYLES : picker === 1 ? MAKER_MOODS
+      : BANGER_VOLTAGES.map(({ level, label, helper }) => ({ id: String(level), label, description: helper }));
+    const cur = picker === 0 ? this.style : picker === 1 ? this.mood : String(this.voltage);
     this.chooser = { picker, items, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
     Audio.sfx('ui');
   }
@@ -245,7 +279,11 @@ export class BangerMakerState {
   choose(i) {
     const c = this.chooser;
     const it = c.items[i];
-    if (it) { if (c.picker === 0) this.style = it.id; else this.mood = it.id; }
+    if (it) {
+      if (c.picker === 0) this.setStyle(it.id);
+      else if (c.picker === 1) this.mood = it.id;
+      else this.setVoltage(Number(it.id), false);
+    }
     this.chooser = null;
     Audio.sfx('uiConfirm');
   }
@@ -258,7 +296,7 @@ export class BangerMakerState {
     const pad = L.portrait ? 14 : 6, gap = L.portrait ? 8 : 4, titleH = L.portrait ? 50 : 18;
     const panel = { x: 8, y: L.top, w: W - 16, h: (L.buttons[0].y + L.buttons[0].h) - L.top };
     const cw = (panel.w - pad * 2 - gap * (cols - 1)) / cols;
-    const ch = Math.min(L.portrait ? 64 : 22, (panel.h - pad * 2 - titleH - gap * (rows - 1)) / rows);
+    const ch = Math.min(L.portrait ? 56 : 42, (panel.h - pad * 2 - titleH - gap * (rows - 1)) / rows);
     const cells = c.items.map((_, i) => ({
       x: panel.x + pad + (i % cols) * (cw + gap), y: panel.y + pad + titleH + Math.floor(i / cols) * (ch + gap), w: cw, h: ch,
     }));
@@ -292,15 +330,22 @@ export class BangerMakerState {
     ctx.fillStyle = 'rgba(5,5,10,0.7)';
     ctx.fillRect(0, 0, W, H);
     drawMenuRow(ctx, panel.x, panel.y, panel.w, panel.h, plateRadius(28, L.portrait), 'rgba(16,14,28,0.98)');
-    const title = c.picker === 0 ? 'CHOOSE A STYLE' : 'CHOOSE A MOOD';
+    const title = ['CHOOSE A FORMULA', 'CHOOSE A VIBE', 'CHOOSE A VOLTAGE'][c.picker];
     portraitMenuTextCentered(ctx, title, W / 2, textYForMid(panel.y + pad + titleH / 2, portraitMenuScale(1.3)), '#fff', 1.3);
-    const cur = c.picker === 0 ? this.style : this.mood;
+    const cur = c.picker === 0 ? this.style : c.picker === 1 ? this.mood : String(this.voltage);
     c.items.forEach((it, i) => {
       const r = cells[i];
       const on = it.id === cur, sel = showFocus && c.sel === i;
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.2)' : BACK_BUTTON_PLATE);
-      const s = portraitMenuFit(it.label, 1.1, r.w - 10);
-      portraitMenuTextCentered(ctx, it.label, r.x + r.w / 2, textYForMid(r.y + r.h / 2, portraitMenuScale(s)), sel ? C_SEL : on ? C_NOTE : C_TEXT, s);
+      const labelY = r.y + r.h * 0.34;
+      const descriptionY = r.y + r.h * 0.72;
+      const labelSize = portraitMenuFit(it.label, 1.05, r.w - 12);
+      const description = it.description ?? '';
+      const descriptionSize = portraitMenuFit(description, 0.68, r.w - 12);
+      portraitMenuTextCentered(ctx, it.label.toUpperCase(), r.x + r.w / 2, textYForMid(labelY, portraitMenuScale(labelSize)),
+        sel ? C_SEL : on ? C_NOTE : C_TEXT, labelSize);
+      if (description) portraitMenuTextCentered(ctx, description, r.x + r.w / 2,
+        textYForMid(descriptionY, portraitMenuScale(descriptionSize)), sel ? '#d3c0f4' : '#89899a', descriptionSize);
     });
   }
 
@@ -311,6 +356,7 @@ export class BangerMakerState {
       Audio.sfx('ui');
     } else if (name === 'ZAP') {
       this.notes = luckyNotes(this.mode);
+      this.lengths = normaliseLengths(null, this.notes, this.mode);
       Audio.sfx('uiConfirm');
     } else if (name === 'BACK') {
       Audio.sfx('ui');
@@ -326,7 +372,10 @@ export class BangerMakerState {
   }
 
   make() {
-    const recipe = { notes: this.notes, mode: this.mode, style: this.style, mood: this.mood, seed: newSeed() };
+    // `expression` is the recipe's playing-policy version (make.js): a new or revised song opts in,
+    // so GO WILD also sets the slide on its lead; an old recipe kept without it is made as it was.
+    const recipe = { notes: this.notes, lengths: this.lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
+      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed() };
     let song;
     try {
       song = makeBanger(recipe);
@@ -356,22 +405,31 @@ export class BangerMakerState {
     } else if (f.area === 'grid') {
       if (dx) f.col = (f.col + dx + this.steps) % this.steps;
       if (dy < 0 && f.row === 0) f.area = 'mode';
-      else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = f.col < this.steps / 2 ? 0 : 1; }
+      else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(2, Math.floor(f.col * 3 / this.steps)); }
       else if (dy) f.row = Math.max(0, Math.min(this.rows - 1, f.row + dy));
     } else if (f.area === 'picker') {
-      const stacked = portraitMenuActive();
       if (dx) { this.cycle(f.picker, dx); return true; }
       if (dy < 0) {
-        if (stacked && f.picker === 1) f.picker = 0;
-        else { f.area = 'grid'; f.row = this.rows - 1; f.col = Math.floor(this.steps * (f.picker === 0 ? 0.25 : 0.75)); }
-      } else if (stacked && f.picker === 0) f.picker = 1;
-      else { f.area = 'button'; f.button = f.picker === 0 ? 0 : GENER8; }
-    } else {
+        f.area = 'grid'; f.row = this.rows - 1;
+        f.col = Math.floor(this.steps * (f.picker + 0.5) / 3);
+      } else if (dy > 0) { f.area = 'button'; f.button = GENER8; }
+    } else if (f.area === 'button') {
       if (dx) f.button = (f.button + dx + BUTTONS.length) % BUTTONS.length;
-      if (dy < 0) { f.area = 'picker'; f.picker = portraitMenuActive() ? 1 : (f.button >= 2 ? 1 : 0); }
+      if (dy < 0) { f.area = 'picker'; f.picker = 2; }
     }
     Audio.sfx('ui');
     return true;
+  }
+
+  setVoltage(level, sound = true) {
+    const next = Math.max(0, Math.min(BANGER_VOLTAGES.length - 1, Math.round(Number(level) || 0)));
+    this.voltage = next;
+    const preset = voltageSettings(next);
+    this.variation = preset.variation;
+    this.wild = preset.wild;
+    this.energy = preset.energy;
+    this.trackEffects = preset.production;
+    if (sound) Audio.sfx('ui');
   }
 
   pointerHit(L, x, y) {
@@ -411,12 +469,41 @@ export class BangerMakerState {
     if (Input.pressed('pointer')) {
       const hit = this.pointerHit(L, Input.pointer.x, Input.pointer.y);
       if (hit?.area === 'mode') { f.area = 'mode'; this.setMode(hit.mode); }
-      else if (hit?.area === 'grid') { Object.assign(f, hit); this.toggle(hit.col, hit.row); }
+      else if (hit?.area === 'grid') {
+        Object.assign(f, hit);
+        this.toggle(hit.col, hit.row);
+        const row = this.rows - 1 - hit.row;
+        this.pointerNote = { col: hit.col, row, at: performance.now(), x: Input.pointer.x };
+      }
       else if (hit?.area === 'picker') {
         f.area = 'picker'; f.picker = hit.picker;
         if (hit.dir) this.cycle(hit.picker, hit.dir); else this.openChooser(hit.picker);
       }
       else if (hit?.area === 'button') { f.area = 'button'; f.button = hit.button; this.press(hit.button); }
+    }
+    if (this.pointerNote && Input.pointer.down) {
+      const at = this.pointerHit(L, Input.pointer.x, Input.pointer.y);
+      if (at?.area === 'grid' && at.row === this.rows - 1 - this.pointerNote.row) {
+        const per = 32 / this.steps;
+        const steps = Math.max(modeOf(this.mode).len,
+          (Math.abs(at.col - this.pointerNote.col) + 1) * per);
+        if (at.col >= this.pointerNote.col) {
+          const lens = [...this.lengths];
+          lens[this.pointerNote.col] = Math.min(32, steps);
+          this.lengths = lens;
+        }
+      }
+    }
+    if (this.pointerNote && Input.released('pointer')) {
+      const per = 32 / this.steps;
+      const heldSteps = Math.round((performance.now() - this.pointerNote.at)
+        / (this.previewSixteenthS * 1000) / per) * per;
+      if (heldSteps > modeOf(this.mode).len) {
+        const lens = [...this.lengths];
+        lens[this.pointerNote.col] = Math.min(32, Math.max(lens[this.pointerNote.col], heldSteps));
+        this.lengths = lens;
+      }
+      this.pointerNote = null;
     }
     if (Input.pressed('back') && this.making === 0) { Audio.sfx('ui'); this.onDone(); }
     Input.endFrame();
@@ -435,28 +522,39 @@ export class BangerMakerState {
     // CHARGING... and the like float over the middle of the grid: the title row is full.
     const status = this.making > 0 ? 'CHARGING...' : (this.messageT > 0 ? this.message : null);
     if (status) this.drawStatus(ctx, L, status);
-    const labels = [
-      `STYLE: ${MAKER_STYLES.find((s) => s.id === this.style)?.label ?? ''}`,
-      `MOOD: ${MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? ''}`,
+    const selectors = [
+      { label: 'FORMULA', value: (MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '').toUpperCase() },
+      { label: 'VIBE', value: (MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? '').toUpperCase() },
+      { label: 'VOLTAGE', value: BANGER_VOLTAGES[this.voltage].label.toUpperCase() },
     ];
     L.pickers.forEach((r, i) => {
       const sel = showFocus && this.focus.area === 'picker' && this.focus.picker === i;
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : BACK_BUTTON_PLATE);
-      const mid = r.y + r.h / 2;
+      const labelMid = r.y + r.h * 0.28;
+      const valueMid = r.y + r.h * 0.7;
       const arrowS = 1.2;
-      const ay = textYForMid(mid, portraitMenuScale(arrowS));
+      const ay = textYForMid(valueMid, portraitMenuScale(arrowS));
       portraitMenuText(ctx, '<', r.x + 12, ay, sel ? C_SEL : C_TEXT, arrowS);
       portraitMenuText(ctx, '>', r.x + r.w - 12 - portraitMenuScale(arrowS) * 5, ay, sel ? C_SEL : C_TEXT, arrowS);
-      const s = portraitMenuFit(labels[i], 1.2, r.w - 50);
-      portraitMenuTextCentered(ctx, labels[i], r.x + r.w / 2, textYForMid(mid, portraitMenuScale(s)), sel ? C_SEL : C_TEXT, s);
+      const labelSize = portraitMenuFit(selectors[i].label, 0.9, r.w - 12);
+      const valueSize = portraitMenuFit(selectors[i].value, L.portrait ? 1 : 0.86, r.w - 34);
+      portraitMenuTextCentered(ctx, selectors[i].label, r.x + r.w / 2,
+        textYForMid(labelMid, portraitMenuScale(labelSize)), sel ? C_SEL : '#89899a', labelSize);
+      portraitMenuTextCentered(ctx, selectors[i].value, r.x + r.w / 2,
+        textYForMid(valueMid, portraitMenuScale(valueSize)), sel ? C_SEL : C_TEXT, valueSize);
     });
     L.buttons.forEach((r, i) => {
       const sel = showFocus && this.focus.area === 'button' && this.focus.button === i;
       const plate = sel ? MENU_ROW_HILITE : (i === GENER8 ? 'rgba(72,224,200,0.16)' : BACK_BUTTON_PLATE);
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), plate);
-      const s = portraitMenuFit(BUTTONS[i], i === GENER8 ? 1.5 : 1.2, r.w - 14);
-      portraitMenuTextCentered(ctx, BUTTONS[i], r.x + r.w / 2, textYForMid(r.y + r.h / 2, portraitMenuScale(s)),
+      const titleMid = r.y + r.h * (L.portrait ? 0.38 : 0.34);
+      const hintMid = r.y + r.h * (L.portrait ? 0.72 : 0.70);
+      const s = portraitMenuFit(BUTTONS[i], i === GENER8 ? 1.35 : 1.1, r.w - 14);
+      const hintSize = portraitMenuFit(BUTTON_HINTS[i], L.portrait ? 0.72 : 0.66, r.w - 14);
+      portraitMenuTextCentered(ctx, BUTTONS[i], r.x + r.w / 2, textYForMid(titleMid, portraitMenuScale(s)),
         sel ? C_SEL : (i === GENER8 ? C_NOTE : C_TEXT), s);
+      portraitMenuTextCentered(ctx, BUTTON_HINTS[i], r.x + r.w / 2, textYForMid(hintMid, portraitMenuScale(hintSize)),
+        sel ? '#d3c0f4' : '#89899a', hintSize);
     });
     if (this.chooser) this.drawChooser(ctx, L);
   }
@@ -509,11 +607,26 @@ export class BangerMakerState {
       const beatLift = Math.floor((col * per) / 4) % 2 === 0 ? 0.05 : 0;
       for (let vr = 0; vr < rows; vr++) {
         const row = rows - 1 - vr;
-        const on = this.notes[col] === row;
-        const fill = on ? (playing ? '#ffffff' : noteColour(mode, row))
-          : cellColour(mode, row, (isSharp(mode, row) ? 0.22 : 0.16) + beatLift + (playing ? 0.12 : 0));
+        const fill = cellColour(mode, row, (isSharp(mode, row) ? 0.22 : 0.16) + beatLift + (playing ? 0.12 : 0));
         drawMenuRow(ctx, x + pad, g.y + vr * g.cellH + pad, w, h, radius, fill);
       }
+    }
+    const lengths = normaliseLengths(this.lengths, this.notes, mode);
+    // Each note is a piano roll block: the body itself reaches the written end, with
+    // wrapped duration continuing at the start of this two-bar loop.
+    for (let col = 0; col < steps; col++) {
+      const row = this.notes[col];
+      if (row < 0) continue;
+      const vr = rows - 1 - row;
+      const x = g.x + col * g.cellW + pad;
+      const y = g.y + vr * g.cellH + pad;
+      const span = Math.max(w, lengths[col] / per * g.cellW - 2 * pad);
+      const first = Math.min(span, g.x + g.w - x);
+      drawMenuRow(ctx, x, y, first, h, Math.min(radius, first / 2),
+        col === this.playStep ? '#ffffff' : noteColour(mode, row));
+      const wrapped = span - first;
+      if (wrapped > 0) drawMenuRow(ctx, g.x + pad, y,
+        Math.min(wrapped, g.w - 2 * pad), h, radius, noteColour(mode, row));
     }
     // The bar line.
     ctx.fillStyle = 'rgba(201,160,255,0.55)';

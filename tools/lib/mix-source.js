@@ -16,6 +16,7 @@ import { isDefaultMasterChain } from '../../src/engine/effects.js';
 // the engine's cannot quietly start being saved.
 import { AUX_DEFAULTS } from '../../src/engine/mixer.js';
 import { GROUP_IDS, laneGroup } from '../../src/data/group-buses.js';
+import { hasEnabledNoteFx } from '../../src/engine/note-fx.js';
 
 const round = (n) => Math.round(n * 1000) / 1000;
 
@@ -75,7 +76,12 @@ function laneLine(key, L, indent) {
   // Note FX are musical, nondestructive channel decisions. Keep their small nested
   // object intact: unlike an audio effect there is no parameter-default expansion in
   // the engine, so what the editor shows is exactly what the file should say.
-  if (L.noteFx && (L.noteFx.strum?.enabled || L.noteFx.arp?.enabled)) {
+  //
+  // Whether there is anything to keep is `hasEnabledNoteFx`'s question, not a hand-written
+  // "strum or arp": a lane whose only Note FX is an Auto Portamento is not empty, and it
+  // used to be dropped here on the first save. The object goes out whole, so `portamento`
+  // — including a newer version's, which this build does not read — is written verbatim.
+  if (L.noteFx && hasEnabledNoteFx(L.noteFx)) {
     parts.push(`noteFx: ${JSON.stringify(L.noteFx)}`);
   }
   return parts.length ? `${indent}${key}: { ${parts.join(', ')} },\n` : '';

@@ -5,7 +5,14 @@ import { Audio } from '../src/engine/audio.js';
 import { setMrdrComparisonBackend, mrdrComparisonBackend } from '../src/engine/mrdr3/identity.js';
 import { mrdr3ControllerHealth, mrdr3LaneReport, warmMrdr3Tables } from '../src/engine/mrdr3/controller.js';
 import { resolveNoteFx, noteFxRange, noteFxLimit, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX,
-  NOTE_FX_LIMIT_MAX } from '../src/engine/note-fx.js';
+  NOTE_FX_LIMIT_MAX, hasEnabledNoteFx } from '../src/engine/note-fx.js';
+// Auto Portamento's saved settings are read one way, by the planner's own module: the
+// card on the hover tooltip, and what a freeze depends on, both ask it rather than
+// guess at the shape. `autoPortamentoLane` is the lane half of "can this slide at all".
+import {
+  AUTO_PORTAMENTO_PLANNER_VERSION, autoPortamentoOn, readAutoPortamento,
+} from '../src/engine/auto-portamento.js';
+import { autoPortamentoLane, autoPortamentoReportOf } from '../src/engine/lane-view.js';
 // The boundary logic for handing a cabinet mix over to a level's, so 'Hear the change'
 // auditions exactly what the game does rather than a second implementation of it.
 import { MusicDirector } from '../src/engine/music-director.js';
@@ -4269,7 +4276,9 @@ function setTrackNoteFx(key, next) {
   editMix((m) => {
     m.lanes = m.lanes || {};
     m.lanes[key] = m.lanes[key] || emptyLaneMix();
-    if (next?.strum?.enabled || next?.arp?.enabled) m.lanes[key].noteFx = next;
+    // `hasEnabledNoteFx`, not "strum or arp": a lane whose only Note FX is an Auto
+    // Portamento has something to keep, and this used to delete it on the Apply that set it.
+    if (hasEnabledNoteFx(next)) m.lanes[key].noteFx = next;
     else delete m.lanes[key].noteFx;
   });
   applyToEngine(mixFor(trackId));
@@ -4284,9 +4293,13 @@ function setTrackNoteFx(key, next) {
  *
  * A whole-song render leaves the arp nothing to apply to, so leaving it armed only
  * means the next bar added to the song quietly arpeggiates rendered material. The
- * strum is a separate decision and stays. No `pushUndo`: this rides the step
- * `applyArrangementEdit` pushed a moment ago, which snapshots mix and arrangement
- * together, so one ⌘Z puts back both the notes and the arp.
+ * strum is a separate decision and stays, and so does an Auto Portamento: it slides
+ * the notes the lane plays, rendered or not, and has nothing to do with the arp being
+ * written out. `next` is the whole Note FX with only the arp switched off, so anything
+ * else in it — a newer version's portamento included — goes through untouched, and the
+ * object is dropped only when `hasEnabledNoteFx` says nothing in it is left on. No
+ * `pushUndo`: this rides the step `applyArrangementEdit` pushed a moment ago, which
+ * snapshots mix and arrangement together, so one ⌘Z puts back both the notes and the arp.
  */
 function clearTrackArp(key) {
   const current = noteFxFor(key);
@@ -4295,7 +4308,7 @@ function clearTrackArp(key) {
   editMix((m) => {
     m.lanes = m.lanes || {};
     m.lanes[key] = m.lanes[key] || emptyLaneMix();
-    if (next.strum?.enabled) m.lanes[key].noteFx = next;
+    if (hasEnabledNoteFx(next)) m.lanes[key].noteFx = next;
     else delete m.lanes[key].noteFx;
   }, undefined, { undo: false });
   applyToEngine(mixFor(trackId));
@@ -4322,6 +4335,18 @@ installNoteFxEditors({
   // params, as an insert's do (see makeSectionSwitch's retune).
   retuneSpotFx: (key, oldChain, newChain) =>
     Audio.mixer?.retuneBarEffects?.(key, oldChain, newChain, deskTempo()) ?? false,
+  // Appended last, after the ones above, so the list the older pins read stays in order.
+  // Auto Portamento's card asks what the lane really plays — the preset, so it can say
+  // when that sound has nothing to slide — and what the engine finds to slide in the
+  // song. Both are the desk's to answer. The engine answers while it is playing; a parked
+  // desk has handed it no bank, so the same pure question is asked of the bank the desk
+  // holds — see `engineBank` — and a build with neither is "no analysis", which the card
+  // shows as nothing rather than guessing at.
+  presetForLane,
+  autoPortamentoReport: (key) => Audio.autoPortamentoReport?.(key) ?? autoPortamentoReportOf({
+    bank: engineBank(), mix: mixFor(trackId), key,
+    secondsPerBeat: 60 / (engineBank()?.bpm || 120),
+  }),
 });
 
 /**
@@ -12240,7 +12265,18 @@ const noteFxRateLabel = (rate) => (NOTE_FX_RATE_LABELS
   || `${rate} steps`);
 const effectDisplayName = (effect) => EFFECT_BY_ID[effect?.id]?.short
   || EFFECT_BY_ID[effect?.id]?.name || effect?.id || 'Unknown effect';
-const hasActiveNoteFx = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled);
+// Whether a TRACK's Note FX say anything at all — the row's NFX marker and the hover card's
+// "Track setting". `hasEnabledNoteFx` is the one answer the serialiser, the save signature
+// and the setters give too, so what the desk lights up is exactly what a save keeps: an
+// Auto Portamento alone lights the marker, as a strum or an arpeggiator does.
+const hasActiveNoteFx = (fx) => hasEnabledNoteFx(fx);
+
+// What a BAR's override can set or silence: the strum and the arpeggiator, and nothing
+// else. Auto Portamento is the lane's own — it has no bar controls, the engine reads it
+// from the lane, and `resolveNoteFx` leaves it out of an 'off' bar where it still sounds
+// — so it neither earns a bar its NFX badge nor counts as something an NFX OFF bar turned
+// off. The per-bar badges ask this; they never read portamento off a resolved bar config.
+const hasBarNoteFx = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled);
 
 /**
  * What a bar's Note FX override is worth printing in the grid.
@@ -12255,9 +12291,35 @@ function noteFxBadge(barPlanEntry, key, trackNoteFx) {
   const override = barPlanEntry?.noteFx?.[key];
   if (!override || override.mode === 'inherit') return '';
   // NFX OFF earns its badge by saying the bar departs from the track. A track with no
-  // Note FX to switch off gives it nothing to report.
-  if (override.mode === 'off') return hasActiveNoteFx(trackNoteFx) ? 'NFX OFF' : '';
-  return hasActiveNoteFx(resolveNoteFx(trackNoteFx, barPlanEntry, key)) ? 'NFX' : '';
+  // strum or arpeggiator to switch off gives it nothing to report — a track whose only
+  // Note FX is an Auto Portamento is not turned off by this bar, so it is not badged.
+  if (override.mode === 'off') return hasBarNoteFx(trackNoteFx) ? 'NFX OFF' : '';
+  return hasBarNoteFx(resolveNoteFx(trackNoteFx, barPlanEntry, key)) ? 'NFX' : '';
+}
+
+/**
+ * The hover card's line for a lane's Auto Portamento, or null when it has nothing to say.
+ *
+ * Read from the LANE's Note FX — `laneMix.noteFx` — and never from the bar's resolved
+ * config: the engine slides from the lane, so a bar whose override is 'off' has silenced
+ * the strum and the arp and still plays the portamento, and the card has to say so.
+ * Switched off says nothing; Amount 0 is listed but struck out, because it selects
+ * nothing and a card claiming otherwise would be describing a slide nobody hears; and a
+ * version this build does not read is named as ignored rather than shown as settings.
+ */
+function autoPortamentoCardItem(noteFx) {
+  const raw = noteFx?.portamento;
+  if (!raw || typeof raw !== 'object') return null;
+  const { config, diagnostic } = readAutoPortamento(raw);
+  if (diagnostic?.startsWith('unsupported-version')) {
+    return raw.enabled === true
+      ? { text: 'Auto Portamento · saved by a newer version', tone: 'bypassed' } : null;
+  }
+  if (!config.enabled) return null;
+  return {
+    text: `Auto Portamento · Amount ${config.amount} · Glide ${config.glide}`,
+    tone: config.amount > 0 ? 'active' : 'bypassed',
+  };
 }
 
 /**
@@ -12318,13 +12380,19 @@ function barOperationGroups(barPlanEntry, key, { frozen = false, sections = [] }
       tone: 'active',
     });
   }
-  if (!noteItems.length) noteItems.push({
+  // The lane's own Auto Portamento, listed whatever the bar does. "None" and "Off for this
+  // bar" speak for the strum and the arpeggiator — all a bar can set or silence — so an
+  // 'off' bar still says it beside the slide it did not turn off, and a lane whose only
+  // Note FX is a portamento does not read "None".
+  const slideItem = autoPortamentoCardItem(laneMix.noteFx);
+  if (!noteItems.length && (override?.mode === 'off' || !slideItem)) noteItems.push({
     text: override?.mode === 'off' ? 'Off for this bar' : 'None',
     tone: override?.mode === 'off' ? 'warn' : 'quiet',
   });
+  if (slideItem) noteItems.push(slideItem);
   const noteContext = override?.mode === 'on' ? 'Bar override'
     : override?.mode === 'off' ? 'Override'
-      : (laneMix.noteFx?.strum?.enabled || laneMix.noteFx?.arp?.enabled) ? 'Track setting' : '';
+      : hasActiveNoteFx(laneMix.noteFx) ? 'Track setting' : '';
 
   // What the bar puts the track through AHEAD of the channel: its effect sections, each with
   // where it runs, or — where no section reaches this bar — its per-bar snapshot.
@@ -12778,6 +12846,7 @@ function openRegionEditor(x, y, {
             : `Render only ${span.toLowerCase()} and keep the rest of ${laneLabel} live`,
           disabled: wholeFrozen,
           run: () => freezeLane(laneKey, { scope: selectedFreezeScope }) },
+      // Strum and arpeggiator only: a bar override has no Auto Portamento (it is the lane's).
       { label: 'Note FX…', title: `Set strum or arpeggiator for ${laneLabel}`,
         run: () => openNoteFxEditor(x, y, laneKey, { from, to }) },
       { label: 'Spot FX…', title: `Put ${laneLabel} through an effect chain in ${span.toLowerCase()}, down to a 1/32`,
@@ -12885,7 +12954,12 @@ function openRegionEditor(x, y, {
           : 'Pick one and the two share a voice, the way a hi-hat pedal does');
     }
     actionSection('Track', [
-      { label: 'Note FX…', title: `Add strum or arpeggiator to ${laneLabel}`,
+      // The track panel offers Auto Portamento on a melody lane (see `autoPortamentoLane`);
+      // a chord or drum lane's panel is the strum and the arpeggiator, so its title is too.
+      { label: 'Note FX…',
+        title: autoPortamentoLane(laneKey)
+          ? `Add strum, arpeggiator or Auto Portamento to ${laneLabel}`
+          : `Add strum or arpeggiator to ${laneLabel}`,
         run: () => openNoteFxEditor(x, y, laneKey) },
       { label: 'Channel Effects', title: `Open ${laneLabel}'s channel effects`,
         run: () => openChannelEffects(laneKey) },
@@ -19372,6 +19446,7 @@ const bangerDesk = createBangerDesk({
   escapeHtml: (text) => escapeHtml(text),
   isStatic: () => STATIC,
   current: () => ({ id: trackId, track }),
+  currentMix: () => mixFor(trackId),
   barCount: () => arrDraftOf().plan.length,
   selection: () => (selectedBar ? { from: selFrom(), to: selTo() } : null),
   // The riff as the desk HEARS it: this draft, unsaved edits and all, minus whatever is
@@ -19433,6 +19508,7 @@ $('bangerprev').onclick = () => bangerDesk.previousTake();
 $('bangernext').onclick = () => bangerDesk.nextTake();
 $('bangersettings').onclick = () => bangerDesk.settings();
 $('bangermodify').onclick = () => bangerDesk.modify();
+$('bangerreport').onclick = () => bangerDesk.report();
 
 // ---- seed bangers and Sound Combos -------------------------------------------------
 // Use as Style, Save as Combo and the seed's A/B with its remix: tools/mixer-banger-seeds.js.
@@ -21360,6 +21436,7 @@ function freezeFingerprint(id, lane) {
     .map((key) => seamFor(key)?.voiceKey).filter(Boolean));
   const pick = (map) => Object.fromEntries(Object.entries(map || {})
     .filter(([key]) => voiceKeys.has(key)));
+  const noteFx = m.lanes?.[lane]?.noteFx || null;
   return JSON.stringify({
     v: 2,
     lane,
@@ -21367,7 +21444,14 @@ function freezeFingerprint(id, lane) {
     layers: (m.layers || []).filter((L) => sources.has(L.key) || sources.has(L.from)),
     off: m.off || [],
     voice: pick(m.voice), voiceParams: pick(m.voiceParams),
-    noteFx: m.lanes?.[lane]?.noteFx || null,
+    // The whole Note FX, so an Auto Portamento's settings are in the hash already — but
+    // which connections they pick is the PLANNER's decision, and the same settings choose
+    // different ones once its policy moves. So the planner's version rides along, only
+    // while the treatment is on: a lane without one hashes byte-for-byte as it always did,
+    // and a freeze made under an older planner stops matching rather than playing slides
+    // the current one would not make. Appended after `noteFx` for exactly that reason.
+    noteFx,
+    ...(autoPortamentoOn(noteFx) ? { portamento: AUTO_PORTAMENTO_PLANNER_VERSION } : {}),
   });
 }
 

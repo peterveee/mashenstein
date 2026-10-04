@@ -27,6 +27,19 @@
 //         insert: { division: 0.5, feedback: 0.3, tone: 4000, mix: 0.25, pan: 0.8 },
 //                                             // this channel's OWN delay; mix 0 = off
 //         eq: { low: 2, mid: 0, high: -3 },   // dB at 250Hz / 1.2kHz / 4kHz
+//         noteFx: {                           // what the lane does to the notes it plays; the
+//                                             // desk writes it only while one of the three is on
+//           strum: { enabled: true, direction: 'up', gapMs: 18 },
+//           arp: { enabled: false, direction: 'up', rate: 1, octaves: 1, gate: 80 },
+//           portamento: { enabled: true, amount: 35, glide: 40, version: 1 },
+//                                             // Auto Portamento: slides between selected nearby
+//                                             // melody notes. amount 0-100 is how many of the
+//                                             // connections slide (0 none), glide 0-100 how long
+//                                             // each takes. Lane scope only — a bar's Note FX
+//                                             // override has no portamento. Missing means off; a
+//                                             // version this build does not know is ignored, not
+//                                             // read as 1. See src/engine/auto-portamento.js
+//         },
 //       },
 //     },
 //     voice: { bassType: 'sawtooth' },        // bank-key overrides from the sound picker

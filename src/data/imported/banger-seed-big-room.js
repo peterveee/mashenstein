@@ -1355,6 +1355,25 @@ export const arrangement = {
           ],
         },
         {
+          from: [25,0],
+          to: [32,0],
+          chain: [
+            {
+              id: "pingpong",
+              params: {
+                sync: 1,
+                division: 0.5,
+                delayMs: 250,
+                feedback: 0.3,
+                wet: 0.35,
+                sweep: 0,
+                feedbackTo: 0.3,
+                wetTo: 0.35,
+              },
+            },
+          ],
+        },
+        {
           from: [44,8],
           to: [44,12],
           chain: [

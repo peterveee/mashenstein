@@ -20,6 +20,9 @@
 // with the handful of collaborators it names.
 import { readFileSync } from 'node:fs';
 import { seamFor } from '../src/data/voices.js';
+import {
+  autoPortamentoOn, AUTO_PORTAMENTO_PLANNER_VERSION,
+} from '../src/engine/auto-portamento.js';
 
 const entry = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
 
@@ -40,16 +43,21 @@ const source = slice('function freezeNoteSources', '\nfunction unfreezeLane');
 assert(/function freezeFingerprint/.test(source) && /function laneOnlyBlock/.test(source),
   'the fingerprint and its projection helpers were lifted out of the entry');
 
-// The collaborators the lifted code names, and only those.
+// The collaborators the lifted code names, and only those. The last two are Auto
+// Portamento's: whether a lane's setting is on, and the planner version that rides in the
+// fingerprint while it is — passed in by value so a test can stand a NEWER planner up beside
+// the real one and ask whether a freeze made under the old one would still match.
 let MIX = {};
 let ARR = null;
-const harness = new Function('seamFor', 'mixFor', 'arrFor', `
+const harness = new Function('seamFor', 'mixFor', 'arrFor', 'autoPortamentoOn',
+  'AUTO_PORTAMENTO_PLANNER_VERSION', `
   ${source}
   return { freezeFingerprint, freezeNoteSources, laneOnlyBlock };
 `);
-const { freezeFingerprint, freezeNoteSources } = harness(
-  seamFor, () => MIX, () => ARR,
+const build = (plannerVersion) => harness(
+  seamFor, () => MIX, () => ARR, autoPortamentoOn, plannerVersion,
 );
+const { freezeFingerprint, freezeNoteSources } = build(AUTO_PORTAMENTO_PLANNER_VERSION);
 
 const song = () => ({
   bpm: 120,
@@ -156,6 +164,73 @@ assert(survives('bass', () => { ARR.automation = { lead: { points: [[1, 0, null]
   'and another track\u2019s fades and cuts are nothing to do with this freeze');
 assert(survives('chords2', () => { ARR.sections[0].chords[1] = 660; }),
   'editing the source of an INDEPENDENT layer does not — its notes were snapshotted');
+
+// ---- Auto Portamento ----------------------------------------------------------
+//
+// A slide is a decision about WHICH of a lane's connections sound, so the lane's setting
+// belongs in its fingerprint like any other Note FX — the whole object is hashed, so
+// Amount, Glide and the switch are already in — and the PLANNER's version rides beside it
+// while the treatment is on. Those two together are what stop a freeze made under one
+// policy from playing underneath another: the same settings pick different connections
+// once the planner's ranking moves, and nothing in the song would have changed.
+{
+  const on = () => ({ enabled: true, amount: 35, glide: 40, version: 1 });
+  const withSlide = () => { setup(); MIX.lanes.lead = { noteFx: { portamento: on() } }; };
+  const keepsFreeze = (lane, mutate) => {
+    withSlide();
+    const before = fingerprintOf(lane);
+    mutate();
+    return fingerprintOf(lane) === before;
+  };
+  const keysOf = (lane) => Object.keys(JSON.parse(fingerprintOf(lane)));
+
+  assert(!survives('bass', () => { MIX.lanes.bass = { noteFx: { portamento: on() } }; }),
+    'switching Auto Portamento on for the frozen lane invalidates it — its notes now slide');
+  assert(!keepsFreeze('lead', () => { MIX.lanes.lead.noteFx.portamento.amount = 60; }),
+    'so does moving its Amount — a different set of connections slides');
+  assert(!keepsFreeze('lead', () => { MIX.lanes.lead.noteFx.portamento.glide = 80; }),
+    'and its Glide — every slide is a different length');
+  assert(!keepsFreeze('lead', () => { MIX.lanes.lead.noteFx.portamento.enabled = false; }),
+    'and switching it off again — the slides go');
+  assert(keepsFreeze('bass', () => { MIX.lanes.lead.noteFx.portamento.amount = 60; }),
+    'but another track’s portamento is nothing to do with this freeze');
+  assert(keepsFreeze('bass', () => { MIX.lanes.lead.noteFx.portamento.enabled = false; }),
+    'nor is switching that one off');
+
+  // Byte-identical for a lane that has none: its freezes were rendered under the old
+  // fingerprint and must still match, so the planner key is added only when it is needed.
+  setup();
+  const plain = ['v', 'lane', 'arrangement', 'layers', 'off', 'voice', 'voiceParams', 'noteFx'];
+  assert(JSON.stringify(keysOf('bass')) === JSON.stringify(plain)
+    && JSON.stringify(keysOf('chords')) === JSON.stringify(plain),
+  'a lane with no portamento hashes exactly the keys it always did, so no freeze goes stale');
+  withSlide();
+  assert(JSON.stringify(keysOf('lead')) === JSON.stringify([...plain, 'portamento'])
+    && JSON.parse(fingerprintOf('lead')).portamento === AUTO_PORTAMENTO_PLANNER_VERSION,
+  'a lane with it on carries the planner version, after its Note FX');
+
+  // On means doing something: off, Amount 0 (selects nothing) and a version this build
+  // does not read (ignored) all leave the planner out of it.
+  for (const [what, portamento] of [
+    ['switched off', { enabled: false, amount: 35, glide: 40, version: 1 }],
+    ['at Amount 0, which selects nothing', { enabled: true, amount: 0, glide: 40, version: 1 }],
+    ['written by a newer version, which is ignored', { enabled: true, amount: 35, glide: 40, version: 2 }],
+  ]) {
+    setup();
+    MIX.lanes.lead = { noteFx: { portamento } };
+    assert(!('portamento' in JSON.parse(fingerprintOf('lead'))),
+      `Auto Portamento ${what} adds no planner version`);
+  }
+
+  // The reason it is there: move the planner and a freeze that slid stops matching, while
+  // one that never slid does not notice.
+  const future = build(AUTO_PORTAMENTO_PLANNER_VERSION + 1);
+  withSlide();
+  assert(future.freezeFingerprint('song', 'lead') !== fingerprintOf('lead'),
+    'a freeze made under an older planner no longer matches a lane that slides');
+  assert(future.freezeFingerprint('song', 'bass') === fingerprintOf('bass'),
+    'and a lane that does not slide is untouched by a new planner');
+}
 
 // ---- the format is versioned ------------------------------------------------
 

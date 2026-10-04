@@ -32,6 +32,49 @@ await page.evaluate(() => window.characterEditor.setBodyShape('tapered'));
 if (await page.locator('[data-dial="waistScale"] input').count() !== 2) throw new Error('tapered waist control is missing');
 await page.evaluate(() => window.characterEditor.setBodyShape('round'));
 if (!(await page.locator('[data-dial="waistScale"]').evaluate((el) => el.classList.contains('off')))) throw new Error('round body did not disable waist control');
+if (await page.locator('[data-dial="frontLegSeparation"] input[type="range"]').count() !== 1) throw new Error('front leg separation control is missing');
+await page.evaluate(() => {
+  window.characterEditor.hero('fernwick');
+  window.characterEditor.setMode('stand');
+  window.characterEditor.freeze(.18);
+});
+const fernwickStandBefore = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('stand', 'edit'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+const fernwickStandNow = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('stand', 'now'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+const fernwickRunBefore = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('run', 'edit'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+const fernwickJumpBefore = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('jump', 'edit'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+await page.evaluate(() => window.characterEditor.setDial('frontLegSeparation', 0.5));
+const fernwickStandAfter = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('stand', 'edit'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+const fernwickRunAfter = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('run', 'edit'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+const fernwickJumpAfter = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('jump', 'edit'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+const fernwickStandNowAfter = await page.evaluate(() => {
+  const pixels = window.characterEditor.pixels('stand', 'now'); let hash = 2166136261;
+  for (const x of pixels) hash = Math.imul(hash ^ x, 16777619); return hash >>> 0;
+});
+if (fernwickStandBefore === fernwickStandAfter) throw new Error('front leg separation did not change the edited standing preview');
+if (fernwickRunBefore !== fernwickRunAfter) throw new Error('front leg separation changed the edited running preview');
+if (fernwickJumpBefore === fernwickJumpAfter) throw new Error('front leg separation did not change the edited jump preview');
+if (fernwickStandNow !== fernwickStandNowAfter) throw new Error('front leg separation changed the saved standing preview');
 await page.evaluate(() => window.characterEditor.setMode('attack'));
 if (!(await page.locator('[data-pose="attack"]').count())) throw new Error('attack preview card is missing');
 await page.locator('.help').first().hover();

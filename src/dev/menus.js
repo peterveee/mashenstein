@@ -11,7 +11,6 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
 import { GAME_ALTERNATES } from '../data/game-alternates.js';
 import { DESK_SONGS } from './desk-songs.js';
-import { spikeBangers } from './banger-spike.js';
 import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
 import { MODS, BENCH_UPGRADES } from '../data/progression.js';
@@ -787,17 +786,6 @@ export function rootMenu(dev) {
   const build = () => ({
     title: 'DEV MENU',
     items: [
-      // The in-game Make a Banger spike: every style made from one two-bar riff, on
-      // this device, then played on the jukebox. See src/dev/banger-spike.js.
-      { label: 'BANGER SPIKE (JUKEBOX)', act: () => {
-        dev.close();
-        const bangers = spikeBangers();
-        setState(new SoundTestState({
-          onDone: () => dev.ctx.Flow.toHub(),
-          tracks: [...JUKEBOX, ...bangers],
-          initialTrack: JUKEBOX.length,
-        }));
-      } },
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
       { label: 'GRAVITY GRID — PLAYTEST', act: () => {
         dev.close();
@@ -805,10 +793,7 @@ export function rootMenu(dev) {
           seed: dev.seedLock ?? undefined,
           onEnd: () => dev.ctx.Flow.toHub() }));
       } },
-      // Keep the saved-song launcher in the first screenful. On a phone the
-      // root menu has fewer visible rows, and this overlay deliberately has no
-      // swipe-to-scroll gesture; a row below the fold is otherwise unreachable
-      // without a physical keyboard.
+      // Keep the saved-song launcher in the first screenful for quick access.
       { label: 'GAME ALTERNATES ▸', submenu: () => gameAlternatesMenu(dev) },
       { label: 'BOSSES ▸', submenu: () => bossesMenu(dev) },
       { label: 'TROPHY ROOM', act: () => {
@@ -995,14 +980,14 @@ export function drawMenu(ctx, dev) {
   const crumbs = dev.stack.map((s) => s.title).join(' / ');
   const crumbS = fit(crumbs, L.headerTextS, crumbX);
   text(crumbs, crumbX, textYForMid(L.crumbMid, crumbS * L.textS / L.yScale), GOLD, crumbS);
+  const n = top.items.length;
   // Name the controls the device in hand actually has: the phone that opened
   // this from the portrait card has no key to press and no ` to close with.
   text(touch
-    ? 'TAP A ROW TO PICK   ← GOES BACK'
+    ? (n > L.maxRows ? 'SWIPE TO SCROLL • TAP TO PICK   ← BACK' : 'TAP A ROW TO PICK   ← BACK')
     : '↑↓ MOVE  ←→ ADJUST  ENTER PICK  BKSP BACK  ` CLOSE', 14, L.footY, DIM, 0.75);
 
   // Scroll window so long lists (27 stages, every obstacle type) stay usable.
-  const n = top.items.length;
   const first = Math.max(0, Math.min(n - L.maxRows, top.idx - Math.floor(L.maxRows / 2)));
   const shown = top.items.slice(first, first + L.maxRows);
 
@@ -1019,7 +1004,7 @@ export function drawMenu(ctx, dev) {
     text(label, 14, y, sel ? GOLD : inert ? DIM : FG, scale);
   });
 
-  if (n > L.maxRows) {
+  if (n > L.maxRows && !touch) {
     text(`${top.idx + 1}/${n}`, W - 34, L.footY, DIM, 0.75, true);
   }
 }

@@ -46,6 +46,8 @@ import { laneVoiceOf } from './riff.js';
 import { DRUM_ROLES } from './lanes.js';
 import { hashStr } from '../../../src/engine/rng.js';
 import { BANGER_LEVEL_DATA } from './levels-data.js';
+import { BANGER_CALIBRATION } from './calibration-data.js';
+import { measuredPart, referenceKey } from './calibration.js';
 
 /** How many bars of a part its level is read over: a drop phrase. */
 export const LEVEL_WINDOW_BARS = 8;
@@ -272,6 +274,12 @@ export function partLevel({ bars, bpm, voice = null, curveId = null, lane, curve
   return 10 * Math.log10(kept.reduce((s, e) => s + e, 0) / kept.length / (BLOCK * BIN));
 }
 
+/** The dry model plus the one channel effect it predicts; calibration stores its residual. */
+export function predictedProcessedPart({ bars, bpm, lane, sound, strip, curves = BANGER_LEVEL_DATA.curves }) {
+  const value = partLevel({ bars, bpm, lane, ...sound, curves });
+  return value == null ? null : value + stereoDb(sideOf(sound, curves), widenerOf(strip), highOf(sound, curves, partPitch(bars)));
+}
+
 /**
  * The bars a part's level is read over (0-based, inclusive): from the first bar it plays
  * in the LAST drop it plays in — the fullest one — for up to eight bars, inside that drop.
@@ -357,10 +365,12 @@ const sameSound = (a, b) => a.voice === b.voice
  * `bars` are the banger's bars by ROLE (buildSections), `laneOf` its roles' lanes,
  * `riffParts` the riff's parts as the generator holds them.
  */
-export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts, hookKey, refs: own = null, data = BANGER_LEVEL_DATA }) {
+export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts, hookKey, refs: own = null, data = BANGER_LEVEL_DATA, calibration = BANGER_CALIBRATION }) {
   // A Sound Combo brings its own: the banger it was saved from is what its faders were set for.
   const refs = own || data.refs?.[style.id] || {};
   const offsets = data.offsets?.[style.id] || {};
+  const balance = style.balance || {};
+  const leadCautionDb = Number.isFinite(balance.leadCautionDb) ? balance.leadCautionDb : LEAD_CAUTION_DB;
   const byKey = new Map(riffParts.map((p) => [p.key, p]));
   // What a channel's widener does to `sound` playing `notes`: see stereoDb.
   const stereo = (sound, notes, w) => stereoDb(sideOf(sound, data.curves), w, highOf(sound, data.curves, partPitch(notes)));
@@ -376,11 +386,12 @@ export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts,
     const now = soundOf(laneVoiceOf(bank, mix, lane), data.curves);
     const riffPart = role.startsWith('riff:') ? byKey.get(role.slice(5)) : role === 'hook' ? byKey.get(hookKey) : null;
     const widener = widenerOf(strip);
-    let base; let R; let M; let how; let from; let offset = 0;
+    let base; let R; let M; let how; let from; let offset = 0; let wasRiff = null;
     if (riffPart) {
       // The riff's own part, the hook too: left where it is, unless Random gave it a new sound.
       const was = soundOf({ id: riffPart.voice, params: riffPart.voiceParams }, data.curves);
       if (sameSound(was, now)) continue;
+      wasRiff = was;
       R = partLevel({ bars: part, bpm, lane, ...was, curves: data.curves });
       M = partLevel({ bars: part, bpm, lane, ...now, curves: data.curves });
       if (R != null) R += stereo(was, part, widener);
@@ -407,11 +418,20 @@ export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts,
     }
     if (M != null) M += stereo(now, part, widener);
     if (R == null || M == null) continue;
+    // Only replace a comparison when BOTH sides have measured support. Unmeasured
+    // instruments, changed strips and distant scenarios retain the existing predictor.
+    const measured = (sound, predicted) => measuredPart({ data: calibration, voice: sound.voice,
+      lane, strip, fx: mix.fx, curve: data.curves?.[sound.curveId], bars: part, bpm, predicted });
+    const actual = measured(now, M);
+    const target = wasRiff ? measured(wasRiff, R) : calibration.references?.[referenceKey(refs[role] || {})];
+    const calibrated = !!actual && !!target && Number.isFinite(target.lufs);
+    if (calibrated) { R = target.lufs; M = actual.lufs; offset = 0; }
     const lead = LEAD_ROLES.includes(role);
-    const move = clamp(R - M, -MAX_LEVEL_MOVE, lead ? LEAD_MAX_RAISE : MAX_LEVEL_MOVE);
-    const after = round1(base + move + offset + (lead ? LEAD_CAUTION_DB : 0));
+    const move = clamp(R - M, calibrated ? -18 : -MAX_LEVEL_MOVE, calibrated || lead ? LEAD_MAX_RAISE : MAX_LEVEL_MOVE);
+    const roleGainDb = Number.isFinite(balance.roleGainDb?.[role]) ? balance.roleGainDb[role] : 0;
+    const after = round1(base + move + offset + (lead ? leadCautionDb : 0) + roleGainDb);
     strip.gain = after;
-    rows.push({ lane, job: riffPart && role !== 'hook' ? `riff:${riffPart.key}` : role, how, from, base, before, after, move: round1(after - before), window });
+    rows.push({ lane, job: riffPart && role !== 'hook' ? `riff:${riffPart.key}` : role, how, from, base, before, after, move: round1(after - before), window, calibrated });
   }
   return rows;
 }

@@ -20,7 +20,7 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listBrowsers, stopBrowser } from './browsers.js';
@@ -191,6 +191,34 @@ ACTIONS.push(
     openPath: reportHref('frame-report.json', 'frames'),
   },
 );
+ACTIONS.push({
+  id: 'bangercalibration', group: 'audio', label: 'BANGER CALIBRATION',
+  blurb: 'Measures instruments playing short, sustained, busy and chord phrases through their channels. Reuses unchanged measurements, checks unseen phrases, then publishes validated offsets for generation. The first full run is lengthy; interrupted runs resume from cached renders. FULL rebuilds everything selected. Weekly runs use all styles while the desk is open.',
+  choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive'],
+  options: [{ key: 'full', label: 'FULL REBUILD', flag: '--full' }], needsIds: true, speed: 'background',
+  steps: args => [niced(['tools/banger-calibrate.js', 'refresh', ...idsFrom(args), ...optionFlags('bangercalibration', args)])],
+  openPath: reportHref('banger-calibration.json', 'calibration'),
+}, {
+  id: 'bangercalibrationreport', group: 'audio', label: 'BANGER CALIBRATION COVERAGE',
+  blurb: 'Quick coverage check: which current instrument/channel combinations have validated measurements. Does not render audio or change published offsets.',
+  steps: [niced(['tools/banger-calibrate.js', 'report'])], speed: 'background',
+  openPath: reportHref('banger-calibration.json', 'calibration'),
+});
+const SCHEDULE_FILE = join(root, 'work/local/banger-calibration/weekly.json');
+function calibrationSchedule() {
+  try { return JSON.parse(readFileSync(SCHEDULE_FILE, 'utf8')); } catch { return { enabled: false, nextRun: null }; }
+}
+function saveCalibrationSchedule(value) {
+  mkdirSync(dirname(SCHEDULE_FILE), { recursive: true });
+  const tmp = `${SCHEDULE_FILE}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(value)); renameSync(tmp, SCHEDULE_FILE);
+}
+function tickCalibrationSchedule() {
+  const schedule = calibrationSchedule();
+  if (!schedule.enabled || Date.now() < schedule.nextRun || [...runs.values()].some(r => r.running)) return;
+  saveCalibrationSchedule({ enabled: true, nextRun: Date.now() + 7 * 86400000 });
+  runAction(ACTION_BY_ID.bangercalibration, { ids: ACTION_BY_ID.bangercalibration.choices });
+}
 const ACTION_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
 
 // The option flags a RUN asked for, filtered to the ones that action declares: the
@@ -419,6 +447,7 @@ function actionStatus(action) {
     label: action.label,
     blurb: action.blurb,
     needsIds: !!action.needsIds,
+    schedule: action.id === 'bangercalibration' ? calibrationSchedule() : null,
     group: action.group || 'galleries',
     input: action.input || null,
     choices: action.choices || null,
@@ -452,6 +481,12 @@ const hostnameOf = (req) => {
 
 async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const weekly = /^\/api\/banger-calibration\/weekly\/(on|off)$/.exec(url.pathname);
+  if (weekly && req.method === 'POST') {
+    const enabled = weekly[1] === 'on';
+    saveCalibrationSchedule({ enabled, nextRun: enabled ? Date.now() + 7 * 86400000 : null });
+    return json(res, 200, { ok: true, schedule: calibrationSchedule() });
+  }
 
   if (url.pathname === '/') {
     const html = readFileSync(join(root, 'tools/desk-shell.html'), 'utf8');
@@ -497,6 +532,7 @@ async function handle(req, res) {
       levels: read('song-levels.json'),
       bass: read('bass-report.json'),
       bangers: read('banger-levels.json'),
+      calibration: read('banger-calibration.json'),
       frames: read('frame-report.json'),
       running: ACTIONS.filter((a) => (a.group === 'audio' || a.group === 'perf') && runs.get(a.id)?.running).map((a) => a.label),
     });
@@ -635,6 +671,8 @@ server.on('error', (err) => {
 });
 
 server.listen(PORT, HOST, () => {
+  setInterval(tickCalibrationSchedule, 60000).unref();
+  tickCalibrationSchedule();
   console.log(`THE DESK  http://${HOST}:${PORT}`);
   console.log('  straight to a tool:');
   for (const t of TOOLS) console.log(`    http://${HOST}:${PORT}/${t.id}`.padEnd(38) + `→ :${t.port}  ${t.label}`);

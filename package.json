@@ -29,6 +29,7 @@
     "mixer": "node tools/mixer.js",
     "sfx": "node tools/sfx-desk.js",
     "banger-sounds": "node tools/banger-sounds.js",
+    "banger-calibrate": "node tools/banger-calibrate.js",
     "browsers": "node tools/browsers.js",
     "baseline": "node tools/make-baselines.js"
   },

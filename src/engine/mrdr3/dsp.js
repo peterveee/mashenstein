@@ -929,6 +929,11 @@ function Mrdr3Last() {
   this.hz = 0;
   this.gateUntil = -1;
   this.group = null;
+  // AUTO PORTAMENTO: the id of the note that left its gate open for a slide to continue —
+  // null for every note that was not told it is the source of one. A slide names the note
+  // it continues and is refused when this is not that note, so an id that outlived its
+  // note (a seek, a loop, an edit) can never take over whatever sounds now.
+  this.autoId = null;
 }
 
 /**
@@ -1352,6 +1357,7 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       this.next = 0;
       this.last.gateUntil = -1;
       this.last.group = null;
+      this.last.autoId = null;
       continue;
     }
     if (e.type === 'choke') {
@@ -1362,6 +1368,7 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       for (var c = 0; c < this.groups.length; c++) this.groups[c].choke(frame, cutFrames);
       this.last.gateUntil = -1;
       this.last.group = null;
+      this.last.autoId = null;
       continue;
     }
     if (e.type === 'noteOff') {
@@ -1402,25 +1409,59 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       }
       continue;
     }
-    if (p.mono && p.legato && owner && this.last.gateUntil > frame) {
+    // ---- AUTO PORTAMENTO: the note's own say, never the patch's ---------------------
+    //
+    // An event may carry 'auto' — { kind, id, from, glide, link } — which is the SONG
+    // saying how this one note joins the one before it. The patch is shared by every note
+    // on the lane, so it cannot be rewritten per note: the treatment travels with the
+    // event instead, and these three locals are what the rest of the branch reads in place
+    // of 'p.mono', 'p.legato' and 'p.glideSeconds'. With no 'auto' they ARE those three,
+    // so a lane that never asks is the lane it always was.
+    //
+    //   slide    continue the note whose id this one names — if it is still the note that
+    //            holds the gate. Anything else (a seek, a loop, an edit, a note that has
+    //            ended) and the slide is refused and the note is struck cleanly instead.
+    //   attack   a normal strike with no glide and no hand-over, whatever the patch says:
+    //            the preset's blanket glide must not turn an unchosen note into a slide.
+    var auto = e.auto || null;
+    var mono = p.mono;
+    var legato = p.legato;
+    var glideSecs = p.glideSeconds;
+    if (auto) {
+      if (auto.kind === 'slide' && owner && this.last.autoId === auto.from
+        && this.last.gateUntil > frame) {
+        owner.retarget(e, frame, this.rate, auto.glide * this.rate, false);
+        var sh = e.hz && e.hz.length !== undefined ? e.hz[e.hz.length - 1] : e.hz;
+        var sd = e.durFrames && e.durFrames.length !== undefined
+          ? e.durFrames[e.durFrames.length - 1] : e.durFrames;
+        this.last.hz = sh;
+        this.last.gateUntil = frame + (sd > 0 ? sd : 0);
+        this.last.autoId = auto.link ? auto.id : null;
+        continue;
+      }
+      legato = false;
+      glideSecs = 0;
+    }
+    if (mono && legato && owner && this.last.gateUntil > frame) {
       // LEGATO: the note still gated is taken over rather than struck again — no attack,
       // the pitch glides in, and the note now ends where this one does.
-      owner.retarget(e, frame, this.rate, p.glideSeconds * this.rate, false);
+      owner.retarget(e, frame, this.rate, glideSecs * this.rate, false);
       var lh = e.hz && e.hz.length !== undefined ? e.hz[e.hz.length - 1] : e.hz;
       var ld = e.durFrames && e.durFrames.length !== undefined
         ? e.durFrames[e.durFrames.length - 1] : e.durFrames;
       this.last.hz = lh;
       this.last.gateUntil = frame + (ld > 0 ? ld : 0);
+      this.last.autoId = null;
       continue;
     }
-    if (p.mono) {
+    if (mono) {
       var gated = this.last.gateUntil > frame;
-      if (gated && p.glideSeconds > 0) glide = { from: this.last.hz, frames: p.glideSeconds * this.rate };
+      if (gated && glideSecs > 0) glide = { from: this.last.hz, frames: glideSecs * this.rate };
       // THE CHOKE: a hardware mono synth cuts the note still ringing — its release tail
       // too, as the native path does — over a cycle and a half of it (5 to 30 ms): long
       // enough not to click, short enough that the note it replaces is gone rather than
       // ringing its whole release under the new one.
-      if (!p.legato && this.last.group && this.last.group.active) {
+      if (!legato && this.last.group && this.last.group.active) {
         var cyc = this.last.hz > 0 ? 1.5 / this.last.hz : 0;
         var fadeSecs = cyc > 0.03 ? 0.03 : (cyc < 0.005 ? 0.005 : cyc);
         this.last.group.choke(frame, fadeSecs * this.rate);
@@ -1430,13 +1471,16 @@ Mrdr3Core.prototype.applyDue = function (frame) {
     if (!slot) continue;
     slot.age = this.age++;
     slot.start(p, e, frame, this.rate, this.noise, glide, this.soloLayers);
-    if (p.mono) {
+    // A note told it is the source of a slide leaves its gate on the book even on a poly
+    // patch, which would otherwise keep no record of the note before it at all.
+    if (mono || (auto && auto.link)) {
       var lastHz = e.hz && e.hz.length !== undefined ? e.hz[e.hz.length - 1] : e.hz;
       var lastDur = e.durFrames && e.durFrames.length !== undefined
         ? e.durFrames[e.durFrames.length - 1] : e.durFrames;
       this.last.hz = lastHz;
       this.last.gateUntil = frame + (lastDur > 0 ? lastDur : 0);
       this.last.group = slot;
+      this.last.autoId = auto && auto.link ? auto.id : null;
     }
   }
 };

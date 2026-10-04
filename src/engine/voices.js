@@ -2408,7 +2408,7 @@ export class VoiceRack {
   play(laneKey, voiceId, freq, {
     time, dur, gain, detune = 1, dry, wet, echo = true, preview = false,
     hold = preview, spb = null, laneEffects = true, choke = null, step = null,
-    laneRoute = null,
+    laneRoute = null, articulation = null,
   }) {
     // The comparison override, in front of dispatch and nowhere else (§9.2). With nothing
     // forced this returns the voice unchanged, which is the shipping path.
@@ -2505,6 +2505,7 @@ export class VoiceRack {
       // The gate and the replay both refuse everything they are unsure of, and then
       // this is the line it always was. See `_cacheableLayer`.
       if (this.noteCache
+        && !(articulation && (articulation.kind === 'slide' || articulation.link))
         && this._cacheableLayer(v, v.mode || keyMode(v), preview, hold)
         && this._playCachedLayer(v, voiceId, Array.isArray(freq) ? freq : [freq],
           { time, dur, gain, detune, dry, wet, echo, laneKey, preview, laneEffects })) {
@@ -2512,6 +2513,7 @@ export class VoiceRack {
       }
       return this._playLayer(v, {
         freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb, laneEffects,
+        articulation,
       });
     }
     if (v && v.synth === MRDR3_AW) {
@@ -2522,6 +2524,7 @@ export class VoiceRack {
       const route = laneRoute || { dry, wet };
       return this._playMrdr3Aw(v, {
         freq, time, dur, gain, detune, dry: route.dry, wet: route.wet, echo, laneKey, hold,
+        articulation,
       });
     }
     if (!v || !synthClassFor(v.synth, v.options)) return false;
@@ -2539,21 +2542,47 @@ export class VoiceRack {
     // LEGATO and MONO are one instance, reused. LEGATO keeps the current envelope alive
     // when a note overlaps and moves that note's pitch; MONO starts the new envelope and
     // cuts the old one. POLY keeps the existing round-robin pool.
-    const mode = v?.mode || keyMode(v);
-    const mono = mode !== 'poly';
-    const legato = mode === 'legato';
+    //
+    // ---- AUTO PORTAMENTO: the note's own say, never the preset's ----------------------
+    //
+    // `articulation` is the SONG saying how this one note joins the one before it
+    // (src/engine/auto-portamento.js): a SLIDE continues the note it names, an ATTACK is a
+    // normal strike that the preset's own glide and legato must not turn into a slide.
+    // Absent — every lane that never asked — and none of what follows is reached: the
+    // mode, the glide and the slot are exactly what they were. The preset is never
+    // written to; the treatment is a decision about this one call.
+    const baseMode = v?.mode || keyMode(v);
+    const baseMono = baseMode !== 'poly';
+    const art = (articulation?.kind === 'slide' || articulation?.kind === 'attack')
+      && !hold && notes.filter((f) => f > 0).length === 1 ? articulation : null;
     // Rendered once, replayed after that — when this voice is the kind that can be.
     // See `_cachedNote`: it is the same note, from a buffer, and it is the difference
     // between a sixteenth-note pluck layer costing a third of the audio thread and
     // costing nothing. Returns false for anything it cannot safely stand in for, and
-    // then the pool below plays the note exactly as it always did.
-    if (this.noteCache && this._cacheablePool(v, mode, preview, hold)
+    // then the pool below plays the note exactly as it always did. A note that is one end
+    // of a slide is played live: a buffer cannot be handed over from or to.
+    if (this.noteCache && !(art && (art.kind === 'slide' || art.link))
+      && this._cacheablePool(v, baseMode, preview, hold)
       && this._playCached(v, voiceId, notes, { time, dur, gain, detune, dry, wet, echo })) {
       return true;
     }
     const pool = this._pool(laneKey, voiceId, dry, wet, echo,
-      mono ? 1 : notes.length + 1, preview);
+      baseMono ? 1 : notes.length + 1, preview);
     if (!pool) return false;
+    // The note a slide continues: the one it NAMES, on this pool, with its gate still open
+    // at this note-on. Anything else — a seek, a loop, an edit, a pool rebuilt under it, a
+    // note that has ended — and there is nothing to continue: the note is struck cleanly,
+    // which is the only honest answer to a source that is no longer there.
+    const linkKey = art ? `${laneKey}|${voiceId}${preview ? '|p' : ''}` : null;
+    let owner = null;
+    if (art?.kind === 'slide') {
+      const held = this._links?.get(linkKey);
+      if (held && held.id === art.from && held.pool === pool && !pool.gone
+        && (held.slot.activeUntil || 0) > time) owner = held;
+    }
+    const mode = art ? (owner ? 'legato' : (baseMode === 'legato' ? 'mono' : baseMode)) : baseMode;
+    const mono = mode !== 'poly';
+    const legato = mode === 'legato';
     // A POLY pool sized for a chord is sized for a SEQUENCER, where every note has a
     // length and a slot comes back a beat later. A keyboard hands them out and never
     // returns them: the third key pressed used to land on the first key's slot and take
@@ -2580,7 +2609,7 @@ export class VoiceRack {
         // A non-poly mode holds slot 0 rather than advancing. A chord handed to it
         // therefore sounds its last note, which is the only meaningful answer for one
         // sounding voice.
-        const slot = mono ? pool.slots[0] : this._slotFor(pool, hold);
+        const slot = owner ? owner.slot : (mono ? pool.slots[0] : this._slotFor(pool, hold));
         const t = time;
         const monoGroup = v?.monoGroup
           ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
@@ -2662,6 +2691,9 @@ export class VoiceRack {
         const hz = f * detune * VoiceRack.pitchShift(v);
         const carriesGlide = typeof slot.synth.portamento === 'number';
         if (carriesGlide) slot.synth.portamento = overlap ? glide : 0;
+        // Under articulation the glide is the SONG's: its own for a slide, none at all for a
+        // note struck cleanly — the preset's blanket glide must not turn that into a slide.
+        if (carriesGlide && art) slot.synth.portamento = owner ? art.glide : 0;
         try {
           if (hold) {
             // A held note uses triggerAttack so a later note-off can release it.
@@ -2699,11 +2731,21 @@ export class VoiceRack {
           } else {
             slot.synth.triggerAttackRelease(hz, noteDur, t);
           }
-          if (mono) {
+          if (mono || art) {
             slot.activeUntil = t + Math.max(0.001, noteDur || 0.001);
             // Which KEY the gate belongs to, so that a note-off can close it. A sequenced
             // note has no key and no note-off: its gate ends where `activeUntil` says.
             slot.gateKey = noteKey;
+          }
+          // The source of a slide leaves its slot on the book for the next note to find;
+          // anything else under articulation closes the book, so an id cannot outlive its note.
+          if (art) {
+            this._links ||= new Map();
+            if (art.link) {
+              this._links.set(linkKey, {
+                id: art.id, pool, slot, until: t + noteDur, release: art.release ?? null,
+              });
+            } else this._links.delete(linkKey);
           }
         } catch { return; } finally {
           if (carriesGlide) slot.synth.portamento = glide;
@@ -2725,6 +2767,58 @@ export class VoiceRack {
    */
   _tngr2Fingers(laneKey) {
     return this._laneFingers('tngr2', laneKey);
+  }
+
+  /**
+   * Forget every Auto Portamento connection still open: the transport stopped, jumped,
+   * looped round or changed song, so no note that is sounding is the source of one any
+   * more. A slide names the note it continues and is refused when the book does not have
+   * it, so the note after a seek is struck cleanly instead of sliding out of one it never
+   * followed. The worklet lanes hold their own book and clear it with the panic that
+   * every one of those events already sends.
+   */
+  clearPortamento() {
+    this._links?.clear();
+    this._awPending?.clear();
+    for (const record of this._last?.values() || []) { record.autoId = null; record.autoRelease = null; }
+  }
+
+  /**
+   * An edit has made a planned slide out of date: take every gate that was stretched for
+   * one back to the length it was WRITTEN with, where that moment is still ahead — then
+   * forget the connections, as `clearPortamento` does. A note that has already reached
+   * its written end cannot be called back; it was extended by a few milliseconds and
+   * rings out its own release, which is the most an edit this late can cost.
+   *
+   * Each path does it with what it already has: the pooled Tone voice cancels its booked
+   * release and books one at the written end, the native graph re-arms its envelopes the
+   * way a legato hand-over does, and a worklet lane is told the note is let go.
+   */
+  cancelPortamento() {
+    const now = this.ctx?.currentTime ?? 0;
+    const ahead = (at) => Number.isFinite(at) && at > now + 0.005;
+    for (const link of this._links?.values() || []) {
+      if (!ahead(link.release) || !((link.slot.activeUntil || 0) > link.release + 1e-9)) continue;
+      try {
+        cancelToneEnvelopes(link.slot.synth, link.release);
+        link.slot.synth.triggerRelease(link.release);
+        link.slot.activeUntil = link.release;
+      } catch { /* the note had already ended */ }
+    }
+    for (const record of this._last?.values() || []) {
+      if (record.autoId == null || !ahead(record.autoRelease)
+        || !(record.gateUntil > record.autoRelease + 1e-9)) continue;
+      try {
+        // The same re-arm a legato hand-over does, to the SAME pitch: nothing moves, the
+        // note simply ends where it was written to.
+        this._retargetLayerLegato(record, record.freq, record.autoRelease, 0.001, null, false, 0);
+      } catch { /* the graph may already have ended */ }
+    }
+    for (const pending of this._awPending?.values() || []) {
+      if (!ahead(pending.release)) continue;
+      try { mrdr3NoteOff(pending.lane, { at: pending.release, eventId: pending.eventId }); } catch { /* gone */ }
+    }
+    this.clearPortamento();
   }
 
   /** The same, for any worklet synth: one finger list per (engine, lane). */
@@ -3176,7 +3270,10 @@ export class VoiceRack {
    * keying on the preset as well would strand the old node, still connected, every time
    * the sound changed.
    */
-  _playMrdr3Aw(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false }) {
+  _playMrdr3Aw(v, {
+    freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false,
+    articulation = null,
+  }) {
     const lane = mrdr3LaneNow(this.ctx, laneKey);
     // A lane that has not been built yet builds itself, and this note waits for it.
     //
@@ -3184,7 +3281,11 @@ export class VoiceRack {
     // first note on a lane cannot have a node to talk to. It is not dropped: notes are
     // scheduled a quarter-second ahead and carry absolute times, so arriving late costs
     // nothing. Without this the first note of every lane would be silent.
-    if (!lane) return this._queueMrdr3(v, laneKey, { freq, time, dur, gain, detune, dry, wet, echo, hold });
+    if (!lane) {
+      return this._queueMrdr3(v, laneKey, {
+        freq, time, dur, gain, detune, dry, wet, echo, hold, articulation,
+      });
+    }
     // The preset as it is NOW — an edit or a preset change since the node was built.
     syncMrdr3Patch(lane, v);
     setMrdr3LayerSolo(lane, this.soloLayers?.get(v.id) || null);
@@ -3271,10 +3372,24 @@ export class VoiceRack {
     // The hash was there to keep a stem and its mix identical; a counter keeps that too,
     // because soloing a lane changes neither which notes it plays nor their order.
     const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);
+    // AUTO PORTAMENTO rides the event: the lane's patch is shared by every note on it, so
+    // the core reads the note's own articulation in place of the patch's key mode.
+    const auto = !hold && hzs.length === 1
+      && (articulation?.kind === 'slide' || articulation?.kind === 'attack')
+      ? {
+        kind: articulation.kind, id: articulation.id ?? null, from: articulation.from ?? null,
+        glide: Math.max(0, Number(articulation.glide) || 0), link: !!articulation.link,
+      } : null;
     mrdr3NoteOn(lane, {
       at: time, hz: hzs, velocity: Math.min(1, amp), eventId,
       durSeconds: hold ? HOLD_SECONDS : hzs.map((_, i) => durOf(i)),
+      ...(auto ? { auto } : {}),
     });
+    // What a cancelled bridge needs: which note to let go, and when it was written to end.
+    this._awPending ||= new Map();
+    if (auto?.link && Number.isFinite(articulation.release)) {
+      this._awPending.set(laneKey, { lane, eventId, release: articulation.release });
+    } else this._awPending.delete(laneKey);
     if (hold) {
       // A HELD note has no note-off of its own — a key is down. Written down under the
       // same key `_releasePreview` looks under, or a swept keyboard leaves a note sounding.
@@ -5889,7 +6004,7 @@ export class VoiceRack {
     } else param.setValueAtTime(target, t);
   }
 
-  _retargetLayerLegato(prev, base, time, dur, v, hold = false) {
+  _retargetLayerLegato(prev, base, time, dur, v, hold = false, glide = v.portamento || 0) {
     const stopAt = time + Math.max(0.001, dur || 0.001);
     const releaseValues = (prev.envelopes || [])
       .map(({ e }) => e?.release ?? 0.015)
@@ -5899,7 +6014,7 @@ export class VoiceRack {
       .filter(Number.isFinite);
     const release = Math.max(0, ...releaseValues, ...gateValues);
     const finalStop = stopAt + release + 0.01;
-    this._retargetLayerPitch(prev, base, time, v.portamento || 0);
+    this._retargetLayerPitch(prev, base, time, glide);
     // ---- a HELD note stops here -------------------------------------------------
     //
     // The pitch moved and that is the whole of the handover: a key press has no length,
@@ -6020,7 +6135,7 @@ export class VoiceRack {
 
   _playLayer(v, {
     freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '',
-    preview = false, hold = preview, spb = null, laneEffects = true,
+    preview = false, hold = preview, spb = null, laneEffects = true, articulation = null,
   }) {
     const ctx = this.ctx;
     const L = v.layer;
@@ -6047,9 +6162,24 @@ export class VoiceRack {
     // gives (mono holds slot 0 and each chord tone restarts it), and what a hardware
     // mono synth does with one. Stacking all of them here would make MONO mean two
     // different things depending on which synth is behind the pill.
-    const mode = v?.mode || keyMode(v);
+    // AUTO PORTAMENTO, as the pooled path says it: this call's own articulation, or none.
+    // A SLIDE continues the note it names — the record `_last` keeps for this lane and
+    // preset — while that note still holds its gate; an ATTACK is a clean strike whatever
+    // the preset's glide and legato say. The preset is never written to.
+    const art = (articulation?.kind === 'slide' || articulation?.kind === 'attack')
+      && !hold && all.filter((f) => f > 0).length === 1 ? articulation : null;
+    const glideKey = `${laneKey}|${v.id}${preview ? '|p' : ''}`;
+    this._last ||= new Map();
+    const source = art?.kind === 'slide' ? this._last.get(glideKey) : null;
+    const slide = !!source && source.autoId === art.from && source.gateUntil > time;
+    const baseMode = v?.mode || keyMode(v);
+    const mode = art ? (slide ? 'legato' : (baseMode === 'legato' ? 'mono' : baseMode)) : baseMode;
     const mono = mode !== 'poly';
     const legato = mode === 'legato';
+    // A note that is one end of a slide keeps a record even on a poly preset, which would
+    // otherwise remember nothing about the note before it.
+    const track = mono || !!art;
+    const glideSec = art ? (slide ? art.glide : 0) : glideTime(v);
     const monoLast = mono ? all.filter((f) => f > 0).slice(-1) : null;
     const notes = monoLast && monoLast.length ? monoLast : all;
     const tailPlan = this._recordMrdrTailOpportunity(v, { notes, dur, time, preview, hold, mode });
@@ -6222,9 +6352,7 @@ export class VoiceRack {
     }
 
     // ---- glide and choke ----------------------------------------------------
-    const glideKey = `${laneKey}|${v.id}${preview ? '|p' : ''}`;
-    this._last ||= new Map();
-    const prev = mono ? this._last.get(glideKey) : null;
+    const prev = track ? this._last.get(glideKey) : null;
     // FINGERED, the pooled path's rule stated once more on the path that has to obey it:
     // a glide needs the previous note to be STILL GATED at this note-on. `_last` outlives
     // the note it describes — that is how MONO finds the note to choke — so an ungated
@@ -6243,12 +6371,20 @@ export class VoiceRack {
     const fingered = !!prev && prev.gateKey != null;
     const overlap = gated || fingered;
     const glideFrom = overlap && glideTime(v) > 0 ? prev.freq : null;
+    // Where THIS note's glide comes from: the preset's, where nobody asked, and nowhere
+    // under articulation — a slide is handed over by the legato branch below and returns
+    // before anything is built, and a note struck cleanly glides from nothing.
+    const glideOrigin = art ? null : glideFrom;
     if (legato && overlap && notes.length) {
       const f = notes[0];
       const di = monoLast ? all.lastIndexOf(f) : 0;
       const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
       const base = f * shift * ensembleVary((v.humanize || {}).pitch, time, 16);
-      this._retargetLayerLegato(prev, base, time, noteDur, v, hold);
+      if (art) this._retargetLayerLegato(prev, base, time, noteDur, v, hold, glideSec);
+      else this._retargetLayerLegato(prev, base, time, noteDur, v, hold);
+      // The note it took over now ends where this one does, and answers to this one's id.
+      prev.autoId = art?.link ? art.id : null;
+      prev.autoRelease = art?.link ? (art.release ?? null) : null;
       // The new key owns the note now — LAST NOTE PRIORITY, which is what a mono synth
       // does and what the retarget already did to the pitch. Without the hand-over the
       // release record stayed under the FIRST key: letting go of the key you are actually
@@ -6727,7 +6863,7 @@ export class VoiceRack {
           // The delay line is built with 0.25s of room, so a reciprocal off a very low
           // starting note is clamped rather than silently pinned by the node.
           const secsAt = (hz) => Math.min(0.249, wCentre / Math.max(1, hz));
-          const startHz = glideFrom ? Math.max(1, glideFrom * ratio) : target;
+          const startHz = glideOrigin ? Math.max(1, glideOrigin * ratio) : target;
           let pwmSecs = null;
           if (pwm) {
             const lfo = ctx.createOscillator();
@@ -6748,7 +6884,7 @@ export class VoiceRack {
             // A width sitting on either limit leaves no room to swing at all, and an
             // exponential ramp cannot end on the zero that gives — it stays a flat zero.
             pwmSecs.gain.setValueAtTime(swing / Math.max(1, startHz), t);
-            if (glideFrom && swing > 0) {
+            if (glideOrigin && swing > 0) {
               pwmSecs.gain.exponentialRampToValueAtTime(swing / Math.max(1, target), glideEnd);
             }
             lfo.connect(env); env.connect(pwmSecs);
@@ -6800,7 +6936,7 @@ export class VoiceRack {
               a.connect(sum);
               a.connect(line); line.connect(inv); inv.connect(sum);
               line.delayTime.setValueAtTime(secsAt(startHz), lt);
-              if (glideFrom) line.delayTime.exponentialRampToValueAtTime(secsAt(target), glideEnd);
+              if (glideOrigin) line.delayTime.exponentialRampToValueAtTime(secsAt(target), glideEnd);
               pwmSecs.connect(line.delayTime);
               out = sum; sources.push(a);
               pitches.push(a.frequency); dets.push(a.detune);
@@ -6929,7 +7065,7 @@ export class VoiceRack {
             // scoop and was unreachable while the two shared one param.
             for (const pitch of pitches) {
               const playedRatio = hardSynced ? Math.max(0.01, syncMaster.ratio ?? 1) : ratio;
-              if (glideFrom) {
+              if (glideOrigin) {
                 // Written from the NOTE's start rather than the layer's, and that is not
                 // an oversight: a portamento is one gesture the whole note makes, not
                 // something each layer restarts on arrival. A param's automation runs
@@ -6939,7 +7075,7 @@ export class VoiceRack {
                 //
                 // A glide stays 'exp' — constant semitones per second is what a
                 // portamento IS.
-                pitch.setValueAtTime(Math.max(1, glideFrom * playedRatio), t);
+                pitch.setValueAtTime(Math.max(1, glideOrigin * playedRatio), t);
                 pitchRamp(pitch, base * playedRatio, t, Math.max(0.001, v.portamento));
               } else {
                 pitch.setValueAtTime(base * playedRatio, t);
@@ -7036,19 +7172,23 @@ export class VoiceRack {
 
     // `adsr` returns ABSOLUTE times, so these are used as they are — adding `time`
     // would double-count and leave modulator nodes running seconds past the note.
-    if (mono && lastBase > 0) {
+    if (track && lastBase > 0) {
       const record = {
         freq: lastBase, outs: allOuts, pitchSets, envelopes: legatoEnvelopes,
         gates: legatoGates, sources: legatoSources, modulators: vibOscs,
         activeLayerMonitors, activeLayerWaves,
         gateUntil, gateKey, stopAt: lastOff,
+        // Only the source of a slide has an id for another note to name, and only a note
+        // whose gate was stretched for one has a written end to go back to.
+        autoId: art?.link ? art.id : null,
+        autoRelease: art?.link ? (art.release ?? null) : null,
         // MONO builds a NEW graph per note and this record replaces the one before it,
         // but the fingers do not belong to the graph — they belong to the lane, and the
         // keys still down when this note was struck are still down after it. Carried
         // across, or the fall-back would only ever find the note it was leaving.
-        fingers: prev?.fingers || [], glide: glideTime(v),
-        pitchPlan: glideFrom
-          ? { from: glideFrom, to: lastBase, t0: time, t1: time + Math.max(0.001, glideTime(v)) }
+        fingers: prev?.fingers || [], glide: glideSec,
+        pitchPlan: glideOrigin
+          ? { from: glideOrigin, to: lastBase, t0: time, t1: time + Math.max(0.001, glideSec) }
           : { from: lastBase, to: lastBase, t0: time, t1: time },
       };
       if (hold && gateKey) fingerDown(record, gateKey, lastBase);

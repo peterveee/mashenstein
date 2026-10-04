@@ -29,17 +29,25 @@ import { buildForm } from './form.js';
 import { buildSections } from './sections.js';
 import { allocateLanes, buildMix, pickRiffSounds, BASS_ECHO } from './lanes.js';
 import { levelMix } from './levels.js';
+import { rollReport } from './report.js';
 import { buildFx } from './fx.js';
+import { applySectionEffects } from './section-effects.js';
 import { BANGER_SOUNDS } from './sounds.js';
 import { BANGER_CHANNELS } from './channels.js';
 import { BANGER_COMBOS } from './combos.js';
 import { bangerPrints } from './modify.js';
+import { applyExpression } from './expression.js';
+import { applyTrackEffects } from './production.js';
 import { resolveSounds } from './sound-rules.js';
 
 export { BANGER_DEFAULTS, BANGER_GROUPS, BANGER_MOODS, BANGER_KEYS, BANGER_MODES, BANGER_RIFF_NOTES, MOOD_MODES,
   BANGER_VARIATIONS, BANGER_LENGTHS,
   BANGER_TEMPOS, BANGER_LIMITS, normaliseBangerOptions, surpriseBangerOptions, goCrazyBangerOptions, styleDefaults, classicDefaults,
-  bangerBars, bangerBpm, MOOD_BASS, moodBass, BANGER_STRUCTURE, keepStructure } from './options.js';
+  bangerBars, bangerBpm, MOOD_BASS, moodBass, BANGER_STRUCTURE, keepStructure,
+  BANGER_EXPRESSION_VERSION, normaliseExpression } from './options.js';
+export { EXPRESSION_ROLES, EXPRESSION_POLICY, planExpression, applyExpression, voiceOfLane } from './expression.js';
+export { TRACK_EFFECTS_VERSION, TRACK_EFFECTS_MODES, PRODUCTION_ROLES, trackEffectsMode,
+  normaliseTrackEffects, productionFeatures, planTrackEffects, applyTrackEffects } from './production.js';
 export { BANGER_STYLES, styleFor } from './styles/index.js';
 export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
@@ -49,8 +57,16 @@ export {
   PART_SLOTS, KIT_ROLES, KITS, RANDOM_JOBS, CHOICE_SLOTS, MOOD_IDS, soundIssues, soundAllowed, slotChoices, tableIssues, resolveSounds,
 } from './sound-rules.js';
 
-/** Bumped whenever the same seed would make different music — a take records it. */
-export const BANGER_GENERATOR_VERSION = 2;
+/**
+ * Bumped whenever the same seed would make different music — a take records it.
+ * 3 (4 Oct 2026): the `expression` option (Auto Portamento). With it off a take is made exactly as
+ * it was under 2; with it on, the lead lane gets a Note FX setting, so the music is played differently.
+ * The version does not protect an old Lab recipe by itself — the Lab records none — which is what a
+ * recipe's own `expression` field is for (src/game/banger/make.js).
+ * 4 (4 Oct 2026): opt-in ongoing track production, under production policy 1.
+ * Keep Style (also the default for old recipes) retains v3's mix and music.
+ */
+export const BANGER_GENERATOR_VERSION = 6;
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);
@@ -79,6 +95,7 @@ export function withChannels(style, ...layers) {
       master: ch.master ? { ...out.master, ...ch.master } : out.master,
       pump: ch.pump || out.pump,
       exciter: ch.exciter || out.exciter,
+      sectionFx: ch.sectionFx ?? out.sectionFx,
     };
   }
   return out;
@@ -96,7 +113,7 @@ function withComboSounds(sounds, combo) {
 
 export function generateBanger({
   riff, options: raw = {}, seed = 1, sounds: table = BANGER_SOUNDS, level = true,
-  channels = BANGER_CHANNELS, combos = BANGER_COMBOS, levelData = undefined, rerolls = null,
+  channels = BANGER_CHANNELS, combos = BANGER_COMBOS, levelData = undefined, calibration = undefined, rerolls = null,
 }) {
   const recipe = styleFor(raw?.style) || styleFor('big-room');
   const { options, issues } = normaliseBangerOptions(raw, recipe);
@@ -119,8 +136,20 @@ export function generateBanger({
     arps: stream('arps'), parts: stream('partSounds'),
     // The other forms' own (verse material, the joins) — new names, so Club's draws never move.
     verse: stream('verse'), transitions: stream('transitions'),
+    // Auto Portamento's settings (expression.js), split again by role. A stream draws nothing from
+    // the seed to exist, so turning it on moves no other part.
+    expression: stream('expression'),
+    production: stream('production'),
+    sectionFx: stream('sectionFx'),
   };
   const warnings = [];
+  if (raw?.production?.mode && raw.production.mode !== 'style' && options.production.mode === 'style') {
+    warnings.push(`Track Effects policy ${JSON.stringify(raw.production.version)} is unknown — kept the style's production`);
+  }
+  // Only an unknown version can have been refused (the option is read, never reported): say so.
+  if (raw?.expression?.autoPortamento === true && !options.expression.autoPortamento) {
+    warnings.push(`Auto Portamento was asked for by expression version ${JSON.stringify(raw.expression.version)}, which this generator does not know — made without it`);
+  }
   // A Sound Combo, when one is chosen and the style has it: its sounds and channels over
   // the style's own, and its own banger as what the faders are matched against.
   const combo = options.combo ? combos?.[recipe.id]?.[options.combo] || null : null;
@@ -226,13 +255,21 @@ export function generateBanger({
     style, sounds, options, laneOf, riffParts: tparts, hookKey, coreFromRiff: ctx.coreFromRiff, bpm,
     denseHook: hookOnsets / hookPart.parsed.length > 8, riffSounds,
   });
+  const trackEffects = applyTrackEffects({ style, options, mix, bars, laneOf, riffParts: tparts,
+    hookKey, bpm, rng: rng.production, combo });
+  const sectionEffects = applySectionEffects({ automation, options, style, form, bars, laneOf, mix, bpm, rng: rng.sectionFx });
+  if (sectionEffects.automation) arrangement.automation = sectionEffects.automation;
   // Every channel's fader, from what its part plays and on what (levels.js). `level: false`
   // is for tools/banger-levels.js, which reads the style's own default parts from here.
-  const levels = level ? levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts: tparts, hookKey, refs: combo?.refs, data: levelData }) : [];
+  const levels = level ? levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts: tparts, hookKey, refs: combo?.refs, data: levelData, calibration }) : [];
   // The bass echo has no reference of its own: it rides the bass's levelled fader.
   if (laneOf.has('bassEcho') && laneOf.has('bass')) {
     mix.lanes[laneOf.get('bassEcho')].gain = Math.round(((mix.lanes[laneOf.get('bass')]?.gain ?? 0) + BASS_ECHO.gain) * 10) / 10;
   }
+  // Auto Portamento (expression.js), when asked for: a Note FX setting on the lead lane the take's
+  // notes and sound suit, added to the finished mix. Nothing above is read again or redrawn.
+  const expressed = options.expression.autoPortamento
+    ? applyExpression({ bank, mix, laneOf, bpm, bars: total, rng: rng.expression }) : null;
 
   // ---- the self-check: a failure here is a generator bug, never the request's fault.
   const laneKeys = laneKeysOf(bank, mix);
@@ -263,6 +300,9 @@ export function generateBanger({
     `A BANGER, made on the desk from bars ${riff.source.from + 1}–${riff.source.to + 1} of ${riff.source.title || riff.source.id || 'a song'}.`,
     `${style.label} · ${options.mood} · ${keyName(key)} · ${options.variation} · ${total} bars at ${bpm} BPM, ${seconds}s.`,
     `The hook is ${hook?.label || hookKey}. Seed ${s}; generator v${BANGER_GENERATOR_VERSION}.`,
+    ...(expressed?.applied.length ? [`Auto Portamento on ${expressed.applied.map((a) => `${(mix.labels[a.lane] || a.role).split(' · ')[0]} (Amount ${a.set.amount}, Glide ${a.set.glide})`).join(', ')} — a lane Note FX setting, editable on the desk.`] : []),
+    ...(trackEffects.mode !== 'style' ? ['', `Track Effects (${trackEffects.mode}):`,
+      ...trackEffects.roles.map(x => `  ${(mix.labels[x.lane] || x.role).split(' · ')[0]}: ${x.treatment} — ${x.reason}.`)] : []),
     '',
     ...formLines,
     ...(events.transitions?.length ? ['', 'Joins:', ...events.transitions.map((t) => `  bar ${String(t.bar).padStart(3)}  ${t.from} → ${t.to}: ${t.moves.join(', ')}`)] : []),
@@ -284,11 +324,15 @@ export function generateBanger({
     // tuned banger back by (tools/lib/banger-seeds.js).
     laneOf: Object.fromEntries(laneOf),
     form: form.map((f) => ({ role: f.role, type: f.type, label: f.label, from: f.from, to: f.to, energy: f.energy, ...(f.hook ? { hook: true } : {}) })),
+    report: rollReport({ summary, warnings, levels, transitions: events.transitions || [], expressed,
+      mix, laneOf: Object.fromEntries(laneOf) }),
+    ...(trackEffects.mode !== 'style' ? { trackEffects } : {}),
+    sectionEffects: sectionEffects.report,
     ...(Object.keys(reroll).length ? { rerolls: reroll } : {}),
     // Each part's fingerprint as generated — what Modify This Take tells hand edits by.
     prints: bangerPrints({ bank, mix, arrangement, laneOf: Object.fromEntries(laneOf) }),
   };
-  return { title, bank, mix, arrangement, note, summary, form, banger, warnings, levels, laneOf: Object.fromEntries(laneOf), transitions: events.transitions || [] };
+  return { title, bank, mix, arrangement, note, summary, form, banger, warnings, levels, trackEffects, laneOf: Object.fromEntries(laneOf), transitions: events.transitions || [] };
 }
 
 /**
@@ -296,6 +340,8 @@ export function generateBanger({
  * one gives it a seed of its own; everything drawn from the other streams stays put.
  */
 export const BANGER_REROLLS = Object.freeze([
+  { stream: 'sectionFx', label: 'Section FX', title: 'New automatic section treatments, keeping explicit rules, notes and sounds' },
+  { stream: 'production', label: 'Track Effects', title: 'New ongoing track treatments, keeping the notes, sounds and transitions' },
   { stream: 'arps', label: 'Arp', title: 'A new arp figure in every section that has one' },
   { stream: 'drums', label: 'Drum Fills', title: 'New fills' },
   { stream: 'partSounds', label: 'Part Sounds', title: 'New sounds for the chords, pad, arp, choir and bell (Part Sounds: Roll)' },

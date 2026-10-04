@@ -13,7 +13,9 @@ assert(ids.every(isTngr2Table), 'every shipped table id is accepted by the catal
 assert.equal(tngr2TableName('missing'), 'Basic Shapes', 'unknown tables fall back to Basic Shapes');
 
 
-const presets = Object.values(VOICES).filter((v) => v.synth === 'TNGR-2');
+// Style seeds' own copies (Use as Style keeps a tuned sound as `seed<Style><Job>`) are the
+// styles', not the factory bank's, and are not counted.
+const presets = Object.entries(VOICES).filter(([id, v]) => v.synth === 'TNGR-2' && !/^seed[A-Z]/.test(id)).map(([, v]) => v);
 // 51 since 1 Oct 2026: two basses, two keys and a woodwind joined with the piano, slap-bass
 // and woodwind auditions (4bc4afd).
 assert.equal(presets.length, 51, 'the expanded bank contains 51 TNGR-2 presets');

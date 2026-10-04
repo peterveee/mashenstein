@@ -6,6 +6,9 @@
 // in the dialog moves every switch under More Options to where that style wants it.
 //
 // Browser-safe: no `node:*` imports.
+import { BANGER_ENERGIES } from './energy.js';
+import { TRACK_EFFECTS_MODES, TRACK_EFFECTS_VERSION } from './production.js';
+import { SECTION_FX_FIELDS, SECTION_FX_DEFAULTS } from './section-effects.js';
 import { styleFor, BANGER_STYLES } from './styles/index.js';
 import { ARP_FIGURES, BASS_FIGURES } from './theory.js';
 import { normaliseSections } from './form-types.js';
@@ -94,7 +97,7 @@ export const BANGER_KEYS = Object.freeze(BANGER_MODES.slice(0, 3));
 export const BANGER_VARIATIONS = Object.freeze([
   { id: 'faithful', label: 'Faithful', title: 'Your notes as written: only the setting changes — octaves, instruments, harmony, half speed' },
   { id: 'some', label: 'Some', title: 'Also sequences the riff up the scale and turns the phrase ends round' },
-  { id: 'wild', label: 'Wild', title: 'Also develops fragments, shifts the rhythm, leaps at the peak and adds a counter-line' },
+  { id: 'wild', label: 'Wild', title: 'Also develops fragments, shifts the rhythm, leaps at the peak and adds a counter-line. Selecting Wild on the desk enables Style + Automatic Section FX; you can adjust it afterward.' },
 ]);
 /** Length presets, in bars. Medium is ABSOLUTE ZERO's shape; Short is a stage. */
 export const BANGER_LENGTHS = Object.freeze([
@@ -118,6 +121,11 @@ export const BANGER_LIMITS = Object.freeze({
  * list, so a new option is one entry here plus whatever the generator does with it.
  */
 export const BANGER_GROUPS = Object.freeze([
+  { id: 'production', label: 'Track Effects', fields: [
+    { key: 'mode', label: 'Track Effects', type: 'select',
+      title: 'Delay, room and chorus chosen from the notes and instrument. Adventurous treats a suitable main lead, keeping existing inserts. Subtle preserves source treatments. Editable afterward.',
+      options: TRACK_EFFECTS_MODES.map(x => [x.id, x.label, x.description]) },
+  ] },
   { id: 'form', label: 'Form', fields: [
     { key: 'template', label: 'Form', type: 'select',
       title: 'The shape of the song: Club (build and drop), Pop Song (verses, choruses, a middle 8), Anthem (one long breakdown, one huge drop) or Groove (no drops — parts arriving and leaving)',
@@ -215,6 +223,7 @@ export const BANGER_GROUPS = Object.freeze([
       title: 'Roll: the chords, pad, arp, choir and bell each drawn from the style\'s shortlist — a new roll every take. Style: always the style\'s own',
       options: [['roll', 'Roll', 'A new pick from the shortlist every take'], ['style', 'Style\'s Own', 'Always the style\'s own sounds']] },
   ] },
+  { id: 'sectionFx', label: 'Section FX', fields: SECTION_FX_FIELDS },
   { id: 'spot', label: 'Spot FX', fields: [
     { key: 'intoDrop', label: 'Into a Drop', type: 'select',
       title: 'The effect on the last bar before every drop or chorus. Style: the build\'s stutter (Stutter Before Drop) and, in the other forms, their run-ups',
@@ -259,12 +268,40 @@ export const BANGER_GROUPS = Object.freeze([
 
 const FIELD = new Map(BANGER_GROUPS.flatMap((g) => g.fields.map((f) => [`${g.id}.${f.key}`, f])));
 
+/**
+ * EXPRESSION — how a take is PLAYED, beyond which notes it has. Version 1 is Auto Portamento
+ * (expression.js): a slide on the one or two lead lanes whose notes and sound suit it, set
+ * as an ordinary lane Note FX setting. It is a bespoke option, like `hook` and `combo`, and
+ * not a BANGER_GROUPS group. Go Wild in the Lab asks for it; the desk has a separate
+ * switch and enables it when Wild or Go Crazy is deliberately chosen.
+ *
+ * `version` is the policy a request was written for. This build knows only 1: any other
+ * fails CLOSED, read as off, because a newer file's policy is not ours to guess at.
+ * NEVER an issue, whatever it is given: a recipe from before this existed has no
+ * `expression` at all, and a reopened Lab recipe reaches the generator uncaught.
+ */
+export const BANGER_EXPRESSION_VERSION = 1;
+
+/** A request's `expression`, made whole: `{ autoPortamento, version }`. Anything unreadable is off. */
+export function normaliseExpression(raw) {
+  const asked = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  // A request that names no version means this one, as readAutoPortamento reads a setting's.
+  const known = asked.version === undefined || asked.version === BANGER_EXPRESSION_VERSION;
+  // The literal `true` is the switch: a stray 1, "true" or "on" is not.
+  return { autoPortamento: asked.autoPortamento === true && known, version: BANGER_EXPRESSION_VERSION };
+}
+
 /** Everything a request can say, with the generator's own defaults (before a style). */
 export const BANGER_DEFAULTS = Object.freeze({
   style: 'big-room', mood: 'anthemic', mode: 'keep', riffNotes: 'keep', length: 'medium', customBars: 64,
-  variation: 'some', tempo: 'style', bpm: 128, hook: 'auto',
+  energy: 'full', variation: 'some', tempo: 'style', bpm: 128, hook: 'auto',
   // A Sound Combo (combos.js) by its id, or null for the style's own sounds and channels.
   combo: null,
+  // Recipes without this retain their original production. New UI requests can opt in.
+  production: { mode: 'style', version: TRACK_EFFECTS_VERSION },
+  sectionFx: SECTION_FX_DEFAULTS,
+  // How the take is played (see BANGER_EXPRESSION_VERSION): Auto Portamento, off unless asked for.
+  expression: { autoPortamento: false, version: BANGER_EXPRESSION_VERSION },
   form: {
     template: 'club', sections: null, script: false, intro: true, layers: 'off', grooveIntro: false, build: true, breakdown: true, secondDrop: true, doubleDrop: true, keyLift: 'whole', keyApproach: 'mood', mood2: 'none', moodSwitch: 'breakdown',
     hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'half',
@@ -345,6 +382,7 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
   pick('riffNotes', RIFF_NOTES_READ);
   pick('length', ids(BANGER_LENGTHS));
   pick('variation', ids(BANGER_VARIATIONS));
+  pick('energy', BANGER_ENERGIES);
   pick('tempo', ids(BANGER_TEMPOS));
   if (raw?.customBars != null) {
     const b = Number(raw.customBars);
@@ -365,6 +403,9 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     else if (typeof raw.combo === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(raw.combo)) out.combo = raw.combo;
     else issues.push(`a Sound Combo is named by its id, not ${JSON.stringify(raw.combo)}`);
   }
+  // Auto Portamento's request: read, never reported (see normaliseExpression). A request that
+  // says nothing keeps the style's default, which is off.
+  out.expression = normaliseExpression(raw?.expression !== undefined ? raw.expression : out.expression);
   for (const group of BANGER_GROUPS) {
     const given = raw?.[group.id];
     if (given == null) continue;
@@ -382,6 +423,7 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     // templates (2 Oct 2026): it is the Club form, so an old take re-makes as it was.
     if (group.id === 'form' && given.template == null) out.form.template = 'club';
     for (const [k, given1] of Object.entries(given)) {
+      if (group.id === 'production' && k === 'version') continue;
       if (group.id === 'form' && k === 'sections') continue;
       const field = FIELD.get(`${group.id}.${k}`);
       // Build in Layers was an on/off switch for its first hour (2 Oct 2026): a banger made
@@ -394,6 +436,10 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
       } else if (typeof v === 'boolean') out[group.id][k] = v;
       else issues.push(`${field.label} is on or off, not ${JSON.stringify(v)}`);
     }
+  }
+  // A future treatment policy is not ours to guess at. Keep the saved style instead.
+  if (raw?.production?.version !== undefined && raw.production.version !== TRACK_EFFECTS_VERSION) {
+    out.production.mode = 'style';
   }
   // A mood chosen without a bass brings the bass it suggests.
   if (raw?.mood != null && raw?.parts?.bass == null) out.parts.bass = moodBass(style, out.mood);

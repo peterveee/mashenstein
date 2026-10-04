@@ -217,6 +217,25 @@ export function orderedTones(value, direction = 'up', seed = '') {
   return up;
 }
 
+/**
+ * Does this Note FX say anything at all? The one answer behind every "keep it, save it,
+ * show it" gate on the desk: the serialiser, the save signature, the track's NFX marker,
+ * the hover card, and the setters that decide whether a lane keeps a `noteFx` object.
+ *
+ * Strum and arpeggiator are two of the three, and so is Auto Portamento. They used to be
+ * the only two, and every gate was written as "strum or arp" by hand — which is how a lane
+ * holding only a portamento came to look empty and be dropped on its first save. A
+ * portamento counts only on the literal `true`, as the planner reads it (see
+ * `readAutoPortamento`): a stray 1 or "on" is not a switch, and neither is Amount.
+ *
+ * It answers "is there Note FX", not "does it generate events". The arp and strum clock
+ * the scheduler's fine ticks and `freeze-span` widens a render around them; a portamento
+ * does neither — it slides notes the lane already plays — so those two keep asking the
+ * narrower question and this is deliberately not what they call.
+ */
+export const hasEnabledNoteFx = (noteFx) => !!(noteFx?.strum?.enabled
+  || noteFx?.arp?.enabled || noteFx?.portamento?.enabled === true);
+
 export function resolveNoteFx(track = null, bar = null, laneKey = '') {
   const base = track || {};
   const override = bar?.noteFx?.[laneKey];

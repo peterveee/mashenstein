@@ -91,6 +91,15 @@ export const FUTURE_BASS = Object.freeze({
 
   centres: { saws: 'C5', pad: 'E4', piano: 'C5', choir: 'A4', arp: 'E5', bassFloor: 'E1', subFloor: 'A1' },
 
+  // Future Bass stacks several hook doubles and an arp at once. Lift those parts so the
+  // stack stays audible over the harmony, and leave the user-entered hook at its style
+  // fader. The wide supersaw and pad chords still sit forward, so pull them back 6 dB.
+  balance: {
+    leadCautionDb: 0,
+    riffTrimDb: 0,
+    roleGainDb: { square: 2, bell: 2, megaSaw: 2, arp: 2, choir: 2, third: 2, counter: 2, saws: -6, pad: -6 },
+  },
+
   drums: {
     // Half time, as SNOW GLOBE has it: the kick on the one and the "and" of two, answered
     // on the second bar; the clap on three.

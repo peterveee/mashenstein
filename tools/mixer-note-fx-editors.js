@@ -1,17 +1,31 @@
 // Note FX and Spot FX — the two editors that hang off a bar or a track.
 //
-// Lifted out of mixer-entry.js. Note FX is the strum and the arpeggiator: what a lane
-// does to the notes it was given, as opposed to what it sounds like. Spot FX (called Bar
-// Effects in the code and the data, which predate the name) is an effect chain a stretch
-// of the song carries on top of the channel's, down to a 1/32 and on the master too. They travel together
+// Lifted out of mixer-entry.js. Note FX is the strum and the arpeggiator, and on a track's
+// own panel Auto Portamento: what a lane does to the notes it was given, as opposed to
+// what it sounds like. Spot FX (called Bar Effects in the code and the data, which predate
+// the name) is an effect chain a stretch of the song carries on top of the channel's, down
+// to a 1/32 and on the master too. They travel together
 // because they are the same window with two contents — the same anchor, the same
 // restore-on-rebuild handling, the same scope of "this track, or these bars".
+//
+// Auto Portamento — slides between selected nearby melody notes, saved as the lane's
+// `noteFx.portamento` ({ enabled, amount, glide, version }) — is the third section of the
+// Note FX panel and the TRACK's alone. It slides the notes a lane plays, so a bar override
+// has no say in it: the bar panel neither draws its controls nor writes the setting, and
+// the engine reads it from the lane. The panel leaves alone whatever it does not show — a
+// newer version's object, or one on a lane the card is not drawn for — so editing the strum
+// never costs a lane its slide, and the arpeggiator being retired never does either.
 //
 // Both are handed the desk they edit; neither reaches for it.
 
 import {
   resolveNoteFx, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX, NOTE_FX_LIMIT_MAX,
 } from '../src/engine/note-fx.js';
+import {
+  AUTO_PORTAMENTO_VERSION, AUTO_PORTAMENTO_DEFAULTS, readAutoPortamento, autoPortamentoOn,
+  autoPortamentoSettings, autoPortamentoSupport, autoPortamentoUnsupportedNote,
+} from '../src/engine/auto-portamento.js';
+import { autoPortamentoLane } from '../src/engine/lane-view.js';
 import { EFFECT_BY_ID, MAX_EFFECTS, SECTION_EFFECTS } from '../src/engine/effects.js';
 import { laneCurve, fxSectionAt, MASTER_KEY } from '../src/data/automation.js';
 import { groupIdOf, GROUP_BY_ID } from '../src/data/group-buses.js';
@@ -20,6 +34,7 @@ import { createCustomSelect } from './lib/custom-select.js';
 import { deskNoteName } from './mixer-note-names.js';
 import { heavyUi } from './lib/heavy-ui.js';
 import { fillEffectControls } from './mixer-effect-cards.js';
+import { regionStyleEffects } from './lib/region-style-effects.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,7 +45,10 @@ const $ = (id) => document.getElementById(id);
 let targetLabel, closeMenu, clamp, toast, gap, selectLane, markBar, jumpTo,
   applyArrangementEdit, regionPanelBusy, noteFxFor, setTrackNoteFx, clearTrackArp,
   powerIcon, trashIcon, closeIcon, effectsOf, arrDraftOf, editBank, openPicker, closePicker,
-  restorablePopup, setRestorablePopup, retuneSpotFx;
+  restorablePopup, setRestorablePopup, retuneSpotFx,
+  // Auto Portamento's two: the preset a lane really plays, and the engine's analysis of
+  // what there is to slide (null while there is none). Last, so the list above keeps its order.
+  presetForLane, autoPortamentoReport;
 
 /** Hand the two editors the desk they edit. */
 export function installNoteFxEditors(deps) {
@@ -39,6 +57,7 @@ export function installNoteFxEditors(deps) {
     applyArrangementEdit, regionPanelBusy, noteFxFor, setTrackNoteFx, clearTrackArp,
     powerIcon, trashIcon, closeIcon, effectsOf, arrDraftOf, editBank, openPicker, closePicker,
     restorablePopup, setRestorablePopup, retuneSpotFx,
+    presetForLane, autoPortamentoReport,
   } = deps);
 }
 
@@ -73,6 +92,11 @@ const NOTE_FX_BLANK = Object.freeze({
   arp: Object.freeze({ enabled: false, direction: 'up', rate: 1, octaves: 1, limit: 0,
     rangeLimit: false, rangeLo: NOTE_FX_RANGE_DEFAULT_LO, rangeHi: NOTE_FX_RANGE_DEFAULT_HI,
     repeat: true, gate: 80, retrigger: 'chord', latch: false }),
+  // Off, with Amount and Glide at the starting points the planner's own module names — so
+  // the panel and the engine cannot come to disagree about what "unset" means:
+  // `{ enabled: false, amount: 35, glide: 40, version: 1 }`.
+  portamento: Object.freeze({ enabled: false, amount: AUTO_PORTAMENTO_DEFAULTS.amount,
+    glide: AUTO_PORTAMENTO_DEFAULTS.glide, version: AUTO_PORTAMENTO_VERSION }),
 });
 
 /**
@@ -88,6 +112,36 @@ const shownNoteFx = (fx = {}) => {
   const arp = { ...NOTE_FX_BLANK.arp, ...(fx?.arp || {}) };
   const strum = { ...NOTE_FX_BLANK.strum, ...(fx?.strum || {}) };
   return { arp, strum: { ...strum, enabled: strum.enabled && !arp.enabled } };
+};
+
+/**
+ * A saved Auto Portamento as the panel shows it: all four fields, never a NaN.
+ *
+ * A separate helper rather than a third key on `shownNoteFx`, whose return is pinned and
+ * whose one-live-effect rule is about the strum and the arpeggiator — Auto Portamento
+ * does not compete with either, it slides the notes they leave alone. A missing,
+ * malformed or newer-version object reads as the blank (off, Amount and Glide at their
+ * starting points), which is also what the planner makes of it. Whether the saved object
+ * WAS a newer version is the diagnostic's to say, because the panel then has to leave it
+ * be rather than overwrite it with that blank.
+ */
+const shownPortamento = (fx = {}) => ({
+  ...NOTE_FX_BLANK.portamento, ...readAutoPortamento(fx?.portamento).config,
+});
+
+/**
+ * Whether a lane's sound can take a slide, said the way this desk can say it truthfully.
+ *
+ * The planner answers 'no-voice' for a lane with no preset, and its sentence is "This track
+ * has no instrument to slide". On this desk that is not what it means: a melodic lane the
+ * catalogue has no preset for plays the game's own hand-written voice — the strip reads
+ * ENGINE — and of the melodic lanes the songs in the game ship, a good third are exactly
+ * that. It has an instrument; the instrument just does not take slides yet, which is the
+ * planner's 'engine' sentence and the true one. Every other answer is the planner's own.
+ */
+const portamentoSupportOf = (voice) => {
+  const found = autoPortamentoSupport(voice);
+  return found.reason === 'no-voice' ? { ...found, reason: 'engine' } : found;
 };
 
 /**
@@ -183,6 +237,24 @@ function buildNoteFxEditor(x, y, key, scope) {
     const input = document.createElement('input'); input.type = 'number';
     input.min = min; input.max = max; input.step = step; input.value = value;
     const read = document.createElement('div'); read.className = 'regread'; read.textContent = suffix;
+    if (tip) {
+      row.dataset.tip = tip.name;
+      row.dataset.tipsays = tip.says;
+    }
+    row.append(name, input, read); host.append(row); return input;
+  };
+  // A 0–100 dial in the same row shape as `number` — label, control, and the readout under
+  // it — for the one setting here that is a position rather than a figure. `describe` words
+  // the current value for the readout, which is the only place the number is printed; the
+  // row's own `.regread` is rewritten as the slider moves, and once now so it is never blank.
+  const slider = (label, min, max, step, value, describe, tip = null) => {
+    const row = document.createElement('label'); row.className = 'regcontrol';
+    const name = document.createElement('span'); name.textContent = label;
+    const input = document.createElement('input'); input.type = 'range';
+    input.min = min; input.max = max; input.step = step; input.value = value;
+    const read = document.createElement('div'); read.className = 'regread';
+    const show = () => { read.textContent = describe(Number(input.value)); };
+    input.addEventListener('input', show); show();
     if (tip) {
       row.dataset.tip = tip.name;
       row.dataset.tipsays = tip.says;
@@ -285,6 +357,131 @@ function buildNoteFxEditor(x, y, key, scope) {
     scope ? arrDraftOf().plan?.[scope.from] : null, key)?.arp?.enabled;
   form.append(renderButton);
 
+  // ---- Auto Portamento ---------------------------------------------------------------
+  //
+  // The third section — built after Render, so that button stays under the arpeggiator it
+  // consumes, and so these inputs come last in the form, where the popup session restores
+  // fields by position. The TRACK's alone: it slides the notes a lane plays, so a bar
+  // override has no controls for it. A bar panel draws none of this and nothing it collects
+  // ever carries it (see `collect`); the engine reads the setting from the lane.
+  //
+  // Drawn on a lane that can be slid at all — a melody lane, see `autoPortamentoLane` — or
+  // where a setting is already saved, so one is never left on a lane with no way to see it
+  // or switch it off. A lane that cannot take it, or whose sound cannot (a pluck that dies
+  // away has nothing left to slide), says why in a line and greys the controls rather than
+  // claim an effect its renderer would ignore. It can still be switched OFF, though: a
+  // setting that does nothing must not be one you cannot remove.
+  //
+  // And the panel leaves alone what it does not show. A newer version's object is not ours
+  // to read, so `collect` hands it back unchanged until the controls are touched or Reset
+  // is pressed; a lane the card is not drawn for keeps whatever it had. Editing the strum
+  // must never cost a lane its slide.
+  const savedSlide = trackDefault.portamento ?? null;
+  const isForeignSlide = (raw) => String(readAutoPortamento(raw).diagnostic)
+    .startsWith('unsupported-version');
+  const foreignSlide = isForeignSlide(savedSlide);
+  const slideLane = autoPortamentoLane(key);
+  let slide = null;
+  if (!scope && (slideLane || savedSlide?.enabled === true)) {
+    const shown = shownPortamento(trackDefault);
+    fullRow();
+    const slideOn = check('Auto Portamento', shown.enabled);
+    const slideAmount = slider('Amount', 0, 100, 1, shown.amount,
+      (n) => `${n} · how many connections slide, 0 selects none`, {
+        name: 'Auto Portamento amount',
+        says: 'How many of the connections the song offers actually slide. The most natural ones go first, and the notes of a fast run keep their attacks. Zero selects none, and a track with nothing suitable slides nothing at any setting.',
+      });
+    const slideGlide = slider('Glide', 0, 100, 1, shown.glide,
+      (n) => `${n} · how pronounced each slide is`, {
+        name: 'Auto Portamento glide',
+        says: 'How pronounced each chosen slide is: a quick scoop at the low end, a longer glide at the high end. It follows the tempo, and no slide runs longer than the note it lands on can afford. It never touches the instrument’s own portamento.',
+      });
+    // Its own class: the panel's first `.notefxhelp` is the one tests and tours read.
+    const slideHelp = document.createElement('div'); slideHelp.className = 'notefxslidehelp';
+    slideHelp.textContent = 'Adds slides between selected nearby melody notes. Preserves phrase breaks.';
+    form.append(slideHelp);
+    // The small print under it: why this sound cannot slide, that a newer version's setting
+    // is being left alone, what the song offers. Each is hidden until it has something to say.
+    const slideNote = () => {
+      const note = document.createElement('div'); note.className = 'notefxslidenote';
+      note.hidden = true; form.append(note); return note;
+    };
+    const supportNote = slideNote();
+    const foreignNote = slideNote();
+    const reportNote = slideNote();
+
+    // The lane first — a chord or drum lane never slides — then the preset behind it.
+    const support = slideLane ? portamentoSupportOf(presetForLane(key))
+      : { supported: false, reason: 'lane' };
+    // The engine's own analysis of the song, or null while there is none (no song loaded, or
+    // an engine without the call). It may also object where the preset looked fine.
+    let analysis = null;
+    const can = () => support.supported && analysis?.supported !== false;
+    const unsupportedText = () => {
+      if (!support.supported) {
+        return support.reason === 'lane'
+          ? 'Only melody tracks slide: a lead, a bass or a twinkle. Chords and drums do not.'
+          : autoPortamentoUnsupportedNote(support);
+      }
+      return autoPortamentoUnsupportedNote({ reason: analysis?.reason })
+        || autoPortamentoUnsupportedNote({ reason: 'engine' });
+    };
+    // Staged values against what was shown: a panel RESTORED after a rebuild replays input
+    // events at every control, so "touched" cannot mean "an event fired".
+    let wiped = false;
+    const unchanged = () => slideOn.checked === shown.enabled
+      && Number(slideAmount.value) === shown.amount && Number(slideGlide.value) === shown.glide;
+    const carrying = () => foreignSlide && !wiped && unchanged();
+    const paint = () => {
+      const unsupported = !can();
+      supportNote.hidden = !unsupported;
+      supportNote.textContent = unsupported ? unsupportedText() : '';
+      foreignNote.hidden = !carrying();
+      foreignNote.textContent = carrying() ? 'Saved by a newer version; ignored here.' : '';
+    };
+    // What the engine finds to slide. Measured against the SAVED setting — it cannot know
+    // what is staged — so it is worded as what is applied, and read again after Apply.
+    // Never allowed to break the panel: no analysis is simply no line.
+    const refresh = () => {
+      try { analysis = autoPortamentoReport?.(key) ?? null; } catch { analysis = null; }
+      let text = '';
+      if (analysis && analysis.supported !== false && Number.isFinite(analysis.eligible)) {
+        const plural = analysis.eligible === 1 ? '' : 's';
+        if (analysis.eligible === 0) text = 'No suitable connections';
+        else if (autoPortamentoOn(noteFxFor(key)) && Number.isFinite(analysis.chosen)) {
+          text = `Applied: ${analysis.chosen} of ${analysis.eligible} connection${plural} slide`;
+        } else text = `${analysis.eligible} connection${plural} on offer`;
+      }
+      reportNote.hidden = !text;
+      reportNote.textContent = text;
+      syncEnabled();
+    };
+    slide = {
+      on: slideOn, amount: slideAmount, glide: slideGlide, can, paint, refresh,
+      /** The lane's portamento as the panel would save it, or null when it has none to say. */
+      out: () => {
+        if (carrying()) return savedSlide;
+        const set = autoPortamentoSettings({ enabled: slideOn.checked,
+          amount: Number(slideAmount.value), glide: Number(slideGlide.value) });
+        // Off with both dials where they start says nothing, and is left out: a lane whose
+        // portamento was never touched is saved exactly as it was before this existed.
+        return !set.enabled && set.amount === NOTE_FX_BLANK.portamento.amount
+          && set.glide === NOTE_FX_BLANK.portamento.glide ? null : set;
+      },
+      /** Put a saved Note FX's portamento back into the controls (Reset). */
+      stage: (fx) => {
+        const next = shownPortamento(fx);
+        setCheck(slideOn, next.enabled);
+        slideAmount.value = next.amount;
+        slideGlide.value = next.glide;
+        for (const control of [slideAmount, slideGlide]) control.dispatchEvent(new Event('input'));
+        // Emptying the panel empties this too, a newer version's object included; staging
+        // that object back (it reads as blank) leaves it carried.
+        wiped = !isForeignSlide(fx?.portamento);
+      },
+    };
+  }
+
   // A bar editor opens in Inherit mode so merely opening and applying it cannot create
   // an empty override. Once somebody actually edits a Note FX control, however, that
   // edit is necessarily meant for these bars; leaving it on Inherit silently threw the
@@ -310,6 +507,14 @@ function buildNoteFxEditor(x, y, key, scope) {
       retrigger, latch]) setLive(control, arpOn.checked);
     // The two ends of the window answer to the tick above them as well as to the arp.
     for (const control of [rangeLo, rangeHi]) setLive(control, arpOn.checked && rangeOn.checked);
+    if (slide) {
+      // Auto Portamento answers to neither of them: the dials are live only while its own
+      // tick is on and the sound can slide. A sound that cannot is greyed whole — except
+      // that one already switched on can be switched off, so it is never stuck there.
+      setLive(slide.on, slide.can() || slide.on.checked);
+      for (const control of [slide.amount, slide.glide]) setLive(control, slide.can() && slide.on.checked);
+      slide.paint();
+    }
   };
   strumOn.addEventListener('input', () => {
     if (strumOn.checked) arpOn.checked = false;
@@ -320,7 +525,15 @@ function buildNoteFxEditor(x, y, key, scope) {
     syncEnabled();
   });
   rangeOn.addEventListener('input', syncEnabled);
+  if (slide) {
+    for (const control of [slide.on, slide.amount, slide.glide]) {
+      control.addEventListener('input', syncEnabled);
+    }
+  }
   syncEnabled();
+  // The engine's read of the song, once the controls it greys exist. Painted again after
+  // an Apply that leaves this window open.
+  slide?.refresh();
   panel.append(form);
 
   /** Put a saved Note FX back into the controls, without arming the bar override. */
@@ -341,6 +554,8 @@ function buildNoteFxEditor(x, y, key, scope) {
     gate.value = next.arp.gate;
     retrigger.value = next.arp.retrigger;
     setCheck(latch, next.arp.latch);
+    // Track scope only — a bar panel has no Auto Portamento controls to put back.
+    slide?.stage(fx);
     syncEnabled();
   };
 
@@ -349,6 +564,11 @@ function buildNoteFxEditor(x, y, key, scope) {
     selectLane(key);
     markBar(key, scope.from, scope.to);
     jumpTo(scope.from * 16, { start: true, immediate: true });
+  };
+  /** What a track Apply carries for the lane's portamento: `{ portamento }`, or nothing. */
+  const trackPortamento = () => {
+    const carried = slide ? slide.out() : savedSlide;
+    return carried ? { portamento: carried } : {};
   };
   const collect = () => ({
     strum: { enabled: strumOn.checked, direction: strumDir.value,
@@ -365,6 +585,11 @@ function buildNoteFxEditor(x, y, key, scope) {
       repeat: repeat.checked,
       gate: clamp(Number(gate.value) || 80, 1, 150), retrigger: retrigger.value,
       latch: latch.checked },
+    // The lane's Auto Portamento rides with a TRACK Apply and with nothing else: a bar
+    // override has none, so it is never put into `{ mode: 'on', ...next }`. Where the
+    // card is not drawn the saved setting goes back as it was, never dropped for not being
+    // on screen; and an Amount of 0 is a real setting here, not a missing one.
+    ...(scope ? {} : trackPortamento()),
   });
   /** Save what the panel says. Answers whether it took, so Apply & Close can refuse. */
   const applyNoteFx = ({ play = true } = {}) => {
@@ -461,7 +686,9 @@ function buildNoteFxEditor(x, y, key, scope) {
     ? `Save these Note FX settings and play ${targetLabel(key)} from bar ${scope.from + 1}`
     : `Save ${targetLabel(key)}'s track Note FX without starting playback`;
   applyButton.setAttribute('aria-label', applyButton.title);
-  applyButton.onclick = () => applyNoteFx();
+  // Apply leaves the window open, so what the engine now finds to slide is read again —
+  // the line under Auto Portamento said what the OLD settings selected.
+  applyButton.onclick = () => { if (applyNoteFx()) slide?.refresh(); };
   const applyCloseButton = document.createElement('button');
   applyCloseButton.className = 'regapply';
   applyCloseButton.textContent = 'Apply & Close';
@@ -628,6 +855,31 @@ function buildBarEffectsEditor(x, y, key, {
   close.title = 'Close — every change is already playing';
   close.setAttribute('aria-label', close.title);
   close.onclick = () => { flush(); closeMenu(); }; head.append(title, close); panel.append(head);
+
+  const presets = regionStyleEffects();
+  const presetRow = document.createElement('div'); presetRow.className = 'barfxpresets';
+  const presetLabel = document.createElement('span'); presetLabel.textContent = 'Style effects';
+  const presetPick = createCustomSelect({
+    label: 'Style effect preset', idPrefix: 'region-style-effect',
+    title: 'Generic Banger treatments and saved style effects. Choose any preset for this track and selected range.',
+    options: presets.map(p => [p.id, p.label, p.note]), value: presets[0]?.id,
+  });
+  const addPreset = document.createElement('button'); addPreset.type = 'button';
+  addPreset.textContent = 'Add to region';
+  addPreset.title = 'Add this preset across the selected bars, after the existing Spot FX. Adjust its steps below; ⌘Z undoes.';
+  addPreset.onclick = () => {
+    const chosen = presets.find(p => p.id === presetPick.value);
+    if (!chosen || !panel.isConnected) return;
+    if (chain.length + chosen.chain.length > MAX_EFFECTS) return toast(`This preset needs ${chosen.chain.length} slots; a chain holds at most ${MAX_EFFECTS} effects`);
+    flush();
+    selected = chain.length;
+    chain.push(...cloneChain(chosen.chain));
+    masks.push(...chosen.chain.map(() => fullMask()));
+    if (differ()) own = true;
+    draw();
+    if (commit()) toast(`${chosen.label} added to ${targetLabel(key)}, ${span} — ⌘Z to undo`);
+  };
+  presetRow.append(presetLabel, presetPick, addPreset); panel.append(presetRow);
 
   // ---- live ----
   // Like an insert: what you change is what plays, with nothing to press. `heard` is the

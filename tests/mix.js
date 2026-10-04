@@ -383,6 +383,16 @@ const sample = {
       snare: { width: 1.6 },
       // A group id that is not one of the four is unassigned, and says nothing.
       clap: { group: 'group9' },
+      // Auto Portamento is the third thing a lane's Note FX can say, and each of these lanes
+      // carries NOTHING ELSE — no gain, send, effect, strum or arp — so the portamento is the
+      // only thing that can put the lane in the file. A serialiser still asking "strum or arp?"
+      // wrote no line for any of them, and the setting was gone on the next load.
+      lead: { noteFx: { portamento: { enabled: true, amount: 60, glide: 25, version: 1 } } },
+      // A version this build does not read. It is ignored, and it is not destroyed either:
+      // the file comes back exactly as it went, for the build that does read it.
+      leadHarm: { noteFx: { portamento: { enabled: true, version: 2, curve: 'exp', amount: 0.4 } } },
+      // Switched off, whatever Amount and Glide it remembers: nothing to keep, nothing written.
+      twinkle: { noteFx: { portamento: { enabled: false, amount: 80, glide: 10, version: 1 } } },
     },
     // The group buses' own settings, every field moved, and one group at its defaults
     // that must write nothing.
@@ -419,6 +429,22 @@ assert(JSON.stringify(wrote.lanes.bass.effects) === JSON.stringify(sent.lanes.ba
   'round-trip: a channel effect chain survives, bypass flags and string params included');
 assert(JSON.stringify(wrote.lanes.bass.noteFx) === JSON.stringify(sent.lanes.bass.noteFx),
   'round-trip: track strum and arpeggiator settings survive');
+assert(JSON.stringify(wrote.lanes.lead?.noteFx) === JSON.stringify(sent.lanes.lead.noteFx)
+  && wrote.lanes.lead.noteFx.portamento.amount === 60 && wrote.lanes.lead.noteFx.portamento.glide === 25
+  && wrote.lanes.lead.noteFx.portamento.enabled === true && wrote.lanes.lead.noteFx.portamento.version === 1,
+'round-trip: a lane whose only Note FX is an Auto Portamento survives the file, setting for setting');
+assert(JSON.stringify(wrote.lanes.leadHarm?.noteFx) === JSON.stringify(sent.lanes.leadHarm.noteFx),
+  'round-trip: a newer version\'s portamento is written back verbatim, not read as version 1 and not dropped');
+assert(!('twinkle' in wrote.lanes),
+  'round-trip: a lane whose only Note FX is a switched-off portamento writes nothing');
+{
+  // The serialised line itself, for the lane the whole point is about: it is there as source.
+  const line = mixEntrySource({ lanes: { lead: sent.lanes.lead } }, '');
+  assert(/noteFx: \{"portamento":\{"enabled":true,"amount":60,"glide":25,"version":1\}\}/.test(line || ''),
+    'the lane is written out with its portamento, in the file\'s own spelling');
+  assert(mixEntrySource({ lanes: { twinkle: sent.lanes.twinkle } }, '') === null,
+    'and a mix whose only decision is a switched-off portamento is not written at all');
+}
 assert(JSON.stringify(wrote.lanes.kick.effects) === JSON.stringify(sent.lanes.kick.effects),
   'round-trip: all six new effect ids and their custom params survive');
 assert(JSON.stringify(wrote.lanes.bass.eq) === JSON.stringify(sent.lanes.bass.eq)
@@ -586,6 +612,9 @@ const varyBase = {
     // At unity and untouched: the channel a chorus could be added to without the desk
     // noticing, because the old check called a lane with nothing but a chain "bare".
     kick: {},
+    // A lane whose ONLY decision is an Auto Portamento — so the setting is all that holds
+    // it in the file, and all that tells the desk it differs from one that is not there.
+    lead: { noteFx: { portamento: { enabled: true, amount: 35, glide: 40, version: 1 } } },
   },
 };
 
@@ -651,6 +680,26 @@ const CHANGES = [
   ['a group effect bypassed', (m) => { m.groups.group1.effects[0].bypass = true; }],
   ['a group effect muted', (m) => { m.groups.group1.effects[0].mute = true; }],
   ['a group with no members given settings', (m) => { m.groups.group3 = { gain: 3 }; }],
+  // Auto Portamento. The first two are the ones the old strum-or-arp gate could not see at
+  // all — a lane with nothing else on it compared equal to one that was not there.
+  ['an Auto Portamento switched on for a channel at unity', (m) => {
+    m.lanes.kick.noteFx = { portamento: { enabled: true, amount: 35, glide: 40, version: 1 } };
+  }],
+  ['an Auto Portamento switched on for a channel that has settings', (m) => {
+    m.lanes.bass.noteFx = { portamento: { enabled: true, amount: 35, glide: 40, version: 1 } };
+  }],
+  ['an Auto Portamento\'s Amount', (m) => { m.lanes.lead.noteFx.portamento.amount = 60; }],
+  ['an Auto Portamento\'s Glide', (m) => { m.lanes.lead.noteFx.portamento.glide = 80; }],
+  ['an Auto Portamento switched off', (m) => { m.lanes.lead.noteFx.portamento.enabled = false; }],
+  ['an Auto Portamento beside a strum', (m) => {
+    m.lanes.kick.noteFx = { strum: { enabled: true, gapMs: 18 },
+      portamento: { enabled: true, amount: 35, glide: 40, version: 1 } };
+  }],
+  // A newer file's portamento is written back verbatim, so it is a decision the file holds
+  // and the desk must see — dropping it on the next Save would be the destructive failure.
+  ['a newer version\'s portamento on a channel', (m) => {
+    m.lanes.kick.noteFx = { portamento: { enabled: true, version: 2, curve: 'exp', amount: 0.4 } };
+  }],
 ];
 
 // And each of these changes nothing the file can hold, so the desk must stay quiet.
@@ -671,6 +720,23 @@ const NON_CHANGES = [
   ['a group that is not one of the four', (m) => { m.lanes.kick.group = 'group9'; }],
   ['a channel explicitly unassigned', (m) => { m.lanes.kick.group = null; }],
   ['a group written out at its defaults', (m) => { m.groups.group2 = { ...GROUP_DEFAULTS, effects: [] }; }],
+  // A portamento that is switched off is nothing to keep, whatever Amount and Glide it
+  // remembers — the desk writes one whenever an Apply leaves the toggle where it was.
+  ['an Auto Portamento written out switched off', (m) => {
+    m.lanes.kick.noteFx = { portamento: { enabled: false, amount: 35, glide: 40, version: 1 } };
+  }],
+  ['an Auto Portamento switched off with Amount and Glide it remembers', (m) => {
+    m.lanes.snare = { noteFx: { portamento: { enabled: false, amount: 80, glide: 10, version: 1 } } };
+  }],
+  // The unsupported-version diagnostic does not turn a lane into a decision: a newer file's
+  // portamento that is itself switched off holds nothing the file needs, same as ours.
+  ['a newer version\'s portamento that is switched off', (m) => {
+    m.lanes.kick.noteFx = { portamento: { enabled: false, version: 2, curve: 'exp' } };
+  }],
+  ['a strum and an arpeggiator both off beside a switched-off portamento', (m) => {
+    m.lanes.kick.noteFx = { strum: { enabled: false }, arp: { enabled: false },
+      portamento: { enabled: false, amount: 35, glide: 40, version: 1 } };
+  }],
 ];
 
 const renamedTrack = clone(varyBase);
@@ -690,6 +756,24 @@ for (const [what, change] of [...CHANGES, ...NON_CHANGES]) {
   // Peter would rather have it than the alternative. So: writes implies seen.
   assert(!wouldWrite || deskSees, `the desk sees ${what} exactly when the file would: `
     + `${wouldWrite ? 'writes' : 'writes nothing'}, desk ${deskSees ? 'says changed' : 'says unchanged'}`);
+}
+
+// The loop above holds ONE direction — writes implies seen — and a gate that is blind in
+// BOTH places satisfies it vacuously: a lane with only an Auto Portamento that is neither
+// written nor seen passes it, which is exactly the failure this feature had to avoid. So for
+// the portamento cases both halves are pinned outright: a change reaches the file AND the
+// desk, and a non-change does neither.
+for (const [what, change] of CHANGES.filter(([w]) => /portamento/i.test(w))) {
+  const v = clone(varyBase);
+  change(v);
+  assert(rendered(v) !== rendered(varyBase) && sig(v) !== sig(varyBase),
+    `${what} is written to the file, and the desk says the song has changed`);
+}
+for (const [what, change] of NON_CHANGES.filter(([w]) => /portamento/i.test(w))) {
+  const v = clone(varyBase);
+  change(v);
+  assert(rendered(v) === rendered(varyBase) && sig(v) === sig(varyBase),
+    `${what} writes nothing, and the desk stays clean`);
 }
 
 // The same agreement on the songs that actually exist: saving one must leave the desk

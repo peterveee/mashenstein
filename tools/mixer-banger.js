@@ -13,11 +13,12 @@ import {
   BANGER_GROUPS, BANGER_LIMITS, normaliseBangerOptions, surpriseBangerOptions, goCrazyBangerOptions, styleDefaults, classicDefaults,
   BANGER_REROLLS, modifyBanger, describeModify, BANGER_STRUCTURE, keepStructure,
   styleFor, generateBanger, validateRiff, riffSummary, randomBangerSeed, keyName, parseRiff,
-  bangerBars, bangerBpm, BANGER_GENERATOR_VERSION, sourceRiff,
+  bangerBars, bangerBpm, BANGER_GENERATOR_VERSION, BANGER_EXPRESSION_VERSION, sourceRiff,
 } from './lib/banger/index.js';
 import { analyseRiff } from './lib/banger/analyse.js';
 import { createFormEditor } from './mixer-banger-form.js';
 import { BANGER_COMBOS } from './lib/banger/combos.js';
+import { bangerReportHtml } from './mixer-banger-report.js';
 import { Rng } from '../src/engine/rng.js';
 
 /** What the dialog was last asked for — everything but the bars, which are the selection's. */
@@ -30,6 +31,15 @@ export const BANGER_MODE_KEY = 'mash-mixer-banger-mode';
 const readStore = (key) => { try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch { return {}; } };
 const writeStore = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* full or blocked */ } };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+/** A deliberate desk variation choice also chooses its automatic slide policy.
+ * Wild enables section treatments; later Section FX edits remain independent.
+ * Reading old recipes never calls this: their original expression stays intact. */
+export function deskBangerVariation(options, variation) {
+  return { ...options, variation,
+    ...(variation === 'wild' ? { sectionFx: { ...options.sectionFx, mode: 'auto' } } : {}),
+    expression: { autoPortamento: variation === 'wild', version: BANGER_EXPRESSION_VERSION } };
+}
 
 /**
  * The banger desk. `desk` is everything the desk owns that this needs:
@@ -90,6 +100,18 @@ export function createBangerDesk(desk) {
   function bodyHtml(o, { from, to, settings, modifying = false, view }) {
     const style = styleFor(o.style);
     const lengthOpts = BANGER_LENGTHS.map((l) => `<option value="${l.id}"${sel(o.length, l.id)}>${l.label}${l.bars ? ` · ${l.bars} bars` : ''}</option>`).join('');
+    // Visual sections share the existing parts request; each control is rendered once.
+    const partSections = [
+      { id: 'bass', label: 'Bass', keys: ['bass', 'riffBass', 'bassLift', 'sub'] },
+      { id: 'chords', label: 'Chords', keys: ['chords', 'choir', 'arp', 'arpPattern'] },
+      { id: 'leads', label: 'Leads', keys: ['writeLead', 'riffSound', 'fillIn', 'fillEvery', 'fillNotes', 'square', 'bell', 'octaveDouble', 'thirdBelow', 'counter'] },
+      { id: 'sounds', label: 'Instrument sounds', keys: ['partSounds'] },
+    ];
+    const parts = BANGER_GROUPS.find((g) => g.id === 'parts');
+    const sections = new Map([
+      ...BANGER_GROUPS.map((g) => [g.id, { ...g, group: g.id }]),
+      ...partSections.map((g) => [g.id, { ...g, group: 'parts', fields: g.keys.map((key) => parts.fields.find((f) => f.key === key)) }]),
+    ]);
     // Simple: Style, Mood, Length and the riff — everything marked `bgfull` is Full Options.
     return `<div id="bgdialog" class="bgmode-${view}">`
       + '<div class="bgmodebar"><div class="askseg" id="bgmodeseg" role="group" aria-label="How much to show">'
@@ -104,22 +126,27 @@ export function createBangerDesk(desk) {
         + '<div class="bangerrow bgmodifyrow"><span class="bangerlabel">Re-roll</span><div class="askseg" id="bgrerolls" role="group" aria-label="Parts to draw again">'
         + BANGER_REROLLS.map((r) => `<button type="button" data-stream="${r.stream}" aria-pressed="false" title="${escapeHtml(r.title)}">${r.label}</button>`).join('')
         + '</div></div>' : '')
-      + '<div class="bangergrid">'
+      + '<div class="bangergrid"><fieldset class="bgprimary"><legend>Sound &amp; feel</legend><div class="bgfields">'
       + `<label class="askfield" title="The recipe: the drums, the bass, the chords, the sounds and the form it starts on. Picking one resets everything under More Options to its defaults">Style<select id="bgstyle">${BANGER_STYLES.map((s) => `<option value="${s.id}" data-note="${escapeHtml(s.note || '')}"${sel(o.style, s.id)}>${escapeHtml(s.label)}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" id="bgcombofield" title="The style's own sounds, or a Sound Combo saved from a banger tuned on the desk"${Object.keys(BANGER_COMBOS[o.style] || {}).length ? '' : ' hidden'}>Sounds<select id="bgcombo">${comboOptions(o.style, o.combo)}</select></label>`
       + `<label class="askfield" title="The feel: the chord progression, the chord colours, how bright the hook is — and it can swap sounds and suggest a bass">Mood<select id="bgmood">${BANGER_MOODS.map((m) => `<option value="${m.id}" data-note="${escapeHtml(m.title)}"${sel(o.mood, m.id)}>${m.label}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" title="Major or minor with one note changed — that note is the flavour">Mode<select id="bgmode">${modeOptions(o.mood, o.mode)}</select></label>`
-      + `<label class="askfield bgfull" id="bgriffnotesfield" title="What the mode may do to your riff's own notes">Riff Notes<select id="bgriffnotes">${BANGER_RIFF_NOTES.map((k) => `<option value="${k.id}"${sel(o.riffNotes, k.id)}>${k.label}</option>`).join('')}</select></label>`
+      + '</div></fieldset><fieldset class="bgprimary bgfull"><legend>Length &amp; tempo</legend><div class="bgfields">'
       + `<label class="askfield bgfull" title="How long the song is. A form drawn in the Form row rescales to it">Length<select id="bglength">${lengthOpts}</select></label>`
       + `<label class="askfield bgfull" id="bgcustomfield" title="A custom length, ${BANGER_LIMITS.minBars}–${BANGER_LIMITS.maxBars} bars in fours">Bars<input id="bgcustom" type="number" min="${BANGER_LIMITS.minBars}" max="${BANGER_LIMITS.maxBars}" step="${BANGER_LIMITS.barStep}" value="${o.customBars}"></label>`
       + `<label class="askfield bgfull" title="The style's own tempo, the tempo of the song the riff came from, or one you type">Tempo<select id="bgtempo">${BANGER_TEMPOS.map((t) => `<option value="${t.id}"${sel(o.tempo, t.id)}>${t.label}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" id="bgbpmfield" title="The tempo to make it at">BPM<input id="bgbpm" type="number" min="${BANGER_LIMITS.minBpm}" max="${BANGER_LIMITS.maxBpm}" step="1" value="${o.bpm ?? style.bpm}"></label>`
+      + '</div></fieldset><fieldset class="bgprimary bgfull"><legend>Source riff</legend><div class="bgfields">'
       + `<label class="askfield bgfull" title="The first bar of the riff — the bars of this song the banger is made from">From Bar<input id="bgfrom" type="number" min="1" step="1" value="${from + 1}"${settings ? ' disabled' : ''}></label>`
       + `<label class="askfield bgfull" title="The last bar of the riff — up to ${BANGER_LIMITS.maxRiffBars} bars">To Bar<input id="bgto" type="number" min="1" step="1" value="${to + 1}"${settings ? ' disabled' : ''}></label>`
-      + '</div>'
+      + `<label class="askfield bgfull" id="bgriffnotesfield" title="What the mode may do to your riff's own notes">Riff Notes<select id="bgriffnotes">${BANGER_RIFF_NOTES.map((k) => `<option value="${k.id}"${sel(o.riffNotes, k.id)}>${k.label}</option>`).join('')}</select></label>`
+      + '</div></fieldset></div>'
       + '<div class="bangerrow bgsimpleonly"><span class="bangerlabel">Length</span><div class="askseg" id="bgsimplelen" role="group" aria-label="Length">'
       + BANGER_LENGTHS.filter((l) => l.bars).map((l) => `<button type="button" data-length="${l.id}" title="${l.bars} bars">${l.label}</button>`).join('')
       + '</div><span class="bgsimplenote" id="bgsimplenote"></span></div>'
+      + '<div class="bangerrow">'
+      + select('production', BANGER_GROUPS.find(g => g.id === 'production').fields[0], o.production.mode)
+      + '<span class="bgsimplenote">Echoes, room and width chosen for each part</span></div>'
       + '<div class="bangerrow bgfull"><span class="bangerlabel">Variation</span><div class="askseg" id="bgvariation" role="group" aria-label="Variation">'
       + BANGER_VARIATIONS.map((v) => `<button type="button" data-value="${v.id}" title="${escapeHtml(v.title)}" aria-pressed="${o.variation === v.id}" class="${o.variation === v.id ? 'on' : ''}">${v.label}</button>`).join('')
       + '</div><div class="bangerresets">'
@@ -133,10 +160,17 @@ export function createBangerDesk(desk) {
       + '<div class="bangerform bgfull" id="bgform"></div>'
       + '<div class="bangerriff" id="bgriff"></div>'
       + '<details class="bangermore bgfull" id="bgmore"><summary>More Options</summary><div class="bangergroups">'
-      + BANGER_GROUPS.map((g) => `<fieldset class="bangergroup"><legend>${escapeHtml(g.label)}</legend>`
-        + g.fields.filter((f) => !(g.id === 'form' && f.key === 'template'))
-          .map((f) => (f.type === 'select' ? select(g.id, f, o[g.id][f.key]) : toggle(g.id, f, o[g.id][f.key]))).join('')
-        + '</fieldset>').join('')
+      + [['form'], ['bass', 'chords', 'drums'], ['leads', 'sounds', 'sectionFx'], ['spot', 'fx']].map((ids) => '<div class="bangercolumn">'
+        + ids.map((id) => {
+          const g = sections.get(id);
+          return `<fieldset class="bangergroup"><legend>${escapeHtml(g.label)}</legend>`
+            + g.fields.filter((f) => !(g.id === 'form' && f.key === 'template'))
+              .sort((a, b) => Number(b.type === 'select') - Number(a.type === 'select'))
+              .map((f) => (f.type === 'select' ? select(g.group, f, o[g.group][f.key]) : toggle(g.group, f, o[g.group][f.key]))).join('')
+            + (g.id === 'leads' ? toggle('expression', { key: 'autoPortamento', label: 'Auto Portamento',
+              title: 'Automatically add selected slides to suitable lead tracks, with varied Amount and Glide. Preserves phrase breaks. Wild and Go Crazy turn this on; you can turn it off or edit each track in Note FX afterward.' }, o.expression.autoPortamento) : '')
+            + '</fieldset>';
+        }).join('') + '</div>').join('')
       + '</div></details></div>';
   }
 
@@ -150,6 +184,7 @@ export function createBangerDesk(desk) {
       variation: box.querySelector('#bgvariation button.on')?.dataset.value || 'some',
       hook: $('bghook')?.value || 'auto',
       combo: $('bgcombo')?.value || null,
+      expression: { version: BANGER_EXPRESSION_VERSION },
     };
     for (const g of BANGER_GROUPS) raw[g.id] = {};
     box.querySelectorAll('[data-group]').forEach((el) => {
@@ -378,7 +413,8 @@ export function createBangerDesk(desk) {
       const el = e.target;
       if (el.type === 'checkbox') el.parentElement.querySelector('.fxswitch')?.classList.toggle('on', el.checked);
       if (el.id === 'bgstyle') {
-        write({ ...styleDefaults(styleFor(el.value)), variation: readDialog(box).variation });
+        const current = readDialog(box);
+        write({ ...styleDefaults(styleFor(el.value)), variation: current.variation, expression: current.expression });
         syncCombos(el.value);
         formEditor.reset(`Form back to ${styleFor(el.value).label}'s own`);
       }
@@ -407,6 +443,7 @@ export function createBangerDesk(desk) {
           x.classList.toggle('on', x === b);
           x.setAttribute('aria-pressed', String(x === b));
         });
+        write(deskBangerVariation(normaliseBangerOptions(readDialog(box)).options, b.dataset.value));
         paint();
       };
     });
@@ -460,7 +497,7 @@ export function createBangerDesk(desk) {
       if (strip) { strip.inert = true; strip.classList.add('bglocked'); }
     }
     $('bgcrazy').onclick = () => {
-      write(goCrazyBangerOptions(normaliseBangerOptions(read()).options));
+      write(deskBangerVariation(goCrazyBangerOptions(normaliseBangerOptions(read()).options), 'wild'));
       paint();
       toast('Go Crazy: everything transformed — the key and tempo kept', 1800);
     };
@@ -763,9 +800,10 @@ export function createBangerDesk(desk) {
     if (!merged.ok) { toast(`${track.title}: take ${state.take} rebuilt with the new settings`, 5000); return; }
     toast(`${track.title}: ${describeModify(merged.report)}`, 7000);
     const r = merged.report;
-    if (r.handEdited.length || r.skipped.length || older) {
+    if (r.handEdited.length || r.handEditedExpression?.length || r.skipped.length || older) {
       await tell('Modified — worth knowing', [
         r.handEdited.length ? `<p>These parts had been edited by hand and are now the new version: <b>${r.handEdited.map(escapeHtml).join(', ')}</b>.</p>` : '',
+        r.handEditedExpression?.length ? `<p>These parts had an Auto Portamento setting of their own, and the change replaced it with the new take's (or took it away): <b>${r.handEditedExpression.map(escapeHtml).join(', ')}</b>.</p>` : '',
         r.skipped.length ? `<p>No free lane was left for: <b>${r.skipped.map(escapeHtml).join(', ')}</b>.</p>` : '',
         older ? '<p>This take was made by an older version of the generator, so some parts may have been rewritten that the change did not touch.</p>' : '',
       ].join(''));
@@ -775,6 +813,7 @@ export function createBangerDesk(desk) {
   /** The take buttons: shown on a banger only, Previous and Next only where there is one. */
   async function syncButtons() {
     const { track } = desk.current();
+    if ($('bangerreport')) $('bangerreport').hidden = !track?.banger;
     // A style seed is tuned, not re-rolled: it gets Use as Style instead of takes.
     const on = !!track?.banger && track.group !== 'bangerSeed';
     for (const id of ['bangeragain', 'bangerprev', 'bangernext', 'bangersettings', 'bangermodify']) {
@@ -806,6 +845,14 @@ export function createBangerDesk(desk) {
   }
 
   return {
+    report: () => {
+      closeMenu();
+      const { track } = desk.current();
+      const opened = ask('Banger Report', bangerReportHtml(track, desk.currentMix?.() || desk.savedSong()?.mix || {}), 'Close', { cancel: false, wide: true });
+      $('askbox').scrollTop = 0;
+      $('askbody').scrollTop = 0;
+      return opened;
+    },
     makeBanger,
     makeFromDrawer,
     anotherTake: () => { closeMenu(); return moveTo('another'); },

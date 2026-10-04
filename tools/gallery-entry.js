@@ -121,6 +121,8 @@ import {
   EGGSHELL_CAPES,
 } from '../src/dev/eggshell-redesigns.js';
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
+import { MIRRORBALL_CANDIDATES } from '../src/dev/mirrorball-candidates.js';
+import { BangerClubState } from '../src/game/banger/club.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
@@ -8347,13 +8349,13 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// Eight heroes, three review-only choreographies each, on one beat clock.
+// Eight heroes, five current Lab choreographies each, on one beat clock.
 {
   const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
-    'OPEN — five options per hero. A–C include the club’s quiet skirt steps and revised Rusty legwork. D–E are simple foot-tap candidates. Each card pairs a close-up with a 28px lab-size figure. '
+    'CURRENT LAB MOVES — five per hero, all available in the club. Includes Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
     + 'All moves share a beat clock; the four lights count the bar. Tempo is a silent preview. '
-    + 'Use ANIMATE to pause or SLOW to inspect the joints. New tap options and Rusty revisions are gallery candidates; the existing club selection is unchanged.',
-    '2026-10-03');
+    + 'Use ANIMATE to pause or SLOW to inspect the joints. Skirted heroes show a sample of the quiet legwork that the club varies during playback.',
+    '2026-10-04');
   let bpm = 128;
   const controls = document.createElement('label');
   controls.style.cssText = 'display:flex;align-items:center;gap:12px;margin:16px 0;color:#7df3d1';
@@ -8374,6 +8376,38 @@ function cryptStyleTiles(grid, tag, cand) {
         { animated: true, hires: 3, displayScale: 1.5 });
     }
   }
+}
+
+// The club's mirror ball: today's against five new looks (Peter, 3 Oct 2026: "it could
+// look a lot nicer"). Each at the size it hangs in the club, and again close up.
+{
+  const s = sectionEl('mirrorball-bakeoff', 'BANGER LAB — mirror ball looks',
+    'SETTLED 3 Oct 2026: 2 DISCO is the club’s ball now (src/game/banger/mirrorball.js), so 0 and 2 match. 1–5 were the candidates. CHROME and DISCO draw each tile on the sphere and shade it by what it reflects '
+    + '(bright ceiling above, the floor’s colours below); CARTOON is fewer, bigger tiles with an inked edge; GEM a faceted crystal; MIDNIGHT a dark ball '
+    + 'with a light band sweeping across. Left card: club size; right: close-up. The ball turns and the sparkles twinkle.',
+    '2026-10-03');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const backdrop = (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f0d24'); g.addColorStop(1, '#1a1236');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  };
+  // today's ball, through the club's own painter on a stand-in club
+  const today = Object.assign(Object.create(BangerClubState.prototype), { song: { bpm: 128 }, ballAt: -100, ballScale: 1, boxes: {} });
+  const todayAt = (ctx, w, h, t, scale) => {
+    ctx.save(); ctx.scale(scale, scale);
+    today.drawBall(ctx, { portrait: false, P: 1, u: 1, t, sx: 0, sw: w / scale, sh: h / scale, stageTop: h / scale / 2 - 55,   // the ball hangs 55 below the truss: centred in the card
+      pulse: 0.5 + 0.5 * Math.sin(t * 4), accent: '#c9a0ff', beatN: Math.floor(t * 2) });
+    ctx.restore();
+  };
+  tile(grid, '0 — TODAY (club size)', 'The ball as the club draws it now.', 140, 100, (ctx, t) => { backdrop(ctx, 140, 100); todayAt(ctx, 140, 100, t, 1); }, { animated: true });
+  tile(grid, '0 — TODAY (close-up)', 'The same, two and a half times.', 240, 200, (ctx, t) => { backdrop(ctx, 240, 200); todayAt(ctx, 240, 200, t, 2.5); }, { animated: true });
+  Object.entries(MIRRORBALL_CANDIDATES).forEach(([name, paint], k) => {
+    const state = (t) => ({ t, pulse: 0.5 + 0.5 * Math.sin(t * 4), accent: '#c9a0ff' });
+    tile(grid, `${k + 1} — ${name.toUpperCase()} (club size)`, 'At the size it hangs in the club.', 140, 100,
+      (ctx, t) => { backdrop(ctx, 140, 100); paint(ctx, 70, 50, 20, state(t)); }, { animated: true });
+    tile(grid, `${k + 1} — ${name.toUpperCase()} (close-up)`, 'Close up.', 240, 200,
+      (ctx, t) => { backdrop(ctx, 240, 200); paint(ctx, 120, 100, 60, state(t)); }, { animated: true });
+  });
 }
 
 // ---------------------------------------------------------------- driver

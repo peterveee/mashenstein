@@ -69,6 +69,7 @@ export const Dev = {
   toast: null,
   toastT: 0,
   touchUnlock: { count: 0, t: 0 },
+  menuTouch: null,
   reopenAfterState: null,
   lastRun: null,      // identity of the run we last pushed sync-hooked tunables into
   // True while recorder.js is taping the canvas; main.js stands the FPS
@@ -114,22 +115,35 @@ export const Dev = {
       }
       const top = this.top();
       if (!top) return;
-      // The same layout the painter used this frame — portrait moves every row.
+      // Keep touch interaction distinct from mouse clicks: a phone needs a
+      // drag gesture to move through menus longer than the visible window.
+      if (e.pointerType === 'touch') {
+        this.menuTouch = { id: e.pointerId, x: p.x, y: p.y };
+        if (game.setPointerCapture) { try { game.setPointerCapture(e.pointerId); } catch {} }
+        e.preventDefault();
+        return;
+      }
+      this.activateMenuPointer(p);
+    }, { capture: true });
+    game && game.addEventListener('pointerup', (e) => {
+      const start = this.menuTouch;
+      if (!start || start.id !== e.pointerId) return;
+      this.menuTouch = null;
+      const p = clientToLogical(e.clientX, e.clientY);
+      const dy = p.y - start.y;
       const L = menuLayout();
-      // The breadcrumb strip is the touch BACK. A phone has no Backspace and no
-      // backquote, so without it a submenu reached by tapping is a room with no
-      // door — and popping the last screen closes the overlay, which is the
-      // touch CLOSE as well.
-      if (p.y < L.listTop) { this.pop(); e.preventDefault(); return; }
-      const first = Math.max(0, Math.min(top.items.length - L.maxRows, top.idx - Math.floor(L.maxRows / 2)));
-      const row = Math.floor((p.y - L.listTop) / L.rowH);
-      const idx = first + row;
-      if (idx < 0 || idx >= top.items.length || row >= L.maxRows) return;
-      top.idx = idx;
-      const item = top.items[idx];
-      if (item.submenu) this.push(item.submenu(this));
-      else if (item.act) { item.act(); this.refresh(); }
+      const top = this.top();
+      if (top && Math.abs(dy) > L.rowH * 0.18) {
+        const rows = Math.max(1, Math.round(Math.abs(dy) / L.rowH));
+        const dir = dy < 0 ? 1 : -1;
+        top.idx = Math.max(0, Math.min(top.items.length - 1, top.idx + dir * rows));
+      } else {
+        this.activateMenuPointer(p);
+      }
       e.preventDefault();
+    }, { capture: true });
+    game && game.addEventListener('pointercancel', (e) => {
+      if (this.menuTouch && this.menuTouch.id === e.pointerId) this.menuTouch = null;
     }, { capture: true });
     if (typeof window !== 'undefined') {
       window.__mash_dev = this;
@@ -139,6 +153,26 @@ export const Dev = {
       // to read on a device rather than inferring from a crash.
       window.__mash_art = propCacheStats;
     }
+  },
+
+  activateMenuPointer(p) {
+    const top = this.top();
+    if (!top) return;
+    // The same layout the painter used this frame — portrait moves every row.
+    const L = menuLayout();
+    // The breadcrumb strip is the touch BACK. A phone has no Backspace and no
+    // backquote, so without it a submenu reached by tapping is a room with no
+    // door — and popping the last screen closes the overlay, which is the
+    // touch CLOSE as well.
+    if (p.y < L.listTop) { this.pop(); return; }
+    const first = Math.max(0, Math.min(top.items.length - L.maxRows, top.idx - Math.floor(L.maxRows / 2)));
+    const row = Math.floor((p.y - L.listTop) / L.rowH);
+    const idx = first + row;
+    if (idx < 0 || idx >= top.items.length || row >= L.maxRows) return;
+    top.idx = idx;
+    const item = top.items[idx];
+    if (item.submenu) this.push(item.submenu(this));
+    else if (item.act) { item.act(); this.refresh(); }
   },
 
   // ---------------------------------------------------------------- helpers
@@ -239,11 +273,12 @@ export const Dev = {
   openMenu(menuBuilder = null) {
     const menu = menuBuilder ? menuBuilder(this) : rootMenu(this);
     this.stack = [{ ...menu, idx: 0 }];
+    this.menuTouch = null;
     this.open = true;
     this.syncPortrait();
   },
 
-  close() { this.open = false; this.stack = []; this.syncPortrait(); },
+  close() { this.open = false; this.stack = []; this.menuTouch = null; this.syncPortrait(); },
 
   // Two things follow the overlay's open state, and both only bite on a phone
   // held upright: the canvas takes the whole screen instead of the 16:9 band

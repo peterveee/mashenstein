@@ -28,10 +28,18 @@
 // every bar, and a song whose bars have been rearranged on the desk no longer lines up
 // with the generator's — both are refused with a reason, and the caller offers a rebuild.
 //
+// AUTO PORTAMENTO IS A FIELD OF ITS OWN. It is one setting inside a lane's Note FX
+// (`noteFx.portamento`), so it has its own fingerprint and its own merge: next == base keeps the
+// setting the song has now (hand edits and all), next != base replaces THAT FIELD and nothing else
+// on the strip — the fader, sends, EQ, effects, an arp or a strum and the automation stay — and a
+// setting the new take no longer has is removed, said so, not left behind. A conflict with a hand
+// edit is reported like any other. An older take's prints have no `expression`: that reads as "none".
+//
 // Browser-safe: no `node:*` imports.
 import { hashStr } from '../../../src/engine/rng.js';
 import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { baseLane } from '../../../src/data/voices.js';
+import { readAutoPortamento } from '../../../src/engine/auto-portamento.js';
 
 /** A section's keys that belong to `lane`: the lane itself and its suffixed arrays (`leadLen`). */
 export const laneKeysOf = (obj, lane) => Object.keys(obj || {})
@@ -64,14 +72,66 @@ const autoPrint = (arrangement, lane) => print(arrangement?.automation?.[lane]);
 const masterPrint = (mix, arrangement) => print([arrangement?.automation?.__master, mix?.masterEffects]);
 
 /**
+ * A lane's Auto Portamento as it PLAYS: the setting, normalised, where it is on; nothing where it
+ * is off, absent, or amounts to nothing (Amount 0 selects no connection). So "no setting",
+ * "switched off" and an unset strip are one state, and a setting written with its keys in another
+ * order, or without its `version`, is the same as one that was not. A setting this build cannot
+ * read (malformed, or a newer version's) is kept as it stands: it is somebody's, and must show up
+ * as different rather than quietly read as off.
+ */
+function expressionOf(mix, lane) {
+  const raw = mix?.lanes?.[lane]?.noteFx?.portamento;
+  const { config, diagnostic } = readAutoPortamento(raw);
+  if (diagnostic) return raw;
+  return config.enabled && config.amount > 0 ? config : null;
+}
+const expressionPrint = (mix, lane) => print(expressionOf(mix, lane));
+/** What an older take's prints say about a part's expression, which is nothing: no setting. */
+const NO_EXPRESSION = print(null);
+// Production is independent of the fader, pan, EQ and Note FX. A modification of
+// Track Effects replaces only inserts/sends, including the planner's gain reserve.
+const productionOf = (mix, lane) => ({ effects: mix?.lanes?.[lane]?.effects ?? null, send: mix?.lanes?.[lane]?.send ?? null });
+const productionPrint = (mix, lane) => print(productionOf(mix, lane));
+function setProduction(mix, lane, value) {
+  const strip = (mix.lanes[lane] ||= {});
+  for (const key of ['effects', 'send']) {
+    if (value[key] == null) delete strip[key]; else strip[key] = structuredClone(value[key]);
+  }
+}
+
+/** The setting as the song stores it, or null where the lane has none at all. */
+const portamentoOf = (mix, lane) => mix?.lanes?.[lane]?.noteFx?.portamento ?? null;
+
+/**
+ * Set one lane's `noteFx.portamento` — or, given null, take it away — and touch nothing else: not the
+ * strip, not the Note FX beside it. A Note FX left empty by the removal goes with it, as it would never
+ * have been there.
+ */
+function setPortamento(mix, lane, setting) {
+  if (setting == null) {
+    const fx = mix.lanes?.[lane]?.noteFx;
+    if (!fx) return;
+    delete fx.portamento;
+    if (!Object.keys(fx).length) delete mix.lanes[lane].noteFx;
+    return;
+  }
+  const strip = (mix.lanes[lane] ||= {});
+  strip.noteFx = { ...(strip.noteFx || {}), portamento: structuredClone(setting) };
+}
+
+/**
  * The fingerprints of a generated banger, by ROLE: what Modify compares against later.
- * `{ roles: { hook: { notes, voice, auto } … }, master }`.
+ * `{ roles: { hook: { notes, voice, auto, expression } … }, master }`.
  */
 export function bangerPrints({ bank, mix, arrangement, laneOf }) {
   const slots = songSlots(bank, arrangement);
   const roles = {};
   for (const [role, lane] of Object.entries(laneOf || {})) {
-    roles[role] = { notes: notesPrint(slots, lane), voice: voicePrint(mix, lane), auto: autoPrint(arrangement, lane) };
+    roles[role] = {
+      notes: notesPrint(slots, lane), voice: voicePrint(mix, lane), auto: autoPrint(arrangement, lane),
+      expression: expressionPrint(mix, lane),
+      production: productionPrint(mix, lane),
+    };
   }
   return { roles, master: masterPrint(mix, arrangement) };
 }
@@ -108,7 +168,15 @@ export function modifyBanger({ current, next, base }) {
   // ---- where each part goes: its own lane if it had one, a free one of its family if new
   const used = new Set([...Object.values(oldLanes), ...Object.keys(current.mix?.lanes || {}), ...(current.mix?.order || [])]);
   const lane = {};
-  const report = { added: [], removed: [], replaced: [], resounded: [], handEdited: [], kept: [], skipped: [] };
+  // `expression`: parts that were given an Auto Portamento setting or a different one; `expressionOff`:
+  // parts whose setting the new take no longer has; `handEditedExpression`: those among them whose own
+  // setting, changed on the desk, was replaced.
+  const report = {
+    added: [], removed: [], replaced: [], resounded: [], handEdited: [], kept: [], skipped: [],
+    expression: [], expressionOff: [], handEditedExpression: [],
+    production: [], handEditedProduction: [],
+    sectionFx: [], handEditedSectionFx: [],
+  };
   for (const role of Object.keys(newLanes)) {
     if (oldLanes[role]) { lane[role] = oldLanes[role]; continue; }
     const want = newLanes[role];
@@ -136,7 +204,24 @@ export function modifyBanger({ current, next, base }) {
     const voice = voicePrint(next.mix, from) !== b.voice;
     const auto = autoPrint(next.arrangement, from) !== b.auto;
     const edited = notes && notesPrint(curSlots, to) !== b.notes;
-    plan.push({ role, act: 'keep', from, to, notes, voice, auto, edited });
+    // Auto Portamento, field by field. `change` is set only where the new take's setting differs from the
+    // one this take was generated with; `now` is what the song says today, kept for a part whose whole
+    // strip is swapped below (a new sound) and whose setting the change did not reach.
+    const was = b.expression ?? NO_EXPRESSION;
+    const fresh = expressionOf(next.mix, from);
+    const change = print(fresh) !== was
+      ? { setting: portamentoOf(next.mix, from), on: fresh != null, edited: expressionPrint(current.mix, to) !== was } : null;
+    const producing = [current.banger?.options?.production?.mode, next.banger?.options?.production?.mode]
+      .some(mode => mode && mode !== 'style');
+    const freshProduction = productionOf(next.mix, from);
+    // Older fingerprints have no production field. Only an explicit opt-in reaches
+    // their strips; unrelated modifications must preserve their hand edits.
+    const production = producing && (b.production !== undefined
+      ? print(freshProduction) !== b.production
+      : next.banger?.options?.production?.mode !== (current.banger?.options?.production?.mode || 'style'))
+      ? { setting: freshProduction, edited: b.production !== undefined && productionPrint(current.mix, to) !== b.production } : null;
+    plan.push({ role, act: 'keep', from, to, notes, voice, auto, edited, editedAuto: auto && autoPrint(current.arrangement, to) !== b.auto, expression: change,
+      production, nowProduction: productionOf(current.mix, to), now: portamentoOf(current.mix, to) });
   }
 
   // ---- the music: the song as it plays, with the changed parts written over it
@@ -195,6 +280,18 @@ export function modifyBanger({ current, next, base }) {
       }
     } else if (p.voice) take(p);
   }
+  // Auto Portamento last, so it has the final word over a strip that was just swapped for a new sound:
+  // a setting the change reached comes in as that one field (or goes, if the new take has none); one it
+  // did not reach is the song's own, which the swap must not lose. Nothing else on a strip is read here.
+  for (const p of plan) {
+    if (p.act !== 'keep') continue;
+    if (p.production) setProduction(mix, p.to, p.production.setting);
+    else if (p.voice && [current.banger?.options?.production?.mode, next.banger?.options?.production?.mode].some(mode => mode && mode !== 'style')) {
+      setProduction(mix, p.to, p.nowProduction);
+    }
+    if (p.expression) setPortamento(mix, p.to, p.expression.on ? p.expression.setting : null);
+    else if (p.voice) setPortamento(mix, p.to, p.now);
+  }
   if (masterPrint(next.mix, next.arrangement) !== base?.master && next.mix.masterEffects) {
     mix.masterEffects = structuredClone(next.mix.masterEffects);
   }
@@ -225,10 +322,36 @@ export function modifyBanger({ current, next, base }) {
     else if (p.notes) { report.replaced.push(name); if (p.edited) report.handEdited.push(name); }
     else if (p.voice) report.resounded.push(name);
     else report.kept.push(name);
+    // A slide setting the change set, changed or took away — named beside whatever else happened to the part.
+    if (p.act === 'keep' && p.expression) {
+      (p.expression.on ? report.expression : report.expressionOff).push(name);
+      if (p.expression.edited) report.handEditedExpression.push(name);
+    }
+    if (p.act === 'keep' && p.production) {
+      report.production.push(name);
+      if (p.production.edited) report.handEditedProduction.push(name);
+    }
+    if (p.act === 'keep' && p.auto) {
+      report.sectionFx.push(name);
+      if (p.editedAuto) report.handEditedSectionFx.push(name);
+    }
   }
   const laneOf = {};
   for (const role of Object.keys(newLanes)) if (lane[role]) laneOf[role] = lane[role];
   const banger = { ...next.banger, laneOf };
+  if (banger.sectionEffects) banger.sectionEffects = { ...banger.sectionEffects,
+    decisions: banger.sectionEffects.decisions.map(e => ({ ...e, lane: lane[e.role] || e.lane })) };
+  if (banger.report) {
+    const remap = entries => (entries || []).map(e => ({ ...e,
+      lane: lane[e.role] || lane[Object.keys(newLanes).find(role => newLanes[role] === e.lane)] }))
+      .filter(e => e.lane);
+    banger.report = { ...banger.report, lanes: remap(banger.report.lanes),
+      expression: remap(banger.report.expression), levels: remap(banger.report.levels), lastModify: structuredClone(report) };
+  }
+  if (banger.trackEffects) {
+    const remap = entries => entries.map(e => ({ ...e, lane: lane[e.role] || e.lane }));
+    banger.trackEffects = { ...banger.trackEffects, roles: remap(banger.trackEffects.roles), applied: remap(banger.trackEffects.applied) };
+  }
   return { ok: true, bank, mix, arrangement, banger, report };
 }
 
@@ -238,6 +361,12 @@ export function describeModify(report) {
   if (report.added.length) bits.push(`added ${report.added.join(', ')}`);
   if (report.replaced.length) bits.push(`rewrote ${report.replaced.join(', ')}`);
   if (report.resounded.length) bits.push(`new sound on ${report.resounded.join(', ')}`);
+  if (report.expression?.length) bits.push(`Auto Portamento set on ${report.expression.join(', ')}`);
+  if (report.expressionOff?.length) bits.push(`Auto Portamento taken off ${report.expressionOff.join(', ')}`);
+  if (report.production?.length) bits.push(`Track Effects changed on ${report.production.join(', ')}`);
+  if (report.handEditedProduction?.length) bits.push(`replaced edited effects on ${report.handEditedProduction.join(', ')}`);
+  if (report.sectionFx?.length) bits.push(`Spot FX / automation changed on ${report.sectionFx.join(', ')}`);
+  if (report.handEditedSectionFx?.length) bits.push(`replaced edited automation on ${report.handEditedSectionFx.join(', ')}`);
   if (report.removed.length) bits.push(`took out ${report.removed.join(', ')}`);
   if (!bits.length) return 'nothing in the music changed';
   return `${bits.join(' · ')} — ${report.kept.length} part${report.kept.length === 1 ? '' : 's'} kept as they were`;

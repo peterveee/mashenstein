@@ -3028,10 +3028,19 @@
   #regionedit:is(.notefxmodal, .barfxmodal) :is(.notefxfoot, .barfxfoot) button {
     font-size: var(--popup-action-size); padding: 6px 9px;
   }
-  #regionedit:is(.notefxmodal, .barfxmodal) :is(.notefxhelp, .barfxstatus) {
+  /* `.notefxslidehelp` is Auto Portamento's own callout, in the same dress as the one at the
+     top of the panel but a class of its own: the panel's first `.notefxhelp` is the one the
+     tests and the tour read, and a second one would have them reading the wrong sentence. */
+  #regionedit:is(.notefxmodal, .barfxmodal) :is(.notefxhelp, .notefxslidehelp, .barfxstatus) {
     grid-column: 1 / -1; padding: 7px 8px;
     border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent);
     color: var(--ink); font-size: var(--microcopy-size); line-height: 1.4; }
+  /* The small print under Auto Portamento's controls — why this sound cannot slide, that a
+     newer version's setting is being left alone, what the song offers it. State rather than
+     help, so it is quiet: the callout above it is the one with a bar down its side. */
+  #regionedit.notefxmodal .notefxcontrols .notefxslidenote {
+    margin: 0; padding: 0 2px; color: var(--dim);
+    font-size: var(--microcopy-size); line-height: 1.4; }
   #regionedit.notefxmodal .notefxplay { border-color: var(--hot); color: var(--hot); }
   #regionedit.notefxmodal .notefxplay:hover { background: color-mix(in srgb, var(--hot) 18%, transparent); }
   .notefxfoot { flex-wrap: wrap; }
@@ -6408,6 +6417,10 @@
      so a card keeps the one-column width it had in the old stacked window. */
   #regionedit.barfxmodal { width: 640px; }
   #regionedit.barfxmodal.show { display: flex; flex-direction: column; }
+  #regionedit.barfxmodal .barfxpresets { flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
+  #regionedit.barfxmodal .barfxpresets .regselect { flex: 1; min-width: 160px; }
+  #regionedit.barfxmodal .barfxpresets > button:last-child { flex: none; padding: 5px 8px; }
   #regionedit.barfxmodal > :is(.reghead, .barfxwhere, .barfxstatus, .barfxfoot) { flex: none; }
   /* ONE reserved height for the chain and its card, whichever card is showing: choosing a
      ten-row effect after a three-row one changes what scrolls, not where the footer is.
@@ -7608,6 +7621,17 @@
            display: flex; align-items: center; gap: 16px; color: var(--dim); font-size: 11px;
            flex: none; min-width: 0; white-space: nowrap; overflow: hidden; }
   footer > span { min-width: 0; }
+  #bangerreport { flex: none; padding: 0; border: 0; background: transparent;
+    color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+  .bgreport section { margin: 20px 0; }
+  .bgreport h3 { margin: 0 0 8px; }
+  .bgreport-scroll { overflow-x: auto; }
+  .bgreport table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .bgreport th, .bgreport td { text-align: left; vertical-align: top; padding: 8px;
+    border-bottom: 1px solid var(--line); min-width: 90px; }
+  .bgreport summary { cursor: pointer; }
+  #askbox.wide:has(.bgreport) { display: flex; flex-direction: column; }
+  #askbox:has(.bgreport) #askbody { min-height: 0; overflow: auto; }
   #footer-shortcuts { min-width: 0; overflow: hidden; white-space: nowrap;
                       text-overflow: clip; }
   #songrole { color: var(--dim); font-size: var(--microcopy-size); font-weight: 700; letter-spacing: .08em;
@@ -7694,12 +7718,20 @@
   #askok:hover { filter: brightness(1.1); }
   /* Switched off with a reason (Make a Banger… on bars it cannot use): plainly off. */
   #askok:disabled { filter: none; opacity: .4; cursor: default; }
-  /* ---- Make a Banger… — the wide dialog. A quick row of choices you make every time,
-     and everything else folded under More Options in four groups. */
+  /* ---- Make a Banger… — grouped primary choices above four columns of details.
+     Simple stays compact; Full Options uses the available desktop width. */
   #askbox.wide { width: min(760px, 94vw); max-height: 92vh; overflow: auto; box-sizing: border-box; }
-  #askbody .bangergrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
+  #askbox.wide:has(.bgmode-full) { width: min(1360px, 96vw); }
+  #askbox.wide:has(#bgdialog) { padding: 16px 20px 12px; }
+  #askbox:has(#bgdialog) #askrow { position: sticky; bottom: -12px; background: var(--panel); padding-top: 10px; }
+  #askbody .bangergrid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; }
+  #askbody .bgprimary { min-width: 0; margin: 0; padding: 4px 11px 10px; border: 1px solid var(--line); border-radius: 6px; }
+  #askbody .bgprimary legend { padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+  #askbody .bgfields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+  #askbody .bgmode-simple .bangergrid { grid-template-columns: 1fr; }
+  #askbody .bangercolumn { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   #askbody .bangergrid .askfield { margin-top: 10px; }
-  #askbody .bangerrow { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  #askbody .bangerrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
   #askbody .bangerlabel { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
   #askbody .askseg { display: flex; gap: 2px; padding: 2px; background: var(--input);
                      border: 1px solid var(--line); border-radius: 6px; }
@@ -7723,7 +7755,7 @@
   #askbody .bangerwarn { color: var(--hot); }
   #askbody details.bangermore { margin-top: 14px; }
   #askbody details.bangermore > summary { cursor: pointer; color: var(--ink); font-size: 12px; font-weight: 600; padding: 4px 0; }
-  #askbody .bangergroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-top: 6px; }
+  #askbody .bangergroups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 6px; }
   #askbody fieldset.bangergroup { margin: 0; padding: 4px 11px 10px; border: 1px solid var(--line); border-radius: 6px;
                                   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; align-content: start; }
   #askbody fieldset.bangergroup legend { padding: 0 5px; font-size: 10px; color: var(--dim);
@@ -7765,8 +7797,11 @@
   #askbody .bgsimplenote { font-size: 11px; color: var(--dim); }
   #askbody .bglink { margin: 0 0 0 4px; padding: 0; background: none; border: none; color: var(--accent);
                      font-size: 11px; text-decoration: underline; cursor: pointer; }
-  @media (max-width: 640px) {
-    #askbody .bangergrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 1100px) {
+    #askbody .bangergroups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 700px) {
+    #askbody .bangergrid { grid-template-columns: 1fr; }
     #askbody .bangergroups { grid-template-columns: 1fr; }
   }
   /* A normal browser tab cannot clamp the outer browser window. Keep the desk at its
@@ -8921,6 +8956,7 @@
 <footer>
   <span id="nowsong" title="The song on the desk">—</span>
   <span id="songrole" title="Current mixer role"></span>
+  <button id="bangerreport" type="button" hidden aria-haspopup="dialog" title="See this roll's choices and the current mixer">Banger Report</button>
   <!-- WHAT GRID THIS SONG RUNS ON, AND WHAT PUT IT THERE. The resolution is chosen for you
        — a triplet snap promotes it, so does a 1/32 arp, so does pasting a fine clip — which
        is the right behaviour and makes the cost invisible. A song-wide reason also turns

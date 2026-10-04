@@ -39,6 +39,7 @@ import { extractRiff } from './lib/banger/riff.js';
 import { generateBanger } from './lib/banger/index.js';
 import { BANGER_STYLES } from './lib/banger/styles/index.js';
 import { BANGER_SOUNDS } from './lib/banger/sounds.js';
+import { BANGER_COMBOS } from './lib/banger/combos.js';
 import { libraryCurveId, copyCurveKey, CURVE_SECONDS, CURVE_MIDI, CURVE_PITCH_SECONDS } from './lib/banger/levels.js';
 import {
   readLevelData, writeLevelData, songFrom, songAt, buildAllRefs, defaultBangerSong, LEVEL_DATA_FILE, CHANNELS_FILE,
@@ -163,8 +164,10 @@ async function measureCurves() {
   for (const st of Object.values(BANGER_SOUNDS)) {
     Object.values(st.parts || {}).forEach(add);
     Object.values(st.random || {}).flat().forEach(add);
+    Object.values(st.choices || {}).flat().forEach(add);
     for (const m of Object.values(st.moods || {})) Object.values(m.parts || {}).forEach(add);
   }
+  for (const combos of Object.values(BANGER_COMBOS)) for (const combo of Object.values(combos)) Object.values(combo.sounds?.parts || {}).forEach(add);
   for (const st of Object.values(data.refs)) for (const ref of Object.values(st)) { add(ref.voice?.id); add(ref.voice?.copyOf); }
   // The songs' own EDITED copies of presets — what a riff from a cabinet is usually played
   // on — keyed by their sound. The game's songs and the seeds always; every imported song

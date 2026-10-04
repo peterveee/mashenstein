@@ -25,6 +25,11 @@ import {
   resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION, RESOLUTIONS,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
+import { createLaneView, autoPortamentoLane, autoPortamentoReportOf } from './lane-view.js';
+import {
+  readAutoPortamento, autoPortamentoSupport, AUTO_PORTAMENTO_PLANNER_VERSION,
+  AUTO_PORTAMENTO_POLICY,
+} from './auto-portamento.js';
 import {
   laneCurve, curveLevelAt, pointsBetween, cutsBetween, hasAutomation,
   fxSectionAt, fxEdgesBetween, fxStartsAt,
@@ -1513,6 +1518,9 @@ class AudioSys {
   setLoop(startStep = null, endStep = null, { jump = true } = {}) {
     this.pendingLoop = null;
     this.pendingStep = null;
+    // Arming, moving or clearing a loop moves where the transport goes next, so no slide
+    // that was waiting on the note after this one can be counted on.
+    this.resetPortamento();
     // Whatever is armed after this call, it is not the song's own markers unless
     // armLoop says so — it is the only thing that sets the flag.
     this.formLoopArmed = false;
@@ -1544,6 +1552,9 @@ class AudioSys {
     this._rearrangeSourceBar = null;
     this._rearrangeOutputBar = null;
     this.pendingRearrangement = null;
+    // The song is now read in a different order, so what Auto Portamento planned over the
+    // old one — and any slide waiting on a note that will no longer follow — is void.
+    this.cancelPortamento();
   }
 
   /**
@@ -1724,13 +1735,208 @@ class AudioSys {
    * See the long note at the call site in `scheduleStep` for what it means and why a
    * triplet is not part of it.
    */
-  _swingOffset(spb) {
+  _swingOffset(spb) { return this._swingOffsetAt(this.step, spb); }
+
+  /**
+   * The same swing, at any step — which is what a note that has to know when the NEXT
+   * one will sound needs to ask. `_swingOffset` is this at the step being scheduled.
+   */
+  _swingOffsetAt(step, spb) {
     if (!this.swing) return 0;
-    const halves = this.step * 2;
+    const halves = step * 2;
     if (!Number.isInteger(halves)) return 0;
     const delay = spb * (this.swing - 50) / 50;
     const phase = ((halves % 4) + 4) % 4;
     return phase === 2 ? delay : phase % 2 ? delay / 2 : 0;
+  }
+
+  // ---- AUTO PORTAMENTO ---------------------------------------------------------------
+  //
+  // A slide needs to know about the NEXT note before the one it joins is scheduled: the
+  // source note's gate has to reach the destination, and by the time the destination is
+  // scheduled the source has already been told when to end. The scheduler reads one step
+  // at a time and cannot see ahead, so the lane is read ahead of it here — through
+  // `src/engine/lane-view.js`, which walks the same bar plan, sections, masks and
+  // transpositions `scheduleStep` does — and planned once per edit, not once per tick.
+  //
+  // The plan is a decision about the notes BESIDE them: the notes, their starts and their
+  // drawn lengths are never written to. What reaches a note is an `articulation` — attack
+  // or slide — and, for the source of a slide, a longer gate. Everything about a lane that
+  // has not asked for it is untouched: `_portamentoFor` answers null and the caller plays
+  // the note exactly as it always did.
+
+  /**
+   * Forget what Auto Portamento has worked out. The plan is derived data, keyed on the
+   * bank, the mix, the grid and the recipe by identity; this is for the callers that edit
+   * one of them in place and so cannot be seen to have changed it.
+   */
+  invalidatePortamento() {
+    this._portaView = null;
+    this._portaPlans = null;
+  }
+
+  /**
+   * The transport stopped, jumped, looped round or changed song: nothing that is sounding
+   * is the source of a slide any more. A slide names the note it continues and is refused
+   * when the rack has no record of it, so the note after a seek is struck cleanly instead
+   * of sliding out of a note it never followed.
+   */
+  resetPortamento() {
+    this.voices?.clearPortamento?.();
+  }
+
+  /**
+   * An edit has made what was planned out of date. Shorten any gate that was extended for
+   * a slide that is no longer coming back to the length it was written with, where that
+   * is still ahead of the playhead, and throw the plan away. A note already past its
+   * authored end cannot be called back; it was extended by a few milliseconds and rings
+   * out its release.
+   */
+  cancelPortamento() {
+    this.voices?.cancelPortamento?.();
+    this.invalidatePortamento();
+  }
+
+  /** The lane view over the song as it is being played — built lazily, kept by identity. */
+  _portamentoView() {
+    const bank = this.bank;
+    if (!bank) return null;
+    const resolution = this.transportResolution;
+    const recipe = this.rearrangement;
+    const hit = this._portaView;
+    if (hit && hit.bank === bank && hit.mix === this.mixEntry && hit.resolution === resolution
+      && hit.recipe === recipe) return hit.view;
+    const formSteps = recipe ? rearrangementOutputSteps(recipe) : barPlan(bank).length * 16;
+    // Rearrange reads the song out of order. Each cut-and-repeat is its own `slice`: the
+    // source is continuous inside one and jumps between two, and the view puts a barrier
+    // at every jump — a slide must not join two notes the listener hears side by side but
+    // the song never wrote side by side.
+    const position = recipe ? (step) => {
+      const at = this.rearrangementPosition(step);
+      if (!at) return null;
+      const op = at.operation || {};
+      const harmony = op.harmony || 0;
+      const key = harmony ? recipe.key || null : null;
+      return {
+        sourceStep: at.sourceStep, slice: `${at.operationIndex}:${at.repeatIndex}`,
+        mute: !!op.mute, semitones: op.transpose || 0,
+        harmonise: key ? (hz) => harmonicShift(hz, key, harmony) : null,
+      };
+    } : null;
+    const view = createLaneView({ bank, mix: this.mixEntry, resolution, formSteps, position });
+    this._portaView = { bank, mix: this.mixEntry, resolution, recipe, view };
+    this._portaPlans = new Map();
+    return view;
+  }
+
+  /** One lane's plan under its current settings, kept until something it reads changes. */
+  _portamentoPlan(key, config) {
+    const view = this._portamentoView();
+    if (!view) return null;
+    const secondsPerBeat = 60 / (this.bpm * this.tempo);
+    // The tempo is part of the plan — a slide's length and the silence it may bridge are
+    // seconds — so a different tempo is a different plan. Taken in half-percent steps, so a
+    // warp that ramps does not rebuild it on every step of the ramp for a difference
+    // nobody could hear.
+    const signature = `${config.amount}|${config.glide}`
+      + `|${Math.round(Math.log(secondsPerBeat) * 200)}|${AUTO_PORTAMENTO_PLANNER_VERSION}`;
+    let hit = this._portaPlans.get(key);
+    if (!hit || hit.signature !== signature) {
+      hit = { signature, plan: view.plan(key, config, { secondsPerBeat }) };
+      this._portaPlans.set(key, hit);
+    }
+    return hit.plan;
+  }
+
+  /**
+   * What Auto Portamento would do to the note being scheduled on lane `key` now, or null
+   * where it has nothing to say and the note plays as it always did:
+   *
+   *   { len, articulation }   `len` is the gate in steps — longer than drawn only for the
+   *                           source of a slide, and only as far as the destination plus a
+   *                           couple of milliseconds; `articulation` is what the rack reads.
+   *
+   * Null for a preview, a lane that has not asked, a lane the feature cannot serve, a
+   * sound that cannot take a slide, a chord, and any note the plan does not recognise —
+   * the last being how an edit the plan has not heard about yet is made harmless: the plan
+   * is checked against the note actually being scheduled, and rebuilt once if they differ.
+   */
+  _portamentoFor(key, b, value, len, spb, swing) {
+    if (this._previewing || !this.mixEntry) return null;
+    const saved = this.mixEntry.lanes?.[key]?.noteFx?.portamento;
+    if (!saved) return null;
+    const { config } = readAutoPortamento(saved);
+    if (!config.enabled || !(config.amount > 0) || !autoPortamentoLane(key)) return null;
+    if (!autoPortamentoSupport(voiceOf(b, key)).supported) return null;
+    const tones = (Array.isArray(value) ? value : [value]).filter((hz) => hz > 0);
+    if (tones.length !== 1) return null;
+    const hz = tones[0];
+    const steps = Array.isArray(len) ? len[0] : len;
+    if (!(steps > 0)) return null;
+    const fits = (e) => !!e && Math.abs(e.hz / hz - 1) < 1e-6 && Math.abs(e.len - steps) < 1e-6;
+    let view = this._portamentoView();
+    let plan = view && this._portamentoPlan(key, config);
+    if (!plan) return null;
+    let tick = ((this._tick % view.ticks) + view.ticks) % view.ticks;
+    let entry = plan.byTick.get(tick);
+    // The destination too: a bridge is only as good as the note it was built to reach.
+    const reached = (e) => {
+      if (!e?.out) return true;
+      const at = view.resolve(key, e.out.toTick * view.tick);
+      return at.kind === 'note' && Math.abs(at.hz / e.out.toHz - 1) < 1e-6
+        && Math.abs(at.len - e.out.toLen) < 1e-6;
+    };
+    if (!fits(entry) || !reached(entry)) {
+      this.invalidatePortamento();
+      view = this._portamentoView();
+      plan = view && this._portamentoPlan(key, config);
+      if (!plan) return null;
+      tick = ((this._tick % view.ticks) + view.ticks) % view.ticks;
+      entry = plan.byTick.get(tick);
+      if (!fits(entry) || !reached(entry)) return null;
+    }
+    const articulation = {
+      kind: entry.into ? 'slide' : 'attack', id: entry.id,
+      from: entry.into ? entry.into.from : null,
+      glide: entry.into ? entry.into.glideSeconds : 0, link: false,
+    };
+    let gate = steps;
+    const out = entry.out;
+    if (out) {
+      // Where the destination will sound, said the way the scheduler will say it: its
+      // distance in steps, the bar's timing nudge on either side of it, and the swing.
+      const ahead = (out.toTick - tick) * view.tick;
+      const stepB = this.step + ahead;
+      const pending = this.pendingStep || this.pendingLoop || this.pendingRearrangement;
+      const fenced = (this.loopEnd != null && stepB >= this.loopEnd - 1e-9)
+        || (pending && stepB >= pending.boundary - 1e-9);
+      if (ahead > 0 && !fenced) {
+        const reach = ahead * spb + (out.toOffset - entry.offset) * spb / 2
+          + (this._swingOffsetAt(stepB, spb) - swing) + AUTO_PORTAMENTO_POLICY.handoffSeconds;
+        // Never shorter than it was drawn: a note that already overlaps its destination
+        // needs nothing but to be remembered.
+        if (reach > steps * spb + 1e-9) {
+          gate = reach / spb;
+          articulation.release = this.nextTime + entry.offset * spb / 2 + swing + steps * spb;
+        }
+        articulation.link = true;
+      }
+    }
+    return { len: gate, articulation };
+  }
+
+  /**
+   * What Auto Portamento could do to a lane right now, for the desk's card: whether the
+   * lane can take it, how many connections are on offer, and how many the current
+   * settings use. Null when nothing is loaded to ask about — a stopped desk has handed
+   * the engine no bank, and answers the same question itself (`autoPortamentoReportOf`).
+   */
+  autoPortamentoReport(key) {
+    if (!this.bank || !key) return null;
+    return autoPortamentoReportOf({
+      bank: this.bank, mix: this.mixEntry, key, secondsPerBeat: 60 / (this.bpm * this.tempo),
+      view: autoPortamentoLane(key) ? this._portamentoView() : null,
+    });
   }
 
   /** Install/remove one session-only raw lane render. */
@@ -1937,6 +2143,7 @@ class AudioSys {
     this.pendingLoop = null;
     this.step = this.loopStart;
     this.loopHasWrapped = true;
+    this.resetPortamento();
     return true;
   }
 
@@ -1981,6 +2188,7 @@ class AudioSys {
     this.step = this.pendingStep.step;
     this.pendingStep = null;
     this.loopHasWrapped = false;
+    this.resetPortamento();
     // `nextTime` is the exact time the first note at the new step is scheduled. Do not
     // let a visual consumer infer that time from the lookahead after it has advanced.
     this.markVisualSeek(this.step, this.nextTime);
@@ -5882,6 +6090,7 @@ class AudioSys {
     this.setLoop();
     this.step = 0; // songs start from the top (section order matters now)
     this.noteFx.reset();
+    this.invalidatePortamento();
     this.voices?.resetJmjr4Lines?.();
     // …unless the song says otherwise. `arrangement.loop` names the bar it starts on
     // and the bars it repeats, and this is the one call every playback path in the
@@ -5942,6 +6151,9 @@ class AudioSys {
     // based, and deskBank hands back a new object with no id. The song's own preset
     // copies are scoped by it — see registerSongVoice.
     const id = trackIdOf(bank);
+    // Before the merge below replaces what was planned: a gate extended for a slide that
+    // this edit no longer wants goes back to the length it was written with.
+    this.cancelPortamento();
     this.mixEntry = entry || null;
     this.noteFx.reset();
     this.voices?.resetJmjr4Lines?.();
@@ -5984,6 +6196,7 @@ class AudioSys {
     // bank from the song, so an arrangement that lived only in `this.bank` survived
     // exactly until the next fader move — see applyMix.
     this.arrangement = patch || null;
+    this.cancelPortamento();
     if (!this.bank) return;
     // A NEW object every time, never a write into the one being played.
     //
@@ -6084,6 +6297,10 @@ class AudioSys {
   // trims are relative and live on the strips, so per-section variation survives.
   applyMix(bank, mix = undefined) {
     const entry = mix !== undefined ? mix : (bank ? MIX[trackIdOf(bank)] : null);
+    // An edit to the mix is how Amount, Glide and the lane's own sound change under a
+    // playing song; what was planned from the old one is stale, and so is any gate that
+    // was stretched for it.
+    this.cancelPortamento();
     // Remembered for `setArrangement`, which has to re-shape the song's sections
     // without coming back through here — see the note there. A mix override is not
     // otherwise recoverable: the desk's unsaved edits are in no file to look up.
@@ -7212,7 +7429,10 @@ class AudioSys {
       .then((built) => built.reduce((a, b) => a + b, 0));
   }
 
-  playVoice(key, b, value, { spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1, len = null }) {
+  playVoice(key, b, value, {
+    spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1, len = null,
+    articulation = null,
+  }) {
     const seam = seamFor(key);
     const v = seam && voiceOf(b, key);
     // An ENGINE preset is not played here at all: it is a bundle of the bank keys the
@@ -7284,6 +7504,9 @@ class AudioSys {
         // bench's pattern player wants the first and not the second: it plays previews
         // whose length it already knows. See `play` in voices.js.
         hold: !!this._previewing && this._previewHold !== false,
+        // How this note joins the one before it, when its lane asked for Auto Portamento.
+        // Null otherwise, and then the rack never reads it.
+        articulation,
       });
     }
     return true;
@@ -8417,9 +8640,15 @@ class AudioSys {
           }
           return played;
         }
+        const own = lenOf(key);
+        // Auto Portamento: null for every lane that has not asked, in which case this is
+        // the call it always was. For a lane that has, the note's articulation, and a
+        // gate that reaches the next note if this one is the source of a slide.
+        const slide = this._portamentoFor(key, b, value, own, spb, swingOffset);
         return this.playVoice(key, b, value,
-          { spb, dry, wet, delay: voiceDelay(), len: lenOf(key), ...opts,
-            gainScale: (opts.gainScale ?? 1) * laneGainScale });
+          { spb, dry, wet, delay: voiceDelay(), len: own, ...opts,
+            gainScale: (opts.gainScale ?? 1) * laneGainScale,
+            ...(slide ? { len: slide.len, articulation: slide.articulation } : {}) });
       };
       // Every oscillator voice on the desk goes through here — bass, lead, harmony,
       // twinkle, chords, both organs and electroFx — so MELODIC_TRIM lands on all of
@@ -9234,6 +9463,8 @@ class AudioSys {
         const loop = { when: this.nextTime, start: this.loopStart, end: this.loopEnd };
         this.step = this.loopStart;
         this.loopHasWrapped = true;
+        // The end of a loop is not joined to its beginning: nothing slides across the wrap.
+        this.resetPortamento();
         for (const fn of this.loopListeners) fn(loop);
       } else if (this.loopEnd == null) {
         // With no armed locator/form loop the arrangement repeats by indexing its

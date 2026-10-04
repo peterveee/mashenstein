@@ -57,17 +57,25 @@ const TAU = Math.PI * 2;
 // gallery, through the SAME helper, instead of the retired wide-knee preview.
 const skirted = new Set(['kiko', 'clara', 'fernwick', 'grumpos']);
 const rustyLegs = ['rusty-step', 'rusty-heel', 'rusty-bounce'];
-export const HERO_DANCE_LAB_CANDIDATES = Object.keys(choices).flatMap(hero => {
+// GRUMPOS keeps his arms at his sides for everything but A and C (Peter, 3 Oct 2026); B
+// becomes one foot tapping, slowly — once every two beats; C keeps its Double Biceps, with
+// the arms hanging idle between the poses.
+const GRUMPOS_ARMS_DOWN = { armsAtSide: true };
+const grumposPlain = (c) => (c.hero !== 'grumpos' || c.letter === 'A' || c.letter === 'C' ? c
+  : c.letter === 'B' ? { ...c, ...GRUMPOS_ARMS_DOWN, move: 'slow-tap', footwork: null, labLegs: 'tap', tapEvery: 2,
+    name: 'Slow Tap', description: 'Arms at his sides; one foot taps, once every two beats. Current Lab move.' }
+    : { ...c, ...GRUMPOS_ARMS_DOWN, description: `${c.description} Arms at his sides.` });
+const LAB_ALL = () => Object.keys(choices).flatMap(hero => {
   const current = HERO_DANCE_CANDIDATES.filter(c => c.hero === hero).map((c, i) => {
     const labLegs = skirted.has(hero) ? hero === 'grumpos' ? 'stand' : ['tap', 'stand', 'hop'][i] : null;
     if (hero === 'grumpos' && c.letter === 'C') return { ...c,
       move: 'muscle-hold', footwork: null, labLegs: 'stand', name: 'Double Biceps',
-      description: 'Classic double biceps held for one full bar, then one bar relaxed. Elbows wide, fists beside the head, feet planted. Gallery candidate.' };
+      description: 'Classic double biceps held for one full bar, then one bar relaxed. Elbows wide, fists beside the head, feet planted. Current Lab move.' };
     if (hero === 'rusty') return { ...c, footwork: rustyLegs[i],
       name: ['Pocket Step', 'Heel-down Groove', 'Soft-knee Bounce'][i],
       description: ['Small lifted step and return; the supporting leg stays still.',
         'One heel marks the beat while the other foot stays planted.',
-        'Both feet stay down; a soft knee dip takes the beat.'][i] + ' Gallery candidate.' };
+        'Both feet stay down; a soft knee dip takes the beat.'][i] + ' Current Lab move.' };
     return { ...c, labLegs, description: labLegs
       ? `${descriptions[c.move]} Club legs: ${labLegs}.` : c.description };
   });
@@ -75,11 +83,21 @@ export const HERO_DANCE_LAB_CANDIDATES = Object.keys(choices).flatMap(hero => {
     hero, id: `${hero}-${letter}`, letter, move: i ? 'tap-sway' : 'tap', footwork: null,
     labLegs: 'tap', alternateTap: !!i,
     name: i ? 'Take Turns' : 'Just the Beat',
-    description: i ? 'Quiet foot tap; swap the tapping foot every bar. Small arm groove. Gallery candidate.'
-      : 'One foot taps the beat, the other stays planted. Relaxed arms. Gallery candidate.',
+    description: i ? 'Quiet foot tap; swap the tapping foot every bar. Small arm groove. Current Lab move.'
+      : 'One foot taps the beat, the other stays planted. Relaxed arms. Current Lab move.',
   }))];
 });
+export const HERO_DANCE_LAB_CANDIDATES = LAB_ALL().map(grumposPlain);
 export function heroDancePose(candidate, beat) {
+  const pose = danceInner(candidate.move === 'slow-tap' ? { ...candidate, move: 'tap' } : candidate, beat);
+  // arms hanging at the sides, out far enough from the body to be seen
+  if (candidate.armsAtSide && pose.dance) {
+    pose.dance = { ...pose.dance, restArms: true, pointAngle: null, shoulderLift: 0 };
+    pose.armsInFront = false;
+  }
+  return pose;
+}
+function danceInner(candidate, beat) {
   const b = Number.isFinite(beat) ? ((beat % 8) + 8) % 8 : 0;
   if (candidate.move === 'muscle-hold') {
     const smooth = v => { const n = Math.max(0, Math.min(1, v)); return n * n * (3 - 2 * n); };
@@ -87,10 +105,11 @@ export function heroDancePose(candidate, beat) {
       : b > 7.7 ? smooth((b - 7.7) / 0.3) : 0;
     return {
       kind: 'stand', time: 0, phase: 0, grounded: true, facing: 1,
-      squash: 0, lean: 0, faceJoy: true, armsInFront: true,
+      squash: 0, lean: 0, faceJoy: true, armsInFront: hold > 0,
       shift: 0, tilt: 0, bounce: 0,
-      dance: { hands: [[0.65 - 0.25 * hold, 0.75 - 1.35 * hold],
-        [0.65 - 0.25 * hold, 0.75 - 1.35 * hold]], feet: null,
+      // relaxed, the arms hang idle at his sides; posing, fists up beside the head
+      dance: { restArms: hold === 0, hands: [[0.18 + 0.22 * hold, 0.95 - 1.55 * hold],
+        [0.18 + 0.22 * hold, 0.95 - 1.55 * hold]], feet: null,
         ankles: [0, 0], pointAngle: null, shoulderLift: 0 },
     };
   }
@@ -276,7 +295,7 @@ export function heroDancePose(candidate, beat) {
 export function drawHeroDance(ctx, candidate, beat, x, feetY, height) {
   let pose = heroDancePose(candidate, beat);
   if (candidate.labLegs) {
-    pose = tameSkirt(pose, candidate.labLegs, beat);
+    pose = tameSkirt(pose, candidate.labLegs, beat / (candidate.tapEvery || 1));
     if (candidate.alternateTap && Math.floor(beat / 4) % 2 === 1) {
       pose.dance.feet = pose.dance.feet.slice().reverse().map(([x, y]) => [-x, y]);
       pose.dance.ankles = pose.dance.ankles.slice().reverse();

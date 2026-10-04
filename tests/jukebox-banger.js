@@ -14,11 +14,15 @@ const {
 const DEFAULT_NOTES = DEFAULT_SIMPLE;
 const { MAKER_STYLES, MAKER_MOODS, makeBanger, defaultMoodFor, hookSoundFor, RIFF_TRIM_DB, tapeStopFor, TAPE_STOP_CHANCE,
   spotFor, INTRO_LOWPASS_CHANCE, INTRO_BITCRUSH_CHANCE, UNDERWATER_CHANCE } = await import('../src/game/banger/make.js');
+const { BANGER_STYLES } = await import('../tools/lib/banger/styles/index.js');
 const { generateBanger } = await import('../tools/lib/banger/index.js');
-const { bangerState, keepBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger } = await import('../src/game/banger/store.js');
+const {
+  bangerState, keepBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger, lastPlayedBanger,
+} = await import('../src/game/banger/store.js');
 const { BangerMakerState, RIFF_VOICES } = await import('../src/game/banger/maker.js');
+const { BANGER_VOLTAGES } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
-const { BangerClubState } = await import('../src/game/banger/club.js');
+const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
 const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor } = await import('../src/game/banger/club-fx.js');
 
 let failed = false;
@@ -281,6 +285,17 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(true, 'both draw');
 }
 
+{
+  const recipe = { notes: DEFAULT_NOTES, style: 'trance', mood: 'dark', seed: 99 };
+  const wild = makeBanger({ ...recipe, wild: true });
+  const voltageBpms = [0, 1, 2, 3].map((voltage) => makeBanger({ ...recipe, voltage }).bpm);
+  assert(voltageBpms.join() === '138,138,138,140', 'only High Voltage lifts tempo, capped by Trance\'s range');
+  const expected = generateBanger({ riff: riffFromNotes(recipe.notes, hookSoundFor(recipe.style, recipe.mood)),
+    options: { style: recipe.style, mood: recipe.mood, variation: 'wild', spot: spotFor(recipe.style, recipe.seed) }, seed: recipe.seed });
+  assert(JSON.stringify(wild.bank) === JSON.stringify(expected.bank), 'Go wild uses the generator Wild variation');
+  assert(JSON.stringify(wild.bank) !== JSON.stringify(makeBanger(recipe).bank), 'Go wild changes the generated music');
+}
+
 // ---------------------------------------------------------------- the maker
 {
   let made = null;
@@ -288,6 +303,25 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const maker = new BangerMakerState({ onDone: () => { backs++; }, onMade: (rec, song) => { made = { rec, song }; } });
   maker.enter();
   let L = maker.layout();
+  assert(BANGER_VOLTAGES.map((preset) => preset.label).join() === 'Safe,Juiced,Overcharged,High Voltage'
+    && maker.voltage === 1, 'the maker opens on the four-step Voltage selector at Juiced');
+  assert(L.pickers.length === 3 && !('voltageBox' in L), 'Formula, Vibe and Voltage share one selector row');
+  assert(!('wildBox' in L) && !('energyBox' in L) && !('effectsBox' in L), 'Go Wild, Energy and Track Effects are merged');
+  const chooseVoltage = (level) => {
+    const control = L.pickers[2];
+    tap(maker, control.x + control.w / 2, control.y + control.h / 2);
+    const { cells } = maker.chooserLayout(maker.layout());
+    assert(maker.chooser?.picker === 2 && cells.length === BANGER_VOLTAGES.length, 'Voltage opens the same choice list as Formula and Vibe');
+    tap(maker, cells[level].x + cells[level].w / 2, cells[level].y + cells[level].h / 2);
+  };
+  chooseVoltage(0);
+  assert(maker.voltage === 0 && maker.energy === 'lean' && maker.trackEffects === 'style' && maker.variation === 'faithful', 'Safe keeps the formula intact');
+  chooseVoltage(2);
+  assert(maker.voltage === 2 && maker.energy === 'huge' && maker.trackEffects === 'adventurous' && maker.variation === 'some', 'Overcharged maps to medium variation, high energy and bold FX');
+  chooseVoltage(3);
+  assert(maker.voltage === 3 && maker.wild && maker.energy === 'maximum' && maker.trackEffects === 'overhaul' && maker.variation === 'wild', 'High Voltage maps to full variation, maximum energy and full FX');
+  chooseVoltage(1);
+  assert(maker.voltage === 1 && !maker.wild && maker.energy === 'full' && maker.trackEffects === 'subtle', 'Juiced maps to medium energy and subtle FX');
   assert(maker.mode === 'simple' && maker.rows === 8 && maker.steps === 16, 'the maker opens in SIMPLE');
   {
     // the middle of MOOD opens every mood at once; a tap on one picks it and closes
@@ -355,24 +389,33 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   L = maker.layout();
 
   const style0 = maker.style;
+  maker.loopT0 = 1; maker.scheduled = 9; maker.playStep = 4;
   tap(maker, L.pickers[0].x + L.pickers[0].w - 4, L.pickers[0].y + L.pickers[0].h / 2);
-  assert(maker.style !== style0, 'tapping the STYLE picker moves to the next style');
+  const pickedStyle = BANGER_STYLES.find((style) => style.id === maker.style);
+  assert(maker.style !== style0 && maker.previewBpm === (pickedStyle.tempoRange?.[0] ?? pickedStyle.bpm)
+    && maker.loopT0 === null && maker.scheduled === -1 && maker.playStep === -1,
+  'tapping the STYLE picker moves the preview to the style tempo and restarts its beat clock');
   tap(maker, L.pickers[0].x + 4, L.pickers[0].y + L.pickers[0].h / 2);
-  assert(maker.style === style0, 'and its left end goes back');
+  assert(maker.style === style0
+    && maker.previewBpm === (BANGER_STYLES.find((style) => style.id === style0).tempoRange?.[0]
+      ?? BANGER_STYLES.find((style) => style.id === style0).bpm),
+  'and its left end restores the previous style tempo');
   const mood0 = maker.mood;
   tap(maker, L.pickers[1].x + L.pickers[1].w - 4, L.pickers[1].y + L.pickers[1].h / 2);
   assert(maker.mood !== mood0, 'tapping the MOOD picker moves to the next mood');
 
-  // Keyboard: from the grid's bottom row, down reaches the pickers, then the buttons;
+  // From the grid's bottom row, down reaches the selector in the same column;
   // up from the top row reaches the mode switch.
-  maker.focus = { area: 'grid', col: 2, row: maker.rows - 1, picker: 0, button: 3 };
+  maker.focus = { area: 'grid', col: maker.steps - 1, row: maker.rows - 1, picker: 0, button: 3 };
   frame(maker, 'down');
-  assert(maker.focus.area === 'picker' && maker.focus.picker === 0, 'down from the grid reaches the pickers');
-  const s1 = maker.style;
+  assert(maker.focus.area === 'picker' && maker.focus.picker === 2, 'down from the grid reaches Voltage in the same selector row');
+  const v1 = maker.voltage;
   frame(maker, 'right');
-  assert(maker.style !== s1, 'left and right turn a picker');
+  assert(maker.voltage !== v1, 'left and right turn the Voltage selector');
+  frame(maker, 'right');
+  assert(maker.voltage === 3, 'left and right step through voltage levels');
   frame(maker, 'down');
-  assert(maker.focus.area === 'button', 'down again reaches the buttons');
+  assert(maker.focus.area === 'button', 'down from Voltage reaches the action buttons');
   maker.focus = { area: 'grid', col: 2, row: 0, picker: 0, button: 3 };
   frame(maker, 'up');
   frame(maker, 'right');
@@ -390,9 +433,14 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(maker.making > 0 && !made, 'GENER8 shows GENER8ING... for a frame before the work');
   frame(maker); frame(maker);
   assert(made && made.song.bank && made.rec.style === maker.style && made.rec.mood === maker.mood
+    && made.rec.voltage === 3 && made.rec.variation === 'wild' && made.rec.energy === 'maximum'
+    && save.data.bangers.draft.voltage === 3 && save.data.bangers.draft.energy === 'maximum'
+    && made.rec.production.mode === 'overhaul' && made.rec.wild && save.data.bangers.draft.wild
     && made.rec.mode === 'simple' && made.rec.notes.join() === lucky.join(),
   'GENER8 makes the song from the grid on show, its mode, style and mood, and hands it over');
   assert(bangerState().kept[0] === made.rec && save.data.bangers.draft.simple.join() === lucky.join(), 'the banger is kept and the grid is remembered');
+  assert(made.rec.expression === 1 && JSON.stringify(makeBanger(made.rec).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 1 (Go Wild\'s slide on the lead), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[1]));
   made = null;
@@ -427,6 +475,15 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   frame(lab, 'confirm');
   assert(opened === mine.banger && lab.playing === -1, 'choosing a song opens it in the club, not in the list');
   lab.draw(document.createElement('canvas').getContext('2d'));
+
+  const visiting = new SoundTestState({ onDone: () => {}, lab: true });
+  visiting.enter();
+  const played = visiting.tracks.at(-1).banger;
+  visiting.openClub(played);
+  const returned = new SoundTestState({ onDone: () => {}, lab: true });
+  returned.enter();
+  assert(lastPlayedBanger() === played && returned.tracks[returned.idx]?.banger === played && returned.playing === -1,
+    're-entering THE LAB selects the last club track without starting it again');
 }
 {
   // DELETE: up while the selected song is one of theirs; ARE YOU SURE?, NO first; the songs
@@ -487,6 +544,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(club.acting?.i === 4 && club.caption?.i === 4, 'and on the beat they do it, their name and move on screen');
   club.draw(ctx);
   // A held move: in while the hero is held, out when let go. B-33P's 8-bit is one.
+  // (a hero's box follows them, so let the walk-in finish before aiming at one)
+  club.shownAt = club.t - 30; club.draw(ctx);
   const hb = club.boxes.heroes[1];
   Input.pointer = { x: hb.x + hb.w / 2, y: hb.y + hb.h / 2, down: true };
   Input.press('pointer');
@@ -591,10 +650,10 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       const a = club.ledText();
       if (club.led !== before && before) {
         // the line that just ended had its whole run: a scroll had left the board
-        if (before.scroll && 54 - before.dur * 22 + (before.text.length * 6 - 1) > 0.01) complete = false;
+        if (before.scroll && LED_COLS - before.dur * 22 + (before.text.length * 6 - 1) > 0.01) complete = false;
       }
       if (club.led !== before) { seen.push(club.led.text); if (club.led.scroll) scrolled = true; }
-      if (!club.led.scroll && (a.offset < 0 || a.offset + club.led.text.length * 6 - 1 > 54)) complete = false;
+      if (!club.led.scroll && (a.offset < 0 || a.offset + club.led.text.length * 6 - 1 > LED_COLS)) complete = false;
     }
     club.t = realT; club.rec = realRec; club.led = null;
     const order2 = [];
@@ -663,7 +722,114 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   club.smokeAt = Infinity;
   for (const kind of [...CLUB_MOMENTS, 'smoke']) club.startMoment(kind);
   for (let k = 0; k < 80; k++) { club.update(1 / 10); club.draw(ctx); }
-  assert(club.moments.length === 0, 'the crowd moments (beach ball, confetti, glow sticks, the smoke machine) play and clear');
+  assert(!club.moments.some(m => [...CLUB_MOMENTS, 'smoke'].includes(m.kind)), 'the crowd moments (beach ball, confetti, glow sticks, the smoke machine) play and clear');
+  // Grumpos's non-flexing dance phases retain his native standing arms.
+  {
+    const { HERO_DANCE_LAB_CANDIDATES, heroDancePose } = await import('../src/dev/hero-dance-candidates.js');
+    const moves = HERO_DANCE_LAB_CANDIDATES.filter(m => m.hero === 'grumpos');
+    assert(moves.filter(m => ['B', 'D', 'E'].includes(m.letter)).every(m => heroDancePose(m, 1).dance.restArms),
+      'Grumpos quiet taps keep his normal arms at his sides');
+    const flex = moves.find(m => m.letter === 'C');
+    assert(heroDancePose(flex, 6).dance.restArms && !heroDancePose(flex, 6).armsInFront
+      && !heroDancePose(flex, 2).dance.restArms && heroDancePose(flex, 2).armsInFront,
+      'Grumpos returns to his normal standing arms between double-biceps holds');
+  }
+  // The strobe follows heard beats across a four-bar burst, then rests.
+  {
+    const { strobePulse } = await import('../src/game/banger/club.js');
+    assert(strobePulse(31.9, 32) === 0 && strobePulse(48, 32) === 0,
+      'strobe stays off before its downbeat and ends after four bars');
+    assert(strobePulse(32, 32) === 1 && strobePulse(32.5, 32) === 1
+      && strobePulse(32.25, 32) === 0 && strobePulse(47.5, 32) === 1,
+      'strobe flashes twice per heard beat throughout the burst');
+    assert(strobePulse(32, 32, true) === 0 && strobePulse(32, -Infinity) === 0,
+      'reduced motion and an unscheduled strobe never flash');
+    const realBeat = club.beat;
+    const reduced = club.reduceMotion;
+    const next = club.strobeNextBeat;
+    const start = club.strobeBeat;
+    club.reduceMotion = false; club.strobeNextBeat = 200;
+    club.beat = () => 200.1; club.update(1 / 60);
+    assert(club.strobeBeat === 200 && club.strobeNextBeat >= 264 && club.strobeNextBeat <= 280
+      && club.strobeNextBeat % 4 === 0, 'strobe starts on a downbeat and leaves 12–16 quiet bars after its four bars');
+    club.draw(ctx);
+    club.reduceMotion = true; club.beat = () => 300; club.update(1 / 60);
+    assert(club.strobeBeat === 200, 'reduced motion prevents new strobe bursts');
+    club.beat = realBeat; club.reduceMotion = reduced;
+    club.strobeNextBeat = next; club.strobeBeat = start;
+  }
+  // Paper streamers can fly alone or share a confetti burst.
+  {
+    club.moments = [];
+    const scraps = club.floorConfetti.length;
+    club.startMoment('streamers');
+    const ribbons = club.moments.at(-1);
+    assert(ribbons.ribbons.length >= 12 && !ribbons.bits && club.floorConfetti.length === scraps,
+      'standalone streamers carry curled ribbons without generating confetti');
+    club.t += 1; club.draw(ctx);
+    club.startMoment('confetti', { streamers: true });
+    assert(club.moments.at(-1).bits.length === 72 && club.moments.at(-1).ribbons.length >= 12,
+      'a combined confetti burst carries both paper pieces and streamers');
+    club.t += 1; club.draw(ctx);
+    club.startMoment('confetti', { streamers: false });
+    assert(!club.moments.at(-1).ribbons, 'confetti alone remains available');
+    club.t += 6; club.update(1 / 60);
+    assert(!club.moments.some(m => m.ribbons), 'streamers clear after their burst');
+  }
+  // New party events use heard beats, keep the controls untouched, and do not
+  // stack two major moments. A confetti event queues its cleanup separately.
+  {
+    const realBeat = club.beat;
+    let beat = 200;
+    club.beat = () => beat;
+    club.moments = [];
+    club.startMoment('spotlight');
+    assert(club.moments[0].beats === 8 && club.moments[0].hero >= 0, 'spotlight selects one hero for two bars');
+    assert(club.startMoment('bubbles') === false, 'major party moments do not stack');
+    for (const kind of ['spotlight', 'bubbles', 'cleaner', 'drop-jump']) {
+      club.moments = []; club.startMoment(kind);
+      const moment = club.moments[0];
+      for (const age of [0.1, 1, 3.9, 4.5]) { beat = moment.beat0 + age; club.draw(ctx); }
+      const { partyAlive } = await import('../src/game/banger/club-party.js');
+      assert(!partyAlive(moment, moment.beat0 + moment.beats), `${kind} ends on its heard-beat boundary`);
+    }
+    const { dropMotion } = await import('../src/game/banger/club-party.js');
+    assert(dropMotion(3.9).crouch > 0.9 && dropMotion(4.5).jump === 1 && dropMotion(5).jump === 0,
+      'crowd crouches before the drop, jumps on it, then lands');
+    const song = club.song, shown = club.shownAt;
+    club.song = { ...song, form: [{ from: 1, to: 4, role: 'build' }, { from: 5, to: 8, role: 'drop' }] };
+    club.shownAt = club.t - 20; beat = 13; club.moments = []; club.lastDropCue = null; club.dropJumpNext = true;
+    club.updateParty(); club.updateParty();
+    assert(club.moments.length === 1 && club.moments[0].kind === 'drop-jump' && club.moments[0].jumpAt === 3,
+      'upcoming drop schedules one crouch, aligned to its exact downbeat');
+    club.song = song; club.shownAt = shown;
+    club.moments = []; club.cleanerCooldown = -Infinity;
+    club.startMoment('confetti');
+    assert(club.cleanerBeat > beat, 'confetti schedules a later cleaner visit');
+    club.moments = []; club.cleanerBeat = Infinity; club.partyNextBeat = Infinity;
+    club.beat = realBeat;
+  }
+  {
+    const build = window.__MASH_BUILD__;
+    club.draw(ctx);
+    const sign = club.boxes.sign;
+    const x = sign.x + sign.w / 2, y = sign.y + sign.h / 2;
+    club.moments = []; club.popup = null; club.lastSignTap = -Infinity; club.devMomentIndex = 0;
+    window.__MASH_BUILD__ = null;
+    tap(club, x, y); tap(club, x, y);
+    const bpmText = `${Math.round(club.song.bpm || 120)} BPM`;
+    assert(club.devMomentIndex === 0 && club.lastSignTap === -Infinity && club.popup?.text === bpmText,
+      'double-clicking the red sign shows the current track BPM in production');
+    window.__MASH_BUILD__ = 'test';
+    tap(club, x, y);
+    assert(club.devMomentIndex === 0, 'one sign click does not trigger an event');
+    tap(club, x, y);
+    assert(club.moments.length === 1 && club.moments[0].kind === 'ball' && club.popup?.text === bpmText,
+      'dev sign double-click shows BPM and triggers the beach balls');
+    tap(club, x, y); tap(club, x, y);
+    assert(club.moments.length === 1 && club.moments[0].kind === 'cleaner', 'next double-click replaces the preview with the next event');
+    window.__MASH_BUILD__ = build; club.moments = [];
+  }
   // The subwoofers pump on the song's own kick.
   {
     const realBeat = club.beat;
@@ -695,6 +861,39 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     for (const b of [-3.5, -0.5, 16.5, 33.5]) { club.beat = () => b; club.draw(strict); }
     club.beat = realBeat;
     assert(bad === 0, 'the room draws in real colours even on the count-in\'s negative beats');
+  }
+  // confetti pools on the floor drop on drop (up to a limit) until Dolores or the vacuum cleaner comes
+  {
+    const { CLEANERS, scrapY, cleanerFloor } = await import('../src/game/banger/club-party.js');
+    club.moments = []; club.floorConfetti = []; club.cleanerBeat = Infinity; club.cleanerCooldown = Infinity;
+    for (let k = 0; k < 8; k++) { club.moments = []; club.startMoment('confetti'); }
+    assert(club.floorConfetti.length > 26 && club.floorConfetti.length <= 130 && club.cleanerBeat === Infinity,
+      'confetti pools on the floor from drop to drop, and not every drop sends a cleaner');
+    assert(CLEANERS.join() === 'cleaner,vacuum' && club.startMoment('vacuum') !== undefined, 'Dolores and the vacuum cleaner both come for it');
+    club.moments = []; club.startMoment('vacuum'); club.draw(ctx); club.moments = [];
+    assert(cleanerFloor(100, 60, 270, 1) > 100 + 60 * 0.5 && scrapY(100, 60, 270, 1, 1) <= 267,
+      'the cleaners and the scraps lie lower on the floor, clear of the heroes, and inside the screen');
+    club.floorConfetti = []; club.cleanerCooldown = -Infinity;
+  }
+  // a slow device gets the lighter room, and goes back to the full one when it recovers
+  {
+    const real = club.shownAt;
+    club.lite = false; club.frameMs = 16;
+    for (let k = 0; k < 120; k++) club.update(0.05);
+    const slow = club.lite;
+    for (let k = 0; k < 200; k++) club.update(1 / 60);
+    assert(slow && !club.lite, 'a slow device gets the lighter room, and the full one back when it keeps up');
+    club.draw(ctx); club.lite = true; club.draw(ctx); club.lite = false;
+    club.shownAt = real;
+  }
+  // the glow sticks: every one has somewhere to be (a stick with no sideways speed drew nowhere)
+  {
+    club.moments = [];
+    club.startMoment('sticks');
+    const m = club.moments.at(-1);
+    assert(m.sticks.every((st) => Number.isFinite(st.vx) && Number.isFinite(st.spin) && Number.isFinite(st.vy)),
+      'every glow stick is thrown with a direction and a spin');
+    club.moments = [];
   }
   // the song looping back starts a Mexican wave across the floor
   {
@@ -765,10 +964,12 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     'the pencil opens the grid on the song\'s own riff, style and mood');
   const other = ['trance', 'dnb', 'electro'].find((id) => id !== rec.style);
   maker.style = other;
+  delete rec.expression;                              // a recipe saved before expression existed
   maker.make();
   maker.exit();
   assert(made === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'BRING TO LIFE remakes that song in place: same name and number, the new style, no new song');
+  assert(rec.expression === 1, 'and an old recipe edited with the pencil opts into expression version 1');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 

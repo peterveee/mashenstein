@@ -5,7 +5,7 @@
 // settings, not per slot — a song is not campaign progress.
 //
 //   save.data.bangers = { draft: { v, mode, simple, advanced, simpleEdited, style, mood },
-//                         kept: [recipe…], next }
+//                         kept: [recipe…], next, lastPlayed }
 //
 // A GENER8 with a new riff, style or mood keeps a new song (Peter, 3 Oct 2026), added at
 // the END, so the songs already there keep their numbers; the same riff, style and mood
@@ -16,12 +16,19 @@
 //
 // A recipe is { v, n, name, mode, notes, style, mood, seed, bpm }; `v` says what the note
 // numbers mean (riff.js RIFF_VERSION), and an older grid is read in today's shape — a few dozen bytes. The song is
-// made from it again when the jukebox plays it (make.js), and cached for the session.
+// made from it again when the jukebox plays it (make.js), and cached for the session. A recipe made since 4 Oct
+// also carries `expression`, the version of the playing policy it opts into (make.js RECIPE_EXPRESSION); one
+// saved before has none and is made exactly as it was.
+import { energyOf } from '../../../tools/lib/banger/energy.js';
+import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
 import { save as defaultSave } from '../../engine/save.js';
 import { RIFF_VERSION, normaliseNotes, upgradeDraft, upgradeRecipeNotes, modeOf } from './riff.js';
-import { MAKER_STYLES, MAKER_MOODS, defaultMoodFor, makeBanger, styleLabel, moodLabel } from './make.js';
+import {
+  MAKER_STYLES, MAKER_MOODS, defaultMoodFor, makeBanger, styleLabel, moodLabel, RECIPE_EXPRESSION, expressionVersionOf,
+} from './make.js';
 import { moodSongName } from './mood-names.js';
 import { STARTERS, FIRST_STARTER } from './starters.js';
+import { voltageFor, voltageSettings } from './voltage.js';
 
 /**
  * How many the jukebox keeps. A recipe is a few dozen bytes, so this is only a ceiling on
@@ -31,7 +38,10 @@ export const MAX_KEPT = 99;
 
 function freshDraft() {
   const style = MAKER_STYLES[0].id;
-  return { v: RIFF_VERSION, ...upgradeDraft({}), style, mood: defaultMoodFor(style) };
+  const voltage = 1;
+  const preset = voltageSettings(voltage);
+  return { v: RIFF_VERSION, ...upgradeDraft({}), style, mood: defaultMoodFor(style), voltage,
+    variation: preset.variation, wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
 }
 
 const validStyle = (id) => MAKER_STYLES.some((s) => s.id === id);
@@ -45,7 +55,10 @@ export function bangerState(save = defaultSave) {
   const b = data.bangers && typeof data.bangers === 'object' ? data.bangers : (data.bangers = {});
   const d = b.draft && typeof b.draft === 'object' ? b.draft : freshDraft();
   const style = validStyle(d.style) ? d.style : MAKER_STYLES[0].id;
-  b.draft = { v: RIFF_VERSION, ...upgradeDraft(d), style, mood: validMood(d.mood) ? d.mood : defaultMoodFor(style) };
+  const voltage = voltageFor(d);
+  const preset = voltageSettings(voltage);
+  b.draft = { v: RIFF_VERSION, ...upgradeDraft(d), style, mood: validMood(d.mood) ? d.mood : defaultMoodFor(style), voltage,
+    variation: preset.variation, wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
   // A kept song whose style has been held back since stays playable: the generator
   // still has it. Only recipes that are not recipes at all are dropped.
   b.kept = Array.isArray(b.kept) ? b.kept.filter((r) => r && typeof r.style === 'string' && Number.isInteger(r.seed)) : [];
@@ -54,7 +67,7 @@ export function bangerState(save = defaultSave) {
   // take), the kept record's style, mood, seed and BPM come with it, so its title is true.
   for (const r of b.kept) {
     const st = r.preset && STARTERS[r.preset];
-    if (st) Object.assign(r, { mode: st.recipe.mode, notes: [...st.recipe.notes], style: st.recipe.style, mood: st.recipe.mood, seed: st.recipe.seed, bpm: st.recipe.bpm });
+    if (st) Object.assign(r, { mode: st.recipe.mode, notes: [...st.recipe.notes], lengths: [...(st.recipe.lengths || [])], style: st.recipe.style, mood: st.recipe.mood, seed: st.recipe.seed, bpm: st.recipe.bpm });
   }
   b.next = Number.isInteger(b.next) && b.next > 0 ? b.next : b.kept.reduce((m, r) => Math.max(m, (r.n | 0) + 1), 1);
   // Every Lab gets the starter song (starters.js) once: a first-time Lab opens on it rather
@@ -66,42 +79,72 @@ export function bangerState(save = defaultSave) {
     given.push(FIRST_STARTER);
     if (!b.kept.some((r) => r.preset === FIRST_STARTER)) {
       const st = STARTERS[FIRST_STARTER];
-      b.kept.push({ v: RIFF_VERSION, n: b.next++, name: st.name, ...st.recipe, notes: [...st.recipe.notes], preset: FIRST_STARTER });
+      b.kept.push({ v: RIFF_VERSION, n: b.next++, name: st.name, ...st.recipe, notes: [...st.recipe.notes], lengths: [...(st.recipe.lengths || [])], preset: FIRST_STARTER });
       if (b.kept.length > MAX_KEPT) b.kept.splice(0, b.kept.length - MAX_KEPT);
     }
     save.persist?.();
   }
+  if (!b.kept.some((r) => r.n === b.lastPlayed)) delete b.lastPlayed;
   return b;
 }
 
 /** `draft` is { mode, simple, advanced, simpleEdited, style, mood }. */
 export function saveDraft(draft, save = defaultSave) {
   const b = bangerState(save);
-  b.draft = { v: RIFF_VERSION, ...upgradeDraft({ ...draft, v: RIFF_VERSION }), style: draft.style, mood: draft.mood };
+  const voltage = voltageFor(draft);
+  const preset = voltageSettings(voltage);
+  b.draft = { v: RIFF_VERSION, ...upgradeDraft({ ...draft, v: RIFF_VERSION }), style: draft.style, mood: draft.mood, voltage,
+    variation: preset.variation, wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
   save.persist?.();
 }
+
+/**
+ * A recipe's expression version, written where it is one and absent where it is none: a recipe
+ * saved before expression existed has no such field, and a legacy-shaped one stays that shape.
+ */
+const writeExpression = (rec, expression) => {
+  if (expression >= 1) rec.expression = expression;
+  else delete rec.expression;
+};
+const variationOf = (variation, wild) => variation || (wild ? 'wild' : 'some');
 
 /**
  * Keep a newly made banger. The same riff, style and mood as the last song in the list
  * is a new take of THAT song: its seed and BPM change, its name and place do not. Anything
  * else is a new song at the end of the list, under a name no kept song has. Returns the
  * recipe (the same object, for a new take).
+ *
+ * `expression` is the recipe's expression version (make.js): a new recipe from the maker carries 1.
+ * It is part of what a song IS — a legacy recipe with Go Wild on and the same recipe opting in are
+ * made differently — so it is compared with the rest, and a new take writes it onto the record, or
+ * the song just made and cached would be made differently the next time it is played.
  */
-export function keepBanger({ notes, mode = 'simple', style, mood, seed, bpm, fresh = false }, save = defaultSave, random = Math.random) {
+export function keepBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, bpm, voltage = null, wild = false, variation = null, energy = 'full', expression = 0, production = null, fresh = false }, save = defaultSave, random = Math.random) {
   const b = bangerState(save);
   const m = modeOf(mode).id;
   const grid = normaliseNotes(notes, m);
+  energy = energyOf(energy);
+  expression = expressionVersionOf(expression);
+  const treatment = normaliseTrackEffects(production);
   const last = b.kept.at(-1);
   // `fresh` always keeps a new song (an edited starter: the starter itself is never touched)
-  if (!fresh && last && !last.preset && last.mode === m && last.style === style && last.mood === mood && last.notes.join() === grid.join()) {
+  if (!fresh && last && !last.preset && last.mode === m && last.style === style && last.mood === mood && variationOf(last.variation, last.wild) === variationOf(variation, wild) && !!last.wild === wild && energyOf(last.energy) === energy
+    && expressionVersionOf(last.expression) === expression && normaliseTrackEffects(last.production).mode === treatment.mode && last.notes.join() === grid.join()
+    && (last.lengths || []).join() === (lengths || []).join()) {
     songs.delete(keyOf(last));
     Object.assign(last, { seed, bpm });
+    writeExpression(last, expression);
+    if (production) last.production = treatment;
     save.persist?.();
     return last;
   }
   // named for its mood (mood-names.js): a bittersweet song is LEMON or UNSENT something
   const name = moodSongName({ mood, taken: b.kept.map((r) => r.name).filter(Boolean), random });
-  const rec = { v: RIFF_VERSION, n: b.next++, name, mode: m, notes: grid, style, mood, seed, bpm };
+  const rec = { v: RIFF_VERSION, n: b.next++, name, mode: m, notes: grid, lengths: [...(lengths || [])], style, mood, seed, bpm,
+    voltage: voltageFor({ voltage, wild, variation, energy, production }), wild, energy };
+  if (variation) rec.variation = variation;
+  writeExpression(rec, expression);
+  if (production) rec.production = treatment;
   b.kept.push(rec);
   if (b.kept.length > MAX_KEPT) b.kept.splice(0, b.kept.length - MAX_KEPT);
   save.persist?.();
@@ -113,10 +156,16 @@ export function keepBanger({ notes, mode = 'simple', style, mood, seed, bpm, fre
  * and mood as edited and a fresh seed, under the same name and number. The old song is
  * dropped from the cache.
  */
-export function reviseBanger(rec, { notes, mode = rec.mode, style, mood, seed, bpm }, save = defaultSave) {
+export function reviseBanger(rec, { notes, lengths = null, mode = rec.mode, style, mood, seed, bpm, voltage = rec.voltage ?? null, wild = !!rec.wild, variation = rec.variation ?? null, energy = rec.energy, expression = RECIPE_EXPRESSION, production = rec.production }, save = defaultSave) {
   songs.delete(keyOf(rec));
   const m = modeOf(mode).id;
-  Object.assign(rec, { mode: m, notes: normaliseNotes(notes, m), style, mood, seed, bpm });
+  Object.assign(rec, { mode: m, notes: normaliseNotes(notes, m), lengths: [...(lengths || [])], style, mood, seed, bpm,
+    voltage: voltageFor({ voltage, wild, variation, energy, production }), wild, energy: energyOf(energy) });
+  if (variation) rec.variation = variation; else delete rec.variation;
+  // A revised song gets a fresh seed and so is made new: it opts into the current expression
+  // version unless it is told otherwise, which is how a legacy recipe moves to the new policy.
+  writeExpression(rec, expressionVersionOf(expression));
+  if (production) rec.production = normaliseTrackEffects(production); else delete rec.production;
   delete rec.preset;
   save.persist?.();
   return rec;
@@ -128,13 +177,28 @@ export function deleteBanger(rec, save = defaultSave) {
   const i = b.kept.indexOf(rec);
   if (i < 0) return false;
   b.kept.splice(i, 1);
+  if (b.lastPlayed === rec.n) delete b.lastPlayed;
   songs.delete(keyOf(rec));
   save.persist?.();
   return true;
 }
 
+/** The last Lab song played, or null if it is no longer in the kept list. */
+export function lastPlayedBanger(save = defaultSave) {
+  const b = bangerState(save);
+  return b.kept.find((r) => r.n === b.lastPlayed) || null;
+}
+
+/** Remember the kept song that was just opened in the Lab's club. */
+export function rememberBanger(rec, save = defaultSave) {
+  const b = bangerState(save);
+  if (!b.kept.includes(rec)) throw new Error('Cannot remember a banger that is not kept');
+  b.lastPlayed = rec.n;
+  save.persist?.();
+}
+
 const songs = new Map();
-const keyOf = (r) => `${r.preset || ''}|${r.mode}|${r.style}|${r.mood}|${r.seed}|${r.notes.join(',')}`;
+const keyOf = (r) => `${r.preset || ''}|${r.mode}|${r.style}|${r.mood}|${!!r.wild}|${variationOf(r.variation, r.wild)}|${energyOf(r.energy)}|${expressionVersionOf(r.expression)}|${JSON.stringify(normaliseTrackEffects(r.production))}|${r.seed}|${r.notes.join(',')}`;
 
 /** The song for a recipe, made on first ask and kept for the session. */
 export function songFor(rec, prebuilt = null) {

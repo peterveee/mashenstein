@@ -1,5 +1,5 @@
 import { createNoteFxProcessor, orderedTones, resolveNoteFx, noteFxRange, foldTonesToRange,
-  noteFxLimit, NOTE_FX_LIMIT_MAX } from '../src/engine/note-fx.js';
+  noteFxLimit, NOTE_FX_LIMIT_MAX, hasEnabledNoteFx } from '../src/engine/note-fx.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -56,6 +56,47 @@ assert(json(resolveNoteFx(inherited, { noteFx: { chords: { mode: 'off' } } }, 'c
   'a bar can turn track Note FX off');
 assert(resolveNoteFx(inherited, { noteFx: { chords: { mode: 'on', strum: { gapMs: 30 } } } }, 'chords')
   .strum.gapMs === 30, 'a bar override merges over its track default');
+
+// ---- does this Note FX say anything at all? ---------------------------------------------
+//
+// The one answer behind every "keep it, save it, show it" gate on the desk. It used to be a
+// hand-written strum-or-arp in half a dozen places, and a lane whose only Note FX was an
+// Auto Portamento looked empty to every one of them — dropped by the serialiser, equal to
+// a bare lane in the save signature, unlit in the arrangement.
+assert(hasEnabledNoteFx({ portamento: { enabled: true, amount: 35, glide: 40, version: 1 } }) === true,
+  'a lane with only an Auto Portamento on has Note FX');
+assert(hasEnabledNoteFx({ strum: { enabled: true } }) === true
+  && hasEnabledNoteFx({ arp: { enabled: true } }) === true,
+'a strum alone, or an arpeggiator alone, still counts');
+assert(hasEnabledNoteFx({ strum: { enabled: false }, arp: { enabled: false } }) === false
+  && hasEnabledNoteFx({}) === false && hasEnabledNoteFx(null) === false
+  && hasEnabledNoteFx(undefined) === false,
+'nothing on, or nothing at all, is not Note FX');
+assert(hasEnabledNoteFx({ portamento: { enabled: false } }) === false
+  && hasEnabledNoteFx({ portamento: { enabled: false, amount: 80, glide: 10, version: 1 },
+    strum: { enabled: false }, arp: { enabled: false } }) === false,
+'a switched-off portamento is not Note FX, whatever Amount and Glide it remembers');
+assert(hasEnabledNoteFx({ portamento: { enabled: 1 } }) === false
+  && hasEnabledNoteFx({ portamento: { enabled: 'true' } }) === false
+  && hasEnabledNoteFx({ portamento: {} }) === false && hasEnabledNoteFx({ portamento: true }) === false,
+'a portamento counts only on a literal true — a stray 1 or "true" is not a switch, as the planner reads it');
+assert(hasEnabledNoteFx({ strum: { enabled: false }, arp: { enabled: false },
+  portamento: { enabled: true } }) === true
+  && hasEnabledNoteFx({ arp: { enabled: true }, portamento: { enabled: false } }) === true,
+'each of the three counts on its own, whatever the other two say');
+// Lane scope: a bar override that turns the track's Note FX off resolves to nothing, and
+// that is correct — the engine reads portamento from the LANE, not from what the bar
+// resolved to — so the predicate is asked of the lane's Note FX, never of a resolved bar.
+{
+  const lane = { portamento: { enabled: true, amount: 35, glide: 40, version: 1 } };
+  assert(hasEnabledNoteFx(lane) === true
+    && hasEnabledNoteFx(resolveNoteFx(lane, { noteFx: { lead: { mode: 'off' } } }, 'lead')) === false
+    && resolveNoteFx(lane, { noteFx: { lead: { mode: 'inherit' } } }, 'lead') === lane,
+  'an Off bar resolves to no Note FX at all, so the lane\'s portamento is read from the lane, not from the bar');
+  assert(resolveNoteFx(lane, { noteFx: { lead: { mode: 'on', arp: { enabled: true } } } }, 'lead')
+    .portamento === lane.portamento,
+  'and a bar that turns an arp on is merged over the lane without losing or rewriting its portamento');
+}
 
 const p = createNoteFxProcessor();
 const strummed = p.process({ laneKey: 'chords', value: chord, len: [2, 3, 4], step: 0,

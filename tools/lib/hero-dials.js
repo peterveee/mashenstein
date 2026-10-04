@@ -31,6 +31,7 @@ export const HERO_DIALS = [
   { key: 'hipUnderside', label: 'underside line', group: 'hip', kind: 'enum', values: [1, -1, 0], default: 1, help: 'Chooses which edge of a flush thigh join is outlined.', needs: 'flush' },
   { key: 'legLength', label: 'leg length', group: 'legs', kind: 'number', min: 0.85, max: 1.2, step: 0.01, default: 1, help: 'Makes both legs longer or shorter.' },
   { key: 'legWidth', label: 'leg width', group: 'legs', kind: 'number', min: 0.8, max: 1.3, step: 0.01, default: 1, help: 'Makes both legs thicker or thinner.' },
+  { key: 'frontLegSeparation', label: 'leg separation', group: 'legs', kind: 'number', min: 0.5, max: 1.5, step: 0.01, default: 1, help: 'Scales the automatic front-facing leg fit: lower values bring the legs closer; higher values spread them farther apart. Normal running stays unchanged.' },
   { key: 'legInto', label: 'leg into body', group: 'legs', kind: 'number', min: -0.02, max: 0.08, step: 0.005, default: 0, help: 'Moves the tops of the legs farther into the torso.' },
   { key: 'legShiftFoot', label: 'near leg back', group: 'legs', kind: 'number', min: -0.15, max: 0.05, step: 0.005, default: 0, needs: 'styled', help: 'Moves the near foot backward or forward in run and jump.' },
   { key: 'legShiftRoot', label: 'near hip back', group: 'hip', kind: 'number', min: -0.15, max: 0.05, step: 0.005, default: 0, needs: 'styled', help: 'Moves the near leg attachment backward or forward in run and jump.' },

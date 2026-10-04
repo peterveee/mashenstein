@@ -1213,10 +1213,12 @@ class DataRainAscension extends BaseVisualiser {
   update(dt, a) { super.update(dt, a); for (const s of this.streams) { s.y += dt * s.speed * (0.55 + this.treble * 1.5) * this.motion; if (s.y - s.length * 7 > H) { s.y = -this.rng.float() * 90; s.x = this.rng.float() * W; } } }
   draw(ctx) {
     this.backdrop(ctx, '#020610', '#071b25'); const fx = this.focusX; const fy = this.focusY; this.glowDot(ctx, fx, fy, 95 + this.bass * 55, this.palette[0], 0.14 + this.pulse * 0.22);
+    // Keep the edge falloff on the backdrop, not on the rain as it leaves the frame.
+    this.modernFinish(ctx, 0.18);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (const s of this.streams) { for (let i = 0; i < s.length; i++) { const y = s.y - i * 7; const a = s.brightness * (1 - i / s.length) * (0.22 + this.treble * 0.65); ctx.fillStyle = rgba(this.palette[Math.floor((s.phase + i * 0.13) * 4) % 4], a); const w = 1 + ((i + Math.floor(this.t * 12 * s.phase)) % 3); ctx.fillRect(s.x + Math.sin(i * 2.4 + s.phase * 7) * 3, y, w, 2.3); } }
     for (let i = 0; i < 10; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.14 + this.mid * 0.12); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(fx, fy, 18 + i * 12 + this.pulse * 9, this.ringRotation + this.t * (0.2 + i * 0.01) + i, this.ringRotation + this.t * (0.2 + i * 0.01) + i + 1.2); ctx.stroke(); }
-    ctx.fillStyle = '#eaffff'; polygonPath(ctx, fx, fy, 12 + this.bass * 9, 6, this.t * 0.5); ctx.fill(); ctx.restore(); this.drawDust(ctx, 1.2); this.modernFinish(ctx, 0.18);
+    ctx.fillStyle = '#eaffff'; polygonPath(ctx, fx, fy, 12 + this.bass * 9, 6, this.t * 0.5); ctx.fill(); ctx.restore(); this.drawDust(ctx, 1.2);
   }
 }
 

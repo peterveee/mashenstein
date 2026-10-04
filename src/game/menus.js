@@ -76,7 +76,9 @@ import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
 import { BangerMakerState } from './banger/maker.js';
 import { setState } from '../engine/states.js';
-import { jukeboxBangerRows, songFor, deleteBanger, bangerTitle } from './banger/store.js';
+import {
+  jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
+} from './banger/store.js';
 import { BangerClubState } from './banger/club.js';
 import { BangerBirthState } from './banger/birth.js';
 import { totalPlugs, MAX_PLUGS, formatCoins, formatRunTime, nextStage, stageUnlocked } from './progress.js';
@@ -5028,7 +5030,9 @@ export class SoundTestState {
       ? this.initialTrack : -1;
     const select = Number.isInteger(this.initialSelect) && this.initialSelect >= 0 && this.initialSelect <= this.tracks.length + 1
       ? this.initialSelect : -1;
-    this.idx = initial >= 0 ? initial : (select >= 0 ? select : 0);
+    const remembered = this.lab && select < 0 ? lastPlayedBanger() : null;
+    const rememberedIndex = remembered ? this.tracks.findIndex((row) => row.banger === remembered) : -1;
+    this.idx = initial >= 0 ? initial : (select >= 0 ? select : (rememberedIndex >= 0 ? rememberedIndex : 0));
     this.rowFocus = this.idx < this.tracks.length ? this.idx : -1;
     const playingOn = this.labPlaying ? this.tracks.findIndex((row) => row.banger === this.labPlaying) : -1;
     if (playingOn >= 0 && select < 0) { this.idx = playingOn; this.rowFocus = playingOn; }
@@ -5363,6 +5367,7 @@ export class SoundTestState {
   /** A song from the Lab, in the club; its back button returns here with the song selected. */
   openClub(rec) {
     Audio.sfx('uiConfirm');
+    rememberBanger(rec);
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);

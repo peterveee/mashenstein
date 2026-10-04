@@ -20,6 +20,7 @@ import { hookCell, phrasePlan, realise, head, cellLength } from './variation.js'
 import { DROP_ROLES, DEFAULT_LAYERS, DEFAULT_GROOVE, layersOn, scriptOn } from './form.js';
 import { DROP_INDEX } from './form-types.js';
 import { songMaterial } from './cohesion.js';
+import { arrangeEnergy } from './energy.js';
 import { planTransitions } from './transitions.js';
 
 const LIFT_SEMIS = { none: 0, half: 1, whole: 2, third: 4 };
@@ -585,6 +586,7 @@ export function buildSections(ctx) {
           bars[b].bass = bassBar(analysis.tonicChord, '. . . . . . . . R:4 . . . . . . .', C.bassFloor);
         }
       }
+      arrangeEnergy(ctx, sec, bars, events);
       liftSection(sec);
     }
     return { bars, events, cell };
@@ -949,6 +951,7 @@ export function buildSections(ctx) {
       if (k === count && sec.variant !== 'dip' && options.drums.crashes) put(from, 'crash', P(D.crash));
     }
 
+    arrangeEnergy(ctx, sec, bars, events);
     // The key lift: every pitched part of a lifted section, up together.
     liftSection(sec);
   });

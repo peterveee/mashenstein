@@ -63,53 +63,13 @@ function rim(ctx, x, y, r, accent, pulse) {
   ctx.beginPath(); ctx.arc(x, y, r * 0.97, 0.1, 1.5); ctx.stroke(); ctx.globalAlpha = 1;
 }
 
-export const MIRRORBALL_CANDIDATES = Object.freeze({
-  /** CHROME: tiles on the sphere, lit by what they reflect — a bright ceiling, a dark floor. */
-  chrome(ctx, x, y, r, { t, pulse, accent }) {
-    ctx.save();
-    ctx.fillStyle = '#0d0b14'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
-    forTiles(x, y, r, 16, t * 0.6, ({ i, j, corners, nrm }) => {
-      const R = reflectOf(nrm);
-      const up = Math.max(0, -R[1]), side = 1 - Math.abs(R[1]);
-      const glint = Math.pow(Math.max(0, -0.5 * R[0] - 0.6 * R[1] + 0.6 * R[2]), 18);
-      let v = 0.18 + 0.6 * up + 0.2 * side * hash(i, j);
-      v = Math.min(1, v + glint);
-      const c = Math.round(40 + 215 * v);
-      ctx.fillStyle = `rgb(${c},${c},${Math.min(255, c + 22)})`;
-      quad(ctx, corners); ctx.fill();
-    });
-    const sh = ctx.createRadialGradient(x, y, r * 0.6, x, y, r);
-    sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.5)');
-    ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
-    sparkles(ctx, x, y, r, t, 4, 1);
-    rim(ctx, x, y, r, accent, pulse);
-    ctx.restore();
-  },
+import { drawChromeBall, drawDiscoBall } from '../game/banger/mirrorball.js';
 
+export const MIRRORBALL_CANDIDATES = Object.freeze({
+  /** CHROME — the candidate first picked; it lives beside the club's in src/game/banger/mirrorball.js. */
+  chrome: drawChromeBall,
   /** DISCO: the same sphere of tiles, but the floor's colours caught in the lower half, wheeling. */
-  disco(ctx, x, y, r, { t, pulse, accent }) {
-    ctx.save();
-    ctx.fillStyle = '#0d0b14'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
-    forTiles(x, y, r, 16, t * 0.6, ({ i, j, corners, nrm, lom }) => {
-      const R = reflectOf(nrm);
-      const up = Math.max(0, -R[1]);
-      const glint = Math.pow(Math.max(0, -0.5 * R[0] - 0.6 * R[1] + 0.6 * R[2]), 16);
-      const base = Math.round(50 + 180 * up);
-      let fill = `rgb(${base},${base},${Math.min(255, base + 24)})`;
-      if (R[1] > 0.1) {
-        const hue = DISCO[Math.floor(((lom / TAU) * 6 + t * 0.5 + i * 0.3) % 6 + 6) % 6];
-        fill = mix('#20202c', hue, Math.min(1, 0.35 + R[1] * 0.8) * (0.7 + 0.3 * pulse));
-      }
-      if (glint > 0.4) fill = '#ffffff';
-      ctx.fillStyle = fill; quad(ctx, corners); ctx.fill();
-    });
-    const sh = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.05, x, y, r);
-    sh.addColorStop(0, 'rgba(255,255,255,0.35)'); sh.addColorStop(0.3, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.45)');
-    ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
-    sparkles(ctx, x, y, r, t, 5, 2);
-    rim(ctx, x, y, r, accent, pulse);
-    ctx.restore();
-  },
+  disco: drawDiscoBall,
 
   /** CARTOON: fewer, bigger tiles, flat three-tone, an inked outline and a shine blob — the cast's look. */
   cartoon(ctx, x, y, r, { t, pulse, accent }) {

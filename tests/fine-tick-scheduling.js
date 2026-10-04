@@ -169,6 +169,27 @@ const plan = (bank, mix) => {
     'the whole-tick fast path knows which lanes it still owes a Note FX pass');
 }
 
+// ---- Auto Portamento is a decision ABOUT notes, not a source of them -------------
+
+{
+  // It has no state that advances per call — the plan is read ahead of the transport from
+  // the song — so unlike an arpeggiator it must neither promote the clock nor join the lanes
+  // the half-tick fast path still owes a pass. Keeping note production and articulation
+  // planning separate is the whole of why this is safe to turn on under a playing song.
+  const bank = { bpm: 120, sections: [{ lead: sixteen() }], order: [{ s: 0 }, { s: 0 }] };
+  const portamento = { enabled: true, amount: 100, glide: 100, version: 1 };
+  const p = plan(bank, { lanes: { lead: { noteFx: { portamento } } } });
+  assert(p.resolution === 16 && p.fineBars instanceof Set && p.fineBars.size === 0
+    && p.fineBarsReason === '' && !p.fineLanes?.has('lead'),
+  'a lane with only Auto Portamento does not promote the transport or become a fine lane');
+  assert(!Audio._fineTickLanes.includes('lead'),
+    'and is not asked about on a half tick the way a lane with an arpeggiator is');
+  const both = plan({ bpm: 120, sections: [{ lead: sixteen() }], order: [{ s: 0 }] },
+    { lanes: { lead: { noteFx: { portamento, arp: { enabled: true, rate: 1, direction: 'up' } } } } });
+  assert(Audio._fineTickLanes.includes('lead') && both.resolution === 16,
+    'beside an arpeggiator the lane is a fine-tick lane for the arpeggiator\'s sake alone');
+}
+
 // ---- coming back down off a half step ---------------------------------------
 
 {

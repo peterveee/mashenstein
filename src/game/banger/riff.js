@@ -69,6 +69,14 @@ export function toggleNote(notes, step, row, mode = 'simple') {
   return out;
 }
 
+/** Per-note lengths in sixteenths; empty entries use the mode's usual length. */
+export function normaliseLengths(lengths, notes, mode = 'simple') {
+  const m = modeOf(mode);
+  const n = normaliseNotes(notes, mode);
+  return Array.from({ length: m.steps }, (_, i) => n[i] < 0 ? 0
+    : Number.isFinite(lengths?.[i]) ? Math.max(m.len, Math.min(32, lengths[i])) : m.len);
+}
+
 /** The scale row nearest a semitone; a tie goes down. */
 function nearestScaleRow(semi) {
   let best = 0;
@@ -97,23 +105,30 @@ export function expand(simple) {
 }
 
 /** The grid as sixteenths of semitones, with each note's length in sixteenths. */
-export function sixteenths(notes, mode = 'simple') {
+export function sixteenths(notes, mode = 'simple', noteLengths = null) {
   const m = modeOf(mode);
   const n = normaliseNotes(notes, mode);
   const per = 32 / m.steps;
   const semis = new Array(32).fill(-1);
+  const lengths = normaliseLengths(noteLengths, n, mode);
   n.forEach((row, i) => { if (row >= 0) semis[i * per] = m.semis[row]; });
-  return { semis, len: m.len };
+  return { semis, len: m.len, lengths };
 }
 
 /**
  * The grid as the generator's riff: one melodic hook lane, two bars on a 16th grid,
  * played on `voice` (make.js passes the style's own hook sound).
  */
-export function riffFromNotes(notes, voice = 'simpleSquare', mode = 'simple') {
-  const { semis, len } = sixteenths(notes, mode);
+export function riffFromNotes(notes, voice = 'simpleSquare', mode = 'simple', noteLengths = null) {
+  const { semis, len, lengths } = sixteenths(notes, mode, noteLengths);
   const name = (s) => `${NAMES[s]}${OCTAVE[s]}`;
-  const bar = (b) => semis.slice(b * 16, b * 16 + 16).map((s) => (s >= 0 ? `${name(s)}:${len}` : '.')).join(' ');
+  const per = 32 / modeOf(mode).steps;
+  const bar = (b) => semis.slice(b * 16, b * 16 + 16).map((s, i) => {
+    if (s < 0) return '.';
+    const at = b * 16 + i;
+    const noteIndex = Math.floor(at / per);
+    return `${name(s)}:${lengths[noteIndex] || len}`;
+  }).join(' ');
   const pitched = semis.filter((s) => s >= 0);
   const meanPitch = pitched.length ? 69 + pitched.reduce((t, s) => t + s, 0) / pitched.length : 72;
   return {
@@ -150,22 +165,29 @@ export function upgradeDraft(d = {}) {
       mode,
       simple: normaliseNotes(d.simple, 'simple'),
       advanced: normaliseNotes(d.advanced, 'advanced'),
+      simpleLengths: normaliseLengths(d.simpleLengths, d.simple, 'simple'),
+      advancedLengths: normaliseLengths(d.advancedLengths, d.advanced, 'advanced'),
       simpleEdited: !!d.simpleEdited,
     };
   }
   if (d.v === 2) {
     const advanced = v2ToAdvanced(d.notes);
-    return { mode: 'advanced', simple: simplify(advanced), advanced, simpleEdited: false };
+    return { mode: 'advanced', simple: simplify(advanced), advanced,
+      simpleLengths: normaliseLengths(null, simplify(advanced), 'simple'),
+      advancedLengths: normaliseLengths(null, advanced, 'advanced'), simpleEdited: false };
   }
   const simple = Array.isArray(d.notes) ? normaliseNotes(d.notes, 'simple') : [...DEFAULT_SIMPLE];
-  return { mode: 'simple', simple, advanced: expand(simple), simpleEdited: false };
+  return { mode: 'simple', simple, advanced: expand(simple),
+    simpleLengths: normaliseLengths(null, simple, 'simple'),
+    advancedLengths: normaliseLengths(null, expand(simple), 'advanced'), simpleEdited: false };
 }
 
 /** A kept recipe's grid in today's shape: { mode, notes }. */
 export function upgradeRecipeNotes(r) {
-  if (r.v === RIFF_VERSION) return { mode: modeOf(r.mode).id, notes: normaliseNotes(r.notes, r.mode) };
-  if (r.v === 2) return { mode: 'advanced', notes: v2ToAdvanced(r.notes) };
-  return { mode: 'simple', notes: normaliseNotes(r.notes, 'simple') };
+  if (r.v === RIFF_VERSION) return { mode: modeOf(r.mode).id, notes: normaliseNotes(r.notes, r.mode),
+    lengths: normaliseLengths(r.lengths, r.notes, r.mode) };
+  if (r.v === 2) { const notes = v2ToAdvanced(r.notes); return { mode: 'advanced', notes, lengths: normaliseLengths(null, notes, 'advanced') }; }
+  const notes = normaliseNotes(r.notes, 'simple'); return { mode: 'simple', notes, lengths: normaliseLengths(null, notes, 'simple') };
 }
 
 /**

@@ -480,6 +480,19 @@ function actionCard(a) {
       a.input ? inputFor(a) : null,
       a.choices ? choicesFor(a) : null,
       a.speed ? speedFor(a) : null,
+      a.schedule ? el('div', { class: 'choices' }, el('button', {
+        class: `choice${a.schedule.enabled ? ' on' : ''}`,
+        'aria-pressed': String(a.schedule.enabled),
+        title: 'Runs weekly while this desk is open. Turning this off does not cancel a running refresh.',
+        onclick: async () => {
+          try {
+            const response = await fetch(`/api/banger-calibration/weekly/${a.schedule.enabled ? 'off' : 'on'}`, { method: 'POST' });
+            if (!response.ok) throw new Error('Could not update weekly calibration');
+            a.schedule = (await response.json()).schedule; drawActions(lastActions);
+          } catch (e) { errBox.textContent = e.message; }
+        },
+      }, a.schedule.enabled ? 'WEEKLY: ON' : 'WEEKLY: OFF'),
+      a.schedule.enabled ? el('span', { class: 'tag' }, `next: ${new Date(a.schedule.nextRun).toLocaleDateString()}`) : null) : null,
       a.log.length ? el('div', { class: 'log' }, a.log.join('\n')) : null),
     el('div', { class: 'acts' },
       el('button', {

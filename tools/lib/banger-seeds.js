@@ -9,6 +9,7 @@
 //   · each channel's sound   → the style's sounds (tools/lib/banger/sounds.js — the table
 //                              the Banger Sounds page edits too)
 //   · each channel's settings → tools/lib/banger/channels.js, over the recipe's own
+//   · each part's Spot FX     → section-relative presets in channels.js
 //   · the master              → channels.js
 //   · and the seed becomes what new bangers' faders are matched against (levels-data.js)
 //
@@ -34,6 +35,7 @@ import { songFile } from './song-source.js';
 import { IMPORTED_DIR, songFileIn, writeImportedIndex } from './imported-index.js';
 import { compactArrangement, normaliseArrangementResolution } from './arrangement-edit.js';
 import { generateBanger } from './banger/index.js';
+import { captureSectionEffects } from './banger/section-effects.js';
 import { styleFor } from './banger/styles/index.js';
 import { KIT_ROLES, tableIssues, forgetOffered } from './banger/sound-rules.js';
 import { soundsSource, tidyTable } from './banger/sounds-source.js';
@@ -167,7 +169,8 @@ export function styleFromBanger(mod) {
     else parts[job] = id;
   }
   const master = { master: mix.master ?? 0, masterEffects: clone(mix.masterEffects || []), fx: clone(mix.fx || {}) };
-  return { style, sounds: { parts, kits: { style: kit } }, channels: { strips, master, pump, exciter }, copies, problems };
+  return { style, sounds: { parts, kits: { style: kit } }, channels: { strips, master, pump, exciter,
+    sectionFx: captureSectionEffects(mod) }, copies, problems };
 }
 
 // ---------------------------------------------------------------- keeping tuned sounds

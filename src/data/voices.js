@@ -5136,6 +5136,129 @@ const USER_TONE = {
     mono: true,
     portamento: 0.035,
     starter: false },
+  seedFutureBassBass: { label: 'Round Bass · Future Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.8,
+    note: 'A plain, warm single-oscillator bass with a stable fundamental.',
+    tngr2: { oscA: { table: 'basic', position: 0.18, level: 0.86, unison: 1 }, amp: { attack: 0.006, decay: 0.38, sustain: 0.72, release: 0.16 }, filter: { type: 'lowpass', cutoff: 1250, resonance: 0.96 }, filterEnv: { amount: 0.7, attack: 0.002, decay: 0.3, sustain: 0.25 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.7 } },
+    starter: false },
+  seedFutureBassSub: { label: 'WUB Glass Yowl · Future Bass', category: 'Bass', synth: 'TNGR-2', dur: 2.4,
+    note: 'A slower, glassier vowel yowl on the quarter note, triangle LFO, with a '
+      + 'spectral-PWM sub churning underneath.',
+    mode: 'mono',
+    portamento: 0.05,
+    tngr2: { oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 }, oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 }, amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 }, filter: { type: 'lowpass', cutoff: 2800, resonance: 5 }, lfo1: { shape: 'triangle', rate: 2.333 } },
+    starter: false },
+  seedFutureBassSaws: { label: 'Super Saw · Future Bass', category: 'Lead', synth: 'CRLS-1', dur: 1.4,
+    note: 'Three sawtooths thirty cents apart — the trance lead, and the widest single sound '
+      + 'here.',
+    origin: 'Tonejs/Presets Synth/SuperSaw',
+    options: {
+      oscillator: { type: 'fatsawtooth', count: 3, spread: 30 },
+      envelope: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.4, attackCurve: 'exponential' },
+    },
+    starter: false },
+  seedFutureBassPiano: { label: 'Bright Pop Grand · Future Bass', category: 'Keys', synth: 'MRDR-3', dur: 2.8,
+    note: 'FM inside the layers: a 1:1 operator whose index falls away over half a second '
+      + '(brightness that decays, which is what a struck string does), and a slightly '
+      + 'inharmonic 7.01 operator on the octave for the metal in the attack.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.82, attack: 0.001, decay: 2.8, sustain: 0, release: 0.4, unison: 2, spread: 4, stereo: 0.35, fm: { type: 'sine', ratio: 1, index: 1.6, attack: 0.001, decay: 0.5 } },
+      osc2: { type: 'sine', ratio: 2, gain: 0.3, attack: 0.001, decay: 1.4, sustain: 0, release: 0.3, fm: { type: 'sine', ratio: 7.01, index: 0.5, attack: 0.001, decay: 0.08 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.08, color: 'white', attack: 0.001, decay: 0.022, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 3000, Q: 1, track: 0.3 } },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 7000, Q: 0.5, track: 0.3 },
+    },
+    humanize: { entry: 0.005, gain: 0.07 },
+    starter: false },
+  seedFutureBassPad: { label: 'Glass Choir · Future Bass', category: 'Pad', synth: 'TNGR-2', dur: 7,
+    note: 'Vocal and glass motion without using the Vowel insert.',
+    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } },
+    starter: false },
+  seedFutureBassSquare: { label: 'Aiueo · Future Bass', category: 'Lead', synth: 'JMJR-4', dur: 1.5,
+    note: 'The five Japanese vowels in their own order, one per step: a walk through the vowel '
+      + 'space.',
+    jmjr4: { voice: 'chorister', line: 'aah eeh ooh eh oh', morphTo: 'AH', unison: 2, spread: 16, tilt: 2, amp: { attack: 0.06, decay: 0.3, sustain: 1, release: 0.45 } },
+    vibrato: { depth: 0.21, rate: 5, delay: 0.25 },
+    starter: false },
+  seedFutureBassBell: { label: 'Music Box · Future Bass', category: 'Bells', synth: 'RMND-2', dur: 3,
+    note: 'Thin, high and slightly sour, with the click of the comb in the attack.',
+    options: {
+      harmonicity: 6.03,
+      modulationIndex: 7,
+      oscillator: { type: 'sine' },
+      modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 1, sustain: 0.01, release: 1 },
+      modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.1 },
+    },
+    starter: false },
+  seedFutureBassMegaSaw: { label: 'Mega Saw Lead · Future Bass', category: 'Lead', synth: 'MRDR-3', dur: 1.6,
+    note: 'Nine oscillators. Two unison saws a fifth apart, a sub under them, all through one '
+      + 'shared filter that opens across every note — the shared stage is the whole point, '
+      + 'because nine separate filters would be nine sounds instead of one.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.85, attack: 0.006, decay: 0.5, sustain: 0.8, release: 0.18, unison: 4, spread: 26, stereo: 0.5 },
+      osc2: { type: 'sawtooth', ratio: 1.4983, gain: 0.4, attack: 0.01, decay: 0.5, sustain: 0.7, release: 0.18, unison: 4, spread: 34, stereo: 0.65 },
+      osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.42, attack: 0.004, decay: 0.6, sustain: 0.85, release: 0.16, pwm: { type: 'sine', rate: 0.42, depth: 0.5, delay: 0.1 } },
+      lfo: { type: 'sine', rate: 5.4, depth: 0.12, target: 'filter', delay: 0.4 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 380, Q: 2.2, track: 0.5, env: { octaves: 4.6, attack: 0.012, decay: 0.55, sustain: 0.42, release: 0.22 } },
+      vca: { attack: 0.006, decay: 0.5, sustain: 0.85, release: 0.24 },
+    },
+    drive: 0.34, shape: 'soft',
+    tone: { freq: 12000 },
+    vibrato: { depth: 0.1, rate: 5.6, delay: 0.5 },
+    starter: false },
+  seedFutureBassArp: { label: 'Plain Saw Synth · Future Bass', category: 'Lead', synth: 'TNGR-2', dur: 2,
+    note: 'A simple filtered sawtooth synth with no unison or second oscillator.',
+    tngr2: { oscA: { table: 'basic', position: 0.5, level: 0.82, unison: 1 }, amp: { attack: 0.01, decay: 0.32, sustain: 0.76, release: 0.2 }, filter: { type: 'lowpass', cutoff: 3400, resonance: 1.68 }, filterEnv: { amount: 0.9, attack: 0.005, decay: 0.28, sustain: 0.36 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.61 } },
+    starter: false },
+  seedFutureBassChoir: { label: 'BEST Choir Aah · Future Bass', category: 'Orch', synth: 'MRDR-3', dur: 8,
+    note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the '
+      + 'pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is '
+      + 'how a voice works, not an impression of one.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.1204, decay: 1.2, sustain: 0.85, release: 0.9, attackCurve: 'lin', unison: 3, spread: 9, stereo: 0.8, filter: { type: 'bandpass', slope: -12, freq: 800, Q: 7, track: 0 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.55, detune: 6, attack: 0.14448, decay: 1.4, sustain: 0.8, release: 0.9, attackCurve: 'lin', unison: 2, spread: 13, stereo: 0.7, filter: { type: 'bandpass', slope: -12, freq: 1150, Q: 9, track: 0 } },
+      osc3: { type: 'sawtooth', ratio: 1, gain: 0.3, detune: -7, attack: 0.172, decay: 1.6, sustain: 0.7, release: 1, attackCurve: 'lin', unison: 2, spread: 16, stereo: 0.9, filter: { type: 'bandpass', slope: -12, freq: 2900, Q: 11, track: 0 } },
+      lfo: { type: 'sine', rate: 0.7, depth: 0.14, target: 'level', delay: 0.9 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 3800, Q: 0.7, track: 0.3, env: { octaves: 1.3, attack: 0.6, decay: 1.6, sustain: 0.55, release: 0.9 } },
+      vca: { attack: 0.1548, decay: 1.6, sustain: 0.88, release: 1.2, attackCurve: 'lin' },
+    },
+    drive: 0.08, shape: 'soft',
+    humanize: { entry: 0.022 },
+    vibrato: { depth: 0.18, rate: 5.2, delay: 0.6, spread: 0.75 },
+    starter: false },
+  seedFutureBassThird: { label: 'Bright Pop Grand · Future Bass', category: 'Keys', synth: 'MRDR-3', dur: 2.8,
+    note: 'FM inside the layers: a 1:1 operator whose index falls away over half a second '
+      + '(brightness that decays, which is what a struck string does), and a slightly '
+      + 'inharmonic 7.01 operator on the octave for the metal in the attack.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.82, attack: 0.001, decay: 2.8, sustain: 0, release: 0.4, unison: 2, spread: 4, stereo: 0.35, fm: { type: 'sine', ratio: 1, index: 1.6, attack: 0.001, decay: 0.5 } },
+      osc2: { type: 'sine', ratio: 2, gain: 0.3, attack: 0.001, decay: 1.4, sustain: 0, release: 0.3, fm: { type: 'sine', ratio: 7.01, index: 0.5, attack: 0.001, decay: 0.08 } },
+      osc3: { type: 'noise', ratio: 1, gain: 0.08, color: 'white', attack: 0.001, decay: 0.022, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 3000, Q: 1, track: 0.3 } },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 7000, Q: 0.5, track: 0.3 },
+    },
+    humanize: { entry: 0.005, gain: 0.07 },
+    starter: false },
+  seedFutureBassCounter: { label: 'Celeste 2 · Future Bass', category: 'Bells', synth: 'RMND-2', dur: 4,
+    note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
+    options: {
+      harmonicity: 3.765,
+      modulationIndex: 2.4,
+      oscillator: { type: 'square' },
+      modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 1.6, sustain: 0.01, release: 1.6 },
+      modulationEnvelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
+    },
+    starter: false,
+    transpose: 24,
+    vibrato: { depth: 0.04 },
+    trim: 0 },
 };
 const USER_DRUM = {
   vl1Pi2: { label: 'VL-1 Pi 2', category: 'Blip', homeLane: 'rim', dur: 0.5,
@@ -5231,6 +5354,92 @@ const USER_DRUM = {
       noise: { type: 'bandpass', freq: 1130, Q: 0.7, decay: 0.001, gain: 0.65, color: 'brown', to: 440, sweep: 0.092, attack: 0.005, hold: 0, slope: -12, curve: 'exp', sag: 0.37, sagAt: 0.003 },
       "metal.resonator": { feedback: 0.93, drive: 1.25, leak: 0.00035 },
     },
+    starter: false },
+  seedFutureBassKick: { label: '= Click-Top Kick · Future Bass', category: 'Kick', homeLane: 'kick', dur: 1.2,
+    note: 'A 909 kick is a body and a separately tuned CLICK, not one oscillator with a fast '
+      + 'front on it: the top falls from 1.6 kHz to 320 Hz in four milliseconds while the '
+      + 'body underneath has barely started to move.',
+    osc: { type: 'sine', from: 128, to: 46, sweep: 0.06, pitchCurve: 'snap', decay: 0.5, curve: 'exp', gain: 1 },
+    osc2: { type: 'triangle', from: 1600, to: 320, sweep: 0.004, decay: 0.014, curve: 'exp', gain: 0.5 },
+    drive: 0.25,
+    starter: false },
+  seedFutureBassSnare: { label: 'DS Snare · Future Bass', category: 'Snare', dur: 1,
+    note: 'The two-source snare: a triangle knock falling a fourth under a wide band of noise '
+      + 'that rings a little longer than the body does.',
+    osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
+    noise: { type: 'bandpass', freq: 2100, Q: 0.8, decay: 0.17, gain: 1 },
+    drive: 0.18,
+    starter: false },
+  seedFutureBassClap: { label: 'Big Room Clap · Future Bass', category: 'Clap', dur: 1,
+    note: 'Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants '
+      + 'space in the arrangement.',
+    noise: { type: 'bandpass', freq: 1500, Q: 0.9, decay: 0.5, gain: 0.88 },
+    taps: [0, 0.014, 0.037, 0.058, 0.083], tapFalloff: 0.89,
+    starter: false },
+  seedFutureBassHats: { label: 'DS Closed Hat · Future Bass', category: 'Hats', dur: 0.5,
+    note: 'A resonant highpassed tick — sharper than the plain closed hat, closer to metal '
+      + 'without being metal.',
+    noise: { type: 'highpass', freq: 7800, Q: 1.2, decay: 0.032, gain: 1 },
+    starter: false },
+  seedFutureBassOhats: { label: '= Snap Open Hat · Future Bass', category: 'Hats', homeLane: 'ohats', dur: 2,
+    note: 'The same hat held open: the sweep runs the other way over four tenths of a second, '
+      + 'so the wash goes dull as it dies the way a real cymbal does.',
+    noise: { type: 'highpass', freq: 8000, to: 5200, sweep: 0.4, Q: 1.2, decay: 0.42, gain: 1 },
+    drive: 0.25,
+    starter: false },
+  seedFutureBassCrash: { label: '=909 Crash · Future Bass', category: 'Crash', homeLane: 'crash', dur: 5,
+    note: 'A bright 909-style crash with a dense front and a high end that darkens as it '
+      + 'decays, intended for phrase changes rather than every bar.',
+    noise: { type: 'lowpass', freq: 9200, to: 2400, sweep: 0.9, Q: 0.8, decay: 1.35, gain: 1 },
+    metal: { wave: 'square', freq: 610, spread: 1, count: 6, hp: 3300, Q: 0.8, decay: 0.65, gain: 0.8 },
+    drive: 0.28,
+    starter: false },
+  seedFutureBassImpact: { label: 'Synare · Future Bass', category: 'Sweep', homeLane: 'tom', dur: 4,
+    note: 'The long one: 3 kHz to 60 over a second and a half, with two seconds of envelope '
+      + 'under it so the bottom of the fall is still audible when it arrives. Five and a '
+      + 'half octaves — a whole bar of descent at a disco tempo.',
+    osc: { type: 'sine', from: 3000, to: 60, sweep: 1.5, pitchCurve: 'exp', attack: 0.004, hold: 1.05, decay: 1.05, curve: 'lin', gain: 1 },
+    drive: 0.12,
+    starter: false },
+  seedFutureBassFill: { label: '=909 Tom · Future Bass', category: 'Tom', homeLane: 'tom', dur: 1,
+    note: 'A tuned 909-style tom with a clean electronic pitch fall and a small low skin click '
+      + 'at the front of the note.',
+    osc: { type: 'sine', from: 260, to: 125, sweep: 0.08, decay: 0.34, curve: 'exp', gain: 1 },
+    noise: { type: 'lowpass', freq: 1500, Q: 0.8, decay: 0.025, gain: 0.2 },
+    drive: 0.12,
+    starter: false },
+  seedFutureBassShaker: { label: 'Shaker · Future Bass', category: 'Perc', homeLane: 'rim', dur: 0.5,
+    note: 'A soft band with no attack to speak of. Sixteenths of this sit under anything '
+      + 'without competing.',
+    noise: { type: 'bandpass', freq: 6000, Q: 1.1, decay: 0.06 },
+    starter: false },
+  seedFutureBassTambourine: { label: 'Tambourine · Future Bass', category: 'Perc', homeLane: 'rim', dur: 1,
+    note: 'Bright, jangly and slightly longer, with a touch of pitch in it.',
+    osc: { type: 'square', from: 900, to: 780, sweep: 0.05, decay: 0.05, gain: 0.12 },
+    noise: { type: 'highpass', freq: 5200, Q: 0.6, decay: 0.14 },
+    starter: false },
+  seedFutureBassCowbell: { label: '=808 Cowbell · Future Bass', category: 'Perc', homeLane: 'tom', dur: 1,
+    note: 'The actual TR-808 cowbell topology: simultaneous 540 and 800 Hz squares through a '
+      + '1.3 kHz bandpass, with a 200ms exponential VCA cut-off.',
+    metal: { wave: 'square', freq: 540, ratios: [1, 1.481481], spread: 1, count: 2, filter: 'bandpass', hp: 1300, Q: 4, slope: -12, attack: 0, decay: 0.2, floor: 0.001, hardStop: true, resonator: { feedback: 0.96, drive: 1.4, leak: 0.0005 } },
+    starter: false },
+  seedFutureBassCongas: { label: 'Conga · Future Bass', category: 'Perc', homeLane: 'tom', dur: 1,
+    note: 'A centered open conga with a warm falling body and a little shell noise on the '
+      + 'front, designed to answer the high and low voices cleanly.',
+    osc: { type: 'sine', from: 285, to: 205, sweep: 0.045, decay: 0.32, curve: 'exp', gain: 1 },
+    noise: { type: 'lowpass', freq: 1700, Q: 0.65, decay: 0.022, gain: 0.3 },
+    drive: 0.1,
+    starter: false },
+  seedFutureBassRide: { label: 'Ride · Future Bass', category: 'Crash', homeLane: 'crash', dur: 4,
+    note: 'A ride with a bell you can hear: a narrow 2.5 kHz resonance for the ping over a '
+      + 'six-bit wash, lowpassed at 9.5 kHz. The 909’s ride was a sample and its grit is '
+      + 'half of why the sound is recognisable, so the crush is doing the work here that the '
+      + 'filter sweeps do on the 808 presets.',
+    ring: { freq: 2500, Q: 70, hit: 0.0018, decay: 0.25, gain: 0.6 },
+    metal: { wave: 'square', freq: 780, count: 6, spread: 1.12, filter: 'highpass', hp: 5400, Q: 0.8, slope: -24, attack: 0.004, decay: 1.6, sag: 0.3, sagAt: 0.06, gain: 0.55 },
+    drive: 0.6, shape: 'crush',
+    tone: { type: 'lowpass', freq: 9500, Q: 0.7 },
+    humanize: { gain: 0.03 },
     starter: false },
 };
 
@@ -5410,7 +5619,20 @@ const LEVELS = {
   mrdrPedalOrgan: 0.1415, mrdrTollingBell: 0.2226, mrdrTuba: 0.1274,
   mrdrFrenchHorn: 0.0973, mrdrDx7Keys: 0.1344, mrdrSaxophone: 0.058,
   mrdrWahGuitar: 0.0575, mrdrHornStab: 0.0432, taikoHit: 0.0885,
-  timpaniHit: 0.0778, metalHit: 0.2308, coyoteHowl: 0.014322
+  timpaniHit: 0.0778, metalHit: 0.2308, coyoteHowl: 0.014322,
+  seedFutureBassKick: 0.04729, seedFutureBassSnare: 0.020353,
+  seedFutureBassClap: 0.025298, seedFutureBassHats: 0.015363,
+  seedFutureBassOhats: 0.07419, seedFutureBassCrash: 0.139942,
+  seedFutureBassImpact: 0.363747, seedFutureBassFill: 0.039071,
+  seedFutureBassShaker: 0.01086, seedFutureBassTambourine: 0.032351,
+  seedFutureBassCowbell: 0.02003, seedFutureBassCongas: 0.037788,
+  seedFutureBassRide: 0.053247, seedFutureBassBass: 0.017856,
+  seedFutureBassSub: 0.030793, seedFutureBassSaws: 0.024461,
+  seedFutureBassPiano: 0.068382, seedFutureBassPad: 0.042293,
+  seedFutureBassSquare: 0.018129, seedFutureBassBell: 0.020825,
+  seedFutureBassMegaSaw: 0.126683, seedFutureBassArp: 0.016702,
+  seedFutureBassChoir: 0.017453, seedFutureBassThird: 0.068382,
+  seedFutureBassCounter: 0.034436
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -5571,7 +5793,20 @@ const PEAKS = {
   mrdrPedalOrgan: 0.8829, mrdrTollingBell: 1.0691, mrdrTuba: 1.052,
   mrdrFrenchHorn: 0.6555, mrdrDx7Keys: 0.6931, mrdrSaxophone: 0.6456,
   mrdrWahGuitar: 0.5448, mrdrHornStab: 0.6784, taikoHit: 0.7177,
-  timpaniHit: 0.7221, metalHit: 0.7001, coyoteHowl: 0.1493
+  timpaniHit: 0.7221, metalHit: 0.7001, coyoteHowl: 0.1493,
+  seedFutureBassKick: 0.7365, seedFutureBassSnare: 0.679,
+  seedFutureBassClap: 0.3985, seedFutureBassHats: 0.7135,
+  seedFutureBassOhats: 0.7255, seedFutureBassCrash: 0.7332,
+  seedFutureBassImpact: 0.7, seedFutureBassFill: 0.7024,
+  seedFutureBassShaker: 0.4159, seedFutureBassTambourine: 0.9308,
+  seedFutureBassCowbell: 0.4688, seedFutureBassCongas: 0.6865,
+  seedFutureBassRide: 1.0339, seedFutureBassBass: 0.1146,
+  seedFutureBassSub: 0.5473, seedFutureBassSaws: 0.2661,
+  seedFutureBassPiano: 0.6944, seedFutureBassPad: 0.3158,
+  seedFutureBassSquare: 0.132, seedFutureBassBell: 0.219,
+  seedFutureBassMegaSaw: 0.7717, seedFutureBassArp: 0.3444,
+  seedFutureBassChoir: 0.1229, seedFutureBassThird: 0.6944,
+  seedFutureBassCounter: 0.2067
 };
 
 /**

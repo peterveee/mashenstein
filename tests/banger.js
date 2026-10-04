@@ -713,7 +713,7 @@ try {
       'its hats roll on the second bar of each pair');
     const gate = fb.mix.lanes[laneByLabel(fb, /^CHORDS/)].effects.find((e) => e.id === 'rhythmgate');
     assert(gate?.params.division === 0.5, 'its supersaws stutter in eighths');
-    assert(laneByLabel(fb, /^BASS 808/) && laneByLabel(fb, /^WOBBLE/) && fb.mix.voice[`${laneByLabel(fb, /^WOBBLE/)}Voice`] === 'wubGlassYoi',
+    assert(laneByLabel(fb, /^BASS 808/) && laneByLabel(fb, /^WOBBLE/) && fb.mix.voice[`${laneByLabel(fb, /^WOBBLE/)}Voice`] === BANGER_SOUNDS['future-bass'].parts.sub,
       'it has an 808 and the talking wobble over it');
     const withDrums = generateBanger({ riff: BAND, options: { style: 'future-bass' }, seed: 5 });
     assert(!Object.values(withDrums.mix.labels).some((l) => /\(riff\)|RIFF Kick/.test(l)), 'a riff\'s own drums are replaced by default, so the half-time groove stands');

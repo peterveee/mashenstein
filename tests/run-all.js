@@ -169,9 +169,18 @@ const suites = [
   // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
   // drawn in the editor — each fitting every length, hanging together, re-made exactly.
   'tests/banger-forms.js',
+  'tests/banger-energy.js',
+  'tests/banger-production.js',
+  'tests/banger-section-effects.js',
+  'tests/region-style-effects.js',
+  'tests/banger-report.js',
   // Modify This Take: a take re-made with changed settings keeps every part the change
   // does not reach — hand edits, faders and automation with it.
   'tests/banger-modify.js',
+  // Auto Portamento for a take (GO WILD in the Lab): the `expression` option can never be an
+  // issue, switching it on moves nothing but the settings, the policy only picks a lane whose
+  // sound and notes take a slide, Modify moves that one field, and an old recipe is made as it was.
+  'tests/banger-expression.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -179,6 +188,14 @@ const suites = [
   // offline export. Keep their ordering and duration arithmetic browserless and exact.
   'tests/note-fx.js',
   'tests/note-fx-render.js',
+  // Auto Portamento: which neighbouring melody notes slide, as MUSIC — the policy, the saved
+  // settings that fail closed, the presets that can take a slide, and the lane view that
+  // reads the arrangement ahead of the transport. Browserless, and every claim is one a
+  // person could check on a stave.
+  'tests/auto-portamento.js',
+  // ...and the same feature at the ear: rendered slides and clean attacks through the real
+  // engine, the worklet core, and the scheduler's notes held against the lane view's.
+  'tests/auto-portamento-render.js',
   // Freeze is a ranged render: sparse tracks walk only their active bars, while Note
   // FX and written gates can extend the end into what will actually sound.
   'tests/freeze-span.js',
@@ -659,6 +676,8 @@ const browserSuites = new Set([
   // to run them on a runner with no chromium installed: `npm ci` fetches the playwright
   // package, not its browsers. A suite that launches one belongs in this set.
   'tests/note-fx-render.js',
+  // Renders through headless chromium, one fresh page per song — see the note in the file.
+  'tests/auto-portamento-render.js',
   'tests/tngr2-controller.js',
   // The JMJR-4 suites: each asserts a stretch browserlessly and then launches chromium
   // to compare the engine's own output against the reference, which is the same shape
@@ -711,9 +730,11 @@ const soundSuites = [
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
   'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
+  'tests/banger-expression.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
+  'tests/auto-portamento.js', 'tests/auto-portamento-render.js',
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',

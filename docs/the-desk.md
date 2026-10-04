@@ -193,3 +193,7 @@ Because the mixer wants a core to itself — the desk's whole audio graph is
 budgeted against one — and because a level editor that threw inside a shared
 process would take a mix down with it. One page in front of six servers is worth
 having; one server behind six pages is not.
+
+### Banger calibration
+
+**BANGER CALIBRATION** measures reusable instrument/phrase offsets and publishes only validated profiles. Choose styles, RUN incrementally, or select FULL REBUILD. **BANGER CALIBRATION COVERAGE** reports missing/stale coverage without rendering. OPEN shows the report. The optional **WEEKLY** switch persists and runs all styles while the desk is open and idle; it is off initially. See [the calibration guide](audio/banger-calibration.md) for cache, command-line and validation details.

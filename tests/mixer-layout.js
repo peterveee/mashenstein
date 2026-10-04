@@ -4818,7 +4818,13 @@ assert(/function barOperationGroups\(barPlanEntry, key/.test(entry)
   && !/const notes = Array\.from\([^\n]*cellNotes\(row/.test(arrangementFn)
   && !/box\.title = `\$\{where\}/.test(arrangementFn),
   'bar hover uses a structured operational summary for playback, transforms, Note FX and inserts, without dumping notes');
-assert(/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| fx\?\.arp\?\.enabled\)/.test(entry)
+// PIN UPDATED for Auto Portamento: the marker used to be a hand-written "strum or arp"
+// (`Boolean(fx?.strum?.enabled || fx?.arp?.enabled)`), which lit nothing on a lane whose
+// only Note FX is a portamento. It asks the one shared predicate now — the same one the
+// serialiser, the save signature and the setters ask — and the old hand-written gate is
+// asserted gone below, so it cannot quietly come back beside it.
+assert(/const hasActiveNoteFx = \(fx\) => hasEnabledNoteFx\(fx\);/.test(entry)
+  && !/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled/.test(entry)
   && /if \(hasActiveNoteFx\(laneNoteFx\)\)[\s\S]*?arrtrack-notefx[\s\S]*?Track Note FX enabled/.test(arrangementFn)
   && /const openTrackNoteFx = \(ev\)[\s\S]*?openNoteFxEditor\(r\.left, r\.bottom \+ 4, row\.key\)[\s\S]*?noteFx\.addEventListener\('click', openTrackNoteFx\)/.test(entry)
   && /\.arrtrack-notefx \{/.test(shell),
@@ -4826,6 +4832,321 @@ assert(/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| f
 assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*buildArrangement\(\);\s*\n\}/.test(entry)
   && /if \(noteFxSig\(\) !== fxBefore(?: \|\| routeSig\(\) !== routesBefore)?\) buildArrangement\(\);/.test(entry),
   'applying, clearing or undoing track Note FX repaints the arrangement, so the NFX marker follows the setting');
+
+// ---- Auto Portamento on the desk ------------------------------------------------
+//
+// A lane's `noteFx.portamento` ({ enabled, amount, glide, version }) is the third thing a
+// lane's Note FX can say, after the strum and the arpeggiator, and every gate that decided
+// "is there Note FX here" was a hand-written strum-or-arp. The ones that KEEP, SAVE and
+// SHOW a lane's Note FX now ask `hasEnabledNoteFx`; the setters and the hover card are run
+// below rather than matched, because "a lane with only a portamento survives Apply and
+// the arp being retired" is a behaviour, and so is "clearing the arp does not clear it".
+{
+  const sliceOf = (text, from, to, what) => {
+    const a = text.indexOf(from);
+    const b = a < 0 ? -1 : text.indexOf(to, a);
+    if (a < 0 || b < 0) throw new Error(`mixer-layout: could not lift ${what}`);
+    return text.slice(a, b);
+  };
+  const { resolveNoteFx, hasEnabledNoteFx } = await import('../src/engine/note-fx.js');
+  const { readAutoPortamento, AUTO_PORTAMENTO_DEFAULTS, AUTO_PORTAMENTO_VERSION,
+    AUTO_PORTAMENTO_PLANNER_VERSION, autoPortamentoOn } = await import('../src/engine/auto-portamento.js');
+  const on = (extra = {}) => ({ enabled: true, amount: 35, glide: 40, version: 1, ...extra });
+  const off = () => ({ enabled: false, amount: 35, glide: 40, version: 1 });
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  // ---- the gates: one predicate, and none of the old hand-written ones left standing ----
+  const mixSource = readFileSync(new URL('../tools/lib/mix-source.js', import.meta.url), 'utf8');
+  const mixSignature = readFileSync(new URL('../tools/lib/mix-signature.js', import.meta.url), 'utf8');
+  const strumOrArp = /strum\??\.enabled\s*\|\|\s*[\w.?]*arp\??\.enabled/;
+  assert(/L\.noteFx && hasEnabledNoteFx\(L\.noteFx\)/.test(mixSource)
+    && /L\?\.noteFx && hasEnabledNoteFx\(L\.noteFx\)/.test(mixSignature)
+    && !strumOrArp.test(mixSource.replace(/\/\/.*$/gm, ''))
+    && !strumOrArp.test(mixSignature.replace(/\/\/.*$/gm, '')),
+  'the serialiser and the save signature keep a lane\'s Note FX by `hasEnabledNoteFx`, not a hand-written strum-or-arp');
+  assert(/if \(hasEnabledNoteFx\(next\)\) m\.lanes\[key\]\.noteFx = next;/.test(entry)
+    && !/if \(next\??\.strum\??\.enabled/.test(entry),
+  'both setters decide whether a lane keeps its Note FX by the same predicate');
+  // The one hand-written pair left in the entry is the BAR badge's, on purpose: a bar
+  // override can only set or silence the strum and the arpeggiator.
+  assert((bareEntry.match(/strum\?\.enabled \|\| fx\?\.arp\?\.enabled/g) || []).length === 1
+    && /const hasBarNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| fx\?\.arp\?\.enabled\);/.test(bareEntry)
+    && /hasBarNoteFx\(trackNoteFx\) \? 'NFX OFF'/.test(bareEntry)
+    && /hasBarNoteFx\(resolveNoteFx\(trackNoteFx, barPlanEntry, key\)\) \? 'NFX'/.test(bareEntry),
+  'the only strum-or-arp gate left on the desk is the bar badge\'s, which Auto Portamento deliberately is not part of');
+  assert(/laneMix\.noteFx\?\.strum\?\.enabled \|\| laneMix\.noteFx\?\.arp\?\.enabled/.test(entry) === false
+    && /: hasActiveNoteFx\(laneMix\.noteFx\) \? 'Track setting' : ''/.test(entry),
+  'the hover card\'s "Track setting" asks the shared predicate rather than carrying its own copy');
+
+  // ---- the setters, run -----------------------------------------------------------------
+  const settersSrc = sliceOf(entry, 'function noteFxFor(key)', '\n// The Note FX and Bar Effects editors', 'the Note FX setters');
+  assert(/function setTrackNoteFx/.test(settersSrc) && /function clearTrackArp/.test(settersSrc),
+    'the track Note FX setters were lifted out of the entry');
+  const desk = () => {
+    const mix = { lanes: {} };
+    const calls = { engine: 0, rack: 0, arrangement: 0, edits: [] };
+    const fns = new Function('mixFor', 'trackId', 'editMix', 'emptyLaneMix', 'applyToEngine',
+      'buildRack', 'buildArrangement', 'hasEnabledNoteFx', `${settersSrc}
+      return { noteFxFor, setTrackNoteFx, clearTrackArp };`)(
+      () => mix, 'song',
+      (mutate, label, options) => { calls.edits.push(options || null); mutate(mix); },
+      () => ({ gain: 0, pan: 0, effects: [] }),
+      () => { calls.engine++; }, () => { calls.rack++; }, () => { calls.arrangement++; },
+      hasEnabledNoteFx);
+    return { mix, calls, ...fns };
+  };
+
+  {
+    // A portamento on its own is Note FX worth keeping: the Apply that sets it must not
+    // delete it, which is what "strum or arp enabled" did.
+    const d = desk();
+    d.setTrackNoteFx('lead', { strum: { enabled: false }, arp: { enabled: false }, portamento: on() });
+    assert(same(d.mix.lanes.lead.noteFx.portamento, on()),
+      'Apply with only an Auto Portamento on keeps it on the lane — it is Note FX in its own right');
+    assert(d.calls.engine === 1 && d.calls.rack === 1 && d.calls.arrangement === 1,
+      'and still hands it to the engine and repaints the rack and the arrangement');
+    // And it goes the same way it always did when nothing at all is on.
+    d.setTrackNoteFx('lead', { strum: { enabled: false }, arp: { enabled: false }, portamento: off() });
+    assert(!('noteFx' in d.mix.lanes.lead),
+      'Apply with everything off, a switched-off portamento included, clears the lane\'s Note FX');
+    d.setTrackNoteFx('lead', { strum: { enabled: false }, arp: { enabled: false } });
+    assert(!('noteFx' in d.mix.lanes.lead), 'and with no portamento at all, as before');
+    d.setTrackNoteFx('lead', { strum: { enabled: true, gapMs: 20 }, arp: { enabled: false } });
+    assert(d.mix.lanes.lead.noteFx.strum.enabled && !('portamento' in d.mix.lanes.lead.noteFx),
+      'a strum alone is kept untouched, with no portamento written beside it');
+  }
+  {
+    // Clearing the arp must not clear the portamento: that is what retiring a rendered arp
+    // does, and the slide has nothing to do with the arp being written out.
+    const d = desk();
+    d.mix.lanes.lead = { noteFx: { arp: { enabled: true, rate: 1 }, strum: { enabled: false },
+      portamento: on({ amount: 60 }) } };
+    d.clearTrackArp('lead');
+    const fx = d.mix.lanes.lead.noteFx;
+    assert(fx && fx.arp.enabled === false && same(fx.portamento, on({ amount: 60 })),
+      'clearing the arp keeps the lane\'s Auto Portamento, setting for setting');
+    assert(d.calls.edits.length === 1 && d.calls.edits[0]?.undo === false,
+      'and still rides the step that was just pushed, as one undo');
+    d.clearTrackArp('lead');
+    assert(d.calls.edits.length === 1, 'an arp that is already off is a no-op, not a second edit');
+
+    const only = desk();
+    only.mix.lanes.lead = { noteFx: { arp: { enabled: true, rate: 1 } } };
+    only.clearTrackArp('lead');
+    assert(!('noteFx' in only.mix.lanes.lead),
+      'with nothing else on, clearing the arp still empties the lane\'s Note FX');
+
+    const strummed = desk();
+    strummed.mix.lanes.lead = { noteFx: { arp: { enabled: true }, strum: { enabled: true } } };
+    strummed.clearTrackArp('lead');
+    assert(strummed.mix.lanes.lead.noteFx.strum.enabled === true,
+      'and a strum is still the separate decision it was');
+
+    // A newer file's portamento is not this build's to read, and is not its to destroy
+    // either: it goes through the retiring untouched.
+    const newer = desk();
+    const future = { version: 2, enabled: true, curve: 'exp', amount: 0.4 };
+    newer.mix.lanes.lead = { noteFx: { arp: { enabled: true }, portamento: future } };
+    newer.clearTrackArp('lead');
+    assert(same(newer.mix.lanes.lead.noteFx.portamento, future),
+      'a newer version\'s portamento rides through clearing the arp verbatim');
+  }
+
+  // ---- what the desk lights up --------------------------------------------------------
+  const badgesSrc = sliceOf(entry, 'const hasActiveNoteFx', '\n/**\n * The hover card describes processing', 'the NFX gates');
+  const badges = new Function('hasEnabledNoteFx', 'resolveNoteFx', 'readAutoPortamento', `${badgesSrc}
+    return { hasActiveNoteFx, hasBarNoteFx, noteFxBadge, autoPortamentoCardItem };`)(
+    hasEnabledNoteFx, resolveNoteFx, readAutoPortamento);
+  assert(badges.hasActiveNoteFx({ portamento: on() }) && badges.hasActiveNoteFx({ strum: { enabled: true } })
+    && badges.hasActiveNoteFx({ arp: { enabled: true } })
+    && !badges.hasActiveNoteFx({ portamento: off() }) && !badges.hasActiveNoteFx({}) && !badges.hasActiveNoteFx(null),
+  'a track whose only Note FX is an Auto Portamento lights the NFX marker; a switched-off one does not');
+  assert(badges.noteFxBadge({ noteFx: { lead: { mode: 'off' } } }, 'lead', { portamento: on() }) === ''
+    && badges.noteFxBadge({ noteFx: { lead: { mode: 'off' } } }, 'lead', { arp: { enabled: true }, portamento: on() }) === 'NFX OFF',
+  'a bar that is "Off" is not badged NFX OFF over a portamento — it did not turn it off — but is over an arp');
+  assert(badges.noteFxBadge({ noteFx: { lead: { mode: 'on', arp: { enabled: true } } } }, 'lead', { portamento: on() }) === 'NFX'
+    && badges.noteFxBadge({ noteFx: { lead: { mode: 'on', arp: { enabled: false } } } }, 'lead', { portamento: on() }) === ''
+    && badges.noteFxBadge({ noteFx: { lead: { mode: 'inherit' } } }, 'lead', { portamento: on() }) === ''
+    && badges.noteFxBadge({}, 'lead', { portamento: on() }) === '',
+  'a bar\'s NFX badge answers for the strum and arp it sets, and never reads the lane\'s portamento off the resolved bar');
+  // The hover card's line: from the lane, struck out at Amount 0, and honest about a version it cannot read.
+  {
+    const item = badges.autoPortamentoCardItem;
+    assert(same(item({ portamento: on() }), { text: 'Auto Portamento · Amount 35 · Glide 40', tone: 'active' })
+      && same(item({ portamento: on({ amount: 70, glide: 5 }) }), { text: 'Auto Portamento · Amount 70 · Glide 5', tone: 'active' }),
+    'the hover card names a lane\'s Auto Portamento with its Amount and Glide');
+    assert(item({ portamento: on({ amount: 0 }) }).tone === 'bypassed',
+      'at Amount 0 it is listed but struck out — it selects nothing');
+    assert(item({}) === null && item(null) === null && item({ portamento: off() }) === null
+      && item({ portamento: 'on' }) === null && item({ portamento: [] }) === null,
+    'nothing is said for no portamento, a switched-off one, or a malformed one');
+    assert(item({ portamento: { version: 2, enabled: true } })?.tone === 'bypassed'
+      && /newer version/.test(item({ portamento: { version: 2, enabled: true } }).text)
+      && item({ portamento: { version: 2, enabled: false } }) === null,
+    'a version this build does not read is named as such and struck out, never shown as settings');
+  }
+  assert(/const slideItem = autoPortamentoCardItem\(laneMix\.noteFx\);/.test(entry)
+    && !/autoPortamentoCardItem\(resolved/.test(entry)
+    && /if \(!noteItems\.length && \(override\?\.mode === 'off' \|\| !slideItem\)\) noteItems\.push\(\{/.test(entry)
+    && /if \(slideItem\) noteItems\.push\(slideItem\);/.test(entry),
+  'the hover card reads the portamento from the LANE\'s Note FX, so an Off bar still lists the slide it did not turn off');
+
+  // ---- the panel ---------------------------------------------------------------------
+  const panel = noteFxEditors.slice(noteFxEditors.indexOf('function openNoteFxEditor'),
+    noteFxEditors.indexOf('function openBarEffectsEditor'));
+  const stripped = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const bare = stripped(panel);
+
+  // The values the card is built from, run: blank, normalised, never NaN, shownNoteFx untouched.
+  {
+    const blankSrc = [
+      sliceOf(noteFxEditors, 'const NOTE_FX_BLANK = Object.freeze({', '\n/**\n * A saved Note FX as the panel shows it.', 'NOTE_FX_BLANK'),
+      sliceOf(noteFxEditors, 'const shownNoteFx = ', '\n/**\n * Open the Note FX panel', 'the shown helpers'),
+    ].join('\n');
+    const shown = new Function('AUTO_PORTAMENTO_DEFAULTS', 'AUTO_PORTAMENTO_VERSION', 'readAutoPortamento',
+      'NOTE_FX_RANGE_DEFAULT_LO', 'NOTE_FX_RANGE_DEFAULT_HI', `${blankSrc}
+      return { NOTE_FX_BLANK, shownNoteFx, shownPortamento };`)(
+      AUTO_PORTAMENTO_DEFAULTS, AUTO_PORTAMENTO_VERSION, readAutoPortamento, 48, 72);
+    assert(same(shown.NOTE_FX_BLANK.portamento, { enabled: false, amount: 35, glide: 40, version: 1 })
+      && Object.isFrozen(shown.NOTE_FX_BLANK.portamento),
+    'the panel\'s blank Auto Portamento is off, Amount 35, Glide 40, version 1');
+    assert(same(shown.shownPortamento({}), shown.NOTE_FX_BLANK.portamento)
+      && same(shown.shownPortamento(undefined), shown.NOTE_FX_BLANK.portamento)
+      && same(shown.shownPortamento({ portamento: on({ amount: 70, glide: 10 }) }),
+        { enabled: true, amount: 70, glide: 10, version: 1 }),
+    'a saved portamento is shown as saved, and an unset one as the blank');
+    assert(same(shown.shownPortamento({ portamento: { enabled: true, amount: 400, glide: -3 } }),
+      { enabled: true, amount: 100, glide: 0, version: 1 })
+      && same(shown.shownPortamento({ portamento: { enabled: true, amount: 'lots', glide: NaN } }),
+        { enabled: true, amount: 35, glide: 40, version: 1 })
+      && same(shown.shownPortamento({ portamento: { enabled: 1, amount: 50 } }),
+        { enabled: false, amount: 50, glide: 40, version: 1 }),
+    'out-of-range and malformed values are clamped or defaulted, and a stray 1 is not a switch');
+    assert(same(shown.shownPortamento({ portamento: { version: 2, enabled: true, amount: 90 } }),
+      shown.NOTE_FX_BLANK.portamento),
+    'a version this build does not read shows as the blank — it is left alone, not interpreted');
+    assert(same(Object.keys(shown.shownNoteFx({ portamento: on() })).sort(), ['arp', 'strum']),
+      'shownNoteFx is still the strum and the arpeggiator alone — its return is not the portamento\'s');
+  }
+
+  // What the card tells a lane about its sound, run against the real catalogue. A melodic
+  // lane the catalogue has no preset for plays the game's own hand-written voice — the strip
+  // reads it ENGINE — and a good third of the shipped songs' melodic lanes are exactly that.
+  // The planner calls it 'no-voice' ("no instrument to slide"); the desk says the sentence
+  // that is true instead. Everything else is the planner's own answer, unchanged.
+  {
+    const { VOICES } = await import('../src/data/voices.js');
+    const { autoPortamentoSupport, autoPortamentoUnsupportedNote } = await import('../src/engine/auto-portamento.js');
+    const supportSrc = sliceOf(noteFxEditors, 'const portamentoSupportOf = ', '\n/**\n * Open the Note FX panel', 'portamentoSupportOf');
+    const supportOf = new Function('autoPortamentoSupport', `${supportSrc}\nreturn portamentoSupportOf;`)(autoPortamentoSupport);
+    const all = Object.values(VOICES);
+    const engine = all.find((v) => v.kind === 'engine');
+    const drum = all.find((v) => v.kind === 'drum');
+    const sustained = VOICES.initSquare;
+    const decaying = all.find((v) => v.synth === 'CRLS-1' && v.options?.envelope?.sustain < 0.2);
+    const kondo = all.find((v) => v.synth === 'KNDO-5');
+    assert(engine && drum && sustained && decaying && kondo,
+      'the catalogue has an engine preset, a drum, a sustained MRDR-3, a decaying CRLS-1 and a KNDO-5 to test against');
+    assert(autoPortamentoSupport(null).reason === 'no-voice'
+      && supportOf(null).reason === 'engine' && supportOf(null).supported === false
+      && same(supportOf(engine), autoPortamentoSupport(engine)) && supportOf(engine).reason === 'engine',
+    'a lane with no preset is told its instrument does not take slides, and an ENGINE preset already is');
+    assert(/does not take slides yet/.test(autoPortamentoUnsupportedNote(supportOf(null)))
+      && !/no instrument/i.test(autoPortamentoUnsupportedNote(supportOf(null)))
+      && !/[Dd]rum/.test(autoPortamentoUnsupportedNote(supportOf(null))),
+    'in words that do not say it has no instrument, or that it is a drum');
+    assert(supportOf(drum).reason === 'unpitched' && /Drums and noise/.test(autoPortamentoUnsupportedNote(supportOf(drum))),
+      'a real drum keeps the drums-and-noise answer');
+    assert(supportOf(sustained).supported === true && supportOf(decaying).reason === 'decays'
+      && supportOf(kondo).reason === 'engine' && same(supportOf(kondo), autoPortamentoSupport(kondo)),
+    'a sustained MRDR-3 can slide, a decaying CRLS-1 says it decays, and every other answer is the planner\'s own');
+  }
+
+  // The card: its words, defaults, scope and place.
+  assert(/const slideOn = check\('Auto Portamento', shown\.enabled\);/.test(bare)
+    && /slider\('Amount', 0, 100, 1, shown\.amount,/.test(bare)
+    && /slider\('Glide', 0, 100, 1, shown\.glide,/.test(bare)
+    && /name: 'Auto Portamento amount'/.test(bare) && /name: 'Auto Portamento glide'/.test(bare)
+    && /type = 'range'/.test(bare) && /read\.className = 'regread'/.test(bare),
+  'Auto Portamento is a toggle, an Amount and a Glide, both 0–100 range rows with a readout and hover help');
+  assert(/slideHelp\.className = 'notefxslidehelp'/.test(bare)
+    && /slideHelp\.textContent = 'Adds slides between selected nearby melody notes\. Preserves phrase breaks\.';/.test(bare)
+    && (bare.match(/className = 'notefxhelp'/g) || []).length === 1
+    && /:is\(\.notefxhelp, \.notefxslidehelp, \.barfxstatus\)/.test(shell)
+    && /\.notefxslidenote \{/.test(shell),
+  'its help sits under the controls in its own class, so the panel\'s first `.notefxhelp` is still the Apply sentence');
+  {
+    // Where it is, in the DOM: after everything the arp owns, Render included, so the
+    // popup session's positional restore still lines up and the first tick is Strum.
+    const ticks = [...bare.matchAll(/(?:const \w+ = )check\('([^']+)'/g)].map((m) => m[1]);
+    assert(ticks[0] === 'Strum' && ticks.at(-1) === 'Auto Portamento'
+      && ticks.indexOf('Latch until the next chord') === ticks.length - 2,
+    'the first checkbox is still Strum, and Auto Portamento is the last tick, straight after Latch');
+    const slideAt = bare.indexOf("check('Auto Portamento'");
+    assert(slideAt > bare.indexOf('form.append(renderButton);')
+      && slideAt > bare.indexOf("const latch = check('Latch until the next chord'")
+      && !/pairRow\(\);/.test(bare.slice(slideAt))
+      && !/pairRow\(\);\s*const slide/.test(bare),
+    'built after Latch and after Render, on full-width rows — never a pair — so Render stays with the arp');
+    const inputsAfter = bare.slice(bare.indexOf('form.append(renderButton);'), bare.indexOf('const armBarOverride'));
+    assert(!/(?:field|number)\(/.test(inputsAfter.replace(/slider\(/g, '')),
+      'nothing after Render adds a select or a number box — the new inputs are the checkbox and two ranges, last');
+  }
+  assert(/if \(!scope && \(slideLane \|\| savedSlide\?\.enabled === true\)\) \{/.test(bare)
+    && /\.\.\.\(scope \? \{\} : trackPortamento\(\)\)/.test(bare)
+    && /: \{ mode: 'on', \.\.\.next \};/.test(bare)
+    && !/portamento/.test(bare.slice(bare.indexOf('const edit = () => applyArrangementEdit('),
+      bare.indexOf('const ok = play ? edit()'))),
+  'track scope only: a bar panel draws none of it, and a bar override is never given a portamento');
+  assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(noteFxEditors)
+    && !/armBarOverride[\s\S]{0,200}slide/.test(bare.slice(bare.indexOf('const armBarOverride'), bare.indexOf('const setLive'))),
+  'the bar-override arming list is the strum and arp controls it always was');
+  assert(/autoPortamentoSettings\(\{ enabled: slideOn\.checked,\s*amount: Number\(slideAmount\.value\), glide: Number\(slideGlide\.value\) \}\)/.test(bare)
+    && /AUTO_PORTAMENTO_VERSION/.test(noteFxEditors) && !/Number\(slideAmount\.value\) \|\|/.test(bare),
+  'what a track Apply carries is built by `autoPortamentoSettings` (clamped, versioned), and an Amount of 0 is not read as missing');
+  assert(/return !set\.enabled && set\.amount === NOTE_FX_BLANK\.portamento\.amount\s*&& set\.glide === NOTE_FX_BLANK\.portamento\.glide \? null : set;/.test(bare),
+    'a portamento that is off and untouched is left out of what Apply writes, so lanes that never used it save as they did');
+
+  // Unsupported sounds, a newer file, no suitable connections: the words, and the greying.
+  assert(/const support = slideLane \? portamentoSupportOf\(presetForLane\(key\)\)/.test(bare)
+    && /autoPortamentoUnsupportedNote\(support\)/.test(bare)
+    && /setLive\(slide\.on, slide\.can\(\) \|\| slide\.on\.checked\);/.test(bare)
+    && /for \(const control of \[slide\.amount, slide\.glide\]\) setLive\(control, slide\.can\(\) && slide\.on\.checked\);/.test(bare),
+  'a sound that cannot slide says why and greys the controls, but one already on can still be switched off');
+  assert(/Only melody tracks slide/.test(bare) && /autoPortamentoLane\(key\)/.test(bare),
+    'a chord or drum lane is told it does not slide, where the card is drawn for it at all');
+  assert(/String\(readAutoPortamento\(raw\)\.diagnostic\)\s*\.startsWith\('unsupported-version'\)/.test(bare)
+    && /if \(carrying\(\)\) return savedSlide;/.test(bare)
+    && /'Saved by a newer version; ignored here\.'/.test(bare)
+    && /const carrying = \(\) => foreignSlide && !wiped && unchanged\(\);/.test(bare),
+  'a newer version\'s portamento is carried through Apply unchanged until the controls move or Reset empties it');
+  assert(/analysis = autoPortamentoReport\?\.\(key\) \?\? null; \} catch \{ analysis = null; \}/.test(bare)
+    && /'No suitable connections'/.test(bare)
+    && /analysis\.eligible === 0/.test(bare) && /analysis\.supported !== false/.test(bare)
+    && /applyButton\.onclick = \(\) => \{ if \(applyNoteFx\(\)\) slide\?\.refresh\(\); \};/.test(bare),
+  'the engine\'s analysis is asked defensively and never breaks the panel: no answer is no line, none to slide says so');
+  assert(/slide\?\.stage\(fx\);/.test(bare) && /wiped = !isForeignSlide\(fx\?\.portamento\);/.test(bare),
+    'Reset empties the card with the rest of the panel');
+
+  // The dependencies, appended last so the list the older pins read keeps its order.
+  assert(/retuneSpotFx: \(key, oldChain, newChain\) =>[\s\S]*?\n  presetForLane,\n  autoPortamentoReport: \(key\) => Audio\.autoPortamentoReport\?\.\(key\) \?\? autoPortamentoReportOf\(\{[\s\S]*?\}\),\n\}\);/.test(entry)
+    && /restorablePopup, setRestorablePopup, retuneSpotFx,\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*presetForLane, autoPortamentoReport;/.test(noteFxEditors)
+    && /restorablePopup, setRestorablePopup, retuneSpotFx,\s*presetForLane, autoPortamentoReport,\s*\} = deps/.test(noteFxEditors),
+  'the two Auto Portamento dependencies are appended at the END of installNoteFxEditors\'s list, in the entry and in the seam');
+  assert(/autoPortamentoLane\(laneKey\)\s*\? `Add strum, arpeggiator or Auto Portamento to \$\{laneLabel\}`\s*: `Add strum or arpeggiator to \$\{laneLabel\}`/.test(entry)
+    && /title: `Set strum or arpeggiator for \$\{laneLabel\}`/.test(entry),
+  'the track menu names Auto Portamento where the panel offers it; the bar menu, whose panel has none, does not');
+
+  // What a freeze depends on.
+  assert(/const noteFx = m\.lanes\?\.\[lane\]\?\.noteFx \|\| null;/.test(entry)
+    && /\n    noteFx,\n    \.\.\.\(autoPortamentoOn\(noteFx\) \? \{ portamento: AUTO_PORTAMENTO_PLANNER_VERSION \} : \{\}\),\n  \}\);/.test(entry)
+    && autoPortamentoOn({ portamento: on() }) && !autoPortamentoOn({ portamento: off() })
+    && typeof AUTO_PORTAMENTO_PLANNER_VERSION === 'number',
+  'a freeze\'s fingerprint carries the planner version, after the Note FX, only while Auto Portamento is on');
+  assert(!/portamento/i.test(freezeSpanSource.replace(/\/\/.*$/gm, '')),
+    'freeze-span leaves a portamento-only lane on its plain path — the slide is not part of the arp\'s clock');
+}
+
 assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(tooltips)
   && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(tooltips)
   && /JSON\.parse\(el\.dataset\.tipgroups\)/.test(tooltips)

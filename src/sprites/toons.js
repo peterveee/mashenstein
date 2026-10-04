@@ -1364,7 +1364,7 @@ export const TOON_SPECS = {
   // an apron is catering uniform, and catering uniform is worn with a white
   // trainer. The plimsoll she had was the right shape for her legs and the
   // wrong shoe for her job.
-  dolores: { rig: 'humanoid', shoeShape: 'sneaker', head: 'hairnet', mouth: 'flat', apron: true, stout: true, armDepth: true, hands: true, limbStyle: 'snap' ,
+  dolores: { rig: 'humanoid', shoeShape: 'sneaker', head: 'hairnet', mouth: 'flat', apron: true, smallSteps: true, stout: true, armDepth: true, hands: true, limbStyle: 'snap' ,
     // proportions — written by the character editor (tools/character-editor.js)
     armWidth: 0.91,
     armLength: 0.9,
@@ -7933,7 +7933,9 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
   const beltY = hipY - (0.05 + rise) * u + bob;
   const top = beltY + 0.02 * u;
   const s = k.skirt;
-  const hemAt = (len) => hipY + legL * len + bob * 0.5;
+  // The idle gown covers the upper-thigh caps; moving poses keep their tuned hem.
+  const standingHemBonus = spec.princessCostume === 'gown' && !run && !jump ? 0.1 : 0;
+  const hemAt = (len) => hipY + legL * (len + standingHemBonus) + bob * 0.5;
   const hemY = hemAt(spec.skirtLen ?? s.len);
   const beltHalf = halfAt(beltY);
   const wTop = beltHalf * 0.98;
@@ -8467,7 +8469,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // downstream branches asking `jump ?` for themselves.
   const clung = clingAmount(pose) > 0.5;
   const run = !clung && pose.kind === 'run';
-  const walk = run && !!pose.walk;
+  const walk = run && (!!pose.walk || !!spec.smallSteps);
   // A WALK is not a slow run: it keeps a foot on the ground at all times, and
   // locoFoot's recovery arc is a flight phase. The spec is a run spec, and the
   // one caller that sets the flag — the grumpos walk study — has named beats
@@ -8497,6 +8499,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // here with standing and the victory hop — only running and jumping are
   // profile gaits with one leg crossing the body.
   const frontLegs = stand || slide;
+  // Fit the thigh roots inside narrow waists across poses. The editor dial
+  // adjusts that fit per hero; ordinary running keeps its tuned stride.
+  const waistFitScale = Math.max(0, Math.min(1,
+    (waistHalf - legW * 0.5) / Math.max(1e-6, HIP_HALF * u)));
+  const legSpacingScale = waistFitScale * (spec.frontLegSeparation ?? 1);
+  const fitLegPose = !run || !!pose.dance;
   // A pure sine spends as long at the top of the bob as at the bottom, which
   // is a float, not a footfall. bobShape > 1 sharpens the dip so the body
   // drops onto each contact and rides up between them.
@@ -8694,9 +8702,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // move the bulge, because it points across the leg rather than along it.
   let legSeg = (slide ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
   if (walk && heavy) legSeg = 0.4 * legL + 0.005 * u;
-  const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
+  // Dolores shuffles under her original skirt: low recovery and a compact
+  // thigh keep the knee high and inside the cloth, with leggings below it.
+  const smallWalk = walk && spec.smallSteps;
+  if (smallWalk) legSeg = 0.5 * legL + 0.005 * u;
+  const stride = legL * (walk ? (smallWalk ? 0.55 : heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
     * (styledGait ? L.stride : 1);
-  const lift = legL * (walk ? (heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN)
+  const lift = legL * (walk ? (smallWalk ? 0.10 : heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN)
     * (styledGait ? L.lift : 1);
   let footF, footB, kneeF = 1, kneeB = 1;
   // Ankle rotation, in radians, positive = toe down. The shoes were un-rotated
@@ -8727,8 +8739,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         footB = [fB[0], fB[1]]; ankleB = fB[2] * L.ankle;
       }
     } else {
-      footF = gaitFoot(pose.phase || 0, stride, lift);
-      footB = gaitFoot((pose.phase || 0) + 0.5, stride, lift);
+      // Keep Dolores's original snap-style timing, with the low walking arc.
+      const phase = pose.phase || 0;
+      footF = gaitFoot(smallWalk && L ? gaitPhase(phase, L) : phase, stride, lift);
+      footB = gaitFoot(smallWalk && L ? gaitPhase(phase + 0.5, L) : phase + 0.5, stride, lift);
     }
   } else if (jump) {
     if (L) {
@@ -8804,7 +8818,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // actually folds: the slack becomes the sideways bow of the knee, which is
     // the whole silhouette of a squat. Locked to the old flat 0.2*legL the leg
     // couldn't even reach the foot and straightened out again.
-    legSeg = Math.hypot(SLIDE_SPREAD * u - HIP_HALF * u, Math.abs(hipY) - ankleLift) / 2 * 1.3;
+    const slideDx = Math.abs(SLIDE_SPREAD - HIP_HALF) * legSpacingScale * u;
+    legSeg = Math.hypot(slideDx, Math.abs(hipY) - ankleLift) / 2 * 1.3;
   } else if (cm || cling > 0) {
     // Feet mirror under their own hips and share one tuck height — uneven
     // lifts read as a one-legged kick, not a hop.
@@ -8831,8 +8846,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // garment. Bare-legged heroes keep the full hop, where the deep fold is
     // the whole shape of it.
     const tuck = air * (spec.celebTuck ?? 1);
-    footF = [(0.1 + 0.07 * tuck) * u, -tuck * 0.4 * legL];
-    footB = [-(0.1 + 0.07 * tuck) * u, -tuck * 0.4 * legL];
+    const tuckFootX = 0.1 + 0.07 * tuck;
+    footF = [tuckFootX * u, -tuck * 0.4 * legL];
+    footB = [-tuckFootX * u, -tuck * 0.4 * legL];
     kneeB = -1;
     // Grounded beats keep the stand's near-straight hang; the segment eases
     // back to full length as the feet tuck so the knees get room to bend.
@@ -8842,16 +8858,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // IK's lateral bulge grows as the square root of the slack, which is what
     // put the knees out through the sides of the skirt however small the tuck
     // got. Scaled together, a shallow tuck also means a taut leg.
-    legSeg = legSeg * tuck + (Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u) * (1 - tuck);
+    const tuckDx = Math.abs(tuckFootX - HIP_HALF) * legSpacingScale * u;
+    legSeg = legSeg * tuck + (Math.hypot(tuckDx, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u) * (1 - tuck);
   } else {
-    // Stand: each foot directly under its own hip, legs hanging near-straight.
-    // The segment is measured against the REAL hip-to-target distance — the
-    // leg aims ankleLift above the foot, and the hip sits 0.095u out — with
-    // only a hair of slack. Sizing it off |hipY|/2 quietly doubles that slack,
-    // and the IK's sideways bulge grows as sqrt(slack), so the thighs bow out
-    // past the leather either side of him.
-    footF = [STAND_FOOT_X * u, 0]; footB = [-STAND_FOOT_X * u, 0]; kneeB = -1;
-    legSeg = Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u;
+    // Stand: each foot stays just outboard of its hip, with both scaled to fit
+    // under narrow waists. Measure the segment against that actual horizontal
+    // offset; extra slack makes the IK bow the thighs out past the garment.
+    footF = [STAND_FOOT_X * u, 0];
+    footB = [-STAND_FOOT_X * u, 0]; kneeB = -1;
+    const standDx = Math.abs(STAND_FOOT_X - HIP_HALF) * legSpacingScale * u;
+    legSeg = Math.hypot(standDx, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u;
   }
   // Optional normalized choreography targets. Only the dance lab supplies
   // these; the ordinary locomotion/celebration paths retain their own joints.
@@ -9003,6 +9019,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // made one leg bow sideways merely because it was the receding leg.
     kneeF = 1;
     kneeB = 1;
+  }
+  if (fitLegPose && legSpacingScale !== 1) {
+    const centerX = frontLegs ? 0 : hipRun;
+    footF[0] = centerX + (footF[0] - centerX) * legSpacingScale;
+    footB[0] = centerX + (footB[0] - centerX) * legSpacingScale;
   }
 
   // A running leg may straighten. It may not run out of leg.
@@ -10453,7 +10474,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     }
   }
 
-  if (pose.dance) {
+  // A quiet tap can animate the feet while keeping the painter's normal standing arms.
+  if (pose.dance && !pose.dance.restArms) {
     const [front, back] = pose.dance.hands;
     handF = [shF + sideF * front[0] * armL, armY + front[1] * armL];
     handB = [shB + sideB * back[0] * armL, armY + back[1] * armL];
@@ -10805,9 +10827,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // hipNearX/hipFarX both collapse to hipRun when neither the turn nor a limb
   // style has separated them, so the unstyled front-on rig lands on exactly
   // the shared centre line it always used.
-  const hipAt = (side) => (frontLegs
-    ? side * HIP_HALF * u
-    : side > 0 ? hipNearX + nearRootDx : hipFarX);
+  const hipAt = (side) => {
+    if (frontLegs) return side * HIP_HALF * legSpacingScale * u;
+    const hipX = side > 0 ? hipNearX + nearRootDx : hipFarX;
+    return fitLegPose ? hipRun + (hipX - hipRun) * legSpacingScale : hipX;
+  };
   // In profile the shoe shifts toe-ward so the ankle sits back near the heel.
   const footDx = frontLegs ? 0 : 0.025 * u;
   // Shoe proportions: clearly longer than tall so it reads as a shoe, not a
@@ -10970,7 +10994,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // so the extension guard's reach arithmetic still stands; only where the
   // knee sits along the leg moves. Run and the styled jump only — the crouch
   // and stand solve their own segment against their own geometry.
-  const legBias = L && (styledGait || jump) ? L.thigh : 0.5;
+  const legBias = smallWalk ? 0.38 : L && (styledGait || jump) ? L.thigh : 0.5;
   const thighSeg = legSeg * 2 * legBias;
   const shinSeg = legSeg * 2 - thighSeg;
 
@@ -13124,7 +13148,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // leather riding up, so only the shin below carries the gait. The heavy
     // rig's shallow stride is what lets them sit this short. Crouching they
     // shorten again, or the tucked legs and feet vanish under them.
-    const tipY = hipY + legL * (slide ? 0.35 : 0.47) + bob * 0.5;
+    // The standing pteruges cover more of the hip; preserve their moving clearance.
+    const hemLen = slide ? 0.35 : 0.47 + (stand ? 0.05 : 0);
+    const tipY = hipY + legL * hemLen + bob * 0.5;
     // Body half-width where the belt sits and where the skirt hangs from.
     //
     // The sample is CLAMPED INSIDE the torso's own span. Airborne the body
@@ -13509,7 +13535,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // screen-left (trailing) side here. What shows through it is the legging,
       // which is already drawn — the skirt simply is not there.
       const splitSide = -1;
-      const hemLow = hipY + legL * (slide ? 0.24 : 0.36) + bob * 0.5;
+      // The split panels sit lower at rest to cover the upper-thigh caps.
+      const hemLen = slide ? 0.24 : 0.36 + (stand ? 0.1 : 0);
+      const hemLow = hipY + legL * hemLen + bob * 0.5;
       // Clamped inside the torso's own span, like the pteruges: airborne the
       // bob can drop the waist below torsoBot, where the taper has nothing
       // left to interpolate and returns its narrowest width.

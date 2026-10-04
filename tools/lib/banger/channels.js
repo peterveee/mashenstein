@@ -4,7 +4,1370 @@
 // these over them, job by job:
 //
 //   strips   per job: fader, pan, EQ, sends, inserts, note FX — as the seed's channel had them
+//   sectionFx part Spot FX, positioned relative to the seed's musical sections
 //   master   the master fader, its chain and the reverb/delay returns
 //   pump     the chords' gate (the Sidechain Pump switch), taken off the chords channel
 //   exciter  the hook's exciter (the moods that use one), taken off the hook channel
-export const BANGER_CHANNELS = {};
+export const BANGER_CHANNELS = {
+  "future-bass": {
+    "seed": "banger-seed-future-bass",
+    "at": "2026-10-04T05:00:18.114Z",
+    "strips": {
+      "hook": {
+        "gain": -4.8,
+        "pan": -0.05,
+        "send": {
+          "delay": 0.12,
+          "reverb": 0.3
+        }
+      },
+      "kick": {
+        "gain": 0.5,
+        "eq": {
+          "low": -3
+        }
+      },
+      "snare": {
+        "gain": 3.7,
+        "send": {
+          "reverb": 0.3
+        },
+        "eq": {
+          "low": 2.8,
+          "high": 5.2
+        }
+      },
+      "clap": {
+        "gain": -1,
+        "pan": -0.05,
+        "send": {
+          "reverb": 0.45
+        }
+      },
+      "hats": {
+        "gain": -1,
+        "pan": 0.2
+      },
+      "ohats": {
+        "gain": -8.1,
+        "pan": -0.15
+      },
+      "crash": {
+        "gain": -12.3,
+        "pan": 0.2,
+        "send": {
+          "reverb": 0.9
+        }
+      },
+      "riser": {
+        "gain": -15.5,
+        "send": {
+          "reverb": 0.8
+        },
+        "eq": {
+          "low": 5.5,
+          "high": 2
+        }
+      },
+      "impact": {
+        "gain": -4.96,
+        "send": {
+          "reverb": 0.6
+        }
+      },
+      "fill": {
+        "gain": -5,
+        "pan": 0.2,
+        "send": {
+          "reverb": 0.3
+        }
+      },
+      "shaker": {
+        "gain": -15,
+        "pan": 0.3
+      },
+      "tambourine": {
+        "gain": -12,
+        "pan": -0.3,
+        "send": {
+          "reverb": 0.15
+        }
+      },
+      "cowbell": {
+        "gain": -13,
+        "pan": 0.25,
+        "send": {
+          "reverb": 0.15
+        }
+      },
+      "congas": {
+        "gain": -8,
+        "pan": -0.2,
+        "send": {
+          "reverb": 0.15
+        }
+      },
+      "ride": {
+        "gain": -12,
+        "pan": 0.3,
+        "send": {
+          "reverb": 0.2
+        }
+      },
+      "bass": {
+        "gain": -14.6,
+        "effects": [
+          {
+            "id": "distortion",
+            "params": {
+              "distortion": 0.3,
+              "wet": 0.45
+            }
+          }
+        ]
+      },
+      "sub": {
+        "gain": -5.68,
+        "effects": [
+          {
+            "id": "filter",
+            "params": {
+              "type": "lowpass",
+              "frequency": 5000,
+              "Q": 0.7
+            }
+          }
+        ]
+      },
+      "saws": {
+        "gain": -13.1,
+        "send": {
+          "reverb": 1.25
+        },
+        "eq": {
+          "low": -1,
+          "high": 4
+        },
+        "effects": [
+          {
+            "id": "peq",
+            "params": {
+              "f2": 450,
+              "g2": -2,
+              "q2": 0.9
+            }
+          },
+          {
+            "id": "widener"
+          }
+        ]
+      },
+      "piano": {
+        "gain": 2.7,
+        "send": {
+          "delay": 0.15,
+          "reverb": 0.45
+        }
+      },
+      "pad": {
+        "gain": -16.5,
+        "send": {
+          "reverb": 0.5
+        },
+        "eq": {
+          "high": 2
+        }
+      },
+      "square": {
+        "gain": -13.7,
+        "send": {
+          "delay": 0.2,
+          "reverb": 0.35
+        },
+        "eq": {
+          "mid": -2,
+          "high": 2
+        }
+      },
+      "bell": {
+        "gain": -6.16,
+        "pan": 0.15,
+        "send": {
+          "delay": 0.25,
+          "reverb": 0.4
+        },
+        "eq": {
+          "high": 3
+        }
+      },
+      "megaSaw": {
+        "gain": -9.68,
+        "send": {
+          "reverb": 0.25
+        },
+        "eq": {
+          "low": -3
+        }
+      },
+      "arp": {
+        "gain": -11.4,
+        "pan": -0.25,
+        "send": {
+          "delay": 0.2,
+          "reverb": 0.2
+        },
+        "effects": [
+          {
+            "id": "autopanner",
+            "params": {
+              "rateSync": 1,
+              "rateDivision": 2,
+              "depth": 0.5,
+              "wet": 1
+            }
+          }
+        ]
+      },
+      "choir": {
+        "gain": -15,
+        "send": {
+          "reverb": 0.679
+        },
+        "effects": [
+          {
+            "id": "widener",
+            "params": {
+              "width": 0.9
+            }
+          }
+        ]
+      },
+      "third": {
+        "gain": -5.4,
+        "pan": 0.15,
+        "send": {
+          "delay": 0.1,
+          "reverb": 0.3
+        }
+      },
+      "counter": {
+        "gain": -8.7,
+        "pan": -0.2,
+        "send": {
+          "delay": 0.2,
+          "reverb": 0.3
+        }
+      }
+    },
+    "master": {
+      "master": 0,
+      "masterEffects": [
+        {
+          "id": "mbCompN",
+          "params": {
+            "lowFrequency": 180,
+            "highFrequency": 1800,
+            "low.threshold": -26,
+            "low.ratio": 4,
+            "low.attack": 0.06,
+            "low.release": 0.22,
+            "low.knee": 8,
+            "mid.threshold": -22,
+            "mid.ratio": 3.5,
+            "mid.attack": 0.018,
+            "mid.release": 0.08,
+            "mid.knee": 12,
+            "high.threshold": -26,
+            "high.ratio": 2.5,
+            "high.attack": 0.01,
+            "high.release": 0.06,
+            "high.knee": 10
+          }
+        },
+        {
+          "id": "gain",
+          "params": {
+            "gain": -5.8
+          }
+        }
+      ],
+      "fx": {
+        "reverb": {
+          "decay": 3.2
+        }
+      }
+    },
+    "pump": {
+      "id": "rhythmgate",
+      "params": {
+        "division": 0.5,
+        "gateLength": 0.6,
+        "attack": 0.004,
+        "decay": 0.06,
+        "depth": 0.85
+      }
+    },
+    "exciter": {
+      "id": "exciter",
+      "params": {
+        "tune": 2500,
+        "drive": 0.5,
+        "timbre": 0.4,
+        "mix": 0.18
+      }
+    },
+    "sectionFx": {
+      "version": 1,
+      "rules": [
+        {
+          "role": "hook",
+          "section": "intro",
+          "occurrence": 0,
+          "occurrences": 1,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 200,
+                "Q": 1.2,
+                "sweep": 1,
+                "sweepTo": 18000
+              }
+            },
+            {
+              "id": "widener",
+              "params": {
+                "width": 0.7,
+                "sweep": 0,
+                "widthTo": 0.7
+              }
+            }
+          ],
+          "sourceSection": "intro",
+          "sourceIndex": 0
+        },
+        {
+          "role": "hook",
+          "section": "drop",
+          "occurrence": 0,
+          "occurrences": 3,
+          "from": 0.984375,
+          "to": 1,
+          "chain": [
+            {
+              "id": "delay",
+              "params": {
+                "sync": 1,
+                "division": 0.75,
+                "feedback": 0.6,
+                "wet": 0.5
+              }
+            }
+          ],
+          "sourceSection": "drop",
+          "sourceIndex": 2
+        },
+        {
+          "role": "hook",
+          "section": "drop",
+          "occurrence": 1,
+          "occurrences": 3,
+          "from": 0.9375,
+          "to": 0.96875,
+          "chain": [
+            {
+              "id": "delay",
+              "params": {
+                "sync": 1,
+                "division": 0.75,
+                "feedback": 0.6,
+                "wet": 0.5
+              }
+            }
+          ],
+          "sourceSection": "drop2",
+          "sourceIndex": 5
+        },
+        {
+          "role": "bass",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "bass",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "sub",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "sub",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "saws",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "saws",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "piano",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "piano",
+          "section": "breakdown",
+          "occurrence": 0,
+          "occurrences": 1,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "pingpong",
+              "params": {
+                "sync": 1,
+                "division": 0.5,
+                "delayMs": 250,
+                "feedback": 0.3,
+                "wet": 0.35,
+                "sweep": 0,
+                "feedbackTo": 0.3,
+                "wetTo": 0.35
+              }
+            },
+            {
+              "id": "gain",
+              "params": {
+                "gain": -2
+              }
+            }
+          ],
+          "sourceSection": "breakdown",
+          "sourceIndex": 3
+        },
+        {
+          "role": "piano",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "pad",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "pad",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "square",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "square",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "arp",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "arp",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        }
+      ]
+    }
+  },
+  "big-room": {
+    "seed": "banger-seed-big-room",
+    "at": "2026-10-03T23:24:12.201Z",
+    "strips": {
+      "hook": {
+        "pan": -0.05,
+        "send": {
+          "delay": 0.12,
+          "reverb": 0.3
+        }
+      },
+      "kick": {
+        "gain": 0.5,
+        "eq": {
+          "low": -3
+        }
+      },
+      "snare": {
+        "gain": 4,
+        "send": {
+          "reverb": 0.25
+        },
+        "eq": {
+          "low": 2.8,
+          "high": 5.2
+        }
+      },
+      "clap": {
+        "pan": 0.05,
+        "send": {
+          "reverb": 0.35
+        },
+        "eq": {
+          "high": -1.5
+        }
+      },
+      "hats": {
+        "gain": -4.9,
+        "pan": 0.2
+      },
+      "ohats": {
+        "gain": -9,
+        "pan": -0.15
+      },
+      "crash": {
+        "gain": -7,
+        "pan": 0.2,
+        "send": {
+          "reverb": 0.9
+        }
+      },
+      "riser": {
+        "gain": -15.5,
+        "send": {
+          "reverb": 0.8
+        },
+        "eq": {
+          "low": 5.5,
+          "high": 2
+        }
+      },
+      "impact": {
+        "gain": -3,
+        "send": {
+          "reverb": 0.6
+        }
+      },
+      "fill": {
+        "gain": -5,
+        "pan": 0.2,
+        "send": {
+          "reverb": 0.3
+        }
+      },
+      "shaker": {
+        "gain": -15,
+        "pan": 0.3
+      },
+      "tambourine": {
+        "gain": -12,
+        "pan": -0.3,
+        "send": {
+          "reverb": 0.15
+        }
+      },
+      "cowbell": {
+        "gain": -13,
+        "pan": 0.25,
+        "send": {
+          "reverb": 0.15
+        }
+      },
+      "congas": {
+        "gain": -8,
+        "pan": -0.2,
+        "send": {
+          "reverb": 0.15
+        }
+      },
+      "ride": {
+        "gain": -12,
+        "pan": 0.3,
+        "send": {
+          "reverb": 0.2
+        }
+      },
+      "bass": {
+        "gain": -6.9,
+        "effects": [
+          {
+            "id": "filter",
+            "params": {
+              "type": "lowpass",
+              "frequency": 1400,
+              "Q": 0.8
+            }
+          }
+        ]
+      },
+      "sub": {
+        "gain": -11.1
+      },
+      "saws": {
+        "gain": -10.08,
+        "send": {
+          "reverb": 1.25
+        },
+        "eq": {
+          "low": -3
+        },
+        "effects": [
+          {
+            "id": "peq",
+            "params": {
+              "f3": 3000,
+              "g3": -2,
+              "q3": 0.9
+            }
+          }
+        ]
+      },
+      "pad": {
+        "gain": -11.06,
+        "send": {
+          "reverb": 0.649
+        },
+        "eq": {
+          "low": -4
+        },
+        "effects": [
+          {
+            "id": "widener",
+            "params": {
+              "width": 0.8
+            }
+          }
+        ]
+      },
+      "square": {
+        "gain": 1.1,
+        "pan": 0.05,
+        "send": {
+          "delay": 0.1,
+          "reverb": 0.2
+        },
+        "effects": [
+          {
+            "id": "peq",
+            "params": {
+              "f3": 3000,
+              "g3": -2,
+              "q3": 0.9
+            }
+          }
+        ]
+      },
+      "bell": {
+        "gain": -6.9,
+        "pan": 0.2,
+        "send": {
+          "delay": 0.25,
+          "reverb": 0.45
+        }
+      },
+      "megaSaw": {
+        "gain": -5.5,
+        "send": {
+          "reverb": 0.25
+        },
+        "eq": {
+          "low": -3
+        }
+      },
+      "arp": {
+        "gain": -10.5,
+        "pan": -0.25,
+        "send": {
+          "delay": 0.2,
+          "reverb": 0.2
+        },
+        "effects": [
+          {
+            "id": "autopanner",
+            "params": {
+              "rateSync": 1,
+              "rateDivision": 2,
+              "depth": 0.5,
+              "wet": 1
+            }
+          }
+        ]
+      },
+      "choir": {
+        "gain": -11.21,
+        "send": {
+          "reverb": 0.679
+        },
+        "effects": [
+          {
+            "id": "widener",
+            "params": {
+              "width": 0.9
+            }
+          }
+        ]
+      },
+      "third": {
+        "gain": -6.3,
+        "pan": 0.15,
+        "send": {
+          "delay": 0.1,
+          "reverb": 0.3
+        }
+      },
+      "counter": {
+        "gain": -8.3,
+        "pan": -0.2,
+        "send": {
+          "delay": 0.2,
+          "reverb": 0.3
+        }
+      }
+    },
+    "master": {
+      "master": 0,
+      "masterEffects": [
+        {
+          "id": "mbCompN",
+          "params": {
+            "lowFrequency": 180,
+            "highFrequency": 1800,
+            "low.threshold": -26,
+            "low.ratio": 4,
+            "low.attack": 0.06,
+            "low.release": 0.22,
+            "low.knee": 8,
+            "mid.threshold": -22,
+            "mid.ratio": 3.5,
+            "mid.attack": 0.018,
+            "mid.release": 0.08,
+            "mid.knee": 12,
+            "high.threshold": -26,
+            "high.ratio": 2.5,
+            "high.attack": 0.01,
+            "high.release": 0.06,
+            "high.knee": 10
+          }
+        },
+        {
+          "id": "gain",
+          "params": {
+            "gain": -5.8
+          }
+        }
+      ],
+      "fx": {
+        "reverb": {
+          "decay": 2.8
+        }
+      }
+    },
+    "pump": {
+      "id": "rhythmgate",
+      "params": {
+        "division": 1,
+        "gateLength": 1,
+        "attack": 0.16,
+        "decay": 0.02,
+        "depth": 0.65
+      }
+    },
+    "exciter": {
+      "id": "exciter",
+      "params": {
+        "tune": 2500,
+        "drive": 0.5,
+        "timbre": 0.4,
+        "mix": 0.18
+      }
+    },
+    "sectionFx": {
+      "version": 1,
+      "rules": [
+        {
+          "role": "hook",
+          "section": "drop",
+          "occurrence": 0,
+          "occurrences": 3,
+          "from": 0.984375,
+          "to": 1,
+          "chain": [
+            {
+              "id": "delay",
+              "params": {
+                "sync": 1,
+                "division": 0.75,
+                "feedback": 0.6,
+                "wet": 0.5
+              }
+            }
+          ],
+          "sourceSection": "drop",
+          "sourceIndex": 2
+        },
+        {
+          "role": "hook",
+          "section": "breakdown",
+          "occurrence": 0,
+          "occurrences": 1,
+          "from": 0,
+          "to": 0.875,
+          "chain": [
+            {
+              "id": "pingpong",
+              "params": {
+                "sync": 1,
+                "division": 0.5,
+                "delayMs": 250,
+                "feedback": 0.3,
+                "wet": 0.35,
+                "sweep": 0,
+                "feedbackTo": 0.3,
+                "wetTo": 0.35
+              }
+            }
+          ],
+          "sourceSection": "breakdown",
+          "sourceIndex": 3
+        },
+        {
+          "role": "hook",
+          "section": "drop",
+          "occurrence": 1,
+          "occurrences": 3,
+          "from": 0.9375,
+          "to": 0.96875,
+          "chain": [
+            {
+              "id": "delay",
+              "params": {
+                "sync": 1,
+                "division": 0.75,
+                "feedback": 0.6,
+                "wet": 0.5
+              }
+            }
+          ],
+          "sourceSection": "drop2",
+          "sourceIndex": 5
+        },
+        {
+          "role": "bass",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "bass",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "sub",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "sub",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "saws",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "saws",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "pad",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "pad",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "square",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "square",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        },
+        {
+          "role": "arp",
+          "section": "build",
+          "occurrence": 0,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build",
+          "sourceIndex": 1
+        },
+        {
+          "role": "arp",
+          "section": "build",
+          "occurrence": 1,
+          "occurrences": 2,
+          "from": 0,
+          "to": 1,
+          "chain": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 350,
+                "Q": 1.1,
+                "sweep": 1,
+                "sweepTo": 14000
+              }
+            }
+          ],
+          "sourceSection": "build2",
+          "sourceIndex": 4
+        }
+      ]
+    }
+  }
+};

@@ -132,6 +132,7 @@
   <section class="report" id="levels"></section>
   <section class="report" id="bass"></section>
   <section class="report" id="bangers"></section>
+  <section class="report" id="calibration"></section>
 </main>
 <div id="tip"></div>
 <script>
@@ -436,23 +437,41 @@ function drawBangers(r) {
     el('tbody', {}, rows))));
 }
 
+function drawCalibration(r) {
+  const root = document.getElementById('calibration');
+  const head = el('div', { class: 'report-head' }, el('h2', {}, 'Banger calibration'),
+    r ? el('span', { class: 'when' }, `${r.status} · ${ago(r.at)}`) : null);
+  if (!r) { root.replaceChildren(head, el('p', {}, 'Run BANGER CALIBRATION COVERAGE or BANGER CALIBRATION on the desk.')); return; }
+  const lede = el('p', { class: 'lede' }, `${r.ready}/${r.total} current profiles. ${r.measured} renders this run; ${r.reused} cached renders reused. `,
+    r.published ? 'Validated offsets published.' : 'This run has not published offsets.');
+  const issues = [...(r.errors || []), ...(r.rejected || []).map(x => `${x.label}: unseen phrase error ${x.errorDb == null ? 'unmeasurable' : x.errorDb + ' dB'}`)];
+  const mixChecks = (r.mixes || []).map(x => el('p', {}, `${x.style} / seed ${x.seed}: ${x.status}${x.after ? ' · ' + x.after.lufs + ' LUFS, peak ' + x.after.peakDb + ' dBFS' : ''}`));
+  const rows = (r.rows || []).map(x => el('tr', {}, el('td', {}, x.label), el('td', {}, x.status),
+    el('td', {}, x.errorDb == null ? '—' : `${x.errorDb} dB`), el('td', {}, x.peakDb == null ? '—' : `${x.peakDb} dBFS`)));
+  root.replaceChildren(head, lede, ...mixChecks, ...issues.map(x => el('p', { class: 'warm' }, x)),
+    r.lastResult && r.status === 'coverage' ? el('p', {}, `Last refresh: ${r.lastResult.status || 'not run'}; ${r.lastResult.rejected?.length || 0} rejected profiles.`) : null,
+    el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, el('tr', {},
+      ...['Instrument / channel', 'Status', 'Validation error', 'Peak at unity fader'].map(x => el('th', {}, x)))), el('tbody', {}, rows))));
+}
+
 // --------------------------------------------------------------- polling --
 // Redrawn only when a report file changes, so hovering is not interrupted.
 let stamp = '';
 let firstDraw = true;
 async function refresh() {
   try {
-    const { levels, bass, bangers, frames, running } = await (await fetch('/api/reports')).json();
+    const { levels, bass, bangers, calibration, frames, running } = await (await fetch('/api/reports')).json();
     const chip = document.getElementById('running');
     chip.hidden = !running.length;
     chip.textContent = running.length ? `running: ${running.join(', ')}` : '';
-    const next = JSON.stringify([levels?.at, bass?.at, bangers?.at, frames?.at, Object.values(bass?.lanes || {}).map((l) => l.at)]);
+    const next = JSON.stringify([levels?.at, bass?.at, bangers?.at, calibration?.at, frames?.at, Object.values(bass?.lanes || {}).map((l) => l.at)]);
     if (next !== stamp) {
       stamp = next;
       drawFrames(frames);
       drawLevels(levels);
       drawBass(bass);
       drawBangers(bangers);
+      drawCalibration(calibration);
       if (firstDraw && location.hash) document.querySelector(location.hash)?.scrollIntoView();
       firstDraw = false;
     }
