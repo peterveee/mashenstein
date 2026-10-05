@@ -8,7 +8,7 @@
 // while SIMPLE shows it converted down, and comes back as it was unless SIMPLE has been
 // written in since. ZAP (Peter, 3 Oct 2026; it was SURPRISE ME) writes a random riff in
 // whichever is showing. EXPERIMENT (Peter, 5 Oct 2026) is ZAP for everything else: a random
-// FORMULA, ELEMENT, VOLTAGE and DNA, leaving the notes alone.
+// FORMULA, ELEMENT, VOLTAGE and DNA (Hybrid, Spliced or Mutant), leaving the notes alone.
 //
 // The grid loops while you edit, over a plain kick, hat and light clap at four BPM below
 // the chosen style's lower tempo limit. It runs its own clock through Audio.voiceSfx rather
@@ -46,10 +46,12 @@ import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
 
 // DNA — how far the riff's own notes are rewritten — has its own picker beside VOLTAGE, which
 // is the effects, energy and arrangement, so a Overload take can keep the riff as written
-// (Peter, 4 Oct 2026). It is the desk's Variation: PURE Faithful, HYBRID Some, MUTANT Wild.
+// (Peter, 4 Oct 2026). It is the desk's Variation: PURE Faithful, HYBRID Some, SPLICED More, MUTANT Wild.
 export const MAKER_VARIATIONS = Object.freeze([
   Object.freeze({ id: 'faithful', label: 'Pure', description: 'Your notes, as written' }),
   Object.freeze({ id: 'some', label: 'Hybrid', description: 'Sequenced up, phrase ends turned round' }),
+  // Between the two (Peter, 5 Oct 2026): Hybrid, with one Mutant move a phrase.
+  Object.freeze({ id: 'more', label: 'Spliced', description: 'Hybrid, plus a leap or a fragment' }),
   Object.freeze({ id: 'wild', label: 'Mutant', description: 'Fragments, rhythm shifts and big leaps' }),
 ]);
 const PICKERS = 4;
@@ -135,7 +137,9 @@ export class BangerMakerState {
       this.style = src.style;
       this.mood = src.mood;
       this.setVoltage(voltageFor(src), false);
-      this.setVariation(src.variation ?? (src.wild ? 'wild' : 'faithful'));   // a song made before DNA kept its riff as written
+      // A recipe with no DNA of its own (the starter, a song from before the picker) was made
+      // at the generator's default, Hybrid — Mutant if it went wild.
+      this.setVariation(src.variation ?? (src.wild ? 'wild' : 'some'));
     }
     const voices = RIFF_VOICES.filter((id) => id !== BangerMakerState.lastVoice);
     this.riffVoice = voices[Math.floor(this.random() * voices.length)];
@@ -345,7 +349,7 @@ export class BangerMakerState {
 
   say(text) { this.message = text; this.messageT = 2; }
 
-  /** EXPERIMENT: a new FORMULA and ELEMENT (never the ones on show), and any VOLTAGE and DNA. The notes stay. */
+  /** EXPERIMENT: a new FORMULA and ELEMENT (never the ones on show), any VOLTAGE, and DNA Hybrid, Spliced or Mutant — never Pure (Peter, 5 Oct 2026). The notes stay. */
   experiment() {
     const other = (list, cur) => {
       const rest = list.filter((it) => it.id !== cur);
@@ -354,7 +358,8 @@ export class BangerMakerState {
     this.setStyle(other(MAKER_STYLES, this.style));
     this.mood = other(MAKER_MOODS, this.mood);
     this.setVoltage(Math.floor(this.random() * BANGER_VOLTAGES.length), false);
-    this.setVariation(MAKER_VARIATIONS[Math.floor(this.random() * MAKER_VARIATIONS.length)].id);
+    const dna = MAKER_VARIATIONS.filter((v) => v.id !== 'faithful');
+    this.setVariation(dna[Math.floor(this.random() * dna.length)].id);
   }
 
   /** The make-it button's word: BRING TO LIFE for a new banger, RECHARGE when remaking one. */

@@ -97,6 +97,7 @@ export const BANGER_KEYS = Object.freeze(BANGER_MODES.slice(0, 3));
 export const BANGER_VARIATIONS = Object.freeze([
   { id: 'faithful', label: 'Faithful', title: 'Your notes as written: only the setting changes — octaves, instruments, harmony, half speed' },
   { id: 'some', label: 'Some', title: 'Also sequences the riff up the scale and turns the phrase ends round' },
+  { id: 'more', label: 'More', title: 'Some, plus one of Wild\'s moves a phrase: a leap at the peak or a fragment — never a rhythm shift' },
   { id: 'wild', label: 'Wild', title: 'Also develops fragments, shifts the rhythm, leaps at the peak and adds a counter-line. Selecting Wild on the desk enables Style + Automatic Section FX; you can adjust it afterward.' },
 ]);
 /** Length presets, in bars. Medium is ABSOLUTE ZERO's shape; Short is a stage. */

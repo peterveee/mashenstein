@@ -28,7 +28,7 @@ export function voltageFor(options = {}) {
 
   const energy = energyOf(options.energy);
   const production = normaliseTrackEffects(options.production).mode;
-  const variation = ['faithful', 'some', 'wild'].includes(options.variation)
+  const variation = ['faithful', 'some', 'more', 'wild'].includes(options.variation)
     ? options.variation : (options.wild === true ? 'wild' : null);
   return BANGER_VOLTAGES.reduce((best, preset) => {
     const score = (variation && preset.variation !== variation ? 4 : 0)

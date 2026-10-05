@@ -145,6 +145,10 @@ export function leap(part) {
 export const OPS_BY_VARIATION = Object.freeze({
   faithful: ['as', 'cut'],
   some: ['as', 'cut', 'k2', 'k4', 'turn', 'head', 'chop'],
+  // More (the Lab's SPLICED, Peter 5 Oct 2026): Some, with one of Wild's moves a phrase —
+  // the leap at the peak in plan A, a fragment in plan B. Never the displacement, which is
+  // what makes Wild sound like another tune.
+  more: ['as', 'cut', 'k2', 'k4', 'turn', 'head', 'chop', 'frag', 'leap'],
   wild: ['as', 'cut', 'k2', 'k4', 'turn', 'head', 'chop', 'frag', 'disp', 'leap'],
 });
 
@@ -162,6 +166,10 @@ const PLANS = {
       [[0, 'as'], [0, 'k2'], [0, 'as'], [0, 'k4'], [0, 'as'], [0, 'k2'], [0, 'as'], [0, 'turn']],
       [[0, 'as'], [0, 'k2'], [0, 'k4'], [0, 'turn'], [0, 'as'], [0, 'k2'], [0, 'chop'], [0, 'turn']],
     ],
+    more: [
+      [[0, 'as'], [0, 'k2'], [0, 'as'], [0, 'k4'], [0, 'as'], [0, 'k2'], [0, 'leap'], [0, 'turn']],
+      [[0, 'as'], [0, 'k2'], [0, 'k4'], [0, 'turn'], [0, 'as'], [0, 'frag'], [0, 'chop'], [0, 'turn']],
+    ],
     wild: [
       [[0, 'as'], [0, 'frag'], [0, 'as'], [0, 'disp'], [0, 'as'], [0, 'frag'], [0, 'leap'], [0, 'turn']],
       [[0, 'as'], [0, 'frag'], [0, 'k2'], [0, 'disp'], [0, 'as'], [0, 'frag'], [0, 'leap'], [0, 'turn']],
@@ -172,6 +180,10 @@ const PLANS = {
     some: [
       [[0, 'as'], [1, 'as'], [0, 'k2'], [1, 'k2'], [0, 'as'], [1, 'as'], [0, 'as'], [1, 'turn']],
       [[0, 'as'], [1, 'as'], [0, 'as'], [1, 'chop'], [0, 'k4'], [1, 'k2'], [0, 'as'], [1, 'turn']],
+    ],
+    more: [
+      [[0, 'as'], [1, 'as'], [0, 'k2'], [1, 'k2'], [0, 'as'], [1, 'as'], [0, 'leap'], [1, 'turn']],
+      [[0, 'as'], [1, 'as'], [0, 'as'], [1, 'chop'], [0, 'k4'], [1, 'frag'], [0, 'as'], [1, 'turn']],
     ],
     wild: [
       [[0, 'as'], [1, 'frag'], [0, 'as'], [1, 'disp'], [0, 'as'], [1, 'frag'], [0, 'leap'], [1, 'turn']],
@@ -184,6 +196,10 @@ const PLANS = {
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [0, 'k2'], [1, 'k2'], [2, 'as'], [3, 'turn']],
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'chop'], [0, 'as'], [1, 'as'], [2, 'k2'], [3, 'turn']],
     ],
+    more: [
+      [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [0, 'k2'], [1, 'k2'], [2, 'leap'], [3, 'turn']],
+      [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'chop'], [0, 'as'], [1, 'frag'], [2, 'k2'], [3, 'turn']],
+    ],
     wild: [
       [[0, 'as'], [1, 'frag'], [2, 'as'], [3, 'disp'], [0, 'as'], [1, 'frag'], [2, 'leap'], [3, 'turn']],
       [[0, 'as'], [1, 'frag'], [2, 'k2'], [3, 'disp'], [0, 'as'], [1, 'frag'], [2, 'leap'], [3, 'turn']],
@@ -194,6 +210,10 @@ const PLANS = {
     some: [
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [4, 'as'], [5, 'as'], [6, 'as'], [7, 'turn']],
       [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [4, 'k2'], [5, 'as'], [6, 'chop'], [7, 'turn']],
+    ],
+    more: [
+      [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [4, 'as'], [5, 'as'], [6, 'leap'], [7, 'turn']],
+      [[0, 'as'], [1, 'as'], [2, 'as'], [3, 'as'], [4, 'k2'], [5, 'frag'], [6, 'chop'], [7, 'turn']],
     ],
     // An eight-bar cell has no second half that repeats the first, so the fragment of
     // bar 2 is played again in bar 6 — the same source bar, so the same music.

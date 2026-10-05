@@ -210,7 +210,9 @@ export function heroDancePose(candidate, beat) {
     const hopPhase = Number.isFinite(beat) ? ((beat % 1) + 1) % 1 : 0;
     const hopLift = Math.sin(hopPhase * Math.PI);
     pose.dance = { ...pose.dance, legSegMax: candidate.hero === 'clara' ? 0.8 : 0.45,
-      ...(candidate.hero === 'clara' ? { hopLegFlex: 0.5 + 0.24 * (1 - hopLift) } : {}),
+      ...(candidate.hero === 'clara' ? {
+        hopLegFlex: 0.5 + 0.24 * (1 - hopLift), hopLandingCrouch: 0.035,
+      } : {}),
       ...(skirted.has(candidate.hero) ? { hopKneeSpread: 0.02 } : {}),
       ...(candidate.hero === 'clara' ? { kneeDirections: [1, -1] } : {}) };
   }

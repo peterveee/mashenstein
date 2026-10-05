@@ -23,6 +23,7 @@ export function groundDanceFeet(pose) {
 export function tameSkirt(pose, legs, beat) {
   const f = ((beat % 1) + 1) % 1;
   const hopLegFlex = Number(pose.dance?.hopLegFlex);
+  const hopLandingCrouch = Number(pose.dance?.hopLandingCrouch) || 0;
   const planted = [[SKIRT_STANCE, 0], [-SKIRT_STANCE, 0]];
   // No feet: the painter stands them as it does at idle, legs straight under the hem
   // (a dance's feet slacken the legs for its kicks, and bowed knees show under a kilt).
@@ -39,10 +40,12 @@ export function tameSkirt(pose, legs, beat) {
     // moves add a little outward foot spread, so the knees flex visibly without
     // leaving the hem; compress on takeoff and landing, then release at the top.
     const lift = Math.sin(f * Math.PI);
-    bounce = SKIRT_HOP * lift;
+    const landing = (1 - lift) ** 2;
+    bounce = SKIRT_HOP * lift - hopLandingCrouch * landing;
     const spread = SKIRT_STANCE + (Number(pose.dance?.hopKneeSpread) || 0) * lift;
-    feet = [[spread, -SKIRT_HOP_FOOT * lift], [-spread, -SKIRT_HOP_FOOT * lift]];
-    squash = SKIRT_HOP_SQUASH * (1 - lift);
+    const footY = bounce < 0 ? bounce : -SKIRT_HOP_FOOT * lift;
+    feet = [[spread, footY], [-spread, footY]];
+    squash = Math.max(SKIRT_HOP_SQUASH * (1 - lift), hopLandingCrouch * landing);
   } else if (legs === 'stand') {
     bounce = 0;
   }

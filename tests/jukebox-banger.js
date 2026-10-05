@@ -19,7 +19,7 @@ const { generateBanger } = await import('../tools/lib/banger/index.js');
 const {
   bangerState, keepBanger, reviseBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger, lastPlayedBanger,
 } = await import('../src/game/banger/store.js');
-const { BangerMakerState, RIFF_VOICES } = await import('../src/game/banger/maker.js');
+const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS } = await import('../src/game/banger/maker.js');
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
@@ -366,7 +366,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     const control = L.pickers[3];
     tap(maker, control.x + control.w / 2, control.y + control.h / 2);
     const { cells } = maker.chooserLayout(maker.layout());
-    assert(maker.chooser?.picker === 3 && cells.length === 3, 'DNA opens Pure, Hybrid and Mutant');
+    assert(maker.chooser?.picker === 3 && cells.length === 4 && cells.length === MAKER_VARIATIONS.length
+      && MAKER_VARIATIONS.map((v) => v.label).join() === 'Pure,Hybrid,Spliced,Mutant', 'DNA opens Pure, Hybrid, Spliced and Mutant');
     tap(maker, cells[1].x + cells[1].w / 2, cells[1].y + cells[1].h / 2);
     assert(maker.variation === 'some' && maker.voltage === 3 && maker.energy === 'maximum', 'choosing a DNA leaves the Voltage as it was');
     tap(maker, control.x + control.w * 0.1, control.y + control.h / 2);
@@ -495,7 +496,12 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.focus = { area: 'grid', col: maker.steps - 1, row: maker.rows - 1, picker: 0, button: 3 };
   frame(maker, 'down');
   assert(maker.focus.area === 'picker' && maker.focus.picker === 3, 'down from the grid reaches DNA in the same selector row');
-  frame(maker, 'right'); frame(maker, 'right'); frame(maker, 'right');
+  maker.setVariation('faithful');
+  frame(maker, 'right');
+  assert(maker.variation === 'some', 'right steps DNA from Pure to Hybrid');
+  frame(maker, 'right');
+  assert(maker.variation === 'more', 'then Spliced');
+  frame(maker, 'right'); frame(maker, 'right');
   assert(maker.variation === 'wild', 'left and right step DNA, stopping at Mutant');
   maker.focus.picker = 2;
   const v1 = maker.voltage;
@@ -526,9 +532,9 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       if (maker.mood !== before.mood) moods++;
       voltages.add(maker.voltage); dnas.add(maker.variation);
     }
-    assert(styles === 40 && moods === 40 && voltages.size === BANGER_VOLTAGES.length && dnas.size === 3
+    assert(styles === 40 && moods === 40 && voltages.size === BANGER_VOLTAGES.length && dnas.size === 3 && !dnas.has('faithful')
       && maker.energy === voltageSettings(maker.voltage).energy && maker.notes.join() === notes,
-    'EXPERIMENT picks a new formula and element every time, any voltage and DNA, and leaves the notes alone');
+    'EXPERIMENT picks a new formula and element every time, any voltage, DNA Hybrid, Spliced or Mutant (never Pure), and leaves the notes alone');
     maker.setStyle(was.style); maker.mood = was.mood; maker.setVoltage(was.voltage, false); maker.setVariation(was.variation);
   }
   tap(maker, ...centre(L.buttons[1]));
@@ -1343,6 +1349,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.enter();
   assert(maker.mode === 'advanced' && maker.notes.join() === st.notes.join() && maker.style === 'big-room' && maker.mood === STARTERS['neon-orbit'].recipe.mood,
     'the pencil opens the starter in ADVANCED mode on its riff, style and mood');
+  assert(maker.variation === 'some', 'with DNA on Hybrid, what the starter was made with');
   maker.mood = 'heroic';
   maker.make();
   maker.exit();

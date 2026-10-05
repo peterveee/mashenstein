@@ -58,7 +58,7 @@ export function bangerState(save = defaultSave) {
   const style = validStyle(d.style) ? d.style : MAKER_STYLES[0].id;
   const voltage = voltageFor(d);
   const preset = voltageSettings(voltage);
-  const variation = ['faithful', 'some', 'wild'].includes(d.variation) ? d.variation : 'some';
+  const variation = ['faithful', 'some', 'more', 'wild'].includes(d.variation) ? d.variation : 'some';
   b.draft = { v: RIFF_VERSION, ...upgradeDraft(d), style, mood: validMood(d.mood) ? d.mood : defaultMoodFor(style), voltage,
     variation, wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
   // A kept song whose style has been held back since stays playable: the generator
@@ -95,7 +95,7 @@ export function saveDraft(draft, save = defaultSave) {
   const voltage = voltageFor(draft);
   const preset = voltageSettings(voltage);
   b.draft = { v: RIFF_VERSION, ...upgradeDraft({ ...draft, v: RIFF_VERSION }), style: draft.style, mood: draft.mood, voltage,
-    variation: ['faithful', 'some', 'wild'].includes(draft.variation) ? draft.variation : 'some',
+    variation: ['faithful', 'some', 'more', 'wild'].includes(draft.variation) ? draft.variation : 'some',
     wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
   save.persist?.();
 }

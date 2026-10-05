@@ -140,7 +140,7 @@ try {
     for (let s3 = 1; s3 <= 300; s3++) if (surpriseBangerOptions(new Rng(s3), BANGER_DEFAULTS).parts.riffSound === 'random') newSounds++;
     assert(newSounds > 170 && newSounds < 230, `Surprise Me gives the riff a new sound more often than not (${newSounds} of 300)`);
     for (const C of [1, 2, 4, 8]) {
-      for (const v of ['faithful', 'some', 'wild']) {
+      for (const v of ['faithful', 'some', 'more', 'wild']) {
         const ops = planOps(C, v);
         check(ops.every((op) => OPS_BY_VARIATION[v].includes(op)), `cell ${C} at ${v} uses only ops its level allows`);
       }
@@ -163,6 +163,19 @@ try {
       }
       // Only the one bar that tells A from B may be heard once.
       assert(oneOffs.length <= 8, `every Wild departure comes back — heard once only where A and B differ: ${oneOffs.join(', ') || 'none'}`);
+    }
+    {
+      // MORE sits between Some and Wild: each phrase is Some's with one bar swapped for a Wild
+      // move — a leap or a fragment, never the rhythm shift.
+      let between = true;
+      for (const C of [1, 2, 4, 8]) {
+        for (const p of [0, 1]) {
+          const more = phrasePlan(C, 'more', p); const some = phrasePlan(C, 'some', p);
+          const changed = more.filter((step, i) => step.join() !== some[i].join());
+          if (changed.length !== 1 || !['leap', 'frag'].includes(changed[0][1]) || more.some(([, op]) => op === 'disp')) between = false;
+        }
+      }
+      assert(between, 'More is Some with one Wild move a phrase (a leap or a fragment, never a displacement)');
     }
     assert(!['invert', 'mirror', 'retrograde'].some((op) => Object.values(OPS_BY_VARIATION).flat().includes(op)),
       'no level may invert, mirror or retrograde the riff');

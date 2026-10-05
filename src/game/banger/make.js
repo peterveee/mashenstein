@@ -338,7 +338,7 @@ export const expressionVersionOf = (value) => (Number.isFinite(value) && value >
 export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false }) {
   if (!hasNotes(notes)) throw new Error('the grid is empty');
   const spot = spotFor(style, seed);
-  const selectedVariation = ['faithful', 'some', 'wild'].includes(variation) ? variation : (wild ? 'wild' : null);
+  const selectedVariation = ['faithful', 'some', 'more', 'wild'].includes(variation) ? variation : (wild ? 'wild' : null);
   const palette = savedPalette || (useCurrentPalette ? BANGER_PALETTE : null);
   const hasHookPalette = !!resolvePalette(palette, style, mood)?.['riff:hook']?.length;
   const voltageBpmBoost = voltageSettings(voltage).bpmBoost || 0;
