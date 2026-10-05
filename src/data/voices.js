@@ -6628,7 +6628,8 @@ const LEVELS = {
   seedChipstepBell: 0.055713, seedChipstepMegaSaw: 0.139676,
   seedChipstepArp: 0.055713, seedChipstepChoir: 0.028924,
   seedChipstepThird: 0.018027, seedChipstepCounter: 0.025058, djembeBass: 0.034,
-  djembeTone: 0.02, djembeSlap: 0.0268, talkingDrum: 0.0393, shekere: 0.0158
+  djembeTone: 0.02, djembeSlap: 0.0268, talkingDrum: 0.0393, shekere: 0.0158,
+  bongoHigh: 0.016, bongoLow: 0.0192
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -6859,7 +6860,8 @@ const PEAKS = {
   seedChipstepMegaSaw: 1.0017, seedChipstepArp: 0.6468,
   seedChipstepChoir: 0.182, seedChipstepThird: 0.2066,
   seedChipstepCounter: 0.3138, djembeBass: 0.7016, djembeTone: 0.5418,
-  djembeSlap: 0.7396, talkingDrum: 0.6896, shekere: 0.3637
+  djembeSlap: 0.7396, talkingDrum: 0.6896, shekere: 0.3637, bongoHigh: 0.7059,
+  bongoLow: 0.773
 };
 
 /**

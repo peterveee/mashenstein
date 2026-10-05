@@ -122,12 +122,30 @@ export const HERO_MOVES = Object.freeze([
 
 /**
  * B-33P's 8-BIT, now and then (Peter, 5 Oct 2026: "what if we fed the entire mix through the
- * gated rhythm effect for part of it"): while the band is on the 8-Bit set, the last bar of
- * every four is the whole mix chopped into sixteenths — the chip-tune gate. A master section,
- * like a hero's move, and never over one (club.js gateOn).
+ * gated rhythm effect for part of it"): while the band is on the 8-Bit set, the whole mix
+ * chopped into sixteenths — the chip-tune gate — for ONE bar, the last before a new section,
+ * and only sometimes (Peter, 6 Oct 2026: "only do the rhythm gating effect for 1 bar just before
+ * a new section. Occasional not too often"). A master section, like a hero's move, and never
+ * over one (club.js gateOn).
  */
 export const CHIP_GATE = Object.freeze([{ id: 'rhythmgate', params: { division: 0.25, gateLength: 0.55, attack: 0.002, decay: 0.02, depth: 0.9 } }]);
-export const CHIP_GATE_EVERY = 4;
+/** The chance a section change in 8-bit gets the gate on its last bar. */
+export const CHIP_GATE_CHANCE = 1 / 3;
+/**
+ * Whether the 0-based bar `bar` (the scheduler's, wrapping with the song) is the last before a
+ * new section of `form` — the song's loop back to the top counting as one.
+ */
+export function lastBarBeforeSection(form, bar) {
+  const total = (form || []).reduce((m, f) => Math.max(m, f.to || 0), 0);
+  if (!total) return false;
+  const songBar = (((bar % total) + total) % total) + 1;
+  return songBar === total || form.some((f) => f.from === songBar + 1);
+}
+/**
+ * The gate's own dice: the n-th section change it looks at, as 0–1. Its own, so the room's other
+ * Math.random draws — the dancing, the moments — never move because the band went 8-bit.
+ */
+export const chipGateRoll = (n) => (Math.imul(n ^ 0x2545f491, 2654435761) >>> 0) / 2 ** 32;
 
 /** The chip gate in at `when` (a bar line), on the grid of sixteenths `spb` long. */
 export function startChipGate(when, spb) {

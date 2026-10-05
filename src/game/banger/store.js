@@ -141,7 +141,7 @@ const variationOf = (variation, wild) => variation || (wild ? 'wild' : 'some');
  * made differently — so it is compared with the rest, and a new take writes it onto the record, or
  * the song just made and cached would be made differently the next time it is played.
  */
-export function keepBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, bpm, voltage = null, wild = false, variation = null, energy = 'full', expression = 0, production = null, paletteSnapshot = null, fresh = false, name = null }, save = defaultSave, random = Math.random) {
+export function keepBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, bpm, voltage = null, wild = false, variation = null, energy = 'full', expression = 0, production = null, paletteSnapshot = null, flavour = null, fresh = false, name = null }, save = defaultSave, random = Math.random) {
   const b = bangerState(save);
   const m = modeOf(mode).id;
   const grid = normaliseNotes(notes, m);
@@ -156,6 +156,8 @@ export function keepBanger({ notes, lengths = null, mode = 'simple', style, mood
     && JSON.stringify(last.paletteSnapshot || null) === JSON.stringify(paletteSnapshot || null)) {
     songs.delete(keyOf(last));
     Object.assign(last, { seed, bpm });
+    // A new take rolls its own flavour (make.js labFlavour), kept with it.
+    if (flavour) last.flavour = flavour; else delete last.flavour;
     writeExpression(last, expression);
     if (production) last.production = treatment;
     save.persist?.();
@@ -171,6 +173,8 @@ export function keepBanger({ notes, lengths = null, mode = 'simple', style, mood
   const rec = { v: RIFF_VERSION, n: b.next++, name: keptName, mode: m, notes: grid, lengths: [...(lengths || [])], style, mood, seed, bpm,
     voltage: voltageFor({ voltage, wild, variation, energy, production }), wild, energy };
   if (variation) rec.variation = variation;
+  // The flavour the take played (make.js labFlavour): kept, so a flavour added later never moves it.
+  if (flavour) rec.flavour = flavour;
   writeExpression(rec, expression);
   if (production) rec.production = treatment;
   if (paletteSnapshot) rec.paletteSnapshot = structuredClone(paletteSnapshot);
@@ -184,12 +188,13 @@ export function keepBanger({ notes, lengths = null, mode = 'simple', style, mood
  * and mood as edited and a fresh seed, under the same name and number. The old song is
  * dropped from the cache.
  */
-export function reviseBanger(rec, { notes, lengths = null, mode = rec.mode, style, mood, seed, bpm, voltage = rec.voltage ?? null, wild = !!rec.wild, variation = rec.variation ?? null, energy = rec.energy, expression = RECIPE_EXPRESSION, production = rec.production, paletteSnapshot = rec.paletteSnapshot }, save = defaultSave) {
+export function reviseBanger(rec, { notes, lengths = null, mode = rec.mode, style, mood, seed, bpm, voltage = rec.voltage ?? null, wild = !!rec.wild, variation = rec.variation ?? null, energy = rec.energy, expression = RECIPE_EXPRESSION, production = rec.production, paletteSnapshot = rec.paletteSnapshot, flavour = null }, save = defaultSave) {
   songs.delete(keyOf(rec));
   const m = modeOf(mode).id;
   Object.assign(rec, { mode: m, notes: normaliseNotes(notes, m), lengths: [...(lengths || [])], style, mood, seed, bpm,
     voltage: voltageFor({ voltage, wild, variation, energy, production }), wild, energy: energyOf(energy) });
   if (variation) rec.variation = variation; else delete rec.variation;
+  if (flavour) rec.flavour = flavour; else delete rec.flavour;
   // A revised song gets a fresh seed and so is made new: it opts into the current expression
   // version unless it is told otherwise, which is how a legacy recipe moves to the new policy.
   writeExpression(rec, expressionVersionOf(expression));
@@ -242,7 +247,7 @@ export function rememberBanger(rec, save = defaultSave) {
 }
 
 const songs = new Map();
-const keyOf = (r) => `${r.preset || ''}|${r.mode}|${r.style}|${r.mood}|${!!r.wild}|${variationOf(r.variation, r.wild)}|${energyOf(r.energy)}|${expressionVersionOf(r.expression)}|${JSON.stringify(normaliseTrackEffects(r.production))}|${JSON.stringify(r.paletteSnapshot || null)}|${r.seed}|${r.notes.join(',')}`;
+const keyOf = (r) => `${r.preset || ''}|${r.mode}|${r.style}|${r.mood}|${!!r.wild}|${variationOf(r.variation, r.wild)}|${energyOf(r.energy)}|${expressionVersionOf(r.expression)}|${JSON.stringify(normaliseTrackEffects(r.production))}|${JSON.stringify(r.paletteSnapshot || null)}|${r.flavour || ''}|${r.seed}|${r.notes.join(',')}`;
 
 /** The song for a recipe, made on first ask and kept for the session. */
 export function songFor(rec, prebuilt = null) {

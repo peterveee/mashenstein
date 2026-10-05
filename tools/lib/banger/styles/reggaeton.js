@@ -19,6 +19,7 @@
 // roll, impact, pump or stutter — every one still a switch.
 // Data only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
+import { twoBarChords, holdFirstHalf } from './flavours.js';
 
 export const REGGAETON = Object.freeze({
   id: 'reggaeton',
@@ -36,6 +37,16 @@ export const REGGAETON = Object.freeze({
   },
   // The pad holds the chords under the guitar's strums.
   padUnder: true,
+  // FLAVOURS (6 Oct 2026, flavours.js; REGGAETON_FLAVOURS below): the mood picks one.
+  flavours: [
+    { id: 'clasico', label: 'Clásico', note: 'The dembow, an 808, a strummed guitar and marimba' },
+    { id: 'romantico', label: 'Romántico', note: 'Soft: bongos, güira, a picked guitar, two-bar chords' },
+    { id: 'perreo', label: 'Perreo', note: 'Hard: a distorted 808, a loud dembow, clav stabs' },
+  ],
+  flavourByMood: {
+    moody: 'romantico', nostalgic: 'romantico', bittersweet: 'romantico', dreamy: 'romantico', lofi: 'romantico', hopeful: 'romantico', lament: 'romantico',
+    dark: 'perreo', boss: 'perreo', gothic: 'perreo', hypnotic: 'perreo', andalusian: 'perreo', funky: 'perreo',
+  },
   sectionLabels: {
     build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
@@ -124,3 +135,81 @@ export const REGGAETON = Object.freeze({
     shaker: 'PERC Shaker', congas: 'PERC Congas',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_flavour-sketches.mjs (6 Oct 2026)
+export const REGGAETON_FLAVOURS = Object.freeze([
+  {
+    // ROMÁNTICO — 88. The dembow kept light on a rim, bongos playing the martillo, a güira,
+    // a nylon guitar picking the chords (the arp) over a warm pad (Chords = Piano Stabs
+    // plays as Pad), a round bass on the 3-3-2, every chord held two bars.
+    id: 'romantico', label: 'Romántico',
+    reshape: twoBarChords,
+    remapParts: { chords: { piano: 'pad' } },
+    // No sweep and no boom: it eases into a chorus.
+    remap: { fx: { riser: { true: false } }, drums: { impact: { true: false } } },
+    recipe: {
+      bpm: 88,
+      tempoRange: [82, 94],
+      enter: { arp: 0 },
+      drums: {
+        ...REGGAETON.drums,
+        hats16: 'x.x.x.x.x.x.x.x.',
+        hats8: 'x...x...x...x...',
+        perc: { ...REGGAETON.drums.perc, shaker: 'x.x.x.x.x.x.x.x.', congas: 'x.xxx.xxx.xxx.xx' },
+        fills: [
+          { snare: '................', tom: '......x.......x.' },
+          { snare: '................', tom: '......x.....x.x.' },
+        ],
+      },
+      rhythms: { ...REGGAETON.rhythms, offbeat: 'R:3 . . R:3 . . R:2 . R:3 . . R:3 . . 5:2 .', arp: '0 . 1 2 . 1 2 . 0 . 1 2 . 1 3 .' },
+      centres: { ...REGGAETON.centres, arp: 'E4', pad: 'E4' },
+      strips: {
+        ...REGGAETON.strips,
+        clap: { gain: 1, pan: 0.1, send: { reverb: 0.2 } },
+        snare: { gain: -10, send: { reverb: 0.2 } },
+        hats: { gain: -6, pan: -0.25 },
+        shaker: { gain: -12, pan: 0.25 },
+        congas: { gain: -5, pan: 0.3, send: { reverb: 0.15 } },
+        fill: { gain: -5, pan: 0.35, send: { reverb: 0.15 } },
+        bass: { gain: -2 },
+        arp: { gain: -4, pan: -0.2, send: { delay: 0.15, reverb: 0.3 } },
+        pad: { gain: -7, eq: { low: -6 }, send: { reverb: 0.5 } },
+        hook: { gain: -4, send: { delay: 0.3, reverb: 0.5 } },
+      },
+      labels: { ...REGGAETON.labels, clap: 'DEMBOW Rim', hats: 'GÜIRA', shaker: 'PERC Shaker', congas: 'BONGO Macho', fill: 'BONGO Hembra', arp: 'GUITAR Nylon', bass: 'BASS' },
+    },
+  },
+  {
+    // PERREO — 96. A distorted 808 under a kick on every beat, the dembow snare loud and dry,
+    // sixteenth hats rolling, the first chord held half the walk and stabbed short on a clav
+    // (the guitar's strums become stabs), and a high pluck answering itself (the arp).
+    id: 'perreo', label: 'Perreo',
+    reshape: holdFirstHalf,
+    recipe: {
+      bpm: 96,
+      tempoRange: [92, 102],
+      drums: {
+        ...REGGAETON.drums,
+        hats16: ['x.x.x.x.x.x.xxxx', 'x.x.x.x.xxx.x.x.'],
+        hats8: 'x.x.x.x.x.x.x.x.',
+        ohats: '..............x.',
+      },
+      rhythms: {
+        ...REGGAETON.rhythms,
+        offbeat: 'R:3 . . R:1 . . R:2 . R:4 . . . O:2 . R:2 .',
+        pianoStabs: 'x:1 . . x:1 . . . . . . . x:1 . . . .',
+        arp: '. . . . . . . . 0 . 1 . 2 . . 1',
+      },
+      strips: {
+        ...REGGAETON.strips,
+        clap: { gain: 8, send: { reverb: 0.1 } },
+        hats: { gain: 1, pan: -0.15 },
+        bass: { gain: -2, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 1600, Q: 0.7 } }] },
+        piano: { gain: -4, pan: 0.15, send: { delay: 0.25, reverb: 0.3 } },
+        arp: { gain: -7, pan: -0.1, send: { delay: 0.3, reverb: 0.3 } },
+        pad: { gain: -14, eq: { low: -6 }, send: { reverb: 0.4 } },
+      },
+      labels: { ...REGGAETON.labels, bass: '808 Dist', piano: 'STAB', arp: 'PLUCK Riff' },
+    },
+  },
+]);

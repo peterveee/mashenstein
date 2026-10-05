@@ -114,12 +114,18 @@ export function labFlavour(style, mood, seed = null, voltage = null) {
   const others = st.flavours.map((f) => f.id).filter((id) => id !== own);
   return others[Math.floor(rollOf(seed, 0x3c6ef372) * others.length)];
 }
-/** Whose row of the sounds table a take plays: the style's, its Sound Set's, or its flavour's. */
-function soundsIdFor(style, seed, voltage, mood = null) {
-  const set = soundSetOf(styleFor(style), labSoundSet(style, seed, voltage))?.id;
-  if (set) return set;
-  const flavour = labFlavour(style, mood, seed, voltage);
-  return flavour && flavour !== styleFor(style)?.flavours?.[0]?.id ? `${style}-${flavour}` : style;
+/** Whether `flavour` is the style's own arrangement (or the style has none). */
+const ownFlavour = (style, flavour) => !flavour || flavour === styleFor(style)?.flavours?.[0]?.id;
+/**
+ * Whose row of the sounds table a take plays: a flavour's (one not the style's own — it has its
+ * own sounds, phone-light where the style's Lab set is), else the style's Sound Set's, else the
+ * style's. `flavour` is the take's kept one; without it, rolled as labFlavour rolls it.
+ */
+function soundsIdFor(style, seed, voltage, mood = null, flavour = null) {
+  const f = flavour ?? labFlavour(style, mood, seed, voltage);
+  if (!ownFlavour(style, f) && BANGER_SOUNDS[`${style}-${f}`]) return `${style}-${f}`;
+  const set = seed == null ? LAB_SOUND_SETS[style]?.set : labSoundSet(style, seed, voltage);
+  return soundSetOf(styleFor(style), set)?.id ?? style;
 }
 
 /** Every mood plays in every style; show them alphabetically in the Lab. */
@@ -135,9 +141,9 @@ export const moodLabel = (id) => MAKER_MOODS.find((m) => m.id === id)?.label ?? 
  * Grand for Big-Room House and Trance) — never on the plain lead the grid previews
  * with. Peter, 3 Oct 2026.
  */
-export function hookSoundFor(styleId, moodId, seed = null, voltage = null) {
+export function hookSoundFor(styleId, moodId, seed = null, voltage = null, flavour = null) {
   // With no seed (a preview), the Lab's own set for the style rather than an occasional one.
-  const id = seed == null ? (soundSetOf(styleFor(styleId), LAB_SOUND_SETS[styleId]?.set)?.id ?? soundsIdFor(styleId, null, null, moodId)) : soundsIdFor(styleId, seed, voltage, moodId);
+  const id = soundsIdFor(styleId, seed, voltage, moodId, flavour);
   return resolveSounds(BANGER_SOUNDS, id, moodId).random?.hook?.[0] ?? 'simpleSquare';
 }
 
@@ -364,7 +370,7 @@ export const expressionVersionOf = (value) => (Number.isFinite(value) && value >
  * A recipe → the song: { bank, mix, arrangement, bpm }. Throws if the generator
  * refuses (an empty grid, an unknown style).
  */
-export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false }) {
+export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false, flavour: keptFlavour = null }) {
   if (!hasNotes(notes)) throw new Error('the grid is empty');
   const spot = spotFor(style, seed);
   const selectedVariation = ['faithful', 'some', 'more', 'wild'].includes(variation) ? variation : (wild ? 'wild' : null);
@@ -384,8 +390,10 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const slides = expressionVersionOf(expression) >= 2 ? !!wild
     : selectedVariation === 'wild' && expressionVersionOf(expression) >= 1;
   const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed) : {};
-  const soundSet = labSoundSet(style, seed, voltage);
-  const flavour = labFlavour(style, mood, seed, voltage);
+  // The take's flavour: the one its recipe kept (maker.js, so a flavour added later never moves a
+  // saved song), else rolled. One that is not the style's own plays instead of the Lab's Sound Set.
+  const flavour = keptFlavour ?? labFlavour(style, mood, seed, voltage);
+  const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
@@ -398,7 +406,7 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     ...(rolls.form ? { form: rolls.form } : {}),
     ...(Object.keys(spot).length || rolls.spot ? { spot: { ...rolls.spot, ...spot } } : {}),
   };
-  const out = generateBanger({ riff: riffFromNotes(notes, hookSoundFor(style, mood, seed, voltage), mode, lengths), options, seed,
+  const out = generateBanger({ riff: riffFromNotes(notes, hookSoundFor(style, mood, seed, voltage, flavour), mode, lengths), options, seed,
     palette });
   const lane = out.laneOf?.hook;
   const strip = lane && out.mix.lanes?.[lane];
@@ -412,6 +420,6 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   return { bank: out.bank, mix: out.mix, arrangement: out.arrangement, bpm: out.bank.bpm,
     trackEffects: out.trackEffects,
     paletteSnapshot: out.banger.paletteSnapshot,
-    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style', soundsId: soundsIdFor(style, seed, voltage, mood),
+    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style', soundsId: soundsIdFor(style, seed, voltage, mood, flavour),
     form: (out.form || []).map((f) => ({ role: f.role, type: f.type, from: f.from, to: f.to })) };
 }

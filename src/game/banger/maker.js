@@ -43,7 +43,7 @@ import {
   normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes,
 } from './riff.js';
 import { GAME_RIFF_ODDS, pickGameRiff, gameRiffGrid } from './game-riffs.js';
-import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION } from './make.js';
+import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour } from './make.js';
 import { styleFor } from '../../../tools/lib/banger/styles/index.js';
 import { bangerState, saveDraft, pendingRecipe } from './store.js';
 import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
@@ -569,6 +569,9 @@ export class BangerMakerState {
     // sound, and by voltage a new bass line and chord gate); an old recipe kept without it is made as it was.
     const recipe = { notes: this.notes, lengths: this.lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
       production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed() };
+    // The flavour the take plays, kept with it (make.js labFlavour): a flavour added to the style later
+    // never moves a saved song. Null for a style without flavours.
+    recipe.flavour = labFlavour(recipe.style, recipe.mood, recipe.seed, recipe.voltage);
     let song;
     try {
       song = makeBanger({ ...recipe, useCurrentPalette: true });

@@ -11,10 +11,10 @@ import { EUROBEAT } from './eurobeat.js';
 import { CHIPSTEP } from './chipstep.js';
 import { CHIPSTEP_LITE } from './chipstep-lite.js';
 import { CHIPSTEP_8BIT } from './chipstep-8bit.js';
-import { SYNTHWAVE } from './synthwave.js';
+import { SYNTHWAVE, SYNTHWAVE_FLAVOURS } from './synthwave.js';
 import { SYNTHWAVE_LITE } from './synthwave-lite.js';
 import { SHIBUYA } from './shibuya.js';
-import { DNB } from './dnb.js';
+import { DNB, DNB_FLAVOURS } from './dnb.js';
 import { ELECTRO } from './electro.js';
 import { MEGADRIVE } from './megadrive.js';
 import { DEEP_HOUSE } from './deep-house.js';
@@ -24,7 +24,7 @@ import { ELECTRO_FUNK } from './electro-funk.js';
 import { FRENCH_HOUSE } from './french-house.js';
 import { EURODANCE } from './eurodance.js';
 import { ITALO_DISCO } from './italo-disco.js';
-import { REGGAETON } from './reggaeton.js';
+import { REGGAETON, REGGAETON_FLAVOURS } from './reggaeton.js';
 import { MOOMBAHTON } from './moombahton.js';
 import { MERENHOUSE } from './merenhouse.js';
 import { AFRO_HOUSE, AFRO_HOUSE_FLAVOURS } from './afro-house.js';
@@ -45,6 +45,9 @@ export const BANGER_SOUND_SETS = Object.freeze([CHIPSTEP_LITE, CHIPSTEP_8BIT, SY
 // sounds.js. Not in the style list: a take turns out to be one (the `flavour` option, flavourOf).
 export const BANGER_FLAVOURS = Object.freeze([
   ...AFRO_HOUSE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(AFRO_HOUSE), def)),
+  ...REGGAETON_FLAVOURS.map((def) => makeFlavour(withSharedMoods(REGGAETON), def)),
+  ...SYNTHWAVE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(SYNTHWAVE), def)),
+  ...DNB_FLAVOURS.map((def) => makeFlavour(withSharedMoods(DNB), def)),
 ]);
 const BY_ID = new Map([...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].map((s) => [s.id, s]));
 

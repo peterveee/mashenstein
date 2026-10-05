@@ -74,5 +74,39 @@ assert(flavourOf(styleFor('big-room'), 'random', { seed: 5 }) === null && flavou
   `the Lab plays the mood's flavour, and now and then another — never on Safe, more often the higher the voltage (${by.join(', ')} of 300)`);
 }
 
+// ---- every style with flavours (Reggaeton, Synthwave, Drum & Bass joined Afro House, 6 Oct 2026)
+{
+  const flavoured = BANGER_STYLES.filter((st) => st.flavours?.length);
+  assert(['afro-house', 'reggaeton', 'synthwave', 'dnb'].every((id) => flavoured.some((st) => st.id === id)),
+    `the flavoured styles: ${flavoured.map((st) => st.id).join(', ')}`);
+  for (const st of flavoured) {
+    const own = st.flavours[0].id;
+    const others = st.flavours.slice(1).map((f) => f.id);
+    const dflt = normaliseBangerOptions({ style: st.id }, st).options.mood;
+    assert(moodFlavour(st, dflt) === own && others.every((f) => BANGER_FLAVOURS.some((x) => x.id === `${st.id}-${f}`)),
+      `${st.id}: its default mood plays its own arrangement (${own}); ${others.join(' and ')} are recipes of their own`);
+    for (const f of others) {
+      const mood = Object.keys(st.flavourByMood).find((m) => st.flavourByMood[m] === f);
+      const take = generateBanger({ riff, options: { style: st.id, mood }, seed: 4 });
+      assert(take.banger.flavour === f && take.bank.bpm === styleFor(`${st.id}-${f}`).bpm
+        && Object.values(take.mix.lanes).every((l) => !('pan' in l) || Number.isFinite(l.pan)),
+      `${st.id}: ${mood} plays ${f} at ${take.bank.bpm} BPM, every pan a number`);
+    }
+  }
+  // Synthwave's flavours are phone-light, so the Lab (which plays synthwave on the Light set)
+  // can land on them — a flavour that is not the style's own plays instead of the set.
+  const { makeBanger, labFlavour } = await import('../src/game/banger/make.js');
+  const { DEFAULT_SIMPLE } = await import('../src/game/banger/riff.js');
+  assert(['synthwave-outrun', 'synthwave-darksynth'].every((id) => styleFor(id).phone), 'Synthwave\'s flavours are phone-light');
+  const night = makeBanger({ notes: DEFAULT_SIMPLE, style: 'synthwave', mood: 'anthemic', seed: 7, expression: 3, voltage: 0 });
+  const dark = makeBanger({ notes: DEFAULT_SIMPLE, style: 'synthwave', mood: 'dark', seed: 7, expression: 3, voltage: 0 });
+  assert(night.soundsId === 'synthwave-lite' && dark.soundsId === 'synthwave-darksynth' && dark.bpm === 112,
+    `the Lab plays synthwave's own on the Light set, and Darksynth on its own sounds (${night.soundsId}, ${dark.soundsId})`);
+  // A flavour kept with the recipe is the one played, whatever the roll would say now.
+  const kept = makeBanger({ notes: DEFAULT_SIMPLE, style: 'reggaeton', mood: 'uplifting', seed: 7, expression: 3, voltage: 0, flavour: 'perreo' });
+  assert(labFlavour('reggaeton', 'uplifting', 7, 0) === 'clasico' && kept.soundsId === 'reggaeton-perreo' && kept.bpm === 96,
+    'a saved song plays the flavour its recipe kept, not whatever a re-roll would give now');
+}
+
 if (failed) { console.error('\nbanger-flavours: FAILED'); process.exit(1); }
 console.log('\nbanger-flavours: all passed');

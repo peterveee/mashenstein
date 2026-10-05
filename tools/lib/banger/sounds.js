@@ -3174,4 +3174,599 @@ export const BANGER_SOUNDS = {
     },
     never: [],
   },
+  "reggaeton-romantico": {
+    parts: {
+      bass: "tngrRoundBass", sub: "seedReggaetonSub", square: "seedReggaetonSquare",
+      squareDense: "marimba", bell: "seedReggaetonBell", megaSaw: "seedReggaetonMegaSaw",
+      third: "seedReggaetonThird", arp: "mrdrAcousticGuitar", counter: "seedReggaetonCounter",
+      choir: "seedReggaetonChoir", saws: "tngrWarmStrings", pad: "tngrWarmStrings",
+      piano: "seedReggaetonPiano", impact: "seedReggaetonImpact", shaker: "dsShaker",
+      tambourine: "seedReggaetonTambourine", congas: "bongoHigh", cowbell: "seedReggaetonCowbell",
+      ride: "seedReggaetonRide", fallbackMelodic: "mrdrVocalOh",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds808Kick", snare: "clvRosewood", clap: "clvRosewood",
+        hats: "guiraChk", ohats: "seedReggaetonOhats", crash: "seedReggaetonCrash",
+        fill: "bongoLow",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
+    },
+    random: {
+      hook: ["mrdrVocalOh", "tngrAirFlute", "mrdrAcousticGuitar", "tpKalimba", "tngrDataMarimba"],
+      counter: ["tngrDataMarimba", "tpKalimba", "koto", "marimba", "tngrWireHarp"],
+      bass: ["tngrRoundBass", "stSubSine", "roundBass", "tngrPickedBass"],
+      chords: ["tngrWarmStrings", "tngrCloudMemory", "warmPad", "tngrDreamCircuit"],
+    },
+    choices: {
+      saws: ["warmPad"],
+      pad: ["tngrCloudMemory", "warmPad"],
+      arp: ["tngrWireHarp"],
+      choir: ["jmjrChoirAah"],
+      bell: ["marimba"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  "reggaeton-perreo": {
+    parts: {
+      bass: "mrdrDist808", sub: "seedReggaetonSub", square: "seedReggaetonSquare",
+      squareDense: "marimba", bell: "seedReggaetonBell", megaSaw: "seedReggaetonMegaSaw",
+      third: "seedReggaetonThird", arp: "tngrDataMarimba", counter: "seedReggaetonCounter",
+      choir: "seedReggaetonChoir", saws: "tngrPolarDrift", pad: "tngrPolarDrift",
+      piano: "bestPwmClav", impact: "seedReggaetonImpact", shaker: "seedReggaetonShaker",
+      tambourine: "seedReggaetonTambourine", congas: "seedReggaetonCongas", cowbell: "seedReggaetonCowbell",
+      ride: "seedReggaetonRide", fallbackMelodic: "tngrDataMarimba",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds808Kick", snare: "snareTight", clap: "snareTight",
+        hats: "hatGrit", ohats: "ds808OpenHat", crash: "seedReggaetonCrash",
+        fill: "seedReggaetonFill",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
+    },
+    random: {
+      hook: ["tngrDataMarimba", "bestPwmClav", "marimba", "tngrWireHarp", "tpKalimba"],
+      counter: ["tngrDataMarimba", "tpKalimba", "koto", "marimba", "tngrWireHarp"],
+      bass: ["mrdrDist808", "stSubSine", "tngrRoundBass", "roundBass"],
+      chords: ["bestPwmClav", "tngrPolarDrift", "tngrDreamCircuit", "warmPad"],
+    },
+    choices: {
+      saws: ["warmPad"],
+      pad: ["warmPad", "tngrCloudMemory"],
+      arp: ["marimba"],
+      choir: ["jmjrChoirAah"],
+      bell: ["marimba"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  "synthwave-outrun": {
+    parts: {
+      bass: "tngrNightSequence", sub: "stSubSine", square: "tngrHorizonSolo",
+      squareDense: "tngrHorizonSolo", bell: "tngrIceBell", megaSaw: "tngrNeonReed",
+      third: "tngrDigitalEp84", arp: "tngrCrystalTrigger", counter: "tngrBrassSection",
+      choir: "tngrGlassChoir", saws: "tngrWarmStrings", pad: "tngrBurntHorizon",
+      piano: "tngrDigitalEp84", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "tngrHorizonSolo",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ohat909SixBit", crash: "ds909Crash",
+        fill: "sdsTomHigh",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
+    },
+    random: {
+      hook: [
+        "tngrHorizonSolo", "tngrBerlinSignal", "tngrNeonReed", "tngrClassicSquare",
+        "tngrCrystalTrigger", "tngrRubyScanner"
+      ],
+      counter: [
+        "tngrIceBell", "tngrCrystalTrigger", "tngrDigitalEp84", "rmndDxPiano",
+        "tngrBrassSection", "tngrAlloyChime", "tngrNeonReed"
+      ],
+      bass: [
+        "tngrNightSequence", "bass80sFM", "tngrOrangeCurrent", "tngrGlassMotor",
+        "tngrHollowVector", "rmndDxPop"
+      ],
+      chords: [
+        "tngrWarmStrings", "tngrSoftStrings", "tngrBrassSection", "tngrGlassChoir",
+        "rmndTineEP", "tngrBurntHorizon", "tngrPolarDrift", "tngrDigitalEp84"
+      ],
+    },
+    choices: {
+      saws: ["tngrSoftStrings"],
+      pad: ["tngrDreamCircuit", "tngrPolarDrift"],
+      arp: ["tngrWireHarp", "tngrDataMarimba"],
+      bell: ["tngrCelesta", "tngrMusicBell"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  "synthwave-darksynth": {
+    parts: {
+      bass: "tngrHollowVector", sub: "stSubSine", square: "tngrRubyScanner",
+      squareDense: "tngrHorizonSolo", bell: "tngrIceBell", megaSaw: "tngrNeonReed",
+      third: "tngrDigitalEp84", arp: "tngrCrystalTrigger", counter: "tngrBrassSection",
+      choir: "tngrGlassChoir", saws: "tngrBurntHorizon", pad: "tngrBurntHorizon",
+      piano: "tngrBrassSection", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "tngrRubyScanner",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "hatGrit", ohats: "ohat909SixBit", crash: "ds909Crash",
+        fill: "sdsTomHigh",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
+    },
+    random: {
+      hook: [
+        "tngrRubyScanner", "tngrBerlinSignal", "tngrHorizonSolo", "tngrClassicSquare",
+        "tngrNeonReed"
+      ],
+      counter: [
+        "tngrIceBell", "tngrCrystalTrigger", "tngrDigitalEp84", "rmndDxPiano",
+        "tngrBrassSection", "tngrAlloyChime", "tngrNeonReed"
+      ],
+      bass: ["tngrHollowVector", "tngrGlassMotor", "bass80sFM", "tngrNightSequence"],
+      chords: [
+        "tngrWarmStrings", "tngrSoftStrings", "tngrBrassSection", "tngrGlassChoir",
+        "rmndTineEP", "tngrBurntHorizon", "tngrPolarDrift", "tngrDigitalEp84"
+      ],
+    },
+    choices: {
+      saws: ["tngrSoftStrings"],
+      pad: ["tngrDreamCircuit", "tngrPolarDrift"],
+      arp: ["tngrWireHarp", "tngrDataMarimba"],
+      bell: ["tngrCelesta", "tngrMusicBell"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  "dnb-liquid": {
+    parts: {
+      bass: "tngrRoundBass", sub: "stSubSine", square: "tngrWireHarp",
+      squareDense: "tngrWireHarp", bell: "tngrIceBell", megaSaw: "bestPwmHollowLead",
+      third: "rmndTineEP", arp: "tngrCrystalTrigger", counter: "tngrAlloyChime",
+      choir: "tngrGlassChoir", saws: "bestPwmPadWide", pad: "tngrGlassChoir",
+      piano: "rmndTineEP", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "mrdrVocalOh",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds909KickPunch", snare: "snareTight", clap: "dsCrackSnare2",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
+    },
+    random: {
+      hook: ["mrdrVocalOh", "rmndTineEP", "tngrAirFlute", "tngrWireHarp", "tngrIceBell"],
+      counter: ["tngrIceBell", "tngrAlloyChime", "tngrCrystalTrigger", "rmndTineEP", "tngrWireHarp"],
+      bass: ["tngrRoundBass", "tngrNightSequence", "bestReeseBass", "bass80sFM"],
+      chords: ["rmndTineEP", "tngrGlassChoir", "tngrPolarDrift", "tngrCloudMemory"],
+    },
+    choices: {
+      saws: ["tngrDreamCircuit"],
+      pad: ["tngrPolarDrift", "tngrCloudMemory"],
+      arp: ["tngrWireHarp", "bestSampleHoldPulse"],
+      choir: ["bestChoirOoh"],
+      bell: ["tngrAlloyChime"],
+    },
+    moods: {
+    },
+    never: [],
+  },
+  "dnb-neuro": {
+    parts: {
+      bass: "bestReeseBass", sub: "tngrDigitalGrowl", square: "tngrWireHarp",
+      squareDense: "tngrWireHarp", bell: "tngrIceBell", megaSaw: "bestPwmHollowLead",
+      third: "rmndTineEP", arp: "tngrCrystalTrigger", counter: "tngrAlloyChime",
+      choir: "tngrGlassChoir", saws: "bestPwmPadWide", pad: "tngrPolarDrift",
+      piano: "bestPwmClav", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "rmndTineEP",
+    },
+    kits: {
+      "808": {
+        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
+        hats: "hatGrit", ohats: "ds808OpenHat", fill: "ds808Tom",
+      },
+      "909": {
+        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      style: {
+        kick: "ds909KickPunch", snare: "dsCrackSnare2", clap: "dsCrackSnare2",
+        hats: "hatGrit", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      studio: {
+        kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
+        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
+      },
+      ds: {
+        kick: "dsKick", snare: "dsSnare", clap: "dsClap",
+        hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
+      },
+      cr78: {
+        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
+        hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
+    },
+    random: {
+      hook: ["bestPwmClav", "tngrCrystalTrigger", "tngrWireHarp", "tngrAlloyChime"],
+      counter: ["tngrIceBell", "tngrAlloyChime", "tngrCrystalTrigger", "rmndTineEP", "tngrWireHarp"],
+      bass: ["bestReeseBass", "tngrHollowVector", "tngrGlassMotor", "detuneBass"],
+      chords: ["bestPwmClav", "tngrPolarDrift", "tngrGlassChoir", "rmndTineEP"],
+    },
+    choices: {
+      saws: ["tngrDreamCircuit"],
+      pad: ["glassPad", "tngrBurntHorizon", "layerDreamPad"],
+      arp: ["tngrWireHarp", "bestSampleHoldPulse"],
+      choir: ["bestChoirOoh"],
+      bell: ["tngrAlloyChime"],
+    },
+    moods: {
+    },
+    never: [],
+  },
 };

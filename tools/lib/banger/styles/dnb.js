@@ -9,6 +9,7 @@
 // drums are replaced by default: a four-on-the-floor riff would undo the two-step. Data
 // only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
+import { holdTheOne } from './flavours.js';
 
 const SEVENTHS = { colour: { '': 'maj7', m: 'm9' } };
 
@@ -18,6 +19,16 @@ export const DNB = Object.freeze({
   note: '174 · two-step breaks, reese bass, held pads',
   title: '174 BPM: the two-step beat with ghost notes, shuffling hats, a reese bass under held pads, a pluck doubling the hook. Moody by default, the riff\'s own drums replaced',
   bpm: 174,
+  // FLAVOURS (6 Oct 2026, flavours.js; DNB_FLAVOURS below): the mood picks one.
+  flavours: [
+    { id: 'rolling', label: 'Rolling', note: 'Two-step, a reese holding two notes a bar, held pads, a pluck' },
+    { id: 'liquid', label: 'Liquid', note: 'Soulful: a round sub, Rhodes in sevenths and ninths, an airy pad' },
+    { id: 'neuro', label: 'Neuro', note: 'Technical: a reese in jabs, a growl biting, clipped stabs, one chord' },
+  ],
+  flavourByMood: {
+    nostalgic: 'liquid', dreamy: 'liquid', lofi: 'liquid', bittersweet: 'liquid', lounge: 'liquid', hopeful: 'liquid', uplifting: 'liquid',
+    dark: 'neuro', gothic: 'neuro', boss: 'neuro', hypnotic: 'neuro', andalusian: 'neuro',
+  },
   tempoRange: [166, 178],
   defaults: {
     mood: 'moody',
@@ -107,3 +118,65 @@ export const DNB = Object.freeze({
     pad: 'PAD', saws: 'CHORDS',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_flavour-sketches.mjs (6 Oct 2026)
+// Every plain chord a seventh, every minor a ninth: liquid never plays a bare triad.
+const SOUL = (m) => ({ ...m, colour: { '': 'maj7', m: 'm9', ...Object.fromEntries(Object.entries(m.colour || {}).filter(([, v]) => v && v !== 'm')) } });
+export const DNB_FLAVOURS = Object.freeze([
+  {
+    // LIQUID — a round sub holding long notes (Bass = Reese plays the two-step sub), Rhodes
+    // chords in sevenths and ninths (the pad becomes the Rhodes, the pad held under it), a
+    // breathy hook.
+    id: 'liquid', label: 'Liquid',
+    recolour: SOUL,
+    remapParts: { bass: { reese: 'offbeat' }, chords: { pad: 'piano' } },
+    recipe: {
+      padUnder: true,
+      rhythms: {
+        ...DNB.rhythms,
+        offbeat: 'R:6 . . . . . R:2 . . . R:4 . . . 5:2 .',
+        pianoStabs: 'x:3 . . . . . x:2 . . . x:4 . . . . .',
+      },
+      centres: { ...DNB.centres, bassFloor: 'C1', piano: 'E4', pad: 'A4' },
+      strips: {
+        ...DNB.strips,
+        bass: { gain: 0 },
+        piano: { gain: -3, pan: -0.1, send: { delay: 0.2, reverb: 0.35 }, effects: [{ id: 'chorus', params: { wet: 0.3 } }] },
+        pad: { gain: -9, eq: { low: -6 }, send: { reverb: 0.6 } },
+        hook: { gain: -4, send: { delay: 0.3, reverb: 0.6 } },
+      },
+      labels: { ...DNB.labels, bass: 'BASS Round', piano: 'RHODES', pad: 'PAD Air' },
+    },
+  },
+  {
+    // NEURO — a reese in sixteenth jabs (Bass = Reese plays them), a growl biting on the
+    // off-beats (the Sub, on), a clipped stab (the pad becomes stabs), one chord for six bars,
+    // a tight two-step.
+    id: 'neuro', label: 'Neuro',
+    reshape: holdTheOne,
+    remapParts: { bass: { reese: 'offbeat' }, chords: { pad: 'piano' } },
+    remap: { parts: { sub: { false: true } } },
+    recipe: {
+      drums: {
+        ...DNB.drums,
+        kick: ['x.........x.....', 'x.x.......x.....'],
+        clap: '....x.......x...',
+        hats16: 'x.x.x.x.x.x.x.x.',
+      },
+      rhythms: {
+        ...DNB.rhythms,
+        offbeat: 'R:1 . R:1 . . R:2 . R:1 R:1 . . R:2 . . R:1 .',
+        subOff: '. . . . . . O:1 . . . . . . O:1 . O:1',
+        pianoStabs: '. . x:1 . . . . . . . x:1 . . . . .',
+      },
+      centres: { ...DNB.centres, subFloor: 'E1' },
+      strips: {
+        ...DNB.strips,
+        bass: { gain: -1, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 1200, Q: 1.2 } }] },
+        sub: { gain: -6, effects: [{ id: 'filter', params: { type: 'bandpass', frequency: 900, Q: 1.5 } }] },
+        piano: { gain: -6, pan: 0.2, send: { delay: 0.3, reverb: 0.25 } },
+      },
+      labels: { ...DNB.labels, bass: 'BASS Reese', sub: 'GROWL', piano: 'STAB' },
+    },
+  },
+]);

@@ -782,6 +782,47 @@ the Banger Sounds page. They are not in the style list. What decides the flavour
 **New presets** (`src/data/voices.js`, Perc): **Djembe · Bass**, **Djembe · Tone**, **Djembe
 · Slap**, **Talking Drum** (its pitch bends up) and **Shekere**.
 
+**More flavours** (6 Oct 2026, from `work/local/_flavour-sketches.mjs`, WAVs in
+`work/auditions/flavour-sketches/`). In each style below, the first one listed is its own
+sound. Unless noted, the moods not named play the style's own sound.
+
+- **Reggaeton**: Clásico (its own).
+  - **Romántico**, 88: the dembow on a rim, **Bongo · Macho** playing the martillo (the
+    Congas slot) and **Bongo · Hembra** in the fills, a güira, and a nylon guitar picking
+    the chords (the arp) over a warm pad. Each chord is held for two bars. There is no
+    sweep or boom into a chorus. Played by Moody, Nostalgic, Bittersweet, Dreamy, Lo-Fi,
+    Hopeful and Lament.
+  - **Perreo**, 96: a distorted 808, a loud dry dembow snare, rolling hats, the first chord
+    held for half the walk and stabbed on a clav, and a pluck riff. Played by Dark, Boss
+    Fight, Gothic, Hypnotic, Andalusian and Funky.
+- **Synthwave**: Night Drive (its own).
+  - **Outrun**, 128: an octave bass racing (Bass = Off-Beat plays Rolling), the arp from the
+    first bar, two-bar chords and a hero lead. Played by Uplifting, Euphoric, Heroic,
+    Sunshine, Hopeful and Wonder.
+  - **Darksynth**, 112: a half-time kick, a huge gated snare on three, a distorted bass in
+    jabs, and brass stabbing the chords (the second brass is turned off). Played by Dark,
+    Gothic, Boss Fight, Hypnotic, Andalusian and Lament.
+  - Both are **phone-light** (`phone: true`, no MRDR-3 or JMJR-4). The Lab plays synthwave's
+    own sound on the Light set, and when it lands on one of these flavours it plays the
+    flavour instead.
+- **Drum & Bass**: Rolling (its own).
+  - **Liquid**: a round bass holding long notes and **Rhodes** in sevenths and ninths
+    (`recolour`), with the pad held under them. Played by Nostalgic, Dreamy, Lo-Fi,
+    Bittersweet, Lounge, Hopeful and Uplifting.
+  - **Neuro**: a reese in sixteenth jabs, a **Digital Growl** biting on the off-beats (the
+    Sub, switched on) and a clipped clav stab, with one chord held for six bars. Played by
+    Dark, Gothic, Boss Fight, Hypnotic and Andalusian.
+
+Besides `reshape` and `remapParts`, a flavour can have:
+
+- `remap`, which moves any switch in any group, off as well as on (Romántico turns the
+  riser and impact off);
+- `recolour`, which rewrites every mood's chord colours.
+
+A mood that picks a flavour leaves the bass to the flavour, instead of switching to the
+mood's suggested bass. **The Lab keeps the flavour with the saved song** (`recipe.flavour`),
+so a flavour added later never changes a song that is already saved.
+
 **To give another style flavours:** add `flavours` (its own first) and `flavourByMood` to
 the style, export the flavour definitions from its file and add them to `BANGER_FLAVOURS`
 in `styles/index.js`, then give each flavour a row in `sounds.js`.

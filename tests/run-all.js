@@ -168,6 +168,8 @@ const suites = [
   'tests/banger-sounds.js',
   // A style's other arrangements, chosen by the mood, by name, or by the Lab's voltage.
   'tests/banger-flavours.js',
+  // B-33P's 8-bit gate: one bar before a new section, now and then.
+  'tests/club-chip-gate.js',
   'tests/creative-drum-kits.js',
   // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
   // drawn in the editor — each fitting every length, hanging together, re-made exactly.

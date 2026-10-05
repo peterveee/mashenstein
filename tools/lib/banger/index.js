@@ -178,6 +178,13 @@ export function generateBanger({
   const flavour = set ? null : flavourOf(recipe, options.flavour, { seed: s, mood: options.mood });
   // (A set asked for by its own id — the Banger Sounds page's audition — is played as itself.)
   for (const [k, swap] of Object.entries((set || flavour || recipe).remapParts || {})) if (swap[options.parts[k]]) options.parts[k] = swap[options.parts[k]];
+  // A flavour may move any switch, off as well as on: { group: { key: { from: to } } }.
+  for (const [group, keys] of Object.entries(flavour?.remap || {})) {
+    for (const [k, swap] of Object.entries(keys)) {
+      const at = String(options[group]?.[k]);
+      if (options[group] && Object.hasOwn(swap, at)) options[group][k] = swap[at];
+    }
+  }
   // A Sound Combo, when one is chosen and the style has it: its sounds and channels over
   // the style's own, and its own banger as what the faders are matched against. Not over a
   // Sound Set: a combo's sounds are the style's kind, and would undo a Light set's budget.

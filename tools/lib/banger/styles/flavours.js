@@ -13,7 +13,8 @@
 //   · `reshape` rewrites every eight-bar progression, the shared moods' and the modes' too —
 //     a chord held for two bars, or one chord nearly all the way — so the mood still chooses
 //     the chords and the flavour chooses how long each is held
-//   · `remapParts` (as a Sound Set's) moves a part's setting, e.g. Chords = Pad to Piano Stabs
+//   · `remapParts` (as a Sound Set's) moves a part's setting, e.g. Chords = Pad to Piano Stabs;
+//     `remap` moves any switch in any group, off as well as on — { fx: { riser: { true: false } } }
 // Its sounds are its own row of sounds.js, `<style>-<flavour>`, edited on the Banger Sounds page.
 // Browser-safe: no `node:*` imports.
 
@@ -25,12 +26,16 @@ export function makeFlavour(base, def) {
   const progressions = Object.fromEntries(Object.entries(base.progressions || {}).map(([id, w]) => [id, mapWalk(w, reshape)]));
   const modeHarmony = Object.fromEntries(Object.entries(base.modeHarmony || {}).map(([mode, walks]) => [mode,
     Object.fromEntries(Object.entries(walks).map(([k, h]) => [k, { ...h, progression: reshape(h.progression) }]))]));
+  // `recolour` rewrites every mood's chord colours (and anything else a mood holds) the same way.
+  const moods = def.recolour ? Object.fromEntries(Object.entries(base.moods || {}).map(([id, m]) => [id, def.recolour(m)])) : base.moods;
   return Object.freeze({
     ...base,
     ...(def.recipe || {}),
     progressions,
     modeHarmony,
+    moods,
     ...(def.remapParts ? { remapParts: def.remapParts } : {}),
+    ...(def.remap ? { remap: def.remap } : {}),
     id: `${base.id}-${def.id}`,
     label: `${base.label} · ${def.label}`,
     base: base.id,
@@ -42,6 +47,8 @@ export function makeFlavour(base, def) {
 export const twoBarChords = (prog) => prog.map((_, i) => prog[i - (i % 2)]);
 /** One chord nearly all the way: the first for six bars, then the walk's own last two. */
 export const holdTheOne = (prog) => prog.map((bar, i) => (i < 6 ? prog[0] : bar));
+/** The first chord for half the walk, then its bars 5 to 8 as written. */
+export const holdFirstHalf = (prog) => prog.map((bar, i) => (i < 4 ? prog[0] : bar));
 
 /**
  * A 32-bit hash of a take's seed and a salt — the same take always draws the same flavour,

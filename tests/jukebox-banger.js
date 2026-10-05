@@ -1182,7 +1182,9 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(!club.mixerOpen, 'a tap outside the panel closes it');
   // The dancing: one hero at a time joins in, each on one of their own eight dances (and
   // Lorenzo's occasional moonwalk), and a change always picks a different one.
-  club.dancers.forEach((d, k) => { d.move = null; d.joinAt = club.t + 0.05 + k * 0.1; d.changeAt = Infinity; });
+  // `resting` too: a hero caught sitting a few bars out (REST_CHANCE) when this resets would
+  // otherwise never rejoin — the check failed about one run in four on the dice.
+  club.dancers.forEach((d, k) => { d.move = null; d.resting = false; d.joinAt = club.t + 0.05 + k * 0.1; d.changeAt = Infinity; });
   club.update(1 / 60);
   const firstIn = club.dancers.filter((d) => d.move).length;
   for (let k = 0; k < 60; k++) club.update(1 / 60);
@@ -1334,7 +1336,15 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   club.momentAt = Infinity;                         // no new ones while these play out
   club.smokeAt = Infinity;
   for (const kind of [...CLUB_MOMENTS, 'smoke']) club.startMoment(kind);
-  for (let k = 0; k < 80; k++) { club.update(1 / 10); club.draw(ctx); }
+  {
+    // The song held where it is for these eight seconds: a section change heard while they play
+    // out brings a new moment of its own, and the check failed whenever the song crossed one.
+    const realBeat = club.beat;
+    const held = club.beat();
+    club.beat = () => held;
+    for (let k = 0; k < 80; k++) { club.update(1 / 10); club.draw(ctx); }
+    club.beat = realBeat;
+  }
   assert(!club.moments.some(m => [...CLUB_MOMENTS, 'smoke'].includes(m.kind)), 'the crowd moments (beach ball, confetti, glow sticks, the smoke machine) play and clear');
   // Grumpos's non-flexing dance phases retain his native standing arms.
   {

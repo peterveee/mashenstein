@@ -53,7 +53,7 @@ import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { LED_SLOGANS, LED_SCROLLS, LED_STYLE_LINES, fillLed } from './led-slogans.js';
 import {
   HERO_MOVES, PARTS, nextBeatAt, nextSixteenthAt, nextBarAt, nextTwoOrFourAt, landingFor, playMove, startHold, dragHold, endHold, setPartLevel,
-  releaseClub, moveSeconds, gridReady, setSpeed, stepTime, startChipGate, endChipGate, CHIP_GATE_EVERY, throwBeat, echoLevel,
+  releaseClub, moveSeconds, gridReady, setSpeed, stepTime, startChipGate, endChipGate, CHIP_GATE_CHANCE, lastBarBeforeSection, chipGateRoll, throwBeat, echoLevel,
   stopTape, nextStopStep, partOf, partGain, startWobble, setWobble, endWobble,
 } from './club-fx.js';
 
@@ -1246,7 +1246,8 @@ export class BangerClubState {
 
   /**
    * B-33P's 8-BIT GATE (club-fx.js CHIP_GATE): while the band is on the 8-Bit set, the last bar
-   * of every CHIP_GATE_EVERY is the whole mix chopped into sixteenths. Looked at once a bar
+   * before a new section — now and then, CHIP_GATE_CHANCE of them, the song's loop back to the top
+   * counting as one — is the whole mix chopped into sixteenths. Looked at once a bar
    * line, in the frame where the downbeat is the next step to schedule, so it goes in and out
    * on the bar; never while a hero's move has the master, which it would cut short.
    */
@@ -1266,7 +1267,8 @@ export class BangerClubState {
       if (!busy) endChipGate(Audio.nextTime);
     }
     const chip = this.voices?.swappedNow && this.voices.swapped && !this.voices.eightBit;
-    if (chip && !busy && ((bar % CHIP_GATE_EVERY) + CHIP_GATE_EVERY) % CHIP_GATE_EVERY === CHIP_GATE_EVERY - 1) {
+    if (chip && !busy && lastBarBeforeSection(this.song.form, bar)
+      && chipGateRoll(this.gateRolls = (this.gateRolls || 0) + 1) < CHIP_GATE_CHANCE) {
       startChipGate(Audio.nextTime, this.barSeconds() / 16);
       this.gating = true;
     }

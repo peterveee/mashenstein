@@ -14,6 +14,7 @@
 // roll and the stutter into each chorus, as NIGHT DRIVE does. Data only, like
 // big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
+import { twoBarChords } from './flavours.js';
 
 export const SYNTHWAVE = Object.freeze({
   id: 'synthwave',
@@ -22,6 +23,18 @@ export const SYNTHWAVE = Object.freeze({
   note: '118 · gated snare, root–octave bass, string machine',
   title: '118 BPM, NIGHT DRIVE\'s outrun: a gated-reverb snare, a root–octave sixteenth bass, a pumping string machine, brass stabs. Starts as a Pop Song with the last chorus a step up',
   bpm: 118,
+  // FLAVOURS (6 Oct 2026, flavours.js; SYNTHWAVE_FLAVOURS below): the mood picks one. Both are
+  // phone-light (no MRDR-3, no JMJR-4), so the Lab — which plays synthwave on the Light set —
+  // can land on them too.
+  flavours: [
+    { id: 'nightdrive', label: 'Night Drive', note: 'Gated snare, a brassy root–octave bass, string machine, crystal arp' },
+    { id: 'outrun', label: 'Outrun', note: 'Faster and brighter: a racing octave bass, a hero lead' },
+    { id: 'darksynth', label: 'Darksynth', note: 'Heavier: half time, a huge gated snare, distorted bass, brass stabs' },
+  ],
+  flavourByMood: {
+    uplifting: 'outrun', euphoric: 'outrun', heroic: 'outrun', sunshine: 'outrun', hopeful: 'outrun', wonder: 'outrun',
+    dark: 'darksynth', gothic: 'darksynth', boss: 'darksynth', hypnotic: 'darksynth', andalusian: 'darksynth', lament: 'darksynth',
+  },
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,
   tempoRange: [100, 120],
@@ -196,3 +209,69 @@ export const SYNTHWAVE = Object.freeze({
     saws: 'CHORDS String Machine', counter: 'BRASS Stabs', fill: 'SIMMONS Toms', piano: 'KEYS', megaSaw: 'LEAD 8VA',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_flavour-sketches.mjs (6 Oct 2026)
+const GATED_SNARE = [
+  { id: 'reverb', params: { decay: 1.8, preDelay: 0.005, wet: 0.55 } },
+  { id: 'noisegate', params: { threshold: -34, attack: 0.002, release: 0.08 } },
+];
+export const SYNTHWAVE_FLAVOURS = Object.freeze([
+  {
+    // OUTRUN — 128. The octave bass racing on every other sixteenth (Bass = Off-Beat plays the
+    // Rolling figure), the crystal arp from the first bar, each chord held two bars, a hero lead.
+    id: 'outrun', label: 'Outrun',
+    reshape: twoBarChords,
+    remapParts: { bass: { offbeat: 'rolling' } },
+    recipe: {
+      bpm: 128,
+      tempoRange: [124, 134],
+      phone: true,
+      enter: { arp: 0 },
+      strips: {
+        ...SYNTHWAVE.strips,
+        bass: { gain: -5, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 1800, Q: 1 } }] },
+        arp: { gain: -8, pan: -0.25, send: { delay: 0.3, reverb: 0.3 } },
+        hook: { gain: 1, pan: 0.05, send: { delay: 0.25, reverb: 0.4 } },
+      },
+      labels: { ...SYNTHWAVE.labels, bass: 'BASS Octaves', arp: 'ARP' },
+    },
+  },
+  {
+    // DARKSYNTH — 112. A half-time kick and a huge gated snare on three, a distorted bass in
+    // jabs, brass stabbing the chord (the strings become stabs), the brass answering, toms
+    // rolling into each eight.
+    id: 'darksynth', label: 'Darksynth',
+    remapParts: { chords: { saws: 'piano', pad: 'piano' } },
+    // The brass is the chords now: no second brass answering them.
+    remap: { parts: { counter: { true: false } } },
+    recipe: {
+      bpm: 112,
+      tempoRange: [104, 118],
+      phone: true,
+      drums: {
+        ...SYNTHWAVE.drums,
+        kick: ['x.....x...x.....', 'x.....x...x...x.'],
+        clap: '........x.......',
+        ohats: '..............x.',
+        hats16: 'x.x.x.x.x.x.x.x.',
+        hats8: 'x...x...x...x...',
+        halfKick: 'x.........x.....',
+        halfClap: '........x.......',
+      },
+      rhythms: {
+        ...SYNTHWAVE.rhythms,
+        offbeat: 'R:2 . R:1 R:1 . R:1 R:2 . R:1 R:1 . R:1 R:2 . O:2 .',
+        pianoStabs: 'x:2 . . . . . x:1 . . . . . . . . .',
+      },
+      strips: {
+        ...SYNTHWAVE.strips,
+        clap: { gain: 2, eq: { high: -1 }, effects: GATED_SNARE },
+        snare: { gain: -2, effects: GATED_SNARE },
+        bass: { gain: -4, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 1400, Q: 1.5 } }] },
+        piano: { gain: -5, send: { reverb: 0.4 } },
+        hook: { gain: 0, send: { delay: 0.25, reverb: 0.35 } },
+      },
+      labels: { ...SYNTHWAVE.labels, clap: 'SNARE Gated', bass: 'BASS Dist', piano: 'BRASS Stabs' },
+    },
+  },
+]);
