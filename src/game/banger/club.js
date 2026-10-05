@@ -62,7 +62,9 @@ const DISCO = ['#ff4fa3', '#ffd23f', '#3fb8ff', '#7cff6b', '#b06bff'];
 const LASER = ['#3dff6e', '#ff3355', '#36e6ff'];
 const CANS = [0.06, 0.18, 0.38, 0.62, 0.82, 0.94];
 /** How far down from the top of the room a par can's lens is, in strokes (`u`): where its beam starts. */
-const LENS_Y = 14.5;   // under the truss (8), its clamp and yoke, and the can's body: the light comes out of the bulb
+const LENS_Y = 14.5;   // under the truss (8), its clamp and stem, and the can's body: the light comes out of the bulb
+/** Where a par can hangs from its stem and tilts, down from the top of the room in strokes. */
+const CAN_PIVOT_Y = 10;
 /** Where a laser on the rig sits, down from the top of the room in strokes: in the truss itself,
  *  so its beams come out of the scaffolding (Peter, 5 Oct 2026: "a little bit under it"). */
 const RIG_Y = 5;
@@ -2736,37 +2738,39 @@ export class BangerClubState {
       const a = this.neon('THE BANGER LAB', portrait ? 24 * P : 14, '#ff4fa3');
       // Both signs hang from the truss on two cables, on solid boards, rather than floating
       // in the air (Peter, 3 Oct 2026).
-      // ...from the truss's bottom chord (8u) itself, each cable clamped on there and tied through
-      // an eye on the board (Peter, 5 Oct 2026: "attach the signs and the lights better")
+      // ...from the truss's bottom chord (8u) itself, each cable clamped on there and running
+      // straight into the board — no eye (Peter, 5 Oct 2026: "just connect cleanly")
       const hang = (x, y, w, h, fill, edge) => {
         const top = stageTop + 8 * u;
         ctx.strokeStyle = '#3a3448'; ctx.lineWidth = 0.8 * u;
         ctx.beginPath();
-        for (const cx of [x + w * 0.15, x + w * 0.85]) { ctx.moveTo(cx, top); ctx.lineTo(cx, y - 1.6 * u); rigClamps.push(cx); }
+        for (const cx of [x + w * 0.15, x + w * 0.85]) { ctx.moveTo(cx, top); ctx.lineTo(cx, y); rigClamps.push(cx); }
         ctx.stroke();
         ctx.fillStyle = fill; rr(ctx, x, y, w, h, 1.5 * u); ctx.fill();
         ctx.strokeStyle = edge; ctx.lineWidth = 0.8 * u; ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(x + 1.5 * u, y + 0.8 * u, w - 3 * u, 0.8 * u);
-        ctx.strokeStyle = '#8a86a0'; ctx.lineWidth = 0.6 * u;
-        for (const cx of [x + w * 0.15, x + w * 0.85]) { ctx.beginPath(); ctx.arc(cx, y - 0.8 * u, 0.8 * u, 0, Math.PI * 2); ctx.stroke(); }
       };
       const ns = portrait ? 24 * P : 14;
-      const ax = portrait ? sw / 2 - a.w / 2 : safeL + 34, ay = (portrait ? stageTop + 44 * P : stageTop + 34) - a.h / 2;
-      this.boxes.sign = { x: ax + ns * 0.3, y: ay + a.h / 2 - ns * 0.9, w: a.w - ns * 0.6, h: ns * 1.8 };
-      hang(ax + ns * 0.3, ay + a.h / 2 - ns * 0.9, a.w - ns * 0.6, ns * 1.8, '#130f1f', '#2e2640');
-      ctx.globalAlpha = flick(0) * (0.85 + 0.15 * pulse);
-      ctx.drawImage(a.img, ax, ay, a.w, a.h);
-      ctx.globalAlpha = 1;
-      // the red dot-matrix board where OPEN LATE was in neon
-      const pitch = portrait ? 2.2 * P : 1.4;
+      // the red dot-matrix board where OPEN LATE was in neon, its board (frame and all, LED_COLS
+      // + 6 pitches) exactly as wide as the club sign's, in both orientations (Peter, 5 Oct 2026);
+      // drawn first, so its cables run behind the club sign
+      const pitch = (a.w - ns * 0.6) / (LED_COLS + 6);
       const bw = (LED_COLS + 2) * pitch;
       const bx = portrait ? sw - bw - 8 * P : sw - safeR - bw - 12;
-      const by = stageTop + (portrait ? 84 * P : 34) - (LED_ROWS + 2) * pitch / 2;
+      // in portrait, well below the club sign (Peter, 5 Oct 2026: "move the led down a fair bit")
+      const by = stageTop + (portrait ? 108 * P : 34) - (LED_ROWS + 2) * pitch / 2;
       const bh = (LED_ROWS + 2) * pitch;
       hang(bx - 2 * pitch, by - 2 * pitch, bw + 4 * pitch, bh + 4 * pitch, '#16121c', '#3a3248');
       this.boxes.led = { x: bx - 2 * pitch, y: by - 2 * pitch, w: bw + 4 * pitch, h: bh + 4 * pitch };
       this.ledAt = { x: bx, y: by, pitch };   // where it is painted again over the CRT
       this.drawLed(ctx, bx, by, pitch);
+      // in portrait the club sign sits left, just clear of the back button (Peter, 5 Oct 2026)
+      const ax = portrait ? 62 * P - ns * 0.3 : safeL + 34, ay = (portrait ? stageTop + 44 * P : stageTop + 34) - a.h / 2;
+      this.boxes.sign = { x: ax + ns * 0.3, y: ay + a.h / 2 - ns * 0.9, w: a.w - ns * 0.6, h: ns * 1.8 };
+      hang(ax + ns * 0.3, ay + a.h / 2 - ns * 0.9, a.w - ns * 0.6, ns * 1.8, '#130f1f', '#2e2640');
+      ctx.globalAlpha = flick(0) * (0.85 + 0.15 * pulse);
+      ctx.drawImage(a.img, ax, ay, a.w, a.h);
+      ctx.globalAlpha = 1;
     }
 
     // HAZE: seven huge soft puffs, drawn into a small layer (a fifth of the room's size) and
@@ -2799,16 +2803,26 @@ export class BangerClubState {
     // beams from the par cans, swinging, flaring on the beat — and while Fernwick draws, all
     // swinging in to meet on the middle of the floor, where the drop will land
     // (the light show swings every can's beam, fast and wide, each its own colour)
+    // Each can tilts with its beam, hung from one stem (Peter, 5 Oct 2026: "they were angled
+    // before which i preferred"); the two end cans, dark outside a light show, lean in to the floor.
+    const len = (floorRef - stageTop) * 1.15;
+    const lensD = (LENS_Y - CAN_PIVOT_Y) * u;
+    const canAng = CANS.map((f, j) => {
+      const aim = -Math.atan2(sx + sw / 2 - (sx + sw * f), len);
+      if (show) return Math.sin(t * 2.8 + j * 1.7) * 0.75;
+      if (j === 0 || j === CANS.length - 1) return aim * 0.6;
+      return Math.sin(t * 0.5 + (j - 1) * 2.1) * 0.45 * (1 - drawn) + aim * drawn;
+    });
+    const canLens = CANS.map((f, j) => ({ x: sx + sw * f - Math.sin(canAng[j]) * lensD, y: stageTop + CAN_PIVOT_Y * u + Math.cos(canAng[j]) * lensD }));
     for (let i = 0; i < (show ? CANS.length : 4); i++) {
-      const ox = sx + sw * CANS[show ? i : i + 1];
-      const len = (floorRef - stageTop) * 1.15;
-      const aim = -Math.atan2(sx + sw / 2 - ox, len);
-      const ang = show ? Math.sin(t * 2.8 + i * 1.7) * 0.75 : Math.sin(t * 0.5 + i * 2.1) * 0.45 * (1 - drawn) + aim * drawn;
+      const j = show ? i : i + 1;
+      const ox = sx + sw * CANS[j];
       ctx.save();
       // from the can's lens, not the truss above it (Peter, 5 Oct 2026: "lights dont originate
       // from the bulbs")
-      ctx.translate(ox, stageTop + LENS_Y * u);
-      ctx.rotate(ang);
+      ctx.translate(ox, stageTop + CAN_PIVOT_Y * u);
+      ctx.rotate(canAng[j]);
+      ctx.translate(0, lensD);
       const beamCol = show ? show.colour(i) : accent;
       const g = ctx.createLinearGradient(0, 0, 0, len);
       g.addColorStop(0, beamCol + (show ? '90' : '40')); g.addColorStop(1, beamCol + '00');
@@ -2895,8 +2909,7 @@ export class BangerClubState {
       beam.addColorStop(0, 'rgba(224,242,255,0.8)');
       beam.addColorStop(1, 'rgba(224,242,255,0)');
       ctx.fillStyle = beam;
-      for (const can of CANS) {
-        const fx = sx + sw * can, fy = stageTop + LENS_Y * u;
+      for (const { x: fx, y: fy } of canLens) {
         ctx.beginPath();
         ctx.moveTo(fx - 3 * u, fy); ctx.lineTo(fx + 3 * u, fy);
         ctx.lineTo(fx + sw * 0.18, stageBot); ctx.lineTo(fx - sw * 0.18, stageBot);
@@ -3040,13 +3053,11 @@ export class BangerClubState {
     // the truss and its par cans
     const th = 8 * u;
     ctx.drawImage(this.truss(sw, th, u), sx, stageTop, sw, th + 6 * u);
-    // a clamp round the bottom chord, its bolt showing: what the signs' cables and the cans hang from
+    // a clamp round the bottom chord: what the signs' cables and the cans hang from — plain, no
+    // bolt dot or highlight (Peter, 5 Oct 2026: "dont like the dots", "too much")
     const clamp = (cx, w) => {
       ctx.fillStyle = '#3a364c';
       rr(ctx, cx - w / 2, stageTop + th - 1.4 * u, w, 2.8 * u, 0.8 * u); ctx.fill();
-      ctx.fillStyle = 'rgba(220,220,240,0.28)'; ctx.fillRect(cx - w / 2 + 0.5 * u, stageTop + th - 1.2 * u, w - u, 0.45 * u);
-      ctx.fillStyle = '#8a86a0';
-      ctx.beginPath(); ctx.arc(cx + w * 0.22, stageTop + th, 0.5 * u, 0, Math.PI * 2); ctx.fill();
     };
     for (const cx of rigClamps) clamp(cx, 3 * u);
     this.boxes.cans = [];
@@ -3055,21 +3066,20 @@ export class BangerClubState {
       // each can's colour as it is now — what a tap on it plays (tapCan)
       const own = DISCO[(((i + beatN) % DISCO.length) + DISCO.length) % DISCO.length];
       this.boxes.cans.push({ x: cx - 9 * u, y: stageTop, w: 18 * u, h: th + 12 * u, col: own });
-      // hung as a real par can is: a clamp on the chord, and a yoke holding the can by its sides
-      const yokeY = stageTop + th + 1.6 * u, pivotY = cy + 0.6 * u;
-      ctx.strokeStyle = '#4a4660'; ctx.lineWidth = 0.8 * u;
-      ctx.beginPath();
-      ctx.moveTo(cx - 4 * u, pivotY); ctx.lineTo(cx - 4 * u, yokeY); ctx.lineTo(cx + 4 * u, yokeY); ctx.lineTo(cx + 4 * u, pivotY);
-      ctx.stroke();
+      // a clamp on the chord, one stem down from it, and the can tilted on the stem with its beam
+      const pivotY = stageTop + CAN_PIVOT_Y * u;
+      ctx.fillStyle = '#4a4660';
+      ctx.fillRect(cx - 0.45 * u, stageTop + th, 0.9 * u, pivotY - stageTop - th + 0.6 * u);
+      ctx.save();
+      ctx.translate(cx, pivotY); ctx.rotate(canAng[i]); ctx.translate(-cx, -pivotY);
       ctx.fillStyle = '#16131f';
       rr(ctx, cx - 3.2 * u, cy - 1.6 * u, 6.4 * u, 4.6 * u, 1.2 * u); ctx.fill();
-      ctx.fillStyle = '#5a5670';
-      for (const px of [cx - 4 * u, cx + 4 * u]) { ctx.beginPath(); ctx.arc(px, pivotY, 0.7 * u, 0, Math.PI * 2); ctx.fill(); }
-      clamp(cx, 3.6 * u);
       ctx.globalAlpha = show ? ((i + show.step) % 2 ? 1 : 0.7) * show.k + (1 - show.k) * (0.45 + 0.55 * pulse) : 0.45 + 0.55 * pulse;
       ctx.fillStyle = show ? show.colour(i) : acting ? accent : own;
       ctx.beginPath(); ctx.ellipse(cx, cy + 3 * u, 2.6 * u, 1.3 * u, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
+      ctx.restore();
+      clamp(cx, 3.6 * u);
     });
 
     this.drawBall(ctx, { portrait, P, u, t, sx, sw, sh, stageTop, pulse, accent, beat, show });
@@ -3982,14 +3992,20 @@ export class BangerClubState {
     const ease = 1 - Math.pow(1 - p, 3);
     const settle = since > dropT ? Math.exp(-(since - dropT) * 5) * Math.sin((since - dropT) * 18) : 0;
     const br = (portrait ? 40 * P : 20) * (this.ballScale || 1);
-    const hang = portrait ? 172 * P : 46;   // lower (Peter, 3 Oct 2026)
-    const bx0 = sx + sw / 2;
-    const mountY = stageTop + 9 * u;
+    const hang = portrait ? 192 * P : 46;   // lower (Peter, 3 Oct 2026; portrait lower again, 5 Oct)
+    // in portrait, under the middle of the club sign, clear of the LED board (Peter, 5 Oct 2026)
+    const sign = this.boxes.sign;
+    const bx0 = portrait && sign ? sign.x + sign.w / 2 : sx + sw / 2;
+    // The whole rig — drop bar, clamp, motor, wire and ball — comes down together from above
+    // the screen and lands on the truss, rather than the ball dropping from a mount already
+    // there (Peter, 5 Oct 2026: "perhaps the entire set up can descend into place")
+    const lift = (1 - ease) * (stageTop + 9 * u + hang + br + 2 * u);
+    const mountY = stageTop + 9 * u - lift;
     // Dip down and spring back on the first beat of every even-numbered bar (2, 4, 6...).
     const barPulse = ((beat - 4) % 8 + 8) % 8;
     const bobBeats = 0.5;
     const bob = barPulse < bobBeats ? Math.sin(Math.PI * barPulse / bobBeats) * br * 0.12 : 0;
-    const by0 = mountY - br * 2 + (hang + br * 2) * ease + settle * (portrait ? 8 * P : 4) + bob;
+    const by0 = mountY + hang + settle * (portrait ? 8 * P : 4) + bob;
     // DRAGGED AND SPUN (grabBall, ballOn): swung on its wire from the mount, the wire a little
     // elastic; at rest, straight down
     const swing = this.ballSwing;
@@ -4032,25 +4048,32 @@ export class BangerClubState {
     // scaffolding"): a drop bar from the truss's top chord to its bottom one (truss: chords at u
     // and 8u), a clamp round the bottom chord, the ball's motor hung under it on a short rod,
     // and the wire off the motor's shaft — no box floating under the truss
-    const chordY = stageTop + 8 * u;
+    // ...and all of it behind both signs: clipped out of their boards (Peter, 5 Oct 2026: "send
+    // the mirror ball cable to the back of both")
+    ctx.save();
+    const boards = [this.boxes.sign, this.boxes.led].filter(Boolean);
+    if (boards.length) {
+      ctx.beginPath(); ctx.rect(sx - sw, stageTop - sh, sw * 3, sh * 3);
+      for (const b of boards) ctx.rect(b.x, b.y, b.w, b.h);
+      ctx.clip('evenodd');
+    }
+    const chordY = stageTop + 8 * u - lift;
     ctx.strokeStyle = '#4a4660'; ctx.lineWidth = 0.9 * u;
-    ctx.beginPath(); ctx.moveTo(bx0, stageTop + u); ctx.lineTo(bx0, chordY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx0, stageTop + u - lift); ctx.lineTo(bx0, chordY); ctx.stroke();
     ctx.fillStyle = '#3a364c';
     rr(ctx, bx0 - 2.6 * u, chordY - 1.8 * u, 5.2 * u, 3.6 * u, 1 * u); ctx.fill();
-    ctx.fillStyle = 'rgba(220,220,240,0.28)'; ctx.fillRect(bx0 - 2 * u, chordY - 1.6 * u, 4 * u, 0.5 * u);
-    ctx.fillStyle = '#8a86a0';
-    ctx.beginPath(); ctx.arc(bx0 + 1.5 * u, chordY, 0.6 * u, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#5a5670'; ctx.fillRect(bx0 - 0.5 * u, chordY + 1.8 * u, u, 1.6 * u);
     const motorY = chordY + 3.4 * u, motorH = 3.6 * u;
     ctx.fillStyle = '#24202f';
     rr(ctx, bx0 - 3.2 * u, motorY, 6.4 * u, motorH, 1.2 * u); ctx.fill();
     ctx.strokeStyle = '#3a364c'; ctx.lineWidth = 0.6 * u; ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(bx0 - 2.4 * u, motorY + 0.6 * u, 4.8 * u, 0.5 * u);
-    ctx.fillStyle = '#8a86a0'; ctx.fillRect(bx0 - 0.6 * u, motorY + motorH, 1.2 * u, 1.2 * u);
+    ctx.fillStyle = '#5a5670'; ctx.fillRect(bx0 - 0.6 * u, motorY + motorH, 1.2 * u, 1.2 * u);
     const shaftY = motorY + motorH + 1.2 * u;
     ctx.strokeStyle = 'rgba(200,200,216,0.55)'; ctx.lineWidth = 0.75 * u;
-    const topX = bx - Math.sin(swing.a) * (br + 3.2 * u), topY = by - Math.cos(swing.a) * (br + 3.2 * u);
+    // the wire runs straight into the cap, no eye (Peter, 5 Oct 2026: "just connect cleanly")
+    const topX = bx - Math.sin(swing.a) * (br + 2 * u), topY = by - Math.cos(swing.a) * (br + 2 * u);
     ctx.beginPath(); ctx.moveTo(bx0, shaftY); ctx.lineTo(topX, topY); ctx.stroke();
+    ctx.restore();
     const halo = ctx.createRadialGradient(bx, by, br * 0.8, bx, by, br * 2.2);
     halo.addColorStop(0, `rgba(255,255,255,${0.16 + 0.14 * pulse})`); halo.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = halo;
@@ -4063,9 +4086,6 @@ export class BangerClubState {
       lights: show && { colour: show.colour, k: show.k, step: show.step } });
     ctx.fillStyle = '#5a5670';
     ctx.fillRect(bx - 1.5 * u, by - br - 2 * u, 3 * u, 2.5 * u);
-    // the eye on the cap the wire is tied through
-    ctx.strokeStyle = '#8a86a0'; ctx.lineWidth = 0.7 * u;
-    ctx.beginPath(); ctx.arc(bx, by - br - 2.6 * u, 0.9 * u, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
     if (flare > 0) {
       const fl = ctx.createRadialGradient(bx, by, br * 0.5, bx, by, br * 3);
@@ -4550,9 +4570,10 @@ export class BangerClubState {
     ctx.font = `${fs[1]}px ${TITLE_FONT}`;
     const boxW = Math.min(W - 16, ctx.measureText(title).width + (portrait ? 32 * P : 24));
     const boxH = lh * 2 + (portrait ? 12 * P : 10);
-    // under the ball in landscape; over it in portrait, where the back row stands just below
+    // under the ball — in portrait too, now the ball hangs low and the signs fill the space over
+    // it (Peter, 5 Oct 2026: "the messages displayed need to come down lower in portrait")
     const bx = W / 2 - boxW / 2;
-    const by = portrait ? ball.y - ball.r - 5 * P - boxH : ball.y + ball.r + 7;
+    const by = ball.y + ball.r + (portrait ? 8 * P : 7);
     ctx.globalAlpha = Math.max(0, a);
     ctx.fillStyle = 'rgba(11,11,20,0.82)';
     rr(ctx, bx, by, boxW, boxH, portrait ? 16 * P : 7); ctx.fill();
@@ -4580,8 +4601,9 @@ export class BangerClubState {
     ctx.font = `${fs[1]}px ${TITLE_FONT}`;
     const boxW = Math.min(W - 16, Math.max(portrait ? 344 * P : 236, ctx.measureText(lines[1]).width + 24));
     const boxH = lh * 4 + (portrait ? 24 * P : 12);
-    // High in the room, under the sign and clear of the heroes' heads (the ball waits for it)
-    const bx = W / 2 - boxW / 2, by = stageTop + (portrait ? 96 * P : 56);
+    // High in the room, under the signs and clear of the heroes' heads (the ball waits for it);
+    // in portrait below the LED board (Peter, 5 Oct 2026)
+    const bx = W / 2 - boxW / 2, by = stageTop + (portrait ? 140 * P : 56);
     ctx.globalAlpha = a;
     ctx.fillStyle = 'rgba(11,11,20,0.82)';
     rr(ctx, bx, by, boxW, boxH, portrait ? 16 * P : 7); ctx.fill();
