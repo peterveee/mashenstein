@@ -636,6 +636,7 @@ export class BangerMakerState {
           const lens = [...this.lengths];
           lens[this.pointerNote.col] = Math.min(32, steps);
           this.lengths = lens;
+          if (at.col > this.pointerNote.col) this.pointerNote.dragged = true;
         }
       }
     }
@@ -643,7 +644,9 @@ export class BangerMakerState {
       const per = 32 / this.steps;
       const heldSteps = Math.round((performance.now() - this.pointerNote.at)
         / (this.previewSixteenthS * 1000) / per) * per;
-      if (heldSteps > modeOf(this.mode).len) {
+      // Held still, a note is as long as it was held. Dragged, the drag says how long: a slow
+      // drag's time held ran it on past where the finger stopped (Peter, 5 Oct 2026).
+      if (!this.pointerNote.dragged && heldSteps > modeOf(this.mode).len) {
         const lens = [...this.lengths];
         lens[this.pointerNote.col] = Math.min(32, Math.max(lens[this.pointerNote.col], heldSteps));
         this.lengths = lens;

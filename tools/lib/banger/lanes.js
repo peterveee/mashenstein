@@ -201,7 +201,8 @@ export function buildMix({
       strip.gain = roleStrip?.gain ?? 0;
       if (role === 'hook') {
         strip.send = { ...(roleStrip.send || {}), ...(strip.send || {}) };
-        if (strip.pan == null) strip.pan = roleStrip.pan;
+        // Only a pan the recipe names: `pan: undefined` would reach the desk as NaN.
+        if (strip.pan == null && roleStrip?.pan != null) strip.pan = roleStrip.pan;
         const effects = strip.effects || [];
         if (mood.exciter && !effects.some((e) => e.id === 'exciter')) strip.effects = [...effects, clone(style.exciter)];
         if (mood.high && !(strip.eq && strip.eq.high != null)) strip.eq = { ...(strip.eq || {}), high: mood.high };

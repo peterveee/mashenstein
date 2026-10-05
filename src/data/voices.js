@@ -967,6 +967,28 @@ const DRUM = {
     osc: { type: 'triangle', from: 620, to: 455, sweep: 0.018, decay: 0.075, curve: 'exp', gain: 0.58 },
     noise: { type: 'highpass', freq: 2500, Q: 1.4, decay: 0.042, gain: 0.78 },
     drive: 0.18 },
+  // ---- merengue: the güira and the tambora (5 Oct 2026, for Merenhouse) ------
+  guiraScrape: { label: 'Güira · Scrape', category: 'Perc', homeLane: 'rim', dur: 0.5,
+    note: 'The long stroke of a merengue güira: a brush dragged down a ridged metal can, '
+      + 'six ridges fourteen milliseconds apart, each a touch louder and brighter than the '
+      + 'last, the final one left to ring. Put it on the beat under the short scrapes.',
+    noise: { type: 'bandpass', freq: 6800, Q: 2.2, attack: 0.002, decay: 0.014, gain: 1 },
+    ring: { freq: 5300, Q: 30, hit: 0.0008, decay: 0.03, gain: 0.25 },
+    taps: [0, 0.014, 0.028, 0.042, 0.056, 0.07], tapGains: [0.55, 0.65, 0.75, 0.85, 0.95, 1],
+    tapDecays: [0.014, 0.014, 0.014, 0.014, 0.014, 0.06], tapTone: 1.03 },
+  guiraChk: { label: 'Güira · Chk', category: 'Perc', homeLane: 'rim', dur: 0.5,
+    note: 'The short scrape of a güira: two ridges under the brush and a tin edge. Sixteenths '
+      + 'of it are the merengue hat.',
+    noise: { type: 'bandpass', freq: 7600, Q: 1.8, attack: 0.001, decay: 0.022, gain: 1 },
+    ring: { freq: 5300, Q: 30, hit: 0.0006, decay: 0.02, gain: 0.2 },
+    taps: [0, 0.008], tapGains: [0.7, 1] },
+  tambora: { label: 'Tambora', category: 'Perc', homeLane: 'tom', dur: 1,
+    note: 'The merengue two-headed drum: a stick on the wooden shell (a short knock at 1.1 kHz '
+      + 'and a click) over the low skin, which falls from 190 to 135 Hz.',
+    osc: { type: 'sine', from: 190, to: 135, sweep: 0.04, decay: 0.24, curve: 'exp', gain: 1 },
+    noise: { type: 'highpass', freq: 3000, Q: 0.8, decay: 0.012, gain: 0.35 },
+    ring: { freq: 1100, Q: 18, hit: 0.002, decay: 0.045, gain: 0.45 },
+    drive: 0.1 },
   // ---- cowbells and claves, after the Sound On Sound analysis ---------------
   //
   // "Synthesizing Cowbells & Claves" measured a real CR8000 and found the cowbell is
@@ -5702,7 +5724,8 @@ const LEVELS = {
   seedFutureBassChoir: 0.017453, seedFutureBassThird: 0.068382,
   seedFutureBassCounter: 0.034436, addOrganStab: 0.0662,
   mrdrHouseOrganStab: 0.0236, mrdrDeepOrganStab: 0.021, mrdrFunkGuitar: 0.0163,
-  mrdrFunkGuitarMuted: 0.0022
+  mrdrFunkGuitarMuted: 0.0022, guiraScrape: 0.013, guiraChk: 0.0065,
+  tambora: 0.0323
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -5878,7 +5901,8 @@ const PEAKS = {
   seedFutureBassChoir: 0.1229, seedFutureBassThird: 0.6944,
   seedFutureBassCounter: 0.2067, addOrganStab: 1.4628,
   mrdrHouseOrganStab: 0.7484, mrdrDeepOrganStab: 0.7663, mrdrFunkGuitar: 0.7478,
-  mrdrFunkGuitarMuted: 0.1848
+  mrdrFunkGuitarMuted: 0.1848, guiraScrape: 0.3992, guiraChk: 0.2487,
+  tambora: 0.8495
 };
 
 /**

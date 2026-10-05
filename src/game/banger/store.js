@@ -29,6 +29,7 @@ import {
 import { moodSongName } from './mood-names.js';
 import { STARTERS, FIRST_STARTER } from './starters.js';
 import { voltageFor, voltageSettings } from './voltage.js';
+import { mixWithKept } from './club-voices.js';
 
 /**
  * How many the jukebox keeps. A recipe is a few dozen bytes, so this is only a ceiling on
@@ -208,6 +209,21 @@ export function deleteBanger(rec, save = defaultSave) {
   return true;
 }
 
+/**
+ * A kept song's club mixer — `{ levels: { drums, bass, chords, lead }, sounds: { own, swap } }`,
+ * the faders and each part's sound by name (club-voices.js picksNamed) — kept on its recipe
+ * (Peter, 5 Oct 2026: "save the mixer settings, esp since we can now change the presets"). Null,
+ * or every fader up and no sound changed, takes it off again. Not part of what makes the song:
+ * its take is the same with or without it.
+ */
+export function keepMixer(rec, mixer, save = defaultSave) {
+  if (!rec) return;
+  const plain = !mixer || (Object.values(mixer.levels || {}).every((v) => v === 1) && !mixer.sounds?.swapped
+    && !Object.keys(mixer.sounds?.own || {}).length && !Object.keys(mixer.sounds?.swap || {}).length);
+  if (plain) delete rec.mixer; else rec.mixer = structuredClone(mixer);
+  save.persist?.();
+}
+
 /** The last Lab song played, or null if it is no longer in the kept list. */
 export function lastPlayedBanger(save = defaultSave) {
   const b = bangerState(save);
@@ -239,7 +255,8 @@ export const bangerTitle = (rec) => `${rec.name || `BANGER ${rec.n}`} (${styleLa
 /**
  * A kept banger as a jukebox row. The song is made when the row is first PLAYED —
  * listing eight of them must not cost eight generations on a phone — so `bank`,
- * `mix` and `arrangement` are getters, and the BPM the list shows is the recipe's.
+ * `mix` and `arrangement` are getters, and the BPM the list shows is the recipe's. Its mix
+ * carries the sounds it was left with in the club (keepMixer), so it plays as it was left.
  */
 export function bangerRow(rec) {
   return {
@@ -247,7 +264,7 @@ export function bangerRow(rec) {
     bpm: rec.bpm,
     banger: rec,
     get bank() { return songFor(rec).bank; },
-    get mix() { return songFor(rec).mix; },
+    get mix() { return rec.mixer?.sounds ? mixWithKept(songFor(rec), rec, rec.mixer.sounds) : songFor(rec).mix; },
     get arrangement() { return songFor(rec).arrangement; },
   };
 }

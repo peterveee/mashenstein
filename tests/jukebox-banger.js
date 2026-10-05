@@ -23,7 +23,8 @@ const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS } = await import('../src
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
-const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue } = await import('../src/game/banger/club-fx.js');
+const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue, echoLevel, drainSeconds, nextStopStep } = await import('../src/game/banger/club-fx.js');
+const { cleanerWalk, DOLORES_DANCE_BEATS, DOLORES_FLING_BEATS, DOLORES_RUN_BEATS, makeScrap, drawScraps } = await import('../src/game/banger/club-party.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -440,6 +441,25 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     frame(maker, 'down');
     assert(maker.focus.area === 'grid' && maker.focus.row === 2, 'down from SIMPLE / ADVANCED lands on the top row on show');
   }
+  {
+    // A note dragged out is as long as the drag, however slowly (Peter, 5 Oct 2026: "it draws
+    // past the end"); held still, it is as long as it was held.
+    const notes = maker.notes, lengths = maker.lengths;
+    const per = 32 / maker.steps, y = L.grid.y + 4.5 * L.grid.cellH, x = L.grid.x + L.grid.cellW * 4.5;
+    const press = (dx) => {
+      maker.notes = maker.notes.map((n, c) => (c === 4 ? -1 : n));
+      Input.pointer = { x, y, down: true };
+      Input.press('pointer'); maker.update(1 / 60); Input.endFrame();
+      Input.pointer.x += dx; maker.update(1 / 60); Input.endFrame();
+      if (maker.pointerNote) maker.pointerNote.at -= 3000;   // three seconds down
+      Input.release('pointer'); Input.pointer.down = false; maker.update(1 / 60); Input.endFrame();
+      return maker.lengths[4];
+    };
+    const dragged = press(L.grid.cellW * 2);
+    const still = press(0);
+    maker.notes = notes; maker.lengths = lengths;
+    assert(dragged === 3 * per && still > 3 * per, `a slow drag ends where it stopped (${dragged}); a note held still runs on (${still})`);
+  }
   // Tap the top-left square: A5 at step 0.
   tap(maker, L.grid.x + L.grid.cellW / 2, L.grid.y + L.grid.cellH / 2);
   assert(maker.notes[0] === 8, 'tapping a square writes that note');
@@ -704,9 +724,188 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   club.update(1 / 60);
   const q = club.acting?.i === ramonAt ? club.acting : club.queued;
   assert(q?.i === ramonAt && !club.holding && Math.abs(q.dur - q.bar / 2) < 1e-6, 'a held move only tapped still plays for half a bar');
-  assert(HERO_MOVES.filter((m) => m.hold).map((m) => m.hero).join() === 'lorenzo,ramon,fernwick,rusty'
+  assert(HERO_MOVES.filter((m) => m.hold).map((m) => m.hero).join() === 'lorenzo,ramon,grumpos,kiko,clara,fernwick,rusty'
     && HERO_MOVES[at('b33p')].toggle && !HERO_MOVES.some((m) => m.move === 'FLEX'),
-  'Underwater, Rocket Fist, Longbow and Speed Boost are held; B-33P toggles 8-bit; Flex is retired; the rest are triggers');
+  'every move is held but B-33P’s, which toggles 8-bit; Flex is retired');
+  // CLARA, held: drums only where she goes down; the drag lets the band back, or the drums go too
+  {
+    club.draw(ctx);
+    const cb = club.boxes.heroes[at('clara')];
+    Input.pointer = { x: cb.x + cb.w / 2, y: cb.y + cb.h / 2, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    const holes = HERO_MOVES[at('clara')].holes;
+    const start = holes[club.holding?.held?.hole]?.join();
+    Input.pointer.y += club.layout.toonH * 1.6; club.update(1 / 60);
+    const bottom = holes[club.holding?.held?.hole]?.join();
+    Input.pointer.y -= club.layout.toonH * 3.2; club.update(1 / 60);
+    const top = holes[club.holding?.held?.hole]?.join();
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    assert(start === 'drums' && bottom === 'kick' && top === 'drums,bass,chords' && !club.holding,
+      'Plot Hole held: drums only, dragged down to the kick alone, up to all but the tune, and out on release');
+  }
+  // GRUMPOS, held (Peter, 5 Oct 2026): a throw on every 2 and 4 while held, the drag riding the echoes.
+  {
+    club.draw(ctx);
+    const gi = at('grumpos');
+    const gb = club.boxes.heroes[gi];
+    Input.pointer = { x: gb.x + gb.w / 2, y: gb.y + gb.h / 2, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    const throwing = club.throwing?.i === gi && club.holding?.i === gi;
+    const as = echoLevel(club.holding?.held);
+    Input.pointer.y -= club.layout.toonH * 1.6; club.update(1 / 60);
+    const loud = echoLevel(club.holding?.held);
+    Input.pointer.y += club.layout.toonH * 3.2; club.update(1 / 60);
+    const soft = echoLevel(club.holding?.held);
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    assert(throwing && Math.abs(as.wet - 0.35) < 1e-9 && Math.abs(as.feedback - 0.5) < 1e-9 && loud.wet > 0.55 && loud.feedback > 0.65
+      && soft.wet < 0.15 && soft.feedback < 0.35 && !club.holding && !(club.throwing && club.throwing.until === Infinity),
+      'Boomerang held: thrown on the 2s and 4s at the old echo level, dragged up louder, down softer, done on release');
+    club.throwing = null; club.queued = club.acting = null;
+  }
+  // KIKO, held (Peter, 5 Oct 2026: "stop every bar"): the tape stops on the 2s and 4s; the
+  // drag picks every beat (up) or one long wind-down a bar (down).
+  {
+    club.draw(ctx);
+    const ki = at('kiko'), kiko = HERO_MOVES[ki];
+    const kb = club.boxes.heroes[ki];
+    Input.pointer = { x: kb.x + kb.w / 2, y: kb.y + kb.h / 2, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    const pick = () => kiko.stops[club.holding?.held?.stop]?.join();
+    const start = pick();
+    Input.pointer.y -= club.layout.toonH * 1.6; club.update(1 / 60);
+    const up = pick();
+    Input.pointer.y += club.layout.toonH * 3.2; club.update(1 / 60);
+    const down = pick();
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    const steps = [nextStopStep(13, [8, 4, 1]), nextStopStep(4, [8, 4, 1]), nextStopStep(1, [16, 8, 2]), nextStopStep(9, [4, 0, 0.5])].join();
+    assert(start === '8,4,1' && up === '4,0,0.5' && down === '16,8,2' && !club.holding && !club.stopping && steps === '20,4,8,12',
+      `Power Down held: stops on the 2s and 4s, dragged up a half-beat stop every beat, down one long wind-down a bar (${start} / ${up} / ${down}, ${steps}${club.stopping ? ', still stopping' : ''}${club.holding ? ', still held' : ''})`);
+    club.queued = club.acting = null;
+  }
+  // LORENZO: held two bars a fish swims past; let go, the water drains for two bars (the cutoff
+  // glides open, club-fx.js endHold) and the fish dives through the floor before it goes.
+  {
+    const li = at('lorenzo'), move = HERO_MOVES[li];
+    const beatS = club.barSeconds() / 4, t0 = club.t;
+    club.fish = [];
+    club.acting = { i: li, when: club.heardNow() - 8 * beatS - 0.01, bar: club.barSeconds(), dur: Infinity };
+    club.fishOn();
+    // under water nothing is thrown about: no beach ball, confetti or streamers
+    const moments0 = club.moments;
+    club.moments = [{ kind: 'ball', t0: club.t, life: 9, balls: 1, paths: [[]] }];
+    const dry = !club.startMoment('ball') && !club.startMoment('confetti') && !club.startMoment('streamers');
+    club.update(0); const washed = !club.moments.some((m) => m.kind === 'ball');
+    club.moments = moments0;
+    assert(dry && washed, 'under water no beach ball, confetti or streamers start, and the water washes them away');
+    // a shoal of one to three of the seven, the first in the room now and the rest a beat or so
+    // behind — and the party shark's baby after it
+    const grown = club.fish.filter((f) => !f.baby);
+    const swims = grown.length >= 1 && grown.length <= 3 && club.fish.every((f) => !f.dive && f.kind >= 0 && f.kind < 7)
+      && new Set(grown.map((f) => f.kind)).size === grown.length && club.fish[0].born <= club.heardNow();
+    club.acting.drain = { from: club.heardNow(), until: club.heardNow() + 2 * club.barSeconds(), level: move.drag.start };
+    club.acting.dur = club.acting.drain.until - club.acting.when;
+    club.fishOn();
+    // the ones not in yet never come; the one in the room dives
+    const dives = club.fish.length === 1 && !!club.fish[0].dive;
+    club.draw(ctx);
+    club.t += 0.8; club.fishOn();
+    const splashed = club.fish[0]?.splashed != null;
+    club.draw(ctx);
+    club.t += 1; club.fishOn();
+    const gone = club.fish.length === 0;
+    club.t = t0; club.acting = null;
+    assert(Math.abs(drainSeconds(move, 0.1) - 3.2) < 1e-9 && swims && dives && splashed && gone,
+      'Underwater: a fish swims past once he is held two bars; let go, the water drains for two bars and the fish dives through the floor');
+    // the party shark never swims alone: its baby follows it, the same way, a little behind
+    const { FISHES } = await import('../src/game/banger/club-fish.js');
+    const shark = FISHES.findIndex((f) => f.name === 'PARTY SHARK');
+    const seq = [0.1, (shark + 0.5) / FISHES.length, 0.3, 0.5, 0.5];
+    let n = 0;
+    club.fish = []; club.lastFish = -1;
+    club.shoal(club.heardNow(), beatS, () => seq[n++ % seq.length]);
+    const [mum, baby] = club.fish;
+    club.acting = { i: li, when: club.heardNow() - 9 * beatS, bar: club.barSeconds(), dur: Infinity };
+    club.draw(ctx);
+    club.acting = null; club.fish = [];
+    assert(FISHES.length === 7 && !FISHES.some((f) => f.name === 'FISHBOWL') && mum?.kind === shark && baby?.baby && baby.kind === shark
+      && baby.dir === mum.dir && baby.born > mum.born && club.led?.text === 'DOO DOO DOO',
+      'seven fish (the fishbowl is out), and the party shark\'s baby follows it across');
+  }
+  // DOLORES (Peter, 5 Oct 2026): tapped while she sweeps, she flings the broom away, dances for a
+  // while and then runs off — and what she hadn't swept stays on the floor.
+  {
+    club.moments = []; club.partyNextBeat = Infinity;
+    club.floorConfetti = [makeScrap(10, 0.5, '#ff4fa3', 0), makeScrap(470, 0.5, '#3fb8ff', 0)];
+    const started = club.startMoment('cleaner');
+    const m = club.moments.find((x) => x.kind === 'cleaner');
+    if (m) m.beat0 = club.beat() - 8;   // halfway across
+    club.draw(ctx); club.updateParty();
+    const s = club.doloresSpot;
+    const before = m && cleanerWalk(m, club.beat()).progress;
+    if (s) tap(club, s.x, s.floor - s.h * 0.5);
+    const beat = club.beat();
+    const flings = m && cleanerWalk(m, beat).flinging != null && club.led?.text === 'DOLORES IS ON BREAK';
+    const dancing = m && cleanerWalk(m, beat + DOLORES_FLING_BEATS + 4).dancing;
+    const waits = m && Math.abs(cleanerWalk(m, beat + 4).progress - before) < 0.02;
+    const runs = m && cleanerWalk(m, beat + DOLORES_FLING_BEATS + DOLORES_DANCE_BEATS + 1).running > 0;
+    const ends = m && m.quit && m.beats === m.quit.from + DOLORES_FLING_BEATS + DOLORES_DANCE_BEATS + DOLORES_RUN_BEATS;
+    const realBeat = club.beat;
+    for (const b of [0.5, 3, DOLORES_FLING_BEATS + DOLORES_DANCE_BEATS + 1]) { club.beat = () => beat + b; club.draw(ctx); }
+    club.updateParty();
+    const told = club.led?.text === 'DOLORES HAS LEFT THE BUILDING';
+    club.beat = realBeat;
+    // her moment over, the confetti she never got to is still there
+    club.moments = []; club.updateParty();
+    const ahead = m && m.dir > 0 ? 470 : 10;
+    const left = club.floorConfetti.length === 1 && club.floorConfetti[0].x === ahead;
+    assert(started && s && flings && dancing && waits && runs && ends && told && left,
+      `Dolores tapped mid-sweep flings the broom, dances where she stands, then runs off, leaving the rest of the confetti (${[started, !!s, flings, dancing, waits, runs, ends, told, left]})`);
+    club.moments = []; club.floorConfetti = [];
+  }
+  // THE TURBO HOOVER (Peter, 5 Oct 2026): the vacuum tapped tears off, sucks up the beach ball,
+  // and blows up out of the far side on a beat — KABOOM, the room jolts, a confetti fountain.
+  {
+    club.moments = []; club.partyNextBeat = Infinity;
+    const started = club.startMoment('vacuum');
+    const m = club.moments.find((x) => x.kind === 'vacuum');
+    if (m) m.beat0 = club.beat() - 6;
+    club.moments.push({ kind: 'ball', t0: club.t, life: 30, balls: 1, dir: 1, paths: [BangerClubState.ballHops(8)] });
+    club.draw(ctx);
+    const v = club.vacuumSpot;
+    if (v) tap(club, v.x, v.floor - v.h * 0.5);
+    const turbo = !!m?.turbo && club.led?.text === 'TURBO!';
+    const sucked = club.moments.some((x) => x.kind === 'ball' && x.sucked);
+    const realBeat = club.beat, b0 = club.beat(), runs = m?.turbo?.beats;
+    club.beat = () => b0 + runs - 0.1;
+    club.vacuumOn();
+    const early = !club.moments.some((x) => x.kind === 'fountain');
+    club.boomAt = -Infinity;
+    club.beat = () => b0 + runs + 0.05;
+    club.vacuumOn();
+    const fountain = early && runs > 2.999 && runs < 4 && club.moments.some((x) => x.kind === 'fountain')
+      && club.led?.text === 'KABOOM!' && club.boomAt > -Infinity;
+    // the vacuum gone, the confetti it blew back out still lands (it was wiped with the floor)
+    club.updateParty(); club.moments = club.moments.filter((x) => x !== m); club.updateParty();
+    const relands = club.floorConfetti.length >= 40 && club.floorConfetti.every((sc) => sc.at > club.t);
+    club.draw(ctx);
+    club.beat = realBeat; club.boomAt = -Infinity;
+    assert(started && v && turbo && sucked && fountain && relands,
+      `a tap on the vacuum: turbo, the beach ball sucked in, and KABOOM out of the far side on the beat it runs to, its fountain landing after (${[started, !!v, turbo, sucked, fountain, relands]})`);
+    club.moments = [];
+  }
+  // THE CLAP PAD plays the band's own clap (club-voices.js clapVoice).
+  {
+    const { ClubVoices } = await import('../src/game/banger/club-voices.js');
+    const { VOICES } = await import('../src/data/voices.js');
+    const song = (soundsId, clap) => ({ soundsId, laneOf: {}, bank: {}, mix: { order: ['kick', 'clap'], voice: { clapVoice: clap } } });
+    const big = new ClubVoices(song('big-room', 'bigRoomClap'), { style: 'big-room' }).clapVoice();
+    const chip = new ClubVoices(song('chipstep-8bit', 'snareEngine'), { style: 'chipstep' }).clapVoice();
+    const nu = new ClubVoices(song('nu-disco', 'ds909Snare'), { style: 'nu-disco' }).clapVoice();
+    const v = new ClubVoices(song('big-room', 'bigRoomClap'), { style: 'big-room' });
+    v.state = { swapped: true, picks: { own: {}, swap: {} } };
+    assert(big === 'bigRoomClap' && chip === 'clapEngine' && VOICES[nu]?.category === 'Clap' && v.clapVoice() === 'clapEngine',
+      "the clap pad claps the band's own: big room's for big room, a real clap where the kit's is a snare, the game's own on 8-BIT");
+  }
   // Anyone stands anywhere (Peter, 5 Oct 2026): where each hero stands is drawn afresh every
   // visit, holds and taps mixed.
   {
@@ -816,8 +1015,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       'a tap on the dance floor strikes its pad (the third quarter: the shout, HEY!) and wakes the bottom buttons');
     tap(club, fl.x + fl.w * 0.6, y);
     tap(club, fl.x + fl.w * 0.1, y);
-    assert(club.padHits.map((p) => p.label).join() === 'HEY!,HO!,SIREN!',
-      'the shout is a different word each tap (HEY!, then HO!), and the first quarter is the siren');
+    assert(club.padHits.map((p) => p.label).join() === 'HEY!,YEAH!,SIREN!',
+      'the shout is a different word each tap (HEY!, then YEAH!), and the first quarter is the siren');
     club.draw(ctx);
     const touch = Input.usingTouch;
     Input.usingTouch = false; club.buttonsAt = -Infinity;
@@ -830,15 +1029,68 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(hovered && club.buttonsAt === was, 'a mouse over the floor wakes them; off it, they are let sleep');
     Input.usingTouch = touch;
   }
+  // THE BEACH BALL (Peter, 5 Oct 2026): a tap knocks it back up, the rally counting; the
+  // rally's eighth knock is into the mirror ball; a double tap pops it.
+  {
+    const clock = club.t;                          // the song's position goes with the club's clock here
+    club.moments = [];
+    club.startMoment('ball');
+    const m = club.moments.find((mm) => mm.kind === 'ball');
+    const firstHead = club.ballPath(m, 0, 10).find((p) => p.head);
+    club.t = m.t0 + firstHead.at * club.barSeconds() / 4 - club.barSeconds() / 8;   // half a beat before it lands on a head
+    club.draw(ctx);
+    const spot = club.ballSpots.find((sp) => sp.n === 0);
+    tap(club, spot.x, spot.y);
+    const knocked = club.ballPath(m, 0, 10);
+    assert(club.rally === 1 && m.points?.[0] && knocked.some((p) => p.hit) && knocked.find((p) => p.at > (club.t - m.t0) / (club.barSeconds() / 4))?.h >= 1.35,
+      'a tap on the beach ball knocks it back up, high: the rally is one');
+    club.t += 0.1; club.draw(ctx);
+    const again = club.ballSpots.find((sp) => sp.n === 0);
+    tap(club, again.x, again.y);
+    assert(m.popped?.[0] && club.moments.some((mm) => mm.kind === 'pop') && club.rally === 0 && club.flinch,
+      'a second tap straight after pops it: its colours burst, the hero under it flinches');
+    club.draw(ctx);
+    club.moments = []; club.rally = 0; club.lastBallTap = null;
+    // the smash: the rally's eighth knock goes to the mirror ball
+    club.startMoment('ball');
+    const m2 = club.moments.find((mm) => mm.kind === 'ball');
+    club.t = m2.t0 + club.ballPath(m2, 0, 10).find((p) => p.head).at * club.barSeconds() / 4 - club.barSeconds() / 8;
+    club.draw(ctx);
+    club.rally = 7;
+    const sp2 = club.ballSpots.find((sp) => sp.n === 0);
+    club.volley(sp2);
+    const toMirror = club.ballPath(m2, 0, 10).find((p) => p.clang);
+    assert(toMirror && Math.abs(toMirror.x - club.boxes.ball.x) < 1e-6 && club.smash && club.rally === 0,
+      'the eighth knock in a rally sends it up into the mirror ball');
+    club.t = club.smash.t + 0.01; club.update(1 / 60);
+    assert(!club.smash && club.spinV > 0 && club.led?.text === 'SMASH!' && club.moments.some((mm) => mm.kind === 'confetti'),
+      'and there it clangs: the mirror ball spins and flares, confetti, SMASH! on the board');
+    club.draw(ctx);
+    club.moments = []; club.spinV = 0; club.t = clock; club.update(1 / 60);
+  }
+  // THE CLAP, HELD: a tap is one clap; held, claps on the 2 and the 4 with a fill now and then.
+  {
+    const { clapsAt, CLAP_FILLS } = await import('../src/game/banger/club-hits.js');
+    assert(clapsAt(4) && clapsAt(12) && !clapsAt(0) && !clapsAt(8) && !clapsAt(13)
+      && CLAP_FILLS.every((f) => f.every((s) => s >= 12) && clapsAt(4, f) && f.every((s) => clapsAt(s, f))),
+    'a held clap plays the 2 and the 4, and a fill only ever in the last beat');
+    club.draw(ctx);
+    const fl = club.boxes.floor;
+    Input.pointer = { x: fl.x + fl.w * 0.375, y: fl.y + fl.h * 0.75, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    const held = club.clapHold;
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    assert(held && club.padHits.at(-1)?.pad === 'clap' && !club.clapHold, 'the clap pad held starts its pattern, and letting go stops it');
+  }
   // Every move draws its room.
   {
     for (let i = 0; i < HERO_MOVES.length; i++) {
       club.acting = { i, when: club.heardNow() - 0.1, bar: club.barSeconds(), dur: club.barSeconds(), plan: { beats: 2, hits: 2 } };
       club.punch = { grab: club.beat() - 0.3, slice: 0.25 };
-      club.echo = { when: club.heardNow() - 0.4 };
+      club.echoes = [{ when: club.heardNow() - 0.4, wet: 0.35, feedback: 0.5 }];
       club.draw(ctx);
     }
-    club.acting = null; club.punch = null; club.echo = null;
+    club.acting = null; club.punch = null; club.echoes = [];
     assert(true, 'every move draws what it does to the room');
   }
   // The mixer: a small icon that opens a panel of faders, one a part.
@@ -863,6 +1115,31 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.update(1 / 60);
     assert(club.voices.label('drums') !== before && club.voices.label('drums').endsWith('KIT') && club.led?.text.startsWith('DRUMS: '),
       'a tap on DRUMS swaps the kit, and the LED board says which');
+    // ...and the mixer is kept with the song (Peter, 5 Oct 2026): opened again, it is as it was left
+    club.update(1 / 60);
+    const kept = club.rec.mixer;
+    const again = new BangerClubState({ rec: club.rec, onBack: () => {} });
+    again.enter();
+    const back = Math.abs(again.levels.drums - club.levels.drums) < 1e-9 && again.voices.label('drums') === club.voices.label('drums');
+    again.exit();
+    Audio.setBank(club.song.bank, club.song.mix, club.song.arrangement, { startAtBeginning: true });
+    assert(kept && kept.levels.drums === club.levels.drums && kept.sounds.own.drums && back,
+      `the mixer is kept with the song — faders and sounds — and back when it is opened again (${JSON.stringify(kept)})`);
+    // ...and the song plays with those sounds out of the club too: the Lab's row carries them
+    {
+      const { bangerRow } = await import('../src/game/banger/store.js');
+      const row = bangerRow(club.rec);
+      const lane = Object.keys(row.mix.voice || {}).find((k) => row.mix.voice[k] !== club.song.mix.voice?.[k]);
+      assert(!!lane, `the Lab plays a kept song with the sounds it was left with (${lane})`);
+    }
+    // ...and RESET on the panel puts it all back (Peter, 5 Oct 2026): every fader up, every
+    // sound the song's own, and nothing kept on the record
+    club.draw(ctx);
+    assert(club.boxes.reset && !club.mixerPlain, 'the panel has a RESET tab, lit while there is something to reset');
+    tap(club, ...centre(club.boxes.reset));
+    assert(club.mixerPlain && PARTS.every((p) => club.levels[p.id] === 1) && club.voices.own && !club.rec.mixer
+      && club.popup?.text === 'MIXER RESET',
+    `RESET: every fader up, every sound the song's own, the kept mixer dropped (${JSON.stringify(club.rec.mixer)})`);
     Audio.reapplyBank = realRe;
     club.draw(ctx);
   }
@@ -1074,8 +1351,11 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.t += 1; club.draw(ctx);
     club.startMoment('confetti', { streamers: false });
     assert(!club.moments.at(-1).ribbons, 'confetti alone remains available');
-    club.t += 6; club.update(1 / 60);
-    assert(!club.moments.some(m => m.ribbons), 'streamers clear after their burst');
+    // streamers do not fade: they stay until they have fallen out of the bottom of the picture
+    club.t += 4; club.draw(ctx); club.update(1 / 60);
+    const falling = club.moments.some((m) => m.ribbons);
+    club.t += 8; club.draw(ctx); club.update(1 / 60);
+    assert(falling && !club.moments.some(m => m.ribbons), 'streamers stay till they fall out of the picture, then clear');
   }
   // New party events use heard beats, keep the controls untouched, and do not
   // stack two major moments. A confetti event queues its cleanup separately.
@@ -1139,10 +1419,13 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       assert(seeks[2] === 0, 'the last section skips round to the first');
     }
     Audio.setStepAtBoundary = realSeek; club.beat = realBeat; club.skipTo = null; seeks.length = 0;
-    tap(club, ledX, ledY); tap(club, ledX, ledY);
-    const bpmText = `${Math.round(club.song.bpm || 120)} BPM`;
-    assert(club.lastLedTap === -Infinity && club.led?.text === bpmText && club.popup === null && seeks.length === 0,
-      'double-clicking the red LED board shows the current track BPM and does not skip');
+    tap(club, ledX, ledY);
+    club.draw(ctx);
+    const eqOn = club.led?.eq === true;
+    tap(club, ledX, ledY);
+    club.draw(ctx);
+    assert(eqOn && !club.led?.eq && club.popup === null && seeks.length === 0,
+      'a tap on the red LED board turns it into a graphic equaliser, another puts its words back, and neither skips');
     window.__MASH_BUILD__ = build; club.moments = [];
   }
   // The subwoofers pump on the song's own kick.
@@ -1222,14 +1505,104 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(started, 'when the song loops, the heroes start a Mexican wave');
     club.waveAt = -Infinity;
   }
-  // a tap on the mirror ball brings up the song's title for a while
-  club.showTitle();
+  // a tap on the club sign brings up the song's title for a while (it was the mirror ball's)
+  club.draw(ctx);
+  const sb = club.boxes.sign;
+  club.lastSignTap = -Infinity;
+  tap(club, sb.x + sb.w / 2, sb.y + sb.h / 2);
   const t0 = club.t;
   club.t = t0 + 2; club.draw(ctx);
-  assert(club.titleAt === t0, 'tapping the mirror ball shows the title');
+  assert(club.titleAt === t0, 'tapping the club sign shows the title');
   club.t = t0 + 2.5; club.showTitle();
   assert(club.titleAt < t0 + 2.5, 'tapped again while up, the title stays up');
   club.t = t0;
+  // THE SPEAKERS, THE RIG AND THE LASERS (Peter, 5 Oct 2026): a speaker tapped BOOMs, held boosts
+  // the bass; a par can tapped lights the room in its colour; a tap up in the room sweeps the lasers.
+  {
+    club.draw(ctx);
+    const sp = club.boxes.speakers[0], can = club.boxes.cans[2];
+    const spot = [sp.x + sp.w / 2, sp.y + sp.h * 0.15];
+    club.boomAt = -Infinity;
+    tap(club, ...spot);
+    club.update(1 / 60);
+    const boomed = club.boomAt > -Infinity && !club.speakerHold;
+    Input.pointer = { x: spot[0], y: spot[1], down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    club.t += 0.4; club.update(1 / 60);
+    const boosting = !!club.boost && club.speakerHold?.boosted;
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    const ended = !club.boost && !club.speakerHold;
+    tap(club, can.x + can.w / 2, can.y + can.h / 2);
+    const lit = club.lightShow?.col === can.col;
+    club.draw(ctx);
+    const heads = Math.min(...club.boxes.heroes.map((b) => b.y));
+    tap(club, 480 * 0.3, (club.layout.stageTop + heads) / 2 + 20);
+    const swept = !!club.laserSweep;
+    club.draw(ctx);
+    // ...two patterns a tap, one after the other (Peter: "double or repeat or cycle")
+    const L = club.laserSweep, beatS = club.barSeconds() / 4;
+    const cycles = L && L.kinds.length === 2 && L.kinds[0] !== L.kinds[1]
+      && club.laserState(L.at + beatS)?.kind === L.kinds[0] && club.laserState(L.at + 9 * beatS)?.kind === L.kinds[1]
+      && club.laserState(L.at + 9 * beatS)?.col !== club.laserState(L.at + beatS)?.col;
+    assert(boomed && boosting && ended && lit && swept && cycles,
+      `a speaker tapped booms, held boosts the bass till let go; a par can lights the room in its colour; up top sweeps the lasers, two patterns a tap (${[boomed, boosting, ended, lit, swept, cycles]})`);
+    // a laser that meets the mirror ball stops on it and lights it up (Peter: "those lights don't
+    // seem to reflect in the disco ball. can they?")
+    {
+      const realBall = club.ballAt;
+      club.ballAt = -1e9; club.draw(ctx);
+      const b = club.boxes.ball;
+      const meets = club.laserMeetsBall(b.x, b.y - b.r * 3, 0, 1, 1000), misses = club.laserMeetsBall(b.x + b.r * 2, b.y - b.r * 3, 0, 1, 1000);
+      club.laserSweep = { kinds: ['tunnel', 'sheet'], cols: ['#3dff6e', '#ff3355'], at: club.heardNow() - 1.5 * beatS, dir: 1 };
+      club.draw(ctx);
+      const caught = club.ballHits.some((h) => h.colour === '#3dff6e');
+      club.ballAt = realBall;
+      assert(Math.abs(meets - b.r * 2) < 1e-6 && misses == null && caught,
+        `the tapped lasers land on the mirror ball and light it up (${[meets, misses, caught]})`);
+    }
+    club.lightShow = null; club.laserSweep = null; club.boomAt = -Infinity;
+  }
+  // the confetti on the floor: little paper shapes lying at their own angles, a fill a colour
+  {
+    let fills = 0;
+    const counting = new Proxy(ctx, {
+      get: (o, k) => (k === 'fill' ? () => { fills++; } : typeof o[k] === 'function' ? o[k].bind(o) : o[k]),
+      set: (o, k, v) => { o[k] = v; return true; },
+    });
+    const scraps = Array.from({ length: 130 }, (_, k) => makeScrap(k * 3.5, (k % 10) / 10, ['#ff4fa3', '#ffd23f', '#3fb8ff', '#7cff6b', '#b06bff'][k % 5], 0));
+    drawScraps(counting, scraps.map((sc) => ({ sc, x: sc.x, y: 200 })), 1, { glint: 1 });
+    const old = { x: 50, dy: 0.3, colour: '#ff4fa3', at: 0 };   // dropped before scraps had a look
+    drawScraps(ctx, [{ sc: old, x: 50, y: 200 }], 1);
+    assert(fills > 0 && fills <= 24 && new Set(scraps.map((sc) => sc.shape)).size >= 3 && old.shape && Number.isFinite(old.a),
+      `the floor's confetti is paper shapes at their own angles, a fill a colour (${fills} fills for 130 scraps)`);
+    // ...and it bounces when a speaker BOOMs or the bass is boosted (Peter, 5 Oct 2026)
+    const still = club.scrapHop(1);
+    club.boomAt = club.heardNow() - 0.1;
+    const boomed = club.scrapHop(1);
+    const lifts = scraps.slice(0, 20).map((sc) => boomed(sc)[0]);
+    club.boomAt = -Infinity;
+    club.boost = { lanes: [], wobbling: true, amount: 0.8 };
+    const wobbling = club.scrapHop(1);
+    club.boost = null;
+    drawScraps(ctx, scraps.map((sc) => ({ sc, x: sc.x, y: 200 })), 1, { hop: boomed });
+    assert(still === null && lifts.every((l) => l > 0) && new Set(lifts.map((l) => l.toFixed(2))).size > 10 && typeof wobbling === 'function',
+      'the floor\'s confetti bounces on a BOOM, each scrap its own height, and with the bass boosted; still otherwise');
+  }
+  // ...and the mirror ball is grabbed: dragged out on its wire and spun, it swings back when let go
+  {
+    club.draw(ctx);
+    const mb = club.boxes.ball, phase0 = club.spinPhase, title0 = club.titleAt;
+    Input.pointer = { x: mb.x, y: mb.y, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    Input.pointer.x += 30; club.update(1 / 60); Input.endFrame();
+    const swung = club.ballSwing.a, spun = club.spinPhase - phase0;
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    const spinning = club.spinV;
+    for (let k = 0; k < 400; k++) club.ballOn(1 / 60);
+    assert(club.titleAt === title0 && swung > 0.2 && spun > 1 && spinning > 1 && Math.abs(club.ballSwing.a) < 0.02,
+      `the mirror ball dragged swings out on its wire and spins, and swings back when let go (${swung.toFixed(2)} rad, ${spun.toFixed(1)} turned, spinning ${spinning.toFixed(1)})`);
+    club.spinV = 0; club.spinPhase = 0;
+  }
   assert(backs === 1, 'BACK goes back to the Lab');
   // The same SONG plays on (Audio.sourceBank, the bank as it was handed in): a sound swapped
   // on the mixer is put back on the way out, which re-merges the bank the sequencer reads.

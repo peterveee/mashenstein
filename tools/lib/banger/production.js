@@ -48,6 +48,8 @@ const STYLE = {
   'electro-funk': { echo: 0.5, lush: 0.4, room: 0.5 },
   'french-house': { echo: 0.4, lush: 0.5, room: 0.4 },
   reggaeton: { echo: 0.8, lush: 0.6, room: 0.6 },
+  moombahton: { echo: 0.8, lush: 0.5, room: 0.5 },
+  merenhouse: { echo: 0.5, lush: 0.4, room: 0.6 },
   chipstep: { echo: 0.5, lush: 0, room: 0.3 },
 };
 const AIRY = new Set(['dreamy', 'wonder', 'nostalgic', 'euphoric', 'gothic', 'lament']);

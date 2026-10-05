@@ -35,7 +35,7 @@ The quick row has the choices you make every time:
 | Control | What it does |
 |---|---|
 | Style | The recipe. **Big-Room House** (128, the ABSOLUTE ZERO shape: pumping supersaws, off-beat bass), **Trance** (138: a rolling sixteenth bass, trance-gated supersaws, a long breakdown with the hook on a piano; Uplifting and Long by default), **Future Bass** (140 at half time: hat rolls, an 808 under a talking wobble, stuttered supersaws, a full-time second drop; Euphoric by default) or **Eurobeat** (155, HAIRPIN's shape: four on the floor, an octave bass in eighths, strings, brass stabs, the razor lead doubling the hook; Anthemic by default) or **Chipstep** (140, CHIPSTEP's shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it with the wobble stuttering, a Game Boy snare) or **Synthwave** (118, NIGHT DRIVE's outrun: a gated-reverb snare, a root–octave sixteenth bass, a string machine pumping, brass stabs, pre-chorus and chorus, the last chorus a whole step up). Picking a style resets every switch under More Options to that style's defaults. **Shibuya-Kei** (126 with a light swing: a breakbeat with a rim click, a bossa bass, nylon guitar comping, vibes doubling the hook and a flute answering it, strings, organ and a ba-ba choir; a Pop Song in the Lounge mood by default — written from the idea of the genre, not checked against the records). **Drum & Bass** (174: the two-step beat with ghost notes and shuffling hats, a reese bass under held pads, a pluck doubling the hook; Moody by default, the riff's own drums replaced), **Electro** (126: an 808 kit with a syncopated kick, an 808 bass locked to it, stabs on the off-beats, a robot vocoder doubling the hook, no pump; Dark by default) and **16-Bit** (150, sixteen-bit FM: a slap-FM bass in octaves, FM keys on the off-beats, the hook on an FM lead with an FM bell over it, FM toms; a Pop Song in the Heroic mood, no riser, pump or filter build). These three are also written from the idea of the genre — correct them by ear. The chill styles: **Deep House** (122, swung: Rhodes stabs over a pad that breathes with the kick, a Groove with no drops), **Nu-Disco** (112: congas, a picked guitar, walking bass, strings, a flute; a Pop Song) and **Downtempo** (90, swung: a slow crushed break, Rhodes and strings, a muted trumpet; a Groove). |
-| Mood | Anthemic, Uplifting, Euphoric, Moody, Dark, Gothic, Heroic, Nostalgic or Funky — or one of the fourteen every style shares (`tools/lib/banger/moods.js`), each its own progression: Bittersweet (I–IVmaj7–iv–I–vi7–II7–IVmaj7–Vsus4), Disco (i7–IV7 vamp), Sunshine Pop (Imaj7–iii7–IVmaj7–V, home by ♭VII), Doo-Wop (I–vi–IV–V), Lament (the falling circle of fifths), Lo-Fi (IVmaj7–iii7–ii7–Imaj7), Dreamy (I–II), Wonder (I–♭VI–I–♭III), Boogie (eight-bar blues), Lounge (Imaj7–VI7–ii7–V7, then sliding down by semitones), Hopeful (vi–IV–I–V, landing home on a suspended V — where Moody's major walk goes round for ever), Boss Fight (i and ♭II a half-bar each, turning on the big V) and Andalusian (i–VII–VI–V two chords a bar, resting on the big V — Gothic's descent at twice the pace, without the church) and Hypnotic (I–♭III–IV–V: four bars on I over the new **Sequencer** bass — root, octave, fifth, seventh in sixteenths — then shifting up in blocks; it lifts key by the plain jump). Mood picks the chord progression, the chord colours (Moody uses sevenths, Uplifting adds ninths, Funky ninths on the major chords) and how bright the hook is, and can swap parts' sounds (Gothic: organ, harpsichord, tolling bell, timpani) and suggest a bass (Funky → Funk Syncopated). |
+| Mood | Anthemic, Uplifting, Euphoric, Moody, Dark, Gothic, Heroic, Nostalgic or Funky — or one of the fifteen every style shares (`tools/lib/banger/moods.js`), each its own progression: Bittersweet (I–IVmaj7–iv–I–vi7–II7–IVmaj7–Vsus4), Disco (i7–IV7 vamp), Sunshine Pop (Imaj7–iii7–IVmaj7–V, home by ♭VII), Doo-Wop (I–vi–IV–V), Lament (the falling circle of fifths), Lo-Fi (IVmaj7–iii7–ii7–Imaj7), Dreamy (I–II), Wonder (I–♭VI–I–♭III), Boogie (eight-bar blues), Lounge (Imaj7–VI7–ii7–V7, then sliding down by semitones), Hopeful (vi–IV–I–V, landing home on a suspended V — where Moody's major walk goes round for ever), Boss Fight (i and ♭II a half-bar each, turning on the big V) and Andalusian (i–VII–VI–V two chords a bar, resting on the big V — Gothic's descent at twice the pace, without the church) and Hypnotic (I–♭III–IV–V: four bars on I over the new **Sequencer** bass — root, octave, fifth, seventh in sixteenths — then shifting up in blocks; it lifts key by the plain jump) and Fiesta (the Latin party: merengue's I–V7–V7–I–I–IV–V7–I in plain triads in major, the montuno vamp i–iv–V7–iv in minor, over a Root–Fifth bass). Mood picks the chord progression, the chord colours (Moody uses sevenths, Uplifting adds ninths, Funky ninths on the major chords) and how bright the hook is, and can swap parts' sounds (Gothic: organ, harpsichord, tolling bell, timpani) and suggest a bass (Funky → Funk Syncopated). |
 | Mode | **Keep**, **Major**, **Minor**, **Dorian** (minor with a raised 6th: bright, groovy), **Phrygian** (minor with a flat 2nd: dark, menacing), **Harmonic Minor** (minor with a raised 7th: dramatic, a big V), **Mixolydian** (major with a flat 7th: rocky, open) or **Lydian** (major with a raised 4th: dreamy, floating). Each mode brings its own chord walks, built on the chord that makes it (dorian's IV, phrygian's flat II, mixolydian's flat VII …), and its turnarounds land there instead of on the dominant. Each mode has a **bright** walk (leaning on its major chords) for Anthemic, Uplifting and Euphoric, and a **dark** one (leaning on its minor chords) for Moody and Dark, so the mood still steers the chords. The list marks which modes **suit** the chosen mood and which **fight** it — Dark suits Minor, Phrygian and Harmonic Minor and fights Major and Lydian; Euphoric suits Lydian and Major — and Surprise Me always rolls one of the modes that suit. Any mode can still be picked with any mood. |
 | Riff Notes | Shown when Mode is not Keep. The banger stays on your riff's own home note either way — to move a finished banger higher or lower, select all its bars on the desk and use **Transpose**. **Keep As Written** (the default) never moves a note: the mode is in the chords — the mode's own wherever your riff sits on them, and your riff's own chords borrowed wherever it plays the note the mode changes, so nothing clashes. **Fit to the Mode** moves your notes into the mode, degree by degree — an A-minor riff in Dorian has every F raised to F♯ — so the riff itself takes on the colour. The readout says how many notes would move. |
 | Length | Short (48 bars, about stage length), Medium (64 bars, two minutes at 128), Long (112 bars), or Custom (24–256 bars, in fours). |
@@ -692,6 +692,43 @@ mixes. Every sound is already in the catalogue: none of them needed a new preset
 Reggaeton's fills (the 808 tom stands in) and a real **vocoder** for Italo Disco that
 follows the chords (Robot Vox is a fixed vowel).
 
+### Moombahton
+
+Added on 5 Oct 2026, picked from the Latin sketches (`work/local/_latin-sketches.mjs`, WAVs
+in `work/auditions/latin-styles/`). Like the others, it is written from the general idea of
+the genre and not checked against the records. The starting faders come from the sketch's
+solo-balanced mix. Every sound was already in the catalogue: no new presets.
+
+- **Moombahton** (`styles/moombahton.js`): **110**. The dembow made festival-sized: a
+  **=909 Kick Punch** on every beat, a **Tight Snare** on the dembow (the style kit's clap
+  slot), a **Big Room Clap** on three (the Tambourine slot, labelled CLAP) and **tribal
+  toms** on the =808 Tom (the Congas slot). A **Reese Bass** plays the dembow too, with
+  its top filtered off. **Festival Stabs** play the same rhythm (Chords = Supersaw Stabs)
+  and pump on their own strip, because stabs are never gated. The Riff Sound shortlist
+  starts on the **Data Marimba**. It uses the **Club** form with snare-roll builds, a riser
+  into every drop and a harder second drop, in the Uplifting mood (i–VI–III–VII in minor).
+
+### Merenhouse
+
+Added on 5 Oct 2026, picked from the same Latin sketches. It is written from the general
+idea of the genre and not checked against the records. The starting faders come from the
+sketch's solo-balanced mix.
+
+- **Merenhouse** (`styles/merenhouse.js`): **132**. Merengue on a house kick: a 909 four on
+  the floor and clap. The **güira** is the hat. Short scrapes (**Güira · Chk**, the style
+  kit's hats) play every sixteenth under a long scrape on each beat (**Güira · Scrape**, the
+  Shaker slot). The **Tambora** knocks the merengue pattern (the Congas slot) and plays the
+  fills. Under them, a **DX Slap** bass bounces root to fifth ahead of the beat, and
+  **Bright Pop Grand** chords hit the off-beats (Chords = Piano Stabs). **Brass Section**
+  horns answer the hook (Counter-Melody), and the Riff Sound shortlist starts on the
+  **Saxophone**. It is a Pop Song in the **Fiesta** mood, merengue's own walk (the shared
+  mood, so any style can play it).
+
+**New presets** (`src/data/voices.js`, Perc): **Güira · Scrape** is six ridges 14 ms apart,
+each louder and brighter than the last, with the final one left to ring. **Güira · Chk**
+is two ridges and a tin edge. **Tambora** is a stick knock on the shell over a low falling
+skin.
+
 ### Levels
 
 Every preset is levelled by the engine before any fader touches it: its loudness was
@@ -776,7 +813,7 @@ named by part alone (`KICK`, `HATS`).
 
 | Path | What it is |
 |---|---|
-| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js`, `styles/deep-house.js`, `styles/nu-disco.js`, `styles/downtempo.js`, `styles/eurodance.js`, `styles/italo-disco.js`, `styles/electro-funk.js`, `styles/french-house.js`, `styles/reggaeton.js` |
+| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js`, `styles/deep-house.js`, `styles/nu-disco.js`, `styles/downtempo.js`, `styles/eurodance.js`, `styles/italo-disco.js`, `styles/electro-funk.js`, `styles/french-house.js`, `styles/reggaeton.js`, `styles/moombahton.js`, `styles/merenhouse.js` |
 | `tools/lib/banger/sounds.js` | The sounds table — written by the Banger Sounds page |
 | `tools/lib/banger/sound-rules.js` | The rulebook: every slot, and what may go in it |
 | `tools/lib/banger/sounds-source.js`, `audition.js` | The table's serialiser; the two-bar auditions |

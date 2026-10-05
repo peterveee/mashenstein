@@ -80,6 +80,9 @@ export const MOOD_WORDS = Object.freeze({
   hypnotic: ['SPIRAL', 'LOOPING', 'PENDULUM', 'ORBITAL', 'PULSING', 'ENDLESS', 'MANTRA', 'CIRCLING',
     'STROBE', 'TICKING', 'RIPPLE', 'ECHOING', 'CLOCKWORK', 'WHIRLPOOL', 'TUNNEL', 'MAGNETIC',
     'SPINNING', 'KALEIDO', 'DRONING', 'GLIDING', 'ROTARY', 'METRONOME', 'TIDAL', 'SWAYING'],
+  fiesta: ['CARNIVAL', 'MAMBO', 'SALSA', 'MANGO', 'PAPAYA', 'TROPICAL', 'PINATA', 'MARACA', 'CONGA',
+    'SAMBA', 'SIZZLING', 'MERENGUE', 'CUMBIA', 'COCONUT', 'HAMMOCK', 'CABANA', 'LIMBO', 'PARTY',
+    'SUNSHINE', 'SHIMMY', 'SPICY', 'CANDELA', 'HAVANA', 'FUEGO'],
 });
 
 /** The second word: one pool for every mood, short and concrete. */

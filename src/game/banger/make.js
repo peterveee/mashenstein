@@ -54,6 +54,8 @@ const STYLE_DESCRIPTIONS = Object.freeze({
   'electro-funk': 'Slap bass, clav and a talking synth',
   'french-house': 'A filtered disco loop that pumps',
   reggaeton: 'The dembow beat, an 808 and marimba',
+  moombahton: 'Festival-sized dembow, toms and saw stabs',
+  merenhouse: 'Fast merengue: güira, tambora and sax',
 });
 
 const MOOD_DESCRIPTIONS = Object.freeze({
@@ -80,6 +82,7 @@ const MOOD_DESCRIPTIONS = Object.freeze({
   boss: 'Dark, tense video-game showdown',
   andalusian: 'Flamenco-style tension, then release',
   hypnotic: 'A repeating groove that slowly shifts',
+  fiesta: 'A Latin party: bouncy, sunny, all night',
 });
 
 /** The styles the jukebox offers, in the desk's order. */
@@ -233,6 +236,8 @@ const BASS_ROLLS = Object.freeze({
   'electro-funk': ['funk', 'octaves', 'walking', 'long808'],
   'french-house': ['funk', 'octaves', 'walking', 'rolling'],
   reggaeton: ['long808', 'pedal', 'rootFifth'],
+  moombahton: ['reese', 'long808', 'octaves', 'rolling'],
+  merenhouse: ['rootFifth', 'walking', 'octaves', 'funk'],
 });
 // `stabs` in a gate draw is Supersaw Stabs in place of a gate.
 const GATE_ROLLS = Object.freeze(['pump', 'eighths', 'sixteenths', 'dotted', 'energy', 'stabs']);

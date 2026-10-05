@@ -25,11 +25,13 @@ import { FRENCH_HOUSE } from './french-house.js';
 import { EURODANCE } from './eurodance.js';
 import { ITALO_DISCO } from './italo-disco.js';
 import { REGGAETON } from './reggaeton.js';
+import { MOOMBAHTON } from './moombahton.js';
+import { MERENHOUSE } from './merenhouse.js';
 import { withSharedMoods } from '../moods.js';
 
 // Every style plays the shared moods (moods.js) unless it has its own take on one.
 export const BANGER_STYLES = Object.freeze([BIG_ROOM, TRANCE, FUTURE_BASS, EUROBEAT, CHIPSTEP, SYNTHWAVE, SHIBUYA, DNB, ELECTRO, MEGADRIVE, DEEP_HOUSE, NU_DISCO, DOWNTEMPO,
-  EURODANCE, ITALO_DISCO, ELECTRO_FUNK, FRENCH_HOUSE, REGGAETON].map(withSharedMoods));
+  EURODANCE, ITALO_DISCO, ELECTRO_FUNK, FRENCH_HOUSE, REGGAETON, MOOMBAHTON, MERENHOUSE].map(withSharedMoods));
 
 // SOUND SETS (5 Oct 2026): a style's music on another set of sounds — Light (the cheap synths
 // only, for a phone) and 8-Bit (chip blips). Each is a recipe with `base` (the style it

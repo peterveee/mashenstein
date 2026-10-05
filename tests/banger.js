@@ -584,13 +584,20 @@ try {
       'Go Crazy keeps the key, the tempo, the mood and the style');
     assert(JSON.stringify(goCrazyBangerOptions(base)) === JSON.stringify(o), 'Go Crazy is a recipe, not a roll');
     let built = 0;
+    const unpanned = [];
     for (const st of BANGER_STYLES) {
       try {
         const out = generateBanger({ riff: BAND, options: goCrazyBangerOptions({ ...BANGER_DEFAULTS, style: st.id }), seed: 3 });
         if (out.summary.bars > 0) built++;
+        // A key present but undefined spreads over the desk's default and reaches setPan as
+        // NaN, which stops the game (Moombahton's hook strip, 5 Oct 2026).
+        for (const [lane, strip] of Object.entries(out.mix.lanes || {})) {
+          if ('pan' in strip && !Number.isFinite(strip.pan)) unpanned.push(`${st.id} ${lane}`);
+        }
       } catch (err) { check(false, `Go Crazy on ${st.id}: ${err.message}`); }
     }
     assert(built === BANGER_STYLES.length, `Go Crazy makes a song in every style (${built} of ${BANGER_STYLES.length})`);
+    assert(!unpanned.length, `every strip's pan is a number or left out (${unpanned.join(', ') || 'all'})`);
   }
     // The style as the generator plays it: its own moods and the shared ones (moods.js).
     const BIG_ROOM = BANGER_STYLES.find((st) => st.id === 'big-room');

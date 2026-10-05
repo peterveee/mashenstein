@@ -24,6 +24,8 @@ const PROFILES = {
   'electro-funk': { perc: 'cowbell', keep: ['counter'] },
   'french-house': { perc: 'shaker', keep: ['arp'] },
   reggaeton: { perc: 'congas', keep: ['counter'] },
+  moombahton: { perc: 'congas', keep: ['tambourine'] },
+  merenhouse: { perc: 'congas', keep: ['shaker', 'congas'] },
   chipstep: { perc: 'tambourine' },
 };
 export const DECORATION = ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',

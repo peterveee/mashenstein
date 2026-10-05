@@ -20,7 +20,27 @@ const save = {
   settings: defaultSettings(),
   persist() { persisted++; },
 };
-const settings = new SettingsState({ save, onDone: () => { returned++; } });
+// Landscape packs every real setting onto the page (a phone in landscape was
+// hiding the last rows below a six-row window). The real list is checked for
+// that first; the scrolling below is exercised on a list padded past the
+// page's capacity, which is the only case that still scrolls.
+const real = new SettingsState({ save, onDone: () => {} });
+real.enter();
+assert(real.visibleRows === real.listCount() && real.rowH >= 16,
+  `every landscape setting is on the page (${real.visibleRows}/${real.listCount()}, row ${real.rowH.toFixed(1)})`);
+assert(real.listY + real.visibleRows * real.rowH <= real.doneY
+  && real.doneY + real.doneH <= defaultFrame().height - 20,
+  'the list ends above BACK, and BACK above the footer');
+
+class LongSettings extends SettingsState {
+  options() {
+    const opts = super.options();
+    const back = opts.pop();
+    const extra = Array.from({ length: 10 }, (_, i) => ({ label: `EXTRA ${i}`, act() {} }));
+    return [...opts, ...extra, back];
+  }
+}
+const settings = new LongSettings({ save, onDone: () => { returned++; } });
 settings.enter();
 
 // Counted relative to the list rather than pinned to a number: this menu gains
@@ -39,8 +59,8 @@ for (const gone of [/REDUCED MOTION/, /REDUCED FLASHING/, /SCREEN SHAKE/, /GLOW 
 }
 assert(/DONE|BACK/.test(settings.options()[N - 1].label),
   'the last row is the way out');
-assert(settings.visibleRows === 6 && settings.listStart === 0,
-  'six full-size settings rows scroll above the fixed DONE row');
+assert(settings.visibleRows < settings.listCount() && settings.listStart === 0,
+  'a list too long for the page scrolls above the fixed DONE row');
 
 function down() {
   Input.press('down');
@@ -73,7 +93,7 @@ assert(settings.idx === restingStart,
   `pointer selection maps to the first visible setting (${settings.idx})`);
 
 // Touch waits for release, so a swipe cannot toggle the row beneath the finger.
-const touchSettings = new SettingsState({ save, onDone: () => { returned++; } });
+const touchSettings = new LongSettings({ save, onDone: () => { returned++; } });
 touchSettings.enter();
 Input.usingTouch = true;
 function touchDown(y) {

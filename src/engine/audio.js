@@ -1221,6 +1221,7 @@ class AudioSys {
     this.loopListeners = [];
     this.songTime = 0;
     this.lifecyclePaused = false;
+    this.playerPaused = false;
     // Reversed-audio capture: a ring buffer tapped off the master output
     // so we can play it backwards during rewind.
     this._capBuf = null;     // Float32Array ring buffer (~4s)
@@ -2379,7 +2380,7 @@ class AudioSys {
   }
 
   resumeContext() {
-    if (!this.ctx || typeof this.ctx.resume !== 'function' || this.lifecyclePaused) return;
+    if (!this.ctx || typeof this.ctx.resume !== 'function' || this.lifecyclePaused || this.playerPaused) return;
     try { this.settleContext(this.ctx.resume()); } catch (e) { /* next gesture retries */ }
   }
 
@@ -2549,6 +2550,20 @@ class AudioSys {
     paused = !!paused;
     if (paused === this.lifecyclePaused) return;
     this.lifecyclePaused = paused;
+    if (paused) this.suspendContext();
+    else this.resumeContext();
+  }
+
+  /**
+   * The player's own pause (the Lab's play/pause button). The whole context holds where it
+   * is — scheduled notes, tails and the transport alike — so PLAY carries on from the very
+   * sample it stopped on. Kept apart from the lifecycle pause so neither undoes the other,
+   * and a gesture's ensure() does not resume it.
+   */
+  setPlayerPaused(paused) {
+    paused = !!paused;
+    if (paused === this.playerPaused) return;
+    this.playerPaused = paused;
     if (paused) this.suspendContext();
     else this.resumeContext();
   }

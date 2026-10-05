@@ -83,6 +83,17 @@ export function roleVoice(row, kit, role, lane = '') {
   return row.parts?.[role] ?? null;
 }
 
+/**
+ * A kept song's mix with the sounds it was left with in the club (`sounds`, picksNamed) — what
+ * the Lab and the jukebox play it with, so a song keeps its presets wherever it plays (Peter,
+ * 5 Oct 2026: "can we also save the presets"). `rec` is its recipe.
+ */
+export function mixWithKept(song, rec, sounds) {
+  if (!sounds) return song?.mix;
+  const v = new ClubVoices(song, rec);
+  return v.mixFor(v.stateFor(sounds));
+}
+
 /** The song's mix with `voices` (lane → preset) put on its lanes. */
 export function mixWithVoices(mix, voices) {
   if (!voices.size) return mix;
@@ -252,6 +263,29 @@ export class ClubVoices {
 
   mixFor(state) { return mixWithVoices(this.song?.mix, this.voicesFor(state)); }
 
+  /**
+   * The clap the floor's CLAP pad plays (club-hits.js): the band's own, as heard — the clap
+   * lane's sound, else the kit's — so it changes with the style, the DRUMS button and 8-BIT.
+   * Where that "clap" is a snare or a rim, the first real clap in the same set's other kits;
+   * where the set has none (the 8-Bit set), the game's own.
+   */
+  clapVoice() {
+    const s = this.state;
+    const isClap = (id) => VOICES[id]?.kind === 'drum' && VOICES[id].category === 'Clap';
+    const lane = [...this.roles].find(([, role]) => role === 'clap')?.[0];
+    const now = this.voicesFor(s);
+    const laneVoice = lane && (now.get(lane) ?? (s.swapped ? null : this.song?.mix?.voice?.[`${lane}Voice`]));
+    if (isClap(laneVoice)) return laneVoice;
+    const row = this.rowFor(s.swapped);
+    const pick = s.picks[s.swapped ? 'swap' : 'own'].drums || 0;
+    const kit = (pick && this.choices('drums', s.swapped)[pick]?.kit) || this.kitIn(row);
+    for (const k of [kit, ...KIT_ORDER.filter((x) => x !== kit)]) {
+      const id = roleVoice(row, k, 'clap');
+      if (isClap(id)) return id;
+    }
+    return 'clapEngine';
+  }
+
   /** Worklet instruments build their node ahead of their first note, so it is not late. */
   warm(voices) {
     const rack = Audio.voices;
@@ -266,6 +300,54 @@ export class ClubVoices {
     // Only onto the song this club is playing: reapplyBank on any other bank is a song change.
     if (Audio.sourceBank !== this.song?.bank || !Audio.bank) return;
     try { Audio.reapplyBank(this.song.bank, this.mixFor(state)); } catch { /* the song carries on as it was */ }
+  }
+
+  /**
+   * The band's sounds as they stand, by name, to keep (store.js keepMixer): each part's sound
+   * button — a kit's key or a preset's id — and whether B-33P has the band on the other set.
+   */
+  picksNamed(state = this.target) {
+    const out = { own: {}, swap: {}, swapped: !!state.swapped };
+    for (const key of ['own', 'swap']) {
+      for (const [part, k] of Object.entries(state.picks[key])) {
+        const c = this.choices(part, key === 'swap')[k];
+        if (c && k > 0) out[key][part] = c.kit || c.id;
+      }
+    }
+    return out;
+  }
+
+  /** The state sounds kept by name (picksNamed) describe; a sound no longer offered is let go. */
+  stateFor(named) {
+    const state = fresh();
+    state.swapped = !!named?.swapped;
+    for (const key of ['own', 'swap']) {
+      for (const [part, name] of Object.entries(named?.[key] || {})) {
+        const k = this.choices(part, key === 'swap').findIndex((c) => (c.kit || c.id) === name);
+        if (k > 0) state.picks[key][part] = k;
+      }
+    }
+    return state;
+  }
+
+  /** Sounds kept by name back on the band, heard at once. */
+  restorePicks(named) {
+    const state = this.stateFor(named);
+    if (same(state, this.state)) return false;
+    this.pending = null;
+    this.apply(state);
+    return true;
+  }
+
+  /** Every part on the song's own sound, and the band on its own set — nothing to reset. */
+  get own() { return same(this.target, fresh()); }
+
+  /** The mixer's RESET: the song's own sounds back on every part, heard at once. */
+  reset() {
+    this.pending = null;
+    if (same(this.state, fresh())) return false;
+    this.apply(fresh());
+    return true;
   }
 
   /** Leaving the floor: the song's own sounds back, now. */

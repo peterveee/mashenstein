@@ -50,8 +50,12 @@ export const HERO_MOVES = Object.freeze([
   // under the surface); a press starts at 420 Hz, where the move always was. SWEEP is on
   // with both ends the same — a flat glide — so a drag eases onto its new cutoff over 20 ms
   // rather than stepping (effects.js sectionGlide).
+  // Let go, the water DRAINS (Peter, 5 Oct 2026: "slowly go back to normal rather than revert
+  // instantly"): from the next beat the cutoff glides from where the drag left it up to
+  // `drain.to`, past hearing, across `drain.bars`, and the section lets go there (endHold).
   { hero: 'lorenzo', name: 'LORENZO', move: 'UNDERWATER', what: 'hold: the room floods — drag to sink or surface', col: '#48e0c8', hold: true,
     drag: { param: 'frequency', also: 'sweepTo', from: 140, to: 3200, start: 0.351 },
+    drain: { to: 18000, bars: 2 },
     chain: [{ id: 'filter', params: { type: 'lowpass', frequency: 420, Q: 1.4, sweep: 1, sweepTo: 420 } }] },
   // Not an effect: the band's instruments, swapped for the 8-Bit Sound Set's on the next bar
   // and back again at the next tap (club-voices.js).
@@ -64,20 +68,41 @@ export const HERO_MOVES = Object.freeze([
     chain: [{ id: 'stutter', params: { slice: 0.25, retrigger: 0, fade: 0 } }] },
   // His returning axe: on the 2 or the 4, that beat is thrown into a ping-pong echo — out
   // one side, back the other, across the next bar or so. High-passed going in, so the
-  // repeats carry no kick to smear the beat they land on.
-  { hero: 'grumpos', name: 'GRUMPOS', move: 'BOOMERANG', what: 'the beat thrown out one side — and back the other', col: '#e0874a',
-    backbeat: true, beats: 1, echo: { every: 0.75, repeats: 6 },
+  // repeats carry no kick to smear the beat they land on. The echoes sit 4 dB under the
+  // beat (WET 0.35 on the equal-power crossfade; it was 0.5, level with it) and each falls
+  // 6 dB on the last (Peter, 5 Oct 2026: "the echoes are a bit too loud").
+  // HELD since 5 Oct 2026 (Peter: "grumpos effect can also be held and perhaps echoes get
+  // louder/softer with the drag"): he throws every 2 and 4 for as long as he is held
+  // (throwBeat, booked by club.js), and the drag rides the echoes — WET and FEEDBACK
+  // together, straight lines from `lin`'s bottom to its top, the press starting where the
+  // move always sat. A tap is still the one throw.
+  { hero: 'grumpos', name: 'GRUMPOS', move: 'BOOMERANG', what: 'hold: every 2 and 4 thrown — drag for louder echoes', col: '#e0874a',
+    hold: true, backbeat: true, beats: 1, echo: { every: 0.75, repeats: 6 },
+    drag: { fx: 1, lin: { wet: [0.1, 0.6], feedback: [0.3, 0.7] }, start: 0.5 },
     chain: [{ id: 'filter', params: { type: 'highpass', frequency: 220, Q: 0.7 } },
-      { id: 'pingpong', params: { sync: 1, division: 0.75, feedback: 0.6, wet: 0.5 } }] },
+      { id: 'pingpong', params: { sync: 1, division: 0.75, feedback: 0.5, wet: 0.35 } }] },
   // On the 2 or the 4, whichever comes first (Peter, 3 Oct 2026). On the 4 it winds the
   // tape down across the bar's last beat and the music is back on the next one. On the 2
   // it has half a bar to play with: one long wind-down over beats 2 and 3, or a stop on
-  // each — the tape caught, started and stopped again (kikoPlan).
-  { hero: 'kiko', name: 'KIKO', move: 'POWER DOWN', what: 'a warning shot stops the tape on the 2 or the 4', col: '#e04848',
-    onTwoOrFour: true, beats: 1,
+  // each — the tape caught, started and stopped again (kikoPlan). That is still a tap.
+  // HELD since 5 Oct 2026 (Peter picked "stop every bar"): after that first stop the tape
+  // stops again and again until he is let go (club.js stopsOn, club-fx.js stopTape). `stops`
+  // is what the drag picks between, bottom to top, each [every, on, beats] — a stop on every
+  // `every`th sixteenth counted from sixteenth `on` of the bar, winding down across `beats`:
+  // one long wind-down a bar (beats 3 and 4), the 2 and the 4 (where a press starts), or a
+  // half-beat stop on every beat.
+  { hero: 'kiko', name: 'KIKO', move: 'POWER DOWN', what: 'hold: the tape stops every 2 and 4 — drag up for more', col: '#e04848',
+    hold: true, onTwoOrFour: true, beats: 1,
+    stops: [[16, 8, 2], [8, 4, 1], [4, 0, 0.5]], stopStart: 1,
     chain: [{ id: 'stutter', params: { slice: 0, retrigger: 0, fade: 0, stop: 1 } }] },
-  { hero: 'clara', name: 'CLARA', move: 'PLOT HOLE', what: 'the band falls through it: drums only', col: '#c9a0ff',
-    drop: ['bass', 'chords', 'lead'] },
+  // HELD since 5 Oct 2026 (Peter: "make the clara effect last while held... could it adjust on
+  // slide"): the band falls through for as long as she is held — drums only where a press
+  // starts — and the drag says how much: up brings the bass back, then the chords; down takes
+  // the drums through too, to the kick and the backbeat, then the kick alone. `holes` runs
+  // from the bottom of the drag to the top; each says what stays, by part or by drum.
+  { hero: 'clara', name: 'CLARA', move: 'PLOT HOLE', what: 'hold: the band falls through — drag for how much', col: '#c9a0ff',
+    hold: true, holeStart: 2,
+    holes: [['kick'], ['kick', 'snare', 'clap', 'rim'], ['drums'], ['drums', 'bass'], ['drums', 'bass', 'chords']] },
   // THE DROP (Peter, 5 Oct 2026). Held, the bow is drawn: the high-pass climbs from 30 Hz to
   // 1.8 kHz over `drawBars` and holds there, a noise riser and a snare roll build under it
   // (club-hits.js) and the crowd sinks into a crouch. Let go and the arrow lands on the next
@@ -94,6 +119,29 @@ export const HERO_MOVES = Object.freeze([
   { hero: 'rusty', name: 'RUSTY', move: 'SPEED BOOST', what: 'hold: the song speeds up — drag down for slow-mo', col: '#e0a04a',
     hold: true, speeds: [0.5, 0.75, 1, 1.15] },
 ]);
+
+/**
+ * B-33P's 8-BIT, now and then (Peter, 5 Oct 2026: "what if we fed the entire mix through the
+ * gated rhythm effect for part of it"): while the band is on the 8-Bit set, the last bar of
+ * every four is the whole mix chopped into sixteenths — the chip-tune gate. A master section,
+ * like a hero's move, and never over one (club.js gateOn).
+ */
+export const CHIP_GATE = Object.freeze([{ id: 'rhythmgate', params: { division: 0.25, gateLength: 0.55, attack: 0.002, decay: 0.02, depth: 0.9 } }]);
+export const CHIP_GATE_EVERY = 4;
+
+/** The chip gate in at `when` (a bar line), on the grid of sixteenths `spb` long. */
+export function startChipGate(when, spb) {
+  if (!Audio.mixer?.scheduleBarEffects) return;
+  Audio.mixer.scheduleBarEffects(MASTER, CHIP_GATE, when, { fresh: true, sixteenth: spb, since: when });
+  Audio.masterLiveUntil = Infinity;
+}
+
+/** ...and out at `when`. */
+export function endChipGate(when) {
+  if (!Audio.mixer?.scheduleBarEffects) return;
+  Audio.mixer.scheduleBarEffects(MASTER, [], when);
+  Audio.masterLiveUntil = when;
+}
 
 /** The parts the icons switch, in their order on screen. */
 export const PARTS = Object.freeze([
@@ -169,6 +217,12 @@ export const dragValue = (move, level) => Math.round(move.drag.from * (move.drag
 
 /** A chain with its first effect's dragged setting at `level`. */
 function draggedChain(move, level) {
+  if (move.drag.lin) {
+    // straight lines, on effect `fx` of the chain, each param from its bottom to its top
+    const set = Object.fromEntries(Object.entries(move.drag.lin)
+      .map(([p, [lo, hi]]) => [p, Math.round((lo + (hi - lo) * clamp01(level)) * 100) / 100]));
+    return move.chain.map((fx, k) => (k === (move.drag.fx ?? 0) ? { ...fx, params: { ...fx.params, ...set } } : fx));
+  }
   const v = dragValue(move, level);
   const set = { [move.drag.param]: v, ...(move.drag.also ? { [move.drag.also]: v } : {}) };
   return move.chain.map((fx, k) => (k === 0 ? { ...fx, params: { ...fx.params, ...set } } : fx));
@@ -199,14 +253,23 @@ export function setSpeed(speed) { Audio.setWarp?.(speed, 1); }
  * A held move goes in at `at`, and stays until endHold. Returns what the drag needs: the
  * move, how far it has been dragged, and where its setting stands.
  */
-export function startHold(move, at, random = Math.random) {
-  const held = { move, delta: 0, level: move.drag?.start ?? 0, slice: null, slice0: null, speed: null };
+export function startHold(move, at, random = Math.random, { song = null, levels = null } = {}) {
+  const held = { move, delta: 0, level: move.drag?.start ?? 0, slice: null, slice0: null, speed: null, hole: null, song, levels };
+  if (move.holes) {
+    held.hole = move.holeStart ?? 0;
+    holeGates(song, levels, move.holes[held.hole], at);
+    return held;
+  }
   if (move.speeds) {
     held.speed = move.speeds.length - 1;
     setSpeed(move.speeds[held.speed]);
     return held;
   }
   if (move.slices) held.slice = held.slice0 = Math.floor(random() * move.slices.length);
+  if (move.stops) held.stop = move.stopStart ?? 0;
+  // Grumpos's throws and Kiko's stops are booked one by one as they come round (throwBeat,
+  // stopTape), not from here
+  if (move.backbeat || move.onTwoOrFour) return held;
   if (!Audio.mixer?.scheduleBarEffects || !at) return held;
   const list = move.slices ? sliceChain(move, move.slices[held.slice]) : holdChain(move, random);
   if (move.drag) refile(move, list);
@@ -226,12 +289,28 @@ export function dragHold(held, delta, at = null) {
   if (!held) return false;
   const move = held.move;
   held.delta = delta;
+  if (move.holes) {
+    const top = move.holes.length - 1, from = move.holeStart ?? 0;
+    const k = Math.max(0, Math.min(top, from + Math.round(delta * Math.max(from, top - from))));
+    if (k === held.hole) return false;
+    held.hole = k;
+    holeGates(held.song, held.levels, move.holes[k], at);
+    return true;
+  }
   if (move.speeds) {
     const top = move.speeds.length - 1;
     const k = Math.max(0, Math.min(top, top + Math.round(delta * top)));
     if (k === held.speed) return false;
     held.speed = k;
     setSpeed(move.speeds[k]);
+    return true;
+  }
+  if (move.stops) {
+    // Kiko: which stops come round, from his next one (club.js stopsOn)
+    const top = move.stops.length - 1, from = move.stopStart ?? 0;
+    const k = Math.max(0, Math.min(top, from + Math.round(delta * Math.max(from, top - from))));
+    if (k === held.stop) return false;
+    held.stop = k;
     return true;
   }
   if (move.slices) {
@@ -246,20 +325,123 @@ export function dragHold(held, delta, at = null) {
     const level = clamp01(move.drag.start + delta);
     const list = draggedChain(move, level);
     const was = LIVE.get(move.hero);
-    if (!was || JSON.stringify(was) === JSON.stringify(list)) return false;
+    // kept even with nothing playing yet: Grumpos's next throw goes out at it
     held.level = level;
+    if (!was || JSON.stringify(was) === JSON.stringify(list)) return false;
     if (Audio.mixer?.retuneBarEffects?.(MASTER, was, list, Audio.bpm || 120)) LIVE.set(move.hero, list);
     return true;
   }
   return false;
 }
 
-/** ...and comes out at `at`. A speed comes back on the club's own beat (club.js). */
-export function endHold(at, held = null) {
-  if (held?.move?.speeds) return;
+/**
+ * One of Grumpos's throws while he is held: his section from `when` (a 2 or a 4) for the
+ * move's beat, at the echo level the drag has it at, then let go — the echoes ringing out
+ * after it, into the next throw. Booked by club.js a little ahead, one at a time, in order.
+ */
+export function throwBeat(held, when, spb) {
+  if (!held || !Audio.mixer?.scheduleBarEffects) return null;
+  const move = held.move;
+  const list = draggedChain(move, held.level);
+  refile(move, list);
+  const until = when + moveSeconds(move, spb);
+  Audio.mixer.scheduleBarEffects(MASTER, list, when, { fresh: true, sixteenth: spb, since: when, until });
+  Audio.mixer.scheduleBarEffects(MASTER, [], until);
+  Audio.masterLiveUntil = until;
+  return until;
+}
+
+/**
+ * One of Kiko's stops while he is held: the tape wound down from `when` across `beats`, and
+ * the music back after it. Booked by club.js a little ahead, one at a time, in order.
+ * Returns when the music is back.
+ */
+export function stopTape(move, when, spb, beats) {
+  if (!Audio.mixer?.scheduleBarEffects) return null;
+  const until = when + 4 * spb * beats;
+  const chain = move.chain.map((fx) => (fx.id === 'stutter' ? { ...fx, params: { ...fx.params, stop: beats } } : fx));
+  Audio.mixer.scheduleBarEffects(MASTER, chain, when, { fresh: true, sixteenth: spb, since: when, until });
+  Audio.mixer.scheduleBarEffects(MASTER, [], until);
+  Audio.masterLiveUntil = until;
+  return until;
+}
+
+/**
+ * A speaker's WOBBLE (club.js; Peter, 5 Oct 2026: the bass's level pulsing was "too subtle"): the
+ * whole mix through a low-pass that opens and shuts every eighth note — the wub — `amount` 0–1 as
+ * deep as the drag, from its bottom near 140 Hz up four and a half octaves at the full depth.
+ */
+export const wobbleChain = (amount) => [{ id: 'autofilter', params: {
+  rateSync: 1, rateDivision: 0.5, frequency: 1, depth: Math.round(Math.max(0.1, Math.min(1, amount)) * 10) / 10,
+  baseFrequency: 140, octaves: 4.5, wet: 1 } }];
+
+/** The wobble in from `at` (a beat), on the master like a hero's move. */
+export function startWobble(amount, at) {
+  if (!Audio.mixer?.scheduleBarEffects || !at) return false;
+  const list = wobbleChain(amount);
+  refile({ hero: 'speaker' }, list);
+  Audio.mixer.scheduleBarEffects(MASTER, list, at.when, { fresh: true, sixteenth: at.spb, since: at.when });
+  Audio.masterLiveUntil = Infinity;
+  return true;
+}
+
+/** The wobble's depth moved by the drag: heard at once, on the branch already playing. */
+export function setWobble(amount) {
+  const was = LIVE.get('speaker');
+  const list = wobbleChain(amount);
+  if (!was || JSON.stringify(was) === JSON.stringify(list)) return;
+  if (Audio.mixer?.retuneBarEffects?.(MASTER, was, list, Audio.bpm || 120)) LIVE.set('speaker', list);
+}
+
+/** ...and out at `at` (a beat). */
+export function endWobble(at) {
   if (!Audio.mixer?.scheduleBarEffects || !at) return;
   Audio.mixer.scheduleBarEffects(MASTER, [], at.when);
   Audio.masterLiveUntil = at.when;
+}
+
+/** The first step at or after `from` that a stop pattern ([every, on, beats]) stops on. */
+export const nextStopStep = (from, [every, on]) => from + ((((on - from) % every) + every) % every);
+
+/** How loud a held Grumpos's echoes are now, 0–1 of the drag ([wet, feedback] read off it). */
+export function echoLevel(held) {
+  const lin = held?.move?.drag?.lin;
+  if (!lin) return { wet: 0.35, feedback: 0.5 };
+  const at = (p) => lin[p][0] + (lin[p][1] - lin[p][0]) * clamp01(held.level);
+  return { wet: at('wet'), feedback: at('feedback') };
+}
+
+/** How long a held move's way out lasts, in seconds at a sixteenth of `spb`: its drain, or none. */
+export const drainSeconds = (move, spb) => (move?.drain ? move.drain.bars * 16 * spb : 0);
+
+/**
+ * ...and comes out at `at`. A speed comes back on the club's own beat (club.js). A move that
+ * DRAINS (Lorenzo's) glides out instead, from where the drag left it, and lets go at the end
+ * of it. Returns when the move is all the way out (null where there is no song to say).
+ */
+export function endHold(at, held = null) {
+  // a speed comes back on the club's beat, and Grumpos's last throw and Kiko's last stop let
+  // themselves go
+  if (held?.move?.speeds || held?.move?.backbeat || held?.move?.onTwoOrFour) return null;
+  if (held?.move?.holes) {
+    // every lane back to where its part's fader is, on the beat
+    holeGates(held.song, held.levels, null, at);
+    return at ? at.when : null;
+  }
+  if (!Audio.mixer?.scheduleBarEffects || !at) return null;
+  const move = held?.move;
+  const until = at.when + drainSeconds(move, at.spb);
+  if (until > at.when) {
+    const from = dragValue(move, held.level);
+    const list = move.chain.map((fx, k) => (k === 0
+      ? { ...fx, params: { ...fx.params, [move.drag.param]: from, sweepTo: move.drain.to, sweep: 1 } } : fx));
+    // one drain branch per move, retuned to each way out (see refile)
+    refile({ hero: `${move.hero}:drain` }, list);
+    Audio.mixer.scheduleBarEffects(MASTER, list, at.when, { fresh: true, sixteenth: at.spb, since: at.when, until });
+  }
+  Audio.mixer.scheduleBarEffects(MASTER, [], until);
+  Audio.masterLiveUntil = until;
+  return until;
 }
 
 /** The next beat 4 of a bar (step 12 of 16) the scheduler has not yet passed. */
@@ -317,16 +499,6 @@ export function playMove(move, at, { song = null, levels = null } = {}) {
   if (!mixer?.scheduleBarEffects || !at) return;
   const until = at.when + moveSeconds(move, at.spb, at.plan);
   if (move.toggle) return;        // B-33P's swap is the sound set's (club-voices.js)
-  if (move.drop) {
-    // Each dropped part comes back to where its fader is, not to full.
-    for (const id of move.drop) {
-      const level = levels ? levels[id] ?? 1 : 1;
-      if (level <= 0) continue;
-      setPartLevel(song, id, 0, at);
-      setPartLevel(song, id, level, { when: until });
-    }
-    return;
-  }
   // A planned move plays as `hits` fresh sections end to end, each its share of the time,
   // a tape stop winding down across each one.
   const hits = at.plan?.hits || 1;
@@ -355,6 +527,24 @@ export function setPartLevel(song, id, level, at = null, glide = 0.012) {
     if (partOf(key) !== id) continue;
     const gate = mixer.lane(key)?._monitorNode?.gain;
     if (gate) gate.setTargetAtTime(partGain(level), when, glide);
+  }
+}
+
+/**
+ * PLOT HOLE's gates: from `at` (or now), every lane that `keep` names — by part ('drums',
+ * 'bass'…) or by drum ('kick', 'snare'…) — at its part's fader level, every other lane shut.
+ * `keep` null opens them all again, each to its part's fader.
+ */
+export function holeGates(song, levels, keep, at = null) {
+  const mixer = Audio.mixer;
+  const ctx = Audio.ctx;
+  if (!mixer?.lane || !ctx) return;
+  const when = at ? at.when : ctx.currentTime;
+  for (const key of song?.mix?.order || []) {
+    const part = partOf(key);
+    const stays = !keep || keep.includes(part) || keep.includes(baseLane(key));
+    const gate = mixer.lane(key)?._monitorNode?.gain;
+    if (gate) gate.setTargetAtTime(partGain(stays ? (levels?.[part] ?? 1) : 0), when, 0.012);
   }
 }
 

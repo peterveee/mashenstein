@@ -176,6 +176,19 @@ export const SHARED_MOODS = Object.freeze({
     bass: 'sequencer',
     lifts: ['straight', 'walkup'],
   },
+  // The Latin party (5 Oct 2026, with Merenhouse). Major is merengue and cumbia's: the tonic
+  // and its dominant seventh, the IV once, in plain triads. Minor is the son montuno vamp,
+  // i–iv–V7 going round. Not the Andalusian descent, which is its own mood. Written from
+  // the general idea of the music, not checked against the records.
+  fiesta: {
+    label: 'Fiesta', title: 'The Latin party: merengue\'s tonic and dominant seventh in major, the montuno vamp i–iv–V7 in minor',
+    major: [['I'], ['V7'], ['V7'], ['I'], ['I'], ['IV'], ['V7'], ['I']],
+    minor: [['i'], ['iv'], ['V7'], ['iv'], ['i'], ['iv'], ['V7'], ['i']],
+    mood: { colour: { '': '', m: 'm' }, exciter: true, high: 2, preferMinor: false, walk: 'bright' },
+    modes: { suits: ['major', 'minor', 'mixolydian'], fights: ['phrygian', 'lydian'] },
+    bass: 'rootFifth',
+    lifts: ['pivot', 'walkup'],
+  },
 });
 
 /** How the first nine moods change key. */

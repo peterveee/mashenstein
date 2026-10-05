@@ -6036,11 +6036,15 @@ export class HowToPlayState {
   }
 }
 
-const SETTINGS_TOP = 68;
-const SETTINGS_ROW = 23;
-const SETTINGS_VISIBLE_ROWS = 6;
-const SETTINGS_BACK_TOP = 216;
-const SETTINGS_BACK_H = 25;
+// Landscape settings: the list packs into the space between the title and
+// BACK, so a phone sees every row without scrolling. Rows shrink from the
+// authored 23 toward 16 as options are added; only past that does it scroll.
+const SETTINGS_TOP = 52;
+const SETTINGS_ROW_MAX = 23;
+const SETTINGS_ROW_MIN = 16;
+const SETTINGS_BACK_TOP = 226;
+const SETTINGS_BACK_H = 22;
+const SETTINGS_LIST_BOTTOM = SETTINGS_BACK_TOP - 6;
 
 // RESET ALL TO DEFAULTS, as two things to aim at.
 //
@@ -6177,19 +6181,17 @@ export class SettingsState {
     this.onDone = onDone;
     this.onDevMenu = onDevMenu;
     this.onCalibrate = onCalibrate;
-    this.listY = SETTINGS_TOP;
-    this.rowH = SETTINGS_ROW;
-    this.visibleRows = SETTINGS_VISIBLE_ROWS;
-    this.doneY = SETTINGS_BACK_TOP;
-    this.doneH = SETTINGS_BACK_H;
     this.listStart = 0;
     this.pointerGesture = null;
+    this.layout();
   }
   layout() {
     if (!portraitMenuActive()) {
+      const count = this.listCount();
+      const room = SETTINGS_LIST_BOTTOM - SETTINGS_TOP;
       this.listY = SETTINGS_TOP;
-      this.rowH = SETTINGS_ROW;
-      this.visibleRows = SETTINGS_VISIBLE_ROWS;
+      this.rowH = Math.max(SETTINGS_ROW_MIN, Math.min(SETTINGS_ROW_MAX, room / Math.max(1, count)));
+      this.visibleRows = Math.max(1, Math.min(count, Math.floor(room / this.rowH + 1e-6)));
       this.doneY = SETTINGS_BACK_TOP;
       this.doneH = SETTINGS_BACK_H;
       return;

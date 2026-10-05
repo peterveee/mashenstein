@@ -123,8 +123,18 @@ import {
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
 import { MIRRORBALL_CANDIDATES } from '../src/dev/mirrorball-candidates.js';
 import { BEACHBALL_CANDIDATES } from '../src/dev/beachball-candidates.js';
-import { HERO_MOVES } from '../src/game/banger/club-fx.js';
+import { HERO_MOVES, PARTS, drainSeconds } from '../src/game/banger/club-fx.js';
 import { BangerClubState } from '../src/game/banger/club.js';
+// The dance-floor sheet (main page): the party's bookkeeping, the club's beach ball, and the
+// renderer's density, which the club's own bakes are asked for at.
+import { PARTY_BEATS, partyAlive } from '../src/game/banger/club-party.js';
+import { drawBeachBall, BEACH_BALL_COLOURS, BEACH_BALL_COLOURS_2 } from '../src/game/banger/beachball.js';
+import { screen as rendererScreen } from '../src/engine/renderer.js';
+import { drawPaperFish, FISHES } from '../src/game/banger/club-fish.js';
+import { FISH_CANDIDATES } from '../src/dev/fish-candidates.js';
+import { FISH_STYLES } from '../src/dev/fish-styles.js';
+import { drawSpeakerStack, PORT_HORN, PA_HORN } from '../src/game/banger/speakers.js';
+import { HORN_CANDIDATES } from '../src/dev/speaker-horn-candidates.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
@@ -2668,6 +2678,430 @@ function propNominalSize(name) {
       ctx.restore();
       if (pack.post) pack.post(ctx, t);
     }, { animated: true });
+  }
+}
+
+// ------------------------------------------- BANGER LAB — everything on the dance floor
+// EVERY OBJECT IN THE LAB'S CLUB, drawn by the club itself (Peter, 5 Oct 2026: "add in a section
+// to the main gallery that contains all the objects in the lab dancefloor"), at its landscape
+// size: the 480x270 frame, heroes 66 tall, 128 BPM.
+//
+// The room cards are BangerClubState.draw() on a STAND-IN: a real club given the state enter()
+// gives one, less the song. No bank is set, so no audio graph is built and nothing can sound, and
+// the club's clocks (`t`, beat(), heardNow()) run on their own no-song fallback, which here is the
+// gallery clock. Each room plays one thing, started the way the club starts it — startMoment,
+// tapCan, tapSky, tapLedBoard, tapDolores, tapVacuum, popBall — on a lap of so many beats, and
+// what update() does that the picture needs (the vacuum's backfire, Lorenzo's fish, the floor
+// swept, finished moments taken off) runs before each frame, in update()'s order. Math.random is
+// seeded while the club runs, so a lap plays the same every time. The heroes keep the idle bob
+// they have before the dancing starts, so the objects read. The small cards are the painters the
+// club calls, on the room's own colours.
+{
+  const sec = sectionEl('banger-lab-floor', 'BANGER LAB — everything on the dance floor',
+    'Every object in the Lab’s club, drawn by the club: src/game/banger/club.js and the painters it calls (mirrorball.js, '
+    + 'beachball.js, speakers.js, club-party.js, club-fish.js), at its landscape size — the 480x270 frame, heroes 66px — at 128 BPM. '
+    + 'The room cards are the club’s own draw() on a stand-in club with no song and no sound, each playing one thing, started the '
+    + 'way the club starts it, on a loop of a few bars. The heroes keep the idle bob they have before the dancing starts, so the '
+    + 'objects read; the faint buttons are the club’s own, asleep. The small cards are the painters on their own, on the room’s colours.');
+  const group = (title) => {
+    const h = document.createElement('h3'); h.className = 'subhead'; h.textContent = title;
+    const g = document.createElement('div'); g.className = 'grid';
+    sec.append(h, g);
+    return g;
+  };
+  const BPM = 128, BEAT_S = 60 / BPM;
+  const FLOOR = H - 46, TOON_H = 66;   // club.js draw(), landscape at the full 270: floorRef, toonH
+  const LORENZO = HERO_MOVES.findIndex((m) => m.hero === 'lorenzo');
+
+  // Math.random, seeded, while the club runs: its moments, its LED's lines and its speakers' jolt
+  // all ask it, and a lap should play the same every time.
+  const seeded = (seed) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let x = Math.imul(s ^ (s >>> 15), 1 | s);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  const withRandom = (rnd, fn) => {
+    const was = Math.random;
+    Math.random = rnd;
+    try { return fn(); } finally { Math.random = was; }
+  };
+
+  // Rooms where nothing touches the heroes draw them identically at any moment, so those rooms
+  // share one set of hero sprites (club.js heroSprite) rather than eight canvases a room.
+  const idleSprites = [];
+  const standIn = ({ reacts = false } = {}) => {
+    const club = new BangerClubState({ rec: { name: 'NEON ORBIT' }, onBack() {} });
+    // What enter() gives a club, less the song (Audio.setBank), the mixer's memory and the screen fit.
+    Object.assign(club, {
+      t: 0, song: { bpm: BPM, form: [] }, savePrompt: null, queued: null, acting: null, caption: null, holding: null,
+      levels: Object.fromEntries(PARTS.map((p) => [p.id, 1])), mixerOpen: false, mixSel: 0, dragging: null, popup: null,
+      iconsAt: -Infinity, buttonsAt: -Infinity, ballAt: -60, titleAt: -Infinity, shownAt: -60, lite: false, frameMs: 16,
+      led: null, ledRecent: [], ballScale: 1,
+      // nobody has joined the dancing yet: everyone on the idle bob, on the beat
+      dancers: HERO_MOVES.map((m) => ({ moves: [], move: null, joinAt: Infinity, changeAt: Infinity, resting: false,
+        last: null, legs: 'stand', hero: m.hero, skirted: false })),
+      formationOrder: HERO_MOVES.map((_, i) => i), formationSwap: null, formationShuffleAt: Infinity,
+      moments: [], momentAt: Infinity, smokeAt: Infinity, strobeBeat: -Infinity, strobeNextBeat: Infinity, reduceMotion: false,
+      lastMoment: null, partyNextBeat: Infinity, partyTurn: 0, cleanerBeat: Infinity, cleanerKind: 'cleaner',
+      floorConfetti: [], sweeping: null, cleanerCooldown: -Infinity, lastSoloHero: -1, skipTo: null, skipLit: null,
+      paused: false, section: null, waveAt: -Infinity, lastBeat: null, focus: -1,
+      boxes: { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], reset: null, back: null, ball: null, led: null, floor: null },
+      padHits: [], ballSpots: [], rally: 0, lastBallTap: null, smash: null, flinch: null, spinPhase: 0, spinV: 0,
+      ballSwing: { a: 0, va: 0, stretch: 1, vs: 0 }, ballGrab: null, ballAnchor: null, mirrorFlashAt: -Infinity,
+      echoes: [], throwing: null, stops: [], stopping: null, fish: [], doloresSpot: null, vacuumSpot: null,
+      speakerHold: null, boost: null, boomAt: -Infinity, lightShow: null, laserSweep: null, laserTurn: 0,
+      punch: null, bow: null, landing: null, crowd: null, speedBack: null, layout: null, cue: {},
+    });
+    if (!reacts) club.heroSprites = idleSprites;
+    // The club bakes its neon, its truss and its LED board at the screen's density (renderer.js
+    // bakeSS). The gallery never sets one, so each is asked for at the density its card renders
+    // at instead — what a screen that dense gets — rather than baked at 1x and blown up.
+    for (const name of ['neon', 'truss', 'drawLed']) {
+      const own = BangerClubState.prototype[name];
+      club[name] = function (...args) {
+        const was = rendererScreen.px;
+        rendererScreen.px = this.galleryDensity || was;
+        try { return own.apply(this, args); } finally { rendererScreen.px = was; }
+      };
+    }
+    return club;
+  };
+  // A lap's clean slate: nothing going on, nothing on the floor — and none of the last lap's
+  // spots for a tap to find (each draw leaves them: ballSpots, doloresSpot, vacuumSpot).
+  const fresh = (club) => Object.assign(club, {
+    moments: [], floorConfetti: [], sweeping: null, acting: null, fish: [], lightShow: null, laserSweep: null,
+    boomAt: -Infinity, boost: null, flinch: null, strobeBeat: -Infinity, smash: null, rally: 0, lastBallTap: null, cue: {},
+    ballSpots: [], doloresSpot: null, vacuumSpot: null,
+  });
+  // update()'s own bookkeeping, as much of it as the picture needs: finished moments off the
+  // floor, and a move that has run its course over.
+  const expire = (club) => {
+    const beat = club.beat();
+    club.moments = club.moments.filter((m) => (PARTY_BEATS[m.kind] ? partyAlive(m, beat)
+      : club.t < m.t0 + m.life || (m.ribbons && !m.ribbonsOut && club.t < m.t0 + 16)));
+    if (club.acting && club.heardNow() >= club.acting.when + club.acting.dur) club.acting = null;
+  };
+  // ONE ROOM: a stand-in and its lap. `start(club, lap)` runs on each lap's downbeat and
+  // `each(club, beat, lap, at)` every frame after, with the beat into the lap; `at(b, fn)` runs fn
+  // with the club's clock on beat b of the lap, so a tap lands on its beat whatever the frame
+  // rate. A lap only starts once the room has been drawn, so the boxes a tap is tested against
+  // exist. Returns paint(ctx, t), which draws the whole frame in frame pixels.
+  const room = ({ lap = 0, seed = 1, reacts = false, start = null, each = null, beat = null } = {}) => {
+    const club = standIn({ reacts });
+    if (beat) club.beat = beat;
+    const rLed = seeded(seed * 31 + 7);
+    let lapN = null, rnd = seeded(seed);
+    // the part of update() the picture needs, in update()'s order
+    const step = () => {
+      withRandom(rnd, () => { club.vacuumOn(); club.fishOn(); });
+      club.partyNextBeat = club.cleanerBeat = Infinity;   // nothing starts but what the lap starts
+      club.updateParty();
+      expire(club);
+    };
+    return (ctx, t) => {
+      const last = club.t;
+      if (t < last) lapN = null;   // the clock went back (a resize repaints at 0): the lap from its top
+      club.t = t;
+      if (lap && club.drawn) {
+        const n = Math.floor(t / (lap * BEAT_S)), down = n * lap * BEAT_S;
+        const at = (b, fn) => { const was = club.t; club.t = down + b * BEAT_S; try { return fn(); } finally { club.t = was; } };
+        const script = (b) => { if (each) withRandom(rnd, () => each(club, b, n, at)); };
+        let from = (last - down) / BEAT_S;   // where the last frame left this lap
+        if (n !== lapN) {
+          lapN = n;
+          rnd = seeded(seed * 7919 + n);
+          fresh(club);
+          if (start) withRandom(rnd, () => at(0, () => start(club, n)));
+          from = 0;
+        }
+        // A jump — the card has just come into view, or back into it, since nothing paints a card
+        // off screen — is caught up a quarter beat at a time, script and update() both, so the
+        // room is as it would have been: Lorenzo's shoals spawned when they would have, not all
+        // at once now.
+        for (let b = from + 0.25; b < (t - down) / BEAT_S; b += 0.25) at(b, () => { script(b); step(); });
+        script((t - down) / BEAT_S);
+      }
+      step();
+      withRandom(rLed, () => club.ledText());
+      const m = ctx.getTransform();
+      club.galleryDensity = Math.hypot(m.a, m.b);
+      ctx.imageSmoothingEnabled = true;   // as the game's own canvases are; paint() turns it off
+      withRandom(seeded(Math.round(t * 600) + seed), () => club.draw(ctx));
+      club.drawn = true;
+    };
+  };
+  // A room seen in several cards: drawn once a frame, at the cards' density, and cut from.
+  const sharedRoom = (paint) => {
+    let c = null, at = null, k = 0;
+    const view = (ctx, t, [x, y, w, h]) => {
+      const m = ctx.getTransform(), dk = Math.hypot(m.a, m.b);
+      if (!c) c = document.createElement('canvas');
+      if (at !== t || k !== dk) {
+        const cw = Math.round(W * dk), ch = Math.round(H * dk);
+        if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+        const g = c.getContext('2d');
+        g.setTransform(dk, 0, 0, dk, 0, 0);
+        paint(g, t);
+        at = t; k = dk;
+      }
+      ctx.drawImage(c, x * dk, y * dk, w * dk, h * dk, 0, 0, w, h);
+    };
+    view.shared = true;
+    return view;
+  };
+  // A card of a room: the whole frame, or the part of it at `crop` ([x, y, w, h], frame pixels).
+  const roomCard = (grid, name, sub, view, crop = [0, 0, W, H]) => {
+    const [x, y, w, h] = crop;
+    tile(grid, name, sub, w, h, (ctx, t) => {
+      if (view.shared) { view(ctx, t, crop); return; }
+      ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+      ctx.translate(-x, -y);
+      view(ctx, t);
+    }, { animated: true });
+  };
+  // The room behind a painter drawn on its own: draw()'s gradient down the whole frame, so a card
+  // cut from part of the room shows that part of it. `crop` as roomCard's.
+  const roomColours = (ctx, [x, y, w, h]) => {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0f0d24'); g.addColorStop(0.7, '#1a1236'); g.addColorStop(1, '#120d26');
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  };
+  // The floor as a drop or three left it: the club's own drops (startMoment), made long enough
+  // ago that what stays on the floor has landed.
+  const littered = (club, drops) => {
+    const now = club.t;
+    for (let k = 0; k < drops; k++) {
+      club.t = now - 6 * (k + 1);
+      club.startMoment('confetti', { streamers: false });
+    }
+    club.t = now;
+    club.moments = club.moments.filter((m) => m.kind !== 'confetti');
+  };
+  // `fn` once a lap, from beat `b` on and on that beat; tried again next frame if it did not take.
+  const cue = (club, key, beat, b, at, fn) => {
+    if (club.cue[key] || beat < b) return;
+    if (at(b, fn) !== false) club.cue[key] = true;
+  };
+  // Dolores or the vacuum, across a floor two drops have left, the other way each lap.
+  const cleanerStart = (kind) => (club, n) => {
+    littered(club, 2);
+    if (club.startMoment(kind)) club.moments.at(-1).dir = n % 2 ? -1 : 1;
+  };
+  const BALL_CROP = [170, 0, 140, 104];   // the mirror ball and the two cans either side of it
+
+  // The room as it plays between moments, sixteen bars a lap: lasers in bursts on the club's own
+  // clock (floor rig bars 1–2 and 9–10, overhead rig bars 5 and 13), the LED board tapped on bar 7.
+  const plain = sharedRoom(room({ lap: 64, seed: 1,
+    each: (club, b, n, at) => cue(club, 'led', b, 24, at, () => club.tapLedBoard()) }));
+  // A par can tapped at the top of each three-bar lap, a different can each time.
+  const show = sharedRoom(room({ lap: 12, seed: 2, start: (club, n) => club.tapCan(n % 6) }));
+
+  {
+    const grid = group('The room, its rig and its signs');
+    roomCard(grid, 'THE ROOM',
+      'BangerClubState.draw() on a stand-in, sixteen bars a lap: the truss and its cans, the two signs, haze, the cans’ beams, '
+      + 'the speakers, the lit floor, the mirror ball, the heroes and their reflections in the gloss. Lasers come in on the club’s '
+      + 'own clock — the floor rig on bars 1–2 and 9–10, the overhead rig on bars 5 and 13 — and the LED board is tapped on bar 7.',
+      plain);
+    roomCard(grid, 'THE TRUSS AND ITS PAR CANS',
+      'draw(): the truss (truss(), baked once) and its six par cans, each in its own colour and brightening on the beat, '
+      + 'their beams coming out of the lenses.', plain, [0, 0, W, 20]);
+    roomCard(grid, 'THE BANGER LAB',
+      'neon(), baked once, glow and all, on its board hung from the truss on two cables (draw()); it flickers now and then.',
+      plain, [30, 6, 150, 48]);
+    roomCard(grid, 'THE LED BOARD',
+      'drawLed: 72x7 red dots, a slogan held four bars or a short one scrolling across. Tapped (tapLedBoard, bar 7 of the '
+      + 'room’s lap) it is a graphic equaliser for four bars — drawLedEq, bouncing on the beat with no song to listen to.',
+      plain, [354, 6, 124, 44]);
+    roomCard(grid, 'THE LIGHT SHOW — a par can tapped',
+      'tapCan → lightShowState: for two bars every can and beam is its own colour, chasing from can to can, the floor chasing '
+      + 'with them and the mirror ball catching them; a different can each lap of three bars.', show);
+    roomCard(grid, 'THE STROBE',
+      'strobePulse: the cans snap white together twice a beat, broad beams through the haze, for four bars; then two quiet.',
+      room({ lap: 24, seed: 3, start: (club) => { club.strobeBeat = club.beat(); } }));
+    roomCard(grid, 'LASERS — up in the room tapped',
+      'tapSky → drawLaserSweep / drawLaserPattern, two bars each: FLOOR, CEILING, SHEET, SCISSORS, TUNNEL (a tap plays two of '
+      + 'them; here all five in turn). Where a beam meets the mirror ball it stops there and is thrown on round the room (laserOnBall).',
+      room({ lap: 44, seed: 4, start: (club) => {
+        // the club's own tap, once a pattern, for its colours (club.js LASER, one after another) —
+        // then every pattern in club.js LASER_PATTERNS in turn, rather than the two a tap picks
+        const kinds = ['floor', 'ceiling', 'sheet', 'scissors', 'tunnel'];
+        const cols = kinds.map(() => (club.tapSky(W / 4, FLOOR - TOON_H * 2), club.laserSweep.cols[0]));
+        club.laserSweep = { ...club.laserSweep, kinds, cols };
+      } }));
+  }
+
+  {
+    const grid = group('The mirror ball');
+    roomCard(grid, 'THE MIRROR BALL',
+      'drawBall → drawDiscoBall, in the room: its mount, wire and halo, the spots it throws round the room, the floor’s colours '
+      + 'caught in its lower half. The floor rig’s lasers find it on bars 1–2 and 9–10 of the room’s lap.', plain, BALL_CROP);
+    roomCard(grid, 'THE MIRROR BALL — a laser on it',
+      'The floor rig’s burst, held on: a beam from each bottom corner aimed at it, the mirrors it lands on lit in the beam’s '
+      + 'colour (drawDiscoBall `hits`) and thrown on round the room (ballSpray).',
+      room({ seed: 5, beat() { return ((this.t * this.song.bpm / 60) % 8 + 8) % 8; } }), BALL_CROP);
+    roomCard(grid, 'THE MIRROR BALL — in the light show',
+      'drawDiscoBall `lights`: its top half catches the cans’ colours, a new scatter every sixteenth as they chase.',
+      show, BALL_CROP);
+  }
+
+  {
+    const grid = group('The speakers');
+    const RIG = { w: 54, subH: 84, topH: 56 };   // club.js draw(): the landscape rig at the full 270
+    const speaker = (name, sub, set = null) => {
+      const club = standIn();
+      const rig = { ...RIG, floor: FLOOR, top: FLOOR - RIG.subH - RIG.topH, xs: [8] };
+      const crop = [0, rig.top - 6, RIG.w + 16, RIG.subH + RIG.topH + 8];
+      tile(grid, name, sub, crop[2], crop[3], (ctx, t) => {
+        ctx.translate(-crop[0], -crop[1]);
+        roomColours(ctx, crop);
+        club.t = t;
+        if (set) set(club, t);
+        const beatF = ((club.beat() % 1) + 1) % 1;
+        // draw()'s own pulse, for a song with no kick lane to read
+        withRandom(seeded(Math.round(t * 600)), () => club.drawSpeakers(ctx, rig, 1, Math.exp(-beatF * 6)));
+      }, { animated: true });
+      return club;
+    };
+    speaker('SPEAKER STACK',
+      'drawSpeakers → drawSpeakerStack (speakers.js), the landscape rig: the sub’s big woofer, the top box’s two mids and its '
+      + 'horn, punching out on the beat; a hard hit jolts the cabinet.');
+    speaker('SPEAKER — tapped: BOOM', 'boom(), here once a bar: the cones punched right out, the cabinet jolting.', (club, t) => {
+      const bar = Math.floor(t / (4 * BEAT_S));
+      if (club.boomBar !== bar) { club.boomBar = bar; club.t = bar * 4 * BEAT_S; club.boom(); club.t = t; }
+    });
+    const held = speaker('SPEAKER — held: BASS BOOST, dragged: WOBBLE',
+      'startBoost() and wobble(0.8): the cabinets glow, the cones pump harder and throb in eighths.');
+    held.startBoost();
+    held.wobble(0.8);
+  }
+
+  {
+    const grid = group('The beach ball');
+    roomCard(grid, 'THE BEACH BALL',
+      'startMoment(‘ball’) → drawMoments → drawBeachBall (beachball.js, the VINYL ball): it hops head to head on a path drawn '
+      + 'fresh each crossing, and each head it lands on bonks. Every third crossing is a pair, the second in its own colours a bar '
+      + 'behind; every third, double-tapped mid-flight and popped (popBall).',
+      room({ lap: 32, seed: 6, reacts: true,
+        start: (club, n) => {
+          if (!club.startMoment('ball')) return;
+          const m = club.moments.find((x) => x.kind === 'ball');
+          const balls = n % 3 === 1 ? 2 : 1;
+          m.dir = n % 2 ? -1 : 1;
+          m.balls = balls;
+          m.paths = m.paths.slice(0, balls);
+          while (m.paths.length < balls) m.paths.push(BangerClubState.ballHops(HERO_MOVES.length));
+          club.ballLife(m);
+        },
+        each: (club, b, n, at) => {
+          if (n % 3 !== 2) return;
+          cue(club, 'pop', b, 9, at, () => {
+            const spot = club.ballSpots.find((s) => s.n === 0 && club.moments.includes(s.m));
+            if (!spot) return false;
+            club.popBall(spot);
+            return true;
+          });
+        } }));
+    tile(grid, 'BEACH BALLS — the two',
+      'drawBeachBall at the club’s size, a radius of 0.3 of a hero, turning and squashing as it lands: BEACH_BALL_COLOURS, and '
+      + 'BEACH_BALL_COLOURS_2 for the second of a pair.', 104, 56, (ctx, t) => {
+        const crop = [0, 100, 104, 56];
+        ctx.translate(-crop[0], -crop[1]);
+        roomColours(ctx, crop);
+        const beat = t / BEAT_S, r = TOON_H * 0.3;   // club.js BALL_R
+        [BEACH_BALL_COLOURS, BEACH_BALL_COLOURS_2].forEach((colours, n) => {
+          const k = (beat + n) % 2;   // landing on a head every other beat
+          drawBeachBall(ctx, 28 + n * 48, 128, r, { spin: beat * 0.9 + n * 2, dir: 1,
+            squash: Math.max(0, 1 - Math.min(k, 2 - k) / 0.3), colours });
+        });
+      }, { animated: true });
+  }
+
+  {
+    const grid = group('Crowd moments');
+    roomCard(grid, 'CONFETTI',
+      'startMoment(‘confetti’) → drawMoments: blown from the two top corners and fluttering down over the floor; some of it stays there.',
+      room({ lap: 12, seed: 7, start: (club) => club.startMoment('confetti', { streamers: false }) }));
+    roomCard(grid, 'STREAMERS',
+      'startMoment(‘streamers’): twisting paper strips from the top corners, falling until the last is out of the picture.',
+      room({ lap: 16, seed: 8, start: (club) => club.startMoment('streamers') }));
+    roomCard(grid, 'GLOW STICKS', 'startMoment(‘sticks’): thrown up from the crowd, spinning, and back down.',
+      room({ lap: 8, seed: 9, start: (club) => club.startMoment('sticks') }));
+    roomCard(grid, 'BUBBLES',
+      'startMoment(‘bubbles’) → drawPartyFront: four bars of bubbles rising off the floor; B-33P watches them and Rusty bats at them.',
+      room({ lap: 20, seed: 10, reacts: true, start: (club) => club.startMoment('bubbles') }));
+    roomCard(grid, 'THE SPOTLIGHT',
+      'startMoment(‘spotlight’): the room dims and a cone stands over one hero, who does their celebration; a different hero each lap.',
+      room({ lap: 10, seed: 11, reacts: true, start: (club) => club.startMoment('spotlight') }));
+    roomCard(grid, 'THE SMOKE MACHINE',
+      'startMoment(‘smoke’) → drawMoments, behind the heroes and in front: a blast across the floor from one side, billowing, '
+      + 'rising and thinning into the haze; the other side each lap.',
+      room({ lap: 12, seed: 12, start: (club, n) => { if (club.startMoment('smoke')) club.moments.at(-1).dir = n % 2 ? -1 : 1; } }));
+    roomCard(grid, 'CONFETTI ON THE FLOOR',
+      'drawScraps (club-party.js): what three drops left on the floor, each scrap from makeScrap — strips, squares, punched dots '
+      + 'and curls standing up, a bright face or its back, a contact shadow, the odd foil one winking on the beat.',
+      room({ lap: 32, seed: 13, start: (club) => littered(club, 3) }), [0, 196, W, H - 196]);
+  }
+
+  {
+    const grid = group('Dolores and the vacuum');
+    roomCard(grid, 'DOLORES SWEEPS',
+      'startMoment(‘cleaner’) → drawPartyFront: Dolores across the floor in four bars, the confetti gone behind her broom; '
+      + 'the other way each lap.', room({ lap: 20, seed: 14, start: cleanerStart('cleaner') }));
+    roomCard(grid, 'DOLORES, TAPPED',
+      'tapDolores, six beats into her sweep: she flings the broom away, dances four bars where she stands, then runs off the '
+      + 'nearer side, leaving what she had not swept — and the LED board says so.',
+      room({ lap: 28, seed: 15, start: cleanerStart('cleaner'),
+        each: (club, b, n, at) => cue(club, 'tap', b, 6, at, () => {
+          const s = club.doloresSpot;
+          return !!s && club.tapDolores(s.x, s.floor - s.h * 0.5);
+        }) }));
+    roomCard(grid, 'THE VACUUM',
+      'startMoment(‘vacuum’) → drawPartyFront → drawProp(‘dustdevil’): scrubbing back and forth across the floor, the scraps '
+      + 'ahead of it drawn into the nozzle; the other way each lap.', room({ lap: 20, seed: 16, start: cleanerStart('vacuum') }));
+    roomCard(grid, 'THE TURBO HOOVER',
+      'tapVacuum, five beats in: it tears off across the rest of the floor, shaking and sucking everything in, and blows up out of '
+      + 'the far side on the beat — vacuumOn’s backfire, a confetti fountain (startMoment(‘fountain’)) and the room jolting.',
+      room({ lap: 24, seed: 17, start: cleanerStart('vacuum'),
+        each: (club, b, n, at) => cue(club, 'tap', b, 5, at, () => {
+          const s = club.vacuumSpot;
+          return !!s && club.tapVacuum(s.x, s.floor - s.h * 0.5);
+        }) }));
+  }
+
+  {
+    const grid = group('Lorenzo’s fish');
+    const lorenzo = HERO_MOVES[LORENZO];
+    roomCard(grid, 'LORENZO’S FLOOD, AND HIS FISH',
+      'Lorenzo held: the room floods (drawMoveRoom) and every eight beats a shoal swims across over the heads (fishOn → shoal → '
+      + 'drawFish → drawPaperFish); let go on beat 29 and the water drains over two bars, each fish diving through the floor with a splash.',
+      room({ lap: 38, seed: 18, reacts: true,
+        start: (club) => { club.acting = { i: LORENZO, when: club.heardNow(), bar: club.barSeconds(), dur: Infinity }; },
+        each: (club, b, n, at) => cue(club, 'drain', b, 28, at, () => {
+          // let go: the water drains as letGo() has it, over the move's own `drain`
+          const a = club.acting, now = club.heardNow();
+          if (!a) return;
+          a.drain = { from: now, until: now + drainSeconds(lorenzo, club.barSeconds() / 16), level: lorenzo.drag.start };
+          a.dur = a.drain.until - a.when;
+        }) }));
+    // under his water at the depth a press floods it to (drawMoveRoom: #0b5f6a at 0.14 + 0.3 of the depth)
+    const water = 0.14 + 0.3 * (1 - lorenzo.drag.start);
+    for (const fish of FISHES) {
+      const L = TOON_H * fish.size, crop = [0, 58, 80, 72];   // headroom for the bubbles they blow
+      tile(grid, `${fish.letter} — ${fish.name}`,
+        `drawPaperFish at the club’s size: ${Math.round(L)}px nose to tail, ${fish.size} of a hero, under the flood.`,
+        crop[2], crop[3], (ctx, t) => {
+          ctx.translate(-crop[0], -crop[1]);
+          roomColours(ctx, crop);
+          ctx.globalAlpha = water; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(...crop); ctx.globalAlpha = 1;
+          ctx.translate(crop[0] + crop[2] / 2, crop[1] + crop[3] * 0.6);
+          drawPaperFish(ctx, fish, L, { t, beat: t / BEAT_S, wag: Math.sin(t * 13), dive: 0 });
+        }, { animated: true });
+    }
   }
 }
 
@@ -8500,6 +8934,185 @@ function cryptStyleTiles(grid, tag, cand) {
         240, 176, (ctx, t) => drawHeroDanceCard(ctx, candidate, t * bpm / 60),
         { animated: true, hires: 3, displayScale: 1.5 });
     }
+  }
+}
+
+// Lorenzo's fish (Peter, 5 Oct 2026: "can we do a bake off to get better fish for lorenzo... a
+// bunch of different styles... perhaps a bit larger and more comical"). Each swims across the
+// flooded club at the club's landscape scale, and every other crossing dives through the floor
+// as the water drains, as club.js fishOn has it; then close up.
+{
+  const s = sectionEl('fish-bakeoff', 'BANGER LAB — Lorenzo’s fish',
+    'SETTLED 5 Oct 2026: all eight swam in the club, in CUT PAPER (see the drawing styles below), at random and up to three at a time (src/game/banger/club-fish.js) — 0 is the club’s, cycling through them. H FISHBOWL was taken out again the same day: seven swim now. '
+    + 'Hold LORENZO two bars and fish swim across the flooded club; let go and they dive through the floor as the water drains. '
+    + 'The fish it replaced was a third of a hero long. A–H are bigger, half a hero and more, and each has a joke of its own: '
+    + 'A GOOGLY, an eye that rattles and lips that go BLUB; B PUFFER, blowing up on the beat; C SHADES, the club fish; D SNORKEL, dressed for the flood; '
+    + 'E ANGLER, a lamp on a stalk; F BIG LIPS, a grumpy grouper blowing kisses; G PARTY SHARK; H FISHBOWL, a goldfish carried across in its bowl. '
+    + 'Left card: the club at 128 BPM over heroes at its 66px, a crossing, then one that dives; right: close up.',
+    '2026-10-05');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128;
+  const CROSS = 6, REST = 2, DIVE_AT = 2.7, DIVE_S = 0.55, SPLASH_S = 0.7;   // beats, beats, beats in, seconds, seconds
+  const CELL = (FW - 8) / HERO_MOVES.length;
+  const room = (ctx, t) => {
+    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
+    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
+    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
+    // the flood, as club.js drawMoveRoom draws it at Lorenzo's own depth
+    ctx.save();
+    ctx.globalAlpha = 0.34; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(0, 0, FW, FH);
+    ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(150,255,235,1)'; ctx.lineWidth = 0.9;
+    for (let j = 0; j < 6; j++) {
+      ctx.globalAlpha = 0.07;
+      const y0 = FLOOR + (j + 0.5) / 6 * (FH - FLOOR);
+      ctx.beginPath();
+      for (let x = 0; x <= FW; x += 6) { const y = y0 + Math.sin(x * 0.045 + t * 2.2 + j * 1.7) * 2.2 + Math.sin(x * 0.11 - t * 1.3 + j); if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  const splash = (ctx, x, y, L, age) => {
+    ctx.save(); ctx.strokeStyle = '#bff8ff'; ctx.lineWidth = Math.max(0.6, L * 0.05);
+    for (const lag of [0, 0.25]) {
+      const q = age - lag;
+      if (q <= 0 || q >= 1) continue;
+      ctx.globalAlpha = 0.7 * (1 - q);
+      ctx.beginPath(); ctx.ellipse(x, y, L * (0.25 + q * 0.95), L * (0.08 + q * 0.3), 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  };
+  // the club's own: the eight in cut paper, a different one each crossing
+  const today = { letter: '0', name: 'TODAY (club)', size: 0.55,
+    description: 'The fish the club draws now (club-fish.js): all but the fishbowl, in cut paper, a different one each crossing.',
+    paint: (ctx, L, o) => drawPaperFish(ctx, FISHES[Math.floor(o.beat / 8) % FISHES.length], L, o) };
+  for (const c of [today, ...FISH_CANDIDATES]) {
+    tile(grid, `${c.letter} — ${c.name}`, c.description, FW, FH, (ctx, t) => {
+      room(ctx, t);
+      const beat = t * BPM / 60, beatS = 60 / BPM;
+      const lap = Math.floor(beat / (CROSS + REST)), at = beat - lap * (CROSS + REST);
+      if (at > CROSS) return;
+      const dir = lap % 2 ? -1 : 1, dives = lap % 2 === 1;
+      const L = TOON_H * c.size;
+      const swimX = (p) => (dir > 0 ? -L + p * (FW + 2 * L) : FW + L - p * (FW + 2 * L));
+      const y0 = FLOOR - (FLOOR - 0) * 0.45;
+      let x = swimX(at / CROSS), y = y0 + Math.sin(t * 2.6) * L * 0.18, tip = 0, sc = 1, alpha = 1;
+      if (dives && at > DIVE_AT) {
+        const k = Math.min(1, (at - DIVE_AT) * beatS / DIVE_S);
+        const floorY = FLOOR + (FH - FLOOR) * 0.45;
+        x = swimX(DIVE_AT / CROSS) + dir * L * 1.2 * k;
+        y = y0 + Math.sin((lap * (CROSS + REST) + DIVE_AT) * beatS * 2.6) * L * 0.18 * (1 - k) + (floorY - y0) * k * k;
+        tip = Math.min(1.2, k * 2.4);
+        if (k > 0.75) { sc = 1 - (k - 0.75) / 0.25 * 0.7; alpha = 1 - (k - 0.75) / 0.25; }
+        const since = (at - DIVE_AT) * beatS - DIVE_S;
+        if (since >= 0) { if (since < SPLASH_S) splash(ctx, x, floorY, L, since / SPLASH_S); return; }
+      }
+      ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(dir * sc, sc); ctx.rotate(tip);
+      c.paint(ctx, L, { t, beat, wag: Math.sin(t * 13), dive: tip / 1.2 });
+      ctx.restore();
+    }, { animated: true });
+    tile(grid, `${c.letter} — close up`, c.name, 240, 176, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#0e4a56'); g.addColorStop(1, '#0a2e3a');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
+      ctx.save(); ctx.translate(112, 96);
+      c.paint(ctx, 112, { t, beat: t * BPM / 60, wag: Math.sin(t * 13), dive: 0 });
+      ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+// Round two (Peter, 5 Oct 2026: "I like all the fish, id like to see them in a few different
+// drawing styles"): all eight in each of the game's own looks (src/dev/fish-styles.js), a
+// parade across the flooded club at the club's scale, then each close up.
+{
+  const s = sectionEl('fish-styles-bakeoff', 'BANGER LAB — Lorenzo’s fish, drawing styles',
+    'SETTLED 5 Oct 2026: CUT PAPER, all eight of them (src/game/banger/club-fish.js). '
+    + 'Every fish from the bake-off above in six of the game’s own looks, drawn by the same painters: CEL, the cast’s (as above); '
+    + 'CUT PAPER, the Plumber world’s; NEON, the club’s signs; 8-BIT, B-33P’s; CRAYON, the Frost sky’s; MID-CENTURY, the Speed Zone’s print. '
+    + 'Each look opens with all eight swimming across the flooded club at the club’s 66px heroes and 128 BPM, then each fish close up.',
+    '2026-10-05');
+  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128, CYCLE = 22, CROSS = 7;
+  const CELL = (FW - 8) / HERO_MOVES.length;
+  const room = (ctx, t) => {
+    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
+    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
+    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
+    ctx.save(); ctx.globalAlpha = 0.34; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(0, 0, FW, FH); ctx.restore();
+  };
+  for (const style of FISH_STYLES) {
+    const title = document.createElement('h3'); title.textContent = `${style.name} — ${style.description}`;
+    const grid = document.createElement('div'); grid.className = 'grid';
+    s.append(title, grid);
+    tile(grid, `${style.name} — the parade`, 'All eight across the flooded club, in turn, at the club’s scale.', FW, FH, (ctx, t) => {
+      room(ctx, t);
+      const beat = t * BPM / 60;
+      FISH_CANDIDATES.forEach((c, i) => {
+        const b = (((beat - i * 2.4) % CYCLE) + CYCLE) % CYCLE;
+        if (b >= CROSS) return;
+        const L = TOON_H * c.size, dir = i % 2 ? -1 : 1, p = b / CROSS;
+        const x = dir > 0 ? -L + p * (FW + 2 * L) : FW + L - p * (FW + 2 * L);
+        const y = FLOOR * (0.32 + 0.33 * ((i * 0.618) % 1)) + Math.sin(t * 2.6 + i) * L * 0.18;
+        ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+        style.paint(ctx, c, L, { t, beat, wag: Math.sin(t * 13 + i), dive: 0 });
+        ctx.restore();
+      });
+    }, { animated: true });
+    for (const c of FISH_CANDIDATES) {
+      tile(grid, `${style.name} — ${c.letter} ${c.name}`, '', 240, 176, (ctx, t) => {
+        const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#0e4a56'); g.addColorStop(1, '#0a2e3a');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
+        ctx.save(); ctx.translate(112, 96);
+        style.paint(ctx, c, 112, { t, beat: t * BPM / 60, wag: Math.sin(t * 13), dive: 0 });
+        ctx.restore();
+      }, { animated: true, hires: 3, displayScale: 1.5 });
+    }
+  }
+}
+
+// The club speakers' horn (Peter, 5 Oct 2026: a pasted spec for "a detailed high-frequency horn
+// tweeter" in the top box's slot, "but give me a few variations as well"). Every candidate on
+// the club's own cabinets (speakers.js), the cones pumping on a 128 BPM kick; then the top box
+// close up.
+{
+  const s = sectionEl('speaker-horn-bakeoff', 'BANGER LAB — the speakers’ horn',
+    'SETTLED 5 Oct 2026: B is the club’s horn now (src/game/banger/speakers.js PA_HORN), so 0 and B match; the dark port it replaced is last. '
+    + 'The top box’s slot, a dark port till then, as a proper PA horn. A is Peter’s spec to the letter (neutral greys); B the same horn in the cabinet’s purples; '
+    + 'C a rounded waveguide, D a bi-radial, E a multicell, F an acoustic lens. Every horn fills the same slot: as wide as the two woofers, 58% of one high. '
+    + 'No lights, no movement — only the cones pump. First card: all of them side by side at the club’s size; then each at club size and close up.',
+    '2026-10-05');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const BPM = 128;
+  const rig = (x, floor) => ({ w: 54, subH: 84, topH: 56, floor, top: floor - 140, xs: [x] });
+  const room = (ctx, w, h, floor) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.7, '#1a1236'); g.addColorStop(1, '#120d26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#17112e'; ctx.fillRect(0, floor, w, h - floor);
+  };
+  const thumpAt = (t) => { const b = t * BPM / 60; return Math.exp(-(b - Math.floor(b)) * 4 * 0.9); };   // a kick on every beat, as club.js kickThump falls
+  const all = [{ letter: '0', name: 'TODAY (club)', paint: PA_HORN, description: 'The horn the club draws now: B.' }, ...HORN_CANDIDATES,
+    { letter: 'X', name: 'THE OLD PORT', paint: PORT_HORN, description: 'The dark port the club had until 5 Oct 2026.' }];
+  const LW = 18 + all.length * 66;
+  tile(grid, 'All side by side (club size)', '0 the club’s (B), A–F, and X the old port, at the club’s landscape size.', LW, 180, (ctx, t) => {
+    room(ctx, LW, 180, 166);
+    all.forEach((c, i) => {
+      const x = 14 + i * 66;
+      drawSpeakerStack(ctx, x, rig(x, 166), 1, thumpAt(t), { horn: c.paint });
+      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(c.letter, x + 27, 176);
+    });
+  }, { animated: true, wide: true, hires: 3 });
+  for (const c of all) {
+    tile(grid, `${c.letter} — ${c.name} (club size)`, c.description, 90, 170, (ctx, t) => {
+      room(ctx, 90, 170, 160);
+      drawSpeakerStack(ctx, 18, rig(18, 160), 1, thumpAt(t), { horn: c.paint });
+    }, { animated: true, hires: 3 });
+    tile(grid, `${c.letter} — close up`, 'The top box at four times.', 240, 240, (ctx, t) => {
+      room(ctx, 240, 240, 240);
+      ctx.save(); ctx.scale(4, 4);
+      drawSpeakerStack(ctx, 3, rig(3, 142), 1, thumpAt(t) * 0.4, { horn: c.paint });
+      ctx.restore();
+    }, { animated: true, hires: 2 });
   }
 }
 

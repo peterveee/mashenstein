@@ -91,13 +91,16 @@ const mix = (a, b, k) => {
  * THE CLUB'S BALL: the disco ball at (x, y), radius r — the floor's colours caught in its
  * lower half. `hits` are where lasers land on it ({ x, y, colour, a }): the mirrors round
  * each hit flare in the laser's colour, and a scatter of facets across the ball catch it too
- * (Peter, 3 Oct 2026).
+ * (Peter, 3 Oct 2026). `lights`, while the rig plays a light show ({ colour(i), k, step }: the
+ * colour of can i, left to right, how far the show has faded, the sixteenth it is on), are caught
+ * in the top half, which mirrors the rig: a scatter of facets in the colour of the can each one
+ * looks up at, a new scatter every sixteenth as the colours chase (Peter, 5 Oct 2026).
  *
  * Tiles of the same shade are drawn as ONE path, one fill: a quarter of a thousand separate
  * fills a frame was the second-biggest cost in the club on a phone, and a ball of a dozen
  * greys looks the same as one of two hundred and fifty.
  */
-export function drawDiscoBall(ctx, x, y, r, { t, pulse = 0, hits = [], bands = 16 }) {
+export function drawDiscoBall(ctx, x, y, r, { t, pulse = 0, hits = [], bands = 16, lights = null }) {
   ctx.save();
   ctx.fillStyle = '#0d0b14'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   const buckets = new Map();       // fill colour -> corner lists
@@ -113,6 +116,10 @@ export function drawDiscoBall(ctx, x, y, r, { t, pulse = 0, hits = [], bands = 1
       const hue = DISCO[Math.floor(((lom / TAU) * 6 + t * 0.5 + i * 0.3) % 6 + 6) % 6];
       // shade quantised to eighths so tiles of a hue share a fill
       fill = mix('#20202c', hue, Math.round(Math.min(1, 0.35 + R[1] * 0.8) * (0.7 + 0.3 * pulse) * 8) / 8);
+    }
+    if (lights && R[1] < -0.1 && hash(i, j, 31 + lights.step) < 0.6 * lights.k) {
+      const can = Math.max(0, Math.min(5, Math.round((R[0] + 1) * 2.5)));
+      fill = mix('#30303c', lights.colour(can), Math.round(Math.min(1, 0.5 + up * 0.6) * 4) / 4);
     }
     if (glint > 0.4) fill = '#ffffff';
     put(buckets, fill, corners);

@@ -1253,9 +1253,10 @@ export const TOON_SPECS = {
   // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
   // own width to 2.5x. Held short of 1.4, where the reach starts to read lanky
   // against his short legs.
-  // The broad front footprint and opposing roll keep his neutral robot pads
-  // from collapsing into round caps when viewed head-on.
-  b33p: { rig: 'humanoid', footScale: 1.08, footSplay: 0.9, frontPoseFootAngle: 0.34, head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
+  // The broad front footprint keeps his neutral robot pads from collapsing
+  // into round caps when viewed head-on. No front-on roll: tilting the pads
+  // stood him on tiptoe in every idle and dance.
+  b33p: { rig: 'humanoid', footScale: 1.08, footSplay: 0.9, head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
     // proportions — written by the character editor (tools/character-editor.js)
     hipTuck: 1.2,
     legShiftRoot: -0.025,
@@ -10905,10 +10906,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const celebrateToePoint = pose.kind === 'celebrate' && cm
     ? 0.52 * Math.max(0, Math.min(1, (cm.lift - 0.045) / 0.12))
     : 0;
-  const frontPoseFootAngle = frontLegs
-    && (pose.dance || pose.kind === 'idle' || pose.kind === 'stand')
-    ? (Number(spec.frontPoseFootAngle) || 0)
-    : 0;
   const frontFootFlare = frontLegs && !pose.dance
     ? (pose.kind === 'slide' ? 0.52 : celebrateToePoint)
     : 0;
@@ -10933,8 +10930,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the clamp reads the same whether the foot is an oval or a shape — the
   // placement arithmetic that used to live here has moved into paintShoe,
   // which is the only thing that needs to know which of the two it is drawing.
-  const dropF = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleF + frontFootFlare + frontPoseFootAngle, frontLegs);
-  const dropB = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleB - frontFootFlare - frontPoseFootAngle, frontLegs);
+  const dropF = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleF + frontFootFlare, frontLegs);
+  const dropB = shoeDrop(spec, footDx, 0.01 * u, footRx, footRy, ankleB - frontFootFlare, frontLegs);
   // THE GROUND IS NOT LEVEL, and until now the rig has drawn as though it were.
   // Foot targets are figure-space and the clamp below plants a sole on a
   // HORIZONTAL line, so on a hill both feet sat at the same height and both
@@ -11203,7 +11200,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       }
     }
     paintShoe(ctx, spec, ow, lod, footFill,
-      footF[0], footF[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleF + tiltF + frontFootFlare + frontPoseFootAngle, frontLegs,
+      footF[0], footF[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleF + tiltF + frontFootFlare, frontLegs,
       // The SAME two-bone solution the leg was just drawn with, so the cuff
       // cannot drift off the shin the knee actually folded on. `toe` turns a
       // splayed foot outboard — the near foot to the right, the far one left,
@@ -12264,7 +12261,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
   bootShaft(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(footFill, farShade));
   paintShoe(ctx, spec, ow, lod, recede(footFill, farShade),
-    footB[0], footB[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleB + tiltB - frontFootFlare - frontPoseFootAngle, frontLegs,
+    footB[0], footB[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleB + tiltB - frontFootFlare, frontLegs,
     { base: footFill, knee: kneeAt(hipAt(-1), legRootYB, footB, kneeB), legW: legWB, toe: -1 });
   // The far holster recedes with the leg it is on, like every other far-side
   // piece — an un-pushed one reads as a bright tag floating off the back thigh.
