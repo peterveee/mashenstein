@@ -270,7 +270,7 @@ ACTIONS.push(
   {
     id: 'bangerlevels', group: 'audio', label: 'BANGER LEVELS',
     blurb: 'makes test bangers in the ticked styles and renders them channel by channel: how far each channel lands from the part it is matched to (the style’s seed banger once you have used one, else its seed remix), before levelling and after (tools/banger-levels.js). Measures any new banger sound first. Writes only the report. About ten minutes a style. + FIT folds each channel’s average miss into the levels.',
-    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton', 'moombahton', 'merenhouse'],
+    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton', 'moombahton', 'merenhouse', 'afro-house'],
     options: [{ key: 'fit', label: '+ FIT', flag: '--fit' }],
     needsIds: true,
     speed: 'background',
@@ -304,7 +304,7 @@ ACTIONS.push({
 }, {
   id: 'bangercalibration', group: 'audio', label: 'BANGER CALIBRATION',
   blurb: 'Measures instruments playing short, sustained, busy and chord phrases through their channels. Reuses unchanged measurements, checks unseen phrases, publishes validated offsets, then rebuilds the game. The first full run is lengthy; interrupted runs resume from cached renders. FULL rebuilds everything selected. Weekly runs use all styles while the desk is open.',
-  choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton', 'moombahton', 'merenhouse'],
+  choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton', 'moombahton', 'merenhouse', 'afro-house'],
   options: [{ key: 'full', label: 'FULL REBUILD', flag: '--full' }], needsIds: true, speed: 'background', buildAfter: true,
   steps: args => [niced(['tools/banger-calibrate.js', 'refresh', ...idsFrom(args), ...optionFlags('bangercalibration', args)])],
   openPath: reportHref('banger-calibration.json', 'calibration'),

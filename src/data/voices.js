@@ -1389,6 +1389,37 @@ const DRUM = {
     noise: { type: 'highpass', freq: 3000, Q: 0.8, decay: 0.012, gain: 0.35 },
     ring: { freq: 1100, Q: 18, hit: 0.002, decay: 0.045, gain: 0.45 },
     drive: 0.1 },
+  // ---- West African hand drums (6 Oct 2026, for the Afro house sketches) ------
+  djembeBass: { label: 'Djembe · Bass', category: 'Perc', homeLane: 'tom', dur: 1,
+    note: 'The open palm in the middle of a djembe: a deep round boom falling from 110 to '
+      + '72 Hz, a soft skin thud on the front and no ring.',
+    osc: { type: 'sine', from: 110, to: 72, sweep: 0.05, decay: 0.34, curve: 'exp', gain: 1 },
+    noise: { type: 'lowpass', freq: 900, Q: 0.7, decay: 0.022, gain: 0.28 },
+    drive: 0.1 },
+  djembeTone: { label: 'Djembe · Tone', category: 'Perc', homeLane: 'tom', dur: 1,
+    note: 'The flat fingers at the djembe\'s edge: a ringing open note around 330 Hz with the '
+      + 'goatskin\'s overtone over it — the voice the rhythms are sung on.',
+    osc: { type: 'triangle', from: 345, to: 290, sweep: 0.03, decay: 0.17, curve: 'exp', gain: 0.85 },
+    noise: { type: 'lowpass', freq: 2600, Q: 0.7, decay: 0.016, gain: 0.3 },
+    ring: { freq: 690, Q: 14, hit: 0.0015, decay: 0.07, gain: 0.25 },
+    drive: 0.12 },
+  djembeSlap: { label: 'Djembe · Slap', category: 'Perc', homeLane: 'rim', dur: 0.5,
+    note: 'The cupped slap at the djembe\'s edge: a bright crack of skin with only a little '
+      + 'pitch under it — the accent that cuts through a whole ensemble.',
+    osc: { type: 'triangle', from: 560, to: 440, sweep: 0.012, decay: 0.045, curve: 'exp', gain: 0.45 },
+    noise: { type: 'highpass', freq: 1900, Q: 1.3, decay: 0.05, gain: 0.95 },
+    drive: 0.25 },
+  talkingDrum: { label: 'Talking Drum', category: 'Perc', homeLane: 'tom', dur: 1,
+    note: 'An hourglass drum squeezed under the arm as it is struck: the note bends UP from 150 '
+      + 'to 235 Hz over a tenth of a second — the "doo-OOP" that calls and answers.',
+    osc: { type: 'sine', from: 150, to: 235, sweep: 0.11, decay: 0.36, curve: 'exp', gain: 1 },
+    noise: { type: 'lowpass', freq: 1500, Q: 0.7, decay: 0.02, gain: 0.3 },
+    drive: 0.12 },
+  shekere: { label: 'Shekere', category: 'Perc', homeLane: 'rim', dur: 0.5,
+    note: 'A dried gourd in a net of beads: a soft swell of mid-high rattle with the beads '
+      + 'landing a hair after it. Rounder and woodier than a shaker.',
+    noise: { type: 'bandpass', freq: 4300, Q: 1.3, attack: 0.01, decay: 0.07, gain: 1 },
+    taps: [0, 0.011, 0.024], tapGains: [0.6, 1, 0.45] },
   // ---- cowbells and claves, after the Sound On Sound analysis ---------------
   //
   // "Synthesizing Cowbells & Claves" measured a real CR8000 and found the cowbell is

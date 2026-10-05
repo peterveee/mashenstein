@@ -2623,21 +2623,26 @@ export class BangerClubState {
     if (!this.bakes.has(key)) {
       const probe = document.createElement('canvas').getContext('2d');
       probe.font = `${size}px ${TITLE_FONT}`;
-      const w = probe.measureText(text).width + size * 1.6;
+      const m = probe.measureText(text);
+      const w = m.width + size * 1.6;
       const h = size * 2;
+      // 'middle' centres the em box, not the letters: a caps-only title font sits well off
+      // the board's centre. Put the ink's own middle on h/2 (Peter, 6 Oct 2026).
+      const ink = Number.isFinite(m.actualBoundingBoxAscent) && Number.isFinite(m.actualBoundingBoxDescent)
+        ? (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2 : 0;
       const c = document.createElement('canvas');
       c.width = Math.ceil(w * ss); c.height = Math.ceil(h * ss);
       const g = c.getContext('2d');
       g.scale(ss, ss);
       g.font = `${size}px ${TITLE_FONT}`;
-      g.textBaseline = 'middle'; g.lineJoin = 'round';
+      g.textBaseline = ink ? 'alphabetic' : 'middle'; g.lineJoin = 'round';
       g.shadowColor = colour; g.shadowBlur = size * 0.7;
       g.strokeStyle = colour; g.lineWidth = size * 0.11;
-      g.strokeText(text, size * 0.8, h / 2);
-      g.strokeText(text, size * 0.8, h / 2);
+      g.strokeText(text, size * 0.8, h / 2 + ink);
+      g.strokeText(text, size * 0.8, h / 2 + ink);
       g.shadowBlur = 0;
       g.strokeStyle = '#ffffff'; g.lineWidth = size * 0.035;
-      g.strokeText(text, size * 0.8, h / 2);
+      g.strokeText(text, size * 0.8, h / 2 + ink);
       this.bakes.set(key, { img: c, w, h });
     }
     return this.bakes.get(key);

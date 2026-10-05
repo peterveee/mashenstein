@@ -94,6 +94,8 @@ export const LED_STYLE_LINES = Object.freeze({
     scroll: ['DEMBOW AT FESTIVAL SIZE', 'TOMS IN THE JUNGLE', 'SLOW IT DOWN TURN IT UP', 'WEPA WEPA WEPA'] },
   merenhouse: { hold: ['MERENGUE', 'GUIRA', 'TAMBORA', 'SAX!', 'EPA'],
     scroll: ['SCRAPE THAT GUIRA', 'SAXOPHONE ON THE ROOF', 'MERENGUE ALL NIGHT', 'FASTER FASTER FASTER'] },
+  'afro-house': { hold: ['AFRO', 'DJEMBE', 'SUNSET', 'DEEP', 'UBUNTU'],
+    scroll: ['THE DRUMS ARE TALKING', 'DANCE UNTIL SUNRISE', 'FEEL THE DJEMBE', 'DEEPER INTO THE GROOVE'] },
 });
 
 /** A board line with the song's details filled in. */

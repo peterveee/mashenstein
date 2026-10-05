@@ -27,23 +27,52 @@ import { ITALO_DISCO } from './italo-disco.js';
 import { REGGAETON } from './reggaeton.js';
 import { MOOMBAHTON } from './moombahton.js';
 import { MERENHOUSE } from './merenhouse.js';
+import { AFRO_HOUSE, AFRO_HOUSE_FLAVOURS } from './afro-house.js';
 import { withSharedMoods } from '../moods.js';
+import { makeFlavour, seedRoll } from './flavours.js';
 
 // Every style plays the shared moods (moods.js) unless it has its own take on one.
 export const BANGER_STYLES = Object.freeze([BIG_ROOM, TRANCE, FUTURE_BASS, EUROBEAT, CHIPSTEP, SYNTHWAVE, SHIBUYA, DNB, ELECTRO, MEGADRIVE, DEEP_HOUSE, NU_DISCO, DOWNTEMPO,
-  EURODANCE, ITALO_DISCO, ELECTRO_FUNK, FRENCH_HOUSE, REGGAETON, MOOMBAHTON, MERENHOUSE].map(withSharedMoods));
+  EURODANCE, ITALO_DISCO, ELECTRO_FUNK, FRENCH_HOUSE, REGGAETON, MOOMBAHTON, MERENHOUSE, AFRO_HOUSE].map(withSharedMoods));
 
 // SOUND SETS (5 Oct 2026): a style's music on another set of sounds — Light (the cheap synths
 // only, for a phone) and 8-Bit (chip blips). Each is a recipe with `base` (the style it
 // belongs to) and `soundSet` (the option that picks it), and its own entry in sounds.js. Not
 // in the style list: the Sound Set option picks one (soundSetOf, below).
 export const BANGER_SOUND_SETS = Object.freeze([CHIPSTEP_LITE, CHIPSTEP_8BIT, SYNTHWAVE_LITE].map(withSharedMoods));
-const BY_ID = new Map([...BANGER_STYLES, ...BANGER_SOUND_SETS].map((s) => [s.id, s]));
+// FLAVOURS (6 Oct 2026, flavours.js): a style's other arrangements — its drums, rhythms, sounds and
+// how long its chords are held. Each is a recipe with `base` and `flavour`, and its own entry in
+// sounds.js. Not in the style list: a take turns out to be one (the `flavour` option, flavourOf).
+export const BANGER_FLAVOURS = Object.freeze([
+  ...AFRO_HOUSE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(AFRO_HOUSE), def)),
+]);
+const BY_ID = new Map([...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].map((s) => [s.id, s]));
 
-/** The recipe called `id` — a style or a sound set — or null. */
+/** The recipe called `id` — a style, a sound set or a flavour — or null. */
 export const styleFor = (id) => (id == null ? null : BY_ID.get(id) || null);
 
 /** The sound set `set` of a style ('light', '8bit'), or null — 'style' and unknown sets are null. */
 export const soundSetOf = (style, set) => BANGER_SOUND_SETS.find((x) => x.base === style?.id && x.soundSet === set) || null;
 /** The sound sets a style has, as ids — what the Sound Set option can pick for it. */
 export const soundSetsFor = (styleId) => BANGER_SOUND_SETS.filter((x) => x.base === styleId).map((x) => x.soundSet);
+
+/** A style's flavours, its own first: [{ id, label, note }] — empty for a style with none. */
+export const flavoursFor = (styleId) => {
+  const style = styleFor(styleId);
+  return style?.flavours?.length ? style.flavours : [];
+};
+/** The flavour a style plays in `mood` (its `flavourByMood`), else its own — an id. */
+export const moodFlavour = (style, mood) => style?.flavourByMood?.[mood] || style?.flavours?.[0]?.id || null;
+/**
+ * The recipe a take of `style` is made from for the `flavour` option: 'mood' (the flavour the
+ * mood plays — the default; Peter, 6 Oct 2026: "make it dependant on the mood"), a flavour's id,
+ * 'random' (drawn from the take's `seed`), or null / 'style' (the style's own). Null wherever
+ * the answer is the style itself.
+ */
+export function flavourOf(style, flavour, { seed = 1, mood = null } = {}) {
+  if (!flavour || flavour === 'style' || !style?.flavours?.length) return null;
+  let id = flavour;
+  if (flavour === 'mood') id = moodFlavour(style, mood);
+  else if (flavour === 'random') id = style.flavours[Math.floor(seedRoll(seed, 0x7f4a7c15) * style.flavours.length)].id;
+  return BANGER_FLAVOURS.find((x) => x.base === style.id && x.flavour === id) || null;
+}

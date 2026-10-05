@@ -56,6 +56,7 @@ const STYLE_DESCRIPTIONS = Object.freeze({
   reggaeton: 'The dembow beat, an 808 and marimba',
   moombahton: 'Festival-sized dembow, toms and saw stabs',
   merenhouse: 'Fast merengue: güira, tambora and sax',
+  'afro-house': 'Djembe, shekere and a deep groove',
 });
 
 const MOOD_DESCRIPTIONS = Object.freeze({
@@ -238,6 +239,7 @@ const BASS_ROLLS = Object.freeze({
   reggaeton: ['long808', 'pedal', 'rootFifth'],
   moombahton: ['reese', 'long808', 'octaves', 'rolling'],
   merenhouse: ['rootFifth', 'walking', 'octaves', 'funk'],
+  'afro-house': ['rolling', 'sequencer', 'arpeggiated', 'pedal'],
 });
 // `stabs` in a gate draw is Supersaw Stabs in place of a gate.
 const GATE_ROLLS = Object.freeze(['pump', 'eighths', 'sixteenths', 'dotted', 'energy', 'stabs']);

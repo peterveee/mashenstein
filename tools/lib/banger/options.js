@@ -74,7 +74,8 @@ export const MOOD_BASS = Object.freeze({
 export function moodBass(style, mood) {
   const own = styleDefaults(style).parts.bass;
   if (style?.bassFixed || mood === styleDefaults(style).mood) return own;
-  return MOOD_BASS[mood] || own;
+  // A style may give a mood a bass of its own (afro-house: each mood is a flavour).
+  return style?.moodBass?.[mood] || MOOD_BASS[mood] || own;
 }
 
 /**

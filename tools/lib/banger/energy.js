@@ -26,6 +26,7 @@ const PROFILES = {
   reggaeton: { perc: 'congas', keep: ['counter'] },
   moombahton: { perc: 'congas', keep: ['tambourine'] },
   merenhouse: { perc: 'congas', keep: ['shaker', 'congas'] },
+  'afro-house': { perc: 'cowbell', keep: ['congas', 'tambourine'] },
   chipstep: { perc: 'tambourine' },
 };
 export const DECORATION = ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',
