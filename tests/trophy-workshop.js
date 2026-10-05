@@ -127,7 +127,7 @@ const blankRoom = new TrophyRoomState({ save: blankSave, flow });
 blankRoom.enter(); blankRoom.draw(ctx);
 assert(blankRoom.defeatedBosses().length === 0, 'an empty management archive reveals no future boss trophies');
 const blankStats = blankRoom.statGroups().flatMap((group) => group.rows);
-assert(blankStats.some(([label, value]) => label === 'BEST LEVEL SCORE' && value === '—')
+assert(blankStats.some(([label, value]) => label === 'BEST LEVEL SCORE' && value === '-')
   && !blankStats.some(([label]) => label.includes('OVERTIME')),
   'an unfinished file shows a spoiler-free best-level score instead of Overtime');
 blankRoom.exit();

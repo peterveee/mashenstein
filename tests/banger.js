@@ -814,10 +814,10 @@ try {
       && bassAt(d1.from + 1).map(([i]) => i).join(',') === '0,10',
       'its bass is a square in octave eighths, hitting only with the kick in the half-time drop');
     const wobble = laneByLabel(cs, /^WOBBLE/);
-    assert(cs.mix.voice[`${wobble}Voice`] === 'wubClassic' && row(/^WOBBLE/, d1.from + 1) === '0,8' && row(/^WOBBLE/, d2.from + 1) === '2,6,10,14',
+    assert(cs.mix.voice[`${wobble}Voice`] === 'seedChipstepSub' && row(/^WOBBLE/, d1.from + 1) === '0,8' && row(/^WOBBLE/, d2.from + 1) === '2,6,10,14',
       'the wobble holds each half bar in the half-time drop and stutters on the off-beats after it');
-    assert(cs.mix.voice[`${laneByLabel(cs, /^SNARE/)}Voice`] === 'gameBoySnare' && cs.mix.voice[`${laneByLabel(cs, /^IMPACT/)}Voice`] === 'kwBlipDrop'
-      && cs.mix.voice[`${laneByLabel(cs, /^THIRD BELOW/)}Voice`] === 'jmjrArcadeChorus' && cs.mix.voice[`${laneByLabel(cs, /^HOOK DOUBLE/)}Voice`] === 'tngrPlainPulse',
+    assert(cs.mix.voice[`${laneByLabel(cs, /^SNARE/)}Voice`] === 'seedChipstepSnare' && cs.mix.voice[`${laneByLabel(cs, /^IMPACT/)}Voice`] === 'seedChipstepImpact'
+      && cs.mix.voice[`${laneByLabel(cs, /^THIRD BELOW/)}Voice`] === 'seedChipstepThird' && cs.mix.voice[`${laneByLabel(cs, /^HOOK DOUBLE/)}Voice`] === 'seedChipstepSquare',
       'a Game Boy snare, a zap on every drop, the arcade chorus under the hook, a pulse doubling it');
     const withDrums = generateBanger({ riff: BAND, options: { style: 'chipstep' }, seed: 5 });
     assert(!Object.values(withDrums.mix.labels).some((l) => /\(riff\)|RIFF Kick/.test(l)), 'a riff\'s own drums are replaced by default, so the half-time drop stands');
