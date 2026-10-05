@@ -23,7 +23,7 @@ const { BangerMakerState, RIFF_VOICES } = await import('../src/game/banger/maker
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
-const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor } = await import('../src/game/banger/club-fx.js');
+const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue } = await import('../src/game/banger/club-fx.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -656,38 +656,185 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     tap(club, e.x + e.w / 2, e.y + e.h / 2);
     assert(edited === rec, 'the pencil opens this song to edit');
   }
-  const h = club.boxes.heroes[4];
-  tap(club, h.x + h.w / 2, h.y + h.h / 2);
-  assert(club.queued?.i === 4 && !club.acting, 'a tap on a hero queues their move for the next beat');
-  for (let k = 0; k < 120 && !club.acting; k++) club.update(1 / 60);
-  assert(club.acting?.i === 4 && club.caption?.i === 4, 'and on the beat they do it, their name and move on screen');
-  club.draw(ctx);
-  // A held move: in while the hero is held, out when let go. B-33P's 8-bit is one.
   // (a hero's box follows them, so let the walk-in finish before aiming at one)
   club.shownAt = club.t - 30; club.draw(ctx);
-  const hb = club.boxes.heroes[1];
+  const at = (hero) => HERO_MOVES.findIndex((m) => m.hero === hero);
+  const kikoAt = at('kiko');
+  const h = club.boxes.heroes[kikoAt];
+  tap(club, h.x + h.w / 2, h.y + h.h / 2);
+  assert(club.queued?.i === kikoAt && !club.acting, 'a tap on a hero queues their move for the next beat');
+  for (let k = 0; k < 120 && !club.acting; k++) club.update(1 / 60);
+  assert(club.acting?.i === kikoAt && club.caption?.i === kikoAt, 'and on the beat they do it, their name and move on screen');
+  club.draw(ctx);
+  // A held move: in while the hero is held, out when let go. Lorenzo's UNDERWATER is one.
+  const lorenzoAt = at('lorenzo');
+  const hb = club.boxes.heroes[lorenzoAt];
   Input.pointer = { x: hb.x + hb.w / 2, y: hb.y + hb.h / 2, down: true };
   Input.press('pointer');
   club.update(1 / 60);
   Input.endFrame();
   for (let k = 0; k < 30; k++) club.update(1 / 60);
-  assert(HERO_MOVES[1].hold && club.holding?.i === 1 && club.acting?.i === 1 && club.acting.dur === Infinity,
-    '8-BIT is a held move: it stays in for as long as B-33P is held');
+  assert(HERO_MOVES[lorenzoAt].hold && club.holding?.i === lorenzoAt && club.acting?.i === lorenzoAt && club.acting.dur === Infinity,
+    'UNDERWATER is a held move: it stays in for as long as Lorenzo is held');
+  // ...and PLAYED while held (Peter, 5 Oct 2026): the drag follows the finger, a whole drag
+  // DRAG_SPAN hero heights from where it went down
+  Input.pointer.y = hb.y + hb.h / 2 - club.layout.toonH * 1.6;
+  club.update(1 / 60);
+  const up = club.holding?.delta;
+  Input.pointer.y = hb.y + hb.h / 2 + club.layout.toonH * 0.8;
+  club.update(1 / 60);
+  assert(up === 1 && Math.abs(club.holding?.delta + 0.5) < 1e-9, 'a held hero dragged up plays the move up, and down plays it down');
+  assert(dragValue(HERO_MOVES[lorenzoAt], HERO_MOVES[lorenzoAt].drag.start) === 420 && dragValue(HERO_MOVES[lorenzoAt], 0) === 140
+    && dragValue(HERO_MOVES[lorenzoAt], 1) === 3200, 'Lorenzo\'s water: 420 Hz where he goes down, 140 Hz at the bottom, 3.2 kHz at the surface');
   Input.release('pointer');
   Input.pointer.down = false;
   club.update(1 / 60);
   Input.endFrame();
   assert(!club.holding && Number.isFinite(club.acting?.dur ?? 0), 'and comes out when he is let go');
   // A tap on a held move: it still plays for half a bar.
-  const g1 = club.boxes.heroes[2];                 // Ramon: a hold
+  const ramonAt = at('ramon');
+  const g1 = club.boxes.heroes[ramonAt];
   tap(club, g1.x + g1.w / 2, g1.y + g1.h / 2);
   club.update(1 / 60);
-  const q = club.acting?.i === 2 ? club.acting : club.queued;
-  assert(q?.i === 2 && !club.holding && Math.abs(q.dur - q.bar / 2) < 1e-6, 'a held move only tapped still plays for half a bar');
-  assert(HERO_MOVES.slice(0, 4).every((m) => m.hold) && HERO_MOVES.slice(4).every((m) => !m.hold),
-    'the holds come first, so they stand on the left; the one-shots on the right');
-  assert(HERO_MOVES.filter((m) => m.hold).map((m) => m.hero).join() === 'lorenzo,b33p,ramon,grumpos',
-    'Underwater, 8-bit, Rocket Fist and Flex are held; the rest are triggers');
+  const q = club.acting?.i === ramonAt ? club.acting : club.queued;
+  assert(q?.i === ramonAt && !club.holding && Math.abs(q.dur - q.bar / 2) < 1e-6, 'a held move only tapped still plays for half a bar');
+  assert(HERO_MOVES.filter((m) => m.hold).map((m) => m.hero).join() === 'lorenzo,ramon,fernwick,rusty'
+    && HERO_MOVES[at('b33p')].toggle && !HERO_MOVES.some((m) => m.move === 'FLEX'),
+  'Underwater, Rocket Fist, Longbow and Speed Boost are held; B-33P toggles 8-bit; Flex is retired; the rest are triggers');
+  // Anyone stands anywhere (Peter, 5 Oct 2026): where each hero stands is drawn afresh every
+  // visit, holds and taps mixed.
+  {
+    const orders = new Set();
+    let mixed = false, whole = true;
+    for (let n = 0; n < 24; n++) {
+      const c = new BangerClubState({ rec, onBack: () => {} });
+      c.enter();
+      orders.add(c.formationOrder.join());
+      if ([...c.formationOrder].sort((a, b) => a - b).join() !== HERO_MOVES.map((_, i) => i).join()) whole = false;
+      if (!c.formationOrder.slice(0, 4).every((i) => HERO_MOVES[i].hold)) mixed = true;
+      c.exit();
+    }
+    Audio.setBank(club.song.bank, club.song.mix, club.song.arrangement, { startAtBeginning: true });
+    assert(whole && mixed && orders.size > 10, 'every hero stands somewhere, holds and taps mixed, in a new order each visit');
+  }
+  // ...and in portrait nobody changes places; in landscape any two neighbours may swap.
+  {
+    const { screen } = await import('../src/engine/renderer.js');
+    const mode = screen.presentationMode;
+    const realBeat = club.beat;
+    club.beat = () => 400;
+    screen.presentationMode = 'phone-portrait';
+    club.formationSwap = null; club.formationShuffleAt = -1; club.queued = club.acting = null;
+    club.updateFormation();
+    const still = club.formationSwap === null && club.formationShuffleAt > 400;
+    screen.presentationMode = mode;
+    club.formationShuffleAt = -1;
+    club.updateFormation();
+    const swap = club.formationSwap;
+    assert(still && swap && swap.slotB === swap.slotA + 1, 'in portrait nobody changes places; in landscape two neighbours may');
+    club.beat = realBeat; club.formationSwap = null; club.formationShuffleAt = Infinity;
+  }
+  // B-33P: the whole band onto the 8-Bit Sound Set from the next bar line, back at a second tap.
+  {
+    const { BANGER_SOUNDS } = await import('../tools/lib/banger/sounds.js');
+    const realRe = Audio.reapplyBank, realSource = Audio.sourceBank, realBank = Audio.bank;
+    const mixes = [];
+    Audio.reapplyBank = (bank, mix) => { mixes.push(mix); };
+    Audio.sourceBank = club.song.bank; Audio.bank = realBank || club.song.bank;
+    const eightBit = club.voices.eightBit;
+    const set = BANGER_SOUNDS[eightBit ? 'chipstep-lite' : 'chipstep-8bit'];
+    const ids = new Set([...Object.values(set.parts), ...Object.values(set.kits).flatMap((k) => Object.values(k))]);
+    club.draw(ctx);
+    const bb = club.boxes.heroes[at('b33p')];
+    tap(club, bb.x + bb.w / 2, bb.y + bb.h / 2);
+    assert(club.queued?.i === at('b33p') && club.queued.title === (eightBit ? 'HI-FI' : '8-BIT') && club.voices.swapped && !club.voices.swappedNow,
+      'a tap on B-33P queues the swap for the next bar');
+    club.update(1 / 60);
+    const swappedLanes = Object.entries(mixes.at(-1)?.voice || {}).filter(([k, id]) => id !== club.song.mix.voice[k]);
+    assert(club.voices.swappedNow && swappedLanes.length > 5 && swappedLanes.every(([, id]) => ids.has(id)),
+      'on the bar every part goes onto the set\'s own sounds, the drums and all');
+    assert(club.led?.text === (eightBit ? 'HI-FI MODE' : '8-BIT MODE'), 'and the LED board says so');
+    club.draw(ctx);
+    tap(club, bb.x + bb.w / 2, bb.y + bb.h / 2);
+    club.update(1 / 60);
+    assert(!club.voices.swappedNow && mixes.at(-1) === club.song.mix && club.led?.text === (eightBit ? '8-BIT MODE' : 'HI-FI MODE'),
+      'a second tap puts the band\'s own sounds back');
+    Audio.reapplyBank = realRe; Audio.sourceBank = realSource; Audio.bank = realBank;
+  }
+  // RUSTY: held, the song runs 15% fast in its own key; dragged down, through its own speed to
+  // half-speed slow-mo; let go, back to its own speed on the beat.
+  {
+    club.draw(ctx);
+    const rb = club.boxes.heroes[at('rusty')];
+    Input.pointer = { x: rb.x + rb.w / 2, y: rb.y + rb.h / 2, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    const fast = Audio.tempo;
+    Input.pointer.y += club.layout.toonH * 1.6; club.update(1 / 60);
+    const slow = Audio.tempo;
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    club.update(1 / 60);
+    assert(Math.abs(fast - 1.15) < 1e-9 && Math.abs(slow - 0.5) < 1e-9 && Audio.tempo === 1 && Audio.detune === 1,
+      'Rusty runs the song 15% fast, drags down to half-speed slow-mo in the same key, and lets it go');
+  }
+  // FERNWICK: held, the bow is drawn and the crowd sinks; let go, the drop lands on the song's
+  // next drop or chorus, with confetti and streamers.
+  {
+    const form = club.song.form;
+    club.moments = [];
+    club.draw(ctx);
+    const fb = club.boxes.heroes[at('fernwick')];
+    Input.pointer = { x: fb.x + fb.w / 2, y: fb.y + fb.h / 2, down: true };
+    Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+    for (let k = 0; k < 20; k++) club.update(1 / 60);
+    const crouching = club.crowdMotion();
+    club.draw(ctx);
+    const target = club.dropTarget();
+    Input.release('pointer'); Input.pointer.down = false; club.update(1 / 60); Input.endFrame();
+    const landing = club.landing;
+    for (let k = 0; k < 20 && club.landing; k++) club.update(1 / 60);
+    assert(crouching?.age > 0 && landing?.section === target && club.bow === null
+      && ['drop', 'drop2', 'drop3', 'reprise', 'chorus'].includes(form[target].role),
+    'Fernwick draws the bow, the crowd crouching, and lets go onto the song\'s next drop');
+    assert(club.moments.some((m) => m.kind === 'confetti' && m.ribbons), 'and the drop lands with confetti and streamers');
+    club.moments = [];
+  }
+  // THE FLOOR PADS: a tap on the dance floor strikes its quarter's pad and wakes the bottom
+  // buttons; on a desktop the pointer over the floor wakes them too (Peter, 5 Oct 2026).
+  {
+    club.draw(ctx);
+    const fl = club.boxes.floor;
+    club.padHits = []; club.buttonsAt = -Infinity;
+    const y = fl.y + fl.h * 0.75;
+    tap(club, fl.x + fl.w * 0.6, y);
+    assert(club.padHits.length === 1 && club.padHits[0].pad === 'shout' && club.padHits[0].label === 'HEY!' && club.buttonsAt === club.t,
+      'a tap on the dance floor strikes its pad (the third quarter: the shout, HEY!) and wakes the bottom buttons');
+    tap(club, fl.x + fl.w * 0.6, y);
+    tap(club, fl.x + fl.w * 0.1, y);
+    assert(club.padHits.map((p) => p.label).join() === 'HEY!,HO!,SIREN!',
+      'the shout is a different word each tap (HEY!, then HO!), and the first quarter is the siren');
+    club.draw(ctx);
+    const touch = Input.usingTouch;
+    Input.usingTouch = false; club.buttonsAt = -Infinity;
+    Input.pointer = { x: fl.x + fl.w * 0.3, y, down: false };
+    club.update(1 / 60);
+    const hovered = club.buttonsAt === club.t;
+    Input.pointer = { x: fl.x + fl.w * 0.3, y: fl.y - 60, down: false };
+    const was = club.buttonsAt;
+    club.update(1 / 60);
+    assert(hovered && club.buttonsAt === was, 'a mouse over the floor wakes them; off it, they are let sleep');
+    Input.usingTouch = touch;
+  }
+  // Every move draws its room.
+  {
+    for (let i = 0; i < HERO_MOVES.length; i++) {
+      club.acting = { i, when: club.heardNow() - 0.1, bar: club.barSeconds(), dur: club.barSeconds(), plan: { beats: 2, hits: 2 } };
+      club.punch = { grab: club.beat() - 0.3, slice: 0.25 };
+      club.echo = { when: club.heardNow() - 0.4 };
+      club.draw(ctx);
+    }
+    club.acting = null; club.punch = null; club.echo = null;
+    assert(true, 'every move draws what it does to the room');
+  }
   // The mixer: a small icon that opens a panel of faders, one a part.
   const mxb = club.boxes.mixer;
   tap(club, mxb.x + mxb.w / 2, mxb.y + mxb.h / 2);
@@ -698,6 +845,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(club.levels.drums === 0 && !club.parts.has('drums') && club.popup?.text === 'NO DRUMS', 'the drum fader pulled to the bottom: NO DRUMS');
   tap(club, f.x + f.w / 2, (f.top + f.bot) / 2);
   assert(club.levels.drums > 0.4 && club.levels.drums < 0.6 && club.popup?.text === 'YES DRUMS', 'and halfway up: YES DRUMS, at half');
+  // ...and under each fader the part's sound: a tap is its next one, from the next bar line,
+  // and the LED board names it
+  {
+    club.draw(ctx);
+    const before = club.voices.label('drums');
+    const realRe = Audio.reapplyBank;
+    Audio.reapplyBank = () => {};
+    assert(club.boxes.sounds.length === PARTS.length && before.endsWith('KIT'), 'under each fader, the part\'s sound');
+    tap(club, ...centre(club.boxes.sounds[0]));
+    club.update(1 / 60);
+    assert(club.voices.label('drums') !== before && club.voices.label('drums').endsWith('KIT') && club.led?.text.startsWith('DRUMS: '),
+      'a tap on DRUMS swaps the kit, and the LED board says which');
+    Audio.reapplyBank = realRe;
+    club.draw(ctx);
+  }
   tap(club, 5, 5);
   assert(!club.mixerOpen, 'a tap outside the panel closes it');
   // The dancing: one hero at a time joins in, each on one of their own eight dances (and
@@ -745,15 +907,15 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       && moveSeconds(kikoMove, 0.1, longTwo) === 0.8 && moveSeconds(kikoMove, 0.1, four) === 0.4,
     'Kiko stops the tape on the 2 or the 4: a beat on the 4; on the 2, half a bar, one stop or two');
   }
-  // Ramon's stutter comes in four lengths; Fernwick's riser in one, two or four bars
+  // Ramon's stutter comes in four lengths; Grumpos throws the beat into a ping-pong echo
   {
     const ramon = HERO_MOVES.find((m) => m.hero === 'ramon');
     const slices = new Set([0, 0.3, 0.6, 0.9].map((r) => holdChain(ramon, () => r)[0].params.slice));
-    const fern = HERO_MOVES.find((m) => m.hero === 'fernwick');
     assert(slices.size === 4 && [...slices].every((x) => [1, 0.5, 0.25, 0.125].includes(x)),
       'Ramon\'s stutter is quarters, eighths, sixteenths or thirty-seconds, a different one each press');
-    assert(fern.barChoices.join() === '1,2,4' && moveSeconds(fern, 0.1, { bars: 4 }) === 6.4 && moveSeconds(fern, 0.1, { bars: 1 }) === 1.6,
-      'Fernwick\'s riser runs one, two or four bars');
+    const grumpos = HERO_MOVES.find((m) => m.hero === 'grumpos');
+    assert(grumpos.backbeat && grumpos.chain.some((fx) => fx.id === 'pingpong') && moveSeconds(grumpos, 0.1) === 0.4,
+      'Grumpos throws a beat — the 2 or the 4 — into a ping-pong echo: his boomerang');
   }
   // the LED board: random lines, held a few bars or scrolled all the way off, style lines mixed in
   {
@@ -1063,14 +1225,16 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(club.titleAt < t0 + 2.5, 'tapped again while up, the title stays up');
   club.t = t0;
   assert(backs === 1, 'BACK goes back to the Lab');
-  const bank = Audio.bank;
+  // The same SONG plays on (Audio.sourceBank, the bank as it was handed in): a sound swapped
+  // on the mixer is put back on the way out, which re-merges the bank the sequencer reads.
+  const bank = Audio.sourceBank;
   club.exit();
-  assert(bank && Audio.bank === bank, 'leaving the club leaves the song playing');
+  assert(bank && Audio.sourceBank === bank && Audio.bank, 'leaving the club leaves the song playing');
   // back in the Lab it plays on, its row lit; choosing it again stops it
   const back = new SoundTestState({ onDone: () => {}, lab: true, initialSelect: 0, labPlaying: rec });
   back.enter();
   const row = back.tracks.findIndex((r) => r.banger === rec);
-  assert(row >= 0 && back.playing === row && Audio.bank === bank && back.statusText().startsWith('NOW PLAYING'),
+  assert(row >= 0 && back.playing === row && Audio.sourceBank === bank && back.statusText().startsWith('NOW PLAYING'),
     'back in the Lab the song plays on, shown as playing');
   let reopened = false;
   back.openClub = () => { reopened = true; };

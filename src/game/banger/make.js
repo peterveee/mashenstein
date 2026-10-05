@@ -376,9 +376,12 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const hookTrimDb = Number.isFinite(configuredHookTrim) ? configuredHookTrim : RIFF_TRIM_DB;
   if (strip) strip.gain = Math.round(((strip.gain ?? 0) + hookTrimDb) * 10) / 10;
   // `form` is the song's sections (role, bars from–to, counted from 1): the club fires its
-  // crowd moments on their changes.
+  // crowd moments on their changes. `laneOf` (each part's lane), `kit` and `soundsId` (whose
+  // row of the sounds table the take plays) are what the club's sound swaps need
+  // (club-voices.js).
   return { bank: out.bank, mix: out.mix, arrangement: out.arrangement, bpm: out.bank.bpm,
     trackEffects: out.trackEffects,
     paletteSnapshot: out.banger.paletteSnapshot,
+    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style', soundsId: soundsIdFor(style, seed, voltage),
     form: (out.form || []).map((f) => ({ role: f.role, type: f.type, from: f.from, to: f.to })) };
 }

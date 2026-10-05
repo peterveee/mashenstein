@@ -4,6 +4,8 @@ import { drawProp } from '../../sprites/props.js';
 import { HERO_DANCE_LAB_CANDIDATES, heroDancePose } from '../../dev/hero-dance-candidates.js';
 
 export const PARTY_BEATS = Object.freeze({ spotlight: 8, bubbles: 16, cleaner: 16, vacuum: 16, 'drop-jump': 5 });
+/** How many beats the crowd takes to sink all the way down while Fernwick draws. */
+export const DRAW_CROUCH_BEATS = 4;
 /** The two who come for the confetti on the floor: Dolores with her broom, or the game's vacuum cleaner. */
 export const CLEANERS = Object.freeze(['cleaner', 'vacuum']);
 /**
@@ -21,11 +23,30 @@ export function dropMotion(age, jumpAt = 4) {
   if (age < jumpAt) return { crouch: clamp(age / Math.max(0.01, jumpAt)), jump: 0 };
   return { crouch: 0, jump: Math.sin((age - jumpAt) * Math.PI) };
 }
+/**
+ * The crowd while Fernwick draws (his LONGBOW, club.js — a `draw` moment, counted on its own
+ * clock because the drop is a seek and the song's beat count jumps on it): sinking into the
+ * crouch for as long as he holds (a bar to get all the way down), and once he lets go —
+ * `releaseAge` beats in — the rest of the way by the drop, `jumpAt` beats in, where they
+ * jump. Both null while the bow is still drawn.
+ */
+export function drawMotion(age, jumpAt = null, releaseAge = null) {
+  if (!(age >= 0)) return { crouch: 0, jump: 0 };
+  const held = clamp(age / DRAW_CROUCH_BEATS);
+  if (jumpAt == null) return { crouch: held, jump: 0 };
+  if (age < jumpAt) {
+    const from = clamp((releaseAge ?? age) / DRAW_CROUCH_BEATS);
+    const left = jumpAt - (releaseAge ?? age);
+    return { crouch: left > 0 ? from + (1 - from) * clamp((age - (releaseAge ?? age)) / left) : 1, jump: 0 };
+  }
+  if (age < jumpAt + 1) return { crouch: 0, jump: Math.sin((age - jumpAt) * Math.PI) };
+  return { crouch: 0, jump: 0 };
+}
 export function partyHero(m, beat, hero, i, pose) {
   const age = partyAge(m, beat);
   if (!partyAlive(m, beat)) return { pose, lift: 0 };
-  if (m.kind === 'drop-jump') {
-    const { crouch, jump } = dropMotion(age, m.jumpAt);
+  if (m.kind === 'drop-jump' || m.kind === 'draw') {
+    const { crouch, jump } = m.kind === 'draw' ? drawMotion(age, m.jumpAt, m.releaseAge) : dropMotion(age, m.jumpAt);
     if (jump > 0) return { pose: { ...pose, kind: 'jump', grounded: false, vy: 200 * Math.cos((age - m.jumpAt) * Math.PI),
       dance: { hands: [[0.65, -0.7], [0.65, -0.7]], feet: null }, shift: 0, tilt: 0, bounce: 0 }, lift: jump * 0.4 };
     // A compact crouch with feet fixed: lower the body, bend knees, tuck arms.
