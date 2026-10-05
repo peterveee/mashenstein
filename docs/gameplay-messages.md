@@ -268,7 +268,7 @@ he speaks again. Keyboard/touch have separate phrasing where an input differs.
 | JUMP | "CRATES. HOLD SPACE TO JUMP. I DID NOT WRITE SECTION ONE." (kb) / "CRATES. HOLD THE LEFT OF THE SCREEN. I DID NOT WRITE SECTION ONE." (touch) |
 | JUMP retry | "YOU TAPPED IT. HOLD IT DOWN. THE CRATE COMES BACK." (kb) / "YOU FLICKED IT. HOLD IT DOWN. THE CRATE COMES BACK." (touch) |
 | VARIABLE JUMP | "THREE STACKS, EACH TALLER. HOLD LONGER FOR EACH. THE MANUAL CALLS THIS INTUITIVE." |
-| COINS | "RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES BETTER." |
+| COINS | "RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH: COINS, MOSTLY. SOMETIMES BETTER." |
 | POWER SLIDE | "POWER SLIDE. HOLD DOWN OR S, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING." (kb) / "POWER SLIDE. SWIPE DOWN AND HOLD, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING." (touch) |
 | SHIELD | "SHIELD CAPSULE. TAKES ONE HIT FOR YOU. PROTECTIVE EQUIPMENT ARRIVES AFTER THE HAZARDS. THAT IS PROCUREMENT." |
 | TOASTER | "THAT IS A TOASTER. EVERY CABINET HAS ONE HIDDEN IN IT. IT IS OPTIONAL, SO IT IS NOT MY DEPARTMENT." |
@@ -284,8 +284,8 @@ Trigger: player fails a section requirement.
 
 ### Completion tally
 Trigger: each section is completed or explicitly skipped. Format
-"[STEP LABEL] — LOGGED" or "[STEP LABEL] — NOT TAKEN", grey `#a8a8a8`, e.g.
-"JUMP — LOGGED", "DOUBLE JUMP — NOT TAKEN".
+"[STEP LABEL]: LOGGED" or "[STEP LABEL]: NOT TAKEN", grey `#a8a8a8`, e.g.
+"JUMP: LOGGED", "DOUBLE JUMP: NOT TAKEN".
 
 ### Outro sequence
 Trigger: after all training sections complete ([tutorial.js](../src/game/tutorial.js#L682-L733)):
@@ -339,7 +339,7 @@ Representative examples per character (each has 7–12 lines in the pool):
 
 ## 14. Other action/event messages
 
-- **Hazard chain resolved**: punting/kicking the same hazard type repeatedly. Format "[OBSTACLE TYPE] CHAIN x[COUNT] — HAZARD RESOLVED", gold. E.g. "CONE CHAIN x3 — HAZARD RESOLVED".
+- **Hazard chain resolved**: punting/kicking the same hazard type repeatedly. Format "[OBSTACLE TYPE] CHAIN x[COUNT]: HAZARD RESOLVED", gold. E.g. "CONE CHAIN x3: HAZARD RESOLVED".
 - **Banana pickup**: "BANANA. CLASSIC." (gold)
 - **Unpeelable active**: "UNPEELABLE." (very light grey `#e8e8f0`)
 - **Shield breaks**: "SHIELD BROKE. IT DID ITS JOB." (cyan `#a8e6ff`)
@@ -406,7 +406,7 @@ already explains the event, so their job is flavour rather than instruction.
   is easy to lose once the objective card has faded.
 
 4. **Tutorial !-box instruction** -- Current: "RUN THROUGH THE COINS. THE BOX
-  BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES BETTER." Replace
+  BREAKS OPEN FROM UNDERNEATH: COINS, MOSTLY. SOMETIMES BETTER." Replace
   with: "RUN THROUGH THE COINS. JUMP INTO THE BOX FROM BELOW. COINS, MOSTLY.
   SOMETIMES BETTER." This names the required action rather than asking the
   player to infer it from "from underneath." It fits the live three-line

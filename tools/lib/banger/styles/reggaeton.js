@@ -7,6 +7,11 @@
 // an 808 on the kick, a filtered pad holding the chords (Chords = Pad), the hook on a
 // marimba, "aah" chops answering it (the counter-melody), congas and a shaker.
 //
+// FULLER (Peter, 5 Oct 2026: "a bit disappointing and bare"): the chords now ride the beat —
+// an acoustic guitar strumming the 3-3-2 (Chords = Piano Stabs) with the pad held under it
+// (`padUnder`) — a marimba arp in the dembow's gaps, a sweep and a boom into each chorus, the
+// hook in octaves in the last one, eighth hats in the verses, and the pad, hook and chops up.
+//
 // THE BEAT SWITCH: every half-time bar is Latin trap instead — a half-time kick, one snare
 // on three and sixteenth hats with rolls (`halfHats`). A Pop Song's middle 8 is the switch;
 // Half-Time Switch, or a Half-Time Drop in the Form row, puts one in a chorus too.
@@ -18,17 +23,19 @@ import { BIG_ROOM } from './big-room.js';
 export const REGGAETON = Object.freeze({
   id: 'reggaeton',
   label: 'Reggaeton',
-  note: '92 · dembow, 808, marimba, a trap beat switch',
-  title: '92 BPM: the dembow beat under an 808, a filtered pad, the hook on a marimba with vocal chops answering it — and a beat switch to Latin trap in the middle 8. Starts as a Pop Song in the Uplifting mood',
+  note: '92 · dembow, 808, guitar, marimba, a trap beat switch',
+  title: '92 BPM: the dembow beat under an 808, a filtered pad, the hook on a marimba with vocal chops answering it — and a beat switch to Latin trap in the middle 8. Starts as a Pop Song in the Uplifting mood, the chords strummed on a guitar over the pad',
   bpm: 92,
   tempoRange: [86, 100],
   defaults: {
     mood: 'uplifting',
     form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
-    drums: { rolls: false, impact: false, shaker: true, tambourine: false, congas: true, ride: false },
-    parts: { bass: 'offbeat', sub: false, chords: 'pad', square: false, bell: false, octaveDouble: false, arp: false, choir: false, counter: true },
-    fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },
+    drums: { rolls: false, impact: true, shaker: true, tambourine: false, congas: true, ride: false },
+    parts: { bass: 'offbeat', sub: false, chords: 'piano', square: false, bell: false, octaveDouble: true, arp: true, choir: false, counter: true },
+    fx: { riser: true, filterBuild: false, stutter: false, pump: false, delayThrows: true },
   },
+  // The pad holds the chords under the guitar's strums.
+  padUnder: true,
   sectionLabels: {
     build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
@@ -49,8 +56,8 @@ export const REGGAETON = Object.freeze({
     // The dembow: the "a" of one, the "and" of two, the "a" of three, the "and" of four.
     clap: '...x..x....x..x.',
     ohats: '..............x.',
-    hats16: 'x.x.x.x.x.x.x.x.',
-    hats8: 'x...x...x...x...',
+    hats16: 'x.x.x.xxx.x.x.xx',
+    hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
     rolls: BIG_ROOM.drums.rolls,
     // Conga and tom runs into the next eight (the fill kit slot plays them).
@@ -76,7 +83,8 @@ export const REGGAETON = Object.freeze({
     sub: 'R:4 . . . R:4 . . . R:4 . . . R:4 . . .',
     subOff: 'R:8 . . . . . . . R:8 . . . . . . .',
     pedal: 'R:16 . . . . . . . . . . . . . . .',
-    pianoStabs: '. . x:1 . . . x:2 . . . x:1 . . . x:2 .',
+    // The guitar's strums: the 3-3-2, twice a bar.
+    pianoStabs: 'x:2 . . x:2 . . x:2 . x:2 . . x:2 . . x:2 .',
     arp: '. . 0 1 . . 2 . . . 0 1 . . 2 .',
   },
 
@@ -97,12 +105,14 @@ export const REGGAETON = Object.freeze({
     // The 808, its top taken off so it stays a bass.
     bass: { gain: -4, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 1200, Q: 0.7 } }] },
     sub: { gain: -14 },
-    hook: { gain: -8, pan: -0.1, send: { delay: 0.2, reverb: 0.25 } },
+    hook: { gain: -5, pan: -0.1, send: { delay: 0.2, reverb: 0.25 } },
     megaSaw: { gain: -12, pan: 0.1, send: { reverb: 0.3 } },
     // The vocal chops.
-    counter: { gain: -11, pan: 0.15, send: { delay: 0.35, reverb: 0.5 } },
-    pad: { gain: -10, eq: { low: -6 }, send: { reverb: 0.5 }, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 2200, Q: 0.8 } }] },
-    piano: { gain: -9, send: { reverb: 0.25 } },
+    counter: { gain: -8, pan: 0.15, send: { delay: 0.35, reverb: 0.5 } },
+    pad: { gain: -8, eq: { low: -6 }, send: { reverb: 0.5 }, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 3200, Q: 0.7 } }] },
+    // The guitar strumming the chords.
+    piano: { gain: -6, pan: -0.2, eq: { low: -3 }, send: { delay: 0.1, reverb: 0.25 } },
+    arp: { gain: -11, pan: 0.25, send: { delay: 0.25, reverb: 0.3 } },
     choir: { gain: -11, send: { reverb: 0.5 } },
   },
   pump: BIG_ROOM.pump,
@@ -110,7 +120,7 @@ export const REGGAETON = Object.freeze({
 
   labels: {
     ...BIG_ROOM.labels,
-    clap: 'SNARE Dembow', bass: '808', pad: 'PAD', counter: 'VOX Chops', fill: 'FILL Perc',
+    clap: 'SNARE Dembow', bass: '808', pad: 'PAD', piano: 'GUITAR', arp: 'ARP', counter: 'VOX Chops', fill: 'FILL Perc',
     shaker: 'PERC Shaker', congas: 'PERC Congas',
   },
 });

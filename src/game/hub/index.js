@@ -4425,7 +4425,7 @@ export class TrophyRoomState {
           ['TIME PLAYED', formatPlaytime(slot.playtimeSec)],
           overtimeOpen
             ? ['OVERTIME RECORD', formatCoins(slot.overtime.best)]
-            : ['BEST LEVEL SCORE', bestLevelScore ? formatCoins(bestLevelScore) : '—'],
+            : ['BEST LEVEL SCORE', bestLevelScore ? formatCoins(bestLevelScore) : '-'],
         ],
       },
       {

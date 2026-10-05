@@ -2860,7 +2860,7 @@ function drawDifficultyConfirmPortrait(ctx) {
   const actionMid = g.actionY + g.actionH / 2;
   portraitMenuTextCentered(ctx, 'YES', g.x + g.w * 0.26,
     portraitMenuTextY(actionMid, 1.7, 'bold'), '#e04848', 1.7, 'bold');
-  portraitMenuTextCentered(ctx, 'NO — WISDOM', g.x + g.w * 0.74,
+  portraitMenuTextCentered(ctx, 'WISELY, NO', g.x + g.w * 0.74,
     portraitMenuTextY(actionMid, 1.7, 'bold'), '#c8c8d8', 1.7, 'bold');
 }
 
@@ -2951,7 +2951,7 @@ export class DifficultyState {
       // the box is YES, right half is NO (see update()'s hit test). ENTER/ESC
       // still work too; the words are the touch affordance, not a replacement.
       drawTextCentered(ctx, 'YES', W / 2 - 100, 150, '#e04848', 1.25, 'bold');
-      drawTextCentered(ctx, 'NO — WISDOM', W / 2 + 100, 150, '#c8c8d8', 1.25, 'bold');
+      drawTextCentered(ctx, 'WISELY, NO', W / 2 + 100, 150, '#c8c8d8', 1.25, 'bold');
     }
   }
 }
@@ -3047,7 +3047,7 @@ export class BriefingState {
     const s = this.settings;
     if (!s || !s.audioSyncAsked) return 'CALIBRATE AUDIO SYNC (WIRELESS HEADPHONES)';
     const ms = clampAudioSyncMs(s.audioSyncMs);
-    return `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS — RECALIBRATE`;
+    return `RECALIBRATE AUDIO SYNC (${ms > 0 ? '+' : ''}${ms} MS)`;
   }
   enter() {
     this.reveal = 0;

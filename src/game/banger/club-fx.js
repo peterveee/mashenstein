@@ -53,17 +53,17 @@ export const HERO_MOVES = Object.freeze([
   // Let go, the water DRAINS (Peter, 5 Oct 2026: "slowly go back to normal rather than revert
   // instantly"): from the next beat the cutoff glides from where the drag left it up to
   // `drain.to`, past hearing, across `drain.bars`, and the section lets go there (endHold).
-  { hero: 'lorenzo', name: 'LORENZO', move: 'UNDERWATER', what: 'hold: the room floods — drag to sink or surface', col: '#48e0c8', hold: true,
+  { hero: 'lorenzo', name: 'LORENZO', move: 'UNDERWATER', what: 'hold: the room floods, drag to sink or surface', col: '#48e0c8', hold: true,
     drag: { param: 'frequency', also: 'sweepTo', from: 140, to: 3200, start: 0.351 },
     drain: { to: 18000, bars: 2 },
     chain: [{ id: 'filter', params: { type: 'lowpass', frequency: 420, Q: 1.4, sweep: 1, sweepTo: 420 } }] },
   // Not an effect: the band's instruments, swapped for the 8-Bit Sound Set's on the next bar
   // and back again at the next tap (club-voices.js).
-  { hero: 'b33p', name: 'B-33P', move: '8-BIT', what: 'the whole band goes 8-bit — tap again to go back', col: '#f0c040', toggle: true },
+  { hero: 'b33p', name: 'B-33P', move: '8-BIT', what: 'the whole band goes 8-bit, tap again to go back', col: '#f0c040', toggle: true },
   // A different length of stutter each press (Peter, 3 Oct 2026): quarters, eighths,
   // sixteenths or thirty-seconds (`slices`, in beats). The drag steps from there: up for
   // shorter (faster), down for longer, each step a fresh grab on the next sixteenth.
-  { hero: 'ramon', name: 'RAMON', move: 'ROCKET FIST', what: 'hold: punch, punch — drag up to punch faster', col: '#ff7a59', hold: true,
+  { hero: 'ramon', name: 'RAMON', move: 'ROCKET FIST', what: 'hold: punch, punch, drag up to punch faster', col: '#ff7a59', hold: true,
     slices: [1, 0.5, 0.25, 0.125],
     chain: [{ id: 'stutter', params: { slice: 0.25, retrigger: 0, fade: 0 } }] },
   // His returning axe: on the 2 or the 4, that beat is thrown into a ping-pong echo — out
@@ -76,7 +76,7 @@ export const HERO_MOVES = Object.freeze([
   // (throwBeat, booked by club.js), and the drag rides the echoes — WET and FEEDBACK
   // together, straight lines from `lin`'s bottom to its top, the press starting where the
   // move always sat. A tap is still the one throw.
-  { hero: 'grumpos', name: 'GRUMPOS', move: 'BOOMERANG', what: 'hold: every 2 and 4 thrown — drag for louder echoes', col: '#e0874a',
+  { hero: 'grumpos', name: 'GRUMPOS', move: 'BOOMERANG', what: 'hold: the beat bounces back, drag for bigger echoes', col: '#e0874a',
     hold: true, backbeat: true, beats: 1, echo: { every: 0.75, repeats: 6 },
     drag: { fx: 1, lin: { wet: [0.1, 0.6], feedback: [0.3, 0.7] }, start: 0.5 },
     chain: [{ id: 'filter', params: { type: 'highpass', frequency: 220, Q: 0.7 } },
@@ -91,7 +91,7 @@ export const HERO_MOVES = Object.freeze([
   // `every`th sixteenth counted from sixteenth `on` of the bar, winding down across `beats`:
   // one long wind-down a bar (beats 3 and 4), the 2 and the 4 (where a press starts), or a
   // half-beat stop on every beat.
-  { hero: 'kiko', name: 'KIKO', move: 'POWER DOWN', what: 'hold: the tape stops every 2 and 4 — drag up for more', col: '#e04848',
+  { hero: 'kiko', name: 'KIKO', move: 'POWER DOWN', what: 'hold: the music keeps powering down, drag up for more', col: '#e04848',
     hold: true, onTwoOrFour: true, beats: 1,
     stops: [[16, 8, 2], [8, 4, 1], [4, 0, 0.5]], stopStart: 1,
     chain: [{ id: 'stutter', params: { slice: 0, retrigger: 0, fade: 0, stop: 1 } }] },
@@ -100,7 +100,7 @@ export const HERO_MOVES = Object.freeze([
   // starts — and the drag says how much: up brings the bass back, then the chords; down takes
   // the drums through too, to the kick and the backbeat, then the kick alone. `holes` runs
   // from the bottom of the drag to the top; each says what stays, by part or by drum.
-  { hero: 'clara', name: 'CLARA', move: 'PLOT HOLE', what: 'hold: the band falls through — drag for how much', col: '#c9a0ff',
+  { hero: 'clara', name: 'CLARA', move: 'PLOT HOLE', what: 'hold: the band falls through, drag for how much', col: '#c9a0ff',
     hold: true, holeStart: 2,
     holes: [['kick'], ['kick', 'snare', 'clap', 'rim'], ['drums'], ['drums', 'bass'], ['drums', 'bass', 'chords']] },
   // THE DROP (Peter, 5 Oct 2026). Held, the bow is drawn: the high-pass climbs from 30 Hz to
@@ -108,7 +108,7 @@ export const HERO_MOVES = Object.freeze([
   // (club-hits.js) and the crowd sinks into a crouch. Let go and the arrow lands on the next
   // bar line: the song jumps to its next drop or chorus, the filter opens, the crowd jumps.
   // The drag draws harder — it lifts where the climb starts from, so the filter follows it.
-  { hero: 'fernwick', name: 'FERNWICK', move: 'LONGBOW', what: 'hold to draw — let go and the drop lands on the one', col: '#7ad06a',
+  { hero: 'fernwick', name: 'FERNWICK', move: 'LONGBOW', what: 'hold to draw, let go and the beat drops', col: '#7ad06a',
     hold: true, draw: true, drawBars: 4,
     drag: { param: 'frequency', from: 30, to: 1800, start: 0 },
     chain: [{ id: 'filter', params: { type: 'highpass', frequency: 30, Q: 0.9, sweep: 1, sweepTo: 1800 } }] },
@@ -116,7 +116,7 @@ export const HERO_MOVES = Object.freeze([
   // drag steps it down through the song's own speed to three-quarters and half — slow-mo.
   // Steps, not a smooth fader: the engine caches rendered notes by length, and every new
   // speed is a new set of renders.
-  { hero: 'rusty', name: 'RUSTY', move: 'SPEED BOOST', what: 'hold: the song speeds up — drag down for slow-mo', col: '#e0a04a',
+  { hero: 'rusty', name: 'RUSTY', move: 'SPEED BOOST', what: 'hold: the song speeds up, drag down for slow-mo', col: '#e0a04a',
     hold: true, speeds: [0.5, 0.75, 1, 1.15] },
 ]);
 

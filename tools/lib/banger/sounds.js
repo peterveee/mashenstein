@@ -56,6 +56,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -181,6 +221,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -304,6 +384,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -426,6 +546,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -516,13 +676,13 @@ export const BANGER_SOUNDS = {
   },
   chipstep: {
     parts: {
-      bass: "tngrClassicSquare", sub: "wubClassic", square: "tngrPlainPulse",
-      squareDense: "tngrPlainPulse", bell: "toneSquare", megaSaw: "bestScreamerLead",
-      third: "jmjrArcadeChorus", arp: "toneSquare", counter: "tngrClassicSquare",
-      choir: "bestPwmChoir", saws: "bestPwmPadWide", pad: "bestPwmStrings",
-      piano: "initSquare", impact: "kwBlipDrop", shaker: "shaker",
-      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
-      ride: "ride909SixBit", fallbackMelodic: "tngrPlainPulse",
+      bass: "seedChipstepBass", sub: "seedChipstepSub", square: "seedChipstepSquare",
+      squareDense: "tngrPlainPulse", bell: "seedChipstepBell", megaSaw: "seedChipstepMegaSaw",
+      third: "seedChipstepThird", arp: "seedChipstepArp", counter: "seedChipstepCounter",
+      choir: "seedChipstepChoir", saws: "seedChipstepSaws", pad: "seedChipstepPad",
+      piano: "initSquare", impact: "seedChipstepImpact", shaker: "seedChipstepShaker",
+      tambourine: "seedChipstepTambourine", congas: "seedChipstepCongas", cowbell: "seedChipstepCowbell",
+      ride: "seedChipstepRide", fallbackMelodic: "tngrPlainPulse",
     },
     kits: {
       "808": {
@@ -535,9 +695,9 @@ export const BANGER_SOUNDS = {
         fill: "ds909Tom",
       },
       style: {
-        kick: "kickClickTop", snare: "gameBoySnare", clap: "ds909SnareCrack",
-        hats: "hatEngine", ohats: "ohat909SixBit", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "seedChipstepKick", snare: "seedChipstepSnare", clap: "seedChipstepClap",
+        hats: "seedChipstepHats", ohats: "seedChipstepOhats", crash: "seedChipstepCrash",
+        fill: "seedChipstepFill",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -551,6 +711,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -674,6 +874,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -743,6 +983,46 @@ export const BANGER_SOUNDS = {
         hats: "hatEngine", ohats: "ohatEngine", crash: "crashEngine",
         fill: "tomEngine",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: ["toneSquare", "squareTone2", "toneSawtooth", "sawtoothTone2", "toneTriangle"],
@@ -794,6 +1074,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -912,6 +1232,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -1038,6 +1398,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1106,6 +1506,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1171,6 +1611,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1233,6 +1713,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1292,6 +1812,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1350,6 +1910,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -1412,6 +2012,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -1477,6 +2117,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1535,6 +2215,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -1598,6 +2318,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1656,6 +2416,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {
@@ -1719,6 +2519,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1745,13 +2585,13 @@ export const BANGER_SOUNDS = {
   },
   reggaeton: {
     parts: {
-      bass: "mrdrDist808", sub: "stSubSine", square: "marimba",
-      squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
-      third: "tngrDataMarimba", arp: "tngrDataMarimba", counter: "jmjrChoirAah",
-      choir: "jmjrChoirOoh", saws: "tngrDreamCircuit", pad: "tngrDreamCircuit",
-      piano: "tngrSoftPiano", impact: "syn3PewDeep", shaker: "dsShaker",
-      tambourine: "tambourine", congas: "congaHigh", cowbell: "ds808Cowbell",
-      ride: "ride909SixBit", fallbackMelodic: "tngrDataMarimba",
+      bass: "seedReggaetonBass", sub: "seedReggaetonSub", square: "seedReggaetonSquare",
+      squareDense: "marimba", bell: "seedReggaetonBell", megaSaw: "seedReggaetonMegaSaw",
+      third: "seedReggaetonThird", arp: "seedReggaetonArp", counter: "seedReggaetonCounter",
+      choir: "seedReggaetonChoir", saws: "tngrDreamCircuit", pad: "seedReggaetonPad",
+      piano: "seedReggaetonPiano", impact: "seedReggaetonImpact", shaker: "seedReggaetonShaker",
+      tambourine: "seedReggaetonTambourine", congas: "seedReggaetonCongas", cowbell: "seedReggaetonCowbell",
+      ride: "seedReggaetonRide", fallbackMelodic: "tngrDataMarimba",
     },
     kits: {
       "808": {
@@ -1764,9 +2604,9 @@ export const BANGER_SOUNDS = {
         fill: "ds909Tom",
       },
       style: {
-        kick: "ds808Kick", snare: "snareTight", clap: "snareTight",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", crash: "cy808Cymbal",
-        fill: "ds808Tom",
+        kick: "seedReggaetonKick", snare: "seedReggaetonSnare", clap: "seedReggaetonClap",
+        hats: "seedReggaetonHats", ohats: "seedReggaetonOhats", crash: "seedReggaetonCrash",
+        fill: "seedReggaetonFill",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -1781,12 +2621,55 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: ["tngrDataMarimba", "marimba", "tpKalimba", "synthPluck", "tngrWireHarp", "koto"],
       counter: ["tngrDataMarimba", "tpKalimba", "koto", "marimba", "tngrWireHarp"],
       bass: ["mrdrDist808", "stSubSine", "roundBass", "tngrRoundBass"],
-      chords: ["tngrDreamCircuit", "warmPad", "tngrSoftPiano", "tngrCloudMemory", "synthPluck"],
+      chords: [
+        "mrdrAcousticGuitar", "tngrSoftPiano", "tngrDreamCircuit", "warmPad",
+        "tngrCloudMemory", "synthPluck"
+      ],
     },
     choices: {
       saws: ["warmPad"],
@@ -1837,6 +2720,46 @@ export const BANGER_SOUNDS = {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
       },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
+      },
     },
     random: {
       hook: [
@@ -1865,7 +2788,7 @@ export const BANGER_SOUNDS = {
       third: "mrdrSaxophone", arp: "mrdrAcousticGuitar", counter: "tngrBrassSection",
       choir: "bestChoirAah", saws: "tngrBrassSection", pad: "tngrWarmStrings",
       piano: "mrdrPopGrand", impact: "syn3PewDeep", shaker: "guiraScrape",
-      tambourine: "tambourine", congas: "tambora", cowbell: "ds808Cowbell",
+      tambourine: "tambourine", congas: "tambora", cowbell: "kit_rio_lanterns_rim",
       ride: "ride909SixBit", fallbackMelodic: "mrdrSaxophone",
     },
     kits: {
@@ -1881,7 +2804,7 @@ export const BANGER_SOUNDS = {
       style: {
         kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
         hats: "guiraChk", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "tambora",
+        fill: "kit_rio_lanterns_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -1895,6 +2818,46 @@ export const BANGER_SOUNDS = {
       cr78: {
         kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
         hats: "dsCr78Hat", fill: "dsCr78Tom",
+      },
+      glasshouse: {
+        kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
+        hats: "kit_glasshouse_hats", ohats: "kit_glasshouse_ohats", fill: "kit_glasshouse_tom",
+        crash: "kit_glasshouse_crash",
+      },
+      "havana-patio": {
+        kick: "kit_havana_patio_kick", snare: "kit_havana_patio_snare", clap: "kit_havana_patio_clap",
+        hats: "kit_havana_patio_hats", ohats: "kit_havana_patio_ohats", fill: "kit_havana_patio_tom",
+        crash: "kit_havana_patio_crash",
+      },
+      "moon-dust": {
+        kick: "kit_moon_dust_kick", snare: "kit_moon_dust_snare", clap: "kit_moon_dust_clap",
+        hats: "kit_moon_dust_hats", ohats: "kit_moon_dust_ohats", fill: "kit_moon_dust_tom",
+        crash: "kit_moon_dust_crash",
+      },
+      "neon-origami": {
+        kick: "kit_neon_origami_kick", snare: "kit_neon_origami_snare", clap: "kit_neon_origami_clap",
+        hats: "kit_neon_origami_hats", ohats: "kit_neon_origami_ohats", fill: "kit_neon_origami_tom",
+        crash: "kit_neon_origami_crash",
+      },
+      "pocket-pixel": {
+        kick: "kit_pocket_pixel_kick", snare: "kit_pocket_pixel_snare", clap: "kit_pocket_pixel_clap",
+        hats: "kit_pocket_pixel_hats", ohats: "kit_pocket_pixel_ohats", fill: "kit_pocket_pixel_tom",
+        crash: "kit_pocket_pixel_crash",
+      },
+      "rio-lanterns": {
+        kick: "kit_rio_lanterns_kick", snare: "kit_rio_lanterns_snare", clap: "kit_rio_lanterns_clap",
+        hats: "kit_rio_lanterns_hats", ohats: "kit_rio_lanterns_ohats", fill: "kit_rio_lanterns_tom",
+        crash: "kit_rio_lanterns_crash",
+      },
+      "rubber-factory": {
+        kick: "kit_rubber_factory_kick", snare: "kit_rubber_factory_snare", clap: "kit_rubber_factory_clap",
+        hats: "kit_rubber_factory_hats", ohats: "kit_rubber_factory_ohats", fill: "kit_rubber_factory_tom",
+        crash: "kit_rubber_factory_crash",
+      },
+      "velvet-basement": {
+        kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
+        hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
+        crash: "kit_velvet_basement_crash",
       },
     },
     random: {

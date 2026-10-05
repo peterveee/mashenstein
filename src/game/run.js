@@ -7919,7 +7919,7 @@ export class RunState {
       Audio.sfx('blockBreak');
       this.debris(ob, cx, cy);
       this.tossCoins(cx, 8, Math.max(14, ob.alt));
-      this.floatText(`${ob.def.puntLabel || 'CONE'} CHAIN x${n} — HAZARD RESOLVED`, '#f6d33c');
+      this.floatText(`${ob.def.puntLabel || 'CONE'} CHAIN x${n}: HAZARD RESOLVED`, '#f6d33c');
       shake(1.6, 0.12);
       ob.live = false;
       return;
@@ -17424,7 +17424,7 @@ export class RunState {
     // in the stack. The three pixels the rows below give up keep the gap under it
     // wider than the gaps between them, so the size reads as a heading rather
     // than as one line that happens to be big.
-    drawTextCentered(ctx, where ? `${this.cabinet.name} — ${where}` : this.cabinet.name,
+    drawTextCentered(ctx, where ? `${this.cabinet.name}: ${where}` : this.cabinet.name,
       W / 2, 48, '#e8e8f0', 1.25);
     drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 76, '#c8e0ff');
     // The challenge in full, directly under the mission and in the same order

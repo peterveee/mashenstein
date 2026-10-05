@@ -166,6 +166,7 @@ const suites = [
   // What every banger is made of: the sounds table held to its rulebook, its file, its
   // Save, and the generator really playing what it names (the Banger Sounds page).
   'tests/banger-sounds.js',
+  'tests/creative-drum-kits.js',
   // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
   // drawn in the editor — each fitting every length, hanging together, re-made exactly.
   'tests/banger-forms.js',

@@ -1,3 +1,4 @@
+import { CREATIVE_DRUM_KITS } from '../../../src/data/creative-drum-kits.js';
 // MAKE A BANGER — the sound rulebook. What every sound slot is, and what may go in it.
 //
 // One answer, asked from three places: the Banger Sounds page (which only offers what
@@ -96,6 +97,7 @@ export const KIT_ROLES = Object.freeze([
 export const KITS = Object.freeze([
   { key: 'style', label: 'Style Kit' }, { key: 'studio', label: 'Studio' }, { key: '909', label: '909' },
   { key: '808', label: '808' }, { key: 'ds', label: 'DS' }, { key: 'cr78', label: 'CR-78' },
+  ...CREATIVE_DRUM_KITS.map(({ key, label, description }) => ({ key, label, title: description })),
 ]);
 
 /** The Random jobs: the riff's own tuned parts, by what they do. */

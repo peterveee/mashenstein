@@ -1,3 +1,4 @@
+import { CREATIVE_DRUM_KITS } from '../src/data/creative-drum-kits.js';
 // The step grid: what the kit plays, as sixteen squares a bar.
 //
 // The desk could already ARRANGE drums — drop the kit out of a bar, build up over
@@ -187,6 +188,7 @@ const GROOVES = [
  * programmed must not wipe it, and the groove is the next button along.
  */
 export const KITS = [
+  ...CREATIVE_DRUM_KITS.map(({ label, voices }) => [label, voices]),
   // `ds808Hat`, `ds909Hat` and `hatClosed` were the closed hats these three kits named
   // until they were dropped from the library, which left the lane falling back rather
   // than erroring — see the kit-voice check in tests/arrangement.js. The open partners

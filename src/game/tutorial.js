@@ -437,7 +437,7 @@ const STEPS = [
     // a quarter chance of something better than money, and a player who has
     // been told it is a coin dispenser has no reason to go out of their way for
     // one.
-    brief: () => 'RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES BETTER.',
+    brief: () => 'RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH: COINS, MOSTLY. SOMETIMES BETTER.',
     again: () => 'THE BOX IS STILL FULL. FROM UNDERNEATH. ANOTHER ONE IS COMING.',
     // Missing a coin or two is not worth reopening a section over; the box is.
     optionalPickups: true,
@@ -1061,7 +1061,7 @@ export class TutorialState {
   // the celebratory reading of the floatie meaning something.
   passStep(logged = true) {
     const step = this.step();
-    this.floatText(logged ? `${step.label} — LOGGED` : `${step.label} — NOT TAKEN`,
+    this.floatText(logged ? `${step.label}: LOGGED` : `${step.label}: NOT TAKEN`,
       logged ? '#74c947' : '#8a8a98');
     Audio.sfx(logged ? 'perfect' : 'ui');
     this.settleT = SETTLE_T;

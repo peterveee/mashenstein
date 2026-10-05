@@ -615,7 +615,7 @@ const SCRIPT = [
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'FACILITIES' },
-  { k: 'role', role: 'Catering & Craft Services', name: "Dolores' Repair Counter — NEXT." },
+  { k: 'role', role: 'Catering & Craft Services', name: "Dolores' Repair Counter. NEXT." },
   { k: 'role', role: 'Custodial & Facilities', name: 'Dust Devil 9000, Deep Clean Engaged' },
   { k: 'role', role: 'IT Support / Power Infrastructure', name: 'Could not be reached' },
   { k: 'gap', px: 20 },

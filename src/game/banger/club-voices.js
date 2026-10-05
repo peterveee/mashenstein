@@ -17,13 +17,17 @@
 // Nothing is kept: leaving the floor puts the song's own sounds back (release).
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { KITS } from '../../../tools/lib/banger/sound-rules.js';
+import { CREATIVE_DRUM_KITS } from '../../data/creative-drum-kits.js';
 import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
 import { Audio } from '../../engine/audio.js';
 
 export const CHIP_SET = 'chipstep-8bit';
 export const HIFI_SET = 'chipstep-lite';
+const CREATIVE_KIT_KEYS = new Set(CREATIVE_DRUM_KITS.map((k) => k.key));
 const KIT_ROLES = Object.freeze(['kick', 'snare', 'clap', 'hats', 'ohats', 'crash', 'fill']);
-const KIT_ORDER = Object.freeze(KITS.map((k) => k.key));
+// The game's kits are the six the desk has always had; the desk's creative kits
+// (src/data/creative-drum-kits.js) stay off the floor.
+const KIT_ORDER = Object.freeze(KITS.map((k) => k.key).filter((k) => !CREATIVE_KIT_KEYS.has(k)));
 /** The parts with a sound button, as the mixer lists them, and which Riff Sound list each walks. */
 export const SOUND_PARTS = Object.freeze({
   drums: { kit: true },

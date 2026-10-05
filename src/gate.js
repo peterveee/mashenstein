@@ -49,7 +49,7 @@ function installSteps(flavor, target) {
   }
   if (flavor === 'safari') {
     return [
-      `Tap ${SHARE} — ${target.where}.`,
+      `Tap ${SHARE}, ${target.where}.`,
       'Scroll to <span class="mash-install-ui">Add to Home Screen</span>.',
       'Tap <b>Add</b>, then open MASHENSTEIN from your Home Screen.',
     ];
@@ -95,7 +95,7 @@ function showInstallBlocker(platform) {
           <div>
             <p>${inApp
               ? 'You are inside another app’s built-in browser. Open MASHENSTEIN in Safari so it can be installed.'
-              : 'Safari’s bars eat a third of the screen. On your Home Screen, MASHENSTEIN opens like a real app — no address bar, no toolbar.'}</p>
+              : 'Safari’s bars eat a third of the screen. On your Home Screen, MASHENSTEIN opens like a real app: no address bar, no toolbar.'}</p>
             ${inApp ? '' : `<ul class="mash-install-why">
               <li>True fullscreen</li><li>Plays offline</li><li>Its own icon</li>
             </ul>`}
@@ -103,7 +103,7 @@ function showInstallBlocker(platform) {
           <ol class="mash-install-steps">${installSteps(flavor, target).map((step) => `<li><span>${step}</span></li>`).join('')}</ol>
         </div>
         <div class="mash-install-notes">
-          ${flavor === 'menu' ? '<p class="mash-install-note">Leave <b>Open as Web App</b> on — that switch is the fullscreen.</p>' : ''}
+          ${flavor === 'menu' ? '<p class="mash-install-note">Leave <b>Open as Web App</b> on. That switch is the fullscreen.</p>' : ''}
           ${flavor === 'alt' ? '<p class="mash-install-note">Safari handles this most reliably if this browser does not offer that option.</p>' : ''}
           ${inApp ? '' : '<p class="mash-install-note">Installation is required on iPhone. After adding it, close this page and open the MASHENSTEIN icon.</p>'}
         </div>

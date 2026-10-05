@@ -415,31 +415,56 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       `and plays the grid on a different soft preset each visit, never last visit's (${voices.size} heard in 30)`);
   }
   {
-    // Landscape shows the A-to-A window at the old size and scrolls for G4 and the top B and C.
-    assert(maker.visibleRows === 8 && L.grid.visible === 8 && maker.scrollRow === 2,
-      'landscape shows eight rows, A4 to A5, at the size they always were');
+    // Landscape SIMPLE shows all eleven rows, G4 to C6, and does not scroll (Peter, 5 Oct 2026).
+    assert(maker.visibleRows === 11 && L.grid.visible === 11 && maker.scrollRow === 0,
+      'landscape SIMPLE shows every row, G4 to C6');
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + L.grid.cellH / 2);
+    assert(maker.notes[2] === 10, 'the top square is C6');
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + L.grid.cellH / 2);
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + 10.5 * L.grid.cellH);
+    assert(maker.notes[2] === 0, 'and the bottom square G4');
+    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + 10.5 * L.grid.cellH);
+    Input.wheelY = -WHEEL_ROWS(2);
+    maker.update(1 / 60); Input.endFrame();
+    assert(maker.scrollRow === 0, 'and the wheel has nothing to scroll');
+  }
+  {
+    // ADVANCED shows the A-to-A grid's thirteen rows at their size and scrolls for the rest.
+    maker.setMode('advanced');
+    const A = maker.layout().grid;
+    assert(maker.visibleRows === 13 && A.visible === 13, 'landscape ADVANCED shows thirteen rows and scrolls');
+    maker.scrollRow = 2;
     Input.wheelY = -WHEEL_ROWS(2);
     maker.update(1 / 60); Input.endFrame();
     assert(maker.scrollRow === 0, 'the wheel scrolls up to C6');
-    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + L.grid.cellH / 2);
-    assert(maker.notes[2] === 10, 'and the top square is C6 now');
-    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + L.grid.cellH / 2);
+    tap(maker, A.x + A.cellW * 2.5, A.y + A.cellH / 2);
+    assert(maker.notes[2] === 17, 'and the top square is C6 now');
+    tap(maker, A.x + A.cellW * 2.5, A.y + A.cellH / 2);
     // drag the note names up: the grid follows, down to G4
-    const nx = L.grid.labelX + 4;
-    Input.pointer = { x: nx, y: L.grid.y + L.grid.cellH, down: true };
+    const nx = A.labelX + 4;
+    Input.pointer = { x: nx, y: A.y + A.cellH, down: true };
     Input.press('pointer'); maker.update(1 / 60); Input.release('pointer'); Input.endFrame();
-    Input.pointer.y -= L.grid.cellH * 3; maker.update(1 / 60); Input.endFrame();
-    assert(maker.scrollRow === 3 && maker.notes[0] >= 0, 'dragging the note names scrolls the grid, writing nothing');
+    Input.pointer.y -= A.cellH * 5; maker.update(1 / 60); Input.endFrame();
+    assert(maker.scrollRow === 5, 'dragging the note names scrolls the grid, writing nothing');
     Input.pointer.down = false; maker.update(1 / 60); Input.endFrame();
-    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + 7.5 * L.grid.cellH);
+    tap(maker, A.x + A.cellW * 2.5, A.y + 12.5 * A.cellH);
     assert(maker.notes[2] === 0, 'the bottom square is G4 now');
-    tap(maker, L.grid.x + L.grid.cellW * 2.5, L.grid.y + 7.5 * L.grid.cellH);
+    tap(maker, A.x + A.cellW * 2.5, A.y + 12.5 * A.cellH);
+    // a tap on the names, not a drag, is an arrow: one row each way (it lands on the release)
+    const tapNames = (y) => { tap(maker, nx, y); maker.update(1 / 60); Input.endFrame(); };
+    tapNames(A.y + A.cellH);
+    assert(maker.scrollRow === 4, 'a tap on the top half of the names scrolls up one row');
+    tapNames(A.y + A.h - A.cellH);
+    assert(maker.scrollRow === 5, 'and on the bottom half, down one');
+    maker.scrollRow = 3;
     maker.focus = { area: 'grid', col: 0, row: 3, picker: 0, button: 3 };
     frame(maker, 'up');
     assert(maker.focus.row === 2 && maker.scrollRow === 2, 'the focus walking off the top scrolls one row');
     maker.focus = { area: 'mode', col: 0, row: 0, picker: 0, button: 3 };
     frame(maker, 'down');
     assert(maker.focus.area === 'grid' && maker.focus.row === 2, 'down from SIMPLE / ADVANCED lands on the top row on show');
+    maker.setMode('simple');
+    L = maker.layout();
   }
   {
     // A note dragged out is as long as the drag, however slowly (Peter, 5 Oct 2026: "it draws
@@ -460,8 +485,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     maker.notes = notes; maker.lengths = lengths;
     assert(dragged === 3 * per && still > 3 * per, `a slow drag ends where it stopped (${dragged}); a note held still runs on (${still})`);
   }
-  // Tap the top-left square: A5 at step 0.
-  tap(maker, L.grid.x + L.grid.cellW / 2, L.grid.y + L.grid.cellH / 2);
+  // Tap A5 at step 0, the third row down.
+  tap(maker, L.grid.x + L.grid.cellW / 2, L.grid.y + 2.5 * L.grid.cellH);
   assert(maker.notes[0] === 8, 'tapping a square writes that note');
 
   // SIMPLE → ADVANCED after an edit in SIMPLE: ADVANCED is SIMPLE converted up.
@@ -787,6 +812,14 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   {
     const li = at('lorenzo'), move = HERO_MOVES[li];
     const beatS = club.barSeconds() / 4, t0 = club.t;
+    // the first fish set off as his card starts to fade, 2.8 beats in — not before
+    const heldFor = (beats) => {
+      club.fish = [];
+      club.acting = { i: li, when: club.heardNow() - beats * beatS, bar: club.barSeconds(), dur: Infinity };
+      club.fishOn();
+      return club.fish.length;
+    };
+    assert(heldFor(2.7) === 0 && heldFor(2.9) > 0, 'Lorenzo\'s first fish set off as his card starts to fade');
     club.fish = [];
     club.acting = { i: li, when: club.heardNow() - 8 * beatS - 0.01, bar: club.barSeconds(), dur: Infinity };
     club.fishOn();
@@ -1143,6 +1176,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     Audio.reapplyBank = realRe;
     club.draw(ctx);
   }
+  for (let k = 0; k < 600; k++) club.update(1 / 60);
+  assert(club.mixerOpen, 'the panel stays open, untouched, until it is closed — ten seconds and still there');
   tap(club, 5, 5);
   assert(!club.mixerOpen, 'a tap outside the panel closes it');
   // The dancing: one hero at a time joins in, each on one of their own eight dances (and
@@ -1504,6 +1539,27 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.draw(ctx);
     assert(started, 'when the song loops, the heroes start a Mexican wave');
     club.waveAt = -Infinity;
+  }
+  // a skip lands mid-moment: Dolores keeps sweeping, the same beats in, and what is due next
+  // stays as far off (club.followSeek)
+  {
+    const realSongBeat = Audio.songBeat, realBeat = club.beat, wasPaused = club.paused;
+    let heard = 40;
+    Audio.songBeat = () => heard; club.beat = () => heard; club.paused = false;
+    club.moments = []; club.partyNextBeat = Infinity; club.momentAt = Infinity;
+    club.update(1 / 60);
+    club.startMoment('cleaner');
+    const m = club.moments.find((x) => x.kind === 'cleaner');
+    m.beat0 = heard - 3;
+    club.partyNextBeat = heard + 40;
+    for (const jump of [64, -60]) {
+      heard += jump; club.update(1 / 60);
+      // (the next party moment, not the next cleaner: a section's confetti may book a cleaner afresh)
+      assert(club.moments.includes(m) && Math.abs(heard - m.beat0 - 3) < 0.1 && Math.abs(club.partyNextBeat - heard - 40) < 0.1,
+        `a skip ${jump > 0 ? 'forward' : 'back'} leaves Dolores sweeping where she was, and the next party moment as far off`);
+    }
+    Audio.songBeat = realSongBeat; club.beat = realBeat; club.paused = wasPaused;
+    club.moments = []; club.cleanerBeat = Infinity; club.partyNextBeat = Infinity; club.seekBeat = null;
   }
   // a tap on the club sign brings up the song's title for a while (it was the mirror ball's)
   club.draw(ctx);

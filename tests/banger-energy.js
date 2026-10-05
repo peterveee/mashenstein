@@ -65,6 +65,13 @@ assert.equal(bangerState(storage).draft.energy, 'full');
 // The draft's energy is its Voltage's (voltage.js): Surge is Huge.
 saveDraft({ ...bangerState(storage).draft, voltage: 2 }, storage);
 assert.equal(bangerState(storage).draft.energy, 'huge');
+// NEW BANGER never opens on Pure: a fresh draft is Hybrid, an old or chosen Pure comes back
+// as Hybrid, and the other DNAs are remembered.
+assert.equal(bangerState({ data: {}, persist() {} }).draft.variation, 'some');
+saveDraft({ ...bangerState(storage).draft, variation: 'faithful' }, storage);
+assert.equal(bangerState(storage).draft.variation, 'some', 'a Pure draft opens on Hybrid');
+saveDraft({ ...bangerState(storage).draft, variation: 'more' }, storage);
+assert.equal(bangerState(storage).draft.variation, 'more', 'Spliced is remembered');
 const recipe = { notes: DEFAULT_SIMPLE, style: 'trance', mood: 'uplifting', seed: 3, bpm: 138 };
 const full = keepBanger(recipe, storage);
 const huge = keepBanger({ ...recipe, energy: 'huge' }, storage);

@@ -59,7 +59,10 @@ export function bangerState(save = defaultSave) {
   const style = validStyle(d.style) ? d.style : MAKER_STYLES[0].id;
   const voltage = voltageFor(d);
   const preset = voltageSettings(voltage);
-  const variation = ['faithful', 'some', 'more', 'wild'].includes(d.variation) ? d.variation : 'some';
+  // NEW BANGER never opens on Pure (Peter, 5 Oct 2026). Drafts saved before DNA had its own
+  // picker carry Voltage's old Pure (Safe and Charged), and a Pure chosen once is not a
+  // default either: the draft keeps Hybrid, Spliced or Mutant, and Pure comes back as Hybrid.
+  const variation = ['some', 'more', 'wild'].includes(d.variation) ? d.variation : 'some';
   b.draft = { v: RIFF_VERSION, ...upgradeDraft(d), style, mood: validMood(d.mood) ? d.mood : defaultMoodFor(style), voltage,
     variation, wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
   // A kept song whose style has been held back since stays playable: the generator

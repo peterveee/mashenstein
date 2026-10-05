@@ -1,3 +1,4 @@
+import { KITS } from './sound-rules.js';
 // MAKE A BANGER — what can be asked for, and the one function that reads an answer.
 //
 // The dialog, the server and the generator all go through `normaliseBangerOptions`, so
@@ -169,7 +170,7 @@ export const BANGER_GROUPS = Object.freeze([
     { key: 'source', label: 'Source Drums', type: 'select', title: 'What happens to drums already in the riff',
       options: [['add', 'Keep and Add', 'Your drums play, the style\'s kit joins'], ['replace', 'Replace', 'The style\'s kit instead of yours'], ['asis', 'Keep As-Is', 'Only your drums, as written']] },
     { key: 'kit', label: 'Kit', type: 'select', title: 'The drum sounds',
-      options: [['style', 'Style Kit'], ['studio', 'Studio'], ['909', '909'], ['808', '808'], ['ds', 'DS'], ['cr78', 'CR-78']] },
+      options: KITS.map(({ key, label, title }) => [key, label, title || `${label} drum sounds`]) },
     { key: 'crashes', label: 'Crashes', title: 'A crash on the one of every phrase' },
     { key: 'fills', label: 'Fills', title: 'A snare-and-tom fill every eight bars' },
     { key: 'rolls', label: 'Snare Rolls', title: 'The snare accelerating through every build' },

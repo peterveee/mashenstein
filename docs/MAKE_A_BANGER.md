@@ -687,6 +687,11 @@ mixes. Every sound is already in the catalogue: none of them needed a new preset
   `halfHats`, which any style may set). A Pop Song's **middle 8** is the switch. Half-Time
   Switch, or a Half-Time Drop in the Form row, puts one in a chorus too. A Pop Song in the
   Uplifting mood (i–VI–III–VII in minor).
+  **Filled out on 5 Oct 2026** after Peter found it bare. An **Acoustic Guitar** now strums
+  the chords on the 3-3-2 (Chords = Piano Stabs), with the pad held underneath (`padUnder`)
+  and opened up to 3.2 kHz. A **Data Marimba** arp plays in the gaps of the dembow. Each
+  chorus gets a sweep and a boom on its way in, and the last one plays the hook in octaves.
+  The verses have eighth-note hats, and the hook and chops are 3 dB louder.
 
 **Sounds they could use** that the catalogue does not have yet: **timbales** for
 Reggaeton's fills (the 808 tom stands in) and a real **vocoder** for Italo Disco that

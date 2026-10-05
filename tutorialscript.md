@@ -87,7 +87,7 @@ Lorenzo settles into the standard player position as the lane begins scrolling.
 
 ### 3 — COINS · Lorenzo · a coin arc, then a ! box
 
-- **Brief:** RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES BETTER.
+- **Brief:** RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH: COINS, MOSTLY. SOMETIMES BETTER.
 - **Again:** THE BOX IS STILL FULL. FROM UNDERNEATH. ANOTHER ONE IS COMING.
 - **Requires:** the box actually opened. Missing a coin or two is not worth
   reopening a section over; the box is.

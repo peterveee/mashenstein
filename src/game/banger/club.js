@@ -74,8 +74,6 @@ const INTRO_FADE_S = 0.8;
 /** The mixer icon stays bright this long after it is used, then fades to a hint. */
 const ICONS_AWAKE_S = 3;
 const ICONS_ASLEEP = 0.18;
-/** The mixer panel closes itself after this long untouched. */
-const MIXER_IDLE_S = 5;
 /** The walk-in: when the first pair sets off, how far apart the pairs go, and the pace (screen widths a second). */
 const WALK_DELAY_S = 0.3;
 const WALK_STAGGER_S = 0.3;
@@ -255,9 +253,13 @@ const GHOST_BEATS = 0.75;
  * to use all of them randomly.. perhaps even 2 at a time or more"), a beat or so apart, each the
  * other way to the last, taking FISH_CROSS_BEATS. Let go and the water drains — and any fish
  * still in the room dives for the floor before it does, FISH_DIVE_S, and is gone through it with
- * a splash: down the drain, and every drain leads to the sea.
+ * a splash: down the drain, and every drain leads to the sea. The first shoal sets off as his
+ * card starts to fade (CAPTION_FADE_BEATS; Peter, 5 Oct 2026), the rest FISH_EVERY_BEATS apart.
  */
 const FISH_EVERY_BEATS = 8;
+/** A move's card is up four beats; it starts to fade this far in (drawCaption). */
+const CAPTION_FADE_BEATS = 2.8;
+const CAPTION_BEATS = 4;
 const FISH_CROSS_BEATS = 6;
 const FISH_DIVE_S = 0.55;
 const FISH_SPLASH_S = 0.7;
@@ -399,6 +401,7 @@ export class BangerClubState {
     this.lastSignTap = -Infinity;
     this.lastLedTap = -Infinity;
     this.skipTo = null;        // the section a double-tap on the sign has queued, until it lands
+    this.seekBeat = null;      // the song's beat last frame, to see a seek land (followSeek)
     this.skipLit = null;       // { dir, until }: the transport skip button lit until its jump is heard
     this.paused = false;       // the transport's PAUSE (Audio.setPlayerPaused)
     this.section = null;       // the section of the song playing, by index into its form
@@ -660,7 +663,8 @@ export class BangerClubState {
     const now = this.heardNow(), beatS = this.barSeconds() / 4;
     const flooded = !!move?.drain && !a.drain && now >= a.when;
     if (flooded) {
-      const due = Math.floor((now - a.when) / (FISH_EVERY_BEATS * beatS));
+      const since = now - a.when - CAPTION_FADE_BEATS * beatS;
+      const due = since < 0 ? 0 : 1 + Math.floor(since / (FISH_EVERY_BEATS * beatS));
       while ((a.fishN ?? 0) < due) {
         a.fishN = (a.fishN ?? 0) + 1;
         this.shoal(now, beatS);
@@ -843,7 +847,7 @@ export class BangerClubState {
       const on = this.voices.toggle();
       const hifi = this.voices.eightBit;
       this.queued.title = on === !hifi ? '8-BIT' : 'HI-FI';
-      this.queued.what = on ? (hifi ? 'the band leaves 8-bit — tap again to go back' : move.what)
+      this.queued.what = on ? (hifi ? 'the band leaves 8-bit, tap again to go back' : move.what)
         : (hifi ? 'the band is back on 8-bit' : 'the band is back in HD');
       return;
     }
@@ -1492,6 +1496,26 @@ export class BangerClubState {
     return true;
   }
 
+  /**
+   * A SEEK landing (the transport's skips, a double-tap on the sign, Fernwick's drop) jumps the
+   * song's beat count. What is happening in the room carries on through it on the room's own
+   * clock — Dolores sweeping, the vacuum, a spotlight, a formation change — and what is due
+   * next stays as far off as it was, rather than all of it vanishing or firing at once (Peter,
+   * 5 Oct 2026: "we shouldn't skip the event currently happening"). The crowd's drop jump is
+   * the exception: it is pinned to a drop in the song, so it goes with the song.
+   */
+  followSeek(dt) {
+    const b = Audio.songBeat();
+    const prev = this.seekBeat;
+    this.seekBeat = Number.isFinite(b) ? b : null;
+    if (prev == null || this.seekBeat == null || this.shownAt == null) return;
+    const jump = b - prev - (this.paused ? 0 : dt * 4 / this.barSeconds());
+    if (Math.abs(jump) < 1) return;
+    for (const m of this.moments) if (m.beat0 != null && m.kind !== 'drop-jump') m.beat0 += jump;
+    if (this.formationSwap) this.formationSwap.beat0 += jump;
+    for (const k of ['partyNextBeat', 'cleanerBeat', 'cleanerCooldown', 'strobeBeat', 'strobeNextBeat', 'formationShuffleAt']) this[k] += jump;
+  }
+
   /** PLAY / PAUSE: the whole sound of the club holds on the sample it stopped on (Audio.setPlayerPaused). */
   togglePause() {
     this.paused = !this.paused;
@@ -1850,6 +1874,7 @@ export class BangerClubState {
       this.momentAt = this.t + bar * MOMENT_QUIET_BARS;
       this.smokeAt = this.t + bar * SMOKE_FIRST_BARS;
     }
+    this.followSeek(dt);
     if (!this.paused && this.t >= this.smokeAt) {
       this.startMoment('smoke');
       const [lo, hi] = SMOKE_GAP_BARS;
@@ -1971,7 +1996,8 @@ export class BangerClubState {
       if (Input.held('pointer')) this.levelFromY(this.dragging, y);
       else this.dragging = null;
     }
-    if (this.mixerOpen && this.dragging == null && this.t - this.iconsAt > MIXER_IDLE_S) this.mixerOpen = false;
+    // The mixer panel stays open until it is closed — its icon, a tap outside it, or Enter / Back
+    // (Peter, 5 Oct 2026: "dont auto hide the mixing panel").
 
     if (this.savePrompt) { this.updateSavePrompt(); return; }
 
@@ -3364,19 +3390,19 @@ export class BangerClubState {
 
   /**
    * The move just made, and whose it was: its name and its line, for four beats. A held move's
-   * stays up while it is held — but Lorenzo's goes in its own time, under the water, before
-   * his first fish (FISH_EVERY_BEATS; Peter, 5 Oct 2026: "perhaps it fades out before the fish
-   * appear").
+   * stays up while it is held — but Lorenzo's goes in its own time, under the water, and his
+   * first fish set off as it starts to fade (fishOn; Peter, 5 Oct 2026).
    */
   drawCaption(ctx, { portrait, P, stageTop }) {
     let capSince = this.caption ? (this.heardNow() - this.caption.when) / (this.caption.bar / 4) : Infinity;
     if (this.caption && this.holding?.i === this.caption.i && !HERO_MOVES[this.caption.i].drain) capSince = Math.min(capSince, 1);
-    if (capSince < 4) {
+    if (capSince < CAPTION_BEATS) {
       // a move's own name and line — or, for B-33P's toggle, which way it went
       const m = { ...HERO_MOVES[this.caption.i], ...(this.caption.title ? { move: this.caption.title } : {}),
         ...(this.caption.what ? { what: this.caption.what } : {}) };
+      const what = m.what.toUpperCase();   // in capitals, as the rest of the club's words are (Peter, 5 Oct 2026)
       const since = capSince;
-      const a = 1 - Math.max(0, (since - 2.8) / 1.2);
+      const a = 1 - Math.max(0, (since - CAPTION_FADE_BEATS) / (CAPTION_BEATS - CAPTION_FADE_BEATS));
       const pop = 1 + 0.25 * Math.exp(-since * 4);
       const big = portrait ? 40 * P : 20, small = portrait ? 15 * P : 8;
       ctx.save();
@@ -3387,11 +3413,15 @@ export class BangerClubState {
       ctx.font = `${big}px ${TITLE_FONT}`;
       const w1 = ctx.measureText(`${m.move}!`).width;
       ctx.font = `500 ${small}px ${BODY_FONT}`;
-      const w2 = ctx.measureText(m.what).width;
+      // too wide for the screen at its biggest (in capitals, in portrait): broken at its dash
+      const fits = ctx.measureText(what).width + big <= (W - 16) / 1.25;
+      const lines = fits ? [what] : what.split(/\s+—\s+/);
+      const w2 = Math.max(...lines.map((l) => ctx.measureText(l).width));
       const pw = Math.max(w1, w2) + big;
+      const lineH = small * 1.3;
       ctx.globalAlpha *= 0.62;
       ctx.fillStyle = '#0b0b14';
-      rr(ctx, -pw / 2, -big * 1.5, pw, big * 2.4, big * 0.45); ctx.fill();
+      rr(ctx, -pw / 2, -big * 1.5, pw, big * 2.4 + lineH * (lines.length - 1), big * 0.45); ctx.fill();
       ctx.globalAlpha = Math.max(0, a);
       ctx.font = `600 ${small}px ${BODY_FONT}`;
       ctx.fillStyle = m.col;
@@ -3403,7 +3433,7 @@ export class BangerClubState {
       ctx.fillText(`${m.move}!`, 0, 0);
       ctx.font = `500 ${small}px ${BODY_FONT}`;
       ctx.fillStyle = '#c8c8d8';
-      ctx.fillText(m.what, 0, small * 1.65);
+      lines.forEach((l, k) => ctx.fillText(l, 0, small * 1.65 + lineH * k));
       ctx.restore();
     }
   }
@@ -4593,14 +4623,17 @@ export class BangerClubState {
     const shown = this.shownAt == null ? 0 : this.t - this.shownAt;
     const a = 1 - Math.max(0, Math.min(1, (shown - INTRO_S) / INTRO_FADE_S));
     if (a <= 0) return;
-    const lines = ['NOW PLAYING', bangerTitle(this.rec), 'TAP A HERO FOR THEIR MOVE — HOLD AND DRAG SOME',
-      'TAP THE FLOOR FOR HITS · THE MIXER SETS LEVELS AND SOUNDS'];
+    // how to play, simply: tap (or click) anything or anyone, and an encouragement — mostly SEE
+    // WHAT HAPPENS, now and then MIX IT UP, picked once a visit (Peter, 5 Oct 2026)
+    this.introNudge ??= Math.random() < 1 / 3 ? 'MIX IT UP!' : 'SEE WHAT HAPPENS!';
+    const lines = ['NOW PLAYING', bangerTitle(this.rec),
+      `${Input.isTouchDevice() ? 'TAP' : 'CLICK'} ANYTHING OR ANYONE`, this.introNudge];
     const fs = portrait ? [13 * P, 17 * P, 13 * P, 13 * P] : [7, 10, 7.5, 7.5];
     const lh = portrait ? 26 * P : 13;
     ctx.save();
     ctx.font = `${fs[1]}px ${TITLE_FONT}`;
-    const boxW = Math.min(W - 16, Math.max(portrait ? 344 * P : 236, ctx.measureText(lines[1]).width + 24));
-    const boxH = lh * 4 + (portrait ? 24 * P : 12);
+    const boxW = Math.min(W - 16, Math.max(portrait ? 240 * P : 160, ctx.measureText(lines[1]).width + 24));
+    const boxH = lh * lines.length + (portrait ? 24 * P : 12);
     // High in the room, under the signs and clear of the heroes' heads (the ball waits for it);
     // in portrait below the LED board (Peter, 5 Oct 2026)
     const bx = W / 2 - boxW / 2, by = stageTop + (portrait ? 140 * P : 56);
