@@ -14,7 +14,7 @@ import { deskBank, laneList } from '../src/engine/lanes.js';
 import { draftOf } from './lib/arrangement-edit.js';
 import { createCustomSelect } from './lib/custom-select.js';
 import {
-  generateBanger, extractRiff, BANGER_MOODS, BANGER_STYLES, BANGER_SOUND_SETS, BANGER_VARIATIONS, BANGER_LENGTHS, styleFor,
+  generateBanger, extractRiff, BANGER_MOODS, BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS, BANGER_VARIATIONS, BANGER_LENGTHS, styleFor,
 } from './lib/banger/index.js';
 import {
   PART_SLOTS, KIT_ROLES, KITS, RANDOM_JOBS, CHOICE_SLOTS, MOOD_IDS, soundIssues, slotChoices, tableIssues, slotsFor,
@@ -549,7 +549,7 @@ function renderStylePick() {
   const box = $('stylepick');
   box.textContent = '';
   // The Sound Sets (Chipstep · Light …) are edited here like a style: each has its own row.
-  const options = [...BANGER_STYLES, ...BANGER_SOUND_SETS].filter((s) => state.table[s.id]).map((s) => [s.id, s.label]);
+  const options = [...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].filter((s) => state.table[s.id]).map((s) => [s.id, s.label]);
   box.append(plainSelect({ label: 'Style', options, value: state.styleId, onChange: (v) => { state.styleId = v; changed(); } }));
 }
 function renderAll() {

@@ -166,6 +166,8 @@ const suites = [
   // What every banger is made of: the sounds table held to its rulebook, its file, its
   // Save, and the generator really playing what it names (the Banger Sounds page).
   'tests/banger-sounds.js',
+  // A style's other arrangements, chosen by the mood, by name, or by the Lab's voltage.
+  'tests/banger-flavours.js',
   'tests/creative-drum-kits.js',
   // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
   // drawn in the editor — each fitting every length, hanging together, re-made exactly.
@@ -731,7 +733,7 @@ const soundSuites = [
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
-  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
+  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
   'tests/banger-expression.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',

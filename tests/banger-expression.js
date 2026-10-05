@@ -663,8 +663,10 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   const hookOf = (song) => song.mix.lanes.lead;
   // The Lab's Sound Set for the take (make.js LAB_SOUND_SETS): chipstep and synthwave play on Light.
   const labSet = (r) => (labSoundSet(r.style, r.seed, r.voltage) !== 'style' ? { parts: { soundSet: labSoundSet(r.style, r.seed, r.voltage) } } : {});
+  // ...and its flavour (make.js labFlavour): the mood's, or a surprise by the voltage.
+  const labFlav = (r) => { const f = make.labFlavour(r.style, r.mood, r.seed, r.voltage); return f ? { flavour: f } : {}; };
   const direct = (r, options) => generateBanger({ riff: riffFromNotes(r.notes, hookSoundFor(r.style, r.mood, r.seed, r.voltage), r.mode), seed: r.seed,
-    options: { style: r.style, mood: r.mood, energy: 'full', ...(spotFor(r.style, r.seed) && Object.keys(spotFor(r.style, r.seed)).length ? { spot: spotFor(r.style, r.seed) } : {}), ...labSet(r), ...options } });
+    options: { style: r.style, mood: r.mood, energy: 'full', ...(spotFor(r.style, r.seed) && Object.keys(spotFor(r.style, r.seed)).length ? { spot: spotFor(r.style, r.seed) } : {}), ...labSet(r), ...labFlav(r), ...options } });
   // The Lab's hook trim: the style's own riffTrimDb (style-balance.js) where it sets one, RIFF_TRIM_DB otherwise.
   const hookTrim = (style) => { const t = balanceForStyle(BANGER_STYLES.find((st) => st.id === style)).riffTrimDb; return Number.isFinite(t) ? t : RIFF_TRIM_DB; };
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; return o; };

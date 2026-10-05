@@ -74,8 +74,7 @@ export const MOOD_BASS = Object.freeze({
 export function moodBass(style, mood) {
   const own = styleDefaults(style).parts.bass;
   if (style?.bassFixed || mood === styleDefaults(style).mood) return own;
-  // A style may give a mood a bass of its own (afro-house: each mood is a flavour).
-  return style?.moodBass?.[mood] || MOOD_BASS[mood] || own;
+  return MOOD_BASS[mood] || own;
 }
 
 /**
@@ -308,6 +307,9 @@ export const BANGER_DEFAULTS = Object.freeze({
   energy: 'full', variation: 'some', tempo: 'style', bpm: 128, hook: 'auto',
   // A Sound Combo (combos.js) by its id, or null for the style's own sounds and channels.
   combo: null,
+  // A FLAVOUR (styles/flavours.js), for a style that has them: 'mood' (the one the mood plays),
+  // 'style' (its own), 'random' (drawn from the seed), or one by its id.
+  flavour: 'mood',
   // Recipes without this retain their original production. New UI requests can opt in.
   production: { mode: 'style', version: TRACK_EFFECTS_VERSION },
   sectionFx: SECTION_FX_DEFAULTS,
@@ -407,6 +409,13 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     else issues.push(`a tempo is ${BANGER_LIMITS.minBpm}–${BANGER_LIMITS.maxBpm} BPM, not ${raw.bpm}`);
   }
   if (raw?.hook != null) out.hook = String(raw.hook);
+  // Only its shape: which flavours a style has is the generator's to know (flavourOf), and a
+  // style without them plays its own whatever is asked.
+  if (raw?.flavour !== undefined) {
+    if (raw.flavour === null || raw.flavour === '') out.flavour = 'style';
+    else if (typeof raw.flavour === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(raw.flavour)) out.flavour = raw.flavour;
+    else issues.push(`a Flavour is named by its id, not ${JSON.stringify(raw.flavour)}`);
+  }
   // Only its shape is checked: which combos a style has is the generator's to know, and a
   // desk older than the page must not refuse a combo saved since it started.
   if (raw?.combo !== undefined) {

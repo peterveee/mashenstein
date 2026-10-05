@@ -734,6 +734,58 @@ each louder and brighter than the last, with the final one left to ring. **Güir
 is two ridges and a tin edge. **Tambora** is a stick knock on the shell over a low falling
 skin.
 
+### Afro House, and flavours
+
+Added on 6 Oct 2026. Peter picked three of the Afro sketches (`work/local/_afro-sketches.mjs`,
+WAVs in `work/auditions/afro-styles/`) and wanted them as **one style**, so the other two
+became **flavours** of it. Like the other styles, it is written from the general idea of
+the sound and not checked against records.
+
+- **Afro House** (`styles/afro-house.js`): **122**, swing 52, on the Club form. Every build
+  opens through a low-pass (Filter Build), with no snare roll, riser, stutter or key lift.
+  All three flavours share four on the floor and a **Talking Drum** calling into each eight
+  (the fill slot).
+  - **Organic** (the style's own): a **Shekere** on the sixteenths (the style kit's hats),
+    **Djembe · Tone** on a 3-3-2 (Congas) and **Djembe · Slap** (Tambourine). Under them, a
+    warm syncopated bass, a minor-seventh pad, a kalimba hook and choir answers. The
+    **agogô** bell (Cowbell) comes in at Huge energy.
+  - **Melodic** (120): every chord held for two bars, a rolling sixteenth bass, a plucked
+    arp from the first bar of each drop, the pan flute on the hook, a Glass Choir pad, and
+    congas, rim and shaker.
+  - **Tech** (124): one chord for six bars, then the walk's last two. The pad becomes an
+    off-beat clav stab (Chords = Pad plays as Piano Stabs). Under it, a syncopated mono
+    bass, tribal toms and an agogô.
+
+**Flavours** (`styles/flavours.js`) are a style's other arrangements. Each one is a recipe
+with `base` and `flavour`, built from the style and its shared moods, with its own `recipe`
+laid over the top. A recipe can carry drums, rhythms, strips, labels and tempo. On top of
+that, a flavour can have:
+
+- a `reshape`, which rewrites every progression, so the mood still picks the chords and
+  the flavour picks how long each one is held;
+- a `remapParts`, which works the way a Sound Set's does.
+
+Each flavour's sounds are its own row of `sounds.js` (`afro-house-melodic`), editable on
+the Banger Sounds page. They are not in the style list. What decides the flavour:
+
+- **The mood**, by default (the `flavour` option is `'mood'`; the recipe's
+  `flavourByMood`). For Afro House: Moody, Nostalgic and any mood not named play Organic.
+  Uplifting, Euphoric, Hopeful, Dreamy, Wonder, Sunshine, Anthemic and Heroic play
+  Melodic. Dark, Hypnotic, Gothic, Boss Fight and Andalusian play Tech.
+- **The desk's Flavour list**, shown only for a style that has flavours: By Mood (it names
+  the flavour that mood plays), each flavour by name, or Random. Random is drawn from the
+  take's seed, so Another Take can land on any of them.
+- **The Lab**, with no control of its own (`make.js labFlavour`). It plays the mood's
+  flavour, and sometimes another: never on Safe, 1 take in 5 on Charged, 1 in 3 on Surge
+  and 1 in 2 on Overload. A re-roll can surprise you.
+
+**New presets** (`src/data/voices.js`, Perc): **Djembe · Bass**, **Djembe · Tone**, **Djembe
+· Slap**, **Talking Drum** (its pitch bends up) and **Shekere**.
+
+**To give another style flavours:** add `flavours` (its own first) and `flavourByMood` to
+the style, export the flavour definitions from its file and add them to `BANGER_FLAVOURS`
+in `styles/index.js`, then give each flavour a row in `sounds.js`.
+
 ### Levels
 
 Every preset is levelled by the engine before any fader touches it: its loudness was
@@ -818,7 +870,7 @@ named by part alone (`KICK`, `HATS`).
 
 | Path | What it is |
 |---|---|
-| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js`, `styles/deep-house.js`, `styles/nu-disco.js`, `styles/downtempo.js`, `styles/eurodance.js`, `styles/italo-disco.js`, `styles/electro-funk.js`, `styles/french-house.js`, `styles/reggaeton.js`, `styles/moombahton.js`, `styles/merenhouse.js` |
+| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js`, `styles/deep-house.js`, `styles/nu-disco.js`, `styles/downtempo.js`, `styles/eurodance.js`, `styles/italo-disco.js`, `styles/electro-funk.js`, `styles/french-house.js`, `styles/reggaeton.js`, `styles/moombahton.js`, `styles/merenhouse.js`, `styles/afro-house.js`, `styles/flavours.js` (a style's other arrangements) |
 | `tools/lib/banger/sounds.js` | The sounds table — written by the Banger Sounds page |
 | `tools/lib/banger/sound-rules.js` | The rulebook: every slot, and what may go in it |
 | `tools/lib/banger/sounds-source.js`, `audition.js` | The table's serialiser; the two-bar auditions |
@@ -838,6 +890,7 @@ named by part alone (`KICK`, `HATS`).
 | `src/data/imported/banger-seed-*.js` | The seven seed bangers |
 | `tests/banger.js` | Tests for the generator, the riff reader, the song file and the takes |
 | `tests/banger-sounds.js` | Tests for the sounds table, the rules, Save, and the generator playing the table |
+| `tests/banger-flavours.js` | Tests for the flavours: chosen by the mood, by name, by the seed and by the Lab's voltage, and what each one changes |
 | `tests/banger-forms.js` | Tests for the forms: every length exact, every style valid, drawn forms re-made exactly, the verse/pre/middle 8 promises, the joins, the groove, the editor's moves |
 
 The page makes the music and the server only writes the file. So a change to the

@@ -23,7 +23,7 @@ import { twoBarChords, holdTheOne } from './flavours.js';
 export const AFRO_HOUSE = Object.freeze({
   id: 'afro-house',
   label: 'Afro House',
-  note: '122 · djembe, shekere, talking drum — organic, melodic or tech by mood',
+  note: '122 · djembe, shekere, talking drum; mood sets the flavour',
   title: '122 BPM with a light swing: four on the floor under djembe, shekere and a talking drum. The mood picks the flavour — Moody is organic (kalimba, pad, choir), Uplifting and Euphoric melodic (two-bar chords, rolling bass, arp, pan flute), Dark and Hypnotic tech (one chord, clav stabs, mono bass, toms). Starts on the Club form in the Moody mood',
   bpm: 122,
   tempoRange: [118, 126],
@@ -130,7 +130,6 @@ export const AFRO_HOUSE = Object.freeze({
     counter: { gain: -10, pan: -0.15, send: { delay: 0.2, reverb: 0.6 } },
     arp: { gain: -12, pan: -0.2, send: { delay: 0.35, reverb: 0.4 } },
     pad: { gain: -4, eq: { low: -5 }, send: { reverb: 0.5 } },
-    saws: { gain: -4, eq: { low: -5 }, send: { reverb: 0.5 } },
     piano: { gain: -8, pan: 0.1, send: { delay: 0.3, reverb: 0.35 } },
     choir: { gain: -8, send: { reverb: 0.6 } },
   },

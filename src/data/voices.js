@@ -1415,6 +1415,21 @@ const DRUM = {
     osc: { type: 'sine', from: 150, to: 235, sweep: 0.11, decay: 0.36, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 1500, Q: 0.7, decay: 0.02, gain: 0.3 },
     drive: 0.12 },
+  // ---- bongos (6 Oct 2026, for the Reggaeton Romántico sketch) ---------------
+  bongoHigh: { label: 'Bongo · Macho', category: 'Perc', homeLane: 'tom', dur: 0.5,
+    note: 'The small bongo: a tight bright pop around 500 Hz with a crack of skin on the '
+      + 'front and a short ring — the voice the martillo rides on.',
+    osc: { type: 'triangle', from: 540, to: 450, sweep: 0.02, decay: 0.09, curve: 'exp', gain: 0.8 },
+    noise: { type: 'highpass', freq: 2400, Q: 1, decay: 0.02, gain: 0.45 },
+    ring: { freq: 1060, Q: 10, hit: 0.001, decay: 0.04, gain: 0.2 },
+    drive: 0.15 },
+  bongoLow: { label: 'Bongo · Hembra', category: 'Perc', homeLane: 'tom', dur: 0.5,
+    note: 'The large bongo: rounder and a fifth lower than the macho, a little longer — the '
+      + 'open note that answers it.',
+    osc: { type: 'triangle', from: 390, to: 315, sweep: 0.025, decay: 0.13, curve: 'exp', gain: 0.9 },
+    noise: { type: 'highpass', freq: 1900, Q: 0.9, decay: 0.02, gain: 0.35 },
+    ring: { freq: 760, Q: 9, hit: 0.001, decay: 0.05, gain: 0.18 },
+    drive: 0.12 },
   shekere: { label: 'Shekere', category: 'Perc', homeLane: 'rim', dur: 0.5,
     note: 'A dried gourd in a net of beads: a soft swell of mid-high rattle with the beads '
       + 'landing a hair after it. Rounder and woodier than a shaker.',
@@ -6612,7 +6627,8 @@ const LEVELS = {
   seedChipstepPad: 0.128193, seedChipstepSquare: 0.016707,
   seedChipstepBell: 0.055713, seedChipstepMegaSaw: 0.139676,
   seedChipstepArp: 0.055713, seedChipstepChoir: 0.028924,
-  seedChipstepThird: 0.018027, seedChipstepCounter: 0.025058
+  seedChipstepThird: 0.018027, seedChipstepCounter: 0.025058, djembeBass: 0.034,
+  djembeTone: 0.02, djembeSlap: 0.0268, talkingDrum: 0.0393, shekere: 0.0158
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -6842,7 +6858,8 @@ const PEAKS = {
   seedChipstepPad: 0.6688, seedChipstepSquare: 0.2007, seedChipstepBell: 0.6468,
   seedChipstepMegaSaw: 1.0017, seedChipstepArp: 0.6468,
   seedChipstepChoir: 0.182, seedChipstepThird: 0.2066,
-  seedChipstepCounter: 0.3138
+  seedChipstepCounter: 0.3138, djembeBass: 0.7016, djembeTone: 0.5418,
+  djembeSlap: 0.7396, talkingDrum: 0.6896, shekere: 0.3637
 };
 
 /**

@@ -11,7 +11,7 @@
 import { energyOf } from '../../../tools/lib/banger/energy.js';
 import { generateBanger } from '../../../tools/lib/banger/index.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
-import { BANGER_STYLES, styleFor, soundSetOf } from '../../../tools/lib/banger/styles/index.js';
+import { BANGER_STYLES, styleFor, soundSetOf, moodFlavour } from '../../../tools/lib/banger/styles/index.js';
 import { BANGER_LIMITS, BANGER_MOODS, styleDefaults, moodBass, BANGER_EXPRESSION_VERSION } from '../../../tools/lib/banger/options.js';
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { BANGER_PALETTE, resolvePalette } from '../../../tools/lib/banger/palette.js';
@@ -97,8 +97,30 @@ export function labSoundSet(style, seed, voltage = null) {
   const chance = lab.sometimes?.chance[voltageLevel(voltage) ?? 1] ?? 0;
   return rollOf(seed, 0x0b175e75) < chance ? lab.sometimes.set : lab.set;
 }
-/** Whose row of the sounds table a take plays: the style's, or its Sound Set's. */
-const soundsIdFor = (style, seed, voltage) => soundSetOf(styleFor(style), labSoundSet(style, seed, voltage))?.id ?? style;
+/**
+ * FLAVOURS in the Lab (styles/flavours.js), with no control of their own: the mood's
+ * arrangement of the style — and now and then another, more often the higher the voltage, so a
+ * re-roll can land somewhere unexpected (Peter, 6 Oct 2026: "i want the user to potentially just
+ * reroll and get a nice surprise", "tie it to the voltage", "make it dependant on the mood").
+ * Chance of a surprise by voltage level: Safe, Charged, Surge, Overload.
+ */
+export const FLAVOUR_SURPRISE = Object.freeze([0, 1 / 5, 1 / 3, 1 / 2]);
+/** The flavour id a take in `style` and `mood` plays, or null for a style without flavours. */
+export function labFlavour(style, mood, seed = null, voltage = null) {
+  const st = styleFor(style);
+  if (!st?.flavours?.length) return null;
+  const own = moodFlavour(st, mood);
+  if (seed == null || rollOf(seed, 0x6a09e667) >= (FLAVOUR_SURPRISE[voltageLevel(voltage) ?? 1] ?? 0)) return own;
+  const others = st.flavours.map((f) => f.id).filter((id) => id !== own);
+  return others[Math.floor(rollOf(seed, 0x3c6ef372) * others.length)];
+}
+/** Whose row of the sounds table a take plays: the style's, its Sound Set's, or its flavour's. */
+function soundsIdFor(style, seed, voltage, mood = null) {
+  const set = soundSetOf(styleFor(style), labSoundSet(style, seed, voltage))?.id;
+  if (set) return set;
+  const flavour = labFlavour(style, mood, seed, voltage);
+  return flavour && flavour !== styleFor(style)?.flavours?.[0]?.id ? `${style}-${flavour}` : style;
+}
 
 /** Every mood plays in every style; show them alphabetically in the Lab. */
 export const MAKER_MOODS = Object.freeze(BANGER_MOODS
@@ -115,7 +137,7 @@ export const moodLabel = (id) => MAKER_MOODS.find((m) => m.id === id)?.label ?? 
  */
 export function hookSoundFor(styleId, moodId, seed = null, voltage = null) {
   // With no seed (a preview), the Lab's own set for the style rather than an occasional one.
-  const id = seed == null ? (soundSetOf(styleFor(styleId), LAB_SOUND_SETS[styleId]?.set)?.id ?? styleId) : soundsIdFor(styleId, seed, voltage);
+  const id = seed == null ? (soundSetOf(styleFor(styleId), LAB_SOUND_SETS[styleId]?.set)?.id ?? soundsIdFor(styleId, null, null, moodId)) : soundsIdFor(styleId, seed, voltage, moodId);
   return resolveSounds(BANGER_SOUNDS, id, moodId).random?.hook?.[0] ?? 'simpleSquare';
 }
 
@@ -266,7 +288,7 @@ export function voltageRollsFor(styleId, moodId, voltage, seed) {
   const style = BANGER_STYLES.find((s) => s.id === styleId);
   // The style's own lead stays in the draw, one take in as many as there are leads to draw from:
   // Riff Sound = Random alone always moves off it.
-  const leads = resolveSounds(BANGER_SOUNDS, soundsIdFor(styleId, seed, voltage), moodId).random?.hook?.length || 1;
+  const leads = resolveSounds(BANGER_SOUNDS, soundsIdFor(styleId, seed, voltage, moodId), moodId).random?.hook?.length || 1;
   const out = { parts: rollOf(seed, 0x0f6a5f3d) < 1 / leads ? {} : { riffSound: 'random' } };
   if (!style) return out;
   const level = voltageLevel(voltage) ?? 1;
@@ -363,9 +385,10 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     : selectedVariation === 'wild' && expressionVersionOf(expression) >= 1;
   const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed) : {};
   const soundSet = labSoundSet(style, seed, voltage);
+  const flavour = labFlavour(style, mood, seed, voltage);
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
   const options = {
-    style, mood, energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
+    style, mood, ...(flavour ? { flavour } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
     ...(expressionVersionOf(expression) >= 3 ? { sectionFx: { mode: voltageSettings(voltage).sectionFx } } : {}),
     ...(slides ? { expression: { autoPortamento: true, version: BANGER_EXPRESSION_VERSION } } : {}),
@@ -389,6 +412,6 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   return { bank: out.bank, mix: out.mix, arrangement: out.arrangement, bpm: out.bank.bpm,
     trackEffects: out.trackEffects,
     paletteSnapshot: out.banger.paletteSnapshot,
-    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style', soundsId: soundsIdFor(style, seed, voltage),
+    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style', soundsId: soundsIdFor(style, seed, voltage, mood),
     form: (out.form || []).map((f) => ({ role: f.role, type: f.type, from: f.from, to: f.to })) };
 }

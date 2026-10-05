@@ -22,7 +22,7 @@ import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { arrangementIssues } from '../../../src/data/arrangements.js';
 import { packBank, hasNotes, isDrumPart, midi, MIDI_MIN, MIDI_MAX, BASS_FIGURES, echoPart } from './theory.js';
 import { normaliseBangerOptions, bangerBars, bangerBpm } from './options.js';
-import { styleFor, soundSetOf } from './styles/index.js';
+import { styleFor, soundSetOf, flavourOf } from './styles/index.js';
 import { validateRiff, parseRiff, pickHook } from './riff.js';
 import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
 import { buildForm } from './form.js';
@@ -49,7 +49,7 @@ export { BANGER_DEFAULTS, BANGER_GROUPS, BANGER_MOODS, BANGER_KEYS, BANGER_MODES
 export { EXPRESSION_ROLES, EXPRESSION_POLICY, planExpression, applyExpression, voiceOfLane } from './expression.js';
 export { TRACK_EFFECTS_VERSION, TRACK_EFFECTS_MODES, PRODUCTION_ROLES, trackEffectsMode,
   normaliseTrackEffects, productionFeatures, planTrackEffects, applyTrackEffects } from './production.js';
-export { BANGER_STYLES, BANGER_SOUND_SETS, styleFor, soundSetOf, soundSetsFor } from './styles/index.js';
+export { BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS, styleFor, soundSetOf, soundSetsFor, flavoursFor, flavourOf, moodFlavour } from './styles/index.js';
 export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
@@ -172,15 +172,19 @@ export function generateBanger({
   if (options.parts.soundSet !== 'style' && !set) {
     warnings.push(`${recipe.label} has no ${({ light: 'Light', '8bit': '8-Bit' })[options.parts.soundSet] || options.parts.soundSet} Sound Set — made with its own sounds`);
   }
+  // A FLAVOUR (styles/flavours.js): another arrangement of the style — its drums, rhythms,
+  // sounds and how long its chords are held — chosen by the mood (the default), by name, or
+  // drawn from the seed. Not under a Sound Set, which is the style's own music re-voiced.
+  const flavour = set ? null : flavourOf(recipe, options.flavour, { seed: s, mood: options.mood });
   // (A set asked for by its own id — the Banger Sounds page's audition — is played as itself.)
-  for (const [k, swap] of Object.entries((set || recipe).remapParts || {})) if (swap[options.parts[k]]) options.parts[k] = swap[options.parts[k]];
+  for (const [k, swap] of Object.entries((set || flavour || recipe).remapParts || {})) if (swap[options.parts[k]]) options.parts[k] = swap[options.parts[k]];
   // A Sound Combo, when one is chosen and the style has it: its sounds and channels over
   // the style's own, and its own banger as what the faders are matched against. Not over a
   // Sound Set: a combo's sounds are the style's kind, and would undo a Light set's budget.
   const combo = options.combo && !set ? combos?.[recipe.id]?.[options.combo] || null : null;
   if (options.combo && set) warnings.push(`a Sound Combo does not go over a Sound Set — made with the ${set.label} sounds`);
   else if (options.combo && !combo) warnings.push(`${recipe.label} has no Sound Combo "${options.combo}" — made with its own sounds`);
-  const style = withChannels(set || recipe, channels?.[recipe.id] ?? channels?.[recipe.base], combo?.channels);
+  const style = withChannels(set || flavour || recipe, channels?.[recipe.id] ?? channels?.[recipe.base], combo?.channels);
   // Every sound it is made with — the style's table, with the mood's overrides. `table`
   // is the shipped one unless the Banger Sounds page is auditioning unsaved choices.
   const sounds = withComboSounds(resolveSounds(table, style.id, options.mood), combo);
@@ -393,6 +397,7 @@ export function generateBanger({
     version: 1,
     generator: BANGER_GENERATOR_VERSION,
     style: style.id,
+    ...(style.flavour ? { flavour: style.flavour } : {}),
     options,
     seed: s,
     paletteSnapshot: resolvedPaletteSnapshot,

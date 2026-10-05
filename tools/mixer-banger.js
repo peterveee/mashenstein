@@ -12,7 +12,7 @@ import {
   BANGER_STYLES, BANGER_MOODS, BANGER_MODES, moodBass, BANGER_RIFF_NOTES, MOOD_MODES, BANGER_VARIATIONS, BANGER_LENGTHS, BANGER_TEMPOS,
   BANGER_GROUPS, BANGER_LIMITS, normaliseBangerOptions, surpriseBangerOptions, goCrazyBangerOptions, styleDefaults, classicDefaults,
   BANGER_REROLLS, modifyBanger, describeModify, BANGER_STRUCTURE, keepStructure,
-  styleFor, generateBanger, validateRiff, riffSummary, randomBangerSeed, keyName, parseRiff,
+  styleFor, generateBanger, validateRiff, riffSummary, randomBangerSeed, keyName, parseRiff, flavoursFor, moodFlavour,
   bangerBars, bangerBpm, BANGER_GENERATOR_VERSION, BANGER_EXPRESSION_VERSION, sourceRiff,
 } from './lib/banger/index.js';
 import { analyseRiff } from './lib/banger/analyse.js';
@@ -87,6 +87,25 @@ export function createBangerDesk(desk) {
     return `<option value=""${value ? '' : ' selected'}>Style Sounds</option>`
       + Object.entries(BANGER_COMBOS[styleId] || {}).map(([id, c]) => `<option value="${id}"${sel(value, id)}>${escapeHtml(c.label)}</option>`).join('');
   }
+  /**
+   * The Flavour list (styles/flavours.js): By Mood — naming the one the mood plays — then each
+   * of the style's arrangements, then Random. Only shown for a style that has flavours.
+   */
+  function flavourOptions(styleId, value, mood) {
+    const list = flavoursFor(styleId);
+    const byMood = list.find((f) => f.id === moodFlavour(styleFor(styleId), mood));
+    return `<option value="mood"${sel(value, 'mood')}>By Mood${byMood ? ` (${escapeHtml(byMood.label)})` : ''}</option>`
+      + list.map((f) => `<option value="${f.id}" title="${escapeHtml(f.note || '')}"${sel(value, f.id)}>${escapeHtml(f.label)}</option>`).join('')
+      + `<option value="random"${sel(value, 'random')}>Random</option>`;
+  }
+  function syncFlavours(styleId, value = 'mood', mood = $('bgmood')?.value) {
+    const select = $('bgflavour');
+    if (!select) return;
+    const ok = value === 'mood' || value === 'random' || flavoursFor(styleId).some((f) => f.id === value);
+    select.innerHTML = flavourOptions(styleId, ok ? value : 'mood', mood);
+    select.value = ok ? value : 'mood';
+    $('bgflavourfield').hidden = !flavoursFor(styleId).length;
+  }
   /** Sounds is only asked where the style has a combo to offer. */
   function syncCombos(styleId, value = '') {
     const select = $('bgcombo');
@@ -128,6 +147,7 @@ export function createBangerDesk(desk) {
       + '<div class="bangergrid"><fieldset class="bgprimary"><legend>Sound &amp; feel</legend><div class="bgfields">'
       + `<label class="askfield" title="The recipe: the drums, the bass, the chords, the sounds and the form it starts on. Picking one resets everything under More Options to its defaults">Style<select id="bgstyle">${BANGER_STYLES.map((s) => `<option value="${s.id}" data-note="${escapeHtml(s.note || '')}"${sel(o.style, s.id)}>${escapeHtml(s.label)}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" id="bgcombofield" title="The style's own sounds, or a Sound Combo saved from a banger tuned on the desk"${Object.keys(BANGER_COMBOS[o.style] || {}).length ? '' : ' hidden'}>Sounds<select id="bgcombo">${comboOptions(o.style, o.combo)}</select></label>`
+      + `<label class="askfield" id="bgflavourfield" title="Which of the style's arrangements a take is — its drums, rhythms, sounds and how long its chords are held. By Mood: the one the mood plays. Random: drawn from the take's seed, so Another Take can land on any of them"${flavoursFor(o.style).length ? '' : ' hidden'}>Flavour<select id="bgflavour">${flavourOptions(o.style, o.flavour || 'mood', o.mood)}</select></label>`
       + `<label class="askfield" title="The feel: the chord progression, the chord colours, how bright the hook is — and it can swap sounds and suggest a bass">Mood<select id="bgmood">${BANGER_MOODS.map((m) => `<option value="${m.id}" data-note="${escapeHtml(m.title)}"${sel(o.mood, m.id)}>${m.label}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" title="Major or minor with one note changed — that note is the flavour">Mode<select id="bgmode">${modeOptions(o.mood, o.mode)}</select></label>`
       + '</div></fieldset><fieldset class="bgprimary bgfull"><legend>Length &amp; tempo</legend><div class="bgfields">'
@@ -183,6 +203,7 @@ export function createBangerDesk(desk) {
       variation: box.querySelector('#bgvariation button.on')?.dataset.value || 'some',
       hook: $('bghook')?.value || 'auto',
       combo: $('bgcombo')?.value || null,
+      flavour: $('bgflavour')?.value || 'mood',
       expression: { version: BANGER_EXPRESSION_VERSION },
     };
     for (const g of BANGER_GROUPS) raw[g.id] = {};
@@ -401,6 +422,7 @@ export function createBangerDesk(desk) {
         write({ ...styleDefaults(style), mood: now.mood, length: now.length, customBars: now.customBars,
           parts: { ...styleDefaults(style).parts, bass: moodBass(style, now.mood) } });
         syncCombos(style.id);
+        syncFlavours(style.id);
         formEditor.reset();
         paint();
       };
@@ -433,6 +455,7 @@ export function createBangerDesk(desk) {
         const current = readDialog(box);
         write({ ...styleDefaults(styleFor(el.value)), variation: current.variation, expression: current.expression });
         syncCombos(el.value);
+        syncFlavours(el.value);
         formEditor.reset(`Form back to ${styleFor(el.value).label}'s own`);
       }
       // A new mood re-marks the Mode list: what suits it now, what fights it.
@@ -444,6 +467,8 @@ export function createBangerDesk(desk) {
         const keep = mode.value;
         mode.innerHTML = modeOptions(el.value, keep);
         mode.value = keep;
+        // …and By Mood names the flavour the new mood plays.
+        syncFlavours($('bgstyle').value, $('bgflavour')?.value, el.value);
       }
       if (el.id === 'bgfrom' || el.id === 'bgto') readRiff();
       // A new length: a drawn form rescales to it, keeping its sections.
@@ -470,6 +495,7 @@ export function createBangerDesk(desk) {
       const style = styleFor($('bgstyle').value);
       write(make(style));
       syncCombos(style.id);
+      syncFlavours(style.id);
       formEditor.reset();
       paint();
       toast(`${style.label} — ${what}; explicit section effects cleared`, 2200);

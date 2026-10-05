@@ -70,7 +70,8 @@ export const moodFlavour = (style, mood) => style?.flavourByMood?.[mood] || styl
  * the answer is the style itself.
  */
 export function flavourOf(style, flavour, { seed = 1, mood = null } = {}) {
-  if (!flavour || flavour === 'style' || !style?.flavours?.length) return null;
+  // (A flavour asked for by its own id — the Banger Sounds page's audition — is played as itself.)
+  if (!flavour || flavour === 'style' || !style?.flavours?.length || style.base) return null;
   let id = flavour;
   if (flavour === 'mood') id = moodFlavour(style, mood);
   else if (flavour === 'random') id = style.flavours[Math.floor(seedRoll(seed, 0x7f4a7c15) * style.flavours.length)].id;
